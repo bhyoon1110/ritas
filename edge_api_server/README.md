@@ -12,9 +12,6 @@
 - 전체 bundle 검증
 - 보고서 생성 요청을 디스크 큐에 적재
 - OpenAI 호환 로컬 LLM(`/v1/chat/completions`) 호출 worker
-- 로컬 LLM 모델 조회 및 설정 모델 검증(`/v1/models`)
-- LLM 컨텍스트 길이 사전 검증과 vLLM 오류 변환
-- 전처리 JSON 및 선택적 분석 이미지 입력
 - 작업 상태 조회
 - SQLite 기반 작업, 파일, 멱등 요청 저장
 - 업로드 유효기간 만료 처리
@@ -76,7 +73,6 @@ API 문서:
 - 개발 Swagger UI: `http://192.168.0.10:8000/docs`
 - 개발 OpenAPI JSON: `http://192.168.0.10:8000/openapi.json`
 - 개발 상태 확인: `http://192.168.0.10:8000/health`
-- 로컬 LLM 상태 확인: `http://192.168.0.10:8000/health/llm`
 
 ## 환경 변수
 
@@ -93,16 +89,9 @@ API 문서:
 | `RIST_MAX_UPLOAD_BYTES` | `2147483648` | 개별 파일 최대 크기 |
 | `RIST_SUPPORTED_EXPERIMENT_CODES` | 빈 값 | 쉼표 구분 허용 실험코드. 빈 값이면 제한 없음 |
 | `RIST_LLM_BASE_URL` | `http://127.0.0.1:8001` | OpenAI 호환 로컬 LLM 주소 |
-| `RIST_LLM_MODEL` | `gemma4-e4b` | `/v1/chat/completions` 요청의 model 값 |
+| `RIST_LLM_MODEL` | `local-model` | `/v1/chat/completions` 요청의 model 값 |
 | `RIST_LLM_TIMEOUT_SECONDS` | `180` | LLM 요청 제한 시간 |
-| `RIST_LLM_TEMPERATURE` | `0.1` | 보고서 작성 temperature |
-| `RIST_LLM_MAX_TOKENS` | `1200` | LLM 최대 출력 토큰 수 |
-| `RIST_LLM_CONTEXT_WINDOW` | `8192` | 모델 컨텍스트 길이 |
-| `RIST_LLM_CONTEXT_MARGIN` | `256` | 컨텍스트 계산 안전 여유 토큰 |
-| `RIST_LLM_VALIDATE_MODEL` | `true` | 실행 전 `/v1/models`에서 모델 확인 |
-| `RIST_LLM_INCLUDE_IMAGES` | `true` | 처리 결과 이미지의 vision 입력 사용 |
-| `RIST_LLM_MAX_IMAGES` | `3` | 한 요청에 포함할 최대 이미지 수 |
-| `RIST_LLM_MAX_IMAGE_BYTES` | `2097152` | 이미지 한 장의 최대 바이트 수 |
+| `RIST_LLM_TEMPERATURE` | `0.2` | 보고서 작성 temperature |
 | `RIST_LLM_MAX_INPUT_CHARS` | `200000` | 구조화 분석 JSON 최대 문자 수 |
 | `RIST_WORKER_POLL_SECONDS` | `2` | worker 큐 조회 간격 |
 
@@ -118,14 +107,7 @@ pytest
 로컬 LLM은 다음 주소에서 OpenAI 호환 API를 제공해야 한다.
 
 ```text
-http://127.0.0.1:8001/v1/models
 http://127.0.0.1:8001/v1/chat/completions
-```
-
-연결과 모델 설정은 다음 API로 확인한다.
-
-```bash
-curl http://127.0.0.1:8000/health/llm
 ```
 
 보고서 요청을 받으면 다음 파일이 생성된다.
@@ -140,10 +122,6 @@ curl http://127.0.0.1:8000/health/llm
 ```text
 {jobRoot}/processed/analysis-result.json
 ```
-
-이미지 입력을 사용할 경우 `processed` 폴더에 `png`, `jpg`, `jpeg`, `webp`
-파일을 둔다. 최대 3개, 파일당 2 MiB까지 data URL로 전달하며 이 값은 환경
-변수로 변경할 수 있다.
 
 worker 실행:
 
@@ -167,15 +145,7 @@ worker가 생성하는 파일:
 {jobRoot}/report/report-draft.md
 ```
 
-LLM에는 원본 bundle을 보내지 않고 `processed` 폴더의 JSON과 허용된 분석
-이미지만 전달한다. 요청 로그에는 이미지의 base64 본문을 기록하지 않는다.
-FT-IR 작업은 단정적 해석을 피하고 규칙 기반 결과, 라이브러리 매칭, QC 및
-전체 스펙트럼의 한계를 구분하는 전용 프롬프트를 사용한다.
-
-설정된 모델의 컨텍스트 길이 8,192 안에서 입력, 이미지 예약량, 출력
-`max_tokens`, 안전 여유를 계산한다. 초과가 예상되면 LLM을 호출하기 전에
-`LLM_CONTEXT_BUDGET_EXCEEDED`로 실패시켜 vLLM의 길이 초과 오류를 방지한다.
-
-LLM 완료 후 작업은 `PROCESSING`, 진행률 75%로 유지된다. `PPTX/PDF` 렌더링과
+LLM에는 원본 파일을 보내지 않고 `processed` 폴더의 JSON만 전달한다. LLM
+완료 후 작업은 `PROCESSING`, 진행률 75%로 유지된다. `PPTX/PDF` 렌더링과
 Spring Boot 완료 콜백이 구현된 뒤 `CALLBACK_PENDING`, `COMPLETED`로
 전환해야 한다.

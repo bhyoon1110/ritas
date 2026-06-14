@@ -11,7 +11,6 @@ from .errors import (
     api_exception_handler,
     validation_exception_handler,
 )
-from .llm_client import LlmError, LocalLlmClient
 from .models import (
     CompleteUploadRequest,
     CompleteUploadResponse,
@@ -71,38 +70,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "environment": resolved_settings.environment,
             "baseUrl": resolved_settings.edge_public_base_url,
             "port": resolved_settings.api_port,
-            "llmModel": resolved_settings.llm_model,
-        }
-
-    @app.get("/health/llm", tags=["system"])
-    def llm_health() -> dict:
-        client = LocalLlmClient(
-            resolved_settings.llm_base_url,
-            resolved_settings.llm_model,
-            resolved_settings.llm_timeout_seconds,
-            resolved_settings.llm_temperature,
-            resolved_settings.llm_max_tokens,
-            True,
-        )
-        try:
-            model = client.get_model_info(force=True)
-        except LlmError as exc:
-            raise ApiException(
-                503 if exc.retryable else 500,
-                exc.code,
-                exc.message,
-                retryable=exc.retryable,
-            ) from exc
-        finally:
-            client.close()
-        return {
-            "status": "ok",
-            "baseUrl": resolved_settings.llm_base_url,
-            "model": model.get("id"),
-            "maxModelLength": model.get("max_model_len"),
-            "temperature": resolved_settings.llm_temperature,
-            "maxTokens": resolved_settings.llm_max_tokens,
-            "visionEnabled": resolved_settings.llm_include_images,
         }
 
     @app.post(
