@@ -1,0 +1,9 @@
+[project]
+name = "rist-edge-api-server"
+version = "1.0.0"
+description = "REST API server between RIST experiment PCs and the Edge server"
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

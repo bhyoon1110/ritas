@@ -1,0 +1,69 @@
+# Operating system and editor files
+.DS_Store
+Thumbs.db
+.Rhistory
+.vscode/
+.idea/
+*.iml
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.venv*/
+venv/
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Runtime data
+edge_api_server/data/
+**/*.db
+**/*.sqlite
+**/*.sqlite3
+logs/
+reports/
+
+# Generated experiment outputs and local datasets
+sune/results/
+sune/figures/
+sune/data/
+sune/outputs/
+sune/spectra_data/
+sune/*.dpt
+lim/results/
+lim/output/
+lim/data/
+lim/*.html
+ahn/results/
+ahn/output/
+
+# Android/Gradle build outputs
+RitasAxApp/.gradle/
+RitasAxApp/local.properties
+RitasAxApp/**/build/
+RitasAxApp/captures/
+RitasAxApp/.externalNativeBuild/
+RitasAxApp/.cxx/
+
+# Model weights and archives
+models/
+*.safetensors
+*.gguf
+*.bin
+*.zip
+
+# Large proposal/reference originals kept outside source control
+*.eml
+[[]제안서[]]*.pptx
+[[]제안서[]]*.pdf
+제안서.pptx

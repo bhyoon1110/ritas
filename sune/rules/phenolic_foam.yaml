@@ -1,0 +1,336 @@
+# ============================================================
+# FTIR 동정 룰 — 페놀릭 폼 (Phenolic Foam / PF Resin)
+# 형식 버전: 3.0  (2026-05-28)
+#
+# v2.4 → v3.0 변경사항:
+#   - subtypes 섹션 도입: 공통 PF 골격은 base peaks에서 한 번만 정의하고
+#     서브타입(우레아 변성, 멜라민 변성, 암모니아 경화, MCA 난연 등)의
+#     차이만 subtypes 아래에 추가 마커로 기술.
+#   - family 필드 추가: 서브타입이 모두 미매칭일 때 fallback 라벨로 사용
+#     ("Phenolic Foam 계열 (변종 미확정)").
+#
+# 판정 흐름:
+#   1) peaks(공통) 평가 → Phenolic Foam 계열 여부 판정
+#   2) Rule Match 시 subtypes 각각 평가
+#      - 1개 매칭: "Phenolic Foam — Urea-modified PF"
+#      - 다수 매칭: "Phenolic Foam — 복합 변종 (Urea + Melamine)"
+#      - 0개 매칭: "Phenolic Foam — 변종 미확정"
+#
+# 주의: 서브타입 wavenumber 범위는 문헌 기반 1차 추정치이며, 실제 7개
+#       샘플(1_REF, 2_UREA, 3_Melamine, 4_Amonia, 5_Melamine Cyanurate,
+#       A_191001, A_191102) 실측 피크로 검증·보정 필요.
+#
+# 참고 문헌:
+#   - Poljanšek & Krajnc (2005) Acta Chim. Slov. 52:238-244
+#   - Lisperguer et al. (2009) J. Chil. Chem. Soc. 54(4):484-488
+#   - Desai et al. (2014) J. Appl. Polym. Sci. 131(22)
+#   - Pizzi A. (1994), Advanced Wood Adhesives Technology (Marcel Dekker) [UF/MF resin]
+#   - Costa et al. (2000), Polym. Degrad. Stab. [Melamine cyanurate FR FTIR]
+#   - Lin-Vien et al., Infrared and Raman Characteristic Frequencies, Academic Press
+# ============================================================
+
+compound: "Phenolic Foam"
+family:   "Phenolic Foam"
+aliases:
+  - "페놀폼"
+  - "페놀릭 폼"
+  - "PF Foam"
+  - "PF Resin Foam"
+  - "Phenol-Formaldehyde Foam"
+  - "Bakelite Foam"
+  - "페놀 수지 단열재"
+
+category: "03_engineering_plastic/02_engineering"
+cas: null
+
+description: >
+  페놀(Phenol)과 포름알데히드(Formaldehyde)의 중합반응으로 생성된 열경화성 수지(PF Resin)를
+  발포시킨 단열폼. 상업용은 산 촉매 경화형이 일반적이며, 변성 처방(우레아/멜라민)이나
+  특수 난연 처방(멜라민 시아누레이트, 인계)이 다양하게 적용됨.
+  공통 핵심 마커: 1474 cm⁻¹ (CH₂ scissoring) + 820 cm⁻¹ (para C-H OOP) +
+  1220 cm⁻¹ (페놀 C-O) + 1610 cm⁻¹ (방향족 C=C).
+
+# ──────────────────────────────────────────────────────────────
+# 공통 PF 골격 (모든 페놀릭 폼 변종이 공유)
+# ──────────────────────────────────────────────────────────────
+peaks:
+
+  # ── role: required ──────────────────────────────────────────
+  - id: "pf_oh_nh_3400"
+    role: required
+    wavenumber_min: 3200
+    wavenumber_max: 3600
+    vibration_mode: "O-H / N-H stretching"
+    assignment: "페놀성 O-H 신축 (변성 시 N-H가 오버랩되어 FWHM 매우 넓음)"
+    intensity: strong
+    tolerance: 30
+
+  - id: "pf_ch2_stretch_2885"
+    role: required
+    wavenumber_min: 2850
+    wavenumber_max: 2920
+    vibration_mode: "CH2 asymmetric & symmetric stretching"
+    assignment: "메틸렌 브릿지(-CH₂-)의 지방족 C-H 신축"
+    intensity: medium
+    tolerance: 20
+
+  - id: "pf_aromatic_cc_1605"
+    role: required
+    wavenumber_min: 1595
+    wavenumber_max: 1615
+    vibration_mode: "C=C aromatic ring stretching"
+    assignment: "페놀 고리 골격 진동 (1610 cm⁻¹ 대역)"
+    intensity: strong
+    tolerance: 15
+
+  - id: "pf_ch2_scissoring_1475"
+    role: required
+    diagnosticity: high
+    wavenumber_min: 1460
+    wavenumber_max: 1490
+    vibration_mode: "CH2 bending (scissoring)"
+    assignment: "메틸렌 브릿지 가위질. 고밀도 가교 PF폼의 최강 피크."
+    intensity: strong
+    tolerance: 15
+
+  - id: "pf_phenolic_co_1218"
+    role: required
+    diagnosticity: high
+    wavenumber_min: 1200
+    wavenumber_max: 1235
+    vibration_mode: "C-O stretching (phenolic)"
+    assignment: "페놀 고리 C-O 단일 결합. 핵심 마커."
+    intensity: strong
+    tolerance: 15
+
+  - id: "pf_para_oop_818"
+    role: required
+    diagnosticity: high
+    wavenumber_min: 810
+    wavenumber_max: 825
+    vibration_mode: "C-H out-of-plane bending (para-substituted)"
+    assignment: "페놀 고리 p-치환기 면외 굽힘. 가장 강한 지문 피크."
+    intensity: strong
+    tolerance: 18
+
+  # ── role: supporting ────────────────────────────────────────
+  - id: "pf_aromatic_cc_1510"
+    role: supporting
+    wavenumber_min: 1495
+    wavenumber_max: 1515
+    vibration_mode: "C=C aromatic ring stretching (1510 band)"
+    assignment: "페놀 고리 1510 cm⁻¹ 대역 (고가교 폼에서는 약해짐)"
+    intensity: strong
+    tolerance: 15
+
+  - id: "pf_oh_bending_1360"
+    role: supporting
+    wavenumber_min: 1355
+    wavenumber_max: 1365
+    vibration_mode: "O-H in-plane bending"
+    assignment: "페놀성 수산기 면내 변각"
+    intensity: medium
+    tolerance: 10
+
+  - id: "pf_ch2oh_1030"
+    role: supporting
+    wavenumber_min: 1010
+    wavenumber_max: 1050
+    vibration_mode: "CH2OH / aromatic-O stretching"
+    assignment: "잔류 메틸올기 또는 방향족-산소 신축"
+    intensity: medium
+    tolerance: 15
+
+  - id: "pf_ortho_oop_755"
+    role: supporting
+    wavenumber_min: 750
+    wavenumber_max: 760
+    vibration_mode: "C-H out-of-plane bending (ortho-substituted)"
+    assignment: "페놀 고리 o-치환기 면외 굽힘"
+    intensity: medium
+    tolerance: 10
+
+  # ── role: context_marker (채점 미반영) ──────────────────────
+  - id: "pf_phosphorus_flame_retardant_1276"
+    role: context_marker
+    marker_type: additive
+    interpretation: phosphorus_flame_retardant
+    wavenumber_min: 1260
+    wavenumber_max: 1290
+    vibration_mode: "P=O stretching"
+    assignment: "인계 난연제(인산 에스터) P=O 신축"
+    intensity: medium
+    tolerance: 12
+
+  - id: "pf_fluorinated_surfactant_release_1166"
+    role: context_marker
+    marker_type: additive_or_surface_residue
+    interpretation: fluorinated_surfactant_or_release_agent
+    wavenumber_min: 1155
+    wavenumber_max: 1180
+    vibration_mode: "C-F stretching"
+    assignment: "불소계 정포제/이형제 표면 잔류"
+    intensity: medium
+    tolerance: 12
+
+  - id: "pf_sulfonic_acid_catalyst_1142"
+    role: context_marker
+    marker_type: process_marker
+    interpretation: acid_catalyst_residue
+    wavenumber_min: 1130
+    wavenumber_max: 1155
+    vibration_mode: "S=O stretching (sulfonic acid)"
+    assignment: "p-TSA/BSA 산 촉매 잔류 — 산 경화형 PF 양성 지표"
+    intensity: medium
+    tolerance: 15
+
+  # ── role: warning ───────────────────────────────────────────
+  - id: "pf_carbonyl_warning_1725"
+    role: warning
+    warning_type: soft
+    allowed_context:
+      - urea_modified_pf
+      - oxidized_commercial_pf
+    wavenumber_min: 1700
+    wavenumber_max: 1750
+    vibration_mode: "C=O stretching (ester/ketone — strong)"
+    assignment: "강한 C=O — 0.50 이상이면 PUR/에스터 의심"
+    intensity: strong
+    min_intensity: 0.50
+    tolerance: 15
+
+  # ── role: hard_forbidden ────────────────────────────────────
+  - id: "pf_long_chain_ch2_rocking_725"
+    role: hard_forbidden
+    wavenumber_min: 715
+    wavenumber_max: 735
+    vibration_mode: "CH2 rocking (long-chain alkyl)"
+    assignment: "장쇄 알킬기(PE/PP) — PF에는 없어야 함"
+    intensity: medium
+    tolerance: 10
+
+  - id: "pf_nitrile_2245"
+    role: hard_forbidden
+    wavenumber_min: 2220
+    wavenumber_max: 2270
+    vibration_mode: "C≡N nitrile stretching"
+    assignment: "니트릴 — PF에는 없어야 함 (PAN/isocyanate 오인식 방지)"
+    intensity: medium
+    tolerance: 15
+
+# ──────────────────────────────────────────────────────────────
+# 서브타입 (공통 매칭 후 추가 평가)
+#   각 서브타입의 peaks는 그 변종만의 변별 마커만 기술.
+#   공통 PF 골격은 위 peaks 섹션에서 이미 평가되므로 중복 불필요.
+#   role 미지정 시 required 로 간주.
+# ──────────────────────────────────────────────────────────────
+subtypes:
+
+  # ── 우레아 변성 (2_UREA.0) ──────────────────────────────────
+  # 변별 조건: amide I (1640~1680) **AND** amide II (1530~1560) 둘 다 필요.
+  # 1640~1680 단독은 변성/산화 일반 C=O로 PF에도 흔히 나타남.
+  - name: "Urea-modified PF"
+    aliases: ["UF-modified PF", "우레아 변성 페놀폼", "PF-UF"]
+    description: >
+      페놀-포름알데히드에 우레아를 공중합/후첨가한 PF폼. 우레아 amide I(C=O)와
+      amide II(N-H bend)가 동시에 존재해야 변성으로 확정.
+    min_required_fraction: 1.0
+    peaks:
+      - id: "uf_amide_I_1660"
+        wavenumber_min: 1640
+        wavenumber_max: 1680
+        vibration_mode: "C=O stretching (urea amide I)"
+        assignment: "우레아 카보닐 — 단독 시 산화/변성 일반 마커"
+        tolerance: 8
+      - id: "uf_amide_II_1545"
+        wavenumber_min: 1530
+        wavenumber_max: 1560
+        vibration_mode: "N-H bending (amide II)"
+        assignment: "우레아 N-H 변각 — 우레아 변성 확정 마커"
+        tolerance: 10
+
+  # ── 멜라민 변성 (3_Melamine.0) ──────────────────────────────
+  # 변별 조건: 트리아진 N-H₂ (3320~3380 sharp 어깨) **AND** 트리아진 C=N (1540~1565).
+  # 813 cm⁻¹는 PF의 para-OOP와 겹쳐 단독 사용 불가.
+  - name: "Melamine-modified PF"
+    aliases: ["MF-modified PF", "멜라민 변성 페놀폼", "PF-MF"]
+    description: >
+      페놀-포름알데히드에 멜라민(트리아진)을 공중합한 PF폼. 트리아진의 N-H₂
+      와 C=N 신축이 동시에 존재해야 변성으로 확정 (813은 PF와 공유라 단독 불가).
+    min_required_fraction: 1.0
+    peaks:
+      # 트리아진 C=N: 우레아 amide II(1530~1555)와 겹치지 않도록 1560~1585로 한정
+      - id: "mf_triazine_cn_1565"
+        wavenumber_min: 1560
+        wavenumber_max: 1585
+        vibration_mode: "Triazine C=N stretching"
+        assignment: "멜라민 트리아진 고리 C=N (우레아 amide II 위쪽)"
+        tolerance: 6
+      # 멜라민 N-H₂: PF 페놀 O-H 신축(보통 3380~3420 broad)과 겹치지 않도록
+      # 좁고 낮은 위치만 인정. tol도 5로 축소.
+      - id: "mf_nh2_3340"
+        wavenumber_min: 3320
+        wavenumber_max: 3370
+        vibration_mode: "N-H2 stretching (melamine primary amine, sharp)"
+        assignment: "멜라민 1차 아민 N-H₂ (페놀 O-H broad 봉우리 아래쪽 sharp)"
+        tolerance: 5
+
+  # ── 암모니아 경화 (4_Amonia.0) ─────────────────────────────
+  # 변별 조건: NH4+ 변각 (1395~1445) **AND** 1차 아민 N-H 신축 (3150~3280).
+  - name: "Ammonia-cured / Ammonia-modified PF"
+    aliases: ["암모니아 경화 페놀폼", "ammonia-catalyzed PF"]
+    description: >
+      암모니아/암모니아수를 경화 촉매·중화제로 사용한 PF폼. 잔류 암모늄/아민
+      변각과 신축이 동시에 존재해야 확정.
+    min_required_fraction: 1.0
+    peaks:
+      - id: "ammonia_nh4_def_1420"
+        wavenumber_min: 1395
+        wavenumber_max: 1445
+        vibration_mode: "NH4+ deformation / primary amine bend"
+        assignment: "암모늄 변각 — 잔류 암모니아 처방 마커"
+        tolerance: 12
+      - id: "ammonia_nh_str_3200"
+        wavenumber_min: 3150
+        wavenumber_max: 3280
+        vibration_mode: "Primary amine N-H stretching"
+        assignment: "1차 아민 N-H 신축 (페놀 O-H 하단 어깨)"
+        tolerance: 25
+
+  # ── 멜라민 시아누레이트 난연 (5_Melamine Cyanurate.0) ───────
+  # 변별 조건: MCA cyanurate sharp C=O (1760~1800) **AND** MCA triazine OOP (760~775).
+  # 일반 PF의 1714 (broad oxidation C=O)와는 위치·FWHM이 다름.
+  - name: "Melamine Cyanurate FR Phenolic Foam"
+    aliases: ["MCA-FR PF", "멜라민 시아누레이트 난연 페놀폼"]
+    description: >
+      멜라민-시아누르산 1:1 어덕트(MCA)를 난연제로 배합한 PF폼. MCA 결정성
+      sharp C=O(1780)와 MCA 트리아진 OOP(770)가 동시에 있어야 확정.
+    min_required_fraction: 1.0
+    peaks:
+      - id: "mca_cyanurate_co_1780"
+        wavenumber_min: 1760
+        wavenumber_max: 1800
+        vibration_mode: "Cyanurate C=O stretching (sharp, MCA crystal)"
+        assignment: "시아누르산 결정성 sharp C=O — 일반 변성 C=O(broad)와 구분"
+        tolerance: 8
+      - id: "mca_triazine_oop_770"
+        wavenumber_min: 760
+        wavenumber_max: 780
+        vibration_mode: "Triazine OOP (MCA)"
+        assignment: "MCA 트리아진 면외 굽힘"
+        tolerance: 8
+
+# ──────────────────────────────────────────────────────────────
+# 채점 설정
+# ──────────────────────────────────────────────────────────────
+scoring:
+  min_required_fraction: 0.55
+  match_threshold: 0.60
+  default_tolerance: 15
+  min_height: 0.05
+  warning_penalty_per_peak: 0.08
+  forbidden_penalty_per_peak: 0.20
+  intensity_weights:
+    strong: 3.0
+    medium: 1.5
+    weak: 0.8

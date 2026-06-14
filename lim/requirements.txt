@@ -1,0 +1,3 @@
+-e ../common
+pdfplumber>=0.11
+plotly>=5.15

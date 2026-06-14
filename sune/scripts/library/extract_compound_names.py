@@ -1,0 +1,348 @@
+#!/usr/bin/env python3
+# ─────────────────────────────────────────────────────────────────────────────
+# 파일 설명: Bruker ATR-FTIR O-Ring 라이브러리 PDF에서 정리한 화합물명 표
+#            (Entry 1~280)를 코드에 내장하고, 추출 결과 CSV에 화합물명을 매핑한다.
+# 실행 방법: python scripts/library/extract_compound_names.py
+#            (인자 없음 — opus_complete_results 경로는 파일 하단 main 에 내장)
+# ─────────────────────────────────────────────────────────────────────────────
+"""
+Bruker ATR-FTIR O-Ring 라이브러리 PDF에서 화합물 이름 추출
+"""
+
+import csv
+import pandas as pd
+from pathlib import Path
+
+# PDF에서 추출한 화합물 정보 (Entry 1-280)
+# 행: (번호, Compound name, Description, Manufacturer, Abbreviation)
+COMPOUND_DATA = [
+    (1, "5-5101", "Nitrile", "GIBBS", "NBR"),
+    (2, "5-6002", "Nitrile", "GIBBS", "NBR"),
+    (3, "9-8002", "Viton", "GIBBS", "FKM"),
+    (4, "5-7103", "Nitrile", "GIBBS", "NBR"),
+    (5, "D2725", "Nitrile", "GRRP", "NBR"),
+    (6, "D2725", "Nitrile", "GRRP", "NBR"),
+    (7, "D2725", "Nitrile", "GRRP", "NBR"),
+    (8, "D2725", "Nitrile", "GRRP", "NBR"),
+    (9, "N0674-70", "Nitrile", "PARKER", "NBR"),
+    (10, "NA190-50", "Nitrile", "PARKER", "NBR"),
+    (11, "VM835-75", "Fluorocarbon", "PARKER", "FKM"),
+    (12, "LC715THK", "Fluorocarbon", "GRRP", "FKM"),
+    (13, "366Y", "Nitrile", "MINNESOTA", "NBR"),
+    (14, "D2725", "Nitrile", "GRRP", "NBR"),
+    (15, "D2725", "Nitrile", "GRRP", "NBR"),
+    (16, "D0735", "Nitrile", "GRRP", "NBR"),
+    (17, "NA151-70", "Nitrile", "PARKER", "NBR"),
+    (18, "N1206-70", "HNBR", "PARKER", "NBR"),
+    (19, "NL151-50", "Nitrile", "PARKER", "NBR"),
+    (20, "GP-715-BR", "Fluorocarbon", "GRRP", "FKM"),
+    (21, "DC-2289AA", "Nitrile", "DIA COM", "NBR"),
+    (22, "N100-70", "Nitrile", "SPEC SEALS", "NBS"),
+    (23, "NITRILE 70", "Nitrile", "SPEC SEALS", "NBR"),
+    (24, "D0605", "Nitrile", "GRRP", "NBR"),
+    (25, "D9625", "Nitrile", "GRRP", "NBR"),
+    (26, "514AD", "Fluorocarbon", "MINNESOTA", "FKM"),
+    (27, "D1715", "Nitrile", "GRRP", "NBR"),
+    (28, "63917", "Ethylene Propylene", "PARKER ESD", "EPM"),
+    (29, "514AD", "Fluorocarbon", "MINNESOTA", "FKM"),
+    (30, "VM835-75", "Fluorocarbon", "PARKER", "FKM"),
+    (31, "366Y", "Nitrile", "MINNESOTA", "NBR"),
+    (32, "63917", "Ethylene Propylene", "PARKER ESD", "EPM"),
+    (33, "514AD", "Fluorocarbon", "MINNESOTA", "FKM"),
+    (34, "E0540-80", "Ethylene Propylene", "PARKER", "EPM"),
+    (35, "N100-70", "Nitrile", "SPEC SEALS", "NBR"),
+    (36, "5-7100", "Nitrile", "GIBBS", "NBR"),
+    (37, "TS0735", "Nitrile", "GRRP", "NBR"),
+    (38, "LC-715-THK", "Fluorocarbon", "GRRP", "FKM"),
+    (39, "TS0605", "Nitrile", "GRRP", "NBR"),
+    (40, "5-8016", "Nitrile", "GIBBS", "NBR"),
+    (41, "TS1515", "Nitrile", "GRRP", "NBR"),
+    (42, "GP-715-BR", "Fluorocarbon", "GRRP", "FKM"),
+    (43, "NW163-70", "Nitrile", "PARKER", "NBS"),
+    (44, "VA151-75", "Fluorocarbon", "PARKER", "FKM"),
+    (45, "TS2725", "Nitrile", "GRRP", "NBR"),
+    (46, "D1715ST", "Nitrile", "GRRP", "NBR"),
+    (47, "D2725ST", "Nitrile", "GRRP", "NBR"),
+    (48, "D1515ST", "Nitrile", "GRRP", "NBR"),
+    (49, "514AD", "Fluorocarbon", "MINNESOTA", "FKM"),
+    (50, "NL151-50", "Nitrile", "PARKER", "NBR"),
+    (51, "VM128-75", "Fluorocarbon", "PARKER", "FKM"),
+    (52, "366Y", "Nitrile", "MINNESOTA", "NBR"),
+    (53, "536AB", "Nitrile", "MINNESOTA", "NBR"),
+    (54, "DC-2289AA", "Nitrile", "DIA COM", "NBR"),
+    (55, "NW163-70", "Nitrile", "PARKER", "NBR"),
+    (56, "TX-121170R3", "Nitrile", "APRO", "NBR"),
+    (57, "NB-140170-A", "Nitrile", "APRO", "NBR"),
+    (58, "NB001670A", "Nitrile", "APRO", "NBR"),
+    (59, "TX-032169", "Nitrile", "APRO", "NBR"),
+    (60, "AC080370-A", "Polyacrylate Rubber", "APRO", "ACM"),
+    (61, "514AD", "Fluorocarbon", "MINNESOTA", "FKM"),
+    (62, "LM152-60", "Fluorosilicone", "PARKER ESD", "FVMQ"),
+    (63, "D2137", "Hydrogenated Nitrile", "PARKER ESD", "HNBR"),
+    (64, "5-7103", "Nitrile", "GIBBS", "NBR"),
+    (65, "5-7100", "Nitrile", "GIBBS", "NBR"),
+    (66, "D1635ST", "Nitrile", "GRRP", "NBR"),
+    (67, "9661", "Fluorocarbon", "GRRP", "FKM"),
+    (68, "BLUE PTFE", "Teflon", "PARKER", ""),
+    (69, "D9625ST", "Nitrile", "GRRP", "NBR"),
+    (70, "TS1635", "Nitrile", "GRRP", "NBR"),
+    (71, "VA151-75", "Fluorocarbon", "PARKER", "FKM"),
+    (72, "VM835-75", "Fluorocarbon", "PARKER", "FKM"),
+    (73, "N0299-50", "Nitrile", "PARKER", "NBR"),
+    (74, "NA190-50", "Nitrile", "PARKER", "NBR"),
+    (75, "N1206-70", "Hydrogenated Nitrile", "PARKER", "HNBR"),
+    (76, "NL151-50", "Nitrile", "PARKER", "NBR"),
+    (77, "VM835-75", "Fluorocarbon", "PARKER", "FKM"),
+    (78, "9-8002", "Viton", "GIBBS", "FKM"),
+    (79, "5-5101", "Nitrile", "GIBBS", "NBR"),
+    (80, "VA151-75", "Fluorocarbon", "PARKER", "FKM"),
+    (81, "VA151-75", "Fluorocarbon", "PARKER", "FKM"),
+    (82, "NA190-50", "Nitrile", "PARKER", "NBR"),
+    (83, "D0605ST", "Nitrile", "GRRP", "NBR"),
+    (84, "5-8016", "Nitrile", "GIBBS", "NBR"),
+    (85, "5-7102", "Nitrile", "GIBBS", "NBR"),
+    (86, "N0299-50", "Nitrile", "PARKER", "NBR"),
+    (87, "N0674-70", "Nitrile", "PARKER", "NBR"),
+    (88, "366Y", "Nitrile", "MINNESOTA", "NBR"),
+    (89, "VA151-75", "Fluorocarbon", "PARKER", "FKM"),
+    (90, "514AD", "Fluorocarbon", "MINNESOTA", "FKM"),
+    (91, "NL151-50", "Nitrile", "PARKER", "NBR"),
+    (92, "5-6002", "Nitrile", "GIBBS", "NBR"),
+    (93, "5-7100", "Nitrile", "GIBBS", "NBR"),
+    (94, "366Y", "Nitrile", "MINNESOTA", "NBR"),
+    (95, "NW163-70", "Nitrile", "PARKER", "NBR"),
+    (96, "2289AA1", "Nitrile", "DIA COM", "NBR"),
+    (97, "5-5101", "Nitrile", "GIBBS", "NBR"),
+    (98, "19357-75", "Fluorocarbon", "PARKER", "FKM"),
+    (99, "D2725ST", "Nitrile", "GRRP", "NBR"),
+    (100, "E0540-80", "Ethylene Propylene", "PARKER", "EPM"),
+    (101, "C0873-70", "Neoprene", "PARKER", "CR"),
+    (102, "N1206-70", "Hydrogenated Nitrile", "PARKER", "HNBR"),
+    (103, "VM835-75", "Fluorocarbon", "PARKER", "FKM"),
+    (104, "NA151-70", "Nitrile", "PARKER", "NBR"),
+    (105, "N0545-40", "Nitrile", "PARKER", "NBR"),
+    (106, "NBR-70", "Nitrile", "APRO", "NBR"),
+    (107, "5-7103", "Nitrile", "GIBBS", "NBR"),
+    (108, "N1206-70", "Hydrogenated Nitrile", "PARKER", "HNBR"),
+    (109, "514AD", "Fluorocarbon", "MINNESOTA", "FKM"),
+    (110, "VA151-75", "Fluorocarbon", "PARKER", "FKM"),
+    (111, "LC715THK", "Fluorocarbon", "GRRP", "FKM"),
+    (112, "C0873-70", "Neoprene", "PARKER", "CR"),
+    (113, "5-8016", "Nitrile", "GIBBS", "NBR"),
+    (114, "NEOPRENE", "Neoprene", "GRRP", "CR"),
+    (115, "TS1635", "Nitrile", "GRRP", "NBR"),
+    (116, "TS9625", "Nitrile", "GRRP", "NBR"),
+    (117, "VM835-75", "Fluorocarbon", "PARKER", "FKM"),
+    (118, "VA151-75", "Fluorocarbon", "PARKER", "FKM"),
+    (119, "N100-70", "Nitrile", "SPEC SEALS", "NBR"),
+    (120, "LC715THK", "Fluorocarbon", "GRRP", "FKM"),
+    (121, "N0602-70", "Nitrile", "PARKER", "NBR"),
+    (122, "N1470 -70", "Nitrile", "PARKER", "NBR"),
+    (123, "N1470 -70", "Nitrile", "PARKER", "NBR"),
+    (124, "N1470 -70", "Nitrile", "PARKER", "NBR"),
+    (125, "N0674-70", "Nitrile", "PARKER", "NBR"),
+    (126, "NL151-50", "Nitrile", "PARKER", "NBR"),
+    (127, "E0540-80", "Ethylene Propylene", "PARKER", "EPM"),
+    (128, "D2725ST", "Nitrile", "GRRP", "NBR"),
+    (129, "NW163-70", "Nitrile", "PARKER", "NBR"),
+    (130, "5-7100", "Nitrile", "GIBBS", "NBR"),
+    (131, "9-8002", "Viton", "GIBBS", "FKM"),
+    (132, "63917", "Ethylene Propylene", "PARKER ESD", "EP"),
+    (133, "D1715ST", "Nitrile", "GRRP", "NBR"),
+    (134, "5-7103", "Nitrile", "GIBBS", "NBR"),
+    (135, "514AD", "Fluorocarbon", "MINNESOTA", "FKM"),
+    (136, "V0894-90", "Fluorocarbon", "PARKER", "FKM"),
+    (137, "TS0735", "Nitrile", "GRRP", "NBR"),
+    (138, "5-6002", "Nitrile", "GIBBS", "NBR"),
+    (139, "TS3725", "Nitrile", "GRRP", "NBR"),
+    (140, "TS9625", "Nitrile", "GRRP", "NBR"),
+    (141, "N0674-70", "Nitrile", "PARKER", "NBR"),
+    (142, "E0540-80", "Ethylene Propylene", "PARKER", "EPM"),
+    (143, "TS9625", "Nitrile", "GRRP", "NBR"),
+    (144, "D1635ST", "Nitrile", "GRRP", "NBR"),
+    (145, "D0735ST", "Nitrile", "GRRP", "NBR"),
+    (146, "LC-715-THK", "Fluorocarbon", "GRRP", "FKM"),
+    (147, "VW153-75", "Fluorocarbon", "PARKER", "FKM"),
+    (148, "N0674-70", "Nitrile", "PARKER", "NBR"),
+    (149, "AE151-60", "Ethylene Acrylate", "PARKER ESD", "AEM"),
+    (150, "KA250-70", "Hydrogenated Nitrile", "PARKER ESD", "HNBR"),
+    (151, "S1435-70", "Silicone", "PARKER", "MQ"),
+    (152, "C0873-70", "Neoprene", "PARKER", "CR"),
+    (153, "L1120-70", "Fluorosilicone", "PARKER", "FVMQ"),
+    (154, "N100-70", "Nitrile", "SPEC SEALS", "NBR"),
+    (155, "N0304-75", "Nitrile", "PARKER", "NBR"),
+    (156, "S0317-60", "Silicone", "PARKER", "MQ"),
+    (157, "N1470 -70", "Nitrile", "PARKER", "NBR"),
+    (158, "N1403-70", "Nitrile", "PARKER", "NBR"),
+    (159, "PTFE", "Teflon", "PARKER EPS", ""),
+    (160, "E1422-70", "Ethylene Propylene", "PARKER", "EPM"),
+    (161, "4615", "Polyurethane", "PARKER EPS", ""),
+    (162, "V708-75", "Fluorocarbon", "SPEC SEALS", "FKM"),
+    (163, "V1476-75", "Fluorocarbon", "PARKER", "FKM"),
+    (164, "E0515-80", "Ethylene Propylene", "PARKER", "EPM"),
+    (165, "C1124-70", "Neoprene", "PARKER", "CR"),
+    (166, "EP-70", "Ethylene Propylene", "SPEC SEALS", "EPM"),
+    (167, "V1497-70", "Fluorocarbon", "PARKER", "FKM"),
+    (168, "KB163-90", "Hydrogenated Nitrile", "PARKER", "HNBR"),
+    (169, "50051A", "Nitrile", "POLY SEAL", "NBR"),
+    (170, "V0747-75", "Fluorocarbon", "PARKER", "FKM"),
+    (171, "N0602-70", "Nitrile", "PARKER", "NBR"),
+    (172, "NM304-75", "Nitrile", "PARKER", "NBR"),
+    (173, "S1224-70", "Silicone", "PARKER", "MQ"),
+    (174, "E1583-70", "Ethylene Propylene", "PARKER", "EP"),
+    (175, "V1164-75", "Fluorocarbon", "PARKER", "FKM"),
+    (176, "S1138-70", "Silicone", "PARKER", "MQ"),
+    (177, "4181", "Nitrile", "PARKER EPS", "NBR"),
+    (178, "4300", "Polyurethane", "PARKER EPS", ""),
+    (179, "4615", "Polyurethane", "PARKER EPS", ""),
+    (180, "EPDM 70", "Ethylene Propylene", "ATLANTIC", "EPDM"),
+    (181, "9-8002", "Viton", "GIBBS", "FKM"),
+    (182, "S70", "Silicone", "SPEC SEALS", "MQ"),
+    (183, "N0299-50", "Nitrile", "PARKER", "NBR"),
+    (184, "V0747-75", "Fluorocarbon", "PARKER", "FKM"),
+    (185, "E300-70", "Ethylene Propylene", "SPEC SEALS", "EPM"),
+    (186, "4300", "Urethane", "PARKER EPS", ""),
+    (187, "NF153-70", "Nitrile", "PARKER", "NBR"),
+    (188, "V1476-75", "Fluorocarbon", "PARKER", "FKM"),
+    (189, "VM128-75", "Fluorocarbon", "PARKER", "FKM"),
+    (190, "E540-80", "Ethylene Propylene", "", "EPM"),
+    (191, "V0884-75", "Fluorocarbon", "PARKER", "FKM"),
+    (192, "NW163-70", "Nitrile", "PARKER", "NBR"),
+    (193, "S0604-70", "Silicone", "PARKER", "MQ"),
+    (194, "EB184-70", "Ethylene Propylene", "PARKER EPS", "EPM"),
+    (195, "VA151-75", "Fluorocarbon", "PARKER ESD", "FKM"),
+    (196, "NA190-50", "Nitrile", "PARKER", "NBR"),
+    (197, "N100-70", "Nitrile", "SPEC SEALS", "NBR"),
+    (198, "RB-517PG", "SEAL CENTER TUBE", "GRRP", ""),
+    (199, "RB-517PG", "GASKET", "GRRP", ""),
+    (200, "N100-70BRT", "Nitrile", "SPEC SEALS", "NBR"),
+    (201, "NW163-70", "Nitrile", "PARKER", "NBR"),
+    (202, "V0884-75", "Fluorocarbon", "RACOR", "FKM"),
+    (203, "HN700E", "Hydrogenated Nitrile", "PARKER ESD", "HNBR"),
+    (204, "N100-70BR", "Nitrile", "SPEC SEALS", "NBR"),
+    (205, "C43NBR", "Nitrile Foam", "DARCOID", "NBR"),
+    (206, "EB152-70", "Ethylene Propylene", "PARKER MX", "EPM"),
+    (207, "KSR3016-7", "Nitrile", "RACOR", "NBR"),
+    (208, "DC-2289AA", "Nitrile", "DIA COM", "NBR"),
+    (209, "LM256-70", "Fluorosilicone", "PARKER ESD", "FVMQ"),
+    (210, "HYDRIN ECO", "ECO", "DIA COM", "ECO"),
+    (211, "62", "Nitrile", "BELLOFRAM", "NBR"),
+    (212, "NB14170-A", "Nitrile", "PARKER", "NBR"),
+    (213, "LM160-80", "Fluorosilicone", "PARKER ESD", ""),
+    (214, "N0756-75", "Nitrile", "PARKER", "NBR"),
+    (215, "19356", "Fluorocarbon", "PARKER", "FKM"),
+    (216, "19457", "Fluorocarbon", "PARKER", "FKM"),
+    (217, "KSR3016-7", "Nitrile", "PARKER", "NBR"),
+    (218, "16205", "Ethylene Propylene", "PARKER ESD", "EPM"),
+    (219, "V7500AA", "Fluorocarbon", "PARKER ESD", "FKM"),
+    (220, "75NBR", "Nitrile", "BELLOFRAM", "NBR"),
+    (221, "525K", "Nitrile", "MINNESOTA", "NBR"),
+    (222, "VW263-70", "Fluorocarbon", "PARKER", "FKM"),
+    (223, "PP", "POLY BALL", "PRECISION PLASTIC", ""),
+    (224, "1171 NEOPRENE", "Neoprene", "GRRP", "CR"),
+    (225, "V7000AE", "Fluorocarbon", "PARKER ESD", "FKM"),
+    (226, "DJ-N5150", "Nitrile", "DAE JUANG", "NBR"),
+    (227, "NB080370-C", "Nitrile", "APRO", "NBR"),
+    (228, "7217", "Nitrile", "PARKER", "NBR"),
+    (229, "V4208-90", "Fluorocarbon", "PARKER EPS", "FKM"),
+    (230, "VW153-75", "Fluorocarbon", "PARKER", "FKM"),
+    (231, "AC0B7001", "Ethylene Acrylate", "BEST RING", "AEM"),
+    (232, "LM159-70", "Fluorosilicone", "PARKER MX", "FVMQ"),
+    (233, "NB700D8", "Nitrile", "PARKER ESD", "NBR"),
+    (234, "VA150-65", "Fluorocarbon", "PARKER", "FKM"),
+    (235, "67360", "Silicone", "GRRP", "MQ"),
+    (236, "1274/1465", "Fluorocarbon", "GRRP", "FKM"),
+    (237, "KB256-70", "Hydrogenated Nitrile", "PARKER ESD", "HNBR"),
+    (238, "KA250-70", "Hydrogenated Nitrile", "PARKER ESD", "HNBR"),
+    (239, "E515-80/1W2Y", "Ethylene-propylene rubber", "Parker", "EPM, EPDM"),
+    (240, "E515-80/1W2Y", "Ethylene-propylene rubber", "Parker", "EPM, EPDM"),
+    (241, "E540-80", "Ethylene-propylene rubber", "Wayatt Seal INC", "EPM, EPDM"),
+    (242, "E540-80", "Ethylene-propylene rubber", "Wayatt Seal INC", "EPM, EPDM"),
+    (243, "E962", "Ethylene-propylene", "Parker", "EPM, EPDM"),
+    (244, "E962-90", "Ethylene-propylene rubber", "Parker", "EPM, EPDM"),
+    (245, "V747-75", "fluorocarbon elastomer", "Wayatt Seal INC", "FKM"),
+    (246, "V747-75", "fluorocarbon elastomer", "Wayatt Seal INC", "FKM"),
+    (247, "V884-75", "fluorocarbon elastomer", "Wayatt Seal INC", "FKM"),
+    (248, "V884-75", "fluorocarbon elastomer", "Wayatt Seal INC", "FKM"),
+    (249, "N1173-70", "Hydrogenated Nitrile rubber", "Wayatt Seal INC", "HNBR"),
+    (250, "N1173-70", "Hydrogenated Nitrile rubber", "Wayatt Seal INC", "HNBR"),
+    (251, "KA157-70", "Hydrogenated Nitrile rubber", "Wayatt Seal INC", "HNBR"),
+    (252, "KA157-70", "Hydrogenated Nitrile rubber", "Wayatt Seal INC", "HNBR"),
+    (253, "B318-70", "Butyl rubber", "Wayatt Seal INC", "BR"),
+    (254, "B318-70", "Butyl rubber", "Wayatt Seal INC", "BR"),
+    (255, "B612-70", "Butyl rubber", "Wayatt Seal INC", "BR"),
+    (256, "B612-70", "Butyl rubber", "Wayatt Seal INC", "BR"),
+    (257, "N525-60", "Nitrile/ Buna N rubber", "Wayatt Seal INC", "NBR"),
+    (258, "N525-60", "Nitrile/ Buna N rubber", "Wayatt Seal INC", "NBR"),
+    (259, "NM071-70", "Nitrile/ Buna N rubber", "Wayatt Seal INC", "NBR"),
+    (260, "NM071-70", "Nitrile/ Buna N rubber", "Wayatt Seal INC", "NBR"),
+    (261, "FF500-75", "Perfluoro elastomer", "Wayatt Seal INC", "FFKM"),
+    (262, "FF500-75", "Perfluoro elastomer", "Wayatt Seal INC", "FFKM"),
+    (263, "C873-70", "Polychloroprene", "Wayatt Seal INC", "CR"),
+    (264, "C873-70", "Polychloroprene", "Wayatt Seal INC", "CR"),
+    (265, "C944-70", "Polychloroprene", "Wayatt Seal INC", "CR"),
+    (266, "C944-70", "Polychloroprene", "Wayatt Seal INC", "CR"),
+    (267, "P642-70", "Polyurethane", "Wayatt Seal INC", "AU/AE"),
+    (268, "P642-70", "Polyurethane", "Wayatt Seal INC", "AU/AE"),
+    (269, "SM151-50", "Silicone", "Wayatt Seal INC", "VMQ/PMQ"),
+    (270, "SM151-50", "Silicone", "Wayatt Seal INC", "VMQ/PMQ"),
+    (271, "SM153-70", "Silicone", "Wayatt Seal INC", "VMQ/PMQ"),
+    (272, "SM153-70", "Silicone", "Wayatt Seal INC", "VMQ/PMQ"),
+    (273, "LM152-60", "Fluorosilicone", "Wayatt Seal INC", "FMQ"),
+    (274, "LM152-60", "Fluorosilicone", "Wayatt Seal INC", "FMQ"),
+    (275, "LM155-80", "Fluorosilicone", "Wayatt Seal INC", "FMQ"),
+    (276, "LM155-80", "Fluorosilicone", "Wayatt Seal INC", "FMQ"),
+    (277, "V1006-75", "Tetra-Fluoroethylene Propylene rubber", "Wayatt Seal INC", "FEPM"),
+    (278, "V1006-75", "Tetra-Fluoroethylene Propylene rubber", "Wayatt Seal INC", "FEPM"),
+    (279, "V3819-75", "Highly Fluorinated TetraFluoroethylene Propylene rubber", "Wayatt Seal INC", ""),
+    (280, "V3819-75", "Highly Fluorinated TetraFluoroethylene Propylene rubber", "Wayatt Seal INC", ""),
+]
+
+def main():
+    results_dir = Path("/Users/byeonghoonyoon/PROJECT/RIST/opus_complete_results")
+    master_csv = results_dir / "master_spectra.csv"
+    
+    # 기존 master_spectra.csv 읽기
+    df = pd.read_csv(master_csv)
+    
+    # 새로운 컬럼 추가
+    df.insert(1, "Compound_Name", "")
+    df.insert(2, "Description", "")
+    df.insert(3, "Manufacturer", "")
+    df.insert(4, "Type_Abbreviation", "")
+    
+    # 화합물 정보 매핑 (Entry 1-280)
+    compound_dict = {entry[0]: entry[1:] for entry in COMPOUND_DATA}
+    
+    # 각 행에 화합물 정보 추가
+    for idx, row in df.iterrows():
+        compound_id = row["CompoundID"]
+        file_part, spectrum_part = compound_id.split("_")
+        
+        # 파일 인덱스와 스펙트럼 인덱스에서 실제 항목 번호 계산
+        # D01_S00 = Entry1, D01_S01 = Entry2, ... D01_S07 = Entry8 등
+        file_num = int(file_part[1:])
+        spectrum_num = int(spectrum_part[1:])
+        
+        # 파일별 스펙트럼 수 (누적)
+        spectrum_counts = [0, 8, 5, 5, 2, 23, 1, 4, 5, 1, 72, 1, 281, 27, 1]
+        total_before = sum(spectrum_counts[:file_num])
+        entry_num = total_before + spectrum_num + 1
+        
+        if entry_num in compound_dict:
+            info = compound_dict[entry_num]
+            df.at[idx, "Compound_Name"] = info[0]
+            df.at[idx, "Description"] = info[1]
+            df.at[idx, "Manufacturer"] = info[2]
+            df.at[idx, "Type_Abbreviation"] = info[3]
+    
+    # 업데이트된 CSV 저장
+    df.to_csv(master_csv, index=False)
+    print(f"✅ master_spectra.csv 업데이트 완료!")
+    print(f"📊 총 {len(df)}개 행 처리됨")
+    print(f"📍 위치: {master_csv}")
+    print(f"\n처음 5개 행:")
+    print(df.head())
+
+if __name__ == "__main__":
+    main()
