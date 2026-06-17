@@ -3,12 +3,13 @@ from __future__ import annotations
 import argparse
 import base64
 import json
-import math
 import mimetypes
 import signal
 import time
 from pathlib import Path
 from typing import Any
+
+from rist_common.llm import build_multimodal_content, ensure_context_budget
 
 from .config import Settings
 from .database import Database
@@ -234,25 +235,15 @@ class ReportWorker:
     ) -> str | list[dict[str, Any]]:
         if not images:
             return user_prompt
-        content: list[dict[str, Any]] = [
-            {
-                "type": "text",
-                "text": (
-                    user_prompt
-                    + "\n\n첨부 이미지는 processed 폴더의 분석 산출물입니다. "
-                    "이미지에서 직접 관찰 가능한 내용과 JSON 근거를 구분하고, "
-                    "이미지만으로 결론을 확정하지 마세요."
-                ),
-            }
-        ]
-        for image in images:
-            content.append(
-                {
-                    "type": "image_url",
-                    "image_url": {"url": image["dataUrl"]},
-                }
-            )
-        return content
+        text = (
+            user_prompt
+            + "\n\n첨부 이미지는 processed 폴더의 분석 산출물입니다. "
+            "이미지에서 직접 관찰 가능한 내용과 JSON 근거를 구분하고, "
+            "이미지만으로 결론을 확정하지 마세요."
+        )
+        return build_multimodal_content(
+            text, [image["dataUrl"] for image in images]
+        )
 
     def _validate_context(
         self,
@@ -262,30 +253,15 @@ class ReportWorker:
         image_count: int,
         model_info: dict[str, Any],
     ) -> None:
-        reported_window = model_info.get("max_model_len")
-        context_window = self.settings.llm_context_window
-        if isinstance(reported_window, int) and reported_window > 0:
-            context_window = min(context_window, reported_window)
-
-        # Gemma tokenizer를 로컬에 의존하지 않기 위한 보수적 추정치이다.
-        text_bytes = len((system_prompt + user_prompt).encode("utf-8"))
-        estimated_input_tokens = math.ceil(text_bytes / 2)
-        estimated_image_tokens = image_count * 512
-        estimated_total = (
-            estimated_input_tokens
-            + estimated_image_tokens
-            + self.settings.llm_max_tokens
-            + self.settings.llm_context_margin
+        ensure_context_budget(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            image_count=image_count,
+            max_tokens=self.settings.llm_max_tokens,
+            context_window=self.settings.llm_context_window,
+            context_margin=self.settings.llm_context_margin,
+            reported_window=model_info.get("max_model_len"),
         )
-        if estimated_total > context_window:
-            raise LlmError(
-                "LLM_CONTEXT_BUDGET_EXCEEDED",
-                "LLM 컨텍스트 예상 사용량이 한도를 초과합니다. "
-                f"estimated={estimated_total}, limit={context_window}, "
-                f"max_tokens={self.settings.llm_max_tokens}, images={image_count}. "
-                "분석 JSON을 축약하거나 출력 토큰 수를 줄여야 합니다.",
-                retryable=False,
-            )
 
     def _mark_failed(
         self, job_id: str, code: str, message: str, retryable: bool
