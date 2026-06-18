@@ -18,6 +18,10 @@ Environment=RIST_DB_PORT=3306
 Environment=RIST_DB_NAME=rist_edge
 Environment=RIST_DB_USER=rist
 Environment=RIST_DB_PASSWORD=change-me
+# 로깅: API 서비스와 동일 정책. worker 로그는 별도 파일로 분리한다.
+Environment=RIST_LOG_LEVEL=INFO
+Environment=RIST_LOG_FORMAT=text
+Environment=RIST_LOG_FILE=/home/rist/ritas/edge_api_server/data/logs/worker.log
 ExecStart=/home/rist/ritas/edge_api_server/.venv/bin/python -m app.report_worker
 
 Restart=always

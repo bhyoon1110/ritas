@@ -16,6 +16,10 @@ Environment=RIST_DB_PORT=3306
 Environment=RIST_DB_NAME=rist_edge
 Environment=RIST_DB_USER=rist
 Environment=RIST_DB_PASSWORD=change-me
+# 로깅: 레벨/포맷/파일 경로. 파일 회전은 RIST_LOG_MAX_BYTES, RIST_LOG_BACKUP_COUNT 로 조정.
+Environment=RIST_LOG_LEVEL=INFO
+Environment=RIST_LOG_FORMAT=text
+Environment=RIST_LOG_DIR=/home/rist/ritas/edge_api_server/data/logs
 ExecStart=/home/rist/ritas/edge_api_server/.venv/bin/python -m app.run
 
 Restart=always

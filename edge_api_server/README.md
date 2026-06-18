@@ -98,6 +98,12 @@ API 문서:
 | `RIST_DB_NAME` | `rist_edge` | MariaDB 데이터베이스명(없으면 자동 생성) |
 | `RIST_DB_USER` | `rist` | MariaDB 사용자 |
 | `RIST_DB_PASSWORD` | 빈 값 | MariaDB 비밀번호 |
+| `RIST_LOG_LEVEL` | `INFO` | DEBUG/INFO/WARNING/ERROR/CRITICAL |
+| `RIST_LOG_FORMAT` | `text` | `text` 또는 `json`(구조화 로그) |
+| `RIST_LOG_FILE` | 없음 | 지정 시 회전 파일 핸들러 추가 |
+| `RIST_LOG_DIR` | 없음 | 디렉터리만 지정. `<DIR>/rist.log`로 기록 |
+| `RIST_LOG_MAX_BYTES` | `10485760` | 회전 파일 한 개의 최대 크기 |
+| `RIST_LOG_BACKUP_COUNT` | `5` | 보관할 회전 파일 개수 |
 | `RIST_UPLOAD_EXPIRY_HOURS` | `24` | 업로드 유효시간 |
 | `RIST_MAX_UPLOAD_BYTES` | `2147483648` | 개별 파일 최대 크기 |
 | `RIST_SUPPORTED_EXPERIMENT_CODES` | 빈 값 | 쉼표 구분 허용 실험코드. 빈 값이면 제한 없음 |

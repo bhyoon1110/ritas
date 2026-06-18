@@ -10,12 +10,15 @@ from pathlib import Path
 from typing import Any
 
 from rist_common.llm import build_multimodal_content, ensure_context_budget
+from rist_common import get_logger
 
 from .config import Settings
 from .database import Database
 from .llm_client import LlmError, LocalLlmClient
 from .storage import atomic_write_json
 from .time_utils import isoformat_kst
+
+logger = get_logger(__name__)
 
 
 COMMON_SYSTEM_PROMPT = """당신은 재료분석 실험실의 보고서 작성 보조자입니다.
@@ -71,6 +74,7 @@ class ReportWorker:
         if not self.database.claim_queued_job(job["job_id"], started_at):
             return False
         job = self.database.fetch_job(job["job_id"]) or job
+        logger.info("작업을 선점하여 처리를 시작합니다 (job_id=%s)", job["job_id"])
         self._write_manifest(job["job_id"])
         self.process_job(job)
         return True
@@ -84,6 +88,12 @@ class ReportWorker:
             user_prompt = self._build_user_prompt(job, analysis)
             images = self._load_processed_images(job_root / "processed")
             user_content = self._build_user_content(user_prompt, images)
+            logger.info(
+                "LLM 보고서 생성 요청 (job_id=%s, experiment=%s, images=%d)",
+                job_id,
+                job["experiment_code"],
+                len(images),
+            )
             model_info = (
                 self.llm_client.get_model_info()
                 if self.settings.llm_validate_model
@@ -117,6 +127,7 @@ class ReportWorker:
                 progress=75,
                 error_json=None,
             )
+            logger.info("보고서 초안 생성 완료 (job_id=%s, path=%s)", job_id, report_path)
         except LlmError as exc:
             self._mark_failed(job_id, exc.code, exc.message, exc.retryable)
         except FileNotFoundError as exc:
@@ -127,6 +138,7 @@ class ReportWorker:
                 False,
             )
         except Exception as exc:
+            logger.exception("보고서 worker 처리 중 예외 발생 (job_id=%s)", job_id)
             self._mark_failed(
                 job_id,
                 "REPORT_WORKER_ERROR",
@@ -266,6 +278,13 @@ class ReportWorker:
     def _mark_failed(
         self, job_id: str, code: str, message: str, retryable: bool
     ) -> None:
+        logger.error(
+            "작업 실패 (job_id=%s, code=%s, retryable=%s): %s",
+            job_id,
+            code,
+            retryable,
+            message,
+        )
         error = {
             "code": code,
             "message": message,
@@ -308,6 +327,7 @@ def main() -> None:
     args = parser.parse_args()
     worker = build_worker()
     if args.once:
+        logger.info("worker를 --once 모드로 실행합니다")
         try:
             worker.run_once()
         finally:
@@ -319,9 +339,14 @@ def main() -> None:
     def stop(*_: object) -> None:
         nonlocal running
         running = False
+        logger.info("종료 신호를 수신했습니다. worker를 종료합니다.")
 
     signal.signal(signal.SIGINT, stop)
     signal.signal(signal.SIGTERM, stop)
+    logger.info(
+        "보고서 worker를 시작합니다 (poll_seconds=%s)",
+        worker.settings.worker_poll_seconds,
+    )
     try:
         while running:
             processed = worker.run_once()
@@ -329,6 +354,7 @@ def main() -> None:
                 time.sleep(worker.settings.worker_poll_seconds)
     finally:
         worker.llm_client.close()
+        logger.info("보고서 worker가 종료되었습니다.")
 
 
 if __name__ == "__main__":

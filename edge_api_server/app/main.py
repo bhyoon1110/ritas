@@ -4,6 +4,8 @@ from fastapi import Depends, FastAPI, File, Form, Header, Request, Response, Upl
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
+from rist_common import get_logger
+
 from .config import Settings
 from .database import Database
 from .errors import (
@@ -23,6 +25,8 @@ from .models import (
     UploadFileResponse,
 )
 from .service import EdgeService
+
+logger = get_logger(__name__)
 
 
 def required_request_id(
@@ -60,6 +64,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings = resolved_settings
     app.state.database = database
     app.state.service = service
+    logger.info(
+        "Edge API 애플리케이션 구성 완료 (env=%s, base_url=%s)",
+        resolved_settings.environment,
+        resolved_settings.edge_public_base_url,
+    )
 
     app.add_exception_handler(ApiException, api_exception_handler)
     app.add_exception_handler(RequestValidationError, validation_exception_handler)
@@ -87,6 +96,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         try:
             model = client.get_model_info(force=True)
         except LlmError as exc:
+            logger.warning("LLM 헬스체크 실패: %s - %s", exc.code, exc.message)
             raise ApiException(
                 503 if exc.retryable else 500,
                 exc.code,
@@ -212,6 +222,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def unhandled_exception_handler(
         request: Request, exc: Exception
     ) -> JSONResponse:
+        logger.exception(
+            "처리되지 않은 서버 오류 (%s %s)",
+            request.method,
+            request.url.path,
+        )
         api_exc = ApiException(
             500,
             "INTERNAL_SERVER_ERROR",

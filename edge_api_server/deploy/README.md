@@ -50,7 +50,7 @@ sudo bash deploy/install.sh
 1. `rist` 전용 계정 생성
 2. `python3.11` 확인/설치
 3. `.venv` 생성 및 `requirements.txt` 설치
-4. `data/jobs` 디렉터리 준비
+4. `data/jobs`, `data/logs` 디렉터리 준비
 5. `rist-edge-api`, `rist-edge-worker` 서비스 등록 및 시작
 6. 방화벽 8000 포트 개방
 
@@ -148,4 +148,86 @@ FLUSH PRIVILEGES;
 ```bash
 sudo systemctl restart rist-edge-api.service rist-edge-worker.service
 ```
+
+## 로그 설정
+
+애플리케이션은 공통 로깅 모듈(`rist_common.get_logger`)을 사용한다. 로그는
+항상 **콘솔(stdout/stderr)** 로 출력되며, systemd 환경에서는 자동으로
+`journald` 가 수집한다. 추가로 환경 변수를 지정하면 **회전 파일** 로도 함께
+기록한다.
+
+### 제어 환경 변수
+
+| 변수 | 기본값 | 설명 |
+|---|---|---|
+| `RIST_LOG_LEVEL` | `INFO` | `DEBUG`/`INFO`/`WARNING`/`ERROR`/`CRITICAL` |
+| `RIST_LOG_FORMAT` | `text` | `text` 또는 `json`(구조화 로그) |
+| `RIST_LOG_FILE` | 없음 | 로그 파일 경로. 지정 시 회전 파일 핸들러 추가 |
+| `RIST_LOG_DIR` | 없음 | 디렉터리만 지정. `<DIR>/rist.log` 로 기록 |
+| `RIST_LOG_MAX_BYTES` | `10485760`(10MB) | 회전 파일 한 개의 최대 크기 |
+| `RIST_LOG_BACKUP_COUNT` | `5` | 보관할 회전 파일 개수 |
+
+`RIST_LOG_FILE` 과 `RIST_LOG_DIR` 을 모두 지정하면 `RIST_LOG_FILE` 이 우선한다.
+
+### systemd 유닛 설정
+
+두 서비스 파일에는 다음 로그 설정이 기본 포함되어 있다. API 서버는 디렉터리
+방식(`data/logs/rist.log`), worker 는 파일 방식(`data/logs/worker.log`)으로
+분리해 기록한다.
+
+`rist-edge-api.service`:
+
+```ini
+Environment=RIST_LOG_LEVEL=INFO
+Environment=RIST_LOG_FORMAT=text
+Environment=RIST_LOG_DIR=/home/rist/ritas/edge_api_server/data/logs
+```
+
+`rist-edge-worker.service`:
+
+```ini
+Environment=RIST_LOG_LEVEL=INFO
+Environment=RIST_LOG_FORMAT=text
+Environment=RIST_LOG_FILE=/home/rist/ritas/edge_api_server/data/logs/worker.log
+```
+
+- 로그 디렉터리(`data/logs`)는 `install.sh` 가 `rist` 계정 소유로 생성한다.
+  서비스 유닛에 `ProtectSystem=full` 이 설정되어 있어도 `/home` 하위는 쓰기
+  가능하므로 파일 로깅에 문제가 없다.
+- 로그 경로를 바꾸려면 유닛 파일의 `RIST_LOG_*` 값을 수정한 뒤 적용한다.
+
+```bash
+sudo cp deploy/rist-edge-api.service /etc/systemd/system/rist-edge-api.service
+sudo cp deploy/rist-edge-worker.service /etc/systemd/system/rist-edge-worker.service
+sudo systemctl daemon-reload
+sudo systemctl restart rist-edge-api.service rist-edge-worker.service
+```
+
+### 로그 확인
+
+```bash
+# 콘솔 로그(journald) 실시간
+journalctl -u rist-edge-api.service -f
+journalctl -u rist-edge-worker.service -f
+
+# 파일 로그 실시간
+tail -f /home/rist/ritas/edge_api_server/data/logs/rist.log
+tail -f /home/rist/ritas/edge_api_server/data/logs/worker.log
+```
+
+### 디버그 로그 일시 활성화
+
+LLM 요청/응답 등 상세 로그를 보려면 `RIST_LOG_LEVEL=DEBUG` 로 올린다. 유닛
+파일을 직접 수정하는 대신 드롭인(override)으로 적용할 수 있다.
+
+```bash
+sudo systemctl edit rist-edge-worker.service
+# 열린 편집기에 아래 내용 입력 후 저장
+# [Service]
+# Environment=RIST_LOG_LEVEL=DEBUG
+
+sudo systemctl restart rist-edge-worker.service
+```
+
+원래대로 되돌리려면 `sudo systemctl revert rist-edge-worker.service` 후 재시작한다.
 

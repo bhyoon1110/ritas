@@ -10,11 +10,14 @@ from typing import Any
 
 import httpx
 
+from ..logging import get_logger
 from .errors import LlmError
 from .payload import (
     build_request_payload,
     sanitize_request_for_log,
 )
+
+logger = get_logger(__name__)
 
 
 class LlmClient:
@@ -116,6 +119,7 @@ class LlmClient:
     ) -> tuple[str, dict[str, Any]]:
         if self.validate_model:
             self.get_model_info()
+        logger.debug("LLM chat.completions 요청 (model=%s)", self.model)
         try:
             response = self.client.post(self.endpoint, json=request_payload)
             response.raise_for_status()
@@ -161,6 +165,11 @@ class LlmClient:
                 "로컬 LLM이 빈 보고서 내용을 반환했습니다.",
                 retryable=False,
             )
+        logger.debug(
+            "LLM chat.completions 응답 수신 (model=%s, chars=%d)",
+            self.model,
+            len(content.strip()),
+        )
         return content.strip(), response_payload
 
     @staticmethod

@@ -51,6 +51,7 @@ sudo -u "${SERVICE_USER}" "${VENV_DIR}/bin/pip" install -r "${EDGE_DIR}/requirem
 
 echo "==> 5. 데이터 디렉터리 준비"
 sudo -u "${SERVICE_USER}" mkdir -p "${EDGE_DIR}/data/jobs"
+sudo -u "${SERVICE_USER}" mkdir -p "${EDGE_DIR}/data/logs"
 
 echo "==> 6. systemd 서비스 등록"
 install -m 644 "${EDGE_DIR}/deploy/rist-edge-api.service" /etc/systemd/system/rist-edge-api.service

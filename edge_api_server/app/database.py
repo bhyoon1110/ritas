@@ -8,6 +8,10 @@ from typing import Any, Iterator
 import pymysql
 from pymysql.cursors import DictCursor
 
+from rist_common import get_logger
+
+logger = get_logger(__name__)
+
 
 TERMINAL_STATUSES = {"COMPLETED", "FAILED", "UPLOAD_EXPIRED"}
 
@@ -141,8 +145,16 @@ class Database:
         if not config.host:
             raise ValueError("MariaDB 접속 호스트(RIST_DB_HOST)가 필요합니다.")
         self.config = config
+        logger.info(
+            "MariaDB에 연결합니다 (host=%s, port=%s, db=%s, user=%s)",
+            config.host,
+            config.port,
+            config.name,
+            config.user,
+        )
         self._ensure_database()
         self._initialize()
+        logger.info("MariaDB 스키마 초기화 완료 (db=%s)", config.name)
 
     @classmethod
     def from_settings(cls, settings: Any) -> "Database":

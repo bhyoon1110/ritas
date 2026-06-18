@@ -11,6 +11,8 @@ from uuid import uuid4
 
 from fastapi import UploadFile
 
+from rist_common import get_logger
+
 from .config import Settings
 from .database import Database
 from .errors import ApiException
@@ -27,6 +29,8 @@ from .storage import (
     validate_relative_path,
 )
 from .time_utils import isoformat_kst, now_kst, parse_datetime, timestamp_folder
+
+logger = get_logger(__name__)
 
 
 MethodResult = TypeVar("MethodResult")
@@ -161,6 +165,14 @@ class EdgeService:
         }
         self.database.insert_job(job)
         self.write_manifest(job_id)
+        logger.info(
+            "작업 생성 (job_id=%s, request=%s, experiment=%s, equipment=%s, operator=%s)",
+            job_id,
+            pk.request_number,
+            pk.experiment_code,
+            pk.equipment_code,
+            pk.operator_id,
+        )
 
         response = {
             "jobId": job_id,
@@ -189,6 +201,10 @@ class EdgeService:
                 )
                 job = self.database.fetch_job(job["job_id"]) or job
                 self.write_manifest(job["job_id"])
+                logger.warning(
+                    "업로드 유효기간 만료로 작업 만료 처리 (job_id=%s)",
+                    job["job_id"],
+                )
         return job
 
     def ensure_upload_open(self, job: dict[str, Any]) -> None:
@@ -315,7 +331,12 @@ class EdgeService:
         if job["status"] == "CREATED":
             self.database.update_job(job_id, status="UPLOADING", progress=10)
         self.write_manifest(job_id)
-
+        logger.info(
+            "파일 업로드 완료 (job_id=%s, path=%s, size=%d)",
+            job_id,
+            relative_path,
+            actual_size,
+        )
         response = self.file_response(file_record)
         self.save_idempotent_response(
             endpoint, idempotency_key, metadata_hash, 201, response
@@ -424,6 +445,12 @@ class EdgeService:
             verified_at=verified_at,
         )
         self.write_manifest(job_id)
+        logger.info(
+            "번들 검증 완료 (job_id=%s, file_count=%d, total_bytes=%d)",
+            job_id,
+            request.file_count,
+            request.total_size_bytes,
+        )
         response = {
             "jobId": job_id,
             "status": "FILES_VERIFIED",
@@ -499,6 +526,7 @@ class EdgeService:
             report_options_json=json.dumps(options, ensure_ascii=False),
         )
         self.write_manifest(job_id)
+        logger.info("보고서 생성 요청을 큐에 등록 (job_id=%s)", job_id)
         response = {
             "jobId": job_id,
             "status": "QUEUED",
