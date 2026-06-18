@@ -1,10 +1,11 @@
 [Unit]
 Description=RIST Edge Report Worker (LLM report generator)
-After=network-online.target docker.service rist-edge-api.service
-# vLLM 은 docker-compose 컨테이너(vllm-gemma4-e4b, http://127.0.0.1:8001)로 구동된다.
-# 컨테이너가 준비되기 전이라도 worker 는 기동하며, LLM 이 없으면 해당 작업만 실패한다.
-# 따라서 docker 를 선택 의존(Wants)으로 두어 순서만 맞춘다.
-Wants=network-online.target docker.service
+After=network-online.target docker.service rist-vllm.service rist-edge-api.service
+# vLLM 은 rist-vllm.service(docker compose, vllm-gemma4-e4b, http://127.0.0.1:8001)로 구동된다.
+# worker 를 start 하면 Wants 로 vLLM 스택도 함께 기동된다(After 로 순서 보장).
+# 단, 선택 의존(Wants)이라 vLLM 이 떠 있지 않거나 준비 전이라도 worker 는 기동하며,
+# LLM 이 없으면 해당 작업의 보조 문안만 규칙 기본값으로 대체되고 보고서는 완성된다.
+Wants=network-online.target rist-vllm.service
 
 [Service]
 Type=simple

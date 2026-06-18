@@ -3,12 +3,13 @@
 # RIST Edge 서버 배포 스크립트 (Ubuntu)
 # - rist 전용 계정 생성
 # - Python(>=3.11) 가상환경 구성 및 의존성 설치
-# - systemd 서비스 등록(rist-edge-api, rist-edge-worker)
+#   - systemd 서비스 등록(rist-edge-api, rist-edge-worker, rist-vllm)
 #
 # 사용법:  sudo bash deploy/install.sh
 #
-# 주의: vLLM 은 docker-compose 컨테이너(deploy/docker-compose.vllm.yml)로 별도 구동한다.
-#       이 스크립트는 API 서버와 worker만 설정한다.
+# 주의: vLLM 은 docker compose 컨테이너(deploy/docker-compose.vllm.yml)로 구동하며,
+#       rist-vllm.service systemd 유닛이 이를 관리한다. worker 가 이 유닛을
+#       Wants/After 로 참조하므로 worker 기동 시 vLLM 스택도 함께 올라온다.
 
 set -euo pipefail
 
@@ -97,11 +98,13 @@ fi
 echo "==> 7. systemd 서비스 등록"
 install -m 644 "${EDGE_DIR}/deploy/rist-edge-api.service" /etc/systemd/system/rist-edge-api.service
 install -m 644 "${EDGE_DIR}/deploy/rist-edge-worker.service" /etc/systemd/system/rist-edge-worker.service
-# vLLM 은 docker-compose 로 별도 구동한다(아래 README 의 "3. vLLM" 참고):
-#   sudo docker compose -f "${EDGE_DIR}/deploy/docker-compose.vllm.yml" up -d
+# vLLM 은 rist-vllm.service(docker compose) 로 구동한다.
+# worker 가 이 유닛을 Wants/After 로 참조하므로, worker 기동 시 함께 올라온다.
+install -m 644 "${EDGE_DIR}/deploy/rist-vllm.service" /etc/systemd/system/rist-vllm.service
 
 systemctl daemon-reload
 systemctl enable --now rist-edge-api.service
+systemctl enable rist-vllm.service
 systemctl enable --now rist-edge-worker.service
 
 echo "==> 8. 방화벽(8000 포트) 개방"

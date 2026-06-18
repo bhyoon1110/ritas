@@ -1,0 +1,22 @@
+[Unit]
+Description=RIST Edge vLLM (docker compose) stack
+# vLLM 컨테이너(vllm-gemma4-e4b, http://127.0.0.1:8001)를 docker compose 로 구동한다.
+# worker/API 가 이 유닛을 Wants/After 로 참조하므로, worker 를 start 하면 함께 올라온다.
+After=network-online.target docker.service
+Requires=docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=true
+WorkingDirectory=/home/rist/ritas/edge_api_server
+
+# up: compose 스택 기동(이미 떠 있으면 멱등). down: stop 시 정리.
+ExecStart=/usr/bin/docker compose -f /home/rist/ritas/edge_api_server/deploy/docker-compose.vllm.yml up -d
+ExecStop=/usr/bin/docker compose -f /home/rist/ritas/edge_api_server/deploy/docker-compose.vllm.yml down
+
+# 이미지 pull/컨테이너 준비에 시간이 걸릴 수 있어 시작 타임아웃을 넉넉히 둔다.
+TimeoutStartSec=600
+
+[Install]
+WantedBy=multi-user.target

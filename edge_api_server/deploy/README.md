@@ -8,9 +8,13 @@
 
 | 서비스 | 역할 | 포트 |
 |---|---|---|
-| `vllm-gemma4-e4b` (docker-compose) | 로컬 LLM(vLLM, OpenAI 호환) | `127.0.0.1:8001` |
+| `rist-vllm.service` (docker compose) | 로컬 LLM(vLLM, OpenAI 호환) 스택 관리 | `127.0.0.1:8001` |
 | `rist-edge-api.service` | FastAPI/Uvicorn API 서버 | `0.0.0.0:8000` |
 | `rist-edge-worker.service` | 보고서 생성 worker | - |
+
+`rist-edge-worker.service` 는 `rist-vllm.service` 를 `Wants/After` 로 참조하므로,
+worker 를 start 하면 vLLM compose 스택도 함께 올라온다(선택 의존이라 vLLM 이 떠
+있지 않아도 worker 는 기동하며, 이 경우 보조 문안만 규칙 기본값으로 대체된다).
 
 ## 전제 조건
 
@@ -75,18 +79,27 @@ sudo bash deploy/install.sh
 2. `python3`(>=3.11) 확인/설치 (Ubuntu 24.04 기본 python3.12 사용 가능)
 3. 저장소 루트의 `.venv` 생성 및 `requirements.txt` 설치
 4. `data/jobs`, `data/logs` 디렉터리 준비
-5. `rist-edge-api`, `rist-edge-worker` 서비스 등록 및 시작
+5. `rist-edge-api`, `rist-edge-worker`, `rist-vllm` 서비스 등록 및 시작
+   (worker 가 `rist-vllm.service` 를 끌어오므로 vLLM compose 스택도 함께 기동)
 6. 방화벽 8000 포트 개방
 
-## 3. vLLM(로컬 LLM) — docker-compose
+## 3. vLLM(로컬 LLM) — rist-vllm.service(docker compose)
 
-로컬 LLM 은 systemd 가 아니라 **docker-compose 컨테이너**로 구동한다.
+로컬 LLM 은 **docker compose 컨테이너**로 구동하되, `rist-vllm.service` systemd
+유닛이 이를 관리한다(`up -d`/`down`). worker 가 이 유닛을 `Wants/After` 로
+참조하므로 `systemctl start rist-edge-worker.service` 시 함께 올라온다.
 GPU 드라이버 + NVIDIA Container Toolkit 가 설치되어 있어야 한다.
 컴포즈 정의는 [`deploy/docker-compose.vllm.yml`](docker-compose.vllm.yml) 에 있다.
 
 ```bash
 # 모델 배치: /data/models/gemma-4-E4B-it
 
+# install.sh 가 유닛을 등록하므로 보통은 worker 기동만으로 함께 올라온다.
+# 수동으로 vLLM 만 올리거나 내릴 때:
+sudo systemctl start rist-vllm.service
+sudo systemctl stop rist-vllm.service
+
+# (systemd 없이 직접 compose 로 띄울 수도 있다)
 cd /home/rist/ritas/edge_api_server/deploy
 sudo docker compose -f docker-compose.vllm.yml up -d
 ```
@@ -102,6 +115,7 @@ sudo docker compose -f docker-compose.vllm.yml up -d
 # 상태 확인
 systemctl status rist-edge-api.service
 systemctl status rist-edge-worker.service
+systemctl status rist-vllm.service
 sudo docker compose -f deploy/docker-compose.vllm.yml ps
 
 # 실시간 로그
@@ -112,6 +126,7 @@ sudo docker logs -f vllm-gemma4-e4b
 # 재시작 / 중지
 sudo systemctl restart rist-edge-api.service
 sudo systemctl stop rist-edge-worker.service
+sudo systemctl restart rist-vllm.service   # vLLM 스택만 재기동
 
 # 헬스 체크
 curl http://127.0.0.1:8000/health
