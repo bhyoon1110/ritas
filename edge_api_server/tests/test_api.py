@@ -330,7 +330,14 @@ def test_worker_calls_local_llm_and_saves_report(
                     {
                         "message": {
                             "role": "assistant",
-                            "content": "# XRD 보고서\n\n구조화 결과를 요약합니다.",
+                            "content": json.dumps(
+                                {
+                                    "summary": "요약 문장 1. 요약 문장 2. 요약 문장 3.",
+                                    "narrative": "보조 설명입니다.",
+                                    "caption": "발표용 캡션",
+                                },
+                                ensure_ascii=False,
+                            ),
                         }
                     }
                 ]
@@ -352,12 +359,13 @@ def test_worker_calls_local_llm_and_saves_report(
 
     updated = database.fetch_job(job_id)
     assert updated is not None
-    assert updated["status"] == "PROCESSING"
-    assert updated["progress"] == 75
+    assert updated["status"] == "COMPLETED"
+    assert updated["progress"] == 100
+    assert updated["completed_at"] is not None
     assert captured["url"].endswith("/v1/chat/completions")
     assert captured["body"]["model"] == "local-model"
     assert captured["body"]["temperature"] == 0.2
-    assert captured["body"]["max_tokens"] == 1200
+    assert captured["body"]["response_format"] == {"type": "json_object"}
     user_content = captured["body"]["messages"][1]["content"]
     assert isinstance(user_content, list)
     assert "TiO2 후보 피크" in user_content[0]["text"]
@@ -365,13 +373,119 @@ def test_worker_calls_local_llm_and_saves_report(
     assert user_content[1]["image_url"]["url"].startswith("data:image/png;base64,")
     assert (job_root / "logs" / "llm-request.json").exists()
     assert (job_root / "logs" / "llm-response.json").exists()
-    assert (job_root / "report" / "report-draft.md").exists()
+    assert (job_root / "report" / "report.json").exists()
+    assert (job_root / "report" / "report.md").exists()
+    report_doc = json.loads(
+        (job_root / "report" / "report.json").read_text(encoding="utf-8")
+    )
+    assert report_doc["llm"]["used"] is True
+    summary_section = next(
+        section
+        for section in report_doc["sections"]
+        if section["sectionId"] == "summary"
+    )
+    assert summary_section["source"] == "llm"
+    assert summary_section["paragraphs"][0].startswith("요약 문장 1")
     logged_request = json.loads(
         (job_root / "logs" / "llm-request.json").read_text(encoding="utf-8")
     )
     assert "<base64 omitted:" in (
         logged_request["messages"][1]["content"][1]["image_url"]["url"]
     )
+
+
+def test_worker_completes_report_without_llm(
+    tmp_path: Path, mariadb: dict
+) -> None:
+    client = create_client(tmp_path, mariadb)
+    content = b"xrd data"
+    digest = hashlib.sha256(content).hexdigest()
+    create_response = client.post(
+        "/api/v1/jobs",
+        json=job_payload(len(content)),
+        headers=headers(str(uuid4())),
+    )
+    job_id = create_response.json()["jobId"]
+    client.post(
+        f"/api/v1/jobs/{job_id}/files",
+        files={"file": ("Mix2.txt", content, "text/plain")},
+        data={
+            "relativePath": "raw/Mix2.txt",
+            "sizeBytes": str(len(content)),
+            "sha256": digest,
+        },
+        headers=headers(str(uuid4())),
+    )
+    client.post(
+        f"/api/v1/jobs/{job_id}/uploads/complete",
+        json={
+            "fileCount": 1,
+            "totalSizeBytes": len(content),
+            "files": [
+                {
+                    "relativePath": "raw/Mix2.txt",
+                    "sizeBytes": len(content),
+                    "sha256": digest,
+                }
+            ],
+        },
+        headers=headers(str(uuid4())),
+    )
+    client.post(
+        f"/api/v1/jobs/{job_id}/report",
+        json={"options": {"reportFormat": "PPTX"}},
+        headers=headers(str(uuid4())),
+    )
+
+    database = client.app.state.database
+    settings = client.app.state.settings
+    job = database.fetch_job(job_id)
+    assert job is not None
+    job_root = settings.storage_root / job["root_relative_path"]
+    analysis_path = job_root / "processed" / "analysis-result.json"
+    analysis_path.parent.mkdir(parents=True, exist_ok=True)
+    analysis_path.write_text(
+        json.dumps(
+            {"sample": "Mix2", "finding": "TiO2 후보 피크"},
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    def llm_down(_: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("LLM unreachable")
+
+    llm_client = LocalLlmClient(
+        "http://127.0.0.1:8001",
+        "local-model",
+        10,
+        0.2,
+        validate_model=False,
+        transport=httpx.MockTransport(llm_down),
+    )
+    worker = ReportWorker(settings, database, llm_client)
+    try:
+        assert worker.run_once() is True
+    finally:
+        llm_client.close()
+
+    updated = database.fetch_job(job_id)
+    assert updated is not None
+    assert updated["status"] == "COMPLETED"
+    assert updated["progress"] == 100
+    report_doc = json.loads(
+        (job_root / "report" / "report.json").read_text(encoding="utf-8")
+    )
+    assert report_doc["llm"]["used"] is False
+    assert report_doc["llm"]["error"] is not None
+    summary_section = next(
+        section
+        for section in report_doc["sections"]
+        if section["sectionId"] == "summary"
+    )
+    assert summary_section["source"] == "rule"
+    assert summary_section["paragraphs"][0]
+
 
 
 def test_worker_fails_without_structured_analysis(
