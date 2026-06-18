@@ -83,7 +83,18 @@ echo "==> 5. 데이터 디렉터리 준비"
 sudo -u "${SERVICE_USER}" mkdir -p "${EDGE_DIR}/data/jobs"
 sudo -u "${SERVICE_USER}" mkdir -p "${EDGE_DIR}/data/logs"
 
-echo "==> 6. systemd 서비스 등록"
+echo "==> 6. 비밀/환경 파일(${PROJECT_ROOT}/edge.env) 준비"
+# 비밀값(DB 비밀번호 등)은 git 추적 밖(.gitignore)의 이 파일에서 읽는다.
+# 이미 있으면 보존하여 운영자가 입력한 값을 덮어쓰지 않는다.
+if [[ ! -f "${PROJECT_ROOT}/edge.env" ]]; then
+    install -m 640 -o "${SERVICE_USER}" -g "${SERVICE_USER}" \
+        "${PROJECT_ROOT}/edge.env.example" "${PROJECT_ROOT}/edge.env"
+    echo "    ${PROJECT_ROOT}/edge.env 생성 완료. 실제 DB 접속 정보로 수정 후 서비스를 재시작하세요."
+else
+    echo "    이미 존재함(보존): ${PROJECT_ROOT}/edge.env"
+fi
+
+echo "==> 7. systemd 서비스 등록"
 install -m 644 "${EDGE_DIR}/deploy/rist-edge-api.service" /etc/systemd/system/rist-edge-api.service
 install -m 644 "${EDGE_DIR}/deploy/rist-edge-worker.service" /etc/systemd/system/rist-edge-worker.service
 # vLLM 서비스는 환경 구성 후 수동 등록 권장(아래 README 참고)
@@ -93,7 +104,7 @@ systemctl daemon-reload
 systemctl enable --now rist-edge-api.service
 systemctl enable --now rist-edge-worker.service
 
-echo "==> 7. 방화벽(8000 포트) 개방"
+echo "==> 8. 방화벽(8000 포트) 개방"
 if command -v ufw &>/dev/null; then
     ufw allow 8000/tcp || true
 fi

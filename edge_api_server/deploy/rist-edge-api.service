@@ -10,12 +10,9 @@ Group=rist
 
 WorkingDirectory=/home/rist/ritas/edge_api_server
 Environment=RIST_ENV=production
-# 운영 DB는 MariaDB이다. 실제 접속 정보로 수정한다.
-Environment=RIST_DB_HOST=127.0.0.1
-Environment=RIST_DB_PORT=3306
-Environment=RIST_DB_NAME=rist_edge
-Environment=RIST_DB_USER=rist
-Environment=RIST_DB_PASSWORD=change-me
+# DB 접속 정보 등 환경/비밀값은 git 추적 밖의 파일에서 읽는다.
+# 앞의 '-' 는 파일이 없어도 기동 실패하지 않게 한다(설치 시 생성).
+EnvironmentFile=-/home/rist/ritas/edge.env
 # 로깅: 레벨/포맷/파일 경로. 파일 회전은 RIST_LOG_MAX_BYTES, RIST_LOG_BACKUP_COUNT 로 조정.
 Environment=RIST_LOG_LEVEL=INFO
 Environment=RIST_LOG_FORMAT=text

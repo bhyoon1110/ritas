@@ -137,6 +137,38 @@ sudo systemctl restart rist-edge-api.service rist-edge-worker.service
 
 rsync 로 배포한 경우는 다시 복사한 뒤 동일하게 의존성 설치/재시작을 수행한다.
 
+### git pull 충돌 해결
+
+서버에서 추적 파일(특히 `deploy/*.service`)을 직접 수정했다면 `git pull` 이
+충돌하거나 거부된다. 비밀값은 `/home/rist/ritas/edge.env` 로 분리되어 있으므로 서버의
+추적 파일 수정분은 버리고 원격을 따르면 된다.
+
+```bash
+cd /home/rist/ritas
+
+# 1) 서버 로컬 수정 내용 확인
+git status
+
+# 2) 추적 파일의 로컬 수정 되돌리기(비밀값은 edge.env 에 있으니 안전)
+git checkout -- edge_api_server/deploy/rist-edge-api.service \
+                edge_api_server/deploy/rist-edge-worker.service
+#   또는 전체 되돌리기: git restore .
+
+# 3) 원격 반영
+sudo -u rist git pull
+
+# 4) 유닛이 갱신되었으면 다시 설치/적용
+cd edge_api_server
+sudo install -m 644 deploy/rist-edge-api.service /etc/systemd/system/rist-edge-api.service
+sudo install -m 644 deploy/rist-edge-worker.service /etc/systemd/system/rist-edge-worker.service
+sudo systemctl daemon-reload
+sudo systemctl restart rist-edge-api.service rist-edge-worker.service
+```
+
+> 앞으로는 서버에서 추적 파일을 편집하지 않는다. 환경/비밀값 변경은
+> `/home/rist/ritas/edge.env`, 로그/레벨 변경은 `systemctl edit` 드롭인을 사용하면
+> `git pull` 이 항상 깨끗하게 동작한다.
+
 ## 주의 사항
 
 - 작업 파일 큐가 로컬 디스크를 사용하므로 **Uvicorn worker 는 1개**로 고정한다.
@@ -149,18 +181,33 @@ rsync 로 배포한 경우는 다시 복사한 뒤 동일하게 의존성 설치
 ## MariaDB (필수)
 
 운영 기본 데이터베이스는 MariaDB 이다. 서비스 시작 전에 MariaDB 가 동작 중이어야
-하며, 서비스 파일의 `RIST_DB_*` 값을 실제 접속 정보로 수정한다.
+한다.
 
-```ini
-Environment=RIST_DB_HOST=127.0.0.1
-Environment=RIST_DB_PORT=3306
-Environment=RIST_DB_NAME=rist_edge
-Environment=RIST_DB_USER=rist
-Environment=RIST_DB_PASSWORD=change-me
+> **중요 — 비밀값은 서비스 파일에 넣지 않는다.**
+> DB 비밀번호 등 접속 정보는 git 추적 밖의 `/home/rist/ritas/edge.env`
+> (프로젝트 루트, `.gitignore` 등록)에서 읽는다. 서비스 파일
+> (`rist-edge-*.service`)은 이 파일을 `EnvironmentFile=` 로 참조만 하므로,
+> dev PC 에서 코드를 수정해 push 해도 `git pull` 충돌이 발생하지 않고
+> 비밀번호가 git 히스토리에 남지 않는다.
+
+`install.sh` 가 `/home/rist/ritas/edge.env` 를 생성한다(이미 있으면 보존).
+실제 접속 정보로 수정한다.
+
+```bash
+sudo nano /home/rist/ritas/edge.env
 ```
 
-- `rist-edge-api.service` 와 `rist-edge-worker.service` 양쪽에 **동일한 접속
-  정보**를 설정한다.
+```ini
+RIST_DB_HOST=127.0.0.1
+RIST_DB_PORT=3306
+RIST_DB_NAME=rist_edge
+RIST_DB_USER=rist
+RIST_DB_PASSWORD=실제비밀번호
+```
+
+- API 서비스와 worker 가 동일한 `/home/rist/ritas/edge.env` 를 공유하므로
+  **한 곳만** 수정하면 된다.
+- 파일 권한은 `640`(rist 소유)으로 두어 다른 사용자가 읽지 못하게 한다.
 - 데이터베이스(`RIST_DB_NAME`)와 테이블은 서버 시작 시 자동 생성되므로 DB
   사용자에게 `CREATE` 권한을 부여한다.
 

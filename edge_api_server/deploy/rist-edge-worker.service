@@ -12,12 +12,8 @@ Group=rist
 
 WorkingDirectory=/home/rist/ritas/edge_api_server
 Environment=RIST_ENV=production
-# API 서비스와 동일한 MariaDB 접속 정보를 지정한다.
-Environment=RIST_DB_HOST=127.0.0.1
-Environment=RIST_DB_PORT=3306
-Environment=RIST_DB_NAME=rist_edge
-Environment=RIST_DB_USER=rist
-Environment=RIST_DB_PASSWORD=change-me
+# API 서비스와 동일한 환경/비밀값 파일을 공유한다(git 추적 밖).
+EnvironmentFile=-/home/rist/ritas/edge.env
 # 로깅: API 서비스와 동일 정책. worker 로그는 별도 파일로 분리한다.
 Environment=RIST_LOG_LEVEL=INFO
 Environment=RIST_LOG_FORMAT=text

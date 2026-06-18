@@ -22,6 +22,8 @@ venv/
 .env
 .env.*
 !.env.example
+# systemd EnvironmentFile (프로젝트 루트 비밀값 파일)
+/edge.env
 *.pem
 *.key
 
