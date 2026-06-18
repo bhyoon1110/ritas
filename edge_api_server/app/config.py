@@ -42,8 +42,11 @@ class Settings:
     @classmethod
     def from_env(cls) -> "Settings":
         common = load_environment()
+        default_storage_root = (
+            common.edge_storage_root or str(PROJECT_DIR / "data" / "jobs")
+        )
         storage_root = Path(
-            os.getenv("RIST_STORAGE_ROOT", str(PROJECT_DIR / "data" / "jobs"))
+            os.getenv("RIST_STORAGE_ROOT", default_storage_root)
         ).expanduser()
         supported = frozenset(
             code.strip().upper()

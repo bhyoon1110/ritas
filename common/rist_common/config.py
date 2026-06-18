@@ -58,6 +58,7 @@ class EnvironmentConfig:
     local_llm_max_images: int
     local_llm_max_image_bytes: int
     public_domain: str
+    edge_storage_root: str
     source_file: Path
 
 
@@ -131,5 +132,6 @@ def load_environment(environment: str | None = None) -> EnvironmentConfig:
         local_llm_max_images=_int_value(values, "LOCAL_LLM_MAX_IMAGES"),
         local_llm_max_image_bytes=_int_value(values, "LOCAL_LLM_MAX_IMAGE_BYTES"),
         public_domain=values["PUBLIC_DOMAIN"],
+        edge_storage_root=values.get("EDGE_STORAGE_ROOT", "").strip(),
         source_file=source_file,
     )
