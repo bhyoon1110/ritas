@@ -1,0 +1,26 @@
+[Unit]
+Description=RIST Edge Report Worker (LLM report generator)
+After=network-online.target rist-vllm.service rist-edge-api.service
+Wants=network-online.target
+# 로컬 LLM 이 준비되어야 보고서를 생성할 수 있으므로 vLLM 서비스와 함께 묶는다.
+Requires=rist-vllm.service
+
+[Service]
+Type=simple
+User=rist
+Group=rist
+
+WorkingDirectory=/home/rist/ritas/edge_api_server
+Environment=RIST_ENV=production
+ExecStart=/home/rist/ritas/edge_api_server/.venv/bin/python -m app.report_worker
+
+Restart=always
+RestartSec=5
+
+# 보안 강화
+NoNewPrivileges=true
+ProtectSystem=full
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

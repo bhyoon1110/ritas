@@ -1,0 +1,26 @@
+[Unit]
+Description=RIST Edge API Server (FastAPI/Uvicorn) on 0.0.0.0:8000
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=rist
+Group=rist
+
+WorkingDirectory=/home/rist/ritas/edge_api_server
+Environment=RIST_ENV=production
+ExecStart=/home/rist/ritas/edge_api_server/.venv/bin/python -m app.run
+
+Restart=always
+RestartSec=5
+# 종료 시 정상 종료를 위해 SIGINT 사용(Uvicorn graceful shutdown)
+KillSignal=SIGINT
+
+# 보안 강화
+NoNewPrivileges=true
+ProtectSystem=full
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

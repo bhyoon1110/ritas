@@ -1,0 +1,32 @@
+[Unit]
+Description=RIST Local LLM (vLLM, OpenAI-compatible) on 127.0.0.1:8001
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=rist
+Group=rist
+
+# vLLM 전용 가상환경(별도 설치). 모델은 /models/gemma-4-E4B-it 에 위치.
+WorkingDirectory=/home/rist/ritas
+ExecStart=/home/rist/vllm/.venv/bin/vllm serve /models/gemma-4-E4B-it \
+    --served-model-name gemma4-e4b \
+    --host 127.0.0.1 \
+    --port 8001 \
+    --max-model-len 8192
+
+# GPU/HuggingFace 캐시 경로가 필요하면 아래 주석을 해제해 환경에 맞게 수정한다.
+# Environment=CUDA_VISIBLE_DEVICES=0
+# Environment=HF_HOME=/home/rist/.cache/huggingface
+
+Restart=always
+RestartSec=10
+# 모델 로딩 시간이 길 수 있으므로 시작 타임아웃을 넉넉히 둔다.
+TimeoutStartSec=600
+
+# 보안: 외부 직접 호출 차단을 위해 127.0.0.1 바인딩 유지
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
