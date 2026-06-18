@@ -28,6 +28,9 @@ from .service import EdgeService
 
 logger = get_logger(__name__)
 
+# idempotency_records.idempotency_key 컬럼 길이와 일치(초과 시 DB 오류 대신 400 반환).
+MAX_IDEMPOTENCY_KEY_LENGTH = 128
+
 
 def required_request_id(
     x_request_id: str | None = Header(default=None, alias="X-Request-Id"),
@@ -48,7 +51,14 @@ def required_idempotency_key(
             "MISSING_IDEMPOTENCY_KEY",
             "Idempotency-Key 헤더가 필요합니다.",
         )
-    return idempotency_key.strip()
+    key = idempotency_key.strip()
+    if len(key) > MAX_IDEMPOTENCY_KEY_LENGTH:
+        raise ApiException(
+            400,
+            "INVALID_IDEMPOTENCY_KEY",
+            f"Idempotency-Key는 {MAX_IDEMPOTENCY_KEY_LENGTH}자 이하여야 합니다.",
+        )
+    return key
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:

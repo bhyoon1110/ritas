@@ -164,6 +164,19 @@ def test_requires_headers(tmp_path: Path, mariadb: dict) -> None:
     }
 
 
+def test_rejects_oversized_idempotency_key(
+    tmp_path: Path, mariadb: dict
+) -> None:
+    client = create_client(tmp_path, mariadb)
+    response = client.post(
+        "/api/v1/jobs",
+        json=job_payload(1),
+        headers={"X-Request-Id": str(uuid4()), "Idempotency-Key": "k" * 129},
+    )
+    assert response.status_code == 400
+    assert response.json()["code"] == "INVALID_IDEMPOTENCY_KEY"
+
+
 def test_rejects_idempotency_key_with_different_request(
     tmp_path: Path, mariadb: dict
 ) -> None:
