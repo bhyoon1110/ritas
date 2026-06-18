@@ -7,7 +7,7 @@
 #
 # 사용법:  sudo bash deploy/install.sh
 #
-# 주의: vLLM(rist-vllm.service)은 GPU/모델 환경에 따라 별도로 구성한다.
+# 주의: vLLM 은 docker-compose 컨테이너(deploy/docker-compose.vllm.yml)로 별도 구동한다.
 #       이 스크립트는 API 서버와 worker만 설정한다.
 
 set -euo pipefail
@@ -97,8 +97,8 @@ fi
 echo "==> 7. systemd 서비스 등록"
 install -m 644 "${EDGE_DIR}/deploy/rist-edge-api.service" /etc/systemd/system/rist-edge-api.service
 install -m 644 "${EDGE_DIR}/deploy/rist-edge-worker.service" /etc/systemd/system/rist-edge-worker.service
-# vLLM 서비스는 환경 구성 후 수동 등록 권장(아래 README 참고)
-# install -m 644 "${EDGE_DIR}/deploy/rist-vllm.service" /etc/systemd/system/rist-vllm.service
+# vLLM 은 docker-compose 로 별도 구동한다(아래 README 의 "3. vLLM" 참고):
+#   sudo docker compose -f "${EDGE_DIR}/deploy/docker-compose.vllm.yml" up -d
 
 systemctl daemon-reload
 systemctl enable --now rist-edge-api.service

@@ -1,0 +1,27 @@
+services:
+  vllm-gemma4-e4b:
+    image: vllm/vllm-openai:latest-aarch64-cu129-ubuntu2404
+    container_name: vllm-gemma4-e4b
+    restart: unless-stopped
+
+    gpus: all
+
+    # 호스트 8001 -> 컨테이너 8000. 엣지 API/worker 는 http://127.0.0.1:8001 로 접속한다.
+    # (보안) 외부 노출 금지: 호스트 루프백에만 바인딩한다.
+    ports:
+      - "127.0.0.1:8001:8000"
+
+    volumes:
+      - /data/models/gemma-4-E4B-it:/models/gemma-4-E4B-it:ro
+
+    ipc: host
+
+    command: >
+      --model /models/gemma-4-E4B-it
+      --served-model-name gemma4-e4b
+      --host 0.0.0.0
+      --port 8000
+      --dtype bfloat16
+      --max-model-len 8192
+      --gpu-memory-utilization 0.70
+      --trust-remote-code
