@@ -72,7 +72,7 @@ sudo bash deploy/install.sh
 스크립트가 수행하는 작업:
 
 1. `rist` 전용 계정 생성
-2. `python3.11` 확인/설치
+2. `python3`(>=3.11) 확인/설치 (Ubuntu 24.04 기본 python3.12 사용 가능)
 3. 저장소 루트의 `.venv` 생성 및 `requirements.txt` 설치
 4. `data/jobs`, `data/logs` 디렉터리 준비
 5. `rist-edge-api`, `rist-edge-worker` 서비스 등록 및 시작

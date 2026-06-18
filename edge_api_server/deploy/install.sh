@@ -2,7 +2,7 @@
 #
 # RIST Edge 서버 배포 스크립트 (Ubuntu)
 # - rist 전용 계정 생성
-# - Python 3.11 가상환경 구성 및 의존성 설치
+# - Python(>=3.11) 가상환경 구성 및 의존성 설치
 # - systemd 서비스 등록(rist-edge-api, rist-edge-worker)
 #
 # 사용법:  sudo bash deploy/install.sh
@@ -31,12 +31,41 @@ else
     echo "    이미 존재함"
 fi
 
-echo "==> 2. Python 3.11 확인"
-if ! command -v python3.11 &>/dev/null; then
-    echo "    python3.11 이 없습니다. 설치를 진행합니다."
+echo "==> 2. Python(>=3.11) 확인"
+# requires-python >= 3.11. 배포판 기본 파이썬을 우선 사용한다.
+# (Ubuntu 22.04=3.10, 24.04=3.12 이므로 버전을 고정하지 않는다.)
+PYTHON_BIN=""
+for candidate in python3.13 python3.12 python3.11 python3; do
+    if command -v "${candidate}" &>/dev/null; then
+        if "${candidate}" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)'; then
+            PYTHON_BIN="$(command -v "${candidate}")"
+            break
+        fi
+    fi
+done
+
+if [[ -z "${PYTHON_BIN}" ]]; then
+    echo "    Python 3.11 이상이 없습니다. 설치를 진행합니다."
     apt-get update
-    apt-get install -y python3.11 python3.11-venv
+    # 기본 python3 가 3.11 이상이면 venv 패키지만 설치하면 된다.
+    apt-get install -y python3 python3-venv
+    if python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)'; then
+        PYTHON_BIN="$(command -v python3)"
+    else
+        echo "    오류: 시스템 python3 가 3.11 미만입니다. python3.11+ 를 설치한 뒤 다시 실행하세요." >&2
+        echo "          (예: deadsnakes PPA 또는 배포판 패키지로 python3.12 설치)" >&2
+        exit 1
+    fi
 fi
+
+# 선택된 파이썬에 맞는 venv 모듈이 없으면 설치한다.
+if ! "${PYTHON_BIN}" -m venv --help &>/dev/null; then
+    PYVER="$("${PYTHON_BIN}" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
+    echo "    venv 모듈이 없어 python${PYVER}-venv 를 설치합니다."
+    apt-get update
+    apt-get install -y "python${PYVER}-venv" || apt-get install -y python3-venv
+fi
+echo "    사용할 파이썬: ${PYTHON_BIN} ($("${PYTHON_BIN}" --version))"
 
 echo "==> 3. 프로젝트 디렉터리 소유권 정리"
 if [[ ! -d "${PROJECT_ROOT}/common" || ! -d "${PROJECT_ROOT}/config" || ! -d "${EDGE_DIR}" ]]; then
@@ -46,7 +75,7 @@ fi
 chown -R "${SERVICE_USER}:${SERVICE_USER}" "${PROJECT_ROOT}"
 
 echo "==> 4. 가상환경 생성 및 의존성 설치"
-sudo -u "${SERVICE_USER}" python3.11 -m venv "${VENV_DIR}"
+sudo -u "${SERVICE_USER}" "${PYTHON_BIN}" -m venv "${VENV_DIR}"
 sudo -u "${SERVICE_USER}" "${VENV_DIR}/bin/pip" install --upgrade pip
 sudo -u "${SERVICE_USER}" "${VENV_DIR}/bin/pip" install -r "${EDGE_DIR}/requirements.txt"
 
