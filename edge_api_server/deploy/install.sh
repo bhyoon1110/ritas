@@ -15,7 +15,8 @@ set -euo pipefail
 PROJECT_ROOT="/home/rist/ritas"
 SERVICE_USER="rist"
 EDGE_DIR="${PROJECT_ROOT}/edge_api_server"
-VENV_DIR="${EDGE_DIR}/.venv"
+# 저장소 루트의 단일 가상환경을 사용한다(common, edge_api_server 공용).
+VENV_DIR="${PROJECT_ROOT}/.venv"
 
 if [[ $EUID -ne 0 ]]; then
     echo "이 스크립트는 root 권한으로 실행해야 합니다: sudo bash deploy/install.sh" >&2

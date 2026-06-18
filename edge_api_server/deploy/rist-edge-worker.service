@@ -22,7 +22,7 @@ Environment=RIST_DB_PASSWORD=change-me
 Environment=RIST_LOG_LEVEL=INFO
 Environment=RIST_LOG_FORMAT=text
 Environment=RIST_LOG_FILE=/home/rist/ritas/edge_api_server/data/logs/worker.log
-ExecStart=/home/rist/ritas/edge_api_server/.venv/bin/python -m app.report_worker
+ExecStart=/home/rist/ritas/.venv/bin/python -m app.report_worker
 
 Restart=always
 RestartSec=5

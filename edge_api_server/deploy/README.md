@@ -18,13 +18,15 @@
 
 ```text
 /home/rist/ritas/
+  .venv/            # 저장소 루트 단일 가상환경(common, edge_api_server 공용)
   common/
   config/
   edge_api_server/
 ```
 
 `requirements.txt` 가 `-e ../common` 을 사용하므로 `common/` 이 없으면 설치가
-실패한다.
+실패한다. 가상환경은 저장소 루트(`/home/rist/ritas/.venv`)에 하나만 두고
+`common` 과 `edge_api_server` 가 공유한다.
 
 ## 1. 코드 배포
 
@@ -71,7 +73,7 @@ sudo bash deploy/install.sh
 
 1. `rist` 전용 계정 생성
 2. `python3.11` 확인/설치
-3. `.venv` 생성 및 `requirements.txt` 설치
+3. 저장소 루트의 `.venv` 생성 및 `requirements.txt` 설치
 4. `data/jobs`, `data/logs` 디렉터리 준비
 5. `rist-edge-api`, `rist-edge-worker` 서비스 등록 및 시작
 6. 방화벽 8000 포트 개방
@@ -129,8 +131,7 @@ git clone 으로 배포한 경우:
 ```bash
 cd /home/rist/ritas
 sudo -u rist git pull
-cd edge_api_server
-sudo -u rist .venv/bin/pip install -r requirements.txt   # 의존성 변경 시
+sudo -u rist .venv/bin/pip install -r edge_api_server/requirements.txt   # 의존성 변경 시
 sudo systemctl restart rist-edge-api.service rist-edge-worker.service
 ```
 
