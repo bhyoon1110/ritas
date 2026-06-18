@@ -21,10 +21,14 @@ def headers(idempotency_key: str | None = None) -> dict[str, str]:
     return result
 
 
-def create_client(tmp_path: Path) -> TestClient:
+def create_client(tmp_path: Path, db: dict) -> TestClient:
     settings = Settings(
         storage_root=tmp_path / "jobs",
-        db_path=tmp_path / "edge.db",
+        db_host=db["host"],
+        db_port=db["port"],
+        db_name=db["name"],
+        db_user=db["user"],
+        db_password=db["password"],
         upload_expiry_hours=24,
         max_upload_bytes=1024 * 1024,
         supported_experiment_codes=frozenset({"XRD", "FT-IR"}),
@@ -49,8 +53,8 @@ def job_payload(size: int) -> dict:
     }
 
 
-def test_full_upload_and_report_flow(tmp_path: Path) -> None:
-    client = create_client(tmp_path)
+def test_full_upload_and_report_flow(tmp_path: Path, mariadb: dict) -> None:
+    client = create_client(tmp_path, mariadb)
     content = b"#Intensity_unit=cps\n5.000 1115.000\n"
     digest = hashlib.sha256(content).hexdigest()
 
@@ -126,8 +130,8 @@ def test_full_upload_and_report_flow(tmp_path: Path) -> None:
     assert len(manifests) == 1
 
 
-def test_rejects_hash_mismatch(tmp_path: Path) -> None:
-    client = create_client(tmp_path)
+def test_rejects_hash_mismatch(tmp_path: Path, mariadb: dict) -> None:
+    client = create_client(tmp_path, mariadb)
     content = b"test"
     create_response = client.post(
         "/api/v1/jobs",
@@ -150,8 +154,8 @@ def test_rejects_hash_mismatch(tmp_path: Path) -> None:
     assert response.json()["code"] == "FILE_HASH_MISMATCH"
 
 
-def test_requires_headers(tmp_path: Path) -> None:
-    client = create_client(tmp_path)
+def test_requires_headers(tmp_path: Path, mariadb: dict) -> None:
+    client = create_client(tmp_path, mariadb)
     response = client.post("/api/v1/jobs", json=job_payload(1))
     assert response.status_code == 400
     assert response.json()["code"] in {
@@ -160,8 +164,10 @@ def test_requires_headers(tmp_path: Path) -> None:
     }
 
 
-def test_rejects_idempotency_key_with_different_request(tmp_path: Path) -> None:
-    client = create_client(tmp_path)
+def test_rejects_idempotency_key_with_different_request(
+    tmp_path: Path, mariadb: dict
+) -> None:
+    client = create_client(tmp_path, mariadb)
     key = str(uuid4())
     first = client.post(
         "/api/v1/jobs",
@@ -181,10 +187,14 @@ def test_rejects_idempotency_key_with_different_request(tmp_path: Path) -> None:
     assert second.json()["code"] == "IDEMPOTENCY_KEY_REUSED"
 
 
-def test_expired_upload_returns_gone(tmp_path: Path) -> None:
+def test_expired_upload_returns_gone(tmp_path: Path, mariadb: dict) -> None:
     settings = Settings(
         storage_root=tmp_path / "jobs",
-        db_path=tmp_path / "edge.db",
+        db_host=mariadb["host"],
+        db_port=mariadb["port"],
+        db_name=mariadb["name"],
+        db_user=mariadb["user"],
+        db_password=mariadb["password"],
         upload_expiry_hours=-1,
         max_upload_bytes=1024,
         supported_experiment_codes=frozenset(),
@@ -219,8 +229,10 @@ def test_expired_upload_returns_gone(tmp_path: Path) -> None:
     assert status_response.json()["status"] == "UPLOAD_EXPIRED"
 
 
-def test_worker_calls_local_llm_and_saves_report(tmp_path: Path) -> None:
-    client = create_client(tmp_path)
+def test_worker_calls_local_llm_and_saves_report(
+    tmp_path: Path, mariadb: dict
+) -> None:
+    client = create_client(tmp_path, mariadb)
     content = b"xrd data"
     digest = hashlib.sha256(content).hexdigest()
     create_response = client.post(
@@ -349,8 +361,10 @@ def test_worker_calls_local_llm_and_saves_report(tmp_path: Path) -> None:
     )
 
 
-def test_worker_fails_without_structured_analysis(tmp_path: Path) -> None:
-    client = create_client(tmp_path)
+def test_worker_fails_without_structured_analysis(
+    tmp_path: Path, mariadb: dict
+) -> None:
+    client = create_client(tmp_path, mariadb)
     content = b"xrd data"
     digest = hashlib.sha256(content).hexdigest()
     create_response = client.post(

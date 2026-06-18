@@ -49,7 +49,7 @@ def required_idempotency_key(
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     resolved_settings = settings or Settings.from_env()
-    database = Database(resolved_settings.db_path)
+    database = Database.from_settings(resolved_settings)
     service = EdgeService(resolved_settings, database)
 
     app = FastAPI(
@@ -221,6 +221,3 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return await api_exception_handler(request, api_exc)
 
     return app
-
-
-app = create_app()

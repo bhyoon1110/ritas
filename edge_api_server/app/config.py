@@ -13,8 +13,12 @@ PROJECT_DIR = Path(__file__).resolve().parents[1]
 @dataclass(frozen=True)
 class Settings:
     storage_root: Path
-    db_path: Path
     environment: str = "development"
+    db_host: str = "127.0.0.1"
+    db_port: int = 3306
+    db_name: str = "rist_edge"
+    db_user: str = "rist"
+    db_password: str = ""
     edge_public_base_url: str = "http://192.168.0.10:8000"
     bind_host: str = "0.0.0.0"
     api_port: int = 8000
@@ -41,9 +45,6 @@ class Settings:
         storage_root = Path(
             os.getenv("RIST_STORAGE_ROOT", str(PROJECT_DIR / "data" / "jobs"))
         ).expanduser()
-        db_path = Path(
-            os.getenv("RIST_DB_PATH", str(PROJECT_DIR / "data" / "edge_api.db"))
-        ).expanduser()
         supported = frozenset(
             code.strip().upper()
             for code in os.getenv("RIST_SUPPORTED_EXPERIMENT_CODES", "").split(",")
@@ -51,8 +52,12 @@ class Settings:
         )
         return cls(
             storage_root=storage_root,
-            db_path=db_path,
             environment=common.environment,
+            db_host=os.getenv("RIST_DB_HOST", "127.0.0.1").strip(),
+            db_port=int(os.getenv("RIST_DB_PORT", "3306")),
+            db_name=os.getenv("RIST_DB_NAME", "rist_edge"),
+            db_user=os.getenv("RIST_DB_USER", "rist"),
+            db_password=os.getenv("RIST_DB_PASSWORD", ""),
             edge_public_base_url=os.getenv(
                 "RIST_EDGE_PUBLIC_BASE_URL", common.edge_server_base_url
             ).rstrip("/"),

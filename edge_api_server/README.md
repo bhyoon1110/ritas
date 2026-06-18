@@ -16,7 +16,7 @@
 - LLM 컨텍스트 길이 사전 검증과 vLLM 오류 변환
 - 전처리 JSON 및 선택적 분석 이미지 입력
 - 작업 상태 조회
-- SQLite 기반 작업, 파일, 멱등 요청 저장
+- MariaDB 기반 작업, 파일, 멱등 요청 저장
 - 업로드 유효기간 만료 처리
 - `manifest.json` 생성 및 갱신
 
@@ -44,13 +44,18 @@ python3.11 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 
+# 운영 기본 DB는 MariaDB이다. 접속 정보를 먼저 지정한다.
+export RIST_DB_HOST=127.0.0.1
+export RIST_DB_USER=rist
+export RIST_DB_PASSWORD=********
+
 export RIST_ENV=development
 python -m app.run
 ```
 
-현재 구현은 SQLite와 로컬 디스크 큐를 사용하므로 Uvicorn worker는 1개로
-실행한다. 다중 worker 또는 여러 서버 인스턴스가 필요해지면 DB와 작업 큐를
-공유 서비스로 전환해야 한다.
+작업 파일 큐가 로컬 디스크를 사용하므로 Uvicorn worker는 1개로 실행한다.
+여러 서버 인스턴스로 수평 확장하려면 작업 큐를 공유 스토리지/서비스로
+전환해야 한다.
 
 환경 전환:
 
@@ -88,7 +93,11 @@ API 문서:
 | `RIST_EDGE_BIND_HOST` | 프로파일 값 | Uvicorn bind 주소 재정의 |
 | `RIST_EDGE_API_PORT` | 프로파일 값 | Uvicorn 포트 재정의 |
 | `RIST_STORAGE_ROOT` | `edge_api_server/data/jobs` | 작업 파일 저장 루트 |
-| `RIST_DB_PATH` | `edge_api_server/data/edge_api.db` | SQLite 파일 |
+| `RIST_DB_HOST` | `127.0.0.1` | MariaDB 호스트 |
+| `RIST_DB_PORT` | `3306` | MariaDB 포트 |
+| `RIST_DB_NAME` | `rist_edge` | MariaDB 데이터베이스명(없으면 자동 생성) |
+| `RIST_DB_USER` | `rist` | MariaDB 사용자 |
+| `RIST_DB_PASSWORD` | 빈 값 | MariaDB 비밀번호 |
 | `RIST_UPLOAD_EXPIRY_HOURS` | `24` | 업로드 유효시간 |
 | `RIST_MAX_UPLOAD_BYTES` | `2147483648` | 개별 파일 최대 크기 |
 | `RIST_SUPPORTED_EXPERIMENT_CODES` | 빈 값 | 쉼표 구분 허용 실험코드. 빈 값이면 제한 없음 |
@@ -106,11 +115,43 @@ API 문서:
 | `RIST_LLM_MAX_INPUT_CHARS` | `200000` | 구조화 분석 JSON 최대 문자 수 |
 | `RIST_WORKER_POLL_SECONDS` | `2` | worker 큐 조회 간격 |
 
+## 데이터베이스
+
+운영 기본 백엔드는 **MariaDB**이다. 서버 실행 전에 MariaDB가 동작 중이어야
+하며, 접속 정보를 환경 변수로 지정한다.
+
+```bash
+export RIST_DB_HOST=127.0.0.1     # 엣지 서버 로컬 MariaDB
+export RIST_DB_PORT=3306
+export RIST_DB_NAME=rist_edge
+export RIST_DB_USER=rist
+export RIST_DB_PASSWORD=********
+```
+
+- 지정한 데이터베이스(`RIST_DB_NAME`)가 없으면 서버 시작 시 `utf8mb4`로
+  자동 생성하고 필요한 테이블을 만든다. 따라서 DB 사용자에게 `CREATE`
+  권한이 있어야 한다.
+- 드라이버는 순수 파이썬 `PyMySQL`을 사용하므로 시스템 라이브러리 설치가
+  필요 없다.
+- 작업 파일 큐는 로컬 디스크를 사용한다. 여러 서버로 수평 확장하려면 공유
+  스토리지가 필요하다.
+
 ## 테스트
 
 ```bash
 pip install -r requirements-dev.txt
 pytest
+```
+
+테스트는 MariaDB(또는 MySQL) 인스턴스가 필요하다. 접속 정보는 다음 환경
+변수로 지정하며, 각 테스트는 격리된 임시 데이터베이스를 생성·삭제한다.
+접속할 수 없으면 해당 테스트는 건너뛴다.
+
+```bash
+export RIST_TEST_DB_HOST=127.0.0.1
+export RIST_TEST_DB_PORT=3306
+export RIST_TEST_DB_USER=root
+export RIST_TEST_DB_PASSWORD=********
 ```
 
 ## 로컬 LLM 및 보고서 worker

@@ -1,111 +1,216 @@
 from __future__ import annotations
 
 import json
-import sqlite3
-import threading
 from contextlib import contextmanager
-from pathlib import Path
+from dataclasses import dataclass
 from typing import Any, Iterator
+
+import pymysql
+from pymysql.cursors import DictCursor
 
 
 TERMINAL_STATUSES = {"COMPLETED", "FAILED", "UPLOAD_EXPIRED"}
 
 
+@dataclass(frozen=True)
+class DatabaseConfig:
+    """MariaDB 접속 정보."""
+
+    host: str
+    name: str = "rist_edge"
+    port: int = 3306
+    user: str = "rist"
+    password: str = ""
+
+
+_SCHEMA: tuple[str, ...] = (
+    """
+    CREATE TABLE IF NOT EXISTS jobs (
+        job_id VARCHAR(36) NOT NULL,
+        request_number VARCHAR(128) NOT NULL,
+        experiment_code VARCHAR(64) NOT NULL,
+        equipment_code VARCHAR(64) NOT NULL,
+        operator_id VARCHAR(64) NOT NULL,
+        source_host_name VARCHAR(255) NOT NULL,
+        declared_ip_address VARCHAR(64),
+        observed_remote_ip VARCHAR(64),
+        client_version VARCHAR(64),
+        expected_file_count INT NOT NULL,
+        expected_total_size_bytes BIGINT NOT NULL,
+        status VARCHAR(32) NOT NULL,
+        progress INT NOT NULL DEFAULT 0,
+        created_at VARCHAR(64) NOT NULL,
+        upload_expires_at VARCHAR(64) NOT NULL,
+        verified_at VARCHAR(64),
+        report_requested_at VARCHAR(64),
+        processing_started_at VARCHAR(64),
+        completed_at VARCHAR(64),
+        root_relative_path VARCHAR(512) NOT NULL,
+        report_options_json LONGTEXT,
+        error_json LONGTEXT,
+        PRIMARY KEY (job_id),
+        KEY idx_jobs_business_pk (
+            request_number,
+            experiment_code,
+            equipment_code,
+            operator_id
+        )
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS files (
+        file_id VARCHAR(36) NOT NULL,
+        job_id VARCHAR(36) NOT NULL,
+        relative_path VARCHAR(512) NOT NULL,
+        size_bytes BIGINT NOT NULL,
+        sha256 VARCHAR(64) NOT NULL,
+        last_modified_at VARCHAR(64),
+        uploaded_at VARCHAR(64) NOT NULL,
+        PRIMARY KEY (file_id),
+        UNIQUE KEY uq_files_job_path (job_id, relative_path),
+        CONSTRAINT fk_files_job FOREIGN KEY (job_id) REFERENCES jobs(job_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS idempotency_records (
+        endpoint VARCHAR(128) NOT NULL,
+        idempotency_key VARCHAR(128) NOT NULL,
+        request_hash VARCHAR(128) NOT NULL,
+        response_status INT NOT NULL,
+        response_json LONGTEXT NOT NULL,
+        created_at VARCHAR(64) NOT NULL,
+        PRIMARY KEY (endpoint, idempotency_key)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    """,
+)
+
+
+class _Cursor:
+    """PyMySQL 커서를 dict 결과 인터페이스로 감싼다."""
+
+    def __init__(self, cursor: Any) -> None:
+        self._cursor = cursor
+
+    @property
+    def rowcount(self) -> int:
+        return self._cursor.rowcount
+
+    def fetchone(self) -> dict[str, Any] | None:
+        row = self._cursor.fetchone()
+        return dict(row) if row is not None else None
+
+    def fetchall(self) -> list[dict[str, Any]]:
+        return [dict(row) for row in self._cursor.fetchall()]
+
+
+class _Connection:
+    """PyMySQL 연결을 execute/commit 인터페이스로 감싼다."""
+
+    def __init__(self, raw: Any) -> None:
+        self._raw = raw
+
+    def execute(self, sql: str, params: tuple[Any, ...] = ()) -> _Cursor:
+        cursor = self._raw.cursor()
+        cursor.execute(sql.replace("?", "%s"), params)
+        return _Cursor(cursor)
+
+    def commit(self) -> None:
+        self._raw.commit()
+
+    def rollback(self) -> None:
+        self._raw.rollback()
+
+    def close(self) -> None:
+        self._raw.close()
+
+    def __enter__(self) -> "_Connection":
+        return self
+
+    def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
+        try:
+            if exc_type is None:
+                self._raw.commit()
+            else:
+                self._raw.rollback()
+        finally:
+            self._raw.close()
+
+
 class Database:
-    def __init__(self, path: Path) -> None:
-        self.path = path
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self._lock = threading.RLock()
+    def __init__(self, config: DatabaseConfig) -> None:
+        if not config.host:
+            raise ValueError("MariaDB 접속 호스트(RIST_DB_HOST)가 필요합니다.")
+        self.config = config
+        self._ensure_database()
         self._initialize()
 
-    def _connect(self) -> sqlite3.Connection:
-        connection = sqlite3.connect(self.path, timeout=30)
-        connection.row_factory = sqlite3.Row
-        connection.execute("PRAGMA foreign_keys = ON")
-        connection.execute("PRAGMA journal_mode = WAL")
-        return connection
+    @classmethod
+    def from_settings(cls, settings: Any) -> "Database":
+        return cls(
+            DatabaseConfig(
+                host=settings.db_host,
+                port=settings.db_port,
+                name=settings.db_name,
+                user=settings.db_user,
+                password=settings.db_password,
+            )
+        )
+
+    def _ensure_database(self) -> None:
+        """접속 정보만으로 동작하도록 대상 DB가 없으면 생성한다."""
+        connection = pymysql.connect(
+            host=self.config.host,
+            port=self.config.port,
+            user=self.config.user,
+            password=self.config.password,
+            charset="utf8mb4",
+            autocommit=True,
+        )
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    f"CREATE DATABASE IF NOT EXISTS `{self.config.name}` "
+                    "CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
+                )
+        finally:
+            connection.close()
+
+    def _connect(self) -> _Connection:
+        connection = pymysql.connect(
+            host=self.config.host,
+            port=self.config.port,
+            user=self.config.user,
+            password=self.config.password,
+            database=self.config.name,
+            charset="utf8mb4",
+            cursorclass=DictCursor,
+            autocommit=False,
+        )
+        return _Connection(connection)
 
     @contextmanager
-    def transaction(self) -> Iterator[sqlite3.Connection]:
-        with self._lock:
-            connection = self._connect()
-            try:
-                connection.execute("BEGIN IMMEDIATE")
-                yield connection
-                connection.commit()
-            except Exception:
-                connection.rollback()
-                raise
-            finally:
-                connection.close()
+    def transaction(self) -> Iterator[_Connection]:
+        connection = self._connect()
+        try:
+            yield connection
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
 
     def _initialize(self) -> None:
         with self.transaction() as connection:
-            connection.executescript(
-                """
-                CREATE TABLE IF NOT EXISTS jobs (
-                    job_id TEXT PRIMARY KEY,
-                    request_number TEXT NOT NULL,
-                    experiment_code TEXT NOT NULL,
-                    equipment_code TEXT NOT NULL,
-                    operator_id TEXT NOT NULL,
-                    source_host_name TEXT NOT NULL,
-                    declared_ip_address TEXT,
-                    observed_remote_ip TEXT,
-                    client_version TEXT,
-                    expected_file_count INTEGER NOT NULL,
-                    expected_total_size_bytes INTEGER NOT NULL,
-                    status TEXT NOT NULL,
-                    progress INTEGER NOT NULL DEFAULT 0,
-                    created_at TEXT NOT NULL,
-                    upload_expires_at TEXT NOT NULL,
-                    verified_at TEXT,
-                    report_requested_at TEXT,
-                    processing_started_at TEXT,
-                    completed_at TEXT,
-                    root_relative_path TEXT NOT NULL,
-                    report_options_json TEXT,
-                    error_json TEXT
-                );
-
-                CREATE INDEX IF NOT EXISTS idx_jobs_business_pk
-                ON jobs (
-                    request_number,
-                    experiment_code,
-                    equipment_code,
-                    operator_id
-                );
-
-                CREATE TABLE IF NOT EXISTS files (
-                    file_id TEXT PRIMARY KEY,
-                    job_id TEXT NOT NULL,
-                    relative_path TEXT NOT NULL,
-                    size_bytes INTEGER NOT NULL,
-                    sha256 TEXT NOT NULL,
-                    last_modified_at TEXT,
-                    uploaded_at TEXT NOT NULL,
-                    UNIQUE(job_id, relative_path),
-                    FOREIGN KEY(job_id) REFERENCES jobs(job_id)
-                );
-
-                CREATE TABLE IF NOT EXISTS idempotency_records (
-                    endpoint TEXT NOT NULL,
-                    idempotency_key TEXT NOT NULL,
-                    request_hash TEXT NOT NULL,
-                    response_status INTEGER NOT NULL,
-                    response_json TEXT NOT NULL,
-                    created_at TEXT NOT NULL,
-                    PRIMARY KEY(endpoint, idempotency_key)
-                );
-                """
-            )
+            for statement in _SCHEMA:
+                connection.execute(statement)
 
     def fetch_job(self, job_id: str) -> dict[str, Any] | None:
         with self._connect() as connection:
             row = connection.execute(
                 "SELECT * FROM jobs WHERE job_id = ?", (job_id,)
             ).fetchone()
-        return dict(row) if row else None
+        return row
 
     def fetch_jobs_by_status(
         self, status: str, limit: int = 100
@@ -120,7 +225,7 @@ class Database:
                 """,
                 (status, limit),
             ).fetchall()
-        return [dict(row) for row in rows]
+        return rows
 
     def claim_queued_job(self, job_id: str, started_at: str) -> bool:
         with self.transaction() as connection:
@@ -135,7 +240,8 @@ class Database:
                 """,
                 (started_at, job_id),
             )
-        return cursor.rowcount == 1
+            claimed = cursor.rowcount == 1
+        return claimed
 
     def fetch_active_job(
         self,
@@ -164,7 +270,7 @@ class Database:
         """
         with self._connect() as connection:
             row = connection.execute(query, params).fetchone()
-        return dict(row) if row else None
+        return row
 
     def insert_job(self, job: dict[str, Any]) -> None:
         columns = ", ".join(job)
@@ -191,7 +297,7 @@ class Database:
                 "SELECT * FROM files WHERE job_id = ? ORDER BY relative_path",
                 (job_id,),
             ).fetchall()
-        return [dict(row) for row in rows]
+        return rows
 
     def fetch_file(self, job_id: str, relative_path: str) -> dict[str, Any] | None:
         with self._connect() as connection:
@@ -199,7 +305,7 @@ class Database:
                 "SELECT * FROM files WHERE job_id = ? AND relative_path = ?",
                 (job_id, relative_path),
             ).fetchone()
-        return dict(row) if row else None
+        return row
 
     def insert_file(self, file_record: dict[str, Any]) -> None:
         columns = ", ".join(file_record)
@@ -223,9 +329,8 @@ class Database:
             ).fetchone()
         if not row:
             return None
-        result = dict(row)
-        result["response"] = json.loads(result.pop("response_json"))
-        return result
+        row["response"] = json.loads(row.pop("response_json"))
+        return row
 
     def insert_idempotency(
         self,

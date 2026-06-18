@@ -110,9 +110,42 @@ sudo systemctl restart rist-edge-api.service rist-edge-worker.service
 
 ## 주의 사항
 
-- SQLite + 로컬 디스크 큐 구조이므로 **Uvicorn worker 는 1개**로 고정한다.
-  여러 인스턴스가 필요하면 DB/큐를 공유 서비스로 전환해야 한다.
+- 작업 파일 큐가 로컬 디스크를 사용하므로 **Uvicorn worker 는 1개**로 고정한다.
+  여러 서버로 수평 확장하려면 작업 큐를 공유 스토리지/서비스로 전환해야 한다.
 - `config/environments/production.env` 의 `EDGE_SERVER_HOST` 등을 실제 엣지
   서버 도메인/주소에 맞게 수정한다.
 - 로컬 LLM 은 인증이 없으므로 반드시 `127.0.0.1:8001` 바인딩을 유지하고
   외부에 노출하지 않는다.
+
+## MariaDB (필수)
+
+운영 기본 데이터베이스는 MariaDB 이다. 서비스 시작 전에 MariaDB 가 동작 중이어야
+하며, 서비스 파일의 `RIST_DB_*` 값을 실제 접속 정보로 수정한다.
+
+```ini
+Environment=RIST_DB_HOST=127.0.0.1
+Environment=RIST_DB_PORT=3306
+Environment=RIST_DB_NAME=rist_edge
+Environment=RIST_DB_USER=rist
+Environment=RIST_DB_PASSWORD=change-me
+```
+
+- `rist-edge-api.service` 와 `rist-edge-worker.service` 양쪽에 **동일한 접속
+  정보**를 설정한다.
+- 데이터베이스(`RIST_DB_NAME`)와 테이블은 서버 시작 시 자동 생성되므로 DB
+  사용자에게 `CREATE` 권한을 부여한다.
+
+```sql
+CREATE USER 'rist'@'%' IDENTIFIED BY 'change-me';
+GRANT ALL PRIVILEGES ON rist_edge.* TO 'rist'@'%';
+-- DB 자동 생성을 위해 일시적으로 CREATE 권한이 필요하다.
+GRANT CREATE ON *.* TO 'rist'@'%';
+FLUSH PRIVILEGES;
+```
+
+- 변경 후 두 서비스를 재시작한다.
+
+```bash
+sudo systemctl restart rist-edge-api.service rist-edge-worker.service
+```
+

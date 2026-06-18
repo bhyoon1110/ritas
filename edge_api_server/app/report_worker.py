@@ -286,7 +286,7 @@ class ReportWorker:
 
 def build_worker(settings: Settings | None = None) -> ReportWorker:
     resolved = settings or Settings.from_env()
-    database = Database(resolved.db_path)
+    database = Database.from_settings(resolved)
     llm_client = LocalLlmClient(
         resolved.llm_base_url,
         resolved.llm_model,

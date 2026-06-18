@@ -8,10 +8,11 @@ from .config import Settings
 def main() -> None:
     settings = Settings.from_env()
     uvicorn.run(
-        "app.main:app",
+        "app.main:create_app",
         host=settings.bind_host,
         port=settings.api_port,
         workers=1,
+        factory=True,
     )
 
 
