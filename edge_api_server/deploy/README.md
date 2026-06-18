@@ -28,10 +28,32 @@
 
 ## 1. 코드 배포
 
-로컬에서 서버로 복사(예시):
+### 방법 A — git clone (권장)
+
+서버에서 직접 저장소를 받는다. 저장소 루트 구조가 그대로
+`/home/rist/ritas/` 와 일치하므로 추가 정리가 필요 없다.
 
 ```bash
-rsync -av --exclude '.venv' --exclude 'data/jobs' \
+# git 미설치 시
+sudo apt-get update && sudo apt-get install -y git
+
+# 저장소를 /home/rist/ritas 로 클론
+sudo git clone https://github.com/bhyoon1110/ritas.git /home/rist/ritas
+```
+
+- 비공개 저장소라면 배포 토큰/SSH 키로 인증한다.
+  - HTTPS: `https://<TOKEN>@github.com/bhyoon1110/ritas.git`
+  - SSH: `git@github.com:bhyoon1110/ritas.git`
+- 특정 브랜치/태그를 받으려면 `--branch <name>` 을 추가한다.
+
+코드 갱신은 `git pull` 로 한다(아래 "5. 코드 업데이트 후 반영" 참고).
+
+### 방법 B — rsync 복사
+
+로컬에서 서버로 직접 복사한다.
+
+```bash
+rsync -av --exclude '.venv' --exclude 'data/jobs' --exclude 'data/logs' \
   ./common ./config ./edge_api_server \
   rist-server:/home/rist/ritas/
 ```
@@ -102,11 +124,17 @@ curl http://127.0.0.1:8000/health/llm
 
 ## 5. 코드 업데이트 후 반영
 
+git clone 으로 배포한 경우:
+
 ```bash
-cd /home/rist/ritas/edge_api_server
+cd /home/rist/ritas
+sudo -u rist git pull
+cd edge_api_server
 sudo -u rist .venv/bin/pip install -r requirements.txt   # 의존성 변경 시
 sudo systemctl restart rist-edge-api.service rist-edge-worker.service
 ```
+
+rsync 로 배포한 경우는 다시 복사한 뒤 동일하게 의존성 설치/재시작을 수행한다.
 
 ## 주의 사항
 
