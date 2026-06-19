@@ -26,6 +26,7 @@ from __future__ import annotations
 import argparse
 import base64
 import json
+import shutil
 import sys
 import tempfile
 from dataclasses import replace
@@ -118,6 +119,12 @@ def parse_args() -> argparse.Namespace:
         help="processed 에 이미지(멀티모달)를 넣지 않는다",
     )
     parser.add_argument(
+        "--image",
+        default=None,
+        help="processed 에 복사할 실제 이미지 경로(png/jpg/jpeg/webp). "
+        "미지정 시 1x1 더미 PNG 사용. --no-image 와 함께 쓰면 무시된다.",
+    )
+    parser.add_argument(
         "--keep",
         action="store_true",
         default=True,
@@ -171,13 +178,28 @@ def main() -> int:
     )
 
     image_attached_intent = not args.no_image and settings.llm_include_images
+    image_source = "없음"
     if not args.no_image:
-        (processed / "spectrum.png").write_bytes(_TINY_PNG)
+        if args.image:
+            src = Path(args.image).expanduser()
+            allowed_suffixes = {".png", ".jpg", ".jpeg", ".webp"}
+            if not src.is_file():
+                print(f"{RED}--image 경로를 찾을 수 없습니다: {src}{RESET}")
+                return 1
+            if src.suffix.lower() not in allowed_suffixes:
+                print(f"{RED}지원하지 않는 이미지 형식: {src.suffix} "
+                      f"(png/jpg/jpeg/webp만 허용){RESET}")
+                return 1
+            shutil.copyfile(src, processed / src.name)
+            image_source = str(src)
+        else:
+            (processed / "spectrum.png").write_bytes(_TINY_PNG)
+            image_source = "1x1 더미 PNG"
 
     print(f"{BOLD}대상 LLM:{RESET} {settings.llm_base_url}  "
           f"model={settings.llm_model}  temp={settings.llm_temperature}")
     print(f"{BOLD}실험 코드:{RESET} {args.experiment_code}  "
-          f"이미지 첨부 시도={image_attached_intent}")
+          f"이미지 첨부 시도={image_attached_intent}  이미지={image_source}")
     print(f"{BOLD}임시 작업 폴더:{RESET} {job_root}")
     print("=" * 60)
 
