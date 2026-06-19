@@ -135,3 +135,15 @@ def test_markdown_render_includes_headings() -> None:
     assert "# FT-IR 분석 보고서" in markdown
     assert "## 라이브러리 매칭(최상위 후보)" in markdown
     assert "| 작용기 | 신뢰도 | 근거 |" in markdown
+
+
+def test_markdown_table_cells_are_escaped() -> None:
+    verdict = _verdict()
+    verdict["top_candidate"]["material"] = "A|B"
+    verdict["top_candidate"]["category"] = "line1\nline2"
+    analysis = [{"relativePath": "verdict.json", "data": verdict}]
+    document = FtirReportBuilder().build(_job(), analysis)
+    markdown = document.to_markdown()
+
+    assert "A\\|B" in markdown
+    assert "line1<br>line2" in markdown

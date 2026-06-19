@@ -9,6 +9,11 @@ from typing import Any
 LLM_SLOT_IDS: frozenset[str] = frozenset({"summary", "narrative", "caption"})
 
 
+def _markdown_table_cell(value: str) -> str:
+    """Markdown table 셀이 행/열 구조를 깨지 않도록 이스케이프한다."""
+    return str(value).replace("\\", "\\\\").replace("|", "\\|").replace("\n", "<br>")
+
+
 @dataclass
 class ReportTable:
     columns: list[str]
@@ -98,12 +103,14 @@ class ReportDocument:
             if section.bullets:
                 lines.append("")
             if section.table is not None:
-                lines.append("| " + " | ".join(section.table.columns) + " |")
+                columns = [_markdown_table_cell(column) for column in section.table.columns]
+                lines.append("| " + " | ".join(columns) + " |")
                 lines.append(
                     "| " + " | ".join("---" for _ in section.table.columns) + " |"
                 )
                 for row in section.table.rows:
-                    lines.append("| " + " | ".join(row) + " |")
+                    cells = [_markdown_table_cell(cell) for cell in row]
+                    lines.append("| " + " | ".join(cells) + " |")
                 lines.append("")
         if self.llm_error:
             lines.append(f"> LLM 보조 설명 생성 실패: {self.llm_error} (규칙 기반 문안 사용)")

@@ -91,6 +91,23 @@ sudo bash deploy/install.sh
 GPU 드라이버 + NVIDIA Container Toolkit 가 설치되어 있어야 한다.
 컴포즈 정의는 [`deploy/docker-compose.vllm.yml`](docker-compose.vllm.yml) 에 있다.
 
+운영 서버에서 먼저 다음 항목을 확인한다.
+
+```bash
+uname -m
+which docker
+docker compose version
+nvidia-smi
+test -d /data/models/gemma-4-E4B-it
+```
+
+- `docker-compose.vllm.yml` 의 이미지 태그는 서버 CPU 아키텍처와 CUDA/Ubuntu
+  조합에 맞아야 한다. 현재 기본값은 ARM64 + CUDA 12.9 + Ubuntu 24.04 계열이다.
+- Docker CLI 경로가 `/usr/bin/docker`가 아니면 `rist-vllm.service`의
+  `ExecStart`/`ExecStop` 경로를 서버 환경에 맞게 수정한다.
+- 모델 디렉터리(`/data/models/gemma-4-E4B-it`)가 다르면 compose의 volume과
+  `--model` 경로를 함께 수정한다.
+
 ```bash
 # 모델 배치: /data/models/gemma-4-E4B-it
 
