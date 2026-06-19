@@ -397,6 +397,18 @@ def collect_pairs(args):
     return pairs
 
 
+def pdf_peak_warning(pdf_dir, pdf_count, parsed_count):
+    """PDF 피크 오버레이가 비어 있는 이유를 사용자에게 설명한다."""
+    if pdf_count == 0:
+        return f"경고: '{pdf_dir}'에서 PDF 파일을 찾지 못했습니다."
+    if parsed_count == 0:
+        return (
+            f"경고: '{pdf_dir}'의 PDF {pdf_count}개에서 피크 표를 추출하지 "
+            "못했습니다. HTML에는 raw 패턴만 표시됩니다."
+        )
+    return None
+
+
 def main():
     args = parse_args()
     pairs = collect_pairs(args)
@@ -480,6 +492,10 @@ def main():
             )
             idxs.append(trace_idx)
             trace_idx += 1
+
+        warning = pdf_peak_warning(pdf_dir, len(pdf_files), len(items))
+        if warning:
+            print(warning)
 
         group_map[raw_stem] = idxs
         groups_for_tables.append((raw_stem, raw_color, items))

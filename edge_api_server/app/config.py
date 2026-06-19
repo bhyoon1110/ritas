@@ -19,6 +19,9 @@ class Settings:
     db_name: str = "rist_edge"
     db_user: str = "rist"
     db_password: str = ""
+    db_pool_size: int = 8
+    db_pool_timeout_seconds: float = 10.0
+    pdf_font_path: Path | None = None
     edge_public_base_url: str = "http://192.168.0.10:8000"
     bind_host: str = "0.0.0.0"
     api_port: int = 8000
@@ -49,6 +52,7 @@ class Settings:
         storage_root = Path(
             os.getenv("RIST_STORAGE_ROOT", default_storage_root)
         ).expanduser()
+        configured_pdf_font = os.getenv("RIST_PDF_FONT_PATH", "").strip()
         supported = frozenset(
             code.strip().upper()
             for code in os.getenv("RIST_SUPPORTED_EXPERIMENT_CODES", "").split(",")
@@ -62,6 +66,15 @@ class Settings:
             db_name=os.getenv("RIST_DB_NAME", "rist_edge"),
             db_user=os.getenv("RIST_DB_USER", "rist"),
             db_password=os.getenv("RIST_DB_PASSWORD", ""),
+            db_pool_size=int(os.getenv("RIST_DB_POOL_SIZE", "8")),
+            db_pool_timeout_seconds=float(
+                os.getenv("RIST_DB_POOL_TIMEOUT_SECONDS", "10")
+            ),
+            pdf_font_path=(
+                Path(configured_pdf_font).expanduser()
+                if configured_pdf_font
+                else None
+            ),
             edge_public_base_url=os.getenv(
                 "RIST_EDGE_PUBLIC_BASE_URL", common.edge_server_base_url
             ).rstrip("/"),

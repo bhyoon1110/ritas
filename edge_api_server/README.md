@@ -100,6 +100,9 @@ API 문서:
 | `RIST_DB_NAME` | `rist_edge` | MariaDB 데이터베이스명(없으면 자동 생성) |
 | `RIST_DB_USER` | `rist` | MariaDB 사용자 |
 | `RIST_DB_PASSWORD` | 빈 값 | MariaDB 비밀번호 |
+| `RIST_DB_POOL_SIZE` | `8` | API/worker 프로세스당 MariaDB 최대 연결 수 |
+| `RIST_DB_POOL_TIMEOUT_SECONDS` | `10` | 풀 연결 대기 제한 시간(초) |
+| `RIST_PDF_FONT_PATH` | 없음 | 외부 전달용 PDF에 임베드할 한글 TrueType 폰트 경로 |
 | `RIST_LOG_LEVEL` | `INFO` | DEBUG/INFO/WARNING/ERROR/CRITICAL |
 | `RIST_LOG_FORMAT` | `text` | `text` 또는 `json`(구조화 로그) |
 | `RIST_LOG_FILE` | 없음 | 지정 시 회전 파일 핸들러 추가 |
@@ -143,8 +146,20 @@ export RIST_DB_PASSWORD=********
   권한이 있어야 한다.
 - 드라이버는 순수 파이썬 `PyMySQL`을 사용하므로 시스템 라이브러리 설치가
   필요 없다.
+- 연결은 프로세스별로 재사용한다. 동시 요청 수와 MariaDB `max_connections`를
+  고려해 `RIST_DB_POOL_SIZE`를 조정한다.
 - 작업 파일 큐는 로컬 디스크를 사용한다. 여러 서버로 수평 확장하려면 공유
   스토리지가 필요하다.
+
+## PDF 한글 폰트
+
+PDF는 ReportLab으로 생성한다. 개발 환경에서 `RIST_PDF_FONT_PATH`를 비우면
+호환용 CJK CID 폰트를 사용한다. 외부 전달용 PDF는 대상 환경에 설치된 폰트에
+의존하지 않도록, 배포 권한이 있는 한글 TrueType 폰트 경로를 지정해 임베드한다.
+
+```bash
+export RIST_PDF_FONT_PATH=/opt/rist/fonts/NotoSansKR-Regular.ttf
+```
 
 ## 테스트
 

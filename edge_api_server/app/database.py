@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import json
+from queue import Empty, Full, LifoQueue
+import threading
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Any, Iterator
+from typing import Any, Callable, Iterator
 
 import pymysql
 from pymysql.cursors import DictCursor
@@ -58,6 +60,8 @@ class DatabaseConfig:
     port: int = 3306
     user: str = "rist"
     password: str = ""
+    pool_size: int = 8
+    pool_timeout_seconds: float = 10.0
 
 
 _SCHEMA: tuple[str, ...] = (
@@ -143,8 +147,10 @@ class _Cursor:
 class _Connection:
     """PyMySQL 연결을 execute/commit 인터페이스로 감싼다."""
 
-    def __init__(self, raw: Any) -> None:
+    def __init__(self, raw: Any, release: Callable[[Any], None]) -> None:
         self._raw = raw
+        self._release = release
+        self._closed = False
 
     def execute(self, sql: str, params: tuple[Any, ...] = ()) -> _Cursor:
         cursor = self._raw.cursor()
@@ -158,7 +164,9 @@ class _Connection:
         self._raw.rollback()
 
     def close(self) -> None:
-        self._raw.close()
+        if not self._closed:
+            self._closed = True
+            self._release(self._raw)
 
     def __enter__(self) -> "_Connection":
         return self
@@ -170,14 +178,22 @@ class _Connection:
             else:
                 self._raw.rollback()
         finally:
-            self._raw.close()
+            self.close()
 
 
 class Database:
     def __init__(self, config: DatabaseConfig) -> None:
         if not config.host:
             raise ValueError("MariaDB 접속 호스트(RIST_DB_HOST)가 필요합니다.")
+        if config.pool_size < 1:
+            raise ValueError("MariaDB 커넥션 풀 크기는 1 이상이어야 합니다.")
+        if config.pool_timeout_seconds <= 0:
+            raise ValueError("MariaDB 커넥션 풀 대기 시간은 0보다 커야 합니다.")
         self.config = config
+        self._pool: LifoQueue[Any] = LifoQueue(maxsize=config.pool_size)
+        self._pool_lock = threading.Lock()
+        self._pool_created = 0
+        self._pool_closed = False
         logger.info(
             "MariaDB에 연결합니다 (host=%s, port=%s, db=%s, user=%s)",
             config.host,
@@ -198,6 +214,8 @@ class Database:
                 name=settings.db_name,
                 user=settings.db_user,
                 password=settings.db_password,
+                pool_size=settings.db_pool_size,
+                pool_timeout_seconds=settings.db_pool_timeout_seconds,
             )
         )
 
@@ -221,7 +239,12 @@ class Database:
             connection.close()
 
     def _connect(self) -> _Connection:
-        connection = pymysql.connect(
+        return _Connection(
+            self._acquire_raw_connection(), self._release_raw_connection
+        )
+
+    def _create_raw_connection(self) -> Any:
+        return pymysql.connect(
             host=self.config.host,
             port=self.config.port,
             user=self.config.user,
@@ -231,7 +254,79 @@ class Database:
             cursorclass=DictCursor,
             autocommit=False,
         )
-        return _Connection(connection)
+
+    def _acquire_raw_connection(self) -> Any:
+        while True:
+            with self._pool_lock:
+                if self._pool_closed:
+                    raise RuntimeError("닫힌 MariaDB 커넥션 풀을 사용할 수 없습니다.")
+            try:
+                connection = self._pool.get_nowait()
+            except Empty:
+                with self._pool_lock:
+                    can_create = (
+                        not self._pool_closed
+                        and self._pool_created < self.config.pool_size
+                    )
+                    if can_create:
+                        self._pool_created += 1
+                if can_create:
+                    try:
+                        return self._create_raw_connection()
+                    except Exception:
+                        with self._pool_lock:
+                            self._pool_created -= 1
+                        raise
+                try:
+                    connection = self._pool.get(
+                        timeout=self.config.pool_timeout_seconds
+                    )
+                except Empty as exc:
+                    raise TimeoutError(
+                        "MariaDB 커넥션 풀 대기 시간이 초과되었습니다."
+                    ) from exc
+
+            try:
+                connection.ping(reconnect=True)
+            except Exception:
+                self._discard_raw_connection(connection)
+                continue
+            return connection
+
+    def _release_raw_connection(self, connection: Any) -> None:
+        try:
+            connection.rollback()
+        except Exception:
+            self._discard_raw_connection(connection)
+            return
+        with self._pool_lock:
+            pool_closed = self._pool_closed
+        if pool_closed:
+            self._discard_raw_connection(connection)
+            return
+        try:
+            self._pool.put_nowait(connection)
+        except Full:
+            self._discard_raw_connection(connection)
+
+    def _discard_raw_connection(self, connection: Any) -> None:
+        try:
+            connection.close()
+        finally:
+            with self._pool_lock:
+                self._pool_created -= 1
+
+    def close(self) -> None:
+        """유휴 연결을 닫는다. API/worker 종료 훅에서 한 번 호출한다."""
+        with self._pool_lock:
+            if self._pool_closed:
+                return
+            self._pool_closed = True
+        while True:
+            try:
+                self._discard_raw_connection(self._pool.get_nowait())
+            except Empty:
+                return
 
     @contextmanager
     def transaction(self) -> Iterator[_Connection]:

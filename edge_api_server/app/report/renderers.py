@@ -1,8 +1,8 @@
 """ReportDocument 렌더러.
 
-외부 오피스 라이브러리 없이 기본 PPTX/PDF 산출물을 만든다. 렌더링의 기준
-데이터는 report.json과 동일한 ReportDocument이며, 사람이 검토할 수 있는
-요약형 결과물을 제공하는 것을 목표로 한다.
+PPTX는 Open XML 패키지로, PDF는 ReportLab으로 만든다. 렌더링의 기준 데이터는
+report.json과 동일한 ReportDocument이며, 사람이 검토할 수 있는 요약형 결과물을
+제공하는 것을 목표로 한다.
 """
 
 from __future__ import annotations
@@ -12,6 +12,12 @@ import textwrap
 import zipfile
 from pathlib import Path
 
+from reportlab.lib.pagesizes import A4
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.cidfonts import UnicodeCIDFont
+from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.pdfgen import canvas
+
 from .model import ReportDocument, ReportSection
 
 
@@ -19,11 +25,13 @@ def render_requested_report(
     document: ReportDocument,
     report_dir: Path,
     report_format: str,
+    *,
+    pdf_font_path: Path | None = None,
 ) -> Path:
     selected = report_format.upper()
     if selected == "PDF":
         path = report_dir / "report.pdf"
-        render_pdf(document, path)
+        render_pdf(document, path, font_path=pdf_font_path)
         return path
     path = report_dir / "report.pptx"
     render_pptx(document, path)
@@ -60,81 +68,45 @@ def _plain_lines(document: ReportDocument) -> list[str]:
     return lines
 
 
-def render_pdf(document: ReportDocument, path: Path) -> None:
+def _pdf_font_name(font_path: Path | None) -> str:
+    if font_path is None:
+        name = "HYSMyeongJo-Medium"
+        if name not in pdfmetrics.getRegisteredFontNames():
+            pdfmetrics.registerFont(UnicodeCIDFont("HYSMyeongJo-Medium"))
+        return name
+    if not font_path.is_file():
+        raise ValueError(f"PDF 임베드 폰트를 찾을 수 없습니다: {font_path}")
+    name = "RISTEmbeddedKorean"
+    if name not in pdfmetrics.getRegisteredFontNames():
+        pdfmetrics.registerFont(TTFont(name, str(font_path)))
+    return name
+
+
+def render_pdf(
+    document: ReportDocument,
+    path: Path,
+    *,
+    font_path: Path | None = None,
+) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    pages: list[list[str]] = []
-    current: list[str] = []
+    font_name = _pdf_font_name(font_path)
+    _, page_height = A4
+    left = 50
+    top = page_height - 50
+    line_height = 16
+    document_canvas = canvas.Canvas(str(path), pagesize=A4, pageCompression=1)
+    document_canvas.setTitle(document.title)
+    document_canvas.setFont(font_name, 12)
+    y = top
     for line in _plain_lines(document):
-        wrapped = textwrap.wrap(line, width=62) or [""]
-        for part in wrapped:
-            current.append(part)
-            if len(current) >= 34:
-                pages.append(current)
-                current = []
-    if current:
-        pages.append(current)
-    if not pages:
-        pages = [[""]]
-
-    objects: list[bytes] = []
-
-    def add(obj: str | bytes) -> int:
-        objects.append(obj.encode("utf-8") if isinstance(obj, str) else obj)
-        return len(objects)
-
-    catalog_id = add("<< /Type /Catalog /Pages 2 0 R >>")
-    pages_id = add(b"")
-    font_id = add(
-        "<< /Type /Font /Subtype /Type0 /BaseFont /HYSMyeongJo-Medium "
-        "/Encoding /UniKS-UCS2-H /DescendantFonts [ << /Type /Font "
-        "/Subtype /CIDFontType0 /BaseFont /HYSMyeongJo-Medium "
-        "/CIDSystemInfo << /Registry (Adobe) /Ordering (Korea1) /Supplement 2 >> "
-        "/FontDescriptor << /Type /FontDescriptor /FontName /HYSMyeongJo-Medium "
-        "/Flags 6 /FontBBox [0 -200 1000 900] /ItalicAngle 0 /Ascent 880 "
-        "/Descent -120 /CapHeight 700 /StemV 80 >> >> ] >>"
-    )
-    page_ids: list[int] = []
-    for page_lines in pages:
-        content = ["BT", "/F1 12 Tf", "50 790 Td", "16 TL"]
-        for line in page_lines:
-            encoded = line.encode("utf-16-be").hex().upper()
-            content.append(f"<{encoded}> Tj")
-            content.append("T*")
-        content.append("ET")
-        stream = "\n".join(content).encode("ascii")
-        content_id = add(
-            b"<< /Length " + str(len(stream)).encode("ascii") + b" >>\nstream\n"
-            + stream
-            + b"\nendstream"
-        )
-        page_id = add(
-            f"<< /Type /Page /Parent {pages_id} 0 R /MediaBox [0 0 595 842] "
-            f"/Resources << /Font << /F1 {font_id} 0 R >> >> "
-            f"/Contents {content_id} 0 R >>"
-        )
-        page_ids.append(page_id)
-    objects[pages_id - 1] = (
-        f"<< /Type /Pages /Kids [{' '.join(f'{pid} 0 R' for pid in page_ids)}] "
-        f"/Count {len(page_ids)} >>"
-    ).encode("utf-8")
-
-    output = bytearray(b"%PDF-1.4\n%\xE2\xE3\xCF\xD3\n")
-    offsets = [0]
-    for index, obj in enumerate(objects, start=1):
-        offsets.append(len(output))
-        output.extend(f"{index} 0 obj\n".encode("ascii"))
-        output.extend(obj)
-        output.extend(b"\nendobj\n")
-    xref_offset = len(output)
-    output.extend(f"xref\n0 {len(objects) + 1}\n".encode("ascii"))
-    output.extend(b"0000000000 65535 f \n")
-    for offset in offsets[1:]:
-        output.extend(f"{offset:010d} 00000 n \n".encode("ascii"))
-    output.extend(
-        f"trailer\n<< /Size {len(objects) + 1} /Root {catalog_id} 0 R >>\n"
-        f"startxref\n{xref_offset}\n%%EOF\n".encode("ascii")
-    )
-    path.write_bytes(bytes(output))
+        for part in textwrap.wrap(line, width=62) or [""]:
+            if y < 50:
+                document_canvas.showPage()
+                document_canvas.setFont(font_name, 12)
+                y = top
+            document_canvas.drawString(left, y, part)
+            y -= line_height
+    document_canvas.save()
 
 
 def render_pptx(document: ReportDocument, path: Path) -> None:

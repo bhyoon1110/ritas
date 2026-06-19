@@ -231,6 +231,10 @@ RIST_DB_PORT=3306
 RIST_DB_NAME=rist_edge
 RIST_DB_USER=rist
 RIST_DB_PASSWORD=실제비밀번호
+RIST_DB_POOL_SIZE=8
+RIST_DB_POOL_TIMEOUT_SECONDS=10
+# 외부 전달용 PDF에는 배포 권한이 있는 한글 TTF를 지정한다.
+RIST_PDF_FONT_PATH=/opt/rist/fonts/NotoSansKR-Regular.ttf
 ```
 
 - API 서비스와 worker 가 동일한 `/home/rist/ritas/edge.env` 를 공유하므로

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
+
 from fastapi import Depends, FastAPI, File, Form, Header, Request, Response, UploadFile
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -66,10 +68,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     database = Database.from_settings(resolved_settings)
     service = EdgeService(resolved_settings, database)
 
+    @asynccontextmanager
+    async def lifespan(_: FastAPI):
+        yield
+        database.close()
+
     app = FastAPI(
         title="RIST Experiment PC - Edge API",
         version="1.0.0",
         description="실험 PC 파일 bundle 수신 및 보고서 생성 요청 API",
+        lifespan=lifespan,
     )
     app.state.settings = resolved_settings
     app.state.database = database

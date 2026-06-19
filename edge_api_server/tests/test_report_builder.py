@@ -174,5 +174,5 @@ def test_pdf_renderer_creates_pdf_file(tmp_path) -> None:
     content = rendered.read_bytes()
 
     assert rendered.name == "report.pdf"
-    assert content.startswith(b"%PDF-1.4")
+    assert content.startswith(b"%PDF-")
     assert content.endswith(b"%%EOF\n")

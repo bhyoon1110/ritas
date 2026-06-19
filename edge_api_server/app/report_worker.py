@@ -11,6 +11,7 @@ from rist_common import get_logger
 from .config import Settings
 from .database import Database
 from .llm_client import LocalLlmClient
+from .manifest import write_manifest
 from .report import generate_report
 from .time_utils import isoformat_kst
 
@@ -106,9 +107,7 @@ class ReportWorker:
         )
 
     def _write_manifest(self, job_id: str) -> None:
-        from .service import EdgeService
-
-        EdgeService(self.settings, self.database).write_manifest(job_id)
+        write_manifest(self.settings, self.database, job_id)
 
 
 def build_worker(settings: Settings | None = None) -> ReportWorker:
@@ -140,6 +139,7 @@ def main() -> None:
             worker.run_once()
         finally:
             worker.llm_client.close()
+            worker.database.close()
         return
 
     running = True
@@ -162,6 +162,7 @@ def main() -> None:
                 time.sleep(worker.settings.worker_poll_seconds)
     finally:
         worker.llm_client.close()
+        worker.database.close()
         logger.info("보고서 worker가 종료되었습니다.")
 
 

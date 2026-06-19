@@ -116,6 +116,7 @@ def generate_report(
         document,
         report_dir,
         _requested_report_format(job),
+        pdf_font_path=settings.pdf_font_path,
     )
     logger.info(
         "보고서 생성 완료 (job_id=%s, llm_used=%s, rendered=%s)",
