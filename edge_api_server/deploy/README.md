@@ -60,7 +60,7 @@ sudo git clone https://github.com/bhyoon1110/ritas.git /home/rist/ritas
 
 ```bash
 rsync -av --exclude '.venv' --exclude 'data/jobs' --exclude 'data/logs' \
-  ./common ./config ./edge_api_server \
+  ./common ./config ./edge_api_server ./edge.env.example \
   rist-server:/home/rist/ritas/
 ```
 
@@ -160,7 +160,8 @@ git status
 
 # 2) 추적 파일의 로컬 수정 되돌리기(비밀값은 edge.env 에 있으니 안전)
 git checkout -- edge_api_server/deploy/rist-edge-api.service \
-                edge_api_server/deploy/rist-edge-worker.service
+                edge_api_server/deploy/rist-edge-worker.service \
+                edge_api_server/deploy/rist-vllm.service
 #   또는 전체 되돌리기: git restore .
 
 # 3) 원격 반영
@@ -170,8 +171,9 @@ sudo -u rist git pull
 cd edge_api_server
 sudo install -m 644 deploy/rist-edge-api.service /etc/systemd/system/rist-edge-api.service
 sudo install -m 644 deploy/rist-edge-worker.service /etc/systemd/system/rist-edge-worker.service
+sudo install -m 644 deploy/rist-vllm.service /etc/systemd/system/rist-vllm.service
 sudo systemctl daemon-reload
-sudo systemctl restart rist-edge-api.service rist-edge-worker.service
+sudo systemctl restart rist-edge-api.service rist-edge-worker.service rist-vllm.service
 ```
 
 > 앞으로는 서버에서 추적 파일을 편집하지 않는다. 환경/비밀값 변경은
@@ -315,4 +317,3 @@ sudo systemctl restart rist-edge-worker.service
 ```
 
 원래대로 되돌리려면 `sudo systemctl revert rist-edge-worker.service` 후 재시작한다.
-

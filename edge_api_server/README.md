@@ -13,7 +13,7 @@
 - 보고서 생성 요청을 디스크 큐에 적재
 - OpenAI 호환 로컬 LLM(`/v1/chat/completions`) 호출 worker
 - 로컬 LLM 모델 조회 및 설정 모델 검증(`/v1/models`)
-- LLM 컨텍스트 길이 사전 검증과 vLLM 오류 변환
+- LLM 입력 크기 제한과 vLLM 오류 변환
 - 전처리 JSON 및 선택적 분석 이미지 입력
 - 작업 상태 조회
 - MariaDB 기반 작업, 파일, 멱등 요청 저장
@@ -21,8 +21,9 @@
 - `manifest.json` 생성 및 갱신
 
 보고서 생성 API는 요청을 작업 폴더의 `queue` 영역에 기록한다. 별도 worker는
-`processed` 폴더에 장비별 분석 코드가 생성한 JSON을 읽고 로컬 LLM을 호출해
-Markdown 보고서 초안을 만든다.
+`processed` 폴더에 장비별 분석 코드가 생성한 JSON을 읽고 규칙 기반 보고서를
+작성한 뒤, 로컬 LLM으로 자유서술 슬롯만 보강해 `report.json`과 `report.md`를
+만든다.
 
 ## 설치 및 실행
 
@@ -211,18 +212,16 @@ worker가 생성하는 파일:
 ```text
 {jobRoot}/logs/llm-request.json
 {jobRoot}/logs/llm-response.json
-{jobRoot}/report/report-draft.md
+{jobRoot}/report/report.json
+{jobRoot}/report/report.md
 ```
 
 LLM에는 원본 bundle을 보내지 않고 `processed` 폴더의 JSON과 허용된 분석
 이미지만 전달한다. 요청 로그에는 이미지의 base64 본문을 기록하지 않는다.
-FT-IR 작업은 단정적 해석을 피하고 규칙 기반 결과, 라이브러리 매칭, QC 및
-전체 스펙트럼의 한계를 구분하는 전용 프롬프트를 사용한다.
+보고서는 먼저 규칙 기반 작성기가 판정, 수치, 표를 결정론적으로 채운 뒤,
+LLM이 `summary`, `narrative`, `caption` 자유서술 슬롯만 보조 작성한다.
+LLM 호출이 실패해도 규칙 기반 기본 문안으로 `report.json`과 `report.md`를
+완성하며, 작업은 `COMPLETED`, 진행률 100%로 종료된다.
 
-설정된 모델의 컨텍스트 길이 8,192 안에서 입력, 이미지 예약량, 출력
-`max_tokens`, 안전 여유를 계산한다. 초과가 예상되면 LLM을 호출하기 전에
-`LLM_CONTEXT_BUDGET_EXCEEDED`로 실패시켜 vLLM의 길이 초과 오류를 방지한다.
-
-LLM 완료 후 작업은 `PROCESSING`, 진행률 75%로 유지된다. `PPTX/PDF` 렌더링과
-Spring Boot 완료 콜백이 구현된 뒤 `CALLBACK_PENDING`, `COMPLETED`로
-전환해야 한다.
+FT-IR 작업은 라이브러리 매칭 결과와 룰 기반 판정을 구분해 고정 섹션을 만들고,
+단정적 해석을 피하는 전용 프롬프트로 자유서술 슬롯만 보강한다.

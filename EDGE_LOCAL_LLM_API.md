@@ -3,7 +3,8 @@
 ## 1. 목적
 
 Edge 분석 서버의 보고서 생성 worker가 같은 서버에서 실행되는 로컬 LLM을
-호출하여 실험 결과 보고서 문안을 생성하기 위한 REST API를 정의한다.
+호출하여 규칙 기반 보고서의 자유서술 슬롯을 보조 작성하기 위한 REST API를
+정의한다.
 
 이 문서의 호출 주체는 `edge_api_server`의 보고서 생성 worker이고, 수신
 주체는 OpenAI 호환 API를 제공하는 로컬 LLM 서버(vLLM)이다.
@@ -43,8 +44,8 @@ config/environments/production.env
 | `LOCAL_LLM_MODEL` | `gemma4-e4b` | 요청 모델 ID |
 | `LOCAL_LLM_TEMPERATURE` | `0.1` | 생성 무작위성 |
 | `LOCAL_LLM_MAX_TOKENS` | `1200` | 최대 출력 토큰 |
-| `LOCAL_LLM_CONTEXT_WINDOW` | `8192` | 컨텍스트 길이 |
-| `LOCAL_LLM_CONTEXT_MARGIN` | `256` | 컨텍스트 안전 여유 |
+| `LOCAL_LLM_CONTEXT_WINDOW` | `8192` | 모델 컨텍스트 길이 참고값 |
+| `LOCAL_LLM_CONTEXT_MARGIN` | `256` | 컨텍스트 예산 계산용 예비 설정값 |
 | `LOCAL_LLM_VALIDATE_MODEL` | `true` | 모델 조회 및 검증 여부 |
 | `LOCAL_LLM_INCLUDE_IMAGES` | `true` | 분석 이미지 전달 여부 |
 | `LOCAL_LLM_MAX_IMAGES` | `3` | 요청당 최대 이미지 수 |
@@ -54,13 +55,16 @@ config/environments/production.env
 
 ## 4. 처리 순서
 
-1. worker가 `/v1/models`를 호출한다.
-2. 응답에 설정 모델 `gemma4-e4b`가 존재하는지 확인한다.
-3. `processed` 폴더에서 구조화 분석 JSON과 허용된 이미지를 읽는다.
-4. 입력, 이미지, 출력 토큰 및 안전 여유가 컨텍스트 한도 이내인지 확인한다.
-5. `/v1/chat/completions`를 호출한다.
-6. 응답 원문과 생성 문안을 작업 폴더에 저장한다.
-7. API 또는 응답 오류가 발생하면 작업을 `FAILED`로 변경한다.
+1. worker가 `processed` 폴더에서 구조화 분석 JSON과 허용된 이미지를 읽는다.
+2. 규칙 기반 보고서 작성기가 판정, 수치, 표와 기본 문안을 결정론적으로 만든다.
+3. `LOCAL_LLM_VALIDATE_MODEL=true`이면 `/v1/models`를 호출해 설정 모델
+   `gemma4-e4b`의 존재를 확인한다.
+4. `/v1/chat/completions`에 `summary`, `narrative`, `caption` 슬롯 작성을
+   요청한다.
+5. 응답 원문과 요청 로그를 작업 폴더의 `logs/`에 저장한다.
+6. 유효한 슬롯 JSON을 받으면 해당 슬롯만 LLM 문안으로 교체한다.
+7. LLM 호출 또는 응답 파싱이 실패해도 작업은 실패시키지 않고 규칙 기반 기본
+   문안으로 `report.json`과 `report.md`를 완성한다.
 
 ## 5. 모델 목록 조회
 
@@ -93,8 +97,7 @@ Accept: application/json
 
 - `data`는 배열이어야 한다.
 - 배열에 `id`가 `gemma4-e4b`인 객체가 있어야 한다.
-- `max_model_len`이 양의 정수이면 worker의 컨텍스트 계산에 사용한다.
-- 설정값과 조회값 중 더 작은 컨텍스트 길이를 실제 한도로 사용한다.
+- `max_model_len`이 양의 정수이면 헬스체크 응답과 진단 로그에 참고값으로 사용한다.
 - 모델 목록은 worker 프로세스에서 최초 조회 후 캐시한다.
 - FastAPI의 `/health/llm` 점검은 캐시를 사용하지 않고 다시 조회한다.
 
@@ -116,13 +119,14 @@ Content-Type: application/json
 | `messages` | array | Y | system 및 user 메시지 |
 | `temperature` | number | Y | 기본값 `0.1` |
 | `max_tokens` | integer | Y | 기본값 `1200` |
+| `response_format` | object | Y | `{"type":"json_object"}` |
 
 `messages`에는 다음 두 메시지를 순서대로 전달한다.
 
 | 순서 | role | content |
 |---:|---|---|
-| 1 | `system` | 보고서 작성 원칙과 출력 형식 |
-| 2 | `user` | PK, 구조화 분석 JSON 및 선택적 분석 이미지 |
+| 1 | `system` | 슬롯 작성 원칙과 JSON 출력 형식 |
+| 2 | `user` | 구조화 분석 근거 JSON 및 선택적 분석 이미지 |
 
 ### 6.3 텍스트 요청 예시
 
@@ -132,15 +136,16 @@ Content-Type: application/json
   "messages": [
     {
       "role": "system",
-      "content": "당신은 재료분석 실험실의 보고서 작성 보조자입니다. 제공된 분석 결과만 근거로 한국어 문안을 작성하세요."
+      "content": "당신은 재료분석 실험실의 보고서 작성 보조자입니다. 제공된 분석 결과만 근거로 한국어 문안을 작성하세요. 출력은 반드시 JSON 객체 하나로만, 키는 summary/narrative/caption 입니다."
     },
     {
       "role": "user",
-      "content": "다음 JSON은 분석 프로그램이 생성한 입력입니다. 이 결과만 근거로 고객 보고서 문안을 작성하세요.\n\n{\"jobId\":\"e575b716-25d6-49c6-a7c0-3e2b7136fb2c\",\"pk\":{\"requestNumber\":\"REQ-2026-00123\",\"experimentCode\":\"FTIR\",\"equipmentCode\":\"FTIR-01\",\"operatorId\":\"user01\"},\"analysisResults\":[{\"relativePath\":\"analysis-result.json\",\"data\":{\"peaks\":[3400,1705,1240]}}]}"
+      "content": "다음 JSON은 분석 프로그램이 산출한 근거입니다. 이 근거만 사용해 summary, narrative, caption 슬롯을 작성하고, 키가 정확히 그 슬롯들인 JSON 객체 하나로만 응답하세요.\n\n{\"sample\":\"REQ-2026-00123\",\"tier\":\"미동정\",\"top_candidate\":{\"material\":\"후보 물질\",\"composite_pct\":64.5}}"
     }
   ],
   "temperature": 0.1,
-  "max_tokens": 1200
+  "max_tokens": 1200,
+  "response_format": {"type": "json_object"}
 }
 ```
 
@@ -169,7 +174,7 @@ Content-Type: application/json
       "content": [
         {
           "type": "text",
-          "text": "구조화 분석 JSON과 첨부 이미지를 근거로 보고서 문안을 작성하세요."
+          "text": "구조화 분석 JSON과 첨부 이미지를 근거로 summary, narrative, caption 슬롯만 작성하세요."
         },
         {
           "type": "image_url",
@@ -181,7 +186,8 @@ Content-Type: application/json
     }
   ],
   "temperature": 0.1,
-  "max_tokens": 1200
+  "max_tokens": 1200,
+  "response_format": {"type": "json_object"}
 }
 ```
 
@@ -192,7 +198,7 @@ Content-Type: application/json
 - 이미지 하나만으로 물질 또는 원인을 확정하지 않는다.
 - 요청 로그에는 Base64 본문을 저장하지 않는다.
 
-## 7. 보고서 작성 원칙
+## 7. 슬롯 작성 원칙
 
 모든 실험에 다음 원칙을 적용한다.
 
@@ -202,6 +208,8 @@ Content-Type: application/json
 4. 단일 피크 또는 단일 이미지로 물질명이나 작용기를 확정하지 않는다.
 5. QC flag, 데이터 누락, 불확실성 및 분석 한계를 명시한다.
 6. 과도한 화학 구조 추정과 근거 없는 인과관계를 작성하지 않는다.
+7. 판정, 수치, 표는 규칙 기반 보고서 작성기가 이미 생성하므로 LLM은
+   `summary`, `narrative`, `caption` 자유서술 슬롯만 작성한다.
 
 FT-IR에는 다음 원칙을 추가 적용한다.
 
@@ -211,12 +219,11 @@ FT-IR에는 다음 원칙을 추가 적용한다.
 4. 룰 기반 근거가 높아도 물질명을 확정적으로 표현하지 않는다.
 5. 전체 스펙트럼, 라이브러리 점수 또는 QC 정보가 없으면 한계를 명시한다.
 
-출력 형식은 다음과 같다.
+출력 형식은 JSON 객체 하나이며 키는 정확히 다음 세 개이다.
 
-1. 고객 보고서용 요약: 정확히 3문장
-2. 주요 근거: bullet 4개 이내
-3. 해석 한계 및 검토 필요사항: bullet 3개 이내
-4. PPT caption: 1문장
+- `summary`: 고객 보고서용 요약 정확히 3문장
+- `narrative`: 주요 근거와 해석에 대한 보조 설명, 4문장 이내
+- `caption`: 발표자료용 한 문장 캡션
 
 ## 8. 성공 응답
 
@@ -233,7 +240,7 @@ FT-IR에는 다음 원칙을 추가 적용한다.
       "index": 0,
       "message": {
         "role": "assistant",
-        "content": "1. 고객 보고서용 요약\n..."
+        "content": "{\"summary\":\"요약 문장 1. 요약 문장 2. 요약 문장 3.\",\"narrative\":\"보조 설명입니다.\",\"caption\":\"발표자료용 캡션입니다.\"}"
       },
       "finish_reason": "stop"
     }
@@ -246,31 +253,20 @@ FT-IR에는 다음 원칙을 추가 적용한다.
 }
 ```
 
-worker가 필수로 사용하는 값은
-`choices[0].message.content`이다. 이 값은 비어 있지 않은 문자열이어야 한다.
+worker가 필수로 사용하는 값은 `choices[0].message.content`이다. 이 값은
+비어 있지 않은 문자열이어야 하며, JSON 객체로 파싱했을 때 요청한 슬롯 중
+하나 이상의 문자열 값을 포함해야 한다.
 
 ## 9. 컨텍스트 제한
 
-모델의 입력과 출력 합계는 `8192` tokens를 초과할 수 없다. worker는 LLM
-호출 전에 다음 보수적 추정식을 적용한다.
-
-```text
-예상 입력 토큰 = ceil(UTF-8 텍스트 바이트 수 / 2)
-예상 이미지 토큰 = 이미지 수 * 512
-
-예상 총량 =
-  예상 입력 토큰
-  + 예상 이미지 토큰
-  + max_tokens
-  + context margin
-```
-
-기본값은 `max_tokens=1200`, `context margin=256`이다. 예상 총량이
-컨텍스트 한도를 초과하면 API를 호출하지 않고
-`LLM_CONTEXT_BUDGET_EXCEEDED`로 처리한다.
+모델의 입력과 출력 합계는 `8192` tokens를 초과할 수 없다. worker는 LLM 호출
+전에 구조화 분석 근거 JSON 문자열 길이를 `RIST_LLM_MAX_INPUT_CHARS`
+기본값 `200000`으로 제한한다. 분석 근거가 이 제한을 초과하면
+`LLM_INPUT_TOO_LARGE`로 처리하고 규칙 기반 기본 문안을 사용한다.
 
 vLLM이 HTTP `400`과 함께 `maximum context length` 오류를 반환한 경우에는
-`LLM_CONTEXT_LENGTH_EXCEEDED`로 처리한다. 이 오류는 자동 재시도하지 않는다.
+`LLM_CONTEXT_LENGTH_EXCEEDED`로 처리한다. 이 오류는 자동 재시도하지 않으며,
+worker는 규칙 기반 기본 문안으로 보고서를 완성한다.
 
 ## 10. 오류 처리
 
@@ -301,10 +297,12 @@ vLLM이 HTTP `400`과 함께 `maximum context length` 오류를 반환한 경우
 | `LLM_RESPONSE_INVALID` | OpenAI 호환 응답 형식이 아님 | N |
 | `LLM_RESPONSE_EMPTY` | 생성 문안이 비어 있음 | N |
 | `LLM_INPUT_TOO_LARGE` | 분석 JSON 문자 수 제한 초과 | N |
-| `LLM_CONTEXT_BUDGET_EXCEEDED` | 호출 전 컨텍스트 예상량 초과 | N |
 
 `LLM_HTTP_ERROR` 중 HTTP `408`, `429`, `500`, `502`, `503`, `504`는
 재시도 가능한 오류로 분류한다.
+
+보고서 worker는 위 LLM 오류를 작업 실패로 처리하지 않는다. `report.json`의
+`llm.error`에 오류를 기록하고 규칙 기반 기본 문안으로 보고서를 완성한다.
 
 ## 11. 로그 및 결과 파일
 
@@ -319,13 +317,18 @@ vLLM이 HTTP `400`과 함께 `maximum context length` 오류를 반환한 경우
     llm-request.json
     llm-response.json
   report/
-    report-draft.md
+    report.json
+    report.md
 ```
 
-- `llm-request.json`: LLM 요청. 이미지 Base64 본문은 마스킹한다.
-- `llm-response.json`: 로컬 LLM의 전체 JSON 응답이다.
-- `report-draft.md`: `choices[0].message.content`에서 추출한 보고서 초안이다.
+- `llm-request.json`: LLM 슬롯 주석 요청. 이미지 Base64 본문은 마스킹한다.
+- `llm-response.json`: 로컬 LLM의 전체 JSON 응답이다. LLM 단계가 실패하면
+  생성되지 않을 수 있다.
+- `report.json`: 규칙 기반 섹션과 LLM 보조 슬롯 적용 결과를 담은 구조화 보고서이다.
+- `report.md`: `report.json`을 사람이 읽는 Markdown 형식으로 렌더링한 보고서이다.
 - 원본 실험 bundle은 LLM에 직접 전달하지 않는다.
+- LLM은 보고서 전체를 생성하지 않고 `summary`, `narrative`, `caption` 슬롯만
+  보조 작성한다. LLM 실패 시에도 규칙 기반 기본 문안으로 보고서는 완성된다.
 
 ## 12. 상태 점검
 
