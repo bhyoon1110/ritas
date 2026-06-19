@@ -6,6 +6,7 @@
 
 import os
 from dataclasses import dataclass, field
+import logging
 
 import numpy as np
 import pandas as pd
@@ -23,6 +24,8 @@ from .preprocess import (
     load_csv,
     preprocess,
 )
+
+logger = logging.getLogger(__name__)
 
 
 CAT_LABEL = {
@@ -76,8 +79,8 @@ def load_library(manifest_path, library_dir, grid, wn_min, wn_max,
             bundle.masks.append(mask)
             bundle.ranges.append((float(df_lib["wn"].min()), float(df_lib["wn"].max())))
             valid_idx.append(i)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("라이브러리 파일을 건너뜁니다: %s (%s)", fpath, exc)
 
     bundle.meta = manifest.loc[valid_idx].reset_index(drop=True)
     return bundle, manifest, applied
@@ -145,6 +148,8 @@ def score_library(bundle, sample_vec, sample_deriv, sample_peaks, sample_mask,
 
 def rank_best_per_material(valid_meta, top_n, tier_id_score, tier_id_margin, tier_nomatch):
     """material 단위 최고 점수만 남기고 tier 부여."""
+    if valid_meta.empty:
+        raise ValueError("점수화 가능한 라이브러리 항목이 없습니다.")
     best = (
         valid_meta.sort_values("composite_pct", ascending=False)
         .drop_duplicates(subset="material")

@@ -101,6 +101,7 @@ class ReportWorker:
             job_id,
             status="FAILED",
             progress=50,
+            completed_at=isoformat_kst(),
             error_json=json.dumps(error, ensure_ascii=False),
         )
 

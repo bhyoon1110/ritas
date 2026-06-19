@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 
 from app.config import Settings
-from app.processors import run_processor_if_needed
+from app.processors import _render_command_template, run_processor_if_needed
 
 
 def _settings(tmp_path: Path) -> Settings:
@@ -56,3 +56,21 @@ def test_processor_hook_skips_when_analysis_exists(
     )
 
     assert run_processor_if_needed(_settings(tmp_path), _job(), job_root) is False
+
+
+def test_processor_template_keeps_placeholder_value_in_one_argument() -> None:
+    command = _render_command_template(
+        "processor --job {job_id} --experiment {experiment_code}",
+        {
+            "job_id": "job 1 --flag",
+            "experiment_code": "FT-IR",
+        },
+    )
+
+    assert command == [
+        "processor",
+        "--job",
+        "job 1 --flag",
+        "--experiment",
+        "FT-IR",
+    ]

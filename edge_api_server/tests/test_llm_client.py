@@ -104,3 +104,16 @@ def test_context_error_message_is_preserved() -> None:
 
     assert raised.value.code == "LLM_CONTEXT_LENGTH_EXCEEDED"
     assert "8192" in raised.value.message
+
+
+def test_llm_client_context_manager_closes_client() -> None:
+    with LocalLlmClient(
+        "http://127.0.0.1:8001",
+        "gemma4-e4b",
+        10,
+        0.1,
+        transport=httpx.MockTransport(lambda _: httpx.Response(200, json={})),
+    ) as client:
+        assert not client.client.is_closed
+
+    assert client.client.is_closed

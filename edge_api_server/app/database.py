@@ -14,6 +14,39 @@ logger = get_logger(__name__)
 
 
 TERMINAL_STATUSES = {"COMPLETED", "FAILED", "UPLOAD_EXPIRED"}
+JOB_COLUMNS = {
+    "job_id",
+    "request_number",
+    "experiment_code",
+    "equipment_code",
+    "operator_id",
+    "source_host_name",
+    "declared_ip_address",
+    "observed_remote_ip",
+    "client_version",
+    "expected_file_count",
+    "expected_total_size_bytes",
+    "status",
+    "progress",
+    "created_at",
+    "upload_expires_at",
+    "verified_at",
+    "report_requested_at",
+    "processing_started_at",
+    "completed_at",
+    "root_relative_path",
+    "report_options_json",
+    "error_json",
+}
+FILE_COLUMNS = {
+    "file_id",
+    "job_id",
+    "relative_path",
+    "size_bytes",
+    "sha256",
+    "last_modified_at",
+    "uploaded_at",
+}
 
 
 @dataclass(frozen=True)
@@ -285,6 +318,7 @@ class Database:
         return row
 
     def insert_job(self, job: dict[str, Any]) -> None:
+        _validate_columns("jobs", job, JOB_COLUMNS)
         columns = ", ".join(job)
         placeholders = ", ".join("?" for _ in job)
         with self.transaction() as connection:
@@ -296,6 +330,7 @@ class Database:
     def update_job(self, job_id: str, **values: Any) -> None:
         if not values:
             return
+        _validate_columns("jobs", values, JOB_COLUMNS)
         assignments = ", ".join(f"{key} = ?" for key in values)
         with self.transaction() as connection:
             connection.execute(
@@ -320,6 +355,7 @@ class Database:
         return row
 
     def insert_file(self, file_record: dict[str, Any]) -> None:
+        _validate_columns("files", file_record, FILE_COLUMNS)
         columns = ", ".join(file_record)
         placeholders = ", ".join("?" for _ in file_record)
         with self.transaction() as connection:
@@ -374,3 +410,15 @@ class Database:
                     created_at,
                 ),
             )
+
+
+def _validate_columns(
+    table: str,
+    values: dict[str, Any],
+    allowed: set[str],
+) -> None:
+    invalid = sorted(set(values) - allowed)
+    if invalid:
+        raise ValueError(
+            f"{table}에 허용되지 않은 컬럼입니다: {', '.join(invalid)}"
+        )

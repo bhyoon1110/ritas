@@ -25,9 +25,8 @@ def write_profile(path: Path, host: str, environment: str, storage_root: str | N
         "LOCAL_LLM_MAX_IMAGES=3",
         "LOCAL_LLM_MAX_IMAGE_BYTES=2097152",
         "PUBLIC_DOMAIN=bhyoon.me",
+        f"EDGE_STORAGE_ROOT={storage_root or path.parent / 'edge-jobs'}",
     ]
-    if storage_root is not None:
-        lines.append(f"EDGE_STORAGE_ROOT={storage_root}")
     path.write_text("\n".join(lines), encoding="utf-8")
 
 

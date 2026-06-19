@@ -43,18 +43,16 @@ def run_processor_if_needed(
     report_dir.mkdir(parents=True, exist_ok=True)
     logs_dir.mkdir(parents=True, exist_ok=True)
 
-    command = shlex.split(
-        _render_command_template(
-            command_template,
-            {
-                "job_root": str(job_root),
-                "input_dir": str(input_dir),
-                "processed_dir": str(processed_dir),
-                "report_dir": str(report_dir),
-                "experiment_code": experiment_code,
-                "job_id": str(job["job_id"]),
-            },
-        )
+    command = _render_command_template(
+        command_template,
+        {
+            "job_root": str(job_root),
+            "input_dir": str(input_dir),
+            "processed_dir": str(processed_dir),
+            "report_dir": str(report_dir),
+            "experiment_code": experiment_code,
+            "job_id": str(job["job_id"]),
+        },
     )
     if not command:
         return False
@@ -110,10 +108,13 @@ def _processor_key(experiment_code: str) -> str:
     return re.sub(r"[^A-Z0-9]+", "_", experiment_code.upper()).strip("_")
 
 
-def _render_command_template(template: str, values: dict[str, str]) -> str:
-    rendered = template
-    for key, value in values.items():
-        rendered = rendered.replace("{" + key + "}", value)
+def _render_command_template(template: str, values: dict[str, str]) -> list[str]:
+    parts = shlex.split(template)
+    rendered: list[str] = []
+    for part in parts:
+        for key, value in values.items():
+            part = part.replace("{" + key + "}", value)
+        rendered.append(part)
     return rendered
 
 

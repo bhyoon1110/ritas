@@ -21,8 +21,19 @@ def load_csv(path, wn_min, wn_max):
     """라이브러리 CSV (wavenumber, absorbance) 로드"""
     df = pd.read_csv(path, comment="#")
     df.columns = [c.strip() for c in df.columns]
-    wn_col = next(c for c in df.columns if "wave" in c.lower() or "wn" in c.lower())
-    ab_col = next(c for c in df.columns if "abs" in c.lower() or "int" in c.lower())
+    wn_col = next(
+        (c for c in df.columns if "wave" in c.lower() or "wn" in c.lower()),
+        None,
+    )
+    ab_col = next(
+        (c for c in df.columns if "abs" in c.lower() or "int" in c.lower()),
+        None,
+    )
+    if wn_col is None or ab_col is None:
+        columns = ", ".join(map(str, df.columns))
+        raise ValueError(
+            f"CSV에 wavenumber/absorbance 컬럼이 없습니다: {path} ({columns})"
+        )
     df = df[[wn_col, ab_col]].rename(columns={wn_col: "wn", ab_col: "y"})
     df = df.apply(pd.to_numeric, errors="coerce").dropna()
     df = df[(df["wn"] >= wn_min) & (df["wn"] <= wn_max)]

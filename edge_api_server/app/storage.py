@@ -45,22 +45,26 @@ def stream_to_temp(
     temp_path.parent.mkdir(parents=True, exist_ok=True)
     digest = hashlib.sha256()
     size = 0
-    with temp_path.open("wb") as destination:
-        while True:
-            chunk = source.read(1024 * 1024)
-            if not chunk:
-                break
-            size += len(chunk)
-            if size > max_bytes:
-                raise ApiException(
-                    413,
-                    "FILE_TOO_LARGE",
-                    "파일이 서버의 최대 허용 크기를 초과했습니다.",
-                )
-            digest.update(chunk)
-            destination.write(chunk)
-        destination.flush()
-        os.fsync(destination.fileno())
+    try:
+        with temp_path.open("wb") as destination:
+            while True:
+                chunk = source.read(1024 * 1024)
+                if not chunk:
+                    break
+                size += len(chunk)
+                if size > max_bytes:
+                    raise ApiException(
+                        413,
+                        "FILE_TOO_LARGE",
+                        "파일이 서버의 최대 허용 크기를 초과했습니다.",
+                    )
+                digest.update(chunk)
+                destination.write(chunk)
+            destination.flush()
+            os.fsync(destination.fileno())
+    except Exception:
+        temp_path.unlink(missing_ok=True)
+        raise
     return size, digest.hexdigest()
 
 
@@ -72,4 +76,3 @@ def atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
         stream.flush()
         os.fsync(stream.fileno())
     temp_path.replace(path)
-

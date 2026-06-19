@@ -66,6 +66,8 @@ def assign_confidence_tier(ranked_df, id_score, id_margin, nomatch_score):
     종합 점수(composite_pct) 기준 정렬된 DataFrame에서 신뢰도 등급 판정.
     반환: (tier, reason, margin)
     """
+    if ranked_df.empty:
+        raise ValueError("신뢰도 등급을 계산할 후보가 없습니다.")
     top1 = ranked_df.iloc[0]["composite_pct"]
     top2 = ranked_df.iloc[1]["composite_pct"] if len(ranked_df) > 1 else 0.0
     margin = top1 - top2

@@ -48,6 +48,12 @@ class LlmClient:
     def close(self) -> None:
         self.client.close()
 
+    def __enter__(self) -> "LlmClient":
+        return self
+
+    def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
+        self.close()
+
     def get_model_info(self, *, force: bool = False) -> dict[str, Any]:
         if self._model_info is not None and not force:
             return self._model_info

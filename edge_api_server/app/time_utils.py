@@ -16,11 +16,13 @@ def isoformat_kst(value: datetime | None = None) -> str:
 
 
 def parse_datetime(value: str) -> datetime:
-    return datetime.fromisoformat(value)
+    parsed = datetime.fromisoformat(value)
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=KST)
+    return parsed
 
 
 def timestamp_folder(value: datetime) -> str:
     milliseconds = value.microsecond // 1000
     offset = value.strftime("%z")
     return f"{value:%Y%m%dT%H%M%S}{milliseconds:03d}{offset}"
-
