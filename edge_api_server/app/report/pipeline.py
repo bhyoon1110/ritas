@@ -1,7 +1,8 @@
 """보고서 생성 오케스트레이션.
 
-순서: 분석 JSON 로드 -> 규칙 기반 문서 작성 -> (선택) LLM 슬롯 주석 ->
-report.json / report.md 렌더링. LLM 단계는 실패해도 규칙 기반 문안으로
+순서: processor 실행 -> 분석 JSON 로드 -> 규칙 기반 문서 작성 ->
+(선택) LLM 슬롯 주석 -> report.json / report.md / 요청 포맷 렌더링.
+LLM 단계는 실패해도 규칙 기반 문안으로
 보고서를 완성한다.
 """
 
@@ -15,10 +16,12 @@ from rist_common import get_logger
 
 from ..config import Settings
 from ..llm_client import LlmError, LocalLlmClient
+from ..processors import run_processor_if_needed
 from ..storage import atomic_write_json
 from . import annotator
 from .builders import AnalysisItem, get_builder
 from .model import ReportDocument
+from .renderers import render_requested_report
 
 logger = get_logger(__name__)
 
@@ -55,6 +58,14 @@ def load_analysis_results(processed_dir: Path) -> list[AnalysisItem]:
     return results
 
 
+def _requested_report_format(job: dict[str, Any]) -> str:
+    try:
+        options = json.loads(job.get("report_options_json") or "{}")
+    except json.JSONDecodeError:
+        options = {}
+    return str(options.get("reportFormat") or "PPTX").upper()
+
+
 def generate_report(
     settings: Settings,
     job: dict[str, Any],
@@ -67,6 +78,7 @@ def generate_report(
     report_dir = job_root / "report"
     logs_dir = job_root / "logs"
 
+    run_processor_if_needed(settings, job, job_root)
     analysis = load_analysis_results(processed_dir)
 
     job_with_time = dict(job)
@@ -100,9 +112,15 @@ def generate_report(
     report_dir.mkdir(parents=True, exist_ok=True)
     atomic_write_json(report_dir / "report.json", document.to_dict())
     (report_dir / "report.md").write_text(document.to_markdown(), encoding="utf-8")
+    rendered_path = render_requested_report(
+        document,
+        report_dir,
+        _requested_report_format(job),
+    )
     logger.info(
-        "보고서 생성 완료 (job_id=%s, llm_used=%s)",
+        "보고서 생성 완료 (job_id=%s, llm_used=%s, rendered=%s)",
         job["job_id"],
         document.llm_used,
+        rendered_path.name,
     )
     return document

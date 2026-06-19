@@ -1,0 +1,21 @@
+services:
+  mariadb:
+    image: mariadb:11
+    ports:
+      - "127.0.0.1:3307:3306"
+    environment:
+      MARIADB_ROOT_PASSWORD: rist_test
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    tmpfs:
+      - /var/lib/mysql
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "mariadb-admin ping -uroot -prist_test --silent",
+        ]
+      interval: 2s
+      timeout: 2s
+      retries: 30

@@ -64,7 +64,11 @@ config/environments/production.env
 5. 응답 원문과 요청 로그를 작업 폴더의 `logs/`에 저장한다.
 6. 유효한 슬롯 JSON을 받으면 해당 슬롯만 LLM 문안으로 교체한다.
 7. LLM 호출 또는 응답 파싱이 실패해도 작업은 실패시키지 않고 규칙 기반 기본
-   문안으로 `report.json`과 `report.md`를 완성한다.
+   문안으로 `report.json`, `report.md`, 요청 포맷의 `report.pptx` 또는
+   `report.pdf`를 완성한다.
+
+`report.json`은 정해진 보고서 양식의 구조화 데이터이며, Markdown과 PPTX/PDF
+렌더링은 이 JSON과 동일한 `ReportDocument`를 기준으로 수행한다.
 
 ## 5. 모델 목록 조회
 

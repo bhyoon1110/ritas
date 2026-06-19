@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import zipfile
+
 from app.report.builders import FtirReportBuilder, get_builder
 from app.report.model import ReportDocument
+from app.report.renderers import render_requested_report
 
 
 def _job() -> dict:
@@ -147,3 +150,29 @@ def test_markdown_table_cells_are_escaped() -> None:
 
     assert "A\\|B" in markdown
     assert "line1<br>line2" in markdown
+
+
+def test_pptx_renderer_creates_openxml_package(tmp_path) -> None:
+    analysis = [{"relativePath": "verdict.json", "data": _verdict()}]
+    document = FtirReportBuilder().build(_job(), analysis)
+
+    rendered = render_requested_report(document, tmp_path, "PPTX")
+
+    assert rendered.name == "report.pptx"
+    with zipfile.ZipFile(rendered) as archive:
+        names = set(archive.namelist())
+        assert "[Content_Types].xml" in names
+        assert "ppt/presentation.xml" in names
+        assert "ppt/slides/slide1.xml" in names
+
+
+def test_pdf_renderer_creates_pdf_file(tmp_path) -> None:
+    analysis = [{"relativePath": "verdict.json", "data": _verdict()}]
+    document = FtirReportBuilder().build(_job(), analysis)
+
+    rendered = render_requested_report(document, tmp_path, "PDF")
+    content = rendered.read_bytes()
+
+    assert rendered.name == "report.pdf"
+    assert content.startswith(b"%PDF-1.4")
+    assert content.endswith(b"%%EOF\n")

@@ -375,6 +375,7 @@ def test_worker_calls_local_llm_and_saves_report(
     assert (job_root / "logs" / "llm-response.json").exists()
     assert (job_root / "report" / "report.json").exists()
     assert (job_root / "report" / "report.md").exists()
+    assert (job_root / "report" / "report.pptx").exists()
     report_doc = json.loads(
         (job_root / "report" / "report.json").read_text(encoding="utf-8")
     )
@@ -473,6 +474,7 @@ def test_worker_completes_report_without_llm(
     assert updated is not None
     assert updated["status"] == "COMPLETED"
     assert updated["progress"] == 100
+    assert (job_root / "report" / "report.pptx").exists()
     report_doc = json.loads(
         (job_root / "report" / "report.json").read_text(encoding="utf-8")
     )

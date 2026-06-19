@@ -37,6 +37,7 @@ class Settings:
     llm_max_images: int = 3
     llm_max_image_bytes: int = 2 * 1024 * 1024
     llm_max_input_chars: int = 200_000
+    processor_timeout_seconds: float = 600.0
     worker_poll_seconds: float = 2.0
 
     @classmethod
@@ -128,6 +129,9 @@ class Settings:
             ),
             llm_max_input_chars=int(
                 os.getenv("RIST_LLM_MAX_INPUT_CHARS", "200000")
+            ),
+            processor_timeout_seconds=float(
+                os.getenv("RIST_PROCESSOR_TIMEOUT_SECONDS", "600")
             ),
             worker_poll_seconds=float(
                 os.getenv("RIST_WORKER_POLL_SECONDS", "2")

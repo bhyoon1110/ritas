@@ -22,8 +22,9 @@
 
 보고서 생성 API는 요청을 작업 폴더의 `queue` 영역에 기록한다. 별도 worker는
 `processed` 폴더에 장비별 분석 코드가 생성한 JSON을 읽고 규칙 기반 보고서를
-작성한 뒤, 로컬 LLM으로 자유서술 슬롯만 보강해 `report.json`과 `report.md`를
-만든다.
+작성한 뒤, 로컬 LLM으로 자유서술 슬롯만 보강해 `report.json`, `report.md`,
+요청 포맷의 `report.pptx` 또는 `report.pdf`를 만든다. `report.json`은 정해진
+보고서 양식의 구조화 표현이며 PPTX/PDF 렌더링의 기준 데이터이다.
 
 ## 설치 및 실행
 
@@ -120,6 +121,8 @@ API 문서:
 | `RIST_LLM_MAX_IMAGES` | `3` | 한 요청에 포함할 최대 이미지 수 |
 | `RIST_LLM_MAX_IMAGE_BYTES` | `2097152` | 이미지 한 장의 최대 바이트 수 |
 | `RIST_LLM_MAX_INPUT_CHARS` | `200000` | 구조화 분석 JSON 최대 문자 수 |
+| `RIST_PROCESSOR_TIMEOUT_SECONDS` | `600` | 자동 processor 실행 제한 시간 |
+| `RIST_PROCESSOR_COMMAND_<EXPERIMENT>` | 없음 | 분석 JSON이 없을 때 실행할 processor 명령 템플릿 |
 | `RIST_WORKER_POLL_SECONDS` | `2` | worker 큐 조회 간격 |
 
 ## 데이터베이스
@@ -161,6 +164,13 @@ export RIST_TEST_DB_USER=root
 export RIST_TEST_DB_PASSWORD=********
 ```
 
+Docker가 있는 개발 장비에서는 임시 MariaDB를 자동으로 띄워 통합 테스트를
+실행할 수 있다.
+
+```bash
+PYTHON_BIN=.venv/bin/python scripts/run_mariadb_tests.sh
+```
+
 ## 로컬 LLM 및 보고서 worker
 
 로컬 LLM은 다음 주소에서 OpenAI 호환 API를 제공해야 한다.
@@ -189,6 +199,28 @@ curl http://127.0.0.1:8000/health/llm
 {jobRoot}/processed/analysis-result.json
 ```
 
+`processed` 폴더에 JSON이 없고 실험 코드별 processor 명령이 설정되어 있으면
+worker가 보고서 생성 전에 해당 명령을 실행한다. 환경 변수 이름은 실험 코드를
+대문자로 바꾸고 영숫자가 아닌 문자를 `_`로 치환한 값이다. 예를 들어 `FT-IR`은
+`RIST_PROCESSOR_COMMAND_FT_IR`, `XRD`는 `RIST_PROCESSOR_COMMAND_XRD`를 사용한다.
+
+명령 템플릿에는 다음 placeholder를 사용할 수 있다.
+
+```text
+{job_root}
+{input_dir}
+{processed_dir}
+{report_dir}
+{experiment_code}
+{job_id}
+```
+
+예시:
+
+```bash
+export RIST_PROCESSOR_COMMAND_XRD='python -m lim.xrd.cli "{input_dir}/raw.txt" "{input_dir}/ICDD Card" -o "{processed_dir}/xrd.html"'
+```
+
 이미지 입력을 사용할 경우 `processed` 폴더에 `png`, `jpg`, `jpeg`, `webp`
 파일을 둔다. 최대 3개, 파일당 2 MiB까지 data URL로 전달하며 이 값은 환경
 변수로 변경할 수 있다.
@@ -212,16 +244,18 @@ worker가 생성하는 파일:
 ```text
 {jobRoot}/logs/llm-request.json
 {jobRoot}/logs/llm-response.json
+{jobRoot}/logs/processor-<experiment>.json
 {jobRoot}/report/report.json
 {jobRoot}/report/report.md
+{jobRoot}/report/report.pptx 또는 report.pdf
 ```
 
 LLM에는 원본 bundle을 보내지 않고 `processed` 폴더의 JSON과 허용된 분석
 이미지만 전달한다. 요청 로그에는 이미지의 base64 본문을 기록하지 않는다.
 보고서는 먼저 규칙 기반 작성기가 판정, 수치, 표를 결정론적으로 채운 뒤,
 LLM이 `summary`, `narrative`, `caption` 자유서술 슬롯만 보조 작성한다.
-LLM 호출이 실패해도 규칙 기반 기본 문안으로 `report.json`과 `report.md`를
-완성하며, 작업은 `COMPLETED`, 진행률 100%로 종료된다.
+LLM 호출이 실패해도 규칙 기반 기본 문안으로 `report.json`, `report.md`,
+요청 포맷의 PPTX/PDF를 완성하며, 작업은 `COMPLETED`, 진행률 100%로 종료된다.
 
 FT-IR 작업은 라이브러리 매칭 결과와 룰 기반 판정을 구분해 고정 섹션을 만들고,
 단정적 해석을 피하는 전용 프롬프트로 자유서술 슬롯만 보강한다.

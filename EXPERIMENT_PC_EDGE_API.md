@@ -312,6 +312,10 @@ Idempotency-Key: {jobId}:generate-report
 이 API는 비동기 처리 시작만 보장한다. 최종 완료 여부는 상태 조회 응답으로
 확인한다.
 
+worker는 완료 시 `{jobRoot}/report/report.json`과 `report.md`를 항상 만들고,
+`reportFormat`에 따라 `report.pptx` 또는 `report.pdf`를 추가 생성한다.
+`report.json`은 고정 보고서 양식의 구조화 데이터이며 최종 렌더링의 기준이다.
+
 #### 오류
 
 - `404 Not Found`: 존재하지 않는 `jobId`
