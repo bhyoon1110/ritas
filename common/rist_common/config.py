@@ -59,6 +59,7 @@ class EnvironmentConfig:
     local_llm_max_image_bytes: int
     public_domain: str
     edge_storage_root: str
+    local_spring_boot_base_url: str
     source_file: Path
 
 
@@ -104,6 +105,7 @@ def load_environment(environment: str | None = None) -> EnvironmentConfig:
         "LOCAL_LLM_MAX_IMAGES",
         "LOCAL_LLM_MAX_IMAGE_BYTES",
         "PUBLIC_DOMAIN",
+        "LOCAL_SPRING_BOOT_BASE_URL",
     }
     missing = sorted(key for key in required if not values.get(key))
     if missing:
@@ -113,6 +115,12 @@ def load_environment(environment: str | None = None) -> EnvironmentConfig:
     parsed = urlparse(base_url)
     if parsed.scheme not in {"http", "https"} or not parsed.hostname:
         raise ValueError("EDGE_SERVER_BASE_URL은 유효한 http(s) URL이어야 합니다.")
+    spring_boot_base_url = values["LOCAL_SPRING_BOOT_BASE_URL"].rstrip("/")
+    spring_parsed = urlparse(spring_boot_base_url)
+    if spring_parsed.scheme not in {"http", "https"} or not spring_parsed.hostname:
+        raise ValueError(
+            "LOCAL_SPRING_BOOT_BASE_URL은 유효한 http(s) URL이어야 합니다."
+        )
 
     return EnvironmentConfig(
         environment=selected,
@@ -133,5 +141,6 @@ def load_environment(environment: str | None = None) -> EnvironmentConfig:
         local_llm_max_image_bytes=_int_value(values, "LOCAL_LLM_MAX_IMAGE_BYTES"),
         public_domain=values["PUBLIC_DOMAIN"],
         edge_storage_root=values.get("EDGE_STORAGE_ROOT", "").strip(),
+        local_spring_boot_base_url=spring_boot_base_url,
         source_file=source_file,
     )

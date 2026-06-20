@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class ApiModel(BaseModel):
@@ -81,10 +81,22 @@ class CompleteUploadResponse(ApiModel):
 
 
 class ReportOptions(ApiModel):
-    report_format: Literal["PPTX", "PDF"] = Field(
-        default="PPTX", alias="reportFormat"
+    report_format: Literal["PPTX", "PDF", "HTML"] | None = Field(
+        default=None, alias="reportFormat"
+    )
+    report_formats: list[Literal["PPTX", "PDF", "HTML"]] | None = Field(
+        default=None, alias="reportFormats", min_length=1, max_length=3
     )
     include_raw_files: bool = Field(default=False, alias="includeRawFiles")
+
+    @model_validator(mode="after")
+    def normalize_report_formats(self) -> "ReportOptions":
+        formats = self.report_formats or [self.report_format or "PPTX"]
+        if len(set(formats)) != len(formats):
+            raise ValueError("reportFormats에는 중복된 형식을 넣을 수 없습니다.")
+        self.report_formats = formats
+        self.report_format = formats[0]
+        return self
 
 
 class GenerateReportRequest(ApiModel):
@@ -126,4 +138,3 @@ class ApiError(ApiModel):
     job_id: str | None = Field(default=None, alias="jobId")
     retryable: bool
     details: Any | None = None
-

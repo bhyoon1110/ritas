@@ -42,6 +42,9 @@ class Settings:
     llm_max_input_chars: int = 200_000
     processor_timeout_seconds: float = 600.0
     worker_poll_seconds: float = 2.0
+    spring_callback_url: str = ""
+    spring_callback_timeout_seconds: float = 60.0
+    spring_callback_max_attempts: int = 3
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -53,6 +56,9 @@ class Settings:
             os.getenv("RIST_STORAGE_ROOT", default_storage_root)
         ).expanduser()
         configured_pdf_font = os.getenv("RIST_PDF_FONT_PATH", "").strip()
+        default_spring_callback_url = (
+            f"{common.local_spring_boot_base_url}/api/v1/edge/reports"
+        )
         supported = frozenset(
             code.strip().upper()
             for code in os.getenv("RIST_SUPPORTED_EXPERIMENT_CODES", "").split(",")
@@ -148,5 +154,14 @@ class Settings:
             ),
             worker_poll_seconds=float(
                 os.getenv("RIST_WORKER_POLL_SECONDS", "2")
+            ),
+            spring_callback_url=os.getenv(
+                "RIST_SPRING_CALLBACK_URL", default_spring_callback_url
+            ).rstrip("/"),
+            spring_callback_timeout_seconds=float(
+                os.getenv("RIST_SPRING_CALLBACK_TIMEOUT_SECONDS", "60")
+            ),
+            spring_callback_max_attempts=int(
+                os.getenv("RIST_SPRING_CALLBACK_MAX_ATTEMPTS", "3")
             ),
         )

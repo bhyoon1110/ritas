@@ -20,7 +20,7 @@
 ## API 명세
 
 - [실험 PC - Edge 서버](EXPERIMENT_PC_EDGE_API.md)
-- [Edge 서버 - Spring Boot](EDGE_SPRING_BOOT_API.md)
+- [Edge - Local Spring Boot 결과 전달](EDGE_SPRING_BOOT_API.md)
 - [Edge 서버 - 로컬 LLM](EDGE_LOCAL_LLM_API.md)
 
 ## Edge API 실행

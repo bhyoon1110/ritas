@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import zipfile
 
+from app.models import ReportOptions
 from app.report.builders import FtirReportBuilder, get_builder
 from app.report.model import ReportDocument
-from app.report.renderers import render_requested_report
+from app.report.package import build_report_package
+from app.report.renderers import render_report_formats, render_requested_report
 
 
 def _job() -> dict:
@@ -176,3 +178,31 @@ def test_pdf_renderer_creates_pdf_file(tmp_path) -> None:
     assert rendered.name == "report.pdf"
     assert content.startswith(b"%PDF-")
     assert content.endswith(b"%%EOF\n")
+
+
+def test_report_package_excludes_internal_json_and_optionally_includes_raw(tmp_path) -> None:
+    analysis = [{"relativePath": "verdict.json", "data": _verdict()}]
+    document = FtirReportBuilder().build(_job(), analysis)
+    report_dir = tmp_path / "report"
+    input_dir = tmp_path / "input"
+    input_dir.mkdir(parents=True)
+    (input_dir / "raw.csv").write_text("raw", encoding="utf-8")
+    (report_dir / "report.json").parent.mkdir(parents=True)
+    (report_dir / "report.json").write_text("internal", encoding="utf-8")
+
+    rendered = render_report_formats(document, report_dir, ["HTML", "PPTX"])
+    package = build_report_package(report_dir, input_dir, include_raw_files=True)
+
+    assert {path.name for path in rendered} == {"report.html", "report.pptx"}
+    with zipfile.ZipFile(package) as archive:
+        names = set(archive.namelist())
+    assert {"report.html", "report.pptx", "raw/raw.csv"} <= names
+    assert "report.json" not in names
+
+
+def test_report_options_support_legacy_and_multiple_formats() -> None:
+    legacy = ReportOptions(reportFormat="PDF")
+    multiple = ReportOptions(reportFormats=["PDF", "HTML"])
+
+    assert legacy.report_formats == ["PDF"]
+    assert multiple.report_formats == ["PDF", "HTML"]

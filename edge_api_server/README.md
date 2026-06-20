@@ -22,9 +22,10 @@
 
 보고서 생성 API는 요청을 작업 폴더의 `queue` 영역에 기록한다. 별도 worker는
 `processed` 폴더에 장비별 분석 코드가 생성한 JSON을 읽고 규칙 기반 보고서를
-작성한 뒤, 로컬 LLM으로 자유서술 슬롯만 보강해 `report.json`, `report.md`,
-요청 포맷의 `report.pptx` 또는 `report.pdf`를 만든다. `report.json`은 정해진
-보고서 양식의 구조화 표현이며 PPTX/PDF 렌더링의 기준 데이터이다.
+작성한 뒤, 로컬 LLM으로 자유서술 슬롯만 보강한다. 요청한 PDF/PPTX/HTML과
+Markdown을 `report-package.zip`으로 패키징하며, `includeRawFiles=true`이면
+원본 bundle도 함께 넣는다. 분석 결과와 LLM용 JSON은 Edge 내부 데이터로 ZIP에
+포함하지 않는다. Spring Boot 전달 계약은 루트의 `EDGE_SPRING_BOOT_API.md`를 따른다.
 
 ## 설치 및 실행
 
@@ -62,11 +63,11 @@ python -m app.run
 환경 전환:
 
 ```bash
-# 개발 환경: http://192.168.0.10:8000
+# 개발 환경: http://bhyoon.me:8000
 export RIST_ENV=development
 python -m app.run
 
-# 운영 환경: http://bhyoon.me:8000
+# 운영 환경: http://192.168.0.10:8000
 export RIST_ENV=production
 python -m app.run
 ```
@@ -80,10 +81,10 @@ python -m app.run
 
 API 문서:
 
-- 개발 Swagger UI: `http://192.168.0.10:8000/docs`
-- 개발 OpenAPI JSON: `http://192.168.0.10:8000/openapi.json`
-- 개발 상태 확인: `http://192.168.0.10:8000/health`
-- 로컬 LLM 상태 확인: `http://192.168.0.10:8000/health/llm`
+- 개발 Swagger UI: `http://bhyoon.me:8000/docs`
+- 개발 OpenAPI JSON: `http://bhyoon.me:8000/openapi.json`
+- 개발 상태 확인: `http://bhyoon.me:8000/health`
+- 로컬 LLM 상태 확인: `http://bhyoon.me:8000/health/llm`
 
 ## 환경 변수
 
@@ -127,6 +128,13 @@ API 문서:
 | `RIST_PROCESSOR_TIMEOUT_SECONDS` | `600` | 자동 processor 실행 제한 시간 |
 | `RIST_PROCESSOR_COMMAND_<EXPERIMENT>` | 없음 | 분석 JSON이 없을 때 실행할 processor 명령 템플릿 |
 | `RIST_WORKER_POLL_SECONDS` | `2` | worker 큐 조회 간격 |
+| `RIST_SPRING_CALLBACK_URL` | 프로파일 기본 URL | 로컬 Spring Boot 결과 수신 URL 전체 재정의 |
+| `RIST_SPRING_CALLBACK_TIMEOUT_SECONDS` | `60` | Spring Boot 전달 제한 시간 |
+| `RIST_SPRING_CALLBACK_MAX_ATTEMPTS` | `3` | Spring Boot 전달 최대 시도 횟수 |
+
+`LOCAL_SPRING_BOOT_BASE_URL`은 환경 프로파일의 Spring Boot 기본 주소이며,
+Edge는 `{BASE_URL}/api/v1/edge/reports`로 전달한다. 다른 경로를 쓰면
+`RIST_SPRING_CALLBACK_URL`에 전체 URL을 지정한다.
 
 ## 데이터베이스
 

@@ -26,6 +26,7 @@ def write_profile(path: Path, host: str, environment: str, storage_root: str | N
         "LOCAL_LLM_MAX_IMAGE_BYTES=2097152",
         "PUBLIC_DOMAIN=bhyoon.me",
         f"EDGE_STORAGE_ROOT={storage_root or path.parent / 'edge-jobs'}",
+        "LOCAL_SPRING_BOOT_BASE_URL=http://127.0.0.1:8080",
     ]
     path.write_text("\n".join(lines), encoding="utf-8")
 
@@ -65,6 +66,7 @@ def test_settings_switch_to_production(monkeypatch, tmp_path: Path) -> None:
     assert settings.environment == "production"
     assert settings.edge_public_base_url == "http://bhyoon.me:8000"
     assert settings.api_port == 8000
+    assert settings.spring_callback_url == "http://127.0.0.1:8080/api/v1/edge/reports"
 
 
 def test_storage_root_from_profile(monkeypatch, tmp_path: Path) -> None:
@@ -105,3 +107,17 @@ def test_storage_root_env_overrides_profile(monkeypatch, tmp_path: Path) -> None
     assert settings.llm_model == "test-model"
     assert settings.llm_temperature == 0.1
     assert settings.llm_max_tokens == 1200
+
+
+def test_spring_callback_url_overrides_profile(monkeypatch, tmp_path: Path) -> None:
+    write_profile(tmp_path / "development.env", "bhyoon.me", "development")
+    write_profile(tmp_path / "production.env", "192.168.0.10", "production")
+    monkeypatch.setenv("RIST_CONFIG_DIR", str(tmp_path))
+    monkeypatch.setenv("RIST_ENV", "development")
+    monkeypatch.setenv(
+        "RIST_SPRING_CALLBACK_URL", "http://127.0.0.1:9090/custom/results"
+    )
+
+    settings = Settings.from_env()
+
+    assert settings.spring_callback_url == "http://127.0.0.1:9090/custom/results"

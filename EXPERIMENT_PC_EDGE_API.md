@@ -286,18 +286,22 @@ Idempotency-Key: {jobId}:generate-report
 {
   "requestedAt": "2026-06-13T14:31:15.000+09:00",
   "options": {
-    "reportFormat": "PPTX",
-    "includeRawFiles": false
+    "reportFormats": ["PDF", "PPTX", "HTML"],
+    "includeRawFiles": true
   }
 }
 ```
 
-`options`는 선택 필드이며 장비별 processor가 지원하지 않는 옵션은 무시하지
-말고 `400 Bad Request`로 응답한다.
+`options`는 선택 필드이다. `reportFormat`은 기존 실험 PC 호환을 위해 유지하며,
+새 구현은 `reportFormats` 배열을 사용한다. 두 필드를 함께 보내면
+`reportFormats`가 우선한다.
 
-- `reportFormat` 지원값: `PPTX`, `PDF`
-- `reportFormat`을 생략한 경우 기본값: `PPTX`
+- `reportFormats` 지원값: `PPTX`, `PDF`, `HTML` (중복 불가)
+- 두 형식을 모두 생략한 경우 기본값: `PPTX`
 - `includeRawFiles`를 생략한 경우 기본값: `false`
+- `includeRawFiles=true`이면 Edge가 Spring Boot로 전달하는 최종 ZIP에 원본
+  bundle을 `raw/` 경로로 함께 넣는다. `false`여도 원본은 Edge `input/`에
+  보관하며 ZIP에만 포함하지 않는다.
 
 #### 성공 응답: `202 Accepted`
 
@@ -312,9 +316,11 @@ Idempotency-Key: {jobId}:generate-report
 이 API는 비동기 처리 시작만 보장한다. 최종 완료 여부는 상태 조회 응답으로
 확인한다.
 
-worker는 완료 시 `{jobRoot}/report/report.json`과 `report.md`를 항상 만들고,
-`reportFormat`에 따라 `report.pptx` 또는 `report.pdf`를 추가 생성한다.
-`report.json`은 고정 보고서 양식의 구조화 데이터이며 최종 렌더링의 기준이다.
+worker는 요청한 사용자용 `report.pdf`, `report.pptx`, `report.html` 및
+`report.md`를 만든 뒤 `{jobRoot}/report/report-package.zip`으로 묶는다.
+분석 결과 JSON, LLM 요청/응답 JSON, 내부 `report.json`은 Edge 내부 처리용이며
+Spring Boot 전달 ZIP에는 포함하지 않는다. 전달 API는
+[`EDGE_SPRING_BOOT_API.md`](EDGE_SPRING_BOOT_API.md)를 따른다.
 
 #### 오류
 
@@ -326,6 +332,7 @@ worker는 완료 시 `{jobRoot}/report/report.json`과 `report.md`를 항상 만
 
 ```http
 GET /api/v1/jobs/{jobId}
+X-Request-Id: 771e92ae-d06d-42e3-b2c8-d1846619987c
 ```
 
 #### 성공 응답: `200 OK`
@@ -356,8 +363,8 @@ GET /api/v1/jobs/{jobId}
   "status": "FAILED",
   "progress": 42,
   "error": {
-    "code": "PROCESSOR_INPUT_INVALID",
-    "message": "ICDD PDF 파일을 찾을 수 없습니다.",
+    "code": "SPRING_CALLBACK_CONNECTION_FAILED",
+    "message": "Spring Boot 결과 전달 연결에 실패했습니다.",
     "retryable": false
   }
 }
@@ -373,8 +380,8 @@ GET /api/v1/jobs/{jobId}
 | `FILES_VERIFIED` | 파일 수신 및 무결성 검증 완료 |
 | `QUEUED` | 보고서 생성 대기 |
 | `PROCESSING` | 전처리, 분석 또는 보고서 생성 중 |
-| `CALLBACK_PENDING` | 보고서 생성 완료, Spring Boot 통보 대기 |
-| `COMPLETED` | Spring Boot 완료 통보까지 성공 |
+| `CALLBACK_PENDING` | 최종 ZIP 생성 완료, Spring Boot 전달 중 |
+| `COMPLETED` | Spring Boot가 ZIP을 성공적으로 수신 |
 | `FAILED` | 복구되지 않은 오류로 작업 실패 |
 
 상태는 이전 단계로 되돌리지 않는다.
@@ -412,7 +419,8 @@ GET /api/v1/jobs/{jobId}
 
 - 파일명과 상대 경로는 원본을 보존하되 서버에서 경로 탐색 공격을 차단한다.
 - 실행 파일과 스크립트의 허용 여부는 장비별 allowlist로 제한한다.
-- 수신 파일은 보고서 처리 전에 SHA-256과 악성코드 검사를 수행한다.
+- 수신 파일은 보고서 처리 전에 SHA-256을 검증한다. 악성코드 검사는 Edge 운영
+  환경의 별도 보안 정책으로 적용한다.
 - Edge API 포트는 등록된 실험 PC의 고정 IP에서만 접근하도록 제한한다.
 - API 로그에는 PK, `jobId`, 요청 시각, 호출 PC 및 결과 코드가 포함되어야 한다.
 - 원본 실험 파일과 보고서의 보존 및 삭제 기간은 운영 정책으로 별도 관리한다.

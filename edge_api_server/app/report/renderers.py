@@ -38,6 +38,31 @@ def render_requested_report(
     return path
 
 
+def render_report_formats(
+    document: ReportDocument,
+    report_dir: Path,
+    report_formats: list[str],
+    *,
+    pdf_font_path: Path | None = None,
+) -> list[Path]:
+    """요청한 사용자용 산출물을 모두 렌더링한다."""
+    rendered: list[Path] = []
+    for report_format in report_formats:
+        selected = report_format.upper()
+        if selected == "HTML":
+            path = report_dir / "report.html"
+            render_html(document, path)
+        else:
+            path = render_requested_report(
+                document,
+                report_dir,
+                selected,
+                pdf_font_path=pdf_font_path,
+            )
+        rendered.append(path)
+    return rendered
+
+
 def _section_lines(section: ReportSection) -> list[str]:
     lines: list[str] = []
     lines.extend(section.paragraphs)
@@ -66,6 +91,46 @@ def _plain_lines(document: ReportDocument) -> list[str]:
     if document.llm_error:
         lines.append(f"LLM 보조 설명 생성 실패: {document.llm_error}")
     return lines
+
+
+def render_html(document: ReportDocument, path: Path) -> None:
+    """외부 자산 없이 열 수 있는 사용자용 HTML 보고서를 만든다."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    sections: list[str] = []
+    for section in document.sections:
+        body = "".join(
+            f"<p>{html.escape(paragraph)}</p>" for paragraph in section.paragraphs
+        )
+        if section.bullets:
+            body += "<ul>" + "".join(
+                f"<li>{html.escape(bullet)}</li>" for bullet in section.bullets
+            ) + "</ul>"
+        if section.table:
+            header = "".join(
+                f"<th>{html.escape(column)}</th>" for column in section.table.columns
+            )
+            rows = "".join(
+                "<tr>" + "".join(f"<td>{html.escape(cell)}</td>" for cell in row) + "</tr>"
+                for row in section.table.rows
+            )
+            body += f"<table><thead><tr>{header}</tr></thead><tbody>{rows}</tbody></table>"
+        sections.append(f"<section><h2>{html.escape(section.heading)}</h2>{body}</section>")
+    metadata = " · ".join(
+        f"{label}: {html.escape(document.pk.get(key, ''))}"
+        for label, key in (("요청번호", "requestNumber"), ("실험", "experimentCode"), ("장비", "equipmentCode"), ("작업자", "operatorId"))
+    )
+    path.write_text(
+        "<!doctype html><html lang=\"ko\"><head><meta charset=\"utf-8\">"
+        f"<title>{html.escape(document.title)}</title><style>"
+        "body{font-family:Arial,sans-serif;line-height:1.6;margin:40px;max-width:920px}"
+        "h1{margin-bottom:4px}h2{margin-top:32px}table{border-collapse:collapse;width:100%}"
+        "th,td{border:1px solid #bbb;padding:7px;text-align:left}th{background:#f0f4f8}"
+        "</style></head><body>"
+        f"<h1>{html.escape(document.title)}</h1><p>{metadata}</p>"
+        f"<p>생성시각: {html.escape(document.generated_at)}</p>{''.join(sections)}"
+        "</body></html>",
+        encoding="utf-8",
+    )
 
 
 def _pdf_font_name(font_path: Path | None) -> str:

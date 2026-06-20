@@ -13,6 +13,7 @@ from .database import Database
 from .llm_client import LocalLlmClient
 from .manifest import write_manifest
 from .report import generate_report
+from .spring_callback import SpringCallbackClient, SpringCallbackError
 from .time_utils import isoformat_kst
 
 logger = get_logger(__name__)
@@ -24,10 +25,16 @@ class ReportWorker:
         settings: Settings,
         database: Database,
         llm_client: LocalLlmClient,
+        spring_client: SpringCallbackClient | None = None,
     ) -> None:
         self.settings = settings
         self.database = database
         self.llm_client = llm_client
+        self.spring_client = spring_client or SpringCallbackClient(
+            settings.spring_callback_url,
+            settings.spring_callback_timeout_seconds,
+            settings.spring_callback_max_attempts,
+        )
 
     def run_once(self) -> bool:
         queued = self.database.fetch_jobs_by_status("QUEUED", limit=1)
@@ -53,6 +60,21 @@ class ReportWorker:
                 llm_client=self.llm_client,
                 generated_at=generated_at,
             )
+            package_path = (
+                self.settings.storage_root
+                / job["root_relative_path"]
+                / "report"
+                / "report-package.zip"
+            )
+            if self.spring_client.enabled:
+                self.database.update_job(
+                    job_id,
+                    status="CALLBACK_PENDING",
+                    progress=90,
+                    error_json=None,
+                )
+                self._write_manifest(job_id)
+                self.spring_client.deliver(job, package_path)
             self.database.update_job(
                 job_id,
                 status="COMPLETED",
@@ -72,6 +94,8 @@ class ReportWorker:
                 str(exc),
                 False,
             )
+        except SpringCallbackError as exc:
+            self._mark_failed(job_id, exc.code, str(exc), exc.retryable)
         except Exception as exc:
             logger.exception("보고서 worker 처리 중 예외 발생 (job_id=%s)", job_id)
             self._mark_failed(
@@ -139,6 +163,7 @@ def main() -> None:
             worker.run_once()
         finally:
             worker.llm_client.close()
+            worker.spring_client.close()
             worker.database.close()
         return
 
@@ -162,6 +187,7 @@ def main() -> None:
                 time.sleep(worker.settings.worker_poll_seconds)
     finally:
         worker.llm_client.close()
+        worker.spring_client.close()
         worker.database.close()
         logger.info("보고서 worker가 종료되었습니다.")
 
