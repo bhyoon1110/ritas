@@ -8,7 +8,7 @@
 
 사용 예:
     python scripts/smoke_test_api.py
-    python scripts/smoke_test_api.py --base-url http://192.168.0.10:8000
+    python scripts/smoke_test_api.py --base-url http://bhyoon.me:8000
     python scripts/smoke_test_api.py --files 5            # 5개 파일 업로드
     python scripts/smoke_test_api.py --skip-report        # 보고서/LLM 생략
     python scripts/smoke_test_api.py --skip-negative      # 에러 케이스 생략
@@ -177,12 +177,7 @@ def expect_error(
     return True
 
 
-def job_payload(
-    request_number: str,
-    args: argparse.Namespace,
-    file_count: int,
-    total_size: int,
-) -> dict:
+def job_payload(request_number: str, args: argparse.Namespace) -> dict:
     return {
         "pk": {
             "requestNumber": request_number,
@@ -195,7 +190,6 @@ def job_payload(
             "declaredIpAddress": "127.0.0.1",
             "clientVersion": "smoke-1.0",
         },
-        "bundle": {"fileCount": file_count, "totalSizeBytes": total_size},
     }
 
 
@@ -251,8 +245,7 @@ def check_create_job(
 ) -> str | None:
     reporter.section("[3] 작업 생성")
     request_number = args.request_number or f"SMOKE-{int(time.time())}"
-    total = sum(f.size for f in files)
-    payload = job_payload(request_number, args, len(files), total)
+    payload = job_payload(request_number, args)
     key = ikey(f"create:{request_number}")
     try:
         resp = client.post("/api/v1/jobs", json=payload, headers=headers(key))
@@ -330,13 +323,80 @@ def check_upload_files(
     return all_ok
 
 
+def check_file_crud(
+    client: httpx.Client,
+    reporter: Reporter,
+    job_id: str,
+    files: list[SampleFile],
+) -> bool:
+    reporter.section("[5] 파일 목록·교체·삭제")
+    if not files:
+        reporter.skip("파일 CRUD", "업로드 파일 없음")
+        return True
+    listed = client.get(f"/api/v1/jobs/{job_id}/files", headers=headers())
+    if not expect_status(reporter, "GET /api/v1/jobs/{id}/files", listed, 200):
+        return False
+    if len(listed.json().get("files", [])) != len(files):
+        reporter.fail("  └ 파일 목록", "업로드 개수와 다름")
+        return False
+    reporter.ok("  └ 파일 목록", f"{len(files)}개")
+
+    first = files[0]
+    replacement = SampleFile(first.relative_path, first.content + b"# replaced\n")
+    replaced = client.put(
+        f"/api/v1/jobs/{job_id}/files/{first.relative_path}",
+        files={"file": (first.relative_path.split("/")[-1], replacement.content, "text/plain")},
+        data={"sizeBytes": str(replacement.size), "sha256": replacement.sha256},
+        headers=headers(ikey(f"{job_id}:replace:{replacement.sha256}")),
+    )
+    if not expect_status(reporter, "PUT /api/v1/jobs/{id}/files/{path}", replaced, 201):
+        return False
+    files[0] = replacement
+
+    temporary = SampleFile("raw/smoke_delete_me.txt", b"delete-me\n")
+    created = client.post(
+        f"/api/v1/jobs/{job_id}/files",
+        files={"file": ("smoke_delete_me.txt", temporary.content, "text/plain")},
+        data={
+            "relativePath": temporary.relative_path,
+            "sizeBytes": str(temporary.size),
+            "sha256": temporary.sha256,
+        },
+        headers=headers(ikey(f"{job_id}:create-delete")),
+    )
+    if not expect_status(reporter, "  └ 삭제용 파일 업로드", created, 201):
+        return False
+    deleted = client.delete(
+        f"/api/v1/jobs/{job_id}/files/{temporary.relative_path}",
+        headers=headers(ikey(f"{job_id}:delete:{temporary.relative_path}")),
+    )
+    return expect_status(reporter, "DELETE /api/v1/jobs/{id}/files/{path}", deleted, 200)
+
+
+def check_request_list(
+    client: httpx.Client, reporter: Reporter, request_number: str
+) -> None:
+    reporter.section("[6] 의뢰 번호 목록 조회")
+    response = client.get("/api/v1/requests?page=1&pageSize=50", headers=headers())
+    if not expect_status(reporter, "GET /api/v1/requests", response, 200):
+        return
+    found = any(
+        item.get("requestNumber") == request_number
+        for item in response.json().get("items", [])
+    )
+    if found:
+        reporter.ok("  └ 생성한 의뢰 포함", request_number)
+    else:
+        reporter.fail("  └ 생성한 의뢰 포함", request_number)
+
+
 def check_complete_upload(
     client: httpx.Client,
     reporter: Reporter,
     job_id: str,
     files: list[SampleFile],
 ) -> bool:
-    reporter.section("[5] 업로드 완료(검증)")
+    reporter.section("[7] 업로드 완료(검증)")
     try:
         resp = client.post(
             f"/api/v1/jobs/{job_id}/uploads/complete",
@@ -380,7 +440,7 @@ def check_complete_upload(
 def check_request_report(
     client: httpx.Client, reporter: Reporter, job_id: str
 ) -> bool:
-    reporter.section("[6] 보고서 생성 요청")
+    reporter.section("[8] 보고서 생성 요청")
     try:
         resp = client.post(
             f"/api/v1/jobs/{job_id}/report",
@@ -404,7 +464,7 @@ def check_job_status(
     poll_interval: float,
     wait_terminal: bool,
 ) -> None:
-    reporter.section("[7] 작업 상태 조회" + (" + 폴링" if wait_terminal else ""))
+    reporter.section("[9] 작업 상태 조회" + (" + 폴링" if wait_terminal else ""))
     terminal = {"REPORT_READY", "COMPLETED", "FAILED"}
     deadline = time.monotonic() + poll_timeout
     last_status = None
@@ -470,7 +530,7 @@ def check_negative(
     req_no = f"NEG-{int(time.time())}-{uuid4().hex[:6]}"
 
     # (2) Idempotency-Key 누락 → 400
-    payload = job_payload(req_no, args, 1, 10)
+    payload = job_payload(req_no, args)
     resp = client.post(
         "/api/v1/jobs", json=payload, headers={"X-Request-Id": str(uuid4())}
     )
@@ -492,7 +552,7 @@ def check_negative(
 
     # 에러 업로드 검증용 작업 생성(파일 1개 선언)
     neg_content = b"negative-test-payload-0123456789"
-    neg_payload = job_payload(req_no, args, 1, len(neg_content))
+    neg_payload = job_payload(req_no, args)
     create_key = f"neg:create:{req_no}"
     created = client.post(
         "/api/v1/jobs", json=neg_payload, headers=headers(create_key)
@@ -515,7 +575,8 @@ def check_negative(
     )
 
     # (6) 멱등성 키 재사용(다른 본문) → 409
-    other = job_payload(req_no, args, 2, 20)
+    other = job_payload(req_no, args)
+    other["sourcePc"]["clientVersion"] = "smoke-1.0-different"
     reuse = client.post("/api/v1/jobs", json=other, headers=headers(create_key))
     expect_error(
         reporter, "멱등성 키 재사용(다른 본문)", reuse, 409, "IDEMPOTENCY_KEY_REUSED"
@@ -591,7 +652,7 @@ def check_negative(
     too_long = "k" * 129
     resp = client.post(
         "/api/v1/jobs",
-        json=job_payload(f"NEG-LONG-{uuid4().hex[:6]}", args, 1, 10),
+        json=job_payload(f"NEG-LONG-{uuid4().hex[:6]}", args),
         headers={"X-Request-Id": str(uuid4()), "Idempotency-Key": too_long},
     )
     expect_error(
@@ -638,6 +699,8 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
+    if args.request_number is None:
+        args.request_number = f"SMOKE-{int(time.time())}"
     reporter = Reporter()
     files = build_sample_files(max(1, args.files))
 
@@ -659,12 +722,18 @@ def main() -> int:
             print(f"\n{RED}작업 생성 실패로 정상 플로우를 중단합니다.{RESET}")
         else:
             uploaded = check_upload_files(client, reporter, job_id, files)
-            completed = uploaded and check_complete_upload(
+            crud_ok = uploaded and check_file_crud(client, reporter, job_id, files)
+            check_request_list(
+                client,
+                reporter,
+                args.request_number,
+            )
+            completed = crud_ok and check_complete_upload(
                 client, reporter, job_id, files
             )
 
             if args.skip_report:
-                reporter.section("[6] 보고서 생성 요청")
+                reporter.section("[8] 보고서 생성 요청")
                 reporter.skip("POST /api/v1/jobs/{id}/report", "--skip-report")
                 check_job_status(
                     client,
@@ -685,7 +754,7 @@ def main() -> int:
                         wait_terminal=True,
                     )
             else:
-                reporter.section("[6] 보고서 생성 요청")
+                reporter.section("[8] 보고서 생성 요청")
                 reporter.skip(
                     "POST /api/v1/jobs/{id}/report", "이전 단계 실패로 생략"
                 )

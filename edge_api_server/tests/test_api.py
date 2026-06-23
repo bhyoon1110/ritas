@@ -37,7 +37,7 @@ def create_client(tmp_path: Path, db: dict) -> TestClient:
     return TestClient(create_app(settings))
 
 
-def job_payload(size: int) -> dict:
+def job_payload() -> dict:
     return {
         "pk": {
             "requestNumber": "REQ-2026-00123",
@@ -50,23 +50,18 @@ def job_payload(size: int) -> dict:
             "declaredIpAddress": "10.10.20.31",
             "clientVersion": "1.0.0",
         },
-        "bundle": {"fileCount": 1, "totalSizeBytes": size},
     }
 
 
 def test_create_job_accepts_no_legacy_bundle() -> None:
-    payload = job_payload(1)
-    payload.pop("bundle")
-
-    request = CreateJobRequest.model_validate(payload)
+    request = CreateJobRequest.model_validate(job_payload())
 
     assert request.bundle is None
 
 
 def test_file_crud_and_request_list(tmp_path: Path, mariadb: dict) -> None:
     client = create_client(tmp_path, mariadb)
-    payload = job_payload(1)
-    payload.pop("bundle")
+    payload = job_payload()
     created = client.post("/api/v1/jobs", json=payload, headers=headers(str(uuid4())))
     assert created.status_code == 201
     job_id = created.json()["jobId"]
@@ -116,7 +111,7 @@ def test_full_upload_and_report_flow(tmp_path: Path, mariadb: dict) -> None:
     create_key = str(uuid4())
     create_response = client.post(
         "/api/v1/jobs",
-        json=job_payload(len(content)),
+        json=job_payload(),
         headers=headers(create_key),
     )
     assert create_response.status_code == 201
@@ -124,7 +119,7 @@ def test_full_upload_and_report_flow(tmp_path: Path, mariadb: dict) -> None:
 
     repeated = client.post(
         "/api/v1/jobs",
-        json=job_payload(len(content)),
+        json=job_payload(),
         headers=headers(create_key),
     )
     assert repeated.status_code == 201
@@ -160,6 +155,15 @@ def test_full_upload_and_report_flow(tmp_path: Path, mariadb: dict) -> None:
     assert complete_response.status_code == 200
     assert complete_response.json()["status"] == "FILES_VERIFIED"
 
+    blocked_update = client.put(
+        f"/api/v1/jobs/{job_id}/files/raw/Mix2.txt",
+        files={"file": ("Mix2.txt", content, "text/plain")},
+        data={"sizeBytes": str(len(content)), "sha256": digest},
+        headers=headers(str(uuid4())),
+    )
+    assert blocked_update.status_code == 409
+    assert blocked_update.json()["code"] == "JOB_STATE_CONFLICT"
+
     report_response = client.post(
         f"/api/v1/jobs/{job_id}/report",
         json={
@@ -190,7 +194,7 @@ def test_rejects_hash_mismatch(tmp_path: Path, mariadb: dict) -> None:
     content = b"test"
     create_response = client.post(
         "/api/v1/jobs",
-        json=job_payload(len(content)),
+        json=job_payload(),
         headers=headers(str(uuid4())),
     )
     job_id = create_response.json()["jobId"]
@@ -211,7 +215,7 @@ def test_rejects_hash_mismatch(tmp_path: Path, mariadb: dict) -> None:
 
 def test_requires_headers(tmp_path: Path, mariadb: dict) -> None:
     client = create_client(tmp_path, mariadb)
-    response = client.post("/api/v1/jobs", json=job_payload(1))
+    response = client.post("/api/v1/jobs", json=job_payload())
     assert response.status_code == 400
     assert response.json()["code"] in {
         "MISSING_REQUEST_ID",
@@ -225,7 +229,7 @@ def test_rejects_oversized_idempotency_key(
     client = create_client(tmp_path, mariadb)
     response = client.post(
         "/api/v1/jobs",
-        json=job_payload(1),
+        json=job_payload(),
         headers={"X-Request-Id": str(uuid4()), "Idempotency-Key": "k" * 129},
     )
     assert response.status_code == 400
@@ -239,12 +243,12 @@ def test_rejects_idempotency_key_with_different_request(
     key = str(uuid4())
     first = client.post(
         "/api/v1/jobs",
-        json=job_payload(1),
+        json=job_payload(),
         headers=headers(key),
     )
     assert first.status_code == 201
 
-    changed = job_payload(2)
+    changed = job_payload()
     changed["pk"]["requestNumber"] = "REQ-2026-99999"
     second = client.post(
         "/api/v1/jobs",
@@ -272,7 +276,7 @@ def test_expired_upload_returns_gone(tmp_path: Path, mariadb: dict) -> None:
     digest = hashlib.sha256(content).hexdigest()
     create_response = client.post(
         "/api/v1/jobs",
-        json=job_payload(len(content)),
+        json=job_payload(),
         headers=headers(str(uuid4())),
     )
     job_id = create_response.json()["jobId"]
@@ -305,7 +309,7 @@ def test_worker_calls_local_llm_and_saves_report(
     digest = hashlib.sha256(content).hexdigest()
     create_response = client.post(
         "/api/v1/jobs",
-        json=job_payload(len(content)),
+        json=job_payload(),
         headers=headers(str(uuid4())),
     )
     job_id = create_response.json()["jobId"]
@@ -458,7 +462,7 @@ def test_worker_completes_report_without_llm(
     digest = hashlib.sha256(content).hexdigest()
     create_response = client.post(
         "/api/v1/jobs",
-        json=job_payload(len(content)),
+        json=job_payload(),
         headers=headers(str(uuid4())),
     )
     job_id = create_response.json()["jobId"]
@@ -553,7 +557,7 @@ def test_worker_fails_without_structured_analysis(
     digest = hashlib.sha256(content).hexdigest()
     create_response = client.post(
         "/api/v1/jobs",
-        json=job_payload(len(content)),
+        json=job_payload(),
         headers=headers(str(uuid4())),
     )
     job_id = create_response.json()["jobId"]
