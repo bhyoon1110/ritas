@@ -103,8 +103,8 @@ Edge 서버는 작업 등록 시 서버 시간을 기준으로 작업 폴더를 
 | 헤더 | 필수 | 설명 |
 |---|---:|---|
 | `X-Request-Id` | Y | 호출 추적용 UUID. 재시도 시 같은 값 사용 |
-| `Idempotency-Key` | POST 요청 | 중복 처리 방지 키. 재시도 시 같은 값 사용 |
-| `Content-Type` | Y | 요청별 콘텐츠 타입 |
+| `Idempotency-Key` | POST/PUT/DELETE | 중복 처리 방지 키. 재시도 시 같은 값 사용 |
+| `Content-Type` | 본문 전송 시 | JSON 또는 multipart 요청의 콘텐츠 타입 |
 
 ## 7. API
 
@@ -130,13 +130,15 @@ Idempotency-Key: 771e92ae-d06d-42e3-b2c8-d1846619987c
     "hostName": "LAB-PC-XRD-01",
     "declaredIpAddress": "10.10.20.31",
     "clientVersion": "1.0.0"
-  },
-  "bundle": {
-    "fileCount": 3,
-    "totalSizeBytes": 8392401
   }
 }
 ```
+
+파일 수와 전체 크기는 이 시점에 선언하지 않는다. 파일 업로드·교체·삭제를 마친
+뒤 `uploads/complete`에서 최종 파일 목록과 함께 확정한다.
+
+기존 PC 호환용 `bundle.fileCount`, `bundle.totalSizeBytes`는 당분간 허용하지만
+완료 검증 기준으로 사용하지 않는 deprecated 필드이다.
 
 `sourcePc.declaredIpAddress`는 실험 PC가 자체적으로 확인한 참고 정보이다.
 접근 통제와 감사 로그에는 Edge 서버가 TCP 연결에서 확인한 원격 IP를
@@ -159,7 +161,7 @@ Idempotency-Key: 771e92ae-d06d-42e3-b2c8-d1846619987c
 
 #### 오류
 
-- `400 Bad Request`: PK 또는 bundle 정보 오류
+- `400 Bad Request`: PK 또는 sourcePc 정보 오류
 - `409 Conflict`: 동일 복합 PK의 활성 작업이 존재하거나 멱등키 요청 내용이 다름
 - `500 Internal Server Error`: 폴더 또는 작업 생성 실패
 
@@ -203,6 +205,21 @@ Idempotency-Key: {jobId}:{relativePath}:{sha256}
 같은 `Idempotency-Key`와 동일한 파일을 다시 전송하면 기존 성공 결과를
 반환한다. 경로는 같지만 해시가 다르면 `409 Conflict`를 반환한다.
 
+#### 파일 교체·조회·삭제
+
+```http
+PUT /api/v1/jobs/{jobId}/files/{relativePath}
+GET /api/v1/jobs/{jobId}/files
+DELETE /api/v1/jobs/{jobId}/files/{relativePath}
+```
+
+- `PUT`은 같은 `relativePath`의 파일을 새 파일로 교체한다. multipart 필드는
+  `POST`와 같되 경로는 URL에서 받으므로 `relativePath`를 보내지 않는다.
+- `GET`은 현재 업로드된 파일의 경로, 크기, SHA-256, 업로드 시각을 반환한다.
+- `DELETE`는 Edge 저장 파일과 메타데이터를 함께 삭제한다.
+- 세 작업은 `CREATED`, `UPLOADING` 상태에서만 허용한다. `FILES_VERIFIED` 이후
+  입력 파일은 불변이며 변경 요청은 `409 Conflict`를 반환한다.
+
 #### 오류
 
 - `400 Bad Request`: 잘못된 상대 경로 또는 메타데이터
@@ -214,8 +231,9 @@ Idempotency-Key: {jobId}:{relativePath}:{sha256}
 
 ### 7.3 파일 전송 완료
 
-실험 PC가 모든 파일을 전송한 후 호출한다. Edge 서버는 등록 당시 선언된
-파일 개수와 전체 크기, 개별 파일 해시를 검증한다.
+실험 PC가 모든 파일 업로드·교체·삭제를 마친 뒤 호출한다. 이 요청은 이번
+분석에 사용할 최종 입력 파일 집합을 확정하는 선언이며, Edge 서버는 실제
+업로드 파일의 개수, 전체 크기, 개별 해시를 검증한다.
 
 ```http
 POST /api/v1/jobs/{jobId}/uploads/complete
@@ -249,7 +267,8 @@ Idempotency-Key: {jobId}:uploads-complete
 }
 ```
 
-`files`에는 실제 bundle의 전체 파일을 전달한다.
+`files`에는 실제 bundle의 전체 파일을 전달한다. `fileCount`는 `files` 배열
+길이와 같아야 하고, `totalSizeBytes`는 파일 크기의 합계와 같아야 한다.
 
 동일한 `Idempotency-Key`와 동일한 요청 본문으로 재호출하면 기존
 `FILES_VERIFIED` 응답을 반환한다. 이미 검증이 끝난 작업에 다른 파일 목록을
@@ -361,14 +380,47 @@ X-Request-Id: 771e92ae-d06d-42e3-b2c8-d1846619987c
 {
   "jobId": "e575b716-25d6-49c6-a7c0-3e2b7136fb2c",
   "status": "FAILED",
-  "progress": 42,
+  "progress": 50,
   "error": {
     "code": "SPRING_CALLBACK_CONNECTION_FAILED",
     "message": "Spring Boot 결과 전달 연결에 실패했습니다.",
-    "retryable": false
+    "retryable": true
   }
 }
 ```
+
+### 7.6 의뢰 번호 목록 조회
+
+```http
+GET /api/v1/requests?page=1&pageSize=50
+X-Request-Id: 771e92ae-d06d-42e3-b2c8-d1846619987c
+```
+
+동일 `requestNumber`를 가진 장비별 작업을 집계해 반환한다. 이 API는 조회용이며
+의뢰 단위 통합 보고서를 생성하지 않는다.
+Edge DB의 `request_summary` View를 조회하므로 파일·상태 변경이 즉시 반영된다.
+
+```json
+{
+  "page": 1,
+  "pageSize": 50,
+  "items": [
+    {
+      "requestNumber": "REQ-2026-00123",
+      "jobCount": 2,
+      "completedJobCount": 1,
+      "failedJobCount": 0,
+      "statuses": ["COMPLETED", "PROCESSING"],
+      "experiments": ["FT-IR", "XRD"],
+      "equipmentCodes": ["FTIR-01", "XRD-01"],
+      "createdAt": "2026-06-13T14:30:25.123+09:00",
+      "updatedAt": "2026-06-13T14:35:25.123+09:00"
+    }
+  ]
+}
+```
+
+`page`는 1 이상, `pageSize`는 1~200이다.
 
 ## 8. 작업 상태
 

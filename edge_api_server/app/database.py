@@ -123,6 +123,26 @@ _SCHEMA: tuple[str, ...] = (
         PRIMARY KEY (endpoint, idempotency_key)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     """,
+    """
+    CREATE OR REPLACE VIEW request_summary AS
+    SELECT request_number,
+           COUNT(*) AS job_count,
+           SUM(status = 'COMPLETED') AS completed_job_count,
+           SUM(status = 'FAILED') AS failed_job_count,
+           GROUP_CONCAT(DISTINCT status ORDER BY status) AS statuses,
+           GROUP_CONCAT(DISTINCT experiment_code ORDER BY experiment_code) AS experiments,
+           GROUP_CONCAT(DISTINCT equipment_code ORDER BY equipment_code) AS equipment_codes,
+           MIN(created_at) AS created_at,
+           MAX(COALESCE(
+               completed_at,
+               processing_started_at,
+               report_requested_at,
+               verified_at,
+               created_at
+           )) AS updated_at
+    FROM jobs
+    GROUP BY request_number
+    """,
 )
 
 
@@ -440,6 +460,41 @@ class Database:
                 (job_id,),
             ).fetchall()
         return rows
+
+    def delete_file(self, job_id: str, relative_path: str) -> bool:
+        with self.transaction() as connection:
+            cursor = connection.execute(
+                "DELETE FROM files WHERE job_id = ? AND relative_path = ?",
+                (job_id, relative_path),
+            )
+        return cursor.rowcount == 1
+
+    def update_file(self, job_id: str, relative_path: str, **values: Any) -> None:
+        _validate_columns(
+            "files",
+            values,
+            FILE_COLUMNS - {"file_id", "job_id", "relative_path"},
+        )
+        assignments = ", ".join(f"{key} = ?" for key in values)
+        with self.transaction() as connection:
+            connection.execute(
+                "UPDATE files SET "
+                f"{assignments} WHERE job_id = ? AND relative_path = ?",
+                (*values.values(), job_id, relative_path),
+            )
+
+    def fetch_request_summaries(
+        self, limit: int, offset: int
+    ) -> list[dict[str, Any]]:
+        with self._connect() as connection:
+            return connection.execute(
+                """
+                SELECT * FROM request_summary
+                ORDER BY updated_at DESC
+                LIMIT ? OFFSET ?
+                """,
+                (limit, offset),
+            ).fetchall()
 
     def fetch_file(self, job_id: str, relative_path: str) -> dict[str, Any] | None:
         with self._connect() as connection:

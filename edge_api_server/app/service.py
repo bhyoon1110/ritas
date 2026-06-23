@@ -156,8 +156,8 @@ class EdgeService:
             "declared_ip_address": request.source_pc.declared_ip_address,
             "observed_remote_ip": observed_remote_ip,
             "client_version": request.source_pc.client_version,
-            "expected_file_count": request.bundle.file_count,
-            "expected_total_size_bytes": request.bundle.total_size_bytes,
+            "expected_file_count": 0,
+            "expected_total_size_bytes": 0,
             "status": "CREATED",
             "progress": 0,
             "created_at": isoformat_kst(created),
@@ -234,6 +234,8 @@ class EdgeService:
         declared_sha256: str,
         last_modified_at: str | None,
         idempotency_key: str,
+        *,
+        replace: bool = False,
     ) -> tuple[int, dict[str, Any]]:
         job = self.require_job(job_id)
         self.ensure_upload_open(job)
@@ -253,7 +255,8 @@ class EdgeService:
                 400, "INVALID_FILE_SIZE", "파일 크기가 올바르지 않습니다.", job_id=job_id
             )
 
-        endpoint = f"POST:/api/v1/jobs/{job_id}/files"
+        method = "PUT" if replace else "POST"
+        endpoint = f"{method}:/api/v1/jobs/{job_id}/files/{relative_path}"
         metadata_hash = self.request_hash(
             {
                 "relativePath": relative_path,
@@ -279,12 +282,13 @@ class EdgeService:
                     endpoint, idempotency_key, metadata_hash, 201, response
                 )
                 return 201, response
-            raise ApiException(
-                409,
-                "FILE_PATH_CONFLICT",
-                "같은 상대 경로에 다른 내용의 파일이 이미 등록되어 있습니다.",
-                job_id=job_id,
-            )
+            if not replace:
+                raise ApiException(
+                    409,
+                    "FILE_PATH_CONFLICT",
+                    "같은 상대 경로에 다른 내용의 파일이 이미 등록되어 있습니다.",
+                    job_id=job_id,
+                )
 
         job_root = self.settings.storage_root / job["root_relative_path"]
         target = resolve_under(job_root / "input", relative_path)
@@ -319,16 +323,33 @@ class EdgeService:
             temp_path.unlink(missing_ok=True)
 
         uploaded_at = isoformat_kst()
-        file_record = {
-            "file_id": str(uuid4()),
-            "job_id": job_id,
-            "relative_path": relative_path,
-            "size_bytes": actual_size,
-            "sha256": actual_sha256,
-            "last_modified_at": last_modified_at,
-            "uploaded_at": uploaded_at,
-        }
-        self.database.insert_file(file_record)
+        if existing:
+            self.database.update_file(
+                job_id,
+                relative_path,
+                size_bytes=actual_size,
+                sha256=actual_sha256,
+                last_modified_at=last_modified_at,
+                uploaded_at=uploaded_at,
+            )
+            file_record = {
+                **existing,
+                "size_bytes": actual_size,
+                "sha256": actual_sha256,
+                "last_modified_at": last_modified_at,
+                "uploaded_at": uploaded_at,
+            }
+        else:
+            file_record = {
+                "file_id": str(uuid4()),
+                "job_id": job_id,
+                "relative_path": relative_path,
+                "size_bytes": actual_size,
+                "sha256": actual_sha256,
+                "last_modified_at": last_modified_at,
+                "uploaded_at": uploaded_at,
+            }
+            self.database.insert_file(file_record)
         if job["status"] == "CREATED":
             self.database.update_job(job_id, status="UPLOADING", progress=10)
         self.write_manifest(job_id)
@@ -343,6 +364,81 @@ class EdgeService:
             endpoint, idempotency_key, metadata_hash, 201, response
         )
         return 201, response
+
+    @synchronized
+    def delete_file(
+        self, job_id: str, relative_path: str, idempotency_key: str
+    ) -> tuple[int, dict[str, Any]]:
+        job = self.require_job(job_id)
+        self.ensure_upload_open(job)
+        relative_path = validate_relative_path(relative_path)
+        endpoint = f"DELETE:/api/v1/jobs/{job_id}/files/{relative_path}"
+        request_hash = self.request_hash({"relativePath": relative_path})
+        cached = self.get_idempotent_response(
+            endpoint, idempotency_key, request_hash
+        )
+        if cached:
+            return cached
+        file_record = self.database.fetch_file(job_id, relative_path)
+        if not file_record:
+            raise ApiException(
+                404, "FILE_NOT_FOUND", "업로드 파일을 찾을 수 없습니다.", job_id=job_id
+            )
+        job_root = self.settings.storage_root / job["root_relative_path"]
+        target = resolve_under(job_root / "input", relative_path)
+        if not self.database.delete_file(job_id, relative_path):
+            raise ApiException(
+                404, "FILE_NOT_FOUND", "업로드 파일을 찾을 수 없습니다.", job_id=job_id
+            )
+        target.unlink(missing_ok=True)
+        self.write_manifest(job_id)
+        response = {
+            "jobId": job_id,
+            "relativePath": relative_path,
+            "status": "DELETED",
+        }
+        self.save_idempotent_response(
+            endpoint, idempotency_key, request_hash, 200, response
+        )
+        return 200, response
+
+    def list_files(self, job_id: str) -> dict[str, Any]:
+        self.require_job(job_id)
+        return {
+            "jobId": job_id,
+            "files": [
+                self.file_response(row) for row in self.database.fetch_files(job_id)
+            ],
+        }
+
+    def request_summaries(self, page: int, page_size: int) -> dict[str, Any]:
+        rows = self.database.fetch_request_summaries(
+            page_size, (page - 1) * page_size
+        )
+        return {
+            "page": page,
+            "pageSize": page_size,
+            "items": [
+                {
+                    "requestNumber": row["request_number"],
+                    "jobCount": row["job_count"],
+                    "completedJobCount": row["completed_job_count"],
+                    "failedJobCount": row["failed_job_count"],
+                    "statuses": row["statuses"].split(",") if row["statuses"] else [],
+                    "experiments": (
+                        row["experiments"].split(",") if row["experiments"] else []
+                    ),
+                    "equipmentCodes": (
+                        row["equipment_codes"].split(",")
+                        if row["equipment_codes"]
+                        else []
+                    ),
+                    "createdAt": row["created_at"],
+                    "updatedAt": row["updated_at"],
+                }
+                for row in rows
+            ],
+        }
 
     @staticmethod
     def file_response(file_record: dict[str, Any]) -> dict[str, Any]:
@@ -396,21 +492,6 @@ class EdgeService:
                 "totalSizeBytes와 files 배열의 크기 합계가 일치하지 않습니다.",
                 job_id=job_id,
             )
-        if request.file_count != job["expected_file_count"]:
-            raise ApiException(
-                422,
-                "DECLARED_FILE_COUNT_MISMATCH",
-                "작업 등록 시 선언한 파일 개수와 일치하지 않습니다.",
-                job_id=job_id,
-            )
-        if request.total_size_bytes != job["expected_total_size_bytes"]:
-            raise ApiException(
-                422,
-                "DECLARED_TOTAL_SIZE_MISMATCH",
-                "작업 등록 시 선언한 전체 크기와 일치하지 않습니다.",
-                job_id=job_id,
-            )
-
         uploaded = {
             row["relative_path"]: row for row in self.database.fetch_files(job_id)
         }
@@ -444,6 +525,8 @@ class EdgeService:
             status="FILES_VERIFIED",
             progress=35,
             verified_at=verified_at,
+            expected_file_count=request.file_count,
+            expected_total_size_bytes=request.total_size_bytes,
         )
         self.write_manifest(job_id)
         logger.info(

@@ -8,8 +8,10 @@
 - 복합 PK 기반 작업 등록 및 UUID `jobId` 발급
 - timestamp와 PK 기반 작업 폴더 생성
 - multipart 파일 업로드
+- 검증 전 업로드 파일 교체·삭제·목록 조회
 - 파일 크기 및 SHA-256 검증
 - 전체 bundle 검증
+- 의뢰 번호별 장비 작업 집계 조회
 - 보고서 생성 요청을 디스크 큐에 적재
 - OpenAI 호환 로컬 LLM(`/v1/chat/completions`) 호출 worker
 - 로컬 LLM 모델 조회 및 설정 모델 검증(`/v1/models`)
@@ -150,8 +152,8 @@ export RIST_DB_PASSWORD=********
 ```
 
 - 지정한 데이터베이스(`RIST_DB_NAME`)가 없으면 서버 시작 시 `utf8mb4`로
-  자동 생성하고 필요한 테이블을 만든다. 따라서 DB 사용자에게 `CREATE`
-  권한이 있어야 한다.
+  자동 생성하고 필요한 테이블과 `request_summary` View를 만든다. 따라서 DB
+  사용자에게 `CREATE`, `CREATE VIEW` 권한이 있어야 한다.
 - 드라이버는 순수 파이썬 `PyMySQL`을 사용하므로 시스템 라이브러리 설치가
   필요 없다.
 - 연결은 프로세스별로 재사용한다. 동시 요청 수와 MariaDB `max_connections`를

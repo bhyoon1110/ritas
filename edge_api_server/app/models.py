@@ -42,7 +42,8 @@ class BundleDeclaration(ApiModel):
 class CreateJobRequest(ApiModel):
     pk: JobPk
     source_pc: SourcePc = Field(alias="sourcePc")
-    bundle: BundleDeclaration
+    # 이전 실험 PC와의 호환을 위해 허용한다. 최종 bundle 선언은 uploads/complete가 기준이다.
+    bundle: BundleDeclaration | None = None
 
 
 class CreateJobResponse(ApiModel):
@@ -59,6 +60,29 @@ class UploadFileResponse(ApiModel):
     sha256: str
     status: str
     uploaded_at: str = Field(alias="uploadedAt")
+
+
+class FileListResponse(ApiModel):
+    job_id: str = Field(alias="jobId")
+    files: list[UploadFileResponse]
+
+
+class RequestSummary(ApiModel):
+    request_number: str = Field(alias="requestNumber")
+    job_count: int = Field(alias="jobCount")
+    completed_job_count: int = Field(alias="completedJobCount")
+    failed_job_count: int = Field(alias="failedJobCount")
+    statuses: list[str]
+    experiments: list[str]
+    equipment_codes: list[str] = Field(alias="equipmentCodes")
+    created_at: str = Field(alias="createdAt")
+    updated_at: str = Field(alias="updatedAt")
+
+
+class RequestListResponse(ApiModel):
+    page: int
+    page_size: int = Field(alias="pageSize")
+    items: list[RequestSummary]
 
 
 class BundleFile(ApiModel):

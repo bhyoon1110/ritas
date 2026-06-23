@@ -2,7 +2,17 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI, File, Form, Header, Request, Response, UploadFile
+from fastapi import (
+    Depends,
+    FastAPI,
+    File,
+    Form,
+    Header,
+    Query,
+    Request,
+    Response,
+    UploadFile,
+)
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
@@ -21,9 +31,11 @@ from .models import (
     CompleteUploadResponse,
     CreateJobRequest,
     CreateJobResponse,
+    FileListResponse,
     GenerateReportRequest,
     GenerateReportResponse,
     JobStatusResponse,
+    RequestListResponse,
     UploadFileResponse,
 )
 from .service import EdgeService
@@ -185,6 +197,59 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         response.status_code = status_code
         return result
 
+    @app.put(
+        "/api/v1/jobs/{job_id}/files/{relative_path:path}",
+        response_model=UploadFileResponse,
+        response_model_by_alias=True,
+        status_code=201,
+        tags=["files"],
+    )
+    def replace_file(
+        job_id: str,
+        relative_path: str,
+        response: Response,
+        file: UploadFile = File(...),
+        size_bytes: int = Form(..., alias="sizeBytes"),
+        sha256: str = Form(...),
+        last_modified_at: str | None = Form(default=None, alias="lastModifiedAt"),
+        _: str = Depends(required_request_id),
+        idempotency_key: str = Depends(required_idempotency_key),
+    ) -> dict:
+        status_code, result = service.upload_file(
+            job_id,
+            file,
+            relative_path,
+            size_bytes,
+            sha256,
+            last_modified_at,
+            idempotency_key,
+            replace=True,
+        )
+        response.status_code = status_code
+        return result
+
+    @app.get(
+        "/api/v1/jobs/{job_id}/files",
+        response_model=FileListResponse,
+        response_model_by_alias=True,
+        tags=["files"],
+    )
+    def list_files(job_id: str, _: str = Depends(required_request_id)) -> dict:
+        return service.list_files(job_id)
+
+    @app.delete(
+        "/api/v1/jobs/{job_id}/files/{relative_path:path}",
+        tags=["files"],
+    )
+    def delete_file(
+        job_id: str,
+        relative_path: str,
+        _: str = Depends(required_request_id),
+        idempotency_key: str = Depends(required_idempotency_key),
+    ) -> dict:
+        _, result = service.delete_file(job_id, relative_path, idempotency_key)
+        return result
+
     @app.post(
         "/api/v1/jobs/{job_id}/uploads/complete",
         response_model=CompleteUploadResponse,
@@ -235,6 +300,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         _: str = Depends(required_request_id),
     ) -> dict:
         return service.status_response(job_id)
+
+    @app.get(
+        "/api/v1/requests",
+        response_model=RequestListResponse,
+        response_model_by_alias=True,
+        tags=["requests"],
+    )
+    def list_requests(
+        page: int = Query(default=1, ge=1),
+        page_size: int = Query(default=50, alias="pageSize", ge=1, le=200),
+        _: str = Depends(required_request_id),
+    ) -> dict:
+        return service.request_summaries(page, page_size)
 
     @app.exception_handler(Exception)
     async def unhandled_exception_handler(

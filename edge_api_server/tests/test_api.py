@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 from app.config import Settings
 from app.llm_client import LocalLlmClient
 from app.main import create_app
+from app.models import CreateJobRequest
 from app.report_worker import ReportWorker
 
 
@@ -51,6 +52,60 @@ def job_payload(size: int) -> dict:
         },
         "bundle": {"fileCount": 1, "totalSizeBytes": size},
     }
+
+
+def test_create_job_accepts_no_legacy_bundle() -> None:
+    payload = job_payload(1)
+    payload.pop("bundle")
+
+    request = CreateJobRequest.model_validate(payload)
+
+    assert request.bundle is None
+
+
+def test_file_crud_and_request_list(tmp_path: Path, mariadb: dict) -> None:
+    client = create_client(tmp_path, mariadb)
+    payload = job_payload(1)
+    payload.pop("bundle")
+    created = client.post("/api/v1/jobs", json=payload, headers=headers(str(uuid4())))
+    assert created.status_code == 201
+    job_id = created.json()["jobId"]
+
+    first = b"first"
+    first_digest = hashlib.sha256(first).hexdigest()
+    uploaded = client.post(
+        f"/api/v1/jobs/{job_id}/files",
+        files={"file": ("sample.txt", first, "text/plain")},
+        data={"relativePath": "raw/sample.txt", "sizeBytes": str(len(first)), "sha256": first_digest},
+        headers=headers(str(uuid4())),
+    )
+    assert uploaded.status_code == 201
+
+    second = b"second"
+    second_digest = hashlib.sha256(second).hexdigest()
+    replaced = client.put(
+        f"/api/v1/jobs/{job_id}/files/raw/sample.txt",
+        files={"file": ("sample.txt", second, "text/plain")},
+        data={"sizeBytes": str(len(second)), "sha256": second_digest},
+        headers=headers(str(uuid4())),
+    )
+    assert replaced.status_code == 201
+    assert replaced.json()["sha256"] == second_digest
+
+    listed = client.get(f"/api/v1/jobs/{job_id}/files", headers=headers())
+    assert listed.status_code == 200
+    assert listed.json()["files"][0]["sizeBytes"] == len(second)
+
+    requests = client.get("/api/v1/requests", headers=headers())
+    assert requests.status_code == 200
+    assert requests.json()["items"][0]["requestNumber"] == "REQ-2026-00123"
+
+    deleted = client.delete(
+        f"/api/v1/jobs/{job_id}/files/raw/sample.txt",
+        headers=headers(str(uuid4())),
+    )
+    assert deleted.status_code == 200
+    assert client.get(f"/api/v1/jobs/{job_id}/files", headers=headers()).json()["files"] == []
 
 
 def test_full_upload_and_report_flow(tmp_path: Path, mariadb: dict) -> None:
