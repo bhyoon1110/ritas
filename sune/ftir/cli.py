@@ -27,6 +27,7 @@ from .plotting import (
     build_comparison_fig,
     build_peak_fig,
     build_preprocess_fig,
+    ftir_abs_trans_toggle_js,
 )
 from .preprocess import (
     detect_peaks_simple,
@@ -200,9 +201,23 @@ def _run_single(dpt_path, args, rules_dir, rule_names, rule_categories):
     pre_html = os.path.join(output_dir, f"{stem}_preprocess.html")
     write_responsive_html(fig_pre, pre_html, div_id="pre-plot", origin=args.origin,
                           crosshair=args.crosshair, title_edit=True,
+                          legend_text_edit=True,
                           trace_highlight=True,
                           image_filename=f"{stem}_preprocess",
-                          image_format_selector=True)
+                          image_format_selector=True,
+                          post_body_html=ftir_abs_trans_toggle_js(
+                              "pre-plot",
+                              yaxis_titles={
+                                  "yaxis": {
+                                      "absorbance": "Absorbance",
+                                      "transmittance": "Transmittance (%)",
+                                  },
+                                  "yaxis2": {
+                                      "absorbance": "Normalized Absorbance",
+                                      "transmittance": "Transmittance (%)",
+                                  },
+                              },
+                          ))
     print(f"       전처리 그래프 저장: {pre_html}")
 
     # ── 2. 피크 검출 및 작용기 분석 ─────────────────────────────────
@@ -254,8 +269,18 @@ def _run_single(dpt_path, args, rules_dir, rule_names, rule_categories):
         fig_peak, peak_html, div_id="peak-plot", origin=args.origin,
         crosshair=args.crosshair,
         title_edit=True,
+        legend_text_edit=True,
         image_filename=f"{stem}_peaks",
         image_format_selector=True,
+        post_body_html=ftir_abs_trans_toggle_js(
+            "peak-plot",
+            yaxis_titles={
+                "yaxis": {
+                    "absorbance": "Normalized Absorbance",
+                    "transmittance": "Transmittance (%)",
+                },
+            },
+        ),
         config={"scrollZoom": True},
     )
     print(f"       피크 그래프 저장: {peak_html}")
@@ -408,9 +433,19 @@ def _run_single(dpt_path, args, rules_dir, rule_names, rule_categories):
         fig_cmp, html_out, div_id="cmp-plot", origin=args.origin,
         crosshair=args.crosshair,
         title_edit=True,
+        legend_text_edit=True,
         trace_highlight=True,
         image_filename=f"{stem}_comparison",
         image_format_selector=True,
+        post_body_html=ftir_abs_trans_toggle_js(
+            "cmp-plot",
+            yaxis_titles={
+                "yaxis": {
+                    "absorbance": "Normalized Absorbance (offset)",
+                    "transmittance": "Transmittance (%) (offset)",
+                },
+            },
+        ),
         config={"scrollZoom": True},
     )
     print(f"       비교 그래프 저장: {html_out}")

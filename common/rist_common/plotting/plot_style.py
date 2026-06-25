@@ -29,6 +29,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 
 # 범례 위치 전환 기준 화면 너비(px). 이 값 이상이면 그래프 안쪽(세로),
 # 미만이면 그래프 아래(가로)로 범례를 배치한다.
@@ -92,6 +93,47 @@ def apply_crosshair_spikes(fig):
     )
     fig.update_xaxes(**spike)
     fig.update_yaxes(**spike)
+    return fig
+
+
+def apply_legend_text(
+    fig,
+    legend_text: Mapping[int | str, str] | None = None,
+    legend_group_text: Mapping[str, str] | None = None,
+):
+    """Figure의 범례 텍스트를 trace index/name 또는 legendgroup 기준으로 변경한다.
+
+    legend_text:
+      - {0: "Sample"} 처럼 trace index 기준 변경
+      - {"Raw": "원본"} 처럼 기존 trace.name 기준 변경
+    legend_group_text:
+      - {"group-a": "Group A"} 처럼 trace.legendgroup 또는 현재 group title 기준 변경
+    """
+    if legend_text:
+        index_map = {k: v for k, v in legend_text.items() if isinstance(k, int)}
+        name_map = {str(k): v for k, v in legend_text.items() if not isinstance(k, int)}
+        for idx, trace in enumerate(fig.data):
+            if idx in index_map:
+                trace.name = index_map[idx]
+                continue
+            name = getattr(trace, "name", None)
+            if name is not None and str(name) in name_map:
+                trace.name = name_map[str(name)]
+
+    if legend_group_text:
+        group_map = {str(k): v for k, v in legend_group_text.items()}
+        for trace in fig.data:
+            legendgroup = getattr(trace, "legendgroup", None)
+            group_title = getattr(trace, "legendgrouptitle", None)
+            current_title = getattr(group_title, "text", None) if group_title else None
+            next_title = None
+            if legendgroup is not None and str(legendgroup) in group_map:
+                next_title = group_map[str(legendgroup)]
+            elif current_title is not None and str(current_title) in group_map:
+                next_title = group_map[str(current_title)]
+            if next_title is not None:
+                trace.legendgrouptitle = {"text": next_title}
+
     return fig
 
 
@@ -298,6 +340,240 @@ def _title_edit_js(div_id: str) -> str:
       else if (ev.key === "Escape") finish(false);
     }});
     // 더블클릭 직후의 우발적 blur로 즉시 닫히지 않도록 잠시 뒤 등록
+    setTimeout(function() {{
+      inp.addEventListener("blur", function() {{ finish(true); }});
+    }}, 250);
+  }}, true);
+}})();
+</script>
+"""
+
+
+def _legend_text_edit_js(div_id: str) -> str:
+    """HTML 화면에서 범례 항목을 수정하는 JS 스니펫.
+
+    - 범례 텍스트 더블클릭: 해당 항목을 바로 인라인 편집
+    - 그래프 우상단 "범례 수정" 버튼: 범례 항목 목록을 패널에서 일괄 편집
+    """
+    return f"""
+<style>
+#{div_id} .rist-legend-edit-button {{
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 20;
+  border: 1px solid #c7d0dd;
+  border-radius: 4px;
+  background: rgba(255,255,255,0.92);
+  color: #1f2933;
+  cursor: pointer;
+  font: 12px Arial, sans-serif;
+  padding: 5px 9px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+}}
+#{div_id} .rist-legend-edit-panel {{
+  position: absolute;
+  top: 40px;
+  left: 8px;
+  z-index: 21;
+  display: none;
+  width: min(360px, calc(100% - 16px));
+  max-height: min(420px, calc(100% - 54px));
+  overflow: auto;
+  background: rgba(255,255,255,0.97);
+  border: 1px solid #c7d0dd;
+  border-radius: 6px;
+  box-shadow: 0 4px 18px rgba(0,0,0,0.16);
+  padding: 10px;
+  box-sizing: border-box;
+}}
+#{div_id} .rist-legend-edit-head {{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+  font: bold 13px Arial, sans-serif;
+  color: #1f2933;
+}}
+#{div_id} .rist-legend-edit-close {{
+  border: 0;
+  background: transparent;
+  color: #52606d;
+  cursor: pointer;
+  font: 18px Arial, sans-serif;
+  line-height: 1;
+  padding: 0 4px;
+}}
+#{div_id} .rist-legend-edit-row {{
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin: 6px 0;
+}}
+#{div_id} .rist-legend-edit-input {{
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 1px solid #c7d0dd;
+  border-radius: 4px;
+  color: #1f2933;
+  font: 12px Arial, sans-serif;
+  padding: 5px 7px;
+  box-sizing: border-box;
+}}
+#{div_id} .rist-legend-edit-save {{
+  flex: 0 0 auto;
+  border: 1px solid #9fb3c8;
+  border-radius: 4px;
+  background: #f5f7fa;
+  color: #1f2933;
+  cursor: pointer;
+  font: 12px Arial, sans-serif;
+  padding: 5px 8px;
+}}
+</style>
+<script>
+(function() {{
+  var gd = document.getElementById("{div_id}");
+  if (!gd) return;
+  var editing = false;
+
+  function visibleLegendTraceIndexes() {{
+    var fd = gd._fullData || gd.data || [];
+    var idxs = [];
+    for (var i = 0; i < fd.length; i++) {{
+      var tr = fd[i];
+      if (!tr) continue;
+      if (tr.showlegend === false) continue;
+      idxs.push(typeof tr.index === "number" ? tr.index : i);
+    }}
+    return idxs;
+  }}
+
+  function legendItemFor(target) {{
+    var text = target && target.closest ? target.closest("text.legendtext") : null;
+    if (!text) return null;
+    var item = text.closest("g.traces");
+    if (!item) return null;
+    var items = Array.prototype.slice.call(
+      gd.querySelectorAll("g.legend g.traces")
+    ).filter(function(node) {{
+      return node.querySelector("text.legendtext");
+    }});
+    var pos = items.indexOf(item);
+    if (pos < 0) return null;
+    var idxs = visibleLegendTraceIndexes();
+    var curve = idxs[pos];
+    if (curve == null) return null;
+    return {{ text: text, curve: curve }};
+  }}
+
+  function traceName(curve) {{
+    if (gd.data && gd.data[curve] && gd.data[curve].name != null) {{
+      return String(gd.data[curve].name);
+    }}
+    return "";
+  }}
+
+  function updateName(curve, value) {{
+    value = String(value || "").trim();
+    if (value === "" || !window.Plotly) return;
+    window.Plotly.restyle(gd, {{ "name": value }}, [curve]);
+  }}
+
+  function installPanel() {{
+    if (gd._ristLegendEditInstalled) return;
+    gd._ristLegendEditInstalled = true;
+    if (getComputedStyle(gd).position === "static") gd.style.position = "relative";
+
+    var btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "rist-legend-edit-button";
+    btn.textContent = "\ubc94\ub840 \uc218\uc815";
+
+    var panel = document.createElement("div");
+    panel.className = "rist-legend-edit-panel";
+    panel.innerHTML = "<div class='rist-legend-edit-head'>"
+      + "<span>\ubc94\ub840 \uc218\uc815</span>"
+      + "<button type='button' class='rist-legend-edit-close' aria-label='close'>×</button>"
+      + "</div><div class='rist-legend-edit-body'></div>";
+    gd.appendChild(btn);
+    gd.appendChild(panel);
+
+    function renderRows() {{
+      var body = panel.querySelector(".rist-legend-edit-body");
+      var idxs = visibleLegendTraceIndexes();
+      body.innerHTML = "";
+      idxs.forEach(function(curve) {{
+        var row = document.createElement("div");
+        row.className = "rist-legend-edit-row";
+        row.innerHTML = "<input class='rist-legend-edit-input' type='text'>"
+          + "<button class='rist-legend-edit-save' type='button'>\uc800\uc7a5</button>";
+        var input = row.querySelector("input");
+        input.value = traceName(curve);
+        row.querySelector("button").addEventListener("click", function() {{
+          updateName(curve, input.value);
+        }});
+        input.addEventListener("keydown", function(ev) {{
+          if (ev.key === "Enter") updateName(curve, input.value);
+        }});
+        body.appendChild(row);
+      }});
+    }}
+
+    btn.addEventListener("click", function(ev) {{
+      ev.preventDefault();
+      ev.stopPropagation();
+      var willOpen = panel.style.display !== "block";
+      if (willOpen) renderRows();
+      panel.style.display = willOpen ? "block" : "none";
+    }});
+    panel.querySelector(".rist-legend-edit-close").addEventListener("click", function() {{
+      panel.style.display = "none";
+    }});
+    document.addEventListener("keydown", function(ev) {{
+      if (ev.key === "Escape") panel.style.display = "none";
+    }});
+  }}
+
+  installPanel();
+
+  gd.addEventListener("dblclick", function(e) {{
+    if (editing) return;
+    var picked = legendItemFor(e.target);
+    if (!picked) return;
+    e.preventDefault();
+    e.stopPropagation();
+    editing = true;
+
+    var tr = picked.text.getBoundingClientRect();
+    var gr = gd.getBoundingClientRect();
+    var current = traceName(picked.curve) || picked.text.textContent || "";
+
+    var inp = document.createElement("input");
+    inp.type = "text";
+    inp.value = current;
+    inp.style.cssText = "position:absolute;z-index:40;font:12px Arial;"
+      + "padding:2px 6px;border:1px solid #4a90d9;border-radius:4px;"
+      + "background:#fff;color:#222;box-sizing:border-box;";
+    inp.style.left = (tr.left - gr.left - 4) + "px";
+    inp.style.top = (tr.top - gr.top - 3) + "px";
+    inp.style.minWidth = Math.max(tr.width + 40, 120) + "px";
+    if (getComputedStyle(gd).position === "static") gd.style.position = "relative";
+    gd.appendChild(inp);
+    inp.focus();
+    inp.select();
+
+    function finish(save) {{
+      if (!editing) return;
+      editing = false;
+      if (save) updateName(picked.curve, inp.value);
+      if (inp.parentNode) inp.parentNode.removeChild(inp);
+    }}
+    inp.addEventListener("keydown", function(ev) {{
+      if (ev.key === "Enter") finish(true);
+      else if (ev.key === "Escape") finish(false);
+    }});
     setTimeout(function() {{
       inp.addEventListener("blur", function() {{ finish(true); }});
     }}, 250);
@@ -574,6 +850,9 @@ def fig_to_responsive_html(
     trace_highlight: bool = False,
     highlight_pickable=None,
     highlight_groups=None,
+    legend_text: Mapping[int | str, str] | None = None,
+    legend_group_text: Mapping[str, str] | None = None,
+    legend_text_edit: bool = False,
     image_format: str = "svg",
     image_filename: str = "plot",
     image_scale: float = 2,
@@ -592,6 +871,9 @@ def fig_to_responsive_html(
     - title_edit=True 면 제목을 더블클릭해 태그 없이 글자만 인라인 편집할 수 있다.
     - trace_highlight=True 면 트레이스를 클릭해 강조(나머지 반투명),
       같은 트레이스 더블클릭으로 격리(그 트레이스만 표시)할 수 있다.
+    - legend_text 는 저장 전 범례 항목명을 trace index/name 기준으로 변경한다.
+    - legend_group_text 는 저장 전 범례 그룹 제목을 legendgroup/title 기준으로 변경한다.
+    - legend_text_edit=True 면 생성된 HTML에서 범례 항목을 더블클릭해 수정할 수 있다.
     - image_format 은 모드바 카메라(Download plot) 버튼의 기본 저장 형식(svg/png/jpeg/webp).
     - image_filename / image_scale 은 저장 파일명·배율.
     - image_format_selector=True 면 그래프 우상단에 형식 선택 드롭다운 + 저장 버튼을 띄운다.
@@ -600,6 +882,9 @@ def fig_to_responsive_html(
     """
     if origin:
         apply_origin_style(fig)
+
+    if legend_text or legend_group_text:
+        apply_legend_text(fig, legend_text, legend_group_text)
 
     if crosshair:
         apply_crosshair_spikes(fig)
@@ -645,6 +930,9 @@ def fig_to_responsive_html(
     if title_edit:
         html = html.replace("</body>", _title_edit_js(div_id) + "</body>", 1)
 
+    if legend_text_edit:
+        html = html.replace("</body>", _legend_text_edit_js(div_id) + "</body>", 1)
+
     if trace_highlight:
         html = html.replace(
             "</body>",
@@ -678,6 +966,9 @@ def write_responsive_html(
     trace_highlight: bool = False,
     highlight_pickable=None,
     highlight_groups=None,
+    legend_text: Mapping[int | str, str] | None = None,
+    legend_group_text: Mapping[str, str] | None = None,
+    legend_text_edit: bool = False,
     image_format: str = "svg",
     image_filename: str = "plot",
     image_scale: float = 2,
@@ -699,6 +990,9 @@ def write_responsive_html(
         trace_highlight=trace_highlight,
         highlight_pickable=highlight_pickable,
         highlight_groups=highlight_groups,
+        legend_text=legend_text,
+        legend_group_text=legend_group_text,
+        legend_text_edit=legend_text_edit,
         image_format=image_format,
         image_filename=image_filename,
         image_scale=image_scale,

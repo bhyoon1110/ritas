@@ -555,6 +555,7 @@ def main():
         legend_breakpoint_px=LEGEND_BREAKPOINT_PX,
         crosshair=True,
         title_edit=True,
+        legend_text_edit=True,
         trace_highlight=True,
         highlight_pickable=raw_line_indices,
         highlight_groups=highlight_groups,
