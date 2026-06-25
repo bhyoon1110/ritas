@@ -478,7 +478,33 @@ def _legend_text_edit_js(div_id: str) -> str:
   function updateName(curve, value) {{
     value = String(value || "").trim();
     if (value === "" || !window.Plotly) return;
-    window.Plotly.restyle(gd, {{ "name": value }}, [curve]);
+    var data = gd.data || [];
+    var base = data[curve] || {{}};
+    var legendgroup = base.legendgroup;
+    var oldName = traceName(curve);
+    var curves = [];
+    for (var i = 0; i < data.length; i++) {{
+      var tr = data[i] || {{}};
+      if (legendgroup != null && legendgroup !== "") {{
+        if (tr.legendgroup === legendgroup) curves.push(i);
+      }} else if (i === curve) {{
+        curves.push(i);
+      }}
+    }}
+    if (!curves.length) curves = [curve];
+    window.Plotly.restyle(gd, {{ "name": value }}, curves).then(function() {{
+      try {{
+        gd.dispatchEvent(new CustomEvent("rist-legend-name-change", {{
+          detail: {{
+            curve: curve,
+            curves: curves,
+            oldName: oldName,
+            name: value,
+            legendgroup: legendgroup
+          }}
+        }}));
+      }} catch (e) {{}}
+    }});
   }}
 
   function installPanel() {{

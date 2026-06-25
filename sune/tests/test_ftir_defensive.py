@@ -14,6 +14,7 @@ if str(SUNE_DIR) not in sys.path:
 from ftir.library_matcher import assign_confidence_tier
 from ftir.cli import _resolve_peak_params
 from ftir.preprocess import load_csv
+from ftir.plotting import build_peak_fig, ftir_peak_label_sync_js
 from ftir.scoring import rank_best_per_material
 
 
@@ -92,3 +93,32 @@ def test_peak_params_reject_invalid_values() -> None:
 
     with pytest.raises(ValueError):
         _resolve_peak_params(args)
+
+
+def test_peak_fig_labels_show_functional_group_names() -> None:
+    grid = pd.Series([1000.0, 1100.0, 1200.0, 1300.0]).to_numpy()
+    sample_vec = pd.Series([0.1, 0.4, 1.0, 0.2]).to_numpy()
+    func_groups = [(1200, 20, "C-O stretch", "#2563eb", "")]
+
+    fig = build_peak_fig(
+        sample_vec,
+        grid,
+        peak_idx=pd.Series([2]).to_numpy(),
+        peak_wn=pd.Series([1200.0]).to_numpy(),
+        peak_val=pd.Series([1.0]).to_numpy(),
+        peak_fwhm=pd.Series([12.0]).to_numpy(),
+        func_groups=func_groups,
+        sample_label="sample",
+        wn_min=1000,
+        wn_max=1300,
+    )
+
+    assert "C-O stretch" in fig.layout.annotations[0].text
+    assert fig.layout.meta["ftirPeakLabels"][0]["legendgroup"] == "C-O stretch"
+
+
+def test_peak_label_sync_script_listens_for_legend_edits() -> None:
+    html = ftir_peak_label_sync_js("peak-plot")
+
+    assert "rist-legend-name-change" in html
+    assert "ftirPeakLabels" in html

@@ -28,6 +28,7 @@ from .plotting import (
     build_peak_fig,
     build_preprocess_fig,
     ftir_abs_trans_toggle_js,
+    ftir_peak_label_sync_js,
 )
 from .preprocess import (
     detect_peaks_simple,
@@ -318,14 +319,17 @@ def _run_single(dpt_path, args, rules_dir, rule_names, rule_categories):
         legend_text_edit=True,
         image_filename=f"{stem}_peaks",
         image_format_selector=True,
-        post_body_html=ftir_abs_trans_toggle_js(
-            "peak-plot",
-            yaxis_titles={
-                "yaxis": {
-                    "absorbance": "Normalized Absorbance",
-                    "transmittance": "Transmittance (%)",
+        post_body_html=(
+            ftir_abs_trans_toggle_js(
+                "peak-plot",
+                yaxis_titles={
+                    "yaxis": {
+                        "absorbance": "Normalized Absorbance",
+                        "transmittance": "Transmittance (%)",
+                    },
                 },
-            },
+            )
+            + ftir_peak_label_sync_js("peak-plot")
         ),
         config={"scrollZoom": True},
     )

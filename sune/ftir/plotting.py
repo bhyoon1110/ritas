@@ -41,6 +41,60 @@ def _enable_abs_trans_toggle(trace, absorbance_y, *, absorbance_offset=0.0,
     return trace
 
 
+def _peak_label_text(wn, label):
+    return (
+        f"<b>{wn:.0f}</b><br>"
+        f"<span style='font-size:10px'>{label}</span>"
+    )
+
+
+def ftir_peak_label_sync_js(div_id: str) -> str:
+    """범례명 변경 시 FT-IR 피크 라벨 텍스트를 같이 갱신하는 JS 스니펫."""
+    return f"""
+<script>
+(function() {{
+  var gd = document.getElementById("{div_id}");
+  if (!gd) return;
+
+  function updateAnnotationList(annotations, labels, legendgroup, name) {{
+    if (!annotations || !labels || legendgroup == null) return annotations;
+    labels.forEach(function(label) {{
+      if (label.legendgroup !== legendgroup) return;
+      var ann = annotations[label.annotationIndex];
+      if (!ann) return;
+      ann.text = "<b>" + label.wnText + "</b><br>"
+        + "<span style='font-size:10px'>" + name + "</span>";
+    }});
+    return annotations;
+  }}
+
+  gd.addEventListener("rist-legend-name-change", function(ev) {{
+    var detail = ev.detail || {{}};
+    var meta = (gd.layout && gd.layout.meta) || {{}};
+    var labels = meta.ftirPeakLabels || [];
+    if (!labels.length || !window.Plotly) return;
+
+    var annotations = (gd.layout.annotations || []).map(function(a) {{
+      return Object.assign({{}}, a);
+    }});
+    updateAnnotationList(annotations, labels, detail.legendgroup, detail.name);
+
+    if (gd._ristFtirUnitOriginalAnnotations) {{
+      updateAnnotationList(
+        gd._ristFtirUnitOriginalAnnotations,
+        labels,
+        detail.legendgroup,
+        detail.name
+      );
+    }}
+
+    window.Plotly.relayout(gd, {{ annotations: annotations }});
+  }});
+}})();
+</script>
+"""
+
+
 def ftir_abs_trans_toggle_js(div_id: str, *, yaxis_titles: dict[str, dict[str, str]]) -> str:
     """FT-IR HTML 그래프에서 흡광도/투과도 표시를 전환하는 JS 스니펫."""
     titles_json = json.dumps(yaxis_titles, ensure_ascii=False)
@@ -67,8 +121,6 @@ def ftir_abs_trans_toggle_js(div_id: str, *, yaxis_titles: dict[str, dict[str, s
   if (!gd) return;
   var TITLES = {titles_json};
   var mode = "absorbance";
-  var originalShapes = null;
-  var originalAnnotations = null;
 
   function tracesWithToggle() {{
     var data = gd.data || [];
@@ -84,9 +136,11 @@ def ftir_abs_trans_toggle_js(div_id: str, *, yaxis_titles: dict[str, dict[str, s
 
   function applyMode(nextMode) {{
     if (!window.Plotly) return;
-    if (originalShapes === null) {{
-      originalShapes = (gd.layout.shapes || []).slice();
-      originalAnnotations = (gd.layout.annotations || []).slice();
+    if (!gd._ristFtirUnitOriginalShapes) {{
+      gd._ristFtirUnitOriginalShapes = (gd.layout.shapes || []).slice();
+      gd._ristFtirUnitOriginalAnnotations = (gd.layout.annotations || []).map(function(a) {{
+        return Object.assign({{}}, a);
+      }});
     }}
     var pairs = tracesWithToggle();
     var indexes = [];
@@ -110,8 +164,8 @@ def ftir_abs_trans_toggle_js(div_id: str, *, yaxis_titles: dict[str, dict[str, s
         layout.shapes = [];
         layout.annotations = [];
       }} else {{
-        layout.shapes = originalShapes || [];
-        layout.annotations = originalAnnotations || [];
+        layout.shapes = gd._ristFtirUnitOriginalShapes || [];
+        layout.annotations = gd._ristFtirUnitOriginalAnnotations || [];
       }}
       return window.Plotly.relayout(gd, layout);
     }});
@@ -202,15 +256,24 @@ def build_peak_fig(sample_vec, grid, peak_idx, peak_wn, peak_val, peak_fwhm,
 
     top_peaks = sorted(zip(peak_wn, peak_val, peak_fwhm), key=lambda x: -x[1])[:25]
     annotations = []
+    peak_labels = []
     for i, (wn, val, fwhm) in enumerate(top_peaks):
-        _, color, _ = assign_group(wn, func_groups)
+        group_name, color, _ = assign_group(wn, func_groups)
         y_label = val + 0.07 + (0.07 if i % 2 == 0 else 0.0)
+        annotation_index = len(annotations)
         annotations.append(dict(
-            x=wn, y=y_label, text=f"<b>{wn:.0f}</b>",
+            x=wn, y=y_label, text=_peak_label_text(wn, group_name),
             showarrow=True, arrowhead=0, arrowcolor=color, arrowwidth=1,
             ax=0, ay=-28, font=dict(size=9, color=color),
-            bgcolor="rgba(255,255,255,0.8)", borderpad=1,
+            bgcolor="rgba(255,255,255,0.88)",
+            bordercolor=color, borderwidth=1, borderpad=2,
+            name=f"ftir_peak_label_{annotation_index}",
         ))
+        peak_labels.append({
+            "annotationIndex": annotation_index,
+            "legendgroup": group_name,
+            "wnText": f"{wn:.0f}",
+        })
         fig.add_shape(type="line", x0=wn, x1=wn, y0=0, y1=val,
                       line=dict(color=color, width=0.8, dash="dot"))
 
@@ -235,6 +298,7 @@ def build_peak_fig(sample_vec, grid, peak_idx, peak_wn, peak_val, peak_fwhm,
         plot_bgcolor="white", paper_bgcolor="#fafafa",
         height=620, hovermode="closest",
         margin=dict(l=70, r=30, t=70, b=60),
+        meta={"ftirPeakLabels": peak_labels},
     )
     return fig
 

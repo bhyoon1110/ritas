@@ -52,6 +52,7 @@ def test_shared_plotly_module_applies_legend_text(tmp_path) -> None:
     assert "text.legendtext" in html
     assert "rist-legend-edit-button" in html
     assert "rist-legend-edit-panel" in html
+    assert "rist-legend-name-change" in html
     assert figure.data[0].name == "원본"
     assert figure.data[1].name == "기준"
     assert figure.data[0].legendgrouptitle.text == "시료"
