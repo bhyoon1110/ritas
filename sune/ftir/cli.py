@@ -97,6 +97,14 @@ def parse_args():
     parser.add_argument("--top", type=int, default=10, help="상위 매칭 결과 개수 (기본 10)")
     parser.add_argument("--plot-top", type=int, default=5, help="비교 그래프 표시 개수 (기본 5)")
     parser.add_argument("--no-smooth", action="store_true", help="Savitzky-Golay 스무딩 비활성화")
+    parser.add_argument("--peak-sensitivity", choices=["low", "medium", "high"], default="medium",
+        help="피크 검출 민감도. low=잔피크 억제, medium=기존 기본값, high=작은 피크까지 검출")
+    parser.add_argument("--peak-height", type=float, default=None,
+        help="피크 최소 높이(정규화 강도, 0~1). 지정 시 --peak-sensitivity 값보다 우선")
+    parser.add_argument("--peak-prominence", type=float, default=None,
+        help="피크 최소 prominence(정규화 강도, 0~1). 값을 키우면 잔잔한 피크가 줄어듦")
+    parser.add_argument("--peak-distance", type=int, default=None,
+        help="피크 간 최소 거리(그리드 포인트). 값을 키우면 가까운 잔피크가 줄어듦")
 
     parser.add_argument("--w-cosine", type=float, default=0.40, help="원본 코사인 가중치 (기본 0.40)")
     parser.add_argument("--w-deriv",  type=float, default=0.30, help="1차 미분 코사인 가중치 (기본 0.30)")
@@ -128,6 +136,34 @@ def _resolve_rules_dir(arg_value):
         return arg_value
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     return os.path.join(project_root, "rules")
+
+
+def _resolve_peak_params(args):
+    """CLI 옵션에서 피크 검출 파라미터를 결정한다.
+
+    기존 기본값은 medium으로 유지한다. 잔피크가 많으면 low 또는
+    --peak-prominence/--peak-distance 증가를 사용한다.
+    """
+    presets = {
+        "high": {"height": 0.03, "prominence": 0.015, "distance": 10},
+        "medium": {"height": 0.05, "prominence": 0.03, "distance": 15},
+        "low": {"height": 0.08, "prominence": 0.06, "distance": 25},
+    }
+    params = dict(presets[args.peak_sensitivity])
+    if args.peak_height is not None:
+        params["height"] = args.peak_height
+    if args.peak_prominence is not None:
+        params["prominence"] = args.peak_prominence
+    if args.peak_distance is not None:
+        params["distance"] = args.peak_distance
+
+    if params["height"] < 0:
+        raise ValueError("--peak-height 는 0 이상이어야 합니다.")
+    if params["prominence"] < 0:
+        raise ValueError("--peak-prominence 는 0 이상이어야 합니다.")
+    if params["distance"] < 1:
+        raise ValueError("--peak-distance 는 1 이상이어야 합니다.")
+    return params
 
 
 def _print_rule_listing(rules_dir):
@@ -171,7 +207,14 @@ def _run_single(dpt_path, args, rules_dir, rule_names, rule_categories):
     MANIFEST = os.path.join(LIBRARY_DIR, "manifest.csv")
     FUNC_GROUPS_FILE = "data/func_groups.csv"
 
-    PEAK_HEIGHT, PEAK_PROMINENCE, PEAK_DISTANCE = 0.05, 0.03, 15
+    try:
+        peak_params = _resolve_peak_params(args)
+    except ValueError as exc:
+        print(f"[오류] {exc}", file=sys.stderr)
+        sys.exit(1)
+    PEAK_HEIGHT = peak_params["height"]
+    PEAK_PROMINENCE = peak_params["prominence"]
+    PEAK_DISTANCE = peak_params["distance"]
     PEAK_TOL = 8.0
 
     w_sum = args.w_cosine + args.w_deriv + args.w_peak
@@ -185,6 +228,9 @@ def _run_single(dpt_path, args, rules_dir, rule_names, rule_categories):
 
     # ── 1. 시료 로드 및 전처리 ───────────────────────────────────────
     print(f"[1/5] DPT 파일 로드: {dpt_path}")
+    print(f"       피크 검출 설정: sensitivity={args.peak_sensitivity}, "
+          f"height={PEAK_HEIGHT:g}, prominence={PEAK_PROMINENCE:g}, "
+          f"distance={PEAK_DISTANCE}")
     raw = load_dpt(dpt_path, WN_MIN, WN_MAX)
     if len(raw) < 10:
         print("[오류] DPT 파일에 유효한 데이터가 충분하지 않습니다.", file=sys.stderr)
