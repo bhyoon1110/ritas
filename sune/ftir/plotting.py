@@ -49,12 +49,21 @@ def _peak_label_text(wn, label):
 
 
 def ftir_peak_label_sync_js(div_id: str) -> str:
-    """범례명 변경 시 FT-IR 피크 라벨 텍스트를 같이 갱신하는 JS 스니펫."""
+    """범례 변경 시 FT-IR 피크 라벨/보조선을 같이 갱신하는 JS 스니펫."""
     return f"""
 <script>
 (function() {{
   var gd = document.getElementById("{div_id}");
   if (!gd) return;
+
+  function esc(s) {{
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }}
 
   function updateAnnotationList(annotations, labels, legendgroup, name) {{
     if (!annotations || !labels || legendgroup == null) return annotations;
@@ -62,10 +71,48 @@ def ftir_peak_label_sync_js(div_id: str) -> str:
       if (label.legendgroup !== legendgroup) return;
       var ann = annotations[label.annotationIndex];
       if (!ann) return;
-      ann.text = "<b>" + label.wnText + "</b><br>"
-        + "<span style='font-size:10px'>" + name + "</span>";
+      ann.text = "<b>" + esc(label.wnText) + "</b><br>"
+        + "<span style='font-size:10px'>" + esc(name) + "</span>";
     }});
     return annotations;
+  }}
+
+  function traceVisible(curve) {{
+    var tr = (gd.data || [])[curve] || {{}};
+    return tr.visible !== false && tr.visible !== "legendonly";
+  }}
+
+  function syncPeakVisibility() {{
+    var meta = (gd.layout && gd.layout.meta) || {{}};
+    var labels = meta.ftirPeakLabels || [];
+    if (!labels.length || !window.Plotly) return;
+
+    var annotations = (gd.layout.annotations || []).map(function(a) {{
+      return Object.assign({{}}, a);
+    }});
+    var baseAnnotations = gd._ristFtirUnitOriginalAnnotations || null;
+    var shapes = (gd.layout.shapes || []).map(function(s) {{
+      return Object.assign({{}}, s);
+    }});
+    var baseShapes = gd._ristFtirUnitOriginalShapes || null;
+
+    labels.forEach(function(label) {{
+      var on = traceVisible(label.traceIndex);
+      var ann = annotations[label.annotationIndex];
+      if (ann) ann.visible = on;
+      if (baseAnnotations && baseAnnotations[label.annotationIndex]) {{
+        baseAnnotations[label.annotationIndex].visible = on;
+      }}
+      var shape = shapes[label.shapeIndex];
+      if (shape) shape.visible = on;
+      if (baseShapes && baseShapes[label.shapeIndex]) {{
+        baseShapes[label.shapeIndex].visible = on;
+      }}
+    }});
+
+    if (annotations.length || shapes.length) {{
+      window.Plotly.relayout(gd, {{ annotations: annotations, shapes: shapes }});
+    }}
   }}
 
   gd.addEventListener("rist-legend-name-change", function(ev) {{
@@ -90,6 +137,13 @@ def ftir_peak_label_sync_js(div_id: str) -> str:
 
     window.Plotly.relayout(gd, {{ annotations: annotations }});
   }});
+
+  gd.on("plotly_restyle", function() {{
+    setTimeout(syncPeakVisibility, 0);
+  }});
+  gd.addEventListener("rist-legend-visibility-change", function() {{
+    setTimeout(syncPeakVisibility, 0);
+  }});
 }})();
 </script>
 """
@@ -100,11 +154,17 @@ def ftir_abs_trans_toggle_js(div_id: str, *, yaxis_titles: dict[str, dict[str, s
     titles_json = json.dumps(yaxis_titles, ensure_ascii=False)
     return f"""
 <style>
-#{div_id} .rist-ftir-unit-toggle {{
+#{div_id} .rist-plot-control-row {{
   position: absolute;
-  top: 8px;
-  left: 96px;
+  top: 34px;
+  right: 30px;
   z-index: 20;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}}
+#{div_id} .rist-ftir-unit-toggle {{
+  order: 30;
   border: 1px solid #c7d0dd;
   border-radius: 4px;
   background: rgba(255,255,255,0.92);
@@ -183,7 +243,13 @@ def ftir_abs_trans_toggle_js(div_id: str, *, yaxis_titles: dict[str, dict[str, s
     applyMode(mode === "absorbance" ? "transmittance" : "absorbance");
   }});
   if (getComputedStyle(gd).position === "static") gd.style.position = "relative";
-  gd.appendChild(btn);
+  var toolbar = gd.querySelector(".rist-plot-control-row");
+  if (!toolbar) {{
+    toolbar = document.createElement("div");
+    toolbar.className = "rist-plot-control-row";
+    gd.appendChild(toolbar);
+  }}
+  toolbar.appendChild(btn);
 }})();
 </script>
 """
@@ -235,47 +301,59 @@ def build_peak_fig(sample_vec, grid, peak_idx, peak_wn, peak_val, peak_fwhm,
         sample_vec,
     ))
 
+    top_peak_keys = {
+        f"{float(wn):.6f}" for wn, _, _ in
+        sorted(zip(peak_wn, peak_val, peak_fwhm), key=lambda x: -x[1])[:25]
+    }
+    annotations = []
+    peak_labels = []
+    seen_legendgroups = set()
+
     for wn, val, fwhm in zip(peak_wn, peak_val, peak_fwhm):
         group_name, color, note = assign_group(wn, func_groups)
+        unknown = group_name == "unknown"
+        legendgroup = f"unknown:{wn:.1f}" if unknown else group_name
+        display_name = f"{wn:.0f} cm⁻¹" if unknown else group_name
+        trace_index = len(fig.data)
         fig.add_trace(_enable_abs_trans_toggle(
             go.Scatter(
                 x=[wn], y=[val], mode="markers",
                 marker=dict(color=color, size=9, symbol="circle",
                             line=dict(color="white", width=1.5)),
-                name=group_name,
-                legendgroup=group_name,
-                showlegend=not any(t.name == group_name for t in fig.data[:-1]),
+                name=display_name,
+                legendgroup=legendgroup,
+                showlegend=legendgroup not in seen_legendgroups,
                 hovertemplate=(
-                    f"<b>{wn:.1f} cm⁻¹</b><br>{group_name}<br>"
+                    f"<b>{wn:.1f} cm⁻¹</b><br>{display_name}<br>"
                     f"Value: %{{y:.4f}}<br>FWHM: {fwhm:.1f} cm⁻¹<br>"
                     f"<i>{note}</i><extra></extra>"
                 ),
             ),
             [val],
         ))
+        seen_legendgroups.add(legendgroup)
 
-    top_peaks = sorted(zip(peak_wn, peak_val, peak_fwhm), key=lambda x: -x[1])[:25]
-    annotations = []
-    peak_labels = []
-    for i, (wn, val, fwhm) in enumerate(top_peaks):
-        group_name, color, _ = assign_group(wn, func_groups)
-        y_label = val + 0.07 + (0.07 if i % 2 == 0 else 0.0)
-        annotation_index = len(annotations)
-        annotations.append(dict(
-            x=wn, y=y_label, text=_peak_label_text(wn, group_name),
-            showarrow=True, arrowhead=0, arrowcolor=color, arrowwidth=1,
-            ax=0, ay=-28, font=dict(size=9, color=color),
-            bgcolor="rgba(255,255,255,0.88)",
-            bordercolor=color, borderwidth=1, borderpad=2,
-            name=f"ftir_peak_label_{annotation_index}",
-        ))
-        peak_labels.append({
-            "annotationIndex": annotation_index,
-            "legendgroup": group_name,
-            "wnText": f"{wn:.0f}",
-        })
-        fig.add_shape(type="line", x0=wn, x1=wn, y0=0, y1=val,
-                      line=dict(color=color, width=0.8, dash="dot"))
+        if f"{float(wn):.6f}" in top_peak_keys:
+            y_label = val + 0.07 + (0.07 if len(annotations) % 2 == 0 else 0.0)
+            annotation_index = len(annotations)
+            shape_index = len(fig.layout.shapes)
+            annotations.append(dict(
+                x=wn, y=y_label, text=_peak_label_text(wn, display_name),
+                showarrow=True, arrowhead=0, arrowcolor=color, arrowwidth=1,
+                ax=0, ay=-28, font=dict(size=9, color=color),
+                bgcolor="rgba(255,255,255,0.88)",
+                bordercolor=color, borderwidth=1, borderpad=2,
+                name=f"ftir_peak_label_{annotation_index}",
+            ))
+            peak_labels.append({
+                "annotationIndex": annotation_index,
+                "shapeIndex": shape_index,
+                "traceIndex": trace_index,
+                "legendgroup": legendgroup,
+                "wnText": f"{wn:.0f}",
+            })
+            fig.add_shape(type="line", x0=wn, x1=wn, y0=0, y1=val,
+                          line=dict(color=color, width=0.8, dash="dot"))
 
     fig.update_layout(
         title=dict(text=f"FTIR Peak Analysis — {sample_label}", font=dict(size=18), x=0.01),
@@ -291,13 +369,15 @@ def build_peak_fig(sample_vec, grid, peak_idx, peak_wn, peak_val, peak_fwhm,
         ),
         annotations=annotations,
         legend=dict(
-            title="<b>작용기 (범례 클릭)</b>", itemclick="toggle",
-            itemdoubleclick="toggleothers", bgcolor="rgba(255,255,255,0.9)",
-            bordercolor="#ccc", borderwidth=1, font=dict(size=11),
+            orientation="h", x=0.5, xanchor="center", y=-0.18, yanchor="top",
+            itemclick="toggle", itemdoubleclick="toggleothers",
+            bgcolor="rgba(255,255,255,0.9)",
+            bordercolor="#ccc", borderwidth=1, font=dict(size=10),
+            itemsizing="constant", tracegroupgap=2,
         ),
         plot_bgcolor="white", paper_bgcolor="#fafafa",
         height=620, hovermode="closest",
-        margin=dict(l=70, r=30, t=70, b=60),
+        margin=dict(l=70, r=30, t=70, b=125),
         meta={"ftirPeakLabels": peak_labels},
     )
     return fig

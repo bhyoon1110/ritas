@@ -315,6 +315,7 @@ def _run_single(dpt_path, args, rules_dir, rule_names, rule_categories):
     write_responsive_html(
         fig_peak, peak_html, div_id="peak-plot", origin=args.origin,
         crosshair=args.crosshair,
+        responsive_legend=False,
         title_edit=True,
         legend_text_edit=True,
         image_filename=f"{stem}_peaks",

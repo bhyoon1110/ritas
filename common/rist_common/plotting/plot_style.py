@@ -357,11 +357,17 @@ def _legend_text_edit_js(div_id: str) -> str:
     """
     return f"""
 <style>
-#{div_id} .rist-legend-edit-button {{
+#{div_id} .rist-plot-control-row {{
   position: absolute;
-  top: 8px;
-  left: 8px;
+  top: 34px;
+  right: 30px;
   z-index: 20;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}}
+#{div_id} .rist-legend-edit-button {{
+  order: 20;
   border: 1px solid #c7d0dd;
   border-radius: 4px;
   background: rgba(255,255,255,0.92);
@@ -373,8 +379,8 @@ def _legend_text_edit_js(div_id: str) -> str:
 }}
 #{div_id} .rist-legend-edit-panel {{
   position: absolute;
-  top: 40px;
-  left: 8px;
+  top: 66px;
+  right: 30px;
   z-index: 21;
   display: none;
   width: min(360px, calc(100% - 16px));
@@ -411,6 +417,26 @@ def _legend_text_edit_js(div_id: str) -> str:
   align-items: center;
   margin: 6px 0;
 }}
+#{div_id} .rist-legend-edit-actions {{
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 10px;
+}}
+#{div_id} .rist-legend-bulk-controls {{
+  order: 10;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}}
+#{div_id} .rist-legend-bulk-button {{
+  border: 1px solid #9fb3c8;
+  border-radius: 4px;
+  background: #f5f7fa;
+  color: #1f2933;
+  cursor: pointer;
+  font: 12px Arial, sans-serif;
+  padding: 5px 8px;
+}}
 #{div_id} .rist-legend-edit-input {{
   flex: 1 1 auto;
   min-width: 0;
@@ -421,7 +447,7 @@ def _legend_text_edit_js(div_id: str) -> str:
   padding: 5px 7px;
   box-sizing: border-box;
 }}
-#{div_id} .rist-legend-edit-save {{
+#{div_id} .rist-legend-edit-save-all {{
   flex: 0 0 auto;
   border: 1px solid #9fb3c8;
   border-radius: 4px;
@@ -475,6 +501,14 @@ def _legend_text_edit_js(div_id: str) -> str:
     return "";
   }}
 
+  function dispatchVisibilityChange(curves, visible) {{
+    try {{
+      gd.dispatchEvent(new CustomEvent("rist-legend-visibility-change", {{
+        detail: {{ curves: curves, visible: visible }}
+      }}));
+    }} catch (e) {{}}
+  }}
+
   function updateName(curve, value) {{
     value = String(value || "").trim();
     if (value === "" || !window.Plotly) return;
@@ -511,6 +545,12 @@ def _legend_text_edit_js(div_id: str) -> str:
     if (gd._ristLegendEditInstalled) return;
     gd._ristLegendEditInstalled = true;
     if (getComputedStyle(gd).position === "static") gd.style.position = "relative";
+    var toolbar = gd.querySelector(".rist-plot-control-row");
+    if (!toolbar) {{
+      toolbar = document.createElement("div");
+      toolbar.className = "rist-plot-control-row";
+      gd.appendChild(toolbar);
+    }}
 
     var btn = document.createElement("button");
     btn.type = "button";
@@ -522,8 +562,11 @@ def _legend_text_edit_js(div_id: str) -> str:
     panel.innerHTML = "<div class='rist-legend-edit-head'>"
       + "<span>\ubc94\ub840 \uc218\uc815</span>"
       + "<button type='button' class='rist-legend-edit-close' aria-label='close'>×</button>"
-      + "</div><div class='rist-legend-edit-body'></div>";
-    gd.appendChild(btn);
+      + "</div><div class='rist-legend-edit-body'></div>"
+      + "<div class='rist-legend-edit-actions'>"
+      + "<button class='rist-legend-edit-save-all' type='button'>\uc804\uccb4 \uc800\uc7a5</button>"
+      + "</div>";
+    toolbar.appendChild(btn);
     gd.appendChild(panel);
 
     function renderRows() {{
@@ -533,17 +576,26 @@ def _legend_text_edit_js(div_id: str) -> str:
       idxs.forEach(function(curve) {{
         var row = document.createElement("div");
         row.className = "rist-legend-edit-row";
-        row.innerHTML = "<input class='rist-legend-edit-input' type='text'>"
-          + "<button class='rist-legend-edit-save' type='button'>\uc800\uc7a5</button>";
+        row.setAttribute("data-curve", String(curve));
+        row.innerHTML = "<input class='rist-legend-edit-input' type='text'>";
         var input = row.querySelector("input");
         input.value = traceName(curve);
-        row.querySelector("button").addEventListener("click", function() {{
-          updateName(curve, input.value);
-        }});
         input.addEventListener("keydown", function(ev) {{
-          if (ev.key === "Enter") updateName(curve, input.value);
+          if (ev.key === "Enter") {{
+            ev.preventDefault();
+            saveAllRows();
+          }}
         }});
         body.appendChild(row);
+      }});
+    }}
+
+    function saveAllRows() {{
+      panel.querySelectorAll(".rist-legend-edit-row").forEach(function(row) {{
+        var curve = parseInt(row.getAttribute("data-curve"), 10);
+        var input = row.querySelector(".rist-legend-edit-input");
+        if (!Number.isFinite(curve) || !input) return;
+        updateName(curve, input.value);
       }});
     }}
 
@@ -557,12 +609,53 @@ def _legend_text_edit_js(div_id: str) -> str:
     panel.querySelector(".rist-legend-edit-close").addEventListener("click", function() {{
       panel.style.display = "none";
     }});
+    panel.querySelector(".rist-legend-edit-save-all").addEventListener("click", saveAllRows);
     document.addEventListener("keydown", function(ev) {{
       if (ev.key === "Escape") panel.style.display = "none";
     }});
   }}
 
+  function setAllLegendVisibility(visible) {{
+    if (!window.Plotly) return;
+      var n = (gd.data || []).length;
+      var curves = [];
+      for (var i = 0; i < n; i++) curves.push(i);
+      window.Plotly.restyle(gd, {{ visible: visible }}, curves).then(function() {{
+        dispatchVisibilityChange(curves, visible);
+      }});
+  }}
+
+  function installLegendBulkControls() {{
+    if (gd._ristLegendBulkInstalled) return;
+    gd._ristLegendBulkInstalled = true;
+    if (getComputedStyle(gd).position === "static") gd.style.position = "relative";
+    var toolbar = gd.querySelector(".rist-plot-control-row");
+    if (!toolbar) {{
+      toolbar = document.createElement("div");
+      toolbar.className = "rist-plot-control-row";
+      gd.appendChild(toolbar);
+    }}
+
+    var bulk = document.createElement("div");
+    bulk.className = "rist-legend-bulk-controls";
+    bulk.innerHTML =
+      "<button type='button' class='rist-legend-bulk-button' data-visible='true'>\ubaa8\ub450 \ud45c\uc2dc</button>"
+      + "<button type='button' class='rist-legend-bulk-button' data-visible='legendonly'>\ubaa8\ub450 \uc228\uae40</button>";
+    toolbar.appendChild(bulk);
+
+    bulk.addEventListener("click", function(ev) {{
+      var b = ev.target.closest(".rist-legend-bulk-button");
+      if (!b) return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      setAllLegendVisibility(
+        b.getAttribute("data-visible") === "true" ? true : "legendonly"
+      );
+    }});
+  }}
+
   installPanel();
+  installLegendBulkControls();
 
   gd.addEventListener("dblclick", function(e) {{
     if (editing) return;

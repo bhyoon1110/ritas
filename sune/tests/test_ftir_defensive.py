@@ -115,10 +115,40 @@ def test_peak_fig_labels_show_functional_group_names() -> None:
 
     assert "C-O stretch" in fig.layout.annotations[0].text
     assert fig.layout.meta["ftirPeakLabels"][0]["legendgroup"] == "C-O stretch"
+    assert "traceIndex" in fig.layout.meta["ftirPeakLabels"][0]
+    assert "shapeIndex" in fig.layout.meta["ftirPeakLabels"][0]
+    assert fig.layout.legend.orientation == "h"
+    assert fig.layout.margin.b >= 120
+
+
+def test_peak_fig_keeps_unknown_peaks_as_separate_legend_items() -> None:
+    grid = pd.Series([1000.0, 1100.0, 1200.0, 1300.0]).to_numpy()
+    sample_vec = pd.Series([0.1, 0.8, 0.2, 0.7]).to_numpy()
+
+    fig = build_peak_fig(
+        sample_vec,
+        grid,
+        peak_idx=pd.Series([1, 3]).to_numpy(),
+        peak_wn=pd.Series([1100.0, 1300.0]).to_numpy(),
+        peak_val=pd.Series([0.8, 0.7]).to_numpy(),
+        peak_fwhm=pd.Series([10.0, 11.0]).to_numpy(),
+        func_groups=[],
+        sample_label="sample",
+        wn_min=1000,
+        wn_max=1300,
+    )
+
+    peak_traces = list(fig.data[1:])
+    assert peak_traces[0].legendgroup == "unknown:1100.0"
+    assert peak_traces[1].legendgroup == "unknown:1300.0"
+    assert peak_traces[0].name == "1100 cm⁻¹"
+    assert peak_traces[1].name == "1300 cm⁻¹"
 
 
 def test_peak_label_sync_script_listens_for_legend_edits() -> None:
     html = ftir_peak_label_sync_js("peak-plot")
 
     assert "rist-legend-name-change" in html
+    assert "plotly_restyle" in html
+    assert "rist-legend-visibility-change" in html
     assert "ftirPeakLabels" in html
