@@ -12,9 +12,15 @@ import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from scipy.signal import find_peaks
+from rist_common.plotting import peak_editor_js
 
 from .findings import assign_group
 from .preprocess import load_csv, preprocess
+
+SAMPLE_PALETTE = [
+    "#2563eb", "#dc2626", "#16a34a", "#ea580c", "#7c3aed",
+    "#0891b2", "#be123c", "#4d7c0f", "#9333ea", "#0f766e",
+]
 
 
 def _transmittance_percent(absorbance):
@@ -48,105 +54,13 @@ def _peak_label_text(wn, label):
     )
 
 
+def _sample_key(index):
+    return f"sample:{index}"
+
+
 def ftir_peak_label_sync_js(div_id: str) -> str:
-    """범례 변경 시 FT-IR 피크 라벨/보조선을 같이 갱신하는 JS 스니펫."""
-    return f"""
-<script>
-(function() {{
-  var gd = document.getElementById("{div_id}");
-  if (!gd) return;
-
-  function esc(s) {{
-    return String(s == null ? "" : s)
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
-      .replace(/'/g, "&#39;");
-  }}
-
-  function updateAnnotationList(annotations, labels, legendgroup, name) {{
-    if (!annotations || !labels || legendgroup == null) return annotations;
-    labels.forEach(function(label) {{
-      if (label.legendgroup !== legendgroup) return;
-      var ann = annotations[label.annotationIndex];
-      if (!ann) return;
-      ann.text = "<b>" + esc(label.wnText) + "</b><br>"
-        + "<span style='font-size:10px'>" + esc(name) + "</span>";
-    }});
-    return annotations;
-  }}
-
-  function traceVisible(curve) {{
-    var tr = (gd.data || [])[curve] || {{}};
-    return tr.visible !== false && tr.visible !== "legendonly";
-  }}
-
-  function syncPeakVisibility() {{
-    var meta = (gd.layout && gd.layout.meta) || {{}};
-    var labels = meta.ftirPeakLabels || [];
-    if (!labels.length || !window.Plotly) return;
-
-    var annotations = (gd.layout.annotations || []).map(function(a) {{
-      return Object.assign({{}}, a);
-    }});
-    var baseAnnotations = gd._ristFtirUnitOriginalAnnotations || null;
-    var shapes = (gd.layout.shapes || []).map(function(s) {{
-      return Object.assign({{}}, s);
-    }});
-    var baseShapes = gd._ristFtirUnitOriginalShapes || null;
-
-    labels.forEach(function(label) {{
-      var on = traceVisible(label.traceIndex);
-      var ann = annotations[label.annotationIndex];
-      if (ann) ann.visible = on;
-      if (baseAnnotations && baseAnnotations[label.annotationIndex]) {{
-        baseAnnotations[label.annotationIndex].visible = on;
-      }}
-      var shape = shapes[label.shapeIndex];
-      if (shape) shape.visible = on;
-      if (baseShapes && baseShapes[label.shapeIndex]) {{
-        baseShapes[label.shapeIndex].visible = on;
-      }}
-    }});
-
-    if (annotations.length || shapes.length) {{
-      window.Plotly.relayout(gd, {{ annotations: annotations, shapes: shapes }});
-    }}
-  }}
-
-  gd.addEventListener("rist-legend-name-change", function(ev) {{
-    var detail = ev.detail || {{}};
-    var meta = (gd.layout && gd.layout.meta) || {{}};
-    var labels = meta.ftirPeakLabels || [];
-    if (!labels.length || !window.Plotly) return;
-
-    var annotations = (gd.layout.annotations || []).map(function(a) {{
-      return Object.assign({{}}, a);
-    }});
-    updateAnnotationList(annotations, labels, detail.legendgroup, detail.name);
-
-    if (gd._ristFtirUnitOriginalAnnotations) {{
-      updateAnnotationList(
-        gd._ristFtirUnitOriginalAnnotations,
-        labels,
-        detail.legendgroup,
-        detail.name
-      );
-    }}
-
-    window.Plotly.relayout(gd, {{ annotations: annotations }});
-  }});
-
-  gd.on("plotly_restyle", function() {{
-    setTimeout(syncPeakVisibility, 0);
-  }});
-  gd.addEventListener("rist-legend-visibility-change", function() {{
-    setTimeout(syncPeakVisibility, 0);
-  }});
-}})();
-</script>
-"""
+    """Backward-compatible wrapper for the shared peak editor."""
+    return peak_editor_js(div_id)
 
 
 def ftir_abs_trans_toggle_js(div_id: str, *, yaxis_titles: dict[str, dict[str, str]]) -> str:
@@ -292,14 +206,23 @@ def build_preprocess_fig(raw, sample_vec, grid, sample_label, wn_min, wn_max):
 def build_peak_fig(sample_vec, grid, peak_idx, peak_wn, peak_val, peak_fwhm,
                    func_groups, sample_label, wn_min, wn_max):
     fig = go.Figure()
-    fig.add_trace(_enable_abs_trans_toggle(
+    sample_key = _sample_key(0)
+    raw_trace = _enable_abs_trans_toggle(
         go.Scatter(
             x=grid, y=sample_vec, mode="lines", name=sample_label,
+            legendgroup=sample_key,
+            legendgrouptitle_text=sample_label,
             line=dict(color="#374151", width=1.8),
             hovertemplate="%{x:.1f} cm⁻¹ | %{y:.4f}<extra></extra>",
         ),
         sample_vec,
-    ))
+    )
+    _merge_trace_meta(raw_trace, {
+        "rist_sample_group": sample_key,
+        "rist_sample_parent": True,
+        "rist_legend_edit_group": sample_key,
+    })
+    fig.add_trace(raw_trace)
 
     top_peak_keys = {
         f"{float(wn):.6f}" for wn, _, _ in
@@ -313,9 +236,10 @@ def build_peak_fig(sample_vec, grid, peak_idx, peak_wn, peak_val, peak_fwhm,
         group_name, color, note = assign_group(wn, func_groups)
         unknown = group_name == "unknown"
         legendgroup = f"unknown:{wn:.1f}" if unknown else group_name
+        label_key = f"{sample_key}:peak:{legendgroup}"
         display_name = f"{wn:.0f} cm⁻¹" if unknown else group_name
         trace_index = len(fig.data)
-        fig.add_trace(_enable_abs_trans_toggle(
+        peak_trace = _enable_abs_trans_toggle(
             go.Scatter(
                 x=[wn], y=[val], mode="markers",
                 marker=dict(color=color, size=9, symbol="circle",
@@ -330,7 +254,19 @@ def build_peak_fig(sample_vec, grid, peak_idx, peak_wn, peak_val, peak_fwhm,
                 ),
             ),
             [val],
-        ))
+        )
+        _merge_trace_meta(peak_trace, {
+            "rist_sample_group": sample_key,
+            "rist_legend_edit_group": label_key,
+            "rist_peak": {
+                "source": "detected",
+                "x": float(wn),
+                "label": display_name,
+                "sample_group": sample_key,
+                "label_key": label_key,
+            }
+        })
+        fig.add_trace(peak_trace)
         seen_legendgroups.add(legendgroup)
 
         if f"{float(wn):.6f}" in top_peak_keys:
@@ -339,7 +275,8 @@ def build_peak_fig(sample_vec, grid, peak_idx, peak_wn, peak_val, peak_fwhm,
             shape_index = len(fig.layout.shapes)
             annotations.append(dict(
                 x=wn, y=y_label, text=_peak_label_text(wn, display_name),
-                showarrow=True, arrowhead=0, arrowcolor=color, arrowwidth=1,
+                showarrow=True, captureevents=True,
+                arrowhead=0, arrowcolor=color, arrowwidth=1,
                 ax=0, ay=-28, font=dict(size=9, color=color),
                 bgcolor="rgba(255,255,255,0.88)",
                 bordercolor=color, borderwidth=1, borderpad=2,
@@ -350,6 +287,7 @@ def build_peak_fig(sample_vec, grid, peak_idx, peak_wn, peak_val, peak_fwhm,
                 "shapeIndex": shape_index,
                 "traceIndex": trace_index,
                 "legendgroup": legendgroup,
+                "labelKey": label_key,
                 "wnText": f"{wn:.0f}",
             })
             fig.add_shape(type="line", x0=wn, x1=wn, y0=0, y1=val,
@@ -378,7 +316,142 @@ def build_peak_fig(sample_vec, grid, peak_idx, peak_wn, peak_val, peak_fwhm,
         plot_bgcolor="white", paper_bgcolor="#fafafa",
         height=620, hovermode="closest",
         margin=dict(l=70, r=30, t=70, b=125),
-        meta={"ftirPeakLabels": peak_labels},
+        meta={"ristPeakLabels": peak_labels},
+    )
+    return fig
+
+
+def build_multi_peak_fig(samples, func_groups, wn_min, wn_max):
+    """여러 FT-IR 시료의 raw/preprocessed trace와 피크를 한 그래프에 그린다."""
+    fig = go.Figure()
+    annotations = []
+    peak_labels = []
+    max_y = 1.0
+
+    for sample_no, sample in enumerate(samples):
+        sample_key = _sample_key(sample_no)
+        label = sample["label"]
+        grid = sample["grid"]
+        sample_vec = sample["sample_vec"]
+        color = SAMPLE_PALETTE[sample_no % len(SAMPLE_PALETTE)]
+        max_y = max(max_y, float(np.nanmax(sample_vec)) if len(sample_vec) else 1.0)
+
+        raw_trace = _enable_abs_trans_toggle(
+            go.Scatter(
+                x=grid, y=sample_vec, mode="lines", name=label,
+                legendgroup=sample_key,
+                legendgrouptitle_text=label,
+                line=dict(color=color, width=1.8),
+                hovertemplate=f"<b>{label}</b><br>%{{x:.1f}} cm⁻¹ | %{{y:.4f}}<extra></extra>",
+            ),
+            sample_vec,
+        )
+        _merge_trace_meta(raw_trace, {
+            "rist_sample_group": sample_key,
+            "rist_sample_parent": True,
+            "rist_legend_edit_group": sample_key,
+        })
+        fig.add_trace(raw_trace)
+
+        peak_wn = sample["peak_wn"]
+        peak_val = sample["peak_val"]
+        peak_fwhm = sample["peak_fwhm"]
+        top_peak_keys = {
+            f"{float(wn):.6f}" for wn, _, _ in
+            sorted(zip(peak_wn, peak_val, peak_fwhm), key=lambda x: -x[1])[:25]
+        }
+        seen_label_keys = set()
+
+        for peak_no, (wn, val, fwhm) in enumerate(zip(peak_wn, peak_val, peak_fwhm)):
+            group_name, peak_color, note = assign_group(wn, func_groups)
+            unknown = group_name == "unknown"
+            local_group = f"unknown:{wn:.1f}" if unknown else group_name
+            label_key = f"{sample_key}:peak:{local_group}"
+            display_name = f"{wn:.0f} cm⁻¹" if unknown else group_name
+            trace_index = len(fig.data)
+            peak_trace = _enable_abs_trans_toggle(
+                go.Scatter(
+                    x=[wn], y=[val], mode="markers",
+                    marker=dict(color=peak_color, size=8, symbol="circle",
+                                line=dict(color="white", width=1.5)),
+                    name=display_name,
+                    legendgroup=sample_key,
+                    showlegend=label_key not in seen_label_keys,
+                    hovertemplate=(
+                        f"<b>{label}</b><br>{wn:.1f} cm⁻¹<br>{display_name}<br>"
+                        f"Value: %{{y:.4f}}<br>FWHM: {fwhm:.1f} cm⁻¹<br>"
+                        f"<i>{note}</i><extra></extra>"
+                    ),
+                ),
+                [val],
+            )
+            _merge_trace_meta(peak_trace, {
+                "rist_sample_group": sample_key,
+                "rist_legend_edit_group": label_key,
+                "rist_peak": {
+                    "source": "detected",
+                    "x": float(wn),
+                    "label": display_name,
+                    "sample_group": sample_key,
+                    "label_key": label_key,
+                },
+            })
+            fig.add_trace(peak_trace)
+            seen_label_keys.add(label_key)
+
+            if f"{float(wn):.6f}" in top_peak_keys:
+                y_label = val + 0.06 + (0.05 if (len(annotations) + peak_no) % 2 == 0 else 0.0)
+                annotation_index = len(annotations)
+                shape_index = len(fig.layout.shapes)
+                annotations.append(dict(
+                    x=wn, y=y_label, text=_peak_label_text(wn, display_name),
+                    showarrow=True, captureevents=True,
+                    arrowhead=0, arrowcolor=peak_color, arrowwidth=1,
+                    ax=0, ay=-28, font=dict(size=9, color=peak_color),
+                    bgcolor="rgba(255,255,255,0.88)",
+                    bordercolor=peak_color, borderwidth=1, borderpad=2,
+                    name=f"ftir_peak_label_{sample_no}_{annotation_index}",
+                ))
+                peak_labels.append({
+                    "annotationIndex": annotation_index,
+                    "shapeIndex": shape_index,
+                    "traceIndex": trace_index,
+                    "legendgroup": sample_key,
+                    "labelKey": label_key,
+                    "wnText": f"{wn:.0f}",
+                })
+                fig.add_shape(type="line", x0=wn, x1=wn, y0=0, y1=val,
+                              line=dict(color=peak_color, width=0.8, dash="dot"))
+
+    title = "FTIR Peak Analysis — " + ", ".join(sample["label"] for sample in samples[:3])
+    if len(samples) > 3:
+        title += f" 외 {len(samples) - 3}개"
+
+    fig.update_layout(
+        title=dict(text=title, font=dict(size=18), x=0.01),
+        xaxis=dict(
+            title="Wavenumber (cm⁻¹)", range=[wn_max, wn_min],
+            showgrid=True, gridcolor="#e8e8e8",
+            tickmode="linear", dtick=500,
+            minor=dict(showgrid=True, gridcolor="#f4f4f4"),
+        ),
+        yaxis=dict(
+            title="Normalized Absorbance", showgrid=True, gridcolor="#e8e8e8",
+            range=[-0.05, max_y * 1.65],
+        ),
+        annotations=annotations,
+        legend=dict(
+            orientation="v", x=1.02, xanchor="left", y=1.0, yanchor="top",
+            itemclick="toggle", itemdoubleclick="toggleothers",
+            groupclick="toggleitem",
+            bgcolor="rgba(255,255,255,0.9)",
+            bordercolor="#ccc", borderwidth=1, font=dict(size=10),
+            itemsizing="constant", tracegroupgap=10,
+        ),
+        plot_bgcolor="white", paper_bgcolor="#fafafa",
+        height=720, hovermode="closest",
+        margin=dict(l=70, r=260, t=80, b=70),
+        meta={"ristPeakLabels": peak_labels},
     )
     return fig
 

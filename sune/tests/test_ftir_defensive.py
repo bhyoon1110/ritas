@@ -14,7 +14,7 @@ if str(SUNE_DIR) not in sys.path:
 from ftir.library_matcher import assign_confidence_tier
 from ftir.cli import _resolve_peak_params
 from ftir.preprocess import load_csv
-from ftir.plotting import build_peak_fig, ftir_peak_label_sync_js
+from ftir.plotting import build_multi_peak_fig, build_peak_fig, ftir_peak_label_sync_js
 from ftir.scoring import rank_best_per_material
 
 
@@ -114,9 +114,15 @@ def test_peak_fig_labels_show_functional_group_names() -> None:
     )
 
     assert "C-O stretch" in fig.layout.annotations[0].text
-    assert fig.layout.meta["ftirPeakLabels"][0]["legendgroup"] == "C-O stretch"
-    assert "traceIndex" in fig.layout.meta["ftirPeakLabels"][0]
-    assert "shapeIndex" in fig.layout.meta["ftirPeakLabels"][0]
+    assert fig.layout.annotations[0].captureevents is True
+    assert fig.layout.meta["ristPeakLabels"][0]["legendgroup"] == "C-O stretch"
+    assert fig.layout.meta["ristPeakLabels"][0]["labelKey"] == "sample:0:peak:C-O stretch"
+    assert "traceIndex" in fig.layout.meta["ristPeakLabels"][0]
+    assert "shapeIndex" in fig.layout.meta["ristPeakLabels"][0]
+    assert fig.data[1].meta["rist_peak"]["source"] == "detected"
+    assert fig.data[0].meta["rist_sample_parent"] is True
+    assert fig.data[1].meta["rist_sample_group"] == "sample:0"
+    assert fig.data[1].meta["rist_peak"]["sample_group"] == "sample:0"
     assert fig.layout.legend.orientation == "h"
     assert fig.layout.margin.b >= 120
 
@@ -151,4 +157,45 @@ def test_peak_label_sync_script_listens_for_legend_edits() -> None:
     assert "rist-legend-name-change" in html
     assert "plotly_restyle" in html
     assert "rist-legend-visibility-change" in html
-    assert "ftirPeakLabels" in html
+    assert "ristPeakLabels" in html
+    assert "rist-peak-edit-button" in html
+
+
+def test_multi_peak_fig_groups_peaks_under_each_sample() -> None:
+    grid = pd.Series([1000.0, 1100.0, 1200.0, 1300.0]).to_numpy()
+    func_groups = [(1200, 20, "C-O stretch", "#2563eb", "")]
+    samples = [
+        {
+            "label": "sample-a",
+            "grid": grid,
+            "sample_vec": pd.Series([0.1, 0.4, 1.0, 0.2]).to_numpy(),
+            "peak_idx": pd.Series([2]).to_numpy(),
+            "peak_wn": pd.Series([1200.0]).to_numpy(),
+            "peak_val": pd.Series([1.0]).to_numpy(),
+            "peak_fwhm": pd.Series([12.0]).to_numpy(),
+        },
+        {
+            "label": "sample-b",
+            "grid": grid,
+            "sample_vec": pd.Series([0.2, 0.9, 0.3, 0.1]).to_numpy(),
+            "peak_idx": pd.Series([1]).to_numpy(),
+            "peak_wn": pd.Series([1100.0]).to_numpy(),
+            "peak_val": pd.Series([0.9]).to_numpy(),
+            "peak_fwhm": pd.Series([10.0]).to_numpy(),
+        },
+    ]
+
+    fig = build_multi_peak_fig(samples, func_groups, wn_min=1000, wn_max=1300)
+
+    assert fig.data[0].name == "sample-a"
+    assert fig.data[0].legendgroup == "sample:0"
+    assert fig.data[0].meta["rist_sample_parent"] is True
+    assert fig.data[1].legendgroup == "sample:0"
+    assert fig.data[1].meta["rist_peak"]["sample_group"] == "sample:0"
+    assert fig.data[2].name == "sample-b"
+    assert fig.data[2].legendgroup == "sample:1"
+    assert fig.data[3].legendgroup == "sample:1"
+    assert fig.layout.legend.orientation == "v"
+    assert fig.layout.legend.groupclick == "toggleitem"
+    assert fig.layout.meta["ristPeakLabels"][0]["labelKey"] == "sample:0:peak:C-O stretch"
+    assert fig.layout.meta["ristPeakLabels"][1]["labelKey"] == "sample:1:peak:unknown:1100.0"

@@ -212,7 +212,12 @@ def _crosshair_js(div_id: str) -> str:
     return bestT;
   }};
 
-  function hide() {{ box.style.display = "none"; dot.style.display = "none"; gd._snapCurve = -1; }}
+  function hide() {{
+    box.style.display = "none";
+    dot.style.display = "none";
+    gd._snapCurve = -1;
+    gd._snapPoint = null;
+  }}
   gd.addEventListener("mousemove", function(e) {{
     gd._lastPtr = {{ x: e.clientX, y: e.clientY }};   // 마지막 포인터(더블클릭 하이라이트용)
     var fl = gd._fullLayout;
@@ -250,6 +255,7 @@ def _crosshair_js(div_id: str) -> str:
     if (best) {{
       // 스냅된 트레이스 인덱스 공개(더블클릭 하이라이트 연동용)
       gd._snapCurve = best.tt;
+      gd._snapPoint = {{ x: best.x, y: best.y, curve: best.tt }};
       // 데이터 점에 스냅: 마커 표시 + 정확한 값
       var dotL = r.left - gdr.left + best.cx;
       var dotT = r.top - gdr.top + best.cy;
@@ -260,6 +266,7 @@ def _crosshair_js(div_id: str) -> str:
       anchorX = dotL; anchorY = dotT;
     }} else {{
       gd._snapCurve = -1;
+      gd._snapPoint = null;
       dot.style.display = "none";
       box.innerHTML = "x: " + fmt(curX) + " &nbsp; y: " + fmt(ya.p2d(py));
       anchorX = e.clientX - gdr.left; anchorY = e.clientY - gdr.top;
@@ -417,6 +424,17 @@ def _legend_text_edit_js(div_id: str) -> str:
   align-items: center;
   margin: 6px 0;
 }}
+#{div_id} .rist-legend-color-input {{
+  flex: 0 0 auto;
+  width: 30px;
+  height: 28px;
+  border: 1px solid #c7d0dd;
+  border-radius: 4px;
+  background: #fff;
+  cursor: pointer;
+  padding: 2px;
+  box-sizing: border-box;
+}}
 #{div_id} .rist-legend-edit-actions {{
   display: flex;
   justify-content: flex-end;
@@ -501,6 +519,34 @@ def _legend_text_edit_js(div_id: str) -> str:
     return "";
   }}
 
+  function normalizeColor(value) {{
+    if (typeof value === "string" && /^#[0-9a-fA-F]{{6}}$/.test(value)) {{
+      return value;
+    }}
+    return "#374151";
+  }}
+
+  function traceColor(curve) {{
+    var tr = (gd.data || [])[curve] || {{}};
+    if (tr.marker && tr.marker.color) return normalizeColor(tr.marker.color);
+    if (tr.line && tr.line.color) return normalizeColor(tr.line.color);
+    return "#374151";
+  }}
+
+  function traceMeta(curve) {{
+    var tr = (gd.data || [])[curve] || {{}};
+    return tr.meta && typeof tr.meta === "object" ? tr.meta : {{}};
+  }}
+
+  function legendEditGroup(curve) {{
+    var meta = traceMeta(curve);
+    if (meta.rist_legend_edit_group) return String(meta.rist_legend_edit_group);
+    if (meta.rist_peak && meta.rist_peak.label_key) return String(meta.rist_peak.label_key);
+    var tr = (gd.data || [])[curve] || {{}};
+    if (tr.legendgroup != null && tr.legendgroup !== "") return String(tr.legendgroup);
+    return "curve:" + curve;
+  }}
+
   function dispatchVisibilityChange(curves, visible) {{
     try {{
       gd.dispatchEvent(new CustomEvent("rist-legend-visibility-change", {{
@@ -515,13 +561,11 @@ def _legend_text_edit_js(div_id: str) -> str:
     var data = gd.data || [];
     var base = data[curve] || {{}};
     var legendgroup = base.legendgroup;
+    var editGroup = legendEditGroup(curve);
     var oldName = traceName(curve);
     var curves = [];
     for (var i = 0; i < data.length; i++) {{
-      var tr = data[i] || {{}};
-      if (legendgroup != null && legendgroup !== "") {{
-        if (tr.legendgroup === legendgroup) curves.push(i);
-      }} else if (i === curve) {{
+      if (legendEditGroup(i) === editGroup) {{
         curves.push(i);
       }}
     }}
@@ -534,10 +578,41 @@ def _legend_text_edit_js(div_id: str) -> str:
             curves: curves,
             oldName: oldName,
             name: value,
-            legendgroup: legendgroup
+            legendgroup: legendgroup,
+            editGroup: editGroup
           }}
         }}));
       }} catch (e) {{}}
+    }});
+  }}
+
+  function dispatchColorChange(curves, color) {{
+    try {{
+      gd.dispatchEvent(new CustomEvent("rist-legend-color-change", {{
+        detail: {{ curves: curves, color: color }}
+      }}));
+    }} catch (e) {{}}
+  }}
+
+  function updateColor(curve, value) {{
+    var color = normalizeColor(value);
+    if (!window.Plotly) return;
+    var data = gd.data || [];
+    var base = data[curve] || {{}};
+    var legendgroup = base.legendgroup;
+    var editGroup = legendEditGroup(curve);
+    var curves = [];
+    for (var i = 0; i < data.length; i++) {{
+      if (legendEditGroup(i) === editGroup) {{
+        curves.push(i);
+      }}
+    }}
+    if (!curves.length) curves = [curve];
+    window.Plotly.restyle(gd, {{
+      "line.color": color,
+      "marker.color": color
+    }}, curves).then(function() {{
+      dispatchColorChange(curves, color);
     }});
   }}
 
@@ -569,6 +644,10 @@ def _legend_text_edit_js(div_id: str) -> str:
     toolbar.appendChild(btn);
     gd.appendChild(panel);
 
+    function closePanel() {{
+      panel.style.display = "none";
+    }}
+
     function renderRows() {{
       var body = panel.querySelector(".rist-legend-edit-body");
       var idxs = visibleLegendTraceIndexes();
@@ -577,10 +656,13 @@ def _legend_text_edit_js(div_id: str) -> str:
         var row = document.createElement("div");
         row.className = "rist-legend-edit-row";
         row.setAttribute("data-curve", String(curve));
-        row.innerHTML = "<input class='rist-legend-edit-input' type='text'>";
-        var input = row.querySelector("input");
-        input.value = traceName(curve);
-        input.addEventListener("keydown", function(ev) {{
+        row.innerHTML = "<input class='rist-legend-color-input' type='color'>"
+          + "<input class='rist-legend-edit-input' type='text'>";
+        var colorInput = row.querySelector(".rist-legend-color-input");
+        var nameInput = row.querySelector(".rist-legend-edit-input");
+        colorInput.value = traceColor(curve);
+        nameInput.value = traceName(curve);
+        nameInput.addEventListener("keydown", function(ev) {{
           if (ev.key === "Enter") {{
             ev.preventDefault();
             saveAllRows();
@@ -593,10 +675,13 @@ def _legend_text_edit_js(div_id: str) -> str:
     function saveAllRows() {{
       panel.querySelectorAll(".rist-legend-edit-row").forEach(function(row) {{
         var curve = parseInt(row.getAttribute("data-curve"), 10);
-        var input = row.querySelector(".rist-legend-edit-input");
-        if (!Number.isFinite(curve) || !input) return;
-        updateName(curve, input.value);
+        var nameInput = row.querySelector(".rist-legend-edit-input");
+        var colorInput = row.querySelector(".rist-legend-color-input");
+        if (!Number.isFinite(curve) || !nameInput || !colorInput) return;
+        updateName(curve, nameInput.value);
+        updateColor(curve, colorInput.value);
       }});
+      closePanel();
     }}
 
     btn.addEventListener("click", function(ev) {{
@@ -606,12 +691,18 @@ def _legend_text_edit_js(div_id: str) -> str:
       if (willOpen) renderRows();
       panel.style.display = willOpen ? "block" : "none";
     }});
-    panel.querySelector(".rist-legend-edit-close").addEventListener("click", function() {{
-      panel.style.display = "none";
+    panel.querySelector(".rist-legend-edit-close").addEventListener("click", function(ev) {{
+      ev.preventDefault();
+      closePanel();
     }});
     panel.querySelector(".rist-legend-edit-save-all").addEventListener("click", saveAllRows);
+    document.addEventListener("click", function(ev) {{
+      if (panel.style.display !== "block") return;
+      if (panel.contains(ev.target) || btn.contains(ev.target)) return;
+      closePanel();
+    }});
     document.addEventListener("keydown", function(ev) {{
-      if (ev.key === "Escape") panel.style.display = "none";
+      if (ev.key === "Escape") closePanel();
     }});
   }}
 
@@ -697,6 +788,514 @@ def _legend_text_edit_js(div_id: str) -> str:
       inp.addEventListener("blur", function() {{ finish(true); }});
     }}, 250);
   }}, true);
+}})();
+</script>
+"""
+
+
+def peak_editor_js(div_id: str) -> str:
+    """피크 trace/라벨/보조선을 HTML에서 추가·삭제·동기화하는 JS 스니펫.
+
+    Figure는 ``layout.meta.ristPeakLabels``에 다음 정보를 담을 수 있다.
+
+    - traceIndex: 피크 marker trace index
+    - annotationIndex: 피크 라벨 annotation index
+    - shapeIndex: 피크 보조선 shape index
+    - legendgroup: 범례 편집 시 같은 그룹 라벨을 갱신할 key
+    - labelKey: 샘플 그룹과 별도로 피크 라벨을 갱신할 key
+    - wnText: 라벨 첫 줄에 표시할 x축 값 문자열
+
+    피크 trace에는 ``trace.meta.rist_peak`` 값을 넣어두면 삭제 대상 피크로
+    인식한다. 여러 시료를 한 그래프에 그릴 때는 raw trace와 피크 trace에
+    같은 ``meta.rist_sample_group`` 값을 넣고 raw trace에는
+    ``meta.rist_sample_parent=True``를 지정하면 raw 범례 숨김이 자식 피크
+    범례/라벨/보조선에 함께 전파된다. sune/rin 같은 프로젝트별 분석 모듈은
+    피크 검출 방식만 다르게 유지하고, HTML 편집 UX는 이 공통 스니펫을
+    재사용한다.
+    """
+    return f"""
+<style>
+#{div_id} .rist-peak-edit-button {{
+  order: 15;
+  border: 1px solid #9fb3c8;
+  border-radius: 4px;
+  background: #f5f7fa;
+  color: #1f2933;
+  cursor: pointer;
+  font: 12px Arial, sans-serif;
+  padding: 5px 8px;
+}}
+#{div_id} .rist-peak-edit-button.is-active {{
+  background: #dbeafe;
+  border-color: #3b82f6;
+  color: #1d4ed8;
+}}
+</style>
+<script>
+(function() {{
+  var gd = document.getElementById("{div_id}");
+  if (!gd) return;
+  var mode = "none";
+
+  function esc(s) {{
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }}
+
+  function toolbar() {{
+    if (getComputedStyle(gd).position === "static") gd.style.position = "relative";
+    var row = gd.querySelector(".rist-plot-control-row");
+    if (!row) {{
+      row = document.createElement("div");
+      row.className = "rist-plot-control-row";
+      gd.appendChild(row);
+    }}
+    return row;
+  }}
+
+  function meta() {{
+    if (!gd.layout.meta || typeof gd.layout.meta !== "object") gd.layout.meta = {{}};
+    if (!Array.isArray(gd.layout.meta.ristPeakLabels)) gd.layout.meta.ristPeakLabels = [];
+    return gd.layout.meta.ristPeakLabels;
+  }}
+
+  function peakName(x) {{
+    var n = Number(x);
+    if (!isFinite(n)) return "Peak";
+    return n.toFixed(Math.abs(n) >= 100 ? 0 : 2) + " peak";
+  }}
+
+  function labelText(xText, name) {{
+    return "<b>" + esc(xText) + "</b><br><span style='font-size:10px'>"
+      + esc(name) + "</span>";
+  }}
+
+  function traceVisible(curve) {{
+    var tr = (gd.data || [])[curve] || {{}};
+    return tr.visible !== false && tr.visible !== "legendonly";
+  }}
+
+  function traceMeta(curve) {{
+    var tr = (gd.data || [])[curve] || {{}};
+    return tr.meta && typeof tr.meta === "object" ? tr.meta : {{}};
+  }}
+
+  function sampleGroup(curve) {{
+    var meta = traceMeta(curve);
+    if (meta.rist_sample_group) return String(meta.rist_sample_group);
+    if (meta.rist_peak && meta.rist_peak.sample_group) {{
+      return String(meta.rist_peak.sample_group);
+    }}
+    return "";
+  }}
+
+  function isSampleParent(curve) {{
+    var meta = traceMeta(curve);
+    return !!meta.rist_sample_parent;
+  }}
+
+  function labelKeyForTrace(curve) {{
+    var meta = traceMeta(curve);
+    if (meta.rist_legend_edit_group) return String(meta.rist_legend_edit_group);
+    if (meta.rist_peak && meta.rist_peak.label_key) return String(meta.rist_peak.label_key);
+    var tr = (gd.data || [])[curve] || {{}};
+    if (tr.legendgroup != null && tr.legendgroup !== "") return String(tr.legendgroup);
+    return "curve:" + curve;
+  }}
+
+  function nearestIdx(xs, target) {{
+    var lo = 0, hi = xs.length - 1;
+    if (hi < 0) return -1;
+    var asc = Number(xs[hi]) >= Number(xs[0]);
+    while (lo < hi) {{
+      var mid = (lo + hi) >> 1;
+      var v = Number(xs[mid]);
+      var cond = asc ? (v < target) : (v > target);
+      if (cond) lo = mid + 1; else hi = mid;
+    }}
+    return lo;
+  }}
+
+  function updateAnnotationList(annotations, labels, legendgroup, name) {{
+    labels.forEach(function(label) {{
+      var key = label.labelKey || label.legendgroup;
+      if (key !== legendgroup) return;
+      var ann = annotations[label.annotationIndex];
+      if (!ann) return;
+      ann.text = labelText(label.wnText, name);
+    }});
+  }}
+
+  function updatePeakColorList(annotations, shapes, labels, curves, color) {{
+    labels.forEach(function(label) {{
+      if (curves.indexOf(label.traceIndex) < 0) return;
+      var ann = annotations[label.annotationIndex];
+      var shape = shapes[label.shapeIndex];
+      if (ann) {{
+        ann.arrowcolor = color;
+        ann.bordercolor = color;
+        ann.font = Object.assign({{}}, ann.font || {{}}, {{ color: color }});
+      }}
+      if (shape) {{
+        shape.line = Object.assign({{}}, shape.line || {{}}, {{ color: color }});
+      }}
+    }});
+  }}
+
+  function syncVisibility() {{
+    if (!window.Plotly) return;
+    var labels = meta();
+    if (!labels.length) return;
+    var annotations = (gd.layout.annotations || []).map(function(a) {{
+      return Object.assign({{}}, a);
+    }});
+    var shapes = (gd.layout.shapes || []).map(function(s) {{
+      return Object.assign({{}}, s);
+    }});
+    labels.forEach(function(label) {{
+      var on = traceVisible(label.traceIndex);
+      var ann = annotations[label.annotationIndex];
+      var shape = shapes[label.shapeIndex];
+      if (ann) ann.visible = on;
+      if (shape) shape.visible = on;
+      if (gd._ristFtirUnitOriginalAnnotations
+          && gd._ristFtirUnitOriginalAnnotations[label.annotationIndex]) {{
+        gd._ristFtirUnitOriginalAnnotations[label.annotationIndex].visible = on;
+      }}
+      if (gd._ristFtirUnitOriginalShapes
+          && gd._ristFtirUnitOriginalShapes[label.shapeIndex]) {{
+        gd._ristFtirUnitOriginalShapes[label.shapeIndex].visible = on;
+      }}
+    }});
+    window.Plotly.relayout(gd, {{ annotations: annotations, shapes: shapes }});
+  }}
+
+  function childCurvesForSample(group, parentCurve) {{
+    var data = gd.data || [];
+    var curves = [];
+    if (!group) return curves;
+    for (var i = 0; i < data.length; i++) {{
+      if (i === parentCurve) continue;
+      if (sampleGroup(i) === group) curves.push(i);
+    }}
+    return curves;
+  }}
+
+  function syncSampleChildren(restyleEvent) {{
+    if (!window.Plotly || gd._ristSyncingSampleVisibility) return;
+    if (!restyleEvent || !restyleEvent.length) return;
+    var update = restyleEvent[0] || {{}};
+    if (!Object.prototype.hasOwnProperty.call(update, "visible")) return;
+    var curves = restyleEvent[1] || [];
+    if (!Array.isArray(curves)) curves = [curves];
+    var visibleValues = update.visible;
+    var pending = [];
+    curves.forEach(function(curve, pos) {{
+      if (!isSampleParent(curve)) return;
+      var group = sampleGroup(curve);
+      if (!group) return;
+      var childCurves = childCurvesForSample(group, curve);
+      if (!childCurves.length) return;
+      var visible = Array.isArray(visibleValues) ? visibleValues[pos] : visibleValues;
+      pending.push({{ curves: childCurves, visible: visible }});
+    }});
+    if (!pending.length) return;
+    gd._ristSyncingSampleVisibility = true;
+    Promise.all(pending.map(function(item) {{
+      return window.Plotly.restyle(gd, {{ visible: item.visible }}, item.curves)
+        .then(function() {{
+          try {{
+            gd.dispatchEvent(new CustomEvent("rist-legend-visibility-change", {{
+              detail: {{ curves: item.curves, visible: item.visible }}
+            }}));
+          }} catch (e) {{}}
+        }});
+    }})).then(function() {{
+      gd._ristSyncingSampleVisibility = false;
+      syncVisibility();
+    }}).catch(function() {{
+      gd._ristSyncingSampleVisibility = false;
+    }});
+  }}
+
+  function dataPointFromEvent(ev) {{
+    var fl = gd._fullLayout;
+    if (!fl || !fl.xaxis || !fl.yaxis) return null;
+    var drag = gd.querySelector(".nsewdrag");
+    if (!drag) return null;
+    var xa = fl.xaxis;
+    var r = drag.getBoundingClientRect();
+    var px = ev.clientX - r.left;
+    var py = ev.clientY - r.top;
+    if (px < 0 || py < 0 || px > r.width || py > r.height) return null;
+    var data = gd._fullData || gd.data || [];
+    var best = null;
+    var bestD = Infinity;
+    var curX = xa.p2d(px);
+    for (var t = 0; t < data.length; t++) {{
+      var tr = data[t];
+      if (!tr || tr.visible === false || tr.visible === "legendonly") continue;
+      if (tr.meta && tr.meta.rist_peak) continue;
+      var xs = tr.x, ys = tr.y;
+      if (!xs || !ys || xs.length < 3) continue;
+      for (var k = 1; k < xs.length - 1; k++) {{
+        var x = Number(xs[k]), y = Number(ys[k]);
+        var prev = Number(ys[k - 1]), next = Number(ys[k + 1]);
+        if (!isFinite(x) || !isFinite(y) || !isFinite(prev) || !isFinite(next)) continue;
+        if (y < prev || y < next) continue;
+        var d = Math.abs(x - curX);
+        if (d < bestD) {{
+          bestD = d;
+          best = {{ x: xs[k], y: ys[k], curve: t, localMaximum: true }};
+        }}
+      }}
+    }}
+    if (!best && gd._snapPoint
+        && isFinite(Number(gd._snapPoint.x))
+        && isFinite(Number(gd._snapPoint.y))) {{
+      return {{ x: gd._snapPoint.x, y: gd._snapPoint.y, snapped: true }};
+    }}
+    return best;
+  }}
+
+  function addPeakAt(pt) {{
+    if (!window.Plotly || !pt) return;
+    var xText = isFinite(Number(pt.x)) ? Number(pt.x).toFixed(0) : String(pt.x);
+    var name = peakName(pt.x);
+    var group = "user-peak-" + Date.now() + "-" + Math.floor(Math.random() * 10000);
+    var parentSampleGroup = pt.curve == null ? "" : sampleGroup(pt.curve);
+    var legendGroup = parentSampleGroup || group;
+    var traceIndex = (gd.data || []).length;
+    var annotationIndex = (gd.layout.annotations || []).length;
+    var shapeIndex = (gd.layout.shapes || []).length;
+    var color = "#ef4444";
+    var tr = {{
+      type: "scatter",
+      mode: "markers",
+      x: [pt.x],
+      y: [pt.y],
+      name: name,
+      legendgroup: legendGroup,
+      showlegend: true,
+      marker: {{
+        color: color,
+        size: 9,
+        symbol: "circle",
+        line: {{ color: "white", width: 1.5 }}
+      }},
+      meta: {{
+        rist_legend_edit_group: group,
+        rist_peak: {{
+          user: true,
+          sample_group: parentSampleGroup,
+          label_key: group
+        }}
+      }},
+      hovertemplate: "<b>%{{x:.2f}}</b><br>%{{y:.4f}}<extra></extra>"
+    }};
+    var ann = {{
+      x: pt.x,
+      y: pt.y,
+      text: labelText(xText, name),
+      showarrow: true,
+      captureevents: true,
+      arrowhead: 0,
+      arrowcolor: color,
+      arrowwidth: 1,
+      ax: 0,
+      ay: -28,
+      font: {{ size: 9, color: color }},
+      bgcolor: "rgba(255,255,255,0.88)",
+      bordercolor: color,
+      borderwidth: 1,
+      borderpad: 2,
+      name: "rist_user_peak_label_" + annotationIndex
+    }};
+    var shape = {{
+      type: "line",
+      x0: pt.x,
+      x1: pt.x,
+      y0: 0,
+      y1: pt.y,
+      line: {{ color: color, width: 0.8, dash: "dot" }}
+    }};
+    window.Plotly.addTraces(gd, tr).then(function() {{
+      var labels = meta();
+      labels.push({{
+        annotationIndex: annotationIndex,
+        shapeIndex: shapeIndex,
+        traceIndex: traceIndex,
+        legendgroup: legendGroup,
+        labelKey: group,
+        wnText: xText
+      }});
+      var annotations = (gd.layout.annotations || []).slice();
+      var shapes = (gd.layout.shapes || []).slice();
+      annotations.push(ann);
+      shapes.push(shape);
+      if (gd._ristFtirUnitOriginalAnnotations) {{
+        gd._ristFtirUnitOriginalAnnotations = annotations.map(function(a) {{
+          return Object.assign({{}}, a);
+        }});
+      }}
+      if (gd._ristFtirUnitOriginalShapes) {{
+        gd._ristFtirUnitOriginalShapes = shapes.map(function(s) {{
+          return Object.assign({{}}, s);
+        }});
+      }}
+      return window.Plotly.relayout(gd, {{
+        "meta.ristPeakLabels": labels,
+        annotations: annotations,
+        shapes: shapes
+      }});
+    }});
+  }}
+
+  function labelForCurve(curve) {{
+    return meta().find(function(label) {{ return label.traceIndex === curve; }}) || null;
+  }}
+
+  function deletePeakTrace(curve) {{
+    if (!window.Plotly || curve == null || curve < 0) return;
+    var labels = meta();
+    var label = labelForCurve(curve);
+    var tr = (gd.data || [])[curve] || {{}};
+    var isPeak = label || (tr.meta && tr.meta.rist_peak);
+    if (!isPeak) return;
+    var annotations = (gd.layout.annotations || []).slice();
+    var shapes = (gd.layout.shapes || []).slice();
+    if (label) {{
+      annotations.splice(label.annotationIndex, 1);
+      shapes.splice(label.shapeIndex, 1);
+      if (gd._ristFtirUnitOriginalAnnotations) {{
+        gd._ristFtirUnitOriginalAnnotations.splice(label.annotationIndex, 1);
+      }}
+      if (gd._ristFtirUnitOriginalShapes) {{
+        gd._ristFtirUnitOriginalShapes.splice(label.shapeIndex, 1);
+      }}
+      labels = labels.filter(function(item) {{ return item.traceIndex !== curve; }});
+    }}
+    labels.forEach(function(item) {{
+      if (label && item.annotationIndex > label.annotationIndex) item.annotationIndex -= 1;
+      if (label && item.shapeIndex > label.shapeIndex) item.shapeIndex -= 1;
+      if (item.traceIndex > curve) item.traceIndex -= 1;
+    }});
+    window.Plotly.deleteTraces(gd, [curve]).then(function() {{
+      return window.Plotly.relayout(gd, {{
+        "meta.ristPeakLabels": labels,
+        annotations: annotations,
+        shapes: shapes
+      }});
+    }});
+  }}
+
+  function setMode(next) {{
+    mode = mode === next ? "none" : next;
+    addBtn.classList.toggle("is-active", mode === "add");
+    delBtn.classList.toggle("is-active", mode === "delete");
+  }}
+
+  var addBtn = document.createElement("button");
+  addBtn.type = "button";
+  addBtn.className = "rist-peak-edit-button";
+  addBtn.textContent = "피크 추가";
+  addBtn.addEventListener("click", function(ev) {{
+    ev.preventDefault();
+    ev.stopPropagation();
+    setMode("add");
+  }});
+
+  var delBtn = document.createElement("button");
+  delBtn.type = "button";
+  delBtn.className = "rist-peak-edit-button";
+  delBtn.textContent = "피크 삭제";
+  delBtn.addEventListener("click", function(ev) {{
+    ev.preventDefault();
+    ev.stopPropagation();
+    setMode("delete");
+  }});
+
+  var row = toolbar();
+  row.appendChild(addBtn);
+  row.appendChild(delBtn);
+
+  gd.addEventListener("click", function(ev) {{
+    if (mode !== "add") return;
+    if (ev.target.closest(".rist-plot-control-row")) return;
+    var pt = dataPointFromEvent(ev);
+    if (!pt) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    addPeakAt(pt);
+  }}, true);
+
+  gd.on("plotly_click", function(ev) {{
+    if (mode !== "delete") return;
+    var point = ev && ev.points && ev.points[0];
+    if (!point) return;
+    deletePeakTrace(point.curveNumber);
+  }});
+
+  gd.addEventListener("rist-legend-name-change", function(ev) {{
+    if (!window.Plotly) return;
+    var detail = ev.detail || {{}};
+    var labels = meta();
+    if (!labels.length) return;
+    var annotations = (gd.layout.annotations || []).map(function(a) {{
+      return Object.assign({{}}, a);
+    }});
+    updateAnnotationList(
+      annotations,
+      labels,
+      detail.editGroup || detail.legendgroup,
+      detail.name
+    );
+    if (gd._ristFtirUnitOriginalAnnotations) {{
+      updateAnnotationList(
+        gd._ristFtirUnitOriginalAnnotations,
+        labels,
+        detail.editGroup || detail.legendgroup,
+        detail.name
+      );
+    }}
+    window.Plotly.relayout(gd, {{ annotations: annotations }});
+  }});
+  gd.addEventListener("rist-legend-color-change", function(ev) {{
+    if (!window.Plotly) return;
+    var detail = ev.detail || {{}};
+    var labels = meta();
+    if (!labels.length || !detail.curves || !detail.color) return;
+    var annotations = (gd.layout.annotations || []).map(function(a) {{
+      return Object.assign({{}}, a);
+    }});
+    var shapes = (gd.layout.shapes || []).map(function(s) {{
+      return Object.assign({{}}, s);
+    }});
+    updatePeakColorList(annotations, shapes, labels, detail.curves, detail.color);
+    if (gd._ristFtirUnitOriginalAnnotations || gd._ristFtirUnitOriginalShapes) {{
+      updatePeakColorList(
+        gd._ristFtirUnitOriginalAnnotations || [],
+        gd._ristFtirUnitOriginalShapes || [],
+        labels,
+        detail.curves,
+        detail.color
+      );
+    }}
+    window.Plotly.relayout(gd, {{ annotations: annotations, shapes: shapes }});
+  }});
+  gd.on("plotly_restyle", function(ev) {{
+    setTimeout(function() {{
+      syncSampleChildren(ev);
+      syncVisibility();
+    }}, 0);
+  }});
+  gd.addEventListener("rist-legend-visibility-change", function() {{
+    setTimeout(syncVisibility, 0);
+  }});
 }})();
 </script>
 """
@@ -979,6 +1578,7 @@ def fig_to_responsive_html(
     legend_text: Mapping[int | str, str] | None = None,
     legend_group_text: Mapping[str, str] | None = None,
     legend_text_edit: bool = False,
+    peak_editor: bool = False,
     image_format: str = "svg",
     image_filename: str = "plot",
     image_scale: float = 2,
@@ -1000,6 +1600,7 @@ def fig_to_responsive_html(
     - legend_text 는 저장 전 범례 항목명을 trace index/name 기준으로 변경한다.
     - legend_group_text 는 저장 전 범례 그룹 제목을 legendgroup/title 기준으로 변경한다.
     - legend_text_edit=True 면 생성된 HTML에서 범례 항목을 더블클릭해 수정할 수 있다.
+    - peak_editor=True 면 피크 marker/라벨/보조선을 HTML에서 추가·삭제할 수 있다.
     - image_format 은 모드바 카메라(Download plot) 버튼의 기본 저장 형식(svg/png/jpeg/webp).
     - image_filename / image_scale 은 저장 파일명·배율.
     - image_format_selector=True 면 그래프 우상단에 형식 선택 드롭다운 + 저장 버튼을 띄운다.
@@ -1023,8 +1624,20 @@ def fig_to_responsive_html(
     merged_config = {
         "responsive": True,
         "displaylogo": False,
-        # 마우스/손가락으로 범례를 드래그해 위치 조정 가능
-        "edits": {"legendPosition": True},
+        "editable": True,
+        # 마우스/손가락으로 범례와 피크 라벨(annotation) 위치 조정 가능
+        "edits": {
+            "annotationPosition": True,
+            "annotationTail": True,
+            "annotationText": False,
+            "axisTitleText": False,
+            "colorbarPosition": False,
+            "colorbarTitleText": False,
+            "legendPosition": True,
+            "legendText": False,
+            "shapePosition": False,
+            "titleText": False,
+        },
         "toImageButtonOptions": default_img_opts,
     }
     if config:
@@ -1033,6 +1646,10 @@ def fig_to_responsive_html(
             opts = dict(default_img_opts)
             opts.update(config["toImageButtonOptions"])
             config = {**config, "toImageButtonOptions": opts}
+        if "edits" in config:
+            edits = dict(merged_config["edits"])
+            edits.update(config["edits"])
+            config = {**config, "edits": edits}
         merged_config.update(config)
 
     html = fig.to_html(
@@ -1058,6 +1675,9 @@ def fig_to_responsive_html(
 
     if legend_text_edit:
         html = html.replace("</body>", _legend_text_edit_js(div_id) + "</body>", 1)
+
+    if peak_editor:
+        html = html.replace("</body>", peak_editor_js(div_id) + "</body>", 1)
 
     if trace_highlight:
         html = html.replace(
@@ -1095,6 +1715,7 @@ def write_responsive_html(
     legend_text: Mapping[int | str, str] | None = None,
     legend_group_text: Mapping[str, str] | None = None,
     legend_text_edit: bool = False,
+    peak_editor: bool = False,
     image_format: str = "svg",
     image_filename: str = "plot",
     image_scale: float = 2,
@@ -1119,6 +1740,7 @@ def write_responsive_html(
         legend_text=legend_text,
         legend_group_text=legend_group_text,
         legend_text_edit=legend_text_edit,
+        peak_editor=peak_editor,
         image_format=image_format,
         image_filename=image_filename,
         image_scale=image_scale,

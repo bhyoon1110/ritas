@@ -15,6 +15,7 @@ import numpy as np
 import pandas as pd
 
 from .findings import (
+    assign_group,
     build_findings,
     detect_patterns,
     findings_to_text,
@@ -25,10 +26,10 @@ from rist_common.plotting import write_responsive_html
 from .plotting import (
     build_bar_fig,
     build_comparison_fig,
+    build_multi_peak_fig,
     build_peak_fig,
     build_preprocess_fig,
     ftir_abs_trans_toggle_js,
-    ftir_peak_label_sync_js,
 )
 from .preprocess import (
     detect_peaks_simple,
@@ -318,6 +319,7 @@ def _run_single(dpt_path, args, rules_dir, rule_names, rule_categories):
         responsive_legend=False,
         title_edit=True,
         legend_text_edit=True,
+        peak_editor=True,
         image_filename=f"{stem}_peaks",
         image_format_selector=True,
         post_body_html=(
@@ -330,7 +332,6 @@ def _run_single(dpt_path, args, rules_dir, rule_names, rule_categories):
                     },
                 },
             )
-            + ftir_peak_label_sync_js("peak-plot")
         ),
         config={"scrollZoom": True},
     )
@@ -514,6 +515,104 @@ def _run_single(dpt_path, args, rules_dir, rule_names, rule_categories):
             print(f"  ✓ {fpath}")
 
 
+def _run_multi_peak_overlay(dpt_paths, args):
+    WN_MIN, WN_MAX = args.wn_min, args.wn_max
+    N_GRID = max(1750, int((WN_MAX - WN_MIN) / 2.0))
+    SMOOTH = not args.no_smooth
+    SMOOTH_WIN, SMOOTH_POLY = 11, 3
+    FUNC_GROUPS_FILE = "data/func_groups.csv"
+
+    try:
+        peak_params = _resolve_peak_params(args)
+    except ValueError as exc:
+        print(f"[오류] {exc}", file=sys.stderr)
+        sys.exit(1)
+    PEAK_HEIGHT = peak_params["height"]
+    PEAK_PROMINENCE = peak_params["prominence"]
+    PEAK_DISTANCE = peak_params["distance"]
+
+    GRID = np.linspace(WN_MIN, WN_MAX, N_GRID)
+    func_groups = load_func_groups(FUNC_GROUPS_FILE)
+    output_dir = args.output or os.path.join(os.getcwd(), "outputs", "multi_samples")
+    os.makedirs(output_dir, exist_ok=True)
+
+    print(f"[1/2] DPT 파일 {len(dpt_paths)}개 로드 및 피크 검출")
+    print(f"      피크 검출 설정: sensitivity={args.peak_sensitivity}, "
+          f"height={PEAK_HEIGHT:g}, prominence={PEAK_PROMINENCE:g}, "
+          f"distance={PEAK_DISTANCE}")
+
+    samples = []
+    rows = []
+    for path in dpt_paths:
+        if not os.path.isfile(path):
+            print(f"[오류] DPT 파일을 찾을 수 없습니다: {path}", file=sys.stderr)
+            sys.exit(1)
+        stem = os.path.splitext(os.path.basename(path))[0]
+        raw = load_dpt(path, WN_MIN, WN_MAX)
+        if len(raw) < 10:
+            print(f"[오류] DPT 파일에 유효한 데이터가 충분하지 않습니다: {path}",
+                  file=sys.stderr)
+            sys.exit(1)
+        sample_vec, _ = preprocess(
+            raw["wn"].values, raw["y"].values, GRID,
+            SMOOTH, SMOOTH_WIN, SMOOTH_POLY, return_mask=True,
+        )
+        peak_idx, peak_wn, peak_val, peak_fwhm = detect_peaks_with_fwhm(
+            sample_vec, GRID, PEAK_HEIGHT, PEAK_PROMINENCE, PEAK_DISTANCE
+        )
+        label = stem
+        samples.append({
+            "path": path,
+            "label": label,
+            "grid": GRID,
+            "sample_vec": sample_vec,
+            "peak_idx": peak_idx,
+            "peak_wn": peak_wn,
+            "peak_val": peak_val,
+            "peak_fwhm": peak_fwhm,
+        })
+        for wn, val, fwhm in sorted(zip(peak_wn, peak_val, peak_fwhm), key=lambda x: -x[1]):
+            name, _, note = assign_group(wn, func_groups)
+            rows.append({
+                "Sample": label,
+                "Wavenumber (cm⁻¹)": f"{wn:.1f}",
+                "Intensity": f"{val:.3f}",
+                "FWHM (cm⁻¹)": f"{fwhm:.1f}",
+                "Assigned Group": name,
+                "Note": note,
+            })
+        print(f"      {label}: {len(raw)} 포인트, 피크 {len(peak_idx)}개")
+
+    peaks_csv = os.path.join(output_dir, "multi_samples_peaks.csv")
+    pd.DataFrame(rows).to_csv(peaks_csv, index=False, encoding="utf-8-sig")
+
+    print("[2/2] 여러 샘플 피크 그래프 생성")
+    fig_peak = build_multi_peak_fig(samples, func_groups, WN_MIN, WN_MAX)
+    peak_html = os.path.join(output_dir, "multi_samples_peaks.html")
+    write_responsive_html(
+        fig_peak, peak_html, div_id="peak-plot", origin=args.origin,
+        crosshair=args.crosshair,
+        responsive_legend=False,
+        title_edit=True,
+        legend_text_edit=True,
+        peak_editor=True,
+        image_filename="multi_samples_peaks",
+        image_format_selector=True,
+        post_body_html=ftir_abs_trans_toggle_js(
+            "peak-plot",
+            yaxis_titles={
+                "yaxis": {
+                    "absorbance": "Normalized Absorbance",
+                    "transmittance": "Transmittance (%)",
+                },
+            },
+        ),
+        config={"scrollZoom": True},
+    )
+    print(f"      피크 CSV 저장: {peaks_csv}")
+    print(f"      피크 그래프 저장: {peak_html}")
+
+
 def main():
     args = parse_args()
     rules_dir = _resolve_rules_dir(args.rules_dir)
@@ -529,6 +628,10 @@ def main():
 
     rule_names = _expand_rule_names(args.rule)
     rule_categories = _expand_rule_names([args.rule_category]) if args.rule_category else None
+
+    if len(args.dpt_file) > 1 and all(os.path.isfile(path) for path in args.dpt_file):
+        _run_multi_peak_overlay(args.dpt_file, args)
+        return
 
     dpt_path = " ".join(args.dpt_file)
     _run_single(dpt_path, args, rules_dir, rule_names, rule_categories)

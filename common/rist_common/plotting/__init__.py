@@ -7,6 +7,7 @@ from .plot_style import (
     apply_legend_text,
     apply_origin_style,
     fig_to_responsive_html,
+    peak_editor_js,
     write_responsive_html,
 )
 
@@ -17,5 +18,6 @@ __all__ = [
     "apply_legend_text",
     "apply_origin_style",
     "fig_to_responsive_html",
+    "peak_editor_js",
     "write_responsive_html",
 ]

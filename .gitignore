@@ -48,6 +48,9 @@ lim/data/
 lim/*.html
 ahn/results/
 ahn/output/
+rin/data/
+rin/results/
+rin/output/
 
 # Android/Gradle build outputs
 RitasAxApp/.gradle/
