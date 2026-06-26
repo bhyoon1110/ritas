@@ -424,6 +424,58 @@ def _legend_text_edit_js(div_id: str) -> str:
   align-items: center;
   margin: 6px 0;
 }}
+#{div_id} .rist-legend-edit-row.is-group-member {{
+  margin-left: 14px;
+}}
+#{div_id} .rist-legend-group-row {{
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin: 10px 0 4px;
+  padding: 6px 7px;
+  border: 1px solid #d7dee8;
+  border-radius: 5px;
+  background: #f8fafc;
+}}
+#{div_id} .rist-legend-group-row.is-pending-clear {{
+  opacity: 0.62;
+  text-decoration: line-through;
+}}
+#{div_id} .rist-legend-group-title {{
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 1px solid #c7d0dd;
+  border-radius: 4px;
+  background: #fff;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #1f2933;
+  font: bold 12px Arial, sans-serif;
+  padding: 5px 7px;
+  box-sizing: border-box;
+}}
+#{div_id} .rist-legend-group-color-button,
+#{div_id} .rist-legend-group-clear {{
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  border: 1px solid #c7d0dd;
+  border-radius: 4px;
+  background: #fff;
+  color: #52606d;
+  cursor: pointer;
+  font: 13px Arial, sans-serif;
+  line-height: 1;
+  padding: 0;
+}}
+#{div_id} .rist-legend-group-color {{
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+  width: 1px;
+  height: 1px;
+}}
 #{div_id} .rist-legend-color-input {{
   flex: 0 0 auto;
   width: 30px;
@@ -547,6 +599,44 @@ def _legend_text_edit_js(div_id: str) -> str:
     return "curve:" + curve;
   }}
 
+  function manualPeakGroupKey(curve) {{
+    var meta = traceMeta(curve);
+    if (meta.rist_peak && meta.rist_peak.manual_group_key) {{
+      return String(meta.rist_peak.manual_group_key);
+    }}
+    if (meta.rist_color_group && String(meta.rist_color_group).indexOf("manual-peak-group:") === 0) {{
+      return String(meta.rist_color_group);
+    }}
+    return "";
+  }}
+
+  function manualPeakGroupName(curve) {{
+    var meta = traceMeta(curve);
+    if (meta.rist_peak && meta.rist_peak.group_name) {{
+      return String(meta.rist_peak.group_name);
+    }}
+    var key = manualPeakGroupKey(curve);
+    return key.indexOf("manual-peak-group:") === 0
+      ? key.slice("manual-peak-group:".length)
+      : key;
+  }}
+
+  function dispatchPeakGroupClear(groupKey) {{
+    try {{
+      gd.dispatchEvent(new CustomEvent("rist-peak-group-clear", {{
+        detail: {{ groupKey: groupKey }}
+      }}));
+    }} catch (e) {{}}
+  }}
+
+  function dispatchPeakGroupUpdate(groupKey, name, color) {{
+    try {{
+      gd.dispatchEvent(new CustomEvent("rist-peak-group-update", {{
+        detail: {{ groupKey: groupKey, name: name, color: color }}
+      }}));
+    }} catch (e) {{}}
+  }}
+
   function dispatchVisibilityChange(curves, visible) {{
     try {{
       gd.dispatchEvent(new CustomEvent("rist-legend-visibility-change", {{
@@ -652,15 +742,31 @@ def _legend_text_edit_js(div_id: str) -> str:
       var body = panel.querySelector(".rist-legend-edit-body");
       var idxs = visibleLegendTraceIndexes();
       body.innerHTML = "";
+
+      var items = [];
+      var groups = {{}};
       idxs.forEach(function(curve) {{
+        var key = manualPeakGroupKey(curve);
+        if (!key) {{
+          items.push({{ kind: "curve", curve: curve }});
+          return;
+        }}
+        if (!groups[key]) {{
+          groups[key] = {{ kind: "group", key: key, curves: [] }};
+          items.push(groups[key]);
+        }}
+        groups[key].curves.push(curve);
+      }});
+
+      function appendCurveRow(curve, groupKey) {{
         var row = document.createElement("div");
-        row.className = "rist-legend-edit-row";
+        row.className = "rist-legend-edit-row" + (groupKey ? " is-group-member" : "");
         row.setAttribute("data-curve", String(curve));
-        row.innerHTML = "<input class='rist-legend-color-input' type='color'>"
+        row.innerHTML = (groupKey ? "" : "<input class='rist-legend-color-input' type='color'>")
           + "<input class='rist-legend-edit-input' type='text'>";
         var colorInput = row.querySelector(".rist-legend-color-input");
         var nameInput = row.querySelector(".rist-legend-edit-input");
-        colorInput.value = traceColor(curve);
+        if (colorInput) colorInput.value = traceColor(curve);
         nameInput.value = traceName(curve);
         nameInput.addEventListener("keydown", function(ev) {{
           if (ev.key === "Enter") {{
@@ -669,17 +775,76 @@ def _legend_text_edit_js(div_id: str) -> str:
           }}
         }});
         body.appendChild(row);
+      }}
+
+      items.forEach(function(item) {{
+        if (item.kind === "curve") {{
+          appendCurveRow(item.curve, "");
+          return;
+        }}
+        var groupKey = item.key;
+        var firstCurve = item.curves[0];
+        var groupRow = document.createElement("div");
+        groupRow.className = "rist-legend-group-row";
+        groupRow.setAttribute("data-group-key", groupKey);
+        groupRow.innerHTML = "<input class='rist-legend-group-title' type='text'>"
+          + "<button type='button' class='rist-legend-group-color-button' title='그룹 색상'>색</button>"
+          + "<input class='rist-legend-group-color' type='color' title='그룹 색상'>"
+          + "<button type='button' class='rist-legend-group-clear' title='그룹 해제'>×</button>";
+        var title = groupRow.querySelector(".rist-legend-group-title");
+        var groupColorButton = groupRow.querySelector(".rist-legend-group-color-button");
+        var groupColor = groupRow.querySelector(".rist-legend-group-color");
+        var clear = groupRow.querySelector(".rist-legend-group-clear");
+        title.value = manualPeakGroupName(firstCurve);
+        groupColor.value = traceColor(firstCurve);
+        groupColorButton.style.borderColor = groupColor.value;
+        groupColorButton.style.color = groupColor.value;
+        groupColorButton.addEventListener("click", function(ev) {{
+          ev.preventDefault();
+          ev.stopPropagation();
+          groupColor.click();
+        }});
+        groupColor.addEventListener("input", function(ev) {{
+          groupColorButton.style.borderColor = ev.target.value;
+          groupColorButton.style.color = ev.target.value;
+        }});
+        clear.addEventListener("click", function(ev) {{
+          ev.preventDefault();
+          ev.stopPropagation();
+          var pending = groupRow.getAttribute("data-clear") !== "true";
+          groupRow.setAttribute("data-clear", pending ? "true" : "false");
+          groupRow.classList.toggle("is-pending-clear", pending);
+        }});
+        body.appendChild(groupRow);
+        item.curves.forEach(function(curve) {{
+          appendCurveRow(curve, groupKey);
+        }});
       }});
     }}
 
     function saveAllRows() {{
+      panel.querySelectorAll(".rist-legend-group-row").forEach(function(row) {{
+        var groupKey = row.getAttribute("data-group-key") || "";
+        var titleInput = row.querySelector(".rist-legend-group-title");
+        var colorInput = row.querySelector(".rist-legend-group-color");
+        if (!groupKey) return;
+        if (row.getAttribute("data-clear") === "true") {{
+          dispatchPeakGroupClear(groupKey);
+          return;
+        }}
+        dispatchPeakGroupUpdate(
+          groupKey,
+          titleInput ? titleInput.value : "",
+          colorInput ? colorInput.value : ""
+        );
+      }});
       panel.querySelectorAll(".rist-legend-edit-row").forEach(function(row) {{
         var curve = parseInt(row.getAttribute("data-curve"), 10);
         var nameInput = row.querySelector(".rist-legend-edit-input");
         var colorInput = row.querySelector(".rist-legend-color-input");
-        if (!Number.isFinite(curve) || !nameInput || !colorInput) return;
+        if (!Number.isFinite(curve) || !nameInput) return;
         updateName(curve, nameInput.value);
-        updateColor(curve, colorInput.value);
+        if (colorInput) updateColor(curve, colorInput.value);
       }});
       closePanel();
     }}
@@ -703,6 +868,9 @@ def _legend_text_edit_js(div_id: str) -> str:
     }});
     document.addEventListener("keydown", function(ev) {{
       if (ev.key === "Escape") closePanel();
+    }});
+    gd.addEventListener("rist-peak-group-change", function() {{
+      if (panel.style.display === "block") renderRows();
     }});
   }}
 
@@ -830,12 +998,39 @@ def peak_editor_js(div_id: str) -> str:
   border-color: #3b82f6;
   color: #1d4ed8;
 }}
+#{div_id} .rist-peak-group-name {{
+  order: 16;
+  width: 116px;
+  min-width: 0;
+  border: 1px solid #c7d0dd;
+  border-radius: 4px;
+  background: rgba(255,255,255,0.95);
+  color: #1f2933;
+  font: 12px Arial, sans-serif;
+  padding: 5px 7px;
+  box-sizing: border-box;
+}}
+#{div_id} .rist-peak-group-color {{
+  order: 17;
+  width: 30px;
+  height: 28px;
+  border: 1px solid #c7d0dd;
+  border-radius: 4px;
+  background: #fff;
+  cursor: pointer;
+  padding: 2px;
+  box-sizing: border-box;
+}}
+#{div_id} .rist-peak-group-apply {{
+  order: 18;
+}}
 </style>
 <script>
 (function() {{
   var gd = document.getElementById("{div_id}");
   if (!gd) return;
   var mode = "none";
+  var selectedPeaks = [];
 
   function esc(s) {{
     return String(s == null ? "" : s)
@@ -907,6 +1102,107 @@ def peak_editor_js(div_id: str) -> str:
     return "curve:" + curve;
   }}
 
+  function isPeakCurve(curve) {{
+    var meta = traceMeta(curve);
+    return !!(meta && meta.rist_peak);
+  }}
+
+  function traceColor(curve) {{
+    var tr = (gd.data || [])[curve] || {{}};
+    var marker = tr.marker || {{}};
+    var line = tr.line || {{}};
+    var color = marker.color || line.color || "#ef4444";
+    if (Array.isArray(color)) color = color[0] || "#ef4444";
+    return String(color || "#ef4444");
+  }}
+
+  function labelForCurve(curve) {{
+    return meta().find(function(label) {{ return label.traceIndex === curve; }}) || null;
+  }}
+
+  function selectedPeakCurves() {{
+    var data = gd.data || [];
+    var fromMeta = [];
+    for (var i = 0; i < data.length; i++) {{
+      var meta = traceMeta(i);
+      if (meta.rist_peak && meta.rist_peak.selected) fromMeta.push(i);
+    }}
+    return selectedPeaks.concat(fromMeta).filter(function(curve, pos, arr) {{
+      return arr.indexOf(curve) === pos && isPeakCurve(curve);
+    }});
+  }}
+
+  function updateSelectButton() {{
+    if (!selectBtn) return;
+    var count = selectedPeakCurves().length;
+    selectBtn.textContent = count ? "피크 선택 (" + count + ")" : "피크 선택";
+  }}
+
+  function flashGroupApply(message) {{
+    if (!groupApplyBtn) return;
+    var original = groupApplyBtn.getAttribute("data-original-text") || groupApplyBtn.textContent;
+    groupApplyBtn.setAttribute("data-original-text", original);
+    groupApplyBtn.textContent = message;
+    groupApplyBtn.classList.add("is-active");
+    clearTimeout(groupApplyBtn._ristFlashTimer);
+    groupApplyBtn._ristFlashTimer = setTimeout(function() {{
+      groupApplyBtn.textContent = original;
+      groupApplyBtn.classList.remove("is-active");
+    }}, 1200);
+  }}
+
+  function setPeakSelected(curve, selected) {{
+    if (!window.Plotly || !isPeakCurve(curve)) return Promise.resolve();
+    var selectedColor = "#111827";
+    var tr = (gd.data || [])[curve] || {{}};
+    var nextMeta = Object.assign({{}}, tr.meta || {{}});
+    var peakMeta = Object.assign({{}}, nextMeta.rist_peak || {{}});
+    var lineWidth = selected ? 3 : 1.5;
+    var size = selected ? 12 : 9;
+    peakMeta.selected = selected;
+    nextMeta.rist_peak = peakMeta;
+    if (gd.data && gd.data[curve]) gd.data[curve].meta = nextMeta;
+    if (selected) {{
+      selectedPeaks.push(curve);
+    }} else {{
+      selectedPeaks = selectedPeaks.filter(function(item) {{ return item !== curve; }});
+    }}
+    updateSelectButton();
+    return window.Plotly.restyle(gd, {{
+      "marker.size": size,
+      "marker.line.color": selected ? selectedColor : "white",
+      "marker.line.width": lineWidth,
+      meta: [nextMeta]
+    }}, [curve]);
+  }}
+
+  function togglePeakSelection(curve) {{
+    if (!isPeakCurve(curve)) return;
+    var on = selectedPeakCurves().indexOf(curve) < 0;
+    setPeakSelected(curve, on);
+  }}
+
+  function clearPeakSelection() {{
+    var curves = selectedPeakCurves();
+    selectedPeaks = [];
+    curves.forEach(function(curve) {{
+      var tr = (gd.data || [])[curve] || {{}};
+      var nextMeta = Object.assign({{}}, tr.meta || {{}});
+      var peakMeta = Object.assign({{}}, nextMeta.rist_peak || {{}});
+      delete peakMeta.selected;
+      nextMeta.rist_peak = peakMeta;
+      if (gd.data && gd.data[curve]) gd.data[curve].meta = nextMeta;
+    }});
+    updateSelectButton();
+    if (!window.Plotly || !curves.length) return Promise.resolve();
+    return window.Plotly.restyle(gd, {{
+      "marker.size": 9,
+      "marker.line.color": "white",
+      "marker.line.width": 1.5,
+      meta: curves.map(function(curve) {{ return (gd.data || [])[curve].meta; }})
+    }}, curves);
+  }}
+
   function nearestIdx(xs, target) {{
     var lo = 0, hi = xs.length - 1;
     if (hi < 0) return -1;
@@ -944,6 +1240,290 @@ def peak_editor_js(div_id: str) -> str:
         shape.line = Object.assign({{}}, shape.line || {{}}, {{ color: color }});
       }}
     }});
+  }}
+
+  function applyPeakGroup() {{
+    if (!window.Plotly) return;
+    var curves = selectedPeakCurves();
+    if (!curves.length) {{
+      flashGroupApply("피크 선택 필요");
+      return;
+    }}
+    var groupName = (groupNameInput.value || "").trim() || "Peak Group";
+    var groupColor = groupColorInput.value || "#ef4444";
+    var groupKey = "manual-peak-group:" + groupName;
+    var data = gd.data || [];
+    var labels = meta();
+    var metas = [];
+    curves.forEach(function(curve) {{
+      var tr = data[curve] || {{}};
+      var nextMeta = Object.assign({{}}, tr.meta || {{}});
+      var peakMeta = Object.assign({{}}, nextMeta.rist_peak || {{}});
+      if (peakMeta.original_color == null) {{
+        peakMeta.original_color = traceColor(curve);
+      }}
+      if (peakMeta.original_legendgroup == null) {{
+        peakMeta.original_legendgroup = tr.legendgroup || "";
+      }}
+      if (peakMeta.original_legend_title == null) {{
+        var title = tr.legendgrouptitle;
+        peakMeta.original_legend_title = title && title.text != null ? String(title.text) : "";
+      }}
+      peakMeta.group_name = groupName;
+      peakMeta.group_color = groupColor;
+      peakMeta.manual_group_key = groupKey;
+      nextMeta.rist_peak = peakMeta;
+      nextMeta.rist_color_group = groupKey;
+      data[curve].meta = nextMeta;
+      metas.push(nextMeta);
+    }});
+    var annotations = (gd.layout.annotations || []).map(function(a) {{
+      return Object.assign({{}}, a);
+    }});
+    var shapes = (gd.layout.shapes || []).map(function(s) {{
+      return Object.assign({{}}, s);
+    }});
+    updatePeakColorList(annotations, shapes, labels, curves, groupColor);
+    if (gd._ristFtirUnitOriginalAnnotations || gd._ristFtirUnitOriginalShapes) {{
+      updatePeakColorList(
+        gd._ristFtirUnitOriginalAnnotations || [],
+        gd._ristFtirUnitOriginalShapes || [],
+        labels,
+        curves,
+        groupColor
+      );
+    }}
+    window.Plotly.restyle(gd, {{
+      legendgroup: curves.map(function() {{ return groupKey; }}),
+      "legendgrouptitle.text": curves.map(function() {{ return groupName; }}),
+      "marker.color": curves.map(function() {{ return groupColor; }}),
+      "line.color": curves.map(function() {{ return groupColor; }}),
+      meta: metas
+    }}, curves).then(function() {{
+      return window.Plotly.relayout(gd, {{
+        "meta.ristPeakLabels": labels,
+        "legend.traceorder": "grouped",
+        annotations: annotations,
+        shapes: shapes
+      }});
+    }}).then(function() {{
+      clearPeakSelection();
+      try {{
+        gd.dispatchEvent(new CustomEvent("rist-legend-color-change", {{
+          detail: {{ curves: curves, color: groupColor }}
+        }}));
+        gd.dispatchEvent(new CustomEvent("rist-peak-group-change"));
+      }} catch (e) {{}}
+      setMode("none");
+    }}).catch(function(err) {{
+      console.error("RIST peak group apply failed", err);
+      flashGroupApply("적용 실패");
+    }});
+  }}
+
+  function clearPeakGroupForCurves(curves) {{
+    if (!window.Plotly || !curves.length) return;
+    var data = gd.data || [];
+    var labels = meta();
+    var legendgroups = [];
+    var legendTitles = [];
+    var colors = [];
+    var metas = [];
+    curves.forEach(function(curve) {{
+      var tr = data[curve] || {{}};
+      var nextMeta = Object.assign({{}}, tr.meta || {{}});
+      var peakMeta = Object.assign({{}}, nextMeta.rist_peak || {{}});
+      var originalColor = peakMeta.original_color || traceColor(curve);
+      legendgroups.push(peakMeta.original_legendgroup || sampleGroup(curve) || "");
+      legendTitles.push(peakMeta.original_legend_title || "");
+      colors.push(originalColor);
+      delete peakMeta.manual_group_key;
+      delete peakMeta.group_name;
+      delete peakMeta.group_color;
+      nextMeta.rist_peak = peakMeta;
+      delete nextMeta.rist_color_group;
+      data[curve].meta = nextMeta;
+      metas.push(nextMeta);
+    }});
+    var annotations = (gd.layout.annotations || []).map(function(a) {{
+      return Object.assign({{}}, a);
+    }});
+    var shapes = (gd.layout.shapes || []).map(function(s) {{
+      return Object.assign({{}}, s);
+    }});
+    curves.forEach(function(curve, idx) {{
+      updatePeakColorList(annotations, shapes, labels, [curve], colors[idx]);
+      if (gd._ristFtirUnitOriginalAnnotations || gd._ristFtirUnitOriginalShapes) {{
+        updatePeakColorList(
+          gd._ristFtirUnitOriginalAnnotations || [],
+          gd._ristFtirUnitOriginalShapes || [],
+          labels,
+          [curve],
+          colors[idx]
+        );
+      }}
+    }});
+    window.Plotly.restyle(gd, {{
+      legendgroup: legendgroups,
+      "legendgrouptitle.text": legendTitles,
+      "marker.color": colors,
+      "line.color": colors,
+      meta: metas
+    }}, curves).then(function() {{
+      return window.Plotly.relayout(gd, {{
+        "meta.ristPeakLabels": labels,
+        "legend.traceorder": "grouped",
+        annotations: annotations,
+        shapes: shapes
+      }});
+    }}).then(function() {{
+      try {{
+        gd.dispatchEvent(new CustomEvent("rist-peak-group-change"));
+      }} catch (e) {{}}
+    }});
+  }}
+
+  function clearPeakGroupByKey(groupKey) {{
+    var data = gd.data || [];
+    var curves = [];
+    for (var i = 0; i < data.length; i++) {{
+      var meta = traceMeta(i);
+      var peakMeta = meta.rist_peak || {{}};
+      var key = peakMeta.manual_group_key || meta.rist_color_group || "";
+      if (key === groupKey) curves.push(i);
+    }}
+    clearPeakGroupForCurves(curves);
+  }}
+
+  function updatePeakGroupByKey(groupKey, groupName, groupColor) {{
+    if (!window.Plotly || !groupKey) return;
+    groupName = String(groupName || "").trim() || "Peak Group";
+    groupColor = groupColor || "#ef4444";
+    var nextGroupKey = "manual-peak-group:" + groupName;
+    var data = gd.data || [];
+    var labels = meta();
+    var curves = [];
+    var metas = [];
+    for (var i = 0; i < data.length; i++) {{
+      var metaObj = traceMeta(i);
+      var peakMeta = Object.assign({{}}, metaObj.rist_peak || {{}});
+      var key = peakMeta.manual_group_key || metaObj.rist_color_group || "";
+      if (key !== groupKey) continue;
+      var nextMeta = Object.assign({{}}, metaObj);
+      peakMeta.group_name = groupName;
+      peakMeta.group_color = groupColor;
+      peakMeta.manual_group_key = nextGroupKey;
+      nextMeta.rist_peak = peakMeta;
+      nextMeta.rist_color_group = nextGroupKey;
+      data[i].meta = nextMeta;
+      curves.push(i);
+      metas.push(nextMeta);
+    }}
+    if (!curves.length) return;
+    var annotations = (gd.layout.annotations || []).map(function(a) {{
+      return Object.assign({{}}, a);
+    }});
+    var shapes = (gd.layout.shapes || []).map(function(s) {{
+      return Object.assign({{}}, s);
+    }});
+    updatePeakColorList(annotations, shapes, labels, curves, groupColor);
+    if (gd._ristFtirUnitOriginalAnnotations || gd._ristFtirUnitOriginalShapes) {{
+      updatePeakColorList(
+        gd._ristFtirUnitOriginalAnnotations || [],
+        gd._ristFtirUnitOriginalShapes || [],
+        labels,
+        curves,
+        groupColor
+      );
+    }}
+    window.Plotly.restyle(gd, {{
+      legendgroup: curves.map(function() {{ return nextGroupKey; }}),
+      "legendgrouptitle.text": curves.map(function() {{ return groupName; }}),
+      "marker.color": curves.map(function() {{ return groupColor; }}),
+      "line.color": curves.map(function() {{ return groupColor; }}),
+      meta: metas
+    }}, curves).then(function() {{
+      return window.Plotly.relayout(gd, {{
+        "meta.ristPeakLabels": labels,
+        "legend.traceorder": "grouped",
+        annotations: annotations,
+        shapes: shapes
+      }});
+    }}).then(function() {{
+      try {{
+        gd.dispatchEvent(new CustomEvent("rist-legend-color-change", {{
+          detail: {{ curves: curves, color: groupColor }}
+        }}));
+        gd.dispatchEvent(new CustomEvent("rist-peak-group-change"));
+      }} catch (e) {{}}
+    }}).catch(function(err) {{
+      console.error("RIST peak group update failed", err);
+    }});
+  }}
+
+  function nearestPeakCurveFromEvent(ev) {{
+    if (ev.target && ev.target.closest
+        && ev.target.closest(".legend,.modebar,.rist-plot-control-row,.rist-legend-edit-panel")) {{
+      return null;
+    }}
+    var fl = gd._fullLayout;
+    if (!fl || !fl.xaxis || !fl.yaxis) return null;
+    var drag = gd.querySelector(".nsewdrag");
+    if (!drag) return null;
+    var r = drag.getBoundingClientRect();
+    var px = ev.clientX - r.left;
+    var py = ev.clientY - r.top;
+    var margin = 90;
+    if (px < -margin || py < -margin || px > r.width + margin || py > r.height + margin) return null;
+    var xa = fl.xaxis;
+    var ya = fl.yaxis;
+    function axisPixel(axis, value) {{
+      if (axis.d2p) return axis.d2p(value);
+      if (axis.l2p) return axis.l2p(value);
+      return null;
+    }}
+    var data = gd.data || [];
+    var best = null;
+    var bestScore = Infinity;
+    var bestXOnly = null;
+    var bestX = Infinity;
+    var bestVisibleXOnly = null;
+    var bestVisibleX = Infinity;
+    var annotationClick = !!(ev.target && ev.target.closest
+      && ev.target.closest(".annotation,.annotation-text-g,.annotation-arrow-g"));
+    for (var i = 0; i < data.length; i++) {{
+      var tr = data[i];
+      if (!tr || !isPeakCurve(i) || !traceVisible(i)) continue;
+      var xs = tr.x || [];
+      var ys = tr.y || [];
+      if (!xs.length || !ys.length) continue;
+      var x = Number(xs[0]);
+      var y = Number(ys[0]);
+      if (!isFinite(x) || !isFinite(y)) continue;
+      var xPixel = axisPixel(xa, x);
+      var yPixel = axisPixel(ya, y);
+      if (xPixel == null || yPixel == null) continue;
+      var dx = xPixel - px;
+      var dy = yPixel - py;
+      var adx = Math.abs(dx);
+      var ady = Math.abs(dy);
+      var score = adx + ady * 0.35;
+      if (adx < bestX) {{
+        bestX = adx;
+        bestXOnly = i;
+      }}
+      if (px >= 0 && px <= r.width && adx < bestVisibleX) {{
+        bestVisibleX = adx;
+        bestVisibleXOnly = i;
+      }}
+      if (adx <= 84 && ady <= 180 && score < bestScore) {{
+        bestScore = score;
+        best = i;
+      }}
+    }}
+    if (best != null) return best;
+    if (bestVisibleX <= 120) return bestVisibleXOnly;
+    return annotationClick && bestX <= 120 ? bestXOnly : null;
   }}
 
   function syncVisibility() {{
@@ -1036,11 +1616,31 @@ def peak_editor_js(div_id: str) -> str:
     var best = null;
     var bestD = Infinity;
     var curX = xa.p2d(px);
+    var curY = fl.yaxis.p2d(py);
+    var targetTrace = -1;
+    var targetDY = Infinity;
     for (var t = 0; t < data.length; t++) {{
       var tr = data[t];
       if (!tr || tr.visible === false || tr.visible === "legendonly") continue;
       if (tr.meta && tr.meta.rist_peak) continue;
       var xs = tr.x, ys = tr.y;
+      if (!xs || !ys || xs.length < 3) continue;
+      var near = nearestIdx(xs, curX);
+      if (near < 0) continue;
+      var yAtX = Number(ys[near]);
+      if (!isFinite(yAtX)) continue;
+      var dy = Math.abs(yAtX - curY);
+      if (dy < targetDY) {{
+        targetDY = dy;
+        targetTrace = t;
+      }}
+    }}
+    for (var t2 = 0; t2 < data.length; t2++) {{
+      if (targetTrace >= 0 && t2 !== targetTrace) continue;
+      var tr2 = data[t2];
+      if (!tr2 || tr2.visible === false || tr2.visible === "legendonly") continue;
+      if (tr2.meta && tr2.meta.rist_peak) continue;
+      var xs = tr2.x, ys = tr2.y;
       if (!xs || !ys || xs.length < 3) continue;
       for (var k = 1; k < xs.length - 1; k++) {{
         var x = Number(xs[k]), y = Number(ys[k]);
@@ -1050,7 +1650,7 @@ def peak_editor_js(div_id: str) -> str:
         var d = Math.abs(x - curX);
         if (d < bestD) {{
           bestD = d;
-          best = {{ x: xs[k], y: ys[k], curve: t, localMaximum: true }};
+          best = {{ x: xs[k], y: ys[k], curve: t2, localMaximum: true, yNearestTrace: true }};
         }}
       }}
     }}
@@ -1155,10 +1755,6 @@ def peak_editor_js(div_id: str) -> str:
     }});
   }}
 
-  function labelForCurve(curve) {{
-    return meta().find(function(label) {{ return label.traceIndex === curve; }}) || null;
-  }}
-
   function deletePeakTrace(curve) {{
     if (!window.Plotly || curve == null || curve < 0) return;
     var labels = meta();
@@ -1179,12 +1775,17 @@ def peak_editor_js(div_id: str) -> str:
       }}
       labels = labels.filter(function(item) {{ return item.traceIndex !== curve; }});
     }}
+    selectedPeaks = selectedPeaks.filter(function(item) {{ return item !== curve; }});
     labels.forEach(function(item) {{
       if (label && item.annotationIndex > label.annotationIndex) item.annotationIndex -= 1;
       if (label && item.shapeIndex > label.shapeIndex) item.shapeIndex -= 1;
       if (item.traceIndex > curve) item.traceIndex -= 1;
     }});
     window.Plotly.deleteTraces(gd, [curve]).then(function() {{
+      selectedPeaks = selectedPeaks.map(function(item) {{
+        return item > curve ? item - 1 : item;
+      }});
+      updateSelectButton();
       return window.Plotly.relayout(gd, {{
         "meta.ristPeakLabels": labels,
         annotations: annotations,
@@ -1194,9 +1795,14 @@ def peak_editor_js(div_id: str) -> str:
   }}
 
   function setMode(next) {{
+    var prev = mode;
     mode = mode === next ? "none" : next;
+    if (prev === "select" && mode !== "select") {{
+      clearPeakSelection();
+    }}
     addBtn.classList.toggle("is-active", mode === "add");
     delBtn.classList.toggle("is-active", mode === "delete");
+    selectBtn.classList.toggle("is-active", mode === "select");
   }}
 
   var addBtn = document.createElement("button");
@@ -1219,9 +1825,43 @@ def peak_editor_js(div_id: str) -> str:
     setMode("delete");
   }});
 
+  var selectBtn = document.createElement("button");
+  selectBtn.type = "button";
+  selectBtn.className = "rist-peak-edit-button";
+  selectBtn.textContent = "피크 선택";
+  selectBtn.addEventListener("click", function(ev) {{
+    ev.preventDefault();
+    ev.stopPropagation();
+    setMode("select");
+  }});
+
+  var groupNameInput = document.createElement("input");
+  groupNameInput.type = "text";
+  groupNameInput.className = "rist-peak-group-name";
+  groupNameInput.placeholder = "그룹명";
+
+  var groupColorInput = document.createElement("input");
+  groupColorInput.type = "color";
+  groupColorInput.className = "rist-peak-group-color";
+  groupColorInput.value = "#ef4444";
+
+  var groupApplyBtn = document.createElement("button");
+  groupApplyBtn.type = "button";
+  groupApplyBtn.className = "rist-peak-edit-button rist-peak-group-apply";
+  groupApplyBtn.textContent = "그룹 적용";
+  groupApplyBtn.addEventListener("click", function(ev) {{
+    ev.preventDefault();
+    ev.stopPropagation();
+    applyPeakGroup();
+  }});
+
   var row = toolbar();
   row.appendChild(addBtn);
   row.appendChild(delBtn);
+  row.appendChild(selectBtn);
+  row.appendChild(groupNameInput);
+  row.appendChild(groupColorInput);
+  row.appendChild(groupApplyBtn);
 
   gd.addEventListener("click", function(ev) {{
     if (mode !== "add") return;
@@ -1233,11 +1873,43 @@ def peak_editor_js(div_id: str) -> str:
     addPeakAt(pt);
   }}, true);
 
+  function handlePeakSelectPointer(ev) {{
+    if (mode !== "select") return;
+    if (ev.target.closest(".legend,.modebar,.rist-plot-control-row,.rist-legend-edit-panel")) return;
+    if (ev.type === "click" && gd._ristHandledPeakSelectClick) {{
+      ev.preventDefault();
+      ev.stopPropagation();
+      return;
+    }}
+    var curve = nearestPeakCurveFromEvent(ev);
+    if (curve == null) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    gd._ristHandledPeakSelectClick = true;
+    gd._ristHandledPeakSelectAt = Date.now();
+    togglePeakSelection(curve);
+    setTimeout(function() {{
+      gd._ristHandledPeakSelectClick = false;
+    }}, 250);
+  }}
+
+  gd.addEventListener("mousedown", handlePeakSelectPointer, true);
+  gd.addEventListener("click", handlePeakSelectPointer, true);
+
   gd.on("plotly_click", function(ev) {{
-    if (mode !== "delete") return;
+    if (mode !== "delete" && mode !== "select") return;
+    if (mode === "select" && (
+        gd._ristHandledPeakSelectClick
+        || (gd._ristHandledPeakSelectAt && Date.now() - gd._ristHandledPeakSelectAt < 250)
+    )) return;
     var point = ev && ev.points && ev.points[0];
     if (!point) return;
-    deletePeakTrace(point.curveNumber);
+    if (mode === "delete") deletePeakTrace(point.curveNumber);
+    else {{
+      var curve = isPeakCurve(point.curveNumber) ? point.curveNumber : null;
+      if (curve == null && ev.event) curve = nearestPeakCurveFromEvent(ev.event);
+      if (curve != null) togglePeakSelection(curve);
+    }}
   }});
 
   gd.addEventListener("rist-legend-name-change", function(ev) {{
@@ -1286,6 +1958,16 @@ def peak_editor_js(div_id: str) -> str:
       );
     }}
     window.Plotly.relayout(gd, {{ annotations: annotations, shapes: shapes }});
+  }});
+  gd.addEventListener("rist-peak-group-clear", function(ev) {{
+    var detail = ev.detail || {{}};
+    if (!detail.groupKey) return;
+    clearPeakGroupByKey(String(detail.groupKey));
+  }});
+  gd.addEventListener("rist-peak-group-update", function(ev) {{
+    var detail = ev.detail || {{}};
+    if (!detail.groupKey) return;
+    updatePeakGroupByKey(String(detail.groupKey), detail.name, detail.color);
   }});
   gd.on("plotly_restyle", function(ev) {{
     setTimeout(function() {{

@@ -59,6 +59,18 @@ def test_shared_plotly_module_applies_legend_text(tmp_path) -> None:
     assert "rist-legend-edit-panel" in html
     assert "rist-legend-edit-save-all" in html
     assert "rist-legend-color-input" in html
+    assert "rist-legend-group-row" in html
+    assert "rist-legend-group-title" in html
+    assert "rist-legend-group-color-button" in html
+    assert "rist-legend-group-color" in html
+    assert "rist-legend-group-clear" in html
+    assert "dispatchPeakGroupClear" in html
+    assert "dispatchPeakGroupUpdate" in html
+    assert "data-clear" in html
+    assert "is-pending-clear" in html
+    assert "manualPeakGroupKey" in html
+    assert "manualPeakGroupName" in html
+    assert 'kind: "group"' in html
     assert "rist-legend-bulk-controls" in html
     assert "rist-legend-bulk-button" in html
     assert "rist-legend-name-change" in html
@@ -131,6 +143,50 @@ def test_shared_peak_editor_adds_peak_controls(tmp_path) -> None:
     assert "rist-peak-edit-button" in html
     assert "피크 추가" in html
     assert "피크 삭제" in html
+    assert "피크 선택" in html
+    assert "그룹명" in html
+    assert "그룹 적용" in html
+    assert "rist-peak-group-name" in html
+    assert "rist-peak-group-color" in html
+    assert "applyPeakGroup" in html
+    assert "selectedPeakCurves" in html
+    assert "togglePeakSelection" in html
+    assert 'if (prev === "select" && mode !== "select")' in html
+    assert "manual-peak-group:" in html
+    assert "manual_group_key" in html
+    assert "group_color" in html
+    assert "rist_color_group" in html
+    assert "original_color" in html
+    assert "original_legendgroup" in html
+    assert "original_legend_title" in html
+    assert "var originalColor = peakMeta.original_color || traceColor(curve)" in html
+    assert "colors.push(originalColor)" in html
+    assert "legendgroup: curves.map(function() { return groupKey; })" in html
+    assert "legendgrouptitle.text" in html
+    assert "marker.color" in html
+    assert "line.color" in html
+    assert "nearestPeakCurveFromEvent" in html
+    assert ".legend,.modebar,.rist-plot-control-row,.rist-legend-edit-panel" in html
+    assert "function axisPixel" in html
+    assert "axis.d2p" in html
+    assert "var margin = 90" in html
+    assert "adx <= 84 && ady <= 180" in html
+    assert "bestVisibleX <= 120" in html
+    assert "annotationClick && bestX <= 120" in html
+    assert "handlePeakSelectPointer" in html
+    assert 'gd.addEventListener("mousedown", handlePeakSelectPointer, true)' in html
+    assert 'ev.type === "click" && gd._ristHandledPeakSelectClick' in html
+    assert "gd._ristHandledPeakSelectAt = Date.now()" in html
+    assert "ev.event" in html
+    assert "피크 선택 필요" in html
+    assert "적용 실패" in html
+    assert "RIST peak group apply failed" in html
+    assert "clearPeakGroupByKey" in html
+    assert "updatePeakGroupByKey" in html
+    assert "rist-peak-group-clear" in html
+    assert "rist-peak-group-update" in html
+    assert "RIST peak group update failed" in html
+    assert "name: groupName" not in html
     assert "Plotly.addTraces" in html
     assert "Plotly.deleteTraces" in html
     assert "captureevents: true" in html
@@ -159,6 +215,11 @@ def test_peak_editor_prefers_nearest_local_maximum_by_x(tmp_path) -> None:
     assert "if (y < prev || y < next) continue" in html
     assert "var d = Math.abs(x - curX)" in html
     assert "localMaximum: true" in html
+    assert "var curY = fl.yaxis.p2d(py)" in html
+    assert "var targetTrace = -1" in html
+    assert "var dy = Math.abs(yAtX - curY)" in html
+    assert "if (targetTrace >= 0 && t2 !== targetTrace) continue" in html
+    assert "yNearestTrace: true" in html
     assert "if (tr.meta && tr.meta.rist_peak) continue" in html
     assert "return { x: gd._snapPoint.x, y: gd._snapPoint.y, snapped: true }" in html
 
