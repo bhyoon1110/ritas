@@ -1,6 +1,6 @@
 """RIST 공통 로깅 모듈.
 
-각 프로젝트(edge_api_server, lim, sune, ahn 등)는 다음과 같이 사용한다.
+각 프로젝트(edge_api_server, lim, sune, ahn, rin 등)는 다음과 같이 사용한다.
 
     from rist_common.logging import get_logger
 

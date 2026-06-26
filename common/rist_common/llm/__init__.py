@@ -4,7 +4,7 @@
 - payload 헬퍼: 요청 본문 생성/정제/컨텍스트 예산 추정 (httpx 불필요)
 - LlmError: 표준 오류 타입
 
-각 프로젝트(lim, sune, ahn 등)는 LlmClient를 공통으로 사용하되,
+각 프로젝트(lim, sune, ahn, rin 등)는 LlmClient를 공통으로 사용하되,
 프롬프트/JSON 포맷은 프로젝트별 모듈에서 payload 헬퍼로 직접 구성한다.
 
 client는 httpx 의존성을 끌어오므로, 페이로드만 다루는 코드가 httpx 없이도
