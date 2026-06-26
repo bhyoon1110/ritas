@@ -777,11 +777,13 @@ def _image_download_js(div_id: str, formats, filename: str, scale: float) -> str
 
 
 def _trace_highlight_js(div_id: str, pickable=None, groups=None) -> str:
-    """크로스헤어 스냅 지점을 더블클릭해 그래프를 강조·격리하는 JS 스니펫.
+    """크로스헤어 스냅 지점을 보조키+더블클릭해 그래프를 강조·격리하는 JS 스니펫.
 
-    - 스냅 좌표가 표시된 상태(그래프 위의 점이 선택된 상태)에서 더블클릭하면
+    - 일반 더블클릭은 Plotly 기본 축 리셋 동작에 맡긴다.
+    - 스냅 좌표가 표시된 상태(그래프 위의 점이 선택된 상태)에서
+      Shift/Alt + 더블클릭하면
       그 트레이스를 강조(굵게)하고 나머지는 반투명으로 만든다.
-    - 같은 트레이스를 다시 더블클릭하면 그 트레이스만 남기고 나머지를 숨긴다(격리).
+    - 같은 트레이스를 다시 Shift/Alt + 더블클릭하면 그 트레이스만 남기고 나머지를 숨긴다(격리).
       이때 범례에서도 그 트레이스만 선택(나머지는 legendonly)된다.
     - 격리 상태에서 빈 영역을 더블클릭하면 격리를 유지한 채 축만 리셋(reset axes)한다.
     - 격리된 트레이스를 다시 더블클릭하면 모든 트레이스를 원래대로 복원한다.
@@ -872,7 +874,7 @@ def _trace_highlight_js(div_id: str, pickable=None, groups=None) -> str:
   }}
 
   gd.addEventListener("mousemove", function(e) {{
-    gd._lastPtr = {{ x: e.clientX, y: e.clientY }};
+    gd._lastPtr = {{ x: e.clientX, y: e.clientY, modifier: e.shiftKey || e.altKey }};
   }}, true);
 
   function pickCurve() {{
@@ -887,10 +889,15 @@ def _trace_highlight_js(div_id: str, pickable=None, groups=None) -> str:
     return cn;
   }}
 
+  // 일반 더블클릭은 Plotly 기본 축 리셋을 유지한다.
+  // Shift/Alt + 더블클릭만 트레이스 강조/격리로 사용한다.
+  //
   // 실제 마우스 더블클릭은 Plotly가 가로채 네이티브 dblclick이 안 뜨므로
   // Plotly 자체 이벤트(plotly_doubleclick)를 사용한다.
   gd.on("plotly_doubleclick", function() {{
     if (!window.Plotly) return false;
+    var modifier = gd._lastPtr && gd._lastPtr.modifier;
+    if (!modifier) return true;
     var cn = pickCurve();
     if (cn < 0) {{                 // 그래프 선 근처가 아닌 빈 영역
       if (mode === "highlight") {{ resetAll(); return false; }}  // 강조 해제

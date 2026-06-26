@@ -63,6 +63,22 @@ def test_shared_plotly_module_applies_legend_text(tmp_path) -> None:
     assert figure.data[0].legendgrouptitle.text == "시료"
 
 
+def test_trace_highlight_keeps_plain_double_click_reset(tmp_path) -> None:
+    figure = go.Figure(data=[go.Scatter(x=[1, 2], y=[3, 4], name="Raw")])
+    output = tmp_path / "highlight.html"
+
+    write_responsive_html(
+        figure,
+        str(output),
+        div_id="highlight-plot",
+        trace_highlight=True,
+    )
+
+    html = output.read_text(encoding="utf-8")
+    assert "if (!modifier) return true" in html
+    assert "e.shiftKey || e.altKey" in html
+
+
 def test_apply_legend_text_renames_without_html_output() -> None:
     figure = go.Figure(data=[go.Scatter(x=[1], y=[2], name="Raw")])
 
