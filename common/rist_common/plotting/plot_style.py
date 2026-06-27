@@ -401,13 +401,25 @@ def _legend_text_edit_js(div_id: str) -> str:
   box-sizing: border-box;
 }}
 #{div_id} .rist-legend-edit-head {{
+  position: sticky;
+  top: -10px;
+  z-index: 2;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  margin-bottom: 8px;
+  margin: -10px -10px 8px;
+  padding: 10px;
+  border-bottom: 1px solid #d7dee8;
+  background: rgba(255,255,255,0.98);
   font: bold 13px Arial, sans-serif;
   color: #1f2933;
+  cursor: move;
+  user-select: none;
+  touch-action: none;
+}}
+#{div_id} .rist-legend-edit-panel.is-panel-dragging {{
+  box-shadow: 0 6px 24px rgba(0,0,0,0.22);
 }}
 #{div_id} .rist-legend-edit-close {{
   border: 0;
@@ -462,6 +474,13 @@ def _legend_text_edit_js(div_id: str) -> str:
 #{div_id} .rist-legend-edit-row.is-pending-delete .rist-legend-edit-input {{
   text-decoration: line-through;
 }}
+#{div_id} .rist-legend-edit-row.is-pending-group-remove {{
+  background: #fff8e8;
+}}
+#{div_id} .rist-legend-edit-row.is-pending-group-remove .rist-legend-edit-input {{
+  text-decoration: line-through;
+  text-decoration-color: #b7791f;
+}}
 #{div_id} .rist-legend-row-kind {{
   flex: 0 0 34px;
   color: #52606d;
@@ -473,6 +492,14 @@ def _legend_text_edit_js(div_id: str) -> str:
 }}
 #{div_id} .rist-legend-edit-row.is-peak .rist-legend-row-kind {{
   color: #66788a;
+  cursor: grab;
+  user-select: none;
+}}
+#{div_id} .rist-legend-edit-row.is-dragging {{
+  opacity: 0.55;
+}}
+#{div_id} .rist-legend-edit-row.is-pending-group-add {{
+  background: #edf7f1;
 }}
 #{div_id} .rist-legend-group-row {{
   display: flex;
@@ -483,6 +510,11 @@ def _legend_text_edit_js(div_id: str) -> str:
   border: 1px solid #d7dee8;
   border-radius: 5px;
   background: #f8fafc;
+}}
+#{div_id} .rist-legend-group-row.is-drop-target {{
+  border-color: #2f855a;
+  background: #e8f5ed;
+  box-shadow: 0 0 0 2px rgba(47,133,90,0.18);
 }}
 #{div_id} .rist-legend-group-row .rist-legend-row-kind {{
   color: #44546a;
@@ -505,7 +537,9 @@ def _legend_text_edit_js(div_id: str) -> str:
   padding: 5px 7px;
   box-sizing: border-box;
 }}
-#{div_id} .rist-legend-group-clear {{
+#{div_id} .rist-legend-group-add,
+#{div_id} .rist-legend-group-clear,
+#{div_id} .rist-legend-group-remove {{
   flex: 0 0 auto;
   width: 26px;
   height: 26px;
@@ -517,6 +551,25 @@ def _legend_text_edit_js(div_id: str) -> str:
   font: 13px Arial, sans-serif;
   line-height: 1;
   padding: 0;
+}}
+#{div_id} .rist-legend-group-add {{
+  border-color: #8fb3a3;
+  color: #276749;
+  font-size: 16px;
+}}
+#{div_id} .rist-legend-group-add.has-pending-add {{
+  background: #276749;
+  color: #fff;
+  font-size: 11px;
+}}
+#{div_id} .rist-legend-group-remove {{
+  border-color: #d6b778;
+  color: #9c6515;
+  font-size: 16px;
+}}
+#{div_id} .rist-legend-edit-row.is-pending-group-remove .rist-legend-group-remove {{
+  background: #b7791f;
+  color: #fff;
 }}
 #{div_id} .rist-legend-peak-delete {{
   flex: 0 0 auto;
@@ -558,9 +611,15 @@ def _legend_text_edit_js(div_id: str) -> str:
   box-sizing: border-box;
 }}
 #{div_id} .rist-legend-edit-actions {{
+  position: sticky;
+  bottom: -10px;
+  z-index: 2;
   display: flex;
   justify-content: flex-end;
-  margin-top: 10px;
+  margin: 10px -10px -10px;
+  padding: 10px;
+  border-top: 1px solid #d7dee8;
+  background: rgba(255,255,255,0.98);
 }}
 #{div_id} .rist-legend-bulk-controls {{
   order: 10;
@@ -704,6 +763,18 @@ def _legend_text_edit_js(div_id: str) -> str:
     return curves.length ? curves : [curve];
   }}
 
+  function selectedPeakCurvesForGroup(groupKey) {{
+    var data = gd.data || [];
+    var curves = [];
+    for (var i = 0; i < data.length; i++) {{
+      var meta = traceMeta(i);
+      if (!isPeakCurve(i) || !meta.rist_peak.selected) continue;
+      if (manualPeakGroupKey(i) === groupKey) continue;
+      curves.push(i);
+    }}
+    return curves;
+  }}
+
   function manualPeakGroupKey(curve) {{
     var meta = traceMeta(curve);
     if (meta.rist_peak && meta.rist_peak.manual_group_key) {{
@@ -734,10 +805,16 @@ def _legend_text_edit_js(div_id: str) -> str:
     }} catch (e) {{}}
   }}
 
-  function dispatchPeakGroupUpdate(groupKey, name, color) {{
+  function dispatchPeakGroupUpdate(groupKey, name, color, addCurves, removeCurves) {{
     try {{
       gd.dispatchEvent(new CustomEvent("rist-peak-group-update", {{
-        detail: {{ groupKey: groupKey, name: name, color: color }}
+        detail: {{
+          groupKey: groupKey,
+          name: name,
+          color: color,
+          addCurves: addCurves || [],
+          removeCurves: removeCurves || []
+        }}
       }}));
     }} catch (e) {{}}
   }}
@@ -852,10 +929,68 @@ def _legend_text_edit_js(div_id: str) -> str:
       panel.style.display = "none";
     }}
 
+    var panelHead = panel.querySelector(".rist-legend-edit-head");
+    var panelDrag = null;
+
+    function constrainPanelPosition(left, top) {{
+      var gdRect = gd.getBoundingClientRect();
+      var panelRect = panel.getBoundingClientRect();
+      return {{
+        left: Math.max(0, Math.min(left, gdRect.width - panelRect.width)),
+        top: Math.max(0, Math.min(top, gdRect.height - panelRect.height))
+      }};
+    }}
+
+    panelHead.addEventListener("pointerdown", function(ev) {{
+      if (ev.button !== 0 || ev.target.closest("button,input")) return;
+      var gdRect = gd.getBoundingClientRect();
+      var panelRect = panel.getBoundingClientRect();
+      panelDrag = {{
+        offsetX: ev.clientX - panelRect.left,
+        offsetY: ev.clientY - panelRect.top
+      }};
+      panel.style.left = (panelRect.left - gdRect.left) + "px";
+      panel.style.top = (panelRect.top - gdRect.top) + "px";
+      panel.style.right = "auto";
+      panel.classList.add("is-panel-dragging");
+      ev.preventDefault();
+    }});
+
+    document.addEventListener("pointermove", function(ev) {{
+      if (!panelDrag) return;
+      var gdRect = gd.getBoundingClientRect();
+      var position = constrainPanelPosition(
+        ev.clientX - gdRect.left - panelDrag.offsetX,
+        ev.clientY - gdRect.top - panelDrag.offsetY
+      );
+      panel.style.left = position.left + "px";
+      panel.style.top = position.top + "px";
+      ev.preventDefault();
+    }});
+
+    function finishPanelDrag() {{
+      if (!panelDrag) return;
+      panelDrag = null;
+      panel.classList.remove("is-panel-dragging");
+    }}
+
+    document.addEventListener("pointerup", finishPanelDrag);
+    document.addEventListener("pointercancel", finishPanelDrag);
+    window.addEventListener("resize", function() {{
+      if (!panel.style.left || panel.style.display !== "block") return;
+      var position = constrainPanelPosition(
+        parseFloat(panel.style.left) || 0,
+        parseFloat(panel.style.top) || 0
+      );
+      panel.style.left = position.left + "px";
+      panel.style.top = position.top + "px";
+    }});
+
     function renderRows() {{
       var body = panel.querySelector(".rist-legend-edit-body");
       var idxs = visibleLegendTraceIndexes();
       body.innerHTML = "";
+      var draggedPeak = null;
 
       var items = [];
       var groups = {{}};
@@ -872,6 +1007,67 @@ def _legend_text_edit_js(div_id: str) -> str:
         groups[key].curves.push(curve);
       }});
 
+      function pendingAddCurves(groupRow) {{
+        try {{
+          var curves = JSON.parse(groupRow.getAttribute("data-add-curves") || "[]");
+          return Array.isArray(curves) ? curves : [];
+        }} catch (e) {{
+          return [];
+        }}
+      }}
+
+      function updatePendingAddBadge(groupRow) {{
+        var addButton = groupRow.querySelector(".rist-legend-group-add");
+        if (!addButton) return;
+        var curves = pendingAddCurves(groupRow);
+        addButton.textContent = curves.length ? "+" + curves.length : "+";
+        addButton.title = curves.length
+          ? curves.length + "개 피크 추가 예정"
+          : "선택한 피크 추가";
+        addButton.classList.toggle("has-pending-add", curves.length > 0);
+      }}
+
+      function queueGroupAdd(groupRow, groupKey, curves, sourceRow) {{
+        curves = (curves || []).filter(function(curve, index, values) {{
+          return isPeakCurve(curve) && values.indexOf(curve) === index;
+        }});
+        if (!curves.length) return false;
+
+        body.querySelectorAll(".rist-legend-group-row").forEach(function(otherRow) {{
+          var current = pendingAddCurves(otherRow).filter(function(curve) {{
+            return curves.indexOf(curve) < 0;
+          }});
+          otherRow.setAttribute("data-add-curves", JSON.stringify(current));
+          updatePendingAddBadge(otherRow);
+        }});
+
+        var additions = curves.filter(function(curve) {{
+          return manualPeakGroupKey(curve) !== groupKey;
+        }});
+        if (!additions.length) {{
+          if (sourceRow) sourceRow.classList.remove("is-pending-group-add");
+          return false;
+        }}
+        var pending = pendingAddCurves(groupRow).concat(additions)
+          .filter(function(curve, index, values) {{
+            return values.indexOf(curve) === index;
+          }});
+        groupRow.setAttribute("data-add-curves", JSON.stringify(pending));
+        updatePendingAddBadge(groupRow);
+        if (sourceRow) {{
+          sourceRow.classList.add("is-pending-group-add");
+          sourceRow.title = "이 피크를 " + manualPeakGroupName(
+            parseInt(groupRow.getAttribute("data-first-curve"), 10)
+          ) + " 그룹에 추가 예정";
+        }}
+        return true;
+      }}
+
+      function clearDropTargets() {{
+        body.querySelectorAll(".rist-legend-group-row.is-drop-target")
+          .forEach(function(row) {{ row.classList.remove("is-drop-target"); }});
+      }}
+
       function appendCurveRow(curve, groupKey) {{
         var sampleCurve = isSampleCurve(curve);
         var peakCurve = isPeakCurve(curve);
@@ -881,6 +1077,7 @@ def _legend_text_edit_js(div_id: str) -> str:
           + (peakCurve ? " is-peak" : "")
           + (groupKey ? " is-group-member" : "");
         row.setAttribute("data-curve", String(curve));
+        if (groupKey) row.setAttribute("data-group-key", groupKey);
         if (peakCurve) {{
           var sampleName = sampleNameForCurve(curve);
           if (sampleName) row.title = sampleName + " 샘플의 피크";
@@ -890,14 +1087,39 @@ def _legend_text_edit_js(div_id: str) -> str:
           + "</span>"
           + (groupKey ? "" : "<input class='rist-legend-color-input' type='color'>")
           + "<input class='rist-legend-edit-input' type='text'>"
+          + (peakCurve && groupKey
+            ? "<button type='button' class='rist-legend-group-remove' title='그룹에서 제외'>−</button>"
+            : "")
           + (peakCurve
             ? "<button type='button' class='rist-legend-peak-delete' title='피크 삭제'>×</button>"
             : "");
         var colorInput = row.querySelector(".rist-legend-color-input");
         var nameInput = row.querySelector(".rist-legend-edit-input");
+        var kindBadge = row.querySelector(".rist-legend-row-kind");
+        var removeButton = row.querySelector(".rist-legend-group-remove");
         var deleteButton = row.querySelector(".rist-legend-peak-delete");
         if (colorInput) colorInput.value = traceColor(curve);
         nameInput.value = traceName(curve);
+        if (peakCurve && kindBadge) {{
+          kindBadge.draggable = true;
+          kindBadge.title = "피크 그룹으로 드래그";
+          kindBadge.addEventListener("dragstart", function(ev) {{
+            draggedPeak = {{
+              curves: peakCurvesForLegendItem(curve),
+              row: row
+            }};
+            row.classList.add("is-dragging");
+            if (ev.dataTransfer) {{
+              ev.dataTransfer.effectAllowed = "move";
+              ev.dataTransfer.setData("text/plain", String(curve));
+            }}
+          }});
+          kindBadge.addEventListener("dragend", function() {{
+            row.classList.remove("is-dragging");
+            clearDropTargets();
+            draggedPeak = null;
+          }});
+        }}
         if (deleteButton) {{
           deleteButton.addEventListener("click", function(ev) {{
             ev.preventDefault();
@@ -905,6 +1127,23 @@ def _legend_text_edit_js(div_id: str) -> str:
             var pending = row.getAttribute("data-delete") !== "true";
             row.setAttribute("data-delete", pending ? "true" : "false");
             row.classList.toggle("is-pending-delete", pending);
+            if (pending) {{
+              row.setAttribute("data-remove-group", "false");
+              row.classList.remove("is-pending-group-remove");
+            }}
+          }});
+        }}
+        if (removeButton) {{
+          removeButton.addEventListener("click", function(ev) {{
+            ev.preventDefault();
+            ev.stopPropagation();
+            var pending = row.getAttribute("data-remove-group") !== "true";
+            row.setAttribute("data-remove-group", pending ? "true" : "false");
+            row.classList.toggle("is-pending-group-remove", pending);
+            if (pending) {{
+              row.setAttribute("data-delete", "false");
+              row.classList.remove("is-pending-delete");
+            }}
           }});
         }}
         nameInput.addEventListener("keydown", function(ev) {{
@@ -929,13 +1168,44 @@ def _legend_text_edit_js(div_id: str) -> str:
         groupRow.setAttribute("data-first-curve", String(firstCurve));
         groupRow.innerHTML = "<span class='rist-legend-row-kind'>그룹</span>"
           + "<input class='rist-legend-group-title' type='text'>"
+          + "<button type='button' class='rist-legend-group-add' title='선택한 피크 추가'>+</button>"
           + "<input class='rist-legend-group-color' type='color' title='그룹 색상 선택'>"
           + "<button type='button' class='rist-legend-group-clear' title='그룹 해제'>×</button>";
         var title = groupRow.querySelector(".rist-legend-group-title");
+        var add = groupRow.querySelector(".rist-legend-group-add");
         var groupColor = groupRow.querySelector(".rist-legend-group-color");
         var clear = groupRow.querySelector(".rist-legend-group-clear");
         title.value = manualPeakGroupName(firstCurve);
         groupColor.value = traceColor(firstCurve);
+        add.addEventListener("click", function(ev) {{
+          ev.preventDefault();
+          ev.stopPropagation();
+          var selected = selectedPeakCurvesForGroup(groupKey);
+          if (!queueGroupAdd(groupRow, groupKey, selected, null)) {{
+            add.title = "추가할 피크를 먼저 선택하세요";
+          }}
+        }});
+        groupRow.addEventListener("dragover", function(ev) {{
+          if (!draggedPeak) return;
+          ev.preventDefault();
+          if (ev.dataTransfer) ev.dataTransfer.dropEffect = "move";
+          clearDropTargets();
+          groupRow.classList.add("is-drop-target");
+        }});
+        groupRow.addEventListener("dragleave", function(ev) {{
+          if (!groupRow.contains(ev.relatedTarget)) {{
+            groupRow.classList.remove("is-drop-target");
+          }}
+        }});
+        groupRow.addEventListener("drop", function(ev) {{
+          if (!draggedPeak) return;
+          ev.preventDefault();
+          ev.stopPropagation();
+          queueGroupAdd(groupRow, groupKey, draggedPeak.curves, draggedPeak.row);
+          draggedPeak.row.classList.remove("is-dragging");
+          clearDropTargets();
+          draggedPeak = null;
+        }});
         clear.addEventListener("click", function(ev) {{
           ev.preventDefault();
           ev.stopPropagation();
@@ -952,29 +1222,7 @@ def _legend_text_edit_js(div_id: str) -> str:
 
     function saveAllRows() {{
       var deleteCurves = [];
-      panel.querySelectorAll(".rist-legend-group-row").forEach(function(row) {{
-        var groupKey = row.getAttribute("data-group-key") || "";
-        var titleInput = row.querySelector(".rist-legend-group-title");
-        var colorInput = row.querySelector(".rist-legend-group-color");
-        if (!groupKey) return;
-        if (row.getAttribute("data-clear") === "true") {{
-          dispatchPeakGroupClear(groupKey);
-          return;
-        }}
-        var firstCurve = parseInt(row.getAttribute("data-first-curve"), 10);
-        var nextTitle = titleInput ? titleInput.value : "";
-        var nextColor = colorInput ? colorInput.value : "";
-        if (Number.isFinite(firstCurve)
-            && nextTitle === manualPeakGroupName(firstCurve)
-            && normalizeColor(nextColor) === traceColor(firstCurve)) {{
-          return;
-        }}
-        dispatchPeakGroupUpdate(
-          groupKey,
-          nextTitle,
-          nextColor
-        );
-      }});
+      var groupRemovals = {{}};
       panel.querySelectorAll(".rist-legend-edit-row").forEach(function(row) {{
         var curve = parseInt(row.getAttribute("data-curve"), 10);
         var nameInput = row.querySelector(".rist-legend-edit-input");
@@ -984,11 +1232,61 @@ def _legend_text_edit_js(div_id: str) -> str:
           deleteCurves = deleteCurves.concat(peakCurvesForLegendItem(curve));
           return;
         }}
+        if (row.getAttribute("data-remove-group") === "true") {{
+          var removeGroupKey = row.getAttribute("data-group-key") || "";
+          if (removeGroupKey) {{
+            if (!groupRemovals[removeGroupKey]) groupRemovals[removeGroupKey] = [];
+            groupRemovals[removeGroupKey] = groupRemovals[removeGroupKey]
+              .concat(peakCurvesForLegendItem(curve));
+          }}
+          return;
+        }}
         var nextName = String(nameInput.value || "").trim();
         if (nextName && nextName !== traceName(curve)) updateName(curve, nextName);
         if (colorInput && normalizeColor(colorInput.value) !== traceColor(curve)) {{
           updateColor(curve, colorInput.value);
         }}
+      }});
+      deleteCurves = deleteCurves.filter(function(curve, index, values) {{
+        return values.indexOf(curve) === index;
+      }});
+      panel.querySelectorAll(".rist-legend-group-row").forEach(function(row) {{
+        var groupKey = row.getAttribute("data-group-key") || "";
+        var titleInput = row.querySelector(".rist-legend-group-title");
+        var colorInput = row.querySelector(".rist-legend-group-color");
+        if (!groupKey) return;
+        if (row.getAttribute("data-clear") === "true") {{
+          dispatchPeakGroupClear(groupKey);
+          return;
+        }}
+        var addCurves = [];
+        try {{
+          addCurves = JSON.parse(row.getAttribute("data-add-curves") || "[]");
+        }} catch (e) {{}}
+        var removeCurves = groupRemovals[groupKey] || [];
+        addCurves = addCurves.filter(function(curve) {{
+          return deleteCurves.indexOf(curve) < 0;
+        }});
+        removeCurves = removeCurves.filter(function(curve, index, values) {{
+          return deleteCurves.indexOf(curve) < 0 && values.indexOf(curve) === index;
+        }});
+        var firstCurve = parseInt(row.getAttribute("data-first-curve"), 10);
+        var nextTitle = titleInput ? titleInput.value : "";
+        var nextColor = colorInput ? colorInput.value : "";
+        if (Number.isFinite(firstCurve)
+            && nextTitle === manualPeakGroupName(firstCurve)
+            && normalizeColor(nextColor) === traceColor(firstCurve)
+            && !addCurves.length
+            && !removeCurves.length) {{
+          return;
+        }}
+        dispatchPeakGroupUpdate(
+          groupKey,
+          nextTitle,
+          nextColor,
+          addCurves,
+          removeCurves
+        );
       }});
       dispatchPeakDelete(deleteCurves);
       closePanel();
@@ -1540,54 +1838,110 @@ def peak_editor_js(div_id: str) -> str:
     clearPeakGroupForCurves(curves);
   }}
 
-  function updatePeakGroupByKey(groupKey, groupName, groupColor) {{
+  function updatePeakGroupByKey(
+    groupKey,
+    groupName,
+    groupColor,
+    addCurves,
+    removeCurves
+  ) {{
     if (!window.Plotly || !groupKey) return;
     groupName = String(groupName || "").trim() || "Peak Group";
     groupColor = groupColor || "#ef4444";
+    addCurves = Array.isArray(addCurves) ? addCurves : [];
+    removeCurves = Array.isArray(removeCurves) ? removeCurves : [];
     var nextGroupKey = "manual-peak-group:" + groupName;
     var data = gd.data || [];
     var labels = meta();
-    var curves = [];
+    var existingCurves = [];
+    var finalCurves = [];
+    var affectedCurves = [];
     var metas = [];
     for (var i = 0; i < data.length; i++) {{
       var metaObj = traceMeta(i);
-      var peakMeta = Object.assign({{}}, metaObj.rist_peak || {{}});
+      var peakMeta = metaObj.rist_peak || {{}};
       var key = peakMeta.manual_group_key || metaObj.rist_color_group || "";
-      if (key !== groupKey) continue;
-      var nextMeta = Object.assign({{}}, metaObj);
-      peakMeta.group_name = groupName;
-      peakMeta.group_color = groupColor;
-      peakMeta.manual_group_key = nextGroupKey;
-      nextMeta.rist_peak = peakMeta;
-      nextMeta.rist_color_group = nextGroupKey;
-      data[i].meta = nextMeta;
-      curves.push(i);
-      metas.push(nextMeta);
+      if (key === groupKey) existingCurves.push(i);
     }}
-    if (!curves.length) return;
+    existingCurves.forEach(function(curve) {{
+      if (removeCurves.indexOf(curve) < 0) finalCurves.push(curve);
+    }});
+    addCurves.forEach(function(curve) {{
+      if (isPeakCurve(curve) && finalCurves.indexOf(curve) < 0) finalCurves.push(curve);
+    }});
+    affectedCurves = existingCurves.concat(addCurves).filter(function(curve, index, values) {{
+      return isPeakCurve(curve) && values.indexOf(curve) === index;
+    }});
+    if (!affectedCurves.length) return;
+
+    var legendgroups = [];
+    var legendTitles = [];
+    var colors = [];
+    affectedCurves.forEach(function(curve) {{
+      var tr = data[curve] || {{}};
+      var nextMeta = Object.assign({{}}, tr.meta || {{}});
+      var peakMeta = Object.assign({{}}, nextMeta.rist_peak || {{}});
+      var staysInGroup = finalCurves.indexOf(curve) >= 0;
+      if (staysInGroup) {{
+        if (peakMeta.original_color == null) {{
+          peakMeta.original_color = traceColor(curve);
+        }}
+        if (peakMeta.original_legendgroup == null) {{
+          peakMeta.original_legendgroup = tr.legendgroup || "";
+        }}
+        if (peakMeta.original_legend_title == null) {{
+          var currentTitle = tr.legendgrouptitle;
+          peakMeta.original_legend_title = currentTitle && currentTitle.text != null
+            ? String(currentTitle.text)
+            : "";
+        }}
+        peakMeta.group_name = groupName;
+        peakMeta.group_color = groupColor;
+        peakMeta.manual_group_key = nextGroupKey;
+        nextMeta.rist_color_group = nextGroupKey;
+        legendgroups.push(nextGroupKey);
+        legendTitles.push(groupName);
+        colors.push(groupColor);
+      }} else {{
+        var originalColor = peakMeta.original_color || traceColor(curve);
+        legendgroups.push(peakMeta.original_legendgroup || sampleGroup(curve) || "");
+        legendTitles.push(peakMeta.original_legend_title || "");
+        colors.push(originalColor);
+        delete peakMeta.manual_group_key;
+        delete peakMeta.group_name;
+        delete peakMeta.group_color;
+        delete nextMeta.rist_color_group;
+      }}
+      nextMeta.rist_peak = peakMeta;
+      data[curve].meta = nextMeta;
+      metas.push(nextMeta);
+    }});
+
     var annotations = (gd.layout.annotations || []).map(function(a) {{
       return Object.assign({{}}, a);
     }});
     var shapes = (gd.layout.shapes || []).map(function(s) {{
       return Object.assign({{}}, s);
     }});
-    updatePeakColorList(annotations, shapes, labels, curves, groupColor);
-    if (gd._ristFtirUnitOriginalAnnotations || gd._ristFtirUnitOriginalShapes) {{
-      updatePeakColorList(
-        gd._ristFtirUnitOriginalAnnotations || [],
-        gd._ristFtirUnitOriginalShapes || [],
-        labels,
-        curves,
-        groupColor
-      );
-    }}
+    affectedCurves.forEach(function(curve, index) {{
+      updatePeakColorList(annotations, shapes, labels, [curve], colors[index]);
+      if (gd._ristFtirUnitOriginalAnnotations || gd._ristFtirUnitOriginalShapes) {{
+        updatePeakColorList(
+          gd._ristFtirUnitOriginalAnnotations || [],
+          gd._ristFtirUnitOriginalShapes || [],
+          labels,
+          [curve],
+          colors[index]
+        );
+      }}
+    }});
     window.Plotly.restyle(gd, {{
-      legendgroup: curves.map(function() {{ return nextGroupKey; }}),
-      "legendgrouptitle.text": curves.map(function() {{ return groupName; }}),
-      "marker.color": curves.map(function() {{ return groupColor; }}),
-      "line.color": curves.map(function() {{ return groupColor; }}),
+      legendgroup: legendgroups,
+      "legendgrouptitle.text": legendTitles,
+      "marker.color": colors,
+      "line.color": colors,
       meta: metas
-    }}, curves).then(function() {{
+    }}, affectedCurves).then(function() {{
       return window.Plotly.relayout(gd, {{
         "meta.ristPeakLabels": labels,
         "legend.traceorder": "grouped",
@@ -1595,9 +1949,13 @@ def peak_editor_js(div_id: str) -> str:
         shapes: shapes
       }});
     }}).then(function() {{
+      if (addCurves.length || removeCurves.length) {{
+        clearPeakSelection();
+        setMode("none");
+      }}
       try {{
         gd.dispatchEvent(new CustomEvent("rist-legend-color-change", {{
-          detail: {{ curves: curves, color: groupColor }}
+          detail: {{ curves: finalCurves, color: groupColor }}
         }}));
         gd.dispatchEvent(new CustomEvent("rist-peak-group-change"));
       }} catch (e) {{}}
@@ -2125,7 +2483,13 @@ def peak_editor_js(div_id: str) -> str:
   gd.addEventListener("rist-peak-group-update", function(ev) {{
     var detail = ev.detail || {{}};
     if (!detail.groupKey) return;
-    updatePeakGroupByKey(String(detail.groupKey), detail.name, detail.color);
+    updatePeakGroupByKey(
+      String(detail.groupKey),
+      detail.name,
+      detail.color,
+      detail.addCurves,
+      detail.removeCurves
+    );
   }});
   gd.on("plotly_restyle", function(ev) {{
     setTimeout(function() {{

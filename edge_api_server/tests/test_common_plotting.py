@@ -58,6 +58,16 @@ def test_shared_plotly_module_applies_legend_text(tmp_path) -> None:
     assert "top: 58px" in html
     assert "rist-legend-edit-button" in html
     assert "rist-legend-edit-panel" in html
+    assert "position: sticky" in html
+    assert "top: -10px" in html
+    assert "bottom: -10px" in html
+    assert "is-panel-dragging" in html
+    assert "constrainPanelPosition" in html
+    assert 'panelHead.addEventListener("pointerdown"' in html
+    assert 'document.addEventListener("pointermove"' in html
+    assert 'document.addEventListener("pointerup", finishPanelDrag)' in html
+    assert 'document.addEventListener("pointercancel", finishPanelDrag)' in html
+    assert 'panel.style.right = "auto"' in html
     assert "rist-legend-edit-save-all" in html
     assert "rist-legend-color-input" in html
     assert "rist-legend-group-row" in html
@@ -66,6 +76,24 @@ def test_shared_plotly_module_applies_legend_text(tmp_path) -> None:
     assert "type='color' title='그룹 색상 선택'" in html
     assert "rist-legend-group-color-button" not in html
     assert "rist-legend-group-clear" in html
+    assert "rist-legend-group-add" in html
+    assert "rist-legend-group-remove" in html
+    assert "선택한 피크 추가" in html
+    assert "그룹에서 제외" in html
+    assert "selectedPeakCurvesForGroup" in html
+    assert "queueGroupAdd" in html
+    assert "pendingAddCurves" in html
+    assert "updatePendingAddBadge" in html
+    assert "data-add-curves" in html
+    assert "data-remove-group" in html
+    assert "is-pending-group-remove" in html
+    assert "is-pending-group-add" in html
+    assert "is-drop-target" in html
+    assert 'kindBadge.addEventListener("dragstart"' in html
+    assert 'groupRow.addEventListener("dragover"' in html
+    assert 'groupRow.addEventListener("drop"' in html
+    assert 'ev.dataTransfer.setData("text/plain", String(curve))' in html
+    assert "피크 그룹으로 드래그" in html
     assert "rist-legend-row-kind" in html
     assert "isSampleCurve" in html
     assert "isPeakCurve" in html
@@ -81,6 +109,8 @@ def test_shared_plotly_module_applies_legend_text(tmp_path) -> None:
     assert "deleteCurves.concat(peakCurvesForLegendItem(curve))" in html
     assert "dispatchPeakGroupClear" in html
     assert "dispatchPeakGroupUpdate" in html
+    assert "addCurves: addCurves || []" in html
+    assert "removeCurves: removeCurves || []" in html
     assert "data-clear" in html
     assert "data-first-curve" in html
     assert "nextTitle === manualPeakGroupName(firstCurve)" in html
@@ -201,6 +231,11 @@ def test_shared_peak_editor_adds_peak_controls(tmp_path) -> None:
     assert "RIST peak group apply failed" in html
     assert "clearPeakGroupByKey" in html
     assert "updatePeakGroupByKey" in html
+    assert "existingCurves" in html
+    assert "finalCurves" in html
+    assert "affectedCurves" in html
+    assert "detail.addCurves" in html
+    assert "detail.removeCurves" in html
     assert "rist-peak-group-clear" in html
     assert "rist-peak-group-update" in html
     assert "RIST peak group update failed" in html
