@@ -222,10 +222,11 @@ def test_shared_peak_editor_adds_peak_controls(tmp_path) -> None:
     assert ".legend,.modebar,.rist-plot-control-row,.rist-legend-edit-panel" in html
     assert "function axisPixel" in html
     assert "axis.d2p" in html
-    assert "var margin = 90" in html
-    assert "adx <= 84 && ady <= 180" in html
-    assert "bestVisibleX <= 120" in html
-    assert "annotationClick && bestX <= 120" in html
+    assert "var pickRadius = 32" in html
+    assert "px < 0 || py < 0 || px > r.width || py > r.height" in html
+    assert "distanceSquared <= bestDistanceSquared" in html
+    assert "bestVisibleX <= 120" not in html
+    assert "annotationClick && bestX <= 120" not in html
     assert "handlePeakSelectPointer" in html
     assert 'gd.addEventListener("mousedown", handlePeakSelectPointer, true)' in html
     assert 'ev.type === "click" && gd._ristHandledPeakSelectClick' in html

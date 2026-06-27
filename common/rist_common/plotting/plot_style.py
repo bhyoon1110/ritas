@@ -2004,8 +2004,8 @@ def peak_editor_js(div_id: str) -> str:
     var r = drag.getBoundingClientRect();
     var px = ev.clientX - r.left;
     var py = ev.clientY - r.top;
-    var margin = 90;
-    if (px < -margin || py < -margin || px > r.width + margin || py > r.height + margin) return null;
+    if (px < 0 || py < 0 || px > r.width || py > r.height) return null;
+    var pickRadius = 32;
     var xa = fl.xaxis;
     var ya = fl.yaxis;
     function axisPixel(axis, value) {{
@@ -2015,13 +2015,7 @@ def peak_editor_js(div_id: str) -> str:
     }}
     var data = gd.data || [];
     var best = null;
-    var bestScore = Infinity;
-    var bestXOnly = null;
-    var bestX = Infinity;
-    var bestVisibleXOnly = null;
-    var bestVisibleX = Infinity;
-    var annotationClick = !!(ev.target && ev.target.closest
-      && ev.target.closest(".annotation,.annotation-text-g,.annotation-arrow-g"));
+    var bestDistanceSquared = pickRadius * pickRadius;
     for (var i = 0; i < data.length; i++) {{
       var tr = data[i];
       if (!tr || !isPeakCurve(i) || !traceVisible(i)) continue;
@@ -2036,25 +2030,13 @@ def peak_editor_js(div_id: str) -> str:
       if (xPixel == null || yPixel == null) continue;
       var dx = xPixel - px;
       var dy = yPixel - py;
-      var adx = Math.abs(dx);
-      var ady = Math.abs(dy);
-      var score = adx + ady * 0.35;
-      if (adx < bestX) {{
-        bestX = adx;
-        bestXOnly = i;
-      }}
-      if (px >= 0 && px <= r.width && adx < bestVisibleX) {{
-        bestVisibleX = adx;
-        bestVisibleXOnly = i;
-      }}
-      if (adx <= 84 && ady <= 180 && score < bestScore) {{
-        bestScore = score;
+      var distanceSquared = dx * dx + dy * dy;
+      if (distanceSquared <= bestDistanceSquared) {{
+        bestDistanceSquared = distanceSquared;
         best = i;
       }}
     }}
-    if (best != null) return best;
-    if (bestVisibleX <= 120) return bestVisibleXOnly;
-    return annotationClick && bestX <= 120 ? bestXOnly : null;
+    return best;
   }}
 
   function syncVisibility() {{
