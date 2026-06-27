@@ -456,6 +456,12 @@ def _legend_text_edit_js(div_id: str) -> str:
 #{div_id} .rist-legend-edit-row.is-peak.is-group-member {{
   margin-left: 30px;
 }}
+#{div_id} .rist-legend-edit-row.is-pending-delete {{
+  opacity: 0.58;
+}}
+#{div_id} .rist-legend-edit-row.is-pending-delete .rist-legend-edit-input {{
+  text-decoration: line-through;
+}}
 #{div_id} .rist-legend-row-kind {{
   flex: 0 0 34px;
   color: #52606d;
@@ -511,6 +517,23 @@ def _legend_text_edit_js(div_id: str) -> str:
   font: 13px Arial, sans-serif;
   line-height: 1;
   padding: 0;
+}}
+#{div_id} .rist-legend-peak-delete {{
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  border: 1px solid #d5a3a3;
+  border-radius: 4px;
+  background: #fff;
+  color: #9b2c2c;
+  cursor: pointer;
+  font: 15px Arial, sans-serif;
+  line-height: 1;
+  padding: 0;
+}}
+#{div_id} .rist-legend-edit-row.is-pending-delete .rist-legend-peak-delete {{
+  background: #9b2c2c;
+  color: #fff;
 }}
 #{div_id} .rist-legend-group-color {{
   flex: 0 0 auto;
@@ -671,6 +694,16 @@ def _legend_text_edit_js(div_id: str) -> str:
     return "curve:" + curve;
   }}
 
+  function peakCurvesForLegendItem(curve) {{
+    var editGroup = legendEditGroup(curve);
+    var data = gd.data || [];
+    var curves = [];
+    for (var i = 0; i < data.length; i++) {{
+      if (isPeakCurve(i) && legendEditGroup(i) === editGroup) curves.push(i);
+    }}
+    return curves.length ? curves : [curve];
+  }}
+
   function manualPeakGroupKey(curve) {{
     var meta = traceMeta(curve);
     if (meta.rist_peak && meta.rist_peak.manual_group_key) {{
@@ -705,6 +738,15 @@ def _legend_text_edit_js(div_id: str) -> str:
     try {{
       gd.dispatchEvent(new CustomEvent("rist-peak-group-update", {{
         detail: {{ groupKey: groupKey, name: name, color: color }}
+      }}));
+    }} catch (e) {{}}
+  }}
+
+  function dispatchPeakDelete(curves) {{
+    if (!curves.length) return;
+    try {{
+      gd.dispatchEvent(new CustomEvent("rist-peak-delete", {{
+        detail: {{ curves: curves }}
       }}));
     }} catch (e) {{}}
   }}
@@ -847,11 +889,24 @@ def _legend_text_edit_js(div_id: str) -> str:
           + (sampleCurve ? "샘플" : (peakCurve ? "피크" : "항목"))
           + "</span>"
           + (groupKey ? "" : "<input class='rist-legend-color-input' type='color'>")
-          + "<input class='rist-legend-edit-input' type='text'>";
+          + "<input class='rist-legend-edit-input' type='text'>"
+          + (peakCurve
+            ? "<button type='button' class='rist-legend-peak-delete' title='피크 삭제'>×</button>"
+            : "");
         var colorInput = row.querySelector(".rist-legend-color-input");
         var nameInput = row.querySelector(".rist-legend-edit-input");
+        var deleteButton = row.querySelector(".rist-legend-peak-delete");
         if (colorInput) colorInput.value = traceColor(curve);
         nameInput.value = traceName(curve);
+        if (deleteButton) {{
+          deleteButton.addEventListener("click", function(ev) {{
+            ev.preventDefault();
+            ev.stopPropagation();
+            var pending = row.getAttribute("data-delete") !== "true";
+            row.setAttribute("data-delete", pending ? "true" : "false");
+            row.classList.toggle("is-pending-delete", pending);
+          }});
+        }}
         nameInput.addEventListener("keydown", function(ev) {{
           if (ev.key === "Enter") {{
             ev.preventDefault();
@@ -896,6 +951,7 @@ def _legend_text_edit_js(div_id: str) -> str:
     }}
 
     function saveAllRows() {{
+      var deleteCurves = [];
       panel.querySelectorAll(".rist-legend-group-row").forEach(function(row) {{
         var groupKey = row.getAttribute("data-group-key") || "";
         var titleInput = row.querySelector(".rist-legend-group-title");
@@ -924,12 +980,17 @@ def _legend_text_edit_js(div_id: str) -> str:
         var nameInput = row.querySelector(".rist-legend-edit-input");
         var colorInput = row.querySelector(".rist-legend-color-input");
         if (!Number.isFinite(curve) || !nameInput) return;
+        if (row.getAttribute("data-delete") === "true") {{
+          deleteCurves = deleteCurves.concat(peakCurvesForLegendItem(curve));
+          return;
+        }}
         var nextName = String(nameInput.value || "").trim();
         if (nextName && nextName !== traceName(curve)) updateName(curve, nextName);
         if (colorInput && normalizeColor(colorInput.value) !== traceColor(curve)) {{
           updateColor(curve, colorInput.value);
         }}
       }});
+      dispatchPeakDelete(deleteCurves);
       closePanel();
     }}
 
@@ -1840,12 +1901,12 @@ def peak_editor_js(div_id: str) -> str:
   }}
 
   function deletePeakTrace(curve) {{
-    if (!window.Plotly || curve == null || curve < 0) return;
+    if (!window.Plotly || curve == null || curve < 0) return Promise.resolve();
     var labels = meta();
     var label = labelForCurve(curve);
     var tr = (gd.data || [])[curve] || {{}};
     var isPeak = label || (tr.meta && tr.meta.rist_peak);
-    if (!isPeak) return;
+    if (!isPeak) return Promise.resolve();
     var annotations = (gd.layout.annotations || []).slice();
     var shapes = (gd.layout.shapes || []).slice();
     if (label) {{
@@ -1865,7 +1926,7 @@ def peak_editor_js(div_id: str) -> str:
       if (label && item.shapeIndex > label.shapeIndex) item.shapeIndex -= 1;
       if (item.traceIndex > curve) item.traceIndex -= 1;
     }});
-    window.Plotly.deleteTraces(gd, [curve]).then(function() {{
+    return window.Plotly.deleteTraces(gd, [curve]).then(function() {{
       selectedPeaks = selectedPeaks.map(function(item) {{
         return item > curve ? item - 1 : item;
       }});
@@ -1994,6 +2055,19 @@ def peak_editor_js(div_id: str) -> str:
       if (curve == null && ev.event) curve = nearestPeakCurveFromEvent(ev.event);
       if (curve != null) togglePeakSelection(curve);
     }}
+  }});
+
+  gd.addEventListener("rist-peak-delete", function(ev) {{
+    var detail = ev.detail || {{}};
+    var curves = Array.isArray(detail.curves) ? detail.curves.slice() : [];
+    curves = curves
+      .filter(function(curve, index, values) {{
+        return Number.isFinite(curve) && values.indexOf(curve) === index;
+      }})
+      .sort(function(a, b) {{ return b - a; }});
+    curves.reduce(function(promise, curve) {{
+      return promise.then(function() {{ return deletePeakTrace(curve); }});
+    }}, Promise.resolve());
   }});
 
   gd.addEventListener("rist-legend-name-change", function(ev) {{

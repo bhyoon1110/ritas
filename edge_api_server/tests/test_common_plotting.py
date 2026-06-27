@@ -70,9 +70,15 @@ def test_shared_plotly_module_applies_legend_text(tmp_path) -> None:
     assert "isSampleCurve" in html
     assert "isPeakCurve" in html
     assert "sampleNameForCurve" in html
+    assert "peakCurvesForLegendItem" in html
     assert '" is-sample"' in html
     assert '" is-peak"' in html
     assert '"샘플" : (peakCurve ? "피크" : "항목")' in html
+    assert "rist-legend-peak-delete" in html
+    assert "is-pending-delete" in html
+    assert "data-delete" in html
+    assert "dispatchPeakDelete" in html
+    assert "deleteCurves.concat(peakCurvesForLegendItem(curve))" in html
     assert "dispatchPeakGroupClear" in html
     assert "dispatchPeakGroupUpdate" in html
     assert "data-clear" in html
@@ -201,6 +207,9 @@ def test_shared_peak_editor_adds_peak_controls(tmp_path) -> None:
     assert "name: groupName" not in html
     assert "Plotly.addTraces" in html
     assert "Plotly.deleteTraces" in html
+    assert 'gd.addEventListener("rist-peak-delete"' in html
+    assert ".sort(function(a, b) { return b - a; })" in html
+    assert "return promise.then(function() { return deletePeakTrace(curve); })" in html
     assert "captureevents: true" in html
     assert "updatePeakColorList" in html
     assert "rist-legend-color-change" in html
