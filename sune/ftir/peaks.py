@@ -7,6 +7,36 @@
 import numpy as np
 from scipy.signal import find_peaks, peak_widths
 
+PEAK_SENSITIVITY_PRESETS = {
+    "high": {"height": 0.03, "prominence": 0.015, "distance": 10},
+    "medium": {"height": 0.05, "prominence": 0.03, "distance": 15},
+    "low": {"height": 0.08, "prominence": 0.06, "distance": 25},
+}
+
+PEAK_SENSITIVITY_VALUES = {"low": 0, "medium": 50, "high": 100}
+
+
+def peak_params_for_sensitivity(value):
+    """0~100 민감도를 low/medium/high preset 사이에서 선형 보간한다."""
+    sensitivity = max(0, min(100, int(round(float(value)))))
+    if sensitivity <= 50:
+        start = PEAK_SENSITIVITY_PRESETS["low"]
+        end = PEAK_SENSITIVITY_PRESETS["medium"]
+        ratio = sensitivity / 50.0
+    else:
+        start = PEAK_SENSITIVITY_PRESETS["medium"]
+        end = PEAK_SENSITIVITY_PRESETS["high"]
+        ratio = (sensitivity - 50) / 50.0
+
+    def interpolate(name):
+        return start[name] + (end[name] - start[name]) * ratio
+
+    return {
+        "height": interpolate("height"),
+        "prominence": interpolate("prominence"),
+        "distance": max(1, int(round(interpolate("distance")))),
+    }
+
 
 def detect_peaks_with_fwhm(vec, grid, height=0.05, prominence=0.03, distance=15):
     """벡터에서 피크 인덱스/파수/강도/FWHM를 한 번에 반환."""
@@ -19,3 +49,103 @@ def detect_peaks_with_fwhm(vec, grid, height=0.05, prominence=0.03, distance=15)
     wn_step = (grid[-1] - grid[0]) / (len(grid) - 1)
     peak_fwhm = widths_pts * wn_step
     return idx, peak_wn, peak_val, peak_fwhm
+
+
+def build_interactive_peak_candidates(
+    vec,
+    grid,
+    selected_idx,
+    selected_wn,
+    selected_val,
+    selected_fwhm,
+    initial_sensitivity="medium",
+):
+    """현재 검출 결과와 0~100 민감도 범위의 피크 후보를 병합한다."""
+    candidates = {}
+
+    def add_candidates(
+        indexes,
+        wns,
+        values,
+        fwhms,
+        level=None,
+        minimum_sensitivity=None,
+        initial=False,
+    ):
+        for idx, wn, value, fwhm in zip(indexes, wns, values, fwhms):
+            key = int(idx)
+            candidate = candidates.setdefault(
+                key,
+                {
+                    "index": key,
+                    "wn": float(wn),
+                    "value": float(value),
+                    "fwhm": float(fwhm),
+                    "levels": set(),
+                    "sensitivity_min": 100,
+                    "initial": False,
+                },
+            )
+            if level:
+                candidate["levels"].add(level)
+            if minimum_sensitivity is not None:
+                candidate["sensitivity_min"] = min(
+                    candidate["sensitivity_min"],
+                    int(minimum_sensitivity),
+                )
+            if initial:
+                candidate["initial"] = True
+                candidate["wn"] = float(wn)
+                candidate["value"] = float(value)
+                candidate["fwhm"] = float(fwhm)
+
+    first_seen = {}
+    preset_indexes = {}
+    for sensitivity in range(101):
+        params = peak_params_for_sensitivity(sensitivity)
+        indexes, _ = find_peaks(
+            vec,
+            height=params["height"],
+            prominence=params["prominence"],
+            distance=params["distance"],
+        )
+        for idx in indexes:
+            first_seen.setdefault(int(idx), sensitivity)
+        if sensitivity in (0, 50, 100):
+            preset_indexes[sensitivity] = {int(idx) for idx in indexes}
+
+    candidate_indexes = np.array(sorted(first_seen), dtype=int)
+    if len(candidate_indexes):
+        widths_pts, _, _, _ = peak_widths(vec, candidate_indexes, rel_height=0.5)
+        wn_step = (grid[-1] - grid[0]) / (len(grid) - 1)
+        fwhms = widths_pts * wn_step
+        for idx, fwhm in zip(candidate_indexes, fwhms):
+            levels = [
+                level
+                for level, sensitivity in PEAK_SENSITIVITY_VALUES.items()
+                if int(idx) in preset_indexes.get(sensitivity, set())
+            ]
+            add_candidates(
+                [idx],
+                [grid[idx]],
+                [vec[idx]],
+                [fwhm],
+                minimum_sensitivity=first_seen[int(idx)],
+            )
+            candidates[int(idx)]["levels"].update(levels)
+
+    initial_value = PEAK_SENSITIVITY_VALUES.get(initial_sensitivity, 50)
+    add_candidates(
+        selected_idx,
+        selected_wn,
+        selected_val,
+        selected_fwhm,
+        minimum_sensitivity=initial_value,
+        initial=True,
+    )
+
+    result = []
+    for candidate in sorted(candidates.values(), key=lambda item: item["index"]):
+        candidate["levels"] = sorted(candidate["levels"])
+        result.append(candidate)
+    return result

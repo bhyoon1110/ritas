@@ -21,8 +21,8 @@ from .findings import (
     findings_to_text,
     load_func_groups,
 )
-from .peaks import detect_peaks_with_fwhm
-from rist_common.plotting import write_responsive_html
+from .peaks import PEAK_SENSITIVITY_PRESETS, detect_peaks_with_fwhm
+from rist_common.plotting import peak_sensitivity_js, write_responsive_html
 from .plotting import (
     build_bar_fig,
     build_comparison_fig,
@@ -146,12 +146,7 @@ def _resolve_peak_params(args):
     기존 기본값은 medium으로 유지한다. 잔피크가 많으면 low 또는
     --peak-prominence/--peak-distance 증가를 사용한다.
     """
-    presets = {
-        "high": {"height": 0.03, "prominence": 0.015, "distance": 10},
-        "medium": {"height": 0.05, "prominence": 0.03, "distance": 15},
-        "low": {"height": 0.08, "prominence": 0.06, "distance": 25},
-    }
-    params = dict(presets[args.peak_sensitivity])
+    params = dict(PEAK_SENSITIVITY_PRESETS[args.peak_sensitivity])
     if args.peak_height is not None:
         params["height"] = args.peak_height
     if args.peak_prominence is not None:
@@ -311,6 +306,7 @@ def _run_single(dpt_path, args, rules_dir, rule_names, rule_categories):
     fig_peak = build_peak_fig(
         sample_vec, GRID, peak_idx, peak_wn, peak_val, peak_fwhm,
         func_groups, sample_label, WN_MIN, WN_MAX,
+        initial_sensitivity=args.peak_sensitivity,
     )
     peak_html = os.path.join(output_dir, f"{stem}_peaks.html")
     write_responsive_html(
@@ -323,7 +319,11 @@ def _run_single(dpt_path, args, rules_dir, rule_names, rule_categories):
         image_filename=f"{stem}_peaks",
         image_format_selector=True,
         post_body_html=(
-            ftir_abs_trans_toggle_js(
+            peak_sensitivity_js(
+                "peak-plot",
+                initial=args.peak_sensitivity,
+            )
+            + ftir_abs_trans_toggle_js(
                 "peak-plot",
                 yaxis_titles={
                     "yaxis": {
@@ -587,7 +587,13 @@ def _run_multi_peak_overlay(dpt_paths, args):
     pd.DataFrame(rows).to_csv(peaks_csv, index=False, encoding="utf-8-sig")
 
     print("[2/2] 여러 샘플 피크 그래프 생성")
-    fig_peak = build_multi_peak_fig(samples, func_groups, WN_MIN, WN_MAX)
+    fig_peak = build_multi_peak_fig(
+        samples,
+        func_groups,
+        WN_MIN,
+        WN_MAX,
+        initial_sensitivity=args.peak_sensitivity,
+    )
     peak_html = os.path.join(output_dir, "multi_samples_peaks.html")
     write_responsive_html(
         fig_peak, peak_html, div_id="peak-plot", origin=args.origin,
@@ -598,14 +604,20 @@ def _run_multi_peak_overlay(dpt_paths, args):
         peak_editor=True,
         image_filename="multi_samples_peaks",
         image_format_selector=True,
-        post_body_html=ftir_abs_trans_toggle_js(
-            "peak-plot",
-            yaxis_titles={
-                "yaxis": {
-                    "absorbance": "Normalized Absorbance",
-                    "transmittance": "Transmittance (%)",
+        post_body_html=(
+            peak_sensitivity_js(
+                "peak-plot",
+                initial=args.peak_sensitivity,
+            )
+            + ftir_abs_trans_toggle_js(
+                "peak-plot",
+                yaxis_titles={
+                    "yaxis": {
+                        "absorbance": "Normalized Absorbance",
+                        "transmittance": "Transmittance (%)",
+                    },
                 },
-            },
+            )
         ),
         config={"scrollZoom": True},
     )

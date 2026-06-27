@@ -1439,6 +1439,223 @@ def _legend_text_edit_js(div_id: str) -> str:
 """
 
 
+def peak_sensitivity_js(div_id: str, initial: str = "medium") -> str:
+    """HTML에서 검출 피크의 0~100 민감도를 즉시 전환한다."""
+    initial_value = {"low": 0, "medium": 50, "high": 100}.get(initial, 50)
+    return f"""
+<style>
+#{div_id} .rist-peak-sensitivity-control {{
+  order: 19;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 7px;
+  border: 1px solid #9fb3c8;
+  border-radius: 4px;
+  background: rgba(255,255,255,0.94);
+  box-sizing: border-box;
+}}
+#{div_id} .rist-peak-sensitivity-slider {{
+  width: 72px;
+  margin: 0;
+  accent-color: #52606d;
+  cursor: pointer;
+}}
+#{div_id} .rist-peak-sensitivity-number {{
+  width: 44px;
+  height: 22px;
+  border: 1px solid #c7d0dd;
+  border-radius: 3px;
+  background: #fff;
+  color: #243b53;
+  font: 11px Arial, sans-serif;
+  text-align: right;
+  padding: 2px 4px;
+  box-sizing: border-box;
+}}
+#{div_id} .rist-peak-sensitivity-value {{
+  min-width: 28px;
+  color: #334e68;
+  font: bold 10px Arial, sans-serif;
+  text-align: right;
+  white-space: nowrap;
+}}
+</style>
+<script>
+(function() {{
+  var gd = document.getElementById("{div_id}");
+  if (!gd || !window.Plotly || gd._ristPeakSensitivityInstalled) return;
+  gd._ristPeakSensitivityInstalled = true;
+  var pendingSensitivity = null;
+  var applyingSensitivity = false;
+
+  function traceMeta(curve) {{
+    var tr = (gd.data || [])[curve] || {{}};
+    return tr.meta && typeof tr.meta === "object" ? tr.meta : {{}};
+  }}
+
+  function minimumSensitivity(curve) {{
+    var peak = traceMeta(curve).rist_peak;
+    if (!peak || !Number.isFinite(Number(peak.sensitivity_min))) return null;
+    return Number(peak.sensitivity_min);
+  }}
+
+  function sampleGroup(curve) {{
+    var meta = traceMeta(curve);
+    return String(
+      meta.rist_sample_group
+      || (meta.rist_peak && meta.rist_peak.sample_group)
+      || ""
+    );
+  }}
+
+  function sampleVisible(group) {{
+    if (!group) return true;
+    var data = gd.data || [];
+    for (var i = 0; i < data.length; i++) {{
+      var meta = traceMeta(i);
+      if (!meta.rist_sample_parent
+          || String(meta.rist_sample_group || "") !== group) continue;
+      return data[i].visible !== false && data[i].visible !== "legendonly";
+    }}
+    return true;
+  }}
+
+  function currentVisibleCount() {{
+    var data = gd.data || [];
+    var count = 0;
+    for (var i = 0; i < data.length; i++) {{
+      if (minimumSensitivity(i) == null) continue;
+      if (data[i].visible !== false && data[i].visible !== "legendonly") count += 1;
+    }}
+    return count;
+  }}
+
+  function updateStatus(count) {{
+    value.textContent = count + "개";
+  }}
+
+  function applySensitivity(sensitivity) {{
+    var data = gd.data || [];
+    var curves = [];
+    var visible = [];
+    var showlegend = [];
+    var seenLegendItems = {{}};
+    var visibleByCurve = {{}};
+    for (var i = 0; i < data.length; i++) {{
+      var minimum = minimumSensitivity(i);
+      if (minimum == null) continue;
+      var on = minimum <= sensitivity && sampleVisible(sampleGroup(i));
+      var meta = traceMeta(i);
+      var editGroup = String(
+        meta.rist_legend_edit_group
+        || (meta.rist_peak && meta.rist_peak.label_key)
+        || "curve:" + i
+      );
+      curves.push(i);
+      visible.push(on);
+      showlegend.push(on && !seenLegendItems[editGroup]);
+      if (on) seenLegendItems[editGroup] = true;
+      visibleByCurve[i] = on;
+    }}
+    if (!curves.length) return Promise.resolve();
+
+    var labels = (
+      gd.layout.meta
+      && Array.isArray(gd.layout.meta.ristPeakLabels)
+    ) ? gd.layout.meta.ristPeakLabels : [];
+    var annotations = (gd.layout.annotations || []).map(function(item) {{
+      return Object.assign({{}}, item);
+    }});
+    var shapes = (gd.layout.shapes || []).map(function(item) {{
+      return Object.assign({{}}, item);
+    }});
+    labels.forEach(function(label) {{
+      if (!Object.prototype.hasOwnProperty.call(visibleByCurve, label.traceIndex)) return;
+      var on = visibleByCurve[label.traceIndex];
+      if (annotations[label.annotationIndex]) annotations[label.annotationIndex].visible = on;
+      if (shapes[label.shapeIndex]) shapes[label.shapeIndex].visible = on;
+      if (gd._ristFtirUnitOriginalAnnotations
+          && gd._ristFtirUnitOriginalAnnotations[label.annotationIndex]) {{
+        gd._ristFtirUnitOriginalAnnotations[label.annotationIndex].visible = on;
+      }}
+      if (gd._ristFtirUnitOriginalShapes
+          && gd._ristFtirUnitOriginalShapes[label.shapeIndex]) {{
+        gd._ristFtirUnitOriginalShapes[label.shapeIndex].visible = on;
+      }}
+    }});
+
+    return window.Plotly.restyle(gd, {{
+      visible: visible,
+      showlegend: showlegend
+    }}, curves).then(function() {{
+      return window.Plotly.relayout(gd, {{
+        annotations: annotations,
+        shapes: shapes
+      }});
+    }}).then(function() {{
+      updateStatus(visible.filter(Boolean).length);
+      gd.dispatchEvent(new CustomEvent("rist-peak-sensitivity-change", {{
+        detail: {{ sensitivity: sensitivity }}
+      }}));
+    }});
+  }}
+
+  function runPendingSensitivity() {{
+    if (applyingSensitivity || pendingSensitivity == null) return;
+    var sensitivity = pendingSensitivity;
+    pendingSensitivity = null;
+    applyingSensitivity = true;
+    applySensitivity(sensitivity).catch(function(err) {{
+      console.error("RIST peak sensitivity update failed", err);
+    }}).then(function() {{
+      applyingSensitivity = false;
+      runPendingSensitivity();
+    }});
+  }}
+
+  function requestSensitivity(rawValue) {{
+    if (rawValue === "") return;
+    var sensitivity = Math.max(0, Math.min(100, Math.round(Number(rawValue) || 0)));
+    slider.value = String(sensitivity);
+    numberInput.value = String(sensitivity);
+    pendingSensitivity = sensitivity;
+    runPendingSensitivity();
+  }}
+
+  if (getComputedStyle(gd).position === "static") gd.style.position = "relative";
+  var toolbar = gd.querySelector(".rist-plot-control-row");
+  if (!toolbar) {{
+    toolbar = document.createElement("div");
+    toolbar.className = "rist-plot-control-row";
+    gd.appendChild(toolbar);
+  }}
+  var control = document.createElement("div");
+  control.className = "rist-peak-sensitivity-control";
+  control.title = "피크 검출 민감도";
+  control.innerHTML =
+    "<input class='rist-peak-sensitivity-slider' type='range' min='0' max='100' "
+      + "step='1' value='{initial_value}' aria-label='피크 검출 민감도'>"
+    + "<input class='rist-peak-sensitivity-number' type='number' min='0' max='100' "
+      + "step='1' value='{initial_value}' aria-label='피크 검출 민감도 수치'>"
+    + "<span class='rist-peak-sensitivity-value'></span>";
+  toolbar.appendChild(control);
+  var slider = control.querySelector(".rist-peak-sensitivity-slider");
+  var numberInput = control.querySelector(".rist-peak-sensitivity-number");
+  var value = control.querySelector(".rist-peak-sensitivity-value");
+  slider.addEventListener("input", function() {{
+    requestSensitivity(slider.value);
+  }});
+  numberInput.addEventListener("input", function() {{
+    requestSensitivity(numberInput.value);
+  }});
+  updateStatus(currentVisibleCount());
+}})();
+</script>
+"""
+
+
 def peak_editor_js(div_id: str) -> str:
     """피크 trace/라벨/보조선을 HTML에서 추가·삭제·동기화하는 JS 스니펫.
 

@@ -14,6 +14,7 @@ if str(SUNE_DIR) not in sys.path:
 from ftir.library_matcher import assign_confidence_tier
 from ftir.cli import _resolve_peak_params
 from ftir.preprocess import load_csv
+from ftir.peaks import build_interactive_peak_candidates, peak_params_for_sensitivity
 from ftir.plotting import (
     build_multi_peak_fig,
     build_peak_fig,
@@ -73,6 +74,24 @@ def test_peak_sensitivity_low_suppresses_small_peaks() -> None:
     }
 
 
+def test_numeric_peak_sensitivity_interpolates_presets() -> None:
+    assert peak_params_for_sensitivity(0) == {
+        "height": 0.08,
+        "prominence": 0.06,
+        "distance": 25,
+    }
+    assert peak_params_for_sensitivity(50) == {
+        "height": 0.05,
+        "prominence": 0.03,
+        "distance": 15,
+    }
+    assert peak_params_for_sensitivity(100) == {
+        "height": 0.03,
+        "prominence": 0.015,
+        "distance": 10,
+    }
+
+
 def test_peak_explicit_options_override_sensitivity() -> None:
     args = Namespace(
         peak_sensitivity="low",
@@ -125,6 +144,7 @@ def test_peak_fig_labels_show_functional_group_names() -> None:
     assert "traceIndex" in fig.layout.meta["ristPeakLabels"][0]
     assert "shapeIndex" in fig.layout.meta["ristPeakLabels"][0]
     assert fig.data[1].meta["rist_peak"]["source"] == "detected"
+    assert "sensitivity_min" in fig.data[1].meta["rist_peak"]
     assert fig.data[0].meta["rist_sample_parent"] is True
     assert fig.data[1].meta["rist_sample_group"] == "sample:0"
     assert fig.data[1].meta["rist_peak"]["sample_group"] == "sample:0"
@@ -133,6 +153,33 @@ def test_peak_fig_labels_show_functional_group_names() -> None:
     assert fig.layout.title.yanchor == "top"
     assert fig.layout.margin.t == 100
     assert fig.layout.margin.b >= 120
+
+
+def test_interactive_peak_candidates_include_all_sensitivity_levels() -> None:
+    grid = pd.Series(range(100), dtype=float).to_numpy()
+    sample_vec = pd.Series([0.0] * 100, dtype=float).to_numpy()
+    sample_vec[20] = 0.04
+    sample_vec[50] = 0.07
+    sample_vec[80] = 0.10
+
+    candidates = build_interactive_peak_candidates(
+        sample_vec,
+        grid,
+        selected_idx=pd.Series([80]).to_numpy(),
+        selected_wn=pd.Series([80.0]).to_numpy(),
+        selected_val=pd.Series([0.10]).to_numpy(),
+        selected_fwhm=pd.Series([1.0]).to_numpy(),
+    )
+    by_index = {candidate["index"]: candidate for candidate in candidates}
+
+    assert by_index[20]["levels"] == ["high"]
+    assert by_index[50]["levels"] == ["high", "medium"]
+    assert by_index[80]["levels"] == ["high", "low", "medium"]
+    assert 0 < by_index[20]["sensitivity_min"] <= 100
+    assert 0 < by_index[50]["sensitivity_min"] < by_index[20]["sensitivity_min"]
+    assert by_index[80]["sensitivity_min"] == 0
+    assert by_index[20]["initial"] is False
+    assert by_index[80]["initial"] is True
 
 
 def test_peak_fig_keeps_unknown_peaks_as_separate_legend_items() -> None:

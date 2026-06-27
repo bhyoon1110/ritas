@@ -5,6 +5,7 @@ import plotly.graph_objects as go
 from rist_common.plotting import (
     LEGEND_BREAKPOINT_PX,
     apply_legend_text,
+    peak_sensitivity_js,
     write_responsive_html,
 )
 
@@ -271,6 +272,24 @@ def test_shared_peak_editor_adds_peak_controls(tmp_path) -> None:
     assert "rist_sample_parent" in html
     assert "syncSampleChildren" in html
     assert "childCurvesForSample" in html
+
+
+def test_peak_sensitivity_control_filters_detected_peak_metadata() -> None:
+    html = peak_sensitivity_js("peak-plot", initial="low")
+
+    assert "rist-peak-sensitivity-control" in html
+    assert "rist-peak-sensitivity-slider" in html
+    assert "rist-peak-sensitivity-number" in html
+    assert "피크 검출 민감도" in html
+    assert "sensitivity_min" in html
+    assert "applySensitivity" in html
+    assert "requestSensitivity" in html
+    assert "pendingSensitivity" in html
+    assert "min='0' max='100'" in html
+    assert "피크 검출 민감도 수치" in html
+    assert "visible.filter(Boolean).length" in html
+    assert "rist-peak-sensitivity-change" in html
+    assert "value='0'" in html
 
 
 def test_peak_editor_prefers_nearest_local_maximum_by_x(tmp_path) -> None:

@@ -15,6 +15,7 @@ from scipy.signal import find_peaks
 from rist_common.plotting import peak_editor_js
 
 from .findings import assign_group
+from .peaks import build_interactive_peak_candidates
 from .preprocess import load_csv, preprocess
 
 SAMPLE_PALETTE = [
@@ -219,8 +220,19 @@ def build_preprocess_fig(raw, sample_vec, grid, sample_label, wn_min, wn_max):
     return fig
 
 
-def build_peak_fig(sample_vec, grid, peak_idx, peak_wn, peak_val, peak_fwhm,
-                   func_groups, sample_label, wn_min, wn_max):
+def build_peak_fig(
+    sample_vec,
+    grid,
+    peak_idx,
+    peak_wn,
+    peak_val,
+    peak_fwhm,
+    func_groups,
+    sample_label,
+    wn_min,
+    wn_max,
+    initial_sensitivity="medium",
+):
     fig = go.Figure()
     sample_key = _sample_key(0)
     raw_trace = _enable_abs_trans_toggle(
@@ -240,15 +252,31 @@ def build_peak_fig(sample_vec, grid, peak_idx, peak_wn, peak_val, peak_fwhm,
     })
     fig.add_trace(raw_trace)
 
-    top_peak_keys = {
-        f"{float(wn):.6f}" for wn, _, _ in
-        sorted(zip(peak_wn, peak_val, peak_fwhm), key=lambda x: -x[1])[:25]
+    candidates = build_interactive_peak_candidates(
+        sample_vec,
+        grid,
+        peak_idx,
+        peak_wn,
+        peak_val,
+        peak_fwhm,
+        initial_sensitivity=initial_sensitivity,
+    )
+    top_peak_indexes = {
+        candidate["index"]
+        for candidate in sorted(
+            candidates,
+            key=lambda item: -item["value"],
+        )[:25]
     }
     annotations = []
     peak_labels = []
     seen_legendgroups = set()
 
-    for wn, val, fwhm in zip(peak_wn, peak_val, peak_fwhm):
+    for candidate in candidates:
+        wn = candidate["wn"]
+        val = candidate["value"]
+        fwhm = candidate["fwhm"]
+        initially_visible = candidate["initial"]
         group_name, color, note = assign_group(wn, func_groups)
         unknown = group_name == "unknown"
         legendgroup = f"unknown:{wn:.1f}" if unknown else group_name
@@ -262,7 +290,8 @@ def build_peak_fig(sample_vec, grid, peak_idx, peak_wn, peak_val, peak_fwhm,
                             line=dict(color="white", width=1.5)),
                 name=display_name,
                 legendgroup=legendgroup,
-                showlegend=legendgroup not in seen_legendgroups,
+                visible=initially_visible,
+                showlegend=initially_visible and legendgroup not in seen_legendgroups,
                 hovertemplate=(
                     f"<b>{wn:.1f} cm⁻¹</b><br>{display_name}<br>"
                     f"Value: %{{y:.4f}}<br>FWHM: {fwhm:.1f} cm⁻¹<br>"
@@ -280,12 +309,15 @@ def build_peak_fig(sample_vec, grid, peak_idx, peak_wn, peak_val, peak_fwhm,
                 "label": display_name,
                 "sample_group": sample_key,
                 "label_key": label_key,
+                "sensitivity_levels": candidate["levels"],
+                "sensitivity_min": candidate["sensitivity_min"],
             }
         })
         fig.add_trace(peak_trace)
-        seen_legendgroups.add(legendgroup)
+        if initially_visible:
+            seen_legendgroups.add(legendgroup)
 
-        if f"{float(wn):.6f}" in top_peak_keys:
+        if candidate["index"] in top_peak_indexes:
             y_label = val + 0.07 + (0.07 if len(annotations) % 2 == 0 else 0.0)
             annotation_index = len(annotations)
             shape_index = len(fig.layout.shapes)
@@ -297,6 +329,7 @@ def build_peak_fig(sample_vec, grid, peak_idx, peak_wn, peak_val, peak_fwhm,
                 bgcolor="rgba(255,255,255,0.88)",
                 bordercolor=color, borderwidth=1, borderpad=2,
                 name=f"ftir_peak_label_{annotation_index}",
+                visible=initially_visible,
             ))
             peak_labels.append({
                 "annotationIndex": annotation_index,
@@ -307,7 +340,8 @@ def build_peak_fig(sample_vec, grid, peak_idx, peak_wn, peak_val, peak_fwhm,
                 "wnText": f"{wn:.0f}",
             })
             fig.add_shape(type="line", x0=wn, x1=wn, y0=0, y1=val,
-                          line=dict(color=color, width=0.8, dash="dot"))
+                          line=dict(color=color, width=0.8, dash="dot"),
+                          visible=initially_visible)
 
     fig.update_layout(
         title=dict(
@@ -343,7 +377,13 @@ def build_peak_fig(sample_vec, grid, peak_idx, peak_wn, peak_val, peak_fwhm,
     return fig
 
 
-def build_multi_peak_fig(samples, func_groups, wn_min, wn_max):
+def build_multi_peak_fig(
+    samples,
+    func_groups,
+    wn_min,
+    wn_max,
+    initial_sensitivity="medium",
+):
     """여러 FT-IR 시료의 raw/preprocessed trace와 피크를 한 그래프에 그린다."""
     fig = go.Figure()
     annotations = []
@@ -378,13 +418,29 @@ def build_multi_peak_fig(samples, func_groups, wn_min, wn_max):
         peak_wn = sample["peak_wn"]
         peak_val = sample["peak_val"]
         peak_fwhm = sample["peak_fwhm"]
-        top_peak_keys = {
-            f"{float(wn):.6f}" for wn, _, _ in
-            sorted(zip(peak_wn, peak_val, peak_fwhm), key=lambda x: -x[1])[:25]
+        candidates = build_interactive_peak_candidates(
+            sample_vec,
+            grid,
+            sample["peak_idx"],
+            peak_wn,
+            peak_val,
+            peak_fwhm,
+            initial_sensitivity=initial_sensitivity,
+        )
+        top_peak_indexes = {
+            candidate["index"]
+            for candidate in sorted(
+                candidates,
+                key=lambda item: -item["value"],
+            )[:25]
         }
         seen_label_keys = set()
 
-        for peak_no, (wn, val, fwhm) in enumerate(zip(peak_wn, peak_val, peak_fwhm)):
+        for peak_no, candidate in enumerate(candidates):
+            wn = candidate["wn"]
+            val = candidate["value"]
+            fwhm = candidate["fwhm"]
+            initially_visible = candidate["initial"]
             group_name, peak_color, note = assign_group(wn, func_groups)
             unknown = group_name == "unknown"
             local_group = f"unknown:{wn:.1f}" if unknown else group_name
@@ -398,7 +454,8 @@ def build_multi_peak_fig(samples, func_groups, wn_min, wn_max):
                                 line=dict(color="white", width=1.5)),
                     name=display_name,
                     legendgroup=sample_key,
-                    showlegend=label_key not in seen_label_keys,
+                    visible=initially_visible,
+                    showlegend=initially_visible and label_key not in seen_label_keys,
                     hovertemplate=(
                         f"<b>{label}</b><br>{wn:.1f} cm⁻¹<br>{display_name}<br>"
                         f"Value: %{{y:.4f}}<br>FWHM: {fwhm:.1f} cm⁻¹<br>"
@@ -416,12 +473,15 @@ def build_multi_peak_fig(samples, func_groups, wn_min, wn_max):
                     "label": display_name,
                     "sample_group": sample_key,
                     "label_key": label_key,
+                    "sensitivity_levels": candidate["levels"],
+                    "sensitivity_min": candidate["sensitivity_min"],
                 },
             })
             fig.add_trace(peak_trace)
-            seen_label_keys.add(label_key)
+            if initially_visible:
+                seen_label_keys.add(label_key)
 
-            if f"{float(wn):.6f}" in top_peak_keys:
+            if candidate["index"] in top_peak_indexes:
                 y_label = val + 0.06 + (0.05 if (len(annotations) + peak_no) % 2 == 0 else 0.0)
                 annotation_index = len(annotations)
                 shape_index = len(fig.layout.shapes)
@@ -433,6 +493,7 @@ def build_multi_peak_fig(samples, func_groups, wn_min, wn_max):
                     bgcolor="rgba(255,255,255,0.88)",
                     bordercolor=peak_color, borderwidth=1, borderpad=2,
                     name=f"ftir_peak_label_{sample_no}_{annotation_index}",
+                    visible=initially_visible,
                 ))
                 peak_labels.append({
                     "annotationIndex": annotation_index,
@@ -443,7 +504,8 @@ def build_multi_peak_fig(samples, func_groups, wn_min, wn_max):
                     "wnText": f"{wn:.0f}",
                 })
                 fig.add_shape(type="line", x0=wn, x1=wn, y0=0, y1=val,
-                              line=dict(color=peak_color, width=0.8, dash="dot"))
+                              line=dict(color=peak_color, width=0.8, dash="dot"),
+                              visible=initially_visible)
 
     title = "FTIR Peak Analysis — " + ", ".join(sample["label"] for sample in samples[:3])
     if len(samples) > 3:
