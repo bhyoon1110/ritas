@@ -65,6 +65,13 @@ def test_shared_plotly_module_applies_legend_text(tmp_path) -> None:
     assert "rist-legend-group-color-button" in html
     assert "rist-legend-group-color" in html
     assert "rist-legend-group-clear" in html
+    assert "rist-legend-row-kind" in html
+    assert "isSampleCurve" in html
+    assert "isPeakCurve" in html
+    assert "sampleNameForCurve" in html
+    assert '" is-sample"' in html
+    assert '" is-peak"' in html
+    assert '"샘플" : (peakCurve ? "피크" : "항목")' in html
     assert "dispatchPeakGroupClear" in html
     assert "dispatchPeakGroupUpdate" in html
     assert "data-clear" in html

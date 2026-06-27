@@ -424,8 +424,49 @@ def _legend_text_edit_js(div_id: str) -> str:
   align-items: center;
   margin: 6px 0;
 }}
-#{div_id} .rist-legend-edit-row.is-group-member {{
-  margin-left: 14px;
+#{div_id} .rist-legend-edit-row.is-sample {{
+  margin: 12px 0 5px;
+  padding: 6px;
+  border: 1px solid #b8c8d8;
+  border-radius: 5px;
+  background: #eef4f8;
+}}
+#{div_id} .rist-legend-edit-row.is-sample:first-child {{
+  margin-top: 4px;
+}}
+#{div_id} .rist-legend-edit-row.is-sample .rist-legend-edit-input {{
+  border-color: #9fb3c8;
+  background: #fff;
+  font-weight: bold;
+}}
+#{div_id} .rist-legend-edit-row.is-peak {{
+  position: relative;
+  margin-left: 20px;
+  padding-left: 8px;
+  border-left: 2px solid #d7e0e8;
+}}
+#{div_id} .rist-legend-edit-row.is-peak::before {{
+  content: "";
+  position: absolute;
+  left: -2px;
+  top: 50%;
+  width: 8px;
+  border-top: 2px solid #d7e0e8;
+}}
+#{div_id} .rist-legend-edit-row.is-peak.is-group-member {{
+  margin-left: 30px;
+}}
+#{div_id} .rist-legend-row-kind {{
+  flex: 0 0 34px;
+  color: #52606d;
+  font: bold 10px Arial, sans-serif;
+  text-align: center;
+}}
+#{div_id} .rist-legend-edit-row.is-sample .rist-legend-row-kind {{
+  color: #174a68;
+}}
+#{div_id} .rist-legend-edit-row.is-peak .rist-legend-row-kind {{
+  color: #66788a;
 }}
 #{div_id} .rist-legend-group-row {{
   display: flex;
@@ -436,6 +477,9 @@ def _legend_text_edit_js(div_id: str) -> str:
   border: 1px solid #d7dee8;
   border-radius: 5px;
   background: #f8fafc;
+}}
+#{div_id} .rist-legend-group-row .rist-legend-row-kind {{
+  color: #44546a;
 }}
 #{div_id} .rist-legend-group-row.is-pending-clear {{
   opacity: 0.62;
@@ -588,6 +632,31 @@ def _legend_text_edit_js(div_id: str) -> str:
   function traceMeta(curve) {{
     var tr = (gd.data || [])[curve] || {{}};
     return tr.meta && typeof tr.meta === "object" ? tr.meta : {{}};
+  }}
+
+  function isSampleCurve(curve) {{
+    return !!traceMeta(curve).rist_sample_parent;
+  }}
+
+  function isPeakCurve(curve) {{
+    return !!traceMeta(curve).rist_peak;
+  }}
+
+  function sampleNameForCurve(curve) {{
+    var meta = traceMeta(curve);
+    var sampleGroup = meta.rist_sample_group
+      || (meta.rist_peak && meta.rist_peak.sample_group)
+      || "";
+    if (!sampleGroup) return "";
+    var data = gd.data || [];
+    for (var i = 0; i < data.length; i++) {{
+      var candidate = traceMeta(i);
+      if (candidate.rist_sample_parent
+          && String(candidate.rist_sample_group || "") === String(sampleGroup)) {{
+        return traceName(i);
+      }}
+    }}
+    return "";
   }}
 
   function legendEditGroup(curve) {{
@@ -759,10 +828,22 @@ def _legend_text_edit_js(div_id: str) -> str:
       }});
 
       function appendCurveRow(curve, groupKey) {{
+        var sampleCurve = isSampleCurve(curve);
+        var peakCurve = isPeakCurve(curve);
         var row = document.createElement("div");
-        row.className = "rist-legend-edit-row" + (groupKey ? " is-group-member" : "");
+        row.className = "rist-legend-edit-row"
+          + (sampleCurve ? " is-sample" : "")
+          + (peakCurve ? " is-peak" : "")
+          + (groupKey ? " is-group-member" : "");
         row.setAttribute("data-curve", String(curve));
-        row.innerHTML = (groupKey ? "" : "<input class='rist-legend-color-input' type='color'>")
+        if (peakCurve) {{
+          var sampleName = sampleNameForCurve(curve);
+          if (sampleName) row.title = sampleName + " 샘플의 피크";
+        }}
+        row.innerHTML = "<span class='rist-legend-row-kind'>"
+          + (sampleCurve ? "샘플" : (peakCurve ? "피크" : "항목"))
+          + "</span>"
+          + (groupKey ? "" : "<input class='rist-legend-color-input' type='color'>")
           + "<input class='rist-legend-edit-input' type='text'>";
         var colorInput = row.querySelector(".rist-legend-color-input");
         var nameInput = row.querySelector(".rist-legend-edit-input");
@@ -788,7 +869,8 @@ def _legend_text_edit_js(div_id: str) -> str:
         groupRow.className = "rist-legend-group-row";
         groupRow.setAttribute("data-group-key", groupKey);
         groupRow.setAttribute("data-first-curve", String(firstCurve));
-        groupRow.innerHTML = "<input class='rist-legend-group-title' type='text'>"
+        groupRow.innerHTML = "<span class='rist-legend-row-kind'>그룹</span>"
+          + "<input class='rist-legend-group-title' type='text'>"
           + "<button type='button' class='rist-legend-group-color-button' title='그룹 색상'>색</button>"
           + "<input class='rist-legend-group-color' type='color' title='그룹 색상'>"
           + "<button type='button' class='rist-legend-group-clear' title='그룹 해제'>×</button>";
