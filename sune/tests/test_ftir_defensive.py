@@ -14,7 +14,12 @@ if str(SUNE_DIR) not in sys.path:
 from ftir.library_matcher import assign_confidence_tier
 from ftir.cli import _resolve_peak_params
 from ftir.preprocess import load_csv
-from ftir.plotting import build_multi_peak_fig, build_peak_fig, ftir_peak_label_sync_js
+from ftir.plotting import (
+    build_multi_peak_fig,
+    build_peak_fig,
+    ftir_abs_trans_toggle_js,
+    ftir_peak_label_sync_js,
+)
 from ftir.scoring import rank_best_per_material
 
 
@@ -124,6 +129,9 @@ def test_peak_fig_labels_show_functional_group_names() -> None:
     assert fig.data[1].meta["rist_sample_group"] == "sample:0"
     assert fig.data[1].meta["rist_peak"]["sample_group"] == "sample:0"
     assert fig.layout.legend.orientation == "h"
+    assert fig.layout.title.y == pytest.approx(0.98)
+    assert fig.layout.title.yanchor == "top"
+    assert fig.layout.margin.t == 100
     assert fig.layout.margin.b >= 120
 
 
@@ -159,6 +167,24 @@ def test_peak_label_sync_script_listens_for_legend_edits() -> None:
     assert "rist-legend-visibility-change" in html
     assert "ristPeakLabels" in html
     assert "rist-peak-edit-button" in html
+
+
+def test_ftir_toggle_aligns_toolbar_with_legend_right_edge() -> None:
+    html = ftir_abs_trans_toggle_js(
+        "peak-plot",
+        yaxis_titles={
+            "yaxis": {
+                "absorbance": "Normalized Absorbance",
+                "transmittance": "Transmittance (%)",
+            }
+        },
+    )
+
+    assert "function alignToolbarWithLegend()" in html
+    assert 'gd.querySelector(".legend")' in html
+    assert "gdRect.right - legendRect.right" in html
+    assert 'gd.on("plotly_afterplot", alignToolbarWithLegend)' in html
+    assert 'window.addEventListener("resize", alignToolbarWithLegend)' in html
 
 
 def test_multi_peak_fig_groups_peaks_under_each_sample() -> None:
@@ -197,5 +223,8 @@ def test_multi_peak_fig_groups_peaks_under_each_sample() -> None:
     assert fig.data[3].legendgroup == "sample:1"
     assert fig.layout.legend.orientation == "v"
     assert fig.layout.legend.groupclick == "toggleitem"
+    assert fig.layout.title.y == pytest.approx(0.98)
+    assert fig.layout.title.yanchor == "top"
+    assert fig.layout.margin.t == 105
     assert fig.layout.meta["ristPeakLabels"][0]["labelKey"] == "sample:0:peak:C-O stretch"
     assert fig.layout.meta["ristPeakLabels"][1]["labelKey"] == "sample:1:peak:unknown:1100.0"

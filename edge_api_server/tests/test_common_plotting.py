@@ -55,6 +55,7 @@ def test_shared_plotly_module_applies_legend_text(tmp_path) -> None:
     assert "\\uc2dc\\ub8cc" in html
     assert "text.legendtext" in html
     assert "rist-plot-control-row" in html
+    assert "top: 58px" in html
     assert "rist-legend-edit-button" in html
     assert "rist-legend-edit-panel" in html
     assert "rist-legend-edit-save-all" in html
@@ -67,6 +68,9 @@ def test_shared_plotly_module_applies_legend_text(tmp_path) -> None:
     assert "dispatchPeakGroupClear" in html
     assert "dispatchPeakGroupUpdate" in html
     assert "data-clear" in html
+    assert "data-first-curve" in html
+    assert "nextTitle === manualPeakGroupName(firstCurve)" in html
+    assert "nextName && nextName !== traceName(curve)" in html
     assert "is-pending-clear" in html
     assert "manualPeakGroupKey" in html
     assert "manualPeakGroupName" in html

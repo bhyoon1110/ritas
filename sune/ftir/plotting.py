@@ -70,7 +70,7 @@ def ftir_abs_trans_toggle_js(div_id: str, *, yaxis_titles: dict[str, dict[str, s
 <style>
 #{div_id} .rist-plot-control-row {{
   position: absolute;
-  top: 34px;
+  top: 58px;
   right: 30px;
   z-index: 20;
   display: flex;
@@ -164,6 +164,22 @@ def ftir_abs_trans_toggle_js(div_id: str, *, yaxis_titles: dict[str, dict[str, s
     gd.appendChild(toolbar);
   }}
   toolbar.appendChild(btn);
+
+  function alignToolbarWithLegend() {{
+    var legend = gd.querySelector(".legend");
+    if (!legend) {{
+      toolbar.style.right = "30px";
+      return;
+    }}
+    var gdRect = gd.getBoundingClientRect();
+    var legendRect = legend.getBoundingClientRect();
+    var right = Math.max(8, Math.round(gdRect.right - legendRect.right));
+    toolbar.style.right = right + "px";
+  }}
+
+  requestAnimationFrame(alignToolbarWithLegend);
+  gd.on("plotly_afterplot", alignToolbarWithLegend);
+  window.addEventListener("resize", alignToolbarWithLegend);
 }})();
 </script>
 """
@@ -294,7 +310,13 @@ def build_peak_fig(sample_vec, grid, peak_idx, peak_wn, peak_val, peak_fwhm,
                           line=dict(color=color, width=0.8, dash="dot"))
 
     fig.update_layout(
-        title=dict(text=f"FTIR Peak Analysis — {sample_label}", font=dict(size=18), x=0.01),
+        title=dict(
+            text=f"FTIR Peak Analysis — {sample_label}",
+            font=dict(size=18),
+            x=0.01,
+            y=0.98,
+            yanchor="top",
+        ),
         xaxis=dict(
             title="Wavenumber (cm⁻¹)", range=[wn_max, wn_min],
             showgrid=True, gridcolor="#e8e8e8",
@@ -315,7 +337,7 @@ def build_peak_fig(sample_vec, grid, peak_idx, peak_wn, peak_val, peak_fwhm,
         ),
         plot_bgcolor="white", paper_bgcolor="#fafafa",
         height=620, hovermode="closest",
-        margin=dict(l=70, r=30, t=70, b=125),
+        margin=dict(l=70, r=30, t=100, b=125),
         meta={"ristPeakLabels": peak_labels},
     )
     return fig
@@ -428,7 +450,13 @@ def build_multi_peak_fig(samples, func_groups, wn_min, wn_max):
         title += f" 외 {len(samples) - 3}개"
 
     fig.update_layout(
-        title=dict(text=title, font=dict(size=18), x=0.01),
+        title=dict(
+            text=title,
+            font=dict(size=18),
+            x=0.01,
+            y=0.98,
+            yanchor="top",
+        ),
         xaxis=dict(
             title="Wavenumber (cm⁻¹)", range=[wn_max, wn_min],
             showgrid=True, gridcolor="#e8e8e8",
@@ -450,7 +478,7 @@ def build_multi_peak_fig(samples, func_groups, wn_min, wn_max):
         ),
         plot_bgcolor="white", paper_bgcolor="#fafafa",
         height=720, hovermode="closest",
-        margin=dict(l=70, r=260, t=80, b=70),
+        margin=dict(l=70, r=260, t=105, b=70),
         meta={"ristPeakLabels": peak_labels},
     )
     return fig

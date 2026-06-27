@@ -366,7 +366,7 @@ def _legend_text_edit_js(div_id: str) -> str:
 <style>
 #{div_id} .rist-plot-control-row {{
   position: absolute;
-  top: 34px;
+  top: 58px;
   right: 30px;
   z-index: 20;
   display: flex;
@@ -386,7 +386,7 @@ def _legend_text_edit_js(div_id: str) -> str:
 }}
 #{div_id} .rist-legend-edit-panel {{
   position: absolute;
-  top: 66px;
+  top: 94px;
   right: 30px;
   z-index: 21;
   display: none;
@@ -787,6 +787,7 @@ def _legend_text_edit_js(div_id: str) -> str:
         var groupRow = document.createElement("div");
         groupRow.className = "rist-legend-group-row";
         groupRow.setAttribute("data-group-key", groupKey);
+        groupRow.setAttribute("data-first-curve", String(firstCurve));
         groupRow.innerHTML = "<input class='rist-legend-group-title' type='text'>"
           + "<button type='button' class='rist-legend-group-color-button' title='그룹 색상'>색</button>"
           + "<input class='rist-legend-group-color' type='color' title='그룹 색상'>"
@@ -832,10 +833,18 @@ def _legend_text_edit_js(div_id: str) -> str:
           dispatchPeakGroupClear(groupKey);
           return;
         }}
+        var firstCurve = parseInt(row.getAttribute("data-first-curve"), 10);
+        var nextTitle = titleInput ? titleInput.value : "";
+        var nextColor = colorInput ? colorInput.value : "";
+        if (Number.isFinite(firstCurve)
+            && nextTitle === manualPeakGroupName(firstCurve)
+            && normalizeColor(nextColor) === traceColor(firstCurve)) {{
+          return;
+        }}
         dispatchPeakGroupUpdate(
           groupKey,
-          titleInput ? titleInput.value : "",
-          colorInput ? colorInput.value : ""
+          nextTitle,
+          nextColor
         );
       }});
       panel.querySelectorAll(".rist-legend-edit-row").forEach(function(row) {{
@@ -843,8 +852,11 @@ def _legend_text_edit_js(div_id: str) -> str:
         var nameInput = row.querySelector(".rist-legend-edit-input");
         var colorInput = row.querySelector(".rist-legend-color-input");
         if (!Number.isFinite(curve) || !nameInput) return;
-        updateName(curve, nameInput.value);
-        if (colorInput) updateColor(curve, colorInput.value);
+        var nextName = String(nameInput.value || "").trim();
+        if (nextName && nextName !== traceName(curve)) updateName(curve, nextName);
+        if (colorInput && normalizeColor(colorInput.value) !== traceColor(curve)) {{
+          updateColor(curve, colorInput.value);
+        }}
       }});
       closePanel();
     }}
