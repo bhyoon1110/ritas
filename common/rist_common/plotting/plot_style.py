@@ -338,6 +338,7 @@ def _title_edit_js(div_id: str) -> str:
       editing = false;
       if (save && inp.value.trim() !== "") {{
         var suffix = p[1] ? " " + p[1] : "";
+        if (gd._ristHistory) gd._ristHistory.capture();
         window.Plotly.relayout(gd, {{ "title.text": inp.value.trim() + suffix }});
       }}
       if (inp.parentNode) inp.parentNode.removeChild(inp);
@@ -856,6 +857,7 @@ def _legend_text_edit_js(div_id: str) -> str:
   function updateName(curve, value) {{
     value = String(value || "").trim();
     if (value === "" || !window.Plotly) return;
+    if (gd._ristHistory) gd._ristHistory.capture();
     var data = gd.data || [];
     var base = data[curve] || {{}};
     var legendgroup = base.legendgroup;
@@ -895,6 +897,7 @@ def _legend_text_edit_js(div_id: str) -> str:
   function updateColor(curve, value) {{
     var color = normalizeColor(value);
     if (!window.Plotly) return;
+    if (gd._ristHistory) gd._ristHistory.capture();
     var data = gd.data || [];
     var base = data[curve] || {{}};
     var legendgroup = base.legendgroup;
@@ -1343,10 +1346,14 @@ def _legend_text_edit_js(div_id: str) -> str:
     gd.addEventListener("rist-peak-group-change", function() {{
       if (panel.style.display === "block") renderRows();
     }});
+    gd.addEventListener("rist-history-restored", function() {{
+      if (panel.style.display === "block") renderRows();
+    }});
   }}
 
   function setAllLegendVisibility(visible) {{
     if (!window.Plotly) return;
+      if (gd._ristHistory) gd._ristHistory.capture();
       var n = (gd.data || []).length;
       var curves = [];
       for (var i = 0; i < n; i++) curves.push(i);
@@ -1720,6 +1727,7 @@ def peak_editor_js(div_id: str) -> str:
       flashGroupApply("피크 선택 필요");
       return;
     }}
+    if (gd._ristHistory) gd._ristHistory.capture();
     var groupName = (groupNameInput.value || "").trim() || "Peak Group";
     var groupColor = groupColorInput.value || "#ef4444";
     var groupKey = "manual-peak-group:" + groupName;
@@ -1794,6 +1802,7 @@ def peak_editor_js(div_id: str) -> str:
 
   function clearPeakGroupForCurves(curves) {{
     if (!window.Plotly || !curves.length) return;
+    if (gd._ristHistory) gd._ristHistory.capture();
     var data = gd.data || [];
     var labels = meta();
     var legendgroups = [];
@@ -1901,6 +1910,7 @@ def peak_editor_js(div_id: str) -> str:
       return isPeakCurve(curve) && values.indexOf(curve) === index;
     }});
     if (!affectedCurves.length) return;
+    if (gd._ristHistory) gd._ristHistory.capture();
 
     var legendgroups = [];
     var legendTitles = [];
@@ -2177,6 +2187,7 @@ def peak_editor_js(div_id: str) -> str:
 
   function addPeakAt(pt) {{
     if (!window.Plotly || !pt) return;
+    if (gd._ristHistory) gd._ristHistory.capture();
     var xText = isFinite(Number(pt.x)) ? Number(pt.x).toFixed(0) : String(pt.x);
     var name = peakName(pt.x);
     var group = "user-peak-" + Date.now() + "-" + Math.floor(Math.random() * 10000);
@@ -2268,13 +2279,14 @@ def peak_editor_js(div_id: str) -> str:
     }});
   }}
 
-  function deletePeakTrace(curve) {{
+  function deletePeakTrace(curve, skipHistory) {{
     if (!window.Plotly || curve == null || curve < 0) return Promise.resolve();
     var labels = meta();
     var label = labelForCurve(curve);
     var tr = (gd.data || [])[curve] || {{}};
     var isPeak = label || (tr.meta && tr.meta.rist_peak);
     if (!isPeak) return Promise.resolve();
+    if (!skipHistory && gd._ristHistory) gd._ristHistory.capture();
     var annotations = (gd.layout.annotations || []).slice();
     var shapes = (gd.layout.shapes || []).slice();
     if (label) {{
@@ -2433,8 +2445,9 @@ def peak_editor_js(div_id: str) -> str:
         return Number.isFinite(curve) && values.indexOf(curve) === index;
       }})
       .sort(function(a, b) {{ return b - a; }});
+    if (curves.length && gd._ristHistory) gd._ristHistory.capture();
     curves.reduce(function(promise, curve) {{
-      return promise.then(function() {{ return deletePeakTrace(curve); }});
+      return promise.then(function() {{ return deletePeakTrace(curve, true); }});
     }}, Promise.resolve());
   }});
 
@@ -2500,6 +2513,11 @@ def peak_editor_js(div_id: str) -> str:
       detail.addCurves,
       detail.removeCurves
     );
+  }});
+  gd.addEventListener("rist-history-restored", function() {{
+    selectedPeaks = [];
+    updateSelectButton();
+    syncVisibility();
   }});
   gd.on("plotly_restyle", function(ev) {{
     setTimeout(function() {{
@@ -2731,6 +2749,159 @@ def _trace_highlight_js(div_id: str, pickable=None, groups=None) -> str:
 """
 
 
+def _plot_edit_history_js(div_id: str) -> str:
+    """그래프 편집 상태의 실행취소/다시 실행 스택을 제공한다."""
+    return f"""
+<style>
+#{div_id} .rist-history-controls {{
+  order: 5;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}}
+#{div_id} .rist-history-button {{
+  width: 28px;
+  height: 28px;
+  border: 1px solid #9fb3c8;
+  border-radius: 4px;
+  background: #f5f7fa;
+  color: #1f2933;
+  cursor: pointer;
+  font: 18px/1 Arial, sans-serif;
+  padding: 0;
+}}
+#{div_id} .rist-history-button:disabled {{
+  opacity: 0.38;
+  cursor: default;
+}}
+</style>
+<script>
+(function() {{
+  var gd = document.getElementById("{div_id}");
+  if (!gd || !window.Plotly || gd._ristHistory) return;
+  var undoStack = [];
+  var redoStack = [];
+  var restoring = false;
+  var lastCaptureAt = 0;
+  var MAX_HISTORY = 50;
+
+  function clone(value) {{
+    return value == null ? value : JSON.parse(JSON.stringify(value));
+  }}
+
+  function snapshot() {{
+    return {{
+      data: clone(gd.data || []),
+      layout: clone(gd.layout || {{}}),
+      originalAnnotations: clone(gd._ristFtirUnitOriginalAnnotations || null),
+      originalShapes: clone(gd._ristFtirUnitOriginalShapes || null)
+    }};
+  }}
+
+  var toolbar = gd.querySelector(".rist-plot-control-row");
+  if (!toolbar) {{
+    if (getComputedStyle(gd).position === "static") gd.style.position = "relative";
+    toolbar = document.createElement("div");
+    toolbar.className = "rist-plot-control-row";
+    gd.appendChild(toolbar);
+  }}
+  var controls = document.createElement("div");
+  controls.className = "rist-history-controls";
+  controls.innerHTML =
+    "<button type='button' class='rist-history-button rist-history-undo' "
+      + "title='실행취소 (Ctrl/Cmd+Z)' aria-label='실행취소'>↶</button>"
+    + "<button type='button' class='rist-history-button rist-history-redo' "
+      + "title='다시 실행 (Ctrl/Cmd+Shift+Z)' aria-label='다시 실행'>↷</button>";
+  toolbar.appendChild(controls);
+  var undoButton = controls.querySelector(".rist-history-undo");
+  var redoButton = controls.querySelector(".rist-history-redo");
+
+  function updateButtons() {{
+    undoButton.disabled = undoStack.length === 0 || restoring;
+    redoButton.disabled = redoStack.length === 0 || restoring;
+  }}
+
+  function capture() {{
+    if (restoring) return;
+    var now = Date.now();
+    if (now - lastCaptureAt < 50) return;
+    lastCaptureAt = now;
+    try {{
+      undoStack.push(snapshot());
+      if (undoStack.length > MAX_HISTORY) undoStack.shift();
+      redoStack = [];
+      updateButtons();
+    }} catch (err) {{
+      console.error("RIST plot history capture failed", err);
+    }}
+  }}
+
+  function restore(state) {{
+    if (!state || restoring) return Promise.resolve();
+    restoring = true;
+    updateButtons();
+    return window.Plotly.react(
+      gd,
+      clone(state.data),
+      clone(state.layout),
+      gd._context
+    ).then(function() {{
+      gd._ristFtirUnitOriginalAnnotations = clone(state.originalAnnotations);
+      gd._ristFtirUnitOriginalShapes = clone(state.originalShapes);
+      gd.dispatchEvent(new CustomEvent("rist-history-restored"));
+    }}).catch(function(err) {{
+      console.error("RIST plot history restore failed", err);
+    }}).then(function() {{
+      restoring = false;
+      updateButtons();
+    }});
+  }}
+
+  function undo() {{
+    if (!undoStack.length || restoring) return;
+    var state = undoStack.pop();
+    redoStack.push(snapshot());
+    restore(state);
+  }}
+
+  function redo() {{
+    if (!redoStack.length || restoring) return;
+    var state = redoStack.pop();
+    undoStack.push(snapshot());
+    restore(state);
+  }}
+
+  gd._ristHistory = {{
+    capture: capture,
+    undo: undo,
+    redo: redo
+  }};
+  undoButton.addEventListener("click", undo);
+  redoButton.addEventListener("click", redo);
+  gd.on("plotly_legendclick", function() {{ capture(); }});
+  document.addEventListener("keydown", function(ev) {{
+    var target = ev.target;
+    if (target && target.closest && target.closest("input,textarea,select")) return;
+    var modifier = ev.ctrlKey || ev.metaKey;
+    if (!modifier) return;
+    var key = String(ev.key || "").toLowerCase();
+    if (key === "z" && ev.shiftKey) {{
+      ev.preventDefault();
+      redo();
+    }} else if (key === "z") {{
+      ev.preventDefault();
+      undo();
+    }} else if (key === "y") {{
+      ev.preventDefault();
+      redo();
+    }}
+  }});
+  updateButtons();
+}})();
+</script>
+"""
+
+
 def _responsive_legend_js(div_id: str, wide_legend_inside: bool = True,
                           breakpoint_px: int = LEGEND_BREAKPOINT_PX) -> str:
     """화면 너비에 따라 범례 위치를 자동 전환하는 JS 스니펫."""
@@ -2892,6 +3063,9 @@ def fig_to_responsive_html(
 
     if peak_editor:
         html = html.replace("</body>", peak_editor_js(div_id) + "</body>", 1)
+
+    if title_edit or legend_text_edit or peak_editor:
+        html = html.replace("</body>", _plot_edit_history_js(div_id) + "</body>", 1)
 
     if trace_highlight:
         html = html.replace(

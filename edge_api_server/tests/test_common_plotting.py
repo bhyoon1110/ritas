@@ -57,6 +57,16 @@ def test_shared_plotly_module_applies_legend_text(tmp_path) -> None:
     assert "rist-plot-control-row" in html
     assert "top: 58px" in html
     assert "rist-legend-edit-button" in html
+    assert "rist-history-controls" in html
+    assert "rist-history-undo" in html
+    assert "rist-history-redo" in html
+    assert "실행취소 (Ctrl/Cmd+Z)" in html
+    assert "다시 실행 (Ctrl/Cmd+Shift+Z)" in html
+    assert "MAX_HISTORY = 50" in html
+    assert "window.Plotly.react" in html
+    assert "rist-history-restored" in html
+    assert 'key === "z" && ev.shiftKey' in html
+    assert 'key === "y"' in html
     assert "rist-legend-edit-panel" in html
     assert "rist-legend-opacity-control" in html
     assert "rist-legend-opacity-slider" in html
@@ -202,6 +212,7 @@ def test_shared_peak_editor_adds_peak_controls(tmp_path) -> None:
     assert "rist-peak-group-name" in html
     assert "rist-peak-group-color" in html
     assert "applyPeakGroup" in html
+    assert "gd._ristHistory.capture()" in html
     assert "selectedPeakCurves" in html
     assert "togglePeakSelection" in html
     assert 'if (prev === "select" && mode !== "select")' in html
@@ -250,7 +261,7 @@ def test_shared_peak_editor_adds_peak_controls(tmp_path) -> None:
     assert "Plotly.deleteTraces" in html
     assert 'gd.addEventListener("rist-peak-delete"' in html
     assert ".sort(function(a, b) { return b - a; })" in html
-    assert "return promise.then(function() { return deletePeakTrace(curve); })" in html
+    assert "return promise.then(function() { return deletePeakTrace(curve, true); })" in html
     assert "captureevents: true" in html
     assert "updatePeakColorList" in html
     assert "rist-legend-color-change" in html
