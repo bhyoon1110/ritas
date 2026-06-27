@@ -58,6 +58,11 @@ def test_shared_plotly_module_applies_legend_text(tmp_path) -> None:
     assert "top: 58px" in html
     assert "rist-legend-edit-button" in html
     assert "rist-legend-edit-panel" in html
+    assert "rist-legend-opacity-control" in html
+    assert "rist-legend-opacity-slider" in html
+    assert "aria-label='범례 수정창 투명도'" in html
+    assert 'opacitySlider.addEventListener("input"' in html
+    assert "panel.style.opacity = String(value / 100)" in html
     assert "position: sticky" in html
     assert "top: -10px" in html
     assert "bottom: -10px" in html

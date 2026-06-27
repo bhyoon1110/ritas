@@ -421,6 +421,23 @@ def _legend_text_edit_js(div_id: str) -> str:
 #{div_id} .rist-legend-edit-panel.is-panel-dragging {{
   box-shadow: 0 6px 24px rgba(0,0,0,0.22);
 }}
+#{div_id} .rist-legend-opacity-control {{
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: auto;
+  color: #52606d;
+  cursor: default;
+  font: normal 10px Arial, sans-serif;
+  white-space: nowrap;
+}}
+#{div_id} .rist-legend-opacity-slider {{
+  width: 68px;
+  height: 16px;
+  margin: 0;
+  accent-color: #52606d;
+  cursor: pointer;
+}}
 #{div_id} .rist-legend-edit-close {{
   border: 0;
   background: transparent;
@@ -917,6 +934,10 @@ def _legend_text_edit_js(div_id: str) -> str:
     panel.className = "rist-legend-edit-panel";
     panel.innerHTML = "<div class='rist-legend-edit-head'>"
       + "<span>\ubc94\ub840 \uc218\uc815</span>"
+      + "<label class='rist-legend-opacity-control' title='창 투명도'>"
+      + "<input class='rist-legend-opacity-slider' type='range' min='55' max='100' value='97' "
+      + "step='1' aria-label='범례 수정창 투명도'>"
+      + "</label>"
       + "<button type='button' class='rist-legend-edit-close' aria-label='close'>×</button>"
       + "</div><div class='rist-legend-edit-body'></div>"
       + "<div class='rist-legend-edit-actions'>"
@@ -930,7 +951,13 @@ def _legend_text_edit_js(div_id: str) -> str:
     }}
 
     var panelHead = panel.querySelector(".rist-legend-edit-head");
+    var opacitySlider = panel.querySelector(".rist-legend-opacity-slider");
     var panelDrag = null;
+
+    opacitySlider.addEventListener("input", function(ev) {{
+      var value = Math.max(55, Math.min(100, Number(ev.target.value) || 97));
+      panel.style.opacity = String(value / 100);
+    }});
 
     function constrainPanelPosition(left, top) {{
       var gdRect = gd.getBoundingClientRect();
@@ -942,7 +969,8 @@ def _legend_text_edit_js(div_id: str) -> str:
     }}
 
     panelHead.addEventListener("pointerdown", function(ev) {{
-      if (ev.button !== 0 || ev.target.closest("button,input")) return;
+      if (ev.button !== 0
+          || ev.target.closest("button,input,.rist-legend-opacity-control")) return;
       var gdRect = gd.getBoundingClientRect();
       var panelRect = panel.getBoundingClientRect();
       panelDrag = {{
