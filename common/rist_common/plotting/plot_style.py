@@ -2760,6 +2760,9 @@ def _plot_edit_history_js(div_id: str) -> str:
   align-items: center;
 }}
 #{div_id} .rist-history-button {{
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 28px;
   height: 28px;
   border: 1px solid #9fb3c8;
@@ -2767,8 +2770,21 @@ def _plot_edit_history_js(div_id: str) -> str:
   background: #f5f7fa;
   color: #1f2933;
   cursor: pointer;
-  font: 18px/1 Arial, sans-serif;
   padding: 0;
+  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+}}
+#{div_id} .rist-history-button:hover:not(:disabled) {{
+  border-color: #7891a8;
+  background: #e8eef5;
+  color: #102a43;
+}}
+#{div_id} .rist-history-button:active:not(:disabled) {{
+  background: #d9e2ec;
+}}
+#{div_id} .rist-history-button svg {{
+  width: 17px;
+  height: 17px;
+  stroke-width: 2.1;
 }}
 #{div_id} .rist-history-button:disabled {{
   opacity: 0.38;
@@ -2809,9 +2825,21 @@ def _plot_edit_history_js(div_id: str) -> str:
   controls.className = "rist-history-controls";
   controls.innerHTML =
     "<button type='button' class='rist-history-button rist-history-undo' "
-      + "title='실행취소 (Ctrl/Cmd+Z)' aria-label='실행취소'>↶</button>"
+      + "title='실행취소 (Ctrl/Cmd+Z)' aria-label='실행취소'>"
+      + "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' "
+      + "stroke='currentColor' stroke-linecap='round' stroke-linejoin='round' "
+      + "class='lucide lucide-undo-2' aria-hidden='true'>"
+      + "<path d='M9 14 4 9l5-5'></path>"
+      + "<path d='M4 9h10.5a5.5 5.5 0 0 1 0 11H11'></path>"
+      + "</svg></button>"
     + "<button type='button' class='rist-history-button rist-history-redo' "
-      + "title='다시 실행 (Ctrl/Cmd+Shift+Z)' aria-label='다시 실행'>↷</button>";
+      + "title='다시 실행 (Ctrl/Cmd+Shift+Z)' aria-label='다시 실행'>"
+      + "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' "
+      + "stroke='currentColor' stroke-linecap='round' stroke-linejoin='round' "
+      + "class='lucide lucide-redo-2' aria-hidden='true'>"
+      + "<path d='m15 14 5-5-5-5'></path>"
+      + "<path d='M20 9H9.5A5.5 5.5 0 0 0 4 14.5 5.5 5.5 0 0 0 9.5 20H13'></path>"
+      + "</svg></button>";
   toolbar.appendChild(controls);
   var undoButton = controls.querySelector(".rist-history-undo");
   var redoButton = controls.querySelector(".rist-history-redo");

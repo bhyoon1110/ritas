@@ -60,6 +60,8 @@ def test_shared_plotly_module_applies_legend_text(tmp_path) -> None:
     assert "rist-history-controls" in html
     assert "rist-history-undo" in html
     assert "rist-history-redo" in html
+    assert "lucide lucide-undo-2" in html
+    assert "lucide lucide-redo-2" in html
     assert "실행취소 (Ctrl/Cmd+Z)" in html
     assert "다시 실행 (Ctrl/Cmd+Shift+Z)" in html
     assert "MAX_HISTORY = 50" in html
