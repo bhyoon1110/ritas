@@ -499,7 +499,6 @@ def _legend_text_edit_js(div_id: str) -> str:
   padding: 5px 7px;
   box-sizing: border-box;
 }}
-#{div_id} .rist-legend-group-color-button,
 #{div_id} .rist-legend-group-clear {{
   flex: 0 0 auto;
   width: 26px;
@@ -514,11 +513,15 @@ def _legend_text_edit_js(div_id: str) -> str:
   padding: 0;
 }}
 #{div_id} .rist-legend-group-color {{
-  position: absolute;
-  opacity: 0;
-  pointer-events: none;
-  width: 1px;
-  height: 1px;
+  flex: 0 0 auto;
+  width: 30px;
+  height: 28px;
+  border: 1px solid #c7d0dd;
+  border-radius: 4px;
+  background: #fff;
+  cursor: pointer;
+  padding: 2px;
+  box-sizing: border-box;
 }}
 #{div_id} .rist-legend-color-input {{
   flex: 0 0 auto;
@@ -871,26 +874,13 @@ def _legend_text_edit_js(div_id: str) -> str:
         groupRow.setAttribute("data-first-curve", String(firstCurve));
         groupRow.innerHTML = "<span class='rist-legend-row-kind'>그룹</span>"
           + "<input class='rist-legend-group-title' type='text'>"
-          + "<button type='button' class='rist-legend-group-color-button' title='그룹 색상'>색</button>"
-          + "<input class='rist-legend-group-color' type='color' title='그룹 색상'>"
+          + "<input class='rist-legend-group-color' type='color' title='그룹 색상 선택'>"
           + "<button type='button' class='rist-legend-group-clear' title='그룹 해제'>×</button>";
         var title = groupRow.querySelector(".rist-legend-group-title");
-        var groupColorButton = groupRow.querySelector(".rist-legend-group-color-button");
         var groupColor = groupRow.querySelector(".rist-legend-group-color");
         var clear = groupRow.querySelector(".rist-legend-group-clear");
         title.value = manualPeakGroupName(firstCurve);
         groupColor.value = traceColor(firstCurve);
-        groupColorButton.style.borderColor = groupColor.value;
-        groupColorButton.style.color = groupColor.value;
-        groupColorButton.addEventListener("click", function(ev) {{
-          ev.preventDefault();
-          ev.stopPropagation();
-          groupColor.click();
-        }});
-        groupColor.addEventListener("input", function(ev) {{
-          groupColorButton.style.borderColor = ev.target.value;
-          groupColorButton.style.color = ev.target.value;
-        }});
         clear.addEventListener("click", function(ev) {{
           ev.preventDefault();
           ev.stopPropagation();

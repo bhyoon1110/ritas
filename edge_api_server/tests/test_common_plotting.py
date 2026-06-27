@@ -62,8 +62,9 @@ def test_shared_plotly_module_applies_legend_text(tmp_path) -> None:
     assert "rist-legend-color-input" in html
     assert "rist-legend-group-row" in html
     assert "rist-legend-group-title" in html
-    assert "rist-legend-group-color-button" in html
     assert "rist-legend-group-color" in html
+    assert "type='color' title='그룹 색상 선택'" in html
+    assert "rist-legend-group-color-button" not in html
     assert "rist-legend-group-clear" in html
     assert "rist-legend-row-kind" in html
     assert "isSampleCurve" in html
