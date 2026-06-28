@@ -1,0 +1,49 @@
+// FTIR functional-group rule table
+center_wn,tolerance,name,color,note
+3695,30,O-H stretch (free -OH),#e11d48,sharp free hydroxyl
+3450,180,O-H stretch (H-bonded -OH),#f43f5e,broad hydrogen-bonded hydroxyl
+3360,70,N-H stretch (primary amine),#db2777,doublet feature
+3300,45,N-H stretch (amide N-H),#c026d3,amide N-H
+2960,22,C-H stretch (CH3 asym),#ea580c,CH3 asymmetric stretch
+2920,22,C-H stretch (CH2 asym),#f97316,CH2 asymmetric stretch
+2870,18,C-H stretch (CH3 sym),#fb923c,CH3 symmetric stretch
+2850,18,C-H stretch (CH2 sym),#fdba74,CH2 symmetric stretch
+2720,28,C-H stretch (aldehyde),#a16207,aldehyde Fermi resonance
+2800,280,O-H stretch (COOH),#92400e,very broad carboxylic acid
+2350,45,CO2 (atmospheric),#71717a,atmospheric CO2
+2270,22,N=C=O (isocyanate),#854d0e,sharp
+2230,22,C≡N (nitrile),#ca8a04,sharp
+2100,45,C≡C (alkyne),#a16207,alkyne
+1820,22,C=O (anhydride high),#15803d,anhydride high-frequency band
+1760,18,C=O (anhydride low),#166534,anhydride low-frequency band
+1735,16,C=O (ester),#16a34a,ester
+1720,13,C=O (carboxylic acid),#22c55e,carboxylic acid
+1710,13,C=O (ketone),#4ade80,ketone
+1695,13,C=O (aldehyde),#86efac,aldehyde
+1685,13,C=O (conjugated),#bbf7d0,conjugated carbonyl
+1655,18,C=O (amide I),#0d9488,amide I
+1640,18,C=C stretch (alkene),#14b8a6,alkene
+1620,18,N-H bend (amide II),#2dd4bf,amide II
+1600,13,C=C (aromatic ring),#0891b2,aromatic
+1580,13,C=C (aromatic ring),#0ea5e9,aromatic
+1510,13,C=C (aromatic ring),#38bdf8,aromatic
+1500,16,N-O stretch (nitro asym),#7c3aed,nitro group
+1465,16,C-H bend (CH2 scissor),#2563eb,CH2 scissoring
+1450,16,C-H bend (CH3 asym),#3b82f6,CH3 asymmetric bend
+1380,13,C-H bend (CH3 sym),#60a5fa,CH3 symmetric bend
+1350,16,N-O stretch (nitro sym),#6d28d9,nitro group
+1260,22,P=O stretch,#9333ea,phosphate/phosphonate
+1250,18,C-O-C stretch (epoxide),#a855f7,epoxide
+1240,18,C-O stretch (ester C-O),#c084fc,ester C-O
+1170,22,C-F stretch (fluoropolymer),#d946ef,PTFE/PVDF
+1150,22,S=O stretch (sulfonate),#e879f9,sulfonate
+1100,32,Si-O-Si stretch,#f0abfc,silicone/silicate
+1050,28,C-O stretch (primary alc.),#e879f9,primary alcohol
+1020,22,C-O stretch (secondary alc.),#d946ef,secondary alcohol
+970,22,=C-H oop (trans alkene),#6b7280,trans alkene
+910,18,=C-H oop (vinyl terminal),#9ca3af,terminal vinyl
+875,22,"C-H oop (1,3,5-aromatic)",#6b7280,"1,3,5-substituted aromatic"
+840,22,C-H oop (para-aromatic),#9ca3af,para-substituted aromatic
+760,22,C-H oop (ortho-aromatic),#4b5563,ortho-substituted aromatic
+720,18,C-H rock (long-chain CH2),#374151,-(CH2)n- n>=4
+700,22,C-H oop (mono-aromatic),#1f2937,monosubstituted aromatic

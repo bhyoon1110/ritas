@@ -69,8 +69,9 @@ fi
 echo "    사용할 파이썬: ${PYTHON_BIN} ($("${PYTHON_BIN}" --version))"
 
 echo "==> 3. 프로젝트 디렉터리 소유권 정리"
-if [[ ! -d "${PROJECT_ROOT}/common" || ! -d "${PROJECT_ROOT}/config" || ! -d "${EDGE_DIR}" ]]; then
-    echo "    오류: ${PROJECT_ROOT} 아래에 common/ config/ edge_api_server/ 세 폴더가 모두 있어야 합니다." >&2
+if [[ ! -d "${PROJECT_ROOT}/common" || ! -d "${PROJECT_ROOT}/config" \
+      || ! -d "${PROJECT_ROOT}/sune" || ! -d "${EDGE_DIR}" ]]; then
+    echo "    오류: ${PROJECT_ROOT} 아래에 common/ config/ sune/ edge_api_server/ 네 폴더가 모두 있어야 합니다." >&2
     exit 1
 fi
 chown -R "${SERVICE_USER}:${SERVICE_USER}" "${PROJECT_ROOT}"

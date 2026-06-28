@@ -1718,6 +1718,13 @@ def peak_sensitivity_js(div_id: str, initial: str = "medium") -> str:
   numberInput.addEventListener("input", function() {{
     requestSensitivity(numberInput.value);
   }});
+  gd.addEventListener("rist-plot-data-replaced", function(ev) {{
+    var detail = ev.detail || {{}};
+    var next = Number.isFinite(Number(detail.sensitivity))
+      ? Number(detail.sensitivity)
+      : gd._ristPeakSensitivityValue;
+    requestSensitivity(next);
+  }});
   updateStatus(currentVisibleCount());
 }})();
 </script>
@@ -2812,6 +2819,12 @@ def peak_editor_js(div_id: str) -> str:
   }});
   gd.addEventListener("rist-history-restored", function() {{
     selectedPeaks = [];
+    updateSelectButton();
+    syncVisibility();
+  }});
+  gd.addEventListener("rist-plot-data-replaced", function() {{
+    selectedPeaks = [];
+    setMode("none");
     updateSelectButton();
     syncVisibility();
   }});
@@ -4105,6 +4118,10 @@ def shape_editor_js(div_id: str) -> str:
     clearSelection();
     closePanel();
   }});
+  gd.addEventListener("rist-plot-data-replaced", function() {{
+    clearSelection();
+    closePanel();
+  }});
   gd.addEventListener("rist-shape-editor-close", function() {{
     finishSelection(true);
   }});
@@ -4284,16 +4301,25 @@ def _plot_edit_history_js(div_id: str) -> str:
     restore(state);
   }}
 
+  function reset() {{
+    undoStack = [];
+    redoStack = [];
+    lastCaptureAt = 0;
+    updateButtons();
+  }}
+
   gd._ristHistory = {{
     capture: capture,
     captureState: captureState,
     snapshot: snapshot,
     undo: undo,
-    redo: redo
+    redo: redo,
+    reset: reset
   }};
   undoButton.addEventListener("click", undo);
   redoButton.addEventListener("click", redo);
   gd.on("plotly_legendclick", function() {{ capture(); }});
+  gd.addEventListener("rist-plot-data-replaced", reset);
   document.addEventListener("keydown", function(ev) {{
     var target = ev.target;
     if (target && target.closest && target.closest("input,textarea,select")) return;
@@ -4386,6 +4412,7 @@ def fig_to_responsive_html(
     image_format_selector: bool = False,
     image_formats: tuple = ("svg", "png", "jpeg", "webp"),
     post_body_html: str = "",
+    include_plotlyjs: str | bool = "cdn",
 ) -> str:
     """Figure를 모바일 친화적 반응형 HTML 문자열로 변환한다.
 
@@ -4408,6 +4435,7 @@ def fig_to_responsive_html(
     - image_format_selector=True 면 그래프 우상단에 형식 선택 드롭다운 + 저장 버튼을 띄운다.
     - image_formats 는 드롭다운에 표시할 형식 목록.
     - post_body_html 은 </body> 직전에 추가로 삽입할 HTML(예: 표).
+    - include_plotlyjs 는 Plotly JS 포함 방식 또는 로컬 자산 URL이다.
     """
     if origin:
         apply_origin_style(fig)
@@ -4455,7 +4483,7 @@ def fig_to_responsive_html(
         merged_config.update(config)
 
     html = fig.to_html(
-        include_plotlyjs="cdn",
+        include_plotlyjs=include_plotlyjs,
         full_html=True,
         config=merged_config,
         default_width="100%",
@@ -4531,6 +4559,7 @@ def write_responsive_html(
     image_format_selector: bool = False,
     image_formats: tuple = ("svg", "png", "jpeg", "webp"),
     post_body_html: str = "",
+    include_plotlyjs: str | bool = "cdn",
 ) -> str:
     """Figure를 모바일 친화적 반응형 HTML 파일로 저장하고 경로를 반환한다."""
     html = fig_to_responsive_html(
@@ -4557,6 +4586,7 @@ def write_responsive_html(
         image_format_selector=image_format_selector,
         image_formats=image_formats,
         post_body_html=post_body_html,
+        include_plotlyjs=include_plotlyjs,
     )
     with open(out_path, "w", encoding="utf-8") as fh:
         fh.write(html)

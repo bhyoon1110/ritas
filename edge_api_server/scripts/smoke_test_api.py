@@ -10,6 +10,7 @@
     python scripts/smoke_test_api.py
     python scripts/smoke_test_api.py --base-url http://bhyoon.me:8000
     python scripts/smoke_test_api.py --files 5            # 5개 파일 업로드
+    python scripts/smoke_test_api.py --skip-ftir          # FT-IR 웹 분석 생략
     python scripts/smoke_test_api.py --skip-report        # 보고서/LLM 생략
     python scripts/smoke_test_api.py --skip-negative      # 에러 케이스 생략
 
@@ -21,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import math
 import sys
 import time
 from dataclasses import dataclass
@@ -106,6 +108,16 @@ def build_sample_files(count: int) -> list[SampleFile]:
             SampleFile(f"raw/smoke_sample_{i:02d}.txt", body.encode("utf-8"))
         )
     return files
+
+
+def build_dpt_sample(center: float) -> bytes:
+    rows = []
+    for index in range(241):
+        wn = 400.0 + index * 15.0
+        peak = math.exp(-((wn - center) ** 2) / (2 * 55.0**2))
+        shoulder = 0.55 * math.exp(-((wn - 1250.0) ** 2) / (2 * 80.0**2))
+        rows.append(f"{wn:.3f},{0.05 + peak + shoulder:.8f}")
+    return ("\n".join(rows) + "\n").encode()
 
 
 # --- 요청 헬퍼 -----------------------------------------------------------
@@ -235,6 +247,45 @@ def check_llm_health(
         )
     else:
         expect_status(reporter, "GET /health/llm", resp, 200)
+
+
+def check_ftir_preview(
+    client: httpx.Client,
+    reporter: Reporter,
+    skip: bool,
+) -> None:
+    reporter.section("[FT-IR] 웹 분석")
+    if skip:
+        reporter.skip("GET /ftir + POST /api/v1/ftir/analyze", "--skip-ftir")
+        return
+    page = client.get("/ftir")
+    if not expect_status(reporter, "GET /ftir", page, 200):
+        return
+    if 'id="ftir-file-input"' in page.text:
+        reporter.ok("  └ DPT 업로드 화면")
+    else:
+        reporter.fail("  └ DPT 업로드 화면", "파일 입력 요소가 없습니다.")
+
+    response = client.post(
+        "/api/v1/ftir/analyze",
+        files=[
+            ("files", ("smoke-a.dpt", build_dpt_sample(1700.0), "application/octet-stream")),
+            ("files", ("smoke-b.dpt", build_dpt_sample(1550.0), "application/octet-stream")),
+        ],
+        data={"sensitivity": "25"},
+    )
+    if not expect_status(reporter, "POST /api/v1/ftir/analyze", response, 200):
+        return
+    payload = response.json()
+    samples = payload.get("samples", [])
+    figure = payload.get("figure", {})
+    if len(samples) == 2 and figure.get("data"):
+        reporter.ok(
+            "  └ 다중 DPT 분석",
+            f"samples=2 traces={len(figure['data'])}",
+        )
+    else:
+        reporter.fail("  └ 다중 DPT 분석", "시료 또는 그래프 데이터가 없습니다.")
 
 
 def check_create_job(
@@ -680,6 +731,9 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--skip-llm", action="store_true", help="LLM 헬스체크 생략")
     parser.add_argument(
+        "--skip-ftir", action="store_true", help="FT-IR 웹 분석 검사 생략"
+    )
+    parser.add_argument(
         "--skip-report", action="store_true", help="보고서 요청/폴링 생략"
     )
     parser.add_argument(
@@ -715,6 +769,7 @@ def main() -> int:
         base_url=args.base_url.rstrip("/"), timeout=args.timeout
     ) as client:
         check_health(client, reporter)
+        check_ftir_preview(client, reporter, args.skip_ftir)
         check_llm_health(client, reporter, args.skip_llm)
 
         job_id = check_create_job(client, reporter, args, files)

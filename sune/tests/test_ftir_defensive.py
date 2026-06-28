@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 import sys
 
+import numpy as np
 import pandas as pd
 import pytest
 from argparse import Namespace
@@ -95,6 +96,25 @@ def test_numeric_peak_sensitivity_interpolates_presets() -> None:
         "prominence": 0.015,
         "distance": 10,
     }
+
+
+def test_interactive_candidates_accept_numeric_initial_sensitivity() -> None:
+    grid = np.linspace(400, 4000, 200)
+    vec = np.zeros_like(grid)
+    vec[80] = 1.0
+
+    candidates = build_interactive_peak_candidates(
+        vec,
+        grid,
+        np.array([80]),
+        np.array([grid[80]]),
+        np.array([1.0]),
+        np.array([10.0]),
+        initial_sensitivity=25,
+    )
+
+    selected = next(item for item in candidates if item["initial"])
+    assert selected["sensitivity_min"] <= 25
 
 
 def test_peak_explicit_options_override_sensitivity() -> None:

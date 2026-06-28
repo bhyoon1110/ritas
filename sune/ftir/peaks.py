@@ -149,7 +149,12 @@ def build_interactive_peak_candidates(
             )
             candidates[int(idx)]["levels"].update(levels)
 
-    initial_value = PEAK_SENSITIVITY_VALUES.get(initial_sensitivity, 50)
+    initial_value = PEAK_SENSITIVITY_VALUES.get(initial_sensitivity)
+    if initial_value is None:
+        try:
+            initial_value = max(0, min(100, int(round(float(initial_sensitivity)))))
+        except (TypeError, ValueError):
+            initial_value = 50
     add_candidates(
         selected_idx,
         selected_wn,

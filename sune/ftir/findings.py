@@ -4,6 +4,8 @@
 # ─────────────────────────────────────────────────────────────────────────────
 """Qualitative functional-group and diagnostic-region findings."""
 
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 
@@ -44,8 +46,14 @@ THRESHOLDS = {
 }
 
 
+DEFAULT_FUNC_GROUPS_PATH = Path(__file__).resolve().parent / "resources" / "func_groups.csv"
+
+
 def load_func_groups(func_groups_file="data/func_groups.csv"):
-    _fg = pd.read_csv(func_groups_file, comment="/")
+    path = Path(func_groups_file)
+    if not path.is_file() and path.as_posix() == "data/func_groups.csv":
+        path = DEFAULT_FUNC_GROUPS_PATH
+    _fg = pd.read_csv(path, comment="/")
     return [
         (
             int(r["center_wn"]),

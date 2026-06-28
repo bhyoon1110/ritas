@@ -166,6 +166,18 @@ def ftir_abs_trans_toggle_js(div_id: str, *, yaxis_titles: dict[str, dict[str, s
   }}
   toolbar.appendChild(btn);
 
+  function resetMode() {{
+    mode = "absorbance";
+    btn.textContent = "투과도 보기";
+    gd._ristFtirUnitOriginalShapes = (gd.layout.shapes || []).map(function(shape) {{
+      return Object.assign({{}}, shape);
+    }});
+    gd._ristFtirUnitOriginalAnnotations = (gd.layout.annotations || []).map(function(annotation) {{
+      return Object.assign({{}}, annotation);
+    }});
+  }}
+  gd.addEventListener("rist-plot-data-replaced", resetMode);
+
   function alignToolbarWithLegend() {{
     if (gd._ristPeakSensitivityInteracting) return;
     var legend = gd.querySelector(".legend");

@@ -26,6 +26,19 @@ def test_shared_plotly_module_writes_responsive_html(tmp_path) -> None:
     assert LEGEND_BREAKPOINT_PX > 0
 
 
+def test_shared_plotly_module_accepts_local_plotly_asset(tmp_path) -> None:
+    figure = go.Figure(data=[go.Scatter(x=[1, 2], y=[3, 4])])
+    output = tmp_path / "local-plotly.html"
+
+    write_responsive_html(
+        figure,
+        str(output),
+        include_plotlyjs="/assets/plotly.min.js",
+    )
+
+    assert 'src="/assets/plotly.min.js"' in output.read_text(encoding="utf-8")
+
+
 def test_shared_plotly_module_applies_legend_text(tmp_path) -> None:
     figure = go.Figure(
         data=[
@@ -329,6 +342,8 @@ def test_shared_peak_editor_adds_peak_controls(tmp_path) -> None:
     assert "gd._ristHistory.captureState(editSnapshot.historyState)" in html
     assert "captureState: captureState" in html
     assert "snapshot: snapshot" in html
+    assert "reset: reset" in html
+    assert 'gd.addEventListener("rist-plot-data-replaced"' in html
     assert "function objectAtPoint" in html
     assert "function resizedBounds" in html
     assert "function applyTransformedBounds" in html

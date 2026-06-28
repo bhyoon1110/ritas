@@ -7,7 +7,7 @@
 
 | 경로 | 설명 |
 |---|---|
-| `edge_api_server/` | 실험 PC 파일 수신 및 보고서 생성 요청 FastAPI 서버 |
+| `edge_api_server/` | 파일 수신, 보고서 요청, FT-IR 웹 분석 FastAPI 서버 |
 | `common/` | 공통 환경 설정과 Plotly 스타일 모듈 |
 | `config/` | 개발·운영 환경 프로파일 |
 | `sune/` | FT-IR 전처리 및 보고서 생성 로직 |
@@ -37,6 +37,9 @@ pip install -r requirements.txt
 export RIST_ENV=development
 python -m app.run
 ```
+
+브라우저에서 `http://127.0.0.1:8000/ftir`을 열면 DPT 파일을 선택하거나
+드래그 앤 드롭해 전처리·피크 분석 결과를 바로 확인할 수 있다.
 
 보고서 worker는 별도 프로세스로 실행한다.
 

@@ -25,6 +25,7 @@ from .errors import (
     api_exception_handler,
     validation_exception_handler,
 )
+from .ftir_web import router as ftir_router
 from .llm_client import LlmError, LocalLlmClient
 from .models import (
     CompleteUploadRequest,
@@ -102,6 +103,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.add_exception_handler(ApiException, api_exception_handler)
     app.add_exception_handler(RequestValidationError, validation_exception_handler)
+    app.include_router(ftir_router)
 
     @app.get("/health", tags=["system"])
     def health() -> dict[str, str | int]:
