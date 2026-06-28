@@ -140,66 +140,86 @@ body { overflow-x: hidden; }
 .raman-clear-button[hidden],
 .raman-file-input { display: none; }
 .raman-drop-zone {
-  position: fixed;
-  inset: 54px 0 0;
-  z-index: 35;
-  display: none;
-  align-items: center;
-  justify-content: center;
-  border: 2px dashed #3e7ca6;
-  background: rgba(240,247,252,0.82);
-  color: #174b6d;
-  font-size: 15px;
-  font-weight: 700;
-  pointer-events: none;
-}
-.raman-drop-zone.is-dragging { display: flex; }
-.raman-file-list {
-  position: absolute;
-  top: 67px;
-  left: 20px;
-  z-index: 18;
   display: flex;
-  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 7px 22px;
+  border-bottom: 1px solid #d9e2ec;
+  background: #fff;
+  box-sizing: border-box;
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+.raman-drop-zone.is-dragging {
+  border-color: #2f855a;
+  background: #f0fff4;
+}
+.raman-drop-prompt {
+  flex: 0 0 auto;
+  color: #627d98;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.raman-file-list {
+  display: flex;
+  align-items: center;
   gap: 5px;
-  max-width: min(560px, calc(100% - 40px));
-  pointer-events: none;
+  min-width: 0;
+  overflow-x: auto;
 }
 .raman-file-chip {
   display: inline-flex;
   align-items: center;
-  max-width: 220px;
+  flex: 0 1 auto;
+  max-width: 210px;
   height: 24px;
   border: 1px solid #cbd5e1;
   border-radius: 4px;
   background: rgba(255,255,255,0.92);
   color: #334155;
   font-size: 11px;
-  padding: 0 7px;
+  padding-left: 7px;
   box-sizing: border-box;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.raman-file-name {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.raman-file-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 25px;
+  height: 22px;
+  border: 0;
+  background: transparent;
+  color: #7b8794;
+  cursor: pointer;
+  font: 16px/1 Arial, sans-serif;
+  padding: 0;
+}
+.raman-file-remove:hover {
+  color: #b42318;
+}
 .raman-message {
-  position: absolute;
-  top: 94px;
-  left: 20px;
-  z-index: 19;
   display: none;
-  max-width: min(620px, calc(100% - 40px));
-  border: 1px solid #f5b7b1;
-  border-radius: 4px;
-  background: #fff5f5;
-  color: #9b2c2c;
+  min-height: 32px;
+  padding: 8px 22px;
+  border-bottom: 1px solid #fecaca;
+  background: #fef2f2;
+  color: #b42318;
   font-size: 12px;
-  padding: 8px 10px;
   box-sizing: border-box;
 }
 .raman-message.is-visible { display: block; }
 .raman-loading {
   position: fixed;
-  inset: 54px 0 0;
+  inset: 102px 0 0;
   z-index: 40;
   display: none;
   align-items: center;
@@ -211,7 +231,7 @@ body { overflow-x: hidden; }
 .raman-loading.is-visible { display: flex; }
 #raman-plot {
   min-height: 540px;
-  height: calc(100vh - 54px) !important;
+  height: calc(100vh - 102px) !important;
 }
 @media (max-width: 760px) {
   .raman-app-bar {
@@ -229,12 +249,24 @@ body { overflow-x: hidden; }
     flex: 1 1 100%;
     max-width: 100%;
   }
-  .raman-drop-zone,
+  .raman-drop-zone {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 6px;
+    min-height: 76px;
+    padding: 7px 12px;
+  }
+  .raman-file-list {
+    width: 100%;
+  }
+  .raman-file-chip {
+    max-width: 100%;
+  }
   .raman-loading {
-    inset: 96px 0 0;
+    inset: 172px 0 0;
   }
   #raman-plot {
-    height: calc(100vh - 96px) !important;
+    height: calc(100vh - 172px) !important;
   }
 }
 </style>
@@ -255,8 +287,12 @@ _PAGE_SHELL = """
            accept=".txt,.csv,.tsv,.xlsx,.xlsm" multiple>
   </div>
 </header>
-<div class="raman-drop-zone" id="raman-drop-zone">여기에 Raman raw 파일을 놓으세요</div>
-<div class="raman-file-list" id="raman-file-list"></div>
+<section class="raman-drop-zone" id="raman-drop-zone">
+  <span class="raman-drop-prompt" id="raman-drop-prompt">
+    Raman raw 파일을 선택하거나 여기에 놓으세요
+  </span>
+  <div class="raman-file-list" id="raman-file-list"></div>
+</section>
 <div class="raman-message" id="raman-message"></div>
 <div class="raman-loading" id="raman-loading">Raman 전처리 중...</div>
 """
@@ -268,12 +304,13 @@ _UPLOAD_SCRIPT = """
   var gd = document.getElementById("raman-plot");
   var input = document.getElementById("raman-file-input");
   var dropZone = document.getElementById("raman-drop-zone");
+  var prompt = document.getElementById("raman-drop-prompt");
   var fileList = document.getElementById("raman-file-list");
   var status = document.getElementById("raman-status");
   var message = document.getElementById("raman-message");
   var loading = document.getElementById("raman-loading");
   var clearButton = document.getElementById("raman-clear");
-  if (!gd || !input || !dropZone || !fileList || !status || !message
+  if (!gd || !input || !dropZone || !prompt || !fileList || !status || !message
       || !loading || !clearButton) return;
 
   var files = [];
@@ -329,10 +366,27 @@ _UPLOAD_SCRIPT = """
 
   function renderFiles() {
     fileList.innerHTML = "";
-    files.forEach(function(file) {
+    prompt.style.display = files.length ? "none" : "inline";
+    files.forEach(function(file, index) {
       var chip = document.createElement("span");
       chip.className = "raman-file-chip";
-      chip.textContent = file.name;
+      var name = document.createElement("span");
+      name.className = "raman-file-name";
+      name.textContent = file.name;
+      var remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "raman-file-remove";
+      remove.textContent = "×";
+      remove.title = file.name + " 제거";
+      remove.setAttribute("aria-label", file.name + " 제거");
+      remove.addEventListener("click", function() {
+        files.splice(index, 1);
+        renderFiles();
+        if (files.length) analyze();
+        else resetPlot();
+      });
+      chip.appendChild(name);
+      chip.appendChild(remove);
       fileList.appendChild(chip);
     });
     clearButton.hidden = !files.length;

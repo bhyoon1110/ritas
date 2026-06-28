@@ -21,7 +21,9 @@ def test_raman_workspace_contains_upload_controls() -> None:
     page = build_raman_page()
 
     assert 'id="raman-file-input"' in page
+    assert 'id="raman-file-list"' in page
     assert 'id="raman-drop-zone"' in page
+    assert 'id="raman-drop-prompt"' in page
     assert "/api/v1/raman/analyze" in page
     assert "/raman/assets/plotly.min.js" in page
     assert "RIN Raman" in page
@@ -35,6 +37,12 @@ def test_raman_workspace_contains_upload_controls() -> None:
     assert "gd._context" in page
     assert "annotationPosition" in page
     assert "annotationTail" in page
+    assert "raman-file-remove" in page
+    assert "raman-drop-zone" in page
+    assert "Raman raw 파일을 선택하거나 여기에 놓으세요" in page
+    assert "prompt.style.display = files.length ? \"none\" : \"inline\"" in page
+    assert "files.splice(index, 1)" in page
+    assert "else resetPlot()" in page
 
 
 def test_raman_raw_loader_reads_instrument_txt() -> None:
