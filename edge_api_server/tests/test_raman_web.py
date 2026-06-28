@@ -42,12 +42,18 @@ def test_raman_workspace_contains_upload_controls() -> None:
     assert "Y 이동" in page
     assert "rist-raman-tools-toggle" in page
     assert "rist-raman-tools-open" in page
+    assert "rist-raman-tools-head" in page
+    assert "rist-raman-tools-opacity" in page
+    assert "setToolPanelAlphaFromPointer" in page
+    assert "setPanelPosition" in page
     assert "setOpen(!gd.classList.contains" in page
     assert "max-width: calc(100% - 16px)" in page
-    assert "@media (max-width: 1180px)" in page
+    assert "@media (max-width: 760px)" in page
+    assert "@media (max-width: 1440px)" in page
     assert "@media (max-width: 420px)" in page
-    assert "var mobile = window.innerWidth <= 1180" in page
+    assert "var compact = window.innerWidth <= 760" in page
     assert '"margin.t": 170' in page
+    assert '"margin.t": 120' in page
     assert "rist-legend-edit-button" in page
     assert "rist-shape-editor-panel" in page
     assert "SNAP_PX = 24" in page

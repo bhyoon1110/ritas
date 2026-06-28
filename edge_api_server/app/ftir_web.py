@@ -666,8 +666,13 @@ body {
   display: flex;
 }
 #peak-plot {
+  --rist-ftir-tool-panel-alpha: 0.97;
   min-height: 540px;
   height: calc(100vh - 170px) !important;
+}
+#peak-plot .rist-ftir-tools-toggle,
+#peak-plot .rist-ftir-tools-head {
+  display: none;
 }
 @media (max-width: 760px) {
   .ftir-app-bar {
@@ -748,6 +753,152 @@ body {
     inset: 180px 0 0;
   }
 }
+@media (max-width: 1440px) {
+  #peak-plot .rist-ftir-tools-toggle {
+    position: absolute;
+    top: 34px;
+    right: 214px;
+    z-index: 25;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 30px;
+    border: 1px solid #9fb3c8;
+    border-radius: 4px;
+    background: rgba(255,255,255,0.96);
+    color: #243b53;
+    cursor: pointer;
+    font: bold 11px Arial, sans-serif;
+    padding: 0 10px;
+    box-shadow: 0 1px 5px rgba(15,23,42,0.12);
+  }
+  #peak-plot.rist-ftir-tools-open .rist-ftir-tools-toggle {
+    border-color: #2563eb;
+    background: #dbeafe;
+    color: #1d4ed8;
+  }
+  #peak-plot .rist-plot-control-row {
+    left: auto !important;
+    right: 214px !important;
+    top: 70px !important;
+    width: min(860px, calc(100% - 230px)) !important;
+    max-width: calc(100% - 230px);
+    max-height: min(360px, calc(100% - 86px));
+    display: none !important;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: flex-start;
+    gap: 6px;
+    overflow: auto;
+    padding: 8px;
+    border: 1px solid #c7d0dd;
+    border-radius: 6px;
+    background: rgba(255,255,255,0.98);
+    opacity: var(--rist-ftir-tool-panel-alpha);
+    box-shadow: 0 4px 18px rgba(15,23,42,0.16);
+    box-sizing: border-box;
+    scrollbar-width: thin;
+  }
+  #peak-plot .rist-ftir-tools-head {
+    order: -100;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1 0 100%;
+    min-width: 0;
+    height: 28px;
+    margin: -2px 0 2px;
+    padding: 0 2px 6px;
+    border-bottom: 1px solid #d7dee8;
+    color: #243b53;
+    cursor: move;
+    font: bold 12px Arial, sans-serif;
+    touch-action: none;
+    user-select: none;
+  }
+  #peak-plot .rist-ftir-tools-head span:first-child {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  #peak-plot .rist-ftir-tools-opacity {
+    flex: 0 0 76px;
+    width: 76px;
+    accent-color: #52606d;
+    cursor: pointer;
+  }
+  #peak-plot .rist-ftir-tools-close {
+    flex: 0 0 auto;
+    width: 24px;
+    height: 24px;
+    border: 0;
+    background: transparent;
+    color: #52606d;
+    cursor: pointer;
+    font: 18px/1 Arial, sans-serif;
+    padding: 0;
+  }
+  #peak-plot.rist-ftir-tools-open .rist-plot-control-row {
+    display: flex !important;
+  }
+  #peak-plot .rist-plot-control-row > * {
+    flex: 0 0 auto;
+  }
+  #peak-plot .rist-legend-edit-button,
+  #peak-plot .rist-peak-edit-button {
+    min-width: 0;
+    height: 28px;
+    white-space: nowrap;
+    font-size: 11px;
+    padding: 0 8px;
+  }
+  #peak-plot .rist-peak-sensitivity-control {
+    height: 28px;
+    gap: 5px;
+    padding: 0 6px;
+  }
+  #peak-plot .rist-peak-sensitivity-slider {
+    width: 54px;
+  }
+  #peak-plot .rist-peak-sensitivity-number {
+    width: 38px;
+  }
+  #peak-plot .rist-peak-sensitivity-value {
+    min-width: 24px;
+  }
+  #peak-plot .rist-peak-group-name {
+    width: 96px;
+    flex: 0 0 96px;
+  }
+  #peak-plot .rist-peak-group-color,
+  #peak-plot .rist-shape-tool-button {
+    flex: 0 0 auto;
+    width: 28px;
+    height: 28px;
+  }
+}
+@media (max-width: 420px) {
+  #peak-plot .rist-ftir-tools-toggle {
+    top: 42px;
+    right: 8px;
+    height: 28px;
+    padding: 0 8px;
+  }
+  #peak-plot .rist-plot-control-row {
+    right: 8px !important;
+    top: 76px !important;
+    width: calc(100% - 16px) !important;
+    max-width: calc(100% - 16px);
+    gap: 5px;
+  }
+  #peak-plot .rist-legend-edit-button,
+  #peak-plot .rist-peak-edit-button {
+    font-size: 10px;
+    padding: 0 6px;
+  }
+  #peak-plot .rist-peak-sensitivity-slider {
+    width: 48px;
+  }
+}
 </style>
 """
 
@@ -815,6 +966,168 @@ _PAGE_SHELL = """
     </footer>
   </section>
 </div>
+"""
+
+
+_FTIR_TOOL_PANEL_SCRIPT = """
+<script>
+(function() {
+  var gd = document.getElementById("peak-plot");
+  if (!gd || gd._ristFtirToolPanelInstalled) return;
+  gd._ristFtirToolPanelInstalled = true;
+  if (getComputedStyle(gd).position === "static") gd.style.position = "relative";
+  var button = document.createElement("button");
+  button.type = "button";
+  button.className = "rist-ftir-tools-toggle";
+  button.textContent = "도구";
+  button.title = "그래프 도구 열기";
+  button.setAttribute("aria-expanded", "false");
+  gd.appendChild(button);
+  var toolbar = gd.querySelector(".rist-plot-control-row");
+  if (!toolbar) {
+    toolbar = document.createElement("div");
+    toolbar.className = "rist-plot-control-row";
+    gd.appendChild(toolbar);
+  }
+  if (!toolbar.querySelector(".rist-ftir-tools-head")) {
+    var head = document.createElement("div");
+    head.className = "rist-ftir-tools-head";
+    head.innerHTML =
+      "<span>그래프 도구</span>"
+      + "<input class='rist-ftir-tools-opacity' type='range' min='55' max='100' value='97' title='도구창 투명도' aria-label='도구창 투명도'>"
+      + "<button type='button' class='rist-ftir-tools-close' aria-label='도구창 닫기'>×</button>";
+    toolbar.insertBefore(head, toolbar.firstChild);
+  }
+  var head = toolbar.querySelector(".rist-ftir-tools-head");
+  var opacity = toolbar.querySelector(".rist-ftir-tools-opacity");
+  var closeButton = toolbar.querySelector(".rist-ftir-tools-close");
+  var dragState = null;
+
+  function clamp(value, min, max) {
+    return Math.max(min, Math.min(max, value));
+  }
+
+  function keepPanelInBounds(left, top) {
+    var plotRect = gd.getBoundingClientRect();
+    var width = toolbar.offsetWidth || 320;
+    var height = toolbar.offsetHeight || 180;
+    return {
+      left: clamp(left, 8, Math.max(8, plotRect.width - width - 8)),
+      top: clamp(top, 44, Math.max(44, plotRect.height - height - 8))
+    };
+  }
+
+  function setPanelPosition(left, top) {
+    var next = keepPanelInBounds(left, top);
+    toolbar.style.setProperty("left", next.left + "px", "important");
+    toolbar.style.setProperty("right", "auto", "important");
+    toolbar.style.setProperty("top", next.top + "px", "important");
+  }
+
+  function setOpen(open) {
+    gd.classList.toggle("rist-ftir-tools-open", open);
+    button.setAttribute("aria-expanded", open ? "true" : "false");
+    button.textContent = open ? "닫기" : "도구";
+  }
+
+  button.addEventListener("click", function(ev) {
+    ev.preventDefault();
+    ev.stopPropagation();
+    setOpen(!gd.classList.contains("rist-ftir-tools-open"));
+  });
+  if (closeButton) {
+    closeButton.addEventListener("click", function(ev) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      setOpen(false);
+    });
+  }
+  if (opacity) {
+    function setToolPanelAlpha(value) {
+      opacity.value = String(clamp(Math.round(value), 55, 100));
+      gd.style.setProperty(
+        "--rist-ftir-tool-panel-alpha",
+        String(clamp(Number(opacity.value) || 97, 55, 100) / 100)
+      );
+    }
+
+    function setToolPanelAlphaFromPointer(ev) {
+      var rect = opacity.getBoundingClientRect();
+      var ratio = rect.width > 0 ? (ev.clientX - rect.left) / rect.width : 1;
+      setToolPanelAlpha(55 + clamp(ratio, 0, 1) * 45);
+    }
+
+    opacity.addEventListener("input", function() {
+      setToolPanelAlpha(Number(opacity.value) || 97);
+    });
+    opacity.addEventListener("pointerdown", function(ev) {
+      ev.stopPropagation();
+      opacity.setPointerCapture(ev.pointerId);
+      setToolPanelAlphaFromPointer(ev);
+      ev.preventDefault();
+    });
+    opacity.addEventListener("pointermove", function(ev) {
+      if (!opacity.hasPointerCapture(ev.pointerId)) return;
+      setToolPanelAlphaFromPointer(ev);
+      ev.preventDefault();
+    });
+    opacity.addEventListener("pointerup", function(ev) {
+      if (opacity.hasPointerCapture(ev.pointerId)) {
+        opacity.releasePointerCapture(ev.pointerId);
+      }
+      ev.preventDefault();
+    });
+    opacity.addEventListener("pointercancel", function(ev) {
+      if (opacity.hasPointerCapture(ev.pointerId)) {
+        opacity.releasePointerCapture(ev.pointerId);
+      }
+    });
+  }
+  if (head) {
+    head.addEventListener("pointerdown", function(ev) {
+      if (ev.target.closest(".rist-ftir-tools-opacity,.rist-ftir-tools-close")) return;
+      var rect = toolbar.getBoundingClientRect();
+      var plotRect = gd.getBoundingClientRect();
+      dragState = {
+        pointerId: ev.pointerId,
+        dx: ev.clientX - rect.left,
+        dy: ev.clientY - rect.top,
+        plotLeft: plotRect.left,
+        plotTop: plotRect.top
+      };
+      head.setPointerCapture(ev.pointerId);
+      ev.preventDefault();
+    });
+    head.addEventListener("pointermove", function(ev) {
+      if (!dragState) return;
+      setPanelPosition(
+        ev.clientX - dragState.plotLeft - dragState.dx,
+        ev.clientY - dragState.plotTop - dragState.dy
+      );
+      ev.preventDefault();
+    });
+    head.addEventListener("pointerup", function(ev) {
+      if (dragState && head.hasPointerCapture(dragState.pointerId)) {
+        head.releasePointerCapture(dragState.pointerId);
+      }
+      dragState = null;
+      ev.preventDefault();
+    });
+    head.addEventListener("pointercancel", function() {
+      dragState = null;
+    });
+  }
+  document.addEventListener("pointerdown", function(ev) {
+    if (!gd.classList.contains("rist-ftir-tools-open")) return;
+    if (ev.target.closest("#peak-plot .rist-plot-control-row")) return;
+    if (ev.target.closest("#peak-plot .rist-ftir-tools-toggle")) return;
+    setOpen(false);
+  });
+  gd.addEventListener("rist-plot-data-replaced", function() {
+    setOpen(false);
+  });
+})();
+</script>
 """
 
 
@@ -1620,6 +1933,7 @@ _UPLOAD_SCRIPT = """
 def build_ftir_page() -> str:
     extra_scripts = (
         peak_sensitivity_js(PLOT_DIV_ID, initial="low")
+        + _FTIR_TOOL_PANEL_SCRIPT
         + ftir_abs_trans_toggle_js(
             PLOT_DIV_ID,
             yaxis_titles={

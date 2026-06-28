@@ -43,6 +43,13 @@ def test_ftir_workspace_contains_upload_and_editor_controls() -> None:
     assert "/ftir/assets/plotly.min.js" in page
     assert "rist-shape-tool-button" in page
     assert "rist-peak-sensitivity-control" in page
+    assert "rist-ftir-tools-toggle" in page
+    assert "rist-ftir-tools-open" in page
+    assert "rist-ftir-tools-head" in page
+    assert "rist-ftir-tools-opacity" in page
+    assert "setToolPanelAlphaFromPointer" in page
+    assert "--rist-ftir-tool-panel-alpha" in page
+    assert "@media (max-width: 1440px)" in page
     assert "rist-plot-data-replaced" in page
     assert plotly_asset_path().is_file()
 

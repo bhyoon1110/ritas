@@ -495,6 +495,12 @@ body { overflow-x: hidden; }
 #raman-plot .rist-raman-tools-toggle {
   display: none;
 }
+#raman-plot .rist-raman-tools-head {
+  display: none;
+}
+#raman-plot {
+  --rist-raman-tool-panel-alpha: 0.97;
+}
 #raman-plot .rist-raman-ratio-control {
   order: 18;
   display: flex;
@@ -626,7 +632,7 @@ body { overflow-x: hidden; }
   min-height: 540px;
   height: calc(100vh - 170px) !important;
 }
-@media (max-width: 1180px) {
+@media (max-width: 760px) {
   .raman-app-bar {
     align-items: flex-start;
     flex-direction: column;
@@ -678,10 +684,12 @@ body { overflow-x: hidden; }
   #raman-plot {
     height: calc(100vh - 248px) !important;
   }
+}
+@media (max-width: 1440px) {
   #raman-plot .rist-raman-tools-toggle {
     position: absolute;
-    top: 72px;
-    right: 8px;
+    top: 34px;
+    right: 214px;
     z-index: 25;
     display: inline-flex;
     align-items: center;
@@ -702,12 +710,12 @@ body { overflow-x: hidden; }
     color: #1d4ed8;
   }
   #raman-plot .rist-plot-control-row {
-    left: 8px !important;
-    right: 8px !important;
-    top: 108px !important;
-    width: auto !important;
-    max-width: calc(100% - 16px);
-    max-height: min(360px, calc(100% - 124px));
+    left: auto !important;
+    right: 214px !important;
+    top: 70px !important;
+    width: min(860px, calc(100% - 230px)) !important;
+    max-width: calc(100% - 230px);
+    max-height: min(360px, calc(100% - 86px));
     display: none !important;
     flex-wrap: wrap;
     align-items: flex-start;
@@ -717,10 +725,49 @@ body { overflow-x: hidden; }
     padding: 8px;
     border: 1px solid #c7d0dd;
     border-radius: 6px;
-    background: rgba(255,255,255,0.97);
+    background: rgba(255,255,255,0.98);
+    opacity: var(--rist-raman-tool-panel-alpha);
     box-shadow: 0 4px 18px rgba(15,23,42,0.16);
     box-sizing: border-box;
     scrollbar-width: thin;
+  }
+  #raman-plot .rist-raman-tools-head {
+    order: -100;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1 0 100%;
+    min-width: 0;
+    height: 28px;
+    margin: -2px 0 2px;
+    padding: 0 2px 6px;
+    border-bottom: 1px solid #d7dee8;
+    color: #243b53;
+    cursor: move;
+    font: bold 12px Arial, sans-serif;
+    touch-action: none;
+    user-select: none;
+  }
+  #raman-plot .rist-raman-tools-head span:first-child {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  #raman-plot .rist-raman-tools-opacity {
+    flex: 0 0 76px;
+    width: 76px;
+    accent-color: #52606d;
+    cursor: pointer;
+  }
+  #raman-plot .rist-raman-tools-close {
+    flex: 0 0 auto;
+    width: 24px;
+    height: 24px;
+    border: 0;
+    background: transparent;
+    color: #52606d;
+    cursor: pointer;
+    font: 18px/1 Arial, sans-serif;
+    padding: 0;
   }
   #raman-plot.rist-raman-tools-open .rist-plot-control-row {
     display: flex !important;
@@ -786,12 +833,16 @@ body { overflow-x: hidden; }
 }
 @media (max-width: 420px) {
   #raman-plot .rist-raman-tools-toggle {
-    top: 68px;
+    top: 42px;
+    right: 8px;
     height: 28px;
     padding: 0 8px;
   }
   #raman-plot .rist-plot-control-row {
-    top: 102px !important;
+    right: 8px !important;
+    top: 76px !important;
+    width: calc(100% - 16px) !important;
+    max-width: calc(100% - 16px);
     gap: 5px;
   }
   #raman-plot .rist-legend-edit-button,
@@ -885,6 +936,46 @@ _RAMAN_TOOL_PANEL_SCRIPT = """
   button.title = "그래프 도구 열기";
   button.setAttribute("aria-expanded", "false");
   gd.appendChild(button);
+  var toolbar = gd.querySelector(".rist-plot-control-row");
+  if (!toolbar) {
+    toolbar = document.createElement("div");
+    toolbar.className = "rist-plot-control-row";
+    gd.appendChild(toolbar);
+  }
+  if (!toolbar.querySelector(".rist-raman-tools-head")) {
+    var head = document.createElement("div");
+    head.className = "rist-raman-tools-head";
+    head.innerHTML =
+      "<span>그래프 도구</span>"
+      + "<input class='rist-raman-tools-opacity' type='range' min='55' max='100' value='97' title='도구창 투명도' aria-label='도구창 투명도'>"
+      + "<button type='button' class='rist-raman-tools-close' aria-label='도구창 닫기'>×</button>";
+    toolbar.insertBefore(head, toolbar.firstChild);
+  }
+  var head = toolbar.querySelector(".rist-raman-tools-head");
+  var opacity = toolbar.querySelector(".rist-raman-tools-opacity");
+  var closeButton = toolbar.querySelector(".rist-raman-tools-close");
+  var dragState = null;
+
+  function clamp(value, min, max) {
+    return Math.max(min, Math.min(max, value));
+  }
+
+  function keepPanelInBounds(left, top) {
+    var plotRect = gd.getBoundingClientRect();
+    var width = toolbar.offsetWidth || 320;
+    var height = toolbar.offsetHeight || 180;
+    return {
+      left: clamp(left, 8, Math.max(8, plotRect.width - width - 8)),
+      top: clamp(top, 44, Math.max(44, plotRect.height - height - 8))
+    };
+  }
+
+  function setPanelPosition(left, top) {
+    var next = keepPanelInBounds(left, top);
+    toolbar.style.setProperty("left", next.left + "px", "important");
+    toolbar.style.setProperty("right", "auto", "important");
+    toolbar.style.setProperty("top", next.top + "px", "important");
+  }
 
   function setOpen(open) {
     gd.classList.toggle("rist-raman-tools-open", open);
@@ -897,6 +988,88 @@ _RAMAN_TOOL_PANEL_SCRIPT = """
     ev.stopPropagation();
     setOpen(!gd.classList.contains("rist-raman-tools-open"));
   });
+  if (closeButton) {
+    closeButton.addEventListener("click", function(ev) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      setOpen(false);
+    });
+  }
+  if (opacity) {
+    function setToolPanelAlpha(value) {
+      opacity.value = String(clamp(Math.round(value), 55, 100));
+      gd.style.setProperty(
+        "--rist-raman-tool-panel-alpha",
+        String(clamp(Number(opacity.value) || 97, 55, 100) / 100)
+      );
+    }
+
+    function setToolPanelAlphaFromPointer(ev) {
+      var rect = opacity.getBoundingClientRect();
+      var ratio = rect.width > 0 ? (ev.clientX - rect.left) / rect.width : 1;
+      setToolPanelAlpha(55 + clamp(ratio, 0, 1) * 45);
+    }
+
+    opacity.addEventListener("input", function() {
+      setToolPanelAlpha(Number(opacity.value) || 97);
+    });
+    opacity.addEventListener("pointerdown", function(ev) {
+      ev.stopPropagation();
+      opacity.setPointerCapture(ev.pointerId);
+      setToolPanelAlphaFromPointer(ev);
+      ev.preventDefault();
+    });
+    opacity.addEventListener("pointermove", function(ev) {
+      if (!opacity.hasPointerCapture(ev.pointerId)) return;
+      setToolPanelAlphaFromPointer(ev);
+      ev.preventDefault();
+    });
+    opacity.addEventListener("pointerup", function(ev) {
+      if (opacity.hasPointerCapture(ev.pointerId)) {
+        opacity.releasePointerCapture(ev.pointerId);
+      }
+      ev.preventDefault();
+    });
+    opacity.addEventListener("pointercancel", function(ev) {
+      if (opacity.hasPointerCapture(ev.pointerId)) {
+        opacity.releasePointerCapture(ev.pointerId);
+      }
+    });
+  }
+  if (head) {
+    head.addEventListener("pointerdown", function(ev) {
+      if (ev.target.closest(".rist-raman-tools-opacity,.rist-raman-tools-close")) return;
+      var rect = toolbar.getBoundingClientRect();
+      var plotRect = gd.getBoundingClientRect();
+      dragState = {
+        pointerId: ev.pointerId,
+        dx: ev.clientX - rect.left,
+        dy: ev.clientY - rect.top,
+        plotLeft: plotRect.left,
+        plotTop: plotRect.top
+      };
+      head.setPointerCapture(ev.pointerId);
+      ev.preventDefault();
+    });
+    head.addEventListener("pointermove", function(ev) {
+      if (!dragState) return;
+      setPanelPosition(
+        ev.clientX - dragState.plotLeft - dragState.dx,
+        ev.clientY - dragState.plotTop - dragState.dy
+      );
+      ev.preventDefault();
+    });
+    head.addEventListener("pointerup", function(ev) {
+      if (dragState && head.hasPointerCapture(dragState.pointerId)) {
+        head.releasePointerCapture(dragState.pointerId);
+      }
+      dragState = null;
+      ev.preventDefault();
+    });
+    head.addEventListener("pointercancel", function() {
+      dragState = null;
+    });
+  }
   document.addEventListener("pointerdown", function(ev) {
     if (!gd.classList.contains("rist-raman-tools-open")) return;
     if (ev.target.closest("#raman-plot .rist-plot-control-row")) return;
@@ -1549,8 +1722,8 @@ _UPLOAD_SCRIPT = """
   }
 
   function applyResponsiveLayout() {
-    var mobile = window.innerWidth <= 1180;
-    return window.Plotly.relayout(gd, mobile ? {
+    var compact = window.innerWidth <= 760;
+    return window.Plotly.relayout(gd, compact ? {
       "margin.t": 170,
       "margin.r": 30,
       "margin.b": 135,
@@ -1560,7 +1733,7 @@ _UPLOAD_SCRIPT = """
       "legend.y": -0.2,
       "legend.yanchor": "top"
     } : {
-      "margin.t": 105,
+      "margin.t": 120,
       "margin.r": (gd.data || []).length ? 260 : 70,
       "margin.b": 70,
       "legend.orientation": "v",
