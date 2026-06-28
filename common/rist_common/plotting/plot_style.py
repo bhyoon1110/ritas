@@ -4443,7 +4443,7 @@ def _legend_drag_handle_js(div_id: str) -> str:
 <style>
 #{div_id} .rist-legend-drag-handle {{
   position: absolute;
-  z-index: 35;
+  z-index: 18;
   display: none;
   align-items: center;
   justify-content: center;

@@ -50,6 +50,8 @@ def test_ftir_workspace_contains_upload_and_editor_controls() -> None:
     assert "setToolPanelAlphaFromPointer" in page
     assert "--rist-ftir-tool-panel-alpha" in page
     assert "@media (max-width: 1440px)" in page
+    assert "z-index: 56" in page
+    assert "z-index: 55" in page
     assert "right: 8px !important" in page
     assert "width: min(860px, calc(100% - 24px)) !important" in page
     assert "max-width: calc(100% - 24px)" in page

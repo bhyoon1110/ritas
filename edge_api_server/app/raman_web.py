@@ -691,7 +691,7 @@ body { overflow-x: hidden; }
     position: absolute;
     top: 34px;
     right: 8px;
-    z-index: 25;
+    z-index: 56;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -714,6 +714,7 @@ body { overflow-x: hidden; }
     left: auto !important;
     right: 8px !important;
     top: 70px !important;
+    z-index: 55;
     width: min(860px, calc(100% - 24px)) !important;
     max-width: calc(100% - 24px);
     max-height: min(360px, calc(100% - 86px));

@@ -88,7 +88,7 @@ def test_shared_plotly_module_applies_legend_text(tmp_path) -> None:
     assert "범례 이동" in html
     assert "legendPosition\": false" in html
     assert 'layout.orientation === "h"' not in html
-    assert "z-index: 35" in html
+    assert "z-index: 18" in html
     assert "setMobileLegendReserve(!wide)" in html
     assert "legendReservePx = 120" in html
     assert "mobileMinHeightPx = 900" in html

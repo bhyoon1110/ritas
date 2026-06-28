@@ -58,6 +58,8 @@ def test_raman_workspace_contains_upload_controls() -> None:
     assert "gd._ristRamanRatioMode = ratioMode" in page
     assert "ratioMode = false" in page
     assert "max-width: calc(100% - 16px)" in page
+    assert "z-index: 56" in page
+    assert "z-index: 55" in page
     assert "right: 8px !important" in page
     assert "width: min(860px, calc(100% - 24px)) !important" in page
     assert "max-width: calc(100% - 24px)" in page
