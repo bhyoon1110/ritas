@@ -40,11 +40,13 @@ def test_raman_workspace_contains_upload_controls() -> None:
     assert "분자 선택" in page
     assert "분모 선택" in page
     assert "Y 이동" in page
+    assert "rist-raman-tools-toggle" in page
+    assert "rist-raman-tools-open" in page
+    assert "setOpen(!gd.classList.contains" in page
     assert "max-width: calc(100% - 16px)" in page
-    assert "-webkit-overflow-scrolling: touch" in page
-    assert "@media (max-width: 980px)" in page
+    assert "@media (max-width: 1180px)" in page
     assert "@media (max-width: 420px)" in page
-    assert "var mobile = window.innerWidth <= 980" in page
+    assert "var mobile = window.innerWidth <= 1180" in page
     assert '"margin.t": 170' in page
     assert "rist-legend-edit-button" in page
     assert "rist-shape-editor-panel" in page

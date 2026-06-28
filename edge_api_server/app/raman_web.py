@@ -492,6 +492,9 @@ body { overflow-x: hidden; }
 #raman-plot .rist-plot-control-row > * {
   flex: 0 0 auto;
 }
+#raman-plot .rist-raman-tools-toggle {
+  display: none;
+}
 #raman-plot .rist-raman-ratio-control {
   order: 18;
   display: flex;
@@ -623,7 +626,7 @@ body { overflow-x: hidden; }
   min-height: 540px;
   height: calc(100vh - 170px) !important;
 }
-@media (max-width: 980px) {
+@media (max-width: 1180px) {
   .raman-app-bar {
     align-items: flex-start;
     flex-direction: column;
@@ -675,21 +678,52 @@ body { overflow-x: hidden; }
   #raman-plot {
     height: calc(100vh - 248px) !important;
   }
+  #raman-plot .rist-raman-tools-toggle {
+    position: absolute;
+    top: 72px;
+    right: 8px;
+    z-index: 25;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 30px;
+    border: 1px solid #9fb3c8;
+    border-radius: 4px;
+    background: rgba(255,255,255,0.96);
+    color: #243b53;
+    cursor: pointer;
+    font: bold 11px Arial, sans-serif;
+    padding: 0 10px;
+    box-shadow: 0 1px 5px rgba(15,23,42,0.12);
+  }
+  #raman-plot.rist-raman-tools-open .rist-raman-tools-toggle {
+    border-color: #2563eb;
+    background: #dbeafe;
+    color: #1d4ed8;
+  }
   #raman-plot .rist-plot-control-row {
     left: 8px !important;
     right: 8px !important;
-    top: 72px !important;
+    top: 108px !important;
     width: auto !important;
     max-width: calc(100% - 16px);
-    display: flex;
-    flex-wrap: nowrap;
+    max-height: min(360px, calc(100% - 124px));
+    display: none !important;
+    flex-wrap: wrap;
+    align-items: flex-start;
     justify-content: flex-start;
     gap: 6px;
-    overflow-x: auto;
-    overflow-y: hidden;
-    padding: 2px 0 6px;
-    -webkit-overflow-scrolling: touch;
+    overflow: auto;
+    padding: 8px;
+    border: 1px solid #c7d0dd;
+    border-radius: 6px;
+    background: rgba(255,255,255,0.97);
+    box-shadow: 0 4px 18px rgba(15,23,42,0.16);
+    box-sizing: border-box;
     scrollbar-width: thin;
+  }
+  #raman-plot.rist-raman-tools-open .rist-plot-control-row {
+    display: flex !important;
   }
   #raman-plot .rist-plot-control-row > * {
     flex: 0 0 auto;
@@ -751,8 +785,13 @@ body { overflow-x: hidden; }
   }
 }
 @media (max-width: 420px) {
+  #raman-plot .rist-raman-tools-toggle {
+    top: 68px;
+    height: 28px;
+    padding: 0 8px;
+  }
   #raman-plot .rist-plot-control-row {
-    top: 68px !important;
+    top: 102px !important;
     gap: 5px;
   }
   #raman-plot .rist-legend-edit-button,
@@ -829,6 +868,46 @@ _PAGE_SHELL = """
     </footer>
   </section>
 </div>
+"""
+
+
+_RAMAN_TOOL_PANEL_SCRIPT = """
+<script>
+(function() {
+  var gd = document.getElementById("raman-plot");
+  if (!gd || gd._ristRamanToolPanelInstalled) return;
+  gd._ristRamanToolPanelInstalled = true;
+  if (getComputedStyle(gd).position === "static") gd.style.position = "relative";
+  var button = document.createElement("button");
+  button.type = "button";
+  button.className = "rist-raman-tools-toggle";
+  button.textContent = "도구";
+  button.title = "그래프 도구 열기";
+  button.setAttribute("aria-expanded", "false");
+  gd.appendChild(button);
+
+  function setOpen(open) {
+    gd.classList.toggle("rist-raman-tools-open", open);
+    button.setAttribute("aria-expanded", open ? "true" : "false");
+    button.textContent = open ? "닫기" : "도구";
+  }
+
+  button.addEventListener("click", function(ev) {
+    ev.preventDefault();
+    ev.stopPropagation();
+    setOpen(!gd.classList.contains("rist-raman-tools-open"));
+  });
+  document.addEventListener("pointerdown", function(ev) {
+    if (!gd.classList.contains("rist-raman-tools-open")) return;
+    if (ev.target.closest("#raman-plot .rist-plot-control-row")) return;
+    if (ev.target.closest("#raman-plot .rist-raman-tools-toggle")) return;
+    setOpen(false);
+  });
+  gd.addEventListener("rist-plot-data-replaced", function() {
+    setOpen(false);
+  });
+})();
+</script>
 """
 
 
@@ -1470,7 +1549,7 @@ _UPLOAD_SCRIPT = """
   }
 
   function applyResponsiveLayout() {
-    var mobile = window.innerWidth <= 980;
+    var mobile = window.innerWidth <= 1180;
     return window.Plotly.relayout(gd, mobile ? {
       "margin.t": 170,
       "margin.r": 30,
@@ -2134,6 +2213,7 @@ def build_raman_page() -> str:
         image_filename="raman_peak_analysis",
         post_body_html=(
             peak_sensitivity_js(PLOT_DIV_ID, initial="25")
+            + _RAMAN_TOOL_PANEL_SCRIPT
             + _RAMAN_STACK_SCRIPT
             + _RAMAN_RATIO_SCRIPT
             + _UPLOAD_SCRIPT
