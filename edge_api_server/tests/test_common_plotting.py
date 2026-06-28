@@ -201,6 +201,7 @@ def test_shared_peak_editor_adds_peak_controls(tmp_path) -> None:
         str(output),
         div_id="peak-plot",
         peak_editor=True,
+        shape_editor=True,
     )
 
     html = output.read_text(encoding="utf-8")
@@ -274,6 +275,48 @@ def test_shared_peak_editor_adds_peak_controls(tmp_path) -> None:
     assert "childCurvesForSample" in html
     assert "peakMatchesCurrentSensitivity" in html
     assert "peakMatchesCurrentSensitivity(childCurve) ? visible : false" in html
+    assert "rist-shape-tool-button" in html
+    assert "lucide lucide-square" in html
+    assert "rist-shape-editor-panel" in html
+    assert "rist-shape-editor-text" in html
+    assert "rist-shape-border-color" in html
+    assert "rist-shape-fill-color" in html
+    assert "rist-shape-border-style" in html
+    assert "<option value='none'>선 없음</option>" in html
+    assert "<option value='solid' selected>실선</option>" in html
+    assert "<option value='dash'>파선</option>" in html
+    assert "<option value='dot'>점선</option>" in html
+    assert "<option value='dashdot'>일점쇄선</option>" in html
+    assert "rist-shape-opacity" in html
+    assert "rist-shape-text-options" in html
+    assert "rist-shape-font-color" in html
+    assert "rist-shape-font-size" in html
+    assert "function fontSizeValue" in html
+    assert "function borderLine" in html
+    assert 'width: hidden ? 0 : 2' in html
+    assert "color: fontColorInput.value" in html
+    assert "size: fontSizeValue()" in html
+    assert "rist-shape-draw-preview" in html
+    assert "rist-shape-kind-tabs" in html
+    assert "data-kind='rect'>사각형</button>" in html
+    assert "data-kind='text'>텍스트 박스</button>" in html
+    assert "rist-shape-selection" in html
+    assert "rist-shape-resize-handle" in html
+    assert "rist_rect:" in html
+    assert "rist_text_box:" in html
+    assert "rist_text_box_text:" in html
+    assert "function addObject" in html
+    assert "function applySelection" in html
+    assert "function deleteSelection" in html
+    assert "function objectAtPoint" in html
+    assert "function resizedBounds" in html
+    assert "function applyTransformedBounds" in html
+    assert "function updateSelectionOverlay" in html
+    assert 'mode: handle ? handle.dataset.dir : "move"' in html
+    assert 'gd.addEventListener("pointerdown"' in html
+    assert 'gd.on("plotly_clickannotation"' in html
+    assert "syncOriginalArrays" in html
+    assert "gd._ristHistory.capture()" in html
 
 
 def test_peak_sensitivity_control_filters_detected_peak_metadata() -> None:

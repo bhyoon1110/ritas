@@ -9,6 +9,7 @@ from .plot_style import (
     fig_to_responsive_html,
     peak_editor_js,
     peak_sensitivity_js,
+    shape_editor_js,
     write_responsive_html,
 )
 
@@ -21,5 +22,6 @@ __all__ = [
     "fig_to_responsive_html",
     "peak_editor_js",
     "peak_sensitivity_js",
+    "shape_editor_js",
     "write_responsive_html",
 ]

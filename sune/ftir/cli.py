@@ -316,6 +316,7 @@ def _run_single(dpt_path, args, rules_dir, rule_names, rule_categories):
         title_edit=True,
         legend_text_edit=True,
         peak_editor=True,
+        shape_editor=True,
         image_filename=f"{stem}_peaks",
         image_format_selector=True,
         post_body_html=(
@@ -602,6 +603,7 @@ def _run_multi_peak_overlay(dpt_paths, args):
         title_edit=True,
         legend_text_edit=True,
         peak_editor=True,
+        shape_editor=True,
         image_filename="multi_samples_peaks",
         image_format_selector=True,
         post_body_html=(

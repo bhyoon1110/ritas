@@ -1327,7 +1327,14 @@ def _legend_text_edit_js(div_id: str) -> str:
       ev.preventDefault();
       ev.stopPropagation();
       var willOpen = panel.style.display !== "block";
-      if (willOpen) renderRows();
+      if (willOpen) {{
+        var shapePanel = gd.querySelector(".rist-shape-editor-panel");
+        if (shapePanel) {{
+          shapePanel.style.display = "none";
+          gd.dispatchEvent(new CustomEvent("rist-shape-editor-close"));
+        }}
+        renderRows();
+      }}
       panel.style.display = willOpen ? "block" : "none";
     }});
     panel.querySelector(".rist-legend-edit-close").addEventListener("click", function(ev) {{
@@ -3038,6 +3045,936 @@ def _trace_highlight_js(div_id: str, pickable=None, groups=None) -> str:
 """
 
 
+def shape_editor_js(div_id: str) -> str:
+    """그래프 위에 사각형과 텍스트 박스를 추가·편집한다."""
+    return f"""
+<style>
+#{div_id} .rist-shape-tool-button {{
+  order: 22;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid #9fb3c8;
+  border-radius: 4px;
+  background: #f5f7fa;
+  color: #243b53;
+  cursor: pointer;
+  padding: 0;
+}}
+#{div_id} .rist-shape-tool-button svg {{
+  width: 16px;
+  height: 16px;
+  stroke-width: 2;
+}}
+#{div_id} .rist-shape-tool-button.is-active {{
+  border-color: #3b82f6;
+  background: #dbeafe;
+  color: #1d4ed8;
+}}
+#{div_id} .rist-shape-editor-panel {{
+  position: absolute;
+  top: 94px;
+  right: 30px;
+  z-index: 23;
+  display: none;
+  width: min(310px, calc(100% - 16px));
+  border: 1px solid #c7d0dd;
+  border-radius: 6px;
+  background: rgba(255,255,255,0.98);
+  box-shadow: 0 4px 18px rgba(0,0,0,0.16);
+  padding: 10px;
+  box-sizing: border-box;
+}}
+#{div_id} .rist-shape-kind-tabs {{
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px;
+  margin-bottom: 8px;
+}}
+#{div_id} .rist-shape-kind-button {{
+  height: 28px;
+  border: 1px solid #c7d0dd;
+  border-radius: 4px;
+  background: #f5f7fa;
+  color: #334e68;
+  cursor: pointer;
+  font: 11px Arial, sans-serif;
+}}
+#{div_id} .rist-shape-kind-button.is-active {{
+  border-color: #3b82f6;
+  background: #dbeafe;
+  color: #1d4ed8;
+}}
+#{div_id} .rist-shape-editor-head {{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 9px;
+  color: #1f2933;
+  font: bold 13px Arial, sans-serif;
+}}
+#{div_id} .rist-shape-editor-close {{
+  border: 0;
+  background: transparent;
+  color: #52606d;
+  cursor: pointer;
+  font: 18px/1 Arial, sans-serif;
+  padding: 0 3px;
+}}
+#{div_id} .rist-shape-editor-text {{
+  width: 100%;
+  height: 30px;
+  border: 1px solid #c7d0dd;
+  border-radius: 4px;
+  color: #1f2933;
+  font: 12px Arial, sans-serif;
+  padding: 5px 7px;
+  box-sizing: border-box;
+}}
+#{div_id} .rist-shape-text-options {{
+  display: none;
+}}
+#{div_id} .rist-shape-font-row {{
+  display: grid;
+  grid-template-columns: auto 1fr auto 64px;
+  gap: 6px;
+  align-items: center;
+  margin-top: 8px;
+  color: #52606d;
+  font: 10px Arial, sans-serif;
+}}
+#{div_id} .rist-shape-font-size {{
+  width: 100%;
+  height: 28px;
+  border: 1px solid #c7d0dd;
+  border-radius: 4px;
+  color: #1f2933;
+  font: 11px Arial, sans-serif;
+  padding: 3px 5px;
+  box-sizing: border-box;
+}}
+#{div_id} .rist-shape-editor-colors {{
+  display: grid;
+  grid-template-columns: auto 1fr auto 1fr;
+  gap: 6px;
+  align-items: center;
+  margin-top: 8px;
+}}
+#{div_id} .rist-shape-border-row {{
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 8px;
+  color: #52606d;
+  font: 10px Arial, sans-serif;
+}}
+#{div_id} .rist-shape-border-style {{
+  flex: 1 1 auto;
+  height: 28px;
+  border: 1px solid #c7d0dd;
+  border-radius: 4px;
+  background: #fff;
+  color: #1f2933;
+  font: 11px Arial, sans-serif;
+  padding: 3px 5px;
+}}
+#{div_id} .rist-shape-editor-colors span {{
+  color: #52606d;
+  font: 10px Arial, sans-serif;
+}}
+#{div_id} .rist-shape-color {{
+  width: 100%;
+  height: 28px;
+  border: 1px solid #c7d0dd;
+  border-radius: 4px;
+  background: #fff;
+  cursor: pointer;
+  padding: 2px;
+  box-sizing: border-box;
+}}
+#{div_id} .rist-shape-opacity-row {{
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 8px;
+  color: #52606d;
+  font: 10px Arial, sans-serif;
+}}
+#{div_id} .rist-shape-opacity {{
+  flex: 1 1 auto;
+  min-width: 0;
+  accent-color: #52606d;
+}}
+#{div_id} .rist-shape-editor-actions {{
+  display: flex;
+  gap: 7px;
+  justify-content: flex-end;
+  margin-top: 10px;
+}}
+#{div_id} .rist-shape-action {{
+  height: 28px;
+  border: 1px solid #9fb3c8;
+  border-radius: 4px;
+  background: #f5f7fa;
+  color: #1f2933;
+  cursor: pointer;
+  font: 11px Arial, sans-serif;
+  padding: 4px 8px;
+}}
+#{div_id} .rist-shape-delete {{
+  border-color: #d5a3a3;
+  color: #9b2c2c;
+}}
+#{div_id} .rist-shape-delete:disabled,
+#{div_id} .rist-shape-apply:disabled {{
+  opacity: 0.4;
+  cursor: default;
+}}
+#{div_id} .rist-shape-draw-preview {{
+  position: absolute;
+  z-index: 18;
+  display: none;
+  border: 2px dashed #2563eb;
+  background: rgba(37,99,235,0.12);
+  pointer-events: none;
+  box-sizing: border-box;
+}}
+#{div_id} .rist-shape-selection {{
+  position: absolute;
+  z-index: 20;
+  display: none;
+  border: 1px dashed #2563eb;
+  cursor: move;
+  box-sizing: border-box;
+}}
+#{div_id} .rist-shape-resize-handle {{
+  position: absolute;
+  width: 9px;
+  height: 9px;
+  border: 1px solid #1d4ed8;
+  background: #fff;
+  box-sizing: border-box;
+}}
+#{div_id} .rist-shape-resize-handle[data-dir*="n"] {{ top: -5px; }}
+#{div_id} .rist-shape-resize-handle[data-dir*="s"] {{ bottom: -5px; }}
+#{div_id} .rist-shape-resize-handle[data-dir*="w"] {{ left: -5px; }}
+#{div_id} .rist-shape-resize-handle[data-dir*="e"] {{ right: -5px; }}
+#{div_id} .rist-shape-resize-handle[data-dir="n"],
+#{div_id} .rist-shape-resize-handle[data-dir="s"] {{
+  left: calc(50% - 4px);
+  cursor: ns-resize;
+}}
+#{div_id} .rist-shape-resize-handle[data-dir="e"],
+#{div_id} .rist-shape-resize-handle[data-dir="w"] {{
+  top: calc(50% - 4px);
+  cursor: ew-resize;
+}}
+#{div_id} .rist-shape-resize-handle[data-dir="nw"],
+#{div_id} .rist-shape-resize-handle[data-dir="se"] {{ cursor: nwse-resize; }}
+#{div_id} .rist-shape-resize-handle[data-dir="ne"],
+#{div_id} .rist-shape-resize-handle[data-dir="sw"] {{ cursor: nesw-resize; }}
+</style>
+<script>
+(function() {{
+  var gd = document.getElementById("{div_id}");
+  if (!gd || !window.Plotly || gd._ristShapeEditorInstalled) return;
+  gd._ristShapeEditorInstalled = true;
+  if (getComputedStyle(gd).position === "static") gd.style.position = "relative";
+  var selectedId = "";
+  var selectedKind = "";
+  var drawKind = "rect";
+  var drawMode = false;
+  var drawStart = null;
+  var transformState = null;
+
+  function esc(value) {{
+    return String(value == null ? "" : value)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }}
+
+  function clone(value) {{
+    return Object.assign({{}}, value || {{}});
+  }}
+
+  function hexToRgba(hex, opacity) {{
+    var value = String(hex || "#ffffff").replace("#", "");
+    var r = parseInt(value.slice(0, 2), 16);
+    var g = parseInt(value.slice(2, 4), 16);
+    var b = parseInt(value.slice(4, 6), 16);
+    return "rgba(" + r + "," + g + "," + b + "," + opacity + ")";
+  }}
+
+  function rgbaToHex(value, fallback) {{
+    var text = String(value || "").trim();
+    if (/^#[0-9a-f]{{6}}$/i.test(text)) return text.toLowerCase();
+    if (/^#[0-9a-f]{{3}}$/i.test(text)) {{
+      return "#" + text.slice(1).split("").map(function(part) {{
+        return part + part;
+      }}).join("").toLowerCase();
+    }}
+    var match = text.match(/rgba?\\((\\d+),\\s*(\\d+),\\s*(\\d+)/i);
+    if (!match) return fallback;
+    return "#" + [match[1], match[2], match[3]].map(function(part) {{
+      return Math.max(0, Math.min(255, Number(part))).toString(16).padStart(2, "0");
+    }}).join("");
+  }}
+
+  function rgbaOpacity(value, fallback) {{
+    var match = String(value || "").match(/rgba\\([^,]+,[^,]+,[^,]+,\\s*([\\d.]+)\\)/i);
+    return match ? Math.round(Number(match[1]) * 100) : fallback;
+  }}
+
+  function shapeName(id, kind) {{
+    return (kind === "text" ? "rist_text_box:" : "rist_rect:") + id;
+  }}
+
+  function textName(id) {{ return "rist_text_box_text:" + id; }}
+
+  function shapeKind(shape) {{
+    var name = String(shape && shape.name || "");
+    if (name.indexOf("rist_rect:") === 0) return "rect";
+    if (name.indexOf("rist_text_box:") === 0) return "text";
+    return "";
+  }}
+
+  function shapeId(shape) {{
+    var kind = shapeKind(shape);
+    if (!kind) return "";
+    return String(shape.name).slice((kind === "text" ? "rist_text_box:" : "rist_rect:").length);
+  }}
+
+  function shapeIndex(id, kind, shapes) {{
+    return (shapes || []).findIndex(function(shape) {{
+      return shape.name === shapeName(id, kind);
+    }});
+  }}
+
+  function annotationIndex(id, annotations) {{
+    return (annotations || []).findIndex(function(annotation) {{
+      return annotation.name === textName(id);
+    }});
+  }}
+
+  function recordHistory() {{
+    if (gd._ristHistory) gd._ristHistory.capture();
+  }}
+
+  var toolbar = gd.querySelector(".rist-plot-control-row");
+  if (!toolbar) {{
+    toolbar = document.createElement("div");
+    toolbar.className = "rist-plot-control-row";
+    gd.appendChild(toolbar);
+  }}
+  var toolButton = document.createElement("button");
+  toolButton.type = "button";
+  toolButton.className = "rist-shape-tool-button";
+  toolButton.title = "도형 추가";
+  toolButton.setAttribute("aria-label", "도형 추가");
+  toolButton.innerHTML =
+    "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' "
+    + "stroke='currentColor' stroke-linecap='round' stroke-linejoin='round' "
+    + "class='lucide lucide-square' aria-hidden='true'>"
+    + "<rect width='18' height='18' x='3' y='3' rx='1'></rect></svg>";
+  toolbar.appendChild(toolButton);
+
+  var panel = document.createElement("div");
+  panel.className = "rist-shape-editor-panel";
+  panel.innerHTML =
+    "<div class='rist-shape-editor-head'><span>도형 편집</span>"
+    + "<button type='button' class='rist-shape-editor-close' aria-label='닫기'>×</button></div>"
+    + "<div class='rist-shape-kind-tabs'>"
+    + "<button type='button' class='rist-shape-kind-button is-active' data-kind='rect'>사각형</button>"
+    + "<button type='button' class='rist-shape-kind-button' data-kind='text'>텍스트 박스</button>"
+    + "</div>"
+    + "<div class='rist-shape-text-options'>"
+    + "<input class='rist-shape-editor-text' type='text' value='텍스트' aria-label='도형 글자'>"
+    + "<div class='rist-shape-font-row'>"
+    + "<span>글자색</span><input class='rist-shape-font-color rist-shape-color' type='color' value='#1f2933'>"
+    + "<span>크기</span><input class='rist-shape-font-size' type='number' min='8' max='72' step='1' value='12' aria-label='글자 크기'>"
+    + "</div></div>"
+    + "<div class='rist-shape-editor-colors'>"
+    + "<span>선</span><input class='rist-shape-border-color rist-shape-color' type='color' value='#2563eb'>"
+    + "<span>배경</span><input class='rist-shape-fill-color rist-shape-color' type='color' value='#dbeafe'>"
+    + "</div>"
+    + "<label class='rist-shape-border-row'><span>선 종류</span>"
+    + "<select class='rist-shape-border-style' aria-label='사각형 선 종류'>"
+    + "<option value='none'>선 없음</option><option value='solid' selected>실선</option>"
+    + "<option value='dash'>파선</option>"
+    + "<option value='dot'>점선</option><option value='dashdot'>일점쇄선</option>"
+    + "</select></label>"
+    + "<label class='rist-shape-opacity-row'><span>배경 투명도</span>"
+    + "<input class='rist-shape-opacity' type='range' min='0' max='100' value='30'></label>"
+    + "<div class='rist-shape-editor-actions'>"
+    + "<button type='button' class='rist-shape-action rist-shape-draw'>그리기</button>"
+    + "<button type='button' class='rist-shape-action rist-shape-apply' disabled>적용</button>"
+    + "<button type='button' class='rist-shape-action rist-shape-delete' disabled>삭제</button>"
+    + "</div>";
+  gd.appendChild(panel);
+
+  var preview = document.createElement("div");
+  preview.className = "rist-shape-draw-preview";
+  gd.appendChild(preview);
+  var selection = document.createElement("div");
+  selection.className = "rist-shape-selection";
+  selection.innerHTML = ["nw", "n", "ne", "e", "se", "s", "sw", "w"].map(function(dir) {{
+    return "<span class='rist-shape-resize-handle' data-dir='" + dir + "'></span>";
+  }}).join("");
+  gd.appendChild(selection);
+  var textOptions = panel.querySelector(".rist-shape-text-options");
+  var textInput = panel.querySelector(".rist-shape-editor-text");
+  var fontColorInput = panel.querySelector(".rist-shape-font-color");
+  var fontSizeInput = panel.querySelector(".rist-shape-font-size");
+  var borderInput = panel.querySelector(".rist-shape-border-color");
+  var fillInput = panel.querySelector(".rist-shape-fill-color");
+  var borderStyleInput = panel.querySelector(".rist-shape-border-style");
+  var opacityInput = panel.querySelector(".rist-shape-opacity");
+  var drawButton = panel.querySelector(".rist-shape-draw");
+  var applyButton = panel.querySelector(".rist-shape-apply");
+  var deleteButton = panel.querySelector(".rist-shape-delete");
+  var kindButtons = Array.prototype.slice.call(
+    panel.querySelectorAll(".rist-shape-kind-button")
+  );
+
+  function drawLabel() {{
+    return drawKind === "text" ? "텍스트 박스 그리기" : "사각형 그리기";
+  }}
+
+  function fontSizeValue() {{
+    var value = Number(fontSizeInput.value);
+    if (!Number.isFinite(value)) value = 12;
+    value = Math.max(8, Math.min(72, Math.round(value)));
+    fontSizeInput.value = String(value);
+    return value;
+  }}
+
+  function borderLine() {{
+    var hidden = borderStyleInput.value === "none";
+    return {{
+      color: borderInput.value,
+      width: hidden ? 0 : 2,
+      dash: hidden ? "solid" : borderStyleInput.value
+    }};
+  }}
+
+  function updateBorderControl() {{
+    borderInput.disabled = borderStyleInput.value === "none";
+  }}
+
+  function setDrawMode(enabled) {{
+    drawMode = !!enabled;
+    toolButton.classList.toggle("is-active", drawMode);
+    drawButton.classList.toggle("is-active", drawMode);
+    drawButton.textContent = drawMode ? "그래프에서 드래그" : drawLabel();
+  }}
+
+  function setDrawKind(kind) {{
+    drawKind = kind === "text" ? "text" : "rect";
+    kindButtons.forEach(function(button) {{
+      button.classList.toggle("is-active", button.dataset.kind === drawKind);
+    }});
+    textOptions.style.display = drawKind === "text" ? "block" : "none";
+    setDrawMode(drawMode);
+  }}
+
+  function openPanel() {{
+    var legendPanel = gd.querySelector(".rist-legend-edit-panel");
+    if (legendPanel) legendPanel.style.display = "none";
+    panel.style.display = "block";
+  }}
+
+  function closePanel() {{
+    panel.style.display = "none";
+    setDrawMode(false);
+  }}
+
+  function updateSelectionButtons() {{
+    applyButton.disabled = !selectedId;
+    deleteButton.disabled = !selectedId;
+  }}
+
+  function clearSelection() {{
+    selectedId = "";
+    selectedKind = "";
+    transformState = null;
+    selection.style.display = "none";
+    updateSelectionButtons();
+  }}
+
+  function selectedShape() {{
+    if (!selectedId || !selectedKind) return null;
+    var shapes = gd.layout.shapes || [];
+    var index = shapeIndex(selectedId, selectedKind, shapes);
+    return index >= 0 ? shapes[index] : null;
+  }}
+
+  function shapeClientBounds(shape) {{
+    var drag = gd.querySelector(".nsewdrag");
+    var layout = gd._fullLayout;
+    if (!shape || !drag || !layout || !layout.xaxis || !layout.yaxis) return null;
+    var gdRect = gd.getBoundingClientRect();
+    var dragRect = drag.getBoundingClientRect();
+    var x0 = dragRect.left - gdRect.left + layout.xaxis.d2p(shape.x0);
+    var x1 = dragRect.left - gdRect.left + layout.xaxis.d2p(shape.x1);
+    var y0 = dragRect.top - gdRect.top + layout.yaxis.d2p(shape.y0);
+    var y1 = dragRect.top - gdRect.top + layout.yaxis.d2p(shape.y1);
+    return {{
+      left: Math.min(x0, x1),
+      right: Math.max(x0, x1),
+      top: Math.min(y0, y1),
+      bottom: Math.max(y0, y1)
+    }};
+  }}
+
+  function setSelectionBounds(bounds) {{
+    if (!bounds) {{
+      selection.style.display = "none";
+      return;
+    }}
+    selection.style.display = "block";
+    selection.style.left = bounds.left + "px";
+    selection.style.top = bounds.top + "px";
+    selection.style.width = Math.max(1, bounds.right - bounds.left) + "px";
+    selection.style.height = Math.max(1, bounds.bottom - bounds.top) + "px";
+  }}
+
+  function updateSelectionOverlay() {{
+    setSelectionBounds(shapeClientBounds(selectedShape()));
+  }}
+
+  function selectShape(id, kind) {{
+    var shapes = gd.layout.shapes || [];
+    var annotations = gd.layout.annotations || [];
+    var si = shapeIndex(id, kind, shapes);
+    var ai = annotationIndex(id, annotations);
+    if (si < 0 || (kind === "text" && ai < 0)) return;
+    selectedId = id;
+    selectedKind = kind;
+    var shape = shapes[si];
+    var annotation = ai >= 0 ? annotations[ai] : null;
+    setDrawKind(kind);
+    if (annotation) {{
+      textInput.value = String(annotation.text || "").replace(/<[^>]*>/g, "");
+      fontColorInput.value = rgbaToHex(
+        annotation.font && annotation.font.color,
+        "#1f2933"
+      );
+      fontSizeInput.value = String(
+        Math.max(8, Math.min(72, Number(annotation.font && annotation.font.size) || 12))
+      );
+    }}
+    borderInput.value = rgbaToHex(shape.line && shape.line.color, "#2563eb");
+    fillInput.value = rgbaToHex(shape.fillcolor, "#dbeafe");
+    borderStyleInput.value = shape.line && Number(shape.line.width) === 0
+      ? "none"
+      : String(shape.line && shape.line.dash || "solid");
+    updateBorderControl();
+    opacityInput.value = String(rgbaOpacity(shape.fillcolor, 30));
+    updateSelectionButtons();
+    openPanel();
+    requestAnimationFrame(updateSelectionOverlay);
+  }}
+
+  function syncOriginalArrays(id, kind, shape, annotation, remove) {{
+    if (gd._ristFtirUnitOriginalShapes) {{
+      var si = shapeIndex(id, kind, gd._ristFtirUnitOriginalShapes);
+      if (remove && si >= 0) gd._ristFtirUnitOriginalShapes.splice(si, 1);
+      else if (si >= 0) gd._ristFtirUnitOriginalShapes[si] = clone(shape);
+      else if (!remove) gd._ristFtirUnitOriginalShapes.push(clone(shape));
+    }}
+    if (kind === "text" && gd._ristFtirUnitOriginalAnnotations) {{
+      var ai = annotationIndex(id, gd._ristFtirUnitOriginalAnnotations);
+      if (remove && ai >= 0) gd._ristFtirUnitOriginalAnnotations.splice(ai, 1);
+      else if (ai >= 0) gd._ristFtirUnitOriginalAnnotations[ai] = clone(annotation);
+      else if (!remove) gd._ristFtirUnitOriginalAnnotations.push(clone(annotation));
+    }}
+  }}
+
+  function addObject(x0, y0, x1, y1) {{
+    recordHistory();
+    var kind = drawKind;
+    var id = Date.now() + "-" + Math.floor(Math.random() * 10000);
+    var opacity = Number(opacityInput.value) / 100;
+    var shape = {{
+      type: "rect",
+      xref: "x",
+      yref: "y",
+      x0: x0,
+      y0: y0,
+      x1: x1,
+      y1: y1,
+      name: shapeName(id, kind),
+      line: borderLine(),
+      fillcolor: hexToRgba(fillInput.value, opacity),
+      layer: "above"
+    }};
+    var annotation = null;
+    if (kind === "text") {{
+      var bounds = shapeClientBounds(shape);
+      annotation = {{
+        xref: "x",
+        yref: "y",
+        x: (x0 + x1) / 2,
+        y: (y0 + y1) / 2,
+        text: esc(textInput.value || "텍스트"),
+        name: textName(id),
+        showarrow: false,
+        captureevents: true,
+        align: "center",
+        width: bounds ? Math.max(20, bounds.right - bounds.left - 12) : undefined,
+        height: bounds ? Math.max(16, bounds.bottom - bounds.top - 8) : undefined,
+        bgcolor: "rgba(255,255,255,0)",
+        font: {{
+          color: fontColorInput.value,
+          size: fontSizeValue()
+        }}
+      }};
+    }}
+    var shapes = (gd.layout.shapes || []).map(clone);
+    var annotations = (gd.layout.annotations || []).map(clone);
+    shapes.push(shape);
+    if (annotation) annotations.push(annotation);
+    syncOriginalArrays(id, kind, shape, annotation, false);
+    window.Plotly.relayout(gd, {{ shapes: shapes, annotations: annotations }}).then(function() {{
+      selectShape(id, kind);
+    }});
+    setDrawMode(false);
+  }}
+
+  function applySelection() {{
+    if (!selectedId) return;
+    var shapes = (gd.layout.shapes || []).map(clone);
+    var annotations = (gd.layout.annotations || []).map(clone);
+    var si = shapeIndex(selectedId, selectedKind, shapes);
+    var ai = annotationIndex(selectedId, annotations);
+    if (si < 0 || (selectedKind === "text" && ai < 0)) return;
+    recordHistory();
+    shapes[si].line = Object.assign({{}}, shapes[si].line || {{}}, borderLine());
+    shapes[si].fillcolor = hexToRgba(
+      fillInput.value,
+      Number(opacityInput.value) / 100
+    );
+    var annotation = ai >= 0 ? annotations[ai] : null;
+    if (annotation) {{
+      annotation.text = esc(textInput.value || "텍스트");
+      annotation.font = Object.assign({{}}, annotation.font || {{}}, {{
+        color: fontColorInput.value,
+        size: fontSizeValue()
+      }});
+    }}
+    syncOriginalArrays(
+      selectedId,
+      selectedKind,
+      shapes[si],
+      annotation,
+      false
+    );
+    window.Plotly.relayout(gd, {{
+      shapes: shapes,
+      annotations: annotations
+    }}).then(updateSelectionOverlay);
+  }}
+
+  function deleteSelection() {{
+    if (!selectedId) return;
+    var id = selectedId;
+    var kind = selectedKind;
+    var shapes = (gd.layout.shapes || []).map(clone);
+    var annotations = (gd.layout.annotations || []).map(clone);
+    var si = shapeIndex(id, kind, shapes);
+    var ai = annotationIndex(id, annotations);
+    if (si < 0 || (kind === "text" && ai < 0)) return;
+    recordHistory();
+    var shape = shapes[si];
+    var annotation = ai >= 0 ? annotations[ai] : null;
+    shapes.splice(si, 1);
+    if (ai >= 0) annotations.splice(ai, 1);
+    syncOriginalArrays(id, kind, shape, annotation, true);
+    clearSelection();
+    window.Plotly.relayout(gd, {{ shapes: shapes, annotations: annotations }});
+  }}
+
+  function plotPoint(ev) {{
+    var drag = gd.querySelector(".nsewdrag");
+    var layout = gd._fullLayout;
+    if (!drag || !layout || !layout.xaxis || !layout.yaxis) return null;
+    var rect = drag.getBoundingClientRect();
+    var px = ev.clientX - rect.left;
+    var py = ev.clientY - rect.top;
+    if (px < 0 || py < 0 || px > rect.width || py > rect.height) return null;
+    return {{
+      x: layout.xaxis.p2d(px),
+      y: layout.yaxis.p2d(py),
+      rect: rect
+    }};
+  }}
+
+  function plotClientBounds() {{
+    var drag = gd.querySelector(".nsewdrag");
+    if (!drag) return null;
+    var gdRect = gd.getBoundingClientRect();
+    var dragRect = drag.getBoundingClientRect();
+    return {{
+      left: dragRect.left - gdRect.left,
+      right: dragRect.right - gdRect.left,
+      top: dragRect.top - gdRect.top,
+      bottom: dragRect.bottom - gdRect.top
+    }};
+  }}
+
+  function objectAtPoint(point) {{
+    var shapes = gd.layout.shapes || [];
+    for (var index = shapes.length - 1; index >= 0; index -= 1) {{
+      var shape = shapes[index];
+      var kind = shapeKind(shape);
+      if (!kind || shape.visible === false) continue;
+      var minX = Math.min(Number(shape.x0), Number(shape.x1));
+      var maxX = Math.max(Number(shape.x0), Number(shape.x1));
+      var minY = Math.min(Number(shape.y0), Number(shape.y1));
+      var maxY = Math.max(Number(shape.y0), Number(shape.y1));
+      if (point.x >= minX && point.x <= maxX && point.y >= minY && point.y <= maxY) {{
+        return {{ id: shapeId(shape), kind: kind }};
+      }}
+    }}
+    return null;
+  }}
+
+  function resizedBounds(state, ev) {{
+    var bounds = Object.assign({{}}, state.startBounds);
+    var limits = plotClientBounds();
+    if (!limits) return bounds;
+    var dx = ev.clientX - state.startX;
+    var dy = ev.clientY - state.startY;
+    var minSize = 16;
+    if (state.mode === "move") {{
+      var width = bounds.right - bounds.left;
+      var height = bounds.bottom - bounds.top;
+      bounds.left += dx;
+      bounds.right += dx;
+      bounds.top += dy;
+      bounds.bottom += dy;
+      if (bounds.left < limits.left) {{
+        bounds.left = limits.left;
+        bounds.right = limits.left + width;
+      }}
+      if (bounds.right > limits.right) {{
+        bounds.right = limits.right;
+        bounds.left = limits.right - width;
+      }}
+      if (bounds.top < limits.top) {{
+        bounds.top = limits.top;
+        bounds.bottom = limits.top + height;
+      }}
+      if (bounds.bottom > limits.bottom) {{
+        bounds.bottom = limits.bottom;
+        bounds.top = limits.bottom - height;
+      }}
+      return bounds;
+    }}
+    if (state.mode.indexOf("w") >= 0) {{
+      bounds.left = Math.max(limits.left, Math.min(bounds.right - minSize, bounds.left + dx));
+    }}
+    if (state.mode.indexOf("e") >= 0) {{
+      bounds.right = Math.min(limits.right, Math.max(bounds.left + minSize, bounds.right + dx));
+    }}
+    if (state.mode.indexOf("n") >= 0) {{
+      bounds.top = Math.max(limits.top, Math.min(bounds.bottom - minSize, bounds.top + dy));
+    }}
+    if (state.mode.indexOf("s") >= 0) {{
+      bounds.bottom = Math.min(
+        limits.bottom,
+        Math.max(bounds.top + minSize, bounds.bottom + dy)
+      );
+    }}
+    return bounds;
+  }}
+
+  function applyTransformedBounds(bounds) {{
+    if (!selectedId || !selectedKind || !bounds) return;
+    var drag = gd.querySelector(".nsewdrag");
+    var layout = gd._fullLayout;
+    if (!drag || !layout || !layout.xaxis || !layout.yaxis) return;
+    var gdRect = gd.getBoundingClientRect();
+    var dragRect = drag.getBoundingClientRect();
+    var offsetX = dragRect.left - gdRect.left;
+    var offsetY = dragRect.top - gdRect.top;
+    var shapes = (gd.layout.shapes || []).map(clone);
+    var annotations = (gd.layout.annotations || []).map(clone);
+    var si = shapeIndex(selectedId, selectedKind, shapes);
+    var ai = annotationIndex(selectedId, annotations);
+    if (si < 0 || (selectedKind === "text" && ai < 0)) return;
+    var shape = shapes[si];
+    shape.x0 = layout.xaxis.p2d(bounds.left - offsetX);
+    shape.x1 = layout.xaxis.p2d(bounds.right - offsetX);
+    shape.y0 = layout.yaxis.p2d(bounds.top - offsetY);
+    shape.y1 = layout.yaxis.p2d(bounds.bottom - offsetY);
+    var annotation = ai >= 0 ? annotations[ai] : null;
+    if (annotation) {{
+      annotation.x = layout.xaxis.p2d(
+        ((bounds.left + bounds.right) / 2) - offsetX
+      );
+      annotation.y = layout.yaxis.p2d(
+        ((bounds.top + bounds.bottom) / 2) - offsetY
+      );
+      annotation.width = Math.max(20, bounds.right - bounds.left - 12);
+      annotation.height = Math.max(16, bounds.bottom - bounds.top - 8);
+    }}
+    syncOriginalArrays(
+      selectedId,
+      selectedKind,
+      shape,
+      annotation,
+      false
+    );
+    window.Plotly.relayout(gd, {{
+      shapes: shapes,
+      annotations: annotations
+    }}).then(updateSelectionOverlay);
+  }}
+
+  gd.addEventListener("pointerdown", function(ev) {{
+    if (ev.target.closest(
+      ".rist-shape-editor-panel, .rist-plot-control-row, .modebar, .rist-shape-selection"
+    )) return;
+    var point = plotPoint(ev);
+    if (!point) return;
+    if (drawMode) {{
+      drawStart = {{
+        clientX: ev.clientX,
+        clientY: ev.clientY,
+        x: point.x,
+        y: point.y
+      }};
+      preview.style.display = "block";
+      ev.preventDefault();
+      ev.stopPropagation();
+      return;
+    }}
+    var object = objectAtPoint(point);
+    if (object) {{
+      selectShape(object.id, object.kind);
+      ev.preventDefault();
+      ev.stopPropagation();
+    }} else {{
+      clearSelection();
+    }}
+  }}, true);
+
+  selection.addEventListener("pointerdown", function(ev) {{
+    if (!selectedId || !selectedKind) return;
+    var bounds = shapeClientBounds(selectedShape());
+    if (!bounds) return;
+    var handle = ev.target.closest(".rist-shape-resize-handle");
+    transformState = {{
+      mode: handle ? handle.dataset.dir : "move",
+      startX: ev.clientX,
+      startY: ev.clientY,
+      startBounds: bounds,
+      bounds: bounds,
+      captured: false
+    }};
+    ev.preventDefault();
+    ev.stopPropagation();
+  }});
+
+  document.addEventListener("pointermove", function(ev) {{
+    if (transformState) {{
+      if (!transformState.captured
+          && (Math.abs(ev.clientX - transformState.startX) > 1
+              || Math.abs(ev.clientY - transformState.startY) > 1)) {{
+        recordHistory();
+        transformState.captured = true;
+      }}
+      transformState.bounds = resizedBounds(transformState, ev);
+      setSelectionBounds(transformState.bounds);
+      ev.preventDefault();
+      return;
+    }}
+    if (drawStart) {{
+      var gdRect = gd.getBoundingClientRect();
+      var left = Math.min(drawStart.clientX, ev.clientX) - gdRect.left;
+      var top = Math.min(drawStart.clientY, ev.clientY) - gdRect.top;
+      preview.style.left = left + "px";
+      preview.style.top = top + "px";
+      preview.style.width = Math.abs(ev.clientX - drawStart.clientX) + "px";
+      preview.style.height = Math.abs(ev.clientY - drawStart.clientY) + "px";
+      ev.preventDefault();
+    }}
+  }});
+
+  document.addEventListener("pointerup", function(ev) {{
+    if (transformState) {{
+      var transform = transformState;
+      transformState = null;
+      if (transform.captured) applyTransformedBounds(transform.bounds);
+      else updateSelectionOverlay();
+      ev.preventDefault();
+      return;
+    }}
+    if (drawStart) {{
+      var start = drawStart;
+      drawStart = null;
+      preview.style.display = "none";
+      var point = plotPoint(ev);
+      if (!point
+          || Math.abs(ev.clientX - start.clientX) < 6
+          || Math.abs(ev.clientY - start.clientY) < 6) return;
+      addObject(start.x, start.y, point.x, point.y);
+      ev.preventDefault();
+    }}
+  }});
+
+  toolButton.addEventListener("click", function(ev) {{
+    ev.preventDefault();
+    ev.stopPropagation();
+    openPanel();
+    setDrawMode(!drawMode);
+  }});
+  panel.querySelector(".rist-shape-editor-close").addEventListener("click", function() {{
+    closePanel();
+    clearSelection();
+  }});
+  kindButtons.forEach(function(button) {{
+    button.addEventListener("click", function() {{
+      clearSelection();
+      setDrawKind(button.dataset.kind);
+    }});
+  }});
+  drawButton.addEventListener("click", function() {{ setDrawMode(!drawMode); }});
+  borderStyleInput.addEventListener("change", updateBorderControl);
+  applyButton.addEventListener("click", applySelection);
+  deleteButton.addEventListener("click", deleteSelection);
+  gd.on("plotly_clickannotation", function(ev) {{
+    var annotation = ev && ev.annotation;
+    var name = annotation && String(annotation.name || "");
+    if (name.indexOf("rist_text_box_text:") !== 0) return;
+    selectShape(name.slice("rist_text_box_text:".length), "text");
+  }});
+  gd.addEventListener("rist-history-restored", function() {{
+    clearSelection();
+  }});
+  gd.addEventListener("rist-shape-editor-close", function() {{
+    closePanel();
+    clearSelection();
+  }});
+  gd.on("plotly_afterplot", updateSelectionOverlay);
+  gd.on("plotly_relayout", function() {{
+    requestAnimationFrame(updateSelectionOverlay);
+  }});
+  window.addEventListener("resize", updateSelectionOverlay);
+  setDrawKind("rect");
+  updateBorderControl();
+  updateSelectionButtons();
+}})();
+</script>
+"""
+
+
 def _plot_edit_history_js(div_id: str) -> str:
     """그래프 편집 상태의 실행취소/다시 실행 스택을 제공한다."""
     return f"""
@@ -3281,6 +4218,7 @@ def fig_to_responsive_html(
     legend_group_text: Mapping[str, str] | None = None,
     legend_text_edit: bool = False,
     peak_editor: bool = False,
+    shape_editor: bool = False,
     image_format: str = "svg",
     image_filename: str = "plot",
     image_scale: float = 2,
@@ -3303,6 +4241,7 @@ def fig_to_responsive_html(
     - legend_group_text 는 저장 전 범례 그룹 제목을 legendgroup/title 기준으로 변경한다.
     - legend_text_edit=True 면 생성된 HTML에서 범례 항목을 더블클릭해 수정할 수 있다.
     - peak_editor=True 면 피크 marker/라벨/보조선을 HTML에서 추가·삭제할 수 있다.
+    - shape_editor=True 면 사각형과 텍스트 박스를 그래프에 추가·편집할 수 있다.
     - image_format 은 모드바 카메라(Download plot) 버튼의 기본 저장 형식(svg/png/jpeg/webp).
     - image_filename / image_scale 은 저장 파일명·배율.
     - image_format_selector=True 면 그래프 우상단에 형식 선택 드롭다운 + 저장 버튼을 띄운다.
@@ -3381,7 +4320,10 @@ def fig_to_responsive_html(
     if peak_editor:
         html = html.replace("</body>", peak_editor_js(div_id) + "</body>", 1)
 
-    if title_edit or legend_text_edit or peak_editor:
+    if shape_editor:
+        html = html.replace("</body>", shape_editor_js(div_id) + "</body>", 1)
+
+    if title_edit or legend_text_edit or peak_editor or shape_editor:
         html = html.replace("</body>", _plot_edit_history_js(div_id) + "</body>", 1)
 
     if trace_highlight:
@@ -3421,6 +4363,7 @@ def write_responsive_html(
     legend_group_text: Mapping[str, str] | None = None,
     legend_text_edit: bool = False,
     peak_editor: bool = False,
+    shape_editor: bool = False,
     image_format: str = "svg",
     image_filename: str = "plot",
     image_scale: float = 2,
@@ -3446,6 +4389,7 @@ def write_responsive_html(
         legend_group_text=legend_group_text,
         legend_text_edit=legend_text_edit,
         peak_editor=peak_editor,
+        shape_editor=shape_editor,
         image_format=image_format,
         image_filename=image_filename,
         image_scale=image_scale,
