@@ -4422,9 +4422,9 @@ def _responsive_legend_js(div_id: str, wide_legend_inside: bool = True,
     var layout = wide ? {wide_layout} : {{
       "legend.orientation": "h",
       "legend.x": 0.5, "legend.xanchor": "center",
-      "legend.y": -0.22, "legend.yanchor": "top",
+      "legend.y": -0.30, "legend.yanchor": "top",
       "height": mobileMinHeightPx,
-      "margin.r": 30, "margin.b": 130
+      "margin.r": 30, "margin.b": 150
     }};
     window.Plotly.relayout(gd, layout);
   }}
@@ -4516,6 +4516,25 @@ def _legend_drag_handle_js(div_id: str) -> str:
     return rect;
   }}
 
+  function legendNode() {{
+    return gd.querySelector(".legend");
+  }}
+
+  function setLegendPreview(dx, dy) {{
+    var legend = legendNode();
+    if (!legend) return;
+    legend.style.transformOrigin = "0 0";
+    legend.style.transform = "translate(" + Math.round(dx) + "px, " + Math.round(dy) + "px)";
+    legend.style.willChange = "transform";
+  }}
+
+  function clearLegendPreview() {{
+    var legend = legendNode();
+    if (!legend) return;
+    legend.style.transform = "";
+    legend.style.willChange = "";
+  }}
+
   function isLegendEvent(ev) {{
     return !!(
       ev.target
@@ -4531,6 +4550,7 @@ def _legend_drag_handle_js(div_id: str) -> str:
   }}
 
   function scheduleHandlePosition() {{
+    if (dragState) return;
     if (updateFrame) cancelAnimationFrame(updateFrame);
     updateFrame = requestAnimationFrame(positionHandle);
   }}
@@ -4566,6 +4586,8 @@ def _legend_drag_handle_js(div_id: str) -> str:
       handleTop: handleRect.top - gdRect.top,
       legendX: Number.isFinite(Number(layout.x)) ? Number(layout.x) : 1,
       legendY: Number.isFinite(Number(layout.y)) ? Number(layout.y) : 1,
+      nextX: Number.isFinite(Number(layout.x)) ? Number(layout.x) : 1,
+      nextY: Number.isFinite(Number(layout.y)) ? Number(layout.y) : 1,
       plotWidth: size.width,
       plotHeight: size.height
     }};
@@ -4583,22 +4605,29 @@ def _legend_drag_handle_js(div_id: str) -> str:
     handle.style.top = Math.round(dragState.handleTop + dy) + "px";
     var nextX = clamp(dragState.legendX + dx / dragState.plotWidth, -0.2, 1.4);
     var nextY = clamp(dragState.legendY - dy / dragState.plotHeight, -0.4, 1.2);
-    window.Plotly.relayout(gd, {{
-      "legend.x": nextX,
-      "legend.y": nextY
-    }}).then(scheduleHandlePosition);
+    dragState.nextX = nextX;
+    dragState.nextY = nextY;
+    setLegendPreview(dx, dy);
     ev.preventDefault();
     ev.stopPropagation();
   }});
 
   function finishDrag(ev) {{
     if (!dragState) return;
+    var nextX = dragState.nextX;
+    var nextY = dragState.nextY;
     if (handle.hasPointerCapture(dragState.pointerId)) {{
       handle.releasePointerCapture(dragState.pointerId);
     }}
     dragState = null;
     handle.classList.remove("is-dragging");
-    scheduleHandlePosition();
+    window.Plotly.relayout(gd, {{
+      "legend.x": nextX,
+      "legend.y": nextY
+    }}).then(function() {{
+      clearLegendPreview();
+      scheduleHandlePosition();
+    }});
     if (ev) {{
       ev.preventDefault();
       ev.stopPropagation();

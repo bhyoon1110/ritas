@@ -94,8 +94,8 @@ def test_shared_plotly_module_applies_legend_text(tmp_path) -> None:
     assert "mobileMinHeightPx = 900" in html
     assert "baseHeightPx + legendReservePx" in html
     assert '"height": mobileMinHeightPx' in html
-    assert '"margin.b": 130' in html
-    assert '"legend.y": -0.22' in html
+    assert '"margin.b": 150' in html
+    assert '"legend.y": -0.30' in html
     assert "touch-action: none" in html
     assert "overscroll-behavior: contain" in html
     assert 'gd.addEventListener("touchmove", containLegendScroll' in html
@@ -103,7 +103,10 @@ def test_shared_plotly_module_applies_legend_text(tmp_path) -> None:
     assert "ev.preventDefault()" in html
     assert "handleLeft: handleRect.left - gdRect.left" in html
     assert "handle.style.left = Math.round(dragState.handleLeft + dx)" in html
-    assert "if (dragState) return" not in html
+    assert "if (dragState) return" in html
+    assert "setLegendPreview(dx, dy)" in html
+    assert 'legend.style.transform = "translate("' in html
+    assert "clearLegendPreview()" in html
     assert "handle.addEventListener(\"pointerdown\"" in html
     assert "window.Plotly.relayout(gd, {" in html
     assert "\"legend.x\": nextX" in html
