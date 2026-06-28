@@ -757,7 +757,7 @@ body {
   #peak-plot .rist-ftir-tools-toggle {
     position: absolute;
     top: 34px;
-    right: 214px;
+    right: 8px;
     z-index: 25;
     display: inline-flex;
     align-items: center;

@@ -690,7 +690,7 @@ body { overflow-x: hidden; }
   #raman-plot .rist-raman-tools-toggle {
     position: absolute;
     top: 34px;
-    right: 214px;
+    right: 8px;
     z-index: 25;
     display: inline-flex;
     align-items: center;
