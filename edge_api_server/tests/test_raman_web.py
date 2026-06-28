@@ -64,8 +64,8 @@ def test_raman_workspace_contains_upload_controls() -> None:
     assert "var compact = window.innerWidth <= 760" in page
     assert '"height": 900' in page
     assert '"margin.t": 145' in page
-    assert '"margin.b": 105' in page
-    assert '"legend.y": -0.12' in page
+    assert '"margin.b": 130' in page
+    assert '"legend.y": -0.22' in page
     assert '"margin.t": 120' in page
     assert "height: calc(100vh - 248px + 360px) !important" in page
     assert "min-height: 900px" in page

@@ -94,8 +94,8 @@ def test_shared_plotly_module_applies_legend_text(tmp_path) -> None:
     assert "mobileMinHeightPx = 900" in html
     assert "baseHeightPx + legendReservePx" in html
     assert '"height": mobileMinHeightPx' in html
-    assert '"margin.b": 105' in html
-    assert '"legend.y": -0.12' in html
+    assert '"margin.b": 130' in html
+    assert '"legend.y": -0.22' in html
     assert "touch-action: none" in html
     assert "overscroll-behavior: contain" in html
     assert 'gd.addEventListener("touchmove", containLegendScroll' in html

@@ -1728,11 +1728,11 @@ _UPLOAD_SCRIPT = """
       "height": 900,
       "margin.t": 145,
       "margin.r": 30,
-      "margin.b": 105,
+      "margin.b": 130,
       "legend.orientation": "h",
       "legend.x": 0.5,
       "legend.xanchor": "center",
-      "legend.y": -0.12,
+      "legend.y": -0.22,
       "legend.yanchor": "top"
     } : {
       "height": 720,

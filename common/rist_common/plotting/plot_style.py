@@ -4422,9 +4422,9 @@ def _responsive_legend_js(div_id: str, wide_legend_inside: bool = True,
     var layout = wide ? {wide_layout} : {{
       "legend.orientation": "h",
       "legend.x": 0.5, "legend.xanchor": "center",
-      "legend.y": -0.12, "legend.yanchor": "top",
+      "legend.y": -0.22, "legend.yanchor": "top",
       "height": mobileMinHeightPx,
-      "margin.r": 30, "margin.b": 105
+      "margin.r": 30, "margin.b": 130
     }};
     window.Plotly.relayout(gd, layout);
   }}
