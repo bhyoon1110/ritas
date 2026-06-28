@@ -11,22 +11,37 @@ PEAK_SENSITIVITY_PRESETS = {
     "high": {"height": 0.03, "prominence": 0.015, "distance": 10},
     "medium": {"height": 0.05, "prominence": 0.03, "distance": 15},
     "low": {"height": 0.08, "prominence": 0.06, "distance": 25},
+    "very_low": {"height": 0.40, "prominence": 0.30, "distance": 70},
 }
 
-PEAK_SENSITIVITY_VALUES = {"low": 0, "medium": 50, "high": 100}
+PEAK_SENSITIVITY_VALUES = {"low": 25, "medium": 50, "high": 100}
+PEAK_SENSITIVITY_ANCHORS = (
+    (0, "very_low"),
+    (25, "low"),
+    (50, "medium"),
+    (100, "high"),
+)
 
 
 def peak_params_for_sensitivity(value):
-    """0~100 민감도를 low/medium/high preset 사이에서 선형 보간한다."""
+    """0~100 민감도를 very-low/low/medium/high 사이에서 선형 보간한다."""
     sensitivity = max(0, min(100, int(round(float(value)))))
-    if sensitivity <= 50:
-        start = PEAK_SENSITIVITY_PRESETS["low"]
-        end = PEAK_SENSITIVITY_PRESETS["medium"]
-        ratio = sensitivity / 50.0
-    else:
-        start = PEAK_SENSITIVITY_PRESETS["medium"]
-        end = PEAK_SENSITIVITY_PRESETS["high"]
-        ratio = (sensitivity - 50) / 50.0
+    for anchor_value, anchor_name in PEAK_SENSITIVITY_ANCHORS:
+        if sensitivity == anchor_value:
+            return dict(PEAK_SENSITIVITY_PRESETS[anchor_name])
+    start_value, start_name = PEAK_SENSITIVITY_ANCHORS[0]
+    end_value, end_name = PEAK_SENSITIVITY_ANCHORS[-1]
+    for left, right in zip(
+        PEAK_SENSITIVITY_ANCHORS,
+        PEAK_SENSITIVITY_ANCHORS[1:],
+    ):
+        if left[0] <= sensitivity <= right[0]:
+            start_value, start_name = left
+            end_value, end_name = right
+            break
+    start = PEAK_SENSITIVITY_PRESETS[start_name]
+    end = PEAK_SENSITIVITY_PRESETS[end_name]
+    ratio = (sensitivity - start_value) / (end_value - start_value)
 
     def interpolate(name):
         return start[name] + (end[name] - start[name]) * ratio
@@ -111,7 +126,7 @@ def build_interactive_peak_candidates(
         )
         for idx in indexes:
             first_seen.setdefault(int(idx), sensitivity)
-        if sensitivity in (0, 50, 100):
+        if sensitivity in set(PEAK_SENSITIVITY_VALUES.values()):
             preset_indexes[sensitivity] = {int(idx) for idx in indexes}
 
     candidate_indexes = np.array(sorted(first_seen), dtype=int)

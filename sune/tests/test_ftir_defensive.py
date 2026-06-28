@@ -76,6 +76,11 @@ def test_peak_sensitivity_low_suppresses_small_peaks() -> None:
 
 def test_numeric_peak_sensitivity_interpolates_presets() -> None:
     assert peak_params_for_sensitivity(0) == {
+        "height": 0.40,
+        "prominence": 0.30,
+        "distance": 70,
+    }
+    assert peak_params_for_sensitivity(25) == {
         "height": 0.08,
         "prominence": 0.06,
         "distance": 25,
@@ -160,14 +165,14 @@ def test_interactive_peak_candidates_include_all_sensitivity_levels() -> None:
     sample_vec = pd.Series([0.0] * 100, dtype=float).to_numpy()
     sample_vec[20] = 0.04
     sample_vec[50] = 0.07
-    sample_vec[80] = 0.10
+    sample_vec[80] = 0.50
 
     candidates = build_interactive_peak_candidates(
         sample_vec,
         grid,
         selected_idx=pd.Series([80]).to_numpy(),
         selected_wn=pd.Series([80.0]).to_numpy(),
-        selected_val=pd.Series([0.10]).to_numpy(),
+        selected_val=pd.Series([0.50]).to_numpy(),
         selected_fwhm=pd.Series([1.0]).to_numpy(),
     )
     by_index = {candidate["index"]: candidate for candidate in candidates}

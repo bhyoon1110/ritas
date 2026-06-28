@@ -272,6 +272,8 @@ def test_shared_peak_editor_adds_peak_controls(tmp_path) -> None:
     assert "rist_sample_parent" in html
     assert "syncSampleChildren" in html
     assert "childCurvesForSample" in html
+    assert "peakMatchesCurrentSensitivity" in html
+    assert "peakMatchesCurrentSensitivity(childCurve) ? visible : false" in html
 
 
 def test_peak_sensitivity_control_filters_detected_peak_metadata() -> None:
@@ -287,9 +289,12 @@ def test_peak_sensitivity_control_filters_detected_peak_metadata() -> None:
     assert "pendingSensitivity" in html
     assert "min='0' max='100'" in html
     assert "피크 검출 민감도 수치" in html
-    assert "visible.filter(Boolean).length" in html
+    assert 'eligible ? (on ? true : "legendonly") : false' in html
+    assert "showlegend.push(eligible && !seenLegendItems[editGroup])" in html
+    assert "updateStatus(eligibleCount)" in html
+    assert "gd._ristPeakSensitivityValue = sensitivity" in html
     assert "rist-peak-sensitivity-change" in html
-    assert "value='0'" in html
+    assert "value='25'" in html
 
 
 def test_peak_editor_prefers_nearest_local_maximum_by_x(tmp_path) -> None:

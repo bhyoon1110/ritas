@@ -1441,7 +1441,7 @@ def _legend_text_edit_js(div_id: str) -> str:
 
 def peak_sensitivity_js(div_id: str, initial: str = "medium") -> str:
     """HTML에서 검출 피크의 0~100 민감도를 즉시 전환한다."""
-    initial_value = {"low": 0, "medium": 50, "high": 100}.get(initial, 50)
+    initial_value = {"low": 25, "medium": 50, "high": 100}.get(initial, 50)
     return f"""
 <style>
 #{div_id} .rist-peak-sensitivity-control {{
@@ -1487,6 +1487,7 @@ def peak_sensitivity_js(div_id: str, initial: str = "medium") -> str:
   var gd = document.getElementById("{div_id}");
   if (!gd || !window.Plotly || gd._ristPeakSensitivityInstalled) return;
   gd._ristPeakSensitivityInstalled = true;
+  gd._ristPeakSensitivityValue = {initial_value};
   var pendingSensitivity = null;
   var applyingSensitivity = false;
 
@@ -1526,8 +1527,8 @@ def peak_sensitivity_js(div_id: str, initial: str = "medium") -> str:
     var data = gd.data || [];
     var count = 0;
     for (var i = 0; i < data.length; i++) {{
-      if (minimumSensitivity(i) == null) continue;
-      if (data[i].visible !== false && data[i].visible !== "legendonly") count += 1;
+      var minimum = minimumSensitivity(i);
+      if (minimum != null && minimum <= gd._ristPeakSensitivityValue) count += 1;
     }}
     return count;
   }}
@@ -1543,10 +1544,13 @@ def peak_sensitivity_js(div_id: str, initial: str = "medium") -> str:
     var showlegend = [];
     var seenLegendItems = {{}};
     var visibleByCurve = {{}};
+    var eligibleCount = 0;
     for (var i = 0; i < data.length; i++) {{
       var minimum = minimumSensitivity(i);
       if (minimum == null) continue;
-      var on = minimum <= sensitivity && sampleVisible(sampleGroup(i));
+      var eligible = minimum <= sensitivity;
+      var on = eligible && sampleVisible(sampleGroup(i));
+      var visibility = eligible ? (on ? true : "legendonly") : false;
       var meta = traceMeta(i);
       var editGroup = String(
         meta.rist_legend_edit_group
@@ -1554,9 +1558,12 @@ def peak_sensitivity_js(div_id: str, initial: str = "medium") -> str:
         || "curve:" + i
       );
       curves.push(i);
-      visible.push(on);
-      showlegend.push(on && !seenLegendItems[editGroup]);
-      if (on) seenLegendItems[editGroup] = true;
+      visible.push(visibility);
+      showlegend.push(eligible && !seenLegendItems[editGroup]);
+      if (eligible) {{
+        seenLegendItems[editGroup] = true;
+        eligibleCount += 1;
+      }}
       visibleByCurve[i] = on;
     }}
     if (!curves.length) return Promise.resolve();
@@ -1595,7 +1602,7 @@ def peak_sensitivity_js(div_id: str, initial: str = "medium") -> str:
         shapes: shapes
       }});
     }}).then(function() {{
-      updateStatus(visible.filter(Boolean).length);
+      updateStatus(eligibleCount);
       gd.dispatchEvent(new CustomEvent("rist-peak-sensitivity-change", {{
         detail: {{ sensitivity: sensitivity }}
       }}));
@@ -1620,6 +1627,7 @@ def peak_sensitivity_js(div_id: str, initial: str = "medium") -> str:
     var sensitivity = Math.max(0, Math.min(100, Math.round(Number(rawValue) || 0)));
     slider.value = String(sensitivity);
     numberInput.value = String(sensitivity);
+    gd._ristPeakSensitivityValue = sensitivity;
     pendingSensitivity = sensitivity;
     runPendingSensitivity();
   }}
@@ -2305,6 +2313,14 @@ def peak_editor_js(div_id: str) -> str:
     return curves;
   }}
 
+  function peakMatchesCurrentSensitivity(curve) {{
+    var peak = traceMeta(curve).rist_peak;
+    if (!peak || !Number.isFinite(Number(peak.sensitivity_min))) return true;
+    var sensitivity = Number(gd._ristPeakSensitivityValue);
+    if (!Number.isFinite(sensitivity)) return true;
+    return Number(peak.sensitivity_min) <= sensitivity;
+  }}
+
   function syncSampleChildren(restyleEvent) {{
     if (!window.Plotly || gd._ristSyncingSampleVisibility) return;
     if (!restyleEvent || !restyleEvent.length) return;
@@ -2321,7 +2337,10 @@ def peak_editor_js(div_id: str) -> str:
       var childCurves = childCurvesForSample(group, curve);
       if (!childCurves.length) return;
       var visible = Array.isArray(visibleValues) ? visibleValues[pos] : visibleValues;
-      pending.push({{ curves: childCurves, visible: visible }});
+      var childVisibility = childCurves.map(function(childCurve) {{
+        return peakMatchesCurrentSensitivity(childCurve) ? visible : false;
+      }});
+      pending.push({{ curves: childCurves, visible: childVisibility }});
     }});
     if (!pending.length) return;
     gd._ristSyncingSampleVisibility = true;
