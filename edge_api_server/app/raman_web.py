@@ -682,8 +682,8 @@ body { overflow-x: hidden; }
     inset: 248px 0 0;
   }
   #raman-plot {
-    min-height: 720px;
-    height: calc(100vh - 248px + 180px) !important;
+    min-height: 900px;
+    height: calc(100vh - 248px + 360px) !important;
   }
 }
 @media (max-width: 1440px) {
@@ -1725,15 +1725,17 @@ _UPLOAD_SCRIPT = """
   function applyResponsiveLayout() {
     var compact = window.innerWidth <= 760;
     return window.Plotly.relayout(gd, compact ? {
-      "margin.t": 170,
+      "height": 900,
+      "margin.t": 145,
       "margin.r": 30,
-      "margin.b": 135,
+      "margin.b": 105,
       "legend.orientation": "h",
       "legend.x": 0.5,
       "legend.xanchor": "center",
-      "legend.y": -0.2,
+      "legend.y": -0.12,
       "legend.yanchor": "top"
     } : {
+      "height": 720,
       "margin.t": 120,
       "margin.r": (gd.data || []).length ? 260 : 70,
       "margin.b": 70,

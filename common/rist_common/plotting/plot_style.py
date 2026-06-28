@@ -4397,6 +4397,7 @@ def _responsive_legend_js(div_id: str, wide_legend_inside: bool = True,
   var originalMinHeightStyle = gd ? gd.style.minHeight : "";
   var baseHeightPx = null;
   var legendReservePx = 120;
+  var mobileMinHeightPx = 900;
 
   function setMobileLegendReserve(enabled) {{
     if (!gd) return;
@@ -4404,8 +4405,9 @@ def _responsive_legend_js(div_id: str, wide_legend_inside: bool = True,
       if (baseHeightPx == null) {{
         baseHeightPx = Math.max(1, Math.round(gd.getBoundingClientRect().height));
       }}
-      gd.style.height = (baseHeightPx + legendReservePx) + "px";
-      gd.style.minHeight = (baseHeightPx + legendReservePx) + "px";
+      var nextHeight = Math.max(baseHeightPx + legendReservePx, mobileMinHeightPx);
+      gd.style.height = nextHeight + "px";
+      gd.style.minHeight = nextHeight + "px";
     }} else {{
       gd.style.height = originalHeightStyle;
       gd.style.minHeight = originalMinHeightStyle;
@@ -4420,8 +4422,9 @@ def _responsive_legend_js(div_id: str, wide_legend_inside: bool = True,
     var layout = wide ? {wide_layout} : {{
       "legend.orientation": "h",
       "legend.x": 0.5, "legend.xanchor": "center",
-      "legend.y": -0.2, "legend.yanchor": "top",
-      "margin.r": 30, "margin.b": 120
+      "legend.y": -0.12, "legend.yanchor": "top",
+      "height": mobileMinHeightPx,
+      "margin.r": 30, "margin.b": 105
     }};
     window.Plotly.relayout(gd, layout);
   }}

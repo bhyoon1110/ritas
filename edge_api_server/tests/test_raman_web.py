@@ -62,10 +62,13 @@ def test_raman_workspace_contains_upload_controls() -> None:
     assert "@media (max-width: 1440px)" in page
     assert "@media (max-width: 420px)" in page
     assert "var compact = window.innerWidth <= 760" in page
-    assert '"margin.t": 170' in page
+    assert '"height": 900' in page
+    assert '"margin.t": 145' in page
+    assert '"margin.b": 105' in page
+    assert '"legend.y": -0.12' in page
     assert '"margin.t": 120' in page
-    assert "height: calc(100vh - 248px + 180px) !important" in page
-    assert "min-height: 720px" in page
+    assert "height: calc(100vh - 248px + 360px) !important" in page
+    assert "min-height: 900px" in page
     assert "rist-legend-edit-button" in page
     assert "rist-shape-editor-panel" in page
     assert "SNAP_PX = 24" in page

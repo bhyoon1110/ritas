@@ -54,8 +54,12 @@ def test_ftir_workspace_contains_upload_and_editor_controls() -> None:
     assert "width: min(860px, calc(100% - 24px)) !important" in page
     assert "max-width: calc(100% - 24px)" in page
     assert "rist-plot-data-replaced" in page
-    assert "height: calc(100vh - 180px + 180px) !important" in page
-    assert "min-height: 720px" in page
+    assert "height: calc(100vh - 180px + 360px) !important" in page
+    assert "min-height: 900px" in page
+    assert '"height": 900' in page
+    assert '"margin.t": 145' in page
+    assert '"margin.b": 105' in page
+    assert '"legend.y": -0.12' in page
     assert plotly_asset_path().is_file()
 
 
