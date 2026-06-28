@@ -712,10 +712,10 @@ body { overflow-x: hidden; }
   }
   #raman-plot .rist-plot-control-row {
     left: auto !important;
-    right: 214px !important;
+    right: 8px !important;
     top: 70px !important;
-    width: min(860px, calc(100% - 230px)) !important;
-    max-width: calc(100% - 230px);
+    width: min(860px, calc(100% - 24px)) !important;
+    max-width: calc(100% - 24px);
     max-height: min(360px, calc(100% - 86px));
     display: none !important;
     flex-wrap: wrap;

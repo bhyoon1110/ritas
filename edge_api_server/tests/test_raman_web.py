@@ -55,6 +55,9 @@ def test_raman_workspace_contains_upload_controls() -> None:
     assert "setPanelPosition" in page
     assert "setOpen(!gd.classList.contains" in page
     assert "max-width: calc(100% - 16px)" in page
+    assert "right: 8px !important" in page
+    assert "width: min(860px, calc(100% - 24px)) !important" in page
+    assert "max-width: calc(100% - 24px)" in page
     assert "@media (max-width: 760px)" in page
     assert "@media (max-width: 1440px)" in page
     assert "@media (max-width: 420px)" in page
