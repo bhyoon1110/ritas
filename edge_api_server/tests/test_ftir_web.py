@@ -130,7 +130,9 @@ def test_assignment_library_api_upload_select_and_edit(tmp_path: Path) -> None:
         initial = client.get("/api/v1/ftir/assignment-libraries")
         assert initial.status_code == 200
         assert initial.json()["deleteEnabled"] is False
-        assert initial.json()["libraries"][0]["id"] == "general-ftir"
+        initial_ids = {item["id"] for item in initial.json()["libraries"]}
+        assert "general-ftir" in initial_ids
+        assert "engineering-plastic-commodity-peaks" in initial_ids
         detail = client.get(
             "/api/v1/ftir/assignment-libraries/general-ftir"
         )

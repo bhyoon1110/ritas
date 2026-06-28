@@ -15,6 +15,7 @@ from ftir.findings import assign_group_candidates
 
 
 DEFAULT_CSV = Path(__file__).resolve().parents[1] / "ftir" / "resources" / "func_groups.csv"
+BUNDLED_DIR = DEFAULT_CSV.parent / "assignment_libraries"
 
 
 def library_json(name: str, assignment_name: str, center: float = 1700) -> bytes:
@@ -35,19 +36,42 @@ def test_store_seeds_lists_uploads_and_deletes_libraries(tmp_path: Path) -> None
     store = AssignmentLibraryStore(tmp_path / "libraries", DEFAULT_CSV)
 
     initial = store.summaries()
-    assert [item["id"] for item in initial] == [DEFAULT_LIBRARY_ID]
-    assert initial[0]["defaultSelected"] is True
+    initial_ids = {item["id"] for item in initial}
+    assert DEFAULT_LIBRARY_ID in initial_ids
+    assert "engineering-plastic-commodity-peaks" in initial_ids
+    assert "battery-electrolyte-peaks" in initial_ids
+    assert len(initial_ids) == 1 + len(list(BUNDLED_DIR.glob("*.json")))
+    assert [
+        item["defaultSelected"]
+        for item in initial
+        if item["id"] == DEFAULT_LIBRARY_ID
+    ] == [True]
     assert len(store.get(DEFAULT_LIBRARY_ID).detail()["assignments"]) == 47
 
     saved = store.save("melamine.json", library_json("Melamine", "N-H marker"))
     assert saved.library_id == "melamine"
-    assert {item["id"] for item in store.summaries()} == {
-        DEFAULT_LIBRARY_ID,
-        "melamine",
-    }
+    assert "melamine" in {item["id"] for item in store.summaries()}
 
     store.delete("melamine")
-    assert [item["id"] for item in store.summaries()] == [DEFAULT_LIBRARY_ID]
+    assert "melamine" not in {item["id"] for item in store.summaries()}
+
+
+def test_store_upgrades_legacy_seed_marker_once(tmp_path: Path) -> None:
+    root = tmp_path / "libraries"
+    root.mkdir()
+    (root / f"{DEFAULT_LIBRARY_ID}.csv").write_bytes(DEFAULT_CSV.read_bytes())
+    (root / ".initialized").write_text("1\n", encoding="ascii")
+    store = AssignmentLibraryStore(root, DEFAULT_CSV)
+
+    seeded_ids = {item["id"] for item in store.summaries()}
+
+    assert DEFAULT_LIBRARY_ID in seeded_ids
+    assert "engineering-plastic-engineering-peaks" in seeded_ids
+
+    store.delete("engineering-plastic-engineering-peaks")
+    after_delete = {item["id"] for item in store.summaries()}
+
+    assert "engineering-plastic-engineering-peaks" not in after_delete
 
 
 def test_store_creates_and_updates_editor_library(tmp_path: Path) -> None:

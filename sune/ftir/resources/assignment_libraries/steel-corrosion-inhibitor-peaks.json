@@ -1,0 +1,286 @@
+{
+  "name": "Steel Corrosion Inhibitor Peak Library",
+  "description": "방청제/부식억제제 FT-IR 기준 스펙트럼에서 자동 추출한 피크 후보. Generated from sune/data/RIST_FTIR_Library; 5 strongest peaks per spectrum.",
+  "assignments": [
+    {
+      "centerWavenumber": 738.0,
+      "tolerance": 10.0,
+      "name": "Benzimidazole marker @ 738 cm-1",
+      "color": "#b45309",
+      "note": "Auto-derived from 02_steel_coating/01_corrosion_inhibitors/nist_Benzimidazole__corrosion_inhibitor__idx0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 858.0,
+      "tolerance": 10.0,
+      "name": "Benzimidazole marker @ 858 cm-1",
+      "color": "#b45309",
+      "note": "Auto-derived from 02_steel_coating/01_corrosion_inhibitors/nist_Benzimidazole__corrosion_inhibitor__idx0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1258.0,
+      "tolerance": 10.0,
+      "name": "Benzimidazole marker @ 1258 cm-1",
+      "color": "#b45309",
+      "note": "Auto-derived from 02_steel_coating/01_corrosion_inhibitors/nist_Benzimidazole__corrosion_inhibitor__idx0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1386.0,
+      "tolerance": 10.0,
+      "name": "Benzimidazole marker @ 1386 cm-1",
+      "color": "#b45309",
+      "note": "Auto-derived from 02_steel_coating/01_corrosion_inhibitors/nist_Benzimidazole__corrosion_inhibitor__idx0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 3506.0,
+      "tolerance": 10.0,
+      "name": "Benzimidazole marker @ 3506 cm-1",
+      "color": "#b45309",
+      "note": "Auto-derived from 02_steel_coating/01_corrosion_inhibitors/nist_Benzimidazole__corrosion_inhibitor__idx0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 747.4,
+      "tolerance": 10.0,
+      "name": "Benzimidazole marker @ 747.4 cm-1",
+      "color": "#b45309",
+      "note": "Auto-derived from 02_steel_coating/01_corrosion_inhibitors/nist_Benzimidazole__corrosion_inhibitor__idx1.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1244.5,
+      "tolerance": 10.0,
+      "name": "Benzimidazole marker @ 1244.5 cm-1",
+      "color": "#b45309",
+      "note": "Auto-derived from 02_steel_coating/01_corrosion_inhibitors/nist_Benzimidazole__corrosion_inhibitor__idx1.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1408.2,
+      "tolerance": 10.0,
+      "name": "Benzimidazole marker @ 1408.2 cm-1",
+      "color": "#b45309",
+      "note": "Auto-derived from 02_steel_coating/01_corrosion_inhibitors/nist_Benzimidazole__corrosion_inhibitor__idx1.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1456.6,
+      "tolerance": 10.0,
+      "name": "Benzimidazole marker @ 1456.6 cm-1",
+      "color": "#b45309",
+      "note": "Auto-derived from 02_steel_coating/01_corrosion_inhibitors/nist_Benzimidazole__corrosion_inhibitor__idx1.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 2918.3,
+      "tolerance": 10.0,
+      "name": "Benzimidazole marker @ 2918.3 cm-1",
+      "color": "#b45309",
+      "note": "Auto-derived from 02_steel_coating/01_corrosion_inhibitors/nist_Benzimidazole__corrosion_inhibitor__idx1.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 738.0,
+      "tolerance": 10.0,
+      "name": "Benzimidazole marker @ 738 cm-1",
+      "color": "#b45309",
+      "note": "Auto-derived from 02_steel_coating/01_corrosion_inhibitors/nist_Benzimidazole_m0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 858.0,
+      "tolerance": 10.0,
+      "name": "Benzimidazole marker @ 858 cm-1",
+      "color": "#b45309",
+      "note": "Auto-derived from 02_steel_coating/01_corrosion_inhibitors/nist_Benzimidazole_m0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1258.0,
+      "tolerance": 10.0,
+      "name": "Benzimidazole marker @ 1258 cm-1",
+      "color": "#b45309",
+      "note": "Auto-derived from 02_steel_coating/01_corrosion_inhibitors/nist_Benzimidazole_m0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1386.0,
+      "tolerance": 10.0,
+      "name": "Benzimidazole marker @ 1386 cm-1",
+      "color": "#b45309",
+      "note": "Auto-derived from 02_steel_coating/01_corrosion_inhibitors/nist_Benzimidazole_m0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 3506.0,
+      "tolerance": 10.0,
+      "name": "Benzimidazole marker @ 3506 cm-1",
+      "color": "#b45309",
+      "note": "Auto-derived from 02_steel_coating/01_corrosion_inhibitors/nist_Benzimidazole_m0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 747.4,
+      "tolerance": 10.0,
+      "name": "Benzimidazole marker @ 747.4 cm-1",
+      "color": "#b45309",
+      "note": "Auto-derived from 02_steel_coating/01_corrosion_inhibitors/nist_Benzimidazole_m1.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1244.5,
+      "tolerance": 10.0,
+      "name": "Benzimidazole marker @ 1244.5 cm-1",
+      "color": "#b45309",
+      "note": "Auto-derived from 02_steel_coating/01_corrosion_inhibitors/nist_Benzimidazole_m1.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1408.2,
+      "tolerance": 10.0,
+      "name": "Benzimidazole marker @ 1408.2 cm-1",
+      "color": "#b45309",
+      "note": "Auto-derived from 02_steel_coating/01_corrosion_inhibitors/nist_Benzimidazole_m1.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1456.6,
+      "tolerance": 10.0,
+      "name": "Benzimidazole marker @ 1456.6 cm-1",
+      "color": "#b45309",
+      "note": "Auto-derived from 02_steel_coating/01_corrosion_inhibitors/nist_Benzimidazole_m1.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 2918.3,
+      "tolerance": 10.0,
+      "name": "Benzimidazole marker @ 2918.3 cm-1",
+      "color": "#b45309",
+      "note": "Auto-derived from 02_steel_coating/01_corrosion_inhibitors/nist_Benzimidazole_m1.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 678.0,
+      "tolerance": 10.0,
+      "name": "Benzotriazole marker @ 678 cm-1",
+      "color": "#b45309",
+      "note": "Auto-derived from 02_steel_coating/01_corrosion_inhibitors/nist_Benzotriazole__corrosion_inhibitor__idx0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 742.0,
+      "tolerance": 10.0,
+      "name": "Benzotriazole marker @ 742 cm-1",
+      "color": "#b45309",
+      "note": "Auto-derived from 02_steel_coating/01_corrosion_inhibitors/nist_Benzotriazole__corrosion_inhibitor__idx0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1006.0,
+      "tolerance": 10.0,
+      "name": "Benzotriazole marker @ 1006 cm-1",
+      "color": "#b45309",
+      "note": "Auto-derived from 02_steel_coating/01_corrosion_inhibitors/nist_Benzotriazole__corrosion_inhibitor__idx0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1210.0,
+      "tolerance": 10.0,
+      "name": "Benzotriazole marker @ 1210 cm-1",
+      "color": "#b45309",
+      "note": "Auto-derived from 02_steel_coating/01_corrosion_inhibitors/nist_Benzotriazole__corrosion_inhibitor__idx0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 3498.0,
+      "tolerance": 10.0,
+      "name": "Benzotriazole marker @ 3498 cm-1",
+      "color": "#b45309",
+      "note": "Auto-derived from 02_steel_coating/01_corrosion_inhibitors/nist_Benzotriazole__corrosion_inhibitor__idx0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 678.0,
+      "tolerance": 10.0,
+      "name": "Benzotriazole marker @ 678 cm-1",
+      "color": "#b45309",
+      "note": "Auto-derived from 02_steel_coating/01_corrosion_inhibitors/nist_Benzotriazole_m0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 742.0,
+      "tolerance": 10.0,
+      "name": "Benzotriazole marker @ 742 cm-1",
+      "color": "#b45309",
+      "note": "Auto-derived from 02_steel_coating/01_corrosion_inhibitors/nist_Benzotriazole_m0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1006.0,
+      "tolerance": 10.0,
+      "name": "Benzotriazole marker @ 1006 cm-1",
+      "color": "#b45309",
+      "note": "Auto-derived from 02_steel_coating/01_corrosion_inhibitors/nist_Benzotriazole_m0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1210.0,
+      "tolerance": 10.0,
+      "name": "Benzotriazole marker @ 1210 cm-1",
+      "color": "#b45309",
+      "note": "Auto-derived from 02_steel_coating/01_corrosion_inhibitors/nist_Benzotriazole_m0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 3498.0,
+      "tolerance": 10.0,
+      "name": "Benzotriazole marker @ 3498 cm-1",
+      "color": "#b45309",
+      "note": "Auto-derived from 02_steel_coating/01_corrosion_inhibitors/nist_Benzotriazole_m0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 662.0,
+      "tolerance": 10.0,
+      "name": "Imidazole marker @ 662 cm-1",
+      "color": "#b45309",
+      "note": "Auto-derived from 02_steel_coating/01_corrosion_inhibitors/nist_Imidazole_n0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 760.0,
+      "tolerance": 10.0,
+      "name": "Imidazole marker @ 760 cm-1",
+      "color": "#b45309",
+      "note": "Auto-derived from 02_steel_coating/01_corrosion_inhibitors/nist_Imidazole_n0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 938.0,
+      "tolerance": 10.0,
+      "name": "Imidazole marker @ 938 cm-1",
+      "color": "#b45309",
+      "note": "Auto-derived from 02_steel_coating/01_corrosion_inhibitors/nist_Imidazole_n0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1057.0,
+      "tolerance": 10.0,
+      "name": "Imidazole marker @ 1057 cm-1",
+      "color": "#b45309",
+      "note": "Auto-derived from 02_steel_coating/01_corrosion_inhibitors/nist_Imidazole_n0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 2616.0,
+      "tolerance": 10.0,
+      "name": "Imidazole marker @ 2616 cm-1",
+      "color": "#b45309",
+      "note": "Auto-derived from 02_steel_coating/01_corrosion_inhibitors/nist_Imidazole_n0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 757.0,
+      "tolerance": 10.0,
+      "name": "2-Mercaptobenzothiazole (MBT) marker @ 757 cm-1",
+      "color": "#b45309",
+      "note": "Auto-derived from 02_steel_coating/01_corrosion_inhibitors/nist_MBT_n0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1041.0,
+      "tolerance": 10.0,
+      "name": "2-Mercaptobenzothiazole (MBT) marker @ 1041 cm-1",
+      "color": "#b45309",
+      "note": "Auto-derived from 02_steel_coating/01_corrosion_inhibitors/nist_MBT_n0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1328.0,
+      "tolerance": 10.0,
+      "name": "2-Mercaptobenzothiazole (MBT) marker @ 1328 cm-1",
+      "color": "#b45309",
+      "note": "Auto-derived from 02_steel_coating/01_corrosion_inhibitors/nist_MBT_n0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1430.0,
+      "tolerance": 10.0,
+      "name": "2-Mercaptobenzothiazole (MBT) marker @ 1430 cm-1",
+      "color": "#b45309",
+      "note": "Auto-derived from 02_steel_coating/01_corrosion_inhibitors/nist_MBT_n0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1500.0,
+      "tolerance": 10.0,
+      "name": "2-Mercaptobenzothiazole (MBT) marker @ 1500 cm-1",
+      "color": "#b45309",
+      "note": "Auto-derived from 02_steel_coating/01_corrosion_inhibitors/nist_MBT_n0.csv (NIST WebBook)"
+    }
+  ]
+}

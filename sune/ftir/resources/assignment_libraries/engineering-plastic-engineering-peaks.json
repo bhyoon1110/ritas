@@ -1,0 +1,3303 @@
+{
+  "name": "Engineering Plastic Peak Library",
+  "description": "엔지니어링 플라스틱 FT-IR 기준 스펙트럼에서 자동 추출한 피크 후보. Generated from sune/data/RIST_FTIR_Library; 5 strongest peaks per spectrum.",
+  "assignments": [
+    {
+      "centerWavenumber": 1462.0,
+      "tolerance": 10.0,
+      "name": "Nylon 6 marker @ 1462 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/existing_Nylon-6.csv (RIST existing)"
+    },
+    {
+      "centerWavenumber": 1541.0,
+      "tolerance": 10.0,
+      "name": "Nylon 6 marker @ 1541 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/existing_Nylon-6.csv (RIST existing)"
+    },
+    {
+      "centerWavenumber": 1635.0,
+      "tolerance": 10.0,
+      "name": "Nylon 6 marker @ 1635 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/existing_Nylon-6.csv (RIST existing)"
+    },
+    {
+      "centerWavenumber": 2930.0,
+      "tolerance": 10.0,
+      "name": "Nylon 6 marker @ 2930 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/existing_Nylon-6.csv (RIST existing)"
+    },
+    {
+      "centerWavenumber": 3297.0,
+      "tolerance": 10.0,
+      "name": "Nylon 6 marker @ 3297 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/existing_Nylon-6.csv (RIST existing)"
+    },
+    {
+      "centerWavenumber": 686.0,
+      "tolerance": 10.0,
+      "name": "Nylon 66 marker @ 686 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/existing_Nylon-66.csv (RIST existing)"
+    },
+    {
+      "centerWavenumber": 1535.0,
+      "tolerance": 10.0,
+      "name": "Nylon 66 marker @ 1535 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/existing_Nylon-66.csv (RIST existing)"
+    },
+    {
+      "centerWavenumber": 1631.0,
+      "tolerance": 10.0,
+      "name": "Nylon 66 marker @ 1631 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/existing_Nylon-66.csv (RIST existing)"
+    },
+    {
+      "centerWavenumber": 2933.0,
+      "tolerance": 10.0,
+      "name": "Nylon 66 marker @ 2933 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/existing_Nylon-66.csv (RIST existing)"
+    },
+    {
+      "centerWavenumber": 3297.0,
+      "tolerance": 10.0,
+      "name": "Nylon 66 marker @ 3297 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/existing_Nylon-66.csv (RIST existing)"
+    },
+    {
+      "centerWavenumber": 750.0,
+      "tolerance": 10.0,
+      "name": "PMMA marker @ 750 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/existing_PMMA-1.csv (RIST existing)"
+    },
+    {
+      "centerWavenumber": 987.0,
+      "tolerance": 10.0,
+      "name": "PMMA marker @ 987 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/existing_PMMA-1.csv (RIST existing)"
+    },
+    {
+      "centerWavenumber": 1143.0,
+      "tolerance": 10.0,
+      "name": "PMMA marker @ 1143 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/existing_PMMA-1.csv (RIST existing)"
+    },
+    {
+      "centerWavenumber": 1435.0,
+      "tolerance": 10.0,
+      "name": "PMMA marker @ 1435 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/existing_PMMA-1.csv (RIST existing)"
+    },
+    {
+      "centerWavenumber": 1723.0,
+      "tolerance": 10.0,
+      "name": "PMMA marker @ 1723 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/existing_PMMA-1.csv (RIST existing)"
+    },
+    {
+      "centerWavenumber": 750.0,
+      "tolerance": 10.0,
+      "name": "PMMA marker @ 750 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/existing_PMMA-2.csv (RIST existing)"
+    },
+    {
+      "centerWavenumber": 987.0,
+      "tolerance": 10.0,
+      "name": "PMMA marker @ 987 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/existing_PMMA-2.csv (RIST existing)"
+    },
+    {
+      "centerWavenumber": 1143.0,
+      "tolerance": 10.0,
+      "name": "PMMA marker @ 1143 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/existing_PMMA-2.csv (RIST existing)"
+    },
+    {
+      "centerWavenumber": 1435.0,
+      "tolerance": 10.0,
+      "name": "PMMA marker @ 1435 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/existing_PMMA-2.csv (RIST existing)"
+    },
+    {
+      "centerWavenumber": 1722.0,
+      "tolerance": 10.0,
+      "name": "PMMA marker @ 1722 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/existing_PMMA-2.csv (RIST existing)"
+    },
+    {
+      "centerWavenumber": 751.0,
+      "tolerance": 10.0,
+      "name": "PMMA marker @ 751 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/existing_PMMA-3.csv (RIST existing)"
+    },
+    {
+      "centerWavenumber": 987.0,
+      "tolerance": 10.0,
+      "name": "PMMA marker @ 987 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/existing_PMMA-3.csv (RIST existing)"
+    },
+    {
+      "centerWavenumber": 1143.0,
+      "tolerance": 10.0,
+      "name": "PMMA marker @ 1143 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/existing_PMMA-3.csv (RIST existing)"
+    },
+    {
+      "centerWavenumber": 1435.0,
+      "tolerance": 10.0,
+      "name": "PMMA marker @ 1435 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/existing_PMMA-3.csv (RIST existing)"
+    },
+    {
+      "centerWavenumber": 1723.0,
+      "tolerance": 10.0,
+      "name": "PMMA marker @ 1723 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/existing_PMMA-3.csv (RIST existing)"
+    },
+    {
+      "centerWavenumber": 750.0,
+      "tolerance": 10.0,
+      "name": "PMMA marker @ 750 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/existing_PMMA-4.csv (RIST existing)"
+    },
+    {
+      "centerWavenumber": 986.0,
+      "tolerance": 10.0,
+      "name": "PMMA marker @ 986 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/existing_PMMA-4.csv (RIST existing)"
+    },
+    {
+      "centerWavenumber": 1143.0,
+      "tolerance": 10.0,
+      "name": "PMMA marker @ 1143 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/existing_PMMA-4.csv (RIST existing)"
+    },
+    {
+      "centerWavenumber": 1435.0,
+      "tolerance": 10.0,
+      "name": "PMMA marker @ 1435 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/existing_PMMA-4.csv (RIST existing)"
+    },
+    {
+      "centerWavenumber": 1723.0,
+      "tolerance": 10.0,
+      "name": "PMMA marker @ 1723 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/existing_PMMA-4.csv (RIST existing)"
+    },
+    {
+      "centerWavenumber": 750.0,
+      "tolerance": 10.0,
+      "name": "PMMA marker @ 750 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/existing_PMMA-5.csv (RIST existing)"
+    },
+    {
+      "centerWavenumber": 986.0,
+      "tolerance": 10.0,
+      "name": "PMMA marker @ 986 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/existing_PMMA-5.csv (RIST existing)"
+    },
+    {
+      "centerWavenumber": 1143.0,
+      "tolerance": 10.0,
+      "name": "PMMA marker @ 1143 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/existing_PMMA-5.csv (RIST existing)"
+    },
+    {
+      "centerWavenumber": 1435.0,
+      "tolerance": 10.0,
+      "name": "PMMA marker @ 1435 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/existing_PMMA-5.csv (RIST existing)"
+    },
+    {
+      "centerWavenumber": 1722.0,
+      "tolerance": 10.0,
+      "name": "PMMA marker @ 1722 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/existing_PMMA-5.csv (RIST existing)"
+    },
+    {
+      "centerWavenumber": 750.0,
+      "tolerance": 10.0,
+      "name": "PMMA marker @ 750 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/existing_PMMA-6.csv (RIST existing)"
+    },
+    {
+      "centerWavenumber": 987.0,
+      "tolerance": 10.0,
+      "name": "PMMA marker @ 987 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/existing_PMMA-6.csv (RIST existing)"
+    },
+    {
+      "centerWavenumber": 1142.0,
+      "tolerance": 10.0,
+      "name": "PMMA marker @ 1142 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/existing_PMMA-6.csv (RIST existing)"
+    },
+    {
+      "centerWavenumber": 1435.0,
+      "tolerance": 10.0,
+      "name": "PMMA marker @ 1435 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/existing_PMMA-6.csv (RIST existing)"
+    },
+    {
+      "centerWavenumber": 1723.0,
+      "tolerance": 10.0,
+      "name": "PMMA marker @ 1723 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/existing_PMMA-6.csv (RIST existing)"
+    },
+    {
+      "centerWavenumber": 698.0,
+      "tolerance": 10.0,
+      "name": "ABS (Acrylonitrile Butadiene Styrene) marker @ 698 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/figshare_ABS-1.csv (figshare (thermoplastic dataset))"
+    },
+    {
+      "centerWavenumber": 759.0,
+      "tolerance": 10.0,
+      "name": "ABS (Acrylonitrile Butadiene Styrene) marker @ 759 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/figshare_ABS-1.csv (figshare (thermoplastic dataset))"
+    },
+    {
+      "centerWavenumber": 1453.0,
+      "tolerance": 10.0,
+      "name": "ABS (Acrylonitrile Butadiene Styrene) marker @ 1453 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/figshare_ABS-1.csv (figshare (thermoplastic dataset))"
+    },
+    {
+      "centerWavenumber": 1494.0,
+      "tolerance": 10.0,
+      "name": "ABS (Acrylonitrile Butadiene Styrene) marker @ 1494 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/figshare_ABS-1.csv (figshare (thermoplastic dataset))"
+    },
+    {
+      "centerWavenumber": 2922.0,
+      "tolerance": 10.0,
+      "name": "ABS (Acrylonitrile Butadiene Styrene) marker @ 2922 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/figshare_ABS-1.csv (figshare (thermoplastic dataset))"
+    },
+    {
+      "centerWavenumber": 718.0,
+      "tolerance": 10.0,
+      "name": "ABS (Acrylonitrile Butadiene Styrene) marker @ 718 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/figshare_ABS-2.csv (figshare (thermoplastic dataset))"
+    },
+    {
+      "centerWavenumber": 1242.0,
+      "tolerance": 10.0,
+      "name": "ABS (Acrylonitrile Butadiene Styrene) marker @ 1242 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/figshare_ABS-2.csv (figshare (thermoplastic dataset))"
+    },
+    {
+      "centerWavenumber": 2686.0,
+      "tolerance": 10.0,
+      "name": "ABS (Acrylonitrile Butadiene Styrene) marker @ 2686 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/figshare_ABS-2.csv (figshare (thermoplastic dataset))"
+    },
+    {
+      "centerWavenumber": 2710.0,
+      "tolerance": 10.0,
+      "name": "ABS (Acrylonitrile Butadiene Styrene) marker @ 2710 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/figshare_ABS-2.csv (figshare (thermoplastic dataset))"
+    },
+    {
+      "centerWavenumber": 2732.0,
+      "tolerance": 10.0,
+      "name": "ABS (Acrylonitrile Butadiene Styrene) marker @ 2732 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/figshare_ABS-2.csv (figshare (thermoplastic dataset))"
+    },
+    {
+      "centerWavenumber": 698.0,
+      "tolerance": 10.0,
+      "name": "ABS (Acrylonitrile Butadiene Styrene) marker @ 698 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/figshare_ABS-3.csv (figshare (thermoplastic dataset))"
+    },
+    {
+      "centerWavenumber": 758.0,
+      "tolerance": 10.0,
+      "name": "ABS (Acrylonitrile Butadiene Styrene) marker @ 758 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/figshare_ABS-3.csv (figshare (thermoplastic dataset))"
+    },
+    {
+      "centerWavenumber": 966.0,
+      "tolerance": 10.0,
+      "name": "ABS (Acrylonitrile Butadiene Styrene) marker @ 966 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/figshare_ABS-3.csv (figshare (thermoplastic dataset))"
+    },
+    {
+      "centerWavenumber": 1453.0,
+      "tolerance": 10.0,
+      "name": "ABS (Acrylonitrile Butadiene Styrene) marker @ 1453 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/figshare_ABS-3.csv (figshare (thermoplastic dataset))"
+    },
+    {
+      "centerWavenumber": 1494.0,
+      "tolerance": 10.0,
+      "name": "ABS (Acrylonitrile Butadiene Styrene) marker @ 1494 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/figshare_ABS-3.csv (figshare (thermoplastic dataset))"
+    },
+    {
+      "centerWavenumber": 1462.0,
+      "tolerance": 10.0,
+      "name": "Nylon marker @ 1462 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/figshare_Nylon-6.csv (figshare (thermoplastic dataset))"
+    },
+    {
+      "centerWavenumber": 1541.0,
+      "tolerance": 10.0,
+      "name": "Nylon marker @ 1541 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/figshare_Nylon-6.csv (figshare (thermoplastic dataset))"
+    },
+    {
+      "centerWavenumber": 1635.0,
+      "tolerance": 10.0,
+      "name": "Nylon marker @ 1635 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/figshare_Nylon-6.csv (figshare (thermoplastic dataset))"
+    },
+    {
+      "centerWavenumber": 2930.0,
+      "tolerance": 10.0,
+      "name": "Nylon marker @ 2930 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/figshare_Nylon-6.csv (figshare (thermoplastic dataset))"
+    },
+    {
+      "centerWavenumber": 3297.0,
+      "tolerance": 10.0,
+      "name": "Nylon marker @ 3297 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/figshare_Nylon-6.csv (figshare (thermoplastic dataset))"
+    },
+    {
+      "centerWavenumber": 686.0,
+      "tolerance": 10.0,
+      "name": "Nylon marker @ 686 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/figshare_Nylon-66.csv (figshare (thermoplastic dataset))"
+    },
+    {
+      "centerWavenumber": 1535.0,
+      "tolerance": 10.0,
+      "name": "Nylon marker @ 1535 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/figshare_Nylon-66.csv (figshare (thermoplastic dataset))"
+    },
+    {
+      "centerWavenumber": 1631.0,
+      "tolerance": 10.0,
+      "name": "Nylon marker @ 1631 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/figshare_Nylon-66.csv (figshare (thermoplastic dataset))"
+    },
+    {
+      "centerWavenumber": 2933.0,
+      "tolerance": 10.0,
+      "name": "Nylon marker @ 2933 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/figshare_Nylon-66.csv (figshare (thermoplastic dataset))"
+    },
+    {
+      "centerWavenumber": 3297.0,
+      "tolerance": 10.0,
+      "name": "Nylon marker @ 3297 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/figshare_Nylon-66.csv (figshare (thermoplastic dataset))"
+    },
+    {
+      "centerWavenumber": 1072.0,
+      "tolerance": 10.0,
+      "name": "Polyacrylonitrile marker @ 1072 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/figshare_PAN-1.csv (figshare (thermoplastic dataset))"
+    },
+    {
+      "centerWavenumber": 1357.0,
+      "tolerance": 10.0,
+      "name": "Polyacrylonitrile marker @ 1357 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/figshare_PAN-1.csv (figshare (thermoplastic dataset))"
+    },
+    {
+      "centerWavenumber": 1453.0,
+      "tolerance": 10.0,
+      "name": "Polyacrylonitrile marker @ 1453 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/figshare_PAN-1.csv (figshare (thermoplastic dataset))"
+    },
+    {
+      "centerWavenumber": 2243.0,
+      "tolerance": 10.0,
+      "name": "Polyacrylonitrile marker @ 2243 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/figshare_PAN-1.csv (figshare (thermoplastic dataset))"
+    },
+    {
+      "centerWavenumber": 2939.0,
+      "tolerance": 10.0,
+      "name": "Polyacrylonitrile marker @ 2939 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/figshare_PAN-1.csv (figshare (thermoplastic dataset))"
+    },
+    {
+      "centerWavenumber": 724.0,
+      "tolerance": 10.0,
+      "name": "Polybutylene Terephthalate marker @ 724 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/figshare_PBT-1.csv (figshare (thermoplastic dataset))"
+    },
+    {
+      "centerWavenumber": 1017.0,
+      "tolerance": 10.0,
+      "name": "Polybutylene Terephthalate marker @ 1017 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/figshare_PBT-1.csv (figshare (thermoplastic dataset))"
+    },
+    {
+      "centerWavenumber": 1099.0,
+      "tolerance": 10.0,
+      "name": "Polybutylene Terephthalate marker @ 1099 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/figshare_PBT-1.csv (figshare (thermoplastic dataset))"
+    },
+    {
+      "centerWavenumber": 1244.0,
+      "tolerance": 10.0,
+      "name": "Polybutylene Terephthalate marker @ 1244 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/figshare_PBT-1.csv (figshare (thermoplastic dataset))"
+    },
+    {
+      "centerWavenumber": 1709.0,
+      "tolerance": 10.0,
+      "name": "Polybutylene Terephthalate marker @ 1709 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/figshare_PBT-1.csv (figshare (thermoplastic dataset))"
+    },
+    {
+      "centerWavenumber": 1014.0,
+      "tolerance": 10.0,
+      "name": "Polycarbonate marker @ 1014 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/figshare_PC-1.csv (figshare (thermoplastic dataset))"
+    },
+    {
+      "centerWavenumber": 1159.0,
+      "tolerance": 10.0,
+      "name": "Polycarbonate marker @ 1159 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/figshare_PC-1.csv (figshare (thermoplastic dataset))"
+    },
+    {
+      "centerWavenumber": 1187.0,
+      "tolerance": 10.0,
+      "name": "Polycarbonate marker @ 1187 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/figshare_PC-1.csv (figshare (thermoplastic dataset))"
+    },
+    {
+      "centerWavenumber": 1219.0,
+      "tolerance": 10.0,
+      "name": "Polycarbonate marker @ 1219 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/figshare_PC-1.csv (figshare (thermoplastic dataset))"
+    },
+    {
+      "centerWavenumber": 1770.0,
+      "tolerance": 10.0,
+      "name": "Polycarbonate marker @ 1770 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/figshare_PC-1.csv (figshare (thermoplastic dataset))"
+    },
+    {
+      "centerWavenumber": 804.0,
+      "tolerance": 10.0,
+      "name": "Polyketone marker @ 804 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/figshare_PK-1.csv (figshare (thermoplastic dataset))"
+    },
+    {
+      "centerWavenumber": 1054.0,
+      "tolerance": 10.0,
+      "name": "Polyketone marker @ 1054 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/figshare_PK-1.csv (figshare (thermoplastic dataset))"
+    },
+    {
+      "centerWavenumber": 1330.0,
+      "tolerance": 10.0,
+      "name": "Polyketone marker @ 1330 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/figshare_PK-1.csv (figshare (thermoplastic dataset))"
+    },
+    {
+      "centerWavenumber": 1409.0,
+      "tolerance": 10.0,
+      "name": "Polyketone marker @ 1409 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/figshare_PK-1.csv (figshare (thermoplastic dataset))"
+    },
+    {
+      "centerWavenumber": 1692.0,
+      "tolerance": 10.0,
+      "name": "Polyketone marker @ 1692 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/figshare_PK-1.csv (figshare (thermoplastic dataset))"
+    },
+    {
+      "centerWavenumber": 750.0,
+      "tolerance": 10.0,
+      "name": "Polymethyl Methacrylate marker @ 750 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/figshare_PMMA-1.csv (figshare (thermoplastic dataset))"
+    },
+    {
+      "centerWavenumber": 987.0,
+      "tolerance": 10.0,
+      "name": "Polymethyl Methacrylate marker @ 987 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/figshare_PMMA-1.csv (figshare (thermoplastic dataset))"
+    },
+    {
+      "centerWavenumber": 1143.0,
+      "tolerance": 10.0,
+      "name": "Polymethyl Methacrylate marker @ 1143 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/figshare_PMMA-1.csv (figshare (thermoplastic dataset))"
+    },
+    {
+      "centerWavenumber": 1435.0,
+      "tolerance": 10.0,
+      "name": "Polymethyl Methacrylate marker @ 1435 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/figshare_PMMA-1.csv (figshare (thermoplastic dataset))"
+    },
+    {
+      "centerWavenumber": 1723.0,
+      "tolerance": 10.0,
+      "name": "Polymethyl Methacrylate marker @ 1723 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/figshare_PMMA-1.csv (figshare (thermoplastic dataset))"
+    },
+    {
+      "centerWavenumber": 750.0,
+      "tolerance": 10.0,
+      "name": "Polymethyl Methacrylate marker @ 750 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/figshare_PMMA-2.csv (figshare (thermoplastic dataset))"
+    },
+    {
+      "centerWavenumber": 987.0,
+      "tolerance": 10.0,
+      "name": "Polymethyl Methacrylate marker @ 987 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/figshare_PMMA-2.csv (figshare (thermoplastic dataset))"
+    },
+    {
+      "centerWavenumber": 1143.0,
+      "tolerance": 10.0,
+      "name": "Polymethyl Methacrylate marker @ 1143 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/figshare_PMMA-2.csv (figshare (thermoplastic dataset))"
+    },
+    {
+      "centerWavenumber": 1435.0,
+      "tolerance": 10.0,
+      "name": "Polymethyl Methacrylate marker @ 1435 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/figshare_PMMA-2.csv (figshare (thermoplastic dataset))"
+    },
+    {
+      "centerWavenumber": 1722.0,
+      "tolerance": 10.0,
+      "name": "Polymethyl Methacrylate marker @ 1722 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/figshare_PMMA-2.csv (figshare (thermoplastic dataset))"
+    },
+    {
+      "centerWavenumber": 751.0,
+      "tolerance": 10.0,
+      "name": "Polymethyl Methacrylate marker @ 751 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/figshare_PMMA-3.csv (figshare (thermoplastic dataset))"
+    },
+    {
+      "centerWavenumber": 987.0,
+      "tolerance": 10.0,
+      "name": "Polymethyl Methacrylate marker @ 987 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/figshare_PMMA-3.csv (figshare (thermoplastic dataset))"
+    },
+    {
+      "centerWavenumber": 1143.0,
+      "tolerance": 10.0,
+      "name": "Polymethyl Methacrylate marker @ 1143 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/figshare_PMMA-3.csv (figshare (thermoplastic dataset))"
+    },
+    {
+      "centerWavenumber": 1435.0,
+      "tolerance": 10.0,
+      "name": "Polymethyl Methacrylate marker @ 1435 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/figshare_PMMA-3.csv (figshare (thermoplastic dataset))"
+    },
+    {
+      "centerWavenumber": 1723.0,
+      "tolerance": 10.0,
+      "name": "Polymethyl Methacrylate marker @ 1723 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/figshare_PMMA-3.csv (figshare (thermoplastic dataset))"
+    },
+    {
+      "centerWavenumber": 750.0,
+      "tolerance": 10.0,
+      "name": "Polymethyl Methacrylate marker @ 750 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/figshare_PMMA-4.csv (figshare (thermoplastic dataset))"
+    },
+    {
+      "centerWavenumber": 986.0,
+      "tolerance": 10.0,
+      "name": "Polymethyl Methacrylate marker @ 986 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/figshare_PMMA-4.csv (figshare (thermoplastic dataset))"
+    },
+    {
+      "centerWavenumber": 1143.0,
+      "tolerance": 10.0,
+      "name": "Polymethyl Methacrylate marker @ 1143 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/figshare_PMMA-4.csv (figshare (thermoplastic dataset))"
+    },
+    {
+      "centerWavenumber": 1435.0,
+      "tolerance": 10.0,
+      "name": "Polymethyl Methacrylate marker @ 1435 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/figshare_PMMA-4.csv (figshare (thermoplastic dataset))"
+    },
+    {
+      "centerWavenumber": 1723.0,
+      "tolerance": 10.0,
+      "name": "Polymethyl Methacrylate marker @ 1723 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/figshare_PMMA-4.csv (figshare (thermoplastic dataset))"
+    },
+    {
+      "centerWavenumber": 750.0,
+      "tolerance": 10.0,
+      "name": "Polymethyl Methacrylate marker @ 750 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/figshare_PMMA-5.csv (figshare (thermoplastic dataset))"
+    },
+    {
+      "centerWavenumber": 986.0,
+      "tolerance": 10.0,
+      "name": "Polymethyl Methacrylate marker @ 986 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/figshare_PMMA-5.csv (figshare (thermoplastic dataset))"
+    },
+    {
+      "centerWavenumber": 1143.0,
+      "tolerance": 10.0,
+      "name": "Polymethyl Methacrylate marker @ 1143 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/figshare_PMMA-5.csv (figshare (thermoplastic dataset))"
+    },
+    {
+      "centerWavenumber": 1435.0,
+      "tolerance": 10.0,
+      "name": "Polymethyl Methacrylate marker @ 1435 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/figshare_PMMA-5.csv (figshare (thermoplastic dataset))"
+    },
+    {
+      "centerWavenumber": 1722.0,
+      "tolerance": 10.0,
+      "name": "Polymethyl Methacrylate marker @ 1722 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/figshare_PMMA-5.csv (figshare (thermoplastic dataset))"
+    },
+    {
+      "centerWavenumber": 750.0,
+      "tolerance": 10.0,
+      "name": "Polymethyl Methacrylate marker @ 750 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/figshare_PMMA-6.csv (figshare (thermoplastic dataset))"
+    },
+    {
+      "centerWavenumber": 987.0,
+      "tolerance": 10.0,
+      "name": "Polymethyl Methacrylate marker @ 987 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/figshare_PMMA-6.csv (figshare (thermoplastic dataset))"
+    },
+    {
+      "centerWavenumber": 1142.0,
+      "tolerance": 10.0,
+      "name": "Polymethyl Methacrylate marker @ 1142 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/figshare_PMMA-6.csv (figshare (thermoplastic dataset))"
+    },
+    {
+      "centerWavenumber": 1435.0,
+      "tolerance": 10.0,
+      "name": "Polymethyl Methacrylate marker @ 1435 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/figshare_PMMA-6.csv (figshare (thermoplastic dataset))"
+    },
+    {
+      "centerWavenumber": 1723.0,
+      "tolerance": 10.0,
+      "name": "Polymethyl Methacrylate marker @ 1723 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/figshare_PMMA-6.csv (figshare (thermoplastic dataset))"
+    },
+    {
+      "centerWavenumber": 698.0,
+      "tolerance": 10.0,
+      "name": "Styrene Acrylonitrile marker @ 698 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/figshare_SAN-1.csv (figshare (thermoplastic dataset))"
+    },
+    {
+      "centerWavenumber": 759.0,
+      "tolerance": 10.0,
+      "name": "Styrene Acrylonitrile marker @ 759 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/figshare_SAN-1.csv (figshare (thermoplastic dataset))"
+    },
+    {
+      "centerWavenumber": 1453.0,
+      "tolerance": 10.0,
+      "name": "Styrene Acrylonitrile marker @ 1453 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/figshare_SAN-1.csv (figshare (thermoplastic dataset))"
+    },
+    {
+      "centerWavenumber": 1494.0,
+      "tolerance": 10.0,
+      "name": "Styrene Acrylonitrile marker @ 1494 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/figshare_SAN-1.csv (figshare (thermoplastic dataset))"
+    },
+    {
+      "centerWavenumber": 2924.0,
+      "tolerance": 10.0,
+      "name": "Styrene Acrylonitrile marker @ 2924 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/figshare_SAN-1.csv (figshare (thermoplastic dataset))"
+    },
+    {
+      "centerWavenumber": 752.0,
+      "tolerance": 10.0,
+      "name": "Phenol marker @ 752 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/lit_Phenol_m0.csv (Literature (Synthetic))"
+    },
+    {
+      "centerWavenumber": 1236.0,
+      "tolerance": 10.0,
+      "name": "Phenol marker @ 1236 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/lit_Phenol_m0.csv (Literature (Synthetic))"
+    },
+    {
+      "centerWavenumber": 1497.0,
+      "tolerance": 10.0,
+      "name": "Phenol marker @ 1497 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/lit_Phenol_m0.csv (Literature (Synthetic))"
+    },
+    {
+      "centerWavenumber": 1600.0,
+      "tolerance": 10.0,
+      "name": "Phenol marker @ 1600 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/lit_Phenol_m0.csv (Literature (Synthetic))"
+    },
+    {
+      "centerWavenumber": 3350.0,
+      "tolerance": 10.0,
+      "name": "Phenol marker @ 3350 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/lit_Phenol_m0.csv (Literature (Synthetic))"
+    },
+    {
+      "centerWavenumber": 820.0,
+      "tolerance": 10.0,
+      "name": "Phenolic Foam (PF Resin, Resole) marker @ 820 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/lit_PhenolicFoam_PF_m0.csv (Literature (Synthetic))"
+    },
+    {
+      "centerWavenumber": 1230.0,
+      "tolerance": 10.0,
+      "name": "Phenolic Foam (PF Resin, Resole) marker @ 1230 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/lit_PhenolicFoam_PF_m0.csv (Literature (Synthetic))"
+    },
+    {
+      "centerWavenumber": 1510.0,
+      "tolerance": 10.0,
+      "name": "Phenolic Foam (PF Resin, Resole) marker @ 1510 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/lit_PhenolicFoam_PF_m0.csv (Literature (Synthetic))"
+    },
+    {
+      "centerWavenumber": 1610.0,
+      "tolerance": 10.0,
+      "name": "Phenolic Foam (PF Resin, Resole) marker @ 1610 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/lit_PhenolicFoam_PF_m0.csv (Literature (Synthetic))"
+    },
+    {
+      "centerWavenumber": 3350.0,
+      "tolerance": 10.0,
+      "name": "Phenolic Foam (PF Resin, Resole) marker @ 3350 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/lit_PhenolicFoam_PF_m0.csv (Literature (Synthetic))"
+    },
+    {
+      "centerWavenumber": 815.0,
+      "tolerance": 10.0,
+      "name": "Phenolic Foam (PF Resin, Novolac) marker @ 815 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/lit_PhenolicFoam_PF_novolac_m0.csv (Literature (Synthetic))"
+    },
+    {
+      "centerWavenumber": 1260.0,
+      "tolerance": 10.0,
+      "name": "Phenolic Foam (PF Resin, Novolac) marker @ 1260 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/lit_PhenolicFoam_PF_novolac_m0.csv (Literature (Synthetic))"
+    },
+    {
+      "centerWavenumber": 1508.0,
+      "tolerance": 10.0,
+      "name": "Phenolic Foam (PF Resin, Novolac) marker @ 1508 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/lit_PhenolicFoam_PF_novolac_m0.csv (Literature (Synthetic))"
+    },
+    {
+      "centerWavenumber": 1610.0,
+      "tolerance": 10.0,
+      "name": "Phenolic Foam (PF Resin, Novolac) marker @ 1610 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/lit_PhenolicFoam_PF_novolac_m0.csv (Literature (Synthetic))"
+    },
+    {
+      "centerWavenumber": 3300.0,
+      "tolerance": 10.0,
+      "name": "Phenolic Foam (PF Resin, Novolac) marker @ 3300 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/lit_PhenolicFoam_PF_novolac_m0.csv (Literature (Synthetic))"
+    },
+    {
+      "centerWavenumber": 602.0,
+      "tolerance": 10.0,
+      "name": "Adipic Acid marker @ 602 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/nist_AdipicAcid_n0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1122.0,
+      "tolerance": 10.0,
+      "name": "Adipic Acid marker @ 1122 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/nist_AdipicAcid_n0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1778.0,
+      "tolerance": 10.0,
+      "name": "Adipic Acid marker @ 1778 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/nist_AdipicAcid_n0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 2958.0,
+      "tolerance": 10.0,
+      "name": "Adipic Acid marker @ 2958 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/nist_AdipicAcid_n0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 3578.0,
+      "tolerance": 10.0,
+      "name": "Adipic Acid marker @ 3578 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/nist_AdipicAcid_n0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1195.8,
+      "tolerance": 10.0,
+      "name": "Adipic Acid marker @ 1195.8 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/nist_AdipicAcid_n1.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1282.0,
+      "tolerance": 10.0,
+      "name": "Adipic Acid marker @ 1282 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/nist_AdipicAcid_n1.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1408.2,
+      "tolerance": 10.0,
+      "name": "Adipic Acid marker @ 1408.2 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/nist_AdipicAcid_n1.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1695.6,
+      "tolerance": 10.0,
+      "name": "Adipic Acid marker @ 1695.6 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/nist_AdipicAcid_n1.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 2959.4,
+      "tolerance": 10.0,
+      "name": "Adipic Acid marker @ 2959.4 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/nist_AdipicAcid_n1.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1178.0,
+      "tolerance": 10.0,
+      "name": "Bisphenol A (BPA) marker @ 1178 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/nist_BPA_n0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1258.0,
+      "tolerance": 10.0,
+      "name": "Bisphenol A (BPA) marker @ 1258 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/nist_BPA_n0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1514.0,
+      "tolerance": 10.0,
+      "name": "Bisphenol A (BPA) marker @ 1514 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/nist_BPA_n0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1606.0,
+      "tolerance": 10.0,
+      "name": "Bisphenol A (BPA) marker @ 1606 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/nist_BPA_n0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 3650.0,
+      "tolerance": 10.0,
+      "name": "Bisphenol A (BPA) marker @ 3650 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/nist_BPA_n0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1358.0,
+      "tolerance": 10.0,
+      "name": "Caprolactam marker @ 1358 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/nist_Caprolactam_n0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1438.0,
+      "tolerance": 10.0,
+      "name": "Caprolactam marker @ 1438 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/nist_Caprolactam_n0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1714.0,
+      "tolerance": 10.0,
+      "name": "Caprolactam marker @ 1714 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/nist_Caprolactam_n0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 2938.0,
+      "tolerance": 10.0,
+      "name": "Caprolactam marker @ 2938 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/nist_Caprolactam_n0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1196.1,
+      "tolerance": 10.0,
+      "name": "Caprolactam marker @ 1196.1 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/nist_Caprolactam_n1.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1364.1,
+      "tolerance": 10.0,
+      "name": "Caprolactam marker @ 1364.1 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/nist_Caprolactam_n1.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1437.7,
+      "tolerance": 10.0,
+      "name": "Caprolactam marker @ 1437.7 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/nist_Caprolactam_n1.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1667.9,
+      "tolerance": 10.0,
+      "name": "Caprolactam marker @ 1667.9 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/nist_Caprolactam_n1.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 2920.3,
+      "tolerance": 10.0,
+      "name": "Caprolactam marker @ 2920.3 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/nist_Caprolactam_n1.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 750.7,
+      "tolerance": 10.0,
+      "name": "PMMA marker @ 750.7 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_PMMA_633.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 986.9,
+      "tolerance": 10.0,
+      "name": "PMMA marker @ 986.9 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_PMMA_633.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1143.6,
+      "tolerance": 10.0,
+      "name": "PMMA marker @ 1143.6 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_PMMA_633.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1434.8,
+      "tolerance": 10.0,
+      "name": "PMMA marker @ 1434.8 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_PMMA_633.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1723.6,
+      "tolerance": 10.0,
+      "name": "PMMA marker @ 1723.6 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_PMMA_633.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 970.2,
+      "tolerance": 10.0,
+      "name": "Acrylonitrile-Butadiene Copolymer (NBR precursor) marker @ 970.2 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_acrylonitrile_butadiene_copolymer_nbr_precursor.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1440.8,
+      "tolerance": 10.0,
+      "name": "Acrylonitrile-Butadiene Copolymer (NBR precursor) marker @ 1440.8 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_acrylonitrile_butadiene_copolymer_nbr_precursor.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 2237.4,
+      "tolerance": 10.0,
+      "name": "Acrylonitrile-Butadiene Copolymer (NBR precursor) marker @ 2237.4 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_acrylonitrile_butadiene_copolymer_nbr_precursor.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 2926.0,
+      "tolerance": 10.0,
+      "name": "Acrylonitrile-Butadiene Copolymer (NBR precursor) marker @ 2926 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_acrylonitrile_butadiene_copolymer_nbr_precursor.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 723.3,
+      "tolerance": 10.0,
+      "name": "Amorphous PET (APET) marker @ 723.3 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_amorphous_pet_apet.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1016.5,
+      "tolerance": 10.0,
+      "name": "Amorphous PET (APET) marker @ 1016.5 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_amorphous_pet_apet.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1091.7,
+      "tolerance": 10.0,
+      "name": "Amorphous PET (APET) marker @ 1091.7 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_amorphous_pet_apet.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1238.3,
+      "tolerance": 10.0,
+      "name": "Amorphous PET (APET) marker @ 1238.3 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_amorphous_pet_apet.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1714.7,
+      "tolerance": 10.0,
+      "name": "Amorphous PET (APET) marker @ 1714.7 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_amorphous_pet_apet.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 682.8,
+      "tolerance": 10.0,
+      "name": "Aramid (Kevlar) marker @ 682.8 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_aramid_kevlar-1.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 779.2,
+      "tolerance": 10.0,
+      "name": "Aramid (Kevlar) marker @ 779.2 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_aramid_kevlar-1.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1238.3,
+      "tolerance": 10.0,
+      "name": "Aramid (Kevlar) marker @ 1238.3 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_aramid_kevlar-1.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1525.7,
+      "tolerance": 10.0,
+      "name": "Aramid (Kevlar) marker @ 1525.7 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_aramid_kevlar-1.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1602.8,
+      "tolerance": 10.0,
+      "name": "Aramid (Kevlar) marker @ 1602.8 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_aramid_kevlar-1.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 680.9,
+      "tolerance": 10.0,
+      "name": "Aramid (Kevlar) marker @ 680.9 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_aramid_kevlar-2.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 779.2,
+      "tolerance": 10.0,
+      "name": "Aramid (Kevlar) marker @ 779.2 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_aramid_kevlar-2.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1238.3,
+      "tolerance": 10.0,
+      "name": "Aramid (Kevlar) marker @ 1238.3 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_aramid_kevlar-2.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1525.7,
+      "tolerance": 10.0,
+      "name": "Aramid (Kevlar) marker @ 1525.7 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_aramid_kevlar-2.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1602.8,
+      "tolerance": 10.0,
+      "name": "Aramid (Kevlar) marker @ 1602.8 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_aramid_kevlar-2.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1462.0,
+      "tolerance": 10.0,
+      "name": "copolyamide marker @ 1462 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_copolyamide_311.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1539.2,
+      "tolerance": 10.0,
+      "name": "copolyamide marker @ 1539.2 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_copolyamide_311.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1635.6,
+      "tolerance": 10.0,
+      "name": "copolyamide marker @ 1635.6 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_copolyamide_311.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 2918.3,
+      "tolerance": 10.0,
+      "name": "copolyamide marker @ 2918.3 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_copolyamide_311.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 3296.3,
+      "tolerance": 10.0,
+      "name": "copolyamide marker @ 3296.3 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_copolyamide_311.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1462.0,
+      "tolerance": 10.0,
+      "name": "copolyamide marker @ 1462 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_copolyamide_312.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1539.2,
+      "tolerance": 10.0,
+      "name": "copolyamide marker @ 1539.2 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_copolyamide_312.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1635.6,
+      "tolerance": 10.0,
+      "name": "copolyamide marker @ 1635.6 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_copolyamide_312.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 2918.3,
+      "tolerance": 10.0,
+      "name": "copolyamide marker @ 2918.3 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_copolyamide_312.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 3294.4,
+      "tolerance": 10.0,
+      "name": "copolyamide marker @ 3294.4 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_copolyamide_312.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1273.0,
+      "tolerance": 10.0,
+      "name": "copolyamide marker @ 1273 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_copolyamide_374.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1535.3,
+      "tolerance": 10.0,
+      "name": "copolyamide marker @ 1535.3 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_copolyamide_374.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1631.8,
+      "tolerance": 10.0,
+      "name": "copolyamide marker @ 1631.8 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_copolyamide_374.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 2931.8,
+      "tolerance": 10.0,
+      "name": "copolyamide marker @ 2931.8 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_copolyamide_374.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 3298.3,
+      "tolerance": 10.0,
+      "name": "copolyamide marker @ 3298.3 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_copolyamide_374.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1462.0,
+      "tolerance": 10.0,
+      "name": "copolyamide marker @ 1462 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_copolyamide_543.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1537.3,
+      "tolerance": 10.0,
+      "name": "copolyamide marker @ 1537.3 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_copolyamide_543.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1635.6,
+      "tolerance": 10.0,
+      "name": "copolyamide marker @ 1635.6 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_copolyamide_543.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 2848.8,
+      "tolerance": 10.0,
+      "name": "copolyamide marker @ 2848.8 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_copolyamide_543.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 2916.4,
+      "tolerance": 10.0,
+      "name": "copolyamide marker @ 2916.4 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_copolyamide_543.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1539.2,
+      "tolerance": 10.0,
+      "name": "copolyamide marker @ 1539.2 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_copolyamide_544.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1635.6,
+      "tolerance": 10.0,
+      "name": "copolyamide marker @ 1635.6 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_copolyamide_544.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 2850.8,
+      "tolerance": 10.0,
+      "name": "copolyamide marker @ 2850.8 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_copolyamide_544.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 2918.3,
+      "tolerance": 10.0,
+      "name": "copolyamide marker @ 2918.3 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_copolyamide_544.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 3296.3,
+      "tolerance": 10.0,
+      "name": "copolyamide marker @ 3296.3 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_copolyamide_544.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 725.2,
+      "tolerance": 10.0,
+      "name": "Copolyester marker @ 725.2 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_copolyester-1.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1018.4,
+      "tolerance": 10.0,
+      "name": "Copolyester marker @ 1018.4 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_copolyester-1.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1099.4,
+      "tolerance": 10.0,
+      "name": "Copolyester marker @ 1099.4 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_copolyester-1.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1232.5,
+      "tolerance": 10.0,
+      "name": "Copolyester marker @ 1232.5 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_copolyester-1.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1710.9,
+      "tolerance": 10.0,
+      "name": "Copolyester marker @ 1710.9 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_copolyester-1.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 725.2,
+      "tolerance": 10.0,
+      "name": "Copolyester marker @ 725.2 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_copolyester-2.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1018.4,
+      "tolerance": 10.0,
+      "name": "Copolyester marker @ 1018.4 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_copolyester-2.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1099.4,
+      "tolerance": 10.0,
+      "name": "Copolyester marker @ 1099.4 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_copolyester-2.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1230.6,
+      "tolerance": 10.0,
+      "name": "Copolyester marker @ 1230.6 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_copolyester-2.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1710.9,
+      "tolerance": 10.0,
+      "name": "Copolyester marker @ 1710.9 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_copolyester-2.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 725.2,
+      "tolerance": 10.0,
+      "name": "Copolyester marker @ 725.2 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_copolyester-3.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1018.4,
+      "tolerance": 10.0,
+      "name": "Copolyester marker @ 1018.4 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_copolyester-3.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1099.4,
+      "tolerance": 10.0,
+      "name": "Copolyester marker @ 1099.4 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_copolyester-3.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1230.6,
+      "tolerance": 10.0,
+      "name": "Copolyester marker @ 1230.6 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_copolyester-3.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1710.9,
+      "tolerance": 10.0,
+      "name": "Copolyester marker @ 1710.9 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_copolyester-3.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 727.2,
+      "tolerance": 10.0,
+      "name": "Copolyester marker @ 727.2 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_copolyester-4.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1101.3,
+      "tolerance": 10.0,
+      "name": "Copolyester marker @ 1101.3 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_copolyester-4.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1165.0,
+      "tolerance": 10.0,
+      "name": "Copolyester marker @ 1165 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_copolyester-4.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1267.2,
+      "tolerance": 10.0,
+      "name": "Copolyester marker @ 1267.2 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_copolyester-4.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1710.9,
+      "tolerance": 10.0,
+      "name": "Copolyester marker @ 1710.9 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_copolyester-4.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 727.2,
+      "tolerance": 10.0,
+      "name": "Copolyester marker @ 727.2 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_copolyester-5.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1018.4,
+      "tolerance": 10.0,
+      "name": "Copolyester marker @ 1018.4 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_copolyester-5.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1101.3,
+      "tolerance": 10.0,
+      "name": "Copolyester marker @ 1101.3 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_copolyester-5.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1267.2,
+      "tolerance": 10.0,
+      "name": "Copolyester marker @ 1267.2 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_copolyester-5.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1710.9,
+      "tolerance": 10.0,
+      "name": "Copolyester marker @ 1710.9 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_copolyester-5.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 725.2,
+      "tolerance": 10.0,
+      "name": "Copolyester marker @ 725.2 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_copolyester-6.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 937.4,
+      "tolerance": 10.0,
+      "name": "Copolyester marker @ 937.4 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_copolyester-6.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1099.4,
+      "tolerance": 10.0,
+      "name": "Copolyester marker @ 1099.4 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_copolyester-6.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1230.6,
+      "tolerance": 10.0,
+      "name": "Copolyester marker @ 1230.6 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_copolyester-6.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1710.9,
+      "tolerance": 10.0,
+      "name": "Copolyester marker @ 1710.9 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_copolyester-6.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1462.0,
+      "tolerance": 10.0,
+      "name": "fibre polyamide 6 marker @ 1462 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_fibre_polyamide_6_424.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1539.2,
+      "tolerance": 10.0,
+      "name": "fibre polyamide 6 marker @ 1539.2 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_fibre_polyamide_6_424.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1633.7,
+      "tolerance": 10.0,
+      "name": "fibre polyamide 6 marker @ 1633.7 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_fibre_polyamide_6_424.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 2929.9,
+      "tolerance": 10.0,
+      "name": "fibre polyamide 6 marker @ 2929.9 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_fibre_polyamide_6_424.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 3292.5,
+      "tolerance": 10.0,
+      "name": "fibre polyamide 6 marker @ 3292.5 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_fibre_polyamide_6_424.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1462.0,
+      "tolerance": 10.0,
+      "name": "fibre polyamide 6 P66 marker @ 1462 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_fibre_polyamide_6_P66_428.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1539.2,
+      "tolerance": 10.0,
+      "name": "fibre polyamide 6 P66 marker @ 1539.2 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_fibre_polyamide_6_P66_428.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1631.8,
+      "tolerance": 10.0,
+      "name": "fibre polyamide 6 P66 marker @ 1631.8 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_fibre_polyamide_6_P66_428.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 2929.9,
+      "tolerance": 10.0,
+      "name": "fibre polyamide 6 P66 marker @ 2929.9 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_fibre_polyamide_6_P66_428.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 3294.4,
+      "tolerance": 10.0,
+      "name": "fibre polyamide 6 P66 marker @ 3294.4 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_fibre_polyamide_6_P66_428.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1462.0,
+      "tolerance": 10.0,
+      "name": "fibre polyamide 6 notstretched marker @ 1462 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_fibre_polyamide_6_notstretched_423.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1539.2,
+      "tolerance": 10.0,
+      "name": "fibre polyamide 6 notstretched marker @ 1539.2 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_fibre_polyamide_6_notstretched_423.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1633.7,
+      "tolerance": 10.0,
+      "name": "fibre polyamide 6 notstretched marker @ 1633.7 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_fibre_polyamide_6_notstretched_423.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 2927.9,
+      "tolerance": 10.0,
+      "name": "fibre polyamide 6 notstretched marker @ 2927.9 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_fibre_polyamide_6_notstretched_423.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 3294.4,
+      "tolerance": 10.0,
+      "name": "fibre polyamide 6 notstretched marker @ 3294.4 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_fibre_polyamide_6_notstretched_423.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 835.2,
+      "tolerance": 10.0,
+      "name": "fibre polyetheretherketone marker @ 835.2 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_fibre_polyetheretherketone_483.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 925.8,
+      "tolerance": 10.0,
+      "name": "fibre polyetheretherketone marker @ 925.8 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_fibre_polyetheretherketone_483.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1217.1,
+      "tolerance": 10.0,
+      "name": "fibre polyetheretherketone marker @ 1217.1 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_fibre_polyetheretherketone_483.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1487.1,
+      "tolerance": 10.0,
+      "name": "fibre polyetheretherketone marker @ 1487.1 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_fibre_polyetheretherketone_483.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1593.2,
+      "tolerance": 10.0,
+      "name": "fibre polyetheretherketone marker @ 1593.2 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_fibre_polyetheretherketone_483.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 646.2,
+      "tolerance": 10.0,
+      "name": "Methyl Vinyl Ether-Maleic Acid Copolymer (MVE-MA) marker @ 646.2 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_methyl_vinyl_ether_maleic_acid_copolymer_mve_ma.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1085.9,
+      "tolerance": 10.0,
+      "name": "Methyl Vinyl Ether-Maleic Acid Copolymer (MVE-MA) marker @ 1085.9 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_methyl_vinyl_ether_maleic_acid_copolymer_mve_ma.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1174.6,
+      "tolerance": 10.0,
+      "name": "Methyl Vinyl Ether-Maleic Acid Copolymer (MVE-MA) marker @ 1174.6 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_methyl_vinyl_ether_maleic_acid_copolymer_mve_ma.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1701.2,
+      "tolerance": 10.0,
+      "name": "Methyl Vinyl Ether-Maleic Acid Copolymer (MVE-MA) marker @ 1701.2 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_methyl_vinyl_ether_maleic_acid_copolymer_mve_ma.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 2941.4,
+      "tolerance": 10.0,
+      "name": "Methyl Vinyl Ether-Maleic Acid Copolymer (MVE-MA) marker @ 2941.4 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_methyl_vinyl_ether_maleic_acid_copolymer_mve_ma.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 923.9,
+      "tolerance": 10.0,
+      "name": "Methyl Vinyl Ether-Maleic Anhydride Copolymer (MVE-MAn) marker @ 923.9 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_methyl_vinyl_ether_maleic_anhydride_copolymer_mve_man.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1089.8,
+      "tolerance": 10.0,
+      "name": "Methyl Vinyl Ether-Maleic Anhydride Copolymer (MVE-MAn) marker @ 1089.8 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_methyl_vinyl_ether_maleic_anhydride_copolymer_mve_man.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1182.4,
+      "tolerance": 10.0,
+      "name": "Methyl Vinyl Ether-Maleic Anhydride Copolymer (MVE-MAn) marker @ 1182.4 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_methyl_vinyl_ether_maleic_anhydride_copolymer_mve_man.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1708.9,
+      "tolerance": 10.0,
+      "name": "Methyl Vinyl Ether-Maleic Anhydride Copolymer (MVE-MAn) marker @ 1708.9 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_methyl_vinyl_ether_maleic_anhydride_copolymer_mve_man.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1776.4,
+      "tolerance": 10.0,
+      "name": "Methyl Vinyl Ether-Maleic Anhydride Copolymer (MVE-MAn) marker @ 1776.4 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_methyl_vinyl_ether_maleic_anhydride_copolymer_mve_man.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1465.9,
+      "tolerance": 10.0,
+      "name": "nylon 11 marker @ 1465.9 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_nylon_11_419.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1541.1,
+      "tolerance": 10.0,
+      "name": "nylon 11 marker @ 1541.1 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_nylon_11_419.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1635.6,
+      "tolerance": 10.0,
+      "name": "nylon 11 marker @ 1635.6 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_nylon_11_419.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 2850.8,
+      "tolerance": 10.0,
+      "name": "nylon 11 marker @ 2850.8 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_nylon_11_419.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 2918.3,
+      "tolerance": 10.0,
+      "name": "nylon 11 marker @ 2918.3 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_nylon_11_419.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1465.9,
+      "tolerance": 10.0,
+      "name": "nylon 12 marker @ 1465.9 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_nylon_12_420.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1548.8,
+      "tolerance": 10.0,
+      "name": "nylon 12 marker @ 1548.8 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_nylon_12_420.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1637.6,
+      "tolerance": 10.0,
+      "name": "nylon 12 marker @ 1637.6 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_nylon_12_420.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 2850.8,
+      "tolerance": 10.0,
+      "name": "nylon 12 marker @ 2850.8 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_nylon_12_420.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 2918.3,
+      "tolerance": 10.0,
+      "name": "nylon 12 marker @ 2918.3 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_nylon_12_420.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1537.3,
+      "tolerance": 10.0,
+      "name": "nylon 6 12 marker @ 1537.3 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_nylon_6_12_418.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1633.7,
+      "tolerance": 10.0,
+      "name": "nylon 6 12 marker @ 1633.7 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_nylon_6_12_418.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 2850.8,
+      "tolerance": 10.0,
+      "name": "nylon 6 12 marker @ 2850.8 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_nylon_6_12_418.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 2920.2,
+      "tolerance": 10.0,
+      "name": "nylon 6 12 marker @ 2920.2 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_nylon_6_12_418.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 3300.2,
+      "tolerance": 10.0,
+      "name": "nylon 6 12 marker @ 3300.2 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_nylon_6_12_418.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 864.1,
+      "tolerance": 10.0,
+      "name": "nylon 6 3 T marker @ 864.1 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_nylon_6_3__T_414.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1288.4,
+      "tolerance": 10.0,
+      "name": "nylon 6 3 T marker @ 1288.4 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_nylon_6_3__T_414.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1496.8,
+      "tolerance": 10.0,
+      "name": "nylon 6 3 T marker @ 1496.8 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_nylon_6_3__T_414.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1539.2,
+      "tolerance": 10.0,
+      "name": "nylon 6 3 T marker @ 1539.2 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_nylon_6_3__T_414.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1631.8,
+      "tolerance": 10.0,
+      "name": "nylon 6 3 T marker @ 1631.8 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_nylon_6_3__T_414.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 688.6,
+      "tolerance": 10.0,
+      "name": "nylon 6 marker @ 688.6 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_nylon_6_415.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1539.2,
+      "tolerance": 10.0,
+      "name": "nylon 6 marker @ 1539.2 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_nylon_6_415.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1635.6,
+      "tolerance": 10.0,
+      "name": "nylon 6 marker @ 1635.6 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_nylon_6_415.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 2933.7,
+      "tolerance": 10.0,
+      "name": "nylon 6 marker @ 2933.7 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_nylon_6_415.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 3294.4,
+      "tolerance": 10.0,
+      "name": "nylon 6 marker @ 3294.4 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_nylon_6_415.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 686.7,
+      "tolerance": 10.0,
+      "name": "nylon 6 6 marker @ 686.7 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_nylon_6_6_416.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1533.4,
+      "tolerance": 10.0,
+      "name": "nylon 6 6 marker @ 1533.4 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_nylon_6_6_416.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1631.8,
+      "tolerance": 10.0,
+      "name": "nylon 6 6 marker @ 1631.8 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_nylon_6_6_416.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 2931.8,
+      "tolerance": 10.0,
+      "name": "nylon 6 6 marker @ 2931.8 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_nylon_6_6_416.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 3296.3,
+      "tolerance": 10.0,
+      "name": "nylon 6 6 marker @ 3296.3 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_nylon_6_6_416.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1465.9,
+      "tolerance": 10.0,
+      "name": "nylon 6 9 marker @ 1465.9 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_nylon_6_9_417.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1541.1,
+      "tolerance": 10.0,
+      "name": "nylon 6 9 marker @ 1541.1 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_nylon_6_9_417.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1631.8,
+      "tolerance": 10.0,
+      "name": "nylon 6 9 marker @ 1631.8 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_nylon_6_9_417.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 2850.8,
+      "tolerance": 10.0,
+      "name": "nylon 6 9 marker @ 2850.8 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_nylon_6_9_417.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 2918.3,
+      "tolerance": 10.0,
+      "name": "nylon 6 9 marker @ 2918.3 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_nylon_6_9_417.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 858.3,
+      "tolerance": 10.0,
+      "name": "Poly(Ethyl Methacrylate) (PEMA) marker @ 858.3 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_poly_ethyl_methacrylate_pema.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1024.2,
+      "tolerance": 10.0,
+      "name": "Poly(Ethyl Methacrylate) (PEMA) marker @ 1024.2 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_poly_ethyl_methacrylate_pema.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1141.9,
+      "tolerance": 10.0,
+      "name": "Poly(Ethyl Methacrylate) (PEMA) marker @ 1141.9 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_poly_ethyl_methacrylate_pema.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1446.6,
+      "tolerance": 10.0,
+      "name": "Poly(Ethyl Methacrylate) (PEMA) marker @ 1446.6 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_poly_ethyl_methacrylate_pema.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1720.5,
+      "tolerance": 10.0,
+      "name": "Poly(Ethyl Methacrylate) (PEMA) marker @ 1720.5 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_poly_ethyl_methacrylate_pema.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 516.9,
+      "tolerance": 10.0,
+      "name": "Poly(HEMA) marker @ 516.9 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_poly_hema.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1072.4,
+      "tolerance": 10.0,
+      "name": "Poly(HEMA) marker @ 1072.4 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_poly_hema.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1153.4,
+      "tolerance": 10.0,
+      "name": "Poly(HEMA) marker @ 1153.4 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_poly_hema.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1247.9,
+      "tolerance": 10.0,
+      "name": "Poly(HEMA) marker @ 1247.9 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_poly_hema.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1716.6,
+      "tolerance": 10.0,
+      "name": "Poly(HEMA) marker @ 1716.6 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_poly_hema.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 993.3,
+      "tolerance": 10.0,
+      "name": "Poly(Isobutyl Methacrylate) (PiBMA) marker @ 993.3 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_poly_isobutyl_methacrylate_pibma.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1143.8,
+      "tolerance": 10.0,
+      "name": "Poly(Isobutyl Methacrylate) (PiBMA) marker @ 1143.8 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_poly_isobutyl_methacrylate_pibma.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1469.8,
+      "tolerance": 10.0,
+      "name": "Poly(Isobutyl Methacrylate) (PiBMA) marker @ 1469.8 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_poly_isobutyl_methacrylate_pibma.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1724.4,
+      "tolerance": 10.0,
+      "name": "Poly(Isobutyl Methacrylate) (PiBMA) marker @ 1724.4 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_poly_isobutyl_methacrylate_pibma.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 2960.7,
+      "tolerance": 10.0,
+      "name": "Poly(Isobutyl Methacrylate) (PiBMA) marker @ 2960.7 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_poly_isobutyl_methacrylate_pibma.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1143.8,
+      "tolerance": 10.0,
+      "name": "Poly(n-Butyl Methacrylate) (PnBMA) marker @ 1143.8 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_poly_n_butyl_methacrylate_pnbma.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1240.2,
+      "tolerance": 10.0,
+      "name": "Poly(n-Butyl Methacrylate) (PnBMA) marker @ 1240.2 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_poly_n_butyl_methacrylate_pnbma.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1465.9,
+      "tolerance": 10.0,
+      "name": "Poly(n-Butyl Methacrylate) (PnBMA) marker @ 1465.9 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_poly_n_butyl_methacrylate_pnbma.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1722.4,
+      "tolerance": 10.0,
+      "name": "Poly(n-Butyl Methacrylate) (PnBMA) marker @ 1722.4 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_poly_n_butyl_methacrylate_pnbma.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 2958.8,
+      "tolerance": 10.0,
+      "name": "Poly(n-Butyl Methacrylate) (PnBMA) marker @ 2958.8 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_poly_n_butyl_methacrylate_pnbma.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 549.7,
+      "tolerance": 10.0,
+      "name": "Poly(Phenylene Ether Sulfone) (PES) marker @ 549.7 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_poly_phenylene_ether_sulfone_pes.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 698.2,
+      "tolerance": 10.0,
+      "name": "Poly(Phenylene Ether Sulfone) (PES) marker @ 698.2 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_poly_phenylene_ether_sulfone_pes.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1145.7,
+      "tolerance": 10.0,
+      "name": "Poly(Phenylene Ether Sulfone) (PES) marker @ 1145.7 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_poly_phenylene_ether_sulfone_pes.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1232.5,
+      "tolerance": 10.0,
+      "name": "Poly(Phenylene Ether Sulfone) (PES) marker @ 1232.5 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_poly_phenylene_ether_sulfone_pes.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1483.3,
+      "tolerance": 10.0,
+      "name": "Poly(Phenylene Ether Sulfone) (PES) marker @ 1483.3 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_poly_phenylene_ether_sulfone_pes.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 854.5,
+      "tolerance": 10.0,
+      "name": "Poly(Phenylene Oxide) (PPO) marker @ 854.5 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_poly_phenylene_oxide_ppo.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1018.4,
+      "tolerance": 10.0,
+      "name": "Poly(Phenylene Oxide) (PPO) marker @ 1018.4 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_poly_phenylene_oxide_ppo.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1184.3,
+      "tolerance": 10.0,
+      "name": "Poly(Phenylene Oxide) (PPO) marker @ 1184.3 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_poly_phenylene_oxide_ppo.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1305.8,
+      "tolerance": 10.0,
+      "name": "Poly(Phenylene Oxide) (PPO) marker @ 1305.8 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_poly_phenylene_oxide_ppo.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1467.8,
+      "tolerance": 10.0,
+      "name": "Poly(Phenylene Oxide) (PPO) marker @ 1467.8 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_poly_phenylene_oxide_ppo.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 478.3,
+      "tolerance": 10.0,
+      "name": "Poly(Phenylene Sulfide) (PPS) marker @ 478.3 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_poly_phenylene_sulfide_pps.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 808.2,
+      "tolerance": 10.0,
+      "name": "Poly(Phenylene Sulfide) (PPS) marker @ 808.2 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_poly_phenylene_sulfide_pps.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1008.8,
+      "tolerance": 10.0,
+      "name": "Poly(Phenylene Sulfide) (PPS) marker @ 1008.8 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_poly_phenylene_sulfide_pps.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1091.7,
+      "tolerance": 10.0,
+      "name": "Poly(Phenylene Sulfide) (PPS) marker @ 1091.7 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_poly_phenylene_sulfide_pps.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1469.8,
+      "tolerance": 10.0,
+      "name": "Poly(Phenylene Sulfide) (PPS) marker @ 1469.8 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_poly_phenylene_sulfide_pps.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 995.3,
+      "tolerance": 10.0,
+      "name": "Poly(Vinyl Butyral) (PVB) marker @ 995.3 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_poly_vinyl_butyral_pvb.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1130.3,
+      "tolerance": 10.0,
+      "name": "Poly(Vinyl Butyral) (PVB) marker @ 1130.3 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_poly_vinyl_butyral_pvb.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1238.3,
+      "tolerance": 10.0,
+      "name": "Poly(Vinyl Butyral) (PVB) marker @ 1238.3 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_poly_vinyl_butyral_pvb.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1379.1,
+      "tolerance": 10.0,
+      "name": "Poly(Vinyl Butyral) (PVB) marker @ 1379.1 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_poly_vinyl_butyral_pvb.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 2954.9,
+      "tolerance": 10.0,
+      "name": "Poly(Vinyl Butyral) (PVB) marker @ 2954.9 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_poly_vinyl_butyral_pvb.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 439.8,
+      "tolerance": 10.0,
+      "name": "Poly(Vinyl Formal) (PVF) marker @ 439.8 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_poly_vinyl_formal_pvf.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 785.0,
+      "tolerance": 10.0,
+      "name": "Poly(Vinyl Formal) (PVF) marker @ 785 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_poly_vinyl_formal_pvf.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1012.6,
+      "tolerance": 10.0,
+      "name": "Poly(Vinyl Formal) (PVF) marker @ 1012.6 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_poly_vinyl_formal_pvf.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1240.2,
+      "tolerance": 10.0,
+      "name": "Poly(Vinyl Formal) (PVF) marker @ 1240.2 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_poly_vinyl_formal_pvf.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1732.1,
+      "tolerance": 10.0,
+      "name": "Poly(Vinyl Formal) (PVF) marker @ 1732.1 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_poly_vinyl_formal_pvf.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 493.8,
+      "tolerance": 10.0,
+      "name": "Polyacrylamide (PAM) marker @ 493.8 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polyacrylamide_pam.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1413.8,
+      "tolerance": 10.0,
+      "name": "Polyacrylamide (PAM) marker @ 1413.8 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polyacrylamide_pam.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1647.2,
+      "tolerance": 10.0,
+      "name": "Polyacrylamide (PAM) marker @ 1647.2 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polyacrylamide_pam.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 2924.1,
+      "tolerance": 10.0,
+      "name": "Polyacrylamide (PAM) marker @ 2924.1 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polyacrylamide_pam.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 3184.5,
+      "tolerance": 10.0,
+      "name": "Polyacrylamide (PAM) marker @ 3184.5 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polyacrylamide_pam.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1261.4,
+      "tolerance": 10.0,
+      "name": "polyamide marker @ 1261.4 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polyamide_405.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1539.2,
+      "tolerance": 10.0,
+      "name": "polyamide marker @ 1539.2 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polyamide_405.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1633.7,
+      "tolerance": 10.0,
+      "name": "polyamide marker @ 1633.7 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polyamide_405.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 2933.7,
+      "tolerance": 10.0,
+      "name": "polyamide marker @ 2933.7 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polyamide_405.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 3296.3,
+      "tolerance": 10.0,
+      "name": "polyamide marker @ 3296.3 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polyamide_405.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1464.0,
+      "tolerance": 10.0,
+      "name": "polyamide marker @ 1464 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polyamide_545.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1539.2,
+      "tolerance": 10.0,
+      "name": "polyamide marker @ 1539.2 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polyamide_545.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1635.6,
+      "tolerance": 10.0,
+      "name": "polyamide marker @ 1635.6 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polyamide_545.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 2920.2,
+      "tolerance": 10.0,
+      "name": "polyamide marker @ 2920.2 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polyamide_545.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 3296.3,
+      "tolerance": 10.0,
+      "name": "polyamide marker @ 3296.3 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polyamide_545.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1464.0,
+      "tolerance": 10.0,
+      "name": "polyamide 66 marker @ 1464 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polyamide_66_585.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1537.3,
+      "tolerance": 10.0,
+      "name": "polyamide 66 marker @ 1537.3 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polyamide_66_585.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1629.8,
+      "tolerance": 10.0,
+      "name": "polyamide 66 marker @ 1629.8 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polyamide_66_585.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 2850.8,
+      "tolerance": 10.0,
+      "name": "polyamide 66 marker @ 2850.8 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polyamide_66_585.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 2916.4,
+      "tolerance": 10.0,
+      "name": "polyamide 66 marker @ 2916.4 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polyamide_66_585.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1261.4,
+      "tolerance": 10.0,
+      "name": "polyamide 6 marker @ 1261.4 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polyamide_6_425.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1541.1,
+      "tolerance": 10.0,
+      "name": "polyamide 6 marker @ 1541.1 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polyamide_6_425.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1635.6,
+      "tolerance": 10.0,
+      "name": "polyamide 6 marker @ 1635.6 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polyamide_6_425.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 2931.8,
+      "tolerance": 10.0,
+      "name": "polyamide 6 marker @ 2931.8 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polyamide_6_425.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 3296.3,
+      "tolerance": 10.0,
+      "name": "polyamide 6 marker @ 3296.3 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polyamide_6_425.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1261.4,
+      "tolerance": 10.0,
+      "name": "polyamide 6 marker @ 1261.4 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polyamide_6_426.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1539.2,
+      "tolerance": 10.0,
+      "name": "polyamide 6 marker @ 1539.2 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polyamide_6_426.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1635.6,
+      "tolerance": 10.0,
+      "name": "polyamide 6 marker @ 1635.6 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polyamide_6_426.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 2931.8,
+      "tolerance": 10.0,
+      "name": "polyamide 6 marker @ 2931.8 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polyamide_6_426.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 3298.3,
+      "tolerance": 10.0,
+      "name": "polyamide 6 marker @ 3298.3 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polyamide_6_426.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1462.0,
+      "tolerance": 10.0,
+      "name": "polyamide 6 marker @ 1462 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polyamide_6_427.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1539.2,
+      "tolerance": 10.0,
+      "name": "polyamide 6 marker @ 1539.2 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polyamide_6_427.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1633.7,
+      "tolerance": 10.0,
+      "name": "polyamide 6 marker @ 1633.7 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polyamide_6_427.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 2929.9,
+      "tolerance": 10.0,
+      "name": "polyamide 6 marker @ 2929.9 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polyamide_6_427.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 3296.3,
+      "tolerance": 10.0,
+      "name": "polyamide 6 marker @ 3296.3 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polyamide_6_427.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 719.4,
+      "tolerance": 10.0,
+      "name": "polyamide resin marker @ 719.4 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polyamide_resin_475.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1462.0,
+      "tolerance": 10.0,
+      "name": "polyamide resin marker @ 1462 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polyamide_resin_475.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1637.6,
+      "tolerance": 10.0,
+      "name": "polyamide resin marker @ 1637.6 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polyamide_resin_475.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 2848.8,
+      "tolerance": 10.0,
+      "name": "polyamide resin marker @ 2848.8 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polyamide_resin_475.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 2916.4,
+      "tolerance": 10.0,
+      "name": "polyamide resin marker @ 2916.4 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polyamide_resin_475.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 829.4,
+      "tolerance": 10.0,
+      "name": "polycarbonate marker @ 829.4 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polycarbonate_406.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1012.6,
+      "tolerance": 10.0,
+      "name": "polycarbonate marker @ 1012.6 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polycarbonate_406.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1159.2,
+      "tolerance": 10.0,
+      "name": "polycarbonate marker @ 1159.2 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polycarbonate_406.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1188.1,
+      "tolerance": 10.0,
+      "name": "polycarbonate marker @ 1188.1 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polycarbonate_406.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1772.6,
+      "tolerance": 10.0,
+      "name": "polycarbonate marker @ 1772.6 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polycarbonate_406.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1014.6,
+      "tolerance": 10.0,
+      "name": "polycarbonate marker @ 1014.6 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polycarbonate_432.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1159.2,
+      "tolerance": 10.0,
+      "name": "polycarbonate marker @ 1159.2 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polycarbonate_432.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1188.1,
+      "tolerance": 10.0,
+      "name": "polycarbonate marker @ 1188.1 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polycarbonate_432.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1219.0,
+      "tolerance": 10.0,
+      "name": "polycarbonate marker @ 1219 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polycarbonate_432.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1770.6,
+      "tolerance": 10.0,
+      "name": "polycarbonate marker @ 1770.6 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polycarbonate_432.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1014.6,
+      "tolerance": 10.0,
+      "name": "polycarbonate marker @ 1014.6 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polycarbonate_433.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1161.1,
+      "tolerance": 10.0,
+      "name": "polycarbonate marker @ 1161.1 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polycarbonate_433.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1190.1,
+      "tolerance": 10.0,
+      "name": "polycarbonate marker @ 1190.1 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polycarbonate_433.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1224.8,
+      "tolerance": 10.0,
+      "name": "polycarbonate marker @ 1224.8 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polycarbonate_433.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1766.8,
+      "tolerance": 10.0,
+      "name": "polycarbonate marker @ 1766.8 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polycarbonate_433.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 829.4,
+      "tolerance": 10.0,
+      "name": "polycarbonate marker @ 829.4 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polycarbonate_478.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1014.6,
+      "tolerance": 10.0,
+      "name": "polycarbonate marker @ 1014.6 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polycarbonate_478.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1159.2,
+      "tolerance": 10.0,
+      "name": "polycarbonate marker @ 1159.2 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polycarbonate_478.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1502.5,
+      "tolerance": 10.0,
+      "name": "polycarbonate marker @ 1502.5 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polycarbonate_478.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1768.7,
+      "tolerance": 10.0,
+      "name": "polycarbonate marker @ 1768.7 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polycarbonate_478.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 829.4,
+      "tolerance": 10.0,
+      "name": "polycarbonate marker @ 829.4 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polycarbonate_479.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1014.6,
+      "tolerance": 10.0,
+      "name": "polycarbonate marker @ 1014.6 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polycarbonate_479.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1159.2,
+      "tolerance": 10.0,
+      "name": "polycarbonate marker @ 1159.2 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polycarbonate_479.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1504.5,
+      "tolerance": 10.0,
+      "name": "polycarbonate marker @ 1504.5 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polycarbonate_479.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1770.6,
+      "tolerance": 10.0,
+      "name": "polycarbonate marker @ 1770.6 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polycarbonate_479.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 829.4,
+      "tolerance": 10.0,
+      "name": "polycarbonate marker @ 829.4 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polycarbonate_586.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1014.6,
+      "tolerance": 10.0,
+      "name": "polycarbonate marker @ 1014.6 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polycarbonate_586.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1159.2,
+      "tolerance": 10.0,
+      "name": "polycarbonate marker @ 1159.2 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polycarbonate_586.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1502.5,
+      "tolerance": 10.0,
+      "name": "polycarbonate marker @ 1502.5 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polycarbonate_586.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1768.7,
+      "tolerance": 10.0,
+      "name": "polycarbonate marker @ 1768.7 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polycarbonate_586.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1014.4,
+      "tolerance": 10.0,
+      "name": "polycarbonate marker @ 1014.4 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polycarbonate_606.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1161.0,
+      "tolerance": 10.0,
+      "name": "polycarbonate marker @ 1161 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polycarbonate_606.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1191.8,
+      "tolerance": 10.0,
+      "name": "polycarbonate marker @ 1191.8 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polycarbonate_606.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1222.7,
+      "tolerance": 10.0,
+      "name": "polycarbonate marker @ 1222.7 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polycarbonate_606.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1770.4,
+      "tolerance": 10.0,
+      "name": "polycarbonate marker @ 1770.4 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polycarbonate_606.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 727.2,
+      "tolerance": 10.0,
+      "name": "Polyester-Epoxide Hybrid marker @ 727.2 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polyester_epoxide_hybrid-1.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1099.4,
+      "tolerance": 10.0,
+      "name": "Polyester-Epoxide Hybrid marker @ 1099.4 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polyester_epoxide_hybrid-1.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1246.0,
+      "tolerance": 10.0,
+      "name": "Polyester-Epoxide Hybrid marker @ 1246 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polyester_epoxide_hybrid-1.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1508.3,
+      "tolerance": 10.0,
+      "name": "Polyester-Epoxide Hybrid marker @ 1508.3 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polyester_epoxide_hybrid-1.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1716.6,
+      "tolerance": 10.0,
+      "name": "Polyester-Epoxide Hybrid marker @ 1716.6 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polyester_epoxide_hybrid-1.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 725.2,
+      "tolerance": 10.0,
+      "name": "Polyester-Epoxide Hybrid marker @ 725.2 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polyester_epoxide_hybrid-2.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1018.4,
+      "tolerance": 10.0,
+      "name": "Polyester-Epoxide Hybrid marker @ 1018.4 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polyester_epoxide_hybrid-2.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1099.4,
+      "tolerance": 10.0,
+      "name": "Polyester-Epoxide Hybrid marker @ 1099.4 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polyester_epoxide_hybrid-2.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1246.0,
+      "tolerance": 10.0,
+      "name": "Polyester-Epoxide Hybrid marker @ 1246 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polyester_epoxide_hybrid-2.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1716.6,
+      "tolerance": 10.0,
+      "name": "Polyester-Epoxide Hybrid marker @ 1716.6 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polyester_epoxide_hybrid-2.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 744.4,
+      "tolerance": 10.0,
+      "name": "Polyetheramide (PEBA) marker @ 744.4 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polyetheramide_peba.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1234.3,
+      "tolerance": 10.0,
+      "name": "Polyetheramide (PEBA) marker @ 1234.3 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polyetheramide_peba.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1353.8,
+      "tolerance": 10.0,
+      "name": "Polyetheramide (PEBA) marker @ 1353.8 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polyetheramide_peba.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1477.3,
+      "tolerance": 10.0,
+      "name": "Polyetheramide (PEBA) marker @ 1477.3 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polyetheramide_peba.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1720.3,
+      "tolerance": 10.0,
+      "name": "Polyetheramide (PEBA) marker @ 1720.3 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polyetheramide_peba.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 725.2,
+      "tolerance": 10.0,
+      "name": "Polyetherester (COPE) marker @ 725.2 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polyetherester_cope.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1018.4,
+      "tolerance": 10.0,
+      "name": "Polyetherester (COPE) marker @ 1018.4 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polyetherester_cope.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1101.3,
+      "tolerance": 10.0,
+      "name": "Polyetherester (COPE) marker @ 1101.3 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polyetherester_cope.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1265.3,
+      "tolerance": 10.0,
+      "name": "Polyetherester (COPE) marker @ 1265.3 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polyetherester_cope.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1710.9,
+      "tolerance": 10.0,
+      "name": "Polyetherester (COPE) marker @ 1710.9 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polyetherester_cope.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 893.0,
+      "tolerance": 10.0,
+      "name": "polyoxymethylene marker @ 893 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polyoxymethylene_509.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1087.8,
+      "tolerance": 10.0,
+      "name": "polyoxymethylene marker @ 1087.8 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polyoxymethylene_509.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1236.4,
+      "tolerance": 10.0,
+      "name": "polyoxymethylene marker @ 1236.4 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polyoxymethylene_509.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 557.4,
+      "tolerance": 10.0,
+      "name": "Polyphenylsulfone (PPSU) marker @ 557.4 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polyphenylsulfone_ppsu.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1103.3,
+      "tolerance": 10.0,
+      "name": "Polyphenylsulfone (PPSU) marker @ 1103.3 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polyphenylsulfone_ppsu.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1145.7,
+      "tolerance": 10.0,
+      "name": "Polyphenylsulfone (PPSU) marker @ 1145.7 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polyphenylsulfone_ppsu.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1230.6,
+      "tolerance": 10.0,
+      "name": "Polyphenylsulfone (PPSU) marker @ 1230.6 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polyphenylsulfone_ppsu.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1481.3,
+      "tolerance": 10.0,
+      "name": "Polyphenylsulfone (PPSU) marker @ 1481.3 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polyphenylsulfone_ppsu.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 555.5,
+      "tolerance": 10.0,
+      "name": "Polysulfone (PSU) marker @ 555.5 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polysulfone_psu.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 831.3,
+      "tolerance": 10.0,
+      "name": "Polysulfone (PSU) marker @ 831.3 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polysulfone_psu.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1147.6,
+      "tolerance": 10.0,
+      "name": "Polysulfone (PSU) marker @ 1147.6 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polysulfone_psu.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1234.4,
+      "tolerance": 10.0,
+      "name": "Polysulfone (PSU) marker @ 1234.4 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polysulfone_psu.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1485.2,
+      "tolerance": 10.0,
+      "name": "Polysulfone (PSU) marker @ 1485.2 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/openspecy_polysulfone_psu.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 789.0,
+      "tolerance": 10.0,
+      "name": "Polyethylene Terephthalate (PET) marker @ 789 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/zenodo_17195859_FT-IR_REX-PET_sample1.csv (Zenodo)"
+    },
+    {
+      "centerWavenumber": 909.0,
+      "tolerance": 10.0,
+      "name": "Polyethylene Terephthalate (PET) marker @ 909 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/zenodo_17195859_FT-IR_REX-PET_sample1.csv (Zenodo)"
+    },
+    {
+      "centerWavenumber": 1034.0,
+      "tolerance": 10.0,
+      "name": "Polyethylene Terephthalate (PET) marker @ 1034 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/zenodo_17195859_FT-IR_REX-PET_sample1.csv (Zenodo)"
+    },
+    {
+      "centerWavenumber": 1161.0,
+      "tolerance": 10.0,
+      "name": "Polyethylene Terephthalate (PET) marker @ 1161 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/zenodo_17195859_FT-IR_REX-PET_sample1.csv (Zenodo)"
+    },
+    {
+      "centerWavenumber": 1484.0,
+      "tolerance": 10.0,
+      "name": "Polyethylene Terephthalate (PET) marker @ 1484 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/zenodo_17195859_FT-IR_REX-PET_sample1.csv (Zenodo)"
+    },
+    {
+      "centerWavenumber": 789.0,
+      "tolerance": 10.0,
+      "name": "Polyethylene Terephthalate (PET) marker @ 789 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/zenodo_17195859_FT-IR_REX-PET_sample2.csv (Zenodo)"
+    },
+    {
+      "centerWavenumber": 910.0,
+      "tolerance": 10.0,
+      "name": "Polyethylene Terephthalate (PET) marker @ 910 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/zenodo_17195859_FT-IR_REX-PET_sample2.csv (Zenodo)"
+    },
+    {
+      "centerWavenumber": 1161.0,
+      "tolerance": 10.0,
+      "name": "Polyethylene Terephthalate (PET) marker @ 1161 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/zenodo_17195859_FT-IR_REX-PET_sample2.csv (Zenodo)"
+    },
+    {
+      "centerWavenumber": 1490.0,
+      "tolerance": 10.0,
+      "name": "Polyethylene Terephthalate (PET) marker @ 1490 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/zenodo_17195859_FT-IR_REX-PET_sample2.csv (Zenodo)"
+    },
+    {
+      "centerWavenumber": 2156.0,
+      "tolerance": 10.0,
+      "name": "Polyethylene Terephthalate (PET) marker @ 2156 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/zenodo_17195859_FT-IR_REX-PET_sample2.csv (Zenodo)"
+    },
+    {
+      "centerWavenumber": 789.0,
+      "tolerance": 10.0,
+      "name": "Polyethylene Terephthalate (PET) marker @ 789 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/zenodo_17195859_FT-IR_REX-PET_sample3.csv (Zenodo)"
+    },
+    {
+      "centerWavenumber": 848.0,
+      "tolerance": 10.0,
+      "name": "Polyethylene Terephthalate (PET) marker @ 848 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/zenodo_17195859_FT-IR_REX-PET_sample3.csv (Zenodo)"
+    },
+    {
+      "centerWavenumber": 911.0,
+      "tolerance": 10.0,
+      "name": "Polyethylene Terephthalate (PET) marker @ 911 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/zenodo_17195859_FT-IR_REX-PET_sample3.csv (Zenodo)"
+    },
+    {
+      "centerWavenumber": 1489.0,
+      "tolerance": 10.0,
+      "name": "Polyethylene Terephthalate (PET) marker @ 1489 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/zenodo_17195859_FT-IR_REX-PET_sample3.csv (Zenodo)"
+    },
+    {
+      "centerWavenumber": 1795.0,
+      "tolerance": 10.0,
+      "name": "Polyethylene Terephthalate (PET) marker @ 1795 cm-1",
+      "color": "#4f46e5",
+      "note": "Auto-derived from 03_engineering_plastic/02_engineering/zenodo_17195859_FT-IR_REX-PET_sample3.csv (Zenodo)"
+    }
+  ]
+}

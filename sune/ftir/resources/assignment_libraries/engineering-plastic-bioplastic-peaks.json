@@ -1,0 +1,937 @@
+{
+  "name": "Bioplastic Peak Library",
+  "description": "바이오/셀룰로오스계 플라스틱 FT-IR 기준 스펙트럼에서 자동 추출한 피크 후보. Generated from sune/data/RIST_FTIR_Library; 5 strongest peaks per spectrum.",
+  "assignments": [
+    {
+      "centerWavenumber": 979.0,
+      "tolerance": 10.0,
+      "name": "Polyhydroxybutyrate marker @ 979 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/figshare_PHB-1.csv (figshare (thermoplastic dataset))"
+    },
+    {
+      "centerWavenumber": 1055.0,
+      "tolerance": 10.0,
+      "name": "Polyhydroxybutyrate marker @ 1055 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/figshare_PHB-1.csv (figshare (thermoplastic dataset))"
+    },
+    {
+      "centerWavenumber": 1131.0,
+      "tolerance": 10.0,
+      "name": "Polyhydroxybutyrate marker @ 1131 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/figshare_PHB-1.csv (figshare (thermoplastic dataset))"
+    },
+    {
+      "centerWavenumber": 1278.0,
+      "tolerance": 10.0,
+      "name": "Polyhydroxybutyrate marker @ 1278 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/figshare_PHB-1.csv (figshare (thermoplastic dataset))"
+    },
+    {
+      "centerWavenumber": 1720.0,
+      "tolerance": 10.0,
+      "name": "Polyhydroxybutyrate marker @ 1720 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/figshare_PHB-1.csv (figshare (thermoplastic dataset))"
+    },
+    {
+      "centerWavenumber": 1044.0,
+      "tolerance": 10.0,
+      "name": "Polylactic Acid marker @ 1044 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/figshare_PLA-1.csv (figshare (thermoplastic dataset))"
+    },
+    {
+      "centerWavenumber": 1088.0,
+      "tolerance": 10.0,
+      "name": "Polylactic Acid marker @ 1088 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/figshare_PLA-1.csv (figshare (thermoplastic dataset))"
+    },
+    {
+      "centerWavenumber": 1183.0,
+      "tolerance": 10.0,
+      "name": "Polylactic Acid marker @ 1183 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/figshare_PLA-1.csv (figshare (thermoplastic dataset))"
+    },
+    {
+      "centerWavenumber": 1452.0,
+      "tolerance": 10.0,
+      "name": "Polylactic Acid marker @ 1452 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/figshare_PLA-1.csv (figshare (thermoplastic dataset))"
+    },
+    {
+      "centerWavenumber": 1748.0,
+      "tolerance": 10.0,
+      "name": "Polylactic Acid marker @ 1748 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/figshare_PLA-1.csv (figshare (thermoplastic dataset))"
+    },
+    {
+      "centerWavenumber": 1091.0,
+      "tolerance": 10.0,
+      "name": "Glycolic Acid marker @ 1091 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/nist_GlycolicAcid_n0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1258.9,
+      "tolerance": 10.0,
+      "name": "Glycolic Acid marker @ 1258.9 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/nist_GlycolicAcid_n0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1437.9,
+      "tolerance": 10.0,
+      "name": "Glycolic Acid marker @ 1437.9 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/nist_GlycolicAcid_n0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1716.4,
+      "tolerance": 10.0,
+      "name": "Glycolic Acid marker @ 1716.4 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/nist_GlycolicAcid_n0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 3253.0,
+      "tolerance": 10.0,
+      "name": "Glycolic Acid marker @ 3253 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/nist_GlycolicAcid_n0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 558.0,
+      "tolerance": 10.0,
+      "name": "Lactic Acid marker @ 558 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/nist_LacticAcid_n0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1114.0,
+      "tolerance": 10.0,
+      "name": "Lactic Acid marker @ 1114 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/nist_LacticAcid_n0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1782.0,
+      "tolerance": 10.0,
+      "name": "Lactic Acid marker @ 1782 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/nist_LacticAcid_n0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 2994.0,
+      "tolerance": 10.0,
+      "name": "Lactic Acid marker @ 2994 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/nist_LacticAcid_n0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 3582.0,
+      "tolerance": 10.0,
+      "name": "Lactic Acid marker @ 3582 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/nist_LacticAcid_n0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 557.4,
+      "tolerance": 10.0,
+      "name": "Cellulose marker @ 557.4 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/openspecy_cellulose-1.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1030.0,
+      "tolerance": 10.0,
+      "name": "Cellulose marker @ 1030 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/openspecy_cellulose-1.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1159.2,
+      "tolerance": 10.0,
+      "name": "Cellulose marker @ 1159.2 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/openspecy_cellulose-1.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1315.4,
+      "tolerance": 10.0,
+      "name": "Cellulose marker @ 1315.4 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/openspecy_cellulose-1.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 3334.9,
+      "tolerance": 10.0,
+      "name": "Cellulose marker @ 3334.9 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/openspecy_cellulose-1.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 520.8,
+      "tolerance": 10.0,
+      "name": "Cellulose marker @ 520.8 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/openspecy_cellulose-2.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1018.4,
+      "tolerance": 10.0,
+      "name": "Cellulose marker @ 1018.4 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/openspecy_cellulose-2.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1367.5,
+      "tolerance": 10.0,
+      "name": "Cellulose marker @ 1367.5 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/openspecy_cellulose-2.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1660.7,
+      "tolerance": 10.0,
+      "name": "Cellulose marker @ 1660.7 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/openspecy_cellulose-2.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 3346.5,
+      "tolerance": 10.0,
+      "name": "Cellulose marker @ 3346.5 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/openspecy_cellulose-2.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1035.6,
+      "tolerance": 10.0,
+      "name": "Cellulose marker @ 1035.6 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/openspecy_cellulose-3.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1369.3,
+      "tolerance": 10.0,
+      "name": "Cellulose marker @ 1369.3 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/openspecy_cellulose-3.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 2898.6,
+      "tolerance": 10.0,
+      "name": "Cellulose marker @ 2898.6 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/openspecy_cellulose-3.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 3340.2,
+      "tolerance": 10.0,
+      "name": "Cellulose marker @ 3340.2 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/openspecy_cellulose-3.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1045.3,
+      "tolerance": 10.0,
+      "name": "Cellulose marker @ 1045.3 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/openspecy_cellulose-4.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1323.0,
+      "tolerance": 10.0,
+      "name": "Cellulose marker @ 1323 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/openspecy_cellulose-4.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 2908.2,
+      "tolerance": 10.0,
+      "name": "Cellulose marker @ 2908.2 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/openspecy_cellulose-4.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 3340.2,
+      "tolerance": 10.0,
+      "name": "Cellulose marker @ 3340.2 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/openspecy_cellulose-4.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 601.8,
+      "tolerance": 10.0,
+      "name": "Cellulose Acetate Butyrate (CAB) marker @ 601.8 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/openspecy_cellulose_acetate_butyrate_cab.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1037.7,
+      "tolerance": 10.0,
+      "name": "Cellulose Acetate Butyrate (CAB) marker @ 1037.7 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/openspecy_cellulose_acetate_butyrate_cab.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1220.9,
+      "tolerance": 10.0,
+      "name": "Cellulose Acetate Butyrate (CAB) marker @ 1220.9 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/openspecy_cellulose_acetate_butyrate_cab.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1367.5,
+      "tolerance": 10.0,
+      "name": "Cellulose Acetate Butyrate (CAB) marker @ 1367.5 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/openspecy_cellulose_acetate_butyrate_cab.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1739.8,
+      "tolerance": 10.0,
+      "name": "Cellulose Acetate Butyrate (CAB) marker @ 1739.8 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/openspecy_cellulose_acetate_butyrate_cab.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 601.8,
+      "tolerance": 10.0,
+      "name": "Cellulose Acetate (CA) marker @ 601.8 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/openspecy_cellulose_acetate_ca.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1031.9,
+      "tolerance": 10.0,
+      "name": "Cellulose Acetate (CA) marker @ 1031.9 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/openspecy_cellulose_acetate_ca.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1217.1,
+      "tolerance": 10.0,
+      "name": "Cellulose Acetate (CA) marker @ 1217.1 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/openspecy_cellulose_acetate_ca.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1367.5,
+      "tolerance": 10.0,
+      "name": "Cellulose Acetate (CA) marker @ 1367.5 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/openspecy_cellulose_acetate_ca.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1735.9,
+      "tolerance": 10.0,
+      "name": "Cellulose Acetate (CA) marker @ 1735.9 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/openspecy_cellulose_acetate_ca.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 806.2,
+      "tolerance": 10.0,
+      "name": "Cellulose Propionate (CP) marker @ 806.2 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/openspecy_cellulose_propionate_cp.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1060.8,
+      "tolerance": 10.0,
+      "name": "Cellulose Propionate (CP) marker @ 1060.8 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/openspecy_cellulose_propionate_cp.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1159.2,
+      "tolerance": 10.0,
+      "name": "Cellulose Propionate (CP) marker @ 1159.2 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/openspecy_cellulose_propionate_cp.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1350.2,
+      "tolerance": 10.0,
+      "name": "Cellulose Propionate (CP) marker @ 1350.2 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/openspecy_cellulose_propionate_cp.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1739.8,
+      "tolerance": 10.0,
+      "name": "Cellulose Propionate (CP) marker @ 1739.8 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/openspecy_cellulose_propionate_cp.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 601.8,
+      "tolerance": 10.0,
+      "name": "Cellulose Triacetate (CTA) marker @ 601.8 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/openspecy_cellulose_triacetate_cta.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1031.9,
+      "tolerance": 10.0,
+      "name": "Cellulose Triacetate (CTA) marker @ 1031.9 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/openspecy_cellulose_triacetate_cta.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1213.2,
+      "tolerance": 10.0,
+      "name": "Cellulose Triacetate (CTA) marker @ 1213.2 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/openspecy_cellulose_triacetate_cta.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1367.5,
+      "tolerance": 10.0,
+      "name": "Cellulose Triacetate (CTA) marker @ 1367.5 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/openspecy_cellulose_triacetate_cta.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1737.9,
+      "tolerance": 10.0,
+      "name": "Cellulose Triacetate (CTA) marker @ 1737.9 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/openspecy_cellulose_triacetate_cta.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 576.7,
+      "tolerance": 10.0,
+      "name": "Ethyl Cellulose (EC) marker @ 576.7 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/openspecy_ethyl_cellulose_ec.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1053.1,
+      "tolerance": 10.0,
+      "name": "Ethyl Cellulose (EC) marker @ 1053.1 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/openspecy_ethyl_cellulose_ec.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1375.2,
+      "tolerance": 10.0,
+      "name": "Ethyl Cellulose (EC) marker @ 1375.2 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/openspecy_ethyl_cellulose_ec.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 2870.1,
+      "tolerance": 10.0,
+      "name": "Ethyl Cellulose (EC) marker @ 2870.1 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/openspecy_ethyl_cellulose_ec.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 2974.2,
+      "tolerance": 10.0,
+      "name": "Ethyl Cellulose (EC) marker @ 2974.2 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/openspecy_ethyl_cellulose_ec.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 528.5,
+      "tolerance": 10.0,
+      "name": "Hydroxyethyl Cellulose (HEC) marker @ 528.5 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/openspecy_hydroxyethyl_cellulose_hec.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1053.1,
+      "tolerance": 10.0,
+      "name": "Hydroxyethyl Cellulose (HEC) marker @ 1053.1 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/openspecy_hydroxyethyl_cellulose_hec.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1354.0,
+      "tolerance": 10.0,
+      "name": "Hydroxyethyl Cellulose (HEC) marker @ 1354 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/openspecy_hydroxyethyl_cellulose_hec.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 2873.9,
+      "tolerance": 10.0,
+      "name": "Hydroxyethyl Cellulose (HEC) marker @ 2873.9 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/openspecy_hydroxyethyl_cellulose_hec.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 3385.1,
+      "tolerance": 10.0,
+      "name": "Hydroxyethyl Cellulose (HEC) marker @ 3385.1 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/openspecy_hydroxyethyl_cellulose_hec.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 478.3,
+      "tolerance": 10.0,
+      "name": "Hydroxypropyl Cellulose (HPC) marker @ 478.3 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/openspecy_hydroxypropyl_cellulose_hpc.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1049.3,
+      "tolerance": 10.0,
+      "name": "Hydroxypropyl Cellulose (HPC) marker @ 1049.3 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/openspecy_hydroxypropyl_cellulose_hpc.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1373.3,
+      "tolerance": 10.0,
+      "name": "Hydroxypropyl Cellulose (HPC) marker @ 1373.3 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/openspecy_hydroxypropyl_cellulose_hpc.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 2875.9,
+      "tolerance": 10.0,
+      "name": "Hydroxypropyl Cellulose (HPC) marker @ 2875.9 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/openspecy_hydroxypropyl_cellulose_hpc.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 3431.3,
+      "tolerance": 10.0,
+      "name": "Hydroxypropyl Cellulose (HPC) marker @ 3431.3 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/openspecy_hydroxypropyl_cellulose_hpc.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 569.0,
+      "tolerance": 10.0,
+      "name": "Hydroxypropyl Methyl Cellulose (HPMC) marker @ 569 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/openspecy_hydroxypropyl_methyl_cellulose_hpmc.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 945.1,
+      "tolerance": 10.0,
+      "name": "Hydroxypropyl Methyl Cellulose (HPMC) marker @ 945.1 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/openspecy_hydroxypropyl_methyl_cellulose_hpmc.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1053.1,
+      "tolerance": 10.0,
+      "name": "Hydroxypropyl Methyl Cellulose (HPMC) marker @ 1053.1 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/openspecy_hydroxypropyl_methyl_cellulose_hpmc.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1373.3,
+      "tolerance": 10.0,
+      "name": "Hydroxypropyl Methyl Cellulose (HPMC) marker @ 1373.3 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/openspecy_hydroxypropyl_methyl_cellulose_hpmc.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 2900.9,
+      "tolerance": 10.0,
+      "name": "Hydroxypropyl Methyl Cellulose (HPMC) marker @ 2900.9 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/openspecy_hydroxypropyl_methyl_cellulose_hpmc.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 567.1,
+      "tolerance": 10.0,
+      "name": "Methyl Cellulose (MC) marker @ 567.1 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/openspecy_methyl_cellulose_mc.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 945.1,
+      "tolerance": 10.0,
+      "name": "Methyl Cellulose (MC) marker @ 945.1 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/openspecy_methyl_cellulose_mc.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1053.1,
+      "tolerance": 10.0,
+      "name": "Methyl Cellulose (MC) marker @ 1053.1 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/openspecy_methyl_cellulose_mc.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 2899.0,
+      "tolerance": 10.0,
+      "name": "Methyl Cellulose (MC) marker @ 2899 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/openspecy_methyl_cellulose_mc.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 3439.1,
+      "tolerance": 10.0,
+      "name": "Methyl Cellulose (MC) marker @ 3439.1 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/openspecy_methyl_cellulose_mc.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 837.0,
+      "tolerance": 10.0,
+      "name": "Nitrocellulose (NC) marker @ 837 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/openspecy_nitrocellulose_nc.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1064.6,
+      "tolerance": 10.0,
+      "name": "Nitrocellulose (NC) marker @ 1064.6 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/openspecy_nitrocellulose_nc.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1276.7,
+      "tolerance": 10.0,
+      "name": "Nitrocellulose (NC) marker @ 1276.7 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/openspecy_nitrocellulose_nc.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1647.0,
+      "tolerance": 10.0,
+      "name": "Nitrocellulose (NC) marker @ 1647 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/openspecy_nitrocellulose_nc.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 2916.0,
+      "tolerance": 10.0,
+      "name": "Nitrocellulose (NC) marker @ 2916 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/openspecy_nitrocellulose_nc.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 732.9,
+      "tolerance": 10.0,
+      "name": "Polycaprolactone (PCL) marker @ 732.9 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/openspecy_polycaprolactone_pcl-1.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1165.0,
+      "tolerance": 10.0,
+      "name": "Polycaprolactone (PCL) marker @ 1165 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/openspecy_polycaprolactone_pcl-1.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1238.3,
+      "tolerance": 10.0,
+      "name": "Polycaprolactone (PCL) marker @ 1238.3 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/openspecy_polycaprolactone_pcl-1.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1722.4,
+      "tolerance": 10.0,
+      "name": "Polycaprolactone (PCL) marker @ 1722.4 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/openspecy_polycaprolactone_pcl-1.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 2945.3,
+      "tolerance": 10.0,
+      "name": "Polycaprolactone (PCL) marker @ 2945.3 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/openspecy_polycaprolactone_pcl-1.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1047.3,
+      "tolerance": 10.0,
+      "name": "Polycaprolactone (PCL) marker @ 1047.3 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/openspecy_polycaprolactone_pcl-2.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1165.0,
+      "tolerance": 10.0,
+      "name": "Polycaprolactone (PCL) marker @ 1165 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/openspecy_polycaprolactone_pcl-2.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1236.4,
+      "tolerance": 10.0,
+      "name": "Polycaprolactone (PCL) marker @ 1236.4 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/openspecy_polycaprolactone_pcl-2.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1363.7,
+      "tolerance": 10.0,
+      "name": "Polycaprolactone (PCL) marker @ 1363.7 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/openspecy_polycaprolactone_pcl-2.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1722.4,
+      "tolerance": 10.0,
+      "name": "Polycaprolactone (PCL) marker @ 1722.4 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/openspecy_polycaprolactone_pcl-2.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 815.9,
+      "tolerance": 10.0,
+      "name": "Sodium Alginate marker @ 815.9 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/openspecy_sodium_alginate.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1026.1,
+      "tolerance": 10.0,
+      "name": "Sodium Alginate marker @ 1026.1 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/openspecy_sodium_alginate.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1408.0,
+      "tolerance": 10.0,
+      "name": "Sodium Alginate marker @ 1408 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/openspecy_sodium_alginate.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1595.1,
+      "tolerance": 10.0,
+      "name": "Sodium Alginate marker @ 1595.1 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/openspecy_sodium_alginate.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 3344.6,
+      "tolerance": 10.0,
+      "name": "Sodium Alginate marker @ 3344.6 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/openspecy_sodium_alginate.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 567.1,
+      "tolerance": 10.0,
+      "name": "Zein (Corn Protein) marker @ 567.1 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/openspecy_zein_corn_protein.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1448.5,
+      "tolerance": 10.0,
+      "name": "Zein (Corn Protein) marker @ 1448.5 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/openspecy_zein_corn_protein.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1518.0,
+      "tolerance": 10.0,
+      "name": "Zein (Corn Protein) marker @ 1518 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/openspecy_zein_corn_protein.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1641.4,
+      "tolerance": 10.0,
+      "name": "Zein (Corn Protein) marker @ 1641.4 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/openspecy_zein_corn_protein.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 3292.5,
+      "tolerance": 10.0,
+      "name": "Zein (Corn Protein) marker @ 3292.5 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/openspecy_zein_corn_protein.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 718.0,
+      "tolerance": 10.0,
+      "name": "PHBV marker @ 718 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/zenodo_17195859_FT-IR_PHBV.csv (Zenodo)"
+    },
+    {
+      "centerWavenumber": 915.0,
+      "tolerance": 10.0,
+      "name": "PHBV marker @ 915 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/zenodo_17195859_FT-IR_PHBV.csv (Zenodo)"
+    },
+    {
+      "centerWavenumber": 1208.0,
+      "tolerance": 10.0,
+      "name": "PHBV marker @ 1208 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/zenodo_17195859_FT-IR_PHBV.csv (Zenodo)"
+    },
+    {
+      "centerWavenumber": 1489.0,
+      "tolerance": 10.0,
+      "name": "PHBV marker @ 1489 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/zenodo_17195859_FT-IR_PHBV.csv (Zenodo)"
+    },
+    {
+      "centerWavenumber": 2156.0,
+      "tolerance": 10.0,
+      "name": "PHBV marker @ 2156 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/zenodo_17195859_FT-IR_PHBV.csv (Zenodo)"
+    },
+    {
+      "centerWavenumber": 893.0,
+      "tolerance": 10.0,
+      "name": "Triglycerides (TAGs) marker @ 893 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/zenodo_17195859_FT-IR_TAGs.csv (Zenodo)"
+    },
+    {
+      "centerWavenumber": 1396.0,
+      "tolerance": 10.0,
+      "name": "Triglycerides (TAGs) marker @ 1396 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/zenodo_17195859_FT-IR_TAGs.csv (Zenodo)"
+    },
+    {
+      "centerWavenumber": 1573.0,
+      "tolerance": 10.0,
+      "name": "Triglycerides (TAGs) marker @ 1573 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/zenodo_17195859_FT-IR_TAGs.csv (Zenodo)"
+    },
+    {
+      "centerWavenumber": 2157.0,
+      "tolerance": 10.0,
+      "name": "Triglycerides (TAGs) marker @ 2157 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/zenodo_17195859_FT-IR_TAGs.csv (Zenodo)"
+    },
+    {
+      "centerWavenumber": 2881.0,
+      "tolerance": 10.0,
+      "name": "Triglycerides (TAGs) marker @ 2881 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/zenodo_17195859_FT-IR_TAGs.csv (Zenodo)"
+    },
+    {
+      "centerWavenumber": 796.0,
+      "tolerance": 10.0,
+      "name": "Terephthalic Acid (TPA) marker @ 796 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/zenodo_17195859_FT-IR_commercial_TPA.csv (Zenodo)"
+    },
+    {
+      "centerWavenumber": 1361.0,
+      "tolerance": 10.0,
+      "name": "Terephthalic Acid (TPA) marker @ 1361 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/zenodo_17195859_FT-IR_commercial_TPA.csv (Zenodo)"
+    },
+    {
+      "centerWavenumber": 1461.0,
+      "tolerance": 10.0,
+      "name": "Terephthalic Acid (TPA) marker @ 1461 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/zenodo_17195859_FT-IR_commercial_TPA.csv (Zenodo)"
+    },
+    {
+      "centerWavenumber": 1520.0,
+      "tolerance": 10.0,
+      "name": "Terephthalic Acid (TPA) marker @ 1520 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/zenodo_17195859_FT-IR_commercial_TPA.csv (Zenodo)"
+    },
+    {
+      "centerWavenumber": 1993.0,
+      "tolerance": 10.0,
+      "name": "Terephthalic Acid (TPA) marker @ 1993 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/zenodo_17195859_FT-IR_commercial_TPA.csv (Zenodo)"
+    },
+    {
+      "centerWavenumber": 718.0,
+      "tolerance": 10.0,
+      "name": "Polyhydroxybutyrate-valerate (PHBV) marker @ 718 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/zenodo_7195859_FT-IR_PHBV.csv (Zenodo (FT-IR spectra))"
+    },
+    {
+      "centerWavenumber": 915.0,
+      "tolerance": 10.0,
+      "name": "Polyhydroxybutyrate-valerate (PHBV) marker @ 915 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/zenodo_7195859_FT-IR_PHBV.csv (Zenodo (FT-IR spectra))"
+    },
+    {
+      "centerWavenumber": 1208.0,
+      "tolerance": 10.0,
+      "name": "Polyhydroxybutyrate-valerate (PHBV) marker @ 1208 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/zenodo_7195859_FT-IR_PHBV.csv (Zenodo (FT-IR spectra))"
+    },
+    {
+      "centerWavenumber": 1489.0,
+      "tolerance": 10.0,
+      "name": "Polyhydroxybutyrate-valerate (PHBV) marker @ 1489 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/zenodo_7195859_FT-IR_PHBV.csv (Zenodo (FT-IR spectra))"
+    },
+    {
+      "centerWavenumber": 2156.0,
+      "tolerance": 10.0,
+      "name": "Polyhydroxybutyrate-valerate (PHBV) marker @ 2156 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/zenodo_7195859_FT-IR_PHBV.csv (Zenodo (FT-IR spectra))"
+    },
+    {
+      "centerWavenumber": 893.0,
+      "tolerance": 10.0,
+      "name": "Triglycerides (TAGs) marker @ 893 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/zenodo_7195859_FT-IR_TAGs.csv (Zenodo (FT-IR spectra))"
+    },
+    {
+      "centerWavenumber": 1396.0,
+      "tolerance": 10.0,
+      "name": "Triglycerides (TAGs) marker @ 1396 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/zenodo_7195859_FT-IR_TAGs.csv (Zenodo (FT-IR spectra))"
+    },
+    {
+      "centerWavenumber": 1573.0,
+      "tolerance": 10.0,
+      "name": "Triglycerides (TAGs) marker @ 1573 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/zenodo_7195859_FT-IR_TAGs.csv (Zenodo (FT-IR spectra))"
+    },
+    {
+      "centerWavenumber": 2157.0,
+      "tolerance": 10.0,
+      "name": "Triglycerides (TAGs) marker @ 2157 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/zenodo_7195859_FT-IR_TAGs.csv (Zenodo (FT-IR spectra))"
+    },
+    {
+      "centerWavenumber": 2881.0,
+      "tolerance": 10.0,
+      "name": "Triglycerides (TAGs) marker @ 2881 cm-1",
+      "color": "#7c3aed",
+      "note": "Auto-derived from 03_engineering_plastic/03_bioplastics/zenodo_7195859_FT-IR_TAGs.csv (Zenodo (FT-IR spectra))"
+    }
+  ]
+}

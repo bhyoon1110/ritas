@@ -310,17 +310,60 @@ class AssignmentLibraryStore:
         with _LIBRARY_LOCK:
             self.root.mkdir(parents=True, exist_ok=True)
             marker = self.root / ".initialized"
-            if marker.exists():
-                return
-            if not any(
-                path.is_file() and path.suffix.casefold() in SUPPORTED_SUFFIXES
-                for path in self.root.iterdir()
-            ):
-                shutil.copyfile(
-                    self.default_csv,
-                    self.root / f"{DEFAULT_LIBRARY_ID}.csv",
+            seeded = self._seeded_defaults(marker)
+            existing_ids = set()
+            for path in self.root.iterdir():
+                if not path.is_file() or path.suffix.casefold() not in SUPPORTED_SUFFIXES:
+                    continue
+                try:
+                    existing_ids.add(_library_id(path.name))
+                except AssignmentLibraryError:
+                    continue
+            for source, target_name in self._bundled_defaults():
+                if target_name in seeded:
+                    continue
+                try:
+                    library_id = _library_id(target_name)
+                except AssignmentLibraryError:
+                    continue
+                if library_id in existing_ids:
+                    seeded.add(target_name)
+                    continue
+                shutil.copyfile(source, self.root / target_name)
+                existing_ids.add(library_id)
+                seeded.add(target_name)
+            marker.write_text(
+                json.dumps(
+                    {"version": 2, "seeded": sorted(seeded)},
+                    ensure_ascii=True,
+                    indent=2,
                 )
-            marker.write_text("1\n", encoding="ascii")
+                + "\n",
+                encoding="ascii",
+            )
+
+    def _bundled_defaults(self) -> list[tuple[Path, str]]:
+        bundled_dir = self.default_csv.parent / "assignment_libraries"
+        paths = [(self.default_csv, f"{DEFAULT_LIBRARY_ID}.csv")]
+        if bundled_dir.is_dir():
+            paths.extend(
+                (path, path.name) for path in sorted(bundled_dir.iterdir())
+                if path.is_file() and path.suffix.casefold() in SUPPORTED_SUFFIXES
+            )
+        return paths
+
+    def _seeded_defaults(self, marker: Path) -> set[str]:
+        if not marker.exists():
+            return set()
+        try:
+            payload = json.loads(marker.read_text(encoding="ascii"))
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            return {f"{DEFAULT_LIBRARY_ID}.csv"}
+        if isinstance(payload, dict):
+            seeded = payload.get("seeded")
+            if isinstance(seeded, list):
+                return {str(item) for item in seeded}
+        return {f"{DEFAULT_LIBRARY_ID}.csv"}
 
     def _paths(self) -> list[Path]:
         self.initialize()

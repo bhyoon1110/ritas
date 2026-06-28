@@ -113,7 +113,20 @@ API 문서:
 edge_api_server/data/ftir_assignment_libraries/
 ```
 
-폴더가 처음 생성될 때 기존 일반 작용기표가 `general-ftir.csv`로 복사된다.
+폴더가 처음 생성될 때 기존 일반 작용기표 `general-ftir.csv`와
+`sune/data/RIST_FTIR_Library/`의 590개 기준 스펙트럼에서 자동 추출한
+카테고리별 marker 피크 JSON들이 함께 복사된다. 예전 설치처럼
+`.initialized` marker가 이미 있는 환경도 새 bundled 기본 라이브러리는 한 번
+추가된다. 이후 사용자가 삭제한 bundled 라이브러리는 재시작 때 다시 만들지
+않는다.
+
+기본으로 제공되는 marker 피크 라이브러리는 배터리 전해질/바인더, 철강
+방청제/윤활제/코팅수지, 범용·엔지니어링·바이오 플라스틱, 엘라스토머,
+세라믹/무기, 천연섬유 묶음으로 나뉜다. 이 라이브러리들은 각 기준
+스펙트럼에서 대표 피크를 최대 5개씩 추출해 `Material marker @ 1234 cm-1`
+형태의 후보 이름을 제공한다. 일반 작용기표와 목적이 다르므로 화면에서
+필요한 묶음만 선택해 사용한다.
+
 이후에는 폴더에 JSON/CSV 파일을 직접 배치하거나 `/ftir` 화면에서 파일을
 가져올 수 있다. `새 라이브러리`를 누르면 빈 편집창에서 직접 만들 수 있고,
 라이브러리 이름을 누르면 중심 파수, tolerance, 피크 이름, 색상과 비고를
@@ -153,6 +166,13 @@ center_wn,tolerance,name,color,note
 여러 라이브러리를 선택하면 각 라이브러리 안에서 해당 파수와 일치하는 가장
 구체적인 assignment를 하나씩 고른다. 서로 다른 이름이 나오면 그래프에
 `후보 A / 후보 B`로 함께 표시하고 hover에 라이브러리 출처를 표시한다.
+
+기본 marker 피크 JSON을 다시 만들 때는 다음 명령을 사용한다.
+
+```bash
+cd edge_api_server
+.venv/bin/python ../sune/scripts/library/build_assignment_libraries.py
+```
 
 웹 화면이 사용하는 API:
 

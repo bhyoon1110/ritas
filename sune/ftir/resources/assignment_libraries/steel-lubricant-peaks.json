@@ -1,0 +1,881 @@
+{
+  "name": "Steel Lubricant Peak Library",
+  "description": "윤활제 FT-IR 기준 스펙트럼에서 자동 추출한 피크 후보. Generated from sune/data/RIST_FTIR_Library; 5 strongest peaks per spectrum.",
+  "assignments": [
+    {
+      "centerWavenumber": 1006.0,
+      "tolerance": 10.0,
+      "name": "DMSO marker @ 1006 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_DMSO_idx0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1102.0,
+      "tolerance": 10.0,
+      "name": "DMSO marker @ 1102 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_DMSO_idx0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1442.0,
+      "tolerance": 10.0,
+      "name": "DMSO marker @ 1442 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_DMSO_idx0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 3002.0,
+      "tolerance": 10.0,
+      "name": "DMSO marker @ 3002 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_DMSO_idx0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 941.0,
+      "tolerance": 10.0,
+      "name": "DMSO marker @ 941 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_DMSO_idx1.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1008.8,
+      "tolerance": 10.0,
+      "name": "DMSO marker @ 1008.8 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_DMSO_idx1.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1066.4,
+      "tolerance": 10.0,
+      "name": "DMSO marker @ 1066.4 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_DMSO_idx1.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1432.1,
+      "tolerance": 10.0,
+      "name": "DMSO marker @ 1432.1 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_DMSO_idx1.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 695.9,
+      "tolerance": 10.0,
+      "name": "DMSO marker @ 695.9 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_DMSO_idx2.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 952.7,
+      "tolerance": 10.0,
+      "name": "DMSO marker @ 952.7 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_DMSO_idx2.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1054.1,
+      "tolerance": 10.0,
+      "name": "DMSO marker @ 1054.1 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_DMSO_idx2.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1435.1,
+      "tolerance": 10.0,
+      "name": "DMSO marker @ 1435.1 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_DMSO_idx2.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 2991.9,
+      "tolerance": 10.0,
+      "name": "DMSO marker @ 2991.9 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_DMSO_idx2.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1006.0,
+      "tolerance": 10.0,
+      "name": "DMSO marker @ 1006 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_DMSO_m0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1102.0,
+      "tolerance": 10.0,
+      "name": "DMSO marker @ 1102 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_DMSO_m0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1442.0,
+      "tolerance": 10.0,
+      "name": "DMSO marker @ 1442 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_DMSO_m0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 3002.0,
+      "tolerance": 10.0,
+      "name": "DMSO marker @ 3002 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_DMSO_m0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 941.0,
+      "tolerance": 10.0,
+      "name": "DMSO marker @ 941 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_DMSO_m1.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1008.8,
+      "tolerance": 10.0,
+      "name": "DMSO marker @ 1008.8 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_DMSO_m1.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1066.4,
+      "tolerance": 10.0,
+      "name": "DMSO marker @ 1066.4 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_DMSO_m1.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1432.1,
+      "tolerance": 10.0,
+      "name": "DMSO marker @ 1432.1 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_DMSO_m1.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 695.9,
+      "tolerance": 10.0,
+      "name": "DMSO marker @ 695.9 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_DMSO_m2.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 952.7,
+      "tolerance": 10.0,
+      "name": "DMSO marker @ 952.7 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_DMSO_m2.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1054.1,
+      "tolerance": 10.0,
+      "name": "DMSO marker @ 1054.1 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_DMSO_m2.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1435.1,
+      "tolerance": 10.0,
+      "name": "DMSO marker @ 1435.1 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_DMSO_m2.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 2991.9,
+      "tolerance": 10.0,
+      "name": "DMSO marker @ 2991.9 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_DMSO_m2.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1050.0,
+      "tolerance": 10.0,
+      "name": "Glycerol marker @ 1050 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_Glycerol_n0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1386.0,
+      "tolerance": 10.0,
+      "name": "Glycerol marker @ 1386 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_Glycerol_n0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 2942.0,
+      "tolerance": 10.0,
+      "name": "Glycerol marker @ 2942 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_Glycerol_n0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 3626.0,
+      "tolerance": 10.0,
+      "name": "Glycerol marker @ 3626 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_Glycerol_n0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1036.5,
+      "tolerance": 10.0,
+      "name": "Glycerol marker @ 1036.5 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_Glycerol_n1.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1107.8,
+      "tolerance": 10.0,
+      "name": "Glycerol marker @ 1107.8 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_Glycerol_n1.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1411.3,
+      "tolerance": 10.0,
+      "name": "Glycerol marker @ 1411.3 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_Glycerol_n1.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 2933.0,
+      "tolerance": 10.0,
+      "name": "Glycerol marker @ 2933 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_Glycerol_n1.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 3358.3,
+      "tolerance": 10.0,
+      "name": "Glycerol marker @ 3358.3 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_Glycerol_n1.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 2866.0,
+      "tolerance": 10.0,
+      "name": "n-Hexadecane marker @ 2866 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_Hexadecane_n0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 2934.0,
+      "tolerance": 10.0,
+      "name": "n-Hexadecane marker @ 2934 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_Hexadecane_n0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1106.0,
+      "tolerance": 10.0,
+      "name": "Lauric Acid marker @ 1106 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_LauricAcid_n0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1782.0,
+      "tolerance": 10.0,
+      "name": "Lauric Acid marker @ 1782 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_LauricAcid_n0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 2866.0,
+      "tolerance": 10.0,
+      "name": "Lauric Acid marker @ 2866 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_LauricAcid_n0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 2934.0,
+      "tolerance": 10.0,
+      "name": "Lauric Acid marker @ 2934 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_LauricAcid_n0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 3578.0,
+      "tolerance": 10.0,
+      "name": "Lauric Acid marker @ 3578 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_LauricAcid_n0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1288.0,
+      "tolerance": 10.0,
+      "name": "Lauric Acid marker @ 1288 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_LauricAcid_n1.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1469.0,
+      "tolerance": 10.0,
+      "name": "Lauric Acid marker @ 1469 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_LauricAcid_n1.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1710.0,
+      "tolerance": 10.0,
+      "name": "Lauric Acid marker @ 1710 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_LauricAcid_n1.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 2862.0,
+      "tolerance": 10.0,
+      "name": "Lauric Acid marker @ 2862 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_LauricAcid_n1.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 2940.0,
+      "tolerance": 10.0,
+      "name": "Lauric Acid marker @ 2940 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_LauricAcid_n1.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1281.4,
+      "tolerance": 10.0,
+      "name": "Linoleic Acid marker @ 1281.4 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_LinoleicAcid_n0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1460.6,
+      "tolerance": 10.0,
+      "name": "Linoleic Acid marker @ 1460.6 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_LinoleicAcid_n0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1706.9,
+      "tolerance": 10.0,
+      "name": "Linoleic Acid marker @ 1706.9 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_LinoleicAcid_n0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 2852.9,
+      "tolerance": 10.0,
+      "name": "Linoleic Acid marker @ 2852.9 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_LinoleicAcid_n0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 2922.1,
+      "tolerance": 10.0,
+      "name": "Linoleic Acid marker @ 2922.1 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_LinoleicAcid_n0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1122.0,
+      "tolerance": 10.0,
+      "name": "Oleic Acid marker @ 1122 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_Oleic_Acid_m0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1778.0,
+      "tolerance": 10.0,
+      "name": "Oleic Acid marker @ 1778 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_Oleic_Acid_m0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 2866.0,
+      "tolerance": 10.0,
+      "name": "Oleic Acid marker @ 2866 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_Oleic_Acid_m0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 2934.0,
+      "tolerance": 10.0,
+      "name": "Oleic Acid marker @ 2934 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_Oleic_Acid_m0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 3578.0,
+      "tolerance": 10.0,
+      "name": "Oleic Acid marker @ 3578 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_Oleic_Acid_m0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1277.8,
+      "tolerance": 10.0,
+      "name": "Oleic Acid marker @ 1277.8 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_Oleic_Acid_m1.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1459.9,
+      "tolerance": 10.0,
+      "name": "Oleic Acid marker @ 1459.9 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_Oleic_Acid_m1.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1707.1,
+      "tolerance": 10.0,
+      "name": "Oleic Acid marker @ 1707.1 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_Oleic_Acid_m1.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 2852.4,
+      "tolerance": 10.0,
+      "name": "Oleic Acid marker @ 2852.4 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_Oleic_Acid_m1.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 2921.6,
+      "tolerance": 10.0,
+      "name": "Oleic Acid marker @ 2921.6 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_Oleic_Acid_m1.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1122.0,
+      "tolerance": 10.0,
+      "name": "Oleic Acid marker @ 1122 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_Oleic_acid__lubricant__idx0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1778.0,
+      "tolerance": 10.0,
+      "name": "Oleic Acid marker @ 1778 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_Oleic_acid__lubricant__idx0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 2866.0,
+      "tolerance": 10.0,
+      "name": "Oleic Acid marker @ 2866 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_Oleic_acid__lubricant__idx0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 2934.0,
+      "tolerance": 10.0,
+      "name": "Oleic Acid marker @ 2934 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_Oleic_acid__lubricant__idx0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 3578.0,
+      "tolerance": 10.0,
+      "name": "Oleic Acid marker @ 3578 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_Oleic_acid__lubricant__idx0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1277.8,
+      "tolerance": 10.0,
+      "name": "Oleic Acid marker @ 1277.8 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_Oleic_acid__lubricant__idx1.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1459.9,
+      "tolerance": 10.0,
+      "name": "Oleic Acid marker @ 1459.9 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_Oleic_acid__lubricant__idx1.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1707.1,
+      "tolerance": 10.0,
+      "name": "Oleic Acid marker @ 1707.1 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_Oleic_acid__lubricant__idx1.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 2852.4,
+      "tolerance": 10.0,
+      "name": "Oleic Acid marker @ 2852.4 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_Oleic_acid__lubricant__idx1.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 2921.6,
+      "tolerance": 10.0,
+      "name": "Oleic Acid marker @ 2921.6 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_Oleic_acid__lubricant__idx1.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1130.0,
+      "tolerance": 10.0,
+      "name": "Palmitic Acid marker @ 1130 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_PalmiticAcid_n0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1778.0,
+      "tolerance": 10.0,
+      "name": "Palmitic Acid marker @ 1778 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_PalmiticAcid_n0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 2866.0,
+      "tolerance": 10.0,
+      "name": "Palmitic Acid marker @ 2866 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_PalmiticAcid_n0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 2934.0,
+      "tolerance": 10.0,
+      "name": "Palmitic Acid marker @ 2934 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_PalmiticAcid_n0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 3578.0,
+      "tolerance": 10.0,
+      "name": "Palmitic Acid marker @ 3578 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_PalmiticAcid_n0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1114.0,
+      "tolerance": 10.0,
+      "name": "Stearic Acid marker @ 1114 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_Stearic_Acid_m0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1778.0,
+      "tolerance": 10.0,
+      "name": "Stearic Acid marker @ 1778 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_Stearic_Acid_m0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 2866.0,
+      "tolerance": 10.0,
+      "name": "Stearic Acid marker @ 2866 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_Stearic_Acid_m0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 2934.0,
+      "tolerance": 10.0,
+      "name": "Stearic Acid marker @ 2934 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_Stearic_Acid_m0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 3578.0,
+      "tolerance": 10.0,
+      "name": "Stearic Acid marker @ 3578 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_Stearic_Acid_m0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 3848.0,
+      "tolerance": 10.0,
+      "name": "Stearic Acid marker @ 3848 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_Stearic_Acid_m1.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 3940.0,
+      "tolerance": 10.0,
+      "name": "Stearic Acid marker @ 3940 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_Stearic_Acid_m1.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 3817.0,
+      "tolerance": 10.0,
+      "name": "Stearic Acid marker @ 3817 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_Stearic_Acid_m2.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 3911.0,
+      "tolerance": 10.0,
+      "name": "Stearic Acid marker @ 3911 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_Stearic_Acid_m2.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1114.0,
+      "tolerance": 10.0,
+      "name": "Stearic Acid marker @ 1114 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_Stearic_acid__lubricant__idx0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1778.0,
+      "tolerance": 10.0,
+      "name": "Stearic Acid marker @ 1778 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_Stearic_acid__lubricant__idx0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 2866.0,
+      "tolerance": 10.0,
+      "name": "Stearic Acid marker @ 2866 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_Stearic_acid__lubricant__idx0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 2934.0,
+      "tolerance": 10.0,
+      "name": "Stearic Acid marker @ 2934 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_Stearic_acid__lubricant__idx0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 3578.0,
+      "tolerance": 10.0,
+      "name": "Stearic Acid marker @ 3578 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_Stearic_acid__lubricant__idx0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 3848.0,
+      "tolerance": 10.0,
+      "name": "Stearic Acid marker @ 3848 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_Stearic_acid__lubricant__idx1.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 3940.0,
+      "tolerance": 10.0,
+      "name": "Stearic Acid marker @ 3940 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_Stearic_acid__lubricant__idx1.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 3817.0,
+      "tolerance": 10.0,
+      "name": "Stearic Acid marker @ 3817 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_Stearic_acid__lubricant__idx2.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 3911.0,
+      "tolerance": 10.0,
+      "name": "Stearic Acid marker @ 3911 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_Stearic_acid__lubricant__idx2.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1030.0,
+      "tolerance": 10.0,
+      "name": "Tributyl Phosphate marker @ 1030 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_Tributyl_Phosphate_m0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1282.0,
+      "tolerance": 10.0,
+      "name": "Tributyl Phosphate marker @ 1282 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_Tributyl_Phosphate_m0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 2970.0,
+      "tolerance": 10.0,
+      "name": "Tributyl Phosphate marker @ 2970 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_Tributyl_Phosphate_m0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 3922.0,
+      "tolerance": 10.0,
+      "name": "Tributyl Phosphate marker @ 3922 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_Tributyl_Phosphate_m1.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1030.0,
+      "tolerance": 10.0,
+      "name": "Tributyl Phosphate marker @ 1030 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_Tributyl_phosphate_idx0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1282.0,
+      "tolerance": 10.0,
+      "name": "Tributyl Phosphate marker @ 1282 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_Tributyl_phosphate_idx0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 2970.0,
+      "tolerance": 10.0,
+      "name": "Tributyl Phosphate marker @ 2970 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_Tributyl_phosphate_idx0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 3922.0,
+      "tolerance": 10.0,
+      "name": "Tributyl Phosphate marker @ 3922 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_Tributyl_phosphate_idx1.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 810.0,
+      "tolerance": 10.0,
+      "name": "Triethyl Phosphate marker @ 810 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_Triethyl_Phosphate_m0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 966.0,
+      "tolerance": 10.0,
+      "name": "Triethyl Phosphate marker @ 966 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_Triethyl_Phosphate_m0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1046.0,
+      "tolerance": 10.0,
+      "name": "Triethyl Phosphate marker @ 1046 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_Triethyl_Phosphate_m0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1282.0,
+      "tolerance": 10.0,
+      "name": "Triethyl Phosphate marker @ 1282 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_Triethyl_Phosphate_m0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 2990.0,
+      "tolerance": 10.0,
+      "name": "Triethyl Phosphate marker @ 2990 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_Triethyl_Phosphate_m0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 3915.0,
+      "tolerance": 10.0,
+      "name": "Triethyl Phosphate marker @ 3915 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_Triethyl_Phosphate_m1.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 821.0,
+      "tolerance": 10.0,
+      "name": "Triethyl Phosphate marker @ 821 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_Triethyl_Phosphate_m2.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 973.0,
+      "tolerance": 10.0,
+      "name": "Triethyl Phosphate marker @ 973 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_Triethyl_Phosphate_m2.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1034.0,
+      "tolerance": 10.0,
+      "name": "Triethyl Phosphate marker @ 1034 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_Triethyl_Phosphate_m2.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1273.0,
+      "tolerance": 10.0,
+      "name": "Triethyl Phosphate marker @ 1273 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_Triethyl_Phosphate_m2.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 2964.0,
+      "tolerance": 10.0,
+      "name": "Triethyl Phosphate marker @ 2964 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_Triethyl_Phosphate_m2.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 810.0,
+      "tolerance": 10.0,
+      "name": "Triethyl Phosphate marker @ 810 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_Triethyl_phosphate_idx0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 966.0,
+      "tolerance": 10.0,
+      "name": "Triethyl Phosphate marker @ 966 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_Triethyl_phosphate_idx0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1046.0,
+      "tolerance": 10.0,
+      "name": "Triethyl Phosphate marker @ 1046 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_Triethyl_phosphate_idx0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1282.0,
+      "tolerance": 10.0,
+      "name": "Triethyl Phosphate marker @ 1282 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_Triethyl_phosphate_idx0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 2990.0,
+      "tolerance": 10.0,
+      "name": "Triethyl Phosphate marker @ 2990 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_Triethyl_phosphate_idx0.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 3915.0,
+      "tolerance": 10.0,
+      "name": "Triethyl Phosphate marker @ 3915 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_Triethyl_phosphate_idx1.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 821.0,
+      "tolerance": 10.0,
+      "name": "Triethyl Phosphate marker @ 821 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_Triethyl_phosphate_idx2.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 973.0,
+      "tolerance": 10.0,
+      "name": "Triethyl Phosphate marker @ 973 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_Triethyl_phosphate_idx2.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1034.0,
+      "tolerance": 10.0,
+      "name": "Triethyl Phosphate marker @ 1034 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_Triethyl_phosphate_idx2.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 1273.0,
+      "tolerance": 10.0,
+      "name": "Triethyl Phosphate marker @ 1273 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_Triethyl_phosphate_idx2.csv (NIST WebBook)"
+    },
+    {
+      "centerWavenumber": 2964.0,
+      "tolerance": 10.0,
+      "name": "Triethyl Phosphate marker @ 2964 cm-1",
+      "color": "#c2410c",
+      "note": "Auto-derived from 02_steel_coating/02_lubricants/nist_Triethyl_phosphate_idx2.csv (NIST WebBook)"
+    }
+  ]
+}

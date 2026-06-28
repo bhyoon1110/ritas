@@ -20,4 +20,4 @@ where = ["."]
 include = ["ftir*"]
 
 [tool.setuptools.package-data]
-ftir = ["resources/*.csv"]
+ftir = ["resources/*.csv", "resources/assignment_libraries/*.json"]

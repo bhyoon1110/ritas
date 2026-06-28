@@ -1,0 +1,209 @@
+{
+  "name": "Battery Binder/Polymer Peak Library",
+  "description": "대표 배터리 바인더/폴리머 FT-IR 기준 스펙트럼에서 자동 추출한 피크 후보. Generated from sune/data/RIST_FTIR_Library; 5 strongest peaks per spectrum.",
+  "assignments": [
+    {
+      "centerWavenumber": 761.9,
+      "tolerance": 10.0,
+      "name": "fibre polyvinylidene fluoride marker @ 761.9 cm-1",
+      "color": "#047857",
+      "note": "Auto-derived from 01_battery/02_binders_polymers/openspecy_fibre_polyvinylidene_fluoride_507.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 869.9,
+      "tolerance": 10.0,
+      "name": "fibre polyvinylidene fluoride marker @ 869.9 cm-1",
+      "color": "#047857",
+      "note": "Auto-derived from 01_battery/02_binders_polymers/openspecy_fibre_polyvinylidene_fluoride_507.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1066.6,
+      "tolerance": 10.0,
+      "name": "fibre polyvinylidene fluoride marker @ 1066.6 cm-1",
+      "color": "#047857",
+      "note": "Auto-derived from 01_battery/02_binders_polymers/openspecy_fibre_polyvinylidene_fluoride_507.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1178.5,
+      "tolerance": 10.0,
+      "name": "fibre polyvinylidene fluoride marker @ 1178.5 cm-1",
+      "color": "#047857",
+      "note": "Auto-derived from 01_battery/02_binders_polymers/openspecy_fibre_polyvinylidene_fluoride_507.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1400.3,
+      "tolerance": 10.0,
+      "name": "fibre polyvinylidene fluoride marker @ 1400.3 cm-1",
+      "color": "#047857",
+      "note": "Auto-derived from 01_battery/02_binders_polymers/openspecy_fibre_polyvinylidene_fluoride_507.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1020.3,
+      "tolerance": 10.0,
+      "name": "n vinylpyrrolidone vinyl acetate marker @ 1020.3 cm-1",
+      "color": "#047857",
+      "note": "Auto-derived from 01_battery/02_binders_polymers/openspecy_n_vinylpyrrolidone_vinyl_acetate_421.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1236.4,
+      "tolerance": 10.0,
+      "name": "n vinylpyrrolidone vinyl acetate marker @ 1236.4 cm-1",
+      "color": "#047857",
+      "note": "Auto-derived from 01_battery/02_binders_polymers/openspecy_n_vinylpyrrolidone_vinyl_acetate_421.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1423.5,
+      "tolerance": 10.0,
+      "name": "n vinylpyrrolidone vinyl acetate marker @ 1423.5 cm-1",
+      "color": "#047857",
+      "note": "Auto-derived from 01_battery/02_binders_polymers/openspecy_n_vinylpyrrolidone_vinyl_acetate_421.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1654.9,
+      "tolerance": 10.0,
+      "name": "n vinylpyrrolidone vinyl acetate marker @ 1654.9 cm-1",
+      "color": "#047857",
+      "note": "Auto-derived from 01_battery/02_binders_polymers/openspecy_n_vinylpyrrolidone_vinyl_acetate_421.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1730.1,
+      "tolerance": 10.0,
+      "name": "n vinylpyrrolidone vinyl acetate marker @ 1730.1 cm-1",
+      "color": "#047857",
+      "note": "Auto-derived from 01_battery/02_binders_polymers/openspecy_n_vinylpyrrolidone_vinyl_acetate_421.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 841.0,
+      "tolerance": 10.0,
+      "name": "Polyethylene Oxide (PEO) marker @ 841 cm-1",
+      "color": "#047857",
+      "note": "Auto-derived from 01_battery/02_binders_polymers/openspecy_polyethylene_oxide_peo.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 960.5,
+      "tolerance": 10.0,
+      "name": "Polyethylene Oxide (PEO) marker @ 960.5 cm-1",
+      "color": "#047857",
+      "note": "Auto-derived from 01_battery/02_binders_polymers/openspecy_polyethylene_oxide_peo.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1093.6,
+      "tolerance": 10.0,
+      "name": "Polyethylene Oxide (PEO) marker @ 1093.6 cm-1",
+      "color": "#047857",
+      "note": "Auto-derived from 01_battery/02_binders_polymers/openspecy_polyethylene_oxide_peo.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1340.5,
+      "tolerance": 10.0,
+      "name": "Polyethylene Oxide (PEO) marker @ 1340.5 cm-1",
+      "color": "#047857",
+      "note": "Auto-derived from 01_battery/02_binders_polymers/openspecy_polyethylene_oxide_peo.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 2879.7,
+      "tolerance": 10.0,
+      "name": "Polyethylene Oxide (PEO) marker @ 2879.7 cm-1",
+      "color": "#047857",
+      "note": "Auto-derived from 01_battery/02_binders_polymers/openspecy_polyethylene_oxide_peo.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 721.4,
+      "tolerance": 10.0,
+      "name": "polyimide marker @ 721.4 cm-1",
+      "color": "#047857",
+      "note": "Auto-derived from 01_battery/02_binders_polymers/openspecy_polyimide_401.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 815.9,
+      "tolerance": 10.0,
+      "name": "polyimide marker @ 815.9 cm-1",
+      "color": "#047857",
+      "note": "Auto-derived from 01_battery/02_binders_polymers/openspecy_polyimide_401.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1112.9,
+      "tolerance": 10.0,
+      "name": "polyimide marker @ 1112.9 cm-1",
+      "color": "#047857",
+      "note": "Auto-derived from 01_battery/02_binders_polymers/openspecy_polyimide_401.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1498.7,
+      "tolerance": 10.0,
+      "name": "polyimide marker @ 1498.7 cm-1",
+      "color": "#047857",
+      "note": "Auto-derived from 01_battery/02_binders_polymers/openspecy_polyimide_401.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1708.9,
+      "tolerance": 10.0,
+      "name": "polyimide marker @ 1708.9 cm-1",
+      "color": "#047857",
+      "note": "Auto-derived from 01_battery/02_binders_polymers/openspecy_polyimide_401.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1284.6,
+      "tolerance": 10.0,
+      "name": "polyvinylpyrrolidone marker @ 1284.6 cm-1",
+      "color": "#047857",
+      "note": "Auto-derived from 01_battery/02_binders_polymers/openspecy_polyvinylpyrrolidone_508.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1421.5,
+      "tolerance": 10.0,
+      "name": "polyvinylpyrrolidone marker @ 1421.5 cm-1",
+      "color": "#047857",
+      "note": "Auto-derived from 01_battery/02_binders_polymers/openspecy_polyvinylpyrrolidone_508.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1460.1,
+      "tolerance": 10.0,
+      "name": "polyvinylpyrrolidone marker @ 1460.1 cm-1",
+      "color": "#047857",
+      "note": "Auto-derived from 01_battery/02_binders_polymers/openspecy_polyvinylpyrrolidone_508.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1651.1,
+      "tolerance": 10.0,
+      "name": "polyvinylpyrrolidone marker @ 1651.1 cm-1",
+      "color": "#047857",
+      "note": "Auto-derived from 01_battery/02_binders_polymers/openspecy_polyvinylpyrrolidone_508.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 3442.9,
+      "tolerance": 10.0,
+      "name": "polyvinylpyrrolidone marker @ 3442.9 cm-1",
+      "color": "#047857",
+      "note": "Auto-derived from 01_battery/02_binders_polymers/openspecy_polyvinylpyrrolidone_508.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1236.4,
+      "tolerance": 10.0,
+      "name": "wool cashmere crossbred marker @ 1236.4 cm-1",
+      "color": "#047857",
+      "note": "Auto-derived from 01_battery/02_binders_polymers/openspecy_wool_cashmere_crossbred_297.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1516.0,
+      "tolerance": 10.0,
+      "name": "wool cashmere crossbred marker @ 1516 cm-1",
+      "color": "#047857",
+      "note": "Auto-derived from 01_battery/02_binders_polymers/openspecy_wool_cashmere_crossbred_297.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 1629.8,
+      "tolerance": 10.0,
+      "name": "wool cashmere crossbred marker @ 1629.8 cm-1",
+      "color": "#047857",
+      "note": "Auto-derived from 01_battery/02_binders_polymers/openspecy_wool_cashmere_crossbred_297.csv (Open Specy)"
+    },
+    {
+      "centerWavenumber": 3279.0,
+      "tolerance": 10.0,
+      "name": "wool cashmere crossbred marker @ 3279 cm-1",
+      "color": "#047857",
+      "note": "Auto-derived from 01_battery/02_binders_polymers/openspecy_wool_cashmere_crossbred_297.csv (Open Specy)"
+    }
+  ]
+}

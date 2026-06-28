@@ -1,0 +1,566 @@
+{
+  "name": "Ceramic/Inorganic Peak Library",
+  "description": "세라믹/무기 소재 FT-IR 기준 스펙트럼에서 자동 추출한 피크 후보. Generated from sune/data/RIST_FTIR_Library; 5 strongest peaks per spectrum.",
+  "assignments": [
+    {
+      "centerWavenumber": 1019.7,
+      "tolerance": 10.0,
+      "name": "Hydroxyapatite 250°C +15% marker @ 1019.7 cm-1",
+      "color": "#475569",
+      "note": "Auto-derived from 05_ceramic_inorganic/hap_HAp_250C_15pct_1st.csv (User measurement (1st meas.))"
+    },
+    {
+      "centerWavenumber": 1020.2,
+      "tolerance": 10.0,
+      "name": "Hydroxyapatite 250°C +15% marker @ 1020.2 cm-1",
+      "color": "#475569",
+      "note": "Auto-derived from 05_ceramic_inorganic/hap_HAp_250C_15pct_2nd.csv (User measurement (2nd meas.))"
+    },
+    {
+      "centerWavenumber": 809.0,
+      "tolerance": 10.0,
+      "name": "Hydroxyapatite 250°C marker @ 809 cm-1",
+      "color": "#475569",
+      "note": "Auto-derived from 05_ceramic_inorganic/hap_HAp_250C_1st.csv (User measurement (1st meas.))"
+    },
+    {
+      "centerWavenumber": 1252.1,
+      "tolerance": 10.0,
+      "name": "Hydroxyapatite 250°C marker @ 1252.1 cm-1",
+      "color": "#475569",
+      "note": "Auto-derived from 05_ceramic_inorganic/hap_HAp_250C_1st.csv (User measurement (1st meas.))"
+    },
+    {
+      "centerWavenumber": 1019.2,
+      "tolerance": 10.0,
+      "name": "Hydroxyapatite 250°C +25% marker @ 1019.2 cm-1",
+      "color": "#475569",
+      "note": "Auto-derived from 05_ceramic_inorganic/hap_HAp_250C_25pct_1st.csv (User measurement (1st meas.))"
+    },
+    {
+      "centerWavenumber": 1020.7,
+      "tolerance": 10.0,
+      "name": "Hydroxyapatite 250°C +25% marker @ 1020.7 cm-1",
+      "color": "#475569",
+      "note": "Auto-derived from 05_ceramic_inorganic/hap_HAp_250C_25pct_2nd.csv (User measurement (2nd meas.))"
+    },
+    {
+      "centerWavenumber": 1020.7,
+      "tolerance": 10.0,
+      "name": "Hydroxyapatite 250°C marker @ 1020.7 cm-1",
+      "color": "#475569",
+      "note": "Auto-derived from 05_ceramic_inorganic/hap_HAp_250C_2nd.csv (User measurement (2nd meas.))"
+    },
+    {
+      "centerWavenumber": 1019.2,
+      "tolerance": 10.0,
+      "name": "Hydroxyapatite 250°C +35% marker @ 1019.2 cm-1",
+      "color": "#475569",
+      "note": "Auto-derived from 05_ceramic_inorganic/hap_HAp_250C_35pct_1st.csv (User measurement (1st meas.))"
+    },
+    {
+      "centerWavenumber": 1020.2,
+      "tolerance": 10.0,
+      "name": "Hydroxyapatite 250°C +35% marker @ 1020.2 cm-1",
+      "color": "#475569",
+      "note": "Auto-derived from 05_ceramic_inorganic/hap_HAp_250C_35pct_2nd.csv (User measurement (2nd meas.))"
+    },
+    {
+      "centerWavenumber": 971.5,
+      "tolerance": 10.0,
+      "name": "Hydroxyapatite 400°C +15% marker @ 971.5 cm-1",
+      "color": "#475569",
+      "note": "Auto-derived from 05_ceramic_inorganic/hap_HAp_400C_15pct_1st.csv (User measurement (1st meas.))"
+    },
+    {
+      "centerWavenumber": 1021.1,
+      "tolerance": 10.0,
+      "name": "Hydroxyapatite 400°C +15% marker @ 1021.1 cm-1",
+      "color": "#475569",
+      "note": "Auto-derived from 05_ceramic_inorganic/hap_HAp_400C_15pct_2nd.csv (User measurement (2nd meas.))"
+    },
+    {
+      "centerWavenumber": 971.0,
+      "tolerance": 10.0,
+      "name": "Hydroxyapatite 400°C marker @ 971 cm-1",
+      "color": "#475569",
+      "note": "Auto-derived from 05_ceramic_inorganic/hap_HAp_400C_1st.csv (User measurement (1st meas.))"
+    },
+    {
+      "centerWavenumber": 1560.1,
+      "tolerance": 10.0,
+      "name": "Hydroxyapatite 400°C marker @ 1560.1 cm-1",
+      "color": "#475569",
+      "note": "Auto-derived from 05_ceramic_inorganic/hap_HAp_400C_1st.csv (User measurement (1st meas.))"
+    },
+    {
+      "centerWavenumber": 758.9,
+      "tolerance": 10.0,
+      "name": "Hydroxyapatite 400°C +25% marker @ 758.9 cm-1",
+      "color": "#475569",
+      "note": "Auto-derived from 05_ceramic_inorganic/hap_HAp_400C_25pct_1st.csv (User measurement (1st meas.))"
+    },
+    {
+      "centerWavenumber": 971.0,
+      "tolerance": 10.0,
+      "name": "Hydroxyapatite 400°C +25% marker @ 971 cm-1",
+      "color": "#475569",
+      "note": "Auto-derived from 05_ceramic_inorganic/hap_HAp_400C_25pct_1st.csv (User measurement (1st meas.))"
+    },
+    {
+      "centerWavenumber": 1252.5,
+      "tolerance": 10.0,
+      "name": "Hydroxyapatite 400°C +25% marker @ 1252.5 cm-1",
+      "color": "#475569",
+      "note": "Auto-derived from 05_ceramic_inorganic/hap_HAp_400C_25pct_1st.csv (User measurement (1st meas.))"
+    },
+    {
+      "centerWavenumber": 1022.1,
+      "tolerance": 10.0,
+      "name": "Hydroxyapatite 400°C +25% marker @ 1022.1 cm-1",
+      "color": "#475569",
+      "note": "Auto-derived from 05_ceramic_inorganic/hap_HAp_400C_25pct_2nd.csv (User measurement (2nd meas.))"
+    },
+    {
+      "centerWavenumber": 1020.2,
+      "tolerance": 10.0,
+      "name": "Hydroxyapatite 400°C marker @ 1020.2 cm-1",
+      "color": "#475569",
+      "note": "Auto-derived from 05_ceramic_inorganic/hap_HAp_400C_2nd.csv (User measurement (2nd meas.))"
+    },
+    {
+      "centerWavenumber": 1223.1,
+      "tolerance": 10.0,
+      "name": "Hydroxyapatite 400°C +35% marker @ 1223.1 cm-1",
+      "color": "#475569",
+      "note": "Auto-derived from 05_ceramic_inorganic/hap_HAp_400C_35pct_1st.csv (User measurement (1st meas.))"
+    },
+    {
+      "centerWavenumber": 1022.1,
+      "tolerance": 10.0,
+      "name": "Hydroxyapatite 400°C +35% marker @ 1022.1 cm-1",
+      "color": "#475569",
+      "note": "Auto-derived from 05_ceramic_inorganic/hap_HAp_400C_35pct_2nd.csv (User measurement (2nd meas.))"
+    },
+    {
+      "centerWavenumber": 869.3,
+      "tolerance": 10.0,
+      "name": "Ammonia (NH3) marker @ 869.3 cm-1",
+      "color": "#475569",
+      "note": "Auto-derived from 05_ceramic_inorganic/nist_ammonia_nh3-2.csv (nist)"
+    },
+    {
+      "centerWavenumber": 931.9,
+      "tolerance": 10.0,
+      "name": "Ammonia (NH3) marker @ 931.9 cm-1",
+      "color": "#475569",
+      "note": "Auto-derived from 05_ceramic_inorganic/nist_ammonia_nh3-2.csv (nist)"
+    },
+    {
+      "centerWavenumber": 966.5,
+      "tolerance": 10.0,
+      "name": "Ammonia (NH3) marker @ 966.5 cm-1",
+      "color": "#475569",
+      "note": "Auto-derived from 05_ceramic_inorganic/nist_ammonia_nh3-2.csv (nist)"
+    },
+    {
+      "centerWavenumber": 992.7,
+      "tolerance": 10.0,
+      "name": "Ammonia (NH3) marker @ 992.7 cm-1",
+      "color": "#475569",
+      "note": "Auto-derived from 05_ceramic_inorganic/nist_ammonia_nh3-2.csv (nist)"
+    },
+    {
+      "centerWavenumber": 1033.9,
+      "tolerance": 10.0,
+      "name": "Ammonia (NH3) marker @ 1033.9 cm-1",
+      "color": "#475569",
+      "note": "Auto-derived from 05_ceramic_inorganic/nist_ammonia_nh3-2.csv (nist)"
+    },
+    {
+      "centerWavenumber": 862.0,
+      "tolerance": 10.0,
+      "name": "Ammonia (NH3) marker @ 862 cm-1",
+      "color": "#475569",
+      "note": "Auto-derived from 05_ceramic_inorganic/nist_ammonia_nh3.csv (nist)"
+    },
+    {
+      "centerWavenumber": 942.0,
+      "tolerance": 10.0,
+      "name": "Ammonia (NH3) marker @ 942 cm-1",
+      "color": "#475569",
+      "note": "Auto-derived from 05_ceramic_inorganic/nist_ammonia_nh3.csv (nist)"
+    },
+    {
+      "centerWavenumber": 974.0,
+      "tolerance": 10.0,
+      "name": "Ammonia (NH3) marker @ 974 cm-1",
+      "color": "#475569",
+      "note": "Auto-derived from 05_ceramic_inorganic/nist_ammonia_nh3.csv (nist)"
+    },
+    {
+      "centerWavenumber": 2782.0,
+      "tolerance": 10.0,
+      "name": "Ammonia (NH3) marker @ 2782 cm-1",
+      "color": "#475569",
+      "note": "Auto-derived from 05_ceramic_inorganic/nist_ammonia_nh3.csv (nist)"
+    },
+    {
+      "centerWavenumber": 3478.0,
+      "tolerance": 10.0,
+      "name": "Ammonia (NH3) marker @ 3478 cm-1",
+      "color": "#475569",
+      "note": "Auto-derived from 05_ceramic_inorganic/nist_ammonia_nh3.csv (nist)"
+    },
+    {
+      "centerWavenumber": 1163.1,
+      "tolerance": 10.0,
+      "name": "Amber (Fossil Resin) marker @ 1163.1 cm-1",
+      "color": "#475569",
+      "note": "Auto-derived from 05_ceramic_inorganic/openspecy_amber_fossil_resin.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1379.1,
+      "tolerance": 10.0,
+      "name": "Amber (Fossil Resin) marker @ 1379.1 cm-1",
+      "color": "#475569",
+      "note": "Auto-derived from 05_ceramic_inorganic/openspecy_amber_fossil_resin.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1710.9,
+      "tolerance": 10.0,
+      "name": "Amber (Fossil Resin) marker @ 1710.9 cm-1",
+      "color": "#475569",
+      "note": "Auto-derived from 05_ceramic_inorganic/openspecy_amber_fossil_resin.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 2929.9,
+      "tolerance": 10.0,
+      "name": "Amber (Fossil Resin) marker @ 2929.9 cm-1",
+      "color": "#475569",
+      "note": "Auto-derived from 05_ceramic_inorganic/openspecy_amber_fossil_resin.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 3469.9,
+      "tolerance": 10.0,
+      "name": "Amber (Fossil Resin) marker @ 3469.9 cm-1",
+      "color": "#475569",
+      "note": "Auto-derived from 05_ceramic_inorganic/openspecy_amber_fossil_resin.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 748.4,
+      "tolerance": 10.0,
+      "name": "Coal marker @ 748.4 cm-1",
+      "color": "#475569",
+      "note": "Auto-derived from 05_ceramic_inorganic/openspecy_coal-1.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 806.2,
+      "tolerance": 10.0,
+      "name": "Coal marker @ 806.2 cm-1",
+      "color": "#475569",
+      "note": "Auto-derived from 05_ceramic_inorganic/openspecy_coal-1.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 871.8,
+      "tolerance": 10.0,
+      "name": "Coal marker @ 871.8 cm-1",
+      "color": "#475569",
+      "note": "Auto-derived from 05_ceramic_inorganic/openspecy_coal-1.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1143.8,
+      "tolerance": 10.0,
+      "name": "Coal marker @ 1143.8 cm-1",
+      "color": "#475569",
+      "note": "Auto-derived from 05_ceramic_inorganic/openspecy_coal-1.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1572.0,
+      "tolerance": 10.0,
+      "name": "Coal marker @ 1572 cm-1",
+      "color": "#475569",
+      "note": "Auto-derived from 05_ceramic_inorganic/openspecy_coal-1.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 752.2,
+      "tolerance": 10.0,
+      "name": "Coal marker @ 752.2 cm-1",
+      "color": "#475569",
+      "note": "Auto-derived from 05_ceramic_inorganic/openspecy_coal-2.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 815.9,
+      "tolerance": 10.0,
+      "name": "Coal marker @ 815.9 cm-1",
+      "color": "#475569",
+      "note": "Auto-derived from 05_ceramic_inorganic/openspecy_coal-2.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 873.7,
+      "tolerance": 10.0,
+      "name": "Coal marker @ 873.7 cm-1",
+      "color": "#475569",
+      "note": "Auto-derived from 05_ceramic_inorganic/openspecy_coal-2.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1193.9,
+      "tolerance": 10.0,
+      "name": "Coal marker @ 1193.9 cm-1",
+      "color": "#475569",
+      "note": "Auto-derived from 05_ceramic_inorganic/openspecy_coal-2.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1577.8,
+      "tolerance": 10.0,
+      "name": "Coal marker @ 1577.8 cm-1",
+      "color": "#475569",
+      "note": "Auto-derived from 05_ceramic_inorganic/openspecy_coal-2.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 468.7,
+      "tolerance": 10.0,
+      "name": "Coal marker @ 468.7 cm-1",
+      "color": "#475569",
+      "note": "Auto-derived from 05_ceramic_inorganic/openspecy_coal-3.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 536.2,
+      "tolerance": 10.0,
+      "name": "Coal marker @ 536.2 cm-1",
+      "color": "#475569",
+      "note": "Auto-derived from 05_ceramic_inorganic/openspecy_coal-3.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 744.5,
+      "tolerance": 10.0,
+      "name": "Coal marker @ 744.5 cm-1",
+      "color": "#475569",
+      "note": "Auto-derived from 05_ceramic_inorganic/openspecy_coal-3.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1437.0,
+      "tolerance": 10.0,
+      "name": "Coal marker @ 1437 cm-1",
+      "color": "#475569",
+      "note": "Auto-derived from 05_ceramic_inorganic/openspecy_coal-3.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1595.1,
+      "tolerance": 10.0,
+      "name": "Coal marker @ 1595.1 cm-1",
+      "color": "#475569",
+      "note": "Auto-derived from 05_ceramic_inorganic/openspecy_coal-3.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 468.7,
+      "tolerance": 10.0,
+      "name": "Coal marker @ 468.7 cm-1",
+      "color": "#475569",
+      "note": "Auto-derived from 05_ceramic_inorganic/openspecy_coal-4.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 534.3,
+      "tolerance": 10.0,
+      "name": "Coal marker @ 534.3 cm-1",
+      "color": "#475569",
+      "note": "Auto-derived from 05_ceramic_inorganic/openspecy_coal-4.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 746.4,
+      "tolerance": 10.0,
+      "name": "Coal marker @ 746.4 cm-1",
+      "color": "#475569",
+      "note": "Auto-derived from 05_ceramic_inorganic/openspecy_coal-4.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1030.0,
+      "tolerance": 10.0,
+      "name": "Coal marker @ 1030 cm-1",
+      "color": "#475569",
+      "note": "Auto-derived from 05_ceramic_inorganic/openspecy_coal-4.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1595.1,
+      "tolerance": 10.0,
+      "name": "Coal marker @ 1595.1 cm-1",
+      "color": "#475569",
+      "note": "Auto-derived from 05_ceramic_inorganic/openspecy_coal-4.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 470.6,
+      "tolerance": 10.0,
+      "name": "Coal marker @ 470.6 cm-1",
+      "color": "#475569",
+      "note": "Auto-derived from 05_ceramic_inorganic/openspecy_coal-5.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 536.2,
+      "tolerance": 10.0,
+      "name": "Coal marker @ 536.2 cm-1",
+      "color": "#475569",
+      "note": "Auto-derived from 05_ceramic_inorganic/openspecy_coal-5.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 750.3,
+      "tolerance": 10.0,
+      "name": "Coal marker @ 750.3 cm-1",
+      "color": "#475569",
+      "note": "Auto-derived from 05_ceramic_inorganic/openspecy_coal-5.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1031.9,
+      "tolerance": 10.0,
+      "name": "Coal marker @ 1031.9 cm-1",
+      "color": "#475569",
+      "note": "Auto-derived from 05_ceramic_inorganic/openspecy_coal-5.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1595.1,
+      "tolerance": 10.0,
+      "name": "Coal marker @ 1595.1 cm-1",
+      "color": "#475569",
+      "note": "Auto-derived from 05_ceramic_inorganic/openspecy_coal-5.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 468.7,
+      "tolerance": 10.0,
+      "name": "Coal marker @ 468.7 cm-1",
+      "color": "#475569",
+      "note": "Auto-derived from 05_ceramic_inorganic/openspecy_coal-6.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 742.6,
+      "tolerance": 10.0,
+      "name": "Coal marker @ 742.6 cm-1",
+      "color": "#475569",
+      "note": "Auto-derived from 05_ceramic_inorganic/openspecy_coal-6.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 866.0,
+      "tolerance": 10.0,
+      "name": "Coal marker @ 866 cm-1",
+      "color": "#475569",
+      "note": "Auto-derived from 05_ceramic_inorganic/openspecy_coal-6.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1435.0,
+      "tolerance": 10.0,
+      "name": "Coal marker @ 1435 cm-1",
+      "color": "#475569",
+      "note": "Auto-derived from 05_ceramic_inorganic/openspecy_coal-6.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1595.1,
+      "tolerance": 10.0,
+      "name": "Coal marker @ 1595.1 cm-1",
+      "color": "#475569",
+      "note": "Auto-derived from 05_ceramic_inorganic/openspecy_coal-6.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1139.9,
+      "tolerance": 10.0,
+      "name": "Quartz (Beach Sand) marker @ 1139.9 cm-1",
+      "color": "#475569",
+      "note": "Auto-derived from 05_ceramic_inorganic/openspecy_quartz_beach_sand.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1238.3,
+      "tolerance": 10.0,
+      "name": "Quartz (Beach Sand) marker @ 1238.3 cm-1",
+      "color": "#475569",
+      "note": "Auto-derived from 05_ceramic_inorganic/openspecy_quartz_beach_sand.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1525.7,
+      "tolerance": 10.0,
+      "name": "Quartz (Beach Sand) marker @ 1525.7 cm-1",
+      "color": "#475569",
+      "note": "Auto-derived from 05_ceramic_inorganic/openspecy_quartz_beach_sand.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1612.5,
+      "tolerance": 10.0,
+      "name": "Quartz (Beach Sand) marker @ 1612.5 cm-1",
+      "color": "#475569",
+      "note": "Auto-derived from 05_ceramic_inorganic/openspecy_quartz_beach_sand.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1872.9,
+      "tolerance": 10.0,
+      "name": "Quartz (Beach Sand) marker @ 1872.9 cm-1",
+      "color": "#475569",
+      "note": "Auto-derived from 05_ceramic_inorganic/openspecy_quartz_beach_sand.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1099.4,
+      "tolerance": 10.0,
+      "name": "Quartz (Lab) marker @ 1099.4 cm-1",
+      "color": "#475569",
+      "note": "Auto-derived from 05_ceramic_inorganic/openspecy_quartz_lab.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1247.9,
+      "tolerance": 10.0,
+      "name": "Quartz (Lab) marker @ 1247.9 cm-1",
+      "color": "#475569",
+      "note": "Auto-derived from 05_ceramic_inorganic/openspecy_quartz_lab.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1608.6,
+      "tolerance": 10.0,
+      "name": "Quartz (Lab) marker @ 1608.6 cm-1",
+      "color": "#475569",
+      "note": "Auto-derived from 05_ceramic_inorganic/openspecy_quartz_lab.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1870.9,
+      "tolerance": 10.0,
+      "name": "Quartz (Lab) marker @ 1870.9 cm-1",
+      "color": "#475569",
+      "note": "Auto-derived from 05_ceramic_inorganic/openspecy_quartz_lab.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 3853.8,
+      "tolerance": 10.0,
+      "name": "Quartz (Lab) marker @ 3853.8 cm-1",
+      "color": "#475569",
+      "note": "Auto-derived from 05_ceramic_inorganic/openspecy_quartz_lab.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1047.3,
+      "tolerance": 10.0,
+      "name": "Silica Gel marker @ 1047.3 cm-1",
+      "color": "#475569",
+      "note": "Auto-derived from 05_ceramic_inorganic/openspecy_silica_gel.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1120.6,
+      "tolerance": 10.0,
+      "name": "Silica Gel marker @ 1120.6 cm-1",
+      "color": "#475569",
+      "note": "Auto-derived from 05_ceramic_inorganic/openspecy_silica_gel.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1230.6,
+      "tolerance": 10.0,
+      "name": "Silica Gel marker @ 1230.6 cm-1",
+      "color": "#475569",
+      "note": "Auto-derived from 05_ceramic_inorganic/openspecy_silica_gel.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 1631.8,
+      "tolerance": 10.0,
+      "name": "Silica Gel marker @ 1631.8 cm-1",
+      "color": "#475569",
+      "note": "Auto-derived from 05_ceramic_inorganic/openspecy_silica_gel.csv (openspecy)"
+    },
+    {
+      "centerWavenumber": 3635.8,
+      "tolerance": 10.0,
+      "name": "Silica Gel marker @ 3635.8 cm-1",
+      "color": "#475569",
+      "note": "Auto-derived from 05_ceramic_inorganic/openspecy_silica_gel.csv (openspecy)"
+    }
+  ]
+}
