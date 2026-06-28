@@ -739,8 +739,8 @@ body {
     grid-column: auto;
   }
   #peak-plot {
-    min-height: 520px;
-    height: calc(100vh - 180px) !important;
+    min-height: 585px;
+    height: calc(100vh - 180px + 65px) !important;
   }
   #peak-plot .rist-plot-control-row {
     left: 8px !important;

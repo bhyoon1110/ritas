@@ -4393,9 +4393,30 @@ def _responsive_legend_js(div_id: str, wide_legend_inside: bool = True,
 (function() {{
   var gd = document.getElementById("{div_id}");
   var WIDE = {breakpoint_px};
+  var originalHeightStyle = gd ? gd.style.height : "";
+  var originalMinHeightStyle = gd ? gd.style.minHeight : "";
+  var baseHeightPx = null;
+  var legendReservePx = 50;
+
+  function setMobileLegendReserve(enabled) {{
+    if (!gd) return;
+    if (enabled) {{
+      if (baseHeightPx == null) {{
+        baseHeightPx = Math.max(1, Math.round(gd.getBoundingClientRect().height));
+      }}
+      gd.style.height = (baseHeightPx + legendReservePx) + "px";
+      gd.style.minHeight = (baseHeightPx + legendReservePx) + "px";
+    }} else {{
+      gd.style.height = originalHeightStyle;
+      gd.style.minHeight = originalMinHeightStyle;
+      baseHeightPx = null;
+    }}
+  }}
+
   function applyLegend() {{
     if (!gd || !window.Plotly) return;
     var wide = window.innerWidth >= WIDE;
+    setMobileLegendReserve(!wide);
     var layout = wide ? {wide_layout} : {{
       "legend.orientation": "h",
       "legend.x": 0.5, "legend.xanchor": "center",
@@ -4419,7 +4440,7 @@ def _legend_drag_handle_js(div_id: str) -> str:
 <style>
 #{div_id} .rist-legend-drag-handle {{
   position: absolute;
-  z-index: 19;
+  z-index: 35;
   display: none;
   align-items: center;
   justify-content: center;
@@ -4495,12 +4516,6 @@ def _legend_drag_handle_js(div_id: str) -> str:
 
   function positionHandle() {{
     updateFrame = 0;
-    if (dragState) return;
-    var layout = legendLayout();
-    if (layout.orientation === "h") {{
-      handle.style.display = "none";
-      return;
-    }}
     var rect = legendBoxRect();
     if (!rect) {{
       handle.style.display = "none";
@@ -4520,10 +4535,14 @@ def _legend_drag_handle_js(div_id: str) -> str:
     if (ev.button !== 0) return;
     var layout = legendLayout();
     var size = plotSize();
+    var gdRect = gd.getBoundingClientRect();
+    var handleRect = handle.getBoundingClientRect();
     dragState = {{
       pointerId: ev.pointerId,
       startX: ev.clientX,
       startY: ev.clientY,
+      handleLeft: handleRect.left - gdRect.left,
+      handleTop: handleRect.top - gdRect.top,
       legendX: Number.isFinite(Number(layout.x)) ? Number(layout.x) : 1,
       legendY: Number.isFinite(Number(layout.y)) ? Number(layout.y) : 1,
       plotWidth: size.width,
@@ -4539,6 +4558,8 @@ def _legend_drag_handle_js(div_id: str) -> str:
     if (!dragState) return;
     var dx = ev.clientX - dragState.startX;
     var dy = ev.clientY - dragState.startY;
+    handle.style.left = Math.round(dragState.handleLeft + dx) + "px";
+    handle.style.top = Math.round(dragState.handleTop + dy) + "px";
     var nextX = clamp(dragState.legendX + dx / dragState.plotWidth, -0.2, 1.4);
     var nextY = clamp(dragState.legendY - dy / dragState.plotHeight, -0.4, 1.2);
     window.Plotly.relayout(gd, {{

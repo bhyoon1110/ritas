@@ -51,6 +51,8 @@ def test_ftir_workspace_contains_upload_and_editor_controls() -> None:
     assert "--rist-ftir-tool-panel-alpha" in page
     assert "@media (max-width: 1440px)" in page
     assert "rist-plot-data-replaced" in page
+    assert "height: calc(100vh - 180px + 65px) !important" in page
+    assert "min-height: 585px" in page
     assert plotly_asset_path().is_file()
 
 
