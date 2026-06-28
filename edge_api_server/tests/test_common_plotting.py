@@ -341,6 +341,15 @@ def test_shared_peak_editor_adds_peak_controls(tmp_path) -> None:
     assert "rist-shape-fill-none-row" in html
     assert "rist-shape-fill-none" in html
     assert "배경 없음" in html
+    assert "rist-shape-layer-actions" in html
+    assert "rist-shape-bring-forward" in html
+    assert "rist-shape-send-backward" in html
+    assert "rist-shape-bring-to-front" in html
+    assert "rist-shape-send-to-back" in html
+    assert "앞으로 가져오기" in html
+    assert "뒤로 보내기" in html
+    assert "맨 앞으로" in html
+    assert "맨 뒤로" in html
     assert "function fillColor" in html
     assert "function updateFillControl" in html
     assert "fillNoneInput.checked ? 0" in html
@@ -372,6 +381,15 @@ def test_shared_peak_editor_adds_peak_controls(tmp_path) -> None:
     assert "function editedObjectsFromControls" in html
     assert "function previewSelection" in html
     assert "function schedulePreview" in html
+    assert "function moveSelectionLayer" in html
+    assert "function targetLayerIndex" in html
+    assert "function reorderOriginalArrays" in html
+    assert 'moveSelectionLayer("forward")' in html
+    assert 'moveSelectionLayer("backward")' in html
+    assert 'moveSelectionLayer("front")' in html
+    assert 'moveSelectionLayer("back")' in html
+    assert "moveItem(shapes, si, nextShapeIndex)" in html
+    assert "moveItem(annotations, ai, nextAnnotationIndex)" in html
     assert 'input.addEventListener("input", schedulePreview)' in html
     assert 'document.addEventListener("pointerdown"' in html
     assert "panel.contains(ev.target)" in html

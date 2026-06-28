@@ -3263,6 +3263,12 @@ def shape_editor_js(div_id: str) -> str:
   cursor: default;
   opacity: 0.45;
 }}
+#{div_id} .rist-shape-layer-actions {{
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-top: 9px;
+}}
 #{div_id} .rist-shape-editor-actions {{
   display: flex;
   gap: 7px;
@@ -3279,11 +3285,15 @@ def shape_editor_js(div_id: str) -> str:
   font: 11px Arial, sans-serif;
   padding: 4px 8px;
 }}
+#{div_id} .rist-shape-layer-action {{
+  width: 100%;
+  padding: 4px 6px;
+}}
 #{div_id} .rist-shape-delete {{
   border-color: #d5a3a3;
   color: #9b2c2c;
 }}
-#{div_id} .rist-shape-delete:disabled {{
+#{div_id} .rist-shape-action:disabled {{
   opacity: 0.4;
   cursor: default;
 }}
@@ -3487,6 +3497,12 @@ def shape_editor_js(div_id: str) -> str:
     + "<input class='rist-shape-opacity' type='range' min='0' max='100' value='30'></label>"
     + "<label class='rist-shape-fill-none-row'>"
     + "<input class='rist-shape-fill-none' type='checkbox'>배경 없음</label>"
+    + "<div class='rist-shape-layer-actions'>"
+    + "<button type='button' class='rist-shape-action rist-shape-layer-action rist-shape-send-backward' disabled>뒤로 보내기</button>"
+    + "<button type='button' class='rist-shape-action rist-shape-layer-action rist-shape-bring-forward' disabled>앞으로 가져오기</button>"
+    + "<button type='button' class='rist-shape-action rist-shape-layer-action rist-shape-send-to-back' disabled>맨 뒤로</button>"
+    + "<button type='button' class='rist-shape-action rist-shape-layer-action rist-shape-bring-to-front' disabled>맨 앞으로</button>"
+    + "</div>"
     + "<div class='rist-shape-editor-actions'>"
     + "<button type='button' class='rist-shape-action rist-shape-draw'>그리기</button>"
     + "<button type='button' class='rist-shape-action rist-shape-delete' disabled>삭제</button>"
@@ -3513,6 +3529,13 @@ def shape_editor_js(div_id: str) -> str:
   var fillNoneInput = panel.querySelector(".rist-shape-fill-none");
   var drawButton = panel.querySelector(".rist-shape-draw");
   var deleteButton = panel.querySelector(".rist-shape-delete");
+  var layerButtons = Array.prototype.slice.call(
+    panel.querySelectorAll(".rist-shape-layer-action")
+  );
+  var bringForwardButton = panel.querySelector(".rist-shape-bring-forward");
+  var sendBackwardButton = panel.querySelector(".rist-shape-send-backward");
+  var bringToFrontButton = panel.querySelector(".rist-shape-bring-to-front");
+  var sendToBackButton = panel.querySelector(".rist-shape-send-to-back");
   var kindButtons = Array.prototype.slice.call(
     panel.querySelectorAll(".rist-shape-kind-button")
   );
@@ -3580,7 +3603,11 @@ def shape_editor_js(div_id: str) -> str:
   }}
 
   function updateSelectionButtons() {{
-    deleteButton.disabled = !selectedId;
+    var disabled = !selectedId;
+    deleteButton.disabled = disabled;
+    layerButtons.forEach(function(button) {{
+      button.disabled = disabled;
+    }});
   }}
 
   function clearSelection() {{
@@ -3725,6 +3752,72 @@ def shape_editor_js(div_id: str) -> str:
       else if (ai >= 0) gd._ristFtirUnitOriginalAnnotations[ai] = clone(annotation);
       else if (!remove) gd._ristFtirUnitOriginalAnnotations.push(clone(annotation));
     }}
+  }}
+
+  function moveItem(array, from, to) {{
+    if (from < 0 || from >= array.length || to < 0 || to >= array.length) return false;
+    if (from === to) return false;
+    array.splice(to, 0, array.splice(from, 1)[0]);
+    return true;
+  }}
+
+  function targetLayerIndex(index, length, direction) {{
+    if (direction === "front") return length - 1;
+    if (direction === "back") return 0;
+    if (direction === "forward") return Math.min(length - 1, index + 1);
+    return Math.max(0, index - 1);
+  }}
+
+  function reorderOriginalArrays(id, kind, direction) {{
+    if (gd._ristFtirUnitOriginalShapes) {{
+      var originalShapeIndex = shapeIndex(id, kind, gd._ristFtirUnitOriginalShapes);
+      moveItem(
+        gd._ristFtirUnitOriginalShapes,
+        originalShapeIndex,
+        targetLayerIndex(
+          originalShapeIndex,
+          gd._ristFtirUnitOriginalShapes.length,
+          direction
+        )
+      );
+    }}
+    if (kind === "text" && gd._ristFtirUnitOriginalAnnotations) {{
+      var originalAnnotationIndex = annotationIndex(id, gd._ristFtirUnitOriginalAnnotations);
+      moveItem(
+        gd._ristFtirUnitOriginalAnnotations,
+        originalAnnotationIndex,
+        targetLayerIndex(
+          originalAnnotationIndex,
+          gd._ristFtirUnitOriginalAnnotations.length,
+          direction
+        )
+      );
+    }}
+  }}
+
+  function moveSelectionLayer(direction) {{
+    if (!selectedId || !selectedKind) return Promise.resolve();
+    var pending = previewFrame ? previewSelection() : Promise.resolve();
+    return pending.then(function() {{
+      var shapes = (gd.layout.shapes || []).map(clone);
+      var annotations = (gd.layout.annotations || []).map(clone);
+      var si = shapeIndex(selectedId, selectedKind, shapes);
+      var ai = annotationIndex(selectedId, annotations);
+      if (si < 0 || (selectedKind === "text" && ai < 0)) return;
+      var nextShapeIndex = targetLayerIndex(si, shapes.length, direction);
+      var nextAnnotationIndex = targetLayerIndex(ai, annotations.length, direction);
+      var changed = moveItem(shapes, si, nextShapeIndex);
+      if (selectedKind === "text") {{
+        changed = moveItem(annotations, ai, nextAnnotationIndex) || changed;
+      }}
+      if (!changed) return;
+      recordEditHistory();
+      reorderOriginalArrays(selectedId, selectedKind, direction);
+      return window.Plotly.relayout(gd, {{
+        shapes: shapes,
+        annotations: annotations
+      }}).then(updateSelectionOverlay);
+    }});
   }}
 
   function editedObjectsFromControls() {{
@@ -4132,6 +4225,18 @@ def shape_editor_js(div_id: str) -> str:
   fillNoneInput.addEventListener("change", function() {{
     updateFillControl();
     schedulePreview();
+  }});
+  bringForwardButton.addEventListener("click", function() {{
+    moveSelectionLayer("forward");
+  }});
+  sendBackwardButton.addEventListener("click", function() {{
+    moveSelectionLayer("backward");
+  }});
+  bringToFrontButton.addEventListener("click", function() {{
+    moveSelectionLayer("front");
+  }});
+  sendToBackButton.addEventListener("click", function() {{
+    moveSelectionLayer("back");
   }});
   deleteButton.addEventListener("click", deleteSelection);
   gd.on("plotly_clickannotation", function(ev) {{
