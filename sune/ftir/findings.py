@@ -65,17 +65,41 @@ def load_func_groups(func_groups_file="data/func_groups.csv"):
         for _, r in _fg.iterrows()
     ]
 
+def assign_group_candidates(wn, func_groups):
+    """Return the best matching assignment from each selected library."""
+    selected = {}
+    for raw in func_groups:
+        center, tol, name, color, note = raw[:5]
+        library_id = raw[5] if len(raw) > 5 else "default"
+        library_name = raw[6] if len(raw) > 6 else ""
+        delta = abs(wn - center)
+        if delta > tol:
+            continue
+        candidate = {
+            "name": name,
+            "color": color,
+            "note": note,
+            "library_id": library_id,
+            "library_name": library_name,
+            "center_wn": float(center),
+            "tolerance": float(tol),
+            "delta": float(delta),
+        }
+        current = selected.get(library_id)
+        if current is None or (candidate["tolerance"], candidate["delta"]) < (
+            current["tolerance"],
+            current["delta"],
+        ):
+            selected[library_id] = candidate
+    return list(selected.values())
+
+
 def assign_group(wn, func_groups):
-    candidates = [
-        (tol, name, color, note)
-        for center, tol, name, color, note in func_groups
-        if abs(wn - center) <= tol
-    ]
+    candidates = assign_group_candidates(wn, func_groups)
     if not candidates:
         return "unknown", "#9ca3af", ""
-    candidates.sort(key=lambda x: x[0])
-    _, name, color, note = candidates[0]
-    return name, color, note
+    candidate = candidates[0]
+    return candidate["name"], candidate["color"], candidate["note"]
 
 def get_peak_near(wns, vals, center, tol=40):
     matches = [(v, w) for w, v in zip(wns, vals) if abs(w - center) <= tol]

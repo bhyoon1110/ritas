@@ -266,13 +266,39 @@ def check_ftir_preview(
     else:
         reporter.fail("  └ DPT 업로드 화면", "파일 입력 요소가 없습니다.")
 
+    libraries_response = client.get("/api/v1/ftir/assignment-libraries")
+    if not expect_status(
+        reporter,
+        "GET /api/v1/ftir/assignment-libraries",
+        libraries_response,
+        200,
+    ):
+        return
+    libraries = [
+        item for item in libraries_response.json().get("libraries", [])
+        if item.get("valid")
+    ]
+    if not libraries:
+        reporter.fail("  └ 피크 라이브러리", "유효한 라이브러리가 없습니다.")
+        return
+    selected_ids = [
+        item["id"] for item in libraries if item.get("defaultSelected")
+    ] or [libraries[0]["id"]]
+    reporter.ok(
+        "  └ 피크 라이브러리",
+        f"available={len(libraries)} selected={','.join(selected_ids)}",
+    )
+
     response = client.post(
         "/api/v1/ftir/analyze",
         files=[
             ("files", ("smoke-a.dpt", build_dpt_sample(1700.0), "application/octet-stream")),
             ("files", ("smoke-b.dpt", build_dpt_sample(1550.0), "application/octet-stream")),
         ],
-        data={"sensitivity": "25"},
+        data={
+            "sensitivity": "25",
+            "assignment_library_ids": selected_ids,
+        },
     )
     if not expect_status(reporter, "POST /api/v1/ftir/analyze", response, 200):
         return

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 import math
+from pathlib import Path
 
 from fastapi.testclient import TestClient
 
@@ -26,7 +28,15 @@ def test_ftir_workspace_contains_upload_and_editor_controls() -> None:
 
     assert 'id="ftir-file-input"' in page
     assert 'id="ftir-drop-zone"' in page
+    assert 'id="ftir-library-list"' in page
+    assert 'id="ftir-library-input"' in page
+    assert 'id="ftir-library-new"' in page
+    assert 'id="ftir-library-modal"' in page
+    assert 'id="ftir-library-dialog-save"' in page
+    assert "ftir-library-state" in page
+    assert "ftir-library-delete" not in page
     assert "/api/v1/ftir/analyze" in page
+    assert "/api/v1/ftir/assignment-libraries" in page
     assert "/ftir/assets/plotly.min.js" in page
     assert "rist-shape-tool-button" in page
     assert "rist-peak-sensitivity-control" in page
@@ -34,8 +44,8 @@ def test_ftir_workspace_contains_upload_and_editor_controls() -> None:
     assert plotly_asset_path().is_file()
 
 
-def test_ftir_analysis_api_accepts_multiple_dpt_files() -> None:
-    with TestClient(create_ftir_preview_app()) as client:
+def test_ftir_analysis_api_accepts_multiple_dpt_files(tmp_path: Path) -> None:
+    with TestClient(create_ftir_preview_app(tmp_path / "libraries")) as client:
         response = client.post(
             "/api/v1/ftir/analyze",
             files=[
@@ -55,11 +65,12 @@ def test_ftir_analysis_api_accepts_multiple_dpt_files() -> None:
         "sample-b.DPT",
     ]
     assert payload["settings"]["sensitivity"] == 25
+    assert payload["settings"]["assignmentLibraries"][0]["id"] == "general-ftir"
     assert payload["figure"]["data"]
 
 
-def test_ftir_analysis_api_rejects_non_dpt() -> None:
-    with TestClient(create_ftir_preview_app()) as client:
+def test_ftir_analysis_api_rejects_non_dpt(tmp_path: Path) -> None:
+    with TestClient(create_ftir_preview_app(tmp_path / "libraries")) as client:
         response = client.post(
             "/api/v1/ftir/analyze",
             files={"files": ("sample.csv", synthetic_dpt(), "text/csv")},
@@ -68,3 +79,146 @@ def test_ftir_analysis_api_rejects_non_dpt() -> None:
 
     assert response.status_code == 400
     assert response.json()["code"] == "INVALID_DPT_EXTENSION"
+
+
+def test_explicit_empty_library_selection_disables_assignment(
+    tmp_path: Path,
+) -> None:
+    with TestClient(create_ftir_preview_app(tmp_path / "libraries")) as client:
+        response = client.post(
+            "/api/v1/ftir/analyze",
+            files={
+                "files": (
+                    "sample.dpt",
+                    synthetic_dpt(1700),
+                    "application/octet-stream",
+                )
+            },
+            data={
+                "sensitivity": "25",
+                "assignment_library_selection_explicit": "true",
+            },
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["settings"]["assignmentLibraries"] == []
+    peak_names = [
+        trace.get("name", "")
+        for trace in payload["figure"]["data"]
+        if trace.get("meta", {}).get("rist_peak")
+    ]
+    assert peak_names
+    assert all(name.endswith("cm⁻¹") for name in peak_names)
+
+
+def assignment_library(name: str, peak_name: str) -> bytes:
+    return json.dumps({
+        "name": name,
+        "assignments": [{
+            "centerWavenumber": 1700,
+            "tolerance": 40,
+            "name": peak_name,
+            "color": "#2563eb",
+            "note": "test",
+        }],
+    }).encode()
+
+
+def test_assignment_library_api_upload_select_and_delete(tmp_path: Path) -> None:
+    with TestClient(create_ftir_preview_app(tmp_path / "libraries")) as client:
+        initial = client.get("/api/v1/ftir/assignment-libraries")
+        assert initial.status_code == 200
+        assert initial.json()["libraries"][0]["id"] == "general-ftir"
+        detail = client.get(
+            "/api/v1/ftir/assignment-libraries/general-ftir"
+        )
+        assert detail.status_code == 200
+        assert detail.json()["library"]["assignmentCount"] == 47
+        assert detail.json()["library"]["assignments"][0]["name"]
+
+        created = client.post(
+            "/api/v1/ftir/assignment-libraries/create",
+            json={
+                "id": "editor-test",
+                "name": "Editor Test",
+                "description": "created in editor",
+                "assignments": [{
+                    "centerWavenumber": 1700,
+                    "tolerance": 20,
+                    "name": "C=O test",
+                    "color": "#123456",
+                    "note": "first",
+                }],
+            },
+        )
+        assert created.status_code == 201
+        updated = client.put(
+            "/api/v1/ftir/assignment-libraries/editor-test",
+            json={
+                "name": "Editor Test Updated",
+                "description": "updated in editor",
+                "assignments": [
+                    {
+                        "centerWavenumber": 1710,
+                        "tolerance": 15,
+                        "name": "C=O updated",
+                        "color": "#654321",
+                        "note": "updated",
+                    },
+                    {
+                        "centerWavenumber": 1250,
+                        "tolerance": 25,
+                        "name": "C-O test",
+                        "color": "#2563eb",
+                        "note": "",
+                    },
+                ],
+            },
+        )
+        assert updated.status_code == 200
+        assert updated.json()["library"]["name"] == "Editor Test Updated"
+        assert updated.json()["library"]["assignmentCount"] == 2
+        assert (tmp_path / "libraries" / "editor-test.json").is_file()
+
+        for file_id, name, peak_name in (
+            ("material-a", "Material A", "Carbonyl A"),
+            ("material-b", "Material B", "Carbonyl B"),
+        ):
+            uploaded = client.post(
+                "/api/v1/ftir/assignment-libraries",
+                files={
+                    "file": (
+                        f"{file_id}.json",
+                        assignment_library(name, peak_name),
+                        "application/json",
+                    )
+                },
+            )
+            assert uploaded.status_code == 201
+
+        response = client.post(
+            "/api/v1/ftir/analyze",
+            files={
+                "files": (
+                    "sample.dpt",
+                    synthetic_dpt(1700),
+                    "application/octet-stream",
+                )
+            },
+            data={
+                "sensitivity": "25",
+                "assignment_library_ids": ["material-a", "material-b"],
+            },
+        )
+        assert response.status_code == 200
+        payload = response.json()
+        assert [
+            item["id"] for item in payload["settings"]["assignmentLibraries"]
+        ] == ["material-a", "material-b"]
+        peak_names = [
+            trace.get("name", "")
+            for trace in payload["figure"]["data"]
+            if trace.get("meta", {}).get("rist_peak")
+        ]
+        assert any("Carbonyl A / Carbonyl B" in name for name in peak_names)

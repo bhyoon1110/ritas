@@ -157,7 +157,8 @@ git clone 으로 배포한 경우:
 ```bash
 cd /home/rist/ritas
 sudo -u rist git pull
-sudo -u rist .venv/bin/pip install -r edge_api_server/requirements.txt   # 의존성 변경 시
+cd edge_api_server
+sudo -u rist ../.venv/bin/pip install -r requirements.txt   # 의존성 변경 시
 sudo systemctl restart rist-edge-api.service rist-edge-worker.service
 ```
 

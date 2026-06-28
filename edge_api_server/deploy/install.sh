@@ -79,11 +79,14 @@ chown -R "${SERVICE_USER}:${SERVICE_USER}" "${PROJECT_ROOT}"
 echo "==> 4. 가상환경 생성 및 의존성 설치"
 sudo -u "${SERVICE_USER}" "${PYTHON_BIN}" -m venv "${VENV_DIR}"
 sudo -u "${SERVICE_USER}" "${VENV_DIR}/bin/pip" install --upgrade pip
-sudo -u "${SERVICE_USER}" "${VENV_DIR}/bin/pip" install -r "${EDGE_DIR}/requirements.txt"
+pushd "${EDGE_DIR}" >/dev/null
+sudo -u "${SERVICE_USER}" "${VENV_DIR}/bin/pip" install -r requirements.txt
+popd >/dev/null
 
 echo "==> 5. 데이터 디렉터리 준비"
 sudo -u "${SERVICE_USER}" mkdir -p "${EDGE_DIR}/data/jobs"
 sudo -u "${SERVICE_USER}" mkdir -p "${EDGE_DIR}/data/logs"
+sudo -u "${SERVICE_USER}" mkdir -p "${EDGE_DIR}/data/ftir_assignment_libraries"
 
 echo "==> 6. 비밀/환경 파일(${PROJECT_ROOT}/edge.env) 준비"
 # 비밀값(DB 비밀번호 등)은 git 추적 밖(.gitignore)의 이 파일에서 읽는다.

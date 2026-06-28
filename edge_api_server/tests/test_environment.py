@@ -109,6 +109,25 @@ def test_storage_root_env_overrides_profile(monkeypatch, tmp_path: Path) -> None
     assert settings.llm_max_tokens == 1200
 
 
+def test_ftir_assignment_library_dir_env_override(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    write_profile(tmp_path / "development.env", "bhyoon.me", "development")
+    write_profile(tmp_path / "production.env", "192.168.0.10", "production")
+    library_dir = tmp_path / "peak-libraries"
+    monkeypatch.setenv("RIST_CONFIG_DIR", str(tmp_path))
+    monkeypatch.setenv("RIST_ENV", "development")
+    monkeypatch.setenv(
+        "RIST_FTIR_ASSIGNMENT_LIBRARY_DIR",
+        str(library_dir),
+    )
+
+    settings = Settings.from_env()
+
+    assert settings.ftir_assignment_library_dir == library_dir
+
+
 def test_spring_callback_url_overrides_profile(monkeypatch, tmp_path: Path) -> None:
     write_profile(tmp_path / "development.env", "bhyoon.me", "development")
     write_profile(tmp_path / "production.env", "192.168.0.10", "production")

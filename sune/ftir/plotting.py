@@ -14,7 +14,7 @@ from plotly.subplots import make_subplots
 from scipy.signal import find_peaks
 from rist_common.plotting import peak_editor_js
 
-from .findings import assign_group
+from .findings import assign_group_candidates
 from .peaks import build_interactive_peak_candidates
 from .preprocess import load_csv, preprocess
 
@@ -53,6 +53,33 @@ def _peak_label_text(wn, label):
         f"<b>{wn:.0f}</b><br>"
         f"<span style='font-size:10px'>{label}</span>"
     )
+
+
+def _peak_assignment(wn, func_groups):
+    assignments = assign_group_candidates(wn, func_groups)
+    if not assignments:
+        return {
+            "unknown": True,
+            "display_name": f"{wn:.0f} cm⁻¹",
+            "color": "#9ca3af",
+            "note": "",
+            "assignments": [],
+        }
+    unique_names = list(dict.fromkeys(item["name"] for item in assignments))
+    notes = []
+    for item in assignments:
+        source = item["library_name"] or item["library_id"]
+        detail = f"{source}: {item['name']}"
+        if item["note"]:
+            detail += f" — {item['note']}"
+        notes.append(detail)
+    return {
+        "unknown": False,
+        "display_name": " / ".join(unique_names),
+        "color": assignments[0]["color"],
+        "note": "<br>".join(notes),
+        "assignments": assignments,
+    }
 
 
 def _sample_key(index):
@@ -293,11 +320,16 @@ def build_peak_fig(
         val = candidate["value"]
         fwhm = candidate["fwhm"]
         initially_visible = candidate["initial"]
-        group_name, color, note = assign_group(wn, func_groups)
-        unknown = group_name == "unknown"
-        legendgroup = f"unknown:{wn:.1f}" if unknown else group_name
+        assignment = _peak_assignment(wn, func_groups)
+        color = assignment["color"]
+        note = assignment["note"]
+        display_name = assignment["display_name"]
+        legendgroup = (
+            f"unknown:{wn:.1f}"
+            if assignment["unknown"]
+            else display_name
+        )
         label_key = f"{sample_key}:peak:{legendgroup}"
-        display_name = f"{wn:.0f} cm⁻¹" if unknown else group_name
         trace_index = len(fig.data)
         peak_trace = _enable_abs_trans_toggle(
             go.Scatter(
@@ -327,6 +359,7 @@ def build_peak_fig(
                 "label_key": label_key,
                 "sensitivity_levels": candidate["levels"],
                 "sensitivity_min": candidate["sensitivity_min"],
+                "assignments": assignment["assignments"],
             }
         })
         fig.add_trace(peak_trace)
@@ -457,11 +490,16 @@ def build_multi_peak_fig(
             val = candidate["value"]
             fwhm = candidate["fwhm"]
             initially_visible = candidate["initial"]
-            group_name, peak_color, note = assign_group(wn, func_groups)
-            unknown = group_name == "unknown"
-            local_group = f"unknown:{wn:.1f}" if unknown else group_name
+            assignment = _peak_assignment(wn, func_groups)
+            peak_color = assignment["color"]
+            note = assignment["note"]
+            display_name = assignment["display_name"]
+            local_group = (
+                f"unknown:{wn:.1f}"
+                if assignment["unknown"]
+                else display_name
+            )
             label_key = f"{sample_key}:peak:{local_group}"
-            display_name = f"{wn:.0f} cm⁻¹" if unknown else group_name
             trace_index = len(fig.data)
             peak_trace = _enable_abs_trans_toggle(
                 go.Scatter(
@@ -491,6 +529,7 @@ def build_multi_peak_fig(
                     "label_key": label_key,
                     "sensitivity_levels": candidate["levels"],
                     "sensitivity_min": candidate["sensitivity_min"],
+                    "assignments": assignment["assignments"],
                 },
             })
             fig.add_trace(peak_trace)

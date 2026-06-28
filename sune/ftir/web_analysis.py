@@ -8,6 +8,10 @@ from pathlib import Path
 
 import numpy as np
 
+from .assignment_libraries import (
+    AssignmentLibrary,
+    flatten_assignment_libraries,
+)
 from .findings import load_func_groups
 from .peaks import detect_peaks_with_fwhm, peak_params_for_sensitivity
 from .plotting import build_multi_peak_fig
@@ -47,6 +51,7 @@ def analyze_dpt_files(
     *,
     sensitivity: int = 25,
     smooth: bool = True,
+    assignment_libraries: list[AssignmentLibrary] | None = None,
 ) -> dict:
     """Analyze uploaded DPT bytes and return a Plotly-compatible payload."""
     if not files:
@@ -56,7 +61,11 @@ def analyze_dpt_files(
     params = peak_params_for_sensitivity(sensitivity)
     grid_size = max(1750, int((WN_MAX - WN_MIN) / 2.0))
     grid = np.linspace(WN_MIN, WN_MAX, grid_size)
-    func_groups = load_func_groups(FUNC_GROUPS_PATH)
+    func_groups = (
+        load_func_groups(FUNC_GROUPS_PATH)
+        if assignment_libraries is None
+        else flatten_assignment_libraries(assignment_libraries)
+    )
     used_labels: set[str] = set()
     samples = []
     summaries = []
@@ -140,5 +149,13 @@ def analyze_dpt_files(
             "smooth": smooth,
             "wavenumberMin": WN_MIN,
             "wavenumberMax": WN_MAX,
+            "assignmentLibraries": [
+                {
+                    "id": library.library_id,
+                    "name": library.name,
+                    "assignmentCount": len(library.assignments),
+                }
+                for library in (assignment_libraries or [])
+            ],
         },
     }

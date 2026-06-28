@@ -3,14 +3,22 @@
 from __future__ import annotations
 
 from functools import lru_cache
+import os
 from pathlib import Path
 
 import plotly
 import plotly.graph_objects as go
-from fastapi import APIRouter, FastAPI, File, Form, UploadFile
+from fastapi import APIRouter, FastAPI, File, Form, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, HTMLResponse
+from pydantic import BaseModel
 
+from ftir.assignment_libraries import (
+    AssignmentLibraryError,
+    AssignmentLibraryStore,
+    MAX_LIBRARY_BYTES,
+)
+from ftir.findings import DEFAULT_FUNC_GROUPS_PATH
 from ftir.plotting import ftir_abs_trans_toggle_js
 from ftir.web_analysis import DptAnalysisError, analyze_dpt_files
 from rist_common import get_logger
@@ -23,8 +31,53 @@ PLOT_DIV_ID = "peak-plot"
 MAX_FTIR_PREVIEW_FILES = 10
 MAX_FTIR_PREVIEW_FILE_BYTES = 20 * 1024 * 1024
 MAX_FTIR_PREVIEW_TOTAL_BYTES = 50 * 1024 * 1024
+DEFAULT_ASSIGNMENT_LIBRARY_DIR = (
+    Path(__file__).resolve().parents[1] / "data" / "ftir_assignment_libraries"
+)
 logger = get_logger(__name__)
 router = APIRouter()
+
+
+class PeakAssignmentWrite(BaseModel):
+    centerWavenumber: float
+    tolerance: float
+    name: str
+    color: str = "#64748b"
+    note: str = ""
+
+
+class AssignmentLibraryWrite(BaseModel):
+    name: str
+    description: str = ""
+    assignments: list[PeakAssignmentWrite]
+
+
+class AssignmentLibraryCreate(AssignmentLibraryWrite):
+    id: str
+
+
+def assignment_library_store(request: Request) -> AssignmentLibraryStore:
+    configured = getattr(
+        request.app.state,
+        "ftir_assignment_library_dir",
+        os.getenv(
+            "RIST_FTIR_ASSIGNMENT_LIBRARY_DIR",
+            str(DEFAULT_ASSIGNMENT_LIBRARY_DIR),
+        ),
+    )
+    return AssignmentLibraryStore(Path(configured), DEFAULT_FUNC_GROUPS_PATH)
+
+
+def raise_assignment_library_api(exc: AssignmentLibraryError) -> None:
+    if exc.code == "ASSIGNMENT_LIBRARY_NOT_FOUND":
+        status_code = 404
+    elif exc.code == "ASSIGNMENT_LIBRARY_EXISTS":
+        status_code = 409
+    elif exc.code == "ASSIGNMENT_LIBRARY_TOO_LARGE":
+        status_code = 413
+    else:
+        status_code = 400
+    raise ApiException(status_code, exc.code, exc.message) from exc
 
 
 def plotly_asset_path() -> Path:
@@ -143,6 +196,347 @@ body {
 .ftir-file-input {
   display: none;
 }
+.ftir-library-band {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 7px 22px;
+  border-bottom: 1px solid #d9e2ec;
+  background: #f8fafc;
+  box-sizing: border-box;
+}
+.ftir-library-title {
+  flex: 0 0 auto;
+  color: #334e68;
+  font-size: 11px;
+  font-weight: 700;
+}
+.ftir-library-list {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow-x: auto;
+}
+.ftir-library-item {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  height: 28px;
+  border: 1px solid #bcccdc;
+  border-radius: 4px;
+  background: #ffffff;
+  color: #334e68;
+  font-size: 11px;
+  box-sizing: border-box;
+}
+.ftir-library-item.is-selected {
+  border-color: #3e7ca6;
+  background: #edf6fb;
+  color: #174b6d;
+}
+.ftir-library-item.is-invalid {
+  border-color: #f5b7b1;
+  background: #fff5f5;
+  color: #9b2c2c;
+}
+.ftir-library-toggle {
+  display: inline-flex;
+  align-items: center;
+  height: 100%;
+  padding-left: 8px;
+}
+.ftir-library-toggle input {
+  margin: 0;
+}
+.ftir-library-name {
+  height: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  padding: 0 6px;
+  white-space: nowrap;
+}
+.ftir-library-name:hover {
+  text-decoration: underline;
+}
+.ftir-library-count {
+  color: #7b8794;
+  font-size: 10px;
+  padding-right: 5px;
+}
+.ftir-library-state {
+  border-left: 1px solid #d9e2ec;
+  color: #7b8794;
+  font-size: 9px;
+  padding: 0 6px;
+  white-space: nowrap;
+}
+.ftir-library-item.is-selected .ftir-library-state {
+  color: #17633a;
+  font-weight: 700;
+}
+.ftir-library-empty {
+  color: #7b8794;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.ftir-library-upload {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  height: 30px;
+  border: 1px solid #9fb3c8;
+  border-radius: 4px;
+  background: #ffffff;
+  color: #243b53;
+  cursor: pointer;
+  font-size: 11px;
+  padding: 0 10px;
+  box-sizing: border-box;
+}
+.ftir-library-new {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  height: 30px;
+  border: 1px solid #3e7ca6;
+  border-radius: 4px;
+  background: #edf6fb;
+  color: #174b6d;
+  cursor: pointer;
+  font-size: 11px;
+  padding: 0 10px;
+  box-sizing: border-box;
+}
+.ftir-library-new:hover {
+  background: #dceef8;
+}
+.ftir-library-upload:hover {
+  border-color: #486581;
+  background: #eef2f6;
+}
+.ftir-library-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(15, 23, 42, 0.34);
+  box-sizing: border-box;
+}
+.ftir-library-modal.is-visible {
+  display: flex;
+}
+.ftir-library-dialog {
+  display: flex;
+  flex-direction: column;
+  width: min(880px, 100%);
+  max-height: min(78vh, 720px);
+  border: 1px solid #9fb3c8;
+  border-radius: 6px;
+  background: #ffffff;
+  box-shadow: 0 18px 45px rgba(15, 23, 42, 0.22);
+  overflow: hidden;
+}
+.ftir-library-dialog-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 0 0 auto;
+  min-height: 48px;
+  padding: 0 14px;
+  border-bottom: 1px solid #d9e2ec;
+  background: #f8fafc;
+  box-sizing: border-box;
+}
+.ftir-library-dialog-heading {
+  min-width: 0;
+}
+.ftir-library-dialog-heading strong {
+  display: block;
+  overflow: hidden;
+  color: #102a43;
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ftir-library-dialog-heading span {
+  display: block;
+  overflow: hidden;
+  color: #627d98;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ftir-library-dialog-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  margin-left: auto;
+  border: 0;
+  background: transparent;
+  color: #52606d;
+  cursor: pointer;
+  font: 20px/1 Arial, sans-serif;
+}
+.ftir-library-dialog-body {
+  flex: 1 1 auto;
+  overflow: auto;
+  padding: 12px 14px 0;
+}
+.ftir-library-form-meta {
+  display: grid;
+  grid-template-columns: minmax(150px, 0.7fr) minmax(220px, 1fr);
+  gap: 10px 12px;
+  margin-bottom: 12px;
+}
+.ftir-library-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  color: #52606d;
+  font-size: 10px;
+}
+.ftir-library-field.is-wide {
+  grid-column: 1 / -1;
+}
+.ftir-library-field input,
+.ftir-library-field textarea,
+.ftir-library-table input {
+  width: 100%;
+  border: 1px solid #bcccdc;
+  border-radius: 3px;
+  background: #ffffff;
+  color: #243b53;
+  font: 11px Arial, "Noto Sans KR", sans-serif;
+  padding: 6px 7px;
+  box-sizing: border-box;
+}
+.ftir-library-field input:disabled {
+  background: #eef2f6;
+  color: #627d98;
+}
+.ftir-library-field textarea {
+  min-height: 52px;
+  resize: vertical;
+}
+.ftir-library-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  color: #243b53;
+  font-size: 11px;
+}
+.ftir-library-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 8px;
+  border-bottom: 1px solid #bcccdc;
+  background: #eef2f6;
+  color: #334e68;
+  text-align: left;
+}
+.ftir-library-table td {
+  padding: 7px 8px;
+  border-bottom: 1px solid #e4e7eb;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+.ftir-library-table input[type="number"] {
+  text-align: right;
+}
+.ftir-library-table input[type="color"] {
+  width: 34px;
+  min-width: 34px;
+  height: 28px;
+  padding: 2px;
+}
+.ftir-library-table .numeric {
+  width: 90px;
+  text-align: right;
+}
+.ftir-library-table .color {
+  width: 48px;
+}
+.ftir-library-table .remove {
+  width: 42px;
+  text-align: center;
+}
+.ftir-library-row-remove {
+  width: 26px;
+  height: 26px;
+  border: 0;
+  background: transparent;
+  color: #7b8794;
+  cursor: pointer;
+  font: 17px/1 Arial, sans-serif;
+}
+.ftir-library-row-remove:hover {
+  color: #b42318;
+}
+.ftir-library-swatch {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  margin-right: 5px;
+  border: 1px solid rgba(0,0,0,0.18);
+  border-radius: 3px;
+  vertical-align: middle;
+}
+.ftir-library-dialog-loading {
+  padding: 28px 16px;
+  color: #627d98;
+  font-size: 12px;
+  text-align: center;
+}
+.ftir-library-dialog-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  min-height: 50px;
+  padding: 8px 14px;
+  border-top: 1px solid #d9e2ec;
+  background: #f8fafc;
+  box-sizing: border-box;
+}
+.ftir-library-dialog-footer-actions {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+.ftir-library-dialog-button {
+  height: 30px;
+  border: 1px solid #9fb3c8;
+  border-radius: 4px;
+  background: #ffffff;
+  color: #243b53;
+  cursor: pointer;
+  font-size: 11px;
+  padding: 0 11px;
+}
+.ftir-library-dialog-button.primary {
+  border-color: #2f6f9f;
+  background: #2f6f9f;
+  color: #ffffff;
+}
+.ftir-library-dialog-button:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
 .ftir-drop-band {
   display: flex;
   align-items: center;
@@ -212,7 +606,7 @@ body {
 }
 .ftir-loading {
   position: fixed;
-  inset: 102px 0 0;
+  inset: 150px 0 0;
   z-index: 40;
   display: none;
   align-items: center;
@@ -226,7 +620,7 @@ body {
 }
 #peak-plot {
   min-height: 540px;
-  height: calc(100vh - 102px) !important;
+  height: calc(100vh - 150px) !important;
 }
 @media (max-width: 760px) {
   .ftir-app-bar {
@@ -245,9 +639,41 @@ body {
   .ftir-drop-band {
     padding: 7px 12px;
   }
+  .ftir-library-band {
+    gap: 7px;
+    padding: 7px 12px;
+  }
+  .ftir-library-title {
+    display: none;
+  }
+  .ftir-library-upload {
+    padding: 0 8px;
+  }
+  .ftir-library-new {
+    padding: 0 8px;
+  }
+  .ftir-library-state {
+    display: none;
+  }
+  .ftir-library-modal {
+    padding: 8px;
+    align-items: flex-start;
+  }
+  .ftir-library-dialog {
+    max-height: calc(100vh - 16px);
+  }
+  .ftir-library-table .color {
+    display: none;
+  }
+  .ftir-library-form-meta {
+    grid-template-columns: 1fr;
+  }
+  .ftir-library-field.is-wide {
+    grid-column: auto;
+  }
   #peak-plot {
     min-height: 520px;
-    height: calc(100vh - 132px) !important;
+    height: calc(100vh - 180px) !important;
   }
   #peak-plot .rist-plot-control-row {
     left: 8px !important;
@@ -257,7 +683,7 @@ body {
     justify-content: flex-end;
   }
   .ftir-loading {
-    inset: 132px 0 0;
+    inset: 180px 0 0;
   }
 }
 </style>
@@ -280,6 +706,19 @@ _PAGE_SHELL = """
     </label>
   </div>
 </header>
+<section class="ftir-library-band" aria-label="피크 assignment 라이브러리">
+  <span class="ftir-library-title">피크 라이브러리</span>
+  <div class="ftir-library-list" id="ftir-library-list">
+    <span class="ftir-library-empty">라이브러리 불러오는 중...</span>
+  </div>
+  <button type="button" class="ftir-library-new"
+          id="ftir-library-new">새 라이브러리</button>
+  <label class="ftir-library-upload">
+    파일 가져오기
+    <input id="ftir-library-input" class="ftir-file-input" type="file"
+           accept=".json,.csv">
+  </label>
+</section>
 <section class="ftir-drop-band" id="ftir-drop-zone">
   <span class="ftir-drop-prompt" id="ftir-drop-prompt">
     DPT 파일을 선택하거나 여기에 놓으세요
@@ -288,6 +727,30 @@ _PAGE_SHELL = """
 </section>
 <div class="ftir-message" id="ftir-message" role="alert"></div>
 <div class="ftir-loading" id="ftir-loading" aria-live="polite">전처리 및 피크 분석 중...</div>
+<div class="ftir-library-modal" id="ftir-library-modal" role="dialog"
+     aria-modal="true" aria-labelledby="ftir-library-dialog-title">
+  <section class="ftir-library-dialog">
+    <header class="ftir-library-dialog-header">
+      <div class="ftir-library-dialog-heading">
+        <strong id="ftir-library-dialog-title">피크 라이브러리</strong>
+        <span id="ftir-library-dialog-meta"></span>
+      </div>
+      <button type="button" class="ftir-library-dialog-close"
+              id="ftir-library-dialog-close" aria-label="닫기">×</button>
+    </header>
+    <div class="ftir-library-dialog-body" id="ftir-library-dialog-body"></div>
+    <footer class="ftir-library-dialog-footer">
+      <button type="button" class="ftir-library-dialog-button"
+              id="ftir-library-row-add">항목 추가</button>
+      <div class="ftir-library-dialog-footer-actions">
+        <button type="button" class="ftir-library-dialog-button"
+                id="ftir-library-dialog-cancel">취소</button>
+        <button type="button" class="ftir-library-dialog-button primary"
+                id="ftir-library-dialog-save">저장</button>
+      </div>
+    </footer>
+  </section>
+</div>
 """
 
 
@@ -303,9 +766,26 @@ _UPLOAD_SCRIPT = """
   var message = document.getElementById("ftir-message");
   var loading = document.getElementById("ftir-loading");
   var clearButton = document.getElementById("ftir-clear");
-  if (!gd || !input || !dropZone) return;
+  var libraryInput = document.getElementById("ftir-library-input");
+  var libraryList = document.getElementById("ftir-library-list");
+  var libraryNew = document.getElementById("ftir-library-new");
+  var libraryModal = document.getElementById("ftir-library-modal");
+  var libraryDialogTitle = document.getElementById("ftir-library-dialog-title");
+  var libraryDialogMeta = document.getElementById("ftir-library-dialog-meta");
+  var libraryDialogBody = document.getElementById("ftir-library-dialog-body");
+  var libraryDialogClose = document.getElementById("ftir-library-dialog-close");
+  var libraryRowAdd = document.getElementById("ftir-library-row-add");
+  var libraryDialogCancel = document.getElementById("ftir-library-dialog-cancel");
+  var libraryDialogSave = document.getElementById("ftir-library-dialog-save");
+  if (!gd || !input || !dropZone || !libraryInput || !libraryList
+      || !libraryNew || !libraryModal || !libraryDialogClose
+      || !libraryRowAdd || !libraryDialogCancel || !libraryDialogSave) return;
 
   var files = [];
+  var libraries = [];
+  var selectedLibraryIds = [];
+  var activeLibraryId = null;
+  var activeLibraryIsNew = false;
   var controller = null;
   var emptyData = JSON.parse(JSON.stringify(gd.data || []));
   var emptyLayout = JSON.parse(JSON.stringify(gd.layout || {}));
@@ -325,6 +805,417 @@ _UPLOAD_SCRIPT = """
   function setBusy(busy) {
     loading.classList.toggle("is-visible", busy);
     input.disabled = busy;
+    libraryInput.disabled = busy;
+    libraryNew.disabled = busy;
+    libraryList.querySelectorAll("input, button").forEach(function(control) {
+      control.disabled = busy;
+    });
+  }
+
+  function selectedLibraryNames() {
+    var selected = {};
+    selectedLibraryIds.forEach(function(id) { selected[id] = true; });
+    return libraries
+      .filter(function(item) { return selected[item.id]; })
+      .map(function(item) { return item.name; });
+  }
+
+  function updateIdleStatus() {
+    if (files.length) return;
+    status.textContent = selectedLibraryIds.length
+      ? "피크 라이브러리 " + selectedLibraryIds.length + "개 적용"
+      : "피크 라이브러리 미적용";
+  }
+
+  function closeLibraryEditor() {
+    activeLibraryId = null;
+    activeLibraryIsNew = false;
+    libraryModal.classList.remove("is-visible");
+    libraryDialogBody.innerHTML = "";
+  }
+
+  function appendCell(row, className) {
+    var cell = document.createElement("td");
+    if (className) cell.className = className;
+    row.appendChild(cell);
+    return cell;
+  }
+
+  function formField(labelText, input, wide) {
+    var label = document.createElement("label");
+    label.className = "ftir-library-field" + (wide ? " is-wide" : "");
+    var caption = document.createElement("span");
+    caption.textContent = labelText;
+    label.appendChild(caption);
+    label.appendChild(input);
+    return label;
+  }
+
+  function editorInput(type, value, field) {
+    var inputElement = document.createElement("input");
+    inputElement.type = type;
+    inputElement.value = value == null ? "" : String(value);
+    inputElement.dataset.field = field;
+    return inputElement;
+  }
+
+  function addAssignmentRow(assignment) {
+    var body = libraryDialogBody.querySelector("tbody");
+    if (!body) return;
+    var values = assignment || {
+      centerWavenumber: 1000,
+      tolerance: 20,
+      name: "",
+      color: "#64748b",
+      note: ""
+    };
+    var row = document.createElement("tr");
+    var center = editorInput(
+      "number", values.centerWavenumber, "centerWavenumber"
+    );
+    center.step = "0.1";
+    center.min = "0.1";
+    appendCell(row, "numeric").appendChild(center);
+    var tolerance = editorInput("number", values.tolerance, "tolerance");
+    tolerance.step = "0.1";
+    tolerance.min = "0.1";
+    appendCell(row, "numeric").appendChild(tolerance);
+    appendCell(row, "").appendChild(
+      editorInput("text", values.name || "", "name")
+    );
+    appendCell(row, "color").appendChild(
+      editorInput("color", values.color || "#64748b", "color")
+    );
+    appendCell(row, "").appendChild(
+      editorInput("text", values.note || "", "note")
+    );
+    var removeCell = appendCell(row, "remove");
+    var remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "ftir-library-row-remove";
+    remove.textContent = "×";
+    remove.title = "항목 제거";
+    remove.setAttribute("aria-label", "항목 제거");
+    remove.addEventListener("click", function() {
+      row.remove();
+    });
+    removeCell.appendChild(remove);
+    body.appendChild(row);
+  }
+
+  function renderLibraryEditor(library, isNew) {
+    activeLibraryId = isNew ? null : library.id;
+    activeLibraryIsNew = isNew;
+    libraryDialogTitle.textContent = isNew
+      ? "새 피크 라이브러리"
+      : "피크 라이브러리 편집";
+    libraryDialogMeta.textContent = isNew
+      ? "JSON 라이브러리 생성"
+      : library.fileName + " · " + library.assignmentCount + "개";
+    libraryDialogBody.innerHTML = "";
+
+    var meta = document.createElement("div");
+    meta.className = "ftir-library-form-meta";
+    var idInput = editorInput("text", isNew ? "" : library.id, "libraryId");
+    idInput.id = "ftir-library-editor-id";
+    idInput.placeholder = "예: melamine";
+    idInput.disabled = !isNew;
+    var nameInput = editorInput("text", library.name || "", "libraryName");
+    nameInput.id = "ftir-library-editor-name";
+    var description = document.createElement("textarea");
+    description.dataset.field = "libraryDescription";
+    description.value = library.description || "";
+    meta.appendChild(formField("라이브러리 ID", idInput, false));
+    meta.appendChild(formField("라이브러리 이름", nameInput, false));
+    meta.appendChild(formField("설명", description, true));
+    libraryDialogBody.appendChild(meta);
+
+    var table = document.createElement("table");
+    table.className = "ftir-library-table";
+    var head = document.createElement("thead");
+    var headRow = document.createElement("tr");
+    [
+      ["중심 파수", "numeric"],
+      ["허용 오차", "numeric"],
+      ["피크 이름", ""],
+      ["색상", "color"],
+      ["비고", ""],
+      ["", "remove"]
+    ].forEach(function(item) {
+      var th = document.createElement("th");
+      th.textContent = item[0];
+      th.className = item[1];
+      headRow.appendChild(th);
+    });
+    head.appendChild(headRow);
+    table.appendChild(head);
+    table.appendChild(document.createElement("tbody"));
+    libraryDialogBody.appendChild(table);
+    (library.assignments || []).forEach(addAssignmentRow);
+    if (!(library.assignments || []).length) addAssignmentRow();
+    libraryModal.classList.add("is-visible");
+  }
+
+  function showLibraryEditor(library) {
+    if (!library.valid) {
+      setMessage(library.error || "유효하지 않은 라이브러리입니다.");
+      return;
+    }
+    activeLibraryId = library.id;
+    activeLibraryIsNew = false;
+    libraryDialogTitle.textContent = "피크 라이브러리 편집";
+    libraryDialogMeta.textContent = library.fileName;
+    libraryDialogBody.innerHTML = "";
+    var loadingDetail = document.createElement("div");
+    loadingDetail.className = "ftir-library-dialog-loading";
+    loadingDetail.textContent = "라이브러리 구성 불러오는 중...";
+    libraryDialogBody.appendChild(loadingDetail);
+    libraryModal.classList.add("is-visible");
+    fetch(
+      "/api/v1/ftir/assignment-libraries/" + encodeURIComponent(library.id)
+    ).then(function(response) {
+      return apiPayload(response, "라이브러리 구성을 불러오지 못했습니다.");
+    }).then(function(payload) {
+      if (activeLibraryId === library.id) {
+        renderLibraryEditor(payload.library, false);
+      }
+    }).catch(function(err) {
+      closeLibraryEditor();
+      setMessage(err.message);
+    });
+  }
+
+  function collectLibraryEditor() {
+    var idInput = libraryDialogBody.querySelector(
+      '[data-field="libraryId"]'
+    );
+    var nameInput = libraryDialogBody.querySelector(
+      '[data-field="libraryName"]'
+    );
+    var description = libraryDialogBody.querySelector(
+      '[data-field="libraryDescription"]'
+    );
+    var libraryId = (idInput && idInput.value || "").trim().toLowerCase();
+    var libraryName = (nameInput && nameInput.value || "").trim();
+    if (!/^[a-z0-9][a-z0-9-]{0,79}$/.test(libraryId)) {
+      throw new Error("라이브러리 ID는 영문 소문자, 숫자, 하이픈으로 입력하세요.");
+    }
+    if (!libraryName) throw new Error("라이브러리 이름을 입력하세요.");
+    var assignments = [];
+    libraryDialogBody.querySelectorAll("tbody tr").forEach(function(row) {
+      function value(field) {
+        var element = row.querySelector('[data-field="' + field + '"]');
+        return element ? element.value : "";
+      }
+      assignments.push({
+        centerWavenumber: Number(value("centerWavenumber")),
+        tolerance: Number(value("tolerance")),
+        name: value("name").trim(),
+        color: value("color") || "#64748b",
+        note: value("note").trim()
+      });
+    });
+    if (!assignments.length) {
+      throw new Error("피크 assignment 항목을 하나 이상 추가하세요.");
+    }
+    assignments.forEach(function(item, index) {
+      if (!(item.centerWavenumber > 0) || !(item.tolerance > 0)
+          || !item.name) {
+        throw new Error((index + 1) + "번 항목의 파수, 허용 오차, 이름을 확인하세요.");
+      }
+    });
+    return {
+      id: libraryId,
+      name: libraryName,
+      description: description ? description.value.trim() : "",
+      assignments: assignments
+    };
+  }
+
+  function saveLibraryEditor() {
+    var values;
+    try {
+      values = collectLibraryEditor();
+    } catch (err) {
+      setMessage(err.message);
+      return;
+    }
+    var isNew = activeLibraryIsNew;
+    var targetId = isNew ? values.id : activeLibraryId;
+    var body = {
+      name: values.name,
+      description: values.description,
+      assignments: values.assignments
+    };
+    if (isNew) body.id = values.id;
+    libraryDialogSave.disabled = true;
+    libraryRowAdd.disabled = true;
+    setMessage("");
+    fetch(
+      isNew
+        ? "/api/v1/ftir/assignment-libraries/create"
+        : "/api/v1/ftir/assignment-libraries/" + encodeURIComponent(targetId),
+      {
+        method: isNew ? "POST" : "PUT",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(body)
+      }
+    ).then(function(response) {
+      return apiPayload(response, "라이브러리 저장에 실패했습니다.");
+    }).then(function(payload) {
+      var preferred = selectedLibraryIds.slice();
+      if (isNew && preferred.indexOf(payload.library.id) < 0) {
+        preferred.push(payload.library.id);
+      }
+      closeLibraryEditor();
+      return loadLibraries(preferred);
+    }).then(function() {
+      return files.length ? analyze() : null;
+    }).catch(function(err) {
+      setMessage(err.message);
+    }).finally(function() {
+      libraryDialogSave.disabled = false;
+      libraryRowAdd.disabled = false;
+    });
+  }
+
+  function renderLibraries() {
+    libraryList.innerHTML = "";
+    if (!libraries.length) {
+      var empty = document.createElement("span");
+      empty.className = "ftir-library-empty";
+      empty.textContent = "등록된 라이브러리가 없습니다";
+      libraryList.appendChild(empty);
+      return;
+    }
+    libraries.forEach(function(library) {
+      var selected = selectedLibraryIds.indexOf(library.id) >= 0;
+      var item = document.createElement("span");
+      item.className = "ftir-library-item"
+        + (selected ? " is-selected" : "")
+        + (library.valid ? "" : " is-invalid");
+      if (library.description || library.error) {
+        item.title = library.error || library.description;
+      }
+
+      var toggle = document.createElement("span");
+      toggle.className = "ftir-library-toggle";
+      var checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.checked = selected;
+      checkbox.disabled = !library.valid;
+      checkbox.setAttribute("aria-label", library.name + " 선택");
+      checkbox.addEventListener("change", function() {
+        if (checkbox.checked) {
+          if (selectedLibraryIds.indexOf(library.id) < 0) {
+            selectedLibraryIds.push(library.id);
+          }
+        } else {
+          selectedLibraryIds = selectedLibraryIds.filter(function(id) {
+            return id !== library.id;
+          });
+        }
+        renderLibraries();
+        updateIdleStatus();
+        if (files.length) analyze();
+      });
+      toggle.appendChild(checkbox);
+      var name = document.createElement("button");
+      name.type = "button";
+      name.className = "ftir-library-name";
+      name.textContent = library.name;
+      name.title = library.name + " 편집";
+      name.addEventListener("click", function() {
+        showLibraryEditor(library);
+      });
+      var count = document.createElement("span");
+      count.className = "ftir-library-count";
+      count.textContent = library.valid
+        ? String(library.assignmentCount)
+        : "오류";
+      var state = document.createElement("span");
+      state.className = "ftir-library-state";
+      state.textContent = selected ? "적용" : "미적용";
+
+      item.appendChild(toggle);
+      item.appendChild(name);
+      item.appendChild(count);
+      item.appendChild(state);
+      libraryList.appendChild(item);
+    });
+  }
+
+  async function apiPayload(response, fallback) {
+    var payload = await response.json().catch(function() { return {}; });
+    if (!response.ok) {
+      throw new Error(payload.message || fallback);
+    }
+    return payload;
+  }
+
+  function loadLibraries(preferredIds) {
+    return fetch("/api/v1/ftir/assignment-libraries")
+      .then(function(response) {
+        return apiPayload(response, "피크 라이브러리를 불러오지 못했습니다.");
+      })
+      .then(function(payload) {
+        libraries = payload.libraries || [];
+        var validIds = {};
+        libraries.forEach(function(item) {
+          if (item.valid) validIds[item.id] = true;
+        });
+        var requested = preferredIds || selectedLibraryIds;
+        selectedLibraryIds = requested.filter(function(id) {
+          return validIds[id];
+        });
+        if (!selectedLibraryIds.length && !preferredIds) {
+          selectedLibraryIds = libraries
+            .filter(function(item) { return item.valid && item.defaultSelected; })
+            .map(function(item) { return item.id; });
+        }
+        renderLibraries();
+        updateIdleStatus();
+      })
+      .catch(function(err) {
+        libraries = [];
+        selectedLibraryIds = [];
+        renderLibraries();
+        setMessage(err.message);
+      });
+  }
+
+  function uploadLibrary(file) {
+    if (!file) return;
+    if (!/\\.(json|csv)$/i.test(file.name)) {
+      setMessage("JSON 또는 CSV 라이브러리 파일만 업로드할 수 있습니다.");
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      setMessage("라이브러리 파일은 2MB 이하여야 합니다.");
+      return;
+    }
+    var form = new FormData();
+    form.append("file", file, file.name);
+    setBusy(true);
+    setMessage("");
+    fetch("/api/v1/ftir/assignment-libraries", {
+      method: "POST",
+      body: form
+    }).then(function(response) {
+      return apiPayload(response, "라이브러리 업로드에 실패했습니다.");
+    }).then(function(payload) {
+      var preferred = selectedLibraryIds.slice();
+      if (preferred.indexOf(payload.library.id) < 0) {
+        preferred.push(payload.library.id);
+      }
+      return loadLibraries(preferred);
+    }).then(function() {
+      return files.length ? analyze() : null;
+    }).catch(function(err) {
+      setMessage(err.message);
+    }).finally(function() {
+      setBusy(false);
+    });
   }
 
   function renderFiles() {
@@ -437,7 +1328,7 @@ _UPLOAD_SCRIPT = """
     controller = null;
     setBusy(false);
     setMessage("");
-    status.textContent = "대기";
+    updateIdleStatus();
     window.Plotly.react(gd, emptyData, emptyLayout, gd._context).then(function() {
       dispatchDataReplaced(25);
       return applyResponsiveLayout();
@@ -447,18 +1338,22 @@ _UPLOAD_SCRIPT = """
   }
 
   function analyze() {
-    if (!files.length) return;
+    if (!files.length) return Promise.resolve();
     if (controller) controller.abort();
     controller = new AbortController();
     var activeController = controller;
     var form = new FormData();
     files.forEach(function(file) { form.append("files", file, file.name); });
     form.append("sensitivity", String(gd._ristPeakSensitivityValue || 25));
+    form.append("assignment_library_selection_explicit", "true");
+    selectedLibraryIds.forEach(function(id) {
+      form.append("assignment_library_ids", id);
+    });
     setBusy(true);
     setMessage("");
     status.textContent = files.length + "개 파일 분석 중";
 
-    fetch("/api/v1/ftir/analyze", {
+    return fetch("/api/v1/ftir/analyze", {
       method: "POST",
       body: form,
       signal: activeController.signal
@@ -479,7 +1374,9 @@ _UPLOAD_SCRIPT = """
         var peakCount = payload.samples.reduce(function(total, sample) {
           return total + Number(sample.peakCount || 0);
         }, 0);
-        status.textContent = payload.samples.length + "개 시료 · 피크 " + peakCount + "개";
+        var libraryCount = selectedLibraryNames().length;
+        status.textContent = payload.samples.length + "개 시료 · 피크 "
+          + peakCount + "개 · 라이브러리 " + libraryCount + "개";
         dispatchDataReplaced(payload.settings.sensitivity);
         return applyResponsiveLayout();
       }).then(function() {
@@ -500,6 +1397,37 @@ _UPLOAD_SCRIPT = """
   input.addEventListener("change", function() {
     addFiles(input.files);
     input.value = "";
+  });
+  libraryInput.addEventListener("change", function() {
+    uploadLibrary(libraryInput.files && libraryInput.files[0]);
+    libraryInput.value = "";
+  });
+  libraryNew.addEventListener("click", function() {
+    renderLibraryEditor(
+      {
+        id: "",
+        name: "",
+        description: "",
+        fileName: "",
+        assignmentCount: 0,
+        assignments: []
+      },
+      true
+    );
+  });
+  libraryRowAdd.addEventListener("click", function() {
+    addAssignmentRow();
+  });
+  libraryDialogSave.addEventListener("click", saveLibraryEditor);
+  libraryDialogCancel.addEventListener("click", closeLibraryEditor);
+  libraryDialogClose.addEventListener("click", closeLibraryEditor);
+  libraryModal.addEventListener("click", function(ev) {
+    if (ev.target === libraryModal) closeLibraryEditor();
+  });
+  document.addEventListener("keydown", function(ev) {
+    if (ev.key === "Escape" && libraryModal.classList.contains("is-visible")) {
+      closeLibraryEditor();
+    }
   });
   clearButton.addEventListener("click", function() {
     files = [];
@@ -534,6 +1462,7 @@ _UPLOAD_SCRIPT = """
     });
   });
   renderFiles();
+  loadLibraries();
   applyResponsiveLayout();
 })();
 </script>
@@ -595,10 +1524,110 @@ def ftir_plotly_asset() -> FileResponse:
     )
 
 
+@router.get("/api/v1/ftir/assignment-libraries", tags=["ftir"])
+def list_assignment_libraries(request: Request) -> dict:
+    store = assignment_library_store(request)
+    return {
+        "libraries": store.summaries(),
+        "directory": str(store.root),
+        "supportedFormats": ["json", "csv"],
+    }
+
+
+@router.post(
+    "/api/v1/ftir/assignment-libraries",
+    tags=["ftir"],
+    status_code=201,
+)
+def upload_assignment_library(
+    request: Request,
+    file: UploadFile = File(...),
+) -> dict:
+    raw_filename = (file.filename or "").replace("\\", "/")
+    filename = Path(raw_filename).name
+    content = file.file.read(MAX_LIBRARY_BYTES + 1)
+    try:
+        library = assignment_library_store(request).save(filename, content)
+    except AssignmentLibraryError as exc:
+        raise_assignment_library_api(exc)
+    logger.info(
+        "FT-IR assignment 라이브러리 업로드 (id=%s, assignments=%d)",
+        library.library_id,
+        len(library.assignments),
+    )
+    return {"library": library.summary()}
+
+
+@router.post(
+    "/api/v1/ftir/assignment-libraries/create",
+    tags=["ftir"],
+    status_code=201,
+)
+def create_assignment_library(
+    request: Request,
+    payload: AssignmentLibraryCreate,
+) -> dict:
+    values = payload.model_dump(exclude={"id"})
+    try:
+        library = assignment_library_store(request).write(
+            payload.id,
+            values,
+            create_only=True,
+        )
+    except AssignmentLibraryError as exc:
+        raise_assignment_library_api(exc)
+    logger.info(
+        "FT-IR assignment 라이브러리 생성 (id=%s, assignments=%d)",
+        library.library_id,
+        len(library.assignments),
+    )
+    return {"library": library.detail()}
+
+
+@router.get(
+    "/api/v1/ftir/assignment-libraries/{library_id}",
+    tags=["ftir"],
+)
+def get_assignment_library(request: Request, library_id: str) -> dict:
+    try:
+        library = assignment_library_store(request).get(library_id)
+    except AssignmentLibraryError as exc:
+        raise_assignment_library_api(exc)
+    return {"library": library.detail()}
+
+
+@router.put(
+    "/api/v1/ftir/assignment-libraries/{library_id}",
+    tags=["ftir"],
+)
+def update_assignment_library(
+    request: Request,
+    library_id: str,
+    payload: AssignmentLibraryWrite,
+) -> dict:
+    try:
+        library = assignment_library_store(request).write(
+            library_id,
+            payload.model_dump(),
+            create_only=False,
+        )
+    except AssignmentLibraryError as exc:
+        raise_assignment_library_api(exc)
+    logger.info(
+        "FT-IR assignment 라이브러리 수정 (id=%s, assignments=%d)",
+        library.library_id,
+        len(library.assignments),
+    )
+    return {"library": library.detail()}
+
+
 @router.post("/api/v1/ftir/analyze", tags=["ftir"])
 def analyze_ftir(
+    request: Request,
     files: list[UploadFile] = File(...),
     sensitivity: int = Form(default=25, ge=0, le=100),
+    assignment_library_ids: list[str] | None = Form(default=None),
+    assignment_library_selection_explicit: bool = Form(default=False),
 ) -> dict:
     if not files:
         raise ApiException(400, "DPT_FILES_REQUIRED", "DPT 파일이 필요합니다.")
@@ -642,8 +1671,22 @@ def analyze_ftir(
             )
         uploaded.append((filename, content))
 
+    store = assignment_library_store(request)
+    if assignment_library_selection_explicit:
+        selected_ids = assignment_library_ids or []
+    elif assignment_library_ids is not None:
+        selected_ids = assignment_library_ids
+    else:
+        selected_ids = store.default_ids()
     try:
-        result = analyze_dpt_files(uploaded, sensitivity=sensitivity)
+        libraries = store.load(selected_ids)
+        result = analyze_dpt_files(
+            uploaded,
+            sensitivity=sensitivity,
+            assignment_libraries=libraries,
+        )
+    except AssignmentLibraryError as exc:
+        raise_assignment_library_api(exc)
     except DptAnalysisError as exc:
         logger.info(
             "FT-IR 미리보기 분석 거부 (code=%s, file=%s)",
@@ -653,16 +1696,28 @@ def analyze_ftir(
         raise ApiException(422, exc.code, exc.message) from exc
 
     logger.info(
-        "FT-IR 미리보기 분석 완료 (files=%d, sensitivity=%d)",
+        "FT-IR 미리보기 분석 완료 (files=%d, sensitivity=%d, libraries=%d)",
         len(uploaded),
         sensitivity,
+        len(libraries),
     )
     return result
 
 
-def create_ftir_preview_app() -> FastAPI:
+def create_ftir_preview_app(
+    assignment_library_dir: Path | None = None,
+) -> FastAPI:
     """Create a DB-free app for local FT-IR workspace development."""
     app = FastAPI(title="RIST FT-IR Preview")
+    app.state.ftir_assignment_library_dir = (
+        assignment_library_dir
+        or Path(
+            os.getenv(
+                "RIST_FTIR_ASSIGNMENT_LIBRARY_DIR",
+                str(DEFAULT_ASSIGNMENT_LIBRARY_DIR),
+            )
+        )
+    )
     app.add_exception_handler(ApiException, api_exception_handler)
     app.add_exception_handler(RequestValidationError, validation_exception_handler)
     app.include_router(router)

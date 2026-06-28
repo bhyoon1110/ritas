@@ -13,6 +13,9 @@ PROJECT_DIR = Path(__file__).resolve().parents[1]
 @dataclass(frozen=True)
 class Settings:
     storage_root: Path
+    ftir_assignment_library_dir: Path = (
+        PROJECT_DIR / "data" / "ftir_assignment_libraries"
+    )
     environment: str = "development"
     db_host: str = "127.0.0.1"
     db_port: int = 3306
@@ -55,6 +58,12 @@ class Settings:
         storage_root = Path(
             os.getenv("RIST_STORAGE_ROOT", default_storage_root)
         ).expanduser()
+        ftir_assignment_library_dir = Path(
+            os.getenv(
+                "RIST_FTIR_ASSIGNMENT_LIBRARY_DIR",
+                str(PROJECT_DIR / "data" / "ftir_assignment_libraries"),
+            )
+        ).expanduser()
         configured_pdf_font = os.getenv("RIST_PDF_FONT_PATH", "").strip()
         default_spring_callback_url = (
             f"{common.local_spring_boot_base_url}/api/v1/edge/reports"
@@ -66,6 +75,7 @@ class Settings:
         )
         return cls(
             storage_root=storage_root,
+            ftir_assignment_library_dir=ftir_assignment_library_dir,
             environment=common.environment,
             db_host=os.getenv("RIST_DB_HOST", "127.0.0.1").strip(),
             db_port=int(os.getenv("RIST_DB_PORT", "3306")),

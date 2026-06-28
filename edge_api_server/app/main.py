@@ -95,6 +95,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings = resolved_settings
     app.state.database = database
     app.state.service = service
+    app.state.ftir_assignment_library_dir = (
+        resolved_settings.ftir_assignment_library_dir
+    )
     logger.info(
         "Edge API 애플리케이션 구성 완료 (env=%s, base_url=%s)",
         resolved_settings.environment,

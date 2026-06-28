@@ -102,8 +102,55 @@ API 문서:
 - 파일당 최대 20MB
 - 한 요청의 파일 총합 최대 50MB
 - 여러 파일을 샘플별 trace와 피크로 한 그래프에 표시
+- 재료·분석 목적별 피크 assignment 라이브러리 다중 선택
+- 화면 편집창에서 라이브러리 생성·수정 및 JSON/CSV 파일 가져오기
 - 민감도, 범례, 피크 추가·삭제·그룹, 도형 편집 기능 지원
 - 파일 제거 시 남은 샘플을 자동 재분석
+
+피크 assignment 라이브러리는 기본적으로 다음 폴더에서 관리한다.
+
+```text
+edge_api_server/data/ftir_assignment_libraries/
+```
+
+폴더가 처음 생성될 때 기존 일반 작용기표가 `general-ftir.csv`로 복사된다.
+이후에는 폴더에 JSON/CSV 파일을 직접 배치하거나 `/ftir` 화면에서 파일을
+가져올 수 있다. `새 라이브러리`를 누르면 빈 편집창에서 직접 만들 수 있고,
+라이브러리 이름을 누르면 중심 파수, tolerance, 피크 이름, 색상과 비고를
+수정할 수 있다. 체크된 라이브러리만 그래프 assignment에 사용하며 선택
+상태는 `적용`/`미적용`으로 표시한다. 서버 파일의 실수 삭제를 막기 위해
+웹 화면과 API에서는 라이브러리 전체 삭제를 제공하지 않는다.
+파일명 stem이 API에서 사용하는 라이브러리 ID가 되므로
+`melamine.json`, `phenolic-resin.csv`처럼 영문자·숫자·하이픈으로 작성한다.
+
+JSON 형식:
+
+```json
+{
+  "name": "Melamine",
+  "description": "멜라민 분석용 피크 assignment",
+  "assignments": [
+    {
+      "centerWavenumber": 3460,
+      "tolerance": 35,
+      "name": "N-H stretch",
+      "color": "#db2777",
+      "note": "멜라민 N-H 후보"
+    }
+  ]
+}
+```
+
+CSV 형식:
+
+```csv
+center_wn,tolerance,name,color,note
+3460,35,N-H stretch,#db2777,멜라민 N-H 후보
+```
+
+여러 라이브러리를 선택하면 각 라이브러리 안에서 해당 파수와 일치하는 가장
+구체적인 assignment를 하나씩 고른다. 서로 다른 이름이 나오면 그래프에
+`후보 A / 후보 B`로 함께 표시하고 hover에 라이브러리 출처를 표시한다.
 
 웹 화면이 사용하는 API:
 
@@ -113,6 +160,13 @@ Content-Type: multipart/form-data
 
 files: DPT 파일(복수)
 sensitivity: 0~100, 기본값 25
+assignment_library_ids: 선택한 라이브러리 ID(복수)
+
+GET    /api/v1/ftir/assignment-libraries
+POST   /api/v1/ftir/assignment-libraries
+POST   /api/v1/ftir/assignment-libraries/create
+GET    /api/v1/ftir/assignment-libraries/{libraryId}
+PUT    /api/v1/ftir/assignment-libraries/{libraryId}
 ```
 
 운영 Edge 앱과 같은 라우터를 DB 없이 화면만 개발할 때는 다음 명령을 사용할
@@ -134,6 +188,7 @@ cd edge_api_server
 | `RIST_EDGE_BIND_HOST` | 프로파일 값 | Uvicorn bind 주소 재정의 |
 | `RIST_EDGE_API_PORT` | 프로파일 값 | Uvicorn 포트 재정의 |
 | `RIST_STORAGE_ROOT` | `edge_api_server/data/jobs` | 작업 파일 저장 루트 |
+| `RIST_FTIR_ASSIGNMENT_LIBRARY_DIR` | `edge_api_server/data/ftir_assignment_libraries` | FT-IR 피크 assignment 라이브러리 폴더 |
 | `RIST_DB_HOST` | `127.0.0.1` | MariaDB 호스트 |
 | `RIST_DB_PORT` | `3306` | MariaDB 포트 |
 | `RIST_DB_NAME` | `rist_edge` | MariaDB 데이터베이스명(없으면 자동 생성) |
