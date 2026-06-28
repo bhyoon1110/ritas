@@ -2,6 +2,10 @@ from __future__ import annotations
 
 import uvicorn
 
+from .path_bootstrap import add_project_package_paths
+
+add_project_package_paths()
+
 from rist_common import get_logger
 
 from .config import Settings

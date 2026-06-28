@@ -16,6 +16,10 @@ from fastapi import (
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
+from .path_bootstrap import add_project_package_paths
+
+add_project_package_paths()
+
 from rist_common import get_logger
 
 from .config import Settings
