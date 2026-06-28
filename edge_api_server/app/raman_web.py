@@ -1718,6 +1718,152 @@ _UPLOAD_SCRIPT = """
   var MAX_FILES = 10;
   var MAX_FILE_BYTES = 20 * 1024 * 1024;
   var MAX_TOTAL_BYTES = 50 * 1024 * 1024;
+  var SESSION_DB_NAME = "rist-raman-workspace-v1";
+  var SESSION_STORE = "workspace";
+  var SESSION_KEY = "current";
+  var workspaceDbPromise = null;
+  var restoreInProgress = false;
+  var saveTimer = 0;
+
+  function openWorkspaceDb() {
+    if (workspaceDbPromise) return workspaceDbPromise;
+    workspaceDbPromise = new Promise(function(resolve, reject) {
+      var request = indexedDB.open(SESSION_DB_NAME, 1);
+      request.onupgradeneeded = function() {
+        request.result.createObjectStore(SESSION_STORE);
+      };
+      request.onsuccess = function() { resolve(request.result); };
+      request.onerror = function() { reject(request.error); };
+    });
+    return workspaceDbPromise;
+  }
+
+  function workspaceStore(mode) {
+    return openWorkspaceDb().then(function(db) {
+      return db.transaction(SESSION_STORE, mode).objectStore(SESSION_STORE);
+    });
+  }
+
+  function fileRecord(file) {
+    return {
+      name: file.name,
+      type: file.type || "application/octet-stream",
+      lastModified: file.lastModified || Date.now(),
+      blob: file
+    };
+  }
+
+  function recordFile(record) {
+    return new File(
+      [record.blob],
+      record.name,
+      {type: record.type || "application/octet-stream", lastModified: record.lastModified}
+    );
+  }
+
+  function currentWorkspaceState() {
+    return {
+      version: 1,
+      files: files.map(fileRecord),
+      selectedLibraryIds: selectedLibraryIds.slice(),
+      sensitivity: gd._ristPeakSensitivityValue || 25,
+      statusText: status.textContent || "",
+      plotData: JSON.parse(JSON.stringify(gd.data || [])),
+      plotLayout: JSON.parse(JSON.stringify(gd.layout || {}))
+    };
+  }
+
+  function saveWorkspaceNow() {
+    if (restoreInProgress) return Promise.resolve();
+    return workspaceStore("readwrite").then(function(store) {
+      return new Promise(function(resolve, reject) {
+        var request = store.put(currentWorkspaceState(), SESSION_KEY);
+        request.onsuccess = function() { resolve(); };
+        request.onerror = function() { reject(request.error); };
+      });
+    }).catch(function() {});
+  }
+
+  function scheduleWorkspaceSave() {
+    if (restoreInProgress) return;
+    if (saveTimer) clearTimeout(saveTimer);
+    saveTimer = setTimeout(function() {
+      saveTimer = 0;
+      saveWorkspaceNow();
+    }, 350);
+  }
+
+  function clearWorkspaceState() {
+    if (saveTimer) {
+      clearTimeout(saveTimer);
+      saveTimer = 0;
+    }
+    return workspaceStore("readwrite").then(function(store) {
+      return new Promise(function(resolve, reject) {
+        var request = store.delete(SESSION_KEY);
+        request.onsuccess = function() { resolve(); };
+        request.onerror = function() { reject(request.error); };
+      });
+    }).catch(function() {});
+  }
+
+  function restoreWorkspace() {
+    return workspaceStore("readonly").then(function(store) {
+      return new Promise(function(resolve, reject) {
+        var request = store.get(SESSION_KEY);
+        request.onsuccess = function() { resolve(request.result || null); };
+        request.onerror = function() { reject(request.error); };
+      });
+    }).then(function(state) {
+      if (!state || state.version !== 1) return null;
+      restoreInProgress = true;
+      files = (state.files || []).map(recordFile);
+      selectedLibraryIds = (state.selectedLibraryIds || []).slice();
+      if (Number.isFinite(Number(state.sensitivity))) {
+        gd._ristPeakSensitivityValue = Number(state.sensitivity);
+      }
+      renderFiles();
+      status.textContent = state.statusText || status.textContent;
+      if (state.plotData && state.plotLayout) {
+        return window.Plotly.react(
+          gd,
+          state.plotData,
+          state.plotLayout,
+          gd._context
+        ).then(function() {
+          dispatchDataReplaced(gd._ristPeakSensitivityValue || 25);
+          window.Plotly.Plots.resize(gd);
+          return state;
+        }).finally(function() {
+          restoreInProgress = false;
+        });
+      }
+      restoreInProgress = false;
+      return state;
+    }).catch(function() {
+      restoreInProgress = false;
+      return null;
+    });
+  }
+
+  function installWorkspaceAutosave() {
+    gd.on("plotly_relayout", scheduleWorkspaceSave);
+    gd.on("plotly_restyle", scheduleWorkspaceSave);
+    [
+      "rist-legend-name-change",
+      "rist-legend-color-change",
+      "rist-legend-visibility-change",
+      "rist-peak-delete",
+      "rist-peak-group-change",
+      "rist-peak-group-clear",
+      "rist-peak-group-update",
+      "rist-history-restored",
+      "rist-plot-data-replaced",
+      "rist-raman-stack-change"
+    ].forEach(function(name) {
+      gd.addEventListener(name, scheduleWorkspaceSave);
+    });
+  }
 
   function dispatchDataReplaced(sensitivity) {
     gd.dispatchEvent(new CustomEvent("rist-plot-data-replaced", {
@@ -2117,6 +2263,7 @@ _UPLOAD_SCRIPT = """
         renderLibraries();
         updateIdleStatus();
         if (files.length) analyze();
+        else scheduleWorkspaceSave();
       });
       toggle.appendChild(checkbox);
       var name = document.createElement("button");
@@ -2241,6 +2388,7 @@ _UPLOAD_SCRIPT = """
         return applyResponsiveLayout();
       }).then(function() {
         window.Plotly.Plots.resize(gd);
+        scheduleWorkspaceSave();
       });
     }
   }
@@ -2282,6 +2430,7 @@ _UPLOAD_SCRIPT = """
         return item.label + " 피크 " + item.peakCount + "개";
       }).join(" · ") + " · 라이브러리 " + libraryCount + "개";
       renderFiles();
+      scheduleWorkspaceSave();
     } catch (err) {
       setMessage(err.message || String(err));
     } finally {
@@ -2319,7 +2468,8 @@ _UPLOAD_SCRIPT = """
     });
     files = next;
     renderFiles();
-    analyze();
+    if (files.length) analyze();
+    else scheduleWorkspaceSave();
   }
 
   input.addEventListener("change", function() {
@@ -2353,7 +2503,10 @@ _UPLOAD_SCRIPT = """
   libraryModal.addEventListener("click", function(ev) {
     if (ev.target === libraryModal) closeLibraryEditor();
   });
-  clearButton.addEventListener("click", resetPlot);
+  clearButton.addEventListener("click", function() {
+    clearWorkspaceState();
+    resetPlot();
+  });
   window.addEventListener("dragenter", function(ev) {
     if (ev.dataTransfer && ev.dataTransfer.types.indexOf("Files") >= 0) {
       dropZone.classList.add("is-dragging");
@@ -2370,7 +2523,14 @@ _UPLOAD_SCRIPT = """
     dropZone.classList.remove("is-dragging");
     addFiles(ev.dataTransfer ? ev.dataTransfer.files : []);
   });
-  loadLibraries();
+  installWorkspaceAutosave();
+  restoreWorkspace().then(function(restored) {
+    return loadLibraries(restored && restored.selectedLibraryIds).then(function() {
+      if (restored) return null;
+      renderFiles();
+      return applyResponsiveLayout();
+    });
+  });
 })();
 </script>
 """

@@ -54,6 +54,13 @@ def test_ftir_workspace_contains_upload_and_editor_controls() -> None:
     assert "width: min(860px, calc(100% - 24px)) !important" in page
     assert "max-width: calc(100% - 24px)" in page
     assert "rist-plot-data-replaced" in page
+    assert "rist-ftir-workspace-v1" in page
+    assert "indexedDB.open(SESSION_DB_NAME, 1)" in page
+    assert "restoreWorkspace()" in page
+    assert "installWorkspaceAutosave()" in page
+    assert "clearWorkspaceState()" in page
+    assert "plotData: JSON.parse(JSON.stringify(gd.data || []))" in page
+    assert "files = (state.files || []).map(recordFile)" in page
     assert "height: calc(100vh - 180px + 360px) !important" in page
     assert "min-height: 900px" in page
     assert '"height": 900' in page

@@ -78,6 +78,13 @@ def test_raman_workspace_contains_upload_controls() -> None:
     assert "scrollZoom" in page
     assert "dispatchDataReplaced" in page
     assert "rist-plot-data-replaced" in page
+    assert "rist-raman-workspace-v1" in page
+    assert "indexedDB.open(SESSION_DB_NAME, 1)" in page
+    assert "restoreWorkspace()" in page
+    assert "installWorkspaceAutosave()" in page
+    assert "clearWorkspaceState()" in page
+    assert "plotData: JSON.parse(JSON.stringify(gd.data || []))" in page
+    assert "files = (state.files || []).map(recordFile)" in page
     assert "gd._context" in page
     assert "rist-raman-stack-change" in page
     assert "annotationPosition" in page
