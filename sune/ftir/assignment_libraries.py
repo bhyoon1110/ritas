@@ -50,14 +50,20 @@ class AssignmentLibrary:
     filename: str
     assignments: tuple[PeakAssignment, ...]
 
-    def summary(self, *, valid: bool = True, error: str = "") -> dict[str, Any]:
+    def summary(
+        self,
+        *,
+        valid: bool = True,
+        error: str = "",
+        default_library_id: str = DEFAULT_LIBRARY_ID,
+    ) -> dict[str, Any]:
         return {
             "id": self.library_id,
             "name": self.name,
             "description": self.description,
             "fileName": self.filename,
             "assignmentCount": len(self.assignments),
-            "defaultSelected": self.library_id == DEFAULT_LIBRARY_ID,
+            "defaultSelected": self.library_id == default_library_id,
             "valid": valid,
             "error": error,
         }
@@ -302,9 +308,16 @@ def parse_assignment_library(filename: str, content: bytes) -> AssignmentLibrary
 class AssignmentLibraryStore:
     """Manage assignment-library files in one writable directory."""
 
-    def __init__(self, root: Path, default_csv: Path):
+    def __init__(
+        self,
+        root: Path,
+        default_csv: Path,
+        *,
+        default_library_id: str = DEFAULT_LIBRARY_ID,
+    ):
         self.root = Path(root)
         self.default_csv = Path(default_csv)
+        self.default_library_id = default_library_id
 
     def initialize(self) -> None:
         with _LIBRARY_LOCK:
@@ -344,7 +357,7 @@ class AssignmentLibraryStore:
 
     def _bundled_defaults(self) -> list[tuple[Path, str]]:
         bundled_dir = self.default_csv.parent / "assignment_libraries"
-        paths = [(self.default_csv, f"{DEFAULT_LIBRARY_ID}.csv")]
+        paths = [(self.default_csv, f"{self.default_library_id}.csv")]
         if bundled_dir.is_dir():
             paths.extend(
                 (path, path.name) for path in sorted(bundled_dir.iterdir())
@@ -358,12 +371,12 @@ class AssignmentLibraryStore:
         try:
             payload = json.loads(marker.read_text(encoding="ascii"))
         except (json.JSONDecodeError, UnicodeDecodeError):
-            return {f"{DEFAULT_LIBRARY_ID}.csv"}
+            return {f"{self.default_library_id}.csv"}
         if isinstance(payload, dict):
             seeded = payload.get("seeded")
             if isinstance(seeded, list):
                 return {str(item) for item in seeded}
-        return {f"{DEFAULT_LIBRARY_ID}.csv"}
+        return {f"{self.default_library_id}.csv"}
 
     def _paths(self) -> list[Path]:
         self.initialize()
@@ -380,7 +393,9 @@ class AssignmentLibraryStore:
         for path in self._paths():
             try:
                 library = parse_assignment_library(path.name, path.read_bytes())
-                summaries.append(library.summary())
+                summaries.append(library.summary(
+                    default_library_id=self.default_library_id,
+                ))
             except AssignmentLibraryError as exc:
                 try:
                     library_id = _library_id(path.name)

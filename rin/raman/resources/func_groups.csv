@@ -1,0 +1,11 @@
+center_wn,tolerance,name,color,note
+1350,45,D band / disorder-induced carbon mode,#ef4444,Common carbon/graphite disorder band
+1580,45,G band / graphitic carbon mode,#2563eb,Common graphitic sp2 carbon band
+1620,35,D' band / defect-related graphite mode,#7c3aed,Defect-related graphite shoulder
+2700,80,2D band / second-order carbon mode,#16a34a,Second-order graphene/graphite band
+2940,70,D+G combination band,#f97316,Combination band often observed in carbon materials
+460,35,Si-O-Si bending / silicate region,#64748b,General inorganic/silicate Raman region
+520,20,Crystalline silicon reference band,#0f766e,Si wafer/reference Raman band
+980,45,Sulfate / phosphate symmetric stretch region,#a16207,General sulfate/phosphate symmetric stretching region
+1085,45,Carbonate symmetric stretch region,#0891b2,General carbonate Raman marker region
+1450,55,CH2/CH3 deformation region,#db2777,Organic deformation band region

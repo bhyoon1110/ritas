@@ -7,6 +7,8 @@ from pathlib import Path
 
 import numpy as np
 
+from ftir.assignment_libraries import AssignmentLibrary, flatten_assignment_libraries
+
 from .peaks import detect_peaks_with_fwhm, peak_params_for_sensitivity
 from .plotting import build_multi_raman_fig
 from .preprocess import RamanRawError, load_raman_raw, preprocess_raman
@@ -46,6 +48,7 @@ def analyze_raman_files(
     sensitivity: int = 25,
     smooth: bool = True,
     baseline: bool = True,
+    assignment_libraries: list[AssignmentLibrary] | None = None,
 ) -> dict:
     if not files:
         raise RamanAnalysisError("RAMAN_FILES_REQUIRED", "Raman raw 파일이 필요합니다.")
@@ -53,6 +56,11 @@ def analyze_raman_files(
     sensitivity = max(0, min(100, int(sensitivity)))
     params = peak_params_for_sensitivity(sensitivity)
     grid = np.linspace(SHIFT_MIN, SHIFT_MAX, GRID_SIZE)
+    func_groups = (
+        flatten_assignment_libraries(assignment_libraries)
+        if assignment_libraries is not None
+        else []
+    )
     used_labels: set[str] = set()
     samples = []
     summaries = []
@@ -121,6 +129,7 @@ def analyze_raman_files(
         samples,
         shift_min=SHIFT_MIN,
         shift_max=SHIFT_MAX,
+        func_groups=func_groups,
         initial_sensitivity=sensitivity,
     )
     return {
@@ -135,6 +144,13 @@ def analyze_raman_files(
             "baseline": baseline,
             "shiftMin": SHIFT_MIN,
             "shiftMax": SHIFT_MAX,
+            "assignmentLibraries": [
+                {
+                    "id": library.library_id,
+                    "name": library.name,
+                    "assignmentCount": len(library.assignments),
+                }
+                for library in (assignment_libraries or [])
+            ],
         },
     }
-

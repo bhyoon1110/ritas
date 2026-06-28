@@ -24,8 +24,62 @@ def _sample_key(index: int) -> str:
     return f"sample:{index}"
 
 
-def _peak_label_text(shift: float) -> str:
-    return f"<b>{shift:.0f}</b><br><span style='font-size:10px'>Raman peak</span>"
+def _peak_label_text(shift: float, label: str) -> str:
+    return f"<b>{shift:.0f}</b><br><span style='font-size:10px'>{label}</span>"
+
+
+def _assignment_candidates(shift: float, func_groups: list[tuple]) -> list[dict]:
+    selected = {}
+    for raw in func_groups:
+        center, tolerance, name, color, note = raw[:5]
+        library_id = raw[5] if len(raw) > 5 else "default"
+        library_name = raw[6] if len(raw) > 6 else ""
+        delta = abs(float(shift) - float(center))
+        if delta > float(tolerance):
+            continue
+        candidate = {
+            "name": str(name),
+            "color": str(color),
+            "note": str(note or ""),
+            "library_id": str(library_id),
+            "library_name": str(library_name),
+            "center_wn": float(center),
+            "tolerance": float(tolerance),
+            "delta": float(delta),
+        }
+        current = selected.get(library_id)
+        if current is None or (candidate["tolerance"], candidate["delta"]) < (
+            current["tolerance"],
+            current["delta"],
+        ):
+            selected[library_id] = candidate
+    return list(selected.values())
+
+
+def _peak_assignment(shift: float, func_groups: list[tuple]) -> dict:
+    assignments = _assignment_candidates(shift, func_groups)
+    if not assignments:
+        name = f"{shift:.0f} cm⁻¹"
+        return {
+            "display_name": name,
+            "color": "#9ca3af",
+            "note": "",
+            "assignments": [],
+        }
+    names = list(dict.fromkeys(item["name"] for item in assignments))
+    notes = []
+    for item in assignments:
+        source = item["library_name"] or item["library_id"]
+        detail = f"{source}: {item['name']}"
+        if item["note"]:
+            detail += f" - {item['note']}"
+        notes.append(detail)
+    return {
+        "display_name": "<br>".join(names),
+        "color": assignments[0]["color"],
+        "note": "<br>".join(notes),
+        "assignments": assignments,
+    }
 
 
 def build_multi_raman_fig(
@@ -33,12 +87,14 @@ def build_multi_raman_fig(
     *,
     shift_min: float,
     shift_max: float,
+    func_groups: list[tuple] | None = None,
     initial_sensitivity: int | float = 25,
 ) -> go.Figure:
     fig = go.Figure()
     annotations = []
     peak_labels = []
     max_y = 1.0
+    func_groups = func_groups or []
 
     for sample_no, sample in enumerate(samples):
         sample_key = _sample_key(sample_no)
@@ -85,15 +141,18 @@ def build_multi_raman_fig(
             value = candidate["value"]
             fwhm = candidate["fwhm"]
             initially_visible = candidate["initial"]
-            display_name = f"{shift:.0f} cm⁻¹"
-            label_key = f"{sample_key}:peak:{shift:.1f}"
+            assignment = _peak_assignment(shift, func_groups)
+            display_name = assignment["display_name"]
+            peak_color = assignment["color"]
+            note = assignment["note"]
+            label_key = f"{sample_key}:peak:{display_name}:{shift:.1f}"
             trace_index = len(fig.data)
             peak_trace = go.Scatter(
                 x=[shift],
                 y=[value],
                 mode="markers",
                 marker=dict(
-                    color=color,
+                    color=peak_color,
                     size=8,
                     symbol="circle",
                     line=dict(color="white", width=1.5),
@@ -104,7 +163,8 @@ def build_multi_raman_fig(
                 showlegend=initially_visible and label_key not in seen_label_keys,
                 hovertemplate=(
                     f"<b>{label}</b><br>{shift:.1f} cm⁻¹<br>"
-                    f"Intensity: %{{y:.4f}}<br>FWHM: {fwhm:.1f} cm⁻¹"
+                    f"{display_name}<br>Intensity: %{{y:.4f}}"
+                    f"<br>FWHM: {fwhm:.1f} cm⁻¹<br><i>{note}</i>"
                     "<extra></extra>"
                 ),
             )
@@ -119,7 +179,7 @@ def build_multi_raman_fig(
                     "label_key": label_key,
                     "sensitivity_levels": candidate["levels"],
                     "sensitivity_min": candidate["sensitivity_min"],
-                    "assignments": [],
+                    "assignments": assignment["assignments"],
                 },
             }
             fig.add_trace(peak_trace)
@@ -136,17 +196,17 @@ def build_multi_raman_fig(
                     dict(
                         x=shift,
                         y=y_label,
-                        text=_peak_label_text(shift),
+                        text=_peak_label_text(shift, display_name),
                         showarrow=True,
                         captureevents=True,
                         arrowhead=0,
-                        arrowcolor=color,
+                        arrowcolor=peak_color,
                         arrowwidth=1,
                         ax=0,
                         ay=-28,
-                        font=dict(size=9, color=color),
+                        font=dict(size=9, color=peak_color),
                         bgcolor="rgba(255,255,255,0.88)",
-                        bordercolor=color,
+                        bordercolor=peak_color,
                         borderwidth=1,
                         borderpad=2,
                         name=f"raman_peak_label_{sample_no}_{annotation_index}",
@@ -169,7 +229,7 @@ def build_multi_raman_fig(
                     x1=shift,
                     y0=0,
                     y1=value,
-                    line=dict(color=color, width=0.8, dash="dot"),
+                    line=dict(color=peak_color, width=0.8, dash="dot"),
                     visible=initially_visible,
                 )
 
@@ -221,4 +281,3 @@ def build_multi_raman_fig(
         meta={"ristPeakLabels": peak_labels},
     )
     return fig
-

@@ -38,6 +38,20 @@ raw 파일 업로드
   -> Plotly 그래프 표시
 ```
 
+## Raman 피크 라이브러리
+
+`/raman` 화면은 FT-IR 화면처럼 피크 assignment 라이브러리를 관리한다.
+
+- 기본 라이브러리 ID: `general-raman`
+- 기본 라이브러리 원본: `rin/raman/resources/func_groups.csv`
+- Edge 서버 저장 폴더: `edge_api_server/data/raman_assignment_libraries`
+- 지원 포맷: JSON, CSV
+
+라이브러리 항목은 `centerWavenumber`, `tolerance`, `name`, `color`, `note`
+필드를 사용한다. 선택된 라이브러리의 `centerWavenumber ± tolerance` 범위에
+검출 피크가 들어오면 그래프 피크 이름과 색상이 해당 라이브러리 기준으로
+표시된다.
+
 다른 Raman raw 포맷이 추가되면 `rin/raman/preprocess.py`의
 `load_raman_raw()` 또는 내부 reader 함수를 확장하면 된다. 그래프와 피크
 편집 기능은 `rist_common.plotting` 공통 모듈을 사용한다.
