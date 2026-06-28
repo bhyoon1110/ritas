@@ -4485,6 +4485,7 @@ def _legend_drag_handle_js(div_id: str) -> str:
   gd.appendChild(handle);
   var dragState = null;
   var updateFrame = 0;
+  var previewLegendTransform = null;
 
   function clamp(value, min, max) {{
     return Math.max(min, Math.min(max, value));
@@ -4523,16 +4524,28 @@ def _legend_drag_handle_js(div_id: str) -> str:
   function setLegendPreview(dx, dy) {{
     var legend = legendNode();
     if (!legend) return;
-    legend.style.transformOrigin = "0 0";
-    legend.style.transform = "translate(" + Math.round(dx) + "px, " + Math.round(dy) + "px)";
-    legend.style.willChange = "transform";
+    if (previewLegendTransform == null) {{
+      previewLegendTransform = legend.getAttribute("transform") || "";
+    }}
+    var offset = "translate(" + Math.round(dx) + "," + Math.round(dy) + ")";
+    legend.setAttribute(
+      "transform",
+      previewLegendTransform ? previewLegendTransform + " " + offset : offset
+    );
   }}
 
   function clearLegendPreview() {{
     var legend = legendNode();
-    if (!legend) return;
-    legend.style.transform = "";
-    legend.style.willChange = "";
+    if (!legend || previewLegendTransform == null) {{
+      previewLegendTransform = null;
+      return;
+    }}
+    if (previewLegendTransform) {{
+      legend.setAttribute("transform", previewLegendTransform);
+    }} else {{
+      legend.removeAttribute("transform");
+    }}
+    previewLegendTransform = null;
   }}
 
   function isLegendEvent(ev) {{
@@ -4621,11 +4634,11 @@ def _legend_drag_handle_js(div_id: str) -> str:
     }}
     dragState = null;
     handle.classList.remove("is-dragging");
+    clearLegendPreview();
     window.Plotly.relayout(gd, {{
       "legend.x": nextX,
       "legend.y": nextY
     }}).then(function() {{
-      clearLegendPreview();
       scheduleHandlePosition();
     }});
     if (ev) {{
