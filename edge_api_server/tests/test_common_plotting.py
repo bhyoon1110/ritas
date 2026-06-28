@@ -288,6 +288,13 @@ def test_shared_peak_editor_adds_peak_controls(tmp_path) -> None:
     assert "<option value='dot'>점선</option>" in html
     assert "<option value='dashdot'>일점쇄선</option>" in html
     assert "rist-shape-opacity" in html
+    assert "rist-shape-fill-none-row" in html
+    assert "rist-shape-fill-none" in html
+    assert "배경 없음" in html
+    assert "function fillColor" in html
+    assert "function updateFillControl" in html
+    assert "fillNoneInput.checked ? 0" in html
+    assert 'fillNoneInput.addEventListener("change"' in html
     assert "rist-shape-text-options" in html
     assert "rist-shape-font-color" in html
     assert "rist-shape-font-size" in html
@@ -306,8 +313,22 @@ def test_shared_peak_editor_adds_peak_controls(tmp_path) -> None:
     assert "rist_text_box:" in html
     assert "rist_text_box_text:" in html
     assert "function addObject" in html
-    assert "function applySelection" in html
+    assert "rist-shape-apply" not in html
+    assert ">적용</button>" not in html
     assert "function deleteSelection" in html
+    assert "var editSnapshot = null" in html
+    assert "function captureEditSnapshot" in html
+    assert "function finishSelection" in html
+    assert "function editedObjectsFromControls" in html
+    assert "function previewSelection" in html
+    assert "function schedulePreview" in html
+    assert 'input.addEventListener("input", schedulePreview)' in html
+    assert 'document.addEventListener("pointerdown"' in html
+    assert "panel.contains(ev.target)" in html
+    assert "finishSelection(true)" in html
+    assert "gd._ristHistory.captureState(editSnapshot.historyState)" in html
+    assert "captureState: captureState" in html
+    assert "snapshot: snapshot" in html
     assert "function objectAtPoint" in html
     assert "function resizedBounds" in html
     assert "function applyTransformedBounds" in html

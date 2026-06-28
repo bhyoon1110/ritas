@@ -3207,6 +3207,23 @@ def shape_editor_js(div_id: str) -> str:
   min-width: 0;
   accent-color: #52606d;
 }}
+#{div_id} .rist-shape-fill-none-row {{
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 7px;
+  color: #52606d;
+  cursor: pointer;
+  font: 10px Arial, sans-serif;
+}}
+#{div_id} .rist-shape-fill-none {{
+  accent-color: #52606d;
+}}
+#{div_id} .rist-shape-fill-color:disabled,
+#{div_id} .rist-shape-opacity:disabled {{
+  cursor: default;
+  opacity: 0.45;
+}}
 #{div_id} .rist-shape-editor-actions {{
   display: flex;
   gap: 7px;
@@ -3227,8 +3244,7 @@ def shape_editor_js(div_id: str) -> str:
   border-color: #d5a3a3;
   color: #9b2c2c;
 }}
-#{div_id} .rist-shape-delete:disabled,
-#{div_id} .rist-shape-apply:disabled {{
+#{div_id} .rist-shape-delete:disabled {{
   opacity: 0.4;
   cursor: default;
 }}
@@ -3288,6 +3304,8 @@ def shape_editor_js(div_id: str) -> str:
   var drawMode = false;
   var drawStart = null;
   var transformState = null;
+  var editSnapshot = null;
+  var previewFrame = 0;
 
   function esc(value) {{
     return String(value == null ? "" : value)
@@ -3300,6 +3318,10 @@ def shape_editor_js(div_id: str) -> str:
 
   function clone(value) {{
     return Object.assign({{}}, value || {{}});
+  }}
+
+  function deepClone(value) {{
+    return value == null ? value : JSON.parse(JSON.stringify(value));
   }}
 
   function hexToRgba(hex, opacity) {{
@@ -3365,6 +3387,20 @@ def shape_editor_js(div_id: str) -> str:
     if (gd._ristHistory) gd._ristHistory.capture();
   }}
 
+  function recordEditHistory() {{
+    if (!gd._ristHistory) return;
+    if (editSnapshot && editSnapshot.historyCaptured) return;
+    if (editSnapshot
+        && editSnapshot.historyState
+        && gd._ristHistory.captureState) {{
+      gd._ristHistory.captureState(editSnapshot.historyState);
+      editSnapshot.historyCaptured = true;
+      return;
+    }}
+    gd._ristHistory.capture();
+    if (editSnapshot) editSnapshot.historyCaptured = true;
+  }}
+
   var toolbar = gd.querySelector(".rist-plot-control-row");
   if (!toolbar) {{
     toolbar = document.createElement("div");
@@ -3410,9 +3446,10 @@ def shape_editor_js(div_id: str) -> str:
     + "</select></label>"
     + "<label class='rist-shape-opacity-row'><span>배경 투명도</span>"
     + "<input class='rist-shape-opacity' type='range' min='0' max='100' value='30'></label>"
+    + "<label class='rist-shape-fill-none-row'>"
+    + "<input class='rist-shape-fill-none' type='checkbox'>배경 없음</label>"
     + "<div class='rist-shape-editor-actions'>"
     + "<button type='button' class='rist-shape-action rist-shape-draw'>그리기</button>"
-    + "<button type='button' class='rist-shape-action rist-shape-apply' disabled>적용</button>"
     + "<button type='button' class='rist-shape-action rist-shape-delete' disabled>삭제</button>"
     + "</div>";
   gd.appendChild(panel);
@@ -3434,8 +3471,8 @@ def shape_editor_js(div_id: str) -> str:
   var fillInput = panel.querySelector(".rist-shape-fill-color");
   var borderStyleInput = panel.querySelector(".rist-shape-border-style");
   var opacityInput = panel.querySelector(".rist-shape-opacity");
+  var fillNoneInput = panel.querySelector(".rist-shape-fill-none");
   var drawButton = panel.querySelector(".rist-shape-draw");
-  var applyButton = panel.querySelector(".rist-shape-apply");
   var deleteButton = panel.querySelector(".rist-shape-delete");
   var kindButtons = Array.prototype.slice.call(
     panel.querySelectorAll(".rist-shape-kind-button")
@@ -3466,6 +3503,16 @@ def shape_editor_js(div_id: str) -> str:
     borderInput.disabled = borderStyleInput.value === "none";
   }}
 
+  function fillColor() {{
+    var opacity = fillNoneInput.checked ? 0 : Number(opacityInput.value) / 100;
+    return hexToRgba(fillInput.value, opacity);
+  }}
+
+  function updateFillControl() {{
+    fillInput.disabled = fillNoneInput.checked;
+    opacityInput.disabled = fillNoneInput.checked;
+  }}
+
   function setDrawMode(enabled) {{
     drawMode = !!enabled;
     toolButton.classList.toggle("is-active", drawMode);
@@ -3494,14 +3541,18 @@ def shape_editor_js(div_id: str) -> str:
   }}
 
   function updateSelectionButtons() {{
-    applyButton.disabled = !selectedId;
     deleteButton.disabled = !selectedId;
   }}
 
   function clearSelection() {{
+    if (previewFrame) {{
+      cancelAnimationFrame(previewFrame);
+      previewFrame = 0;
+    }}
     selectedId = "";
     selectedKind = "";
     transformState = null;
+    editSnapshot = null;
     selection.style.display = "none";
     updateSelectionButtons();
   }}
@@ -3547,7 +3598,31 @@ def shape_editor_js(div_id: str) -> str:
     setSelectionBounds(shapeClientBounds(selectedShape()));
   }}
 
-  function selectShape(id, kind) {{
+  function captureEditSnapshot() {{
+    editSnapshot = {{
+      id: selectedId,
+      kind: selectedKind,
+      historyState: gd._ristHistory && gd._ristHistory.snapshot
+        ? gd._ristHistory.snapshot()
+        : null,
+      historyCaptured: false
+    }};
+  }}
+
+  function finishSelection(close) {{
+    var pending = Promise.resolve();
+    if (previewFrame) {{
+      cancelAnimationFrame(previewFrame);
+      previewFrame = 0;
+      pending = previewSelection();
+    }}
+    return pending.then(function() {{
+      clearSelection();
+      if (close) closePanel();
+    }});
+  }}
+
+  function beginShapeSelection(id, kind) {{
     var shapes = gd.layout.shapes || [];
     var annotations = gd.layout.annotations || [];
     var si = shapeIndex(id, kind, shapes);
@@ -3574,10 +3649,28 @@ def shape_editor_js(div_id: str) -> str:
       ? "none"
       : String(shape.line && shape.line.dash || "solid");
     updateBorderControl();
-    opacityInput.value = String(rgbaOpacity(shape.fillcolor, 30));
+    var fillOpacity = rgbaOpacity(shape.fillcolor, 30);
+    fillNoneInput.checked = fillOpacity === 0;
+    opacityInput.value = String(fillOpacity === 0 ? 30 : fillOpacity);
+    updateFillControl();
     updateSelectionButtons();
+    captureEditSnapshot();
     openPanel();
     requestAnimationFrame(updateSelectionOverlay);
+    return Promise.resolve();
+  }}
+
+  function selectShape(id, kind) {{
+    if (selectedId === id && selectedKind === kind) {{
+      openPanel();
+      return Promise.resolve();
+    }}
+    if (selectedId) {{
+      return finishSelection(false).then(function() {{
+        return beginShapeSelection(id, kind);
+      }});
+    }}
+    return beginShapeSelection(id, kind);
   }}
 
   function syncOriginalArrays(id, kind, shape, annotation, remove) {{
@@ -3595,11 +3688,65 @@ def shape_editor_js(div_id: str) -> str:
     }}
   }}
 
+  function editedObjectsFromControls() {{
+    if (!selectedId || !selectedKind) return null;
+    var shapes = gd.layout.shapes || [];
+    var annotations = gd.layout.annotations || [];
+    var si = shapeIndex(selectedId, selectedKind, shapes);
+    var ai = annotationIndex(selectedId, annotations);
+    if (si < 0 || (selectedKind === "text" && ai < 0)) return null;
+    var shape = deepClone(shapes[si]);
+    shape.line = Object.assign({{}}, shape.line || {{}}, borderLine());
+    shape.fillcolor = fillColor();
+    var annotation = ai >= 0 ? deepClone(annotations[ai]) : null;
+    if (annotation) {{
+      annotation.text = esc(textInput.value || "텍스트");
+      annotation.font = Object.assign({{}}, annotation.font || {{}}, {{
+        color: fontColorInput.value,
+        size: fontSizeValue()
+      }});
+    }}
+    return {{
+      shape: shape,
+      annotation: annotation,
+      shapeIndex: si,
+      annotationIndex: ai
+    }};
+  }}
+
+  function previewSelection() {{
+    previewFrame = 0;
+    var edited = editedObjectsFromControls();
+    if (!edited) return Promise.resolve();
+    recordEditHistory();
+    var shapes = (gd.layout.shapes || []).map(clone);
+    var annotations = (gd.layout.annotations || []).map(clone);
+    shapes[edited.shapeIndex] = edited.shape;
+    if (edited.annotationIndex >= 0) {{
+      annotations[edited.annotationIndex] = edited.annotation;
+    }}
+    syncOriginalArrays(
+      selectedId,
+      selectedKind,
+      edited.shape,
+      edited.annotation,
+      false
+    );
+    return window.Plotly.relayout(gd, {{
+      shapes: shapes,
+      annotations: annotations
+    }}).then(updateSelectionOverlay);
+  }}
+
+  function schedulePreview() {{
+    if (!selectedId || previewFrame) return;
+    previewFrame = requestAnimationFrame(previewSelection);
+  }}
+
   function addObject(x0, y0, x1, y1) {{
     recordHistory();
     var kind = drawKind;
     var id = Date.now() + "-" + Math.floor(Math.random() * 10000);
-    var opacity = Number(opacityInput.value) / 100;
     var shape = {{
       type: "rect",
       xref: "x",
@@ -3610,7 +3757,7 @@ def shape_editor_js(div_id: str) -> str:
       y1: y1,
       name: shapeName(id, kind),
       line: borderLine(),
-      fillcolor: hexToRgba(fillInput.value, opacity),
+      fillcolor: fillColor(),
       layer: "above"
     }};
     var annotation = null;
@@ -3646,40 +3793,6 @@ def shape_editor_js(div_id: str) -> str:
     setDrawMode(false);
   }}
 
-  function applySelection() {{
-    if (!selectedId) return;
-    var shapes = (gd.layout.shapes || []).map(clone);
-    var annotations = (gd.layout.annotations || []).map(clone);
-    var si = shapeIndex(selectedId, selectedKind, shapes);
-    var ai = annotationIndex(selectedId, annotations);
-    if (si < 0 || (selectedKind === "text" && ai < 0)) return;
-    recordHistory();
-    shapes[si].line = Object.assign({{}}, shapes[si].line || {{}}, borderLine());
-    shapes[si].fillcolor = hexToRgba(
-      fillInput.value,
-      Number(opacityInput.value) / 100
-    );
-    var annotation = ai >= 0 ? annotations[ai] : null;
-    if (annotation) {{
-      annotation.text = esc(textInput.value || "텍스트");
-      annotation.font = Object.assign({{}}, annotation.font || {{}}, {{
-        color: fontColorInput.value,
-        size: fontSizeValue()
-      }});
-    }}
-    syncOriginalArrays(
-      selectedId,
-      selectedKind,
-      shapes[si],
-      annotation,
-      false
-    );
-    window.Plotly.relayout(gd, {{
-      shapes: shapes,
-      annotations: annotations
-    }}).then(updateSelectionOverlay);
-  }}
-
   function deleteSelection() {{
     if (!selectedId) return;
     var id = selectedId;
@@ -3689,7 +3802,7 @@ def shape_editor_js(div_id: str) -> str:
     var si = shapeIndex(id, kind, shapes);
     var ai = annotationIndex(id, annotations);
     if (si < 0 || (kind === "text" && ai < 0)) return;
-    recordHistory();
+    recordEditHistory();
     var shape = shapes[si];
     var annotation = ai >= 0 ? annotations[ai] : null;
     shapes.splice(si, 1);
@@ -3844,6 +3957,7 @@ def shape_editor_js(div_id: str) -> str:
     var point = plotPoint(ev);
     if (!point) return;
     if (drawMode) {{
+      ev._ristShapeEditorHandled = true;
       drawStart = {{
         clientX: ev.clientX,
         clientY: ev.clientY,
@@ -3857,11 +3971,13 @@ def shape_editor_js(div_id: str) -> str:
     }}
     var object = objectAtPoint(point);
     if (object) {{
+      ev._ristShapeEditorHandled = true;
       selectShape(object.id, object.kind);
       ev.preventDefault();
       ev.stopPropagation();
     }} else {{
-      clearSelection();
+      ev._ristShapeEditorHandled = true;
+      finishSelection(true);
     }}
   }}, true);
 
@@ -3878,6 +3994,7 @@ def shape_editor_js(div_id: str) -> str:
       bounds: bounds,
       captured: false
     }};
+    ev._ristShapeEditorHandled = true;
     ev.preventDefault();
     ev.stopPropagation();
   }});
@@ -3887,8 +4004,8 @@ def shape_editor_js(div_id: str) -> str:
       if (!transformState.captured
           && (Math.abs(ev.clientX - transformState.startX) > 1
               || Math.abs(ev.clientY - transformState.startY) > 1)) {{
-        recordHistory();
         transformState.captured = true;
+        recordEditHistory();
       }}
       transformState.bounds = resizedBounds(transformState, ev);
       setSelectionBounds(transformState.bounds);
@@ -3933,21 +4050,50 @@ def shape_editor_js(div_id: str) -> str:
     ev.preventDefault();
     ev.stopPropagation();
     openPanel();
-    setDrawMode(!drawMode);
+    if (selectedId) {{
+      finishSelection(false).then(function() {{
+        setDrawMode(!drawMode);
+      }});
+    }} else {{
+      setDrawMode(!drawMode);
+    }}
+  }});
+  toolButton.addEventListener("pointerdown", function(ev) {{
+    ev._ristShapeEditorHandled = true;
+    ev.stopPropagation();
   }});
   panel.querySelector(".rist-shape-editor-close").addEventListener("click", function() {{
-    closePanel();
-    clearSelection();
+    finishSelection(true);
   }});
   kindButtons.forEach(function(button) {{
     button.addEventListener("click", function() {{
-      clearSelection();
-      setDrawKind(button.dataset.kind);
+      var kind = button.dataset.kind;
+      finishSelection(false).then(function() {{
+        setDrawKind(kind);
+      }});
     }});
   }});
-  drawButton.addEventListener("click", function() {{ setDrawMode(!drawMode); }});
-  borderStyleInput.addEventListener("change", updateBorderControl);
-  applyButton.addEventListener("click", applySelection);
+  drawButton.addEventListener("click", function() {{
+    if (selectedId) {{
+      finishSelection(false).then(function() {{
+        setDrawMode(!drawMode);
+      }});
+    }} else {{
+      setDrawMode(!drawMode);
+    }}
+  }});
+  [textInput, fontColorInput, fontSizeInput, borderInput, fillInput, opacityInput]
+    .forEach(function(input) {{
+      input.addEventListener("input", schedulePreview);
+    }});
+  borderStyleInput.addEventListener("change", function() {{
+    updateBorderControl();
+    schedulePreview();
+  }});
+  fillNoneInput.addEventListener("change", function() {{
+    updateFillControl();
+    schedulePreview();
+  }});
   deleteButton.addEventListener("click", deleteSelection);
   gd.on("plotly_clickannotation", function(ev) {{
     var annotation = ev && ev.annotation;
@@ -3957,10 +4103,17 @@ def shape_editor_js(div_id: str) -> str:
   }});
   gd.addEventListener("rist-history-restored", function() {{
     clearSelection();
+    closePanel();
   }});
   gd.addEventListener("rist-shape-editor-close", function() {{
-    closePanel();
-    clearSelection();
+    finishSelection(true);
+  }});
+  document.addEventListener("pointerdown", function(ev) {{
+    if (panel.style.display !== "block" || ev._ristShapeEditorHandled) return;
+    if (panel.contains(ev.target)
+        || toolButton.contains(ev.target)
+        || selection.contains(ev.target)) return;
+    finishSelection(true);
   }});
   gd.on("plotly_afterplot", updateSelectionOverlay);
   gd.on("plotly_relayout", function() {{
@@ -3969,6 +4122,7 @@ def shape_editor_js(div_id: str) -> str:
   window.addEventListener("resize", updateSelectionOverlay);
   setDrawKind("rect");
   updateBorderControl();
+  updateFillControl();
   updateSelectionButtons();
 }})();
 </script>
@@ -4080,8 +4234,13 @@ def _plot_edit_history_js(div_id: str) -> str:
     var now = Date.now();
     if (now - lastCaptureAt < 50) return;
     lastCaptureAt = now;
+    captureState(snapshot());
+  }}
+
+  function captureState(state) {{
+    if (restoring || !state) return;
     try {{
-      undoStack.push(snapshot());
+      undoStack.push(clone(state));
       if (undoStack.length > MAX_HISTORY) undoStack.shift();
       redoStack = [];
       updateButtons();
@@ -4127,6 +4286,8 @@ def _plot_edit_history_js(div_id: str) -> str:
 
   gd._ristHistory = {{
     capture: capture,
+    captureState: captureState,
+    snapshot: snapshot,
     undo: undo,
     redo: redo
   }};
