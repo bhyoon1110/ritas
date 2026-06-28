@@ -287,10 +287,18 @@ def test_peak_sensitivity_control_filters_detected_peak_metadata() -> None:
     assert "applySensitivity" in html
     assert "requestSensitivity" in html
     assert "pendingSensitivity" in html
+    assert "updateSensitivityInteraction" in html
+    assert "sliderPointerActive" in html
+    assert "sliderKeyboardActive" in html
+    assert "numberInputActive" in html
+    assert "rist-peak-sensitivity-interaction-end" in html
     assert "min='0' max='100'" in html
     assert "피크 검출 민감도 수치" in html
     assert 'eligible ? (on ? true : "legendonly") : false' in html
-    assert "showlegend.push(eligible && !seenLegendItems[editGroup])" in html
+    assert "changedCurves" in html
+    assert "currentVisibility !== visibility" in html
+    assert "if (!changedCurves.length)" in html
+    assert "window.Plotly.update" in html
     assert "updateStatus(eligibleCount)" in html
     assert "gd._ristPeakSensitivityValue = sensitivity" in html
     assert "rist-peak-sensitivity-change" in html

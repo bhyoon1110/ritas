@@ -1539,9 +1539,9 @@ def peak_sensitivity_js(div_id: str, initial: str = "medium") -> str:
 
   function applySensitivity(sensitivity) {{
     var data = gd.data || [];
-    var curves = [];
-    var visible = [];
-    var showlegend = [];
+    var changedCurves = [];
+    var changedVisible = [];
+    var changedShowlegend = [];
     var seenLegendItems = {{}};
     var visibleByCurve = {{}};
     var eligibleCount = 0;
@@ -1557,16 +1557,28 @@ def peak_sensitivity_js(div_id: str, initial: str = "medium") -> str:
         || (meta.rist_peak && meta.rist_peak.label_key)
         || "curve:" + i
       );
-      curves.push(i);
-      visible.push(visibility);
-      showlegend.push(eligible && !seenLegendItems[editGroup]);
+      var nextShowlegend = eligible && !seenLegendItems[editGroup];
       if (eligible) {{
         seenLegendItems[editGroup] = true;
         eligibleCount += 1;
       }}
       visibleByCurve[i] = on;
+      var currentVisibility = data[i].visible;
+      if (currentVisibility !== false && currentVisibility !== "legendonly") {{
+        currentVisibility = true;
+      }}
+      var currentShowlegend = data[i].showlegend !== false;
+      if (currentVisibility !== visibility || currentShowlegend !== nextShowlegend) {{
+        changedCurves.push(i);
+        changedVisible.push(visibility);
+        changedShowlegend.push(nextShowlegend);
+      }}
     }}
-    if (!curves.length) return Promise.resolve();
+    if (!Object.keys(visibleByCurve).length) return Promise.resolve();
+    if (!changedCurves.length) {{
+      updateStatus(eligibleCount);
+      return Promise.resolve();
+    }}
 
     var labels = (
       gd.layout.meta
@@ -1593,15 +1605,13 @@ def peak_sensitivity_js(div_id: str, initial: str = "medium") -> str:
       }}
     }});
 
-    return window.Plotly.restyle(gd, {{
-      visible: visible,
-      showlegend: showlegend
-    }}, curves).then(function() {{
-      return window.Plotly.relayout(gd, {{
-        annotations: annotations,
-        shapes: shapes
-      }});
-    }}).then(function() {{
+    return window.Plotly.update(gd, {{
+      visible: changedVisible,
+      showlegend: changedShowlegend
+    }}, {{
+      annotations: annotations,
+      shapes: shapes
+    }}, changedCurves).then(function() {{
       updateStatus(eligibleCount);
       gd.dispatchEvent(new CustomEvent("rist-peak-sensitivity-change", {{
         detail: {{ sensitivity: sensitivity }}
@@ -1652,6 +1662,49 @@ def peak_sensitivity_js(div_id: str, initial: str = "medium") -> str:
   var slider = control.querySelector(".rist-peak-sensitivity-slider");
   var numberInput = control.querySelector(".rist-peak-sensitivity-number");
   var value = control.querySelector(".rist-peak-sensitivity-value");
+  var sliderPointerActive = false;
+  var sliderKeyboardActive = false;
+  var numberInputActive = false;
+
+  function updateSensitivityInteraction() {{
+    var active = sliderPointerActive || sliderKeyboardActive || numberInputActive;
+    var wasActive = !!gd._ristPeakSensitivityInteracting;
+    gd._ristPeakSensitivityInteracting = active;
+    if (wasActive && !active) {{
+      gd.dispatchEvent(new CustomEvent("rist-peak-sensitivity-interaction-end"));
+    }}
+  }}
+
+  slider.addEventListener("pointerdown", function() {{
+    sliderPointerActive = true;
+    updateSensitivityInteraction();
+  }});
+  document.addEventListener("pointerup", function() {{
+    if (!sliderPointerActive) return;
+    sliderPointerActive = false;
+    updateSensitivityInteraction();
+  }});
+  document.addEventListener("pointercancel", function() {{
+    if (!sliderPointerActive) return;
+    sliderPointerActive = false;
+    updateSensitivityInteraction();
+  }});
+  slider.addEventListener("keydown", function() {{
+    sliderKeyboardActive = true;
+    updateSensitivityInteraction();
+  }});
+  slider.addEventListener("keyup", function() {{
+    sliderKeyboardActive = false;
+    updateSensitivityInteraction();
+  }});
+  numberInput.addEventListener("focus", function() {{
+    numberInputActive = true;
+    updateSensitivityInteraction();
+  }});
+  numberInput.addEventListener("blur", function() {{
+    numberInputActive = false;
+    updateSensitivityInteraction();
+  }});
   slider.addEventListener("input", function() {{
     requestSensitivity(slider.value);
   }});

@@ -167,6 +167,7 @@ def ftir_abs_trans_toggle_js(div_id: str, *, yaxis_titles: dict[str, dict[str, s
   toolbar.appendChild(btn);
 
   function alignToolbarWithLegend() {{
+    if (gd._ristPeakSensitivityInteracting) return;
     var legend = gd.querySelector(".legend");
     if (!legend) {{
       toolbar.style.right = "30px";
@@ -180,6 +181,9 @@ def ftir_abs_trans_toggle_js(div_id: str, *, yaxis_titles: dict[str, dict[str, s
 
   requestAnimationFrame(alignToolbarWithLegend);
   gd.on("plotly_afterplot", alignToolbarWithLegend);
+  gd.addEventListener("rist-peak-sensitivity-interaction-end", function() {{
+    requestAnimationFrame(alignToolbarWithLegend);
+  }});
   window.addEventListener("resize", alignToolbarWithLegend);
 }})();
 </script>

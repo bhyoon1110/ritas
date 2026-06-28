@@ -235,7 +235,9 @@ def test_ftir_toggle_aligns_toolbar_with_legend_right_edge() -> None:
     assert "function alignToolbarWithLegend()" in html
     assert 'gd.querySelector(".legend")' in html
     assert "gdRect.right - legendRect.right" in html
+    assert "gd._ristPeakSensitivityInteracting" in html
     assert 'gd.on("plotly_afterplot", alignToolbarWithLegend)' in html
+    assert "rist-peak-sensitivity-interaction-end" in html
     assert 'window.addEventListener("resize", alignToolbarWithLegend)' in html
 
 
