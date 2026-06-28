@@ -1075,6 +1075,7 @@ _RAMAN_TOOL_PANEL_SCRIPT = """
     if (!gd.classList.contains("rist-raman-tools-open")) return;
     if (ev.target.closest("#raman-plot .rist-plot-control-row")) return;
     if (ev.target.closest("#raman-plot .rist-raman-tools-toggle")) return;
+    if (gd._ristRamanRatioMode && gd.contains(ev.target)) return;
     setOpen(false);
   });
   gd.addEventListener("rist-plot-data-replaced", function() {
@@ -1584,6 +1585,7 @@ _RAMAN_RATIO_SCRIPT = """
   }
 
   function syncControls() {
+    gd._ristRamanRatioMode = ratioMode;
     ratioButton.classList.toggle("is-active", ratioMode);
     ratioButton.textContent = ratioMode ? "분자" : "비율";
     if (!ratioMode) {
@@ -1665,6 +1667,7 @@ _RAMAN_RATIO_SCRIPT = """
   });
   gd.addEventListener("rist-plot-data-replaced", function() {
     ratios = [];
+    ratioMode = false;
     pendingNumerator = null;
     setTimeout(syncControls, 0);
   });
