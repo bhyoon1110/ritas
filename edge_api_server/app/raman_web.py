@@ -489,6 +489,9 @@ body { overflow-x: hidden; }
 #raman-plot.rist-raman-y-drag-active .nsewdrag {
   cursor: ns-resize;
 }
+#raman-plot .rist-plot-control-row > * {
+  flex: 0 0 auto;
+}
 .raman-drop-zone {
   display: flex;
   align-items: center;
@@ -583,7 +586,7 @@ body { overflow-x: hidden; }
   min-height: 540px;
   height: calc(100vh - 170px) !important;
 }
-@media (max-width: 760px) {
+@media (max-width: 980px) {
   .raman-app-bar {
     align-items: flex-start;
     flex-direction: column;
@@ -634,6 +637,85 @@ body { overflow-x: hidden; }
   }
   #raman-plot {
     height: calc(100vh - 248px) !important;
+  }
+  #raman-plot .rist-plot-control-row {
+    left: 8px !important;
+    right: 8px !important;
+    top: 72px !important;
+    width: auto !important;
+    max-width: calc(100% - 16px);
+    display: flex;
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    gap: 6px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 2px 0 6px;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+  }
+  #raman-plot .rist-plot-control-row > * {
+    flex: 0 0 auto;
+  }
+  #raman-plot .rist-legend-edit-button,
+  #raman-plot .rist-peak-edit-button {
+    min-width: 0;
+    height: 28px;
+    white-space: nowrap;
+    font-size: 11px;
+    padding: 0 8px;
+  }
+  #raman-plot .rist-raman-stack-control,
+  #raman-plot .rist-peak-sensitivity-control {
+    height: 28px;
+    gap: 5px;
+    padding: 0 6px;
+  }
+  #raman-plot .rist-raman-stack-button {
+    min-width: 42px;
+    height: 22px;
+    white-space: nowrap;
+    padding: 0 6px;
+  }
+  #raman-plot .rist-raman-stack-gap {
+    width: 54px;
+  }
+  #raman-plot .rist-raman-stack-value {
+    min-width: 20px;
+  }
+  #raman-plot .rist-peak-sensitivity-slider {
+    width: 54px;
+  }
+  #raman-plot .rist-peak-sensitivity-number {
+    width: 38px;
+  }
+  #raman-plot .rist-peak-sensitivity-value {
+    min-width: 24px;
+  }
+  #raman-plot .rist-peak-group-name {
+    width: 96px;
+    flex: 0 0 96px;
+  }
+  #raman-plot .rist-peak-group-color,
+  #raman-plot .rist-shape-tool-button {
+    flex: 0 0 auto;
+    width: 28px;
+    height: 28px;
+  }
+}
+@media (max-width: 420px) {
+  #raman-plot .rist-plot-control-row {
+    top: 68px !important;
+    gap: 5px;
+  }
+  #raman-plot .rist-legend-edit-button,
+  #raman-plot .rist-peak-edit-button {
+    font-size: 10px;
+    padding: 0 6px;
+  }
+  #raman-plot .rist-raman-stack-gap,
+  #raman-plot .rist-peak-sensitivity-slider {
+    width: 46px;
   }
 }
 </style>
@@ -1122,9 +1204,9 @@ _UPLOAD_SCRIPT = """
   }
 
   function applyResponsiveLayout() {
-    var mobile = window.innerWidth <= 760;
+    var mobile = window.innerWidth <= 980;
     return window.Plotly.relayout(gd, mobile ? {
-      "margin.t": 132,
+      "margin.t": 170,
       "margin.r": 30,
       "margin.b": 135,
       "legend.orientation": "h",

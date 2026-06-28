@@ -36,6 +36,12 @@ def test_raman_workspace_contains_upload_controls() -> None:
     assert "rist-raman-stack-control" in page
     assert "ristRamanStack" in page
     assert "Y 이동" in page
+    assert "max-width: calc(100% - 16px)" in page
+    assert "-webkit-overflow-scrolling: touch" in page
+    assert "@media (max-width: 980px)" in page
+    assert "@media (max-width: 420px)" in page
+    assert "var mobile = window.innerWidth <= 980" in page
+    assert '"margin.t": 170' in page
     assert "rist-legend-edit-button" in page
     assert "rist-shape-editor-panel" in page
     assert "SNAP_PX = 24" in page
