@@ -61,8 +61,8 @@ def test_raman_workspace_contains_upload_controls() -> None:
     assert "var compact = window.innerWidth <= 760" in page
     assert '"margin.t": 170' in page
     assert '"margin.t": 120' in page
-    assert "height: calc(100vh - 248px + 65px) !important" in page
-    assert "min-height: 605px" in page
+    assert "height: calc(100vh - 248px + 180px) !important" in page
+    assert "min-height: 720px" in page
     assert "rist-legend-edit-button" in page
     assert "rist-shape-editor-panel" in page
     assert "SNAP_PX = 24" in page

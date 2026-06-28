@@ -4396,7 +4396,7 @@ def _responsive_legend_js(div_id: str, wide_legend_inside: bool = True,
   var originalHeightStyle = gd ? gd.style.height : "";
   var originalMinHeightStyle = gd ? gd.style.minHeight : "";
   var baseHeightPx = null;
-  var legendReservePx = 50;
+  var legendReservePx = 120;
 
   function setMobileLegendReserve(enabled) {{
     if (!gd) return;
@@ -4463,6 +4463,10 @@ def _legend_drag_handle_js(div_id: str) -> str:
   border-color: #60a5fa;
   color: #1d4ed8;
 }}
+#{div_id} .legend {{
+  touch-action: none;
+  overscroll-behavior: contain;
+}}
 </style>
 <script>
 (function() {{
@@ -4507,6 +4511,20 @@ def _legend_drag_handle_js(div_id: str) -> str:
     var rect = target.getBoundingClientRect();
     if (rect.width < 8 || rect.height < 8) return null;
     return rect;
+  }}
+
+  function isLegendEvent(ev) {{
+    return !!(
+      ev.target
+      && ev.target.closest
+      && ev.target.closest(".legend")
+      && !ev.target.closest(".rist-legend-drag-handle")
+    );
+  }}
+
+  function containLegendScroll(ev) {{
+    if (!isLegendEvent(ev)) return;
+    ev.preventDefault();
   }}
 
   function scheduleHandlePosition() {{
@@ -4591,6 +4609,8 @@ def _legend_drag_handle_js(div_id: str) -> str:
   gd.on("plotly_restyle", scheduleHandlePosition);
   gd.addEventListener("rist-legend-visibility-change", scheduleHandlePosition);
   gd.addEventListener("rist-plot-data-replaced", scheduleHandlePosition);
+  gd.addEventListener("touchmove", containLegendScroll, {{ passive: false }});
+  gd.addEventListener("wheel", containLegendScroll, {{ passive: false }});
   window.addEventListener("resize", scheduleHandlePosition);
   scheduleHandlePosition();
 }})();

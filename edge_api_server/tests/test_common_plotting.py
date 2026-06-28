@@ -90,8 +90,13 @@ def test_shared_plotly_module_applies_legend_text(tmp_path) -> None:
     assert 'layout.orientation === "h"' not in html
     assert "z-index: 35" in html
     assert "setMobileLegendReserve(!wide)" in html
-    assert "legendReservePx = 50" in html
+    assert "legendReservePx = 120" in html
     assert "baseHeightPx + legendReservePx" in html
+    assert "touch-action: none" in html
+    assert "overscroll-behavior: contain" in html
+    assert 'gd.addEventListener("touchmove", containLegendScroll' in html
+    assert 'gd.addEventListener("wheel", containLegendScroll' in html
+    assert "ev.preventDefault()" in html
     assert "handleLeft: handleRect.left - gdRect.left" in html
     assert "handle.style.left = Math.round(dragState.handleLeft + dx)" in html
     assert "if (dragState) return" not in html

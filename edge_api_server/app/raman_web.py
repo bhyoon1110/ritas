@@ -682,8 +682,8 @@ body { overflow-x: hidden; }
     inset: 248px 0 0;
   }
   #raman-plot {
-    min-height: 605px;
-    height: calc(100vh - 248px + 65px) !important;
+    min-height: 720px;
+    height: calc(100vh - 248px + 180px) !important;
   }
 }
 @media (max-width: 1440px) {
