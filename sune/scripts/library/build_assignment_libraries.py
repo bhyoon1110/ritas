@@ -25,6 +25,27 @@ MIN_PROMINENCE = 0.08
 MIN_HEIGHT = 0.10
 TOLERANCE_CM = 10.0
 
+MARKER_PALETTE = [
+    "#2563eb",
+    "#dc2626",
+    "#16a34a",
+    "#9333ea",
+    "#ea580c",
+    "#0891b2",
+    "#c026d3",
+    "#65a30d",
+    "#d97706",
+    "#4f46e5",
+    "#0d9488",
+    "#be123c",
+    "#7c2d12",
+    "#0369a1",
+    "#15803d",
+    "#a21caf",
+    "#b45309",
+    "#4338ca",
+]
+
 CATEGORY_META = {
     "01_battery/01_electrolyte_solvents": {
         "id": "battery-electrolyte-peaks",
@@ -97,6 +118,13 @@ CATEGORY_META = {
 
 def safe_text(value: Any) -> str:
     return re.sub(r"\s+", " ", str(value or "").strip())
+
+
+def stable_color(value: str, offset: int = 0) -> str:
+    total = 0
+    for index, char in enumerate(value.casefold(), start=1):
+        total = (total + index * ord(char)) % 104729
+    return MARKER_PALETTE[(total + offset) % len(MARKER_PALETTE)]
 
 
 def load_manifest() -> dict[str, dict[str, str]]:
@@ -209,12 +237,13 @@ def build_libraries() -> dict[str, int]:
             skipped += 1
             continue
         meta = CATEGORY_META[group_key]
+        marker_color = stable_color(material, list(CATEGORY_META).index(group_key))
         for wn in peaks:
             grouped[group_key].append({
                 "centerWavenumber": wn,
                 "tolerance": TOLERANCE_CM,
                 "name": f"{material} marker @ {wn:g} cm-1",
-                "color": meta["color"],
+                "color": marker_color,
                 "note": f"Auto-derived from {relative}" + (f" ({source})" if source else ""),
             })
 

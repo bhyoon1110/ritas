@@ -22,6 +22,7 @@ SAMPLE_PALETTE = [
     "#2563eb", "#dc2626", "#16a34a", "#ea580c", "#7c3aed",
     "#0891b2", "#be123c", "#4d7c0f", "#9333ea", "#0f766e",
 ]
+DEFAULT_ASSIGNMENT_LIBRARY_ID = "general-ftir"
 
 
 def _transmittance_percent(absorbance):
@@ -61,6 +62,13 @@ def _peak_display_name(names):
     return "<br>".join(names)
 
 
+def _peak_assignment_color(assignments):
+    for item in assignments:
+        if item.get("library_id") != DEFAULT_ASSIGNMENT_LIBRARY_ID:
+            return item["color"]
+    return assignments[0]["color"]
+
+
 def _peak_assignment(wn, func_groups):
     assignments = assign_group_candidates(wn, func_groups)
     if not assignments:
@@ -82,7 +90,7 @@ def _peak_assignment(wn, func_groups):
     return {
         "unknown": False,
         "display_name": _peak_display_name(unique_names),
-        "color": assignments[0]["color"],
+        "color": _peak_assignment_color(assignments),
         "note": "<br>".join(notes),
         "assignments": assignments,
     }

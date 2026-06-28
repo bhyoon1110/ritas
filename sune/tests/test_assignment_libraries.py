@@ -12,6 +12,7 @@ from ftir.assignment_libraries import (
     parse_assignment_library,
 )
 from ftir.findings import assign_group_candidates
+from ftir.plotting import _peak_assignment
 
 
 DEFAULT_CSV = Path(__file__).resolve().parents[1] / "ftir" / "resources" / "func_groups.csv"
@@ -130,6 +131,29 @@ def test_selected_libraries_keep_one_assignment_candidate_per_library() -> None:
         ("material-a", "Carbonyl A"),
         ("material-b", "Carbonyl B"),
     ]
+
+
+def test_bundled_generated_libraries_use_multiple_marker_colors() -> None:
+    for path in sorted(BUNDLED_DIR.glob("*.json")):
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        colors = {
+            assignment["color"]
+            for assignment in payload["assignments"]
+        }
+
+        assert len(colors) > 1, path.name
+
+
+def test_peak_assignment_prefers_non_general_library_color() -> None:
+    func_groups = [
+        (1700, 25, "C=O stretch", "#64748b", "", "general-ftir", "General FTIR"),
+        (1702, 25, "Material marker", "#dc2626", "", "material-a", "Material A"),
+    ]
+
+    assignment = _peak_assignment(1701, func_groups)
+
+    assert assignment["color"] == "#dc2626"
+    assert assignment["display_name"] == "C=O stretch<br>Material marker"
 
 
 def test_library_rejects_invalid_color() -> None:

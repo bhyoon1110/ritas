@@ -6,798 +6,798 @@
       "centerWavenumber": 667.4,
       "tolerance": 10.0,
       "name": "Polybutadiene (1,2-PB) marker @ 667.4 cm-1",
-      "color": "#be123c",
+      "color": "#65a30d",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_1_2_polybutadiene_273.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 906.5,
       "tolerance": 10.0,
       "name": "Polybutadiene (1,2-PB) marker @ 906.5 cm-1",
-      "color": "#be123c",
+      "color": "#65a30d",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_1_2_polybutadiene_273.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 991.4,
       "tolerance": 10.0,
       "name": "Polybutadiene (1,2-PB) marker @ 991.4 cm-1",
-      "color": "#be123c",
+      "color": "#65a30d",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_1_2_polybutadiene_273.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 1417.7,
       "tolerance": 10.0,
       "name": "Polybutadiene (1,2-PB) marker @ 1417.7 cm-1",
-      "color": "#be123c",
+      "color": "#65a30d",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_1_2_polybutadiene_273.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 2914.4,
       "tolerance": 10.0,
       "name": "Polybutadiene (1,2-PB) marker @ 2914.4 cm-1",
-      "color": "#be123c",
+      "color": "#65a30d",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_1_2_polybutadiene_273.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 1149.4,
       "tolerance": 10.0,
       "name": "PTFE (Teflon) marker @ 1149.4 cm-1",
-      "color": "#be123c",
+      "color": "#2563eb",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_Teflon_PTFE_627.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 1203.4,
       "tolerance": 10.0,
       "name": "PTFE (Teflon) marker @ 1203.4 cm-1",
-      "color": "#be123c",
+      "color": "#2563eb",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_Teflon_PTFE_627.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 1149.4,
       "tolerance": 10.0,
       "name": "PTFE (Teflon) marker @ 1149.4 cm-1",
-      "color": "#be123c",
+      "color": "#2563eb",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_Teflon_PTFE_634.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 1203.4,
       "tolerance": 10.0,
       "name": "PTFE (Teflon) marker @ 1203.4 cm-1",
-      "color": "#be123c",
+      "color": "#2563eb",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_Teflon_PTFE_634.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 970.2,
       "tolerance": 10.0,
       "name": "Nitrile Rubber (NBR) marker @ 970.2 cm-1",
-      "color": "#be123c",
+      "color": "#65a30d",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_acrylonitrile_butadiene_277.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 1440.8,
       "tolerance": 10.0,
       "name": "Nitrile Rubber (NBR) marker @ 1440.8 cm-1",
-      "color": "#be123c",
+      "color": "#65a30d",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_acrylonitrile_butadiene_277.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 2237.4,
       "tolerance": 10.0,
       "name": "Nitrile Rubber (NBR) marker @ 2237.4 cm-1",
-      "color": "#be123c",
+      "color": "#65a30d",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_acrylonitrile_butadiene_277.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 2926.0,
       "tolerance": 10.0,
       "name": "Nitrile Rubber (NBR) marker @ 2926 cm-1",
-      "color": "#be123c",
+      "color": "#65a30d",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_acrylonitrile_butadiene_277.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 829.4,
       "tolerance": 10.0,
       "name": "Nitrile Rubber (NBR) marker @ 829.4 cm-1",
-      "color": "#be123c",
+      "color": "#65a30d",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_acrylonitrile_butadiene_styrene_274.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 1161.1,
       "tolerance": 10.0,
       "name": "Nitrile Rubber (NBR) marker @ 1161.1 cm-1",
-      "color": "#be123c",
+      "color": "#65a30d",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_acrylonitrile_butadiene_styrene_274.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 1246.0,
       "tolerance": 10.0,
       "name": "Nitrile Rubber (NBR) marker @ 1246 cm-1",
-      "color": "#be123c",
+      "color": "#65a30d",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_acrylonitrile_butadiene_styrene_274.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 1510.3,
       "tolerance": 10.0,
       "name": "Nitrile Rubber (NBR) marker @ 1510.3 cm-1",
-      "color": "#be123c",
+      "color": "#65a30d",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_acrylonitrile_butadiene_styrene_274.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 1724.4,
       "tolerance": 10.0,
       "name": "Nitrile Rubber (NBR) marker @ 1724.4 cm-1",
-      "color": "#be123c",
+      "color": "#65a30d",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_acrylonitrile_butadiene_styrene_274.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 698.2,
       "tolerance": 10.0,
       "name": "Nitrile Rubber (NBR) marker @ 698.2 cm-1",
-      "color": "#be123c",
+      "color": "#65a30d",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_acrylonitrile_butadiene_styrene_275.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 798.5,
       "tolerance": 10.0,
       "name": "Nitrile Rubber (NBR) marker @ 798.5 cm-1",
-      "color": "#be123c",
+      "color": "#65a30d",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_acrylonitrile_butadiene_styrene_275.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 1076.3,
       "tolerance": 10.0,
       "name": "Nitrile Rubber (NBR) marker @ 1076.3 cm-1",
-      "color": "#be123c",
+      "color": "#65a30d",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_acrylonitrile_butadiene_styrene_275.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 1732.1,
       "tolerance": 10.0,
       "name": "Nitrile Rubber (NBR) marker @ 1732.1 cm-1",
-      "color": "#be123c",
+      "color": "#65a30d",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_acrylonitrile_butadiene_styrene_275.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 2922.1,
       "tolerance": 10.0,
       "name": "Nitrile Rubber (NBR) marker @ 2922.1 cm-1",
-      "color": "#be123c",
+      "color": "#65a30d",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_acrylonitrile_butadiene_styrene_275.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 721.4,
       "tolerance": 10.0,
       "name": "EPDM Rubber marker @ 721.4 cm-1",
-      "color": "#be123c",
+      "color": "#16a34a",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_ethylene_propylene_342.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 1377.2,
       "tolerance": 10.0,
       "name": "EPDM Rubber marker @ 1377.2 cm-1",
-      "color": "#be123c",
+      "color": "#16a34a",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_ethylene_propylene_342.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 1465.9,
       "tolerance": 10.0,
       "name": "EPDM Rubber marker @ 1465.9 cm-1",
-      "color": "#be123c",
+      "color": "#16a34a",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_ethylene_propylene_342.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 2848.8,
       "tolerance": 10.0,
       "name": "EPDM Rubber marker @ 2848.8 cm-1",
-      "color": "#be123c",
+      "color": "#16a34a",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_ethylene_propylene_342.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 2918.3,
       "tolerance": 10.0,
       "name": "EPDM Rubber marker @ 2918.3 cm-1",
-      "color": "#be123c",
+      "color": "#16a34a",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_ethylene_propylene_342.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 761.9,
       "tolerance": 10.0,
       "name": "PVDF Fiber marker @ 761.9 cm-1",
-      "color": "#be123c",
+      "color": "#ea580c",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_fibre_polyvinylidene_fluoride_507.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 869.9,
       "tolerance": 10.0,
       "name": "PVDF Fiber marker @ 869.9 cm-1",
-      "color": "#be123c",
+      "color": "#ea580c",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_fibre_polyvinylidene_fluoride_507.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 1066.6,
       "tolerance": 10.0,
       "name": "PVDF Fiber marker @ 1066.6 cm-1",
-      "color": "#be123c",
+      "color": "#ea580c",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_fibre_polyvinylidene_fluoride_507.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 1178.5,
       "tolerance": 10.0,
       "name": "PVDF Fiber marker @ 1178.5 cm-1",
-      "color": "#be123c",
+      "color": "#ea580c",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_fibre_polyvinylidene_fluoride_507.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 1400.3,
       "tolerance": 10.0,
       "name": "PVDF Fiber marker @ 1400.3 cm-1",
-      "color": "#be123c",
+      "color": "#ea580c",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_fibre_polyvinylidene_fluoride_507.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 719.4,
       "tolerance": 10.0,
       "name": "Thermoplastic Elastomer marker @ 719.4 cm-1",
-      "color": "#be123c",
+      "color": "#4338ca",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_fibre_thermoplastic_elastomere_564.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 1467.8,
       "tolerance": 10.0,
       "name": "Thermoplastic Elastomer marker @ 1467.8 cm-1",
-      "color": "#be123c",
+      "color": "#4338ca",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_fibre_thermoplastic_elastomere_564.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 2848.8,
       "tolerance": 10.0,
       "name": "Thermoplastic Elastomer marker @ 2848.8 cm-1",
-      "color": "#be123c",
+      "color": "#4338ca",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_fibre_thermoplastic_elastomere_564.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 2916.4,
       "tolerance": 10.0,
       "name": "Thermoplastic Elastomer marker @ 2916.4 cm-1",
-      "color": "#be123c",
+      "color": "#4338ca",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_fibre_thermoplastic_elastomere_564.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 877.6,
       "tolerance": 10.0,
       "name": "Nitrile Rubber (NBR) marker @ 877.6 cm-1",
-      "color": "#be123c",
+      "color": "#65a30d",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_nitrile_rubber_413.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 966.3,
       "tolerance": 10.0,
       "name": "Nitrile Rubber (NBR) marker @ 966.3 cm-1",
-      "color": "#be123c",
+      "color": "#65a30d",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_nitrile_rubber_413.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 1435.0,
       "tolerance": 10.0,
       "name": "Nitrile Rubber (NBR) marker @ 1435 cm-1",
-      "color": "#be123c",
+      "color": "#65a30d",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_nitrile_rubber_413.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 2237.4,
       "tolerance": 10.0,
       "name": "Nitrile Rubber (NBR) marker @ 2237.4 cm-1",
-      "color": "#be123c",
+      "color": "#65a30d",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_nitrile_rubber_413.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 2924.1,
       "tolerance": 10.0,
       "name": "Nitrile Rubber (NBR) marker @ 2924.1 cm-1",
-      "color": "#be123c",
+      "color": "#65a30d",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_nitrile_rubber_413.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 916.1,
       "tolerance": 10.0,
       "name": "Nitrile Rubber (NBR) marker @ 916.1 cm-1",
-      "color": "#be123c",
+      "color": "#65a30d",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_polu_butadiene_acrylonitrile_610.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 968.1,
       "tolerance": 10.0,
       "name": "Nitrile Rubber (NBR) marker @ 968.1 cm-1",
-      "color": "#be123c",
+      "color": "#65a30d",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_polu_butadiene_acrylonitrile_610.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 1446.4,
       "tolerance": 10.0,
       "name": "Nitrile Rubber (NBR) marker @ 1446.4 cm-1",
-      "color": "#be123c",
+      "color": "#65a30d",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_polu_butadiene_acrylonitrile_610.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 1604.6,
       "tolerance": 10.0,
       "name": "Nitrile Rubber (NBR) marker @ 1604.6 cm-1",
-      "color": "#be123c",
+      "color": "#65a30d",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_polu_butadiene_acrylonitrile_610.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 2919.8,
       "tolerance": 10.0,
       "name": "Nitrile Rubber (NBR) marker @ 2919.8 cm-1",
-      "color": "#be123c",
+      "color": "#65a30d",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_polu_butadiene_acrylonitrile_610.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 667.4,
       "tolerance": 10.0,
       "name": "Polychloroprene (Neoprene) marker @ 667.4 cm-1",
-      "color": "#be123c",
+      "color": "#0d9488",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_polychloroprene_480.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 1004.9,
       "tolerance": 10.0,
       "name": "Polychloroprene (Neoprene) marker @ 1004.9 cm-1",
-      "color": "#be123c",
+      "color": "#0d9488",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_polychloroprene_480.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 732.9,
       "tolerance": 10.0,
       "name": "Chlorinated Polyisoprene marker @ 732.9 cm-1",
-      "color": "#be123c",
+      "color": "#4f46e5",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_polyisoprene_chlorinated_493.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 785.0,
       "tolerance": 10.0,
       "name": "Chlorinated Polyisoprene marker @ 785 cm-1",
-      "color": "#be123c",
+      "color": "#4f46e5",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_polyisoprene_chlorinated_493.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 933.5,
       "tolerance": 10.0,
       "name": "Chlorinated Polyisoprene marker @ 933.5 cm-1",
-      "color": "#be123c",
+      "color": "#4f46e5",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_polyisoprene_chlorinated_493.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 1273.0,
       "tolerance": 10.0,
       "name": "Chlorinated Polyisoprene marker @ 1273 cm-1",
-      "color": "#be123c",
+      "color": "#4f46e5",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_polyisoprene_chlorinated_493.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 1427.3,
       "tolerance": 10.0,
       "name": "Chlorinated Polyisoprene marker @ 1427.3 cm-1",
-      "color": "#be123c",
+      "color": "#4f46e5",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_polyisoprene_chlorinated_493.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 1147.6,
       "tolerance": 10.0,
       "name": "PTFE (Teflon) marker @ 1147.6 cm-1",
-      "color": "#be123c",
+      "color": "#2563eb",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_polytetrafluoroethylene_500.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 1203.6,
       "tolerance": 10.0,
       "name": "PTFE (Teflon) marker @ 1203.6 cm-1",
-      "color": "#be123c",
+      "color": "#2563eb",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_polytetrafluoroethylene_500.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 1064.7,
       "tolerance": 10.0,
       "name": "Polyurethane Rubber marker @ 1064.7 cm-1",
-      "color": "#be123c",
+      "color": "#4338ca",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_polyurethane_501.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 1161.1,
       "tolerance": 10.0,
       "name": "Polyurethane Rubber marker @ 1161.1 cm-1",
-      "color": "#be123c",
+      "color": "#4338ca",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_polyurethane_501.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 1255.7,
       "tolerance": 10.0,
       "name": "Polyurethane Rubber marker @ 1255.7 cm-1",
-      "color": "#be123c",
+      "color": "#4338ca",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_polyurethane_501.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 1367.5,
       "tolerance": 10.0,
       "name": "Polyurethane Rubber marker @ 1367.5 cm-1",
-      "color": "#be123c",
+      "color": "#4338ca",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_polyurethane_501.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 1724.4,
       "tolerance": 10.0,
       "name": "Polyurethane Rubber marker @ 1724.4 cm-1",
-      "color": "#be123c",
+      "color": "#4338ca",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_polyurethane_501.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 958.6,
       "tolerance": 10.0,
       "name": "Polyurethane Rubber marker @ 958.6 cm-1",
-      "color": "#be123c",
+      "color": "#4338ca",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_polyurethane_502.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 1163.1,
       "tolerance": 10.0,
       "name": "Polyurethane Rubber marker @ 1163.1 cm-1",
-      "color": "#be123c",
+      "color": "#4338ca",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_polyurethane_502.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 1257.6,
       "tolerance": 10.0,
       "name": "Polyurethane Rubber marker @ 1257.6 cm-1",
-      "color": "#be123c",
+      "color": "#4338ca",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_polyurethane_502.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 1369.5,
       "tolerance": 10.0,
       "name": "Polyurethane Rubber marker @ 1369.5 cm-1",
-      "color": "#be123c",
+      "color": "#4338ca",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_polyurethane_502.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 1724.4,
       "tolerance": 10.0,
       "name": "Polyurethane Rubber marker @ 1724.4 cm-1",
-      "color": "#be123c",
+      "color": "#4338ca",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_polyurethane_502.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 1074.3,
       "tolerance": 10.0,
       "name": "Polyurethane Rubber marker @ 1074.3 cm-1",
-      "color": "#be123c",
+      "color": "#4338ca",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_polyurethane_503.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 1165.0,
       "tolerance": 10.0,
       "name": "Polyurethane Rubber marker @ 1165 cm-1",
-      "color": "#be123c",
+      "color": "#4338ca",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_polyurethane_503.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 1531.5,
       "tolerance": 10.0,
       "name": "Polyurethane Rubber marker @ 1531.5 cm-1",
-      "color": "#be123c",
+      "color": "#4338ca",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_polyurethane_503.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 1726.3,
       "tolerance": 10.0,
       "name": "Polyurethane Rubber marker @ 1726.3 cm-1",
-      "color": "#be123c",
+      "color": "#4338ca",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_polyurethane_503.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 2939.5,
       "tolerance": 10.0,
       "name": "Polyurethane Rubber marker @ 2939.5 cm-1",
-      "color": "#be123c",
+      "color": "#4338ca",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_polyurethane_503.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 1074.3,
       "tolerance": 10.0,
       "name": "Polyurethane Rubber marker @ 1074.3 cm-1",
-      "color": "#be123c",
+      "color": "#4338ca",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_polyurethane_504.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 1165.0,
       "tolerance": 10.0,
       "name": "Polyurethane Rubber marker @ 1165 cm-1",
-      "color": "#be123c",
+      "color": "#4338ca",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_polyurethane_504.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 1531.5,
       "tolerance": 10.0,
       "name": "Polyurethane Rubber marker @ 1531.5 cm-1",
-      "color": "#be123c",
+      "color": "#4338ca",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_polyurethane_504.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 1726.3,
       "tolerance": 10.0,
       "name": "Polyurethane Rubber marker @ 1726.3 cm-1",
-      "color": "#be123c",
+      "color": "#4338ca",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_polyurethane_504.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 2939.5,
       "tolerance": 10.0,
       "name": "Polyurethane Rubber marker @ 2939.5 cm-1",
-      "color": "#be123c",
+      "color": "#4338ca",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_polyurethane_504.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 979.8,
       "tolerance": 10.0,
       "name": "Polyurethane Rubber marker @ 979.8 cm-1",
-      "color": "#be123c",
+      "color": "#4338ca",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_polyurethane_525.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 1043.5,
       "tolerance": 10.0,
       "name": "Polyurethane Rubber marker @ 1043.5 cm-1",
-      "color": "#be123c",
+      "color": "#4338ca",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_polyurethane_525.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 1253.7,
       "tolerance": 10.0,
       "name": "Polyurethane Rubber marker @ 1253.7 cm-1",
-      "color": "#be123c",
+      "color": "#4338ca",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_polyurethane_525.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 1722.4,
       "tolerance": 10.0,
       "name": "Polyurethane Rubber marker @ 1722.4 cm-1",
-      "color": "#be123c",
+      "color": "#4338ca",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_polyurethane_525.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 2927.9,
       "tolerance": 10.0,
       "name": "Polyurethane Rubber marker @ 2927.9 cm-1",
-      "color": "#be123c",
+      "color": "#4338ca",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_polyurethane_525.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 1066.6,
       "tolerance": 10.0,
       "name": "Polyurethane Rubber marker @ 1066.6 cm-1",
-      "color": "#be123c",
+      "color": "#4338ca",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_polyurethane_546.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 1219.0,
       "tolerance": 10.0,
       "name": "Polyurethane Rubber marker @ 1219 cm-1",
-      "color": "#be123c",
+      "color": "#4338ca",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_polyurethane_546.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 1413.8,
       "tolerance": 10.0,
       "name": "Polyurethane Rubber marker @ 1413.8 cm-1",
-      "color": "#be123c",
+      "color": "#4338ca",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_polyurethane_546.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 1529.5,
       "tolerance": 10.0,
       "name": "Polyurethane Rubber marker @ 1529.5 cm-1",
-      "color": "#be123c",
+      "color": "#4338ca",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_polyurethane_546.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 1726.3,
       "tolerance": 10.0,
       "name": "Polyurethane Rubber marker @ 1726.3 cm-1",
-      "color": "#be123c",
+      "color": "#4338ca",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_polyurethane_546.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 1066.6,
       "tolerance": 10.0,
       "name": "Polyurethane Rubber marker @ 1066.6 cm-1",
-      "color": "#be123c",
+      "color": "#4338ca",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_polyurethane_547.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 1219.0,
       "tolerance": 10.0,
       "name": "Polyurethane Rubber marker @ 1219 cm-1",
-      "color": "#be123c",
+      "color": "#4338ca",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_polyurethane_547.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 1413.8,
       "tolerance": 10.0,
       "name": "Polyurethane Rubber marker @ 1413.8 cm-1",
-      "color": "#be123c",
+      "color": "#4338ca",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_polyurethane_547.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 1529.5,
       "tolerance": 10.0,
       "name": "Polyurethane Rubber marker @ 1529.5 cm-1",
-      "color": "#be123c",
+      "color": "#4338ca",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_polyurethane_547.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 1726.3,
       "tolerance": 10.0,
       "name": "Polyurethane Rubber marker @ 1726.3 cm-1",
-      "color": "#be123c",
+      "color": "#4338ca",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_polyurethane_547.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 1068.6,
       "tolerance": 10.0,
       "name": "Polyurethane Rubber marker @ 1068.6 cm-1",
-      "color": "#be123c",
+      "color": "#4338ca",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_polyurethane_548.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 1219.0,
       "tolerance": 10.0,
       "name": "Polyurethane Rubber marker @ 1219 cm-1",
-      "color": "#be123c",
+      "color": "#4338ca",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_polyurethane_548.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 1531.5,
       "tolerance": 10.0,
       "name": "Polyurethane Rubber marker @ 1531.5 cm-1",
-      "color": "#be123c",
+      "color": "#4338ca",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_polyurethane_548.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 1726.3,
       "tolerance": 10.0,
       "name": "Polyurethane Rubber marker @ 1726.3 cm-1",
-      "color": "#be123c",
+      "color": "#4338ca",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_polyurethane_548.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 2918.3,
       "tolerance": 10.0,
       "name": "Polyurethane Rubber marker @ 2918.3 cm-1",
-      "color": "#be123c",
+      "color": "#4338ca",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_polyurethane_548.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 700.2,
       "tolerance": 10.0,
       "name": "Polyurethane Rubber marker @ 700.2 cm-1",
-      "color": "#be123c",
+      "color": "#4338ca",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_polyurethane_acrylic_resin_380.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 1149.6,
       "tolerance": 10.0,
       "name": "Polyurethane Rubber marker @ 1149.6 cm-1",
-      "color": "#be123c",
+      "color": "#4338ca",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_polyurethane_acrylic_resin_380.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 1452.4,
       "tolerance": 10.0,
       "name": "Polyurethane Rubber marker @ 1452.4 cm-1",
-      "color": "#be123c",
+      "color": "#4338ca",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_polyurethane_acrylic_resin_380.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 1726.3,
       "tolerance": 10.0,
       "name": "Polyurethane Rubber marker @ 1726.3 cm-1",
-      "color": "#be123c",
+      "color": "#4338ca",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_polyurethane_acrylic_resin_380.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 2956.9,
       "tolerance": 10.0,
       "name": "Polyurethane Rubber marker @ 2956.9 cm-1",
-      "color": "#be123c",
+      "color": "#4338ca",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_polyurethane_acrylic_resin_380.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 761.9,
       "tolerance": 10.0,
       "name": "PVDF marker @ 761.9 cm-1",
-      "color": "#be123c",
+      "color": "#16a34a",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_polyvinylidene_fluoride_469.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 873.7,
       "tolerance": 10.0,
       "name": "PVDF marker @ 873.7 cm-1",
-      "color": "#be123c",
+      "color": "#16a34a",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_polyvinylidene_fluoride_469.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 1066.6,
       "tolerance": 10.0,
       "name": "PVDF marker @ 1066.6 cm-1",
-      "color": "#be123c",
+      "color": "#16a34a",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_polyvinylidene_fluoride_469.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 1180.4,
       "tolerance": 10.0,
       "name": "PVDF marker @ 1180.4 cm-1",
-      "color": "#be123c",
+      "color": "#16a34a",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_polyvinylidene_fluoride_469.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 1400.3,
       "tolerance": 10.0,
       "name": "PVDF marker @ 1400.3 cm-1",
-      "color": "#be123c",
+      "color": "#16a34a",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_polyvinylidene_fluoride_469.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 1020.3,
       "tolerance": 10.0,
       "name": "EPDM O-Ring marker @ 1020.3 cm-1",
-      "color": "#be123c",
+      "color": "#2563eb",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_sealing_ring_EPDM_324.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 1464.0,
       "tolerance": 10.0,
       "name": "EPDM O-Ring marker @ 1464 cm-1",
-      "color": "#be123c",
+      "color": "#2563eb",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_sealing_ring_EPDM_324.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 2850.8,
       "tolerance": 10.0,
       "name": "EPDM O-Ring marker @ 2850.8 cm-1",
-      "color": "#be123c",
+      "color": "#2563eb",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_sealing_ring_EPDM_324.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 2920.2,
       "tolerance": 10.0,
       "name": "EPDM O-Ring marker @ 2920.2 cm-1",
-      "color": "#be123c",
+      "color": "#2563eb",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_sealing_ring_EPDM_324.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 3676.3,
       "tolerance": 10.0,
       "name": "EPDM O-Ring marker @ 3676.3 cm-1",
-      "color": "#be123c",
+      "color": "#2563eb",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_sealing_ring_EPDM_324.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 1460.1,
       "tolerance": 10.0,
       "name": "EPDM O-Ring marker @ 1460.1 cm-1",
-      "color": "#be123c",
+      "color": "#2563eb",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_sealing_ring_EPDM_325.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 2850.8,
       "tolerance": 10.0,
       "name": "EPDM O-Ring marker @ 2850.8 cm-1",
-      "color": "#be123c",
+      "color": "#2563eb",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_sealing_ring_EPDM_325.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 2920.2,
       "tolerance": 10.0,
       "name": "EPDM O-Ring marker @ 2920.2 cm-1",
-      "color": "#be123c",
+      "color": "#2563eb",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_sealing_ring_EPDM_325.csv (Open Specy (O-Ring collection))"
     },
     {
@@ -965,182 +965,182 @@
       "centerWavenumber": 792.6,
       "tolerance": 10.0,
       "name": "Silicone (PDMS) marker @ 792.6 cm-1",
-      "color": "#be123c",
+      "color": "#7c2d12",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_silicone_PDMS_636.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 1012.5,
       "tolerance": 10.0,
       "name": "Silicone (PDMS) marker @ 1012.5 cm-1",
-      "color": "#be123c",
+      "color": "#7c2d12",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_silicone_PDMS_636.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 1259.3,
       "tolerance": 10.0,
       "name": "Silicone (PDMS) marker @ 1259.3 cm-1",
-      "color": "#be123c",
+      "color": "#7c2d12",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_silicone_PDMS_636.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 785.0,
       "tolerance": 10.0,
       "name": "Silicone Rubber marker @ 785 cm-1",
-      "color": "#be123c",
+      "color": "#4f46e5",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_silicone_rubber_336.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 1006.8,
       "tolerance": 10.0,
       "name": "Silicone Rubber marker @ 1006.8 cm-1",
-      "color": "#be123c",
+      "color": "#4f46e5",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_silicone_rubber_336.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 1257.6,
       "tolerance": 10.0,
       "name": "Silicone Rubber marker @ 1257.6 cm-1",
-      "color": "#be123c",
+      "color": "#4f46e5",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_silicone_rubber_336.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 787.0,
       "tolerance": 10.0,
       "name": "Silicone Seal marker @ 787 cm-1",
-      "color": "#be123c",
+      "color": "#0891b2",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_silicone_seal_reactor_552.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 1008.8,
       "tolerance": 10.0,
       "name": "Silicone Seal marker @ 1008.8 cm-1",
-      "color": "#be123c",
+      "color": "#0891b2",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_silicone_seal_reactor_552.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 1257.6,
       "tolerance": 10.0,
       "name": "Silicone Seal marker @ 1257.6 cm-1",
-      "color": "#be123c",
+      "color": "#0891b2",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_silicone_seal_reactor_552.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 698.2,
       "tolerance": 10.0,
       "name": "Styrene-Butadiene Rubber (SBR) marker @ 698.2 cm-1",
-      "color": "#be123c",
+      "color": "#7c2d12",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_styrene_butadiene_558.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 910.4,
       "tolerance": 10.0,
       "name": "Styrene-Butadiene Rubber (SBR) marker @ 910.4 cm-1",
-      "color": "#be123c",
+      "color": "#7c2d12",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_styrene_butadiene_558.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 964.4,
       "tolerance": 10.0,
       "name": "Styrene-Butadiene Rubber (SBR) marker @ 964.4 cm-1",
-      "color": "#be123c",
+      "color": "#7c2d12",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_styrene_butadiene_558.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 1450.5,
       "tolerance": 10.0,
       "name": "Styrene-Butadiene Rubber (SBR) marker @ 1450.5 cm-1",
-      "color": "#be123c",
+      "color": "#7c2d12",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_styrene_butadiene_558.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 2916.4,
       "tolerance": 10.0,
       "name": "Styrene-Butadiene Rubber (SBR) marker @ 2916.4 cm-1",
-      "color": "#be123c",
+      "color": "#7c2d12",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_styrene_butadiene_558.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 698.2,
       "tolerance": 10.0,
       "name": "Styrene-Isoprene Rubber marker @ 698.2 cm-1",
-      "color": "#be123c",
+      "color": "#4f46e5",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_styrene_isoprene_561.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 835.2,
       "tolerance": 10.0,
       "name": "Styrene-Isoprene Rubber marker @ 835.2 cm-1",
-      "color": "#be123c",
+      "color": "#4f46e5",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_styrene_isoprene_561.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 1375.2,
       "tolerance": 10.0,
       "name": "Styrene-Isoprene Rubber marker @ 1375.2 cm-1",
-      "color": "#be123c",
+      "color": "#4f46e5",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_styrene_isoprene_561.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 1448.5,
       "tolerance": 10.0,
       "name": "Styrene-Isoprene Rubber marker @ 1448.5 cm-1",
-      "color": "#be123c",
+      "color": "#4f46e5",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_styrene_isoprene_561.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 2922.1,
       "tolerance": 10.0,
       "name": "Styrene-Isoprene Rubber marker @ 2922.1 cm-1",
-      "color": "#be123c",
+      "color": "#4f46e5",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_styrene_isoprene_561.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 2848.8,
       "tolerance": 10.0,
       "name": "EPDM (Wiper Rubber) marker @ 2848.8 cm-1",
-      "color": "#be123c",
+      "color": "#d97706",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_windscreen_wiper_rubber_549.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 2918.3,
       "tolerance": 10.0,
       "name": "EPDM (Wiper Rubber) marker @ 2918.3 cm-1",
-      "color": "#be123c",
+      "color": "#d97706",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_oring_windscreen_wiper_rubber_549.csv (Open Specy (O-Ring collection))"
     },
     {
       "centerWavenumber": 698.2,
       "tolerance": 10.0,
       "name": "Styrene-Ethylene-Butylene-Styrene (SEBS) marker @ 698.2 cm-1",
-      "color": "#be123c",
+      "color": "#2563eb",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_styrene_ethylene_butylene_styrene_sebs.csv (openspecy)"
     },
     {
       "centerWavenumber": 756.1,
       "tolerance": 10.0,
       "name": "Styrene-Ethylene-Butylene-Styrene (SEBS) marker @ 756.1 cm-1",
-      "color": "#be123c",
+      "color": "#2563eb",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_styrene_ethylene_butylene_styrene_sebs.csv (openspecy)"
     },
     {
       "centerWavenumber": 1454.3,
       "tolerance": 10.0,
       "name": "Styrene-Ethylene-Butylene-Styrene (SEBS) marker @ 1454.3 cm-1",
-      "color": "#be123c",
+      "color": "#2563eb",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_styrene_ethylene_butylene_styrene_sebs.csv (openspecy)"
     },
     {
       "centerWavenumber": 2850.8,
       "tolerance": 10.0,
       "name": "Styrene-Ethylene-Butylene-Styrene (SEBS) marker @ 2850.8 cm-1",
-      "color": "#be123c",
+      "color": "#2563eb",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_styrene_ethylene_butylene_styrene_sebs.csv (openspecy)"
     },
     {
       "centerWavenumber": 2920.2,
       "tolerance": 10.0,
       "name": "Styrene-Ethylene-Butylene-Styrene (SEBS) marker @ 2920.2 cm-1",
-      "color": "#be123c",
+      "color": "#2563eb",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_styrene_ethylene_butylene_styrene_sebs.csv (openspecy)"
     },
     {
@@ -1182,42 +1182,42 @@
       "centerWavenumber": 719.4,
       "tolerance": 10.0,
       "name": "Thermoplastic Elastomer Fiber (TPE) marker @ 719.4 cm-1",
-      "color": "#be123c",
+      "color": "#2563eb",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_thermoplastic_elastomer_fiber_tpe.csv (openspecy)"
     },
     {
       "centerWavenumber": 1467.8,
       "tolerance": 10.0,
       "name": "Thermoplastic Elastomer Fiber (TPE) marker @ 1467.8 cm-1",
-      "color": "#be123c",
+      "color": "#2563eb",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_thermoplastic_elastomer_fiber_tpe.csv (openspecy)"
     },
     {
       "centerWavenumber": 2848.8,
       "tolerance": 10.0,
       "name": "Thermoplastic Elastomer Fiber (TPE) marker @ 2848.8 cm-1",
-      "color": "#be123c",
+      "color": "#2563eb",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_thermoplastic_elastomer_fiber_tpe.csv (openspecy)"
     },
     {
       "centerWavenumber": 2916.4,
       "tolerance": 10.0,
       "name": "Thermoplastic Elastomer Fiber (TPE) marker @ 2916.4 cm-1",
-      "color": "#be123c",
+      "color": "#2563eb",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_thermoplastic_elastomer_fiber_tpe.csv (openspecy)"
     },
     {
       "centerWavenumber": 2848.8,
       "tolerance": 10.0,
       "name": "Wiper Blade Rubber marker @ 2848.8 cm-1",
-      "color": "#be123c",
+      "color": "#b45309",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_wiper_blade_rubber.csv (openspecy)"
     },
     {
       "centerWavenumber": 2918.3,
       "tolerance": 10.0,
       "name": "Wiper Blade Rubber marker @ 2918.3 cm-1",
-      "color": "#be123c",
+      "color": "#b45309",
       "note": "Auto-derived from 04_elastomers_seals/openspecy_wiper_blade_rubber.csv (openspecy)"
     }
   ]

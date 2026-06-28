@@ -6,315 +6,315 @@
       "centerWavenumber": 601.8,
       "tolerance": 10.0,
       "name": "Acetate Fiber marker @ 601.8 cm-1",
-      "color": "#15803d",
+      "color": "#0d9488",
       "note": "Auto-derived from 06_natural_fibers/openspecy_acetate_fiber.csv (openspecy)"
     },
     {
       "centerWavenumber": 1031.9,
       "tolerance": 10.0,
       "name": "Acetate Fiber marker @ 1031.9 cm-1",
-      "color": "#15803d",
+      "color": "#0d9488",
       "note": "Auto-derived from 06_natural_fibers/openspecy_acetate_fiber.csv (openspecy)"
     },
     {
       "centerWavenumber": 1217.1,
       "tolerance": 10.0,
       "name": "Acetate Fiber marker @ 1217.1 cm-1",
-      "color": "#15803d",
+      "color": "#0d9488",
       "note": "Auto-derived from 06_natural_fibers/openspecy_acetate_fiber.csv (openspecy)"
     },
     {
       "centerWavenumber": 1367.5,
       "tolerance": 10.0,
       "name": "Acetate Fiber marker @ 1367.5 cm-1",
-      "color": "#15803d",
+      "color": "#0d9488",
       "note": "Auto-derived from 06_natural_fibers/openspecy_acetate_fiber.csv (openspecy)"
     },
     {
       "centerWavenumber": 1735.9,
       "tolerance": 10.0,
       "name": "Acetate Fiber marker @ 1735.9 cm-1",
-      "color": "#15803d",
+      "color": "#0d9488",
       "note": "Auto-derived from 06_natural_fibers/openspecy_acetate_fiber.csv (openspecy)"
     },
     {
       "centerWavenumber": 557.4,
       "tolerance": 10.0,
       "name": "Cotton Fiber marker @ 557.4 cm-1",
-      "color": "#15803d",
+      "color": "#d97706",
       "note": "Auto-derived from 06_natural_fibers/openspecy_cotton_fiber.csv (openspecy)"
     },
     {
       "centerWavenumber": 1030.0,
       "tolerance": 10.0,
       "name": "Cotton Fiber marker @ 1030 cm-1",
-      "color": "#15803d",
+      "color": "#d97706",
       "note": "Auto-derived from 06_natural_fibers/openspecy_cotton_fiber.csv (openspecy)"
     },
     {
       "centerWavenumber": 1107.1,
       "tolerance": 10.0,
       "name": "Cotton Fiber marker @ 1107.1 cm-1",
-      "color": "#15803d",
+      "color": "#d97706",
       "note": "Auto-derived from 06_natural_fibers/openspecy_cotton_fiber.csv (openspecy)"
     },
     {
       "centerWavenumber": 1315.4,
       "tolerance": 10.0,
       "name": "Cotton Fiber marker @ 1315.4 cm-1",
-      "color": "#15803d",
+      "color": "#d97706",
       "note": "Auto-derived from 06_natural_fibers/openspecy_cotton_fiber.csv (openspecy)"
     },
     {
       "centerWavenumber": 3333.0,
       "tolerance": 10.0,
       "name": "Cotton Fiber marker @ 3333 cm-1",
-      "color": "#15803d",
+      "color": "#d97706",
       "note": "Auto-derived from 06_natural_fibers/openspecy_cotton_fiber.csv (openspecy)"
     },
     {
       "centerWavenumber": 1375.2,
       "tolerance": 10.0,
       "name": "Dyed Polypropylene Fiber marker @ 1375.2 cm-1",
-      "color": "#15803d",
+      "color": "#4f46e5",
       "note": "Auto-derived from 06_natural_fibers/openspecy_dyed_polypropylene_fiber.csv (openspecy)"
     },
     {
       "centerWavenumber": 1454.3,
       "tolerance": 10.0,
       "name": "Dyed Polypropylene Fiber marker @ 1454.3 cm-1",
-      "color": "#15803d",
+      "color": "#4f46e5",
       "note": "Auto-derived from 06_natural_fibers/openspecy_dyed_polypropylene_fiber.csv (openspecy)"
     },
     {
       "centerWavenumber": 2837.3,
       "tolerance": 10.0,
       "name": "Dyed Polypropylene Fiber marker @ 2837.3 cm-1",
-      "color": "#15803d",
+      "color": "#4f46e5",
       "note": "Auto-derived from 06_natural_fibers/openspecy_dyed_polypropylene_fiber.csv (openspecy)"
     },
     {
       "centerWavenumber": 2918.3,
       "tolerance": 10.0,
       "name": "Dyed Polypropylene Fiber marker @ 2918.3 cm-1",
-      "color": "#15803d",
+      "color": "#4f46e5",
       "note": "Auto-derived from 06_natural_fibers/openspecy_dyed_polypropylene_fiber.csv (openspecy)"
     },
     {
       "centerWavenumber": 2951.1,
       "tolerance": 10.0,
       "name": "Dyed Polypropylene Fiber marker @ 2951.1 cm-1",
-      "color": "#15803d",
+      "color": "#4f46e5",
       "note": "Auto-derived from 06_natural_fibers/openspecy_dyed_polypropylene_fiber.csv (openspecy)"
     },
     {
       "centerWavenumber": 557.4,
       "tolerance": 10.0,
       "name": "Flax Fiber marker @ 557.4 cm-1",
-      "color": "#15803d",
+      "color": "#9333ea",
       "note": "Auto-derived from 06_natural_fibers/openspecy_flax_fiber.csv (openspecy)"
     },
     {
       "centerWavenumber": 1028.1,
       "tolerance": 10.0,
       "name": "Flax Fiber marker @ 1028.1 cm-1",
-      "color": "#15803d",
+      "color": "#9333ea",
       "note": "Auto-derived from 06_natural_fibers/openspecy_flax_fiber.csv (openspecy)"
     },
     {
       "centerWavenumber": 1315.4,
       "tolerance": 10.0,
       "name": "Flax Fiber marker @ 1315.4 cm-1",
-      "color": "#15803d",
+      "color": "#9333ea",
       "note": "Auto-derived from 06_natural_fibers/openspecy_flax_fiber.csv (openspecy)"
     },
     {
       "centerWavenumber": 2918.3,
       "tolerance": 10.0,
       "name": "Flax Fiber marker @ 2918.3 cm-1",
-      "color": "#15803d",
+      "color": "#9333ea",
       "note": "Auto-derived from 06_natural_fibers/openspecy_flax_fiber.csv (openspecy)"
     },
     {
       "centerWavenumber": 3334.9,
       "tolerance": 10.0,
       "name": "Flax Fiber marker @ 3334.9 cm-1",
-      "color": "#15803d",
+      "color": "#9333ea",
       "note": "Auto-derived from 06_natural_fibers/openspecy_flax_fiber.csv (openspecy)"
     },
     {
       "centerWavenumber": 557.4,
       "tolerance": 10.0,
       "name": "Hemp Fiber marker @ 557.4 cm-1",
-      "color": "#15803d",
+      "color": "#0369a1",
       "note": "Auto-derived from 06_natural_fibers/openspecy_hemp_fiber.csv (openspecy)"
     },
     {
       "centerWavenumber": 1028.1,
       "tolerance": 10.0,
       "name": "Hemp Fiber marker @ 1028.1 cm-1",
-      "color": "#15803d",
+      "color": "#0369a1",
       "note": "Auto-derived from 06_natural_fibers/openspecy_hemp_fiber.csv (openspecy)"
     },
     {
       "centerWavenumber": 1315.4,
       "tolerance": 10.0,
       "name": "Hemp Fiber marker @ 1315.4 cm-1",
-      "color": "#15803d",
+      "color": "#0369a1",
       "note": "Auto-derived from 06_natural_fibers/openspecy_hemp_fiber.csv (openspecy)"
     },
     {
       "centerWavenumber": 2916.4,
       "tolerance": 10.0,
       "name": "Hemp Fiber marker @ 2916.4 cm-1",
-      "color": "#15803d",
+      "color": "#0369a1",
       "note": "Auto-derived from 06_natural_fibers/openspecy_hemp_fiber.csv (openspecy)"
     },
     {
       "centerWavenumber": 3334.9,
       "tolerance": 10.0,
       "name": "Hemp Fiber marker @ 3334.9 cm-1",
-      "color": "#15803d",
+      "color": "#0369a1",
       "note": "Auto-derived from 06_natural_fibers/openspecy_hemp_fiber.csv (openspecy)"
     },
     {
       "centerWavenumber": 557.4,
       "tolerance": 10.0,
       "name": "Jute Fiber marker @ 557.4 cm-1",
-      "color": "#15803d",
+      "color": "#c026d3",
       "note": "Auto-derived from 06_natural_fibers/openspecy_jute_fiber.csv (openspecy)"
     },
     {
       "centerWavenumber": 1030.0,
       "tolerance": 10.0,
       "name": "Jute Fiber marker @ 1030 cm-1",
-      "color": "#15803d",
+      "color": "#c026d3",
       "note": "Auto-derived from 06_natural_fibers/openspecy_jute_fiber.csv (openspecy)"
     },
     {
       "centerWavenumber": 1240.2,
       "tolerance": 10.0,
       "name": "Jute Fiber marker @ 1240.2 cm-1",
-      "color": "#15803d",
+      "color": "#c026d3",
       "note": "Auto-derived from 06_natural_fibers/openspecy_jute_fiber.csv (openspecy)"
     },
     {
       "centerWavenumber": 1645.3,
       "tolerance": 10.0,
       "name": "Jute Fiber marker @ 1645.3 cm-1",
-      "color": "#15803d",
+      "color": "#c026d3",
       "note": "Auto-derived from 06_natural_fibers/openspecy_jute_fiber.csv (openspecy)"
     },
     {
       "centerWavenumber": 3336.8,
       "tolerance": 10.0,
       "name": "Jute Fiber marker @ 3336.8 cm-1",
-      "color": "#15803d",
+      "color": "#c026d3",
       "note": "Auto-derived from 06_natural_fibers/openspecy_jute_fiber.csv (openspecy)"
     },
     {
       "centerWavenumber": 557.4,
       "tolerance": 10.0,
       "name": "Linen Fiber marker @ 557.4 cm-1",
-      "color": "#15803d",
+      "color": "#c026d3",
       "note": "Auto-derived from 06_natural_fibers/openspecy_linen_fiber-1.csv (openspecy)"
     },
     {
       "centerWavenumber": 1026.1,
       "tolerance": 10.0,
       "name": "Linen Fiber marker @ 1026.1 cm-1",
-      "color": "#15803d",
+      "color": "#c026d3",
       "note": "Auto-derived from 06_natural_fibers/openspecy_linen_fiber-1.csv (openspecy)"
     },
     {
       "centerWavenumber": 1643.3,
       "tolerance": 10.0,
       "name": "Linen Fiber marker @ 1643.3 cm-1",
-      "color": "#15803d",
+      "color": "#c026d3",
       "note": "Auto-derived from 06_natural_fibers/openspecy_linen_fiber-1.csv (openspecy)"
     },
     {
       "centerWavenumber": 2918.3,
       "tolerance": 10.0,
       "name": "Linen Fiber marker @ 2918.3 cm-1",
-      "color": "#15803d",
+      "color": "#c026d3",
       "note": "Auto-derived from 06_natural_fibers/openspecy_linen_fiber-1.csv (openspecy)"
     },
     {
       "centerWavenumber": 3338.8,
       "tolerance": 10.0,
       "name": "Linen Fiber marker @ 3338.8 cm-1",
-      "color": "#15803d",
+      "color": "#c026d3",
       "note": "Auto-derived from 06_natural_fibers/openspecy_linen_fiber-1.csv (openspecy)"
     },
     {
       "centerWavenumber": 557.4,
       "tolerance": 10.0,
       "name": "Linen Fiber marker @ 557.4 cm-1",
-      "color": "#15803d",
+      "color": "#c026d3",
       "note": "Auto-derived from 06_natural_fibers/openspecy_linen_fiber-2.csv (openspecy)"
     },
     {
       "centerWavenumber": 1028.1,
       "tolerance": 10.0,
       "name": "Linen Fiber marker @ 1028.1 cm-1",
-      "color": "#15803d",
+      "color": "#c026d3",
       "note": "Auto-derived from 06_natural_fibers/openspecy_linen_fiber-2.csv (openspecy)"
     },
     {
       "centerWavenumber": 1315.4,
       "tolerance": 10.0,
       "name": "Linen Fiber marker @ 1315.4 cm-1",
-      "color": "#15803d",
+      "color": "#c026d3",
       "note": "Auto-derived from 06_natural_fibers/openspecy_linen_fiber-2.csv (openspecy)"
     },
     {
       "centerWavenumber": 2918.3,
       "tolerance": 10.0,
       "name": "Linen Fiber marker @ 2918.3 cm-1",
-      "color": "#15803d",
+      "color": "#c026d3",
       "note": "Auto-derived from 06_natural_fibers/openspecy_linen_fiber-2.csv (openspecy)"
     },
     {
       "centerWavenumber": 3336.8,
       "tolerance": 10.0,
       "name": "Linen Fiber marker @ 3336.8 cm-1",
-      "color": "#15803d",
+      "color": "#c026d3",
       "note": "Auto-derived from 06_natural_fibers/openspecy_linen_fiber-2.csv (openspecy)"
     },
     {
       "centerWavenumber": 547.8,
       "tolerance": 10.0,
       "name": "Silk Fiber marker @ 547.8 cm-1",
-      "color": "#15803d",
+      "color": "#4f46e5",
       "note": "Auto-derived from 06_natural_fibers/openspecy_silk_fiber.csv (openspecy)"
     },
     {
       "centerWavenumber": 1228.7,
       "tolerance": 10.0,
       "name": "Silk Fiber marker @ 1228.7 cm-1",
-      "color": "#15803d",
+      "color": "#4f46e5",
       "note": "Auto-derived from 06_natural_fibers/openspecy_silk_fiber.csv (openspecy)"
     },
     {
       "centerWavenumber": 1512.2,
       "tolerance": 10.0,
       "name": "Silk Fiber marker @ 1512.2 cm-1",
-      "color": "#15803d",
+      "color": "#4f46e5",
       "note": "Auto-derived from 06_natural_fibers/openspecy_silk_fiber.csv (openspecy)"
     },
     {
       "centerWavenumber": 1620.2,
       "tolerance": 10.0,
       "name": "Silk Fiber marker @ 1620.2 cm-1",
-      "color": "#15803d",
+      "color": "#4f46e5",
       "note": "Auto-derived from 06_natural_fibers/openspecy_silk_fiber.csv (openspecy)"
     },
     {
       "centerWavenumber": 3279.0,
       "tolerance": 10.0,
       "name": "Silk Fiber marker @ 3279 cm-1",
-      "color": "#15803d",
+      "color": "#4f46e5",
       "note": "Auto-derived from 06_natural_fibers/openspecy_silk_fiber.csv (openspecy)"
     },
     {
@@ -356,35 +356,35 @@
       "centerWavenumber": 524.6,
       "tolerance": 10.0,
       "name": "Wool marker @ 524.6 cm-1",
-      "color": "#15803d",
+      "color": "#2563eb",
       "note": "Auto-derived from 06_natural_fibers/openspecy_wool.csv (openspecy)"
     },
     {
       "centerWavenumber": 1236.4,
       "tolerance": 10.0,
       "name": "Wool marker @ 1236.4 cm-1",
-      "color": "#15803d",
+      "color": "#2563eb",
       "note": "Auto-derived from 06_natural_fibers/openspecy_wool.csv (openspecy)"
     },
     {
       "centerWavenumber": 1516.0,
       "tolerance": 10.0,
       "name": "Wool marker @ 1516 cm-1",
-      "color": "#15803d",
+      "color": "#2563eb",
       "note": "Auto-derived from 06_natural_fibers/openspecy_wool.csv (openspecy)"
     },
     {
       "centerWavenumber": 1631.8,
       "tolerance": 10.0,
       "name": "Wool marker @ 1631.8 cm-1",
-      "color": "#15803d",
+      "color": "#2563eb",
       "note": "Auto-derived from 06_natural_fibers/openspecy_wool.csv (openspecy)"
     },
     {
       "centerWavenumber": 3279.0,
       "tolerance": 10.0,
       "name": "Wool marker @ 3279 cm-1",
-      "color": "#15803d",
+      "color": "#2563eb",
       "note": "Auto-derived from 06_natural_fibers/openspecy_wool.csv (openspecy)"
     }
   ]

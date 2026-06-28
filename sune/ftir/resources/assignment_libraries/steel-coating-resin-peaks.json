@@ -6,2254 +6,2254 @@
       "centerWavenumber": 1099.0,
       "tolerance": 10.0,
       "name": "Polyurethane marker @ 1099 cm-1",
-      "color": "#a16207",
+      "color": "#d97706",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/figshare_PU-1.csv (figshare (thermoplastic dataset))"
     },
     {
       "centerWavenumber": 1228.0,
       "tolerance": 10.0,
       "name": "Polyurethane marker @ 1228 cm-1",
-      "color": "#a16207",
+      "color": "#d97706",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/figshare_PU-1.csv (figshare (thermoplastic dataset))"
     },
     {
       "centerWavenumber": 1528.0,
       "tolerance": 10.0,
       "name": "Polyurethane marker @ 1528 cm-1",
-      "color": "#a16207",
+      "color": "#d97706",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/figshare_PU-1.csv (figshare (thermoplastic dataset))"
     },
     {
       "centerWavenumber": 1689.0,
       "tolerance": 10.0,
       "name": "Polyurethane marker @ 1689 cm-1",
-      "color": "#a16207",
+      "color": "#d97706",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/figshare_PU-1.csv (figshare (thermoplastic dataset))"
     },
     {
       "centerWavenumber": 2918.0,
       "tolerance": 10.0,
       "name": "Polyurethane marker @ 2918 cm-1",
-      "color": "#a16207",
+      "color": "#d97706",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/figshare_PU-1.csv (figshare (thermoplastic dataset))"
     },
     {
       "centerWavenumber": 770.0,
       "tolerance": 10.0,
       "name": "Chloroform marker @ 770 cm-1",
-      "color": "#a16207",
+      "color": "#9333ea",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_Chloroform_n0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1218.0,
       "tolerance": 10.0,
       "name": "Chloroform marker @ 1218 cm-1",
-      "color": "#a16207",
+      "color": "#9333ea",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_Chloroform_n0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 768.0,
       "tolerance": 10.0,
       "name": "Chloroform marker @ 768 cm-1",
-      "color": "#a16207",
+      "color": "#9333ea",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_Chloroform_n1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1218.0,
       "tolerance": 10.0,
       "name": "Chloroform marker @ 1218 cm-1",
-      "color": "#a16207",
+      "color": "#9333ea",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_Chloroform_n1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 667.2,
       "tolerance": 10.0,
       "name": "Chloroform marker @ 667.2 cm-1",
-      "color": "#a16207",
+      "color": "#9333ea",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_Chloroform_n2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 755.8,
       "tolerance": 10.0,
       "name": "Chloroform marker @ 755.8 cm-1",
-      "color": "#a16207",
+      "color": "#9333ea",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_Chloroform_n2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1215.4,
       "tolerance": 10.0,
       "name": "Chloroform marker @ 1215.4 cm-1",
-      "color": "#a16207",
+      "color": "#9333ea",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_Chloroform_n2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 3022.6,
       "tolerance": 10.0,
       "name": "Chloroform marker @ 3022.6 cm-1",
-      "color": "#a16207",
+      "color": "#9333ea",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_Chloroform_n2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 2862.0,
       "tolerance": 10.0,
       "name": "Cyclohexane marker @ 2862 cm-1",
-      "color": "#a16207",
+      "color": "#16a34a",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_Cyclohexane_n0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 2934.0,
       "tolerance": 10.0,
       "name": "Cyclohexane marker @ 2934 cm-1",
-      "color": "#a16207",
+      "color": "#16a34a",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_Cyclohexane_n0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 857.6,
       "tolerance": 10.0,
       "name": "Cyclohexane marker @ 857.6 cm-1",
-      "color": "#a16207",
+      "color": "#16a34a",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_Cyclohexane_n1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1453.0,
       "tolerance": 10.0,
       "name": "Cyclohexane marker @ 1453 cm-1",
-      "color": "#a16207",
+      "color": "#16a34a",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_Cyclohexane_n1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 2842.4,
       "tolerance": 10.0,
       "name": "Cyclohexane marker @ 2842.4 cm-1",
-      "color": "#a16207",
+      "color": "#16a34a",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_Cyclohexane_n1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 2916.7,
       "tolerance": 10.0,
       "name": "Cyclohexane marker @ 2916.7 cm-1",
-      "color": "#a16207",
+      "color": "#16a34a",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_Cyclohexane_n1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1455.0,
       "tolerance": 10.0,
       "name": "Cyclohexane marker @ 1455 cm-1",
-      "color": "#a16207",
+      "color": "#16a34a",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_Cyclohexane_n2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 2863.0,
       "tolerance": 10.0,
       "name": "Cyclohexane marker @ 2863 cm-1",
-      "color": "#a16207",
+      "color": "#16a34a",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_Cyclohexane_n2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 2938.0,
       "tolerance": 10.0,
       "name": "Cyclohexane marker @ 2938 cm-1",
-      "color": "#a16207",
+      "color": "#16a34a",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_Cyclohexane_n2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1457.0,
       "tolerance": 10.0,
       "name": "Cyclohexane marker @ 1457 cm-1",
-      "color": "#a16207",
+      "color": "#16a34a",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_Cyclohexane_n3.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 2855.0,
       "tolerance": 10.0,
       "name": "Cyclohexane marker @ 2855 cm-1",
-      "color": "#a16207",
+      "color": "#16a34a",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_Cyclohexane_n3.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 2905.0,
       "tolerance": 10.0,
       "name": "Cyclohexane marker @ 2905 cm-1",
-      "color": "#a16207",
+      "color": "#16a34a",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_Cyclohexane_n3.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 2926.0,
       "tolerance": 10.0,
       "name": "Cyclohexane marker @ 2926 cm-1",
-      "color": "#a16207",
+      "color": "#16a34a",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_Cyclohexane_n3.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 2954.0,
       "tolerance": 10.0,
       "name": "Cyclohexane marker @ 2954 cm-1",
-      "color": "#a16207",
+      "color": "#16a34a",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_Cyclohexane_n3.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 746.0,
       "tolerance": 10.0,
       "name": "Dichloromethane (DCM) marker @ 746 cm-1",
-      "color": "#a16207",
+      "color": "#2563eb",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_DCM_n0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1258.0,
       "tolerance": 10.0,
       "name": "Dichloromethane (DCM) marker @ 1258 cm-1",
-      "color": "#a16207",
+      "color": "#2563eb",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_DCM_n0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1278.0,
       "tolerance": 10.0,
       "name": "Dichloromethane (DCM) marker @ 1278 cm-1",
-      "color": "#a16207",
+      "color": "#2563eb",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_DCM_n0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 757.0,
       "tolerance": 10.0,
       "name": "Dichloromethane (DCM) marker @ 757 cm-1",
-      "color": "#a16207",
+      "color": "#2563eb",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_DCM_n1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1275.0,
       "tolerance": 10.0,
       "name": "Dichloromethane (DCM) marker @ 1275 cm-1",
-      "color": "#a16207",
+      "color": "#2563eb",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_DCM_n1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 735.1,
       "tolerance": 10.0,
       "name": "Dichloromethane (DCM) marker @ 735.1 cm-1",
-      "color": "#a16207",
+      "color": "#2563eb",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_DCM_n2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 898.6,
       "tolerance": 10.0,
       "name": "Dichloromethane (DCM) marker @ 898.6 cm-1",
-      "color": "#a16207",
+      "color": "#2563eb",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_DCM_n2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1263.5,
       "tolerance": 10.0,
       "name": "Dichloromethane (DCM) marker @ 1263.5 cm-1",
-      "color": "#a16207",
+      "color": "#2563eb",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_DCM_n2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1423.0,
       "tolerance": 10.0,
       "name": "Dichloromethane (DCM) marker @ 1423 cm-1",
-      "color": "#a16207",
+      "color": "#2563eb",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_DCM_n2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 3052.7,
       "tolerance": 10.0,
       "name": "Dichloromethane (DCM) marker @ 3052.7 cm-1",
-      "color": "#a16207",
+      "color": "#2563eb",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_DCM_n2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1066.0,
       "tolerance": 10.0,
       "name": "Ethanol marker @ 1066 cm-1",
-      "color": "#a16207",
+      "color": "#9333ea",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_Ethanol_n0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1250.0,
       "tolerance": 10.0,
       "name": "Ethanol marker @ 1250 cm-1",
-      "color": "#a16207",
+      "color": "#9333ea",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_Ethanol_n0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1394.0,
       "tolerance": 10.0,
       "name": "Ethanol marker @ 1394 cm-1",
-      "color": "#a16207",
+      "color": "#9333ea",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_Ethanol_n0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 2978.0,
       "tolerance": 10.0,
       "name": "Ethanol marker @ 2978 cm-1",
-      "color": "#a16207",
+      "color": "#9333ea",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_Ethanol_n0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 3674.0,
       "tolerance": 10.0,
       "name": "Ethanol marker @ 3674 cm-1",
-      "color": "#a16207",
+      "color": "#9333ea",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_Ethanol_n0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1066.2,
       "tolerance": 10.0,
       "name": "Ethanol marker @ 1066.2 cm-1",
-      "color": "#a16207",
+      "color": "#9333ea",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_Ethanol_n2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1243.4,
       "tolerance": 10.0,
       "name": "Ethanol marker @ 1243.4 cm-1",
-      "color": "#a16207",
+      "color": "#9333ea",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_Ethanol_n2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1398.1,
       "tolerance": 10.0,
       "name": "Ethanol marker @ 1398.1 cm-1",
-      "color": "#a16207",
+      "color": "#9333ea",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_Ethanol_n2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 2991.9,
       "tolerance": 10.0,
       "name": "Ethanol marker @ 2991.9 cm-1",
-      "color": "#a16207",
+      "color": "#9333ea",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_Ethanol_n2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 3665.0,
       "tolerance": 10.0,
       "name": "Ethanol marker @ 3665 cm-1",
-      "color": "#a16207",
+      "color": "#9333ea",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_Ethanol_n2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 879.6,
       "tolerance": 10.0,
       "name": "Ethanol marker @ 879.6 cm-1",
-      "color": "#a16207",
+      "color": "#9333ea",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_Ethanol_n3.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1045.8,
       "tolerance": 10.0,
       "name": "Ethanol marker @ 1045.8 cm-1",
-      "color": "#a16207",
+      "color": "#9333ea",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_Ethanol_n3.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1086.8,
       "tolerance": 10.0,
       "name": "Ethanol marker @ 1086.8 cm-1",
-      "color": "#a16207",
+      "color": "#9333ea",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_Ethanol_n3.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 2974.2,
       "tolerance": 10.0,
       "name": "Ethanol marker @ 2974.2 cm-1",
-      "color": "#a16207",
+      "color": "#9333ea",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_Ethanol_n3.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 3321.5,
       "tolerance": 10.0,
       "name": "Ethanol marker @ 3321.5 cm-1",
-      "color": "#a16207",
+      "color": "#9333ea",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_Ethanol_n3.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1054.0,
       "tolerance": 10.0,
       "name": "Ethyl Acetate marker @ 1054 cm-1",
-      "color": "#a16207",
+      "color": "#a21caf",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_EthylAcetate_n0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1238.0,
       "tolerance": 10.0,
       "name": "Ethyl Acetate marker @ 1238 cm-1",
-      "color": "#a16207",
+      "color": "#a21caf",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_EthylAcetate_n0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1374.0,
       "tolerance": 10.0,
       "name": "Ethyl Acetate marker @ 1374 cm-1",
-      "color": "#a16207",
+      "color": "#a21caf",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_EthylAcetate_n0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1770.0,
       "tolerance": 10.0,
       "name": "Ethyl Acetate marker @ 1770 cm-1",
-      "color": "#a16207",
+      "color": "#a21caf",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_EthylAcetate_n0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 2994.0,
       "tolerance": 10.0,
       "name": "Ethyl Acetate marker @ 2994 cm-1",
-      "color": "#a16207",
+      "color": "#a21caf",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_EthylAcetate_n0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1058.3,
       "tolerance": 10.0,
       "name": "Ethyl Acetate marker @ 1058.3 cm-1",
-      "color": "#a16207",
+      "color": "#a21caf",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_EthylAcetate_n1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1235.3,
       "tolerance": 10.0,
       "name": "Ethyl Acetate marker @ 1235.3 cm-1",
-      "color": "#a16207",
+      "color": "#a21caf",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_EthylAcetate_n1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1380.3,
       "tolerance": 10.0,
       "name": "Ethyl Acetate marker @ 1380.3 cm-1",
-      "color": "#a16207",
+      "color": "#a21caf",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_EthylAcetate_n1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1767.9,
       "tolerance": 10.0,
       "name": "Ethyl Acetate marker @ 1767.9 cm-1",
-      "color": "#a16207",
+      "color": "#a21caf",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_EthylAcetate_n1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 3002.5,
       "tolerance": 10.0,
       "name": "Ethyl Acetate marker @ 3002.5 cm-1",
-      "color": "#a16207",
+      "color": "#a21caf",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_EthylAcetate_n1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1043.9,
       "tolerance": 10.0,
       "name": "Ethyl Acetate marker @ 1043.9 cm-1",
-      "color": "#a16207",
+      "color": "#a21caf",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_EthylAcetate_n2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1232.0,
       "tolerance": 10.0,
       "name": "Ethyl Acetate marker @ 1232 cm-1",
-      "color": "#a16207",
+      "color": "#a21caf",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_EthylAcetate_n2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1366.8,
       "tolerance": 10.0,
       "name": "Ethyl Acetate marker @ 1366.8 cm-1",
-      "color": "#a16207",
+      "color": "#a21caf",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_EthylAcetate_n2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1737.1,
       "tolerance": 10.0,
       "name": "Ethyl Acetate marker @ 1737.1 cm-1",
-      "color": "#a16207",
+      "color": "#a21caf",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_EthylAcetate_n2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 2979.8,
       "tolerance": 10.0,
       "name": "Ethyl Acetate marker @ 2979.8 cm-1",
-      "color": "#a16207",
+      "color": "#a21caf",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_EthylAcetate_n2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1462.0,
       "tolerance": 10.0,
       "name": "n-Heptane marker @ 1462 cm-1",
-      "color": "#a16207",
+      "color": "#2563eb",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_Heptane_n0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 2878.0,
       "tolerance": 10.0,
       "name": "n-Heptane marker @ 2878 cm-1",
-      "color": "#a16207",
+      "color": "#2563eb",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_Heptane_n0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 2934.0,
       "tolerance": 10.0,
       "name": "n-Heptane marker @ 2934 cm-1",
-      "color": "#a16207",
+      "color": "#2563eb",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_Heptane_n0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1471.0,
       "tolerance": 10.0,
       "name": "n-Heptane marker @ 1471 cm-1",
-      "color": "#a16207",
+      "color": "#2563eb",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_Heptane_n1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 2874.0,
       "tolerance": 10.0,
       "name": "n-Heptane marker @ 2874 cm-1",
-      "color": "#a16207",
+      "color": "#2563eb",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_Heptane_n1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 2932.0,
       "tolerance": 10.0,
       "name": "n-Heptane marker @ 2932 cm-1",
-      "color": "#a16207",
+      "color": "#2563eb",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_Heptane_n1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 2967.0,
       "tolerance": 10.0,
       "name": "n-Heptane marker @ 2967 cm-1",
-      "color": "#a16207",
+      "color": "#2563eb",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_Heptane_n1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 721.6,
       "tolerance": 10.0,
       "name": "n-Heptane marker @ 721.6 cm-1",
-      "color": "#a16207",
+      "color": "#2563eb",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_Heptane_n2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1380.3,
       "tolerance": 10.0,
       "name": "n-Heptane marker @ 1380.3 cm-1",
-      "color": "#a16207",
+      "color": "#2563eb",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_Heptane_n2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1458.6,
       "tolerance": 10.0,
       "name": "n-Heptane marker @ 1458.6 cm-1",
-      "color": "#a16207",
+      "color": "#2563eb",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_Heptane_n2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 2896.0,
       "tolerance": 10.0,
       "name": "n-Heptane marker @ 2896 cm-1",
-      "color": "#a16207",
+      "color": "#2563eb",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_Heptane_n2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1466.0,
       "tolerance": 10.0,
       "name": "n-Hexane marker @ 1466 cm-1",
-      "color": "#a16207",
+      "color": "#d97706",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_Hexane_n0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 2878.0,
       "tolerance": 10.0,
       "name": "n-Hexane marker @ 2878 cm-1",
-      "color": "#a16207",
+      "color": "#d97706",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_Hexane_n0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 2942.0,
       "tolerance": 10.0,
       "name": "n-Hexane marker @ 2942 cm-1",
-      "color": "#a16207",
+      "color": "#d97706",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_Hexane_n0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 2966.0,
       "tolerance": 10.0,
       "name": "n-Hexane marker @ 2966 cm-1",
-      "color": "#a16207",
+      "color": "#d97706",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_Hexane_n0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 2882.4,
       "tolerance": 10.0,
       "name": "n-Hexane marker @ 2882.4 cm-1",
-      "color": "#a16207",
+      "color": "#d97706",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_Hexane_n1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 2949.9,
       "tolerance": 10.0,
       "name": "n-Hexane marker @ 2949.9 cm-1",
-      "color": "#a16207",
+      "color": "#d97706",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_Hexane_n1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 722.1,
       "tolerance": 10.0,
       "name": "n-Hexane marker @ 722.1 cm-1",
-      "color": "#a16207",
+      "color": "#d97706",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_Hexane_n2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1381.9,
       "tolerance": 10.0,
       "name": "n-Hexane marker @ 1381.9 cm-1",
-      "color": "#a16207",
+      "color": "#d97706",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_Hexane_n2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1462.0,
       "tolerance": 10.0,
       "name": "n-Hexane marker @ 1462 cm-1",
-      "color": "#a16207",
+      "color": "#d97706",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_Hexane_n2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 2904.5,
       "tolerance": 10.0,
       "name": "n-Hexane marker @ 2904.5 cm-1",
-      "color": "#a16207",
+      "color": "#d97706",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_Hexane_n2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 954.0,
       "tolerance": 10.0,
       "name": "Isopropanol (IPA) marker @ 954 cm-1",
-      "color": "#a16207",
+      "color": "#65a30d",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_IPA_n0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1146.0,
       "tolerance": 10.0,
       "name": "Isopropanol (IPA) marker @ 1146 cm-1",
-      "color": "#a16207",
+      "color": "#65a30d",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_IPA_n0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1250.0,
       "tolerance": 10.0,
       "name": "Isopropanol (IPA) marker @ 1250 cm-1",
-      "color": "#a16207",
+      "color": "#65a30d",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_IPA_n0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1382.0,
       "tolerance": 10.0,
       "name": "Isopropanol (IPA) marker @ 1382 cm-1",
-      "color": "#a16207",
+      "color": "#65a30d",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_IPA_n0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 2978.0,
       "tolerance": 10.0,
       "name": "Isopropanol (IPA) marker @ 2978 cm-1",
-      "color": "#a16207",
+      "color": "#65a30d",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_IPA_n0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 953.4,
       "tolerance": 10.0,
       "name": "Isopropanol (IPA) marker @ 953.4 cm-1",
-      "color": "#a16207",
+      "color": "#65a30d",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_IPA_n2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1152.6,
       "tolerance": 10.0,
       "name": "Isopropanol (IPA) marker @ 1152.6 cm-1",
-      "color": "#a16207",
+      "color": "#65a30d",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_IPA_n2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1251.8,
       "tolerance": 10.0,
       "name": "Isopropanol (IPA) marker @ 1251.8 cm-1",
-      "color": "#a16207",
+      "color": "#65a30d",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_IPA_n2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1383.6,
       "tolerance": 10.0,
       "name": "Isopropanol (IPA) marker @ 1383.6 cm-1",
-      "color": "#a16207",
+      "color": "#65a30d",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_IPA_n2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 2986.8,
       "tolerance": 10.0,
       "name": "Isopropanol (IPA) marker @ 2986.8 cm-1",
-      "color": "#a16207",
+      "color": "#65a30d",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_IPA_n2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 951.8,
       "tolerance": 10.0,
       "name": "Isopropanol (IPA) marker @ 951.8 cm-1",
-      "color": "#a16207",
+      "color": "#65a30d",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_IPA_n3.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1129.4,
       "tolerance": 10.0,
       "name": "Isopropanol (IPA) marker @ 1129.4 cm-1",
-      "color": "#a16207",
+      "color": "#65a30d",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_IPA_n3.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1381.0,
       "tolerance": 10.0,
       "name": "Isopropanol (IPA) marker @ 1381 cm-1",
-      "color": "#a16207",
+      "color": "#65a30d",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_IPA_n3.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 2970.7,
       "tolerance": 10.0,
       "name": "Isopropanol (IPA) marker @ 2970.7 cm-1",
-      "color": "#a16207",
+      "color": "#65a30d",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_IPA_n3.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 3344.2,
       "tolerance": 10.0,
       "name": "Isopropanol (IPA) marker @ 3344.2 cm-1",
-      "color": "#a16207",
+      "color": "#65a30d",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_IPA_n3.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 956.5,
       "tolerance": 10.0,
       "name": "Isopropanol (IPA) marker @ 956.5 cm-1",
-      "color": "#a16207",
+      "color": "#65a30d",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_IPA_n4.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1150.3,
       "tolerance": 10.0,
       "name": "Isopropanol (IPA) marker @ 1150.3 cm-1",
-      "color": "#a16207",
+      "color": "#65a30d",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_IPA_n4.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1250.6,
       "tolerance": 10.0,
       "name": "Isopropanol (IPA) marker @ 1250.6 cm-1",
-      "color": "#a16207",
+      "color": "#65a30d",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_IPA_n4.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1380.8,
       "tolerance": 10.0,
       "name": "Isopropanol (IPA) marker @ 1380.8 cm-1",
-      "color": "#a16207",
+      "color": "#65a30d",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_IPA_n4.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 2981.4,
       "tolerance": 10.0,
       "name": "Isopropanol (IPA) marker @ 2981.4 cm-1",
-      "color": "#a16207",
+      "color": "#65a30d",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_IPA_n4.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 942.0,
       "tolerance": 10.0,
       "name": "Methyl Ethyl Ketone (MEK) marker @ 942 cm-1",
-      "color": "#a16207",
+      "color": "#15803d",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_MEK_n0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1174.0,
       "tolerance": 10.0,
       "name": "Methyl Ethyl Ketone (MEK) marker @ 1174 cm-1",
-      "color": "#a16207",
+      "color": "#15803d",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_MEK_n0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1366.0,
       "tolerance": 10.0,
       "name": "Methyl Ethyl Ketone (MEK) marker @ 1366 cm-1",
-      "color": "#a16207",
+      "color": "#15803d",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_MEK_n0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1730.0,
       "tolerance": 10.0,
       "name": "Methyl Ethyl Ketone (MEK) marker @ 1730 cm-1",
-      "color": "#a16207",
+      "color": "#15803d",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_MEK_n0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 2990.0,
       "tolerance": 10.0,
       "name": "Methyl Ethyl Ketone (MEK) marker @ 2990 cm-1",
-      "color": "#a16207",
+      "color": "#15803d",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_MEK_n0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1178.2,
       "tolerance": 10.0,
       "name": "Methyl Ethyl Ketone (MEK) marker @ 1178.2 cm-1",
-      "color": "#a16207",
+      "color": "#15803d",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_MEK_n1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1369.3,
       "tolerance": 10.0,
       "name": "Methyl Ethyl Ketone (MEK) marker @ 1369.3 cm-1",
-      "color": "#a16207",
+      "color": "#15803d",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_MEK_n1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1460.6,
       "tolerance": 10.0,
       "name": "Methyl Ethyl Ketone (MEK) marker @ 1460.6 cm-1",
-      "color": "#a16207",
+      "color": "#15803d",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_MEK_n1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1748.6,
       "tolerance": 10.0,
       "name": "Methyl Ethyl Ketone (MEK) marker @ 1748.6 cm-1",
-      "color": "#a16207",
+      "color": "#15803d",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_MEK_n1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 2990.3,
       "tolerance": 10.0,
       "name": "Methyl Ethyl Ketone (MEK) marker @ 2990.3 cm-1",
-      "color": "#a16207",
+      "color": "#15803d",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_MEK_n1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1163.4,
       "tolerance": 10.0,
       "name": "Methyl Ethyl Ketone (MEK) marker @ 1163.4 cm-1",
-      "color": "#a16207",
+      "color": "#15803d",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_MEK_n2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1359.0,
       "tolerance": 10.0,
       "name": "Methyl Ethyl Ketone (MEK) marker @ 1359 cm-1",
-      "color": "#a16207",
+      "color": "#15803d",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_MEK_n2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1414.1,
       "tolerance": 10.0,
       "name": "Methyl Ethyl Ketone (MEK) marker @ 1414.1 cm-1",
-      "color": "#a16207",
+      "color": "#15803d",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_MEK_n2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1715.9,
       "tolerance": 10.0,
       "name": "Methyl Ethyl Ketone (MEK) marker @ 1715.9 cm-1",
-      "color": "#a16207",
+      "color": "#15803d",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_MEK_n2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 2981.1,
       "tolerance": 10.0,
       "name": "Methyl Ethyl Ketone (MEK) marker @ 2981.1 cm-1",
-      "color": "#a16207",
+      "color": "#15803d",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_MEK_n2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1013.8,
       "tolerance": 10.0,
       "name": "Methanol marker @ 1013.8 cm-1",
-      "color": "#a16207",
+      "color": "#0369a1",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_Methanol_n1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1034.4,
       "tolerance": 10.0,
       "name": "Methanol marker @ 1034.4 cm-1",
-      "color": "#a16207",
+      "color": "#0369a1",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_Methanol_n1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1055.9,
       "tolerance": 10.0,
       "name": "Methanol marker @ 1055.9 cm-1",
-      "color": "#a16207",
+      "color": "#0369a1",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_Methanol_n1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 2977.8,
       "tolerance": 10.0,
       "name": "Methanol marker @ 2977.8 cm-1",
-      "color": "#a16207",
+      "color": "#0369a1",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_Methanol_n1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 3673.4,
       "tolerance": 10.0,
       "name": "Methanol marker @ 3673.4 cm-1",
-      "color": "#a16207",
+      "color": "#0369a1",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_Methanol_n1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1030.5,
       "tolerance": 10.0,
       "name": "Methanol marker @ 1030.5 cm-1",
-      "color": "#a16207",
+      "color": "#0369a1",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_Methanol_n2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1449.5,
       "tolerance": 10.0,
       "name": "Methanol marker @ 1449.5 cm-1",
-      "color": "#a16207",
+      "color": "#0369a1",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_Methanol_n2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 2831.0,
       "tolerance": 10.0,
       "name": "Methanol marker @ 2831 cm-1",
-      "color": "#a16207",
+      "color": "#0369a1",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_Methanol_n2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 2944.3,
       "tolerance": 10.0,
       "name": "Methanol marker @ 2944.3 cm-1",
-      "color": "#a16207",
+      "color": "#0369a1",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_Methanol_n2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 3329.3,
       "tolerance": 10.0,
       "name": "Methanol marker @ 3329.3 cm-1",
-      "color": "#a16207",
+      "color": "#0369a1",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_Methanol_n2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 694.0,
       "tolerance": 10.0,
       "name": "Toluene marker @ 694 cm-1",
-      "color": "#a16207",
+      "color": "#2563eb",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_Toluene_n0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 726.0,
       "tolerance": 10.0,
       "name": "Toluene marker @ 726 cm-1",
-      "color": "#a16207",
+      "color": "#2563eb",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_Toluene_n0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1498.0,
       "tolerance": 10.0,
       "name": "Toluene marker @ 1498 cm-1",
-      "color": "#a16207",
+      "color": "#2563eb",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_Toluene_n0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 2934.0,
       "tolerance": 10.0,
       "name": "Toluene marker @ 2934 cm-1",
-      "color": "#a16207",
+      "color": "#2563eb",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_Toluene_n0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 3042.0,
       "tolerance": 10.0,
       "name": "Toluene marker @ 3042 cm-1",
-      "color": "#a16207",
+      "color": "#2563eb",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_Toluene_n0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 697.0,
       "tolerance": 10.0,
       "name": "Toluene marker @ 697 cm-1",
-      "color": "#a16207",
+      "color": "#2563eb",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_Toluene_n1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 731.0,
       "tolerance": 10.0,
       "name": "Toluene marker @ 731 cm-1",
-      "color": "#a16207",
+      "color": "#2563eb",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_Toluene_n1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1505.0,
       "tolerance": 10.0,
       "name": "Toluene marker @ 1505 cm-1",
-      "color": "#a16207",
+      "color": "#2563eb",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_Toluene_n1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 2936.0,
       "tolerance": 10.0,
       "name": "Toluene marker @ 2936 cm-1",
-      "color": "#a16207",
+      "color": "#2563eb",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_Toluene_n1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 3044.0,
       "tolerance": 10.0,
       "name": "Toluene marker @ 3044 cm-1",
-      "color": "#a16207",
+      "color": "#2563eb",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_Toluene_n1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 699.2,
       "tolerance": 10.0,
       "name": "Toluene marker @ 699.2 cm-1",
-      "color": "#a16207",
+      "color": "#2563eb",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_Toluene_n2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 734.6,
       "tolerance": 10.0,
       "name": "Toluene marker @ 734.6 cm-1",
-      "color": "#a16207",
+      "color": "#2563eb",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_Toluene_n2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1501.9,
       "tolerance": 10.0,
       "name": "Toluene marker @ 1501.9 cm-1",
-      "color": "#a16207",
+      "color": "#2563eb",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_Toluene_n2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1613.2,
       "tolerance": 10.0,
       "name": "Toluene marker @ 1613.2 cm-1",
-      "color": "#a16207",
+      "color": "#2563eb",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_Toluene_n2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 3038.2,
       "tolerance": 10.0,
       "name": "Toluene marker @ 3038.2 cm-1",
-      "color": "#a16207",
+      "color": "#2563eb",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_Toluene_n2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 464.3,
       "tolerance": 10.0,
       "name": "Toluene marker @ 464.3 cm-1",
-      "color": "#a16207",
+      "color": "#2563eb",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_Toluene_n3.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 697.6,
       "tolerance": 10.0,
       "name": "Toluene marker @ 697.6 cm-1",
-      "color": "#a16207",
+      "color": "#2563eb",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_Toluene_n3.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 730.7,
       "tolerance": 10.0,
       "name": "Toluene marker @ 730.7 cm-1",
-      "color": "#a16207",
+      "color": "#2563eb",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_Toluene_n3.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1499.4,
       "tolerance": 10.0,
       "name": "Toluene marker @ 1499.4 cm-1",
-      "color": "#a16207",
+      "color": "#2563eb",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_Toluene_n3.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 3031.6,
       "tolerance": 10.0,
       "name": "Toluene marker @ 3031.6 cm-1",
-      "color": "#a16207",
+      "color": "#2563eb",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_Toluene_n3.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 690.0,
       "tolerance": 10.0,
       "name": "m-Xylene marker @ 690 cm-1",
-      "color": "#a16207",
+      "color": "#4f46e5",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_mXylene_n0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 766.0,
       "tolerance": 10.0,
       "name": "m-Xylene marker @ 766 cm-1",
-      "color": "#a16207",
+      "color": "#4f46e5",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_mXylene_n0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1610.0,
       "tolerance": 10.0,
       "name": "m-Xylene marker @ 1610 cm-1",
-      "color": "#a16207",
+      "color": "#4f46e5",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_mXylene_n0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 2934.0,
       "tolerance": 10.0,
       "name": "m-Xylene marker @ 2934 cm-1",
-      "color": "#a16207",
+      "color": "#4f46e5",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_mXylene_n0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 3030.0,
       "tolerance": 10.0,
       "name": "m-Xylene marker @ 3030 cm-1",
-      "color": "#a16207",
+      "color": "#4f46e5",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_mXylene_n0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 691.9,
       "tolerance": 10.0,
       "name": "m-Xylene marker @ 691.9 cm-1",
-      "color": "#a16207",
+      "color": "#4f46e5",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_mXylene_n1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 769.9,
       "tolerance": 10.0,
       "name": "m-Xylene marker @ 769.9 cm-1",
-      "color": "#a16207",
+      "color": "#4f46e5",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_mXylene_n1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1610.9,
       "tolerance": 10.0,
       "name": "m-Xylene marker @ 1610.9 cm-1",
-      "color": "#a16207",
+      "color": "#4f46e5",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_mXylene_n1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 2937.7,
       "tolerance": 10.0,
       "name": "m-Xylene marker @ 2937.7 cm-1",
-      "color": "#a16207",
+      "color": "#4f46e5",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_mXylene_n1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 3035.6,
       "tolerance": 10.0,
       "name": "m-Xylene marker @ 3035.6 cm-1",
-      "color": "#a16207",
+      "color": "#4f46e5",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_mXylene_n1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 692.9,
       "tolerance": 10.0,
       "name": "m-Xylene marker @ 692.9 cm-1",
-      "color": "#a16207",
+      "color": "#4f46e5",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_mXylene_n2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 768.5,
       "tolerance": 10.0,
       "name": "m-Xylene marker @ 768.5 cm-1",
-      "color": "#a16207",
+      "color": "#4f46e5",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_mXylene_n2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1606.0,
       "tolerance": 10.0,
       "name": "m-Xylene marker @ 1606 cm-1",
-      "color": "#a16207",
+      "color": "#4f46e5",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_mXylene_n2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 2929.1,
       "tolerance": 10.0,
       "name": "m-Xylene marker @ 2929.1 cm-1",
-      "color": "#a16207",
+      "color": "#4f46e5",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_mXylene_n2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 3023.6,
       "tolerance": 10.0,
       "name": "m-Xylene marker @ 3023.6 cm-1",
-      "color": "#a16207",
+      "color": "#4f46e5",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_mXylene_n2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 698.0,
       "tolerance": 10.0,
       "name": "m-Xylene marker @ 698 cm-1",
-      "color": "#a16207",
+      "color": "#4f46e5",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_mXylene_n3.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 776.7,
       "tolerance": 10.0,
       "name": "m-Xylene marker @ 776.7 cm-1",
-      "color": "#a16207",
+      "color": "#4f46e5",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_mXylene_n3.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1500.4,
       "tolerance": 10.0,
       "name": "m-Xylene marker @ 1500.4 cm-1",
-      "color": "#a16207",
+      "color": "#4f46e5",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_mXylene_n3.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1622.4,
       "tolerance": 10.0,
       "name": "m-Xylene marker @ 1622.4 cm-1",
-      "color": "#a16207",
+      "color": "#4f46e5",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_mXylene_n3.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 2932.3,
       "tolerance": 10.0,
       "name": "m-Xylene marker @ 2932.3 cm-1",
-      "color": "#a16207",
+      "color": "#4f46e5",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/nist_mXylene_n3.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1053.0,
       "tolerance": 10.0,
       "name": "Acrylic marker @ 1053 cm-1",
-      "color": "#a16207",
+      "color": "#2563eb",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_Acrylic_628.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1211.1,
       "tolerance": 10.0,
       "name": "Acrylic marker @ 1211.1 cm-1",
-      "color": "#a16207",
+      "color": "#2563eb",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_Acrylic_628.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1450.3,
       "tolerance": 10.0,
       "name": "Acrylic marker @ 1450.3 cm-1",
-      "color": "#a16207",
+      "color": "#2563eb",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_Acrylic_628.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1728.0,
       "tolerance": 10.0,
       "name": "Acrylic marker @ 1728 cm-1",
-      "color": "#a16207",
+      "color": "#2563eb",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_Acrylic_628.csv (Open Specy)"
     },
     {
       "centerWavenumber": 2244.8,
       "tolerance": 10.0,
       "name": "Acrylic marker @ 2244.8 cm-1",
-      "color": "#a16207",
+      "color": "#2563eb",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_Acrylic_628.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1053.0,
       "tolerance": 10.0,
       "name": "Acrylic marker @ 1053 cm-1",
-      "color": "#a16207",
+      "color": "#2563eb",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_Acrylic_631.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1211.1,
       "tolerance": 10.0,
       "name": "Acrylic marker @ 1211.1 cm-1",
-      "color": "#a16207",
+      "color": "#2563eb",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_Acrylic_631.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1450.3,
       "tolerance": 10.0,
       "name": "Acrylic marker @ 1450.3 cm-1",
-      "color": "#a16207",
+      "color": "#2563eb",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_Acrylic_631.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1728.0,
       "tolerance": 10.0,
       "name": "Acrylic marker @ 1728 cm-1",
-      "color": "#a16207",
+      "color": "#2563eb",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_Acrylic_631.csv (Open Specy)"
     },
     {
       "centerWavenumber": 2244.8,
       "tolerance": 10.0,
       "name": "Acrylic marker @ 2244.8 cm-1",
-      "color": "#a16207",
+      "color": "#2563eb",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_Acrylic_631.csv (Open Specy)"
     },
     {
       "centerWavenumber": 712.1,
       "tolerance": 10.0,
       "name": "Polyether urethane with additives marker @ 712.1 cm-1",
-      "color": "#a16207",
+      "color": "#15803d",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_Polyether_urethane_with_additives_632.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1069.3,
       "tolerance": 10.0,
       "name": "Polyether urethane with additives marker @ 1069.3 cm-1",
-      "color": "#a16207",
+      "color": "#15803d",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_Polyether_urethane_with_additives_632.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1219.3,
       "tolerance": 10.0,
       "name": "Polyether urethane with additives marker @ 1219.3 cm-1",
-      "color": "#a16207",
+      "color": "#15803d",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_Polyether_urethane_with_additives_632.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1523.0,
       "tolerance": 10.0,
       "name": "Polyether urethane with additives marker @ 1523 cm-1",
-      "color": "#a16207",
+      "color": "#15803d",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_Polyether_urethane_with_additives_632.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1715.4,
       "tolerance": 10.0,
       "name": "Polyether urethane with additives marker @ 1715.4 cm-1",
-      "color": "#a16207",
+      "color": "#15803d",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_Polyether_urethane_with_additives_632.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1118.7,
       "tolerance": 10.0,
       "name": "alkyd varnish marker @ 1118.7 cm-1",
-      "color": "#a16207",
+      "color": "#a21caf",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_alkyd_varnish_360.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1263.4,
       "tolerance": 10.0,
       "name": "alkyd varnish marker @ 1263.4 cm-1",
-      "color": "#a16207",
+      "color": "#a21caf",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_alkyd_varnish_360.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1464.0,
       "tolerance": 10.0,
       "name": "alkyd varnish marker @ 1464 cm-1",
-      "color": "#a16207",
+      "color": "#a21caf",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_alkyd_varnish_360.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1728.2,
       "tolerance": 10.0,
       "name": "alkyd varnish marker @ 1728.2 cm-1",
-      "color": "#a16207",
+      "color": "#a21caf",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_alkyd_varnish_360.csv (Open Specy)"
     },
     {
       "centerWavenumber": 2924.1,
       "tolerance": 10.0,
       "name": "alkyd varnish marker @ 2924.1 cm-1",
-      "color": "#a16207",
+      "color": "#a21caf",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_alkyd_varnish_360.csv (Open Specy)"
     },
     {
       "centerWavenumber": 729.1,
       "tolerance": 10.0,
       "name": "alkyd varnish marker @ 729.1 cm-1",
-      "color": "#a16207",
+      "color": "#a21caf",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_alkyd_varnish_361.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1118.7,
       "tolerance": 10.0,
       "name": "alkyd varnish marker @ 1118.7 cm-1",
-      "color": "#a16207",
+      "color": "#a21caf",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_alkyd_varnish_361.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1259.5,
       "tolerance": 10.0,
       "name": "alkyd varnish marker @ 1259.5 cm-1",
-      "color": "#a16207",
+      "color": "#a21caf",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_alkyd_varnish_361.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1730.1,
       "tolerance": 10.0,
       "name": "alkyd varnish marker @ 1730.1 cm-1",
-      "color": "#a16207",
+      "color": "#a21caf",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_alkyd_varnish_361.csv (Open Specy)"
     },
     {
       "centerWavenumber": 2924.1,
       "tolerance": 10.0,
       "name": "alkyd varnish marker @ 2924.1 cm-1",
-      "color": "#a16207",
+      "color": "#a21caf",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_alkyd_varnish_361.csv (Open Specy)"
     },
     {
       "centerWavenumber": 700.2,
       "tolerance": 10.0,
       "name": "alkyd varnish marker @ 700.2 cm-1",
-      "color": "#a16207",
+      "color": "#a21caf",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_alkyd_varnish_393.csv (Open Specy)"
     },
     {
       "centerWavenumber": 759.9,
       "tolerance": 10.0,
       "name": "alkyd varnish marker @ 759.9 cm-1",
-      "color": "#a16207",
+      "color": "#a21caf",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_alkyd_varnish_393.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1072.4,
       "tolerance": 10.0,
       "name": "alkyd varnish marker @ 1072.4 cm-1",
-      "color": "#a16207",
+      "color": "#a21caf",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_alkyd_varnish_393.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1724.4,
       "tolerance": 10.0,
       "name": "alkyd varnish marker @ 1724.4 cm-1",
-      "color": "#a16207",
+      "color": "#a21caf",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_alkyd_varnish_393.csv (Open Specy)"
     },
     {
       "centerWavenumber": 2931.8,
       "tolerance": 10.0,
       "name": "alkyd varnish marker @ 2931.8 cm-1",
-      "color": "#a16207",
+      "color": "#a21caf",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_alkyd_varnish_393.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1066.6,
       "tolerance": 10.0,
       "name": "alkyd varnish marker @ 1066.6 cm-1",
-      "color": "#a16207",
+      "color": "#a21caf",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_alkyd_varnish_395.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1224.8,
       "tolerance": 10.0,
       "name": "alkyd varnish marker @ 1224.8 cm-1",
-      "color": "#a16207",
+      "color": "#a21caf",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_alkyd_varnish_395.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1535.3,
       "tolerance": 10.0,
       "name": "alkyd varnish marker @ 1535.3 cm-1",
-      "color": "#a16207",
+      "color": "#a21caf",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_alkyd_varnish_395.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1728.2,
       "tolerance": 10.0,
       "name": "alkyd varnish marker @ 1728.2 cm-1",
-      "color": "#a16207",
+      "color": "#a21caf",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_alkyd_varnish_395.csv (Open Specy)"
     },
     {
       "centerWavenumber": 2924.1,
       "tolerance": 10.0,
       "name": "alkyd varnish marker @ 2924.1 cm-1",
-      "color": "#a16207",
+      "color": "#a21caf",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_alkyd_varnish_395.csv (Open Specy)"
     },
     {
       "centerWavenumber": 725.2,
       "tolerance": 10.0,
       "name": "epoxide resin marker @ 725.2 cm-1",
-      "color": "#a16207",
+      "color": "#0891b2",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_epoxide_resin_291.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1018.4,
       "tolerance": 10.0,
       "name": "epoxide resin marker @ 1018.4 cm-1",
-      "color": "#a16207",
+      "color": "#0891b2",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_epoxide_resin_291.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1099.4,
       "tolerance": 10.0,
       "name": "epoxide resin marker @ 1099.4 cm-1",
-      "color": "#a16207",
+      "color": "#0891b2",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_epoxide_resin_291.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1261.4,
       "tolerance": 10.0,
       "name": "epoxide resin marker @ 1261.4 cm-1",
-      "color": "#a16207",
+      "color": "#0891b2",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_epoxide_resin_291.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1716.6,
       "tolerance": 10.0,
       "name": "epoxide resin marker @ 1716.6 cm-1",
-      "color": "#a16207",
+      "color": "#0891b2",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_epoxide_resin_291.csv (Open Specy)"
     },
     {
       "centerWavenumber": 719.4,
       "tolerance": 10.0,
       "name": "ethylene acrylic acid marker @ 719.4 cm-1",
-      "color": "#a16207",
+      "color": "#be123c",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_ethylene_acrylic_acid_339.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1465.9,
       "tolerance": 10.0,
       "name": "ethylene acrylic acid marker @ 1465.9 cm-1",
-      "color": "#a16207",
+      "color": "#be123c",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_ethylene_acrylic_acid_339.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1701.2,
       "tolerance": 10.0,
       "name": "ethylene acrylic acid marker @ 1701.2 cm-1",
-      "color": "#a16207",
+      "color": "#be123c",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_ethylene_acrylic_acid_339.csv (Open Specy)"
     },
     {
       "centerWavenumber": 2848.8,
       "tolerance": 10.0,
       "name": "ethylene acrylic acid marker @ 2848.8 cm-1",
-      "color": "#a16207",
+      "color": "#be123c",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_ethylene_acrylic_acid_339.csv (Open Specy)"
     },
     {
       "centerWavenumber": 2916.4,
       "tolerance": 10.0,
       "name": "ethylene acrylic acid marker @ 2916.4 cm-1",
-      "color": "#a16207",
+      "color": "#be123c",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_ethylene_acrylic_acid_339.csv (Open Specy)"
     },
     {
       "centerWavenumber": 719.4,
       "tolerance": 10.0,
       "name": "ethylene methacrylic acid marker @ 719.4 cm-1",
-      "color": "#a16207",
+      "color": "#7c2d12",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_ethylene_methacrylic_acid_341.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1467.8,
       "tolerance": 10.0,
       "name": "ethylene methacrylic acid marker @ 1467.8 cm-1",
-      "color": "#a16207",
+      "color": "#7c2d12",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_ethylene_methacrylic_acid_341.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1697.3,
       "tolerance": 10.0,
       "name": "ethylene methacrylic acid marker @ 1697.3 cm-1",
-      "color": "#a16207",
+      "color": "#7c2d12",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_ethylene_methacrylic_acid_341.csv (Open Specy)"
     },
     {
       "centerWavenumber": 2848.8,
       "tolerance": 10.0,
       "name": "ethylene methacrylic acid marker @ 2848.8 cm-1",
-      "color": "#a16207",
+      "color": "#7c2d12",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_ethylene_methacrylic_acid_341.csv (Open Specy)"
     },
     {
       "centerWavenumber": 2916.4,
       "tolerance": 10.0,
       "name": "ethylene methacrylic acid marker @ 2916.4 cm-1",
-      "color": "#a16207",
+      "color": "#7c2d12",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_ethylene_methacrylic_acid_341.csv (Open Specy)"
     },
     {
       "centerWavenumber": 702.1,
       "tolerance": 10.0,
       "name": "lahmian medium acrylic paint marker @ 702.1 cm-1",
-      "color": "#a16207",
+      "color": "#0369a1",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_lahmian_medium_acrylic_paint_382.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1095.6,
       "tolerance": 10.0,
       "name": "lahmian medium acrylic paint marker @ 1095.6 cm-1",
-      "color": "#a16207",
+      "color": "#0369a1",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_lahmian_medium_acrylic_paint_382.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1452.4,
       "tolerance": 10.0,
       "name": "lahmian medium acrylic paint marker @ 1452.4 cm-1",
-      "color": "#a16207",
+      "color": "#0369a1",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_lahmian_medium_acrylic_paint_382.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1728.2,
       "tolerance": 10.0,
       "name": "lahmian medium acrylic paint marker @ 1728.2 cm-1",
-      "color": "#a16207",
+      "color": "#0369a1",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_lahmian_medium_acrylic_paint_382.csv (Open Specy)"
     },
     {
       "centerWavenumber": 2956.9,
       "tolerance": 10.0,
       "name": "lahmian medium acrylic paint marker @ 2956.9 cm-1",
-      "color": "#a16207",
+      "color": "#0369a1",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_lahmian_medium_acrylic_paint_382.csv (Open Specy)"
     },
     {
       "centerWavenumber": 825.5,
       "tolerance": 10.0,
       "name": "phenoxy resin marker @ 825.5 cm-1",
-      "color": "#a16207",
+      "color": "#ea580c",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_phenoxy_resin_440.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1037.7,
       "tolerance": 10.0,
       "name": "phenoxy resin marker @ 1037.7 cm-1",
-      "color": "#a16207",
+      "color": "#ea580c",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_phenoxy_resin_440.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1180.4,
       "tolerance": 10.0,
       "name": "phenoxy resin marker @ 1180.4 cm-1",
-      "color": "#a16207",
+      "color": "#ea580c",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_phenoxy_resin_440.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1230.6,
       "tolerance": 10.0,
       "name": "phenoxy resin marker @ 1230.6 cm-1",
-      "color": "#a16207",
+      "color": "#ea580c",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_phenoxy_resin_440.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1506.4,
       "tolerance": 10.0,
       "name": "phenoxy resin marker @ 1506.4 cm-1",
-      "color": "#a16207",
+      "color": "#ea580c",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_phenoxy_resin_440.csv (Open Specy)"
     },
     {
       "centerWavenumber": 796.6,
       "tolerance": 10.0,
       "name": "polyacrylic acid marker @ 796.6 cm-1",
-      "color": "#a16207",
+      "color": "#c026d3",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_polyacrylic_acid_449.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1165.0,
       "tolerance": 10.0,
       "name": "polyacrylic acid marker @ 1165 cm-1",
-      "color": "#a16207",
+      "color": "#c026d3",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_polyacrylic_acid_449.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1452.4,
       "tolerance": 10.0,
       "name": "polyacrylic acid marker @ 1452.4 cm-1",
-      "color": "#a16207",
+      "color": "#c026d3",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_polyacrylic_acid_449.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1697.3,
       "tolerance": 10.0,
       "name": "polyacrylic acid marker @ 1697.3 cm-1",
-      "color": "#a16207",
+      "color": "#c026d3",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_polyacrylic_acid_449.csv (Open Specy)"
     },
     {
       "centerWavenumber": 2939.5,
       "tolerance": 10.0,
       "name": "polyacrylic acid marker @ 2939.5 cm-1",
-      "color": "#a16207",
+      "color": "#c026d3",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_polyacrylic_acid_449.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1165.0,
       "tolerance": 10.0,
       "name": "polyesterurethane marker @ 1165 cm-1",
-      "color": "#a16207",
+      "color": "#0369a1",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_polyesterurethane_434.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1535.3,
       "tolerance": 10.0,
       "name": "polyesterurethane marker @ 1535.3 cm-1",
-      "color": "#a16207",
+      "color": "#0369a1",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_polyesterurethane_434.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1683.8,
       "tolerance": 10.0,
       "name": "polyesterurethane marker @ 1683.8 cm-1",
-      "color": "#a16207",
+      "color": "#0369a1",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_polyesterurethane_434.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1728.2,
       "tolerance": 10.0,
       "name": "polyesterurethane marker @ 1728.2 cm-1",
-      "color": "#a16207",
+      "color": "#0369a1",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_polyesterurethane_434.csv (Open Specy)"
     },
     {
       "centerWavenumber": 2939.5,
       "tolerance": 10.0,
       "name": "polyesterurethane marker @ 2939.5 cm-1",
-      "color": "#a16207",
+      "color": "#0369a1",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_polyesterurethane_434.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1068.6,
       "tolerance": 10.0,
       "name": "polyesterurethane marker @ 1068.6 cm-1",
-      "color": "#a16207",
+      "color": "#0369a1",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_polyesterurethane_521.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1219.0,
       "tolerance": 10.0,
       "name": "polyesterurethane marker @ 1219 cm-1",
-      "color": "#a16207",
+      "color": "#0369a1",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_polyesterurethane_521.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1529.5,
       "tolerance": 10.0,
       "name": "polyesterurethane marker @ 1529.5 cm-1",
-      "color": "#a16207",
+      "color": "#0369a1",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_polyesterurethane_521.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1597.1,
       "tolerance": 10.0,
       "name": "polyesterurethane marker @ 1597.1 cm-1",
-      "color": "#a16207",
+      "color": "#0369a1",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_polyesterurethane_521.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1703.1,
       "tolerance": 10.0,
       "name": "polyesterurethane marker @ 1703.1 cm-1",
-      "color": "#a16207",
+      "color": "#0369a1",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_polyesterurethane_521.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1076.3,
       "tolerance": 10.0,
       "name": "polyesterurethane marker @ 1076.3 cm-1",
-      "color": "#a16207",
+      "color": "#0369a1",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_polyesterurethane_522.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1220.9,
       "tolerance": 10.0,
       "name": "polyesterurethane marker @ 1220.9 cm-1",
-      "color": "#a16207",
+      "color": "#0369a1",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_polyesterurethane_522.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1529.5,
       "tolerance": 10.0,
       "name": "polyesterurethane marker @ 1529.5 cm-1",
-      "color": "#a16207",
+      "color": "#0369a1",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_polyesterurethane_522.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1597.1,
       "tolerance": 10.0,
       "name": "polyesterurethane marker @ 1597.1 cm-1",
-      "color": "#a16207",
+      "color": "#0369a1",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_polyesterurethane_522.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1726.3,
       "tolerance": 10.0,
       "name": "polyesterurethane marker @ 1726.3 cm-1",
-      "color": "#a16207",
+      "color": "#0369a1",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_polyesterurethane_522.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1105.2,
       "tolerance": 10.0,
       "name": "polyetherurethane marker @ 1105.2 cm-1",
-      "color": "#a16207",
+      "color": "#65a30d",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_polyetherurethane_523.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1220.9,
       "tolerance": 10.0,
       "name": "polyetherurethane marker @ 1220.9 cm-1",
-      "color": "#a16207",
+      "color": "#65a30d",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_polyetherurethane_523.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1529.5,
       "tolerance": 10.0,
       "name": "polyetherurethane marker @ 1529.5 cm-1",
-      "color": "#a16207",
+      "color": "#65a30d",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_polyetherurethane_523.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1701.2,
       "tolerance": 10.0,
       "name": "polyetherurethane marker @ 1701.2 cm-1",
-      "color": "#a16207",
+      "color": "#65a30d",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_polyetherurethane_523.csv (Open Specy)"
     },
     {
       "centerWavenumber": 2854.6,
       "tolerance": 10.0,
       "name": "polyetherurethane marker @ 2854.6 cm-1",
-      "color": "#a16207",
+      "color": "#65a30d",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_polyetherurethane_523.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1105.2,
       "tolerance": 10.0,
       "name": "polyetherurethane marker @ 1105.2 cm-1",
-      "color": "#a16207",
+      "color": "#65a30d",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_polyetherurethane_524.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1220.9,
       "tolerance": 10.0,
       "name": "polyetherurethane marker @ 1220.9 cm-1",
-      "color": "#a16207",
+      "color": "#65a30d",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_polyetherurethane_524.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1529.5,
       "tolerance": 10.0,
       "name": "polyetherurethane marker @ 1529.5 cm-1",
-      "color": "#a16207",
+      "color": "#65a30d",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_polyetherurethane_524.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1701.2,
       "tolerance": 10.0,
       "name": "polyetherurethane marker @ 1701.2 cm-1",
-      "color": "#a16207",
+      "color": "#65a30d",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_polyetherurethane_524.csv (Open Specy)"
     },
     {
       "centerWavenumber": 2854.6,
       "tolerance": 10.0,
       "name": "polyetherurethane marker @ 2854.6 cm-1",
-      "color": "#a16207",
+      "color": "#65a30d",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_polyetherurethane_524.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1064.7,
       "tolerance": 10.0,
       "name": "polyurethane marker @ 1064.7 cm-1",
-      "color": "#a16207",
+      "color": "#d97706",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_polyurethane_501.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1161.1,
       "tolerance": 10.0,
       "name": "polyurethane marker @ 1161.1 cm-1",
-      "color": "#a16207",
+      "color": "#d97706",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_polyurethane_501.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1255.7,
       "tolerance": 10.0,
       "name": "polyurethane marker @ 1255.7 cm-1",
-      "color": "#a16207",
+      "color": "#d97706",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_polyurethane_501.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1367.5,
       "tolerance": 10.0,
       "name": "polyurethane marker @ 1367.5 cm-1",
-      "color": "#a16207",
+      "color": "#d97706",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_polyurethane_501.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1724.4,
       "tolerance": 10.0,
       "name": "polyurethane marker @ 1724.4 cm-1",
-      "color": "#a16207",
+      "color": "#d97706",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_polyurethane_501.csv (Open Specy)"
     },
     {
       "centerWavenumber": 958.6,
       "tolerance": 10.0,
       "name": "polyurethane marker @ 958.6 cm-1",
-      "color": "#a16207",
+      "color": "#d97706",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_polyurethane_502.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1163.1,
       "tolerance": 10.0,
       "name": "polyurethane marker @ 1163.1 cm-1",
-      "color": "#a16207",
+      "color": "#d97706",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_polyurethane_502.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1257.6,
       "tolerance": 10.0,
       "name": "polyurethane marker @ 1257.6 cm-1",
-      "color": "#a16207",
+      "color": "#d97706",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_polyurethane_502.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1369.5,
       "tolerance": 10.0,
       "name": "polyurethane marker @ 1369.5 cm-1",
-      "color": "#a16207",
+      "color": "#d97706",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_polyurethane_502.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1724.4,
       "tolerance": 10.0,
       "name": "polyurethane marker @ 1724.4 cm-1",
-      "color": "#a16207",
+      "color": "#d97706",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_polyurethane_502.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1074.3,
       "tolerance": 10.0,
       "name": "polyurethane marker @ 1074.3 cm-1",
-      "color": "#a16207",
+      "color": "#d97706",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_polyurethane_503.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1165.0,
       "tolerance": 10.0,
       "name": "polyurethane marker @ 1165 cm-1",
-      "color": "#a16207",
+      "color": "#d97706",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_polyurethane_503.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1531.5,
       "tolerance": 10.0,
       "name": "polyurethane marker @ 1531.5 cm-1",
-      "color": "#a16207",
+      "color": "#d97706",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_polyurethane_503.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1726.3,
       "tolerance": 10.0,
       "name": "polyurethane marker @ 1726.3 cm-1",
-      "color": "#a16207",
+      "color": "#d97706",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_polyurethane_503.csv (Open Specy)"
     },
     {
       "centerWavenumber": 2939.5,
       "tolerance": 10.0,
       "name": "polyurethane marker @ 2939.5 cm-1",
-      "color": "#a16207",
+      "color": "#d97706",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_polyurethane_503.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1074.3,
       "tolerance": 10.0,
       "name": "polyurethane marker @ 1074.3 cm-1",
-      "color": "#a16207",
+      "color": "#d97706",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_polyurethane_504.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1165.0,
       "tolerance": 10.0,
       "name": "polyurethane marker @ 1165 cm-1",
-      "color": "#a16207",
+      "color": "#d97706",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_polyurethane_504.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1531.5,
       "tolerance": 10.0,
       "name": "polyurethane marker @ 1531.5 cm-1",
-      "color": "#a16207",
+      "color": "#d97706",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_polyurethane_504.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1726.3,
       "tolerance": 10.0,
       "name": "polyurethane marker @ 1726.3 cm-1",
-      "color": "#a16207",
+      "color": "#d97706",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_polyurethane_504.csv (Open Specy)"
     },
     {
       "centerWavenumber": 2939.5,
       "tolerance": 10.0,
       "name": "polyurethane marker @ 2939.5 cm-1",
-      "color": "#a16207",
+      "color": "#d97706",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_polyurethane_504.csv (Open Specy)"
     },
     {
       "centerWavenumber": 979.8,
       "tolerance": 10.0,
       "name": "polyurethane marker @ 979.8 cm-1",
-      "color": "#a16207",
+      "color": "#d97706",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_polyurethane_525.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1043.5,
       "tolerance": 10.0,
       "name": "polyurethane marker @ 1043.5 cm-1",
-      "color": "#a16207",
+      "color": "#d97706",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_polyurethane_525.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1253.7,
       "tolerance": 10.0,
       "name": "polyurethane marker @ 1253.7 cm-1",
-      "color": "#a16207",
+      "color": "#d97706",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_polyurethane_525.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1722.4,
       "tolerance": 10.0,
       "name": "polyurethane marker @ 1722.4 cm-1",
-      "color": "#a16207",
+      "color": "#d97706",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_polyurethane_525.csv (Open Specy)"
     },
     {
       "centerWavenumber": 2927.9,
       "tolerance": 10.0,
       "name": "polyurethane marker @ 2927.9 cm-1",
-      "color": "#a16207",
+      "color": "#d97706",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_polyurethane_525.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1066.6,
       "tolerance": 10.0,
       "name": "polyurethane marker @ 1066.6 cm-1",
-      "color": "#a16207",
+      "color": "#d97706",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_polyurethane_546.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1219.0,
       "tolerance": 10.0,
       "name": "polyurethane marker @ 1219 cm-1",
-      "color": "#a16207",
+      "color": "#d97706",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_polyurethane_546.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1413.8,
       "tolerance": 10.0,
       "name": "polyurethane marker @ 1413.8 cm-1",
-      "color": "#a16207",
+      "color": "#d97706",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_polyurethane_546.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1529.5,
       "tolerance": 10.0,
       "name": "polyurethane marker @ 1529.5 cm-1",
-      "color": "#a16207",
+      "color": "#d97706",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_polyurethane_546.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1726.3,
       "tolerance": 10.0,
       "name": "polyurethane marker @ 1726.3 cm-1",
-      "color": "#a16207",
+      "color": "#d97706",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_polyurethane_546.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1066.6,
       "tolerance": 10.0,
       "name": "polyurethane marker @ 1066.6 cm-1",
-      "color": "#a16207",
+      "color": "#d97706",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_polyurethane_547.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1219.0,
       "tolerance": 10.0,
       "name": "polyurethane marker @ 1219 cm-1",
-      "color": "#a16207",
+      "color": "#d97706",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_polyurethane_547.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1413.8,
       "tolerance": 10.0,
       "name": "polyurethane marker @ 1413.8 cm-1",
-      "color": "#a16207",
+      "color": "#d97706",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_polyurethane_547.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1529.5,
       "tolerance": 10.0,
       "name": "polyurethane marker @ 1529.5 cm-1",
-      "color": "#a16207",
+      "color": "#d97706",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_polyurethane_547.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1726.3,
       "tolerance": 10.0,
       "name": "polyurethane marker @ 1726.3 cm-1",
-      "color": "#a16207",
+      "color": "#d97706",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_polyurethane_547.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1068.6,
       "tolerance": 10.0,
       "name": "polyurethane marker @ 1068.6 cm-1",
-      "color": "#a16207",
+      "color": "#d97706",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_polyurethane_548.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1219.0,
       "tolerance": 10.0,
       "name": "polyurethane marker @ 1219 cm-1",
-      "color": "#a16207",
+      "color": "#d97706",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_polyurethane_548.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1531.5,
       "tolerance": 10.0,
       "name": "polyurethane marker @ 1531.5 cm-1",
-      "color": "#a16207",
+      "color": "#d97706",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_polyurethane_548.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1726.3,
       "tolerance": 10.0,
       "name": "polyurethane marker @ 1726.3 cm-1",
-      "color": "#a16207",
+      "color": "#d97706",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_polyurethane_548.csv (Open Specy)"
     },
     {
       "centerWavenumber": 2918.3,
       "tolerance": 10.0,
       "name": "polyurethane marker @ 2918.3 cm-1",
-      "color": "#a16207",
+      "color": "#d97706",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_polyurethane_548.csv (Open Specy)"
     },
     {
       "centerWavenumber": 700.2,
       "tolerance": 10.0,
       "name": "polyurethane acrylic resin marker @ 700.2 cm-1",
-      "color": "#a16207",
+      "color": "#0369a1",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_polyurethane_acrylic_resin_380.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1149.6,
       "tolerance": 10.0,
       "name": "polyurethane acrylic resin marker @ 1149.6 cm-1",
-      "color": "#a16207",
+      "color": "#0369a1",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_polyurethane_acrylic_resin_380.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1452.4,
       "tolerance": 10.0,
       "name": "polyurethane acrylic resin marker @ 1452.4 cm-1",
-      "color": "#a16207",
+      "color": "#0369a1",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_polyurethane_acrylic_resin_380.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1726.3,
       "tolerance": 10.0,
       "name": "polyurethane acrylic resin marker @ 1726.3 cm-1",
-      "color": "#a16207",
+      "color": "#0369a1",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_polyurethane_acrylic_resin_380.csv (Open Specy)"
     },
     {
       "centerWavenumber": 2956.9,
       "tolerance": 10.0,
       "name": "polyurethane acrylic resin marker @ 2956.9 cm-1",
-      "color": "#a16207",
+      "color": "#0369a1",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_polyurethane_acrylic_resin_380.csv (Open Specy)"
     },
     {
       "centerWavenumber": 698.2,
       "tolerance": 10.0,
       "name": "resin dispersion marker @ 698.2 cm-1",
-      "color": "#a16207",
+      "color": "#4f46e5",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_resin_dispersion_554.csv (Open Specy)"
     },
     {
       "centerWavenumber": 754.2,
       "tolerance": 10.0,
       "name": "resin dispersion marker @ 754.2 cm-1",
-      "color": "#a16207",
+      "color": "#4f46e5",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_resin_dispersion_554.csv (Open Specy)"
     },
     {
       "centerWavenumber": 910.4,
       "tolerance": 10.0,
       "name": "resin dispersion marker @ 910.4 cm-1",
-      "color": "#a16207",
+      "color": "#4f46e5",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_resin_dispersion_554.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1003.0,
       "tolerance": 10.0,
       "name": "resin dispersion marker @ 1003 cm-1",
-      "color": "#a16207",
+      "color": "#4f46e5",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_resin_dispersion_554.csv (Open Specy)"
     },
     {
       "centerWavenumber": 3689.8,
       "tolerance": 10.0,
       "name": "resin dispersion marker @ 3689.8 cm-1",
-      "color": "#a16207",
+      "color": "#4f46e5",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_resin_dispersion_554.csv (Open Specy)"
     },
     {
       "centerWavenumber": 792.6,
       "tolerance": 10.0,
       "name": "siliconePDMS marker @ 792.6 cm-1",
-      "color": "#a16207",
+      "color": "#be123c",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_siliconePDMS_636.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1012.5,
       "tolerance": 10.0,
       "name": "siliconePDMS marker @ 1012.5 cm-1",
-      "color": "#a16207",
+      "color": "#be123c",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_siliconePDMS_636.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1259.3,
       "tolerance": 10.0,
       "name": "siliconePDMS marker @ 1259.3 cm-1",
-      "color": "#a16207",
+      "color": "#be123c",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_siliconePDMS_636.csv (Open Specy)"
     },
     {
       "centerWavenumber": 785.0,
       "tolerance": 10.0,
       "name": "silicone rubber marker @ 785 cm-1",
-      "color": "#a16207",
+      "color": "#0891b2",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_silicone_rubber_336.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1006.8,
       "tolerance": 10.0,
       "name": "silicone rubber marker @ 1006.8 cm-1",
-      "color": "#a16207",
+      "color": "#0891b2",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_silicone_rubber_336.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1257.6,
       "tolerance": 10.0,
       "name": "silicone rubber marker @ 1257.6 cm-1",
-      "color": "#a16207",
+      "color": "#0891b2",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_silicone_rubber_336.csv (Open Specy)"
     },
     {
       "centerWavenumber": 787.0,
       "tolerance": 10.0,
       "name": "silicone seal reactor marker @ 787 cm-1",
-      "color": "#a16207",
+      "color": "#16a34a",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_silicone_seal_reactor_552.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1008.8,
       "tolerance": 10.0,
       "name": "silicone seal reactor marker @ 1008.8 cm-1",
-      "color": "#a16207",
+      "color": "#16a34a",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_silicone_seal_reactor_552.csv (Open Specy)"
     },
     {
       "centerWavenumber": 1257.6,
       "tolerance": 10.0,
       "name": "silicone seal reactor marker @ 1257.6 cm-1",
-      "color": "#a16207",
+      "color": "#16a34a",
       "note": "Auto-derived from 02_steel_coating/03_coatings_resins/openspecy_silicone_seal_reactor_552.csv (Open Specy)"
     }
   ]

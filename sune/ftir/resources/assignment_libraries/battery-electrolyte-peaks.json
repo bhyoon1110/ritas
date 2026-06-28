@@ -6,1512 +6,1512 @@
       "centerWavenumber": 526.0,
       "tolerance": 10.0,
       "name": "Acetone marker @ 526 cm-1",
-      "color": "#0f766e",
+      "color": "#15803d",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Acetone_n0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1218.0,
       "tolerance": 10.0,
       "name": "Acetone marker @ 1218 cm-1",
-      "color": "#0f766e",
+      "color": "#15803d",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Acetone_n0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1366.0,
       "tolerance": 10.0,
       "name": "Acetone marker @ 1366 cm-1",
-      "color": "#0f766e",
+      "color": "#15803d",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Acetone_n0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1738.0,
       "tolerance": 10.0,
       "name": "Acetone marker @ 1738 cm-1",
-      "color": "#0f766e",
+      "color": "#15803d",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Acetone_n0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 2970.0,
       "tolerance": 10.0,
       "name": "Acetone marker @ 2970 cm-1",
-      "color": "#0f766e",
+      "color": "#15803d",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Acetone_n0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 530.0,
       "tolerance": 10.0,
       "name": "Acetone marker @ 530 cm-1",
-      "color": "#0f766e",
+      "color": "#15803d",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Acetone_n2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1214.0,
       "tolerance": 10.0,
       "name": "Acetone marker @ 1214 cm-1",
-      "color": "#0f766e",
+      "color": "#15803d",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Acetone_n2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1365.0,
       "tolerance": 10.0,
       "name": "Acetone marker @ 1365 cm-1",
-      "color": "#0f766e",
+      "color": "#15803d",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Acetone_n2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1728.0,
       "tolerance": 10.0,
       "name": "Acetone marker @ 1728 cm-1",
-      "color": "#0f766e",
+      "color": "#15803d",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Acetone_n2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 2966.0,
       "tolerance": 10.0,
       "name": "Acetone marker @ 2966 cm-1",
-      "color": "#0f766e",
+      "color": "#15803d",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Acetone_n2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1216.0,
       "tolerance": 10.0,
       "name": "Acetone marker @ 1216 cm-1",
-      "color": "#0f766e",
+      "color": "#15803d",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Acetone_n3.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1354.8,
       "tolerance": 10.0,
       "name": "Acetone marker @ 1354.8 cm-1",
-      "color": "#0f766e",
+      "color": "#15803d",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Acetone_n3.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1417.8,
       "tolerance": 10.0,
       "name": "Acetone marker @ 1417.8 cm-1",
-      "color": "#0f766e",
+      "color": "#15803d",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Acetone_n3.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1719.0,
       "tolerance": 10.0,
       "name": "Acetone marker @ 1719 cm-1",
-      "color": "#0f766e",
+      "color": "#15803d",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Acetone_n3.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 532.0,
       "tolerance": 10.0,
       "name": "Acetone marker @ 532 cm-1",
-      "color": "#0f766e",
+      "color": "#15803d",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Acetone_n4.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1218.2,
       "tolerance": 10.0,
       "name": "Acetone marker @ 1218.2 cm-1",
-      "color": "#0f766e",
+      "color": "#15803d",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Acetone_n4.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1360.6,
       "tolerance": 10.0,
       "name": "Acetone marker @ 1360.6 cm-1",
-      "color": "#0f766e",
+      "color": "#15803d",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Acetone_n4.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1419.9,
       "tolerance": 10.0,
       "name": "Acetone marker @ 1419.9 cm-1",
-      "color": "#0f766e",
+      "color": "#15803d",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Acetone_n4.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1715.1,
       "tolerance": 10.0,
       "name": "Acetone marker @ 1715.1 cm-1",
-      "color": "#0f766e",
+      "color": "#15803d",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Acetone_n4.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 694.0,
       "tolerance": 10.0,
       "name": "Acetonitrile (AN) marker @ 694 cm-1",
-      "color": "#0f766e",
+      "color": "#16a34a",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Acetonitrile__AN__idx0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1422.0,
       "tolerance": 10.0,
       "name": "Acetonitrile (AN) marker @ 1422 cm-1",
-      "color": "#0f766e",
+      "color": "#16a34a",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Acetonitrile__AN__idx0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1466.0,
       "tolerance": 10.0,
       "name": "Acetonitrile (AN) marker @ 1466 cm-1",
-      "color": "#0f766e",
+      "color": "#16a34a",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Acetonitrile__AN__idx0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1482.0,
       "tolerance": 10.0,
       "name": "Acetonitrile (AN) marker @ 1482 cm-1",
-      "color": "#0f766e",
+      "color": "#16a34a",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Acetonitrile__AN__idx0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 2970.0,
       "tolerance": 10.0,
       "name": "Acetonitrile (AN) marker @ 2970 cm-1",
-      "color": "#0f766e",
+      "color": "#16a34a",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Acetonitrile__AN__idx0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1038.0,
       "tolerance": 10.0,
       "name": "Acetonitrile (AN) marker @ 1038 cm-1",
-      "color": "#0f766e",
+      "color": "#16a34a",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Acetonitrile__AN__idx1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1336.0,
       "tolerance": 10.0,
       "name": "Acetonitrile (AN) marker @ 1336 cm-1",
-      "color": "#0f766e",
+      "color": "#16a34a",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Acetonitrile__AN__idx1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1460.0,
       "tolerance": 10.0,
       "name": "Acetonitrile (AN) marker @ 1460 cm-1",
-      "color": "#0f766e",
+      "color": "#16a34a",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Acetonitrile__AN__idx1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1567.0,
       "tolerance": 10.0,
       "name": "Acetonitrile (AN) marker @ 1567 cm-1",
-      "color": "#0f766e",
+      "color": "#16a34a",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Acetonitrile__AN__idx1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 2966.0,
       "tolerance": 10.0,
       "name": "Acetonitrile (AN) marker @ 2966 cm-1",
-      "color": "#0f766e",
+      "color": "#16a34a",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Acetonitrile__AN__idx1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1043.0,
       "tolerance": 10.0,
       "name": "Acetonitrile (AN) marker @ 1043 cm-1",
-      "color": "#0f766e",
+      "color": "#16a34a",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Acetonitrile__AN__idx2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1381.9,
       "tolerance": 10.0,
       "name": "Acetonitrile (AN) marker @ 1381.9 cm-1",
-      "color": "#0f766e",
+      "color": "#16a34a",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Acetonitrile__AN__idx2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1442.5,
       "tolerance": 10.0,
       "name": "Acetonitrile (AN) marker @ 1442.5 cm-1",
-      "color": "#0f766e",
+      "color": "#16a34a",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Acetonitrile__AN__idx2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1461.3,
       "tolerance": 10.0,
       "name": "Acetonitrile (AN) marker @ 1461.3 cm-1",
-      "color": "#0f766e",
+      "color": "#16a34a",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Acetonitrile__AN__idx2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 2257.8,
       "tolerance": 10.0,
       "name": "Acetonitrile (AN) marker @ 2257.8 cm-1",
-      "color": "#0f766e",
+      "color": "#16a34a",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Acetonitrile__AN__idx2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 694.0,
       "tolerance": 10.0,
       "name": "Acetonitrile (AN) marker @ 694 cm-1",
-      "color": "#0f766e",
+      "color": "#16a34a",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Acetonitrile__AN__m0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1422.0,
       "tolerance": 10.0,
       "name": "Acetonitrile (AN) marker @ 1422 cm-1",
-      "color": "#0f766e",
+      "color": "#16a34a",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Acetonitrile__AN__m0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1466.0,
       "tolerance": 10.0,
       "name": "Acetonitrile (AN) marker @ 1466 cm-1",
-      "color": "#0f766e",
+      "color": "#16a34a",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Acetonitrile__AN__m0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1482.0,
       "tolerance": 10.0,
       "name": "Acetonitrile (AN) marker @ 1482 cm-1",
-      "color": "#0f766e",
+      "color": "#16a34a",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Acetonitrile__AN__m0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 2970.0,
       "tolerance": 10.0,
       "name": "Acetonitrile (AN) marker @ 2970 cm-1",
-      "color": "#0f766e",
+      "color": "#16a34a",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Acetonitrile__AN__m0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1038.0,
       "tolerance": 10.0,
       "name": "Acetonitrile (AN) marker @ 1038 cm-1",
-      "color": "#0f766e",
+      "color": "#16a34a",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Acetonitrile__AN__m1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1336.0,
       "tolerance": 10.0,
       "name": "Acetonitrile (AN) marker @ 1336 cm-1",
-      "color": "#0f766e",
+      "color": "#16a34a",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Acetonitrile__AN__m1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1460.0,
       "tolerance": 10.0,
       "name": "Acetonitrile (AN) marker @ 1460 cm-1",
-      "color": "#0f766e",
+      "color": "#16a34a",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Acetonitrile__AN__m1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1567.0,
       "tolerance": 10.0,
       "name": "Acetonitrile (AN) marker @ 1567 cm-1",
-      "color": "#0f766e",
+      "color": "#16a34a",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Acetonitrile__AN__m1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 2966.0,
       "tolerance": 10.0,
       "name": "Acetonitrile (AN) marker @ 2966 cm-1",
-      "color": "#0f766e",
+      "color": "#16a34a",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Acetonitrile__AN__m1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1043.0,
       "tolerance": 10.0,
       "name": "Acetonitrile (AN) marker @ 1043 cm-1",
-      "color": "#0f766e",
+      "color": "#16a34a",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Acetonitrile__AN__m2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1381.9,
       "tolerance": 10.0,
       "name": "Acetonitrile (AN) marker @ 1381.9 cm-1",
-      "color": "#0f766e",
+      "color": "#16a34a",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Acetonitrile__AN__m2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1442.5,
       "tolerance": 10.0,
       "name": "Acetonitrile (AN) marker @ 1442.5 cm-1",
-      "color": "#0f766e",
+      "color": "#16a34a",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Acetonitrile__AN__m2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1461.3,
       "tolerance": 10.0,
       "name": "Acetonitrile (AN) marker @ 1461.3 cm-1",
-      "color": "#0f766e",
+      "color": "#16a34a",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Acetonitrile__AN__m2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 2257.8,
       "tolerance": 10.0,
       "name": "Acetonitrile (AN) marker @ 2257.8 cm-1",
-      "color": "#0f766e",
+      "color": "#16a34a",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Acetonitrile__AN__m2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1126.0,
       "tolerance": 10.0,
       "name": "1,2-Dimethoxyethane (DME) marker @ 1126 cm-1",
-      "color": "#0f766e",
+      "color": "#ea580c",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_DME_n0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1462.0,
       "tolerance": 10.0,
       "name": "1,2-Dimethoxyethane (DME) marker @ 1462 cm-1",
-      "color": "#0f766e",
+      "color": "#ea580c",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_DME_n0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 2894.0,
       "tolerance": 10.0,
       "name": "1,2-Dimethoxyethane (DME) marker @ 2894 cm-1",
-      "color": "#0f766e",
+      "color": "#ea580c",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_DME_n0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 930.0,
       "tolerance": 10.0,
       "name": "1,3-Dioxolane (DOL) marker @ 930 cm-1",
-      "color": "#0f766e",
+      "color": "#7c2d12",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_DOL_n0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1114.0,
       "tolerance": 10.0,
       "name": "1,3-Dioxolane (DOL) marker @ 1114 cm-1",
-      "color": "#0f766e",
+      "color": "#7c2d12",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_DOL_n0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 2882.0,
       "tolerance": 10.0,
       "name": "1,3-Dioxolane (DOL) marker @ 2882 cm-1",
-      "color": "#0f766e",
+      "color": "#7c2d12",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_DOL_n0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 2958.0,
       "tolerance": 10.0,
       "name": "1,3-Dioxolane (DOL) marker @ 2958 cm-1",
-      "color": "#0f766e",
+      "color": "#7c2d12",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_DOL_n0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1073.5,
       "tolerance": 10.0,
       "name": "Diethyl Ether marker @ 1073.5 cm-1",
-      "color": "#0f766e",
+      "color": "#d97706",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_DiethylEther_n0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1125.1,
       "tolerance": 10.0,
       "name": "Diethyl Ether marker @ 1125.1 cm-1",
-      "color": "#0f766e",
+      "color": "#d97706",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_DiethylEther_n0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1393.0,
       "tolerance": 10.0,
       "name": "Diethyl Ether marker @ 1393 cm-1",
-      "color": "#0f766e",
+      "color": "#d97706",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_DiethylEther_n0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 2857.0,
       "tolerance": 10.0,
       "name": "Diethyl Ether marker @ 2857 cm-1",
-      "color": "#0f766e",
+      "color": "#d97706",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_DiethylEther_n0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 2980.1,
       "tolerance": 10.0,
       "name": "Diethyl Ether marker @ 2980.1 cm-1",
-      "color": "#0f766e",
+      "color": "#d97706",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_DiethylEther_n0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1116.7,
       "tolerance": 10.0,
       "name": "Diethyl Ether marker @ 1116.7 cm-1",
-      "color": "#0f766e",
+      "color": "#d97706",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_DiethylEther_n1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1348.6,
       "tolerance": 10.0,
       "name": "Diethyl Ether marker @ 1348.6 cm-1",
-      "color": "#0f766e",
+      "color": "#d97706",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_DiethylEther_n1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1381.0,
       "tolerance": 10.0,
       "name": "Diethyl Ether marker @ 1381 cm-1",
-      "color": "#0f766e",
+      "color": "#d97706",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_DiethylEther_n1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 2862.7,
       "tolerance": 10.0,
       "name": "Diethyl Ether marker @ 2862.7 cm-1",
-      "color": "#0f766e",
+      "color": "#d97706",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_DiethylEther_n1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 2977.6,
       "tolerance": 10.0,
       "name": "Diethyl Ether marker @ 2977.6 cm-1",
-      "color": "#0f766e",
+      "color": "#d97706",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_DiethylEther_n1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1119.1,
       "tolerance": 10.0,
       "name": "Diethyl Ether marker @ 1119.1 cm-1",
-      "color": "#0f766e",
+      "color": "#d97706",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_DiethylEther_n2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1348.0,
       "tolerance": 10.0,
       "name": "Diethyl Ether marker @ 1348 cm-1",
-      "color": "#0f766e",
+      "color": "#d97706",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_DiethylEther_n2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1379.7,
       "tolerance": 10.0,
       "name": "Diethyl Ether marker @ 1379.7 cm-1",
-      "color": "#0f766e",
+      "color": "#d97706",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_DiethylEther_n2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 2856.4,
       "tolerance": 10.0,
       "name": "Diethyl Ether marker @ 2856.4 cm-1",
-      "color": "#0f766e",
+      "color": "#d97706",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_DiethylEther_n2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 2970.2,
       "tolerance": 10.0,
       "name": "Diethyl Ether marker @ 2970.2 cm-1",
-      "color": "#0f766e",
+      "color": "#d97706",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_DiethylEther_n2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1030.0,
       "tolerance": 10.0,
       "name": "Diethyl Carbonate (DEC) marker @ 1030 cm-1",
-      "color": "#0f766e",
+      "color": "#0891b2",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Diethyl_Carbonate__DEC__idx0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1270.0,
       "tolerance": 10.0,
       "name": "Diethyl Carbonate (DEC) marker @ 1270 cm-1",
-      "color": "#0f766e",
+      "color": "#0891b2",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Diethyl_Carbonate__DEC__idx0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1382.0,
       "tolerance": 10.0,
       "name": "Diethyl Carbonate (DEC) marker @ 1382 cm-1",
-      "color": "#0f766e",
+      "color": "#0891b2",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Diethyl_Carbonate__DEC__idx0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1766.0,
       "tolerance": 10.0,
       "name": "Diethyl Carbonate (DEC) marker @ 1766 cm-1",
-      "color": "#0f766e",
+      "color": "#0891b2",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Diethyl_Carbonate__DEC__idx0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1259.5,
       "tolerance": 10.0,
       "name": "Diethyl Carbonate (DEC) marker @ 1259.5 cm-1",
-      "color": "#0f766e",
+      "color": "#0891b2",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Diethyl_Carbonate__DEC__idx1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1301.9,
       "tolerance": 10.0,
       "name": "Diethyl Carbonate (DEC) marker @ 1301.9 cm-1",
-      "color": "#0f766e",
+      "color": "#0891b2",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Diethyl_Carbonate__DEC__idx1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1376.7,
       "tolerance": 10.0,
       "name": "Diethyl Carbonate (DEC) marker @ 1376.7 cm-1",
-      "color": "#0f766e",
+      "color": "#0891b2",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Diethyl_Carbonate__DEC__idx1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1748.9,
       "tolerance": 10.0,
       "name": "Diethyl Carbonate (DEC) marker @ 1748.9 cm-1",
-      "color": "#0f766e",
+      "color": "#0891b2",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Diethyl_Carbonate__DEC__idx1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 2987.6,
       "tolerance": 10.0,
       "name": "Diethyl Carbonate (DEC) marker @ 2987.6 cm-1",
-      "color": "#0f766e",
+      "color": "#0891b2",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Diethyl_Carbonate__DEC__idx1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1019.4,
       "tolerance": 10.0,
       "name": "Diethyl Carbonate (DEC) marker @ 1019.4 cm-1",
-      "color": "#0f766e",
+      "color": "#0891b2",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Diethyl_Carbonate__DEC__idx2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1252.9,
       "tolerance": 10.0,
       "name": "Diethyl Carbonate (DEC) marker @ 1252.9 cm-1",
-      "color": "#0f766e",
+      "color": "#0891b2",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Diethyl_Carbonate__DEC__idx2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1369.9,
       "tolerance": 10.0,
       "name": "Diethyl Carbonate (DEC) marker @ 1369.9 cm-1",
-      "color": "#0f766e",
+      "color": "#0891b2",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Diethyl_Carbonate__DEC__idx2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1743.1,
       "tolerance": 10.0,
       "name": "Diethyl Carbonate (DEC) marker @ 1743.1 cm-1",
-      "color": "#0f766e",
+      "color": "#0891b2",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Diethyl_Carbonate__DEC__idx2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 2989.7,
       "tolerance": 10.0,
       "name": "Diethyl Carbonate (DEC) marker @ 2989.7 cm-1",
-      "color": "#0f766e",
+      "color": "#0891b2",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Diethyl_Carbonate__DEC__idx2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1030.0,
       "tolerance": 10.0,
       "name": "Diethyl Carbonate (DEC) marker @ 1030 cm-1",
-      "color": "#0f766e",
+      "color": "#0891b2",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Diethyl_Carbonate__DEC__m0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1270.0,
       "tolerance": 10.0,
       "name": "Diethyl Carbonate (DEC) marker @ 1270 cm-1",
-      "color": "#0f766e",
+      "color": "#0891b2",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Diethyl_Carbonate__DEC__m0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1382.0,
       "tolerance": 10.0,
       "name": "Diethyl Carbonate (DEC) marker @ 1382 cm-1",
-      "color": "#0f766e",
+      "color": "#0891b2",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Diethyl_Carbonate__DEC__m0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1766.0,
       "tolerance": 10.0,
       "name": "Diethyl Carbonate (DEC) marker @ 1766 cm-1",
-      "color": "#0f766e",
+      "color": "#0891b2",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Diethyl_Carbonate__DEC__m0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1259.5,
       "tolerance": 10.0,
       "name": "Diethyl Carbonate (DEC) marker @ 1259.5 cm-1",
-      "color": "#0f766e",
+      "color": "#0891b2",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Diethyl_Carbonate__DEC__m1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1301.9,
       "tolerance": 10.0,
       "name": "Diethyl Carbonate (DEC) marker @ 1301.9 cm-1",
-      "color": "#0f766e",
+      "color": "#0891b2",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Diethyl_Carbonate__DEC__m1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1376.7,
       "tolerance": 10.0,
       "name": "Diethyl Carbonate (DEC) marker @ 1376.7 cm-1",
-      "color": "#0f766e",
+      "color": "#0891b2",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Diethyl_Carbonate__DEC__m1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1748.9,
       "tolerance": 10.0,
       "name": "Diethyl Carbonate (DEC) marker @ 1748.9 cm-1",
-      "color": "#0f766e",
+      "color": "#0891b2",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Diethyl_Carbonate__DEC__m1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 2987.6,
       "tolerance": 10.0,
       "name": "Diethyl Carbonate (DEC) marker @ 2987.6 cm-1",
-      "color": "#0f766e",
+      "color": "#0891b2",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Diethyl_Carbonate__DEC__m1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1019.4,
       "tolerance": 10.0,
       "name": "Diethyl Carbonate (DEC) marker @ 1019.4 cm-1",
-      "color": "#0f766e",
+      "color": "#0891b2",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Diethyl_Carbonate__DEC__m2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1252.9,
       "tolerance": 10.0,
       "name": "Diethyl Carbonate (DEC) marker @ 1252.9 cm-1",
-      "color": "#0f766e",
+      "color": "#0891b2",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Diethyl_Carbonate__DEC__m2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1369.9,
       "tolerance": 10.0,
       "name": "Diethyl Carbonate (DEC) marker @ 1369.9 cm-1",
-      "color": "#0f766e",
+      "color": "#0891b2",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Diethyl_Carbonate__DEC__m2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1743.1,
       "tolerance": 10.0,
       "name": "Diethyl Carbonate (DEC) marker @ 1743.1 cm-1",
-      "color": "#0f766e",
+      "color": "#0891b2",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Diethyl_Carbonate__DEC__m2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 2989.7,
       "tolerance": 10.0,
       "name": "Diethyl Carbonate (DEC) marker @ 2989.7 cm-1",
-      "color": "#0f766e",
+      "color": "#0891b2",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Diethyl_Carbonate__DEC__m2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 982.0,
       "tolerance": 10.0,
       "name": "Dimethyl Carbonate (DMC) marker @ 982 cm-1",
-      "color": "#0f766e",
+      "color": "#b45309",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Dimethyl_Carbonate__DMC__idx0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1290.0,
       "tolerance": 10.0,
       "name": "Dimethyl Carbonate (DMC) marker @ 1290 cm-1",
-      "color": "#0f766e",
+      "color": "#b45309",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Dimethyl_Carbonate__DMC__idx0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1462.0,
       "tolerance": 10.0,
       "name": "Dimethyl Carbonate (DMC) marker @ 1462 cm-1",
-      "color": "#0f766e",
+      "color": "#b45309",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Dimethyl_Carbonate__DMC__idx0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1782.0,
       "tolerance": 10.0,
       "name": "Dimethyl Carbonate (DMC) marker @ 1782 cm-1",
-      "color": "#0f766e",
+      "color": "#b45309",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Dimethyl_Carbonate__DMC__idx0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 792.5,
       "tolerance": 10.0,
       "name": "Dimethyl Carbonate (DMC) marker @ 792.5 cm-1",
-      "color": "#0f766e",
+      "color": "#b45309",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Dimethyl_Carbonate__DMC__idx1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 981.0,
       "tolerance": 10.0,
       "name": "Dimethyl Carbonate (DMC) marker @ 981 cm-1",
-      "color": "#0f766e",
+      "color": "#b45309",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Dimethyl_Carbonate__DMC__idx1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1263.1,
       "tolerance": 10.0,
       "name": "Dimethyl Carbonate (DMC) marker @ 1263.1 cm-1",
-      "color": "#0f766e",
+      "color": "#b45309",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Dimethyl_Carbonate__DMC__idx1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1288.3,
       "tolerance": 10.0,
       "name": "Dimethyl Carbonate (DMC) marker @ 1288.3 cm-1",
-      "color": "#0f766e",
+      "color": "#b45309",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Dimethyl_Carbonate__DMC__idx1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1763.5,
       "tolerance": 10.0,
       "name": "Dimethyl Carbonate (DMC) marker @ 1763.5 cm-1",
-      "color": "#0f766e",
+      "color": "#b45309",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Dimethyl_Carbonate__DMC__idx1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 982.0,
       "tolerance": 10.0,
       "name": "Dimethyl Carbonate (DMC) marker @ 982 cm-1",
-      "color": "#0f766e",
+      "color": "#b45309",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Dimethyl_Carbonate__DMC__m0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1290.0,
       "tolerance": 10.0,
       "name": "Dimethyl Carbonate (DMC) marker @ 1290 cm-1",
-      "color": "#0f766e",
+      "color": "#b45309",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Dimethyl_Carbonate__DMC__m0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1462.0,
       "tolerance": 10.0,
       "name": "Dimethyl Carbonate (DMC) marker @ 1462 cm-1",
-      "color": "#0f766e",
+      "color": "#b45309",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Dimethyl_Carbonate__DMC__m0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1782.0,
       "tolerance": 10.0,
       "name": "Dimethyl Carbonate (DMC) marker @ 1782 cm-1",
-      "color": "#0f766e",
+      "color": "#b45309",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Dimethyl_Carbonate__DMC__m0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 792.5,
       "tolerance": 10.0,
       "name": "Dimethyl Carbonate (DMC) marker @ 792.5 cm-1",
-      "color": "#0f766e",
+      "color": "#b45309",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Dimethyl_Carbonate__DMC__m1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 981.0,
       "tolerance": 10.0,
       "name": "Dimethyl Carbonate (DMC) marker @ 981 cm-1",
-      "color": "#0f766e",
+      "color": "#b45309",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Dimethyl_Carbonate__DMC__m1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1263.1,
       "tolerance": 10.0,
       "name": "Dimethyl Carbonate (DMC) marker @ 1263.1 cm-1",
-      "color": "#0f766e",
+      "color": "#b45309",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Dimethyl_Carbonate__DMC__m1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1288.3,
       "tolerance": 10.0,
       "name": "Dimethyl Carbonate (DMC) marker @ 1288.3 cm-1",
-      "color": "#0f766e",
+      "color": "#b45309",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Dimethyl_Carbonate__DMC__m1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1763.5,
       "tolerance": 10.0,
       "name": "Dimethyl Carbonate (DMC) marker @ 1763.5 cm-1",
-      "color": "#0f766e",
+      "color": "#b45309",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Dimethyl_Carbonate__DMC__m1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 878.0,
       "tolerance": 10.0,
       "name": "1,4-Dioxane marker @ 878 cm-1",
-      "color": "#0f766e",
+      "color": "#b45309",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Dioxane_n0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1126.0,
       "tolerance": 10.0,
       "name": "1,4-Dioxane marker @ 1126 cm-1",
-      "color": "#0f766e",
+      "color": "#b45309",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Dioxane_n0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1262.0,
       "tolerance": 10.0,
       "name": "1,4-Dioxane marker @ 1262 cm-1",
-      "color": "#0f766e",
+      "color": "#b45309",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Dioxane_n0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 2866.0,
       "tolerance": 10.0,
       "name": "1,4-Dioxane marker @ 2866 cm-1",
-      "color": "#0f766e",
+      "color": "#b45309",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Dioxane_n0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 2970.0,
       "tolerance": 10.0,
       "name": "1,4-Dioxane marker @ 2970 cm-1",
-      "color": "#0f766e",
+      "color": "#b45309",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Dioxane_n0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 884.0,
       "tolerance": 10.0,
       "name": "1,4-Dioxane marker @ 884 cm-1",
-      "color": "#0f766e",
+      "color": "#b45309",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Dioxane_n1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1136.5,
       "tolerance": 10.0,
       "name": "1,4-Dioxane marker @ 1136.5 cm-1",
-      "color": "#0f766e",
+      "color": "#b45309",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Dioxane_n1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1257.9,
       "tolerance": 10.0,
       "name": "1,4-Dioxane marker @ 1257.9 cm-1",
-      "color": "#0f766e",
+      "color": "#b45309",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Dioxane_n1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 2862.1,
       "tolerance": 10.0,
       "name": "1,4-Dioxane marker @ 2862.1 cm-1",
-      "color": "#0f766e",
+      "color": "#b45309",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Dioxane_n1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 2965.3,
       "tolerance": 10.0,
       "name": "1,4-Dioxane marker @ 2965.3 cm-1",
-      "color": "#0f766e",
+      "color": "#b45309",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Dioxane_n1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 872.5,
       "tolerance": 10.0,
       "name": "1,4-Dioxane marker @ 872.5 cm-1",
-      "color": "#0f766e",
+      "color": "#b45309",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Dioxane_n2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1122.2,
       "tolerance": 10.0,
       "name": "1,4-Dioxane marker @ 1122.2 cm-1",
-      "color": "#0f766e",
+      "color": "#b45309",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Dioxane_n2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1251.3,
       "tolerance": 10.0,
       "name": "1,4-Dioxane marker @ 1251.3 cm-1",
-      "color": "#0f766e",
+      "color": "#b45309",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Dioxane_n2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 2849.2,
       "tolerance": 10.0,
       "name": "1,4-Dioxane marker @ 2849.2 cm-1",
-      "color": "#0f766e",
+      "color": "#b45309",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Dioxane_n2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 2955.0,
       "tolerance": 10.0,
       "name": "1,4-Dioxane marker @ 2955 cm-1",
-      "color": "#0f766e",
+      "color": "#b45309",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Dioxane_n2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 871.4,
       "tolerance": 10.0,
       "name": "1,4-Dioxane marker @ 871.4 cm-1",
-      "color": "#0f766e",
+      "color": "#b45309",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Dioxane_n3.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1120.7,
       "tolerance": 10.0,
       "name": "1,4-Dioxane marker @ 1120.7 cm-1",
-      "color": "#0f766e",
+      "color": "#b45309",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Dioxane_n3.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1252.1,
       "tolerance": 10.0,
       "name": "1,4-Dioxane marker @ 1252.1 cm-1",
-      "color": "#0f766e",
+      "color": "#b45309",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Dioxane_n3.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 2858.9,
       "tolerance": 10.0,
       "name": "1,4-Dioxane marker @ 2858.9 cm-1",
-      "color": "#0f766e",
+      "color": "#b45309",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Dioxane_n3.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 2967.3,
       "tolerance": 10.0,
       "name": "1,4-Dioxane marker @ 2967.3 cm-1",
-      "color": "#0f766e",
+      "color": "#b45309",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Dioxane_n3.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 773.5,
       "tolerance": 10.0,
       "name": "Ethylene Carbonate (EC) marker @ 773.5 cm-1",
-      "color": "#0f766e",
+      "color": "#c026d3",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Ethylene_Carbonate__EC__idx0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1071.5,
       "tolerance": 10.0,
       "name": "Ethylene Carbonate (EC) marker @ 1071.5 cm-1",
-      "color": "#0f766e",
+      "color": "#c026d3",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Ethylene_Carbonate__EC__idx0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1162.3,
       "tolerance": 10.0,
       "name": "Ethylene Carbonate (EC) marker @ 1162.3 cm-1",
-      "color": "#0f766e",
+      "color": "#c026d3",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Ethylene_Carbonate__EC__idx0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1391.5,
       "tolerance": 10.0,
       "name": "Ethylene Carbonate (EC) marker @ 1391.5 cm-1",
-      "color": "#0f766e",
+      "color": "#c026d3",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Ethylene_Carbonate__EC__idx0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1800.4,
       "tolerance": 10.0,
       "name": "Ethylene Carbonate (EC) marker @ 1800.4 cm-1",
-      "color": "#0f766e",
+      "color": "#c026d3",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Ethylene_Carbonate__EC__idx0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 773.5,
       "tolerance": 10.0,
       "name": "Ethylene Carbonate (EC) marker @ 773.5 cm-1",
-      "color": "#0f766e",
+      "color": "#c026d3",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Ethylene_Carbonate__EC__m0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1071.5,
       "tolerance": 10.0,
       "name": "Ethylene Carbonate (EC) marker @ 1071.5 cm-1",
-      "color": "#0f766e",
+      "color": "#c026d3",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Ethylene_Carbonate__EC__m0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1162.3,
       "tolerance": 10.0,
       "name": "Ethylene Carbonate (EC) marker @ 1162.3 cm-1",
-      "color": "#0f766e",
+      "color": "#c026d3",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Ethylene_Carbonate__EC__m0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1391.5,
       "tolerance": 10.0,
       "name": "Ethylene Carbonate (EC) marker @ 1391.5 cm-1",
-      "color": "#0f766e",
+      "color": "#c026d3",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Ethylene_Carbonate__EC__m0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1800.4,
       "tolerance": 10.0,
       "name": "Ethylene Carbonate (EC) marker @ 1800.4 cm-1",
-      "color": "#0f766e",
+      "color": "#c026d3",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Ethylene_Carbonate__EC__m0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1286.0,
       "tolerance": 10.0,
       "name": "NMP (N-Methyl-2-pyrrolidone) marker @ 1286 cm-1",
-      "color": "#0f766e",
+      "color": "#7c2d12",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_NMP__N_Methyl_2_pyrrolidone__idx0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1418.0,
       "tolerance": 10.0,
       "name": "NMP (N-Methyl-2-pyrrolidone) marker @ 1418 cm-1",
-      "color": "#0f766e",
+      "color": "#7c2d12",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_NMP__N_Methyl_2_pyrrolidone__idx0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1730.0,
       "tolerance": 10.0,
       "name": "NMP (N-Methyl-2-pyrrolidone) marker @ 1730 cm-1",
-      "color": "#0f766e",
+      "color": "#7c2d12",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_NMP__N_Methyl_2_pyrrolidone__idx0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 2922.0,
       "tolerance": 10.0,
       "name": "NMP (N-Methyl-2-pyrrolidone) marker @ 2922 cm-1",
-      "color": "#0f766e",
+      "color": "#7c2d12",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_NMP__N_Methyl_2_pyrrolidone__idx0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1286.0,
       "tolerance": 10.0,
       "name": "NMP (N-Methyl-2-pyrrolidone) marker @ 1286 cm-1",
-      "color": "#0f766e",
+      "color": "#7c2d12",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_NMP__N_Methyl_2_pyrrolidone__m0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1418.0,
       "tolerance": 10.0,
       "name": "NMP (N-Methyl-2-pyrrolidone) marker @ 1418 cm-1",
-      "color": "#0f766e",
+      "color": "#7c2d12",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_NMP__N_Methyl_2_pyrrolidone__m0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1730.0,
       "tolerance": 10.0,
       "name": "NMP (N-Methyl-2-pyrrolidone) marker @ 1730 cm-1",
-      "color": "#0f766e",
+      "color": "#7c2d12",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_NMP__N_Methyl_2_pyrrolidone__m0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 2922.0,
       "tolerance": 10.0,
       "name": "NMP (N-Methyl-2-pyrrolidone) marker @ 2922 cm-1",
-      "color": "#0f766e",
+      "color": "#7c2d12",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_NMP__N_Methyl_2_pyrrolidone__m0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1110.0,
       "tolerance": 10.0,
       "name": "Propylene Carbonate (PC) marker @ 1110 cm-1",
-      "color": "#0f766e",
+      "color": "#a21caf",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Propylene_Carbonate__PC__idx0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1866.0,
       "tolerance": 10.0,
       "name": "Propylene Carbonate (PC) marker @ 1866 cm-1",
-      "color": "#0f766e",
+      "color": "#a21caf",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Propylene_Carbonate__PC__idx0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1110.0,
       "tolerance": 10.0,
       "name": "Propylene Carbonate (PC) marker @ 1110 cm-1",
-      "color": "#0f766e",
+      "color": "#a21caf",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Propylene_Carbonate__PC__m0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1866.0,
       "tolerance": 10.0,
       "name": "Propylene Carbonate (PC) marker @ 1866 cm-1",
-      "color": "#0f766e",
+      "color": "#a21caf",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Propylene_Carbonate__PC__m0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 918.0,
       "tolerance": 10.0,
       "name": "THF (Tetrahydrofuran) marker @ 918 cm-1",
-      "color": "#0f766e",
+      "color": "#a21caf",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_THF_n0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1082.0,
       "tolerance": 10.0,
       "name": "THF (Tetrahydrofuran) marker @ 1082 cm-1",
-      "color": "#0f766e",
+      "color": "#a21caf",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_THF_n0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 2870.0,
       "tolerance": 10.0,
       "name": "THF (Tetrahydrofuran) marker @ 2870 cm-1",
-      "color": "#0f766e",
+      "color": "#a21caf",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_THF_n0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 2982.0,
       "tolerance": 10.0,
       "name": "THF (Tetrahydrofuran) marker @ 2982 cm-1",
-      "color": "#0f766e",
+      "color": "#a21caf",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_THF_n0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 919.0,
       "tolerance": 10.0,
       "name": "THF (Tetrahydrofuran) marker @ 919 cm-1",
-      "color": "#0f766e",
+      "color": "#a21caf",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_THF_n1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1085.0,
       "tolerance": 10.0,
       "name": "THF (Tetrahydrofuran) marker @ 1085 cm-1",
-      "color": "#0f766e",
+      "color": "#a21caf",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_THF_n1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 2858.0,
       "tolerance": 10.0,
       "name": "THF (Tetrahydrofuran) marker @ 2858 cm-1",
-      "color": "#0f766e",
+      "color": "#a21caf",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_THF_n1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 2968.0,
       "tolerance": 10.0,
       "name": "THF (Tetrahydrofuran) marker @ 2968 cm-1",
-      "color": "#0f766e",
+      "color": "#a21caf",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_THF_n1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 846.0,
       "tolerance": 10.0,
       "name": "Trimethyl Phosphate (TMP) marker @ 846 cm-1",
-      "color": "#0f766e",
+      "color": "#4f46e5",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_TMP_n0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1054.0,
       "tolerance": 10.0,
       "name": "Trimethyl Phosphate (TMP) marker @ 1054 cm-1",
-      "color": "#0f766e",
+      "color": "#4f46e5",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_TMP_n0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1302.0,
       "tolerance": 10.0,
       "name": "Trimethyl Phosphate (TMP) marker @ 1302 cm-1",
-      "color": "#0f766e",
+      "color": "#4f46e5",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_TMP_n0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 2962.0,
       "tolerance": 10.0,
       "name": "Trimethyl Phosphate (TMP) marker @ 2962 cm-1",
-      "color": "#0f766e",
+      "color": "#4f46e5",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_TMP_n0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 852.0,
       "tolerance": 10.0,
       "name": "Trimethyl Phosphate (TMP) marker @ 852 cm-1",
-      "color": "#0f766e",
+      "color": "#4f46e5",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_TMP_n1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1042.9,
       "tolerance": 10.0,
       "name": "Trimethyl Phosphate (TMP) marker @ 1042.9 cm-1",
-      "color": "#0f766e",
+      "color": "#4f46e5",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_TMP_n1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1292.6,
       "tolerance": 10.0,
       "name": "Trimethyl Phosphate (TMP) marker @ 1292.6 cm-1",
-      "color": "#0f766e",
+      "color": "#4f46e5",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_TMP_n1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 2859.1,
       "tolerance": 10.0,
       "name": "Trimethyl Phosphate (TMP) marker @ 2859.1 cm-1",
-      "color": "#0f766e",
+      "color": "#4f46e5",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_TMP_n1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 2960.5,
       "tolerance": 10.0,
       "name": "Trimethyl Phosphate (TMP) marker @ 2960.5 cm-1",
-      "color": "#0f766e",
+      "color": "#4f46e5",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_TMP_n1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1458.0,
       "tolerance": 10.0,
       "name": "Water marker @ 1458 cm-1",
-      "color": "#0f766e",
+      "color": "#a21caf",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Water_n0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1510.0,
       "tolerance": 10.0,
       "name": "Water marker @ 1510 cm-1",
-      "color": "#0f766e",
+      "color": "#a21caf",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Water_n0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1718.0,
       "tolerance": 10.0,
       "name": "Water marker @ 1718 cm-1",
-      "color": "#0f766e",
+      "color": "#a21caf",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Water_n0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 3750.0,
       "tolerance": 10.0,
       "name": "Water marker @ 3750 cm-1",
-      "color": "#0f766e",
+      "color": "#a21caf",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Water_n0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 3854.0,
       "tolerance": 10.0,
       "name": "Water marker @ 3854 cm-1",
-      "color": "#0f766e",
+      "color": "#a21caf",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Water_n0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1637.7,
       "tolerance": 10.0,
       "name": "Water marker @ 1637.7 cm-1",
-      "color": "#0f766e",
+      "color": "#a21caf",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Water_n1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 3373.5,
       "tolerance": 10.0,
       "name": "Water marker @ 3373.5 cm-1",
-      "color": "#0f766e",
+      "color": "#a21caf",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_Water_n1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1046.0,
       "tolerance": 10.0,
       "name": "gamma-Butyrolactone (GBL) marker @ 1046 cm-1",
-      "color": "#0f766e",
+      "color": "#be123c",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_gamma_Butyrolactone__GBL__idx0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1162.0,
       "tolerance": 10.0,
       "name": "gamma-Butyrolactone (GBL) marker @ 1162 cm-1",
-      "color": "#0f766e",
+      "color": "#be123c",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_gamma_Butyrolactone__GBL__idx0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1822.0,
       "tolerance": 10.0,
       "name": "gamma-Butyrolactone (GBL) marker @ 1822 cm-1",
-      "color": "#0f766e",
+      "color": "#be123c",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_gamma_Butyrolactone__GBL__idx0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 2994.0,
       "tolerance": 10.0,
       "name": "gamma-Butyrolactone (GBL) marker @ 2994 cm-1",
-      "color": "#0f766e",
+      "color": "#be123c",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_gamma_Butyrolactone__GBL__idx0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 995.0,
       "tolerance": 10.0,
       "name": "gamma-Butyrolactone (GBL) marker @ 995 cm-1",
-      "color": "#0f766e",
+      "color": "#be123c",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_gamma_Butyrolactone__GBL__idx1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1172.0,
       "tolerance": 10.0,
       "name": "gamma-Butyrolactone (GBL) marker @ 1172 cm-1",
-      "color": "#0f766e",
+      "color": "#be123c",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_gamma_Butyrolactone__GBL__idx1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1385.0,
       "tolerance": 10.0,
       "name": "gamma-Butyrolactone (GBL) marker @ 1385 cm-1",
-      "color": "#0f766e",
+      "color": "#be123c",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_gamma_Butyrolactone__GBL__idx1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1784.0,
       "tolerance": 10.0,
       "name": "gamma-Butyrolactone (GBL) marker @ 1784 cm-1",
-      "color": "#0f766e",
+      "color": "#be123c",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_gamma_Butyrolactone__GBL__idx1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 2977.0,
       "tolerance": 10.0,
       "name": "gamma-Butyrolactone (GBL) marker @ 2977 cm-1",
-      "color": "#0f766e",
+      "color": "#be123c",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_gamma_Butyrolactone__GBL__idx1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 995.2,
       "tolerance": 10.0,
       "name": "gamma-Butyrolactone (GBL) marker @ 995.2 cm-1",
-      "color": "#0f766e",
+      "color": "#be123c",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_gamma_Butyrolactone__GBL__idx2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1041.3,
       "tolerance": 10.0,
       "name": "gamma-Butyrolactone (GBL) marker @ 1041.3 cm-1",
-      "color": "#0f766e",
+      "color": "#be123c",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_gamma_Butyrolactone__GBL__idx2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1173.6,
       "tolerance": 10.0,
       "name": "gamma-Butyrolactone (GBL) marker @ 1173.6 cm-1",
-      "color": "#0f766e",
+      "color": "#be123c",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_gamma_Butyrolactone__GBL__idx2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1765.2,
       "tolerance": 10.0,
       "name": "gamma-Butyrolactone (GBL) marker @ 1765.2 cm-1",
-      "color": "#0f766e",
+      "color": "#be123c",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_gamma_Butyrolactone__GBL__idx2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1797.7,
       "tolerance": 10.0,
       "name": "gamma-Butyrolactone (GBL) marker @ 1797.7 cm-1",
-      "color": "#0f766e",
+      "color": "#be123c",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_gamma_Butyrolactone__GBL__idx2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1046.0,
       "tolerance": 10.0,
       "name": "gamma-Butyrolactone (GBL) marker @ 1046 cm-1",
-      "color": "#0f766e",
+      "color": "#be123c",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_gamma_Butyrolactone__GBL__m0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1162.0,
       "tolerance": 10.0,
       "name": "gamma-Butyrolactone (GBL) marker @ 1162 cm-1",
-      "color": "#0f766e",
+      "color": "#be123c",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_gamma_Butyrolactone__GBL__m0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1822.0,
       "tolerance": 10.0,
       "name": "gamma-Butyrolactone (GBL) marker @ 1822 cm-1",
-      "color": "#0f766e",
+      "color": "#be123c",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_gamma_Butyrolactone__GBL__m0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 2994.0,
       "tolerance": 10.0,
       "name": "gamma-Butyrolactone (GBL) marker @ 2994 cm-1",
-      "color": "#0f766e",
+      "color": "#be123c",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_gamma_Butyrolactone__GBL__m0.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 995.0,
       "tolerance": 10.0,
       "name": "gamma-Butyrolactone (GBL) marker @ 995 cm-1",
-      "color": "#0f766e",
+      "color": "#be123c",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_gamma_Butyrolactone__GBL__m1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1172.0,
       "tolerance": 10.0,
       "name": "gamma-Butyrolactone (GBL) marker @ 1172 cm-1",
-      "color": "#0f766e",
+      "color": "#be123c",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_gamma_Butyrolactone__GBL__m1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1385.0,
       "tolerance": 10.0,
       "name": "gamma-Butyrolactone (GBL) marker @ 1385 cm-1",
-      "color": "#0f766e",
+      "color": "#be123c",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_gamma_Butyrolactone__GBL__m1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1784.0,
       "tolerance": 10.0,
       "name": "gamma-Butyrolactone (GBL) marker @ 1784 cm-1",
-      "color": "#0f766e",
+      "color": "#be123c",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_gamma_Butyrolactone__GBL__m1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 2977.0,
       "tolerance": 10.0,
       "name": "gamma-Butyrolactone (GBL) marker @ 2977 cm-1",
-      "color": "#0f766e",
+      "color": "#be123c",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_gamma_Butyrolactone__GBL__m1.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 995.2,
       "tolerance": 10.0,
       "name": "gamma-Butyrolactone (GBL) marker @ 995.2 cm-1",
-      "color": "#0f766e",
+      "color": "#be123c",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_gamma_Butyrolactone__GBL__m2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1041.3,
       "tolerance": 10.0,
       "name": "gamma-Butyrolactone (GBL) marker @ 1041.3 cm-1",
-      "color": "#0f766e",
+      "color": "#be123c",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_gamma_Butyrolactone__GBL__m2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1173.6,
       "tolerance": 10.0,
       "name": "gamma-Butyrolactone (GBL) marker @ 1173.6 cm-1",
-      "color": "#0f766e",
+      "color": "#be123c",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_gamma_Butyrolactone__GBL__m2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1765.2,
       "tolerance": 10.0,
       "name": "gamma-Butyrolactone (GBL) marker @ 1765.2 cm-1",
-      "color": "#0f766e",
+      "color": "#be123c",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_gamma_Butyrolactone__GBL__m2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 1797.7,
       "tolerance": 10.0,
       "name": "gamma-Butyrolactone (GBL) marker @ 1797.7 cm-1",
-      "color": "#0f766e",
+      "color": "#be123c",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/nist_gamma_Butyrolactone__GBL__m2.csv (NIST WebBook)"
     },
     {
       "centerWavenumber": 841.0,
       "tolerance": 10.0,
       "name": "Polyethylene Glycol (PEG) marker @ 841 cm-1",
-      "color": "#0f766e",
+      "color": "#15803d",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/openspecy_polyethylene_glycol_peg.csv (openspecy)"
     },
     {
       "centerWavenumber": 960.5,
       "tolerance": 10.0,
       "name": "Polyethylene Glycol (PEG) marker @ 960.5 cm-1",
-      "color": "#0f766e",
+      "color": "#15803d",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/openspecy_polyethylene_glycol_peg.csv (openspecy)"
     },
     {
       "centerWavenumber": 1095.6,
       "tolerance": 10.0,
       "name": "Polyethylene Glycol (PEG) marker @ 1095.6 cm-1",
-      "color": "#0f766e",
+      "color": "#15803d",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/openspecy_polyethylene_glycol_peg.csv (openspecy)"
     },
     {
       "centerWavenumber": 1340.5,
       "tolerance": 10.0,
       "name": "Polyethylene Glycol (PEG) marker @ 1340.5 cm-1",
-      "color": "#0f766e",
+      "color": "#15803d",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/openspecy_polyethylene_glycol_peg.csv (openspecy)"
     },
     {
       "centerWavenumber": 2879.7,
       "tolerance": 10.0,
       "name": "Polyethylene Glycol (PEG) marker @ 2879.7 cm-1",
-      "color": "#0f766e",
+      "color": "#15803d",
       "note": "Auto-derived from 01_battery/01_electrolyte_solvents/openspecy_polyethylene_glycol_peg.csv (openspecy)"
     }
   ]
