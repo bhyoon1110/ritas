@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 from dataclasses import dataclass
+import hashlib
 from io import StringIO
 import json
 import os
@@ -324,6 +325,7 @@ class AssignmentLibraryStore:
             self.root.mkdir(parents=True, exist_ok=True)
             marker = self.root / ".initialized"
             seeded = self._seeded_defaults(marker)
+            bundled_hashes = self._seeded_default_hashes(marker)
             existing_ids = set()
             for path in self.root.iterdir():
                 if not path.is_file() or path.suffix.casefold() not in SUPPORTED_SUFFIXES:
@@ -333,7 +335,15 @@ class AssignmentLibraryStore:
                 except AssignmentLibraryError:
                     continue
             for source, target_name in self._bundled_defaults():
+                target = self.root / target_name
+                source_hash = _file_sha256(source)
                 if target_name in seeded:
+                    previous_hash = bundled_hashes.get(target_name)
+                    if target.exists() and (
+                        previous_hash is None or _file_sha256(target) == previous_hash
+                    ):
+                        shutil.copyfile(source, target)
+                    bundled_hashes[target_name] = source_hash
                     continue
                 try:
                     library_id = _library_id(target_name)
@@ -342,12 +352,21 @@ class AssignmentLibraryStore:
                 if library_id in existing_ids:
                     seeded.add(target_name)
                     continue
-                shutil.copyfile(source, self.root / target_name)
+                shutil.copyfile(source, target)
                 existing_ids.add(library_id)
                 seeded.add(target_name)
+                bundled_hashes[target_name] = source_hash
             marker.write_text(
                 json.dumps(
-                    {"version": 2, "seeded": sorted(seeded)},
+                    {
+                        "version": 3,
+                        "seeded": sorted(seeded),
+                        "bundledHashes": {
+                            key: bundled_hashes[key]
+                            for key in sorted(bundled_hashes)
+                            if key in seeded
+                        },
+                    },
                     ensure_ascii=True,
                     indent=2,
                 )
@@ -377,6 +396,23 @@ class AssignmentLibraryStore:
             if isinstance(seeded, list):
                 return {str(item) for item in seeded}
         return {f"{self.default_library_id}.csv"}
+
+    def _seeded_default_hashes(self, marker: Path) -> dict[str, str]:
+        if not marker.exists():
+            return {}
+        try:
+            payload = json.loads(marker.read_text(encoding="ascii"))
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            return {}
+        if isinstance(payload, dict):
+            hashes = payload.get("bundledHashes")
+            if isinstance(hashes, dict):
+                return {
+                    str(name): str(value)
+                    for name, value in hashes.items()
+                    if isinstance(value, str)
+                }
+        return {}
 
     def _paths(self) -> list[Path]:
         self.initialize()
@@ -555,3 +591,7 @@ def flatten_assignment_libraries(
         for library in libraries
         for item in library.as_func_groups()
     ]
+
+
+def _file_sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()

@@ -75,6 +75,31 @@ def test_store_upgrades_legacy_seed_marker_once(tmp_path: Path) -> None:
     assert "engineering-plastic-engineering-peaks" not in after_delete
 
 
+def test_store_refreshes_bundled_library_when_seeded_copy_is_unchanged(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "libraries"
+    root.mkdir()
+    old_default = DEFAULT_CSV.read_text(encoding="utf-8").replace(
+        "O-H stretch", "O-H stretch old copy", 1
+    )
+    (root / f"{DEFAULT_LIBRARY_ID}.csv").write_text(old_default, encoding="utf-8")
+    (root / ".initialized").write_text(
+        json.dumps({"version": 2, "seeded": [f"{DEFAULT_LIBRARY_ID}.csv"]}),
+        encoding="ascii",
+    )
+
+    store = AssignmentLibraryStore(root, DEFAULT_CSV)
+    store.initialize()
+
+    refreshed = (root / f"{DEFAULT_LIBRARY_ID}.csv").read_text(encoding="utf-8")
+    marker = json.loads((root / ".initialized").read_text(encoding="ascii"))
+
+    assert refreshed == DEFAULT_CSV.read_text(encoding="utf-8")
+    assert marker["version"] == 3
+    assert f"{DEFAULT_LIBRARY_ID}.csv" in marker["bundledHashes"]
+
+
 def test_store_creates_and_updates_editor_library(tmp_path: Path) -> None:
     store = AssignmentLibraryStore(tmp_path / "libraries", DEFAULT_CSV)
     created = store.write(

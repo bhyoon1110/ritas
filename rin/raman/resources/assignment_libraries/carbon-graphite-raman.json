@@ -1,6 +1,6 @@
 {
   "name": "Carbon/Graphite Raman",
-  "description": "Raman peak assignments for carbon and graphite samples. Source: rin/data/RAMAN 데이터 정리.pptx, slide 1.",
+  "description": "Raman peak assignments for carbon and graphite samples. Includes PPTX bands and common reference markers for disordered/graphitic carbon.",
   "assignments": [
     {
       "centerWavenumber": 1335,
@@ -10,6 +10,13 @@
       "note": "PPTX range: 1300-1370 cm-1. Use with G band for ID/IG ratio."
     },
     {
+      "centerWavenumber": 1500,
+      "tolerance": 45,
+      "name": "Carbon D3 band (amorphous sp2 carbon)",
+      "color": "#f97316",
+      "note": "Reference marker outside PPTX. Broad amorphous/disordered carbon component near the G band."
+    },
+    {
       "centerWavenumber": 1590,
       "tolerance": 20,
       "name": "Carbon G band (graphitic sp2)",
@@ -17,11 +24,39 @@
       "note": "PPTX range: 1580-1600 cm-1. Use with D band for ID/IG ratio."
     },
     {
+      "centerWavenumber": 1620,
+      "tolerance": 25,
+      "name": "Carbon D' band (defect-related graphite)",
+      "color": "#7c3aed",
+      "note": "Reference marker outside PPTX. Defect-related shoulder commonly observed near the G band."
+    },
+    {
+      "centerWavenumber": 2450,
+      "tolerance": 90,
+      "name": "Carbon second-order band near 2450",
+      "color": "#65a30d",
+      "note": "Reference marker outside PPTX. Second-order graphitic/carbon band."
+    },
+    {
       "centerWavenumber": 2650,
       "tolerance": 150,
       "name": "Carbon 2D band (second-order)",
       "color": "#16a34a",
       "note": "PPTX range: 2500-2800 cm-1."
+    },
+    {
+      "centerWavenumber": 2940,
+      "tolerance": 80,
+      "name": "Carbon D+G combination band",
+      "color": "#0891b2",
+      "note": "Reference marker outside PPTX. Combination band often observed in graphitic/disordered carbon."
+    },
+    {
+      "centerWavenumber": 3248,
+      "tolerance": 90,
+      "name": "Carbon 2D' band",
+      "color": "#c026d3",
+      "note": "Reference marker outside PPTX. Higher-order graphitic carbon band."
     }
   ]
 }

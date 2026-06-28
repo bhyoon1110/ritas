@@ -95,9 +95,9 @@ def test_raman_assignment_library_api_defaults_and_assigns_sample() -> None:
         libraries = libraries_response.json()["libraries"]
         by_id = {library["id"]: library for library in libraries}
         assert by_id["general-raman"]["defaultSelected"] is True
-        assert by_id["carbon-graphite-raman"]["assignmentCount"] == 3
-        assert by_id["lithium-compound-raman"]["assignmentCount"] == 18
-        assert by_id["lmr-layered-oxide-raman"]["assignmentCount"] == 3
+        assert by_id["carbon-graphite-raman"]["assignmentCount"] == 8
+        assert by_id["lithium-compound-raman"]["assignmentCount"] == 23
+        assert by_id["lmr-layered-oxide-raman"]["assignmentCount"] == 6
 
         response = client.post(
             "/api/v1/raman/analyze",

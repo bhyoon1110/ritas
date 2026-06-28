@@ -1,6 +1,6 @@
 {
   "name": "Lithium Compound Raman",
-  "description": "Raman peak assignments for LiOH, Li2S, LPSCl, Li2CO3, and Li2SO4. Source: rin/data/RAMAN 데이터 정리.pptx, slide 5.",
+  "description": "Raman peak assignments for LiOH, Li2S, LPSCl, Li2CO3, and Li2SO4. Includes PPTX bands and conservative carbonate/sulfate reference markers.",
   "assignments": [
     {
       "centerWavenumber": 313.5,
@@ -80,6 +80,13 @@
       "note": "CO3^2-. PPTX range: 150-160 cm-1."
     },
     {
+      "centerWavenumber": 283,
+      "tolerance": 18,
+      "name": "Li2CO3 lattice / external carbonate mode",
+      "color": "#0891b2",
+      "note": "CO3^2-. Reference marker outside PPTX."
+    },
+    {
       "centerWavenumber": 710,
       "tolerance": 8,
       "name": "Li2CO3 nu4 in-plane bending",
@@ -101,6 +108,13 @@
       "note": "C-O (CO3^2-). PPTX range: 1090-1095 cm-1."
     },
     {
+      "centerWavenumber": 1435,
+      "tolerance": 45,
+      "name": "Li2CO3 nu3 asymmetric stretching",
+      "color": "#0891b2",
+      "note": "C-O (CO3^2-). Reference marker outside PPTX."
+    },
+    {
       "centerWavenumber": 460,
       "tolerance": 12,
       "name": "Li2SO4 nu2 bending",
@@ -115,6 +129,13 @@
       "note": "SO4^2-. PPTX range: 610-620 cm-1."
     },
     {
+      "centerWavenumber": 645,
+      "tolerance": 14,
+      "name": "Li2SO4 nu4 bending split component",
+      "color": "#dc2626",
+      "note": "SO4^2-. Reference marker outside PPTX."
+    },
+    {
       "centerWavenumber": 982.5,
       "tolerance": 6,
       "name": "Li2SO4 nu1 symmetric stretching",
@@ -122,11 +143,25 @@
       "note": "S-O (SO4^2-). PPTX range: 980-985 cm-1."
     },
     {
+      "centerWavenumber": 1065,
+      "tolerance": 25,
+      "name": "Li2SO4 nu3 asymmetric stretching low component",
+      "color": "#dc2626",
+      "note": "S-O (SO4^2-). Reference marker outside PPTX."
+    },
+    {
       "centerWavenumber": 1125,
       "tolerance": 30,
       "name": "Li2SO4 nu3 asymmetric stretching",
       "color": "#dc2626",
       "note": "S-O (SO4^2-). PPTX range: 1100-1150 cm-1."
+    },
+    {
+      "centerWavenumber": 1160,
+      "tolerance": 25,
+      "name": "Li2SO4 nu3 asymmetric stretching high component",
+      "color": "#dc2626",
+      "note": "S-O (SO4^2-). Reference marker outside PPTX."
     }
   ]
 }
