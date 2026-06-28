@@ -93,8 +93,11 @@ def test_raman_assignment_library_api_defaults_and_assigns_sample() -> None:
         libraries_response = client.get("/api/v1/raman/assignment-libraries")
         assert libraries_response.status_code == 200
         libraries = libraries_response.json()["libraries"]
-        assert libraries[0]["id"] == "general-raman"
-        assert libraries[0]["defaultSelected"] is True
+        by_id = {library["id"]: library for library in libraries}
+        assert by_id["general-raman"]["defaultSelected"] is True
+        assert by_id["carbon-graphite-raman"]["assignmentCount"] == 3
+        assert by_id["lithium-compound-raman"]["assignmentCount"] == 18
+        assert by_id["lmr-layered-oxide-raman"]["assignmentCount"] == 3
 
         response = client.post(
             "/api/v1/raman/analyze",
@@ -120,6 +123,34 @@ def test_raman_assignment_library_api_defaults_and_assigns_sample() -> None:
         if trace.get("meta", {}).get("rist_peak")
     ]
     assert any("D band" in name or "G band" in name for name in peak_names)
+
+
+def test_raman_pptx_lmr_assignment_library_assigns_sample() -> None:
+    with TestClient(create_raman_preview_app()) as client:
+        response = client.post(
+            "/api/v1/raman/analyze",
+            files={
+                "files": (
+                    SAMPLE_TXT.name,
+                    SAMPLE_TXT.read_bytes(),
+                    "text/plain",
+                )
+            },
+            data={
+                "sensitivity": "25",
+                "assignment_library_ids": ["lmr-layered-oxide-raman"],
+            },
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["settings"]["assignmentLibraries"][0]["id"] == "lmr-layered-oxide-raman"
+    peak_names = [
+        trace.get("name", "")
+        for trace in payload["figure"]["data"]
+        if trace.get("meta", {}).get("rist_peak")
+    ]
+    assert any("LMR A1g mode" in name for name in peak_names)
 
 
 def test_raman_analyze_api_rejects_unknown_extension() -> None:

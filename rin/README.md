@@ -44,6 +44,10 @@ raw 파일 업로드
 
 - 기본 라이브러리 ID: `general-raman`
 - 기본 라이브러리 원본: `rin/raman/resources/func_groups.csv`
+- PPTX 기반 번들 라이브러리:
+  - `carbon-graphite-raman`: Carbon D/G/2D band
+  - `lithium-compound-raman`: LiOH, Li2S, LPSCl, Li2CO3, Li2SO4
+  - `lmr-layered-oxide-raman`: LMR Eg/A1g mode
 - Edge 서버 저장 폴더: `edge_api_server/data/raman_assignment_libraries`
 - 지원 포맷: JSON, CSV
 
@@ -51,6 +55,10 @@ raw 파일 업로드
 필드를 사용한다. 선택된 라이브러리의 `centerWavenumber ± tolerance` 범위에
 검출 피크가 들어오면 그래프 피크 이름과 색상이 해당 라이브러리 기준으로
 표시된다.
+
+PPTX 기반 번들 라이브러리는 `rin/data/RAMAN 데이터 정리.pptx`에 숫자로
+명시된 피크 범위만 반영한다. LMR peak deconvolution처럼 문서에 피크 위치가
+명시되지 않은 항목은 별도 알고리즘/양식 확정 후 추가한다.
 
 다른 Raman raw 포맷이 추가되면 `rin/raman/preprocess.py`의
 `load_raman_raw()` 또는 내부 reader 함수를 확장하면 된다. 그래프와 피크

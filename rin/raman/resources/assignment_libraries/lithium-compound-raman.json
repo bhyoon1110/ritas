@@ -1,0 +1,132 @@
+{
+  "name": "Lithium Compound Raman",
+  "description": "Raman peak assignments for LiOH, Li2S, LPSCl, Li2CO3, and Li2SO4. Source: rin/data/RAMAN 데이터 정리.pptx, slide 5.",
+  "assignments": [
+    {
+      "centerWavenumber": 313.5,
+      "tolerance": 21,
+      "name": "LiOH lattice mode",
+      "color": "#0f766e",
+      "note": "Li-O. PPTX range: 293-334 cm-1."
+    },
+    {
+      "centerWavenumber": 525,
+      "tolerance": 8,
+      "name": "LiOH Li-O stretching",
+      "color": "#0f766e",
+      "note": "Li-O. PPTX range: 520-530 cm-1."
+    },
+    {
+      "centerWavenumber": 630,
+      "tolerance": 12,
+      "name": "LiOH O-Li-O bending",
+      "color": "#0f766e",
+      "note": "Li-O. PPTX range: 620-640 cm-1."
+    },
+    {
+      "centerWavenumber": 3650,
+      "tolerance": 60,
+      "name": "LiOH O-H stretching",
+      "color": "#0f766e",
+      "note": "OH-. PPTX range: 3600-3700 cm-1."
+    },
+    {
+      "centerWavenumber": 375,
+      "tolerance": 8,
+      "name": "Li2S Li-S stretching",
+      "color": "#a16207",
+      "note": "Li-S. PPTX range: 370-380 cm-1."
+    },
+    {
+      "centerWavenumber": 450,
+      "tolerance": 12,
+      "name": "Li2S Li-S symmetric vibration",
+      "color": "#a16207",
+      "note": "Li-S. PPTX range: 440-460 cm-1."
+    },
+    {
+      "centerWavenumber": 200,
+      "tolerance": 12,
+      "name": "LPSCl PS4 nu2 bending",
+      "color": "#7c3aed",
+      "note": "PS4^3-. PPTX range: 190-210 cm-1."
+    },
+    {
+      "centerWavenumber": 260,
+      "tolerance": 12,
+      "name": "LPSCl PS4 nu4 bending",
+      "color": "#7c3aed",
+      "note": "PS4^3-. PPTX range: 250-270 cm-1."
+    },
+    {
+      "centerWavenumber": 425,
+      "tolerance": 8,
+      "name": "LPSCl PS4 nu1 symmetric stretching",
+      "color": "#7c3aed",
+      "note": "P-S (PS4^3-). PPTX range: 420-430 cm-1."
+    },
+    {
+      "centerWavenumber": 570,
+      "tolerance": 12,
+      "name": "LPSCl PS4 nu3 asymmetric stretching",
+      "color": "#7c3aed",
+      "note": "P-S (PS4^3-). PPTX range: 560-580 cm-1."
+    },
+    {
+      "centerWavenumber": 155,
+      "tolerance": 8,
+      "name": "Li2CO3 lattice vibration",
+      "color": "#0891b2",
+      "note": "CO3^2-. PPTX range: 150-160 cm-1."
+    },
+    {
+      "centerWavenumber": 710,
+      "tolerance": 8,
+      "name": "Li2CO3 nu4 in-plane bending",
+      "color": "#0891b2",
+      "note": "CO3^2-. PPTX range: 705-715 cm-1."
+    },
+    {
+      "centerWavenumber": 867.5,
+      "tolerance": 20,
+      "name": "Li2CO3 nu2 out-of-plane bending",
+      "color": "#0891b2",
+      "note": "CO3^2-. PPTX range: 850-885 cm-1."
+    },
+    {
+      "centerWavenumber": 1092.5,
+      "tolerance": 6,
+      "name": "Li2CO3 nu1 symmetric stretching",
+      "color": "#0891b2",
+      "note": "C-O (CO3^2-). PPTX range: 1090-1095 cm-1."
+    },
+    {
+      "centerWavenumber": 460,
+      "tolerance": 12,
+      "name": "Li2SO4 nu2 bending",
+      "color": "#dc2626",
+      "note": "SO4^2-. PPTX range: 450-470 cm-1."
+    },
+    {
+      "centerWavenumber": 615,
+      "tolerance": 8,
+      "name": "Li2SO4 nu4 bending",
+      "color": "#dc2626",
+      "note": "SO4^2-. PPTX range: 610-620 cm-1."
+    },
+    {
+      "centerWavenumber": 982.5,
+      "tolerance": 6,
+      "name": "Li2SO4 nu1 symmetric stretching",
+      "color": "#dc2626",
+      "note": "S-O (SO4^2-). PPTX range: 980-985 cm-1."
+    },
+    {
+      "centerWavenumber": 1125,
+      "tolerance": 30,
+      "name": "Li2SO4 nu3 asymmetric stretching",
+      "color": "#dc2626",
+      "note": "S-O (SO4^2-). PPTX range: 1100-1150 cm-1."
+    }
+  ]
+}

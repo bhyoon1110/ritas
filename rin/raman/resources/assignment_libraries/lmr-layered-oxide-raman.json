@@ -1,0 +1,27 @@
+{
+  "name": "LMR Layered Oxide Raman",
+  "description": "Raman peak assignments for LMR layered oxide samples. Source: rin/data/RAMAN 데이터 정리.pptx, slides 9-11.",
+  "assignments": [
+    {
+      "centerWavenumber": 489.5,
+      "tolerance": 15,
+      "name": "LMR Eg mode (O-TM-O bending)",
+      "color": "#2563eb",
+      "note": "PPTX range: 476-503 cm-1. Slide 11 defines Eg as O-TM-O bending vibration."
+    },
+    {
+      "centerWavenumber": 604,
+      "tolerance": 10,
+      "name": "LMR A1g mode (TM-O symmetric stretching)",
+      "color": "#dc2626",
+      "note": "PPTX range: 600-609 cm-1. Slide 11 defines A1g as TM-O symmetric stretching."
+    },
+    {
+      "centerWavenumber": 590.5,
+      "tolerance": 8,
+      "name": "LiMO2 A1g position marker",
+      "color": "#f97316",
+      "note": "PPTX slide 10 sample A1g positions: 589.5-591.6 cm-1."
+    }
+  ]
+}

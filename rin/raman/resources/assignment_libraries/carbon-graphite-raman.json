@@ -1,0 +1,27 @@
+{
+  "name": "Carbon/Graphite Raman",
+  "description": "Raman peak assignments for carbon and graphite samples. Source: rin/data/RAMAN 데이터 정리.pptx, slide 1.",
+  "assignments": [
+    {
+      "centerWavenumber": 1335,
+      "tolerance": 35,
+      "name": "Carbon D band (disorder-induced)",
+      "color": "#dc2626",
+      "note": "PPTX range: 1300-1370 cm-1. Use with G band for ID/IG ratio."
+    },
+    {
+      "centerWavenumber": 1590,
+      "tolerance": 20,
+      "name": "Carbon G band (graphitic sp2)",
+      "color": "#2563eb",
+      "note": "PPTX range: 1580-1600 cm-1. Use with D band for ID/IG ratio."
+    },
+    {
+      "centerWavenumber": 2650,
+      "tolerance": 150,
+      "name": "Carbon 2D band (second-order)",
+      "color": "#16a34a",
+      "note": "PPTX range: 2500-2800 cm-1."
+    }
+  ]
+}
