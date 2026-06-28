@@ -11,7 +11,7 @@ from ftir.assignment_libraries import AssignmentLibrary, flatten_assignment_libr
 
 from .peaks import detect_peaks_with_fwhm, peak_params_for_sensitivity
 from .plotting import build_multi_raman_fig
-from .preprocess import RamanRawError, load_raman_raw, preprocess_raman
+from .preprocess import RamanRawError, load_raman_raw_samples, preprocess_raman
 
 
 SHIFT_MIN = 0.0
@@ -67,7 +67,7 @@ def analyze_raman_files(
 
     for filename, content in files:
         try:
-            raw = load_raman_raw(
+            raw_samples = load_raman_raw_samples(
                 filename,
                 content,
                 shift_min=SHIFT_MIN,
@@ -81,49 +81,50 @@ def analyze_raman_files(
             ) from exc
 
         try:
-            processed = preprocess_raman(
-                raw["shift"].to_numpy(),
-                raw["intensity"].to_numpy(),
-                grid,
-                smooth=smooth,
-                baseline=baseline,
-                smooth_window=SMOOTH_WINDOW,
-                smooth_poly=SMOOTH_POLY,
-            )
-            peak_shift, peak_val, peak_fwhm, peak_idx = detect_peaks_with_fwhm(
-                processed,
-                grid,
-                height=float(params["height"]),
-                prominence=float(params["prominence"]),
-                distance=int(params["distance"]),
-            )
+            for raw_sample in raw_samples:
+                raw = raw_sample.frame
+                processed = preprocess_raman(
+                    raw["shift"].to_numpy(),
+                    raw["intensity"].to_numpy(),
+                    grid,
+                    smooth=smooth,
+                    baseline=baseline,
+                    smooth_window=SMOOTH_WINDOW,
+                    smooth_poly=SMOOTH_POLY,
+                )
+                peak_shift, peak_val, peak_fwhm, peak_idx = detect_peaks_with_fwhm(
+                    processed,
+                    grid,
+                    height=float(params["height"]),
+                    prominence=float(params["prominence"]),
+                    distance=int(params["distance"]),
+                )
+                label = _sample_label(raw_sample.label or filename, used_labels)
+                samples.append(
+                    {
+                        "label": label,
+                        "grid": grid,
+                        "processed": processed,
+                        "peak_idx": peak_idx,
+                        "peak_shift": peak_shift,
+                        "peak_val": peak_val,
+                        "peak_fwhm": peak_fwhm,
+                    }
+                )
+                summaries.append(
+                    {
+                        "fileName": filename,
+                        "label": label,
+                        "pointCount": int(len(raw)),
+                        "peakCount": int(len(peak_idx)),
+                    }
+                )
         except Exception as exc:
             raise RamanAnalysisError(
                 "RAMAN_ANALYSIS_FAILED",
                 f"Raman 전처리 또는 피크 분석에 실패했습니다: {filename}",
                 filename,
             ) from exc
-
-        label = _sample_label(filename, used_labels)
-        samples.append(
-            {
-                "label": label,
-                "grid": grid,
-                "processed": processed,
-                "peak_idx": peak_idx,
-                "peak_shift": peak_shift,
-                "peak_val": peak_val,
-                "peak_fwhm": peak_fwhm,
-            }
-        )
-        summaries.append(
-            {
-                "fileName": filename,
-                "label": label,
-                "pointCount": int(len(raw)),
-                "peakCount": int(len(peak_idx)),
-            }
-        )
 
     figure = build_multi_raman_fig(
         samples,

@@ -5,7 +5,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from app.raman_web import build_raman_page, create_raman_preview_app
-from rin.raman.preprocess import load_raman_raw
+from rin.raman.preprocess import load_raman_raw, load_raman_raw_samples
 
 
 SAMPLE_TXT = (
@@ -14,6 +14,13 @@ SAMPLE_TXT = (
     / "data"
     / "LMR"
     / "LMR1.txt"
+)
+MULTI_SAMPLE_TXT = (
+    Path(__file__).resolve().parents[2]
+    / "rin"
+    / "data"
+    / "대기민감성 샘플"
+    / "LiOH.txt"
 )
 
 
@@ -112,6 +119,39 @@ def test_raman_raw_loader_reads_instrument_txt() -> None:
     assert frame["shift"].is_monotonic_increasing
 
 
+def test_raman_raw_loader_reads_multi_sample_txt() -> None:
+    samples = load_raman_raw_samples(
+        MULTI_SAMPLE_TXT.name,
+        MULTI_SAMPLE_TXT.read_bytes(),
+    )
+
+    assert [sample.label for sample in samples] == [
+        "LiOH_4",
+        "LiOH_3",
+        "LiOH_2",
+        "LiOH",
+    ]
+    assert [len(sample.frame) for sample in samples] == [1340, 1340, 1340, 1340]
+    assert all(sample.frame["shift"].is_monotonic_increasing for sample in samples)
+
+
+def test_raman_raw_loader_reads_shared_shift_multi_sample_csv() -> None:
+    rows = ["Raman Shift,Sample A,Sample B"]
+    for index in range(20):
+        shift = 100 + index * 5
+        rows.append(f"{shift},{index + 1},{(index + 1) * 2}")
+
+    samples = load_raman_raw_samples(
+        "shared-shift.csv",
+        ("\n".join(rows) + "\n").encode(),
+    )
+
+    assert [sample.label for sample in samples] == ["Sample A", "Sample B"]
+    assert [len(sample.frame) for sample in samples] == [20, 20]
+    assert samples[0].frame["intensity"].iloc[-1] == 20
+    assert samples[1].frame["intensity"].iloc[-1] == 40
+
+
 def test_raman_analyze_api_accepts_txt_sample() -> None:
     with TestClient(create_raman_preview_app()) as client:
         response = client.post(
@@ -142,6 +182,42 @@ def test_raman_analyze_api_accepts_txt_sample() -> None:
         for trace in payload["figure"]["data"]
         if trace.get("meta", {}).get("rist_peak")
     )
+
+
+def test_raman_analyze_api_expands_multi_sample_txt() -> None:
+    with TestClient(create_raman_preview_app()) as client:
+        response = client.post(
+            "/api/v1/raman/analyze",
+            files={
+                "files": (
+                    MULTI_SAMPLE_TXT.name,
+                    MULTI_SAMPLE_TXT.read_bytes(),
+                    "text/plain",
+                )
+            },
+            data={"sensitivity": "25"},
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert [sample["label"] for sample in payload["samples"]] == [
+        "LiOH_4",
+        "LiOH_3",
+        "LiOH_2",
+        "LiOH",
+    ]
+    assert all(sample["fileName"] == MULTI_SAMPLE_TXT.name for sample in payload["samples"])
+    parent_traces = [
+        trace for trace in payload["figure"]["data"]
+        if trace.get("meta", {}).get("rist_sample_parent")
+    ]
+    assert [trace["name"] for trace in parent_traces] == [
+        "LiOH_4",
+        "LiOH_3",
+        "LiOH_2",
+        "LiOH",
+    ]
+    assert payload["figure"]["layout"]["meta"]["ristRamanStack"]["enabled"] is True
 
 
 def test_raman_assignment_library_api_defaults_and_assigns_sample() -> None:
