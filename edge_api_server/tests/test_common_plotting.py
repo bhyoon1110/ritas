@@ -368,6 +368,11 @@ def test_shared_peak_editor_adds_peak_controls(tmp_path) -> None:
     assert "data-kind='text'>텍스트 박스</button>" in html
     assert "rist-shape-selection" in html
     assert "rist-shape-resize-handle" in html
+    assert "rist-shape-editing .nsewdrag" in html
+    assert "@media (pointer: coarse)" in html
+    assert "width: 15px" in html
+    assert "touch-action: none" in html
+    assert "cursor: move" in html
     assert "rist_rect:" in html
     assert "rist_text_box:" in html
     assert "rist_text_box_text:" in html
@@ -381,6 +386,14 @@ def test_shared_peak_editor_adds_peak_controls(tmp_path) -> None:
     assert "function editedObjectsFromControls" in html
     assert "function previewSelection" in html
     assert "function schedulePreview" in html
+    assert "function syncShapeEditingState" in html
+    assert "function setPanelPosition" in html
+    assert "panelHead.addEventListener(\"pointerdown\"" in html
+    assert "panelHead.setPointerCapture(ev.pointerId)" in html
+    assert "panel.style.right = \"auto\"" in html
+    assert "selection.setPointerCapture(ev.pointerId)" in html
+    assert "selection.releasePointerCapture(ev.pointerId)" in html
+    assert 'document.addEventListener("pointercancel"' in html
     assert "function moveSelectionLayer" in html
     assert "function targetLayerIndex" in html
     assert "function reorderOriginalArrays" in html

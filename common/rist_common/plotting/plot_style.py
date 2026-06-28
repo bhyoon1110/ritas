@@ -3152,7 +3152,10 @@ def shape_editor_js(div_id: str) -> str:
   justify-content: space-between;
   margin-bottom: 9px;
   color: #1f2933;
+  cursor: move;
   font: bold 13px Arial, sans-serif;
+  touch-action: none;
+  user-select: none;
 }}
 #{div_id} .rist-shape-editor-close {{
   border: 0;
@@ -3312,6 +3315,7 @@ def shape_editor_js(div_id: str) -> str:
   display: none;
   border: 1px dashed #2563eb;
   cursor: move;
+  touch-action: none;
   box-sizing: border-box;
 }}
 #{div_id} .rist-shape-resize-handle {{
@@ -3320,7 +3324,29 @@ def shape_editor_js(div_id: str) -> str:
   height: 9px;
   border: 1px solid #1d4ed8;
   background: #fff;
+  touch-action: none;
   box-sizing: border-box;
+}}
+#{div_id}.rist-shape-editing .nsewdrag {{
+  touch-action: none;
+}}
+@media (pointer: coarse) {{
+  #{div_id} .rist-shape-resize-handle {{
+    width: 15px;
+    height: 15px;
+  }}
+  #{div_id} .rist-shape-resize-handle[data-dir*="n"] {{ top: -8px; }}
+  #{div_id} .rist-shape-resize-handle[data-dir*="s"] {{ bottom: -8px; }}
+  #{div_id} .rist-shape-resize-handle[data-dir*="w"] {{ left: -8px; }}
+  #{div_id} .rist-shape-resize-handle[data-dir*="e"] {{ right: -8px; }}
+  #{div_id} .rist-shape-resize-handle[data-dir="n"],
+  #{div_id} .rist-shape-resize-handle[data-dir="s"] {{
+    left: calc(50% - 7px);
+  }}
+  #{div_id} .rist-shape-resize-handle[data-dir="e"],
+  #{div_id} .rist-shape-resize-handle[data-dir="w"] {{
+    top: calc(50% - 7px);
+  }}
 }}
 #{div_id} .rist-shape-resize-handle[data-dir*="n"] {{ top: -5px; }}
 #{div_id} .rist-shape-resize-handle[data-dir*="s"] {{ bottom: -5px; }}
@@ -3353,8 +3379,13 @@ def shape_editor_js(div_id: str) -> str:
   var drawMode = false;
   var drawStart = null;
   var transformState = null;
+  var panelDragState = null;
   var editSnapshot = null;
   var previewFrame = 0;
+
+  function clamp(value, min, max) {{
+    return Math.max(min, Math.min(max, value));
+  }}
 
   function esc(value) {{
     return String(value == null ? "" : value)
@@ -3519,6 +3550,7 @@ def shape_editor_js(div_id: str) -> str:
   }}).join("");
   gd.appendChild(selection);
   var textOptions = panel.querySelector(".rist-shape-text-options");
+  var panelHead = panel.querySelector(".rist-shape-editor-head");
   var textInput = panel.querySelector(".rist-shape-editor-text");
   var fontColorInput = panel.querySelector(".rist-shape-font-color");
   var fontSizeInput = panel.querySelector(".rist-shape-font-size");
@@ -3580,6 +3612,14 @@ def shape_editor_js(div_id: str) -> str:
     toolButton.classList.toggle("is-active", drawMode);
     drawButton.classList.toggle("is-active", drawMode);
     drawButton.textContent = drawMode ? "그래프에서 드래그" : drawLabel();
+    syncShapeEditingState();
+  }}
+
+  function syncShapeEditingState() {{
+    gd.classList.toggle(
+      "rist-shape-editing",
+      drawMode || !!selectedId || panel.style.display === "block"
+    );
   }}
 
   function setDrawKind(kind) {{
@@ -3595,11 +3635,13 @@ def shape_editor_js(div_id: str) -> str:
     var legendPanel = gd.querySelector(".rist-legend-edit-panel");
     if (legendPanel) legendPanel.style.display = "none";
     panel.style.display = "block";
+    syncShapeEditingState();
   }}
 
   function closePanel() {{
     panel.style.display = "none";
     setDrawMode(false);
+    syncShapeEditingState();
   }}
 
   function updateSelectionButtons() {{
@@ -3621,6 +3663,7 @@ def shape_editor_js(div_id: str) -> str:
     editSnapshot = null;
     selection.style.display = "none";
     updateSelectionButtons();
+    syncShapeEditingState();
   }}
 
   function selectedShape() {{
@@ -3696,6 +3739,7 @@ def shape_editor_js(div_id: str) -> str:
     if (si < 0 || (kind === "text" && ai < 0)) return;
     selectedId = id;
     selectedKind = kind;
+    syncShapeEditingState();
     var shape = shapes[si];
     var annotation = ai >= 0 ? annotations[ai] : null;
     setDrawKind(kind);
@@ -3724,6 +3768,23 @@ def shape_editor_js(div_id: str) -> str:
     openPanel();
     requestAnimationFrame(updateSelectionOverlay);
     return Promise.resolve();
+  }}
+
+  function panelBounds(left, top) {{
+    var plotRect = gd.getBoundingClientRect();
+    var width = panel.offsetWidth || 310;
+    var height = panel.offsetHeight || 260;
+    return {{
+      left: clamp(left, 8, Math.max(8, plotRect.width - width - 8)),
+      top: clamp(top, 8, Math.max(8, plotRect.height - height - 8))
+    }};
+  }}
+
+  function setPanelPosition(left, top) {{
+    var next = panelBounds(left, top);
+    panel.style.left = next.left + "px";
+    panel.style.right = "auto";
+    panel.style.top = next.top + "px";
   }}
 
   function selectShape(id, kind) {{
@@ -4113,6 +4174,45 @@ def shape_editor_js(div_id: str) -> str:
     }}
   }}, true);
 
+  panelHead.addEventListener("pointerdown", function(ev) {{
+    if (ev.target.closest(".rist-shape-editor-close")) return;
+    var panelRect = panel.getBoundingClientRect();
+    var plotRect = gd.getBoundingClientRect();
+    panelDragState = {{
+      pointerId: ev.pointerId,
+      dx: ev.clientX - panelRect.left,
+      dy: ev.clientY - panelRect.top,
+      plotLeft: plotRect.left,
+      plotTop: plotRect.top
+    }};
+    panelHead.setPointerCapture(ev.pointerId);
+    ev.preventDefault();
+    ev.stopPropagation();
+  }});
+
+  panelHead.addEventListener("pointermove", function(ev) {{
+    if (!panelDragState) return;
+    setPanelPosition(
+      ev.clientX - panelDragState.plotLeft - panelDragState.dx,
+      ev.clientY - panelDragState.plotTop - panelDragState.dy
+    );
+    ev.preventDefault();
+    ev.stopPropagation();
+  }});
+
+  panelHead.addEventListener("pointerup", function(ev) {{
+    if (panelDragState && panelHead.hasPointerCapture(panelDragState.pointerId)) {{
+      panelHead.releasePointerCapture(panelDragState.pointerId);
+    }}
+    panelDragState = null;
+    ev.preventDefault();
+    ev.stopPropagation();
+  }});
+
+  panelHead.addEventListener("pointercancel", function() {{
+    panelDragState = null;
+  }});
+
   selection.addEventListener("pointerdown", function(ev) {{
     if (!selectedId || !selectedKind) return;
     var bounds = shapeClientBounds(selectedShape());
@@ -4126,6 +4226,7 @@ def shape_editor_js(div_id: str) -> str:
       bounds: bounds,
       captured: false
     }};
+    selection.setPointerCapture(ev.pointerId);
     ev._ristShapeEditorHandled = true;
     ev.preventDefault();
     ev.stopPropagation();
@@ -4159,6 +4260,9 @@ def shape_editor_js(div_id: str) -> str:
   document.addEventListener("pointerup", function(ev) {{
     if (transformState) {{
       var transform = transformState;
+      if (selection.hasPointerCapture(ev.pointerId)) {{
+        selection.releasePointerCapture(ev.pointerId);
+      }}
       transformState = null;
       if (transform.captured) applyTransformedBounds(transform.bounds);
       else updateSelectionOverlay();
@@ -4176,6 +4280,16 @@ def shape_editor_js(div_id: str) -> str:
       addObject(start.x, start.y, point.x, point.y);
       ev.preventDefault();
     }}
+  }});
+
+  document.addEventListener("pointercancel", function(ev) {{
+    if (transformState && selection.hasPointerCapture(ev.pointerId)) {{
+      selection.releasePointerCapture(ev.pointerId);
+    }}
+    transformState = null;
+    drawStart = null;
+    preview.style.display = "none";
+    updateSelectionOverlay();
   }});
 
   toolButton.addEventListener("click", function(ev) {{
