@@ -55,6 +55,12 @@ def _peak_label_text(wn, label):
     )
 
 
+def _peak_display_name(names):
+    if not names:
+        return ""
+    return "<br>".join(names)
+
+
 def _peak_assignment(wn, func_groups):
     assignments = assign_group_candidates(wn, func_groups)
     if not assignments:
@@ -75,7 +81,7 @@ def _peak_assignment(wn, func_groups):
         notes.append(detail)
     return {
         "unknown": False,
-        "display_name": " / ".join(unique_names),
+        "display_name": _peak_display_name(unique_names),
         "color": assignments[0]["color"],
         "note": "<br>".join(notes),
         "assignments": assignments,

@@ -29,11 +29,14 @@ def test_ftir_workspace_contains_upload_and_editor_controls() -> None:
     assert 'id="ftir-file-input"' in page
     assert 'id="ftir-drop-zone"' in page
     assert 'id="ftir-library-list"' in page
+    assert 'id="ftir-library-filter"' in page
     assert 'id="ftir-library-input"' in page
     assert 'id="ftir-library-new"' in page
     assert 'id="ftir-library-modal"' in page
     assert 'id="ftir-library-dialog-save"' in page
     assert "ftir-library-state" in page
+    assert "rightSelected - leftSelected" in page
+    assert "검색 결과가 없습니다" in page
     assert "ftir-library-delete" not in page
     assert "/api/v1/ftir/analyze" in page
     assert "/api/v1/ftir/assignment-libraries" in page
@@ -230,7 +233,7 @@ def test_assignment_library_api_upload_select_and_edit(tmp_path: Path) -> None:
             for trace in payload["figure"]["data"]
             if trace.get("meta", {}).get("rist_peak")
         ]
-        assert any("Carbonyl A / Carbonyl B" in name for name in peak_names)
+        assert any("Carbonyl A<br>Carbonyl B" in name for name in peak_names)
 
 
 def test_assignment_library_delete_requires_feature_flag(tmp_path: Path) -> None:

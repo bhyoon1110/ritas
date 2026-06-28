@@ -392,8 +392,10 @@ def _legend_text_edit_js(div_id: str) -> str:
   z-index: 21;
   display: none;
   width: min(360px, calc(100% - 16px));
+  max-width: calc(100% - 16px);
   max-height: min(420px, calc(100% - 54px));
   overflow: auto;
+  overflow-x: hidden;
   background: rgba(255,255,255,0.97);
   border: 1px solid #c7d0dd;
   border-radius: 6px;
@@ -451,8 +453,10 @@ def _legend_text_edit_js(div_id: str) -> str:
 #{div_id} .rist-legend-edit-row {{
   display: flex;
   gap: 6px;
-  align-items: center;
+  align-items: flex-start;
   margin: 6px 0;
+  min-width: 0;
+  max-width: 100%;
 }}
 #{div_id} .rist-legend-edit-row.is-sample {{
   margin: 12px 0 5px;
@@ -504,6 +508,7 @@ def _legend_text_edit_js(div_id: str) -> str:
   color: #52606d;
   font: bold 10px Arial, sans-serif;
   text-align: center;
+  margin-top: 6px;
 }}
 #{div_id} .rist-legend-edit-row.is-sample .rist-legend-row-kind {{
   color: #174a68;
@@ -522,12 +527,14 @@ def _legend_text_edit_js(div_id: str) -> str:
 #{div_id} .rist-legend-group-row {{
   display: flex;
   gap: 6px;
-  align-items: center;
+  align-items: flex-start;
   margin: 10px 0 4px;
   padding: 6px 7px;
   border: 1px solid #d7dee8;
   border-radius: 5px;
   background: #f8fafc;
+  min-width: 0;
+  max-width: 100%;
 }}
 #{div_id} .rist-legend-group-row.is-drop-target {{
   border-color: #2f855a;
@@ -554,6 +561,9 @@ def _legend_text_edit_js(div_id: str) -> str:
   font: bold 12px Arial, sans-serif;
   padding: 5px 7px;
   box-sizing: border-box;
+}}
+#{div_id} .rist-legend-group-row .rist-legend-row-kind {{
+  margin-top: 7px;
 }}
 #{div_id} .rist-legend-group-add,
 #{div_id} .rist-legend-group-clear,
@@ -657,12 +667,20 @@ def _legend_text_edit_js(div_id: str) -> str:
 #{div_id} .rist-legend-edit-input {{
   flex: 1 1 auto;
   min-width: 0;
+  max-width: 100%;
   border: 1px solid #c7d0dd;
   border-radius: 4px;
   color: #1f2933;
   font: 12px Arial, sans-serif;
+  line-height: 1.28;
   padding: 5px 7px;
   box-sizing: border-box;
+  resize: vertical;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  min-height: 28px;
+  max-height: 96px;
 }}
 #{div_id} .rist-legend-edit-save-all {{
   flex: 0 0 auto;
@@ -716,6 +734,14 @@ def _legend_text_edit_js(div_id: str) -> str:
       return String(gd.data[curve].name);
     }}
     return "";
+  }}
+
+  function legendDisplayToEdit(value) {{
+    return String(value || "").replace(/<br\\s*\\/?>/gi, "\\n");
+  }}
+
+  function legendEditToDisplay(value) {{
+    return String(value || "").trim().replace(/\\r?\\n/g, "<br>");
   }}
 
   function normalizeColor(value) {{
@@ -1117,7 +1143,7 @@ def _legend_text_edit_js(div_id: str) -> str:
           + (sampleCurve ? "샘플" : (peakCurve ? "피크" : "항목"))
           + "</span>"
           + (groupKey ? "" : "<input class='rist-legend-color-input' type='color'>")
-          + "<input class='rist-legend-edit-input' type='text'>"
+          + "<textarea class='rist-legend-edit-input' rows='1'></textarea>"
           + (peakCurve && groupKey
             ? "<button type='button' class='rist-legend-group-remove' title='그룹에서 제외'>−</button>"
             : "")
@@ -1130,7 +1156,7 @@ def _legend_text_edit_js(div_id: str) -> str:
         var removeButton = row.querySelector(".rist-legend-group-remove");
         var deleteButton = row.querySelector(".rist-legend-peak-delete");
         if (colorInput) colorInput.value = traceColor(curve);
-        nameInput.value = traceName(curve);
+        nameInput.value = legendDisplayToEdit(traceName(curve));
         if (peakCurve && kindBadge) {{
           kindBadge.draggable = true;
           kindBadge.title = "피크 그룹으로 드래그";
@@ -1178,7 +1204,7 @@ def _legend_text_edit_js(div_id: str) -> str:
           }});
         }}
         nameInput.addEventListener("keydown", function(ev) {{
-          if (ev.key === "Enter") {{
+          if (ev.key === "Enter" && (ev.ctrlKey || ev.metaKey)) {{
             ev.preventDefault();
             saveAllRows();
           }}
@@ -1206,7 +1232,7 @@ def _legend_text_edit_js(div_id: str) -> str:
         var add = groupRow.querySelector(".rist-legend-group-add");
         var groupColor = groupRow.querySelector(".rist-legend-group-color");
         var clear = groupRow.querySelector(".rist-legend-group-clear");
-        title.value = manualPeakGroupName(firstCurve);
+        title.value = legendDisplayToEdit(manualPeakGroupName(firstCurve));
         groupColor.value = traceColor(firstCurve);
         add.addEventListener("click", function(ev) {{
           ev.preventDefault();
@@ -1272,7 +1298,7 @@ def _legend_text_edit_js(div_id: str) -> str:
           }}
           return;
         }}
-        var nextName = String(nameInput.value || "").trim();
+        var nextName = legendEditToDisplay(nameInput.value);
         if (nextName && nextName !== traceName(curve)) updateName(curve, nextName);
         if (colorInput && normalizeColor(colorInput.value) !== traceColor(curve)) {{
           updateColor(curve, colorInput.value);
@@ -1302,7 +1328,7 @@ def _legend_text_edit_js(div_id: str) -> str:
           return deleteCurves.indexOf(curve) < 0 && values.indexOf(curve) === index;
         }});
         var firstCurve = parseInt(row.getAttribute("data-first-curve"), 10);
-        var nextTitle = titleInput ? titleInput.value : "";
+        var nextTitle = titleInput ? legendEditToDisplay(titleInput.value) : "";
         var nextColor = colorInput ? colorInput.value : "";
         if (Number.isFinite(firstCurve)
             && nextTitle === manualPeakGroupName(firstCurve)

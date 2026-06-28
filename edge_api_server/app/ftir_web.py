@@ -211,9 +211,9 @@ body {
 }
 .ftir-library-band {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 10px;
-  min-height: 48px;
+  min-height: 68px;
   padding: 7px 22px;
   border-bottom: 1px solid #d9e2ec;
   background: #f8fafc;
@@ -221,22 +221,42 @@ body {
 }
 .ftir-library-title {
   flex: 0 0 auto;
+  margin-top: 9px;
   color: #334e68;
   font-size: 11px;
   font-weight: 700;
 }
+.ftir-library-filter {
+  flex: 0 0 150px;
+  width: 150px;
+  height: 30px;
+  margin-top: 0;
+  border: 1px solid #bcccdc;
+  border-radius: 4px;
+  background: #ffffff;
+  color: #243b53;
+  font: 11px Arial, "Noto Sans KR", sans-serif;
+  padding: 0 9px;
+  box-sizing: border-box;
+}
 .ftir-library-list {
   display: flex;
-  align-items: center;
+  align-content: flex-start;
+  align-items: flex-start;
+  flex-wrap: wrap;
   gap: 6px;
   min-width: 0;
   flex: 1 1 auto;
-  overflow-x: auto;
+  max-height: 62px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 0 2px 1px 0;
 }
 .ftir-library-item {
   display: inline-flex;
   align-items: center;
   flex: 0 0 auto;
+  max-width: 300px;
   height: 28px;
   border: 1px solid #bcccdc;
   border-radius: 4px;
@@ -265,13 +285,17 @@ body {
   margin: 0;
 }
 .ftir-library-name {
+  min-width: 0;
+  max-width: 210px;
   height: 100%;
   border: 0;
   background: transparent;
   color: inherit;
   cursor: pointer;
   font: inherit;
+  overflow: hidden;
   padding: 0 6px;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 .ftir-library-name:hover {
@@ -304,6 +328,7 @@ body {
   justify-content: center;
   flex: 0 0 auto;
   height: 30px;
+  margin-top: 0;
   border: 1px solid #9fb3c8;
   border-radius: 4px;
   background: #ffffff;
@@ -319,6 +344,7 @@ body {
   justify-content: center;
   flex: 0 0 auto;
   height: 30px;
+  margin-top: 0;
   border: 1px solid #3e7ca6;
   border-radius: 4px;
   background: #edf6fb;
@@ -627,7 +653,7 @@ body {
 }
 .ftir-loading {
   position: fixed;
-  inset: 150px 0 0;
+  inset: 170px 0 0;
   z-index: 40;
   display: none;
   align-items: center;
@@ -641,7 +667,7 @@ body {
 }
 #peak-plot {
   min-height: 540px;
-  height: calc(100vh - 150px) !important;
+  height: calc(100vh - 170px) !important;
 }
 @media (max-width: 760px) {
   .ftir-app-bar {
@@ -663,6 +689,21 @@ body {
   .ftir-library-band {
     gap: 7px;
     padding: 7px 12px;
+  }
+  .ftir-library-filter {
+    flex: 1 1 120px;
+    width: auto;
+  }
+  .ftir-library-list {
+    order: 4;
+    flex-basis: 100%;
+    max-height: 86px;
+  }
+  .ftir-library-item {
+    max-width: 100%;
+  }
+  .ftir-library-name {
+    max-width: 190px;
   }
   .ftir-library-title {
     display: none;
@@ -729,6 +770,8 @@ _PAGE_SHELL = """
 </header>
 <section class="ftir-library-band" aria-label="피크 assignment 라이브러리">
   <span class="ftir-library-title">피크 라이브러리</span>
+  <input type="search" class="ftir-library-filter" id="ftir-library-filter"
+         placeholder="라이브러리 검색" autocomplete="off">
   <div class="ftir-library-list" id="ftir-library-list">
     <span class="ftir-library-empty">라이브러리 불러오는 중...</span>
   </div>
@@ -789,6 +832,7 @@ _UPLOAD_SCRIPT = """
   var clearButton = document.getElementById("ftir-clear");
   var libraryInput = document.getElementById("ftir-library-input");
   var libraryList = document.getElementById("ftir-library-list");
+  var libraryFilter = document.getElementById("ftir-library-filter");
   var libraryNew = document.getElementById("ftir-library-new");
   var libraryModal = document.getElementById("ftir-library-modal");
   var libraryDialogTitle = document.getElementById("ftir-library-dialog-title");
@@ -799,6 +843,7 @@ _UPLOAD_SCRIPT = """
   var libraryDialogCancel = document.getElementById("ftir-library-dialog-cancel");
   var libraryDialogSave = document.getElementById("ftir-library-dialog-save");
   if (!gd || !input || !dropZone || !libraryInput || !libraryList
+      || !libraryFilter
       || !libraryNew || !libraryModal || !libraryDialogClose
       || !libraryRowAdd || !libraryDialogCancel || !libraryDialogSave) return;
 
@@ -829,6 +874,7 @@ _UPLOAD_SCRIPT = """
     loading.classList.toggle("is-visible", busy);
     input.disabled = busy;
     libraryInput.disabled = busy;
+    libraryFilter.disabled = busy;
     libraryNew.disabled = busy;
     libraryList.querySelectorAll("input, button").forEach(function(control) {
       control.disabled = busy;
@@ -1157,18 +1203,41 @@ _UPLOAD_SCRIPT = """
 
   function renderLibraries() {
     libraryList.innerHTML = "";
-    if (!libraries.length) {
+    var selected = {};
+    selectedLibraryIds.forEach(function(id) { selected[id] = true; });
+    var query = libraryFilter.value.trim().toLowerCase();
+    var visibleLibraries = libraries.filter(function(library) {
+      if (!query) return true;
+      return [
+        library.id,
+        library.name,
+        library.description,
+        library.fileName
+      ].join(" ").toLowerCase().indexOf(query) >= 0;
+    }).slice().sort(function(left, right) {
+      var leftSelected = selected[left.id] ? 1 : 0;
+      var rightSelected = selected[right.id] ? 1 : 0;
+      if (leftSelected !== rightSelected) return rightSelected - leftSelected;
+      if (left.valid !== right.valid) return left.valid ? -1 : 1;
+      if (left.defaultSelected !== right.defaultSelected) {
+        return left.defaultSelected ? -1 : 1;
+      }
+      return left.name.localeCompare(right.name, "ko");
+    });
+    if (!visibleLibraries.length) {
       var empty = document.createElement("span");
       empty.className = "ftir-library-empty";
-      empty.textContent = "등록된 라이브러리가 없습니다";
+      empty.textContent = libraries.length
+        ? "검색 결과가 없습니다"
+        : "등록된 라이브러리가 없습니다";
       libraryList.appendChild(empty);
       return;
     }
-    libraries.forEach(function(library) {
-      var selected = selectedLibraryIds.indexOf(library.id) >= 0;
+    visibleLibraries.forEach(function(library) {
+      var isSelected = selectedLibraryIds.indexOf(library.id) >= 0;
       var item = document.createElement("span");
       item.className = "ftir-library-item"
-        + (selected ? " is-selected" : "")
+        + (isSelected ? " is-selected" : "")
         + (library.valid ? "" : " is-invalid");
       if (library.description || library.error) {
         item.title = library.error || library.description;
@@ -1178,7 +1247,7 @@ _UPLOAD_SCRIPT = """
       toggle.className = "ftir-library-toggle";
       var checkbox = document.createElement("input");
       checkbox.type = "checkbox";
-      checkbox.checked = selected;
+      checkbox.checked = isSelected;
       checkbox.disabled = !library.valid;
       checkbox.setAttribute("aria-label", library.name + " 선택");
       checkbox.addEventListener("change", function() {
@@ -1211,7 +1280,7 @@ _UPLOAD_SCRIPT = """
         : "오류";
       var state = document.createElement("span");
       state.className = "ftir-library-state";
-      state.textContent = selected ? "적용" : "미적용";
+      state.textContent = isSelected ? "적용" : "미적용";
 
       item.appendChild(toggle);
       item.appendChild(name);
@@ -1479,6 +1548,7 @@ _UPLOAD_SCRIPT = """
     uploadLibrary(libraryInput.files && libraryInput.files[0]);
     libraryInput.value = "";
   });
+  libraryFilter.addEventListener("input", renderLibraries);
   libraryNew.addEventListener("click", function() {
     renderLibraryEditor(
       {

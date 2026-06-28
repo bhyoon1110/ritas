@@ -84,6 +84,8 @@ def test_shared_plotly_module_applies_legend_text(tmp_path) -> None:
     assert 'key === "z" && ev.shiftKey' in html
     assert 'key === "y"' in html
     assert "rist-legend-edit-panel" in html
+    assert "max-width: calc(100% - 16px)" in html
+    assert "overflow-x: hidden" in html
     assert "rist-legend-opacity-control" in html
     assert "rist-legend-opacity-slider" in html
     assert "aria-label='범례 수정창 투명도'" in html
@@ -100,6 +102,12 @@ def test_shared_plotly_module_applies_legend_text(tmp_path) -> None:
     assert 'document.addEventListener("pointercancel", finishPanelDrag)' in html
     assert 'panel.style.right = "auto"' in html
     assert "rist-legend-edit-save-all" in html
+    assert "<textarea class='rist-legend-edit-input' rows='1'></textarea>" in html
+    assert "white-space: pre-wrap" in html
+    assert "overflow-wrap: anywhere" in html
+    assert "legendDisplayToEdit" in html
+    assert "legendEditToDisplay" in html
+    assert 'ev.key === "Enter" && (ev.ctrlKey || ev.metaKey)' in html
     assert "rist-legend-color-input" in html
     assert "rist-legend-group-row" in html
     assert "rist-legend-group-title" in html
