@@ -16,6 +16,7 @@ class Settings:
     ftir_assignment_library_dir: Path = (
         PROJECT_DIR / "data" / "ftir_assignment_libraries"
     )
+    ftir_assignment_library_delete_enabled: bool = False
     environment: str = "development"
     db_host: str = "127.0.0.1"
     db_port: int = 3306
@@ -76,6 +77,11 @@ class Settings:
         return cls(
             storage_root=storage_root,
             ftir_assignment_library_dir=ftir_assignment_library_dir,
+            ftir_assignment_library_delete_enabled=os.getenv(
+                "RIST_FTIR_ASSIGNMENT_LIBRARY_DELETE_ENABLED",
+                "false",
+            ).lower()
+            in {"1", "true", "yes", "on"},
             environment=common.environment,
             db_host=os.getenv("RIST_DB_HOST", "127.0.0.1").strip(),
             db_port=int(os.getenv("RIST_DB_PORT", "3306")),

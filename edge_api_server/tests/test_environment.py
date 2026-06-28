@@ -128,6 +128,21 @@ def test_ftir_assignment_library_dir_env_override(
     assert settings.ftir_assignment_library_dir == library_dir
 
 
+def test_ftir_assignment_library_delete_flag_env(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    write_profile(tmp_path / "development.env", "bhyoon.me", "development")
+    write_profile(tmp_path / "production.env", "192.168.0.10", "production")
+    monkeypatch.setenv("RIST_CONFIG_DIR", str(tmp_path))
+    monkeypatch.setenv("RIST_ENV", "development")
+    monkeypatch.setenv("RIST_FTIR_ASSIGNMENT_LIBRARY_DELETE_ENABLED", "true")
+
+    settings = Settings.from_env()
+
+    assert settings.ftir_assignment_library_delete_enabled is True
+
+
 def test_spring_callback_url_overrides_profile(monkeypatch, tmp_path: Path) -> None:
     write_profile(tmp_path / "development.env", "bhyoon.me", "development")
     write_profile(tmp_path / "production.env", "192.168.0.10", "production")

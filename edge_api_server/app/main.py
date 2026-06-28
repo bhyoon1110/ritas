@@ -98,6 +98,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.ftir_assignment_library_dir = (
         resolved_settings.ftir_assignment_library_dir
     )
+    app.state.ftir_assignment_library_delete_enabled = (
+        resolved_settings.ftir_assignment_library_delete_enabled
+    )
     logger.info(
         "Edge API 애플리케이션 구성 완료 (env=%s, base_url=%s)",
         resolved_settings.environment,

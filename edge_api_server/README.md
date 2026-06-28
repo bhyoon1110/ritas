@@ -119,7 +119,9 @@ edge_api_server/data/ftir_assignment_libraries/
 라이브러리 이름을 누르면 중심 파수, tolerance, 피크 이름, 색상과 비고를
 수정할 수 있다. 체크된 라이브러리만 그래프 assignment에 사용하며 선택
 상태는 `적용`/`미적용`으로 표시한다. 서버 파일의 실수 삭제를 막기 위해
-웹 화면과 API에서는 라이브러리 전체 삭제를 제공하지 않는다.
+기본 설정에서는 라이브러리 전체 삭제를 제공하지 않는다.
+`RIST_FTIR_ASSIGNMENT_LIBRARY_DELETE_ENABLED=true`로 설정하고 Edge API
+서비스를 재시작하면 웹 화면과 API에서 서버 라이브러리 파일 삭제를 허용한다.
 파일명 stem이 API에서 사용하는 라이브러리 ID가 되므로
 `melamine.json`, `phenolic-resin.csv`처럼 영문자·숫자·하이픈으로 작성한다.
 
@@ -167,7 +169,11 @@ POST   /api/v1/ftir/assignment-libraries
 POST   /api/v1/ftir/assignment-libraries/create
 GET    /api/v1/ftir/assignment-libraries/{libraryId}
 PUT    /api/v1/ftir/assignment-libraries/{libraryId}
+DELETE /api/v1/ftir/assignment-libraries/{libraryId}
 ```
+
+`DELETE`는 `RIST_FTIR_ASSIGNMENT_LIBRARY_DELETE_ENABLED=true`일 때만 성공한다.
+기본값에서는 `403 ASSIGNMENT_LIBRARY_DELETE_DISABLED`를 반환한다.
 
 운영 Edge 앱과 같은 라우터를 DB 없이 화면만 개발할 때는 다음 명령을 사용할
 수 있다.
@@ -189,6 +195,7 @@ cd edge_api_server
 | `RIST_EDGE_API_PORT` | 프로파일 값 | Uvicorn 포트 재정의 |
 | `RIST_STORAGE_ROOT` | `edge_api_server/data/jobs` | 작업 파일 저장 루트 |
 | `RIST_FTIR_ASSIGNMENT_LIBRARY_DIR` | `edge_api_server/data/ftir_assignment_libraries` | FT-IR 피크 assignment 라이브러리 폴더 |
+| `RIST_FTIR_ASSIGNMENT_LIBRARY_DELETE_ENABLED` | `false` | `true`일 때 FT-IR 라이브러리 파일 삭제 API/UI 활성화. 서비스 재시작 후 반영 |
 | `RIST_DB_HOST` | `127.0.0.1` | MariaDB 호스트 |
 | `RIST_DB_PORT` | `3306` | MariaDB 포트 |
 | `RIST_DB_NAME` | `rist_edge` | MariaDB 데이터베이스명(없으면 자동 생성) |

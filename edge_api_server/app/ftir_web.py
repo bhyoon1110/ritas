@@ -68,6 +68,19 @@ def assignment_library_store(request: Request) -> AssignmentLibraryStore:
     return AssignmentLibraryStore(Path(configured), DEFAULT_FUNC_GROUPS_PATH)
 
 
+def assignment_library_delete_enabled(request: Request) -> bool:
+    configured = getattr(
+        request.app.state,
+        "ftir_assignment_library_delete_enabled",
+        os.getenv(
+            "RIST_FTIR_ASSIGNMENT_LIBRARY_DELETE_ENABLED",
+            "false",
+        ).lower()
+        in {"1", "true", "yes", "on"},
+    )
+    return bool(configured)
+
+
 def raise_assignment_library_api(exc: AssignmentLibraryError) -> None:
     if exc.code == "ASSIGNMENT_LIBRARY_NOT_FOUND":
         status_code = 404
@@ -533,6 +546,14 @@ body {
   background: #2f6f9f;
   color: #ffffff;
 }
+.ftir-library-dialog-button.danger {
+  border-color: #ba2525;
+  background: #fff5f5;
+  color: #9b1c1c;
+}
+.ftir-library-dialog-button.danger:hover {
+  background: #ffe3e3;
+}
 .ftir-library-dialog-button:disabled {
   cursor: default;
   opacity: 0.55;
@@ -784,6 +805,8 @@ _UPLOAD_SCRIPT = """
   var files = [];
   var libraries = [];
   var selectedLibraryIds = [];
+  var libraryDeleteEnabled = false;
+  var libraryDeleteButton = null;
   var activeLibraryId = null;
   var activeLibraryIsNew = false;
   var controller = null;
@@ -832,6 +855,10 @@ _UPLOAD_SCRIPT = """
     activeLibraryIsNew = false;
     libraryModal.classList.remove("is-visible");
     libraryDialogBody.innerHTML = "";
+    if (libraryDeleteButton) {
+      libraryDeleteButton.remove();
+      libraryDeleteButton = null;
+    }
   }
 
   function appendCell(row, className) {
@@ -903,6 +930,23 @@ _UPLOAD_SCRIPT = """
     body.appendChild(row);
   }
 
+  function syncLibraryDeleteButton(library, isNew) {
+    if (libraryDeleteButton) {
+      libraryDeleteButton.remove();
+      libraryDeleteButton = null;
+    }
+    if (!libraryDeleteEnabled || isNew || !library || !library.id) return;
+    libraryDeleteButton = document.createElement("button");
+    libraryDeleteButton.type = "button";
+    libraryDeleteButton.className = "ftir-library-dialog-button danger";
+    libraryDeleteButton.textContent = "삭제";
+    libraryDeleteButton.title = "서버 라이브러리 파일 삭제";
+    libraryDeleteButton.addEventListener("click", function() {
+      deleteActiveLibrary(library.id, library.name || library.id);
+    });
+    libraryRowAdd.parentNode.insertBefore(libraryDeleteButton, libraryRowAdd);
+  }
+
   function renderLibraryEditor(library, isNew) {
     activeLibraryId = isNew ? null : library.id;
     activeLibraryIsNew = isNew;
@@ -953,6 +997,7 @@ _UPLOAD_SCRIPT = """
     libraryDialogBody.appendChild(table);
     (library.assignments || []).forEach(addAssignmentRow);
     if (!(library.assignments || []).length) addAssignmentRow();
+    syncLibraryDeleteButton(library, isNew);
     libraryModal.classList.add("is-visible");
   }
 
@@ -1079,6 +1124,37 @@ _UPLOAD_SCRIPT = """
     });
   }
 
+  function deleteActiveLibrary(libraryId, libraryName) {
+    if (!libraryDeleteEnabled || !libraryId) return;
+    if (!window.confirm("'" + libraryName + "' 라이브러리 파일을 삭제할까요?")) {
+      return;
+    }
+    if (libraryDeleteButton) libraryDeleteButton.disabled = true;
+    libraryDialogSave.disabled = true;
+    libraryRowAdd.disabled = true;
+    setMessage("");
+    fetch(
+      "/api/v1/ftir/assignment-libraries/" + encodeURIComponent(libraryId),
+      {method: "DELETE"}
+    ).then(function(response) {
+      return apiPayload(response, "라이브러리 삭제에 실패했습니다.");
+    }).then(function() {
+      selectedLibraryIds = selectedLibraryIds.filter(function(id) {
+        return id !== libraryId;
+      });
+      closeLibraryEditor();
+      return loadLibraries(selectedLibraryIds);
+    }).then(function() {
+      return files.length ? analyze() : null;
+    }).catch(function(err) {
+      setMessage(err.message);
+    }).finally(function() {
+      if (libraryDeleteButton) libraryDeleteButton.disabled = false;
+      libraryDialogSave.disabled = false;
+      libraryRowAdd.disabled = false;
+    });
+  }
+
   function renderLibraries() {
     libraryList.innerHTML = "";
     if (!libraries.length) {
@@ -1160,6 +1236,7 @@ _UPLOAD_SCRIPT = """
       })
       .then(function(payload) {
         libraries = payload.libraries || [];
+        libraryDeleteEnabled = !!payload.deleteEnabled;
         var validIds = {};
         libraries.forEach(function(item) {
           if (item.valid) validIds[item.id] = true;
@@ -1531,6 +1608,7 @@ def list_assignment_libraries(request: Request) -> dict:
         "libraries": store.summaries(),
         "directory": str(store.root),
         "supportedFormats": ["json", "csv"],
+        "deleteEnabled": assignment_library_delete_enabled(request),
     }
 
 
@@ -1621,6 +1699,25 @@ def update_assignment_library(
     return {"library": library.detail()}
 
 
+@router.delete(
+    "/api/v1/ftir/assignment-libraries/{library_id}",
+    tags=["ftir"],
+)
+def delete_assignment_library(request: Request, library_id: str) -> dict:
+    if not assignment_library_delete_enabled(request):
+        raise ApiException(
+            403,
+            "ASSIGNMENT_LIBRARY_DELETE_DISABLED",
+            "피크 assignment 라이브러리 삭제 기능이 비활성화되어 있습니다.",
+        )
+    try:
+        assignment_library_store(request).delete(library_id)
+    except AssignmentLibraryError as exc:
+        raise_assignment_library_api(exc)
+    logger.info("FT-IR assignment 라이브러리 삭제 (id=%s)", library_id)
+    return {"deleted": True, "id": library_id}
+
+
 @router.post("/api/v1/ftir/analyze", tags=["ftir"])
 def analyze_ftir(
     request: Request,
@@ -1706,6 +1803,7 @@ def analyze_ftir(
 
 def create_ftir_preview_app(
     assignment_library_dir: Path | None = None,
+    assignment_library_delete_enabled: bool | None = None,
 ) -> FastAPI:
     """Create a DB-free app for local FT-IR workspace development."""
     app = FastAPI(title="RIST FT-IR Preview")
@@ -1717,6 +1815,15 @@ def create_ftir_preview_app(
                 str(DEFAULT_ASSIGNMENT_LIBRARY_DIR),
             )
         )
+    )
+    app.state.ftir_assignment_library_delete_enabled = (
+        assignment_library_delete_enabled
+        if assignment_library_delete_enabled is not None
+        else os.getenv(
+            "RIST_FTIR_ASSIGNMENT_LIBRARY_DELETE_ENABLED",
+            "false",
+        ).lower()
+        in {"1", "true", "yes", "on"}
     )
     app.add_exception_handler(ApiException, api_exception_handler)
     app.add_exception_handler(RequestValidationError, validation_exception_handler)

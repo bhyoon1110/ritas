@@ -125,10 +125,11 @@ def assignment_library(name: str, peak_name: str) -> bytes:
     }).encode()
 
 
-def test_assignment_library_api_upload_select_and_delete(tmp_path: Path) -> None:
+def test_assignment_library_api_upload_select_and_edit(tmp_path: Path) -> None:
     with TestClient(create_ftir_preview_app(tmp_path / "libraries")) as client:
         initial = client.get("/api/v1/ftir/assignment-libraries")
         assert initial.status_code == 200
+        assert initial.json()["deleteEnabled"] is False
         assert initial.json()["libraries"][0]["id"] == "general-ftir"
         detail = client.get(
             "/api/v1/ftir/assignment-libraries/general-ftir"
@@ -180,6 +181,12 @@ def test_assignment_library_api_upload_select_and_delete(tmp_path: Path) -> None
         assert updated.json()["library"]["name"] == "Editor Test Updated"
         assert updated.json()["library"]["assignmentCount"] == 2
         assert (tmp_path / "libraries" / "editor-test.json").is_file()
+        disabled_delete = client.delete(
+            "/api/v1/ftir/assignment-libraries/editor-test"
+        )
+        assert disabled_delete.status_code == 403
+        assert disabled_delete.json()["code"] == "ASSIGNMENT_LIBRARY_DELETE_DISABLED"
+        assert (tmp_path / "libraries" / "editor-test.json").is_file()
 
         for file_id, name, peak_name in (
             ("material-a", "Material A", "Carbonyl A"),
@@ -222,3 +229,38 @@ def test_assignment_library_api_upload_select_and_delete(tmp_path: Path) -> None
             if trace.get("meta", {}).get("rist_peak")
         ]
         assert any("Carbonyl A / Carbonyl B" in name for name in peak_names)
+
+
+def test_assignment_library_delete_requires_feature_flag(tmp_path: Path) -> None:
+    with TestClient(
+        create_ftir_preview_app(
+            tmp_path / "libraries",
+            assignment_library_delete_enabled=True,
+        )
+    ) as client:
+        created = client.post(
+            "/api/v1/ftir/assignment-libraries/create",
+            json={
+                "id": "delete-test",
+                "name": "Delete Test",
+                "description": "",
+                "assignments": [{
+                    "centerWavenumber": 1700,
+                    "tolerance": 20,
+                    "name": "C=O test",
+                    "color": "#123456",
+                    "note": "",
+                }],
+            },
+        )
+        assert created.status_code == 201
+        initial = client.get("/api/v1/ftir/assignment-libraries")
+        assert initial.status_code == 200
+        assert initial.json()["deleteEnabled"] is True
+        assert (tmp_path / "libraries" / "delete-test.json").is_file()
+
+        deleted = client.delete("/api/v1/ftir/assignment-libraries/delete-test")
+
+    assert deleted.status_code == 200
+    assert deleted.json() == {"deleted": True, "id": "delete-test"}
+    assert not (tmp_path / "libraries" / "delete-test.json").exists()
