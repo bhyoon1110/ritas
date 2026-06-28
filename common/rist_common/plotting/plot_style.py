@@ -16,7 +16,7 @@
        - apply_origin_style(fig) 로 임의의 Figure(서브플롯 포함)에 적용
   2) 모바일 친화적 반응형 출력
        - viewport 메타태그 삽입, config.responsive=True
-  3) 범례 드래그 이동 (config.edits.legendPosition=True)
+  3) 범례 전용 핸들 드래그 이동
   4) 화면 너비에 따른 범례 위치 자동 전환
        - 넓은 화면(>=LEGEND_BREAKPOINT_PX): 그래프 안 우측 상단(세로)
        - 좁은 화면(폰): 그래프 아래 가로 배치
@@ -4413,6 +4413,170 @@ def _responsive_legend_js(div_id: str, wide_legend_inside: bool = True,
 """
 
 
+def _legend_drag_handle_js(div_id: str) -> str:
+    """Plotly 범례를 본문이 아닌 전용 상단바에서만 이동시키는 JS 스니펫."""
+    return f"""
+<style>
+#{div_id} .rist-legend-drag-handle {{
+  position: absolute;
+  z-index: 19;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  height: 18px;
+  min-width: 72px;
+  border: 1px solid rgba(148,163,184,0.9);
+  border-radius: 4px 4px 0 0;
+  background: rgba(248,250,252,0.95);
+  color: #334155;
+  cursor: move;
+  font: bold 10px Arial, sans-serif;
+  letter-spacing: 0;
+  box-shadow: 0 1px 4px rgba(15,23,42,0.12);
+  user-select: none;
+  touch-action: none;
+  box-sizing: border-box;
+}}
+#{div_id} .rist-legend-drag-handle.is-dragging {{
+  background: #dbeafe;
+  border-color: #60a5fa;
+  color: #1d4ed8;
+}}
+</style>
+<script>
+(function() {{
+  var gd = document.getElementById("{div_id}");
+  if (!gd || gd._ristLegendDragHandleInstalled) return;
+  gd._ristLegendDragHandleInstalled = true;
+  if (getComputedStyle(gd).position === "static") gd.style.position = "relative";
+
+  var handle = document.createElement("div");
+  handle.className = "rist-legend-drag-handle";
+  handle.textContent = "범례 이동";
+  handle.title = "이 바를 드래그해서 범례 위치 이동";
+  gd.appendChild(handle);
+  var dragState = null;
+  var updateFrame = 0;
+
+  function clamp(value, min, max) {{
+    return Math.max(min, Math.min(max, value));
+  }}
+
+  function legendLayout() {{
+    var full = gd._fullLayout || {{}};
+    return full.legend || (gd.layout && gd.layout.legend) || {{}};
+  }}
+
+  function plotSize() {{
+    var full = gd._fullLayout || {{}};
+    var width = Number(full.width || gd.clientWidth || 1);
+    var height = Number(full.height || gd.clientHeight || 1);
+    var margin = full.margin || {{}};
+    return {{
+      width: Math.max(1, width - Number(margin.l || 0) - Number(margin.r || 0)),
+      height: Math.max(1, height - Number(margin.t || 0) - Number(margin.b || 0))
+    }};
+  }}
+
+  function legendBoxRect() {{
+    var legend = gd.querySelector(".legend");
+    if (!legend) return null;
+    var box = legend.querySelector(".bg");
+    var target = box || legend;
+    var rect = target.getBoundingClientRect();
+    if (rect.width < 8 || rect.height < 8) return null;
+    return rect;
+  }}
+
+  function scheduleHandlePosition() {{
+    if (updateFrame) cancelAnimationFrame(updateFrame);
+    updateFrame = requestAnimationFrame(positionHandle);
+  }}
+
+  function positionHandle() {{
+    updateFrame = 0;
+    if (dragState) return;
+    var layout = legendLayout();
+    if (layout.orientation === "h") {{
+      handle.style.display = "none";
+      return;
+    }}
+    var rect = legendBoxRect();
+    if (!rect) {{
+      handle.style.display = "none";
+      return;
+    }}
+    var gdRect = gd.getBoundingClientRect();
+    var left = rect.left - gdRect.left;
+    var top = rect.top - gdRect.top - 18;
+    if (top < 2) top = rect.top - gdRect.top;
+    handle.style.left = Math.round(left) + "px";
+    handle.style.top = Math.round(top) + "px";
+    handle.style.width = Math.max(72, Math.round(rect.width)) + "px";
+    handle.style.display = "flex";
+  }}
+
+  handle.addEventListener("pointerdown", function(ev) {{
+    if (ev.button !== 0) return;
+    var layout = legendLayout();
+    var size = plotSize();
+    dragState = {{
+      pointerId: ev.pointerId,
+      startX: ev.clientX,
+      startY: ev.clientY,
+      legendX: Number.isFinite(Number(layout.x)) ? Number(layout.x) : 1,
+      legendY: Number.isFinite(Number(layout.y)) ? Number(layout.y) : 1,
+      plotWidth: size.width,
+      plotHeight: size.height
+    }};
+    handle.setPointerCapture(ev.pointerId);
+    handle.classList.add("is-dragging");
+    ev.preventDefault();
+    ev.stopPropagation();
+  }});
+
+  handle.addEventListener("pointermove", function(ev) {{
+    if (!dragState) return;
+    var dx = ev.clientX - dragState.startX;
+    var dy = ev.clientY - dragState.startY;
+    var nextX = clamp(dragState.legendX + dx / dragState.plotWidth, -0.2, 1.4);
+    var nextY = clamp(dragState.legendY - dy / dragState.plotHeight, -0.4, 1.2);
+    window.Plotly.relayout(gd, {{
+      "legend.x": nextX,
+      "legend.y": nextY
+    }}).then(scheduleHandlePosition);
+    ev.preventDefault();
+    ev.stopPropagation();
+  }});
+
+  function finishDrag(ev) {{
+    if (!dragState) return;
+    if (handle.hasPointerCapture(dragState.pointerId)) {{
+      handle.releasePointerCapture(dragState.pointerId);
+    }}
+    dragState = null;
+    handle.classList.remove("is-dragging");
+    scheduleHandlePosition();
+    if (ev) {{
+      ev.preventDefault();
+      ev.stopPropagation();
+    }}
+  }}
+
+  handle.addEventListener("pointerup", finishDrag);
+  handle.addEventListener("pointercancel", finishDrag);
+  gd.on("plotly_afterplot", scheduleHandlePosition);
+  gd.on("plotly_relayout", scheduleHandlePosition);
+  gd.on("plotly_restyle", scheduleHandlePosition);
+  gd.addEventListener("rist-legend-visibility-change", scheduleHandlePosition);
+  gd.addEventListener("rist-plot-data-replaced", scheduleHandlePosition);
+  window.addEventListener("resize", scheduleHandlePosition);
+  scheduleHandlePosition();
+}})();
+</script>
+"""
+
+
 def fig_to_responsive_html(
     fig,
     *,
@@ -4489,7 +4653,7 @@ def fig_to_responsive_html(
             "axisTitleText": False,
             "colorbarPosition": False,
             "colorbarTitleText": False,
-            "legendPosition": True,
+            "legendPosition": False,
             "legendText": False,
             "shapePosition": False,
             "titleText": False,
@@ -4522,6 +4686,8 @@ def fig_to_responsive_html(
     if responsive_legend:
         js = _responsive_legend_js(div_id, wide_legend_inside, legend_breakpoint_px)
         html = html.replace("</body>", js + "</body>", 1)
+
+    html = html.replace("</body>", _legend_drag_handle_js(div_id) + "</body>", 1)
 
     if crosshair:
         html = html.replace("</body>", _crosshair_js(div_id) + "</body>", 1)

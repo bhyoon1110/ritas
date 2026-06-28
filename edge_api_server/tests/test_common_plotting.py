@@ -84,6 +84,13 @@ def test_shared_plotly_module_applies_legend_text(tmp_path) -> None:
     assert 'key === "z" && ev.shiftKey' in html
     assert 'key === "y"' in html
     assert "rist-legend-edit-panel" in html
+    assert "rist-legend-drag-handle" in html
+    assert "범례 이동" in html
+    assert "legendPosition\": false" in html
+    assert "handle.addEventListener(\"pointerdown\"" in html
+    assert "window.Plotly.relayout(gd, {" in html
+    assert "\"legend.x\": nextX" in html
+    assert "\"legend.y\": nextY" in html
     assert "max-width: calc(100% - 16px)" in html
     assert "overflow-x: hidden" in html
     assert "rist-legend-opacity-control" in html
