@@ -95,32 +95,43 @@ def build_multi_raman_fig(
     peak_labels = []
     max_y = 1.0
     func_groups = func_groups or []
+    stack_gap = 1.2
+    stack_enabled = len(samples) > 1
+    sample_offsets = {
+        _sample_key(index): (index * stack_gap if stack_enabled else 0.0)
+        for index in range(len(samples))
+    }
 
     for sample_no, sample in enumerate(samples):
         sample_key = _sample_key(sample_no)
         label = sample["label"]
         grid = sample["grid"]
         values = sample["processed"]
+        stack_offset = sample_offsets[sample_key]
+        plotted_values = values + stack_offset
         color = SAMPLE_PALETTE[sample_no % len(SAMPLE_PALETTE)]
         max_y = max(max_y, float(np.nanmax(values)) if len(values) else 1.0)
 
         sample_trace = go.Scatter(
             x=grid,
-            y=values,
+            y=plotted_values,
             mode="lines",
             name=label,
             legendgroup=sample_key,
             legendgrouptitle_text=label,
             line=dict(color=color, width=1.8),
             hovertemplate=(
-                f"<b>{label}</b><br>%{{x:.1f}} cm⁻¹ | %{{y:.4f}}"
+                f"<b>{label}</b><br>%{{x:.1f}} cm⁻¹ | %{{customdata:.4f}}"
                 "<extra></extra>"
             ),
+            customdata=values,
         )
         sample_trace.meta = {
             "rist_sample_group": sample_key,
             "rist_sample_parent": True,
             "rist_legend_edit_group": sample_key,
+            "rist_raman_stack_offset": float(stack_offset),
+            "rist_raman_sample_index": sample_no,
         }
         fig.add_trace(sample_trace)
 
@@ -149,7 +160,7 @@ def build_multi_raman_fig(
             trace_index = len(fig.data)
             peak_trace = go.Scatter(
                 x=[shift],
-                y=[value],
+                y=[value + stack_offset],
                 mode="markers",
                 marker=dict(
                     color=peak_color,
@@ -163,7 +174,7 @@ def build_multi_raman_fig(
                 showlegend=initially_visible and label_key not in seen_label_keys,
                 hovertemplate=(
                     f"<b>{label}</b><br>{shift:.1f} cm⁻¹<br>"
-                    f"{display_name}<br>Intensity: %{{y:.4f}}"
+                    f"{display_name}<br>Intensity: {value:.4f}"
                     f"<br>FWHM: {fwhm:.1f} cm⁻¹<br><i>{note}</i>"
                     "<extra></extra>"
                 ),
@@ -174,6 +185,7 @@ def build_multi_raman_fig(
                 "rist_peak": {
                     "source": "detected",
                     "x": float(shift),
+                    "base_y": float(value),
                     "label": display_name,
                     "sample_group": sample_key,
                     "label_key": label_key,
@@ -181,15 +193,18 @@ def build_multi_raman_fig(
                     "sensitivity_min": candidate["sensitivity_min"],
                     "assignments": assignment["assignments"],
                 },
+                "rist_raman_stack_offset": float(stack_offset),
+                "rist_raman_sample_index": sample_no,
             }
             fig.add_trace(peak_trace)
             if initially_visible:
                 seen_label_keys.add(label_key)
 
             if candidate["index"] in top_peak_indexes:
-                y_label = value + 0.06 + (
+                base_y_label = value + 0.06 + (
                     0.05 if (len(annotations) + peak_no) % 2 == 0 else 0.0
                 )
+                y_label = base_y_label + stack_offset
                 annotation_index = len(annotations)
                 shape_index = len(fig.layout.shapes)
                 annotations.append(
@@ -221,14 +236,17 @@ def build_multi_raman_fig(
                         "legendgroup": sample_key,
                         "labelKey": label_key,
                         "wnText": f"{shift:.0f}",
+                        "annotationBaseY": float(base_y_label),
+                        "shapeBaseY0": 0.0,
+                        "shapeBaseY1": float(value),
                     }
                 )
                 fig.add_shape(
                     type="line",
                     x0=shift,
                     x1=shift,
-                    y0=0,
-                    y1=value,
+                    y0=stack_offset,
+                    y1=value + stack_offset,
                     line=dict(color=peak_color, width=0.8, dash="dot"),
                     visible=initially_visible,
                 )
@@ -254,7 +272,11 @@ def build_multi_raman_fig(
             title="Normalized Intensity",
             showgrid=True,
             gridcolor="#e8e8e8",
-            range=[-0.05, max_y * 1.65],
+            range=[
+                -0.05,
+                (max(sample_offsets.values()) if sample_offsets else 0.0)
+                + max_y * 1.65,
+            ],
         ),
         annotations=annotations,
         legend=dict(
@@ -278,6 +300,14 @@ def build_multi_raman_fig(
         height=720,
         hovermode="closest",
         margin=dict(l=70, r=260, t=105, b=70),
-        meta={"ristPeakLabels": peak_labels},
+        meta={
+            "ristPeakLabels": peak_labels,
+            "ristRamanStack": {
+                "enabled": stack_enabled,
+                "gap": stack_gap,
+                "sampleOffsets": sample_offsets,
+                "sampleOrder": [_sample_key(index) for index in range(len(samples))],
+            },
+        },
     )
     return fig

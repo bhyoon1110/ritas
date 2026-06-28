@@ -33,6 +33,9 @@ def test_raman_workspace_contains_upload_controls() -> None:
     assert "/raman/assets/plotly.min.js" in page
     assert "RIN Raman" in page
     assert "rist-peak-sensitivity-control" in page
+    assert "rist-raman-stack-control" in page
+    assert "ristRamanStack" in page
+    assert "Y 이동" in page
     assert "rist-legend-edit-button" in page
     assert "rist-shape-editor-panel" in page
     assert "SNAP_PX = 24" in page
@@ -51,6 +54,35 @@ def test_raman_workspace_contains_upload_controls() -> None:
     assert "prompt.style.display = files.length ? \"none\" : \"inline\"" in page
     assert "files.splice(index, 1)" in page
     assert "else resetPlot()" in page
+
+
+def test_raman_analyze_api_stacks_multiple_samples() -> None:
+    content = SAMPLE_TXT.read_bytes()
+    with TestClient(create_raman_preview_app()) as client:
+        response = client.post(
+            "/api/v1/raman/analyze",
+            files=[
+                ("files", (SAMPLE_TXT.name, content, "text/plain")),
+                ("files", (SAMPLE_TXT.name, content, "text/plain")),
+            ],
+            data={"sensitivity": "25"},
+        )
+
+    assert response.status_code == 200
+    figure = response.json()["figure"]
+    stack = figure["layout"]["meta"]["ristRamanStack"]
+    assert stack["enabled"] is True
+    assert stack["sampleOffsets"]["sample:0"] == 0
+    assert stack["sampleOffsets"]["sample:1"] > 0
+
+    parent_traces = [
+        trace for trace in figure["data"]
+        if trace.get("meta", {}).get("rist_sample_parent")
+    ]
+    assert len(parent_traces) == 2
+    assert parent_traces[0]["meta"]["rist_raman_stack_offset"] == 0
+    assert parent_traces[1]["meta"]["rist_raman_stack_offset"] > 0
+    assert parent_traces[1]["y"][0] > parent_traces[0]["y"][0]
 
 
 def test_raman_raw_loader_reads_instrument_txt() -> None:

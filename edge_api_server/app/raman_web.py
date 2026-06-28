@@ -448,6 +448,47 @@ body { overflow-x: hidden; }
   background: #fff5f5;
   color: #9b1c1c;
 }
+#raman-plot .rist-raman-stack-control {
+  order: 14;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 7px;
+  border: 1px solid #9fb3c8;
+  border-radius: 4px;
+  background: rgba(255,255,255,0.94);
+  box-sizing: border-box;
+}
+#raman-plot .rist-raman-stack-button {
+  height: 22px;
+  border: 1px solid #c7d0dd;
+  border-radius: 3px;
+  background: #f5f7fa;
+  color: #243b53;
+  cursor: pointer;
+  font: 11px Arial, sans-serif;
+  padding: 0 7px;
+}
+#raman-plot .rist-raman-stack-button.is-active {
+  border-color: #2563eb;
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+#raman-plot .rist-raman-stack-gap {
+  width: 64px;
+  margin: 0;
+  accent-color: #52606d;
+}
+#raman-plot .rist-raman-stack-value {
+  min-width: 24px;
+  color: #334e68;
+  font: bold 10px Arial, sans-serif;
+  text-align: right;
+}
+#raman-plot.rist-raman-y-drag-active .nsewdrag {
+  cursor: ns-resize;
+}
 .raman-drop-zone {
   display: flex;
   align-items: center;
@@ -658,6 +699,377 @@ _PAGE_SHELL = """
     </footer>
   </section>
 </div>
+"""
+
+
+_RAMAN_STACK_SCRIPT = """
+<script>
+(function() {
+  var gd = document.getElementById("raman-plot");
+  if (!gd || !window.Plotly || gd._ristRamanStackInstalled) return;
+  gd._ristRamanStackInstalled = true;
+  var state = {
+    initialized: false,
+    enabled: false,
+    gap: 1.2,
+    offsets: {},
+    order: [],
+    baseTraces: {},
+    baseAnnotations: {},
+    baseShapes: {},
+    dragMode: false,
+    dragging: null,
+    raf: null
+  };
+
+  function traceMeta(index) {
+    var trace = (gd.data || [])[index] || {};
+    return trace.meta && typeof trace.meta === "object" ? trace.meta : {};
+  }
+
+  function groupOfTrace(index) {
+    var meta = traceMeta(index);
+    return String(
+      meta.rist_sample_group
+      || (meta.rist_peak && meta.rist_peak.sample_group)
+      || ""
+    );
+  }
+
+  function stackMeta() {
+    if (!gd.layout.meta || typeof gd.layout.meta !== "object") gd.layout.meta = {};
+    if (!gd.layout.meta.ristRamanStack) gd.layout.meta.ristRamanStack = {};
+    return gd.layout.meta.ristRamanStack;
+  }
+
+  function numberArray(values) {
+    return Array.prototype.slice.call(values || []).map(function(value) {
+      var next = Number(value);
+      return Number.isFinite(next) ? next : 0;
+    });
+  }
+
+  function discoverOrder() {
+    var seen = {};
+    var order = [];
+    (gd.data || []).forEach(function(trace, index) {
+      var group = groupOfTrace(index);
+      var meta = traceMeta(index);
+      if (!group || !meta.rist_sample_parent || seen[group]) return;
+      seen[group] = true;
+      order.push(group);
+    });
+    return order;
+  }
+
+  function labelItems() {
+    return (
+      gd.layout.meta && Array.isArray(gd.layout.meta.ristPeakLabels)
+    ) ? gd.layout.meta.ristPeakLabels : [];
+  }
+
+  function annotationGroup(index) {
+    var match = labelItems().find(function(item) {
+      return item.annotationIndex === index;
+    });
+    return match ? String(match.legendgroup || "") : "";
+  }
+
+  function shapeGroup(index) {
+    var match = labelItems().find(function(item) {
+      return item.shapeIndex === index;
+    });
+    return match ? String(match.legendgroup || "") : "";
+  }
+
+  function labelForAnnotation(index) {
+    return labelItems().find(function(item) {
+      return item.annotationIndex === index;
+    }) || null;
+  }
+
+  function labelForShape(index) {
+    return labelItems().find(function(item) {
+      return item.shapeIndex === index;
+    }) || null;
+  }
+
+  function initState() {
+    var meta = stackMeta();
+    state.enabled = !!meta.enabled;
+    state.gap = Number.isFinite(Number(meta.gap)) ? Number(meta.gap) : 1.2;
+    state.order = Array.isArray(meta.sampleOrder) && meta.sampleOrder.length
+      ? meta.sampleOrder.map(String)
+      : discoverOrder();
+    state.offsets = {};
+    state.order.forEach(function(group, index) {
+      var configured = meta.sampleOffsets && meta.sampleOffsets[group];
+      state.offsets[group] = Number.isFinite(Number(configured))
+        ? Number(configured)
+        : (state.enabled ? index * state.gap : 0);
+    });
+
+    state.baseTraces = {};
+    (gd.data || []).forEach(function(trace, index) {
+      var group = groupOfTrace(index);
+      if (!group || !Object.prototype.hasOwnProperty.call(state.offsets, group)) return;
+      var offset = Number(traceMeta(index).rist_raman_stack_offset);
+      if (!Number.isFinite(offset)) offset = state.offsets[group] || 0;
+      state.baseTraces[index] = {
+        group: group,
+        y: numberArray(trace.y).map(function(value) { return value - offset; }),
+        parent: !!traceMeta(index).rist_sample_parent
+      };
+    });
+
+    state.baseAnnotations = {};
+    (gd.layout.annotations || []).forEach(function(annotation, index) {
+      var group = annotationGroup(index);
+      if (!group || !Object.prototype.hasOwnProperty.call(state.offsets, group)) return;
+      var label = labelForAnnotation(index);
+      var baseY = Number(label && label.annotationBaseY);
+      if (!Number.isFinite(baseY)) {
+        baseY = Number(annotation.y) - (state.offsets[group] || 0);
+      }
+      state.baseAnnotations[index] = {group: group, y: baseY};
+    });
+
+    state.baseShapes = {};
+    (gd.layout.shapes || []).forEach(function(shape, index) {
+      var group = shapeGroup(index);
+      if (!group || !Object.prototype.hasOwnProperty.call(state.offsets, group)) return;
+      var label = labelForShape(index);
+      var baseY0 = Number(label && label.shapeBaseY0);
+      var baseY1 = Number(label && label.shapeBaseY1);
+      if (!Number.isFinite(baseY0)) {
+        baseY0 = Number(shape.y0) - (state.offsets[group] || 0);
+      }
+      if (!Number.isFinite(baseY1)) {
+        baseY1 = Number(shape.y1) - (state.offsets[group] || 0);
+      }
+      state.baseShapes[index] = {group: group, y0: baseY0, y1: baseY1};
+    });
+
+    state.initialized = true;
+    syncControls();
+  }
+
+  function fitRange() {
+    var groups = state.order.length ? state.order : Object.keys(state.offsets);
+    if (!groups.length) return [-0.05, 1.65];
+    var low = Infinity;
+    var high = -Infinity;
+    groups.forEach(function(group) {
+      var offset = Number(state.offsets[group] || 0);
+      low = Math.min(low, offset - 0.08);
+      high = Math.max(high, offset + 1.65);
+    });
+    return [low, high];
+  }
+
+  function updateMeta() {
+    var meta = stackMeta();
+    meta.enabled = state.enabled;
+    meta.gap = state.gap;
+    meta.sampleOffsets = Object.assign({}, state.offsets);
+    meta.sampleOrder = state.order.slice();
+  }
+
+  function applyOffsets() {
+    if (!state.initialized) initState();
+    var data = gd.data || [];
+    Object.keys(state.baseTraces).forEach(function(indexText) {
+      var index = Number(indexText);
+      var base = state.baseTraces[index];
+      var offset = Number(state.offsets[base.group] || 0);
+      data[index].y = base.y.map(function(value) { return value + offset; });
+      if (data[index].meta && typeof data[index].meta === "object") {
+        data[index].meta.rist_raman_stack_offset = offset;
+      }
+    });
+
+    var layout = gd.layout || {};
+    layout.annotations = (layout.annotations || []).map(function(annotation, index) {
+      var base = state.baseAnnotations[index];
+      if (!base) return annotation;
+      var next = Object.assign({}, annotation);
+      next.y = base.y + Number(state.offsets[base.group] || 0);
+      return next;
+    });
+    layout.shapes = (layout.shapes || []).map(function(shape, index) {
+      var base = state.baseShapes[index];
+      if (!base) return shape;
+      var offset = Number(state.offsets[base.group] || 0);
+      var next = Object.assign({}, shape);
+      next.y0 = base.y0 + offset;
+      next.y1 = base.y1 + offset;
+      return next;
+    });
+    if (!layout.yaxis) layout.yaxis = {};
+    layout.yaxis.range = fitRange();
+    updateMeta();
+    syncControls();
+    return window.Plotly.react(gd, data, layout, gd._context);
+  }
+
+  function requestApply() {
+    if (state.raf) return;
+    state.raf = window.requestAnimationFrame(function() {
+      state.raf = null;
+      applyOffsets();
+    });
+  }
+
+  function resetStackOffsets() {
+    state.order.forEach(function(group, index) {
+      state.offsets[group] = state.enabled ? index * state.gap : 0;
+    });
+  }
+
+  function plotPoint(ev) {
+    var drag = gd.querySelector(".nsewdrag");
+    var layout = gd._fullLayout || {};
+    if (!drag || !layout.xaxis || !layout.yaxis) return null;
+    var rect = drag.getBoundingClientRect();
+    if (
+      ev.clientX < rect.left || ev.clientX > rect.right
+      || ev.clientY < rect.top || ev.clientY > rect.bottom
+    ) return null;
+    return {
+      x: layout.xaxis.p2d(ev.clientX - rect.left),
+      y: layout.yaxis.p2d(ev.clientY - rect.top),
+      rect: rect,
+      xaxis: layout.xaxis,
+      yaxis: layout.yaxis
+    };
+  }
+
+  function nearestIndex(xs, target) {
+    var best = -1;
+    var bestDelta = Infinity;
+    xs.forEach(function(value, index) {
+      var delta = Math.abs(Number(value) - target);
+      if (delta < bestDelta) {
+        bestDelta = delta;
+        best = index;
+      }
+    });
+    return best;
+  }
+
+  function nearestSample(ev) {
+    var point = plotPoint(ev);
+    if (!point) return null;
+    var best = null;
+    (gd.data || []).forEach(function(trace, index) {
+      var base = state.baseTraces[index];
+      if (!base || !base.parent) return;
+      if (trace.visible === false || trace.visible === "legendonly") return;
+      var xs = numberArray(trace.x);
+      var nearest = nearestIndex(xs, point.x);
+      if (nearest < 0) return;
+      var y = base.y[nearest] + Number(state.offsets[base.group] || 0);
+      var px = point.xaxis.d2p(xs[nearest]);
+      var py = point.yaxis.d2p(y);
+      var dx = Math.abs(px - (ev.clientX - point.rect.left));
+      var dy = Math.abs(py - (ev.clientY - point.rect.top));
+      var distance = Math.sqrt(dx * dx + dy * dy);
+      if (distance > 36) return;
+      if (!best || distance < best.distance) {
+        best = {group: base.group, distance: distance, point: point};
+      }
+    });
+    return best;
+  }
+
+  function syncControls() {
+    if (!stackButton || !dragButton || !gapSlider || !gapValue) return;
+    var hasSamples = state.order.length > 0;
+    stackButton.classList.toggle("is-active", !!state.enabled);
+    dragButton.classList.toggle("is-active", !!state.dragMode);
+    stackButton.disabled = !hasSamples;
+    dragButton.disabled = !hasSamples;
+    gapSlider.disabled = !hasSamples;
+    gapSlider.value = String(Math.round(state.gap * 100));
+    gapValue.textContent = state.gap.toFixed(1);
+    gd.classList.toggle("rist-raman-y-drag-active", !!state.dragMode);
+  }
+
+  if (getComputedStyle(gd).position === "static") gd.style.position = "relative";
+  var toolbar = gd.querySelector(".rist-plot-control-row");
+  if (!toolbar) {
+    toolbar = document.createElement("div");
+    toolbar.className = "rist-plot-control-row";
+    gd.appendChild(toolbar);
+  }
+  var control = document.createElement("div");
+  control.className = "rist-raman-stack-control";
+  control.innerHTML =
+    "<button type='button' class='rist-raman-stack-button' title='샘플을 위아래로 벌려서 보기'>스택</button>"
+    + "<input class='rist-raman-stack-gap' type='range' min='60' max='220' step='5' value='120' title='스택 간격' aria-label='스택 간격'>"
+    + "<span class='rist-raman-stack-value'>1.2</span>"
+    + "<button type='button' class='rist-raman-stack-button' title='샘플 곡선을 위아래로 드래그'>Y 이동</button>";
+  toolbar.appendChild(control);
+  var stackButton = control.querySelectorAll(".rist-raman-stack-button")[0];
+  var gapSlider = control.querySelector(".rist-raman-stack-gap");
+  var gapValue = control.querySelector(".rist-raman-stack-value");
+  var dragButton = control.querySelectorAll(".rist-raman-stack-button")[1];
+
+  stackButton.addEventListener("click", function() {
+    state.enabled = !state.enabled;
+    resetStackOffsets();
+    applyOffsets();
+  });
+  dragButton.addEventListener("click", function() {
+    state.dragMode = !state.dragMode;
+    syncControls();
+  });
+  gapSlider.addEventListener("input", function() {
+    state.gap = Math.max(0.6, Math.min(2.2, Number(gapSlider.value) / 100));
+    if (state.enabled) resetStackOffsets();
+    applyOffsets();
+  });
+
+  gd.addEventListener("pointerdown", function(ev) {
+    if (!state.dragMode) return;
+    if (!state.initialized) initState();
+    var nearest = nearestSample(ev);
+    if (!nearest) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    if (ev.stopImmediatePropagation) ev.stopImmediatePropagation();
+    state.dragging = {
+      group: nearest.group,
+      startY: nearest.point.y,
+      startOffset: Number(state.offsets[nearest.group] || 0)
+    };
+  }, true);
+
+  document.addEventListener("pointermove", function(ev) {
+    if (!state.dragging) return;
+    var point = plotPoint(ev);
+    if (!point) return;
+    state.offsets[state.dragging.group] =
+      state.dragging.startOffset + (point.y - state.dragging.startY);
+    state.enabled = state.order.some(function(group) {
+      return Math.abs(Number(state.offsets[group] || 0)) > 0.001;
+    });
+    requestApply();
+  });
+  document.addEventListener("pointerup", function() {
+    state.dragging = null;
+  });
+  document.addEventListener("pointercancel", function() {
+    state.dragging = null;
+  });
+
+  gd.addEventListener("rist-plot-data-replaced", function() {
+    state.initialized = false;
+    setTimeout(initState, 0);
+  });
+  initState();
+})();
+</script>
 """
 
 
@@ -1372,7 +1784,11 @@ def build_raman_page() -> str:
         trace_highlight=True,
         image_format_selector=True,
         image_filename="raman_peak_analysis",
-        post_body_html=peak_sensitivity_js(PLOT_DIV_ID, initial="25") + _UPLOAD_SCRIPT,
+        post_body_html=(
+            peak_sensitivity_js(PLOT_DIV_ID, initial="25")
+            + _RAMAN_STACK_SCRIPT
+            + _UPLOAD_SCRIPT
+        ),
         config={"scrollZoom": True},
     )
     page = page.replace("</head>", _PAGE_STYLE + "</head>", 1)
