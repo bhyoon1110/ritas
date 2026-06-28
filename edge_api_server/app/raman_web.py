@@ -492,6 +492,43 @@ body { overflow-x: hidden; }
 #raman-plot .rist-plot-control-row > * {
   flex: 0 0 auto;
 }
+#raman-plot .rist-raman-ratio-control {
+  order: 18;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 7px;
+  border: 1px solid #9fb3c8;
+  border-radius: 4px;
+  background: rgba(255,255,255,0.94);
+  box-sizing: border-box;
+}
+#raman-plot .rist-raman-ratio-button {
+  height: 22px;
+  border: 1px solid #c7d0dd;
+  border-radius: 3px;
+  background: #f5f7fa;
+  color: #243b53;
+  cursor: pointer;
+  font: 11px Arial, sans-serif;
+  padding: 0 7px;
+  white-space: nowrap;
+}
+#raman-plot .rist-raman-ratio-button.is-active {
+  border-color: #2563eb;
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+#raman-plot .rist-raman-ratio-status {
+  min-width: 44px;
+  max-width: 96px;
+  overflow: hidden;
+  color: #334e68;
+  font: bold 10px Arial, sans-serif;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .raman-drop-zone {
   display: flex;
   align-items: center;
@@ -666,10 +703,20 @@ body { overflow-x: hidden; }
     padding: 0 8px;
   }
   #raman-plot .rist-raman-stack-control,
+  #raman-plot .rist-raman-ratio-control,
   #raman-plot .rist-peak-sensitivity-control {
     height: 28px;
     gap: 5px;
     padding: 0 6px;
+  }
+  #raman-plot .rist-raman-ratio-button {
+    min-width: 34px;
+    height: 22px;
+    padding: 0 6px;
+  }
+  #raman-plot .rist-raman-ratio-status {
+    min-width: 36px;
+    max-width: 76px;
   }
   #raman-plot .rist-raman-stack-button {
     min-width: 42px;
@@ -709,7 +756,8 @@ body { overflow-x: hidden; }
     gap: 5px;
   }
   #raman-plot .rist-legend-edit-button,
-  #raman-plot .rist-peak-edit-button {
+  #raman-plot .rist-peak-edit-button,
+  #raman-plot .rist-raman-ratio-button {
     font-size: 10px;
     padding: 0 6px;
   }
@@ -991,7 +1039,9 @@ _RAMAN_STACK_SCRIPT = """
     layout.yaxis.range = fitRange();
     updateMeta();
     syncControls();
-    return window.Plotly.react(gd, data, layout, gd._context);
+    return window.Plotly.react(gd, data, layout, gd._context).then(function() {
+      gd.dispatchEvent(new CustomEvent("rist-raman-stack-change"));
+    });
   }
 
   function requestApply() {
@@ -1150,6 +1200,222 @@ _RAMAN_STACK_SCRIPT = """
     setTimeout(initState, 0);
   });
   initState();
+})();
+</script>
+"""
+
+
+_RAMAN_RATIO_SCRIPT = """
+<script>
+(function() {
+  var gd = document.getElementById("raman-plot");
+  if (!gd || !window.Plotly || gd._ristRamanRatioInstalled) return;
+  gd._ristRamanRatioInstalled = true;
+  var ratioMode = false;
+  var pendingNumerator = null;
+  var ratios = [];
+  var nextRatioId = 1;
+
+  function traceMeta(curve) {
+    var trace = (gd.data || [])[curve] || {};
+    return trace.meta && typeof trace.meta === "object" ? trace.meta : {};
+  }
+
+  function peakMeta(curve) {
+    var meta = traceMeta(curve);
+    return meta.rist_peak && typeof meta.rist_peak === "object"
+      ? meta.rist_peak
+      : null;
+  }
+
+  function peakValue(curve) {
+    var peak = peakMeta(curve);
+    if (peak && Number.isFinite(Number(peak.base_y))) return Number(peak.base_y);
+    var trace = (gd.data || [])[curve] || {};
+    var offset = Number(traceMeta(curve).rist_raman_stack_offset || 0);
+    var y = Array.isArray(trace.y) ? Number(trace.y[0]) : Number(trace.y);
+    return Number.isFinite(y) ? y - offset : NaN;
+  }
+
+  function plottedPeakY(curve) {
+    var trace = (gd.data || [])[curve] || {};
+    var y = Array.isArray(trace.y) ? Number(trace.y[0]) : Number(trace.y);
+    return Number.isFinite(y) ? y : peakValue(curve);
+  }
+
+  function peakX(curve) {
+    var peak = peakMeta(curve);
+    if (peak && Number.isFinite(Number(peak.x))) return Number(peak.x);
+    var trace = (gd.data || [])[curve] || {};
+    var x = Array.isArray(trace.x) ? Number(trace.x[0]) : Number(trace.x);
+    return Number.isFinite(x) ? x : NaN;
+  }
+
+  function sampleGroup(curve) {
+    var peak = peakMeta(curve);
+    return String(
+      (peak && peak.sample_group)
+      || traceMeta(curve).rist_sample_group
+      || ""
+    );
+  }
+
+  function labelFor(curve) {
+    var x = peakX(curve);
+    return Number.isFinite(x) ? x.toFixed(0) : "peak";
+  }
+
+  function ratioPrefix() {
+    return "rist_raman_ratio:";
+  }
+
+  function withoutRatioItems(items) {
+    return (items || []).filter(function(item) {
+      return String(item && item.name || "").indexOf(ratioPrefix()) !== 0;
+    });
+  }
+
+  function ratioText(item) {
+    var numerator = peakValue(item.numeratorCurve);
+    var denominator = peakValue(item.denominatorCurve);
+    if (!Number.isFinite(numerator) || !Number.isFinite(denominator)
+        || Math.abs(denominator) < 1e-12) {
+      return "I(num)/I(den) = n/a";
+    }
+    return "I(" + labelFor(item.numeratorCurve) + ")/I("
+      + labelFor(item.denominatorCurve) + ") = "
+      + (numerator / denominator).toFixed(3);
+  }
+
+  function renderRatios() {
+    var annotations = withoutRatioItems(gd.layout.annotations);
+    var shapes = withoutRatioItems(gd.layout.shapes);
+    ratios = ratios.filter(function(item) {
+      return peakMeta(item.numeratorCurve) && peakMeta(item.denominatorCurve);
+    });
+    ratios.forEach(function(item) {
+      var x0 = peakX(item.numeratorCurve);
+      var x1 = peakX(item.denominatorCurve);
+      var y0 = plottedPeakY(item.numeratorCurve);
+      var y1 = plottedPeakY(item.denominatorCurve);
+      if (![x0, x1, y0, y1].every(Number.isFinite)) return;
+      var y = Math.max(y0, y1) + 0.14;
+      var name = ratioPrefix() + item.id;
+      shapes.push({
+        type: "line",
+        x0: x0,
+        x1: x1,
+        y0: y,
+        y1: y,
+        line: {color: "#111827", width: 1.3, dash: "dash"},
+        name: name
+      });
+      annotations.push({
+        x: (x0 + x1) / 2,
+        y: y + 0.045,
+        text: ratioText(item),
+        showarrow: false,
+        font: {size: 11, color: "#111827"},
+        bgcolor: "rgba(255,255,255,0.92)",
+        bordercolor: "#111827",
+        borderwidth: 1,
+        borderpad: 3,
+        name: name
+      });
+    });
+    return window.Plotly.relayout(gd, {annotations: annotations, shapes: shapes});
+  }
+
+  function setStatus(text) {
+    if (status) status.textContent = text || "";
+  }
+
+  function syncControls() {
+    ratioButton.classList.toggle("is-active", ratioMode);
+    ratioButton.textContent = ratioMode ? "분자" : "비율";
+    if (!ratioMode) {
+      setStatus(ratios.length ? ratios.length + "개" : "");
+    } else if (pendingNumerator) {
+      setStatus("분모 선택");
+    } else {
+      setStatus("분자 선택");
+    }
+  }
+
+  function pickPeak(curve) {
+    var peak = peakMeta(curve);
+    if (!peak) return false;
+    var value = peakValue(curve);
+    if (!Number.isFinite(value)) {
+      setStatus("값 없음");
+      return true;
+    }
+    if (!pendingNumerator) {
+      pendingNumerator = {curve: curve, group: sampleGroup(curve)};
+      syncControls();
+      return true;
+    }
+    if (sampleGroup(curve) !== pendingNumerator.group) {
+      setStatus("같은 샘플");
+      return true;
+    }
+    var denominator = peakValue(curve);
+    if (Math.abs(denominator) < 1e-12) {
+      setStatus("분모 0");
+      return true;
+    }
+    ratios.push({
+      id: nextRatioId++,
+      numeratorCurve: pendingNumerator.curve,
+      denominatorCurve: curve
+    });
+    pendingNumerator = null;
+    renderRatios().then(syncControls);
+    return true;
+  }
+
+  if (getComputedStyle(gd).position === "static") gd.style.position = "relative";
+  var toolbar = gd.querySelector(".rist-plot-control-row");
+  if (!toolbar) {
+    toolbar = document.createElement("div");
+    toolbar.className = "rist-plot-control-row";
+    gd.appendChild(toolbar);
+  }
+  var control = document.createElement("div");
+  control.className = "rist-raman-ratio-control";
+  control.innerHTML =
+    "<button type='button' class='rist-raman-ratio-button' title='분자 피크와 분모 피크를 차례로 선택'>비율</button>"
+    + "<button type='button' class='rist-raman-ratio-button' title='표시한 비율 삭제'>삭제</button>"
+    + "<span class='rist-raman-ratio-status'></span>";
+  toolbar.appendChild(control);
+  var ratioButton = control.querySelectorAll(".rist-raman-ratio-button")[0];
+  var clearButton = control.querySelectorAll(".rist-raman-ratio-button")[1];
+  var status = control.querySelector(".rist-raman-ratio-status");
+
+  ratioButton.addEventListener("click", function() {
+    ratioMode = !ratioMode;
+    pendingNumerator = null;
+    syncControls();
+  });
+  clearButton.addEventListener("click", function() {
+    ratios = [];
+    pendingNumerator = null;
+    renderRatios().then(syncControls);
+  });
+  gd.on("plotly_click", function(ev) {
+    if (!ratioMode || !ev || !ev.points || !ev.points.length) return;
+    var curve = ev.points[0].curveNumber;
+    pickPeak(curve);
+  });
+  gd.addEventListener("rist-raman-stack-change", function() {
+    if (ratios.length) renderRatios();
+  });
+  gd.addEventListener("rist-plot-data-replaced", function() {
+    ratios = [];
+    pendingNumerator = null;
+    setTimeout(syncControls, 0);
+  });
+  syncControls();
 })();
 </script>
 """
@@ -1869,6 +2135,7 @@ def build_raman_page() -> str:
         post_body_html=(
             peak_sensitivity_js(PLOT_DIV_ID, initial="25")
             + _RAMAN_STACK_SCRIPT
+            + _RAMAN_RATIO_SCRIPT
             + _UPLOAD_SCRIPT
         ),
         config={"scrollZoom": True},

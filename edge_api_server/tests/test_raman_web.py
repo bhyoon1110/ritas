@@ -34,7 +34,11 @@ def test_raman_workspace_contains_upload_controls() -> None:
     assert "RIN Raman" in page
     assert "rist-peak-sensitivity-control" in page
     assert "rist-raman-stack-control" in page
+    assert "rist-raman-ratio-control" in page
     assert "ristRamanStack" in page
+    assert "I(num)/I(den)" in page
+    assert "분자 선택" in page
+    assert "분모 선택" in page
     assert "Y 이동" in page
     assert "max-width: calc(100% - 16px)" in page
     assert "-webkit-overflow-scrolling: touch" in page
@@ -49,6 +53,7 @@ def test_raman_workspace_contains_upload_controls() -> None:
     assert "dispatchDataReplaced" in page
     assert "rist-plot-data-replaced" in page
     assert "gd._context" in page
+    assert "rist-raman-stack-change" in page
     assert "annotationPosition" in page
     assert "annotationTail" in page
     assert "raman-file-remove" in page
@@ -123,6 +128,11 @@ def test_raman_analyze_api_accepts_txt_sample() -> None:
     assert any(
         trace.get("meta", {}).get("rist_peak")
         for trace in payload["figure"]["data"]
+    )
+    assert any(
+        isinstance(trace.get("meta", {}).get("rist_peak", {}).get("base_y"), float)
+        for trace in payload["figure"]["data"]
+        if trace.get("meta", {}).get("rist_peak")
     )
 
 
