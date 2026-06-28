@@ -4,7 +4,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from app.raman_web import build_raman_page, create_raman_preview_app
+from app.raman_web import _blank_figure, build_raman_page, create_raman_preview_app
 from rin.raman.preprocess import load_raman_raw, load_raman_raw_samples
 
 
@@ -80,6 +80,13 @@ def test_raman_workspace_contains_upload_controls() -> None:
     assert "prompt.style.display = files.length ? \"none\" : \"inline\"" in page
     assert "files.splice(index, 1)" in page
     assert "else resetPlot()" in page
+
+
+def test_raman_blank_figure_starts_without_reserved_legend_margin() -> None:
+    figure = _blank_figure()
+
+    assert len(figure.data) == 0
+    assert figure.layout.margin.r == 70
 
 
 def test_raman_analyze_api_stacks_multiple_samples() -> None:

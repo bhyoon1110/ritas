@@ -130,7 +130,7 @@ def _blank_figure() -> go.Figure:
         paper_bgcolor="#fafafa",
         height=720,
         hovermode="closest",
-        margin=dict(l=70, r=260, t=105, b=70),
+        margin=dict(l=70, r=70, t=105, b=70),
         meta={"ristPeakLabels": []},
     )
     return figure
