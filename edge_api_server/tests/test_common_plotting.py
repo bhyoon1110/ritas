@@ -284,6 +284,7 @@ def test_shared_peak_editor_adds_peak_controls(tmp_path) -> None:
     assert "marker.color" in html
     assert "line.color" in html
     assert "nearestPeakCurveFromEvent" in html
+    assert "gd._ristNearestPeakCurveFromEvent = nearestPeakCurveFromEvent" in html
     assert ".legend,.modebar,.rist-plot-control-row,.rist-legend-edit-panel" in html
     assert "function axisPixel" in html
     assert "axis.d2p" in html
@@ -293,6 +294,8 @@ def test_shared_peak_editor_adds_peak_controls(tmp_path) -> None:
     assert "bestVisibleX <= 120" not in html
     assert "annotationClick && bestX <= 120" not in html
     assert "handlePeakSelectPointer" in html
+    assert 'if (mode !== "delete" && mode !== "select") return' in html
+    assert 'if (mode === "delete") deletePeakTrace(curve)' in html
     assert 'gd.addEventListener("mousedown", handlePeakSelectPointer, true)' in html
     assert 'ev.type === "click" && gd._ristHandledPeakSelectClick' in html
     assert "gd._ristHandledPeakSelectAt = Date.now()" in html

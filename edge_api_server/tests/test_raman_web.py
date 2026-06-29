@@ -92,6 +92,10 @@ def test_raman_workspace_contains_upload_controls() -> None:
     assert "files = (state.files || []).map(recordFile)" in page
     assert "gd._context" in page
     assert "rist-raman-stack-change" in page
+    assert "function handleRatioPeakPointer" in page
+    assert "gd._ristNearestPeakCurveFromEvent(ev)" in page
+    assert 'gd.addEventListener("mousedown", handleRatioPeakPointer, true)' in page
+    assert "gd._ristHandledRamanRatioAt = Date.now()" in page
     assert "annotationPosition" in page
     assert "annotationTail" in page
     assert "raman-file-remove" in page

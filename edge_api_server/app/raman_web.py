@@ -1631,6 +1631,31 @@ _RAMAN_RATIO_SCRIPT = """
     return true;
   }
 
+  function peakCurveFromEvent(ev) {
+    if (!ev || !gd._ristNearestPeakCurveFromEvent) return null;
+    return gd._ristNearestPeakCurveFromEvent(ev);
+  }
+
+  function handleRatioPeakPointer(ev) {
+    if (!ratioMode) return;
+    if (ev.target.closest(".legend,.modebar,.rist-plot-control-row,.rist-legend-edit-panel")) return;
+    if (ev.type === "click" && gd._ristHandledRamanRatioClick) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      return;
+    }
+    var curve = peakCurveFromEvent(ev);
+    if (curve == null) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    gd._ristHandledRamanRatioClick = true;
+    gd._ristHandledRamanRatioAt = Date.now();
+    pickPeak(curve);
+    setTimeout(function() {
+      gd._ristHandledRamanRatioClick = false;
+    }, 250);
+  }
+
   if (getComputedStyle(gd).position === "static") gd.style.position = "relative";
   var toolbar = gd.querySelector(".rist-plot-control-row");
   if (!toolbar) {
@@ -1659,8 +1684,14 @@ _RAMAN_RATIO_SCRIPT = """
     pendingNumerator = null;
     renderRatios().then(syncControls);
   });
+  gd.addEventListener("mousedown", handleRatioPeakPointer, true);
+  gd.addEventListener("click", handleRatioPeakPointer, true);
   gd.on("plotly_click", function(ev) {
     if (!ratioMode || !ev || !ev.points || !ev.points.length) return;
+    if (
+      gd._ristHandledRamanRatioClick
+      || (gd._ristHandledRamanRatioAt && Date.now() - gd._ristHandledRamanRatioAt < 250)
+    ) return;
     var curve = ev.points[0].curveNumber;
     pickPeak(curve);
   });

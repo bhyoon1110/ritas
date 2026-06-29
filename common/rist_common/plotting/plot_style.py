@@ -2366,6 +2366,7 @@ def peak_editor_js(div_id: str) -> str:
     }}
     return best;
   }}
+  gd._ristNearestPeakCurveFromEvent = nearestPeakCurveFromEvent;
 
   function syncVisibility() {{
     if (!window.Plotly) return;
@@ -2728,7 +2729,7 @@ def peak_editor_js(div_id: str) -> str:
   }}, true);
 
   function handlePeakSelectPointer(ev) {{
-    if (mode !== "select") return;
+    if (mode !== "delete" && mode !== "select") return;
     if (ev.target.closest(".legend,.modebar,.rist-plot-control-row,.rist-legend-edit-panel")) return;
     if (ev.type === "click" && gd._ristHandledPeakSelectClick) {{
       ev.preventDefault();
@@ -2741,7 +2742,8 @@ def peak_editor_js(div_id: str) -> str:
     ev.stopPropagation();
     gd._ristHandledPeakSelectClick = true;
     gd._ristHandledPeakSelectAt = Date.now();
-    togglePeakSelection(curve);
+    if (mode === "delete") deletePeakTrace(curve);
+    else togglePeakSelection(curve);
     setTimeout(function() {{
       gd._ristHandledPeakSelectClick = false;
     }}, 250);
@@ -2752,10 +2754,10 @@ def peak_editor_js(div_id: str) -> str:
 
   gd.on("plotly_click", function(ev) {{
     if (mode !== "delete" && mode !== "select") return;
-    if (mode === "select" && (
+    if (
         gd._ristHandledPeakSelectClick
         || (gd._ristHandledPeakSelectAt && Date.now() - gd._ristHandledPeakSelectAt < 250)
-    )) return;
+    ) return;
     var point = ev && ev.points && ev.points[0];
     if (!point) return;
     if (mode === "delete") deletePeakTrace(point.curveNumber);
