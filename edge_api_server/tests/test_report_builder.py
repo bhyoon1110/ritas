@@ -3,10 +3,14 @@ from __future__ import annotations
 import json
 import zipfile
 
+import httpx
+
 from app.models import ReportOptions
 from app.config import Settings
-from app.report.builders import FtirReportBuilder, RamanReportBuilder, get_builder
-from app.report.model import ReportDocument, ReportFigure
+from app.llm_client import LocalLlmClient
+from app.report import annotator
+from app.report.builders import FtirReportBuilder, LlmSlotSpec, RamanReportBuilder, get_builder
+from app.report.model import LLM_FALLBACK_NOTICE, ReportDocument, ReportFigure
 from app.report.package import build_report_package
 from app.report.pipeline import generate_report
 from app.report.renderers import render_report_formats, render_requested_report
@@ -211,19 +215,15 @@ def test_ftir_report_uses_current_edited_visible_peaks_for_llm() -> None:
     assert spec.facts["current_peaks"] == [
         {
             "sample": "Edited Sample",
-            "sample_group": "sample:0",
-            "position": 3381.6,
-            "position_text": "3381.6 cm-1",
-            "display_intensity": 0.421,
-            "base_intensity": 0.421,
+            "pos": 3381.6,
+            "unit": "cm-1",
             "label": "사용자 수정 N-H peak",
-            "original_label": "N-H stretch (primary amine)",
-            "assignment_names": ["N-H stretch"],
-            "libraries": ["General FTIR"],
-            "group_name": "멜라민 후보군",
-            "group_color": "#ef4444",
-            "is_user_added": False,
             "source": "detected",
+            "intensity": 0.421,
+            "original_label": "N-H stretch (primary amine)",
+            "assignments": ["N-H stretch"],
+            "libraries": ["General FTIR"],
+            "group": "멜라민 후보군",
         }
     ]
 
@@ -242,6 +242,157 @@ def test_apply_llm_slots_replaces_rule_text() -> None:
     summary = document.section("summary")
     assert summary is not None
     assert summary.source == "rule"
+
+
+def test_llm_annotation_reduces_output_tokens_near_context_limit(tmp_path) -> None:
+    posted_payloads: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/v1/models":
+            return httpx.Response(
+                200,
+                json={"data": [{"id": "gemma4-e4b", "max_model_len": 8192}]},
+            )
+        payload = json.loads(request.content)
+        posted_payloads.append(payload)
+        return httpx.Response(
+            200,
+            json={
+                "choices": [
+                    {
+                        "message": {
+                            "content": json.dumps(
+                                {"summary": "요약", "caption": "캡션"},
+                                ensure_ascii=False,
+                            )
+                        }
+                    }
+                ]
+            },
+        )
+
+    settings = Settings(
+        storage_root=tmp_path,
+        llm_context_window=8192,
+        llm_context_margin=256,
+        llm_include_images=False,
+    )
+    client = LocalLlmClient(
+        "http://127.0.0.1:8001",
+        "gemma4-e4b",
+        10,
+        0.1,
+        1200,
+        True,
+        transport=httpx.MockTransport(handler),
+    )
+    facts = {
+        "current_peaks": [
+            {
+                "sample": f"sample-{index}",
+                "pos": 400.0 + index,
+                "unit": "cm-1",
+                "label": "사용자 수정 피크 " + ("긴 설명 " * 30),
+            }
+            for index in range(40)
+        ]
+    }
+    spec = LlmSlotSpec(
+        system_prompt="JSON으로만 응답하세요.",
+        facts=facts,
+        requested_slots=["summary", "caption"],
+        fallback={},
+    )
+
+    try:
+        slots = annotator.annotate(
+            settings,
+            client,
+            spec,
+            processed_dir=tmp_path,
+            logs_dir=tmp_path / "logs",
+        )
+    finally:
+        client.close()
+
+    assert slots == {"summary": "요약", "caption": "캡션"}
+    assert posted_payloads
+    assert posted_payloads[0]["max_tokens"] < 1200
+
+
+def test_llm_annotation_retries_context_length_error(tmp_path) -> None:
+    posted_payloads: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/v1/models":
+            return httpx.Response(
+                200,
+                json={"data": [{"id": "gemma4-e4b", "max_model_len": 8192}]},
+            )
+        payload = json.loads(request.content)
+        posted_payloads.append(payload)
+        if len(posted_payloads) == 1:
+            return httpx.Response(
+                400,
+                json={
+                    "error": {
+                        "message": (
+                            "This model's maximum context length is 8192 tokens. "
+                            "However, you requested 900 output tokens and your prompt "
+                            "contains at least 7600 input tokens."
+                        )
+                    }
+                },
+            )
+        return httpx.Response(
+            200,
+            json={
+                "choices": [
+                    {
+                        "message": {
+                            "content": json.dumps({"summary": "재시도 요약"}, ensure_ascii=False)
+                        }
+                    }
+                ]
+            },
+        )
+
+    settings = Settings(
+        storage_root=tmp_path,
+        llm_context_window=8192,
+        llm_context_margin=256,
+        llm_include_images=False,
+    )
+    client = LocalLlmClient(
+        "http://127.0.0.1:8001",
+        "gemma4-e4b",
+        10,
+        0.1,
+        1200,
+        True,
+        transport=httpx.MockTransport(handler),
+    )
+    spec = LlmSlotSpec(
+        system_prompt="JSON으로만 응답하세요.",
+        facts={"summary": "x"},
+        requested_slots=["summary"],
+        fallback={},
+    )
+
+    try:
+        slots = annotator.annotate(
+            settings,
+            client,
+            spec,
+            processed_dir=tmp_path,
+            logs_dir=tmp_path / "logs",
+        )
+    finally:
+        client.close()
+
+    assert slots == {"summary": "재시도 요약"}
+    assert len(posted_payloads) == 2
+    assert posted_payloads[1]["max_tokens"] == 528
 
 
 def test_markdown_render_includes_headings() -> None:
@@ -282,6 +433,23 @@ def test_pptx_renderer_creates_openxml_package(tmp_path) -> None:
         assert "ppt/presentation.xml" in names
         assert "ppt/slides/slide1.xml" in names
         assert "ppt/media/image1.png" in names
+
+
+def test_pptx_renderer_hides_raw_llm_error(tmp_path) -> None:
+    analysis = [{"relativePath": "verdict.json", "data": _verdict()}]
+    document = FtirReportBuilder().build(_job(), analysis)
+    document.llm_error = "LLM_CONTEXT_LENGTH_EXCEEDED: technical detail"
+
+    rendered = render_requested_report(document, tmp_path, "PPTX")
+
+    with zipfile.ZipFile(rendered) as archive:
+        slide_text = "\n".join(
+            archive.read(name).decode("utf-8")
+            for name in archive.namelist()
+            if name.startswith("ppt/slides/slide") and name.endswith(".xml")
+        )
+    assert "LLM_CONTEXT_LENGTH_EXCEEDED" not in slide_text
+    assert LLM_FALLBACK_NOTICE in slide_text
 
 
 def test_pdf_renderer_creates_pdf_file(tmp_path) -> None:
@@ -437,7 +605,7 @@ def test_raman_builder_maps_web_analysis_payload() -> None:
     assert spec.facts["current_peaks"][0]["label"] == "사용자 수정 LiOH peak"
     assert spec.facts["current_peaks"][0]["original_label"] == "LiOH Li-O stretching"
     assert spec.facts["current_peaks"][0]["display_intensity"] == 1.42
-    assert spec.facts["current_peaks"][0]["base_intensity"] == 0.42
+    assert spec.facts["current_peaks"][0]["intensity"] == 0.42
 
 
 def test_report_options_support_legacy_and_multiple_formats() -> None:

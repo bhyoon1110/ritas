@@ -75,7 +75,19 @@ def _first_numeric(value: Any) -> float | None:
     return None
 
 
-def _figure_peak_facts(payload: dict[str, Any], *, x_label: str) -> list[dict[str, Any]]:
+def _rounded_number(value: float | None) -> float | None:
+    if value is None:
+        return None
+    return round(value, 6)
+
+
+def _figure_peak_facts(
+    payload: dict[str, Any],
+    *,
+    x_label: str,
+    max_items: int = 80,
+    compact: bool = False,
+) -> list[dict[str, Any]]:
     figure = payload.get("figure")
     if not isinstance(figure, dict):
         return []
@@ -132,34 +144,58 @@ def _figure_peak_facts(payload: dict[str, Any], *, x_label: str) -> list[dict[st
         base_intensity = _first_numeric(peak.get("base_y"))
         if base_intensity is None:
             base_intensity = display_intensity
-        facts.append(
-            {
+        if compact:
+            fact: dict[str, Any] = {
                 "sample": sample,
-                "sample_group": sample_group or None,
-                "position": x_number,
-                "position_text": f"{x_text} {x_label}",
-                "display_intensity": display_intensity,
-                "base_intensity": base_intensity,
+                "pos": _rounded_number(x_number),
+                "unit": x_label,
                 "label": label,
-                "original_label": original_label,
-                "assignment_names": list(dict.fromkeys(assignment_names)),
-                "libraries": libraries,
-                "group_name": _clean_html_text(peak.get("group_name"))
-                if peak.get("group_name")
-                else None,
-                "group_color": peak.get("group_color"),
-                "is_user_added": bool(peak.get("user")),
                 "source": peak.get("source") or "detected",
             }
-        )
-        if len(facts) >= 80:
+            if base_intensity is not None:
+                fact["intensity"] = _rounded_number(base_intensity)
+            if display_intensity is not None and display_intensity != base_intensity:
+                fact["display_intensity"] = _rounded_number(display_intensity)
+            if original_label != label:
+                fact["original_label"] = original_label
+            if assignment_names:
+                fact["assignments"] = list(dict.fromkeys(assignment_names))[:3]
+            if libraries:
+                fact["libraries"] = libraries[:3]
+            if peak.get("group_name"):
+                fact["group"] = _clean_html_text(peak.get("group_name"))
+            if peak.get("user"):
+                fact["user_added"] = True
+            facts.append(fact)
+        else:
+            facts.append(
+                {
+                    "sample": sample,
+                    "sample_group": sample_group or None,
+                    "position": x_number,
+                    "position_text": f"{x_text} {x_label}",
+                    "display_intensity": display_intensity,
+                    "base_intensity": base_intensity,
+                    "label": label,
+                    "original_label": original_label,
+                    "assignment_names": list(dict.fromkeys(assignment_names)),
+                    "libraries": libraries,
+                    "group_name": _clean_html_text(peak.get("group_name"))
+                    if peak.get("group_name")
+                    else None,
+                    "group_color": peak.get("group_color"),
+                    "is_user_added": bool(peak.get("user")),
+                    "source": peak.get("source") or "detected",
+                }
+            )
+        if len(facts) >= max_items:
             break
     return facts
 
 
 def _figure_peak_rows(payload: dict[str, Any], *, x_label: str) -> list[list[str]]:
     rows = []
-    for peak in _figure_peak_facts(payload, x_label=x_label):
+    for peak in _figure_peak_facts(payload, x_label=x_label, max_items=18):
         rows.append(
             [
                 str(peak["sample"]),
@@ -505,7 +541,12 @@ class FtirReportBuilder(ReportBuilder):
             "top_candidate": verdict.get("top_candidate"),
             "functional_groups": groups,
             "experiment_conditions": _experiment_condition_rows(verdict),
-            "current_peaks": _figure_peak_facts(verdict, x_label="cm-1"),
+            "current_peaks": _figure_peak_facts(
+                verdict,
+                x_label="cm-1",
+                max_items=40,
+                compact=True,
+            ),
             "combined_verdict": {
                 "verdict": cv.get("verdict"),
                 "confidence": cv.get("confidence"),
@@ -725,8 +766,13 @@ class RamanReportBuilder(ReportBuilder):
                 "assignmentLibraries": settings.get("assignmentLibraries"),
             },
             "experiment_conditions": _experiment_condition_rows(payload),
-            "current_peaks": _figure_peak_facts(payload, x_label="cm-1"),
-            "peak_assignments": _figure_peak_rows(payload, x_label="cm-1"),
+            "current_peaks": _figure_peak_facts(
+                payload,
+                x_label="cm-1",
+                max_items=40,
+                compact=True,
+            ),
+            "peak_assignments": _figure_peak_rows(payload, x_label="cm-1")[:12],
         }
         return LlmSlotSpec(
             system_prompt=self.SYSTEM_PROMPT,

@@ -18,7 +18,7 @@ from reportlab.pdfbase.cidfonts import UnicodeCIDFont
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas
 
-from .model import ReportDocument, ReportFigure, ReportSection
+from .model import LLM_FALLBACK_NOTICE, ReportDocument, ReportFigure, ReportSection
 
 
 def render_requested_report(
@@ -90,7 +90,7 @@ def _plain_lines(document: ReportDocument) -> list[str]:
         lines.extend(_section_lines(section))
         lines.append("")
     if document.llm_error:
-        lines.append(f"LLM 보조 설명 생성 실패: {document.llm_error}")
+        lines.append(LLM_FALLBACK_NOTICE)
     return lines
 
 
@@ -222,7 +222,7 @@ def _pptx_slide_payloads(document: ReportDocument) -> list[dict[str, object]]:
             caption = caption_section.paragraphs[0]
         slides.append(_pptx_image_payload(figure, media_name, figure_path, caption))
     if document.llm_error:
-        slides.append(_pptx_text_payload("LLM 보조 설명", [document.llm_error]))
+        slides.append(_pptx_text_payload("LLM 보조 설명", [LLM_FALLBACK_NOTICE]))
     return slides
 
 

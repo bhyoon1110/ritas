@@ -109,13 +109,14 @@ class LlmClient:
         user_content: str | list[dict[str, Any]],
         *,
         response_format: dict[str, Any] | None = None,
+        max_tokens: int | None = None,
     ) -> dict[str, Any]:
         return build_request_payload(
             model=self.model,
             system_prompt=system_prompt,
             user_content=user_content,
             temperature=self.temperature,
-            max_tokens=self.max_tokens,
+            max_tokens=self.max_tokens if max_tokens is None else max_tokens,
             response_format=response_format,
         )
 

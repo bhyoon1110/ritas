@@ -17,6 +17,7 @@ LLM_SLOT_IDS: frozenset[str] = frozenset(
     }
 )
 LLM_AUXILIARY_IDS: frozenset[str] = frozenset({"email_subject", "email_body"})
+LLM_FALLBACK_NOTICE = "LLM 보조 설명 생성에 실패하여 규칙 기반 문안을 사용했습니다."
 
 
 def _markdown_table_cell(value: str) -> str:
@@ -154,6 +155,6 @@ class ReportDocument:
                     lines.append("| " + " | ".join(cells) + " |")
                 lines.append("")
         if self.llm_error:
-            lines.append(f"> LLM 보조 설명 생성 실패: {self.llm_error} (규칙 기반 문안 사용)")
+            lines.append(f"> {LLM_FALLBACK_NOTICE}")
             lines.append("")
         return "\n".join(lines).rstrip() + "\n"

@@ -11,6 +11,8 @@ from __future__ import annotations
 import base64
 import json
 import mimetypes
+import math
+import re
 from pathlib import Path
 from typing import Any
 
@@ -23,6 +25,9 @@ from ..storage import atomic_write_json
 from .builders import LlmSlotSpec
 
 logger = get_logger(__name__)
+
+_MIN_LLM_OUTPUT_TOKENS = 256
+_SMALL_CONTEXT_OUTPUT_CAP = 900
 
 
 def _load_images(settings: Settings, processed_dir: Path) -> list[str]:
@@ -44,6 +49,91 @@ def _load_images(settings: Settings, processed_dir: Path) -> list[str]:
         encoded = base64.b64encode(path.read_bytes()).decode("ascii")
         data_urls.append(f"data:{media_type};base64,{encoded}")
     return data_urls
+
+
+def _content_text(content: str | list[dict[str, Any]]) -> str:
+    if isinstance(content, str):
+        return content
+    parts: list[str] = []
+    for item in content:
+        if not isinstance(item, dict):
+            continue
+        text = item.get("text")
+        if isinstance(text, str):
+            parts.append(text)
+    return "\n".join(parts)
+
+
+def _model_context_window(settings: Settings, llm_client: LocalLlmClient) -> int:
+    window = settings.llm_context_window
+    try:
+        model_info = llm_client.get_model_info()
+    except LlmError:
+        return window
+    for key in ("max_model_len", "max_sequence_length", "context_length"):
+        value = model_info.get(key)
+        if isinstance(value, int) and value > 0:
+            return min(window, value)
+    return window
+
+
+def _estimate_input_tokens(
+    system_prompt: str,
+    user_content: str | list[dict[str, Any]],
+    *,
+    image_count: int,
+) -> int:
+    text = system_prompt + "\n" + _content_text(user_content)
+    ascii_chars = sum(1 for char in text if ord(char) < 128)
+    non_ascii_chars = len(text) - ascii_chars
+    byte_estimate = math.ceil(len(text.encode("utf-8")) / 2.4)
+    char_estimate = math.ceil((ascii_chars / 3.2) + (non_ascii_chars * 1.25))
+    return max(byte_estimate, char_estimate) + image_count * 768 + 96
+
+
+def _safe_max_tokens(
+    settings: Settings,
+    llm_client: LocalLlmClient,
+    system_prompt: str,
+    user_content: str | list[dict[str, Any]],
+    *,
+    image_count: int,
+) -> int:
+    window = _model_context_window(settings, llm_client)
+    estimated_input = _estimate_input_tokens(
+        system_prompt,
+        user_content,
+        image_count=image_count,
+    )
+    available = window - settings.llm_context_margin - estimated_input
+    if available < _MIN_LLM_OUTPUT_TOKENS:
+        raise LlmError(
+            "LLM_CONTEXT_BUDGET_EXCEEDED",
+            "LLM 입력이 모델 컨텍스트 한도에 가까워 보조 설명 생성을 생략합니다.",
+            retryable=False,
+        )
+    max_tokens = min(settings.llm_max_tokens, available)
+    if (
+        window <= 8192
+        and estimated_input + settings.llm_max_tokens + settings.llm_context_margin > window
+    ):
+        max_tokens = min(max_tokens, _SMALL_CONTEXT_OUTPUT_CAP)
+    return max(_MIN_LLM_OUTPUT_TOKENS, int(max_tokens))
+
+
+def _retry_max_tokens_from_context_error(message: str, current: int) -> int | None:
+    window_match = re.search(r"maximum context length is\s+(\d+)", message)
+    input_match = re.search(r"at least\s+(\d+)\s+input tokens", message)
+    if window_match and input_match:
+        window = int(window_match.group(1))
+        input_tokens = int(input_match.group(1))
+        available = window - input_tokens - 64
+        if available >= _MIN_LLM_OUTPUT_TOKENS and available < current:
+            return int(available)
+    fallback = current // 2
+    if fallback >= _MIN_LLM_OUTPUT_TOKENS and fallback < current:
+        return fallback
+    return None
 
 
 def annotate(
@@ -89,13 +179,39 @@ def annotate(
         spec.system_prompt,
         user_content,
         response_format={"type": "json_object"},
+        max_tokens=_safe_max_tokens(
+            settings,
+            llm_client,
+            spec.system_prompt,
+            user_content,
+            image_count=len(images),
+        ),
     )
     logs_dir.mkdir(parents=True, exist_ok=True)
     atomic_write_json(
         logs_dir / "llm-request.json",
         llm_client.request_for_log(request_payload),
     )
-    content, response_payload = llm_client.chat_completion(request_payload)
+    try:
+        content, response_payload = llm_client.chat_completion(request_payload)
+    except LlmError as exc:
+        retry_max_tokens = (
+            _retry_max_tokens_from_context_error(
+                exc.message,
+                int(request_payload.get("max_tokens") or settings.llm_max_tokens),
+            )
+            if exc.code == "LLM_CONTEXT_LENGTH_EXCEEDED"
+            else None
+        )
+        if retry_max_tokens is None:
+            raise
+        retry_payload = dict(request_payload)
+        retry_payload["max_tokens"] = retry_max_tokens
+        atomic_write_json(
+            logs_dir / "llm-request-retry.json",
+            llm_client.request_for_log(retry_payload),
+        )
+        content, response_payload = llm_client.chat_completion(retry_payload)
     atomic_write_json(logs_dir / "llm-response.json", response_payload)
 
     try:
