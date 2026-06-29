@@ -8,6 +8,8 @@ LLM이 채울 자유서술 슬롯(summary/narrative/caption)에는 규칙 기반
 
 from __future__ import annotations
 
+import html
+import re
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -51,13 +53,36 @@ def _as_list(value: Any) -> list[Any]:
     return value if isinstance(value, list) else []
 
 
-def _figure_peak_rows(payload: dict[str, Any], *, x_label: str) -> list[list[str]]:
+def _clean_html_text(value: Any) -> str:
+    text = str(value or "")
+    text = re.sub(r"<br\s*/?>", " / ", text, flags=re.IGNORECASE)
+    text = re.sub(r"<[^>]+>", "", text)
+    text = html.unescape(text)
+    return " ".join(text.split()) or "-"
+
+
+def _trace_is_visible(trace: dict[str, Any]) -> bool:
+    return trace.get("visible", True) not in {False, "legendonly"}
+
+
+def _first_numeric(value: Any) -> float | None:
+    items = value if isinstance(value, list) else [value]
+    for item in items:
+        try:
+            return float(item)
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
+def _figure_peak_facts(payload: dict[str, Any], *, x_label: str) -> list[dict[str, Any]]:
     figure = payload.get("figure")
     if not isinstance(figure, dict):
         return []
     data = _as_list(figure.get("data"))
     sample_names: dict[str, str] = {}
-    rows: list[list[str]] = []
+    hidden_sample_groups: set[str] = set()
+    facts: list[dict[str, Any]] = []
     for trace in data:
         if not isinstance(trace, dict):
             continue
@@ -66,9 +91,13 @@ def _figure_peak_rows(payload: dict[str, Any], *, x_label: str) -> list[list[str
             continue
         group = meta.get("rist_sample_group")
         if group and meta.get("rist_sample_parent"):
-            sample_names[str(group)] = str(trace.get("name") or group)
+            sample_names[str(group)] = _clean_html_text(trace.get("name") or group)
+            if not _trace_is_visible(trace):
+                hidden_sample_groups.add(str(group))
     for trace in data:
         if not isinstance(trace, dict):
+            continue
+        if not _trace_is_visible(trace):
             continue
         meta = trace.get("meta")
         peak = meta.get("rist_peak") if isinstance(meta, dict) else None
@@ -81,18 +110,62 @@ def _figure_peak_rows(payload: dict[str, Any], *, x_label: str) -> list[list[str
                 continue
             libraries.append(str(item.get("library_name") or item.get("library_id") or ""))
         libraries = [item for item in dict.fromkeys(libraries) if item]
+        assignment_names = [
+            _clean_html_text(item.get("name"))
+            for item in assignments
+            if isinstance(item, dict) and item.get("name")
+        ]
         x_value = peak.get("x")
         try:
-            x_text = f"{float(x_value):.1f}"
+            x_number = float(x_value)
+            x_text = f"{x_number:.1f}"
         except (TypeError, ValueError):
+            x_number = None
             x_text = str(x_value or "-")
-        sample = sample_names.get(str(peak.get("sample_group")), str(peak.get("sample_group") or "-"))
+        sample_group = str(peak.get("sample_group") or "")
+        if sample_group and sample_group in hidden_sample_groups:
+            continue
+        sample = sample_names.get(sample_group, sample_group or "-")
+        label = _clean_html_text(trace.get("name") or peak.get("label") or "-")
+        original_label = _clean_html_text(peak.get("label") or trace.get("name") or "-")
+        display_intensity = _first_numeric(trace.get("y"))
+        base_intensity = _first_numeric(peak.get("base_y"))
+        if base_intensity is None:
+            base_intensity = display_intensity
+        facts.append(
+            {
+                "sample": sample,
+                "sample_group": sample_group or None,
+                "position": x_number,
+                "position_text": f"{x_text} {x_label}",
+                "display_intensity": display_intensity,
+                "base_intensity": base_intensity,
+                "label": label,
+                "original_label": original_label,
+                "assignment_names": list(dict.fromkeys(assignment_names)),
+                "libraries": libraries,
+                "group_name": _clean_html_text(peak.get("group_name"))
+                if peak.get("group_name")
+                else None,
+                "group_color": peak.get("group_color"),
+                "is_user_added": bool(peak.get("user")),
+                "source": peak.get("source") or "detected",
+            }
+        )
+        if len(facts) >= 80:
+            break
+    return facts
+
+
+def _figure_peak_rows(payload: dict[str, Any], *, x_label: str) -> list[list[str]]:
+    rows = []
+    for peak in _figure_peak_facts(payload, x_label=x_label):
         rows.append(
             [
-                sample,
-                f"{x_text} {x_label}",
-                str(peak.get("label") or trace.get("name") or "-").replace("<br>", " / "),
-                ", ".join(libraries) or "-",
+                str(peak["sample"]),
+                str(peak["position_text"]),
+                str(peak["label"]),
+                ", ".join(peak["libraries"]) or "-",
             ]
         )
         if len(rows) >= 18:
@@ -210,6 +283,8 @@ class FtirReportBuilder(ReportBuilder):
         "당신은 재료분석 실험실의 FT-IR 보고서 작성 보조자입니다.\n"
         "제공된 피크 정보와 라이브러리 매칭 결과(JSON)만 근거로 한국어 문안을 작성하세요.\n"
         "수치를 재계산하거나 제공되지 않은 물질, 피크, 작용기를 추측하지 마세요.\n"
+        "current_peaks는 보고서 생성 시점의 그래프 화면에서 사용자가 편집/삭제/숨김 처리한 뒤 남은 피크입니다.\n"
+        "피크명은 current_peaks.label을 우선 사용하고, original_label은 변경 전 추적용으로만 참고하세요.\n"
         "라이브러리 점수가 임계값 미만이면 '라이브러리 기반 확정 동정은 아님'으로 표현하세요.\n"
         "물질명을 단정하지 말고 '가능성', '시사함', '검토 필요' 중심으로 표현하세요.\n"
         "출력은 반드시 JSON 객체 하나로만 응답하세요.\n"
@@ -245,6 +320,7 @@ class FtirReportBuilder(ReportBuilder):
         document.sections.append(self._verdict_section(verdict))
         document.sections.append(self._library_section(verdict))
         document.sections.append(self._functional_groups_section(verdict))
+        document.sections.append(self._current_peak_section(verdict))
 
         fallback = self._fallback_texts(verdict)
         document.sections.append(
@@ -330,6 +406,17 @@ class FtirReportBuilder(ReportBuilder):
             )
         table = ReportTable(columns=["작용기", "신뢰도", "근거"], rows=rows)
         return ReportSection("functional_groups", "작용기 소견", table=table)
+
+    def _current_peak_section(self, verdict: dict[str, Any]) -> ReportSection:
+        rows = _figure_peak_rows(verdict, x_label="cm-1")
+        if not rows:
+            return ReportSection(
+                "current_peaks",
+                "현재 그래프 피크",
+                paragraphs=["현재 그래프에 표시된 보고서용 피크 정보가 없습니다."],
+            )
+        table = ReportTable(columns=["시료", "Wavenumber", "피크 이름", "라이브러리"], rows=rows)
+        return ReportSection("current_peaks", "현재 그래프 피크", table=table)
 
     def _limitations_section(self, verdict: dict[str, Any]) -> ReportSection:
         bullets: list[str] = []
@@ -418,6 +505,7 @@ class FtirReportBuilder(ReportBuilder):
             "top_candidate": verdict.get("top_candidate"),
             "functional_groups": groups,
             "experiment_conditions": _experiment_condition_rows(verdict),
+            "current_peaks": _figure_peak_facts(verdict, x_label="cm-1"),
             "combined_verdict": {
                 "verdict": cv.get("verdict"),
                 "confidence": cv.get("confidence"),
@@ -449,6 +537,8 @@ class RamanReportBuilder(ReportBuilder):
         "당신은 재료분석 실험실의 Raman 보고서 작성 보조자입니다.\n"
         "제공된 피크, intensity 비율, Raman assignment 라이브러리 결과(JSON)만 근거로 한국어 문안을 작성하세요.\n"
         "제공되지 않은 상, 물질명, 조성, 원인을 새로 추측하지 마세요.\n"
+        "current_peaks는 보고서 생성 시점의 그래프 화면에서 사용자가 편집/삭제/숨김 처리한 뒤 남은 피크입니다.\n"
+        "피크명은 current_peaks.label을 우선 사용하고, original_label은 변경 전 추적용으로만 참고하세요.\n"
         "Raman 피크 assignment는 후보 소견으로 표현하고, 라이브러리 미적용/미매칭 피크는 단정하지 마세요.\n"
         "출력은 반드시 JSON 객체 하나로만 응답하세요.\n"
         "- summary: 고객 보고서용 요약 정확히 3문장\n"
@@ -635,6 +725,7 @@ class RamanReportBuilder(ReportBuilder):
                 "assignmentLibraries": settings.get("assignmentLibraries"),
             },
             "experiment_conditions": _experiment_condition_rows(payload),
+            "current_peaks": _figure_peak_facts(payload, x_label="cm-1"),
             "peak_assignments": _figure_peak_rows(payload, x_label="cm-1"),
         }
         return LlmSlotSpec(

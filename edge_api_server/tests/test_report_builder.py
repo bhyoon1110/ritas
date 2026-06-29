@@ -87,6 +87,7 @@ def test_ftir_builder_maps_verdict_to_fixed_sections() -> None:
         "verdict",
         "library_match",
         "functional_groups",
+        "current_peaks",
         "summary",
         "key_findings",
         "interpretation",
@@ -106,6 +107,10 @@ def test_ftir_builder_maps_verdict_to_fixed_sections() -> None:
     groups = document.section("functional_groups")
     assert groups is not None and groups.table is not None
     assert len(groups.table.rows) == 2
+
+    current_peaks = document.section("current_peaks")
+    assert current_peaks is not None
+    assert current_peaks.paragraphs
 
     # 점수 64.5% < 65% 이면 한계 섹션에 임계값 경고가 들어가야 한다.
     limitations = document.section("limitations")
@@ -144,7 +149,83 @@ def test_ftir_llm_slots_spec_contains_facts() -> None:
     ]
     assert spec.facts["sample"] == "5_Melamine Cyanurate.0"
     assert spec.facts["top_candidate"]["material"] == "m-Xylene"
+    assert spec.facts["current_peaks"] == []
     assert {"summary", "narrative", "caption", "email_body"} <= set(spec.fallback)
+
+
+def test_ftir_report_uses_current_edited_visible_peaks_for_llm() -> None:
+    verdict = _verdict()
+    verdict["figure"] = {
+        "data": [
+            {
+                "name": "Edited Sample",
+                "meta": {
+                    "rist_sample_group": "sample:0",
+                    "rist_sample_parent": True,
+                },
+            },
+            {
+                "name": "사용자 수정 N-H peak",
+                "y": [0.421],
+                "meta": {
+                    "rist_peak": {
+                        "x": 3381.6,
+                        "label": "N-H stretch (primary amine)",
+                        "sample_group": "sample:0",
+                        "group_name": "멜라민 후보군",
+                        "group_color": "#ef4444",
+                        "assignments": [
+                            {
+                                "name": "N-H stretch",
+                                "library_id": "general-ftir",
+                                "library_name": "General FTIR",
+                            }
+                        ],
+                    }
+                },
+            },
+            {
+                "name": "숨긴 피크",
+                "visible": "legendonly",
+                "meta": {
+                    "rist_peak": {
+                        "x": 1475.0,
+                        "label": "C-H bend",
+                        "sample_group": "sample:0",
+                    }
+                },
+            },
+        ]
+    }
+    analysis = [{"relativePath": "verdict.json", "data": verdict}]
+    document = FtirReportBuilder().build(_job(), analysis)
+
+    peaks = document.section("current_peaks")
+    assert peaks is not None and peaks.table is not None
+    assert peaks.table.rows == [
+        ["Edited Sample", "3381.6 cm-1", "사용자 수정 N-H peak", "General FTIR"]
+    ]
+
+    spec = FtirReportBuilder().llm_slots(_job(), analysis)
+    assert spec is not None
+    assert spec.facts["current_peaks"] == [
+        {
+            "sample": "Edited Sample",
+            "sample_group": "sample:0",
+            "position": 3381.6,
+            "position_text": "3381.6 cm-1",
+            "display_intensity": 0.421,
+            "base_intensity": 0.421,
+            "label": "사용자 수정 N-H peak",
+            "original_label": "N-H stretch (primary amine)",
+            "assignment_names": ["N-H stretch"],
+            "libraries": ["General FTIR"],
+            "group_name": "멜라민 후보군",
+            "group_color": "#ef4444",
+            "is_user_added": False,
+            "source": "detected",
+        }
+    ]
 
 
 def test_apply_llm_slots_replaces_rule_text() -> None:
@@ -301,10 +382,12 @@ def test_raman_builder_maps_web_analysis_payload() -> None:
                     },
                 },
                 {
-                    "name": "LiOH Li-O stretching",
+                    "name": "사용자 수정 LiOH peak",
+                    "y": [1.42],
                     "meta": {
                         "rist_peak": {
                             "x": 518.0,
+                            "base_y": 0.42,
                             "label": "LiOH Li-O stretching",
                             "sample_group": "sample:0",
                             "assignments": [
@@ -313,6 +396,17 @@ def test_raman_builder_maps_web_analysis_payload() -> None:
                                     "library_name": "General Raman",
                                 }
                             ],
+                        }
+                    },
+                },
+                {
+                    "name": "숨긴 Raman peak",
+                    "visible": False,
+                    "meta": {
+                        "rist_peak": {
+                            "x": 1095.0,
+                            "label": "Li2CO3 nu1 symmetric stretching",
+                            "sample_group": "sample:0",
                         }
                     },
                 },
@@ -330,6 +424,8 @@ def test_raman_builder_maps_web_analysis_payload() -> None:
     peaks = document.section("raman_peaks")
     assert peaks is not None and peaks.table is not None
     assert peaks.table.rows[0][1] == "518.0 cm-1"
+    assert peaks.table.rows[0][2] == "사용자 수정 LiOH peak"
+    assert len(peaks.table.rows) == 1
     spec = RamanReportBuilder().llm_slots({**_job(), "experiment_code": "RAMAN"}, analysis)
     assert spec is not None
     assert spec.facts["experiment_conditions"][0] == [
@@ -337,7 +433,11 @@ def test_raman_builder_maps_web_analysis_payload() -> None:
         "Excitation Wavelength",
         "532.06 nm",
     ]
-    assert spec.facts["peak_assignments"][0][2] == "LiOH Li-O stretching"
+    assert spec.facts["peak_assignments"][0][2] == "사용자 수정 LiOH peak"
+    assert spec.facts["current_peaks"][0]["label"] == "사용자 수정 LiOH peak"
+    assert spec.facts["current_peaks"][0]["original_label"] == "LiOH Li-O stretching"
+    assert spec.facts["current_peaks"][0]["display_intensity"] == 1.42
+    assert spec.facts["current_peaks"][0]["base_intensity"] == 0.42
 
 
 def test_report_options_support_legacy_and_multiple_formats() -> None:

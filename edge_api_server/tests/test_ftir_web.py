@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import math
+from io import BytesIO
+import zipfile
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -10,6 +12,13 @@ from app.ftir_web import (
     build_ftir_page,
     create_ftir_preview_app,
     plotly_asset_path,
+)
+
+
+TINY_PNG_DATA_URL = (
+    "data:image/png;base64,"
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYPhfDwAChwGA60e6"
+    "kgAAAABJRU5ErkJggg=="
 )
 
 
@@ -29,6 +38,9 @@ def test_ftir_workspace_contains_upload_and_editor_controls() -> None:
     assert 'id="ftir-file-input"' in page
     assert 'id="ftir-drop-zone"' in page
     assert '<button type="button" class="ftir-clear-button" id="ftir-clear">초기화</button>' in page
+    assert 'id="ftir-report"' in page
+    assert "/api/v1/ftir/report" in page
+    assert "Plotly.toImage" in page
     assert "clearButton.hidden = false" in page
     assert 'id="ftir-library-list"' in page
     assert 'id="ftir-library-filter"' in page
@@ -111,6 +123,38 @@ def test_ftir_analysis_api_accepts_multiple_dpt_files(tmp_path: Path) -> None:
     assert payload["settings"]["sensitivity"] == 25
     assert payload["settings"]["assignmentLibraries"][0]["id"] == "general-ftir"
     assert payload["figure"]["data"]
+
+
+def test_ftir_report_api_builds_package_with_graph_and_raw_xlsx(tmp_path: Path) -> None:
+    with TestClient(create_ftir_preview_app(tmp_path / "libraries")) as client:
+        analysis_response = client.post(
+            "/api/v1/ftir/analyze",
+            files={"files": ("sample-a.dpt", synthetic_dpt(), "application/octet-stream")},
+            data={"sensitivity": "25"},
+        )
+        assert analysis_response.status_code == 200
+        analysis = analysis_response.json()
+        report_response = client.post(
+            "/api/v1/ftir/report",
+            files={"files": ("sample-a.dpt", synthetic_dpt(), "application/octet-stream")},
+            data={
+                "analysis_json": json.dumps(analysis),
+                "figure_json": json.dumps(analysis["figure"]),
+                "figure_image": TINY_PNG_DATA_URL,
+            },
+        )
+
+    assert report_response.status_code == 200
+    with zipfile.ZipFile(BytesIO(report_response.content)) as archive:
+        names = set(archive.namelist())
+        assert {
+            "report.pptx",
+            "report.html",
+            "email_body.md",
+            "raw_data.xlsx",
+            "current_graph.png",
+        } <= names
+        assert "report.json" not in names
 
 
 def test_ftir_analysis_api_rejects_non_dpt(tmp_path: Path) -> None:

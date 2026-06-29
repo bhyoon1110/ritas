@@ -1,11 +1,20 @@
 from __future__ import annotations
 
+import json
+from io import BytesIO
 from pathlib import Path
+import zipfile
 
 from fastapi.testclient import TestClient
 
 from app.raman_web import _blank_figure, build_raman_page, create_raman_preview_app
 from rin.raman.preprocess import load_raman_raw, load_raman_raw_samples
+
+TINY_PNG_DATA_URL = (
+    "data:image/png;base64,"
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYPhfDwAChwGA60e6"
+    "kgAAAABJRU5ErkJggg=="
+)
 
 
 SAMPLE_TXT = (
@@ -28,6 +37,9 @@ def test_raman_workspace_contains_upload_controls() -> None:
     page = build_raman_page()
 
     assert 'id="raman-file-input"' in page
+    assert 'id="raman-report"' in page
+    assert "/api/v1/raman/report" in page
+    assert "Plotly.toImage" in page
     assert 'id="raman-file-list"' in page
     assert 'id="raman-drop-zone"' in page
     assert 'id="raman-drop-prompt"' in page
@@ -273,6 +285,39 @@ def test_raman_analyze_api_expands_multi_sample_txt() -> None:
         "LiOH",
     ]
     assert payload["figure"]["layout"]["meta"]["ristRamanStack"]["enabled"] is True
+
+
+def test_raman_report_api_builds_package_with_graph_and_raw_xlsx() -> None:
+    content = MULTI_SAMPLE_TXT.read_bytes()
+    with TestClient(create_raman_preview_app()) as client:
+        analysis_response = client.post(
+            "/api/v1/raman/analyze",
+            files={"files": (MULTI_SAMPLE_TXT.name, content, "text/plain")},
+            data={"sensitivity": "25"},
+        )
+        assert analysis_response.status_code == 200
+        analysis = analysis_response.json()
+        report_response = client.post(
+            "/api/v1/raman/report",
+            files={"files": (MULTI_SAMPLE_TXT.name, content, "text/plain")},
+            data={
+                "analysis_json": json.dumps(analysis),
+                "figure_json": json.dumps(analysis["figure"]),
+                "figure_image": TINY_PNG_DATA_URL,
+            },
+        )
+
+    assert report_response.status_code == 200
+    with zipfile.ZipFile(BytesIO(report_response.content)) as archive:
+        names = set(archive.namelist())
+        assert {
+            "report.pptx",
+            "report.html",
+            "email_body.md",
+            "raw_data.xlsx",
+            "current_graph.png",
+        } <= names
+        assert "report.json" not in names
 
 
 def test_raman_assignment_library_api_defaults_and_assigns_sample() -> None:

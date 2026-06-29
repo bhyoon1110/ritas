@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+from io import BytesIO
 from functools import lru_cache
 import os
 from pathlib import Path
 
 import plotly
 import plotly.graph_objects as go
-from fastapi import APIRouter, FastAPI, File, Form, Request, UploadFile
+from fastapi import APIRouter, BackgroundTasks, FastAPI, File, Form, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
@@ -19,12 +20,20 @@ from ftir.assignment_libraries import (
     MAX_LIBRARY_BYTES,
 )
 from ftir.findings import DEFAULT_FUNC_GROUPS_PATH
+from ftir.preprocess import load_dpt
 from ftir.plotting import ftir_abs_trans_toggle_js
-from ftir.web_analysis import DptAnalysisError, analyze_dpt_files
+from ftir.web_analysis import DptAnalysisError, WN_MAX, WN_MIN, analyze_dpt_files
 from rist_common import get_logger
 from rist_common.plotting import fig_to_responsive_html, peak_sensitivity_js
 
 from .errors import ApiException, api_exception_handler, validation_exception_handler
+from .preview_report import (
+    RawSeries,
+    build_preview_report_package,
+    cleanup_preview_report,
+    decode_figure_image,
+    parse_analysis_payload,
+)
 
 
 PLOT_DIV_ID = "peak-plot"
@@ -91,6 +100,51 @@ def raise_assignment_library_api(exc: AssignmentLibraryError) -> None:
     else:
         status_code = 400
     raise ApiException(status_code, exc.code, exc.message) from exc
+
+
+def _uploaded_dpt_files(files: list[UploadFile]) -> list[tuple[str, bytes]]:
+    if not files:
+        raise ApiException(400, "DPT_FILES_REQUIRED", "DPT 파일이 필요합니다.")
+    if len(files) > MAX_FTIR_PREVIEW_FILES:
+        raise ApiException(
+            400,
+            "TOO_MANY_DPT_FILES",
+            f"한 번에 최대 {MAX_FTIR_PREVIEW_FILES}개 파일을 분석할 수 있습니다.",
+        )
+
+    uploaded: list[tuple[str, bytes]] = []
+    total_bytes = 0
+    for upload in files:
+        raw_filename = (upload.filename or "").replace("\\", "/")
+        filename = Path(raw_filename).name
+        if not filename or Path(filename).suffix.lower() != ".dpt":
+            raise ApiException(
+                400,
+                "INVALID_DPT_EXTENSION",
+                f"DPT 파일만 업로드할 수 있습니다: {filename or '(이름 없음)'}",
+            )
+        content = upload.file.read(MAX_FTIR_PREVIEW_FILE_BYTES + 1)
+        if not content:
+            raise ApiException(
+                400,
+                "EMPTY_DPT_FILE",
+                f"빈 파일은 분석할 수 없습니다: {filename}",
+            )
+        if len(content) > MAX_FTIR_PREVIEW_FILE_BYTES:
+            raise ApiException(
+                413,
+                "DPT_FILE_TOO_LARGE",
+                f"DPT 파일은 20MB 이하여야 합니다: {filename}",
+            )
+        total_bytes += len(content)
+        if total_bytes > MAX_FTIR_PREVIEW_TOTAL_BYTES:
+            raise ApiException(
+                413,
+                "DPT_UPLOAD_TOO_LARGE",
+                "한 번에 업로드하는 DPT 파일의 총 크기는 50MB 이하여야 합니다.",
+            )
+        uploaded.append((filename, content))
+    return uploaded
 
 
 def plotly_asset_path() -> Path:
@@ -916,6 +970,7 @@ _PAGE_SHELL = """
   </div>
   <div class="ftir-app-actions">
     <span class="ftir-status" id="ftir-status">대기</span>
+    <button type="button" class="ftir-clear-button" id="ftir-report">보고서 생성</button>
     <button type="button" class="ftir-clear-button" id="ftir-clear">초기화</button>
     <label class="ftir-file-button">
       DPT 파일 선택
@@ -1155,6 +1210,7 @@ _UPLOAD_SCRIPT = """
   var message = document.getElementById("ftir-message");
   var loading = document.getElementById("ftir-loading");
   var clearButton = document.getElementById("ftir-clear");
+  var reportButton = document.getElementById("ftir-report");
   var libraryInput = document.getElementById("ftir-library-input");
   var libraryList = document.getElementById("ftir-library-list");
   var libraryFilter = document.getElementById("ftir-library-filter");
@@ -1170,9 +1226,11 @@ _UPLOAD_SCRIPT = """
   if (!gd || !input || !dropZone || !libraryInput || !libraryList
       || !libraryFilter
       || !libraryNew || !libraryModal || !libraryDialogClose
-      || !libraryRowAdd || !libraryDialogCancel || !libraryDialogSave) return;
+      || !libraryRowAdd || !libraryDialogCancel || !libraryDialogSave
+      || !reportButton) return;
 
   var files = [];
+  var latestAnalysisPayload = null;
   var libraries = [];
   var selectedLibraryIds = [];
   var libraryDeleteEnabled = false;
@@ -1243,6 +1301,7 @@ _UPLOAD_SCRIPT = """
       selectedLibraryIds: selectedLibraryIds.slice(),
       sensitivity: gd._ristPeakSensitivityValue || 25,
       statusText: status.textContent || "",
+      analysisPayload: latestAnalysisPayload,
       plotData: JSON.parse(JSON.stringify(gd.data || [])),
       plotLayout: JSON.parse(JSON.stringify(gd.layout || {}))
     };
@@ -1294,6 +1353,7 @@ _UPLOAD_SCRIPT = """
       restoreInProgress = true;
       files = (state.files || []).map(recordFile);
       selectedLibraryIds = (state.selectedLibraryIds || []).slice();
+      latestAnalysisPayload = state.analysisPayload || null;
       if (Number.isFinite(Number(state.sensitivity))) {
         gd._ristPeakSensitivityValue = Number(state.sensitivity);
       }
@@ -1351,6 +1411,7 @@ _UPLOAD_SCRIPT = """
   function setBusy(busy) {
     loading.classList.toggle("is-visible", busy);
     input.disabled = busy;
+    reportButton.disabled = busy;
     libraryInput.disabled = busy;
     libraryFilter.disabled = busy;
     libraryNew.disabled = busy;
@@ -1994,6 +2055,7 @@ _UPLOAD_SCRIPT = """
       return payload;
     }).then(function(payload) {
       if (controller !== activeController) return;
+      latestAnalysisPayload = JSON.parse(JSON.stringify(payload));
       return window.Plotly.react(
         gd,
         payload.figure.data,
@@ -2022,6 +2084,67 @@ _UPLOAD_SCRIPT = """
         setBusy(false);
       }
     });
+  }
+
+  function currentFigurePayload() {
+    return {
+      data: JSON.parse(JSON.stringify(gd.data || [])),
+      layout: JSON.parse(JSON.stringify(gd.layout || {}))
+    };
+  }
+
+  function downloadBlob(blob, filename) {
+    var url = URL.createObjectURL(blob);
+    var link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(function() { URL.revokeObjectURL(url); }, 1000);
+  }
+
+  async function createReport() {
+    if (!files.length) {
+      setMessage("보고서를 생성하려면 DPT 파일을 먼저 업로드하세요.");
+      return;
+    }
+    if (!latestAnalysisPayload) {
+      await analyze();
+      if (!latestAnalysisPayload) return;
+    }
+    setBusy(true);
+    setMessage("");
+    status.textContent = "보고서 생성 중";
+    try {
+      var figureImage = await window.Plotly.toImage(gd, {
+        format: "png",
+        width: Math.max(900, Math.round(gd.clientWidth || 1200)),
+        height: Math.max(640, Math.round(gd.clientHeight || 800)),
+        scale: 2
+      });
+      var form = new FormData();
+      files.forEach(function(file) { form.append("files", file, file.name); });
+      form.append("analysis_json", JSON.stringify(latestAnalysisPayload));
+      form.append("figure_json", JSON.stringify(currentFigurePayload()));
+      form.append("figure_image", figureImage);
+      var response = await fetch("/api/v1/ftir/report", {
+        method: "POST",
+        body: form
+      });
+      if (!response.ok) {
+        var payload = await response.json().catch(function() { return {}; });
+        throw new Error(payload.message || "보고서 생성에 실패했습니다.");
+      }
+      var blob = await response.blob();
+      downloadBlob(blob, "ftir-report-package.zip");
+      status.textContent = "보고서 생성 완료";
+    } catch (err) {
+      setMessage(err.message || "보고서 생성에 실패했습니다.");
+      status.textContent = "보고서 생성 실패";
+    } finally {
+      setBusy(false);
+    }
   }
 
   input.addEventListener("change", function() {
@@ -2060,8 +2183,10 @@ _UPLOAD_SCRIPT = """
       closeLibraryEditor();
     }
   });
+  reportButton.addEventListener("click", createReport);
   clearButton.addEventListener("click", function() {
     files = [];
+    latestAnalysisPayload = null;
     renderFiles();
     clearWorkspaceState();
     resetGraph();
@@ -2290,47 +2415,7 @@ def analyze_ftir(
     assignment_library_ids: list[str] | None = Form(default=None),
     assignment_library_selection_explicit: bool = Form(default=False),
 ) -> dict:
-    if not files:
-        raise ApiException(400, "DPT_FILES_REQUIRED", "DPT 파일이 필요합니다.")
-    if len(files) > MAX_FTIR_PREVIEW_FILES:
-        raise ApiException(
-            400,
-            "TOO_MANY_DPT_FILES",
-            f"한 번에 최대 {MAX_FTIR_PREVIEW_FILES}개 파일을 분석할 수 있습니다.",
-        )
-
-    uploaded: list[tuple[str, bytes]] = []
-    total_bytes = 0
-    for upload in files:
-        raw_filename = (upload.filename or "").replace("\\", "/")
-        filename = Path(raw_filename).name
-        if not filename or Path(filename).suffix.lower() != ".dpt":
-            raise ApiException(
-                400,
-                "INVALID_DPT_EXTENSION",
-                f"DPT 파일만 업로드할 수 있습니다: {filename or '(이름 없음)'}",
-            )
-        content = upload.file.read(MAX_FTIR_PREVIEW_FILE_BYTES + 1)
-        if not content:
-            raise ApiException(
-                400,
-                "EMPTY_DPT_FILE",
-                f"빈 파일은 분석할 수 없습니다: {filename}",
-            )
-        if len(content) > MAX_FTIR_PREVIEW_FILE_BYTES:
-            raise ApiException(
-                413,
-                "DPT_FILE_TOO_LARGE",
-                f"DPT 파일은 20MB 이하여야 합니다: {filename}",
-            )
-        total_bytes += len(content)
-        if total_bytes > MAX_FTIR_PREVIEW_TOTAL_BYTES:
-            raise ApiException(
-                413,
-                "DPT_UPLOAD_TOO_LARGE",
-                "한 번에 업로드하는 DPT 파일의 총 크기는 50MB 이하여야 합니다.",
-            )
-        uploaded.append((filename, content))
+    uploaded = _uploaded_dpt_files(files)
 
     store = assignment_library_store(request)
     if assignment_library_selection_explicit:
@@ -2363,6 +2448,49 @@ def analyze_ftir(
         len(libraries),
     )
     return result
+
+
+@router.post("/api/v1/ftir/report", tags=["ftir"])
+def create_ftir_preview_report(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    files: list[UploadFile] = File(...),
+    analysis_json: str = Form(...),
+    figure_json: str = Form(default=""),
+    figure_image: str = Form(...),
+) -> FileResponse:
+    uploaded = _uploaded_dpt_files(files)
+    try:
+        analysis_payload = parse_analysis_payload(analysis_json, figure_json)
+        image_bytes = decode_figure_image(figure_image)
+        raw_series = []
+        for filename, content in uploaded:
+            frame = load_dpt(BytesIO(content), WN_MIN, WN_MAX)
+            raw_series.append(
+                RawSeries(
+                    label=Path(filename).stem,
+                    axis=[float(value) for value in frame["wn"].to_list()],
+                    values=[float(value) for value in frame["y"].to_list()],
+                )
+            )
+        tmp_root, package = build_preview_report_package(
+            experiment_code="FT-IR",
+            analysis_payload=analysis_payload,
+            raw_series=raw_series,
+            figure_image=image_bytes,
+            settings=getattr(request.app.state, "settings", None),
+        )
+    except ValueError as exc:
+        raise ApiException(400, "FTIR_REPORT_INVALID_PAYLOAD", str(exc)) from exc
+    except Exception as exc:
+        raise ApiException(422, "FTIR_REPORT_FAILED", str(exc)) from exc
+
+    background_tasks.add_task(cleanup_preview_report, tmp_root)
+    return FileResponse(
+        package,
+        media_type="application/zip",
+        filename="ftir-report-package.zip",
+    )
 
 
 def create_ftir_preview_app(

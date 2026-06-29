@@ -7,18 +7,18 @@ import os
 
 import plotly
 import plotly.graph_objects as go
-from fastapi import APIRouter, FastAPI, File, Form, UploadFile
+from fastapi import APIRouter, BackgroundTasks, FastAPI, File, Form, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
 
 try:
     from rin.raman import preprocess as raman_preprocess_module
-    from rin.raman.preprocess import SUPPORTED_SUFFIXES
+    from rin.raman.preprocess import SUPPORTED_SUFFIXES, load_raman_raw_samples
     from rin.raman.web_analysis import RamanAnalysisError, analyze_raman_files
 except ModuleNotFoundError:  # pragma: no cover - installed via edge requirements
     from raman import preprocess as raman_preprocess_module
-    from raman.preprocess import SUPPORTED_SUFFIXES
+    from raman.preprocess import SUPPORTED_SUFFIXES, load_raman_raw_samples
     from raman.web_analysis import RamanAnalysisError, analyze_raman_files
 from ftir.assignment_libraries import (
     AssignmentLibraryError,
@@ -29,6 +29,13 @@ from rist_common import get_logger
 from rist_common.plotting import fig_to_responsive_html, peak_sensitivity_js
 
 from .errors import ApiException, api_exception_handler, validation_exception_handler
+from .preview_report import (
+    RawSeries,
+    build_preview_report_package,
+    cleanup_preview_report,
+    decode_figure_image,
+    parse_analysis_payload,
+)
 
 
 PLOT_DIV_ID = "raman-plot"
@@ -95,6 +102,49 @@ def raise_assignment_library_api(exc: AssignmentLibraryError) -> None:
     else:
         status_code = 400
     raise ApiException(status_code, exc.code, exc.message) from exc
+
+
+def _uploaded_raman_files(files: list[UploadFile]) -> list[tuple[str, bytes]]:
+    if not files:
+        raise ApiException(400, "RAMAN_FILES_REQUIRED", "Raman raw 파일이 필요합니다.")
+    if len(files) > MAX_RAMAN_PREVIEW_FILES:
+        raise ApiException(
+            400,
+            "TOO_MANY_RAMAN_FILES",
+            f"한 번에 최대 {MAX_RAMAN_PREVIEW_FILES}개 파일을 분석할 수 있습니다.",
+        )
+
+    uploaded: list[tuple[str, bytes]] = []
+    total_bytes = 0
+    supported = ", ".join(sorted(SUPPORTED_SUFFIXES))
+    for upload in files:
+        raw_filename = (upload.filename or "").replace("\\", "/")
+        filename = Path(raw_filename).name
+        suffix = Path(filename).suffix.casefold()
+        if not filename or suffix not in SUPPORTED_SUFFIXES:
+            raise ApiException(
+                400,
+                "INVALID_RAMAN_EXTENSION",
+                f"지원하지 않는 Raman raw 파일입니다: {filename or '(이름 없음)'} ({supported})",
+            )
+        content = upload.file.read(MAX_RAMAN_PREVIEW_FILE_BYTES + 1)
+        if not content:
+            raise ApiException(400, "EMPTY_RAMAN_FILE", f"빈 파일입니다: {filename}")
+        if len(content) > MAX_RAMAN_PREVIEW_FILE_BYTES:
+            raise ApiException(
+                413,
+                "RAMAN_FILE_TOO_LARGE",
+                f"Raman raw 파일은 20MB 이하여야 합니다: {filename}",
+            )
+        total_bytes += len(content)
+        if total_bytes > MAX_RAMAN_PREVIEW_TOTAL_BYTES:
+            raise ApiException(
+                413,
+                "RAMAN_UPLOAD_TOO_LARGE",
+                "한 번에 업로드하는 Raman raw 파일의 총 크기는 50MB 이하여야 합니다.",
+            )
+        uploaded.append((filename, content))
+    return uploaded
 
 
 def plotly_asset_path() -> Path:
@@ -873,6 +923,7 @@ _PAGE_SHELL = """
   <div class="raman-actions">
     <span class="raman-status" id="raman-status">Raman raw 파일을 업로드하세요</span>
     <label class="raman-file-button" for="raman-file-input">파일 선택</label>
+    <button class="raman-clear-button" id="raman-report" type="button">보고서 생성</button>
     <button class="raman-clear-button" id="raman-clear" type="button">초기화</button>
     <input class="raman-file-input" id="raman-file-input" type="file"
            accept=".txt,.csv,.tsv,.xlsx,.xlsm" multiple>
@@ -1733,6 +1784,7 @@ _UPLOAD_SCRIPT = """
   var message = document.getElementById("raman-message");
   var loading = document.getElementById("raman-loading");
   var clearButton = document.getElementById("raman-clear");
+  var reportButton = document.getElementById("raman-report");
   var libraryInput = document.getElementById("raman-library-input");
   var libraryList = document.getElementById("raman-library-list");
   var libraryFilter = document.getElementById("raman-library-filter");
@@ -1748,9 +1800,11 @@ _UPLOAD_SCRIPT = """
   if (!gd || !input || !dropZone || !prompt || !fileList || !status || !message
       || !loading || !clearButton || !libraryInput || !libraryList
       || !libraryFilter || !libraryNew || !libraryModal || !libraryDialogClose
-      || !libraryRowAdd || !libraryDialogCancel || !libraryDialogSave) return;
+      || !libraryRowAdd || !libraryDialogCancel || !libraryDialogSave
+      || !reportButton) return;
 
   var files = [];
+  var latestAnalysisPayload = null;
   var libraries = [];
   var selectedLibraryIds = [];
   var libraryDeleteEnabled = false;
@@ -1820,6 +1874,7 @@ _UPLOAD_SCRIPT = """
       selectedLibraryIds: selectedLibraryIds.slice(),
       sensitivity: gd._ristPeakSensitivityValue || 25,
       statusText: status.textContent || "",
+      analysisPayload: latestAnalysisPayload,
       plotData: JSON.parse(JSON.stringify(gd.data || [])),
       plotLayout: JSON.parse(JSON.stringify(gd.layout || {}))
     };
@@ -1871,6 +1926,7 @@ _UPLOAD_SCRIPT = """
       restoreInProgress = true;
       files = (state.files || []).map(recordFile);
       selectedLibraryIds = (state.selectedLibraryIds || []).slice();
+      latestAnalysisPayload = state.analysisPayload || null;
       if (Number.isFinite(Number(state.sensitivity))) {
         gd._ristPeakSensitivityValue = Number(state.sensitivity);
       }
@@ -1960,6 +2016,7 @@ _UPLOAD_SCRIPT = """
   function setBusy(busy) {
     loading.classList.toggle("is-visible", busy);
     input.disabled = busy;
+    reportButton.disabled = busy;
     clearButton.disabled = busy;
     libraryInput.disabled = busy;
     libraryFilter.disabled = busy;
@@ -2467,6 +2524,7 @@ _UPLOAD_SCRIPT = """
         body: form
       });
       var payload = await apiPayload(response, "Raman 분석에 실패했습니다.");
+      latestAnalysisPayload = JSON.parse(JSON.stringify(payload));
       await window.Plotly.react(
         gd,
         payload.figure.data || [],
@@ -2485,6 +2543,67 @@ _UPLOAD_SCRIPT = """
       scheduleWorkspaceSave();
     } catch (err) {
       setMessage(err.message || String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function currentFigurePayload() {
+    return {
+      data: JSON.parse(JSON.stringify(gd.data || [])),
+      layout: JSON.parse(JSON.stringify(gd.layout || {}))
+    };
+  }
+
+  function downloadBlob(blob, filename) {
+    var url = URL.createObjectURL(blob);
+    var link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(function() { URL.revokeObjectURL(url); }, 1000);
+  }
+
+  async function createReport() {
+    if (!files.length) {
+      setMessage("보고서를 생성하려면 Raman raw 파일을 먼저 업로드하세요.");
+      return;
+    }
+    if (!latestAnalysisPayload) {
+      await analyze();
+      if (!latestAnalysisPayload) return;
+    }
+    setBusy(true);
+    setMessage("");
+    status.textContent = "보고서 생성 중";
+    try {
+      var figureImage = await window.Plotly.toImage(gd, {
+        format: "png",
+        width: Math.max(900, Math.round(gd.clientWidth || 1200)),
+        height: Math.max(640, Math.round(gd.clientHeight || 800)),
+        scale: 2
+      });
+      var form = new FormData();
+      files.forEach(function(file) { form.append("files", file, file.name); });
+      form.append("analysis_json", JSON.stringify(latestAnalysisPayload));
+      form.append("figure_json", JSON.stringify(currentFigurePayload()));
+      form.append("figure_image", figureImage);
+      var response = await fetch("/api/v1/raman/report", {
+        method: "POST",
+        body: form
+      });
+      if (!response.ok) {
+        var payload = await response.json().catch(function() { return {}; });
+        throw new Error(payload.message || "보고서 생성에 실패했습니다.");
+      }
+      var blob = await response.blob();
+      downloadBlob(blob, "raman-report-package.zip");
+      status.textContent = "보고서 생성 완료";
+    } catch (err) {
+      setMessage(err.message || "보고서 생성에 실패했습니다.");
+      status.textContent = "보고서 생성 실패";
     } finally {
       setBusy(false);
     }
@@ -2556,9 +2675,11 @@ _UPLOAD_SCRIPT = """
     if (ev.target === libraryModal) closeLibraryEditor();
   });
   clearButton.addEventListener("click", function() {
+    latestAnalysisPayload = null;
     clearWorkspaceState();
     resetPlot();
   });
+  reportButton.addEventListener("click", createReport);
   gd.addEventListener("rist-raman-tools-toggle", function() {
     applyResponsiveLayout();
   });
@@ -2740,45 +2861,7 @@ def analyze_raman(
     assignment_library_ids: list[str] | None = Form(default=None),
     assignment_library_selection_explicit: bool = Form(default=False),
 ) -> dict:
-    if not files:
-        raise ApiException(400, "RAMAN_FILES_REQUIRED", "Raman raw 파일이 필요합니다.")
-    if len(files) > MAX_RAMAN_PREVIEW_FILES:
-        raise ApiException(
-            400,
-            "TOO_MANY_RAMAN_FILES",
-            f"한 번에 최대 {MAX_RAMAN_PREVIEW_FILES}개 파일을 분석할 수 있습니다.",
-        )
-
-    uploaded: list[tuple[str, bytes]] = []
-    total_bytes = 0
-    supported = ", ".join(sorted(SUPPORTED_SUFFIXES))
-    for upload in files:
-        raw_filename = (upload.filename or "").replace("\\", "/")
-        filename = Path(raw_filename).name
-        suffix = Path(filename).suffix.casefold()
-        if not filename or suffix not in SUPPORTED_SUFFIXES:
-            raise ApiException(
-                400,
-                "INVALID_RAMAN_EXTENSION",
-                f"지원하지 않는 Raman raw 파일입니다: {filename or '(이름 없음)'} ({supported})",
-            )
-        content = upload.file.read(MAX_RAMAN_PREVIEW_FILE_BYTES + 1)
-        if not content:
-            raise ApiException(400, "EMPTY_RAMAN_FILE", f"빈 파일입니다: {filename}")
-        if len(content) > MAX_RAMAN_PREVIEW_FILE_BYTES:
-            raise ApiException(
-                413,
-                "RAMAN_FILE_TOO_LARGE",
-                f"Raman raw 파일은 20MB 이하여야 합니다: {filename}",
-            )
-        total_bytes += len(content)
-        if total_bytes > MAX_RAMAN_PREVIEW_TOTAL_BYTES:
-            raise ApiException(
-                413,
-                "RAMAN_UPLOAD_TOO_LARGE",
-                "한 번에 업로드하는 Raman raw 파일의 총 크기는 50MB 이하여야 합니다.",
-            )
-        uploaded.append((filename, content))
+    uploaded = _uploaded_raman_files(files)
 
     store = assignment_library_store()
     if assignment_library_selection_explicit:
@@ -2804,6 +2887,61 @@ def analyze_raman(
         sensitivity,
     )
     return result
+
+
+@router.post("/api/v1/raman/report", tags=["raman"])
+def create_raman_preview_report(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    files: list[UploadFile] = File(...),
+    analysis_json: str = Form(...),
+    figure_json: str = Form(default=""),
+    figure_image: str = Form(...),
+) -> FileResponse:
+    uploaded = _uploaded_raman_files(files)
+    try:
+        analysis_payload = parse_analysis_payload(analysis_json, figure_json)
+        image_bytes = decode_figure_image(figure_image)
+        raw_series: list[RawSeries] = []
+        used_labels: set[str] = set()
+        for filename, content in uploaded:
+            samples = load_raman_raw_samples(filename, content)
+            for sample in samples:
+                label = sample.label or Path(filename).stem
+                base = label
+                suffix = 2
+                while label.casefold() in used_labels:
+                    label = f"{base} ({suffix})"
+                    suffix += 1
+                used_labels.add(label.casefold())
+                raw_series.append(
+                    RawSeries(
+                        label=label,
+                        axis=[float(value) for value in sample.frame["shift"].to_list()],
+                        values=[
+                            float(value)
+                            for value in sample.frame["intensity"].to_list()
+                        ],
+                    )
+                )
+        tmp_root, package = build_preview_report_package(
+            experiment_code="RAMAN",
+            analysis_payload=analysis_payload,
+            raw_series=raw_series,
+            figure_image=image_bytes,
+            settings=getattr(request.app.state, "settings", None),
+        )
+    except ValueError as exc:
+        raise ApiException(400, "RAMAN_REPORT_INVALID_PAYLOAD", str(exc)) from exc
+    except Exception as exc:
+        raise ApiException(422, "RAMAN_REPORT_FAILED", str(exc)) from exc
+
+    background_tasks.add_task(cleanup_preview_report, tmp_root)
+    return FileResponse(
+        package,
+        media_type="application/zip",
+        filename="raman-report-package.zip",
+    )
 
 
 def create_raman_preview_app() -> FastAPI:
