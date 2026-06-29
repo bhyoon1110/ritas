@@ -4270,10 +4270,6 @@ def shape_editor_js(div_id: str) -> str:
     }} else {{
       ev._ristShapeEditorHandled = true;
       finishSelection(true);
-      if (gd._ristEditMode) {{
-        ev.preventDefault();
-        ev.stopPropagation();
-      }}
     }}
   }}, true);
 
