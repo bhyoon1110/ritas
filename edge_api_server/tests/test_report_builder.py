@@ -433,6 +433,15 @@ def test_pptx_renderer_creates_openxml_package(tmp_path) -> None:
         assert "ppt/presentation.xml" in names
         assert "ppt/slides/slide1.xml" in names
         assert "ppt/media/image1.png" in names
+        presentation = archive.read("ppt/presentation.xml").decode("utf-8")
+        slide_text = "\n".join(
+            archive.read(name).decode("utf-8")
+            for name in names
+            if name.startswith("ppt/slides/slide") and name.endswith(".xml")
+        )
+    assert 'type="screen16x9"' in presentation
+    assert "분석 요약" in slide_text
+    assert "고객 보고서용 요약" in slide_text
 
 
 def test_pptx_renderer_hides_raw_llm_error(tmp_path) -> None:

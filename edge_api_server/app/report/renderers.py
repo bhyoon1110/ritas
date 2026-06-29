@@ -8,6 +8,7 @@ report.json과 동일한 ReportDocument이며, 사람이 검토할 수 있는 �
 from __future__ import annotations
 
 import html
+import re
 import textwrap
 import zipfile
 from pathlib import Path
@@ -19,6 +20,24 @@ from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas
 
 from .model import LLM_FALLBACK_NOTICE, ReportDocument, ReportFigure, ReportSection
+
+PPTX_SLIDE_W = 12192000
+PPTX_SLIDE_H = 6858000
+PPTX_MARGIN_X = 609600
+PPTX_TITLE_Y = 365760
+PPTX_TITLE_H = 548640
+PPTX_CONTENT_Y = 1188720
+PPTX_FOOTER_Y = 6492240
+PPTX_BLUE = "2F80ED"
+PPTX_NAVY = "172B4D"
+PPTX_TEXT = "243B53"
+PPTX_MUTED = "627D98"
+PPTX_LINE = "D9E2EC"
+PPTX_BG = "F8FAFC"
+PPTX_CARD = "FFFFFF"
+PPTX_GREEN = "27AE60"
+PPTX_ORANGE = "F2994A"
+PPTX_RED = "EB5757"
 
 
 def render_requested_report(
@@ -196,15 +215,10 @@ def render_pptx(document: ReportDocument, path: Path) -> None:
 
 
 def _pptx_slide_payloads(document: ReportDocument) -> list[dict[str, object]]:
-    slides: list[dict[str, object]] = [_pptx_text_payload(document.title, [
-        f"요청번호: {document.pk.get('requestNumber', '')}",
-        f"실험: {document.experiment_code}",
-        f"장비: {document.pk.get('equipmentCode', '')}",
-        f"작업자: {document.pk.get('operatorId', '')}",
-        f"생성시각: {document.generated_at}",
-    ])]
-    for section in document.sections:
-        slides.append(_pptx_text_payload(section.heading, _section_lines(section)[:14]))
+    slides: list[dict[str, object]] = [_pptx_title_payload(document)]
+    if document.section("summary") is not None or document.section("key_findings") is not None:
+        slides.append(_pptx_overview_payload(document))
+
     media_index = 1
     for figure in document.figures:
         figure_path = Path(figure.path)
@@ -217,17 +231,43 @@ def _pptx_slide_payloads(document: ReportDocument) -> list[dict[str, object]]:
         caption = ""
         if caption_section is not None and caption_section.paragraphs:
             caption = caption_section.paragraphs[0]
-        slides.append(_pptx_image_payload(figure, media_name, figure_path, caption))
+        slides.append(_pptx_image_payload(document, figure, media_name, figure_path, caption))
+
+    summarized_sections = {"summary", "key_findings", "caption"}
+    for section in document.sections:
+        if section.section_id in summarized_sections:
+            continue
+        if section.table is not None:
+            slides.append(_pptx_table_payload(document, section))
+        else:
+            slides.append(_pptx_text_payload(document, section.heading, _section_lines(section)[:10]))
     if document.llm_error:
-        slides.append(_pptx_text_payload("LLM 보조 설명", [LLM_FALLBACK_NOTICE]))
+        slides.append(_pptx_text_payload(document, "LLM 보조 설명", [LLM_FALLBACK_NOTICE]))
     return slides
 
 
-def _pptx_text_payload(title: str, lines: list[str]) -> dict[str, object]:
-    return {"xml": _pptx_slide(title, lines), "rels": _pptx_slide_rels(), "media": []}
+def _pptx_title_payload(document: ReportDocument) -> dict[str, object]:
+    return {"xml": _pptx_title_slide(document), "rels": _pptx_slide_rels(), "media": []}
+
+
+def _pptx_overview_payload(document: ReportDocument) -> dict[str, object]:
+    return {"xml": _pptx_overview_slide(document), "rels": _pptx_slide_rels(), "media": []}
+
+
+def _pptx_text_payload(
+    document: ReportDocument,
+    title: str,
+    lines: list[str],
+) -> dict[str, object]:
+    return {"xml": _pptx_text_slide(document, title, lines), "rels": _pptx_slide_rels(), "media": []}
+
+
+def _pptx_table_payload(document: ReportDocument, section: ReportSection) -> dict[str, object]:
+    return {"xml": _pptx_table_slide(document, section), "rels": _pptx_slide_rels(), "media": []}
 
 
 def _pptx_image_payload(
+    document: ReportDocument,
     figure: ReportFigure,
     media_name: str,
     media_path: Path,
@@ -235,51 +275,602 @@ def _pptx_image_payload(
 ) -> dict[str, object]:
     lines = [caption] if caption else []
     return {
-        "xml": _pptx_image_slide(figure.title, media_name, lines),
+        "xml": _pptx_image_slide(document, figure.title, media_name, lines),
         "rels": _pptx_slide_rels(media_name),
         "media": [(media_name, media_path)],
     }
 
 
-def _pptx_body_pr(*, anchor: str = "t") -> str:
+def _pptx_body_pr(
+    *,
+    anchor: str = "t",
+    inset: int = 91440,
+) -> str:
     return (
-        f'<a:bodyPr wrap="square" anchor="{anchor}" rtlCol="0">'
+        f'<a:bodyPr wrap="square" anchor="{anchor}" rtlCol="0" '
+        f'lIns="{inset}" tIns="{inset}" rIns="{inset}" bIns="{inset}">'
         '<a:normAutofit fontScale="85000" lnSpcReduction="20000"/>'
         "</a:bodyPr>"
     )
 
 
-def _pptx_paragraphs(lines: list[str], *, font_size: int = 1800) -> str:
+def _pptx_rpr(
+    *,
+    font_size: int,
+    color: str = PPTX_TEXT,
+    bold: bool = False,
+) -> str:
+    bold_attr = ' b="1"' if bold else ""
+    return (
+        f'<a:rPr lang="ko-KR" sz="{font_size}"{bold_attr}>'
+        f'<a:solidFill><a:srgbClr val="{color}"/></a:solidFill>'
+        '<a:latin typeface="Arial"/><a:ea typeface="맑은 고딕"/>'
+        "</a:rPr>"
+    )
+
+
+def _pptx_paragraph(
+    text: str,
+    *,
+    font_size: int = 1800,
+    color: str = PPTX_TEXT,
+    bold: bool = False,
+    bullet: bool = False,
+) -> str:
+    bullet_pr = (
+        '<a:pPr marL="228600" indent="-171450"><a:buChar char="•"/></a:pPr>'
+        if bullet
+        else '<a:pPr marL="0" indent="0"/>'
+    )
+    return (
+        f"<a:p>{bullet_pr}<a:r>{_pptx_rpr(font_size=font_size, color=color, bold=bold)}"
+        f"<a:t>{html.escape(text)}</a:t></a:r></a:p>"
+    )
+
+
+def _pptx_paragraphs(
+    lines: list[str],
+    *,
+    font_size: int = 1800,
+    color: str = PPTX_TEXT,
+    bold: bool = False,
+    bullet: bool = False,
+) -> str:
     if not lines:
         return "<a:p/>"
     return "".join(
-        f"<a:p><a:pPr marL=\"0\" indent=\"0\"/><a:r><a:rPr lang=\"ko-KR\" sz=\"{font_size}\"/>"
-        f"<a:t>{html.escape(line)}</a:t></a:r></a:p>"
+        _pptx_paragraph(
+            line,
+            font_size=font_size,
+            color=color,
+            bold=bold,
+            bullet=bullet,
+        )
         for line in lines
     )
 
 
-def _pptx_slide(title: str, lines: list[str]) -> str:
+def _pptx_fill(color: str | None) -> str:
+    if not color:
+        return "<a:noFill/>"
+    return f'<a:solidFill><a:srgbClr val="{color}"/></a:solidFill>'
+
+
+def _pptx_line(color: str | None = PPTX_LINE, *, width: int = 9525) -> str:
+    if not color:
+        return '<a:ln><a:noFill/></a:ln>'
+    return (
+        f'<a:ln w="{width}"><a:solidFill><a:srgbClr val="{color}"/></a:solidFill>'
+        '<a:prstDash val="solid"/></a:ln>'
+    )
+
+
+def _pptx_shape(
+    shape_id: int,
+    name: str,
+    *,
+    x: int,
+    y: int,
+    cx: int,
+    cy: int,
+    fill: str | None = None,
+    line: str | None = None,
+    text: list[str] | None = None,
+    font_size: int = 1600,
+    color: str = PPTX_TEXT,
+    bold: bool = False,
+    bullet: bool = False,
+    anchor: str = "t",
+    inset: int = 91440,
+) -> str:
+    paragraphs = _pptx_paragraphs(
+        text or [],
+        font_size=font_size,
+        color=color,
+        bold=bold,
+        bullet=bullet,
+    )
+    return f"""
+    <p:sp><p:nvSpPr><p:cNvPr id="{shape_id}" name="{html.escape(name)}"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>
+      <p:spPr><a:xfrm><a:off x="{x}" y="{y}"/><a:ext cx="{cx}" cy="{cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom>{_pptx_fill(fill)}{_pptx_line(line)}</p:spPr>
+      <p:txBody>{_pptx_body_pr(anchor=anchor, inset=inset)}<a:lstStyle/>{paragraphs}</p:txBody>
+    </p:sp>"""
+
+
+def _pptx_text_shape(
+    shape_id: int,
+    name: str,
+    *,
+    x: int,
+    y: int,
+    cx: int,
+    cy: int,
+    lines: list[str],
+    font_size: int = 1600,
+    color: str = PPTX_TEXT,
+    bold: bool = False,
+    bullet: bool = False,
+    anchor: str = "t",
+    inset: int = 45720,
+) -> str:
+    return _pptx_shape(
+        shape_id,
+        name,
+        x=x,
+        y=y,
+        cx=cx,
+        cy=cy,
+        fill=None,
+        line=None,
+        text=lines,
+        font_size=font_size,
+        color=color,
+        bold=bold,
+        bullet=bullet,
+        anchor=anchor,
+        inset=inset,
+    )
+
+
+def _pptx_frame(shapes: list[str], *, background: str = PPTX_BG) -> str:
     return f"""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
-  <p:cSld><p:spTree>
+  <p:cSld><p:bg><p:bgPr>{_pptx_fill(background)}</p:bgPr></p:bg><p:spTree>
     <p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr>
-    <p:sp><p:nvSpPr><p:cNvPr id="2" name="Title"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="457200" y="274320"/><a:ext cx="8229600" cy="685800"/></a:xfrm></p:spPr><p:txBody>{_pptx_body_pr()}<a:lstStyle/><a:p><a:r><a:rPr lang="ko-KR" sz="3200" b="1"/><a:t>{html.escape(title)}</a:t></a:r></a:p></p:txBody></p:sp>
-    <p:sp><p:nvSpPr><p:cNvPr id="3" name="Content"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="609600" y="1143000"/><a:ext cx="7924800" cy="5486400"/></a:xfrm></p:spPr><p:txBody>{_pptx_body_pr()}<a:lstStyle/>{_pptx_paragraphs(lines)}</p:txBody></p:sp>
+    {''.join(shapes)}
   </p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr>
 </p:sld>"""
 
 
-def _pptx_image_slide(title: str, media_name: str, lines: list[str]) -> str:
-    return f"""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
-  <p:cSld><p:spTree>
-    <p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr>
-    <p:sp><p:nvSpPr><p:cNvPr id="2" name="Title"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="457200" y="274320"/><a:ext cx="8229600" cy="548640"/></a:xfrm></p:spPr><p:txBody>{_pptx_body_pr()}<a:lstStyle/><a:p><a:r><a:rPr lang="ko-KR" sz="3000" b="1"/><a:t>{html.escape(title)}</a:t></a:r></a:p></p:txBody></p:sp>
-    <p:pic><p:nvPicPr><p:cNvPr id="3" name="{html.escape(media_name)}"/><p:cNvPicPr/><p:nvPr/></p:nvPicPr><p:blipFill><a:blip r:embed="rId2"/><a:stretch><a:fillRect/></a:stretch></p:blipFill><p:spPr><a:xfrm><a:off x="609600" y="1005840"/><a:ext cx="7924800" cy="4389120"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:pic>
-    <p:sp><p:nvSpPr><p:cNvPr id="4" name="Caption"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="609600" y="5623560"/><a:ext cx="7924800" cy="822960"/></a:xfrm></p:spPr><p:txBody>{_pptx_body_pr()}<a:lstStyle/>{_pptx_paragraphs(lines, font_size=1600)}</p:txBody></p:sp>
-  </p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr>
-</p:sld>"""
+def _pptx_header_shapes(document: ReportDocument, title: str) -> list[str]:
+    return [
+        _pptx_shape(
+            2,
+            "Top accent",
+            x=0,
+            y=0,
+            cx=PPTX_SLIDE_W,
+            cy=91440,
+            fill=PPTX_BLUE,
+            line=None,
+        ),
+        _pptx_text_shape(
+            3,
+            "Slide title",
+            x=PPTX_MARGIN_X,
+            y=PPTX_TITLE_Y,
+            cx=8846820,
+            cy=PPTX_TITLE_H,
+            lines=[title],
+            font_size=3400,
+            color=PPTX_NAVY,
+            bold=True,
+            inset=0,
+        ),
+        _pptx_text_shape(
+            4,
+            "Experiment label",
+            x=9850000,
+            y=411480,
+            cx=1737360,
+            cy=365760,
+            lines=[document.experiment_code],
+            font_size=1600,
+            color=PPTX_MUTED,
+            bold=True,
+            anchor="mid",
+            inset=0,
+        ),
+    ]
+
+
+def _pptx_footer_shape(document: ReportDocument, shape_id: int) -> str:
+    footer = " · ".join(
+        item
+        for item in [
+            "RIST Edge Report",
+            document.pk.get("requestNumber", ""),
+            document.generated_at,
+        ]
+        if item
+    )
+    return _pptx_text_shape(
+        shape_id,
+        "Footer",
+        x=PPTX_MARGIN_X,
+        y=PPTX_FOOTER_Y,
+        cx=10972800,
+        cy=274320,
+        lines=[footer],
+        font_size=1100,
+        color=PPTX_MUTED,
+        inset=0,
+    )
+
+
+def _pptx_title_slide(document: ReportDocument) -> str:
+    meta = [
+        ("요청번호", document.pk.get("requestNumber", "")),
+        ("실험", document.experiment_code),
+        ("장비", document.pk.get("equipmentCode", "")),
+        ("작업자", document.pk.get("operatorId", "")),
+        ("생성시각", document.generated_at),
+    ]
+    shapes = [
+        _pptx_shape(2, "Left accent", x=0, y=0, cx=365760, cy=PPTX_SLIDE_H, fill=PPTX_BLUE, line=None),
+        _pptx_text_shape(
+            3,
+            "Report eyebrow",
+            x=762000,
+            y=777240,
+            cx=7620000,
+            cy=365760,
+            lines=["분석 결과 보고서"],
+            font_size=1700,
+            color=PPTX_BLUE,
+            bold=True,
+            inset=0,
+        ),
+        _pptx_text_shape(
+            4,
+            "Report title",
+            x=762000,
+            y=1219200,
+            cx=9753600,
+            cy=1219200,
+            lines=[document.title],
+            font_size=5000,
+            color=PPTX_NAVY,
+            bold=True,
+            inset=0,
+        ),
+        _pptx_text_shape(
+            5,
+            "Report subtitle",
+            x=762000,
+            y=2438400,
+            cx=9601200,
+            cy=609600,
+            lines=["피크 분석 · 라이브러리 후보 · 보고서용 그래프 화면을 통합 정리"],
+            font_size=2000,
+            color=PPTX_MUTED,
+            inset=0,
+        ),
+    ]
+    x = 762000
+    y = 3962400
+    card_w = 2057400
+    card_h = 731520
+    gap = 182880
+    for idx, (label, value) in enumerate(meta):
+        row = idx // 4
+        col = idx % 4
+        card_x = x + col * (card_w + gap)
+        card_y = y + row * (card_h + gap)
+        shapes.append(
+            _pptx_shape(
+                10 + idx,
+                f"Meta card {idx}",
+                x=card_x,
+                y=card_y,
+                cx=card_w,
+                cy=card_h,
+                fill=PPTX_CARD,
+                line=PPTX_LINE,
+                text=[label, str(value or "-")],
+                font_size=1450,
+                color=PPTX_TEXT,
+                bold=False,
+                inset=137160,
+            )
+        )
+    return _pptx_frame(shapes, background=PPTX_BG)
+
+
+def _sentence_lines(text: str, *, max_items: int = 5) -> list[str]:
+    chunks = []
+    for raw_line in text.splitlines():
+        chunks.extend(
+            item.strip()
+            for item in re.split(r"(?<=[.!?。])\s+", raw_line.strip())
+            if item.strip()
+        )
+    return chunks[:max_items]
+
+
+def _section_text_lines(section: ReportSection | None, *, max_items: int = 5) -> list[str]:
+    if section is None:
+        return []
+    lines: list[str] = []
+    for paragraph in section.paragraphs:
+        lines.extend(_sentence_lines(paragraph, max_items=max_items))
+    lines.extend(section.bullets)
+    return [line for line in lines if line][:max_items]
+
+
+def _pptx_overview_slide(document: ReportDocument) -> str:
+    summary_lines = _section_text_lines(document.section("summary"), max_items=4)
+    finding_lines = _section_text_lines(document.section("key_findings"), max_items=5)
+    verdict_lines = _section_text_lines(document.section("verdict"), max_items=4)
+    if not summary_lines:
+        summary_lines = ["요약 문안이 제공되지 않았습니다."]
+    if not finding_lines:
+        finding_lines = verdict_lines or ["핵심 관찰사항이 제공되지 않았습니다."]
+    shapes = _pptx_header_shapes(document, "분석 요약")
+    shapes.extend(
+        [
+            _pptx_shape(
+                10,
+                "Summary card",
+                x=PPTX_MARGIN_X,
+                y=PPTX_CONTENT_Y,
+                cx=5181600,
+                cy=3261360,
+                fill=PPTX_CARD,
+                line=PPTX_LINE,
+                text=["고객 보고서용 요약"],
+                font_size=1700,
+                color=PPTX_NAVY,
+                bold=True,
+                inset=182880,
+            ),
+            _pptx_text_shape(
+                11,
+                "Summary text",
+                x=792480,
+                y=1645920,
+                cx=4815840,
+                cy=2499360,
+                lines=summary_lines,
+                font_size=1750,
+                color=PPTX_TEXT,
+                inset=0,
+            ),
+            _pptx_shape(
+                12,
+                "Findings card",
+                x=6096000,
+                y=PPTX_CONTENT_Y,
+                cx=5486400,
+                cy=3261360,
+                fill=PPTX_CARD,
+                line=PPTX_LINE,
+                text=["핵심 관찰사항"],
+                font_size=1700,
+                color=PPTX_NAVY,
+                bold=True,
+                inset=182880,
+            ),
+            _pptx_text_shape(
+                13,
+                "Findings text",
+                x=6278880,
+                y=1645920,
+                cx=5120640,
+                cy=2499360,
+                lines=finding_lines,
+                font_size=1650,
+                color=PPTX_TEXT,
+                bullet=True,
+                inset=0,
+            ),
+        ]
+    )
+    cards = [
+        ("요청번호", document.pk.get("requestNumber", "-"), PPTX_BLUE),
+        ("장비", document.pk.get("equipmentCode", "-"), PPTX_GREEN),
+        ("작업자", document.pk.get("operatorId", "-"), PPTX_ORANGE),
+        ("LLM", "사용" if document.llm_used else "규칙 기반", PPTX_RED if document.llm_error else PPTX_GREEN),
+    ]
+    for idx, (label, value, color) in enumerate(cards):
+        shapes.append(
+            _pptx_shape(
+                20 + idx,
+                f"Info card {idx}",
+                x=PPTX_MARGIN_X + idx * 2743200,
+                y=4724400,
+                cx=2499360,
+                cy=1005840,
+                fill=PPTX_CARD,
+                line=PPTX_LINE,
+                text=[label, str(value or "-")],
+                font_size=1450,
+                color=PPTX_TEXT,
+                inset=137160,
+            )
+        )
+        shapes.append(
+            _pptx_shape(
+                30 + idx,
+                f"Info accent {idx}",
+                x=PPTX_MARGIN_X + idx * 2743200,
+                y=4724400,
+                cx=76200,
+                cy=1005840,
+                fill=color,
+                line=None,
+            )
+        )
+    shapes.append(_pptx_footer_shape(document, 40))
+    return _pptx_frame(shapes)
+
+
+def _pptx_text_slide(document: ReportDocument, title: str, lines: list[str]) -> str:
+    shapes = _pptx_header_shapes(document, title)
+    display_lines = lines or ["보고서용 상세 문안이 없습니다."]
+    shapes.extend(
+        [
+            _pptx_shape(
+                10,
+                "Content card",
+                x=PPTX_MARGIN_X,
+                y=PPTX_CONTENT_Y,
+                cx=10972800,
+                cy=4937760,
+                fill=PPTX_CARD,
+                line=PPTX_LINE,
+            ),
+            _pptx_text_shape(
+                11,
+                "Content text",
+                x=914400,
+                y=1463040,
+                cx=10363200,
+                cy=4389120,
+                lines=display_lines,
+                font_size=1750,
+                color=PPTX_TEXT,
+                bullet=any(line.startswith("- ") for line in display_lines),
+                inset=0,
+            ),
+        ]
+    )
+    shapes.append(_pptx_footer_shape(document, 20))
+    return _pptx_frame(shapes)
+
+
+def _pptx_table_slide(document: ReportDocument, section: ReportSection) -> str:
+    table = section.table
+    if table is None:
+        return _pptx_text_slide(document, section.heading, _section_lines(section)[:10])
+    max_rows = 9
+    rows = table.rows[:max_rows]
+    omitted = max(0, len(table.rows) - len(rows))
+    shapes = _pptx_header_shapes(document, section.heading)
+    x = PPTX_MARGIN_X
+    y = PPTX_CONTENT_Y
+    w = 10972800
+    h = 4663440
+    row_count = max(1, len(rows) + 1)
+    row_h = min(548640, max(396240, h // min(row_count, max_rows + 1)))
+    col_count = max(1, len(table.columns))
+    col_w = w // col_count
+    shape_id = 10
+    for col_idx, column in enumerate(table.columns):
+        shapes.append(
+            _pptx_shape(
+                shape_id,
+                f"Header {col_idx}",
+                x=x + col_idx * col_w,
+                y=y,
+                cx=col_w,
+                cy=row_h,
+                fill=PPTX_NAVY,
+                line="FFFFFF",
+                text=[str(column)],
+                font_size=1450,
+                color="FFFFFF",
+                bold=True,
+                anchor="mid",
+                inset=91440,
+            )
+        )
+        shape_id += 1
+    for row_idx, row in enumerate(rows):
+        fill = "FFFFFF" if row_idx % 2 == 0 else "F8FAFC"
+        for col_idx in range(col_count):
+            value = row[col_idx] if col_idx < len(row) else ""
+            shapes.append(
+                _pptx_shape(
+                    shape_id,
+                    f"Cell {row_idx}-{col_idx}",
+                    x=x + col_idx * col_w,
+                    y=y + (row_idx + 1) * row_h,
+                    cx=col_w,
+                    cy=row_h,
+                    fill=fill,
+                    line=PPTX_LINE,
+                    text=[str(value)],
+                    font_size=1300,
+                    color=PPTX_TEXT,
+                    inset=68580,
+                )
+            )
+            shape_id += 1
+    if omitted:
+        shapes.append(
+            _pptx_text_shape(
+                shape_id,
+                "Table note",
+                x=PPTX_MARGIN_X,
+                y=y + (len(rows) + 1) * row_h + 137160,
+                cx=10972800,
+                cy=274320,
+                lines=[f"표시는 상위 {len(rows)}개 행으로 제한했습니다. 전체 데이터는 report.html 또는 raw_data.xlsx를 확인하십시오. (생략 {omitted}행)"],
+                font_size=1200,
+                color=PPTX_MUTED,
+                inset=0,
+            )
+        )
+        shape_id += 1
+    shapes.append(_pptx_footer_shape(document, shape_id + 1))
+    return _pptx_frame(shapes)
+
+
+def _pptx_image_slide(
+    document: ReportDocument,
+    title: str,
+    media_name: str,
+    lines: list[str],
+) -> str:
+    shapes = _pptx_header_shapes(document, title)
+    shapes.append(
+        _pptx_shape(
+            10,
+            "Image frame",
+            x=PPTX_MARGIN_X,
+            y=1036320,
+            cx=10972800,
+            cy=4572000,
+            fill=PPTX_CARD,
+            line=PPTX_LINE,
+        )
+    )
+    image = f"""
+    <p:pic><p:nvPicPr><p:cNvPr id="11" name="{html.escape(media_name)}"/><p:cNvPicPr/><p:nvPr/></p:nvPicPr>
+      <p:blipFill><a:blip r:embed="rId2"/><a:stretch><a:fillRect/></a:stretch></p:blipFill>
+      <p:spPr><a:xfrm><a:off x="701040" y="1127760"/><a:ext cx="10789920" cy="4389120"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom>{_pptx_line(PPTX_LINE)}</p:spPr>
+    </p:pic>"""
+    shapes.append(image)
+    if lines:
+        shapes.append(
+            _pptx_shape(
+                12,
+                "Caption card",
+                x=PPTX_MARGIN_X,
+                y=5745480,
+                cx=10972800,
+                cy=548640,
+                fill=PPTX_CARD,
+                line=PPTX_LINE,
+                text=lines[:2],
+                font_size=1500,
+                color=PPTX_TEXT,
+                inset=137160,
+            )
+        )
+    shapes.append(_pptx_footer_shape(document, 20))
+    return _pptx_frame(shapes)
 
 
 def _pptx_content_types(slide_count: int) -> str:
@@ -315,7 +906,7 @@ def _pptx_presentation(slide_count: int) -> str:
 <p:presentation xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
   <p:sldMasterIdLst><p:sldMasterId id="2147483648" r:id="rId{slide_count + 1}"/></p:sldMasterIdLst>
   <p:sldIdLst>{slide_ids}</p:sldIdLst>
-  <p:sldSz cx="9144000" cy="6858000" type="screen4x3"/>
+  <p:sldSz cx="{PPTX_SLIDE_W}" cy="{PPTX_SLIDE_H}" type="screen16x9"/>
   <p:notesSz cx="6858000" cy="9144000"/>
 </p:presentation>"""
 
