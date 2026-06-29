@@ -63,6 +63,12 @@ def sample_ftir_verdict() -> dict:
         "is_identified": True,
         "is_library_identified": False,
         "library_size": 589,
+        "experimentConditions": {
+            "Instrument": "FT-IR spectrometer",
+            "Resolution": "4 cm-1",
+            "Scan Count": "32",
+            "Atmosphere": "ambient air",
+        },
         "top_candidate": {
             "material": "m-Xylene",
             "category": "Steel Coating",
@@ -113,12 +119,30 @@ def sample_raman_analysis() -> dict:
                 "label": "LiOH_1",
                 "pointCount": 1200,
                 "peakCount": 3,
+                "metadata": {
+                    "Excitation Wavelength": "532.06 nm",
+                    "Laser Current": "100 %",
+                    "Excitation Power": "3.20 mW",
+                    "Exposure Time": "3 s",
+                    "Averaging": "60",
+                    "CCD temperature": "-68",
+                    "Measurement Mode": "Point",
+                },
             },
             {
                 "fileName": "Carbon.txt",
                 "label": "Carbon_1",
                 "pointCount": 980,
                 "peakCount": 2,
+                "metadata": {
+                    "Excitation Wavelength": "532.06 nm",
+                    "Laser Current": "100 %",
+                    "Excitation Power": "3.20 mW",
+                    "Exposure Time": "3 s",
+                    "Averaging": "60",
+                    "CCD temperature": "-68",
+                    "Measurement Mode": "Point",
+                },
             },
         ],
         "settings": {

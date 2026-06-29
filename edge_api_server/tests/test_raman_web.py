@@ -180,6 +180,10 @@ def test_raman_raw_loader_reads_multi_sample_txt() -> None:
         "LiOH_2",
         "LiOH",
     ]
+    assert samples[0].metadata is not None
+    assert samples[0].metadata["Excitation Wavelength"] == "532.06 nm"
+    assert samples[0].metadata["Exposure Time"] == "3 s"
+    assert samples[0].metadata["Measurement Mode"] == "Point"
     assert [len(sample.frame) for sample in samples] == [1340, 1340, 1340, 1340]
     assert all(sample.frame["shift"].is_monotonic_increasing for sample in samples)
 
@@ -255,6 +259,8 @@ def test_raman_analyze_api_expands_multi_sample_txt() -> None:
         "LiOH_2",
         "LiOH",
     ]
+    assert payload["samples"][0]["metadata"]["Excitation Wavelength"] == "532.06 nm"
+    assert payload["samples"][0]["metadata"]["Exposure Time"] == "3 s"
     assert all(sample["fileName"] == MULTI_SAMPLE_TXT.name for sample in payload["samples"])
     parent_traces = [
         trace for trace in payload["figure"]["data"]

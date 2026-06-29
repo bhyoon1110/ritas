@@ -83,6 +83,7 @@ def test_ftir_builder_maps_verdict_to_fixed_sections() -> None:
     section_ids = [section.section_id for section in document.sections]
     assert section_ids == [
         "sample_info",
+        "experiment_conditions",
         "verdict",
         "library_match",
         "functional_groups",
@@ -94,6 +95,9 @@ def test_ftir_builder_maps_verdict_to_fixed_sections() -> None:
         "limitations",
         "caption",
     ]
+    conditions = document.section("experiment_conditions")
+    assert conditions is not None
+    assert conditions.paragraphs
 
     library = document.section("library_match")
     assert library is not None and library.table is not None
@@ -270,7 +274,16 @@ def test_generate_report_writes_email_body_and_image_slide(tmp_path) -> None:
 def test_raman_builder_maps_web_analysis_payload() -> None:
     payload = {
         "samples": [
-            {"fileName": "LiOH.txt", "label": "LiOH_1", "pointCount": 1200, "peakCount": 2}
+            {
+                "fileName": "LiOH.txt",
+                "label": "LiOH_1",
+                "pointCount": 1200,
+                "peakCount": 2,
+                "metadata": {
+                    "Excitation Wavelength": "532.06 nm",
+                    "Exposure Time": "3 s",
+                },
+            }
         ],
         "settings": {
             "sensitivity": 25,
@@ -310,12 +323,20 @@ def test_raman_builder_maps_web_analysis_payload() -> None:
     document = RamanReportBuilder().build({**_job(), "experiment_code": "RAMAN"}, analysis)
 
     assert document.title == "Raman 분석 보고서"
+    conditions = document.section("experiment_conditions")
+    assert conditions is not None and conditions.table is not None
+    assert ["LiOH_1", "Excitation Wavelength", "532.06 nm"] in conditions.table.rows
     assert document.section("raman_samples") is not None
     peaks = document.section("raman_peaks")
     assert peaks is not None and peaks.table is not None
     assert peaks.table.rows[0][1] == "518.0 cm-1"
     spec = RamanReportBuilder().llm_slots({**_job(), "experiment_code": "RAMAN"}, analysis)
     assert spec is not None
+    assert spec.facts["experiment_conditions"][0] == [
+        "LiOH_1",
+        "Excitation Wavelength",
+        "532.06 nm",
+    ]
     assert spec.facts["peak_assignments"][0][2] == "LiOH Li-O stretching"
 
 

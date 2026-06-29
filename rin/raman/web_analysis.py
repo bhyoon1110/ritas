@@ -117,6 +117,7 @@ def analyze_raman_files(
                         "label": label,
                         "pointCount": int(len(raw)),
                         "peakCount": int(len(peak_idx)),
+                        "metadata": dict(raw_sample.metadata or {}),
                     }
                 )
         except Exception as exc:

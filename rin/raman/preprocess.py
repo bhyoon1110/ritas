@@ -23,6 +23,7 @@ SUPPORTED_SUFFIXES = {".txt", ".csv", ".tsv", ".xlsx", ".xlsm"}
 class RamanRawSample:
     label: str | None
     frame: pd.DataFrame
+    metadata: dict[str, str] | None = None
 
 
 def _safe_window(length: int, requested: int, polyorder: int) -> int:
@@ -64,7 +65,11 @@ def _looks_like_shift_column(name: str) -> bool:
     )
 
 
-def _numeric_samples(frame: pd.DataFrame) -> list[RamanRawSample]:
+def _numeric_samples(
+    frame: pd.DataFrame,
+    *,
+    metadata: dict[str, str] | None = None,
+) -> list[RamanRawSample]:
     numeric: list[tuple[str, pd.Series]] = []
     for column in frame.columns:
         series = pd.to_numeric(frame[column], errors="coerce")
@@ -89,6 +94,7 @@ def _numeric_samples(frame: pd.DataFrame) -> list[RamanRawSample]:
                 RamanRawSample(
                     label=_sample_label_from_columns(shift_name, intensity_name),
                     frame=sample,
+                    metadata=metadata,
                 )
             )
         if samples:
@@ -105,6 +111,7 @@ def _numeric_samples(frame: pd.DataFrame) -> list[RamanRawSample]:
             RamanRawSample(
                 label=_sample_label_from_columns(shift_name, intensity_name),
                 frame=sample,
+                metadata=metadata,
             )
         )
     if not samples:
@@ -112,7 +119,39 @@ def _numeric_samples(frame: pd.DataFrame) -> list[RamanRawSample]:
     return samples
 
 
+def _decode_text(content: bytes) -> str:
+    for encoding in ("utf-8-sig", "utf-8", "cp949", "latin1"):
+        try:
+            return content.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+    return content.decode("utf-8", errors="replace")
+
+
+def _parse_text_metadata(content: bytes) -> dict[str, str]:
+    metadata: dict[str, str] = {}
+    for line in _decode_text(content).splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if not stripped.startswith("#"):
+            break
+        item = stripped.lstrip("#").strip()
+        if not item or set(item) <= {"-"}:
+            continue
+        if ":" in item:
+            key, value = item.split(":", 1)
+            key = key.strip()
+            value = value.strip()
+            if key:
+                metadata[key] = value or "(미기재)"
+        else:
+            metadata.setdefault("Notes", item)
+    return metadata
+
+
 def _read_text_table(content: bytes) -> list[RamanRawSample]:
+    metadata = _parse_text_metadata(content)
     last_error: Exception | None = None
     for kwargs in (
         {"sep": "\t", "engine": "python", "comment": "#"},
@@ -123,7 +162,7 @@ def _read_text_table(content: bytes) -> list[RamanRawSample]:
     ):
         try:
             frame = pd.read_csv(BytesIO(content), **kwargs)
-            return _numeric_samples(frame)
+            return _numeric_samples(frame, metadata=metadata)
         except Exception as exc:
             last_error = exc
     raise RamanRawError(f"텍스트 Raman raw 파일을 읽을 수 없습니다: {last_error}")
@@ -140,7 +179,7 @@ def _read_excel_table(content: bytes) -> list[RamanRawSample]:
         frame = pd.read_excel(BytesIO(content), sheet_name=0)
     except Exception as exc:
         raise RamanRawError(f"Excel Raman raw 파일을 읽을 수 없습니다: {exc}") from exc
-    return _numeric_samples(frame)
+    return _numeric_samples(frame, metadata={})
 
 
 def load_raman_raw_samples(
@@ -165,7 +204,13 @@ def load_raman_raw_samples(
         frame = sample.frame
         frame = frame[(frame["shift"] >= shift_min) & (frame["shift"] <= shift_max)]
         if len(frame) >= 10:
-            samples.append(RamanRawSample(label=sample.label, frame=frame))
+            samples.append(
+                RamanRawSample(
+                    label=sample.label,
+                    frame=frame,
+                    metadata=sample.metadata,
+                )
+            )
     if not samples:
         raise RamanRawError("분석 범위 안의 Raman 데이터 포인트가 부족합니다.")
     return samples

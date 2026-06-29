@@ -100,6 +100,61 @@ def _figure_peak_rows(payload: dict[str, Any], *, x_label: str) -> list[list[str
     return rows
 
 
+def _stringify_metadata_value(value: Any) -> str:
+    if value is None:
+        return "(미기재)"
+    if isinstance(value, (str, int, float, bool)):
+        text = str(value).strip()
+        return text or "(미기재)"
+    return str(value)
+
+
+def _metadata_items(value: Any) -> list[tuple[str, str]]:
+    if not isinstance(value, dict):
+        return []
+    rows = []
+    for key, item in value.items():
+        key_text = str(key).strip()
+        if not key_text:
+            continue
+        rows.append((key_text, _stringify_metadata_value(item)))
+    return rows
+
+
+def _experiment_condition_rows(payload: dict[str, Any]) -> list[list[str]]:
+    rows: list[list[str]] = []
+    for key in (
+        "experimentConditions",
+        "experiment_conditions",
+        "conditions",
+        "metadata",
+        "environment",
+        "experimentEnvironment",
+        "experiment_environment",
+    ):
+        for item_key, item_value in _metadata_items(payload.get(key)):
+            rows.append(["공통", item_key, item_value])
+
+    samples = payload.get("samples")
+    if isinstance(samples, list):
+        seen: set[tuple[str, str, str]] = set()
+        for sample in samples:
+            if not isinstance(sample, dict):
+                continue
+            source = str(
+                sample.get("label")
+                or sample.get("fileName")
+                or sample.get("sample")
+                or "시료"
+            )
+            for item_key, item_value in _metadata_items(sample.get("metadata")):
+                row = (source, item_key, item_value)
+                if row not in seen:
+                    seen.add(row)
+                    rows.append([source, item_key, item_value])
+    return rows
+
+
 class ReportBuilder:
     """보고서 작성기 베이스."""
 
@@ -122,6 +177,20 @@ class ReportBuilder:
                 ],
             )
         ]
+
+    def _experiment_conditions_section(self, payload: dict[str, Any]) -> ReportSection:
+        rows = _experiment_condition_rows(payload)
+        if rows:
+            return ReportSection(
+                "experiment_conditions",
+                "실험조건 및 실험환경",
+                table=ReportTable(["대상", "항목", "값"], rows),
+            )
+        return ReportSection(
+            "experiment_conditions",
+            "실험조건 및 실험환경",
+            paragraphs=["원본 분석 데이터에 실험조건/실험환경 정보가 포함되어 있지 않습니다."],
+        )
 
     def build(
         self, job: dict[str, Any], analysis: list[AnalysisItem]
@@ -172,6 +241,7 @@ class FtirReportBuilder(ReportBuilder):
             sections=self._meta_sections(job, verdict),
         )
 
+        document.sections.append(self._experiment_conditions_section(verdict))
         document.sections.append(self._verdict_section(verdict))
         document.sections.append(self._library_section(verdict))
         document.sections.append(self._functional_groups_section(verdict))
@@ -347,6 +417,7 @@ class FtirReportBuilder(ReportBuilder):
             "is_library_identified": verdict.get("is_library_identified"),
             "top_candidate": verdict.get("top_candidate"),
             "functional_groups": groups,
+            "experiment_conditions": _experiment_condition_rows(verdict),
             "combined_verdict": {
                 "verdict": cv.get("verdict"),
                 "confidence": cv.get("confidence"),
@@ -405,6 +476,7 @@ class RamanReportBuilder(ReportBuilder):
             generated_at=job.get("_generated_at", ""),
             sections=self._meta_sections(job, payload),
         )
+        document.sections.append(self._experiment_conditions_section(payload))
         document.sections.append(self._sample_section(payload))
         document.sections.append(self._library_section(payload))
         document.sections.append(self._peak_section(payload))
@@ -562,6 +634,7 @@ class RamanReportBuilder(ReportBuilder):
                 "smooth": settings.get("smooth"),
                 "assignmentLibraries": settings.get("assignmentLibraries"),
             },
+            "experiment_conditions": _experiment_condition_rows(payload),
             "peak_assignments": _figure_peak_rows(payload, x_label="cm-1"),
         }
         return LlmSlotSpec(
@@ -611,6 +684,7 @@ class GenericReportBuilder(ReportBuilder):
             generated_at=job.get("_generated_at", ""),
             sections=self._meta_sections(job, verdict),
         )
+        document.sections.append(self._experiment_conditions_section(verdict))
         bullets = [
             f"{key}: {value}"
             for key, value in verdict.items()
