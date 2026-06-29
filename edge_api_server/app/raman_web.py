@@ -643,10 +643,12 @@ body { overflow-x: hidden; }
     width: 100%;
     margin-left: 0;
     flex-wrap: wrap;
+    justify-content: flex-end;
   }
   .raman-status {
     flex: 1 1 100%;
     max-width: 100%;
+    text-align: right;
   }
   .raman-drop-zone {
     align-items: flex-start;

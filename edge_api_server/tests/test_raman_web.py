@@ -67,6 +67,8 @@ def test_raman_workspace_contains_upload_controls() -> None:
     assert "right: 8px !important" in page
     assert "width: min(860px, calc(100% - 24px)) !important" in page
     assert "max-width: calc(100% - 24px)" in page
+    assert "justify-content: flex-end" in page
+    assert "text-align: right" in page
     assert 'var title = gd.querySelector(".gtitle")' in page
     assert "var titleBottom = title ? title.getBoundingClientRect().bottom - plotRect.top + 8 : 0" in page
     assert "var minTop = Math.max(window.innerWidth <= 420 ? 76 : 70, titleBottom)" in page

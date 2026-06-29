@@ -684,9 +684,13 @@ body {
   .ftir-app-actions {
     width: 100%;
     margin-left: 0;
+    justify-content: flex-end;
+    flex-wrap: wrap;
   }
   .ftir-status {
-    flex: 1 1 auto;
+    flex: 1 1 100%;
+    max-width: 100%;
+    text-align: right;
   }
   .ftir-drop-band {
     padding: 7px 12px;
