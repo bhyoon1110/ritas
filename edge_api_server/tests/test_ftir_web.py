@@ -48,6 +48,7 @@ def test_ftir_workspace_contains_upload_and_editor_controls() -> None:
     assert "rist-ftir-tools-head" in page
     assert "rist-ftir-tools-opacity" in page
     assert "setToolPanelAlphaFromPointer" in page
+    assert 'gd.dispatchEvent(new CustomEvent("rist-open-edit-tool"))' in page
     assert "--rist-ftir-tool-panel-alpha" in page
     assert "@media (max-width: 1440px)" in page
     assert "z-index: 56" in page

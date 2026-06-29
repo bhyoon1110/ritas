@@ -1029,6 +1029,7 @@ _FTIR_TOOL_PANEL_SCRIPT = """
     gd.classList.toggle("rist-ftir-tools-open", open);
     button.setAttribute("aria-expanded", open ? "true" : "false");
     button.textContent = open ? "닫기" : "도구";
+    if (open) gd.dispatchEvent(new CustomEvent("rist-open-edit-tool"));
   }
 
   button.addEventListener("click", function(ev) {

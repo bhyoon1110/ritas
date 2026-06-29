@@ -2942,6 +2942,113 @@ def _image_download_js(div_id: str, formats, filename: str, scale: float) -> str
 """
 
 
+def _edit_mode_toggle_js(div_id: str) -> str:
+    """Plotly modebar에 탐색/편집 모드 전환 버튼을 추가한다."""
+    return f"""
+<style>
+#{div_id}.rist-edit-mode .nsewdrag {{
+  touch-action: none;
+}}
+#{div_id} .modebar-btn.rist-edit-mode-toggle svg {{
+  width: 1em;
+  height: 1em;
+}}
+#{div_id} .modebar-btn.rist-edit-mode-toggle.is-active svg path,
+#{div_id} .modebar-btn.rist-edit-mode-toggle.is-active svg polyline,
+#{div_id} .modebar-btn.rist-edit-mode-toggle.is-active svg line {{
+  stroke: #2563eb;
+}}
+</style>
+<script>
+(function() {{
+  var gd = document.getElementById("{div_id}");
+  if (!gd || gd._ristEditModeToggleInstalled) return;
+  gd._ristEditModeToggleInstalled = true;
+  var button = null;
+  var previousDragmode = null;
+  var previousScrollZoom = null;
+
+  function applyMode(enabled) {{
+    var nextEnabled = !!enabled;
+    var changed = !!gd._ristEditMode !== nextEnabled;
+    gd._ristEditMode = nextEnabled;
+    gd.classList.toggle("rist-edit-mode", nextEnabled);
+    if (button) {{
+      button.classList.toggle("active", nextEnabled);
+      button.classList.toggle("is-active", nextEnabled);
+      button.setAttribute("aria-pressed", nextEnabled ? "true" : "false");
+      button.setAttribute(
+        "data-title",
+        nextEnabled ? "편집 모드 끄기" : "편집 모드"
+      );
+    }}
+    if (!changed) return;
+    if (window.Plotly) {{
+      if (nextEnabled) {{
+        previousDragmode = gd.layout ? gd.layout.dragmode : previousDragmode;
+        previousScrollZoom = gd._context ? gd._context.scrollZoom : previousScrollZoom;
+        if (gd._context) gd._context.scrollZoom = false;
+        window.Plotly.relayout(gd, {{ dragmode: false }});
+      }} else {{
+        if (gd._context && previousScrollZoom !== null) {{
+          gd._context.scrollZoom = previousScrollZoom;
+        }}
+        window.Plotly.relayout(gd, {{
+          dragmode: previousDragmode == null ? "zoom" : previousDragmode
+        }});
+      }}
+    }}
+    gd.dispatchEvent(new CustomEvent("rist-edit-mode-change", {{
+      detail: {{ enabled: nextEnabled }}
+    }}));
+  }}
+
+  function toggleMode(ev) {{
+    if (ev) {{
+      ev.preventDefault();
+      ev.stopPropagation();
+    }}
+    applyMode(!gd._ristEditMode);
+  }}
+
+  function installButton() {{
+    var modebar = gd.querySelector(".modebar-group");
+    if (!modebar || button) return;
+    button = document.createElement("a");
+    button.href = "#";
+    button.className = "modebar-btn rist-edit-mode-toggle";
+    button.setAttribute("rel", "tooltip");
+    button.setAttribute("data-title", "편집 모드");
+    button.setAttribute("data-toggle", "false");
+    button.setAttribute("data-gravity", "n");
+    button.setAttribute("role", "button");
+    button.setAttribute("aria-label", "편집 모드");
+    button.setAttribute("aria-pressed", "false");
+    button.innerHTML =
+      "<svg viewBox='0 0 24 24' aria-hidden='true' focusable='false' "
+      + "fill='none' stroke='currentColor' stroke-width='2' "
+      + "stroke-linecap='round' stroke-linejoin='round'>"
+      + "<path d='M12 20h9'></path>"
+      + "<path d='M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z'></path>"
+      + "</svg>";
+    button.addEventListener("click", toggleMode, true);
+    modebar.appendChild(button);
+    applyMode(!!gd._ristEditMode);
+  }}
+
+  gd.addEventListener("rist-open-edit-tool", function() {{
+    applyMode(true);
+  }});
+  gd.addEventListener("rist-close-edit-tool", function() {{
+    applyMode(false);
+  }});
+  gd.on("plotly_afterplot", installButton);
+  installButton();
+}})();
+</script>
+"""
+
+
 def _trace_highlight_js(div_id: str, pickable=None, groups=None) -> str:
     """크로스헤어 스냅 지점을 보조키+더블클릭해 그래프를 강조·격리하는 JS 스니펫.
 
@@ -3635,6 +3742,7 @@ def shape_editor_js(div_id: str) -> str:
     var legendPanel = gd.querySelector(".rist-legend-edit-panel");
     if (legendPanel) legendPanel.style.display = "none";
     panel.style.display = "block";
+    gd.dispatchEvent(new CustomEvent("rist-open-edit-tool"));
     syncShapeEditingState();
   }}
 
@@ -4171,6 +4279,10 @@ def shape_editor_js(div_id: str) -> str:
     }} else {{
       ev._ristShapeEditorHandled = true;
       finishSelection(true);
+      if (gd._ristEditMode) {{
+        ev.preventDefault();
+        ev.stopPropagation();
+      }}
     }}
   }}, true);
 
@@ -5011,6 +5123,7 @@ def fig_to_responsive_html(
 
     if title_edit or legend_text_edit or peak_editor or shape_editor:
         html = html.replace("</body>", _plot_edit_history_js(div_id) + "</body>", 1)
+        html = html.replace("</body>", _edit_mode_toggle_js(div_id) + "</body>", 1)
 
     if trace_highlight:
         html = html.replace(

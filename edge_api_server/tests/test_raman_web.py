@@ -53,6 +53,7 @@ def test_raman_workspace_contains_upload_controls() -> None:
     assert "rist-raman-tools-opacity" in page
     assert "setToolPanelAlphaFromPointer" in page
     assert "setPanelPosition" in page
+    assert 'gd.dispatchEvent(new CustomEvent("rist-open-edit-tool"))' in page
     assert "setOpen(!gd.classList.contains" in page
     assert "gd._ristRamanRatioMode && gd.contains(ev.target)" in page
     assert "gd._ristRamanRatioMode = ratioMode" in page

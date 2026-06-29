@@ -377,6 +377,15 @@ def test_shared_peak_editor_adds_peak_controls(tmp_path) -> None:
     assert "rist_text_box:" in html
     assert "rist_text_box_text:" in html
     assert "function addObject" in html
+    assert "rist-edit-mode-toggle" in html
+    assert "편집 모드" in html
+    assert "rist-edit-mode .nsewdrag" in html
+    assert "gd._ristEditMode" in html
+    assert "previousScrollZoom" in html
+    assert "gd._context.scrollZoom = false" in html
+    assert "dragmode: false" in html
+    assert "rist-edit-mode-change" in html
+    assert "rist-open-edit-tool" in html
     assert "rist-shape-apply" not in html
     assert ">적용</button>" not in html
     assert "function deleteSelection" in html
@@ -390,6 +399,7 @@ def test_shared_peak_editor_adds_peak_controls(tmp_path) -> None:
     assert "function setPanelPosition" in html
     assert "panelHead.addEventListener(\"pointerdown\"" in html
     assert "panelHead.setPointerCapture(ev.pointerId)" in html
+    assert "gd.dispatchEvent(new CustomEvent(\"rist-open-edit-tool\"))" in html
     assert "panel.style.right = \"auto\"" in html
     assert "selection.setPointerCapture(ev.pointerId)" in html
     assert "selection.releasePointerCapture(ev.pointerId)" in html
