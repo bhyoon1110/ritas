@@ -67,16 +67,18 @@ def test_raman_workspace_contains_upload_controls() -> None:
     assert "right: 8px !important" in page
     assert "width: min(860px, calc(100% - 24px)) !important" in page
     assert "max-width: calc(100% - 24px)" in page
+    assert "var minTop = window.innerWidth <= 420 ? 76 : 70" in page
+    assert "top: clamp(top, minTop, Math.max(minTop, plotRect.height - height - 8))" in page
     assert "@media (max-width: 760px)" in page
     assert "@media (max-width: 1440px)" in page
     assert "@media (max-width: 420px)" in page
     assert "var compact = window.innerWidth <= 760" in page
     assert "var toolsOpen = gd.classList.contains(\"rist-raman-tools-open\")" in page
     assert '"height": 900' in page
-    assert '"margin.t": toolsOpen ? 145 : 82' in page
+    assert '"margin.t": toolsOpen ? 96 : 82' in page
     assert '"margin.b": 150' in page
     assert '"legend.y": -0.30' in page
-    assert '"margin.t": toolsOpen ? 120 : 90' in page
+    assert '"margin.t": toolsOpen ? 98 : 90' in page
     assert "height: calc(100vh - 248px + 360px) !important" in page
     assert "min-height: 900px" in page
     assert "rist-legend-edit-button" in page
