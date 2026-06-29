@@ -43,6 +43,7 @@ def test_ftir_workspace_contains_upload_and_editor_controls() -> None:
     assert "/api/v1/ftir/report/jobs" in page
     assert 'id="ftir-report-progress"' in page
     assert "pollReportJob" in page
+    assert "setReportDownloadLink" in page
     assert "Plotly.toImage" in page
     assert "clearButton.hidden = false" in page
     assert 'id="ftir-library-list"' in page

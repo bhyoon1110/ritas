@@ -727,6 +727,16 @@ body {
 .ftir-message.is-visible {
   display: block;
 }
+.ftir-message.is-success {
+  border-bottom-color: #bfdbfe;
+  background: #eff6ff;
+  color: #1e3a8a;
+}
+.ftir-message a {
+  color: #1d4ed8;
+  font-weight: 700;
+  text-decoration: underline;
+}
 .ftir-loading {
   position: fixed;
   inset: 170px 0 0;
@@ -1472,6 +1482,7 @@ _UPLOAD_SCRIPT = """
 
   function setMessage(text) {
     message.textContent = text || "";
+    message.classList.remove("is-success");
     message.classList.toggle("is-visible", !!text);
   }
 
@@ -1496,6 +1507,14 @@ _UPLOAD_SCRIPT = """
       return;
     }
     var pct = Math.max(0, Math.min(100, Number(job.progressPct || 0)));
+    if (job.status === "completed" || pct >= 100) {
+      reportProgress.classList.remove("is-visible");
+      reportProgressBar.style.width = "0%";
+      reportProgressLabel.textContent = job.message || "보고서가 완성되었습니다.";
+      reportProgressValue.textContent = "100%";
+      status.textContent = "보고서 생성 완료";
+      return;
+    }
     reportProgress.classList.add("is-visible");
     reportProgressBar.style.width = pct + "%";
     reportProgressValue.textContent = pct + "%";
@@ -1528,6 +1547,22 @@ _UPLOAD_SCRIPT = """
         throw new Error(job.error || job.message || "보고서 생성에 실패했습니다.");
       }
     }
+  }
+
+  function setReportDownloadLink(job) {
+    var downloadUrl = job.downloadUrl
+      || ("/api/v1/ftir/report/jobs/" + encodeURIComponent(job.jobId) + "/download");
+    var filename = job.filename || "ftir-report-package.zip";
+    message.textContent = "";
+    message.classList.add("is-visible", "is-success");
+    var label = document.createElement("span");
+    label.textContent = "보고서가 완성되었습니다. ";
+    var link = document.createElement("a");
+    link.href = downloadUrl;
+    link.download = filename;
+    link.textContent = "보고서 다운로드";
+    message.appendChild(label);
+    message.appendChild(link);
   }
 
   function selectedLibraryNames() {
@@ -2206,17 +2241,6 @@ _UPLOAD_SCRIPT = """
     };
   }
 
-  function downloadBlob(blob, filename) {
-    var url = URL.createObjectURL(blob);
-    var link = document.createElement("a");
-    link.href = url;
-    link.download = filename;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    setTimeout(function() { URL.revokeObjectURL(url); }, 1000);
-  }
-
   async function createReport() {
     if (!files.length) {
       setMessage("보고서를 생성하려면 DPT 파일을 먼저 업로드하세요.");
@@ -2254,14 +2278,8 @@ _UPLOAD_SCRIPT = """
       });
       setReportProgress(job);
       job = await pollReportJob(job.jobId);
-      var response = await fetch(job.downloadUrl || ("/api/v1/ftir/report/jobs/" + encodeURIComponent(job.jobId) + "/download"));
-      if (!response.ok) {
-        var payload = await response.json().catch(function() { return {}; });
-        throw new Error(payload.message || "보고서 다운로드에 실패했습니다.");
-      }
-      var blob = await response.blob();
-      downloadBlob(blob, job.filename || "ftir-report-package.zip");
       setReportProgress(job);
+      setReportDownloadLink(job);
       status.textContent = "보고서 생성 완료";
     } catch (err) {
       setMessage(err.message || "보고서 생성에 실패했습니다.");
@@ -2313,6 +2331,7 @@ _UPLOAD_SCRIPT = """
     files = [];
     latestAnalysisPayload = null;
     setReportProgress(null);
+    setMessage("");
     renderFiles();
     clearWorkspaceState();
     resetGraph();

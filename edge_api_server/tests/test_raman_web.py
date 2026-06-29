@@ -42,6 +42,7 @@ def test_raman_workspace_contains_upload_controls() -> None:
     assert "/api/v1/raman/report/jobs" in page
     assert 'id="raman-report-progress"' in page
     assert "pollReportJob" in page
+    assert "setReportDownloadLink" in page
     assert "Plotly.toImage" in page
     assert 'id="raman-file-list"' in page
     assert 'id="raman-drop-zone"' in page
