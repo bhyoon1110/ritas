@@ -59,7 +59,9 @@ def test_ftir_workspace_contains_upload_and_editor_controls() -> None:
     assert "right: 8px !important" in page
     assert "width: min(860px, calc(100% - 24px)) !important" in page
     assert "max-width: calc(100% - 24px)" in page
-    assert "var minTop = window.innerWidth <= 420 ? 76 : 70" in page
+    assert 'var title = gd.querySelector(".gtitle")' in page
+    assert "var titleBottom = title ? title.getBoundingClientRect().bottom - plotRect.top + 8 : 0" in page
+    assert "var minTop = Math.max(window.innerWidth <= 420 ? 76 : 70, titleBottom)" in page
     assert "top: clamp(top, minTop, Math.max(minTop, plotRect.height - height - 8))" in page
     assert "rist-plot-data-replaced" in page
     assert "rist-ftir-workspace-v1" in page
@@ -71,10 +73,9 @@ def test_ftir_workspace_contains_upload_and_editor_controls() -> None:
     assert "files = (state.files || []).map(recordFile)" in page
     assert "height: calc(100vh - 180px + 360px) !important" in page
     assert "min-height: 900px" in page
-    assert "var toolsOpen = gd.classList.contains(\"rist-ftir-tools-open\")" in page
+    assert "toolsOpen" not in page
     assert '"height": 900' in page
-    assert '"margin.t": toolsOpen ? 96 : 82' in page
-    assert '"margin.t": toolsOpen ? 90 : 82' in page
+    assert '"margin.t": 82' in page
     assert '"margin.b": 150' in page
     assert '"legend.y": -0.30' in page
     assert 'gd.addEventListener("rist-ftir-tools-toggle"' in page

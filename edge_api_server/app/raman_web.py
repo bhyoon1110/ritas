@@ -966,7 +966,9 @@ _RAMAN_TOOL_PANEL_SCRIPT = """
     var plotRect = gd.getBoundingClientRect();
     var width = toolbar.offsetWidth || 320;
     var height = toolbar.offsetHeight || 180;
-    var minTop = window.innerWidth <= 420 ? 76 : 70;
+    var title = gd.querySelector(".gtitle");
+    var titleBottom = title ? title.getBoundingClientRect().bottom - plotRect.top + 8 : 0;
+    var minTop = Math.max(window.innerWidth <= 420 ? 76 : 70, titleBottom);
     return {
       left: clamp(left, 8, Math.max(8, plotRect.width - width - 8)),
       top: clamp(top, minTop, Math.max(minTop, plotRect.height - height - 8))
@@ -1913,10 +1915,9 @@ _UPLOAD_SCRIPT = """
 
   function applyResponsiveLayout() {
     var compact = window.innerWidth <= 760;
-    var toolsOpen = gd.classList.contains("rist-raman-tools-open");
     return window.Plotly.relayout(gd, compact ? {
       "height": 900,
-      "margin.t": toolsOpen ? 96 : 82,
+      "margin.t": 82,
       "margin.r": 30,
       "margin.b": 150,
       "legend.orientation": "h",
@@ -1926,7 +1927,7 @@ _UPLOAD_SCRIPT = """
       "legend.yanchor": "top"
     } : {
       "height": 720,
-      "margin.t": toolsOpen ? 98 : 90,
+      "margin.t": 90,
       "margin.r": (gd.data || []).length ? 260 : 70,
       "margin.b": 70,
       "legend.orientation": "v",
