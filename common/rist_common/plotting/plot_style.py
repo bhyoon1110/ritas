@@ -3463,6 +3463,20 @@ def shape_editor_js(div_id: str) -> str:
   pointer-events: none;
   box-sizing: border-box;
 }}
+#{div_id} .rist-shape-interaction-layer {{
+  position: absolute;
+  z-index: 17;
+  display: none;
+  background: transparent;
+  cursor: crosshair;
+  touch-action: none;
+  user-select: none;
+  box-sizing: border-box;
+}}
+#{div_id}.rist-edit-mode .rist-shape-interaction-layer,
+#{div_id}.rist-shape-editing .rist-shape-interaction-layer {{
+  display: block;
+}}
 #{div_id} .rist-shape-selection {{
   position: absolute;
   z-index: 20;
@@ -3697,6 +3711,9 @@ def shape_editor_js(div_id: str) -> str:
   var preview = document.createElement("div");
   preview.className = "rist-shape-draw-preview";
   gd.appendChild(preview);
+  var interactionLayer = document.createElement("div");
+  interactionLayer.className = "rist-shape-interaction-layer";
+  gd.appendChild(interactionLayer);
   var selection = document.createElement("div");
   selection.className = "rist-shape-selection";
   selection.innerHTML = ["nw", "n", "ne", "e", "se", "s", "sw", "w"].map(function(dir) {{
@@ -3774,6 +3791,7 @@ def shape_editor_js(div_id: str) -> str:
       "rist-shape-editing",
       drawMode || !!selectedId || panel.style.display === "block"
     );
+    requestAnimationFrame(updateInteractionLayer);
   }}
 
   function setDrawKind(kind) {{
@@ -4188,6 +4206,15 @@ def shape_editor_js(div_id: str) -> str:
     }};
   }}
 
+  function updateInteractionLayer() {{
+    var bounds = plotClientBounds();
+    if (!bounds) return;
+    interactionLayer.style.left = bounds.left + "px";
+    interactionLayer.style.top = bounds.top + "px";
+    interactionLayer.style.width = Math.max(1, bounds.right - bounds.left) + "px";
+    interactionLayer.style.height = Math.max(1, bounds.bottom - bounds.top) + "px";
+  }}
+
   function objectAtPoint(point) {{
     var shapes = gd.layout.shapes || [];
     for (var index = shapes.length - 1; index >= 0; index -= 1) {{
@@ -4525,6 +4552,9 @@ def shape_editor_js(div_id: str) -> str:
   gd.addEventListener("rist-shape-editor-close", function() {{
     finishSelection(true);
   }});
+  gd.addEventListener("rist-edit-mode-change", function() {{
+    requestAnimationFrame(updateInteractionLayer);
+  }});
   document.addEventListener("pointerdown", function(ev) {{
     if (panel.style.display !== "block" || ev._ristShapeEditorHandled) return;
     if (panel.contains(ev.target)
@@ -4532,12 +4562,20 @@ def shape_editor_js(div_id: str) -> str:
         || selection.contains(ev.target)) return;
     finishSelection(true);
   }});
-  gd.on("plotly_afterplot", updateSelectionOverlay);
+  gd.on("plotly_afterplot", function() {{
+    updateInteractionLayer();
+    updateSelectionOverlay();
+  }});
   gd.on("plotly_relayout", function() {{
+    updateInteractionLayer();
     requestAnimationFrame(updateSelectionOverlay);
   }});
-  window.addEventListener("resize", updateSelectionOverlay);
+  window.addEventListener("resize", function() {{
+    updateInteractionLayer();
+    updateSelectionOverlay();
+  }});
   setDrawKind("rect");
+  updateInteractionLayer();
   updateBorderControl();
   updateFillControl();
   updateSelectionButtons();

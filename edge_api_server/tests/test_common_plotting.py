@@ -363,6 +363,10 @@ def test_shared_peak_editor_adds_peak_controls(tmp_path) -> None:
     assert "color: fontColorInput.value" in html
     assert "size: fontSizeValue()" in html
     assert "rist-shape-draw-preview" in html
+    assert "rist-shape-interaction-layer" in html
+    assert "function updateInteractionLayer" in html
+    assert "requestAnimationFrame(updateInteractionLayer)" in html
+    assert 'gd.addEventListener("rist-edit-mode-change"' in html
     assert "rist-shape-kind-tabs" in html
     assert "data-kind='rect'>사각형</button>" in html
     assert "data-kind='text'>텍스트 박스</button>" in html
