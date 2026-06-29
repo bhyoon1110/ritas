@@ -4516,8 +4516,9 @@ def shape_editor_js(div_id: str) -> str:
 
   gd.addEventListener("pointerdown", function(ev) {{
     if (ev.target.closest(
-      ".rist-shape-editor-panel, .rist-plot-control-row, .modebar, .rist-shape-selection"
+      ".rist-shape-editor-panel, .rist-plot-control-row, .modebar"
     )) return;
+    if (!drawMode && ev.target.closest(".rist-shape-selection")) return;
     var point = plotPoint(ev);
     if (!point) return;
     if (drawMode) {{

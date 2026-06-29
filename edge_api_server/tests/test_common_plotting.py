@@ -469,6 +469,8 @@ def test_shared_peak_editor_adds_peak_controls(tmp_path) -> None:
     assert "function updateSelectionOverlay" in html
     assert 'mode: handle ? handle.dataset.dir : "move"' in html
     assert 'gd.addEventListener("pointerdown"' in html
+    assert '".rist-shape-editor-panel, .rist-plot-control-row, .modebar"' in html
+    assert 'if (!drawMode && ev.target.closest(".rist-shape-selection")) return' in html
     assert 'gd.on("plotly_clickannotation"' in html
     assert "syncOriginalArrays" in html
     assert "gd._ristHistory.capture()" in html
