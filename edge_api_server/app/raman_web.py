@@ -30,11 +30,14 @@ from rist_common.plotting import fig_to_responsive_html, peak_sensitivity_js
 
 from .errors import ApiException, api_exception_handler, validation_exception_handler
 from .preview_report import (
+    PreviewReportJob,
     RawSeries,
     build_preview_report_package,
     cleanup_preview_report,
     decode_figure_image,
     parse_analysis_payload,
+    preview_report_job_store,
+    start_preview_report_job,
 )
 
 
@@ -145,6 +148,37 @@ def _uploaded_raman_files(files: list[UploadFile]) -> list[tuple[str, bytes]]:
             )
         uploaded.append((filename, content))
     return uploaded
+
+
+def _build_raman_raw_series(uploaded: list[tuple[str, bytes]]) -> list[RawSeries]:
+    raw_series: list[RawSeries] = []
+    used_labels: set[str] = set()
+    for filename, content in uploaded:
+        samples = load_raman_raw_samples(filename, content)
+        for sample in samples:
+            label = sample.label or Path(filename).stem
+            base = label
+            suffix = 2
+            while label.casefold() in used_labels:
+                label = f"{base} ({suffix})"
+                suffix += 1
+            used_labels.add(label.casefold())
+            raw_series.append(
+                RawSeries(
+                    label=label,
+                    axis=[float(value) for value in sample.frame["shift"].to_list()],
+                    values=[
+                        float(value)
+                        for value in sample.frame["intensity"].to_list()
+                    ],
+                )
+            )
+    return raw_series
+
+
+def _report_job_response(job: PreviewReportJob, *, prefix: str) -> dict:
+    download_url = f"{prefix}/{job.job_id}/download"
+    return job.to_dict(download_url=download_url)
 
 
 def plotly_asset_path() -> Path:
@@ -678,6 +712,35 @@ body { overflow-x: hidden; }
   font-weight: 700;
 }
 .raman-loading.is-visible { display: flex; }
+.raman-report-progress {
+  display: none;
+  padding: 8px 22px 10px;
+  border-bottom: 1px solid #d9e2ec;
+  background: #f8fafc;
+  color: #243b53;
+  font-size: 12px;
+}
+.raman-report-progress.is-visible { display: block; }
+.raman-report-progress-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+.raman-report-progress-track {
+  overflow: hidden;
+  height: 6px;
+  border-radius: 999px;
+  background: #d9e2ec;
+}
+.raman-report-progress-bar {
+  width: 0%;
+  height: 100%;
+  border-radius: inherit;
+  background: #2f80ed;
+  transition: width 220ms ease;
+}
 #raman-plot {
   min-height: 540px;
   height: calc(100vh - 170px) !important;
@@ -951,6 +1014,15 @@ _PAGE_SHELL = """
   <div class="raman-file-list" id="raman-file-list"></div>
 </section>
 <div class="raman-message" id="raman-message"></div>
+<div class="raman-report-progress" id="raman-report-progress" aria-live="polite">
+  <div class="raman-report-progress-row">
+    <span id="raman-report-progress-label">보고서 생성 대기</span>
+    <span id="raman-report-progress-value">0%</span>
+  </div>
+  <div class="raman-report-progress-track">
+    <div class="raman-report-progress-bar" id="raman-report-progress-bar"></div>
+  </div>
+</div>
 <div class="raman-loading" id="raman-loading">Raman 전처리 중...</div>
 <div class="raman-library-modal" id="raman-library-modal" role="dialog"
      aria-modal="true" aria-labelledby="raman-library-dialog-title">
@@ -1783,6 +1855,10 @@ _UPLOAD_SCRIPT = """
   var status = document.getElementById("raman-status");
   var message = document.getElementById("raman-message");
   var loading = document.getElementById("raman-loading");
+  var reportProgress = document.getElementById("raman-report-progress");
+  var reportProgressLabel = document.getElementById("raman-report-progress-label");
+  var reportProgressValue = document.getElementById("raman-report-progress-value");
+  var reportProgressBar = document.getElementById("raman-report-progress-bar");
   var clearButton = document.getElementById("raman-clear");
   var reportButton = document.getElementById("raman-report");
   var libraryInput = document.getElementById("raman-library-input");
@@ -1801,7 +1877,8 @@ _UPLOAD_SCRIPT = """
       || !loading || !clearButton || !libraryInput || !libraryList
       || !libraryFilter || !libraryNew || !libraryModal || !libraryDialogClose
       || !libraryRowAdd || !libraryDialogCancel || !libraryDialogSave
-      || !reportButton) return;
+      || !reportButton || !reportProgress || !reportProgressLabel
+      || !reportProgressValue || !reportProgressBar) return;
 
   var files = [];
   var latestAnalysisPayload = null;
@@ -2024,6 +2101,49 @@ _UPLOAD_SCRIPT = """
     libraryList.querySelectorAll("input, button").forEach(function(control) {
       control.disabled = busy;
     });
+  }
+
+  function setReportProgress(job) {
+    if (!job) {
+      reportProgress.classList.remove("is-visible");
+      reportProgressBar.style.width = "0%";
+      reportProgressLabel.textContent = "보고서 생성 대기";
+      reportProgressValue.textContent = "0%";
+      return;
+    }
+    var pct = Math.max(0, Math.min(100, Number(job.progressPct || 0)));
+    reportProgress.classList.add("is-visible");
+    reportProgressBar.style.width = pct + "%";
+    reportProgressValue.textContent = pct + "%";
+    reportProgressLabel.textContent = job.message || "보고서 생성 중입니다.";
+    status.textContent = job.status === "completed"
+      ? "보고서 생성 완료"
+      : "보고서 생성 중 · " + (job.stage || "대기");
+  }
+
+  function wait(ms) {
+    return new Promise(function(resolve) { setTimeout(resolve, ms); });
+  }
+
+  async function fetchJson(url, options) {
+    var response = await fetch(url, options || {});
+    var payload = await response.json().catch(function() { return {}; });
+    if (!response.ok) {
+      throw new Error(payload.message || payload.error || "요청에 실패했습니다.");
+    }
+    return payload;
+  }
+
+  async function pollReportJob(jobId) {
+    for (;;) {
+      await wait(900);
+      var job = await fetchJson("/api/v1/raman/report/jobs/" + encodeURIComponent(jobId));
+      setReportProgress(job);
+      if (job.status === "completed") return job;
+      if (job.status === "failed") {
+        throw new Error(job.error || job.message || "보고서 생성에 실패했습니다.");
+      }
+    }
   }
 
   function updateIdleStatus() {
@@ -2439,6 +2559,7 @@ _UPLOAD_SCRIPT = """
     }
     var form = new FormData();
     form.append("file", file, file.name);
+    loading.textContent = "라이브러리 업로드 중...";
     setBusy(true);
     fetch("/api/v1/raman/assignment-libraries", {
       method: "POST",
@@ -2455,6 +2576,7 @@ _UPLOAD_SCRIPT = """
       setMessage(err.message);
     }).finally(function() {
       setBusy(false);
+      loading.textContent = "Raman 전처리 중...";
     });
   }
 
@@ -2507,6 +2629,7 @@ _UPLOAD_SCRIPT = """
       resetPlot();
       return;
     }
+    loading.textContent = "Raman 전처리 중...";
     setBusy(true);
     setMessage("");
     try {
@@ -2575,8 +2698,15 @@ _UPLOAD_SCRIPT = """
       await analyze();
       if (!latestAnalysisPayload) return;
     }
+    loading.textContent = "보고서 생성 중...";
     setBusy(true);
     setMessage("");
+    setReportProgress({
+      status: "running",
+      stage: "capture",
+      progressPct: 5,
+      message: "현재 그래프 화면을 캡처하는 중입니다."
+    });
     status.textContent = "보고서 생성 중";
     try {
       var figureImage = await window.Plotly.toImage(gd, {
@@ -2590,22 +2720,27 @@ _UPLOAD_SCRIPT = """
       form.append("analysis_json", JSON.stringify(latestAnalysisPayload));
       form.append("figure_json", JSON.stringify(currentFigurePayload()));
       form.append("figure_image", figureImage);
-      var response = await fetch("/api/v1/raman/report", {
+      var job = await fetchJson("/api/v1/raman/report/jobs", {
         method: "POST",
         body: form
       });
+      setReportProgress(job);
+      job = await pollReportJob(job.jobId);
+      var response = await fetch(job.downloadUrl || ("/api/v1/raman/report/jobs/" + encodeURIComponent(job.jobId) + "/download"));
       if (!response.ok) {
         var payload = await response.json().catch(function() { return {}; });
-        throw new Error(payload.message || "보고서 생성에 실패했습니다.");
+        throw new Error(payload.message || "보고서 다운로드에 실패했습니다.");
       }
       var blob = await response.blob();
-      downloadBlob(blob, "raman-report-package.zip");
+      downloadBlob(blob, job.filename || "raman-report-package.zip");
+      setReportProgress(job);
       status.textContent = "보고서 생성 완료";
     } catch (err) {
       setMessage(err.message || "보고서 생성에 실패했습니다.");
       status.textContent = "보고서 생성 실패";
     } finally {
       setBusy(false);
+      loading.textContent = "Raman 전처리 중...";
     }
   }
 
@@ -2676,6 +2811,7 @@ _UPLOAD_SCRIPT = """
   });
   clearButton.addEventListener("click", function() {
     latestAnalysisPayload = null;
+    setReportProgress(null);
     clearWorkspaceState();
     resetPlot();
   });
@@ -2902,28 +3038,7 @@ def create_raman_preview_report(
     try:
         analysis_payload = parse_analysis_payload(analysis_json, figure_json)
         image_bytes = decode_figure_image(figure_image)
-        raw_series: list[RawSeries] = []
-        used_labels: set[str] = set()
-        for filename, content in uploaded:
-            samples = load_raman_raw_samples(filename, content)
-            for sample in samples:
-                label = sample.label or Path(filename).stem
-                base = label
-                suffix = 2
-                while label.casefold() in used_labels:
-                    label = f"{base} ({suffix})"
-                    suffix += 1
-                used_labels.add(label.casefold())
-                raw_series.append(
-                    RawSeries(
-                        label=label,
-                        axis=[float(value) for value in sample.frame["shift"].to_list()],
-                        values=[
-                            float(value)
-                            for value in sample.frame["intensity"].to_list()
-                        ],
-                    )
-                )
+        raw_series = _build_raman_raw_series(uploaded)
         tmp_root, package = build_preview_report_package(
             experiment_code="RAMAN",
             analysis_payload=analysis_payload,
@@ -2941,6 +3056,71 @@ def create_raman_preview_report(
         package,
         media_type="application/zip",
         filename="raman-report-package.zip",
+    )
+
+
+@router.post("/api/v1/raman/report/jobs", status_code=202, tags=["raman"])
+def create_raman_preview_report_job(
+    request: Request,
+    files: list[UploadFile] = File(...),
+    analysis_json: str = Form(...),
+    figure_json: str = Form(default=""),
+    figure_image: str = Form(...),
+) -> dict:
+    uploaded = _uploaded_raman_files(files)
+    try:
+        analysis_payload = parse_analysis_payload(analysis_json, figure_json)
+        image_bytes = decode_figure_image(figure_image)
+    except ValueError as exc:
+        raise ApiException(400, "RAMAN_REPORT_INVALID_PAYLOAD", str(exc)) from exc
+
+    store = preview_report_job_store(request.app)
+    job = store.create(filename="raman-report-package.zip")
+
+    def raw_series_factory() -> list[RawSeries]:
+        return _build_raman_raw_series(uploaded)
+
+    start_preview_report_job(
+        store,
+        job.job_id,
+        experiment_code="RAMAN",
+        analysis_payload=analysis_payload,
+        raw_series_factory=raw_series_factory,
+        figure_image=image_bytes,
+        settings=getattr(request.app.state, "settings", None),
+    )
+    return _report_job_response(job, prefix="/api/v1/raman/report/jobs")
+
+
+@router.get("/api/v1/raman/report/jobs/{job_id}", tags=["raman"])
+def get_raman_preview_report_job(request: Request, job_id: str) -> dict:
+    store = preview_report_job_store(request.app)
+    job = store.get(job_id)
+    if job is None:
+        raise ApiException(404, "RAMAN_REPORT_JOB_NOT_FOUND", "보고서 작업을 찾을 수 없습니다.")
+    return _report_job_response(job, prefix="/api/v1/raman/report/jobs")
+
+
+@router.get("/api/v1/raman/report/jobs/{job_id}/download", tags=["raman"])
+def download_raman_preview_report_job(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    job_id: str,
+) -> FileResponse:
+    store = preview_report_job_store(request.app)
+    job = store.get(job_id)
+    if job is None:
+        raise ApiException(404, "RAMAN_REPORT_JOB_NOT_FOUND", "보고서 작업을 찾을 수 없습니다.")
+    if job.status != "completed" or job.package_path is None:
+        raise ApiException(409, "RAMAN_REPORT_JOB_NOT_READY", "보고서가 아직 완성되지 않았습니다.")
+    if not job.package_path.is_file():
+        store.remove(job_id)
+        raise ApiException(410, "RAMAN_REPORT_PACKAGE_EXPIRED", "보고서 파일이 만료되었습니다.")
+    background_tasks.add_task(store.remove, job_id)
+    return FileResponse(
+        job.package_path,
+        media_type="application/zip",
+        filename=job.filename,
     )
 
 

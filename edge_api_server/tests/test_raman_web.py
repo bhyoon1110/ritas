@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from io import BytesIO
 from pathlib import Path
+import time
 import zipfile
 
 from fastapi.testclient import TestClient
@@ -38,7 +39,9 @@ def test_raman_workspace_contains_upload_controls() -> None:
 
     assert 'id="raman-file-input"' in page
     assert 'id="raman-report"' in page
-    assert "/api/v1/raman/report" in page
+    assert "/api/v1/raman/report/jobs" in page
+    assert 'id="raman-report-progress"' in page
+    assert "pollReportJob" in page
     assert "Plotly.toImage" in page
     assert 'id="raman-file-list"' in page
     assert 'id="raman-drop-zone"' in page
@@ -318,6 +321,49 @@ def test_raman_report_api_builds_package_with_graph_and_raw_xlsx() -> None:
             "current_graph.png",
         } <= names
         assert "report.json" not in names
+
+
+def test_raman_report_job_api_tracks_progress_and_downloads_package() -> None:
+    content = MULTI_SAMPLE_TXT.read_bytes()
+    with TestClient(create_raman_preview_app()) as client:
+        analysis_response = client.post(
+            "/api/v1/raman/analyze",
+            files={"files": (MULTI_SAMPLE_TXT.name, content, "text/plain")},
+            data={"sensitivity": "25"},
+        )
+        assert analysis_response.status_code == 200
+        analysis = analysis_response.json()
+        job_response = client.post(
+            "/api/v1/raman/report/jobs",
+            files={"files": (MULTI_SAMPLE_TXT.name, content, "text/plain")},
+            data={
+                "analysis_json": json.dumps(analysis),
+                "figure_json": json.dumps(analysis["figure"]),
+                "figure_image": TINY_PNG_DATA_URL,
+            },
+        )
+        assert job_response.status_code == 202
+        job = job_response.json()
+        assert job["status"] in {"queued", "running", "completed"}
+        assert job["progressPct"] >= 0
+
+        for _ in range(100):
+            status_response = client.get(f"/api/v1/raman/report/jobs/{job['jobId']}")
+            assert status_response.status_code == 200
+            job = status_response.json()
+            if job["status"] == "completed":
+                break
+            time.sleep(0.03)
+
+        assert job["status"] == "completed"
+        assert job["progressPct"] == 100
+        assert job["downloadUrl"].endswith(f"/{job['jobId']}/download")
+        download_response = client.get(job["downloadUrl"])
+
+    assert download_response.status_code == 200
+    with zipfile.ZipFile(BytesIO(download_response.content)) as archive:
+        names = set(archive.namelist())
+    assert {"report.pptx", "report.html", "raw_data.xlsx", "current_graph.png"} <= names
 
 
 def test_raman_assignment_library_api_defaults_and_assigns_sample() -> None:

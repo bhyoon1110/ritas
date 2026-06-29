@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import math
+import time
 from io import BytesIO
 import zipfile
 from pathlib import Path
@@ -39,7 +40,9 @@ def test_ftir_workspace_contains_upload_and_editor_controls() -> None:
     assert 'id="ftir-drop-zone"' in page
     assert '<button type="button" class="ftir-clear-button" id="ftir-clear">초기화</button>' in page
     assert 'id="ftir-report"' in page
-    assert "/api/v1/ftir/report" in page
+    assert "/api/v1/ftir/report/jobs" in page
+    assert 'id="ftir-report-progress"' in page
+    assert "pollReportJob" in page
     assert "Plotly.toImage" in page
     assert "clearButton.hidden = false" in page
     assert 'id="ftir-library-list"' in page
@@ -155,6 +158,48 @@ def test_ftir_report_api_builds_package_with_graph_and_raw_xlsx(tmp_path: Path) 
             "current_graph.png",
         } <= names
         assert "report.json" not in names
+
+
+def test_ftir_report_job_api_tracks_progress_and_downloads_package(tmp_path: Path) -> None:
+    with TestClient(create_ftir_preview_app(tmp_path / "libraries")) as client:
+        analysis_response = client.post(
+            "/api/v1/ftir/analyze",
+            files={"files": ("sample-a.dpt", synthetic_dpt(), "application/octet-stream")},
+            data={"sensitivity": "25"},
+        )
+        assert analysis_response.status_code == 200
+        analysis = analysis_response.json()
+        job_response = client.post(
+            "/api/v1/ftir/report/jobs",
+            files={"files": ("sample-a.dpt", synthetic_dpt(), "application/octet-stream")},
+            data={
+                "analysis_json": json.dumps(analysis),
+                "figure_json": json.dumps(analysis["figure"]),
+                "figure_image": TINY_PNG_DATA_URL,
+            },
+        )
+        assert job_response.status_code == 202
+        job = job_response.json()
+        assert job["status"] in {"queued", "running", "completed"}
+        assert job["progressPct"] >= 0
+
+        for _ in range(100):
+            status_response = client.get(f"/api/v1/ftir/report/jobs/{job['jobId']}")
+            assert status_response.status_code == 200
+            job = status_response.json()
+            if job["status"] == "completed":
+                break
+            time.sleep(0.03)
+
+        assert job["status"] == "completed"
+        assert job["progressPct"] == 100
+        assert job["downloadUrl"].endswith(f"/{job['jobId']}/download")
+        download_response = client.get(job["downloadUrl"])
+
+    assert download_response.status_code == 200
+    with zipfile.ZipFile(BytesIO(download_response.content)) as archive:
+        names = set(archive.namelist())
+    assert {"report.pptx", "report.html", "raw_data.xlsx", "current_graph.png"} <= names
 
 
 def test_ftir_analysis_api_rejects_non_dpt(tmp_path: Path) -> None:
