@@ -43,6 +43,9 @@ def test_raman_workspace_contains_upload_controls() -> None:
     assert 'id="raman-report-progress"' in page
     assert "pollReportJob" in page
     assert "setReportDownloadLink" in page
+    assert "MESSAGE_AUTO_HIDE_MS = 5000" in page
+    assert "clearMessageTimer" in page
+    assert "raman-message-close" in page
     assert "Plotly.toImage" in page
     assert 'id="raman-file-list"' in page
     assert 'id="raman-drop-zone"' in page

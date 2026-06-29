@@ -716,8 +716,9 @@ body {
 }
 .ftir-message {
   display: none;
+  position: relative;
   min-height: 32px;
-  padding: 8px 22px;
+  padding: 8px 54px 8px 22px;
   border-bottom: 1px solid #fecaca;
   background: #fef2f2;
   color: #b42318;
@@ -736,6 +737,25 @@ body {
   color: #1d4ed8;
   font-weight: 700;
   text-decoration: underline;
+}
+.ftir-message-close {
+  position: absolute;
+  top: 4px;
+  right: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: 18px/1 Arial, sans-serif;
+}
+.ftir-message-close:hover {
+  background: rgba(30, 58, 138, 0.1);
 }
 .ftir-loading {
   position: fixed;
@@ -1299,6 +1319,8 @@ _UPLOAD_SCRIPT = """
   var libraryRowAdd = document.getElementById("ftir-library-row-add");
   var libraryDialogCancel = document.getElementById("ftir-library-dialog-cancel");
   var libraryDialogSave = document.getElementById("ftir-library-dialog-save");
+  var MESSAGE_AUTO_HIDE_MS = 5000;
+  var messageTimer = null;
   if (!gd || !input || !dropZone || !libraryInput || !libraryList
       || !libraryFilter
       || !libraryNew || !libraryModal || !libraryDialogClose
@@ -1480,10 +1502,25 @@ _UPLOAD_SCRIPT = """
     return [file.name, file.size, file.lastModified].join(":");
   }
 
+  function clearMessageTimer() {
+    if (messageTimer) {
+      window.clearTimeout(messageTimer);
+      messageTimer = null;
+    }
+  }
+
   function setMessage(text) {
+    clearMessageTimer();
     message.textContent = text || "";
     message.classList.remove("is-success");
     message.classList.toggle("is-visible", !!text);
+    if (text) {
+      messageTimer = window.setTimeout(function() {
+        if (!message.classList.contains("is-success")) {
+          setMessage("");
+        }
+      }, MESSAGE_AUTO_HIDE_MS);
+    }
   }
 
   function setBusy(busy) {
@@ -1553,6 +1590,7 @@ _UPLOAD_SCRIPT = """
     var downloadUrl = job.downloadUrl
       || ("/api/v1/ftir/report/jobs/" + encodeURIComponent(job.jobId) + "/download");
     var filename = job.filename || "ftir-report-package.zip";
+    clearMessageTimer();
     message.textContent = "";
     message.classList.add("is-visible", "is-success");
     var label = document.createElement("span");
@@ -1561,8 +1599,17 @@ _UPLOAD_SCRIPT = """
     link.href = downloadUrl;
     link.download = filename;
     link.textContent = "보고서 다운로드";
+    var close = document.createElement("button");
+    close.type = "button";
+    close.className = "ftir-message-close";
+    close.setAttribute("aria-label", "알림 닫기");
+    close.textContent = "×";
+    close.addEventListener("click", function() {
+      setMessage("");
+    });
     message.appendChild(label);
     message.appendChild(link);
+    message.appendChild(close);
   }
 
   function selectedLibraryNames() {

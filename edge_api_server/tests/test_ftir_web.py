@@ -44,6 +44,9 @@ def test_ftir_workspace_contains_upload_and_editor_controls() -> None:
     assert 'id="ftir-report-progress"' in page
     assert "pollReportJob" in page
     assert "setReportDownloadLink" in page
+    assert "MESSAGE_AUTO_HIDE_MS = 5000" in page
+    assert "clearMessageTimer" in page
+    assert "ftir-message-close" in page
     assert "Plotly.toImage" in page
     assert "clearButton.hidden = false" in page
     assert 'id="ftir-library-list"' in page
