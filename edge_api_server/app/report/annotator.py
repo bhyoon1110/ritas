@@ -118,6 +118,10 @@ def annotate(
         value = parsed.get(key)
         if isinstance(value, str) and value.strip():
             slots[key] = value.strip()
+        elif isinstance(value, list):
+            lines = [str(item).strip() for item in value if str(item).strip()]
+            if lines:
+                slots[key] = "\n".join(lines)
     if not slots:
         raise LlmError(
             "LLM_RESPONSE_EMPTY",

@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import json
 import zipfile
 
 from app.models import ReportOptions
-from app.report.builders import FtirReportBuilder, get_builder
-from app.report.model import ReportDocument
+from app.config import Settings
+from app.report.builders import FtirReportBuilder, RamanReportBuilder, get_builder
+from app.report.model import ReportDocument, ReportFigure
 from app.report.package import build_report_package
+from app.report.pipeline import generate_report
 from app.report.renderers import render_report_formats, render_requested_report
 
 
@@ -67,6 +70,11 @@ def test_get_builder_routes_ftir() -> None:
     assert isinstance(get_builder("IR"), FtirReportBuilder)
 
 
+def test_get_builder_routes_raman() -> None:
+    assert isinstance(get_builder("RAMAN"), RamanReportBuilder)
+    assert isinstance(get_builder("RIN"), RamanReportBuilder)
+
+
 def test_ftir_builder_maps_verdict_to_fixed_sections() -> None:
     analysis = [{"relativePath": "verdict.json", "data": _verdict()}]
     document = FtirReportBuilder().build(_job(), analysis)
@@ -79,6 +87,9 @@ def test_ftir_builder_maps_verdict_to_fixed_sections() -> None:
         "library_match",
         "functional_groups",
         "summary",
+        "key_findings",
+        "interpretation",
+        "qc_notes",
         "narrative",
         "limitations",
         "caption",
@@ -98,7 +109,14 @@ def test_ftir_builder_maps_verdict_to_fixed_sections() -> None:
     assert any("임계값" in bullet for bullet in limitations.bullets)
 
     # LLM 슬롯은 규칙 기본 문안으로 미리 채워져 있어야 한다.
-    for slot_id in ("summary", "narrative", "caption"):
+    for slot_id in (
+        "summary",
+        "key_findings",
+        "interpretation",
+        "qc_notes",
+        "narrative",
+        "caption",
+    ):
         section = document.section(slot_id)
         assert section is not None
         assert section.source == "rule"
@@ -110,10 +128,19 @@ def test_ftir_llm_slots_spec_contains_facts() -> None:
     spec = FtirReportBuilder().llm_slots(_job(), analysis)
 
     assert spec is not None
-    assert spec.requested_slots == ["summary", "narrative", "caption"]
+    assert spec.requested_slots == [
+        "summary",
+        "key_findings",
+        "interpretation",
+        "qc_notes",
+        "narrative",
+        "caption",
+        "email_subject",
+        "email_body",
+    ]
     assert spec.facts["sample"] == "5_Melamine Cyanurate.0"
     assert spec.facts["top_candidate"]["material"] == "m-Xylene"
-    assert set(spec.fallback) == {"summary", "narrative", "caption"}
+    assert {"summary", "narrative", "caption", "email_body"} <= set(spec.fallback)
 
 
 def test_apply_llm_slots_replaces_rule_text() -> None:
@@ -157,6 +184,9 @@ def test_markdown_table_cells_are_escaped() -> None:
 def test_pptx_renderer_creates_openxml_package(tmp_path) -> None:
     analysis = [{"relativePath": "verdict.json", "data": _verdict()}]
     document = FtirReportBuilder().build(_job(), analysis)
+    image = tmp_path / "spectrum.png"
+    image.write_bytes(b"\x89PNG\r\n\x1a\n")
+    document.figures.append(ReportFigure("figure-1", "Spectrum", str(image)))
 
     rendered = render_requested_report(document, tmp_path, "PPTX")
 
@@ -166,6 +196,7 @@ def test_pptx_renderer_creates_openxml_package(tmp_path) -> None:
         assert "[Content_Types].xml" in names
         assert "ppt/presentation.xml" in names
         assert "ppt/slides/slide1.xml" in names
+        assert "ppt/media/image1.png" in names
 
 
 def test_pdf_renderer_creates_pdf_file(tmp_path) -> None:
@@ -191,13 +222,101 @@ def test_report_package_excludes_internal_json_and_optionally_includes_raw(tmp_p
     (report_dir / "report.json").write_text("internal", encoding="utf-8")
 
     rendered = render_report_formats(document, report_dir, ["HTML", "PPTX"])
+    (report_dir / "email_body.md").write_text("메일 본문", encoding="utf-8")
     package = build_report_package(report_dir, input_dir, include_raw_files=True)
 
     assert {path.name for path in rendered} == {"report.html", "report.pptx"}
     with zipfile.ZipFile(package) as archive:
         names = set(archive.namelist())
-    assert {"report.html", "report.pptx", "raw/raw.csv"} <= names
+    assert {"report.html", "report.pptx", "email_body.md", "raw/raw.csv"} <= names
     assert "report.json" not in names
+
+
+def test_generate_report_writes_email_body_and_image_slide(tmp_path) -> None:
+    settings = Settings(storage_root=tmp_path)
+    job = {
+        **_job(),
+        "root_relative_path": "jobs/job-123",
+        "report_options_json": '{"reportFormats":["PPTX"],"includeRawFiles":false}',
+    }
+    job_root = tmp_path / job["root_relative_path"]
+    processed = job_root / "processed"
+    processed.mkdir(parents=True)
+    (processed / "verdict.json").write_text(
+        json.dumps(_verdict(), ensure_ascii=False),
+        encoding="utf-8",
+    )
+    (processed / "spectrum.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+
+    document = generate_report(
+        settings,
+        job,
+        llm_client=None,
+        generated_at="2026-06-18T10:00:00+09:00",
+    )
+
+    report_dir = job_root / "report"
+    assert document.llm_used is False
+    assert (report_dir / "email_body.md").exists()
+    assert "FT-IR 분석 보고서" in (report_dir / "email_body.md").read_text(encoding="utf-8")
+    with zipfile.ZipFile(report_dir / "report.pptx") as archive:
+        names = set(archive.namelist())
+    assert "ppt/media/image1.png" in names
+    with zipfile.ZipFile(report_dir / "report-package.zip") as archive:
+        package_names = set(archive.namelist())
+    assert "email_body.md" in package_names
+
+
+def test_raman_builder_maps_web_analysis_payload() -> None:
+    payload = {
+        "samples": [
+            {"fileName": "LiOH.txt", "label": "LiOH_1", "pointCount": 1200, "peakCount": 2}
+        ],
+        "settings": {
+            "sensitivity": 25,
+            "assignmentLibraries": [
+                {"id": "general-raman", "name": "General Raman", "assignmentCount": 10}
+            ],
+        },
+        "figure": {
+            "data": [
+                {
+                    "name": "LiOH_1",
+                    "meta": {
+                        "rist_sample_group": "sample:0",
+                        "rist_sample_parent": True,
+                    },
+                },
+                {
+                    "name": "LiOH Li-O stretching",
+                    "meta": {
+                        "rist_peak": {
+                            "x": 518.0,
+                            "label": "LiOH Li-O stretching",
+                            "sample_group": "sample:0",
+                            "assignments": [
+                                {
+                                    "library_id": "general-raman",
+                                    "library_name": "General Raman",
+                                }
+                            ],
+                        }
+                    },
+                },
+            ]
+        },
+    }
+    analysis = [{"relativePath": "raman-analysis.json", "data": payload}]
+    document = RamanReportBuilder().build({**_job(), "experiment_code": "RAMAN"}, analysis)
+
+    assert document.title == "Raman 분석 보고서"
+    assert document.section("raman_samples") is not None
+    peaks = document.section("raman_peaks")
+    assert peaks is not None and peaks.table is not None
+    assert peaks.table.rows[0][1] == "518.0 cm-1"
+    spec = RamanReportBuilder().llm_slots({**_job(), "experiment_code": "RAMAN"}, analysis)
+    assert spec is not None
+    assert spec.facts["peak_assignments"][0][2] == "LiOH Li-O stretching"
 
 
 def test_report_options_support_legacy_and_multiple_formats() -> None:

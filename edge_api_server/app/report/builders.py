@@ -47,6 +47,59 @@ def _select_verdict(analysis: list[AnalysisItem]) -> dict[str, Any] | None:
     return None
 
 
+def _as_list(value: Any) -> list[Any]:
+    return value if isinstance(value, list) else []
+
+
+def _figure_peak_rows(payload: dict[str, Any], *, x_label: str) -> list[list[str]]:
+    figure = payload.get("figure")
+    if not isinstance(figure, dict):
+        return []
+    data = _as_list(figure.get("data"))
+    sample_names: dict[str, str] = {}
+    rows: list[list[str]] = []
+    for trace in data:
+        if not isinstance(trace, dict):
+            continue
+        meta = trace.get("meta")
+        if not isinstance(meta, dict):
+            continue
+        group = meta.get("rist_sample_group")
+        if group and meta.get("rist_sample_parent"):
+            sample_names[str(group)] = str(trace.get("name") or group)
+    for trace in data:
+        if not isinstance(trace, dict):
+            continue
+        meta = trace.get("meta")
+        peak = meta.get("rist_peak") if isinstance(meta, dict) else None
+        if not isinstance(peak, dict):
+            continue
+        assignments = _as_list(peak.get("assignments"))
+        libraries = []
+        for item in assignments:
+            if not isinstance(item, dict):
+                continue
+            libraries.append(str(item.get("library_name") or item.get("library_id") or ""))
+        libraries = [item for item in dict.fromkeys(libraries) if item]
+        x_value = peak.get("x")
+        try:
+            x_text = f"{float(x_value):.1f}"
+        except (TypeError, ValueError):
+            x_text = str(x_value or "-")
+        sample = sample_names.get(str(peak.get("sample_group")), str(peak.get("sample_group") or "-"))
+        rows.append(
+            [
+                sample,
+                f"{x_text} {x_label}",
+                str(peak.get("label") or trace.get("name") or "-").replace("<br>", " / "),
+                ", ".join(libraries) or "-",
+            ]
+        )
+        if len(rows) >= 18:
+            break
+    return rows
+
+
 class ReportBuilder:
     """보고서 작성기 베이스."""
 
@@ -90,10 +143,15 @@ class FtirReportBuilder(ReportBuilder):
         "수치를 재계산하거나 제공되지 않은 물질, 피크, 작용기를 추측하지 마세요.\n"
         "라이브러리 점수가 임계값 미만이면 '라이브러리 기반 확정 동정은 아님'으로 표현하세요.\n"
         "물질명을 단정하지 말고 '가능성', '시사함', '검토 필요' 중심으로 표현하세요.\n"
-        "출력은 반드시 JSON 객체 하나로만, 키는 summary/narrative/caption 입니다.\n"
+        "출력은 반드시 JSON 객체 하나로만 응답하세요.\n"
         "- summary: 고객 보고서용 요약 정확히 3문장\n"
+        "- key_findings: 핵심 관찰사항 3~5개를 짧은 문장으로 작성\n"
+        "- interpretation: 피크/라이브러리 근거를 연결한 해석(4문장 이내)\n"
+        "- qc_notes: 해석 한계, 품질 확인, 추가 검토 사항(3문장 이내)\n"
         "- narrative: 주요 근거와 해석에 대한 보조 설명(4문장 이내)\n"
-        "- caption: 발표자료용 한 문장 캡션"
+        "- caption: 발표자료용 한 문장 캡션\n"
+        "- email_subject: 메일 제목 1줄\n"
+        "- email_body: 첨부 보고서 안내 메일 본문. Markdown 형식으로 8문장 이내"
     )
 
     def build(
@@ -121,6 +179,15 @@ class FtirReportBuilder(ReportBuilder):
         fallback = self._fallback_texts(verdict)
         document.sections.append(
             ReportSection("summary", "고객 보고서용 요약", paragraphs=[fallback["summary"]])
+        )
+        document.sections.append(
+            ReportSection("key_findings", "핵심 관찰사항", paragraphs=[fallback["key_findings"]])
+        )
+        document.sections.append(
+            ReportSection("interpretation", "피크 해석", paragraphs=[fallback["interpretation"]])
+        )
+        document.sections.append(
+            ReportSection("qc_notes", "품질 확인 및 검토사항", paragraphs=[fallback["qc_notes"]])
         )
         document.sections.append(
             ReportSection("narrative", "보조 설명", paragraphs=[fallback["narrative"]])
@@ -224,12 +291,41 @@ class FtirReportBuilder(ReportBuilder):
             f"라이브러리 최상위 후보는 '{material}'(종합 {composite})로 나타났습니다. "
             "확정 동정이 아니므로 결과는 참고용으로 해석해야 합니다."
         )
+        key_findings = (
+            f"신뢰도 판정은 {tier}입니다. "
+            f"최상위 라이브러리 후보는 {material}이며 종합 점수는 {composite}입니다. "
+            "작용기 소견과 라이브러리 매칭 결과를 함께 검토해야 합니다."
+        )
+        interpretation = (
+            "검출 피크와 작용기 후보를 라이브러리 매칭 결과와 대조한 해석입니다. "
+            "제시된 후보는 자동 분석 결과이며 분석자 검토 전 확정 동정으로 사용하지 않습니다."
+        )
+        qc_notes = (
+            "정량 분석, 혼합물 분리, 단일 피크 기반 확정 동정은 보고 범위에 포함하지 않습니다. "
+            "필요 시 원시 스펙트럼, 반복 측정, 보완 분석으로 확인하십시오."
+        )
         narrative = (
             "규칙 기반 작용기 소견과 라이브러리 매칭 점수를 종합한 결과입니다. "
             "구체적 근거는 작용기 소견 및 라이브러리 매칭 표를 참고하십시오."
         )
         caption = f"{sample} FT-IR 분석 — 최상위 후보 {material}(참고용)"
-        return {"summary": summary, "narrative": narrative, "caption": caption}
+        email_subject = f"[RIST] {sample} FT-IR 분석 보고서"
+        email_body = (
+            f"{sample} 시료의 FT-IR 분석 보고서를 첨부드립니다.\n\n"
+            f"- 신뢰도 판정: {tier}\n"
+            f"- 최상위 후보: {material} (종합 {composite})\n"
+            "- 본 결과는 자동 분석 기반 참고 소견이며, 확정 동정은 분석자 검토 후 판단해 주십시오."
+        )
+        return {
+            "summary": summary,
+            "key_findings": key_findings,
+            "interpretation": interpretation,
+            "qc_notes": qc_notes,
+            "narrative": narrative,
+            "caption": caption,
+            "email_subject": email_subject,
+            "email_body": email_body,
+        }
 
     def llm_slots(
         self, job: dict[str, Any], analysis: list[AnalysisItem]
@@ -261,8 +357,227 @@ class FtirReportBuilder(ReportBuilder):
         return LlmSlotSpec(
             system_prompt=self.SYSTEM_PROMPT,
             facts=facts,
-            requested_slots=["summary", "narrative", "caption"],
+            requested_slots=[
+                "summary",
+                "key_findings",
+                "interpretation",
+                "qc_notes",
+                "narrative",
+                "caption",
+                "email_subject",
+                "email_body",
+            ],
             fallback=self._fallback_texts(verdict),
+        )
+
+
+class RamanReportBuilder(ReportBuilder):
+    experiment_codes = frozenset({"RAMAN", "RIN", "RIN-RAMAN"})
+
+    SYSTEM_PROMPT = (
+        "당신은 재료분석 실험실의 Raman 보고서 작성 보조자입니다.\n"
+        "제공된 피크, intensity 비율, Raman assignment 라이브러리 결과(JSON)만 근거로 한국어 문안을 작성하세요.\n"
+        "제공되지 않은 상, 물질명, 조성, 원인을 새로 추측하지 마세요.\n"
+        "Raman 피크 assignment는 후보 소견으로 표현하고, 라이브러리 미적용/미매칭 피크는 단정하지 마세요.\n"
+        "출력은 반드시 JSON 객체 하나로만 응답하세요.\n"
+        "- summary: 고객 보고서용 요약 정확히 3문장\n"
+        "- key_findings: 핵심 관찰사항 3~5개를 짧은 문장으로 작성\n"
+        "- interpretation: Raman band/비율/라이브러리 근거를 연결한 해석(4문장 이내)\n"
+        "- qc_notes: baseline, 스택 표시, 강도비 해석 한계 등 검토사항(3문장 이내)\n"
+        "- narrative: 주요 근거 보조 설명(4문장 이내)\n"
+        "- caption: 발표자료용 한 문장 캡션\n"
+        "- email_subject: 메일 제목 1줄\n"
+        "- email_body: 첨부 보고서 안내 메일 본문. Markdown 형식으로 8문장 이내"
+    )
+
+    def build(self, job: dict[str, Any], analysis: list[AnalysisItem]) -> ReportDocument:
+        payload = _select_verdict(analysis) or {}
+        document = ReportDocument(
+            job_id=job["job_id"],
+            title="Raman 분석 보고서",
+            experiment_code=job["experiment_code"],
+            pk={
+                "requestNumber": job["request_number"],
+                "experimentCode": job["experiment_code"],
+                "equipmentCode": job["equipment_code"],
+                "operatorId": job["operator_id"],
+            },
+            generated_at=job.get("_generated_at", ""),
+            sections=self._meta_sections(job, payload),
+        )
+        document.sections.append(self._sample_section(payload))
+        document.sections.append(self._library_section(payload))
+        document.sections.append(self._peak_section(payload))
+
+        fallback = self._fallback_texts(job, payload)
+        document.sections.append(
+            ReportSection("summary", "고객 보고서용 요약", paragraphs=[fallback["summary"]])
+        )
+        document.sections.append(
+            ReportSection("key_findings", "핵심 관찰사항", paragraphs=[fallback["key_findings"]])
+        )
+        document.sections.append(
+            ReportSection("interpretation", "Raman 피크 해석", paragraphs=[fallback["interpretation"]])
+        )
+        document.sections.append(
+            ReportSection("qc_notes", "품질 확인 및 검토사항", paragraphs=[fallback["qc_notes"]])
+        )
+        document.sections.append(
+            ReportSection("narrative", "보조 설명", paragraphs=[fallback["narrative"]])
+        )
+        document.sections.append(
+            ReportSection("caption", "발표자료 캡션", paragraphs=[fallback["caption"]])
+        )
+        return document
+
+    def _sample_section(self, payload: dict[str, Any]) -> ReportSection:
+        samples = _as_list(payload.get("samples"))
+        rows = []
+        for sample in samples:
+            if not isinstance(sample, dict):
+                continue
+            rows.append(
+                [
+                    str(sample.get("label") or sample.get("fileName") or "-"),
+                    str(sample.get("fileName") or "-"),
+                    str(sample.get("pointCount") or "-"),
+                    str(sample.get("peakCount") or "-"),
+                ]
+            )
+        if not rows:
+            return ReportSection("raman_samples", "시료 및 피크 수", paragraphs=["Raman 시료 요약 정보가 없습니다."])
+        return ReportSection(
+            "raman_samples",
+            "시료 및 피크 수",
+            table=ReportTable(["시료", "원본 파일", "데이터 포인트", "피크 수"], rows),
+        )
+
+    def _library_section(self, payload: dict[str, Any]) -> ReportSection:
+        settings = payload.get("settings") if isinstance(payload.get("settings"), dict) else {}
+        libraries = _as_list(settings.get("assignmentLibraries"))
+        rows = []
+        for library in libraries:
+            if not isinstance(library, dict):
+                continue
+            rows.append(
+                [
+                    str(library.get("name") or library.get("id") or "-"),
+                    str(library.get("id") or "-"),
+                    str(library.get("assignmentCount") or 0),
+                ]
+            )
+        if not rows:
+            return ReportSection("raman_libraries", "적용 피크 라이브러리", paragraphs=["적용된 Raman 피크 라이브러리가 없습니다."])
+        return ReportSection(
+            "raman_libraries",
+            "적용 피크 라이브러리",
+            table=ReportTable(["라이브러리", "ID", "Assignment 수"], rows),
+        )
+
+    def _peak_section(self, payload: dict[str, Any]) -> ReportSection:
+        rows = _figure_peak_rows(payload, x_label="cm-1")
+        if not rows:
+            return ReportSection("raman_peaks", "주요 Raman 피크", paragraphs=["보고서용 피크 상세 정보가 없습니다."])
+        return ReportSection(
+            "raman_peaks",
+            "주요 Raman 피크",
+            table=ReportTable(["시료", "Raman shift", "Assignment", "라이브러리"], rows),
+        )
+
+    def _fallback_texts(self, job: dict[str, Any], payload: dict[str, Any]) -> dict[str, str]:
+        samples = _as_list(payload.get("samples"))
+        sample_count = len(samples)
+        sample_names = [
+            str(item.get("label") or item.get("fileName"))
+            for item in samples
+            if isinstance(item, dict) and (item.get("label") or item.get("fileName"))
+        ]
+        sample_text = ", ".join(sample_names[:3]) if sample_names else "시료"
+        if len(sample_names) > 3:
+            sample_text += f" 외 {len(sample_names) - 3}개"
+        total_peaks = sum(
+            int(item.get("peakCount") or 0)
+            for item in samples
+            if isinstance(item, dict)
+        )
+        settings = payload.get("settings") if isinstance(payload.get("settings"), dict) else {}
+        libraries = _as_list(settings.get("assignmentLibraries"))
+        library_text = ", ".join(
+            str(item.get("name") or item.get("id"))
+            for item in libraries
+            if isinstance(item, dict)
+        ) or "미적용"
+        summary = (
+            f"{sample_text}에 대한 Raman 분석 결과를 정리했습니다. "
+            f"총 {sample_count}개 시료에서 {total_peaks}개 피크 후보가 검출되었습니다. "
+            "피크 assignment는 선택된 라이브러리 기반 후보 소견으로 해석해야 합니다."
+        )
+        key_findings = (
+            f"분석 시료 수는 {sample_count}개입니다. "
+            f"검출 피크 후보는 총 {total_peaks}개입니다. "
+            f"적용 라이브러리는 {library_text}입니다."
+        )
+        interpretation = (
+            "Raman band 위치와 상대 intensity를 기준으로 라이브러리 후보를 대조한 결과입니다. "
+            "스택 표시는 시료 간 가독성을 위한 평행이동이므로 절대 intensity 비교에는 사용하지 않습니다."
+        )
+        qc_notes = (
+            "Baseline 보정, smoothing, 피크 민감도 설정에 따라 약한 band 검출 수가 달라질 수 있습니다. "
+            "정량적 강도비 해석은 동일 조건 측정과 분석자 검토가 필요합니다."
+        )
+        narrative = "구조화된 Raman 피크 분석 결과를 바탕으로 한 규칙 기반 요약입니다."
+        caption = f"{sample_text} Raman 피크 분석 결과"
+        email_subject = f"[RIST] {sample_text} Raman 분석 보고서"
+        email_body = (
+            f"{sample_text} Raman 분석 보고서를 첨부드립니다.\n\n"
+            f"- 시료 수: {sample_count}\n"
+            f"- 검출 피크 후보: {total_peaks}개\n"
+            f"- 적용 라이브러리: {library_text}\n"
+            "- 본 결과는 자동 피크 검출 및 라이브러리 후보 기반 참고 소견입니다."
+        )
+        return {
+            "summary": summary,
+            "key_findings": key_findings,
+            "interpretation": interpretation,
+            "qc_notes": qc_notes,
+            "narrative": narrative,
+            "caption": caption,
+            "email_subject": email_subject,
+            "email_body": email_body,
+        }
+
+    def llm_slots(self, job: dict[str, Any], analysis: list[AnalysisItem]) -> LlmSlotSpec | None:
+        payload = _select_verdict(analysis)
+        if not payload:
+            return None
+        settings = payload.get("settings") if isinstance(payload.get("settings"), dict) else {}
+        facts = {
+            "experiment": "RAMAN",
+            "samples": payload.get("samples"),
+            "settings": {
+                "sensitivity": settings.get("sensitivity"),
+                "height": settings.get("height"),
+                "prominence": settings.get("prominence"),
+                "baseline": settings.get("baseline"),
+                "smooth": settings.get("smooth"),
+                "assignmentLibraries": settings.get("assignmentLibraries"),
+            },
+            "peak_assignments": _figure_peak_rows(payload, x_label="cm-1"),
+        }
+        return LlmSlotSpec(
+            system_prompt=self.SYSTEM_PROMPT,
+            facts=facts,
+            requested_slots=[
+                "summary",
+                "key_findings",
+                "interpretation",
+                "qc_notes",
+                "narrative",
+                "caption",
+                "email_subject",
+                "email_body",
+            ],
+            fallback=self._fallback_texts(job, payload),
         )
 
 
@@ -348,6 +663,7 @@ class GenericReportBuilder(ReportBuilder):
 
 
 _FTIR_BUILDER = FtirReportBuilder()
+_RAMAN_BUILDER = RamanReportBuilder()
 _GENERIC_BUILDER = GenericReportBuilder()
 
 
@@ -355,4 +671,6 @@ def get_builder(experiment_code: str) -> ReportBuilder:
     normalized = experiment_code.upper().replace("_", "-")
     if normalized in _FTIR_BUILDER.experiment_codes:
         return _FTIR_BUILDER
+    if normalized in _RAMAN_BUILDER.experiment_codes:
+        return _RAMAN_BUILDER
     return _GENERIC_BUILDER

@@ -20,13 +20,14 @@ from ..processors import run_processor_if_needed
 from ..storage import atomic_write_json
 from . import annotator
 from .builders import AnalysisItem, get_builder
-from .model import ReportDocument
+from .model import ReportDocument, ReportFigure
 from .package import build_report_package
 from .renderers import render_report_formats
 
 logger = get_logger(__name__)
 
 _SKIP_JSON = {"llm-request.json", "llm-response.json", "report.json"}
+_FIGURE_SUFFIXES = {".png", ".jpg", ".jpeg"}
 
 
 def load_analysis_results(processed_dir: Path) -> list[AnalysisItem]:
@@ -70,6 +71,42 @@ def _requested_report_options(job: dict[str, Any]) -> tuple[list[str], bool]:
     return [str(item).upper() for item in formats], bool(options.get("includeRawFiles"))
 
 
+def _collect_figures(processed_dir: Path) -> list[ReportFigure]:
+    figures: list[ReportFigure] = []
+    if not processed_dir.exists():
+        return figures
+    for index, path in enumerate(
+        sorted(
+            item
+            for item in processed_dir.rglob("*")
+            if item.is_file() and item.suffix.lower() in _FIGURE_SUFFIXES
+        ),
+        start=1,
+    ):
+        figures.append(
+            ReportFigure(
+                figure_id=f"figure-{index}",
+                title=path.stem.replace("_", " "),
+                path=str(path),
+                caption_slot="caption",
+            )
+        )
+    return figures
+
+
+def _write_email_body(document: ReportDocument, report_dir: Path) -> None:
+    subject = document.auxiliary_texts.get("email_subject", "").strip()
+    body = document.auxiliary_texts.get("email_body", "").strip()
+    if not subject and not body:
+        return
+    lines = []
+    if subject:
+        lines.extend([f"# {subject}", ""])
+    if body:
+        lines.append(body)
+    (report_dir / "email_body.md").write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+
+
 def generate_report(
     settings: Settings,
     job: dict[str, Any],
@@ -90,8 +127,11 @@ def generate_report(
 
     builder = get_builder(job["experiment_code"])
     document = builder.build(job_with_time, analysis)
+    document.figures = _collect_figures(processed_dir)
 
     spec = builder.llm_slots(job_with_time, analysis)
+    if spec is not None:
+        document.ensure_auxiliary_texts(spec.fallback)
     if spec is not None and llm_client is not None:
         try:
             slots = annotator.annotate(
@@ -116,6 +156,7 @@ def generate_report(
     report_dir.mkdir(parents=True, exist_ok=True)
     atomic_write_json(report_dir / "report.json", document.to_dict())
     (report_dir / "report.md").write_text(document.to_markdown(), encoding="utf-8")
+    _write_email_body(document, report_dir)
     report_formats, include_raw_files = _requested_report_options(job)
     rendered_paths = render_report_formats(
         document,

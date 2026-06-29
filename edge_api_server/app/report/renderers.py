@@ -18,7 +18,7 @@ from reportlab.pdfbase.cidfonts import UnicodeCIDFont
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas
 
-from .model import ReportDocument, ReportSection
+from .model import ReportDocument, ReportFigure, ReportSection
 
 
 def render_requested_report(
@@ -65,7 +65,8 @@ def render_report_formats(
 
 def _section_lines(section: ReportSection) -> list[str]:
     lines: list[str] = []
-    lines.extend(section.paragraphs)
+    for paragraph in section.paragraphs:
+        lines.extend(part for part in paragraph.splitlines() if part)
     lines.extend(f"- {bullet}" for bullet in section.bullets)
     if section.table is not None:
         lines.append(" / ".join(section.table.columns))
@@ -188,12 +189,14 @@ def render_pptx(document: ReportDocument, path: Path) -> None:
         archive.writestr("ppt/slideLayouts/slideLayout1.xml", _pptx_empty_layout())
         archive.writestr("ppt/slideLayouts/_rels/slideLayout1.xml.rels", _pptx_layout_rels())
         for idx, slide in enumerate(slides, start=1):
-            archive.writestr(f"ppt/slides/slide{idx}.xml", slide)
-            archive.writestr(f"ppt/slides/_rels/slide{idx}.xml.rels", _pptx_slide_rels())
+            archive.writestr(f"ppt/slides/slide{idx}.xml", slide["xml"])
+            archive.writestr(f"ppt/slides/_rels/slide{idx}.xml.rels", slide["rels"])
+            for media_name, media_path in slide.get("media", []):
+                archive.write(media_path, f"ppt/media/{media_name}")
 
 
-def _pptx_slide_payloads(document: ReportDocument) -> list[str]:
-    slides = [_pptx_slide(document.title, [
+def _pptx_slide_payloads(document: ReportDocument) -> list[dict[str, object]]:
+    slides: list[dict[str, object]] = [_pptx_text_payload(document.title, [
         f"요청번호: {document.pk.get('requestNumber', '')}",
         f"실험: {document.experiment_code}",
         f"장비: {document.pk.get('equipmentCode', '')}",
@@ -204,10 +207,41 @@ def _pptx_slide_payloads(document: ReportDocument) -> list[str]:
         lines = []
         for line in _section_lines(section):
             lines.extend(textwrap.wrap(line, width=54) or [""])
-        slides.append(_pptx_slide(section.heading, lines[:14]))
+        slides.append(_pptx_text_payload(section.heading, lines[:14]))
+    media_index = 1
+    for figure in document.figures:
+        figure_path = Path(figure.path)
+        if not figure_path.is_file() or figure_path.suffix.lower() not in {".png", ".jpg", ".jpeg"}:
+            continue
+        suffix = ".jpg" if figure_path.suffix.lower() == ".jpeg" else figure_path.suffix.lower()
+        media_name = f"image{media_index}{suffix}"
+        media_index += 1
+        caption_section = document.section(figure.caption_slot)
+        caption = ""
+        if caption_section is not None and caption_section.paragraphs:
+            caption = caption_section.paragraphs[0]
+        slides.append(_pptx_image_payload(figure, media_name, figure_path, caption))
     if document.llm_error:
-        slides.append(_pptx_slide("LLM 보조 설명", [document.llm_error]))
+        slides.append(_pptx_text_payload("LLM 보조 설명", [document.llm_error]))
     return slides
+
+
+def _pptx_text_payload(title: str, lines: list[str]) -> dict[str, object]:
+    return {"xml": _pptx_slide(title, lines), "rels": _pptx_slide_rels(), "media": []}
+
+
+def _pptx_image_payload(
+    figure: ReportFigure,
+    media_name: str,
+    media_path: Path,
+    caption: str,
+) -> dict[str, object]:
+    lines = [caption] if caption else []
+    return {
+        "xml": _pptx_image_slide(figure.title, media_name, lines),
+        "rels": _pptx_slide_rels(media_name),
+        "media": [(media_name, media_path)],
+    }
 
 
 def _pptx_paragraphs(lines: list[str]) -> str:
@@ -231,6 +265,18 @@ def _pptx_slide(title: str, lines: list[str]) -> str:
 </p:sld>"""
 
 
+def _pptx_image_slide(title: str, media_name: str, lines: list[str]) -> str:
+    return f"""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
+  <p:cSld><p:spTree>
+    <p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr>
+    <p:sp><p:nvSpPr><p:cNvPr id="2" name="Title"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="457200" y="274320"/><a:ext cx="8229600" cy="548640"/></a:xfrm></p:spPr><p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:rPr lang="ko-KR" sz="3000" b="1"/><a:t>{html.escape(title)}</a:t></a:r></a:p></p:txBody></p:sp>
+    <p:pic><p:nvPicPr><p:cNvPr id="3" name="{html.escape(media_name)}"/><p:cNvPicPr/><p:nvPr/></p:nvPicPr><p:blipFill><a:blip r:embed="rId2"/><a:stretch><a:fillRect/></a:stretch></p:blipFill><p:spPr><a:xfrm><a:off x="609600" y="1005840"/><a:ext cx="7924800" cy="4389120"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:pic>
+    <p:sp><p:nvSpPr><p:cNvPr id="4" name="Caption"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="609600" y="5623560"/><a:ext cx="7924800" cy="822960"/></a:xfrm></p:spPr><p:txBody><a:bodyPr/><a:lstStyle/>{_pptx_paragraphs(lines)}</p:txBody></p:sp>
+  </p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr>
+</p:sld>"""
+
+
 def _pptx_content_types(slide_count: int) -> str:
     slides = "".join(
         f'<Override PartName="/ppt/slides/slide{i}.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/>'
@@ -240,6 +286,9 @@ def _pptx_content_types(slide_count: int) -> str:
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
   <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
   <Default Extension="xml" ContentType="application/xml"/>
+  <Default Extension="png" ContentType="image/png"/>
+  <Default Extension="jpg" ContentType="image/jpeg"/>
+  <Default Extension="jpeg" ContentType="image/jpeg"/>
   <Override PartName="/ppt/presentation.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"/>
   <Override PartName="/ppt/theme/theme1.xml" ContentType="application/vnd.openxmlformats-officedocument.theme+xml"/>
   <Override PartName="/ppt/slideMasters/slideMaster1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideMaster+xml"/>
@@ -278,10 +327,18 @@ def _pptx_presentation_rels(slide_count: int) -> str:
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">{''.join(rels)}</Relationships>"""
 
 
-def _pptx_slide_rels() -> str:
+def _pptx_slide_rels(media_name: str | None = None) -> str:
+    media_rel = ""
+    if media_name:
+        media_rel = (
+            '<Relationship Id="rId2" '
+            'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" '
+            f'Target="../media/{html.escape(media_name)}"/>'
+        )
     return """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="../slideLayouts/slideLayout1.xml"/>
+  """ + media_rel + """
 </Relationships>"""
 
 
