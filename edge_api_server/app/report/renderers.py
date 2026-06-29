@@ -204,10 +204,7 @@ def _pptx_slide_payloads(document: ReportDocument) -> list[dict[str, object]]:
         f"생성시각: {document.generated_at}",
     ])]
     for section in document.sections:
-        lines = []
-        for line in _section_lines(section):
-            lines.extend(textwrap.wrap(line, width=54) or [""])
-        slides.append(_pptx_text_payload(section.heading, lines[:14]))
+        slides.append(_pptx_text_payload(section.heading, _section_lines(section)[:14]))
     media_index = 1
     for figure in document.figures:
         figure_path = Path(figure.path)
@@ -244,11 +241,19 @@ def _pptx_image_payload(
     }
 
 
-def _pptx_paragraphs(lines: list[str]) -> str:
+def _pptx_body_pr(*, anchor: str = "t") -> str:
+    return (
+        f'<a:bodyPr wrap="square" anchor="{anchor}" rtlCol="0">'
+        '<a:normAutofit fontScale="85000" lnSpcReduction="20000"/>'
+        "</a:bodyPr>"
+    )
+
+
+def _pptx_paragraphs(lines: list[str], *, font_size: int = 1800) -> str:
     if not lines:
         return "<a:p/>"
     return "".join(
-        "<a:p><a:r><a:rPr lang=\"ko-KR\" sz=\"1800\"/>"
+        f"<a:p><a:pPr marL=\"0\" indent=\"0\"/><a:r><a:rPr lang=\"ko-KR\" sz=\"{font_size}\"/>"
         f"<a:t>{html.escape(line)}</a:t></a:r></a:p>"
         for line in lines
     )
@@ -259,8 +264,8 @@ def _pptx_slide(title: str, lines: list[str]) -> str:
 <p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
   <p:cSld><p:spTree>
     <p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr>
-    <p:sp><p:nvSpPr><p:cNvPr id="2" name="Title"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="457200" y="274320"/><a:ext cx="8229600" cy="685800"/></a:xfrm></p:spPr><p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:rPr lang="ko-KR" sz="3200" b="1"/><a:t>{html.escape(title)}</a:t></a:r></a:p></p:txBody></p:sp>
-    <p:sp><p:nvSpPr><p:cNvPr id="3" name="Content"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="609600" y="1143000"/><a:ext cx="7924800" cy="5486400"/></a:xfrm></p:spPr><p:txBody><a:bodyPr/><a:lstStyle/>{_pptx_paragraphs(lines)}</p:txBody></p:sp>
+    <p:sp><p:nvSpPr><p:cNvPr id="2" name="Title"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="457200" y="274320"/><a:ext cx="8229600" cy="685800"/></a:xfrm></p:spPr><p:txBody>{_pptx_body_pr()}<a:lstStyle/><a:p><a:r><a:rPr lang="ko-KR" sz="3200" b="1"/><a:t>{html.escape(title)}</a:t></a:r></a:p></p:txBody></p:sp>
+    <p:sp><p:nvSpPr><p:cNvPr id="3" name="Content"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="609600" y="1143000"/><a:ext cx="7924800" cy="5486400"/></a:xfrm></p:spPr><p:txBody>{_pptx_body_pr()}<a:lstStyle/>{_pptx_paragraphs(lines)}</p:txBody></p:sp>
   </p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr>
 </p:sld>"""
 
@@ -270,9 +275,9 @@ def _pptx_image_slide(title: str, media_name: str, lines: list[str]) -> str:
 <p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
   <p:cSld><p:spTree>
     <p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr>
-    <p:sp><p:nvSpPr><p:cNvPr id="2" name="Title"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="457200" y="274320"/><a:ext cx="8229600" cy="548640"/></a:xfrm></p:spPr><p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:rPr lang="ko-KR" sz="3000" b="1"/><a:t>{html.escape(title)}</a:t></a:r></a:p></p:txBody></p:sp>
+    <p:sp><p:nvSpPr><p:cNvPr id="2" name="Title"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="457200" y="274320"/><a:ext cx="8229600" cy="548640"/></a:xfrm></p:spPr><p:txBody>{_pptx_body_pr()}<a:lstStyle/><a:p><a:r><a:rPr lang="ko-KR" sz="3000" b="1"/><a:t>{html.escape(title)}</a:t></a:r></a:p></p:txBody></p:sp>
     <p:pic><p:nvPicPr><p:cNvPr id="3" name="{html.escape(media_name)}"/><p:cNvPicPr/><p:nvPr/></p:nvPicPr><p:blipFill><a:blip r:embed="rId2"/><a:stretch><a:fillRect/></a:stretch></p:blipFill><p:spPr><a:xfrm><a:off x="609600" y="1005840"/><a:ext cx="7924800" cy="4389120"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:pic>
-    <p:sp><p:nvSpPr><p:cNvPr id="4" name="Caption"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="609600" y="5623560"/><a:ext cx="7924800" cy="822960"/></a:xfrm></p:spPr><p:txBody><a:bodyPr/><a:lstStyle/>{_pptx_paragraphs(lines)}</p:txBody></p:sp>
+    <p:sp><p:nvSpPr><p:cNvPr id="4" name="Caption"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="609600" y="5623560"/><a:ext cx="7924800" cy="822960"/></a:xfrm></p:spPr><p:txBody>{_pptx_body_pr()}<a:lstStyle/>{_pptx_paragraphs(lines, font_size=1600)}</p:txBody></p:sp>
   </p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr>
 </p:sld>"""
 

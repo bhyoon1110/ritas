@@ -10,7 +10,7 @@ from app.config import Settings
 from app.llm_client import LocalLlmClient
 from app.report import annotator
 from app.report.builders import FtirReportBuilder, LlmSlotSpec, RamanReportBuilder, get_builder
-from app.report.model import LLM_FALLBACK_NOTICE, ReportDocument, ReportFigure
+from app.report.model import LLM_FALLBACK_NOTICE, ReportDocument, ReportFigure, ReportSection
 from app.report.package import build_report_package
 from app.report.pipeline import generate_report
 from app.report.renderers import render_report_formats, render_requested_report
@@ -450,6 +450,30 @@ def test_pptx_renderer_hides_raw_llm_error(tmp_path) -> None:
         )
     assert "LLM_CONTEXT_LENGTH_EXCEEDED" not in slide_text
     assert LLM_FALLBACK_NOTICE in slide_text
+
+
+def test_pptx_renderer_lets_powerpoint_wrap_korean_text(tmp_path) -> None:
+    analysis = [{"relativePath": "verdict.json", "data": _verdict()}]
+    document = FtirReportBuilder().build(_job(), analysis)
+    long_sentence = (
+        "라이브러리 기반 확정 동정은 아니지만 현재 그래프에서 사용자가 편집한 "
+        "피크명과 숨김 상태를 반영하여 보고서 문안을 생성합니다."
+    )
+    document.sections = [
+        ReportSection("wrap_test", "줄바꿈 테스트", paragraphs=[long_sentence])
+    ]
+
+    rendered = render_requested_report(document, tmp_path, "PPTX")
+
+    with zipfile.ZipFile(rendered) as archive:
+        slide_text = "\n".join(
+            archive.read(name).decode("utf-8")
+            for name in archive.namelist()
+            if name.startswith("ppt/slides/slide") and name.endswith(".xml")
+        )
+    assert long_sentence in slide_text
+    assert 'wrap="square"' in slide_text
+    assert "normAutofit" in slide_text
 
 
 def test_pdf_renderer_creates_pdf_file(tmp_path) -> None:
