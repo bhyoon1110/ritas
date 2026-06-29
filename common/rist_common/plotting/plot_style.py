@@ -2964,6 +2964,20 @@ def _edit_mode_toggle_js(div_id: str) -> str:
   var button = null;
   var previousScrollZoom = null;
 
+  function syncModebarState() {{
+    if (!gd._ristEditMode) return;
+    gd.querySelectorAll("a.modebar-btn.active").forEach(function(item) {{
+      if (item !== button) item.classList.remove("active");
+    }});
+    gd.querySelectorAll("a.modebar-btn.is-active").forEach(function(item) {{
+      if (item !== button) item.classList.remove("is-active");
+    }});
+    if (button) {{
+      button.classList.add("active");
+      button.classList.add("is-active");
+    }}
+  }}
+
   function applyMode(enabled) {{
     var nextEnabled = !!enabled;
     var changed = !!gd._ristEditMode !== nextEnabled;
@@ -2978,6 +2992,7 @@ def _edit_mode_toggle_js(div_id: str) -> str:
         nextEnabled ? "편집 모드 끄기" : "편집 모드"
       );
     }}
+    syncModebarState();
     if (!changed) return;
     if (window.Plotly) {{
       if (nextEnabled) {{
@@ -3025,6 +3040,7 @@ def _edit_mode_toggle_js(div_id: str) -> str:
     button.addEventListener("click", toggleMode, true);
     modebar.appendChild(button);
     applyMode(!!gd._ristEditMode);
+    syncModebarState();
   }}
 
   gd.addEventListener("rist-open-edit-tool", function() {{
@@ -3033,7 +3049,10 @@ def _edit_mode_toggle_js(div_id: str) -> str:
   gd.addEventListener("rist-close-edit-tool", function() {{
     applyMode(false);
   }});
-  gd.on("plotly_afterplot", installButton);
+  gd.on("plotly_afterplot", function() {{
+    installButton();
+    syncModebarState();
+  }});
   installButton();
 }})();
 </script>

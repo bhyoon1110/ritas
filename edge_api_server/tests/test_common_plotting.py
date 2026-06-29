@@ -379,6 +379,10 @@ def test_shared_peak_editor_adds_peak_controls(tmp_path) -> None:
     assert "function addObject" in html
     assert "rist-edit-mode-toggle" in html
     assert "편집 모드" in html
+    assert "function syncModebarState" in html
+    assert 'gd.querySelectorAll("a.modebar-btn.active")' in html
+    assert "if (item !== button) item.classList.remove(\"active\")" in html
+    assert "button.classList.add(\"active\")" in html
     assert "gd._ristEditMode" in html
     assert "previousScrollZoom" in html
     assert "gd._context.scrollZoom = false" in html
