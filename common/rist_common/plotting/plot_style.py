@@ -3376,6 +3376,29 @@ def shape_editor_js(div_id: str) -> str:
   font: 11px Arial, sans-serif;
   padding: 3px 5px;
 }}
+#{div_id} .rist-shape-metric-row {{
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) 56px;
+  gap: 6px;
+  align-items: center;
+  margin-top: 8px;
+  color: #52606d;
+  font: 10px Arial, sans-serif;
+}}
+#{div_id} .rist-shape-metric-row input[type="range"] {{
+  min-width: 0;
+  accent-color: #52606d;
+}}
+#{div_id} .rist-shape-metric-number {{
+  width: 100%;
+  height: 26px;
+  border: 1px solid #c7d0dd;
+  border-radius: 4px;
+  color: #1f2933;
+  font: 11px Arial, sans-serif;
+  padding: 3px 5px;
+  box-sizing: border-box;
+}}
 #{div_id} .rist-shape-editor-colors span {{
   color: #52606d;
   font: 10px Arial, sans-serif;
@@ -3550,6 +3573,7 @@ def shape_editor_js(div_id: str) -> str:
   var panelDragState = null;
   var editSnapshot = null;
   var previewFrame = 0;
+  var cornerRadiusPrefix = "rist_corner_radius:";
 
   function clamp(value, min, max) {{
     return Math.max(min, Math.min(max, value));
@@ -3692,6 +3716,12 @@ def shape_editor_js(div_id: str) -> str:
     + "<option value='dash'>파선</option>"
     + "<option value='dot'>점선</option><option value='dashdot'>일점쇄선</option>"
     + "</select></label>"
+    + "<label class='rist-shape-metric-row'><span>선 굵기</span>"
+    + "<input class='rist-shape-border-width' type='range' min='0' max='16' step='1' value='2'>"
+    + "<input class='rist-shape-border-width-number rist-shape-metric-number' type='number' min='0' max='16' step='1' value='2' aria-label='선 굵기'></label>"
+    + "<label class='rist-shape-metric-row'><span>모서리</span>"
+    + "<input class='rist-shape-corner-radius' type='range' min='0' max='50' step='1' value='0'>"
+    + "<input class='rist-shape-corner-radius-number rist-shape-metric-number' type='number' min='0' max='50' step='1' value='0' aria-label='모서리 곡률'></label>"
     + "<label class='rist-shape-opacity-row'><span>배경 투명도</span>"
     + "<input class='rist-shape-opacity' type='range' min='0' max='100' value='30'></label>"
     + "<label class='rist-shape-fill-none-row'>"
@@ -3728,6 +3758,10 @@ def shape_editor_js(div_id: str) -> str:
   var borderInput = panel.querySelector(".rist-shape-border-color");
   var fillInput = panel.querySelector(".rist-shape-fill-color");
   var borderStyleInput = panel.querySelector(".rist-shape-border-style");
+  var borderWidthInput = panel.querySelector(".rist-shape-border-width");
+  var borderWidthNumberInput = panel.querySelector(".rist-shape-border-width-number");
+  var cornerRadiusInput = panel.querySelector(".rist-shape-corner-radius");
+  var cornerRadiusNumberInput = panel.querySelector(".rist-shape-corner-radius-number");
   var opacityInput = panel.querySelector(".rist-shape-opacity");
   var fillNoneInput = panel.querySelector(".rist-shape-fill-none");
   var drawButton = panel.querySelector(".rist-shape-draw");
@@ -3755,17 +3789,124 @@ def shape_editor_js(div_id: str) -> str:
     return value;
   }}
 
+  function pairedNumberValue(rangeInput, numberInput, minValue, maxValue) {{
+    var source = document.activeElement === numberInput ? numberInput : rangeInput;
+    var value = Number(source.value);
+    if (!Number.isFinite(value)) value = Number(rangeInput.value);
+    if (!Number.isFinite(value)) value = minValue;
+    value = Math.max(minValue, Math.min(maxValue, Math.round(value)));
+    rangeInput.value = String(value);
+    numberInput.value = String(value);
+    return value;
+  }}
+
+  function borderWidthValue() {{
+    if (borderStyleInput.value === "none") return 0;
+    return pairedNumberValue(borderWidthInput, borderWidthNumberInput, 0, 16);
+  }}
+
+  function cornerRadiusValue() {{
+    return pairedNumberValue(cornerRadiusInput, cornerRadiusNumberInput, 0, 50);
+  }}
+
+  function setPairedControlValue(rangeInput, numberInput, value, minValue, maxValue) {{
+    var next = Number(value);
+    if (!Number.isFinite(next)) next = minValue;
+    next = Math.max(minValue, Math.min(maxValue, Math.round(next)));
+    rangeInput.value = String(next);
+    numberInput.value = String(next);
+  }}
+
   function borderLine() {{
     var hidden = borderStyleInput.value === "none";
     return {{
       color: borderInput.value,
-      width: hidden ? 0 : 2,
+      width: hidden ? 0 : borderWidthValue(),
       dash: hidden ? "solid" : borderStyleInput.value
     }};
   }}
 
   function updateBorderControl() {{
-    borderInput.disabled = borderStyleInput.value === "none";
+    var disabled = borderStyleInput.value === "none";
+    borderInput.disabled = disabled;
+    borderWidthInput.disabled = disabled;
+    borderWidthNumberInput.disabled = disabled;
+  }}
+
+  function pathNumber(value) {{
+    var number = Number(value);
+    if (!Number.isFinite(number)) return "0";
+    return String(Number(number.toPrecision(12)));
+  }}
+
+  function roundedRectPath(shape) {{
+    var x0 = Number(shape.x0);
+    var x1 = Number(shape.x1);
+    var y0 = Number(shape.y0);
+    var y1 = Number(shape.y1);
+    var left = Math.min(x0, x1);
+    var right = Math.max(x0, x1);
+    var bottom = Math.min(y0, y1);
+    var top = Math.max(y0, y1);
+    var radius = cornerRadiusFromShape(shape);
+    var rx = Math.abs(right - left) * radius / 100;
+    var ry = Math.abs(top - bottom) * radius / 100;
+    if (!rx || !ry) {{
+      return [
+        "M", pathNumber(left), pathNumber(bottom),
+        "L", pathNumber(right), pathNumber(bottom),
+        "L", pathNumber(right), pathNumber(top),
+        "L", pathNumber(left), pathNumber(top),
+        "Z"
+      ].join(" ");
+    }}
+    return [
+      "M", pathNumber(left + rx), pathNumber(bottom),
+      "L", pathNumber(right - rx), pathNumber(bottom),
+      "Q", pathNumber(right), pathNumber(bottom), pathNumber(right), pathNumber(bottom + ry),
+      "L", pathNumber(right), pathNumber(top - ry),
+      "Q", pathNumber(right), pathNumber(top), pathNumber(right - rx), pathNumber(top),
+      "L", pathNumber(left + rx), pathNumber(top),
+      "Q", pathNumber(left), pathNumber(top), pathNumber(left), pathNumber(top - ry),
+      "L", pathNumber(left), pathNumber(bottom + ry),
+      "Q", pathNumber(left), pathNumber(bottom), pathNumber(left + rx), pathNumber(bottom),
+      "Z"
+    ].join(" ");
+  }}
+
+  function cornerRadiusFromShape(shape) {{
+    var legendgroup = String(shape && shape.legendgroup || "");
+    var value = legendgroup.indexOf(cornerRadiusPrefix) === 0
+      ? Number(legendgroup.slice(cornerRadiusPrefix.length))
+      : NaN;
+    if (Number.isFinite(value)) return Math.max(0, Math.min(50, Math.round(value)));
+    var path = String(shape && shape.path || "");
+    var match = path.match(/^M\\s*([-+\\d.eE]+)\\s+([-+\\d.eE]+)/);
+    var x0 = Number(shape && shape.x0);
+    var x1 = Number(shape && shape.x1);
+    if (!match || !Number.isFinite(x0) || !Number.isFinite(x1) || x0 === x1) return 0;
+    var left = Math.min(x0, x1);
+    var width = Math.abs(x1 - x0);
+    return Math.max(0, Math.min(50, Math.round(Math.abs(Number(match[1]) - left) / width * 100)));
+  }}
+
+  function setCornerRadiusOnShape(shape, value) {{
+    var radius = Math.max(0, Math.min(50, Math.round(Number(value) || 0)));
+    if (radius > 0) shape.legendgroup = cornerRadiusPrefix + radius;
+    else delete shape.legendgroup;
+    return radius;
+  }}
+
+  function applyShapeGeometry(shape) {{
+    var radius = setCornerRadiusOnShape(shape, cornerRadiusFromShape(shape));
+    if (radius > 0) {{
+      shape.type = "path";
+      shape.path = roundedRectPath(shape);
+    }} else {{
+      shape.type = "rect";
+      delete shape.path;
+    }}
+    return shape;
   }}
 
   function fillColor() {{
@@ -3942,6 +4083,20 @@ def shape_editor_js(div_id: str) -> str:
     borderStyleInput.value = shape.line && Number(shape.line.width) === 0
       ? "none"
       : String(shape.line && shape.line.dash || "solid");
+    setPairedControlValue(
+      borderWidthInput,
+      borderWidthNumberInput,
+      shape.line && Number(shape.line.width) === 0 ? 2 : Number(shape.line && shape.line.width) || 2,
+      0,
+      16
+    );
+    setPairedControlValue(
+      cornerRadiusInput,
+      cornerRadiusNumberInput,
+      cornerRadiusFromShape(shape),
+      0,
+      50
+    );
     updateBorderControl();
     var fillOpacity = rgbaOpacity(shape.fillcolor, 30);
     fillNoneInput.checked = fillOpacity === 0;
@@ -4075,6 +4230,8 @@ def shape_editor_js(div_id: str) -> str:
     var shape = deepClone(shapes[si]);
     shape.line = Object.assign({{}}, shape.line || {{}}, borderLine());
     shape.fillcolor = fillColor();
+    setCornerRadiusOnShape(shape, cornerRadiusValue());
+    applyShapeGeometry(shape);
     var annotation = ai >= 0 ? deepClone(annotations[ai]) : null;
     if (annotation) {{
       annotation.text = esc(textInput.value || "텍스트");
@@ -4137,6 +4294,8 @@ def shape_editor_js(div_id: str) -> str:
       fillcolor: fillColor(),
       layer: "above"
     }};
+    setCornerRadiusOnShape(shape, cornerRadiusValue());
+    applyShapeGeometry(shape);
     var annotation = null;
     if (kind === "text") {{
       var bounds = shapeClientBounds(shape);
@@ -4312,6 +4471,7 @@ def shape_editor_js(div_id: str) -> str:
     shape.x1 = layout.xaxis.p2d(bounds.right - offsetX);
     shape.y0 = layout.yaxis.p2d(bounds.top - offsetY);
     shape.y1 = layout.yaxis.p2d(bounds.bottom - offsetY);
+    applyShapeGeometry(shape);
     var annotation = ai >= 0 ? annotations[ai] : null;
     if (annotation) {{
       annotation.x = layout.xaxis.p2d(
@@ -4521,7 +4681,18 @@ def shape_editor_js(div_id: str) -> str:
       setDrawMode(!drawMode);
     }}
   }});
-  [textInput, fontColorInput, fontSizeInput, borderInput, fillInput, opacityInput]
+  [
+    textInput,
+    fontColorInput,
+    fontSizeInput,
+    borderInput,
+    borderWidthInput,
+    borderWidthNumberInput,
+    cornerRadiusInput,
+    cornerRadiusNumberInput,
+    fillInput,
+    opacityInput
+  ]
     .forEach(function(input) {{
       input.addEventListener("input", schedulePreview);
     }});

@@ -332,6 +332,12 @@ def test_shared_peak_editor_adds_peak_controls(tmp_path) -> None:
     assert "rist-shape-border-color" in html
     assert "rist-shape-fill-color" in html
     assert "rist-shape-border-style" in html
+    assert "rist-shape-border-width" in html
+    assert "rist-shape-border-width-number" in html
+    assert "rist-shape-corner-radius" in html
+    assert "rist-shape-corner-radius-number" in html
+    assert "선 굵기" in html
+    assert "모서리" in html
     assert "<option value='none'>선 없음</option>" in html
     assert "<option value='solid' selected>실선</option>" in html
     assert "<option value='dash'>파선</option>" in html
@@ -359,7 +365,17 @@ def test_shared_peak_editor_adds_peak_controls(tmp_path) -> None:
     assert "rist-shape-font-size" in html
     assert "function fontSizeValue" in html
     assert "function borderLine" in html
-    assert 'width: hidden ? 0 : 2' in html
+    assert "function borderWidthValue" in html
+    assert "function cornerRadiusValue" in html
+    assert "function roundedRectPath" in html
+    assert "function applyShapeGeometry" in html
+    assert "function cornerRadiusFromShape" in html
+    assert "function setCornerRadiusOnShape" in html
+    assert "rist_corner_radius:" in html
+    assert 'width: hidden ? 0 : borderWidthValue()' in html
+    assert 'shape.type = "path"' in html
+    assert "shape.path = roundedRectPath(shape)" in html
+    assert "setCornerRadiusOnShape(shape, cornerRadiusValue())" in html
     assert "color: fontColorInput.value" in html
     assert "size: fontSizeValue()" in html
     assert "rist-shape-draw-preview" in html
