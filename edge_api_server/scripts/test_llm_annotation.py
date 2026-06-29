@@ -104,6 +104,136 @@ def sample_generic_verdict(experiment_code: str) -> dict:
     }
 
 
+def sample_raman_analysis() -> dict:
+    """RamanReportBuilder 가 읽는 웹 분석 payload 형태의 샘플."""
+    return {
+        "samples": [
+            {
+                "fileName": "LiOH.txt",
+                "label": "LiOH_1",
+                "pointCount": 1200,
+                "peakCount": 3,
+            },
+            {
+                "fileName": "Carbon.txt",
+                "label": "Carbon_1",
+                "pointCount": 980,
+                "peakCount": 2,
+            },
+        ],
+        "settings": {
+            "sensitivity": 25,
+            "height": 0.08,
+            "prominence": 0.05,
+            "baseline": True,
+            "smooth": True,
+            "assignmentLibraries": [
+                {
+                    "id": "general-raman",
+                    "name": "General Raman",
+                    "assignmentCount": 10,
+                },
+                {
+                    "id": "lithium-compound-raman",
+                    "name": "Lithium Compound Raman",
+                    "assignmentCount": 17,
+                },
+                {
+                    "id": "carbon-graphite-raman",
+                    "name": "Carbon/Graphite Raman",
+                    "assignmentCount": 8,
+                },
+            ],
+        },
+        "figure": {
+            "data": [
+                {
+                    "name": "LiOH_1",
+                    "meta": {
+                        "rist_sample_group": "sample:0",
+                        "rist_sample_parent": True,
+                    },
+                },
+                {
+                    "name": "LiOH Li-O stretching",
+                    "meta": {
+                        "rist_peak": {
+                            "x": 518.0,
+                            "base_y": 0.92,
+                            "label": "LiOH Li-O stretching",
+                            "sample_group": "sample:0",
+                            "assignments": [
+                                {
+                                    "library_id": "lithium-compound-raman",
+                                    "library_name": "Lithium Compound Raman",
+                                }
+                            ],
+                        }
+                    },
+                },
+                {
+                    "name": "Li2CO3 nu1 symmetric stretching",
+                    "meta": {
+                        "rist_peak": {
+                            "x": 1095.0,
+                            "base_y": 0.44,
+                            "label": "Li2CO3 nu1 symmetric stretching",
+                            "sample_group": "sample:0",
+                            "assignments": [
+                                {
+                                    "library_id": "lithium-compound-raman",
+                                    "library_name": "Lithium Compound Raman",
+                                }
+                            ],
+                        }
+                    },
+                },
+                {
+                    "name": "Carbon_1",
+                    "meta": {
+                        "rist_sample_group": "sample:1",
+                        "rist_sample_parent": True,
+                    },
+                },
+                {
+                    "name": "Carbon D band",
+                    "meta": {
+                        "rist_peak": {
+                            "x": 1350.0,
+                            "base_y": 0.61,
+                            "label": "Carbon D band",
+                            "sample_group": "sample:1",
+                            "assignments": [
+                                {
+                                    "library_id": "carbon-graphite-raman",
+                                    "library_name": "Carbon/Graphite Raman",
+                                }
+                            ],
+                        }
+                    },
+                },
+                {
+                    "name": "Carbon G band",
+                    "meta": {
+                        "rist_peak": {
+                            "x": 1580.0,
+                            "base_y": 0.88,
+                            "label": "Carbon G band",
+                            "sample_group": "sample:1",
+                            "assignments": [
+                                {
+                                    "library_id": "carbon-graphite-raman",
+                                    "library_name": "Carbon/Graphite Raman",
+                                }
+                            ],
+                        }
+                    },
+                },
+            ]
+        },
+    }
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="실제 vLLM 으로 보고서 LLM 슬롯 주석을 검증한다.",
@@ -111,7 +241,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--experiment-code",
         default="FT-IR",
-        help="실험 코드 (기본 FT-IR; FTIR 외에는 Generic 빌더 사용)",
+        help="실험 코드 (기본 FT-IR; RAMAN/RIN은 Raman 전용 샘플 사용)",
     )
     parser.add_argument(
         "--no-image",
@@ -171,6 +301,8 @@ def main() -> int:
     code = args.experiment_code.upper().replace("_", "-")
     if code in {"FTIR", "FT-IR", "IR"}:
         verdict = sample_ftir_verdict()
+    elif code in {"RAMAN", "RIN", "RIN-RAMAN"}:
+        verdict = sample_raman_analysis()
     else:
         verdict = sample_generic_verdict(args.experiment_code)
     (processed / "analysis-result.json").write_text(
@@ -234,7 +366,14 @@ def main() -> int:
               f"(규칙 기본 문안 사용) error={document.llm_error}")
 
     # 슬롯 섹션 출력
-    for slot_id in ("summary", "narrative", "caption"):
+    for slot_id in (
+        "summary",
+        "key_findings",
+        "interpretation",
+        "qc_notes",
+        "narrative",
+        "caption",
+    ):
         section = document.section(slot_id)
         if section is None:
             continue
@@ -244,6 +383,11 @@ def main() -> int:
         )
         text = section.paragraphs[0] if section.paragraphs else "(빈 문안)"
         print(f"\n{BOLD}[{slot_id}]{RESET} ({tag})\n  {text}")
+
+    for aux_id in ("email_subject", "email_body"):
+        text = document.auxiliary_texts.get(aux_id)
+        if text:
+            print(f"\n{BOLD}[{aux_id}]{RESET}\n  {text}")
 
     # 멀티모달(이미지) 첨부 여부를 요청 로그에서 확인
     request_log = job_root / "logs" / "llm-request.json"
