@@ -98,6 +98,9 @@ def test_raman_workspace_contains_upload_controls() -> None:
     assert "clearWorkspaceState()" in page
     assert "plotData: JSON.parse(JSON.stringify(gd.data || []))" in page
     assert "files = (state.files || []).map(recordFile)" in page
+    assert "function freshEmptyData" in page
+    assert "function freshEmptyLayout" in page
+    assert "Plotly.react(gd, freshEmptyData(), freshEmptyLayout(), gd._context)" in page
     assert "gd._context" in page
     assert "rist-raman-stack-change" in page
     assert "function handleRatioPeakPointer" in page

@@ -71,6 +71,9 @@ def test_ftir_workspace_contains_upload_and_editor_controls() -> None:
     assert "clearWorkspaceState()" in page
     assert "plotData: JSON.parse(JSON.stringify(gd.data || []))" in page
     assert "files = (state.files || []).map(recordFile)" in page
+    assert "function freshEmptyData" in page
+    assert "function freshEmptyLayout" in page
+    assert "Plotly.react(gd, freshEmptyData(), freshEmptyLayout(), gd._context)" in page
     assert "height: calc(100vh - 180px + 360px) !important" in page
     assert "min-height: 900px" in page
     assert "toolsOpen" not in page

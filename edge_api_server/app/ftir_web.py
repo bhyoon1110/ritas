@@ -1224,6 +1224,14 @@ _UPLOAD_SCRIPT = """
     );
   }
 
+  function freshEmptyData() {
+    return JSON.parse(JSON.stringify(emptyData));
+  }
+
+  function freshEmptyLayout() {
+    return JSON.parse(JSON.stringify(emptyLayout));
+  }
+
   function currentWorkspaceState() {
     return {
       version: 1,
@@ -1945,7 +1953,7 @@ _UPLOAD_SCRIPT = """
     setBusy(false);
     setMessage("");
     updateIdleStatus();
-    window.Plotly.react(gd, emptyData, emptyLayout, gd._context).then(function() {
+    window.Plotly.react(gd, freshEmptyData(), freshEmptyLayout(), gd._context).then(function() {
       dispatchDataReplaced(25);
       return applyResponsiveLayout();
     }).then(function() {
