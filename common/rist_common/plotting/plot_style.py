@@ -2946,9 +2946,6 @@ def _edit_mode_toggle_js(div_id: str) -> str:
     """Plotly modebar에 탐색/편집 모드 전환 버튼을 추가한다."""
     return f"""
 <style>
-#{div_id}.rist-edit-mode .nsewdrag {{
-  touch-action: none;
-}}
 #{div_id} .modebar-btn.rist-edit-mode-toggle svg {{
   width: 1em;
   height: 1em;
@@ -2965,7 +2962,6 @@ def _edit_mode_toggle_js(div_id: str) -> str:
   if (!gd || gd._ristEditModeToggleInstalled) return;
   gd._ristEditModeToggleInstalled = true;
   var button = null;
-  var previousDragmode = null;
   var previousScrollZoom = null;
 
   function applyMode(enabled) {{
@@ -2985,17 +2981,12 @@ def _edit_mode_toggle_js(div_id: str) -> str:
     if (!changed) return;
     if (window.Plotly) {{
       if (nextEnabled) {{
-        previousDragmode = gd.layout ? gd.layout.dragmode : previousDragmode;
         previousScrollZoom = gd._context ? gd._context.scrollZoom : previousScrollZoom;
         if (gd._context) gd._context.scrollZoom = false;
-        window.Plotly.relayout(gd, {{ dragmode: false }});
       }} else {{
         if (gd._context && previousScrollZoom !== null) {{
           gd._context.scrollZoom = previousScrollZoom;
         }}
-        window.Plotly.relayout(gd, {{
-          dragmode: previousDragmode == null ? "zoom" : previousDragmode
-        }});
       }}
     }}
     gd.dispatchEvent(new CustomEvent("rist-edit-mode-change", {{

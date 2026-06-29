@@ -379,11 +379,11 @@ def test_shared_peak_editor_adds_peak_controls(tmp_path) -> None:
     assert "function addObject" in html
     assert "rist-edit-mode-toggle" in html
     assert "편집 모드" in html
-    assert "rist-edit-mode .nsewdrag" in html
     assert "gd._ristEditMode" in html
     assert "previousScrollZoom" in html
     assert "gd._context.scrollZoom = false" in html
-    assert "dragmode: false" in html
+    assert "previousDragmode" not in html
+    assert "dragmode: false" not in html
     assert "rist-edit-mode-change" in html
     assert "rist-open-edit-tool" in html
     assert "rist-shape-apply" not in html
