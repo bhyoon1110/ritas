@@ -3778,8 +3778,19 @@ def shape_editor_js(div_id: str) -> str:
     opacityInput.disabled = fillNoneInput.checked;
   }}
 
+  function isMobileShapeEditor() {{
+    return window.innerWidth <= 760
+      || (window.matchMedia && window.matchMedia("(pointer: coarse)").matches);
+  }}
+
+  function requestMobileEditMode() {{
+    if (!isMobileShapeEditor()) return;
+    gd.dispatchEvent(new CustomEvent("rist-open-edit-tool"));
+  }}
+
   function setDrawMode(enabled) {{
     drawMode = !!enabled;
+    if (drawMode) requestMobileEditMode();
     toolButton.classList.toggle("is-active", drawMode);
     drawButton.classList.toggle("is-active", drawMode);
     drawButton.textContent = drawMode ? "그래프에서 드래그" : drawLabel();
@@ -3807,7 +3818,7 @@ def shape_editor_js(div_id: str) -> str:
     var legendPanel = gd.querySelector(".rist-legend-edit-panel");
     if (legendPanel) legendPanel.style.display = "none";
     panel.style.display = "block";
-    gd.dispatchEvent(new CustomEvent("rist-open-edit-tool"));
+    requestMobileEditMode();
     syncShapeEditingState();
   }}
 

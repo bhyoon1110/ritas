@@ -409,6 +409,11 @@ def test_shared_peak_editor_adds_peak_controls(tmp_path) -> None:
     assert "function previewSelection" in html
     assert "function schedulePreview" in html
     assert "function syncShapeEditingState" in html
+    assert "function isMobileShapeEditor" in html
+    assert "function requestMobileEditMode" in html
+    assert "window.innerWidth <= 760" in html
+    assert 'window.matchMedia("(pointer: coarse)")' in html
+    assert "if (!isMobileShapeEditor()) return" in html
     assert "function setPanelPosition" in html
     assert "panelHead.addEventListener(\"pointerdown\"" in html
     assert "panelHead.setPointerCapture(ev.pointerId)" in html
