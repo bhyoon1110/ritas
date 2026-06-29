@@ -270,6 +270,10 @@ def test_shared_peak_editor_adds_peak_controls(tmp_path) -> None:
     assert "selectedPeakCurves" in html
     assert "togglePeakSelection" in html
     assert 'if (prev === "select" && mode !== "select")' in html
+    assert "var peakActionButtonsDisabled = false" in html
+    assert "function setPeakActionButtonsDisabled" in html
+    assert 'addBtn.disabled = peakActionButtonsDisabled' in html
+    assert 'gd.addEventListener("rist-peak-actions-disabled"' in html
     assert "manual-peak-group:" in html
     assert "manual_group_key" in html
     assert "group_color" in html

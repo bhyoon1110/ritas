@@ -1597,6 +1597,9 @@ _RAMAN_RATIO_SCRIPT = """
     } else {
       setStatus("분자 선택");
     }
+    gd.dispatchEvent(new CustomEvent("rist-peak-actions-disabled", {
+      detail: {disabled: ratioMode}
+    }));
   }
 
   function pickPeak(curve) {

@@ -96,6 +96,8 @@ def test_raman_workspace_contains_upload_controls() -> None:
     assert "gd._ristNearestPeakCurveFromEvent(ev)" in page
     assert 'gd.addEventListener("mousedown", handleRatioPeakPointer, true)' in page
     assert "gd._ristHandledRamanRatioAt = Date.now()" in page
+    assert 'new CustomEvent("rist-peak-actions-disabled"' in page
+    assert "detail: {disabled: ratioMode}" in page
     assert "annotationPosition" in page
     assert "annotationTail" in page
     assert "raman-file-remove" in page

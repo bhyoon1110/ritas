@@ -1827,6 +1827,7 @@ def peak_editor_js(div_id: str) -> str:
   if (!gd) return;
   var mode = "none";
   var selectedPeaks = [];
+  var peakActionButtonsDisabled = false;
 
   function esc(s) {{
     return String(s == null ? "" : s)
@@ -2650,6 +2651,8 @@ def peak_editor_js(div_id: str) -> str:
   }}
 
   function setMode(next) {{
+    if (peakActionButtonsDisabled
+        && (next === "add" || next === "delete" || next === "select")) return;
     var prev = mode;
     mode = mode === next ? "none" : next;
     if (prev === "select" && mode !== "select") {{
@@ -2689,6 +2692,14 @@ def peak_editor_js(div_id: str) -> str:
     ev.stopPropagation();
     setMode("select");
   }});
+
+  function setPeakActionButtonsDisabled(disabled) {{
+    peakActionButtonsDisabled = !!disabled;
+    addBtn.disabled = peakActionButtonsDisabled;
+    delBtn.disabled = peakActionButtonsDisabled;
+    selectBtn.disabled = peakActionButtonsDisabled;
+    if (peakActionButtonsDisabled) setMode("none");
+  }}
 
   var groupNameInput = document.createElement("input");
   groupNameInput.type = "text";
@@ -2780,6 +2791,11 @@ def peak_editor_js(div_id: str) -> str:
     curves.reduce(function(promise, curve) {{
       return promise.then(function() {{ return deletePeakTrace(curve, true); }});
     }}, Promise.resolve());
+  }});
+
+  gd.addEventListener("rist-peak-actions-disabled", function(ev) {{
+    var detail = ev.detail || {{}};
+    setPeakActionButtonsDisabled(!!detail.disabled);
   }});
 
   gd.addEventListener("rist-legend-name-change", function(ev) {{
