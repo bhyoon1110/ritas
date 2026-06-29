@@ -442,6 +442,7 @@ def test_pptx_renderer_creates_openxml_package(tmp_path) -> None:
     assert 'type="screen16x9"' in presentation
     assert "분석 요약" in slide_text
     assert "고객 보고서용 요약" in slide_text
+    assert "해석 및 검토사항" in slide_text
 
 
 def test_pptx_renderer_hides_raw_llm_error(tmp_path) -> None:

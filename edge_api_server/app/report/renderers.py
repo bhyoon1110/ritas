@@ -38,6 +38,7 @@ PPTX_CARD = "FFFFFF"
 PPTX_GREEN = "27AE60"
 PPTX_ORANGE = "F2994A"
 PPTX_RED = "EB5757"
+_INSIGHT_SECTION_IDS = frozenset({"interpretation", "qc_notes", "narrative"})
 
 
 def render_requested_report(
@@ -233,7 +234,10 @@ def _pptx_slide_payloads(document: ReportDocument) -> list[dict[str, object]]:
             caption = caption_section.paragraphs[0]
         slides.append(_pptx_image_payload(document, figure, media_name, figure_path, caption))
 
-    summarized_sections = {"summary", "key_findings", "caption"}
+    if any(document.section(section_id) is not None for section_id in _INSIGHT_SECTION_IDS):
+        slides.append(_pptx_insights_payload(document))
+
+    summarized_sections = {"summary", "key_findings", "caption", *_INSIGHT_SECTION_IDS}
     for section in document.sections:
         if section.section_id in summarized_sections:
             continue
@@ -252,6 +256,10 @@ def _pptx_title_payload(document: ReportDocument) -> dict[str, object]:
 
 def _pptx_overview_payload(document: ReportDocument) -> dict[str, object]:
     return {"xml": _pptx_overview_slide(document), "rels": _pptx_slide_rels(), "media": []}
+
+
+def _pptx_insights_payload(document: ReportDocument) -> dict[str, object]:
+    return {"xml": _pptx_insights_slide(document), "rels": _pptx_slide_rels(), "media": []}
 
 
 def _pptx_text_payload(
@@ -715,9 +723,90 @@ def _pptx_overview_slide(document: ReportDocument) -> str:
     return _pptx_frame(shapes)
 
 
+def _pptx_insights_slide(document: ReportDocument) -> str:
+    cards = [
+        ("interpretation", "피크 해석", PPTX_BLUE),
+        ("qc_notes", "품질 확인 및 검토사항", PPTX_ORANGE),
+        ("narrative", "보조 설명", PPTX_GREEN),
+    ]
+    shapes = _pptx_header_shapes(document, "해석 및 검토사항")
+    card_x = PPTX_MARGIN_X
+    card_w = 10972800
+    card_h = 1371600
+    card_gap = 274320
+    shape_id = 10
+    for idx, (section_id, heading, accent) in enumerate(cards):
+        section = document.section(section_id)
+        if section is None:
+            continue
+        y = PPTX_CONTENT_Y + idx * (card_h + card_gap)
+        lines = _section_text_lines(section, max_items=3)
+        if not lines:
+            lines = ["해당 항목의 보고서용 문안이 없습니다."]
+        shapes.extend(
+            [
+                _pptx_shape(
+                    shape_id,
+                    f"{section_id} card",
+                    x=card_x,
+                    y=y,
+                    cx=card_w,
+                    cy=card_h,
+                    fill=PPTX_CARD,
+                    line=PPTX_LINE,
+                ),
+                _pptx_shape(
+                    shape_id + 1,
+                    f"{section_id} accent",
+                    x=card_x,
+                    y=y,
+                    cx=91440,
+                    cy=card_h,
+                    fill=accent,
+                    line=None,
+                ),
+                _pptx_text_shape(
+                    shape_id + 2,
+                    f"{section_id} heading",
+                    x=card_x + 274320,
+                    y=y + 182880,
+                    cx=2743200,
+                    cy=365760,
+                    lines=[heading],
+                    font_size=1650,
+                    color=PPTX_NAVY,
+                    bold=True,
+                    inset=0,
+                ),
+                _pptx_text_shape(
+                    shape_id + 3,
+                    f"{section_id} text",
+                    x=card_x + 274320,
+                    y=y + 594360,
+                    cx=10363200,
+                    cy=640080,
+                    lines=lines,
+                    font_size=1500,
+                    color=PPTX_TEXT,
+                    inset=0,
+                ),
+            ]
+        )
+        shape_id += 4
+    shapes.append(_pptx_footer_shape(document, shape_id + 1))
+    return _pptx_frame(shapes)
+
+
 def _pptx_text_slide(document: ReportDocument, title: str, lines: list[str]) -> str:
     shapes = _pptx_header_shapes(document, title)
     display_lines = lines or ["보고서용 상세 문안이 없습니다."]
+    has_bullets = any(line.startswith("- ") for line in display_lines)
+    display_lines = [
+        line[2:].strip() if line.startswith("- ") else line for line in display_lines
+    ]
+    line_count = max(1, len(display_lines))
+    card_h = min(4937760, max(1600200, 914400 + line_count * 411480))
+    text_h = max(822960, card_h - 640080)
     shapes.extend(
         [
             _pptx_shape(
@@ -726,7 +815,7 @@ def _pptx_text_slide(document: ReportDocument, title: str, lines: list[str]) -> 
                 x=PPTX_MARGIN_X,
                 y=PPTX_CONTENT_Y,
                 cx=10972800,
-                cy=4937760,
+                cy=card_h,
                 fill=PPTX_CARD,
                 line=PPTX_LINE,
             ),
@@ -736,11 +825,11 @@ def _pptx_text_slide(document: ReportDocument, title: str, lines: list[str]) -> 
                 x=914400,
                 y=1463040,
                 cx=10363200,
-                cy=4389120,
+                cy=text_h,
                 lines=display_lines,
                 font_size=1750,
                 color=PPTX_TEXT,
-                bullet=any(line.startswith("- ") for line in display_lines),
+                bullet=has_bullets,
                 inset=0,
             ),
         ]
