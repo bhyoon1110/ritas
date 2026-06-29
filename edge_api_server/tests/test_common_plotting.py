@@ -380,14 +380,19 @@ def test_shared_peak_editor_adds_peak_controls(tmp_path) -> None:
     assert "rist-edit-mode-toggle" in html
     assert "편집 모드" in html
     assert "function syncModebarState" in html
+    assert "function isNavigationModeButton" in html
+    assert "function blockNavigationModeButton" in html
     assert 'gd.querySelectorAll("a.modebar-btn.active")' in html
+    assert "rist-edit-mode-disabled" in html
+    assert "/zoom|pan|box select|lasso select/i.test(title)" in html
     assert "if (item !== button) item.classList.remove(\"active\")" in html
     assert "button.classList.add(\"active\")" in html
     assert "gd._ristEditMode" in html
+    assert "previousDragmode" in html
     assert "previousScrollZoom" in html
     assert "gd._context.scrollZoom = false" in html
-    assert "previousDragmode" not in html
-    assert "dragmode: false" not in html
+    assert "dragmode: false" in html
+    assert "gd._ristEditModeBlockerInstalled" in html
     assert "rist-edit-mode-change" in html
     assert "rist-open-edit-tool" in html
     assert "rist-shape-apply" not in html

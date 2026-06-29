@@ -871,7 +871,7 @@ _PAGE_SHELL = """
   <div class="raman-actions">
     <span class="raman-status" id="raman-status">Raman raw 파일을 업로드하세요</span>
     <label class="raman-file-button" for="raman-file-input">파일 선택</label>
-    <button class="raman-clear-button" id="raman-clear" type="button" hidden>초기화</button>
+    <button class="raman-clear-button" id="raman-clear" type="button">초기화</button>
     <input class="raman-file-input" id="raman-file-input" type="file"
            accept=".txt,.csv,.tsv,.xlsx,.xlsm" multiple>
   </div>
@@ -2376,7 +2376,7 @@ _UPLOAD_SCRIPT = """
       chip.appendChild(remove);
       fileList.appendChild(chip);
     });
-    clearButton.hidden = !files.length;
+    clearButton.hidden = false;
   }
 
   function resetPlot() {

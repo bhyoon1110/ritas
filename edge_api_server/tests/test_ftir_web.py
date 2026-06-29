@@ -28,6 +28,8 @@ def test_ftir_workspace_contains_upload_and_editor_controls() -> None:
 
     assert 'id="ftir-file-input"' in page
     assert 'id="ftir-drop-zone"' in page
+    assert '<button type="button" class="ftir-clear-button" id="ftir-clear">초기화</button>' in page
+    assert "clearButton.hidden = false" in page
     assert 'id="ftir-library-list"' in page
     assert 'id="ftir-library-filter"' in page
     assert 'id="ftir-library-input"' in page

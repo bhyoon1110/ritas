@@ -2955,6 +2955,10 @@ def _edit_mode_toggle_js(div_id: str) -> str:
 #{div_id} .modebar-btn.rist-edit-mode-toggle.is-active svg line {{
   stroke: #2563eb;
 }}
+#{div_id}.rist-edit-mode .modebar-btn.rist-edit-mode-disabled {{
+  opacity: 0.28;
+  pointer-events: none;
+}}
 </style>
 <script>
 (function() {{
@@ -2962,9 +2966,20 @@ def _edit_mode_toggle_js(div_id: str) -> str:
   if (!gd || gd._ristEditModeToggleInstalled) return;
   gd._ristEditModeToggleInstalled = true;
   var button = null;
+  var previousDragmode = null;
   var previousScrollZoom = null;
 
+  function isNavigationModeButton(item) {{
+    var title = String(item && item.getAttribute("data-title") || "");
+    return /zoom|pan|box select|lasso select/i.test(title);
+  }}
+
   function syncModebarState() {{
+    gd.querySelectorAll("a.modebar-btn").forEach(function(item) {{
+      var disabled = !!gd._ristEditMode && isNavigationModeButton(item);
+      item.classList.toggle("rist-edit-mode-disabled", disabled);
+      item.setAttribute("aria-disabled", disabled ? "true" : "false");
+    }});
     if (!gd._ristEditMode) return;
     gd.querySelectorAll("a.modebar-btn.active").forEach(function(item) {{
       if (item !== button) item.classList.remove("active");
@@ -2996,12 +3011,17 @@ def _edit_mode_toggle_js(div_id: str) -> str:
     if (!changed) return;
     if (window.Plotly) {{
       if (nextEnabled) {{
+        previousDragmode = gd.layout ? gd.layout.dragmode : previousDragmode;
         previousScrollZoom = gd._context ? gd._context.scrollZoom : previousScrollZoom;
         if (gd._context) gd._context.scrollZoom = false;
+        window.Plotly.relayout(gd, {{ dragmode: false }}).then(syncModebarState);
       }} else {{
         if (gd._context && previousScrollZoom !== null) {{
           gd._context.scrollZoom = previousScrollZoom;
         }}
+        window.Plotly.relayout(gd, {{
+          dragmode: previousDragmode == null ? "zoom" : previousDragmode
+        }}).then(syncModebarState);
       }}
     }}
     gd.dispatchEvent(new CustomEvent("rist-edit-mode-change", {{
@@ -3017,9 +3037,21 @@ def _edit_mode_toggle_js(div_id: str) -> str:
     applyMode(!gd._ristEditMode);
   }}
 
+  function blockNavigationModeButton(ev) {{
+    if (!gd._ristEditMode) return;
+    var item = ev.target && ev.target.closest
+      ? ev.target.closest("a.modebar-btn")
+      : null;
+    if (!item || item === button || !isNavigationModeButton(item)) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+  }}
+
   function installButton() {{
     var modebar = gd.querySelector(".modebar-group");
-    if (!modebar || button) return;
+    if (!modebar) return;
+    if (button && gd.contains(button)) return;
+    button = null;
     button = document.createElement("a");
     button.href = "#";
     button.className = "modebar-btn rist-edit-mode-toggle";
@@ -3039,6 +3071,11 @@ def _edit_mode_toggle_js(div_id: str) -> str:
       + "</svg>";
     button.addEventListener("click", toggleMode, true);
     modebar.appendChild(button);
+    if (!gd._ristEditModeBlockerInstalled) {{
+      gd._ristEditModeBlockerInstalled = true;
+      gd.addEventListener("pointerdown", blockNavigationModeButton, true);
+      gd.addEventListener("click", blockNavigationModeButton, true);
+    }}
     applyMode(!!gd._ristEditMode);
     syncModebarState();
   }}

@@ -31,6 +31,8 @@ def test_raman_workspace_contains_upload_controls() -> None:
     assert 'id="raman-file-list"' in page
     assert 'id="raman-drop-zone"' in page
     assert 'id="raman-drop-prompt"' in page
+    assert '<button class="raman-clear-button" id="raman-clear" type="button">초기화</button>' in page
+    assert "clearButton.hidden = false" in page
     assert 'id="raman-library-list"' in page
     assert 'id="raman-library-filter"' in page
     assert 'id="raman-library-new"' in page

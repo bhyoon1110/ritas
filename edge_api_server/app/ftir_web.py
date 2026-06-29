@@ -912,7 +912,7 @@ _PAGE_SHELL = """
   </div>
   <div class="ftir-app-actions">
     <span class="ftir-status" id="ftir-status">대기</span>
-    <button type="button" class="ftir-clear-button" id="ftir-clear" hidden>초기화</button>
+    <button type="button" class="ftir-clear-button" id="ftir-clear">초기화</button>
     <label class="ftir-file-button">
       DPT 파일 선택
       <input id="ftir-file-input" class="ftir-file-input" type="file"
@@ -1828,7 +1828,7 @@ _UPLOAD_SCRIPT = """
   function renderFiles() {
     fileList.innerHTML = "";
     prompt.style.display = files.length ? "none" : "inline";
-    clearButton.hidden = files.length === 0;
+    clearButton.hidden = false;
     files.forEach(function(file, index) {
       var item = document.createElement("span");
       item.className = "ftir-file-item";
