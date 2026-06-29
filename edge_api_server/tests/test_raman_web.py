@@ -56,6 +56,7 @@ def test_raman_workspace_contains_upload_controls() -> None:
     assert "setToolPanelAlphaFromPointer" in page
     assert "setPanelPosition" in page
     assert 'gd.dispatchEvent(new CustomEvent("rist-open-edit-tool"))' in page
+    assert 'new CustomEvent("rist-raman-tools-toggle"' in page
     assert "setOpen(!gd.classList.contains" in page
     assert "gd._ristRamanRatioMode && gd.contains(ev.target)" in page
     assert "gd._ristRamanRatioMode = ratioMode" in page
@@ -70,11 +71,12 @@ def test_raman_workspace_contains_upload_controls() -> None:
     assert "@media (max-width: 1440px)" in page
     assert "@media (max-width: 420px)" in page
     assert "var compact = window.innerWidth <= 760" in page
+    assert "var toolsOpen = gd.classList.contains(\"rist-raman-tools-open\")" in page
     assert '"height": 900' in page
-    assert '"margin.t": 145' in page
+    assert '"margin.t": toolsOpen ? 145 : 82' in page
     assert '"margin.b": 150' in page
     assert '"legend.y": -0.30' in page
-    assert '"margin.t": 120' in page
+    assert '"margin.t": toolsOpen ? 120 : 90' in page
     assert "height: calc(100vh - 248px + 360px) !important" in page
     assert "min-height: 900px" in page
     assert "rist-legend-edit-button" in page
@@ -87,6 +89,8 @@ def test_raman_workspace_contains_upload_controls() -> None:
     assert "indexedDB.open(SESSION_DB_NAME, 1)" in page
     assert "restoreWorkspace()" in page
     assert "installWorkspaceAutosave()" in page
+    assert 'gd.addEventListener("rist-raman-tools-toggle"' in page
+    assert "if (restored) return applyResponsiveLayout()" in page
     assert "clearWorkspaceState()" in page
     assert "plotData: JSON.parse(JSON.stringify(gd.data || []))" in page
     assert "files = (state.files || []).map(recordFile)" in page

@@ -51,6 +51,7 @@ def test_ftir_workspace_contains_upload_and_editor_controls() -> None:
     assert "rist-ftir-tools-opacity" in page
     assert "setToolPanelAlphaFromPointer" in page
     assert 'gd.dispatchEvent(new CustomEvent("rist-open-edit-tool"))' in page
+    assert 'new CustomEvent("rist-ftir-tools-toggle"' in page
     assert "--rist-ftir-tool-panel-alpha" in page
     assert "@media (max-width: 1440px)" in page
     assert "z-index: 56" in page
@@ -68,10 +69,14 @@ def test_ftir_workspace_contains_upload_and_editor_controls() -> None:
     assert "files = (state.files || []).map(recordFile)" in page
     assert "height: calc(100vh - 180px + 360px) !important" in page
     assert "min-height: 900px" in page
+    assert "var toolsOpen = gd.classList.contains(\"rist-ftir-tools-open\")" in page
     assert '"height": 900' in page
-    assert '"margin.t": 145' in page
+    assert '"margin.t": toolsOpen ? 145 : 82' in page
+    assert '"margin.t": toolsOpen ? 105 : 82' in page
     assert '"margin.b": 150' in page
     assert '"legend.y": -0.30' in page
+    assert 'gd.addEventListener("rist-ftir-tools-toggle"' in page
+    assert "if (restored) return applyResponsiveLayout()" in page
     assert plotly_asset_path().is_file()
 
 

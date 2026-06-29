@@ -984,6 +984,9 @@ _RAMAN_TOOL_PANEL_SCRIPT = """
     button.setAttribute("aria-expanded", open ? "true" : "false");
     button.textContent = open ? "닫기" : "도구";
     if (open) gd.dispatchEvent(new CustomEvent("rist-open-edit-tool"));
+    gd.dispatchEvent(new CustomEvent("rist-raman-tools-toggle", {
+      detail: {open: open}
+    }));
   }
 
   button.addEventListener("click", function(ev) {
@@ -1909,9 +1912,10 @@ _UPLOAD_SCRIPT = """
 
   function applyResponsiveLayout() {
     var compact = window.innerWidth <= 760;
+    var toolsOpen = gd.classList.contains("rist-raman-tools-open");
     return window.Plotly.relayout(gd, compact ? {
       "height": 900,
-      "margin.t": 145,
+      "margin.t": toolsOpen ? 145 : 82,
       "margin.r": 30,
       "margin.b": 150,
       "legend.orientation": "h",
@@ -1921,7 +1925,7 @@ _UPLOAD_SCRIPT = """
       "legend.yanchor": "top"
     } : {
       "height": 720,
-      "margin.t": 120,
+      "margin.t": toolsOpen ? 120 : 90,
       "margin.r": (gd.data || []).length ? 260 : 70,
       "margin.b": 70,
       "legend.orientation": "v",
@@ -2543,6 +2547,12 @@ _UPLOAD_SCRIPT = """
     clearWorkspaceState();
     resetPlot();
   });
+  gd.addEventListener("rist-raman-tools-toggle", function() {
+    applyResponsiveLayout();
+  });
+  window.addEventListener("resize", function() {
+    applyResponsiveLayout();
+  });
   window.addEventListener("dragenter", function(ev) {
     if (ev.dataTransfer && ev.dataTransfer.types.indexOf("Files") >= 0) {
       dropZone.classList.add("is-dragging");
@@ -2562,7 +2572,7 @@ _UPLOAD_SCRIPT = """
   installWorkspaceAutosave();
   restoreWorkspace().then(function(restored) {
     return loadLibraries(restored && restored.selectedLibraryIds).then(function() {
-      if (restored) return null;
+      if (restored) return applyResponsiveLayout();
       renderFiles();
       return applyResponsiveLayout();
     });
