@@ -32,7 +32,7 @@ from reportlab.platypus import (
     TableStyle,
 )
 
-from .model import LLM_FALLBACK_NOTICE, ReportDocument, ReportFigure, ReportSection
+from .model import ReportDocument, ReportFigure, ReportSection
 
 PPTX_SLIDE_W = 12192000
 PPTX_SLIDE_H = 6858000
@@ -241,8 +241,6 @@ def _plain_lines(document: ReportDocument) -> list[str]:
         lines.append(section.heading)
         lines.extend(_section_lines(section))
         lines.append("")
-    if document.llm_error:
-        lines.append(LLM_FALLBACK_NOTICE)
     return lines
 
 
@@ -918,9 +916,6 @@ def render_pdf(
         if table is not None:
             story.append(table)
             story.append(Spacer(1, 2 * mm))
-
-    if document.llm_error:
-        story.append(Paragraph(_pdf_text(LLM_FALLBACK_NOTICE), styles["notice"]))
 
     footer = _pdf_footer(document, font_name)
     pdf_doc.build(story, onFirstPage=footer, onLaterPages=footer)

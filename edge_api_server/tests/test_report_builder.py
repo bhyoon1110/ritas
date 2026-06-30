@@ -14,7 +14,6 @@ from app.report import renderers
 from app.report import annotator
 from app.report.builders import FtirReportBuilder, LlmSlotSpec, RamanReportBuilder, get_builder
 from app.report.model import (
-    LLM_FALLBACK_NOTICE,
     ReportDocument,
     ReportFigure,
     ReportSection,
@@ -659,9 +658,9 @@ def test_pptx_renderer_hides_raw_llm_error(tmp_path) -> None:
             archive.read(name).decode("utf-8")
             for name in archive.namelist()
             if name.startswith("ppt/slides/slide") and name.endswith(".xml")
-        )
+    )
     assert "LLM_CONTEXT_LENGTH_EXCEEDED" not in slide_text
-    assert LLM_FALLBACK_NOTICE not in slide_text
+    assert "LLM 보조 설명 생성에 실패하여 규칙 기반 문안을 사용했습니다." not in slide_text
     assert "LLM 보조 설명" not in slide_text
     assert "<a:t>LLM</a:t>" not in slide_text
 

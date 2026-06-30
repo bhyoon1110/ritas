@@ -51,6 +51,8 @@ def test_ftir_workspace_contains_upload_and_editor_controls() -> None:
     assert 'id="ftir-drop-zone"' in page
     assert '<button type="button" class="ftir-clear-button" id="ftir-clear">초기화</button>' in page
     assert 'id="ftir-report"' in page
+    assert page.index('id="ftir-report"') < page.index('id="ftir-clear"')
+    assert page.index('id="ftir-clear"') < page.index('id="ftir-file-input"')
     assert "/api/v1/ftir/report/jobs" in page
     assert 'id="ftir-report-progress"' in page
     assert 'id="ftir-report-meta"' in page
@@ -275,8 +277,19 @@ def test_ftir_report_api_builds_package_with_graph_and_raw_xlsx(
         assert "의뢰번호" in html_report
         assert "분석 결과 요약" in html_report
         assert "현재 그래프 표시 피크" in html_report
+        assert "요청번호" not in html_report
+        assert "작업자" not in html_report
         assert "WEB-PREVIEW" not in html_report
+        assert "web-preview" not in html_report
+        assert "LLM 보조 설명" not in html_report
+        assert "LLM 사용" not in html_report
+        assert "요청번호" not in ppt_text
+        assert "작업자" not in ppt_text
         assert "WEB-PREVIEW" not in ppt_text
+        assert "web-preview" not in ppt_text
+        assert "LLM 보조 설명" not in ppt_text
+        assert "LLM 사용" not in ppt_text
+        assert "<a:t>LLM</a:t>" not in ppt_text
 
 
 def test_ftir_report_job_api_tracks_progress_and_downloads_package(

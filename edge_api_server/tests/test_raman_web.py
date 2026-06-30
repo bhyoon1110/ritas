@@ -50,6 +50,8 @@ def test_raman_workspace_contains_upload_controls() -> None:
 
     assert 'id="raman-file-input"' in page
     assert 'id="raman-report"' in page
+    assert page.index('id="raman-report"') < page.index('id="raman-clear"')
+    assert page.index('id="raman-clear"') < page.index('id="raman-file-input"')
     assert "/api/v1/raman/report/jobs" in page
     assert 'id="raman-report-progress"' in page
     assert 'id="raman-report-meta"' in page
@@ -385,6 +387,26 @@ def test_raman_report_api_builds_package_with_graph_and_raw_xlsx(monkeypatch) ->
             "current_graph.png",
         } <= names
         assert "report.json" not in names
+        html_report = archive.read("report.html").decode("utf-8")
+        ppt_text = "\n".join(
+            archive.read(name).decode("utf-8")
+            for name in archive.namelist()
+            if name.startswith("ppt/slides/slide") and name.endswith(".xml")
+        )
+        assert "의뢰번호" in html_report
+        assert "요청번호" not in html_report
+        assert "작업자" not in html_report
+        assert "WEB-PREVIEW" not in html_report
+        assert "web-preview" not in html_report
+        assert "LLM 보조 설명" not in html_report
+        assert "LLM 사용" not in html_report
+        assert "요청번호" not in ppt_text
+        assert "작업자" not in ppt_text
+        assert "WEB-PREVIEW" not in ppt_text
+        assert "web-preview" not in ppt_text
+        assert "LLM 보조 설명" not in ppt_text
+        assert "LLM 사용" not in ppt_text
+        assert "<a:t>LLM</a:t>" not in ppt_text
 
 
 def test_raman_report_job_api_tracks_progress_and_downloads_package(monkeypatch) -> None:

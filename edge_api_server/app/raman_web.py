@@ -1088,7 +1088,7 @@ body { overflow-x: hidden; }
 @media (max-width: 760px) {
   .raman-app-bar {
     align-items: flex-start;
-    flex-direction: column;
+    flex-wrap: wrap;
     gap: 7px;
     padding: 9px 12px;
   }
@@ -1351,9 +1351,9 @@ _PAGE_SHELL = """
   </div>
   <div class="raman-actions">
     <span class="raman-status" id="raman-status">Raman raw 파일을 업로드하세요</span>
-    <label class="raman-file-button" for="raman-file-input">파일 선택</label>
     <button class="raman-clear-button" id="raman-report" type="button">보고서 생성</button>
     <button class="raman-clear-button" id="raman-clear" type="button">초기화</button>
+    <label class="raman-file-button" for="raman-file-input">파일 선택</label>
     <input class="raman-file-input" id="raman-file-input" type="file"
            accept=".txt,.csv,.tsv,.xlsx,.xlsm" multiple>
   </div>

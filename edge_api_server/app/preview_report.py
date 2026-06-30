@@ -259,9 +259,9 @@ def build_preview_report_package(
     analysis_payload: dict[str, Any],
     raw_series: list[RawSeries],
     figure_image: bytes,
-    request_number: str = "WEB-PREVIEW",
-    equipment_code: str = "WEB-PREVIEW",
-    operator_id: str = "web-preview",
+    request_number: str = "",
+    equipment_code: str = "",
+    operator_id: str = "",
     settings: Any | None = None,
     progress: Callable[[str, int, str], None] | None = None,
 ) -> tuple[Path, Path]:
