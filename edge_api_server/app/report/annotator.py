@@ -28,6 +28,7 @@ logger = get_logger(__name__)
 
 _MIN_LLM_OUTPUT_TOKENS = 256
 _SMALL_CONTEXT_OUTPUT_CAP = 900
+_LIBRARY_OUTPUT_TERMS = ("라이브러리", "library")
 
 
 def _load_images(settings: Settings, processed_dir: Path) -> list[str]:
@@ -136,6 +137,17 @@ def _retry_max_tokens_from_context_error(message: str, current: int) -> int | No
     return None
 
 
+def _forbidden_output_terms(spec: LlmSlotSpec) -> tuple[str, ...]:
+    if "라이브러리 이름" in spec.system_prompt and "쓰지 마세요" in spec.system_prompt:
+        return _LIBRARY_OUTPUT_TERMS
+    return ()
+
+
+def _contains_forbidden_output_term(text: str, terms: tuple[str, ...]) -> bool:
+    normalized = text.lower()
+    return any(term.lower() in normalized for term in terms)
+
+
 def annotate(
     settings: Settings,
     llm_client: LocalLlmClient,
@@ -230,14 +242,19 @@ def annotate(
         )
 
     slots: dict[str, str] = {}
+    forbidden_terms = _forbidden_output_terms(spec)
     for key in spec.requested_slots:
         value = parsed.get(key)
         if isinstance(value, str) and value.strip():
-            slots[key] = value.strip()
+            text = value.strip()
+            if not _contains_forbidden_output_term(text, forbidden_terms):
+                slots[key] = text
         elif isinstance(value, list):
             lines = [str(item).strip() for item in value if str(item).strip()]
             if lines:
-                slots[key] = "\n".join(lines)
+                text = "\n".join(lines)
+                if not _contains_forbidden_output_term(text, forbidden_terms):
+                    slots[key] = text
     if not slots:
         raise LlmError(
             "LLM_RESPONSE_EMPTY",

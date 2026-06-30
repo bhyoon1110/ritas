@@ -160,19 +160,6 @@ def _total_sample_peak_count(payload: dict[str, Any]) -> int:
     return total
 
 
-def _applied_assignment_libraries(payload: dict[str, Any]) -> list[dict[str, Any]]:
-    settings = payload.get("settings") if isinstance(payload.get("settings"), dict) else {}
-    return [item for item in _as_list(settings.get("assignmentLibraries")) if isinstance(item, dict)]
-
-
-def _assignment_library_text(payload: dict[str, Any]) -> str:
-    names = [
-        str(item.get("name") or item.get("id") or "").strip()
-        for item in _applied_assignment_libraries(payload)
-    ]
-    return ", ".join(name for name in names if name) or "미적용"
-
-
 def _current_peak_count(payload: dict[str, Any], *, x_label: str = "cm-1") -> int:
     return len(_figure_peak_facts(payload, x_label=x_label, max_items=500))
 
@@ -240,12 +227,6 @@ def _figure_peak_facts(
         if not isinstance(peak, dict):
             continue
         assignments = _as_list(peak.get("assignments"))
-        libraries = []
-        for item in assignments:
-            if not isinstance(item, dict):
-                continue
-            libraries.append(str(item.get("library_name") or item.get("library_id") or ""))
-        libraries = [item for item in dict.fromkeys(libraries) if item]
         assignment_names = [
             _clean_html_text(item.get("name"))
             for item in assignments
@@ -284,8 +265,6 @@ def _figure_peak_facts(
                 fact["original_label"] = original_label
             if assignment_names:
                 fact["assignments"] = list(dict.fromkeys(assignment_names))[:3]
-            if libraries:
-                fact["libraries"] = libraries[:3]
             if peak.get("group_name"):
                 fact["group"] = _clean_html_text(peak.get("group_name"))
             if peak.get("user"):
@@ -303,7 +282,6 @@ def _figure_peak_facts(
                     "label": label,
                     "original_label": original_label,
                     "assignment_names": list(dict.fromkeys(assignment_names)),
-                    "libraries": libraries,
                     "group_name": _clean_html_text(peak.get("group_name"))
                     if peak.get("group_name")
                     else None,
@@ -325,7 +303,6 @@ def _figure_peak_rows(payload: dict[str, Any], *, x_label: str) -> list[list[str
                 str(peak["sample"]),
                 str(peak["position_text"]),
                 str(peak["label"]),
-                ", ".join(peak["libraries"]) or "-",
             ]
         )
         if len(rows) >= 18:
@@ -515,18 +492,18 @@ class FtirReportBuilder(ReportBuilder):
 
     SYSTEM_PROMPT = (
         "당신은 재료분석 실험실의 FT-IR 보고서 작성 보조자입니다.\n"
-        "제공된 피크 정보와 라이브러리 매칭 결과(JSON)만 근거로 한국어 문안을 작성하세요.\n"
+        "제공된 피크 정보, assignment 결과, 실험조건(JSON)만 근거로 한국어 문안을 작성하세요.\n"
         "수치를 재계산하거나 제공되지 않은 물질, 피크, 작용기를 추측하지 마세요.\n"
         "current_peaks는 보고서 생성 시점의 그래프 화면에서 사용자가 편집/삭제/숨김 처리한 뒤 남은 피크입니다.\n"
         "피크명은 current_peaks.label을 우선 사용하고, original_label은 변경 전 추적용으로만 참고하세요.\n"
-        "top_candidate가 없으면 현재 FT-IR 웹 그래프 기반 보고서이므로 samples, settings.assignmentLibraries, current_peaks만 근거로 작성하세요.\n"
-        "라이브러리 점수가 임계값 미만이면 '라이브러리 기반 확정 동정은 아님'으로 표현하세요.\n"
+        "보고서 문안에는 라이브러리 이름, 라이브러리 적용 여부, 라이브러리 매칭 섹션을 쓰지 마세요.\n"
+        "top_candidate가 없으면 현재 FT-IR 웹 그래프 기반 보고서이므로 samples, settings, current_peaks만 근거로 작성하세요.\n"
         "물질명을 단정하지 말고 '가능성', '시사함', '검토 필요' 중심으로 표현하세요.\n"
         "수식은 LaTeX/Markdown 수식 문법을 쓰지 말고 I_842/I_518 = 0.631, cm⁻¹처럼 일반 텍스트로 쓰세요. 화학식은 Li₂CO₃, CO₃²⁻처럼 유니코드 아래첨자/위첨자로 쓰세요.\n"
         "출력은 반드시 JSON 객체 하나로만 응답하세요.\n"
         "- summary: 고객 보고서용 요약 정확히 3문장\n"
         "- key_findings: 핵심 관찰사항 3~5개를 짧은 문장으로 작성\n"
-        "- interpretation: 피크/라이브러리 근거를 연결한 해석(4문장 이내)\n"
+        "- interpretation: 피크와 assignment 근거를 연결한 해석(4문장 이내)\n"
         "- qc_notes: 해석 한계, 품질 확인, 추가 검토 사항(3문장 이내)\n"
         "- narrative: 주요 근거와 해석에 대한 보조 설명(4문장 이내)\n"
         "- caption: 발표자료용 한 문장 캡션\n"
@@ -560,7 +537,6 @@ class FtirReportBuilder(ReportBuilder):
             )
         )
         document.sections.append(self._verdict_section(verdict))
-        document.sections.append(self._library_section(verdict))
         document.sections.append(self._functional_groups_section(verdict))
         document.sections.append(self._current_peak_section(verdict))
 
@@ -591,7 +567,7 @@ class FtirReportBuilder(ReportBuilder):
         bullets = []
         if verdict.get("tier"):
             bullets.append(f"신뢰도 판정: {verdict['tier']}")
-        if verdict.get("reason"):
+        if verdict.get("reason") and not isinstance(verdict.get("top_candidate"), dict):
             bullets.append(f"근거: {verdict['reason']}")
         cv = verdict.get("combined_verdict") or {}
         if cv.get("verdict"):
@@ -605,59 +581,14 @@ class FtirReportBuilder(ReportBuilder):
             sample_count = len(_sample_names(verdict))
             current_peaks = _current_peak_count(verdict, x_label="cm-1")
             total_detected = _total_sample_peak_count(verdict)
-            library_text = _assignment_library_text(verdict)
             if sample_count:
                 bullets.append(f"분석 시료: {sample_text} ({sample_count}개)")
             if total_detected:
                 bullets.append(f"전처리 단계 검출 피크 후보: {total_detected}개")
             bullets.append(f"현재 그래프 표시 피크: {current_peaks}개")
-            bullets.append(f"적용 피크 라이브러리: {library_text}")
-            bullets.append("현재 판정은 그래프에 남아 있는 피크와 선택 라이브러리 assignment 기반 후보 소견입니다.")
+            bullets.append("현재 판정은 그래프에 남아 있는 피크와 피크 assignment 기반 후보 소견입니다.")
             return ReportSection("verdict", "분석 결과 요약", bullets=bullets)
         return ReportSection("verdict", "판정 결과", bullets=bullets)
-
-    def _library_section(self, verdict: dict[str, Any]) -> ReportSection:
-        top = verdict.get("top_candidate")
-        if not isinstance(top, dict):
-            libraries = _applied_assignment_libraries(verdict)
-            if libraries:
-                peaks = _figure_peak_facts(verdict, x_label="cm-1", max_items=500)
-                matched_counts: dict[str, int] = {}
-                for peak in peaks:
-                    for library in peak.get("libraries", []):
-                        matched_counts[str(library)] = matched_counts.get(str(library), 0) + 1
-                rows = [
-                    [
-                        str(library.get("name") or library.get("id") or "-"),
-                        str(library.get("id") or "-"),
-                        str(library.get("assignmentCount") or 0),
-                        str(matched_counts.get(str(library.get("name") or library.get("id") or ""), 0)),
-                    ]
-                    for library in libraries
-                ]
-                return ReportSection(
-                    "library_match",
-                    "적용 피크 라이브러리",
-                    table=ReportTable(["라이브러리", "ID", "Assignment 수", "현재 매칭 피크"], rows),
-                )
-            return ReportSection(
-                "library_match",
-                "라이브러리 매칭",
-                paragraphs=["적용된 피크 라이브러리가 없습니다. 현재 피크명은 자동 검출 또는 사용자 편집값 기준입니다."],
-            )
-        table = ReportTable(
-            columns=["항목", "값"],
-            rows=[
-                ["후보 물질", str(top.get("material", "-"))],
-                ["카테고리", str(top.get("category", "-"))],
-                ["종합 점수", _pct(top.get("composite_pct"))],
-                ["코사인", _pct(top.get("cosine_pct"))],
-                ["미분", _pct(top.get("deriv_pct"))],
-                ["피크", _pct(top.get("peak_pct"))],
-                ["겹침", _pct(top.get("overlap_pct"))],
-            ],
-        )
-        return ReportSection("library_match", "라이브러리 매칭(최상위 후보)", table=table)
 
     def _functional_groups_section(self, verdict: dict[str, Any]) -> ReportSection:
         findings = verdict.get("findings") or {}
@@ -673,19 +604,18 @@ class FtirReportBuilder(ReportBuilder):
                         str(peak.get("sample") or "-"),
                         str(peak.get("position_text") or "-"),
                         ", ".join(str(item) for item in assignments),
-                        ", ".join(str(item) for item in peak.get("libraries", [])) or "-",
                     ]
                 )
             if rows:
                 return ReportSection(
                     "functional_groups",
                     "작용기 소견",
-                    table=ReportTable(["시료", "Wavenumber", "피크/작용기 assignment", "라이브러리"], rows),
+                    table=ReportTable(["시료", "Wavenumber", "피크/작용기 assignment"], rows),
                 )
             return ReportSection(
                 "functional_groups",
                 "작용기 소견",
-                paragraphs=["현재 표시 피크 중 라이브러리 assignment가 연결된 항목이 없습니다."],
+                paragraphs=["현재 표시 피크 중 작용기 assignment가 연결된 항목이 없습니다."],
             )
         rows = []
         for group in groups:
@@ -709,31 +639,26 @@ class FtirReportBuilder(ReportBuilder):
                 "현재 그래프 피크",
                 paragraphs=["현재 그래프에 표시된 보고서용 피크 정보가 없습니다."],
             )
-        table = ReportTable(columns=["시료", "Wavenumber", "피크 이름", "라이브러리"], rows=rows)
+        table = ReportTable(columns=["시료", "Wavenumber", "피크 이름"], rows=rows)
         return ReportSection("current_peaks", "현재 그래프 피크", table=table)
 
     def _limitations_section(self, verdict: dict[str, Any]) -> ReportSection:
         bullets: list[str] = []
         top = verdict.get("top_candidate") or {}
-        composite = top.get("composite_pct")
         if not isinstance(top, dict) or not top:
             return ReportSection(
                 "limitations",
                 "해석 한계 및 검토 필요사항",
                 bullets=[
-                    "현재 그래프에 표시된 피크와 선택된 피크 라이브러리 assignment만 근거로 작성되었습니다.",
-                    "라이브러리 미적용 또는 미매칭 피크는 물질명이나 작용기를 단정하지 않았습니다.",
+                    "현재 그래프에 표시된 피크와 피크 assignment만 근거로 작성되었습니다.",
+                    "Assignment가 없는 피크는 물질명이나 작용기를 단정하지 않았습니다.",
                     "FT-IR 단일 스펙트럼만으로 혼합물 분리, 정량 분석, 최종 물질 확정은 수행하지 않습니다.",
                     "필요 시 표준품, 반복 측정, 보완 분석 및 분석자 검토가 필요합니다.",
                 ],
             )
         if not verdict.get("is_library_identified", False):
             bullets.append(
-                "라이브러리 기반 확정 동정이 아니므로 후보 물질은 참고용입니다."
-            )
-        if isinstance(composite, (int, float)) and composite < 65:
-            bullets.append(
-                f"최고 종합 점수({_pct(composite)})가 임계값(65%) 미만이라 추가 검토가 필요합니다."
+                "자동 분석 결과만으로 확정 동정하지 않으며 후보 소견은 참고용입니다."
             )
         bullets.append(
             "단일 피크/단일 이미지만으로 작용기나 물질을 확정하지 않았습니다."
@@ -747,24 +672,22 @@ class FtirReportBuilder(ReportBuilder):
         sample_count = len(_sample_names(verdict))
         total_detected = _total_sample_peak_count(verdict)
         current_peaks = _current_peak_count(verdict, x_label="cm-1")
-        library_text = _assignment_library_text(verdict)
         if not isinstance(verdict.get("top_candidate"), dict):
             summary = (
                 f"{sample}에 대한 FT-IR 그래프 기반 피크 분석 결과를 정리했습니다. "
-                f"현재 보고서에는 그래프에 표시된 피크 {current_peaks}개와 선택 라이브러리 assignment가 반영되었습니다. "
+                f"현재 보고서에는 그래프에 표시된 피크 {current_peaks}개와 피크 assignment가 반영되었습니다. "
                 "본 결과는 자동 피크 검출과 사용자 편집 상태를 반영한 후보 소견입니다."
             )
             key_findings = (
                 f"분석 시료 수는 {sample_count}개입니다. "
-                f"전처리 단계 검출 피크 후보는 {total_detected}개이며 현재 표시 피크는 {current_peaks}개입니다. "
-                f"적용 피크 라이브러리는 {library_text}입니다."
+                f"전처리 단계 검출 피크 후보는 {total_detected}개이며 현재 표시 피크는 {current_peaks}개입니다."
             )
             interpretation = (
-                "현재 그래프에 남아 있는 피크 위치와 피크 라이브러리 assignment를 기준으로 해석했습니다. "
+                "현재 그래프에 남아 있는 피크 위치와 피크 assignment를 기준으로 해석했습니다. "
                 "사용자가 숨김, 삭제, 이름 수정한 피크 상태가 보고서에 반영됩니다."
             )
             qc_notes = (
-                "피크 민감도, smoothing, baseline 처리, 선택 라이브러리에 따라 피크 수와 assignment가 달라질 수 있습니다. "
+                "피크 민감도, smoothing, baseline 처리에 따라 피크 수와 assignment가 달라질 수 있습니다. "
                 "확정 동정은 분석자 검토와 필요 시 표준품/반복 측정으로 확인해야 합니다."
             )
             narrative = "현재 그래프 화면의 피크 정보와 raw 데이터 기반 전처리 결과를 바탕으로 한 규칙 기반 설명입니다."
@@ -773,8 +696,7 @@ class FtirReportBuilder(ReportBuilder):
             email_body = (
                 f"{sample} FT-IR 분석 보고서를 첨부드립니다.\n\n"
                 f"- 현재 표시 피크: {current_peaks}개\n"
-                f"- 적용 피크 라이브러리: {library_text}\n"
-                "- 본 결과는 자동 피크 검출 및 선택 라이브러리 후보 기반 참고 소견입니다."
+                "- 본 결과는 자동 피크 검출 및 assignment 후보 기반 참고 소견입니다."
             )
             return {
                 "summary": summary,
@@ -787,21 +709,17 @@ class FtirReportBuilder(ReportBuilder):
                 "email_body": email_body,
             }
         tier = verdict.get("tier", "판정 미상")
-        top = verdict.get("top_candidate") or {}
-        material = top.get("material", "후보 물질")
-        composite = _pct(top.get("composite_pct"))
         summary = (
             f"{sample} 시료에 대한 FT-IR 분석 결과 신뢰도 판정은 '{tier}'입니다. "
-            f"라이브러리 최상위 후보는 '{material}'(종합 {composite})로 나타났습니다. "
-            "확정 동정이 아니므로 결과는 참고용으로 해석해야 합니다."
+            "관찰된 피크와 작용기 소견을 기준으로 후보 해석을 정리했습니다. "
+            "자동 분석 결과만으로 확정 동정하지 않으며 결과는 참고용으로 해석해야 합니다."
         )
         key_findings = (
             f"신뢰도 판정은 {tier}입니다. "
-            f"최상위 라이브러리 후보는 {material}이며 종합 점수는 {composite}입니다. "
-            "작용기 소견과 라이브러리 매칭 결과를 함께 검토해야 합니다."
+            "주요 작용기 소견과 검출 피크 위치를 함께 검토해야 합니다."
         )
         interpretation = (
-            "검출 피크와 작용기 후보를 라이브러리 매칭 결과와 대조한 해석입니다. "
+            "검출 피크와 작용기 후보를 연결한 해석입니다. "
             "제시된 후보는 자동 분석 결과이며 분석자 검토 전 확정 동정으로 사용하지 않습니다."
         )
         qc_notes = (
@@ -809,16 +727,15 @@ class FtirReportBuilder(ReportBuilder):
             "필요 시 원시 스펙트럼, 반복 측정, 보완 분석으로 확인하십시오."
         )
         narrative = (
-            "규칙 기반 작용기 소견과 라이브러리 매칭 점수를 종합한 결과입니다. "
-            "구체적 근거는 작용기 소견 및 라이브러리 매칭 표를 참고하십시오."
+            "규칙 기반 작용기 소견과 검출 피크를 종합한 결과입니다. "
+            "구체적 근거는 작용기 소견 및 현재 그래프 피크 표를 참고하십시오."
         )
-        caption = f"{sample} FT-IR 분석 — 최상위 후보 {material}(참고용)"
+        caption = f"{sample} FT-IR 피크 및 작용기 분석 결과"
         email_subject = f"[RIST] {sample} FT-IR 분석 보고서"
         email_body = (
             f"{sample} 시료의 FT-IR 분석 보고서를 첨부드립니다.\n\n"
             f"- 신뢰도 판정: {tier}\n"
-            f"- 최상위 후보: {material} (종합 {composite})\n"
-            "- 본 결과는 자동 분석 기반 참고 소견이며, 확정 동정은 분석자 검토 후 판단해 주십시오."
+            "- 본 결과는 자동 피크/작용기 분석 기반 참고 소견이며, 확정 동정은 분석자 검토 후 판단해 주십시오."
         )
         return {
             "summary": summary,
@@ -850,8 +767,6 @@ class FtirReportBuilder(ReportBuilder):
             "samples": verdict.get("samples"),
             "tier": verdict.get("tier"),
             "reason": verdict.get("reason"),
-            "is_library_identified": verdict.get("is_library_identified"),
-            "top_candidate": verdict.get("top_candidate"),
             "settings": {
                 "sensitivity": (verdict.get("settings") or {}).get("sensitivity")
                 if isinstance(verdict.get("settings"), dict)
@@ -865,14 +780,6 @@ class FtirReportBuilder(ReportBuilder):
                 "smooth": (verdict.get("settings") or {}).get("smooth")
                 if isinstance(verdict.get("settings"), dict)
                 else None,
-                "assignmentLibraries": [
-                    {
-                        "id": item.get("id"),
-                        "name": item.get("name"),
-                        "assignmentCount": item.get("assignmentCount"),
-                    }
-                    for item in _applied_assignment_libraries(verdict)
-                ],
             },
             "functional_groups": groups,
             "experiment_conditions": _experiment_condition_rows(
@@ -890,7 +797,6 @@ class FtirReportBuilder(ReportBuilder):
                 "verdict": cv.get("verdict"),
                 "confidence": cv.get("confidence"),
                 "action": cv.get("action"),
-                "explanation": cv.get("explanation"),
             },
         }
         return LlmSlotSpec(
@@ -915,16 +821,17 @@ class RamanReportBuilder(ReportBuilder):
 
     SYSTEM_PROMPT = (
         "당신은 재료분석 실험실의 Raman 보고서 작성 보조자입니다.\n"
-        "제공된 피크, intensity 비율, Raman assignment 라이브러리 결과(JSON)만 근거로 한국어 문안을 작성하세요.\n"
+        "제공된 피크, intensity 비율, Raman assignment 결과, 실험조건(JSON)만 근거로 한국어 문안을 작성하세요.\n"
         "제공되지 않은 상, 물질명, 조성, 원인을 새로 추측하지 마세요.\n"
         "current_peaks는 보고서 생성 시점의 그래프 화면에서 사용자가 편집/삭제/숨김 처리한 뒤 남은 피크입니다.\n"
         "피크명은 current_peaks.label을 우선 사용하고, original_label은 변경 전 추적용으로만 참고하세요.\n"
-        "Raman 피크 assignment는 후보 소견으로 표현하고, 라이브러리 미적용/미매칭 피크는 단정하지 마세요.\n"
+        "보고서 문안에는 라이브러리 이름, 라이브러리 적용 여부, 라이브러리 매칭 섹션을 쓰지 마세요.\n"
+        "Raman 피크 assignment는 후보 소견으로 표현하고, assignment가 없는 피크는 단정하지 마세요.\n"
         "수식은 LaTeX/Markdown 수식 문법을 쓰지 말고 I_D/I_G = 0.84, cm⁻¹처럼 일반 텍스트로 쓰세요. 화학식은 Li₂CO₃, CO₃²⁻처럼 유니코드 아래첨자/위첨자로 쓰세요.\n"
         "출력은 반드시 JSON 객체 하나로만 응답하세요.\n"
         "- summary: 고객 보고서용 요약 정확히 3문장\n"
         "- key_findings: 핵심 관찰사항 3~5개를 짧은 문장으로 작성\n"
-        "- interpretation: Raman band/비율/라이브러리 근거를 연결한 해석(4문장 이내)\n"
+        "- interpretation: Raman band/비율/assignment 근거를 연결한 해석(4문장 이내)\n"
         "- qc_notes: baseline, 스택 표시, 강도비 해석 한계 등 검토사항(3문장 이내)\n"
         "- narrative: 주요 근거 보조 설명(4문장 이내)\n"
         "- caption: 발표자료용 한 문장 캡션\n"
@@ -949,7 +856,6 @@ class RamanReportBuilder(ReportBuilder):
         )
         document.sections.append(self._experiment_conditions_section(payload))
         document.sections.append(self._sample_section(payload))
-        document.sections.append(self._library_section(payload))
         document.sections.append(self._peak_section(payload))
 
         fallback = self._fallback_texts(job, payload)
@@ -995,35 +901,6 @@ class RamanReportBuilder(ReportBuilder):
             table=ReportTable(["시료", "원본 파일", "데이터 포인트", "피크 수"], rows),
         )
 
-    def _library_section(self, payload: dict[str, Any]) -> ReportSection:
-        settings = payload.get("settings") if isinstance(payload.get("settings"), dict) else {}
-        libraries = _as_list(settings.get("assignmentLibraries"))
-        peaks = _figure_peak_facts(payload, x_label="cm-1", max_items=500)
-        matched_counts: dict[str, int] = {}
-        for peak in peaks:
-            for library in peak.get("libraries", []):
-                matched_counts[str(library)] = matched_counts.get(str(library), 0) + 1
-        rows = []
-        for library in libraries:
-            if not isinstance(library, dict):
-                continue
-            library_name = str(library.get("name") or library.get("id") or "-")
-            rows.append(
-                [
-                    library_name,
-                    str(library.get("id") or "-"),
-                    str(library.get("assignmentCount") or 0),
-                    str(matched_counts.get(library_name, 0)),
-                ]
-            )
-        if not rows:
-            return ReportSection("raman_libraries", "적용 피크 라이브러리", paragraphs=["적용된 Raman 피크 라이브러리가 없습니다."])
-        return ReportSection(
-            "raman_libraries",
-            "적용 피크 라이브러리",
-            table=ReportTable(["라이브러리", "ID", "Assignment 수", "현재 매칭 피크"], rows),
-        )
-
     def _peak_section(self, payload: dict[str, Any]) -> ReportSection:
         rows = _figure_peak_rows(payload, x_label="cm-1")
         if not rows:
@@ -1031,7 +908,7 @@ class RamanReportBuilder(ReportBuilder):
         return ReportSection(
             "raman_peaks",
             "주요 Raman 피크",
-            table=ReportTable(["시료", "Raman shift", "Assignment", "라이브러리"], rows),
+            table=ReportTable(["시료", "Raman shift", "Assignment"], rows),
         )
 
     def _fallback_texts(self, job: dict[str, Any], payload: dict[str, Any]) -> dict[str, str]:
@@ -1040,19 +917,17 @@ class RamanReportBuilder(ReportBuilder):
         sample_text = _sample_text(payload)
         total_peaks = _total_sample_peak_count(payload)
         current_peaks = _current_peak_count(payload, x_label="cm-1")
-        library_text = _assignment_library_text(payload)
         summary = (
             f"{sample_text}에 대한 Raman 분석 결과를 정리했습니다. "
             f"현재 그래프에는 사용자 편집/숨김 상태가 반영된 피크 {current_peaks}개가 표시되어 있습니다. "
-            "피크 assignment는 선택된 라이브러리 기반 후보 소견으로 해석해야 합니다."
+            "피크 assignment는 후보 소견으로 해석해야 합니다."
         )
         key_findings = (
             f"분석 시료 수는 {sample_count}개입니다. "
-            f"전처리 단계 검출 피크 후보는 총 {total_peaks}개이고 현재 표시 피크는 {current_peaks}개입니다. "
-            f"적용 라이브러리는 {library_text}입니다."
+            f"전처리 단계 검출 피크 후보는 총 {total_peaks}개이고 현재 표시 피크는 {current_peaks}개입니다."
         )
         interpretation = (
-            "현재 그래프에 남아 있는 Raman band 위치, 상대 intensity, 라이브러리 assignment를 기준으로 해석했습니다. "
+            "현재 그래프에 남아 있는 Raman band 위치, 상대 intensity, 피크 assignment를 기준으로 해석했습니다. "
             "사용자가 숨김, 삭제, 이름 수정한 피크 상태가 보고서에 반영됩니다."
         )
         qc_notes = (
@@ -1066,8 +941,7 @@ class RamanReportBuilder(ReportBuilder):
             f"{sample_text} Raman 분석 보고서를 첨부드립니다.\n\n"
             f"- 시료 수: {sample_count}\n"
             f"- 현재 표시 피크: {current_peaks}개\n"
-            f"- 적용 라이브러리: {library_text}\n"
-            "- 본 결과는 자동 피크 검출 및 라이브러리 후보 기반 참고 소견입니다."
+            "- 본 결과는 자동 피크 검출 및 assignment 후보 기반 참고 소견입니다."
         )
         return {
             "summary": summary,
@@ -1094,7 +968,6 @@ class RamanReportBuilder(ReportBuilder):
                 "prominence": settings.get("prominence"),
                 "baseline": settings.get("baseline"),
                 "smooth": settings.get("smooth"),
-                "assignmentLibraries": settings.get("assignmentLibraries"),
             },
             "experiment_conditions": _experiment_condition_rows(payload),
             "current_peaks": _figure_peak_facts(

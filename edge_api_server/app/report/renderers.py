@@ -1285,7 +1285,7 @@ def _pptx_title_slide(document: ReportDocument) -> str:
             y=2438400,
             cx=9601200,
             cy=609600,
-            lines=["피크 분석 · 라이브러리 후보 · 보고서용 그래프 화면을 통합 정리"],
+            lines=["피크 분석 · 그래프 화면 · raw 데이터를 통합 정리"],
             font_size=2000,
             color=PPTX_MUTED,
             inset=0,

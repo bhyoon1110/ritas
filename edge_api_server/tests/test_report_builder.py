@@ -158,7 +158,6 @@ def test_ftir_builder_maps_verdict_to_fixed_sections() -> None:
         "sample_info",
         "experiment_conditions",
         "verdict",
-        "library_match",
         "functional_groups",
         "current_peaks",
         "summary",
@@ -173,9 +172,7 @@ def test_ftir_builder_maps_verdict_to_fixed_sections() -> None:
     assert conditions is not None
     assert conditions.paragraphs
 
-    library = document.section("library_match")
-    assert library is not None and library.table is not None
-    assert ["후보 물질", "m-Xylene"] in library.table.rows
+    assert document.section("library_match") is None
 
     groups = document.section("functional_groups")
     assert groups is not None and groups.table is not None
@@ -185,10 +182,11 @@ def test_ftir_builder_maps_verdict_to_fixed_sections() -> None:
     assert current_peaks is not None
     assert current_peaks.paragraphs
 
-    # 점수 64.5% < 65% 이면 한계 섹션에 임계값 경고가 들어가야 한다.
+    # 라이브러리 점수/임계값은 보고서에 노출하지 않고 일반 검토사항만 남긴다.
     limitations = document.section("limitations")
     assert limitations is not None
-    assert any("임계값" in bullet for bullet in limitations.bullets)
+    assert any("확정 동정" in bullet for bullet in limitations.bullets)
+    assert all("임계값" not in bullet for bullet in limitations.bullets)
 
     # LLM 슬롯은 규칙 기본 문안으로 미리 채워져 있어야 한다.
     for slot_id in (
@@ -264,21 +262,16 @@ def test_ftir_web_payload_report_uses_current_graph_facts() -> None:
     assert verdict.heading == "분석 결과 요약"
     assert any("현재 그래프 표시 피크: 1개" in bullet for bullet in verdict.bullets)
 
-    library = document.section("library_match")
-    assert library is not None and library.table is not None
-    assert library.heading == "적용 피크 라이브러리"
-    assert library.table.rows == [["General FTIR", "general-ftir", "120", "1"]]
+    assert document.section("library_match") is None
 
     groups = document.section("functional_groups")
     assert groups is not None and groups.table is not None
-    assert groups.table.rows == [
-        ["3_Melamine.0", "3381.6 cm-1", "N-H stretch", "General FTIR"]
-    ]
+    assert groups.table.rows == [["3_Melamine.0", "3381.6 cm-1", "N-H stretch"]]
 
     spec = FtirReportBuilder().llm_slots(_job(), analysis)
     assert spec is not None
     assert spec.facts["samples"] == payload["samples"]
-    assert spec.facts["settings"]["assignmentLibraries"][0]["name"] == "General FTIR"
+    assert "assignmentLibraries" not in spec.facts["settings"]
     assert spec.facts["current_peaks"][0]["label"] == "N-H stretch"
 
 
@@ -298,7 +291,7 @@ def test_ftir_llm_slots_spec_contains_facts() -> None:
         "email_body",
     ]
     assert spec.facts["sample"] == "5_Melamine Cyanurate.0"
-    assert spec.facts["top_candidate"]["material"] == "m-Xylene"
+    assert "top_candidate" not in spec.facts
     assert spec.facts["current_peaks"] == []
     assert {"summary", "narrative", "caption", "email_body"} <= set(spec.fallback)
 
@@ -352,9 +345,7 @@ def test_ftir_report_uses_current_edited_visible_peaks_for_llm() -> None:
 
     peaks = document.section("current_peaks")
     assert peaks is not None and peaks.table is not None
-    assert peaks.table.rows == [
-        ["Edited Sample", "3381.6 cm-1", "사용자 수정 N-H peak", "General FTIR"]
-    ]
+    assert peaks.table.rows == [["Edited Sample", "3381.6 cm-1", "사용자 수정 N-H peak"]]
 
     spec = FtirReportBuilder().llm_slots(_job(), analysis)
     assert spec is not None
@@ -368,7 +359,6 @@ def test_ftir_report_uses_current_edited_visible_peaks_for_llm() -> None:
             "intensity": 0.421,
             "original_label": "N-H stretch (primary amine)",
             "assignments": ["N-H stretch"],
-            "libraries": ["General FTIR"],
             "group": "멜라민 후보군",
         }
     ]
@@ -541,20 +531,74 @@ def test_llm_annotation_retries_context_length_error(tmp_path) -> None:
     assert posted_payloads[1]["max_tokens"] == 528
 
 
+def test_llm_annotation_filters_library_terms_from_report_slots(tmp_path) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/v1/models":
+            return httpx.Response(200, json={"data": [{"id": "gemma4-e4b"}]})
+        return httpx.Response(
+            200,
+            json={
+                "choices": [
+                    {
+                        "message": {
+                            "content": json.dumps(
+                                {
+                                    "summary": "라이브러리 기반 후보 소견입니다.",
+                                    "caption": "현재 그래프 피크 분석 결과",
+                                },
+                                ensure_ascii=False,
+                            )
+                        }
+                    }
+                ]
+            },
+        )
+
+    settings = Settings(storage_root=tmp_path, llm_include_images=False)
+    client = LocalLlmClient(
+        "http://127.0.0.1:8001",
+        "gemma4-e4b",
+        10,
+        0.1,
+        1200,
+        True,
+        transport=httpx.MockTransport(handler),
+    )
+    spec = LlmSlotSpec(
+        system_prompt="보고서 문안에는 라이브러리 이름, 라이브러리 적용 여부를 쓰지 마세요.",
+        facts={"current_peaks": [{"label": "N-H stretch"}]},
+        requested_slots=["summary", "caption"],
+        fallback={},
+    )
+
+    try:
+        slots = annotator.annotate(
+            settings,
+            client,
+            spec,
+            processed_dir=tmp_path,
+            logs_dir=tmp_path / "logs",
+        )
+    finally:
+        client.close()
+
+    assert slots == {"caption": "현재 그래프 피크 분석 결과"}
+
+
 def test_markdown_render_includes_headings() -> None:
     analysis = [{"relativePath": "verdict.json", "data": _verdict()}]
     document = FtirReportBuilder().build(_job(), analysis)
     markdown = document.to_markdown()
 
     assert "# FT-IR 분석 보고서" in markdown
-    assert "## 라이브러리 매칭(최상위 후보)" in markdown
+    assert "## 라이브러리 매칭" not in markdown
     assert "| 작용기 | 신뢰도 | 근거 |" in markdown
 
 
 def test_markdown_table_cells_are_escaped() -> None:
     verdict = _verdict()
-    verdict["top_candidate"]["material"] = "A|B"
-    verdict["top_candidate"]["category"] = "line1\nline2"
+    verdict["findings"]["functional_groups"][0]["group"] = "A|B"
+    verdict["findings"]["functional_groups"][0]["evidence"] = "line1\nline2"
     analysis = [{"relativePath": "verdict.json", "data": verdict}]
     document = FtirReportBuilder().build(_job(), analysis)
     markdown = document.to_markdown()
@@ -669,8 +713,8 @@ def test_pptx_renderer_lets_powerpoint_wrap_korean_text(tmp_path) -> None:
     analysis = [{"relativePath": "verdict.json", "data": _verdict()}]
     document = FtirReportBuilder().build(_job(), analysis)
     long_sentence = (
-        "라이브러리 기반 확정 동정은 아니지만 현재 그래프에서 사용자가 편집한 "
-        "피크명과 숨김 상태를 반영하여 보고서 문안을 생성합니다."
+        "현재 그래프에서 사용자가 편집한 피크명과 숨김 상태를 반영하여 "
+        "보고서 문안을 생성합니다."
     )
     document.sections = [
         ReportSection("wrap_test", "줄바꿈 테스트", paragraphs=[long_sentence])
@@ -924,10 +968,7 @@ def test_raman_builder_maps_web_analysis_payload() -> None:
     assert conditions is not None and conditions.table is not None
     assert ["LiOH_1", "Excitation Wavelength", "532.06 nm"] in conditions.table.rows
     assert document.section("raman_samples") is not None
-    libraries = document.section("raman_libraries")
-    assert libraries is not None and libraries.table is not None
-    assert libraries.table.columns == ["라이브러리", "ID", "Assignment 수", "현재 매칭 피크"]
-    assert libraries.table.rows == [["General Raman", "general-raman", "10", "1"]]
+    assert document.section("raman_libraries") is None
     peaks = document.section("raman_peaks")
     assert peaks is not None and peaks.table is not None
     assert peaks.table.rows[0][1] == "518.0 cm-1"
@@ -944,6 +985,7 @@ def test_raman_builder_maps_web_analysis_payload() -> None:
         "Excitation Wavelength",
         "532.06 nm",
     ]
+    assert "assignmentLibraries" not in spec.facts["settings"]
     assert spec.facts["peak_assignments"][0][2] == "사용자 수정 LiOH peak"
     assert spec.facts["current_peaks"][0]["label"] == "사용자 수정 LiOH peak"
     assert spec.facts["current_peaks"][0]["original_label"] == "LiOH Li-O stretching"

@@ -284,12 +284,14 @@ def test_ftir_report_api_builds_package_with_graph_and_raw_xlsx(
         assert "web-preview" not in html_report
         assert "LLM 보조 설명" not in html_report
         assert "LLM 사용" not in html_report
+        assert "라이브러리" not in html_report
         assert "요청번호" not in ppt_text
         assert "작업자" not in ppt_text
         assert "WEB-PREVIEW" not in ppt_text
         assert "web-preview" not in ppt_text
         assert "LLM 보조 설명" not in ppt_text
         assert "LLM 사용" not in ppt_text
+        assert "라이브러리" not in ppt_text
         assert "<a:t>LLM</a:t>" not in ppt_text
 
 
