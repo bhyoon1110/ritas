@@ -120,6 +120,9 @@ def test_ftir_workspace_contains_upload_and_editor_controls() -> None:
     assert "MESSAGE_AUTO_HIDE_MS = 5000" in page
     assert "clearMessageTimer" in page
     assert "ftir-message-close" in page
+    assert ".ftir-loading {" in page
+    assert "z-index: 200" in page
+    assert "background: rgba(248,250,252,0.76)" in page
     assert "Plotly.toImage" in page
     assert "clearButton.hidden = false" in page
     assert 'id="ftir-library-list"' in page

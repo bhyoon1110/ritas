@@ -97,6 +97,9 @@ def test_raman_workspace_contains_upload_controls() -> None:
     assert "MESSAGE_AUTO_HIDE_MS = 5000" in page
     assert "clearMessageTimer" in page
     assert "raman-message-close" in page
+    assert ".raman-loading {" in page
+    assert "z-index: 200" in page
+    assert "background: rgba(248,250,252,0.76)" in page
     assert "Plotly.toImage" in page
     assert 'id="raman-file-list"' in page
     assert 'id="raman-drop-zone"' in page

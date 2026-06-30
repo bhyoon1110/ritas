@@ -1042,12 +1042,12 @@ body { overflow-x: hidden; }
 }
 .raman-loading {
   position: fixed;
-  inset: 170px 0 0;
-  z-index: 40;
+  inset: 0;
+  z-index: 200;
   display: none;
   align-items: center;
   justify-content: center;
-  background: rgba(248,250,252,0.58);
+  background: rgba(248,250,252,0.76);
   color: #334e68;
   font-weight: 700;
 }
@@ -1161,9 +1161,6 @@ body { overflow-x: hidden; }
   }
   .raman-file-chip {
     max-width: 100%;
-  }
-  .raman-loading {
-    inset: 248px 0 0;
   }
   #raman-plot {
     min-height: 900px;

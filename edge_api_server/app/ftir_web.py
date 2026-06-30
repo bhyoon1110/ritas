@@ -1069,12 +1069,12 @@ body {
 }
 .ftir-loading {
   position: fixed;
-  inset: 170px 0 0;
-  z-index: 40;
+  inset: 0;
+  z-index: 200;
   display: none;
   align-items: center;
   justify-content: center;
-  background: rgba(248,250,252,0.7);
+  background: rgba(248,250,252,0.76);
   color: #243b53;
   font-size: 12px;
 }
@@ -1229,9 +1229,6 @@ body {
     width: auto !important;
     flex-wrap: wrap;
     justify-content: flex-end;
-  }
-  .ftir-loading {
-    inset: 180px 0 0;
   }
 }
 @media (max-width: 1440px) {
