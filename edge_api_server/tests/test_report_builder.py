@@ -143,6 +143,40 @@ def test_ftir_builder_maps_verdict_to_fixed_sections() -> None:
         assert section.paragraphs and section.paragraphs[0].strip()
 
 
+def test_ftir_builder_orders_report_info_conditions() -> None:
+    verdict = {
+        **_verdict(),
+        "experimentConditions": {
+            "Scan time": "64 scans",
+            "장비 모델": "ㅇㅇㅇ",
+            "Range": "4000 ~ 400 cm-1",
+            "Crystal": "diamond",
+            "Detector": "DTGS",
+            "Resolution": "4 cm-1",
+            "method": "ATR method",
+        },
+    }
+    analysis = [{"relativePath": "verdict.json", "data": verdict}]
+
+    document = FtirReportBuilder().build(_job(), analysis)
+
+    conditions = document.section("experiment_conditions")
+    assert conditions is not None and conditions.table is not None
+    assert conditions.table.rows[:7] == [
+        ["공통", "장비모델", "ㅇㅇㅇ"],
+        ["공통", "Type", "ATR method"],
+        ["공통", "Detector", "DTGS"],
+        ["공통", "Crystal", "diamond"],
+        ["공통", "Resolution", "4 cm-1"],
+        ["공통", "Scan time", "64 scans"],
+        ["공통", "Range", "4000 ~ 400 cm-1"],
+    ]
+
+    spec = FtirReportBuilder().llm_slots(_job(), analysis)
+    assert spec is not None
+    assert spec.facts["experiment_conditions"][:7] == conditions.table.rows[:7]
+
+
 def test_ftir_llm_slots_spec_contains_facts() -> None:
     analysis = [{"relativePath": "verdict.json", "data": _verdict()}]
     spec = FtirReportBuilder().llm_slots(_job(), analysis)

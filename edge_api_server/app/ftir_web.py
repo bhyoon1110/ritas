@@ -1242,52 +1242,46 @@ _PAGE_SHELL = """
     <summary>보고서 정보 <span>raw 자동 추출 + 직접 입력</span></summary>
     <div class="ftir-report-meta-grid">
       <label class="ftir-report-meta-field">
-        <span>측정일</span>
-        <input type="date" data-report-field="measurementDate"
-               data-report-label="측정일">
+        <span>장비모델</span>
+        <input type="text" placeholder="예: Nicolet iS50"
+               data-report-field="equipmentModel"
+               data-report-label="장비모델">
       </label>
       <label class="ftir-report-meta-field">
-        <span>의뢰자</span>
-        <input type="text" placeholder="예: 홍길동"
-               data-report-field="requester"
-               data-report-label="의뢰자">
+        <span>Type</span>
+        <input type="text" value="ATR method"
+               data-report-field="analysisType"
+               data-report-label="Type">
+      </label>
+      <label class="ftir-report-meta-field">
+        <span>Detector</span>
+        <input type="text" value="DTGS"
+               data-report-field="detector"
+               data-report-label="Detector">
+      </label>
+      <label class="ftir-report-meta-field">
+        <span>Crystal</span>
+        <input type="text" value="diamond"
+               data-report-field="crystal"
+               data-report-label="Crystal">
       </label>
       <label class="ftir-report-meta-field">
         <span>Resolution</span>
-        <input type="text" placeholder="예: 4 cm-1"
+        <input type="text" value="4 cm-1"
                data-report-field="resolution"
                data-report-label="Resolution">
       </label>
       <label class="ftir-report-meta-field">
-        <span>측정조건</span>
-        <select data-report-field="conditionPreset"
-                data-report-label="측정조건">
-          <option value="">선택 안 함</option>
-          <option value="ATR">ATR</option>
-          <option value="KBr pellet">KBr pellet</option>
-          <option value="Transmission film">Transmission film</option>
-          <option value="Reflection">Reflection</option>
-          <option value="DRIFTS">DRIFTS</option>
-          <option value="Microscope / Mapping">Microscope / Mapping</option>
-        </select>
+        <span>Scan time</span>
+        <input type="text" value="64 scans"
+               data-report-field="scanTime"
+               data-report-label="Scan time">
       </label>
-      <label class="ftir-report-meta-field is-wide">
-        <span>시료 정보</span>
-        <input type="text" placeholder="예: LFP minus aluminum sample"
-               data-report-field="sampleDescription"
-               data-report-label="시료 정보">
-      </label>
-      <label class="ftir-report-meta-field is-wide">
-        <span>분석 목적</span>
-        <input type="text" placeholder="예: 알코올계 여부 확인, 미지 시료 동정"
-               data-report-field="requestPurpose"
-               data-report-label="분석 목적">
-      </label>
-      <label class="ftir-report-meta-field is-wide">
-        <span>측정조건/환경 직접 입력</span>
-        <textarea placeholder="예: ATR, 32 scans, 실온, background 재측정"
-                  data-report-field="conditionDetail"
-                  data-report-label="측정조건 상세"></textarea>
+      <label class="ftir-report-meta-field">
+        <span>Range</span>
+        <input type="text" value="4000 ~ 400 cm-1"
+               data-report-field="range"
+               data-report-label="Range">
       </label>
     </div>
   </details>
@@ -1735,7 +1729,7 @@ _UPLOAD_SCRIPT = """
 
   function clearReportMetadataForm() {
     reportMetaControls.forEach(function(control) {
-      control.value = "";
+      control.value = control.defaultValue || "";
     });
   }
 
@@ -1783,22 +1777,12 @@ _UPLOAD_SCRIPT = """
     return "";
   }
 
-  function normalizedDateValue(value) {
-    var text = String(value || "").trim();
-    var match = text.match(/(20\\d{2})[-/.년\\s]*(\\d{1,2})[-/.월\\s]*(\\d{1,2})/);
-    if (!match) return "";
-    return [
-      match[1],
-      String(Number(match[2])).padStart(2, "0"),
-      String(Number(match[3])).padStart(2, "0")
-    ].join("-");
-  }
-
   function setReportControlIfEmpty(field, value) {
     var control = reportMetaControls.find(function(item) {
       return item.dataset.reportField === field;
     });
-    if (!control || control.value || !value) return;
+    if (!control || !value) return;
+    if (control.value && control.value !== control.defaultValue) return;
     if (control.tagName === "SELECT") {
       var normalizedValue = normalizedMetadataKey(value);
       var matched = Array.prototype.slice.call(control.options).find(function(option) {
@@ -1815,39 +1799,39 @@ _UPLOAD_SCRIPT = """
     control.value = value;
   }
 
-  function metadataDetailText(items) {
-    var seen = {};
-    var lines = [];
-    items.forEach(function(item) {
-      var key = item.sample + "|" + item.key + "|" + item.value;
-      if (seen[key]) return;
-      seen[key] = true;
-      lines.push(
-        (item.sample ? item.sample + " - " : "")
-        + item.key + ": " + item.value
-      );
-    });
-    return lines.join("\\n");
-  }
-
   function populateReportMetadataFromPayload(payload) {
     var items = sampleMetadataItems(payload || {});
     if (!items.length) return;
-    setReportControlIfEmpty(
-      "measurementDate",
-      normalizedDateValue(firstMetadataValue(items, [
-        "measurement date",
-        "acquisition date",
-        "date",
-        "측정일",
-        "측정 날짜"
-      ]))
-    );
-    setReportControlIfEmpty("requester", firstMetadataValue(items, [
-      "requester",
-      "requested by",
-      "의뢰자",
-      "요청자"
+    setReportControlIfEmpty("equipmentModel", firstMetadataValue(items, [
+      "equipment model",
+      "instrument model",
+      "instrument",
+      "spectrometer",
+      "model",
+      "장비모델",
+      "장비 모델"
+    ]));
+    setReportControlIfEmpty("analysisType", firstMetadataValue(items, [
+      "type",
+      "measurement type",
+      "method",
+      "technique",
+      "measurement mode",
+      "sampling mode",
+      "sampling method",
+      "accessory",
+      "측정조건",
+      "분석방법"
+    ]));
+    setReportControlIfEmpty("detector", firstMetadataValue(items, [
+      "detector",
+      "검출기"
+    ]));
+    setReportControlIfEmpty("crystal", firstMetadataValue(items, [
+      "crystal",
+      "atr crystal",
+      "crystal type",
+      "크리스탈"
     ]));
     setReportControlIfEmpty("resolution", firstMetadataValue(items, [
       "resolution",
@@ -1855,29 +1839,25 @@ _UPLOAD_SCRIPT = """
       "resolving power",
       "해상도"
     ]));
-    setReportControlIfEmpty("conditionPreset", firstMetadataValue(items, [
-      "measurement mode",
-      "sampling mode",
-      "accessory",
-      "technique",
-      "mode",
-      "측정조건"
+    setReportControlIfEmpty("scanTime", firstMetadataValue(items, [
+      "scan time",
+      "scan times",
+      "scans",
+      "number of scans",
+      "scan number",
+      "sample scans",
+      "accumulation",
+      "스캔",
+      "스캔수"
     ]));
-    setReportControlIfEmpty("sampleDescription", firstMetadataValue(items, [
-      "sample",
-      "sample name",
-      "sample id",
-      "시료",
-      "시료명"
+    setReportControlIfEmpty("range", firstMetadataValue(items, [
+      "range",
+      "spectral range",
+      "wavenumber range",
+      "data range",
+      "측정범위",
+      "범위"
     ]));
-    setReportControlIfEmpty("requestPurpose", firstMetadataValue(items, [
-      "purpose",
-      "analysis purpose",
-      "request purpose",
-      "분석 목적",
-      "의뢰 목적"
-    ]));
-    setReportControlIfEmpty("conditionDetail", metadataDetailText(items));
     scheduleWorkspaceSave();
   }
 
@@ -1901,8 +1881,6 @@ _UPLOAD_SCRIPT = """
         payload.experimentConditions || {},
         conditions
       );
-      if (conditions["시료 정보"]) payload.sample = conditions["시료 정보"];
-      if (conditions["분석 목적"]) payload.requestPurpose = conditions["분석 목적"];
     }
     return payload;
   }

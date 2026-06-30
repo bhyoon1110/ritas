@@ -18,6 +18,61 @@ from .model import ReportDocument, ReportSection, ReportTable
 # 분석 결과 항목: {"relativePath": str, "data": <json>}
 AnalysisItem = dict[str, Any]
 
+_FTIR_CONDITION_ORDER = [
+    "장비모델",
+    "Type",
+    "Detector",
+    "Crystal",
+    "Resolution",
+    "Scan time",
+    "Range",
+]
+_FTIR_CONDITION_ALIASES = {
+    "장비모델": [
+        "장비모델",
+        "장비 모델",
+        "equipment model",
+        "instrument model",
+        "instrument",
+        "spectrometer",
+        "model",
+    ],
+    "Type": [
+        "type",
+        "measurement type",
+        "method",
+        "technique",
+        "measurement mode",
+        "sampling mode",
+        "sampling method",
+        "accessory",
+        "측정조건",
+        "분석방법",
+    ],
+    "Detector": ["detector", "검출기"],
+    "Crystal": ["crystal", "atr crystal", "crystal type", "크리스탈"],
+    "Resolution": ["resolution", "spectral resolution", "resolving power", "해상도"],
+    "Scan time": [
+        "scan time",
+        "scan times",
+        "scans",
+        "number of scans",
+        "scan number",
+        "sample scans",
+        "accumulation",
+        "스캔",
+        "스캔수",
+    ],
+    "Range": [
+        "range",
+        "spectral range",
+        "wavenumber range",
+        "data range",
+        "측정범위",
+        "범위",
+    ],
+}
+
 
 @dataclass
 class LlmSlotSpec:
@@ -230,8 +285,57 @@ def _metadata_items(value: Any) -> list[tuple[str, str]]:
     return rows
 
 
-def _experiment_condition_rows(payload: dict[str, Any]) -> list[list[str]]:
+def _metadata_label_key(value: str) -> str:
+    return re.sub(r"[^0-9a-z가-힣]+", "", value.lower())
+
+
+def _condition_alias_lookup(aliases: dict[str, list[str]] | None) -> dict[str, str]:
+    lookup: dict[str, str] = {}
+    if not aliases:
+        return lookup
+    for canonical, names in aliases.items():
+        lookup[_metadata_label_key(canonical)] = canonical
+        for name in names:
+            lookup[_metadata_label_key(name)] = canonical
+    return lookup
+
+
+def _condition_label(label: str, lookup: dict[str, str]) -> str:
+    key = _metadata_label_key(label)
+    if key in lookup:
+        return lookup[key]
+    for alias_key, canonical in lookup.items():
+        if alias_key and (alias_key in key or key in alias_key):
+            return canonical
+    return label
+
+
+def _sort_condition_rows(
+    rows: list[list[str]],
+    preferred_order: list[str] | None,
+) -> list[list[str]]:
+    if not preferred_order:
+        return rows
+    order = {label: index for index, label in enumerate(preferred_order)}
+    indexed = list(enumerate(rows))
+    indexed.sort(
+        key=lambda item: (
+            0 if item[1][1] in order and item[1][0] == "공통" else 1,
+            order.get(item[1][1], len(order)),
+            item[0],
+        )
+    )
+    return [row for _, row in indexed]
+
+
+def _experiment_condition_rows(
+    payload: dict[str, Any],
+    *,
+    aliases: dict[str, list[str]] | None = None,
+    preferred_order: list[str] | None = None,
+) -> list[list[str]]:
     rows: list[list[str]] = []
+    lookup = _condition_alias_lookup(aliases)
     for key in (
         "experimentConditions",
         "experiment_conditions",
@@ -242,7 +346,7 @@ def _experiment_condition_rows(payload: dict[str, Any]) -> list[list[str]]:
         "experiment_environment",
     ):
         for item_key, item_value in _metadata_items(payload.get(key)):
-            rows.append(["공통", item_key, item_value])
+            rows.append(["공통", _condition_label(item_key, lookup), item_value])
 
     samples = payload.get("samples")
     if isinstance(samples, list):
@@ -257,11 +361,12 @@ def _experiment_condition_rows(payload: dict[str, Any]) -> list[list[str]]:
                 or "시료"
             )
             for item_key, item_value in _metadata_items(sample.get("metadata")):
-                row = (source, item_key, item_value)
+                label = _condition_label(item_key, lookup)
+                row = (source, label, item_value)
                 if row not in seen:
                     seen.add(row)
-                    rows.append([source, item_key, item_value])
-    return rows
+                    rows.append([source, label, item_value])
+    return _sort_condition_rows(rows, preferred_order)
 
 
 class ReportBuilder:
@@ -287,8 +392,18 @@ class ReportBuilder:
             )
         ]
 
-    def _experiment_conditions_section(self, payload: dict[str, Any]) -> ReportSection:
-        rows = _experiment_condition_rows(payload)
+    def _experiment_conditions_section(
+        self,
+        payload: dict[str, Any],
+        *,
+        aliases: dict[str, list[str]] | None = None,
+        preferred_order: list[str] | None = None,
+    ) -> ReportSection:
+        rows = _experiment_condition_rows(
+            payload,
+            aliases=aliases,
+            preferred_order=preferred_order,
+        )
         if rows:
             return ReportSection(
                 "experiment_conditions",
@@ -352,7 +467,13 @@ class FtirReportBuilder(ReportBuilder):
             sections=self._meta_sections(job, verdict),
         )
 
-        document.sections.append(self._experiment_conditions_section(verdict))
+        document.sections.append(
+            self._experiment_conditions_section(
+                verdict,
+                aliases=_FTIR_CONDITION_ALIASES,
+                preferred_order=_FTIR_CONDITION_ORDER,
+            )
+        )
         document.sections.append(self._verdict_section(verdict))
         document.sections.append(self._library_section(verdict))
         document.sections.append(self._functional_groups_section(verdict))
@@ -540,7 +661,11 @@ class FtirReportBuilder(ReportBuilder):
             "is_library_identified": verdict.get("is_library_identified"),
             "top_candidate": verdict.get("top_candidate"),
             "functional_groups": groups,
-            "experiment_conditions": _experiment_condition_rows(verdict),
+            "experiment_conditions": _experiment_condition_rows(
+                verdict,
+                aliases=_FTIR_CONDITION_ALIASES,
+                preferred_order=_FTIR_CONDITION_ORDER,
+            ),
             "current_peaks": _figure_peak_facts(
                 verdict,
                 x_label="cm-1",

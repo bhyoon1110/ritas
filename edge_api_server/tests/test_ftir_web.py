@@ -59,6 +59,20 @@ def test_ftir_workspace_contains_upload_and_editor_controls() -> None:
     assert "setReportControlIfEmpty" in page
     assert "experimentConditions" in page
     assert "raw 자동 추출 + 직접 입력" in page
+    assert 'data-report-field="equipmentModel"' in page
+    assert 'data-report-label="장비모델"' in page
+    assert 'data-report-field="analysisType"' in page
+    assert 'value="ATR method"' in page
+    assert 'data-report-field="detector"' in page
+    assert 'value="DTGS"' in page
+    assert 'data-report-field="crystal"' in page
+    assert 'value="diamond"' in page
+    assert 'data-report-field="resolution"' in page
+    assert 'value="4 cm-1"' in page
+    assert 'data-report-field="scanTime"' in page
+    assert 'value="64 scans"' in page
+    assert 'data-report-field="range"' in page
+    assert 'value="4000 ~ 400 cm-1"' in page
     assert "pollReportJob" in page
     assert "setReportDownloadLink" in page
     assert "MESSAGE_AUTO_HIDE_MS = 5000" in page
