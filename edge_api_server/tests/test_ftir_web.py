@@ -269,11 +269,12 @@ def test_ftir_report_api_builds_package_with_graph_and_raw_xlsx(
         } <= names
         assert "report.json" not in names
         html_report = archive.read("report.html").decode("utf-8")
-        ppt_text = "\n".join(
-            archive.read(name).decode("utf-8")
-            for name in archive.namelist()
-            if name.startswith("ppt/slides/slide") and name.endswith(".xml")
-        )
+        with zipfile.ZipFile(BytesIO(archive.read("report.pptx"))) as pptx_archive:
+            ppt_text = "\n".join(
+                pptx_archive.read(name).decode("utf-8")
+                for name in pptx_archive.namelist()
+                if name.startswith("ppt/slides/slide") and name.endswith(".xml")
+            )
         assert "의뢰번호" in html_report
         assert "분석 결과 요약" in html_report
         assert "현재 그래프 표시 피크" in html_report
