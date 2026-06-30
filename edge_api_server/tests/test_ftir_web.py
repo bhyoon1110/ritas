@@ -68,6 +68,10 @@ def test_ftir_workspace_contains_upload_and_editor_controls() -> None:
     assert "openReportOptionsEditor" in page
     assert "saveReportOptionsEditor" in page
     assert "resetReportOptionsEditor" in page
+    assert "#ftir-report-options-modal .ftir-library-dialog" in page
+    assert "height: min(660px, calc(100dvh - 32px))" in page
+    assert "max-height: calc(100dvh - 16px)" in page
+    assert "min-height: 0" in page
     assert 'data-report-field="equipmentModel"' in page
     assert 'data-report-label="장비모델"' in page
     assert 'data-report-field="analysisType"' in page

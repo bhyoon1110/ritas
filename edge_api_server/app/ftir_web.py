@@ -473,6 +473,7 @@ body {
   flex-direction: column;
   width: min(880px, 100%);
   max-height: min(78vh, 720px);
+  max-height: min(78dvh, 720px);
   border: 1px solid #9fb3c8;
   border-radius: 6px;
   background: #ffffff;
@@ -524,6 +525,7 @@ body {
 }
 .ftir-library-dialog-body {
   flex: 1 1 auto;
+  min-height: 0;
   overflow: auto;
   padding: 12px 14px 0;
 }
@@ -940,6 +942,20 @@ body {
 .ftir-report-option-add {
   margin: 0 10px 10px;
 }
+#ftir-report-options-modal .ftir-library-dialog {
+  height: min(660px, calc(100vh - 32px));
+  height: min(660px, calc(100dvh - 32px));
+  max-height: calc(100vh - 32px);
+  max-height: calc(100dvh - 32px);
+}
+#ftir-report-options-modal .ftir-library-dialog-body {
+  padding-bottom: 12px;
+}
+#ftir-report-options-modal .ftir-library-dialog-footer {
+  position: relative;
+  z-index: 2;
+  flex-wrap: wrap;
+}
 .ftir-message {
   display: none;
   position: relative;
@@ -1111,6 +1127,13 @@ body {
   }
   .ftir-library-dialog {
     max-height: calc(100vh - 16px);
+    max-height: calc(100dvh - 16px);
+  }
+  #ftir-report-options-modal .ftir-library-dialog {
+    height: calc(100vh - 16px);
+    height: calc(100dvh - 16px);
+    max-height: calc(100vh - 16px);
+    max-height: calc(100dvh - 16px);
   }
   .ftir-library-table .color {
     display: none;
