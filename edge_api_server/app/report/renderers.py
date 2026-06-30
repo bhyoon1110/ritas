@@ -224,38 +224,42 @@ def render_html(document: ReportDocument, path: Path) -> None:
     sections: list[str] = []
     for section in document.sections:
         body = "".join(
-            f"<p>{html.escape(paragraph)}</p>" for paragraph in section.paragraphs
+            f"<p>{_html_text(paragraph)}</p>" for paragraph in section.paragraphs
         )
         if section.bullets:
             body += "<ul>" + "".join(
-                f"<li>{html.escape(bullet)}</li>" for bullet in section.bullets
+                f"<li>{_html_text(bullet)}</li>" for bullet in section.bullets
             ) + "</ul>"
         if section.table:
             header = "".join(
-                f"<th>{html.escape(column)}</th>" for column in section.table.columns
+                f"<th>{_html_text(column)}</th>" for column in section.table.columns
             )
             rows = "".join(
-                "<tr>" + "".join(f"<td>{html.escape(cell)}</td>" for cell in row) + "</tr>"
+                "<tr>" + "".join(f"<td>{_html_text(cell)}</td>" for cell in row) + "</tr>"
                 for row in section.table.rows
             )
             body += f"<table><thead><tr>{header}</tr></thead><tbody>{rows}</tbody></table>"
-        sections.append(f"<section><h2>{html.escape(section.heading)}</h2>{body}</section>")
+        sections.append(f"<section><h2>{_html_text(section.heading)}</h2>{body}</section>")
     metadata = " · ".join(
-        f"{label}: {html.escape(document.pk.get(key, ''))}"
+        f"{label}: {_html_text(document.pk.get(key, ''))}"
         for label, key in (("요청번호", "requestNumber"), ("실험", "experimentCode"), ("장비", "equipmentCode"), ("작업자", "operatorId"))
     )
     path.write_text(
         "<!doctype html><html lang=\"ko\"><head><meta charset=\"utf-8\">"
-        f"<title>{html.escape(document.title)}</title><style>"
+        f"<title>{_html_text(document.title)}</title><style>"
         "body{font-family:Arial,sans-serif;line-height:1.6;margin:40px;max-width:920px}"
         "h1{margin-bottom:4px}h2{margin-top:32px}table{border-collapse:collapse;width:100%}"
         "th,td{border:1px solid #bbb;padding:7px;text-align:left}th{background:#f0f4f8}"
         "</style></head><body>"
-        f"<h1>{html.escape(document.title)}</h1><p>{metadata}</p>"
-        f"<p>생성시각: {html.escape(document.generated_at)}</p>{''.join(sections)}"
+        f"<h1>{_html_text(document.title)}</h1><p>{metadata}</p>"
+        f"<p>생성시각: {_html_text(document.generated_at)}</p>{''.join(sections)}"
         "</body></html>",
         encoding="utf-8",
     )
+
+
+def _html_text(value: object) -> str:
+    return html.escape(_report_readable_text(value))
 
 
 def _pdf_font_name(font_path: Path | None) -> str:
@@ -345,10 +349,10 @@ def _pdf_font_supports_hangul(font: TTFont) -> bool:
 
 
 def _pdf_text(value: object) -> str:
-    return html.escape(_pdf_readable_text(value)).replace("\n", "<br/>")
+    return html.escape(_report_readable_text(value)).replace("\n", "<br/>")
 
 
-def _pdf_readable_text(value: object) -> str:
+def _report_readable_text(value: object) -> str:
     text = str(value or "")
     if not text:
         return ""
@@ -1040,8 +1044,12 @@ def _pptx_paragraph(
     )
     return (
         f"<a:p>{bullet_pr}<a:r>{_pptx_rpr(font_size=font_size, color=color, bold=bold)}"
-        f"<a:t>{html.escape(text)}</a:t></a:r></a:p>"
+        f"<a:t>{_pptx_text(text)}</a:t></a:r></a:p>"
     )
+
+
+def _pptx_text(value: object) -> str:
+    return html.escape(_report_readable_text(value))
 
 
 def _pptx_paragraphs(

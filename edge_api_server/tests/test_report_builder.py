@@ -505,6 +505,44 @@ def test_pptx_renderer_creates_openxml_package(tmp_path) -> None:
     assert "해석 및 검토사항" in slide_text
 
 
+def test_pptx_renderer_normalizes_latex_math_source(tmp_path) -> None:
+    document = ReportDocument(
+        job_id="math-pptx",
+        title="PPTX 수식 표기 테스트",
+        experiment_code="RAMAN",
+        pk={"requestNumber": "REQ-MATH"},
+        generated_at="2026-06-30T17:00:00+09:00",
+        sections=[
+            ReportSection(
+                "math",
+                "수식 및 화학식",
+                paragraphs=[
+                    r"$\frac{I_D}{I_G} = 0.84$, 4000 cm^{-1}, "
+                    r"\mathrm{Li_2CO_3}, CO3^2-"
+                ],
+            )
+        ],
+    )
+
+    rendered = render_requested_report(document, tmp_path, "PPTX")
+
+    with zipfile.ZipFile(rendered) as archive:
+        slide_text = "\n".join(
+            archive.read(name).decode("utf-8")
+            for name in archive.namelist()
+            if name.startswith("ppt/slides/slide") and name.endswith(".xml")
+        )
+
+    assert "\\frac" not in slide_text
+    assert "$" not in slide_text
+    assert "cm^{-1}" not in slide_text
+    assert "Li_2CO_3" not in slide_text
+    assert "I_D/I_G = 0.84" in slide_text
+    assert "4000 cm⁻¹" in slide_text
+    assert "Li₂CO₃" in slide_text
+    assert "CO₃²⁻" in slide_text
+
+
 def test_pptx_renderer_hides_raw_llm_error(tmp_path) -> None:
     analysis = [{"relativePath": "verdict.json", "data": _verdict()}]
     document = FtirReportBuilder().build(_job(), analysis)
