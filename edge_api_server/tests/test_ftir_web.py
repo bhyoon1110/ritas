@@ -266,6 +266,17 @@ def test_ftir_report_api_builds_package_with_graph_and_raw_xlsx(
             "current_graph.png",
         } <= names
         assert "report.json" not in names
+        html_report = archive.read("report.html").decode("utf-8")
+        ppt_text = "\n".join(
+            archive.read(name).decode("utf-8")
+            for name in archive.namelist()
+            if name.startswith("ppt/slides/slide") and name.endswith(".xml")
+        )
+        assert "의뢰번호" in html_report
+        assert "분석 결과 요약" in html_report
+        assert "현재 그래프 표시 피크" in html_report
+        assert "WEB-PREVIEW" not in html_report
+        assert "WEB-PREVIEW" not in ppt_text
 
 
 def test_ftir_report_job_api_tracks_progress_and_downloads_package(

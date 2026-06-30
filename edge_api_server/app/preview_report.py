@@ -160,6 +160,70 @@ def _utc_now() -> datetime:
     return datetime.now(timezone.utc).replace(microsecond=0)
 
 
+def _kst_now_iso() -> str:
+    return datetime.now(timezone(timedelta(hours=9))).replace(microsecond=0).isoformat()
+
+
+def _is_preview_placeholder(value: str | None) -> bool:
+    return str(value or "").strip() in {"", "-", "WEB-PREVIEW", "web-preview"}
+
+
+def _normalize_metadata_key(value: str) -> str:
+    return "".join(ch for ch in value.lower() if ch.isalnum())
+
+
+def _metadata_value(metadata: Any, aliases: set[str]) -> str:
+    if not isinstance(metadata, dict):
+        return ""
+    normalized_aliases = {_normalize_metadata_key(alias) for alias in aliases}
+    for key, value in metadata.items():
+        if _normalize_metadata_key(str(key)) in normalized_aliases:
+            text = str(value or "").strip()
+            if text and text != "(미기재)":
+                return text
+    return ""
+
+
+def _preview_equipment_code(
+    experiment_code: str,
+    analysis_payload: dict[str, Any],
+    equipment_code: str,
+) -> str:
+    if not _is_preview_placeholder(equipment_code):
+        return equipment_code
+    aliases = {
+        "장비모델",
+        "장비 모델",
+        "equipment model",
+        "instrument model",
+        "instrument",
+        "spectrometer",
+        "model",
+    }
+    for key in (
+        "experimentConditions",
+        "experiment_conditions",
+        "conditions",
+        "metadata",
+        "environment",
+        "experimentEnvironment",
+        "experiment_environment",
+    ):
+        value = _metadata_value(analysis_payload.get(key), aliases)
+        if value:
+            return value
+    for sample in analysis_payload.get("samples") or []:
+        if isinstance(sample, dict):
+            value = _metadata_value(sample.get("metadata"), aliases)
+            if value:
+                return value
+    if experiment_code.upper().replace("_", "-") in {"FTIR", "FT-IR", "IR"}:
+        return "FT-IR 장비"
+    if experiment_code.upper() in {"RAMAN", "RIN", "RIN-RAMAN"}:
+        return "Raman 장비"
+    return ""
+
+
 def preview_report_job_store(app: Any) -> PreviewReportJobStore:
     store = getattr(app.state, "preview_report_job_store", None)
     if not isinstance(store, PreviewReportJobStore):
@@ -218,12 +282,16 @@ def build_preview_report_package(
 
         job = {
             "job_id": "web-preview-report",
-            "request_number": request_number,
+            "request_number": "" if _is_preview_placeholder(request_number) else request_number,
             "experiment_code": experiment_code,
-            "equipment_code": equipment_code,
-            "operator_id": operator_id,
+            "equipment_code": _preview_equipment_code(
+                experiment_code,
+                analysis_payload,
+                equipment_code,
+            ),
+            "operator_id": "" if _is_preview_placeholder(operator_id) else operator_id,
             "root_relative_path": "web-preview-report",
-            "_generated_at": "",
+            "_generated_at": _kst_now_iso(),
         }
         _emit_progress(progress, "document", 40, "보고서 본문을 구성하는 중입니다.")
         builder = get_builder(experiment_code)

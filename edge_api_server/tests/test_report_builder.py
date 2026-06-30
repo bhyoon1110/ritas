@@ -77,6 +77,67 @@ def _verdict() -> dict:
     }
 
 
+def _ftir_web_payload() -> dict:
+    return {
+        "samples": [
+            {
+                "fileName": "3_Melamine.0.dpt",
+                "label": "3_Melamine.0",
+                "pointCount": 3601,
+                "peakCount": 6,
+                "metadata": {"장비 모델": "Nicolet iS50"},
+            }
+        ],
+        "settings": {
+            "sensitivity": 25,
+            "height": 0.05,
+            "prominence": 0.02,
+            "smooth": True,
+            "assignmentLibraries": [
+                {
+                    "id": "general-ftir",
+                    "name": "General FTIR",
+                    "assignmentCount": 120,
+                }
+            ],
+        },
+        "experimentConditions": {
+            "Type": "ATR method",
+            "Detector": "DTGS",
+        },
+        "figure": {
+            "data": [
+                {
+                    "name": "3_Melamine.0",
+                    "meta": {
+                        "rist_sample_group": "sample:0",
+                        "rist_sample_parent": True,
+                    },
+                },
+                {
+                    "name": "N-H stretch",
+                    "y": [0.42],
+                    "meta": {
+                        "rist_sample_group": "sample:0",
+                        "rist_peak": {
+                            "x": 3381.6,
+                            "label": "N-H stretch",
+                            "sample_group": "sample:0",
+                            "assignments": [
+                                {
+                                    "name": "N-H stretch",
+                                    "library_id": "general-ftir",
+                                    "library_name": "General FTIR",
+                                }
+                            ],
+                        },
+                    },
+                },
+            ]
+        },
+    }
+
+
 def test_get_builder_routes_ftir() -> None:
     assert isinstance(get_builder("FT-IR"), FtirReportBuilder)
     assert isinstance(get_builder("ftir"), FtirReportBuilder)
@@ -177,6 +238,49 @@ def test_ftir_builder_orders_report_info_conditions() -> None:
     spec = FtirReportBuilder().llm_slots(_job(), analysis)
     assert spec is not None
     assert spec.facts["experiment_conditions"][:7] == conditions.table.rows[:7]
+
+
+def test_ftir_web_payload_report_uses_current_graph_facts() -> None:
+    payload = _ftir_web_payload()
+    analysis = [{"relativePath": "analysis-result.json", "data": payload}]
+
+    document = FtirReportBuilder().build(
+        {
+            **_job(),
+            "request_number": "",
+            "equipment_code": "Nicolet iS50",
+            "operator_id": "",
+        },
+        analysis,
+    )
+
+    sample_info = document.section("sample_info")
+    assert sample_info is not None
+    assert "의뢰번호: Spring Boot 연동 후 확정" in sample_info.bullets
+    assert "장비: Nicolet iS50" in sample_info.bullets
+    assert "실험자: 회원/SSO 연동 후 확정" in sample_info.bullets
+
+    verdict = document.section("verdict")
+    assert verdict is not None
+    assert verdict.heading == "분석 결과 요약"
+    assert any("현재 그래프 표시 피크: 1개" in bullet for bullet in verdict.bullets)
+
+    library = document.section("library_match")
+    assert library is not None and library.table is not None
+    assert library.heading == "적용 피크 라이브러리"
+    assert library.table.rows == [["General FTIR", "general-ftir", "120", "1"]]
+
+    groups = document.section("functional_groups")
+    assert groups is not None and groups.table is not None
+    assert groups.table.rows == [
+        ["3_Melamine.0", "3381.6 cm-1", "N-H stretch", "General FTIR"]
+    ]
+
+    spec = FtirReportBuilder().llm_slots(_job(), analysis)
+    assert spec is not None
+    assert spec.facts["samples"] == payload["samples"]
+    assert spec.facts["settings"]["assignmentLibraries"][0]["name"] == "General FTIR"
+    assert spec.facts["current_peaks"][0]["label"] == "N-H stretch"
 
 
 def test_ftir_llm_slots_spec_contains_facts() -> None:

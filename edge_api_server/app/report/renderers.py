@@ -199,16 +199,44 @@ def _section_lines(section: ReportSection) -> list[str]:
     return [line for line in lines if line]
 
 
-def _plain_lines(document: ReportDocument) -> list[str]:
-    lines = [
-        document.title,
-        f"요청번호: {document.pk.get('requestNumber', '')}",
-        f"실험: {document.experiment_code}",
-        f"장비: {document.pk.get('equipmentCode', '')}",
-        f"작업자: {document.pk.get('operatorId', '')}",
-        f"생성시각: {document.generated_at}",
-        "",
+_REPORT_PLACEHOLDER_VALUES = {"", "-", "WEB-PREVIEW", "web-preview", "None", "none", "null"}
+
+
+def _clean_report_meta_value(value: object) -> str:
+    text = str(value or "").strip()
+    if text in _REPORT_PLACEHOLDER_VALUES:
+        return ""
+    return text
+
+
+def _document_metadata(
+    document: ReportDocument,
+    *,
+    include_pending: bool = True,
+    include_generated: bool = True,
+) -> list[tuple[str, str]]:
+    request_number = _clean_report_meta_value(document.pk.get("requestNumber"))
+    equipment = _clean_report_meta_value(document.pk.get("equipmentCode"))
+    operator = _clean_report_meta_value(document.pk.get("operatorId"))
+    rows = [
+        ("의뢰번호", request_number or ("Spring Boot 연동 후 확정" if include_pending else "")),
+        ("실험코드", _clean_report_meta_value(document.experiment_code)),
     ]
+    if equipment:
+        rows.append(("장비", equipment))
+    if operator:
+        rows.append(("실험자", operator))
+    elif include_pending:
+        rows.append(("실험자", "회원/SSO 연동 후 확정"))
+    if include_generated and _clean_report_meta_value(document.generated_at):
+        rows.append(("생성시각", _clean_report_meta_value(document.generated_at)))
+    return [(label, value) for label, value in rows if value]
+
+
+def _plain_lines(document: ReportDocument) -> list[str]:
+    lines = [document.title]
+    lines.extend(f"{label}: {value}" for label, value in _document_metadata(document))
+    lines.append("")
     for section in document.sections:
         lines.append(section.heading)
         lines.extend(_section_lines(section))
@@ -241,8 +269,8 @@ def render_html(document: ReportDocument, path: Path) -> None:
             body += f"<table><thead><tr>{header}</tr></thead><tbody>{rows}</tbody></table>"
         sections.append(f"<section><h2>{_html_text(section.heading)}</h2>{body}</section>")
     metadata = " · ".join(
-        f"{label}: {_html_text(document.pk.get(key, ''))}"
-        for label, key in (("요청번호", "requestNumber"), ("실험", "experimentCode"), ("장비", "equipmentCode"), ("작업자", "operatorId"))
+        f"{_html_text(label)}: {_html_text(value)}"
+        for label, value in _document_metadata(document, include_generated=False)
     )
     path.write_text(
         "<!doctype html><html lang=\"ko\"><head><meta charset=\"utf-8\">"
@@ -252,7 +280,7 @@ def render_html(document: ReportDocument, path: Path) -> None:
         "th,td{border:1px solid #bbb;padding:7px;text-align:left}th{background:#f0f4f8}"
         "</style></head><body>"
         f"<h1>{_html_text(document.title)}</h1><p>{metadata}</p>"
-        f"<p>생성시각: {_html_text(document.generated_at)}</p>{''.join(sections)}"
+        f"<p>생성시각: {_html_text(_clean_report_meta_value(document.generated_at))}</p>{''.join(sections)}"
         "</body></html>",
         encoding="utf-8",
     )
@@ -636,13 +664,7 @@ def _pdf_meta_table(
     styles: dict[str, ParagraphStyle],
     available_width: float,
 ) -> Table:
-    metadata = [
-        ("요청번호", document.pk.get("requestNumber", "")),
-        ("실험", document.experiment_code),
-        ("장비", document.pk.get("equipmentCode", "")),
-        ("작업자", document.pk.get("operatorId", "")),
-        ("생성시각", document.generated_at),
-    ]
+    metadata = _document_metadata(document)
     rows = [
         [
             Paragraph(_pdf_text(label), styles["meta_label"]),
@@ -1209,12 +1231,13 @@ def _pptx_header_shapes(document: ReportDocument, title: str) -> list[str]:
 
 
 def _pptx_footer_shape(document: ReportDocument, shape_id: int) -> str:
+    request_number = _clean_report_meta_value(document.pk.get("requestNumber"))
     footer = " · ".join(
         item
         for item in [
             "RIST Edge Report",
-            document.pk.get("requestNumber", ""),
-            document.generated_at,
+            request_number,
+            _clean_report_meta_value(document.generated_at),
         ]
         if item
     )
@@ -1233,13 +1256,7 @@ def _pptx_footer_shape(document: ReportDocument, shape_id: int) -> str:
 
 
 def _pptx_title_slide(document: ReportDocument) -> str:
-    meta = [
-        ("요청번호", document.pk.get("requestNumber", "")),
-        ("실험", document.experiment_code),
-        ("장비", document.pk.get("equipmentCode", "")),
-        ("작업자", document.pk.get("operatorId", "")),
-        ("생성시각", document.generated_at),
-    ]
+    meta = _document_metadata(document)
     shapes = [
         _pptx_shape(2, "Left accent", x=0, y=0, cx=365760, cy=PPTX_SLIDE_H, fill=PPTX_BLUE, line=None),
         _pptx_text_shape(
@@ -1401,9 +1418,9 @@ def _pptx_overview_slide(document: ReportDocument) -> str:
         ]
     )
     cards = [
-        ("요청번호", document.pk.get("requestNumber", "-"), PPTX_BLUE),
-        ("장비", document.pk.get("equipmentCode", "-"), PPTX_GREEN),
-        ("작업자", document.pk.get("operatorId", "-"), PPTX_ORANGE),
+        ("의뢰번호", _clean_report_meta_value(document.pk.get("requestNumber")) or "Spring Boot 연동 예정", PPTX_BLUE),
+        ("실험코드", _clean_report_meta_value(document.experiment_code) or "-", PPTX_GREEN),
+        ("장비", _clean_report_meta_value(document.pk.get("equipmentCode")) or "실험조건 기준", PPTX_ORANGE),
         ("LLM", "사용" if document.llm_used else "규칙 기반", PPTX_RED if document.llm_error else PPTX_GREEN),
     ]
     for idx, (label, value, color) in enumerate(cards):

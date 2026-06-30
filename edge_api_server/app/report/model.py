@@ -126,9 +126,9 @@ class ReportDocument:
     def to_markdown(self) -> str:
         lines: list[str] = [f"# {self.title}", ""]
         meta = (
-            f"- 요청번호: {self.pk.get('requestNumber', '')}\n"
-            f"- 실험: {self.experiment_code}  장비: {self.pk.get('equipmentCode', '')}"
-            f"  작업자: {self.pk.get('operatorId', '')}\n"
+            f"- 의뢰번호: {self.pk.get('requestNumber', '')}\n"
+            f"- 실험코드: {self.experiment_code}  장비: {self.pk.get('equipmentCode', '')}"
+            f"  실험자: {self.pk.get('operatorId', '')}\n"
             f"- 생성시각: {self.generated_at}"
         )
         lines.append(meta)
