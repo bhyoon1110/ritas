@@ -36,6 +36,7 @@ logs/
 reports/
 
 # Generated experiment outputs and local datasets
+documents/generated/
 sune/results/
 sune/figures/
 sune/data/
