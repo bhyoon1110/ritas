@@ -2352,6 +2352,160 @@ _UPLOAD_SCRIPT = """
     });
   }
 
+  function normalizedMetadataKey(value) {
+    return String(value || "")
+      .toLowerCase()
+      .replace(/[^a-z0-9가-힣]+/g, "");
+  }
+
+  function sampleMetadataItems(payload) {
+    var items = [];
+    (payload.samples || []).forEach(function(sample) {
+      var metadata = sample && sample.metadata;
+      if (!metadata || typeof metadata !== "object") return;
+      Object.keys(metadata).forEach(function(key) {
+        var value = metadata[key];
+        if (value == null || String(value).trim() === "") return;
+        items.push({
+          sample: sample.label || sample.fileName || "",
+          key: key,
+          normalizedKey: normalizedMetadataKey(key),
+          value: String(value).trim()
+        });
+      });
+    });
+    return items;
+  }
+
+  function firstMetadataValue(items, aliases) {
+    var normalizedAliases = aliases.map(normalizedMetadataKey);
+    for (var i = 0; i < items.length; i++) {
+      for (var j = 0; j < normalizedAliases.length; j++) {
+        if (items[i].normalizedKey === normalizedAliases[j]) {
+          return items[i].value;
+        }
+      }
+    }
+    for (var k = 0; k < items.length; k++) {
+      for (var m = 0; m < normalizedAliases.length; m++) {
+        if (items[k].normalizedKey.indexOf(normalizedAliases[m]) >= 0) {
+          return items[k].value;
+        }
+      }
+    }
+    return "";
+  }
+
+  function normalizedDateValue(value) {
+    var text = String(value || "").trim();
+    var match = text.match(/(20\\d{2})[-/.년\\s]*(\\d{1,2})[-/.월\\s]*(\\d{1,2})/);
+    if (!match) return "";
+    return [
+      match[1],
+      String(Number(match[2])).padStart(2, "0"),
+      String(Number(match[3])).padStart(2, "0")
+    ].join("-");
+  }
+
+  function normalizedLaserValue(value) {
+    var text = String(value || "");
+    var match = text.match(/(532|633|785|1064)(?:\\.\\d+)?\\s*nm/i);
+    return match ? match[1] + " nm" : text;
+  }
+
+  function setReportControlIfEmpty(field, value) {
+    var control = reportMetaControls.find(function(item) {
+      return item.dataset.reportField === field;
+    });
+    if (!control || control.value || !value) return;
+    if (control.tagName === "SELECT") {
+      var normalizedValue = normalizedMetadataKey(value);
+      var matched = Array.prototype.slice.call(control.options).find(function(option) {
+        var optionValue = normalizedMetadataKey(option.value);
+        return option.value && (
+          normalizedValue === optionValue
+          || normalizedValue.indexOf(optionValue) >= 0
+          || optionValue.indexOf(normalizedValue) >= 0
+        );
+      });
+      if (matched) control.value = matched.value;
+      return;
+    }
+    control.value = value;
+  }
+
+  function metadataDetailText(items) {
+    var seen = {};
+    var lines = [];
+    items.forEach(function(item) {
+      var key = item.sample + "|" + item.key + "|" + item.value;
+      if (seen[key]) return;
+      seen[key] = true;
+      lines.push(
+        (item.sample ? item.sample + " - " : "")
+        + item.key + ": " + item.value
+      );
+    });
+    return lines.join("\\n");
+  }
+
+  function populateReportMetadataFromPayload(payload) {
+    var items = sampleMetadataItems(payload || {});
+    if (!items.length) return;
+    setReportControlIfEmpty(
+      "measurementDate",
+      normalizedDateValue(firstMetadataValue(items, [
+        "measurement date",
+        "acquisition date",
+        "date",
+        "측정일",
+        "측정 날짜"
+      ]))
+    );
+    setReportControlIfEmpty("requester", firstMetadataValue(items, [
+      "requester",
+      "requested by",
+      "의뢰자",
+      "요청자"
+    ]));
+    setReportControlIfEmpty(
+      "laserPreset",
+      normalizedLaserValue(firstMetadataValue(items, [
+        "excitation wavelength",
+        "laser",
+        "laser wavelength",
+        "wavelength",
+        "여기 파장",
+        "레이저"
+      ]))
+    );
+    setReportControlIfEmpty("exposure", firstMetadataValue(items, [
+      "exposure time",
+      "exposure",
+      "accumulation",
+      "acquisition time",
+      "integration time",
+      "노출시간",
+      "적산"
+    ]));
+    setReportControlIfEmpty("sampleDescription", firstMetadataValue(items, [
+      "sample",
+      "sample name",
+      "sample id",
+      "시료",
+      "시료명"
+    ]));
+    setReportControlIfEmpty("requestPurpose", firstMetadataValue(items, [
+      "purpose",
+      "analysis purpose",
+      "request purpose",
+      "분석 목적",
+      "의뢰 목적"
+    ]));
+    setReportControlIfEmpty("conditionDetail", metadataDetailText(items));
+    scheduleWorkspaceSave();
+  }
+
   function reportMetadataConditions() {
     var conditions = {};
     reportMetaControls.forEach(function(control) {
@@ -3082,6 +3236,7 @@ _UPLOAD_SCRIPT = """
       });
       var payload = await apiPayload(response, "Raman 분석에 실패했습니다.");
       latestAnalysisPayload = JSON.parse(JSON.stringify(payload));
+      populateReportMetadataFromPayload(payload);
       await window.Plotly.react(
         gd,
         payload.figure.data || [],

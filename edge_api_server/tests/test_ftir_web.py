@@ -45,6 +45,8 @@ def test_ftir_workspace_contains_upload_and_editor_controls() -> None:
     assert 'id="ftir-report-progress"' in page
     assert 'id="ftir-report-meta"' in page
     assert "reportAnalysisPayload" in page
+    assert "populateReportMetadataFromPayload" in page
+    assert "setReportControlIfEmpty" in page
     assert "experimentConditions" in page
     assert "raw 자동 추출 + 직접 입력" in page
     assert "pollReportJob" in page

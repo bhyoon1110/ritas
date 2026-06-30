@@ -44,6 +44,9 @@ def test_raman_workspace_contains_upload_controls() -> None:
     assert 'id="raman-report-progress"' in page
     assert 'id="raman-report-meta"' in page
     assert "reportAnalysisPayload" in page
+    assert "populateReportMetadataFromPayload" in page
+    assert "normalizedLaserValue" in page
+    assert "setReportControlIfEmpty" in page
     assert "experimentConditions" in page
     assert "raw 헤더 자동 추출 + 직접 입력" in page
     assert "pollReportJob" in page
