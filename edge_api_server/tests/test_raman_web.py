@@ -22,6 +22,7 @@ TINY_PNG_DATA_URL = (
 def use_fake_pptx_pdf_converter(monkeypatch) -> None:
     def fake_convert(pptx_path: Path, pdf_path: Path) -> Path:
         assert pptx_path.name == "report.pptx"
+        assert pdf_path.name == "report-from-pptx.pdf"
         pdf_path.write_bytes(b"%PDF-1.4\n% RIST test PDF\n")
         return pdf_path
 
@@ -341,6 +342,7 @@ def test_raman_report_api_builds_package_with_graph_and_raw_xlsx(monkeypatch) ->
         assert {
             "report.pptx",
             "report.pdf",
+            "report-from-pptx.pdf",
             "report.html",
             "email_body.md",
             "raw_data.xlsx",
@@ -393,6 +395,7 @@ def test_raman_report_job_api_tracks_progress_and_downloads_package(monkeypatch)
     assert {
         "report.pptx",
         "report.pdf",
+        "report-from-pptx.pdf",
         "report.html",
         "raw_data.xlsx",
         "current_graph.png",

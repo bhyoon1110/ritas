@@ -275,10 +275,13 @@ def build_preview_report_package(
         (report_dir / "report.md").write_text(document.to_markdown(), encoding="utf-8")
         _write_email_body(document, report_dir)
         write_raw_data_xlsx(report_dir / "raw_data.xlsx", raw_series)
-        _emit_progress(progress, "render", 86, "PPT/HTML 보고서를 렌더링하는 중입니다.")
-        render_report_formats(document, report_dir, ["PPTX", "HTML"])
+        _emit_progress(progress, "render", 86, "PPT/PDF/HTML 보고서를 렌더링하는 중입니다.")
+        render_report_formats(document, report_dir, ["PPTX", "PDF", "HTML"])
         _emit_progress(progress, "convert", 90, "PPT 보고서를 PDF로 변환하는 중입니다.")
-        convert_pptx_to_pdf(report_dir / "report.pptx", report_dir / "report.pdf")
+        convert_pptx_to_pdf(
+            report_dir / "report.pptx",
+            report_dir / "report-from-pptx.pdf",
+        )
         _emit_progress(progress, "package", 95, "전달 ZIP을 패키징하는 중입니다.")
         package = build_report_package(
             report_dir,
