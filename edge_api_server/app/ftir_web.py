@@ -818,6 +818,25 @@ body {
   font-size: 10px;
   font-weight: 400;
 }
+.ftir-report-meta-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0 0 8px 24px;
+}
+.ftir-report-option-button {
+  height: 28px;
+  border: 1px solid #9fb3c8;
+  border-radius: 4px;
+  background: #ffffff;
+  color: #243b53;
+  cursor: pointer;
+  font-size: 11px;
+  padding: 0 10px;
+}
+.ftir-report-option-button:hover {
+  border-color: #486581;
+  background: #eef2f6;
+}
 .ftir-report-meta-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(130px, 1fr));
@@ -850,6 +869,76 @@ body {
 .ftir-report-meta-field textarea {
   min-height: 34px;
   resize: vertical;
+}
+.ftir-report-option-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-bottom: 12px;
+}
+.ftir-report-option-group {
+  border: 1px solid #d9e2ec;
+  border-radius: 5px;
+  background: #ffffff;
+  overflow: hidden;
+}
+.ftir-report-option-group-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 34px;
+  padding: 0 10px;
+  border-bottom: 1px solid #e4e7eb;
+  background: #f8fafc;
+  color: #334e68;
+  font-size: 11px;
+  font-weight: 700;
+}
+.ftir-report-option-count {
+  color: #7b8794;
+  font-size: 10px;
+  font-weight: 400;
+}
+.ftir-report-option-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(180px, 1fr));
+  gap: 7px;
+  padding: 10px;
+}
+.ftir-report-option-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+.ftir-report-option-row input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 28px;
+  border: 1px solid #bcccdc;
+  border-radius: 3px;
+  background: #ffffff;
+  color: #243b53;
+  font: 11px Arial, "Noto Sans KR", sans-serif;
+  padding: 0 7px;
+  box-sizing: border-box;
+}
+.ftir-report-option-remove {
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  border: 0;
+  background: transparent;
+  color: #7b8794;
+  cursor: pointer;
+  font: 17px/1 Arial, sans-serif;
+}
+.ftir-report-option-remove:hover {
+  color: #b42318;
+}
+.ftir-report-option-add {
+  margin: 0 10px 10px;
 }
 .ftir-message {
   display: none;
@@ -976,8 +1065,14 @@ body {
     grid-template-columns: 1fr;
     padding-left: 0;
   }
+  .ftir-report-meta-toolbar {
+    padding-left: 0;
+  }
   .ftir-report-meta-field.is-wide {
     grid-column: auto;
+  }
+  .ftir-report-option-list {
+    grid-template-columns: 1fr;
   }
   .ftir-library-band {
     gap: 7px;
@@ -1240,6 +1335,10 @@ _PAGE_SHELL = """
 <section class="ftir-report-meta-band" id="ftir-report-meta">
   <details class="ftir-report-meta-panel">
     <summary>보고서 정보 <span>raw 자동 추출 + 직접 입력</span></summary>
+    <div class="ftir-report-meta-toolbar">
+      <button type="button" class="ftir-report-option-button"
+              id="ftir-report-options-open">선택지 관리</button>
+    </div>
     <div class="ftir-report-meta-grid">
       <label class="ftir-report-meta-field">
         <span>장비모델</span>
@@ -1294,29 +1393,46 @@ _PAGE_SHELL = """
       <option value="ATR method">
       <option value="Transmission">
       <option value="Reflection">
+      <option value="Diffuse reflectance">
+      <option value="Specular reflectance">
+      <option value="Micro ATR">
+      <option value="KBr pellet">
     </datalist>
     <datalist id="ftir-report-detector-options">
       <option value="DTGS">
       <option value="MCT">
+      <option value="TGS">
+      <option value="InGaAs">
+      <option value="Photoacoustic detector">
     </datalist>
     <datalist id="ftir-report-crystal-options">
       <option value="diamond">
       <option value="ZnSe">
       <option value="Ge">
+      <option value="KRS-5">
+      <option value="Si">
+      <option value="AMTIR">
     </datalist>
     <datalist id="ftir-report-resolution-options">
       <option value="4 cm-1">
       <option value="2 cm-1">
       <option value="8 cm-1">
+      <option value="1 cm-1">
+      <option value="16 cm-1">
     </datalist>
     <datalist id="ftir-report-scan-options">
       <option value="64 scans">
       <option value="32 scans">
       <option value="128 scans">
+      <option value="16 scans">
+      <option value="256 scans">
     </datalist>
     <datalist id="ftir-report-range-options">
       <option value="4000 ~ 400 cm-1">
       <option value="4000 ~ 650 cm-1">
+      <option value="7800 ~ 350 cm-1">
+      <option value="6000 ~ 400 cm-1">
+      <option value="4000 ~ 700 cm-1">
     </datalist>
   </details>
 </section>
@@ -1351,6 +1467,32 @@ _PAGE_SHELL = """
                 id="ftir-library-dialog-cancel">취소</button>
         <button type="button" class="ftir-library-dialog-button primary"
                 id="ftir-library-dialog-save">저장</button>
+      </div>
+    </footer>
+  </section>
+</div>
+<div class="ftir-library-modal" id="ftir-report-options-modal" role="dialog"
+     aria-modal="true" aria-labelledby="ftir-report-options-title">
+  <section class="ftir-library-dialog">
+    <header class="ftir-library-dialog-header">
+      <div class="ftir-library-dialog-heading">
+        <strong id="ftir-report-options-title">보고서 선택지 관리</strong>
+        <span>Type, Detector 등 입력 후보를 추가하거나 삭제합니다.</span>
+      </div>
+      <button type="button" class="ftir-library-dialog-close"
+              id="ftir-report-options-close" aria-label="닫기">×</button>
+    </header>
+    <div class="ftir-library-dialog-body">
+      <div class="ftir-report-option-body" id="ftir-report-options-body"></div>
+    </div>
+    <footer class="ftir-library-dialog-footer">
+      <button type="button" class="ftir-library-dialog-button"
+              id="ftir-report-options-reset">기본 선택지 복원</button>
+      <div class="ftir-library-dialog-footer-actions">
+        <button type="button" class="ftir-library-dialog-button"
+                id="ftir-report-options-cancel">취소</button>
+        <button type="button" class="ftir-library-dialog-button primary"
+                id="ftir-report-options-save">저장</button>
       </div>
     </footer>
   </section>
@@ -1559,12 +1701,22 @@ _UPLOAD_SCRIPT = """
   var reportMetaControls = Array.prototype.slice.call(
     document.querySelectorAll("#ftir-report-meta [data-report-field]")
   );
+  var reportOptionsOpen = document.getElementById("ftir-report-options-open");
+  var reportOptionsModal = document.getElementById("ftir-report-options-modal");
+  var reportOptionsBody = document.getElementById("ftir-report-options-body");
+  var reportOptionsClose = document.getElementById("ftir-report-options-close");
+  var reportOptionsCancel = document.getElementById("ftir-report-options-cancel");
+  var reportOptionsSave = document.getElementById("ftir-report-options-save");
+  var reportOptionsReset = document.getElementById("ftir-report-options-reset");
   var MESSAGE_AUTO_HIDE_MS = 5000;
   var messageTimer = null;
   if (!gd || !input || !dropZone || !libraryInput || !libraryList
       || !libraryFilter
       || !libraryNew || !libraryModal || !libraryDialogClose
       || !libraryRowAdd || !libraryDialogCancel || !libraryDialogSave
+      || !reportOptionsOpen || !reportOptionsModal || !reportOptionsBody
+      || !reportOptionsClose || !reportOptionsCancel || !reportOptionsSave
+      || !reportOptionsReset
       || !reportButton || !reportProgress || !reportProgressLabel
       || !reportProgressValue || !reportProgressBar) return;
 
@@ -1585,9 +1737,225 @@ _UPLOAD_SCRIPT = """
   var SESSION_DB_NAME = "rist-ftir-workspace-v1";
   var SESSION_STORE = "workspace";
   var SESSION_KEY = "current";
+  var REPORT_OPTION_STORAGE_KEY = "rist-ftir-report-condition-options-v1";
+  var REPORT_OPTION_FIELDS = [
+    {
+      field: "analysisType",
+      label: "Type",
+      datalistId: "ftir-report-type-options",
+      defaults: [
+        "ATR method",
+        "Transmission",
+        "Reflection",
+        "Diffuse reflectance",
+        "Specular reflectance",
+        "Micro ATR",
+        "KBr pellet"
+      ]
+    },
+    {
+      field: "detector",
+      label: "Detector",
+      datalistId: "ftir-report-detector-options",
+      defaults: ["DTGS", "MCT", "TGS", "InGaAs", "Photoacoustic detector"]
+    },
+    {
+      field: "crystal",
+      label: "Crystal",
+      datalistId: "ftir-report-crystal-options",
+      defaults: ["diamond", "ZnSe", "Ge", "KRS-5", "Si", "AMTIR"]
+    },
+    {
+      field: "resolution",
+      label: "Resolution",
+      datalistId: "ftir-report-resolution-options",
+      defaults: ["4 cm-1", "2 cm-1", "8 cm-1", "1 cm-1", "16 cm-1"]
+    },
+    {
+      field: "scanTime",
+      label: "Scan time",
+      datalistId: "ftir-report-scan-options",
+      defaults: ["64 scans", "32 scans", "128 scans", "16 scans", "256 scans"]
+    },
+    {
+      field: "range",
+      label: "Range",
+      datalistId: "ftir-report-range-options",
+      defaults: [
+        "4000 ~ 400 cm-1",
+        "4000 ~ 650 cm-1",
+        "7800 ~ 350 cm-1",
+        "6000 ~ 400 cm-1",
+        "4000 ~ 700 cm-1"
+      ]
+    }
+  ];
+  var reportOptionValues = loadReportOptionValues();
+  var reportOptionDraft = null;
   var workspaceDbPromise = null;
   var restoreInProgress = false;
   var saveTimer = 0;
+
+  function cloneReportOptions(source) {
+    var result = {};
+    REPORT_OPTION_FIELDS.forEach(function(config) {
+      result[config.field] = (source[config.field] || []).slice();
+    });
+    return result;
+  }
+
+  function defaultReportOptions() {
+    var result = {};
+    REPORT_OPTION_FIELDS.forEach(function(config) {
+      result[config.field] = config.defaults.slice();
+    });
+    return result;
+  }
+
+  function normalizeReportOptionValues(values) {
+    var seen = {};
+    return (values || []).map(function(value) {
+      return String(value || "").trim();
+    }).filter(function(value) {
+      var key = value.toLowerCase();
+      if (!value || seen[key]) return false;
+      seen[key] = true;
+      return true;
+    });
+  }
+
+  function loadReportOptionValues() {
+    var defaults = defaultReportOptions();
+    try {
+      var raw = window.localStorage.getItem(REPORT_OPTION_STORAGE_KEY);
+      if (!raw) return defaults;
+      var parsed = JSON.parse(raw);
+      REPORT_OPTION_FIELDS.forEach(function(config) {
+        if (Array.isArray(parsed[config.field])) {
+          defaults[config.field] = normalizeReportOptionValues(parsed[config.field]);
+        }
+      });
+    } catch (err) {
+      return defaults;
+    }
+    return defaults;
+  }
+
+  function saveReportOptionValues() {
+    try {
+      window.localStorage.setItem(
+        REPORT_OPTION_STORAGE_KEY,
+        JSON.stringify(reportOptionValues)
+      );
+    } catch (err) {}
+  }
+
+  function renderReportDatalists() {
+    REPORT_OPTION_FIELDS.forEach(function(config) {
+      var list = document.getElementById(config.datalistId);
+      if (!list) return;
+      list.innerHTML = "";
+      (reportOptionValues[config.field] || []).forEach(function(value) {
+        var option = document.createElement("option");
+        option.value = value;
+        list.appendChild(option);
+      });
+    });
+  }
+
+  function renderReportOptionsEditor(focusTarget) {
+    reportOptionsBody.innerHTML = "";
+    REPORT_OPTION_FIELDS.forEach(function(config) {
+      var values = reportOptionDraft[config.field] || [];
+      var group = document.createElement("section");
+      group.className = "ftir-report-option-group";
+
+      var header = document.createElement("div");
+      header.className = "ftir-report-option-group-header";
+      var title = document.createElement("span");
+      title.textContent = config.label;
+      var count = document.createElement("span");
+      count.className = "ftir-report-option-count";
+      count.textContent = values.length + "개";
+      header.appendChild(title);
+      header.appendChild(count);
+      group.appendChild(header);
+
+      var list = document.createElement("div");
+      list.className = "ftir-report-option-list";
+      values.forEach(function(value, index) {
+        var row = document.createElement("div");
+        row.className = "ftir-report-option-row";
+        var inputEl = document.createElement("input");
+        inputEl.type = "text";
+        inputEl.value = value;
+        inputEl.placeholder = "선택지 입력";
+        inputEl.dataset.optionField = config.field;
+        inputEl.dataset.optionIndex = String(index);
+        inputEl.addEventListener("input", function() {
+          reportOptionDraft[config.field][index] = inputEl.value;
+        });
+        var removeButton = document.createElement("button");
+        removeButton.type = "button";
+        removeButton.className = "ftir-report-option-remove";
+        removeButton.setAttribute("aria-label", config.label + " 선택지 삭제");
+        removeButton.textContent = "×";
+        removeButton.addEventListener("click", function() {
+          reportOptionDraft[config.field].splice(index, 1);
+          renderReportOptionsEditor();
+        });
+        row.appendChild(inputEl);
+        row.appendChild(removeButton);
+        list.appendChild(row);
+      });
+      group.appendChild(list);
+
+      var addButton = document.createElement("button");
+      addButton.type = "button";
+      addButton.className = "ftir-library-dialog-button ftir-report-option-add";
+      addButton.textContent = config.label + " 추가";
+      addButton.addEventListener("click", function() {
+        reportOptionDraft[config.field].push("");
+        renderReportOptionsEditor({field: config.field, index: reportOptionDraft[config.field].length - 1});
+      });
+      group.appendChild(addButton);
+      reportOptionsBody.appendChild(group);
+    });
+
+    if (focusTarget) {
+      var selector = '[data-option-field="' + focusTarget.field + '"][data-option-index="'
+        + focusTarget.index + '"]';
+      var target = reportOptionsBody.querySelector(selector);
+      if (target) target.focus();
+    }
+  }
+
+  function openReportOptionsEditor() {
+    reportOptionDraft = cloneReportOptions(reportOptionValues);
+    renderReportOptionsEditor();
+    reportOptionsModal.classList.add("is-visible");
+  }
+
+  function closeReportOptionsEditor() {
+    reportOptionDraft = null;
+    reportOptionsModal.classList.remove("is-visible");
+  }
+
+  function saveReportOptionsEditor() {
+    var normalized = {};
+    REPORT_OPTION_FIELDS.forEach(function(config) {
+      normalized[config.field] = normalizeReportOptionValues(reportOptionDraft[config.field]);
+    });
+    reportOptionValues = normalized;
+    saveReportOptionValues();
+    renderReportDatalists();
+    closeReportOptionsEditor();
+  }
+
+  function resetReportOptionsEditor() {
+    reportOptionDraft = defaultReportOptions();
+    renderReportOptionsEditor();
+  }
 
   function openWorkspaceDb() {
     if (workspaceDbPromise) return workspaceDbPromise;
@@ -2881,8 +3249,21 @@ _UPLOAD_SCRIPT = """
   libraryModal.addEventListener("click", function(ev) {
     if (ev.target === libraryModal) closeLibraryEditor();
   });
+  reportOptionsOpen.addEventListener("click", openReportOptionsEditor);
+  reportOptionsSave.addEventListener("click", saveReportOptionsEditor);
+  reportOptionsReset.addEventListener("click", resetReportOptionsEditor);
+  reportOptionsCancel.addEventListener("click", closeReportOptionsEditor);
+  reportOptionsClose.addEventListener("click", closeReportOptionsEditor);
+  reportOptionsModal.addEventListener("click", function(ev) {
+    if (ev.target === reportOptionsModal) closeReportOptionsEditor();
+  });
   document.addEventListener("keydown", function(ev) {
-    if (ev.key === "Escape" && libraryModal.classList.contains("is-visible")) {
+    if (ev.key !== "Escape") return;
+    if (reportOptionsModal.classList.contains("is-visible")) {
+      closeReportOptionsEditor();
+      return;
+    }
+    if (libraryModal.classList.contains("is-visible")) {
       closeLibraryEditor();
     }
   });
@@ -2927,6 +3308,7 @@ _UPLOAD_SCRIPT = """
   gd.addEventListener("rist-ftir-tools-toggle", function() {
     applyResponsiveLayout();
   });
+  renderReportDatalists();
   installWorkspaceAutosave();
   restoreWorkspace().then(function(restored) {
     return loadLibraries(restored && restored.selectedLibraryIds).then(function() {

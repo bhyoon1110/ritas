@@ -59,32 +59,51 @@ def test_ftir_workspace_contains_upload_and_editor_controls() -> None:
     assert "setReportControlIfEmpty" in page
     assert "experimentConditions" in page
     assert "raw 자동 추출 + 직접 입력" in page
+    assert 'id="ftir-report-options-open"' in page
+    assert 'id="ftir-report-options-modal"' in page
+    assert 'id="ftir-report-options-save"' in page
+    assert 'id="ftir-report-options-reset"' in page
+    assert "rist-ftir-report-condition-options-v1" in page
+    assert "renderReportDatalists" in page
+    assert "openReportOptionsEditor" in page
+    assert "saveReportOptionsEditor" in page
+    assert "resetReportOptionsEditor" in page
     assert 'data-report-field="equipmentModel"' in page
     assert 'data-report-label="장비모델"' in page
     assert 'data-report-field="analysisType"' in page
     assert 'list="ftir-report-type-options"' in page
     assert '<input type="text" value="ATR method"' not in page
     assert '<option value="ATR method">' in page
+    assert '<option value="Diffuse reflectance">' in page
+    assert '<option value="KBr pellet">' in page
     assert 'data-report-field="detector"' in page
     assert 'list="ftir-report-detector-options"' in page
     assert '<input type="text" value="DTGS"' not in page
     assert '<option value="DTGS">' in page
+    assert '<option value="MCT">' in page
+    assert '<option value="Photoacoustic detector">' in page
     assert 'data-report-field="crystal"' in page
     assert 'list="ftir-report-crystal-options"' in page
     assert '<input type="text" value="diamond"' not in page
     assert '<option value="diamond">' in page
+    assert '<option value="KRS-5">' in page
+    assert '<option value="AMTIR">' in page
     assert 'data-report-field="resolution"' in page
     assert 'list="ftir-report-resolution-options"' in page
     assert '<input type="text" value="4 cm-1"' not in page
     assert '<option value="4 cm-1">' in page
+    assert '<option value="1 cm-1">' in page
+    assert '<option value="16 cm-1">' in page
     assert 'data-report-field="scanTime"' in page
     assert 'list="ftir-report-scan-options"' in page
     assert '<input type="text" value="64 scans"' not in page
     assert '<option value="64 scans">' in page
+    assert '<option value="256 scans">' in page
     assert 'data-report-field="range"' in page
     assert 'list="ftir-report-range-options"' in page
     assert '<input type="text" value="4000 ~ 400 cm-1"' not in page
     assert '<option value="4000 ~ 400 cm-1">' in page
+    assert '<option value="7800 ~ 350 cm-1">' in page
     assert "pollReportJob" in page
     assert "setReportDownloadLink" in page
     assert "MESSAGE_AUTO_HIDE_MS = 5000" in page
