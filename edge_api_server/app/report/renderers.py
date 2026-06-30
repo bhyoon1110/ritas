@@ -8,7 +8,11 @@ report.json과 동일한 ReportDocument이며, 사람이 검토할 수 있는 �
 from __future__ import annotations
 
 import html
+import os
 import re
+import shutil
+import subprocess
+import tempfile
 import textwrap
 import zipfile
 from pathlib import Path
@@ -39,6 +43,77 @@ PPTX_GREEN = "27AE60"
 PPTX_ORANGE = "F2994A"
 PPTX_RED = "EB5757"
 _INSIGHT_SECTION_IDS = frozenset({"interpretation", "qc_notes", "narrative"})
+
+
+class PptxPdfConversionError(RuntimeError):
+    """PPTX를 PDF로 변환하지 못했을 때의 보고서 렌더링 오류."""
+
+
+def convert_pptx_to_pdf(
+    pptx_path: Path,
+    pdf_path: Path,
+    *,
+    timeout_seconds: int = 120,
+) -> Path:
+    """LibreOffice/soffice headless로 PPTX 파일을 실제 PDF로 변환한다."""
+    converter = (
+        os.getenv("RIST_PPTX_TO_PDF_CONVERTER")
+        or shutil.which("soffice")
+        or shutil.which("libreoffice")
+    )
+    if not converter:
+        raise PptxPdfConversionError(
+            "PPTX PDF 변환 도구를 찾을 수 없습니다. soffice 또는 libreoffice를 설치하세요."
+        )
+    if not pptx_path.is_file():
+        raise PptxPdfConversionError(f"PPTX 파일을 찾을 수 없습니다: {pptx_path}")
+
+    pdf_path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="rist-pptx-pdf-") as tmp_name:
+        tmp_dir = Path(tmp_name)
+        profile_dir = tmp_dir / "lo-profile"
+        output_dir = tmp_dir / "output"
+        profile_dir.mkdir()
+        output_dir.mkdir()
+        command = [
+            converter,
+            "--headless",
+            f"-env:UserInstallation={profile_dir.resolve().as_uri()}",
+            "--convert-to",
+            "pdf",
+            "--outdir",
+            str(output_dir),
+            str(pptx_path),
+        ]
+        try:
+            completed = subprocess.run(
+                command,
+                capture_output=True,
+                check=False,
+                text=True,
+                timeout=timeout_seconds,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise PptxPdfConversionError(
+                f"PPTX PDF 변환 시간이 초과되었습니다: {pptx_path.name}"
+            ) from exc
+        if completed.returncode != 0:
+            detail = (completed.stderr or completed.stdout or "").strip()
+            raise PptxPdfConversionError(
+                f"PPTX PDF 변환 실패(returnCode={completed.returncode}): {detail}"
+            )
+
+        converted = output_dir / f"{pptx_path.stem}.pdf"
+        if not converted.is_file():
+            candidates = sorted(output_dir.glob("*.pdf"))
+            converted = candidates[0] if candidates else converted
+        if not converted.is_file():
+            detail = (completed.stdout or completed.stderr or "").strip()
+            raise PptxPdfConversionError(
+                f"PPTX PDF 변환 결과 파일이 생성되지 않았습니다: {detail}"
+            )
+        shutil.copyfile(converted, pdf_path)
+    return pdf_path
 
 
 def render_requested_report(

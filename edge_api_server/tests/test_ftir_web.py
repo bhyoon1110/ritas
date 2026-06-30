@@ -9,7 +9,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from app import assignment_suggestions
+from app import assignment_suggestions, preview_report
 from app.ftir_web import (
     build_ftir_page,
     create_ftir_preview_app,
@@ -22,6 +22,15 @@ TINY_PNG_DATA_URL = (
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYPhfDwAChwGA60e6"
     "kgAAAABJRU5ErkJggg=="
 )
+
+
+def use_fake_pptx_pdf_converter(monkeypatch) -> None:
+    def fake_convert(pptx_path: Path, pdf_path: Path) -> Path:
+        assert pptx_path.name == "report.pptx"
+        pdf_path.write_bytes(b"%PDF-1.4\n% RIST test PDF\n")
+        return pdf_path
+
+    monkeypatch.setattr(preview_report, "convert_pptx_to_pdf", fake_convert)
 
 
 def synthetic_dpt(center: float = 1700.0) -> bytes:
@@ -161,7 +170,11 @@ def test_ftir_analysis_extracts_optional_dpt_metadata(tmp_path: Path) -> None:
     assert sample["metadata"]["Measurement Mode"] == "ATR"
 
 
-def test_ftir_report_api_builds_package_with_graph_and_raw_xlsx(tmp_path: Path) -> None:
+def test_ftir_report_api_builds_package_with_graph_and_raw_xlsx(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    use_fake_pptx_pdf_converter(monkeypatch)
     with TestClient(create_ftir_preview_app(tmp_path / "libraries")) as client:
         analysis_response = client.post(
             "/api/v1/ftir/analyze",
@@ -194,7 +207,11 @@ def test_ftir_report_api_builds_package_with_graph_and_raw_xlsx(tmp_path: Path) 
         assert "report.json" not in names
 
 
-def test_ftir_report_job_api_tracks_progress_and_downloads_package(tmp_path: Path) -> None:
+def test_ftir_report_job_api_tracks_progress_and_downloads_package(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    use_fake_pptx_pdf_converter(monkeypatch)
     with TestClient(create_ftir_preview_app(tmp_path / "libraries")) as client:
         analysis_response = client.post(
             "/api/v1/ftir/analyze",

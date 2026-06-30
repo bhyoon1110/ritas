@@ -8,7 +8,7 @@ import zipfile
 
 from fastapi.testclient import TestClient
 
-from app import assignment_suggestions
+from app import assignment_suggestions, preview_report
 from app.raman_web import _blank_figure, build_raman_page, create_raman_preview_app
 from rin.raman.preprocess import load_raman_raw, load_raman_raw_samples
 
@@ -17,6 +17,15 @@ TINY_PNG_DATA_URL = (
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYPhfDwAChwGA60e6"
     "kgAAAABJRU5ErkJggg=="
 )
+
+
+def use_fake_pptx_pdf_converter(monkeypatch) -> None:
+    def fake_convert(pptx_path: Path, pdf_path: Path) -> Path:
+        assert pptx_path.name == "report.pptx"
+        pdf_path.write_bytes(b"%PDF-1.4\n% RIST test PDF\n")
+        return pdf_path
+
+    monkeypatch.setattr(preview_report, "convert_pptx_to_pdf", fake_convert)
 
 
 SAMPLE_TXT = (
@@ -305,7 +314,8 @@ def test_raman_analyze_api_expands_multi_sample_txt() -> None:
     assert payload["figure"]["layout"]["meta"]["ristRamanStack"]["enabled"] is True
 
 
-def test_raman_report_api_builds_package_with_graph_and_raw_xlsx() -> None:
+def test_raman_report_api_builds_package_with_graph_and_raw_xlsx(monkeypatch) -> None:
+    use_fake_pptx_pdf_converter(monkeypatch)
     content = MULTI_SAMPLE_TXT.read_bytes()
     with TestClient(create_raman_preview_app()) as client:
         analysis_response = client.post(
@@ -339,7 +349,8 @@ def test_raman_report_api_builds_package_with_graph_and_raw_xlsx() -> None:
         assert "report.json" not in names
 
 
-def test_raman_report_job_api_tracks_progress_and_downloads_package() -> None:
+def test_raman_report_job_api_tracks_progress_and_downloads_package(monkeypatch) -> None:
+    use_fake_pptx_pdf_converter(monkeypatch)
     content = MULTI_SAMPLE_TXT.read_bytes()
     with TestClient(create_raman_preview_app()) as client:
         analysis_response = client.post(
