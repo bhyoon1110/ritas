@@ -13,15 +13,25 @@ import re
 import shutil
 import subprocess
 import tempfile
-import textwrap
 import zipfile
 from pathlib import Path
 
+from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import ParagraphStyle
+from reportlab.lib.units import mm
+from reportlab.lib.utils import ImageReader
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.cidfonts import UnicodeCIDFont
 from reportlab.pdfbase.ttfonts import TTFont
-from reportlab.pdfgen import canvas
+from reportlab.platypus import (
+    Image,
+    Paragraph,
+    SimpleDocTemplate,
+    Spacer,
+    Table,
+    TableStyle,
+)
 
 from .model import LLM_FALLBACK_NOTICE, ReportDocument, ReportFigure, ReportSection
 
@@ -231,16 +241,298 @@ def render_html(document: ReportDocument, path: Path) -> None:
 
 def _pdf_font_name(font_path: Path | None) -> str:
     if font_path is None:
+        for candidate in _default_pdf_font_candidates():
+            if not candidate.is_file():
+                continue
+            try:
+                return _register_pdf_ttf(candidate)
+            except Exception:
+                continue
         name = "HYSMyeongJo-Medium"
         if name not in pdfmetrics.getRegisteredFontNames():
             pdfmetrics.registerFont(UnicodeCIDFont("HYSMyeongJo-Medium"))
         return name
     if not font_path.is_file():
         raise ValueError(f"PDF 임베드 폰트를 찾을 수 없습니다: {font_path}")
-    name = "RISTEmbeddedKorean"
+    return _register_pdf_ttf(font_path)
+
+
+def _default_pdf_font_candidates() -> list[Path]:
+    return [
+        Path("/System/Library/Fonts/Supplemental/Arial Unicode.ttf"),
+        Path("/System/Library/Fonts/Supplemental/AppleGothic.ttf"),
+        Path("/usr/share/fonts/truetype/nanum/NanumGothic.ttf"),
+        Path("/usr/share/fonts/truetype/noto/NotoSansKR-Regular.ttf"),
+        Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
+    ]
+
+
+def _register_pdf_ttf(font_path: Path) -> str:
+    safe_name = re.sub(r"[^A-Za-z0-9]+", "", font_path.stem) or "Font"
+    name = f"RISTEmbeddedKorean-{safe_name[:40]}"
     if name not in pdfmetrics.getRegisteredFontNames():
         pdfmetrics.registerFont(TTFont(name, str(font_path)))
     return name
+
+
+def _pdf_text(value: object) -> str:
+    return html.escape(str(value or "")).replace("\n", "<br/>")
+
+
+def _pdf_color(hex_value: str):
+    return colors.HexColor(f"#{hex_value.lstrip('#')}")
+
+
+def _pdf_style(
+    name: str,
+    font_name: str,
+    *,
+    size: float,
+    leading: float,
+    color: str = PPTX_TEXT,
+    space_before: float = 0,
+    space_after: float = 0,
+    left_indent: float = 0,
+    first_line_indent: float = 0,
+    alignment: int = 0,
+) -> ParagraphStyle:
+    return ParagraphStyle(
+        name,
+        fontName=font_name,
+        fontSize=size,
+        leading=leading,
+        textColor=_pdf_color(color),
+        spaceBefore=space_before,
+        spaceAfter=space_after,
+        leftIndent=left_indent,
+        firstLineIndent=first_line_indent,
+        alignment=alignment,
+        wordWrap="CJK",
+    )
+
+
+def _pdf_styles(font_name: str) -> dict[str, ParagraphStyle]:
+    return {
+        "title": _pdf_style(
+            "RISTTitle",
+            font_name,
+            size=20,
+            leading=25,
+            color=PPTX_NAVY,
+            space_after=4 * mm,
+        ),
+        "subtitle": _pdf_style(
+            "RISTSubtitle",
+            font_name,
+            size=9,
+            leading=12,
+            color=PPTX_MUTED,
+            space_after=3 * mm,
+        ),
+        "section": _pdf_style(
+            "RISTSection",
+            font_name,
+            size=14,
+            leading=18,
+            color=PPTX_NAVY,
+            space_before=5 * mm,
+            space_after=2 * mm,
+        ),
+        "paragraph": _pdf_style(
+            "RISTParagraph",
+            font_name,
+            size=10.5,
+            leading=15,
+            color=PPTX_TEXT,
+            space_after=2 * mm,
+        ),
+        "bullet": _pdf_style(
+            "RISTBullet",
+            font_name,
+            size=10,
+            leading=14,
+            color=PPTX_TEXT,
+            space_after=1.5 * mm,
+            left_indent=5 * mm,
+            first_line_indent=-3 * mm,
+        ),
+        "meta_label": _pdf_style(
+            "RISTMetaLabel",
+            font_name,
+            size=8.5,
+            leading=11,
+            color=PPTX_MUTED,
+        ),
+        "meta_value": _pdf_style(
+            "RISTMetaValue",
+            font_name,
+            size=9,
+            leading=12,
+            color=PPTX_TEXT,
+        ),
+        "table_head": _pdf_style(
+            "RISTTableHead",
+            font_name,
+            size=8,
+            leading=10,
+            color=PPTX_NAVY,
+        ),
+        "table_cell": _pdf_style(
+            "RISTTableCell",
+            font_name,
+            size=8,
+            leading=10,
+            color=PPTX_TEXT,
+        ),
+        "caption": _pdf_style(
+            "RISTCaption",
+            font_name,
+            size=8.5,
+            leading=11,
+            color=PPTX_MUTED,
+            space_before=1.5 * mm,
+            space_after=3 * mm,
+            alignment=1,
+        ),
+        "notice": _pdf_style(
+            "RISTNotice",
+            font_name,
+            size=9,
+            leading=12,
+            color=PPTX_ORANGE,
+            space_after=3 * mm,
+        ),
+    }
+
+
+def _pdf_meta_table(
+    document: ReportDocument,
+    styles: dict[str, ParagraphStyle],
+    available_width: float,
+) -> Table:
+    metadata = [
+        ("요청번호", document.pk.get("requestNumber", "")),
+        ("실험", document.experiment_code),
+        ("장비", document.pk.get("equipmentCode", "")),
+        ("작업자", document.pk.get("operatorId", "")),
+        ("생성시각", document.generated_at),
+    ]
+    rows = [
+        [
+            Paragraph(_pdf_text(label), styles["meta_label"]),
+            Paragraph(_pdf_text(value or "-"), styles["meta_value"]),
+        ]
+        for label, value in metadata
+    ]
+    table = Table(rows, colWidths=[24 * mm, available_width - 24 * mm], hAlign="LEFT")
+    table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, -1), _pdf_color(PPTX_CARD)),
+                ("BOX", (0, 0), (-1, -1), 0.5, _pdf_color(PPTX_LINE)),
+                ("INNERGRID", (0, 0), (-1, -1), 0.25, _pdf_color(PPTX_LINE)),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+                ("TOPPADDING", (0, 0), (-1, -1), 5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+            ]
+        )
+    )
+    return table
+
+
+def _pdf_report_table(
+    section: ReportSection,
+    styles: dict[str, ParagraphStyle],
+    available_width: float,
+) -> Table | None:
+    if section.table is None or not section.table.columns:
+        return None
+
+    columns = section.table.columns
+    column_count = len(columns)
+    rows = [
+        [Paragraph(_pdf_text(column), styles["table_head"]) for column in columns]
+    ]
+    for row in section.table.rows:
+        normalized = list(row[:column_count]) + [""] * max(0, column_count - len(row))
+        rows.append(
+            [Paragraph(_pdf_text(cell), styles["table_cell"]) for cell in normalized]
+        )
+
+    table = Table(
+        rows,
+        colWidths=[available_width / column_count] * column_count,
+        hAlign="LEFT",
+        repeatRows=1,
+    )
+    table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), _pdf_color("EAF2FD")),
+                ("BACKGROUND", (0, 1), (-1, -1), colors.white),
+                ("BOX", (0, 0), (-1, -1), 0.5, _pdf_color(PPTX_LINE)),
+                ("INNERGRID", (0, 0), (-1, -1), 0.25, _pdf_color(PPTX_LINE)),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 5),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+                ("TOPPADDING", (0, 0), (-1, -1), 4),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ]
+        )
+    )
+    return table
+
+
+def _pdf_figure_story(
+    document: ReportDocument,
+    styles: dict[str, ParagraphStyle],
+    available_width: float,
+) -> list[object]:
+    story: list[object] = []
+    max_height = 95 * mm
+    for figure in document.figures:
+        figure_path = Path(figure.path)
+        if not figure_path.is_file():
+            continue
+        try:
+            reader = ImageReader(str(figure_path))
+            image_width, image_height = reader.getSize()
+        except Exception:
+            continue
+        if image_width <= 0 or image_height <= 0:
+            continue
+        scale = min(available_width / image_width, max_height / image_height)
+        story.append(Paragraph(_pdf_text(figure.title), styles["section"]))
+        story.append(
+            Image(
+                str(figure_path),
+                width=image_width * scale,
+                height=image_height * scale,
+                hAlign="CENTER",
+            )
+        )
+        caption_section = document.section(figure.caption_slot)
+        caption = ""
+        if caption_section is not None and caption_section.paragraphs:
+            caption = caption_section.paragraphs[0]
+        if caption:
+            story.append(Paragraph(_pdf_text(caption), styles["caption"]))
+    return story
+
+
+def _pdf_footer(document: ReportDocument, font_name: str):
+    def draw_footer(pdf_canvas, doc) -> None:
+        pdf_canvas.saveState()
+        pdf_canvas.setFont(font_name, 8)
+        pdf_canvas.setFillColor(_pdf_color(PPTX_MUTED))
+        pdf_canvas.drawString(doc.leftMargin, 12 * mm, "RIST Edge Report")
+        right_text = f"{document.experiment_code} · {pdf_canvas.getPageNumber()}"
+        pdf_canvas.drawRightString(A4[0] - doc.rightMargin, 12 * mm, right_text)
+        pdf_canvas.restoreState()
+
+    return draw_footer
 
 
 def render_pdf(
@@ -251,23 +543,47 @@ def render_pdf(
 ) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     font_name = _pdf_font_name(font_path)
-    _, page_height = A4
-    left = 50
-    top = page_height - 50
-    line_height = 16
-    document_canvas = canvas.Canvas(str(path), pagesize=A4, pageCompression=1)
-    document_canvas.setTitle(document.title)
-    document_canvas.setFont(font_name, 12)
-    y = top
-    for line in _plain_lines(document):
-        for part in textwrap.wrap(line, width=62) or [""]:
-            if y < 50:
-                document_canvas.showPage()
-                document_canvas.setFont(font_name, 12)
-                y = top
-            document_canvas.drawString(left, y, part)
-            y -= line_height
-    document_canvas.save()
+    pdf_doc = SimpleDocTemplate(
+        str(path),
+        pagesize=A4,
+        rightMargin=18 * mm,
+        leftMargin=18 * mm,
+        topMargin=18 * mm,
+        bottomMargin=18 * mm,
+        title=document.title,
+    )
+    styles = _pdf_styles(font_name)
+    available_width = A4[0] - pdf_doc.leftMargin - pdf_doc.rightMargin
+    story: list[object] = [
+        Paragraph(_pdf_text(document.title), styles["title"]),
+        Paragraph(
+            _pdf_text(f"{document.experiment_code} · {document.generated_at}"),
+            styles["subtitle"],
+        ),
+        _pdf_meta_table(document, styles, available_width),
+        Spacer(1, 4 * mm),
+    ]
+
+    story.extend(_pdf_figure_story(document, styles, available_width))
+
+    for section in document.sections:
+        story.append(Paragraph(_pdf_text(section.heading), styles["section"]))
+        for paragraph in section.paragraphs:
+            story.append(Paragraph(_pdf_text(paragraph), styles["paragraph"]))
+        for bullet in section.bullets:
+            story.append(
+                Paragraph(_pdf_text(bullet), styles["bullet"], bulletText="-")
+            )
+        table = _pdf_report_table(section, styles, available_width)
+        if table is not None:
+            story.append(table)
+            story.append(Spacer(1, 2 * mm))
+
+    if document.llm_error:
+        story.append(Paragraph(_pdf_text(LLM_FALLBACK_NOTICE), styles["notice"]))
+
+    footer = _pdf_footer(document, font_name)
+    pdf_doc.build(story, onFirstPage=footer, onLaterPages=footer)
 
 
 def render_pptx(document: ReportDocument, path: Path) -> None:
