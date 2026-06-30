@@ -452,18 +452,23 @@ def _pdf_report_table(
 
     columns = section.table.columns
     column_count = len(columns)
+    col_widths = [available_width / column_count] * column_count
     rows = [
         [Paragraph(_pdf_text(column), styles["table_head"]) for column in columns]
     ]
     for row in section.table.rows:
-        normalized = list(row[:column_count]) + [""] * max(0, column_count - len(row))
-        rows.append(
-            [Paragraph(_pdf_text(cell), styles["table_cell"]) for cell in normalized]
+        rows.extend(
+            _pdf_split_table_row(
+                row,
+                column_count=column_count,
+                col_widths=col_widths,
+                style=styles["table_cell"],
+            )
         )
 
     table = Table(
         rows,
-        colWidths=[available_width / column_count] * column_count,
+        colWidths=col_widths,
         hAlign="LEFT",
         repeatRows=1,
     )
@@ -483,6 +488,93 @@ def _pdf_report_table(
         )
     )
     return table
+
+
+def _pdf_split_table_row(
+    row: list[str],
+    *,
+    column_count: int,
+    col_widths: list[float],
+    style: ParagraphStyle,
+) -> list[list[Paragraph]]:
+    normalized = list(row[:column_count]) + [""] * max(0, column_count - len(row))
+    split_cells = [
+        _pdf_split_table_cell(cell, style, col_widths[idx])
+        for idx, cell in enumerate(normalized)
+    ]
+    row_count = max(len(parts) for parts in split_cells)
+    rendered_rows: list[list[Paragraph]] = []
+    for row_idx in range(row_count):
+        rendered_row = []
+        for parts in split_cells:
+            value = parts[row_idx] if row_idx < len(parts) else ""
+            rendered_row.append(Paragraph(_pdf_text(value), style))
+        rendered_rows.append(rendered_row)
+    return rendered_rows
+
+
+def _pdf_split_table_cell(
+    value: str,
+    style: ParagraphStyle,
+    col_width: float,
+) -> list[str]:
+    text = str(value or "")
+    max_height = 115 * mm
+    if _pdf_paragraph_height(text, style, col_width) <= max_height:
+        return [text]
+
+    parts: list[str] = []
+    remaining = text
+    while remaining:
+        if _pdf_paragraph_height(remaining, style, col_width) <= max_height:
+            parts.append(remaining)
+            break
+        cut_at = _pdf_find_table_cell_cut(remaining, style, col_width, max_height)
+        parts.append(remaining[:cut_at].rstrip())
+        remaining = remaining[cut_at:].lstrip()
+    return parts or [""]
+
+
+def _pdf_paragraph_height(
+    text: str,
+    style: ParagraphStyle,
+    width: float,
+) -> float:
+    _, height = Paragraph(_pdf_text(text), style).wrap(width, 10000)
+    return height
+
+
+def _pdf_find_table_cell_cut(
+    text: str,
+    style: ParagraphStyle,
+    width: float,
+    max_height: float,
+) -> int:
+    low = 1
+    high = len(text)
+    best = 1
+    while low <= high:
+        mid = (low + high) // 2
+        if _pdf_paragraph_height(text[:mid], style, width) <= max_height:
+            best = mid
+            low = mid + 1
+        else:
+            high = mid - 1
+    return _pdf_preferred_table_cell_cut(text, best)
+
+
+def _pdf_preferred_table_cell_cut(text: str, best: int) -> int:
+    if best >= len(text):
+        return best
+    floor = max(1, int(best * 0.65))
+    candidates = [
+        text.rfind(separator, floor, best + 1)
+        for separator in ("\n", ". ", "; ", ", ", " ")
+    ]
+    cut_at = max(candidates)
+    if cut_at >= floor:
+        return cut_at + 1
+    return best
 
 
 def _pdf_figure_story(

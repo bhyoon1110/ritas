@@ -11,7 +11,13 @@ from app.config import Settings
 from app.llm_client import LocalLlmClient
 from app.report import annotator
 from app.report.builders import FtirReportBuilder, LlmSlotSpec, RamanReportBuilder, get_builder
-from app.report.model import LLM_FALLBACK_NOTICE, ReportDocument, ReportFigure, ReportSection
+from app.report.model import (
+    LLM_FALLBACK_NOTICE,
+    ReportDocument,
+    ReportFigure,
+    ReportSection,
+    ReportTable,
+)
 from app.report.package import build_report_package
 from app.report.pipeline import generate_report
 from app.report.renderers import render_report_formats, render_requested_report
@@ -514,6 +520,32 @@ def test_pdf_renderer_creates_pdf_file(tmp_path) -> None:
     assert rendered.name == "report.pdf"
     assert content.startswith(b"%PDF-")
     assert content.endswith(b"%%EOF\n")
+
+
+def test_pdf_renderer_splits_oversized_table_rows(tmp_path) -> None:
+    long_cell = "긴 실험 조건과 해석 근거가 한 셀에 많이 들어가는 경우입니다. " * 450
+    rows = [
+        [f"대상 {index}", "설명", long_cell if index == 50 else "일반 내용"]
+        for index in range(102)
+    ]
+    document = ReportDocument(
+        job_id="large-table",
+        title="긴 테이블 PDF 테스트",
+        experiment_code="RAMAN",
+        pk={"requestNumber": "REQ-LONG"},
+        generated_at="2026-06-30T15:20:00+09:00",
+        sections=[
+            ReportSection(
+                "table",
+                "긴 테이블",
+                table=ReportTable(columns=["대상", "구분", "내용"], rows=rows),
+            )
+        ],
+    )
+
+    rendered = render_requested_report(document, tmp_path, "PDF")
+
+    assert rendered.read_bytes().startswith(b"%PDF-")
 
 
 def test_report_package_excludes_internal_json_and_optionally_includes_raw(tmp_path) -> None:
