@@ -59,6 +59,32 @@ def test_raman_workspace_contains_upload_controls() -> None:
     assert "setReportControlIfEmpty" in page
     assert "experimentConditions" in page
     assert "raw 헤더 자동 추출 + 직접 입력" in page
+    assert 'id="raman-report-options-open"' in page
+    assert 'id="raman-report-options-modal"' in page
+    assert 'id="raman-report-options-save"' in page
+    assert 'id="raman-report-options-reset"' in page
+    assert "rist-raman-report-condition-options-v1" in page
+    assert "renderReportDatalists" in page
+    assert "openReportOptionsEditor" in page
+    assert "saveReportOptionsEditor" in page
+    assert "resetReportOptionsEditor" in page
+    assert "#raman-report-options-modal .raman-library-dialog" in page
+    assert "height: min(660px, calc(100dvh - 32px))" in page
+    assert "max-height: calc(100dvh - 16px)" in page
+    assert 'data-report-field="laserPreset"' in page
+    assert 'list="raman-report-laser-options"' in page
+    assert "<select data-report-field=\"laserPreset\"" not in page
+    assert '<option value="532 nm">' in page
+    assert '<option value="785 nm">' in page
+    assert 'data-report-field="exposure"' in page
+    assert 'list="raman-report-exposure-options"' in page
+    assert '<option value="10 s x 3">' in page
+    assert 'data-report-field="sampleDescription"' in page
+    assert 'list="raman-report-sample-options"' in page
+    assert '<option value="air-sensitive sample">' in page
+    assert 'data-report-field="requestPurpose"' in page
+    assert 'list="raman-report-purpose-options"' in page
+    assert '<option value="D/G ratio 비교">' in page
     assert "pollReportJob" in page
     assert "setReportDownloadLink" in page
     assert "MESSAGE_AUTO_HIDE_MS = 5000" in page

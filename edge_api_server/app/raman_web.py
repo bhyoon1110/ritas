@@ -793,6 +793,25 @@ body { overflow-x: hidden; }
   font-size: 10px;
   font-weight: 400;
 }
+.raman-report-meta-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0 0 8px 24px;
+}
+.raman-report-option-button {
+  height: 28px;
+  border: 1px solid #9fb3c8;
+  border-radius: 4px;
+  background: #ffffff;
+  color: #243b53;
+  cursor: pointer;
+  font-size: 11px;
+  padding: 0 10px;
+}
+.raman-report-option-button:hover {
+  border-color: #486581;
+  background: #eef2f6;
+}
 .raman-report-meta-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(130px, 1fr));
@@ -825,6 +844,92 @@ body { overflow-x: hidden; }
 .raman-report-meta-field textarea {
   min-height: 34px;
   resize: vertical;
+}
+.raman-report-option-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-bottom: 12px;
+}
+.raman-report-option-group {
+  border: 1px solid #d9e2ec;
+  border-radius: 5px;
+  background: #ffffff;
+  overflow: hidden;
+}
+.raman-report-option-group-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 34px;
+  padding: 0 10px;
+  border-bottom: 1px solid #e4e7eb;
+  background: #f8fafc;
+  color: #334e68;
+  font-size: 11px;
+  font-weight: 700;
+}
+.raman-report-option-count {
+  color: #7b8794;
+  font-size: 10px;
+  font-weight: 400;
+}
+.raman-report-option-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(180px, 1fr));
+  gap: 7px;
+  padding: 10px;
+}
+.raman-report-option-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+.raman-report-option-row input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 28px;
+  border: 1px solid #bcccdc;
+  border-radius: 3px;
+  background: #ffffff;
+  color: #243b53;
+  font: 11px Arial, "Noto Sans KR", sans-serif;
+  padding: 0 7px;
+  box-sizing: border-box;
+}
+.raman-report-option-remove {
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  border: 0;
+  background: transparent;
+  color: #7b8794;
+  cursor: pointer;
+  font: 17px/1 Arial, sans-serif;
+}
+.raman-report-option-remove:hover {
+  color: #b42318;
+}
+.raman-report-option-add {
+  margin: 0 10px 10px;
+}
+#raman-report-options-modal .raman-library-dialog {
+  height: min(660px, calc(100vh - 32px));
+  height: min(660px, calc(100dvh - 32px));
+  max-height: calc(100vh - 32px);
+  max-height: calc(100dvh - 32px);
+}
+#raman-report-options-modal .raman-library-dialog-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding-bottom: 12px;
+}
+#raman-report-options-modal .raman-library-dialog-actions {
+  position: relative;
+  z-index: 2;
+  flex-wrap: wrap;
 }
 .raman-message {
   display: none;
@@ -944,8 +1049,20 @@ body { overflow-x: hidden; }
     grid-template-columns: 1fr;
     padding-left: 0;
   }
+  .raman-report-meta-toolbar {
+    padding-left: 0;
+  }
   .raman-report-meta-field.is-wide {
     grid-column: auto;
+  }
+  .raman-report-option-list {
+    grid-template-columns: 1fr;
+  }
+  #raman-report-options-modal .raman-library-dialog {
+    height: calc(100vh - 16px);
+    height: calc(100dvh - 16px);
+    max-height: calc(100vh - 16px);
+    max-height: calc(100dvh - 16px);
   }
   .raman-library-band {
     flex-wrap: wrap;
@@ -1200,6 +1317,10 @@ _PAGE_SHELL = """
 <section class="raman-report-meta-band" id="raman-report-meta">
   <details class="raman-report-meta-panel">
     <summary>보고서 정보 <span>raw 헤더 자동 추출 + 직접 입력</span></summary>
+    <div class="raman-report-meta-toolbar">
+      <button type="button" class="raman-report-option-button"
+              id="raman-report-options-open">선택지 관리</button>
+    </div>
     <div class="raman-report-meta-grid">
       <label class="raman-report-meta-field">
         <span>측정일</span>
@@ -1214,30 +1335,29 @@ _PAGE_SHELL = """
       </label>
       <label class="raman-report-meta-field">
         <span>Laser</span>
-        <select data-report-field="laserPreset"
-                data-report-label="Laser">
-          <option value="">선택 안 함</option>
-          <option value="532 nm">532 nm</option>
-          <option value="633 nm">633 nm</option>
-          <option value="785 nm">785 nm</option>
-          <option value="1064 nm">1064 nm</option>
-        </select>
+        <input type="text" list="raman-report-laser-options"
+               placeholder="선택 또는 입력"
+               data-report-field="laserPreset"
+               data-report-label="Laser">
       </label>
       <label class="raman-report-meta-field">
         <span>Exposure / Accumulation</span>
-        <input type="text" placeholder="예: 10 s x 3"
+        <input type="text" list="raman-report-exposure-options"
+               placeholder="예: 10 s x 3"
                data-report-field="exposure"
                data-report-label="Exposure / Accumulation">
       </label>
       <label class="raman-report-meta-field is-wide">
         <span>시료 정보</span>
-        <input type="text" placeholder="예: air-sensitive LiOH sample"
+        <input type="text" list="raman-report-sample-options"
+               placeholder="예: air-sensitive LiOH sample"
                data-report-field="sampleDescription"
                data-report-label="시료 정보">
       </label>
       <label class="raman-report-meta-field is-wide">
         <span>분석 목적</span>
-        <input type="text" placeholder="예: LiOH/탄산염 피크 확인, D/G ratio 비교"
+        <input type="text" list="raman-report-purpose-options"
+               placeholder="예: LiOH/탄산염 피크 확인, D/G ratio 비교"
                data-report-field="requestPurpose"
                data-report-label="분석 목적">
       </label>
@@ -1248,6 +1368,36 @@ _PAGE_SHELL = """
                   data-report-label="실험환경 상세"></textarea>
       </label>
     </div>
+    <datalist id="raman-report-laser-options">
+      <option value="532 nm">
+      <option value="633 nm">
+      <option value="785 nm">
+      <option value="1064 nm">
+      <option value="514 nm">
+      <option value="488 nm">
+      <option value="780 nm">
+    </datalist>
+    <datalist id="raman-report-exposure-options">
+      <option value="1 s x 10">
+      <option value="5 s x 3">
+      <option value="10 s x 3">
+      <option value="30 s x 1">
+      <option value="60 s x 1">
+    </datalist>
+    <datalist id="raman-report-sample-options">
+      <option value="air-sensitive sample">
+      <option value="powder sample">
+      <option value="carbon material">
+      <option value="lithium compound">
+      <option value="layered oxide cathode">
+    </datalist>
+    <datalist id="raman-report-purpose-options">
+      <option value="LiOH/탄산염 피크 확인">
+      <option value="D/G ratio 비교">
+      <option value="탄소 D/G/2D band 확인">
+      <option value="LMR layered oxide mode 확인">
+      <option value="시료 간 Raman 피크 비교">
+    </datalist>
   </details>
 </section>
 <div class="raman-message" id="raman-message"></div>
@@ -1280,6 +1430,30 @@ _PAGE_SHELL = """
               id="raman-library-dialog-cancel">취소</button>
       <button type="button" class="raman-library-dialog-button primary"
               id="raman-library-dialog-save">저장</button>
+    </footer>
+  </section>
+</div>
+<div class="raman-library-modal" id="raman-report-options-modal" role="dialog"
+     aria-modal="true" aria-labelledby="raman-report-options-title">
+  <section class="raman-library-dialog">
+    <header class="raman-library-dialog-header">
+      <div class="raman-library-dialog-heading">
+        <strong id="raman-report-options-title">보고서 선택지 관리</strong>
+        <span>Laser, Exposure 등 입력 후보를 추가하거나 삭제합니다.</span>
+      </div>
+      <button type="button" class="raman-library-dialog-close"
+              id="raman-report-options-close" aria-label="닫기">×</button>
+    </header>
+    <div class="raman-library-dialog-body">
+      <div class="raman-report-option-body" id="raman-report-options-body"></div>
+    </div>
+    <footer class="raman-library-dialog-actions">
+      <button type="button" class="raman-library-dialog-button"
+              id="raman-report-options-reset">기본 선택지 복원</button>
+      <button type="button" class="raman-library-dialog-button"
+              id="raman-report-options-cancel">취소</button>
+      <button type="button" class="raman-library-dialog-button primary"
+              id="raman-report-options-save">저장</button>
     </footer>
   </section>
 </div>
@@ -2113,12 +2287,22 @@ _UPLOAD_SCRIPT = """
   var reportMetaControls = Array.prototype.slice.call(
     document.querySelectorAll("#raman-report-meta [data-report-field]")
   );
+  var reportOptionsOpen = document.getElementById("raman-report-options-open");
+  var reportOptionsModal = document.getElementById("raman-report-options-modal");
+  var reportOptionsBody = document.getElementById("raman-report-options-body");
+  var reportOptionsClose = document.getElementById("raman-report-options-close");
+  var reportOptionsCancel = document.getElementById("raman-report-options-cancel");
+  var reportOptionsSave = document.getElementById("raman-report-options-save");
+  var reportOptionsReset = document.getElementById("raman-report-options-reset");
   var MESSAGE_AUTO_HIDE_MS = 5000;
   var messageTimer = null;
   if (!gd || !input || !dropZone || !prompt || !fileList || !status || !message
       || !loading || !clearButton || !libraryInput || !libraryList
       || !libraryFilter || !libraryNew || !libraryModal || !libraryDialogClose
       || !libraryRowAdd || !libraryDialogCancel || !libraryDialogSave
+      || !reportOptionsOpen || !reportOptionsModal || !reportOptionsBody
+      || !reportOptionsClose || !reportOptionsCancel || !reportOptionsSave
+      || !reportOptionsReset
       || !reportButton || !reportProgress || !reportProgressLabel
       || !reportProgressValue || !reportProgressBar) return;
 
@@ -2138,9 +2322,214 @@ _UPLOAD_SCRIPT = """
   var SESSION_DB_NAME = "rist-raman-workspace-v1";
   var SESSION_STORE = "workspace";
   var SESSION_KEY = "current";
+  var REPORT_OPTION_STORAGE_KEY = "rist-raman-report-condition-options-v1";
+  var REPORT_OPTION_FIELDS = [
+    {
+      field: "laserPreset",
+      label: "Laser",
+      datalistId: "raman-report-laser-options",
+      defaults: ["532 nm", "633 nm", "785 nm", "1064 nm", "514 nm", "488 nm", "780 nm"]
+    },
+    {
+      field: "exposure",
+      label: "Exposure / Accumulation",
+      datalistId: "raman-report-exposure-options",
+      defaults: ["1 s x 10", "5 s x 3", "10 s x 3", "30 s x 1", "60 s x 1"]
+    },
+    {
+      field: "sampleDescription",
+      label: "시료 정보",
+      datalistId: "raman-report-sample-options",
+      defaults: [
+        "air-sensitive sample",
+        "powder sample",
+        "carbon material",
+        "lithium compound",
+        "layered oxide cathode"
+      ]
+    },
+    {
+      field: "requestPurpose",
+      label: "분석 목적",
+      datalistId: "raman-report-purpose-options",
+      defaults: [
+        "LiOH/탄산염 피크 확인",
+        "D/G ratio 비교",
+        "탄소 D/G/2D band 확인",
+        "LMR layered oxide mode 확인",
+        "시료 간 Raman 피크 비교"
+      ]
+    }
+  ];
+  var reportOptionValues = loadReportOptionValues();
+  var reportOptionDraft = null;
   var workspaceDbPromise = null;
   var restoreInProgress = false;
   var saveTimer = 0;
+
+  function cloneReportOptions(source) {
+    var result = {};
+    REPORT_OPTION_FIELDS.forEach(function(config) {
+      result[config.field] = (source[config.field] || []).slice();
+    });
+    return result;
+  }
+
+  function defaultReportOptions() {
+    var result = {};
+    REPORT_OPTION_FIELDS.forEach(function(config) {
+      result[config.field] = config.defaults.slice();
+    });
+    return result;
+  }
+
+  function normalizeReportOptionValues(values) {
+    var seen = {};
+    return (values || []).map(function(value) {
+      return String(value || "").trim();
+    }).filter(function(value) {
+      var key = value.toLowerCase();
+      if (!value || seen[key]) return false;
+      seen[key] = true;
+      return true;
+    });
+  }
+
+  function loadReportOptionValues() {
+    var defaults = defaultReportOptions();
+    try {
+      var raw = window.localStorage.getItem(REPORT_OPTION_STORAGE_KEY);
+      if (!raw) return defaults;
+      var parsed = JSON.parse(raw);
+      REPORT_OPTION_FIELDS.forEach(function(config) {
+        if (Array.isArray(parsed[config.field])) {
+          defaults[config.field] = normalizeReportOptionValues(parsed[config.field]);
+        }
+      });
+    } catch (err) {
+      return defaults;
+    }
+    return defaults;
+  }
+
+  function saveReportOptionValues() {
+    try {
+      window.localStorage.setItem(
+        REPORT_OPTION_STORAGE_KEY,
+        JSON.stringify(reportOptionValues)
+      );
+    } catch (err) {}
+  }
+
+  function renderReportDatalists() {
+    REPORT_OPTION_FIELDS.forEach(function(config) {
+      var list = document.getElementById(config.datalistId);
+      if (!list) return;
+      list.innerHTML = "";
+      (reportOptionValues[config.field] || []).forEach(function(value) {
+        var option = document.createElement("option");
+        option.value = value;
+        list.appendChild(option);
+      });
+    });
+  }
+
+  function renderReportOptionsEditor(focusTarget) {
+    reportOptionsBody.innerHTML = "";
+    REPORT_OPTION_FIELDS.forEach(function(config) {
+      var values = reportOptionDraft[config.field] || [];
+      var group = document.createElement("section");
+      group.className = "raman-report-option-group";
+
+      var header = document.createElement("div");
+      header.className = "raman-report-option-group-header";
+      var title = document.createElement("span");
+      title.textContent = config.label;
+      var count = document.createElement("span");
+      count.className = "raman-report-option-count";
+      count.textContent = values.length + "개";
+      header.appendChild(title);
+      header.appendChild(count);
+      group.appendChild(header);
+
+      var list = document.createElement("div");
+      list.className = "raman-report-option-list";
+      values.forEach(function(value, index) {
+        var row = document.createElement("div");
+        row.className = "raman-report-option-row";
+        var inputEl = document.createElement("input");
+        inputEl.type = "text";
+        inputEl.value = value;
+        inputEl.placeholder = "선택지 입력";
+        inputEl.dataset.optionField = config.field;
+        inputEl.dataset.optionIndex = String(index);
+        inputEl.addEventListener("input", function() {
+          reportOptionDraft[config.field][index] = inputEl.value;
+        });
+        var removeButton = document.createElement("button");
+        removeButton.type = "button";
+        removeButton.className = "raman-report-option-remove";
+        removeButton.setAttribute("aria-label", config.label + " 선택지 삭제");
+        removeButton.textContent = "×";
+        removeButton.addEventListener("click", function() {
+          reportOptionDraft[config.field].splice(index, 1);
+          renderReportOptionsEditor();
+        });
+        row.appendChild(inputEl);
+        row.appendChild(removeButton);
+        list.appendChild(row);
+      });
+      group.appendChild(list);
+
+      var addButton = document.createElement("button");
+      addButton.type = "button";
+      addButton.className = "raman-library-dialog-button raman-report-option-add";
+      addButton.textContent = config.label + " 추가";
+      addButton.addEventListener("click", function() {
+        reportOptionDraft[config.field].push("");
+        renderReportOptionsEditor({
+          field: config.field,
+          index: reportOptionDraft[config.field].length - 1
+        });
+      });
+      group.appendChild(addButton);
+      reportOptionsBody.appendChild(group);
+    });
+
+    if (focusTarget) {
+      var selector = '[data-option-field="' + focusTarget.field + '"][data-option-index="'
+        + focusTarget.index + '"]';
+      var target = reportOptionsBody.querySelector(selector);
+      if (target) target.focus();
+    }
+  }
+
+  function openReportOptionsEditor() {
+    reportOptionDraft = cloneReportOptions(reportOptionValues);
+    renderReportOptionsEditor();
+    reportOptionsModal.classList.add("is-visible");
+  }
+
+  function closeReportOptionsEditor() {
+    reportOptionDraft = null;
+    reportOptionsModal.classList.remove("is-visible");
+  }
+
+  function saveReportOptionsEditor() {
+    var normalized = {};
+    REPORT_OPTION_FIELDS.forEach(function(config) {
+      normalized[config.field] = normalizeReportOptionValues(reportOptionDraft[config.field]);
+    });
+    reportOptionValues = normalized;
+    saveReportOptionValues();
+    renderReportDatalists();
+    closeReportOptionsEditor();
+  }
+
+  function resetReportOptionsEditor() {
+    reportOptionDraft = defaultReportOptions();
+    renderReportOptionsEditor();
+  }
 
   function openWorkspaceDb() {
     if (workspaceDbPromise) return workspaceDbPromise;
@@ -3385,6 +3774,24 @@ _UPLOAD_SCRIPT = """
   libraryModal.addEventListener("click", function(ev) {
     if (ev.target === libraryModal) closeLibraryEditor();
   });
+  reportOptionsOpen.addEventListener("click", openReportOptionsEditor);
+  reportOptionsSave.addEventListener("click", saveReportOptionsEditor);
+  reportOptionsReset.addEventListener("click", resetReportOptionsEditor);
+  reportOptionsCancel.addEventListener("click", closeReportOptionsEditor);
+  reportOptionsClose.addEventListener("click", closeReportOptionsEditor);
+  reportOptionsModal.addEventListener("click", function(ev) {
+    if (ev.target === reportOptionsModal) closeReportOptionsEditor();
+  });
+  document.addEventListener("keydown", function(ev) {
+    if (ev.key !== "Escape") return;
+    if (reportOptionsModal.classList.contains("is-visible")) {
+      closeReportOptionsEditor();
+      return;
+    }
+    if (libraryModal.classList.contains("is-visible")) {
+      closeLibraryEditor();
+    }
+  });
   clearButton.addEventListener("click", function() {
     latestAnalysisPayload = null;
     setReportProgress(null);
@@ -3416,6 +3823,7 @@ _UPLOAD_SCRIPT = """
     dropZone.classList.remove("is-dragging");
     addFiles(ev.dataTransfer ? ev.dataTransfer.files : []);
   });
+  renderReportDatalists();
   installWorkspaceAutosave();
   restoreWorkspace().then(function(restored) {
     return loadLibraries(restored && restored.selectedLibraryIds).then(function() {
