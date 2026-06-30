@@ -872,6 +872,74 @@ body {
   min-height: 34px;
   resize: vertical;
 }
+.ftir-report-picker-row {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+  width: 100%;
+}
+.ftir-report-meta-field .ftir-report-picker-row input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.ftir-report-picker-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 30px;
+  width: 30px;
+  border: 1px solid #9fb3c8;
+  border-radius: 4px;
+  background: #f5f7fa;
+  color: #243b53;
+  cursor: pointer;
+  font: 12px/1 Arial, sans-serif;
+  padding: 0;
+}
+.ftir-report-picker-button:hover,
+.ftir-report-picker-button[aria-expanded="true"] {
+  border-color: #486581;
+  background: #e8eef5;
+}
+.ftir-report-picker-menu {
+  position: fixed;
+  z-index: 120;
+  display: none;
+  max-height: min(260px, calc(100dvh - 24px));
+  overflow: auto;
+  border: 1px solid #9fb3c8;
+  border-radius: 5px;
+  background: #ffffff;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.18);
+  box-sizing: border-box;
+  padding: 4px;
+}
+.ftir-report-picker-menu.is-visible {
+  display: block;
+}
+.ftir-report-picker-item {
+  display: block;
+  width: 100%;
+  min-height: 30px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: #243b53;
+  cursor: pointer;
+  font: 11px Arial, "Noto Sans KR", sans-serif;
+  padding: 6px 8px;
+  text-align: left;
+}
+.ftir-report-picker-item:hover,
+.ftir-report-picker-item:focus {
+  background: #edf6fb;
+  outline: none;
+}
+.ftir-report-picker-empty {
+  padding: 8px;
+  color: #7b8794;
+  font-size: 11px;
+}
 .ftir-report-option-body {
   display: flex;
   flex-direction: column;
@@ -1815,6 +1883,8 @@ _UPLOAD_SCRIPT = """
   ];
   var reportOptionValues = loadReportOptionValues();
   var reportOptionDraft = null;
+  var reportPickerMenu = null;
+  var activeReportPickerControl = null;
   var workspaceDbPromise = null;
   var restoreInProgress = false;
   var saveTimer = 0;
@@ -1883,6 +1953,120 @@ _UPLOAD_SCRIPT = """
         option.value = value;
         list.appendChild(option);
       });
+    });
+  }
+
+  function reportOptionConfigForControl(control) {
+    return REPORT_OPTION_FIELDS.find(function(config) {
+      return config.field === control.dataset.reportField;
+    });
+  }
+
+  function reportOptionListForControl(control) {
+    var config = reportOptionConfigForControl(control);
+    if (!config) return [];
+    return normalizeReportOptionValues(reportOptionValues[config.field] || []);
+  }
+
+  function ensureReportPickerMenu() {
+    if (reportPickerMenu) return reportPickerMenu;
+    reportPickerMenu = document.createElement("div");
+    reportPickerMenu.className = "ftir-report-picker-menu";
+    reportPickerMenu.setAttribute("role", "listbox");
+    document.body.appendChild(reportPickerMenu);
+    reportPickerMenu.addEventListener("click", function(ev) {
+      ev.stopPropagation();
+    });
+    return reportPickerMenu;
+  }
+
+  function closeReportOptionPicker() {
+    if (!reportPickerMenu) return;
+    reportPickerMenu.classList.remove("is-visible");
+    reportMetaControls.forEach(function(control) {
+      var button = control._ristReportPickerButton;
+      if (button) button.setAttribute("aria-expanded", "false");
+    });
+    activeReportPickerControl = null;
+  }
+
+  function positionReportPickerMenu(control) {
+    var menu = ensureReportPickerMenu();
+    var rect = (control.closest(".ftir-report-picker-row") || control).getBoundingClientRect();
+    var gap = 4;
+    var width = Math.min(Math.max(rect.width, 180), window.innerWidth - 16);
+    var left = Math.min(Math.max(8, rect.left), window.innerWidth - width - 8);
+    var top = rect.bottom + gap;
+    var menuHeight = Math.min(menu.scrollHeight || 260, window.innerHeight - 24);
+    if (top + menuHeight > window.innerHeight - 8) {
+      top = Math.max(8, rect.top - menuHeight - gap);
+    }
+    menu.style.left = left + "px";
+    menu.style.top = top + "px";
+    menu.style.width = width + "px";
+  }
+
+  function openReportOptionPicker(control) {
+    var menu = ensureReportPickerMenu();
+    var options = reportOptionListForControl(control);
+    activeReportPickerControl = control;
+    menu.innerHTML = "";
+    if (!options.length) {
+      var empty = document.createElement("div");
+      empty.className = "ftir-report-picker-empty";
+      empty.textContent = "선택지가 없습니다.";
+      menu.appendChild(empty);
+    } else {
+      options.forEach(function(value) {
+        var item = document.createElement("button");
+        item.type = "button";
+        item.className = "ftir-report-picker-item";
+        item.setAttribute("role", "option");
+        item.textContent = value;
+        item.addEventListener("click", function() {
+          control.value = value;
+          control.dispatchEvent(new Event("input", {bubbles: true}));
+          control.dispatchEvent(new Event("change", {bubbles: true}));
+          closeReportOptionPicker();
+          control.focus();
+        });
+        menu.appendChild(item);
+      });
+    }
+    reportMetaControls.forEach(function(item) {
+      var button = item._ristReportPickerButton;
+      if (button) button.setAttribute("aria-expanded", item === control ? "true" : "false");
+    });
+    menu.classList.add("is-visible");
+    positionReportPickerMenu(control);
+  }
+
+  function installReportOptionPickers() {
+    reportMetaControls.forEach(function(control) {
+      if (!control.getAttribute("list") || control._ristReportPickerButton) return;
+      var row = document.createElement("div");
+      row.className = "ftir-report-picker-row";
+      control.parentNode.insertBefore(row, control);
+      row.appendChild(control);
+      var button = document.createElement("button");
+      button.type = "button";
+      button.className = "ftir-report-picker-button";
+      button.textContent = "▼";
+      button.title = "선택지 열기";
+      button.setAttribute("aria-label", (control.dataset.reportLabel || "항목") + " 선택지 열기");
+      button.setAttribute("aria-expanded", "false");
+      button.addEventListener("click", function(ev) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        if (activeReportPickerControl === control && reportPickerMenu
+            && reportPickerMenu.classList.contains("is-visible")) {
+          closeReportOptionPicker();
+          return;
+        }
+        openReportOptionPicker(control);
+      });
+      row.appendChild(button);
+      control._ristReportPickerButton = button;
     });
   }
 
@@ -1972,6 +2156,7 @@ _UPLOAD_SCRIPT = """
     reportOptionValues = normalized;
     saveReportOptionValues();
     renderReportDatalists();
+    closeReportOptionPicker();
     closeReportOptionsEditor();
   }
 
@@ -3280,8 +3465,15 @@ _UPLOAD_SCRIPT = """
   reportOptionsModal.addEventListener("click", function(ev) {
     if (ev.target === reportOptionsModal) closeReportOptionsEditor();
   });
+  document.addEventListener("click", function() {
+    closeReportOptionPicker();
+  });
   document.addEventListener("keydown", function(ev) {
     if (ev.key !== "Escape") return;
+    if (activeReportPickerControl) {
+      closeReportOptionPicker();
+      return;
+    }
     if (reportOptionsModal.classList.contains("is-visible")) {
       closeReportOptionsEditor();
       return;
@@ -3325,13 +3517,16 @@ _UPLOAD_SCRIPT = """
     if (resizeFrame) cancelAnimationFrame(resizeFrame);
     resizeFrame = requestAnimationFrame(function() {
       resizeFrame = 0;
+      if (activeReportPickerControl) closeReportOptionPicker();
       applyResponsiveLayout();
     });
   });
+  window.addEventListener("scroll", closeReportOptionPicker, true);
   gd.addEventListener("rist-ftir-tools-toggle", function() {
     applyResponsiveLayout();
   });
   renderReportDatalists();
+  installReportOptionPickers();
   installWorkspaceAutosave();
   restoreWorkspace().then(function(restored) {
     return loadLibraries(restored && restored.selectedLibraryIds).then(function() {

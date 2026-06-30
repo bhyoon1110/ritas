@@ -68,6 +68,13 @@ def test_raman_workspace_contains_upload_controls() -> None:
     assert "openReportOptionsEditor" in page
     assert "saveReportOptionsEditor" in page
     assert "resetReportOptionsEditor" in page
+    assert "installReportOptionPickers" in page
+    assert "openReportOptionPicker" in page
+    assert "closeReportOptionPicker" in page
+    assert "raman-report-picker-button" in page
+    assert "raman-report-picker-menu" in page
+    assert 'button.textContent = "▼"' in page
+    assert 'control.dispatchEvent(new Event("change", {bubbles: true}))' in page
     assert "#raman-report-options-modal .raman-library-dialog" in page
     assert "height: min(660px, calc(100dvh - 32px))" in page
     assert "max-height: calc(100dvh - 16px)" in page
