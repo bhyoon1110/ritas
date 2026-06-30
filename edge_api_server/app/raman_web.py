@@ -482,9 +482,9 @@ body { overflow-x: hidden; }
   grid-column: 1 / -1;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   min-width: 0;
-  padding: 8px;
+  padding: 5px 6px;
   border: 1px solid #d9e2ec;
   border-radius: 4px;
   background: #f8fafc;
@@ -493,10 +493,18 @@ body { overflow-x: hidden; }
 .raman-library-suggest input {
   flex: 1 1 220px;
   min-width: 0;
+  height: 28px;
+  border: 1px solid #bcccdc;
+  border-radius: 3px;
+  background: #ffffff;
+  color: #243b53;
+  font: 11px Arial, "Noto Sans KR", sans-serif;
+  padding: 0 7px;
+  box-sizing: border-box;
 }
 .raman-library-suggest button {
   flex: 0 0 auto;
-  height: 30px;
+  height: 28px;
   border: 1px solid #3e7ca6;
   border-radius: 4px;
   background: #edf6fb;
@@ -872,8 +880,8 @@ body { overflow-x: hidden; }
     max-height: 86px;
   }
   .raman-library-suggest {
-    align-items: stretch;
-    flex-direction: column;
+    align-items: center;
+    flex-wrap: wrap;
   }
   .raman-library-suggest span {
     white-space: normal;
