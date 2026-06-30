@@ -54,6 +54,24 @@ PPTX_RED = "EB5757"
 _INSIGHT_SECTION_IDS = frozenset({"interpretation", "qc_notes", "narrative"})
 _PDF_COLLECTION_SUFFIXES = {".ttc", ".otc"}
 _PDF_COLLECTION_SUBFONT_LIMIT = 16
+_SUBSCRIPT_DIGITS = str.maketrans("0123456789+-", "₀₁₂₃₄₅₆₇₈₉₊₋")
+_SUPERSCRIPT_DIGITS = str.maketrans("0123456789+-", "⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻")
+_ELEMENT_SYMBOLS = frozenset(
+    """
+    H He Li Be B C N O F Ne Na Mg Al Si P S Cl Ar K Ca Sc Ti V Cr Mn Fe Co Ni
+    Cu Zn Ga Ge As Se Br Kr Rb Sr Y Zr Nb Mo Tc Ru Rh Pd Ag Cd In Sn Sb Te I Xe
+    Cs Ba La Ce Pr Nd Pm Sm Eu Gd Tb Dy Ho Er Tm Yb Lu Hf Ta W Re Os Ir Pt Au Hg
+    Tl Pb Bi Po At Rn Fr Ra Ac Th Pa U Np Pu Am Cm Bk Cf Es Fm Md No Lr Rf Db Sg
+    Bh Hs Mt Ds Rg Cn Nh Fl Mc Lv Ts Og
+    """.split()
+)
+_CHEMICAL_FORMULA_PATTERN = re.compile(
+    r"(?<![A-Za-z0-9_])"
+    r"((?:[A-Z][a-z]?(?:_?\d+)?|\([A-Z][A-Za-z0-9_]*\)(?:_?\d+)?)+)"
+    r"(?:([+-])|(?:\^([+-]?\d*[+-]?)))?"
+    r"(?![A-Za-z0-9_])"
+)
+_CHEMICAL_TOKEN_PATTERN = re.compile(r"([A-Z][a-z]?|\(|\)|_?\d+)")
 
 
 class PptxPdfConversionError(RuntimeError):
@@ -327,7 +345,160 @@ def _pdf_font_supports_hangul(font: TTFont) -> bool:
 
 
 def _pdf_text(value: object) -> str:
-    return html.escape(str(value or "")).replace("\n", "<br/>")
+    return html.escape(_pdf_readable_text(value)).replace("\n", "<br/>")
+
+
+def _pdf_readable_text(value: object) -> str:
+    text = str(value or "")
+    if not text:
+        return ""
+    return _latex_math_to_plain_text(text)
+
+
+def _latex_math_to_plain_text(text: str) -> str:
+    text = _strip_math_delimiters(text)
+    text = _replace_latex_group_commands(text)
+    text = _replace_latex_scripts(text)
+    text = _replace_latex_fractions(text)
+    text = _replace_latex_symbols(text)
+    text = _unicode_math_text(text)
+    return text
+
+
+def _strip_math_delimiters(text: str) -> str:
+    replacements = [
+        (r"\$\$(.*?)\$\$", r"\1"),
+        (r"\\\[(.*?)\\\]", r"\1"),
+        (r"\\\((.*?)\\\)", r"\1"),
+        (r"\$(.*?)\$", r"\1"),
+    ]
+    for pattern, replacement in replacements:
+        text = re.sub(pattern, replacement, text, flags=re.DOTALL)
+    return text
+
+
+def _replace_latex_group_commands(text: str) -> str:
+    commands = ("mathrm", "mathbf", "mathit", "text", "operatorname")
+    for command in commands:
+        pattern = re.compile(rf"\\{command}\s*\{{([^{{}}]*)\}}")
+        while True:
+            replaced = pattern.sub(r"\1", text)
+            if replaced == text:
+                break
+            text = replaced
+    return text
+
+
+def _replace_latex_scripts(text: str) -> str:
+    text = re.sub(
+        r"cm\s*\^\s*\{\s*[-−]?\s*1\s*\}",
+        "cm-1",
+        text,
+        flags=re.IGNORECASE,
+    )
+    text = re.sub(r"_\s*\{\s*([^{}]+?)\s*\}", r"_\1", text)
+    text = re.sub(
+        r"\^\s*\{\s*([^{}]+?)\s*\}",
+        lambda match: "^" + match.group(1).replace("−", "-"),
+        text,
+    )
+    return text
+
+
+def _replace_latex_fractions(text: str) -> str:
+    pattern = re.compile(r"\\frac\s*\{\s*([^{}]+?)\s*\}\s*\{\s*([^{}]+?)\s*\}")
+    while True:
+        replaced = pattern.sub(lambda match: f"{match.group(1)}/{match.group(2)}", text)
+        if replaced == text:
+            return text
+        text = replaced
+
+
+def _replace_latex_symbols(text: str) -> str:
+    replacements = {
+        r"\times": "x",
+        r"\cdot": "·",
+        r"\pm": "±",
+        r"\leq": "<=",
+        r"\le": "<=",
+        r"\geq": ">=",
+        r"\ge": ">=",
+        r"\approx": "≈",
+        r"\sim": "~",
+        r"\alpha": "alpha",
+        r"\beta": "beta",
+        r"\gamma": "gamma",
+        r"\delta": "delta",
+        r"\Delta": "Delta",
+        r"\nu": "nu",
+    }
+    for source, target in replacements.items():
+        text = text.replace(source, target)
+    text = re.sub(r"\\([A-Za-z]+)", r"\1", text)
+    text = text.replace(r"\_", "_")
+    return text
+
+
+def _unicode_math_text(text: str) -> str:
+    text = _unicode_wavenumber_units(text)
+    text = _unicode_chemical_formulae(text)
+    return text
+
+
+def _unicode_wavenumber_units(text: str) -> str:
+    text = re.sub(
+        r"\bcm\s*(?:\^\s*)?-1\b",
+        "cm⁻¹",
+        text,
+        flags=re.IGNORECASE,
+    )
+    return text
+
+
+def _unicode_chemical_formulae(text: str) -> str:
+    return _CHEMICAL_FORMULA_PATTERN.sub(_unicode_chemical_formula_match, text)
+
+
+def _unicode_chemical_formula_match(match: re.Match[str]) -> str:
+    formula = match.group(1)
+    charge = match.group(2) or match.group(3) or ""
+    if not _looks_like_chemical_formula(formula, charge=charge):
+        return match.group(0)
+    rendered = _unicode_chemical_formula_body(formula)
+    if charge:
+        rendered += _unicode_charge(charge)
+    return rendered
+
+
+def _looks_like_chemical_formula(formula: str, *, charge: str = "") -> bool:
+    elements = re.findall(r"[A-Z][a-z]?", formula)
+    if len(elements) < 2 and not charge:
+        return False
+    return all(element in _ELEMENT_SYMBOLS for element in elements)
+
+
+def _unicode_chemical_formula_body(formula: str) -> str:
+    pieces: list[str] = []
+    position = 0
+    for token in _CHEMICAL_TOKEN_PATTERN.finditer(formula):
+        if token.start() != position:
+            return formula
+        value = token.group(0)
+        if value.startswith("_") or value.isdigit():
+            pieces.append(value.lstrip("_").translate(_SUBSCRIPT_DIGITS))
+        else:
+            pieces.append(value)
+        position = token.end()
+    if position != len(formula):
+        return formula
+    return "".join(pieces)
+
+
+def _unicode_charge(charge: str) -> str:
+    normalized = charge.replace("−", "-")
+    if normalized in {"+", "-"}:
+        return normalized.translate(_SUPERSCRIPT_DIGITS)
+    return normalized.translate(_SUPERSCRIPT_DIGITS)
 
 
 def _pdf_color(hex_value: str):

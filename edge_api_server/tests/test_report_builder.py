@@ -558,6 +558,32 @@ def test_pdf_renderer_creates_pdf_file(tmp_path) -> None:
     assert content.endswith(b"%%EOF\n")
 
 
+def test_pdf_text_normalizes_latex_math_source() -> None:
+    source = (
+        r"비율은 $\frac{I_{842}}{I_{518}} = 0.631$ 이고 "
+        r"피크는 4000 cm^{-1}, \(I_D/I_G\), \mathrm{Li_2CO_3} 입니다. "
+        r"CO_3^2-, SO4^2-, Li+, OH-, Fe(OH)3, Ca(OH)2, LPSCl도 확인합니다."
+    )
+
+    text = renderers._pdf_text(source)
+
+    assert "\\frac" not in text
+    assert "$" not in text
+    assert "_{" not in text
+    assert "^{" not in text
+    assert "I_842/I_518 = 0.631" in text
+    assert "4000 cm⁻¹" in text
+    assert "I_D/I_G" in text
+    assert "Li₂CO₃" in text
+    assert "CO₃²⁻" in text
+    assert "SO₄²⁻" in text
+    assert "Li⁺" in text
+    assert "OH⁻" in text
+    assert "Fe(OH)₃" in text
+    assert "Ca(OH)₂" in text
+    assert "LPSCl" in text
+
+
 def test_pdf_font_collection_registration_tries_subfont_indexes(tmp_path, monkeypatch) -> None:
     font_path = tmp_path / "NotoSansCJK-Regular.ttc"
     font_path.write_bytes(b"fake font collection")
