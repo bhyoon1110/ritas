@@ -234,7 +234,8 @@ RIST_DB_USER=rist
 RIST_DB_PASSWORD=실제비밀번호
 RIST_DB_POOL_SIZE=8
 RIST_DB_POOL_TIMEOUT_SECONDS=10
-# 외부 전달용 PDF에는 배포 권한이 있는 한글 TTF를 지정한다.
+# PDF 한글 깨짐 방지를 위해 한글 TTF/OTF/TTC를 지정한다.
+# 미지정 시 fonts-noto-cjk/fonts-nanum 또는 /opt/rist/fonts에서 자동 탐색한다.
 RIST_PDF_FONT_PATH=/opt/rist/fonts/NotoSansKR-Regular.ttf
 ```
 

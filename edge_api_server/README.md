@@ -281,12 +281,19 @@ export RIST_DB_PASSWORD=********
 
 ## PDF 한글 폰트
 
-PDF는 ReportLab으로 생성한다. 개발 환경에서 `RIST_PDF_FONT_PATH`를 비우면
-호환용 CJK CID 폰트를 사용한다. 외부 전달용 PDF는 대상 환경에 설치된 폰트에
-의존하지 않도록, 배포 권한이 있는 한글 TrueType 폰트 경로를 지정해 임베드한다.
+PDF는 ReportLab으로 생성하며, 한글이 네모로 깨지지 않도록 한글 글리프가 있는
+TTF/OTF/TTC 폰트만 임베드한다. `RIST_PDF_FONT_PATH`를 비우면 macOS 기본 한글
+폰트, Ubuntu `fonts-noto-cjk`/`fonts-nanum` 계열, `/opt/rist/fonts` 순서로
+자동 탐색한다. 자동 탐색에 실패하면 깨진 PDF를 만들지 않고 오류를 낸다.
 
 ```bash
 export RIST_PDF_FONT_PATH=/opt/rist/fonts/NotoSansKR-Regular.ttf
+```
+
+Ubuntu 서버에서 자동 탐색을 사용하려면 한글 폰트를 설치한다.
+
+```bash
+sudo apt install -y fonts-noto-cjk
 ```
 
 ## 테스트

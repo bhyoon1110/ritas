@@ -22,7 +22,6 @@ from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import mm
 from reportlab.lib.utils import ImageReader
 from reportlab.pdfbase import pdfmetrics
-from reportlab.pdfbase.cidfonts import UnicodeCIDFont
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import (
     Image,
@@ -248,10 +247,10 @@ def _pdf_font_name(font_path: Path | None) -> str:
                 return _register_pdf_ttf(candidate)
             except Exception:
                 continue
-        name = "HYSMyeongJo-Medium"
-        if name not in pdfmetrics.getRegisteredFontNames():
-            pdfmetrics.registerFont(UnicodeCIDFont("HYSMyeongJo-Medium"))
-        return name
+        raise ValueError(
+            "PDF 한글 폰트를 찾을 수 없습니다. RIST_PDF_FONT_PATH에 NotoSansKR, "
+            "NanumGothic 등 한글 TTF/OTF/TTC 경로를 지정하세요."
+        )
     if not font_path.is_file():
         raise ValueError(f"PDF 임베드 폰트를 찾을 수 없습니다: {font_path}")
     return _register_pdf_ttf(font_path)
@@ -261,9 +260,16 @@ def _default_pdf_font_candidates() -> list[Path]:
     return [
         Path("/System/Library/Fonts/Supplemental/Arial Unicode.ttf"),
         Path("/System/Library/Fonts/Supplemental/AppleGothic.ttf"),
+        Path("/System/Library/Fonts/AppleSDGothicNeo.ttc"),
         Path("/usr/share/fonts/truetype/nanum/NanumGothic.ttf"),
+        Path("/usr/share/fonts/truetype/nanum/NanumBarunGothic.ttf"),
         Path("/usr/share/fonts/truetype/noto/NotoSansKR-Regular.ttf"),
-        Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
+        Path("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"),
+        Path("/usr/share/fonts/opentype/noto/NotoSansCJKkr-Regular.otf"),
+        Path("/usr/share/fonts/opentype/noto/NotoSansCJKkr-Regular.otc"),
+        Path("/usr/local/share/fonts/NotoSansKR-Regular.ttf"),
+        Path("/opt/rist/fonts/NotoSansKR-Regular.ttf"),
+        Path("/opt/rist/fonts/NanumGothic.ttf"),
     ]
 
 
@@ -271,8 +277,16 @@ def _register_pdf_ttf(font_path: Path) -> str:
     safe_name = re.sub(r"[^A-Za-z0-9]+", "", font_path.stem) or "Font"
     name = f"RISTEmbeddedKorean-{safe_name[:40]}"
     if name not in pdfmetrics.getRegisteredFontNames():
-        pdfmetrics.registerFont(TTFont(name, str(font_path)))
+        font = TTFont(name, str(font_path))
+        if not _pdf_font_supports_hangul(font):
+            raise ValueError(f"PDF 폰트에 한글 글리프가 없습니다: {font_path}")
+        pdfmetrics.registerFont(font)
     return name
+
+
+def _pdf_font_supports_hangul(font: TTFont) -> bool:
+    char_to_glyph = getattr(font.face, "charToGlyph", {})
+    return any(char_to_glyph.get(ord(character)) for character in "한글가")
 
 
 def _pdf_text(value: object) -> str:

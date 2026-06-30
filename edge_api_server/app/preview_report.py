@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from .config import Settings
 from .report.builders import get_builder
 from .llm_client import LlmError, LocalLlmClient
 from .report import annotator
@@ -276,7 +277,12 @@ def build_preview_report_package(
         _write_email_body(document, report_dir)
         write_raw_data_xlsx(report_dir / "raw_data.xlsx", raw_series)
         _emit_progress(progress, "render", 86, "PPT/PDF/HTML 보고서를 렌더링하는 중입니다.")
-        render_report_formats(document, report_dir, ["PPTX", "PDF", "HTML"])
+        render_report_formats(
+            document,
+            report_dir,
+            ["PPTX", "PDF", "HTML"],
+            pdf_font_path=_preview_pdf_font_path(settings),
+        )
         _emit_progress(progress, "convert", 90, "PPT 보고서를 PDF로 변환하는 중입니다.")
         convert_pptx_to_pdf(
             report_dir / "report.pptx",
@@ -292,6 +298,13 @@ def build_preview_report_package(
     except Exception:
         cleanup_preview_report(tmp_root)
         raise
+
+
+def _preview_pdf_font_path(settings: Any | None) -> Path | None:
+    configured = getattr(settings, "pdf_font_path", None)
+    if configured is not None:
+        return configured
+    return Settings.from_env().pdf_font_path
 
 
 def run_preview_report_job(
