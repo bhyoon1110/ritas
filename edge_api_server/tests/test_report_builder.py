@@ -661,7 +661,9 @@ def test_pptx_renderer_hides_raw_llm_error(tmp_path) -> None:
             if name.startswith("ppt/slides/slide") and name.endswith(".xml")
         )
     assert "LLM_CONTEXT_LENGTH_EXCEEDED" not in slide_text
-    assert LLM_FALLBACK_NOTICE in slide_text
+    assert LLM_FALLBACK_NOTICE not in slide_text
+    assert "LLM 보조 설명" not in slide_text
+    assert "<a:t>LLM</a:t>" not in slide_text
 
 
 def test_pptx_renderer_lets_powerpoint_wrap_korean_text(tmp_path) -> None:
@@ -923,11 +925,19 @@ def test_raman_builder_maps_web_analysis_payload() -> None:
     assert conditions is not None and conditions.table is not None
     assert ["LiOH_1", "Excitation Wavelength", "532.06 nm"] in conditions.table.rows
     assert document.section("raman_samples") is not None
+    libraries = document.section("raman_libraries")
+    assert libraries is not None and libraries.table is not None
+    assert libraries.table.columns == ["라이브러리", "ID", "Assignment 수", "현재 매칭 피크"]
+    assert libraries.table.rows == [["General Raman", "general-raman", "10", "1"]]
     peaks = document.section("raman_peaks")
     assert peaks is not None and peaks.table is not None
     assert peaks.table.rows[0][1] == "518.0 cm-1"
     assert peaks.table.rows[0][2] == "사용자 수정 LiOH peak"
     assert len(peaks.table.rows) == 1
+    summary = document.section("summary")
+    assert summary is not None
+    assert "현재 그래프" in summary.paragraphs[0]
+    assert "피크 1개" in summary.paragraphs[0]
     spec = RamanReportBuilder().llm_slots({**_job(), "experiment_code": "RAMAN"}, analysis)
     assert spec is not None
     assert spec.facts["experiment_conditions"][0] == [

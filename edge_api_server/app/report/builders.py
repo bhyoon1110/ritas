@@ -998,15 +998,22 @@ class RamanReportBuilder(ReportBuilder):
     def _library_section(self, payload: dict[str, Any]) -> ReportSection:
         settings = payload.get("settings") if isinstance(payload.get("settings"), dict) else {}
         libraries = _as_list(settings.get("assignmentLibraries"))
+        peaks = _figure_peak_facts(payload, x_label="cm-1", max_items=500)
+        matched_counts: dict[str, int] = {}
+        for peak in peaks:
+            for library in peak.get("libraries", []):
+                matched_counts[str(library)] = matched_counts.get(str(library), 0) + 1
         rows = []
         for library in libraries:
             if not isinstance(library, dict):
                 continue
+            library_name = str(library.get("name") or library.get("id") or "-")
             rows.append(
                 [
-                    str(library.get("name") or library.get("id") or "-"),
+                    library_name,
                     str(library.get("id") or "-"),
                     str(library.get("assignmentCount") or 0),
+                    str(matched_counts.get(library_name, 0)),
                 ]
             )
         if not rows:
@@ -1014,7 +1021,7 @@ class RamanReportBuilder(ReportBuilder):
         return ReportSection(
             "raman_libraries",
             "적용 피크 라이브러리",
-            table=ReportTable(["라이브러리", "ID", "Assignment 수"], rows),
+            table=ReportTable(["라이브러리", "ID", "Assignment 수", "현재 매칭 피크"], rows),
         )
 
     def _peak_section(self, payload: dict[str, Any]) -> ReportSection:
@@ -1030,51 +1037,35 @@ class RamanReportBuilder(ReportBuilder):
     def _fallback_texts(self, job: dict[str, Any], payload: dict[str, Any]) -> dict[str, str]:
         samples = _as_list(payload.get("samples"))
         sample_count = len(samples)
-        sample_names = [
-            str(item.get("label") or item.get("fileName"))
-            for item in samples
-            if isinstance(item, dict) and (item.get("label") or item.get("fileName"))
-        ]
-        sample_text = ", ".join(sample_names[:3]) if sample_names else "시료"
-        if len(sample_names) > 3:
-            sample_text += f" 외 {len(sample_names) - 3}개"
-        total_peaks = sum(
-            int(item.get("peakCount") or 0)
-            for item in samples
-            if isinstance(item, dict)
-        )
-        settings = payload.get("settings") if isinstance(payload.get("settings"), dict) else {}
-        libraries = _as_list(settings.get("assignmentLibraries"))
-        library_text = ", ".join(
-            str(item.get("name") or item.get("id"))
-            for item in libraries
-            if isinstance(item, dict)
-        ) or "미적용"
+        sample_text = _sample_text(payload)
+        total_peaks = _total_sample_peak_count(payload)
+        current_peaks = _current_peak_count(payload, x_label="cm-1")
+        library_text = _assignment_library_text(payload)
         summary = (
             f"{sample_text}에 대한 Raman 분석 결과를 정리했습니다. "
-            f"총 {sample_count}개 시료에서 {total_peaks}개 피크 후보가 검출되었습니다. "
+            f"현재 그래프에는 사용자 편집/숨김 상태가 반영된 피크 {current_peaks}개가 표시되어 있습니다. "
             "피크 assignment는 선택된 라이브러리 기반 후보 소견으로 해석해야 합니다."
         )
         key_findings = (
             f"분석 시료 수는 {sample_count}개입니다. "
-            f"검출 피크 후보는 총 {total_peaks}개입니다. "
+            f"전처리 단계 검출 피크 후보는 총 {total_peaks}개이고 현재 표시 피크는 {current_peaks}개입니다. "
             f"적용 라이브러리는 {library_text}입니다."
         )
         interpretation = (
-            "Raman band 위치와 상대 intensity를 기준으로 라이브러리 후보를 대조한 결과입니다. "
-            "스택 표시는 시료 간 가독성을 위한 평행이동이므로 절대 intensity 비교에는 사용하지 않습니다."
+            "현재 그래프에 남아 있는 Raman band 위치, 상대 intensity, 라이브러리 assignment를 기준으로 해석했습니다. "
+            "사용자가 숨김, 삭제, 이름 수정한 피크 상태가 보고서에 반영됩니다."
         )
         qc_notes = (
             "Baseline 보정, smoothing, 피크 민감도 설정에 따라 약한 band 검출 수가 달라질 수 있습니다. "
-            "정량적 강도비 해석은 동일 조건 측정과 분석자 검토가 필요합니다."
+            "스택 평행이동은 가독성 표시이므로 절대 intensity 비교에 사용하지 않으며, 강도비 해석은 동일 조건 측정과 분석자 검토가 필요합니다."
         )
-        narrative = "구조화된 Raman 피크 분석 결과를 바탕으로 한 규칙 기반 요약입니다."
-        caption = f"{sample_text} Raman 피크 분석 결과"
+        narrative = "현재 그래프 화면의 피크 정보와 raw 데이터 기반 전처리 결과를 바탕으로 한 규칙 기반 설명입니다."
+        caption = f"{sample_text} Raman 현재 그래프 피크 분석 결과"
         email_subject = f"[RIST] {sample_text} Raman 분석 보고서"
         email_body = (
             f"{sample_text} Raman 분석 보고서를 첨부드립니다.\n\n"
             f"- 시료 수: {sample_count}\n"
-            f"- 검출 피크 후보: {total_peaks}개\n"
+            f"- 현재 표시 피크: {current_peaks}개\n"
             f"- 적용 라이브러리: {library_text}\n"
             "- 본 결과는 자동 피크 검출 및 라이브러리 후보 기반 참고 소견입니다."
         )

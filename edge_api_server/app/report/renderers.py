@@ -978,8 +978,6 @@ def _pptx_slide_payloads(document: ReportDocument) -> list[dict[str, object]]:
             slides.append(_pptx_table_payload(document, section))
         else:
             slides.append(_pptx_text_payload(document, section.heading, _section_lines(section)[:10]))
-    if document.llm_error:
-        slides.append(_pptx_text_payload(document, "LLM 보조 설명", [LLM_FALLBACK_NOTICE]))
     return slides
 
 
@@ -1031,7 +1029,7 @@ def _pptx_body_pr(
     return (
         f'<a:bodyPr wrap="square" anchor="{anchor_value}" rtlCol="0" '
         f'lIns="{inset}" tIns="{inset}" rIns="{inset}" bIns="{inset}">'
-        '<a:normAutofit fontScale="85000" lnSpcReduction="20000"/>'
+        '<a:normAutofit fontScale="65000" lnSpcReduction="25000"/>'
         "</a:bodyPr>"
     )
 
@@ -1339,6 +1337,25 @@ def _sentence_lines(text: str, *, max_items: int = 5) -> list[str]:
     return chunks[:max_items]
 
 
+def _short_pptx_lines(
+    lines: list[str],
+    *,
+    max_items: int,
+    max_chars: int = 95,
+) -> list[str]:
+    shortened = []
+    for line in lines:
+        text = " ".join(str(line).split())
+        if not text:
+            continue
+        if len(text) > max_chars:
+            text = text[: max_chars - 1].rstrip() + "…"
+        shortened.append(text)
+        if len(shortened) >= max_items:
+            break
+    return shortened
+
+
 def _section_text_lines(section: ReportSection | None, *, max_items: int = 5) -> list[str]:
     if section is None:
         return []
@@ -1350,9 +1367,21 @@ def _section_text_lines(section: ReportSection | None, *, max_items: int = 5) ->
 
 
 def _pptx_overview_slide(document: ReportDocument) -> str:
-    summary_lines = _section_text_lines(document.section("summary"), max_items=4)
-    finding_lines = _section_text_lines(document.section("key_findings"), max_items=5)
-    verdict_lines = _section_text_lines(document.section("verdict"), max_items=4)
+    summary_lines = _short_pptx_lines(
+        _section_text_lines(document.section("summary"), max_items=4),
+        max_items=3,
+        max_chars=92,
+    )
+    finding_lines = _short_pptx_lines(
+        _section_text_lines(document.section("key_findings"), max_items=5),
+        max_items=4,
+        max_chars=86,
+    )
+    verdict_lines = _short_pptx_lines(
+        _section_text_lines(document.section("verdict"), max_items=4),
+        max_items=4,
+        max_chars=86,
+    )
     if not summary_lines:
         summary_lines = ["요약 문안이 제공되지 않았습니다."]
     if not finding_lines:
@@ -1383,7 +1412,7 @@ def _pptx_overview_slide(document: ReportDocument) -> str:
                 cx=4815840,
                 cy=2499360,
                 lines=summary_lines,
-                font_size=1750,
+                font_size=1450,
                 color=PPTX_TEXT,
                 inset=0,
             ),
@@ -1410,7 +1439,7 @@ def _pptx_overview_slide(document: ReportDocument) -> str:
                 cx=5120640,
                 cy=2499360,
                 lines=finding_lines,
-                font_size=1650,
+                font_size=1400,
                 color=PPTX_TEXT,
                 bullet=True,
                 inset=0,
@@ -1421,16 +1450,15 @@ def _pptx_overview_slide(document: ReportDocument) -> str:
         ("의뢰번호", _clean_report_meta_value(document.pk.get("requestNumber")) or "Spring Boot 연동 예정", PPTX_BLUE),
         ("실험코드", _clean_report_meta_value(document.experiment_code) or "-", PPTX_GREEN),
         ("장비", _clean_report_meta_value(document.pk.get("equipmentCode")) or "실험조건 기준", PPTX_ORANGE),
-        ("LLM", "사용" if document.llm_used else "규칙 기반", PPTX_RED if document.llm_error else PPTX_GREEN),
     ]
     for idx, (label, value, color) in enumerate(cards):
         shapes.append(
             _pptx_shape(
                 20 + idx,
                 f"Info card {idx}",
-                x=PPTX_MARGIN_X + idx * 2743200,
+                x=PPTX_MARGIN_X + idx * 3657600,
                 y=4724400,
-                cx=2499360,
+                cx=3352800,
                 cy=1005840,
                 fill=PPTX_CARD,
                 line=PPTX_LINE,
@@ -1444,7 +1472,7 @@ def _pptx_overview_slide(document: ReportDocument) -> str:
             _pptx_shape(
                 30 + idx,
                 f"Info accent {idx}",
-                x=PPTX_MARGIN_X + idx * 2743200,
+                x=PPTX_MARGIN_X + idx * 3657600,
                 y=4724400,
                 cx=76200,
                 cy=1005840,
@@ -1473,7 +1501,11 @@ def _pptx_insights_slide(document: ReportDocument) -> str:
         if section is None:
             continue
         y = PPTX_CONTENT_Y + idx * (card_h + card_gap)
-        lines = _section_text_lines(section, max_items=3)
+        lines = _short_pptx_lines(
+            _section_text_lines(section, max_items=3),
+            max_items=2,
+            max_chars=105,
+        )
         if not lines:
             lines = ["해당 항목의 보고서용 문안이 없습니다."]
         shapes.extend(
@@ -1519,7 +1551,7 @@ def _pptx_insights_slide(document: ReportDocument) -> str:
                     cx=10363200,
                     cy=640080,
                     lines=lines,
-                    font_size=1500,
+                    font_size=1300,
                     color=PPTX_TEXT,
                     inset=0,
                 ),
