@@ -776,6 +776,81 @@ body {
 .ftir-file-remove:hover {
   color: #b42318;
 }
+.ftir-report-meta-band {
+  border-bottom: 1px solid #d9e2ec;
+  background: #f8fafc;
+}
+.ftir-report-meta-panel {
+  padding: 0 22px;
+}
+.ftir-report-meta-panel > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  color: #334e68;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 700;
+  list-style: none;
+}
+.ftir-report-meta-panel > summary::-webkit-details-marker {
+  display: none;
+}
+.ftir-report-meta-panel > summary::before {
+  content: "+";
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border: 1px solid #9fb3c8;
+  border-radius: 3px;
+  color: #52606d;
+  font-size: 12px;
+  line-height: 1;
+}
+.ftir-report-meta-panel[open] > summary::before {
+  content: "-";
+}
+.ftir-report-meta-panel > summary span {
+  color: #7b8794;
+  font-size: 10px;
+  font-weight: 400;
+}
+.ftir-report-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(130px, 1fr));
+  gap: 8px 10px;
+  padding: 0 0 12px 24px;
+}
+.ftir-report-meta-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  color: #52606d;
+  font-size: 10px;
+}
+.ftir-report-meta-field.is-wide {
+  grid-column: span 2;
+}
+.ftir-report-meta-field input,
+.ftir-report-meta-field select,
+.ftir-report-meta-field textarea {
+  width: 100%;
+  border: 1px solid #bcccdc;
+  border-radius: 4px;
+  background: #ffffff;
+  color: #243b53;
+  font: 11px Arial, "Noto Sans KR", sans-serif;
+  padding: 6px 7px;
+  box-sizing: border-box;
+}
+.ftir-report-meta-field textarea {
+  min-height: 34px;
+  resize: vertical;
+}
 .ftir-message {
   display: none;
   position: relative;
@@ -893,6 +968,16 @@ body {
   }
   .ftir-drop-band {
     padding: 7px 12px;
+  }
+  .ftir-report-meta-panel {
+    padding: 0 12px;
+  }
+  .ftir-report-meta-grid {
+    grid-template-columns: 1fr;
+    padding-left: 0;
+  }
+  .ftir-report-meta-field.is-wide {
+    grid-column: auto;
   }
   .ftir-library-band {
     gap: 7px;
@@ -1152,6 +1237,61 @@ _PAGE_SHELL = """
   </span>
   <div class="ftir-file-list" id="ftir-file-list"></div>
 </section>
+<section class="ftir-report-meta-band" id="ftir-report-meta">
+  <details class="ftir-report-meta-panel">
+    <summary>보고서 정보 <span>raw 자동 추출 + 직접 입력</span></summary>
+    <div class="ftir-report-meta-grid">
+      <label class="ftir-report-meta-field">
+        <span>측정일</span>
+        <input type="date" data-report-field="measurementDate"
+               data-report-label="측정일">
+      </label>
+      <label class="ftir-report-meta-field">
+        <span>의뢰자</span>
+        <input type="text" placeholder="예: 홍길동"
+               data-report-field="requester"
+               data-report-label="의뢰자">
+      </label>
+      <label class="ftir-report-meta-field">
+        <span>Resolution</span>
+        <input type="text" placeholder="예: 4 cm-1"
+               data-report-field="resolution"
+               data-report-label="Resolution">
+      </label>
+      <label class="ftir-report-meta-field">
+        <span>측정조건</span>
+        <select data-report-field="conditionPreset"
+                data-report-label="측정조건">
+          <option value="">선택 안 함</option>
+          <option value="ATR">ATR</option>
+          <option value="KBr pellet">KBr pellet</option>
+          <option value="Transmission film">Transmission film</option>
+          <option value="Reflection">Reflection</option>
+          <option value="DRIFTS">DRIFTS</option>
+          <option value="Microscope / Mapping">Microscope / Mapping</option>
+        </select>
+      </label>
+      <label class="ftir-report-meta-field is-wide">
+        <span>시료 정보</span>
+        <input type="text" placeholder="예: LFP minus aluminum sample"
+               data-report-field="sampleDescription"
+               data-report-label="시료 정보">
+      </label>
+      <label class="ftir-report-meta-field is-wide">
+        <span>분석 목적</span>
+        <input type="text" placeholder="예: 알코올계 여부 확인, 미지 시료 동정"
+               data-report-field="requestPurpose"
+               data-report-label="분석 목적">
+      </label>
+      <label class="ftir-report-meta-field is-wide">
+        <span>측정조건/환경 직접 입력</span>
+        <textarea placeholder="예: ATR, 32 scans, 실온, background 재측정"
+                  data-report-field="conditionDetail"
+                  data-report-label="측정조건 상세"></textarea>
+      </label>
+    </div>
+  </details>
+</section>
 <div class="ftir-message" id="ftir-message" role="alert"></div>
 <div class="ftir-report-progress" id="ftir-report-progress" aria-live="polite">
   <div class="ftir-report-progress-row">
@@ -1388,6 +1528,9 @@ _UPLOAD_SCRIPT = """
   var libraryRowAdd = document.getElementById("ftir-library-row-add");
   var libraryDialogCancel = document.getElementById("ftir-library-dialog-cancel");
   var libraryDialogSave = document.getElementById("ftir-library-dialog-save");
+  var reportMetaControls = Array.prototype.slice.call(
+    document.querySelectorAll("#ftir-report-meta [data-report-field]")
+  );
   var MESSAGE_AUTO_HIDE_MS = 5000;
   var messageTimer = null;
   if (!gd || !input || !dropZone || !libraryInput || !libraryList
@@ -1467,6 +1610,7 @@ _UPLOAD_SCRIPT = """
       version: 1,
       files: files.map(fileRecord),
       selectedLibraryIds: selectedLibraryIds.slice(),
+      reportMetadata: reportMetadataFormState(),
       sensitivity: gd._ristPeakSensitivityValue || 25,
       statusText: status.textContent || "",
       analysisPayload: latestAnalysisPayload,
@@ -1521,6 +1665,7 @@ _UPLOAD_SCRIPT = """
       restoreInProgress = true;
       files = (state.files || []).map(recordFile);
       selectedLibraryIds = (state.selectedLibraryIds || []).slice();
+      applyReportMetadataFormState(state.reportMetadata || {});
       latestAnalysisPayload = state.analysisPayload || null;
       if (Number.isFinite(Number(state.sensitivity))) {
         gd._ristPeakSensitivityValue = Number(state.sensitivity);
@@ -1571,6 +1716,55 @@ _UPLOAD_SCRIPT = """
     return [file.name, file.size, file.lastModified].join(":");
   }
 
+  function reportMetadataFormState() {
+    var state = {};
+    reportMetaControls.forEach(function(control) {
+      state[control.dataset.reportField] = control.value || "";
+    });
+    return state;
+  }
+
+  function applyReportMetadataFormState(state) {
+    reportMetaControls.forEach(function(control) {
+      var field = control.dataset.reportField;
+      if (Object.prototype.hasOwnProperty.call(state, field)) {
+        control.value = state[field] || "";
+      }
+    });
+  }
+
+  function clearReportMetadataForm() {
+    reportMetaControls.forEach(function(control) {
+      control.value = "";
+    });
+  }
+
+  function reportMetadataConditions() {
+    var conditions = {};
+    reportMetaControls.forEach(function(control) {
+      var value = (control.value || "").trim();
+      if (!value) return;
+      var label = control.dataset.reportLabel || control.dataset.reportField;
+      conditions[label] = value;
+    });
+    return conditions;
+  }
+
+  function reportAnalysisPayload() {
+    var payload = JSON.parse(JSON.stringify(latestAnalysisPayload || {}));
+    var conditions = reportMetadataConditions();
+    if (Object.keys(conditions).length) {
+      payload.experimentConditions = Object.assign(
+        {},
+        payload.experimentConditions || {},
+        conditions
+      );
+      if (conditions["시료 정보"]) payload.sample = conditions["시료 정보"];
+      if (conditions["분석 목적"]) payload.requestPurpose = conditions["분석 목적"];
+    }
+    return payload;
+  }
+
   function clearMessageTimer() {
     if (messageTimer) {
       window.clearTimeout(messageTimer);
@@ -1596,6 +1790,9 @@ _UPLOAD_SCRIPT = """
     loading.classList.toggle("is-visible", busy);
     input.disabled = busy;
     reportButton.disabled = busy;
+    reportMetaControls.forEach(function(control) {
+      control.disabled = busy;
+    });
     libraryInput.disabled = busy;
     libraryFilter.disabled = busy;
     libraryNew.disabled = busy;
@@ -2473,7 +2670,7 @@ _UPLOAD_SCRIPT = """
       });
       var form = new FormData();
       files.forEach(function(file) { form.append("files", file, file.name); });
-      form.append("analysis_json", JSON.stringify(latestAnalysisPayload));
+      form.append("analysis_json", JSON.stringify(reportAnalysisPayload()));
       form.append("figure_json", JSON.stringify(currentFigurePayload()));
       form.append("figure_image", figureImage);
       var job = await fetchJson("/api/v1/ftir/report/jobs", {
@@ -2503,6 +2700,10 @@ _UPLOAD_SCRIPT = """
     libraryInput.value = "";
   });
   libraryFilter.addEventListener("input", renderLibraries);
+  reportMetaControls.forEach(function(control) {
+    control.addEventListener("input", scheduleWorkspaceSave);
+    control.addEventListener("change", scheduleWorkspaceSave);
+  });
   libraryNew.addEventListener("click", function() {
     renderLibraryEditor(
       {
@@ -2536,6 +2737,7 @@ _UPLOAD_SCRIPT = """
     latestAnalysisPayload = null;
     setReportProgress(null);
     setMessage("");
+    clearReportMetadataForm();
     renderFiles();
     clearWorkspaceState();
     resetGraph();

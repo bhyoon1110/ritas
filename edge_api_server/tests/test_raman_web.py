@@ -42,6 +42,10 @@ def test_raman_workspace_contains_upload_controls() -> None:
     assert 'id="raman-report"' in page
     assert "/api/v1/raman/report/jobs" in page
     assert 'id="raman-report-progress"' in page
+    assert 'id="raman-report-meta"' in page
+    assert "reportAnalysisPayload" in page
+    assert "experimentConditions" in page
+    assert "raw 헤더 자동 추출 + 직접 입력" in page
     assert "pollReportJob" in page
     assert "setReportDownloadLink" in page
     assert "MESSAGE_AUTO_HIDE_MS = 5000" in page
@@ -323,6 +327,7 @@ def test_raman_report_api_builds_package_with_graph_and_raw_xlsx() -> None:
         names = set(archive.namelist())
         assert {
             "report.pptx",
+            "report.pdf",
             "report.html",
             "email_body.md",
             "raw_data.xlsx",
@@ -371,7 +376,13 @@ def test_raman_report_job_api_tracks_progress_and_downloads_package() -> None:
     assert download_response.status_code == 200
     with zipfile.ZipFile(BytesIO(download_response.content)) as archive:
         names = set(archive.namelist())
-    assert {"report.pptx", "report.html", "raw_data.xlsx", "current_graph.png"} <= names
+    assert {
+        "report.pptx",
+        "report.pdf",
+        "report.html",
+        "raw_data.xlsx",
+        "current_graph.png",
+    } <= names
 
 
 def test_raman_assignment_library_api_defaults_and_assigns_sample() -> None:

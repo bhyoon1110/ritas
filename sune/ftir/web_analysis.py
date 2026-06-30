@@ -5,6 +5,7 @@ from __future__ import annotations
 from io import BytesIO
 import json
 from pathlib import Path
+import re
 
 import numpy as np
 
@@ -33,6 +34,52 @@ class DptAnalysisError(ValueError):
         self.code = code
         self.message = message
         self.filename = filename
+
+
+def _decode_text(content: bytes) -> str:
+    for encoding in ("utf-8-sig", "utf-8", "cp949", "latin1"):
+        try:
+            return content.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+    return content.decode("utf-8", errors="replace")
+
+
+def _looks_like_numeric_row(line: str) -> bool:
+    tokens = re.split(r"[\s,\t]+", line.strip())
+    if len(tokens) < 2:
+        return False
+    try:
+        float(tokens[0])
+        float(tokens[1])
+    except ValueError:
+        return False
+    return True
+
+
+def _parse_dpt_metadata(content: bytes) -> dict[str, str]:
+    metadata: dict[str, str] = {}
+    for line in _decode_text(content).splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if _looks_like_numeric_row(stripped):
+            break
+        item = stripped.lstrip("#;").strip()
+        if not item:
+            continue
+        if ":" in item:
+            key, value = item.split(":", 1)
+        elif "=" in item:
+            key, value = item.split("=", 1)
+        else:
+            metadata.setdefault("Notes", item)
+            continue
+        key = key.strip()
+        value = value.strip()
+        if key:
+            metadata[key] = value or "(미기재)"
+    return metadata
 
 
 def _sample_label(filename: str, used: set[str]) -> str:
@@ -71,6 +118,7 @@ def analyze_dpt_files(
     summaries = []
 
     for filename, content in files:
+        metadata = _parse_dpt_metadata(content)
         try:
             raw = load_dpt(BytesIO(content), WN_MIN, WN_MAX)
         except Exception as exc:
@@ -128,6 +176,7 @@ def analyze_dpt_files(
                 "label": label,
                 "pointCount": int(len(raw)),
                 "peakCount": int(len(peak_idx)),
+                "metadata": metadata,
             }
         )
 

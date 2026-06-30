@@ -43,6 +43,10 @@ def test_ftir_workspace_contains_upload_and_editor_controls() -> None:
     assert 'id="ftir-report"' in page
     assert "/api/v1/ftir/report/jobs" in page
     assert 'id="ftir-report-progress"' in page
+    assert 'id="ftir-report-meta"' in page
+    assert "reportAnalysisPayload" in page
+    assert "experimentConditions" in page
+    assert "raw 자동 추출 + 직접 입력" in page
     assert "pollReportJob" in page
     assert "setReportDownloadLink" in page
     assert "MESSAGE_AUTO_HIDE_MS = 5000" in page
@@ -136,6 +140,25 @@ def test_ftir_analysis_api_accepts_multiple_dpt_files(tmp_path: Path) -> None:
     assert payload["figure"]["data"]
 
 
+def test_ftir_analysis_extracts_optional_dpt_metadata(tmp_path: Path) -> None:
+    content = (
+        b"# Resolution: 4 cm-1\n"
+        b"# Measurement Mode: ATR\n"
+        + synthetic_dpt()
+    )
+    with TestClient(create_ftir_preview_app(tmp_path / "libraries")) as client:
+        response = client.post(
+            "/api/v1/ftir/analyze",
+            files={"files": ("sample-a.dpt", content, "application/octet-stream")},
+            data={"sensitivity": "25"},
+        )
+
+    assert response.status_code == 200
+    sample = response.json()["samples"][0]
+    assert sample["metadata"]["Resolution"] == "4 cm-1"
+    assert sample["metadata"]["Measurement Mode"] == "ATR"
+
+
 def test_ftir_report_api_builds_package_with_graph_and_raw_xlsx(tmp_path: Path) -> None:
     with TestClient(create_ftir_preview_app(tmp_path / "libraries")) as client:
         analysis_response = client.post(
@@ -160,6 +183,7 @@ def test_ftir_report_api_builds_package_with_graph_and_raw_xlsx(tmp_path: Path) 
         names = set(archive.namelist())
         assert {
             "report.pptx",
+            "report.pdf",
             "report.html",
             "email_body.md",
             "raw_data.xlsx",
@@ -207,7 +231,13 @@ def test_ftir_report_job_api_tracks_progress_and_downloads_package(tmp_path: Pat
     assert download_response.status_code == 200
     with zipfile.ZipFile(BytesIO(download_response.content)) as archive:
         names = set(archive.namelist())
-    assert {"report.pptx", "report.html", "raw_data.xlsx", "current_graph.png"} <= names
+    assert {
+        "report.pptx",
+        "report.pdf",
+        "report.html",
+        "raw_data.xlsx",
+        "current_graph.png",
+    } <= names
 
 
 def test_ftir_analysis_api_rejects_non_dpt(tmp_path: Path) -> None:

@@ -751,6 +751,81 @@ body { overflow-x: hidden; }
 .raman-file-remove:hover {
   color: #b42318;
 }
+.raman-report-meta-band {
+  border-bottom: 1px solid #d9e2ec;
+  background: #f8fafc;
+}
+.raman-report-meta-panel {
+  padding: 0 22px;
+}
+.raman-report-meta-panel > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  color: #334e68;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 700;
+  list-style: none;
+}
+.raman-report-meta-panel > summary::-webkit-details-marker {
+  display: none;
+}
+.raman-report-meta-panel > summary::before {
+  content: "+";
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border: 1px solid #9fb3c8;
+  border-radius: 3px;
+  color: #52606d;
+  font-size: 12px;
+  line-height: 1;
+}
+.raman-report-meta-panel[open] > summary::before {
+  content: "-";
+}
+.raman-report-meta-panel > summary span {
+  color: #7b8794;
+  font-size: 10px;
+  font-weight: 400;
+}
+.raman-report-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(130px, 1fr));
+  gap: 8px 10px;
+  padding: 0 0 12px 24px;
+}
+.raman-report-meta-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  color: #52606d;
+  font-size: 10px;
+}
+.raman-report-meta-field.is-wide {
+  grid-column: span 2;
+}
+.raman-report-meta-field input,
+.raman-report-meta-field select,
+.raman-report-meta-field textarea {
+  width: 100%;
+  border: 1px solid #bcccdc;
+  border-radius: 4px;
+  background: #ffffff;
+  color: #243b53;
+  font: 11px Arial, "Noto Sans KR", sans-serif;
+  padding: 6px 7px;
+  box-sizing: border-box;
+}
+.raman-report-meta-field textarea {
+  min-height: 34px;
+  resize: vertical;
+}
 .raman-message {
   display: none;
   position: relative;
@@ -861,6 +936,16 @@ body { overflow-x: hidden; }
     gap: 6px;
     min-height: 76px;
     padding: 7px 12px;
+  }
+  .raman-report-meta-panel {
+    padding: 0 12px;
+  }
+  .raman-report-meta-grid {
+    grid-template-columns: 1fr;
+    padding-left: 0;
+  }
+  .raman-report-meta-field.is-wide {
+    grid-column: auto;
   }
   .raman-library-band {
     flex-wrap: wrap;
@@ -1111,6 +1196,59 @@ _PAGE_SHELL = """
     Raman raw 파일을 선택하거나 여기에 놓으세요
   </span>
   <div class="raman-file-list" id="raman-file-list"></div>
+</section>
+<section class="raman-report-meta-band" id="raman-report-meta">
+  <details class="raman-report-meta-panel">
+    <summary>보고서 정보 <span>raw 헤더 자동 추출 + 직접 입력</span></summary>
+    <div class="raman-report-meta-grid">
+      <label class="raman-report-meta-field">
+        <span>측정일</span>
+        <input type="date" data-report-field="measurementDate"
+               data-report-label="측정일">
+      </label>
+      <label class="raman-report-meta-field">
+        <span>의뢰자</span>
+        <input type="text" placeholder="예: 홍길동"
+               data-report-field="requester"
+               data-report-label="의뢰자">
+      </label>
+      <label class="raman-report-meta-field">
+        <span>Laser</span>
+        <select data-report-field="laserPreset"
+                data-report-label="Laser">
+          <option value="">선택 안 함</option>
+          <option value="532 nm">532 nm</option>
+          <option value="633 nm">633 nm</option>
+          <option value="785 nm">785 nm</option>
+          <option value="1064 nm">1064 nm</option>
+        </select>
+      </label>
+      <label class="raman-report-meta-field">
+        <span>Exposure / Accumulation</span>
+        <input type="text" placeholder="예: 10 s x 3"
+               data-report-field="exposure"
+               data-report-label="Exposure / Accumulation">
+      </label>
+      <label class="raman-report-meta-field is-wide">
+        <span>시료 정보</span>
+        <input type="text" placeholder="예: air-sensitive LiOH sample"
+               data-report-field="sampleDescription"
+               data-report-label="시료 정보">
+      </label>
+      <label class="raman-report-meta-field is-wide">
+        <span>분석 목적</span>
+        <input type="text" placeholder="예: LiOH/탄산염 피크 확인, D/G ratio 비교"
+               data-report-field="requestPurpose"
+               data-report-label="분석 목적">
+      </label>
+      <label class="raman-report-meta-field is-wide">
+        <span>실험환경 직접 입력</span>
+        <textarea placeholder="예: air exposure minimized, room temperature"
+                  data-report-field="conditionDetail"
+                  data-report-label="실험환경 상세"></textarea>
+      </label>
+    </div>
+  </details>
 </section>
 <div class="raman-message" id="raman-message"></div>
 <div class="raman-report-progress" id="raman-report-progress" aria-live="polite">
@@ -1972,6 +2110,9 @@ _UPLOAD_SCRIPT = """
   var libraryRowAdd = document.getElementById("raman-library-row-add");
   var libraryDialogCancel = document.getElementById("raman-library-dialog-cancel");
   var libraryDialogSave = document.getElementById("raman-library-dialog-save");
+  var reportMetaControls = Array.prototype.slice.call(
+    document.querySelectorAll("#raman-report-meta [data-report-field]")
+  );
   var MESSAGE_AUTO_HIDE_MS = 5000;
   var messageTimer = null;
   if (!gd || !input || !dropZone || !prompt || !fileList || !status || !message
@@ -2050,6 +2191,7 @@ _UPLOAD_SCRIPT = """
       version: 1,
       files: files.map(fileRecord),
       selectedLibraryIds: selectedLibraryIds.slice(),
+      reportMetadata: reportMetadataFormState(),
       sensitivity: gd._ristPeakSensitivityValue || 25,
       statusText: status.textContent || "",
       analysisPayload: latestAnalysisPayload,
@@ -2104,6 +2246,7 @@ _UPLOAD_SCRIPT = """
       restoreInProgress = true;
       files = (state.files || []).map(recordFile);
       selectedLibraryIds = (state.selectedLibraryIds || []).slice();
+      applyReportMetadataFormState(state.reportMetadata || {});
       latestAnalysisPayload = state.analysisPayload || null;
       if (Number.isFinite(Number(state.sensitivity))) {
         gd._ristPeakSensitivityValue = Number(state.sensitivity);
@@ -2186,6 +2329,55 @@ _UPLOAD_SCRIPT = """
     return [file.name, file.size, file.lastModified].join(":");
   }
 
+  function reportMetadataFormState() {
+    var state = {};
+    reportMetaControls.forEach(function(control) {
+      state[control.dataset.reportField] = control.value || "";
+    });
+    return state;
+  }
+
+  function applyReportMetadataFormState(state) {
+    reportMetaControls.forEach(function(control) {
+      var field = control.dataset.reportField;
+      if (Object.prototype.hasOwnProperty.call(state, field)) {
+        control.value = state[field] || "";
+      }
+    });
+  }
+
+  function clearReportMetadataForm() {
+    reportMetaControls.forEach(function(control) {
+      control.value = "";
+    });
+  }
+
+  function reportMetadataConditions() {
+    var conditions = {};
+    reportMetaControls.forEach(function(control) {
+      var value = (control.value || "").trim();
+      if (!value) return;
+      var label = control.dataset.reportLabel || control.dataset.reportField;
+      conditions[label] = value;
+    });
+    return conditions;
+  }
+
+  function reportAnalysisPayload() {
+    var payload = JSON.parse(JSON.stringify(latestAnalysisPayload || {}));
+    var conditions = reportMetadataConditions();
+    if (Object.keys(conditions).length) {
+      payload.experimentConditions = Object.assign(
+        {},
+        payload.experimentConditions || {},
+        conditions
+      );
+      if (conditions["시료 정보"]) payload.sample = conditions["시료 정보"];
+      if (conditions["분석 목적"]) payload.requestPurpose = conditions["분석 목적"];
+    }
+    return payload;
+  }
+
   function clearMessageTimer() {
     if (messageTimer) {
       window.clearTimeout(messageTimer);
@@ -2212,6 +2404,9 @@ _UPLOAD_SCRIPT = """
     input.disabled = busy;
     reportButton.disabled = busy;
     clearButton.disabled = busy;
+    reportMetaControls.forEach(function(control) {
+      control.disabled = busy;
+    });
     libraryInput.disabled = busy;
     libraryFilter.disabled = busy;
     libraryNew.disabled = busy;
@@ -2945,7 +3140,7 @@ _UPLOAD_SCRIPT = """
       });
       var form = new FormData();
       files.forEach(function(file) { form.append("files", file, file.name); });
-      form.append("analysis_json", JSON.stringify(latestAnalysisPayload));
+      form.append("analysis_json", JSON.stringify(reportAnalysisPayload()));
       form.append("figure_json", JSON.stringify(currentFigurePayload()));
       form.append("figure_image", figureImage);
       var job = await fetchJson("/api/v1/raman/report/jobs", {
@@ -3009,6 +3204,10 @@ _UPLOAD_SCRIPT = """
     libraryInput.value = "";
   });
   libraryFilter.addEventListener("input", renderLibraries);
+  reportMetaControls.forEach(function(control) {
+    control.addEventListener("input", scheduleWorkspaceSave);
+    control.addEventListener("change", scheduleWorkspaceSave);
+  });
   libraryNew.addEventListener("click", function() {
     renderLibraryEditor(
       {
@@ -3035,6 +3234,7 @@ _UPLOAD_SCRIPT = """
     latestAnalysisPayload = null;
     setReportProgress(null);
     setMessage("");
+    clearReportMetadataForm();
     clearWorkspaceState();
     resetPlot();
   });
