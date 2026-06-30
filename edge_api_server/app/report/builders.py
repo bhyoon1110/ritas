@@ -192,6 +192,252 @@ def _rounded_number(value: float | None) -> float | None:
     return round(value, 6)
 
 
+def _format_cm1(value: Any) -> str:
+    try:
+        return f"{float(value):.1f} cm⁻¹"
+    except (TypeError, ValueError):
+        return "-"
+
+
+def _clean_report_text(value: Any) -> str:
+    text = _clean_html_text(value)
+    if text == "-":
+        return ""
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _truncate_text(value: Any, *, max_chars: int = 220) -> str:
+    text = _clean_report_text(value)
+    if len(text) <= max_chars:
+        return text
+    return text[: max_chars - 1].rstrip() + "…"
+
+
+def _has_library_term(value: Any) -> bool:
+    text = str(value or "").lower()
+    return "라이브러리" in text or "library" in text
+
+
+def _first_dict(items: Any) -> dict[str, Any]:
+    for item in _as_list(items):
+        if isinstance(item, dict):
+            return item
+    return {}
+
+
+def _primary_rule_match(verdict: dict[str, Any]) -> dict[str, Any]:
+    rule_matches = _as_list(verdict.get("rule_matches"))
+    for item in rule_matches:
+        if isinstance(item, dict) and "Rule Match" in str(item.get("verdict") or ""):
+            return item
+    return _first_dict(rule_matches)
+
+
+def _rule_material_name(verdict: dict[str, Any]) -> str:
+    cv = verdict.get("combined_verdict") if isinstance(verdict.get("combined_verdict"), dict) else {}
+    profile = cv.get("product_profile") if isinstance(cv.get("product_profile"), dict) else {}
+    if profile.get("summary"):
+        return _material_display_text(_clean_report_text(profile.get("summary")))
+    if profile.get("base_material"):
+        return _material_display_text(_clean_report_text(profile.get("base_material")))
+    rule = _primary_rule_match(verdict)
+    return _material_display_text(_clean_report_text(
+        rule.get("compound_display")
+        or rule.get("compound")
+        or cv.get("verdict")
+        or "후보 물질"
+    ))
+
+
+def _rule_base_material_name(verdict: dict[str, Any]) -> str:
+    cv = verdict.get("combined_verdict") if isinstance(verdict.get("combined_verdict"), dict) else {}
+    profile = cv.get("product_profile") if isinstance(cv.get("product_profile"), dict) else {}
+    if profile.get("base_material"):
+        return _material_display_text(_clean_report_text(profile.get("base_material")))
+    rule = _primary_rule_match(verdict)
+    return _material_display_text(
+        _clean_report_text(rule.get("compound_display") or rule.get("compound") or "후보 물질")
+    )
+
+
+def _material_display_text(value: str) -> str:
+    if not value:
+        return value
+    return value.replace("Phenolic Foam", "페놀폼(Phenolic Foam)")
+
+
+def _ftir_label_text(value: Any) -> str:
+    text = _clean_report_text(value)
+    replacements = {
+        "O-H / N-H stretching": "O-H/N-H 신축",
+        "CH2 asymmetric & symmetric stretching": "CH₂ 신축",
+        "C=C aromatic ring stretching": "방향족 C=C 신축",
+        "CH2 bending (scissoring)": "CH₂ 굽힘",
+        "C-O stretching (phenolic)": "페놀릭 C-O 신축",
+        "C-H out-of-plane bending": "방향족 C-H 면외 굽힘",
+        "S=O stretching (sulfonic acid)": "S=O 신축",
+        "S=O stretch": "S=O 신축",
+        "C=O stretching (ester/ketone — strong)": "C=O 신축",
+        "C=O stretch": "카보닐기(C=O) 신축",
+    }
+    return replacements.get(text, text)
+
+
+def _rule_score_text(verdict: dict[str, Any]) -> str:
+    rule = _primary_rule_match(verdict)
+    score = rule.get("score_pct")
+    try:
+        return f"{float(score):.1f}%"
+    except (TypeError, ValueError):
+        return ""
+
+
+def _rule_required_evidence(verdict: dict[str, Any], *, max_items: int = 6) -> list[str]:
+    rule = _primary_rule_match(verdict)
+    evidence: list[str] = []
+    for item in _as_list(rule.get("matched_required")):
+        if not isinstance(item, dict):
+            continue
+        label = _ftir_label_text(item.get("label"))
+        center = _format_cm1(item.get("center"))
+        if label and center != "-":
+            evidence.append(f"{label}({center})")
+        elif label:
+            evidence.append(label)
+        if len(evidence) >= max_items:
+            break
+    return evidence
+
+
+def _marker_evidence_text(marker: dict[str, Any]) -> str:
+    evidence = _first_dict(marker.get("evidence"))
+    assignment = _ftir_label_text(
+        evidence.get("assignment")
+        or marker.get("assignment")
+        or marker.get("label")
+        or marker.get("name")
+    )
+    wn = evidence.get("wn", marker.get("center"))
+    wn_text = _format_cm1(wn)
+    if assignment and wn_text != "-":
+        return f"{assignment} 피크({wn_text})"
+    if wn_text != "-":
+        return f"{wn_text} 피크"
+    return assignment or _clean_report_text(marker.get("name"))
+
+
+def _ftir_process_markers(verdict: dict[str, Any]) -> list[dict[str, str]]:
+    findings = verdict.get("findings") if isinstance(verdict.get("findings"), dict) else {}
+    markers: list[dict[str, str]] = []
+    for item in _as_list(findings.get("additives_and_process_markers")):
+        if not isinstance(item, dict):
+            continue
+        markers.append(
+            {
+                "name": _clean_report_text(item.get("name")),
+                "confidence": _clean_report_text(item.get("confidence")),
+                "evidence": _marker_evidence_text(item),
+                "interpretation": _truncate_text(item.get("interpretation")),
+            }
+        )
+    rule = _primary_rule_match(verdict)
+    for item in _as_list(rule.get("matched_context_markers")):
+        if not isinstance(item, dict):
+            continue
+        marker_name = _clean_report_text(item.get("assignment") or item.get("label"))
+        if any(marker["name"] == marker_name for marker in markers):
+            continue
+        markers.append(
+            {
+                "name": marker_name,
+                "confidence": "",
+                "evidence": _marker_evidence_text(item),
+                "interpretation": _truncate_text(item.get("interpretation")),
+            }
+        )
+    return [marker for marker in markers if marker.get("name")]
+
+
+def _ftir_warning_markers(verdict: dict[str, Any]) -> list[dict[str, str]]:
+    findings = verdict.get("findings") if isinstance(verdict.get("findings"), dict) else {}
+    warnings: list[dict[str, str]] = []
+    for item in _as_list(findings.get("mismatch_warnings")):
+        if not isinstance(item, dict):
+            continue
+        note = _clean_report_text(item.get("note"))
+        note = re.sub(r"최상위 후보[^—.。]*[—-]?\s*", "", note).strip()
+        warnings.append(
+            {
+                "name": _clean_report_text(item.get("region")),
+                "evidence": f"{_format_cm1(item.get('sample_peak_cm'))} 피크",
+                "interpretation": _truncate_text(note),
+            }
+        )
+    rule = _primary_rule_match(verdict)
+    for item in _as_list(rule.get("triggered_warnings")):
+        if not isinstance(item, dict):
+            continue
+        warnings.append(
+            {
+                "name": _clean_report_text(item.get("label")),
+                "evidence": _marker_evidence_text(item),
+                "interpretation": _truncate_text(item.get("assignment")),
+            }
+        )
+    return [item for item in warnings if item.get("name") or item.get("evidence")]
+
+
+def _ftir_functional_group_lines(verdict: dict[str, Any], *, max_items: int = 4) -> list[str]:
+    findings = verdict.get("findings") if isinstance(verdict.get("findings"), dict) else {}
+    lines: list[str] = []
+    for item in _as_list(findings.get("functional_groups")):
+        if not isinstance(item, dict):
+            continue
+        group = _clean_report_text(item.get("group"))
+        confidence = _pct(item.get("confidence_pct"))
+        evidence = _truncate_text(item.get("evidence"), max_chars=140)
+        if group and evidence:
+            lines.append(f"{group}({confidence}): {evidence}")
+        elif group:
+            lines.append(f"{group}({confidence})")
+        if len(lines) >= max_items:
+            break
+    return lines
+
+
+def _compact_rule_evidence(verdict: dict[str, Any]) -> list[dict[str, Any]]:
+    evidence = []
+    cv = verdict.get("combined_verdict") if isinstance(verdict.get("combined_verdict"), dict) else {}
+    for item in _as_list(cv.get("rule_evidence_summary"))[:14]:
+        if not isinstance(item, dict):
+            continue
+        evidence.append(
+            {
+                "role": item.get("role"),
+                "label": item.get("label"),
+                "center": _rounded_number(_first_numeric(item.get("center"))),
+                "intensity": _rounded_number(_first_numeric(item.get("intensity"))),
+                "interpretation": item.get("interpretation"),
+            }
+        )
+    if evidence:
+        return evidence
+    rule = _primary_rule_match(verdict)
+    for role, key in (("required", "matched_required"), ("supporting", "matched_supporting")):
+        for item in _as_list(rule.get(key))[:8]:
+            if not isinstance(item, dict):
+                continue
+            evidence.append(
+                {
+                    "role": role,
+                    "label": item.get("label"),
+                    "center": _rounded_number(_first_numeric(item.get("center"))),
+                    "intensity": _rounded_number(_first_numeric(item.get("intensity"))),
+                }
+            )
+    return evidence[:14]
+
+
 def _figure_peak_facts(
     payload: dict[str, Any],
     *,
@@ -496,6 +742,8 @@ class FtirReportBuilder(ReportBuilder):
         "수치를 재계산하거나 제공되지 않은 물질, 피크, 작용기를 추측하지 마세요.\n"
         "current_peaks는 보고서 생성 시점의 그래프 화면에서 사용자가 편집/삭제/숨김 처리한 뒤 남은 피크입니다.\n"
         "피크명은 current_peaks.label을 우선 사용하고, original_label은 변경 전 추적용으로만 참고하세요.\n"
+        "combined_verdict, rule_matches, rule_evidence, process_markers가 있으면 룰 기반 동정/공정 마커/변성 가능성을 우선 설명하세요.\n"
+        "key_findings와 qc_notes는 '룰 기반 동정: ...'처럼 짧은 제목이 있는 여러 줄 문장으로 작성하세요.\n"
         "보고서 문안에는 라이브러리 이름, 라이브러리 적용 여부, 라이브러리 매칭 섹션을 쓰지 마세요.\n"
         "top_candidate가 없으면 현재 FT-IR 웹 그래프 기반 보고서이므로 samples, settings, current_peaks만 근거로 작성하세요.\n"
         "물질명을 단정하지 말고 '가능성', '시사함', '검토 필요' 중심으로 표현하세요.\n"
@@ -567,15 +815,17 @@ class FtirReportBuilder(ReportBuilder):
         bullets = []
         if verdict.get("tier"):
             bullets.append(f"신뢰도 판정: {verdict['tier']}")
-        if verdict.get("reason") and not isinstance(verdict.get("top_candidate"), dict):
-            bullets.append(f"근거: {verdict['reason']}")
+        reason = _clean_report_text(verdict.get("reason"))
+        if reason and not isinstance(verdict.get("top_candidate"), dict) and not _has_library_term(reason):
+            bullets.append(f"근거: {reason}")
         cv = verdict.get("combined_verdict") or {}
         if cv.get("verdict"):
             confidence = cv.get("confidence")
             suffix = f" (신뢰도 {confidence})" if confidence else ""
             bullets.append(f"종합 판정: {cv['verdict']}{suffix}")
-        if cv.get("action"):
-            bullets.append(f"권고 조치: {cv['action']}")
+        action = _clean_report_text(cv.get("action"))
+        if action and not _has_library_term(action):
+            bullets.append(f"권고 조치: {action}")
         if not bullets:
             sample_text = _sample_text(verdict)
             sample_count = len(_sample_names(verdict))
@@ -668,6 +918,9 @@ class FtirReportBuilder(ReportBuilder):
 
     # --- LLM 슬롯 -----------------------------------------------------
     def _fallback_texts(self, verdict: dict[str, Any]) -> dict[str, str]:
+        rich_texts = self._rich_rule_fallback_texts(verdict)
+        if rich_texts is not None:
+            return rich_texts
         sample = _sample_text(verdict)
         sample_count = len(_sample_names(verdict))
         total_detected = _total_sample_peak_count(verdict)
@@ -748,6 +1001,123 @@ class FtirReportBuilder(ReportBuilder):
             "email_body": email_body,
         }
 
+    def _rich_rule_fallback_texts(self, verdict: dict[str, Any]) -> dict[str, str] | None:
+        rule = _primary_rule_match(verdict)
+        cv = verdict.get("combined_verdict") if isinstance(verdict.get("combined_verdict"), dict) else {}
+        if not rule and not isinstance(cv.get("product_profile"), dict):
+            return None
+
+        sample = _sample_text(verdict)
+        material = _rule_material_name(verdict)
+        base_material = _rule_base_material_name(verdict)
+        score = _rule_score_text(verdict)
+        score_suffix = f"({score})" if score else ""
+        required = _rule_required_evidence(verdict)
+        process_markers = _ftir_process_markers(verdict)
+        warning_markers = _ftir_warning_markers(verdict)
+        group_lines = _ftir_functional_group_lines(verdict, max_items=3)
+
+        first_marker = process_markers[0] if process_markers else {}
+        marker_sentence = ""
+        if first_marker:
+            marker_sentence = (
+                f"또한 {first_marker.get('name')}를 시사하는 "
+                f"{first_marker.get('evidence')}가 관찰되어, "
+            )
+        first_warning = warning_markers[0] if warning_markers else {}
+        warning_sentence = ""
+        if first_warning:
+            warning_sentence = (
+                f"{first_warning.get('name') or '추가 피크'}는 "
+                f"{first_warning.get('interpretation') or '피크 중첩 또는 변성 가능성 검토가 필요합니다'}."
+            )
+
+        if marker_sentence:
+            marker_summary = (
+                f"{marker_sentence}시료의 공정 흔적 또는 변성 가능성을 함께 보여줍니다. "
+            )
+        else:
+            marker_summary = "관찰된 작용기 및 피크 패턴은 시료의 구조적 특징을 보여줍니다. "
+        summary = (
+            f"본 시료는 룰 기반 분석 결과, {material} 후보로 강하게 시사됩니다. "
+            f"{marker_summary}"
+            "본 결과는 FT-IR 피크 패턴을 종합한 후보 소견이며, 최종 판단에는 분석자 검토와 필요 시 보완 분석이 필요합니다."
+        )
+
+        required_text = ", ".join(required[:4])
+        key_lines: list[str] = []
+        if required_text:
+            key_lines.append(
+                f"룰 기반 동정: {base_material} 필수 특징 피크 {required_text}가 검출되어 룰 기반 동정{score_suffix}을 뒷받침합니다."
+            )
+        else:
+            key_lines.append(f"룰 기반 동정: {base_material} 후보가 구조화 분석 결과에서 확인되었습니다.")
+        for marker in process_markers[:2]:
+            interpretation = marker.get("interpretation")
+            suffix = f" {interpretation}" if interpretation else ""
+            key_lines.append(
+                f"공정/첨가제 마커: {marker.get('name')} 관련 {marker.get('evidence')}가 확인되었습니다.{suffix}"
+            )
+        if first_warning:
+            key_lines.append(
+                f"화학적 변성 가능성: {first_warning.get('evidence')}는 {first_warning.get('interpretation') or first_warning.get('name')}을 시사합니다."
+            )
+        if group_lines:
+            key_lines.append(f"주요 작용기 패턴: {group_lines[0]}")
+        key_findings = "\n".join(key_lines[:5])
+
+        interpretation_parts = [
+            f"{base_material} 후보는 단일 피크가 아니라 필수 피크 조합과 작용기 패턴을 함께 만족해 도출되었습니다."
+        ]
+        if process_markers:
+            marker_names = ", ".join(marker["name"] for marker in process_markers[:3])
+            interpretation_parts.append(f"{marker_names} 등은 상업용 처방 또는 제조 공정의 흔적으로 해석할 수 있습니다.")
+        if warning_sentence:
+            interpretation_parts.append(warning_sentence)
+        interpretation_parts.append("따라서 본 시료는 기본 골격과 부가적인 공정/변성 흔적이 공존하는 복합적 특성으로 보는 것이 타당합니다.")
+        interpretation = " ".join(part for part in interpretation_parts if part)
+
+        qc_lines = [
+            "단일 스펙트럼 한계: FT-IR만으로 혼합물 분리, 정량 분석, 최종 물질 확정은 수행하지 않습니다.",
+        ]
+        if first_warning:
+            qc_lines.append(
+                f"피크 중첩 검토: {first_warning.get('evidence')}는 수분, 인접 작용기 또는 변성 피크와 중첩될 수 있어 추가 확인이 필요합니다."
+            )
+        if process_markers:
+            qc_lines.append(
+                "변성/공정 마커 확인: 공정 흔적이나 변성 물질의 정확한 종류는 표준품, 반복 측정 또는 보완 분석으로 확인하는 것이 좋습니다."
+            )
+        else:
+            qc_lines.append("검토 필요사항: 주요 피크 assignment는 분석자 검토와 필요 시 표준품 비교로 확인하는 것이 좋습니다.")
+        qc_notes = "\n".join(qc_lines[:3])
+
+        narrative = (
+            f"룰 기반 근거를 종합하면 {sample}는 {material} 계열 후보로 해석됩니다. "
+            f"주요 근거는 {required_text or '필수 피크 조합'}이며, "
+            "공정 마커와 변성 가능성은 별도 검토 항목으로 분리해 판단해야 합니다."
+        )
+        caption = (
+            f"룰 기반 분석 결과, 본 시료는 공정/변성 흔적이 관찰되는 {base_material} 계열 후보로 추정됩니다."
+        )
+        email_subject = f"[RIST] {sample} FT-IR 분석 보고서"
+        email_body = (
+            f"{sample} 시료의 FT-IR 분석 보고서를 첨부드립니다.\n\n"
+            f"- 룰 기반 후보: {material}\n"
+            f"- 주요 근거: {required_text or '작용기 및 피크 패턴'}\n"
+            "- 공정/변성 마커와 해석 한계는 보고서 본문을 확인해 주십시오."
+        )
+        return {
+            "summary": summary,
+            "key_findings": key_findings,
+            "interpretation": interpretation,
+            "qc_notes": qc_notes,
+            "narrative": narrative,
+            "caption": caption,
+            "email_subject": email_subject,
+            "email_body": email_body,
+        }
+
     def llm_slots(
         self, job: dict[str, Any], analysis: list[AnalysisItem]
     ) -> LlmSlotSpec | None:
@@ -766,7 +1136,7 @@ class FtirReportBuilder(ReportBuilder):
             "sample": verdict.get("sample"),
             "samples": verdict.get("samples"),
             "tier": verdict.get("tier"),
-            "reason": verdict.get("reason"),
+            "reason": None if _has_library_term(verdict.get("reason")) else verdict.get("reason"),
             "settings": {
                 "sensitivity": (verdict.get("settings") or {}).get("sensitivity")
                 if isinstance(verdict.get("settings"), dict)
@@ -782,6 +1152,16 @@ class FtirReportBuilder(ReportBuilder):
                 else None,
             },
             "functional_groups": groups,
+            "rule_based_identification": {
+                "material": _rule_material_name(verdict),
+                "score": _rule_score_text(verdict),
+                "required_evidence": _rule_required_evidence(verdict),
+            }
+            if _primary_rule_match(verdict)
+            else None,
+            "rule_evidence": _compact_rule_evidence(verdict),
+            "process_markers": _ftir_process_markers(verdict),
+            "modification_warnings": _ftir_warning_markers(verdict),
             "experiment_conditions": _experiment_condition_rows(
                 verdict,
                 aliases=_FTIR_CONDITION_ALIASES,
@@ -796,7 +1176,7 @@ class FtirReportBuilder(ReportBuilder):
             "combined_verdict": {
                 "verdict": cv.get("verdict"),
                 "confidence": cv.get("confidence"),
-                "action": cv.get("action"),
+                "action": None if _has_library_term(cv.get("action")) else cv.get("action"),
             },
         }
         return LlmSlotSpec(

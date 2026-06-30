@@ -76,6 +76,99 @@ def _verdict() -> dict:
     }
 
 
+def _phenolic_rule_verdict() -> dict:
+    return {
+        "sample": "A_191001.0",
+        "tier": "미동정 (No reliable match)",
+        "reason": "최고 점수 64.5% < 임계 65% — 라이브러리에 신뢰할 만한 후보 없음",
+        "top_candidate": {
+            "material": "m-Xylene",
+            "composite_pct": 64.54,
+        },
+        "findings": {
+            "functional_groups": [
+                {
+                    "group": "페놀릭/PF 수지 (Phenolic Foam/Resin)",
+                    "confidence_pct": 100.0,
+                    "evidence": "CH2 bridge 1475 + phenolic C-O 1220 + aromatic C=C 1600",
+                },
+                {
+                    "group": "카르복실산 (Carboxylic Acid)",
+                    "confidence_pct": 63.9,
+                    "evidence": "C=O ~1720 + broad O-H 2500-3300",
+                },
+            ],
+            "additives_and_process_markers": [
+                {
+                    "type": "process_marker",
+                    "name": "설폰산계 산 촉매 잔류",
+                    "confidence": "HIGH",
+                    "evidence": [
+                        {
+                            "wn": 1128.4,
+                            "intensity": 0.694,
+                            "assignment": "S=O stretch",
+                        }
+                    ],
+                    "interpretation": "p-TSA/BSA 등 산 촉매 경화형 상업용 PF폼 제조 흔적",
+                },
+                {
+                    "type": "modification_or_aging",
+                    "name": "우레아/멜라민 변성 또는 열산화 카보닐",
+                    "confidence": "MEDIUM",
+                    "evidence": [
+                        {
+                            "wn": 1712.7,
+                            "intensity": 0.532,
+                            "assignment": "C=O stretch",
+                        }
+                    ],
+                    "interpretation": "취성 개선/원가 절감을 위한 변성 PF 또는 경화 중 표면 산화 가능성",
+                },
+            ],
+            "mismatch_warnings": [
+                {
+                    "region": "C=O stretch",
+                    "sample_peak_cm": 1712.7,
+                    "intensity": 0.532,
+                    "note": "시료에 강한 C=O stretch 피크가 있어 단일 성분으로 설명 어려움",
+                }
+            ],
+        },
+        "combined_verdict": {
+            "verdict": "룰 기반 동정 ✓  [Phenolic Foam — 변종 미확정]",
+            "confidence": "HIGH",
+            "action": "라이브러리에 Phenolic Foam — 변종 미확정 스펙트럼 추가 후 재분석",
+            "product_profile": {
+                "base_material": "Phenolic Foam",
+                "summary": "상업용 첨가제/공정 흔적이 동반된 Phenolic Foam",
+            },
+            "rule_evidence_summary": [
+                {"role": "required", "label": "O-H / N-H stretching", "center": 3400.0, "intensity": 0.354},
+                {"role": "required", "label": "CH2 bending (scissoring)", "center": 1475.0, "intensity": 1.0},
+                {"role": "required", "label": "C-O stretching (phenolic)", "center": 1217.5, "intensity": 0.862},
+                {"role": "context_marker", "label": "S=O stretching (sulfonic acid)", "center": 1142.5, "intensity": 0.694},
+            ],
+        },
+        "rule_matches": [
+            {
+                "compound": "Phenolic Foam",
+                "compound_display": "Phenolic Foam — 변종 미확정",
+                "score_pct": 84.6,
+                "verdict": "Rule Match ✓",
+                "matched_required": [
+                    {"label": "O-H / N-H stretching", "center": 3400.0, "intensity": 0.354},
+                    {"label": "CH2 asymmetric & symmetric stretching", "center": 2885.0, "intensity": 0.37},
+                    {"label": "C=C aromatic ring stretching", "center": 1605.0, "intensity": 0.492},
+                    {"label": "CH2 bending (scissoring)", "center": 1475.0, "intensity": 1.0},
+                    {"label": "C-O stretching (phenolic)", "center": 1217.5, "intensity": 0.862},
+                    {"label": "C-H out-of-plane bending", "center": 817.5, "intensity": 0.421},
+                ],
+            }
+        ],
+    }
+
+
 def _ftir_web_payload() -> dict:
     return {
         "samples": [
@@ -201,6 +294,42 @@ def test_ftir_builder_maps_verdict_to_fixed_sections() -> None:
         assert section is not None
         assert section.source == "rule"
         assert section.paragraphs and section.paragraphs[0].strip()
+
+
+def test_ftir_rule_based_report_uses_rich_analysis_opinion_without_library_details() -> None:
+    analysis = [{"relativePath": "verdict.json", "data": _phenolic_rule_verdict()}]
+    document = FtirReportBuilder().build(_job(), analysis)
+
+    summary = document.section("summary")
+    key_findings = document.section("key_findings")
+    qc_notes = document.section("qc_notes")
+    caption = document.section("caption")
+    assert summary is not None
+    assert key_findings is not None
+    assert qc_notes is not None
+    assert caption is not None
+
+    assert "페놀폼(Phenolic Foam)" in summary.paragraphs[0]
+    assert "설폰산계 산 촉매 잔류" in summary.paragraphs[0]
+    assert "룰 기반 동정:" in key_findings.paragraphs[0]
+    assert "공정/첨가제 마커:" in key_findings.paragraphs[0]
+    assert "화학적 변성 가능성:" in key_findings.paragraphs[0]
+    assert "피크 중첩 검토:" in qc_notes.paragraphs[0]
+    assert "공정/변성 흔적" in caption.paragraphs[0]
+    assert "라이브러리" not in document.to_markdown()
+
+    verdict = document.section("verdict")
+    assert verdict is not None
+    assert all("라이브러리" not in bullet for bullet in verdict.bullets)
+
+    spec = FtirReportBuilder().llm_slots(_job(), analysis)
+    assert spec is not None
+    assert spec.facts["reason"] is None
+    assert spec.facts["combined_verdict"]["action"] is None
+    assert spec.facts["rule_based_identification"]["material"].startswith("상업용")
+    assert spec.facts["process_markers"][0]["name"] == "설폰산계 산 촉매 잔류"
+    assert spec.facts["modification_warnings"][0]["name"] == "C=O stretch"
+    assert spec.facts["rule_evidence"][0]["label"] == "O-H / N-H stretching"
 
 
 def test_ftir_builder_orders_report_info_conditions() -> None:
