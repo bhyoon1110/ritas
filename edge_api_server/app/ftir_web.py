@@ -1249,41 +1249,75 @@ _PAGE_SHELL = """
       </label>
       <label class="ftir-report-meta-field">
         <span>Type</span>
-        <input type="text" value="ATR method"
+        <input type="text" list="ftir-report-type-options"
+               placeholder="선택 또는 입력"
                data-report-field="analysisType"
                data-report-label="Type">
       </label>
       <label class="ftir-report-meta-field">
         <span>Detector</span>
-        <input type="text" value="DTGS"
+        <input type="text" list="ftir-report-detector-options"
+               placeholder="선택 또는 입력"
                data-report-field="detector"
                data-report-label="Detector">
       </label>
       <label class="ftir-report-meta-field">
         <span>Crystal</span>
-        <input type="text" value="diamond"
+        <input type="text" list="ftir-report-crystal-options"
+               placeholder="선택 또는 입력"
                data-report-field="crystal"
                data-report-label="Crystal">
       </label>
       <label class="ftir-report-meta-field">
         <span>Resolution</span>
-        <input type="text" value="4 cm-1"
+        <input type="text" list="ftir-report-resolution-options"
+               placeholder="예: 4 cm-1"
                data-report-field="resolution"
                data-report-label="Resolution">
       </label>
       <label class="ftir-report-meta-field">
         <span>Scan time</span>
-        <input type="text" value="64 scans"
+        <input type="text" list="ftir-report-scan-options"
+               placeholder="예: 64 scans"
                data-report-field="scanTime"
                data-report-label="Scan time">
       </label>
       <label class="ftir-report-meta-field">
         <span>Range</span>
-        <input type="text" value="4000 ~ 400 cm-1"
+        <input type="text" list="ftir-report-range-options"
+               placeholder="예: 4000 ~ 400 cm-1"
                data-report-field="range"
                data-report-label="Range">
       </label>
     </div>
+    <datalist id="ftir-report-type-options">
+      <option value="ATR method">
+      <option value="Transmission">
+      <option value="Reflection">
+    </datalist>
+    <datalist id="ftir-report-detector-options">
+      <option value="DTGS">
+      <option value="MCT">
+    </datalist>
+    <datalist id="ftir-report-crystal-options">
+      <option value="diamond">
+      <option value="ZnSe">
+      <option value="Ge">
+    </datalist>
+    <datalist id="ftir-report-resolution-options">
+      <option value="4 cm-1">
+      <option value="2 cm-1">
+      <option value="8 cm-1">
+    </datalist>
+    <datalist id="ftir-report-scan-options">
+      <option value="64 scans">
+      <option value="32 scans">
+      <option value="128 scans">
+    </datalist>
+    <datalist id="ftir-report-range-options">
+      <option value="4000 ~ 400 cm-1">
+      <option value="4000 ~ 650 cm-1">
+    </datalist>
   </details>
 </section>
 <div class="ftir-message" id="ftir-message" role="alert"></div>

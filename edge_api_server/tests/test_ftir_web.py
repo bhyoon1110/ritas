@@ -62,17 +62,29 @@ def test_ftir_workspace_contains_upload_and_editor_controls() -> None:
     assert 'data-report-field="equipmentModel"' in page
     assert 'data-report-label="장비모델"' in page
     assert 'data-report-field="analysisType"' in page
-    assert 'value="ATR method"' in page
+    assert 'list="ftir-report-type-options"' in page
+    assert '<input type="text" value="ATR method"' not in page
+    assert '<option value="ATR method">' in page
     assert 'data-report-field="detector"' in page
-    assert 'value="DTGS"' in page
+    assert 'list="ftir-report-detector-options"' in page
+    assert '<input type="text" value="DTGS"' not in page
+    assert '<option value="DTGS">' in page
     assert 'data-report-field="crystal"' in page
-    assert 'value="diamond"' in page
+    assert 'list="ftir-report-crystal-options"' in page
+    assert '<input type="text" value="diamond"' not in page
+    assert '<option value="diamond">' in page
     assert 'data-report-field="resolution"' in page
-    assert 'value="4 cm-1"' in page
+    assert 'list="ftir-report-resolution-options"' in page
+    assert '<input type="text" value="4 cm-1"' not in page
+    assert '<option value="4 cm-1">' in page
     assert 'data-report-field="scanTime"' in page
-    assert 'value="64 scans"' in page
+    assert 'list="ftir-report-scan-options"' in page
+    assert '<input type="text" value="64 scans"' not in page
+    assert '<option value="64 scans">' in page
     assert 'data-report-field="range"' in page
-    assert 'value="4000 ~ 400 cm-1"' in page
+    assert 'list="ftir-report-range-options"' in page
+    assert '<input type="text" value="4000 ~ 400 cm-1"' not in page
+    assert '<option value="4000 ~ 400 cm-1">' in page
     assert "pollReportJob" in page
     assert "setReportDownloadLink" in page
     assert "MESSAGE_AUTO_HIDE_MS = 5000" in page
