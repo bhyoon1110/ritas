@@ -253,6 +253,7 @@ def test_ftir_builder_maps_verdict_to_fixed_sections() -> None:
         "verdict",
         "functional_groups",
         "current_peaks",
+        "graph_state",
         "summary",
         "key_findings",
         "interpretation",
@@ -393,6 +394,11 @@ def test_ftir_web_payload_report_uses_current_graph_facts() -> None:
 
     assert document.section("library_match") is None
 
+    graph_state = document.section("graph_state")
+    assert graph_state is not None
+    assert any("현재 그래프 표시 피크 1개" in bullet for bullet in graph_state.bullets)
+    assert all("삭제" not in bullet for bullet in graph_state.bullets)
+
     groups = document.section("functional_groups")
     assert groups is not None and groups.table is not None
     assert groups.table.rows == [["3_Melamine.0", "3381.6 cm-1", "N-H stretch"]]
@@ -402,6 +408,8 @@ def test_ftir_web_payload_report_uses_current_graph_facts() -> None:
     assert spec.facts["samples"] == payload["samples"]
     assert "assignmentLibraries" not in spec.facts["settings"]
     assert spec.facts["current_peaks"][0]["label"] == "N-H stretch"
+    assert spec.facts["graph_operations"]["visible_peak_count"] == 1
+    assert "removed_or_filtered_peak_count" not in spec.facts["graph_operations"]
 
 
 def test_ftir_llm_slots_spec_contains_facts() -> None:
@@ -431,6 +439,7 @@ def test_ftir_report_uses_current_edited_visible_peaks_for_llm() -> None:
         "data": [
             {
                 "name": "Edited Sample",
+                "line": {"color": "#2563eb"},
                 "meta": {
                     "rist_sample_group": "sample:0",
                     "rist_sample_parent": True,
@@ -439,6 +448,7 @@ def test_ftir_report_uses_current_edited_visible_peaks_for_llm() -> None:
             {
                 "name": "사용자 수정 N-H peak",
                 "y": [0.421],
+                "marker": {"color": "#ef4444"},
                 "meta": {
                     "rist_peak": {
                         "x": 3381.6,
@@ -446,6 +456,7 @@ def test_ftir_report_uses_current_edited_visible_peaks_for_llm() -> None:
                         "sample_group": "sample:0",
                         "group_name": "멜라민 후보군",
                         "group_color": "#ef4444",
+                        "user": True,
                         "assignments": [
                             {
                                 "name": "N-H stretch",
@@ -467,7 +478,14 @@ def test_ftir_report_uses_current_edited_visible_peaks_for_llm() -> None:
                     }
                 },
             },
-        ]
+        ],
+        "layout": {
+            "xaxis": {"range": [4000, 400]},
+            "yaxis": {"title": {"text": "Transmittance (%)"}},
+            "annotations": [{"text": "보고서용 사용자 메모"}],
+            "shapes": [{"type": "rect", "x0": 3300, "x1": 3500, "y0": 0.3, "y1": 0.5}],
+            "meta": {"ristPeakLabels": []},
+        },
     }
     analysis = [{"relativePath": "verdict.json", "data": verdict}]
     document = FtirReportBuilder().build(_job(), analysis)
@@ -475,6 +493,18 @@ def test_ftir_report_uses_current_edited_visible_peaks_for_llm() -> None:
     peaks = document.section("current_peaks")
     assert peaks is not None and peaks.table is not None
     assert peaks.table.rows == [["Edited Sample", "3381.6 cm-1", "사용자 수정 N-H peak"]]
+
+    graph_state = document.section("graph_state")
+    assert graph_state is not None
+    assert any("투과도 보기" in bullet for bullet in graph_state.bullets)
+    assert any("사용자 추가 1개" in bullet for bullet in graph_state.bullets)
+    assert any("이름 수정 1개" in bullet for bullet in graph_state.bullets)
+    assert any("그룹 적용 1개" in bullet for bullet in graph_state.bullets)
+    assert any("색상 표시" in bullet for bullet in graph_state.bullets)
+    assert any("텍스트 박스 주석: 1개" in bullet for bullet in graph_state.bullets)
+    assert any("사각형/도형 강조: 1개" in bullet for bullet in graph_state.bullets)
+    assert any("x 4000~400" in bullet for bullet in graph_state.bullets)
+    assert all("삭제" not in bullet for bullet in graph_state.bullets)
 
     spec = FtirReportBuilder().llm_slots(_job(), analysis)
     assert spec is not None
@@ -489,8 +519,28 @@ def test_ftir_report_uses_current_edited_visible_peaks_for_llm() -> None:
             "original_label": "N-H stretch (primary amine)",
             "assignments": ["N-H stretch"],
             "group": "멜라민 후보군",
+            "user_added": True,
         }
     ]
+    assert spec.facts["graph_operations"]["display_mode"] == "투과도 보기"
+    assert spec.facts["graph_operations"]["renamed_peaks"][0]["to"] == "사용자 수정 N-H peak"
+    assert spec.facts["graph_operations"]["grouped_peaks"][0]["name"] == "멜라민 후보군"
+    assert spec.facts["graph_operations"]["sample_colors"] == [
+        {"name": "Edited Sample", "color": "#2563eb"}
+    ]
+    assert spec.facts["graph_operations"]["peak_colors"] == [
+        {"name": "사용자 수정 N-H peak", "color": "#ef4444"}
+    ]
+    assert spec.facts["graph_operations"]["text_box_count"] == 1
+    assert spec.facts["graph_operations"]["shape_count"] == 1
+    assert any(
+        "텍스트 박스 주석" in point
+        for point in spec.facts["graph_operations"]["interpretation_points"]
+    )
+    assert any(
+        "사각형/도형" in point
+        for point in spec.facts["graph_operations"]["interpretation_points"]
+    )
 
 
 def test_apply_llm_slots_replaces_rule_text() -> None:
@@ -1103,6 +1153,10 @@ def test_raman_builder_maps_web_analysis_payload() -> None:
     assert peaks.table.rows[0][1] == "518.0 cm-1"
     assert peaks.table.rows[0][2] == "사용자 수정 LiOH peak"
     assert len(peaks.table.rows) == 1
+    graph_state = document.section("graph_state")
+    assert graph_state is not None
+    assert any("현재 그래프 표시 피크 1개" in bullet for bullet in graph_state.bullets)
+    assert any("숨김 1개" in bullet for bullet in graph_state.bullets)
     summary = document.section("summary")
     assert summary is not None
     assert "현재 그래프" in summary.paragraphs[0]
@@ -1122,6 +1176,8 @@ def test_raman_builder_maps_web_analysis_payload() -> None:
     assert spec.facts["current_peaks"][0]["intensity"] == 0.42
     assert spec.facts["sample_peak_summary"] == ["LiOH_1: 518.0 cm⁻¹ 사용자 수정 LiOH peak"]
     assert spec.facts["display_settings"]["sensitivity"] == 25
+    assert spec.facts["graph_operations"]["visible_peak_count"] == 1
+    assert spec.facts["graph_operations"]["hidden_peak_count"] == 1
 
 
 def test_raman_report_uses_rich_peak_ratio_opinion_without_library_details() -> None:
@@ -1264,12 +1320,22 @@ def test_raman_report_uses_rich_peak_ratio_opinion_without_library_details() -> 
     assert "스택 표시:" in qc_notes.paragraphs[0]
     assert "Raman 주요 band 및 강도비" in caption.paragraphs[0]
     assert "라이브러리" not in document.to_markdown()
+    graph_state = document.section("graph_state")
+    assert graph_state is not None
+    assert any("스택 보기" in bullet for bullet in graph_state.bullets)
+    assert any("강도비 해석: I(1350)/I(1580) = 0.693" in bullet for bullet in graph_state.bullets)
 
     spec = RamanReportBuilder().llm_slots({**_job(), "experiment_code": "RAMAN"}, analysis)
     assert spec is not None
     assert "assignmentLibraries" not in spec.facts["settings"]
     assert spec.facts["ratio_annotations"] == ["I(1350)/I(1580) = 0.693"]
     assert spec.facts["display_settings"]["stack_enabled"] is True
+    assert spec.facts["graph_operations"]["ratio_annotations"] == ["I(1350)/I(1580) = 0.693"]
+    assert spec.facts["graph_operations"]["display_settings"]["stack_enabled"] is True
+    assert any(
+        "강도비" in point
+        for point in spec.facts["graph_operations"]["interpretation_points"]
+    )
 
 
 def test_report_options_support_legacy_and_multiple_formats() -> None:

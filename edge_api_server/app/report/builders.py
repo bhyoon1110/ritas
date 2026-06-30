@@ -700,6 +700,395 @@ def _figure_peak_rows(payload: dict[str, Any], *, x_label: str) -> list[list[str
     return rows
 
 
+def _figure_layout(payload: dict[str, Any]) -> dict[str, Any]:
+    figure = payload.get("figure")
+    if not isinstance(figure, dict):
+        return {}
+    layout = figure.get("layout")
+    return layout if isinstance(layout, dict) else {}
+
+
+def _figure_data(payload: dict[str, Any]) -> list[Any]:
+    figure = payload.get("figure")
+    if not isinstance(figure, dict):
+        return []
+    return _as_list(figure.get("data"))
+
+
+def _axis_title_text(layout: dict[str, Any], axis: str) -> str:
+    axis_data = layout.get(axis)
+    if not isinstance(axis_data, dict):
+        return ""
+    title = axis_data.get("title")
+    if isinstance(title, dict):
+        return _clean_report_text(title.get("text"))
+    return _clean_report_text(title)
+
+
+def _number_text(value: Any) -> str:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return str(value or "").strip()
+    if abs(number) >= 100:
+        return f"{number:.0f}"
+    return f"{number:.3g}"
+
+
+def _axis_range_text(layout: dict[str, Any]) -> str:
+    parts: list[str] = []
+    for axis, label in (("xaxis", "x"), ("yaxis", "y")):
+        axis_data = layout.get(axis)
+        if not isinstance(axis_data, dict):
+            continue
+        value = axis_data.get("range")
+        if not isinstance(value, list) or len(value) < 2:
+            continue
+        first = _number_text(value[0])
+        second = _number_text(value[1])
+        if first and second:
+            parts.append(f"{label} {first}~{second}")
+    return ", ".join(parts)
+
+
+def _label_indices_from_layout(layout: dict[str, Any]) -> tuple[set[int], set[int]]:
+    meta = layout.get("meta") if isinstance(layout.get("meta"), dict) else {}
+    labels = _as_list(meta.get("ristPeakLabels"))
+    annotation_indices: set[int] = set()
+    shape_indices: set[int] = set()
+    for item in labels:
+        if not isinstance(item, dict):
+            continue
+        try:
+            annotation_indices.add(int(item["annotationIndex"]))
+        except (KeyError, TypeError, ValueError):
+            pass
+        try:
+            shape_indices.add(int(item["shapeIndex"]))
+        except (KeyError, TypeError, ValueError):
+            pass
+    return annotation_indices, shape_indices
+
+
+def _named_layout_item_is_ratio(item: Any) -> bool:
+    return isinstance(item, dict) and str(item.get("name") or "").startswith("rist_raman_ratio:")
+
+
+def _user_annotation_summary(layout: dict[str, Any]) -> dict[str, Any]:
+    peak_annotations, peak_shapes = _label_indices_from_layout(layout)
+    annotations = _as_list(layout.get("annotations"))
+    shapes = _as_list(layout.get("shapes"))
+    text_boxes: list[str] = []
+    for index, annotation in enumerate(annotations):
+        if not isinstance(annotation, dict):
+            continue
+        if index in peak_annotations or _named_layout_item_is_ratio(annotation):
+            continue
+        text = _truncate_text(annotation.get("text"), max_chars=80)
+        if text:
+            text_boxes.append(text)
+    shape_count = 0
+    for index, shape in enumerate(shapes):
+        if not isinstance(shape, dict):
+            continue
+        if index in peak_shapes or _named_layout_item_is_ratio(shape):
+            continue
+        shape_count += 1
+    return {
+        "text_box_count": len(text_boxes),
+        "text_boxes": text_boxes[:5],
+        "shape_count": shape_count,
+    }
+
+
+def _sample_visibility_summary(payload: dict[str, Any]) -> dict[str, Any]:
+    visible: list[str] = []
+    hidden: list[str] = []
+    seen: set[str] = set()
+    for trace in _figure_data(payload):
+        if not isinstance(trace, dict):
+            continue
+        meta = trace.get("meta")
+        if not isinstance(meta, dict):
+            continue
+        group = str(meta.get("rist_sample_group") or "")
+        if not group or not meta.get("rist_sample_parent") or group in seen:
+            continue
+        seen.add(group)
+        name = _clean_html_text(trace.get("name") or group)
+        if _trace_is_visible(trace):
+            visible.append(name)
+        else:
+            hidden.append(name)
+    if not visible and not hidden:
+        visible = _sample_names(payload)
+    return {"visible": visible, "hidden": hidden}
+
+
+def _hidden_peak_count(payload: dict[str, Any]) -> int:
+    hidden_sample_groups: set[str] = set()
+    for trace in _figure_data(payload):
+        if not isinstance(trace, dict):
+            continue
+        meta = trace.get("meta")
+        if not isinstance(meta, dict):
+            continue
+        group = str(meta.get("rist_sample_group") or "")
+        if group and meta.get("rist_sample_parent") and not _trace_is_visible(trace):
+            hidden_sample_groups.add(group)
+    count = 0
+    for trace in _figure_data(payload):
+        if not isinstance(trace, dict):
+            continue
+        meta = trace.get("meta")
+        peak = meta.get("rist_peak") if isinstance(meta, dict) else None
+        if not isinstance(peak, dict):
+            continue
+        sample_group = str(peak.get("sample_group") or "")
+        if not _trace_is_visible(trace) or sample_group in hidden_sample_groups:
+            count += 1
+    return count
+
+
+def _grouped_peak_summary(peaks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    groups: dict[str, dict[str, Any]] = {}
+    for peak in peaks:
+        group = _clean_report_text(peak.get("group_name"))
+        if not group:
+            continue
+        item = groups.setdefault(
+            group,
+            {"name": group, "count": 0, "color": peak.get("group_color")},
+        )
+        item["count"] += 1
+        if not item.get("color") and peak.get("group_color"):
+            item["color"] = peak.get("group_color")
+    return list(groups.values())
+
+
+def _trace_color(trace: dict[str, Any]) -> str:
+    for key in ("line", "marker"):
+        value = trace.get(key)
+        if isinstance(value, dict) and value.get("color"):
+            return str(value.get("color"))
+    if trace.get("fillcolor"):
+        return str(trace.get("fillcolor"))
+    return ""
+
+
+def _trace_color_summary(payload: dict[str, Any]) -> dict[str, Any]:
+    sample_colors: list[dict[str, str]] = []
+    peak_colors: list[dict[str, str]] = []
+    for trace in _figure_data(payload):
+        if not isinstance(trace, dict):
+            continue
+        color = _trace_color(trace)
+        if not color:
+            continue
+        meta = trace.get("meta")
+        if not isinstance(meta, dict):
+            continue
+        name = _clean_html_text(trace.get("name"))
+        if meta.get("rist_sample_parent"):
+            sample_colors.append({"name": name, "color": color})
+        elif isinstance(meta.get("rist_peak"), dict):
+            peak_colors.append({"name": name, "color": color})
+    return {
+        "sample_colors": sample_colors[:8],
+        "peak_colors": peak_colors[:8],
+    }
+
+
+def _graph_interpretation_points(summary: dict[str, Any]) -> list[str]:
+    points: list[str] = []
+    grouped = _as_list(summary.get("grouped_peaks"))
+    for item in grouped[:4]:
+        if not isinstance(item, dict) or not item.get("name"):
+            continue
+        points.append(
+            f"피크 그룹 '{item['name']}'은 사용자가 같은 해석 축으로 묶은 피크 {item.get('count', 0)}개입니다."
+        )
+    for ratio in _as_list(summary.get("ratio_annotations"))[:4]:
+        points.append(f"강도비 '{ratio}'는 사용자가 선택한 두 피크의 상대 intensity 비교 지표입니다.")
+    for text in _as_list(summary.get("text_boxes"))[:4]:
+        points.append(f"텍스트 박스 주석 '{text}'는 사용자가 그래프 위에 추가한 해석 메모입니다.")
+    shape_count = int(summary.get("shape_count") or 0)
+    if shape_count:
+        points.append(f"사각형/도형 {shape_count}개는 사용자가 표시한 관심 영역 또는 강조 구간입니다.")
+    if summary.get("sample_colors") or summary.get("peak_colors") or any(
+        isinstance(item, dict) and item.get("color") for item in grouped
+    ):
+        points.append("색상 변경은 시료, 피크 또는 그룹을 시각적으로 구분하기 위한 표시 상태입니다.")
+    return points[:10]
+
+
+def _graph_display_mode(payload: dict[str, Any], *, experiment_code: str) -> str:
+    layout = _figure_layout(payload)
+    y_title = _axis_title_text(layout, "yaxis").lower()
+    normalized = experiment_code.upper().replace("_", "-")
+    if normalized in {"FTIR", "FT-IR", "IR"}:
+        if "transmittance" in y_title or "투과" in y_title:
+            return "투과도 보기"
+        if "absorbance" in y_title or "흡광" in y_title:
+            return "흡광도 보기"
+    if normalized in {"RAMAN", "RIN", "RIN-RAMAN"}:
+        display = _raman_display_settings(payload)
+        if display.get("stack_enabled"):
+            gap = display.get("stack_gap")
+            return f"스택 보기(gap {gap})" if gap not in {None, ""} else "스택 보기"
+        return "일반 보기"
+    return ""
+
+
+def _graph_operation_summary(
+    payload: dict[str, Any],
+    *,
+    experiment_code: str,
+    x_label: str,
+) -> dict[str, Any]:
+    layout = _figure_layout(payload)
+    samples = _sample_visibility_summary(payload)
+    visible_peaks = _figure_peak_facts(payload, x_label=x_label, max_items=500)
+    hidden_peak_count = _hidden_peak_count(payload)
+    renamed = [
+        {
+            "sample": peak.get("sample"),
+            "position": _rounded_number(_first_numeric(peak.get("position"))),
+            "from": peak.get("original_label"),
+            "to": peak.get("label"),
+        }
+        for peak in visible_peaks
+        if peak.get("label")
+        and peak.get("original_label")
+        and peak.get("label") != peak.get("original_label")
+    ]
+    user_added = [
+        {
+            "sample": peak.get("sample"),
+            "position": _rounded_number(_first_numeric(peak.get("position"))),
+            "label": peak.get("label"),
+        }
+        for peak in visible_peaks
+        if peak.get("is_user_added")
+    ]
+    annotations = _user_annotation_summary(layout)
+    color_summary = _trace_color_summary(payload)
+    settings = payload.get("settings") if isinstance(payload.get("settings"), dict) else {}
+    result = {
+        "display_mode": _graph_display_mode(payload, experiment_code=experiment_code),
+        "sensitivity": settings.get("sensitivity"),
+        "visible_samples": samples["visible"][:10],
+        "hidden_samples": samples["hidden"][:10],
+        "visible_peak_count": len(visible_peaks),
+        "hidden_peak_count": hidden_peak_count,
+        "renamed_peaks": renamed[:8],
+        "user_added_peaks": user_added[:8],
+        "grouped_peaks": _grouped_peak_summary(visible_peaks)[:8],
+        "ratio_annotations": _raman_ratio_annotations(payload)
+        if experiment_code.upper().replace("_", "-") in {"RAMAN", "RIN", "RIN-RAMAN"}
+        else [],
+        "axis_range": _axis_range_text(layout),
+        "text_box_count": annotations["text_box_count"],
+        "text_boxes": annotations["text_boxes"],
+        "shape_count": annotations["shape_count"],
+        "sample_colors": color_summary["sample_colors"],
+        "peak_colors": color_summary["peak_colors"],
+        "display_settings": _raman_display_settings(payload)
+        if experiment_code.upper().replace("_", "-") in {"RAMAN", "RIN", "RIN-RAMAN"}
+        else {},
+    }
+    result["interpretation_points"] = _graph_interpretation_points(result)
+    return result
+
+
+def _graph_operation_lines(
+    payload: dict[str, Any],
+    *,
+    experiment_code: str,
+    x_label: str,
+) -> list[str]:
+    summary = _graph_operation_summary(payload, experiment_code=experiment_code, x_label=x_label)
+    lines: list[str] = []
+    visible_samples = _as_list(summary.get("visible_samples"))
+    hidden_samples = _as_list(summary.get("hidden_samples"))
+    if visible_samples or hidden_samples:
+        line = f"현재 표시 상태: 시료 {len(visible_samples)}개 표시"
+        if hidden_samples:
+            line += f", {len(hidden_samples)}개 숨김({', '.join(str(item) for item in hidden_samples[:3])})"
+        lines.append(line)
+
+    visible_peaks = int(summary.get("visible_peak_count") or 0)
+    hidden_peaks = int(summary.get("hidden_peak_count") or 0)
+    if visible_peaks or hidden_peaks:
+        line = f"보고서 반영 기준: 현재 그래프 표시 피크 {visible_peaks}개"
+        if hidden_peaks:
+            line += f", 숨김 {hidden_peaks}개"
+        lines.append(line)
+
+    display_parts = []
+    if summary.get("display_mode"):
+        display_parts.append(str(summary["display_mode"]))
+    if summary.get("sensitivity") not in {None, ""}:
+        display_parts.append(f"피크 민감도 {summary['sensitivity']}")
+    if display_parts:
+        lines.append("표시/전처리 설정: " + ", ".join(display_parts))
+
+    edits: list[str] = []
+    user_added = _as_list(summary.get("user_added_peaks"))
+    renamed = _as_list(summary.get("renamed_peaks"))
+    grouped = _as_list(summary.get("grouped_peaks"))
+    if user_added:
+        edits.append(f"사용자 추가 {len(user_added)}개")
+    if renamed:
+        edits.append(f"이름 수정 {len(renamed)}개")
+    if grouped:
+        edits.append(f"그룹 적용 {len(grouped)}개")
+    if edits:
+        lines.append("사용자 피크 편집: " + ", ".join(edits))
+    if renamed:
+        examples = [
+            f"{item.get('from')} -> {item.get('to')}"
+            for item in renamed[:3]
+            if isinstance(item, dict) and item.get("from") and item.get("to")
+        ]
+        if examples:
+            lines.append("피크명 수정 예: " + "; ".join(examples))
+    if grouped:
+        groups = [
+            f"{item.get('name')} {item.get('count')}개"
+            for item in grouped[:4]
+            if isinstance(item, dict) and item.get("name")
+        ]
+        if groups:
+            lines.append("피크 그룹 해석: " + ", ".join(groups) + "를 같은 해석 축으로 비교하도록 지정")
+
+    if summary.get("sample_colors") or summary.get("peak_colors") or any(
+        isinstance(item, dict) and item.get("color") for item in grouped
+    ):
+        lines.append("색상 표시: 시료/피크 trace 색상과 그룹 색상은 현재 그래프 이미지에 반영됨")
+
+    ratios = _as_list(summary.get("ratio_annotations"))
+    if ratios:
+        lines.append("강도비 해석: " + ", ".join(str(item) for item in ratios[:3]) + "를 상대 intensity 비교 지표로 반영")
+
+    text_count = int(summary.get("text_box_count") or 0)
+    shape_count = int(summary.get("shape_count") or 0)
+    text_boxes = _as_list(summary.get("text_boxes"))
+    if text_count:
+        examples = "; ".join(str(item) for item in text_boxes[:3])
+        suffix = f" ({examples})" if examples else ""
+        lines.append(f"텍스트 박스 주석: {text_count}개{suffix}를 사용자가 추가한 해석 메모로 반영")
+    if shape_count:
+        lines.append(f"사각형/도형 강조: {shape_count}개 영역을 사용자가 지정한 관심 구간으로 반영")
+
+    if summary.get("axis_range"):
+        lines.append(f"현재 축 범위: {summary['axis_range']}")
+
+    if not lines:
+        lines.append("사용자 그룹, 강도비, 텍스트 박스, 사각형/도형 주석이 없어 raw 분석 결과와 현재 표시 피크를 기준으로 작성되었습니다.")
+    return lines
+
+
 def _stringify_metadata_value(value: Any) -> str:
     if value is None:
         return "(미기재)"
@@ -866,6 +1255,23 @@ class ReportBuilder:
             paragraphs=["원본 분석 데이터에 실험조건/실험환경 정보가 포함되어 있지 않습니다."],
         )
 
+    def _graph_state_section(
+        self,
+        payload: dict[str, Any],
+        *,
+        experiment_code: str,
+        x_label: str = "cm-1",
+    ) -> ReportSection:
+        return ReportSection(
+            "graph_state",
+            "그래프 주석 및 해석 포인트",
+            bullets=_graph_operation_lines(
+                payload,
+                experiment_code=experiment_code,
+                x_label=x_label,
+            ),
+        )
+
     def build(
         self, job: dict[str, Any], analysis: list[AnalysisItem]
     ) -> ReportDocument:  # pragma: no cover - 추상
@@ -884,8 +1290,10 @@ class FtirReportBuilder(ReportBuilder):
         "당신은 재료분석 실험실의 FT-IR 보고서 작성 보조자입니다.\n"
         "제공된 피크 정보, assignment 결과, 실험조건(JSON)만 근거로 한국어 문안을 작성하세요.\n"
         "수치를 재계산하거나 제공되지 않은 물질, 피크, 작용기를 추측하지 마세요.\n"
-        "current_peaks는 보고서 생성 시점의 그래프 화면에서 사용자가 편집/삭제/숨김 처리한 뒤 남은 피크입니다.\n"
+        "current_peaks는 보고서 생성 시점의 그래프 화면에서 사용자가 편집/숨김 처리한 최종 표시 피크입니다.\n"
         "피크명은 current_peaks.label을 우선 사용하고, original_label은 변경 전 추적용으로만 참고하세요.\n"
+        "graph_operations는 보고서 생성 시점의 그래프 표시모드, 민감도, 이름수정, 사용자 추가 피크, 그룹, 도형/텍스트 주석을 요약한 값입니다.\n"
+        "graph_operations.interpretation_points가 있으면 사용자가 그래프에서 강조한 해석 포인트로 보고서 문안에 반영하세요.\n"
         "combined_verdict, rule_matches, rule_evidence, process_markers가 있으면 룰 기반 동정/공정 마커/변성 가능성을 우선 설명하세요.\n"
         "key_findings와 qc_notes는 '룰 기반 동정: ...'처럼 짧은 제목이 있는 여러 줄 문장으로 작성하세요.\n"
         "보고서 문안에는 라이브러리 이름, 라이브러리 적용 여부, 라이브러리 매칭 섹션을 쓰지 마세요.\n"
@@ -931,6 +1339,9 @@ class FtirReportBuilder(ReportBuilder):
         document.sections.append(self._verdict_section(verdict))
         document.sections.append(self._functional_groups_section(verdict))
         document.sections.append(self._current_peak_section(verdict))
+        document.sections.append(
+            self._graph_state_section(verdict, experiment_code="FT-IR")
+        )
 
         fallback = self._fallback_texts(verdict)
         document.sections.append(
@@ -1081,7 +1492,7 @@ class FtirReportBuilder(ReportBuilder):
             )
             interpretation = (
                 "현재 그래프에 남아 있는 피크 위치와 피크 assignment를 기준으로 해석했습니다. "
-                "사용자가 숨김, 삭제, 이름 수정한 피크 상태가 보고서에 반영됩니다."
+                "사용자가 숨김 또는 이름 수정한 피크 상태가 보고서에 반영됩니다."
             )
             qc_notes = (
                 "피크 민감도, smoothing, baseline 처리에 따라 피크 수와 assignment가 달라질 수 있습니다. "
@@ -1317,6 +1728,11 @@ class FtirReportBuilder(ReportBuilder):
                 max_items=40,
                 compact=True,
             ),
+            "graph_operations": _graph_operation_summary(
+                verdict,
+                experiment_code="FT-IR",
+                x_label="cm-1",
+            ),
             "combined_verdict": {
                 "verdict": cv.get("verdict"),
                 "confidence": cv.get("confidence"),
@@ -1347,8 +1763,10 @@ class RamanReportBuilder(ReportBuilder):
         "당신은 재료분석 실험실의 Raman 보고서 작성 보조자입니다.\n"
         "제공된 피크, intensity 비율, Raman assignment 결과, 실험조건(JSON)만 근거로 한국어 문안을 작성하세요.\n"
         "제공되지 않은 상, 물질명, 조성, 원인을 새로 추측하지 마세요.\n"
-        "current_peaks는 보고서 생성 시점의 그래프 화면에서 사용자가 편집/삭제/숨김 처리한 뒤 남은 피크입니다.\n"
+        "current_peaks는 보고서 생성 시점의 그래프 화면에서 사용자가 편집/숨김 처리한 최종 표시 피크입니다.\n"
         "피크명은 current_peaks.label을 우선 사용하고, original_label은 변경 전 추적용으로만 참고하세요.\n"
+        "graph_operations는 보고서 생성 시점의 그래프 표시모드, 민감도, 이름수정, 사용자 추가 피크, 그룹, 강도비, 도형/텍스트 주석을 요약한 값입니다.\n"
+        "graph_operations.interpretation_points가 있으면 사용자가 그래프에서 강조한 해석 포인트로 보고서 문안에 반영하세요.\n"
         "sample_peak_summary, ratio_annotations, display_settings가 있으면 주요 band, 강도비, 스택/전처리 조건을 우선 설명하세요.\n"
         "key_findings와 qc_notes는 '주요 band: ...'처럼 짧은 제목이 있는 여러 줄 문장으로 작성하세요.\n"
         "보고서 문안에는 라이브러리 이름, 라이브러리 적용 여부, 라이브러리 매칭 섹션을 쓰지 마세요.\n"
@@ -1383,6 +1801,9 @@ class RamanReportBuilder(ReportBuilder):
         document.sections.append(self._experiment_conditions_section(payload))
         document.sections.append(self._sample_section(payload))
         document.sections.append(self._peak_section(payload))
+        document.sections.append(
+            self._graph_state_section(payload, experiment_code="RAMAN")
+        )
 
         fallback = self._fallback_texts(job, payload)
         document.sections.append(
@@ -1481,7 +1902,7 @@ class RamanReportBuilder(ReportBuilder):
 
         interpretation_parts = [
             "현재 그래프에 남아 있는 Raman band 위치, 상대 intensity, 피크 assignment 후보를 기준으로 해석했습니다.",
-            "사용자가 숨김, 삭제, 이름 수정한 피크 상태가 보고서에 반영됩니다.",
+            "사용자가 숨김 또는 이름 수정한 피크 상태가 보고서에 반영됩니다.",
         ]
         if _raman_has_lithium_compound(payload):
             interpretation_parts.append("LiOH/Li₂CO₃ 등 리튬 화합물 관련 band 후보는 시료 내 반응 생성물 또는 표면종 가능성을 검토하는 근거가 됩니다.")
@@ -1550,6 +1971,11 @@ class RamanReportBuilder(ReportBuilder):
             "sample_peak_summary": _raman_primary_peak_lines(payload, max_samples=5, max_peaks=4),
             "ratio_annotations": _raman_ratio_annotations(payload),
             "display_settings": _raman_display_settings(payload),
+            "graph_operations": _graph_operation_summary(
+                payload,
+                experiment_code="RAMAN",
+                x_label="cm-1",
+            ),
         }
         return LlmSlotSpec(
             system_prompt=self.SYSTEM_PROMPT,
