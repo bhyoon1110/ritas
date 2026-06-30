@@ -1106,7 +1106,7 @@ def test_raman_builder_maps_web_analysis_payload() -> None:
     summary = document.section("summary")
     assert summary is not None
     assert "현재 그래프" in summary.paragraphs[0]
-    assert "피크 1개" in summary.paragraphs[0]
+    assert "1개의 주요 band" in summary.paragraphs[0]
     spec = RamanReportBuilder().llm_slots({**_job(), "experiment_code": "RAMAN"}, analysis)
     assert spec is not None
     assert spec.facts["experiment_conditions"][0] == [
@@ -1120,6 +1120,156 @@ def test_raman_builder_maps_web_analysis_payload() -> None:
     assert spec.facts["current_peaks"][0]["original_label"] == "LiOH Li-O stretching"
     assert spec.facts["current_peaks"][0]["display_intensity"] == 1.42
     assert spec.facts["current_peaks"][0]["intensity"] == 0.42
+    assert spec.facts["sample_peak_summary"] == ["LiOH_1: 518.0 cm⁻¹ 사용자 수정 LiOH peak"]
+    assert spec.facts["display_settings"]["sensitivity"] == 25
+
+
+def test_raman_report_uses_rich_peak_ratio_opinion_without_library_details() -> None:
+    payload = {
+        "samples": [
+            {
+                "fileName": "LiOH.txt",
+                "label": "LiOH_1",
+                "pointCount": 1200,
+                "peakCount": 2,
+                "metadata": {
+                    "Excitation Wavelength": "532.06 nm",
+                    "Exposure Time": "3 s",
+                    "Averaging": "60",
+                },
+            },
+            {
+                "fileName": "Carbon.txt",
+                "label": "Carbon_1",
+                "pointCount": 980,
+                "peakCount": 2,
+                "metadata": {
+                    "Excitation Wavelength": "532.06 nm",
+                    "Exposure Time": "3 s",
+                    "Averaging": "60",
+                },
+            },
+        ],
+        "settings": {
+            "sensitivity": 25,
+            "baseline": True,
+            "smooth": True,
+            "assignmentLibraries": [
+                {"id": "general-raman", "name": "General Raman", "assignmentCount": 10}
+            ],
+        },
+        "figure": {
+            "data": [
+                {
+                    "name": "LiOH_1",
+                    "meta": {"rist_sample_group": "sample:0", "rist_sample_parent": True},
+                },
+                {
+                    "name": "LiOH Li-O stretching",
+                    "y": [0.92],
+                    "meta": {
+                        "rist_peak": {
+                            "x": 518.0,
+                            "base_y": 0.92,
+                            "label": "LiOH Li-O stretching",
+                            "sample_group": "sample:0",
+                            "assignments": [{"name": "LiOH Li-O stretching"}],
+                        }
+                    },
+                },
+                {
+                    "name": "Li2CO3 nu1 symmetric stretching",
+                    "y": [0.44],
+                    "meta": {
+                        "rist_peak": {
+                            "x": 1095.0,
+                            "base_y": 0.44,
+                            "label": "Li2CO3 nu1 symmetric stretching",
+                            "sample_group": "sample:0",
+                            "assignments": [{"name": "Li2CO3 nu1 symmetric stretching"}],
+                        }
+                    },
+                },
+                {
+                    "name": "Carbon_1",
+                    "meta": {"rist_sample_group": "sample:1", "rist_sample_parent": True},
+                },
+                {
+                    "name": "Carbon D band",
+                    "y": [1.61],
+                    "meta": {
+                        "rist_peak": {
+                            "x": 1350.0,
+                            "base_y": 0.61,
+                            "label": "Carbon D band",
+                            "sample_group": "sample:1",
+                            "assignments": [{"name": "Carbon D band"}],
+                        },
+                        "rist_raman_stack_offset": 1.0,
+                    },
+                },
+                {
+                    "name": "Carbon G band",
+                    "y": [1.88],
+                    "meta": {
+                        "rist_peak": {
+                            "x": 1580.0,
+                            "base_y": 0.88,
+                            "label": "Carbon G band",
+                            "sample_group": "sample:1",
+                            "assignments": [{"name": "Carbon G band"}],
+                        },
+                        "rist_raman_stack_offset": 1.0,
+                    },
+                },
+            ],
+            "layout": {
+                "annotations": [
+                    {
+                        "name": "rist_raman_ratio:1",
+                        "text": "I(1350)/I(1580) = 0.693",
+                    }
+                ],
+                "meta": {
+                    "ristRamanStack": {
+                        "enabled": True,
+                        "gap": 1.2,
+                    }
+                },
+            },
+        },
+    }
+    analysis = [{"relativePath": "raman-analysis.json", "data": payload}]
+    document = RamanReportBuilder().build({**_job(), "experiment_code": "RAMAN"}, analysis)
+
+    summary = document.section("summary")
+    key_findings = document.section("key_findings")
+    interpretation = document.section("interpretation")
+    qc_notes = document.section("qc_notes")
+    caption = document.section("caption")
+    assert summary is not None
+    assert key_findings is not None
+    assert interpretation is not None
+    assert qc_notes is not None
+    assert caption is not None
+
+    assert "4개의 주요 band" in summary.paragraphs[0]
+    assert "I(1350)/I(1580) = 0.693" in summary.paragraphs[0]
+    assert "주요 band:" in key_findings.paragraphs[0]
+    assert "LiOH_1: 518.0 cm⁻¹ LiOH Li-O stretching" in key_findings.paragraphs[0]
+    assert "Carbon_1: 1580.0 cm⁻¹ Carbon G band" in key_findings.paragraphs[0]
+    assert "강도비:" in key_findings.paragraphs[0]
+    assert "LiOH/Li₂CO₃" in interpretation.paragraphs[0]
+    assert "Carbon D/G band" in interpretation.paragraphs[0]
+    assert "스택 표시:" in qc_notes.paragraphs[0]
+    assert "Raman 주요 band 및 강도비" in caption.paragraphs[0]
+    assert "라이브러리" not in document.to_markdown()
+
+    spec = RamanReportBuilder().llm_slots({**_job(), "experiment_code": "RAMAN"}, analysis)
+    assert spec is not None
+    assert "assignmentLibraries" not in spec.facts["settings"]
+    assert spec.facts["ratio_annotations"] == ["I(1350)/I(1580) = 0.693"]
+    assert spec.facts["display_settings"]["stack_enabled"] is True
 
 
 def test_report_options_support_legacy_and_multiple_formats() -> None:

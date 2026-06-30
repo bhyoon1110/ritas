@@ -438,6 +438,150 @@ def _compact_rule_evidence(verdict: dict[str, Any]) -> list[dict[str, Any]]:
     return evidence[:14]
 
 
+def _raman_peak_label(peak: dict[str, Any]) -> str:
+    label = _clean_report_text(peak.get("label"))
+    original = _clean_report_text(peak.get("original_label"))
+    assignments = [
+        _clean_report_text(item)
+        for item in _as_list(peak.get("assignment_names"))
+        if _clean_report_text(item)
+    ]
+    if label and label != "-":
+        return _raman_formula_text(label)
+    if assignments:
+        return _raman_formula_text(assignments[0])
+    return _raman_formula_text(original) or "미지정 band"
+
+
+def _raman_formula_text(value: str) -> str:
+    replacements = {
+        "Li2CO3": "Li₂CO₃",
+        "Li2SO4": "Li₂SO₄",
+        "Li2S": "Li₂S",
+        "CO3": "CO₃",
+        "SO4": "SO₄",
+    }
+    text = value
+    for source, target in replacements.items():
+        text = text.replace(source, target)
+    return text
+
+
+def _raman_peak_phrase(peak: dict[str, Any]) -> str:
+    position = _format_cm1(peak.get("position"))
+    label = _raman_peak_label(peak)
+    if position != "-":
+        return f"{position} {label}"
+    return label
+
+
+def _raman_peaks_by_sample(payload: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for peak in _figure_peak_facts(payload, x_label="cm-1", max_items=500):
+        sample = _clean_report_text(peak.get("sample")) or "시료"
+        grouped.setdefault(sample, []).append(peak)
+    for peaks in grouped.values():
+        peaks.sort(
+            key=lambda item: (
+                -float(item.get("base_intensity") or item.get("display_intensity") or 0),
+                float(item.get("position") or 0),
+            )
+        )
+    return grouped
+
+
+def _raman_primary_peak_lines(payload: dict[str, Any], *, max_samples: int = 3, max_peaks: int = 3) -> list[str]:
+    lines: list[str] = []
+    for sample, peaks in list(_raman_peaks_by_sample(payload).items())[:max_samples]:
+        phrases = [_raman_peak_phrase(peak) for peak in peaks[:max_peaks]]
+        if phrases:
+            lines.append(f"{sample}: " + ", ".join(phrases))
+    return lines
+
+
+def _raman_assignment_count(payload: dict[str, Any]) -> int:
+    count = 0
+    for peak in _figure_peak_facts(payload, x_label="cm-1", max_items=500):
+        if peak.get("assignment_names") or _raman_peak_label(peak) not in {"미지정 band", "peak"}:
+            count += 1
+    return count
+
+
+def _raman_ratio_annotations(payload: dict[str, Any]) -> list[str]:
+    figure = payload.get("figure") if isinstance(payload.get("figure"), dict) else {}
+    layout = figure.get("layout") if isinstance(figure.get("layout"), dict) else {}
+    ratios: list[str] = []
+    for annotation in _as_list(layout.get("annotations")):
+        if not isinstance(annotation, dict):
+            continue
+        name = str(annotation.get("name") or "")
+        if not name.startswith("rist_raman_ratio:"):
+            continue
+        text = _clean_report_text(annotation.get("text"))
+        if text:
+            ratios.append(text)
+    return list(dict.fromkeys(ratios))[:6]
+
+
+def _raman_condition_summary(payload: dict[str, Any]) -> str:
+    rows = _experiment_condition_rows(payload)
+    if not rows:
+        return ""
+    preferred = {
+        "excitation wavelength",
+        "laser wavelength",
+        "laser current",
+        "excitation power",
+        "exposure time",
+        "averaging",
+        "ccd temperature",
+        "measurement mode",
+    }
+    selected: list[str] = []
+    for _source, key, value in rows:
+        key_text = _clean_report_text(key)
+        if _metadata_label_key(key_text) in {_metadata_label_key(item) for item in preferred}:
+            selected.append(f"{key_text} {value}")
+        if len(selected) >= 4:
+            break
+    if not selected:
+        selected = [f"{key} {value}" for _source, key, value in rows[:4]]
+    return ", ".join(selected)
+
+
+def _raman_display_settings(payload: dict[str, Any]) -> dict[str, Any]:
+    settings = payload.get("settings") if isinstance(payload.get("settings"), dict) else {}
+    figure = payload.get("figure") if isinstance(payload.get("figure"), dict) else {}
+    layout = figure.get("layout") if isinstance(figure.get("layout"), dict) else {}
+    meta = layout.get("meta") if isinstance(layout.get("meta"), dict) else {}
+    stack = meta.get("ristRamanStack") if isinstance(meta.get("ristRamanStack"), dict) else {}
+    return {
+        "sensitivity": settings.get("sensitivity"),
+        "height": settings.get("height"),
+        "prominence": settings.get("prominence"),
+        "baseline": settings.get("baseline"),
+        "smooth": settings.get("smooth"),
+        "stack_enabled": bool(stack.get("enabled")),
+        "stack_gap": stack.get("gap"),
+    }
+
+
+def _raman_has_carbon_dg(payload: dict[str, Any]) -> bool:
+    labels = " ".join(
+        _raman_peak_label(peak).lower()
+        for peak in _figure_peak_facts(payload, x_label="cm-1", max_items=500)
+    )
+    return "d band" in labels and "g band" in labels
+
+
+def _raman_has_lithium_compound(payload: dict[str, Any]) -> bool:
+    labels = " ".join(
+        _raman_peak_label(peak).lower()
+        for peak in _figure_peak_facts(payload, x_label="cm-1", max_items=500)
+    )
+    return any(token in labels for token in ("lioh", "li2co3", "li₂co₃", "li2s", "lpscl", "li2so4"))
+
+
 def _figure_peak_facts(
     payload: dict[str, Any],
     *,
@@ -1205,6 +1349,8 @@ class RamanReportBuilder(ReportBuilder):
         "제공되지 않은 상, 물질명, 조성, 원인을 새로 추측하지 마세요.\n"
         "current_peaks는 보고서 생성 시점의 그래프 화면에서 사용자가 편집/삭제/숨김 처리한 뒤 남은 피크입니다.\n"
         "피크명은 current_peaks.label을 우선 사용하고, original_label은 변경 전 추적용으로만 참고하세요.\n"
+        "sample_peak_summary, ratio_annotations, display_settings가 있으면 주요 band, 강도비, 스택/전처리 조건을 우선 설명하세요.\n"
+        "key_findings와 qc_notes는 '주요 band: ...'처럼 짧은 제목이 있는 여러 줄 문장으로 작성하세요.\n"
         "보고서 문안에는 라이브러리 이름, 라이브러리 적용 여부, 라이브러리 매칭 섹션을 쓰지 마세요.\n"
         "Raman 피크 assignment는 후보 소견으로 표현하고, assignment가 없는 피크는 단정하지 마세요.\n"
         "수식은 LaTeX/Markdown 수식 문법을 쓰지 말고 I_D/I_G = 0.84, cm⁻¹처럼 일반 텍스트로 쓰세요. 화학식은 Li₂CO₃, CO₃²⁻처럼 유니코드 아래첨자/위첨자로 쓰세요.\n"
@@ -1297,31 +1443,75 @@ class RamanReportBuilder(ReportBuilder):
         sample_text = _sample_text(payload)
         total_peaks = _total_sample_peak_count(payload)
         current_peaks = _current_peak_count(payload, x_label="cm-1")
+        assigned_count = _raman_assignment_count(payload)
+        peak_lines = _raman_primary_peak_lines(payload)
+        ratio_lines = _raman_ratio_annotations(payload)
+        condition_text = _raman_condition_summary(payload)
+        display_settings = _raman_display_settings(payload)
+        stack_text = "스택 표시가 적용되어 샘플 간 피크 패턴 비교가 쉽도록 Y축 평행이동이 반영되었습니다." if display_settings["stack_enabled"] else ""
+        primary_peak_sentence = (
+            f"주요 band는 {peak_lines[0]} 중심으로 확인됩니다."
+            if peak_lines
+            else "현재 표시된 주요 band는 보고서용 그래프 상태를 기준으로 정리되었습니다."
+        )
+        ratio_clause = (
+            f"그래프에서 선택된 강도비는 {', '.join(ratio_lines[:2])}이고"
+            if ratio_lines
+            else "강도비는 동일 조건에서 선택한 피크 쌍을 기준으로 검토해야 하며"
+        )
         summary = (
-            f"{sample_text}에 대한 Raman 분석 결과를 정리했습니다. "
-            f"현재 그래프에는 사용자 편집/숨김 상태가 반영된 피크 {current_peaks}개가 표시되어 있습니다. "
-            "피크 assignment는 후보 소견으로 해석해야 합니다."
+            f"{sample_text}에 대한 Raman 분석 결과, 현재 그래프 기준 {current_peaks}개의 주요 band가 보고서에 반영되었습니다. "
+            f"{primary_peak_sentence} "
+            f"{ratio_clause}, 피크 assignment는 후보 소견이므로 최종 해석은 실험조건과 전처리 상태를 함께 검토해야 합니다."
         )
-        key_findings = (
-            f"분석 시료 수는 {sample_count}개입니다. "
-            f"전처리 단계 검출 피크 후보는 총 {total_peaks}개이고 현재 표시 피크는 {current_peaks}개입니다."
+        key_lines = [
+            f"현재 그래프 기준: 분석 시료 {sample_count}개, 전처리 검출 피크 후보 {total_peaks}개, 현재 표시 피크 {current_peaks}개가 반영되었습니다.",
+        ]
+        if peak_lines:
+            key_lines.extend(f"주요 band: {line}" for line in peak_lines[:3])
+        if assigned_count:
+            key_lines.append(f"Assignment 후보: 현재 표시 피크 중 {assigned_count}개에 assignment 후보가 연결되어 있습니다.")
+        if ratio_lines:
+            key_lines.append(f"강도비: {', '.join(ratio_lines[:3])}")
+        elif _raman_has_carbon_dg(payload):
+            key_lines.append("강도비: Carbon D/G band 쌍은 결함도/graphitic 특성 비교에 활용할 수 있습니다.")
+        if condition_text:
+            key_lines.append(f"실험조건: {condition_text}")
+        key_findings = "\n".join(key_lines[:5])
+
+        interpretation_parts = [
+            "현재 그래프에 남아 있는 Raman band 위치, 상대 intensity, 피크 assignment 후보를 기준으로 해석했습니다.",
+            "사용자가 숨김, 삭제, 이름 수정한 피크 상태가 보고서에 반영됩니다.",
+        ]
+        if _raman_has_lithium_compound(payload):
+            interpretation_parts.append("LiOH/Li₂CO₃ 등 리튬 화합물 관련 band 후보는 시료 내 반응 생성물 또는 표면종 가능성을 검토하는 근거가 됩니다.")
+        if _raman_has_carbon_dg(payload):
+            interpretation_parts.append("Carbon D/G band는 탄소계 시료의 disorder/graphitic 특성을 비교하는 지표로 사용할 수 있습니다.")
+        if ratio_lines:
+            interpretation_parts.append("선택된 강도비는 같은 샘플과 동일 전처리 조건 안에서 상대 비교 지표로 해석해야 합니다.")
+        interpretation = " ".join(interpretation_parts[:4])
+
+        qc_lines = [
+            "전처리 영향: baseline 보정, smoothing, 피크 민감도 설정에 따라 약한 band 검출 수와 intensity가 달라질 수 있습니다.",
+            "강도비 한계: Raman intensity 비율은 동일 장비/동일 조건/동일 전처리 기준의 상대 비교로 해석해야 합니다.",
+        ]
+        if stack_text:
+            qc_lines.append("스택 표시: Y축 평행이동은 가독성용 표시이므로 절대 intensity 비교에는 사용하지 않습니다.")
+        else:
+            qc_lines.append("검토 필요사항: assignment 후보는 표준품, 반복 측정 또는 보완 분석으로 확인하는 것이 좋습니다.")
+        qc_notes = "\n".join(qc_lines[:3])
+        narrative = (
+            "현재 그래프 화면의 Raman band, 사용자가 편집한 피크 상태, raw 데이터 기반 전처리 결과를 종합한 설명입니다. "
+            f"{stack_text or '피크 위치와 상대 intensity 패턴을 중심으로 시료 간 차이를 검토합니다.'}"
         )
-        interpretation = (
-            "현재 그래프에 남아 있는 Raman band 위치, 상대 intensity, 피크 assignment를 기준으로 해석했습니다. "
-            "사용자가 숨김, 삭제, 이름 수정한 피크 상태가 보고서에 반영됩니다."
-        )
-        qc_notes = (
-            "Baseline 보정, smoothing, 피크 민감도 설정에 따라 약한 band 검출 수가 달라질 수 있습니다. "
-            "스택 평행이동은 가독성 표시이므로 절대 intensity 비교에 사용하지 않으며, 강도비 해석은 동일 조건 측정과 분석자 검토가 필요합니다."
-        )
-        narrative = "현재 그래프 화면의 피크 정보와 raw 데이터 기반 전처리 결과를 바탕으로 한 규칙 기반 설명입니다."
-        caption = f"{sample_text} Raman 현재 그래프 피크 분석 결과"
+        caption = f"{sample_text} Raman 주요 band 및 강도비 후보 분석 결과"
         email_subject = f"[RIST] {sample_text} Raman 분석 보고서"
         email_body = (
             f"{sample_text} Raman 분석 보고서를 첨부드립니다.\n\n"
             f"- 시료 수: {sample_count}\n"
             f"- 현재 표시 피크: {current_peaks}개\n"
-            "- 본 결과는 자동 피크 검출 및 assignment 후보 기반 참고 소견입니다."
+            f"- 주요 band: {peak_lines[0] if peak_lines else '보고서 본문 참조'}\n"
+            "- 본 결과는 자동 피크 검출, 사용자 편집 상태, assignment 후보 기반 참고 소견입니다."
         )
         return {
             "summary": summary,
@@ -1357,6 +1547,9 @@ class RamanReportBuilder(ReportBuilder):
                 compact=True,
             ),
             "peak_assignments": _figure_peak_rows(payload, x_label="cm-1")[:12],
+            "sample_peak_summary": _raman_primary_peak_lines(payload, max_samples=5, max_peaks=4),
+            "ratio_annotations": _raman_ratio_annotations(payload),
+            "display_settings": _raman_display_settings(payload),
         }
         return LlmSlotSpec(
             system_prompt=self.SYSTEM_PROMPT,
