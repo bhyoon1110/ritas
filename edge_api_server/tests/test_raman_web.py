@@ -8,6 +8,7 @@ import zipfile
 
 from fastapi.testclient import TestClient
 
+from app import assignment_suggestions
 from app.raman_web import _blank_figure, build_raman_page, create_raman_preview_app
 from rin.raman.preprocess import load_raman_raw, load_raman_raw_samples
 
@@ -58,6 +59,9 @@ def test_raman_workspace_contains_upload_controls() -> None:
     assert 'id="raman-library-modal"' in page
     assert "/api/v1/raman/analyze" in page
     assert "/api/v1/raman/assignment-libraries" in page
+    assert "/api/v1/raman/assignment-libraries/suggest" in page
+    assert "LLM 추천 채우기" in page
+    assert "raman-library-suggest" in page
     assert "/raman/assets/plotly.min.js" in page
     assert "RIN Raman" in page
     assert "rist-peak-sensitivity-control" in page
@@ -405,6 +409,51 @@ def test_raman_assignment_library_api_defaults_and_assigns_sample() -> None:
         if trace.get("meta", {}).get("rist_peak")
     ]
     assert any("D band" in name or "G band" in name for name in peak_names)
+
+
+def test_raman_assignment_library_suggest_api_returns_draft(monkeypatch) -> None:
+    captured = {}
+
+    def fake_suggest(settings, request):
+        captured["request"] = request
+        return {
+            "library": {
+                "id": "graphite-raman",
+                "name": "Graphite Raman",
+                "description": "LLM draft",
+                "fileName": "graphite-raman.json",
+                "assignmentCount": 1,
+                "defaultSelected": False,
+                "valid": True,
+                "error": "",
+                "assignments": [{
+                    "centerWavenumber": 1580,
+                    "tolerance": 25,
+                    "name": "G band",
+                    "color": "#16a34a",
+                    "note": "draft",
+                }],
+            },
+            "warning": "검토 필요",
+        }
+
+    monkeypatch.setattr(
+        assignment_suggestions,
+        "suggest_assignment_library",
+        fake_suggest,
+    )
+    with TestClient(create_raman_preview_app()) as client:
+        response = client.post(
+            "/api/v1/raman/assignment-libraries/suggest",
+            json={"material": "graphite"},
+        )
+
+    assert response.status_code == 200
+    assert captured["request"].experiment_code == "RAMAN"
+    assert captured["request"].material == "graphite"
+    payload = response.json()
+    assert payload["warning"] == "검토 필요"
+    assert payload["library"]["assignments"][0]["name"] == "G band"
 
 
 def test_raman_pptx_lmr_assignment_library_assigns_sample() -> None:

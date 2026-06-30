@@ -9,6 +9,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
+from app import assignment_suggestions
 from app.ftir_web import (
     build_ftir_page,
     create_ftir_preview_app,
@@ -61,6 +62,9 @@ def test_ftir_workspace_contains_upload_and_editor_controls() -> None:
     assert "ftir-library-delete" not in page
     assert "/api/v1/ftir/analyze" in page
     assert "/api/v1/ftir/assignment-libraries" in page
+    assert "/api/v1/ftir/assignment-libraries/suggest" in page
+    assert "LLM 추천 채우기" in page
+    assert "ftir-library-suggest" in page
     assert "/ftir/assets/plotly.min.js" in page
     assert "rist-shape-tool-button" in page
     assert "rist-peak-sensitivity-control" in page
@@ -368,6 +372,54 @@ def test_assignment_library_api_upload_select_and_edit(tmp_path: Path) -> None:
             if trace.get("meta", {}).get("rist_peak")
         ]
         assert any("Carbonyl A<br>Carbonyl B" in name for name in peak_names)
+
+
+def test_assignment_library_suggest_api_returns_draft(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    captured = {}
+
+    def fake_suggest(settings, request):
+        captured["request"] = request
+        return {
+            "library": {
+                "id": "ethanol-ftir",
+                "name": "Ethanol FT-IR",
+                "description": "LLM draft",
+                "fileName": "ethanol-ftir.json",
+                "assignmentCount": 1,
+                "defaultSelected": False,
+                "valid": True,
+                "error": "",
+                "assignments": [{
+                    "centerWavenumber": 1050,
+                    "tolerance": 30,
+                    "name": "C-O stretch",
+                    "color": "#2563eb",
+                    "note": "draft",
+                }],
+            },
+            "warning": "검토 필요",
+        }
+
+    monkeypatch.setattr(
+        assignment_suggestions,
+        "suggest_assignment_library",
+        fake_suggest,
+    )
+    with TestClient(create_ftir_preview_app(tmp_path / "libraries")) as client:
+        response = client.post(
+            "/api/v1/ftir/assignment-libraries/suggest",
+            json={"material": "ethanol"},
+        )
+
+    assert response.status_code == 200
+    assert captured["request"].experiment_code == "FT-IR"
+    assert captured["request"].material == "ethanol"
+    payload = response.json()
+    assert payload["warning"] == "검토 필요"
+    assert payload["library"]["assignments"][0]["name"] == "C-O stretch"
 
 
 def test_assignment_library_delete_requires_feature_flag(tmp_path: Path) -> None:

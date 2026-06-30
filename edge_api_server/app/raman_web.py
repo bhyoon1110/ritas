@@ -28,6 +28,9 @@ from ftir.assignment_libraries import (
 from rist_common import get_logger
 from rist_common.plotting import fig_to_responsive_html, peak_sensitivity_js
 
+from . import assignment_suggestions
+from .assignment_suggestions import AssignmentSuggestionRequest
+from .config import Settings
 from .errors import ApiException, api_exception_handler, validation_exception_handler
 from .preview_report import (
     PreviewReportJob,
@@ -76,6 +79,16 @@ class RamanAssignmentLibraryCreate(RamanAssignmentLibraryWrite):
     id: str
 
 
+class RamanAssignmentLibrarySuggest(BaseModel):
+    material: str
+    libraryId: str | None = None
+    libraryName: str | None = None
+
+
+def llm_settings(request: Request) -> Settings:
+    return getattr(request.app.state, "settings", None) or Settings.from_env()
+
+
 def assignment_library_store() -> AssignmentLibraryStore:
     configured = os.getenv(
         "RIST_RAMAN_ASSIGNMENT_LIBRARY_DIR",
@@ -102,6 +115,10 @@ def raise_assignment_library_api(exc: AssignmentLibraryError) -> None:
         status_code = 409
     elif exc.code == "ASSIGNMENT_LIBRARY_TOO_LARGE":
         status_code = 413
+    elif exc.code.startswith("LLM_") or exc.code.startswith(
+        "ASSIGNMENT_SUGGESTION_INVALID"
+    ):
+        status_code = 502
     else:
         status_code = 400
     raise ApiException(status_code, exc.code, exc.message) from exc
@@ -461,6 +478,43 @@ body { overflow-x: hidden; }
   gap: 9px;
   margin-bottom: 12px;
 }
+.raman-library-suggest {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid #d9e2ec;
+  border-radius: 4px;
+  background: #f8fafc;
+  box-sizing: border-box;
+}
+.raman-library-suggest input {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+.raman-library-suggest button {
+  flex: 0 0 auto;
+  height: 30px;
+  border: 1px solid #3e7ca6;
+  border-radius: 4px;
+  background: #edf6fb;
+  color: #174b6d;
+  cursor: pointer;
+  font-size: 11px;
+  padding: 0 10px;
+}
+.raman-library-suggest button:disabled {
+  cursor: progress;
+  opacity: 0.65;
+}
+.raman-library-suggest span {
+  flex: 0 1 auto;
+  color: #7b8794;
+  font-size: 10px;
+  white-space: nowrap;
+}
 .raman-library-field {
   display: flex;
   flex-direction: column;
@@ -816,6 +870,13 @@ body { overflow-x: hidden; }
     order: 4;
     flex-basis: 100%;
     max-height: 86px;
+  }
+  .raman-library-suggest {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .raman-library-suggest span {
+    white-space: normal;
   }
   .raman-file-list {
     width: 100%;
@@ -2313,6 +2374,93 @@ _UPLOAD_SCRIPT = """
     body.appendChild(row);
   }
 
+  function replaceAssignmentRows(assignments) {
+    var body = libraryDialogBody.querySelector("tbody");
+    if (!body) return;
+    body.innerHTML = "";
+    (assignments || []).forEach(addAssignmentRow);
+    if (!(assignments || []).length) addAssignmentRow();
+  }
+
+  function applySuggestedLibrary(library) {
+    var idInput = libraryDialogBody.querySelector('[data-field="libraryId"]');
+    var nameInput = libraryDialogBody.querySelector('[data-field="libraryName"]');
+    var description = libraryDialogBody.querySelector(
+      '[data-field="libraryDescription"]'
+    );
+    if (idInput && !idInput.disabled && library.id) idInput.value = library.id;
+    if (nameInput && library.name) nameInput.value = library.name;
+    if (description && library.description) {
+      description.value = library.description;
+    }
+    replaceAssignmentRows(library.assignments || []);
+  }
+
+  function renderLibrarySuggestControl() {
+    var box = document.createElement("div");
+    box.className = "raman-library-suggest";
+    var input = document.createElement("input");
+    input.type = "text";
+    input.placeholder = "예: LiOH, graphite, carbonate";
+    var button = document.createElement("button");
+    button.type = "button";
+    button.textContent = "LLM 추천 채우기";
+    var hint = document.createElement("span");
+    hint.textContent = "저장 전 검토 필요";
+    button.addEventListener("click", function() {
+      suggestLibraryDraft(input, button);
+    });
+    input.addEventListener("keydown", function(event) {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        suggestLibraryDraft(input, button);
+      }
+    });
+    box.appendChild(input);
+    box.appendChild(button);
+    box.appendChild(hint);
+    return box;
+  }
+
+  function suggestLibraryDraft(input, button) {
+    var idInput = libraryDialogBody.querySelector('[data-field="libraryId"]');
+    var nameInput = libraryDialogBody.querySelector('[data-field="libraryName"]');
+    var material = (input.value || "").trim();
+    if (!material && nameInput) material = nameInput.value.trim();
+    if (!material && idInput) material = idInput.value.trim();
+    if (!material) {
+      setMessage("추천할 물질명 또는 계열명을 입력하세요.");
+      input.focus();
+      return;
+    }
+    var originalText = button.textContent;
+    button.disabled = true;
+    libraryDialogSave.disabled = true;
+    libraryRowAdd.disabled = true;
+    button.textContent = "추천 중...";
+    fetch("/api/v1/raman/assignment-libraries/suggest", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        material: material,
+        libraryId: idInput ? idInput.value.trim() : "",
+        libraryName: nameInput ? nameInput.value.trim() : ""
+      })
+    }).then(function(response) {
+      return apiPayload(response, "LLM 추천 초안을 만들지 못했습니다.");
+    }).then(function(payload) {
+      applySuggestedLibrary(payload.library || {});
+      setMessage(payload.warning || "LLM 추천 초안을 채웠습니다.");
+    }).catch(function(err) {
+      setMessage(err.message);
+    }).finally(function() {
+      button.disabled = false;
+      libraryDialogSave.disabled = false;
+      libraryRowAdd.disabled = false;
+      button.textContent = originalText;
+    });
+  }
+
   function closeLibraryEditor() {
     activeLibraryId = null;
     activeLibraryIsNew = false;
@@ -2363,6 +2511,7 @@ _UPLOAD_SCRIPT = """
     meta.appendChild(formField("라이브러리 ID", idInput, false));
     meta.appendChild(formField("라이브러리 이름", nameInput, false));
     meta.appendChild(formField("설명", description, true));
+    meta.appendChild(renderLibrarySuggestControl());
     libraryDialogBody.appendChild(meta);
 
     var table = document.createElement("table");
@@ -2970,6 +3119,25 @@ def list_assignment_libraries() -> dict:
         "supportedFormats": ["json", "csv"],
         "deleteEnabled": assignment_library_delete_enabled(),
     }
+
+
+@router.post("/api/v1/raman/assignment-libraries/suggest", tags=["raman"])
+def suggest_assignment_library(
+    request: Request,
+    payload: RamanAssignmentLibrarySuggest,
+) -> dict:
+    try:
+        return assignment_suggestions.suggest_assignment_library(
+            llm_settings(request),
+            AssignmentSuggestionRequest(
+                experiment_code="RAMAN",
+                material=payload.material,
+                library_id=payload.libraryId,
+                library_name=payload.libraryName,
+            ),
+        )
+    except AssignmentLibraryError as exc:
+        raise_assignment_library_api(exc)
 
 
 @router.get("/api/v1/raman/assignment-libraries/{library_id}", tags=["raman"])
