@@ -235,8 +235,8 @@ RIST_DB_PASSWORD=실제비밀번호
 RIST_DB_POOL_SIZE=8
 RIST_DB_POOL_TIMEOUT_SECONDS=10
 # PDF 한글 깨짐 방지를 위해 한글 TTF/OTF/TTC를 지정한다.
-# 미지정 시 fonts-noto-cjk/fonts-nanum 또는 /opt/rist/fonts에서 자동 탐색한다.
-RIST_PDF_FONT_PATH=/opt/rist/fonts/NotoSansKR-Regular.ttf
+# 운영 서버는 fonts-nanum 설치 후 NanumGothic.ttf 명시 지정을 권장한다.
+RIST_PDF_FONT_PATH=/usr/share/fonts/truetype/nanum/NanumGothic.ttf
 ```
 
 - API 서비스와 worker 가 동일한 `/home/rist/ritas/edge.env` 를 공유하므로

@@ -5,10 +5,12 @@ import zipfile
 import xml.etree.ElementTree as ET
 
 import httpx
+import pytest
 
 from app.models import ReportOptions
 from app.config import Settings
 from app.llm_client import LocalLlmClient
+from app.report import renderers
 from app.report import annotator
 from app.report.builders import FtirReportBuilder, LlmSlotSpec, RamanReportBuilder, get_builder
 from app.report.model import (
@@ -554,6 +556,52 @@ def test_pdf_renderer_creates_pdf_file(tmp_path) -> None:
     assert rendered.name == "report.pdf"
     assert content.startswith(b"%PDF-")
     assert content.endswith(b"%%EOF\n")
+
+
+def test_pdf_font_collection_registration_tries_subfont_indexes(tmp_path, monkeypatch) -> None:
+    font_path = tmp_path / "NotoSansCJK-Regular.ttc"
+    font_path.write_bytes(b"fake font collection")
+    attempts: list[int] = []
+    registered: list[object] = []
+
+    class FakeFont:
+        def __init__(self, name, filename, *, subfontIndex=0, **kwargs):
+            attempts.append(subfontIndex)
+            if subfontIndex < 2:
+                raise ValueError("unsupported subfont")
+            self.face = type("Face", (), {"charToGlyph": {ord("한"): "glyph"}})()
+
+    monkeypatch.setattr(renderers, "TTFont", FakeFont)
+    monkeypatch.setattr(renderers.pdfmetrics, "getRegisteredFontNames", lambda: [])
+    monkeypatch.setattr(renderers.pdfmetrics, "registerFont", registered.append)
+
+    font_name = renderers._register_pdf_font(font_path)
+
+    assert attempts == [0, 1, 2]
+    assert font_name.endswith("-Index2")
+    assert len(registered) == 1
+
+
+def test_pdf_font_auto_discovery_reports_registration_failures(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    font_path = tmp_path / "NotoSansCJK-Regular.ttc"
+    font_path.write_bytes(b"fake font collection")
+    monkeypatch.setattr(renderers, "_default_pdf_font_candidates", lambda: [font_path])
+    monkeypatch.setattr(
+        renderers,
+        "_register_pdf_font",
+        lambda path: (_ for _ in ()).throw(ValueError("unsupported CFF collection")),
+    )
+
+    with pytest.raises(ValueError) as exc_info:
+        renderers._pdf_font_name(None)
+
+    message = str(exc_info.value)
+    assert str(font_path) in message
+    assert "unsupported CFF collection" in message
+    assert "fonts-nanum" in message
 
 
 def test_pdf_renderer_splits_oversized_table_rows(tmp_path) -> None:

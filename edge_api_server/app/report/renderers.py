@@ -52,6 +52,8 @@ PPTX_GREEN = "27AE60"
 PPTX_ORANGE = "F2994A"
 PPTX_RED = "EB5757"
 _INSIGHT_SECTION_IDS = frozenset({"interpretation", "qc_notes", "narrative"})
+_PDF_COLLECTION_SUFFIXES = {".ttc", ".otc"}
+_PDF_COLLECTION_SUBFONT_LIMIT = 16
 
 
 class PptxPdfConversionError(RuntimeError):
@@ -240,20 +242,34 @@ def render_html(document: ReportDocument, path: Path) -> None:
 
 def _pdf_font_name(font_path: Path | None) -> str:
     if font_path is None:
+        failures: list[str] = []
         for candidate in _default_pdf_font_candidates():
             if not candidate.is_file():
                 continue
             try:
-                return _register_pdf_ttf(candidate)
-            except Exception:
+                return _register_pdf_font(candidate)
+            except Exception as exc:
+                failures.append(f"{candidate}: {exc}")
                 continue
-        raise ValueError(
-            "PDF 한글 폰트를 찾을 수 없습니다. RIST_PDF_FONT_PATH에 NotoSansKR, "
-            "NanumGothic 등 한글 TTF/OTF/TTC 경로를 지정하세요."
-        )
+        detail = ""
+        if failures:
+            detail = " 탐색한 폰트는 있었지만 등록에 실패했습니다: " + " | ".join(failures)
+        raise ValueError(_pdf_font_error_message() + detail)
     if not font_path.is_file():
         raise ValueError(f"PDF 임베드 폰트를 찾을 수 없습니다: {font_path}")
-    return _register_pdf_ttf(font_path)
+    try:
+        return _register_pdf_font(font_path)
+    except Exception as exc:
+        raise ValueError(f"PDF 임베드 폰트를 등록할 수 없습니다: {font_path} ({exc})") from exc
+
+
+def _pdf_font_error_message() -> str:
+    return (
+        "PDF 한글 폰트를 찾을 수 없습니다. RIST_PDF_FONT_PATH에 NotoSansKR, "
+        "NanumGothic 등 한글 TTF/OTF/TTC 경로를 지정하세요. "
+        "Ubuntu에서는 fonts-nanum 설치 후 "
+        "RIST_PDF_FONT_PATH=/usr/share/fonts/truetype/nanum/NanumGothic.ttf 를 권장합니다."
+    )
 
 
 def _default_pdf_font_candidates() -> list[Path]:
@@ -273,11 +289,32 @@ def _default_pdf_font_candidates() -> list[Path]:
     ]
 
 
-def _register_pdf_ttf(font_path: Path) -> str:
+def _register_pdf_font(font_path: Path) -> str:
+    if font_path.suffix.lower() in _PDF_COLLECTION_SUFFIXES:
+        return _register_pdf_font_collection(font_path)
+    return _register_pdf_ttf(font_path)
+
+
+def _register_pdf_font_collection(font_path: Path) -> str:
+    failures: list[str] = []
+    for subfont_index in range(_PDF_COLLECTION_SUBFONT_LIMIT):
+        try:
+            return _register_pdf_ttf(font_path, subfont_index=subfont_index)
+        except Exception as exc:
+            failures.append(f"{subfont_index}: {exc}")
+    raise ValueError(
+        f"PDF 폰트 컬렉션에서 한글 TrueType subfont를 찾지 못했습니다: {font_path} "
+        f"({'; '.join(failures[:4])})"
+    )
+
+
+def _register_pdf_ttf(font_path: Path, *, subfont_index: int = 0) -> str:
     safe_name = re.sub(r"[^A-Za-z0-9]+", "", font_path.stem) or "Font"
     name = f"RISTEmbeddedKorean-{safe_name[:40]}"
+    if font_path.suffix.lower() in _PDF_COLLECTION_SUFFIXES:
+        name = f"{name}-Index{subfont_index}"
     if name not in pdfmetrics.getRegisteredFontNames():
-        font = TTFont(name, str(font_path))
+        font = TTFont(name, str(font_path), subfontIndex=subfont_index)
         if not _pdf_font_supports_hangul(font):
             raise ValueError(f"PDF 폰트에 한글 글리프가 없습니다: {font_path}")
         pdfmetrics.registerFont(font)

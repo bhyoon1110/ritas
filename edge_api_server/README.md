@@ -283,17 +283,19 @@ export RIST_DB_PASSWORD=********
 
 PDF는 ReportLab으로 생성하며, 한글이 네모로 깨지지 않도록 한글 글리프가 있는
 TTF/OTF/TTC 폰트만 임베드한다. `RIST_PDF_FONT_PATH`를 비우면 macOS 기본 한글
-폰트, Ubuntu `fonts-noto-cjk`/`fonts-nanum` 계열, `/opt/rist/fonts` 순서로
+폰트, Ubuntu `fonts-nanum`/`fonts-noto-cjk` 계열, `/opt/rist/fonts` 순서로
 자동 탐색한다. 자동 탐색에 실패하면 깨진 PDF를 만들지 않고 오류를 낸다.
+Ubuntu의 `fonts-noto-cjk`는 `.ttc` 컬렉션이 ReportLab에서 등록되지 않는
+환경이 있으므로 운영 서버는 `fonts-nanum`과 명시 경로 사용을 권장한다.
 
 ```bash
-export RIST_PDF_FONT_PATH=/opt/rist/fonts/NotoSansKR-Regular.ttf
+export RIST_PDF_FONT_PATH=/usr/share/fonts/truetype/nanum/NanumGothic.ttf
 ```
 
-Ubuntu 서버에서 자동 탐색을 사용하려면 한글 폰트를 설치한다.
+Ubuntu 서버에서 자동 탐색 또는 명시 경로를 사용하려면 한글 폰트를 설치한다.
 
 ```bash
-sudo apt install -y fonts-noto-cjk
+sudo apt install -y fonts-nanum
 ```
 
 ## 테스트
