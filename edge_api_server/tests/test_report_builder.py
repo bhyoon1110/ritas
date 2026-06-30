@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import zipfile
+import xml.etree.ElementTree as ET
 
 import httpx
 
@@ -433,13 +434,30 @@ def test_pptx_renderer_creates_openxml_package(tmp_path) -> None:
         assert "ppt/presentation.xml" in names
         assert "ppt/slides/slide1.xml" in names
         assert "ppt/media/image1.png" in names
+        assert "docProps/core.xml" in names
+        assert "docProps/app.xml" in names
         presentation = archive.read("ppt/presentation.xml").decode("utf-8")
+        master = archive.read("ppt/slideMasters/slideMaster1.xml").decode("utf-8")
+        layout = archive.read("ppt/slideLayouts/slideLayout1.xml").decode("utf-8")
+        theme = archive.read("ppt/theme/theme1.xml").decode("utf-8")
         slide_text = "\n".join(
             archive.read(name).decode("utf-8")
             for name in names
             if name.startswith("ppt/slides/slide") and name.endswith(".xml")
         )
+        package_xml = "\n".join(
+            archive.read(name).decode("utf-8")
+            for name in names
+            if name.endswith(".xml")
+        )
+        for name in names:
+            if name.endswith(".xml"):
+                ET.fromstring(archive.read(name))
     assert 'type="screen16x9"' in presentation
+    assert "<p:clrMap " in master
+    assert "<p:clrMapOvr>" in layout
+    assert theme.count("<a:effectStyle>") >= 3
+    assert 'anchor="mid"' not in package_xml
     assert "분석 요약" in slide_text
     assert "고객 보고서용 요약" in slide_text
     assert "해석 및 검토사항" in slide_text
