@@ -891,7 +891,6 @@ def _user_annotation_summary(layout: dict[str, Any]) -> dict[str, Any]:
 
 def _sample_visibility_summary(payload: dict[str, Any]) -> dict[str, Any]:
     visible: list[str] = []
-    hidden: list[str] = []
     seen: set[str] = set()
     for trace in _figure_data(payload):
         if not isinstance(trace, dict):
@@ -906,36 +905,9 @@ def _sample_visibility_summary(payload: dict[str, Any]) -> dict[str, Any]:
         name = _clean_html_text(trace.get("name") or group)
         if _trace_is_visible(trace):
             visible.append(name)
-        else:
-            hidden.append(name)
-    if not visible and not hidden:
+    if not visible:
         visible = _sample_names(payload)
-    return {"visible": visible, "hidden": hidden}
-
-
-def _hidden_peak_count(payload: dict[str, Any]) -> int:
-    hidden_sample_groups: set[str] = set()
-    for trace in _figure_data(payload):
-        if not isinstance(trace, dict):
-            continue
-        meta = trace.get("meta")
-        if not isinstance(meta, dict):
-            continue
-        group = str(meta.get("rist_sample_group") or "")
-        if group and meta.get("rist_sample_parent") and not _trace_is_visible(trace):
-            hidden_sample_groups.add(group)
-    count = 0
-    for trace in _figure_data(payload):
-        if not isinstance(trace, dict):
-            continue
-        meta = trace.get("meta")
-        peak = meta.get("rist_peak") if isinstance(meta, dict) else None
-        if not isinstance(peak, dict):
-            continue
-        sample_group = str(peak.get("sample_group") or "")
-        if not _trace_is_visible(trace) or sample_group in hidden_sample_groups:
-            count += 1
-    return count
+    return {"visible": visible}
 
 
 def _grouped_peak_summary(peaks: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -1037,7 +1009,6 @@ def _graph_operation_summary(
     layout = _figure_layout(payload)
     samples = _sample_visibility_summary(payload)
     visible_peaks = _figure_peak_facts(payload, x_label=x_label, max_items=500)
-    hidden_peak_count = _hidden_peak_count(payload)
     renamed = [
         {
             "sample": peak.get("sample"),
@@ -1066,9 +1037,7 @@ def _graph_operation_summary(
         "display_mode": _graph_display_mode(payload, experiment_code=experiment_code),
         "sensitivity": settings.get("sensitivity"),
         "visible_samples": samples["visible"][:10],
-        "hidden_samples": samples["hidden"][:10],
         "visible_peak_count": len(visible_peaks),
-        "hidden_peak_count": hidden_peak_count,
         "renamed_peaks": renamed[:8],
         "user_added_peaks": user_added[:8],
         "grouped_peaks": _grouped_peak_summary(visible_peaks)[:8],
@@ -1098,20 +1067,12 @@ def _graph_operation_lines(
     summary = _graph_operation_summary(payload, experiment_code=experiment_code, x_label=x_label)
     lines: list[str] = []
     visible_samples = _as_list(summary.get("visible_samples"))
-    hidden_samples = _as_list(summary.get("hidden_samples"))
-    if visible_samples or hidden_samples:
-        line = f"현재 표시 상태: 시료 {len(visible_samples)}개 표시"
-        if hidden_samples:
-            line += f", {len(hidden_samples)}개 숨김({', '.join(str(item) for item in hidden_samples[:3])})"
-        lines.append(line)
+    if visible_samples:
+        lines.append(f"현재 표시 상태: 시료 {len(visible_samples)}개 표시")
 
     visible_peaks = int(summary.get("visible_peak_count") or 0)
-    hidden_peaks = int(summary.get("hidden_peak_count") or 0)
-    if visible_peaks or hidden_peaks:
-        line = f"보고서 반영 기준: 현재 그래프 표시 피크 {visible_peaks}개"
-        if hidden_peaks:
-            line += f", 숨김 {hidden_peaks}개"
-        lines.append(line)
+    if visible_peaks:
+        lines.append(f"보고서 반영 기준: 현재 그래프 표시 피크 {visible_peaks}개")
 
     display_parts = []
     if summary.get("display_mode"):
@@ -1378,7 +1339,7 @@ class FtirReportBuilder(ReportBuilder):
         "당신은 재료분석 실험실의 FT-IR 보고서 작성 보조자입니다.\n"
         "제공된 피크 정보, assignment 결과, 실험조건(JSON)만 근거로 한국어 문안을 작성하세요.\n"
         "수치를 재계산하거나 제공되지 않은 물질, 피크, 작용기를 추측하지 마세요.\n"
-        "current_peaks는 보고서 생성 시점의 그래프 화면에서 사용자가 편집/숨김 처리한 최종 표시 피크입니다.\n"
+        "current_peaks는 보고서 생성 시점의 그래프 화면에서 사용자가 표시 중인 최종 피크입니다.\n"
         "피크명은 current_peaks.label을 우선 사용하고, original_label은 변경 전 추적용으로만 참고하세요.\n"
         "graph_operations는 보고서 생성 시점의 그래프 표시모드, 민감도, 이름수정, 사용자 추가 피크, 그룹, 도형/텍스트 주석을 요약한 값입니다.\n"
         "graph_operations.interpretation_points가 있으면 사용자가 그래프에서 강조한 해석 포인트로 보고서 문안에 반영하세요.\n"
@@ -1580,7 +1541,7 @@ class FtirReportBuilder(ReportBuilder):
             )
             interpretation = (
                 "현재 그래프에 남아 있는 피크 위치와 피크 assignment를 기준으로 해석했습니다. "
-                "사용자가 숨김 또는 이름 수정한 피크 상태가 보고서에 반영됩니다."
+                "사용자가 그래프에서 표시 중인 피크와 이름 수정 상태가 보고서에 반영됩니다."
             )
             qc_notes = (
                 "피크 민감도, smoothing, baseline 처리에 따라 피크 수와 assignment가 달라질 수 있습니다. "
@@ -1851,7 +1812,7 @@ class RamanReportBuilder(ReportBuilder):
         "당신은 재료분석 실험실의 Raman 보고서 작성 보조자입니다.\n"
         "제공된 피크, intensity 비율, Raman assignment 결과, 실험조건(JSON)만 근거로 한국어 문안을 작성하세요.\n"
         "제공되지 않은 상, 물질명, 조성, 원인을 새로 추측하지 마세요.\n"
-        "current_peaks는 보고서 생성 시점의 그래프 화면에서 사용자가 편집/숨김 처리한 최종 표시 피크입니다.\n"
+        "current_peaks는 보고서 생성 시점의 그래프 화면에서 사용자가 표시 중인 최종 피크입니다.\n"
         "피크명은 current_peaks.label을 우선 사용하고, original_label은 변경 전 추적용으로만 참고하세요.\n"
         "graph_operations는 보고서 생성 시점의 그래프 표시모드, 민감도, 이름수정, 사용자 추가 피크, 그룹, 강도비, 도형/텍스트 주석을 요약한 값입니다.\n"
         "graph_operations.interpretation_points가 있으면 사용자가 그래프에서 강조한 해석 포인트로 보고서 문안에 반영하세요.\n"
@@ -1996,7 +1957,7 @@ class RamanReportBuilder(ReportBuilder):
 
         interpretation_parts = [
             "현재 그래프에 남아 있는 Raman band 위치, 상대 intensity, 피크 assignment 후보를 기준으로 해석했습니다.",
-            "사용자가 숨김 또는 이름 수정한 피크 상태가 보고서에 반영됩니다.",
+            "사용자가 그래프에서 표시 중인 피크와 이름 수정 상태가 보고서에 반영됩니다.",
         ]
         if _raman_has_lithium_compound(payload):
             interpretation_parts.append("LiOH/Li₂CO₃ 등 리튬 화합물 관련 band 후보는 시료 내 반응 생성물 또는 표면종 가능성을 검토하는 근거가 됩니다.")

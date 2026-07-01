@@ -267,6 +267,7 @@ def build_preview_report_package(
 ) -> tuple[Path, Path]:
     tmp_root = Path(tempfile.mkdtemp(prefix="rist-preview-report-"))
     try:
+        raw_series = _filter_raw_series_for_payload(raw_series, analysis_payload)
         job_root = tmp_root / "job"
         report_dir = job_root / "report"
         processed_dir = job_root / "processed"
@@ -394,6 +395,7 @@ def run_preview_report_job(
             message="raw 데이터를 읽는 중입니다.",
         )
         raw_series = raw_series_factory()
+        raw_series = _filter_raw_series_for_payload(raw_series, analysis_payload)
 
         def progress(stage: str, progress_pct: int, message: str) -> None:
             store.update(
@@ -415,6 +417,48 @@ def run_preview_report_job(
         store.complete(job_id, tmp_root=tmp_root, package_path=package)
     except Exception as exc:
         store.fail(job_id, str(exc))
+
+
+def _sample_label_keys(value: Any) -> set[str]:
+    text = str(value or "").strip()
+    if not text:
+        return set()
+    keys = {text.casefold()}
+    stem = Path(text).stem.strip()
+    if stem:
+        keys.add(stem.casefold())
+    return keys
+
+
+def _payload_raw_series_keys(analysis_payload: dict[str, Any]) -> set[str]:
+    keys: set[str] = set()
+    samples = analysis_payload.get("samples")
+    if not isinstance(samples, list):
+        return keys
+    for sample in samples:
+        if not isinstance(sample, dict):
+            continue
+        for field in ("label", "fileName", "name", "sample"):
+            keys.update(_sample_label_keys(sample.get(field)))
+    return keys
+
+
+def _filter_raw_series_for_payload(
+    raw_series: list[RawSeries],
+    analysis_payload: dict[str, Any],
+) -> list[RawSeries]:
+    samples = analysis_payload.get("samples")
+    if isinstance(samples, list) and not samples:
+        return []
+    keys = _payload_raw_series_keys(analysis_payload)
+    if not keys:
+        return raw_series
+    filtered = [
+        item
+        for item in raw_series
+        if _sample_label_keys(item.label) & keys
+    ]
+    return filtered if filtered else raw_series
 
 
 def start_preview_report_job(

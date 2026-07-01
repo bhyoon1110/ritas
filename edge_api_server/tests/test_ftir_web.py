@@ -173,6 +173,13 @@ def test_ftir_workspace_contains_upload_and_editor_controls() -> None:
     assert "clearWorkspaceState()" in page
     assert "plotData: JSON.parse(JSON.stringify(gd.data || []))" in page
     assert "files = (state.files || []).map(recordFile)" in page
+    assert "function filterReportAnalysisPayload" in page
+    assert "function filteredReportFigurePayload" in page
+    assert "function reportFilesForVisibleSamples" in page
+    assert "async function captureReportFigureImage" in page
+    assert "var reportFigure = currentFigurePayload()" in page
+    assert "var reportFiles = reportFilesForVisibleSamples()" in page
+    assert "window.Plotly.newPlot(" in page
     assert "function freshEmptyData" in page
     assert "function freshEmptyLayout" in page
     assert "Plotly.react(gd, freshEmptyData(), freshEmptyLayout(), gd._context)" in page

@@ -22,6 +22,7 @@ from app.report.model import (
 from app.report.package import build_report_package
 from app.report.pipeline import generate_report
 from app.report.renderers import render_report_formats, render_requested_report
+from app.preview_report import RawSeries, _filter_raw_series_for_payload
 
 
 def _job() -> dict:
@@ -1172,7 +1173,7 @@ def test_raman_builder_maps_web_analysis_payload() -> None:
     graph_state = document.section("graph_state")
     assert graph_state is not None
     assert any("현재 그래프 표시 피크 1개" in bullet for bullet in graph_state.bullets)
-    assert any("숨김 1개" in bullet for bullet in graph_state.bullets)
+    assert all("숨김" not in bullet for bullet in graph_state.bullets)
     summary = document.section("summary")
     assert summary is not None
     assert "현재 그래프" in summary.paragraphs[0]
@@ -1189,7 +1190,8 @@ def test_raman_builder_maps_web_analysis_payload() -> None:
     assert spec.facts["sample_peak_summary"] == ["LiOH_1: 518.0 cm⁻¹ 사용자 수정 LiOH peak"]
     assert spec.facts["display_settings"]["sensitivity"] == 25
     assert spec.facts["graph_operations"]["visible_peak_count"] == 1
-    assert spec.facts["graph_operations"]["hidden_peak_count"] == 1
+    assert "hidden_peak_count" not in spec.facts["graph_operations"]
+    assert "hidden_samples" not in spec.facts["graph_operations"]
 
 
 def test_raman_report_uses_rich_peak_ratio_opinion_without_library_details() -> None:
@@ -1356,3 +1358,22 @@ def test_report_options_support_legacy_and_multiple_formats() -> None:
 
     assert legacy.report_formats == ["PDF"]
     assert multiple.report_formats == ["PDF", "HTML"]
+
+
+def test_preview_raw_series_filters_hidden_samples_from_payload() -> None:
+    series = [
+        RawSeries("LiOH_1", [1.0, 2.0], [0.1, 0.2]),
+        RawSeries("LiOH_2", [1.0, 2.0], [0.3, 0.4]),
+        RawSeries("Carbon.txt", [1.0, 2.0], [0.5, 0.6]),
+    ]
+    payload = {
+        "samples": [
+            {"label": "LiOH_2"},
+            {"fileName": "Carbon.txt"},
+        ]
+    }
+
+    filtered = _filter_raw_series_for_payload(series, payload)
+
+    assert [item.label for item in filtered] == ["LiOH_2", "Carbon.txt"]
+    assert _filter_raw_series_for_payload(series, {"samples": []}) == []

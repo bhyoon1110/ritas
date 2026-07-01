@@ -2489,7 +2489,7 @@ _UPLOAD_SCRIPT = """
         conditions
       );
     }
-    return payload;
+    return filterReportAnalysisPayload(payload);
   }
 
   function clearMessageTimer() {
@@ -3363,11 +3363,180 @@ _UPLOAD_SCRIPT = """
     });
   }
 
+  function traceVisibleForReport(trace) {
+    return !(trace && (trace.visible === false || trace.visible === "legendonly"));
+  }
+
+  function traceMetaForReport(trace) {
+    return trace && trace.meta && typeof trace.meta === "object" ? trace.meta : {};
+  }
+
+  function sampleGroupForReportTrace(trace) {
+    var meta = traceMetaForReport(trace);
+    if (meta.rist_sample_group) return String(meta.rist_sample_group);
+    if (meta.rist_peak && meta.rist_peak.sample_group) {
+      return String(meta.rist_peak.sample_group);
+    }
+    return "";
+  }
+
+  function reportSampleVisibility(data) {
+    var visible = {};
+    var hidden = {};
+    var hasParents = false;
+    (data || []).forEach(function(trace) {
+      var meta = traceMetaForReport(trace);
+      var group = sampleGroupForReportTrace(trace);
+      if (!group || !meta.rist_sample_parent) return;
+      hasParents = true;
+      if (traceVisibleForReport(trace)) visible[group] = true;
+      else hidden[group] = true;
+    });
+    return hasParents ? {visible: visible, hidden: hidden} : null;
+  }
+
+  function visibleReportSampleGroups() {
+    var visibility = reportSampleVisibility(gd.data || []);
+    return visibility ? Object.keys(visibility.visible) : null;
+  }
+
+  function filterReportAnalysisPayload(payload) {
+    var visibleGroups = visibleReportSampleGroups();
+    if (!visibleGroups || !Array.isArray(payload.samples)) return payload;
+    var visible = {};
+    visibleGroups.forEach(function(group) { visible[group] = true; });
+    payload.samples = payload.samples.filter(function(sample, index) {
+      var group = sample && (
+        sample.sample_group || sample.sampleGroup || sample.group || sample.key
+      );
+      if (group && visible[String(group)]) return true;
+      return !!visible["sample:" + index];
+    });
+    if (payload.samples.length) {
+      payload.sample = payload.samples.map(function(sample) {
+        return sample.label || sample.fileName || sample.name || "";
+      }).filter(Boolean).join(", ");
+    }
+    return payload;
+  }
+
+  function reportFilesForVisibleSamples() {
+    var visibleGroups = visibleReportSampleGroups();
+    var samples = latestAnalysisPayload && latestAnalysisPayload.samples;
+    if (visibleGroups && !visibleGroups.length) return [];
+    if (!visibleGroups || !Array.isArray(samples) || samples.length !== files.length) {
+      return files.slice();
+    }
+    var visible = {};
+    visibleGroups.forEach(function(group) { visible[group] = true; });
+    return files.filter(function(_file, index) {
+      return !!visible["sample:" + index];
+    });
+  }
+
+  function filteredReportFigurePayload() {
+    var data = JSON.parse(JSON.stringify(gd.data || []));
+    var layout = JSON.parse(JSON.stringify(gd.layout || {}));
+    var visibility = reportSampleVisibility(data);
+    var hidden = visibility ? visibility.hidden : {};
+    var oldToNewTrace = {};
+    var nextData = [];
+    data.forEach(function(trace, index) {
+      var group = sampleGroupForReportTrace(trace);
+      if (!traceVisibleForReport(trace)) return;
+      if (group && hidden[group]) return;
+      oldToNewTrace[index] = nextData.length;
+      nextData.push(trace);
+    });
+
+    var labels = layout.meta && Array.isArray(layout.meta.ristPeakLabels)
+      ? layout.meta.ristPeakLabels
+      : [];
+    var removeAnnotations = {};
+    var removeShapes = {};
+    var keptLabels = [];
+    labels.forEach(function(label) {
+      var traceIndex = Number(label && label.traceIndex);
+      var hasTraceIndex = Number.isFinite(traceIndex);
+      var group = String(label && label.legendgroup || "");
+      var keep = hasTraceIndex
+        ? Object.prototype.hasOwnProperty.call(oldToNewTrace, traceIndex)
+        : !(group && hidden[group]);
+      if (!keep) {
+        if (Number.isFinite(Number(label && label.annotationIndex))) {
+          removeAnnotations[Number(label.annotationIndex)] = true;
+        }
+        if (Number.isFinite(Number(label && label.shapeIndex))) {
+          removeShapes[Number(label.shapeIndex)] = true;
+        }
+        return;
+      }
+      keptLabels.push(Object.assign({}, label));
+    });
+
+    var annotationIndexMap = {};
+    layout.annotations = (layout.annotations || []).filter(function(_item, index) {
+      if (removeAnnotations[index]) return false;
+      annotationIndexMap[index] = Object.keys(annotationIndexMap).length;
+      return true;
+    });
+    var shapeIndexMap = {};
+    layout.shapes = (layout.shapes || []).filter(function(_item, index) {
+      if (removeShapes[index]) return false;
+      shapeIndexMap[index] = Object.keys(shapeIndexMap).length;
+      return true;
+    });
+    if (!layout.meta || typeof layout.meta !== "object") layout.meta = {};
+    layout.meta.ristPeakLabels = keptLabels.map(function(label) {
+      var next = Object.assign({}, label);
+      if (Number.isFinite(Number(next.traceIndex))) {
+        next.traceIndex = oldToNewTrace[Number(next.traceIndex)];
+      }
+      if (Number.isFinite(Number(next.annotationIndex))) {
+        next.annotationIndex = annotationIndexMap[Number(next.annotationIndex)];
+      }
+      if (Number.isFinite(Number(next.shapeIndex))) {
+        next.shapeIndex = shapeIndexMap[Number(next.shapeIndex)];
+      }
+      return next;
+    }).filter(function(label) {
+      return label.traceIndex === undefined || label.traceIndex !== null;
+    });
+    return {data: nextData, layout: layout};
+  }
+
   function currentFigurePayload() {
-    return {
-      data: JSON.parse(JSON.stringify(gd.data || [])),
-      layout: JSON.parse(JSON.stringify(gd.layout || {}))
-    };
+    return filteredReportFigurePayload();
+  }
+
+  async function captureReportFigureImage(figure) {
+    var width = Math.max(900, Math.round(gd.clientWidth || 1200));
+    var height = Math.max(640, Math.round(gd.clientHeight || 800));
+    var temp = document.createElement("div");
+    temp.style.position = "fixed";
+    temp.style.left = "-10000px";
+    temp.style.top = "0";
+    temp.style.width = width + "px";
+    temp.style.height = height + "px";
+    temp.style.pointerEvents = "none";
+    document.body.appendChild(temp);
+    try {
+      await window.Plotly.newPlot(
+        temp,
+        figure.data || [],
+        figure.layout || {},
+        Object.assign({}, gd._context || {}, {responsive: false})
+      );
+      return await window.Plotly.toImage(temp, {
+        format: "png",
+        width: width,
+        height: height,
+        scale: 2
+      });
+    } finally {
+      window.Plotly.purge(temp);
+      temp.remove();
+    }
   }
 
   async function createReport() {
@@ -3390,16 +3559,16 @@ _UPLOAD_SCRIPT = """
     });
     status.textContent = "보고서 생성 중";
     try {
-      var figureImage = await window.Plotly.toImage(gd, {
-        format: "png",
-        width: Math.max(900, Math.round(gd.clientWidth || 1200)),
-        height: Math.max(640, Math.round(gd.clientHeight || 800)),
-        scale: 2
-      });
+      var reportFigure = currentFigurePayload();
+      var reportFiles = reportFilesForVisibleSamples();
+      if (!reportFiles.length) {
+        throw new Error("보고서에 표시할 raw 파일이 없습니다.");
+      }
+      var figureImage = await captureReportFigureImage(reportFigure);
       var form = new FormData();
-      files.forEach(function(file) { form.append("files", file, file.name); });
+      reportFiles.forEach(function(file) { form.append("files", file, file.name); });
       form.append("analysis_json", JSON.stringify(reportAnalysisPayload()));
-      form.append("figure_json", JSON.stringify(currentFigurePayload()));
+      form.append("figure_json", JSON.stringify(reportFigure));
       form.append("figure_image", figureImage);
       var job = await fetchJson("/api/v1/ftir/report/jobs", {
         method: "POST",
