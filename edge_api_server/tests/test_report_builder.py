@@ -1088,6 +1088,13 @@ def test_raman_builder_maps_web_analysis_payload() -> None:
                 "peakCount": 2,
                 "metadata": {
                     "Excitation Wavelength": "532.06 nm",
+                    "Current": "10 mA",
+                    "Laser power": "1 mW",
+                    "Power density": "0.1 mW/um2",
+                    "Neutral density": "ND 1.0",
+                    "Center wavelength": "650 nm",
+                    "Grating density": "1800 g/mm",
+                    "Entrance slit": "50 um",
                     "Exposure Time": "3 s",
                 },
             }
@@ -1145,7 +1152,16 @@ def test_raman_builder_maps_web_analysis_payload() -> None:
     assert document.title == "Raman 분석 보고서"
     conditions = document.section("experiment_conditions")
     assert conditions is not None and conditions.table is not None
-    assert ["LiOH_1", "Excitation Wavelength", "532.06 nm"] in conditions.table.rows
+    assert conditions.table.rows[:8] == [
+        ["LiOH_1", "Excitation Wavelength", "532.06 nm"],
+        ["LiOH_1", "Laser current", "10 mA"],
+        ["LiOH_1", "Excitation Power", "1 mW"],
+        ["LiOH_1", "Excitation Power density", "0.1 mW/um2"],
+        ["LiOH_1", "ND filter", "ND 1.0"],
+        ["LiOH_1", "Spectrograph Center wavelength", "650 nm"],
+        ["LiOH_1", "Grating", "1800 g/mm"],
+        ["LiOH_1", "Slit width", "50 um"],
+    ]
     assert document.section("raman_samples") is not None
     assert document.section("raman_libraries") is None
     peaks = document.section("raman_peaks")
@@ -1163,11 +1179,7 @@ def test_raman_builder_maps_web_analysis_payload() -> None:
     assert "1개의 주요 band" in summary.paragraphs[0]
     spec = RamanReportBuilder().llm_slots({**_job(), "experiment_code": "RAMAN"}, analysis)
     assert spec is not None
-    assert spec.facts["experiment_conditions"][0] == [
-        "LiOH_1",
-        "Excitation Wavelength",
-        "532.06 nm",
-    ]
+    assert spec.facts["experiment_conditions"][:8] == conditions.table.rows[:8]
     assert "assignmentLibraries" not in spec.facts["settings"]
     assert spec.facts["peak_assignments"][0][2] == "사용자 수정 LiOH peak"
     assert spec.facts["current_peaks"][0]["label"] == "사용자 수정 LiOH peak"

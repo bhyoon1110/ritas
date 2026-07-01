@@ -72,6 +72,99 @@ _FTIR_CONDITION_ALIASES = {
         "범위",
     ],
 }
+_RAMAN_CONDITION_ORDER = [
+    "Excitation Wavelength",
+    "Laser current",
+    "Excitation Power",
+    "Excitation Power density",
+    "ND filter",
+    "Spectrograph Center wavelength",
+    "Grating",
+    "Slit width",
+    "기타",
+]
+_RAMAN_CONDITION_ALIASES = {
+    "Excitation Wavelength": [
+        "excitation wavelength",
+        "laser wavelength",
+        "wavelength",
+        "laser",
+        "excitation",
+        "여기 파장",
+        "레이저 파장",
+        "레이저",
+    ],
+    "Laser current": [
+        "laser current",
+        "current",
+        "laser diode current",
+        "diode current",
+        "레이저 전류",
+        "전류",
+    ],
+    "Excitation Power": [
+        "excitation power",
+        "laser power",
+        "power",
+        "laser output",
+        "레이저 파워",
+        "레이저 출력",
+        "출력",
+    ],
+    "Excitation Power density": [
+        "excitation power density",
+        "laser power density",
+        "power density",
+        "irradiance",
+        "레이저 파워 밀도",
+        "출력 밀도",
+    ],
+    "ND filter": [
+        "nd filter",
+        "neutral density filter",
+        "neutral density",
+        "nd",
+        "n.d. filter",
+        "필터",
+        "nd 필터",
+    ],
+    "Spectrograph Center wavelength": [
+        "spectrograph center wavelength",
+        "spectrograph centre wavelength",
+        "center wavelength",
+        "centre wavelength",
+        "central wavelength",
+        "spectrograph center",
+        "spectrograph centre",
+        "분광기 중심 파장",
+        "중심 파장",
+    ],
+    "Grating": [
+        "grating",
+        "grating density",
+        "grating groove",
+        "grooves",
+        "그레이팅",
+    ],
+    "Slit width": [
+        "slit width",
+        "slit",
+        "entrance slit",
+        "slit size",
+        "슬릿 폭",
+        "슬릿",
+    ],
+    "기타": [
+        "기타",
+        "other",
+        "notes",
+        "condition detail",
+        "experiment detail",
+        "experimental detail",
+        "실험환경 상세",
+        "비고",
+    ],
+}
 
 _PLACEHOLDER_JOB_VALUES = {"", "-", "WEB-PREVIEW", "web-preview", "None", "none", "null"}
 
@@ -524,23 +617,18 @@ def _raman_ratio_annotations(payload: dict[str, Any]) -> list[str]:
 
 
 def _raman_condition_summary(payload: dict[str, Any]) -> str:
-    rows = _experiment_condition_rows(payload)
+    rows = _experiment_condition_rows(
+        payload,
+        aliases=_RAMAN_CONDITION_ALIASES,
+        preferred_order=_RAMAN_CONDITION_ORDER,
+    )
     if not rows:
         return ""
-    preferred = {
-        "excitation wavelength",
-        "laser wavelength",
-        "laser current",
-        "excitation power",
-        "exposure time",
-        "averaging",
-        "ccd temperature",
-        "measurement mode",
-    }
+    preferred = {_metadata_label_key(item) for item in _RAMAN_CONDITION_ORDER[:-1]}
     selected: list[str] = []
     for _source, key, value in rows:
         key_text = _clean_report_text(key)
-        if _metadata_label_key(key_text) in {_metadata_label_key(item) for item in preferred}:
+        if _metadata_label_key(key_text) in preferred:
             selected.append(f"{key_text} {value}")
         if len(selected) >= 4:
             break
@@ -1798,7 +1886,13 @@ class RamanReportBuilder(ReportBuilder):
             generated_at=job.get("_generated_at", ""),
             sections=self._meta_sections(job, payload),
         )
-        document.sections.append(self._experiment_conditions_section(payload))
+        document.sections.append(
+            self._experiment_conditions_section(
+                payload,
+                aliases=_RAMAN_CONDITION_ALIASES,
+                preferred_order=_RAMAN_CONDITION_ORDER,
+            )
+        )
         document.sections.append(self._sample_section(payload))
         document.sections.append(self._peak_section(payload))
         document.sections.append(
@@ -1960,7 +2054,11 @@ class RamanReportBuilder(ReportBuilder):
                 "baseline": settings.get("baseline"),
                 "smooth": settings.get("smooth"),
             },
-            "experiment_conditions": _experiment_condition_rows(payload),
+            "experiment_conditions": _experiment_condition_rows(
+                payload,
+                aliases=_RAMAN_CONDITION_ALIASES,
+                preferred_order=_RAMAN_CONDITION_ORDER,
+            ),
             "current_peaks": _figure_peak_facts(
                 payload,
                 x_label="cm-1",

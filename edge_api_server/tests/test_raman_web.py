@@ -65,7 +65,7 @@ def test_raman_workspace_contains_upload_controls() -> None:
     assert 'id="raman-report-options-modal"' in page
     assert 'id="raman-report-options-save"' in page
     assert 'id="raman-report-options-reset"' in page
-    assert "rist-raman-report-condition-options-v1" in page
+    assert "rist-raman-report-condition-options-v2" in page
     assert "renderReportDatalists" in page
     assert "openReportOptionsEditor" in page
     assert "saveReportOptionsEditor" in page
@@ -80,20 +80,29 @@ def test_raman_workspace_contains_upload_controls() -> None:
     assert "#raman-report-options-modal .raman-library-dialog" in page
     assert "height: min(660px, calc(100dvh - 32px))" in page
     assert "max-height: calc(100dvh - 16px)" in page
-    assert 'data-report-field="laserPreset"' in page
-    assert 'list="raman-report-laser-options"' in page
-    assert "<select data-report-field=\"laserPreset\"" not in page
+    assert 'data-report-field="excitationWavelength"' in page
+    assert 'list="raman-report-excitation-wavelength-options"' in page
+    assert "<select data-report-field=\"excitationWavelength\"" not in page
     assert '<option value="532 nm">' in page
     assert '<option value="785 nm">' in page
-    assert 'data-report-field="exposure"' in page
-    assert 'list="raman-report-exposure-options"' in page
-    assert '<option value="10 s x 3">' in page
-    assert 'data-report-field="sampleDescription"' in page
-    assert 'list="raman-report-sample-options"' in page
-    assert '<option value="air-sensitive sample">' in page
-    assert 'data-report-field="requestPurpose"' in page
-    assert 'list="raman-report-purpose-options"' in page
-    assert '<option value="D/G ratio 비교">' in page
+    assert 'data-report-field="laserCurrent"' in page
+    assert 'list="raman-report-laser-current-options"' in page
+    assert '<option value="10 mA">' in page
+    assert 'data-report-field="excitationPower"' in page
+    assert 'list="raman-report-excitation-power-options"' in page
+    assert '<option value="1 mW">' in page
+    assert 'data-report-field="excitationPowerDensity"' in page
+    assert 'list="raman-report-power-density-options"' in page
+    assert 'data-report-field="ndFilter"' in page
+    assert 'list="raman-report-nd-filter-options"' in page
+    assert 'data-report-field="spectrographCenterWavelength"' in page
+    assert 'list="raman-report-center-wavelength-options"' in page
+    assert 'data-report-field="grating"' in page
+    assert 'list="raman-report-grating-options"' in page
+    assert '<option value="1800 g/mm">' in page
+    assert 'data-report-field="slitWidth"' in page
+    assert 'list="raman-report-slit-width-options"' in page
+    assert 'data-report-label="기타"' in page
     assert "pollReportJob" in page
     assert "setReportDownloadLink" in page
     assert "MESSAGE_AUTO_HIDE_MS = 5000" in page

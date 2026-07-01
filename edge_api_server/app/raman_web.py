@@ -1399,41 +1399,69 @@ _PAGE_SHELL = """
                data-report-label="의뢰자">
       </label>
       <label class="raman-report-meta-field">
-        <span>Laser</span>
-        <input type="text" list="raman-report-laser-options"
-               placeholder="선택 또는 입력"
-               data-report-field="laserPreset"
-               data-report-label="Laser">
+        <span>Excitation Wavelength</span>
+        <input type="text" list="raman-report-excitation-wavelength-options"
+               placeholder="예: 532 nm"
+               data-report-field="excitationWavelength"
+               data-report-label="Excitation Wavelength">
       </label>
       <label class="raman-report-meta-field">
-        <span>Exposure / Accumulation</span>
-        <input type="text" list="raman-report-exposure-options"
-               placeholder="예: 10 s x 3"
-               data-report-field="exposure"
-               data-report-label="Exposure / Accumulation">
+        <span>Laser current</span>
+        <input type="text" list="raman-report-laser-current-options"
+               placeholder="예: 10 mA"
+               data-report-field="laserCurrent"
+               data-report-label="Laser current">
+      </label>
+      <label class="raman-report-meta-field">
+        <span>Excitation Power</span>
+        <input type="text" list="raman-report-excitation-power-options"
+               placeholder="예: 1 mW"
+               data-report-field="excitationPower"
+               data-report-label="Excitation Power">
+      </label>
+      <label class="raman-report-meta-field">
+        <span>Excitation Power density</span>
+        <input type="text" list="raman-report-power-density-options"
+               placeholder="예: 0.1 mW/um2"
+               data-report-field="excitationPowerDensity"
+               data-report-label="Excitation Power density">
+      </label>
+      <label class="raman-report-meta-field">
+        <span>ND filter</span>
+        <input type="text" list="raman-report-nd-filter-options"
+               placeholder="예: ND 1.0"
+               data-report-field="ndFilter"
+               data-report-label="ND filter">
+      </label>
+      <label class="raman-report-meta-field">
+        <span>Spectrograph Center wavelength</span>
+        <input type="text" list="raman-report-center-wavelength-options"
+               placeholder="예: 650 nm"
+               data-report-field="spectrographCenterWavelength"
+               data-report-label="Spectrograph Center wavelength">
+      </label>
+      <label class="raman-report-meta-field">
+        <span>Grating</span>
+        <input type="text" list="raman-report-grating-options"
+               placeholder="예: 1800 g/mm"
+               data-report-field="grating"
+               data-report-label="Grating">
+      </label>
+      <label class="raman-report-meta-field">
+        <span>Slit width</span>
+        <input type="text" list="raman-report-slit-width-options"
+               placeholder="예: 50 um"
+               data-report-field="slitWidth"
+               data-report-label="Slit width">
       </label>
       <label class="raman-report-meta-field is-wide">
-        <span>시료 정보</span>
-        <input type="text" list="raman-report-sample-options"
-               placeholder="예: air-sensitive LiOH sample"
-               data-report-field="sampleDescription"
-               data-report-label="시료 정보">
-      </label>
-      <label class="raman-report-meta-field is-wide">
-        <span>분석 목적</span>
-        <input type="text" list="raman-report-purpose-options"
-               placeholder="예: LiOH/탄산염 피크 확인, D/G ratio 비교"
-               data-report-field="requestPurpose"
-               data-report-label="분석 목적">
-      </label>
-      <label class="raman-report-meta-field is-wide">
-        <span>실험환경 직접 입력</span>
-        <textarea placeholder="예: air exposure minimized, room temperature"
+        <span>기타</span>
+        <textarea placeholder="예: objective, exposure, accumulation, room temperature"
                   data-report-field="conditionDetail"
-                  data-report-label="실험환경 상세"></textarea>
+                  data-report-label="기타"></textarea>
       </label>
     </div>
-    <datalist id="raman-report-laser-options">
+    <datalist id="raman-report-excitation-wavelength-options">
       <option value="532 nm">
       <option value="633 nm">
       <option value="785 nm">
@@ -1442,26 +1470,51 @@ _PAGE_SHELL = """
       <option value="488 nm">
       <option value="780 nm">
     </datalist>
-    <datalist id="raman-report-exposure-options">
-      <option value="1 s x 10">
-      <option value="5 s x 3">
-      <option value="10 s x 3">
-      <option value="30 s x 1">
-      <option value="60 s x 1">
+    <datalist id="raman-report-laser-current-options">
+      <option value="1 mA">
+      <option value="5 mA">
+      <option value="10 mA">
+      <option value="20 mA">
+      <option value="50 mA">
     </datalist>
-    <datalist id="raman-report-sample-options">
-      <option value="air-sensitive sample">
-      <option value="powder sample">
-      <option value="carbon material">
-      <option value="lithium compound">
-      <option value="layered oxide cathode">
+    <datalist id="raman-report-excitation-power-options">
+      <option value="0.1 mW">
+      <option value="0.5 mW">
+      <option value="1 mW">
+      <option value="5 mW">
+      <option value="10 mW">
     </datalist>
-    <datalist id="raman-report-purpose-options">
-      <option value="LiOH/탄산염 피크 확인">
-      <option value="D/G ratio 비교">
-      <option value="탄소 D/G/2D band 확인">
-      <option value="LMR layered oxide mode 확인">
-      <option value="시료 간 Raman 피크 비교">
+    <datalist id="raman-report-power-density-options">
+      <option value="0.01 mW/um2">
+      <option value="0.05 mW/um2">
+      <option value="0.1 mW/um2">
+      <option value="0.5 mW/um2">
+    </datalist>
+    <datalist id="raman-report-nd-filter-options">
+      <option value="None">
+      <option value="ND 0.5">
+      <option value="ND 1.0">
+      <option value="ND 2.0">
+      <option value="ND 3.0">
+    </datalist>
+    <datalist id="raman-report-center-wavelength-options">
+      <option value="500 nm">
+      <option value="650 nm">
+      <option value="750 nm">
+      <option value="1000 nm">
+    </datalist>
+    <datalist id="raman-report-grating-options">
+      <option value="300 g/mm">
+      <option value="600 g/mm">
+      <option value="1200 g/mm">
+      <option value="1800 g/mm">
+      <option value="2400 g/mm">
+    </datalist>
+    <datalist id="raman-report-slit-width-options">
+      <option value="25 um">
+      <option value="50 um">
+      <option value="100 um">
+      <option value="200 um">
     </datalist>
   </details>
 </section>
@@ -1504,7 +1557,7 @@ _PAGE_SHELL = """
     <header class="raman-library-dialog-header">
       <div class="raman-library-dialog-heading">
         <strong id="raman-report-options-title">보고서 선택지 관리</strong>
-        <span>Laser, Exposure 등 입력 후보를 추가하거나 삭제합니다.</span>
+        <span>Raman 실험조건 입력 후보를 추가하거나 삭제합니다.</span>
       </div>
       <button type="button" class="raman-library-dialog-close"
               id="raman-report-options-close" aria-label="닫기">×</button>
@@ -2387,43 +2440,55 @@ _UPLOAD_SCRIPT = """
   var SESSION_DB_NAME = "rist-raman-workspace-v1";
   var SESSION_STORE = "workspace";
   var SESSION_KEY = "current";
-  var REPORT_OPTION_STORAGE_KEY = "rist-raman-report-condition-options-v1";
+  var REPORT_OPTION_STORAGE_KEY = "rist-raman-report-condition-options-v2";
   var REPORT_OPTION_FIELDS = [
     {
-      field: "laserPreset",
-      label: "Laser",
-      datalistId: "raman-report-laser-options",
+      field: "excitationWavelength",
+      label: "Excitation Wavelength",
+      datalistId: "raman-report-excitation-wavelength-options",
       defaults: ["532 nm", "633 nm", "785 nm", "1064 nm", "514 nm", "488 nm", "780 nm"]
     },
     {
-      field: "exposure",
-      label: "Exposure / Accumulation",
-      datalistId: "raman-report-exposure-options",
-      defaults: ["1 s x 10", "5 s x 3", "10 s x 3", "30 s x 1", "60 s x 1"]
+      field: "laserCurrent",
+      label: "Laser current",
+      datalistId: "raman-report-laser-current-options",
+      defaults: ["1 mA", "5 mA", "10 mA", "20 mA", "50 mA"]
     },
     {
-      field: "sampleDescription",
-      label: "시료 정보",
-      datalistId: "raman-report-sample-options",
-      defaults: [
-        "air-sensitive sample",
-        "powder sample",
-        "carbon material",
-        "lithium compound",
-        "layered oxide cathode"
-      ]
+      field: "excitationPower",
+      label: "Excitation Power",
+      datalistId: "raman-report-excitation-power-options",
+      defaults: ["0.1 mW", "0.5 mW", "1 mW", "5 mW", "10 mW"]
     },
     {
-      field: "requestPurpose",
-      label: "분석 목적",
-      datalistId: "raman-report-purpose-options",
-      defaults: [
-        "LiOH/탄산염 피크 확인",
-        "D/G ratio 비교",
-        "탄소 D/G/2D band 확인",
-        "LMR layered oxide mode 확인",
-        "시료 간 Raman 피크 비교"
-      ]
+      field: "excitationPowerDensity",
+      label: "Excitation Power density",
+      datalistId: "raman-report-power-density-options",
+      defaults: ["0.01 mW/um2", "0.05 mW/um2", "0.1 mW/um2", "0.5 mW/um2"]
+    },
+    {
+      field: "ndFilter",
+      label: "ND filter",
+      datalistId: "raman-report-nd-filter-options",
+      defaults: ["None", "ND 0.5", "ND 1.0", "ND 2.0", "ND 3.0"]
+    },
+    {
+      field: "spectrographCenterWavelength",
+      label: "Spectrograph Center wavelength",
+      datalistId: "raman-report-center-wavelength-options",
+      defaults: ["500 nm", "650 nm", "750 nm", "1000 nm"]
+    },
+    {
+      field: "grating",
+      label: "Grating",
+      datalistId: "raman-report-grating-options",
+      defaults: ["300 g/mm", "600 g/mm", "1200 g/mm", "1800 g/mm", "2400 g/mm"]
+    },
+    {
+      field: "slitWidth",
+      label: "Slit width",
+      datalistId: "raman-report-slit-width-options",
+      defaults: ["25 um", "50 um", "100 um", "200 um"]
     }
   ];
   var reportOptionValues = loadReportOptionValues();
@@ -3040,38 +3105,76 @@ _UPLOAD_SCRIPT = """
       "요청자"
     ]));
     setReportControlIfEmpty(
-      "laserPreset",
+      "excitationWavelength",
       normalizedLaserValue(firstMetadataValue(items, [
         "excitation wavelength",
-        "laser",
         "laser wavelength",
         "wavelength",
+        "laser",
         "여기 파장",
+        "레이저 파장",
         "레이저"
       ]))
     );
-    setReportControlIfEmpty("exposure", firstMetadataValue(items, [
-      "exposure time",
-      "exposure",
-      "accumulation",
-      "acquisition time",
-      "integration time",
-      "노출시간",
-      "적산"
+    setReportControlIfEmpty("laserCurrent", firstMetadataValue(items, [
+      "laser current",
+      "current",
+      "laser diode current",
+      "diode current",
+      "레이저 전류",
+      "전류"
     ]));
-    setReportControlIfEmpty("sampleDescription", firstMetadataValue(items, [
-      "sample",
-      "sample name",
-      "sample id",
-      "시료",
-      "시료명"
+    setReportControlIfEmpty("excitationPower", firstMetadataValue(items, [
+      "excitation power",
+      "laser power",
+      "laser output",
+      "power",
+      "레이저 파워",
+      "레이저 출력",
+      "출력"
     ]));
-    setReportControlIfEmpty("requestPurpose", firstMetadataValue(items, [
-      "purpose",
-      "analysis purpose",
-      "request purpose",
-      "분석 목적",
-      "의뢰 목적"
+    setReportControlIfEmpty("excitationPowerDensity", firstMetadataValue(items, [
+      "excitation power density",
+      "laser power density",
+      "power density",
+      "irradiance",
+      "레이저 파워 밀도",
+      "출력 밀도"
+    ]));
+    setReportControlIfEmpty("ndFilter", firstMetadataValue(items, [
+      "nd filter",
+      "neutral density filter",
+      "neutral density",
+      "n.d. filter",
+      "nd",
+      "nd 필터",
+      "필터"
+    ]));
+    setReportControlIfEmpty("spectrographCenterWavelength", firstMetadataValue(items, [
+      "spectrograph center wavelength",
+      "spectrograph centre wavelength",
+      "center wavelength",
+      "centre wavelength",
+      "central wavelength",
+      "spectrograph center",
+      "spectrograph centre",
+      "분광기 중심 파장",
+      "중심 파장"
+    ]));
+    setReportControlIfEmpty("grating", firstMetadataValue(items, [
+      "grating",
+      "grating density",
+      "grating groove",
+      "grooves",
+      "그레이팅"
+    ]));
+    setReportControlIfEmpty("slitWidth", firstMetadataValue(items, [
+      "slit width",
+      "slit",
+      "entrance slit",
+      "slit size",
+      "슬릿 폭",
+      "슬릿"
     ]));
     setReportControlIfEmpty("conditionDetail", metadataDetailText(items));
     scheduleWorkspaceSave();
@@ -3097,8 +3200,6 @@ _UPLOAD_SCRIPT = """
         payload.experimentConditions || {},
         conditions
       );
-      if (conditions["시료 정보"]) payload.sample = conditions["시료 정보"];
-      if (conditions["분석 목적"]) payload.requestPurpose = conditions["분석 목적"];
     }
     return payload;
   }
