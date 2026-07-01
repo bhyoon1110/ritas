@@ -1,6 +1,15 @@
 from __future__ import annotations
 
-from lim.xrd_plot import pdf_peak_warning
+from lim.xrd_plot import (
+    XRD_DOWNLOAD_IMAGE_FORMAT,
+    XRD_IMAGE_FORMAT_SELECTOR,
+    pdf_peak_warning,
+)
+
+
+def test_xrd_download_plot_uses_fixed_jpeg_format() -> None:
+    assert XRD_DOWNLOAD_IMAGE_FORMAT == "jpeg"
+    assert XRD_IMAGE_FORMAT_SELECTOR is False
 
 
 def test_pdf_peak_warning_explains_missing_pdf_files() -> None:

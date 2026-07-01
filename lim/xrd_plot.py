@@ -73,6 +73,9 @@ from rist_common.plotting import (  # noqa: E402
 
 HEADER = ["No.", "2θ, °", "d-value", "Norm. I.", "h k l"]
 
+XRD_DOWNLOAD_IMAGE_FORMAT = "jpeg"
+XRD_IMAGE_FORMAT_SELECTOR = False
+
 # raw 라인 색상(여러 raw 파일을 구분). 첫 번째는 검정(단일 파일 시 기존과 동일).
 RAW_LINE_COLORS = [
     "#000000", "#1f3b73", "#7a1f1f", "#1f5c2e",
@@ -538,9 +541,9 @@ def main():
         fig.update_xaxes(range=xrange)
         fig.update_yaxes(rangemode="tozero")
 
-    # ----- 공통 모듈로 반응형 HTML 출력 (모든 공통 기능 적용) -----
+    # ----- 공통 모듈로 반응형 HTML 출력 (lim/XRD 정책 적용) -----
     #   origin / 반응형 범례 / crosshair / title_edit / trace_highlight /
-    #   image_format_selector + post_body_html(그룹 토글 JS + PDF 피크 표)
+    #   JPG 고정 저장 + post_body_html(그룹 토글 JS + PDF 피크 표)
     #   더블클릭 강조는 raw 라인(각 그룹 첫 trace)만 대상으로 하고,
     #   강조 시 그 raw + 소속 피크(2θ 수직바)가 함께 살아나도록 그룹을 넘긴다.
     raw_line_indices = [idxs[0] for idxs in group_map.values() if idxs]
@@ -560,7 +563,8 @@ def main():
         highlight_pickable=raw_line_indices,
         highlight_groups=highlight_groups,
         image_filename=first_stem,
-        image_format_selector=True,
+        image_format=XRD_DOWNLOAD_IMAGE_FORMAT,
+        image_format_selector=XRD_IMAGE_FORMAT_SELECTOR,
         post_body_html=group_toggle_js + tables_html,
         config={"scrollZoom": True},
     )
