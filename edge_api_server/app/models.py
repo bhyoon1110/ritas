@@ -51,6 +51,7 @@ class CreateJobResponse(ApiModel):
     status: str
     created_at: str = Field(alias="createdAt")
     upload_expires_at: str = Field(alias="uploadExpiresAt")
+    reused: bool = False
 
 
 class UploadFileResponse(ApiModel):

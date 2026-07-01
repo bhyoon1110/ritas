@@ -14,7 +14,7 @@ from fastapi import UploadFile
 from rist_common import get_logger
 
 from .config import Settings
-from .database import Database
+from .database import Database, TERMINAL_STATUSES
 from .errors import ApiException
 from .models import (
     CompleteUploadRequest,
@@ -118,12 +118,28 @@ class EdgeService:
             pk.operator_id,
         )
         if active:
-            raise ApiException(
-                409,
-                "ACTIVE_JOB_ALREADY_EXISTS",
-                "동일 복합 PK의 활성 작업이 이미 존재합니다.",
-                job_id=active["job_id"],
-            )
+            active = self.expire_if_needed(active)
+            if active["status"] not in TERMINAL_STATUSES:
+                response = {
+                    "jobId": active["job_id"],
+                    "status": active["status"],
+                    "createdAt": active["created_at"],
+                    "uploadExpiresAt": active["upload_expires_at"],
+                    "reused": True,
+                }
+                self.save_idempotent_response(
+                    endpoint, idempotency_key, request_hash, 200, response
+                )
+                logger.info(
+                    "기존 활성 작업 재사용 "
+                    "(job_id=%s, request=%s, experiment=%s, equipment=%s, operator=%s)",
+                    active["job_id"],
+                    pk.request_number,
+                    pk.experiment_code,
+                    pk.equipment_code,
+                    pk.operator_id,
+                )
+                return 200, response
 
         created = now_kst()
         expires = created + timedelta(hours=self.settings.upload_expiry_hours)
@@ -180,6 +196,7 @@ class EdgeService:
             "status": "CREATED",
             "createdAt": job["created_at"],
             "uploadExpiresAt": job["upload_expires_at"],
+            "reused": False,
         }
         self.save_idempotent_response(
             endpoint, idempotency_key, request_hash, 201, response

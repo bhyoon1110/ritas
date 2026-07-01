@@ -144,14 +144,19 @@ Idempotency-Key: 771e92ae-d06d-42e3-b2c8-d1846619987c
 접근 통제와 감사 로그에는 Edge 서버가 TCP 연결에서 확인한 원격 IP를
 `observedRemoteIp`로 별도 기록하고 이를 기준으로 사용한다.
 
-#### 성공 응답: `201 Created`
+#### 성공 응답
+
+새 작업을 만든 경우 `201 Created`를 반환한다. 동일 업무 식별 기준
+(`requestNumber`, `experimentCode`, `equipmentCode`, `operatorId`)의 활성 작업이
+이미 있으면 새 작업을 만들지 않고 `200 OK`와 기존 `jobId`를 반환한다.
 
 ```json
 {
   "jobId": "e575b716-25d6-49c6-a7c0-3e2b7136fb2c",
   "status": "CREATED",
   "createdAt": "2026-06-13T14:30:25.123+09:00",
-  "uploadExpiresAt": "2026-06-14T14:30:25.123+09:00"
+  "uploadExpiresAt": "2026-06-14T14:30:25.123+09:00",
+  "reused": false
 }
 ```
 
@@ -162,7 +167,7 @@ Idempotency-Key: 771e92ae-d06d-42e3-b2c8-d1846619987c
 #### 오류
 
 - `400 Bad Request`: PK 또는 sourcePc 정보 오류
-- `409 Conflict`: 동일 복합 PK의 활성 작업이 존재하거나 멱등키 요청 내용이 다름
+- `409 Conflict`: 동일 `Idempotency-Key`의 요청 내용이 최초 요청과 다름
 - `500 Internal Server Error`: 폴더 또는 작업 생성 실패
 
 ### 7.2 파일 업로드
@@ -219,6 +224,24 @@ DELETE /api/v1/jobs/{jobId}/files/{relativePath}
 - `DELETE`는 Edge 저장 파일과 메타데이터를 함께 삭제한다.
 - 세 작업은 `CREATED`, `UPLOADING` 상태에서만 허용한다. `FILES_VERIFIED` 이후
   입력 파일은 불변이며 변경 요청은 `409 Conflict`를 반환한다.
+
+`GET /api/v1/jobs/{jobId}/files` 응답 예시는 다음과 같다.
+
+```json
+{
+  "jobId": "e575b716-25d6-49c6-a7c0-3e2b7136fb2c",
+  "files": [
+    {
+      "fileId": "3fa4be94-2501-4cf7-b60d-616db3e628b8",
+      "relativePath": "raw/Mix2.txt",
+      "sizeBytes": 532481,
+      "sha256": "4f0c93b48e4e8b95c2767a06c45020f3efc3bf45a172838807f90a8d8b43c26d",
+      "status": "UPLOADED",
+      "uploadedAt": "2026-06-13T14:31:02.410+09:00"
+    }
+  ]
+}
+```
 
 #### 오류
 

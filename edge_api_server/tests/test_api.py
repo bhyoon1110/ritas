@@ -65,6 +65,13 @@ def test_file_crud_and_request_list(tmp_path: Path, mariadb: dict) -> None:
     created = client.post("/api/v1/jobs", json=payload, headers=headers(str(uuid4())))
     assert created.status_code == 201
     job_id = created.json()["jobId"]
+    assert created.json()["reused"] is False
+
+    reused = client.post("/api/v1/jobs", json=payload, headers=headers(str(uuid4())))
+    assert reused.status_code == 200
+    assert reused.json()["jobId"] == job_id
+    assert reused.json()["status"] == "CREATED"
+    assert reused.json()["reused"] is True
 
     first = b"first"
     first_digest = hashlib.sha256(first).hexdigest()

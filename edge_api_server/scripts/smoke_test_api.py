@@ -3,8 +3,8 @@
 
 실행 중인 Edge API 서버를 대상으로 모든 엔드포인트와 파일 송수신(업로드 +
 서버측 무결성 검증)을 점검한다. 정상 플로우뿐 아니라 에러/무결성 케이스
-(해시·크기 불일치, 잘못된 sha256, 중복 작업, 멱등성 위반, 헤더 누락,
-없는 작업 조회 등)도 검증한다.
+(해시·크기 불일치, 잘못된 sha256, 중복 작업 재사용, 멱등성 위반,
+헤더 누락, 없는 작업 조회 등)도 검증한다.
 
 사용 예:
     python scripts/smoke_test_api.py
@@ -643,13 +643,16 @@ def check_negative(
     neg_job = created.json()["jobId"]
     reporter.ok("에러 검증용 작업 생성", neg_job)
 
-    # (5) 동일 PK 중복 작업 생성 → 409
+    # (5) 동일 PK 중복 작업 생성 → 기존 활성 jobId 재사용
     dup = client.post(
         "/api/v1/jobs", json=neg_payload, headers=headers(f"neg:dup:{req_no}")
     )
-    expect_error(
-        reporter, "동일 PK 중복 작업", dup, 409, "ACTIVE_JOB_ALREADY_EXISTS"
-    )
+    if expect_status(reporter, "동일 PK 중복 작업 재사용", dup, 200):
+        payload = dup.json()
+        if payload.get("jobId") == neg_job and payload.get("reused") is True:
+            reporter.ok("동일 PK 재사용 응답", payload.get("jobId", ""))
+        else:
+            reporter.fail("동일 PK 재사용 응답", _short_body(dup))
 
     # (6) 멱등성 키 재사용(다른 본문) → 409
     other = job_payload(req_no, args)
