@@ -60,7 +60,13 @@ def test_raman_workspace_contains_upload_controls() -> None:
     assert "normalizedLaserValue" in page
     assert "setReportControlIfEmpty" in page
     assert "experimentConditions" in page
+    assert "실험환경/조건 <span>raw 헤더 자동 추출 + 직접 입력</span>" in page
     assert "raw 헤더 자동 추출 + 직접 입력" in page
+    assert "보고서 정보" not in page
+    assert 'data-report-field="measurementDate"' not in page
+    assert 'data-report-label="측정일"' not in page
+    assert 'data-report-field="requester"' not in page
+    assert 'data-report-label="의뢰자"' not in page
     assert 'id="raman-report-options-open"' in page
     assert 'id="raman-report-options-modal"' in page
     assert 'id="raman-report-options-save"' in page

@@ -1381,23 +1381,12 @@ _PAGE_SHELL = """
 </section>
 <section class="raman-report-meta-band" id="raman-report-meta">
   <details class="raman-report-meta-panel">
-    <summary>보고서 정보 <span>raw 헤더 자동 추출 + 직접 입력</span></summary>
+    <summary>실험환경/조건 <span>raw 헤더 자동 추출 + 직접 입력</span></summary>
     <div class="raman-report-meta-toolbar">
       <button type="button" class="raman-report-option-button"
               id="raman-report-options-open">선택지 관리</button>
     </div>
     <div class="raman-report-meta-grid">
-      <label class="raman-report-meta-field">
-        <span>측정일</span>
-        <input type="date" data-report-field="measurementDate"
-               data-report-label="측정일">
-      </label>
-      <label class="raman-report-meta-field">
-        <span>의뢰자</span>
-        <input type="text" placeholder="예: 홍길동"
-               data-report-field="requester"
-               data-report-label="의뢰자">
-      </label>
       <label class="raman-report-meta-field">
         <span>Excitation Wavelength</span>
         <input type="text" list="raman-report-excitation-wavelength-options"
@@ -3095,17 +3084,6 @@ _UPLOAD_SCRIPT = """
     return "";
   }
 
-  function normalizedDateValue(value) {
-    var text = String(value || "").trim();
-    var match = text.match(/(20\\d{2})[-/.년\\s]*(\\d{1,2})[-/.월\\s]*(\\d{1,2})/);
-    if (!match) return "";
-    return [
-      match[1],
-      String(Number(match[2])).padStart(2, "0"),
-      String(Number(match[3])).padStart(2, "0")
-    ].join("-");
-  }
-
   function normalizedLaserValue(value) {
     var text = String(value || "");
     var match = text.match(/(532|633|785|1064)(?:\\.\\d+)?\\s*nm/i);
@@ -3151,22 +3129,6 @@ _UPLOAD_SCRIPT = """
   function populateReportMetadataFromPayload(payload) {
     var items = sampleMetadataItems(payload || {});
     if (!items.length) return;
-    setReportControlIfEmpty(
-      "measurementDate",
-      normalizedDateValue(firstMetadataValue(items, [
-        "measurement date",
-        "acquisition date",
-        "date",
-        "측정일",
-        "측정 날짜"
-      ]))
-    );
-    setReportControlIfEmpty("requester", firstMetadataValue(items, [
-      "requester",
-      "requested by",
-      "의뢰자",
-      "요청자"
-    ]));
     setReportControlIfEmpty(
       "excitationWavelength",
       normalizedLaserValue(firstMetadataValue(items, [

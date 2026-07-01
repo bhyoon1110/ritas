@@ -1422,7 +1422,7 @@ _PAGE_SHELL = """
 </section>
 <section class="ftir-report-meta-band" id="ftir-report-meta">
   <details class="ftir-report-meta-panel">
-    <summary>보고서 정보 <span>raw 자동 추출 + 직접 입력</span></summary>
+    <summary>실험환경/조건 <span>raw 자동 추출 + 직접 입력</span></summary>
     <div class="ftir-report-meta-toolbar">
       <button type="button" class="ftir-report-option-button"
               id="ftir-report-options-open">선택지 관리</button>

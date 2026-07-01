@@ -60,7 +60,9 @@ def test_ftir_workspace_contains_upload_and_editor_controls() -> None:
     assert "populateReportMetadataFromPayload" in page
     assert "setReportControlIfEmpty" in page
     assert "experimentConditions" in page
+    assert "실험환경/조건 <span>raw 자동 추출 + 직접 입력</span>" in page
     assert "raw 자동 추출 + 직접 입력" in page
+    assert "보고서 정보" not in page
     assert 'id="ftir-report-options-open"' in page
     assert 'id="ftir-report-options-modal"' in page
     assert 'id="ftir-report-options-save"' in page
