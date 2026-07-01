@@ -1765,6 +1765,8 @@ _RAMAN_STACK_SCRIPT = """
     baseShapes: {},
     dragMode: false,
     dragging: null,
+    autoLayout: true,
+    compactTimer: null,
     raf: null
   };
 
@@ -1806,6 +1808,32 @@ _RAMAN_STACK_SCRIPT = """
       order.push(group);
     });
     return order;
+  }
+
+  function traceVisible(index) {
+    var trace = (gd.data || [])[index] || {};
+    return trace.visible !== false && trace.visible !== "legendonly";
+  }
+
+  function sampleVisible(group) {
+    var foundParent = false;
+    var visible = false;
+    Object.keys(state.baseTraces || {}).forEach(function(indexText) {
+      if (visible) return;
+      var index = Number(indexText);
+      var base = state.baseTraces[index];
+      if (!base || base.group !== group || !base.parent) return;
+      foundParent = true;
+      visible = traceVisible(index);
+    });
+    return foundParent ? visible : true;
+  }
+
+  function visibleStackGroups() {
+    var order = state.order.length ? state.order : Object.keys(state.offsets);
+    return order.filter(function(group) {
+      return sampleVisible(group);
+    });
   }
 
   function labelItems() {
@@ -1901,7 +1929,7 @@ _RAMAN_STACK_SCRIPT = """
   }
 
   function fitRange() {
-    var groups = state.order.length ? state.order : Object.keys(state.offsets);
+    var groups = visibleStackGroups();
     if (!groups.length) return [-0.05, 1.65];
     var low = Infinity;
     var high = -Infinity;
@@ -1968,10 +1996,39 @@ _RAMAN_STACK_SCRIPT = """
     });
   }
 
-  function resetStackOffsets() {
-    state.order.forEach(function(group, index) {
-      state.offsets[group] = state.enabled ? index * state.gap : 0;
+  function resetStackOffsets(options) {
+    options = options || {};
+    if (options.auto !== false) state.autoLayout = true;
+    var visibleIndex = 0;
+    state.order.forEach(function(group) {
+      if (state.enabled && sampleVisible(group)) {
+        state.offsets[group] = visibleIndex * state.gap;
+        visibleIndex += 1;
+      } else {
+        state.offsets[group] = 0;
+      }
     });
+  }
+
+  function compactVisibleStackOffsets() {
+    var before = {};
+    Object.keys(state.offsets).forEach(function(group) {
+      before[group] = Number(state.offsets[group] || 0);
+    });
+    resetStackOffsets();
+    return Object.keys(state.offsets).some(function(group) {
+      return Math.abs(Number(state.offsets[group] || 0) - (before[group] || 0)) > 0.0001;
+    });
+  }
+
+  function scheduleStackCompaction() {
+    if (state.compactTimer) return;
+    state.compactTimer = window.setTimeout(function() {
+      state.compactTimer = null;
+      if (!state.initialized) initState();
+      if (!state.enabled || !state.autoLayout || state.dragging) return;
+      if (compactVisibleStackOffsets()) applyOffsets();
+    }, 0);
   }
 
   function plotPoint(ev) {
@@ -2099,6 +2156,7 @@ _RAMAN_STACK_SCRIPT = """
     if (!point) return;
     state.offsets[state.dragging.group] =
       state.dragging.startOffset + (point.y - state.dragging.startY);
+    state.autoLayout = false;
     state.enabled = state.order.some(function(group) {
       return Math.abs(Number(state.offsets[group] || 0)) > 0.001;
     });
@@ -2113,8 +2171,13 @@ _RAMAN_STACK_SCRIPT = """
 
   gd.addEventListener("rist-plot-data-replaced", function() {
     state.initialized = false;
+    state.autoLayout = true;
     setTimeout(initState, 0);
   });
+  gd.on("plotly_restyle", function() {
+    scheduleStackCompaction();
+  });
+  gd.addEventListener("rist-legend-visibility-change", scheduleStackCompaction);
   initState();
 })();
 </script>

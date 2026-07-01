@@ -132,6 +132,11 @@ def test_raman_workspace_contains_upload_controls() -> None:
     assert "rist-raman-stack-control" in page
     assert "rist-raman-ratio-control" in page
     assert "ristRamanStack" in page
+    assert "function visibleStackGroups" in page
+    assert "function compactVisibleStackOffsets" in page
+    assert "function scheduleStackCompaction" in page
+    assert 'gd.addEventListener("rist-legend-visibility-change", scheduleStackCompaction)' in page
+    assert 'gd.on("plotly_restyle", function()' in page
     assert "I(num)/I(den)" in page
     assert "분자 선택" in page
     assert "분모 선택" in page
