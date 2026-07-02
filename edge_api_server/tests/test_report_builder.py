@@ -1246,6 +1246,8 @@ def test_raman_builder_maps_web_analysis_payload(tmp_path) -> None:
     assert document.section("raman_libraries") is None
     peaks = document.section("raman_peaks")
     assert peaks is not None and peaks.table is not None
+    assert peaks.table.alignments == ["center", "center", "center"]
+    assert peaks.table.vertical_alignment == "middle"
     assert peaks.table.rows[0][1] == "518.0 cm-1"
     assert peaks.table.rows[0][2] == "사용자 수정 LiOH peak"
     assert len(peaks.table.rows) == 1
@@ -1351,11 +1353,11 @@ def test_raman_sample_table_normalizes_hangul_and_merges_repeated_file_cells(tmp
     section = document.section("raman_samples")
     assert section is not None and section.table is not None
     assert section.table.merge_columns == [1, 2]
-    assert section.table.alignments == ["center", "left", "right", "right"]
+    assert section.table.alignments == ["center", "center", "center", "center"]
     assert section.table.vertical_alignment == "middle"
     assert [row[1] for row in section.table.rows] == [composed_name] * 3
     assert section.table.to_dict()["mergeColumns"] == [1, 2]
-    assert section.table.to_dict()["alignments"] == ["center", "left", "right", "right"]
+    assert section.table.to_dict()["alignments"] == ["center", "center", "center", "center"]
     assert section.table.to_dict()["verticalAlignment"] == "middle"
 
     rendered = render_requested_report(document, tmp_path, "PPTX")
@@ -1371,7 +1373,6 @@ def test_raman_sample_table_normalizes_hangul_and_merges_repeated_file_cells(tmp
     assert composed_name in sample_slide
     assert sample_slide.count(composed_name) == 1
     assert sample_slide.count(">1340<") == 1
-    assert 'algn="r"' in sample_slide
     assert 'algn="ctr"' in sample_slide
     assert 'anchor="ctr"' in sample_slide
 

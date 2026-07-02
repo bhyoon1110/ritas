@@ -1963,7 +1963,7 @@ class RamanReportBuilder(ReportBuilder):
                 ["시료", "원본 파일", "데이터 포인트", "피크 수"],
                 rows,
                 merge_columns=[1, 2],
-                alignments=["center", "left", "right", "right"],
+                alignments=["center", "center", "center", "center"],
                 vertical_alignment="middle",
             ),
         )
@@ -1979,7 +1979,7 @@ class RamanReportBuilder(ReportBuilder):
                 ["시료", "Raman shift", "Assignment"],
                 rows,
                 merge_columns=[0],
-                alignments=["center", "right", "left"],
+                alignments=["center", "center", "center"],
                 vertical_alignment="middle",
             ),
         )
