@@ -1820,6 +1820,13 @@ def peak_editor_js(div_id: str) -> str:
 #{div_id} .rist-peak-group-apply {{
   order: 18;
 }}
+#{div_id} .legend g.traces.rist-legend-locked-by-hidden-sample,
+#{div_id} .legend g.traces.rist-legend-locked-by-hidden-sample * {{
+  pointer-events: none;
+}}
+#{div_id} .legend g.traces.rist-legend-locked-by-hidden-sample {{
+  opacity: 0.45;
+}}
 </style>
 <script>
 (function() {{
@@ -1911,20 +1918,63 @@ def peak_editor_js(div_id: str) -> str:
     return idxs;
   }}
 
-  function curveFromLegendTarget(target) {{
-    if (!target || !target.closest) return null;
-    var item = target.closest("g.legend g.traces");
-    if (!item) return null;
-    var items = Array.prototype.slice.call(
+  function legendTraceItems() {{
+    return Array.prototype.slice.call(
       gd.querySelectorAll("g.legend g.traces")
     ).filter(function(node) {{
       return node.querySelector("text.legendtext");
     }});
+  }}
+
+  function curveFromLegendDatum(value, depth) {{
+    if (value == null || depth > 4) return null;
+    if (typeof value === "number" || typeof value === "string") {{
+      var direct = Number(value);
+      return Number.isInteger(direct) ? direct : null;
+    }}
+    if (Array.isArray(value)) {{
+      for (var a = 0; a < value.length; a++) {{
+        var arrayCurve = curveFromLegendDatum(value[a], depth + 1);
+        if (arrayCurve != null) return arrayCurve;
+      }}
+      return null;
+    }}
+    if (typeof value !== "object") return null;
+    var explicitKeys = ["curveNumber", "curveIndex", "traceIndex"];
+    for (var k = 0; k < explicitKeys.length; k++) {{
+      var explicit = Number(value[explicitKeys[k]]);
+      if (Number.isInteger(explicit)) return explicit;
+    }}
+    if (value.trace) {{
+      var traceCurve = curveFromLegendDatum(value.trace, depth + 1);
+      if (traceCurve != null) return traceCurve;
+    }}
+    if (value._fullInput) {{
+      var inputCurve = curveFromLegendDatum(value._fullInput, depth + 1);
+      if (inputCurve != null) return inputCurve;
+    }}
+    if ((value.meta || value.name != null || value.x || value.y)
+        && Number.isInteger(Number(value.index))) {{
+      return Number(value.index);
+    }}
+    return null;
+  }}
+
+  function curveFromLegendItem(item) {{
+    if (!item) return null;
+    var datumCurve = curveFromLegendDatum(item.__data__, 0);
+    if (datumCurve != null) return datumCurve;
+    var items = legendTraceItems();
     var pos = items.indexOf(item);
     if (pos < 0) return null;
     var idxs = visibleLegendTraceIndexes();
     var curve = Number(idxs[pos]);
     return Number.isInteger(curve) ? curve : null;
+  }}
+
+  function curveFromLegendTarget(target) {{
+    if (!target || !target.closest) return null;
+    return curveFromLegendItem(target.closest("g.legend g.traces"));
   }}
 
   function labelKeyForTrace(curve) {{
@@ -2546,6 +2596,16 @@ def peak_editor_js(div_id: str) -> str:
     return true;
   }}
 
+  function updateHiddenSamplePeakLegendLocks() {{
+    legendTraceItems().forEach(function(item) {{
+      var curve = curveFromLegendItem(item);
+      var locked = !!shouldBlockHiddenSamplePeakCurve(curve);
+      item.classList.toggle("rist-legend-locked-by-hidden-sample", locked);
+      if (locked) item.setAttribute("aria-disabled", "true");
+      else item.removeAttribute("aria-disabled");
+    }});
+  }}
+
   function blockHiddenSamplePeakLegendToggle(ev) {{
     var curve = curveFromLegendEvent(ev);
     if (!shouldBlockHiddenSamplePeakCurve(curve)) return;
@@ -2553,8 +2613,12 @@ def peak_editor_js(div_id: str) -> str:
   }}
 
   function interceptHiddenSamplePeakLegendToggle(ev) {{
-    var curve = curveFromLegendTarget(ev.target);
-    if (!shouldBlockHiddenSamplePeakCurve(curve)) return;
+    if (!gd.contains(ev.target)) return;
+    var lockedItem = ev.target && ev.target.closest
+      ? ev.target.closest("g.traces.rist-legend-locked-by-hidden-sample")
+      : null;
+    var curve = lockedItem ? curveFromLegendItem(lockedItem) : curveFromLegendTarget(ev.target);
+    if (!lockedItem && !shouldBlockHiddenSamplePeakCurve(curve)) return;
     ev.preventDefault();
     ev.stopPropagation();
     if (ev.stopImmediatePropagation) ev.stopImmediatePropagation();
@@ -2977,24 +3041,31 @@ def peak_editor_js(div_id: str) -> str:
     updateSelectButton();
     syncVisibility();
   }});
-  ["pointerdown", "mousedown", "click", "dblclick"].forEach(function(type) {{
+  ["pointerdown", "mousedown", "click", "dblclick", "touchstart", "touchend"].forEach(function(type) {{
+    document.addEventListener(type, interceptHiddenSamplePeakLegendToggle, true);
     gd.addEventListener(type, interceptHiddenSamplePeakLegendToggle, true);
   }});
   gd.on("plotly_legendclick", blockHiddenSamplePeakLegendToggle);
   gd.on("plotly_legenddoubleclick", blockHiddenSamplePeakLegendToggle);
+  gd.on("plotly_afterplot", updateHiddenSamplePeakLegendLocks);
   gd.on("plotly_restyle", function(ev) {{
+    updateHiddenSamplePeakLegendLocks();
     setTimeout(function() {{
       syncSampleChildren(ev);
       syncHiddenSampleChildren();
       syncVisibility();
+      updateHiddenSamplePeakLegendLocks();
     }}, 0);
   }});
   gd.addEventListener("rist-legend-visibility-change", function() {{
+    updateHiddenSamplePeakLegendLocks();
     setTimeout(function() {{
       syncHiddenSampleChildren();
       syncVisibility();
+      updateHiddenSamplePeakLegendLocks();
     }}, 0);
   }});
+  updateHiddenSamplePeakLegendLocks();
 }})();
 </script>
 """

@@ -332,14 +332,23 @@ def test_shared_peak_editor_adds_peak_controls(tmp_path) -> None:
     assert "childCurvesForSample" in html
     assert "sampleParentVisible" in html
     assert "visibleLegendTraceIndexes" in html
+    assert "legendTraceItems" in html
+    assert "curveFromLegendDatum" in html
+    assert "curveFromLegendItem" in html
     assert "curveFromLegendTarget" in html
     assert "syncHiddenSampleChildren" in html
     assert "!sampleParentVisible(sampleGroup(i))" in html
     assert "blockHiddenSamplePeakLegendToggle" in html
     assert "interceptHiddenSamplePeakLegendToggle" in html
-    assert '"pointerdown", "mousedown", "click", "dblclick"' in html
+    assert "updateHiddenSamplePeakLegendLocks" in html
+    assert "rist-legend-locked-by-hidden-sample" in html
+    assert "pointer-events: none" in html
+    assert 'item.setAttribute("aria-disabled", "true")' in html
+    assert '"pointerdown", "mousedown", "click", "dblclick", "touchstart", "touchend"' in html
+    assert "document.addEventListener(type, interceptHiddenSamplePeakLegendToggle, true)" in html
     assert 'gd.on("plotly_legendclick", blockHiddenSamplePeakLegendToggle)' in html
     assert 'gd.on("plotly_legenddoubleclick", blockHiddenSamplePeakLegendToggle)' in html
+    assert 'gd.on("plotly_afterplot", updateHiddenSamplePeakLegendLocks)' in html
     assert "peakMatchesCurrentSensitivity" in html
     assert "peakMatchesCurrentSensitivity(childCurve) ? visible : false" in html
     assert "rist-shape-tool-button" in html
