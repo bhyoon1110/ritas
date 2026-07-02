@@ -333,6 +333,9 @@ def test_shared_peak_editor_adds_peak_controls(tmp_path) -> None:
     assert "sampleParentVisible" in html
     assert "syncHiddenSampleChildren" in html
     assert "!sampleParentVisible(sampleGroup(i))" in html
+    assert "blockHiddenSamplePeakLegendToggle" in html
+    assert 'gd.on("plotly_legendclick", blockHiddenSamplePeakLegendToggle)' in html
+    assert 'gd.on("plotly_legenddoubleclick", blockHiddenSamplePeakLegendToggle)' in html
     assert "peakMatchesCurrentSensitivity" in html
     assert "peakMatchesCurrentSensitivity(childCurve) ? visible : false" in html
     assert "rist-shape-tool-button" in html

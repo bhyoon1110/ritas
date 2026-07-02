@@ -2503,6 +2503,23 @@ def peak_editor_js(div_id: str) -> str:
       }});
   }}
 
+  function curveFromLegendEvent(ev) {{
+    if (!ev) return null;
+    var curve = Number(ev.curveNumber);
+    if (Number.isInteger(curve)) return curve;
+    if (ev.fullData && Number.isInteger(Number(ev.fullData.index))) {{
+      return Number(ev.fullData.index);
+    }}
+    return null;
+  }}
+
+  function blockHiddenSamplePeakLegendToggle(ev) {{
+    var curve = curveFromLegendEvent(ev);
+    if (curve == null || !isPeakCurve(curve)) return;
+    if (sampleParentVisible(sampleGroup(curve))) return;
+    return false;
+  }}
+
   function dataPointFromEvent(ev) {{
     var fl = gd._fullLayout;
     if (!fl || !fl.xaxis || !fl.yaxis) return null;
@@ -2919,6 +2936,8 @@ def peak_editor_js(div_id: str) -> str:
     updateSelectButton();
     syncVisibility();
   }});
+  gd.on("plotly_legendclick", blockHiddenSamplePeakLegendToggle);
+  gd.on("plotly_legenddoubleclick", blockHiddenSamplePeakLegendToggle);
   gd.on("plotly_restyle", function(ev) {{
     setTimeout(function() {{
       syncSampleChildren(ev);
