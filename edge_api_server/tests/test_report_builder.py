@@ -1037,6 +1037,35 @@ def test_pdf_renderer_splits_oversized_table_rows(tmp_path) -> None:
     assert rendered.read_bytes().startswith(b"%PDF-")
 
 
+def test_pdf_renderer_does_not_span_merged_table_cells_across_pages(tmp_path) -> None:
+    rows = [
+        [f"시료 {index + 1}", "같은 원본 파일.txt", "1340", str((index % 4) + 3)]
+        for index in range(80)
+    ]
+    document = ReportDocument(
+        job_id="merged-table",
+        title="병합 테이블 PDF 테스트",
+        experiment_code="RAMAN",
+        pk={"requestNumber": "REQ-MERGE"},
+        generated_at="2026-07-03T01:30:00+09:00",
+        sections=[
+            ReportSection(
+                "table",
+                "시료 및 피크 수",
+                table=ReportTable(
+                    columns=["시료", "원본 파일", "데이터 포인트", "피크 수"],
+                    rows=rows,
+                    merge_columns=[1, 2],
+                ),
+            )
+        ],
+    )
+
+    rendered = render_requested_report(document, tmp_path, "PDF")
+
+    assert rendered.read_bytes().startswith(b"%PDF-")
+
+
 def test_report_package_excludes_internal_json_and_optionally_includes_raw(tmp_path) -> None:
     analysis = [{"relativePath": "verdict.json", "data": _verdict()}]
     document = FtirReportBuilder().build(_job(), analysis)

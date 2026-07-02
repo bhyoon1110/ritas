@@ -781,21 +781,23 @@ def _pdf_report_table(
     table_model = section.table
     body_rows = _normalized_table_rows(table_model)
     merge_columns = _valid_merge_columns(table_model)
+    _merge_spans, merge_covered = _table_vertical_merge_spans(body_rows, merge_columns)
     rows = [
         [Paragraph(_pdf_text(column), styles["table_head"]) for column in columns]
     ]
-    body_offsets: list[tuple[int, int]] = []
-    for row in body_rows:
+    for row_idx, row in enumerate(body_rows):
+        display_row = [
+            "" if (row_idx, col_idx) in merge_covered else value
+            for col_idx, value in enumerate(row)
+        ]
         split_rows = _pdf_split_table_row(
-            row,
+            display_row,
             column_count=column_count,
             col_widths=col_widths,
             style=styles["table_cell"],
         )
-        body_offsets.append((len(rows), len(split_rows)))
         rows.extend(split_rows)
 
-    merge_spans, _covered = _table_vertical_merge_spans(body_rows, merge_columns)
     style_commands = [
         ("BACKGROUND", (0, 0), (-1, 0), _pdf_color("EAF2FD")),
         ("BACKGROUND", (0, 1), (-1, -1), colors.white),
@@ -807,11 +809,6 @@ def _pdf_report_table(
         ("TOPPADDING", (0, 0), (-1, -1), 4),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
     ]
-    for (row_idx, col_idx), span in merge_spans.items():
-        start_row = body_offsets[row_idx][0]
-        end_offset = body_offsets[row_idx + span - 1]
-        end_row = end_offset[0] + end_offset[1] - 1
-        style_commands.append(("SPAN", (col_idx, start_row), (col_idx, end_row)))
 
     table = Table(
         rows,
