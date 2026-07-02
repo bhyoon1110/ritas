@@ -836,6 +836,10 @@ def test_pptx_renderer_creates_openxml_package(tmp_path) -> None:
     assert "분석 요약" in slide_text
     assert "고객 보고서용 요약" in slide_text
     assert "해석 및 검토사항" in slide_text
+    assert 'sz="2150"' in slide_text
+    assert 'sz="2050"' in slide_text
+    assert 'sz="1950"' in slide_text
+    assert '<a:spcPct val="135000"/>' in slide_text
 
 
 def test_pptx_renderer_normalizes_latex_math_source(tmp_path) -> None:
@@ -916,9 +920,9 @@ def test_pptx_renderer_lets_powerpoint_wrap_korean_text(tmp_path) -> None:
         )
     assert long_sentence in slide_text
     assert 'wrap="square"' in slide_text
-    assert 'fontScale="78000"' in slide_text
-    assert 'lnSpcReduction="10000"' in slide_text
-    assert '<a:lnSpc><a:spcPct val="115000"/></a:lnSpc>' in slide_text
+    assert 'fontScale="90000"' in slide_text
+    assert 'lnSpcReduction="0"' in slide_text
+    assert '<a:lnSpc><a:spcPct val="125000"/></a:lnSpc>' in slide_text
 
 
 def test_pdf_renderer_creates_pdf_file(tmp_path) -> None:

@@ -1024,7 +1024,7 @@ def _pptx_body_pr(
     return (
         f'<a:bodyPr wrap="square" anchor="{anchor_value}" rtlCol="0" '
         f'lIns="{inset}" tIns="{inset}" rIns="{inset}" bIns="{inset}">'
-        '<a:normAutofit fontScale="78000" lnSpcReduction="10000"/>'
+        '<a:normAutofit fontScale="90000" lnSpcReduction="0"/>'
         "</a:bodyPr>"
     )
 
@@ -1051,8 +1051,13 @@ def _pptx_paragraph(
     color: str = PPTX_TEXT,
     bold: bool = False,
     bullet: bool = False,
+    line_spacing_pct: int = 125000,
+    space_after_pts: int = 500,
 ) -> str:
-    spacing = '<a:lnSpc><a:spcPct val="115000"/></a:lnSpc><a:spcAft><a:spcPts val="350"/></a:spcAft>'
+    spacing = (
+        f'<a:lnSpc><a:spcPct val="{line_spacing_pct}"/></a:lnSpc>'
+        f'<a:spcAft><a:spcPts val="{space_after_pts}"/></a:spcAft>'
+    )
     bullet_pr = (
         f'<a:pPr marL="228600" indent="-171450">{spacing}<a:buChar char="•"/></a:pPr>'
         if bullet
@@ -1075,6 +1080,8 @@ def _pptx_paragraphs(
     color: str = PPTX_TEXT,
     bold: bool = False,
     bullet: bool = False,
+    line_spacing_pct: int = 125000,
+    space_after_pts: int = 500,
 ) -> str:
     if not lines:
         return "<a:p/>"
@@ -1085,6 +1092,8 @@ def _pptx_paragraphs(
             color=color,
             bold=bold,
             bullet=bullet,
+            line_spacing_pct=line_spacing_pct,
+            space_after_pts=space_after_pts,
         )
         for line in lines
     )
@@ -1122,6 +1131,8 @@ def _pptx_shape(
     bullet: bool = False,
     anchor: str = "t",
     inset: int = 91440,
+    line_spacing_pct: int = 125000,
+    space_after_pts: int = 500,
 ) -> str:
     paragraphs = _pptx_paragraphs(
         text or [],
@@ -1129,6 +1140,8 @@ def _pptx_shape(
         color=color,
         bold=bold,
         bullet=bullet,
+        line_spacing_pct=line_spacing_pct,
+        space_after_pts=space_after_pts,
     )
     return f"""
     <p:sp><p:nvSpPr><p:cNvPr id="{shape_id}" name="{html.escape(name)}"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>
@@ -1152,6 +1165,8 @@ def _pptx_text_shape(
     bullet: bool = False,
     anchor: str = "t",
     inset: int = 45720,
+    line_spacing_pct: int = 125000,
+    space_after_pts: int = 500,
 ) -> str:
     return _pptx_shape(
         shape_id,
@@ -1169,6 +1184,8 @@ def _pptx_text_shape(
         bullet=bullet,
         anchor=anchor,
         inset=inset,
+        line_spacing_pct=line_spacing_pct,
+        space_after_pts=space_after_pts,
     )
 
 
@@ -1395,7 +1412,7 @@ def _pptx_overview_slide(document: ReportDocument) -> str:
                 fill=PPTX_CARD,
                 line=PPTX_LINE,
                 text=["고객 보고서용 요약"],
-                font_size=1700,
+                font_size=2150,
                 color=PPTX_NAVY,
                 bold=True,
                 inset=182880,
@@ -1408,9 +1425,11 @@ def _pptx_overview_slide(document: ReportDocument) -> str:
                 cx=4815840,
                 cy=2499360,
                 lines=summary_lines,
-                font_size=1650,
+                font_size=2050,
                 color=PPTX_TEXT,
                 inset=0,
+                line_spacing_pct=135000,
+                space_after_pts=750,
             ),
             _pptx_shape(
                 12,
@@ -1422,7 +1441,7 @@ def _pptx_overview_slide(document: ReportDocument) -> str:
                 fill=PPTX_CARD,
                 line=PPTX_LINE,
                 text=["핵심 관찰사항"],
-                font_size=1700,
+                font_size=2150,
                 color=PPTX_NAVY,
                 bold=True,
                 inset=182880,
@@ -1435,10 +1454,12 @@ def _pptx_overview_slide(document: ReportDocument) -> str:
                 cx=5120640,
                 cy=2499360,
                 lines=finding_lines,
-                font_size=1550,
+                font_size=1950,
                 color=PPTX_TEXT,
                 bullet=True,
                 inset=0,
+                line_spacing_pct=135000,
+                space_after_pts=700,
             ),
         ]
     )
