@@ -1024,7 +1024,7 @@ def _pptx_body_pr(
     return (
         f'<a:bodyPr wrap="square" anchor="{anchor_value}" rtlCol="0" '
         f'lIns="{inset}" tIns="{inset}" rIns="{inset}" bIns="{inset}">'
-        '<a:normAutofit fontScale="65000" lnSpcReduction="25000"/>'
+        '<a:normAutofit fontScale="78000" lnSpcReduction="10000"/>'
         "</a:bodyPr>"
     )
 
@@ -1052,10 +1052,11 @@ def _pptx_paragraph(
     bold: bool = False,
     bullet: bool = False,
 ) -> str:
+    spacing = '<a:lnSpc><a:spcPct val="115000"/></a:lnSpc><a:spcAft><a:spcPts val="350"/></a:spcAft>'
     bullet_pr = (
-        '<a:pPr marL="228600" indent="-171450"><a:buChar char="•"/></a:pPr>'
+        f'<a:pPr marL="228600" indent="-171450">{spacing}<a:buChar char="•"/></a:pPr>'
         if bullet
-        else '<a:pPr marL="0" indent="0"/>'
+        else f'<a:pPr marL="0" indent="0">{spacing}</a:pPr>'
     )
     return (
         f"<a:p>{bullet_pr}<a:r>{_pptx_rpr(font_size=font_size, color=color, bold=bold)}"
@@ -1407,7 +1408,7 @@ def _pptx_overview_slide(document: ReportDocument) -> str:
                 cx=4815840,
                 cy=2499360,
                 lines=summary_lines,
-                font_size=1450,
+                font_size=1650,
                 color=PPTX_TEXT,
                 inset=0,
             ),
@@ -1434,7 +1435,7 @@ def _pptx_overview_slide(document: ReportDocument) -> str:
                 cx=5120640,
                 cy=2499360,
                 lines=finding_lines,
-                font_size=1400,
+                font_size=1550,
                 color=PPTX_TEXT,
                 bullet=True,
                 inset=0,
@@ -1458,7 +1459,7 @@ def _pptx_overview_slide(document: ReportDocument) -> str:
                 fill=PPTX_CARD,
                 line=PPTX_LINE,
                 text=[label, str(value or "-")],
-                font_size=1450,
+                font_size=1500,
                 color=PPTX_TEXT,
                 inset=137160,
             )
@@ -1488,8 +1489,8 @@ def _pptx_insights_slide(document: ReportDocument) -> str:
     shapes = _pptx_header_shapes(document, "해석 및 검토사항")
     card_x = PPTX_MARGIN_X
     card_w = 10972800
-    card_h = 1371600
-    card_gap = 274320
+    card_h = 1493520
+    card_gap = 182880
     shape_id = 10
     for idx, (section_id, heading, accent) in enumerate(cards):
         section = document.section(section_id)
@@ -1533,7 +1534,7 @@ def _pptx_insights_slide(document: ReportDocument) -> str:
                     cx=2743200,
                     cy=365760,
                     lines=[heading],
-                    font_size=1650,
+                    font_size=1750,
                     color=PPTX_NAVY,
                     bold=True,
                     inset=0,
@@ -1544,9 +1545,9 @@ def _pptx_insights_slide(document: ReportDocument) -> str:
                     x=card_x + 274320,
                     y=y + 594360,
                     cx=10363200,
-                    cy=640080,
+                    cy=731520,
                     lines=lines,
-                    font_size=1300,
+                    font_size=1500,
                     color=PPTX_TEXT,
                     inset=0,
                 ),
@@ -1565,7 +1566,7 @@ def _pptx_text_slide(document: ReportDocument, title: str, lines: list[str]) -> 
         line[2:].strip() if line.startswith("- ") else line for line in display_lines
     ]
     line_count = max(1, len(display_lines))
-    card_h = min(4937760, max(1600200, 914400 + line_count * 411480))
+    card_h = min(4937760, max(1371600, 822960 + line_count * 457200))
     text_h = max(822960, card_h - 640080)
     shapes.extend(
         [
@@ -1587,7 +1588,7 @@ def _pptx_text_slide(document: ReportDocument, title: str, lines: list[str]) -> 
                 cx=10363200,
                 cy=text_h,
                 lines=display_lines,
-                font_size=1750,
+                font_size=1900,
                 color=PPTX_TEXT,
                 bullet=has_bullets,
                 inset=0,
@@ -1627,7 +1628,7 @@ def _pptx_table_slide(document: ReportDocument, section: ReportSection) -> str:
                 fill=PPTX_NAVY,
                 line="FFFFFF",
                 text=[str(column)],
-                font_size=1450,
+                font_size=1500,
                 color="FFFFFF",
                 bold=True,
                 anchor="mid",
@@ -1650,7 +1651,7 @@ def _pptx_table_slide(document: ReportDocument, section: ReportSection) -> str:
                     fill=fill,
                     line=PPTX_LINE,
                     text=[str(value)],
-                    font_size=1300,
+                    font_size=1400,
                     color=PPTX_TEXT,
                     inset=68580,
                 )
@@ -1713,7 +1714,7 @@ def _pptx_image_slide(
                 fill=PPTX_CARD,
                 line=PPTX_LINE,
                 text=lines[:2],
-                font_size=1500,
+                font_size=1600,
                 color=PPTX_TEXT,
                 inset=137160,
             )

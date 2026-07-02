@@ -402,7 +402,13 @@ def test_ftir_web_payload_report_uses_current_graph_facts() -> None:
 
     groups = document.section("functional_groups")
     assert groups is not None and groups.table is not None
-    assert groups.table.rows == [["3_Melamine.0", "3381.6 cm-1", "N-H stretch"]]
+    assert groups.table.columns == ["작용기/assignment 후보", "근거 피크 위치", "관찰 범위"]
+    assert groups.table.rows == [["N-H stretch", "3381.6 cm-1", "1개 시료"]]
+
+    current_peaks = document.section("current_peaks")
+    assert current_peaks is not None and current_peaks.table is not None
+    assert current_peaks.table.columns == ["시료", "Wavenumber", "피크 이름"]
+    assert current_peaks.table.rows == [["3_Melamine.0", "3381.6 cm-1", "N-H stretch"]]
 
     spec = FtirReportBuilder().llm_slots(_job(), analysis)
     assert spec is not None
@@ -910,7 +916,9 @@ def test_pptx_renderer_lets_powerpoint_wrap_korean_text(tmp_path) -> None:
         )
     assert long_sentence in slide_text
     assert 'wrap="square"' in slide_text
-    assert "normAutofit" in slide_text
+    assert 'fontScale="78000"' in slide_text
+    assert 'lnSpcReduction="10000"' in slide_text
+    assert '<a:lnSpc><a:spcPct val="115000"/></a:lnSpc>' in slide_text
 
 
 def test_pdf_renderer_creates_pdf_file(tmp_path) -> None:

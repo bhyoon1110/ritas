@@ -788,6 +788,49 @@ def _figure_peak_rows(payload: dict[str, Any], *, x_label: str) -> list[list[str
     return rows
 
 
+def _figure_assignment_summary_rows(
+    payload: dict[str, Any],
+    *,
+    x_label: str,
+) -> list[list[str]]:
+    grouped: dict[str, dict[str, set[str]]] = {}
+    for peak in _figure_peak_facts(payload, x_label=x_label, max_items=80):
+        assignments = peak.get("assignment_names") or []
+        if not assignments:
+            continue
+        position = str(peak.get("position_text") or "-")
+        sample = str(peak.get("sample") or "-")
+        for assignment in assignments:
+            name = _clean_report_text(assignment)
+            if not name:
+                continue
+            item = grouped.setdefault(name, {"positions": set(), "samples": set()})
+            if position and position != "-":
+                item["positions"].add(position)
+            if sample and sample != "-":
+                item["samples"].add(sample)
+    rows: list[list[str]] = []
+    for assignment, item in grouped.items():
+        positions = sorted(
+            item["positions"],
+            key=lambda value: float(match.group(0))
+            if (match := re.search(r"-?\d+(?:\.\d+)?", value))
+            else float("inf"),
+        )
+        sample_count = len(item["samples"])
+        observed = f"{sample_count}개 시료" if sample_count else "-"
+        rows.append(
+            [
+                assignment,
+                ", ".join(positions[:4]) or "-",
+                observed,
+            ]
+        )
+        if len(rows) >= 12:
+            break
+    return rows
+
+
 def _figure_layout(payload: dict[str, Any]) -> dict[str, Any]:
     figure = payload.get("figure")
     if not isinstance(figure, dict):
@@ -1448,23 +1491,12 @@ class FtirReportBuilder(ReportBuilder):
         findings = verdict.get("findings") or {}
         groups = findings.get("functional_groups") if isinstance(findings, dict) else None
         if not isinstance(groups, list) or not groups:
-            rows = []
-            for peak in _figure_peak_facts(verdict, x_label="cm-1", max_items=60):
-                assignments = peak.get("assignment_names") or []
-                if not assignments:
-                    continue
-                rows.append(
-                    [
-                        str(peak.get("sample") or "-"),
-                        str(peak.get("position_text") or "-"),
-                        ", ".join(str(item) for item in assignments),
-                    ]
-                )
+            rows = _figure_assignment_summary_rows(verdict, x_label="cm-1")
             if rows:
                 return ReportSection(
                     "functional_groups",
                     "작용기 소견",
-                    table=ReportTable(["시료", "Wavenumber", "피크/작용기 assignment"], rows),
+                    table=ReportTable(["작용기/assignment 후보", "근거 피크 위치", "관찰 범위"], rows),
                 )
             return ReportSection(
                 "functional_groups",
