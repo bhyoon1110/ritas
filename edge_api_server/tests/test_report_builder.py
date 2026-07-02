@@ -836,10 +836,12 @@ def test_pptx_renderer_creates_openxml_package(tmp_path) -> None:
     assert "분석 요약" in slide_text
     assert "고객 보고서용 요약" in slide_text
     assert "해석 및 검토사항" in slide_text
-    assert 'sz="2150"' in slide_text
-    assert 'sz="2050"' in slide_text
-    assert 'sz="1950"' in slide_text
-    assert '<a:spcPct val="135000"/>' in slide_text
+    assert "2026-06-18 10:00" in slide_text
+    assert "2026-06-18T10:00:00+09:00" not in slide_text
+    assert 'sz="1900"' in slide_text
+    assert 'sz="1800"' in slide_text
+    assert 'sz="1750"' in slide_text
+    assert '<a:spcPct val="125000"/>' in slide_text
 
 
 def test_pptx_renderer_normalizes_latex_math_source(tmp_path) -> None:

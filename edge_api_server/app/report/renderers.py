@@ -14,6 +14,7 @@ import shutil
 import subprocess
 import tempfile
 import zipfile
+from datetime import datetime
 from pathlib import Path
 
 from reportlab.lib import colors
@@ -209,6 +210,17 @@ def _clean_report_meta_value(value: object) -> str:
     return text
 
 
+def _short_report_datetime(value: object) -> str:
+    text = _clean_report_meta_value(value)
+    if not text:
+        return ""
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return text
+    return parsed.strftime("%Y-%m-%d %H:%M")
+
+
 def _document_metadata(
     document: ReportDocument,
     *,
@@ -219,7 +231,7 @@ def _document_metadata(
     equipment = _clean_report_meta_value(document.pk.get("equipmentCode"))
     operator = _clean_report_meta_value(document.pk.get("operatorId"))
     rows = [
-        ("의뢰번호", request_number or ("Spring Boot 연동 후 확정" if include_pending else "")),
+        ("의뢰번호", request_number or ("Spring Boot 연동 예정" if include_pending else "")),
         ("실험코드", _clean_report_meta_value(document.experiment_code)),
     ]
     if equipment:
@@ -227,9 +239,10 @@ def _document_metadata(
     if operator:
         rows.append(("실험자", operator))
     elif include_pending:
-        rows.append(("실험자", "회원/SSO 연동 후 확정"))
-    if include_generated and _clean_report_meta_value(document.generated_at):
-        rows.append(("생성시각", _clean_report_meta_value(document.generated_at)))
+        rows.append(("실험자", "회원/SSO 연동 예정"))
+    generated_at = _short_report_datetime(document.generated_at)
+    if include_generated and generated_at:
+        rows.append(("생성시각", generated_at))
     return [(label, value) for label, value in rows if value]
 
 
@@ -1248,7 +1261,7 @@ def _pptx_footer_shape(document: ReportDocument, shape_id: int) -> str:
         for item in [
             "RIST Edge Report",
             request_number,
-            _clean_report_meta_value(document.generated_at),
+            _short_report_datetime(document.generated_at),
         ]
         if item
     )
@@ -1312,8 +1325,8 @@ def _pptx_title_slide(document: ReportDocument) -> str:
     x = 762000
     y = 3962400
     card_w = 2057400
-    card_h = 731520
-    gap = 182880
+    card_h = 822960
+    gap = 152400
     for idx, (label, value) in enumerate(meta):
         row = idx // 4
         col = idx % 4
@@ -1330,10 +1343,12 @@ def _pptx_title_slide(document: ReportDocument) -> str:
                 fill=PPTX_CARD,
                 line=PPTX_LINE,
                 text=[label, str(value or "-")],
-                font_size=1450,
+                font_size=1250,
                 color=PPTX_TEXT,
                 bold=False,
-                inset=137160,
+                inset=91440,
+                line_spacing_pct=108000,
+                space_after_pts=100,
             )
         )
     return _pptx_frame(shapes, background=PPTX_BG)
@@ -1412,7 +1427,7 @@ def _pptx_overview_slide(document: ReportDocument) -> str:
                 fill=PPTX_CARD,
                 line=PPTX_LINE,
                 text=["고객 보고서용 요약"],
-                font_size=2150,
+                font_size=1900,
                 color=PPTX_NAVY,
                 bold=True,
                 inset=182880,
@@ -1425,11 +1440,11 @@ def _pptx_overview_slide(document: ReportDocument) -> str:
                 cx=4815840,
                 cy=2499360,
                 lines=summary_lines,
-                font_size=2050,
+                font_size=1800,
                 color=PPTX_TEXT,
                 inset=0,
-                line_spacing_pct=135000,
-                space_after_pts=750,
+                line_spacing_pct=125000,
+                space_after_pts=500,
             ),
             _pptx_shape(
                 12,
@@ -1441,7 +1456,7 @@ def _pptx_overview_slide(document: ReportDocument) -> str:
                 fill=PPTX_CARD,
                 line=PPTX_LINE,
                 text=["핵심 관찰사항"],
-                font_size=2150,
+                font_size=1900,
                 color=PPTX_NAVY,
                 bold=True,
                 inset=182880,
@@ -1454,12 +1469,12 @@ def _pptx_overview_slide(document: ReportDocument) -> str:
                 cx=5120640,
                 cy=2499360,
                 lines=finding_lines,
-                font_size=1950,
+                font_size=1750,
                 color=PPTX_TEXT,
                 bullet=True,
                 inset=0,
-                line_spacing_pct=135000,
-                space_after_pts=700,
+                line_spacing_pct=125000,
+                space_after_pts=450,
             ),
         ]
     )
