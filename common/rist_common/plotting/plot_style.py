@@ -1890,6 +1890,16 @@ def peak_editor_js(div_id: str) -> str:
     return !!meta.rist_sample_parent;
   }}
 
+  function sampleParentVisible(group) {{
+    if (!group) return true;
+    var data = gd.data || [];
+    for (var i = 0; i < data.length; i++) {{
+      if (!isSampleParent(i) || sampleGroup(i) !== group) continue;
+      return traceVisible(i);
+    }}
+    return true;
+  }}
+
   function labelKeyForTrace(curve) {{
     var meta = traceMeta(curve);
     if (meta.rist_legend_edit_group) return String(meta.rist_legend_edit_group);
@@ -2348,6 +2358,7 @@ def peak_editor_js(div_id: str) -> str:
     for (var i = 0; i < data.length; i++) {{
       var tr = data[i];
       if (!tr || !isPeakCurve(i) || !traceVisible(i)) continue;
+      if (!sampleParentVisible(sampleGroup(i))) continue;
       var xs = tr.x || [];
       var ys = tr.y || [];
       if (!xs.length || !ys.length) continue;
@@ -2380,7 +2391,8 @@ def peak_editor_js(div_id: str) -> str:
       return Object.assign({{}}, s);
     }});
     labels.forEach(function(label) {{
-      var on = traceVisible(label.traceIndex);
+      var on = traceVisible(label.traceIndex)
+        && sampleParentVisible(sampleGroup(label.traceIndex));
       var ann = annotations[label.annotationIndex];
       var shape = shapes[label.shapeIndex];
       if (ann) ann.visible = on;
@@ -2454,6 +2466,41 @@ def peak_editor_js(div_id: str) -> str:
     }}).catch(function() {{
       gd._ristSyncingSampleVisibility = false;
     }});
+  }}
+
+  function syncHiddenSampleChildren() {{
+    if (!window.Plotly || gd._ristSyncingSampleVisibility) return;
+    var data = gd.data || [];
+    var curves = [];
+    var visibility = [];
+    for (var i = 0; i < data.length; i++) {{
+      if (isSampleParent(i)) continue;
+      var group = sampleGroup(i);
+      if (!group || sampleParentVisible(group)) continue;
+      var desired = peakMatchesCurrentSensitivity(i) ? "legendonly" : false;
+      var current = data[i].visible;
+      if (current !== false && current !== "legendonly") current = true;
+      if (current === desired) continue;
+      curves.push(i);
+      visibility.push(desired);
+    }}
+    if (!curves.length) return;
+    gd._ristSyncingSampleVisibility = true;
+    window.Plotly.restyle(gd, {{ visible: visibility }}, curves)
+      .then(function() {{
+        try {{
+          gd.dispatchEvent(new CustomEvent("rist-legend-visibility-change", {{
+            detail: {{ curves: curves, visible: visibility }}
+          }}));
+        }} catch (e) {{}}
+      }})
+      .then(function() {{
+        gd._ristSyncingSampleVisibility = false;
+        syncVisibility();
+      }})
+      .catch(function() {{
+        gd._ristSyncingSampleVisibility = false;
+      }});
   }}
 
   function dataPointFromEvent(ev) {{
@@ -2875,11 +2922,15 @@ def peak_editor_js(div_id: str) -> str:
   gd.on("plotly_restyle", function(ev) {{
     setTimeout(function() {{
       syncSampleChildren(ev);
+      syncHiddenSampleChildren();
       syncVisibility();
     }}, 0);
   }});
   gd.addEventListener("rist-legend-visibility-change", function() {{
-    setTimeout(syncVisibility, 0);
+    setTimeout(function() {{
+      syncHiddenSampleChildren();
+      syncVisibility();
+    }}, 0);
   }});
 }})();
 </script>

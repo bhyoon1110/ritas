@@ -330,6 +330,9 @@ def test_shared_peak_editor_adds_peak_controls(tmp_path) -> None:
     assert "rist_sample_parent" in html
     assert "syncSampleChildren" in html
     assert "childCurvesForSample" in html
+    assert "sampleParentVisible" in html
+    assert "syncHiddenSampleChildren" in html
+    assert "!sampleParentVisible(sampleGroup(i))" in html
     assert "peakMatchesCurrentSensitivity" in html
     assert "peakMatchesCurrentSensitivity(childCurve) ? visible : false" in html
     assert "rist-shape-tool-button" in html
