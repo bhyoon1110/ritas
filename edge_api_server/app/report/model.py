@@ -31,6 +31,7 @@ class ReportTable:
     merge_columns: list[int] = field(default_factory=list)
     alignments: list[str] = field(default_factory=list)
     vertical_alignment: str = "top"
+    column_widths: list[float] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -39,6 +40,7 @@ class ReportTable:
             "mergeColumns": list(self.merge_columns),
             "alignments": list(self.alignments),
             "verticalAlignment": self.vertical_alignment,
+            "columnWidths": list(self.column_widths),
         }
 
 

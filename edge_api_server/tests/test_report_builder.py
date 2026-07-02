@@ -1232,6 +1232,8 @@ def test_raman_builder_maps_web_analysis_payload(tmp_path) -> None:
     assert conditions is not None and conditions.table is not None
     assert conditions.table.alignments == ["center", "left", "left"]
     assert conditions.table.vertical_alignment == "middle"
+    assert conditions.table.column_widths == [0.14, 0.28, 0.58]
+    assert conditions.table.to_dict()["columnWidths"] == [0.14, 0.28, 0.58]
     assert conditions.table.rows[:8] == [
         ["LiOH_1", "Excitation Wavelength", "532.06 nm"],
         ["LiOH_1", "Laser current", "10 mA"],
@@ -1283,6 +1285,12 @@ def test_raman_builder_maps_web_analysis_payload(tmp_path) -> None:
     assert 'name="Findings text"' in overview_slide
     assert 'sz="1400"' in overview_slide
     assert 'y="1737360"' in overview_slide
+
+    html_report = render_report_formats(document, tmp_path, ["HTML"])[0]
+    html_text = html_report.read_text(encoding="utf-8")
+    assert '<col style="width:14.00%">' in html_text
+    assert '<col style="width:28.00%">' in html_text
+    assert '<col style="width:58.00%">' in html_text
 
 
 def test_raman_pptx_truncates_long_condition_cells(tmp_path) -> None:

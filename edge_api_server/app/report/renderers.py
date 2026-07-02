@@ -296,6 +296,7 @@ def _html_text(value: object) -> str:
 
 
 def _html_report_table(table: ReportTable) -> str:
+    colgroup = _html_colgroup(table)
     header = "".join(
         f'<th style="text-align:center;vertical-align:middle">{_html_text(column)}</th>'
         for column in table.columns
@@ -316,7 +317,18 @@ def _html_report_table(table: ReportTable) -> str:
             cells.append(f'<td{rowspan} style="{style}">{_html_text(cell)}</td>')
         body_rows.append("<tr>" + "".join(cells) + "</tr>")
     body = "".join(body_rows)
-    return f"<table><thead><tr>{header}</tr></thead><tbody>{body}</tbody></table>"
+    return (
+        f"<table>{colgroup}<thead><tr>{header}</tr></thead>"
+        f"<tbody>{body}</tbody></table>"
+    )
+
+
+def _html_colgroup(table: ReportTable) -> str:
+    widths = _table_column_width_ratios(table)
+    if not widths:
+        return ""
+    cols = "".join(f'<col style="width:{width * 100:.2f}%">' for width in widths)
+    return f"<colgroup>{cols}</colgroup>"
 
 
 def _pdf_font_name(font_path: Path | None) -> str:
@@ -741,6 +753,31 @@ def _valid_merge_columns(table: ReportTable) -> list[int]:
     )
 
 
+def _table_column_width_ratios(table: ReportTable) -> list[float]:
+    column_count = len(table.columns)
+    raw_widths = table.column_widths[:column_count]
+    if len(raw_widths) != column_count:
+        return []
+    try:
+        widths = [float(value) for value in raw_widths]
+    except (TypeError, ValueError):
+        return []
+    if any(value <= 0 for value in widths):
+        return []
+    total = sum(widths)
+    if total <= 0:
+        return []
+    return [value / total for value in widths]
+
+
+def _table_column_widths(table: ReportTable, total_width: int | float) -> list[int | float]:
+    ratios = _table_column_width_ratios(table)
+    column_count = len(table.columns)
+    if not ratios:
+        return [total_width / column_count] * column_count
+    return [total_width * ratio for ratio in ratios]
+
+
 def _table_column_alignments(table: ReportTable) -> list[str]:
     column_count = len(table.columns)
     alignments = []
@@ -813,8 +850,8 @@ def _pdf_report_table(
 
     columns = section.table.columns
     column_count = len(columns)
-    col_widths = [available_width / column_count] * column_count
     table_model = section.table
+    col_widths = _table_column_widths(table_model, available_width)
     body_rows = _normalized_table_rows(table_model)
     merge_columns = _valid_merge_columns(table_model)
     alignments = _table_column_alignments(table_model)
@@ -1895,16 +1932,22 @@ def _pptx_table_slide(document: ReportDocument, section: ReportSection) -> str:
     row_count = max(1, len(rows) + 1)
     row_h = min(548640, max(396240, h // min(row_count, max_rows + 1)))
     col_count = max(1, len(table.columns))
-    col_w = w // col_count
+    col_widths = [int(value) for value in _table_column_widths(table, w)]
+    col_widths[-1] += w - sum(col_widths)
+    col_offsets: list[int] = []
+    running_x = x
+    for width in col_widths:
+        col_offsets.append(running_x)
+        running_x += width
     shape_id = 10
     for col_idx, column in enumerate(table.columns):
         shapes.append(
             _pptx_shape(
                 shape_id,
                 f"Header {col_idx}",
-                x=x + col_idx * col_w,
+                x=col_offsets[col_idx],
                 y=y,
-                cx=col_w,
+                cx=col_widths[col_idx],
                 cy=row_h,
                 fill=PPTX_NAVY,
                 line="FFFFFF",
@@ -1934,9 +1977,9 @@ def _pptx_table_slide(document: ReportDocument, section: ReportSection) -> str:
                 _pptx_shape(
                     shape_id,
                     f"Cell {row_idx}-{col_idx}",
-                    x=x + col_idx * col_w,
+                    x=col_offsets[col_idx],
                     y=y + (row_idx + 1) * row_h,
-                    cx=col_w,
+                    cx=col_widths[col_idx],
                     cy=row_h * span,
                     fill=fill,
                     line=PPTX_LINE,

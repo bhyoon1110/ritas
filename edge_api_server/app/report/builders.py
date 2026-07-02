@@ -1354,6 +1354,7 @@ class ReportBuilder:
                     merge_columns=[0],
                     alignments=["center", "left", "left"],
                     vertical_alignment="middle",
+                    column_widths=[0.14, 0.28, 0.58],
                 ),
             )
         return ReportSection(
