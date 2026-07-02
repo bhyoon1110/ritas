@@ -927,6 +927,40 @@ def test_pptx_renderer_lets_powerpoint_wrap_korean_text(tmp_path) -> None:
     assert '<a:lnSpc><a:spcPct val="125000"/></a:lnSpc>' in slide_text
 
 
+def test_pptx_overview_summarizes_long_text_without_ellipsis(tmp_path) -> None:
+    long_summary = (
+        "분석된 시료 Sample_A에서는 아민기와 방향족 고리 관련 피크가 관찰되었고 "
+        "또한 후속 보완 설명과 반복 검토 사항을 길게 나열하여 원문 그대로 넣으면 "
+        "분석 요약 카드의 가독성이 떨어지는 상태입니다."
+    )
+    long_findings = (
+        "3395.66 cm⁻¹ 부근에서 1차 아민기 관련 피크가 확인되었습니다, "
+        "그리고 추가 상세 조건과 보조 근거를 길게 붙이면 핵심 관찰사항 카드가 "
+        "불필요하게 길어지는 상태입니다."
+    )
+    document = ReportDocument(
+        job_id="overview-summary",
+        title="FT-IR 분석 보고서",
+        experiment_code="FT-IR",
+        pk={"requestNumber": "REQ-OVERVIEW"},
+        generated_at="2026-07-03T01:40:00+09:00",
+        sections=[
+            ReportSection("summary", "고객 보고서용 요약", paragraphs=[long_summary]),
+            ReportSection("key_findings", "핵심 관찰사항", paragraphs=[long_findings]),
+        ],
+    )
+
+    rendered = render_requested_report(document, tmp_path, "PPTX")
+
+    with zipfile.ZipFile(rendered) as archive:
+        overview_slide = archive.read("ppt/slides/slide2.xml").decode("utf-8")
+    assert "분석 요약" in overview_slide
+    assert "…" not in overview_slide
+    assert "관찰되었습니다" in overview_slide
+    assert "후속 보완 설명" not in overview_slide
+    assert "추가 상세 조건" not in overview_slide
+
+
 def test_pdf_renderer_creates_pdf_file(tmp_path) -> None:
     analysis = [{"relativePath": "verdict.json", "data": _verdict()}]
     document = FtirReportBuilder().build(_job(), analysis)

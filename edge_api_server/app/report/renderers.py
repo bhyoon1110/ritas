@@ -1455,6 +1455,94 @@ def _short_pptx_lines(
     return shortened
 
 
+def _overview_pptx_lines(
+    lines: list[str],
+    *,
+    max_items: int,
+    max_chars: int,
+) -> list[str]:
+    summarized = []
+    for line in lines:
+        text = _overview_pptx_line(line, max_chars=max_chars)
+        if not text:
+            continue
+        summarized.append(text)
+        if len(summarized) >= max_items:
+            break
+    return summarized
+
+
+def _overview_pptx_line(value: object, *, max_chars: int) -> str:
+    text = " ".join(str(value or "").split())
+    if len(text) <= max_chars:
+        return text
+    for candidate in _overview_sentence_candidates(text):
+        if 12 <= len(candidate) <= max_chars:
+            return candidate
+    return _overview_compact_clause(text, max_chars=max_chars)
+
+
+def _overview_sentence_candidates(text: str) -> list[str]:
+    candidates = []
+    pattern = (
+        r".*?(?:[!?。]|"
+        r"습니다\.|입니다\.|됩니다\.|"
+        r"확인되었습니다\.|관찰되었습니다\.|시사합니다\.)"
+    )
+    for match in re.finditer(pattern, text):
+        candidate = match.group(0).strip()
+        if candidate:
+            candidates.append(candidate)
+    return candidates
+
+
+def _overview_compact_clause(text: str, *, max_chars: int) -> str:
+    window = text[:max_chars]
+    separators = [
+        " 또한 ",
+        " 그리고 ",
+        " 그러나 ",
+        " 따라서 ",
+        "이며",
+        "이고",
+        "하고",
+        "하지만",
+        ";",
+        ",",
+    ]
+    cut_at = -1
+    for separator in separators:
+        index = window.rfind(separator)
+        if index >= 18:
+            cut_at = max(cut_at, index)
+    if cut_at >= 18:
+        text = window[:cut_at]
+    else:
+        words = window.split()
+        text = " ".join(words[:-1] if len(words) > 1 else words)
+    text = text.rstrip(" ,;·")
+    text = _overview_finish_clause(text)
+    if text and text[-1] not in ".!?。":
+        text += "."
+    return text
+
+
+def _overview_finish_clause(text: str) -> str:
+    replacements = [
+        ("되었고", "되었습니다"),
+        ("였고", "였습니다"),
+        ("이고", "입니다"),
+        ("이며", "입니다"),
+        ("하고", "합니다"),
+        ("하며", "합니다"),
+        ("하지만", "합니다"),
+    ]
+    for source, target in replacements:
+        if text.endswith(source):
+            return text[: -len(source)] + target
+    return text
+
+
 def _section_text_lines(section: ReportSection | None, *, max_items: int = 5) -> list[str]:
     if section is None:
         return []
@@ -1466,17 +1554,17 @@ def _section_text_lines(section: ReportSection | None, *, max_items: int = 5) ->
 
 
 def _pptx_overview_slide(document: ReportDocument) -> str:
-    summary_lines = _short_pptx_lines(
+    summary_lines = _overview_pptx_lines(
         _section_text_lines(document.section("summary"), max_items=4),
         max_items=3,
         max_chars=92,
     )
-    finding_lines = _short_pptx_lines(
+    finding_lines = _overview_pptx_lines(
         _section_text_lines(document.section("key_findings"), max_items=5),
         max_items=4,
         max_chars=86,
     )
-    verdict_lines = _short_pptx_lines(
+    verdict_lines = _overview_pptx_lines(
         _section_text_lines(document.section("verdict"), max_items=4),
         max_items=4,
         max_chars=86,
