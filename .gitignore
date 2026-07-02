@@ -49,6 +49,7 @@ lim/data/
 lim/*.html
 ahn/results/
 ahn/output/
+ahn/data/
 rin/data/
 rin/results/
 rin/output/
