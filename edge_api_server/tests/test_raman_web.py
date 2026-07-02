@@ -43,6 +43,21 @@ MULTI_SAMPLE_TXT = (
     / "대기민감성 샘플"
     / "LiOH.txt"
 )
+LARGE_LMR_TXT = (
+    Path(__file__).resolve().parents[2]
+    / "rin"
+    / "data"
+    / "LMR"
+    / "LMR 6종_2.txt"
+)
+
+
+def compact_report_figure(figure: dict) -> dict:
+    payload = json.loads(json.dumps(figure))
+    for trace in payload.get("data", []):
+        for key in ("x", "y", "z", "customdata", "text", "hovertext"):
+            trace.pop(key, None)
+    return payload
 
 
 def test_raman_workspace_contains_upload_controls() -> None:
@@ -56,6 +71,8 @@ def test_raman_workspace_contains_upload_controls() -> None:
     assert 'id="raman-report-progress"' in page
     assert 'id="raman-report-meta"' in page
     assert "reportAnalysisPayload" in page
+    assert "delete payload.figure" in page
+    assert "compactReportFigurePayload" in page
     assert "populateReportMetadataFromPayload" in page
     assert "normalizedLaserValue" in page
     assert "setReportControlIfEmpty" in page
@@ -488,6 +505,52 @@ def test_raman_report_job_api_tracks_progress_and_downloads_package(monkeypatch)
         "raw_data.xlsx",
         "current_graph.png",
     } <= names
+
+
+def test_raman_report_job_accepts_large_multi_sample_lmr_payload(monkeypatch) -> None:
+    use_fake_pptx_pdf_converter(monkeypatch)
+    content = LARGE_LMR_TXT.read_bytes()
+    with TestClient(create_raman_preview_app()) as client:
+        analysis_response = client.post(
+            "/api/v1/raman/analyze",
+            files={"files": (LARGE_LMR_TXT.name, content, "text/plain")},
+            data={"sensitivity": "25"},
+        )
+        assert analysis_response.status_code == 200
+        analysis = analysis_response.json()
+        uncompact_size = len(json.dumps(analysis))
+        figure = compact_report_figure(analysis["figure"])
+        analysis.pop("figure", None)
+        assert uncompact_size > 1024 * 1024
+        assert len(json.dumps(analysis)) < 1024 * 1024
+        assert len(json.dumps(figure)) < 1024 * 1024
+
+        job_response = client.post(
+            "/api/v1/raman/report/jobs",
+            files={"files": (LARGE_LMR_TXT.name, content, "text/plain")},
+            data={
+                "analysis_json": json.dumps(analysis),
+                "figure_json": json.dumps(figure),
+                "figure_image": TINY_PNG_DATA_URL,
+            },
+        )
+        assert job_response.status_code == 202
+        job = job_response.json()
+        for _ in range(100):
+            status_response = client.get(f"/api/v1/raman/report/jobs/{job['jobId']}")
+            assert status_response.status_code == 200
+            job = status_response.json()
+            if job["status"] == "completed":
+                break
+            assert job["status"] != "failed", job.get("error")
+            time.sleep(0.03)
+
+        assert job["status"] == "completed"
+        download_response = client.get(job["downloadUrl"])
+        assert download_response.status_code == 200
+        with zipfile.ZipFile(BytesIO(download_response.content)) as archive:
+            names = set(archive.namelist())
+        assert {"report.pptx", "report.pdf", "raw_data.xlsx"} <= names
 
 
 def test_raman_assignment_library_api_defaults_and_assigns_sample() -> None:

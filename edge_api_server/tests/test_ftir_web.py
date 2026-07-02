@@ -57,6 +57,8 @@ def test_ftir_workspace_contains_upload_and_editor_controls() -> None:
     assert 'id="ftir-report-progress"' in page
     assert 'id="ftir-report-meta"' in page
     assert "reportAnalysisPayload" in page
+    assert "delete payload.figure" in page
+    assert "compactReportFigurePayload" in page
     assert "populateReportMetadataFromPayload" in page
     assert "setReportControlIfEmpty" in page
     assert "experimentConditions" in page

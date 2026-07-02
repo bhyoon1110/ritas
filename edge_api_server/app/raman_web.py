@@ -3218,6 +3218,7 @@ _UPLOAD_SCRIPT = """
 
   function reportAnalysisPayload() {
     var payload = JSON.parse(JSON.stringify(latestAnalysisPayload || {}));
+    delete payload.figure;
     var conditions = reportMetadataConditions();
     if (Object.keys(conditions).length) {
       payload.experimentConditions = Object.assign(
@@ -4103,6 +4104,21 @@ _UPLOAD_SCRIPT = """
     return filteredReportFigurePayload();
   }
 
+  function compactReportFigurePayload(figure) {
+    var payload = JSON.parse(JSON.stringify(figure || {}));
+    payload.data = (payload.data || []).map(function(trace) {
+      var compact = Object.assign({}, trace);
+      delete compact.x;
+      delete compact.y;
+      delete compact.z;
+      delete compact.customdata;
+      delete compact.text;
+      delete compact.hovertext;
+      return compact;
+    });
+    return payload;
+  }
+
   async function captureReportFigureImage(figure) {
     var width = Math.max(900, Math.round(gd.clientWidth || 1200));
     var height = Math.max(640, Math.round(gd.clientHeight || 800));
@@ -4162,7 +4178,7 @@ _UPLOAD_SCRIPT = """
       var form = new FormData();
       reportFiles.forEach(function(file) { form.append("files", file, file.name); });
       form.append("analysis_json", JSON.stringify(reportAnalysisPayload()));
-      form.append("figure_json", JSON.stringify(reportFigure));
+      form.append("figure_json", JSON.stringify(compactReportFigurePayload(reportFigure)));
       form.append("figure_image", figureImage);
       var job = await fetchJson("/api/v1/raman/report/jobs", {
         method: "POST",
