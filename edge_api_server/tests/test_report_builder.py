@@ -1093,7 +1093,7 @@ def test_generate_report_writes_email_body_and_image_slide(tmp_path) -> None:
     assert "email_body.md" in package_names
 
 
-def test_raman_builder_maps_web_analysis_payload() -> None:
+def test_raman_builder_maps_web_analysis_payload(tmp_path) -> None:
     payload = {
         "samples": [
             {
@@ -1206,6 +1206,16 @@ def test_raman_builder_maps_web_analysis_payload() -> None:
     assert spec.facts["graph_operations"]["visible_peak_count"] == 1
     assert "hidden_peak_count" not in spec.facts["graph_operations"]
     assert "hidden_samples" not in spec.facts["graph_operations"]
+
+    rendered = render_requested_report(document, tmp_path, "PPTX")
+    with zipfile.ZipFile(rendered) as archive:
+        overview_slide = archive.read("ppt/slides/slide2.xml").decode("utf-8")
+    assert "분석 요약" in overview_slide
+    assert "RAMAN" in overview_slide
+    assert 'name="Summary text"' in overview_slide
+    assert 'name="Findings text"' in overview_slide
+    assert 'sz="1400"' in overview_slide
+    assert 'y="1737360"' in overview_slide
 
 
 def test_raman_report_uses_rich_peak_ratio_opinion_without_library_details() -> None:
