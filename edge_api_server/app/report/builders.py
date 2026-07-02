@@ -1348,7 +1348,13 @@ class ReportBuilder:
             return ReportSection(
                 "experiment_conditions",
                 "실험조건 및 실험환경",
-                table=ReportTable(["대상", "항목", "값"], rows, merge_columns=[0]),
+                table=ReportTable(
+                    ["대상", "항목", "값"],
+                    rows,
+                    merge_columns=[0],
+                    alignments=["center", "left", "left"],
+                    vertical_alignment="middle",
+                ),
             )
         return ReportSection(
             "experiment_conditions",
@@ -1542,6 +1548,8 @@ class FtirReportBuilder(ReportBuilder):
             columns=["시료", "Wavenumber", "피크 이름"],
             rows=rows,
             merge_columns=[0],
+            alignments=["center", "right", "left"],
+            vertical_alignment="middle",
         )
         return ReportSection("current_peaks", "현재 그래프 피크", table=table)
 
@@ -1955,6 +1963,8 @@ class RamanReportBuilder(ReportBuilder):
                 ["시료", "원본 파일", "데이터 포인트", "피크 수"],
                 rows,
                 merge_columns=[1, 2],
+                alignments=["center", "left", "right", "right"],
+                vertical_alignment="middle",
             ),
         )
 
@@ -1969,6 +1979,8 @@ class RamanReportBuilder(ReportBuilder):
                 ["시료", "Raman shift", "Assignment"],
                 rows,
                 merge_columns=[0],
+                alignments=["center", "right", "left"],
+                vertical_alignment="middle",
             ),
         )
 

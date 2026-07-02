@@ -1230,6 +1230,8 @@ def test_raman_builder_maps_web_analysis_payload(tmp_path) -> None:
     assert document.title == "Raman 분석 보고서"
     conditions = document.section("experiment_conditions")
     assert conditions is not None and conditions.table is not None
+    assert conditions.table.alignments == ["center", "left", "left"]
+    assert conditions.table.vertical_alignment == "middle"
     assert conditions.table.rows[:8] == [
         ["LiOH_1", "Excitation Wavelength", "532.06 nm"],
         ["LiOH_1", "Laser current", "10 mA"],
@@ -1349,8 +1351,12 @@ def test_raman_sample_table_normalizes_hangul_and_merges_repeated_file_cells(tmp
     section = document.section("raman_samples")
     assert section is not None and section.table is not None
     assert section.table.merge_columns == [1, 2]
+    assert section.table.alignments == ["center", "left", "right", "right"]
+    assert section.table.vertical_alignment == "middle"
     assert [row[1] for row in section.table.rows] == [composed_name] * 3
     assert section.table.to_dict()["mergeColumns"] == [1, 2]
+    assert section.table.to_dict()["alignments"] == ["center", "left", "right", "right"]
+    assert section.table.to_dict()["verticalAlignment"] == "middle"
 
     rendered = render_requested_report(document, tmp_path, "PPTX")
     with zipfile.ZipFile(rendered) as archive:
@@ -1365,6 +1371,9 @@ def test_raman_sample_table_normalizes_hangul_and_merges_repeated_file_cells(tmp
     assert composed_name in sample_slide
     assert sample_slide.count(composed_name) == 1
     assert sample_slide.count(">1340<") == 1
+    assert 'algn="r"' in sample_slide
+    assert 'algn="ctr"' in sample_slide
+    assert 'anchor="ctr"' in sample_slide
 
 
 def test_ftir_current_peak_table_merges_repeated_sample_cells(tmp_path) -> None:
@@ -1419,6 +1428,8 @@ def test_ftir_current_peak_table_merges_repeated_sample_cells(tmp_path) -> None:
     section = document.section("current_peaks")
     assert section is not None and section.table is not None
     assert section.table.merge_columns == [0]
+    assert section.table.alignments == ["center", "right", "left"]
+    assert section.table.vertical_alignment == "middle"
     assert len(section.table.rows) == 2
 
     rendered = render_requested_report(document, tmp_path, "PPTX")
@@ -1431,6 +1442,9 @@ def test_ftir_current_peak_table_merges_repeated_sample_cells(tmp_path) -> None:
             and "현재 그래프 피크" in archive.read(name).decode("utf-8")
         )
     assert peak_slide.count("Sample_A") == 1
+    assert 'algn="r"' in peak_slide
+    assert 'algn="ctr"' in peak_slide
+    assert 'anchor="ctr"' in peak_slide
 
 
 def test_raman_report_uses_rich_peak_ratio_opinion_without_library_details() -> None:

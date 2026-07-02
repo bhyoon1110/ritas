@@ -29,12 +29,16 @@ class ReportTable:
     columns: list[str]
     rows: list[list[str]]
     merge_columns: list[int] = field(default_factory=list)
+    alignments: list[str] = field(default_factory=list)
+    vertical_alignment: str = "top"
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "columns": list(self.columns),
             "rows": [list(r) for r in self.rows],
             "mergeColumns": list(self.merge_columns),
+            "alignments": list(self.alignments),
+            "verticalAlignment": self.vertical_alignment,
         }
 
 

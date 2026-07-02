@@ -296,8 +296,13 @@ def _html_text(value: object) -> str:
 
 
 def _html_report_table(table: ReportTable) -> str:
-    header = "".join(f"<th>{_html_text(column)}</th>" for column in table.columns)
+    header = "".join(
+        f'<th style="text-align:center;vertical-align:middle">{_html_text(column)}</th>'
+        for column in table.columns
+    )
     rows = _normalized_table_rows(table)
+    alignments = _table_column_alignments(table)
+    valign = _html_vertical_align(table)
     spans, covered = _table_vertical_merge_spans(rows, table.merge_columns)
     body_rows: list[str] = []
     for row_idx, row in enumerate(rows):
@@ -307,7 +312,8 @@ def _html_report_table(table: ReportTable) -> str:
                 continue
             span = spans.get((row_idx, col_idx), 1)
             rowspan = f' rowspan="{span}"' if span > 1 else ""
-            cells.append(f"<td{rowspan}>{_html_text(cell)}</td>")
+            style = f'text-align:{alignments[col_idx]};vertical-align:{valign}'
+            cells.append(f'<td{rowspan} style="{style}">{_html_text(cell)}</td>')
         body_rows.append("<tr>" + "".join(cells) + "</tr>")
     body = "".join(body_rows)
     return f"<table><thead><tr>{header}</tr></thead><tbody>{body}</tbody></table>"
@@ -735,6 +741,36 @@ def _valid_merge_columns(table: ReportTable) -> list[int]:
     )
 
 
+def _table_column_alignments(table: ReportTable) -> list[str]:
+    column_count = len(table.columns)
+    alignments = []
+    for index in range(column_count):
+        raw = table.alignments[index] if index < len(table.alignments) else "left"
+        value = str(raw or "left").lower()
+        alignments.append(value if value in {"left", "center", "right"} else "left")
+    return alignments
+
+
+def _html_vertical_align(table: ReportTable) -> str:
+    return "middle" if str(table.vertical_alignment).lower() == "middle" else "top"
+
+
+def _pdf_vertical_align(table: ReportTable) -> str:
+    return "MIDDLE" if str(table.vertical_alignment).lower() == "middle" else "TOP"
+
+
+def _pdf_horizontal_align(value: str) -> str:
+    return {"center": "CENTER", "right": "RIGHT"}.get(value, "LEFT")
+
+
+def _pptx_horizontal_align(value: str) -> str:
+    return value if value in {"left", "center", "right"} else "left"
+
+
+def _pptx_vertical_anchor(table: ReportTable) -> str:
+    return "mid" if str(table.vertical_alignment).lower() == "middle" else "t"
+
+
 def _table_vertical_merge_spans(
     rows: list[list[str]],
     merge_columns: list[int],
@@ -781,6 +817,11 @@ def _pdf_report_table(
     table_model = section.table
     body_rows = _normalized_table_rows(table_model)
     merge_columns = _valid_merge_columns(table_model)
+    alignments = _table_column_alignments(table_model)
+    cell_styles = [
+        _pdf_aligned_table_cell_style(styles["table_cell"], alignment, index)
+        for index, alignment in enumerate(alignments)
+    ]
     _merge_spans, merge_covered = _table_vertical_merge_spans(body_rows, merge_columns)
     rows = [
         [Paragraph(_pdf_text(column), styles["table_head"]) for column in columns]
@@ -794,7 +835,7 @@ def _pdf_report_table(
             display_row,
             column_count=column_count,
             col_widths=col_widths,
-            style=styles["table_cell"],
+            styles=cell_styles,
         )
         rows.extend(split_rows)
 
@@ -803,12 +844,17 @@ def _pdf_report_table(
         ("BACKGROUND", (0, 1), (-1, -1), colors.white),
         ("BOX", (0, 0), (-1, -1), 0.5, _pdf_color(PPTX_LINE)),
         ("INNERGRID", (0, 0), (-1, -1), 0.25, _pdf_color(PPTX_LINE)),
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("ALIGN", (0, 0), (-1, 0), "CENTER"),
+        ("VALIGN", (0, 0), (-1, -1), _pdf_vertical_align(table_model)),
         ("LEFTPADDING", (0, 0), (-1, -1), 5),
         ("RIGHTPADDING", (0, 0), (-1, -1), 5),
         ("TOPPADDING", (0, 0), (-1, -1), 4),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
     ]
+    for col_idx, alignment in enumerate(alignments):
+        style_commands.append(
+            ("ALIGN", (col_idx, 1), (col_idx, -1), _pdf_horizontal_align(alignment))
+        )
 
     table = Table(
         rows,
@@ -825,22 +871,34 @@ def _pdf_split_table_row(
     *,
     column_count: int,
     col_widths: list[float],
-    style: ParagraphStyle,
+    styles: list[ParagraphStyle],
 ) -> list[list[Paragraph]]:
     normalized = list(row[:column_count]) + [""] * max(0, column_count - len(row))
     split_cells = [
-        _pdf_split_table_cell(cell, style, col_widths[idx])
+        _pdf_split_table_cell(cell, styles[idx], col_widths[idx])
         for idx, cell in enumerate(normalized)
     ]
     row_count = max(len(parts) for parts in split_cells)
     rendered_rows: list[list[Paragraph]] = []
     for row_idx in range(row_count):
         rendered_row = []
-        for parts in split_cells:
+        for idx, parts in enumerate(split_cells):
             value = parts[row_idx] if row_idx < len(parts) else ""
-            rendered_row.append(Paragraph(_pdf_text(value), style))
+            rendered_row.append(Paragraph(_pdf_text(value), styles[idx]))
         rendered_rows.append(rendered_row)
     return rendered_rows
+
+
+def _pdf_aligned_table_cell_style(
+    base_style: ParagraphStyle,
+    alignment: str,
+    index: int,
+) -> ParagraphStyle:
+    return ParagraphStyle(
+        f"{base_style.name}-{alignment}-{index}",
+        parent=base_style,
+        alignment={"center": 1, "right": 2}.get(alignment, 0),
+    )
 
 
 def _pdf_split_table_cell(
@@ -1137,15 +1195,17 @@ def _pptx_paragraph(
     bullet: bool = False,
     line_spacing_pct: int = 125000,
     space_after_pts: int = 500,
+    align: str = "left",
 ) -> str:
     spacing = (
         f'<a:lnSpc><a:spcPct val="{line_spacing_pct}"/></a:lnSpc>'
         f'<a:spcAft><a:spcPts val="{space_after_pts}"/></a:spcAft>'
     )
+    align_value = {"center": "ctr", "right": "r"}.get(align, "l")
     bullet_pr = (
-        f'<a:pPr marL="228600" indent="-171450">{spacing}<a:buChar char="•"/></a:pPr>'
+        f'<a:pPr marL="228600" indent="-171450" algn="{align_value}">{spacing}<a:buChar char="•"/></a:pPr>'
         if bullet
-        else f'<a:pPr marL="0" indent="0">{spacing}</a:pPr>'
+        else f'<a:pPr marL="0" indent="0" algn="{align_value}">{spacing}</a:pPr>'
     )
     return (
         f"<a:p>{bullet_pr}<a:r>{_pptx_rpr(font_size=font_size, color=color, bold=bold)}"
@@ -1166,6 +1226,7 @@ def _pptx_paragraphs(
     bullet: bool = False,
     line_spacing_pct: int = 125000,
     space_after_pts: int = 500,
+    align: str = "left",
 ) -> str:
     if not lines:
         return "<a:p/>"
@@ -1178,6 +1239,7 @@ def _pptx_paragraphs(
             bullet=bullet,
             line_spacing_pct=line_spacing_pct,
             space_after_pts=space_after_pts,
+            align=align,
         )
         for line in lines
     )
@@ -1217,6 +1279,7 @@ def _pptx_shape(
     inset: int = 91440,
     line_spacing_pct: int = 125000,
     space_after_pts: int = 500,
+    align: str = "left",
 ) -> str:
     paragraphs = _pptx_paragraphs(
         text or [],
@@ -1226,6 +1289,7 @@ def _pptx_shape(
         bullet=bullet,
         line_spacing_pct=line_spacing_pct,
         space_after_pts=space_after_pts,
+        align=align,
     )
     return f"""
     <p:sp><p:nvSpPr><p:cNvPr id="{shape_id}" name="{html.escape(name)}"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>
@@ -1251,6 +1315,7 @@ def _pptx_text_shape(
     inset: int = 45720,
     line_spacing_pct: int = 125000,
     space_after_pts: int = 500,
+    align: str = "left",
 ) -> str:
     return _pptx_shape(
         shape_id,
@@ -1270,6 +1335,7 @@ def _pptx_text_shape(
         inset=inset,
         line_spacing_pct=line_spacing_pct,
         space_after_pts=space_after_pts,
+        align=align,
     )
 
 
@@ -1815,6 +1881,8 @@ def _pptx_table_slide(document: ReportDocument, section: ReportSection) -> str:
     all_rows = _normalized_table_rows(table)
     rows = all_rows[:max_rows]
     omitted = max(0, len(all_rows) - len(rows))
+    alignments = _table_column_alignments(table)
+    vertical_anchor = _pptx_vertical_anchor(table)
     merge_spans, merge_covered = _table_vertical_merge_spans(
         rows,
         _valid_merge_columns(table),
@@ -1846,6 +1914,7 @@ def _pptx_table_slide(document: ReportDocument, section: ReportSection) -> str:
                 bold=True,
                 anchor="mid",
                 inset=91440,
+                align="center",
             )
         )
         shape_id += 1
@@ -1875,6 +1944,8 @@ def _pptx_table_slide(document: ReportDocument, section: ReportSection) -> str:
                     font_size=1250,
                     color=PPTX_TEXT,
                     inset=68580,
+                    anchor=vertical_anchor,
+                    align=_pptx_horizontal_align(alignments[col_idx]),
                     line_spacing_pct=108000,
                     space_after_pts=100,
                 )
