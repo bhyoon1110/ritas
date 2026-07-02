@@ -1638,6 +1638,7 @@ def peak_sensitivity_js(div_id: str, initial: str = "medium") -> str:
       }}
     }});
 
+    gd._ristApplyingPeakSensitivity = true;
     return window.Plotly.update(gd, {{
       visible: changedVisible,
       showlegend: changedShowlegend
@@ -1645,10 +1646,14 @@ def peak_sensitivity_js(div_id: str, initial: str = "medium") -> str:
       annotations: annotations,
       shapes: shapes
     }}, changedCurves).then(function() {{
+      gd._ristApplyingPeakSensitivity = false;
       updateStatus(eligibleCount);
       gd.dispatchEvent(new CustomEvent("rist-peak-sensitivity-change", {{
         detail: {{ sensitivity: sensitivity }}
       }}));
+    }}).catch(function(err) {{
+      gd._ristApplyingPeakSensitivity = false;
+      throw err;
     }});
   }}
 
@@ -1989,6 +1994,53 @@ def peak_editor_js(div_id: str) -> str:
   function isPeakCurve(curve) {{
     var meta = traceMeta(curve);
     return !!(meta && meta.rist_peak);
+  }}
+
+  function peakUserVisibilityStore() {{
+    if (!gd._ristPeakUserVisibility || typeof gd._ristPeakUserVisibility !== "object") {{
+      gd._ristPeakUserVisibility = {{}};
+    }}
+    return gd._ristPeakUserVisibility;
+  }}
+
+  function peakUserVisibilityKey(curve) {{
+    return labelKeyForTrace(curve) || ("curve:" + curve);
+  }}
+
+  function setPeakUserVisibility(curve, visible) {{
+    if (!isPeakCurve(curve)) return;
+    var on = visible !== false && visible !== "legendonly";
+    peakUserVisibilityStore()[peakUserVisibilityKey(curve)] = on;
+    var data = gd.data || [];
+    var tr = data[curve];
+    if (!tr) return;
+    var nextMeta = Object.assign({{}}, tr.meta || {{}});
+    var peakMeta = Object.assign({{}}, nextMeta.rist_peak || {{}});
+    peakMeta.user_visible = on;
+    nextMeta.rist_peak = peakMeta;
+    tr.meta = nextMeta;
+  }}
+
+  function peakUserVisible(curve) {{
+    if (!isPeakCurve(curve)) return true;
+    var store = peakUserVisibilityStore();
+    var key = peakUserVisibilityKey(curve);
+    if (Object.prototype.hasOwnProperty.call(store, key)) return !!store[key];
+    var peak = traceMeta(curve).rist_peak || {{}};
+    if (peak.user_visible === true || peak.user_visible === false) {{
+      store[key] = !!peak.user_visible;
+      return !!peak.user_visible;
+    }}
+    var on = traceVisible(curve);
+    store[key] = on;
+    return on;
+  }}
+
+  function rememberPeakUserVisibility(curves) {{
+    (curves || []).forEach(function(curve) {{
+      if (!isPeakCurve(curve)) return;
+      setPeakUserVisibility(curve, traceVisible(curve));
+    }});
   }}
 
   function traceColor(curve) {{
@@ -2521,8 +2573,12 @@ def peak_editor_js(div_id: str) -> str:
       var childCurves = childCurvesForSample(group, curve);
       if (!childCurves.length) return;
       var visible = Array.isArray(visibleValues) ? visibleValues[pos] : visibleValues;
+      var parentVisible = visible !== false && visible !== "legendonly";
+      if (!parentVisible) rememberPeakUserVisibility(childCurves);
       var childVisibility = childCurves.map(function(childCurve) {{
-        return peakMatchesCurrentSensitivity(childCurve) ? visible : false;
+        if (!peakMatchesCurrentSensitivity(childCurve)) return false;
+        if (!parentVisible) return "legendonly";
+        return peakUserVisible(childCurve) ? true : "legendonly";
       }});
       pending.push({{ curves: childCurves, visible: childVisibility }});
     }});
@@ -2610,6 +2666,43 @@ def peak_editor_js(div_id: str) -> str:
     var curve = curveFromLegendEvent(ev);
     if (!shouldBlockHiddenSamplePeakCurve(curve)) return;
     return false;
+  }}
+
+  function handlePeakLegendClick(ev) {{
+    var curve = curveFromLegendEvent(ev);
+    if (shouldBlockHiddenSamplePeakCurve(curve)) return false;
+    if (isPeakCurve(curve)) {{
+      setPeakUserVisibility(curve, !traceVisible(curve));
+    }}
+  }}
+
+  function recordPeakUserVisibilityFromRestyle(restyleEvent) {{
+    if (gd._ristSyncingSampleVisibility || gd._ristApplyingPeakSensitivity) return;
+    if (!restyleEvent || !restyleEvent.length) return;
+    var update = restyleEvent[0] || {{}};
+    if (!Object.prototype.hasOwnProperty.call(update, "visible")) return;
+    var curves = restyleEvent[1] || [];
+    if (!Array.isArray(curves)) curves = [curves];
+    var visibleValues = update.visible;
+    curves.forEach(function(curve, pos) {{
+      if (!isPeakCurve(curve)) return;
+      if (!sampleParentVisible(sampleGroup(curve))) return;
+      var visible = Array.isArray(visibleValues) ? visibleValues[pos] : visibleValues;
+      setPeakUserVisibility(curve, visible);
+    }});
+  }}
+
+  function recordPeakUserVisibilityFromCustomEvent(ev) {{
+    if (gd._ristSyncingSampleVisibility || gd._ristApplyingPeakSensitivity) return;
+    var detail = ev.detail || {{}};
+    var curves = Array.isArray(detail.curves) ? detail.curves : [];
+    if (!curves.length || !Object.prototype.hasOwnProperty.call(detail, "visible")) return;
+    var visibleValues = detail.visible;
+    curves.forEach(function(curve, pos) {{
+      if (!isPeakCurve(curve)) return;
+      var visible = Array.isArray(visibleValues) ? visibleValues[pos] : visibleValues;
+      setPeakUserVisibility(curve, visible);
+    }});
   }}
 
   function interceptHiddenSamplePeakLegendToggle(ev) {{
@@ -3036,6 +3129,7 @@ def peak_editor_js(div_id: str) -> str:
     syncVisibility();
   }});
   gd.addEventListener("rist-plot-data-replaced", function() {{
+    gd._ristPeakUserVisibility = {{}};
     selectedPeaks = [];
     setMode("none");
     updateSelectButton();
@@ -3045,10 +3139,11 @@ def peak_editor_js(div_id: str) -> str:
     document.addEventListener(type, interceptHiddenSamplePeakLegendToggle, true);
     gd.addEventListener(type, interceptHiddenSamplePeakLegendToggle, true);
   }});
-  gd.on("plotly_legendclick", blockHiddenSamplePeakLegendToggle);
+  gd.on("plotly_legendclick", handlePeakLegendClick);
   gd.on("plotly_legenddoubleclick", blockHiddenSamplePeakLegendToggle);
   gd.on("plotly_afterplot", updateHiddenSamplePeakLegendLocks);
   gd.on("plotly_restyle", function(ev) {{
+    recordPeakUserVisibilityFromRestyle(ev);
     updateHiddenSamplePeakLegendLocks();
     setTimeout(function() {{
       syncSampleChildren(ev);
@@ -3057,7 +3152,8 @@ def peak_editor_js(div_id: str) -> str:
       updateHiddenSamplePeakLegendLocks();
     }}, 0);
   }});
-  gd.addEventListener("rist-legend-visibility-change", function() {{
+  gd.addEventListener("rist-legend-visibility-change", function(ev) {{
+    recordPeakUserVisibilityFromCustomEvent(ev);
     updateHiddenSamplePeakLegendLocks();
     setTimeout(function() {{
       syncHiddenSampleChildren();
