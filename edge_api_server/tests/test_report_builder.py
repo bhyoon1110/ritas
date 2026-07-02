@@ -1254,6 +1254,122 @@ def test_raman_pptx_truncates_long_condition_cells(tmp_path) -> None:
     assert 'sz="1250"' in slide_text
 
 
+def test_raman_sample_table_normalizes_hangul_and_merges_repeated_file_cells(tmp_path) -> None:
+    decomposed_name = "LMR 6종_2.txt"
+    composed_name = "LMR 6종_2.txt"
+    payload = {
+        "samples": [
+            {
+                "label": "9-6",
+                "fileName": decomposed_name,
+                "pointCount": 1340,
+                "peakCount": 5,
+            },
+            {
+                "label": "9-12",
+                "fileName": decomposed_name,
+                "pointCount": 1340,
+                "peakCount": 4,
+            },
+            {
+                "label": "9-32",
+                "fileName": decomposed_name,
+                "pointCount": 1340,
+                "peakCount": 6,
+            },
+        ],
+        "figure": {"data": []},
+    }
+    analysis = [{"relativePath": "raman-analysis.json", "data": payload}]
+    document = RamanReportBuilder().build({**_job(), "experiment_code": "RAMAN"}, analysis)
+
+    section = document.section("raman_samples")
+    assert section is not None and section.table is not None
+    assert section.table.merge_columns == [1, 2]
+    assert [row[1] for row in section.table.rows] == [composed_name] * 3
+    assert section.table.to_dict()["mergeColumns"] == [1, 2]
+
+    rendered = render_requested_report(document, tmp_path, "PPTX")
+    with zipfile.ZipFile(rendered) as archive:
+        sample_slide = next(
+            archive.read(name).decode("utf-8")
+            for name in archive.namelist()
+            if name.startswith("ppt/slides/slide")
+            and name.endswith(".xml")
+            and "시료 및 피크 수" in archive.read(name).decode("utf-8")
+        )
+    assert decomposed_name not in sample_slide
+    assert composed_name in sample_slide
+    assert sample_slide.count(composed_name) == 1
+    assert sample_slide.count(">1340<") == 1
+
+
+def test_ftir_current_peak_table_merges_repeated_sample_cells(tmp_path) -> None:
+    payload = {
+        "samples": [
+            {
+                "label": "Sample_A",
+                "fileName": "Sample_A.dpt",
+                "pointCount": 600,
+                "peakCount": 2,
+            }
+        ],
+        "figure": {
+            "data": [
+                {
+                    "name": "Sample_A",
+                    "meta": {
+                        "rist_sample_group": "sample:0",
+                        "rist_sample_parent": True,
+                    },
+                },
+                {
+                    "name": "C=O stretch",
+                    "y": [0.82],
+                    "meta": {
+                        "rist_peak": {
+                            "x": 1712.7,
+                            "base_y": 0.82,
+                            "label": "C=O stretch",
+                            "sample_group": "sample:0",
+                        }
+                    },
+                },
+                {
+                    "name": "C-O stretch",
+                    "y": [0.51],
+                    "meta": {
+                        "rist_peak": {
+                            "x": 1240.0,
+                            "base_y": 0.51,
+                            "label": "C-O stretch",
+                            "sample_group": "sample:0",
+                        }
+                    },
+                },
+            ]
+        },
+    }
+    analysis = [{"relativePath": "ftir-analysis.json", "data": payload}]
+    document = FtirReportBuilder().build(_job(), analysis)
+
+    section = document.section("current_peaks")
+    assert section is not None and section.table is not None
+    assert section.table.merge_columns == [0]
+    assert len(section.table.rows) == 2
+
+    rendered = render_requested_report(document, tmp_path, "PPTX")
+    with zipfile.ZipFile(rendered) as archive:
+        peak_slide = next(
+            archive.read(name).decode("utf-8")
+            for name in archive.namelist()
+            if name.startswith("ppt/slides/slide")
+            and name.endswith(".xml")
+            and "현재 그래프 피크" in archive.read(name).decode("utf-8")
+        )
+    assert peak_slide.count("Sample_A") == 1
+
+
 def test_raman_report_uses_rich_peak_ratio_opinion_without_library_details() -> None:
     payload = {
         "samples": [

@@ -13,6 +13,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+import unicodedata
 import zipfile
 from datetime import datetime
 from pathlib import Path
@@ -33,7 +34,7 @@ from reportlab.platypus import (
     TableStyle,
 )
 
-from .model import ReportDocument, ReportFigure, ReportSection
+from .model import ReportDocument, ReportFigure, ReportSection, ReportTable
 
 PPTX_SLIDE_W = 12192000
 PPTX_SLIDE_H = 6858000
@@ -270,14 +271,7 @@ def render_html(document: ReportDocument, path: Path) -> None:
                 f"<li>{_html_text(bullet)}</li>" for bullet in section.bullets
             ) + "</ul>"
         if section.table:
-            header = "".join(
-                f"<th>{_html_text(column)}</th>" for column in section.table.columns
-            )
-            rows = "".join(
-                "<tr>" + "".join(f"<td>{_html_text(cell)}</td>" for cell in row) + "</tr>"
-                for row in section.table.rows
-            )
-            body += f"<table><thead><tr>{header}</tr></thead><tbody>{rows}</tbody></table>"
+            body += _html_report_table(section.table)
         sections.append(f"<section><h2>{_html_text(section.heading)}</h2>{body}</section>")
     metadata = " · ".join(
         f"{_html_text(label)}: {_html_text(value)}"
@@ -299,6 +293,24 @@ def render_html(document: ReportDocument, path: Path) -> None:
 
 def _html_text(value: object) -> str:
     return html.escape(_report_readable_text(value))
+
+
+def _html_report_table(table: ReportTable) -> str:
+    header = "".join(f"<th>{_html_text(column)}</th>" for column in table.columns)
+    rows = _normalized_table_rows(table)
+    spans, covered = _table_vertical_merge_spans(rows, table.merge_columns)
+    body_rows: list[str] = []
+    for row_idx, row in enumerate(rows):
+        cells: list[str] = []
+        for col_idx, cell in enumerate(row):
+            if (row_idx, col_idx) in covered:
+                continue
+            span = spans.get((row_idx, col_idx), 1)
+            rowspan = f' rowspan="{span}"' if span > 1 else ""
+            cells.append(f"<td{rowspan}>{_html_text(cell)}</td>")
+        body_rows.append("<tr>" + "".join(cells) + "</tr>")
+    body = "".join(body_rows)
+    return f"<table><thead><tr>{header}</tr></thead><tbody>{body}</tbody></table>"
 
 
 def _pdf_font_name(font_path: Path | None) -> str:
@@ -395,7 +407,7 @@ def _report_readable_text(value: object) -> str:
     text = str(value or "")
     if not text:
         return ""
-    return _latex_math_to_plain_text(text)
+    return unicodedata.normalize("NFC", _latex_math_to_plain_text(text))
 
 
 def _latex_math_to_plain_text(text: str) -> str:
@@ -701,6 +713,60 @@ def _pdf_meta_table(
     return table
 
 
+def _normalized_table_rows(table: ReportTable) -> list[list[str]]:
+    column_count = len(table.columns)
+    return [
+        [
+            "" if value is None else str(value)
+            for value in list(row[:column_count]) + [""] * max(0, column_count - len(row))
+        ]
+        for row in table.rows
+    ]
+
+
+def _valid_merge_columns(table: ReportTable) -> list[int]:
+    column_count = len(table.columns)
+    return sorted(
+        {
+            int(column)
+            for column in table.merge_columns
+            if isinstance(column, int) and 0 <= column < column_count
+        }
+    )
+
+
+def _table_vertical_merge_spans(
+    rows: list[list[str]],
+    merge_columns: list[int],
+) -> tuple[dict[tuple[int, int], int], set[tuple[int, int]]]:
+    spans: dict[tuple[int, int], int] = {}
+    covered: set[tuple[int, int]] = set()
+    if not rows:
+        return spans, covered
+    for col_idx in merge_columns:
+        row_idx = 0
+        while row_idx < len(rows):
+            value = _merge_cell_key(rows[row_idx][col_idx])
+            next_idx = row_idx + 1
+            while (
+                next_idx < len(rows)
+                and value
+                and _merge_cell_key(rows[next_idx][col_idx]) == value
+            ):
+                next_idx += 1
+            span = next_idx - row_idx
+            if span > 1:
+                spans[(row_idx, col_idx)] = span
+                for covered_idx in range(row_idx + 1, next_idx):
+                    covered.add((covered_idx, col_idx))
+            row_idx = next_idx
+    return spans, covered
+
+
+def _merge_cell_key(value: object) -> str:
+    return _report_readable_text(value).strip()
+
+
 def _pdf_report_table(
     section: ReportSection,
     styles: dict[str, ParagraphStyle],
@@ -712,18 +778,40 @@ def _pdf_report_table(
     columns = section.table.columns
     column_count = len(columns)
     col_widths = [available_width / column_count] * column_count
+    table_model = section.table
+    body_rows = _normalized_table_rows(table_model)
+    merge_columns = _valid_merge_columns(table_model)
     rows = [
         [Paragraph(_pdf_text(column), styles["table_head"]) for column in columns]
     ]
-    for row in section.table.rows:
-        rows.extend(
-            _pdf_split_table_row(
-                row,
-                column_count=column_count,
-                col_widths=col_widths,
-                style=styles["table_cell"],
-            )
+    body_offsets: list[tuple[int, int]] = []
+    for row in body_rows:
+        split_rows = _pdf_split_table_row(
+            row,
+            column_count=column_count,
+            col_widths=col_widths,
+            style=styles["table_cell"],
         )
+        body_offsets.append((len(rows), len(split_rows)))
+        rows.extend(split_rows)
+
+    merge_spans, _covered = _table_vertical_merge_spans(body_rows, merge_columns)
+    style_commands = [
+        ("BACKGROUND", (0, 0), (-1, 0), _pdf_color("EAF2FD")),
+        ("BACKGROUND", (0, 1), (-1, -1), colors.white),
+        ("BOX", (0, 0), (-1, -1), 0.5, _pdf_color(PPTX_LINE)),
+        ("INNERGRID", (0, 0), (-1, -1), 0.25, _pdf_color(PPTX_LINE)),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 5),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+    ]
+    for (row_idx, col_idx), span in merge_spans.items():
+        start_row = body_offsets[row_idx][0]
+        end_offset = body_offsets[row_idx + span - 1]
+        end_row = end_offset[0] + end_offset[1] - 1
+        style_commands.append(("SPAN", (col_idx, start_row), (col_idx, end_row)))
 
     table = Table(
         rows,
@@ -731,21 +819,7 @@ def _pdf_report_table(
         hAlign="LEFT",
         repeatRows=1,
     )
-    table.setStyle(
-        TableStyle(
-            [
-                ("BACKGROUND", (0, 0), (-1, 0), _pdf_color("EAF2FD")),
-                ("BACKGROUND", (0, 1), (-1, -1), colors.white),
-                ("BOX", (0, 0), (-1, -1), 0.5, _pdf_color(PPTX_LINE)),
-                ("INNERGRID", (0, 0), (-1, -1), 0.25, _pdf_color(PPTX_LINE)),
-                ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                ("LEFTPADDING", (0, 0), (-1, -1), 5),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 5),
-                ("TOPPADDING", (0, 0), (-1, -1), 4),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-            ]
-        )
-    )
+    table.setStyle(TableStyle(style_commands))
     return table
 
 
@@ -1653,8 +1727,13 @@ def _pptx_table_slide(document: ReportDocument, section: ReportSection) -> str:
     if table is None:
         return _pptx_text_slide(document, section.heading, _section_lines(section)[:10])
     max_rows = 9
-    rows = table.rows[:max_rows]
-    omitted = max(0, len(table.rows) - len(rows))
+    all_rows = _normalized_table_rows(table)
+    rows = all_rows[:max_rows]
+    omitted = max(0, len(all_rows) - len(rows))
+    merge_spans, merge_covered = _table_vertical_merge_spans(
+        rows,
+        _valid_merge_columns(table),
+    )
     shapes = _pptx_header_shapes(document, section.heading)
     x = PPTX_MARGIN_X
     y = PPTX_CONTENT_Y
@@ -1688,7 +1767,10 @@ def _pptx_table_slide(document: ReportDocument, section: ReportSection) -> str:
     for row_idx, row in enumerate(rows):
         fill = "FFFFFF" if row_idx % 2 == 0 else "F8FAFC"
         for col_idx in range(col_count):
+            if (row_idx, col_idx) in merge_covered:
+                continue
             value = row[col_idx] if col_idx < len(row) else ""
+            span = merge_spans.get((row_idx, col_idx), 1)
             display_value = _pptx_table_cell_text(
                 value,
                 column_index=col_idx,
@@ -1701,7 +1783,7 @@ def _pptx_table_slide(document: ReportDocument, section: ReportSection) -> str:
                     x=x + col_idx * col_w,
                     y=y + (row_idx + 1) * row_h,
                     cx=col_w,
-                    cy=row_h,
+                    cy=row_h * span,
                     fill=fill,
                     line=PPTX_LINE,
                     text=[display_value],

@@ -28,9 +28,14 @@ def _markdown_table_cell(value: str) -> str:
 class ReportTable:
     columns: list[str]
     rows: list[list[str]]
+    merge_columns: list[int] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
-        return {"columns": list(self.columns), "rows": [list(r) for r in self.rows]}
+        return {
+            "columns": list(self.columns),
+            "rows": [list(r) for r in self.rows],
+            "mergeColumns": list(self.merge_columns),
+        }
 
 
 @dataclass

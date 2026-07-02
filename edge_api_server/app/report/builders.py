@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import html
 import re
+import unicodedata
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -179,7 +180,7 @@ def _job_meta_value(
     *,
     fallback: str = "",
 ) -> str:
-    value = str(job.get(key) or "").strip()
+    value = _normalize_report_text(str(job.get(key) or "").strip())
     if _is_placeholder_job_value(value):
         return fallback
     return value
@@ -222,12 +223,14 @@ def _as_list(value: Any) -> list[Any]:
 def _sample_names(payload: dict[str, Any]) -> list[str]:
     samples = _as_list(payload.get("samples"))
     names = [
-        str(item.get("label") or item.get("fileName") or "").strip()
+        _normalize_report_text(
+            str(item.get("label") or item.get("fileName") or "").strip()
+        )
         for item in samples
         if isinstance(item, dict) and (item.get("label") or item.get("fileName"))
     ]
     if not names and payload.get("sample"):
-        names.append(str(payload.get("sample")).strip())
+        names.append(_normalize_report_text(str(payload.get("sample")).strip()))
     return [name for name in names if name]
 
 
@@ -262,7 +265,11 @@ def _clean_html_text(value: Any) -> str:
     text = re.sub(r"<br\s*/?>", " / ", text, flags=re.IGNORECASE)
     text = re.sub(r"<[^>]+>", "", text)
     text = html.unescape(text)
-    return " ".join(text.split()) or "-"
+    return _normalize_report_text(" ".join(text.split())) or "-"
+
+
+def _normalize_report_text(value: str) -> str:
+    return unicodedata.normalize("NFC", value)
 
 
 def _trace_is_visible(trace: dict[str, Any]) -> bool:
@@ -1185,9 +1192,9 @@ def _stringify_metadata_value(value: Any) -> str:
     if value is None:
         return "(미기재)"
     if isinstance(value, (str, int, float, bool)):
-        text = str(value).strip()
+        text = _normalize_report_text(str(value).strip())
         return text or "(미기재)"
-    return str(value)
+    return _normalize_report_text(str(value))
 
 
 def _metadata_items(value: Any) -> list[tuple[str, str]]:
@@ -1195,7 +1202,7 @@ def _metadata_items(value: Any) -> list[tuple[str, str]]:
         return []
     rows = []
     for key, item in value.items():
-        key_text = str(key).strip()
+        key_text = _normalize_report_text(str(key).strip())
         if not key_text:
             continue
         rows.append((key_text, _stringify_metadata_value(item)))
@@ -1271,11 +1278,13 @@ def _experiment_condition_rows(
         for sample in samples:
             if not isinstance(sample, dict):
                 continue
-            source = str(
-                sample.get("label")
-                or sample.get("fileName")
-                or sample.get("sample")
-                or "시료"
+            source = _normalize_report_text(
+                str(
+                    sample.get("label")
+                    or sample.get("fileName")
+                    or sample.get("sample")
+                    or "시료"
+                )
             )
             for item_key, item_value in _metadata_items(sample.get("metadata")):
                 label = _condition_label(item_key, lookup)
@@ -1339,7 +1348,7 @@ class ReportBuilder:
             return ReportSection(
                 "experiment_conditions",
                 "실험조건 및 실험환경",
-                table=ReportTable(["대상", "항목", "값"], rows),
+                table=ReportTable(["대상", "항목", "값"], rows, merge_columns=[0]),
             )
         return ReportSection(
             "experiment_conditions",
@@ -1496,7 +1505,11 @@ class FtirReportBuilder(ReportBuilder):
                 return ReportSection(
                     "functional_groups",
                     "작용기 소견",
-                    table=ReportTable(["작용기/assignment 후보", "근거 피크 위치", "관찰 범위"], rows),
+                    table=ReportTable(
+                        ["작용기/assignment 후보", "근거 피크 위치", "관찰 범위"],
+                        rows,
+                        merge_columns=[0],
+                    ),
                 )
             return ReportSection(
                 "functional_groups",
@@ -1525,7 +1538,11 @@ class FtirReportBuilder(ReportBuilder):
                 "현재 그래프 피크",
                 paragraphs=["현재 그래프에 표시된 보고서용 피크 정보가 없습니다."],
             )
-        table = ReportTable(columns=["시료", "Wavenumber", "피크 이름"], rows=rows)
+        table = ReportTable(
+            columns=["시료", "Wavenumber", "피크 이름"],
+            rows=rows,
+            merge_columns=[0],
+        )
         return ReportSection("current_peaks", "현재 그래프 피크", table=table)
 
     def _limitations_section(self, verdict: dict[str, Any]) -> ReportSection:
@@ -1921,8 +1938,10 @@ class RamanReportBuilder(ReportBuilder):
                 continue
             rows.append(
                 [
-                    str(sample.get("label") or sample.get("fileName") or "-"),
-                    str(sample.get("fileName") or "-"),
+                    _normalize_report_text(
+                        str(sample.get("label") or sample.get("fileName") or "-")
+                    ),
+                    _normalize_report_text(str(sample.get("fileName") or "-")),
                     str(sample.get("pointCount") or "-"),
                     str(sample.get("peakCount") or "-"),
                 ]
@@ -1932,7 +1951,11 @@ class RamanReportBuilder(ReportBuilder):
         return ReportSection(
             "raman_samples",
             "시료 및 피크 수",
-            table=ReportTable(["시료", "원본 파일", "데이터 포인트", "피크 수"], rows),
+            table=ReportTable(
+                ["시료", "원본 파일", "데이터 포인트", "피크 수"],
+                rows,
+                merge_columns=[1, 2],
+            ),
         )
 
     def _peak_section(self, payload: dict[str, Any]) -> ReportSection:
@@ -1942,7 +1965,11 @@ class RamanReportBuilder(ReportBuilder):
         return ReportSection(
             "raman_peaks",
             "주요 Raman 피크",
-            table=ReportTable(["시료", "Raman shift", "Assignment"], rows),
+            table=ReportTable(
+                ["시료", "Raman shift", "Assignment"],
+                rows,
+                merge_columns=[0],
+            ),
         )
 
     def _fallback_texts(self, job: dict[str, Any], payload: dict[str, Any]) -> dict[str, str]:
