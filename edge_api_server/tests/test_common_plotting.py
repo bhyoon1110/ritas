@@ -331,9 +331,13 @@ def test_shared_peak_editor_adds_peak_controls(tmp_path) -> None:
     assert "syncSampleChildren" in html
     assert "childCurvesForSample" in html
     assert "sampleParentVisible" in html
+    assert "visibleLegendTraceIndexes" in html
+    assert "curveFromLegendTarget" in html
     assert "syncHiddenSampleChildren" in html
     assert "!sampleParentVisible(sampleGroup(i))" in html
     assert "blockHiddenSamplePeakLegendToggle" in html
+    assert "interceptHiddenSamplePeakLegendToggle" in html
+    assert '"pointerdown", "mousedown", "click", "dblclick"' in html
     assert 'gd.on("plotly_legendclick", blockHiddenSamplePeakLegendToggle)' in html
     assert 'gd.on("plotly_legenddoubleclick", blockHiddenSamplePeakLegendToggle)' in html
     assert "peakMatchesCurrentSensitivity" in html

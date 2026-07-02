@@ -1900,6 +1900,33 @@ def peak_editor_js(div_id: str) -> str:
     return true;
   }}
 
+  function visibleLegendTraceIndexes() {{
+    var fd = gd._fullData || gd.data || [];
+    var idxs = [];
+    for (var i = 0; i < fd.length; i++) {{
+      var tr = fd[i];
+      if (!tr || tr.showlegend === false) continue;
+      idxs.push(typeof tr.index === "number" ? tr.index : i);
+    }}
+    return idxs;
+  }}
+
+  function curveFromLegendTarget(target) {{
+    if (!target || !target.closest) return null;
+    var item = target.closest("g.legend g.traces");
+    if (!item) return null;
+    var items = Array.prototype.slice.call(
+      gd.querySelectorAll("g.legend g.traces")
+    ).filter(function(node) {{
+      return node.querySelector("text.legendtext");
+    }});
+    var pos = items.indexOf(item);
+    if (pos < 0) return null;
+    var idxs = visibleLegendTraceIndexes();
+    var curve = Number(idxs[pos]);
+    return Number.isInteger(curve) ? curve : null;
+  }}
+
   function labelKeyForTrace(curve) {{
     var meta = traceMeta(curve);
     if (meta.rist_legend_edit_group) return String(meta.rist_legend_edit_group);
@@ -2513,10 +2540,24 @@ def peak_editor_js(div_id: str) -> str:
     return null;
   }}
 
-  function blockHiddenSamplePeakLegendToggle(ev) {{
-    var curve = curveFromLegendEvent(ev);
+  function shouldBlockHiddenSamplePeakCurve(curve) {{
     if (curve == null || !isPeakCurve(curve)) return;
     if (sampleParentVisible(sampleGroup(curve))) return;
+    return true;
+  }}
+
+  function blockHiddenSamplePeakLegendToggle(ev) {{
+    var curve = curveFromLegendEvent(ev);
+    if (!shouldBlockHiddenSamplePeakCurve(curve)) return;
+    return false;
+  }}
+
+  function interceptHiddenSamplePeakLegendToggle(ev) {{
+    var curve = curveFromLegendTarget(ev.target);
+    if (!shouldBlockHiddenSamplePeakCurve(curve)) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    if (ev.stopImmediatePropagation) ev.stopImmediatePropagation();
     return false;
   }}
 
@@ -2935,6 +2976,9 @@ def peak_editor_js(div_id: str) -> str:
     setMode("none");
     updateSelectButton();
     syncVisibility();
+  }});
+  ["pointerdown", "mousedown", "click", "dblclick"].forEach(function(type) {{
+    gd.addEventListener(type, interceptHiddenSamplePeakLegendToggle, true);
   }});
   gd.on("plotly_legendclick", blockHiddenSamplePeakLegendToggle);
   gd.on("plotly_legenddoubleclick", blockHiddenSamplePeakLegendToggle);
