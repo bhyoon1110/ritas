@@ -1635,6 +1635,19 @@ def _pptx_text_slide(document: ReportDocument, title: str, lines: list[str]) -> 
     return _pptx_frame(shapes)
 
 
+def _pptx_table_cell_text(value: object, *, column_index: int, column_count: int) -> str:
+    text = " ".join(str(value or "").split())
+    if not text:
+        return ""
+    if column_count >= 3 and column_index == column_count - 1:
+        limit = 90
+    else:
+        limit = 38
+    if len(text) <= limit:
+        return text
+    return text[: limit - 1].rstrip() + "…"
+
+
 def _pptx_table_slide(document: ReportDocument, section: ReportSection) -> str:
     table = section.table
     if table is None:
@@ -1676,6 +1689,11 @@ def _pptx_table_slide(document: ReportDocument, section: ReportSection) -> str:
         fill = "FFFFFF" if row_idx % 2 == 0 else "F8FAFC"
         for col_idx in range(col_count):
             value = row[col_idx] if col_idx < len(row) else ""
+            display_value = _pptx_table_cell_text(
+                value,
+                column_index=col_idx,
+                column_count=col_count,
+            )
             shapes.append(
                 _pptx_shape(
                     shape_id,
@@ -1686,10 +1704,12 @@ def _pptx_table_slide(document: ReportDocument, section: ReportSection) -> str:
                     cy=row_h,
                     fill=fill,
                     line=PPTX_LINE,
-                    text=[str(value)],
-                    font_size=1400,
+                    text=[display_value],
+                    font_size=1250,
                     color=PPTX_TEXT,
                     inset=68580,
+                    line_spacing_pct=108000,
+                    space_after_pts=100,
                 )
             )
             shape_id += 1

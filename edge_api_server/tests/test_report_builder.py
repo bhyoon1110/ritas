@@ -1218,6 +1218,42 @@ def test_raman_builder_maps_web_analysis_payload(tmp_path) -> None:
     assert 'y="1737360"' in overview_slide
 
 
+def test_raman_pptx_truncates_long_condition_cells(tmp_path) -> None:
+    long_note = " ".join(f"조건{i}" for i in range(1, 40))
+    payload = {
+        "metadata": {
+            "기타": long_note,
+        },
+        "samples": [
+            {
+                "label": "Raman_1",
+                "metadata": {
+                    "Excitation Wavelength": "532 nm",
+                },
+            }
+        ],
+        "figure": {"data": []},
+    }
+    analysis = [{"relativePath": "raman-analysis.json", "data": payload}]
+    document = RamanReportBuilder().build({**_job(), "experiment_code": "RAMAN"}, analysis)
+
+    conditions = document.section("experiment_conditions")
+    assert conditions is not None and conditions.table is not None
+    assert ["공통", "기타", long_note] in conditions.table.rows
+
+    rendered = render_requested_report(document, tmp_path, "PPTX")
+    with zipfile.ZipFile(rendered) as archive:
+        slide_text = "\n".join(
+            archive.read(name).decode("utf-8")
+            for name in archive.namelist()
+            if name.startswith("ppt/slides/slide") and name.endswith(".xml")
+        )
+    assert long_note not in slide_text
+    assert "조건1 조건2 조건3" in slide_text
+    assert "…" in slide_text
+    assert 'sz="1250"' in slide_text
+
+
 def test_raman_report_uses_rich_peak_ratio_opinion_without_library_details() -> None:
     payload = {
         "samples": [
