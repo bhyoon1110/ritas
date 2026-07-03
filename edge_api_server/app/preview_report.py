@@ -348,7 +348,15 @@ def build_preview_report_package(
         atomic_write_json(report_dir / "report.json", document.to_dict())
         (report_dir / "report.md").write_text(document.to_markdown(), encoding="utf-8")
         _write_email_body(document, report_dir)
-        write_raw_data_xlsx(report_dir / "raw_data.xlsx", raw_series)
+        write_raw_data_xlsx(
+            report_dir / "raw_data.xlsx",
+            raw_series,
+            axis_header=(
+                "wavenumber(cm-1)/샘플명"
+                if _is_ftir_experiment(experiment_code)
+                else "Axis"
+            ),
+        )
         _emit_progress(progress, "render", 86, "PPT/PDF/HTML 보고서를 렌더링하는 중입니다.")
         render_report_formats(
             document,
@@ -576,7 +584,12 @@ def _write_email_body(document: Any, report_dir: Path) -> None:
     )
 
 
-def write_raw_data_xlsx(path: Path, series: list[RawSeries]) -> None:
+def write_raw_data_xlsx(
+    path: Path,
+    series: list[RawSeries],
+    *,
+    axis_header: str = "Axis",
+) -> None:
     axis_values = sorted(
         {
             round(float(value), 8)
@@ -592,7 +605,7 @@ def write_raw_data_xlsx(path: Path, series: list[RawSeries]) -> None:
                 for x, y in zip(item.axis, item.values)
             }
         )
-    rows: list[list[Any]] = [["Axis", *[item.label for item in series]]]
+    rows: list[list[Any]] = [[axis_header, *[item.label for item in series]]]
     for axis in axis_values:
         rows.append([axis, *[lookup.get(axis, "") for lookup in lookups]])
     _write_xlsx(path, rows)

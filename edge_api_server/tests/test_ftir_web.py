@@ -312,6 +312,9 @@ def test_ftir_report_api_builds_package_with_graph_and_raw_xlsx(
         assert "LLM 사용" not in ppt_text
         assert "라이브러리" not in ppt_text
         assert "<a:t>LLM</a:t>" not in ppt_text
+        with zipfile.ZipFile(BytesIO(archive.read("raw_data.xlsx"))) as xlsx_archive:
+            sheet_xml = xlsx_archive.read("xl/worksheets/sheet1.xml").decode("utf-8")
+        assert "wavenumber(cm-1)/샘플명" in sheet_xml
 
 
 def test_ftir_report_job_api_tracks_progress_and_downloads_package(
