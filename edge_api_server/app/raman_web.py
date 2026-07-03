@@ -222,7 +222,7 @@ def _blank_figure() -> go.Figure:
             minor=dict(showgrid=True, gridcolor="#f4f4f4"),
         ),
         yaxis=dict(
-            title="Normalized Intensity",
+            title="Intensity (a.u.)",
             range=[-0.05, 1.65],
             showgrid=True,
             gridcolor="#e8e8e8",

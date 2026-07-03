@@ -251,6 +251,7 @@ def test_raman_blank_figure_starts_without_reserved_legend_margin() -> None:
 
     assert len(figure.data) == 0
     assert figure.layout.margin.r == 70
+    assert figure.layout.yaxis.title.text == "Intensity (a.u.)"
 
 
 def test_raman_analyze_api_stacks_multiple_samples() -> None:
@@ -267,6 +268,7 @@ def test_raman_analyze_api_stacks_multiple_samples() -> None:
 
     assert response.status_code == 200
     figure = response.json()["figure"]
+    assert figure["layout"]["yaxis"]["title"]["text"] == "Intensity (a.u.)"
     stack = figure["layout"]["meta"]["ristRamanStack"]
     assert stack["enabled"] is True
     assert stack["sampleOffsets"]["sample:0"] == 0

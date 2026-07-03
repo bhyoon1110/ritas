@@ -269,7 +269,7 @@ def build_multi_raman_fig(
             minor=dict(showgrid=True, gridcolor="#f4f4f4"),
         ),
         yaxis=dict(
-            title="Normalized Intensity",
+            title="Intensity (a.u.)",
             showgrid=True,
             gridcolor="#e8e8e8",
             range=[
