@@ -818,6 +818,73 @@ body { overflow-x: hidden; }
   gap: 8px 10px;
   padding: 0 0 12px 24px;
 }
+.raman-report-extra-conditions {
+  padding: 0 0 12px 24px;
+}
+.raman-report-extra-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  max-width: 860px;
+  margin: 0 0 6px;
+  color: #334e68;
+  font-size: 10px;
+  font-weight: 700;
+}
+.raman-report-condition-add {
+  height: 26px;
+  border: 1px solid #9fb3c8;
+  border-radius: 4px;
+  background: #ffffff;
+  color: #243b53;
+  cursor: pointer;
+  font-size: 10px;
+  padding: 0 8px;
+}
+.raman-report-condition-add:hover {
+  border-color: #486581;
+  background: #eef2f6;
+}
+.raman-report-extra-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.raman-report-condition-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.8fr) minmax(150px, 1fr) minmax(180px, 1.4fr) 30px;
+  gap: 6px;
+  max-width: 860px;
+}
+.raman-report-condition-row input {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid #bcccdc;
+  border-radius: 4px;
+  background: #ffffff;
+  color: #243b53;
+  font: 11px Arial, "Noto Sans KR", sans-serif;
+  padding: 6px 7px;
+  box-sizing: border-box;
+}
+.raman-report-condition-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 28px;
+  border: 1px solid #d9e2ec;
+  border-radius: 4px;
+  background: #ffffff;
+  color: #7b8794;
+  cursor: pointer;
+  font: 16px/1 Arial, sans-serif;
+}
+.raman-report-condition-remove:hover {
+  border-color: #b42318;
+  color: #b42318;
+}
 .raman-report-meta-field {
   display: flex;
   flex-direction: column;
@@ -1116,6 +1183,19 @@ body { overflow-x: hidden; }
   .raman-report-meta-grid {
     grid-template-columns: 1fr;
     padding-left: 0;
+  }
+  .raman-report-extra-conditions {
+    padding-left: 0;
+  }
+  .raman-report-extra-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .raman-report-condition-row {
+    grid-template-columns: 1fr;
+  }
+  .raman-report-condition-remove {
+    justify-self: flex-end;
   }
   .raman-report-meta-toolbar {
     padding-left: 0;
@@ -1450,6 +1530,16 @@ _PAGE_SHELL = """
                   data-report-label="기타"></textarea>
       </label>
     </div>
+    <div class="raman-report-extra-conditions" id="raman-report-extra-conditions">
+      <div class="raman-report-extra-head">
+        <span>샘플별 실험환경/조건</span>
+        <button type="button" class="raman-report-condition-add"
+                id="raman-report-condition-add">샘플별 조건 추가</button>
+      </div>
+      <div class="raman-report-extra-list" id="raman-report-extra-list"></div>
+    </div>
+    <datalist id="raman-report-condition-target-options"></datalist>
+    <datalist id="raman-report-condition-label-options"></datalist>
     <datalist id="raman-report-excitation-wavelength-options">
       <option value="532 nm">
       <option value="633 nm">
@@ -2464,6 +2554,10 @@ _UPLOAD_SCRIPT = """
   var reportOptionsCancel = document.getElementById("raman-report-options-cancel");
   var reportOptionsSave = document.getElementById("raman-report-options-save");
   var reportOptionsReset = document.getElementById("raman-report-options-reset");
+  var reportConditionAdd = document.getElementById("raman-report-condition-add");
+  var reportConditionList = document.getElementById("raman-report-extra-list");
+  var reportConditionTargetOptions = document.getElementById("raman-report-condition-target-options");
+  var reportConditionLabelOptions = document.getElementById("raman-report-condition-label-options");
   var MESSAGE_AUTO_HIDE_MS = 5000;
   var messageTimer = null;
   if (!gd || !input || !dropZone || !prompt || !fileList || !status || !message
@@ -2473,6 +2567,8 @@ _UPLOAD_SCRIPT = """
       || !reportOptionsOpen || !reportOptionsModal || !reportOptionsBody
       || !reportOptionsClose || !reportOptionsCancel || !reportOptionsSave
       || !reportOptionsReset
+      || !reportConditionAdd || !reportConditionList
+      || !reportConditionTargetOptions || !reportConditionLabelOptions
       || !reportButton || !reportProgress || !reportProgressLabel
       || !reportProgressValue || !reportProgressBar) return;
 
@@ -2615,6 +2711,18 @@ _UPLOAD_SCRIPT = """
         option.value = value;
         list.appendChild(option);
       });
+    });
+    renderReportConditionLabelOptions();
+  }
+
+  function renderReportConditionLabelOptions() {
+    reportConditionLabelOptions.innerHTML = "";
+    REPORT_OPTION_FIELDS.map(function(config) {
+      return config.label;
+    }).concat(["기타"]).forEach(function(label) {
+      var option = document.createElement("option");
+      option.value = label;
+      reportConditionLabelOptions.appendChild(option);
     });
   }
 
@@ -2936,6 +3044,7 @@ _UPLOAD_SCRIPT = """
       selectedLibraryIds = (state.selectedLibraryIds || []).slice();
       applyReportMetadataFormState(state.reportMetadata || {});
       latestAnalysisPayload = state.analysisPayload || null;
+      renderReportConditionTargetOptions();
       if (Number.isFinite(Number(state.sensitivity))) {
         gd._ristPeakSensitivityValue = Number(state.sensitivity);
       }
@@ -3017,27 +3126,133 @@ _UPLOAD_SCRIPT = """
     return [file.name, file.size, file.lastModified].join(":");
   }
 
-  function reportMetadataFormState() {
-    var state = {};
-    reportMetaControls.forEach(function(control) {
-      state[control.dataset.reportField] = control.value || "";
+  function reportSampleNames() {
+    var seen = {};
+    var names = [];
+    ((latestAnalysisPayload && latestAnalysisPayload.samples) || []).forEach(function(sample) {
+      var name = sample && (sample.label || sample.fileName || sample.name);
+      name = String(name || "").trim();
+      if (!name || seen[name]) return;
+      seen[name] = true;
+      names.push(name);
     });
-    return state;
+    return names;
+  }
+
+  function renderReportConditionTargetOptions() {
+    reportConditionTargetOptions.innerHTML = "";
+    ["공통"].concat(reportSampleNames()).forEach(function(name) {
+      var option = document.createElement("option");
+      option.value = name;
+      reportConditionTargetOptions.appendChild(option);
+    });
+  }
+
+  function addReportConditionRow(condition) {
+    var row = document.createElement("div");
+    row.className = "raman-report-condition-row";
+
+    var target = document.createElement("input");
+    target.type = "text";
+    target.setAttribute("list", "raman-report-condition-target-options");
+    target.placeholder = "공통 또는 샘플명";
+    target.value = condition && condition.target ? condition.target : "";
+    target.dataset.conditionTarget = "true";
+
+    var label = document.createElement("input");
+    label.type = "text";
+    label.setAttribute("list", "raman-report-condition-label-options");
+    label.placeholder = "항목";
+    label.value = condition && condition.label ? condition.label : "";
+    label.dataset.conditionLabel = "true";
+
+    var value = document.createElement("input");
+    value.type = "text";
+    value.placeholder = "값";
+    value.value = condition && condition.value ? condition.value : "";
+    value.dataset.conditionValue = "true";
+
+    var remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "raman-report-condition-remove";
+    remove.textContent = "×";
+    remove.title = "조건 삭제";
+    remove.setAttribute("aria-label", "조건 삭제");
+
+    [target, label, value].forEach(function(control) {
+      control.addEventListener("input", scheduleWorkspaceSave);
+      control.addEventListener("change", scheduleWorkspaceSave);
+    });
+    remove.addEventListener("click", function() {
+      row.remove();
+      scheduleWorkspaceSave();
+    });
+
+    row.appendChild(target);
+    row.appendChild(label);
+    row.appendChild(value);
+    row.appendChild(remove);
+    reportConditionList.appendChild(row);
+    scheduleWorkspaceSave();
+    return row;
+  }
+
+  function renderReportConditionRows(rows) {
+    reportConditionList.innerHTML = "";
+    (rows || []).forEach(function(row) {
+      addReportConditionRow(row);
+    });
+  }
+
+  function reportExtraConditionsState() {
+    var rows = [];
+    reportConditionList.querySelectorAll(".raman-report-condition-row").forEach(function(row) {
+      var target = row.querySelector("[data-condition-target]");
+      var label = row.querySelector("[data-condition-label]");
+      var value = row.querySelector("[data-condition-value]");
+      var item = {
+        target: ((target && target.value) || "").trim() || "공통",
+        label: ((label && label.value) || "").trim(),
+        value: ((value && value.value) || "").trim()
+      };
+      if (!item.label || !item.value) return;
+      rows.push(item);
+    });
+    return rows;
+  }
+
+  function reportMetadataFormState() {
+    var fields = {};
+    reportMetaControls.forEach(function(control) {
+      fields[control.dataset.reportField] = control.value || "";
+    });
+    return {
+      fields: fields,
+      extraConditions: reportExtraConditionsState()
+    };
   }
 
   function applyReportMetadataFormState(state) {
+    var fields = state && state.fields && typeof state.fields === "object"
+      ? state.fields
+      : (state || {});
     reportMetaControls.forEach(function(control) {
       var field = control.dataset.reportField;
-      if (Object.prototype.hasOwnProperty.call(state, field)) {
-        control.value = state[field] || "";
+      if (Object.prototype.hasOwnProperty.call(fields, field)) {
+        control.value = fields[field] || "";
       }
     });
+    renderReportConditionRows(
+      state && Array.isArray(state.extraConditions) ? state.extraConditions : []
+    );
   }
 
   function clearReportMetadataForm() {
     reportMetaControls.forEach(function(control) {
       control.value = "";
     });
+    renderReportConditionRows([]);
+    renderReportConditionTargetOptions();
   }
 
   function normalizedMetadataKey(value) {
@@ -3205,14 +3420,42 @@ _UPLOAD_SCRIPT = """
     scheduleWorkspaceSave();
   }
 
+  function conditionRowsFromObject(value) {
+    var rows = [];
+    if (!value) return rows;
+    if (Array.isArray(value)) {
+      value.forEach(function(item) {
+        if (!item || typeof item !== "object") return;
+        var label = String(item.label || item.key || item.name || item.item || "").trim();
+        var itemValue = item.value == null ? "" : String(item.value).trim();
+        if (!label || !itemValue) return;
+        rows.push({
+          target: String(item.target || item.sample || item.source || "공통").trim() || "공통",
+          label: label,
+          value: itemValue
+        });
+      });
+      return rows;
+    }
+    if (typeof value === "object") {
+      Object.keys(value).forEach(function(key) {
+        var itemValue = value[key] == null ? "" : String(value[key]).trim();
+        if (!key || !itemValue) return;
+        rows.push({target: "공통", label: key, value: itemValue});
+      });
+    }
+    return rows;
+  }
+
   function reportMetadataConditions() {
-    var conditions = {};
+    var conditions = [];
     reportMetaControls.forEach(function(control) {
       var value = (control.value || "").trim();
       if (!value) return;
       var label = control.dataset.reportLabel || control.dataset.reportField;
-      conditions[label] = value;
+      conditions.push({target: "공통", label: label, value: value});
     });
+    conditions = conditions.concat(reportExtraConditionsState());
     return conditions;
   }
 
@@ -3220,12 +3463,9 @@ _UPLOAD_SCRIPT = """
     var payload = JSON.parse(JSON.stringify(latestAnalysisPayload || {}));
     delete payload.figure;
     var conditions = reportMetadataConditions();
-    if (Object.keys(conditions).length) {
-      payload.experimentConditions = Object.assign(
-        {},
-        payload.experimentConditions || {},
-        conditions
-      );
+    if (conditions.length) {
+      var existingConditions = conditionRowsFromObject(payload.experimentConditions);
+      payload.experimentConditions = existingConditions.concat(conditions);
     }
     return filterReportAnalysisPayload(payload);
   }
@@ -3257,6 +3497,10 @@ _UPLOAD_SCRIPT = """
     reportButton.disabled = busy;
     clearButton.disabled = busy;
     reportMetaControls.forEach(function(control) {
+      control.disabled = busy;
+    });
+    reportConditionAdd.disabled = busy;
+    reportConditionList.querySelectorAll("input, button").forEach(function(control) {
       control.disabled = busy;
     });
     libraryInput.disabled = busy;
@@ -3896,6 +4140,8 @@ _UPLOAD_SCRIPT = """
 
   function resetPlot() {
     files = [];
+    latestAnalysisPayload = null;
+    renderReportConditionTargetOptions();
     renderFiles();
     setMessage("");
     status.textContent = "Raman raw 파일을 업로드하세요";
@@ -3934,6 +4180,7 @@ _UPLOAD_SCRIPT = """
       });
       var payload = await apiPayload(response, "Raman 분석에 실패했습니다.");
       latestAnalysisPayload = JSON.parse(JSON.stringify(payload));
+      renderReportConditionTargetOptions();
       populateReportMetadataFromPayload(payload);
       await window.Plotly.react(
         gd,
@@ -4000,6 +4247,11 @@ _UPLOAD_SCRIPT = """
     if (!visibleGroups || !Array.isArray(payload.samples)) return payload;
     var visible = {};
     visibleGroups.forEach(function(group) { visible[group] = true; });
+    var allSampleNames = {};
+    (payload.samples || []).forEach(function(sample) {
+      var name = sample && (sample.label || sample.fileName || sample.name);
+      if (name) allSampleNames[String(name)] = true;
+    });
     payload.samples = payload.samples.filter(function(sample, index) {
       var group = sample && (
         sample.sample_group || sample.sampleGroup || sample.group || sample.key
@@ -4007,10 +4259,22 @@ _UPLOAD_SCRIPT = """
       if (group && visible[String(group)]) return true;
       return !!visible["sample:" + index];
     });
+    var visibleSampleNames = {};
     if (payload.samples.length) {
       payload.sample = payload.samples.map(function(sample) {
-        return sample.label || sample.fileName || sample.name || "";
+        var name = sample.label || sample.fileName || sample.name || "";
+        if (name) visibleSampleNames[String(name)] = true;
+        return name;
       }).filter(Boolean).join(", ");
+    }
+    if (Array.isArray(payload.experimentConditions)) {
+      payload.experimentConditions = payload.experimentConditions.filter(function(item) {
+        if (!item || typeof item !== "object") return true;
+        var target = String(item.target || item.sample || item.source || "공통").trim();
+        if (!target || target === "공통") return true;
+        if (!allSampleNames[target]) return true;
+        return !!visibleSampleNames[target];
+      });
     }
     return payload;
   }
@@ -4245,6 +4509,9 @@ _UPLOAD_SCRIPT = """
     control.addEventListener("input", scheduleWorkspaceSave);
     control.addEventListener("change", scheduleWorkspaceSave);
   });
+  reportConditionAdd.addEventListener("click", function() {
+    addReportConditionRow({target: "공통", label: "", value: ""});
+  });
   libraryNew.addEventListener("click", function() {
     renderLibraryEditor(
       {
@@ -4326,6 +4593,7 @@ _UPLOAD_SCRIPT = """
     addFiles(ev.dataTransfer ? ev.dataTransfer.files : []);
   });
   renderReportDatalists();
+  renderReportConditionTargetOptions();
   installReportOptionPickers();
   installWorkspaceAutosave();
   restoreWorkspace().then(function(restored) {

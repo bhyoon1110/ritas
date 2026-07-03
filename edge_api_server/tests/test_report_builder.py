@@ -1293,6 +1293,35 @@ def test_raman_builder_maps_web_analysis_payload(tmp_path) -> None:
     assert '<col style="width:58.00%">' in html_text
 
 
+def test_raman_builder_keeps_duplicate_sample_conditions() -> None:
+    payload = {
+        "samples": [
+            {"label": "S1", "pointCount": 10, "peakCount": 0},
+            {"label": "S2", "pointCount": 10, "peakCount": 0},
+        ],
+        "experimentConditions": [
+            {"target": "S1", "label": "Excitation Wavelength", "value": "532 nm"},
+            {"target": "S2", "label": "Excitation Wavelength", "value": "785 nm"},
+            {"target": "S1", "label": "Laser current", "value": "10 mA"},
+        ],
+        "figure": {"data": [], "layout": {}},
+        "settings": {},
+    }
+    analysis = [{"relativePath": "raman-analysis.json", "data": payload}]
+
+    document = RamanReportBuilder().build({**_job(), "experiment_code": "RAMAN"}, analysis)
+
+    conditions = document.section("experiment_conditions")
+    assert conditions is not None and conditions.table is not None
+    assert ["S1", "Excitation Wavelength", "532 nm"] in conditions.table.rows
+    assert ["S2", "Excitation Wavelength", "785 nm"] in conditions.table.rows
+    assert ["S1", "Laser current", "10 mA"] in conditions.table.rows
+
+    spec = RamanReportBuilder().llm_slots({**_job(), "experiment_code": "RAMAN"}, analysis)
+    assert spec is not None
+    assert ["S2", "Excitation Wavelength", "785 nm"] in spec.facts["experiment_conditions"]
+
+
 def test_raman_pptx_truncates_long_condition_cells(tmp_path) -> None:
     long_note = " ".join(f"조건{i}" for i in range(1, 40))
     payload = {

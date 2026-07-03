@@ -70,13 +70,22 @@ def test_raman_workspace_contains_upload_controls() -> None:
     assert "/api/v1/raman/report/jobs" in page
     assert 'id="raman-report-progress"' in page
     assert 'id="raman-report-meta"' in page
+    assert 'id="raman-report-condition-add"' in page
+    assert 'id="raman-report-extra-list"' in page
+    assert 'id="raman-report-condition-target-options"' in page
     assert "reportAnalysisPayload" in page
     assert "delete payload.figure" in page
     assert "compactReportFigurePayload" in page
     assert "populateReportMetadataFromPayload" in page
+    assert "addReportConditionRow" in page
+    assert "reportExtraConditionsState" in page
+    assert "conditionRowsFromObject" in page
+    assert "visibleSampleNames" in page
     assert "normalizedLaserValue" in page
     assert "setReportControlIfEmpty" in page
+    assert "샘플별 조건 추가" in page
     assert "experimentConditions" in page
+    assert "existingConditions.concat(conditions)" in page
     assert "실험환경/조건 <span>raw 헤더 자동 추출 + 직접 입력</span>" in page
     assert "raw 헤더 자동 추출 + 직접 입력" in page
     assert "보고서 정보" not in page

@@ -1209,6 +1209,43 @@ def _metadata_items(value: Any) -> list[tuple[str, str]]:
     return rows
 
 
+def _condition_rows_from_source(
+    value: Any,
+    lookup: dict[str, str],
+) -> list[list[str]]:
+    if isinstance(value, list):
+        rows: list[list[str]] = []
+        for item in value:
+            if not isinstance(item, dict):
+                continue
+            label = _normalize_report_text(
+                str(
+                    item.get("label")
+                    or item.get("key")
+                    or item.get("name")
+                    or item.get("item")
+                    or ""
+                ).strip()
+            )
+            item_value = _stringify_metadata_value(item.get("value"))
+            if not label or item_value == "(미기재)":
+                continue
+            target = _normalize_report_text(
+                str(
+                    item.get("target")
+                    or item.get("sample")
+                    or item.get("source")
+                    or "공통"
+                ).strip()
+            ) or "공통"
+            rows.append([target, _condition_label(label, lookup), item_value])
+        return rows
+    return [
+        ["공통", _condition_label(item_key, lookup), item_value]
+        for item_key, item_value in _metadata_items(value)
+    ]
+
+
 def _metadata_label_key(value: str) -> str:
     return re.sub(r"[^0-9a-z가-힣]+", "", value.lower())
 
@@ -1269,8 +1306,7 @@ def _experiment_condition_rows(
         "experimentEnvironment",
         "experiment_environment",
     ):
-        for item_key, item_value in _metadata_items(payload.get(key)):
-            rows.append(["공통", _condition_label(item_key, lookup), item_value])
+        rows.extend(_condition_rows_from_source(payload.get(key), lookup))
 
     samples = payload.get("samples")
     if isinstance(samples, list):
