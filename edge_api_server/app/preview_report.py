@@ -267,7 +267,11 @@ def build_preview_report_package(
 ) -> tuple[Path, Path]:
     tmp_root = Path(tempfile.mkdtemp(prefix="rist-preview-report-"))
     try:
-        raw_series = _filter_raw_series_for_payload(raw_series, analysis_payload)
+        raw_series = _filter_raw_series_for_payload(
+            raw_series,
+            analysis_payload,
+            filter_axis_range=_is_ftir_experiment(experiment_code),
+        )
         job_root = tmp_root / "job"
         report_dir = job_root / "report"
         processed_dir = job_root / "processed"
@@ -395,7 +399,11 @@ def run_preview_report_job(
             message="raw 데이터를 읽는 중입니다.",
         )
         raw_series = raw_series_factory()
-        raw_series = _filter_raw_series_for_payload(raw_series, analysis_payload)
+        raw_series = _filter_raw_series_for_payload(
+            raw_series,
+            analysis_payload,
+            filter_axis_range=_is_ftir_experiment(experiment_code),
+        )
 
         def progress(stage: str, progress_pct: int, message: str) -> None:
             store.update(
@@ -443,22 +451,85 @@ def _payload_raw_series_keys(analysis_payload: dict[str, Any]) -> set[str]:
     return keys
 
 
+def _is_ftir_experiment(experiment_code: str) -> bool:
+    normalized = experiment_code.upper().replace("_", "-")
+    return normalized in {"FTIR", "FT-IR", "IR"}
+
+
+def _figure_x_range(analysis_payload: dict[str, Any]) -> tuple[float, float] | None:
+    figure = analysis_payload.get("figure")
+    if not isinstance(figure, dict):
+        return None
+    layout = figure.get("layout")
+    if not isinstance(layout, dict):
+        return None
+    xaxis = layout.get("xaxis")
+    raw_range: Any = None
+    if isinstance(xaxis, dict):
+        raw_range = xaxis.get("range")
+    if raw_range is None:
+        raw_range = layout.get("xaxis.range")
+    if (
+        not isinstance(raw_range, list | tuple)
+        or len(raw_range) != 2
+    ):
+        return None
+    try:
+        left = float(raw_range[0])
+        right = float(raw_range[1])
+    except (TypeError, ValueError):
+        return None
+    if not (left == left and right == right):
+        return None
+    return min(left, right), max(left, right)
+
+
+def _filter_raw_series_for_axis_range(
+    raw_series: list[RawSeries],
+    axis_range: tuple[float, float] | None,
+) -> list[RawSeries]:
+    if axis_range is None:
+        return raw_series
+    lo, hi = axis_range
+    filtered: list[RawSeries] = []
+    for item in raw_series:
+        axis: list[float] = []
+        values: list[float] = []
+        for x, y in zip(item.axis, item.values):
+            try:
+                x_value = float(x)
+            except (TypeError, ValueError):
+                continue
+            if lo <= x_value <= hi:
+                axis.append(x_value)
+                values.append(y)
+        filtered.append(RawSeries(item.label, axis, values))
+    return filtered
+
+
 def _filter_raw_series_for_payload(
     raw_series: list[RawSeries],
     analysis_payload: dict[str, Any],
+    *,
+    filter_axis_range: bool = False,
 ) -> list[RawSeries]:
     samples = analysis_payload.get("samples")
     if isinstance(samples, list) and not samples:
         return []
     keys = _payload_raw_series_keys(analysis_payload)
-    if not keys:
-        return raw_series
-    filtered = [
-        item
-        for item in raw_series
-        if _sample_label_keys(item.label) & keys
-    ]
-    return filtered if filtered else raw_series
+    if keys:
+        filtered = [
+            item
+            for item in raw_series
+            if _sample_label_keys(item.label) & keys
+        ]
+        raw_series = filtered if filtered else raw_series
+    if filter_axis_range:
+        raw_series = _filter_raw_series_for_axis_range(
+            raw_series,
+            _figure_x_range(analysis_payload),
+        )
+    return raw_series
 
 
 def start_preview_report_job(

@@ -1639,3 +1639,30 @@ def test_preview_raw_series_filters_hidden_samples_from_payload() -> None:
 
     assert [item.label for item in filtered] == ["LiOH_2", "Carbon.txt"]
     assert _filter_raw_series_for_payload(series, {"samples": []}) == []
+
+
+def test_preview_raw_series_filters_to_current_xaxis_range() -> None:
+    series = [
+        RawSeries("sample-a", [400.0, 1000.0, 1500.0, 2200.0], [0.1, 0.2, 0.3, 0.4]),
+        RawSeries("sample-b", [400.0, 1000.0, 1500.0, 2200.0], [1.1, 1.2, 1.3, 1.4]),
+    ]
+    payload = {
+        "samples": [{"label": "sample-a"}],
+        "figure": {
+            "layout": {
+                "xaxis": {
+                    "range": [2000.0, 900.0],
+                },
+            },
+        },
+    }
+
+    filtered = _filter_raw_series_for_payload(
+        series,
+        payload,
+        filter_axis_range=True,
+    )
+
+    assert [item.label for item in filtered] == ["sample-a"]
+    assert filtered[0].axis == [1000.0, 1500.0]
+    assert filtered[0].values == [0.2, 0.3]
