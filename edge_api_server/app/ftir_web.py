@@ -580,6 +580,34 @@ body {
   font-size: 10px;
   white-space: nowrap;
 }
+.ftir-library-spectrum-preview {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border: 1px solid #d9e2ec;
+  border-radius: 4px;
+  background: #fbfdff;
+  box-sizing: border-box;
+}
+.ftir-library-spectrum-preview-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 6px;
+  color: #102a43;
+  font-size: 12px;
+  font-weight: 700;
+}
+.ftir-library-spectrum-preview-head span {
+  color: #627d98;
+  font-size: 10px;
+  font-weight: 400;
+}
+.ftir-library-spectrum-preview svg {
+  display: block;
+  width: 100%;
+  height: 174px;
+}
 .ftir-library-field {
   display: flex;
   flex-direction: column;
@@ -1216,6 +1244,12 @@ body {
   .ftir-library-suggest span {
     white-space: normal;
   }
+  .ftir-library-spectrum-preview {
+    padding: 8px;
+  }
+  .ftir-library-spectrum-preview svg {
+    height: 146px;
+  }
   .ftir-library-field.is-wide {
     grid-column: auto;
   }
@@ -1816,6 +1850,7 @@ _UPLOAD_SCRIPT = """
   var libraryDeleteButton = null;
   var activeLibraryId = null;
   var activeLibraryIsNew = false;
+  var libraryPreviewFrame = 0;
   var controller = null;
   var emptyData = JSON.parse(JSON.stringify(gd.data || []));
   var emptyLayout = JSON.parse(JSON.stringify(gd.layout || {}));
@@ -2657,6 +2692,225 @@ _UPLOAD_SCRIPT = """
     return inputElement;
   }
 
+  function renderLibrarySpectrumPreviewPanel() {
+    var box = document.createElement("section");
+    box.className = "ftir-library-spectrum-preview";
+    box.dataset.role = "library-spectrum-preview";
+    box.setAttribute("aria-label", "라이브러리 스펙트럼 개형");
+    return box;
+  }
+
+  function scheduleLibrarySpectrumPreview() {
+    if (libraryPreviewFrame) {
+      window.cancelAnimationFrame(libraryPreviewFrame);
+    }
+    libraryPreviewFrame = window.requestAnimationFrame(function() {
+      libraryPreviewFrame = 0;
+      renderLibrarySpectrumPreview();
+    });
+  }
+
+  function currentLibraryPreviewAssignments() {
+    var rows = [];
+    libraryDialogBody.querySelectorAll("tbody tr").forEach(function(row) {
+      function value(field) {
+        var element = row.querySelector('[data-field="' + field + '"]');
+        return element ? element.value : "";
+      }
+      var center = Number(value("centerWavenumber"));
+      var tolerance = Number(value("tolerance"));
+      if (!(center > 0)) return;
+      rows.push({
+        center: center,
+        tolerance: tolerance > 0 ? tolerance : 20,
+        name: value("name").trim() || center.toFixed(0) + " cm-1",
+        color: value("color") || "#64748b"
+      });
+    });
+    return rows;
+  }
+
+  function renderLibrarySpectrumPreview() {
+    var box = libraryDialogBody.querySelector(
+      '[data-role="library-spectrum-preview"]'
+    );
+    if (!box) return;
+    var assignments = currentLibraryPreviewAssignments();
+    box.innerHTML = "";
+
+    var head = document.createElement("div");
+    head.className = "ftir-library-spectrum-preview-head";
+    var title = document.createElement("strong");
+    title.textContent = "스펙트럼 개형";
+    var meta = document.createElement("span");
+    meta.textContent = assignments.length
+      ? assignments.length + "개 피크 기준 · 대략 미리보기"
+      : "피크 행 입력 시 표시";
+    head.appendChild(title);
+    head.appendChild(meta);
+    box.appendChild(head);
+
+    var svgNS = "http://www.w3.org/2000/svg";
+    function svgElement(tag, attrs) {
+      var element = document.createElementNS(svgNS, tag);
+      Object.keys(attrs || {}).forEach(function(key) {
+        element.setAttribute(key, attrs[key]);
+      });
+      return element;
+    }
+
+    var svg = svgElement("svg", {
+      viewBox: "0 0 720 188",
+      role: "img",
+      "aria-label": "FT-IR 라이브러리 피크로 합성한 대략적인 스펙트럼"
+    });
+    var plotX = 46;
+    var plotY = 16;
+    var plotW = 626;
+    var plotH = 114;
+    var minWn = 400;
+    var maxWn = 4000;
+    var baselineY = plotY + plotH;
+
+    svg.appendChild(svgElement("rect", {
+      x: "0",
+      y: "0",
+      width: "720",
+      height: "188",
+      fill: "#ffffff"
+    }));
+    svg.appendChild(svgElement("rect", {
+      x: String(plotX),
+      y: String(plotY),
+      width: String(plotW),
+      height: String(plotH),
+      fill: "#ffffff",
+      stroke: "#d9e2ec"
+    }));
+
+    [4000, 3000, 2000, 1000, 400].forEach(function(tick) {
+      var x = plotX + ((maxWn - tick) / (maxWn - minWn)) * plotW;
+      svg.appendChild(svgElement("line", {
+        x1: x.toFixed(1),
+        y1: String(plotY),
+        x2: x.toFixed(1),
+        y2: String(baselineY + 4),
+        stroke: "#e4e7eb"
+      }));
+      var label = svgElement("text", {
+        x: x.toFixed(1),
+        y: String(baselineY + 22),
+        fill: "#627d98",
+        "font-size": "10",
+        "text-anchor": "middle"
+      });
+      label.textContent = String(tick);
+      svg.appendChild(label);
+    });
+    [0.25, 0.5, 0.75].forEach(function(level) {
+      var y = plotY + plotH * (1 - level);
+      svg.appendChild(svgElement("line", {
+        x1: String(plotX),
+        y1: y.toFixed(1),
+        x2: String(plotX + plotW),
+        y2: y.toFixed(1),
+        stroke: "#eef2f6"
+      }));
+    });
+
+    if (!assignments.length) {
+      var empty = svgElement("text", {
+        x: String(plotX + plotW / 2),
+        y: String(plotY + plotH / 2),
+        fill: "#829ab1",
+        "font-size": "12",
+        "text-anchor": "middle"
+      });
+      empty.textContent = "중심 파수와 허용 오차를 입력하면 개형이 표시됩니다.";
+      svg.appendChild(empty);
+      box.appendChild(svg);
+      return;
+    }
+
+    var points = [];
+    var maxValue = 0;
+    var pointCount = 220;
+    for (var index = 0; index < pointCount; index += 1) {
+      var wn = maxWn - (index / (pointCount - 1)) * (maxWn - minWn);
+      var value = 0;
+      assignments.forEach(function(item) {
+        var sigma = Math.max(8, item.tolerance * 0.65);
+        var delta = wn - item.center;
+        value += Math.exp(-(delta * delta) / (2 * sigma * sigma));
+      });
+      maxValue = Math.max(maxValue, value);
+      points.push({wn: wn, value: value});
+    }
+    if (!(maxValue > 0)) maxValue = 1;
+    var path = points.map(function(point, index) {
+      var x = plotX + index * plotW / (pointCount - 1);
+      var normalized = point.value / maxValue;
+      var y = baselineY - (0.08 + normalized * 0.86) * plotH;
+      return (index ? "L" : "M") + x.toFixed(1) + " " + y.toFixed(1);
+    }).join(" ");
+    svg.appendChild(svgElement("path", {
+      d: path,
+      fill: "none",
+      stroke: "#2563eb",
+      "stroke-width": "2.2",
+      "stroke-linejoin": "round",
+      "stroke-linecap": "round"
+    }));
+
+    assignments
+      .slice()
+      .sort(function(left, right) { return right.center - left.center; })
+      .forEach(function(item, index) {
+        var x = plotX + ((maxWn - item.center) / (maxWn - minWn)) * plotW;
+        if (x < plotX || x > plotX + plotW) return;
+        svg.appendChild(svgElement("line", {
+          x1: x.toFixed(1),
+          y1: String(plotY + 8),
+          x2: x.toFixed(1),
+          y2: String(baselineY),
+          stroke: item.color,
+          "stroke-width": "1.2",
+          "stroke-dasharray": "3 3",
+          opacity: "0.78"
+        }));
+        svg.appendChild(svgElement("circle", {
+          cx: x.toFixed(1),
+          cy: String(plotY + 9),
+          r: "3.4",
+          fill: item.color,
+          stroke: "#ffffff",
+          "stroke-width": "1"
+        }));
+        if (index < 8) {
+          var label = svgElement("text", {
+            x: x.toFixed(1),
+            y: String(148 + (index % 2) * 16),
+            fill: "#334e68",
+            "font-size": "9",
+            "text-anchor": "middle"
+          });
+          label.textContent = item.center.toFixed(0);
+          svg.appendChild(label);
+        }
+      });
+
+    var axis = svgElement("text", {
+      x: String(plotX + plotW / 2),
+      y: "184",
+      fill: "#52606d",
+      "font-size": "10",
+      "text-anchor": "middle"
+    });
+    axis.textContent = "Wavenumber (cm-1)";
+    svg.appendChild(axis);
+    box.appendChild(svg);
+  }
+
   function addAssignmentRow(assignment) {
     var body = libraryDialogBody.querySelector("tbody");
     if (!body) return;
@@ -2696,9 +2950,11 @@ _UPLOAD_SCRIPT = """
     remove.setAttribute("aria-label", "항목 제거");
     remove.addEventListener("click", function() {
       row.remove();
+      scheduleLibrarySpectrumPreview();
     });
     removeCell.appendChild(remove);
     body.appendChild(row);
+    scheduleLibrarySpectrumPreview();
   }
 
   function replaceAssignmentRows(assignments) {
@@ -2707,6 +2963,7 @@ _UPLOAD_SCRIPT = """
     body.innerHTML = "";
     (assignments || []).forEach(addAssignmentRow);
     if (!(assignments || []).length) addAssignmentRow();
+    scheduleLibrarySpectrumPreview();
   }
 
   function applySuggestedLibrary(library) {
@@ -2832,6 +3089,7 @@ _UPLOAD_SCRIPT = """
     meta.appendChild(formField("설명", description, true));
     meta.appendChild(renderLibrarySuggestControl());
     libraryDialogBody.appendChild(meta);
+    libraryDialogBody.appendChild(renderLibrarySpectrumPreviewPanel());
 
     var table = document.createElement("table");
     table.className = "ftir-library-table";
@@ -2856,6 +3114,7 @@ _UPLOAD_SCRIPT = """
     libraryDialogBody.appendChild(table);
     (library.assignments || []).forEach(addAssignmentRow);
     if (!(library.assignments || []).length) addAssignmentRow();
+    scheduleLibrarySpectrumPreview();
     syncLibraryDeleteButton(library, isNew);
     libraryModal.classList.add("is-visible");
   }
@@ -3613,6 +3872,16 @@ _UPLOAD_SCRIPT = """
     libraryInput.value = "";
   });
   libraryFilter.addEventListener("input", renderLibraries);
+  libraryDialogBody.addEventListener("input", function(ev) {
+    if (ev.target && ev.target.closest(".ftir-library-table")) {
+      scheduleLibrarySpectrumPreview();
+    }
+  });
+  libraryDialogBody.addEventListener("change", function(ev) {
+    if (ev.target && ev.target.closest(".ftir-library-table")) {
+      scheduleLibrarySpectrumPreview();
+    }
+  });
   reportMetaControls.forEach(function(control) {
     control.addEventListener("input", scheduleWorkspaceSave);
     control.addEventListener("change", scheduleWorkspaceSave);

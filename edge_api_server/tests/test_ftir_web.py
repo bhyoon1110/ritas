@@ -146,6 +146,10 @@ def test_ftir_workspace_contains_upload_and_editor_controls() -> None:
     assert "/api/v1/ftir/assignment-libraries/suggest" in page
     assert "LLM 추천 채우기" in page
     assert "ftir-library-suggest" in page
+    assert "스펙트럼 개형" in page
+    assert "ftir-library-spectrum-preview" in page
+    assert "renderLibrarySpectrumPreview" in page
+    assert "currentLibraryPreviewAssignments" in page
     assert "/ftir/assets/plotly.min.js" in page
     assert "rist-shape-tool-button" in page
     assert "rist-peak-sensitivity-control" in page
