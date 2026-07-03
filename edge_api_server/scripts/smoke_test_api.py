@@ -443,11 +443,44 @@ def check_file_crud(
     )
     if not expect_status(reporter, "  └ 삭제용 파일 업로드", created, 201):
         return False
+    create_delete_key = f"{job_id}:create-delete"
     deleted = client.delete(
         f"/api/v1/jobs/{job_id}/files/{temporary.relative_path}",
         headers=headers(ikey(f"{job_id}:delete:{temporary.relative_path}")),
     )
-    return expect_status(reporter, "DELETE /api/v1/jobs/{id}/files/{path}", deleted, 200)
+    if not expect_status(reporter, "DELETE /api/v1/jobs/{id}/files/{path}", deleted, 200):
+        return False
+
+    reuploaded = client.post(
+        f"/api/v1/jobs/{job_id}/files",
+        files={"file": ("smoke_delete_me.txt", temporary.content, "text/plain")},
+        data={
+            "relativePath": temporary.relative_path,
+            "sizeBytes": str(temporary.size),
+            "sha256": temporary.sha256,
+        },
+        headers=headers(ikey(create_delete_key)),
+    )
+    if not expect_status(
+        reporter, "  └ 삭제 후 동일 키 재업로드", reuploaded, 201
+    ):
+        return False
+    relisted = client.get(f"/api/v1/jobs/{job_id}/files", headers=headers())
+    relisted_paths = {
+        item.get("relativePath") for item in relisted.json().get("files", [])
+    }
+    if temporary.relative_path not in relisted_paths:
+        reporter.fail("  └ 재업로드 파일 목록 반영", "목록에 없음")
+        return False
+    reporter.ok("  └ 재업로드 파일 목록 반영")
+
+    deleted_again = client.delete(
+        f"/api/v1/jobs/{job_id}/files/{temporary.relative_path}",
+        headers=headers(ikey(f"{job_id}:delete-again:{temporary.relative_path}")),
+    )
+    return expect_status(
+        reporter, "  └ 재업로드 파일 정리 삭제", deleted_again, 200
+    )
 
 
 def check_request_list(

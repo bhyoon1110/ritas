@@ -95,6 +95,20 @@ class EdgeService:
             isoformat_kst(),
         )
 
+    @staticmethod
+    def upload_cache_matches_file(
+        response: dict[str, Any],
+        file_record: dict[str, Any] | None,
+    ) -> bool:
+        if not file_record:
+            return False
+        return (
+            response.get("fileId") == file_record["file_id"]
+            and response.get("relativePath") == file_record["relative_path"]
+            and response.get("sizeBytes") == file_record["size_bytes"]
+            and response.get("sha256") == file_record["sha256"]
+        )
+
     @synchronized
     def create_job(
         self,
@@ -286,7 +300,10 @@ class EdgeService:
             endpoint, idempotency_key, metadata_hash
         )
         if cached:
-            return cached
+            current = self.database.fetch_file(job_id, relative_path)
+            if self.upload_cache_matches_file(cached[1], current):
+                return cached
+            self.database.delete_idempotency(endpoint, idempotency_key)
 
         existing = self.database.fetch_file(job_id, relative_path)
         if existing:

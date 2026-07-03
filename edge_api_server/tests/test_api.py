@@ -75,11 +75,12 @@ def test_file_crud_and_request_list(tmp_path: Path, mariadb: dict) -> None:
 
     first = b"first"
     first_digest = hashlib.sha256(first).hexdigest()
+    upload_key = f"{job_id}:raw/sample.txt:{first_digest}"
     uploaded = client.post(
         f"/api/v1/jobs/{job_id}/files",
         files={"file": ("sample.txt", first, "text/plain")},
         data={"relativePath": "raw/sample.txt", "sizeBytes": str(len(first)), "sha256": first_digest},
-        headers=headers(str(uuid4())),
+        headers=headers(upload_key),
     )
     assert uploaded.status_code == 201
 
@@ -108,6 +109,21 @@ def test_file_crud_and_request_list(tmp_path: Path, mariadb: dict) -> None:
     )
     assert deleted.status_code == 200
     assert client.get(f"/api/v1/jobs/{job_id}/files", headers=headers()).json()["files"] == []
+
+    reuploaded = client.post(
+        f"/api/v1/jobs/{job_id}/files",
+        files={"file": ("sample.txt", first, "text/plain")},
+        data={
+            "relativePath": "raw/sample.txt",
+            "sizeBytes": str(len(first)),
+            "sha256": first_digest,
+        },
+        headers=headers(upload_key),
+    )
+    assert reuploaded.status_code == 201
+    reupload_listed = client.get(f"/api/v1/jobs/{job_id}/files", headers=headers())
+    assert reupload_listed.status_code == 200
+    assert reupload_listed.json()["files"][0]["relativePath"] == "raw/sample.txt"
 
 
 def test_full_upload_and_report_flow(tmp_path: Path, mariadb: dict) -> None:

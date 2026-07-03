@@ -209,6 +209,8 @@ Idempotency-Key: {jobId}:{relativePath}:{sha256}
 
 같은 `Idempotency-Key`와 동일한 파일을 다시 전송하면 기존 성공 결과를
 반환한다. 경로는 같지만 해시가 다르면 `409 Conflict`를 반환한다.
+단, 해당 파일을 `DELETE`로 삭제한 뒤 같은 파일을 다시 업로드하는 경우에는
+같은 `Idempotency-Key`를 사용하더라도 현재 파일 목록에 새로 등록된다.
 
 #### 파일 교체·조회·삭제
 
@@ -222,6 +224,8 @@ DELETE /api/v1/jobs/{jobId}/files/{relativePath}
   `POST`와 같되 경로는 URL에서 받으므로 `relativePath`를 보내지 않는다.
 - `GET`은 현재 업로드된 파일의 경로, 크기, SHA-256, 업로드 시각을 반환한다.
 - `DELETE`는 Edge 저장 파일과 메타데이터를 함께 삭제한다.
+- 삭제 후 동일 `relativePath`/동일 SHA-256 파일을 다시 업로드하면 새 파일
+  레코드로 등록되며, 이후 `GET` 파일 목록에 포함된다.
 - 세 작업은 `CREATED`, `UPLOADING` 상태에서만 허용한다. `FILES_VERIFIED` 이후
   입력 파일은 불변이며 변경 요청은 `409 Conflict`를 반환한다.
 

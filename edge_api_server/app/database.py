@@ -561,6 +561,16 @@ class Database:
                 ),
             )
 
+    def delete_idempotency(self, endpoint: str, idempotency_key: str) -> None:
+        with self.transaction() as connection:
+            connection.execute(
+                """
+                DELETE FROM idempotency_records
+                WHERE endpoint = ? AND idempotency_key = ?
+                """,
+                (endpoint, idempotency_key),
+            )
+
 
 def _validate_columns(
     table: str,
