@@ -7,13 +7,13 @@ import pytest
 from ftir.web_analysis import DptAnalysisError, analyze_dpt_files
 
 
-def synthetic_dpt(center: float = 1700.0) -> bytes:
+def synthetic_dpt(center: float = 1700.0, scale: float = 1.0) -> bytes:
     rows = []
     for index in range(241):
         wn = 400.0 + index * 15.0
         peak = math.exp(-((wn - center) ** 2) / (2 * 55.0**2))
         shoulder = 0.55 * math.exp(-((wn - 1250.0) ** 2) / (2 * 80.0**2))
-        rows.append(f"{wn:.3f},{0.05 + peak + shoulder:.8f}")
+        rows.append(f"{wn:.3f},{(0.05 + peak + shoulder) * scale:.8f}")
     return ("\n".join(rows) + "\n").encode()
 
 
@@ -32,6 +32,20 @@ def test_analyze_uploaded_dpt_bytes_builds_multi_sample_figure() -> None:
     assert result["settings"]["sensitivity"] == 25
     assert result["figure"]["data"]
     assert result["figure"]["layout"]["meta"]["ristPeakLabels"]
+
+
+def test_ftir_web_figure_displays_non_normalized_absorbance() -> None:
+    result = analyze_dpt_files(
+        [("sample-a.dpt", synthetic_dpt(scale=5.0))],
+        sensitivity=25,
+    )
+
+    sample_trace = result["figure"]["data"][0]
+    toggle = sample_trace["meta"]["ftir_signal_toggle"]
+
+    assert result["figure"]["layout"]["yaxis"]["title"]["text"] == "Absorbance"
+    assert max(sample_trace["y"]) > 1.0
+    assert max(toggle["absorbance_y"]) > 1.0
 
 
 def test_analyze_uploaded_dpt_rejects_insufficient_data() -> None:

@@ -451,15 +451,29 @@ def build_multi_peak_fig(
     fig = go.Figure()
     annotations = []
     peak_labels = []
-    max_y = 1.0
+    max_y = float("-inf")
+    min_y = float("inf")
 
     for sample_no, sample in enumerate(samples):
         sample_key = _sample_key(sample_no)
         label = sample["label"]
         grid = sample["grid"]
-        sample_vec = sample["sample_vec"]
+        analysis_vec = sample["sample_vec"]
+        sample_vec = sample.get("display_vec", analysis_vec)
         color = SAMPLE_PALETTE[sample_no % len(SAMPLE_PALETTE)]
-        max_y = max(max_y, float(np.nanmax(sample_vec)) if len(sample_vec) else 1.0)
+        if len(sample_vec):
+            sample_min = float(np.nanmin(sample_vec))
+            sample_max = float(np.nanmax(sample_vec))
+            max_y = max(max_y, sample_max)
+            min_y = min(min_y, sample_min)
+        else:
+            sample_min = 0.0
+            sample_max = 1.0
+        sample_span = max(
+            sample_max - sample_min,
+            0.02,
+        )
+        label_gap = sample_span * 0.06
 
         raw_trace = _enable_abs_trans_toggle(
             go.Scatter(
@@ -480,13 +494,14 @@ def build_multi_peak_fig(
 
         peak_wn = sample["peak_wn"]
         peak_val = sample["peak_val"]
+        analysis_peak_val = sample.get("analysis_peak_val", peak_val)
         peak_fwhm = sample["peak_fwhm"]
         candidates = build_interactive_peak_candidates(
-            sample_vec,
+            analysis_vec,
             grid,
             sample["peak_idx"],
             peak_wn,
-            peak_val,
+            analysis_peak_val,
             peak_fwhm,
             initial_sensitivity=initial_sensitivity,
         )
@@ -501,7 +516,12 @@ def build_multi_peak_fig(
 
         for peak_no, candidate in enumerate(candidates):
             wn = candidate["wn"]
-            val = candidate["value"]
+            peak_index = int(candidate["index"])
+            val = (
+                float(sample_vec[peak_index])
+                if 0 <= peak_index < len(sample_vec)
+                else float(candidate["value"])
+            )
             fwhm = candidate["fwhm"]
             initially_visible = candidate["initial"]
             assignment = _peak_assignment(wn, func_groups)
@@ -551,7 +571,9 @@ def build_multi_peak_fig(
                 seen_label_keys.add(label_key)
 
             if candidate["index"] in top_peak_indexes:
-                y_label = val + 0.06 + (0.05 if (len(annotations) + peak_no) % 2 == 0 else 0.0)
+                y_label = val + label_gap + (
+                    label_gap * 0.8 if (len(annotations) + peak_no) % 2 == 0 else 0.0
+                )
                 annotation_index = len(annotations)
                 shape_index = len(fig.layout.shapes)
                 annotations.append(dict(
@@ -572,13 +594,17 @@ def build_multi_peak_fig(
                     "labelKey": label_key,
                     "wnText": f"{wn:.0f}",
                 })
-                fig.add_shape(type="line", x0=wn, x1=wn, y0=0, y1=val,
+                fig.add_shape(type="line", x0=wn, x1=wn, y0=min(0, sample_min), y1=val,
                               line=dict(color=peak_color, width=0.8, dash="dot"),
                               visible=initially_visible)
 
     title = "FTIR Peak Analysis — " + ", ".join(sample["label"] for sample in samples[:3])
     if len(samples) > 3:
         title += f" 외 {len(samples) - 3}개"
+
+    if not np.isfinite(min_y) or not np.isfinite(max_y):
+        min_y, max_y = 0.0, 1.0
+    y_span = max(max_y - min_y, 0.02)
 
     fig.update_layout(
         title=dict(
@@ -595,8 +621,11 @@ def build_multi_peak_fig(
             minor=dict(showgrid=True, gridcolor="#f4f4f4"),
         ),
         yaxis=dict(
-            title="Normalized Absorbance", showgrid=True, gridcolor="#e8e8e8",
-            range=[-0.05, max_y * 1.65],
+            title="Absorbance", showgrid=True, gridcolor="#e8e8e8",
+            range=[
+                min_y - max(y_span * 0.08, 0.02),
+                max_y + max(y_span * 0.25, 0.08),
+            ],
         ),
         annotations=annotations,
         legend=dict(

@@ -144,6 +144,16 @@ def analyze_dpt_files(
                 SMOOTH_POLY,
                 return_mask=True,
             )
+            display_vec, _ = preprocess(
+                raw["wn"].to_numpy(),
+                raw["y"].to_numpy(),
+                grid,
+                smooth,
+                SMOOTH_WINDOW,
+                SMOOTH_POLY,
+                return_mask=True,
+                normalize=False,
+            )
             peak_idx, peak_wn, peak_val, peak_fwhm = detect_peaks_with_fwhm(
                 sample_vec,
                 grid,
@@ -164,9 +174,11 @@ def analyze_dpt_files(
                 "label": label,
                 "grid": grid,
                 "sample_vec": sample_vec,
+                "display_vec": display_vec,
                 "peak_idx": peak_idx,
                 "peak_wn": peak_wn,
-                "peak_val": peak_val,
+                "peak_val": display_vec[peak_idx],
+                "analysis_peak_val": peak_val,
                 "peak_fwhm": peak_fwhm,
             }
         )

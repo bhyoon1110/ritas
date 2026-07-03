@@ -210,8 +210,8 @@ def _blank_figure() -> go.Figure:
             minor=dict(showgrid=True, gridcolor="#f4f4f4"),
         ),
         yaxis=dict(
-            title="Normalized Absorbance",
-            range=[-0.05, 1.65],
+            title="Absorbance",
+            range=[-0.05, 1.0],
             showgrid=True,
             gridcolor="#e8e8e8",
         ),
@@ -4272,7 +4272,7 @@ def build_ftir_page() -> str:
             PLOT_DIV_ID,
             yaxis_titles={
                 "yaxis": {
-                    "absorbance": "Normalized Absorbance",
+                    "absorbance": "Absorbance",
                     "transmittance": "Transmittance (%)",
                 }
             },

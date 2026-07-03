@@ -55,8 +55,17 @@ def baseline_als(y, lam=1e5, p=0.01, n_iter=10):
         w = p * (y > Z) + (1 - p) * (y <= Z)
     return y - Z
 
-def preprocess(wn, y, grid, smooth=True, smooth_win=11, smooth_poly=3, return_mask=False):
-    """보간 → 스무딩 → 베이스라인 보정 → Min-Max 정규화
+def preprocess(
+    wn,
+    y,
+    grid,
+    smooth=True,
+    smooth_win=11,
+    smooth_poly=3,
+    return_mask=False,
+    normalize=True,
+):
+    """보간 → 스무딩 → 베이스라인 보정 → 선택적 Min-Max 정규화
 
     return_mask=True이면 (vec, valid_mask)를 반환.
     valid_mask: grid 포인트가 원본 측정 범위(wn.min~wn.max) 안에 있으면 True.
@@ -71,9 +80,10 @@ def preprocess(wn, y, grid, smooth=True, smooth_win=11, smooth_poly=3, return_ma
 
     y_grid = baseline_als(y_grid)
 
-    mn, mx = y_grid.min(), y_grid.max()
-    if mx - mn > 1e-10:
-        y_grid = (y_grid - mn) / (mx - mn)
+    if normalize:
+        mn, mx = y_grid.min(), y_grid.max()
+        if mx - mn > 1e-10:
+            y_grid = (y_grid - mn) / (mx - mn)
 
     if return_mask:
         valid_mask = (grid >= wn_lo) & (grid <= wn_hi)
