@@ -608,6 +608,74 @@ body {
   width: 100%;
   height: 174px;
 }
+.ftir-library-match-preview {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border: 1px solid #d9e2ec;
+  border-radius: 4px;
+  background: #ffffff;
+  box-sizing: border-box;
+}
+.ftir-library-match-preview-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+  color: #102a43;
+  font-size: 12px;
+  font-weight: 700;
+}
+.ftir-library-match-preview-head span {
+  color: #627d98;
+  font-size: 10px;
+  font-weight: 400;
+}
+.ftir-library-match-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+}
+.ftir-library-match-card {
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid #e4e7eb;
+  border-radius: 4px;
+  background: #f8fafc;
+}
+.ftir-library-match-card strong {
+  display: block;
+  overflow: hidden;
+  color: #102a43;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ftir-library-match-score {
+  margin: 4px 0 3px;
+  color: #1f6f50;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+.ftir-library-match-card span {
+  display: block;
+  color: #52606d;
+  font-size: 10px;
+}
+.ftir-library-match-list {
+  margin: 8px 0 0;
+  padding-left: 16px;
+  color: #334e68;
+  font-size: 10px;
+}
+.ftir-library-match-list li {
+  margin: 3px 0;
+}
+.ftir-library-match-empty {
+  color: #829ab1;
+  font-size: 11px;
+}
 .ftir-library-field {
   display: flex;
   flex-direction: column;
@@ -1249,6 +1317,9 @@ body {
   }
   .ftir-library-spectrum-preview svg {
     height: 146px;
+  }
+  .ftir-library-match-preview {
+    padding: 8px;
   }
   .ftir-library-field.is-wide {
     grid-column: auto;
@@ -2700,6 +2771,14 @@ _UPLOAD_SCRIPT = """
     return box;
   }
 
+  function renderLibraryMatchPreviewPanel() {
+    var box = document.createElement("section");
+    box.className = "ftir-library-match-preview";
+    box.dataset.role = "library-match-preview";
+    box.setAttribute("aria-label", "현재 그래프 피크 기반 일치율");
+    return box;
+  }
+
   function scheduleLibrarySpectrumPreview() {
     if (libraryPreviewFrame) {
       window.cancelAnimationFrame(libraryPreviewFrame);
@@ -2707,7 +2786,13 @@ _UPLOAD_SCRIPT = """
     libraryPreviewFrame = window.requestAnimationFrame(function() {
       libraryPreviewFrame = 0;
       renderLibrarySpectrumPreview();
+      renderLibraryMatchPreview();
     });
+  }
+
+  function scheduleLibraryPreviewIfOpen() {
+    if (!libraryModal.classList.contains("is-visible")) return;
+    scheduleLibrarySpectrumPreview();
   }
 
   function currentLibraryPreviewAssignments() {
@@ -2911,6 +2996,181 @@ _UPLOAD_SCRIPT = """
     box.appendChild(svg);
   }
 
+  function currentVisibleGraphPeaksForLibraryMatch() {
+    var data = gd.data || [];
+    var visibility = reportSampleVisibility(data);
+    var hidden = visibility ? visibility.hidden : {};
+    var sampleNames = {};
+    data.forEach(function(trace) {
+      var meta = traceMetaForReport(trace);
+      if (!meta.rist_sample_parent) return;
+      var group = sampleGroupForReportTrace(trace);
+      if (!group) return;
+      sampleNames[group] = trace.name || group;
+    });
+
+    var peaks = [];
+    data.forEach(function(trace) {
+      if (!traceVisibleForReport(trace)) return;
+      var meta = traceMetaForReport(trace);
+      var peak = meta.rist_peak;
+      if (!peak) return;
+      var group = sampleGroupForReportTrace(trace);
+      if (group && hidden[group]) return;
+      var xValue = Number(peak.x);
+      if (!Number.isFinite(xValue) && Array.isArray(trace.x)) {
+        xValue = Number(trace.x[0]);
+      }
+      if (!Number.isFinite(xValue)) return;
+      var yValue = Array.isArray(trace.y) ? Number(trace.y[0]) : null;
+      peaks.push({
+        sample: sampleNames[group] || group || "현재 그래프",
+        group: group || "",
+        x: xValue,
+        y: Number.isFinite(yValue) ? yValue : null,
+        label: trace.name || peak.label || xValue.toFixed(1) + " cm-1"
+      });
+    });
+    return peaks;
+  }
+
+  function scoreLibraryAgainstSample(assignments, samplePeaks) {
+    var used = {};
+    var details = [];
+    var matched = 0;
+    var scoreSum = 0;
+    assignments.forEach(function(assignment) {
+      var bestIndex = -1;
+      var bestDistance = Infinity;
+      samplePeaks.forEach(function(peak, index) {
+        if (used[index]) return;
+        var distance = Math.abs(peak.x - assignment.center);
+        if (distance <= assignment.tolerance && distance < bestDistance) {
+          bestIndex = index;
+          bestDistance = distance;
+        }
+      });
+      if (bestIndex >= 0) {
+        used[bestIndex] = true;
+        matched += 1;
+        var tolerance = Math.max(assignment.tolerance, 0.0001);
+        var closeness = Math.max(0, 1 - bestDistance / tolerance);
+        scoreSum += closeness;
+        details.push({
+          matched: true,
+          name: assignment.name,
+          libraryX: assignment.center,
+          peakX: samplePeaks[bestIndex].x,
+          delta: bestDistance
+        });
+      } else {
+        details.push({
+          matched: false,
+          name: assignment.name,
+          libraryX: assignment.center
+        });
+      }
+    });
+    return {
+      score: assignments.length ? Math.round(scoreSum / assignments.length * 100) : 0,
+      matched: matched,
+      total: assignments.length,
+      details: details
+    };
+  }
+
+  function libraryMatchResults(assignments) {
+    var peaks = currentVisibleGraphPeaksForLibraryMatch();
+    var bySample = {};
+    peaks.forEach(function(peak) {
+      var key = peak.group || peak.sample;
+      if (!bySample[key]) {
+        bySample[key] = {name: peak.sample, peaks: []};
+      }
+      bySample[key].peaks.push(peak);
+    });
+    return Object.keys(bySample).map(function(key) {
+      var result = scoreLibraryAgainstSample(assignments, bySample[key].peaks);
+      return Object.assign({sample: bySample[key].name}, result);
+    }).sort(function(left, right) {
+      if (right.score !== left.score) return right.score - left.score;
+      if (right.matched !== left.matched) return right.matched - left.matched;
+      return left.sample.localeCompare(right.sample, "ko");
+    });
+  }
+
+  function formatWavenumber(value) {
+    return Number(value).toFixed(1).replace(/\\.0$/, "") + " cm-1";
+  }
+
+  function renderLibraryMatchPreview() {
+    var box = libraryDialogBody.querySelector('[data-role="library-match-preview"]');
+    if (!box) return;
+    var assignments = currentLibraryPreviewAssignments();
+    var graphPeaks = currentVisibleGraphPeaksForLibraryMatch();
+    box.innerHTML = "";
+
+    var head = document.createElement("div");
+    head.className = "ftir-library-match-preview-head";
+    var title = document.createElement("strong");
+    title.textContent = "현재 그래프 피크 기반 일치율";
+    var meta = document.createElement("span");
+    meta.textContent = "숨김 샘플/피크 제외 · Peak-HQI";
+    head.appendChild(title);
+    head.appendChild(meta);
+    box.appendChild(head);
+
+    if (!assignments.length) {
+      var noAssignments = document.createElement("div");
+      noAssignments.className = "ftir-library-match-empty";
+      noAssignments.textContent = "라이브러리 피크 행을 입력하면 일치율을 계산합니다.";
+      box.appendChild(noAssignments);
+      return;
+    }
+    if (!graphPeaks.length) {
+      var noGraph = document.createElement("div");
+      noGraph.className = "ftir-library-match-empty";
+      noGraph.textContent = "현재 그래프에 표시된 피크가 없습니다. DPT 분석 후 확인할 수 있습니다.";
+      box.appendChild(noGraph);
+      return;
+    }
+
+    var grid = document.createElement("div");
+    grid.className = "ftir-library-match-grid";
+    libraryMatchResults(assignments).slice(0, 6).forEach(function(result) {
+      var card = document.createElement("article");
+      card.className = "ftir-library-match-card";
+      var sample = document.createElement("strong");
+      sample.textContent = result.sample;
+      var score = document.createElement("div");
+      score.className = "ftir-library-match-score";
+      score.textContent = result.score + "%";
+      var count = document.createElement("span");
+      count.textContent = result.matched + " / " + result.total + "개 피크 매칭";
+      var list = document.createElement("ul");
+      list.className = "ftir-library-match-list";
+      result.details.slice(0, 5).forEach(function(detail) {
+        var item = document.createElement("li");
+        if (detail.matched) {
+          item.textContent = detail.name + ": "
+            + formatWavenumber(detail.libraryX) + " ↔ "
+            + formatWavenumber(detail.peakX) + " (Δ "
+            + detail.delta.toFixed(1) + ")";
+        } else {
+          item.textContent = detail.name + ": "
+            + formatWavenumber(detail.libraryX) + " 미검출";
+        }
+        list.appendChild(item);
+      });
+      card.appendChild(sample);
+      card.appendChild(score);
+      card.appendChild(count);
+      card.appendChild(list);
+      grid.appendChild(card);
+    });
+    box.appendChild(grid);
+  }
+
   function addAssignmentRow(assignment) {
     var body = libraryDialogBody.querySelector("tbody");
     if (!body) return;
@@ -3090,6 +3350,7 @@ _UPLOAD_SCRIPT = """
     meta.appendChild(renderLibrarySuggestControl());
     libraryDialogBody.appendChild(meta);
     libraryDialogBody.appendChild(renderLibrarySpectrumPreviewPanel());
+    libraryDialogBody.appendChild(renderLibraryMatchPreviewPanel());
 
     var table = document.createElement("table");
     table.className = "ftir-library-table";
@@ -3872,6 +4133,17 @@ _UPLOAD_SCRIPT = """
     libraryInput.value = "";
   });
   libraryFilter.addEventListener("input", renderLibraries);
+  if (gd.on) {
+    gd.on("plotly_restyle", scheduleLibraryPreviewIfOpen);
+  }
+  [
+    "rist-legend-visibility-change",
+    "rist-peak-delete",
+    "rist-history-restored",
+    "rist-plot-data-replaced"
+  ].forEach(function(name) {
+    gd.addEventListener(name, scheduleLibraryPreviewIfOpen);
+  });
   libraryDialogBody.addEventListener("input", function(ev) {
     if (ev.target && ev.target.closest(".ftir-library-table")) {
       scheduleLibrarySpectrumPreview();

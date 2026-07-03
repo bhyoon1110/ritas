@@ -150,6 +150,10 @@ def test_ftir_workspace_contains_upload_and_editor_controls() -> None:
     assert "ftir-library-spectrum-preview" in page
     assert "renderLibrarySpectrumPreview" in page
     assert "currentLibraryPreviewAssignments" in page
+    assert "현재 그래프 피크 기반 일치율" in page
+    assert "Peak-HQI" in page
+    assert "scoreLibraryAgainstSample" in page
+    assert "currentVisibleGraphPeaksForLibraryMatch" in page
     assert "/ftir/assets/plotly.min.js" in page
     assert "rist-shape-tool-button" in page
     assert "rist-peak-sensitivity-control" in page
