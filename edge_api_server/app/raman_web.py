@@ -3745,26 +3745,13 @@ _UPLOAD_SCRIPT = """
     scheduleWorkspaceSave();
   }
 
-  function isReportTransferComplete() {
-    var transfer = reportTransferFormState();
-    return !!(
-      transfer.requestNumber
-      && transfer.limsExperimentCode
-      && transfer.equipmentCode
-      && transfer.operatorId
-    );
-  }
-
   function updateReportSendAvailability() {
     if (!reportSendButton) return;
     var hasReport = !!(lastReportJob && lastReportJob.jobId);
-    var ready = hasReport && isReportTransferComplete();
-    reportSendButton.disabled = !ready;
-    reportSendButton.title = ready
+    reportSendButton.disabled = !hasReport;
+    reportSendButton.title = hasReport
       ? "완성된 보고서 ZIP을 전송합니다."
-      : (hasReport
-        ? "의뢰번호, 실험코드, 실험장비, 실험자를 모두 입력하세요."
-        : "보고서 생성이 완료되면 전송할 수 있습니다.");
+      : "보고서 생성이 완료되면 전송할 수 있습니다.";
   }
 
   function validateReportTransfer() {
@@ -4284,10 +4271,7 @@ _UPLOAD_SCRIPT = """
     send.type = "button";
     send.className = "raman-report-option-button";
     send.textContent = "보고서 전송";
-    send.disabled = !isReportTransferComplete();
-    send.title = send.disabled
-      ? "의뢰번호, 실험코드, 실험장비, 실험자를 모두 입력하세요."
-      : "완성된 보고서 ZIP을 전송합니다.";
+    send.title = "완성된 보고서 ZIP을 전송합니다.";
     send.addEventListener("click", function() {
       sendReportJob(job, send);
     });
@@ -5174,8 +5158,7 @@ _UPLOAD_SCRIPT = """
       setMessage("보고서를 생성하려면 Raman raw 파일을 먼저 업로드하세요.");
       return;
     }
-    var transfer = validateReportTransfer();
-    if (!transfer) return;
+    var transfer = reportTransferFormState();
     lastReportJob = null;
     updateReportSendAvailability();
     if (!latestAnalysisPayload) {
