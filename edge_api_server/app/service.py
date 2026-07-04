@@ -34,6 +34,41 @@ from .time_utils import isoformat_kst, now_kst, parse_datetime, timestamp_folder
 logger = get_logger(__name__)
 
 
+REQUEST_EXPERIMENT_ALIASES: dict[str, tuple[str, ...]] = {
+    "ftir": (
+        "ftir",
+        "ft-ir",
+        "ft_ir",
+        "ft ir",
+        "fourier",
+        "infrared",
+        "푸리에",
+        "적외선",
+    ),
+    "ft-ir": (
+        "ftir",
+        "ft-ir",
+        "ft_ir",
+        "ft ir",
+        "fourier",
+        "infrared",
+        "푸리에",
+        "적외선",
+    ),
+    "ft_ir": (
+        "ftir",
+        "ft-ir",
+        "ft_ir",
+        "ft ir",
+        "fourier",
+        "infrared",
+        "푸리에",
+        "적외선",
+    ),
+    "raman": ("raman", "라만"),
+}
+
+
 MethodResult = TypeVar("MethodResult")
 
 
@@ -445,13 +480,22 @@ class EdgeService:
             ],
         }
 
-    def request_summaries(self, page: int, page_size: int) -> dict[str, Any]:
+    def request_summaries(
+        self,
+        page: int,
+        page_size: int,
+        experiment_type: str | None = None,
+    ) -> dict[str, Any]:
+        experiment_keywords = self.request_experiment_keywords(experiment_type)
         rows = self.database.fetch_request_summaries(
-            page_size, (page - 1) * page_size
+            page_size,
+            (page - 1) * page_size,
+            experiment_keywords=experiment_keywords,
         )
         return {
             "page": page,
             "pageSize": page_size,
+            "experimentType": experiment_type,
             "items": [
                 {
                     "requestResultNo": row["req_result_no"],
@@ -485,6 +529,13 @@ class EdgeService:
                 for row in rows
             ],
         }
+
+    @staticmethod
+    def request_experiment_keywords(experiment_type: str | None) -> tuple[str, ...]:
+        if not experiment_type or not experiment_type.strip():
+            return ()
+        key = experiment_type.strip().lower()
+        return REQUEST_EXPERIMENT_ALIASES.get(key, (key,))
 
     @staticmethod
     def file_response(file_record: dict[str, Any]) -> dict[str, Any]:

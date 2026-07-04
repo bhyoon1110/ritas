@@ -324,9 +324,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def list_requests(
         page: int = Query(default=1, ge=1),
         page_size: int = Query(default=50, alias="pageSize", ge=1, le=200),
+        experiment_type: str | None = Query(default=None, alias="experimentType"),
         _: str = Depends(required_request_id),
     ) -> dict:
-        return service.request_summaries(page, page_size)
+        return service.request_summaries(page, page_size, experiment_type)
 
     @app.exception_handler(Exception)
     async def unhandled_exception_handler(

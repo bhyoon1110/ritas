@@ -419,18 +419,22 @@ X-Request-Id: 771e92ae-d06d-42e3-b2c8-d1846619987c
 ### 7.6 의뢰 번호 목록 조회
 
 ```http
-GET /api/v1/requests?page=1&pageSize=50
+GET /api/v1/requests?page=1&pageSize=50&experimentType=FT-IR
 X-Request-Id: 771e92ae-d06d-42e3-b2c8-d1846619987c
 ```
 
 Edge 로컬 MariaDB의 `lims_req_ax_search` 테이블을 조회해 LIMS 의뢰/시료/시험
 항목 목록을 반환한다. 이 API는 조회용이며 작업을 생성하지 않는다. 사용자는
 목록에서 의뢰번호와 시험 항목을 선택한 뒤 `POST /api/v1/jobs`를 호출한다.
+`experimentType`은 선택 파라미터이며, 화면별 조회 범위를 제한할 때 사용한다.
+현재 FT-IR 화면은 `FT-IR`, Raman 화면은 `RAMAN`을 전달한다. 파라미터를 생략하면
+전체 시험 항목을 조회한다.
 
 ```json
 {
   "page": 1,
   "pageSize": 50,
+  "experimentType": "FT-IR",
   "items": [
     {
       "requestResultNo": 270846,
@@ -467,7 +471,9 @@ Edge 로컬 MariaDB의 `lims_req_ax_search` 테이블을 조회해 LIMS 의뢰/�
 
 `experimentCode`와 `experimentName`은 실험 PC 선택 화면 호환을 위한 별칭이며,
 각각 `testMethodCode`, `testMethodName`과 같은 값이다.
-`page`는 1 이상, `pageSize`는 1~200이다.
+`page`는 1 이상, `pageSize`는 1~200이다. 응답에는 의뢰번호 외에도 의뢰일,
+의뢰상태, 의뢰명, 시료명, 시험명, 의뢰자, 시험담당자 등 화면에서 상세 확인에
+필요한 LIMS 조회 정보가 포함된다.
 
 ## 8. 작업 상태
 

@@ -154,6 +154,120 @@ def seed_lims_request_search(db: dict) -> None:
                 )
                 """
             )
+            cursor.execute(
+                """
+                INSERT INTO lims_req_ax_search (
+                    req_result_no,
+                    req_number,
+                    req_date,
+                    req_state,
+                    req_state_name,
+                    req_type_no,
+                    req_type_code,
+                    req_type_name,
+                    project_code,
+                    cust_req_name,
+                    customer_no,
+                    customer_name,
+                    req_user_no,
+                    req_user_name,
+                    smp_result_no,
+                    smp_result_name,
+                    smp_result_state,
+                    test_mtd_result_no,
+                    test_mtd_no,
+                    test_mtd_code,
+                    test_mtd_name,
+                    test_state,
+                    test_charger_name,
+                    output_order,
+                    synced_at
+                ) VALUES (
+                    270847,
+                    '2025M01310',
+                    '2026-05-20',
+                    8,
+                    '접수',
+                    124,
+                    'M2',
+                    '분석의뢰',
+                    'P-FTIR',
+                    '첨가제 정성 분석',
+                    9,
+                    'RIST 고객',
+                    103,
+                    '김의뢰',
+                    458466,
+                    'FTIR 시료',
+                    3,
+                    485994,
+                    3913,
+                    'FTIR-QUAL',
+                    'FT-IR 정성분석',
+                    2,
+                    '박분석',
+                    1,
+                    '2026-07-03 18:11:35'
+                )
+                """
+            )
+            cursor.execute(
+                """
+                INSERT INTO lims_req_ax_search (
+                    req_result_no,
+                    req_number,
+                    req_date,
+                    req_state,
+                    req_state_name,
+                    req_type_no,
+                    req_type_code,
+                    req_type_name,
+                    project_code,
+                    cust_req_name,
+                    customer_no,
+                    customer_name,
+                    req_user_no,
+                    req_user_name,
+                    smp_result_no,
+                    smp_result_name,
+                    smp_result_state,
+                    test_mtd_result_no,
+                    test_mtd_no,
+                    test_mtd_code,
+                    test_mtd_name,
+                    test_state,
+                    test_charger_name,
+                    output_order,
+                    synced_at
+                ) VALUES (
+                    270848,
+                    '2025M01311',
+                    '2026-05-21',
+                    8,
+                    '접수',
+                    125,
+                    'M3',
+                    '분석의뢰',
+                    'P-RAMAN',
+                    'Raman 피크 분석',
+                    10,
+                    'RIST 고객',
+                    104,
+                    '이라만',
+                    458467,
+                    'Raman 시료',
+                    3,
+                    485995,
+                    3914,
+                    'RAMAN-QUAL',
+                    'Raman 정성분석',
+                    2,
+                    '최분석',
+                    1,
+                    '2026-07-03 18:12:35'
+                )
+                """
+            )
     finally:
         connection.close()
 
@@ -207,12 +321,35 @@ def test_file_crud_and_request_list(tmp_path: Path, mariadb: dict) -> None:
 
     requests = client.get("/api/v1/requests", headers=headers())
     assert requests.status_code == 200
-    request_item = requests.json()["items"][0]
-    assert request_item["requestNumber"] == "2025M01309"
-    assert request_item["experimentCode"] == "A23141"
-    assert request_item["experimentName"] == "XRD 데이터 해석"
-    assert request_item["sampleName"] == "시료"
-    assert request_item["testChargerName"] == "이현재"
+    all_items = requests.json()["items"]
+    assert {item["experimentCode"] for item in all_items} == {
+        "A23141",
+        "FTIR-QUAL",
+        "RAMAN-QUAL",
+    }
+
+    ftir_requests = client.get(
+        "/api/v1/requests?experimentType=FT-IR", headers=headers()
+    )
+    assert ftir_requests.status_code == 200
+    ftir_item = ftir_requests.json()["items"][0]
+    assert ftir_requests.json()["experimentType"] == "FT-IR"
+    assert ftir_item["requestNumber"] == "2025M01310"
+    assert ftir_item["experimentCode"] == "FTIR-QUAL"
+    assert ftir_item["experimentName"] == "FT-IR 정성분석"
+    assert ftir_item["sampleName"] == "FTIR 시료"
+    assert ftir_item["testChargerName"] == "박분석"
+
+    raman_requests = client.get(
+        "/api/v1/requests?experimentType=RAMAN", headers=headers()
+    )
+    assert raman_requests.status_code == 200
+    raman_item = raman_requests.json()["items"][0]
+    assert raman_item["requestNumber"] == "2025M01311"
+    assert raman_item["experimentCode"] == "RAMAN-QUAL"
+    assert raman_item["experimentName"] == "Raman 정성분석"
+    assert raman_item["sampleName"] == "Raman 시료"
+    assert raman_item["testChargerName"] == "최분석"
 
     deleted = client.delete(
         f"/api/v1/jobs/{job_id}/files/raw/sample.txt",

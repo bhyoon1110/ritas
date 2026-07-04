@@ -61,11 +61,18 @@ def test_ftir_workspace_contains_upload_and_editor_controls() -> None:
     assert 'id="ftir-report-transfer"' in page
     assert 'id="ftir-request-load"' in page
     assert 'id="ftir-request-select"' in page
+    assert 'id="ftir-request-detail"' in page
+    assert 'id="ftir-report-send" disabled' in page
     assert 'data-transfer-field="requestNumber"' in page
     assert 'data-transfer-field="limsExperimentCode"' in page
     assert 'data-transfer-field="equipmentCode"' in page
     assert 'data-transfer-field="operatorId"' in page
     assert "loadRequestItems" in page
+    assert "experimentType=" in page
+    assert "encodeURIComponent(REQUEST_EXPERIMENT_TYPE)" in page
+    assert 'var REQUEST_EXPERIMENT_TYPE = "FT-IR";' in page
+    assert "renderRequestDetail" in page
+    assert "updateReportSendAvailability" in page
     assert 'X-Request-Id": "ftir-request-list-' in page
     assert "validateReportTransfer" in page
     assert "sendReportJob" in page

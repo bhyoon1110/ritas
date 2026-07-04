@@ -101,6 +101,7 @@ class RequestSummary(ApiModel):
 class RequestListResponse(ApiModel):
     page: int
     page_size: int = Field(alias="pageSize")
+    experiment_type: str | None = Field(default=None, alias="experimentType")
     items: list[RequestSummary]
 
 

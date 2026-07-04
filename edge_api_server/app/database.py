@@ -484,11 +484,32 @@ class Database:
             )
 
     def fetch_request_summaries(
-        self, limit: int, offset: int
+        self,
+        limit: int,
+        offset: int,
+        experiment_keywords: tuple[str, ...] = (),
     ) -> list[dict[str, Any]]:
+        filters: list[str] = []
+        params: list[Any] = []
+        if experiment_keywords:
+            keyword_filters: list[str] = []
+            for keyword in experiment_keywords:
+                like = f"%{keyword.lower()}%"
+                keyword_filters.append(
+                    """
+                    (
+                        LOWER(COALESCE(test_mtd_code, '')) LIKE ?
+                        OR LOWER(COALESCE(test_mtd_name, '')) LIKE ?
+                        OR LOWER(COALESCE(req_type_name, '')) LIKE ?
+                    )
+                    """
+                )
+                params.extend([like, like, like])
+            filters.append("(" + " OR ".join(keyword_filters) + ")")
+        where_sql = f"WHERE {' AND '.join(filters)}" if filters else ""
         with self._connect() as connection:
             return connection.execute(
-                """
+                f"""
                 SELECT
                     req_result_no,
                     req_number,
@@ -516,6 +537,7 @@ class Database:
                     output_order,
                     synced_at
                 FROM lims_req_ax_search
+                {where_sql}
                 ORDER BY
                     req_date DESC,
                     req_number DESC,
@@ -524,7 +546,7 @@ class Database:
                     test_mtd_result_no
                 LIMIT ? OFFSET ?
                 """,
-                (limit, offset),
+                (*params, limit, offset),
             ).fetchall()
 
     def fetch_file(self, job_id: str, relative_path: str) -> dict[str, Any] | None:

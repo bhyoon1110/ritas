@@ -73,11 +73,18 @@ def test_raman_workspace_contains_upload_controls() -> None:
     assert 'id="raman-report-transfer"' in page
     assert 'id="raman-request-load"' in page
     assert 'id="raman-request-select"' in page
+    assert 'id="raman-request-detail"' in page
+    assert 'id="raman-report-send" disabled' in page
     assert 'data-transfer-field="requestNumber"' in page
     assert 'data-transfer-field="limsExperimentCode"' in page
     assert 'data-transfer-field="equipmentCode"' in page
     assert 'data-transfer-field="operatorId"' in page
     assert "loadRequestItems" in page
+    assert "experimentType=" in page
+    assert "encodeURIComponent(REQUEST_EXPERIMENT_TYPE)" in page
+    assert 'var REQUEST_EXPERIMENT_TYPE = "RAMAN";' in page
+    assert "renderRequestDetail" in page
+    assert "updateReportSendAvailability" in page
     assert 'X-Request-Id": "raman-request-list-' in page
     assert "validateReportTransfer" in page
     assert "sendReportJob" in page

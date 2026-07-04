@@ -954,6 +954,38 @@ body {
   border-color: #486581;
   background: #eef2f6;
 }
+.ftir-report-option-button:disabled {
+  border-color: #d9e2ec;
+  background: #f0f4f8;
+  color: #9fb3c8;
+  cursor: default;
+}
+.ftir-report-request-detail {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 6px 10px;
+  margin: 0 0 8px 24px;
+  padding: 9px 10px;
+  border: 1px solid #d9e2ec;
+  border-radius: 4px;
+  background: #ffffff;
+  color: #334e68;
+  font: 11px/1.4 Arial, "Noto Sans KR", sans-serif;
+}
+.ftir-report-request-detail.is-empty {
+  display: block;
+  color: #7b8794;
+}
+.ftir-report-request-detail span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ftir-report-request-detail b {
+  color: #102a43;
+  font-weight: 700;
+}
 .ftir-report-meta-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(130px, 1fr));
@@ -1553,6 +1585,11 @@ _PAGE_SHELL = """
       </select>
       <button type="button" class="ftir-report-option-button"
               id="ftir-request-load">의뢰 조회</button>
+      <button type="button" class="ftir-report-option-button"
+              id="ftir-report-send" disabled>보고서 전송</button>
+    </div>
+    <div class="ftir-report-request-detail is-empty" id="ftir-request-detail">
+      의뢰 조회 후 항목을 선택하면 의뢰명, 시료, 담당자, 상태를 확인할 수 있습니다.
     </div>
     <div class="ftir-report-meta-grid">
       <label class="ftir-report-meta-field">
@@ -1952,6 +1989,8 @@ _UPLOAD_SCRIPT = """
   );
   var requestLoad = document.getElementById("ftir-request-load");
   var requestSelect = document.getElementById("ftir-request-select");
+  var requestDetail = document.getElementById("ftir-request-detail");
+  var reportSendButton = document.getElementById("ftir-report-send");
   var reportOptionsOpen = document.getElementById("ftir-report-options-open");
   var reportOptionsModal = document.getElementById("ftir-report-options-modal");
   var reportOptionsBody = document.getElementById("ftir-report-options-body");
@@ -1965,7 +2004,7 @@ _UPLOAD_SCRIPT = """
       || !libraryFilter
       || !libraryNew || !libraryModal || !libraryDialogClose
       || !libraryRowAdd || !libraryDialogCancel || !libraryDialogSave
-      || !requestLoad || !requestSelect
+      || !requestLoad || !requestSelect || !requestDetail || !reportSendButton
       || !reportOptionsOpen || !reportOptionsModal || !reportOptionsBody
       || !reportOptionsClose || !reportOptionsCancel || !reportOptionsSave
       || !reportOptionsReset
@@ -1983,6 +2022,7 @@ _UPLOAD_SCRIPT = """
   var libraryPreviewFrame = 0;
   var requestItems = [];
   var lastReportJob = null;
+  var REQUEST_EXPERIMENT_TYPE = "FT-IR";
   var controller = null;
   var emptyData = JSON.parse(JSON.stringify(gd.data || []));
   var emptyLayout = JSON.parse(JSON.stringify(gd.layout || {}));
@@ -2437,6 +2477,7 @@ _UPLOAD_SCRIPT = """
       applyReportMetadataFormState(state.reportMetadata || {});
       applyReportTransferFormState(state.reportTransfer || {});
       latestAnalysisPayload = state.analysisPayload || null;
+      updateReportSendAvailability();
       if (Number.isFinite(Number(state.sensitivity))) {
         gd._ristPeakSensitivityValue = Number(state.sensitivity);
       }
@@ -2514,6 +2555,8 @@ _UPLOAD_SCRIPT = """
     reportTransferControls.forEach(function(control) {
       control.value = control.defaultValue || "";
     });
+    renderRequestDetail(null);
+    updateReportSendAvailability();
   }
 
   function reportTransferFormState() {
@@ -2561,14 +2604,62 @@ _UPLOAD_SCRIPT = """
     return Number.isInteger(index) && index >= 0 ? requestItems[index] || null : null;
   }
 
+  function requestDisplayValue(value) {
+    value = String(value || "").trim();
+    return value || "-";
+  }
+
   function requestOptionLabel(item) {
     var parts = [
       item.requestNumber || "(의뢰번호 없음)",
+      item.requestDate || "",
+      item.requestStateName || "",
       item.experimentCode || item.testMethodCode || "(실험코드 없음)",
       item.experimentName || item.testMethodName || "",
-      item.sampleName || ""
+      item.sampleName || "",
+      item.customerRequestName || "",
+      item.testChargerName || item.requestUserName || ""
     ].filter(Boolean);
     return parts.join(" · ");
+  }
+
+  function requestDetailRows(item) {
+    return [
+      ["의뢰번호", item.requestNumber],
+      ["의뢰일", item.requestDate],
+      ["상태", item.requestStateName],
+      ["의뢰명", item.customerRequestName],
+      ["시료", item.sampleName],
+      ["실험코드", item.experimentCode || item.testMethodCode],
+      ["시험명", item.experimentName || item.testMethodName],
+      ["의뢰자", item.requestUserName],
+      ["담당자", item.testChargerName],
+      ["고객", item.customerName],
+      ["프로젝트", item.projectCode],
+      ["결과번호", item.requestResultNo]
+    ];
+  }
+
+  function renderRequestDetail(item) {
+    requestDetail.textContent = "";
+    if (!item) {
+      requestDetail.classList.add("is-empty");
+      requestDetail.textContent = requestItems.length
+        ? "의뢰를 선택하면 상세 정보가 표시됩니다."
+        : "의뢰 조회 후 항목을 선택하면 의뢰명, 시료, 담당자, 상태를 확인할 수 있습니다.";
+      return;
+    }
+    requestDetail.classList.remove("is-empty");
+    requestDetailRows(item).forEach(function(row) {
+      var entry = document.createElement("span");
+      var value = requestDisplayValue(row[1]);
+      var label = document.createElement("b");
+      label.textContent = row[0];
+      entry.title = row[0] + ": " + value;
+      entry.appendChild(label);
+      entry.appendChild(document.createTextNode(" " + value));
+      requestDetail.appendChild(entry);
+    });
   }
 
   function renderRequestOptions(items) {
@@ -2581,21 +2672,28 @@ _UPLOAD_SCRIPT = """
       var option = document.createElement("option");
       option.value = String(index);
       option.textContent = requestOptionLabel(item);
+      option.title = option.textContent;
       requestSelect.appendChild(option);
     });
+    renderRequestDetail(null);
+    updateReportSendAvailability();
   }
 
   async function loadRequestItems() {
     requestLoad.disabled = true;
     requestLoad.textContent = "조회 중...";
     try {
-      var payload = await fetchJson("/api/v1/requests?page=1&pageSize=200", {
+      var payload = await fetchJson(
+        "/api/v1/requests?page=1&pageSize=200&experimentType="
+          + encodeURIComponent(REQUEST_EXPERIMENT_TYPE),
+        {
         headers: {"X-Request-Id": "ftir-request-list-" + Date.now()}
-      });
+        }
+      );
       requestItems = Array.isArray(payload.items) ? payload.items : [];
       renderRequestOptions(requestItems);
       setSuccessMessage(requestItems.length
-        ? "의뢰 목록을 불러왔습니다."
+        ? "FT-IR 의뢰 목록을 불러왔습니다."
         : "조회된 의뢰가 없습니다.");
     } catch (err) {
       setMessage(err.message || "의뢰 목록 조회에 실패했습니다.");
@@ -2613,7 +2711,31 @@ _UPLOAD_SCRIPT = """
       "limsExperimentCode",
       item.experimentCode || item.testMethodCode || ""
     );
+    renderRequestDetail(item);
+    updateReportSendAvailability();
     scheduleWorkspaceSave();
+  }
+
+  function isReportTransferComplete() {
+    var transfer = reportTransferFormState();
+    return !!(
+      transfer.requestNumber
+      && transfer.limsExperimentCode
+      && transfer.equipmentCode
+      && transfer.operatorId
+    );
+  }
+
+  function updateReportSendAvailability() {
+    if (!reportSendButton) return;
+    var hasReport = !!(lastReportJob && lastReportJob.jobId);
+    var ready = hasReport && isReportTransferComplete();
+    reportSendButton.disabled = !ready;
+    reportSendButton.title = ready
+      ? "완성된 보고서 ZIP을 전송합니다."
+      : (hasReport
+        ? "의뢰번호, 실험코드, 실험장비, 실험자를 모두 입력하세요."
+        : "보고서 생성이 완료되면 전송할 수 있습니다.");
   }
 
   function validateReportTransfer() {
@@ -2839,6 +2961,11 @@ _UPLOAD_SCRIPT = """
     });
     requestLoad.disabled = busy;
     requestSelect.disabled = busy;
+    if (busy) {
+      reportSendButton.disabled = true;
+    } else {
+      updateReportSendAvailability();
+    }
     libraryInput.disabled = busy;
     libraryFilter.disabled = busy;
     libraryNew.disabled = busy;
@@ -2914,7 +3041,11 @@ _UPLOAD_SCRIPT = """
     var send = document.createElement("button");
     send.type = "button";
     send.className = "ftir-report-option-button";
-    send.textContent = "전송";
+    send.textContent = "보고서 전송";
+    send.disabled = !isReportTransferComplete();
+    send.title = send.disabled
+      ? "의뢰번호, 실험코드, 실험장비, 실험자를 모두 입력하세요."
+      : "완성된 보고서 ZIP을 전송합니다.";
     send.addEventListener("click", function() {
       sendReportJob(job, send);
     });
@@ -2930,6 +3061,7 @@ _UPLOAD_SCRIPT = """
     message.appendChild(link);
     message.appendChild(send);
     message.appendChild(close);
+    updateReportSendAvailability();
   }
 
   function selectedLibraryNames() {
@@ -4329,6 +4461,7 @@ _UPLOAD_SCRIPT = """
       status.textContent = "보고서 전송 실패";
     } finally {
       if (button) button.disabled = false;
+      updateReportSendAvailability();
     }
   }
 
@@ -4339,6 +4472,8 @@ _UPLOAD_SCRIPT = """
     }
     var transfer = validateReportTransfer();
     if (!transfer) return;
+    lastReportJob = null;
+    updateReportSendAvailability();
     if (!latestAnalysisPayload) {
       await analyze();
       if (!latestAnalysisPayload) return;
@@ -4401,6 +4536,11 @@ _UPLOAD_SCRIPT = """
   reportTransferControls.forEach(function(control) {
     control.addEventListener("change", scheduleWorkspaceSave);
     control.addEventListener("input", scheduleWorkspaceSave);
+    control.addEventListener("change", updateReportSendAvailability);
+    control.addEventListener("input", updateReportSendAvailability);
+  });
+  reportSendButton.addEventListener("click", function() {
+    sendReportJob(lastReportJob, reportSendButton);
   });
   if (gd.on) {
     gd.on("plotly_restyle", scheduleLibraryPreviewIfOpen);
@@ -4483,6 +4623,7 @@ _UPLOAD_SCRIPT = """
     clearReportMetadataForm();
     clearReportTransferForm();
     lastReportJob = null;
+    updateReportSendAvailability();
     renderFiles();
     clearWorkspaceState();
     resetGraph();
