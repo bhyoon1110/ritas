@@ -818,6 +818,9 @@ body { overflow-x: hidden; }
   box-sizing: border-box;
 }
 .raman-report-option-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   height: 28px;
   border: 1px solid #9fb3c8;
   border-radius: 4px;
@@ -826,6 +829,11 @@ body { overflow-x: hidden; }
   cursor: pointer;
   font-size: 11px;
   padding: 0 10px;
+  text-decoration: none;
+  box-sizing: border-box;
+}
+.raman-report-option-button[hidden] {
+  display: none;
 }
 .raman-report-option-button:hover {
   border-color: #486581;
@@ -1569,6 +1577,8 @@ _PAGE_SHELL = """
       </select>
       <button type="button" class="raman-report-option-button"
               id="raman-request-load">의뢰 조회</button>
+      <a class="raman-report-option-button raman-report-download-link"
+         id="raman-report-download" href="#" hidden>보고서 다운로드</a>
       <button type="button" class="raman-report-option-button"
               id="raman-report-send" disabled>보고서 전송</button>
     </div>
@@ -2731,6 +2741,7 @@ _UPLOAD_SCRIPT = """
   var requestLoad = document.getElementById("raman-request-load");
   var requestSelect = document.getElementById("raman-request-select");
   var requestDetail = document.getElementById("raman-request-detail");
+  var reportDownloadLink = document.getElementById("raman-report-download");
   var reportSendButton = document.getElementById("raman-report-send");
   var reportOptionsOpen = document.getElementById("raman-report-options-open");
   var reportOptionsModal = document.getElementById("raman-report-options-modal");
@@ -2747,7 +2758,8 @@ _UPLOAD_SCRIPT = """
       || !loading || !clearButton || !libraryInput || !libraryList
       || !libraryFilter || !libraryNew || !libraryModal || !libraryDialogClose
       || !libraryRowAdd || !libraryDialogCancel || !libraryDialogSave
-      || !requestLoad || !requestSelect || !requestDetail || !reportSendButton
+      || !requestLoad || !requestSelect || !requestDetail
+      || !reportDownloadLink || !reportSendButton
       || !reportOptionsOpen || !reportOptionsModal || !reportOptionsBody
       || !reportOptionsClose || !reportOptionsCancel || !reportOptionsSave
       || !reportOptionsReset
@@ -3754,6 +3766,28 @@ _UPLOAD_SCRIPT = """
       : "보고서 생성이 완료되면 전송할 수 있습니다.";
   }
 
+  function reportDownloadInfo(job) {
+    return {
+      url: job.downloadUrl
+        || ("/api/v1/raman/report/jobs/" + encodeURIComponent(job.jobId) + "/download"),
+      filename: job.filename || "raman-report-package.zip"
+    };
+  }
+
+  function updatePersistentReportDownload(job) {
+    if (!reportDownloadLink) return;
+    if (!job || !job.jobId) {
+      reportDownloadLink.hidden = true;
+      reportDownloadLink.removeAttribute("download");
+      reportDownloadLink.href = "#";
+      return;
+    }
+    var info = reportDownloadInfo(job);
+    reportDownloadLink.href = info.url;
+    reportDownloadLink.download = info.filename;
+    reportDownloadLink.hidden = false;
+  }
+
   function validateReportTransfer() {
     var transfer = reportTransferFormState();
     if (!transfer.requestNumber) {
@@ -4255,17 +4289,16 @@ _UPLOAD_SCRIPT = """
   }
 
   function setReportDownloadLink(job) {
-    var downloadUrl = job.downloadUrl
-      || ("/api/v1/raman/report/jobs/" + encodeURIComponent(job.jobId) + "/download");
-    var filename = job.filename || "raman-report-package.zip";
+    var info = reportDownloadInfo(job);
+    updatePersistentReportDownload(job);
     clearMessageTimer();
     message.textContent = "";
     message.classList.add("is-visible", "is-success");
     var label = document.createElement("span");
     label.textContent = "보고서가 완성되었습니다. ";
     var link = document.createElement("a");
-    link.href = downloadUrl;
-    link.download = filename;
+    link.href = info.url;
+    link.download = info.filename;
     link.textContent = "보고서 다운로드";
     var close = document.createElement("button");
     close.type = "button";
@@ -5151,6 +5184,7 @@ _UPLOAD_SCRIPT = """
     }
     var transfer = reportTransferFormState();
     lastReportJob = null;
+    updatePersistentReportDownload(null);
     updateReportSendAvailability();
     if (!latestAnalysisPayload) {
       await analyze();
@@ -5320,6 +5354,7 @@ _UPLOAD_SCRIPT = """
     clearReportMetadataForm();
     clearReportTransferForm();
     lastReportJob = null;
+    updatePersistentReportDownload(null);
     updateReportSendAvailability();
     clearWorkspaceState();
     resetPlot();
