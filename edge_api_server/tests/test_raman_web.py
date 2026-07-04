@@ -81,7 +81,9 @@ def test_raman_workspace_contains_upload_controls() -> None:
     assert 'data-transfer-field="limsExperimentCode"' in page
     assert 'data-transfer-field="equipmentCode"' in page
     assert 'value="RAMAN-01"' not in page
-    assert "장비 코드 입력" in page
+    assert "의뢰 선택 시 자동 입력" in page
+    assert 'var DEFAULT_EQUIPMENT_CODE = "RAMAN-EDGE-01";' in page
+    assert "applyRequestEquipmentCode(item)" in page
     assert 'data-transfer-field="operatorId"' in page
     assert "loadRequestItems" in page
     assert "experimentType=" in page

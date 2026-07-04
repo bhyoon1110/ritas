@@ -1618,7 +1618,7 @@ _PAGE_SHELL = """
       </label>
       <label class="ftir-report-meta-field">
         <span>실험장비</span>
-        <input type="text" placeholder="장비 코드 입력"
+        <input type="text" placeholder="의뢰 선택 시 자동 입력"
                data-transfer-field="equipmentCode">
       </label>
       <label class="ftir-report-meta-field">
@@ -2039,6 +2039,7 @@ _UPLOAD_SCRIPT = """
   var requestItems = [];
   var lastReportJob = null;
   var REQUEST_EXPERIMENT_TYPE = "FT-IR";
+  var DEFAULT_EQUIPMENT_CODE = "FTIR-EDGE-01";
   var controller = null;
   var emptyData = JSON.parse(JSON.stringify(gd.data || []));
   var emptyLayout = JSON.parse(JSON.stringify(gd.layout || {}));
@@ -2615,6 +2616,22 @@ _UPLOAD_SCRIPT = """
     });
   }
 
+  function requestEquipmentCode(item) {
+    if (!item) return DEFAULT_EQUIPMENT_CODE;
+    return item.equipmentCode
+      || item.deviceCode
+      || item.instrumentCode
+      || DEFAULT_EQUIPMENT_CODE;
+  }
+
+  function applyRequestEquipmentCode(item) {
+    var code = requestEquipmentCode(item);
+    var current = reportTransferValue("equipmentCode");
+    if (code && (!current || current === DEFAULT_EQUIPMENT_CODE)) {
+      setReportTransferValue("equipmentCode", code);
+    }
+  }
+
   function selectedRequestItem() {
     var index = Number(requestSelect.value);
     return Number.isInteger(index) && index >= 0 ? requestItems[index] || null : null;
@@ -2727,6 +2744,7 @@ _UPLOAD_SCRIPT = """
       "limsExperimentCode",
       item.experimentCode || item.testMethodCode || ""
     );
+    applyRequestEquipmentCode(item);
     renderRequestDetail(item);
     updateReportSendAvailability();
     scheduleWorkspaceSave();
