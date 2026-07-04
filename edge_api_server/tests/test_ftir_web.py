@@ -62,7 +62,8 @@ def test_ftir_workspace_contains_upload_and_editor_controls() -> None:
     assert 'id="ftir-request-load"' in page
     assert 'id="ftir-request-select"' in page
     assert 'id="ftir-request-detail"' in page
-    assert 'id="ftir-report-download" href="#" hidden' in page
+    assert 'id="ftir-report-download" href="#" aria-disabled="true"' in page
+    assert "보고서 생성이 완료되면 다운로드할 수 있습니다." in page
     assert 'id="ftir-report-send" disabled' in page
     assert 'data-transfer-field="requestNumber"' in page
     assert 'data-transfer-field="limsExperimentCode"' in page
@@ -79,6 +80,7 @@ def test_ftir_workspace_contains_upload_and_editor_controls() -> None:
     assert 'X-Request-Id": "ftir-request-list-' in page
     assert "validateReportTransfer" in page
     assert "sendReportJob" in page
+    assert "message.appendChild(link)" not in page
     assert "message.appendChild(send)" not in page
     assert "sendReportJob(job, send)" not in page
     assert 'form.append("requestNumber", transfer.requestNumber)' in page

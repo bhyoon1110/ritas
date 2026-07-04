@@ -74,7 +74,8 @@ def test_raman_workspace_contains_upload_controls() -> None:
     assert 'id="raman-request-load"' in page
     assert 'id="raman-request-select"' in page
     assert 'id="raman-request-detail"' in page
-    assert 'id="raman-report-download" href="#" hidden' in page
+    assert 'id="raman-report-download" href="#" aria-disabled="true"' in page
+    assert "보고서 생성이 완료되면 다운로드할 수 있습니다." in page
     assert 'id="raman-report-send" disabled' in page
     assert 'data-transfer-field="requestNumber"' in page
     assert 'data-transfer-field="limsExperimentCode"' in page
@@ -91,6 +92,7 @@ def test_raman_workspace_contains_upload_controls() -> None:
     assert 'X-Request-Id": "raman-request-list-' in page
     assert "validateReportTransfer" in page
     assert "sendReportJob" in page
+    assert "message.appendChild(link)" not in page
     assert "message.appendChild(send)" not in page
     assert "sendReportJob(job, send)" not in page
     assert 'form.append("requestNumber", transfer.requestNumber)' in page

@@ -962,11 +962,14 @@ body {
   border-color: #486581;
   background: #eef2f6;
 }
-.ftir-report-option-button:disabled {
+.ftir-report-option-button:disabled,
+.ftir-report-option-button.is-disabled,
+.ftir-report-option-button[aria-disabled="true"] {
   border-color: #d9e2ec;
   background: #f0f4f8;
   color: #9fb3c8;
   cursor: default;
+  pointer-events: none;
 }
 .ftir-report-request-detail {
   display: grid;
@@ -1593,8 +1596,9 @@ _PAGE_SHELL = """
       </select>
       <button type="button" class="ftir-report-option-button"
               id="ftir-request-load">의뢰 조회</button>
-      <a class="ftir-report-option-button ftir-report-download-link"
-         id="ftir-report-download" href="#" hidden>보고서 다운로드</a>
+      <a class="ftir-report-option-button ftir-report-download-link is-disabled"
+         id="ftir-report-download" href="#" aria-disabled="true"
+         title="보고서 생성이 완료되면 다운로드할 수 있습니다.">보고서 다운로드</a>
       <button type="button" class="ftir-report-option-button"
               id="ftir-report-send" disabled>보고서 전송</button>
     </div>
@@ -2748,15 +2752,19 @@ _UPLOAD_SCRIPT = """
   function updatePersistentReportDownload(job) {
     if (!reportDownloadLink) return;
     if (!job || !job.jobId) {
-      reportDownloadLink.hidden = true;
+      reportDownloadLink.classList.add("is-disabled");
+      reportDownloadLink.setAttribute("aria-disabled", "true");
       reportDownloadLink.removeAttribute("download");
       reportDownloadLink.href = "#";
+      reportDownloadLink.title = "보고서 생성이 완료되면 다운로드할 수 있습니다.";
       return;
     }
     var info = reportDownloadInfo(job);
     reportDownloadLink.href = info.url;
     reportDownloadLink.download = info.filename;
-    reportDownloadLink.hidden = false;
+    reportDownloadLink.classList.remove("is-disabled");
+    reportDownloadLink.removeAttribute("aria-disabled");
+    reportDownloadLink.title = "완성된 보고서 ZIP을 다운로드합니다.";
   }
 
   function validateReportTransfer() {
@@ -3047,17 +3055,12 @@ _UPLOAD_SCRIPT = """
   }
 
   function setReportDownloadLink(job) {
-    var info = reportDownloadInfo(job);
     updatePersistentReportDownload(job);
     clearMessageTimer();
     message.textContent = "";
     message.classList.add("is-visible", "is-success");
     var label = document.createElement("span");
-    label.textContent = "보고서가 완성되었습니다. ";
-    var link = document.createElement("a");
-    link.href = info.url;
-    link.download = info.filename;
-    link.textContent = "보고서 다운로드";
+    label.textContent = "보고서가 완성되었습니다.";
     var close = document.createElement("button");
     close.type = "button";
     close.className = "ftir-message-close";
@@ -3067,7 +3070,6 @@ _UPLOAD_SCRIPT = """
       setMessage("");
     });
     message.appendChild(label);
-    message.appendChild(link);
     message.appendChild(close);
     updateReportSendAvailability();
   }
@@ -4549,6 +4551,11 @@ _UPLOAD_SCRIPT = """
   });
   reportSendButton.addEventListener("click", function() {
     sendReportJob(lastReportJob, reportSendButton);
+  });
+  reportDownloadLink.addEventListener("click", function(ev) {
+    if (reportDownloadLink.getAttribute("aria-disabled") === "true") {
+      ev.preventDefault();
+    }
   });
   if (gd.on) {
     gd.on("plotly_restyle", scheduleLibraryPreviewIfOpen);
