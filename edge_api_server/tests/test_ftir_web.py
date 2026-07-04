@@ -76,6 +76,8 @@ def test_ftir_workspace_contains_upload_and_editor_controls() -> None:
     assert 'X-Request-Id": "ftir-request-list-' in page
     assert "validateReportTransfer" in page
     assert "sendReportJob" in page
+    assert "message.appendChild(send)" not in page
+    assert "sendReportJob(job, send)" not in page
     assert 'form.append("requestNumber", transfer.requestNumber)' in page
     assert 'experimentCode: transfer.limsExperimentCode' in page
     assert 'id="ftir-report-progress"' in page

@@ -4267,14 +4267,6 @@ _UPLOAD_SCRIPT = """
     link.href = downloadUrl;
     link.download = filename;
     link.textContent = "보고서 다운로드";
-    var send = document.createElement("button");
-    send.type = "button";
-    send.className = "raman-report-option-button";
-    send.textContent = "보고서 전송";
-    send.title = "완성된 보고서 ZIP을 전송합니다.";
-    send.addEventListener("click", function() {
-      sendReportJob(job, send);
-    });
     var close = document.createElement("button");
     close.type = "button";
     close.className = "raman-message-close";
@@ -4285,7 +4277,6 @@ _UPLOAD_SCRIPT = """
     });
     message.appendChild(label);
     message.appendChild(link);
-    message.appendChild(send);
     message.appendChild(close);
     updateReportSendAvailability();
   }

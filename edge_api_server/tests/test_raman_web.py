@@ -88,6 +88,8 @@ def test_raman_workspace_contains_upload_controls() -> None:
     assert 'X-Request-Id": "raman-request-list-' in page
     assert "validateReportTransfer" in page
     assert "sendReportJob" in page
+    assert "message.appendChild(send)" not in page
+    assert "sendReportJob(job, send)" not in page
     assert 'form.append("requestNumber", transfer.requestNumber)' in page
     assert 'experimentCode: transfer.limsExperimentCode' in page
     assert 'id="raman-report-progress"' in page
