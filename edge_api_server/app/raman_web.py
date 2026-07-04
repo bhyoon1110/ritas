@@ -1114,9 +1114,9 @@ body { overflow-x: hidden; }
 }
 .raman-message.is-visible { display: block; }
 .raman-message.is-success {
-  border-bottom-color: #bfdbfe;
-  background: #eff6ff;
-  color: #1e3a8a;
+  border-bottom-color: #bbf7d0;
+  background: #dcfce7;
+  color: #166534;
 }
 .raman-message a {
   color: #1d4ed8;
@@ -3236,7 +3236,7 @@ _UPLOAD_SCRIPT = """
       } else {
         var previous = bySample[sample].conditionDetail || "";
         bySample[sample].conditionDetail = previous
-          ? previous + "\n" + label + ": " + value
+          ? previous + "\\n" + label + ": " + value
           : label + ": " + value;
       }
     });
@@ -3512,7 +3512,7 @@ _UPLOAD_SCRIPT = """
       });
       requestItems = Array.isArray(payload.items) ? payload.items : [];
       renderRequestOptions(requestItems);
-      setMessage(requestItems.length
+      setSuccessMessage(requestItems.length
         ? "의뢰 목록을 불러왔습니다."
         : "조회된 의뢰가 없습니다.");
     } catch (err) {
@@ -3935,6 +3935,17 @@ _UPLOAD_SCRIPT = """
         if (!message.classList.contains("is-success")) {
           setMessage("");
         }
+      }, MESSAGE_AUTO_HIDE_MS);
+    }
+  }
+
+  function setSuccessMessage(text) {
+    clearMessageTimer();
+    message.textContent = text || "";
+    message.classList.add("is-visible", "is-success");
+    if (text) {
+      messageTimer = window.setTimeout(function() {
+        setMessage("");
       }, MESSAGE_AUTO_HIDE_MS);
     }
   }
@@ -4898,7 +4909,7 @@ _UPLOAD_SCRIPT = """
           })
         }
       );
-      setMessage(
+      setSuccessMessage(
         "보고서 전송 완료: "
         + result.requestNumber + " / " + result.experimentCode
       );
