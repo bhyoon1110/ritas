@@ -77,3 +77,45 @@ def test_connection_pool_reuses_idle_connection(monkeypatch: pytest.MonkeyPatch)
 
     database.close()
     assert created[0].closed is True
+
+
+class _FetchAllCursor:
+    def fetchall(self) -> list[dict[str, object]]:
+        return []
+
+
+class _CaptureConnection:
+    def __init__(self) -> None:
+        self.sql = ""
+        self.params: tuple[object, ...] = ()
+
+    def execute(self, sql: str, params: tuple[object, ...]) -> _FetchAllCursor:
+        self.sql = sql
+        self.params = params
+        return _FetchAllCursor()
+
+    def __enter__(self) -> "_CaptureConnection":
+        return self
+
+    def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
+        return None
+
+
+def test_request_summary_completion_filter_is_parameterized(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    database = Database.__new__(Database)
+    connection = _CaptureConnection()
+    monkeypatch.setattr(database, "_connect", lambda: connection)
+
+    rows = database.fetch_request_summaries(
+        50,
+        0,
+        experiment_keywords=("ft-ir",),
+        include_completed=False,
+    )
+
+    assert rows == []
+    assert "%완료%" not in connection.sql
+    assert connection.params[0] == "%완료%"
+    assert connection.params[1:] == ("%ft-ir%", "%ft-ir%", 50, 0)

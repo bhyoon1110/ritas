@@ -495,9 +495,10 @@ class Database:
         if not include_completed:
             filters.append(
                 """
-                LOWER(COALESCE(req_state_name, '')) NOT LIKE '%완료%'
+                LOWER(COALESCE(req_state_name, '')) NOT LIKE ?
                 """
             )
+            params.append("%완료%")
         if experiment_keywords:
             keyword_filters: list[str] = []
             for keyword in experiment_keywords:
