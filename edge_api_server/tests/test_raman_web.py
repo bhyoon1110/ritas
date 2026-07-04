@@ -80,6 +80,8 @@ def test_raman_workspace_contains_upload_controls() -> None:
     assert 'data-transfer-field="requestNumber"' in page
     assert 'data-transfer-field="limsExperimentCode"' in page
     assert 'data-transfer-field="equipmentCode"' in page
+    assert 'value="RAMAN-01"' not in page
+    assert "장비 코드 입력" in page
     assert 'data-transfer-field="operatorId"' in page
     assert "loadRequestItems" in page
     assert "experimentType=" in page
@@ -90,6 +92,8 @@ def test_raman_workspace_contains_upload_controls() -> None:
     assert "updatePersistentReportDownload" in page
     assert "reportDownloadInfo" in page
     assert 'X-Request-Id": "raman-request-list-' in page
+    assert 'X-Request-Id": "raman-request-list-all-' in page
+    assert "Raman 필터 결과가 없어 전체 의뢰 목록을 표시합니다." in page
     assert "validateReportTransfer" in page
     assert "sendReportJob" in page
     assert "message.appendChild(link)" not in page

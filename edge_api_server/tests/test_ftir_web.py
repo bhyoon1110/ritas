@@ -68,6 +68,8 @@ def test_ftir_workspace_contains_upload_and_editor_controls() -> None:
     assert 'data-transfer-field="requestNumber"' in page
     assert 'data-transfer-field="limsExperimentCode"' in page
     assert 'data-transfer-field="equipmentCode"' in page
+    assert 'value="FTIR-01"' not in page
+    assert "장비 코드 입력" in page
     assert 'data-transfer-field="operatorId"' in page
     assert "loadRequestItems" in page
     assert "experimentType=" in page
@@ -78,6 +80,8 @@ def test_ftir_workspace_contains_upload_and_editor_controls() -> None:
     assert "updatePersistentReportDownload" in page
     assert "reportDownloadInfo" in page
     assert 'X-Request-Id": "ftir-request-list-' in page
+    assert 'X-Request-Id": "ftir-request-list-all-' in page
+    assert "FT-IR 필터 결과가 없어 전체 의뢰 목록을 표시합니다." in page
     assert "validateReportTransfer" in page
     assert "sendReportJob" in page
     assert "message.appendChild(link)" not in page

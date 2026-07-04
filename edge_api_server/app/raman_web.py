@@ -1602,7 +1602,7 @@ _PAGE_SHELL = """
       </label>
       <label class="raman-report-meta-field">
         <span>실험장비</span>
-        <input type="text" value="RAMAN-01"
+        <input type="text" placeholder="장비 코드 입력"
                data-transfer-field="equipmentCode">
       </label>
       <label class="raman-report-meta-field">
@@ -3736,9 +3736,22 @@ _UPLOAD_SCRIPT = """
         }
       );
       requestItems = Array.isArray(payload.items) ? payload.items : [];
+      var usedFallback = false;
+      if (!requestItems.length) {
+        var fallbackPayload = await fetchJson(
+          "/api/v1/requests?page=1&pageSize=200",
+          {
+          headers: {"X-Request-Id": "raman-request-list-all-" + Date.now()}
+          }
+        );
+        requestItems = Array.isArray(fallbackPayload.items) ? fallbackPayload.items : [];
+        usedFallback = requestItems.length > 0;
+      }
       renderRequestOptions(requestItems);
       setSuccessMessage(requestItems.length
-        ? "Raman 의뢰 목록을 불러왔습니다."
+        ? (usedFallback
+          ? "Raman 필터 결과가 없어 전체 의뢰 목록을 표시합니다."
+          : "Raman 의뢰 목록을 불러왔습니다.")
         : "조회된 의뢰가 없습니다.");
     } catch (err) {
       setMessage(err.message || "의뢰 목록 조회에 실패했습니다.");
