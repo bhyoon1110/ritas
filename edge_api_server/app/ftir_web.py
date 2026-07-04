@@ -32,14 +32,17 @@ from .assignment_suggestions import AssignmentSuggestionRequest
 from .config import Settings
 from .preview_report import (
     PreviewReportJob,
+    PreviewReportSendRequest,
     RawSeries,
     build_preview_report_package,
     cleanup_preview_report,
     decode_figure_image,
     parse_analysis_payload,
     preview_report_job_store,
+    send_preview_report_package,
     start_preview_report_job,
 )
+from .spring_callback import SpringCallbackError
 
 
 PLOT_DIV_ID = "peak-plot"
@@ -918,8 +921,24 @@ body {
 }
 .ftir-report-meta-toolbar {
   display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
   justify-content: flex-end;
   padding: 0 0 8px 24px;
+}
+.ftir-report-request-select {
+  flex: 1 1 360px;
+  max-width: 720px;
+  height: 28px;
+  min-width: 180px;
+  border: 1px solid #bcccdc;
+  border-radius: 4px;
+  background: #ffffff;
+  color: #243b53;
+  font: 11px Arial, "Noto Sans KR", sans-serif;
+  padding: 0 7px;
+  box-sizing: border-box;
 }
 .ftir-report-option-button {
   height: 28px;
@@ -1525,6 +1544,40 @@ _PAGE_SHELL = """
   </span>
   <div class="ftir-file-list" id="ftir-file-list"></div>
 </section>
+<section class="ftir-report-meta-band" id="ftir-report-transfer">
+  <details class="ftir-report-meta-panel" open>
+    <summary>보고서 전송 정보 <span>의뢰 조회 + 전송 필수 정보</span></summary>
+    <div class="ftir-report-meta-toolbar">
+      <select class="ftir-report-request-select" id="ftir-request-select">
+        <option value="">의뢰 조회 후 선택</option>
+      </select>
+      <button type="button" class="ftir-report-option-button"
+              id="ftir-request-load">의뢰 조회</button>
+    </div>
+    <div class="ftir-report-meta-grid">
+      <label class="ftir-report-meta-field">
+        <span>의뢰번호</span>
+        <input type="text" placeholder="의뢰 조회 후 선택"
+               data-transfer-field="requestNumber">
+      </label>
+      <label class="ftir-report-meta-field">
+        <span>실험코드</span>
+        <input type="text" placeholder="LIMS 실험코드"
+               data-transfer-field="limsExperimentCode">
+      </label>
+      <label class="ftir-report-meta-field">
+        <span>실험장비</span>
+        <input type="text" value="FTIR-01"
+               data-transfer-field="equipmentCode">
+      </label>
+      <label class="ftir-report-meta-field">
+        <span>실험자</span>
+        <input type="text" value="SSO-PENDING"
+               data-transfer-field="operatorId">
+      </label>
+    </div>
+  </details>
+</section>
 <section class="ftir-report-meta-band" id="ftir-report-meta">
   <details class="ftir-report-meta-panel">
     <summary>실험환경/조건 <span>raw 자동 추출 + 직접 입력</span></summary>
@@ -1894,6 +1947,11 @@ _UPLOAD_SCRIPT = """
   var reportMetaControls = Array.prototype.slice.call(
     document.querySelectorAll("#ftir-report-meta [data-report-field]")
   );
+  var reportTransferControls = Array.prototype.slice.call(
+    document.querySelectorAll("#ftir-report-transfer [data-transfer-field]")
+  );
+  var requestLoad = document.getElementById("ftir-request-load");
+  var requestSelect = document.getElementById("ftir-request-select");
   var reportOptionsOpen = document.getElementById("ftir-report-options-open");
   var reportOptionsModal = document.getElementById("ftir-report-options-modal");
   var reportOptionsBody = document.getElementById("ftir-report-options-body");
@@ -1907,6 +1965,7 @@ _UPLOAD_SCRIPT = """
       || !libraryFilter
       || !libraryNew || !libraryModal || !libraryDialogClose
       || !libraryRowAdd || !libraryDialogCancel || !libraryDialogSave
+      || !requestLoad || !requestSelect
       || !reportOptionsOpen || !reportOptionsModal || !reportOptionsBody
       || !reportOptionsClose || !reportOptionsCancel || !reportOptionsSave
       || !reportOptionsReset
@@ -1922,6 +1981,8 @@ _UPLOAD_SCRIPT = """
   var activeLibraryId = null;
   var activeLibraryIsNew = false;
   var libraryPreviewFrame = 0;
+  var requestItems = [];
+  var lastReportJob = null;
   var controller = null;
   var emptyData = JSON.parse(JSON.stringify(gd.data || []));
   var emptyLayout = JSON.parse(JSON.stringify(gd.layout || {}));
@@ -2318,6 +2379,7 @@ _UPLOAD_SCRIPT = """
       files: files.map(fileRecord),
       selectedLibraryIds: selectedLibraryIds.slice(),
       reportMetadata: reportMetadataFormState(),
+      reportTransfer: reportTransferFormState(),
       sensitivity: gd._ristPeakSensitivityValue || 25,
       statusText: status.textContent || "",
       analysisPayload: latestAnalysisPayload,
@@ -2373,6 +2435,7 @@ _UPLOAD_SCRIPT = """
       files = (state.files || []).map(recordFile);
       selectedLibraryIds = (state.selectedLibraryIds || []).slice();
       applyReportMetadataFormState(state.reportMetadata || {});
+      applyReportTransferFormState(state.reportTransfer || {});
       latestAnalysisPayload = state.analysisPayload || null;
       if (Number.isFinite(Number(state.sensitivity))) {
         gd._ristPeakSensitivityValue = Number(state.sensitivity);
@@ -2444,6 +2507,134 @@ _UPLOAD_SCRIPT = """
     reportMetaControls.forEach(function(control) {
       control.value = control.defaultValue || "";
     });
+  }
+
+  function clearReportTransferForm() {
+    requestSelect.value = "";
+    reportTransferControls.forEach(function(control) {
+      control.value = control.defaultValue || "";
+    });
+  }
+
+  function reportTransferFormState() {
+    var state = {};
+    reportTransferControls.forEach(function(control) {
+      state[control.dataset.transferField] = control.value || "";
+    });
+    var selected = selectedRequestItem();
+    if (selected) {
+      state.limsExperimentName = selected.experimentName || selected.testMethodName || "";
+      state.sampleName = selected.sampleName || "";
+      state.requestResultNo = selected.requestResultNo || "";
+      state.sampleResultNo = selected.sampleResultNo || "";
+      state.testMethodResultNo = selected.testMethodResultNo || "";
+    }
+    return state;
+  }
+
+  function applyReportTransferFormState(state) {
+    reportTransferControls.forEach(function(control) {
+      var field = control.dataset.transferField;
+      if (Object.prototype.hasOwnProperty.call(state, field)) {
+        control.value = state[field] || "";
+      }
+    });
+  }
+
+  function reportTransferValue(field) {
+    var control = reportTransferControls.find(function(item) {
+      return item.dataset.transferField === field;
+    });
+    return control ? (control.value || "").trim() : "";
+  }
+
+  function setReportTransferValue(field, value) {
+    reportTransferControls.forEach(function(control) {
+      if (control.dataset.transferField === field) {
+        control.value = value || "";
+      }
+    });
+  }
+
+  function selectedRequestItem() {
+    var index = Number(requestSelect.value);
+    return Number.isInteger(index) && index >= 0 ? requestItems[index] || null : null;
+  }
+
+  function requestOptionLabel(item) {
+    var parts = [
+      item.requestNumber || "(의뢰번호 없음)",
+      item.experimentCode || item.testMethodCode || "(실험코드 없음)",
+      item.experimentName || item.testMethodName || "",
+      item.sampleName || ""
+    ].filter(Boolean);
+    return parts.join(" · ");
+  }
+
+  function renderRequestOptions(items) {
+    requestSelect.innerHTML = "";
+    var empty = document.createElement("option");
+    empty.value = "";
+    empty.textContent = items.length ? "의뢰를 선택하세요" : "조회된 의뢰가 없습니다";
+    requestSelect.appendChild(empty);
+    items.forEach(function(item, index) {
+      var option = document.createElement("option");
+      option.value = String(index);
+      option.textContent = requestOptionLabel(item);
+      requestSelect.appendChild(option);
+    });
+  }
+
+  async function loadRequestItems() {
+    requestLoad.disabled = true;
+    requestLoad.textContent = "조회 중...";
+    try {
+      var payload = await fetchJson("/api/v1/requests?page=1&pageSize=200", {
+        headers: {"X-Request-Id": "ftir-request-list-" + Date.now()}
+      });
+      requestItems = Array.isArray(payload.items) ? payload.items : [];
+      renderRequestOptions(requestItems);
+      setMessage(requestItems.length
+        ? "의뢰 목록을 불러왔습니다."
+        : "조회된 의뢰가 없습니다.");
+    } catch (err) {
+      setMessage(err.message || "의뢰 목록 조회에 실패했습니다.");
+    } finally {
+      requestLoad.disabled = false;
+      requestLoad.textContent = "의뢰 조회";
+    }
+  }
+
+  function applySelectedRequest() {
+    var item = selectedRequestItem();
+    if (!item) return;
+    setReportTransferValue("requestNumber", item.requestNumber || "");
+    setReportTransferValue(
+      "limsExperimentCode",
+      item.experimentCode || item.testMethodCode || ""
+    );
+    scheduleWorkspaceSave();
+  }
+
+  function validateReportTransfer() {
+    var transfer = reportTransferFormState();
+    if (!transfer.requestNumber) {
+      setMessage("보고서 전송 정보의 의뢰번호를 선택하거나 입력하세요.");
+      return null;
+    }
+    if (!transfer.limsExperimentCode) {
+      setMessage("보고서 전송 정보의 실험코드를 선택하거나 입력하세요.");
+      return null;
+    }
+    if (!transfer.equipmentCode) {
+      setMessage("보고서 전송 정보의 실험장비를 입력하세요.");
+      return null;
+    }
+    if (!transfer.operatorId) {
+      setMessage("보고서 전송 정보의 실험자를 입력하세요.");
+      return null;
+    }
+    return transfer;
   }
 
   function normalizedMetadataKey(value) {
@@ -2596,6 +2787,11 @@ _UPLOAD_SCRIPT = """
         conditions
       );
     }
+    payload.reportContext = Object.assign(
+      {},
+      payload.reportContext || {},
+      reportTransferFormState()
+    );
     return filterReportAnalysisPayload(payload);
   }
 
@@ -2627,6 +2823,11 @@ _UPLOAD_SCRIPT = """
     reportMetaControls.forEach(function(control) {
       control.disabled = busy;
     });
+    reportTransferControls.forEach(function(control) {
+      control.disabled = busy;
+    });
+    requestLoad.disabled = busy;
+    requestSelect.disabled = busy;
     libraryInput.disabled = busy;
     libraryFilter.disabled = busy;
     libraryNew.disabled = busy;
@@ -2699,6 +2900,13 @@ _UPLOAD_SCRIPT = """
     link.href = downloadUrl;
     link.download = filename;
     link.textContent = "보고서 다운로드";
+    var send = document.createElement("button");
+    send.type = "button";
+    send.className = "ftir-report-option-button";
+    send.textContent = "전송";
+    send.addEventListener("click", function() {
+      sendReportJob(job, send);
+    });
     var close = document.createElement("button");
     close.type = "button";
     close.className = "ftir-message-close";
@@ -2709,6 +2917,7 @@ _UPLOAD_SCRIPT = """
     });
     message.appendChild(label);
     message.appendChild(link);
+    message.appendChild(send);
     message.appendChild(close);
   }
 
@@ -4075,11 +4284,50 @@ _UPLOAD_SCRIPT = """
     }
   }
 
+  async function sendReportJob(job, button) {
+    job = job || lastReportJob;
+    if (!job || !job.jobId) {
+      setMessage("전송할 보고서 작업이 없습니다. 보고서를 먼저 생성하세요.");
+      return;
+    }
+    var transfer = validateReportTransfer();
+    if (!transfer) return;
+    if (button) button.disabled = true;
+    status.textContent = "보고서 전송 중";
+    try {
+      var result = await fetchJson(
+        "/api/v1/ftir/report/jobs/" + encodeURIComponent(job.jobId) + "/send",
+        {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({
+            requestNumber: transfer.requestNumber,
+            experimentCode: transfer.limsExperimentCode,
+            equipmentCode: transfer.equipmentCode,
+            operatorId: transfer.operatorId
+          })
+        }
+      );
+      setMessage(
+        "보고서 전송 완료: "
+        + result.requestNumber + " / " + result.experimentCode
+      );
+      status.textContent = "보고서 전송 완료";
+    } catch (err) {
+      setMessage(err.message || "보고서 전송에 실패했습니다.");
+      status.textContent = "보고서 전송 실패";
+    } finally {
+      if (button) button.disabled = false;
+    }
+  }
+
   async function createReport() {
     if (!files.length) {
       setMessage("보고서를 생성하려면 DPT 파일을 먼저 업로드하세요.");
       return;
     }
+    var transfer = validateReportTransfer();
+    if (!transfer) return;
     if (!latestAnalysisPayload) {
       await analyze();
       if (!latestAnalysisPayload) return;
@@ -4106,6 +4354,9 @@ _UPLOAD_SCRIPT = """
       form.append("analysis_json", JSON.stringify(reportAnalysisPayload()));
       form.append("figure_json", JSON.stringify(compactReportFigurePayload(reportFigure)));
       form.append("figure_image", figureImage);
+      form.append("requestNumber", transfer.requestNumber);
+      form.append("equipmentCode", transfer.equipmentCode);
+      form.append("operatorId", transfer.operatorId);
       var job = await fetchJson("/api/v1/ftir/report/jobs", {
         method: "POST",
         body: form
@@ -4113,6 +4364,7 @@ _UPLOAD_SCRIPT = """
       setReportProgress(job);
       job = await pollReportJob(job.jobId);
       setReportProgress(job);
+      lastReportJob = job;
       setReportDownloadLink(job);
       status.textContent = "보고서 생성 완료";
     } catch (err) {
@@ -4133,6 +4385,12 @@ _UPLOAD_SCRIPT = """
     libraryInput.value = "";
   });
   libraryFilter.addEventListener("input", renderLibraries);
+  requestLoad.addEventListener("click", loadRequestItems);
+  requestSelect.addEventListener("change", applySelectedRequest);
+  reportTransferControls.forEach(function(control) {
+    control.addEventListener("change", scheduleWorkspaceSave);
+    control.addEventListener("input", scheduleWorkspaceSave);
+  });
   if (gd.on) {
     gd.on("plotly_restyle", scheduleLibraryPreviewIfOpen);
   }
@@ -4212,6 +4470,8 @@ _UPLOAD_SCRIPT = """
     setReportProgress(null);
     setMessage("");
     clearReportMetadataForm();
+    clearReportTransferForm();
+    lastReportJob = null;
     renderFiles();
     clearWorkspaceState();
     resetGraph();
@@ -4509,6 +4769,9 @@ def create_ftir_preview_report(
     analysis_json: str = Form(...),
     figure_json: str = Form(default=""),
     figure_image: str = Form(...),
+    request_number: str = Form(default="", alias="requestNumber"),
+    equipment_code: str = Form(default="", alias="equipmentCode"),
+    operator_id: str = Form(default="", alias="operatorId"),
 ) -> FileResponse:
     uploaded = _uploaded_dpt_files(files)
     try:
@@ -4520,6 +4783,9 @@ def create_ftir_preview_report(
             analysis_payload=analysis_payload,
             raw_series=raw_series,
             figure_image=image_bytes,
+            request_number=request_number,
+            equipment_code=equipment_code,
+            operator_id=operator_id,
             settings=getattr(request.app.state, "settings", None),
         )
     except ValueError as exc:
@@ -4542,6 +4808,9 @@ def create_ftir_preview_report_job(
     analysis_json: str = Form(...),
     figure_json: str = Form(default=""),
     figure_image: str = Form(...),
+    request_number: str = Form(default="", alias="requestNumber"),
+    equipment_code: str = Form(default="", alias="equipmentCode"),
+    operator_id: str = Form(default="", alias="operatorId"),
 ) -> dict:
     uploaded = _uploaded_dpt_files(files)
     try:
@@ -4563,6 +4832,9 @@ def create_ftir_preview_report_job(
         analysis_payload=analysis_payload,
         raw_series_factory=raw_series_factory,
         figure_image=image_bytes,
+        request_number=request_number,
+        equipment_code=equipment_code,
+        operator_id=operator_id,
         settings=getattr(request.app.state, "settings", None),
     )
     return _report_job_response(job, prefix="/api/v1/ftir/report/jobs")
@@ -4580,7 +4852,6 @@ def get_ftir_preview_report_job(request: Request, job_id: str) -> dict:
 @router.get("/api/v1/ftir/report/jobs/{job_id}/download", tags=["ftir"])
 def download_ftir_preview_report_job(
     request: Request,
-    background_tasks: BackgroundTasks,
     job_id: str,
 ) -> FileResponse:
     store = preview_report_job_store(request.app)
@@ -4592,12 +4863,41 @@ def download_ftir_preview_report_job(
     if not job.package_path.is_file():
         store.remove(job_id)
         raise ApiException(410, "FTIR_REPORT_PACKAGE_EXPIRED", "보고서 파일이 만료되었습니다.")
-    background_tasks.add_task(store.remove, job_id)
     return FileResponse(
         job.package_path,
         media_type="application/zip",
         filename=job.filename,
     )
+
+
+@router.post("/api/v1/ftir/report/jobs/{job_id}/send", tags=["ftir"])
+def send_ftir_preview_report_job(
+    request: Request,
+    job_id: str,
+    payload: PreviewReportSendRequest,
+) -> dict:
+    store = preview_report_job_store(request.app)
+    job = store.get(job_id)
+    if job is None:
+        raise ApiException(404, "FTIR_REPORT_JOB_NOT_FOUND", "보고서 작업을 찾을 수 없습니다.")
+    try:
+        return send_preview_report_package(
+            settings=getattr(request.app.state, "settings", None),
+            job=job,
+            payload=payload,
+        )
+    except FileNotFoundError as exc:
+        store.remove(job_id)
+        raise ApiException(410, "FTIR_REPORT_PACKAGE_EXPIRED", str(exc)) from exc
+    except ValueError as exc:
+        raise ApiException(409, "FTIR_REPORT_JOB_NOT_READY", str(exc)) from exc
+    except SpringCallbackError as exc:
+        raise ApiException(
+            502 if exc.retryable else 500,
+            exc.code,
+            str(exc),
+            retryable=exc.retryable,
+        ) from exc
 
 
 def create_ftir_preview_app(

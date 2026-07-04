@@ -14,6 +14,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
 from .config import Settings
 from .report.builders import get_builder
 from .llm_client import LlmError, LocalLlmClient
@@ -21,6 +23,7 @@ from .report import annotator
 from .report.model import ReportFigure
 from .report.package import build_report_package
 from .report.renderers import convert_pptx_to_pdf, render_report_formats
+from .spring_callback import SpringCallbackClient, SpringCallbackError
 from .storage import atomic_write_json
 
 
@@ -61,6 +64,23 @@ class PreviewReportJob:
         if download_url and self.status == "completed":
             payload["downloadUrl"] = download_url
         return payload
+
+
+class PreviewReportSendRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    request_number: str = Field(alias="requestNumber", min_length=1, max_length=100)
+    experiment_code: str = Field(alias="experimentCode", min_length=1, max_length=50)
+    equipment_code: str = Field(alias="equipmentCode", min_length=1, max_length=100)
+    operator_id: str = Field(alias="operatorId", min_length=1, max_length=100)
+
+    @field_validator("*")
+    @classmethod
+    def strip_values(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("must not be blank")
+        return value
 
 
 class PreviewReportJobStore:
@@ -232,6 +252,49 @@ def preview_report_job_store(app: Any) -> PreviewReportJobStore:
     return store
 
 
+def send_preview_report_package(
+    *,
+    settings: Any | None,
+    job: PreviewReportJob,
+    payload: PreviewReportSendRequest,
+) -> dict[str, Any]:
+    if job.status != "completed" or job.package_path is None:
+        raise ValueError("보고서가 아직 완성되지 않았습니다.")
+    if not job.package_path.is_file():
+        raise FileNotFoundError("보고서 파일이 만료되었습니다.")
+    resolved_settings = settings or Settings.from_env()
+    client = SpringCallbackClient(
+        resolved_settings.spring_callback_url,
+        resolved_settings.spring_callback_timeout_seconds,
+        resolved_settings.spring_callback_max_attempts,
+    )
+    try:
+        if not client.enabled:
+            raise SpringCallbackError(
+                "SPRING_CALLBACK_DISABLED",
+                "Spring Boot 전송 URL이 설정되어 있지 않습니다.",
+                retryable=False,
+            )
+        callback_job = {
+            "job_id": job.job_id,
+            "request_number": payload.request_number,
+            "experiment_code": payload.experiment_code,
+            "equipment_code": payload.equipment_code,
+            "operator_id": payload.operator_id,
+        }
+        client.deliver(callback_job, job.package_path)
+        return {
+            "sent": True,
+            "jobId": job.job_id,
+            "requestNumber": payload.request_number,
+            "experimentCode": payload.experiment_code,
+            "equipmentCode": payload.equipment_code,
+            "operatorId": payload.operator_id,
+        }
+    finally:
+        client.close()
+
+
 def parse_analysis_payload(analysis_json: str, figure_json: str | None = None) -> dict[str, Any]:
     payload = json.loads(analysis_json)
     if not isinstance(payload, dict):
@@ -396,6 +459,9 @@ def run_preview_report_job(
     analysis_payload: dict[str, Any],
     raw_series_factory: Callable[[], list[RawSeries]],
     figure_image: bytes,
+    request_number: str = "",
+    equipment_code: str = "",
+    operator_id: str = "",
     settings: Any | None = None,
 ) -> None:
     try:
@@ -427,6 +493,9 @@ def run_preview_report_job(
             analysis_payload=analysis_payload,
             raw_series=raw_series,
             figure_image=figure_image,
+            request_number=request_number,
+            equipment_code=equipment_code,
+            operator_id=operator_id,
             settings=settings,
             progress=progress,
         )

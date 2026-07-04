@@ -3,7 +3,9 @@ from __future__ import annotations
 import json
 import math
 import time
+from datetime import datetime, timezone
 from io import BytesIO
+from types import SimpleNamespace
 import zipfile
 from pathlib import Path
 
@@ -54,6 +56,21 @@ def test_ftir_workspace_contains_upload_and_editor_controls() -> None:
     assert page.index('id="ftir-report"') < page.index('id="ftir-clear"')
     assert page.index('id="ftir-clear"') < page.index('id="ftir-file-input"')
     assert "/api/v1/ftir/report/jobs" in page
+    assert "/api/v1/ftir/report/jobs/" in page
+    assert "/send" in page
+    assert 'id="ftir-report-transfer"' in page
+    assert 'id="ftir-request-load"' in page
+    assert 'id="ftir-request-select"' in page
+    assert 'data-transfer-field="requestNumber"' in page
+    assert 'data-transfer-field="limsExperimentCode"' in page
+    assert 'data-transfer-field="equipmentCode"' in page
+    assert 'data-transfer-field="operatorId"' in page
+    assert "loadRequestItems" in page
+    assert 'X-Request-Id": "ftir-request-list-' in page
+    assert "validateReportTransfer" in page
+    assert "sendReportJob" in page
+    assert 'form.append("requestNumber", transfer.requestNumber)' in page
+    assert 'experimentCode: transfer.limsExperimentCode' in page
     assert 'id="ftir-report-progress"' in page
     assert 'id="ftir-report-meta"' in page
     assert "reportAnalysisPayload" in page
@@ -330,6 +347,11 @@ def test_ftir_report_job_api_tracks_progress_and_downloads_package(
         )
         assert analysis_response.status_code == 200
         analysis = analysis_response.json()
+        analysis["reportContext"] = {
+            "requestNumber": "REQ-FTIR-001",
+            "limsExperimentCode": "LIMS-FTIR-01",
+            "limsExperimentName": "FT-IR 정성분석",
+        }
         job_response = client.post(
             "/api/v1/ftir/report/jobs",
             files={"files": ("sample-a.dpt", synthetic_dpt(), "application/octet-stream")},
@@ -337,6 +359,9 @@ def test_ftir_report_job_api_tracks_progress_and_downloads_package(
                 "analysis_json": json.dumps(analysis),
                 "figure_json": json.dumps(analysis["figure"]),
                 "figure_image": TINY_PNG_DATA_URL,
+                "requestNumber": "REQ-FTIR-001",
+                "equipmentCode": "FTIR-EDGE-01",
+                "operatorId": "operator01",
             },
         )
         assert job_response.status_code == 202
@@ -368,6 +393,84 @@ def test_ftir_report_job_api_tracks_progress_and_downloads_package(
         "raw_data.xlsx",
         "current_graph.png",
     } <= names
+    with zipfile.ZipFile(BytesIO(download_response.content)) as archive:
+        html_report = archive.read("report.html").decode("utf-8")
+    assert "REQ-FTIR-001" in html_report
+    assert "LIMS-FTIR-01" in html_report
+    assert "FTIR-EDGE-01" in html_report
+    assert "operator01" in html_report
+
+
+def test_preview_report_send_package_uses_transfer_metadata(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    captured: dict[str, object] = {}
+
+    class FakeSpringCallbackClient:
+        def __init__(self, url: str, timeout: float, attempts: int) -> None:
+            captured["config"] = (url, timeout, attempts)
+
+        @property
+        def enabled(self) -> bool:
+            return True
+
+        def deliver(self, job: dict, package_path: Path) -> None:
+            captured["job"] = job
+            captured["package_path"] = package_path
+
+        def close(self) -> None:
+            captured["closed"] = True
+
+    monkeypatch.setattr(preview_report, "SpringCallbackClient", FakeSpringCallbackClient)
+    package = tmp_path / "report-package.zip"
+    package.write_bytes(b"zip")
+    job = preview_report.PreviewReportJob(
+        job_id="preview-job-1",
+        filename="report-package.zip",
+        status="completed",
+        stage="completed",
+        progress_pct=100,
+        message="done",
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+        package_path=package,
+    )
+    payload = preview_report.PreviewReportSendRequest.model_validate(
+        {
+            "requestNumber": "REQ-SEND-001",
+            "experimentCode": "LIMS-FTIR-01",
+            "equipmentCode": "FTIR-EDGE-01",
+            "operatorId": "operator01",
+        }
+    )
+    settings = SimpleNamespace(
+        spring_callback_url="http://spring.local/api/v1/edge/reports",
+        spring_callback_timeout_seconds=3.0,
+        spring_callback_max_attempts=2,
+    )
+
+    result = preview_report.send_preview_report_package(
+        settings=settings,
+        job=job,
+        payload=payload,
+    )
+
+    assert result["sent"] is True
+    assert captured["config"] == (
+        "http://spring.local/api/v1/edge/reports",
+        3.0,
+        2,
+    )
+    assert captured["job"] == {
+        "job_id": "preview-job-1",
+        "request_number": "REQ-SEND-001",
+        "experiment_code": "LIMS-FTIR-01",
+        "equipment_code": "FTIR-EDGE-01",
+        "operator_id": "operator01",
+    }
+    assert captured["package_path"] == package
+    assert captured["closed"] is True
 
 
 def test_ftir_analysis_api_rejects_non_dpt(tmp_path: Path) -> None:

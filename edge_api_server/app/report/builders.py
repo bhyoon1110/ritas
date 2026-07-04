@@ -1331,6 +1331,23 @@ def _experiment_condition_rows(
     return _sort_condition_rows(rows, preferred_order)
 
 
+def _report_context(payload: dict[str, Any]) -> dict[str, Any]:
+    context = payload.get("reportContext")
+    return context if isinstance(context, dict) else {}
+
+
+def _display_experiment_code(job: dict[str, Any], payload: dict[str, Any]) -> str:
+    context = _report_context(payload)
+    value = _normalize_report_text(
+        str(
+            context.get("limsExperimentCode")
+            or context.get("experimentCode")
+            or ""
+        )
+    )
+    return value or str(job["experiment_code"])
+
+
 class ReportBuilder:
     """보고서 작성기 베이스."""
 
@@ -1354,8 +1371,18 @@ class ReportBuilder:
         bullets = [
             f"시료: {sample}",
             f"의뢰번호: {request_number}",
-            f"실험코드: {job['experiment_code']}",
+            f"실험코드: {_display_experiment_code(job, verdict)}",
         ]
+        context = _report_context(verdict)
+        experiment_name = _normalize_report_text(
+            str(
+                context.get("limsExperimentName")
+                or context.get("experimentName")
+                or ""
+            )
+        )
+        if experiment_name:
+            bullets.append(f"시험항목: {experiment_name}")
         if equipment:
             bullets.append(f"장비: {equipment}")
         if operator:
@@ -1459,13 +1486,14 @@ class FtirReportBuilder(ReportBuilder):
         self, job: dict[str, Any], analysis: list[AnalysisItem]
     ) -> ReportDocument:
         verdict = _select_verdict(analysis) or {}
+        display_experiment_code = _display_experiment_code(job, verdict)
         document = ReportDocument(
             job_id=job["job_id"],
             title="FT-IR 분석 보고서",
-            experiment_code=job["experiment_code"],
+            experiment_code=display_experiment_code,
             pk={
                 "requestNumber": job["request_number"],
-                "experimentCode": job["experiment_code"],
+                "experimentCode": display_experiment_code,
                 "equipmentCode": job["equipment_code"],
                 "operatorId": job["operator_id"],
             },
@@ -1928,13 +1956,14 @@ class RamanReportBuilder(ReportBuilder):
 
     def build(self, job: dict[str, Any], analysis: list[AnalysisItem]) -> ReportDocument:
         payload = _select_verdict(analysis) or {}
+        display_experiment_code = _display_experiment_code(job, payload)
         document = ReportDocument(
             job_id=job["job_id"],
             title="Raman 분석 보고서",
-            experiment_code=job["experiment_code"],
+            experiment_code=display_experiment_code,
             pk={
                 "requestNumber": job["request_number"],
-                "experimentCode": job["experiment_code"],
+                "experimentCode": display_experiment_code,
                 "equipmentCode": job["equipment_code"],
                 "operatorId": job["operator_id"],
             },
@@ -2179,13 +2208,14 @@ class GenericReportBuilder(ReportBuilder):
         self, job: dict[str, Any], analysis: list[AnalysisItem]
     ) -> ReportDocument:
         verdict = _select_verdict(analysis) or {}
+        display_experiment_code = _display_experiment_code(job, verdict)
         document = ReportDocument(
             job_id=job["job_id"],
             title=f"{job['experiment_code']} 분석 보고서",
-            experiment_code=job["experiment_code"],
+            experiment_code=display_experiment_code,
             pk={
                 "requestNumber": job["request_number"],
-                "experimentCode": job["experiment_code"],
+                "experimentCode": display_experiment_code,
                 "equipmentCode": job["equipment_code"],
                 "operatorId": job["operator_id"],
             },

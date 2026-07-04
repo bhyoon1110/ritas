@@ -68,6 +68,21 @@ def test_raman_workspace_contains_upload_controls() -> None:
     assert page.index('id="raman-report"') < page.index('id="raman-clear"')
     assert page.index('id="raman-clear"') < page.index('id="raman-file-input"')
     assert "/api/v1/raman/report/jobs" in page
+    assert "/api/v1/raman/report/jobs/" in page
+    assert "/send" in page
+    assert 'id="raman-report-transfer"' in page
+    assert 'id="raman-request-load"' in page
+    assert 'id="raman-request-select"' in page
+    assert 'data-transfer-field="requestNumber"' in page
+    assert 'data-transfer-field="limsExperimentCode"' in page
+    assert 'data-transfer-field="equipmentCode"' in page
+    assert 'data-transfer-field="operatorId"' in page
+    assert "loadRequestItems" in page
+    assert 'X-Request-Id": "raman-request-list-' in page
+    assert "validateReportTransfer" in page
+    assert "sendReportJob" in page
+    assert 'form.append("requestNumber", transfer.requestNumber)' in page
+    assert 'experimentCode: transfer.limsExperimentCode' in page
     assert 'id="raman-report-progress"' in page
     assert 'id="raman-report-meta"' in page
     assert 'id="raman-report-apply-common-conditions"' in page
@@ -481,6 +496,11 @@ def test_raman_report_job_api_tracks_progress_and_downloads_package(monkeypatch)
         )
         assert analysis_response.status_code == 200
         analysis = analysis_response.json()
+        analysis["reportContext"] = {
+            "requestNumber": "REQ-RAMAN-001",
+            "limsExperimentCode": "LIMS-RAMAN-01",
+            "limsExperimentName": "Raman 정성분석",
+        }
         job_response = client.post(
             "/api/v1/raman/report/jobs",
             files={"files": (MULTI_SAMPLE_TXT.name, content, "text/plain")},
@@ -488,6 +508,9 @@ def test_raman_report_job_api_tracks_progress_and_downloads_package(monkeypatch)
                 "analysis_json": json.dumps(analysis),
                 "figure_json": json.dumps(analysis["figure"]),
                 "figure_image": TINY_PNG_DATA_URL,
+                "requestNumber": "REQ-RAMAN-001",
+                "equipmentCode": "RAMAN-EDGE-01",
+                "operatorId": "operator01",
             },
         )
         assert job_response.status_code == 202
@@ -519,6 +542,12 @@ def test_raman_report_job_api_tracks_progress_and_downloads_package(monkeypatch)
         "raw_data.xlsx",
         "current_graph.png",
     } <= names
+    with zipfile.ZipFile(BytesIO(download_response.content)) as archive:
+        html_report = archive.read("report.html").decode("utf-8")
+    assert "REQ-RAMAN-001" in html_report
+    assert "LIMS-RAMAN-01" in html_report
+    assert "RAMAN-EDGE-01" in html_report
+    assert "operator01" in html_report
 
 
 def test_raman_report_job_accepts_large_multi_sample_lmr_payload(monkeypatch) -> None:
