@@ -234,6 +234,12 @@ RIST_DB_USER=rist
 RIST_DB_PASSWORD=실제비밀번호
 RIST_DB_POOL_SIZE=8
 RIST_DB_POOL_TIMEOUT_SECONDS=10
+
+# Spring Boot 보고서 ZIP 전달
+RIST_SPRING_CALLBACK_URL=http://127.0.0.1:8080/api/v1/edge/reports
+RIST_SPRING_CALLBACK_TIMEOUT_SECONDS=60
+RIST_SPRING_CALLBACK_MAX_ATTEMPTS=3
+
 # PDF 한글 깨짐 방지를 위해 한글 TTF/OTF/TTC를 지정한다.
 # 운영 서버는 fonts-nanum 설치 후 NanumGothic.ttf 명시 지정을 권장한다.
 RIST_PDF_FONT_PATH=/usr/share/fonts/truetype/nanum/NanumGothic.ttf
@@ -241,6 +247,8 @@ RIST_PDF_FONT_PATH=/usr/share/fonts/truetype/nanum/NanumGothic.ttf
 
 - API 서비스와 worker 가 동일한 `/home/rist/ritas/edge.env` 를 공유하므로
   **한 곳만** 수정하면 된다.
+- Spring Boot 전송 URL이나 timeout/retry 값을 바꾼 뒤에는 API와 worker를
+  재시작하면 반영된다.
 - 파일 권한은 `640`(rist 소유)으로 두어 다른 사용자가 읽지 못하게 한다.
 - 데이터베이스(`RIST_DB_NAME`)와 테이블은 서버 시작 시 자동 생성되므로 DB
   사용자에게 `CREATE` 권한을 부여한다.

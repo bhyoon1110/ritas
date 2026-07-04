@@ -17,6 +17,9 @@ Edge 보고서 worker가 최종 사용자용 보고서 ZIP을 같은 Edge 서버
 
 ```bash
 export LOCAL_SPRING_BOOT_BASE_URL=http://127.0.0.1:8080
+export RIST_SPRING_CALLBACK_URL=http://127.0.0.1:8080/api/v1/edge/reports
+export RIST_SPRING_CALLBACK_TIMEOUT_SECONDS=60
+export RIST_SPRING_CALLBACK_MAX_ATTEMPTS=3
 ```
 
 ## 요청
