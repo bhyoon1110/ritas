@@ -66,6 +66,8 @@ REQUEST_EXPERIMENT_ALIASES: dict[str, tuple[str, ...]] = {
         "적외선",
     ),
     "raman": ("raman", "라만"),
+    "xrd": ("xrd", "x-ray diffraction", "x ray diffraction", "x선", "엑스선"),
+    "sem": ("sem", "scanning electron", "주사전자", "전자현미경"),
 }
 
 
@@ -485,12 +487,14 @@ class EdgeService:
         page: int,
         page_size: int,
         experiment_type: str | None = None,
+        include_completed: bool = False,
     ) -> dict[str, Any]:
         experiment_keywords = self.request_experiment_keywords(experiment_type)
         rows = self.database.fetch_request_summaries(
             page_size,
             (page - 1) * page_size,
             experiment_keywords=experiment_keywords,
+            include_completed=include_completed,
         )
         return {
             "page": page,

@@ -80,8 +80,8 @@ def test_ftir_workspace_contains_upload_and_editor_controls() -> None:
     assert "updatePersistentReportDownload" in page
     assert "reportDownloadInfo" in page
     assert 'X-Request-Id": "ftir-request-list-' in page
-    assert 'X-Request-Id": "ftir-request-list-all-' in page
-    assert "FT-IR 필터 결과가 없어 전체 의뢰 목록을 표시합니다." in page
+    assert 'X-Request-Id": "ftir-request-list-all-' not in page
+    assert "조회된 FT-IR 의뢰가 없습니다." in page
     assert "validateReportTransfer" in page
     assert "sendReportJob" in page
     assert "message.appendChild(link)" not in page

@@ -325,9 +325,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         page: int = Query(default=1, ge=1),
         page_size: int = Query(default=50, alias="pageSize", ge=1, le=200),
         experiment_type: str | None = Query(default=None, alias="experimentType"),
+        include_completed: bool = Query(default=False, alias="includeCompleted"),
         _: str = Depends(required_request_id),
     ) -> dict:
-        return service.request_summaries(page, page_size, experiment_type)
+        return service.request_summaries(
+            page,
+            page_size,
+            experiment_type,
+            include_completed=include_completed,
+        )
 
     @app.exception_handler(Exception)
     async def unhandled_exception_handler(

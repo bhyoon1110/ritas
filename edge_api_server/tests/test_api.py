@@ -323,6 +323,17 @@ def test_file_crud_and_request_list(tmp_path: Path, mariadb: dict) -> None:
     assert requests.status_code == 200
     all_items = requests.json()["items"]
     assert {item["experimentCode"] for item in all_items} == {
+        "FTIR-QUAL",
+        "RAMAN-QUAL",
+    }
+    assert all("완료" not in (item["requestStateName"] or "") for item in all_items)
+
+    completed_requests = client.get(
+        "/api/v1/requests?includeCompleted=true", headers=headers()
+    )
+    assert completed_requests.status_code == 200
+    completed_items = completed_requests.json()["items"]
+    assert {item["experimentCode"] for item in completed_items} == {
         "A23141",
         "FTIR-QUAL",
         "RAMAN-QUAL",
@@ -350,6 +361,22 @@ def test_file_crud_and_request_list(tmp_path: Path, mariadb: dict) -> None:
     assert raman_item["experimentName"] == "Raman 정성분석"
     assert raman_item["sampleName"] == "Raman 시료"
     assert raman_item["testChargerName"] == "최분석"
+
+    xrd_requests = client.get(
+        "/api/v1/requests?experimentType=XRD", headers=headers()
+    )
+    assert xrd_requests.status_code == 200
+    assert xrd_requests.json()["items"] == []
+
+    completed_xrd_requests = client.get(
+        "/api/v1/requests?experimentType=XRD&includeCompleted=true",
+        headers=headers(),
+    )
+    assert completed_xrd_requests.status_code == 200
+    completed_xrd_item = completed_xrd_requests.json()["items"][0]
+    assert completed_xrd_item["requestNumber"] == "2025M01309"
+    assert completed_xrd_item["experimentCode"] == "A23141"
+    assert completed_xrd_item["experimentName"] == "XRD 데이터 해석"
 
     deleted = client.delete(
         f"/api/v1/jobs/{job_id}/files/raw/sample.txt",

@@ -419,7 +419,7 @@ X-Request-Id: 771e92ae-d06d-42e3-b2c8-d1846619987c
 ### 7.6 의뢰 번호 목록 조회
 
 ```http
-GET /api/v1/requests?page=1&pageSize=50&experimentType=FT-IR
+GET /api/v1/requests?page=1&pageSize=50&experimentType=FT-IR&includeCompleted=false
 X-Request-Id: 771e92ae-d06d-42e3-b2c8-d1846619987c
 ```
 
@@ -427,8 +427,15 @@ Edge 로컬 MariaDB의 `lims_req_ax_search` 테이블을 조회해 LIMS 의뢰/�
 항목 목록을 반환한다. 이 API는 조회용이며 작업을 생성하지 않는다. 사용자는
 목록에서 의뢰번호와 시험 항목을 선택한 뒤 `POST /api/v1/jobs`를 호출한다.
 `experimentType`은 선택 파라미터이며, 화면별 조회 범위를 제한할 때 사용한다.
-현재 FT-IR 화면은 `FT-IR`, Raman 화면은 `RAMAN`을 전달한다. 파라미터를 생략하면
-전체 시험 항목을 조회한다.
+현재 FT-IR 화면은 `FT-IR`, Raman 화면은 `RAMAN`을 전달한다.
+
+- `experimentType` 필터는 `test_mtd_code`, `test_mtd_name` 기준으로 적용한다.
+  예를 들어 `test_mtd_name`에 XRD, SEM, FT-IR, Raman처럼 시험/장비명이
+  명시되어 있으면 해당 화면의 시험 항목만 조회한다.
+- 파라미터를 생략하면 완료되지 않은 전체 시험 항목을 조회한다.
+- `includeCompleted` 기본값은 `false`이다. `req_state_name`에 `완료`가
+  포함된 시험 항목은 기본 조회에서 제외한다. 완료 건을 포함해야 하는 관리
+  화면은 `includeCompleted=true`를 명시한다.
 
 ```json
 {
@@ -437,33 +444,33 @@ Edge 로컬 MariaDB의 `lims_req_ax_search` 테이블을 조회해 LIMS 의뢰/�
   "experimentType": "FT-IR",
   "items": [
     {
-      "requestResultNo": 270846,
-      "requestNumber": "2025M01309",
-      "requestDate": "2026-05-19",
-      "requestState": 12,
-      "requestStateName": "시험완료",
-      "requestTypeNo": 123,
-      "requestTypeCode": "M1",
-      "requestTypeName": "그룹사",
-      "projectCode": null,
-      "customerRequestName": "조용민",
-      "customerNo": null,
-      "customerName": null,
-      "requestUserNo": 102,
-      "requestUserName": "EP_IF",
-      "sampleResultNo": 458465,
-      "sampleName": "시료",
-      "sampleState": 15,
-      "testMethodResultNo": 485993,
-      "testMethodNo": 3912,
-      "testMethodCode": "A23141",
-      "testMethodName": "XRD 데이터 해석",
-      "testState": 9,
-      "testChargerName": "이현재",
-      "outputOrder": null,
+      "requestResultNo": 270847,
+      "requestNumber": "2025M01310",
+      "requestDate": "2026-05-20",
+      "requestState": 8,
+      "requestStateName": "접수",
+      "requestTypeNo": 124,
+      "requestTypeCode": "M2",
+      "requestTypeName": "분석의뢰",
+      "projectCode": "P-FTIR",
+      "customerRequestName": "첨가제 정성 분석",
+      "customerNo": 9,
+      "customerName": "RIST 고객",
+      "requestUserNo": 103,
+      "requestUserName": "김의뢰",
+      "sampleResultNo": 458466,
+      "sampleName": "FTIR 시료",
+      "sampleState": 3,
+      "testMethodResultNo": 485994,
+      "testMethodNo": 3913,
+      "testMethodCode": "FTIR-QUAL",
+      "testMethodName": "FT-IR 정성분석",
+      "testState": 2,
+      "testChargerName": "박분석",
+      "outputOrder": 1,
       "syncedAt": "2026-07-03 18:10:35",
-      "experimentCode": "A23141",
-      "experimentName": "XRD 데이터 해석"
+      "experimentCode": "FTIR-QUAL",
+      "experimentName": "FT-IR 정성분석"
     }
   ]
 }

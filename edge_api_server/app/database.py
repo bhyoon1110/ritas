@@ -488,9 +488,16 @@ class Database:
         limit: int,
         offset: int,
         experiment_keywords: tuple[str, ...] = (),
+        include_completed: bool = False,
     ) -> list[dict[str, Any]]:
         filters: list[str] = []
         params: list[Any] = []
+        if not include_completed:
+            filters.append(
+                """
+                LOWER(COALESCE(req_state_name, '')) NOT LIKE '%완료%'
+                """
+            )
         if experiment_keywords:
             keyword_filters: list[str] = []
             for keyword in experiment_keywords:
@@ -500,11 +507,10 @@ class Database:
                     (
                         LOWER(COALESCE(test_mtd_code, '')) LIKE ?
                         OR LOWER(COALESCE(test_mtd_name, '')) LIKE ?
-                        OR LOWER(COALESCE(req_type_name, '')) LIKE ?
                     )
                     """
                 )
-                params.extend([like, like, like])
+                params.extend([like, like])
             filters.append("(" + " OR ".join(keyword_filters) + ")")
         where_sql = f"WHERE {' AND '.join(filters)}" if filters else ""
         with self._connect() as connection:

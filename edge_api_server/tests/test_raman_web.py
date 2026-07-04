@@ -92,8 +92,8 @@ def test_raman_workspace_contains_upload_controls() -> None:
     assert "updatePersistentReportDownload" in page
     assert "reportDownloadInfo" in page
     assert 'X-Request-Id": "raman-request-list-' in page
-    assert 'X-Request-Id": "raman-request-list-all-' in page
-    assert "Raman 필터 결과가 없어 전체 의뢰 목록을 표시합니다." in page
+    assert 'X-Request-Id": "raman-request-list-all-' not in page
+    assert "조회된 Raman 의뢰가 없습니다." in page
     assert "validateReportTransfer" in page
     assert "sendReportJob" in page
     assert "message.appendChild(link)" not in page
