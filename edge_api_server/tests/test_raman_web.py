@@ -103,6 +103,10 @@ def test_raman_workspace_contains_upload_controls() -> None:
     assert "reportSampleConditionsState" in page
     assert "renderReportSampleConditionSets" in page
     assert "applyCommonConditionsToSamples" in page
+    assert "applyCommonConditionFieldToSamples" in page
+    assert 'data-report-apply-field="excitationWavelength"' in page
+    assert 'data-report-apply-field="conditionDetail"' in page
+    assert "샘플 적용" in page
     assert "conditionRowsFromObject" in page
     assert "visibleSampleNames" in page
     assert "normalizedLaserValue" in page

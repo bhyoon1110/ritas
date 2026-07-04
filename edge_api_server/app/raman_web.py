@@ -960,6 +960,40 @@ body { overflow-x: hidden; }
   color: #52606d;
   font-size: 10px;
 }
+.raman-report-meta-field-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  min-width: 0;
+}
+.raman-report-meta-field-head > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.raman-report-field-apply {
+  flex: 0 0 auto;
+  height: 20px;
+  border: 1px solid #bcccdc;
+  border-radius: 4px;
+  background: #ffffff;
+  color: #486581;
+  cursor: pointer;
+  font-size: 9px;
+  padding: 0 6px;
+}
+.raman-report-field-apply:hover {
+  border-color: #486581;
+  background: #eef2f6;
+}
+.raman-report-field-apply:disabled {
+  border-color: #d9e2ec;
+  background: #f0f4f8;
+  color: #9fb3c8;
+  cursor: default;
+}
 .raman-report-meta-field.is-wide {
   grid-column: span 2;
 }
@@ -1574,63 +1608,99 @@ _PAGE_SHELL = """
     </div>
     <div class="raman-report-meta-grid">
       <label class="raman-report-meta-field">
-        <span>Excitation Wavelength</span>
+        <span class="raman-report-meta-field-head">
+          <span>Excitation Wavelength</span>
+          <button type="button" class="raman-report-field-apply"
+                  data-report-apply-field="excitationWavelength">샘플 적용</button>
+        </span>
         <input type="text" list="raman-report-excitation-wavelength-options"
                placeholder="예: 532 nm"
                data-report-field="excitationWavelength"
                data-report-label="Excitation Wavelength">
       </label>
       <label class="raman-report-meta-field">
-        <span>Laser current</span>
+        <span class="raman-report-meta-field-head">
+          <span>Laser current</span>
+          <button type="button" class="raman-report-field-apply"
+                  data-report-apply-field="laserCurrent">샘플 적용</button>
+        </span>
         <input type="text" list="raman-report-laser-current-options"
                placeholder="예: 10 mA"
                data-report-field="laserCurrent"
                data-report-label="Laser current">
       </label>
       <label class="raman-report-meta-field">
-        <span>Excitation Power</span>
+        <span class="raman-report-meta-field-head">
+          <span>Excitation Power</span>
+          <button type="button" class="raman-report-field-apply"
+                  data-report-apply-field="excitationPower">샘플 적용</button>
+        </span>
         <input type="text" list="raman-report-excitation-power-options"
                placeholder="예: 1 mW"
                data-report-field="excitationPower"
                data-report-label="Excitation Power">
       </label>
       <label class="raman-report-meta-field">
-        <span>Excitation Power density</span>
+        <span class="raman-report-meta-field-head">
+          <span>Excitation Power density</span>
+          <button type="button" class="raman-report-field-apply"
+                  data-report-apply-field="excitationPowerDensity">샘플 적용</button>
+        </span>
         <input type="text" list="raman-report-power-density-options"
                placeholder="예: 0.1 mW/um2"
                data-report-field="excitationPowerDensity"
                data-report-label="Excitation Power density">
       </label>
       <label class="raman-report-meta-field">
-        <span>ND filter</span>
+        <span class="raman-report-meta-field-head">
+          <span>ND filter</span>
+          <button type="button" class="raman-report-field-apply"
+                  data-report-apply-field="ndFilter">샘플 적용</button>
+        </span>
         <input type="text" list="raman-report-nd-filter-options"
                placeholder="예: ND 1.0"
                data-report-field="ndFilter"
                data-report-label="ND filter">
       </label>
       <label class="raman-report-meta-field">
-        <span>Spectrograph Center wavelength</span>
+        <span class="raman-report-meta-field-head">
+          <span>Spectrograph Center wavelength</span>
+          <button type="button" class="raman-report-field-apply"
+                  data-report-apply-field="spectrographCenterWavelength">샘플 적용</button>
+        </span>
         <input type="text" list="raman-report-center-wavelength-options"
                placeholder="예: 650 nm"
                data-report-field="spectrographCenterWavelength"
                data-report-label="Spectrograph Center wavelength">
       </label>
       <label class="raman-report-meta-field">
-        <span>Grating</span>
+        <span class="raman-report-meta-field-head">
+          <span>Grating</span>
+          <button type="button" class="raman-report-field-apply"
+                  data-report-apply-field="grating">샘플 적용</button>
+        </span>
         <input type="text" list="raman-report-grating-options"
                placeholder="예: 1800 g/mm"
                data-report-field="grating"
                data-report-label="Grating">
       </label>
       <label class="raman-report-meta-field">
-        <span>Slit width</span>
+        <span class="raman-report-meta-field-head">
+          <span>Slit width</span>
+          <button type="button" class="raman-report-field-apply"
+                  data-report-apply-field="slitWidth">샘플 적용</button>
+        </span>
         <input type="text" list="raman-report-slit-width-options"
                placeholder="예: 50 um"
                data-report-field="slitWidth"
                data-report-label="Slit width">
       </label>
       <label class="raman-report-meta-field is-wide">
-        <span>기타</span>
+        <span class="raman-report-meta-field-head">
+          <span>기타</span>
+          <button type="button" class="raman-report-field-apply"
+                  data-report-apply-field="conditionDetail">샘플 적용</button>
+        </span>
         <textarea placeholder="예: objective, exposure, accumulation, room temperature"
                   data-report-field="conditionDetail"
                   data-report-label="기타"></textarea>
@@ -2652,6 +2722,9 @@ _UPLOAD_SCRIPT = """
   var reportMetaControls = Array.prototype.slice.call(
     document.querySelectorAll("#raman-report-meta [data-report-field]")
   );
+  var reportFieldApplyButtons = Array.prototype.slice.call(
+    document.querySelectorAll("#raman-report-meta [data-report-apply-field]")
+  );
   var reportTransferControls = Array.prototype.slice.call(
     document.querySelectorAll("#raman-report-transfer [data-transfer-field]")
   );
@@ -3413,6 +3486,44 @@ _UPLOAD_SCRIPT = """
     return rows;
   }
 
+  function reportConditionConfigByField(field) {
+    return reportConditionFieldConfigs().find(function(config) {
+      return config.field === field;
+    }) || null;
+  }
+
+  function reportMetaValueForField(field) {
+    var control = reportMetaControls.find(function(item) {
+      return item.dataset.reportField === field;
+    });
+    return control ? (control.value || "").trim() : "";
+  }
+
+  function applyCommonConditionFieldToSamples(field) {
+    var config = reportConditionConfigByField(field);
+    if (!config) return;
+    var value = reportMetaValueForField(field);
+    if (!value) {
+      setMessage(config.label + " 공통값을 먼저 입력하세요.");
+      return;
+    }
+    var cards = reportSampleConditionList.querySelectorAll(
+      ".raman-report-sample-condition-card"
+    );
+    if (!cards.length) {
+      setMessage("raw 파일 분석 후 샘플별 조건을 적용할 수 있습니다.");
+      return;
+    }
+    cards.forEach(function(card) {
+      var control = card.querySelector(
+        '[data-sample-condition-field="' + field + '"]'
+      );
+      if (control) control.value = value;
+    });
+    scheduleWorkspaceSave();
+    setSuccessMessage(config.label + " 항목을 모든 샘플에 적용했습니다.");
+  }
+
   function applyCommonConditionsToSamples() {
     var common = {};
     reportMetaControls.forEach(function(control) {
@@ -4079,6 +4190,9 @@ _UPLOAD_SCRIPT = """
     clearButton.disabled = busy;
     reportMetaControls.forEach(function(control) {
       control.disabled = busy;
+    });
+    reportFieldApplyButtons.forEach(function(button) {
+      button.disabled = busy;
     });
     reportTransferControls.forEach(function(control) {
       control.disabled = busy;
@@ -5158,6 +5272,13 @@ _UPLOAD_SCRIPT = """
   reportMetaControls.forEach(function(control) {
     control.addEventListener("input", scheduleWorkspaceSave);
     control.addEventListener("change", scheduleWorkspaceSave);
+  });
+  reportFieldApplyButtons.forEach(function(button) {
+    button.addEventListener("click", function(ev) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      applyCommonConditionFieldToSamples(button.dataset.reportApplyField);
+    });
   });
   requestLoad.addEventListener("click", loadRequestItems);
   requestSelect.addEventListener("change", applySelectedRequest);
