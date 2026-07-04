@@ -248,21 +248,18 @@ cd edge_api_server
 | `RIST_PROCESSOR_TIMEOUT_SECONDS` | `600` | 자동 processor 실행 제한 시간 |
 | `RIST_PROCESSOR_COMMAND_<EXPERIMENT>` | 없음 | 분석 JSON이 없을 때 실행할 processor 명령 템플릿 |
 | `RIST_WORKER_POLL_SECONDS` | `2` | worker 큐 조회 간격 |
-| `RIST_SPRING_CALLBACK_URL` | 프로파일 기본 URL | 로컬 Spring Boot 결과 수신 URL 전체 재정의 |
+| `RIST_SPRING_CALLBACK_URL` | `http://127.0.0.1:8080/api/v1/edge/reports` | 로컬 Spring Boot 결과 수신 URL |
 | `RIST_SPRING_CALLBACK_TIMEOUT_SECONDS` | `60` | Spring Boot 전달 제한 시간 |
 | `RIST_SPRING_CALLBACK_MAX_ATTEMPTS` | `3` | Spring Boot 전달 최대 시도 횟수 |
 
-`config/environments/*.env`의 `LOCAL_*`, `EDGE_*` 값은 git으로 공유하는
-프로파일 기본값이다. 서버마다 달라지는 값은 `/home/rist/ritas/edge.env`에
-넣어 systemd 환경 변수로 재정의한다.
+`config/environments/*.env`는 git으로 공유하는 Edge scheme/host/port/bind 기본값만
+담는다. 서버마다 달라지는 런타임 값은 `/home/rist/ritas/edge.env` 한 곳에서
+관리한다.
 
-- LLM 주소/모델은 프로파일의 `LOCAL_LLM_*`가 기본값이고, 운영 서버별 변경은
-  `RIST_LLM_*`를 사용한다.
-- Spring Boot 주소는 기본적으로 `LOCAL_SPRING_BOOT_BASE_URL`에서
-  `{BASE_URL}/api/v1/edge/reports`를 만든다. 수신 path까지 다를 때만
-  `RIST_SPRING_CALLBACK_URL`에 전체 URL을 지정하며, 이 값이 가장 우선한다.
-- Edge 공개 주소는 프로파일의 `EDGE_SERVER_BASE_URL`이 기본값이고, 필요하면
-  `RIST_EDGE_PUBLIC_BASE_URL`로 재정의한다.
+- LLM 주소/모델은 `RIST_LLM_*`를 사용한다.
+- Spring Boot 전송 대상은 `RIST_SPRING_CALLBACK_URL` 하나로 관리한다.
+- Edge 공개 주소는 프로파일의 `EDGE_SERVER_SCHEME/HOST/PORT`에서 조합하고,
+  필요하면 `RIST_EDGE_PUBLIC_BASE_URL`로 재정의한다.
 
 ## 데이터베이스
 

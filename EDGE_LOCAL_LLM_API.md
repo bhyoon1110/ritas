@@ -31,33 +31,33 @@ FastAPI는 `8000` 포트, 로컬 LLM은 `8001` 포트를 사용한다.
 
 ## 3. 환경 설정
 
-공통 기본값은 다음 파일에서 관리한다.
+운영 설정은 `/home/rist/ritas/edge.env`의 `RIST_LLM_*` 항목에서 관리한다.
+코드 기본값은 `edge.env`가 없을 때의 로컬 개발용 fallback이다.
 
 ```text
-config/environments/development.env
-config/environments/production.env
+/home/rist/ritas/edge.env
 ```
 
 | 설정 | 기본값 | 설명 |
 |---|---|---|
-| `LOCAL_LLM_BASE_URL` | `http://127.0.0.1:8001` | 로컬 LLM Base URL |
-| `LOCAL_LLM_MODEL` | `gemma4-e4b` | 요청 모델 ID |
-| `LOCAL_LLM_TEMPERATURE` | `0.1` | 생성 무작위성 |
-| `LOCAL_LLM_MAX_TOKENS` | `1200` | 최대 출력 토큰 |
-| `LOCAL_LLM_CONTEXT_WINDOW` | `8192` | 모델 컨텍스트 길이 참고값 |
-| `LOCAL_LLM_CONTEXT_MARGIN` | `256` | 컨텍스트 예산 계산용 예비 설정값 |
-| `LOCAL_LLM_VALIDATE_MODEL` | `true` | 모델 조회 및 검증 여부 |
-| `LOCAL_LLM_INCLUDE_IMAGES` | `true` | 분석 이미지 전달 여부 |
-| `LOCAL_LLM_MAX_IMAGES` | `3` | 요청당 최대 이미지 수 |
-| `LOCAL_LLM_MAX_IMAGE_BYTES` | `2097152` | 이미지당 최대 크기 |
-
-실행 환경 변수 `RIST_LLM_*`를 사용하면 worker 설정만 재정의할 수 있다.
+| `RIST_LLM_BASE_URL` | `http://127.0.0.1:8001` | 로컬 LLM Base URL |
+| `RIST_LLM_MODEL` | `gemma4-e4b` | 요청 모델 ID |
+| `RIST_LLM_TIMEOUT_SECONDS` | `180` | 요청 제한 시간 |
+| `RIST_LLM_TEMPERATURE` | `0.1` | 생성 무작위성 |
+| `RIST_LLM_MAX_TOKENS` | `1200` | 최대 출력 토큰 |
+| `RIST_LLM_CONTEXT_WINDOW` | `8192` | 모델 컨텍스트 길이 참고값 |
+| `RIST_LLM_CONTEXT_MARGIN` | `256` | 컨텍스트 예산 계산용 예비 설정값 |
+| `RIST_LLM_VALIDATE_MODEL` | `true` | 모델 조회 및 검증 여부 |
+| `RIST_LLM_INCLUDE_IMAGES` | `true` | 분석 이미지 전달 여부 |
+| `RIST_LLM_MAX_IMAGES` | `3` | 요청당 최대 이미지 수 |
+| `RIST_LLM_MAX_IMAGE_BYTES` | `2097152` | 이미지당 최대 크기 |
+| `RIST_LLM_MAX_INPUT_CHARS` | `200000` | 구조화 분석 JSON 최대 문자 수 |
 
 ## 4. 처리 순서
 
 1. worker가 `processed` 폴더에서 구조화 분석 JSON과 허용된 이미지를 읽는다.
 2. 규칙 기반 보고서 작성기가 판정, 수치, 표와 기본 문안을 결정론적으로 만든다.
-3. `LOCAL_LLM_VALIDATE_MODEL=true`이면 `/v1/models`를 호출해 설정 모델
+3. `RIST_LLM_VALIDATE_MODEL=true`이면 `/v1/models`를 호출해 설정 모델
    `gemma4-e4b`의 존재를 확인한다.
 4. `/v1/chat/completions`에 `summary`, `narrative`, `caption` 슬롯 작성을
    요청한다.

@@ -8,6 +8,17 @@ from rist_common.config import load_environment
 
 
 PROJECT_DIR = Path(__file__).resolve().parents[1]
+DEFAULT_LLM_BASE_URL = "http://127.0.0.1:8001"
+DEFAULT_LLM_MODEL = "gemma4-e4b"
+DEFAULT_LLM_TEMPERATURE = 0.1
+DEFAULT_LLM_MAX_TOKENS = 1200
+DEFAULT_LLM_CONTEXT_WINDOW = 8192
+DEFAULT_LLM_CONTEXT_MARGIN = 256
+DEFAULT_LLM_VALIDATE_MODEL = True
+DEFAULT_LLM_INCLUDE_IMAGES = True
+DEFAULT_LLM_MAX_IMAGES = 3
+DEFAULT_LLM_MAX_IMAGE_BYTES = 2 * 1024 * 1024
+DEFAULT_SPRING_CALLBACK_URL = "http://127.0.0.1:8080/api/v1/edge/reports"
 
 
 @dataclass(frozen=True)
@@ -32,17 +43,17 @@ class Settings:
     upload_expiry_hours: float = 24.0
     max_upload_bytes: int = 2 * 1024 * 1024 * 1024
     supported_experiment_codes: frozenset[str] = frozenset()
-    llm_base_url: str = "http://127.0.0.1:8001"
-    llm_model: str = "gemma4-e4b"
+    llm_base_url: str = DEFAULT_LLM_BASE_URL
+    llm_model: str = DEFAULT_LLM_MODEL
     llm_timeout_seconds: float = 180.0
-    llm_temperature: float = 0.1
-    llm_max_tokens: int = 1200
-    llm_context_window: int = 8192
-    llm_context_margin: int = 256
-    llm_validate_model: bool = True
-    llm_include_images: bool = True
-    llm_max_images: int = 3
-    llm_max_image_bytes: int = 2 * 1024 * 1024
+    llm_temperature: float = DEFAULT_LLM_TEMPERATURE
+    llm_max_tokens: int = DEFAULT_LLM_MAX_TOKENS
+    llm_context_window: int = DEFAULT_LLM_CONTEXT_WINDOW
+    llm_context_margin: int = DEFAULT_LLM_CONTEXT_MARGIN
+    llm_validate_model: bool = DEFAULT_LLM_VALIDATE_MODEL
+    llm_include_images: bool = DEFAULT_LLM_INCLUDE_IMAGES
+    llm_max_images: int = DEFAULT_LLM_MAX_IMAGES
+    llm_max_image_bytes: int = DEFAULT_LLM_MAX_IMAGE_BYTES
     llm_max_input_chars: int = 200_000
     processor_timeout_seconds: float = 600.0
     worker_poll_seconds: float = 2.0
@@ -53,9 +64,7 @@ class Settings:
     @classmethod
     def from_env(cls) -> "Settings":
         common = load_environment()
-        default_storage_root = (
-            common.edge_storage_root or str(PROJECT_DIR / "data" / "jobs")
-        )
+        default_storage_root = str(PROJECT_DIR / "data" / "jobs")
         storage_root = Path(
             os.getenv("RIST_STORAGE_ROOT", default_storage_root)
         ).expanduser()
@@ -66,9 +75,6 @@ class Settings:
             )
         ).expanduser()
         configured_pdf_font = os.getenv("RIST_PDF_FONT_PATH", "").strip()
-        default_spring_callback_url = (
-            f"{common.local_spring_boot_base_url}/api/v1/edge/reports"
-        )
         supported = frozenset(
             code.strip().upper()
             for code in os.getenv("RIST_SUPPORTED_EXPERIMENT_CODES", "").split(",")
@@ -110,56 +116,56 @@ class Settings:
             ),
             supported_experiment_codes=supported,
             llm_base_url=os.getenv(
-                "RIST_LLM_BASE_URL", common.local_llm_base_url
+                "RIST_LLM_BASE_URL", DEFAULT_LLM_BASE_URL
             ).rstrip("/"),
-            llm_model=os.getenv("RIST_LLM_MODEL", common.local_llm_model),
+            llm_model=os.getenv("RIST_LLM_MODEL", DEFAULT_LLM_MODEL),
             llm_timeout_seconds=float(
                 os.getenv("RIST_LLM_TIMEOUT_SECONDS", "180")
             ),
             llm_temperature=float(
                 os.getenv(
                     "RIST_LLM_TEMPERATURE",
-                    str(common.local_llm_temperature),
+                    str(DEFAULT_LLM_TEMPERATURE),
                 )
             ),
             llm_max_tokens=int(
                 os.getenv(
                     "RIST_LLM_MAX_TOKENS",
-                    str(common.local_llm_max_tokens),
+                    str(DEFAULT_LLM_MAX_TOKENS),
                 )
             ),
             llm_context_window=int(
                 os.getenv(
                     "RIST_LLM_CONTEXT_WINDOW",
-                    str(common.local_llm_context_window),
+                    str(DEFAULT_LLM_CONTEXT_WINDOW),
                 )
             ),
             llm_context_margin=int(
                 os.getenv(
                     "RIST_LLM_CONTEXT_MARGIN",
-                    str(common.local_llm_context_margin),
+                    str(DEFAULT_LLM_CONTEXT_MARGIN),
                 )
             ),
             llm_validate_model=os.getenv(
                 "RIST_LLM_VALIDATE_MODEL",
-                str(common.local_llm_validate_model),
+                str(DEFAULT_LLM_VALIDATE_MODEL),
             ).lower()
             in {"1", "true", "yes", "on"},
             llm_include_images=os.getenv(
                 "RIST_LLM_INCLUDE_IMAGES",
-                str(common.local_llm_include_images),
+                str(DEFAULT_LLM_INCLUDE_IMAGES),
             ).lower()
             in {"1", "true", "yes", "on"},
             llm_max_images=int(
                 os.getenv(
                     "RIST_LLM_MAX_IMAGES",
-                    str(common.local_llm_max_images),
+                    str(DEFAULT_LLM_MAX_IMAGES),
                 )
             ),
             llm_max_image_bytes=int(
                 os.getenv(
                     "RIST_LLM_MAX_IMAGE_BYTES",
-                    str(common.local_llm_max_image_bytes),
+                    str(DEFAULT_LLM_MAX_IMAGE_BYTES),
                 )
             ),
             llm_max_input_chars=int(
@@ -172,7 +178,7 @@ class Settings:
                 os.getenv("RIST_WORKER_POLL_SECONDS", "2")
             ),
             spring_callback_url=os.getenv(
-                "RIST_SPRING_CALLBACK_URL", default_spring_callback_url
+                "RIST_SPRING_CALLBACK_URL", DEFAULT_SPRING_CALLBACK_URL
             ).rstrip("/"),
             spring_callback_timeout_seconds=float(
                 os.getenv("RIST_SPRING_CALLBACK_TIMEOUT_SECONDS", "60")

@@ -11,7 +11,7 @@
 #   bash scripts/reset_edge_data.sh --keep-services# 서비스 정지/재시작 생략
 #
 # DB 접속 정보는 edge.env(RIST_DB_*) 또는 환경변수에서 읽는다.
-# 저장소 경로는 RIST_STORAGE_ROOT > EDGE_STORAGE_ROOT(profile) > 기본값 순으로 결정한다.
+# 저장소 경로는 RIST_STORAGE_ROOT > 기본값 순으로 결정한다.
 
 set -euo pipefail
 
@@ -50,22 +50,9 @@ if [[ -f "${PROJECT_ROOT}/edge.env" ]]; then
 fi
 
 RIST_ENV="${RIST_ENV:-production}"
-PROFILE_FILE="${PROJECT_ROOT}/config/environments/${RIST_ENV}.env"
-
-# profile에서 EDGE_STORAGE_ROOT 추출(RIST_STORAGE_ROOT가 없을 때만 사용)
-profile_storage_root=""
-if [[ -f "${PROFILE_FILE}" ]]; then
-    profile_storage_root="$(
-        grep -E '^EDGE_STORAGE_ROOT=' "${PROFILE_FILE}" 2>/dev/null \
-            | tail -n1 | cut -d= -f2- | tr -d '"'\' || true
-    )"
-fi
 
 # 저장소 루트 결정
 STORAGE_ROOT="${RIST_STORAGE_ROOT:-}"
-if [[ -z "${STORAGE_ROOT}" ]]; then
-    STORAGE_ROOT="${profile_storage_root}"
-fi
 if [[ -z "${STORAGE_ROOT}" ]]; then
     STORAGE_ROOT="${EDGE_DIR}/data/jobs"
 fi
