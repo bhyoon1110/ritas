@@ -423,9 +423,9 @@ GET /api/v1/requests?page=1&pageSize=50
 X-Request-Id: 771e92ae-d06d-42e3-b2c8-d1846619987c
 ```
 
-동일 `requestNumber`를 가진 장비별 작업을 집계해 반환한다. 이 API는 조회용이며
-의뢰 단위 통합 보고서를 생성하지 않는다.
-Edge DB의 `request_summary` View를 조회하므로 파일·상태 변경이 즉시 반영된다.
+Edge 로컬 MariaDB의 `lims_req_ax_search` 테이블을 조회해 LIMS 의뢰/시료/시험
+항목 목록을 반환한다. 이 API는 조회용이며 작업을 생성하지 않는다. 사용자는
+목록에서 의뢰번호와 시험 항목을 선택한 뒤 `POST /api/v1/jobs`를 호출한다.
 
 ```json
 {
@@ -433,20 +433,40 @@ Edge DB의 `request_summary` View를 조회하므로 파일·상태 변경이 �
   "pageSize": 50,
   "items": [
     {
-      "requestNumber": "REQ-2026-00123",
-      "jobCount": 2,
-      "completedJobCount": 1,
-      "failedJobCount": 0,
-      "statuses": ["COMPLETED", "PROCESSING"],
-      "experiments": ["FT-IR", "XRD"],
-      "equipmentCodes": ["FTIR-01", "XRD-01"],
-      "createdAt": "2026-06-13T14:30:25.123+09:00",
-      "updatedAt": "2026-06-13T14:35:25.123+09:00"
+      "requestResultNo": 270846,
+      "requestNumber": "2025M01309",
+      "requestDate": "2026-05-19",
+      "requestState": 12,
+      "requestStateName": "시험완료",
+      "requestTypeNo": 123,
+      "requestTypeCode": "M1",
+      "requestTypeName": "그룹사",
+      "projectCode": null,
+      "customerRequestName": "조용민",
+      "customerNo": null,
+      "customerName": null,
+      "requestUserNo": 102,
+      "requestUserName": "EP_IF",
+      "sampleResultNo": 458465,
+      "sampleName": "시료",
+      "sampleState": 15,
+      "testMethodResultNo": 485993,
+      "testMethodNo": 3912,
+      "testMethodCode": "A23141",
+      "testMethodName": "XRD 데이터 해석",
+      "testState": 9,
+      "testChargerName": "이현재",
+      "outputOrder": null,
+      "syncedAt": "2026-07-03 18:10:35",
+      "experimentCode": "A23141",
+      "experimentName": "XRD 데이터 해석"
     }
   ]
 }
 ```
 
+`experimentCode`와 `experimentName`은 실험 PC 선택 화면 호환을 위한 별칭이며,
+각각 `testMethodCode`, `testMethodName`과 같은 값이다.
 `page`는 1 이상, `pageSize`는 1~200이다.
 
 ## 8. 작업 상태

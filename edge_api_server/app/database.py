@@ -489,8 +489,39 @@ class Database:
         with self._connect() as connection:
             return connection.execute(
                 """
-                SELECT * FROM request_summary
-                ORDER BY updated_at DESC
+                SELECT
+                    req_result_no,
+                    req_number,
+                    req_date,
+                    req_state,
+                    req_state_name,
+                    req_type_no,
+                    req_type_code,
+                    req_type_name,
+                    project_code,
+                    cust_req_name,
+                    customer_no,
+                    customer_name,
+                    req_user_no,
+                    req_user_name,
+                    smp_result_no,
+                    smp_result_name,
+                    smp_result_state,
+                    test_mtd_result_no,
+                    test_mtd_no,
+                    test_mtd_code,
+                    test_mtd_name,
+                    test_state,
+                    test_charger_name,
+                    output_order,
+                    synced_at
+                FROM lims_req_ax_search
+                ORDER BY
+                    req_date DESC,
+                    req_number DESC,
+                    COALESCE(output_order, 2147483647),
+                    smp_result_no,
+                    test_mtd_result_no
                 LIMIT ? OFFSET ?
                 """,
                 (limit, offset),

@@ -6,6 +6,7 @@ from pathlib import Path
 from uuid import uuid4
 
 import httpx
+import pymysql
 from fastapi.testclient import TestClient
 
 from app.config import Settings
@@ -53,6 +54,110 @@ def job_payload() -> dict:
     }
 
 
+def seed_lims_request_search(db: dict) -> None:
+    connection = pymysql.connect(
+        host=db["host"],
+        port=db["port"],
+        user=db["user"],
+        password=db["password"],
+        database=db["name"],
+        charset="utf8mb4",
+        autocommit=True,
+    )
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                CREATE TABLE lims_req_ax_search (
+                    req_result_no BIGINT NOT NULL,
+                    req_number VARCHAR(100),
+                    req_date VARCHAR(32),
+                    req_state INT NOT NULL,
+                    req_state_name VARCHAR(100),
+                    req_type_no BIGINT NOT NULL,
+                    req_type_code VARCHAR(100),
+                    req_type_name VARCHAR(100) NOT NULL,
+                    project_code VARCHAR(100),
+                    cust_req_name VARCHAR(255),
+                    customer_no BIGINT,
+                    customer_name VARCHAR(255),
+                    req_user_no BIGINT,
+                    req_user_name VARCHAR(255),
+                    smp_result_no BIGINT NOT NULL,
+                    smp_result_name VARCHAR(255) NOT NULL,
+                    smp_result_state INT NOT NULL,
+                    test_mtd_result_no BIGINT NOT NULL,
+                    test_mtd_no BIGINT NOT NULL,
+                    test_mtd_code VARCHAR(100),
+                    test_mtd_name VARCHAR(255) NOT NULL,
+                    test_state INT NOT NULL,
+                    test_charger_name VARCHAR(255),
+                    output_order INT,
+                    synced_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+            cursor.execute(
+                """
+                INSERT INTO lims_req_ax_search (
+                    req_result_no,
+                    req_number,
+                    req_date,
+                    req_state,
+                    req_state_name,
+                    req_type_no,
+                    req_type_code,
+                    req_type_name,
+                    project_code,
+                    cust_req_name,
+                    customer_no,
+                    customer_name,
+                    req_user_no,
+                    req_user_name,
+                    smp_result_no,
+                    smp_result_name,
+                    smp_result_state,
+                    test_mtd_result_no,
+                    test_mtd_no,
+                    test_mtd_code,
+                    test_mtd_name,
+                    test_state,
+                    test_charger_name,
+                    output_order,
+                    synced_at
+                ) VALUES (
+                    270846,
+                    '2025M01309',
+                    '2026-05-19',
+                    12,
+                    '시험완료',
+                    123,
+                    'M1',
+                    '그룹사',
+                    NULL,
+                    '조용민',
+                    NULL,
+                    NULL,
+                    102,
+                    'EP_IF',
+                    458465,
+                    '시료',
+                    15,
+                    485993,
+                    3912,
+                    'A23141',
+                    'XRD 데이터 해석',
+                    9,
+                    '이현재',
+                    NULL,
+                    '2026-07-03 18:10:35'
+                )
+                """
+            )
+    finally:
+        connection.close()
+
+
 def test_create_job_accepts_no_legacy_bundle() -> None:
     request = CreateJobRequest.model_validate(job_payload())
 
@@ -60,6 +165,7 @@ def test_create_job_accepts_no_legacy_bundle() -> None:
 
 
 def test_file_crud_and_request_list(tmp_path: Path, mariadb: dict) -> None:
+    seed_lims_request_search(mariadb)
     client = create_client(tmp_path, mariadb)
     payload = job_payload()
     created = client.post("/api/v1/jobs", json=payload, headers=headers(str(uuid4())))
@@ -101,7 +207,12 @@ def test_file_crud_and_request_list(tmp_path: Path, mariadb: dict) -> None:
 
     requests = client.get("/api/v1/requests", headers=headers())
     assert requests.status_code == 200
-    assert requests.json()["items"][0]["requestNumber"] == "REQ-2026-00123"
+    request_item = requests.json()["items"][0]
+    assert request_item["requestNumber"] == "2025M01309"
+    assert request_item["experimentCode"] == "A23141"
+    assert request_item["experimentName"] == "XRD 데이터 해석"
+    assert request_item["sampleName"] == "시료"
+    assert request_item["testChargerName"] == "이현재"
 
     deleted = client.delete(
         f"/api/v1/jobs/{job_id}/files/raw/sample.txt",

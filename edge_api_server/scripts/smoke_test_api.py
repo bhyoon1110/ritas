@@ -490,14 +490,16 @@ def check_request_list(
     response = client.get("/api/v1/requests?page=1&pageSize=50", headers=headers())
     if not expect_status(reporter, "GET /api/v1/requests", response, 200):
         return
-    found = any(
-        item.get("requestNumber") == request_number
-        for item in response.json().get("items", [])
-    )
-    if found:
-        reporter.ok("  └ 생성한 의뢰 포함", request_number)
-    else:
-        reporter.fail("  └ 생성한 의뢰 포함", request_number)
+    items = response.json().get("items", [])
+    if not items:
+        reporter.ok("  └ LIMS 의뢰 목록", "0건")
+        return
+    required = {"requestNumber", "experimentCode", "testMethodName", "sampleName"}
+    missing = sorted(required - set(items[0]))
+    if missing:
+        reporter.fail("  └ LIMS 의뢰 목록 필드", f"누락: {', '.join(missing)}")
+        return
+    reporter.ok("  └ LIMS 의뢰 목록", f"{len(items)}건")
 
 
 def check_complete_upload(

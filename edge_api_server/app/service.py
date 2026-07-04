@@ -454,21 +454,33 @@ class EdgeService:
             "pageSize": page_size,
             "items": [
                 {
-                    "requestNumber": row["request_number"],
-                    "jobCount": row["job_count"],
-                    "completedJobCount": row["completed_job_count"],
-                    "failedJobCount": row["failed_job_count"],
-                    "statuses": row["statuses"].split(",") if row["statuses"] else [],
-                    "experiments": (
-                        row["experiments"].split(",") if row["experiments"] else []
-                    ),
-                    "equipmentCodes": (
-                        row["equipment_codes"].split(",")
-                        if row["equipment_codes"]
-                        else []
-                    ),
-                    "createdAt": row["created_at"],
-                    "updatedAt": row["updated_at"],
+                    "requestResultNo": row["req_result_no"],
+                    "requestNumber": row["req_number"],
+                    "requestDate": row["req_date"],
+                    "requestState": row["req_state"],
+                    "requestStateName": row["req_state_name"],
+                    "requestTypeNo": row["req_type_no"],
+                    "requestTypeCode": row["req_type_code"],
+                    "requestTypeName": row["req_type_name"],
+                    "projectCode": row["project_code"],
+                    "customerRequestName": row["cust_req_name"],
+                    "customerNo": row["customer_no"],
+                    "customerName": row["customer_name"],
+                    "requestUserNo": row["req_user_no"],
+                    "requestUserName": row["req_user_name"],
+                    "sampleResultNo": row["smp_result_no"],
+                    "sampleName": row["smp_result_name"],
+                    "sampleState": row["smp_result_state"],
+                    "testMethodResultNo": row["test_mtd_result_no"],
+                    "testMethodNo": row["test_mtd_no"],
+                    "testMethodCode": row["test_mtd_code"],
+                    "testMethodName": row["test_mtd_name"],
+                    "testState": row["test_state"],
+                    "testChargerName": row["test_charger_name"],
+                    "outputOrder": row["output_order"],
+                    "syncedAt": str(row["synced_at"]),
+                    "experimentCode": row["test_mtd_code"],
+                    "experimentName": row["test_mtd_name"],
                 }
                 for row in rows
             ],
