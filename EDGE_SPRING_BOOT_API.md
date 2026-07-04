@@ -17,10 +17,15 @@ Edge 보고서 worker가 최종 사용자용 보고서 ZIP을 같은 Edge 서버
 
 ```bash
 export LOCAL_SPRING_BOOT_BASE_URL=http://127.0.0.1:8080
-export RIST_SPRING_CALLBACK_URL=http://127.0.0.1:8080/api/v1/edge/reports
+# 기본 수신 path가 다를 때만 전체 URL을 지정한다.
+# export RIST_SPRING_CALLBACK_URL=http://127.0.0.1:8080/api/v1/edge/reports
 export RIST_SPRING_CALLBACK_TIMEOUT_SECONDS=60
 export RIST_SPRING_CALLBACK_MAX_ATTEMPTS=3
 ```
+
+`LOCAL_SPRING_BOOT_BASE_URL`은 프로파일 기본값이지만, `/home/rist/ritas/edge.env`에
+같은 키를 넣으면 서버별 값이 우선한다. `RIST_SPRING_CALLBACK_URL`은 전체 수신
+URL override이므로 설정되어 있으면 `LOCAL_SPRING_BOOT_BASE_URL`보다 우선한다.
 
 ## 요청
 

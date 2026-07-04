@@ -252,9 +252,17 @@ cd edge_api_server
 | `RIST_SPRING_CALLBACK_TIMEOUT_SECONDS` | `60` | Spring Boot 전달 제한 시간 |
 | `RIST_SPRING_CALLBACK_MAX_ATTEMPTS` | `3` | Spring Boot 전달 최대 시도 횟수 |
 
-`LOCAL_SPRING_BOOT_BASE_URL`은 환경 프로파일의 Spring Boot 기본 주소이며,
-Edge는 `{BASE_URL}/api/v1/edge/reports`로 전달한다. 다른 경로를 쓰면
-`RIST_SPRING_CALLBACK_URL`에 전체 URL을 지정한다.
+`config/environments/*.env`의 `LOCAL_*`, `EDGE_*` 값은 git으로 공유하는
+프로파일 기본값이다. 서버마다 달라지는 값은 `/home/rist/ritas/edge.env`에
+넣어 systemd 환경 변수로 재정의한다.
+
+- LLM 주소/모델은 프로파일의 `LOCAL_LLM_*`가 기본값이고, 운영 서버별 변경은
+  `RIST_LLM_*`를 사용한다.
+- Spring Boot 주소는 기본적으로 `LOCAL_SPRING_BOOT_BASE_URL`에서
+  `{BASE_URL}/api/v1/edge/reports`를 만든다. 수신 path까지 다를 때만
+  `RIST_SPRING_CALLBACK_URL`에 전체 URL을 지정하며, 이 값이 가장 우선한다.
+- Edge 공개 주소는 프로파일의 `EDGE_SERVER_BASE_URL`이 기본값이고, 필요하면
+  `RIST_EDGE_PUBLIC_BASE_URL`로 재정의한다.
 
 ## 데이터베이스
 

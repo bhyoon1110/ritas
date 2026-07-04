@@ -202,8 +202,8 @@ sudo systemctl restart rist-edge-api.service rist-edge-worker.service rist-vllm.
 
 - 작업 파일 큐가 로컬 디스크를 사용하므로 **Uvicorn worker 는 1개**로 고정한다.
   여러 서버로 수평 확장하려면 작업 큐를 공유 스토리지/서비스로 전환해야 한다.
-- `config/environments/production.env` 의 `EDGE_SERVER_HOST` 등을 실제 엣지
-  서버 도메인/주소에 맞게 수정한다.
+- 실제 엣지 서버 공개 주소가 기본 production 프로파일과 다르면
+  `/home/rist/ritas/edge.env` 에 `RIST_EDGE_PUBLIC_BASE_URL`을 지정한다.
 - 로컬 LLM 은 인증이 없으므로 반드시 docker-compose 의 `127.0.0.1:8001:8000`
   포트 매핑을 유지해 호스트 루프백에만 바인딩하고 외부에 노출하지 않는다.
 
@@ -227,6 +227,10 @@ sudo nano /home/rist/ritas/edge.env
 ```
 
 ```ini
+# Edge API 공개 주소/저장소 override
+# RIST_EDGE_PUBLIC_BASE_URL=http://192.168.0.10:8000
+# RIST_STORAGE_ROOT=/home/rist/ritas/edge_api_server/data/jobs
+
 RIST_DB_HOST=127.0.0.1
 RIST_DB_PORT=3306
 RIST_DB_NAME=rist_edge
@@ -236,9 +240,15 @@ RIST_DB_POOL_SIZE=8
 RIST_DB_POOL_TIMEOUT_SECONDS=10
 
 # Spring Boot 보고서 ZIP 전달
-RIST_SPRING_CALLBACK_URL=http://127.0.0.1:8080/api/v1/edge/reports
+LOCAL_SPRING_BOOT_BASE_URL=http://127.0.0.1:8080
+# Spring Boot 수신 path까지 다를 때만 전체 URL을 지정한다.
+# RIST_SPRING_CALLBACK_URL=http://127.0.0.1:8080/api/v1/edge/reports
 RIST_SPRING_CALLBACK_TIMEOUT_SECONDS=60
 RIST_SPRING_CALLBACK_MAX_ATTEMPTS=3
+
+# 로컬 LLM
+RIST_LLM_BASE_URL=http://127.0.0.1:8001
+RIST_LLM_MODEL=gemma4-e4b
 
 # PDF 한글 깨짐 방지를 위해 한글 TTF/OTF/TTC를 지정한다.
 # 운영 서버는 fonts-nanum 설치 후 NanumGothic.ttf 명시 지정을 권장한다.
@@ -247,7 +257,7 @@ RIST_PDF_FONT_PATH=/usr/share/fonts/truetype/nanum/NanumGothic.ttf
 
 - API 서비스와 worker 가 동일한 `/home/rist/ritas/edge.env` 를 공유하므로
   **한 곳만** 수정하면 된다.
-- Spring Boot 전송 URL이나 timeout/retry 값을 바꾼 뒤에는 API와 worker를
+- Spring Boot/LLM 주소나 timeout/retry 값을 바꾼 뒤에는 API와 worker를
   재시작하면 반영된다.
 - 파일 권한은 `640`(rist 소유)으로 두어 다른 사용자가 읽지 못하게 한다.
 - 데이터베이스(`RIST_DB_NAME`)와 테이블은 서버 시작 시 자동 생성되므로 DB
