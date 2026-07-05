@@ -1,6 +1,7 @@
 """XRD raw 데이터(.txt)를 Plotly로 그리고, ICDD Card PDF의 피크 표를
 2θ 위치에 Norm. I.(0~100%) 높이의 수직 막대로 오버레이한다.
-또한 그래프 아래에 각 PDF의 피크 표를 함께 출력한다.
+또한 (AX) XRD Report 양식의 구조에 맞춰 그래프, LLM 코멘트 초안,
+피크 정보, 결정상(Phase) 정보를 한 HTML 보고서로 출력한다.
 
 ================================ 실행 방법 ================================
 
@@ -42,6 +43,8 @@
 
 [5] 결과 확인
     - 생성된 .html 파일을 웹 브라우저로 열면 된다.
+    - 기본 출력은 보고서형 HTML이다. 기존 그래프+표 화면만 필요하면
+      --plot-only 옵션을 사용한다.
     - 그래프는 반응형(모바일/태블릿 대응)이며, 화면 폭에 따라 범례 위치가
       자동으로 바뀐다(기준: 아래 LEGEND_BREAKPOINT_PX).
     - 범례는 손가락/마우스로 드래그해 위치를 옮길 수 있다.
@@ -56,8 +59,10 @@ import argparse
 import glob
 import json
 import os
+import re
 import sys
 from pathlib import Path
+from typing import Any
 
 import pdfplumber
 import plotly.graph_objects as go
@@ -68,6 +73,7 @@ if str(_COMMON_DIR) not in sys.path:
     sys.path.insert(0, str(_COMMON_DIR))
 from rist_common.plotting import (  # noqa: E402
     LEGEND_BREAKPOINT_PX,
+    fig_to_responsive_html,
     write_responsive_html,
 )
 
@@ -87,6 +93,12 @@ PEAK_PALETTE = [
     "#e41a1c", "#377eb8", "#4daf4a", "#984ea3",
     "#ff7f00", "#a65628", "#f781bf", "#999999",
 ]
+
+PHASE_GROUPS = {
+    "major": "주요 상 (Major Phases)",
+    "uncertain": "유사/불확실 상 (Uncertain / Similar Phases)",
+    "minor": "미량 상 후보 (Minor Phase Candidates)",
+}
 
 
 # ----------------------------------------------------------------------------
@@ -148,6 +160,148 @@ def parse_pdf_peaks(path: str):
     return peaks
 
 
+def parse_pdf_card_metadata(path: str) -> dict[str, str]:
+    """ICDD Card PDF의 첫 페이지 텍스트에서 보고서용 메타데이터를 추출한다."""
+    info = {
+        "card_no": "",
+        "quality_mark": "",
+        "formula": "",
+        "phase_name": "",
+        "crystal_system": "",
+        "space_group": "",
+        "two_theta_range": "",
+    }
+    try:
+        with pdfplumber.open(path) as pdf:
+            text = "\n".join(
+                page.extract_text() or "" for page in pdf.pages[:2]
+            )
+    except Exception:
+        return info
+
+    card_match = re.search(r"PDF Card No\.\s*:\s*([^\s]+)\s+QM:\s*([A-Z])", text)
+    if card_match:
+        info["card_no"] = card_match.group(1).strip()
+        info["quality_mark"] = card_match.group(2).strip()
+
+    patterns = {
+        "formula": r"Chemical formula:\s*([^\n]+)",
+        "phase_name": r"Name:\s*([^\n]+)",
+        "two_theta_range": r"2θ range:\s*([^\n]+)",
+    }
+    for key, pattern in patterns.items():
+        match = re.search(pattern, text)
+        if match:
+            value = match.group(1).strip()
+            if key == "phase_name":
+                value = re.split(r"\s+I/Ic\b", value, maxsplit=1)[0].strip()
+            info[key] = value
+
+    crystal_match = re.search(
+        r"Crystal system:\s*([^:\n]+?)\s+Space group:\s*([^\n]+)",
+        text,
+    )
+    if crystal_match:
+        info["crystal_system"] = crystal_match.group(1).strip()
+        info["space_group"] = crystal_match.group(2).strip()
+    return info
+
+
+def _compact_formula(value: str) -> str:
+    return re.sub(r"\s+", "", value or "")
+
+
+def phase_label_from_metadata(metadata: dict[str, str], fallback: str) -> str:
+    phase_name = metadata.get("phase_name") or ""
+    formula = _compact_formula(metadata.get("formula") or "")
+    card_no = metadata.get("card_no") or ""
+    quality = metadata.get("quality_mark") or ""
+    left = phase_name or formula or fallback
+    right_parts = [part for part in (formula if phase_name else "", card_no) if part]
+    if quality:
+        right_parts.append(f"QM:{quality}")
+    return f"{left} / {' '.join(right_parts)}" if right_parts else left
+
+
+def _nearest_raw_intensity(
+    rx: list[float],
+    ry: list[float],
+    target: float,
+) -> tuple[float, float] | None:
+    if not rx or not ry:
+        return None
+    best_idx = min(range(len(rx)), key=lambda idx: abs(rx[idx] - target))
+    return abs(rx[best_idx] - target), ry[best_idx]
+
+
+def score_phase_candidate(
+    peaks: list[dict[str, Any]],
+    rx: list[float],
+    ry: list[float],
+    raw_max: float,
+    *,
+    tolerance: float = 0.25,
+) -> dict[str, Any]:
+    """PDF 카드 피크가 raw 패턴 근처에 얼마나 나타나는지 간단히 점수화한다."""
+    important = [peak for peak in peaks if float(peak.get("norm") or 0) >= 10.0]
+    if not important:
+        important = sorted(
+            peaks,
+            key=lambda peak: float(peak.get("norm") or 0),
+            reverse=True,
+        )[:5]
+    total_weight = sum(float(peak.get("norm") or 0) for peak in important) or 1.0
+    intensity_floor = max(raw_max * 0.03, 1e-9)
+    matched = []
+    matched_weight = 0.0
+    for peak in important:
+        nearest = _nearest_raw_intensity(rx, ry, float(peak["two_theta"]))
+        if not nearest:
+            continue
+        distance, intensity = nearest
+        if distance <= tolerance and intensity >= intensity_floor:
+            matched.append(peak)
+            matched_weight += float(peak.get("norm") or 0)
+    score = matched_weight / total_weight * 100.0
+    return {
+        "score": round(score, 1),
+        "matched_count": len(matched),
+        "important_count": len(important),
+        "matched_peaks": matched,
+    }
+
+
+def classify_phase_candidate(match: dict[str, Any]) -> str:
+    score = float(match.get("score") or 0)
+    matched_count = int(match.get("matched_count") or 0)
+    if score >= 45 and matched_count >= 2:
+        return "major"
+    if score >= 18 or matched_count >= 1:
+        return "uncertain"
+    return "minor"
+
+
+def assign_relative_phase_categories(items: list[dict[str, Any]]) -> None:
+    """한 raw 안에서 후보가 모두 major로 몰리지 않도록 상대 순위를 보정한다."""
+    ranked = sorted(
+        items,
+        key=lambda item: float(item["match"].get("score") or 0),
+        reverse=True,
+    )
+    major_count = 0
+    for item in ranked:
+        score = float(item["match"].get("score") or 0)
+        if score < 18:
+            item["category"] = "minor"
+        elif major_count < 2 and score >= 45:
+            item["category"] = "major"
+            major_count += 1
+        elif score >= 18:
+            item["category"] = "uncertain"
+        else:
+            item["category"] = "minor"
+
+
 # ----------------------------------------------------------------------------
 # PDF별 피크 표를 HTML로 생성 (그래프 색상과 일치하는 헤더, 반응형)
 # ----------------------------------------------------------------------------
@@ -197,7 +351,11 @@ def build_tables_html(groups) -> str:
             f'style="border-left:6px solid {raw_color}">'
             f"{_esc(raw_stem)}</h3>"
         )
-        for label, color, peaks, trace_idx in items:
+        for item in items:
+            label = item["label"]
+            color = item["color"]
+            peaks = item["peaks"]
+            trace_idx = item["trace_idx"]
             rows = []
             for p in peaks:
                 rows.append(
@@ -224,6 +382,325 @@ def build_tables_html(groups) -> str:
             )
     parts.append("</div>")
     return "\n".join(parts)
+
+
+def _phase_groups(groups) -> dict[str, list[dict[str, Any]]]:
+    grouped = {key: [] for key in PHASE_GROUPS}
+    for raw_stem, _raw_color, items in groups:
+        for item in items:
+            enriched = dict(item)
+            enriched["raw_stem"] = raw_stem
+            grouped.setdefault(item["category"], []).append(enriched)
+    return grouped
+
+
+def build_llm_comment_html(sample_name: str, groups, warnings: list[str]) -> str:
+    """XRD LLM 슬롯이 붙기 전에도 쓸 수 있는 규칙 기반 코멘트 초안."""
+    grouped = _phase_groups(groups)
+    major = grouped.get("major", [])
+    uncertain = grouped.get("uncertain", [])
+    minor = grouped.get("minor", [])
+
+    def names(items: list[dict[str, Any]], limit: int = 3) -> str:
+        labels = [
+            item["metadata"].get("phase_name")
+            or _compact_formula(item["metadata"].get("formula") or "")
+            or item["label"]
+            for item in items[:limit]
+        ]
+        return ", ".join(_esc(label) for label in labels) if labels else "해당 후보 없음"
+
+    sample = _esc(sample_name)
+    paragraphs = [
+        (
+            "<strong>A. 주요 상 (Major Phases)</strong><br>"
+            f"본 {sample} 시료의 XRD 패턴은 {names(major)} 후보와 주요 피크 위치가 "
+            "상대적으로 잘 대응합니다. 해당 후보는 주요 상으로 우선 검토할 수 있습니다."
+            if major else
+            "<strong>A. 주요 상 (Major Phases)</strong><br>"
+            f"본 {sample} 시료에서 자동 기준을 만족하는 주요 상 후보는 아직 없습니다."
+        ),
+        (
+            "<strong>B. 유사 상 / 불확실 상 (Uncertain / Similar Phases)</strong><br>"
+            f"{names(uncertain)} 후보는 일부 주요 피크가 raw 패턴과 근접하지만, "
+            "현재 데이터만으로 확정 구분하기에는 불확실성이 있습니다."
+            if uncertain else
+            "<strong>B. 유사 상 / 불확실 상 (Uncertain / Similar Phases)</strong><br>"
+            "유사 상으로 분류된 후보는 없습니다."
+        ),
+        (
+            "<strong>C. 미량 상 (Minor Phases)</strong><br>"
+            f"{names(minor)} 후보는 피크 대응이 제한적이어서 미량 상 또는 배경 후보로 검토됩니다."
+            if minor else
+            "<strong>C. 미량 상 (Minor Phases)</strong><br>"
+            "미량 상 후보는 없습니다."
+        ),
+        (
+            "<strong>안내</strong><br>"
+            "유사 상 구분 및 불순물/미량 상 확인을 위해 XRF, ICP, EDS 등 원소 성분 정보를 "
+            "함께 검토하면 후보상을 더 좁힐 수 있습니다."
+        ),
+    ]
+    if warnings:
+        paragraphs.append(
+            "<strong>데이터 확인</strong><br>"
+            + "<br>".join(_esc(warning) for warning in warnings)
+        )
+    return "\n".join(f"<p>{paragraph}</p>" for paragraph in paragraphs)
+
+
+def build_peak_info_html(groups) -> str:
+    rows = []
+    for raw_stem, _raw_color, items in groups:
+        for item in items:
+            for peak in item["peaks"]:
+                rows.append(
+                    "<tr data-trace=\"{trace}\">"
+                    "<td>{sample}</td><td>{phase}</td><td>{no}</td>"
+                    "<td>{theta:.3f}</td><td>{d}</td><td>{norm:.2f}</td>"
+                    "<td>{hkl}</td></tr>".format(
+                        trace=item["trace_idx"],
+                        sample=_esc(raw_stem),
+                        phase=_esc(item["label"]),
+                        no=_esc(peak["no"]),
+                        theta=float(peak["two_theta"]),
+                        d=_esc(peak["d"]),
+                        norm=float(peak["norm"]),
+                        hkl=_esc(peak["hkl"]),
+                    )
+                )
+    body = (
+        "".join(rows)
+        if rows
+        else '<tr><td colspan="7" class="xrd-empty">추출된 피크 정보가 없습니다.</td></tr>'
+    )
+    return f"""
+<section class="xrd-report-section" id="xrd-peak-info">
+  <div class="xrd-section-head">
+    <h2>피크 정보</h2>
+    <p>PDF 카드에서 추출한 피크 정보를 보고서용 표로 정리했습니다. e.s.d 열과 Phase Name 이후 열은 표시하지 않습니다.</p>
+  </div>
+  <div class="xrd-table-scroll">
+    <table class="xrd-report-table xrd-peak-table">
+      <thead>
+        <tr>
+          <th>시료</th><th>결정상 후보</th><th>No.</th>
+          <th>2θ (°)</th><th>d-value</th><th>Norm. I.</th><th>h k l</th>
+        </tr>
+      </thead>
+      <tbody>{body}</tbody>
+    </table>
+  </div>
+</section>
+"""
+
+
+def _top_peak_rows(peaks: list[dict[str, Any]]) -> str:
+    ranked = sorted(peaks, key=lambda peak: float(peak.get("norm") or 0), reverse=True)
+    rows = []
+    for index, peak in enumerate(ranked[:3], start=1):
+        rows.append(
+            "<tr class=\"xrd-rank-{rank}\"><td>{rank}</td><td>{theta:.3f}</td>"
+            "<td>{norm:.2f}</td><td>{hkl}</td></tr>".format(
+                rank=index,
+                theta=float(peak["two_theta"]),
+                norm=float(peak["norm"]),
+                hkl=_esc(peak["hkl"]),
+            )
+        )
+    return "".join(rows) or '<tr><td colspan="4">-</td></tr>'
+
+
+def build_phase_info_html(groups) -> str:
+    grouped = _phase_groups(groups)
+    sections = []
+    for category, title in PHASE_GROUPS.items():
+        items = grouped.get(category, [])
+        cards = []
+        for item in items:
+            metadata = item["metadata"]
+            formula = _compact_formula(metadata.get("formula") or "")
+            phase_name = metadata.get("phase_name") or item["label"]
+            card_no = metadata.get("card_no") or "-"
+            quality = metadata.get("quality_mark") or "-"
+            match = item["match"]
+            card_rows = [
+                ("시료", item["raw_stem"]),
+                ("Phase name", phase_name),
+                ("Formula", formula or "-"),
+                ("PDF Card", card_no),
+                ("QM", quality),
+                ("Crystal system", metadata.get("crystal_system") or "-"),
+                ("Space group", metadata.get("space_group") or "-"),
+                ("2θ range", metadata.get("two_theta_range") or "-"),
+                (
+                    "raw 피크 대응",
+                    f"{match['score']:.1f}% "
+                    f"({match['matched_count']}/{match['important_count']})",
+                ),
+            ]
+            meta_html = "".join(
+                f"<tr><th>{_esc(label)}</th><td>{_esc(value)}</td></tr>"
+                for label, value in card_rows
+            )
+            cards.append(
+                f"""
+                <article class="xrd-phase-card xrd-card" data-trace="{item['trace_idx']}">
+                  <h4><span class="xrd-swatch" style="background:{item['color']}"></span>{_esc(item['label'])}</h4>
+                  <div class="xrd-phase-grid">
+                    <table class="xrd-mini-table"><tbody>{meta_html}</tbody></table>
+                    <table class="xrd-mini-table xrd-top-peak-table">
+                      <thead><tr><th>Rank</th><th>2θ (°)</th><th>Norm. I.</th><th>h k l</th></tr></thead>
+                      <tbody>{_top_peak_rows(item['peaks'])}</tbody>
+                    </table>
+                  </div>
+                </article>
+                """
+            )
+        content = (
+            "".join(cards)
+            if cards
+            else '<p class="xrd-empty">해당 그룹의 결정상 후보가 없습니다.</p>'
+        )
+        sections.append(
+            f"""
+            <details class="xrd-phase-group" open>
+              <summary>{_esc(title)} <span>{len(items)}건</span></summary>
+              {content}
+            </details>
+            """
+        )
+    return f"""
+<section class="xrd-report-section" id="xrd-phase-info">
+  <div class="xrd-section-head">
+    <h2>결정상(Phase) 정보</h2>
+    <p>PDF/DB 카드의 결정상 정보를 주요상, 유사/불확실상, 미량상 후보로 묶어 표시합니다. Norm. I. 상위 3개 피크는 강조했습니다.</p>
+  </div>
+  {''.join(sections)}
+</section>
+"""
+
+
+def _html_body_inner(html: str) -> str:
+    start = html.find("<body>")
+    end = html.rfind("</body>")
+    if start < 0 or end < 0:
+        return html
+    return html[start + len("<body>"):end]
+
+
+def xrd_report_css() -> str:
+    return """
+<style>
+  html { background: #f3f4f6; }
+  body { margin: 0; font-family: Arial, "Noto Sans KR", sans-serif; color: #111827; }
+  .xrd-report-page { max-width: 980px; margin: 0 auto; background: #fff; min-height: 100vh; padding: 28px 34px 48px; box-sizing: border-box; }
+  .xrd-report-title { text-align: center; font-size: 26px; margin: 0 0 22px; font-weight: 700; }
+  .xrd-report-section { margin: 20px 0 0; }
+  .xrd-report-section h2 { font-size: 17px; margin: 0 0 8px; }
+  .xrd-section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; border-bottom: 1px solid #d1d5db; padding-bottom: 6px; margin-bottom: 10px; }
+  .xrd-section-head p { margin: 0; color: #6b7280; font-size: 12px; line-height: 1.45; text-align: right; }
+  .xrd-graph-frame, .xrd-comment-box, .xrd-table-scroll, .xrd-phase-group { border: 2px solid #111827; border-radius: 18px; background: #fff; }
+  .xrd-graph-frame { padding: 10px 12px 4px; }
+  #xrd-plot { height: 510px !important; min-height: 420px; }
+  .xrd-comment-box { padding: 16px 18px; border-radius: 10px; }
+  .xrd-comment-box p { margin: 0 0 12px; font-size: 14px; line-height: 1.65; }
+  .xrd-comment-box p:last-child { margin-bottom: 0; }
+  .xrd-table-scroll { border-radius: 10px; overflow: auto; max-height: 520px; }
+  .xrd-report-table, .xrd-mini-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .xrd-report-table th, .xrd-report-table td, .xrd-mini-table th, .xrd-mini-table td { border: 1px solid #d1d5db; padding: 6px 8px; vertical-align: middle; }
+  .xrd-report-table th { background: #f3f4f6; position: sticky; top: 0; z-index: 1; }
+  .xrd-report-table td:nth-child(4), .xrd-report-table td:nth-child(5), .xrd-report-table td:nth-child(6), .xrd-report-table td:nth-child(7) { text-align: right; }
+  .xrd-phase-group { border-radius: 10px; margin: 12px 0; padding: 0 12px 12px; }
+  .xrd-phase-group summary { cursor: pointer; font-size: 16px; font-weight: 700; padding: 12px 0; }
+  .xrd-phase-group summary span { color: #6b7280; font-size: 12px; margin-left: 6px; }
+  .xrd-phase-card { border-top: 1px solid #e5e7eb; padding: 12px 0; }
+  .xrd-phase-card h4 { display: flex; align-items: center; gap: 8px; font-size: 14px; margin: 0 0 10px; }
+  .xrd-phase-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .xrd-mini-table th { width: 120px; background: #f9fafb; text-align: left; }
+  .xrd-top-peak-table th, .xrd-top-peak-table td { text-align: right; }
+  .xrd-rank-1 { background: #fff3cd; font-weight: 700; }
+  .xrd-rank-2, .xrd-rank-3 { background: #fff8e6; }
+  .xrd-empty { color: #6b7280; text-align: center; padding: 18px; }
+  .xrd-warning { border-left: 4px solid #f59e0b; background: #fffbeb; padding: 10px 12px; margin: 8px 0; font-size: 13px; }
+  @media (max-width: 760px) {
+    .xrd-report-page { padding: 18px 12px 32px; }
+    .xrd-section-head { display: block; }
+    .xrd-section-head p { text-align: left; margin-top: 4px; }
+    #xrd-plot { height: 460px !important; }
+    .xrd-phase-grid { grid-template-columns: 1fr; }
+  }
+</style>
+"""
+
+
+def build_report_html(
+    fig,
+    *,
+    sample_name: str,
+    groups,
+    group_map: dict,
+    warnings: list[str],
+    origin: bool,
+    first_stem: str,
+    raw_line_indices: list[int],
+    highlight_groups: dict[int, list[int]],
+) -> str:
+    plot_html = fig_to_responsive_html(
+        fig,
+        div_id="xrd-plot",
+        origin=origin,
+        legend_breakpoint_px=LEGEND_BREAKPOINT_PX,
+        crosshair=True,
+        title_edit=True,
+        legend_text_edit=True,
+        trace_highlight=True,
+        highlight_pickable=raw_line_indices,
+        highlight_groups=highlight_groups,
+        image_filename=first_stem,
+        image_format=XRD_DOWNLOAD_IMAGE_FORMAT,
+        image_format_selector=XRD_IMAGE_FORMAT_SELECTOR,
+        config={"scrollZoom": True},
+    )
+    plot_body = _html_body_inner(plot_html)
+    warning_html = "".join(f'<div class="xrd-warning">{_esc(w)}</div>' for w in warnings)
+    comments = build_llm_comment_html(sample_name, groups, warnings)
+    peak_info = build_peak_info_html(groups)
+    phase_info = build_phase_info_html(groups)
+    group_toggle_js = build_group_toggle_js("xrd-plot", group_map)
+    return f"""<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5">
+  <title>{_esc(sample_name)} Report</title>
+  {xrd_report_css()}
+</head>
+<body>
+  <main class="xrd-report-page">
+    <h1 class="xrd-report-title">{_esc(sample_name)} Report</h1>
+    <section class="xrd-report-section" id="xrd-graph-section">
+      <div class="xrd-section-head">
+        <h2>그래프 영역</h2>
+        <p>측정 데이터와 ICDD Card 피크를 함께 표시합니다.</p>
+      </div>
+      <div class="xrd-graph-frame">{plot_body}</div>
+    </section>
+    <section class="xrd-report-section" id="xrd-llm-comment">
+      <div class="xrd-section-head">
+        <h2>특이사항 / LLM 코멘트 영역</h2>
+        <p>주요상, 유사/불확실상, 미량상 후보를 기준으로 자동 작성한 초안입니다.</p>
+      </div>
+      {warning_html}
+      <div class="xrd-comment-box">{comments}</div>
+    </section>
+    {peak_info}
+    {phase_info}
+  </main>
+  {group_toggle_js}
+</body>
+</html>
+"""
 
 
 def build_group_toggle_js(div_id: str, group_map: dict) -> str:
@@ -432,6 +909,7 @@ def main():
     groups_for_tables = []     # [(raw_stem, raw_color, [(label, color, peaks)])]
     summary = []               # 출력용 [(raw_stem, n_points, raw_max, items)]
     all_x = []
+    warnings = []
 
     for gi, (raw_txt, pdf_dir) in enumerate(pairs):
         if not os.path.isfile(raw_txt):
@@ -469,8 +947,21 @@ def main():
                 continue
             color = PEAK_PALETTE[peak_ci % len(PEAK_PALETTE)]
             peak_ci += 1
-            label = os.path.splitext(os.path.basename(pdf_path))[0]
-            items.append((label, color, peaks, trace_idx))  # trace_idx = 이 피크의 trace 번호
+            fallback_label = os.path.splitext(os.path.basename(pdf_path))[0]
+            metadata = parse_pdf_card_metadata(pdf_path)
+            label = phase_label_from_metadata(metadata, fallback_label)
+            match = score_phase_candidate(peaks, rx, ry, raw_max)
+            category = classify_phase_candidate(match)
+            items.append({
+                "label": label,
+                "color": color,
+                "peaks": peaks,
+                "trace_idx": trace_idx,
+                "metadata": metadata,
+                "match": match,
+                "category": category,
+                "source_pdf": pdf_path,
+            })  # trace_idx = 이 피크의 trace 번호
 
             xs, ys, customdata = [], [], []
             for p in peaks:
@@ -496,9 +987,11 @@ def main():
             idxs.append(trace_idx)
             trace_idx += 1
 
+        assign_relative_phase_categories(items)
         warning = pdf_peak_warning(pdf_dir, len(pdf_files), len(items))
         if warning:
             print(warning)
+            warnings.append(warning)
 
         group_map[raw_stem] = idxs
         groups_for_tables.append((raw_stem, raw_color, items))
@@ -548,32 +1041,50 @@ def main():
     #   강조 시 그 raw + 소속 피크(2θ 수직바)가 함께 살아나도록 그룹을 넘긴다.
     raw_line_indices = [idxs[0] for idxs in group_map.values() if idxs]
     highlight_groups = {idxs[0]: idxs for idxs in group_map.values() if idxs}
-    tables_html = build_tables_html(groups_for_tables)
-    group_toggle_js = build_group_toggle_js("xrd-plot", group_map)
-    write_responsive_html(
-        fig,
-        out_html,
-        div_id="xrd-plot",
-        origin=args.origin,
-        legend_breakpoint_px=LEGEND_BREAKPOINT_PX,
-        crosshair=True,
-        title_edit=True,
-        legend_text_edit=True,
-        trace_highlight=True,
-        highlight_pickable=raw_line_indices,
-        highlight_groups=highlight_groups,
-        image_filename=first_stem,
-        image_format=XRD_DOWNLOAD_IMAGE_FORMAT,
-        image_format_selector=XRD_IMAGE_FORMAT_SELECTOR,
-        post_body_html=group_toggle_js + tables_html,
-        config={"scrollZoom": True},
-    )
+    if args.plot_only:
+        tables_html = build_tables_html(groups_for_tables)
+        group_toggle_js = build_group_toggle_js("xrd-plot", group_map)
+        write_responsive_html(
+            fig,
+            out_html,
+            div_id="xrd-plot",
+            origin=args.origin,
+            legend_breakpoint_px=LEGEND_BREAKPOINT_PX,
+            crosshair=True,
+            title_edit=True,
+            legend_text_edit=True,
+            trace_highlight=True,
+            highlight_pickable=raw_line_indices,
+            highlight_groups=highlight_groups,
+            image_filename=first_stem,
+            image_format=XRD_DOWNLOAD_IMAGE_FORMAT,
+            image_format_selector=XRD_IMAGE_FORMAT_SELECTOR,
+            post_body_html=group_toggle_js + tables_html,
+            config={"scrollZoom": True},
+        )
+    else:
+        report_html = build_report_html(
+            fig,
+            sample_name=first_stem if len(pairs) == 1 else ", ".join(raw_stems),
+            groups=groups_for_tables,
+            group_map=group_map,
+            warnings=warnings,
+            origin=args.origin,
+            first_stem=first_stem,
+            raw_line_indices=raw_line_indices,
+            highlight_groups=highlight_groups,
+        )
+        with open(out_html, "w", encoding="utf-8") as fh:
+            fh.write(report_html)
 
     print(f"Saved: {out_html}")
     for raw_stem, n_points, raw_max, items in summary:
         print(f"[{raw_stem}] raw points: {n_points}, raw_max: {raw_max:.1f}")
-        for label, _color, peaks, _ti in items:
-            print(f"    {label}: {len(peaks)} peaks")
+        for item in items:
+            print(
+                f"    {item['label']}: {len(item['peaks'])} peaks, "
+                f"match={item['match']['score']:.1f}%, category={item['category']}"
+            )
 
 
 def parse_args():
@@ -603,6 +1114,10 @@ def parse_args():
     parser.add_argument(
         "--origin", action="store_true",
         help="Origin(OriginLab) 논문 스타일로 그린다 (기본: 원래 디자인)",
+    )
+    parser.add_argument(
+        "--plot-only", action="store_true",
+        help="보고서 양식 없이 기존처럼 Plotly 그래프와 피크 표만 저장한다.",
     )
     return parser.parse_args()
 

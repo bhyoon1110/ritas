@@ -1,7 +1,7 @@
 # LIM
 
-XRD raw 데이터와 ICDD Card PDF를 기반으로 분석용 Plotly HTML을 생성하는
-도구이다.
+XRD raw 데이터와 ICDD Card PDF를 기반으로 보고서형 Plotly HTML을 생성하는
+도구이다. 기본 출력은 `(AX) XRD Report 양식 포맷.pptx`의 구조를 따른다.
 
 ## XRD 실행
 
@@ -19,6 +19,20 @@ cd ..
 python -m lim.xrd.cli "lim/data/raw.txt" "lim/data/ICDD Card" --origin -o result.html
 ```
 
+기본 HTML은 다음 구역으로 구성된다.
+
+- `[샘플명] Report`
+- 그래프 영역: raw XRD 패턴과 ICDD Card 피크 overlay
+- 특이사항 / LLM 코멘트 영역: 주요상, 유사/불확실상, 미량상 후보 자동 코멘트
+- 피크 정보: PDF 카드에서 추출한 피크 표
+- 결정상(Phase) 정보: PDF/DB 카드 메타데이터와 Norm. I. 상위 피크
+
+기존처럼 그래프와 하단 피크 표만 확인하려면 `--plot-only`를 사용한다.
+
+```bash
+python -m lim.xrd.cli "lim/data/raw.txt" "lim/data/ICDD Card" --plot-only -o plot.html
+```
+
 ## Edge processor 연동
 
 Edge worker가 자동 processor를 실행하게 하려면 `RIST_PROCESSOR_COMMAND_XRD`에
@@ -26,8 +40,9 @@ Edge worker가 자동 processor를 실행하게 하려면 `RIST_PROCESSOR_COMMAN
 `{report_dir}`, `{experiment_code}`, `{job_id}` placeholder를 사용할 수 있다.
 
 ```bash
-export RIST_PROCESSOR_COMMAND_XRD='python -m lim.xrd.cli "{input_dir}/raw.txt" "{input_dir}/ICDD Card" -o "{processed_dir}/xrd.html"'
+export RIST_PROCESSOR_COMMAND_XRD='python -m lim.xrd.cli "{input_dir}/raw.txt" "{input_dir}/ICDD Card" -o "{report_dir}/xrd-report.html"'
 ```
 
-보고서 생성에는 `processed` 폴더 아래의 구조화 JSON이 필요하므로, 실제 운영용
-processor는 HTML과 함께 `analysis-result.json`을 생성해야 한다.
+현재 XRD CLI는 `report_dir`에 바로 전달 가능한 보고서형 HTML을 생성한다. 이후
+Spring Boot 전송 ZIP에 포함하려면 Edge processor 명령의 `-o` 경로를
+`{report_dir}` 아래로 지정한다.
