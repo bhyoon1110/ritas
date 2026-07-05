@@ -23,9 +23,25 @@ python -m lim.xrd.cli "lim/data/raw.txt" "lim/data/ICDD Card" --origin -o result
 
 - `[샘플명] Report`
 - 그래프 영역: raw XRD 패턴과 ICDD Card 피크 overlay
+- 그래프/상매칭 보조 이미지: 입력 bundle의 이미지 파일 표시
 - 특이사항 / LLM 코멘트 영역: 주요상, 유사/불확실상, 미량상 후보 자동 코멘트
-- 피크 정보: PDF 카드에서 추출한 피크 표
+- 피크 정보: 입력 Excel/CSV 표와 PDF 카드에서 추출한 피크 표
 - 결정상(Phase) 정보: PDF/DB 카드 메타데이터와 Norm. I. 상위 피크
+
+지원하는 보조 입력 파일은 다음과 같다.
+
+- 표 파일: `.xlsx`, `.csv`, `.tsv`
+- 이미지 파일: `.png`, `.jpg`, `.jpeg`, `.webp`, `.gif`
+
+`--data-dir` 또는 raw 파일 주변 폴더에 있는 보조 파일은 자동으로 보고서에
+포함된다. 직접 지정하려면 `--excel`, `--image`를 반복해서 사용할 수 있다.
+
+```bash
+python -m lim.xrd.cli "lim/data/raw.txt" "lim/data/ICDD Card" \
+  --excel "lim/data/peaks.xlsx" \
+  --image "lim/data/상매칭 이미지.png" \
+  -o xrd-report.html
+```
 
 기존처럼 그래프와 하단 피크 표만 확인하려면 `--plot-only`를 사용한다.
 

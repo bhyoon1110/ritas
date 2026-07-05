@@ -15,6 +15,10 @@
           예) 25.30  1234.5
     - PDF 폴더: ICDD Card PDF들이 모여 있는 폴더.
       각 PDF 안에는 No./2θ/d-value/Norm. I./h k l 컬럼의 표가 들어 있어야 한다.
+    - Excel/CSV 파일(선택): 피크 정보 영역에 표시할 표.
+      .xlsx/.csv/.tsv 를 지원한다.
+    - 이미지 파일(선택): 그래프/상매칭 보조 이미지 영역에 표시할 이미지.
+      .png/.jpg/.jpeg/.webp/.gif 를 지원한다.
 
 [3] 기본 실행
         python xrd_plot.py <raw.txt> <pdf_dir>
@@ -38,6 +42,10 @@
         Origin(OriginLab) 논문 스타일(사방 테두리 박스, 안쪽 눈금,
         그리드 제거, 굵은 검정 축)로 그린다. 생략하면 기본 디자인.
 
+    --excel <경로>, --image <경로>
+        보고서에 포함할 표/이미지 파일을 명시한다. --data-dir 또는 raw 주변
+        폴더에 있는 지원 파일은 자동으로 포함된다.
+
     옵션을 함께 쓴 예시)
         python xrd_plot.py "Mix2.txt" "ICDD Card" --origin -o paper_fig.html
 
@@ -56,13 +64,18 @@
 from __future__ import annotations
 
 import argparse
+import base64
+import csv
 import glob
+import html
 import json
 import os
 import re
 import sys
+import zipfile
 from pathlib import Path
 from typing import Any
+import xml.etree.ElementTree as ET
 
 import pdfplumber
 import plotly.graph_objects as go
@@ -99,6 +112,11 @@ PHASE_GROUPS = {
     "uncertain": "유사/불확실 상 (Uncertain / Similar Phases)",
     "minor": "미량 상 후보 (Minor Phase Candidates)",
 }
+
+TABLE_EXTENSIONS = {".csv", ".tsv", ".xlsx"}
+IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
+MAX_REPORT_TABLE_ROWS = 80
+MAX_REPORT_TABLE_COLS = 12
 
 
 # ----------------------------------------------------------------------------
@@ -314,6 +332,179 @@ def _esc(text) -> str:
     )
 
 
+def _cell_ref_to_index(ref: str) -> tuple[int, int]:
+    match = re.match(r"([A-Z]+)([0-9]+)", ref.upper())
+    if not match:
+        return 0, 0
+    letters, row = match.groups()
+    col_idx = 0
+    for char in letters:
+        col_idx = col_idx * 26 + (ord(char) - ord("A") + 1)
+    return int(row) - 1, col_idx - 1
+
+
+def _xlsx_shared_strings(archive: zipfile.ZipFile) -> list[str]:
+    try:
+        root = ET.fromstring(archive.read("xl/sharedStrings.xml"))
+    except KeyError:
+        return []
+    ns = {"a": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
+    values = []
+    for si in root.findall("a:si", ns):
+        chunks = [node.text or "" for node in si.findall(".//a:t", ns)]
+        values.append("".join(chunks))
+    return values
+
+
+def read_xlsx_preview(path: str) -> list[list[str]]:
+    """외부 의존성 없이 XLSX 첫 번째 워크시트를 HTML 미리보기용으로 읽는다."""
+    with zipfile.ZipFile(path) as archive:
+        shared_strings = _xlsx_shared_strings(archive)
+        workbook = ET.fromstring(archive.read("xl/workbook.xml"))
+        ns = {
+            "a": "http://schemas.openxmlformats.org/spreadsheetml/2006/main",
+            "r": "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
+        }
+        first_sheet = workbook.find("a:sheets/a:sheet", ns)
+        sheet_path = "xl/worksheets/sheet1.xml"
+        if first_sheet is not None:
+            rid = first_sheet.attrib.get(f"{{{ns['r']}}}id")
+            if rid:
+                rels = ET.fromstring(archive.read("xl/_rels/workbook.xml.rels"))
+                rel_ns = {
+                    "rel": "http://schemas.openxmlformats.org/package/2006/relationships"
+                }
+                for rel in rels.findall("rel:Relationship", rel_ns):
+                    if rel.attrib.get("Id") == rid:
+                        target = rel.attrib.get("Target", "worksheets/sheet1.xml")
+                        sheet_path = "xl/" + target.lstrip("/")
+                        break
+
+        sheet = ET.fromstring(archive.read(sheet_path))
+        rows: dict[int, dict[int, str]] = {}
+        for c in sheet.findall(".//a:sheetData/a:row/a:c", ns):
+            cell_ref = c.attrib.get("r", "")
+            row_idx, col_idx = _cell_ref_to_index(cell_ref)
+            if row_idx >= MAX_REPORT_TABLE_ROWS or col_idx >= MAX_REPORT_TABLE_COLS:
+                continue
+            cell_type = c.attrib.get("t")
+            value_node = c.find("a:v", ns)
+            inline_node = c.find("a:is/a:t", ns)
+            value = ""
+            if cell_type == "s" and value_node is not None:
+                try:
+                    value = shared_strings[int(value_node.text or "0")]
+                except (IndexError, ValueError):
+                    value = value_node.text or ""
+            elif inline_node is not None:
+                value = inline_node.text or ""
+            elif value_node is not None:
+                value = value_node.text or ""
+            rows.setdefault(row_idx, {})[col_idx] = value
+        if not rows:
+            return []
+        max_row = min(max(rows) + 1, MAX_REPORT_TABLE_ROWS)
+        max_col = min(
+            max((max(cols) if cols else 0) for cols in rows.values()) + 1,
+            MAX_REPORT_TABLE_COLS,
+        )
+        return [
+            [rows.get(r, {}).get(c, "") for c in range(max_col)]
+            for r in range(max_row)
+        ]
+
+
+def read_delimited_preview(path: str, delimiter: str | None = None) -> list[list[str]]:
+    with open(path, "r", encoding="utf-8-sig", errors="ignore", newline="") as fh:
+        if delimiter is None:
+            sample = fh.read(4096)
+            fh.seek(0)
+            dialect = csv.Sniffer().sniff(sample, delimiters=",\t;")
+            delimiter = dialect.delimiter
+        reader = csv.reader(fh, delimiter=delimiter)
+        rows = []
+        for row in reader:
+            rows.append(row[:MAX_REPORT_TABLE_COLS])
+            if len(rows) >= MAX_REPORT_TABLE_ROWS:
+                break
+    return rows
+
+
+def read_table_preview(path: str) -> dict[str, Any]:
+    ext = Path(path).suffix.lower()
+    try:
+        if ext == ".xlsx":
+            rows = read_xlsx_preview(path)
+        elif ext == ".tsv":
+            rows = read_delimited_preview(path, "\t")
+        elif ext == ".csv":
+            rows = read_delimited_preview(path)
+        else:
+            return {"path": path, "rows": [], "error": f"지원하지 않는 표 형식: {ext}"}
+        return {"path": path, "rows": rows, "error": ""}
+    except Exception as exc:
+        return {"path": path, "rows": [], "error": str(exc)}
+
+
+def image_data_uri(path: str) -> str:
+    ext = Path(path).suffix.lower()
+    mime = {
+        ".png": "image/png",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".webp": "image/webp",
+        ".gif": "image/gif",
+    }.get(ext, "application/octet-stream")
+    data = base64.b64encode(Path(path).read_bytes()).decode("ascii")
+    return f"data:{mime};base64,{data}"
+
+
+def discover_support_files(
+    pairs: list[tuple[str, str]],
+    *,
+    data_dir: str | None,
+    excel_paths: list[str] | None,
+    image_paths: list[str] | None,
+) -> tuple[list[str], list[str]]:
+    """명시 입력과 data/raw 주변 폴더에서 보고서 보조 파일을 찾는다."""
+    table_files: list[str] = []
+    image_files: list[str] = []
+    seen_tables: set[Path] = set()
+    seen_images: set[Path] = set()
+
+    def add_once(target: list[str], seen: set[Path], path: Path) -> None:
+        key = path.expanduser().resolve()
+        if key in seen:
+            return
+        seen.add(key)
+        target.append(str(path))
+
+    for path in excel_paths or []:
+        add_once(table_files, seen_tables, Path(path))
+    for path in image_paths or []:
+        add_once(image_files, seen_images, Path(path))
+
+    search_dirs = []
+    if data_dir:
+        search_dirs.append(Path(data_dir))
+    for raw_txt, _pdf_dir in pairs:
+        search_dirs.append(Path(raw_txt).resolve().parent)
+
+    for directory in search_dirs:
+        if not directory.is_dir():
+            continue
+        for child in sorted(directory.iterdir()):
+            if not child.is_file():
+                continue
+            suffix = child.suffix.lower()
+            if suffix in TABLE_EXTENSIONS:
+                add_once(table_files, seen_tables, child)
+            if suffix in IMAGE_EXTENSIONS:
+                add_once(image_files, seen_images, child)
+
+    return table_files, image_files
+
+
 def build_tables_html(groups) -> str:
     """PDF별 피크 표를 raw 파일 단위로 묶어 HTML로 생성한다.
 
@@ -449,7 +640,106 @@ def build_llm_comment_html(sample_name: str, groups, warnings: list[str]) -> str
     return "\n".join(f"<p>{paragraph}</p>" for paragraph in paragraphs)
 
 
-def build_peak_info_html(groups) -> str:
+def _table_preview_html(table: dict[str, Any]) -> str:
+    filename = Path(table["path"]).name
+    if table.get("error"):
+        return (
+            '<article class="xrd-file-table">'
+            f"<h3>{_esc(filename)}</h3>"
+            f'<p class="xrd-warning">{_esc(table["error"])}</p>'
+            "</article>"
+        )
+    rows = table.get("rows") or []
+    if not rows:
+        return (
+            '<article class="xrd-file-table">'
+            f"<h3>{_esc(filename)}</h3>"
+            '<p class="xrd-empty">표시할 데이터가 없습니다.</p>'
+            "</article>"
+        )
+    head = rows[0]
+    body = rows[1:] if len(rows) > 1 else []
+    header_html = "".join(f"<th>{_esc(cell)}</th>" for cell in head)
+    body_html = "".join(
+        "<tr>" + "".join(f"<td>{_esc(cell)}</td>" for cell in row) + "</tr>"
+        for row in body
+    )
+    if not body_html:
+        body_html = (
+            "<tr>"
+            + "".join(f"<td>{_esc(cell)}</td>" for cell in head)
+            + "</tr>"
+        )
+        header_html = "".join(
+            f"<th>Column {index + 1}</th>" for index in range(len(head))
+        )
+    note = ""
+    if len(rows) >= MAX_REPORT_TABLE_ROWS:
+        note = (
+            f'<p class="xrd-table-note">표시는 상위 {MAX_REPORT_TABLE_ROWS}행, '
+            f"{MAX_REPORT_TABLE_COLS}열로 제한했습니다.</p>"
+        )
+    return f"""
+    <article class="xrd-file-table">
+      <h3>{_esc(filename)}</h3>
+      <div class="xrd-table-scroll xrd-file-table-scroll">
+        <table class="xrd-report-table">
+          <thead><tr>{header_html}</tr></thead>
+          <tbody>{body_html}</tbody>
+        </table>
+      </div>
+      {note}
+    </article>
+    """
+
+
+def build_excel_display_html(table_files: list[str]) -> str:
+    if not table_files:
+        return ""
+    previews = [_table_preview_html(read_table_preview(path)) for path in table_files]
+    return f"""
+  <div class="xrd-provided-block">
+    <h3>제공된 Excel 파일 Display</h3>
+    {''.join(previews)}
+  </div>
+"""
+
+
+def build_image_display_html(image_files: list[str]) -> str:
+    if not image_files:
+        return ""
+    figures = []
+    for path in image_files:
+        try:
+            src = image_data_uri(path)
+            figures.append(
+                f"""
+                <figure class="xrd-image-card">
+                  <img src="{src}" alt="{_esc(Path(path).name)}">
+                  <figcaption>{_esc(Path(path).name)}</figcaption>
+                </figure>
+                """
+            )
+        except Exception as exc:
+            figures.append(
+                f"""
+                <figure class="xrd-image-card">
+                  <div class="xrd-warning">{_esc(Path(path).name)} 이미지를 읽지 못했습니다: {_esc(exc)}</div>
+                </figure>
+                """
+            )
+    return f"""
+<section class="xrd-report-section" id="xrd-image-info">
+  <div class="xrd-section-head">
+    <h2>그래프/상매칭 보조 이미지</h2>
+    <p>입력 bundle에 포함된 이미지 파일을 보고서에 함께 표시합니다.</p>
+  </div>
+  <div class="xrd-image-grid">{''.join(figures)}</div>
+</section>
+"""
+
+
+def build_peak_info_html(groups, table_files: list[str] | None = None) -> str:
     rows = []
     for raw_stem, _raw_color, items in groups:
         for item in items:
@@ -480,6 +770,7 @@ def build_peak_info_html(groups) -> str:
     <h2>피크 정보</h2>
     <p>PDF 카드에서 추출한 피크 정보를 보고서용 표로 정리했습니다. e.s.d 열과 Phase Name 이후 열은 표시하지 않습니다.</p>
   </div>
+  {build_excel_display_html(table_files or [])}
   <div class="xrd-table-scroll">
     <table class="xrd-report-table xrd-peak-table">
       <thead>
@@ -611,6 +902,16 @@ def xrd_report_css() -> str:
   .xrd-report-table th, .xrd-report-table td, .xrd-mini-table th, .xrd-mini-table td { border: 1px solid #d1d5db; padding: 6px 8px; vertical-align: middle; }
   .xrd-report-table th { background: #f3f4f6; position: sticky; top: 0; z-index: 1; }
   .xrd-report-table td:nth-child(4), .xrd-report-table td:nth-child(5), .xrd-report-table td:nth-child(6), .xrd-report-table td:nth-child(7) { text-align: right; }
+  .xrd-provided-block { margin: 0 0 14px; }
+  .xrd-provided-block > h3 { font-size: 14px; margin: 0 0 8px; }
+  .xrd-file-table { margin: 10px 0 14px; }
+  .xrd-file-table h3 { font-size: 13px; margin: 0 0 6px; color: #374151; }
+  .xrd-file-table-scroll { max-height: 360px; border-width: 1px; border-radius: 8px; }
+  .xrd-table-note { color: #6b7280; font-size: 12px; margin: 6px 0 0; }
+  .xrd-image-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+  .xrd-image-card { margin: 0; border: 2px solid #111827; border-radius: 14px; padding: 10px; background: #fff; }
+  .xrd-image-card img { display: block; width: 100%; height: auto; max-height: 520px; object-fit: contain; }
+  .xrd-image-card figcaption { margin-top: 6px; font-size: 12px; color: #6b7280; text-align: center; }
   .xrd-phase-group { border-radius: 10px; margin: 12px 0; padding: 0 12px 12px; }
   .xrd-phase-group summary { cursor: pointer; font-size: 16px; font-weight: 700; padding: 12px 0; }
   .xrd-phase-group summary span { color: #6b7280; font-size: 12px; margin-left: 6px; }
@@ -629,6 +930,7 @@ def xrd_report_css() -> str:
     .xrd-section-head p { text-align: left; margin-top: 4px; }
     #xrd-plot { height: 460px !important; }
     .xrd-phase-grid { grid-template-columns: 1fr; }
+    .xrd-image-grid { grid-template-columns: 1fr; }
   }
 </style>
 """
@@ -641,6 +943,8 @@ def build_report_html(
     groups,
     group_map: dict,
     warnings: list[str],
+    table_files: list[str] | None = None,
+    image_files: list[str] | None = None,
     origin: bool,
     first_stem: str,
     raw_line_indices: list[int],
@@ -665,7 +969,8 @@ def build_report_html(
     plot_body = _html_body_inner(plot_html)
     warning_html = "".join(f'<div class="xrd-warning">{_esc(w)}</div>' for w in warnings)
     comments = build_llm_comment_html(sample_name, groups, warnings)
-    peak_info = build_peak_info_html(groups)
+    image_info = build_image_display_html(image_files or [])
+    peak_info = build_peak_info_html(groups, table_files or [])
     phase_info = build_phase_info_html(groups)
     group_toggle_js = build_group_toggle_js("xrd-plot", group_map)
     return f"""<!doctype html>
@@ -686,6 +991,7 @@ def build_report_html(
       </div>
       <div class="xrd-graph-frame">{plot_body}</div>
     </section>
+    {image_info}
     <section class="xrd-report-section" id="xrd-llm-comment">
       <div class="xrd-section-head">
         <h2>특이사항 / LLM 코멘트 영역</h2>
@@ -892,6 +1198,12 @@ def pdf_peak_warning(pdf_dir, pdf_count, parsed_count):
 def main():
     args = parse_args()
     pairs = collect_pairs(args)
+    table_files, image_files = discover_support_files(
+        pairs,
+        data_dir=args.data_dir or (args.raw_txt if args.raw_txt and os.path.isdir(args.raw_txt) else None),
+        excel_paths=args.excel,
+        image_paths=args.image,
+    )
 
     first_stem = os.path.splitext(os.path.basename(pairs[0][0]))[0]
     # 출력 파일명: raw 파일명들을 '_'로 연결하고 끝에 '_result' 를 붙인다.
@@ -1069,6 +1381,8 @@ def main():
             groups=groups_for_tables,
             group_map=group_map,
             warnings=warnings,
+            table_files=table_files,
+            image_files=image_files,
             origin=args.origin,
             first_stem=first_stem,
             raw_line_indices=raw_line_indices,
@@ -1078,6 +1392,14 @@ def main():
             fh.write(report_html)
 
     print(f"Saved: {out_html}")
+    if table_files:
+        print("Included table files:")
+        for path in table_files:
+            print(f"    {path}")
+    if image_files:
+        print("Included image files:")
+        for path in image_files:
+            print(f"    {path}")
     for raw_stem, n_points, raw_max, items in summary:
         print(f"[{raw_stem}] raw points: {n_points}, raw_max: {raw_max:.1f}")
         for item in items:
@@ -1106,6 +1428,14 @@ def parse_args():
     parser.add_argument(
         "--pair", action="append", nargs=2, metavar=("RAW", "PDF"),
         help="raw.txt 와 pdf 폴더 한 쌍. 여러 raw 파일을 겹쳐 그리려면 반복 사용.",
+    )
+    parser.add_argument(
+        "--excel", action="append", default=[],
+        help="보고서 피크 정보 영역에 표시할 Excel/CSV 파일(.xlsx/.csv/.tsv). 반복 지정 가능.",
+    )
+    parser.add_argument(
+        "--image", action="append", default=[],
+        help="보고서 그래프/상매칭 보조 이미지 영역에 표시할 이미지(.png/.jpg/.jpeg/.webp/.gif). 반복 지정 가능.",
     )
     parser.add_argument(
         "-o", "--output", default=None,

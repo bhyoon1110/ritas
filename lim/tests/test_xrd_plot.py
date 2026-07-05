@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import base64
+import zipfile
+
 import plotly.graph_objects as go
 
 from lim.xrd_plot import (
@@ -9,6 +12,13 @@ from lim.xrd_plot import (
     build_report_html,
     phase_label_from_metadata,
     pdf_peak_warning,
+    read_xlsx_preview,
+)
+
+
+TINY_PNG = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMB"
+    "/gL+X7sAAAAASUVORK5CYII="
 )
 
 
@@ -67,9 +77,13 @@ def test_relative_phase_categories_keep_only_top_candidates_major() -> None:
     ]
 
 
-def test_build_report_html_contains_xrd_template_sections() -> None:
+def test_build_report_html_contains_xrd_template_sections(tmp_path) -> None:
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=[10, 20], y=[1, 2], mode="lines", name="Mix2"))
+    table_path = tmp_path / "peaks.csv"
+    table_path.write_text("No.,2theta,Norm. I.\\n1,25.309,100\\n", encoding="utf-8")
+    image_path = tmp_path / "phase-match.png"
+    image_path.write_bytes(TINY_PNG)
     item = {
         "label": "Anatase, syn / TiO2 00-064-0863 QM:S",
         "color": "#e41a1c",
@@ -97,6 +111,8 @@ def test_build_report_html_contains_xrd_template_sections() -> None:
         groups=[("Mix2", "#000000", [item])],
         group_map={"Mix2": [0, 1]},
         warnings=[],
+        table_files=[str(table_path)],
+        image_files=[str(image_path)],
         origin=False,
         first_stem="Mix2",
         raw_line_indices=[0],
@@ -109,5 +125,56 @@ def test_build_report_html_contains_xrd_template_sections() -> None:
     assert "피크 정보" in html
     assert "결정상(Phase) 정보" in html
     assert "주요 상 (Major Phases)" in html
+    assert "제공된 Excel 파일 Display" in html
+    assert "peaks.csv" in html
+    assert "그래프/상매칭 보조 이미지" in html
+    assert "phase-match.png" in html
+    assert "data:image/png;base64" in html
     assert "xrd-rank-1" in html
     assert "plotly" in html.lower()
+
+
+def test_read_xlsx_preview_reads_first_sheet(tmp_path) -> None:
+    xlsx_path = tmp_path / "peaks.xlsx"
+    with zipfile.ZipFile(xlsx_path, "w") as archive:
+        archive.writestr(
+            "[Content_Types].xml",
+            """<?xml version="1.0" encoding="UTF-8"?>
+            <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+              <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+              <Default Extension="xml" ContentType="application/xml"/>
+              <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+              <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+              <Override PartName="/xl/sharedStrings.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"/>
+            </Types>""",
+        )
+        archive.writestr(
+            "xl/workbook.xml",
+            """<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+               xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+              <sheets><sheet name="Sheet1" sheetId="1" r:id="rId1"/></sheets>
+            </workbook>""",
+        )
+        archive.writestr(
+            "xl/_rels/workbook.xml.rels",
+            """<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+              <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+            </Relationships>""",
+        )
+        archive.writestr(
+            "xl/sharedStrings.xml",
+            """<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+              <si><t>No.</t></si><si><t>Phase Name</t></si><si><t>Anatase</t></si>
+            </sst>""",
+        )
+        archive.writestr(
+            "xl/worksheets/sheet1.xml",
+            """<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+              <sheetData>
+                <row r="1"><c r="A1" t="s"><v>0</v></c><c r="B1" t="s"><v>1</v></c></row>
+                <row r="2"><c r="A2"><v>1</v></c><c r="B2" t="s"><v>2</v></c></row>
+              </sheetData>
+            </worksheet>""",
+        )
+
+    assert read_xlsx_preview(str(xlsx_path)) == [["No.", "Phase Name"], ["1", "Anatase"]]
