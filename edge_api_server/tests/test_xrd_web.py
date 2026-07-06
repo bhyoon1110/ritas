@@ -20,6 +20,10 @@ def test_xrd_workspace_contains_upload_controls() -> None:
     assert "entryToBundleItems" in page
     assert "droppedBundleItems" in page
     assert 'id="xrd-example"' in page
+    assert 'id="xrd-pdf-export" disabled' in page
+    assert "PDF Export" in page
+    assert "contentWindow.print()" in page
+    assert "브라우저 인쇄 창에서 PDF로 저장하세요." in page
     assert 'id="xrd-download" aria-disabled="true"' in page
     assert "/api/v1/xrd/analyze" in page
     assert "/api/v1/xrd/example" in page
