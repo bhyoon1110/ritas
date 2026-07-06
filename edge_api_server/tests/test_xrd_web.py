@@ -12,6 +12,13 @@ from app.xrd_web import (
 from lim.xrd_plot import build_xrd_html
 
 
+def _synthetic_pdf_upload(tmp_path):
+    pdf_dir = tmp_path / "pdf"
+    _write_synthetic_icdd_pdf_dir(pdf_dir)
+    pdf_path = next(pdf_dir.glob("*.pdf"))
+    return pdf_path.name, pdf_path.read_bytes()
+
+
 def test_xrd_workspace_contains_upload_controls() -> None:
     page = build_xrd_page()
 
@@ -47,13 +54,14 @@ def test_xrd_workspace_contains_upload_controls() -> None:
     assert "[contenteditable=true]" in page
     assert "closest('#xrd-plot')" in page
     assert 'exampleButton.addEventListener("click"' in page
+    assert "Bundle 안에 ICDD PDF 파일이 필요합니다." in page
     assert "raw와 ICDD Card 데이터를 분석하는 중입니다." in page
     assert "/api/v1/xrd/analyze" in page
     assert "/api/v1/xrd/example" in page
     assert "LIM XRD" in page
 
 
-def test_xrd_analyze_accepts_raw_without_pdf_cards() -> None:
+def test_xrd_analyze_rejects_raw_without_pdf_cards() -> None:
     raw = b"10 1\n20 3\n30 2\n"
 
     with TestClient(create_xrd_preview_app()) as client:
@@ -64,20 +72,39 @@ def test_xrd_analyze_accepts_raw_without_pdf_cards() -> None:
             ],
         )
 
+    assert response.status_code == 400
+    assert "MISSING_XRD_PDF" in response.text
+    assert "ICDD PDF" in response.text
+
+
+def test_xrd_analyze_accepts_raw_with_pdf_cards(tmp_path) -> None:
+    raw = b"10 1\n20 3\n30 2\n"
+    pdf_name, pdf_bytes = _synthetic_pdf_upload(tmp_path)
+
+    with TestClient(create_xrd_preview_app()) as client:
+        response = client.post(
+            "/api/v1/xrd/analyze",
+            files=[
+                ("rawFiles", ("sample.txt", raw, "text/plain")),
+                ("pdfFiles", (pdf_name, pdf_bytes, "application/pdf")),
+            ],
+        )
+
     assert response.status_code == 200
     assert "sample Report" in response.text
     assert "그래프 영역" in response.text
     assert 'id="xrd-report-pdf-export"' in response.text
     assert "window.print()" in response.text
-    assert "PDF 파일" in response.text
+    assert "결정상(Phase) 정보" in response.text
     assert "plotly" in response.text.lower()
     assert '"editable": false' in response.text
     assert '"mirror":true' in response.text
     assert '"ticks":"inside"' in response.text
 
 
-def test_xrd_analyze_includes_table_and_image_inputs() -> None:
+def test_xrd_analyze_includes_table_and_image_inputs(tmp_path) -> None:
     raw = b"10 1\n20 3\n30 2\n"
+    pdf_name, pdf_bytes = _synthetic_pdf_upload(tmp_path)
     png = (
         b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01"
         b"\x00\x00\x00\x01\x08\x04\x00\x00\x00\xb5\x1c\x0c\x02"
@@ -90,6 +117,7 @@ def test_xrd_analyze_includes_table_and_image_inputs() -> None:
             "/api/v1/xrd/analyze",
             files=[
                 ("files", ("sample.txt", raw, "text/plain")),
+                ("files", (pdf_name, pdf_bytes, "application/pdf")),
                 ("files", ("peaks.csv", b"No.,2theta\n1,20\n", "text/csv")),
                 ("files", ("match.png", png, "image/png")),
             ],
@@ -121,14 +149,16 @@ def test_xrd_analyze_skips_unreadable_pdf_in_bundle() -> None:
     assert "PDF를 읽지 못했습니다" in response.text
 
 
-def test_xrd_analyze_keeps_legacy_split_upload_fields() -> None:
+def test_xrd_analyze_keeps_legacy_split_upload_fields(tmp_path) -> None:
     raw = b"10 1\n20 3\n30 2\n"
+    pdf_name, pdf_bytes = _synthetic_pdf_upload(tmp_path)
 
     with TestClient(create_xrd_preview_app()) as client:
         response = client.post(
             "/api/v1/xrd/analyze",
             files=[
                 ("rawFiles", ("sample.txt", raw, "text/plain")),
+                ("pdfFiles", (pdf_name, pdf_bytes, "application/pdf")),
             ],
         )
 

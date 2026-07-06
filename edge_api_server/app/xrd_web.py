@@ -74,6 +74,14 @@ def _unique_path(directory: Path, filename: str) -> Path:
     return candidate
 
 
+def _has_pdf_files(directory: Path | str) -> bool:
+    root = Path(directory)
+    return any(
+        path.is_file() and path.suffix.lower() in PDF_EXTENSIONS
+        for path in root.rglob("*")
+    )
+
+
 def _request_settings(request: Request) -> Settings | None:
     settings = getattr(request.app.state, "settings", None)
     return settings if isinstance(settings, Settings) else None
@@ -945,6 +953,10 @@ def build_xrd_page() -> str:
         setStatus("Bundle 안에 raw TXT 파일이 필요합니다.", true);
         return;
       }
+      if (!bundleItems.some(function(item) { return classifyFile(item.file) === "pdf"; })) {
+        setStatus("Bundle 안에 ICDD PDF 파일이 필요합니다.", true);
+        return;
+      }
       setBusy(true);
       startReportProgress("보고서 생성 요청을 준비하는 중입니다.");
       try {
@@ -1027,6 +1039,12 @@ async def analyze_xrd(
                 400,
                 "MISSING_XRD_INPUT",
                 "Bundle 안에 raw TXT 파일이 필요합니다.",
+            )
+        if not _has_pdf_files(pdf_dir):
+            raise ApiException(
+                400,
+                "MISSING_XRD_PDF",
+                "Bundle 안에 ICDD PDF 파일이 필요합니다.",
             )
         result = build_xrd_html(
             [(path, pdf_dir) for path in raw_paths],
