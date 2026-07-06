@@ -345,8 +345,7 @@ def build_xrd_page() -> str:
         <button type="button" id="xrd-example">예제 불러오기</button>
         <button type="submit" form="xrd-form" class="primary" id="xrd-run">보고서 생성</button>
         <button type="button" id="xrd-clear">초기화</button>
-        <button type="button" id="xrd-pdf-export" disabled>PDF Export</button>
-        <a href="#" class="xrd-download" id="xrd-download" aria-disabled="true">HTML 다운로드</a>
+        <a href="#" class="xrd-download" id="xrd-download" aria-disabled="true">보고서 다운로드</a>
       </div>
     </header>
     <main class="xrd-main">
@@ -386,7 +385,6 @@ def build_xrd_page() -> str:
     var runButton = document.getElementById("xrd-run");
     var clearButton = document.getElementById("xrd-clear");
     var exampleButton = document.getElementById("xrd-example");
-    var pdfExportButton = document.getElementById("xrd-pdf-export");
     var downloadLink = document.getElementById("xrd-download");
     var preview = document.getElementById("xrd-preview");
     var empty = document.getElementById("xrd-empty");
@@ -403,14 +401,10 @@ def build_xrd_page() -> str:
       status.textContent = message;
       status.classList.toggle("error", Boolean(error));
     }
-    function updatePdfExportState() {
-      pdfExportButton.disabled = !reportFrame || busy.classList.contains("show");
-    }
     function setBusy(value) {
       busy.classList.toggle("show", Boolean(value));
       runButton.disabled = Boolean(value);
       exampleButton.disabled = Boolean(value);
-      updatePdfExportState();
     }
     function revokeDownload() {
       if (downloadUrl) URL.revokeObjectURL(downloadUrl);
@@ -433,7 +427,6 @@ def build_xrd_page() -> str:
       preview.replaceChildren(iframe);
       reportFrame = iframe;
       setDownload(htmlText);
-      updatePdfExportState();
     }
     function filesOf(input) {
       return Array.prototype.slice.call(input.files || []);
@@ -589,21 +582,7 @@ def build_xrd_page() -> str:
       revokeDownload();
       preview.replaceChildren(empty);
       empty.style.display = "flex";
-      updatePdfExportState();
       setStatus("XRD 파일을 선택하면 보고서를 생성할 수 있습니다.", false);
-    });
-    pdfExportButton.addEventListener("click", function() {
-      if (!reportFrame || !reportFrame.contentWindow) {
-        setStatus("PDF로 내보낼 보고서가 없습니다.", true);
-        return;
-      }
-      try {
-        reportFrame.contentWindow.focus();
-        reportFrame.contentWindow.print();
-        setStatus("브라우저 인쇄 창에서 PDF로 저장하세요.", false);
-      } catch (error) {
-        setStatus("PDF Export를 시작하지 못했습니다: " + (error.message || String(error)), true);
-      }
     });
     exampleButton.addEventListener("click", async function() {
       setBusy(true);

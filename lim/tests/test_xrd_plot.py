@@ -120,6 +120,8 @@ def test_build_report_html_contains_xrd_template_sections(tmp_path) -> None:
     )
 
     assert "Mix2 Report" in html
+    assert 'id="xrd-report-pdf-export"' in html
+    assert "window.print()" in html
     assert "그래프 영역" in html
     assert "특이사항 / LLM 코멘트 영역" in html
     assert "피크 정보" in html

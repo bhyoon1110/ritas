@@ -895,7 +895,11 @@ def xrd_report_css() -> str:
   html { background: #f3f4f6; }
   body { margin: 0; font-family: Arial, "Noto Sans KR", sans-serif; color: #111827; }
   .xrd-report-page { max-width: 980px; margin: 0 auto; background: #fff; min-height: 100vh; padding: 28px 34px 48px; box-sizing: border-box; }
-  .xrd-report-title { text-align: center; font-size: 26px; margin: 0 0 22px; font-weight: 700; }
+  .xrd-report-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 0 0 22px; }
+  .xrd-report-title { flex: 1 1 auto; text-align: center; font-size: 26px; margin: 0; font-weight: 700; }
+  .xrd-report-action-spacer { width: 108px; flex: 0 0 auto; }
+  .xrd-report-pdf-button { flex: 0 0 auto; border: 1px solid #9fb6d6; background: #fff; color: #172a46; border-radius: 7px; min-height: 38px; padding: 8px 13px; font-size: 14px; font-weight: 700; cursor: pointer; }
+  .xrd-report-pdf-button:hover { background: #eff6ff; border-color: #2563eb; }
   .xrd-report-section { margin: 20px 0 0; }
   .xrd-report-section h2 { font-size: 17px; margin: 0 0 8px; }
   .xrd-section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; border-bottom: 1px solid #d1d5db; padding-bottom: 6px; margin-bottom: 10px; }
@@ -935,11 +939,21 @@ def xrd_report_css() -> str:
   .xrd-warning { border-left: 4px solid #f59e0b; background: #fffbeb; padding: 10px 12px; margin: 8px 0; font-size: 13px; }
   @media (max-width: 760px) {
     .xrd-report-page { padding: 18px 12px 32px; }
+    .xrd-report-header { align-items: flex-start; gap: 8px; }
+    .xrd-report-title { text-align: left; font-size: 23px; }
+    .xrd-report-action-spacer { display: none; }
+    .xrd-report-pdf-button { min-height: 36px; padding: 7px 10px; font-size: 13px; }
     .xrd-section-head { display: block; }
     .xrd-section-head p { text-align: left; margin-top: 4px; }
     #xrd-plot { height: 460px !important; }
     .xrd-phase-grid { grid-template-columns: 1fr; }
     .xrd-image-grid { grid-template-columns: 1fr; }
+  }
+  @media print {
+    html { background: #fff; }
+    .xrd-report-page { max-width: none; padding: 0; }
+    .xrd-report-pdf-button, .xrd-report-action-spacer { display: none !important; }
+    .xrd-report-title { text-align: center; }
   }
 </style>
 """
@@ -992,7 +1006,11 @@ def build_report_html(
 </head>
 <body>
   <main class="xrd-report-page">
-    <h1 class="xrd-report-title">{_esc(sample_name)} Report</h1>
+    <header class="xrd-report-header">
+      <div class="xrd-report-action-spacer" aria-hidden="true"></div>
+      <h1 class="xrd-report-title">{_esc(sample_name)} Report</h1>
+      <button type="button" class="xrd-report-pdf-button" id="xrd-report-pdf-export">PDF Export</button>
+    </header>
     <section class="xrd-report-section" id="xrd-graph-section">
       <div class="xrd-section-head">
         <h2>그래프 영역</h2>
@@ -1013,6 +1031,15 @@ def build_report_html(
     {phase_info}
   </main>
   {group_toggle_js}
+  <script>
+  (function() {{
+    var button = document.getElementById("xrd-report-pdf-export");
+    if (!button) return;
+    button.addEventListener("click", function() {{
+      window.print();
+    }});
+  }})();
+  </script>
 </body>
 </html>
 """

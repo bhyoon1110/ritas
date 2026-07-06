@@ -20,10 +20,10 @@ def test_xrd_workspace_contains_upload_controls() -> None:
     assert "entryToBundleItems" in page
     assert "droppedBundleItems" in page
     assert 'id="xrd-example"' in page
-    assert 'id="xrd-pdf-export" disabled' in page
-    assert "PDF Export" in page
-    assert "contentWindow.print()" in page
-    assert "브라우저 인쇄 창에서 PDF로 저장하세요." in page
+    assert 'id="xrd-pdf-export"' not in page
+    assert "PDF Export" not in page
+    assert "contentWindow.print()" not in page
+    assert "보고서 다운로드" in page
     assert 'id="xrd-download" aria-disabled="true"' in page
     assert "/api/v1/xrd/analyze" in page
     assert "/api/v1/xrd/example" in page
@@ -44,6 +44,8 @@ def test_xrd_analyze_accepts_raw_without_pdf_cards() -> None:
     assert response.status_code == 200
     assert "sample Report" in response.text
     assert "그래프 영역" in response.text
+    assert 'id="xrd-report-pdf-export"' in response.text
+    assert "window.print()" in response.text
     assert "PDF 파일" in response.text
     assert "plotly" in response.text.lower()
 
