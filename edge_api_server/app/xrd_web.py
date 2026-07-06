@@ -567,7 +567,7 @@ def build_xrd_page() -> str:
               <div class="xrd-bundle-meta" id="xrd-bundle-meta">선택된 파일 없음</div>
             </div>
           </div>
-          <label class="xrd-check"><input type="checkbox" id="xrd-origin" name="origin" value="true"> Origin 스타일</label>
+          <label class="xrd-check"><input type="checkbox" id="xrd-origin" name="origin" value="true" checked> Origin 스타일</label>
           <div class="xrd-files" id="xrd-file-list"></div>
         </form>
       </section>
@@ -909,7 +909,7 @@ async def analyze_xrd(
     pdf_files: list[UploadFile] | None = File(default=None, alias="pdfFiles"),
     table_files: list[UploadFile] | None = File(default=None, alias="tableFiles"),
     image_files: list[UploadFile] | None = File(default=None, alias="imageFiles"),
-    origin: bool = Form(False),
+    origin: bool = Form(True),
 ) -> HTMLResponse:
     with tempfile.TemporaryDirectory(prefix="rist-xrd-web-") as tmp:
         root = Path(tmp)
@@ -1096,6 +1096,7 @@ def _build_xrd_example_html(repo_root: Path, *, settings: Settings | None = None
                 root = Path(tmp)
                 return build_xrd_html(
                     [(str(raw_path), str(pdf_dir))],
+                    origin=True,
                     comment_provider=_xrd_comment_provider(
                         settings,
                         processed_dir=root / "images",
@@ -1109,6 +1110,7 @@ def _build_xrd_example_html(repo_root: Path, *, settings: Settings | None = None
                 _write_synthetic_icdd_pdf_dir(synthetic_pdf_dir)
                 return build_xrd_html(
                     [(str(raw_path), str(synthetic_pdf_dir))],
+                    origin=True,
                     comment_provider=_xrd_comment_provider(
                         settings,
                         processed_dir=root / "images",
@@ -1124,6 +1126,7 @@ def _build_xrd_example_html(repo_root: Path, *, settings: Settings | None = None
         _write_synthetic_icdd_pdf_dir(pdf_dir)
         return build_xrd_html(
             [(str(raw_path), str(pdf_dir))],
+            origin=True,
             comment_provider=_xrd_comment_provider(
                 settings,
                 processed_dir=root / "images",

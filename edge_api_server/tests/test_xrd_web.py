@@ -26,6 +26,7 @@ def test_xrd_workspace_contains_upload_controls() -> None:
     assert "raw TXT, ICDD PDF 폴더, Excel/CSV, 이미지를 여기에 한꺼번에 드래그" in page
     assert "entryToBundleItems" in page
     assert "droppedBundleItems" in page
+    assert 'id="xrd-origin" name="origin" value="true" checked' in page
     assert 'id="xrd-example"' in page
     assert 'id="xrd-pdf-export"' not in page
     assert "PDF Export" not in page
@@ -61,6 +62,8 @@ def test_xrd_analyze_accepts_raw_without_pdf_cards() -> None:
     assert "PDF 파일" in response.text
     assert "plotly" in response.text.lower()
     assert '"editable": false' in response.text
+    assert '"mirror":true' in response.text
+    assert '"ticks":"inside"' in response.text
 
 
 def test_xrd_analyze_includes_table_and_image_inputs() -> None:
