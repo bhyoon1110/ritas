@@ -8,10 +8,11 @@ from app.xrd_web import build_xrd_page, create_xrd_preview_app
 def test_xrd_workspace_contains_upload_controls() -> None:
     page = build_xrd_page()
 
-    assert 'id="xrd-raw-files"' in page
-    assert 'id="xrd-pdf-files"' in page
-    assert 'id="xrd-table-files"' in page
-    assert 'id="xrd-image-files"' in page
+    assert 'id="xrd-bundle-files"' in page
+    assert 'id="xrd-bundle-folder"' in page
+    assert 'name="files"' in page
+    assert "webkitdirectory" in page
+    assert "raw TXT, ICDD PDF, Excel/CSV, 이미지를 한꺼번에" in page
     assert 'id="xrd-example"' in page
     assert 'id="xrd-download" aria-disabled="true"' in page
     assert "/api/v1/xrd/analyze" in page
@@ -50,9 +51,9 @@ def test_xrd_analyze_includes_table_and_image_inputs() -> None:
         response = client.post(
             "/api/v1/xrd/analyze",
             files=[
-                ("rawFiles", ("sample.txt", raw, "text/plain")),
-                ("tableFiles", ("peaks.csv", b"No.,2theta\n1,20\n", "text/csv")),
-                ("imageFiles", ("match.png", png, "image/png")),
+                ("files", ("sample.txt", raw, "text/plain")),
+                ("files", ("peaks.csv", b"No.,2theta\n1,20\n", "text/csv")),
+                ("files", ("match.png", png, "image/png")),
             ],
         )
 
@@ -62,3 +63,18 @@ def test_xrd_analyze_includes_table_and_image_inputs() -> None:
     assert "그래프/상매칭 보조 이미지" in response.text
     assert "match.png" in response.text
     assert "data:image/png;base64" in response.text
+
+
+def test_xrd_analyze_keeps_legacy_split_upload_fields() -> None:
+    raw = b"10 1\n20 3\n30 2\n"
+
+    with TestClient(create_xrd_preview_app()) as client:
+        response = client.post(
+            "/api/v1/xrd/analyze",
+            files=[
+                ("rawFiles", ("sample.txt", raw, "text/plain")),
+            ],
+        )
+
+    assert response.status_code == 200
+    assert "sample Report" in response.text

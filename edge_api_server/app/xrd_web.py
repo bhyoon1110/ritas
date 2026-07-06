@@ -24,6 +24,9 @@ router = APIRouter()
 
 RAW_EXTENSIONS = {".txt", ".dat", ".xy", ".asc"}
 PDF_EXTENSIONS = {".pdf"}
+SUPPORTED_BUNDLE_EXTENSIONS = (
+    RAW_EXTENSIONS | PDF_EXTENSIONS | TABLE_EXTENSIONS | IMAGE_EXTENSIONS
+)
 MAX_XRD_UPLOAD_BYTES = 80 * 1024 * 1024
 
 
@@ -84,6 +87,67 @@ async def _save_uploads(
         path.write_bytes(data)
         saved.append(str(path))
     return saved
+
+
+async def _save_xrd_bundle_uploads(
+    files: list[UploadFile] | None,
+    root: Path,
+) -> tuple[list[str], str, list[str], list[str]]:
+    raw_paths: list[str] = []
+    table_paths: list[str] = []
+    image_paths: list[str] = []
+    pdf_dir = root / "pdf"
+    directories = {
+        "raw": root / "raw",
+        "pdf": pdf_dir,
+        "table": root / "tables",
+        "image": root / "images",
+    }
+    for directory in directories.values():
+        directory.mkdir(parents=True, exist_ok=True)
+
+    unsupported: list[str] = []
+    for index, upload in enumerate(files or [], start=1):
+        filename = _safe_name(upload.filename, f"bundle-{index}")
+        suffix = Path(filename).suffix.lower()
+        if not suffix and filename.startswith("."):
+            continue
+        if suffix not in SUPPORTED_BUNDLE_EXTENSIONS:
+            unsupported.append(filename)
+            continue
+
+        data = await upload.read()
+        if len(data) > MAX_XRD_UPLOAD_BYTES:
+            raise ApiException(
+                413,
+                "XRD_FILE_TOO_LARGE",
+                f"{filename} 파일이 너무 큽니다. 파일당 최대 80MB입니다.",
+            )
+
+        if suffix in RAW_EXTENSIONS:
+            path = _unique_path(directories["raw"], filename)
+            raw_paths.append(str(path))
+        elif suffix in PDF_EXTENSIONS:
+            path = _unique_path(directories["pdf"], filename)
+        elif suffix in TABLE_EXTENSIONS:
+            path = _unique_path(directories["table"], filename)
+            table_paths.append(str(path))
+        else:
+            path = _unique_path(directories["image"], filename)
+            image_paths.append(str(path))
+        path.write_bytes(data)
+
+    if unsupported:
+        preview = ", ".join(unsupported[:5])
+        more = f" 외 {len(unsupported) - 5}개" if len(unsupported) > 5 else ""
+        allowed = ", ".join(sorted(SUPPORTED_BUNDLE_EXTENSIONS))
+        raise ApiException(
+            400,
+            "INVALID_XRD_FILE_TYPE",
+            f"지원하지 않는 파일이 포함되어 있습니다: {preview}{more}. 허용 형식: {allowed}",
+        )
+
+    return raw_paths, str(pdf_dir), table_paths, image_paths
 
 
 def build_xrd_page() -> str:
@@ -151,7 +215,7 @@ def build_xrd_page() -> str:
     }
     .xrd-grid {
       display: grid;
-      grid-template-columns: repeat(4, minmax(160px, 1fr));
+      grid-template-columns: repeat(2, minmax(220px, 1fr));
       gap: 12px;
       align-items: end;
     }
@@ -287,24 +351,16 @@ def build_xrd_page() -> str:
         <form id="xrd-form">
           <div class="xrd-grid">
             <div class="xrd-field">
-              <label for="xrd-raw-files">Raw TXT</label>
-              <input type="file" id="xrd-raw-files" name="rawFiles" multiple accept=".txt,.dat,.xy,.asc">
+              <label for="xrd-bundle-files">XRD bundle 파일</label>
+              <input type="file" id="xrd-bundle-files" name="files" multiple accept=".txt,.dat,.xy,.asc,.pdf,.xlsx,.csv,.tsv,.png,.jpg,.jpeg,.webp,.gif">
             </div>
             <div class="xrd-field">
-              <label for="xrd-pdf-files">ICDD Card PDF</label>
-              <input type="file" id="xrd-pdf-files" name="pdfFiles" multiple accept=".pdf">
-            </div>
-            <div class="xrd-field">
-              <label for="xrd-table-files">Excel / CSV</label>
-              <input type="file" id="xrd-table-files" name="tableFiles" multiple accept=".xlsx,.csv,.tsv">
-            </div>
-            <div class="xrd-field">
-              <label for="xrd-image-files">Image</label>
-              <input type="file" id="xrd-image-files" name="imageFiles" multiple accept="image/*">
+              <label for="xrd-bundle-folder">XRD bundle 폴더</label>
+              <input type="file" id="xrd-bundle-folder" name="files" multiple webkitdirectory directory>
             </div>
           </div>
           <label class="xrd-check"><input type="checkbox" id="xrd-origin" name="origin" value="true"> Origin 스타일</label>
-          <div class="xrd-drop" id="xrd-drop">파일을 여기에 놓으세요</div>
+          <div class="xrd-drop" id="xrd-drop">raw TXT, ICDD PDF, Excel/CSV, 이미지를 한꺼번에 놓으세요</div>
           <div class="xrd-files" id="xrd-file-list"></div>
         </form>
       </section>
@@ -318,10 +374,8 @@ def build_xrd_page() -> str:
   <script>
   (function() {
     var form = document.getElementById("xrd-form");
-    var rawInput = document.getElementById("xrd-raw-files");
-    var pdfInput = document.getElementById("xrd-pdf-files");
-    var tableInput = document.getElementById("xrd-table-files");
-    var imageInput = document.getElementById("xrd-image-files");
+    var bundleInput = document.getElementById("xrd-bundle-files");
+    var folderInput = document.getElementById("xrd-bundle-folder");
     var runButton = document.getElementById("xrd-run");
     var clearButton = document.getElementById("xrd-clear");
     var exampleButton = document.getElementById("xrd-example");
@@ -367,12 +421,21 @@ def build_xrd_page() -> str:
     function filesOf(input) {
       return Array.prototype.slice.call(input.files || []);
     }
+    function allBundleFiles() {
+      return filesOf(bundleInput).concat(filesOf(folderInput));
+    }
+    function classifyFile(file) {
+      var name = file.name.toLowerCase();
+      if (/\\.(txt|dat|xy|asc)$/.test(name)) return "raw";
+      if (/\\.pdf$/.test(name)) return "pdf";
+      if (/\\.(xlsx|csv|tsv)$/.test(name)) return "table";
+      if (/\\.(png|jpe?g|webp|gif)$/.test(name)) return "image";
+      return "skip";
+    }
     function renderFileList() {
-      var files = []
-        .concat(filesOf(rawInput).map(function(file) { return ["raw", file.name]; }))
-        .concat(filesOf(pdfInput).map(function(file) { return ["pdf", file.name]; }))
-        .concat(filesOf(tableInput).map(function(file) { return ["table", file.name]; }))
-        .concat(filesOf(imageInput).map(function(file) { return ["image", file.name]; }));
+      var files = allBundleFiles().map(function(file) {
+        return [classifyFile(file), file.webkitRelativePath || file.name];
+      });
       fileList.replaceChildren();
       files.forEach(function(item) {
         var chip = document.createElement("span");
@@ -388,23 +451,22 @@ def build_xrd_page() -> str:
       input.files = dt.files;
     }
     function routeDroppedFiles(files) {
-      var raw = [], pdf = [], table = [], image = [];
-      files.forEach(function(file) {
-        var name = file.name.toLowerCase();
-        if (/\\.(txt|dat|xy|asc)$/.test(name)) raw.push(file);
-        else if (/\\.pdf$/.test(name)) pdf.push(file);
-        else if (/\\.(xlsx|csv|tsv)$/.test(name)) table.push(file);
-        else if (/\\.(png|jpe?g|webp|gif)$/.test(name)) image.push(file);
-      });
-      appendFiles(rawInput, raw);
-      appendFiles(pdfInput, pdf);
-      appendFiles(tableInput, table);
-      appendFiles(imageInput, image);
+      appendFiles(bundleInput, files);
       renderFileList();
     }
-    [rawInput, pdfInput, tableInput, imageInput].forEach(function(input) {
+    [bundleInput, folderInput].forEach(function(input) {
       input.addEventListener("change", renderFileList);
     });
+    function buildBundleFormData() {
+      var data = new FormData();
+      allBundleFiles().forEach(function(file) {
+        data.append("files", file, file.webkitRelativePath || file.name);
+      });
+      if (document.getElementById("xrd-origin").checked) {
+        data.append("origin", "true");
+      }
+      return data;
+    }
     drop.addEventListener("dragover", function(event) {
       event.preventDefault();
       drop.classList.add("dragover");
@@ -441,13 +503,13 @@ def build_xrd_page() -> str:
     });
     form.addEventListener("submit", async function(event) {
       event.preventDefault();
-      if (!rawInput.files || rawInput.files.length === 0) {
-        setStatus("Raw TXT 파일을 먼저 선택하세요.", true);
+      if (!allBundleFiles().some(function(file) { return classifyFile(file) === "raw"; })) {
+        setStatus("Bundle 안에 raw TXT 파일이 필요합니다.", true);
         return;
       }
       setBusy(true);
       try {
-        var data = new FormData(form);
+        var data = buildBundleFormData();
         var response = await fetch("/api/v1/xrd/analyze", {method: "POST", body: data});
         var text = await response.text();
         if (!response.ok) throw new Error(text || "보고서 생성 요청에 실패했습니다.");
@@ -473,7 +535,8 @@ def xrd_page() -> HTMLResponse:
 
 @router.post("/api/v1/xrd/analyze", response_class=HTMLResponse, tags=["xrd"])
 async def analyze_xrd(
-    raw_files: list[UploadFile] = File(..., alias="rawFiles"),
+    files: list[UploadFile] | None = File(default=None, alias="files"),
+    raw_files: list[UploadFile] | None = File(default=None, alias="rawFiles"),
     pdf_files: list[UploadFile] | None = File(default=None, alias="pdfFiles"),
     table_files: list[UploadFile] | None = File(default=None, alias="tableFiles"),
     image_files: list[UploadFile] | None = File(default=None, alias="imageFiles"),
@@ -481,35 +544,48 @@ async def analyze_xrd(
 ) -> HTMLResponse:
     with tempfile.TemporaryDirectory(prefix="rist-xrd-web-") as tmp:
         root = Path(tmp)
-        raw_paths = await _save_uploads(
-            raw_files,
-            root / "raw",
-            allowed_extensions=RAW_EXTENSIONS,
-            field_name="raw",
-            required=True,
+        raw_paths, pdf_dir, table_paths, image_paths = await _save_xrd_bundle_uploads(
+            files,
+            root,
         )
-        pdf_dir = root / "pdf"
+        raw_paths.extend(
+            await _save_uploads(
+                raw_files,
+                root / "raw",
+                allowed_extensions=RAW_EXTENSIONS,
+                field_name="raw",
+            )
+        )
         await _save_uploads(
             pdf_files,
-            pdf_dir,
+            Path(pdf_dir),
             allowed_extensions=PDF_EXTENSIONS,
             field_name="pdf",
         )
-        pdf_dir.mkdir(parents=True, exist_ok=True)
-        table_paths = await _save_uploads(
-            table_files,
-            root / "tables",
-            allowed_extensions=TABLE_EXTENSIONS,
-            field_name="table",
+        table_paths.extend(
+            await _save_uploads(
+                table_files,
+                root / "tables",
+                allowed_extensions=TABLE_EXTENSIONS,
+                field_name="table",
+            )
         )
-        image_paths = await _save_uploads(
-            image_files,
-            root / "images",
-            allowed_extensions=IMAGE_EXTENSIONS,
-            field_name="image",
+        image_paths.extend(
+            await _save_uploads(
+                image_files,
+                root / "images",
+                allowed_extensions=IMAGE_EXTENSIONS,
+                field_name="image",
+            )
         )
+        if not raw_paths:
+            raise ApiException(
+                400,
+                "MISSING_XRD_INPUT",
+                "Bundle 안에 raw TXT 파일이 필요합니다.",
+            )
         result = build_xrd_html(
-            [(path, str(pdf_dir)) for path in raw_paths],
+            [(path, pdf_dir) for path in raw_paths],
             table_files=table_paths,
             image_files=image_paths,
             origin=origin,
