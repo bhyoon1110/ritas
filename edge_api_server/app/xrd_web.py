@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import re
 import tempfile
 from pathlib import Path
@@ -593,19 +594,73 @@ async def analyze_xrd(
     return HTMLResponse(result["html"])
 
 
+def _write_synthetic_xrd_raw(path: Path) -> None:
+    rows = []
+    for index in range(701):
+        two_theta = 10.0 + index * 0.1
+        intensity = 80.0
+        for center, height, width in (
+            (25.3, 1050.0, 0.18),
+            (37.8, 420.0, 0.22),
+            (48.1, 650.0, 0.20),
+            (54.0, 260.0, 0.24),
+            (62.7, 300.0, 0.28),
+        ):
+            intensity += height * math.exp(-((two_theta - center) ** 2) / (2 * width**2))
+        rows.append(f"{two_theta:.3f} {intensity:.3f}")
+    path.write_text("\n".join(rows) + "\n", encoding="utf-8")
+
+
+def _xrd_example_candidates(repo_root: Path) -> list[tuple[Path, Path]]:
+    return [
+        (
+            repo_root / "lim" / "data" / "data_dir" / "Mix2.txt",
+            repo_root / "lim" / "data" / "data_dir" / "Mix2",
+        ),
+        (
+            repo_root / "lim" / "data" / "data_dir" / "Mix3.txt",
+            repo_root / "lim" / "data" / "data_dir" / "Mix3",
+        ),
+        (
+            repo_root
+            / "lim"
+            / "data"
+            / "예제 데이터(AX - XRD)"
+            / "예제 데이터 1"
+            / "Mix2.txt",
+            repo_root
+            / "lim"
+            / "data"
+            / "예제 데이터(AX - XRD)"
+            / "예제 데이터 1"
+            / "Mix2",
+        ),
+    ]
+
+
+def _build_xrd_example_html(repo_root: Path) -> str:
+    for raw_path, pdf_dir in _xrd_example_candidates(repo_root):
+        if raw_path.is_file() and pdf_dir.is_dir():
+            return build_xrd_html([(str(raw_path), str(pdf_dir))])["html"]
+        if raw_path.is_file():
+            with tempfile.TemporaryDirectory(prefix="rist-xrd-example-") as tmp:
+                empty_pdf_dir = Path(tmp) / "pdf"
+                empty_pdf_dir.mkdir()
+                return build_xrd_html([(str(raw_path), str(empty_pdf_dir))])["html"]
+
+    with tempfile.TemporaryDirectory(prefix="rist-xrd-example-") as tmp:
+        root = Path(tmp)
+        raw_path = root / "synthetic-xrd.txt"
+        pdf_dir = root / "pdf"
+        pdf_dir.mkdir()
+        _write_synthetic_xrd_raw(raw_path)
+        return build_xrd_html([(str(raw_path), str(pdf_dir))])["html"]
+
+
 @router.get("/api/v1/xrd/example", response_class=HTMLResponse, tags=["xrd"])
 def xrd_example() -> HTMLResponse:
     repo_root = Path(__file__).resolve().parents[2]
-    raw_path = repo_root / "lim" / "data" / "data_dir" / "Mix2.txt"
-    pdf_dir = repo_root / "lim" / "data" / "data_dir" / "Mix2"
-    if not raw_path.is_file() or not pdf_dir.is_dir():
-        raise ApiException(
-            404,
-            "XRD_EXAMPLE_NOT_FOUND",
-            "XRD 예제 데이터를 찾을 수 없습니다.",
-        )
-    result = build_xrd_html([(str(raw_path), str(pdf_dir))])
-    return HTMLResponse(result["html"])
+    return HTMLResponse(_build_xrd_example_html(repo_root))
 
 
 def create_xrd_preview_app() -> FastAPI:

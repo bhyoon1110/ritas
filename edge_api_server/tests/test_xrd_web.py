@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
-from app.xrd_web import build_xrd_page, create_xrd_preview_app
+from app.xrd_web import _build_xrd_example_html, build_xrd_page, create_xrd_preview_app
 
 
 def test_xrd_workspace_contains_upload_controls() -> None:
@@ -78,3 +78,11 @@ def test_xrd_analyze_keeps_legacy_split_upload_fields() -> None:
 
     assert response.status_code == 200
     assert "sample Report" in response.text
+
+
+def test_xrd_example_falls_back_when_sample_files_are_absent(tmp_path) -> None:
+    html = _build_xrd_example_html(tmp_path)
+
+    assert "synthetic-xrd Report" in html
+    assert "그래프 영역" in html
+    assert "PDF 파일" in html
