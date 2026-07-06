@@ -113,4 +113,8 @@ def test_xrd_example_falls_back_when_sample_files_are_absent(tmp_path) -> None:
 
     assert "synthetic-xrd Report" in html
     assert "그래프 영역" in html
-    assert "PDF 파일" in html
+    assert "Synthetic Anatase Example" in html
+    assert "25.300" in html
+    assert "결정상(Phase) 정보" in html
+    assert "피크 정보" in html
+    assert "PDF 파일을 찾지 못했습니다" not in html

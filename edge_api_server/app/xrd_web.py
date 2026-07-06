@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import os
 import re
 import tempfile
 from pathlib import Path
@@ -14,6 +15,7 @@ from .path_bootstrap import add_project_package_paths
 add_project_package_paths()
 
 from lim.xrd_plot import (
+    HEADER,
     IMAGE_EXTENSIONS,
     TABLE_EXTENSIONS,
     build_xrd_html,
@@ -726,6 +728,84 @@ def _write_synthetic_xrd_raw(path: Path) -> None:
     path.write_text("\n".join(rows) + "\n", encoding="utf-8")
 
 
+def _register_xrd_example_pdf_font() -> str:
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+
+    candidates = [
+        os.environ.get("RIST_PDF_FONT_PATH", ""),
+        "/usr/share/fonts/truetype/nanum/NanumGothic.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
+        "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
+        "/Library/Fonts/Arial Unicode.ttf",
+        "/System/Library/Fonts/Supplemental/Arial.ttf",
+    ]
+    for index, candidate in enumerate(candidates):
+        if not candidate:
+            continue
+        font_path = Path(candidate)
+        if not font_path.is_file():
+            continue
+        font_name = f"XrdExampleFont{index}"
+        try:
+            pdfmetrics.registerFont(TTFont(font_name, str(font_path)))
+        except Exception:
+            continue
+        return font_name
+    return "Helvetica"
+
+
+def _write_synthetic_icdd_pdf(path: Path) -> None:
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import letter
+    from reportlab.lib.styles import getSampleStyleSheet
+    from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+
+    font_name = _register_xrd_example_pdf_font()
+    styles = getSampleStyleSheet()
+    for style in styles.byName.values():
+        style.fontName = font_name
+
+    rows = [
+        HEADER,
+        ["1", "25.300", "3.516", "100.00", "1 0 1"],
+        ["2", "37.800", "2.379", "42.00", "0 0 4"],
+        ["3", "48.100", "1.890", "65.00", "2 0 0"],
+        ["4", "54.000", "1.697", "26.00", "1 0 5"],
+        ["5", "62.700", "1.480", "30.00", "2 1 1"],
+    ]
+    table = Table(rows, colWidths=[45, 74, 74, 74, 74], repeatRows=1)
+    table.setStyle(
+        TableStyle(
+            [
+                ("FONTNAME", (0, 0), (-1, -1), font_name),
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e5e7eb")),
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.black),
+                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ]
+        )
+    )
+
+    document = SimpleDocTemplate(str(path), pagesize=letter)
+    story = [
+        Paragraph("PDF Card No. : 00-000-0001 QM: S", styles["Normal"]),
+        Paragraph("Chemical formula: Ti O2", styles["Normal"]),
+        Paragraph("Name: Synthetic Anatase Example I/Ic 1.00", styles["Normal"]),
+        Paragraph("Crystal system: Tetragonal Space group: 141 : I41/amd", styles["Normal"]),
+        Paragraph("2θ range: 10.00000 - 80.00000", styles["Normal"]),
+        Spacer(1, 12),
+        table,
+    ]
+    document.build(story)
+
+
+def _write_synthetic_icdd_pdf_dir(pdf_dir: Path) -> None:
+    pdf_dir.mkdir(parents=True, exist_ok=True)
+    _write_synthetic_icdd_pdf(pdf_dir / "Synthetic Anatase 00-000-0001(S).pdf")
+
+
 def _xrd_example_candidates(repo_root: Path) -> list[tuple[Path, Path]]:
     return [
         (
@@ -759,16 +839,16 @@ def _build_xrd_example_html(repo_root: Path) -> str:
             return build_xrd_html([(str(raw_path), str(pdf_dir))])["html"]
         if raw_path.is_file():
             with tempfile.TemporaryDirectory(prefix="rist-xrd-example-") as tmp:
-                empty_pdf_dir = Path(tmp) / "pdf"
-                empty_pdf_dir.mkdir()
-                return build_xrd_html([(str(raw_path), str(empty_pdf_dir))])["html"]
+                synthetic_pdf_dir = Path(tmp) / "pdf"
+                _write_synthetic_icdd_pdf_dir(synthetic_pdf_dir)
+                return build_xrd_html([(str(raw_path), str(synthetic_pdf_dir))])["html"]
 
     with tempfile.TemporaryDirectory(prefix="rist-xrd-example-") as tmp:
         root = Path(tmp)
         raw_path = root / "synthetic-xrd.txt"
         pdf_dir = root / "pdf"
-        pdf_dir.mkdir()
         _write_synthetic_xrd_raw(raw_path)
+        _write_synthetic_icdd_pdf_dir(pdf_dir)
         return build_xrd_html([(str(raw_path), str(pdf_dir))])["html"]
 
 

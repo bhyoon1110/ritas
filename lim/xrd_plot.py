@@ -145,6 +145,16 @@ def load_raw(path: str):
 # PDF 표에서 피크 추출 -> [{"no", "two_theta", "d", "norm", "hkl"}, ...]
 # 표 한 행에 좌(0:5)/우(5:10) 두 블록이 들어있다.
 # ----------------------------------------------------------------------------
+def _is_pdf_peak_header(cells: list[str]) -> bool:
+    if len(cells) < 5:
+        return False
+    header = [(cell or "").strip() for cell in cells[:5]]
+    if header == HEADER:
+        return True
+    normalized = [header[0], header[1].replace("q", "θ"), *header[2:5]]
+    return normalized == HEADER
+
+
 def parse_pdf_peaks(path: str):
     peaks = []
     with pdfplumber.open(path) as pdf:
@@ -153,7 +163,7 @@ def parse_pdf_peaks(path: str):
                 if not table:
                     continue
                 first = [(c or "").strip() for c in table[0]]
-                if first[:5] != HEADER:
+                if not _is_pdf_peak_header(first):
                     continue
                 for row in table[1:]:
                     cells = [(c or "").strip() for c in row]
