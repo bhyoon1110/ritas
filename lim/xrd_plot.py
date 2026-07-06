@@ -377,6 +377,79 @@ def build_xrd_legend_checkbox_js(div_id: str) -> str:
   function svg(tag) {{
     return document.createElementNS(SVG_NS, tag);
   }}
+  function traceMeta(trace) {{
+    return (trace && trace.meta && typeof trace.meta === "object") ? trace.meta : {{}};
+  }}
+  function visibleLegendTraceIndexes() {{
+    var fd = gd._fullData || gd.data || [];
+    var idxs = [];
+    for (var i = 0; i < fd.length; i++) {{
+      var tr = fd[i];
+      if (!tr || tr.showlegend === false) continue;
+      idxs.push(typeof tr.index === "number" ? tr.index : i);
+    }}
+    return idxs;
+  }}
+  function legendTraceItems() {{
+    return Array.prototype.slice.call(
+      gd.querySelectorAll("g.legend g.traces")
+    ).filter(function(node) {{
+      return node.querySelector("text.legendtext");
+    }});
+  }}
+  function curveFromLegendDatum(value, depth) {{
+    if (value == null || depth > 4) return null;
+    if (typeof value === "number" || typeof value === "string") {{
+      var direct = Number(value);
+      return Number.isInteger(direct) ? direct : null;
+    }}
+    if (Array.isArray(value)) {{
+      for (var a = 0; a < value.length; a++) {{
+        var arrayCurve = curveFromLegendDatum(value[a], depth + 1);
+        if (arrayCurve != null) return arrayCurve;
+      }}
+      return null;
+    }}
+    if (typeof value !== "object") return null;
+    var explicitKeys = ["curveNumber", "curveIndex", "traceIndex"];
+    for (var k = 0; k < explicitKeys.length; k++) {{
+      var explicit = Number(value[explicitKeys[k]]);
+      if (Number.isInteger(explicit)) return explicit;
+    }}
+    if (value.trace) {{
+      var traceCurve = curveFromLegendDatum(value.trace, depth + 1);
+      if (traceCurve != null) return traceCurve;
+    }}
+    if (value._fullInput) {{
+      var inputCurve = curveFromLegendDatum(value._fullInput, depth + 1);
+      if (inputCurve != null) return inputCurve;
+    }}
+    if ((value.meta || value.name != null || value.x || value.y)
+        && Number.isInteger(Number(value.index))) {{
+      return Number(value.index);
+    }}
+    return null;
+  }}
+  function curveFromLegendItem(item) {{
+    if (!item) return null;
+    var datumCurve = curveFromLegendDatum(item.__data__, 0);
+    if (datumCurve != null) return datumCurve;
+    var items = legendTraceItems();
+    var pos = items.indexOf(item);
+    if (pos < 0) return null;
+    var idxs = visibleLegendTraceIndexes();
+    var curve = Number(idxs[pos]);
+    return Number.isInteger(curve) ? curve : null;
+  }}
+  function legendKind(row) {{
+    var curve = curveFromLegendItem(row);
+    var trace = curve != null ? (gd.data || [])[curve] : null;
+    var meta = traceMeta(trace);
+    if (meta.xrd_raw) return "raw";
+    if (meta.xrd_separator) return "separator";
+    if (meta.xrd_phase_candidate) return "phase";
+    return "";
+  }}
   function ensureCheckbox(row) {{
     var mark = row.querySelector(".rist-xrd-legend-checkbox");
     if (!mark) {{
@@ -405,6 +478,25 @@ def build_xrd_legend_checkbox_js(div_id: str) -> str:
     var mark = row.querySelector(".rist-xrd-legend-checkbox");
     if (mark && mark.parentNode) mark.parentNode.removeChild(mark);
   }}
+  function ensureBranch(row) {{
+    var branch = row.querySelector(".rist-xrd-legend-branch");
+    if (!branch) {{
+      branch = svg("g");
+      branch.setAttribute("class", "rist-xrd-legend-branch");
+      var path = svg("path");
+      path.setAttribute("fill", "none");
+      path.setAttribute("stroke", "#cbd5e1");
+      path.setAttribute("stroke-width", "1.4");
+      path.setAttribute("stroke-linecap", "round");
+      branch.appendChild(path);
+      row.insertBefore(branch, row.firstChild);
+    }}
+    return branch;
+  }}
+  function removeBranch(row) {{
+    var branch = row.querySelector(".rist-xrd-legend-branch");
+    if (branch && branch.parentNode) branch.parentNode.removeChild(branch);
+  }}
   function baseTextX(row, textNode) {{
     var stored = row.getAttribute("data-rist-xrd-legend-text-x");
     if (stored != null) return Number(stored) || 40;
@@ -416,11 +508,19 @@ def build_xrd_legend_checkbox_js(div_id: str) -> str:
     var tx = baseTextX(row, textNode);
     textNode.setAttribute("x", String(tx));
   }}
-  function placeCheckbox(mark, row, textNode) {{
+  function placeBranch(branch, row, textNode, indent) {{
     var tx = baseTextX(row, textNode);
     var ty = Number(textNode.getAttribute("y") || 0);
-    textNode.setAttribute("x", String(tx + 18));
-    mark.setAttribute("transform", "translate(" + (tx + 2) + "," + (ty - 10) + ")");
+    branch.setAttribute("transform", "translate(" + (tx + indent - 14) + "," + (ty - 8) + ")");
+    var path = branch.querySelector("path");
+    path.setAttribute("d", "M0 0 V12 M0 8 H10");
+  }}
+  function placeCheckbox(mark, row, textNode, indent) {{
+    var tx = baseTextX(row, textNode);
+    var ty = Number(textNode.getAttribute("y") || 0);
+    var offset = Number(indent || 0);
+    textNode.setAttribute("x", String(tx + offset + 18));
+    mark.setAttribute("transform", "translate(" + (tx + offset + 2) + "," + (ty - 10) + ")");
   }}
   function paintCheckbox(mark, visible) {{
     var rect = mark.querySelector("rect");
@@ -443,18 +543,41 @@ def build_xrd_legend_checkbox_js(div_id: str) -> str:
       var node = row.querySelector("text.legendtext");
       if (!node) return;
       var base = stripBox(node.textContent || "");
+      var kind = legendKind(row);
+      var isChild = kind === "phase" || kind === "separator";
+      var indent = isChild ? 22 : 0;
       if (base.trim().indexOf("────────") === 0) {{
         removeCheckbox(row);
-        restoreTextX(row, node);
+        if (isChild) {{
+          var separatorBranch = ensureBranch(row);
+          placeBranch(separatorBranch, row, node, indent);
+          node.setAttribute("x", String(baseTextX(row, node) + indent + 8));
+        }} else {{
+          removeBranch(row);
+          restoreTextX(row, node);
+        }}
         node.textContent = base;
         node.style.fill = "#94a3b8";
         node.style.fontSize = "11px";
+        node.style.fontWeight = "600";
         node.style.opacity = "1";
         node.style.textDecoration = "none";
         return;
       }}
+      if (isChild) {{
+        var branch = ensureBranch(row);
+        placeBranch(branch, row, node, indent);
+        node.style.fontSize = "11px";
+        node.style.fontWeight = "400";
+        node.style.fill = "#334155";
+      }} else {{
+        removeBranch(row);
+        node.style.fontSize = kind === "raw" ? "12px" : "";
+        node.style.fontWeight = kind === "raw" ? "700" : "";
+        node.style.fill = kind === "raw" ? "#172a46" : "";
+      }}
       var mark = ensureCheckbox(row);
-      placeCheckbox(mark, row, node);
+      placeCheckbox(mark, row, node, indent);
       paintCheckbox(mark, rowVisible(row));
       node.textContent = base;
     }});
@@ -2123,7 +2246,12 @@ def build_xrd_html(
                 mode="lines",
                 name=raw_stem,
                 line=dict(color=raw_color, width=RAW_LINE_WIDTH),
-                meta={"xrd_raw": True, "xrd_raw_stem": raw_stem},
+                meta={
+                    "xrd_raw": True,
+                    "xrd_raw_stem": raw_stem,
+                    "xrd_raw_group": raw_stem,
+                    "xrd_legend_kind": "raw",
+                },
             )
         )
         idxs.append(trace_idx)
@@ -2173,7 +2301,12 @@ def build_xrd_html(
                         line=dict(color="#cbd5e1", width=1),
                         hoverinfo="skip",
                         showlegend=True,
-                        meta={"xrd_separator": True, "xrd_category": category},
+                        meta={
+                            "xrd_separator": True,
+                            "xrd_category": category,
+                            "xrd_raw_group": raw_stem,
+                            "xrd_legend_kind": "separator",
+                        },
                     )
                 )
                 idxs.append(trace_idx)
@@ -2202,6 +2335,8 @@ def build_xrd_html(
                         "xrd_phase_label": item["label"],
                         "xrd_phase_category": category,
                         "xrd_phase_group_key": _phase_similarity_key(item),
+                        "xrd_raw_group": raw_stem,
+                        "xrd_legend_kind": "phase",
                         "xrd_phase_name": item["metadata"].get("phase_name") or "",
                         "xrd_phase_formula": item["metadata"].get("formula") or "",
                         "xrd_phase_card_no": item["metadata"].get("card_no") or "",
