@@ -233,6 +233,15 @@ cd edge_api_server
   app.xrd_web:create_xrd_preview_app --factory --host 127.0.0.1 --port 8010
 ```
 
+FT-IR, Raman, XRD 화면을 DB 없이 같은 포트에서 함께 확인하려면 통합 preview
+앱을 사용한다.
+
+```bash
+cd edge_api_server
+.venv/bin/python -m uvicorn \
+  app.preview_web:create_preview_app --factory --host 127.0.0.1 --port 8000
+```
+
 ## 환경 변수
 
 | 변수 | 기본값 | 설명 |

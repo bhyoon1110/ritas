@@ -67,6 +67,15 @@ cd edge_api_server
   app.xrd_web:create_xrd_preview_app --factory --host 127.0.0.1 --port 8010
 ```
 
+FT-IR, Raman, XRD 화면을 같은 `8000`번 포트에서 함께 띄우려면 통합 preview
+앱을 사용한다.
+
+```bash
+cd edge_api_server
+.venv/bin/python -m uvicorn \
+  app.preview_web:create_preview_app --factory --host 127.0.0.1 --port 8000
+```
+
 ## Edge processor 연동
 
 Edge worker가 자동 processor를 실행하게 하려면 `RIST_PROCESSOR_COMMAND_XRD`에
