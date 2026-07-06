@@ -5300,7 +5300,7 @@ def _responsive_legend_js(div_id: str, wide_legend_inside: bool = True,
         wide_layout = (
             '{"legend.orientation": "v",'
             ' "legend.x": 1.02, "legend.xanchor": "left",'
-            ' "legend.y": 1.0, "legend.yanchor": "top",'
+            ' "legend.y": 0.84, "legend.yanchor": "top",'
             ' "legend.bgcolor": "rgba(255,255,255,0.7)",'
             ' "margin.r": 180, "margin.b": 70}'
         )

@@ -164,6 +164,7 @@ def test_xrd_report_can_use_llm_comment_provider(tmp_path) -> None:
     assert 'row.setAttribute("data-rist-xrd-legend-text-x"' in result["html"]
     assert 'textNode.setAttribute("x", String(tx + 18))' in result["html"]
     assert '"legend.x": 1.02' in result["html"]
+    assert '"legend.y": 0.84' in result["html"]
     assert "bindRawLegendDomClick" not in result["html"]
     assert "xrd-phase-group-button" in result["html"]
     assert "xrd-phase-select" in result["html"]
