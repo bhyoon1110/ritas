@@ -154,6 +154,13 @@ def test_xrd_report_can_use_llm_comment_provider(tmp_path) -> None:
     assert "rist-xrd-legend-checkbox" in result["html"]
     assert 'rect.setAttribute("fill", visible ? "#2563eb" : "#ffffff")' in result["html"]
     assert 'node.style.textDecoration = visible ? "none" : "line-through"' in result["html"]
+    assert "window.__xrdLegendGroups = GROUPS" in result["html"]
+    assert "function groupForRawCurve(curve)" in result["html"]
+    assert 'gd.on("plotly_legendclick", function(ev)' in result["html"]
+    assert "bindRawLegendDomClick" in result["html"]
+    assert "ev.stopImmediatePropagation" in result["html"]
+    assert "return false" in result["html"]
+    assert "rist-xrd-legend-groups-ready" in result["html"]
     assert "Synthetic Anatase Example / TiO2" in result["html"]
     assert captured["experiment"] == "XRD"
     assert captured["raw_patterns"][0]["detected_raw_peaks"]
