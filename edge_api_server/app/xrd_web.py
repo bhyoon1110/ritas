@@ -214,27 +214,7 @@ def build_xrd_page() -> str:
       border-radius: 8px;
       padding: 16px;
     }
-    .xrd-grid {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(220px, 1fr));
-      gap: 12px;
-      align-items: end;
-    }
-    .xrd-field label {
-      display: block;
-      font-size: 13px;
-      font-weight: 700;
-      margin-bottom: 7px;
-      color: #334155;
-    }
-    .xrd-field input[type="file"] {
-      width: 100%;
-      border: 1px solid var(--line);
-      border-radius: 7px;
-      padding: 9px;
-      background: #f8fafc;
-      min-height: 42px;
-    }
+    .xrd-hidden-input { display: none; }
     .xrd-check {
       display: flex;
       gap: 8px;
@@ -243,19 +223,39 @@ def build_xrd_page() -> str:
       font-weight: 700;
     }
     .xrd-drop {
-      margin-top: 12px;
       border: 1px dashed #9fb6d6;
       border-radius: 8px;
-      min-height: 72px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
+      min-height: 122px;
       color: #476483;
       background: #f8fbff;
       text-align: center;
-      padding: 12px;
+      padding: 18px;
+      display: grid;
+      place-items: center;
     }
     .xrd-drop.dragover { border-color: var(--blue); background: #eef6ff; }
+    .xrd-drop-title {
+      margin: 0 0 5px;
+      color: var(--ink);
+      font-size: 18px;
+      font-weight: 800;
+    }
+    .xrd-drop-text { margin: 0; color: #476483; line-height: 1.45; }
+    .xrd-bundle-actions {
+      margin-top: 13px;
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: center;
+      align-items: center;
+    }
+    .xrd-bundle-actions button { min-height: 38px; padding: 7px 12px; font-size: 14px; }
+    .xrd-bundle-meta {
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 13px;
+      text-align: center;
+    }
     .xrd-files {
       margin-top: 12px;
       display: flex;
@@ -326,7 +326,6 @@ def build_xrd_page() -> str:
       .xrd-brand h1 { font-size: 25px; }
       .xrd-brand span { display: block; margin-top: 4px; white-space: normal; }
       .xrd-main { padding: 14px 12px 24px; }
-      .xrd-grid { grid-template-columns: 1fr; }
       .xrd-actions { width: 100%; justify-content: flex-end; }
       button, .xrd-download { min-height: 40px; padding: 8px 11px; font-size: 14px; }
       .xrd-preview iframe { height: 780px; }
@@ -350,18 +349,20 @@ def build_xrd_page() -> str:
     <main class="xrd-main">
       <section class="xrd-panel">
         <form id="xrd-form">
-          <div class="xrd-grid">
-            <div class="xrd-field">
-              <label for="xrd-bundle-files">XRD bundle 파일</label>
-              <input type="file" id="xrd-bundle-files" name="files" multiple accept=".txt,.dat,.xy,.asc,.pdf,.xlsx,.csv,.tsv,.png,.jpg,.jpeg,.webp,.gif">
-            </div>
-            <div class="xrd-field">
-              <label for="xrd-bundle-folder">XRD bundle 폴더</label>
-              <input type="file" id="xrd-bundle-folder" name="files" multiple webkitdirectory directory>
+          <input class="xrd-hidden-input" type="file" id="xrd-bundle-files" name="files" multiple accept=".txt,.dat,.xy,.asc,.pdf,.xlsx,.csv,.tsv,.png,.jpg,.jpeg,.webp,.gif">
+          <input class="xrd-hidden-input" type="file" id="xrd-bundle-folder" name="files" multiple webkitdirectory directory>
+          <div class="xrd-drop" id="xrd-drop">
+            <div>
+              <p class="xrd-drop-title">XRD 번들 추가</p>
+              <p class="xrd-drop-text">raw TXT, ICDD PDF 폴더, Excel/CSV, 이미지를 여기에 한꺼번에 드래그하세요.</p>
+              <div class="xrd-bundle-actions">
+                <button type="button" id="xrd-add-files">파일 추가</button>
+                <button type="button" id="xrd-add-folder">폴더 추가</button>
+              </div>
+              <div class="xrd-bundle-meta" id="xrd-bundle-meta">선택된 파일 없음</div>
             </div>
           </div>
           <label class="xrd-check"><input type="checkbox" id="xrd-origin" name="origin" value="true"> Origin 스타일</label>
-          <div class="xrd-drop" id="xrd-drop">raw TXT, ICDD PDF, Excel/CSV, 이미지를 한꺼번에 놓으세요</div>
           <div class="xrd-files" id="xrd-file-list"></div>
         </form>
       </section>
@@ -377,6 +378,8 @@ def build_xrd_page() -> str:
     var form = document.getElementById("xrd-form");
     var bundleInput = document.getElementById("xrd-bundle-files");
     var folderInput = document.getElementById("xrd-bundle-folder");
+    var addFilesButton = document.getElementById("xrd-add-files");
+    var addFolderButton = document.getElementById("xrd-add-folder");
     var runButton = document.getElementById("xrd-run");
     var clearButton = document.getElementById("xrd-clear");
     var exampleButton = document.getElementById("xrd-example");
@@ -387,7 +390,9 @@ def build_xrd_page() -> str:
     var busy = document.getElementById("xrd-busy");
     var drop = document.getElementById("xrd-drop");
     var fileList = document.getElementById("xrd-file-list");
+    var bundleMeta = document.getElementById("xrd-bundle-meta");
     var downloadUrl = null;
+    var bundleItems = [];
 
     function setStatus(message, error) {
       status.textContent = message;
@@ -422,8 +427,8 @@ def build_xrd_page() -> str:
     function filesOf(input) {
       return Array.prototype.slice.call(input.files || []);
     }
-    function allBundleFiles() {
-      return filesOf(bundleInput).concat(filesOf(folderInput));
+    function bundleItem(file, path) {
+      return {file: file, path: path || file.webkitRelativePath || file.name};
     }
     function classifyFile(file) {
       var name = file.name.toLowerCase();
@@ -433,9 +438,25 @@ def build_xrd_page() -> str:
       if (/\\.(png|jpe?g|webp|gif)$/.test(name)) return "image";
       return "skip";
     }
+    function addBundleItems(items) {
+      var seen = new Set(bundleItems.map(function(item) {
+        return item.path + "|" + item.file.size + "|" + item.file.lastModified;
+      }));
+      items.forEach(function(item) {
+        var key = item.path + "|" + item.file.size + "|" + item.file.lastModified;
+        if (!seen.has(key)) {
+          seen.add(key);
+          bundleItems.push(item);
+        }
+      });
+      renderFileList();
+    }
     function renderFileList() {
-      var files = allBundleFiles().map(function(file) {
-        return [classifyFile(file), file.webkitRelativePath || file.name];
+      var counts = {raw: 0, pdf: 0, table: 0, image: 0, skip: 0};
+      var files = bundleItems.map(function(item) {
+        var type = classifyFile(item.file);
+        counts[type] = (counts[type] || 0) + 1;
+        return [type, item.path];
       });
       fileList.replaceChildren();
       files.forEach(function(item) {
@@ -444,24 +465,85 @@ def build_xrd_page() -> str:
         chip.textContent = item[0] + " · " + item[1];
         fileList.appendChild(chip);
       });
+      bundleMeta.textContent = files.length
+        ? "raw " + counts.raw + " · pdf " + counts.pdf + " · table " + counts.table + " · image " + counts.image
+        : "선택된 파일 없음";
     }
-    function appendFiles(input, files) {
-      var dt = new DataTransfer();
-      filesOf(input).forEach(function(file) { dt.items.add(file); });
-      files.forEach(function(file) { dt.items.add(file); });
-      input.files = dt.files;
+    function fileInputItems(input) {
+      return filesOf(input).map(function(file) {
+        return bundleItem(file, file.webkitRelativePath || file.name);
+      });
     }
-    function routeDroppedFiles(files) {
-      appendFiles(bundleInput, files);
-      renderFileList();
+    function readAllDirectoryEntries(reader) {
+      return new Promise(function(resolve, reject) {
+        var entries = [];
+        function readBatch() {
+          reader.readEntries(function(batch) {
+            if (!batch.length) {
+              resolve(entries);
+              return;
+            }
+            entries = entries.concat(Array.prototype.slice.call(batch));
+            readBatch();
+          }, reject);
+        }
+        readBatch();
+      });
     }
-    [bundleInput, folderInput].forEach(function(input) {
-      input.addEventListener("change", renderFileList);
+    function entryToBundleItems(entry, prefix) {
+      prefix = prefix || "";
+      if (entry.isFile) {
+        return new Promise(function(resolve, reject) {
+          entry.file(function(file) {
+            resolve([bundleItem(file, prefix + file.name)]);
+          }, reject);
+        });
+      }
+      if (entry.isDirectory) {
+        return readAllDirectoryEntries(entry.createReader()).then(function(entries) {
+          return Promise.all(entries.map(function(child) {
+            return entryToBundleItems(child, prefix + entry.name + "/");
+          })).then(function(groups) {
+            return groups.reduce(function(acc, group) { return acc.concat(group); }, []);
+          });
+        });
+      }
+      return Promise.resolve([]);
+    }
+    async function droppedBundleItems(dataTransfer) {
+      var items = Array.prototype.slice.call(dataTransfer.items || []);
+      var entries = items
+        .filter(function(item) { return item.kind === "file" && item.webkitGetAsEntry; })
+        .map(function(item) { return item.webkitGetAsEntry(); })
+        .filter(Boolean);
+      if (entries.length) {
+        var groups = await Promise.all(entries.map(function(entry) {
+          return entryToBundleItems(entry, "");
+        }));
+        return groups.reduce(function(acc, group) { return acc.concat(group); }, []);
+      }
+      return Array.prototype.slice.call(dataTransfer.files || []).map(function(file) {
+        return bundleItem(file, file.webkitRelativePath || file.name);
+      });
+    }
+    async function routeDroppedFiles(dataTransfer) {
+      var items = await droppedBundleItems(dataTransfer);
+      addBundleItems(items);
+    }
+    bundleInput.addEventListener("change", function() {
+      addBundleItems(fileInputItems(bundleInput));
+      bundleInput.value = "";
     });
+    folderInput.addEventListener("change", function() {
+      addBundleItems(fileInputItems(folderInput));
+      folderInput.value = "";
+    });
+    addFilesButton.addEventListener("click", function() { bundleInput.click(); });
+    addFolderButton.addEventListener("click", function() { folderInput.click(); });
     function buildBundleFormData() {
       var data = new FormData();
-      allBundleFiles().forEach(function(file) {
-        data.append("files", file, file.webkitRelativePath || file.name);
+      bundleItems.forEach(function(item) {
+        data.append("files", item.file, item.path || item.file.name);
       });
       if (document.getElementById("xrd-origin").checked) {
         data.append("origin", "true");
@@ -475,13 +557,22 @@ def build_xrd_page() -> str:
     drop.addEventListener("dragleave", function() {
       drop.classList.remove("dragover");
     });
-    drop.addEventListener("drop", function(event) {
+    drop.addEventListener("drop", async function(event) {
       event.preventDefault();
       drop.classList.remove("dragover");
-      routeDroppedFiles(Array.prototype.slice.call(event.dataTransfer.files || []));
+      setBusy(true);
+      try {
+        await routeDroppedFiles(event.dataTransfer);
+        setStatus("XRD bundle 파일이 추가되었습니다.", false);
+      } catch (error) {
+        setStatus(error.message || String(error), true);
+      } finally {
+        setBusy(false);
+      }
     });
     clearButton.addEventListener("click", function() {
       form.reset();
+      bundleItems = [];
       renderFileList();
       revokeDownload();
       preview.replaceChildren(empty);
@@ -504,7 +595,7 @@ def build_xrd_page() -> str:
     });
     form.addEventListener("submit", async function(event) {
       event.preventDefault();
-      if (!allBundleFiles().some(function(file) { return classifyFile(file) === "raw"; })) {
+      if (!bundleItems.some(function(item) { return classifyFile(item.file) === "raw"; })) {
         setStatus("Bundle 안에 raw TXT 파일이 필요합니다.", true);
         return;
       }

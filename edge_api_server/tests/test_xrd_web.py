@@ -10,9 +10,15 @@ def test_xrd_workspace_contains_upload_controls() -> None:
 
     assert 'id="xrd-bundle-files"' in page
     assert 'id="xrd-bundle-folder"' in page
+    assert 'class="xrd-hidden-input"' in page
     assert 'name="files"' in page
     assert "webkitdirectory" in page
-    assert "raw TXT, ICDD PDF, Excel/CSV, 이미지를 한꺼번에" in page
+    assert "XRD 번들 추가" in page
+    assert "파일 추가" in page
+    assert "폴더 추가" in page
+    assert "raw TXT, ICDD PDF 폴더, Excel/CSV, 이미지를 여기에 한꺼번에 드래그" in page
+    assert "entryToBundleItems" in page
+    assert "droppedBundleItems" in page
     assert 'id="xrd-example"' in page
     assert 'id="xrd-download" aria-disabled="true"' in page
     assert "/api/v1/xrd/analyze" in page
@@ -63,6 +69,24 @@ def test_xrd_analyze_includes_table_and_image_inputs() -> None:
     assert "그래프/상매칭 보조 이미지" in response.text
     assert "match.png" in response.text
     assert "data:image/png;base64" in response.text
+
+
+def test_xrd_analyze_skips_unreadable_pdf_in_bundle() -> None:
+    raw = b"10 1\n20 3\n30 2\n"
+
+    with TestClient(create_xrd_preview_app()) as client:
+        response = client.post(
+            "/api/v1/xrd/analyze",
+            files=[
+                ("files", ("sample.txt", raw, "text/plain")),
+                ("files", ("not-a-card.pdf", b"%PDF-1.4\nbroken", "application/pdf")),
+            ],
+        )
+
+    assert response.status_code == 200
+    assert "sample Report" in response.text
+    assert "not-a-card.pdf" in response.text
+    assert "PDF를 읽지 못했습니다" in response.text
 
 
 def test_xrd_analyze_keeps_legacy_split_upload_fields() -> None:

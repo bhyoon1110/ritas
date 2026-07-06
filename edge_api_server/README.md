@@ -211,7 +211,8 @@ cd edge_api_server
 화면이다. raw TXT, ICDD Card PDF, 선택 Excel/CSV/TSV, 선택 이미지 파일을
 한 번에 업로드하면 서버가 확장자로 자동 분류하고 기존 `lim.xrd_plot`
 렌더러를 사용해 HTML 보고서를 생성해 화면 안에 표시한다. Chrome 계열
-브라우저에서는 bundle 폴더 선택도 지원한다.
+브라우저에서는 하나의 `XRD 번들 추가` 영역에 파일과 폴더를 함께 드래그하거나
+bundle 폴더를 선택할 수 있다.
 
 - raw TXT: XRD 측정 패턴 그래프
 - ICDD Card PDF: 2θ 피크 overlay와 결정상 후보 정보

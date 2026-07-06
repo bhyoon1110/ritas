@@ -1253,7 +1253,13 @@ def build_xrd_html(
         pdf_files = sorted(glob.glob(os.path.join(pdf_dir, "*.pdf")))
         items = []
         for pdf_path in pdf_files:
-            peaks = parse_pdf_peaks(pdf_path)
+            try:
+                peaks = parse_pdf_peaks(pdf_path)
+            except Exception as exc:
+                warnings.append(
+                    f"경고: '{os.path.basename(pdf_path)}' PDF를 읽지 못했습니다: {exc}"
+                )
+                continue
             if not peaks:
                 continue
             color = PEAK_PALETTE[peak_ci % len(PEAK_PALETTE)]
