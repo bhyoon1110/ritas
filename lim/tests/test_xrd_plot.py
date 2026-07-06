@@ -123,7 +123,7 @@ def test_build_report_html_contains_xrd_template_sections(tmp_path) -> None:
     assert 'id="xrd-report-pdf-export"' in html
     assert "window.print()" in html
     assert "그래프 영역" in html
-    assert "특이사항 / LLM 코멘트 영역" in html
+    assert "특이사항 / 자동 해석 초안" in html
     assert "피크 정보" in html
     assert "결정상(Phase) 정보" in html
     assert "주요 상 (Major Phases)" in html

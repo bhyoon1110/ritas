@@ -1,6 +1,6 @@
 """XRD raw 데이터(.txt)를 Plotly로 그리고, ICDD Card PDF의 피크 표를
 2θ 위치에 Norm. I.(0~100%) 높이의 수직 막대로 오버레이한다.
-또한 (AX) XRD Report 양식의 구조에 맞춰 그래프, LLM 코멘트 초안,
+또한 (AX) XRD Report 양식의 구조에 맞춰 그래프, 자동 해석 초안,
 피크 정보, 결정상(Phase) 정보를 한 HTML 보고서로 출력한다.
 
 ================================ 실행 방법 ================================
@@ -73,7 +73,7 @@ import re
 import sys
 import zipfile
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 import xml.etree.ElementTree as ET
 
 import pdfplumber
@@ -594,7 +594,7 @@ def _phase_groups(groups) -> dict[str, list[dict[str, Any]]]:
     return grouped
 
 
-def build_llm_comment_html(sample_name: str, groups, warnings: list[str]) -> str:
+def build_auto_interpretation_html(sample_name: str, groups, warnings: list[str]) -> str:
     """XRD LLM 슬롯이 붙기 전에도 쓸 수 있는 규칙 기반 코멘트 초안."""
     grouped = _phase_groups(groups)
     major = grouped.get("major", [])
@@ -647,6 +647,184 @@ def build_llm_comment_html(sample_name: str, groups, warnings: list[str]) -> str
             + "<br>".join(_esc(warning) for warning in warnings)
         )
     return "\n".join(f"<p>{paragraph}</p>" for paragraph in paragraphs)
+
+
+build_llm_comment_html = build_auto_interpretation_html
+
+
+def _round_float(value: Any, digits: int = 3) -> float | None:
+    try:
+        return round(float(value), digits)
+    except (TypeError, ValueError):
+        return None
+
+
+def detect_raw_pattern_peaks(
+    rx: list[float],
+    ry: list[float],
+    *,
+    max_items: int = 12,
+) -> list[dict[str, Any]]:
+    if len(rx) < 3 or len(ry) < 3:
+        return []
+    y_min = min(ry)
+    y_max = max(ry)
+    span = max(y_max - y_min, 1e-9)
+    threshold = y_min + span * 0.05
+    candidates = []
+    for idx in range(1, min(len(rx), len(ry)) - 1):
+        y_value = ry[idx]
+        if y_value <= threshold:
+            continue
+        if y_value >= ry[idx - 1] and y_value >= ry[idx + 1]:
+            candidates.append(
+                {
+                    "two_theta": rx[idx],
+                    "intensity": y_value,
+                    "relative_intensity": (y_value - y_min) / span * 100.0,
+                }
+            )
+    candidates.sort(key=lambda item: item["intensity"], reverse=True)
+    selected: list[dict[str, Any]] = []
+    for item in candidates:
+        theta = float(item["two_theta"])
+        if any(abs(theta - float(prev["two_theta"])) < 0.18 for prev in selected):
+            continue
+        selected.append(
+            {
+                "two_theta": _round_float(item["two_theta"]),
+                "intensity": _round_float(item["intensity"]),
+                "relative_intensity": _round_float(item["relative_intensity"], 1),
+            }
+        )
+        if len(selected) >= max_items:
+            break
+    selected.sort(key=lambda item: float(item["two_theta"] or 0))
+    return selected
+
+
+def _raw_pattern_context(
+    *,
+    raw_stem: str,
+    raw_txt: str,
+    rx: list[float],
+    ry: list[float],
+    raw_max: float,
+) -> dict[str, Any]:
+    return {
+        "sample": raw_stem,
+        "source_file": os.path.basename(raw_txt),
+        "point_count": len(rx),
+        "two_theta_range": [
+            _round_float(min(rx)) if rx else None,
+            _round_float(max(rx)) if rx else None,
+        ],
+        "max_intensity": _round_float(raw_max),
+        "detected_raw_peaks": detect_raw_pattern_peaks(rx, ry),
+    }
+
+
+def _peak_context(peaks: list[dict[str, Any]], *, max_items: int = 6) -> list[dict[str, Any]]:
+    ranked = sorted(
+        peaks,
+        key=lambda peak: float(peak.get("norm") or 0),
+        reverse=True,
+    )
+    return [
+        {
+            "no": peak.get("no"),
+            "two_theta": _round_float(peak.get("two_theta")),
+            "d_value": peak.get("d"),
+            "norm_i": _round_float(peak.get("norm"), 1),
+            "hkl": peak.get("hkl"),
+        }
+        for peak in ranked[:max_items]
+    ]
+
+
+def _phase_candidate_context(groups) -> dict[str, list[dict[str, Any]]]:
+    grouped: dict[str, list[dict[str, Any]]] = {key: [] for key in PHASE_GROUPS}
+    for raw_stem, _raw_color, items in groups:
+        for item in items:
+            metadata = item["metadata"]
+            match = item["match"]
+            candidate = {
+                "sample": raw_stem,
+                "label": item["label"],
+                "category": item["category"],
+                "phase_name": metadata.get("phase_name") or "",
+                "formula": _compact_formula(metadata.get("formula") or ""),
+                "card_no": metadata.get("card_no") or "",
+                "quality_mark": metadata.get("quality_mark") or "",
+                "crystal_system": metadata.get("crystal_system") or "",
+                "space_group": metadata.get("space_group") or "",
+                "two_theta_range": metadata.get("two_theta_range") or "",
+                "match_score": _round_float(match.get("score"), 1),
+                "matched_count": match.get("matched_count"),
+                "important_count": match.get("important_count"),
+                "top_icdd_peaks": _peak_context(item["peaks"], max_items=5),
+                "matched_icdd_peaks": _peak_context(
+                    match.get("matched_peaks") or [],
+                    max_items=5,
+                ),
+                "source_pdf": os.path.basename(str(item.get("source_pdf") or "")),
+            }
+            grouped.setdefault(item["category"], []).append(candidate)
+    for items in grouped.values():
+        items.sort(
+            key=lambda item: float(item.get("match_score") or 0),
+            reverse=True,
+        )
+    return grouped
+
+
+def _table_context(path: str) -> dict[str, Any]:
+    preview = read_table_preview(path)
+    rows = preview.get("rows") or []
+    return {
+        "file": Path(path).name,
+        "row_count_previewed": len(rows),
+        "column_count_previewed": max((len(row) for row in rows), default=0),
+        "headers": rows[0][:8] if rows else [],
+        "preview_rows": rows[1:6] if len(rows) > 1 else [],
+        "error": preview.get("error") or "",
+    }
+
+
+def build_xrd_llm_context(
+    *,
+    sample_name: str,
+    raw_patterns: list[dict[str, Any]],
+    groups,
+    warnings: list[str],
+    table_files: list[str] | None,
+    image_files: list[str] | None,
+    origin: bool,
+) -> dict[str, Any]:
+    candidates = _phase_candidate_context(groups)
+    return {
+        "experiment": "XRD",
+        "sample_name": sample_name,
+        "display": {
+            "origin_style": origin,
+            "x_axis": "2θ (°)",
+            "y_axis": "Intensity (cps)",
+        },
+        "raw_patterns": raw_patterns,
+        "icdd_candidates": candidates,
+        "phase_category_counts": {
+            key: len(value)
+            for key, value in candidates.items()
+        },
+        "supporting_files": {
+            "tables": [_table_context(path) for path in (table_files or [])[:4]],
+            "images": [
+                {"file": Path(path).name, "type": Path(path).suffix.lower().lstrip(".")}
+                for path in (image_files or [])[:8]
+            ],
+        },
+        "warnings": warnings,
+    }
 
 
 def _table_preview_html(table: dict[str, Any]) -> str:
@@ -972,6 +1150,8 @@ def build_report_html(
     first_stem: str,
     raw_line_indices: list[int],
     highlight_groups: dict[int, list[int]],
+    comment_html: str | None = None,
+    comment_note: str | None = None,
 ) -> str:
     plot_html = fig_to_responsive_html(
         fig,
@@ -991,7 +1171,11 @@ def build_report_html(
     )
     plot_body = _html_body_inner(plot_html)
     warning_html = "".join(f'<div class="xrd-warning">{_esc(w)}</div>' for w in warnings)
-    comments = build_llm_comment_html(sample_name, groups, warnings)
+    comments = comment_html or build_auto_interpretation_html(sample_name, groups, warnings)
+    comment_note_text = (
+        comment_note
+        or "raw 피크, ICDD 후보상, 첨부 표/이미지 정보를 기준으로 작성한 자동 해석 초안입니다."
+    )
     image_info = build_image_display_html(image_files or [])
     peak_info = build_peak_info_html(groups, table_files or [])
     phase_info = build_phase_info_html(groups)
@@ -1021,8 +1205,8 @@ def build_report_html(
     {image_info}
     <section class="xrd-report-section" id="xrd-llm-comment">
       <div class="xrd-section-head">
-        <h2>특이사항 / LLM 코멘트 영역</h2>
-        <p>주요상, 유사/불확실상, 미량상 후보를 기준으로 자동 작성한 초안입니다.</p>
+        <h2>특이사항 / 자동 해석 초안</h2>
+        <p>{_esc(comment_note_text)}</p>
       </div>
       {warning_html}
       <div class="xrd-comment-box">{comments}</div>
@@ -1238,6 +1422,7 @@ def build_xrd_html(
     image_files: list[str] | None = None,
     origin: bool = False,
     plot_only: bool = False,
+    comment_provider: Callable[[dict[str, Any]], dict[str, str] | None] | None = None,
 ) -> dict[str, Any]:
     """raw/PDF 입력 쌍에서 XRD Plotly HTML을 생성한다.
 
@@ -1255,6 +1440,7 @@ def build_xrd_html(
     group_map = {}
     groups_for_tables = []
     summary = []
+    raw_patterns = []
     all_x = []
     warnings = []
 
@@ -1270,6 +1456,15 @@ def build_xrd_html(
 
         rx, ry = load_raw(raw_txt)
         raw_max = max(ry) if ry else 1.0
+        raw_patterns.append(
+            _raw_pattern_context(
+                raw_stem=raw_stem,
+                raw_txt=raw_txt,
+                rx=rx,
+                ry=ry,
+                raw_max=raw_max,
+            )
+        )
         all_x += rx
         idxs = []
 
@@ -1390,6 +1585,19 @@ def build_xrd_html(
 
     raw_line_indices = [idxs[0] for idxs in group_map.values() if idxs]
     highlight_groups = {idxs[0]: idxs for idxs in group_map.values() if idxs}
+    sample_name = first_stem if len(pairs) == 1 else ", ".join(raw_stems)
+    llm_context = build_xrd_llm_context(
+        sample_name=sample_name,
+        raw_patterns=raw_patterns,
+        groups=groups_for_tables,
+        warnings=warnings,
+        table_files=table_files or [],
+        image_files=image_files or [],
+        origin=origin,
+    )
+    comment_result: dict[str, str] | None = None
+    if comment_provider is not None and not plot_only:
+        comment_result = comment_provider(llm_context)
     if plot_only:
         tables_html = build_tables_html(groups_for_tables)
         group_toggle_js = build_group_toggle_js("xrd-plot", group_map)
@@ -1413,7 +1621,7 @@ def build_xrd_html(
     else:
         html_text = build_report_html(
             fig,
-            sample_name=first_stem if len(pairs) == 1 else ", ".join(raw_stems),
+            sample_name=sample_name,
             groups=groups_for_tables,
             group_map=group_map,
             warnings=warnings,
@@ -1423,6 +1631,8 @@ def build_xrd_html(
             first_stem=first_stem,
             raw_line_indices=raw_line_indices,
             highlight_groups=highlight_groups,
+            comment_html=(comment_result or {}).get("html"),
+            comment_note=(comment_result or {}).get("note"),
         )
 
     return {
@@ -1431,6 +1641,8 @@ def build_xrd_html(
         "warnings": warnings,
         "first_stem": first_stem,
         "raw_stems": raw_stems,
+        "llm_context": llm_context,
+        "llm_comment_used": bool(comment_result),
     }
 
 

@@ -2,7 +2,14 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
-from app.xrd_web import _build_xrd_example_html, build_xrd_page, create_xrd_preview_app
+from app.xrd_web import (
+    _build_xrd_example_html,
+    _write_synthetic_icdd_pdf_dir,
+    _write_synthetic_xrd_raw,
+    build_xrd_page,
+    create_xrd_preview_app,
+)
+from lim.xrd_plot import build_xrd_html
 
 
 def test_xrd_workspace_contains_upload_controls() -> None:
@@ -120,3 +127,28 @@ def test_xrd_example_falls_back_when_sample_files_are_absent(tmp_path) -> None:
     assert "결정상(Phase) 정보" in html
     assert "피크 정보" in html
     assert "PDF 파일을 찾지 못했습니다" not in html
+
+
+def test_xrd_report_can_use_llm_comment_provider(tmp_path) -> None:
+    raw_path = tmp_path / "synthetic-xrd.txt"
+    pdf_dir = tmp_path / "pdf"
+    _write_synthetic_xrd_raw(raw_path)
+    _write_synthetic_icdd_pdf_dir(pdf_dir)
+    captured = {}
+
+    def provider(context):
+        captured.update(context)
+        return {
+            "html": "<p><strong>요약</strong><br>LLM XRD 해석 초안</p>",
+            "note": "LLM 연결 확인",
+        }
+
+    result = build_xrd_html([(str(raw_path), str(pdf_dir))], comment_provider=provider)
+
+    assert result["llm_comment_used"] is True
+    assert "LLM XRD 해석 초안" in result["html"]
+    assert "LLM 연결 확인" in result["html"]
+    assert captured["experiment"] == "XRD"
+    assert captured["raw_patterns"][0]["detected_raw_peaks"]
+    assert captured["icdd_candidates"]["major"]
+    assert captured["supporting_files"] == {"tables": [], "images": []}

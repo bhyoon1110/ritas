@@ -24,7 +24,8 @@ python -m lim.xrd.cli "lim/data/raw.txt" "lim/data/ICDD Card" --origin -o result
 - `[샘플명] Report`
 - 그래프 영역: raw XRD 패턴과 ICDD Card 피크 overlay
 - 그래프/상매칭 보조 이미지: 입력 bundle의 이미지 파일 표시
-- 특이사항 / LLM 코멘트 영역: 주요상, 유사/불확실상, 미량상 후보 자동 코멘트
+- 특이사항 / 자동 해석 초안: raw 피크, ICDD 후보상, 첨부 표/이미지 정보를
+  기준으로 작성한 자동 해석 초안
 - 피크 정보: 입력 Excel/CSV 표와 PDF 카드에서 추출한 피크 표
 - 결정상(Phase) 정보: PDF/DB 카드 메타데이터와 Norm. I. 상위 피크
 
@@ -56,6 +57,8 @@ ICDD Card PDF, Excel/CSV/TSV, 이미지 파일을 한 번에 업로드하면 서
 확장자로 자동 분류하고 같은 XRD 렌더러로 보고서형 HTML을 생성해 화면에서
 바로 확인할 수 있다. Chrome 계열 브라우저에서는 하나의 `XRD 번들 추가`
 영역에 파일과 폴더를 함께 드래그하거나 bundle 폴더를 선택할 수 있다.
+Edge API 통합 서버에서 실행하면 이 자동 해석 초안은 설정된 로컬 LLM을
+우선 사용하고, LLM 호출 실패 시 규칙 기반 초안으로 대체된다.
 
 ```text
 http://127.0.0.1:8010/xrd

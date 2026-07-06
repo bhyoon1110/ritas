@@ -1,14 +1,17 @@
 from __future__ import annotations
 
+import html
 import math
 import os
 import re
 import tempfile
 from pathlib import Path
+from typing import Any
 
-from fastapi import APIRouter, FastAPI, File, Form, UploadFile
+from fastapi import APIRouter, FastAPI, File, Form, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse
+from rist_common import get_logger
 
 from .path_bootstrap import add_project_package_paths
 
@@ -22,8 +25,13 @@ from lim.xrd_plot import (
 )
 
 from .errors import ApiException, api_exception_handler, validation_exception_handler
+from .config import Settings
+from .llm_client import LlmError, LocalLlmClient
+from .report import annotator
+from .report.builders import LlmSlotSpec
 
 router = APIRouter()
+logger = get_logger(__name__)
 
 RAW_EXTENSIONS = {".txt", ".dat", ".xy", ".asc"}
 PDF_EXTENSIONS = {".pdf"}
@@ -31,6 +39,22 @@ SUPPORTED_BUNDLE_EXTENSIONS = (
     RAW_EXTENSIONS | PDF_EXTENSIONS | TABLE_EXTENSIONS | IMAGE_EXTENSIONS
 )
 MAX_XRD_UPLOAD_BYTES = 80 * 1024 * 1024
+
+_XRD_LLM_SYSTEM_PROMPT = (
+    "당신은 XRD 분석 보고서 작성 보조자입니다.\n"
+    "제공된 구조화 JSON만 근거로 한국어 문안을 작성하세요. "
+    "제공되지 않은 물질명, 결정상, 원인, 수치를 추측하지 마세요.\n"
+    "ICDD 후보상은 확정 동정이 아니라 후보 소견으로 표현하세요.\n"
+    "major/uncertain/minor 분류, raw 피크, ICDD 피크 대응, 첨부 표/이미지 정보를 함께 고려하세요.\n"
+    "수식은 LaTeX/Markdown 수식 문법을 쓰지 말고 일반 텍스트로 쓰세요.\n"
+    "출력은 반드시 JSON 객체 하나로만 작성하고, 키는 "
+    "summary/key_findings/interpretation/qc_notes/caption 입니다.\n"
+    "- summary: 고객 보고서용 요약 3문장 이내\n"
+    "- key_findings: 핵심 근거 3~5개, 줄바꿈으로 구분\n"
+    "- interpretation: 주요상/유사상/미량상 후보를 종합한 해석 4문장 이내\n"
+    "- qc_notes: 해석 한계와 추가 검토사항 2~4개, 줄바꿈으로 구분\n"
+    "- caption: 그래프/보고서용 한 문장 캡션"
+)
 
 
 def _safe_name(filename: str | None, fallback: str) -> str:
@@ -48,6 +72,139 @@ def _unique_path(directory: Path, filename: str) -> Path:
         candidate = directory / f"{stem}_{index}{suffix}"
         index += 1
     return candidate
+
+
+def _request_settings(request: Request) -> Settings | None:
+    settings = getattr(request.app.state, "settings", None)
+    return settings if isinstance(settings, Settings) else None
+
+
+def _html_lines(value: str) -> str:
+    lines = [html.escape(line.strip()) for line in str(value or "").splitlines() if line.strip()]
+    return "<br>".join(lines)
+
+
+def _xrd_llm_comment_html(slots: dict[str, str]) -> str:
+    labels = [
+        ("summary", "요약"),
+        ("key_findings", "핵심 근거"),
+        ("interpretation", "해석"),
+        ("qc_notes", "해석 한계 및 검토사항"),
+        ("caption", "캡션"),
+    ]
+    blocks = []
+    for key, title in labels:
+        text = slots.get(key, "").strip()
+        if not text:
+            continue
+        blocks.append(f"<p><strong>{html.escape(title)}</strong><br>{_html_lines(text)}</p>")
+    return "\n".join(blocks)
+
+
+def _xrd_llm_fallback(context: dict[str, Any]) -> dict[str, str]:
+    counts = context.get("phase_category_counts") if isinstance(context.get("phase_category_counts"), dict) else {}
+    sample_name = str(context.get("sample_name") or "XRD 시료")
+    raw_patterns = context.get("raw_patterns") if isinstance(context.get("raw_patterns"), list) else []
+    raw_peak_count = sum(
+        len(item.get("detected_raw_peaks") or [])
+        for item in raw_patterns
+        if isinstance(item, dict)
+    )
+    major = int(counts.get("major") or 0)
+    uncertain = int(counts.get("uncertain") or 0)
+    minor = int(counts.get("minor") or 0)
+    return {
+        "summary": (
+            f"{sample_name}의 XRD 패턴에서 raw 피크 {raw_peak_count}개와 "
+            f"ICDD 후보상 major {major}건, uncertain {uncertain}건, minor {minor}건이 정리되었습니다. "
+            "해당 결과는 자동 후보 분류이므로 최종 동정은 원소 성분과 원자료 확인을 함께 검토해야 합니다."
+        ),
+        "key_findings": (
+            f"raw 패턴 수: {len(raw_patterns)}개\n"
+            f"major 후보상: {major}건\n"
+            f"uncertain 후보상: {uncertain}건\n"
+            f"minor 후보상: {minor}건"
+        ),
+        "interpretation": (
+            "현재 raw 피크와 ICDD 카드 피크의 위치 대응을 기준으로 후보상을 분류했습니다. "
+            "major 후보는 우선 검토 대상이며, uncertain/minor 후보는 유사상 또는 미량상 가능성으로 해석해야 합니다."
+        ),
+        "qc_notes": (
+            "ICDD 후보상은 XRD 피크 위치 기반의 자동 분류 결과입니다.\n"
+            "유사 결정상 구분과 미량상 판단에는 원소 분석, 시료 이력, 반복 측정 결과가 필요할 수 있습니다."
+        ),
+        "caption": f"{sample_name} XRD raw 패턴과 ICDD 후보상 자동 해석 초안",
+    }
+
+
+def _generate_xrd_llm_comment(
+    settings: Settings,
+    context: dict[str, Any],
+    *,
+    processed_dir: Path,
+    logs_dir: Path,
+) -> dict[str, str] | None:
+    spec = LlmSlotSpec(
+        system_prompt=_XRD_LLM_SYSTEM_PROMPT,
+        facts=context,
+        requested_slots=[
+            "summary",
+            "key_findings",
+            "interpretation",
+            "qc_notes",
+            "caption",
+        ],
+        fallback=_xrd_llm_fallback(context),
+    )
+    try:
+        with LocalLlmClient(
+            settings.llm_base_url,
+            settings.llm_model,
+            settings.llm_timeout_seconds,
+            settings.llm_temperature,
+            settings.llm_max_tokens,
+            settings.llm_validate_model,
+        ) as llm_client:
+            slots = annotator.annotate(
+                settings,
+                llm_client,
+                spec,
+                processed_dir=processed_dir,
+                logs_dir=logs_dir,
+            )
+    except LlmError as exc:
+        logger.warning(
+            "XRD LLM 자동 해석 실패 (code=%s) - 규칙 기반 초안 사용",
+            exc.code,
+        )
+        return None
+    comment_html = _xrd_llm_comment_html({**spec.fallback, **slots})
+    if not comment_html:
+        return None
+    return {
+        "html": comment_html,
+        "note": "LLM이 raw 피크, ICDD 후보상, 첨부 표/이미지 JSON을 근거로 작성한 자동 해석 초안입니다.",
+    }
+
+
+def _xrd_comment_provider(
+    settings: Settings | None,
+    *,
+    processed_dir: Path,
+    logs_dir: Path,
+):
+    if settings is None:
+        return None
+
+    def provider(context: dict[str, Any]) -> dict[str, str] | None:
+        return _generate_xrd_llm_comment(
+            settings,
+            context,
+            processed_dir=processed_dir,
+            logs_dir=logs_dir,
+        )
+
+    return provider
 
 
 async def _save_uploads(
@@ -632,6 +789,7 @@ def xrd_page() -> HTMLResponse:
 
 @router.post("/api/v1/xrd/analyze", response_class=HTMLResponse, tags=["xrd"])
 async def analyze_xrd(
+    request: Request,
     files: list[UploadFile] | None = File(default=None, alias="files"),
     raw_files: list[UploadFile] | None = File(default=None, alias="rawFiles"),
     pdf_files: list[UploadFile] | None = File(default=None, alias="pdfFiles"),
@@ -686,6 +844,11 @@ async def analyze_xrd(
             table_files=table_paths,
             image_files=image_paths,
             origin=origin,
+            comment_provider=_xrd_comment_provider(
+                _request_settings(request),
+                processed_dir=root / "images",
+                logs_dir=root / "logs",
+            ),
         )
     return HTMLResponse(result["html"])
 
@@ -812,15 +975,32 @@ def _xrd_example_candidates(repo_root: Path) -> list[tuple[Path, Path]]:
     ]
 
 
-def _build_xrd_example_html(repo_root: Path) -> str:
+def _build_xrd_example_html(repo_root: Path, *, settings: Settings | None = None) -> str:
     for raw_path, pdf_dir in _xrd_example_candidates(repo_root):
         if raw_path.is_file() and pdf_dir.is_dir():
-            return build_xrd_html([(str(raw_path), str(pdf_dir))])["html"]
+            with tempfile.TemporaryDirectory(prefix="rist-xrd-example-") as tmp:
+                root = Path(tmp)
+                return build_xrd_html(
+                    [(str(raw_path), str(pdf_dir))],
+                    comment_provider=_xrd_comment_provider(
+                        settings,
+                        processed_dir=root / "images",
+                        logs_dir=root / "logs",
+                    ),
+                )["html"]
         if raw_path.is_file():
             with tempfile.TemporaryDirectory(prefix="rist-xrd-example-") as tmp:
-                synthetic_pdf_dir = Path(tmp) / "pdf"
+                root = Path(tmp)
+                synthetic_pdf_dir = root / "pdf"
                 _write_synthetic_icdd_pdf_dir(synthetic_pdf_dir)
-                return build_xrd_html([(str(raw_path), str(synthetic_pdf_dir))])["html"]
+                return build_xrd_html(
+                    [(str(raw_path), str(synthetic_pdf_dir))],
+                    comment_provider=_xrd_comment_provider(
+                        settings,
+                        processed_dir=root / "images",
+                        logs_dir=root / "logs",
+                    ),
+                )["html"]
 
     with tempfile.TemporaryDirectory(prefix="rist-xrd-example-") as tmp:
         root = Path(tmp)
@@ -828,13 +1008,22 @@ def _build_xrd_example_html(repo_root: Path) -> str:
         pdf_dir = root / "pdf"
         _write_synthetic_xrd_raw(raw_path)
         _write_synthetic_icdd_pdf_dir(pdf_dir)
-        return build_xrd_html([(str(raw_path), str(pdf_dir))])["html"]
+        return build_xrd_html(
+            [(str(raw_path), str(pdf_dir))],
+            comment_provider=_xrd_comment_provider(
+                settings,
+                processed_dir=root / "images",
+                logs_dir=root / "logs",
+            ),
+        )["html"]
 
 
 @router.get("/api/v1/xrd/example", response_class=HTMLResponse, tags=["xrd"])
-def xrd_example() -> HTMLResponse:
+def xrd_example(request: Request) -> HTMLResponse:
     repo_root = Path(__file__).resolve().parents[2]
-    return HTMLResponse(_build_xrd_example_html(repo_root))
+    return HTMLResponse(
+        _build_xrd_example_html(repo_root, settings=_request_settings(request))
+    )
 
 
 def create_xrd_preview_app() -> FastAPI:
