@@ -370,6 +370,7 @@ def build_xrd_legend_checkbox_js(div_id: str) -> str:
 (function() {{
   var gd = document.getElementById("{div_id}");
   if (!gd) return;
+  var SVG_NS = "http://www.w3.org/2000/svg";
   function legendTraceIndexes() {{
     var fd = gd._fullData || gd.data || [];
     var result = [];
@@ -381,26 +382,78 @@ def build_xrd_legend_checkbox_js(div_id: str) -> str:
     return result;
   }}
   function stripBox(text) {{
-    return String(text || "").replace(/^[☑☐]\\s*/, "");
+    return String(text || "").replace(/^[☑☐□✓]\\s*/, "");
+  }}
+  function svg(tag) {{
+    return document.createElementNS(SVG_NS, tag);
+  }}
+  function ensureCheckbox(row) {{
+    var mark = row.querySelector(".rist-xrd-legend-checkbox");
+    if (!mark) {{
+      mark = svg("g");
+      mark.setAttribute("class", "rist-xrd-legend-checkbox");
+      var rect = svg("rect");
+      rect.setAttribute("width", "12");
+      rect.setAttribute("height", "12");
+      rect.setAttribute("rx", "2");
+      rect.setAttribute("ry", "2");
+      rect.setAttribute("stroke-width", "1.5");
+      var path = svg("path");
+      path.setAttribute("d", "M3 6.2l2.1 2.1L9.4 3.6");
+      path.setAttribute("fill", "none");
+      path.setAttribute("stroke", "#ffffff");
+      path.setAttribute("stroke-width", "1.8");
+      path.setAttribute("stroke-linecap", "round");
+      path.setAttribute("stroke-linejoin", "round");
+      mark.appendChild(rect);
+      mark.appendChild(path);
+      row.insertBefore(mark, row.firstChild);
+    }}
+    return mark;
+  }}
+  function removeCheckbox(row) {{
+    var mark = row.querySelector(".rist-xrd-legend-checkbox");
+    if (mark && mark.parentNode) mark.parentNode.removeChild(mark);
+  }}
+  function placeCheckbox(mark, textNode) {{
+    var tx = Number(textNode.getAttribute("x") || 40);
+    var ty = Number(textNode.getAttribute("y") || 0);
+    mark.setAttribute("transform", "translate(" + (tx - 18) + "," + (ty - 10) + ")");
+  }}
+  function paintCheckbox(mark, visible) {{
+    var rect = mark.querySelector("rect");
+    var path = mark.querySelector("path");
+    rect.setAttribute("fill", visible ? "#2563eb" : "#ffffff");
+    rect.setAttribute("stroke", visible ? "#2563eb" : "#94a3b8");
+    path.style.display = visible ? "block" : "none";
   }}
   function refreshLegendCheckboxes() {{
-    var texts = Array.prototype.slice.call(
-      gd.querySelectorAll("g.legend g.traces text.legendtext")
-    );
+    var rows = Array.prototype.slice.call(gd.querySelectorAll("g.legend g.traces"));
     var idxs = legendTraceIndexes();
-    texts.forEach(function(node, pos) {{
+    rows.forEach(function(row, pos) {{
+      var node = row.querySelector("text.legendtext");
+      if (!node) return;
       var curve = idxs[pos];
       var tr = (gd.data || [])[curve] || (gd._fullData || [])[curve] || {{}};
       var meta = tr.meta || {{}};
       var base = stripBox(tr.name || node.textContent);
       if (meta.xrd_separator) {{
+        removeCheckbox(row);
         node.textContent = base;
         node.style.fill = "#94a3b8";
         node.style.fontSize = "11px";
+        node.style.opacity = "1";
+        node.style.textDecoration = "none";
         return;
       }}
       var visible = tr.visible !== false && tr.visible !== "legendonly";
-      node.textContent = (visible ? "☑ " : "☐ ") + base;
+      var mark = ensureCheckbox(row);
+      placeCheckbox(mark, node);
+      paintCheckbox(mark, visible);
+      node.textContent = base;
+      node.style.fill = visible ? "#1f2937" : "#94a3b8";
+      node.style.opacity = visible ? "1" : "0.66";
+      node.style.textDecoration = visible ? "none" : "line-through";
     }});
   }}
   function schedule() {{ setTimeout(refreshLegendCheckboxes, 0); }}

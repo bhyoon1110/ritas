@@ -151,8 +151,9 @@ def test_xrd_report_can_use_llm_comment_provider(tmp_path) -> None:
     assert "#d62728" in result["html"]
     assert '"width":2.2' in result["html"]
     assert "autoScale2d" in result["html"]
-    assert "☑ " in result["html"]
-    assert "☐ " in result["html"]
+    assert "rist-xrd-legend-checkbox" in result["html"]
+    assert 'rect.setAttribute("fill", visible ? "#2563eb" : "#ffffff")' in result["html"]
+    assert 'node.style.textDecoration = visible ? "none" : "line-through"' in result["html"]
     assert "Synthetic Anatase Example / TiO2" in result["html"]
     assert captured["experiment"] == "XRD"
     assert captured["raw_patterns"][0]["detected_raw_peaks"]

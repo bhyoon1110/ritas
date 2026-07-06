@@ -150,6 +150,8 @@ def _crosshair_js(div_id: str) -> str:
   var gd = document.getElementById("{div_id}");
   if (!gd) return;
   var SNAP_PX = 24;   // 이 픽셀 거리 이내면 데이터 점에 스냅
+  var HIDE_MS = 1600;
+  var hideTimer = null;
   var box = document.createElement("div");
   box.style.cssText = "position:absolute;z-index:9;"
     + "background:rgba(255,255,255,0.88);border:1px solid #bbb;border-radius:4px;"
@@ -183,6 +185,18 @@ def _crosshair_js(div_id: str) -> str:
   gd.appendChild(box);
   gd.appendChild(dot);
 
+  function clearHideTimer() {{
+    if (hideTimer) {{
+      window.clearTimeout(hideTimer);
+      hideTimer = null;
+    }}
+  }}
+
+  function scheduleHide() {{
+    clearHideTimer();
+    hideTimer = window.setTimeout(hide, HIDE_MS);
+  }}
+
   // 화면 좌표(clientX, clientY)에서 tol 픽셀 이내 가장 가까운 트레이스 인덱스 반환(없으면 -1)
   gd._nearestCurveAt = function(clientX, clientY, tol) {{
     var fl = gd._fullLayout;
@@ -213,6 +227,7 @@ def _crosshair_js(div_id: str) -> str:
   }};
 
   function hide() {{
+    clearHideTimer();
     box.style.display = "none";
     dot.style.display = "none";
     gd._snapCurve = -1;
@@ -277,7 +292,14 @@ def _crosshair_js(div_id: str) -> str:
     if (by + box.offsetHeight > gd.clientHeight) by = anchorY - box.offsetHeight - 14;
     box.style.left = bx + "px";
     box.style.top = by + "px";
+    scheduleHide();
   }});
+  gd.addEventListener("pointerdown", function(e) {{
+    if (e.target && e.target.closest && e.target.closest(".modebar,.legend")) return;
+    hide();
+  }}, true);
+  gd.addEventListener("click", function() {{ hide(); }}, true);
+  if (gd.on) gd.on("plotly_click", hide);
   gd.addEventListener("mouseleave", hide);
 }})();
 </script>

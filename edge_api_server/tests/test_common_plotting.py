@@ -550,6 +550,10 @@ def test_peak_editor_prefers_nearest_local_maximum_by_x(tmp_path) -> None:
 
     html = output.read_text(encoding="utf-8")
     assert "gd._snapPoint = { x: best.x, y: best.y, curve: best.tt }" in html
+    assert "var HIDE_MS = 1600" in html
+    assert "hideTimer = window.setTimeout(hide, HIDE_MS)" in html
+    assert 'gd.addEventListener("pointerdown", function(e)' in html
+    assert 'if (gd.on) gd.on("plotly_click", hide)' in html
     assert "if (y < prev || y < next) continue" in html
     assert "var d = Math.abs(x - curX)" in html
     assert "localMaximum: true" in html
