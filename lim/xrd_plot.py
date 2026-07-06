@@ -1267,6 +1267,18 @@ def build_xrd_tool_drawer_js(div_id: str) -> str:
   gap: 8px;
   align-items: center;
 }
+#__DIV_ID__ .xrd-tool-panel-body .rist-history-controls {
+  order: 10 !important;
+}
+#__DIV_ID__ .xrd-tool-panel-body .rist-legend-bulk-controls {
+  order: 20 !important;
+}
+#__DIV_ID__ .xrd-tool-panel-body .rist-legend-edit-button {
+  order: 30 !important;
+}
+#__DIV_ID__ .xrd-tool-panel-body .xrd-phase-group-button {
+  order: 40 !important;
+}
 #__DIV_ID__ .xrd-tool-panel-body .rist-legend-edit-button,
 #__DIV_ID__ .xrd-tool-panel-body .xrd-phase-group-button {
   margin: 0;
@@ -1334,14 +1346,35 @@ def build_xrd_tool_drawer_js(div_id: str) -> str:
       body.appendChild(node);
     }
 
+    function controlRank(node) {
+      if (!node || !node.matches) return 999;
+      if (node.matches(".rist-history-controls")) return 10;
+      if (node.matches(".rist-legend-bulk-controls")) return 20;
+      if (node.matches(".rist-legend-edit-button")) return 30;
+      if (node.matches(".xrd-phase-group-button")) return 40;
+      return 900;
+    }
+
+    function sortPanelItems() {
+      Array.prototype.slice.call(body.children)
+        .sort(function(a, b) {
+          return controlRank(a) - controlRank(b);
+        })
+        .forEach(function(node) {
+          body.appendChild(node);
+        });
+    }
+
     toolbar.appendChild(toggle);
     toolbar.appendChild(panel);
     existing.forEach(moveIntoPanel);
+    sortPanelItems();
 
     var observer = new MutationObserver(function(records) {
       records.forEach(function(record) {
         Array.prototype.slice.call(record.addedNodes).forEach(moveIntoPanel);
       });
+      sortPanelItems();
     });
     observer.observe(toolbar, { childList: true });
 
