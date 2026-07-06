@@ -405,10 +405,22 @@ def build_xrd_legend_checkbox_js(div_id: str) -> str:
     var mark = row.querySelector(".rist-xrd-legend-checkbox");
     if (mark && mark.parentNode) mark.parentNode.removeChild(mark);
   }}
-  function placeCheckbox(mark, textNode) {{
-    var tx = Number(textNode.getAttribute("x") || 40);
+  function baseTextX(row, textNode) {{
+    var stored = row.getAttribute("data-rist-xrd-legend-text-x");
+    if (stored != null) return Number(stored) || 40;
+    var current = Number(textNode.getAttribute("x") || 40);
+    row.setAttribute("data-rist-xrd-legend-text-x", String(current));
+    return current;
+  }}
+  function restoreTextX(row, textNode) {{
+    var tx = baseTextX(row, textNode);
+    textNode.setAttribute("x", String(tx));
+  }}
+  function placeCheckbox(mark, row, textNode) {{
+    var tx = baseTextX(row, textNode);
     var ty = Number(textNode.getAttribute("y") || 0);
-    mark.setAttribute("transform", "translate(" + (tx - 18) + "," + (ty - 10) + ")");
+    textNode.setAttribute("x", String(tx + 18));
+    mark.setAttribute("transform", "translate(" + (tx + 2) + "," + (ty - 10) + ")");
   }}
   function paintCheckbox(mark, visible) {{
     var rect = mark.querySelector("rect");
@@ -433,6 +445,7 @@ def build_xrd_legend_checkbox_js(div_id: str) -> str:
       var base = stripBox(node.textContent || "");
       if (base.trim().indexOf("────────") === 0) {{
         removeCheckbox(row);
+        restoreTextX(row, node);
         node.textContent = base;
         node.style.fill = "#94a3b8";
         node.style.fontSize = "11px";
@@ -441,7 +454,7 @@ def build_xrd_legend_checkbox_js(div_id: str) -> str:
         return;
       }}
       var mark = ensureCheckbox(row);
-      placeCheckbox(mark, node);
+      placeCheckbox(mark, row, node);
       paintCheckbox(mark, rowVisible(row));
       node.textContent = base;
     }});
@@ -1818,6 +1831,7 @@ def build_report_html(
         div_id="xrd-plot",
         origin=origin,
         legend_breakpoint_px=LEGEND_BREAKPOINT_PX,
+        wide_legend_inside=False,
         crosshair=True,
         title_edit=True,
         legend_text_edit=True,
@@ -2269,6 +2283,7 @@ def build_xrd_html(
             div_id="xrd-plot",
             origin=origin,
             legend_breakpoint_px=LEGEND_BREAKPOINT_PX,
+            wide_legend_inside=False,
             crosshair=True,
             title_edit=True,
             legend_text_edit=True,
