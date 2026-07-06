@@ -371,63 +371,8 @@ def build_xrd_legend_checkbox_js(div_id: str) -> str:
   var gd = document.getElementById("{div_id}");
   if (!gd) return;
   var SVG_NS = "http://www.w3.org/2000/svg";
-  function legendTraceIndexes() {{
-    var fd = gd._fullData || gd.data || [];
-    var result = [];
-    for (var i = 0; i < fd.length; i++) {{
-      var tr = fd[i];
-      if (!tr || tr.showlegend === false) continue;
-      result.push(typeof tr.index === "number" ? tr.index : i);
-    }}
-    return result;
-  }}
   function stripBox(text) {{
     return String(text || "").replace(/^[☑☐□✓]\\s*/, "");
-  }}
-  function isOn(curve) {{
-    var tr = (gd.data || gd._fullData || [])[curve];
-    if (!tr) return false;
-    return tr.visible !== false && tr.visible !== "legendonly";
-  }}
-  function groupForName(name) {{
-    name = stripBox(name || "").trim();
-    if (!name) return null;
-    if (window.__xrdLegendGroups && window.__xrdLegendGroups[name]) {{
-      return window.__xrdLegendGroups[name];
-    }}
-    return null;
-  }}
-  function groupState(idxs) {{
-    if (!idxs || !idxs.length) return false;
-    var visibleCount = idxs.filter(isOn).length;
-    if (visibleCount <= 0) return false;
-    if (visibleCount >= idxs.length) return true;
-    return "partial";
-  }}
-  function mapLegendRows(rows, idxs) {{
-    var groupCounts = {{}};
-    rows.forEach(function(row) {{
-      var textNode = row.querySelector("text.legendtext");
-      var label = stripBox(textNode ? textNode.textContent : "").trim();
-      if (groupForName(label)) groupCounts[label] = (groupCounts[label] || 0) + 1;
-    }});
-    var groupSeen = {{}};
-    var tracePos = 0;
-    rows.forEach(function(row) {{
-      var node = row.querySelector("text.legendtext");
-      if (!node) return;
-      var d = row.__data__;
-      var rowMeta = Array.isArray(d) ? d[0] : d;
-      var isGroupTitle = rowMeta && rowMeta.groupTitle && typeof rowMeta.groupTitle === "object";
-      var currentLabel = stripBox(node.textContent || "").trim();
-      var rawGroup = groupForName(currentLabel);
-      var seen = rawGroup ? ((groupSeen[currentLabel] || 0) + 1) : 0;
-      if (rawGroup) groupSeen[currentLabel] = seen;
-      var titleLike = isGroupTitle || (rawGroup && groupCounts[currentLabel] > 1 && seen === 1);
-      row.__xrdCurve = titleLike ? null : idxs[tracePos++];
-      row.__xrdRawGroup = rawGroup;
-      row.__xrdIsGroupTitle = titleLike;
-    }});
   }}
   function svg(tag) {{
     return document.createElementNS(SVG_NS, tag);
@@ -468,46 +413,25 @@ def build_xrd_legend_checkbox_js(div_id: str) -> str:
   function paintCheckbox(mark, visible) {{
     var rect = mark.querySelector("rect");
     var path = mark.querySelector("path");
-    if (visible === "partial") {{
-      rect.setAttribute("fill", "#ffffff");
-      rect.setAttribute("stroke", "#f59e0b");
-      path.setAttribute("d", "M3 6h6");
-      path.setAttribute("stroke", "#f59e0b");
-      path.style.display = "block";
-      return;
-    }}
     rect.setAttribute("fill", visible ? "#2563eb" : "#ffffff");
     rect.setAttribute("stroke", visible ? "#2563eb" : "#94a3b8");
     path.setAttribute("d", "M3 6.2l2.1 2.1L9.4 3.6");
     path.setAttribute("stroke", "#ffffff");
     path.style.display = visible ? "block" : "none";
   }}
+  function rowVisible(row) {{
+    var opacity = row.style.opacity || row.getAttribute("opacity")
+      || window.getComputedStyle(row).opacity;
+    var value = Number(opacity);
+    return !Number.isFinite(value) || value >= 0.75;
+  }}
   function refreshLegendCheckboxes() {{
     var rows = Array.prototype.slice.call(gd.querySelectorAll("g.legend g.traces"));
-    var idxs = legendTraceIndexes();
-    mapLegendRows(rows, idxs);
     rows.forEach(function(row) {{
       var node = row.querySelector("text.legendtext");
       if (!node) return;
-      var currentLabel = stripBox(node.textContent || "").trim();
-      var rawGroup = row.__xrdRawGroup;
-      var curve = row.__xrdCurve;
-      var tr = (gd.data || gd._fullData || [])[curve] || {{}};
-      var meta = tr.meta || {{}};
-      var base = stripBox(tr.name || node.textContent);
-      if (rawGroup) {{
-        base = currentLabel;
-        var groupStateValue = groupState(rawGroup);
-        var groupMark = ensureCheckbox(row);
-        placeCheckbox(groupMark, node);
-        paintCheckbox(groupMark, groupStateValue);
-        node.textContent = base;
-        node.style.fill = groupStateValue ? "#111827" : "#94a3b8";
-        node.style.opacity = groupStateValue ? "1" : "0.66";
-        node.style.textDecoration = "none";
-        return;
-      }}
-      if (meta.xrd_separator) {{
+      var base = stripBox(node.textContent || "");
+      if (base.trim().indexOf("────────") === 0) {{
         removeCheckbox(row);
         node.textContent = base;
         node.style.fill = "#94a3b8";
@@ -516,14 +440,10 @@ def build_xrd_legend_checkbox_js(div_id: str) -> str:
         node.style.textDecoration = "none";
         return;
       }}
-      var visible = tr.visible !== false && tr.visible !== "legendonly";
       var mark = ensureCheckbox(row);
       placeCheckbox(mark, node);
-      paintCheckbox(mark, visible);
+      paintCheckbox(mark, rowVisible(row));
       node.textContent = base;
-      node.style.fill = visible ? "#1f2937" : "#94a3b8";
-      node.style.opacity = visible ? "1" : "0.66";
-      node.style.textDecoration = visible ? "none" : "line-through";
     }});
   }}
   function schedule() {{ setTimeout(refreshLegendCheckboxes, 0); }}
@@ -532,7 +452,6 @@ def build_xrd_legend_checkbox_js(div_id: str) -> str:
     gd.on("plotly_restyle", schedule);
     gd.on("plotly_relayout", schedule);
   }}
-  gd.addEventListener("rist-xrd-legend-groups-ready", schedule);
   schedule();
 }})();
 </script>
@@ -1441,8 +1360,7 @@ def build_report_html(
 
 
 def build_group_toggle_js(div_id: str, group_map: dict) -> str:
-    """범례 그룹 제목(최상위 raw 범주)을 클릭하면 그 그룹 전체를 한꺼번에
-    켜고/끄는 JS 스니펫. (개별 항목 토글은 Plotly 기본 동작이 담당)
+    """Plotly 기본 범례 토글 결과에 맞춰 하단 ICDD 표만 동기화한다.
 
     group_map: {raw_stem: [그 그룹에 속한 trace 인덱스, ...]}
     """
@@ -1453,55 +1371,8 @@ def build_group_toggle_js(div_id: str, group_map: dict) -> str:
   var gd = document.getElementById("{div_id}");
   if (!gd) return;
   var GROUPS = {gm};
-  window.__xrdLegendGroups = GROUPS;
-  function stripBox(text) {{
-    return String(text || "").replace(/^[☑☐□✓]\\s*/, "");
-  }}
-  function indicesFor(text) {{
-    text = stripBox(text || "").trim();
-    if (GROUPS[text]) return GROUPS[text];
-    var keys = Object.keys(GROUPS);
-    for (var i = 0; i < keys.length; i++) {{
-      if (keys[i].trim() === text) return GROUPS[keys[i]];
-    }}
-    return null;
-  }}
-  function groupForRawCurve(curve) {{
-    var keys = Object.keys(GROUPS);
-    for (var i = 0; i < keys.length; i++) {{
-      var idxs = GROUPS[keys[i]] || [];
-      if (idxs.length && idxs[0] === curve) return idxs;
-    }}
-    return null;
-  }}
-  function legendTraceIndexes() {{
-    var fd = gd._fullData || gd.data || [];
-    var result = [];
-    for (var i = 0; i < fd.length; i++) {{
-      var tr = fd[i];
-      if (!tr || tr.showlegend === false) continue;
-      result.push(typeof tr.index === "number" ? tr.index : i);
-    }}
-    return result;
-  }}
   function traces() {{
     return gd.data || gd._fullData || [];
-  }}
-  function toggleGroup(idxs) {{
-    if (!window.Plotly || !idxs || !idxs.length) return;
-    var data = traces();
-    var anyOn = idxs.some(function(i) {{
-      var trace = data[i] || {{}};
-      var v = trace.visible; return v === true || v === undefined;
-    }});
-    window.Plotly.restyle(gd, {{ "visible": anyOn ? "legendonly" : true }}, idxs);
-  }}
-  function toggleTrace(curve) {{
-    if (!window.Plotly || curve == null || curve < 0) return;
-    var trace = traces()[curve] || {{}};
-    if (trace.meta && trace.meta.xrd_separator) return;
-    var visible = trace.visible !== false && trace.visible !== "legendonly";
-    window.Plotly.restyle(gd, {{ "visible": visible ? "legendonly" : true }}, [curve]);
   }}
   function isOn(i) {{
     var trace = traces()[i] || {{}};
@@ -1527,7 +1398,7 @@ def build_group_toggle_js(div_id: str, group_map: dict) -> str:
     var titles = document.querySelectorAll("h3.xrd-raw[data-group]");
     titles.forEach(function(h) {{
       var key = h.getAttribute("data-group");
-      var idxs = indicesFor(key) || [];
+      var idxs = GROUPS[key] || [];
       var anyOn = idxs.some(function(i) {{
         var c = document.querySelector('.xrd-card[data-trace="' + i + '"]');
         return c && shown(i);
@@ -1535,92 +1406,11 @@ def build_group_toggle_js(div_id: str, group_map: dict) -> str:
       h.style.display = anyOn ? "" : "none";
     }});
   }}
-  function bind() {{
-    // 범례 행마다 실제 trace 번호를 저장해 raw/피크 클릭을 명확히 분리한다.
-    var items = gd.querySelectorAll("g.legend g.traces");
-    var rows = Array.prototype.slice.call(items);
-    var idxsForRows = legendTraceIndexes();
-    var groupCounts = {{}};
-    rows.forEach(function(it) {{
-      var tx = it.querySelector("text.legendtext");
-      var label = stripBox(tx ? tx.textContent : "").trim();
-      if (indicesFor(label)) groupCounts[label] = (groupCounts[label] || 0) + 1;
-    }});
-    var groupSeen = {{}};
-    var tracePos = 0;
-    items.forEach(function(it) {{
-      var tx = it.querySelector("text.legendtext");
-      var label = stripBox(tx ? tx.textContent : "").trim();
-      var d = it.__data__;
-      var meta = Array.isArray(d) ? d[0] : d;
-      var isGroupTitle = meta && meta.groupTitle && typeof meta.groupTitle === "object";
-      var group = indicesFor(label);
-      var seen = group ? ((groupSeen[label] || 0) + 1) : 0;
-      if (group) groupSeen[label] = seen;
-      var titleLike = isGroupTitle || (group && groupCounts[label] > 1 && seen === 1);
-      it.__xrdCurve = titleLike ? null : idxsForRows[tracePos++];
-      it.__xrdRawGroup = group;
-      it.__xrdIsGroupTitle = titleLike;
-      it.style.cursor = "pointer";
-    }});
-  }}
-  function bindRawLegendDomClick() {{
-    if (gd.__xrdRawLegendDomBound) return;
-    gd.__xrdRawLegendDomBound = true;
-    var lastHandledAt = 0;
-    function handleLegendPointer(ev) {{
-      var target = ev.target && ev.target.closest
-        ? ev.target.closest("g.legend g.traces")
-        : null;
-      if (!target) return;
-      bind();
-      var curve = target.__xrdCurve;
-      var group = target.__xrdRawGroup;
-      var rawGroup = target.__xrdIsGroupTitle ? group : groupForRawCurve(curve);
-      ev.preventDefault();
-      ev.stopPropagation();
-      if (ev.stopImmediatePropagation) ev.stopImmediatePropagation();
-      var now = Date.now();
-      if (now - lastHandledAt < 180) return;
-      lastHandledAt = now;
-      if (rawGroup) toggleGroup(rawGroup);
-      else toggleTrace(curve);
-    }}
-    ["pointerdown", "click"].forEach(function(type) {{
-      gd.addEventListener(type, handleLegendPointer, true);
-    }});
-  }}
-  function bindLegendClick() {{
-    if (!gd.on || gd.__xrdLegendClickBound) return;
-    gd.__xrdLegendClickBound = true;
-    gd.on("plotly_legendclick", function(ev) {{
-      var curve = ev && typeof ev.curveNumber === "number" ? ev.curveNumber : -1;
-      var group = groupForRawCurve(curve);
-      if (group) {{
-        toggleGroup(group);
-        return false;
-      }}
-      var trace = traces()[curve];
-      if (trace && trace.meta && trace.meta.xrd_separator) {{
-        return false;
-      }}
-      toggleTrace(curve);
-      return false;
-    }});
-  }}
   function init() {{
-    if (!gd.querySelector("g.legend g.traces")) {{
-      setTimeout(init, 80);
-      return;
-    }}
-    bind();
-    bindRawLegendDomClick();
-    bindLegendClick();
     syncTables();
-    gd.dispatchEvent(new Event("rist-xrd-legend-groups-ready"));
     if (gd.on && !gd.__xrdGroupEventsBound) {{
       gd.__xrdGroupEventsBound = true;
-      gd.on("plotly_afterplot", bind);
+      gd.on("plotly_afterplot", syncTables);
       gd.on("plotly_restyle", syncTables);
     }}
     gd.addEventListener("trace-highlight", syncTables);
