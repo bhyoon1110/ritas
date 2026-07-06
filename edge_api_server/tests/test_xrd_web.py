@@ -33,6 +33,10 @@ def test_xrd_workspace_contains_upload_controls() -> None:
     assert "contentWindow.print()" not in page
     assert "보고서 다운로드" in page
     assert 'id="xrd-download" aria-disabled="true"' in page
+    assert 'class="xrd-status-stack" id="xrd-status"' in page
+    assert "xrd-status-close" in page
+    assert "status.appendChild(item)" in page
+    assert "timer = setTimeout(remove, error ? 7200 : 4300)" in page
     assert 'id="xrd-report-progress"' in page
     assert 'id="xrd-report-progress-bar"' in page
     assert "startReportProgress" in page
@@ -161,6 +165,9 @@ def test_xrd_report_can_use_llm_comment_provider(tmp_path) -> None:
     assert '"width":2.2' in result["html"]
     assert "autoScale2d" in result["html"]
     assert '"editable": false' in result["html"]
+    assert "xrd-axis-text-guard" in result["html"]
+    assert "function blockAxisTextEdit(event)" in result["html"]
+    assert ".yaxislayer-above" in result["html"]
     assert "rist-xrd-legend-checkbox" in result["html"]
     assert 'rect.setAttribute("fill", visible ? "#2563eb" : "#ffffff")' in result["html"]
     assert "function rowVisible(row)" in result["html"]

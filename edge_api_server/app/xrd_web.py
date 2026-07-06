@@ -433,18 +433,40 @@ def build_xrd_page() -> str:
       text-overflow: ellipsis;
       white-space: nowrap;
     }
+    .xrd-status-stack {
+      display: grid;
+      gap: 8px;
+    }
     .xrd-status {
       min-height: 38px;
       display: flex;
       align-items: center;
-      padding: 8px 12px;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 8px 10px 8px 12px;
       border-radius: 7px;
       background: #ecfdf5;
       border: 1px solid #bbf7d0;
       color: #166534;
       font-size: 14px;
+      transition: opacity 180ms ease, transform 180ms ease;
     }
     .xrd-status.error { background: #fef2f2; border-color: #fecaca; color: #991b1b; }
+    .xrd-status.is-hiding { opacity: 0; transform: translateY(-4px); }
+    .xrd-status-text { min-width: 0; overflow-wrap: anywhere; }
+    .xrd-status-close {
+      min-height: 0;
+      border: 0;
+      background: transparent;
+      color: currentColor;
+      cursor: pointer;
+      font-size: 17px;
+      font-weight: 800;
+      line-height: 1;
+      padding: 2px 4px;
+      opacity: .72;
+    }
+    .xrd-status-close:hover { opacity: 1; background: rgba(15, 23, 42, .06); }
     .xrd-report-progress {
       display: none;
       padding: 11px 14px 12px;
@@ -571,7 +593,7 @@ def build_xrd_page() -> str:
           <div class="xrd-files" id="xrd-file-list"></div>
         </form>
       </section>
-      <div class="xrd-status" id="xrd-status">XRD 파일을 선택하면 보고서를 생성할 수 있습니다.</div>
+      <div class="xrd-status-stack" id="xrd-status" aria-live="polite"></div>
       <div class="xrd-report-progress" id="xrd-report-progress" aria-live="polite">
         <div class="xrd-report-progress-row">
           <span id="xrd-report-progress-label">보고서 생성 대기</span>
@@ -615,8 +637,33 @@ def build_xrd_page() -> str:
     var reportProgressTimer = null;
 
     function setStatus(message, error) {
-      status.textContent = message;
-      status.classList.toggle("error", Boolean(error));
+      if (!message) return;
+      var item = document.createElement("div");
+      item.className = "xrd-status" + (error ? " error" : "");
+      var text = document.createElement("span");
+      text.className = "xrd-status-text";
+      text.textContent = message;
+      var close = document.createElement("button");
+      close.type = "button";
+      close.className = "xrd-status-close";
+      close.setAttribute("aria-label", "알림 닫기");
+      close.textContent = "×";
+      item.appendChild(text);
+      item.appendChild(close);
+      status.appendChild(item);
+      var timer = null;
+      function remove() {
+        if (timer) {
+          clearTimeout(timer);
+          timer = null;
+        }
+        item.classList.add("is-hiding");
+        setTimeout(function() {
+          if (item.parentNode) item.parentNode.removeChild(item);
+        }, 190);
+      }
+      close.addEventListener("click", remove);
+      timer = setTimeout(remove, error ? 7200 : 4300);
     }
     function setBusy(value) {
       busy.classList.toggle("show", Boolean(value));
@@ -890,6 +937,7 @@ def build_xrd_page() -> str:
       }
     });
     renderFileList();
+    setStatus("XRD 파일을 선택하면 보고서를 생성할 수 있습니다.", false);
   })();
   </script>
 </body>

@@ -595,6 +595,45 @@ def build_xrd_legend_checkbox_js(div_id: str) -> str:
 """
 
 
+def build_xrd_axis_text_guard_js(div_id: str) -> str:
+    """XRD에서는 Plotly 축/tick 텍스트가 클릭 편집 대상으로 잡히지 않게 막는다."""
+    return f"""
+<style>
+#{div_id} .xaxislayer-above,
+#{div_id} .xaxislayer-below,
+#{div_id} .yaxislayer-above,
+#{div_id} .yaxislayer-below,
+#{div_id} .g-xtitle,
+#{div_id} .g-ytitle {{
+  pointer-events: none !important;
+  user-select: none !important;
+}}
+</style>
+<script>
+(function() {{
+  var gd = document.getElementById("{div_id}");
+  if (!gd) return;
+  gd.classList.add("xrd-axis-text-guard");
+  function isAxisTextTarget(target) {{
+    return Boolean(target && target.closest && target.closest(
+      ".xaxislayer-above,.xaxislayer-below,"
+      + ".yaxislayer-above,.yaxislayer-below,"
+      + ".g-xtitle,.g-ytitle,.xtick,.ytick"
+    ));
+  }}
+  function blockAxisTextEdit(event) {{
+    if (!isAxisTextTarget(event.target)) return;
+    event.preventDefault();
+    event.stopPropagation();
+  }}
+  ["click", "dblclick", "mousedown", "pointerdown", "touchstart"].forEach(function(name) {{
+    gd.addEventListener(name, blockAxisTextEdit, true);
+  }});
+}})();
+</script>
+"""
+
+
 def build_xrd_phase_group_editor_js(div_id: str) -> str:
     """XRD phase 후보 단위 그룹/범례 편집 패널을 추가한다."""
     snippet = r"""
@@ -1966,7 +2005,8 @@ def build_report_html(
         image_format=XRD_DOWNLOAD_IMAGE_FORMAT,
         image_format_selector=XRD_IMAGE_FORMAT_SELECTOR,
         post_body_html=(
-            build_xrd_legend_checkbox_js("xrd-plot")
+            build_xrd_axis_text_guard_js("xrd-plot")
+            + build_xrd_legend_checkbox_js("xrd-plot")
             + build_xrd_phase_group_editor_js("xrd-plot")
         ),
         config=_xrd_plot_config(),
@@ -2430,7 +2470,8 @@ def build_xrd_html(
             image_format=XRD_DOWNLOAD_IMAGE_FORMAT,
             image_format_selector=XRD_IMAGE_FORMAT_SELECTOR,
             post_body_html=(
-                build_xrd_legend_checkbox_js("xrd-plot")
+                build_xrd_axis_text_guard_js("xrd-plot")
+                + build_xrd_legend_checkbox_js("xrd-plot")
                 + build_xrd_phase_group_editor_js("xrd-plot")
             )
             + group_toggle_js
