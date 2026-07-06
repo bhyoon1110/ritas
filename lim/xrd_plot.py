@@ -2223,6 +2223,33 @@ def xrd_report_css() -> str:
     .xrd-report-page { max-width: none; padding: 0; }
     .xrd-report-pdf-button, .xrd-report-action-spacer { display: none !important; }
     .xrd-report-title { text-align: center; }
+    .xrd-table-scroll,
+    .xrd-file-table-scroll {
+      max-height: none !important;
+      height: auto !important;
+      overflow: visible !important;
+    }
+    .xrd-report-table th {
+      position: static !important;
+      top: auto !important;
+      z-index: auto !important;
+    }
+    .xrd-report-table thead {
+      display: table-header-group;
+    }
+    .xrd-report-table tfoot {
+      display: table-footer-group;
+    }
+    .xrd-report-table tr,
+    .xrd-mini-table tr {
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+    .xrd-phase-card,
+    .xrd-file-table {
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
   }
 </style>
 """
