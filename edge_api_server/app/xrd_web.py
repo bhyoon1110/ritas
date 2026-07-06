@@ -445,6 +445,52 @@ def build_xrd_page() -> str:
       font-size: 14px;
     }
     .xrd-status.error { background: #fef2f2; border-color: #fecaca; color: #991b1b; }
+    .xrd-report-progress {
+      display: none;
+      padding: 11px 14px 12px;
+      border: 1px solid #bfdbfe;
+      border-radius: 8px;
+      background: #eff6ff;
+      color: #1e3a8a;
+      font-size: 13px;
+    }
+    .xrd-report-progress.is-visible {
+      position: fixed;
+      left: 50%;
+      top: 50%;
+      z-index: 70;
+      display: block;
+      width: min(560px, calc(100vw - 32px));
+      transform: translate(-50%, -50%);
+      box-shadow: 0 18px 48px rgba(15, 23, 42, 0.18);
+    }
+    .xrd-report-progress.is-error {
+      border-color: #fecaca;
+      background: #fef2f2;
+      color: #991b1b;
+    }
+    .xrd-report-progress-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 7px;
+      font-weight: 700;
+    }
+    .xrd-report-progress-track {
+      overflow: hidden;
+      height: 7px;
+      border-radius: 999px;
+      background: #dbeafe;
+    }
+    .xrd-report-progress-bar {
+      width: 0%;
+      height: 100%;
+      border-radius: inherit;
+      background: var(--blue);
+      transition: width 240ms ease;
+    }
+    .xrd-report-progress.is-error .xrd-report-progress-bar { background: #dc2626; }
     .xrd-preview {
       background: #fff;
       border: 1px solid var(--line);
@@ -526,6 +572,15 @@ def build_xrd_page() -> str:
         </form>
       </section>
       <div class="xrd-status" id="xrd-status">XRD 파일을 선택하면 보고서를 생성할 수 있습니다.</div>
+      <div class="xrd-report-progress" id="xrd-report-progress" aria-live="polite">
+        <div class="xrd-report-progress-row">
+          <span id="xrd-report-progress-label">보고서 생성 대기</span>
+          <span id="xrd-report-progress-value">0%</span>
+        </div>
+        <div class="xrd-report-progress-track">
+          <div class="xrd-report-progress-bar" id="xrd-report-progress-bar"></div>
+        </div>
+      </div>
       <section class="xrd-preview" id="xrd-preview">
         <div class="xrd-empty" id="xrd-empty">미리보기 대기 중</div>
       </section>
@@ -550,9 +605,14 @@ def build_xrd_page() -> str:
     var drop = document.getElementById("xrd-drop");
     var fileList = document.getElementById("xrd-file-list");
     var bundleMeta = document.getElementById("xrd-bundle-meta");
+    var reportProgress = document.getElementById("xrd-report-progress");
+    var reportProgressLabel = document.getElementById("xrd-report-progress-label");
+    var reportProgressValue = document.getElementById("xrd-report-progress-value");
+    var reportProgressBar = document.getElementById("xrd-report-progress-bar");
     var downloadUrl = null;
     var bundleItems = [];
     var reportFrame = null;
+    var reportProgressTimer = null;
 
     function setStatus(message, error) {
       status.textContent = message;
@@ -562,6 +622,50 @@ def build_xrd_page() -> str:
       busy.classList.toggle("show", Boolean(value));
       runButton.disabled = Boolean(value);
       exampleButton.disabled = Boolean(value);
+    }
+    function setReportProgress(percent, message, visible, error) {
+      var pct = Math.max(0, Math.min(100, Math.round(Number(percent) || 0)));
+      reportProgress.classList.toggle("is-visible", Boolean(visible));
+      reportProgress.classList.toggle("is-error", Boolean(error));
+      reportProgressLabel.textContent = message || "보고서 생성 중입니다.";
+      reportProgressValue.textContent = pct + "%";
+      reportProgressBar.style.width = pct + "%";
+    }
+    function stopReportProgressTimer() {
+      if (reportProgressTimer) {
+        clearInterval(reportProgressTimer);
+        reportProgressTimer = null;
+      }
+    }
+    function progressMessage(percent) {
+      if (percent < 28) return "업로드 파일을 서버로 전송하는 중입니다.";
+      if (percent < 52) return "raw와 ICDD Card 데이터를 분석하는 중입니다.";
+      if (percent < 76) return "그래프와 후보상 정보를 구성하는 중입니다.";
+      return "HTML 보고서를 렌더링하는 중입니다.";
+    }
+    function startReportProgress(message) {
+      stopReportProgressTimer();
+      var pct = 6;
+      setReportProgress(pct, message || progressMessage(pct), true, false);
+      reportProgressTimer = setInterval(function() {
+        pct = Math.min(92, pct + (pct < 40 ? 4 : pct < 72 ? 3 : 1));
+        setReportProgress(pct, progressMessage(pct), true, false);
+        if (pct >= 92) stopReportProgressTimer();
+      }, 650);
+    }
+    function finishReportProgress(message) {
+      stopReportProgressTimer();
+      setReportProgress(100, message || "보고서가 완성되었습니다.", true, false);
+      setTimeout(function() {
+        setReportProgress(0, "보고서 생성 대기", false, false);
+      }, 900);
+    }
+    function failReportProgress(message) {
+      stopReportProgressTimer();
+      setReportProgress(100, message || "보고서 생성에 실패했습니다.", true, true);
+      setTimeout(function() {
+        setReportProgress(0, "보고서 생성 대기", false, false);
+      }, 1800);
     }
     function revokeDownload() {
       if (downloadUrl) URL.revokeObjectURL(downloadUrl);
@@ -740,17 +844,23 @@ def build_xrd_page() -> str:
       preview.replaceChildren(empty);
       empty.style.display = "flex";
       setStatus("XRD 파일을 선택하면 보고서를 생성할 수 있습니다.", false);
+      stopReportProgressTimer();
+      setReportProgress(0, "보고서 생성 대기", false, false);
     });
     exampleButton.addEventListener("click", async function() {
       setBusy(true);
+      startReportProgress("예제 보고서를 불러오는 중입니다.");
       try {
         var response = await fetch("/api/v1/xrd/example");
         var text = await response.text();
         if (!response.ok) throw new Error(text || "예제 보고서를 불러오지 못했습니다.");
+        setReportProgress(94, "예제 보고서 화면을 준비하는 중입니다.", true, false);
         showHtml(text);
         setStatus("예제 보고서를 불러왔습니다.", false);
+        finishReportProgress("예제 보고서가 준비되었습니다.");
       } catch (error) {
         setStatus(error.message || String(error), true);
+        failReportProgress(error.message || "예제 보고서를 불러오지 못했습니다.");
       } finally {
         setBusy(false);
       }
@@ -762,15 +872,19 @@ def build_xrd_page() -> str:
         return;
       }
       setBusy(true);
+      startReportProgress("보고서 생성 요청을 준비하는 중입니다.");
       try {
         var data = buildBundleFormData();
         var response = await fetch("/api/v1/xrd/analyze", {method: "POST", body: data});
         var text = await response.text();
         if (!response.ok) throw new Error(text || "보고서 생성 요청에 실패했습니다.");
+        setReportProgress(94, "보고서 화면을 준비하는 중입니다.", true, false);
         showHtml(text);
         setStatus("XRD 보고서가 생성되었습니다.", false);
+        finishReportProgress("XRD 보고서가 생성되었습니다.");
       } catch (error) {
         setStatus(error.message || String(error), true);
+        failReportProgress(error.message || "보고서 생성에 실패했습니다.");
       } finally {
         setBusy(false);
       }

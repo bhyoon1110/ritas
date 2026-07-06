@@ -32,6 +32,11 @@ def test_xrd_workspace_contains_upload_controls() -> None:
     assert "contentWindow.print()" not in page
     assert "보고서 다운로드" in page
     assert 'id="xrd-download" aria-disabled="true"' in page
+    assert 'id="xrd-report-progress"' in page
+    assert 'id="xrd-report-progress-bar"' in page
+    assert "startReportProgress" in page
+    assert "finishReportProgress" in page
+    assert "raw와 ICDD Card 데이터를 분석하는 중입니다." in page
     assert "/api/v1/xrd/analyze" in page
     assert "/api/v1/xrd/example" in page
     assert "LIM XRD" in page
