@@ -49,6 +49,24 @@ python -m lim.xrd.cli "lim/data/raw.txt" "lim/data/ICDD Card" \
 python -m lim.xrd.cli "lim/data/raw.txt" "lim/data/ICDD Card" --plot-only -o plot.html
 ```
 
+## XRD 웹 미리보기
+
+Edge API 서버에는 `/xrd` 미리보기 화면이 있다. 브라우저에서 raw TXT,
+ICDD Card PDF, Excel/CSV/TSV, 이미지 파일을 업로드하면 같은 XRD 렌더러로
+보고서형 HTML을 생성해 화면에서 바로 확인할 수 있다.
+
+```text
+http://127.0.0.1:8010/xrd
+```
+
+로컬에서 XRD 화면만 띄울 때는 다음 명령을 사용할 수 있다.
+
+```bash
+cd edge_api_server
+.venv/bin/python -m uvicorn \
+  app.xrd_web:create_xrd_preview_app --factory --host 127.0.0.1 --port 8010
+```
+
 ## Edge processor 연동
 
 Edge worker가 자동 processor를 실행하게 하려면 `RIST_PROCESSOR_COMMAND_XRD`에

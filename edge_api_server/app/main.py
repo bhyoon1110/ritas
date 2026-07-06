@@ -45,6 +45,7 @@ from .models import (
 )
 from .raman_web import router as raman_router
 from .service import EdgeService
+from .xrd_web import router as xrd_router
 
 logger = get_logger(__name__)
 
@@ -116,6 +117,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.add_exception_handler(RequestValidationError, validation_exception_handler)
     app.include_router(ftir_router)
     app.include_router(raman_router)
+    app.include_router(xrd_router)
 
     @app.get("/health", tags=["system"])
     def health() -> dict[str, str | int]:

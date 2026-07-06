@@ -67,7 +67,6 @@ import argparse
 import base64
 import csv
 import glob
-import html
 import json
 import os
 import re
@@ -1193,6 +1192,203 @@ def pdf_peak_warning(pdf_dir, pdf_count, parsed_count):
             "못했습니다. HTML에는 raw 패턴만 표시됩니다."
         )
     return None
+
+
+def build_xrd_html(
+    pairs: list[tuple[str, str]],
+    *,
+    table_files: list[str] | None = None,
+    image_files: list[str] | None = None,
+    origin: bool = False,
+    plot_only: bool = False,
+) -> dict[str, Any]:
+    """raw/PDF 입력 쌍에서 XRD Plotly HTML을 생성한다.
+
+    CLI와 웹 미리보기 화면이 같은 보고서 생성 로직을 공유하기 위한 함수다.
+    """
+    if not pairs:
+        raise ValueError("XRD raw/PDF 입력 쌍이 필요합니다.")
+
+    first_stem = os.path.splitext(os.path.basename(pairs[0][0]))[0]
+    raw_stems = [os.path.splitext(os.path.basename(r))[0] for r, _ in pairs]
+
+    fig = go.Figure()
+    peak_ci = 0
+    trace_idx = 0
+    group_map = {}
+    groups_for_tables = []
+    summary = []
+    all_x = []
+    warnings = []
+
+    for gi, (raw_txt, pdf_dir) in enumerate(pairs):
+        if not os.path.isfile(raw_txt):
+            raise FileNotFoundError(f"raw 파일을 찾을 수 없습니다: {raw_txt}")
+        if not os.path.isdir(pdf_dir):
+            raise FileNotFoundError(f"PDF 폴더를 찾을 수 없습니다: {pdf_dir}")
+
+        raw_stem = os.path.splitext(os.path.basename(raw_txt))[0]
+        gid = f"g{gi}"
+        raw_color = RAW_LINE_COLORS[gi % len(RAW_LINE_COLORS)]
+
+        rx, ry = load_raw(raw_txt)
+        raw_max = max(ry) if ry else 1.0
+        all_x += rx
+        idxs = []
+
+        fig.add_trace(
+            go.Scatter(
+                x=rx,
+                y=ry,
+                mode="lines",
+                name=raw_stem,
+                line=dict(color=raw_color, width=1),
+                legendgroup=gid,
+                legendgrouptitle_text=raw_stem,
+            )
+        )
+        idxs.append(trace_idx)
+        trace_idx += 1
+
+        pdf_files = sorted(glob.glob(os.path.join(pdf_dir, "*.pdf")))
+        items = []
+        for pdf_path in pdf_files:
+            peaks = parse_pdf_peaks(pdf_path)
+            if not peaks:
+                continue
+            color = PEAK_PALETTE[peak_ci % len(PEAK_PALETTE)]
+            peak_ci += 1
+            fallback_label = os.path.splitext(os.path.basename(pdf_path))[0]
+            metadata = parse_pdf_card_metadata(pdf_path)
+            label = phase_label_from_metadata(metadata, fallback_label)
+            match = score_phase_candidate(peaks, rx, ry, raw_max)
+            category = classify_phase_candidate(match)
+            items.append({
+                "label": label,
+                "color": color,
+                "peaks": peaks,
+                "trace_idx": trace_idx,
+                "metadata": metadata,
+                "match": match,
+                "category": category,
+                "source_pdf": pdf_path,
+            })
+
+            xs, ys, customdata = [], [], []
+            for p in peaks:
+                tt, ni, hkl = p["two_theta"], p["norm"], p["hkl"]
+                h = ni / 100.0 * raw_max
+                xs += [tt, tt, None]
+                ys += [0.0, h, None]
+                customdata += [(ni, hkl), (ni, hkl), (None, None)]
+
+            fig.add_trace(
+                go.Scatter(
+                    x=xs,
+                    y=ys,
+                    mode="lines",
+                    name=label,
+                    line=dict(color=color, width=1.5),
+                    legendgroup=gid,
+                    customdata=customdata,
+                    hovertemplate=(
+                        "2θ = %{x:.3f}°<br>"
+                        "Norm. I. = %{customdata[0]:.1f}%<br>"
+                        "h k l = %{customdata[1]}<extra>" + label + "</extra>"
+                    ),
+                )
+            )
+            idxs.append(trace_idx)
+            trace_idx += 1
+
+        assign_relative_phase_categories(items)
+        warning = pdf_peak_warning(pdf_dir, len(pdf_files), len(items))
+        if warning:
+            warnings.append(warning)
+
+        group_map[raw_stem] = idxs
+        groups_for_tables.append((raw_stem, raw_color, items))
+        summary.append((raw_stem, len(rx), raw_max, items))
+
+    xrange = [min(all_x), max(all_x)] if all_x else None
+    title_text = (
+        f"XRD Pattern ({first_stem}) with ICDD Card Peaks"
+        if len(pairs) == 1 else "XRD Patterns with ICDD Card Peaks"
+    )
+
+    if origin:
+        fig.update_layout(
+            title=dict(
+                text=title_text,
+                font=dict(family="Arial", size=22, color="black"),
+                x=0.5,
+                xanchor="center",
+            ),
+            hovermode="closest",
+            autosize=True,
+            margin=dict(l=70, r=30, t=60, b=120),
+            legend=dict(groupclick="toggleitem"),
+        )
+        fig.update_xaxes(title_text="2θ (°)", range=xrange)
+        fig.update_yaxes(title_text="Intensity (cps)", rangemode="tozero")
+    else:
+        fig.update_layout(
+            title=title_text,
+            xaxis_title="2θ (°)",
+            yaxis_title="Intensity (cps)",
+            template="plotly_white",
+            hovermode="closest",
+            autosize=True,
+            margin=dict(l=60, r=30, t=60, b=120),
+            legend=dict(groupclick="toggleitem"),
+        )
+        fig.update_xaxes(range=xrange)
+        fig.update_yaxes(rangemode="tozero")
+
+    raw_line_indices = [idxs[0] for idxs in group_map.values() if idxs]
+    highlight_groups = {idxs[0]: idxs for idxs in group_map.values() if idxs}
+    if plot_only:
+        tables_html = build_tables_html(groups_for_tables)
+        group_toggle_js = build_group_toggle_js("xrd-plot", group_map)
+        html_text = fig_to_responsive_html(
+            fig,
+            div_id="xrd-plot",
+            origin=origin,
+            legend_breakpoint_px=LEGEND_BREAKPOINT_PX,
+            crosshair=True,
+            title_edit=True,
+            legend_text_edit=True,
+            trace_highlight=True,
+            highlight_pickable=raw_line_indices,
+            highlight_groups=highlight_groups,
+            image_filename=first_stem,
+            image_format=XRD_DOWNLOAD_IMAGE_FORMAT,
+            image_format_selector=XRD_IMAGE_FORMAT_SELECTOR,
+            post_body_html=group_toggle_js + tables_html,
+            config={"scrollZoom": True},
+        )
+    else:
+        html_text = build_report_html(
+            fig,
+            sample_name=first_stem if len(pairs) == 1 else ", ".join(raw_stems),
+            groups=groups_for_tables,
+            group_map=group_map,
+            warnings=warnings,
+            table_files=table_files or [],
+            image_files=image_files or [],
+            origin=origin,
+            first_stem=first_stem,
+            raw_line_indices=raw_line_indices,
+            highlight_groups=highlight_groups,
+        )
+
+    return {
+        "html": html_text,
+        "summary": summary,
+        "warnings": warnings,
+        "first_stem": first_stem,
+        "raw_stems": raw_stems,
+    }
 
 
 def main():

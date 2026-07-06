@@ -91,6 +91,7 @@ API 문서:
 - 개발 상태 확인: `http://bhyoon.me:8000/health`
 - 로컬 LLM 상태 확인: `http://bhyoon.me:8000/health/llm`
 - FT-IR 웹 분석: `http://bhyoon.me:8000/ftir`
+- XRD 웹 미리보기: `http://bhyoon.me:8000/xrd`
 
 ## FT-IR 웹 분석
 
@@ -202,6 +203,34 @@ DELETE /api/v1/ftir/assignment-libraries/{libraryId}
 cd edge_api_server
 .venv/bin/python -m uvicorn \
   app.ftir_web:create_ftir_preview_app --factory --host 127.0.0.1 --port 8010
+```
+
+## XRD 웹 미리보기
+
+`/xrd`는 LIM XRD 보고서 양식을 브라우저에서 바로 확인하기 위한 미리보기
+화면이다. raw TXT, ICDD Card PDF, 선택 Excel/CSV/TSV, 선택 이미지 파일을
+업로드하면 기존 `lim.xrd_plot` 렌더러를 사용해 HTML 보고서를 생성하고
+화면 안에 표시한다.
+
+- raw TXT: XRD 측정 패턴 그래프
+- ICDD Card PDF: 2θ 피크 overlay와 결정상 후보 정보
+- Excel/CSV/TSV: 보고서의 `피크 정보` 영역에 제공 표로 표시
+- 이미지: 보고서의 `그래프/상매칭 보조 이미지` 영역에 표시
+
+웹 화면이 사용하는 API:
+
+```text
+GET  /xrd
+POST /api/v1/xrd/analyze
+GET  /api/v1/xrd/example
+```
+
+DB 없이 XRD 화면만 개발할 때는 다음 명령을 사용할 수 있다.
+
+```bash
+cd edge_api_server
+.venv/bin/python -m uvicorn \
+  app.xrd_web:create_xrd_preview_app --factory --host 127.0.0.1 --port 8010
 ```
 
 ## 환경 변수
