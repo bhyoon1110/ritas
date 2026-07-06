@@ -1165,6 +1165,228 @@ def build_xrd_phase_group_editor_js(div_id: str) -> str:
     )
 
 
+def build_xrd_tool_drawer_js(div_id: str) -> str:
+    """XRD 그래프 우상단 컨트롤을 FTIR/Raman처럼 도구 팝업으로 접는다."""
+    snippet = r"""
+<style>
+#__DIV_ID__ .rist-plot-control-row.xrd-tool-drawer-installed {
+  top: 58px;
+  right: 30px;
+  z-index: 32;
+  display: block;
+  width: auto;
+  min-width: 0;
+}
+#__DIV_ID__ .xrd-tool-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 54px;
+  height: 30px;
+  border: 1px solid #a8bbd3;
+  border-radius: 5px;
+  background: rgba(255,255,255,0.96);
+  color: #1f2933;
+  cursor: pointer;
+  font: bold 12px Arial, sans-serif;
+  padding: 0 12px;
+  box-shadow: 0 2px 8px rgba(15,23,42,0.14);
+}
+#__DIV_ID__ .xrd-tool-toggle:hover {
+  border-color: #7891a8;
+  background: #f5f7fa;
+}
+#__DIV_ID__ .xrd-tool-toggle.is-open {
+  border-color: #2563eb;
+  color: #1d4ed8;
+}
+#__DIV_ID__ .xrd-tool-panel {
+  position: absolute;
+  top: 38px;
+  right: 0;
+  z-index: 33;
+  display: none;
+  width: min(390px, calc(100vw - 42px));
+  max-width: calc(100vw - 42px);
+  border: 1px solid #c7d0dd;
+  border-radius: 7px;
+  background: rgba(255,255,255,0.96);
+  box-shadow: 0 8px 24px rgba(15,23,42,0.18);
+  box-sizing: border-box;
+  color: #1f2933;
+  font: 12px Arial, sans-serif;
+  overflow: hidden;
+}
+#__DIV_ID__ .xrd-tool-panel.is-open {
+  display: block;
+}
+#__DIV_ID__ .xrd-tool-panel-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 9px;
+  border-bottom: 1px solid #d7dee8;
+  background: rgba(248,250,252,0.98);
+  font-weight: 700;
+  user-select: none;
+}
+#__DIV_ID__ .xrd-tool-opacity-slider {
+  flex: 1 1 auto;
+  min-width: 72px;
+  height: 16px;
+  margin: 0 2px 0 auto;
+  accent-color: #52606d;
+  cursor: pointer;
+}
+#__DIV_ID__ .xrd-tool-close {
+  flex: 0 0 auto;
+  border: 0;
+  background: transparent;
+  color: #52606d;
+  cursor: pointer;
+  font: 18px Arial, sans-serif;
+  line-height: 1;
+  padding: 0 3px;
+}
+#__DIV_ID__ .xrd-tool-panel-body {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  max-height: min(260px, calc(100vh - 180px));
+  overflow: auto;
+  padding: 10px;
+  box-sizing: border-box;
+}
+#__DIV_ID__ .xrd-tool-panel-body > * {
+  order: 0 !important;
+}
+#__DIV_ID__ .xrd-tool-panel-body .rist-history-controls,
+#__DIV_ID__ .xrd-tool-panel-body .rist-legend-bulk-controls {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+#__DIV_ID__ .xrd-tool-panel-body .rist-legend-edit-button,
+#__DIV_ID__ .xrd-tool-panel-body .xrd-phase-group-button {
+  margin: 0;
+}
+@media (max-width: 640px) {
+  #__DIV_ID__ .rist-plot-control-row.xrd-tool-drawer-installed {
+    top: 50px;
+    right: 12px;
+  }
+  #__DIV_ID__ .xrd-tool-panel {
+    width: min(340px, calc(100vw - 24px));
+    max-width: calc(100vw - 24px);
+  }
+}
+</style>
+<script>
+(function() {
+  var gd = document.getElementById(__DIV_JSON__);
+  if (!gd) return;
+
+  function install() {
+    var toolbar = gd.querySelector(".rist-plot-control-row");
+    if (!toolbar) {
+      window.setTimeout(install, 50);
+      return;
+    }
+    if (toolbar.__xrdToolDrawerInstalled) return;
+    toolbar.__xrdToolDrawerInstalled = true;
+    toolbar.classList.add("xrd-tool-drawer-installed");
+
+    var existing = Array.prototype.slice.call(toolbar.children);
+    var toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.className = "xrd-tool-toggle";
+    toggle.textContent = "도구";
+    toggle.setAttribute("aria-expanded", "false");
+    toggle.title = "그래프 도구";
+
+    var panel = document.createElement("div");
+    panel.className = "xrd-tool-panel";
+    panel.innerHTML = ""
+      + "<div class='xrd-tool-panel-head'>"
+      + "<span>그래프 도구</span>"
+      + "<input class='xrd-tool-opacity-slider' type='range' min='45' max='100' value='96' title='도구창 투명도'>"
+      + "<button type='button' class='xrd-tool-close' aria-label='close'>×</button>"
+      + "</div>"
+      + "<div class='xrd-tool-panel-body'></div>";
+    var body = panel.querySelector(".xrd-tool-panel-body");
+    var opacity = panel.querySelector(".xrd-tool-opacity-slider");
+    var close = panel.querySelector(".xrd-tool-close");
+
+    function isDrawerNode(node) {
+      return !!(
+        node
+        && node.nodeType === 1
+        && (
+          node.classList.contains("xrd-tool-toggle")
+          || node.classList.contains("xrd-tool-panel")
+        )
+      );
+    }
+
+    function moveIntoPanel(node) {
+      if (!node || node.nodeType !== 1 || isDrawerNode(node) || node.parentNode === body) return;
+      body.appendChild(node);
+    }
+
+    toolbar.appendChild(toggle);
+    toolbar.appendChild(panel);
+    existing.forEach(moveIntoPanel);
+
+    var observer = new MutationObserver(function(records) {
+      records.forEach(function(record) {
+        Array.prototype.slice.call(record.addedNodes).forEach(moveIntoPanel);
+      });
+    });
+    observer.observe(toolbar, { childList: true });
+
+    function setOpen(open) {
+      panel.classList.toggle("is-open", open);
+      toggle.classList.toggle("is-open", open);
+      toggle.setAttribute("aria-expanded", open ? "true" : "false");
+    }
+
+    toggle.addEventListener("click", function(ev) {
+      setOpen(!panel.classList.contains("is-open"));
+      ev.stopPropagation();
+    });
+    close.addEventListener("click", function(ev) {
+      setOpen(false);
+      ev.stopPropagation();
+    });
+    opacity.addEventListener("input", function() {
+      panel.style.opacity = String(Number(opacity.value) / 100);
+    });
+    panel.addEventListener("click", function(ev) {
+      var opensEditor = ev.target.closest(".rist-legend-edit-button,.xrd-phase-group-button");
+      if (opensEditor) window.setTimeout(function() { setOpen(false); }, 0);
+      ev.stopPropagation();
+    });
+    document.addEventListener("click", function(ev) {
+      if (!panel.classList.contains("is-open")) return;
+      if (toolbar.contains(ev.target)) return;
+      setOpen(false);
+    });
+    document.addEventListener("keydown", function(ev) {
+      if (ev.key === "Escape") setOpen(false);
+    });
+  }
+
+  install();
+})();
+</script>
+"""
+    return (
+        snippet.replace("__DIV_ID__", div_id)
+        .replace("__DIV_JSON__", json.dumps(div_id, ensure_ascii=False))
+    )
+
+
 # ----------------------------------------------------------------------------
 # PDF별 피크 표를 HTML로 생성 (그래프 색상과 일치하는 헤더, 반응형)
 # ----------------------------------------------------------------------------
@@ -2008,6 +2230,7 @@ def build_report_html(
             build_xrd_axis_text_guard_js("xrd-plot")
             + build_xrd_legend_checkbox_js("xrd-plot")
             + build_xrd_phase_group_editor_js("xrd-plot")
+            + build_xrd_tool_drawer_js("xrd-plot")
         ),
         config=_xrd_plot_config(),
     )
@@ -2473,6 +2696,7 @@ def build_xrd_html(
                 build_xrd_axis_text_guard_js("xrd-plot")
                 + build_xrd_legend_checkbox_js("xrd-plot")
                 + build_xrd_phase_group_editor_js("xrd-plot")
+                + build_xrd_tool_drawer_js("xrd-plot")
             )
             + group_toggle_js
             + tables_html,
