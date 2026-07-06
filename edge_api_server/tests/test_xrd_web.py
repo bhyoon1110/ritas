@@ -148,6 +148,12 @@ def test_xrd_report_can_use_llm_comment_provider(tmp_path) -> None:
     assert result["llm_comment_used"] is True
     assert "LLM XRD 해석 초안" in result["html"]
     assert "LLM 연결 확인" in result["html"]
+    assert "#d62728" in result["html"]
+    assert '"width":2.2' in result["html"]
+    assert "autoScale2d" in result["html"]
+    assert "☑ " in result["html"]
+    assert "☐ " in result["html"]
+    assert "Synthetic Anatase Example / TiO2" in result["html"]
     assert captured["experiment"] == "XRD"
     assert captured["raw_patterns"][0]["detected_raw_peaks"]
     assert captured["icdd_candidates"]["major"]

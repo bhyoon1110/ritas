@@ -13,6 +13,7 @@ from lim.xrd_plot import (
     phase_label_from_metadata,
     pdf_peak_warning,
     read_xlsx_preview,
+    sort_phase_candidates,
 )
 
 
@@ -74,6 +75,48 @@ def test_relative_phase_categories_keep_only_top_candidates_major() -> None:
         "major",
         "uncertain",
         "minor",
+    ]
+
+
+def test_phase_candidates_are_sorted_by_category_and_similarity() -> None:
+    items = [
+        {
+            "label": "Beta / B",
+            "category": "minor",
+            "metadata": {"phase_name": "Beta", "formula": "B"},
+            "match": {"score": 90},
+        },
+        {
+            "label": "Anatase / TiO2",
+            "category": "major",
+            "metadata": {"phase_name": "Anatase", "formula": "Ti O2"},
+            "match": {"score": 40},
+        },
+        {
+            "label": "Rutile / TiO2",
+            "category": "major",
+            "metadata": {"phase_name": "Rutile", "formula": "Ti O2"},
+            "match": {"score": 85},
+        },
+        {
+            "label": "Alpha / A",
+            "category": "uncertain",
+            "metadata": {"phase_name": "Alpha", "formula": "A"},
+            "match": {"score": 70},
+        },
+    ]
+
+    sorted_items = sort_phase_candidates(items)
+
+    assert [item["category"] for item in sorted_items] == [
+        "major",
+        "major",
+        "uncertain",
+        "minor",
+    ]
+    assert [item["metadata"]["formula"] for item in sorted_items[:2]] == [
+        "Ti O2",
+        "Ti O2",
     ]
 
 

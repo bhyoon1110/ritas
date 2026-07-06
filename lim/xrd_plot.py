@@ -86,7 +86,6 @@ if str(_COMMON_DIR) not in sys.path:
 from rist_common.plotting import (  # noqa: E402
     LEGEND_BREAKPOINT_PX,
     fig_to_responsive_html,
-    write_responsive_html,
 )
 
 HEADER = ["No.", "2θ, °", "d-value", "Norm. I.", "h k l"]
@@ -94,11 +93,13 @@ HEADER = ["No.", "2θ, °", "d-value", "Norm. I.", "h k l"]
 XRD_DOWNLOAD_IMAGE_FORMAT = "jpeg"
 XRD_IMAGE_FORMAT_SELECTOR = False
 
-# raw 라인 색상(여러 raw 파일을 구분). 첫 번째는 검정(단일 파일 시 기존과 동일).
+# raw 라인 색상(여러 raw 파일을 구분). 첫 번째 측정 데이터는 보고서 기본 빨간색.
 RAW_LINE_COLORS = [
-    "#000000", "#1f3b73", "#7a1f1f", "#1f5c2e",
+    "#d62728", "#1f3b73", "#7a1f1f", "#1f5c2e",
     "#5a2d82", "#8a5a00", "#005f6b", "#6b2d5a",
 ]
+RAW_LINE_WIDTH = 2.2
+XRD_MODE_BAR_BUTTONS_TO_REMOVE = ["autoScale2d"]
 
 # PDF 피크 막대 색상 팔레트.
 PEAK_PALETTE = [
@@ -327,6 +328,91 @@ def assign_relative_phase_categories(items: list[dict[str, Any]]) -> None:
             item["category"] = "uncertain"
         else:
             item["category"] = "minor"
+
+
+_PHASE_CATEGORY_ORDER = {"major": 0, "uncertain": 1, "minor": 2}
+
+
+def _phase_similarity_key(item: dict[str, Any]) -> str:
+    metadata = item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
+    formula = _compact_formula(str(metadata.get("formula") or ""))
+    phase_name = str(metadata.get("phase_name") or item.get("label") or "").lower()
+    phase_name = re.sub(r"[^0-9a-zA-Z\u3131-\u318e\uac00-\ud7a3]+", " ", phase_name)
+    return f"{formula.lower()} {phase_name}".strip()
+
+
+def sort_phase_candidates(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return sorted(
+        items,
+        key=lambda item: (
+            _PHASE_CATEGORY_ORDER.get(str(item.get("category") or ""), 99),
+            _phase_similarity_key(item),
+            -float((item.get("match") or {}).get("score") or 0),
+        ),
+    )
+
+
+def _phase_category_separator_label(category: str) -> str:
+    title = PHASE_GROUPS.get(category, category)
+    return f"──────── {title}"
+
+
+def _xrd_plot_config() -> dict[str, Any]:
+    return {
+        "scrollZoom": True,
+        "modeBarButtonsToRemove": XRD_MODE_BAR_BUTTONS_TO_REMOVE,
+    }
+
+
+def build_xrd_legend_checkbox_js(div_id: str) -> str:
+    return f"""
+<script>
+(function() {{
+  var gd = document.getElementById("{div_id}");
+  if (!gd) return;
+  function legendTraceIndexes() {{
+    var fd = gd._fullData || gd.data || [];
+    var result = [];
+    for (var i = 0; i < fd.length; i++) {{
+      var tr = fd[i];
+      if (!tr || tr.showlegend === false) continue;
+      result.push(typeof tr.index === "number" ? tr.index : i);
+    }}
+    return result;
+  }}
+  function stripBox(text) {{
+    return String(text || "").replace(/^[☑☐]\\s*/, "");
+  }}
+  function refreshLegendCheckboxes() {{
+    var texts = Array.prototype.slice.call(
+      gd.querySelectorAll("g.legend g.traces text.legendtext")
+    );
+    var idxs = legendTraceIndexes();
+    texts.forEach(function(node, pos) {{
+      var curve = idxs[pos];
+      var tr = (gd.data || [])[curve] || (gd._fullData || [])[curve] || {{}};
+      var meta = tr.meta || {{}};
+      var base = stripBox(tr.name || node.textContent);
+      if (meta.xrd_separator) {{
+        node.textContent = base;
+        node.style.fill = "#94a3b8";
+        node.style.fontSize = "11px";
+        return;
+      }}
+      var visible = tr.visible !== false && tr.visible !== "legendonly";
+      node.textContent = (visible ? "☑ " : "☐ ") + base;
+    }});
+  }}
+  function schedule() {{ setTimeout(refreshLegendCheckboxes, 0); }}
+  if (gd.on) {{
+    gd.on("plotly_afterplot", schedule);
+    gd.on("plotly_restyle", schedule);
+    gd.on("plotly_relayout", schedule);
+  }}
+  schedule();
+}})();
+</script>
+"""
 
 
 # ----------------------------------------------------------------------------
@@ -1167,7 +1253,8 @@ def build_report_html(
         image_filename=first_stem,
         image_format=XRD_DOWNLOAD_IMAGE_FORMAT,
         image_format_selector=XRD_IMAGE_FORMAT_SELECTOR,
-        config={"scrollZoom": True},
+        post_body_html=build_xrd_legend_checkbox_js("xrd-plot"),
+        config=_xrd_plot_config(),
     )
     plot_body = _html_body_inner(plot_html)
     warning_html = "".join(f'<div class="xrd-warning">{_esc(w)}</div>' for w in warnings)
@@ -1474,7 +1561,7 @@ def build_xrd_html(
                 y=ry,
                 mode="lines",
                 name=raw_stem,
-                line=dict(color=raw_color, width=1),
+                line=dict(color=raw_color, width=RAW_LINE_WIDTH),
                 legendgroup=gid,
                 legendgrouptitle_text=raw_stem,
             )
@@ -1505,15 +1592,38 @@ def build_xrd_html(
                 "label": label,
                 "color": color,
                 "peaks": peaks,
-                "trace_idx": trace_idx,
                 "metadata": metadata,
                 "match": match,
                 "category": category,
                 "source_pdf": pdf_path,
             })
 
+        assign_relative_phase_categories(items)
+        items = sort_phase_candidates(items)
+        last_category = items[0]["category"] if items else None
+        for item_index, item in enumerate(items):
+            category = item["category"]
+            if item_index > 0 and category != last_category:
+                fig.add_trace(
+                    go.Scatter(
+                        x=[None],
+                        y=[None],
+                        mode="lines",
+                        name=_phase_category_separator_label(category),
+                        line=dict(color="#cbd5e1", width=1),
+                        legendgroup=gid,
+                        hoverinfo="skip",
+                        showlegend=True,
+                        meta={"xrd_separator": True, "xrd_category": category},
+                    )
+                )
+                idxs.append(trace_idx)
+                trace_idx += 1
+                last_category = category
+
+            item["trace_idx"] = trace_idx
             xs, ys, customdata = [], [], []
-            for p in peaks:
+            for p in item["peaks"]:
                 tt, ni, hkl = p["two_theta"], p["norm"], p["hkl"]
                 h = ni / 100.0 * raw_max
                 xs += [tt, tt, None]
@@ -1525,21 +1635,20 @@ def build_xrd_html(
                     x=xs,
                     y=ys,
                     mode="lines",
-                    name=label,
-                    line=dict(color=color, width=1.5),
+                    name=item["label"],
+                    line=dict(color=item["color"], width=1.5),
                     legendgroup=gid,
                     customdata=customdata,
                     hovertemplate=(
                         "2θ = %{x:.3f}°<br>"
                         "Norm. I. = %{customdata[0]:.1f}%<br>"
-                        "h k l = %{customdata[1]}<extra>" + label + "</extra>"
+                        "h k l = %{customdata[1]}<extra>" + item["label"] + "</extra>"
                     ),
                 )
             )
             idxs.append(trace_idx)
             trace_idx += 1
 
-        assign_relative_phase_categories(items)
         warning = pdf_peak_warning(pdf_dir, len(pdf_files), len(items))
         if warning:
             warnings.append(warning)
@@ -1615,8 +1724,10 @@ def build_xrd_html(
             image_filename=first_stem,
             image_format=XRD_DOWNLOAD_IMAGE_FORMAT,
             image_format_selector=XRD_IMAGE_FORMAT_SELECTOR,
-            post_body_html=group_toggle_js + tables_html,
-            config={"scrollZoom": True},
+            post_body_html=build_xrd_legend_checkbox_js("xrd-plot")
+            + group_toggle_js
+            + tables_html,
+            config=_xrd_plot_config(),
         )
     else:
         html_text = build_report_html(
@@ -1665,182 +1776,18 @@ def main():
     else:
         out_html = os.path.join(os.getcwd(), "_".join(raw_stems) + "_result.html")
 
-    fig = go.Figure()
-    peak_ci = 0                 # PDF 피크 색상 인덱스(전체 누적)
-    trace_idx = 0              # 현재까지 추가한 trace 수
-    group_map = {}             # {raw_stem: [trace 인덱스, ...]}  (그룹 토글용)
-    groups_for_tables = []     # [(raw_stem, raw_color, [(label, color, peaks)])]
-    summary = []               # 출력용 [(raw_stem, n_points, raw_max, items)]
-    all_x = []
-    warnings = []
-
-    for gi, (raw_txt, pdf_dir) in enumerate(pairs):
-        if not os.path.isfile(raw_txt):
-            raise SystemExit(f"raw 파일을 찾을 수 없습니다: {raw_txt}")
-        if not os.path.isdir(pdf_dir):
-            raise SystemExit(f"PDF 폴더를 찾을 수 없습니다: {pdf_dir}")
-
-        raw_stem = os.path.splitext(os.path.basename(raw_txt))[0]  # ".txt" 제거
-        gid = f"g{gi}"
-        raw_color = RAW_LINE_COLORS[gi % len(RAW_LINE_COLORS)]
-
-        rx, ry = load_raw(raw_txt)
-        raw_max = max(ry) if ry else 1.0
-        all_x += rx
-        idxs = []
-
-        # raw 라인: 그룹의 첫 trace이며 그룹 제목(최상위 raw 범주)을 정의한다.
-        fig.add_trace(
-            go.Scatter(
-                x=rx, y=ry, mode="lines", name=raw_stem,
-                line=dict(color=raw_color, width=1),
-                legendgroup=gid,
-                legendgrouptitle_text=raw_stem,
-            )
-        )
-        idxs.append(trace_idx)
-        trace_idx += 1
-
-        # 이 raw 파일에 속한 PDF 피크들(같은 legendgroup → 함께 토글 가능)
-        pdf_files = sorted(glob.glob(os.path.join(pdf_dir, "*.pdf")))
-        items = []
-        for pdf_path in pdf_files:
-            peaks = parse_pdf_peaks(pdf_path)
-            if not peaks:
-                continue
-            color = PEAK_PALETTE[peak_ci % len(PEAK_PALETTE)]
-            peak_ci += 1
-            fallback_label = os.path.splitext(os.path.basename(pdf_path))[0]
-            metadata = parse_pdf_card_metadata(pdf_path)
-            label = phase_label_from_metadata(metadata, fallback_label)
-            match = score_phase_candidate(peaks, rx, ry, raw_max)
-            category = classify_phase_candidate(match)
-            items.append({
-                "label": label,
-                "color": color,
-                "peaks": peaks,
-                "trace_idx": trace_idx,
-                "metadata": metadata,
-                "match": match,
-                "category": category,
-                "source_pdf": pdf_path,
-            })  # trace_idx = 이 피크의 trace 번호
-
-            xs, ys, customdata = [], [], []
-            for p in peaks:
-                tt, ni, hkl = p["two_theta"], p["norm"], p["hkl"]
-                h = ni / 100.0 * raw_max
-                xs += [tt, tt, None]
-                ys += [0.0, h, None]
-                customdata += [(ni, hkl), (ni, hkl), (None, None)]
-
-            fig.add_trace(
-                go.Scatter(
-                    x=xs, y=ys, mode="lines", name=label,
-                    line=dict(color=color, width=1.5),
-                    legendgroup=gid,
-                    customdata=customdata,
-                    hovertemplate=(
-                        "2θ = %{x:.3f}°<br>"
-                        "Norm. I. = %{customdata[0]:.1f}%<br>"
-                        "h k l = %{customdata[1]}<extra>" + label + "</extra>"
-                    ),
-                )
-            )
-            idxs.append(trace_idx)
-            trace_idx += 1
-
-        assign_relative_phase_categories(items)
-        warning = pdf_peak_warning(pdf_dir, len(pdf_files), len(items))
-        if warning:
-            print(warning)
-            warnings.append(warning)
-
-        group_map[raw_stem] = idxs
-        groups_for_tables.append((raw_stem, raw_color, items))
-        summary.append((raw_stem, len(rx), raw_max, items))
-
-    xrange = [min(all_x), max(all_x)] if all_x else None
-    title_text = (
-        f"XRD Pattern ({first_stem}) with ICDD Card Peaks"
-        if len(pairs) == 1 else "XRD Patterns with ICDD Card Peaks"
+    result = build_xrd_html(
+        pairs,
+        table_files=table_files,
+        image_files=image_files,
+        origin=args.origin,
+        plot_only=args.plot_only,
     )
-
-    # ----- 레이아웃 (스타일은 공통 모듈이 origin 적용을 담당) -----
-    #   legend.groupclick="toggleitem": 범례 개별 항목은 하나씩 토글.
-    #   그룹 전체 토글은 그룹 제목 클릭(아래 build_group_toggle_js)이 담당.
-    if args.origin:
-        fig.update_layout(
-            title=dict(
-                text=title_text,
-                font=dict(family="Arial", size=22, color="black"),
-                x=0.5, xanchor="center",
-            ),
-            hovermode="closest",
-            autosize=True,
-            margin=dict(l=70, r=30, t=60, b=120),
-            legend=dict(groupclick="toggleitem"),
-        )
-        fig.update_xaxes(title_text="2θ (°)", range=xrange)
-        fig.update_yaxes(title_text="Intensity (cps)", rangemode="tozero")
-    else:
-        fig.update_layout(
-            title=title_text,
-            xaxis_title="2θ (°)",
-            yaxis_title="Intensity (cps)",
-            template="plotly_white",
-            hovermode="closest",
-            autosize=True,
-            margin=dict(l=60, r=30, t=60, b=120),
-            legend=dict(groupclick="toggleitem"),
-        )
-        fig.update_xaxes(range=xrange)
-        fig.update_yaxes(rangemode="tozero")
-
-    # ----- 공통 모듈로 반응형 HTML 출력 (lim/XRD 정책 적용) -----
-    #   origin / 반응형 범례 / crosshair / title_edit / trace_highlight /
-    #   JPG 고정 저장 + post_body_html(그룹 토글 JS + PDF 피크 표)
-    #   더블클릭 강조는 raw 라인(각 그룹 첫 trace)만 대상으로 하고,
-    #   강조 시 그 raw + 소속 피크(2θ 수직바)가 함께 살아나도록 그룹을 넘긴다.
-    raw_line_indices = [idxs[0] for idxs in group_map.values() if idxs]
-    highlight_groups = {idxs[0]: idxs for idxs in group_map.values() if idxs}
-    if args.plot_only:
-        tables_html = build_tables_html(groups_for_tables)
-        group_toggle_js = build_group_toggle_js("xrd-plot", group_map)
-        write_responsive_html(
-            fig,
-            out_html,
-            div_id="xrd-plot",
-            origin=args.origin,
-            legend_breakpoint_px=LEGEND_BREAKPOINT_PX,
-            crosshair=True,
-            title_edit=True,
-            legend_text_edit=True,
-            trace_highlight=True,
-            highlight_pickable=raw_line_indices,
-            highlight_groups=highlight_groups,
-            image_filename=first_stem,
-            image_format=XRD_DOWNLOAD_IMAGE_FORMAT,
-            image_format_selector=XRD_IMAGE_FORMAT_SELECTOR,
-            post_body_html=group_toggle_js + tables_html,
-            config={"scrollZoom": True},
-        )
-    else:
-        report_html = build_report_html(
-            fig,
-            sample_name=first_stem if len(pairs) == 1 else ", ".join(raw_stems),
-            groups=groups_for_tables,
-            group_map=group_map,
-            warnings=warnings,
-            table_files=table_files,
-            image_files=image_files,
-            origin=args.origin,
-            first_stem=first_stem,
-            raw_line_indices=raw_line_indices,
-            highlight_groups=highlight_groups,
-        )
-        with open(out_html, "w", encoding="utf-8") as fh:
-            fh.write(report_html)
+    with open(out_html, "w", encoding="utf-8") as fh:
+        fh.write(result["html"])
+    summary = result["summary"]
+    for warning in result["warnings"]:
+        print(warning)
 
     print(f"Saved: {out_html}")
     if table_files:
