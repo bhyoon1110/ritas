@@ -1180,20 +1180,41 @@ body { overflow-x: hidden; }
 }
 .raman-message {
   display: none;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 22px;
+  border-bottom: 1px solid #d9e2ec;
+  background: #f8fafc;
+  box-sizing: border-box;
+}
+.raman-message.is-visible { display: flex; }
+.raman-message-item {
   position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
   min-height: 32px;
-  padding: 8px 54px 8px 22px;
-  border-bottom: 1px solid #fecaca;
+  padding: 8px 38px 8px 12px;
+  border: 1px solid #fecaca;
+  border-radius: 7px;
   background: #fef2f2;
   color: #b42318;
   font-size: 12px;
   box-sizing: border-box;
+  transition: opacity 180ms ease, transform 180ms ease;
 }
-.raman-message.is-visible { display: block; }
-.raman-message.is-success {
-  border-bottom-color: #bbf7d0;
+.raman-message-item.is-success {
+  border-color: #bbf7d0;
   background: #dcfce7;
   color: #166534;
+}
+.raman-message-item.is-hiding {
+  opacity: 0;
+  transform: translateY(-4px);
+}
+.raman-message-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .raman-message a {
   color: #1d4ed8;
@@ -1203,7 +1224,7 @@ body { overflow-x: hidden; }
 .raman-message-close {
   position: absolute;
   top: 4px;
-  right: 18px;
+  right: 8px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -4230,29 +4251,56 @@ _UPLOAD_SCRIPT = """
     }
   }
 
+  function updateMessageStackVisibility() {
+    message.classList.toggle("is-visible", Boolean(message.querySelector(".raman-message-item")));
+  }
+
+  function removeMessageItem(item) {
+    if (!item || !item.parentNode) return;
+    if (item._messageTimer) {
+      window.clearTimeout(item._messageTimer);
+      item._messageTimer = null;
+    }
+    item.classList.add("is-hiding");
+    window.setTimeout(function() {
+      if (item.parentNode) item.parentNode.removeChild(item);
+      updateMessageStackVisibility();
+    }, 190);
+  }
+
+  function appendMessage(text, success) {
+    if (!text) return null;
+    var item = document.createElement("div");
+    item.className = "raman-message-item" + (success ? " is-success" : "");
+    var label = document.createElement("span");
+    label.className = "raman-message-text";
+    label.textContent = text;
+    var close = document.createElement("button");
+    close.type = "button";
+    close.className = "raman-message-close";
+    close.setAttribute("aria-label", "알림 닫기");
+    close.textContent = "×";
+    close.addEventListener("click", function() {
+      removeMessageItem(item);
+    });
+    item.appendChild(label);
+    item.appendChild(close);
+    message.appendChild(item);
+    updateMessageStackVisibility();
+    item._messageTimer = window.setTimeout(function() {
+      removeMessageItem(item);
+    }, MESSAGE_AUTO_HIDE_MS);
+    return item;
+  }
+
   function setMessage(text) {
     clearMessageTimer();
-    message.textContent = text || "";
-    message.classList.remove("is-success");
-    message.classList.toggle("is-visible", !!text);
-    if (text) {
-      messageTimer = window.setTimeout(function() {
-        if (!message.classList.contains("is-success")) {
-          setMessage("");
-        }
-      }, MESSAGE_AUTO_HIDE_MS);
-    }
+    appendMessage(text, false);
   }
 
   function setSuccessMessage(text) {
     clearMessageTimer();
-    message.textContent = text || "";
-    message.classList.add("is-visible", "is-success");
-    if (text) {
-      messageTimer = window.setTimeout(function() {
-        setMessage("");
-      }, MESSAGE_AUTO_HIDE_MS);
-    }
+    appendMessage(text, true);
   }
 
   function setBusy(busy) {
@@ -4363,21 +4411,7 @@ _UPLOAD_SCRIPT = """
 
   function setReportDownloadLink(job) {
     updatePersistentReportDownload(job);
-    clearMessageTimer();
-    message.textContent = "";
-    message.classList.add("is-visible", "is-success");
-    var label = document.createElement("span");
-    label.textContent = "보고서가 완성되었습니다.";
-    var close = document.createElement("button");
-    close.type = "button";
-    close.className = "raman-message-close";
-    close.setAttribute("aria-label", "알림 닫기");
-    close.textContent = "×";
-    close.addEventListener("click", function() {
-      setMessage("");
-    });
-    message.appendChild(label);
-    message.appendChild(close);
+    setSuccessMessage("보고서가 완성되었습니다.");
     updateReportSendAvailability();
   }
 

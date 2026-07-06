@@ -184,6 +184,10 @@ def test_raman_workspace_contains_upload_controls() -> None:
     assert "setReportDownloadLink" in page
     assert "MESSAGE_AUTO_HIDE_MS = 5000" in page
     assert "clearMessageTimer" in page
+    assert ".raman-message-item" in page
+    assert "updateMessageStackVisibility" in page
+    assert "removeMessageItem" in page
+    assert "message.appendChild(item)" in page
     assert "raman-message-close" in page
     assert ".raman-loading {" in page
     assert "z-index: 200" in page
