@@ -44,7 +44,9 @@ def test_xrd_workspace_contains_upload_controls() -> None:
     assert "makeReadOnlyDownloadHtml" in page
     assert "window.readOnlyReport=true" in page
     assert "data-read-only-report" in page
+    assert "[contenteditable=true]" in page
     assert "closest('#xrd-plot')" in page
+    assert 'exampleButton.addEventListener("click"' in page
     assert "raw와 ICDD Card 데이터를 분석하는 중입니다." in page
     assert "/api/v1/xrd/analyze" in page
     assert "/api/v1/xrd/example" in page

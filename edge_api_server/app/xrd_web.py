@@ -727,7 +727,7 @@ def build_xrd_page() -> str:
         "(function(){",
         "function ready(fn){if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',fn,{once:true});}else{fn();}}",
         "function inGraph(target){return !!(target&&target.closest&&target.closest('#xrd-plot'));}",
-        "function editableTarget(target){return !!(target&&target.closest&&target.closest('input,textarea,select,[contenteditable=\"true\"]'));}",
+        "function editableTarget(target){return !!(target&&target.closest&&target.closest('input,textarea,select,[contenteditable=true]'));}",
         "ready(function(){",
         "document.documentElement.setAttribute('data-read-only-report','true');",
         "document.querySelectorAll('[contenteditable]').forEach(function(node){if(!inGraph(node))node.setAttribute('contenteditable','false');});",
