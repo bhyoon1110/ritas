@@ -404,6 +404,31 @@ def build_xrd_legend_checkbox_js(div_id: str) -> str:
     if (visibleCount >= idxs.length) return true;
     return "partial";
   }}
+  function mapLegendRows(rows, idxs) {{
+    var groupCounts = {{}};
+    rows.forEach(function(row) {{
+      var textNode = row.querySelector("text.legendtext");
+      var label = stripBox(textNode ? textNode.textContent : "").trim();
+      if (groupForName(label)) groupCounts[label] = (groupCounts[label] || 0) + 1;
+    }});
+    var groupSeen = {{}};
+    var tracePos = 0;
+    rows.forEach(function(row) {{
+      var node = row.querySelector("text.legendtext");
+      if (!node) return;
+      var d = row.__data__;
+      var rowMeta = Array.isArray(d) ? d[0] : d;
+      var isGroupTitle = rowMeta && rowMeta.groupTitle && typeof rowMeta.groupTitle === "object";
+      var currentLabel = stripBox(node.textContent || "").trim();
+      var rawGroup = groupForName(currentLabel);
+      var seen = rawGroup ? ((groupSeen[currentLabel] || 0) + 1) : 0;
+      if (rawGroup) groupSeen[currentLabel] = seen;
+      var titleLike = isGroupTitle || (rawGroup && groupCounts[currentLabel] > 1 && seen === 1);
+      row.__xrdCurve = titleLike ? null : idxs[tracePos++];
+      row.__xrdRawGroup = rawGroup;
+      row.__xrdIsGroupTitle = titleLike;
+    }});
+  }}
   function svg(tag) {{
     return document.createElementNS(SVG_NS, tag);
   }}
@@ -460,26 +485,13 @@ def build_xrd_legend_checkbox_js(div_id: str) -> str:
   function refreshLegendCheckboxes() {{
     var rows = Array.prototype.slice.call(gd.querySelectorAll("g.legend g.traces"));
     var idxs = legendTraceIndexes();
-    var groupCounts = {{}};
+    mapLegendRows(rows, idxs);
     rows.forEach(function(row) {{
-      var textNode = row.querySelector("text.legendtext");
-      var label = stripBox(textNode ? textNode.textContent : "").trim();
-      if (groupForName(label)) groupCounts[label] = (groupCounts[label] || 0) + 1;
-    }});
-    var groupSeen = {{}};
-    var tracePos = 0;
-    rows.forEach(function(row, pos) {{
       var node = row.querySelector("text.legendtext");
       if (!node) return;
-      var d = row.__data__;
-      var rowMeta = Array.isArray(d) ? d[0] : d;
-      var isGroupTitle = rowMeta && rowMeta.groupTitle && typeof rowMeta.groupTitle === "object";
       var currentLabel = stripBox(node.textContent || "").trim();
-      var rawGroup = groupForName(currentLabel);
-      var seen = rawGroup ? ((groupSeen[currentLabel] || 0) + 1) : 0;
-      if (rawGroup) groupSeen[currentLabel] = seen;
-      var titleLike = isGroupTitle || (rawGroup && groupCounts[currentLabel] > 1 && seen === 1);
-      var curve = titleLike ? null : idxs[tracePos++];
+      var rawGroup = row.__xrdRawGroup;
+      var curve = row.__xrdCurve;
       var tr = (gd.data || gd._fullData || [])[curve] || {{}};
       var meta = tr.meta || {{}};
       var base = stripBox(tr.name || node.textContent);
@@ -1462,6 +1474,16 @@ def build_group_toggle_js(div_id: str, group_map: dict) -> str:
     }}
     return null;
   }}
+  function legendTraceIndexes() {{
+    var fd = gd._fullData || gd.data || [];
+    var result = [];
+    for (var i = 0; i < fd.length; i++) {{
+      var tr = fd[i];
+      if (!tr || tr.showlegend === false) continue;
+      result.push(typeof tr.index === "number" ? tr.index : i);
+    }}
+    return result;
+  }}
   function traces() {{
     return gd.data || gd._fullData || [];
   }}
@@ -1473,6 +1495,13 @@ def build_group_toggle_js(div_id: str, group_map: dict) -> str:
       var v = trace.visible; return v === true || v === undefined;
     }});
     window.Plotly.restyle(gd, {{ "visible": anyOn ? "legendonly" : true }}, idxs);
+  }}
+  function toggleTrace(curve) {{
+    if (!window.Plotly || curve == null || curve < 0) return;
+    var trace = traces()[curve] || {{}};
+    if (trace.meta && trace.meta.xrd_separator) return;
+    var visible = trace.visible !== false && trace.visible !== "legendonly";
+    window.Plotly.restyle(gd, {{ "visible": visible ? "legendonly" : true }}, [curve]);
   }}
   function isOn(i) {{
     var trace = traces()[i] || {{}};
@@ -1507,31 +1536,59 @@ def build_group_toggle_js(div_id: str, group_map: dict) -> str:
     }});
   }}
   function bind() {{
-    // raw 그룹명과 같은 범례 행은 그룹 전체 토글 대상으로 표시한다.
+    // 범례 행마다 실제 trace 번호를 저장해 raw/피크 클릭을 명확히 분리한다.
     var items = gd.querySelectorAll("g.legend g.traces");
+    var rows = Array.prototype.slice.call(items);
+    var idxsForRows = legendTraceIndexes();
+    var groupCounts = {{}};
+    rows.forEach(function(it) {{
+      var tx = it.querySelector("text.legendtext");
+      var label = stripBox(tx ? tx.textContent : "").trim();
+      if (indicesFor(label)) groupCounts[label] = (groupCounts[label] || 0) + 1;
+    }});
+    var groupSeen = {{}};
+    var tracePos = 0;
     items.forEach(function(it) {{
       var tx = it.querySelector("text.legendtext");
-      var idxs = indicesFor(tx ? tx.textContent : "");
-      if (!idxs) return;
+      var label = stripBox(tx ? tx.textContent : "").trim();
+      var d = it.__data__;
+      var meta = Array.isArray(d) ? d[0] : d;
+      var isGroupTitle = meta && meta.groupTitle && typeof meta.groupTitle === "object";
+      var group = indicesFor(label);
+      var seen = group ? ((groupSeen[label] || 0) + 1) : 0;
+      if (group) groupSeen[label] = seen;
+      var titleLike = isGroupTitle || (group && groupCounts[label] > 1 && seen === 1);
+      it.__xrdCurve = titleLike ? null : idxsForRows[tracePos++];
+      it.__xrdRawGroup = group;
+      it.__xrdIsGroupTitle = titleLike;
       it.style.cursor = "pointer";
     }});
   }}
   function bindRawLegendDomClick() {{
     if (gd.__xrdRawLegendDomBound) return;
     gd.__xrdRawLegendDomBound = true;
-    gd.addEventListener("click", function(ev) {{
+    var lastHandledAt = 0;
+    function handleLegendPointer(ev) {{
       var target = ev.target && ev.target.closest
         ? ev.target.closest("g.legend g.traces")
         : null;
       if (!target) return;
-      var tx = target.querySelector("text.legendtext");
-      var idxs = indicesFor(tx ? tx.textContent : "");
-      if (!idxs) return;
+      bind();
+      var curve = target.__xrdCurve;
+      var group = target.__xrdRawGroup;
+      var rawGroup = target.__xrdIsGroupTitle ? group : groupForRawCurve(curve);
       ev.preventDefault();
       ev.stopPropagation();
       if (ev.stopImmediatePropagation) ev.stopImmediatePropagation();
-      toggleGroup(idxs);
-    }}, true);
+      var now = Date.now();
+      if (now - lastHandledAt < 180) return;
+      lastHandledAt = now;
+      if (rawGroup) toggleGroup(rawGroup);
+      else toggleTrace(curve);
+    }}
+    ["pointerdown", "click"].forEach(function(type) {{
+      gd.addEventListener(type, handleLegendPointer, true);
+    }});
   }}
   function bindLegendClick() {{
     if (!gd.on || gd.__xrdLegendClickBound) return;
@@ -1547,19 +1604,25 @@ def build_group_toggle_js(div_id: str, group_map: dict) -> str:
       if (trace && trace.meta && trace.meta.xrd_separator) {{
         return false;
       }}
-      setTimeout(syncTables, 0);
-      return true;
+      toggleTrace(curve);
+      return false;
     }});
   }}
   function init() {{
-    if (!window.Plotly) {{ setTimeout(init, 80); return; }}
+    if (!gd.querySelector("g.legend g.traces")) {{
+      setTimeout(init, 80);
+      return;
+    }}
     bind();
     bindRawLegendDomClick();
     bindLegendClick();
     syncTables();
     gd.dispatchEvent(new Event("rist-xrd-legend-groups-ready"));
-    gd.on("plotly_afterplot", bind);
-    gd.on("plotly_restyle", syncTables);
+    if (gd.on && !gd.__xrdGroupEventsBound) {{
+      gd.__xrdGroupEventsBound = true;
+      gd.on("plotly_afterplot", bind);
+      gd.on("plotly_restyle", syncTables);
+    }}
     gd.addEventListener("trace-highlight", syncTables);
   }}
   init();
@@ -1722,8 +1785,6 @@ def build_xrd_html(
                 mode="lines",
                 name=raw_stem,
                 line=dict(color=raw_color, width=RAW_LINE_WIDTH),
-                legendgroup=gid,
-                legendgrouptitle_text=raw_stem,
             )
         )
         idxs.append(trace_idx)
@@ -1771,7 +1832,6 @@ def build_xrd_html(
                         mode="lines",
                         name=_phase_category_separator_label(category),
                         line=dict(color="#cbd5e1", width=1),
-                        legendgroup=gid,
                         hoverinfo="skip",
                         showlegend=True,
                         meta={"xrd_separator": True, "xrd_category": category},
@@ -1797,7 +1857,6 @@ def build_xrd_html(
                     mode="lines",
                     name=item["label"],
                     line=dict(color=item["color"], width=1.5),
-                    legendgroup=gid,
                     customdata=customdata,
                     hovertemplate=(
                         "2θ = %{x:.3f}°<br>"
