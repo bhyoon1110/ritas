@@ -176,6 +176,8 @@ def test_build_report_html_contains_xrd_template_sections(tmp_path) -> None:
     assert "phase-match.png" in html
     assert "data:image/png;base64" in html
     assert "xrd-rank-1" in html
+    assert "xrd-phase-group-button" in html
+    assert "상 그룹 편집" in html
     assert "plotly" in html.lower()
 
 

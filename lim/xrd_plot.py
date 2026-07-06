@@ -458,6 +458,537 @@ def build_xrd_legend_checkbox_js(div_id: str) -> str:
 """
 
 
+def build_xrd_phase_group_editor_js(div_id: str) -> str:
+    """XRD phase 후보 단위 그룹/범례 편집 패널을 추가한다."""
+    snippet = r"""
+<style>
+#__DIV_ID__ .xrd-phase-group-button {
+  order: 24;
+  border: 1px solid #c7d0dd;
+  border-radius: 4px;
+  background: rgba(255,255,255,0.94);
+  color: #1f2933;
+  cursor: pointer;
+  font: 12px Arial, sans-serif;
+  padding: 5px 9px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+}
+#__DIV_ID__ .xrd-phase-group-panel {
+  position: absolute;
+  top: 94px;
+  right: 30px;
+  z-index: 22;
+  display: none;
+  width: min(460px, calc(100% - 16px));
+  max-width: calc(100% - 16px);
+  max-height: min(520px, calc(100% - 54px));
+  overflow: auto;
+  overflow-x: hidden;
+  background: rgba(255,255,255,0.98);
+  border: 1px solid #c7d0dd;
+  border-radius: 6px;
+  box-shadow: 0 4px 18px rgba(0,0,0,0.16);
+  box-sizing: border-box;
+  color: #1f2933;
+  font: 12px Arial, sans-serif;
+}
+#__DIV_ID__ .xrd-phase-group-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px;
+  border-bottom: 1px solid #d7dee8;
+  background: rgba(255,255,255,0.99);
+  font-weight: 700;
+}
+#__DIV_ID__ .xrd-phase-group-close {
+  border: 0;
+  background: transparent;
+  color: #52606d;
+  cursor: pointer;
+  font: 18px Arial, sans-serif;
+  line-height: 1;
+}
+#__DIV_ID__ .xrd-phase-group-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 34px auto auto;
+  gap: 6px;
+  align-items: center;
+  padding: 10px;
+  border-bottom: 1px solid #e4e9f0;
+  background: #f8fafc;
+}
+#__DIV_ID__ .xrd-phase-group-name,
+#__DIV_ID__ .xrd-phase-label-input,
+#__DIV_ID__ .xrd-phase-group-title-input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  background: #fff;
+  color: #1f2933;
+  font: 12px Arial, sans-serif;
+  padding: 6px 7px;
+}
+#__DIV_ID__ .xrd-phase-group-color {
+  width: 30px;
+  height: 30px;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  background: #fff;
+  padding: 2px;
+}
+#__DIV_ID__ .xrd-phase-group-apply,
+#__DIV_ID__ .xrd-phase-selection-clear,
+#__DIV_ID__ .xrd-phase-group-clear {
+  border: 1px solid #a8bbd3;
+  border-radius: 4px;
+  background: #fff;
+  color: #1f2933;
+  cursor: pointer;
+  font: 12px Arial, sans-serif;
+  padding: 6px 8px;
+  white-space: nowrap;
+}
+#__DIV_ID__ .xrd-phase-group-apply {
+  border-color: #2563eb;
+  color: #1d4ed8;
+  font-weight: 700;
+}
+#__DIV_ID__ .xrd-phase-group-apply:disabled {
+  border-color: #cbd5e1;
+  color: #94a3b8;
+  cursor: not-allowed;
+}
+#__DIV_ID__ .xrd-phase-group-body {
+  padding: 8px 10px 10px;
+}
+#__DIV_ID__ .xrd-phase-section {
+  margin: 0 0 10px;
+  border: 1px solid #e4e9f0;
+  border-radius: 6px;
+  overflow: hidden;
+}
+#__DIV_ID__ .xrd-phase-section-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 6px;
+  align-items: center;
+  padding: 7px 8px;
+  background: #eef4fb;
+  border-bottom: 1px solid #e4e9f0;
+  color: #1f3b73;
+  font-weight: 700;
+}
+#__DIV_ID__ .xrd-phase-section-head.is-manual {
+  background: #ecfdf5;
+  color: #166534;
+}
+#__DIV_ID__ .xrd-phase-section-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#__DIV_ID__ .xrd-phase-row {
+  display: grid;
+  grid-template-columns: auto 16px minmax(0, 1fr);
+  gap: 7px;
+  align-items: center;
+  padding: 7px 8px;
+  border-bottom: 1px solid #eef2f7;
+  background: #fff;
+}
+#__DIV_ID__ .xrd-phase-row:last-child {
+  border-bottom: 0;
+}
+#__DIV_ID__ .xrd-phase-row:hover {
+  background: #f8fafc;
+}
+#__DIV_ID__ .xrd-phase-row input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  accent-color: #2563eb;
+}
+#__DIV_ID__ .xrd-phase-color-chip {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1px solid rgba(15, 23, 42, 0.25);
+}
+#__DIV_ID__ .xrd-phase-group-empty {
+  padding: 12px;
+  color: #64748b;
+  text-align: center;
+}
+</style>
+<script>
+(function() {
+  var gd = document.getElementById(__DIV_JSON__);
+  if (!gd || !window.Plotly) return;
+
+  function ensureToolbar() {
+    if (getComputedStyle(gd).position === "static") gd.style.position = "relative";
+    var toolbar = gd.querySelector(".rist-plot-control-row");
+    if (!toolbar) {
+      toolbar = document.createElement("div");
+      toolbar.className = "rist-plot-control-row";
+      gd.appendChild(toolbar);
+    }
+    return toolbar;
+  }
+
+  function traceMeta(trace) {
+    return (trace && trace.meta && typeof trace.meta === "object") ? trace.meta : {};
+  }
+
+  function phaseCurves() {
+    return (gd.data || []).map(function(trace, curve) {
+      return { trace: trace, curve: curve, meta: traceMeta(trace) };
+    }).filter(function(item) {
+      return item.meta.xrd_phase_candidate === true;
+    });
+  }
+
+  function originalColor(item) {
+    var meta = item.meta;
+    if (!meta.xrd_original_color) {
+      meta.xrd_original_color = (item.trace.line && item.trace.line.color) || "#64748b";
+    }
+    return meta.xrd_original_color;
+  }
+
+  function currentColor(item) {
+    return (item.trace.line && item.trace.line.color)
+      || item.meta.xrd_manual_phase_color
+      || item.meta.xrd_original_color
+      || "#64748b";
+  }
+
+  function phaseSortKey(item) {
+    var meta = item.meta;
+    var manual = meta.xrd_manual_phase_group || "";
+    var category = meta.xrd_phase_category || "";
+    var groupKey = meta.xrd_phase_group_key || "";
+    return [
+      manual ? "0:" + manual : "1:",
+      category,
+      groupKey,
+      String(item.trace.name || "")
+    ].join("|").toLowerCase();
+  }
+
+  function buttonText(count) {
+    return "그룹 적용" + (count ? " (" + count + ")" : "");
+  }
+
+  function dispatchPhaseGroupChange(curves) {
+    gd.dispatchEvent(new CustomEvent("xrd-phase-group-change", {
+      detail: { curves: curves }
+    }));
+  }
+
+  function restyleLabel(curve, value) {
+    window.Plotly.restyle(gd, { name: value || "Phase" }, [curve]);
+  }
+
+  function applyGroup(curves, name, color) {
+    if (!curves.length || !name) return Promise.resolve();
+    var groupKey = "xrd-phase-group-" + name.toLowerCase().replace(/[^0-9a-z가-힣]+/g, "-");
+    curves.forEach(function(curve) {
+      var item = phaseCurves().filter(function(entry) { return entry.curve === curve; })[0];
+      if (!item) return;
+      originalColor(item);
+      item.meta.xrd_manual_phase_group = name;
+      item.meta.xrd_manual_phase_color = color;
+    });
+    return window.Plotly.restyle(gd, {
+      "line.color": color,
+      "legendgroup": groupKey,
+      "legendgrouptitle.text": name
+    }, curves).then(function() {
+      dispatchPhaseGroupChange(curves);
+    });
+  }
+
+  function clearGroup(groupName) {
+    var curves = phaseCurves().filter(function(item) {
+      return item.meta.xrd_manual_phase_group === groupName;
+    });
+    var indices = curves.map(function(item) { return item.curve; });
+    if (!indices.length) return Promise.resolve();
+    var colors = curves.map(function(item) {
+      var color = originalColor(item);
+      delete item.meta.xrd_manual_phase_group;
+      delete item.meta.xrd_manual_phase_color;
+      return color;
+    });
+    return window.Plotly.restyle(gd, {
+      "line.color": colors,
+      "legendgroup": "",
+      "legendgrouptitle.text": ""
+    }, indices).then(function() {
+      dispatchPhaseGroupChange(indices);
+    });
+  }
+
+  function recolorGroup(groupName, color) {
+    var curves = phaseCurves().filter(function(item) {
+      return item.meta.xrd_manual_phase_group === groupName;
+    });
+    var indices = curves.map(function(item) { return item.curve; });
+    if (!indices.length) return Promise.resolve();
+    curves.forEach(function(item) {
+      originalColor(item);
+      item.meta.xrd_manual_phase_color = color;
+    });
+    return window.Plotly.restyle(gd, { "line.color": color }, indices).then(function() {
+      dispatchPhaseGroupChange(indices);
+    });
+  }
+
+  function renameGroup(groupName, nextName) {
+    var clean = String(nextName || "").trim();
+    if (!clean || clean === groupName) return Promise.resolve();
+    var curves = phaseCurves().filter(function(item) {
+      return item.meta.xrd_manual_phase_group === groupName;
+    });
+    var indices = curves.map(function(item) { return item.curve; });
+    if (!indices.length) return Promise.resolve();
+    curves.forEach(function(item) {
+      item.meta.xrd_manual_phase_group = clean;
+    });
+    var groupKey = "xrd-phase-group-" + clean.toLowerCase().replace(/[^0-9a-z가-힣]+/g, "-");
+    return window.Plotly.restyle(gd, {
+      "legendgroup": groupKey,
+      "legendgrouptitle.text": clean
+    }, indices).then(function() {
+      dispatchPhaseGroupChange(indices);
+    });
+  }
+
+  function render(body, applyButton) {
+    var items = phaseCurves().sort(function(a, b) {
+      return phaseSortKey(a).localeCompare(phaseSortKey(b), "ko");
+    });
+    body.innerHTML = "";
+    if (!items.length) {
+      var empty = document.createElement("div");
+      empty.className = "xrd-phase-group-empty";
+      empty.textContent = "편집할 phase 후보가 없습니다.";
+      body.appendChild(empty);
+      applyButton.textContent = buttonText(0);
+      applyButton.disabled = true;
+      return;
+    }
+
+    var manualGroups = {};
+    var ungrouped = [];
+    items.forEach(function(item) {
+      var name = item.meta.xrd_manual_phase_group;
+      if (name) {
+        if (!manualGroups[name]) manualGroups[name] = [];
+        manualGroups[name].push(item);
+      } else {
+        ungrouped.push(item);
+      }
+    });
+
+    Object.keys(manualGroups).sort(function(a, b) { return a.localeCompare(b, "ko"); }).forEach(function(groupName) {
+      appendSection(body, groupName, manualGroups[groupName], true);
+    });
+    if (ungrouped.length) appendSection(body, "미그룹 phase 후보", ungrouped, false);
+
+    updateApplyButton(applyButton);
+  }
+
+  function appendSection(body, title, items, manual) {
+    var section = document.createElement("section");
+    section.className = "xrd-phase-section";
+    var head = document.createElement("div");
+    head.className = "xrd-phase-section-head" + (manual ? " is-manual" : "");
+
+    if (manual) {
+      var titleInput = document.createElement("input");
+      titleInput.className = "xrd-phase-group-title-input";
+      titleInput.value = title;
+      titleInput.title = "그룹명";
+      titleInput.addEventListener("change", function() {
+        renameGroup(title, titleInput.value).then(function() {
+          renderCurrentPanel();
+        });
+      });
+      var color = document.createElement("input");
+      color.className = "xrd-phase-group-color";
+      color.type = "color";
+      color.value = items[0] ? currentColor(items[0]) : "#2563eb";
+      color.title = "그룹 색상";
+      color.addEventListener("input", function() {
+        recolorGroup(title, color.value);
+      });
+      var clear = document.createElement("button");
+      clear.className = "xrd-phase-group-clear";
+      clear.type = "button";
+      clear.title = "그룹 해제";
+      clear.textContent = "해제";
+      clear.addEventListener("click", function() {
+        clearGroup(title).then(function() {
+          renderCurrentPanel();
+        });
+      });
+      head.appendChild(titleInput);
+      head.appendChild(color);
+      head.appendChild(clear);
+    } else {
+      var label = document.createElement("div");
+      label.className = "xrd-phase-section-title";
+      label.textContent = title;
+      var count = document.createElement("span");
+      count.textContent = items.length + "개";
+      head.appendChild(label);
+      head.appendChild(count);
+      head.appendChild(document.createElement("span"));
+    }
+
+    section.appendChild(head);
+    items.forEach(function(item) {
+      section.appendChild(phaseRow(item));
+    });
+    body.appendChild(section);
+  }
+
+  function phaseRow(item) {
+    var row = document.createElement("div");
+    row.className = "xrd-phase-row";
+    var check = document.createElement("input");
+    check.type = "checkbox";
+    check.className = "xrd-phase-select";
+    check.dataset.curve = String(item.curve);
+    check.addEventListener("change", function() {
+      updateApplyButton(currentApplyButton);
+    });
+    var chip = document.createElement("span");
+    chip.className = "xrd-phase-color-chip";
+    chip.style.backgroundColor = currentColor(item);
+    var input = document.createElement("input");
+    input.className = "xrd-phase-label-input";
+    input.value = item.trace.name || "";
+    input.title = "범례 이름";
+    input.addEventListener("change", function() {
+      restyleLabel(item.curve, input.value);
+    });
+    row.appendChild(check);
+    row.appendChild(chip);
+    row.appendChild(input);
+    return row;
+  }
+
+  function selectedCurves() {
+    return Array.prototype.slice.call(gd.querySelectorAll(".xrd-phase-select:checked"))
+      .map(function(node) { return parseInt(node.dataset.curve, 10); })
+      .filter(function(value) { return Number.isFinite(value); });
+  }
+
+  var currentBody = null;
+  var currentApplyButton = null;
+  function renderCurrentPanel() {
+    if (currentBody && currentApplyButton) render(currentBody, currentApplyButton);
+  }
+
+  function updateApplyButton(button) {
+    if (!button) return;
+    var count = selectedCurves().length;
+    button.textContent = buttonText(count);
+    button.disabled = count === 0;
+  }
+
+  function install() {
+    if (gd.__xrdPhaseGroupEditorInstalled) return;
+    gd.__xrdPhaseGroupEditorInstalled = true;
+    var toolbar = ensureToolbar();
+    var button = document.createElement("button");
+    button.type = "button";
+    button.className = "xrd-phase-group-button";
+    button.textContent = "상 그룹 편집";
+    toolbar.appendChild(button);
+
+    var panel = document.createElement("div");
+    panel.className = "xrd-phase-group-panel";
+    panel.innerHTML = ""
+      + "<div class='xrd-phase-group-head'>"
+      + "<span>상 그룹 편집</span>"
+      + "<button type='button' class='xrd-phase-group-close' aria-label='close'>×</button>"
+      + "</div>"
+      + "<div class='xrd-phase-group-controls'>"
+      + "<input class='xrd-phase-group-name' type='text' placeholder='그룹명'>"
+      + "<input class='xrd-phase-group-color' type='color' value='#2563eb' title='그룹 색상'>"
+      + "<button class='xrd-phase-group-apply' type='button' disabled>그룹 적용</button>"
+      + "<button class='xrd-phase-selection-clear' type='button'>선택 해제</button>"
+      + "</div>"
+      + "<div class='xrd-phase-group-body'></div>";
+    gd.appendChild(panel);
+
+    var body = panel.querySelector(".xrd-phase-group-body");
+    var nameInput = panel.querySelector(".xrd-phase-group-name");
+    var colorInput = panel.querySelector(".xrd-phase-group-color");
+    var applyButton = panel.querySelector(".xrd-phase-group-apply");
+    currentBody = body;
+    currentApplyButton = applyButton;
+
+    button.addEventListener("click", function() {
+      var other = gd.querySelector(".rist-legend-edit-panel");
+      if (other) other.style.display = "none";
+      var open = panel.style.display === "block";
+      panel.style.display = open ? "none" : "block";
+      if (!open) render(body, applyButton);
+    });
+    panel.querySelector(".xrd-phase-group-close").addEventListener("click", function() {
+      panel.style.display = "none";
+    });
+    panel.querySelector(".xrd-phase-selection-clear").addEventListener("click", function() {
+      panel.querySelectorAll(".xrd-phase-select:checked").forEach(function(node) {
+        node.checked = false;
+      });
+      updateApplyButton(applyButton);
+    });
+    applyButton.addEventListener("click", function() {
+      var name = String(nameInput.value || "").trim();
+      if (!name) {
+        nameInput.focus();
+        return;
+      }
+      var curves = selectedCurves();
+      applyGroup(curves, name, colorInput.value).then(function() {
+        nameInput.value = "";
+        render(body, applyButton);
+      });
+    });
+    if (gd.on) {
+      gd.on("plotly_afterplot", function() {
+        if (panel.style.display === "block") render(body, applyButton);
+      });
+      gd.on("plotly_restyle", function() {
+        if (panel.style.display === "block") render(body, applyButton);
+      });
+    }
+  }
+
+  install();
+})();
+</script>
+"""
+    return (
+        snippet.replace("__DIV_ID__", div_id)
+        .replace("__DIV_JSON__", json.dumps(div_id, ensure_ascii=False))
+    )
+
+
 # ----------------------------------------------------------------------------
 # PDF별 피크 표를 HTML로 생성 (그래프 색상과 일치하는 헤더, 반응형)
 # ----------------------------------------------------------------------------
@@ -1296,7 +1827,10 @@ def build_report_html(
         image_filename=first_stem,
         image_format=XRD_DOWNLOAD_IMAGE_FORMAT,
         image_format_selector=XRD_IMAGE_FORMAT_SELECTOR,
-        post_body_html=build_xrd_legend_checkbox_js("xrd-plot"),
+        post_body_html=(
+            build_xrd_legend_checkbox_js("xrd-plot")
+            + build_xrd_phase_group_editor_js("xrd-plot")
+        ),
         config=_xrd_plot_config(),
     )
     plot_body = _html_body_inner(plot_html)
@@ -1575,6 +2109,7 @@ def build_xrd_html(
                 mode="lines",
                 name=raw_stem,
                 line=dict(color=raw_color, width=RAW_LINE_WIDTH),
+                meta={"xrd_raw": True, "xrd_raw_stem": raw_stem},
             )
         )
         idxs.append(trace_idx)
@@ -1648,6 +2183,16 @@ def build_xrd_html(
                     name=item["label"],
                     line=dict(color=item["color"], width=1.5),
                     customdata=customdata,
+                    meta={
+                        "xrd_phase_candidate": True,
+                        "xrd_phase_label": item["label"],
+                        "xrd_phase_category": category,
+                        "xrd_phase_group_key": _phase_similarity_key(item),
+                        "xrd_phase_name": item["metadata"].get("phase_name") or "",
+                        "xrd_phase_formula": item["metadata"].get("formula") or "",
+                        "xrd_phase_card_no": item["metadata"].get("card_no") or "",
+                        "xrd_original_color": item["color"],
+                    },
                     hovertemplate=(
                         "2θ = %{x:.3f}°<br>"
                         "Norm. I. = %{customdata[0]:.1f}%<br>"
@@ -1683,7 +2228,7 @@ def build_xrd_html(
             hovermode="closest",
             autosize=True,
             margin=dict(l=70, r=30, t=60, b=120),
-            legend=dict(groupclick="toggleitem"),
+            legend=dict(groupclick="toggleitem", traceorder="grouped"),
         )
         fig.update_xaxes(title_text="2θ (°)", range=xrange)
         fig.update_yaxes(title_text="Intensity (cps)", rangemode="tozero")
@@ -1696,7 +2241,7 @@ def build_xrd_html(
             hovermode="closest",
             autosize=True,
             margin=dict(l=60, r=30, t=60, b=120),
-            legend=dict(groupclick="toggleitem"),
+            legend=dict(groupclick="toggleitem", traceorder="grouped"),
         )
         fig.update_xaxes(range=xrange)
         fig.update_yaxes(rangemode="tozero")
@@ -1733,7 +2278,10 @@ def build_xrd_html(
             image_filename=first_stem,
             image_format=XRD_DOWNLOAD_IMAGE_FORMAT,
             image_format_selector=XRD_IMAGE_FORMAT_SELECTOR,
-            post_body_html=build_xrd_legend_checkbox_js("xrd-plot")
+            post_body_html=(
+                build_xrd_legend_checkbox_js("xrd-plot")
+                + build_xrd_phase_group_editor_js("xrd-plot")
+            )
             + group_toggle_js
             + tables_html,
             config=_xrd_plot_config(),

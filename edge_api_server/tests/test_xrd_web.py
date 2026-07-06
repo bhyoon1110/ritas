@@ -157,6 +157,13 @@ def test_xrd_report_can_use_llm_comment_provider(tmp_path) -> None:
     assert "window.getComputedStyle(row).opacity" in result["html"]
     assert 'gd.on("plotly_restyle", schedule)' in result["html"]
     assert "bindRawLegendDomClick" not in result["html"]
+    assert "xrd-phase-group-button" in result["html"]
+    assert "xrd-phase-select" in result["html"]
+    assert "xrd_phase_candidate" in result["html"]
+    assert "xrd_original_color" in result["html"]
+    assert "xrd_manual_phase_group" in result["html"]
+    assert "legendgrouptitle.text" in result["html"]
+    assert '"traceorder":"grouped"' in result["html"]
     assert "Synthetic Anatase Example / TiO2" in result["html"]
     assert captured["experiment"] == "XRD"
     assert captured["raw_patterns"][0]["detected_raw_peaks"]
