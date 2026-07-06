@@ -1233,33 +1233,50 @@ body { overflow-x: hidden; }
 .raman-loading.is-visible { display: flex; }
 .raman-report-progress {
   display: none;
-  padding: 8px 22px 10px;
-  border-bottom: 1px solid #d9e2ec;
-  background: #f8fafc;
-  color: #243b53;
-  font-size: 12px;
+  padding: 11px 14px 12px;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  background: #eff6ff;
+  color: #1e3a8a;
+  font-size: 13px;
 }
-.raman-report-progress.is-visible { display: block; }
+.raman-report-progress.is-visible {
+  display: block;
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  z-index: 240;
+  width: min(560px, calc(100vw - 32px));
+  transform: translate(-50%, -50%);
+  box-shadow: 0 18px 48px rgba(15, 23, 42, 0.18);
+}
+.raman-report-progress.is-error {
+  border-color: #fecaca;
+  background: #fef2f2;
+  color: #991b1b;
+}
 .raman-report-progress-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 6px;
+  margin-bottom: 7px;
+  font-weight: 700;
 }
 .raman-report-progress-track {
   overflow: hidden;
-  height: 6px;
+  height: 7px;
   border-radius: 999px;
-  background: #d9e2ec;
+  background: #dbeafe;
 }
 .raman-report-progress-bar {
   width: 0%;
   height: 100%;
   border-radius: inherit;
   background: #2f80ed;
-  transition: width 220ms ease;
+  transition: width 240ms ease;
 }
+.raman-report-progress.is-error .raman-report-progress-bar { background: #dc2626; }
 #raman-plot {
   min-height: 540px;
   height: calc(100vh - 170px) !important;
@@ -2719,6 +2736,7 @@ _UPLOAD_SCRIPT = """
   var reportProgressLabel = document.getElementById("raman-report-progress-label");
   var reportProgressValue = document.getElementById("raman-report-progress-value");
   var reportProgressBar = document.getElementById("raman-report-progress-bar");
+  var reportProgressHideTimer = null;
   var clearButton = document.getElementById("raman-clear");
   var reportButton = document.getElementById("raman-report");
   var libraryInput = document.getElementById("raman-library-input");
@@ -4271,23 +4289,45 @@ _UPLOAD_SCRIPT = """
   }
 
   function setReportProgress(job) {
+    if (reportProgressHideTimer) {
+      clearTimeout(reportProgressHideTimer);
+      reportProgressHideTimer = null;
+    }
     if (!job) {
       reportProgress.classList.remove("is-visible");
+      reportProgress.classList.remove("is-error");
       reportProgressBar.style.width = "0%";
       reportProgressLabel.textContent = "보고서 생성 대기";
       reportProgressValue.textContent = "0%";
       return;
     }
     var pct = Math.max(0, Math.min(100, Number(job.progressPct || 0)));
+    if (job.status === "failed") {
+      reportProgress.classList.add("is-visible");
+      reportProgress.classList.add("is-error");
+      reportProgressBar.style.width = Math.max(pct, 100) + "%";
+      reportProgressValue.textContent = "100%";
+      reportProgressLabel.textContent = job.error || job.message || "보고서 생성에 실패했습니다.";
+      status.textContent = "보고서 생성 실패";
+      reportProgressHideTimer = setTimeout(function() {
+        setReportProgress(null);
+      }, 1800);
+      return;
+    }
     if (job.status === "completed" || pct >= 100) {
-      reportProgress.classList.remove("is-visible");
-      reportProgressBar.style.width = "0%";
+      reportProgress.classList.add("is-visible");
+      reportProgress.classList.remove("is-error");
+      reportProgressBar.style.width = "100%";
       reportProgressLabel.textContent = job.message || "보고서가 완성되었습니다.";
       reportProgressValue.textContent = "100%";
       status.textContent = "보고서 생성 완료";
+      reportProgressHideTimer = setTimeout(function() {
+        setReportProgress(null);
+      }, 900);
       return;
     }
     reportProgress.classList.add("is-visible");
+    reportProgress.classList.remove("is-error");
     reportProgressBar.style.width = pct + "%";
     reportProgressValue.textContent = pct + "%";
     reportProgressLabel.textContent = job.message || "보고서 생성 중입니다.";

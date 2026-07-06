@@ -104,6 +104,9 @@ def test_raman_workspace_contains_upload_controls() -> None:
     assert 'form.append("requestNumber", transfer.requestNumber)' in page
     assert 'experimentCode: transfer.limsExperimentCode' in page
     assert 'id="raman-report-progress"' in page
+    assert ".raman-report-progress.is-error" in page
+    assert "reportProgressHideTimer" in page
+    assert 'setTimeout(function()' in page
     assert 'id="raman-report-meta"' in page
     assert 'id="raman-report-apply-common-conditions"' in page
     assert 'id="raman-report-sample-condition-list"' in page

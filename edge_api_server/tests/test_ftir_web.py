@@ -92,6 +92,9 @@ def test_ftir_workspace_contains_upload_and_editor_controls() -> None:
     assert 'form.append("requestNumber", transfer.requestNumber)' in page
     assert 'experimentCode: transfer.limsExperimentCode' in page
     assert 'id="ftir-report-progress"' in page
+    assert ".ftir-report-progress.is-error" in page
+    assert "reportProgressHideTimer" in page
+    assert 'setTimeout(function()' in page
     assert 'id="ftir-report-meta"' in page
     assert "reportAnalysisPayload" in page
     assert "delete payload.figure" in page
