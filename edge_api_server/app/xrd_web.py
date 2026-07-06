@@ -720,9 +720,36 @@ def build_xrd_page() -> str:
       downloadLink.href = "#";
       downloadLink.setAttribute("aria-disabled", "true");
     }
+    function readOnlyReportPatch() {
+      return [
+        "<script>",
+        "window.readOnlyReport=true;",
+        "(function(){",
+        "function ready(fn){if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',fn,{once:true});}else{fn();}}",
+        "function inGraph(target){return !!(target&&target.closest&&target.closest('#xrd-plot'));}",
+        "function editableTarget(target){return !!(target&&target.closest&&target.closest('input,textarea,select,[contenteditable=\"true\"]'));}",
+        "ready(function(){",
+        "document.documentElement.setAttribute('data-read-only-report','true');",
+        "document.querySelectorAll('[contenteditable]').forEach(function(node){if(!inGraph(node))node.setAttribute('contenteditable','false');});",
+        "document.querySelectorAll('input,textarea,select').forEach(function(node){if(inGraph(node))return;if(node.tagName==='SELECT'){node.disabled=true;}else{node.readOnly=true;}});",
+        "['beforeinput','paste','drop','keydown'].forEach(function(name){document.addEventListener(name,function(ev){if(inGraph(ev.target))return;if(!editableTarget(ev.target))return;ev.preventDefault();ev.stopPropagation();},true);});",
+        "});",
+        "})();",
+        "</scr" + "ipt>"
+      ].join("");
+    }
+    function makeReadOnlyDownloadHtml(htmlText) {
+      if (!htmlText || htmlText.indexOf("window.readOnlyReport=true") >= 0) return htmlText;
+      var patch = readOnlyReportPatch();
+      if (htmlText.indexOf("</body>") >= 0) {
+        return htmlText.replace("</body>", patch + "</body>");
+      }
+      return htmlText + patch;
+    }
     function setDownload(htmlText) {
       revokeDownload();
-      downloadUrl = URL.createObjectURL(new Blob([htmlText], {type: "text/html;charset=utf-8"}));
+      var downloadHtml = makeReadOnlyDownloadHtml(htmlText);
+      downloadUrl = URL.createObjectURL(new Blob([downloadHtml], {type: "text/html;charset=utf-8"}));
       downloadLink.href = downloadUrl;
       downloadLink.download = "xrd-report.html";
       downloadLink.setAttribute("aria-disabled", "false");
