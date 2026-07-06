@@ -60,6 +60,7 @@ def test_xrd_analyze_accepts_raw_without_pdf_cards() -> None:
     assert "window.print()" in response.text
     assert "PDF 파일" in response.text
     assert "plotly" in response.text.lower()
+    assert '"editable": false' in response.text
 
 
 def test_xrd_analyze_includes_table_and_image_inputs() -> None:
@@ -156,6 +157,7 @@ def test_xrd_report_can_use_llm_comment_provider(tmp_path) -> None:
     assert "#d62728" in result["html"]
     assert '"width":2.2' in result["html"]
     assert "autoScale2d" in result["html"]
+    assert '"editable": false' in result["html"]
     assert "rist-xrd-legend-checkbox" in result["html"]
     assert 'rect.setAttribute("fill", visible ? "#2563eb" : "#ffffff")' in result["html"]
     assert "function rowVisible(row)" in result["html"]

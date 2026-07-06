@@ -359,6 +359,7 @@ def _phase_category_separator_label(category: str) -> str:
 
 def _xrd_plot_config() -> dict[str, Any]:
     return {
+        "editable": False,
         "scrollZoom": True,
         "modeBarButtonsToRemove": XRD_MODE_BAR_BUTTONS_TO_REMOVE,
     }
