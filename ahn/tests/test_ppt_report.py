@@ -79,9 +79,10 @@ def test_coating_table_rows_hide_ocr_word_and_keep_readable_font_policy() -> Non
     )
 
     joined = "\n".join("\t".join(row) for row in rows)
-    assert rows[0] == ["개소", "두께(nm)", "비고"]
+    assert rows[0] == ["측정개소", "두께(nm)"]
     assert "OCR" not in joined
-    assert "라벨 2개 추출" in joined
+    assert "1\t2.00" in joined
+    assert "2\t3.00" in joined
     assert _coating_table_font_size(20) == 7
 
 
@@ -191,7 +192,7 @@ def test_build_pptx_includes_only_available_sections(tmp_path, monkeypatch, sect
             assert title not in all_text
 
 
-def test_line_eds_docx_tables_are_included(tmp_path, monkeypatch) -> None:
+def test_point_eds_docx_tables_are_included(tmp_path, monkeypatch) -> None:
     image_path = tmp_path / "image.png"
     _write_image(image_path)
     report_path = tmp_path / "report" / "line.docx"
@@ -210,9 +211,9 @@ def test_line_eds_docx_tables_are_included(tmp_path, monkeypatch) -> None:
         {
             "path": "report/line.docx",
             "file_name": "line.docx",
-            "title": "0283 line scan",
+            "title": "0283 point",
             "sample_name": "0283",
-            "analysis_type": "LINE",
+            "analysis_type": "POINT",
         }
     ]
     output = tmp_path / "report.pptx"
@@ -224,7 +225,7 @@ def test_line_eds_docx_tables_are_included(tmp_path, monkeypatch) -> None:
     assert "12.3" in table_text
 
 
-def test_line_eds_uses_matching_spreadsheet_when_docx_has_no_tables(tmp_path, monkeypatch) -> None:
+def test_point_eds_uses_matching_spreadsheet_when_docx_has_no_tables(tmp_path, monkeypatch) -> None:
     image_path = tmp_path / "image.png"
     _write_image(image_path)
     report_path = tmp_path / "report" / "line.docx"
@@ -245,9 +246,9 @@ def test_line_eds_uses_matching_spreadsheet_when_docx_has_no_tables(tmp_path, mo
         {
             "path": "report/line.docx",
             "file_name": "line.docx",
-            "title": "0283 line scan",
+            "title": "0283 point",
             "sample_name": "0283",
-            "analysis_type": "LINE",
+            "analysis_type": "POINT",
         }
     ]
     project["spreadsheets"] = [
@@ -260,3 +261,35 @@ def test_line_eds_uses_matching_spreadsheet_when_docx_has_no_tables(tmp_path, mo
     table_text = _pptx_table_text(output)
     assert "Distance (um)" in table_text
     assert "62.9" in table_text
+
+
+def test_large_coating_sample_uses_image_pages_then_summary_table(tmp_path) -> None:
+    project = _base_project(tmp_path)
+    measurements = []
+    for index in range(1, 11):
+        image_path = tmp_path / f"scale-{index}.png"
+        _write_image(image_path)
+        measurements.append(
+            {
+                "index": index,
+                "path": image_path.name,
+                "file_name": image_path.name,
+                "magnification": "",
+                "thickness_nm": float(index),
+                "thickness_values_nm": [float(index)],
+            }
+        )
+    project["coating_samples"] = [{"sample_name": "Scale-A", "measurements": measurements}]
+    output = tmp_path / "report.pptx"
+
+    build_pptx(project, output)
+
+    prs = Presentation(output)
+    assert len(prs.slides) == 2
+    table_counts = [sum(1 for shape in slide.shapes if getattr(shape, "has_table", False)) for slide in prs.slides]
+    assert table_counts[0] == 0
+    assert table_counts[1] == 1
+    table_text = _pptx_table_text(output)
+    assert "측정개소" in table_text
+    assert "비고" not in table_text
+    assert "10.00" in table_text

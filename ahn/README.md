@@ -12,7 +12,7 @@ input/
   tem/시편명/*.tif       # TEM 이미지 분석
   stem/*.tif             # STEM / STEM BF 이미지 분석
   report/*.docx          # STEM EDS MAP/Line/Point Word 보고서
-  report/*.xlsx          # EDS raw 파일, 분석하지 않고 패키지에 원본 포함
+  report/*.xlsx          # EDS raw 파일, 패키지에 원본 포함. Point 표 fallback에 활용 가능
   scale/시편명/*.tif     # TEM 코팅층 두께 분석
 ```
 
@@ -21,7 +21,9 @@ input/
 라벨의 숫자 값을 추출하고, OpenCV가 있으면 흰색 라벨 박스를 먼저 찾아
 인식률을 높인다. 한 이미지에 라벨이 여러 개 있으면 JSON의
 `thickness_values_nm`에 모두 보존하고 PPT 표에도 각 라벨을 별도 행으로
-표시한 뒤 전체 라벨 평균을 계산한다. OCR 환경이 없거나 값이 읽히지 않으면
+표시한 뒤 전체 라벨 평균을 계산한다. 코팅층 이미지가 10장 이상이면 이미지는
+전용 이미지 장표에 먼저 배치하고, 마지막 장표에 `측정개소/두께(nm)` 표를
+분리해 넣는다. OCR 환경이 없거나 값이 읽히지 않으면
 `검토 필요`로 남기고, 후보값 과다/편차 과다 같은 경우는 검토 플래그를 남긴다.
 
 ## Processor 계약
