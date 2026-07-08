@@ -2017,50 +2017,6 @@ def detect_raw_pattern_peaks(
     return selected
 
 
-def peak_list_marker_points(
-    peak_tables: list[dict[str, Any]],
-    rx: list[float],
-    ry: list[float],
-    *,
-    y_offset_ratio: float = 0.045,
-) -> list[dict[str, Any]]:
-    """Peak list의 2θ 값마다 raw 곡선에서 가까운 y를 찾아 번호 라벨 위치를 만든다."""
-    if not rx or not ry:
-        return []
-    y_min = min(ry)
-    y_max = max(ry)
-    y_offset = max((y_max - y_min) * y_offset_ratio, 1.0)
-    points: list[dict[str, Any]] = []
-    seen: set[tuple[str, float]] = set()
-    for table in peak_tables:
-        for peak in table.get("peaks") or []:
-            theta = peak.get("two_theta")
-            if theta is None:
-                continue
-            nearest = _nearest_raw_intensity(rx, ry, float(theta))
-            if nearest is None:
-                continue
-            distance, intensity = nearest
-            if distance > 0.35:
-                continue
-            key = (str(peak.get("no") or ""), round(float(theta), 3))
-            if key in seen:
-                continue
-            seen.add(key)
-            points.append(
-                {
-                    "no": str(peak.get("no") or len(points) + 1),
-                    "two_theta": float(theta),
-                    "y": float(intensity) + y_offset,
-                    "phase_name": peak.get("phase_name") or "",
-                    "card_no": peak.get("card_no") or "",
-                    "is_overlap": bool(peak.get("is_overlap")),
-                }
-            )
-    points.sort(key=lambda item: item["two_theta"])
-    return points
-
-
 def _raw_pattern_context(
     *,
     raw_stem: str,
@@ -2472,7 +2428,52 @@ def _phase_db_peak_rows(peaks: list[dict[str, Any]], overlap_indices: set[int] |
     return "".join(rows) or '<tr><td colspan="5">-</td></tr>'
 
 
-def build_phase_info_html(groups) -> str:
+def _phase_excel_overlap_peak_indices(
+    item: dict[str, Any],
+    peak_tables: list[dict[str, Any]] | None,
+    *,
+    tolerance: float = 0.25,
+) -> set[int]:
+    """Peak list Excel에서 겹침으로 표시된 행과 가까운 PDF DB 피크 행을 찾는다."""
+    if not peak_tables:
+        return set()
+    card_no = normalize_card_no((item.get("metadata") or {}).get("card_no") or "")
+    overlap_thetas: list[float] = []
+    for table in peak_tables:
+        for peak in table.get("peaks") or []:
+            if not peak.get("is_overlap"):
+                continue
+            theta = _float_or_none(peak.get("two_theta"))
+            if theta is None:
+                continue
+            card_numbers = peak.get("card_numbers") or []
+            if card_no and card_numbers and card_no not in card_numbers:
+                continue
+            overlap_thetas.append(theta)
+    indices: set[int] = set()
+    for index, peak in enumerate(item.get("peaks") or []):
+        theta = _float_or_none(peak.get("two_theta"))
+        if theta is None:
+            continue
+        if any(abs(theta - excel_theta) <= tolerance for excel_theta in overlap_thetas):
+            indices.add(index)
+    return indices
+
+
+def _phase_db_peak_table_html(item: dict[str, Any], overlap_indices: set[int]) -> str:
+    return f"""
+      <div class="xrd-phase-db-table-wrap">
+        <table class="xrd-report-table xrd-db-peak-table">
+          <thead>
+            <tr><th>No.</th><th>2θ (°)</th><th>d-value</th><th>Norm. I.</th><th>h k l</th></tr>
+          </thead>
+          <tbody>{_phase_db_peak_rows(item['peaks'], overlap_indices)}</tbody>
+        </table>
+      </div>
+    """
+
+
+def build_phase_info_html(groups, peak_tables: list[dict[str, Any]] | None = None) -> str:
     grouped = _phase_groups(groups)
     sections = []
     for category, title in PHASE_GROUPS.items():
@@ -2482,16 +2483,25 @@ def build_phase_info_html(groups) -> str:
             folder_group = _phase_folder_group_key(item)
             subgroup_items.setdefault(folder_group, []).append(item)
         subgroup_blocks = []
-        for folder_group, group_items in subgroup_items.items():
+        for subgroup_index, (folder_group, group_items) in enumerate(subgroup_items.items(), start=1):
             show_subgroup = (
                 len(subgroup_items) > 1
                 or folder_group
                 not in {PHASE_CATEGORY_SHORT_LABELS.get(category), title, "자동 분류", ""}
             )
-            heading = (
-                f'<h3 class="xrd-phase-subgroup-title">{_esc(folder_group)}</h3>'
-                if show_subgroup else ""
-            )
+            if category == "uncertain":
+                group_label = folder_group if show_subgroup else f"유사상 {subgroup_index}"
+                heading = (
+                    '<h3 class="xrd-phase-subgroup-title xrd-similar-group-title">'
+                    f'<span>{_esc(group_label)}</span>'
+                    f'<small>유사/불확실상 {len(group_items)}건</small>'
+                    '</h3>'
+                )
+            else:
+                heading = (
+                    f'<h3 class="xrd-phase-subgroup-title">{_esc(folder_group)}</h3>'
+                    if show_subgroup else ""
+                )
             overlap_indices = (
                 _phase_overlap_peak_indices(group_items)
                 if category == "uncertain" and len(group_items) > 1
@@ -2505,8 +2515,7 @@ def build_phase_info_html(groups) -> str:
                 card_no = metadata.get("card_no") or "-"
                 quality = metadata.get("quality_mark") or "-"
                 match = item["match"]
-                card_rows = [
-                    ("시료", item["raw_stem"]),
+                meta_bits = [
                     ("Phase name", phase_name),
                     ("Formula", formula or "-"),
                     ("PDF Card", card_no),
@@ -2518,28 +2527,34 @@ def build_phase_info_html(groups) -> str:
                     ),
                 ]
                 meta_html = "".join(
-                    f"<tr><th>{_esc(label)}</th><td>{_esc(value)}</td></tr>"
-                    for label, value in card_rows
+                    '<span class="xrd-phase-meta-chip">'
+                    f'<b>{_esc(label)}</b>{_esc(value)}'
+                    '</span>'
+                    for label, value in meta_bits
                 )
                 trace_idx = int(item.get("trace_idx") or -1)
+                row_highlights = set(overlap_indices.get(trace_idx) or set())
+                row_highlights.update(_phase_excel_overlap_peak_indices(item, peak_tables))
                 cards.append(
                     f"""
-                    <article class="xrd-phase-card xrd-card" data-trace="{item['trace_idx']}">
-                      <h4><span class="xrd-swatch" style="background:{item['color']}"></span>{_esc(item['label'])}</h4>
-                      <table class="xrd-mini-table xrd-phase-meta-table"><tbody>{meta_html}</tbody></table>
-                      <div class="xrd-table-scroll xrd-phase-db-scroll">
-                        <table class="xrd-mini-table xrd-db-peak-table">
-                          <caption>PDF DB 피크</caption>
-                          <thead><tr><th>No.</th><th>2θ (°)</th><th>d-value</th><th>Norm. I.</th><th>h k l</th></tr></thead>
-                          <tbody>{_phase_db_peak_rows(item['peaks'], overlap_indices.get(trace_idx))}</tbody>
-                        </table>
-                      </div>
+                    <article class="xrd-phase-card xrd-card xrd-phase-db-card" data-trace="{item['trace_idx']}">
+                      <header class="xrd-phase-db-card-head">
+                        <h4><span class="xrd-swatch" style="background:{item['color']}"></span>{_esc(item['label'])}</h4>
+                        <div class="xrd-phase-meta-chips">{meta_html}</div>
+                      </header>
+                      {_phase_db_peak_table_html(item, row_highlights)}
+                      <p class="xrd-table-note">노란 행은 유사상 그룹 또는 Peak list Excel에서 겹치는 DB 피크입니다.</p>
                     </article>
                     """
                 )
+            block_class = (
+                "xrd-similar-phase-cluster"
+                if category == "uncertain"
+                else "xrd-phase-card-grid"
+            )
             subgroup_blocks.append(
                 heading
-                + '<div class="xrd-phase-card-grid">'
+                + f'<div class="{block_class}">'
                 + "".join(cards)
                 + "</div>"
             )
@@ -2560,7 +2575,7 @@ def build_phase_info_html(groups) -> str:
 <section class="xrd-report-section" id="xrd-phase-info">
   <div class="xrd-section-head">
     <h2>결정상(Phase) 정보</h2>
-    <p>PDF/DB 카드의 결정상 정보를 주요상, 유사/불확실상, 미량상 후보로 묶어 표시합니다. Norm. I. 상위 3개 피크는 강조했습니다.</p>
+    <p>PDF/DB 카드의 결정상 정보를 주요상, 유사/불확실상, 미량상 후보로 묶어 표시합니다. 유사상 그룹과 Peak list Excel에서 겹치는 피크는 노란색으로 강조합니다.</p>
   </div>
   {''.join(sections)}
 </section>
@@ -2623,13 +2638,25 @@ def xrd_report_css() -> str:
   .xrd-phase-group summary { cursor: pointer; font-size: 16px; font-weight: 700; padding: 12px 0; }
   .xrd-phase-group summary span { color: #6b7280; font-size: 12px; margin-left: 6px; }
   .xrd-phase-subgroup-title { margin: 12px 0 4px; padding: 7px 10px; border-left: 4px solid #3b82f6; background: #f1f5f9; border-radius: 6px; font-size: 13px; }
+  .xrd-similar-group-title { display: flex; align-items: center; justify-content: space-between; gap: 10px; border-left-color: #f97316; background: #fff7ed; }
+  .xrd-similar-group-title small { flex: 0 0 auto; color: #9a3412; font-size: 12px; font-weight: 700; }
+  .xrd-similar-phase-cluster { display: grid; grid-template-columns: 1fr; gap: 14px; }
   .xrd-phase-card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(390px, 1fr)); gap: 12px; }
   .xrd-phase-card { border: 1px solid #d1d5db; border-radius: 10px; padding: 10px; background: #fff; }
   .xrd-phase-card h4 { display: flex; align-items: center; gap: 8px; font-size: 14px; margin: 0 0 10px; }
+  .xrd-phase-db-card { padding: 0; overflow: hidden; }
+  .xrd-phase-db-card-head { padding: 10px 12px 8px; border-bottom: 1px solid #d1d5db; }
+  .xrd-phase-db-card h4 { margin: 0 0 8px; }
+  .xrd-phase-meta-chips { display: flex; flex-wrap: wrap; gap: 6px 8px; }
+  .xrd-phase-meta-chip { border: 1px solid #e5e7eb; border-radius: 6px; padding: 3px 6px; background: #f9fafb; color: #111827; font-size: 11px; line-height: 1.35; }
+  .xrd-phase-meta-chip b { margin-right: 4px; color: #475569; }
   .xrd-mini-table th { width: 120px; background: #f9fafb; text-align: left; }
   .xrd-phase-db-scroll { border-width: 1px; border-radius: 8px; margin-top: 8px; max-height: 420px; }
+  .xrd-phase-db-table-wrap { max-height: 520px; overflow: auto; }
   .xrd-db-peak-table caption { caption-side: top; text-align: left; font-weight: 700; padding: 7px 0; color: #374151; }
-  .xrd-db-peak-table th, .xrd-db-peak-table td { text-align: right; white-space: nowrap; }
+  .xrd-db-peak-table { min-width: 520px; font-size: 11px; }
+  .xrd-db-peak-table th { background: #f8fafc; position: sticky; top: 0; z-index: 1; }
+  .xrd-db-peak-table th, .xrd-db-peak-table td { text-align: right; white-space: nowrap; padding: 4px 6px; }
   .xrd-db-peak-table th:first-child, .xrd-db-peak-table td:first-child,
   .xrd-db-peak-table th:last-child, .xrd-db-peak-table td:last-child { text-align: center; }
   .xrd-phase-overlap-row { background: #fff7cc !important; }
@@ -2655,7 +2682,8 @@ def xrd_report_css() -> str:
     .xrd-report-pdf-button, .xrd-report-action-spacer { display: none !important; }
     .xrd-report-title { text-align: center; }
     .xrd-table-scroll,
-    .xrd-file-table-scroll {
+    .xrd-file-table-scroll,
+    .xrd-phase-db-table-wrap {
       max-height: none !important;
       height: auto !important;
       overflow: visible !important;
@@ -2735,7 +2763,7 @@ def build_report_html(
     )
     image_info = build_image_display_html(image_files or [])
     peak_info = build_peak_info_html(groups, table_files or [], peak_tables or [])
-    phase_info = build_phase_info_html(groups)
+    phase_info = build_phase_info_html(groups, peak_tables or [])
     group_toggle_js = build_group_toggle_js("xrd-plot", group_map)
     return f"""<!doctype html>
 <html lang="ko">
@@ -3013,47 +3041,6 @@ def build_xrd_html(
         )
         idxs.append(trace_idx)
         trace_idx += 1
-
-        marker_points = peak_list_marker_points(peak_tables, rx, ry)
-        if marker_points:
-            fig.add_trace(
-                go.Scatter(
-                    x=[point["two_theta"] for point in marker_points],
-                    y=[point["y"] for point in marker_points],
-                    mode="markers+text",
-                    name=f"{raw_stem} Peak No.",
-                    text=[point["no"] for point in marker_points],
-                    textposition="top center",
-                    textfont=dict(color="#172a46", size=11),
-                    marker=dict(
-                        color=[
-                            "#f59e0b" if point.get("is_overlap") else "#2563eb"
-                            for point in marker_points
-                        ],
-                        size=7,
-                        symbol="circle",
-                        line=dict(color="#ffffff", width=1),
-                    ),
-                    customdata=[
-                        [point.get("phase_name") or "", point.get("card_no") or ""]
-                        for point in marker_points
-                    ],
-                    showlegend=False,
-                    meta={
-                        "xrd_peak_list_marker": True,
-                        "xrd_raw_group": raw_stem,
-                        "xrd_legend_kind": "peak-list-marker",
-                    },
-                    hovertemplate=(
-                        "Peak No. %{text}<br>"
-                        "2θ = %{x:.3f}°<br>"
-                        "Phase = %{customdata[0]}<br>"
-                        "Card No = %{customdata[1]}<extra></extra>"
-                    ),
-                )
-            )
-            idxs.append(trace_idx)
-            trace_idx += 1
 
         pdf_files = sorted(str(path) for path in Path(pdf_dir).rglob("*.pdf"))
         items = []

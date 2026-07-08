@@ -11,6 +11,7 @@ from lim.xrd_plot import (
     assign_relative_phase_categories,
     build_phase_info_html,
     build_report_html,
+    build_xrd_html,
     phase_category_from_pdf_path,
     phase_label_from_metadata,
     pdf_peak_warning,
@@ -264,6 +265,7 @@ def test_phase_info_displays_db_peaks_and_highlights_similar_overlaps() -> None:
         "trace_idx": 1,
         "peaks": [
             {"no": "1", "two_theta": 25.309, "d": "3.516", "norm": 100.0, "hkl": "1 0 1"},
+            {"no": "2", "two_theta": 37.876, "d": "2.373", "norm": 21.7, "hkl": "0 0 4"},
         ],
     }
     second = {
@@ -276,13 +278,48 @@ def test_phase_info_displays_db_peaks_and_highlights_similar_overlaps() -> None:
         ],
     }
 
-    html = build_phase_info_html([("Mix3", "#d62728", [first, second])])
+    peak_tables = [
+        {
+            "peaks": [
+                {
+                    "no": "2",
+                    "two_theta": 37.876,
+                    "card_numbers": ["000640863"],
+                    "is_overlap": True,
+                }
+            ]
+        }
+    ]
+
+    html = build_phase_info_html([("Mix3", "#d62728", [first, second])], peak_tables=peak_tables)
 
     assert "유사상 1" in html
+    assert "유사/불확실상 2건" in html
+    assert "xrd-similar-phase-cluster" in html
+    assert "xrd-phase-meta-chip" in html
     assert "xrd-db-peak-table" in html
     assert "d-value" in html
     assert "Norm. I." in html
     assert "xrd-phase-overlap-row" in html
+    assert html.count('class="xrd-phase-overlap-row"') == 3
+
+
+def test_xrd_html_does_not_draw_peak_number_markers_from_peak_list(tmp_path) -> None:
+    raw_path = tmp_path / "Mix3.txt"
+    raw_path.write_text("10 1\n25.309 100\n30 3\n37.876 40\n", encoding="utf-8")
+    pdf_dir = tmp_path / "pdf"
+    pdf_dir.mkdir()
+    table_path = tmp_path / "Peak list.csv"
+    table_path.write_text(
+        "No.,2theta,Phase Name,Chemical Formula,Card No,Norm. I.\n"
+        "1,25.309,Anatase,Ti O2,00-064-0863,100\n",
+        encoding="utf-8",
+    )
+
+    result = build_xrd_html([(str(raw_path), str(pdf_dir))], table_files=[str(table_path)])
+
+    assert "xrd_peak_list_marker" not in result["html"]
+    assert "Peak No." not in result["html"]
 
 
 def test_read_xlsx_preview_reads_first_sheet(tmp_path) -> None:
