@@ -12,7 +12,9 @@ input/
   tem/시편명/*.tif       # TEM 이미지 분석
   stem/*.tif             # STEM / STEM BF 이미지 분석
   report/*.docx          # STEM EDS MAP/Line/Point Word 보고서
+  reports/*.docx         # report와 동일하게 인식되는 별칭 폴더
   report/*.xlsx          # EDS raw 파일, 패키지에 원본 포함. Point 표 fallback에 활용 가능
+  reports/*.xlsx         # report와 동일하게 인식되는 별칭 폴더
   scale/시편명/*.tif     # TEM 코팅층 두께 분석
 ```
 
@@ -76,9 +78,12 @@ PPT 보고서는 `ahn/resources/templates/ahn_tem_template.pptx`를 템플릿으
 표 데이터만 보고서 생성 시 교체한다.
 STEM EDS 보고서는 Word 1페이지의 기준 이미지를 왼쪽에 크게 배치하고,
 해당 Word 파일의 EDS 이미지가 모두 배치될 때까지 후속 장표에서도 같은
-기준 이미지를 왼쪽에 유지한다. Line/Point 후속 이미지는 오른쪽 2x3
-영역에 순차 배치하고, MAP 후속 이미지는 기준 이미지 오른쪽의 3x2 영역에
-순차 배치한다.
+기준 이미지를 왼쪽에 유지한다. MAP 후속 이미지는 기준 이미지 오른쪽의
+3x2 영역에 순차 배치한다. Line scan은 Data 블록 단위로 기준 이미지,
+라인 이미지, 전체 그래프를 먼저 배치하고 이후 원소별 그래프를 2x3으로
+배치한다. Point는 Word의 Spectrum 표 2개를 `At%/Wt%` 상단 병합 행과
+함께 정리하고, 각 Spectrum row마다 기준 이미지, 해당 row의 조성표,
+Spectrum 그래프를 별도 장표로 생성한다.
 
 예시 JSON:
 

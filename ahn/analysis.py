@@ -4,7 +4,7 @@ The AHN project receives a folder bundle with four logical folders:
 
 * ``tem``: TEM images, grouped by sample-name subfolders.
 * ``stem``: STEM and BF-STEM images, grouped by filename.
-* ``report``: STEM EDS Word reports and raw spreadsheets.
+* ``report``/``reports``: STEM EDS Word reports and raw spreadsheets.
 * ``scale``: coating-layer thickness TEM images.
 
 This module keeps the scanner deterministic and dependency-light so it can run
@@ -126,6 +126,17 @@ def find_named_dir(root: Path, name: str) -> Path | None:
         if child.is_dir() and child.name.lower() == expected:
             return child
     return None
+
+
+def find_named_dirs(root: Path, *names: str) -> list[Path]:
+    """Find direct child folders case-insensitively, preserving name priority."""
+    expected = {name.lower(): index for index, name in enumerate(names)}
+    matches = [
+        child
+        for child in root.iterdir() if root.exists()
+        if child.is_dir() and child.name.lower() in expected
+    ]
+    return sorted(matches, key=lambda path: (expected[path.name.lower()], natural_key(path.name)))
 
 
 def _visible_files(directory: Path, extensions: set[str]) -> list[Path]:
@@ -290,27 +301,28 @@ def _sample_from_eds_title(title: str) -> str:
 
 
 def collect_eds_reports(root: Path) -> tuple[list[EdsReport], list[SpreadsheetFile]]:
-    report_dir = find_named_dir(root, "report")
-    if report_dir is None:
+    report_dirs = find_named_dirs(root, "report", "reports")
+    if not report_dirs:
         return [], []
 
     reports = []
-    for path in _visible_files(report_dir, DOCX_EXTENSIONS):
-        title = _eds_title(path)
-        reports.append(
-            EdsReport(
-                path=_relative(path, root),
-                file_name=path.name,
-                title=title,
-                sample_name=_sample_from_eds_title(title),
-                analysis_type=_eds_type(title),
+    spreadsheets = []
+    for report_dir in report_dirs:
+        for path in _visible_files(report_dir, DOCX_EXTENSIONS):
+            title = _eds_title(path)
+            reports.append(
+                EdsReport(
+                    path=_relative(path, root),
+                    file_name=path.name,
+                    title=title,
+                    sample_name=_sample_from_eds_title(title),
+                    analysis_type=_eds_type(title),
+                )
             )
+        spreadsheets.extend(
+            SpreadsheetFile(path=_relative(path, root), file_name=path.name)
+            for path in _visible_files(report_dir, SPREADSHEET_EXTENSIONS)
         )
-
-    spreadsheets = [
-        SpreadsheetFile(path=_relative(path, root), file_name=path.name)
-        for path in _visible_files(report_dir, SPREADSHEET_EXTENSIONS)
-    ]
     return reports, spreadsheets
 
 
@@ -620,7 +632,7 @@ def collect_project(input_dir: str | Path) -> AhnProjectData:
         for name, path in {
             "tem": find_named_dir(root, "tem"),
             "stem": find_named_dir(root, "stem"),
-            "report": find_named_dir(root, "report"),
+            "report": next(iter(find_named_dirs(root, "report", "reports")), None),
             "scale": find_named_dir(root, "scale"),
         }.items()
     }

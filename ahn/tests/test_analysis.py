@@ -50,3 +50,18 @@ def test_collect_project_reads_testdata_bundle() -> None:
         not item.thickness_values_nm or item.thickness_nm is not None
         for item in project.coating_samples[0].measurements
     )
+
+
+def test_collect_project_reads_reports_folder_alias(tmp_path) -> None:
+    reports = tmp_path / "reports"
+    reports.mkdir()
+    (reports / "Project 1_0647 Point2.docx").write_bytes(b"placeholder")
+    (reports / "0647 point raw.xlsx").write_bytes(b"placeholder")
+
+    project = collect_project(tmp_path)
+
+    assert project.folders["report"] == "reports"
+    assert project.summary["edsReportCount"] == 1
+    assert project.summary["spreadsheetCount"] == 1
+    assert project.eds_reports[0].title == "0647 Point2"
+    assert project.eds_reports[0].analysis_type == "POINT"

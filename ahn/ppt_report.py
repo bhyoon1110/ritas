@@ -1023,6 +1023,221 @@ def _add_eds_anchor_grid_pages(
         _add_eds_anchor_grid(slide, first_image, chunk, tmp_dir, cols=2, rows=3)
 
 
+def _is_point_spectrum_table(table: list[list[str]]) -> bool:
+    return bool(
+        table
+        and table[0]
+        and "spectrum" in str(table[0][0]).strip().lower()
+        and len(table) >= 2
+    )
+
+
+def _point_table_unit(table: list[list[str]]) -> str:
+    if not table or not table[0]:
+        return ""
+    unit = str(table[0][-1]).strip()
+    return unit if unit.lower() in {"at%", "wt%"} else ""
+
+
+def _point_table_value_width(table: list[list[str]]) -> int:
+    if not table or not table[0]:
+        return 0
+    header = [str(value).strip() for value in table[0]]
+    width = len(header)
+    if width >= 2 and header[-2].lower() == "total" and header[-1].lower() in {"at%", "wt%"}:
+        return width - 2
+    if width >= 1 and header[-1].lower() == "total":
+        return width - 1
+    return width
+
+
+def _normalized_point_composition_rows(
+    table: list[list[str]],
+    *,
+    body_index: int | None = None,
+) -> list[list[str]]:
+    if not _is_point_spectrum_table(table):
+        return []
+    width = _point_table_value_width(table)
+    if width <= 0:
+        return []
+    unit = _point_table_unit(table)
+    header = [str(value) for value in table[0][:width]]
+    source_rows = table[1:]
+    if body_index is not None:
+        if body_index < 0 or body_index >= len(source_rows):
+            return []
+        source_rows = source_rows[body_index:body_index + 1]
+    rows = [[unit or "Composition"] + [""] * (width - 1), header]
+    for row in source_rows:
+        rows.append([str(row[index]) if index < len(row) else "" for index in range(width)])
+    return rows
+
+
+def _point_table_font_size(rows: list[list[str]]) -> int:
+    cols = max((len(row) for row in rows), default=0)
+    if cols > 11 or len(rows) > 9:
+        return 5
+    if cols > 8 or len(rows) > 6:
+        return 6
+    return 7
+
+
+def _restyle_merged_header(cell, text: str, font_size: int) -> None:
+    cell.text = text
+    cell.vertical_anchor = MSO_ANCHOR.MIDDLE
+    cell.fill.solid()
+    cell.fill.fore_color.rgb = NAVY
+    for paragraph in cell.text_frame.paragraphs:
+        paragraph.alignment = PP_ALIGN.CENTER
+        if not paragraph.runs:
+            paragraph.add_run()
+        for run in paragraph.runs:
+            _set_run(run, size=font_size, bold=True, color=RGBColor(255, 255, 255))
+
+
+def _add_point_composition_table(
+    slide,
+    table: list[list[str]],
+    slot: tuple[int, int, int, int],
+    *,
+    body_index: int | None = None,
+) -> Any | None:
+    rows = _normalized_point_composition_rows(table, body_index=body_index)
+    if not rows:
+        return None
+    font_size = _point_table_font_size(rows)
+    table_shape = _add_table(
+        slide,
+        rows,
+        *slot,
+        font_size=font_size,
+        alignments=[PP_ALIGN.CENTER] * max(len(row) for row in rows),
+        draw_borders=True,
+    )
+    if table_shape is None:
+        return None
+    cols = len(rows[0])
+    if cols > 1:
+        header_cell = table_shape.table.cell(0, 0)
+        header_cell.merge(table_shape.table.cell(0, cols - 1))
+        _restyle_merged_header(header_cell, rows[0][0], font_size)
+    return table_shape
+
+
+def _valid_point_tables(tables: list[list[list[str]]]) -> list[list[list[str]]]:
+    return [table for table in tables[:2] if _is_point_spectrum_table(table)]
+
+
+def _eds_point_anchor_slot() -> tuple[int, int, int, int]:
+    return Inches(0.26), Inches(1.28), Inches(4.25), Inches(4.44)
+
+
+def _eds_point_table_area() -> tuple[int, int, int, int]:
+    return Inches(4.65), Inches(1.28), Inches(6.08), Inches(2.02)
+
+
+def _eds_point_graph_slot() -> tuple[int, int, int, int]:
+    return Inches(4.65), Inches(3.47), Inches(6.08), Inches(3.02)
+
+
+def _add_eds_point_summary_slide(
+    prs,
+    template: AhnTemplate | None,
+    title: str,
+    first_image: Path | None,
+    point_tables: list[list[list[str]]],
+    tmp_dir: Path,
+) -> None:
+    slide = _add_eds_slide(prs, template, "eds_table", title)
+    _add_eds_anchor_image(slide, first_image, tmp_dir)
+    slots = _eds_table_slots(len(point_tables), _eds_right_slot())
+    for table, slot in zip(point_tables, slots):
+        _add_point_composition_table(slide, table, slot)
+
+
+def _point_spectrum_labels(point_tables: list[list[list[str]]]) -> list[str]:
+    if not point_tables:
+        return []
+    return [
+        str(row[0]).strip() or f"Spectrum {index + 1}"
+        for index, row in enumerate(point_tables[0][1:])
+    ]
+
+
+def _add_eds_point_detail_slide(
+    prs,
+    template: AhnTemplate | None,
+    title: str,
+    first_image: Path | None,
+    spectrum_image: Path | None,
+    point_tables: list[list[list[str]]],
+    body_index: int,
+    spectrum_label: str,
+    tmp_dir: Path,
+) -> None:
+    slide = _add_eds_slide(prs, template, "eds_line_first", f"{title}_{spectrum_label}")
+    if first_image:
+        _add_fit_picture(slide, first_image, *_eds_point_anchor_slot(), tmp_dir)
+    slots = _eds_table_slots(len(point_tables), _eds_point_table_area())
+    for table, slot in zip(point_tables, slots):
+        _add_point_composition_table(slide, table, slot, body_index=body_index)
+    if spectrum_image:
+        _add_fit_picture(slide, spectrum_image, *_eds_point_graph_slot(), tmp_dir)
+
+
+def _add_eds_point_pages(
+    prs,
+    template: AhnTemplate | None,
+    title: str,
+    images: list[Path],
+    tables: list[list[list[str]]],
+    tmp_dir: Path,
+) -> None:
+    point_tables = _valid_point_tables(tables)
+    if not point_tables:
+        _add_eds_tables_slide(prs, template, title, images[:1], tables, tmp_dir)
+        _add_eds_anchor_grid_pages(
+            prs,
+            template,
+            title,
+            images[0] if images else None,
+            images[1:],
+            tmp_dir,
+            start_page=1,
+        )
+        return
+
+    first_image = images[0] if images else None
+    spectrum_images = images[1:]
+    _add_eds_point_summary_slide(prs, template, title, first_image, point_tables, tmp_dir)
+    labels = _point_spectrum_labels(point_tables)
+    for index, label in enumerate(labels):
+        _add_eds_point_detail_slide(
+            prs,
+            template,
+            title,
+            first_image,
+            spectrum_images[index] if index < len(spectrum_images) else None,
+            point_tables,
+            index,
+            label,
+            tmp_dir,
+        )
+    if len(spectrum_images) > len(labels):
+        _add_eds_image_pages(
+            prs,
+            template,
+            title,
+            spectrum_images[len(labels):],
+            tmp_dir,
+            start_page=len(labels) + 1,
+            template_key="eds_line_page",
+            cols=2,
+            rows=3,
+        )
+
+
 def _add_eds_tables_slide(prs, template: AhnTemplate | None, title: str, images: list[Path], tables: list[list[list[str]]], tmp_dir: Path) -> None:
     if not images and not tables:
         return
@@ -1055,16 +1270,7 @@ def _build_eds(prs, template: AhnTemplate | None, data: dict[str, Any], input_ro
         elif analysis_type == "LINE":
             _add_eds_line_pages(prs, template, title, images, tmp_dir)
         elif analysis_type == "POINT":
-            _add_eds_tables_slide(prs, template, title, images[:1], tables, tmp_dir)
-            _add_eds_anchor_grid_pages(
-                prs,
-                template,
-                title,
-                images[0] if images else None,
-                images[1:],
-                tmp_dir,
-                start_page=1,
-            )
+            _add_eds_point_pages(prs, template, title, images, tables, tmp_dir)
         else:
             _add_eds_map_pages(prs, template, title, images, tmp_dir)
 

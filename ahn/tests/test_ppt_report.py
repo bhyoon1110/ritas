@@ -476,6 +476,69 @@ def test_point_eds_detail_pages_keep_first_image_on_left(tmp_path, monkeypatch) 
                     assert paragraph.alignment == PP_ALIGN.CENTER
 
 
+def test_point_eds_spectrum_tables_create_row_detail_slides(tmp_path, monkeypatch) -> None:
+    images = []
+    for index in range(3):
+        image_path = tmp_path / f"point-spectrum-{index}.png"
+        _write_sized_image(image_path, (820, 548))
+        images.append(image_path)
+    report_path = tmp_path / "reports" / "point.docx"
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_bytes(b"placeholder")
+
+    at_table = [
+        ["Spectrum Label", "C", "O", "Fe", "Total", "At%"],
+        ["Spectrum 34", "16.38", "27.73", "48.49", "100.00", "Project 1/0647 Point2"],
+        ["Spectrum 35", "30.57", "25.36", "31.13", "100.00", "Project 1/0647 Point2"],
+    ]
+    wt_table = [
+        ["Spectrum Label", "C", "O", "Fe", "Total", "Wt%"],
+        ["Spectrum 34", "5.49", "12.38", "75.56", "100.00", "Project 1/0647 Point2"],
+        ["Spectrum 35", "12.70", "14.04", "60.15", "100.00", "Project 1/0647 Point2"],
+    ]
+
+    def fake_extract_docx(_docx_path: Path, _extract_dir: Path):
+        return SimpleNamespace(media_paths=images, tables=[at_table, wt_table])
+
+    monkeypatch.setattr("ahn.ppt_report.extract_docx", fake_extract_docx)
+    project = _base_project(tmp_path)
+    project["eds_reports"] = [
+        {
+            "path": "reports/point.docx",
+            "file_name": "point.docx",
+            "title": "0647 Point2",
+            "sample_name": "0647",
+            "analysis_type": "POINT",
+        }
+    ]
+    output = tmp_path / "report.pptx"
+
+    build_pptx(project, output)
+
+    prs = Presentation(output)
+    assert len(prs.slides) == 3
+    assert _pptx_picture_counts(output) == [1, 2, 2]
+    table_counts = [
+        sum(1 for shape in slide.shapes if getattr(shape, "has_table", False))
+        for slide in prs.slides
+    ]
+    assert table_counts == [2, 2, 2]
+    table_text = _pptx_table_text(output)
+    assert "At%" in table_text
+    assert "Wt%" in table_text
+    assert "Spectrum 34" in table_text
+    assert "Spectrum 35" in table_text
+    assert "Total" not in table_text
+    titles = [
+        " ".join(shape.text.split())
+        for slide in prs.slides
+        for shape in slide.shapes
+        if getattr(shape, "has_text_frame", False)
+    ]
+    assert any("0647 Point2_Spectrum 34" in title for title in titles)
+    assert any("0647 Point2_Spectrum 35" in title for title in titles)
+
+
 def test_large_coating_sample_uses_image_pages_then_summary_table(tmp_path) -> None:
     project = _base_project(tmp_path)
     measurements = []
