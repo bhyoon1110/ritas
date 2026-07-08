@@ -388,10 +388,6 @@ def _add_image_grid_slides(
     per_slide: int = 8,
 ) -> None:
     if not image_items:
-        slide = template.new_slide(template_key, title) if template else _new_slide(prs)
-        if template is None:
-            _add_header(slide, title)
-        _add_text(slide, "표시할 이미지가 없습니다.", Inches(0.6), Inches(1.5), Inches(5), Inches(0.4))
         return
     for page_index, chunk in enumerate(_chunks(image_items, per_slide), start=1):
         suffix = f" ({page_index})" if len(image_items) > per_slide else ""
@@ -486,14 +482,13 @@ def _build_stem(prs, template: AhnTemplate | None, data: dict[str, Any], input_r
 
 
 def _add_eds_first_slide(prs, template: AhnTemplate | None, title: str, images: list[Path], tmp_dir: Path) -> None:
+    if not images:
+        return
     if template:
         slide = template.new_slide("eds_map", f"STEM EDS 분석결과 : [{title}]")
     else:
         slide = _new_slide(prs)
         _add_header(slide, f"STEM EDS 분석결과 : [{title}]")
-    if not images:
-        _add_text(slide, "Word 보고서에서 추출된 이미지가 없습니다.", Inches(0.6), Inches(1.5), Inches(7), Inches(0.4))
-        return
     if template:
         _add_template_paths(slide, images[:7], template.picture_slots("eds_map"), tmp_dir)
     else:
@@ -542,6 +537,8 @@ def _add_eds_image_pages(
 
 
 def _add_eds_tables_slide(prs, template: AhnTemplate | None, title: str, images: list[Path], tables: list[list[list[str]]], tmp_dir: Path) -> None:
+    if not images and not tables:
+        return
     if template:
         slide = template.new_slide("eds_table", f"STEM EDS 분석결과 : [{title}]")
         _add_template_paths(slide, images[:1], template.picture_slots("eds_table")[:1], tmp_dir)
@@ -549,7 +546,6 @@ def _add_eds_tables_slide(prs, template: AhnTemplate | None, title: str, images:
         slide = _new_slide(prs)
         _add_header(slide, f"STEM EDS 분석결과 : [{title}]")
     if not tables:
-        _add_text(slide, "Word 보고서에서 추출된 표가 없습니다.", Inches(0.6), Inches(1.5), Inches(7), Inches(0.4))
         return
     if template:
         slots = template.table_slots("eds_table")
@@ -636,6 +632,8 @@ def _coating_rows(measurements: list[dict[str, Any]]) -> list[list[str]]:
 def _build_coating(prs, template: AhnTemplate | None, data: dict[str, Any], input_root: Path, tmp_dir: Path) -> None:
     for sample in data.get("coating_samples") or []:
         measurements = sample.get("measurements") or []
+        if not measurements:
+            continue
         if template:
             per_slide = max(1, len(template.picture_slots("coating")))
         else:
