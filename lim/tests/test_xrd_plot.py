@@ -10,8 +10,10 @@ from lim.xrd_plot import (
     XRD_IMAGE_FORMAT_SELECTOR,
     assign_relative_phase_categories,
     build_report_html,
+    phase_category_from_pdf_path,
     phase_label_from_metadata,
     pdf_peak_warning,
+    parse_peak_list_table,
     read_xlsx_preview,
     sort_phase_candidates,
 )
@@ -57,7 +59,31 @@ def test_phase_label_uses_pdf_card_metadata() -> None:
         "TiO2 00-064-0863(S)",
     )
 
-    assert label == "Anatase, syn / TiO2 00-064-0863 QM:S"
+    assert label == "Anatase, syn (TiO2) / 00-064-0863(S)"
+
+
+def test_phase_category_uses_pdf_folder_names(tmp_path) -> None:
+    pdf_root = tmp_path / "ICDD Card"
+    similar = pdf_root / "유사상 1"
+    minor = pdf_root / "미량상"
+    similar.mkdir(parents=True)
+    minor.mkdir()
+
+    assert phase_category_from_pdf_path(str(pdf_root / "Al2O3.pdf"), str(pdf_root)) == (
+        "major",
+        "주요상",
+        "folder",
+    )
+    assert phase_category_from_pdf_path(str(similar / "TiO2.pdf"), str(pdf_root)) == (
+        "uncertain",
+        "유사상 1",
+        "folder",
+    )
+    assert phase_category_from_pdf_path(str(minor / "Trace.pdf"), str(pdf_root)) == (
+        "minor",
+        "미량상",
+        "folder",
+    )
 
 
 def test_relative_phase_categories_keep_only_top_candidates_major() -> None:
@@ -124,11 +150,15 @@ def test_build_report_html_contains_xrd_template_sections(tmp_path) -> None:
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=[10, 20], y=[1, 2], mode="lines", name="Mix2"))
     table_path = tmp_path / "peaks.csv"
-    table_path.write_text("No.,2theta,Norm. I.\\n1,25.309,100\\n", encoding="utf-8")
+    table_path.write_text(
+        "No.,2theta,Phase Name,Chemical Formula,Card No,Norm. I.\n"
+        "1,25.309,Anatase,Ti O2,00-064-0863,100\n",
+        encoding="utf-8",
+    )
     image_path = tmp_path / "phase-match.png"
     image_path.write_bytes(TINY_PNG)
     item = {
-        "label": "Anatase, syn / TiO2 00-064-0863 QM:S",
+        "label": "Anatase, syn (TiO2) / 00-064-0863(S)",
         "color": "#e41a1c",
         "peaks": [
             {"no": "1", "two_theta": 25.309, "d": "3.516", "norm": 100.0, "hkl": "1 0 1"},
@@ -155,6 +185,7 @@ def test_build_report_html_contains_xrd_template_sections(tmp_path) -> None:
         group_map={"Mix2": [0, 1]},
         warnings=[],
         table_files=[str(table_path)],
+        peak_tables=[parse_peak_list_table(str(table_path))],
         image_files=[str(image_path)],
         origin=False,
         first_stem="Mix2",
@@ -170,12 +201,12 @@ def test_build_report_html_contains_xrd_template_sections(tmp_path) -> None:
     assert "overflow: visible !important" in html
     assert "position: static !important" in html
     assert "display: table-header-group" in html
-    assert "그래프 영역" in html
+    assert "상 동정 (Phase Identification) 결과" in html
     assert "특이사항 / 자동 해석 초안" in html
     assert "피크 정보" in html
     assert "결정상(Phase) 정보" in html
     assert "주요 상 (Major Phases)" in html
-    assert "제공된 Excel 파일 Display" in html
+    assert "Peak list Excel Display" in html
     assert "peaks.csv" in html
     assert "그래프/상매칭 보조 이미지" in html
     assert "phase-match.png" in html
@@ -235,3 +266,19 @@ def test_read_xlsx_preview_reads_first_sheet(tmp_path) -> None:
         )
 
     assert read_xlsx_preview(str(xlsx_path)) == [["No.", "Phase Name"], ["1", "Anatase"]]
+
+
+def test_parse_peak_list_table_filters_esd_and_extracts_card_numbers(tmp_path) -> None:
+    csv_path = tmp_path / "Peak list.csv"
+    csv_path.write_text(
+        "No.,\"2θ, °\",e.s.d.,Phase Name,Chemical Formula,Card No,Norm. I.\n"
+        "1,25.289,0.001,Anatase,Ti O2,00-064-0863,100\n"
+        "2,30.917,0.002,\"Anatase,Brookite\",\"Ti O2,Ti O2\",\"00-064-0863,01-075-2548\",5\n",
+        encoding="utf-8",
+    )
+
+    table = parse_peak_list_table(str(csv_path))
+
+    assert "e.s.d." not in table["display_headers"]
+    assert table["peaks"][0]["card_numbers"] == ["000640863"]
+    assert table["peaks"][1]["is_overlap"] is True

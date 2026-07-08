@@ -45,15 +45,15 @@ _XRD_LLM_SYSTEM_PROMPT = (
     "제공된 구조화 JSON만 근거로 한국어 문안을 작성하세요. "
     "제공되지 않은 물질명, 결정상, 원인, 수치를 추측하지 마세요.\n"
     "ICDD 후보상은 확정 동정이 아니라 후보 소견으로 표현하세요.\n"
-    "major/uncertain/minor 분류, raw 피크, ICDD 피크 대응, 첨부 표/이미지 정보를 함께 고려하세요.\n"
+    "PDF 폴더 구조에서 온 주요상/유사상/미량상 분류를 우선하고, raw 피크, ICDD 피크 대응, "
+    "Peak list Excel, 첨부 이미지 정보를 함께 고려하세요.\n"
     "수식은 LaTeX/Markdown 수식 문법을 쓰지 말고 일반 텍스트로 쓰세요.\n"
     "출력은 반드시 JSON 객체 하나로만 작성하고, 키는 "
-    "summary/key_findings/interpretation/qc_notes/caption 입니다.\n"
-    "- summary: 고객 보고서용 요약 3문장 이내\n"
-    "- key_findings: 핵심 근거 3~5개, 줄바꿈으로 구분\n"
-    "- interpretation: 주요상/유사상/미량상 후보를 종합한 해석 4문장 이내\n"
-    "- qc_notes: 해석 한계와 추가 검토사항 2~4개, 줄바꿈으로 구분\n"
-    "- caption: 그래프/보고서용 한 문장 캡션"
+    "major_phases/similar_uncertain_phases/minor_phases/advisory 입니다.\n"
+    "- major_phases: '본 [샘플명] XRD 분석 결과, ... 주요 상으로 존재하는 것으로 판단됩니다.' 형식의 2~3문장\n"
+    "- similar_uncertain_phases: 유사상 후보와 구분 한계를 2~3문장\n"
+    "- minor_phases: 미량상 후보와 근거를 1~2문장\n"
+    "- advisory: 원소 정보(XRF/ICP/EDS) 공유 시 추가 검토 가능, 없으면 XRD 단독 해석 한계를 고정 안내문으로 2문장"
 )
 
 
@@ -61,6 +61,20 @@ def _safe_name(filename: str | None, fallback: str) -> str:
     name = Path(filename or "").name.strip() or fallback
     name = re.sub(r"[^\w.\-() \[\]\u3131-\u318e\uac00-\ud7a3]+", "_", name)
     return name[:160] or fallback
+
+
+def _safe_relative_path(filename: str | None, fallback: str) -> Path:
+    raw = str(filename or "").strip().replace("\\", "/")
+    parts = [part for part in raw.split("/") if part and part not in {".", ".."}]
+    if not parts:
+        parts = [fallback]
+    safe_parts = []
+    for index, part in enumerate(parts):
+        clean = re.sub(r"[^\w.\-() \[\]\u3131-\u318e\uac00-\ud7a3]+", "_", part).strip()
+        if not clean:
+            clean = fallback if index == len(parts) - 1 else "folder"
+        safe_parts.append(clean[:160])
+    return Path(*safe_parts)
 
 
 def _unique_path(directory: Path, filename: str) -> Path:
@@ -94,11 +108,10 @@ def _html_lines(value: str) -> str:
 
 def _xrd_llm_comment_html(slots: dict[str, str]) -> str:
     labels = [
-        ("summary", "요약"),
-        ("key_findings", "핵심 근거"),
-        ("interpretation", "해석"),
-        ("qc_notes", "해석 한계 및 검토사항"),
-        ("caption", "캡션"),
+        ("major_phases", "1. 주요 상 (Major Phases)"),
+        ("similar_uncertain_phases", "2. 유사 상 / 불확실 상 (Similar / Uncertain phases)"),
+        ("minor_phases", "3. 미량 상 (Minor Phases)"),
+        ("advisory", "안내 사항"),
     ]
     blocks = []
     for key, title in labels:
@@ -122,26 +135,23 @@ def _xrd_llm_fallback(context: dict[str, Any]) -> dict[str, str]:
     uncertain = int(counts.get("uncertain") or 0)
     minor = int(counts.get("minor") or 0)
     return {
-        "summary": (
-            f"{sample_name}의 XRD 패턴에서 raw 피크 {raw_peak_count}개와 "
-            f"ICDD 후보상 major {major}건, uncertain {uncertain}건, minor {minor}건이 정리되었습니다. "
-            "해당 결과는 자동 후보 분류이므로 최종 동정은 원소 성분과 원자료 확인을 함께 검토해야 합니다."
+        "major_phases": (
+            f"본 {sample_name} XRD 분석 결과, 주요 상 후보 {major}건이 정리되었습니다. "
+            f"raw 피크 {raw_peak_count}개와 ICDD 카드 피크의 위치 대응을 기준으로 주요 상 존재 가능성을 검토했습니다."
         ),
-        "key_findings": (
-            f"raw 패턴 수: {len(raw_patterns)}개\n"
-            f"major 후보상: {major}건\n"
-            f"uncertain 후보상: {uncertain}건\n"
-            f"minor 후보상: {minor}건"
+        "similar_uncertain_phases": (
+            f"유사 상/불확실 상 후보는 {uncertain}건입니다. "
+            "주요 피크 위치가 일부 겹치는 후보는 현재 XRD 데이터만으로 명확히 구분하기 어렵습니다."
         ),
-        "interpretation": (
-            "현재 raw 피크와 ICDD 카드 피크의 위치 대응을 기준으로 후보상을 분류했습니다. "
-            "major 후보는 우선 검토 대상이며, uncertain/minor 후보는 유사상 또는 미량상 가능성으로 해석해야 합니다."
+        "minor_phases": (
+            f"미량 상 후보는 {minor}건입니다. 피크 대응이 제한적인 후보는 미약한 피크 또는 배경 후보로 검토해야 합니다."
         ),
-        "qc_notes": (
-            "ICDD 후보상은 XRD 피크 위치 기반의 자동 분류 결과입니다.\n"
-            "유사 결정상 구분과 미량상 판단에는 원소 분석, 시료 이력, 반복 측정 결과가 필요할 수 있습니다."
+        "advisory": (
+            "유사 상 구분 및 불순물/미량 상 확인을 위해 시료에 포함될 수 있는 주요 원소 정보(XRF/ICP/EDS)를 공유해주시면 "
+            "상 후보를 원소 제약 조건으로 추가 검토할 수 있습니다.\n"
+            "원소 정보가 없을 경우 XRD 결과만으로는 결정학적으로 유사한 상 구분 및 미량상 확인에 한계가 있어 "
+            "원소 성분 분석을 권장드립니다."
         ),
-        "caption": f"{sample_name} XRD raw 패턴과 ICDD 후보상 자동 해석 초안",
     }
 
 
@@ -156,11 +166,10 @@ def _generate_xrd_llm_comment(
         system_prompt=_XRD_LLM_SYSTEM_PROMPT,
         facts=context,
         requested_slots=[
-            "summary",
-            "key_findings",
-            "interpretation",
-            "qc_notes",
-            "caption",
+            "major_phases",
+            "similar_uncertain_phases",
+            "minor_phases",
+            "advisory",
         ],
         fallback=_xrd_llm_fallback(context),
     )
@@ -276,12 +285,13 @@ async def _save_xrd_bundle_uploads(
 
     unsupported: list[str] = []
     for index, upload in enumerate(files or [], start=1):
-        filename = _safe_name(upload.filename, f"bundle-{index}")
-        suffix = Path(filename).suffix.lower()
+        relative_path = _safe_relative_path(upload.filename, f"bundle-{index}")
+        filename = relative_path.name
+        suffix = relative_path.suffix.lower()
         if not suffix and filename.startswith("."):
             continue
         if suffix not in SUPPORTED_BUNDLE_EXTENSIONS:
-            unsupported.append(filename)
+            unsupported.append(str(relative_path))
             continue
 
         data = await upload.read()
@@ -296,7 +306,9 @@ async def _save_xrd_bundle_uploads(
             path = _unique_path(directories["raw"], filename)
             raw_paths.append(str(path))
         elif suffix in PDF_EXTENSIONS:
-            path = _unique_path(directories["pdf"], filename)
+            pdf_parent = directories["pdf"] / relative_path.parent
+            pdf_parent.mkdir(parents=True, exist_ok=True)
+            path = _unique_path(pdf_parent, filename)
         elif suffix in TABLE_EXTENSIONS:
             path = _unique_path(directories["table"], filename)
             table_paths.append(str(path))
@@ -1155,40 +1167,74 @@ def _write_synthetic_icdd_pdf_dir(pdf_dir: Path) -> None:
     _write_synthetic_icdd_pdf(pdf_dir / "Synthetic Anatase 00-000-0001(S).pdf")
 
 
-def _xrd_example_candidates(repo_root: Path) -> list[tuple[Path, Path]]:
-    return [
-        (
-            repo_root / "lim" / "data" / "data_dir" / "Mix2.txt",
-            repo_root / "lim" / "data" / "data_dir" / "Mix2",
-        ),
-        (
-            repo_root / "lim" / "data" / "data_dir" / "Mix3.txt",
-            repo_root / "lim" / "data" / "data_dir" / "Mix3",
-        ),
-        (
-            repo_root
-            / "lim"
-            / "data"
-            / "예제 데이터(AX - XRD)"
-            / "예제 데이터 1"
-            / "Mix2.txt",
-            repo_root
-            / "lim"
-            / "data"
-            / "예제 데이터(AX - XRD)"
-            / "예제 데이터 1"
-            / "Mix2",
-        ),
-    ]
+def _xrd_example_candidates(repo_root: Path) -> list[tuple[Path, Path, list[Path], list[Path]]]:
+    examples_with_peak_list = (
+        repo_root
+        / "lim"
+        / "data"
+        / "AX 예제 데이터 (XRD, Peak list 엑셀 포함)"
+    )
+
+    candidates: list[tuple[Path, Path, list[Path], list[Path]]] = []
+    if examples_with_peak_list.is_dir():
+        for directory in sorted(examples_with_peak_list.iterdir()):
+            if not directory.is_dir():
+                continue
+            raw_files = sorted(directory.glob("*.txt"))
+            pdf_dirs = [
+                child for child in sorted(directory.iterdir())
+                if child.is_dir() and "ICDD" in child.name
+            ]
+            if not raw_files or not pdf_dirs:
+                continue
+            table_files = sorted(directory.glob("*.csv")) + sorted(directory.glob("*.xlsx"))
+            image_files = sorted(directory.glob("*.png")) + sorted(directory.glob("*.jpg"))
+            candidates.append((raw_files[0], pdf_dirs[0], table_files, image_files))
+
+    candidates.extend(
+        [
+            (
+                repo_root / "lim" / "data" / "data_dir" / "Mix2.txt",
+                repo_root / "lim" / "data" / "data_dir" / "Mix2",
+                [],
+                [],
+            ),
+            (
+                repo_root / "lim" / "data" / "data_dir" / "Mix3.txt",
+                repo_root / "lim" / "data" / "data_dir" / "Mix3",
+                [],
+                [],
+            ),
+            (
+                repo_root
+                / "lim"
+                / "data"
+                / "예제 데이터(AX - XRD)"
+                / "예제 데이터 1"
+                / "Mix2.txt",
+                repo_root
+                / "lim"
+                / "data"
+                / "예제 데이터(AX - XRD)"
+                / "예제 데이터 1"
+                / "Mix2",
+                [],
+                [],
+            ),
+        ]
+    )
+    return candidates
 
 
 def _build_xrd_example_html(repo_root: Path, *, settings: Settings | None = None) -> str:
-    for raw_path, pdf_dir in _xrd_example_candidates(repo_root):
+    for raw_path, pdf_dir, table_files, image_files in _xrd_example_candidates(repo_root):
         if raw_path.is_file() and pdf_dir.is_dir():
             with tempfile.TemporaryDirectory(prefix="rist-xrd-example-") as tmp:
                 root = Path(tmp)
                 return build_xrd_html(
                     [(str(raw_path), str(pdf_dir))],
+                    table_files=[str(path) for path in table_files],
+                    image_files=[str(path) for path in image_files],
                     origin=True,
                     comment_provider=_xrd_comment_provider(
                         settings,
@@ -1203,6 +1249,8 @@ def _build_xrd_example_html(repo_root: Path, *, settings: Settings | None = None
                 _write_synthetic_icdd_pdf_dir(synthetic_pdf_dir)
                 return build_xrd_html(
                     [(str(raw_path), str(synthetic_pdf_dir))],
+                    table_files=[str(path) for path in table_files],
+                    image_files=[str(path) for path in image_files],
                     origin=True,
                     comment_provider=_xrd_comment_provider(
                         settings,

@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 
 from app.xrd_web import (
     _build_xrd_example_html,
+    _safe_relative_path,
     _write_synthetic_icdd_pdf_dir,
     _write_synthetic_xrd_raw,
     build_xrd_page,
@@ -92,7 +93,7 @@ def test_xrd_analyze_accepts_raw_with_pdf_cards(tmp_path) -> None:
 
     assert response.status_code == 200
     assert "sample Report" in response.text
-    assert "그래프 영역" in response.text
+    assert "상 동정 (Phase Identification) 결과" in response.text
     assert 'id="xrd-report-pdf-export"' in response.text
     assert "window.print()" in response.text
     assert "결정상(Phase) 정보" in response.text
@@ -124,7 +125,7 @@ def test_xrd_analyze_includes_table_and_image_inputs(tmp_path) -> None:
         )
 
     assert response.status_code == 200
-    assert "제공된 Excel 파일 Display" in response.text
+    assert "Peak list Excel Display" in response.text
     assert "peaks.csv" in response.text
     assert "그래프/상매칭 보조 이미지" in response.text
     assert "match.png" in response.text
@@ -170,7 +171,7 @@ def test_xrd_example_falls_back_when_sample_files_are_absent(tmp_path) -> None:
     html = _build_xrd_example_html(tmp_path)
 
     assert "synthetic-xrd Report" in html
-    assert "그래프 영역" in html
+    assert "상 동정 (Phase Identification) 결과" in html
     assert "Synthetic Anatase Example" in html
     assert "25.300" in html
     assert "결정상(Phase) 정보" in html
@@ -215,8 +216,8 @@ def test_xrd_report_can_use_llm_comment_provider(tmp_path) -> None:
     assert "function legendKind(row)" in result["html"]
     assert "xrd_raw_group" in result["html"]
     assert "xrd_legend_kind" in result["html"]
-    assert '"legend.x": 1.02' in result["html"]
-    assert '"legend.y": 0.84' in result["html"]
+    assert '"legend.x": 0.98' in result["html"]
+    assert '"legend.y": 0.98' in result["html"]
     assert "bindRawLegendDomClick" not in result["html"]
     assert "xrd-tool-toggle" in result["html"]
     assert "xrd-tool-panel" in result["html"]
@@ -228,8 +229,21 @@ def test_xrd_report_can_use_llm_comment_provider(tmp_path) -> None:
     assert "xrd_manual_phase_group" in result["html"]
     assert "legendgrouptitle.text" in result["html"]
     assert '"traceorder":"grouped"' in result["html"]
-    assert "Synthetic Anatase Example / TiO2" in result["html"]
+    assert "Synthetic Anatase Example (TiO2)" in result["html"]
     assert captured["experiment"] == "XRD"
     assert captured["raw_patterns"][0]["detected_raw_peaks"]
     assert captured["icdd_candidates"]["major"]
-    assert captured["supporting_files"] == {"tables": [], "images": []}
+    assert captured["supporting_files"] == {"tables": [], "peak_lists": [], "images": []}
+
+
+def test_xrd_bundle_relative_path_is_preserved_for_phase_folders() -> None:
+    relative = _safe_relative_path(
+        "ICDD Card (라이브러리 pdf)/유사상 1/TiO2 00-064-0863(S).pdf",
+        "bundle-1",
+    )
+
+    assert relative.parts[-3:] == (
+        "ICDD Card (라이브러리 pdf)",
+        "유사상 1",
+        "TiO2 00-064-0863(S).pdf",
+    )

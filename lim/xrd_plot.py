@@ -71,6 +71,7 @@ import json
 import os
 import re
 import sys
+import unicodedata
 import zipfile
 from pathlib import Path
 from typing import Any, Callable
@@ -111,6 +112,12 @@ PHASE_GROUPS = {
     "major": "주요 상 (Major Phases)",
     "uncertain": "유사/불확실 상 (Uncertain / Similar Phases)",
     "minor": "미량 상 후보 (Minor Phase Candidates)",
+}
+
+PHASE_CATEGORY_SHORT_LABELS = {
+    "major": "주요상",
+    "uncertain": "유사상",
+    "minor": "미량상",
 }
 
 TABLE_EXTENSIONS = {".csv", ".tsv", ".xlsx"}
@@ -244,11 +251,69 @@ def phase_label_from_metadata(metadata: dict[str, str], fallback: str) -> str:
     formula = _compact_formula(metadata.get("formula") or "")
     card_no = metadata.get("card_no") or ""
     quality = metadata.get("quality_mark") or ""
-    left = phase_name or formula or fallback
-    right_parts = [part for part in (formula if phase_name else "", card_no) if part]
-    if quality:
-        right_parts.append(f"QM:{quality}")
-    return f"{left} / {' '.join(right_parts)}" if right_parts else left
+    left = phase_name or fallback
+    if formula:
+        left = f"{left} ({formula})"
+    right = card_no
+    if right and quality:
+        right = f"{right}({quality})"
+    return f"{left} / {right}" if right else left
+
+
+def normalize_card_no(value: str) -> str:
+    """Card No를 파일명/CSV/PDF 표기 차이와 무관하게 비교할 수 있게 정규화한다."""
+    text = str(value or "").strip()
+    text = re.sub(r"\([A-Z]\)\s*$", "", text)
+    text = text.replace("PDF Card No.", "")
+    text = re.sub(r"[^0-9A-Za-z]+", "", text)
+    return text.upper()
+
+
+def split_card_numbers(value: str) -> list[str]:
+    cards = []
+    for part in re.split(r"[,;/\n]+", str(value or "")):
+        card = normalize_card_no(part)
+        if card and card not in cards:
+            cards.append(card)
+    return cards
+
+
+def _path_text(value: str) -> str:
+    return re.sub(r"\s+", "", unicodedata.normalize("NFC", str(value or "")).lower())
+
+
+def _display_path_part(value: str) -> str:
+    return unicodedata.normalize("NFC", str(value or "").strip())
+
+
+def phase_category_from_pdf_path(pdf_path: str, pdf_dir: str) -> tuple[str | None, str, str]:
+    """PDF 상대 폴더명에서 주요상/유사상/미량상 분류와 그룹명을 읽는다.
+
+    주요상은 PDF 루트에 두는 규칙이므로 하위 폴더가 없으면 major로 본다.
+    유사상/미량상은 폴더명에 적힌 구분을 우선한다.
+    """
+    try:
+        rel = Path(pdf_path).resolve().relative_to(Path(pdf_dir).resolve())
+    except ValueError:
+        rel = Path(pdf_path).name
+        parts: tuple[str, ...] = ()
+    else:
+        parts = rel.parts[:-1]
+
+    if not parts:
+        return "major", PHASE_CATEGORY_SHORT_LABELS["major"], "folder"
+
+    for part in parts:
+        text = _path_text(part)
+        display_part = _display_path_part(part)
+        if "미량" in text or "minor" in text or "trace" in text:
+            return "minor", display_part, "folder"
+        if "유사" in text or "불확실" in text or "similar" in text or "uncertain" in text:
+            return "uncertain", display_part, "folder"
+        if "주요" in text or "major" in text:
+            return "major", display_part, "folder"
+
+    return None, "자동 분류", "score"
 
 
 def _nearest_raw_intensity(
@@ -318,6 +383,8 @@ def assign_relative_phase_categories(items: list[dict[str, Any]]) -> None:
     )
     major_count = 0
     for item in ranked:
+        if item.get("category_locked"):
+            continue
         score = float(item["match"].get("score") or 0)
         if score < 18:
             item["category"] = "minor"
@@ -341,11 +408,19 @@ def _phase_similarity_key(item: dict[str, Any]) -> str:
     return f"{formula.lower()} {phase_name}".strip()
 
 
+def _phase_folder_group_key(item: dict[str, Any]) -> str:
+    folder_group = str(item.get("folder_group") or "")
+    if not folder_group or folder_group == "자동 분류":
+        folder_group = PHASE_CATEGORY_SHORT_LABELS.get(str(item.get("category") or ""), "")
+    return folder_group
+
+
 def sort_phase_candidates(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return sorted(
         items,
         key=lambda item: (
             _PHASE_CATEGORY_ORDER.get(str(item.get("category") or ""), 99),
+            _phase_folder_group_key(item),
             _phase_similarity_key(item),
             -float((item.get("match") or {}).get("score") or 0),
         ),
@@ -354,6 +429,15 @@ def sort_phase_candidates(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 def _phase_category_separator_label(category: str) -> str:
     title = PHASE_GROUPS.get(category, category)
+    return f"──────── {title}"
+
+
+def _phase_section_separator_label(item: dict[str, Any]) -> str:
+    category = str(item.get("category") or "")
+    title = PHASE_GROUPS.get(category, category)
+    folder_group = _phase_folder_group_key(item)
+    if folder_group and folder_group not in {PHASE_CATEGORY_SHORT_LABELS.get(category), title}:
+        return f"──────── {folder_group} · {title}"
     return f"──────── {title}"
 
 
@@ -1546,6 +1630,115 @@ def read_table_preview(path: str) -> dict[str, Any]:
         return {"path": path, "rows": [], "error": str(exc)}
 
 
+def _normalized_header(value: str) -> str:
+    return re.sub(r"[^0-9a-zA-Zθ]+", "", str(value or "").lower())
+
+
+def _find_column(headers: list[str], *needles: str) -> int | None:
+    normalized_needles = [_normalized_header(needle) for needle in needles]
+    for index, header in enumerate(headers):
+        normalized = _normalized_header(header)
+        if any(needle and needle in normalized for needle in normalized_needles):
+            return index
+    return None
+
+
+def _is_esd_header(header: str) -> bool:
+    normalized = _normalized_header(header)
+    return normalized in {"esd", "esd"} or "esd" in normalized
+
+
+def _float_or_none(value: Any) -> float | None:
+    try:
+        return float(str(value).strip())
+    except (TypeError, ValueError):
+        return None
+
+
+def parse_peak_list_table(path: str) -> dict[str, Any]:
+    """Peak list CSV/XLSX를 보고서 표/그래프 피크 번호 표시용으로 구조화한다."""
+    preview = read_table_preview(path)
+    rows = preview.get("rows") or []
+    if preview.get("error") or not rows:
+        return {
+            "path": path,
+            "headers": [],
+            "display_headers": [],
+            "display_rows": [],
+            "peaks": [],
+            "error": preview.get("error") or "",
+        }
+
+    headers = [str(cell or "").strip() for cell in rows[0]]
+    col_no = _find_column(headers, "No.")
+    col_theta = _find_column(headers, "2θ", "2theta")
+    col_phase = _find_column(headers, "Phase Name")
+    col_formula = _find_column(headers, "Chemical Formula")
+    col_card = _find_column(headers, "Card No")
+    col_norm = _find_column(headers, "Norm. I.")
+
+    non_esd_indices = [
+        index for index, header in enumerate(headers)
+        if header and not _is_esd_header(header)
+    ]
+    required_indices = [
+        index for index in (col_no, col_theta, col_phase, col_formula, col_card, col_norm)
+        if index is not None and index in non_esd_indices
+    ]
+    display_indices: list[int] = []
+    optional_indices = [index for index in non_esd_indices if index not in required_indices]
+    optional_limit = max(0, MAX_REPORT_TABLE_COLS - len(required_indices))
+    preferred_indices = optional_indices[:optional_limit] + required_indices
+    for index in sorted(set(preferred_indices)):
+        if index in non_esd_indices:
+            display_indices.append(index)
+    for index in required_indices:
+        if index not in display_indices:
+            display_indices.append(index)
+    display_indices = display_indices[:MAX_REPORT_TABLE_COLS]
+    display_headers = [headers[index] for index in display_indices]
+
+    display_rows = []
+    peaks = []
+    for raw_index, row in enumerate(rows[1:], start=1):
+        padded = list(row) + [""] * max(0, len(headers) - len(row))
+        display_row = [padded[index] if index < len(padded) else "" for index in display_indices]
+        theta = _float_or_none(padded[col_theta] if col_theta is not None and col_theta < len(padded) else "")
+        card_value = padded[col_card] if col_card is not None and col_card < len(padded) else ""
+        phase_value = padded[col_phase] if col_phase is not None and col_phase < len(padded) else ""
+        formula_value = padded[col_formula] if col_formula is not None and col_formula < len(padded) else ""
+        card_numbers = split_card_numbers(card_value)
+        is_overlap = len(card_numbers) > 1 or "," in str(phase_value or "")
+        peak = {
+            "row_index": raw_index,
+            "no": padded[col_no] if col_no is not None and col_no < len(padded) else str(raw_index),
+            "two_theta": theta,
+            "phase_name": phase_value,
+            "formula": formula_value,
+            "card_no": card_value,
+            "card_numbers": card_numbers,
+            "norm_i": _float_or_none(padded[col_norm] if col_norm is not None and col_norm < len(padded) else ""),
+            "is_overlap": is_overlap,
+            "display": display_row,
+        }
+        display_rows.append((display_row, peak))
+        if theta is not None:
+            peaks.append(peak)
+
+    return {
+        "path": path,
+        "headers": headers,
+        "display_headers": display_headers,
+        "display_rows": display_rows,
+        "peaks": peaks,
+        "error": "",
+    }
+
+
+def parse_peak_list_tables(table_files: list[str] | None) -> list[dict[str, Any]]:
+    return [parse_peak_list_table(path) for path in (table_files or [])]
+
+
 def image_data_uri(path: str) -> str:
     ext = Path(path).suffix.lower()
     mime = {
@@ -1794,6 +1987,50 @@ def detect_raw_pattern_peaks(
     return selected
 
 
+def peak_list_marker_points(
+    peak_tables: list[dict[str, Any]],
+    rx: list[float],
+    ry: list[float],
+    *,
+    y_offset_ratio: float = 0.045,
+) -> list[dict[str, Any]]:
+    """Peak list의 2θ 값마다 raw 곡선에서 가까운 y를 찾아 번호 라벨 위치를 만든다."""
+    if not rx or not ry:
+        return []
+    y_min = min(ry)
+    y_max = max(ry)
+    y_offset = max((y_max - y_min) * y_offset_ratio, 1.0)
+    points: list[dict[str, Any]] = []
+    seen: set[tuple[str, float]] = set()
+    for table in peak_tables:
+        for peak in table.get("peaks") or []:
+            theta = peak.get("two_theta")
+            if theta is None:
+                continue
+            nearest = _nearest_raw_intensity(rx, ry, float(theta))
+            if nearest is None:
+                continue
+            distance, intensity = nearest
+            if distance > 0.35:
+                continue
+            key = (str(peak.get("no") or ""), round(float(theta), 3))
+            if key in seen:
+                continue
+            seen.add(key)
+            points.append(
+                {
+                    "no": str(peak.get("no") or len(points) + 1),
+                    "two_theta": float(theta),
+                    "y": float(intensity) + y_offset,
+                    "phase_name": peak.get("phase_name") or "",
+                    "card_no": peak.get("card_no") or "",
+                    "is_overlap": bool(peak.get("is_overlap")),
+                }
+            )
+    points.sort(key=lambda item: item["two_theta"])
+    return points
+
+
 def _raw_pattern_context(
     *,
     raw_stem: str,
@@ -1843,6 +2080,8 @@ def _phase_candidate_context(groups) -> dict[str, list[dict[str, Any]]]:
                 "sample": raw_stem,
                 "label": item["label"],
                 "category": item["category"],
+                "category_source": item.get("category_source") or "score",
+                "folder_group": item.get("folder_group") or "",
                 "phase_name": metadata.get("phase_name") or "",
                 "formula": _compact_formula(metadata.get("formula") or ""),
                 "card_no": metadata.get("card_no") or "",
@@ -1891,6 +2130,7 @@ def build_xrd_llm_context(
     table_files: list[str] | None,
     image_files: list[str] | None,
     origin: bool,
+    peak_tables: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     candidates = _phase_candidate_context(groups)
     return {
@@ -1909,6 +2149,17 @@ def build_xrd_llm_context(
         },
         "supporting_files": {
             "tables": [_table_context(path) for path in (table_files or [])[:4]],
+            "peak_lists": [
+                {
+                    "file": Path(table["path"]).name,
+                    "peak_count": len(table.get("peaks") or []),
+                    "overlap_peak_count": sum(
+                        1 for peak in (table.get("peaks") or []) if peak.get("is_overlap")
+                    ),
+                    "headers": table.get("display_headers") or [],
+                }
+                for table in (peak_tables or [])[:4]
+            ],
             "images": [
                 {"file": Path(path).name, "type": Path(path).suffix.lower().lstrip(".")}
                 for path in (image_files or [])[:8]
@@ -1971,13 +2222,89 @@ def _table_preview_html(table: dict[str, Any]) -> str:
     """
 
 
+def _card_no_set_from_groups(groups) -> set[str]:
+    cards: set[str] = set()
+    for _raw_stem, _raw_color, items in groups:
+        for item in items:
+            card = normalize_card_no((item.get("metadata") or {}).get("card_no") or "")
+            if card:
+                cards.add(card)
+    return cards
+
+
+def _peak_row_card_match(peak: dict[str, Any], known_cards: set[str]) -> bool:
+    cards = peak.get("card_numbers") or []
+    return bool(cards) and any(card in known_cards for card in cards)
+
+
+def _peak_list_display_html(peak_tables: list[dict[str, Any]], known_cards: set[str]) -> str:
+    if not peak_tables:
+        return ""
+    blocks = []
+    for table in peak_tables:
+        filename = Path(table["path"]).name
+        if table.get("error"):
+            blocks.append(
+                '<article class="xrd-file-table">'
+                f"<h3>{_esc(filename)}</h3>"
+                f'<p class="xrd-warning">{_esc(table["error"])}</p>'
+                "</article>"
+            )
+            continue
+        headers = table.get("display_headers") or []
+        rows = table.get("display_rows") or []
+        if not headers or not rows:
+            blocks.append(
+                '<article class="xrd-file-table">'
+                f"<h3>{_esc(filename)}</h3>"
+                '<p class="xrd-empty">표시할 Peak list 데이터가 없습니다.</p>'
+                "</article>"
+            )
+            continue
+        header_html = "<th>Card No<br>연동</th>" + "".join(
+            f"<th>{_esc(header)}</th>" for header in headers
+        )
+        body_rows = []
+        for display_row, peak in rows:
+            matched = _peak_row_card_match(peak, known_cards)
+            row_class = " class=\"xrd-overlap-row\"" if peak.get("is_overlap") else ""
+            checked = " checked" if matched else ""
+            title = "ICDD 후보 Card No와 연동됨" if matched else "ICDD 후보 Card No와 매칭되지 않아 기본 해제"
+            cells = "".join(f"<td>{_esc(cell)}</td>" for cell in display_row)
+            body_rows.append(
+                f"<tr{row_class} data-card-nos=\"{_esc(','.join(peak.get('card_numbers') or []))}\">"
+                f"<td class=\"xrd-card-check\"><input type=\"checkbox\" disabled{checked} title=\"{_esc(title)}\"></td>"
+                f"{cells}</tr>"
+            )
+        blocks.append(
+            f"""
+            <article class="xrd-file-table">
+              <h3>{_esc(filename)}</h3>
+              <div class="xrd-table-scroll xrd-file-table-scroll">
+                <table class="xrd-report-table xrd-peak-list-display">
+                  <thead><tr>{header_html}</tr></thead>
+                  <tbody>{''.join(body_rows)}</tbody>
+                </table>
+              </div>
+              <p class="xrd-table-note">e.s.d. 열은 제외했습니다. 노란 행은 여러 Card No/Phase가 겹친 피크입니다.</p>
+            </article>
+            """
+        )
+    return f"""
+  <div class="xrd-provided-block">
+    <h3>Peak list Excel Display</h3>
+    {''.join(blocks)}
+  </div>
+"""
+
+
 def build_excel_display_html(table_files: list[str]) -> str:
     if not table_files:
         return ""
     previews = [_table_preview_html(read_table_preview(path)) for path in table_files]
     return f"""
   <div class="xrd-provided-block">
-    <h3>제공된 Excel 파일 Display</h3>
+    <h3>제공된 Excel/CSV 파일 Display</h3>
     {''.join(previews)}
   </div>
 """
@@ -2017,7 +2344,12 @@ def build_image_display_html(image_files: list[str]) -> str:
 """
 
 
-def build_peak_info_html(groups, table_files: list[str] | None = None) -> str:
+def build_peak_info_html(
+    groups,
+    table_files: list[str] | None = None,
+    peak_tables: list[dict[str, Any]] | None = None,
+) -> str:
+    known_cards = _card_no_set_from_groups(groups)
     rows = []
     for raw_stem, _raw_color, items in groups:
         for item in items:
@@ -2046,11 +2378,12 @@ def build_peak_info_html(groups, table_files: list[str] | None = None) -> str:
 <section class="xrd-report-section" id="xrd-peak-info">
   <div class="xrd-section-head">
     <h2>피크 정보</h2>
-    <p>PDF 카드에서 추출한 피크 정보를 보고서용 표로 정리했습니다. e.s.d 열과 Phase Name 이후 열은 표시하지 않습니다.</p>
+    <p>Excel Peak list의 2θ/Card No/Phase Name을 기준으로 피크 번호와 후보상 연동을 표시합니다.</p>
   </div>
-  {build_excel_display_html(table_files or [])}
+  {_peak_list_display_html(peak_tables or [], known_cards) or build_excel_display_html(table_files or [])}
   <div class="xrd-table-scroll">
     <table class="xrd-report-table xrd-peak-table">
+      <caption>ICDD Card PDF에서 추출한 후보 피크</caption>
       <thead>
         <tr>
           <th>시료</th><th>결정상 후보</th><th>No.</th>
@@ -2095,6 +2428,8 @@ def build_phase_info_html(groups) -> str:
             match = item["match"]
             card_rows = [
                 ("시료", item["raw_stem"]),
+                ("분류", PHASE_GROUPS.get(item["category"], item["category"])),
+                ("폴더 그룹", item.get("folder_group") or "-"),
                 ("Phase name", phase_name),
                 ("Formula", formula or "-"),
                 ("PDF Card", card_no),
@@ -2181,9 +2516,17 @@ def xrd_report_css() -> str:
   .xrd-comment-box p:last-child { margin-bottom: 0; }
   .xrd-table-scroll { border-radius: 10px; overflow: auto; max-height: 520px; }
   .xrd-report-table, .xrd-mini-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .xrd-report-table caption { caption-side: top; text-align: left; font-weight: 700; padding: 8px 0; color: #374151; }
   .xrd-report-table th, .xrd-report-table td, .xrd-mini-table th, .xrd-mini-table td { border: 1px solid #d1d5db; padding: 6px 8px; vertical-align: middle; }
   .xrd-report-table th { background: #f3f4f6; position: sticky; top: 0; z-index: 1; }
   .xrd-report-table td:nth-child(4), .xrd-report-table td:nth-child(5), .xrd-report-table td:nth-child(6), .xrd-report-table td:nth-child(7) { text-align: right; }
+  .xrd-peak-list-display th, .xrd-peak-list-display td { text-align: center; }
+  .xrd-peak-list-display td { white-space: nowrap; }
+  .xrd-peak-list-display td:nth-child(3),
+  .xrd-peak-list-display td:nth-child(5),
+  .xrd-peak-list-display td:nth-child(7) { text-align: right; }
+  .xrd-card-check input { width: 15px; height: 15px; accent-color: #2563eb; }
+  .xrd-overlap-row { background: #fff7cc !important; }
   .xrd-provided-block { margin: 0 0 14px; }
   .xrd-provided-block > h3 { font-size: 14px; margin: 0 0 8px; }
   .xrd-file-table { margin: 10px 0 14px; }
@@ -2263,6 +2606,7 @@ def build_report_html(
     group_map: dict,
     warnings: list[str],
     table_files: list[str] | None = None,
+    peak_tables: list[dict[str, Any]] | None = None,
     image_files: list[str] | None = None,
     origin: bool,
     first_stem: str,
@@ -2276,7 +2620,7 @@ def build_report_html(
         div_id="xrd-plot",
         origin=origin,
         legend_breakpoint_px=LEGEND_BREAKPOINT_PX,
-        wide_legend_inside=False,
+        wide_legend_inside=True,
         crosshair=True,
         title_edit=True,
         legend_text_edit=True,
@@ -2302,7 +2646,7 @@ def build_report_html(
         or "raw 피크, ICDD 후보상, 첨부 표/이미지 정보를 기준으로 작성한 자동 해석 초안입니다."
     )
     image_info = build_image_display_html(image_files or [])
-    peak_info = build_peak_info_html(groups, table_files or [])
+    peak_info = build_peak_info_html(groups, table_files or [], peak_tables or [])
     phase_info = build_phase_info_html(groups)
     group_toggle_js = build_group_toggle_js("xrd-plot", group_map)
     return f"""<!doctype html>
@@ -2322,7 +2666,7 @@ def build_report_html(
     </header>
     <section class="xrd-report-section" id="xrd-graph-section">
       <div class="xrd-section-head">
-        <h2>그래프 영역</h2>
+        <h2>상 동정 (Phase Identification) 결과</h2>
         <p>측정 데이터와 ICDD Card 피크를 함께 표시합니다.</p>
       </div>
       <div class="xrd-graph-frame">{plot_body}</div>
@@ -2538,6 +2882,7 @@ def build_xrd_html(
     raw_patterns = []
     all_x = []
     warnings = []
+    peak_tables = parse_peak_list_tables(table_files or [])
 
     for gi, (raw_txt, pdf_dir) in enumerate(pairs):
         if not os.path.isfile(raw_txt):
@@ -2581,7 +2926,48 @@ def build_xrd_html(
         idxs.append(trace_idx)
         trace_idx += 1
 
-        pdf_files = sorted(glob.glob(os.path.join(pdf_dir, "*.pdf")))
+        marker_points = peak_list_marker_points(peak_tables, rx, ry)
+        if marker_points:
+            fig.add_trace(
+                go.Scatter(
+                    x=[point["two_theta"] for point in marker_points],
+                    y=[point["y"] for point in marker_points],
+                    mode="markers+text",
+                    name=f"{raw_stem} Peak No.",
+                    text=[point["no"] for point in marker_points],
+                    textposition="top center",
+                    textfont=dict(color="#172a46", size=11),
+                    marker=dict(
+                        color=[
+                            "#f59e0b" if point.get("is_overlap") else "#2563eb"
+                            for point in marker_points
+                        ],
+                        size=7,
+                        symbol="circle",
+                        line=dict(color="#ffffff", width=1),
+                    ),
+                    customdata=[
+                        [point.get("phase_name") or "", point.get("card_no") or ""]
+                        for point in marker_points
+                    ],
+                    showlegend=False,
+                    meta={
+                        "xrd_peak_list_marker": True,
+                        "xrd_raw_group": raw_stem,
+                        "xrd_legend_kind": "peak-list-marker",
+                    },
+                    hovertemplate=(
+                        "Peak No. %{text}<br>"
+                        "2θ = %{x:.3f}°<br>"
+                        "Phase = %{customdata[0]}<br>"
+                        "Card No = %{customdata[1]}<extra></extra>"
+                    ),
+                )
+            )
+            idxs.append(trace_idx)
+            trace_idx += 1
+
+        pdf_files = sorted(str(path) for path in Path(pdf_dir).rglob("*.pdf"))
         items = []
         for pdf_path in pdf_files:
             try:
@@ -2599,7 +2985,11 @@ def build_xrd_html(
             metadata = parse_pdf_card_metadata(pdf_path)
             label = phase_label_from_metadata(metadata, fallback_label)
             match = score_phase_candidate(peaks, rx, ry, raw_max)
-            category = classify_phase_candidate(match)
+            path_category, folder_group, category_source = phase_category_from_pdf_path(
+                pdf_path,
+                pdf_dir,
+            )
+            category = path_category or classify_phase_candidate(match)
             items.append({
                 "label": label,
                 "color": color,
@@ -2607,27 +2997,32 @@ def build_xrd_html(
                 "metadata": metadata,
                 "match": match,
                 "category": category,
+                "category_source": category_source,
+                "category_locked": path_category is not None,
+                "folder_group": folder_group,
                 "source_pdf": pdf_path,
             })
 
         assign_relative_phase_categories(items)
         items = sort_phase_candidates(items)
-        last_category = items[0]["category"] if items else None
+        last_section: tuple[str, str] | None = None
         for item_index, item in enumerate(items):
             category = item["category"]
-            if item_index > 0 and category != last_category:
+            section = (category, _phase_folder_group_key(item))
+            if section != last_section:
                 fig.add_trace(
                     go.Scatter(
                         x=[None],
                         y=[None],
                         mode="lines",
-                        name=_phase_category_separator_label(category),
+                        name=_phase_section_separator_label(item),
                         line=dict(color="#cbd5e1", width=1),
                         hoverinfo="skip",
                         showlegend=True,
                         meta={
                             "xrd_separator": True,
                             "xrd_category": category,
+                            "xrd_folder_group": _phase_folder_group_key(item),
                             "xrd_raw_group": raw_stem,
                             "xrd_legend_kind": "separator",
                         },
@@ -2635,7 +3030,7 @@ def build_xrd_html(
                 )
                 idxs.append(trace_idx)
                 trace_idx += 1
-                last_category = category
+                last_section = section
 
             item["trace_idx"] = trace_idx
             xs, ys, customdata = [], [], []
@@ -2658,6 +3053,8 @@ def build_xrd_html(
                         "xrd_phase_candidate": True,
                         "xrd_phase_label": item["label"],
                         "xrd_phase_category": category,
+                        "xrd_phase_category_source": item.get("category_source") or "",
+                        "xrd_phase_folder_group": item.get("folder_group") or "",
                         "xrd_phase_group_key": _phase_similarity_key(item),
                         "xrd_raw_group": raw_stem,
                         "xrd_legend_kind": "phase",
@@ -2730,6 +3127,7 @@ def build_xrd_html(
         table_files=table_files or [],
         image_files=image_files or [],
         origin=origin,
+        peak_tables=peak_tables,
     )
     comment_result: dict[str, str] | None = None
     if comment_provider is not None and not plot_only:
@@ -2742,7 +3140,7 @@ def build_xrd_html(
             div_id="xrd-plot",
             origin=origin,
             legend_breakpoint_px=LEGEND_BREAKPOINT_PX,
-            wide_legend_inside=False,
+            wide_legend_inside=True,
             crosshair=True,
             title_edit=True,
             legend_text_edit=True,
@@ -2770,6 +3168,7 @@ def build_xrd_html(
             group_map=group_map,
             warnings=warnings,
             table_files=table_files or [],
+            peak_tables=peak_tables,
             image_files=image_files or [],
             origin=origin,
             first_stem=first_stem,
