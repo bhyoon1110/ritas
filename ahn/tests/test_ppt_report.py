@@ -91,6 +91,18 @@ def _table_cell_border_widths(cell) -> dict[str, int]:
     return widths
 
 
+def _black_grid_rule_count(slide) -> int:
+    count = 0
+    for shape in slide.shapes:
+        try:
+            color = str(shape.fill.fore_color.rgb)
+        except Exception:
+            continue
+        if color == "000000" and (shape.width <= Inches(0.02) or shape.height <= Inches(0.02)):
+            count += 1
+    return count
+
+
 def _pictures(slide):
     return sorted(
         [shape for shape in slide.shapes if shape.shape_type == 13],
@@ -616,6 +628,9 @@ def test_large_coating_sample_uses_image_pages_then_summary_table(tmp_path) -> N
         for cell in row.cells:
             assert {"lnL", "lnR", "lnT", "lnB"}.issubset(_table_cell_border_edges(cell))
             assert min(_table_cell_border_widths(cell).values()) >= 19050
+    assert _black_grid_rule_count(prs.slides[1]) >= (
+        len(table_shapes[0].table.rows) + len(table_shapes[0].table.columns) + 2
+    )
     table_text = _pptx_table_text(output)
     assert "측정개소" in table_text
     assert "비고" not in table_text

@@ -47,6 +47,8 @@ CAPTION_HEIGHT = Inches(0.28)
 CAPTION_FONT_SIZE = 9
 COATING_TABLE_BORDER_COLOR = "000000"
 COATING_TABLE_BORDER_WIDTH = 19050
+COATING_TABLE_GRID_COLOR = RGBColor(0, 0, 0)
+COATING_TABLE_GRID_THICKNESS = Inches(0.012)
 XLSX_NS = {
     "x": "http://schemas.openxmlformats.org/spreadsheetml/2006/main",
     "r": "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
@@ -1369,6 +1371,59 @@ def _coating_table_font_size(row_count: int) -> int:
     return 12
 
 
+def _add_table_grid_overlay(
+    slide,
+    left: int,
+    top: int,
+    width: int,
+    height: int,
+    row_count: int,
+    column_widths: list[int],
+) -> None:
+    """Draw visible grid rules over a table for clients that ignore cell borders."""
+    if row_count <= 0 or width <= 0 or height <= 0:
+        return
+    thickness = int(COATING_TABLE_GRID_THICKNESS)
+    color = COATING_TABLE_GRID_COLOR
+
+    x_positions = [int(left)]
+    running_x = int(left)
+    for col_width in column_widths:
+        running_x += int(col_width)
+        x_positions.append(running_x)
+    if x_positions[-1] != int(left + width):
+        x_positions[-1] = int(left + width)
+
+    y_positions = [
+        int(top + (height * row_index / row_count))
+        for row_index in range(row_count + 1)
+    ]
+
+    for x_position in x_positions:
+        rule = slide.shapes.add_shape(
+            1,
+            x_position - thickness // 2,
+            top,
+            thickness,
+            height,
+        )
+        rule.fill.solid()
+        rule.fill.fore_color.rgb = color
+        rule.line.color.rgb = color
+
+    for y_position in y_positions:
+        rule = slide.shapes.add_shape(
+            1,
+            left,
+            y_position - thickness // 2,
+            width,
+            thickness,
+        )
+        rule.fill.solid()
+        rule.fill.fore_color.rgb = color
+        rule.line.color.rgb = color
+
+
 def _remove_tables(slide) -> None:
     for shape in list(slide.shapes):
         if shape.shape_type == TABLE_SHAPE_TYPE:
@@ -1405,6 +1460,15 @@ def _add_coating_table_slide(
         draw_borders=True,
         border_color=COATING_TABLE_BORDER_COLOR,
         border_width=COATING_TABLE_BORDER_WIDTH,
+    )
+    _add_table_grid_overlay(
+        slide,
+        left,
+        top,
+        width,
+        height,
+        len(table_rows),
+        _coating_column_widths(width),
     )
 
 
@@ -1520,19 +1584,31 @@ def _add_coating_images_with_table_slide(
         show_labels=False,
     )
     table_rows = _coating_rows(all_measurements)
+    table_left, table_top = Inches(7.75), Inches(1.2)
+    table_width, table_height = Inches(2.85), Inches(5.95)
+    column_widths = _coating_column_widths(table_width)
     _add_table(
         slide,
         table_rows,
-        Inches(7.75),
-        Inches(1.2),
-        Inches(2.85),
-        Inches(5.95),
+        table_left,
+        table_top,
+        table_width,
+        table_height,
         font_size=_coating_table_font_size(len(table_rows)),
-        column_widths=_coating_column_widths(Inches(2.85)),
+        column_widths=column_widths,
         alignments=[PP_ALIGN.CENTER, PP_ALIGN.CENTER],
         draw_borders=True,
         border_color=COATING_TABLE_BORDER_COLOR,
         border_width=COATING_TABLE_BORDER_WIDTH,
+    )
+    _add_table_grid_overlay(
+        slide,
+        table_left,
+        table_top,
+        table_width,
+        table_height,
+        len(table_rows),
+        column_widths,
     )
 
 
@@ -1606,16 +1682,26 @@ def _build_coating(prs, template: AhnTemplate | None, data: dict[str, Any], inpu
                 table_rows = _coating_rows(chunk)
                 table_slots = template.table_slots("coating")
                 table_slot = table_slots[1] if len(table_slots) > 1 else (Inches(8.01), Inches(1.21), Inches(2.36), Inches(5.77))
+                column_widths = _coating_column_widths(table_slot[2])
                 _add_table(
                     slide,
                     table_rows,
                     *table_slot,
                     font_size=_coating_table_font_size(len(table_rows)),
-                    column_widths=_coating_column_widths(table_slot[2]),
+                    column_widths=column_widths,
                     alignments=[PP_ALIGN.CENTER, PP_ALIGN.CENTER],
                     draw_borders=True,
                     border_color=COATING_TABLE_BORDER_COLOR,
                     border_width=COATING_TABLE_BORDER_WIDTH,
+                )
+                _add_table_grid_overlay(
+                    slide,
+                    table_slot[0],
+                    table_slot[1],
+                    table_slot[2],
+                    table_slot[3],
+                    len(table_rows),
+                    column_widths,
                 )
             else:
                 _add_image_grid(
@@ -1633,19 +1719,31 @@ def _build_coating(prs, template: AhnTemplate | None, data: dict[str, Any], inpu
                 )
                 table_rows = _coating_rows(chunk)
                 table_height = min(Inches(5.75), Inches(0.32 * len(table_rows)))
+                table_left, table_top = Inches(9.0), Inches(1.35)
+                table_width = Inches(3.55)
+                column_widths = _coating_column_widths(table_width)
                 _add_table(
                     slide,
                     table_rows,
-                    Inches(9.0),
-                    Inches(1.35),
-                    Inches(3.55),
+                    table_left,
+                    table_top,
+                    table_width,
                     table_height,
                     font_size=_coating_table_font_size(len(table_rows)),
-                    column_widths=_coating_column_widths(Inches(3.55)),
+                    column_widths=column_widths,
                     alignments=[PP_ALIGN.CENTER, PP_ALIGN.CENTER],
                     draw_borders=True,
                     border_color=COATING_TABLE_BORDER_COLOR,
                     border_width=COATING_TABLE_BORDER_WIDTH,
+                )
+                _add_table_grid_overlay(
+                    slide,
+                    table_left,
+                    table_top,
+                    table_width,
+                    table_height,
+                    len(table_rows),
+                    column_widths,
                 )
 
 
