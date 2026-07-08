@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import hashlib
 import tempfile
+import xml.etree.ElementTree as ET
 from copy import deepcopy
 from pathlib import Path
 from typing import Any, Iterable
+from zipfile import ZipFile
 
 from PIL import Image, ImageOps
 
@@ -39,6 +41,11 @@ TEMPLATE_PATH = Path(__file__).resolve().parent / "resources" / "templates" / "a
 EMU_PER_INCH = 914400
 PICTURE_SHAPE_TYPE = 13
 TABLE_SHAPE_TYPE = 19
+XLSX_NS = {
+    "x": "http://schemas.openxmlformats.org/spreadsheetml/2006/main",
+    "r": "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
+    "rel": "http://schemas.openxmlformats.org/package/2006/relationships",
+}
 TEMPLATE_SLIDES = {
     "tem": 0,
     "stem": 5,
@@ -467,6 +474,148 @@ def _add_table(
     return table_shape
 
 
+def _xlsx_shared_strings(zip_file: ZipFile) -> list[str]:
+    try:
+        root = ET.fromstring(zip_file.read("xl/sharedStrings.xml"))
+    except KeyError:
+        return []
+    return [
+        "".join(node.text or "" for node in item.findall(".//x:t", XLSX_NS)).strip()
+        for item in root.findall("x:si", XLSX_NS)
+    ]
+
+
+def _xlsx_sheet_paths(zip_file: ZipFile) -> list[tuple[str, str]]:
+    try:
+        workbook = ET.fromstring(zip_file.read("xl/workbook.xml"))
+        relationships = ET.fromstring(zip_file.read("xl/_rels/workbook.xml.rels"))
+    except KeyError:
+        return []
+    targets = {
+        relationship.attrib.get("Id", ""): relationship.attrib.get("Target", "")
+        for relationship in relationships.findall("rel:Relationship", XLSX_NS)
+    }
+    paths: list[tuple[str, str]] = []
+    for sheet in workbook.findall(".//x:sheet", XLSX_NS):
+        relationship_id = sheet.attrib.get(f"{{{XLSX_NS['r']}}}id", "")
+        target = targets.get(relationship_id, "")
+        if not target:
+            continue
+        if target.startswith("/"):
+            path = target.lstrip("/")
+        elif target.startswith("xl/"):
+            path = target
+        else:
+            path = f"xl/{target}"
+        paths.append((sheet.attrib.get("name", ""), path))
+    return paths
+
+
+def _xlsx_col_index(cell_ref: str) -> int:
+    letters = "".join(ch for ch in cell_ref if ch.isalpha()).upper()
+    value = 0
+    for letter in letters:
+        value = value * 26 + ord(letter) - 64
+    return max(0, value - 1)
+
+
+def _format_xlsx_text(value: str) -> str:
+    text = value.strip()
+    if not text:
+        return ""
+    try:
+        numeric = float(text)
+    except ValueError:
+        return text
+    if numeric.is_integer():
+        return str(int(numeric))
+    if abs(numeric) >= 1000 or 0 < abs(numeric) < 0.001:
+        return f"{numeric:.3g}"
+    return f"{numeric:.3f}".rstrip("0").rstrip(".")
+
+
+def _xlsx_cell_text(cell: ET.Element, shared_strings: list[str]) -> str:
+    if cell.attrib.get("t") == "inlineStr":
+        return "".join(node.text or "" for node in cell.findall(".//x:t", XLSX_NS)).strip()
+    value = cell.find("x:v", XLSX_NS)
+    if value is None or value.text is None:
+        return ""
+    text = value.text.strip()
+    if cell.attrib.get("t") == "s":
+        try:
+            return shared_strings[int(text)]
+        except (IndexError, ValueError):
+            return text
+    return _format_xlsx_text(text)
+
+
+def _read_xlsx_tables(path: Path, *, max_tables: int = 2, max_rows: int = 12, max_cols: int = 10) -> list[list[list[str]]]:
+    tables: list[list[list[str]]] = []
+    try:
+        with ZipFile(path) as zip_file:
+            shared_strings = _xlsx_shared_strings(zip_file)
+            for _sheet_name, sheet_path in _xlsx_sheet_paths(zip_file):
+                try:
+                    sheet = ET.fromstring(zip_file.read(sheet_path))
+                except KeyError:
+                    continue
+                rows: list[list[str]] = []
+                for row in sheet.findall(".//x:sheetData/x:row", XLSX_NS):
+                    values: list[str] = []
+                    for cell in row.findall("x:c", XLSX_NS):
+                        col_index = _xlsx_col_index(cell.attrib.get("r", "A1"))
+                        if col_index >= max_cols:
+                            continue
+                        while len(values) <= col_index:
+                            values.append("")
+                        values[col_index] = _xlsx_cell_text(cell, shared_strings)
+                    while values and not values[-1]:
+                        values.pop()
+                    if any(values):
+                        rows.append(values)
+                    if len(rows) >= max_rows:
+                        break
+                if len(rows) >= 2 and max(len(row) for row in rows) >= 2:
+                    tables.append(rows)
+                if len(tables) >= max_tables:
+                    break
+    except (OSError, ET.ParseError):
+        return []
+    return tables
+
+
+def _normalize_lookup(value: str) -> str:
+    return "".join(ch.lower() for ch in value if ch.isalnum())
+
+
+def _matching_spreadsheet_tables(data: dict[str, Any], report: dict[str, Any], input_root: Path) -> list[list[list[str]]]:
+    sample_key = _normalize_lookup(str(report.get("sample_name") or ""))
+    title_key = _normalize_lookup(str(report.get("title") or ""))
+    candidates: list[Path] = []
+    fallback: list[Path] = []
+    for item in data.get("spreadsheets") or []:
+        path = _path(input_root, item.get("path", ""))
+        if path.suffix.lower() != ".xlsx":
+            continue
+        lookup = _normalize_lookup(path.stem)
+        fallback.append(path)
+        if (sample_key and sample_key in lookup) or (title_key and title_key in lookup):
+            candidates.append(path)
+    if not candidates and len(fallback) == 1:
+        candidates = fallback
+    for path in candidates:
+        tables = _read_xlsx_tables(path)
+        if tables:
+            return tables
+    return []
+
+
+def _eds_report_tables(data: dict[str, Any], report: dict[str, Any], input_root: Path, docx_tables: list[list[list[str]]]) -> list[list[list[str]]]:
+    if docx_tables:
+        return docx_tables
+    return _matching_spreadsheet_tables(data, report, input_root)
+
+
 def _build_tem(prs, template: AhnTemplate | None, data: dict[str, Any], input_root: Path, tmp_dir: Path) -> None:
     for sample in data.get("tem_samples") or []:
         _add_image_grid_slides(
@@ -589,9 +738,11 @@ def _build_eds(prs, template: AhnTemplate | None, data: dict[str, Any], input_ro
         extract_dir = tmp_dir / "docx" / docx_path.stem
         extracted = extract_docx(docx_path, extract_dir)
         images = extracted.media_paths
+        tables = _eds_report_tables(data, report, input_root, extracted.tables)
         analysis_type = str(report.get("analysis_type") or "").upper()
         title = report.get("title") or docx_path.stem
         if analysis_type == "LINE":
+            _add_eds_tables_slide(prs, template, title, images[:1], tables, tmp_dir)
             if template:
                 slide = template.new_slide("eds_line_first", f"STEM EDS 분석결과 : [{title}_Data1]")
                 _add_template_paths(slide, images[:3], template.picture_slots("eds_line_first"), tmp_dir)
@@ -600,7 +751,7 @@ def _build_eds(prs, template: AhnTemplate | None, data: dict[str, Any], input_ro
                 _add_eds_first_slide(prs, template, title, images[:3], tmp_dir)
                 _add_eds_image_pages(prs, template, title, images[3:], tmp_dir)
         elif analysis_type == "POINT":
-            _add_eds_tables_slide(prs, template, title, images[:1], extracted.tables, tmp_dir)
+            _add_eds_tables_slide(prs, template, title, images[:1], tables, tmp_dir)
             _add_eds_image_pages(prs, template, title, images[1:], tmp_dir, template_key="eds_line_page")
         else:
             _add_eds_first_slide(prs, template, title, images[:7], tmp_dir)
