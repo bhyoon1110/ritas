@@ -1,8 +1,24 @@
 # AHN
 
-AHN 실험/분석 코드를 넣기 위한 스캐폴딩이다. Edge worker와 연동하려면 분석
-processor가 작업 폴더의 입력을 읽고 `processed` 폴더에 구조화 JSON을 생성하면
-된다.
+AHN 프로젝트는 TEM/STEM 이미지, STEM EDS Word 보고서, TEM 코팅층 두께 이미지를
+하나의 입력 번들로 받아 구조화 JSON과 PowerPoint 보고서 초안을 만든다.
+
+## 입력 폴더 규칙
+
+폴더명은 대소문자를 구분하지 않는다.
+
+```text
+input/
+  tem/시편명/*.tif       # TEM 이미지 분석
+  stem/*.tif             # STEM / STEM BF 이미지 분석
+  report/*.docx          # STEM EDS MAP/Line/Point Word 보고서
+  report/*.xlsx          # EDS raw 파일, 분석하지 않고 패키지에 원본 포함
+  scale/시편명/*.tif     # TEM 코팅층 두께 분석
+```
+
+`scale` 폴더에 하위 시편 폴더 없이 이미지가 바로 들어 있으면 단일 시편
+`Scale`로 처리한다. 코팅층 두께 OCR은 tesseract가 설치되어 있으면 `{숫자 nm}`
+패턴을 추출하고, OCR 환경이 없거나 값이 읽히지 않으면 `검토 필요`로 남긴다.
 
 ## Processor 계약
 
@@ -12,7 +28,9 @@ Edge worker는 보고서 생성 전에 다음 순서로 동작한다.
 2. JSON이 없고 `RIST_PROCESSOR_COMMAND_<EXPERIMENT>`가 설정되어 있으면 그 명령을 실행한다.
 3. 실행 후에도 JSON이 없으면 작업을 실패 처리한다.
 
-실험 코드 `AHN`의 예시는 다음과 같다.
+실험 코드 `AHN`의 예시는 다음과 같다. Edge 기본 보고서 파이프라인에서는
+`analysis-result.json`을 사용하고, AHN 전용 PPT 초안은 `--pptx`를 지정해 별도
+생성할 수 있다.
 
 ```bash
 export RIST_PROCESSOR_COMMAND_AHN='python -m ahn.processor --input "{input_dir}" --output "{processed_dir}"'
@@ -29,20 +47,32 @@ export RIST_PROCESSOR_COMMAND_AHN='python -m ahn.processor --input "{input_dir}"
 {job_id}
 ```
 
-## 최소 산출물
+## 산출물
 
 ```text
 {jobRoot}/processed/analysis-result.json
+{jobRoot}/processed/manifest.json
+{jobRoot}/processed/raw/*.xlsx
+```
+
+PPT까지 생성하는 로컬 테스트 예시:
+
+```bash
+python -m ahn.processor \
+  --input ahn/data/TESTData \
+  --output /tmp/ahn-test \
+  --pptx /tmp/ahn-test/ahn-report.pptx
 ```
 
 예시 JSON:
 
 ```json
 {
-  "sample": "sample-001",
-  "finding": "주요 관찰 결과",
-  "metrics": {
-    "score": 0.95
-  }
+  "experiment": "AHN-TEM",
+  "tem_samples": [],
+  "stem_samples": [],
+  "eds_reports": [],
+  "coating_samples": [],
+  "summary": {}
 }
 ```
