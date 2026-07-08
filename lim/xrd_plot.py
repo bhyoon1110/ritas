@@ -109,9 +109,9 @@ PEAK_PALETTE = [
 ]
 
 PHASE_GROUPS = {
-    "major": "주요 상 (Major Phases)",
-    "uncertain": "유사/불확실 상 (Uncertain / Similar Phases)",
-    "minor": "미량 상 후보 (Minor Phase Candidates)",
+    "major": "주요상 (Major Phases)",
+    "uncertain": "유사/불확실상 (Uncertain / Similar Phases)",
+    "minor": "미량상 후보 (Minor Phase Candidates)",
 }
 
 PHASE_CATEGORY_SHORT_LABELS = {
@@ -286,11 +286,37 @@ def _display_path_part(value: str) -> str:
     return unicodedata.normalize("NFC", str(value or "").strip())
 
 
+def _phase_folder_category(part: str) -> tuple[str | None, str | None]:
+    text = _path_text(part)
+    display_part = _display_path_part(part)
+    if not text:
+        return None, None
+
+    has_major = "주요" in text or "major" in text
+    has_similar = (
+        "유사" in text
+        or "불확실" in text
+        or "similar" in text
+        or "uncertain" in text
+    )
+    # "주요상_유사상 Case" 같은 상위 설명 폴더는 실제 분류 폴더가 아니므로
+    # 그 아래의 더 구체적인 "주요상", "유사상 1" 폴더가 우선되게 건너뛴다.
+    if has_major and has_similar:
+        return None, None
+    if "미량" in text or "minor" in text or "trace" in text:
+        return "minor", display_part
+    if has_similar:
+        return "uncertain", display_part
+    if has_major:
+        return "major", display_part
+    return None, None
+
+
 def phase_category_from_pdf_path(pdf_path: str, pdf_dir: str) -> tuple[str | None, str, str]:
     """PDF 상대 폴더명에서 주요상/유사상/미량상 분류와 그룹명을 읽는다.
 
     주요상은 PDF 루트에 두는 규칙이므로 하위 폴더가 없으면 major로 본다.
-    유사상/미량상은 폴더명에 적힌 구분을 우선한다.
+    유사상/미량상은 가장 깊은 폴더명에 적힌 구분을 우선한다.
     """
     try:
         rel = Path(pdf_path).resolve().relative_to(Path(pdf_dir).resolve())
@@ -303,15 +329,13 @@ def phase_category_from_pdf_path(pdf_path: str, pdf_dir: str) -> tuple[str | Non
     if not parts:
         return "major", PHASE_CATEGORY_SHORT_LABELS["major"], "folder"
 
-    for part in parts:
-        text = _path_text(part)
-        display_part = _display_path_part(part)
-        if "미량" in text or "minor" in text or "trace" in text:
-            return "minor", display_part, "folder"
-        if "유사" in text or "불확실" in text or "similar" in text or "uncertain" in text:
-            return "uncertain", display_part, "folder"
-        if "주요" in text or "major" in text:
-            return "major", display_part, "folder"
+    for part in reversed(parts):
+        category, display_part = _phase_folder_category(part)
+        if category and display_part:
+            return category, display_part, "folder"
+
+    if any("icdd" in _path_text(part) for part in parts):
+        return "major", PHASE_CATEGORY_SHORT_LABELS["major"], "folder"
 
     return None, "자동 분류", "score"
 
@@ -437,7 +461,13 @@ def _phase_section_separator_label(item: dict[str, Any]) -> str:
     title = PHASE_GROUPS.get(category, category)
     folder_group = _phase_folder_group_key(item)
     if folder_group and folder_group not in {PHASE_CATEGORY_SHORT_LABELS.get(category), title}:
-        return f"──────── {folder_group} · {title}"
+        if category == "uncertain":
+            return f"──────── {folder_group} (Similar Phases)"
+        if category == "major":
+            return f"──────── {folder_group} (Major Phases)"
+        if category == "minor":
+            return f"──────── {folder_group} (Minor Phase Candidates)"
+        return f"──────── {folder_group}"
     return f"──────── {title}"
 
 
@@ -1897,31 +1927,31 @@ def build_auto_interpretation_html(sample_name: str, groups, warnings: list[str]
     sample = _esc(sample_name)
     paragraphs = [
         (
-            "<strong>A. 주요 상 (Major Phases)</strong><br>"
+            "<strong>A. 주요상 (Major Phases)</strong><br>"
             f"본 {sample} 시료의 XRD 패턴은 {names(major)} 후보와 주요 피크 위치가 "
-            "상대적으로 잘 대응합니다. 해당 후보는 주요 상으로 우선 검토할 수 있습니다."
+            "상대적으로 잘 대응합니다. 해당 후보는 주요상으로 우선 검토할 수 있습니다."
             if major else
-            "<strong>A. 주요 상 (Major Phases)</strong><br>"
-            f"본 {sample} 시료에서 자동 기준을 만족하는 주요 상 후보는 아직 없습니다."
+            "<strong>A. 주요상 (Major Phases)</strong><br>"
+            f"본 {sample} 시료에서 자동 기준을 만족하는 주요상 후보는 아직 없습니다."
         ),
         (
-            "<strong>B. 유사 상 / 불확실 상 (Uncertain / Similar Phases)</strong><br>"
+            "<strong>B. 유사상 / 불확실상 (Uncertain / Similar Phases)</strong><br>"
             f"{names(uncertain)} 후보는 일부 주요 피크가 raw 패턴과 근접하지만, "
             "현재 데이터만으로 확정 구분하기에는 불확실성이 있습니다."
             if uncertain else
-            "<strong>B. 유사 상 / 불확실 상 (Uncertain / Similar Phases)</strong><br>"
-            "유사 상으로 분류된 후보는 없습니다."
+            "<strong>B. 유사상 / 불확실상 (Uncertain / Similar Phases)</strong><br>"
+            "유사상으로 분류된 후보는 없습니다."
         ),
         (
-            "<strong>C. 미량 상 (Minor Phases)</strong><br>"
-            f"{names(minor)} 후보는 피크 대응이 제한적이어서 미량 상 또는 배경 후보로 검토됩니다."
+            "<strong>C. 미량상 (Minor Phases)</strong><br>"
+            f"{names(minor)} 후보는 피크 대응이 제한적이어서 미량상 또는 배경 후보로 검토됩니다."
             if minor else
-            "<strong>C. 미량 상 (Minor Phases)</strong><br>"
-            "미량 상 후보는 없습니다."
+            "<strong>C. 미량상 (Minor Phases)</strong><br>"
+            "미량상 후보는 없습니다."
         ),
         (
             "<strong>안내</strong><br>"
-            "유사 상 구분 및 불순물/미량 상 확인을 위해 XRF, ICP, EDS 등 원소 성분 정보를 "
+            "유사상 구분 및 불순물/미량상 확인을 위해 XRF, ICP, EDS 등 원소 성분 정보를 "
             "함께 검토하면 후보상을 더 좁힐 수 있습니다."
         ),
     ]
@@ -2418,7 +2448,7 @@ def build_phase_info_html(groups) -> str:
     sections = []
     for category, title in PHASE_GROUPS.items():
         items = grouped.get(category, [])
-        cards = []
+        subgroup_cards: dict[str, list[str]] = {}
         for item in items:
             metadata = item["metadata"]
             formula = _compact_formula(metadata.get("formula") or "")
@@ -2447,7 +2477,8 @@ def build_phase_info_html(groups) -> str:
                 f"<tr><th>{_esc(label)}</th><td>{_esc(value)}</td></tr>"
                 for label, value in card_rows
             )
-            cards.append(
+            folder_group = _phase_folder_group_key(item)
+            subgroup_cards.setdefault(folder_group, []).append(
                 f"""
                 <article class="xrd-phase-card xrd-card" data-trace="{item['trace_idx']}">
                   <h4><span class="xrd-swatch" style="background:{item['color']}"></span>{_esc(item['label'])}</h4>
@@ -2461,9 +2492,21 @@ def build_phase_info_html(groups) -> str:
                 </article>
                 """
             )
+        subgroup_blocks = []
+        for folder_group, cards in subgroup_cards.items():
+            show_subgroup = (
+                len(subgroup_cards) > 1
+                or folder_group
+                not in {PHASE_CATEGORY_SHORT_LABELS.get(category), title, "자동 분류", ""}
+            )
+            heading = (
+                f'<h3 class="xrd-phase-subgroup-title">{_esc(folder_group)}</h3>'
+                if show_subgroup else ""
+            )
+            subgroup_blocks.append(heading + "".join(cards))
         content = (
-            "".join(cards)
-            if cards
+            "".join(subgroup_blocks)
+            if subgroup_blocks
             else '<p class="xrd-empty">해당 그룹의 결정상 후보가 없습니다.</p>'
         )
         sections.append(
@@ -2540,6 +2583,7 @@ def xrd_report_css() -> str:
   .xrd-phase-group { border-radius: 10px; margin: 12px 0; padding: 0 12px 12px; }
   .xrd-phase-group summary { cursor: pointer; font-size: 16px; font-weight: 700; padding: 12px 0; }
   .xrd-phase-group summary span { color: #6b7280; font-size: 12px; margin-left: 6px; }
+  .xrd-phase-subgroup-title { margin: 12px 0 4px; padding: 7px 10px; border-left: 4px solid #3b82f6; background: #f1f5f9; border-radius: 6px; font-size: 13px; }
   .xrd-phase-card { border-top: 1px solid #e5e7eb; padding: 12px 0; }
   .xrd-phase-card h4 { display: flex; align-items: center; gap: 8px; font-size: 14px; margin: 0 0 10px; }
   .xrd-phase-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
@@ -3082,35 +3126,30 @@ def build_xrd_html(
         summary.append((raw_stem, len(rx), raw_max, items))
 
     xrange = [min(all_x), max(all_x)] if all_x else None
-    title_text = (
-        f"XRD Pattern ({first_stem}) with ICDD Card Peaks"
-        if len(pairs) == 1 else "XRD Patterns with ICDD Card Peaks"
-    )
-
     if origin:
         fig.update_layout(
             title=dict(
-                text=title_text,
+                text="",
                 font=dict(family="Arial", size=22, color="black"),
                 x=0.5,
                 xanchor="center",
             ),
             hovermode="closest",
             autosize=True,
-            margin=dict(l=70, r=30, t=60, b=120),
+            margin=dict(l=70, r=30, t=28, b=120),
             legend=dict(groupclick="toggleitem", traceorder="grouped"),
         )
         fig.update_xaxes(title_text="2θ (°)", range=xrange)
         fig.update_yaxes(title_text="Intensity (cps)", rangemode="tozero")
     else:
         fig.update_layout(
-            title=title_text,
+            title="",
             xaxis_title="2θ (°)",
             yaxis_title="Intensity (cps)",
             template="plotly_white",
             hovermode="closest",
             autosize=True,
-            margin=dict(l=60, r=30, t=60, b=120),
+            margin=dict(l=60, r=30, t=28, b=120),
             legend=dict(groupclick="toggleitem", traceorder="grouped"),
         )
         fig.update_xaxes(range=xrange)

@@ -86,6 +86,28 @@ def test_phase_category_uses_pdf_folder_names(tmp_path) -> None:
     )
 
 
+def test_phase_category_prefers_specific_folder_below_mixed_case_parent(tmp_path) -> None:
+    pdf_root = tmp_path / "pdf"
+    card_root = (
+        pdf_root
+        / "예제 데이터 2 (주요상 & 유사상 Case)"
+        / "ICDD Card (라이브러리 pdf)"
+    )
+    similar = card_root / "유사상 2"
+    similar.mkdir(parents=True)
+
+    assert phase_category_from_pdf_path(str(card_root / "Calcite.pdf"), str(pdf_root)) == (
+        "major",
+        "주요상",
+        "folder",
+    )
+    assert phase_category_from_pdf_path(str(similar / "TiO2.pdf"), str(pdf_root)) == (
+        "uncertain",
+        "유사상 2",
+        "folder",
+    )
+
+
 def test_relative_phase_categories_keep_only_top_candidates_major() -> None:
     items = [
         {"match": {"score": 100}, "category": "major"},
@@ -205,7 +227,7 @@ def test_build_report_html_contains_xrd_template_sections(tmp_path) -> None:
     assert "특이사항 / 자동 해석 초안" in html
     assert "피크 정보" in html
     assert "결정상(Phase) 정보" in html
-    assert "주요 상 (Major Phases)" in html
+    assert "주요상 (Major Phases)" in html
     assert "Peak list Excel Display" in html
     assert "peaks.csv" in html
     assert "그래프/상매칭 보조 이미지" in html
