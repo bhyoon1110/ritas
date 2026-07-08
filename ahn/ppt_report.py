@@ -1085,16 +1085,24 @@ def _normalized_point_composition_rows(
 def _point_table_font_size(rows: list[list[str]], *, detail: bool = False) -> int:
     cols = max((len(row) for row in rows), default=0)
     if detail:
-        if cols > 12:
-            return 8
-        if cols > 9:
-            return 9
-        return 10
-    if cols > 12 or len(rows) > 9:
-        return 6
-    if cols > 8 or len(rows) > 6:
-        return 7
-    return 8
+        return 9 if cols > 9 else 10
+    return 9
+
+
+def _point_table_column_widths(width: int, rows: list[list[str]]) -> list[int] | None:
+    cols = max((len(row) for row in rows), default=0)
+    if cols <= 1:
+        return None
+    first_col = Inches(1.08 if cols > 9 else 0.95)
+    first_col = min(int(first_col), int(width * 0.28))
+    min_first_col = int(Inches(0.82))
+    if width - first_col < (cols - 1) * Inches(0.22):
+        first_col = max(min_first_col, int(width * 0.22))
+    remaining = max(1, width - first_col)
+    other_col = int(remaining / (cols - 1))
+    widths = [int(first_col)] + [other_col] * (cols - 1)
+    widths[-1] += int(width - sum(widths))
+    return widths
 
 
 def _restyle_merged_header(cell, text: str, font_size: int) -> None:
@@ -1126,6 +1134,7 @@ def _add_point_composition_table(
         rows,
         *slot,
         font_size=font_size,
+        column_widths=_point_table_column_widths(slot[2], rows),
         alignments=[PP_ALIGN.CENTER] * max(len(row) for row in rows),
         draw_borders=True,
     )

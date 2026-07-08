@@ -489,14 +489,14 @@ def test_point_eds_spectrum_tables_create_row_detail_slides(tmp_path, monkeypatc
     report_path.write_bytes(b"placeholder")
 
     at_table = [
-        ["Spectrum Label", "C", "O", "Fe", "Total", "At%"],
-        ["Spectrum 34", "16.38", "27.73", "48.49", "100.00", "Project 1/0647 Point2"],
-        ["Spectrum 35", "30.57", "25.36", "31.13", "100.00", "Project 1/0647 Point2"],
+        ["Spectrum Label", "C", "N", "O", "Al", "Si", "Cr", "Mn", "Fe", "Cu", "Mo", "Total", "At%"],
+        ["Spectrum 34", "16.38", "0.00", "27.73", "0.15", "6.59", "0.16", "0.19", "48.49", "0.05", "0.26", "100.00", "Project 1/0647 Point2"],
+        ["Spectrum 35", "30.57", "0.00", "25.36", "0.10", "12.26", "0.37", "0.00", "31.13", "0.21", "0.00", "100.00", "Project 1/0647 Point2"],
     ]
     wt_table = [
-        ["Spectrum Label", "C", "O", "Fe", "Total", "Wt%"],
-        ["Spectrum 34", "5.49", "12.38", "75.56", "100.00", "Project 1/0647 Point2"],
-        ["Spectrum 35", "12.70", "14.04", "60.15", "100.00", "Project 1/0647 Point2"],
+        ["Spectrum Label", "C", "N", "O", "Al", "Si", "Cr", "Mn", "Fe", "Cu", "Mo", "Total", "Wt%"],
+        ["Spectrum 34", "5.49", "0.00", "12.38", "0.11", "5.16", "0.23", "0.29", "75.56", "0.10", "0.68", "100.00", "Project 1/0647 Point2"],
+        ["Spectrum 35", "12.70", "0.00", "14.04", "0.09", "11.91", "0.66", "0.00", "60.15", "0.45", "0.00", "100.00", "Project 1/0647 Point2"],
     ]
 
     def fake_extract_docx(_docx_path: Path, _extract_dir: Path):
@@ -525,6 +525,20 @@ def test_point_eds_spectrum_tables_create_row_detail_slides(tmp_path, monkeypatc
         for slide in prs.slides
     ]
     assert table_counts == [2, 2, 2]
+    summary_table_fonts = []
+    for shape in prs.slides[0].shapes:
+        if not getattr(shape, "has_table", False):
+            continue
+        assert shape.table.columns[0].width >= Inches(0.8)
+        assert shape.table.columns[0].width > shape.table.columns[1].width
+        for row in shape.table.rows:
+            for cell in row.cells:
+                for paragraph in cell.text_frame.paragraphs:
+                    for run in paragraph.runs:
+                        if run.font.size:
+                            summary_table_fonts.append(run.font.size)
+    assert summary_table_fonts
+    assert min(summary_table_fonts) >= Pt(9)
     detail_table_fonts = []
     for shape in prs.slides[1].shapes:
         if not getattr(shape, "has_table", False):
