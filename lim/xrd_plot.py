@@ -2427,20 +2427,49 @@ def build_peak_info_html(
 """
 
 
-def _top_peak_rows(peaks: list[dict[str, Any]]) -> str:
-    ranked = sorted(peaks, key=lambda peak: float(peak.get("norm") or 0), reverse=True)
+def _phase_overlap_peak_indices(
+    items: list[dict[str, Any]],
+    *,
+    tolerance: float = 0.25,
+) -> dict[int, set[int]]:
+    """같은 유사상 묶음 안에서 2θ가 겹치는 PDF DB 피크 행을 찾는다."""
+    points: list[tuple[int, int, float]] = []
+    overlaps: dict[int, set[int]] = {}
+    for item in items:
+        trace_idx = int(item.get("trace_idx") or -1)
+        overlaps.setdefault(trace_idx, set())
+        for peak_index, peak in enumerate(item.get("peaks") or []):
+            theta = _float_or_none(peak.get("two_theta"))
+            if theta is not None:
+                points.append((trace_idx, peak_index, theta))
+
+    for left_index, (left_trace, left_peak, left_theta) in enumerate(points):
+        for right_trace, right_peak, right_theta in points[left_index + 1:]:
+            if left_trace == right_trace:
+                continue
+            if abs(left_theta - right_theta) <= tolerance:
+                overlaps.setdefault(left_trace, set()).add(left_peak)
+                overlaps.setdefault(right_trace, set()).add(right_peak)
+    return overlaps
+
+
+def _phase_db_peak_rows(peaks: list[dict[str, Any]], overlap_indices: set[int] | None = None) -> str:
     rows = []
-    for index, peak in enumerate(ranked[:3], start=1):
+    overlap_indices = overlap_indices or set()
+    for index, peak in enumerate(peaks):
+        row_class = ' class="xrd-phase-overlap-row"' if index in overlap_indices else ""
         rows.append(
-            "<tr class=\"xrd-rank-{rank}\"><td>{rank}</td><td>{theta:.3f}</td>"
+            "<tr{row_class}><td>{no}</td><td>{theta:.3f}</td><td>{d}</td>"
             "<td>{norm:.2f}</td><td>{hkl}</td></tr>".format(
-                rank=index,
+                row_class=row_class,
+                no=_esc(peak.get("no") or str(index + 1)),
                 theta=float(peak["two_theta"]),
+                d=_esc(peak.get("d") or "-"),
                 norm=float(peak["norm"]),
                 hkl=_esc(peak["hkl"]),
             )
         )
-    return "".join(rows) or '<tr><td colspan="4">-</td></tr>'
+    return "".join(rows) or '<tr><td colspan="5">-</td></tr>'
 
 
 def build_phase_info_html(groups) -> str:
@@ -2448,54 +2477,14 @@ def build_phase_info_html(groups) -> str:
     sections = []
     for category, title in PHASE_GROUPS.items():
         items = grouped.get(category, [])
-        subgroup_cards: dict[str, list[str]] = {}
+        subgroup_items: dict[str, list[dict[str, Any]]] = {}
         for item in items:
-            metadata = item["metadata"]
-            formula = _compact_formula(metadata.get("formula") or "")
-            phase_name = metadata.get("phase_name") or item["label"]
-            card_no = metadata.get("card_no") or "-"
-            quality = metadata.get("quality_mark") or "-"
-            match = item["match"]
-            card_rows = [
-                ("시료", item["raw_stem"]),
-                ("분류", PHASE_GROUPS.get(item["category"], item["category"])),
-                ("폴더 그룹", item.get("folder_group") or "-"),
-                ("Phase name", phase_name),
-                ("Formula", formula or "-"),
-                ("PDF Card", card_no),
-                ("QM", quality),
-                ("Crystal system", metadata.get("crystal_system") or "-"),
-                ("Space group", metadata.get("space_group") or "-"),
-                ("2θ range", metadata.get("two_theta_range") or "-"),
-                (
-                    "raw 피크 대응",
-                    f"{match['score']:.1f}% "
-                    f"({match['matched_count']}/{match['important_count']})",
-                ),
-            ]
-            meta_html = "".join(
-                f"<tr><th>{_esc(label)}</th><td>{_esc(value)}</td></tr>"
-                for label, value in card_rows
-            )
             folder_group = _phase_folder_group_key(item)
-            subgroup_cards.setdefault(folder_group, []).append(
-                f"""
-                <article class="xrd-phase-card xrd-card" data-trace="{item['trace_idx']}">
-                  <h4><span class="xrd-swatch" style="background:{item['color']}"></span>{_esc(item['label'])}</h4>
-                  <div class="xrd-phase-grid">
-                    <table class="xrd-mini-table"><tbody>{meta_html}</tbody></table>
-                    <table class="xrd-mini-table xrd-top-peak-table">
-                      <thead><tr><th>Rank</th><th>2θ (°)</th><th>Norm. I.</th><th>h k l</th></tr></thead>
-                      <tbody>{_top_peak_rows(item['peaks'])}</tbody>
-                    </table>
-                  </div>
-                </article>
-                """
-            )
+            subgroup_items.setdefault(folder_group, []).append(item)
         subgroup_blocks = []
-        for folder_group, cards in subgroup_cards.items():
+        for folder_group, group_items in subgroup_items.items():
             show_subgroup = (
-                len(subgroup_cards) > 1
+                len(subgroup_items) > 1
                 or folder_group
                 not in {PHASE_CATEGORY_SHORT_LABELS.get(category), title, "자동 분류", ""}
             )
@@ -2503,7 +2492,57 @@ def build_phase_info_html(groups) -> str:
                 f'<h3 class="xrd-phase-subgroup-title">{_esc(folder_group)}</h3>'
                 if show_subgroup else ""
             )
-            subgroup_blocks.append(heading + "".join(cards))
+            overlap_indices = (
+                _phase_overlap_peak_indices(group_items)
+                if category == "uncertain" and len(group_items) > 1
+                else {}
+            )
+            cards = []
+            for item in group_items:
+                metadata = item["metadata"]
+                formula = _compact_formula(metadata.get("formula") or "")
+                phase_name = metadata.get("phase_name") or item["label"]
+                card_no = metadata.get("card_no") or "-"
+                quality = metadata.get("quality_mark") or "-"
+                match = item["match"]
+                card_rows = [
+                    ("시료", item["raw_stem"]),
+                    ("Phase name", phase_name),
+                    ("Formula", formula or "-"),
+                    ("PDF Card", card_no),
+                    ("QM", quality),
+                    (
+                        "raw 피크 대응",
+                        f"{match['score']:.1f}% "
+                        f"({match['matched_count']}/{match['important_count']})",
+                    ),
+                ]
+                meta_html = "".join(
+                    f"<tr><th>{_esc(label)}</th><td>{_esc(value)}</td></tr>"
+                    for label, value in card_rows
+                )
+                trace_idx = int(item.get("trace_idx") or -1)
+                cards.append(
+                    f"""
+                    <article class="xrd-phase-card xrd-card" data-trace="{item['trace_idx']}">
+                      <h4><span class="xrd-swatch" style="background:{item['color']}"></span>{_esc(item['label'])}</h4>
+                      <table class="xrd-mini-table xrd-phase-meta-table"><tbody>{meta_html}</tbody></table>
+                      <div class="xrd-table-scroll xrd-phase-db-scroll">
+                        <table class="xrd-mini-table xrd-db-peak-table">
+                          <caption>PDF DB 피크</caption>
+                          <thead><tr><th>No.</th><th>2θ (°)</th><th>d-value</th><th>Norm. I.</th><th>h k l</th></tr></thead>
+                          <tbody>{_phase_db_peak_rows(item['peaks'], overlap_indices.get(trace_idx))}</tbody>
+                        </table>
+                      </div>
+                    </article>
+                    """
+                )
+            subgroup_blocks.append(
+                heading
+                + '<div class="xrd-phase-card-grid">'
+                + "".join(cards)
+                + "</div>"
+            )
         content = (
             "".join(subgroup_blocks)
             if subgroup_blocks
@@ -2584,11 +2623,16 @@ def xrd_report_css() -> str:
   .xrd-phase-group summary { cursor: pointer; font-size: 16px; font-weight: 700; padding: 12px 0; }
   .xrd-phase-group summary span { color: #6b7280; font-size: 12px; margin-left: 6px; }
   .xrd-phase-subgroup-title { margin: 12px 0 4px; padding: 7px 10px; border-left: 4px solid #3b82f6; background: #f1f5f9; border-radius: 6px; font-size: 13px; }
-  .xrd-phase-card { border-top: 1px solid #e5e7eb; padding: 12px 0; }
+  .xrd-phase-card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(390px, 1fr)); gap: 12px; }
+  .xrd-phase-card { border: 1px solid #d1d5db; border-radius: 10px; padding: 10px; background: #fff; }
   .xrd-phase-card h4 { display: flex; align-items: center; gap: 8px; font-size: 14px; margin: 0 0 10px; }
-  .xrd-phase-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
   .xrd-mini-table th { width: 120px; background: #f9fafb; text-align: left; }
-  .xrd-top-peak-table th, .xrd-top-peak-table td { text-align: right; }
+  .xrd-phase-db-scroll { border-width: 1px; border-radius: 8px; margin-top: 8px; max-height: 420px; }
+  .xrd-db-peak-table caption { caption-side: top; text-align: left; font-weight: 700; padding: 7px 0; color: #374151; }
+  .xrd-db-peak-table th, .xrd-db-peak-table td { text-align: right; white-space: nowrap; }
+  .xrd-db-peak-table th:first-child, .xrd-db-peak-table td:first-child,
+  .xrd-db-peak-table th:last-child, .xrd-db-peak-table td:last-child { text-align: center; }
+  .xrd-phase-overlap-row { background: #fff7cc !important; }
   .xrd-rank-1 { background: #fff3cd; font-weight: 700; }
   .xrd-rank-2, .xrd-rank-3 { background: #fff8e6; }
   .xrd-empty { color: #6b7280; text-align: center; padding: 18px; }

@@ -9,6 +9,7 @@ from lim.xrd_plot import (
     XRD_DOWNLOAD_IMAGE_FORMAT,
     XRD_IMAGE_FORMAT_SELECTOR,
     assign_relative_phase_categories,
+    build_phase_info_html,
     build_report_html,
     phase_category_from_pdf_path,
     phase_label_from_metadata,
@@ -242,6 +243,46 @@ def test_build_report_html_contains_xrd_template_sections(tmp_path) -> None:
     assert "xrd-phase-group-button" in html
     assert "상 그룹 편집" in html
     assert "plotly" in html.lower()
+
+
+def test_phase_info_displays_db_peaks_and_highlights_similar_overlaps() -> None:
+    base = {
+        "color": "#e41a1c",
+        "metadata": {
+            "phase_name": "Anatase",
+            "formula": "Ti O2",
+            "card_no": "00-064-0863",
+            "quality_mark": "S",
+        },
+        "match": {"score": 80.0, "matched_count": 3, "important_count": 4},
+        "category": "uncertain",
+        "folder_group": "유사상 1",
+    }
+    first = {
+        **base,
+        "label": "Anatase (TiO2) / 00-064-0863(S)",
+        "trace_idx": 1,
+        "peaks": [
+            {"no": "1", "two_theta": 25.309, "d": "3.516", "norm": 100.0, "hkl": "1 0 1"},
+        ],
+    }
+    second = {
+        **base,
+        "label": "TiNF / 01-078-2004(I)",
+        "color": "#4daf4a",
+        "trace_idx": 2,
+        "peaks": [
+            {"no": "1", "two_theta": 25.289, "d": "3.519", "norm": 100.0, "hkl": "1 0 1"},
+        ],
+    }
+
+    html = build_phase_info_html([("Mix3", "#d62728", [first, second])])
+
+    assert "유사상 1" in html
+    assert "xrd-db-peak-table" in html
+    assert "d-value" in html
+    assert "Norm. I." in html
+    assert "xrd-phase-overlap-row" in html
 
 
 def test_read_xlsx_preview_reads_first_sheet(tmp_path) -> None:
