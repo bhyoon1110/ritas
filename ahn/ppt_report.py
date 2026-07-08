@@ -45,6 +45,8 @@ TABLE_SHAPE_TYPE = 19
 CAPTION_GAP = Inches(0.06)
 CAPTION_HEIGHT = Inches(0.28)
 CAPTION_FONT_SIZE = 9
+COATING_TABLE_BORDER_COLOR = "000000"
+COATING_TABLE_BORDER_WIDTH = 19050
 XLSX_NS = {
     "x": "http://schemas.openxmlformats.org/spreadsheetml/2006/main",
     "r": "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
@@ -503,6 +505,8 @@ def _add_table(
     column_widths: list[int] | None = None,
     alignments: list[Any] | None = None,
     draw_borders: bool = False,
+    border_color: str = "1F3757",
+    border_width: int = 12700,
 ):
     if not rows:
         return None
@@ -543,7 +547,7 @@ def _add_table(
                 for run in para.runs:
                     _set_run(run, size=font_size, bold=row_index == 0, color=text_color)
             if draw_borders:
-                _set_cell_borders(cell)
+                _set_cell_borders(cell, color=border_color, width=border_width)
     return table_shape
 
 
@@ -1399,6 +1403,8 @@ def _add_coating_table_slide(
         column_widths=_coating_column_widths(width),
         alignments=[PP_ALIGN.CENTER, PP_ALIGN.CENTER],
         draw_borders=True,
+        border_color=COATING_TABLE_BORDER_COLOR,
+        border_width=COATING_TABLE_BORDER_WIDTH,
     )
 
 
@@ -1525,6 +1531,8 @@ def _add_coating_images_with_table_slide(
         column_widths=_coating_column_widths(Inches(2.85)),
         alignments=[PP_ALIGN.CENTER, PP_ALIGN.CENTER],
         draw_borders=True,
+        border_color=COATING_TABLE_BORDER_COLOR,
+        border_width=COATING_TABLE_BORDER_WIDTH,
     )
 
 
@@ -1606,6 +1614,8 @@ def _build_coating(prs, template: AhnTemplate | None, data: dict[str, Any], inpu
                     column_widths=_coating_column_widths(table_slot[2]),
                     alignments=[PP_ALIGN.CENTER, PP_ALIGN.CENTER],
                     draw_borders=True,
+                    border_color=COATING_TABLE_BORDER_COLOR,
+                    border_width=COATING_TABLE_BORDER_WIDTH,
                 )
             else:
                 _add_image_grid(
@@ -1634,6 +1644,8 @@ def _build_coating(prs, template: AhnTemplate | None, data: dict[str, Any], inpu
                     column_widths=_coating_column_widths(Inches(3.55)),
                     alignments=[PP_ALIGN.CENTER, PP_ALIGN.CENTER],
                     draw_borders=True,
+                    border_color=COATING_TABLE_BORDER_COLOR,
+                    border_width=COATING_TABLE_BORDER_WIDTH,
                 )
 
 

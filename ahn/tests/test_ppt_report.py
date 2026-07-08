@@ -82,6 +82,15 @@ def _table_cell_border_edges(cell) -> set[str]:
     return {child.tag.rsplit("}", 1)[-1] for child in cell._tc.get_or_add_tcPr()}
 
 
+def _table_cell_border_widths(cell) -> dict[str, int]:
+    widths: dict[str, int] = {}
+    for child in cell._tc.get_or_add_tcPr():
+        edge = child.tag.rsplit("}", 1)[-1]
+        if edge in {"lnL", "lnR", "lnT", "lnB"}:
+            widths[edge] = int(child.get("w", "0"))
+    return widths
+
+
 def _pictures(slide):
     return sorted(
         [shape for shape in slide.shapes if shape.shape_type == 13],
@@ -606,6 +615,7 @@ def test_large_coating_sample_uses_image_pages_then_summary_table(tmp_path) -> N
     for row in table_shapes[0].table.rows:
         for cell in row.cells:
             assert {"lnL", "lnR", "lnT", "lnB"}.issubset(_table_cell_border_edges(cell))
+            assert min(_table_cell_border_widths(cell).values()) >= 19050
     table_text = _pptx_table_text(output)
     assert "측정개소" in table_text
     assert "비고" not in table_text
