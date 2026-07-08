@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 import tempfile
 import xml.etree.ElementTree as ET
 from copy import deepcopy
@@ -98,11 +99,42 @@ def _shape_bounds(shape) -> tuple[int, int, int, int]:
 
 def _slot_row_bucket(top: int) -> int:
     top_inches = top / EMU_PER_INCH
-    return int((top_inches + 0.2) / 0.75)
+    return int((top_inches + 0.35) / 0.75)
 
 
 def _sort_slots(slots: list[tuple[int, int, int, int]]) -> list[tuple[int, int, int, int]]:
     return sorted(slots, key=lambda slot: (_slot_row_bucket(slot[1]), slot[0]))
+
+
+def _natural_key(value: str | Path) -> list[Any]:
+    return [int(part) if part.isdigit() else part.lower() for part in re.split(r"(\d+)", str(value))]
+
+
+def _magnification_sort_value(value: str) -> float:
+    match = re.search(r"x?\s*(\d+(?:\.\d+)?)\s*([kKmM]?)", str(value or ""))
+    if not match:
+        return float("inf")
+    scale = 1.0
+    suffix = match.group(2).lower()
+    if suffix == "k":
+        scale = 1_000.0
+    elif suffix == "m":
+        scale = 1_000_000.0
+    return float(match.group(1)) * scale
+
+
+def _image_sort_key(item: dict[str, Any]) -> tuple[float, int, list[Any]]:
+    sequence = item.get("sequence")
+    sequence_value = sequence if isinstance(sequence, int) else 1_000_000_000
+    return (
+        _magnification_sort_value(str(item.get("magnification") or "")),
+        sequence_value,
+        _natural_key(str(item.get("file_name") or item.get("path") or "")),
+    )
+
+
+def _sort_image_items_for_report(image_items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return sorted(image_items, key=_image_sort_key)
 
 
 def _fit_slot_to_canvas(slot: tuple[int, int, int, int], slide_width: int, slide_height: int) -> tuple[int, int, int, int]:
@@ -418,17 +450,22 @@ def _add_image_grid_slides(
 ) -> None:
     if not image_items:
         return
-    for page_index, chunk in enumerate(_chunks(image_items, per_slide), start=1):
+    sorted_items = _sort_image_items_for_report(image_items)
+    for page_index, chunk in enumerate(_chunks(sorted_items, per_slide), start=1):
         suffix = f" ({page_index})" if len(image_items) > per_slide else ""
         if template:
             slide = template.new_slide(template_key, title + suffix)
-            _add_template_image_items(
+            _add_image_grid(
                 slide,
                 chunk,
-                template.picture_slots(template_key),
-                template.label_slots(template_key),
                 input_root,
                 tmp_dir,
+                left=Inches(0.36),
+                top=Inches(1.25),
+                width=Inches(10.45),
+                height=Inches(5.85),
+                cols=4,
+                rows=2,
             )
         else:
             slide = _new_slide(prs)
@@ -680,15 +717,15 @@ def _build_stem(prs, template: AhnTemplate | None, data: dict[str, Any], input_r
 
 
 def _eds_anchor_slot() -> tuple[int, int, int, int]:
-    return Inches(0.2), Inches(1.12), Inches(5.0), Inches(6.05)
+    return Inches(0.08), Inches(1.12), Inches(5.55), Inches(6.05)
 
 
 def _eds_right_slot() -> tuple[int, int, int, int]:
-    return Inches(5.28), Inches(1.12), Inches(5.35), Inches(6.05)
+    return Inches(5.7), Inches(1.12), Inches(4.98), Inches(6.05)
 
 
 def _eds_full_grid_slot() -> tuple[int, int, int, int]:
-    return Inches(0.25), Inches(1.12), Inches(10.35), Inches(6.05)
+    return Inches(0.2), Inches(1.12), Inches(10.35), Inches(6.05)
 
 
 def _eds_table_slots(count: int, area: tuple[int, int, int, int]) -> list[tuple[int, int, int, int]]:
@@ -753,7 +790,7 @@ def _add_eds_first_slide(prs, template: AhnTemplate | None, title: str, images: 
 
 
 def _add_absolute_image_grid(slide, image_items: list[dict[str, Any]], tmp_dir: Path, left, top, width, height, cols: int, rows: int) -> None:
-    gap = Inches(0.06)
+    gap = Inches(0.035)
     cell_w = (width - gap * (cols - 1)) / cols
     cell_h = (height - gap * (rows - 1)) / rows
     for index, item in enumerate(image_items[: cols * rows]):
@@ -977,11 +1014,11 @@ def _coating_column_widths(width: int) -> list[int]:
 
 
 def _coating_table_font_size(row_count: int) -> int:
-    if row_count > 18:
-        return 7
-    if row_count > 12:
-        return 8
-    return 9
+    if row_count > 32:
+        return 9
+    if row_count > 24:
+        return 10
+    return 12
 
 
 def _remove_tables(slide) -> None:
@@ -1082,6 +1119,69 @@ def _add_coating_image_only_slides(
             )
 
 
+def _coating_final_grid_shape(count: int) -> tuple[int, int]:
+    if count <= 2:
+        return max(1, count), 1
+    if count <= 4:
+        return 2, 2
+    if count <= 6:
+        return 3, 2
+    if count <= 9:
+        return 3, 3
+    return 4, 3
+
+
+def _add_coating_images_with_table_slide(
+    prs,
+    template: AhnTemplate | None,
+    title: str,
+    image_measurements: list[dict[str, Any]],
+    all_measurements: list[dict[str, Any]],
+    input_root: Path,
+    tmp_dir: Path,
+) -> None:
+    if template:
+        slide = template.new_slide("coating", title)
+        _remove_tables(slide)
+    else:
+        slide = _new_slide(prs)
+        _add_header(slide, title)
+    image_items = [
+        {
+            "path": item["path"],
+            "file_name": item["file_name"],
+            "magnification": item.get("magnification") or "",
+        }
+        for item in image_measurements
+    ]
+    cols, rows = _coating_final_grid_shape(len(image_items))
+    _add_image_grid(
+        slide,
+        image_items,
+        input_root,
+        tmp_dir,
+        left=Inches(0.72),
+        top=Inches(1.22),
+        width=Inches(6.72),
+        height=Inches(5.95),
+        cols=cols,
+        rows=rows,
+        show_labels=False,
+    )
+    table_rows = _coating_rows(all_measurements)
+    _add_table(
+        slide,
+        table_rows,
+        Inches(7.75),
+        Inches(1.2),
+        Inches(2.85),
+        Inches(5.95),
+        font_size=_coating_table_font_size(len(table_rows)),
+        column_widths=_coating_column_widths(Inches(2.85)),
+        alignments=[PP_ALIGN.CENTER, PP_ALIGN.CENTER],
+    )
+
+
 def _build_coating(prs, template: AhnTemplate | None, data: dict[str, Any], input_root: Path, tmp_dir: Path) -> None:
     for sample in data.get("coating_samples") or []:
         measurements = sample.get("measurements") or []
@@ -1089,8 +1189,35 @@ def _build_coating(prs, template: AhnTemplate | None, data: dict[str, Any], inpu
             continue
         base_title = f"TEM 코팅층 두께 분석 결과 : [{sample['sample_name']}]"
         if len(measurements) >= 10:
-            _add_coating_image_only_slides(prs, template, base_title, measurements, input_root, tmp_dir)
-            _add_coating_table_slide(prs, template, base_title, measurements)
+            image_page_size = 12
+            remainder = len(measurements) % image_page_size
+            final_size = remainder or min(image_page_size, len(measurements))
+            image_only_measurements = measurements[:-final_size]
+            final_measurements = measurements[-final_size:]
+            if image_only_measurements:
+                _add_coating_image_only_slides(
+                    prs,
+                    template,
+                    base_title,
+                    image_only_measurements,
+                    input_root,
+                    tmp_dir,
+                )
+            final_page = (len(image_only_measurements) // image_page_size) + 1
+            final_title = (
+                f"{base_title} ({final_page})"
+                if image_only_measurements
+                else base_title
+            )
+            _add_coating_images_with_table_slide(
+                prs,
+                template,
+                final_title,
+                final_measurements,
+                measurements,
+                input_root,
+                tmp_dir,
+            )
             continue
         if template:
             per_slide = max(1, len(template.picture_slots("coating")))

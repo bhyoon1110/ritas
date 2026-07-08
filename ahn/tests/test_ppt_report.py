@@ -10,7 +10,7 @@ from PIL import Image
 pptx = pytest.importorskip("pptx")
 Presentation = pptx.Presentation
 from pptx.enum.text import PP_ALIGN
-from pptx.util import Inches
+from pptx.util import Inches, Pt
 
 from ahn.ppt_report import _coating_rows, _coating_table_font_size, build_pptx
 
@@ -80,6 +80,17 @@ def _pictures(slide):
     )
 
 
+def _caption_texts(slide) -> list[str]:
+    captions = []
+    for shape in slide.shapes:
+        if not getattr(shape, "has_text_frame", False):
+            continue
+        text = shape.text.strip()
+        if text.startswith("[") and text.endswith("]"):
+            captions.append((shape.top, shape.left, text))
+    return [text for _top, _left, text in sorted(captions)]
+
+
 def test_coating_table_rows_hide_ocr_word_and_keep_readable_font_policy() -> None:
     rows = _coating_rows(
         [
@@ -97,7 +108,7 @@ def test_coating_table_rows_hide_ocr_word_and_keep_readable_font_policy() -> Non
     assert "OCR" not in joined
     assert "1\t2.00" in joined
     assert "2\t3.00" in joined
-    assert _coating_table_font_size(20) == 7
+    assert _coating_table_font_size(20) == 12
 
 
 def _base_project(root: Path) -> dict:
@@ -309,9 +320,9 @@ def test_line_eds_continuation_pages_keep_first_image_on_left(tmp_path, monkeypa
     prs = Presentation(output)
     first_slide_pictures = _pictures(prs.slides[0])
     anchor = first_slide_pictures[0]
-    assert anchor.left <= Inches(0.4)
-    assert anchor.width >= Inches(4.8)
-    right_pictures = [shape for shape in first_slide_pictures if shape.left >= Inches(5.2)]
+    assert anchor.left <= Inches(0.3)
+    assert anchor.width >= Inches(5.2)
+    right_pictures = [shape for shape in first_slide_pictures if shape.left >= Inches(5.6)]
     assert len(right_pictures) == 2
     assert all(shape.width >= Inches(3.0) for shape in right_pictures)
 
@@ -350,8 +361,8 @@ def test_point_eds_detail_pages_keep_first_image_on_left(tmp_path, monkeypatch) 
     assert _pptx_picture_counts(output) == [1, 4]
     prs = Presentation(output)
     anchor = _pictures(prs.slides[0])[0]
-    assert anchor.left <= Inches(0.4)
-    assert anchor.width >= Inches(4.8)
+    assert anchor.left <= Inches(0.3)
+    assert anchor.width >= Inches(5.2)
     table_lefts = [
         shape.left
         for shape in prs.slides[0].shapes
@@ -371,7 +382,7 @@ def test_point_eds_detail_pages_keep_first_image_on_left(tmp_path, monkeypatch) 
 def test_large_coating_sample_uses_image_pages_then_summary_table(tmp_path) -> None:
     project = _base_project(tmp_path)
     measurements = []
-    for index in range(1, 11):
+    for index in range(1, 15):
         image_path = tmp_path / f"scale-{index}.png"
         _write_image(image_path)
         measurements.append(
@@ -394,7 +405,56 @@ def test_large_coating_sample_uses_image_pages_then_summary_table(tmp_path) -> N
     table_counts = [sum(1 for shape in slide.shapes if getattr(shape, "has_table", False)) for slide in prs.slides]
     assert table_counts[0] == 0
     assert table_counts[1] == 1
+    assert _pptx_picture_counts(output) == [12, 2]
+    table_shapes = [
+        shape
+        for shape in prs.slides[1].shapes
+        if getattr(shape, "has_table", False)
+    ]
+    assert table_shapes[0].width <= Inches(3.0)
+    assert table_shapes[0].left >= Inches(7.6)
+    first_data_cell = table_shapes[0].table.cell(1, 0)
+    assert first_data_cell.text_frame.paragraphs[0].runs[0].font.size == Pt(12)
     table_text = _pptx_table_text(output)
     assert "측정개소" in table_text
     assert "비고" not in table_text
-    assert "10.00" in table_text
+    assert "14.00" in table_text
+
+
+def test_grid_slides_place_remainder_images_from_upper_left_and_sort_by_magnification(tmp_path) -> None:
+    project = _base_project(tmp_path)
+    records = []
+    for file_name in [
+        "HR Camera_3_600kX.png",
+        "HR Camera_1_20kX.png",
+        "HR Camera_2_100kX.png",
+        "HR Camera_4_300kX.png",
+        "HR Camera_5_300kX.png",
+        "HR Camera_6_300kX.png",
+        "HR Camera_7_300kX.png",
+        "HR Camera_8_300kX.png",
+        "HR Camera_9_300kX.png",
+    ]:
+        image_path = tmp_path / file_name
+        _write_image(image_path)
+        mag = file_name.split("_")[2].replace("X.png", "")
+        records.append(
+            {
+                "path": file_name,
+                "file_name": file_name,
+                "sample_name": "STEM-A",
+                "magnification": f"x{mag}",
+                "sequence": int(file_name.split("_")[1]),
+                "kind": "STEM",
+            }
+        )
+    project["stem_samples"] = [{"sample_name": "STEM-A", "images": records, "bf_images": []}]
+    output = tmp_path / "report.pptx"
+
+    build_pptx(project, output)
+
+    prs = Presentation(output)
+    assert _caption_texts(prs.slides[0])[:3] == ["[x20k]", "[x100k]", "[x300k]"]
+    remainder_picture = _pictures(prs.slides[1])[0]
+    assert remainder_picture.left <= Inches(0.5)
+    assert remainder_picture.top <= Inches(1.7)
