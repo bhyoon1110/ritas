@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 from PIL import Image
 import pytest
 
+import app.ahn_web as ahn_web
 from app.ahn_web import build_ahn_page, create_tem_preview_app, _find_ahn_input_root
 
 
@@ -91,3 +92,21 @@ def test_ahn_analyze_rejects_empty_upload() -> None:
 
     assert response.status_code == 400
     assert "TEM_FILES_REQUIRED" in response.text
+
+
+def test_tem_example_falls_back_when_sample_data_is_absent(tmp_path, monkeypatch) -> None:
+    pytest.importorskip("pptx")
+    fake_file = tmp_path / "edge_api_server" / "app" / "ahn_web.py"
+    fake_file.parent.mkdir(parents=True)
+    fake_file.write_text("# test path\n", encoding="utf-8")
+    monkeypatch.setattr(ahn_web, "__file__", str(fake_file))
+
+    with TestClient(create_tem_preview_app()) as client:
+        response = client.get("/api/v1/tem/example")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["summary"]["temImageCount"] == 1
+    assert payload["summary"]["stemImageCount"] == 1
+    assert payload["summary"]["stemBfImageCount"] == 1
+    assert payload["downloads"]["pptx"].endswith("/download/pptx")

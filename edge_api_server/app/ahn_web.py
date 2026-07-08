@@ -16,6 +16,7 @@ import zipfile
 from fastapi import APIRouter, FastAPI, File, UploadFile
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from PIL import Image, ImageDraw
 from rist_common import get_logger
 
 from .errors import ApiException, api_exception_handler, validation_exception_handler
@@ -272,6 +273,25 @@ def _build_ahn_job(input_root: Path, work_dir: Path) -> AhnReportJob:
     )
     _ahn_report_jobs[job_id] = job
     return job
+
+
+def _write_synthetic_tem_example(input_root: Path) -> Path:
+    """Create a tiny built-in example when repository sample data is absent."""
+    images = [
+        (input_root / "tem" / "Example-A" / "Example-A_100kX.tif", "TEM 100kX", (205, 211, 222)),
+        (input_root / "stem" / "Example-A_120kX.tif", "STEM 120kX", (196, 210, 224)),
+        (input_root / "stem" / "BF_Example-A_120kX.tif", "BF-STEM 120kX", (226, 221, 210)),
+    ]
+    for path, label, color in images:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        image = Image.new("RGB", (960, 720), color)
+        draw = ImageDraw.Draw(image)
+        draw.rectangle((80, 80, 880, 620), outline=(48, 65, 88), width=5)
+        draw.line((120, 565, 360, 565), fill=(20, 36, 58), width=12)
+        draw.text((120, 590), "200 nm", fill=(20, 36, 58))
+        draw.text((95, 100), label, fill=(20, 36, 58))
+        image.save(path, format="TIFF")
+    return input_root
 
 
 def _job_payload(job: AhnReportJob) -> dict[str, Any]:
@@ -962,14 +982,10 @@ def tem_example() -> JSONResponse:
     _cleanup_old_jobs()
     repo_root = Path(__file__).resolve().parents[2]
     input_root = repo_root / "ahn" / "data" / "TESTData"
-    if not input_root.exists():
-        raise ApiException(
-            404,
-            "TEM_EXAMPLE_NOT_FOUND",
-            "TEM 예제 데이터를 찾을 수 없습니다.",
-        )
     work_dir = Path(tempfile.mkdtemp(prefix="rist-ahn-example-"))
     try:
+        if not input_root.exists():
+            input_root = _write_synthetic_tem_example(work_dir / "input")
         job = _build_ahn_job(input_root, work_dir)
     except Exception:
         shutil.rmtree(work_dir, ignore_errors=True)
