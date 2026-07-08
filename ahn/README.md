@@ -68,6 +68,11 @@ python -m ahn.processor \
   --pptx /tmp/ahn-test/ahn-report.pptx
 ```
 
+PPT 보고서는 `ahn/resources/templates/ahn_tem_template.pptx`를 템플릿으로
+사용한다. TEM/STEM/EDS/코팅층 슬라이드는 템플릿 장표의 배경, 상단
+`TEM 분석 결과` 영역, 파란 라인, 기본 서식을 복사하고 제목, 이미지, 배율,
+표 데이터만 보고서 생성 시 교체한다.
+
 예시 JSON:
 
 ```json
