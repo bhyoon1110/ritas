@@ -2603,8 +2603,9 @@ def xrd_report_css() -> str:
   .xrd-report-pdf-button:hover { background: #eff6ff; border-color: #2563eb; }
   .xrd-report-section { margin: 20px 0 0; }
   .xrd-report-section h2 { font-size: 17px; margin: 0 0 8px; }
-  .xrd-section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; border-bottom: 1px solid #d1d5db; padding-bottom: 6px; margin-bottom: 10px; }
-  .xrd-section-head p { margin: 0; color: #6b7280; font-size: 12px; line-height: 1.45; text-align: right; }
+  .xrd-section-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; border-bottom: 1px solid #d1d5db; padding-bottom: 6px; margin-bottom: 10px; }
+  .xrd-section-head h2 { flex: 0 0 min(260px, 36%); line-height: 1.25; word-break: keep-all; overflow-wrap: normal; }
+  .xrd-section-head p { flex: 1 1 auto; min-width: 0; margin: 2px 0 0; color: #6b7280; font-size: 12px; line-height: 1.45; text-align: right; word-break: keep-all; overflow-wrap: anywhere; }
   .xrd-graph-frame, .xrd-comment-box, .xrd-table-scroll, .xrd-phase-group { border: 2px solid #111827; border-radius: 18px; background: #fff; }
   .xrd-graph-frame { padding: 10px 12px 4px; }
   #xrd-plot { height: 510px !important; min-height: 420px; }
@@ -2671,6 +2672,7 @@ def xrd_report_css() -> str:
     .xrd-report-action-spacer { display: none; }
     .xrd-report-pdf-button { min-height: 36px; padding: 7px 10px; font-size: 13px; }
     .xrd-section-head { display: block; }
+    .xrd-section-head h2 { flex-basis: auto; }
     .xrd-section-head p { text-align: left; margin-top: 4px; }
     #xrd-plot { height: 460px !important; }
     .xrd-phase-grid { grid-template-columns: 1fr; }

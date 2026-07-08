@@ -221,6 +221,8 @@ def test_build_report_html_contains_xrd_template_sections(tmp_path) -> None:
     assert 'id="xrd-report-pdf-export"' in html
     assert "window.print()" in html
     assert ".xrd-table-scroll," in html
+    assert ".xrd-section-head h2 { flex: 0 0 min(260px, 36%);" in html
+    assert ".xrd-section-head p { flex: 1 1 auto; min-width: 0;" in html
     assert "max-height: none !important" in html
     assert "overflow: visible !important" in html
     assert "position: static !important" in html
