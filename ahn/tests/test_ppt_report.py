@@ -66,6 +66,11 @@ def _pptx_table_text(path: Path) -> str:
     return "\n".join(values)
 
 
+def _pptx_picture_counts(path: Path) -> list[int]:
+    prs = Presentation(path)
+    return [sum(1 for shape in slide.shapes if shape.shape_type == 13) for slide in prs.slides]
+
+
 def test_coating_table_rows_hide_ocr_word_and_keep_readable_font_policy() -> None:
     rows = _coating_rows(
         [
@@ -261,6 +266,71 @@ def test_point_eds_uses_matching_spreadsheet_when_docx_has_no_tables(tmp_path, m
     table_text = _pptx_table_text(output)
     assert "Distance (um)" in table_text
     assert "62.9" in table_text
+
+
+def test_line_eds_continuation_pages_keep_first_image_on_left(tmp_path, monkeypatch) -> None:
+    images = []
+    for index in range(10):
+        image_path = tmp_path / f"eds-{index}.png"
+        _write_image(image_path)
+        images.append(image_path)
+    report_path = tmp_path / "report" / "line.docx"
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_bytes(b"placeholder")
+
+    def fake_extract_docx(_docx_path: Path, _extract_dir: Path):
+        return SimpleNamespace(media_paths=images, tables=[])
+
+    monkeypatch.setattr("ahn.ppt_report.extract_docx", fake_extract_docx)
+    project = _base_project(tmp_path)
+    project["eds_reports"] = [
+        {
+            "path": "report/line.docx",
+            "file_name": "line.docx",
+            "title": "0283 line scan",
+            "sample_name": "0283",
+            "analysis_type": "LINE",
+        }
+    ]
+    output = tmp_path / "report.pptx"
+
+    build_pptx(project, output)
+
+    assert _pptx_picture_counts(output) == [3, 7, 2]
+
+
+def test_point_eds_detail_pages_keep_first_image_on_left(tmp_path, monkeypatch) -> None:
+    images = []
+    for index in range(4):
+        image_path = tmp_path / f"point-{index}.png"
+        _write_image(image_path)
+        images.append(image_path)
+    report_path = tmp_path / "report" / "point.docx"
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_bytes(b"placeholder")
+
+    def fake_extract_docx(_docx_path: Path, _extract_dir: Path):
+        return SimpleNamespace(
+            media_paths=images,
+            tables=[[["Element", "Wt%"], ["C", "12.3"]]],
+        )
+
+    monkeypatch.setattr("ahn.ppt_report.extract_docx", fake_extract_docx)
+    project = _base_project(tmp_path)
+    project["eds_reports"] = [
+        {
+            "path": "report/point.docx",
+            "file_name": "point.docx",
+            "title": "0283 point",
+            "sample_name": "0283",
+            "analysis_type": "POINT",
+        }
+    ]
+    output = tmp_path / "report.pptx"
+
+    build_pptx(project, output)
+
+    assert _pptx_picture_counts(output) == [1, 4]
 
 
 def test_large_coating_sample_uses_image_pages_then_summary_table(tmp_path) -> None:
