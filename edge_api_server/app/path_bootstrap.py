@@ -15,9 +15,11 @@ def add_project_package_paths() -> None:
     repo_root = Path(__file__).resolve().parents[2]
     for path in (
         repo_root,
-        repo_root / "sune",
-        repo_root / "rin",
         repo_root / "common",
+        repo_root / "sune",
+        repo_root / "lim",
+        repo_root / "rin",
+        repo_root / "ahn",
     ):
         text = str(path)
         if path.exists() and text not in sys.path:

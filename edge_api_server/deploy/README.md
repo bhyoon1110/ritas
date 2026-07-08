@@ -162,6 +162,17 @@ sudo -u rist ../.venv/bin/pip install -r requirements.txt   # 의존성 변경 �
 sudo systemctl restart rist-edge-api.service rist-edge-worker.service
 ```
 
+TEM/AHN 보고서 기능이 `python-pptx`, `pytesseract`, `opencv-python-headless`를
+사용하므로, `TEM_REPORT_BUILD_FAILED`와 함께 `python-pptx 패키지가 필요합니다`
+오류가 나오면 같은 가상환경에 의존성을 다시 설치한다.
+
+```bash
+cd /home/rist/ritas/edge_api_server
+sudo -u rist ../.venv/bin/pip install -r requirements.txt
+sudo -u rist ../.venv/bin/python -c "import pptx, pytesseract, cv2; print('AHN deps OK')"
+sudo systemctl restart rist-edge-api.service
+```
+
 rsync 로 배포한 경우는 다시 복사한 뒤 동일하게 의존성 설치/재시작을 수행한다.
 
 ### git pull 충돌 해결
