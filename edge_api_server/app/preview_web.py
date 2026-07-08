@@ -67,12 +67,12 @@ def _preview_index() -> str:
 <body>
   <main>
     <h1>RIST Preview</h1>
-    <p>FT-IR, Raman, XRD, AHN 화면을 같은 포트에서 확인합니다.</p>
+    <p>FT-IR, Raman, XRD, TEM 화면을 같은 포트에서 확인합니다.</p>
     <nav>
       <a href="/ftir">FT-IR</a>
       <a href="/raman">Raman</a>
       <a href="/xrd">XRD</a>
-      <a href="/ahn">AHN</a>
+      <a href="/tem">TEM</a>
     </nav>
   </main>
 </body>

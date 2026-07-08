@@ -23,7 +23,7 @@
 - `manifest.json` 생성 및 갱신
 - DPT 다중 업로드·드래그 앤 드롭 FT-IR 웹 분석
 - 업로드 바이트 기반 전처리·피크 분석과 Plotly Figure JSON 응답
-- AHN TEM/STEM/EDS/코팅층 raw 폴더 업로드와 PowerPoint 보고서 생성
+- TEM/STEM/EDS/코팅층 raw 폴더 업로드와 PowerPoint 보고서 생성
 
 보고서 생성 API는 요청을 작업 폴더의 `queue` 영역에 기록한다. 별도 worker는
 `processed` 폴더에 장비별 분석 코드가 생성한 JSON을 읽고 규칙 기반 보고서를
@@ -93,7 +93,7 @@ API 문서:
 - 로컬 LLM 상태 확인: `http://bhyoon.me:8000/health/llm`
 - FT-IR 웹 분석: `http://bhyoon.me:8000/ftir`
 - XRD 웹 미리보기: `http://bhyoon.me:8000/xrd`
-- AHN TEM/STEM 보고서 생성: `http://bhyoon.me:8000/ahn`
+- TEM/STEM 보고서 생성: `http://bhyoon.me:8000/tem`
 
 ## FT-IR 웹 분석
 
@@ -241,9 +241,9 @@ cd edge_api_server
   app.xrd_web:create_xrd_preview_app --factory --host 127.0.0.1 --port 8010
 ```
 
-## AHN TEM/STEM 웹 보고서
+## TEM/STEM 웹 보고서
 
-`/ahn`은 AHN 프로젝트의 TEM/STEM/EDS/코팅층 raw bundle을 브라우저에서
+`/tem`은 AHN 프로젝트의 TEM/STEM/EDS/코팅층 raw bundle을 브라우저에서
 폴더째 업로드하고, 기존 `ahn.processor`와 PowerPoint 템플릿 렌더러를 사용해
 PPTX 보고서를 생성한다. Chrome 계열 브라우저에서는 `tem`, `stem`, `report`,
 `scale` 폴더가 들어 있는 상위 폴더를 드래그하거나 폴더 선택으로 올릴 수 있다.
@@ -257,28 +257,28 @@ PPTX 보고서를 생성한다. Chrome 계열 브라우저에서는 `tem`, `stem
 웹 화면이 사용하는 API:
 
 ```text
-GET  /ahn
-POST /api/v1/ahn/analyze
-GET  /api/v1/ahn/example
-GET  /api/v1/ahn/report/jobs/{jobId}/download/pptx
-GET  /api/v1/ahn/report/jobs/{jobId}/download/package
-GET  /api/v1/ahn/report/jobs/{jobId}/download/analysis-json
+GET  /tem
+POST /api/v1/tem/analyze
+GET  /api/v1/tem/example
+GET  /api/v1/tem/report/jobs/{jobId}/download/pptx
+GET  /api/v1/tem/report/jobs/{jobId}/download/package
+GET  /api/v1/tem/report/jobs/{jobId}/download/analysis-json
 ```
 
-`POST /api/v1/ahn/analyze`는 multipart `files` 필드 하나에 이미지, DOCX,
+`POST /api/v1/tem/analyze`는 multipart `files` 필드 하나에 이미지, DOCX,
 spreadsheet, ZIP 파일을 함께 담아 보낸다. 서버는 `.tif/.tiff/.png/.jpg/.jpeg/.bmp/.webp`,
 `.docx`, `.xlsx/.xls/.csv/.tsv`, `.zip`을 지원한다. 생성 결과는 PPTX, 보고서 ZIP,
 분석 JSON 다운로드 링크로 제공된다.
 
-DB 없이 AHN 화면만 개발할 때는 다음 명령을 사용할 수 있다.
+DB 없이 TEM 화면만 개발할 때는 다음 명령을 사용할 수 있다.
 
 ```bash
 cd edge_api_server
 .venv/bin/python -m uvicorn \
-  app.ahn_web:create_ahn_preview_app --factory --host 127.0.0.1 --port 8010
+  app.ahn_web:create_tem_preview_app --factory --host 127.0.0.1 --port 8010
 ```
 
-FT-IR, Raman, XRD, AHN 화면을 DB 없이 같은 포트에서 함께 확인하려면 통합 preview
+FT-IR, Raman, XRD, TEM 화면을 DB 없이 같은 포트에서 함께 확인하려면 통합 preview
 앱을 사용한다.
 
 ```bash

@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 from PIL import Image
 import pytest
 
-from app.ahn_web import build_ahn_page, create_ahn_preview_app, _find_ahn_input_root
+from app.ahn_web import build_ahn_page, create_tem_preview_app, _find_ahn_input_root
 
 
 def _tiny_tiff_bytes() -> bytes:
@@ -22,7 +22,7 @@ def test_ahn_workspace_contains_folder_upload_controls() -> None:
     assert 'id="ahn-bundle-files"' in page
     assert 'id="ahn-bundle-folder"' in page
     assert "webkitdirectory" in page
-    assert "AHN raw bundle 추가" in page
+    assert "TEM raw bundle 추가" in page
     assert "tem, stem, report, scale 폴더" in page
     assert "파일 추가" in page
     assert "폴더 추가" in page
@@ -31,12 +31,12 @@ def test_ahn_workspace_contains_folder_upload_controls() -> None:
     assert 'id="ahn-download-pptx"' in page
     assert 'id="ahn-download-package"' in page
     assert 'aria-disabled="true"' in page
-    assert "/api/v1/ahn/analyze" in page
-    assert "/api/v1/ahn/example" in page
+    assert "/api/v1/tem/analyze" in page
+    assert "/api/v1/tem/example" in page
     assert "entryToBundleItems" in page
     assert "droppedBundleItems" in page
     assert "PowerPoint 보고서를 렌더링하는 중입니다." in page
-    assert "AHN TEM/STEM" in page
+    assert "TEM/STEM" in page
 
 
 def test_ahn_input_root_finds_browser_top_level_folder(tmp_path) -> None:
@@ -50,9 +50,9 @@ def test_ahn_input_root_finds_browser_top_level_folder(tmp_path) -> None:
 def test_ahn_analyze_accepts_folder_bundle_and_downloads_pptx() -> None:
     pytest.importorskip("pptx")
 
-    with TestClient(create_ahn_preview_app()) as client:
+    with TestClient(create_tem_preview_app()) as client:
         response = client.post(
-            "/api/v1/ahn/analyze",
+            "/api/v1/tem/analyze",
             files=[
                 (
                     "files",
@@ -80,14 +80,14 @@ def test_ahn_analyze_accepts_folder_bundle_and_downloads_pptx() -> None:
         assert package_response.status_code == 200
         with zipfile.ZipFile(BytesIO(package_response.content)) as archive:
             names = set(archive.namelist())
-        assert "ahn-report.pptx" in names
+        assert "tem-report.pptx" in names
         assert "analysis-result.json" in names
         assert "manifest.json" in names
 
 
 def test_ahn_analyze_rejects_empty_upload() -> None:
-    with TestClient(create_ahn_preview_app()) as client:
-        response = client.post("/api/v1/ahn/analyze", files=[])
+    with TestClient(create_tem_preview_app()) as client:
+        response = client.post("/api/v1/tem/analyze", files=[])
 
     assert response.status_code == 400
-    assert "AHN_FILES_REQUIRED" in response.text
+    assert "TEM_FILES_REQUIRED" in response.text

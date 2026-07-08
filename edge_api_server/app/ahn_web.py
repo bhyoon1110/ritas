@@ -127,7 +127,7 @@ def _extract_zip_bytes(data: bytes, target_root: Path) -> int:
     try:
         archive = zipfile.ZipFile(BytesIO(data))
     except zipfile.BadZipFile as exc:
-        raise ApiException(400, "INVALID_AHN_ZIP", "읽을 수 없는 ZIP 파일입니다.") from exc
+        raise ApiException(400, "INVALID_TEM_ZIP", "읽을 수 없는 ZIP 파일입니다.") from exc
 
     with archive:
         for member in archive.infolist():
@@ -143,15 +143,15 @@ def _extract_zip_bytes(data: bytes, target_root: Path) -> int:
             if size > MAX_AHN_UPLOAD_FILE_BYTES:
                 raise ApiException(
                     413,
-                    "AHN_FILE_TOO_LARGE",
+                    "TEM_FILE_TOO_LARGE",
                     f"{relative.name} 파일이 너무 큽니다. 파일당 최대 250MB입니다.",
                 )
             extracted_bytes += size
             if extracted_bytes > MAX_AHN_UPLOAD_TOTAL_BYTES:
                 raise ApiException(
                     413,
-                    "AHN_UPLOAD_TOO_LARGE",
-                    "ZIP 압축 해제 후 AHN raw bundle의 총 크기는 1.2GB 이하여야 합니다.",
+                    "TEM_UPLOAD_TOO_LARGE",
+                    "ZIP 압축 해제 후 TEM raw bundle의 총 크기는 1.2GB 이하여야 합니다.",
                 )
             destination = _unique_path(target_root / relative)
             destination.parent.mkdir(parents=True, exist_ok=True)
@@ -163,7 +163,7 @@ def _extract_zip_bytes(data: bytes, target_root: Path) -> int:
 
 async def _save_ahn_uploads(files: list[UploadFile] | None, upload_root: Path) -> list[str]:
     if not files:
-        raise ApiException(400, "AHN_FILES_REQUIRED", "AHN raw 폴더 또는 파일이 필요합니다.")
+        raise ApiException(400, "TEM_FILES_REQUIRED", "TEM raw 폴더 또는 파일이 필요합니다.")
 
     upload_root.mkdir(parents=True, exist_ok=True)
     saved: list[str] = []
@@ -184,15 +184,15 @@ async def _save_ahn_uploads(files: list[UploadFile] | None, upload_root: Path) -
         if len(data) > MAX_AHN_UPLOAD_FILE_BYTES:
             raise ApiException(
                 413,
-                "AHN_FILE_TOO_LARGE",
+                "TEM_FILE_TOO_LARGE",
                 f"{relative.name} 파일이 너무 큽니다. 파일당 최대 250MB입니다.",
             )
         total_bytes += len(data)
         if total_bytes > MAX_AHN_UPLOAD_TOTAL_BYTES:
             raise ApiException(
                 413,
-                "AHN_UPLOAD_TOO_LARGE",
-                "한 번에 업로드하는 AHN raw bundle의 총 크기는 1.2GB 이하여야 합니다.",
+                "TEM_UPLOAD_TOO_LARGE",
+                "한 번에 업로드하는 TEM raw bundle의 총 크기는 1.2GB 이하여야 합니다.",
             )
 
         if suffix == ".zip":
@@ -211,11 +211,11 @@ async def _save_ahn_uploads(files: list[UploadFile] | None, upload_root: Path) -
         allowed = ", ".join(sorted(AHN_SUPPORTED_EXTENSIONS))
         raise ApiException(
             400,
-            "INVALID_AHN_FILE_TYPE",
+            "INVALID_TEM_FILE_TYPE",
             f"지원하지 않는 파일이 포함되어 있습니다: {preview}{more}. 허용 형식: {allowed}",
         )
     if not saved:
-        raise ApiException(400, "AHN_FILES_REQUIRED", "분석 가능한 AHN 파일이 없습니다.")
+        raise ApiException(400, "TEM_FILES_REQUIRED", "분석 가능한 TEM 파일이 없습니다.")
     return saved
 
 
@@ -243,7 +243,7 @@ def _build_package(output_dir: Path, package_path: Path) -> Path:
 
 def _build_ahn_job(input_root: Path, work_dir: Path) -> AhnReportJob:
     output_dir = work_dir / "output"
-    pptx_path = output_dir / "ahn-report.pptx"
+    pptx_path = output_dir / "tem-report.pptx"
     manifest = build_outputs(
         input_dir=input_root,
         output_dir=output_dir,
@@ -254,10 +254,10 @@ def _build_ahn_job(input_root: Path, work_dir: Path) -> AhnReportJob:
     if not _has_reportable_data(summary):
         raise ApiException(
             400,
-            "AHN_NO_REPORT_DATA",
+            "TEM_NO_REPORT_DATA",
             "입력 폴더에서 TEM, STEM, EDS, 코팅층 분석 대상 데이터를 찾지 못했습니다.",
         )
-    package_path = _build_package(output_dir, output_dir / "ahn-report-package.zip")
+    package_path = _build_package(output_dir, output_dir / "tem-report-package.zip")
     job_id = uuid4().hex
     job = AhnReportJob(
         job_id=job_id,
@@ -275,7 +275,7 @@ def _build_ahn_job(input_root: Path, work_dir: Path) -> AhnReportJob:
 
 
 def _job_payload(job: AhnReportJob) -> dict[str, Any]:
-    prefix = f"/api/v1/ahn/report/jobs/{job.job_id}/download"
+    prefix = f"/api/v1/tem/report/jobs/{job.job_id}/download"
     return {
         "jobId": job.job_id,
         "summary": job.manifest.get("summary") or {},
@@ -294,7 +294,7 @@ def build_ahn_page() -> str:
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>RIST AHN TEM/STEM</title>
+  <title>RIST TEM/STEM</title>
   <style>
     :root {
       color-scheme: light;
@@ -544,7 +544,7 @@ def build_ahn_page() -> str:
   <div class="ahn-shell">
     <header class="ahn-topbar">
       <div class="ahn-brand">
-        <h1>AHN TEM/STEM</h1>
+        <h1>TEM/STEM</h1>
         <span>folder upload · OCR · PowerPoint report</span>
       </div>
       <div class="ahn-actions">
@@ -560,7 +560,7 @@ def build_ahn_page() -> str:
           <input class="ahn-hidden-input" type="file" id="ahn-bundle-folder" name="files" multiple webkitdirectory directory>
           <div class="ahn-drop" id="ahn-drop">
             <div>
-              <p class="ahn-drop-title">AHN raw bundle 추가</p>
+              <p class="ahn-drop-title">TEM raw bundle 추가</p>
               <p class="ahn-drop-text">tem, stem, report, scale 폴더를 포함한 raw 폴더를 여기에 드래그하거나 폴더째 선택하세요.</p>
               <div class="ahn-bundle-actions">
                 <button type="button" id="ahn-add-files">파일 추가</button>
@@ -593,7 +593,7 @@ def build_ahn_page() -> str:
       <section class="ahn-empty" id="ahn-empty">TEM/STEM/EDS/코팅층 raw 폴더를 올리면 PPT 보고서를 생성합니다.</section>
     </main>
   </div>
-  <div class="ahn-busy" id="ahn-busy">AHN 보고서를 생성하는 중입니다.</div>
+  <div class="ahn-busy" id="ahn-busy">TEM 보고서를 생성하는 중입니다.</div>
   <script>
   (function() {
     var form = document.getElementById("ahn-form");
@@ -871,7 +871,7 @@ def build_ahn_page() -> str:
       setBusy(true);
       try {
         addBundleItems(await droppedBundleItems(event.dataTransfer));
-        setStatus("AHN raw bundle 파일이 추가되었습니다.", false);
+        setStatus("TEM raw bundle 파일이 추가되었습니다.", false);
       } catch (error) {
         setStatus(error.message || String(error), true);
       } finally {
@@ -889,16 +889,16 @@ def build_ahn_page() -> str:
       setDownload(downloadJson, null);
       stopProgressTimer();
       setProgress(0, "보고서 생성 대기", false, false);
-      setStatus("AHN raw 폴더를 선택하면 보고서를 생성할 수 있습니다.", false);
+      setStatus("TEM raw 폴더를 선택하면 보고서를 생성할 수 있습니다.", false);
     });
     exampleButton.addEventListener("click", async function() {
       setBusy(true);
-      startProgress("AHN 예제 보고서를 생성하는 중입니다.");
+      startProgress("TEM 예제 보고서를 생성하는 중입니다.");
       try {
-        var payload = await requestReport("/api/v1/ahn/example", null);
+        var payload = await requestReport("/api/v1/tem/example", null);
         renderSummary(payload);
-        setStatus("AHN 예제 보고서가 생성되었습니다.", false);
-        finishProgress("AHN 예제 보고서가 생성되었습니다.");
+        setStatus("TEM 예제 보고서가 생성되었습니다.", false);
+        finishProgress("TEM 예제 보고서가 생성되었습니다.");
       } catch (error) {
         setStatus(error.message || String(error), true);
         failProgress(error.message || "예제 보고서 생성에 실패했습니다.");
@@ -909,16 +909,16 @@ def build_ahn_page() -> str:
     form.addEventListener("submit", async function(event) {
       event.preventDefault();
       if (!bundleItems.length) {
-        setStatus("AHN raw 폴더 또는 ZIP 파일을 먼저 추가하세요.", true);
+        setStatus("TEM raw 폴더 또는 ZIP 파일을 먼저 추가하세요.", true);
         return;
       }
       setBusy(true);
-      startProgress("AHN 보고서 생성 요청을 준비하는 중입니다.");
+      startProgress("TEM 보고서 생성 요청을 준비하는 중입니다.");
       try {
-        var payload = await requestReport("/api/v1/ahn/analyze", buildBundleFormData());
+        var payload = await requestReport("/api/v1/tem/analyze", buildBundleFormData());
         renderSummary(payload);
-        setStatus("AHN 보고서가 생성되었습니다.", false);
-        finishProgress("AHN 보고서가 생성되었습니다.");
+        setStatus("TEM 보고서가 생성되었습니다.", false);
+        finishProgress("TEM 보고서가 생성되었습니다.");
       } catch (error) {
         setStatus(error.message || String(error), true);
         failProgress(error.message || "보고서 생성에 실패했습니다.");
@@ -927,20 +927,20 @@ def build_ahn_page() -> str:
       }
     });
     renderFileList();
-    setStatus("AHN raw 폴더를 선택하면 보고서를 생성할 수 있습니다.", false);
+    setStatus("TEM raw 폴더를 선택하면 보고서를 생성할 수 있습니다.", false);
   })();
   </script>
 </body>
 </html>"""
 
 
-@router.get("/ahn", response_class=HTMLResponse, include_in_schema=False)
-def ahn_page() -> HTMLResponse:
+@router.get("/tem", response_class=HTMLResponse, include_in_schema=False)
+def tem_page() -> HTMLResponse:
     return HTMLResponse(build_ahn_page())
 
 
-@router.post("/api/v1/ahn/analyze", response_class=JSONResponse, tags=["ahn"])
-async def analyze_ahn(
+@router.post("/api/v1/tem/analyze", response_class=JSONResponse, tags=["tem"])
+async def analyze_tem(
     files: list[UploadFile] | None = File(default=None, alias="files"),
 ) -> JSONResponse:
     _cleanup_old_jobs()
@@ -953,20 +953,20 @@ async def analyze_ahn(
     except Exception:
         shutil.rmtree(work_dir, ignore_errors=True)
         raise
-    logger.info("AHN 웹 보고서 생성 완료 (job_id=%s)", job.job_id)
+    logger.info("TEM 웹 보고서 생성 완료 (job_id=%s)", job.job_id)
     return JSONResponse(_job_payload(job))
 
 
-@router.get("/api/v1/ahn/example", response_class=JSONResponse, tags=["ahn"])
-def ahn_example() -> JSONResponse:
+@router.get("/api/v1/tem/example", response_class=JSONResponse, tags=["tem"])
+def tem_example() -> JSONResponse:
     _cleanup_old_jobs()
     repo_root = Path(__file__).resolve().parents[2]
     input_root = repo_root / "ahn" / "data" / "TESTData"
     if not input_root.exists():
         raise ApiException(
             404,
-            "AHN_EXAMPLE_NOT_FOUND",
-            "AHN 예제 데이터를 찾을 수 없습니다.",
+            "TEM_EXAMPLE_NOT_FOUND",
+            "TEM 예제 데이터를 찾을 수 없습니다.",
         )
     work_dir = Path(tempfile.mkdtemp(prefix="rist-ahn-example-"))
     try:
@@ -974,31 +974,31 @@ def ahn_example() -> JSONResponse:
     except Exception:
         shutil.rmtree(work_dir, ignore_errors=True)
         raise
-    logger.info("AHN 예제 웹 보고서 생성 완료 (job_id=%s)", job.job_id)
+    logger.info("TEM 예제 웹 보고서 생성 완료 (job_id=%s)", job.job_id)
     return JSONResponse(_job_payload(job))
 
 
-@router.get("/api/v1/ahn/report/jobs/{job_id}/download/{kind}", tags=["ahn"])
-def download_ahn_report(job_id: str, kind: str) -> FileResponse:
+@router.get("/api/v1/tem/report/jobs/{job_id}/download/{kind}", tags=["tem"])
+def download_tem_report(job_id: str, kind: str) -> FileResponse:
     _cleanup_old_jobs()
     job = _ahn_report_jobs.get(job_id)
     if job is None:
         raise ApiException(
             404,
-            "AHN_REPORT_NOT_FOUND",
-            "AHN 보고서 다운로드 정보를 찾을 수 없습니다. 보고서를 다시 생성하세요.",
+            "TEM_REPORT_NOT_FOUND",
+            "TEM 보고서 다운로드 정보를 찾을 수 없습니다. 보고서를 다시 생성하세요.",
         )
     if kind == "pptx":
         return FileResponse(
             job.pptx_path,
             media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
-            filename="ahn-report.pptx",
+            filename="tem-report.pptx",
         )
     if kind == "package":
         return FileResponse(
             job.package_path,
             media_type="application/zip",
-            filename="ahn-report-package.zip",
+            filename="tem-report-package.zip",
         )
     if kind == "analysis-json":
         return FileResponse(
@@ -1006,12 +1006,17 @@ def download_ahn_report(job_id: str, kind: str) -> FileResponse:
             media_type="application/json",
             filename="analysis-result.json",
         )
-    raise ApiException(404, "AHN_REPORT_FILE_NOT_FOUND", "지원하지 않는 AHN 보고서 파일입니다.")
+    raise ApiException(404, "TEM_REPORT_FILE_NOT_FOUND", "지원하지 않는 TEM 보고서 파일입니다.")
 
 
-def create_ahn_preview_app() -> FastAPI:
-    app = FastAPI(title="RIST AHN Preview")
+def create_tem_preview_app() -> FastAPI:
+    app = FastAPI(title="RIST TEM Preview")
     app.add_exception_handler(ApiException, api_exception_handler)
     app.add_exception_handler(RequestValidationError, validation_exception_handler)
     app.include_router(router)
     return app
+
+
+def create_ahn_preview_app() -> FastAPI:
+    """Backward-compatible factory name for local development scripts."""
+    return create_tem_preview_app()
