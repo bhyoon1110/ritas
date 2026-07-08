@@ -593,7 +593,7 @@ def build_ahn_page() -> str:
           <div class="ahn-drop" id="ahn-drop">
             <div>
               <p class="ahn-drop-title">TEM raw bundle 추가</p>
-              <p class="ahn-drop-text">tem, stem, report, scale 폴더를 포함한 raw 폴더를 여기에 드래그하거나 폴더째 선택하세요.</p>
+              <p class="ahn-drop-text">tem, stem, report, scale 폴더를 포함한 raw 폴더 또는 ZIP을 여기에 드래그하거나 폴더째 선택하세요.</p>
               <div class="ahn-bundle-actions">
                 <button type="button" id="ahn-add-files">파일 추가</button>
                 <button type="button" id="ahn-add-folder">폴더 추가</button>

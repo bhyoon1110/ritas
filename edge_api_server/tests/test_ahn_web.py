@@ -24,7 +24,8 @@ def test_ahn_workspace_contains_folder_upload_controls() -> None:
     assert 'id="ahn-bundle-folder"' in page
     assert "webkitdirectory" in page
     assert "TEM raw bundle 추가" in page
-    assert "tem, stem, report, scale 폴더" in page
+    assert "tem, stem, report, scale 폴더를 포함한 raw 폴더 또는 ZIP" in page
+    assert ".zip" in page
     assert "파일 추가" in page
     assert "폴더 추가" in page
     assert 'id="ahn-example"' in page
@@ -84,6 +85,30 @@ def test_ahn_analyze_accepts_folder_bundle_and_downloads_pptx() -> None:
         assert "tem-report.pptx" in names
         assert "analysis-result.json" in names
         assert "manifest.json" in names
+
+
+def test_ahn_analyze_accepts_zipped_bundle_and_downloads_pptx() -> None:
+    pytest.importorskip("pptx")
+    archive_bytes = BytesIO()
+    with zipfile.ZipFile(archive_bytes, "w") as archive:
+        archive.writestr("TESTData/stem/001_100kX.tif", _tiny_tiff_bytes())
+
+    with TestClient(create_tem_preview_app()) as client:
+        response = client.post(
+            "/api/v1/tem/analyze",
+            files=[
+                (
+                    "files",
+                    ("tem-bundle.zip", archive_bytes.getvalue(), "application/zip"),
+                ),
+            ],
+        )
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["summary"]["stemImageCount"] == 1
+        assert payload["summary"]["temImageCount"] == 0
+        assert payload["downloads"]["pptx"].endswith("/download/pptx")
 
 
 def test_ahn_analyze_rejects_empty_upload() -> None:

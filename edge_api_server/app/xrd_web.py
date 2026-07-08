@@ -5,6 +5,8 @@ import math
 import os
 import re
 import tempfile
+import zipfile
+from io import BytesIO
 from pathlib import Path
 from typing import Any
 
@@ -35,8 +37,9 @@ logger = get_logger(__name__)
 
 RAW_EXTENSIONS = {".txt", ".dat", ".xy", ".asc"}
 PDF_EXTENSIONS = {".pdf"}
+ZIP_EXTENSIONS = {".zip"}
 SUPPORTED_BUNDLE_EXTENSIONS = (
-    RAW_EXTENSIONS | PDF_EXTENSIONS | TABLE_EXTENSIONS | IMAGE_EXTENSIONS
+    RAW_EXTENSIONS | PDF_EXTENSIONS | TABLE_EXTENSIONS | IMAGE_EXTENSIONS | ZIP_EXTENSIONS
 )
 MAX_XRD_UPLOAD_BYTES = 80 * 1024 * 1024
 
@@ -94,6 +97,93 @@ def _has_pdf_files(directory: Path | str) -> bool:
         path.is_file() and path.suffix.lower() in PDF_EXTENSIONS
         for path in root.rglob("*")
     )
+
+
+def _ignore_bundle_path(path: Path) -> bool:
+    return any(part == "__MACOSX" for part in path.parts) or path.name.startswith(".")
+
+
+def _save_xrd_bundle_payload(
+    *,
+    relative_path: Path,
+    data: bytes,
+    directories: dict[str, Path],
+    raw_paths: list[str],
+    table_paths: list[str],
+    image_paths: list[str],
+) -> bool:
+    suffix = relative_path.suffix.lower()
+    filename = relative_path.name
+    if suffix in RAW_EXTENSIONS:
+        path = _unique_path(directories["raw"], filename)
+        raw_paths.append(str(path))
+    elif suffix in PDF_EXTENSIONS:
+        pdf_parent = directories["pdf"] / relative_path.parent
+        pdf_parent.mkdir(parents=True, exist_ok=True)
+        path = _unique_path(pdf_parent, filename)
+    elif suffix in TABLE_EXTENSIONS:
+        path = _unique_path(directories["table"], filename)
+        table_paths.append(str(path))
+    elif suffix in IMAGE_EXTENSIONS:
+        path = _unique_path(directories["image"], filename)
+        image_paths.append(str(path))
+    else:
+        return False
+    path.write_bytes(data)
+    return True
+
+
+def _save_xrd_zip_members(
+    *,
+    data: bytes,
+    upload_name: str,
+    directories: dict[str, Path],
+    raw_paths: list[str],
+    table_paths: list[str],
+    image_paths: list[str],
+) -> list[str]:
+    unsupported: list[str] = []
+    try:
+        archive = zipfile.ZipFile(BytesIO(data))
+    except zipfile.BadZipFile as exc:
+        raise ApiException(400, "INVALID_XRD_ZIP", "읽을 수 없는 XRD ZIP 파일입니다.") from exc
+
+    with archive:
+        for member_index, member in enumerate(archive.infolist(), start=1):
+            if member.is_dir():
+                continue
+            relative_path = _safe_relative_path(
+                member.filename,
+                f"{Path(upload_name).stem or 'xrd-zip'}-{member_index}",
+            )
+            if _ignore_bundle_path(relative_path):
+                continue
+            suffix = relative_path.suffix.lower()
+            if suffix not in (SUPPORTED_BUNDLE_EXTENSIONS - ZIP_EXTENSIONS):
+                unsupported.append(relative_path.as_posix())
+                continue
+            if int(member.file_size or 0) > MAX_XRD_UPLOAD_BYTES:
+                raise ApiException(
+                    413,
+                    "XRD_FILE_TOO_LARGE",
+                    f"{relative_path.name} 파일이 너무 큽니다. 파일당 최대 80MB입니다.",
+                )
+            payload = archive.read(member)
+            if len(payload) > MAX_XRD_UPLOAD_BYTES:
+                raise ApiException(
+                    413,
+                    "XRD_FILE_TOO_LARGE",
+                    f"{relative_path.name} 파일이 너무 큽니다. 파일당 최대 80MB입니다.",
+                )
+            _save_xrd_bundle_payload(
+                relative_path=relative_path,
+                data=payload,
+                directories=directories,
+                raw_paths=raw_paths,
+                table_paths=table_paths,
+                image_paths=image_paths,
+            )
+    return unsupported
 
 
 def _request_settings(request: Request) -> Settings | None:
@@ -288,7 +378,7 @@ async def _save_xrd_bundle_uploads(
         relative_path = _safe_relative_path(upload.filename, f"bundle-{index}")
         filename = relative_path.name
         suffix = relative_path.suffix.lower()
-        if not suffix and filename.startswith("."):
+        if _ignore_bundle_path(relative_path) or (not suffix and filename.startswith(".")):
             continue
         if suffix not in SUPPORTED_BUNDLE_EXTENSIONS:
             unsupported.append(str(relative_path))
@@ -302,20 +392,26 @@ async def _save_xrd_bundle_uploads(
                 f"{filename} 파일이 너무 큽니다. 파일당 최대 80MB입니다.",
             )
 
-        if suffix in RAW_EXTENSIONS:
-            path = _unique_path(directories["raw"], filename)
-            raw_paths.append(str(path))
-        elif suffix in PDF_EXTENSIONS:
-            pdf_parent = directories["pdf"] / relative_path.parent
-            pdf_parent.mkdir(parents=True, exist_ok=True)
-            path = _unique_path(pdf_parent, filename)
-        elif suffix in TABLE_EXTENSIONS:
-            path = _unique_path(directories["table"], filename)
-            table_paths.append(str(path))
+        if suffix in ZIP_EXTENSIONS:
+            unsupported.extend(
+                _save_xrd_zip_members(
+                    data=data,
+                    upload_name=filename,
+                    directories=directories,
+                    raw_paths=raw_paths,
+                    table_paths=table_paths,
+                    image_paths=image_paths,
+                )
+            )
         else:
-            path = _unique_path(directories["image"], filename)
-            image_paths.append(str(path))
-        path.write_bytes(data)
+            _save_xrd_bundle_payload(
+                relative_path=relative_path,
+                data=data,
+                directories=directories,
+                raw_paths=raw_paths,
+                table_paths=table_paths,
+                image_paths=image_paths,
+            )
 
     if unsupported:
         preview = ", ".join(unsupported[:5])
@@ -596,12 +692,12 @@ def build_xrd_page() -> str:
     <main class="xrd-main">
       <section class="xrd-panel">
         <form id="xrd-form">
-          <input class="xrd-hidden-input" type="file" id="xrd-bundle-files" name="files" multiple accept=".txt,.dat,.xy,.asc,.pdf,.xlsx,.csv,.tsv,.png,.jpg,.jpeg,.webp,.gif">
+          <input class="xrd-hidden-input" type="file" id="xrd-bundle-files" name="files" multiple accept=".txt,.dat,.xy,.asc,.pdf,.xlsx,.csv,.tsv,.png,.jpg,.jpeg,.webp,.gif,.zip">
           <input class="xrd-hidden-input" type="file" id="xrd-bundle-folder" name="files" multiple webkitdirectory directory>
           <div class="xrd-drop" id="xrd-drop">
             <div>
               <p class="xrd-drop-title">XRD 번들 추가</p>
-              <p class="xrd-drop-text">raw TXT, ICDD PDF 폴더, Excel/CSV, 이미지를 여기에 한꺼번에 드래그하세요.</p>
+              <p class="xrd-drop-text">raw TXT, ICDD PDF 폴더, Excel/CSV, 이미지 또는 ZIP을 여기에 한꺼번에 드래그하세요.</p>
               <div class="xrd-bundle-actions">
                 <button type="button" id="xrd-add-files">파일 추가</button>
                 <button type="button" id="xrd-add-folder">폴더 추가</button>
@@ -795,6 +891,7 @@ def build_xrd_page() -> str:
       if (/\\.pdf$/.test(name)) return "pdf";
       if (/\\.(xlsx|csv|tsv)$/.test(name)) return "table";
       if (/\\.(png|jpe?g|webp|gif)$/.test(name)) return "image";
+      if (/\\.zip$/.test(name)) return "zip";
       return "skip";
     }
     function addBundleItems(items) {
@@ -811,7 +908,7 @@ def build_xrd_page() -> str:
       renderFileList();
     }
     function renderFileList() {
-      var counts = {raw: 0, pdf: 0, table: 0, image: 0, skip: 0};
+      var counts = {raw: 0, pdf: 0, table: 0, image: 0, zip: 0, skip: 0};
       var files = bundleItems.map(function(item) {
         var type = classifyFile(item.file);
         counts[type] = (counts[type] || 0) + 1;
@@ -825,7 +922,7 @@ def build_xrd_page() -> str:
         fileList.appendChild(chip);
       });
       bundleMeta.textContent = files.length
-        ? "raw " + counts.raw + " · pdf " + counts.pdf + " · table " + counts.table + " · image " + counts.image
+        ? "raw " + counts.raw + " · pdf " + counts.pdf + " · table " + counts.table + " · image " + counts.image + " · zip " + counts.zip
         : "선택된 파일 없음";
     }
     function fileInputItems(input) {
@@ -961,11 +1058,12 @@ def build_xrd_page() -> str:
     });
     form.addEventListener("submit", async function(event) {
       event.preventDefault();
-      if (!bundleItems.some(function(item) { return classifyFile(item.file) === "raw"; })) {
+      var hasZip = bundleItems.some(function(item) { return classifyFile(item.file) === "zip"; });
+      if (!hasZip && !bundleItems.some(function(item) { return classifyFile(item.file) === "raw"; })) {
         setStatus("Bundle 안에 raw TXT 파일이 필요합니다.", true);
         return;
       }
-      if (!bundleItems.some(function(item) { return classifyFile(item.file) === "pdf"; })) {
+      if (!hasZip && !bundleItems.some(function(item) { return classifyFile(item.file) === "pdf"; })) {
         setStatus("Bundle 안에 ICDD PDF 파일이 필요합니다.", true);
         return;
       }
