@@ -758,7 +758,7 @@ def _eds_anchor_slot() -> tuple[int, int, int, int]:
 
 
 def _eds_right_slot() -> tuple[int, int, int, int]:
-    return Inches(4.25), Inches(1.32), Inches(6.45), Inches(4.48)
+    return Inches(4.35), Inches(1.25), Inches(6.25), Inches(4.85)
 
 
 def _eds_full_grid_slot() -> tuple[int, int, int, int]:
@@ -804,13 +804,21 @@ def _add_eds_right_grid(
 ) -> None:
     if not images:
         return
+    if len(images) == 1:
+        effective_cols, effective_rows = 1, 1
+    elif len(images) == 2:
+        effective_cols, effective_rows = 1, 2
+    elif len(images) <= 4:
+        effective_cols, effective_rows = 2, 2
+    else:
+        effective_cols, effective_rows = cols, rows
     _add_absolute_image_grid(
         slide,
         [{"path": str(path), "file_name": path.name, "magnification": ""} for path in images],
         tmp_dir,
         *_eds_right_slot(),
-        cols,
-        rows,
+        effective_cols,
+        effective_rows,
     )
 
 
@@ -1074,13 +1082,19 @@ def _normalized_point_composition_rows(
     return rows
 
 
-def _point_table_font_size(rows: list[list[str]]) -> int:
+def _point_table_font_size(rows: list[list[str]], *, detail: bool = False) -> int:
     cols = max((len(row) for row in rows), default=0)
-    if cols > 11 or len(rows) > 9:
-        return 5
-    if cols > 8 or len(rows) > 6:
+    if detail:
+        if cols > 12:
+            return 8
+        if cols > 9:
+            return 9
+        return 10
+    if cols > 12 or len(rows) > 9:
         return 6
-    return 7
+    if cols > 8 or len(rows) > 6:
+        return 7
+    return 8
 
 
 def _restyle_merged_header(cell, text: str, font_size: int) -> None:
@@ -1106,7 +1120,7 @@ def _add_point_composition_table(
     rows = _normalized_point_composition_rows(table, body_index=body_index)
     if not rows:
         return None
-    font_size = _point_table_font_size(rows)
+    font_size = _point_table_font_size(rows, detail=body_index is not None)
     table_shape = _add_table(
         slide,
         rows,
@@ -1134,11 +1148,11 @@ def _eds_point_anchor_slot() -> tuple[int, int, int, int]:
 
 
 def _eds_point_table_area() -> tuple[int, int, int, int]:
-    return Inches(4.65), Inches(1.28), Inches(6.08), Inches(2.02)
+    return Inches(4.55), Inches(1.20), Inches(5.98), Inches(1.78)
 
 
 def _eds_point_graph_slot() -> tuple[int, int, int, int]:
-    return Inches(4.65), Inches(3.47), Inches(6.08), Inches(3.02)
+    return Inches(4.55), Inches(3.08), Inches(5.98), Inches(4.05)
 
 
 def _add_eds_point_summary_slide(

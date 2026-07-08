@@ -421,7 +421,9 @@ def test_map_eds_pages_reuse_first_image_as_left_anchor(tmp_path, monkeypatch) -
         assert anchor.left <= Inches(0.3)
         assert anchor.width >= Inches(4.0)
     assert len([shape for shape in _pictures(prs.slides[0]) if shape.left >= Inches(4.0)]) == 6
-    assert len([shape for shape in _pictures(prs.slides[1]) if shape.left >= Inches(4.0)]) == 1
+    single_right_picture = [shape for shape in _pictures(prs.slides[1]) if shape.left >= Inches(4.0)]
+    assert len(single_right_picture) == 1
+    assert single_right_picture[0].width >= Inches(5.5)
 
 
 def test_point_eds_detail_pages_keep_first_image_on_left(tmp_path, monkeypatch) -> None:
@@ -523,6 +525,18 @@ def test_point_eds_spectrum_tables_create_row_detail_slides(tmp_path, monkeypatc
         for slide in prs.slides
     ]
     assert table_counts == [2, 2, 2]
+    detail_table_fonts = []
+    for shape in prs.slides[1].shapes:
+        if not getattr(shape, "has_table", False):
+            continue
+        for row in shape.table.rows:
+            for cell in row.cells:
+                for paragraph in cell.text_frame.paragraphs:
+                    for run in paragraph.runs:
+                        if run.font.size:
+                            detail_table_fonts.append(run.font.size)
+    assert detail_table_fonts
+    assert min(detail_table_fonts) >= Pt(9)
     table_text = _pptx_table_text(output)
     assert "At%" in table_text
     assert "Wt%" in table_text
