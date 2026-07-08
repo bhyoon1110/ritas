@@ -22,11 +22,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from PIL import Image, ImageOps
+from PIL import Image, ImageFilter, ImageOps
 
 IMAGE_EXTENSIONS = {".tif", ".tiff", ".png", ".jpg", ".jpeg", ".bmp", ".webp"}
 DOCX_EXTENSIONS = {".docx"}
 SPREADSHEET_EXTENSIONS = {".xlsx", ".xls", ".csv", ".tsv"}
+MAX_COATING_THICKNESS_NM = 40.0
 
 
 @dataclass
@@ -301,6 +302,180 @@ def collect_eds_reports(root: Path) -> tuple[list[EdsReport], list[SpreadsheetFi
     return reports, spreadsheets
 
 
+def _unit_nearby(text: str, start: int, end: int) -> bool:
+    context = text[max(0, start - 6): min(len(text), end + 12)].lower()
+    return bool(re.search(r"(?:n\s*m|r\s*[iyu]?\s*[mn]|r\s*n|m\b)", context))
+
+
+def _candidate_values_from_text(text: str, *, require_unit: bool = True) -> list[float]:
+    """Extract plausible coating thickness values from noisy OCR text."""
+    normalized = unicodedata.normalize("NFKC", text).replace(",", ".")
+    normalized = re.sub(r"(?<=\d)\s+\.\s+(?=\d)", ".", normalized)
+    values: list[float] = []
+
+    def add_value(value: float) -> None:
+        if abs(value - round(value)) < 0.001 and round(value) in {5, 10, 50}:
+            return
+        if 0.1 <= value <= MAX_COATING_THICKNESS_NM:
+            values.append(value)
+
+    for match in re.finditer(r"(?<!\d)(\d{1,2})\s*\.\s*(\d{1,3})(?!\d)", normalized):
+        if require_unit and not _unit_nearby(normalized, match.start(), match.end()):
+            continue
+        integer = int(match.group(1))
+        fraction = match.group(2)
+        value = float(f"{integer}.{fraction}")
+        if 50 <= integer <= 59:
+            value = float(f"{integer - 50}.{fraction}")
+        add_value(value)
+
+    # Tesseract often reads the leading "11" as "LL" or "II" on TEM labels.
+    for match in re.finditer(r"(?<![A-Za-z0-9])([lLiI]{1,2})\s*\.\s*(\d{1,3})", normalized):
+        if require_unit and not _unit_nearby(normalized, match.start(), match.end()):
+            continue
+        integer = 11 if len(match.group(1)) == 2 else 1
+        add_value(float(f"{integer}.{match.group(2)}"))
+
+    # Some labels come back as "2. IS rm" for "2.18 nm".
+    digit_like = str.maketrans({"I": "1", "i": "1", "l": "1", "L": "1", "S": "8", "s": "8", "O": "0", "o": "0"})
+    for match in re.finditer(r"(?<!\d)(\d{1,2})\s*\.\s*([IiLlSsOo]{1,3})(?![A-Za-z0-9])", normalized):
+        if require_unit and not _unit_nearby(normalized, match.start(), match.end()):
+            continue
+        fraction = match.group(2).translate(digit_like)
+        if fraction.isdigit():
+            add_value(float(f"{int(match.group(1))}.{fraction}"))
+
+    deduped: list[float] = []
+    for value in values:
+        if not any(abs(value - existing) < 0.025 for existing in deduped):
+            deduped.append(value)
+    return deduped
+
+
+def _run_tesseract(pytesseract: Any, image: Image.Image, config: str, timeout: int = 3) -> str:
+    try:
+        return pytesseract.image_to_string(image, config=config, timeout=timeout)
+    except TypeError:  # Older pytesseract versions do not support timeout.
+        return pytesseract.image_to_string(image, config=config)
+
+
+def _ocr_label_box(image: Image.Image, box: tuple[int, int, int, int], pytesseract: Any) -> tuple[list[float], list[str]]:
+    width, height = image.size
+    x, y, box_w, box_h = box
+    pad = 12
+    crop = image.crop((
+        max(0, x - pad),
+        max(0, y - pad),
+        min(width, x + box_w + pad),
+        min(height, y + box_h + pad),
+    ))
+    crop = ImageOps.autocontrast(crop)
+    scale = 5 if max(crop.size) < 450 else 3
+    crop = crop.resize((crop.width * scale, crop.height * scale), Image.Resampling.LANCZOS)
+
+    variants = [crop]
+    try:
+        import numpy as np  # type: ignore
+
+        arr = np.array(crop)
+        variants.append(Image.fromarray(np.where(arr < 200, 0, 255).astype("uint8")))
+    except Exception:  # pragma: no cover - optional OCR enhancement.
+        pass
+
+    texts: list[str] = []
+    values: list[float] = []
+    config = "--psm 8 -c tessedit_char_whitelist=0123456789.nmriuy"
+    for variant in variants:
+        try:
+            text = _run_tesseract(pytesseract, variant, config=config, timeout=2).strip()
+        except RuntimeError:
+            continue
+        if not text:
+            continue
+        texts.append(text)
+        values.extend(_candidate_values_from_text(text, require_unit=False))
+    low_values = [value for value in values if value < 10]
+    if low_values:
+        values = low_values
+    return values, texts
+
+
+def _ocr_label_boxes(image: Image.Image, pytesseract: Any) -> tuple[list[float], str]:
+    try:
+        import cv2  # type: ignore
+        import numpy as np  # type: ignore
+    except Exception:
+        return [], ""
+
+    gray = np.array(image)
+    height, width = gray.shape
+    _, thresholded = cv2.threshold(gray, 235, 255, cv2.THRESH_BINARY)
+    closed = cv2.morphologyEx(
+        thresholded,
+        cv2.MORPH_CLOSE,
+        cv2.getStructuringElement(cv2.MORPH_RECT, (17, 7)),
+    )
+    count, _labels, stats, _centroids = cv2.connectedComponentsWithStats(closed, 8)
+    boxes: list[tuple[int, int, int, int]] = []
+    for index in range(1, count):
+        x, y, box_w, box_h, area = [int(value) for value in stats[index]]
+        fill = area / max(1, box_w * box_h)
+        if not (45 <= box_w <= 380 and 18 <= box_h <= 100 and area >= 700 and fill >= 0.25):
+            continue
+        if y <= height * 0.08 or x <= 5 or x + box_w >= width - 5:
+            continue
+        # The microscope scale bar labels live in the lower-left corner and
+        # should not be counted as coating-thickness measurements.
+        if y > height * 0.84 and x < width * 0.28:
+            continue
+        center_x = x + box_w / 2
+        center_y = y + box_h / 2
+        if any(abs(center_x - (bx + bw / 2)) < 18 and abs(center_y - (by + bh / 2)) < 18 for bx, by, bw, bh in boxes):
+            continue
+        boxes.append((x, y, box_w, box_h))
+
+    values: list[float] = []
+    text_parts: list[str] = []
+    for box in sorted(boxes, key=lambda item: (item[1], item[0]))[:10]:
+        box_values, texts = _ocr_label_box(image, box, pytesseract)
+        values.extend(box_values)
+        text_parts.extend(texts)
+    return values, "\n".join(text_parts)
+
+
+def _ocr_full_image(image: Image.Image, pytesseract: Any) -> tuple[list[float], str]:
+    variants: list[tuple[str, Image.Image]] = [("full", ImageOps.autocontrast(image))]
+    if max(image.size) > 1400:
+        scale = 1400 / max(image.size)
+        resized = image.resize((int(image.width * scale), int(image.height * scale)), Image.Resampling.LANCZOS)
+        variants.append(("resized", ImageOps.autocontrast(resized)))
+    variants.append(("sharp", ImageOps.autocontrast(image).filter(ImageFilter.SHARPEN)))
+
+    text_parts: list[str] = []
+    for label, variant in variants:
+        try:
+            text = _run_tesseract(pytesseract, variant, config="--psm 11", timeout=5).strip()
+        except RuntimeError:
+            continue
+        if not text:
+            continue
+        text_parts.append(f"[{label}]\n{text}")
+        values = _candidate_values_from_text(text, require_unit=True)
+        if not values:
+            values = _candidate_values_from_text(text, require_unit=False)
+        if values:
+            return values, "\n\n".join(text_parts)
+    return [], "\n\n".join(text_parts)
+
+
+def _dedupe_values(values: list[float]) -> list[float]:
+    deduped: list[float] = []
+    for value in values:
+        if not any(abs(value - existing) < 0.025 for existing in deduped):
+            deduped.append(value)
+    return deduped
+
+
 def _ocr_thickness_nm(path: Path) -> tuple[float | None, str, str]:
     """Try OCR for a ``{number nm}`` coating thickness label.
 
@@ -317,17 +492,19 @@ def _ocr_thickness_nm(path: Path) -> tuple[float | None, str, str]:
     try:
         image = Image.open(path)
         image = ImageOps.exif_transpose(image).convert("L")
-        width, height = image.size
-        crop = image.crop((0, int(height * 0.55), width, height))
-        crop = ImageOps.autocontrast(crop)
-        text = pytesseract.image_to_string(crop, config="--psm 6")
+        values, text = _ocr_label_boxes(image, pytesseract)
+        if not values:
+            values, text = _ocr_full_image(image, pytesseract)
     except Exception as exc:  # pragma: no cover - depends on OCR runtime.
         return None, "", f"OCR 실패: {exc}"
 
-    match = re.search(r"(\d+(?:\.\d+)?)\s*nm", text, flags=re.IGNORECASE)
-    if not match:
+    values = _dedupe_values(values)
+    if not values:
         return None, text.strip(), "두께값 미검출"
-    return float(match.group(1)), text.strip(), ""
+    average = round(sum(values) / len(values), 3)
+    note = f"OCR 후보 {len(values)}개 평균" if len(values) > 1 else ""
+    ocr_text = f"candidates_nm={', '.join(f'{value:.3g}' for value in values)}\n{text}".strip()
+    return average, ocr_text, note
 
 
 def collect_coating_samples(root: Path) -> list[CoatingSample]:

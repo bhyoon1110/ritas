@@ -29,4 +29,7 @@ def test_collect_project_reads_testdata_bundle() -> None:
     assert project.summary["coatingSampleCount"] == 1
     assert project.summary["coatingImageCount"] == 14
     assert project.coating_samples[0].sample_name == "Scale"
-    assert all(item.note for item in project.coating_samples[0].measurements)
+    assert all(
+        item.note or item.thickness_nm is not None
+        for item in project.coating_samples[0].measurements
+    )
