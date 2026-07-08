@@ -9,6 +9,8 @@ from PIL import Image
 
 pptx = pytest.importorskip("pptx")
 Presentation = pptx.Presentation
+from pptx.enum.text import PP_ALIGN
+from pptx.util import Inches
 
 from ahn.ppt_report import _coating_rows, _coating_table_font_size, build_pptx
 
@@ -69,6 +71,13 @@ def _pptx_table_text(path: Path) -> str:
 def _pptx_picture_counts(path: Path) -> list[int]:
     prs = Presentation(path)
     return [sum(1 for shape in slide.shapes if shape.shape_type == 13) for slide in prs.slides]
+
+
+def _pictures(slide):
+    return sorted(
+        [shape for shape in slide.shapes if shape.shape_type == 13],
+        key=lambda shape: (shape.left, shape.top),
+    )
 
 
 def test_coating_table_rows_hide_ocr_word_and_keep_readable_font_policy() -> None:
@@ -297,6 +306,14 @@ def test_line_eds_continuation_pages_keep_first_image_on_left(tmp_path, monkeypa
     build_pptx(project, output)
 
     assert _pptx_picture_counts(output) == [3, 7, 2]
+    prs = Presentation(output)
+    first_slide_pictures = _pictures(prs.slides[0])
+    anchor = first_slide_pictures[0]
+    assert anchor.left <= Inches(0.4)
+    assert anchor.width >= Inches(4.7)
+    right_pictures = [shape for shape in first_slide_pictures if shape.left >= Inches(5.2)]
+    assert len(right_pictures) == 2
+    assert all(shape.width >= Inches(3.0) for shape in right_pictures)
 
 
 def test_point_eds_detail_pages_keep_first_image_on_left(tmp_path, monkeypatch) -> None:
@@ -331,6 +348,17 @@ def test_point_eds_detail_pages_keep_first_image_on_left(tmp_path, monkeypatch) 
     build_pptx(project, output)
 
     assert _pptx_picture_counts(output) == [1, 4]
+    prs = Presentation(output)
+    anchor = _pictures(prs.slides[0])[0]
+    assert anchor.left <= Inches(0.4)
+    assert anchor.width >= Inches(4.7)
+    for shape in prs.slides[0].shapes:
+        if not getattr(shape, "has_table", False):
+            continue
+        for row in shape.table.rows:
+            for cell in row.cells:
+                for paragraph in cell.text_frame.paragraphs:
+                    assert paragraph.alignment == PP_ALIGN.CENTER
 
 
 def test_large_coating_sample_uses_image_pages_then_summary_table(tmp_path) -> None:
