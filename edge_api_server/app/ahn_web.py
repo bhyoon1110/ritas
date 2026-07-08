@@ -984,9 +984,18 @@ def tem_example() -> JSONResponse:
     input_root = repo_root / "ahn" / "data" / "TESTData"
     work_dir = Path(tempfile.mkdtemp(prefix="rist-ahn-example-"))
     try:
-        if not input_root.exists():
+        if input_root.exists():
+            try:
+                job = _build_ahn_job(input_root, work_dir)
+            except Exception:
+                logger.exception("TEM 예제 샘플 데이터 처리 실패, 내장 예제로 재시도합니다.")
+                shutil.rmtree(work_dir, ignore_errors=True)
+                work_dir = Path(tempfile.mkdtemp(prefix="rist-ahn-example-"))
+                input_root = _write_synthetic_tem_example(work_dir / "input")
+                job = _build_ahn_job(input_root, work_dir)
+        else:
             input_root = _write_synthetic_tem_example(work_dir / "input")
-        job = _build_ahn_job(input_root, work_dir)
+            job = _build_ahn_job(input_root, work_dir)
     except Exception:
         shutil.rmtree(work_dir, ignore_errors=True)
         raise

@@ -110,3 +110,26 @@ def test_tem_example_falls_back_when_sample_data_is_absent(tmp_path, monkeypatch
     assert payload["summary"]["stemImageCount"] == 1
     assert payload["summary"]["stemBfImageCount"] == 1
     assert payload["downloads"]["pptx"].endswith("/download/pptx")
+
+
+def test_tem_example_falls_back_when_repo_sample_processing_fails(monkeypatch) -> None:
+    pytest.importorskip("pptx")
+    real_build_job = ahn_web._build_ahn_job
+    calls = []
+
+    def flaky_build_job(input_root, work_dir):
+        calls.append(input_root)
+        if len(calls) == 1:
+            raise RuntimeError("sample fixture failure")
+        return real_build_job(input_root, work_dir)
+
+    monkeypatch.setattr(ahn_web, "_build_ahn_job", flaky_build_job)
+
+    with TestClient(create_tem_preview_app()) as client:
+        response = client.get("/api/v1/tem/example")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["summary"]["temImageCount"] == 1
+    assert payload["summary"]["stemImageCount"] == 1
+    assert len(calls) == 2
