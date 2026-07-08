@@ -112,24 +112,17 @@ def test_tem_example_falls_back_when_sample_data_is_absent(tmp_path, monkeypatch
     assert payload["downloads"]["pptx"].endswith("/download/pptx")
 
 
-def test_tem_example_falls_back_when_repo_sample_processing_fails(monkeypatch) -> None:
-    pytest.importorskip("pptx")
-    real_build_job = ahn_web._build_ahn_job
-    calls = []
+def test_tem_example_reports_build_failure_without_masking(monkeypatch) -> None:
+    def fail_build_outputs(**_kwargs):
+        raise RuntimeError("python-pptx missing")
 
-    def flaky_build_job(input_root, work_dir):
-        calls.append(input_root)
-        if len(calls) == 1:
-            raise RuntimeError("sample fixture failure")
-        return real_build_job(input_root, work_dir)
+    monkeypatch.setattr(ahn_web, "build_outputs", fail_build_outputs)
 
-    monkeypatch.setattr(ahn_web, "_build_ahn_job", flaky_build_job)
-
-    with TestClient(create_tem_preview_app()) as client:
+    with TestClient(create_tem_preview_app(), raise_server_exceptions=False) as client:
         response = client.get("/api/v1/tem/example")
 
-    assert response.status_code == 200
+    assert response.status_code == 500
     payload = response.json()
-    assert payload["summary"]["temImageCount"] == 1
-    assert payload["summary"]["stemImageCount"] == 1
-    assert len(calls) == 2
+    assert payload["code"] == "TEM_REPORT_BUILD_FAILED"
+    assert "python-pptx missing" in payload["message"]
+    assert payload["details"]["exceptionType"] == "RuntimeError"

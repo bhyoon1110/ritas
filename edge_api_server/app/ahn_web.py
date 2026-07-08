@@ -245,12 +245,24 @@ def _build_package(output_dir: Path, package_path: Path) -> Path:
 def _build_ahn_job(input_root: Path, work_dir: Path) -> AhnReportJob:
     output_dir = work_dir / "output"
     pptx_path = output_dir / "tem-report.pptx"
-    manifest = build_outputs(
-        input_dir=input_root,
-        output_dir=output_dir,
-        pptx_path=pptx_path,
-        copy_raw_spreadsheets=True,
-    )
+    try:
+        manifest = build_outputs(
+            input_dir=input_root,
+            output_dir=output_dir,
+            pptx_path=pptx_path,
+            copy_raw_spreadsheets=True,
+        )
+    except ApiException:
+        raise
+    except Exception as exc:
+        logger.exception("TEM 보고서 생성 실패 (input_root=%s)", input_root)
+        raise ApiException(
+            500,
+            "TEM_REPORT_BUILD_FAILED",
+            f"TEM 보고서 생성 중 오류가 발생했습니다: {exc}",
+            retryable=False,
+            details={"exceptionType": type(exc).__name__},
+        ) from exc
     summary = manifest.get("summary") if isinstance(manifest.get("summary"), dict) else {}
     if not _has_reportable_data(summary):
         raise ApiException(
@@ -984,18 +996,9 @@ def tem_example() -> JSONResponse:
     input_root = repo_root / "ahn" / "data" / "TESTData"
     work_dir = Path(tempfile.mkdtemp(prefix="rist-ahn-example-"))
     try:
-        if input_root.exists():
-            try:
-                job = _build_ahn_job(input_root, work_dir)
-            except Exception:
-                logger.exception("TEM 예제 샘플 데이터 처리 실패, 내장 예제로 재시도합니다.")
-                shutil.rmtree(work_dir, ignore_errors=True)
-                work_dir = Path(tempfile.mkdtemp(prefix="rist-ahn-example-"))
-                input_root = _write_synthetic_tem_example(work_dir / "input")
-                job = _build_ahn_job(input_root, work_dir)
-        else:
+        if not input_root.exists():
             input_root = _write_synthetic_tem_example(work_dir / "input")
-            job = _build_ahn_job(input_root, work_dir)
+        job = _build_ahn_job(input_root, work_dir)
     except Exception:
         shutil.rmtree(work_dir, ignore_errors=True)
         raise
