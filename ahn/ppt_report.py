@@ -369,18 +369,30 @@ def _format_nm(value: Any) -> str:
 
 
 def _coating_rows(measurements: list[dict[str, Any]]) -> list[list[str]]:
-    rows = [["측정개소", "두께"]]
-    values = []
+    rows = [["측정개소", "두께(nm)", "비고"]]
+    values: list[float] = []
     for item in measurements:
-        value = item.get("thickness_nm")
-        if value is not None:
+        item_values = item.get("thickness_values_nm") or []
+        if not item_values and item.get("thickness_nm") is not None:
+            item_values = [item.get("thickness_nm")]
+        note = str(item.get("note") or "")
+        warnings = item.get("ocr_warnings") or []
+        if warnings:
+            note = f"{note} / {', '.join(str(value) for value in warnings)}".strip(" /")
+        if not item_values:
+            rows.append([str(item.get("index") or ""), "검토 필요", note])
+            continue
+        for value_index, value in enumerate(item_values, start=1):
             try:
-                values.append(float(value))
+                numeric_value = float(value)
             except (TypeError, ValueError):
-                pass
-        rows.append([str(item.get("index") or ""), _format_nm(value)])
+                rows.append([f"{item.get('index') or ''}-{value_index}", "검토 필요", note])
+                continue
+            values.append(numeric_value)
+            row_note = note if value_index == 1 else ""
+            rows.append([f"{item.get('index') or ''}-{value_index}", _format_nm(numeric_value), row_note])
     average = sum(values) / len(values) if values else None
-    rows.append(["평균(nm)", _format_nm(average)])
+    rows.append(["전체 평균", _format_nm(average), f"{len(values)}개 라벨"])
     return rows
 
 
@@ -421,7 +433,7 @@ def _build_coating(prs, data: dict[str, Any], input_root: Path, tmp_dir: Path) -
                 Inches(1.35),
                 Inches(3.55),
                 table_height,
-                font_size=8 if len(table_rows) > 14 else 9,
+                font_size=7 if len(table_rows) > 18 else 8 if len(table_rows) > 14 else 9,
             )
 
 

@@ -75,8 +75,20 @@ class CoatingMeasurement:
     file_name: str
     magnification: str = ""
     thickness_nm: float | None = None
+    thickness_values_nm: list[float] = field(default_factory=list)
     ocr_text: str = ""
     note: str = ""
+    ocr_review_required: bool = False
+    ocr_warnings: list[str] = field(default_factory=list)
+
+
+@dataclass
+class CoatingOcrResult:
+    values_nm: list[float] = field(default_factory=list)
+    ocr_text: str = ""
+    note: str = ""
+    review_required: bool = False
+    warnings: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -452,6 +464,7 @@ def _ocr_full_image(image: Image.Image, pytesseract: Any) -> tuple[list[float], 
     variants.append(("sharp", ImageOps.autocontrast(image).filter(ImageFilter.SHARPEN)))
 
     text_parts: list[str] = []
+    variant_values: list[list[float]] = []
     for label, variant in variants:
         try:
             text = _run_tesseract(pytesseract, variant, config="--psm 11", timeout=5).strip()
@@ -464,8 +477,29 @@ def _ocr_full_image(image: Image.Image, pytesseract: Any) -> tuple[list[float], 
         if not values:
             values = _candidate_values_from_text(text, require_unit=False)
         if values:
-            return values, "\n\n".join(text_parts)
-    return [], "\n\n".join(text_parts)
+            variant_values.append(values)
+    return _select_supported_ocr_values(variant_values), "\n\n".join(text_parts)
+
+
+def _select_supported_ocr_values(variant_values: list[list[float]]) -> list[float]:
+    if not variant_values:
+        return []
+    primary = max(enumerate(variant_values), key=lambda item: (len(item[1]), -item[0]))[1]
+    supported: list[float] = []
+    for index, value in enumerate(primary):
+        close_values = [value]
+        for candidate_values in variant_values:
+            if candidate_values is primary or index >= len(candidate_values):
+                continue
+            candidate = candidate_values[index]
+            if abs(candidate - value) <= 0.25:
+                close_values.append(candidate)
+        if len(close_values) >= 2:
+            close_values.sort()
+            supported.append(round(close_values[len(close_values) // 2], 3))
+        else:
+            supported.append(value)
+    return supported
 
 
 def _dedupe_values(values: list[float]) -> list[float]:
@@ -476,18 +510,24 @@ def _dedupe_values(values: list[float]) -> list[float]:
     return deduped
 
 
-def _ocr_thickness_nm(path: Path) -> tuple[float | None, str, str]:
+def _mean_or_none(values: list[float]) -> float | None:
+    if not values:
+        return None
+    return round(sum(values) / len(values), 3)
+
+
+def _ocr_thickness_nm(path: Path) -> CoatingOcrResult:
     """Try OCR for a ``{number nm}`` coating thickness label.
 
     The runtime may not have the tesseract binary installed. In that case the
     measurement remains reviewable instead of failing report generation.
     """
     if shutil.which("tesseract") is None:
-        return None, "", "OCR 엔진 없음"
+        return CoatingOcrResult(note="OCR 엔진 없음", review_required=True)
     try:
         import pytesseract  # type: ignore
     except Exception:
-        return None, "", "pytesseract 없음"
+        return CoatingOcrResult(note="pytesseract 없음", review_required=True)
 
     try:
         image = Image.open(path)
@@ -496,15 +536,32 @@ def _ocr_thickness_nm(path: Path) -> tuple[float | None, str, str]:
         if not values:
             values, text = _ocr_full_image(image, pytesseract)
     except Exception as exc:  # pragma: no cover - depends on OCR runtime.
-        return None, "", f"OCR 실패: {exc}"
+        return CoatingOcrResult(note=f"OCR 실패: {exc}", review_required=True)
 
     values = _dedupe_values(values)
     if not values:
-        return None, text.strip(), "두께값 미검출"
-    average = round(sum(values) / len(values), 3)
-    note = f"OCR 후보 {len(values)}개 평균" if len(values) > 1 else ""
+        return CoatingOcrResult(
+            ocr_text=text.strip(),
+            note="두께값 미검출",
+            review_required=True,
+            warnings=["OCR 후보값 없음"],
+        )
+
+    warnings: list[str] = []
+    if len(values) > 8:
+        warnings.append("후보값 과다")
+    if max(values) / max(0.001, min(values)) > 12:
+        warnings.append("후보값 편차 큼")
+
+    note = f"OCR 라벨 {len(values)}개 추출" if len(values) > 1 else ""
     ocr_text = f"candidates_nm={', '.join(f'{value:.3g}' for value in values)}\n{text}".strip()
-    return average, ocr_text, note
+    return CoatingOcrResult(
+        values_nm=values,
+        ocr_text=ocr_text,
+        note=note,
+        review_required=bool(warnings),
+        warnings=warnings,
+    )
 
 
 def collect_coating_samples(root: Path) -> list[CoatingSample]:
@@ -529,16 +586,19 @@ def collect_coating_samples(root: Path) -> list[CoatingSample]:
     for sample_name, images in sources:
         measurements = []
         for index, path in enumerate(images, start=1):
-            thickness, text, note = _ocr_thickness_nm(path)
+            ocr = _ocr_thickness_nm(path)
             measurements.append(
                 CoatingMeasurement(
                     index=index,
                     path=_relative(path, root),
                     file_name=path.name,
                     magnification=extract_magnification(path.name),
-                    thickness_nm=thickness,
-                    ocr_text=text,
-                    note=note,
+                    thickness_nm=_mean_or_none(ocr.values_nm),
+                    thickness_values_nm=ocr.values_nm,
+                    ocr_text=ocr.ocr_text,
+                    note=ocr.note,
+                    ocr_review_required=ocr.review_required,
+                    ocr_warnings=ocr.warnings,
                 )
             )
         if measurements:
