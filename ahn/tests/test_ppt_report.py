@@ -288,11 +288,12 @@ def test_point_eds_uses_matching_spreadsheet_when_docx_has_no_tables(tmp_path, m
     assert "62.9" in table_text
 
 
-def test_line_eds_continuation_pages_keep_first_image_on_left(tmp_path, monkeypatch) -> None:
+def test_line_eds_continuation_pages_use_full_width_graph_grid(tmp_path, monkeypatch) -> None:
     images = []
     for index in range(10):
         image_path = tmp_path / f"eds-{index}.png"
-        _write_image(image_path)
+        image_path.parent.mkdir(parents=True, exist_ok=True)
+        Image.new("RGB", (240, 100), (220, 224, 230)).save(image_path)
         images.append(image_path)
     report_path = tmp_path / "report" / "line.docx"
     report_path.parent.mkdir(parents=True, exist_ok=True)
@@ -316,7 +317,7 @@ def test_line_eds_continuation_pages_keep_first_image_on_left(tmp_path, monkeypa
 
     build_pptx(project, output)
 
-    assert _pptx_picture_counts(output) == [3, 7, 2]
+    assert _pptx_picture_counts(output) == [3, 6, 1]
     prs = Presentation(output)
     first_slide_pictures = _pictures(prs.slides[0])
     anchor = first_slide_pictures[0]
@@ -325,6 +326,51 @@ def test_line_eds_continuation_pages_keep_first_image_on_left(tmp_path, monkeypa
     right_pictures = [shape for shape in first_slide_pictures if shape.left >= Inches(5.6)]
     assert len(right_pictures) == 2
     assert all(shape.width >= Inches(3.0) for shape in right_pictures)
+    continuation_pictures = _pictures(prs.slides[1])
+    assert len(continuation_pictures) == 6
+    left_groups = {round(shape.left / Inches(1), 1) for shape in continuation_pictures}
+    top_groups = {round(shape.top / Inches(1), 1) for shape in continuation_pictures}
+    assert len(left_groups) == 2
+    assert len(top_groups) == 3
+    assert all(shape.width >= Inches(4.7) for shape in continuation_pictures)
+
+
+def test_map_eds_pages_use_each_chunk_first_image_as_left_anchor(tmp_path, monkeypatch) -> None:
+    images = []
+    for index in range(14):
+        image_path = tmp_path / f"map-{index}.png"
+        _write_image(image_path)
+        images.append(image_path)
+    report_path = tmp_path / "report" / "map.docx"
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_bytes(b"placeholder")
+
+    def fake_extract_docx(_docx_path: Path, _extract_dir: Path):
+        return SimpleNamespace(media_paths=images, tables=[])
+
+    monkeypatch.setattr("ahn.ppt_report.extract_docx", fake_extract_docx)
+    project = _base_project(tmp_path)
+    project["eds_reports"] = [
+        {
+            "path": "report/map.docx",
+            "file_name": "map.docx",
+            "title": "0817 MAP",
+            "sample_name": "0817",
+            "analysis_type": "MAP",
+        }
+    ]
+    output = tmp_path / "report.pptx"
+
+    build_pptx(project, output)
+
+    assert _pptx_picture_counts(output) == [7, 7]
+    prs = Presentation(output)
+    for slide in prs.slides:
+        pictures = _pictures(slide)
+        anchor = pictures[0]
+        assert anchor.left <= Inches(0.3)
+        assert anchor.width >= Inches(5.2)
+        assert len([shape for shape in pictures if shape.left >= Inches(5.6)]) == 6
 
 
 def test_point_eds_detail_pages_keep_first_image_on_left(tmp_path, monkeypatch) -> None:

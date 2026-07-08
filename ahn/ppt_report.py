@@ -816,8 +816,11 @@ def _add_eds_image_pages(
     *,
     start_page: int = 1,
     template_key: str = "eds_line_page",
+    cols: int = 3,
+    rows: int = 2,
 ) -> None:
-    for page, chunk in enumerate(_chunks(images, 6), start=start_page):
+    per_page = max(1, cols * rows)
+    for page, chunk in enumerate(_chunks(images, per_page), start=start_page):
         if template:
             slide = template.new_slide(template_key, f"STEM EDS 분석결과 : [{title}_Data{page}]")
         else:
@@ -828,8 +831,8 @@ def _add_eds_image_pages(
             [{"path": str(path), "file_name": path.name, "magnification": ""} for path in chunk],
             tmp_dir,
             *_eds_full_grid_slot(),
-            3,
-            2,
+            cols,
+            rows,
         )
 
 
@@ -859,29 +862,18 @@ def _add_eds_map_continuation_pages(
     prs,
     template: AhnTemplate | None,
     title: str,
-    first_image: Path | None,
     images: list[Path],
     tmp_dir: Path,
 ) -> None:
     if not images:
         return
-    for page, chunk in enumerate(_chunks(images, 6), start=2):
+    for page, chunk in enumerate(_chunks(images, 7), start=2):
         if template:
             slide = template.new_slide("eds_map", f"STEM EDS 분석결과 : [{title}_Data{page}]")
         else:
             slide = _new_slide(prs)
             _add_header(slide, f"STEM EDS 분석결과 : [{title}_Data{page}]")
-        if first_image:
-            _add_eds_anchor_grid(slide, first_image, chunk, tmp_dir, cols=3, rows=2)
-        else:
-            _add_absolute_image_grid(
-                slide,
-                [{"path": str(path), "file_name": path.name, "magnification": ""} for path in chunk],
-                tmp_dir,
-                *_eds_full_grid_slot(),
-                3,
-                2,
-            )
+        _add_eds_anchor_grid(slide, chunk[0] if chunk else None, chunk[1:7], tmp_dir, cols=3, rows=2)
 
 
 def _add_eds_tables_slide(prs, template: AhnTemplate | None, title: str, images: list[Path], tables: list[list[list[str]]], tmp_dir: Path) -> None:
@@ -917,7 +909,6 @@ def _build_eds(prs, template: AhnTemplate | None, data: dict[str, Any], input_ro
                 prs,
                 template,
                 title,
-                images[0] if images else None,
                 images[7:],
                 tmp_dir,
             )
@@ -929,14 +920,16 @@ def _build_eds(prs, template: AhnTemplate | None, data: dict[str, Any], input_ro
                     slide = _new_slide(prs)
                     _add_header(slide, f"STEM EDS 분석결과 : [{title}_Data1]")
                 _add_eds_anchor_grid(slide, images[0], images[1:3], tmp_dir, cols=1, rows=2)
-            _add_eds_anchor_grid_pages(
+            _add_eds_image_pages(
                 prs,
                 template,
                 title,
-                images[0] if images else None,
                 images[3:],
                 tmp_dir,
                 start_page=2,
+                template_key="eds_line_page",
+                cols=2,
+                rows=3,
             )
         elif analysis_type == "POINT":
             _add_eds_tables_slide(prs, template, title, images[:1], tables, tmp_dir)
