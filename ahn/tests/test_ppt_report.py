@@ -9,12 +9,31 @@ from PIL import Image
 pptx = pytest.importorskip("pptx")
 Presentation = pptx.Presentation
 
-from ahn.ppt_report import build_pptx
+from ahn.ppt_report import _coating_rows, _coating_table_font_size, build_pptx
 
 
 def _write_image(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     Image.new("RGB", (120, 90), (220, 224, 230)).save(path)
+
+
+def test_coating_table_rows_hide_ocr_word_and_keep_readable_font_policy() -> None:
+    rows = _coating_rows(
+        [
+            {
+                "index": 1,
+                "thickness_values_nm": [2.0, 3.0],
+                "note": "OCR 라벨 2개 추출",
+                "ocr_warnings": ["OCR 후보값 없음"],
+            }
+        ]
+    )
+
+    joined = "\n".join("\t".join(row) for row in rows)
+    assert rows[0] == ["개소", "두께(nm)", "비고"]
+    assert "OCR" not in joined
+    assert "라벨 2개 추출" in joined
+    assert _coating_table_font_size(20) == 7
 
 
 def _base_project(root: Path) -> dict:
@@ -75,7 +94,7 @@ def _project_with_sections(root: Path, sections: set[str]) -> dict:
                         "thickness_nm": 2.5,
                         "thickness_values_nm": [2.0, 3.0],
                         "ocr_text": "",
-                        "note": "OCR 라벨 2개 추출",
+                        "note": "라벨 2개 추출",
                         "ocr_review_required": False,
                         "ocr_warnings": [],
                     }

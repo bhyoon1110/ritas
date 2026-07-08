@@ -523,11 +523,11 @@ def _ocr_thickness_nm(path: Path) -> CoatingOcrResult:
     measurement remains reviewable instead of failing report generation.
     """
     if shutil.which("tesseract") is None:
-        return CoatingOcrResult(note="OCR 엔진 없음", review_required=True)
+        return CoatingOcrResult(note="자동 판독 엔진 없음", review_required=True)
     try:
         import pytesseract  # type: ignore
     except Exception:
-        return CoatingOcrResult(note="pytesseract 없음", review_required=True)
+        return CoatingOcrResult(note="자동 판독 모듈 없음", review_required=True)
 
     try:
         image = Image.open(path)
@@ -536,7 +536,7 @@ def _ocr_thickness_nm(path: Path) -> CoatingOcrResult:
         if not values:
             values, text = _ocr_full_image(image, pytesseract)
     except Exception as exc:  # pragma: no cover - depends on OCR runtime.
-        return CoatingOcrResult(note=f"OCR 실패: {exc}", review_required=True)
+        return CoatingOcrResult(note=f"자동 판독 실패: {exc}", review_required=True)
 
     values = _dedupe_values(values)
     if not values:
@@ -544,7 +544,7 @@ def _ocr_thickness_nm(path: Path) -> CoatingOcrResult:
             ocr_text=text.strip(),
             note="두께값 미검출",
             review_required=True,
-            warnings=["OCR 후보값 없음"],
+            warnings=["후보값 없음"],
         )
 
     warnings: list[str] = []
@@ -553,7 +553,7 @@ def _ocr_thickness_nm(path: Path) -> CoatingOcrResult:
     if max(values) / max(0.001, min(values)) > 12:
         warnings.append("후보값 편차 큼")
 
-    note = f"OCR 라벨 {len(values)}개 추출" if len(values) > 1 else ""
+    note = f"라벨 {len(values)}개 추출" if len(values) > 1 else ""
     ocr_text = f"candidates_nm={', '.join(f'{value:.3g}' for value in values)}\n{text}".strip()
     return CoatingOcrResult(
         values_nm=values,

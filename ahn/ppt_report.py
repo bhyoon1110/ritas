@@ -418,20 +418,43 @@ def _add_image_grid_slides(
             )
 
 
-def _add_table(slide, rows: list[list[str]], left, top, width, height, *, font_size: int = 9):
+def _add_table(
+    slide,
+    rows: list[list[str]],
+    left,
+    top,
+    width,
+    height,
+    *,
+    font_size: int = 9,
+    column_widths: list[int] | None = None,
+    alignments: list[Any] | None = None,
+):
     if not rows:
         return None
     cols = max(len(row) for row in rows)
     table_shape = slide.shapes.add_table(len(rows), cols, left, top, width, height)
     table = table_shape.table
+    if column_widths:
+        for col_index, col_width in enumerate(column_widths[:cols]):
+            table.columns[col_index].width = int(col_width)
     for row_index, row in enumerate(rows):
         for col_index in range(cols):
             cell = table.cell(row_index, col_index)
             value = row[col_index] if col_index < len(row) else ""
             cell.text = str(value)
             cell.vertical_anchor = MSO_ANCHOR.MIDDLE
+            cell.margin_left = Inches(0.03)
+            cell.margin_right = Inches(0.03)
+            cell.margin_top = Inches(0.02)
+            cell.margin_bottom = Inches(0.02)
+            cell.text_frame.word_wrap = True
             para = cell.text_frame.paragraphs[0]
-            para.alignment = PP_ALIGN.CENTER
+            para.alignment = (
+                alignments[col_index]
+                if alignments and col_index < len(alignments)
+                else PP_ALIGN.CENTER
+            )
             run = para.runs[0] if para.runs else para.add_run()
             _set_run(run, size=font_size, bold=row_index == 0, color=TEXT)
             if row_index == 0:
@@ -601,15 +624,25 @@ def _format_nm(value: Any) -> str:
         return "검토 필요"
 
 
+def _coating_note(value: Any) -> str:
+    note = str(value or "")
+    return (
+        note.replace("OCR 라벨", "라벨")
+        .replace("OCR 후보값", "후보값")
+        .replace("OCR 실패", "자동 판독 실패")
+        .replace("OCR 엔진", "자동 판독 엔진")
+    )
+
+
 def _coating_rows(measurements: list[dict[str, Any]]) -> list[list[str]]:
-    rows = [["측정개소", "두께(nm)", "비고"]]
+    rows = [["개소", "두께(nm)", "비고"]]
     values: list[float] = []
     for item in measurements:
         item_values = item.get("thickness_values_nm") or []
         if not item_values and item.get("thickness_nm") is not None:
             item_values = [item.get("thickness_nm")]
-        note = str(item.get("note") or "")
-        warnings = item.get("ocr_warnings") or []
+        note = _coating_note(item.get("note"))
+        warnings = [_coating_note(value) for value in (item.get("ocr_warnings") or [])]
         if warnings:
             note = f"{note} / {', '.join(str(value) for value in warnings)}".strip(" /")
         if not item_values:
@@ -627,6 +660,20 @@ def _coating_rows(measurements: list[dict[str, Any]]) -> list[list[str]]:
     average = sum(values) / len(values) if values else None
     rows.append(["전체 평균", _format_nm(average), f"{len(values)}개 라벨"])
     return rows
+
+
+def _coating_column_widths(width: int) -> list[int]:
+    first = int(width * 0.25)
+    second = int(width * 0.30)
+    return [first, second, int(width - first - second)]
+
+
+def _coating_table_font_size(row_count: int) -> int:
+    if row_count > 18:
+        return 7
+    if row_count > 12:
+        return 8
+    return 9
 
 
 def _build_coating(prs, template: AhnTemplate | None, data: dict[str, Any], input_root: Path, tmp_dir: Path) -> None:
@@ -663,14 +710,16 @@ def _build_coating(prs, template: AhnTemplate | None, data: dict[str, Any], inpu
                     input_root,
                     tmp_dir,
                 )
-                table_rows = _coating_rows(measurements)
+                table_rows = _coating_rows(chunk)
                 table_slots = template.table_slots("coating")
                 table_slot = table_slots[1] if len(table_slots) > 1 else (Inches(8.01), Inches(1.21), Inches(2.36), Inches(5.77))
                 _add_table(
                     slide,
                     table_rows,
                     *table_slot,
-                    font_size=5 if len(table_rows) > 22 else 6 if len(table_rows) > 16 else 7,
+                    font_size=_coating_table_font_size(len(table_rows)),
+                    column_widths=_coating_column_widths(table_slot[2]),
+                    alignments=[PP_ALIGN.CENTER, PP_ALIGN.CENTER, PP_ALIGN.LEFT],
                 )
             else:
                 _add_image_grid(
@@ -694,7 +743,9 @@ def _build_coating(prs, template: AhnTemplate | None, data: dict[str, Any], inpu
                     Inches(1.35),
                     Inches(3.55),
                     table_height,
-                    font_size=7 if len(table_rows) > 18 else 8 if len(table_rows) > 14 else 9,
+                    font_size=_coating_table_font_size(len(table_rows)),
+                    column_widths=_coating_column_widths(Inches(3.55)),
+                    alignments=[PP_ALIGN.CENTER, PP_ALIGN.CENTER, PP_ALIGN.LEFT],
                 )
 
 
