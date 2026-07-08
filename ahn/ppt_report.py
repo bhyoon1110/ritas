@@ -680,15 +680,15 @@ def _build_stem(prs, template: AhnTemplate | None, data: dict[str, Any], input_r
 
 
 def _eds_anchor_slot() -> tuple[int, int, int, int]:
-    return Inches(0.22), Inches(1.12), Inches(4.9), Inches(6.05)
+    return Inches(0.2), Inches(1.12), Inches(5.0), Inches(6.05)
 
 
 def _eds_right_slot() -> tuple[int, int, int, int]:
-    return Inches(5.35), Inches(1.12), Inches(5.25), Inches(6.05)
+    return Inches(5.28), Inches(1.12), Inches(5.35), Inches(6.05)
 
 
 def _eds_full_grid_slot() -> tuple[int, int, int, int]:
-    return Inches(0.35), Inches(1.12), Inches(10.15), Inches(6.05)
+    return Inches(0.25), Inches(1.12), Inches(10.35), Inches(6.05)
 
 
 def _eds_table_slots(count: int, area: tuple[int, int, int, int]) -> list[tuple[int, int, int, int]]:

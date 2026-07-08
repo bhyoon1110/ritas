@@ -310,7 +310,7 @@ def test_line_eds_continuation_pages_keep_first_image_on_left(tmp_path, monkeypa
     first_slide_pictures = _pictures(prs.slides[0])
     anchor = first_slide_pictures[0]
     assert anchor.left <= Inches(0.4)
-    assert anchor.width >= Inches(4.7)
+    assert anchor.width >= Inches(4.8)
     right_pictures = [shape for shape in first_slide_pictures if shape.left >= Inches(5.2)]
     assert len(right_pictures) == 2
     assert all(shape.width >= Inches(3.0) for shape in right_pictures)
@@ -351,7 +351,14 @@ def test_point_eds_detail_pages_keep_first_image_on_left(tmp_path, monkeypatch) 
     prs = Presentation(output)
     anchor = _pictures(prs.slides[0])[0]
     assert anchor.left <= Inches(0.4)
-    assert anchor.width >= Inches(4.7)
+    assert anchor.width >= Inches(4.8)
+    table_lefts = [
+        shape.left
+        for shape in prs.slides[0].shapes
+        if getattr(shape, "has_table", False)
+    ]
+    assert table_lefts
+    assert min(table_lefts) - (anchor.left + anchor.width) <= Inches(0.12)
     for shape in prs.slides[0].shapes:
         if not getattr(shape, "has_table", False):
             continue
