@@ -502,6 +502,7 @@ def _add_table(
     font_size: int = 9,
     column_widths: list[int] | None = None,
     alignments: list[Any] | None = None,
+    draw_borders: bool = False,
 ):
     if not rows:
         return None
@@ -541,7 +542,36 @@ def _add_table(
                     para.add_run()
                 for run in para.runs:
                     _set_run(run, size=font_size, bold=row_index == 0, color=text_color)
+            if draw_borders:
+                _set_cell_borders(cell)
     return table_shape
+
+
+def _set_cell_borders(cell, *, color: str = "1F3757", width: int = 12700) -> None:
+    from pptx.oxml.ns import qn
+    from pptx.oxml.xmlchemy import OxmlElement
+
+    tc_pr = cell._tc.get_or_add_tcPr()
+    for edge in ("lnL", "lnR", "lnT", "lnB"):
+        existing = tc_pr.find(qn(f"a:{edge}"))
+        if existing is not None:
+            tc_pr.remove(existing)
+        line = OxmlElement(f"a:{edge}")
+        line.set("w", str(width))
+        line.set("cap", "flat")
+        line.set("cmpd", "sng")
+        line.set("algn", "ctr")
+
+        solid_fill = OxmlElement("a:solidFill")
+        rgb = OxmlElement("a:srgbClr")
+        rgb.set("val", color)
+        solid_fill.append(rgb)
+        line.append(solid_fill)
+
+        dash = OxmlElement("a:prstDash")
+        dash.set("val", "solid")
+        line.append(dash)
+        tc_pr.append(line)
 
 
 def _xlsx_shared_strings(zip_file: ZipFile) -> list[str]:
@@ -1139,6 +1169,7 @@ def _add_coating_table_slide(
         font_size=_coating_table_font_size(len(table_rows)),
         column_widths=_coating_column_widths(width),
         alignments=[PP_ALIGN.CENTER, PP_ALIGN.CENTER],
+        draw_borders=True,
     )
 
 
@@ -1264,6 +1295,7 @@ def _add_coating_images_with_table_slide(
         font_size=_coating_table_font_size(len(table_rows)),
         column_widths=_coating_column_widths(Inches(2.85)),
         alignments=[PP_ALIGN.CENTER, PP_ALIGN.CENTER],
+        draw_borders=True,
     )
 
 
@@ -1344,6 +1376,7 @@ def _build_coating(prs, template: AhnTemplate | None, data: dict[str, Any], inpu
                     font_size=_coating_table_font_size(len(table_rows)),
                     column_widths=_coating_column_widths(table_slot[2]),
                     alignments=[PP_ALIGN.CENTER, PP_ALIGN.CENTER],
+                    draw_borders=True,
                 )
             else:
                 _add_image_grid(
@@ -1371,6 +1404,7 @@ def _build_coating(prs, template: AhnTemplate | None, data: dict[str, Any], inpu
                     font_size=_coating_table_font_size(len(table_rows)),
                     column_widths=_coating_column_widths(Inches(3.55)),
                     alignments=[PP_ALIGN.CENTER, PP_ALIGN.CENTER],
+                    draw_borders=True,
                 )
 
 
