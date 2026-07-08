@@ -22,6 +22,7 @@ add_project_package_paths()
 
 from rist_common import get_logger
 
+from .ahn_web import router as ahn_router
 from .config import Settings
 from .database import Database
 from .errors import (
@@ -118,6 +119,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(ftir_router)
     app.include_router(raman_router)
     app.include_router(xrd_router)
+    app.include_router(ahn_router)
 
     @app.get("/health", tags=["system"])
     def health() -> dict[str, str | int]:

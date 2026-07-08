@@ -7,6 +7,7 @@ from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse
 
+from .ahn_web import router as ahn_router
 from .errors import ApiException, api_exception_handler, validation_exception_handler
 from .ftir_web import (
     DEFAULT_ASSIGNMENT_LIBRARY_DIR,
@@ -46,7 +47,7 @@ def _preview_index() -> str:
     }
     h1 { margin: 0 0 8px; font-size: 30px; }
     p { margin: 0 0 22px; color: #64748b; }
-    nav { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+    nav { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
     a {
       display: block;
       border: 1px solid #9fb6d6;
@@ -66,11 +67,12 @@ def _preview_index() -> str:
 <body>
   <main>
     <h1>RIST Preview</h1>
-    <p>FT-IR, Raman, XRD 화면을 같은 포트에서 확인합니다.</p>
+    <p>FT-IR, Raman, XRD, AHN 화면을 같은 포트에서 확인합니다.</p>
     <nav>
       <a href="/ftir">FT-IR</a>
       <a href="/raman">Raman</a>
       <a href="/xrd">XRD</a>
+      <a href="/ahn">AHN</a>
     </nav>
   </main>
 </body>
@@ -78,7 +80,7 @@ def _preview_index() -> str:
 
 
 def create_preview_app() -> FastAPI:
-    """Create a DB-free combined preview app for FT-IR/Raman/XRD screens."""
+    """Create a DB-free combined preview app for project web screens."""
     app = FastAPI(title="RIST Combined Preview")
     app.state.ftir_assignment_library_dir = Path(
         os.getenv(
@@ -94,6 +96,7 @@ def create_preview_app() -> FastAPI:
     app.include_router(ftir_router)
     app.include_router(raman_router)
     app.include_router(xrd_router)
+    app.include_router(ahn_router)
 
     @app.get("/", response_class=HTMLResponse, include_in_schema=False)
     def index() -> HTMLResponse:
