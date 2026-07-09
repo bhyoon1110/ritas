@@ -246,6 +246,8 @@ def test_build_report_html_contains_xrd_template_sections(tmp_path) -> None:
     assert "PRINT_LANDSCAPE_PLOT_WIDTH = 960" in html
     assert "applyReportPlotLayout" in html
     assert "applyGraphPageMode" in html
+    assert "restoreScreenPlotLayout" in html
+    assert "window.Plotly.Plots.resize(gd)" in html
     assert "computePrintYRange" in html
     assert 'layout["yaxis.range"] = yRange' in html
     assert 'layout["width"] = Math.min(Math.floor(plotWidth), plotWidthLimit)' in html
@@ -278,8 +280,9 @@ def test_build_report_html_contains_xrd_template_sections(tmp_path) -> None:
     assert "margin: 8px 12px 0 6px" in html
     assert "graphFrame.getBoundingClientRect().width" in html
     assert "landscape ? 64 : 56" in html
+    assert "#xrd-plot { height: 560px !important; min-height: 500px; }" in html
     assert "height: 390px !important" in html
-    assert 'style="height:390px; width:100%;"' in html
+    assert 'style="height:560px; width:100%;"' in html
     assert "#xrd-peak-info" in html
     assert "page-break-before: always" in html
     assert "column-count: 2" in html

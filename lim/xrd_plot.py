@@ -2680,8 +2680,8 @@ def xrd_report_css() -> str:
   .xrd-section-head h2 { flex: 0 0 min(260px, 36%); line-height: 1.25; word-break: keep-all; overflow-wrap: normal; }
   .xrd-section-head p { flex: 1 1 auto; min-width: 0; margin: 2px 0 0; color: #6b7280; font-size: 12px; line-height: 1.45; text-align: right; word-break: keep-all; overflow-wrap: anywhere; }
   .xrd-graph-frame, .xrd-comment-box, .xrd-table-scroll, .xrd-phase-group { border: 2px solid #111827; border-radius: 18px; background: #fff; }
-  .xrd-graph-frame { padding: 10px 12px 4px; }
-  #xrd-plot { height: 510px !important; min-height: 420px; }
+  .xrd-graph-frame { padding: 10px 12px 12px; }
+  #xrd-plot { height: 560px !important; min-height: 500px; }
   .xrd-comment-box { padding: 16px 18px; border-radius: 10px; }
   .xrd-comment-box[contenteditable="true"] { outline: none; }
   .xrd-comment-box[contenteditable="true"]:focus { border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37, 99, 235, .16); }
@@ -2752,7 +2752,7 @@ def xrd_report_css() -> str:
     .xrd-section-head { display: block; }
     .xrd-section-head h2 { flex-basis: auto; }
     .xrd-section-head p { text-align: left; margin-top: 4px; }
-    #xrd-plot { height: 460px !important; }
+    #xrd-plot { height: 500px !important; min-height: 460px; }
     .xrd-phase-grid { grid-template-columns: 1fr; }
     .xrd-image-grid { grid-template-columns: 1fr; }
   }
@@ -2990,7 +2990,7 @@ def build_report_html(
     )
     plot_body = re.sub(
         r'style="height:[^"]*?;\s*width:100%;"',
-        'style="height:390px; width:100%;"',
+        'style="height:560px; width:100%;"',
         _html_body_inner(plot_html),
         count=1,
     )
@@ -3247,6 +3247,22 @@ def build_report_html(
       if (!window.Plotly || !gd || !originalLegendLayout) return;
       window.Plotly.relayout(gd, originalLegendLayout);
     }}
+    function restoreScreenPlotLayout() {{
+      if (!window.Plotly || !gd) return;
+      gd.style.height = "560px";
+      gd.style.minHeight = "500px";
+      gd.style.width = "100%";
+      gd.style.maxWidth = "";
+      window.Plotly.relayout(gd, {{
+        "autosize": true,
+        "height": 560,
+        "width": null,
+        "margin.t": 28,
+        "margin.b": 72
+      }}).then(function() {{
+        if (window.Plotly && window.Plotly.Plots) window.Plotly.Plots.resize(gd);
+      }});
+    }}
     if (gd && gd.on) {{
       gd.on("plotly_afterplot", function() {{
         normalizeLegendHandleLabel();
@@ -3267,16 +3283,18 @@ def build_report_html(
     if (landscapeOption) {{
       landscapeOption.addEventListener("change", function() {{
         applyGraphPageMode();
-        applyReportPlotLayout();
       }});
     }}
     window.setTimeout(function() {{
       normalizeLegendHandleLabel();
       refreshPrintLegend();
-      applyReportPlotLayout();
+      if (window.Plotly && window.Plotly.Plots && gd) window.Plotly.Plots.resize(gd);
     }}, 600);
     window.addEventListener("beforeprint", preparePrintLegend);
-    window.addEventListener("afterprint", restorePrintLegend);
+    window.addEventListener("afterprint", function() {{
+      restorePrintLegend();
+      restoreScreenPlotLayout();
+    }});
     if (!button) return;
     button.addEventListener("click", function() {{
       var relayout = preparePrintLegend();
