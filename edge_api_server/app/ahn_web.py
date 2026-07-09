@@ -649,6 +649,13 @@ def build_ahn_page() -> str:
       background: #fef2f2;
       color: #991b1b;
     }
+    .ahn-progress-stage { display: none; }
+    .ahn-progress-stage.is-visible { display: block; }
+    .ahn-progress-stage + .ahn-progress-stage {
+      margin-top: 11px;
+      padding-top: 10px;
+      border-top: 1px solid rgba(30, 64, 175, .16);
+    }
     .ahn-progress-row {
       display: flex;
       align-items: center;
@@ -670,6 +677,7 @@ def build_ahn_page() -> str:
       background: var(--blue);
       transition: width 240ms ease;
     }
+    .ahn-upload-progress .ahn-progress-bar { background: #16a34a; }
     .ahn-progress.is-error .ahn-progress-bar { background: #dc2626; }
     .ahn-result {
       display: grid;
@@ -764,12 +772,23 @@ def build_ahn_page() -> str:
       </section>
       <div class="ahn-status-stack" id="ahn-status" aria-live="polite"></div>
       <div class="ahn-progress" id="ahn-progress" aria-live="polite">
-        <div class="ahn-progress-row">
-          <span id="ahn-progress-label">보고서 생성 대기</span>
-          <span id="ahn-progress-value">0%</span>
+        <div class="ahn-progress-stage ahn-upload-progress" id="ahn-upload-progress">
+          <div class="ahn-progress-row">
+            <span id="ahn-upload-progress-label">raw 파일 업로드 대기</span>
+            <span id="ahn-upload-progress-value">0%</span>
+          </div>
+          <div class="ahn-progress-track">
+            <div class="ahn-progress-bar" id="ahn-upload-progress-bar"></div>
+          </div>
         </div>
-        <div class="ahn-progress-track">
-          <div class="ahn-progress-bar" id="ahn-progress-bar"></div>
+        <div class="ahn-progress-stage" id="ahn-report-progress">
+          <div class="ahn-progress-row">
+            <span id="ahn-progress-label">보고서 생성 대기</span>
+            <span id="ahn-progress-value">0%</span>
+          </div>
+          <div class="ahn-progress-track">
+            <div class="ahn-progress-bar" id="ahn-progress-bar"></div>
+          </div>
         </div>
       </div>
       <section class="ahn-result" id="ahn-result" hidden>
@@ -800,6 +819,11 @@ def build_ahn_page() -> str:
     var fileList = document.getElementById("ahn-file-list");
     var bundleMeta = document.getElementById("ahn-bundle-meta");
     var progress = document.getElementById("ahn-progress");
+    var uploadProgress = document.getElementById("ahn-upload-progress");
+    var uploadProgressLabel = document.getElementById("ahn-upload-progress-label");
+    var uploadProgressValue = document.getElementById("ahn-upload-progress-value");
+    var uploadProgressBar = document.getElementById("ahn-upload-progress-bar");
+    var reportProgress = document.getElementById("ahn-report-progress");
     var progressLabel = document.getElementById("ahn-progress-label");
     var progressValue = document.getElementById("ahn-progress-value");
     var progressBar = document.getElementById("ahn-progress-bar");
@@ -811,6 +835,10 @@ def build_ahn_page() -> str:
     var downloadJson = document.getElementById("ahn-download-json");
     var bundleItems = [];
     var progressTimer = null;
+    var uploadProgressVisible = false;
+    var reportProgressVisible = false;
+    var uploadProgressError = false;
+    var reportProgressError = false;
 
     function setStatus(message, error) {
       if (!message) return;
@@ -849,13 +877,29 @@ def build_ahn_page() -> str:
       if (percent < 72) return "코팅층 OCR과 분석 JSON을 만드는 중입니다.";
       return "PowerPoint 보고서를 생성하는 중입니다. 완료되면 다운로드 버튼이 활성화됩니다.";
     }
+    function updateProgressVisibility() {
+      progress.classList.toggle("is-visible", uploadProgressVisible || reportProgressVisible);
+      progress.classList.toggle("is-error", uploadProgressError || reportProgressError);
+      uploadProgress.classList.toggle("is-visible", uploadProgressVisible);
+      reportProgress.classList.toggle("is-visible", reportProgressVisible);
+    }
+    function setUploadProgress(percent, message, visible, error) {
+      var pct = Math.max(0, Math.min(100, Math.round(Number(percent) || 0)));
+      uploadProgressVisible = Boolean(visible);
+      uploadProgressError = Boolean(error);
+      uploadProgressLabel.textContent = message || "raw 파일 업로드 중입니다.";
+      uploadProgressValue.textContent = pct + "%";
+      uploadProgressBar.style.width = pct + "%";
+      updateProgressVisibility();
+    }
     function setProgress(percent, message, visible, error) {
       var pct = Math.max(0, Math.min(100, Math.round(Number(percent) || 0)));
-      progress.classList.toggle("is-visible", Boolean(visible));
-      progress.classList.toggle("is-error", Boolean(error));
+      reportProgressVisible = Boolean(visible);
+      reportProgressError = Boolean(error);
       progressLabel.textContent = message || "보고서 생성 중입니다.";
       progressValue.textContent = pct + "%";
       progressBar.style.width = pct + "%";
+      updateProgressVisibility();
     }
     function stopProgressTimer() {
       if (progressTimer) {
@@ -865,6 +909,7 @@ def build_ahn_page() -> str:
     }
     function startProgress(message) {
       stopProgressTimer();
+      setUploadProgress(0, "raw 파일 업로드 대기", false, false);
       var pct = 6;
       setProgress(pct, message || progressMessage(pct), true, false);
       progressTimer = setInterval(function() {
@@ -877,6 +922,7 @@ def build_ahn_page() -> str:
       stopProgressTimer();
       setProgress(100, message || "보고서가 완성되었습니다.", true, false);
       setTimeout(function() {
+        setUploadProgress(0, "raw 파일 업로드 대기", false, false);
         setProgress(0, "보고서 생성 대기", false, false);
       }, 900);
     }
@@ -884,6 +930,7 @@ def build_ahn_page() -> str:
       stopProgressTimer();
       setProgress(100, message || "보고서 생성에 실패했습니다.", true, true);
       setTimeout(function() {
+        setUploadProgress(0, "raw 파일 업로드 대기", false, false);
         setProgress(0, "보고서 생성 대기", false, false);
       }, 1800);
     }
@@ -1001,6 +1048,16 @@ def build_ahn_page() -> str:
       });
       return data;
     }
+    function formatBytes(bytes) {
+      var value = Number(bytes) || 0;
+      var units = ["B", "KB", "MB", "GB"];
+      var index = 0;
+      while (value >= 1024 && index < units.length - 1) {
+        value /= 1024;
+        index += 1;
+      }
+      return (index === 0 ? String(Math.round(value)) : value.toFixed(value >= 10 ? 1 : 2)) + units[index];
+    }
     function setDownload(link, url) {
       link.href = url || "#";
       link.setAttribute("aria-disabled", url ? "false" : "true");
@@ -1047,7 +1104,59 @@ def build_ahn_page() -> str:
       }
       return "서버 응답을 받지 못했습니다. 네트워크 또는 Edge API 서비스 상태를 확인하세요.";
     }
+    function requestUploadReport(url, formData) {
+      return new Promise(function(resolve, reject) {
+        var xhr = new XMLHttpRequest();
+        xhr.open("POST", url, true);
+        xhr.upload.onprogress = function(event) {
+          if (event.lengthComputable && event.total > 0) {
+            var pct = Math.max(1, Math.min(100, (event.loaded / event.total) * 100));
+            setUploadProgress(
+              pct,
+              "raw 파일 업로드 중: " + formatBytes(event.loaded) + " / " + formatBytes(event.total),
+              true,
+              false
+            );
+          } else {
+            setUploadProgress(5, "raw 파일 업로드 중입니다.", true, false);
+          }
+        };
+        xhr.onload = function() {
+          var text = xhr.responseText || "";
+          if (xhr.status >= 200 && xhr.status < 300) {
+            setUploadProgress(100, "raw 파일 업로드 완료. 보고서 작업을 접수했습니다.", true, false);
+            try {
+              resolve(JSON.parse(text));
+            } catch (_error) {
+              reject(new Error("서버 응답을 해석하지 못했습니다."));
+            }
+            return;
+          }
+          setUploadProgress(100, "raw 파일 업로드 요청이 실패했습니다.", true, true);
+          reject(new Error(parseErrorMessage(text, "보고서 생성 요청에 실패했습니다.")));
+        };
+        xhr.onerror = function(error) {
+          setUploadProgress(100, "raw 파일 업로드 연결이 끊겼습니다.", true, true);
+          var wrapped = new Error(networkErrorMessage(error, url));
+          wrapped.cause = error;
+          wrapped.isNetworkError = true;
+          reject(wrapped);
+        };
+        xhr.onabort = function(error) {
+          setUploadProgress(100, "raw 파일 업로드가 중단되었습니다.", true, true);
+          var wrapped = new Error("업로드가 중단되었습니다. 네트워크 상태를 확인한 뒤 다시 시도하세요.");
+          wrapped.cause = error;
+          wrapped.isNetworkError = true;
+          reject(wrapped);
+        };
+        setUploadProgress(0, "raw 파일 업로드를 시작하는 중입니다.", true, false);
+        xhr.send(formData);
+      });
+    }
     async function requestReport(url, formData) {
+      if (formData && typeof XMLHttpRequest !== "undefined") {
+        return requestUploadReport(url, formData);
+      }
       var options = formData ? {method: "POST", body: formData} : {method: "GET"};
       var response;
       try {
@@ -1144,6 +1253,7 @@ def build_ahn_page() -> str:
       setDownload(downloadPackage, null);
       setDownload(downloadJson, null);
       stopProgressTimer();
+      setUploadProgress(0, "raw 파일 업로드 대기", false, false);
       setProgress(0, "보고서 생성 대기", false, false);
       setStatus("TEM raw 폴더를 선택하면 보고서를 생성할 수 있습니다.", false);
     });
@@ -1169,7 +1279,9 @@ def build_ahn_page() -> str:
         return;
       }
       setBusy(true);
-      startProgress("TEM 보고서 생성 요청을 준비하는 중입니다.");
+      stopProgressTimer();
+      setUploadProgress(0, "raw 파일 업로드를 준비하는 중입니다.", true, false);
+      setProgress(0, "업로드 완료 후 보고서 작업을 시작합니다.", true, false);
       try {
         var payload = await waitForReportJob(await requestReport("/api/v1/tem/analyze", buildBundleFormData()));
         renderSummary(payload);

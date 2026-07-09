@@ -46,6 +46,7 @@ def test_ahn_workspace_contains_folder_upload_controls() -> None:
     assert 'id="ahn-run"' in page
     assert 'id="ahn-download-pptx"' in page
     assert 'id="ahn-download-package"' in page
+    assert 'id="ahn-upload-progress"' in page
     assert 'aria-disabled="true"' in page
     assert ".xlsm" in page
     assert ".xlsb" in page
@@ -55,6 +56,8 @@ def test_ahn_workspace_contains_folder_upload_controls() -> None:
     assert "waitForReportJob" in page
     assert "parseErrorMessage" in page
     assert "서버 연결에 실패했습니다" in page
+    assert "XMLHttpRequest" in page
+    assert "raw 파일 업로드 중" in page
     assert "transientFailures" in page
     assert "entryToBundleItems" in page
     assert "droppedBundleItems" in page
