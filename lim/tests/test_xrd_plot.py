@@ -219,6 +219,11 @@ def test_build_report_html_contains_xrd_template_sections(tmp_path) -> None:
 
     assert "Mix2 Report" in html
     assert 'id="xrd-report-pdf-export"' in html
+    assert "xrd-report-pdf-button-label" in html
+    assert "xrd-report-pdf-spinner" in html
+    assert "PDF 생성 중..." in html
+    assert "setPdfExportBusy" in html
+    assert "if (button.disabled) return;" in html
     assert 'id="xrd-report-landscape-graph" checked' in html
     assert "그래프 가로형" in html
     assert "window.print()" in html

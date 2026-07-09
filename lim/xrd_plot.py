@@ -2672,8 +2672,13 @@ def xrd_report_css() -> str:
   .xrd-report-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex: 0 0 auto; }
   .xrd-report-pdf-option { display: inline-flex; align-items: center; gap: 6px; min-height: 38px; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 7px; color: #172a46; background: #fff; font-size: 13px; font-weight: 700; box-sizing: border-box; white-space: nowrap; }
   .xrd-report-pdf-option input { width: 15px; height: 15px; margin: 0; accent-color: #2563eb; }
-  .xrd-report-pdf-button { flex: 0 0 auto; border: 1px solid #9fb6d6; background: #fff; color: #172a46; border-radius: 7px; min-height: 38px; padding: 8px 13px; font-size: 14px; font-weight: 700; cursor: pointer; }
+  .xrd-report-pdf-button { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; gap: 7px; border: 1px solid #9fb6d6; background: #fff; color: #172a46; border-radius: 7px; min-height: 38px; padding: 8px 13px; font-size: 14px; font-weight: 700; cursor: pointer; }
   .xrd-report-pdf-button:hover { background: #eff6ff; border-color: #2563eb; }
+  .xrd-report-pdf-button:disabled, .xrd-report-pdf-button.is-loading { cursor: progress; opacity: .76; }
+  .xrd-report-pdf-button:disabled:hover { background: #fff; border-color: #9fb6d6; }
+  .xrd-report-pdf-spinner { display: none; width: 13px; height: 13px; border: 2px solid #bfdbfe; border-top-color: #2563eb; border-radius: 999px; animation: xrdPdfSpin .75s linear infinite; }
+  .xrd-report-pdf-button.is-loading .xrd-report-pdf-spinner { display: inline-block; }
+  @keyframes xrdPdfSpin { to { transform: rotate(360deg); } }
   .xrd-report-section { margin: 20px 0 0; }
   .xrd-report-section h2 { font-size: 17px; margin: 0 0 8px; }
   .xrd-section-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; border-bottom: 1px solid #d1d5db; padding-bottom: 6px; margin-bottom: 10px; }
@@ -3025,7 +3030,7 @@ def build_report_html(
           <input type="checkbox" id="xrd-report-landscape-graph" checked>
           그래프 가로형
         </label>
-        <button type="button" class="xrd-report-pdf-button" id="xrd-report-pdf-export">PDF Export</button>
+        <button type="button" class="xrd-report-pdf-button" id="xrd-report-pdf-export"><span class="xrd-report-pdf-button-label">PDF Export</span><span class="xrd-report-pdf-spinner" aria-hidden="true"></span></button>
       </div>
     </header>
     <section class="xrd-report-section" id="xrd-graph-section">
@@ -3053,6 +3058,8 @@ def build_report_html(
     var button = document.getElementById("xrd-report-pdf-export");
     var landscapeOption = document.getElementById("xrd-report-landscape-graph");
     var gd = document.getElementById("xrd-plot");
+    var pdfButtonLabel = button ? button.querySelector(".xrd-report-pdf-button-label") : null;
+    var pdfButtonDefaultText = pdfButtonLabel ? pdfButtonLabel.textContent : "PDF Export";
     var originalLegendLayout = null;
     var printLegend = null;
     var printPageStyle = null;
@@ -3310,6 +3317,16 @@ def build_report_html(
       removePrintPageStyle();
       restorePrintLegend();
     }}
+    function setPdfExportBusy(busy) {{
+      if (!button) return;
+      button.disabled = !!busy;
+      button.classList.toggle("is-loading", !!busy);
+      button.setAttribute("aria-busy", busy ? "true" : "false");
+      button.title = busy ? "PDF 보고서를 생성하는 중입니다." : "";
+      if (pdfButtonLabel) {{
+        pdfButtonLabel.textContent = busy ? "PDF 생성 중..." : pdfButtonDefaultText;
+      }}
+    }}
     function extractPdfErrorMessage(text) {{
       var fallback = "서버 PDF 생성에 실패했습니다. Chrome/Chromium 렌더러 설정을 확인한 뒤 다시 시도하세요.";
       if (!text) return fallback;
@@ -3384,6 +3401,8 @@ def build_report_html(
     }});
     if (!button) return;
     button.addEventListener("click", function() {{
+      if (button.disabled) return;
+      setPdfExportBusy(true);
       var runExport = function() {{
         serverRenderPdf()
           .then(restoreAfterServerPdf)
@@ -3395,7 +3414,7 @@ def build_report_html(
                 window.setTimeout(function() {{ window.print(); }}, 80);
               }};
               if (relayout && relayout.then) {{
-                relayout.finally(printFallback);
+                return relayout.finally(printFallback);
               }} else {{
                 printFallback();
               }}
@@ -3403,6 +3422,9 @@ def build_report_html(
             }}
             restoreAfterServerPdf();
             window.alert(error && error.message ? error.message : "서버 PDF 생성에 실패했습니다.");
+          }})
+          .finally(function() {{
+            setPdfExportBusy(false);
           }});
       }};
       runExport();
