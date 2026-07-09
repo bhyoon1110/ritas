@@ -2765,18 +2765,28 @@ def xrd_report_css() -> str:
       margin-bottom: 0;
     }
     .xrd-graph-frame {
-      overflow: visible !important;
-      padding: 8px 10px 12px !important;
+      overflow: hidden !important;
+      padding: 8px 14px 12px !important;
       border-radius: 12px;
       box-sizing: border-box;
+      position: relative;
       break-inside: avoid;
       page-break-inside: avoid;
     }
     #xrd-plot {
       width: 100% !important;
+      max-width: 100% !important;
       height: 390px !important;
       min-height: 390px !important;
       margin: 0 0 6px;
+      overflow: hidden !important;
+      box-sizing: border-box;
+    }
+    #xrd-plot .plot-container,
+    #xrd-plot .svg-container,
+    #xrd-plot .main-svg {
+      max-width: 100% !important;
+      overflow: hidden !important;
     }
     #xrd-peak-info {
       break-before: page;
@@ -2797,7 +2807,8 @@ def xrd_report_css() -> str:
     }
     .xrd-print-legend {
       display: block;
-      margin: 6px 4px 0;
+      box-sizing: border-box;
+      margin: 8px 12px 0 6px;
       padding: 6px 8px;
       border: 1px solid #cbd5e1;
       border-radius: 7px;

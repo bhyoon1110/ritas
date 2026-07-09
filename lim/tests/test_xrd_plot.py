@@ -247,6 +247,10 @@ def test_build_report_html_contains_xrd_template_sections(tmp_path) -> None:
     assert "#xrd-plot .rist-xrd-legend-branch" in html
     assert "#xrd-plot .legend {" in html
     assert ".xrd-report-header { display: none !important; }" in html
+    assert ".xrd-graph-frame {\n      overflow: hidden !important;" in html
+    assert "padding: 8px 14px 12px !important" in html
+    assert "#xrd-plot .plot-container,\n    #xrd-plot .svg-container," in html
+    assert "margin: 8px 12px 0 6px" in html
     assert "height: 390px !important" in html
     assert 'style="height:390px; width:100%;"' in html
     assert "#xrd-peak-info" in html
