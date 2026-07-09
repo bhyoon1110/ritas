@@ -3021,7 +3021,7 @@ def build_report_html(
       <div class="xrd-report-actions">
         <label class="xrd-report-pdf-option">
           <input type="checkbox" id="xrd-report-landscape-graph" checked>
-          PDF 가로형
+          그래프 가로형
         </label>
         <button type="button" class="xrd-report-pdf-button" id="xrd-report-pdf-export">PDF Export</button>
       </div>
@@ -3182,7 +3182,7 @@ def build_report_html(
       if (!graphPageLandscapeEnabled()) return;
       printPageStyle = document.createElement("style");
       printPageStyle.setAttribute("data-xrd-print-page-style", "true");
-      printPageStyle.textContent = "@media print {{ @page {{ size: A4 landscape; margin: 9mm 10mm; }} }}";
+      printPageStyle.textContent = "@media print {{ @page {{ size: A4 portrait; margin: 9mm 10mm; }} @page xrd-graph-landscape {{ size: A4 landscape; margin: 9mm 10mm; }} body.xrd-report-graph-landscape #xrd-graph-section {{ page: xrd-graph-landscape; }} }}";
       document.head.appendChild(printPageStyle);
     }}
     function currentXAxisRange() {{
@@ -3280,6 +3280,15 @@ def build_report_html(
       }});
     }}
     function exportHtmlSnapshot() {{
+      var landscape = graphPageLandscapeEnabled();
+      if (landscapeOption) {{
+        if (landscape) {{
+          landscapeOption.setAttribute("checked", "checked");
+        }} else {{
+          landscapeOption.removeAttribute("checked");
+        }}
+      }}
+      document.body.classList.toggle("xrd-report-graph-landscape", landscape);
       return "<!doctype html>\\n" + document.documentElement.outerHTML;
     }}
     function downloadPdfBlob(blob) {{

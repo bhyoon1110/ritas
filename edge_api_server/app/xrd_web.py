@@ -152,11 +152,17 @@ def _find_xrd_pdf_chrome() -> str | None:
 
 
 def _inject_xrd_print_page_css(html_text: str, *, landscape: bool) -> str:
-    orientation = "landscape" if landscape else "portrait"
+    graph_page_css = (
+        "@page xrd-graph-landscape { size: A4 landscape; margin: 9mm 10mm; }"
+        "body.xrd-report-graph-landscape #xrd-graph-section { page: xrd-graph-landscape; }"
+        if landscape
+        else ""
+    )
     style = (
         '<style data-xrd-server-pdf="true">'
         "@media print {"
-        f"@page {{ size: A4 {orientation}; margin: 9mm 10mm; }}"
+        "@page { size: A4 portrait; margin: 9mm 10mm; }"
+        f"{graph_page_css}"
         "html, body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }"
         "}"
         "</style>"

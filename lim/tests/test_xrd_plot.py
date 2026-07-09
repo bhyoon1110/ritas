@@ -220,7 +220,7 @@ def test_build_report_html_contains_xrd_template_sections(tmp_path) -> None:
     assert "Mix2 Report" in html
     assert 'id="xrd-report-pdf-export"' in html
     assert 'id="xrd-report-landscape-graph" checked' in html
-    assert "PDF 가로형" in html
+    assert "그래프 가로형" in html
     assert "window.print()" in html
     assert ".xrd-table-scroll," in html
     assert ".xrd-section-head h2 { flex: 0 0 min(260px, 36%);" in html
@@ -247,13 +247,15 @@ def test_build_report_html_contains_xrd_template_sections(tmp_path) -> None:
     assert "applyReportPlotLayout" in html
     assert "applyGraphPageMode" in html
     assert "applyPrintPageStyle" in html
-    assert "@page { size: A4 landscape;" in html
+    assert "@page { size: A4 portrait;" in html
     assert "data-xrd-print-page-style" in html
     assert "restoreScreenPlotLayout" in html
     assert "window.Plotly.Plots.resize(gd)" in html
     assert "serverRenderPdf" in html
     assert "/api/v1/xrd/render-pdf" in html
     assert "exportHtmlSnapshot" in html
+    assert 'landscapeOption.removeAttribute("checked")' in html
+    assert 'landscapeOption.setAttribute("checked", "checked")' in html
     assert "downloadPdfBlob" in html
     assert "Chrome/Chromium 렌더러 설정" in html
     assert "computePrintYRange" in html
