@@ -12,7 +12,12 @@ Presentation = pptx.Presentation
 from pptx.enum.text import PP_ALIGN
 from pptx.util import Inches, Pt
 
-from ahn.ppt_report import _coating_rows, _coating_table_font_size, build_pptx
+from ahn.ppt_report import (
+    _coating_rows,
+    _coating_table_font_size,
+    _point_table_column_widths,
+    build_pptx,
+)
 
 
 def _write_image(path: Path) -> None:
@@ -573,6 +578,19 @@ def test_point_eds_spectrum_tables_create_row_detail_slides(tmp_path, monkeypatc
     ]
     assert any("0647 Point2_Spectrum 34" in title for title in titles)
     assert any("0647 Point2_Spectrum 35" in title for title in titles)
+
+
+def test_point_table_widths_keep_spectrum_label_wide_and_other_columns_even() -> None:
+    widths = _point_table_column_widths(
+        Inches(5.0),
+        [["Spectrum Label", "C", "O", "Si", "Cr", "Fe", "Cu", "Mo"]],
+    )
+
+    assert widths is not None
+    assert widths[0] >= Inches(1.2)
+    assert widths[0] > widths[1]
+    assert max(widths[1:]) - min(widths[1:]) <= 1
+    assert sum(widths) == Inches(5.0)
 
 
 def test_large_coating_sample_uses_image_pages_then_summary_table(tmp_path) -> None:

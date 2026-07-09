@@ -1109,15 +1109,16 @@ def _point_table_column_widths(width: int, rows: list[list[str]]) -> list[int] |
     cols = max((len(row) for row in rows), default=0)
     if cols <= 1:
         return None
-    first_col = Inches(1.08 if cols > 9 else 0.95)
-    first_col = min(int(first_col), int(width * 0.28))
-    min_first_col = int(Inches(0.82))
+    first_col = Inches(1.38 if cols > 9 else 1.28)
+    first_col = min(int(first_col), int(width * 0.36))
+    min_first_col = int(Inches(1.08))
     if width - first_col < (cols - 1) * Inches(0.22):
-        first_col = max(min_first_col, int(width * 0.22))
+        first_col = max(min_first_col, int(width * 0.28))
     remaining = max(1, width - first_col)
     other_col = int(remaining / (cols - 1))
-    widths = [int(first_col)] + [other_col] * (cols - 1)
-    widths[-1] += int(width - sum(widths))
+    extra = int(remaining - (other_col * (cols - 1)))
+    widths = [int(first_col)]
+    widths.extend(other_col + (1 if col_index < extra else 0) for col_index in range(cols - 1))
     return widths
 
 
