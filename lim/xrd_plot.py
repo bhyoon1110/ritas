@@ -2869,6 +2869,23 @@ def xrd_report_css() -> str:
       break-inside: avoid;
       page-break-inside: avoid;
     }
+    .xrd-phase-group {
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+    .xrd-phase-group summary,
+    .xrd-phase-subgroup-title,
+    .xrd-phase-db-card-head {
+      break-after: avoid;
+      page-break-after: avoid;
+    }
+    .xrd-phase-group summary + .xrd-empty,
+    .xrd-phase-group summary + .xrd-phase-subgroup-title,
+    .xrd-phase-subgroup-title + .xrd-similar-phase-cluster,
+    .xrd-phase-subgroup-title + .xrd-phase-card-grid {
+      break-before: avoid;
+      page-break-before: avoid;
+    }
     .xrd-phase-card {
       break-inside: avoid;
       page-break-inside: avoid;

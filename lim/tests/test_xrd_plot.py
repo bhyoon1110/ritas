@@ -253,6 +253,9 @@ def test_build_report_html_contains_xrd_template_sections(tmp_path) -> None:
     assert "page-break-before: always" in html
     assert "column-count: 2" in html
     assert ".xrd-file-table {\n      break-inside: auto;" in html
+    assert ".xrd-phase-group {\n      break-inside: avoid;" in html
+    assert ".xrd-phase-group summary,\n    .xrd-phase-subgroup-title," in html
+    assert ".xrd-phase-subgroup-title + .xrd-similar-phase-cluster" in html
     assert "page-break-inside: auto" in html
     assert "page-break-after: always" in html
     assert "피크 정보" in html
