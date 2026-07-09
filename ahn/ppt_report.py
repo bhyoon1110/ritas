@@ -7,11 +7,12 @@ import re
 import tempfile
 import xml.etree.ElementTree as ET
 from copy import deepcopy
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Iterable
 from zipfile import ZipFile
 
-from PIL import Image, ImageOps
+from PIL import Image, ImageDraw, ImageFont, ImageOps
 
 from .docx_extract import extract_docx
 
@@ -45,10 +46,19 @@ TABLE_SHAPE_TYPE = 19
 CAPTION_GAP = Inches(0.06)
 CAPTION_HEIGHT = Inches(0.28)
 CAPTION_FONT_SIZE = 9
-COATING_TABLE_BORDER_COLOR = "000000"
-COATING_TABLE_BORDER_WIDTH = 19050
-COATING_TABLE_GRID_COLOR = RGBColor(0, 0, 0)
-COATING_TABLE_GRID_THICKNESS = Inches(0.012)
+COATING_TABLE_DPI = 220
+COATING_TABLE_HEADER_RGB = (31, 55, 87)
+COATING_TABLE_TEXT_RGB = (30, 47, 70)
+COATING_TABLE_GRID_RGB = (0, 0, 0)
+COATING_TABLE_BG_RGB = (255, 255, 255)
+COATING_TABLE_FONT_CANDIDATES = (
+    "/usr/share/fonts/truetype/nanum/NanumGothic.ttf",
+    "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+    "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+    "/Library/Fonts/AppleGothic.ttf",
+    "/System/Library/Fonts/AppleSDGothicNeo.ttc",
+    "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
+)
 XLSX_NS = {
     "x": "http://schemas.openxmlformats.org/spreadsheetml/2006/main",
     "r": "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
@@ -1371,57 +1381,122 @@ def _coating_table_font_size(row_count: int) -> int:
     return 12
 
 
-def _add_table_grid_overlay(
+@lru_cache(maxsize=32)
+def _coating_table_font(size_px: int) -> ImageFont.ImageFont:
+    for candidate in COATING_TABLE_FONT_CANDIDATES:
+        path = Path(candidate)
+        if not path.is_file():
+            continue
+        try:
+            return ImageFont.truetype(str(path), size_px)
+        except OSError:
+            continue
+    return ImageFont.load_default()
+
+
+def _coating_table_text_size(
+    draw: ImageDraw.ImageDraw,
+    text: str,
+    font: ImageFont.ImageFont,
+) -> tuple[int, int]:
+    bbox = draw.textbbox((0, 0), text, font=font)
+    return bbox[2] - bbox[0], bbox[3] - bbox[1]
+
+
+def _draw_centered_table_text(
+    draw: ImageDraw.ImageDraw,
+    box: tuple[int, int, int, int],
+    text: str,
+    *,
+    base_font_size: int,
+    fill: tuple[int, int, int],
+) -> None:
+    x1, y1, x2, y2 = box
+    max_width = max(1, x2 - x1 - 12)
+    font_size = max(8, base_font_size)
+    font = _coating_table_font(font_size)
+    text_width, text_height = _coating_table_text_size(draw, text, font)
+    while text_width > max_width and font_size > 8:
+        font_size -= 1
+        font = _coating_table_font(font_size)
+        text_width, text_height = _coating_table_text_size(draw, text, font)
+    draw.text(
+        (x1 + (x2 - x1 - text_width) / 2, y1 + (y2 - y1 - text_height) / 2),
+        text,
+        font=font,
+        fill=fill,
+    )
+
+
+def _coating_table_image_path(
+    rows: list[list[str]],
+    width: int,
+    height: int,
+    tmp_dir: Path,
+) -> Path:
+    table_dir = tmp_dir / "coating-tables"
+    table_dir.mkdir(parents=True, exist_ok=True)
+    digest = hashlib.sha1(
+        (
+            "\n".join("\t".join(str(cell) for cell in row) for row in rows)
+            + f"|{width}|{height}"
+        ).encode("utf-8")
+    ).hexdigest()[:16]
+    output = table_dir / f"{digest}.png"
+    if output.exists():
+        return output
+
+    image_width = max(160, int(width / EMU_PER_INCH * COATING_TABLE_DPI))
+    image_height = max(160, int(height / EMU_PER_INCH * COATING_TABLE_DPI))
+    image = Image.new("RGB", (image_width, image_height), COATING_TABLE_BG_RGB)
+    draw = ImageDraw.Draw(image)
+    row_count = max(1, len(rows))
+    column_widths = _coating_column_widths(image_width)
+    max_x = image_width - 1
+    max_y = image_height - 1
+    x_positions = [0, column_widths[0], max_x]
+    y_positions = [
+        round(image_height * row_index / row_count)
+        for row_index in range(row_count + 1)
+    ]
+    y_positions[-1] = max_y
+
+    draw.rectangle((0, 0, image_width, y_positions[1]), fill=COATING_TABLE_HEADER_RGB)
+    base_font_size = max(10, round(_coating_table_font_size(len(rows)) * COATING_TABLE_DPI / 72))
+    for row_index, row in enumerate(rows):
+        for col_index in range(2):
+            x1, x2 = x_positions[col_index], x_positions[col_index + 1]
+            y1, y2 = y_positions[row_index], y_positions[row_index + 1]
+            value = str(row[col_index]) if col_index < len(row) else ""
+            _draw_centered_table_text(
+                draw,
+                (x1, y1, x2, y2),
+                value,
+                base_font_size=base_font_size,
+                fill=(255, 255, 255) if row_index == 0 else COATING_TABLE_TEXT_RGB,
+            )
+
+    line_width = max(2, round(COATING_TABLE_DPI / 90))
+    for x_position in x_positions[1:-1]:
+        draw.line((x_position, 0, x_position, max_y), fill=COATING_TABLE_GRID_RGB, width=line_width)
+    for y_position in y_positions[1:-1]:
+        draw.line((0, y_position, max_x, y_position), fill=COATING_TABLE_GRID_RGB, width=line_width)
+    draw.rectangle((0, 0, max_x, max_y), outline=COATING_TABLE_GRID_RGB, width=line_width)
+    image.save(output)
+    return output
+
+
+def _add_coating_table_picture(
     slide,
+    rows: list[list[str]],
     left: int,
     top: int,
     width: int,
     height: int,
-    row_count: int,
-    column_widths: list[int],
-) -> None:
-    """Draw visible grid rules over a table for clients that ignore cell borders."""
-    if row_count <= 0 or width <= 0 or height <= 0:
-        return
-    thickness = int(COATING_TABLE_GRID_THICKNESS)
-    color = COATING_TABLE_GRID_COLOR
-
-    x_positions = [int(left)]
-    running_x = int(left)
-    for col_width in column_widths:
-        running_x += int(col_width)
-        x_positions.append(running_x)
-    if x_positions[-1] != int(left + width):
-        x_positions[-1] = int(left + width)
-
-    y_positions = [
-        int(top + (height * row_index / row_count))
-        for row_index in range(row_count + 1)
-    ]
-
-    for x_position in x_positions:
-        rule = slide.shapes.add_shape(
-            1,
-            x_position - thickness // 2,
-            top,
-            thickness,
-            height,
-        )
-        rule.fill.solid()
-        rule.fill.fore_color.rgb = color
-        rule.line.color.rgb = color
-
-    for y_position in y_positions:
-        rule = slide.shapes.add_shape(
-            1,
-            left,
-            y_position - thickness // 2,
-            width,
-            thickness,
-        )
-        rule.fill.solid()
-        rule.fill.fore_color.rgb = color
-        rule.line.color.rgb = color
+    tmp_dir: Path,
+):
+    table_image = _coating_table_image_path(rows, width, height, tmp_dir)
+    return slide.shapes.add_picture(str(table_image), left, top, width=width, height=height)
 
 
 def _remove_tables(slide) -> None:
@@ -1435,6 +1510,7 @@ def _add_coating_table_slide(
     template: AhnTemplate | None,
     title: str,
     measurements: list[dict[str, Any]],
+    tmp_dir: Path,
 ) -> None:
     table_rows = _coating_rows(measurements)
     if template:
@@ -1447,28 +1523,14 @@ def _add_coating_table_slide(
         _add_header(slide, f"{title} 두께 요약")
         left, top, width = Inches(2.2), Inches(1.35), Inches(8.9)
         height = min(Inches(5.75), max(Inches(1.0), Inches(0.33 * len(table_rows))))
-    _add_table(
+    _add_coating_table_picture(
         slide,
         table_rows,
         left,
         top,
         width,
         height,
-        font_size=_coating_table_font_size(len(table_rows)),
-        column_widths=_coating_column_widths(width),
-        alignments=[PP_ALIGN.CENTER, PP_ALIGN.CENTER],
-        draw_borders=True,
-        border_color=COATING_TABLE_BORDER_COLOR,
-        border_width=COATING_TABLE_BORDER_WIDTH,
-    )
-    _add_table_grid_overlay(
-        slide,
-        left,
-        top,
-        width,
-        height,
-        len(table_rows),
-        _coating_column_widths(width),
+        tmp_dir,
     )
 
 
@@ -1586,29 +1648,14 @@ def _add_coating_images_with_table_slide(
     table_rows = _coating_rows(all_measurements)
     table_left, table_top = Inches(7.75), Inches(1.2)
     table_width, table_height = Inches(2.85), Inches(5.95)
-    column_widths = _coating_column_widths(table_width)
-    _add_table(
+    _add_coating_table_picture(
         slide,
         table_rows,
         table_left,
         table_top,
         table_width,
         table_height,
-        font_size=_coating_table_font_size(len(table_rows)),
-        column_widths=column_widths,
-        alignments=[PP_ALIGN.CENTER, PP_ALIGN.CENTER],
-        draw_borders=True,
-        border_color=COATING_TABLE_BORDER_COLOR,
-        border_width=COATING_TABLE_BORDER_WIDTH,
-    )
-    _add_table_grid_overlay(
-        slide,
-        table_left,
-        table_top,
-        table_width,
-        table_height,
-        len(table_rows),
-        column_widths,
+        tmp_dir,
     )
 
 
@@ -1682,26 +1729,11 @@ def _build_coating(prs, template: AhnTemplate | None, data: dict[str, Any], inpu
                 table_rows = _coating_rows(chunk)
                 table_slots = template.table_slots("coating")
                 table_slot = table_slots[1] if len(table_slots) > 1 else (Inches(8.01), Inches(1.21), Inches(2.36), Inches(5.77))
-                column_widths = _coating_column_widths(table_slot[2])
-                _add_table(
+                _add_coating_table_picture(
                     slide,
                     table_rows,
                     *table_slot,
-                    font_size=_coating_table_font_size(len(table_rows)),
-                    column_widths=column_widths,
-                    alignments=[PP_ALIGN.CENTER, PP_ALIGN.CENTER],
-                    draw_borders=True,
-                    border_color=COATING_TABLE_BORDER_COLOR,
-                    border_width=COATING_TABLE_BORDER_WIDTH,
-                )
-                _add_table_grid_overlay(
-                    slide,
-                    table_slot[0],
-                    table_slot[1],
-                    table_slot[2],
-                    table_slot[3],
-                    len(table_rows),
-                    column_widths,
+                    tmp_dir,
                 )
             else:
                 _add_image_grid(
@@ -1721,29 +1753,14 @@ def _build_coating(prs, template: AhnTemplate | None, data: dict[str, Any], inpu
                 table_height = min(Inches(5.75), Inches(0.32 * len(table_rows)))
                 table_left, table_top = Inches(9.0), Inches(1.35)
                 table_width = Inches(3.55)
-                column_widths = _coating_column_widths(table_width)
-                _add_table(
+                _add_coating_table_picture(
                     slide,
                     table_rows,
                     table_left,
                     table_top,
                     table_width,
                     table_height,
-                    font_size=_coating_table_font_size(len(table_rows)),
-                    column_widths=column_widths,
-                    alignments=[PP_ALIGN.CENTER, PP_ALIGN.CENTER],
-                    draw_borders=True,
-                    border_color=COATING_TABLE_BORDER_COLOR,
-                    border_width=COATING_TABLE_BORDER_WIDTH,
-                )
-                _add_table_grid_overlay(
-                    slide,
-                    table_left,
-                    table_top,
-                    table_width,
-                    table_height,
-                    len(table_rows),
-                    column_widths,
+                    tmp_dir,
                 )
 
 

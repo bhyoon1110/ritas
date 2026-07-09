@@ -78,19 +78,6 @@ def _pptx_picture_counts(path: Path) -> list[int]:
     return [sum(1 for shape in slide.shapes if shape.shape_type == 13) for slide in prs.slides]
 
 
-def _table_cell_border_edges(cell) -> set[str]:
-    return {child.tag.rsplit("}", 1)[-1] for child in cell._tc.get_or_add_tcPr()}
-
-
-def _table_cell_border_widths(cell) -> dict[str, int]:
-    widths: dict[str, int] = {}
-    for child in cell._tc.get_or_add_tcPr():
-        edge = child.tag.rsplit("}", 1)[-1]
-        if edge in {"lnL", "lnR", "lnT", "lnB"}:
-            widths[edge] = int(child.get("w", "0"))
-    return widths
-
-
 def _black_grid_rule_count(slide) -> int:
     count = 0
     for shape in slide.shapes:
@@ -613,28 +600,13 @@ def test_large_coating_sample_uses_image_pages_then_summary_table(tmp_path) -> N
     assert len(prs.slides) == 2
     table_counts = [sum(1 for shape in slide.shapes if getattr(shape, "has_table", False)) for slide in prs.slides]
     assert table_counts[0] == 0
-    assert table_counts[1] == 1
-    assert _pptx_picture_counts(output) == [12, 2]
-    table_shapes = [
-        shape
-        for shape in prs.slides[1].shapes
-        if getattr(shape, "has_table", False)
-    ]
-    assert table_shapes[0].width <= Inches(3.0)
-    assert table_shapes[0].left >= Inches(7.6)
-    first_data_cell = table_shapes[0].table.cell(1, 0)
-    assert first_data_cell.text_frame.paragraphs[0].runs[0].font.size == Pt(12)
-    for row in table_shapes[0].table.rows:
-        for cell in row.cells:
-            assert {"lnL", "lnR", "lnT", "lnB"}.issubset(_table_cell_border_edges(cell))
-            assert min(_table_cell_border_widths(cell).values()) >= 19050
-    assert _black_grid_rule_count(prs.slides[1]) >= (
-        len(table_shapes[0].table.rows) + len(table_shapes[0].table.columns) + 2
-    )
-    table_text = _pptx_table_text(output)
-    assert "측정개소" in table_text
-    assert "비고" not in table_text
-    assert "14.00" in table_text
+    assert table_counts[1] == 0
+    assert _pptx_picture_counts(output) == [12, 3]
+    pictures = _pictures(prs.slides[1])
+    table_picture = pictures[-1]
+    assert table_picture.width <= Inches(3.0)
+    assert table_picture.left >= Inches(7.6)
+    assert _black_grid_rule_count(prs.slides[1]) == 0
 
 
 def test_grid_slides_place_remainder_images_from_upper_left_and_sort_by_magnification(tmp_path) -> None:
