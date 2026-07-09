@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import os
 import re
 import shutil
@@ -15,7 +15,7 @@ from typing import Any
 from uuid import uuid4
 import zipfile
 
-from fastapi import APIRouter, FastAPI, File, UploadFile
+from fastapi import APIRouter, FastAPI, File, Form, UploadFile
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from PIL import Image, ImageDraw
@@ -40,6 +40,7 @@ MAX_AHN_UPLOAD_FILE_BYTES = 250 * 1024 * 1024
 MAX_AHN_UPLOAD_TOTAL_BYTES = 1200 * 1024 * 1024
 AHN_REPORT_JOB_TTL_SECONDS = 2 * 60 * 60
 AHN_UPLOAD_CHUNK_BYTES = 1024 * 1024
+AHN_UPLOAD_SESSION_TTL_SECONDS = 2 * 60 * 60
 
 
 def _positive_int_env(name: str, default: int) -> int:
@@ -69,8 +70,31 @@ class AhnReportJob:
     error: dict[str, Any] | None = None
 
 
+@dataclass
+class AhnUploadFileState:
+    relative_path: str
+    stored_path: str
+    temp_path: str
+    total_size: int
+    uploaded_bytes: int = 0
+    completed: bool = False
+
+
+@dataclass
+class AhnUploadSession:
+    upload_id: str
+    work_dir: Path
+    input_root: Path
+    created_at: float
+    updated_at: float
+    files: dict[str, AhnUploadFileState] = field(default_factory=dict)
+
+
 _ahn_report_jobs: dict[str, AhnReportJob] = {}
 _ahn_report_jobs_lock = Lock()
+_ahn_upload_sessions: dict[str, AhnUploadSession] = {}
+_ahn_completed_upload_jobs: dict[str, str] = {}
+_ahn_upload_sessions_lock = Lock()
 _ahn_report_executor = ThreadPoolExecutor(
     max_workers=_positive_int_env("RIST_TEM_REPORT_WORKERS", 1),
     thread_name_prefix="rist-ahn-report",
@@ -262,7 +286,116 @@ async def _save_ahn_uploads(files: list[UploadFile] | None, upload_root: Path) -
     return saved
 
 
+async def _write_upload_chunk(
+    session: AhnUploadSession,
+    *,
+    relative_path: str,
+    offset: int,
+    total_size: int,
+    chunk_index: int,
+    chunk_count: int,
+    upload: UploadFile,
+) -> AhnUploadFileState:
+    relative = _safe_relative_path(relative_path, f"ahn-upload-{chunk_index}")
+    suffix = relative.suffix.lower()
+    if not suffix and relative.name.startswith("."):
+        raise ApiException(400, "INVALID_TEM_FILE_TYPE", f"숨김 파일은 업로드하지 않습니다: {relative}")
+    if suffix not in AHN_SUPPORTED_EXTENSIONS:
+        allowed = ", ".join(sorted(AHN_SUPPORTED_EXTENSIONS))
+        raise ApiException(
+            400,
+            "INVALID_TEM_FILE_TYPE",
+            f"지원하지 않는 파일입니다: {relative.as_posix()}. 허용 형식: {allowed}",
+        )
+    if total_size <= 0:
+        raise ApiException(400, "TEM_EMPTY_FILE", f"빈 파일은 업로드하지 않습니다: {relative.name}")
+    if total_size > MAX_AHN_UPLOAD_FILE_BYTES:
+        raise ApiException(
+            413,
+            "TEM_FILE_TOO_LARGE",
+            f"{relative.name} 파일이 너무 큽니다. 파일당 최대 250MB입니다.",
+        )
+    if offset < 0 or offset > total_size:
+        raise ApiException(400, "TEM_INVALID_UPLOAD_OFFSET", "TEM 업로드 offset 값이 올바르지 않습니다.")
+    if chunk_index < 0 or chunk_count <= 0 or chunk_index >= chunk_count:
+        raise ApiException(400, "TEM_INVALID_UPLOAD_CHUNK", "TEM 업로드 chunk 값이 올바르지 않습니다.")
+
+    file_key = relative.as_posix()
+    with _ahn_upload_sessions_lock:
+        file_state = session.files.get(file_key)
+        if file_state is None:
+            expected_total = _upload_session_expected_total(session) + total_size
+            if expected_total > MAX_AHN_UPLOAD_TOTAL_BYTES:
+                raise ApiException(
+                    413,
+                    "TEM_UPLOAD_TOO_LARGE",
+                    "한 번에 업로드하는 TEM raw bundle의 총 크기는 1.2GB 이하여야 합니다.",
+                )
+            destination = _unique_path(session.input_root / relative)
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            temp_path = destination.with_name(destination.name + ".part")
+            file_state = AhnUploadFileState(
+                relative_path=file_key,
+                stored_path=destination.relative_to(session.input_root).as_posix(),
+                temp_path=temp_path.relative_to(session.input_root).as_posix(),
+                total_size=total_size,
+            )
+            session.files[file_key] = file_state
+        elif file_state.total_size != total_size:
+            raise ApiException(400, "TEM_UPLOAD_SIZE_CHANGED", "업로드 중 파일 크기가 변경되었습니다.")
+        session.updated_at = time.time()
+
+    destination = session.input_root / file_state.stored_path
+    temp_path = session.input_root / file_state.temp_path
+    if file_state.completed:
+        if destination.exists() and destination.stat().st_size == total_size:
+            await upload.close()
+            return file_state
+        file_state.completed = False
+
+    current_size = temp_path.stat().st_size if temp_path.exists() else 0
+    if current_size < offset:
+        raise ApiException(
+            409,
+            "TEM_UPLOAD_OFFSET_MISMATCH",
+            "이전 업로드 조각이 아직 서버에 없습니다. 잠시 후 다시 시도하세요.",
+            details={"expectedOffset": current_size, "receivedOffset": offset},
+        )
+
+    written = 0
+    try:
+        temp_path.parent.mkdir(parents=True, exist_ok=True)
+        with temp_path.open("r+b" if temp_path.exists() else "wb") as output:
+            output.seek(offset)
+            while True:
+                chunk = await upload.read(AHN_UPLOAD_CHUNK_BYTES)
+                if not chunk:
+                    break
+                written += len(chunk)
+                if offset + written > total_size:
+                    raise ApiException(
+                        400,
+                        "TEM_UPLOAD_CHUNK_TOO_LARGE",
+                        "업로드 조각 크기가 파일 크기를 초과했습니다.",
+                    )
+                output.write(chunk)
+            output.truncate(offset + written)
+    finally:
+        await upload.close()
+
+    file_state.uploaded_bytes = min(total_size, offset + written)
+    if file_state.uploaded_bytes == total_size:
+        if destination.exists():
+            destination.unlink()
+        temp_path.replace(destination)
+        file_state.completed = True
+    with _ahn_upload_sessions_lock:
+        session.updated_at = time.time()
+    return file_state
+
+
 def _cleanup_old_jobs() -> None:
+    _cleanup_old_upload_sessions()
     now = time.time()
     with _ahn_report_jobs_lock:
         expired = [
@@ -278,6 +411,12 @@ def _cleanup_old_jobs() -> None:
     for job in jobs:
         if job:
             shutil.rmtree(job.work_dir, ignore_errors=True)
+    if expired:
+        expired_set = set(expired)
+        with _ahn_upload_sessions_lock:
+            for upload_id, job_id in list(_ahn_completed_upload_jobs.items()):
+                if job_id in expired_set:
+                    _ahn_completed_upload_jobs.pop(upload_id, None)
 
 
 def _build_package(output_dir: Path, package_path: Path) -> Path:
@@ -287,6 +426,84 @@ def _build_package(output_dir: Path, package_path: Path) -> Path:
                 continue
             archive.write(path, path.relative_to(output_dir).as_posix())
     return package_path
+
+
+def _cleanup_old_upload_sessions() -> None:
+    now = time.time()
+    with _ahn_upload_sessions_lock:
+        expired = [
+            upload_id
+            for upload_id, session in _ahn_upload_sessions.items()
+            if now - session.updated_at > AHN_UPLOAD_SESSION_TTL_SECONDS
+        ]
+        sessions = [
+            _ahn_upload_sessions.pop(upload_id, None)
+            for upload_id in expired
+        ]
+    for session in sessions:
+        if session:
+            shutil.rmtree(session.work_dir, ignore_errors=True)
+
+
+def _create_upload_session() -> AhnUploadSession:
+    work_dir = Path(tempfile.mkdtemp(prefix="rist-ahn-upload-"))
+    input_root = work_dir / "input"
+    input_root.mkdir(parents=True, exist_ok=True)
+    upload_id = uuid4().hex
+    now = time.time()
+    session = AhnUploadSession(
+        upload_id=upload_id,
+        work_dir=work_dir,
+        input_root=input_root,
+        created_at=now,
+        updated_at=now,
+    )
+    with _ahn_upload_sessions_lock:
+        _ahn_upload_sessions[upload_id] = session
+    return session
+
+
+def _get_upload_session(upload_id: str) -> AhnUploadSession:
+    with _ahn_upload_sessions_lock:
+        session = _ahn_upload_sessions.get(upload_id)
+        if session is not None:
+            session.updated_at = time.time()
+    if session is None:
+        raise ApiException(
+            404,
+            "TEM_UPLOAD_SESSION_NOT_FOUND",
+            "TEM 업로드 세션을 찾을 수 없습니다. 파일을 다시 선택해 업로드하세요.",
+        )
+    return session
+
+
+def _upload_session_expected_total(session: AhnUploadSession) -> int:
+    return sum(int(file_state.total_size or 0) for file_state in session.files.values())
+
+
+def _upload_session_payload(session: AhnUploadSession) -> dict[str, Any]:
+    completed_files = [state for state in session.files.values() if state.completed]
+    total_size = _upload_session_expected_total(session)
+    uploaded_bytes = sum(
+        int(state.total_size if state.completed else state.uploaded_bytes)
+        for state in session.files.values()
+    )
+    return {
+        "uploadId": session.upload_id,
+        "fileCount": len(session.files),
+        "completedFileCount": len(completed_files),
+        "uploadedBytes": uploaded_bytes,
+        "totalBytes": total_size,
+    }
+
+
+def _job_for_completed_upload(upload_id: str) -> AhnReportJob | None:
+    with _ahn_upload_sessions_lock:
+        job_id = _ahn_completed_upload_jobs.get(upload_id)
+    if not job_id:
+        return None
+    with _ahn_report_jobs_lock:
+        return _ahn_report_jobs.get(job_id)
 
 
 def _set_job_state(
@@ -835,6 +1052,10 @@ def build_ahn_page() -> str:
     var downloadJson = document.getElementById("ahn-download-json");
     var bundleItems = [];
     var progressTimer = null;
+    var TEM_UPLOAD_CHUNK_BYTES = 4 * 1024 * 1024;
+    var TEM_UPLOAD_CHUNK_RETRIES = 4;
+    var TEM_MAX_FILE_BYTES = 250 * 1024 * 1024;
+    var TEM_MAX_TOTAL_BYTES = 1200 * 1024 * 1024;
     var uploadProgressVisible = false;
     var reportProgressVisible = false;
     var uploadProgressError = false;
@@ -952,7 +1173,7 @@ def build_ahn_page() -> str:
       var lowered = String(path || "").toLowerCase().split("/");
       if (lowered.indexOf("tem") >= 0) return "TEM";
       if (lowered.indexOf("stem") >= 0) return "STEM";
-      if (lowered.indexOf("report") >= 0) return "EDS";
+      if (lowered.indexOf("report") >= 0 || lowered.indexOf("reports") >= 0) return "EDS";
       if (lowered.indexOf("scale") >= 0) return "코팅층";
       return "기타";
     }
@@ -1041,13 +1262,6 @@ def build_ahn_page() -> str:
         return bundleItem(file, file.webkitRelativePath || file.name);
       });
     }
-    function buildBundleFormData() {
-      var data = new FormData();
-      bundleItems.forEach(function(item) {
-        data.append("files", item.file, item.path || item.file.name);
-      });
-      return data;
-    }
     function formatBytes(bytes) {
       var value = Number(bytes) || 0;
       var units = ["B", "KB", "MB", "GB"];
@@ -1102,62 +1316,211 @@ def build_ahn_page() -> str:
       if (target.indexOf("/analyze") >= 0) {
         return "서버 연결에 실패했습니다. 업로드 중 네트워크가 끊겼거나 Edge API 서비스가 재시작되었을 수 있습니다. 잠시 후 다시 시도하세요.";
       }
+      if (target.indexOf("/upload-sessions") >= 0) {
+        return "raw 파일 업로드 연결이 끊겼습니다. 같은 조각을 다시 전송합니다.";
+      }
       return "서버 응답을 받지 못했습니다. 네트워크 또는 Edge API 서비스 상태를 확인하세요.";
     }
-    function requestUploadReport(url, formData) {
+    async function requestJsonPost(url) {
+      var response;
+      try {
+        response = await fetch(url, {method: "POST"});
+      } catch (error) {
+        var wrapped = new Error(networkErrorMessage(error, url));
+        wrapped.cause = error;
+        wrapped.isNetworkError = true;
+        throw wrapped;
+      }
+      var text = await response.text();
+      if (!response.ok) {
+        var error = new Error(parseErrorMessage(text, "요청 처리에 실패했습니다."));
+        error.isTransientError = response.status === 408 || response.status === 429 || response.status >= 500;
+        throw error;
+      }
+      return JSON.parse(text);
+    }
+    async function requestJsonPostWithRetry(url, attempts, retryMessage) {
+      var lastError = null;
+      for (var attempt = 1; attempt <= attempts; attempt += 1) {
+        try {
+          return await requestJsonPost(url);
+        } catch (error) {
+          lastError = error;
+          if (!(error.isNetworkError || error.isTransientError) || attempt >= attempts) break;
+          setUploadProgress(
+            100,
+            retryMessage || "서버 응답이 끊겨 요청을 다시 확인하는 중입니다.",
+            true,
+            false
+          );
+          await sleep(700 * attempt);
+        }
+      }
+      throw lastError || new Error("요청 처리에 실패했습니다.");
+    }
+    function uploadableBundleItems() {
+      var supported = [];
+      var skipped = [];
+      bundleItems.forEach(function(item) {
+        if (classifyFile(item.file) === "skip") {
+          skipped.push(item.path || item.file.name);
+        } else {
+          supported.push(item);
+        }
+      });
+      return {supported: supported, skipped: skipped};
+    }
+    function requestUploadChunk(options) {
       return new Promise(function(resolve, reject) {
         var xhr = new XMLHttpRequest();
-        xhr.open("POST", url, true);
+        xhr.open(
+          "POST",
+          "/api/v1/tem/upload-sessions/" + encodeURIComponent(options.uploadId) + "/chunks",
+          true
+        );
+        xhr.timeout = 120000;
         xhr.upload.onprogress = function(event) {
-          if (event.lengthComputable && event.total > 0) {
-            var pct = Math.max(1, Math.min(100, (event.loaded / event.total) * 100));
-            setUploadProgress(
-              pct,
-              "raw 파일 업로드 중: " + formatBytes(event.loaded) + " / " + formatBytes(event.total),
-              true,
-              false
-            );
-          } else {
-            setUploadProgress(5, "raw 파일 업로드 중입니다.", true, false);
-          }
+          var loaded = event.lengthComputable ? event.loaded : 0;
+          var pct = options.totalUploadBytes > 0
+            ? ((options.uploadedBefore + loaded) / options.totalUploadBytes) * 100
+            : 0;
+          setUploadProgress(
+            pct,
+            "raw 파일 업로드 중 (" + options.fileIndex + "/" + options.fileCount + "): " + options.path,
+            true,
+            false
+          );
         };
         xhr.onload = function() {
           var text = xhr.responseText || "";
           if (xhr.status >= 200 && xhr.status < 300) {
-            setUploadProgress(100, "raw 파일 업로드 완료. 보고서 작업을 접수했습니다.", true, false);
             try {
               resolve(JSON.parse(text));
             } catch (_error) {
               reject(new Error("서버 응답을 해석하지 못했습니다."));
-            }
-            return;
           }
-          setUploadProgress(100, "raw 파일 업로드 요청이 실패했습니다.", true, true);
-          reject(new Error(parseErrorMessage(text, "보고서 생성 요청에 실패했습니다.")));
+          return;
+        }
+          var error = new Error(parseErrorMessage(text, "업로드 조각 전송에 실패했습니다."));
+          error.isTransientError = xhr.status === 408 || xhr.status === 429 || xhr.status >= 500;
+          reject(error);
         };
         xhr.onerror = function(error) {
-          setUploadProgress(100, "raw 파일 업로드 연결이 끊겼습니다.", true, true);
-          var wrapped = new Error(networkErrorMessage(error, url));
+          var wrapped = new Error(networkErrorMessage(error, "/api/v1/tem/upload-sessions"));
+          wrapped.cause = error;
+          wrapped.isNetworkError = true;
+          reject(wrapped);
+        };
+        xhr.ontimeout = function(error) {
+          var wrapped = new Error("업로드 조각 전송 시간이 초과되었습니다. 같은 조각을 다시 전송합니다.");
           wrapped.cause = error;
           wrapped.isNetworkError = true;
           reject(wrapped);
         };
         xhr.onabort = function(error) {
-          setUploadProgress(100, "raw 파일 업로드가 중단되었습니다.", true, true);
           var wrapped = new Error("업로드가 중단되었습니다. 네트워크 상태를 확인한 뒤 다시 시도하세요.");
           wrapped.cause = error;
           wrapped.isNetworkError = true;
           reject(wrapped);
         };
-        setUploadProgress(0, "raw 파일 업로드를 시작하는 중입니다.", true, false);
+        var formData = new FormData();
+        formData.append("relative_path", options.path);
+        formData.append("offset", String(options.offset));
+        formData.append("total_size", String(options.totalSize));
+        formData.append("chunk_index", String(options.chunkIndex));
+        formData.append("chunk_count", String(options.chunkCount));
+        formData.append("file", options.blob, options.fileName);
         xhr.send(formData);
       });
     }
-    async function requestReport(url, formData) {
-      if (formData && typeof XMLHttpRequest !== "undefined") {
-        return requestUploadReport(url, formData);
+    async function uploadChunkWithRetry(options) {
+      var lastError = null;
+      for (var attempt = 1; attempt <= TEM_UPLOAD_CHUNK_RETRIES; attempt += 1) {
+        try {
+          return await requestUploadChunk(options);
+        } catch (error) {
+          lastError = error;
+          if (!(error.isNetworkError || error.isTransientError) || attempt >= TEM_UPLOAD_CHUNK_RETRIES) break;
+          var pct = options.totalUploadBytes > 0
+            ? (options.uploadedBefore / options.totalUploadBytes) * 100
+            : 0;
+          setUploadProgress(
+            pct,
+            "업로드가 잠시 끊겨 같은 조각을 다시 전송합니다. (" + attempt + "/" + TEM_UPLOAD_CHUNK_RETRIES + ")",
+            true,
+            false
+          );
+          await sleep(650 * attempt);
+        }
       }
-      var options = formData ? {method: "POST", body: formData} : {method: "GET"};
+      throw lastError || new Error("업로드 조각 전송에 실패했습니다.");
+    }
+    async function uploadBundleWithSession() {
+      var selection = uploadableBundleItems();
+      if (!selection.supported.length) {
+        throw new Error("업로드할 수 있는 TEM raw 파일이 없습니다.");
+      }
+      if (selection.skipped.length) {
+        setStatus("지원하지 않는 파일 " + selection.skipped.length + "개는 업로드에서 제외했습니다.", false);
+      }
+      var totalBytes = selection.supported.reduce(function(sum, item) {
+        return sum + Number(item.file.size || 0);
+      }, 0);
+      if (totalBytes <= 0) {
+        throw new Error("빈 파일만 선택되어 있습니다.");
+      }
+      if (totalBytes > TEM_MAX_TOTAL_BYTES) {
+        throw new Error("TEM raw bundle의 총 크기는 1.2GB 이하여야 합니다. 현재: " + formatBytes(totalBytes));
+      }
+      selection.supported.forEach(function(item) {
+        if (item.file.size > TEM_MAX_FILE_BYTES) {
+          throw new Error(item.path + " 파일이 너무 큽니다. 파일당 최대 250MB입니다.");
+        }
+      });
+
+      setUploadProgress(0, "업로드 세션을 생성하는 중입니다.", true, false);
+      var session = await requestJsonPostWithRetry(
+        "/api/v1/tem/upload-sessions",
+        3,
+        "업로드 세션 생성을 다시 시도하는 중입니다."
+      );
+      var uploadedBytes = 0;
+      for (var fileIndex = 0; fileIndex < selection.supported.length; fileIndex += 1) {
+        var item = selection.supported[fileIndex];
+        var file = item.file;
+        var path = item.path || file.name;
+        if (!file.size) continue;
+        var chunkCount = Math.max(1, Math.ceil(file.size / TEM_UPLOAD_CHUNK_BYTES));
+        for (var chunkIndex = 0; chunkIndex < chunkCount; chunkIndex += 1) {
+          var offset = chunkIndex * TEM_UPLOAD_CHUNK_BYTES;
+          var end = Math.min(file.size, offset + TEM_UPLOAD_CHUNK_BYTES);
+          var blob = file.slice(offset, end);
+          await uploadChunkWithRetry({
+            uploadId: session.uploadId,
+            path: path,
+            fileName: file.name,
+            blob: blob,
+            offset: offset,
+            totalSize: file.size,
+            chunkIndex: chunkIndex,
+            chunkCount: chunkCount,
+            uploadedBefore: uploadedBytes,
+            totalUploadBytes: totalBytes,
+            fileIndex: fileIndex + 1,
+            fileCount: selection.supported.length
+          });
+          uploadedBytes += blob.size;
+        }
+      }
+      setUploadProgress(100, "raw 파일 업로드 완료. 보고서 작업을 접수하는 중입니다.", true, false);
+      return requestJsonPostWithRetry(
+        "/api/v1/tem/upload-sessions/" + encodeURIComponent(session.uploadId) + "/complete",
+        4,
+        "보고서 작업 접수 응답을 다시 확인하는 중입니다."
+      );
+    }
+    async function requestReport(url) {
+      var options = {method: "GET"};
       var response;
       try {
         response = await fetch(url, options);
@@ -1169,7 +1532,9 @@ def build_ahn_page() -> str:
       }
       var text = await response.text();
       if (!response.ok) {
-        throw new Error(parseErrorMessage(text, "보고서 생성 요청에 실패했습니다."));
+        var error = new Error(parseErrorMessage(text, "보고서 생성 요청에 실패했습니다."));
+        error.isTransientError = response.status === 408 || response.status === 429 || response.status >= 500;
+        throw error;
       }
       return JSON.parse(text);
     }
@@ -1200,7 +1565,7 @@ def build_ahn_page() -> str:
           current = await requestReport("/api/v1/tem/report/jobs/" + encodeURIComponent(payload.jobId), null);
           transientFailures = 0;
         } catch (error) {
-          if (!error.isNetworkError || transientFailures >= 4) throw error;
+          if (!(error.isNetworkError || error.isTransientError) || transientFailures >= 6) throw error;
           transientFailures += 1;
           setProgress(
             shownPct,
@@ -1283,7 +1648,7 @@ def build_ahn_page() -> str:
       setUploadProgress(0, "raw 파일 업로드를 준비하는 중입니다.", true, false);
       setProgress(0, "업로드 완료 후 보고서 작업을 시작합니다.", true, false);
       try {
-        var payload = await waitForReportJob(await requestReport("/api/v1/tem/analyze", buildBundleFormData()));
+        var payload = await waitForReportJob(await uploadBundleWithSession());
         renderSummary(payload);
         setStatus("TEM 보고서가 생성되었습니다.", false);
         finishProgress("TEM 보고서가 생성되었습니다.");
@@ -1305,6 +1670,78 @@ def build_ahn_page() -> str:
 @router.get("/tem", response_class=HTMLResponse, include_in_schema=False)
 def tem_page() -> HTMLResponse:
     return HTMLResponse(build_ahn_page())
+
+
+@router.post("/api/v1/tem/upload-sessions", response_class=JSONResponse, tags=["tem"])
+def create_tem_upload_session() -> JSONResponse:
+    _cleanup_old_jobs()
+    session = _create_upload_session()
+    logger.info("TEM 청크 업로드 세션 생성 (upload_id=%s)", session.upload_id)
+    return JSONResponse(_upload_session_payload(session))
+
+
+@router.post("/api/v1/tem/upload-sessions/{upload_id}/chunks", response_class=JSONResponse, tags=["tem"])
+async def upload_tem_chunk(
+    upload_id: str,
+    relative_path: str = Form(...),
+    offset: int = Form(...),
+    total_size: int = Form(...),
+    chunk_index: int = Form(...),
+    chunk_count: int = Form(...),
+    file: UploadFile = File(...),
+) -> JSONResponse:
+    session = _get_upload_session(upload_id)
+    file_state = await _write_upload_chunk(
+        session,
+        relative_path=relative_path,
+        offset=offset,
+        total_size=total_size,
+        chunk_index=chunk_index,
+        chunk_count=chunk_count,
+        upload=file,
+    )
+    payload = _upload_session_payload(session)
+    payload.update(
+        {
+            "relativePath": file_state.relative_path,
+            "uploadedFileBytes": file_state.uploaded_bytes,
+            "fileSize": file_state.total_size,
+            "fileCompleted": file_state.completed,
+        }
+    )
+    return JSONResponse(payload)
+
+
+@router.post("/api/v1/tem/upload-sessions/{upload_id}/complete", response_class=JSONResponse, tags=["tem"])
+def complete_tem_upload_session(upload_id: str) -> JSONResponse:
+    _cleanup_old_jobs()
+    existing_job = _job_for_completed_upload(upload_id)
+    if existing_job is not None:
+        return JSONResponse(_job_payload(existing_job))
+    session = _get_upload_session(upload_id)
+    completed_files = [state for state in session.files.values() if state.completed]
+    incomplete_files = [state.relative_path for state in session.files.values() if not state.completed]
+    if not completed_files:
+        raise ApiException(400, "TEM_FILES_REQUIRED", "분석 가능한 TEM 파일이 없습니다.")
+    if incomplete_files:
+        preview = ", ".join(incomplete_files[:5])
+        more = f" 외 {len(incomplete_files) - 5}개" if len(incomplete_files) > 5 else ""
+        raise ApiException(
+            409,
+            "TEM_UPLOAD_INCOMPLETE",
+            f"아직 업로드가 완료되지 않은 파일이 있습니다: {preview}{more}",
+        )
+    job = _submit_ahn_job(session.input_root, session.work_dir)
+    with _ahn_upload_sessions_lock:
+        _ahn_upload_sessions.pop(upload_id, None)
+        _ahn_completed_upload_jobs[upload_id] = job.job_id
+    logger.info(
+        "TEM 청크 업로드 완료 및 보고서 작업 시작 (upload_id=%s, job_id=%s, files=%s)",
+        upload_id,
+        job.job_id,
+        len(completed_files),
+    )
+    return JSONResponse(_job_payload(job))
 
 
 @router.post("/api/v1/tem/analyze", response_class=JSONResponse, tags=["tem"])

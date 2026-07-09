@@ -50,10 +50,13 @@ def test_ahn_workspace_contains_folder_upload_controls() -> None:
     assert 'aria-disabled="true"' in page
     assert ".xlsm" in page
     assert ".xlsb" in page
-    assert "/api/v1/tem/analyze" in page
+    assert "/api/v1/tem/upload-sessions" in page
     assert "/api/v1/tem/example" in page
     assert "/api/v1/tem/report/jobs/" in page
     assert "waitForReportJob" in page
+    assert "uploadBundleWithSession" in page
+    assert "TEM_UPLOAD_CHUNK_RETRIES" in page
+    assert "requestJsonPostWithRetry" in page
     assert "parseErrorMessage" in page
     assert "서버 연결에 실패했습니다" in page
     assert "XMLHttpRequest" in page
@@ -161,6 +164,65 @@ def test_ahn_analyze_accepts_zipped_bundle_and_downloads_pptx() -> None:
         with zipfile.ZipFile(BytesIO(package_response.content)) as package:
             names = set(package.namelist())
         assert "raw/reports/001 point raw.xlsm" in names
+
+
+def test_ahn_chunked_upload_session_retries_and_downloads_package() -> None:
+    pytest.importorskip("pptx")
+    image_bytes = _tiny_tiff_bytes()
+    first_chunk = image_bytes[:100]
+    second_chunk = image_bytes[100:]
+
+    with TestClient(create_tem_preview_app()) as client:
+        session_response = client.post("/api/v1/tem/upload-sessions")
+        assert session_response.status_code == 200
+        upload_id = session_response.json()["uploadId"]
+
+        data = {
+            "relative_path": "Bundle/stem/001_100kX.tif",
+            "offset": "0",
+            "total_size": str(len(image_bytes)),
+            "chunk_index": "0",
+            "chunk_count": "2",
+        }
+        for _attempt in range(2):
+            chunk_response = client.post(
+                f"/api/v1/tem/upload-sessions/{upload_id}/chunks",
+                data=data,
+                files={"file": ("chunk-0", first_chunk, "application/octet-stream")},
+            )
+            assert chunk_response.status_code == 200
+            assert chunk_response.json()["fileCompleted"] is False
+
+        chunk_response = client.post(
+            f"/api/v1/tem/upload-sessions/{upload_id}/chunks",
+            data={
+                "relative_path": "Bundle/stem/001_100kX.tif",
+                "offset": str(len(first_chunk)),
+                "total_size": str(len(image_bytes)),
+                "chunk_index": "1",
+                "chunk_count": "2",
+            },
+            files={"file": ("chunk-1", second_chunk, "application/octet-stream")},
+        )
+        assert chunk_response.status_code == 200
+        assert chunk_response.json()["fileCompleted"] is True
+
+        complete_response = client.post(f"/api/v1/tem/upload-sessions/{upload_id}/complete")
+        assert complete_response.status_code == 200
+        repeat_complete_response = client.post(f"/api/v1/tem/upload-sessions/{upload_id}/complete")
+        assert repeat_complete_response.status_code == 200
+        assert repeat_complete_response.json()["jobId"] == complete_response.json()["jobId"]
+        payload = _wait_for_tem_job(client, complete_response.json())
+        assert payload["status"] == "completed"
+        assert payload["summary"]["stemImageCount"] == 1
+        assert payload["downloads"]["package"].endswith("/download/package")
+
+        package_response = client.get(payload["downloads"]["package"])
+        assert package_response.status_code == 200
+        with zipfile.ZipFile(BytesIO(package_response.content)) as package:
+            names = set(package.namelist())
+        assert "tem-report.pptx" in names
+        assert "analysis-result.json" in names
 
 
 def test_ahn_analyze_returns_before_zip_extraction_finishes(monkeypatch) -> None:
