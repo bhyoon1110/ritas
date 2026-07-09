@@ -240,6 +240,8 @@ def test_build_report_html_contains_xrd_template_sections(tmp_path) -> None:
     assert 'graphFrame.querySelector(".xrd-print-legend")' in html
     assert "PRINT_PLOT_HEIGHT = 390" in html
     assert "applyReportPlotLayout" in html
+    assert "computePrintYRange" in html
+    assert 'layout["yaxis.range"] = yRange' in html
     assert '"title.text": ""' in html
     assert 'handle.textContent = "범례"' in html
     assert "#xrd-plot .rist-legend-drag-handle" in html
@@ -247,9 +249,12 @@ def test_build_report_html_contains_xrd_template_sections(tmp_path) -> None:
     assert "#xrd-plot .rist-xrd-legend-branch" in html
     assert "#xrd-plot .legend {" in html
     assert ".xrd-report-header { display: none !important; }" in html
-    assert ".xrd-graph-frame {\n      overflow: hidden !important;" in html
+    assert ".xrd-graph-frame {\n      overflow: visible !important;" in html
     assert "padding: 8px 14px 12px !important" in html
+    assert ".xrd-graph-frame::after" in html
+    assert "pointer-events: none;\n      z-index: 3;" in html
     assert "#xrd-plot .plot-container,\n    #xrd-plot .svg-container," in html
+    assert "overflow: visible !important" in html
     assert "margin: 8px 12px 0 6px" in html
     assert "height: 390px !important" in html
     assert 'style="height:390px; width:100%;"' in html

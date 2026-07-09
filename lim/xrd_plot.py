@@ -2765,7 +2765,7 @@ def xrd_report_css() -> str:
       margin-bottom: 0;
     }
     .xrd-graph-frame {
-      overflow: hidden !important;
+      overflow: visible !important;
       padding: 8px 14px 12px !important;
       border-radius: 12px;
       box-sizing: border-box;
@@ -2773,20 +2773,30 @@ def xrd_report_css() -> str:
       break-inside: avoid;
       page-break-inside: avoid;
     }
+    .xrd-graph-frame::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border: 2px solid #111827;
+      border-radius: 12px;
+      box-sizing: border-box;
+      pointer-events: none;
+      z-index: 3;
+    }
     #xrd-plot {
       width: 100% !important;
       max-width: 100% !important;
       height: 390px !important;
       min-height: 390px !important;
       margin: 0 0 6px;
-      overflow: hidden !important;
+      overflow: visible !important;
       box-sizing: border-box;
     }
     #xrd-plot .plot-container,
     #xrd-plot .svg-container,
     #xrd-plot .main-svg {
       max-width: 100% !important;
-      overflow: hidden !important;
+      overflow: visible !important;
     }
     #xrd-peak-info {
       break-before: page;
@@ -3114,17 +3124,58 @@ def build_report_html(
         "legend.itemsizing": legend.itemsizing
       }});
     }}
+    function currentXAxisRange() {{
+      if (!gd) return null;
+      var axis = (gd.layout && gd.layout.xaxis) || (gd._fullLayout && gd._fullLayout.xaxis) || {{}};
+      var range = axis.range;
+      if (!Array.isArray(range) || range.length < 2) return null;
+      var lo = Number(range[0]);
+      var hi = Number(range[1]);
+      if (!Number.isFinite(lo) || !Number.isFinite(hi)) return null;
+      return [Math.min(lo, hi), Math.max(lo, hi)];
+    }}
+    function computePrintYRange() {{
+      if (!gd) return null;
+      var xRange = currentXAxisRange();
+      var minY = Infinity;
+      var maxY = -Infinity;
+      (gd.data || []).forEach(function(trace) {{
+        if (!traceVisible(trace) || !Array.isArray(trace.y)) return;
+        var xs = Array.isArray(trace.x) ? trace.x : [];
+        trace.y.forEach(function(rawY, idx) {{
+          var y = Number(rawY);
+          if (!Number.isFinite(y)) return;
+          if (xRange && xs.length === trace.y.length) {{
+            var x = Number(xs[idx]);
+            if (!Number.isFinite(x) || x < xRange[0] || x > xRange[1]) return;
+          }}
+          minY = Math.min(minY, y);
+          maxY = Math.max(maxY, y);
+        }});
+      }});
+      if (!Number.isFinite(minY) || !Number.isFinite(maxY) || maxY <= minY) return null;
+      var span = maxY - minY;
+      var padTop = Math.max(span * 0.08, Math.abs(maxY) * 0.03, 1);
+      var padBottom = Math.max(span * 0.02, 1);
+      return [Math.min(0, minY - padBottom), maxY + padTop];
+    }}
     function applyReportPlotLayout() {{
       if (!window.Plotly || !gd) return null;
       gd.style.height = PRINT_PLOT_HEIGHT + "px";
       gd.style.minHeight = PRINT_PLOT_HEIGHT + "px";
-      return window.Plotly.relayout(gd, {{
+      var layout = {{
         "height": PRINT_PLOT_HEIGHT,
         "autosize": false,
         "title.text": "",
         "margin.t": 20,
         "margin.b": 74
-      }});
+      }};
+      var yRange = computePrintYRange();
+      if (yRange) {{
+        layout["yaxis.autorange"] = false;
+        layout["yaxis.range"] = yRange;
+      }}
+      return window.Plotly.relayout(gd, layout);
     }}
     function preparePrintLegend() {{
       if (!window.Plotly || !gd) return;
