@@ -746,7 +746,7 @@ def build_ahn_page() -> str:
     <main class="ahn-main">
       <section class="ahn-panel">
         <form id="ahn-form">
-          <input class="ahn-hidden-input" type="file" id="ahn-bundle-files" name="files" multiple accept=".tif,.tiff,.png,.jpg,.jpeg,.bmp,.webp,.docx,.xlsx,.xls,.csv,.tsv,.zip">
+          <input class="ahn-hidden-input" type="file" id="ahn-bundle-files" name="files" multiple accept=".tif,.tiff,.png,.jpg,.jpeg,.bmp,.webp,.docx,.xlsx,.xls,.xlsm,.xlsb,.csv,.tsv,.zip">
           <input class="ahn-hidden-input" type="file" id="ahn-bundle-folder" name="files" multiple webkitdirectory directory>
           <div class="ahn-drop" id="ahn-drop">
             <div>
@@ -897,7 +897,7 @@ def build_ahn_page() -> str:
       var name = file.name.toLowerCase();
       if (/\\.(tif|tiff|png|jpe?g|bmp|webp)$/.test(name)) return "image";
       if (/\\.docx$/.test(name)) return "docx";
-      if (/\\.(xlsx|xls|csv|tsv)$/.test(name)) return "table";
+      if (/\\.(xlsx|xls|xlsm|xlsb|csv|tsv)$/.test(name)) return "table";
       if (/\\.zip$/.test(name)) return "zip";
       return "skip";
     }

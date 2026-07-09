@@ -47,6 +47,8 @@ def test_ahn_workspace_contains_folder_upload_controls() -> None:
     assert 'id="ahn-download-pptx"' in page
     assert 'id="ahn-download-package"' in page
     assert 'aria-disabled="true"' in page
+    assert ".xlsm" in page
+    assert ".xlsb" in page
     assert "/api/v1/tem/analyze" in page
     assert "/api/v1/tem/example" in page
     assert "/api/v1/tem/report/jobs/" in page
@@ -126,6 +128,7 @@ def test_ahn_analyze_accepts_zipped_bundle_and_downloads_pptx() -> None:
     archive_bytes = BytesIO()
     with zipfile.ZipFile(archive_bytes, "w") as archive:
         archive.writestr("TESTData/stem/001_100kX.tif", _tiny_tiff_bytes())
+        archive.writestr("TESTData/reports/001 point raw.xlsm", b"macro-spreadsheet")
 
     with TestClient(create_tem_preview_app()) as client:
         response = client.post(
@@ -143,7 +146,15 @@ def test_ahn_analyze_accepts_zipped_bundle_and_downloads_pptx() -> None:
         assert payload["status"] == "completed"
         assert payload["summary"]["stemImageCount"] == 1
         assert payload["summary"]["temImageCount"] == 0
+        assert payload["summary"]["spreadsheetCount"] == 1
         assert payload["downloads"]["pptx"].endswith("/download/pptx")
+        assert payload["downloads"]["package"].endswith("/download/package")
+
+        package_response = client.get(payload["downloads"]["package"])
+        assert package_response.status_code == 200
+        with zipfile.ZipFile(BytesIO(package_response.content)) as package:
+            names = set(package.namelist())
+        assert "raw/reports/001 point raw.xlsm" in names
 
 
 def test_ahn_analyze_returns_before_zip_extraction_finishes(monkeypatch) -> None:

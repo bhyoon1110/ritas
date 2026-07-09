@@ -75,13 +75,17 @@ def test_collect_project_keeps_spreadsheets_outside_report_folder(tmp_path) -> N
     stem.mkdir()
     (stem / "001_100kX.tif").write_bytes(b"placeholder")
     (tmp_path / "raw data.xlsx").write_bytes(b"placeholder")
+    (tmp_path / "macro raw.xlsm").write_bytes(b"placeholder")
+    (tmp_path / "binary raw.xlsb").write_bytes(b"placeholder")
     (tmp_path / "raw" / "line scan.csv").parent.mkdir()
     (tmp_path / "raw" / "line scan.csv").write_text("x,y\n1,2\n", encoding="utf-8")
 
     project = collect_project(tmp_path)
 
-    assert project.summary["spreadsheetCount"] == 2
+    assert project.summary["spreadsheetCount"] == 4
     assert [item.path for item in project.spreadsheets] == [
+        "binary raw.xlsb",
+        "macro raw.xlsm",
         "raw data.xlsx",
         "raw/line scan.csv",
     ]
@@ -118,6 +122,9 @@ def test_build_outputs_emits_progress_events(tmp_path) -> None:
     stem = tmp_path / "stem"
     stem.mkdir()
     (stem / "001_100kX.tif").write_bytes(b"placeholder")
+    reports = tmp_path / "reports"
+    reports.mkdir()
+    (reports / "point raw.xlsm").write_bytes(b"placeholder")
     events = []
 
     manifest = build_outputs(
@@ -128,6 +135,9 @@ def test_build_outputs_emits_progress_events(tmp_path) -> None:
     )
 
     assert manifest["summary"]["stemImageCount"] == 1
+    assert manifest["summary"]["spreadsheetCount"] == 1
+    assert manifest["copiedSpreadsheets"] == ["raw/reports/point raw.xlsm"]
+    assert (tmp_path / "out" / "raw" / "reports" / "point raw.xlsm").is_file()
     assert [event[0] for event in events] == ["collect", "json"]
     assert events[0][1] == 35
     assert events[1][1] == 58

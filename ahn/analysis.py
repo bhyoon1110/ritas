@@ -28,7 +28,7 @@ from PIL import Image, ImageFilter, ImageOps
 
 IMAGE_EXTENSIONS = {".tif", ".tiff", ".png", ".jpg", ".jpeg", ".bmp", ".webp"}
 DOCX_EXTENSIONS = {".docx"}
-SPREADSHEET_EXTENSIONS = {".xlsx", ".xls", ".csv", ".tsv"}
+SPREADSHEET_EXTENSIONS = {".xlsx", ".xls", ".xlsm", ".xlsb", ".csv", ".tsv"}
 MAX_COATING_THICKNESS_NM = 40.0
 DEFAULT_COATING_OCR_WORKERS = 2
 MAX_COATING_OCR_WORKERS = 4
