@@ -7,6 +7,7 @@ import zipfile
 from fastapi.testclient import TestClient
 
 from app.xrd_web import (
+    XRD_NO_STORE_HEADERS,
     _build_xrd_example_html,
     _safe_relative_path,
     _write_synthetic_icdd_pdf_dir,
@@ -41,6 +42,10 @@ def test_xrd_workspace_contains_upload_controls() -> None:
     assert "droppedBundleItems" in page
     assert 'id="xrd-origin" name="origin" value="true" checked' in page
     assert 'id="xrd-example"' in page
+    assert 'http-equiv="Cache-Control"' in page
+    assert 'content="no-store, no-cache, must-revalidate, max-age=0"' in page
+    assert 'http-equiv="Pragma"' in page
+    assert 'http-equiv="Expires"' in page
     assert 'id="xrd-pdf-export"' not in page
     assert "PDF Export" not in page
     assert "contentWindow.print()" not in page
@@ -77,6 +82,15 @@ def test_xrd_workspace_contains_upload_controls() -> None:
     assert "XRD_UPLOAD_CHUNK_RETRIES" in page
     assert "/api/v1/xrd/example" in page
     assert "LIM XRD" in page
+
+
+def test_xrd_workspace_is_not_cached() -> None:
+    with TestClient(create_xrd_preview_app()) as client:
+        response = client.get("/xrd")
+
+    assert response.status_code == 200
+    for name, value in XRD_NO_STORE_HEADERS.items():
+        assert response.headers[name] == value
 
 
 def test_xrd_analyze_rejects_raw_without_pdf_cards() -> None:

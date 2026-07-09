@@ -52,6 +52,11 @@ MAX_XRD_UPLOAD_BYTES = 80 * 1024 * 1024
 MAX_XRD_UPLOAD_TOTAL_BYTES = 1200 * 1024 * 1024
 XRD_UPLOAD_CHUNK_BYTES = 4 * 1024 * 1024
 XRD_REPORT_JOB_TTL_SECONDS = 2 * 60 * 60
+XRD_NO_STORE_HEADERS = {
+    "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+    "Pragma": "no-cache",
+    "Expires": "0",
+}
 xrd_upload_store = ChunkUploadStore(
     code_prefix="XRD",
     temp_prefix="rist-xrd-upload-",
@@ -640,6 +645,9 @@ def build_xrd_page() -> str:
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
   <title>RIST XRD Preview</title>
   <style>
     :root {
@@ -1660,7 +1668,7 @@ def build_xrd_page() -> str:
 
 @router.get("/xrd", response_class=HTMLResponse, include_in_schema=False)
 def xrd_page() -> HTMLResponse:
-    return HTMLResponse(build_xrd_page())
+    return HTMLResponse(build_xrd_page(), headers=XRD_NO_STORE_HEADERS)
 
 
 def _build_xrd_html_from_inputs(
@@ -1906,7 +1914,7 @@ def download_xrd_report_html(job_id: str) -> HTMLResponse:
             "XRD 보고서가 아직 완성되지 않았습니다.",
             retryable=True,
         )
-    return HTMLResponse(job.html_result)
+    return HTMLResponse(job.html_result, headers=XRD_NO_STORE_HEADERS)
 
 
 @router.post("/api/v1/xrd/analyze", response_class=HTMLResponse, tags=["xrd"])
@@ -1964,7 +1972,7 @@ async def analyze_xrd(
             image_paths=image_paths,
             origin=origin,
         )
-    return HTMLResponse(html_result)
+    return HTMLResponse(html_result, headers=XRD_NO_STORE_HEADERS)
 
 
 def _write_synthetic_xrd_raw(path: Path) -> None:
@@ -2175,7 +2183,8 @@ def _build_xrd_example_html(repo_root: Path, *, settings: Settings | None = None
 def xrd_example(request: Request) -> HTMLResponse:
     repo_root = Path(__file__).resolve().parents[2]
     return HTMLResponse(
-        _build_xrd_example_html(repo_root, settings=_request_settings(request))
+        _build_xrd_example_html(repo_root, settings=_request_settings(request)),
+        headers=XRD_NO_STORE_HEADERS,
     )
 
 
