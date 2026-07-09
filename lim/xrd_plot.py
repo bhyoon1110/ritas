@@ -3279,6 +3279,47 @@ def build_report_html(
         if (window.Plotly && window.Plotly.Plots) window.Plotly.Plots.resize(gd);
       }});
     }}
+    function exportHtmlSnapshot() {{
+      return "<!doctype html>\\n" + document.documentElement.outerHTML;
+    }}
+    function downloadPdfBlob(blob) {{
+      var url = URL.createObjectURL(blob);
+      var link = document.createElement("a");
+      var title = String(document.title || "xrd-report").replace(/[\\\\/:*?"<>|]+/g, "_").trim() || "xrd-report";
+      link.href = url;
+      link.download = title + ".pdf";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(function() {{ URL.revokeObjectURL(url); }}, 30000);
+    }}
+    function restoreAfterServerPdf() {{
+      removePrintPageStyle();
+      restorePrintLegend();
+      restoreScreenPlotLayout();
+    }}
+    function serverRenderPdf() {{
+      if (window.location.protocol === "file:") {{
+        return Promise.reject(new Error("file URL에서는 서버 PDF 생성을 사용할 수 없습니다."));
+      }}
+      return fetch("/api/v1/xrd/render-pdf", {{
+        method: "POST",
+        headers: {{"Content-Type": "application/json"}},
+        body: JSON.stringify({{
+          html: exportHtmlSnapshot(),
+          landscape: graphPageLandscapeEnabled()
+        }})
+      }}).then(function(response) {{
+        if (!response.ok) {{
+          return response.text().then(function(text) {{
+            throw new Error(text || "서버 PDF 생성에 실패했습니다.");
+          }});
+        }}
+        return response.blob();
+      }}).then(function(blob) {{
+        downloadPdfBlob(blob);
+      }});
+    }}
     if (gd && gd.on) {{
       gd.on("plotly_afterplot", function() {{
         normalizeLegendHandleLabel();
@@ -3317,12 +3358,23 @@ def build_report_html(
     if (!button) return;
     button.addEventListener("click", function() {{
       var relayout = preparePrintLegend();
+      var runExport = function() {{
+        serverRenderPdf()
+          .then(restoreAfterServerPdf)
+          .catch(function(error) {{
+            console.warn("XRD server PDF export failed.", error);
+            if (window.location.protocol === "file:") {{
+              window.setTimeout(function() {{ window.print(); }}, 80);
+              return;
+            }}
+            restoreAfterServerPdf();
+            window.alert("서버 PDF 생성에 실패했습니다. Chrome/Chromium 렌더러 설정을 확인한 뒤 다시 시도하세요.");
+          }});
+      }};
       if (relayout && relayout.then) {{
-        relayout.finally(function() {{
-          window.setTimeout(function() {{ window.print(); }}, 80);
-        }});
+        relayout.finally(runExport);
       }} else {{
-        window.print();
+        runExport();
       }}
     }});
   }})();

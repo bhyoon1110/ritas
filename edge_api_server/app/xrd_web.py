@@ -7,6 +7,7 @@ import math
 import os
 import re
 import shutil
+import subprocess
 import tempfile
 from threading import Lock
 import time
@@ -18,7 +19,7 @@ from typing import Any
 
 from fastapi import APIRouter, FastAPI, File, Form, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 from rist_common import get_logger
 
 from .path_bootstrap import add_project_package_paths
@@ -52,6 +53,7 @@ MAX_XRD_UPLOAD_BYTES = 80 * 1024 * 1024
 MAX_XRD_UPLOAD_TOTAL_BYTES = 1200 * 1024 * 1024
 XRD_UPLOAD_CHUNK_BYTES = 4 * 1024 * 1024
 XRD_REPORT_JOB_TTL_SECONDS = 2 * 60 * 60
+MAX_XRD_RENDER_HTML_BYTES = 30 * 1024 * 1024
 XRD_NO_STORE_HEADERS = {
     "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
     "Pragma": "no-cache",
@@ -119,6 +121,160 @@ def _safe_name(filename: str | None, fallback: str) -> str:
     name = Path(filename or "").name.strip() or fallback
     name = re.sub(r"[^\w.\-() \[\]\u3131-\u318e\uac00-\ud7a3]+", "_", name)
     return name[:160] or fallback
+
+
+def _find_xrd_pdf_chrome() -> str | None:
+    configured = os.getenv("RIST_PDF_CHROME_BIN", "").strip()
+    candidates = [
+        configured,
+        "google-chrome",
+        "google-chrome-stable",
+        "chromium",
+        "chromium-browser",
+        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+    ]
+    for candidate in candidates:
+        if not candidate:
+            continue
+        path = Path(candidate)
+        if path.is_absolute() and path.exists():
+            return str(path)
+        found = shutil.which(candidate)
+        if found:
+            return found
+    return None
+
+
+def _inject_xrd_print_page_css(html_text: str, *, landscape: bool) -> str:
+    orientation = "landscape" if landscape else "portrait"
+    style = (
+        '<style data-xrd-server-pdf="true">'
+        "@media print {"
+        f"@page {{ size: A4 {orientation}; margin: 9mm 10mm; }}"
+        "html, body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }"
+        "}"
+        "</style>"
+    )
+    if "</head>" in html_text:
+        return html_text.replace("</head>", style + "</head>", 1)
+    return style + html_text
+
+
+def _render_xrd_html_pdf(html_text: str, *, landscape: bool) -> bytes:
+    chrome = _find_xrd_pdf_chrome()
+    if not chrome:
+        raise ApiException(
+            503,
+            "XRD_PDF_RENDERER_NOT_AVAILABLE",
+            "서버에서 PDF를 생성할 Chrome/Chromium 실행 파일을 찾을 수 없습니다. RIST_PDF_CHROME_BIN을 설정하세요.",
+            retryable=False,
+        )
+
+    with tempfile.TemporaryDirectory(prefix="rist-xrd-pdf-") as tmp:
+        root = Path(tmp)
+        html_path = root / "report.html"
+        pdf_path = root / "report.pdf"
+        profile_path = root / "chrome-profile"
+        html_path.write_text(_inject_xrd_print_page_css(html_text, landscape=landscape), encoding="utf-8")
+        window_size = "1680,1188" if landscape else "1188,1680"
+
+        base_cmd = [
+            chrome,
+            "--disable-gpu",
+            "--disable-dev-shm-usage",
+            "--no-first-run",
+            "--no-sandbox",
+            "--allow-file-access-from-files",
+            "--hide-scrollbars",
+            "--no-pdf-header-footer",
+            "--print-to-pdf-no-header",
+            f"--window-size={window_size}",
+            f"--user-data-dir={profile_path}",
+            f"--print-to-pdf={pdf_path}",
+            html_path.as_uri(),
+        ]
+        errors: list[str] = []
+        for headless_arg in ("--headless=new", "--headless"):
+            cmd = [base_cmd[0], headless_arg, *base_cmd[1:]]
+            try:
+                process = subprocess.Popen(
+                    cmd,
+                    cwd=str(root),
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=False,
+                )
+            except subprocess.TimeoutExpired as exc:
+                errors.append(f"{headless_arg}: timeout after {exc.timeout}s")
+                continue
+            except OSError as exc:
+                errors.append(f"{headless_arg}: {exc}")
+                continue
+
+            deadline = time.monotonic() + 90
+            last_size = -1
+            stable_since: float | None = None
+            stdout = b""
+            stderr = b""
+            while True:
+                returncode = process.poll()
+                if pdf_path.exists():
+                    size = pdf_path.stat().st_size
+                    if size > 0 and size == last_size:
+                        if stable_since is None:
+                            stable_since = time.monotonic()
+                        elif time.monotonic() - stable_since >= 0.8:
+                            pdf_bytes = pdf_path.read_bytes()
+                            if pdf_bytes.startswith(b"%PDF"):
+                                if returncode is None:
+                                    process.terminate()
+                                try:
+                                    stdout, stderr = process.communicate(timeout=3)
+                                except subprocess.TimeoutExpired:
+                                    process.kill()
+                                    stdout, stderr = process.communicate(timeout=3)
+                                return pdf_bytes
+                    else:
+                        last_size = size
+                        stable_since = time.monotonic()
+
+                if returncode is not None:
+                    stdout, stderr = process.communicate(timeout=3)
+                    if pdf_path.exists():
+                        pdf_bytes = pdf_path.read_bytes()
+                        if pdf_bytes.startswith(b"%PDF"):
+                            return pdf_bytes
+                    break
+
+                if time.monotonic() > deadline:
+                    if pdf_path.exists():
+                        pdf_bytes = pdf_path.read_bytes()
+                        if pdf_bytes.startswith(b"%PDF"):
+                            process.terminate()
+                            try:
+                                stdout, stderr = process.communicate(timeout=3)
+                            except subprocess.TimeoutExpired:
+                                process.kill()
+                                stdout, stderr = process.communicate(timeout=3)
+                            return pdf_bytes
+                    process.kill()
+                    stdout, stderr = process.communicate(timeout=3)
+                    errors.append(f"{headless_arg}: timeout after 90s")
+                    break
+
+                time.sleep(0.2)
+
+            message = (stderr or stdout or b"").decode("utf-8", errors="replace").strip()
+            errors.append(f"{headless_arg}: exit={process.returncode} stderr={message[:800]}")
+
+    logger.error("XRD PDF 렌더링 실패: %s", " | ".join(errors))
+    raise ApiException(
+        500,
+        "XRD_PDF_RENDER_FAILED",
+        "XRD PDF 생성 중 오류가 발생했습니다. 서버의 Chrome/Chromium 실행 환경을 확인하세요.",
+        retryable=True,
+        details={"rendererErrors": errors[:3]},
+    )
 
 
 def _safe_relative_path(filename: str | None, fallback: str) -> Path:
@@ -1915,6 +2071,41 @@ def download_xrd_report_html(job_id: str) -> HTMLResponse:
             retryable=True,
         )
     return HTMLResponse(job.html_result, headers=XRD_NO_STORE_HEADERS)
+
+
+@router.post("/api/v1/xrd/render-pdf", response_class=Response, tags=["xrd"])
+async def render_xrd_pdf(request: Request) -> Response:
+    try:
+        payload = await request.json()
+    except Exception as exc:
+        raise ApiException(
+            400,
+            "XRD_PDF_RENDER_REQUEST_INVALID",
+            "PDF 생성 요청 형식이 올바르지 않습니다.",
+        ) from exc
+    html_text = str(payload.get("html") or "")
+    if not html_text.strip():
+        raise ApiException(
+            400,
+            "XRD_PDF_RENDER_HTML_REQUIRED",
+            "PDF를 생성할 보고서 HTML이 필요합니다.",
+        )
+    if len(html_text.encode("utf-8")) > MAX_XRD_RENDER_HTML_BYTES:
+        raise ApiException(
+            413,
+            "XRD_PDF_RENDER_HTML_TOO_LARGE",
+            "PDF 생성 요청 HTML이 너무 큽니다.",
+        )
+    landscape = bool(payload.get("landscape"))
+    pdf_bytes = _render_xrd_html_pdf(html_text, landscape=landscape)
+    return Response(
+        pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            **XRD_NO_STORE_HEADERS,
+            "Content-Disposition": 'attachment; filename="xrd-report.pdf"',
+        },
+    )
 
 
 @router.post("/api/v1/xrd/analyze", response_class=HTMLResponse, tags=["xrd"])

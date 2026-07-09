@@ -6,6 +6,7 @@ import zipfile
 
 from fastapi.testclient import TestClient
 
+from app import xrd_web
 from app.xrd_web import (
     XRD_NO_STORE_HEADERS,
     _build_xrd_example_html,
@@ -82,6 +83,54 @@ def test_xrd_workspace_contains_upload_controls() -> None:
     assert "XRD_UPLOAD_CHUNK_RETRIES" in page
     assert "/api/v1/xrd/example" in page
     assert "LIM XRD" in page
+
+
+def test_xrd_server_pdf_route_validates_html() -> None:
+    with TestClient(create_xrd_preview_app()) as client:
+        response = client.post("/api/v1/xrd/render-pdf", json={"html": ""})
+
+    assert response.status_code == 400
+    assert "XRD_PDF_RENDER_HTML_REQUIRED" in response.text
+
+
+def test_xrd_server_pdf_route_returns_pdf(monkeypatch) -> None:
+    captured = {}
+
+    def fake_render(html: str, *, landscape: bool) -> bytes:
+        captured["html"] = html
+        captured["landscape"] = landscape
+        return b"%PDF-1.4\n%%EOF\n"
+
+    monkeypatch.setattr(xrd_web, "_render_xrd_html_pdf", fake_render)
+    with TestClient(create_xrd_preview_app()) as client:
+        response = client.post(
+            "/api/v1/xrd/render-pdf",
+            json={
+                "html": "<!doctype html><html><head></head><body>report</body></html>",
+                "landscape": True,
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/pdf"
+    assert response.content.startswith(b"%PDF")
+    assert captured["landscape"] is True
+    assert "report" in captured["html"]
+
+
+def test_xrd_server_pdf_css_injection_sets_orientation() -> None:
+    landscape = xrd_web._inject_xrd_print_page_css(
+        "<html><head></head><body></body></html>",
+        landscape=True,
+    )
+    portrait = xrd_web._inject_xrd_print_page_css(
+        "<html><head></head><body></body></html>",
+        landscape=False,
+    )
+
+    assert "@page { size: A4 landscape;" in landscape
+    assert "@page { size: A4 portrait;" in portrait
+    assert "data-xrd-server-pdf" in landscape
 
 
 def test_xrd_workspace_is_not_cached() -> None:

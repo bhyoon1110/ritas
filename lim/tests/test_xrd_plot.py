@@ -251,6 +251,11 @@ def test_build_report_html_contains_xrd_template_sections(tmp_path) -> None:
     assert "data-xrd-print-page-style" in html
     assert "restoreScreenPlotLayout" in html
     assert "window.Plotly.Plots.resize(gd)" in html
+    assert "serverRenderPdf" in html
+    assert "/api/v1/xrd/render-pdf" in html
+    assert "exportHtmlSnapshot" in html
+    assert "downloadPdfBlob" in html
+    assert "Chrome/Chromium 렌더러 설정" in html
     assert "computePrintYRange" in html
     assert 'layout["yaxis.range"] = yRange' in html
     assert 'layout["width"] = Math.min(Math.floor(plotWidth), plotWidthLimit)' in html
