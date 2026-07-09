@@ -1,11 +1,14 @@
 from pathlib import Path
 
 from ahn.analysis import (
+    CoatingOcrResult,
     _candidate_values_from_text,
     _select_supported_ocr_values,
+    collect_coating_samples,
     collect_project,
     extract_magnification,
 )
+from ahn.processor import build_outputs
 
 
 DATA_ROOT = Path(__file__).resolve().parents[1] / "data" / "TESTData"
@@ -82,3 +85,49 @@ def test_collect_project_keeps_spreadsheets_outside_report_folder(tmp_path) -> N
         "raw data.xlsx",
         "raw/line scan.csv",
     ]
+
+
+def test_collect_coating_samples_preserves_order_with_parallel_ocr(tmp_path, monkeypatch) -> None:
+    sample = tmp_path / "scale" / "Scale-A"
+    sample.mkdir(parents=True)
+    for file_name in ["sample-1.tif", "sample-2.tif", "sample-3.tif"]:
+        (sample / file_name).write_bytes(b"placeholder")
+    values = {
+        "sample-1.tif": 1.0,
+        "sample-2.tif": 2.0,
+        "sample-3.tif": 3.0,
+    }
+
+    monkeypatch.setenv("RIST_TEM_OCR_WORKERS", "2")
+    monkeypatch.setattr(
+        "ahn.analysis._ocr_thickness_nm",
+        lambda path: CoatingOcrResult(values_nm=[values[path.name]]),
+    )
+
+    samples = collect_coating_samples(tmp_path)
+
+    assert [item.file_name for item in samples[0].measurements] == [
+        "sample-1.tif",
+        "sample-2.tif",
+        "sample-3.tif",
+    ]
+    assert [item.thickness_nm for item in samples[0].measurements] == [1.0, 2.0, 3.0]
+
+
+def test_build_outputs_emits_progress_events(tmp_path) -> None:
+    stem = tmp_path / "stem"
+    stem.mkdir()
+    (stem / "001_100kX.tif").write_bytes(b"placeholder")
+    events = []
+
+    manifest = build_outputs(
+        input_dir=tmp_path,
+        output_dir=tmp_path / "out",
+        copy_raw_spreadsheets=True,
+        progress_callback=lambda stage, pct, message: events.append((stage, pct, message)),
+    )
+
+    assert manifest["summary"]["stemImageCount"] == 1
+    assert [event[0] for event in events] == ["collect", "json"]
+    assert events[0][1] == 35
+    assert events[1][1] == 58

@@ -6,8 +6,21 @@ import argparse
 import json
 import shutil
 from pathlib import Path
+from typing import Any, Callable
 
 from .analysis import collect_project, write_project_json
+
+ProgressCallback = Callable[[str, int, str], None]
+
+
+def _emit_progress(
+    callback: ProgressCallback | None,
+    stage: str,
+    progress_pct: int,
+    message: str,
+) -> None:
+    if callback is not None:
+        callback(stage, progress_pct, message)
 
 
 def _copy_spreadsheets(project, output_dir: Path) -> list[str]:
@@ -35,11 +48,24 @@ def build_outputs(
     output_dir: str | Path,
     pptx_path: str | Path | None = None,
     copy_raw_spreadsheets: bool = True,
-) -> dict:
+    progress_callback: ProgressCallback | None = None,
+) -> dict[str, Any]:
     output = Path(output_dir)
     output.mkdir(parents=True, exist_ok=True)
 
+    _emit_progress(
+        progress_callback,
+        "collect",
+        35,
+        "TEM/STEM/EDS 폴더 구조와 코팅층 두께 라벨을 분석하는 중입니다.",
+    )
     project = collect_project(input_dir)
+    _emit_progress(
+        progress_callback,
+        "json",
+        58,
+        "분석 JSON과 원본 엑셀 첨부파일을 정리하는 중입니다.",
+    )
     copied_spreadsheets = _copy_spreadsheets(project, output) if copy_raw_spreadsheets else []
     analysis_path = write_project_json(project, output / "analysis-result.json")
 
@@ -47,7 +73,19 @@ def build_outputs(
     if pptx_path is not None:
         from .ppt_report import build_pptx
 
+        _emit_progress(
+            progress_callback,
+            "pptx",
+            72,
+            "PowerPoint 보고서를 렌더링하는 중입니다.",
+        )
         rendered_pptx = build_pptx(project, pptx_path)
+        _emit_progress(
+            progress_callback,
+            "pptx",
+            86,
+            "PowerPoint 보고서 저장을 완료했습니다.",
+        )
 
     manifest = {
         "analysisJson": analysis_path.relative_to(output).as_posix(),

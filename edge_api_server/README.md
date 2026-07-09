@@ -245,13 +245,13 @@ cd edge_api_server
 
 `/tem`은 AHN 프로젝트의 TEM/STEM/EDS/코팅층 raw bundle을 브라우저에서
 폴더째 업로드하고, 기존 `ahn.processor`와 PowerPoint 템플릿 렌더러를 사용해
-PPTX 보고서를 생성한다. Chrome 계열 브라우저에서는 `tem`, `stem`, `report`,
+PPTX 보고서를 생성한다. Chrome 계열 브라우저에서는 `tem`, `stem`, `report`/`reports`,
 `scale` 폴더가 들어 있는 상위 폴더를 드래그하거나 폴더 선택으로 올릴 수 있다.
 상위 폴더명이 함께 올라와도 서버가 실제 입력 루트를 자동으로 찾는다.
 
 - `tem`: TEM 이미지 분석 슬라이드
 - `stem`: STEM/BF-STEM 이미지 분석 슬라이드
-- `report`: EDS Word 보고서와 raw spreadsheet
+- `report`/`reports`: EDS Word 보고서와 raw spreadsheet
 - `scale`: 코팅층 두께 OCR 및 표 슬라이드
 
 웹 화면이 사용하는 API:
@@ -332,6 +332,8 @@ cd edge_api_server
 | `RIST_LLM_MAX_INPUT_CHARS` | `200000` | 구조화 분석 JSON 최대 문자 수 |
 | `RIST_PROCESSOR_TIMEOUT_SECONDS` | `600` | 자동 processor 실행 제한 시간 |
 | `RIST_PROCESSOR_COMMAND_<EXPERIMENT>` | 없음 | 분석 JSON이 없을 때 실행할 processor 명령 템플릿 |
+| `RIST_TEM_REPORT_WORKERS` | `1` | TEM/STEM 웹 보고서 동시 생성 작업 수. PPT/OCR 메모리 사용량 때문에 기본은 순차 처리 |
+| `RIST_TEM_OCR_WORKERS` | `2` | TEM 코팅층 두께 OCR 병렬 처리 수. CPU 여유가 있으면 최대 4까지 권장 |
 | `RIST_WORKER_POLL_SECONDS` | `2` | worker 큐 조회 간격 |
 | `RIST_SPRING_CALLBACK_URL` | `http://127.0.0.1:8080/api/v1/edge/reports` | 로컬 Spring Boot 결과 수신 URL |
 | `RIST_SPRING_CALLBACK_TIMEOUT_SECONDS` | `60` | Spring Boot 전달 제한 시간 |

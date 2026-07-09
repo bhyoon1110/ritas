@@ -13,7 +13,9 @@ as an Edge processor before the heavier PPT renderer is invoked.
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 import json
+import os
 import re
 import shutil
 import unicodedata
@@ -28,6 +30,8 @@ IMAGE_EXTENSIONS = {".tif", ".tiff", ".png", ".jpg", ".jpeg", ".bmp", ".webp"}
 DOCX_EXTENSIONS = {".docx"}
 SPREADSHEET_EXTENSIONS = {".xlsx", ".xls", ".csv", ".tsv"}
 MAX_COATING_THICKNESS_NM = 40.0
+DEFAULT_COATING_OCR_WORKERS = 2
+MAX_COATING_OCR_WORKERS = 4
 
 
 @dataclass
@@ -615,6 +619,41 @@ def _ocr_thickness_nm(path: Path) -> CoatingOcrResult:
     )
 
 
+def _coating_ocr_workers() -> int:
+    raw = os.getenv("RIST_TEM_OCR_WORKERS", str(DEFAULT_COATING_OCR_WORKERS))
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        value = DEFAULT_COATING_OCR_WORKERS
+    return max(1, min(MAX_COATING_OCR_WORKERS, value))
+
+
+def _coating_measurement(path_item: tuple[int, Path], root: Path) -> CoatingMeasurement:
+    index, path = path_item
+    ocr = _ocr_thickness_nm(path)
+    return CoatingMeasurement(
+        index=index,
+        path=_relative(path, root),
+        file_name=path.name,
+        magnification=extract_magnification(path.name),
+        thickness_nm=_mean_or_none(ocr.values_nm),
+        thickness_values_nm=ocr.values_nm,
+        ocr_text=ocr.ocr_text,
+        note=ocr.note,
+        ocr_review_required=ocr.review_required,
+        ocr_warnings=ocr.warnings,
+    )
+
+
+def _coating_measurements(images: list[Path], root: Path) -> list[CoatingMeasurement]:
+    indexed_images = list(enumerate(images, start=1))
+    workers = min(_coating_ocr_workers(), len(indexed_images))
+    if workers <= 1:
+        return [_coating_measurement(item, root) for item in indexed_images]
+    with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="ahn-coating-ocr") as executor:
+        return list(executor.map(lambda item: _coating_measurement(item, root), indexed_images))
+
+
 def collect_coating_samples(root: Path) -> list[CoatingSample]:
     scale_dir = find_named_dir(root, "scale")
     if scale_dir is None:
@@ -635,23 +674,7 @@ def collect_coating_samples(root: Path) -> list[CoatingSample]:
 
     samples: list[CoatingSample] = []
     for sample_name, images in sources:
-        measurements = []
-        for index, path in enumerate(images, start=1):
-            ocr = _ocr_thickness_nm(path)
-            measurements.append(
-                CoatingMeasurement(
-                    index=index,
-                    path=_relative(path, root),
-                    file_name=path.name,
-                    magnification=extract_magnification(path.name),
-                    thickness_nm=_mean_or_none(ocr.values_nm),
-                    thickness_values_nm=ocr.values_nm,
-                    ocr_text=ocr.ocr_text,
-                    note=ocr.note,
-                    ocr_review_required=ocr.review_required,
-                    ocr_warnings=ocr.warnings,
-                )
-            )
+        measurements = _coating_measurements(images, root)
         if measurements:
             samples.append(CoatingSample(sample_name=sample_name, measurements=measurements))
     return samples

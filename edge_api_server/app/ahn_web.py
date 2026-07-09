@@ -5,6 +5,7 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from io import BytesIO
+import os
 import re
 import shutil
 import tempfile
@@ -41,6 +42,14 @@ MAX_AHN_UPLOAD_TOTAL_BYTES = 1200 * 1024 * 1024
 AHN_REPORT_JOB_TTL_SECONDS = 2 * 60 * 60
 
 
+def _positive_int_env(name: str, default: int) -> int:
+    try:
+        value = int(os.getenv(name, str(default)))
+    except (TypeError, ValueError):
+        value = default
+    return max(1, value)
+
+
 @dataclass
 class AhnReportJob:
     job_id: str
@@ -62,7 +71,10 @@ class AhnReportJob:
 
 _ahn_report_jobs: dict[str, AhnReportJob] = {}
 _ahn_report_jobs_lock = Lock()
-_ahn_report_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="rist-ahn-report")
+_ahn_report_executor = ThreadPoolExecutor(
+    max_workers=_positive_int_env("RIST_TEM_REPORT_WORKERS", 1),
+    thread_name_prefix="rist-ahn-report",
+)
 
 
 def _safe_relative_path(filename: str | None, fallback: str) -> Path:
@@ -325,14 +337,19 @@ def _run_ahn_job(job: AhnReportJob) -> None:
     try:
         _set_job_state(
             job,
-            progress_pct=58,
-            message="분석 JSON과 PowerPoint 보고서를 생성하는 중입니다.",
+            progress_pct=30,
+            message="TEM/STEM/EDS raw bundle을 분석할 준비를 하는 중입니다.",
         )
+
+        def update_progress(_stage: str, progress_pct: int, message: str) -> None:
+            _set_job_state(job, progress_pct=progress_pct, message=message)
+
         manifest = build_outputs(
             input_dir=job.input_root,
             output_dir=job.output_dir,
             pptx_path=job.pptx_path,
             copy_raw_spreadsheets=True,
+            progress_callback=update_progress,
         )
         _set_job_state(job, progress_pct=88, message="보고서 ZIP 패키지를 만드는 중입니다.")
     except ApiException as exc:
@@ -998,6 +1015,7 @@ def build_ahn_page() -> str:
     }
     async function waitForReportJob(payload) {
       if (!payload || !payload.jobId) return payload;
+      stopProgressTimer();
       var current = payload;
       var shownPct = 0;
       while (current && current.status !== "completed") {
@@ -1005,11 +1023,7 @@ def build_ahn_page() -> str:
           var error = current.error || {};
           throw new Error(error.message || current.message || "TEM 보고서 생성에 실패했습니다.");
         }
-        shownPct = Math.max(
-          shownPct,
-          parseInt(progressValue.textContent, 10) || 0,
-          Number(current.progressPct || 8)
-        );
+        shownPct = Math.max(shownPct, Number(current.progressPct || 8));
         shownPct = Math.min(96, shownPct);
         setProgress(
           shownPct,
