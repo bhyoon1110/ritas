@@ -2766,6 +2766,9 @@ def xrd_report_css() -> str:
     }
     .xrd-graph-frame {
       overflow: visible !important;
+      width: 84% !important;
+      max-width: 158mm !important;
+      margin: 0 auto !important;
       padding: 8px 14px 12px !important;
       border-radius: 12px;
       box-sizing: border-box;
@@ -2784,17 +2787,18 @@ def xrd_report_css() -> str:
       z-index: 3;
     }
     #xrd-plot {
-      width: 100% !important;
-      max-width: 100% !important;
+      width: min(590px, calc(100% - 28px)) !important;
+      max-width: calc(100% - 28px) !important;
       height: 390px !important;
       min-height: 390px !important;
-      margin: 0 0 6px;
+      margin: 0 auto 6px;
       overflow: visible !important;
       box-sizing: border-box;
     }
     #xrd-plot .plot-container,
     #xrd-plot .svg-container,
     #xrd-plot .main-svg {
+      width: 100% !important;
       max-width: 100% !important;
       overflow: visible !important;
     }
@@ -3019,6 +3023,7 @@ def build_report_html(
     var originalLegendLayout = null;
     var printLegend = null;
     var PRINT_PLOT_HEIGHT = 390;
+    var PRINT_PLOT_WIDTH = 590;
     function compactLayout(layout) {{
       var cleaned = {{}};
       Object.keys(layout || {{}}).forEach(function(key) {{
@@ -3163,6 +3168,12 @@ def build_report_html(
       if (!window.Plotly || !gd) return null;
       gd.style.height = PRINT_PLOT_HEIGHT + "px";
       gd.style.minHeight = PRINT_PLOT_HEIGHT + "px";
+      gd.style.width = PRINT_PLOT_WIDTH + "px";
+      gd.style.maxWidth = "calc(100% - 28px)";
+      var graphFrame = gd.closest ? gd.closest(".xrd-graph-frame") : null;
+      var graphFrameWidth = graphFrame ? graphFrame.getBoundingClientRect().width : 0;
+      var gdWidth = gd.getBoundingClientRect ? gd.getBoundingClientRect().width : gd.clientWidth;
+      var plotWidth = graphFrameWidth > 0 ? graphFrameWidth - 56 : gdWidth;
       var layout = {{
         "height": PRINT_PLOT_HEIGHT,
         "autosize": false,
@@ -3170,6 +3181,9 @@ def build_report_html(
         "margin.t": 20,
         "margin.b": 74
       }};
+      if (plotWidth > 240) {{
+        layout["width"] = Math.min(Math.floor(plotWidth), PRINT_PLOT_WIDTH);
+      }}
       var yRange = computePrintYRange();
       if (yRange) {{
         layout["yaxis.autorange"] = false;
