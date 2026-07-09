@@ -234,13 +234,25 @@ def test_build_report_html_contains_xrd_template_sections(tmp_path) -> None:
     assert "#xrd-plot .modebar," in html
     assert "preparePrintLegend" in html
     assert "xrd-print-legend" in html
+    assert 'aria-label="XRD print legend"' in html
     assert "refreshPrintLegend" in html
+    assert 'gd.closest(".xrd-graph-frame")' in html
+    assert 'graphFrame.querySelector(".xrd-print-legend")' in html
+    assert "PRINT_PLOT_HEIGHT = 390" in html
+    assert "applyReportPlotLayout" in html
+    assert '"title.text": ""' in html
     assert 'handle.textContent = "범례"' in html
     assert "#xrd-plot .rist-legend-drag-handle" in html
     assert "#xrd-plot .rist-xrd-legend-checkbox" in html
     assert "#xrd-plot .rist-xrd-legend-branch" in html
     assert "#xrd-plot .legend {" in html
+    assert ".xrd-report-header { display: none !important; }" in html
+    assert "height: 390px !important" in html
+    assert 'style="height:390px; width:100%;"' in html
+    assert "#xrd-peak-info" in html
+    assert "page-break-before: always" in html
     assert "column-count: 2" in html
+    assert ".xrd-file-table {\n      break-inside: auto;" in html
     assert "page-break-inside: auto" in html
     assert "page-break-after: always" in html
     assert "피크 정보" in html

@@ -2590,6 +2590,76 @@ def _html_body_inner(html: str) -> str:
     return html[start + len("<body>"):end]
 
 
+def _trace_meta(trace: Any) -> dict[str, Any]:
+    meta = getattr(trace, "meta", None)
+    return meta if isinstance(meta, dict) else {}
+
+
+def _trace_line_color(trace: Any) -> str:
+    line = getattr(trace, "line", None)
+    color = getattr(line, "color", None) if line is not None else None
+    marker = getattr(trace, "marker", None)
+    marker_color = getattr(marker, "color", None) if marker is not None else None
+    value = str(color or marker_color or "#64748b")
+    return re.sub(r'[;"<>]', "", value) or "#64748b"
+
+
+def _trace_visible_for_legend(trace: Any) -> bool:
+    return (
+        getattr(trace, "showlegend", True) is not False
+        and getattr(trace, "visible", True) not in {"legendonly", False}
+    )
+
+
+def _trace_legend_kind(trace: Any) -> str:
+    meta = _trace_meta(trace)
+    if meta.get("xrd_raw"):
+        return "raw"
+    if meta.get("xrd_separator"):
+        return "separator"
+    if meta.get("xrd_phase_candidate"):
+        return "phase"
+    return ""
+
+
+def _strip_legend_separator(name: str) -> str:
+    return re.sub(r"^[-─\s]+", "", str(name or "")).strip()
+
+
+def build_xrd_print_legend_html(fig) -> str:
+    rows = []
+    for trace in fig.data:
+        if not _trace_visible_for_legend(trace):
+            continue
+        kind = _trace_legend_kind(trace)
+        if not kind:
+            continue
+        label = _strip_legend_separator(getattr(trace, "name", "") or "")
+        if not label:
+            continue
+        if kind == "separator":
+            rows.append(
+                "<div class=\"xrd-print-legend-item is-separator\">"
+                f"<span class=\"xrd-print-legend-label\">{_esc(label)}</span>"
+                "</div>"
+            )
+            continue
+        class_name = "xrd-print-legend-item is-raw" if kind == "raw" else "xrd-print-legend-item"
+        rows.append(
+            f"<div class=\"{class_name}\">"
+            f"<span class=\"xrd-print-legend-swatch\" style=\"color:{_trace_line_color(trace)}\"></span>"
+            f"<span class=\"xrd-print-legend-label\">{_esc(label)}</span>"
+            "</div>"
+        )
+    body = "".join(rows) or '<div class="xrd-print-legend-item">표시할 범례가 없습니다.</div>'
+    return (
+        '<div class="xrd-print-legend" aria-label="XRD print legend">'
+        '<div class="xrd-print-legend-title">범례</div>'
+        f'<div class="xrd-print-legend-grid">{body}</div>'
+        "</div>"
+    )
+
+
 def xrd_report_css() -> str:
     return """
 <style>
@@ -2682,23 +2752,35 @@ def xrd_report_css() -> str:
     .xrd-image-grid { grid-template-columns: 1fr; }
   }
   @media print {
+    @page { size: A4 portrait; margin: 9mm 10mm; }
     html { background: #fff; }
     .xrd-report-page { max-width: none; padding: 0; }
+    .xrd-report-header { display: none !important; }
     .xrd-report-pdf-button, .xrd-report-action-spacer { display: none !important; }
-    .xrd-report-title { text-align: center; }
+    .xrd-report-section { margin-top: 10px; }
+    .xrd-section-head { margin-bottom: 8px; padding-bottom: 5px; }
     #xrd-graph-section {
       break-after: page;
       page-break-after: always;
-      margin-bottom: 24px;
+      margin-bottom: 0;
     }
     .xrd-graph-frame {
       overflow: visible !important;
-      padding-bottom: 12px;
+      padding: 8px 10px 12px !important;
+      border-radius: 12px;
+      box-sizing: border-box;
+      break-inside: avoid;
+      page-break-inside: avoid;
     }
     #xrd-plot {
-      height: 350px !important;
-      min-height: 350px !important;
-      margin-bottom: 8px;
+      width: 100% !important;
+      height: 390px !important;
+      min-height: 390px !important;
+      margin: 0 0 6px;
+    }
+    #xrd-peak-info {
+      break-before: page;
+      page-break-before: always;
     }
     #xrd-plot .modebar,
     #xrd-plot .rist-plot-control-row,
@@ -2715,8 +2797,8 @@ def xrd_report_css() -> str:
     }
     .xrd-print-legend {
       display: block;
-      margin: 10px 6px 0;
-      padding: 7px 9px;
+      margin: 6px 4px 0;
+      padding: 6px 8px;
       border: 1px solid #cbd5e1;
       border-radius: 7px;
       background: #fff;
@@ -2787,10 +2869,13 @@ def xrd_report_css() -> str:
       break-inside: avoid;
       page-break-inside: avoid;
     }
-    .xrd-phase-card,
-    .xrd-file-table {
+    .xrd-phase-card {
       break-inside: avoid;
       page-break-inside: avoid;
+    }
+    .xrd-file-table {
+      break-inside: auto;
+      page-break-inside: auto;
     }
   }
 </style>
@@ -2837,7 +2922,13 @@ def build_report_html(
         ),
         config=_xrd_plot_config(),
     )
-    plot_body = _html_body_inner(plot_html)
+    plot_body = re.sub(
+        r'style="height:[^"]*?;\s*width:100%;"',
+        'style="height:390px; width:100%;"',
+        _html_body_inner(plot_html),
+        count=1,
+    )
+    print_legend = build_xrd_print_legend_html(fig)
     warning_html = "".join(f'<div class="xrd-warning">{_esc(w)}</div>' for w in warnings)
     comments = comment_html or build_auto_interpretation_html(sample_name, groups, warnings)
     comment_note_text = (
@@ -2868,7 +2959,7 @@ def build_report_html(
         <h2>상 동정 (Phase Identification) 결과</h2>
         <p>측정 데이터와 ICDD Card 피크를 함께 표시합니다.</p>
       </div>
-      <div class="xrd-graph-frame">{plot_body}</div>
+      <div class="xrd-graph-frame">{plot_body}{print_legend}</div>
     </section>
     {image_info}
     <section class="xrd-report-section" id="xrd-llm-comment">
@@ -2889,6 +2980,7 @@ def build_report_html(
     var gd = document.getElementById("xrd-plot");
     var originalLegendLayout = null;
     var printLegend = null;
+    var PRINT_PLOT_HEIGHT = 390;
     function compactLayout(layout) {{
       var cleaned = {{}};
       Object.keys(layout || {{}}).forEach(function(key) {{
@@ -2932,9 +3024,15 @@ def build_report_html(
     function ensurePrintLegend() {{
       if (!gd) return null;
       if (!printLegend) {{
-        printLegend = document.createElement("div");
-        printLegend.className = "xrd-print-legend";
-        gd.insertAdjacentElement("afterend", printLegend);
+        var graphFrame = gd.closest ? gd.closest(".xrd-graph-frame") : null;
+        printLegend = graphFrame
+          ? graphFrame.querySelector(".xrd-print-legend")
+          : null;
+        if (!printLegend) {{
+          printLegend = document.createElement("div");
+          printLegend.className = "xrd-print-legend";
+          gd.insertAdjacentElement("afterend", printLegend);
+        }}
       }}
       return printLegend;
     }}
@@ -2988,11 +3086,24 @@ def build_report_html(
         "legend.itemsizing": legend.itemsizing
       }});
     }}
+    function applyReportPlotLayout() {{
+      if (!window.Plotly || !gd) return null;
+      gd.style.height = PRINT_PLOT_HEIGHT + "px";
+      gd.style.minHeight = PRINT_PLOT_HEIGHT + "px";
+      return window.Plotly.relayout(gd, {{
+        "height": PRINT_PLOT_HEIGHT,
+        "autosize": false,
+        "title.text": "",
+        "margin.t": 20,
+        "margin.b": 74
+      }});
+    }}
     function preparePrintLegend() {{
       if (!window.Plotly || !gd) return;
       normalizeLegendHandleLabel();
       refreshPrintLegend();
       if (!originalLegendLayout) originalLegendLayout = currentLegendLayout();
+      return applyReportPlotLayout();
     }}
     function restorePrintLegend() {{
       if (!window.Plotly || !gd || !originalLegendLayout) return;
@@ -3017,6 +3128,7 @@ def build_report_html(
     window.setTimeout(function() {{
       normalizeLegendHandleLabel();
       refreshPrintLegend();
+      applyReportPlotLayout();
     }}, 600);
     window.addEventListener("beforeprint", preparePrintLegend);
     window.addEventListener("afterprint", restorePrintLegend);
