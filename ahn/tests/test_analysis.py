@@ -65,3 +65,20 @@ def test_collect_project_reads_reports_folder_alias(tmp_path) -> None:
     assert project.summary["spreadsheetCount"] == 1
     assert project.eds_reports[0].title == "0647 Point2"
     assert project.eds_reports[0].analysis_type == "POINT"
+
+
+def test_collect_project_keeps_spreadsheets_outside_report_folder(tmp_path) -> None:
+    stem = tmp_path / "stem"
+    stem.mkdir()
+    (stem / "001_100kX.tif").write_bytes(b"placeholder")
+    (tmp_path / "raw data.xlsx").write_bytes(b"placeholder")
+    (tmp_path / "raw" / "line scan.csv").parent.mkdir()
+    (tmp_path / "raw" / "line scan.csv").write_text("x,y\n1,2\n", encoding="utf-8")
+
+    project = collect_project(tmp_path)
+
+    assert project.summary["spreadsheetCount"] == 2
+    assert [item.path for item in project.spreadsheets] == [
+        "raw data.xlsx",
+        "raw/line scan.csv",
+    ]

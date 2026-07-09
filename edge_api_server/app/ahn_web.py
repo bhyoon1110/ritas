@@ -32,7 +32,7 @@ from ahn.processor import build_outputs
 logger = get_logger(__name__)
 router = APIRouter()
 
-AHN_SECTION_DIRS = {"tem", "stem", "report", "scale"}
+AHN_SECTION_DIRS = {"tem", "stem", "report", "reports", "scale"}
 AHN_SUPPORTED_EXTENSIONS = (
     IMAGE_EXTENSIONS | DOCX_EXTENSIONS | SPREADSHEET_EXTENSIONS | {".zip"}
 )

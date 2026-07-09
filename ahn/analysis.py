@@ -303,10 +303,9 @@ def _sample_from_eds_title(title: str) -> str:
 def collect_eds_reports(root: Path) -> tuple[list[EdsReport], list[SpreadsheetFile]]:
     report_dirs = find_named_dirs(root, "report", "reports")
     if not report_dirs:
-        return [], []
+        return [], collect_spreadsheets(root, [])
 
     reports = []
-    spreadsheets = []
     for report_dir in report_dirs:
         for path in _visible_files(report_dir, DOCX_EXTENSIONS):
             title = _eds_title(path)
@@ -319,11 +318,51 @@ def collect_eds_reports(root: Path) -> tuple[list[EdsReport], list[SpreadsheetFi
                     analysis_type=_eds_type(title),
                 )
             )
-        spreadsheets.extend(
-            SpreadsheetFile(path=_relative(path, root), file_name=path.name)
-            for path in _visible_files(report_dir, SPREADSHEET_EXTENSIONS)
-        )
+    spreadsheets = collect_spreadsheets(root, report_dirs)
     return reports, spreadsheets
+
+
+def collect_spreadsheets(root: Path, preferred_dirs: list[Path] | None = None) -> list[SpreadsheetFile]:
+    """Collect raw spreadsheet attachments from the AHN bundle.
+
+    EDS raw spreadsheets are usually placed under ``report`` or ``reports``,
+    but the browser bundle can also include them at the top level or in a raw
+    subfolder. They are not interpreted as standalone report data; they are
+    copied into the final ZIP package and used as a fallback for Point tables.
+    """
+    preferred = [path for path in (preferred_dirs or []) if path.exists()]
+    seen: set[Path] = set()
+    ordered_paths: list[Path] = []
+
+    def add(paths: list[Path]) -> None:
+        for path in paths:
+            resolved = path.resolve()
+            if resolved in seen:
+                continue
+            seen.add(resolved)
+            ordered_paths.append(path)
+
+    for directory in preferred:
+        add(_visible_files(directory, SPREADSHEET_EXTENSIONS))
+
+    if root.exists():
+        recursive = sorted(
+            [
+                child
+                for child in root.rglob("*")
+                if child.is_file()
+                and not child.name.startswith(".")
+                and not child.name.startswith("~$")
+                and child.suffix.lower() in SPREADSHEET_EXTENSIONS
+            ],
+            key=lambda path: natural_key(path.as_posix()),
+        )
+        add(recursive)
+
+    return [
+        SpreadsheetFile(path=_relative(path, root), file_name=path.name)
+        for path in ordered_paths
+    ]
 
 
 def _unit_nearby(text: str, start: int, end: int) -> bool:

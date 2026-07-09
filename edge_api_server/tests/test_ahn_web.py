@@ -65,6 +65,14 @@ def test_ahn_input_root_finds_browser_top_level_folder(tmp_path) -> None:
     assert _find_ahn_input_root(root) == root / "TESTData"
 
 
+def test_ahn_input_root_accepts_reports_folder_alias(tmp_path) -> None:
+    root = tmp_path / "upload"
+    nested = root / "TESTData" / "reports"
+    nested.mkdir(parents=True)
+
+    assert _find_ahn_input_root(root) == root / "TESTData"
+
+
 def test_ahn_analyze_accepts_folder_bundle_and_downloads_pptx() -> None:
     pytest.importorskip("pptx")
 
@@ -78,6 +86,14 @@ def test_ahn_analyze_accepts_folder_bundle_and_downloads_pptx() -> None:
                         "Bundle/stem/001_100kX.tif",
                         _tiny_tiff_bytes(),
                         "image/tiff",
+                    ),
+                ),
+                (
+                    "files",
+                    (
+                        "Bundle/raw data.xlsx",
+                        b"spreadsheet-placeholder",
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     ),
                 ),
             ],
@@ -102,6 +118,7 @@ def test_ahn_analyze_accepts_folder_bundle_and_downloads_pptx() -> None:
         assert "tem-report.pptx" in names
         assert "analysis-result.json" in names
         assert "manifest.json" in names
+        assert "raw/raw data.xlsx" in names
 
 
 def test_ahn_analyze_accepts_zipped_bundle_and_downloads_pptx() -> None:

@@ -20,6 +20,10 @@ def _copy_spreadsheets(project, output_dir: Path) -> list[str]:
         if not source.exists():
             continue
         target = package_dir / source.name
+        index = 1
+        while target.exists():
+            target = package_dir / f"{source.stem}_{index}{source.suffix}"
+            index += 1
         shutil.copy2(source, target)
         copied.append(target.relative_to(output_dir).as_posix())
     return copied
