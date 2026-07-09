@@ -2668,7 +2668,10 @@ def xrd_report_css() -> str:
   .xrd-report-page { max-width: 980px; margin: 0 auto; background: #fff; min-height: 100vh; padding: 28px 34px 48px; box-sizing: border-box; }
   .xrd-report-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 0 0 22px; }
   .xrd-report-title { flex: 1 1 auto; text-align: center; font-size: 26px; margin: 0; font-weight: 700; }
-  .xrd-report-action-spacer { width: 108px; flex: 0 0 auto; }
+  .xrd-report-action-spacer { width: 230px; flex: 0 0 auto; }
+  .xrd-report-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex: 0 0 auto; }
+  .xrd-report-pdf-option { display: inline-flex; align-items: center; gap: 6px; min-height: 38px; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 7px; color: #172a46; background: #fff; font-size: 13px; font-weight: 700; box-sizing: border-box; white-space: nowrap; }
+  .xrd-report-pdf-option input { width: 15px; height: 15px; margin: 0; accent-color: #2563eb; }
   .xrd-report-pdf-button { flex: 0 0 auto; border: 1px solid #9fb6d6; background: #fff; color: #172a46; border-radius: 7px; min-height: 38px; padding: 8px 13px; font-size: 14px; font-weight: 700; cursor: pointer; }
   .xrd-report-pdf-button:hover { background: #eff6ff; border-color: #2563eb; }
   .xrd-report-section { margin: 20px 0 0; }
@@ -2743,7 +2746,9 @@ def xrd_report_css() -> str:
     .xrd-report-header { align-items: flex-start; gap: 8px; }
     .xrd-report-title { text-align: left; font-size: 23px; }
     .xrd-report-action-spacer { display: none; }
+    .xrd-report-actions { flex-wrap: wrap; }
     .xrd-report-pdf-button { min-height: 36px; padding: 7px 10px; font-size: 13px; }
+    .xrd-report-pdf-option { min-height: 36px; padding: 7px 10px; font-size: 12px; }
     .xrd-section-head { display: block; }
     .xrd-section-head h2 { flex-basis: auto; }
     .xrd-section-head p { text-align: left; margin-top: 4px; }
@@ -2753,6 +2758,7 @@ def xrd_report_css() -> str:
   }
   @media print {
     @page { size: A4 portrait; margin: 9mm 10mm; }
+    @page xrd-graph-landscape { size: A4 landscape; margin: 9mm 10mm; }
     html { background: #fff; }
     .xrd-report-page { max-width: none; padding: 0; }
     .xrd-report-header { display: none !important; }
@@ -2763,6 +2769,9 @@ def xrd_report_css() -> str:
       break-after: page;
       page-break-after: always;
       margin-bottom: 0;
+    }
+    body.xrd-report-graph-landscape #xrd-graph-section {
+      page: xrd-graph-landscape;
     }
     .xrd-graph-frame {
       overflow: visible !important;
@@ -2794,6 +2803,21 @@ def xrd_report_css() -> str:
       margin: 0 auto 6px;
       overflow: visible !important;
       box-sizing: border-box;
+    }
+    body.xrd-report-graph-landscape .xrd-graph-frame {
+      width: 96% !important;
+      max-width: 260mm !important;
+      padding: 8px 16px 12px !important;
+    }
+    body.xrd-report-graph-landscape #xrd-plot {
+      width: min(960px, calc(100% - 32px)) !important;
+      max-width: calc(100% - 32px) !important;
+      height: 420px !important;
+      min-height: 420px !important;
+    }
+    body.xrd-report-graph-landscape .xrd-print-legend-grid {
+      column-count: 3;
+      column-gap: 12px;
     }
     #xrd-plot .plot-container,
     #xrd-plot .svg-container,
@@ -2994,7 +3018,13 @@ def build_report_html(
     <header class="xrd-report-header">
       <div class="xrd-report-action-spacer" aria-hidden="true"></div>
       <h1 class="xrd-report-title">{_esc(sample_name)} Report</h1>
-      <button type="button" class="xrd-report-pdf-button" id="xrd-report-pdf-export">PDF Export</button>
+      <div class="xrd-report-actions">
+        <label class="xrd-report-pdf-option">
+          <input type="checkbox" id="xrd-report-landscape-graph" checked>
+          그래프 가로형
+        </label>
+        <button type="button" class="xrd-report-pdf-button" id="xrd-report-pdf-export">PDF Export</button>
+      </div>
     </header>
     <section class="xrd-report-section" id="xrd-graph-section">
       <div class="xrd-section-head">
@@ -3019,11 +3049,14 @@ def build_report_html(
   <script>
   (function() {{
     var button = document.getElementById("xrd-report-pdf-export");
+    var landscapeOption = document.getElementById("xrd-report-landscape-graph");
     var gd = document.getElementById("xrd-plot");
     var originalLegendLayout = null;
     var printLegend = null;
     var PRINT_PLOT_HEIGHT = 390;
     var PRINT_PLOT_WIDTH = 590;
+    var PRINT_LANDSCAPE_PLOT_HEIGHT = 420;
+    var PRINT_LANDSCAPE_PLOT_WIDTH = 960;
     function compactLayout(layout) {{
       var cleaned = {{}};
       Object.keys(layout || {{}}).forEach(function(key) {{
@@ -3129,6 +3162,14 @@ def build_report_html(
         "legend.itemsizing": legend.itemsizing
       }});
     }}
+    function graphPageLandscapeEnabled() {{
+      return !landscapeOption || landscapeOption.checked;
+    }}
+    function applyGraphPageMode() {{
+      var enabled = graphPageLandscapeEnabled();
+      document.body.classList.toggle("xrd-report-graph-landscape", enabled);
+      return enabled;
+    }}
     function currentXAxisRange() {{
       if (!gd) return null;
       var axis = (gd.layout && gd.layout.xaxis) || (gd._fullLayout && gd._fullLayout.xaxis) || {{}};
@@ -3166,23 +3207,26 @@ def build_report_html(
     }}
     function applyReportPlotLayout() {{
       if (!window.Plotly || !gd) return null;
-      gd.style.height = PRINT_PLOT_HEIGHT + "px";
-      gd.style.minHeight = PRINT_PLOT_HEIGHT + "px";
-      gd.style.width = PRINT_PLOT_WIDTH + "px";
+      var landscape = applyGraphPageMode();
+      var plotHeight = landscape ? PRINT_LANDSCAPE_PLOT_HEIGHT : PRINT_PLOT_HEIGHT;
+      var plotWidthLimit = landscape ? PRINT_LANDSCAPE_PLOT_WIDTH : PRINT_PLOT_WIDTH;
+      gd.style.height = plotHeight + "px";
+      gd.style.minHeight = plotHeight + "px";
+      gd.style.width = plotWidthLimit + "px";
       gd.style.maxWidth = "calc(100% - 28px)";
       var graphFrame = gd.closest ? gd.closest(".xrd-graph-frame") : null;
       var graphFrameWidth = graphFrame ? graphFrame.getBoundingClientRect().width : 0;
       var gdWidth = gd.getBoundingClientRect ? gd.getBoundingClientRect().width : gd.clientWidth;
-      var plotWidth = graphFrameWidth > 0 ? graphFrameWidth - 56 : gdWidth;
+      var plotWidth = graphFrameWidth > 0 ? graphFrameWidth - (landscape ? 64 : 56) : gdWidth;
       var layout = {{
-        "height": PRINT_PLOT_HEIGHT,
+        "height": plotHeight,
         "autosize": false,
         "title.text": "",
         "margin.t": 20,
         "margin.b": 74
       }};
       if (plotWidth > 240) {{
-        layout["width"] = Math.min(Math.floor(plotWidth), PRINT_PLOT_WIDTH);
+        layout["width"] = Math.min(Math.floor(plotWidth), plotWidthLimit);
       }}
       var yRange = computePrintYRange();
       if (yRange) {{
@@ -3193,6 +3237,7 @@ def build_report_html(
     }}
     function preparePrintLegend() {{
       if (!window.Plotly || !gd) return;
+      applyGraphPageMode();
       normalizeLegendHandleLabel();
       refreshPrintLegend();
       if (!originalLegendLayout) originalLegendLayout = currentLegendLayout();
@@ -3218,6 +3263,13 @@ def build_report_html(
     }}
     normalizeLegendHandleLabel();
     refreshPrintLegend();
+    applyGraphPageMode();
+    if (landscapeOption) {{
+      landscapeOption.addEventListener("change", function() {{
+        applyGraphPageMode();
+        applyReportPlotLayout();
+      }});
+    }}
     window.setTimeout(function() {{
       normalizeLegendHandleLabel();
       refreshPrintLegend();

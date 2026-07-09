@@ -219,6 +219,8 @@ def test_build_report_html_contains_xrd_template_sections(tmp_path) -> None:
 
     assert "Mix2 Report" in html
     assert 'id="xrd-report-pdf-export"' in html
+    assert 'id="xrd-report-landscape-graph" checked' in html
+    assert "그래프 가로형" in html
     assert "window.print()" in html
     assert ".xrd-table-scroll," in html
     assert ".xrd-section-head h2 { flex: 0 0 min(260px, 36%);" in html
@@ -240,10 +242,13 @@ def test_build_report_html_contains_xrd_template_sections(tmp_path) -> None:
     assert 'graphFrame.querySelector(".xrd-print-legend")' in html
     assert "PRINT_PLOT_HEIGHT = 390" in html
     assert "PRINT_PLOT_WIDTH = 590" in html
+    assert "PRINT_LANDSCAPE_PLOT_HEIGHT = 420" in html
+    assert "PRINT_LANDSCAPE_PLOT_WIDTH = 960" in html
     assert "applyReportPlotLayout" in html
+    assert "applyGraphPageMode" in html
     assert "computePrintYRange" in html
     assert 'layout["yaxis.range"] = yRange' in html
-    assert 'layout["width"] = Math.min(Math.floor(plotWidth), PRINT_PLOT_WIDTH)' in html
+    assert 'layout["width"] = Math.min(Math.floor(plotWidth), plotWidthLimit)' in html
     assert '"title.text": ""' in html
     assert 'handle.textContent = "범례"' in html
     assert "#xrd-plot .rist-legend-drag-handle" in html
@@ -251,6 +256,8 @@ def test_build_report_html_contains_xrd_template_sections(tmp_path) -> None:
     assert "#xrd-plot .rist-xrd-legend-branch" in html
     assert "#xrd-plot .legend {" in html
     assert ".xrd-report-header { display: none !important; }" in html
+    assert "@page xrd-graph-landscape { size: A4 landscape;" in html
+    assert "body.xrd-report-graph-landscape #xrd-graph-section" in html
     assert ".xrd-graph-frame {\n      overflow: visible !important;" in html
     assert "width: 84% !important" in html
     assert "max-width: 158mm !important" in html
@@ -262,10 +269,15 @@ def test_build_report_html_contains_xrd_template_sections(tmp_path) -> None:
     assert "width: 100% !important" in html
     assert "overflow: visible !important" in html
     assert "width: min(590px, calc(100% - 28px)) !important" in html
+    assert "body.xrd-report-graph-landscape .xrd-graph-frame" in html
+    assert "width: 96% !important" in html
+    assert "max-width: 260mm !important" in html
+    assert "width: min(960px, calc(100% - 32px)) !important" in html
+    assert "column-count: 3" in html
     assert "margin: 0 auto 6px" in html
     assert "margin: 8px 12px 0 6px" in html
     assert "graphFrame.getBoundingClientRect().width" in html
-    assert "graphFrameWidth - 56" in html
+    assert "landscape ? 64 : 56" in html
     assert "height: 390px !important" in html
     assert 'style="height:390px; width:100%;"' in html
     assert "#xrd-peak-info" in html
