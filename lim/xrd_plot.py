@@ -2637,6 +2637,7 @@ def xrd_report_css() -> str:
   .xrd-image-card { margin: 0; border: 2px solid #111827; border-radius: 14px; padding: 10px; background: #fff; }
   .xrd-image-card img { display: block; width: 100%; height: auto; max-height: 520px; object-fit: contain; }
   .xrd-image-card figcaption { margin-top: 6px; font-size: 12px; color: #6b7280; text-align: center; }
+  .xrd-print-legend { display: none; }
   .xrd-phase-group { border-radius: 10px; margin: 12px 0; padding: 0 12px 12px; }
   .xrd-phase-group summary { cursor: pointer; font-size: 16px; font-weight: 700; padding: 12px 0; }
   .xrd-phase-group summary span { color: #6b7280; font-size: 12px; margin-left: 6px; }
@@ -2685,17 +2686,83 @@ def xrd_report_css() -> str:
     .xrd-report-page { max-width: none; padding: 0; }
     .xrd-report-pdf-button, .xrd-report-action-spacer { display: none !important; }
     .xrd-report-title { text-align: center; }
+    #xrd-graph-section {
+      break-after: page;
+      page-break-after: always;
+      margin-bottom: 24px;
+    }
+    .xrd-graph-frame {
+      overflow: visible !important;
+      padding-bottom: 12px;
+    }
+    #xrd-plot {
+      height: 350px !important;
+      min-height: 350px !important;
+      margin-bottom: 8px;
+    }
     #xrd-plot .modebar,
     #xrd-plot .rist-plot-control-row,
     #xrd-plot .xrd-tool-toggle,
     #xrd-plot .xrd-tool-panel,
     #xrd-plot .rist-legend-edit-panel,
-    #xrd-plot .xrd-phase-group-panel {
+    #xrd-plot .xrd-phase-group-panel,
+    #xrd-plot .rist-legend-drag-handle,
+    #xrd-plot .rist-xrd-legend-checkbox,
+    #xrd-plot .rist-xrd-legend-branch,
+    #xrd-plot .legend {
       display: none !important;
       visibility: hidden !important;
     }
-    #xrd-plot .legend text {
-      font-size: 10px !important;
+    .xrd-print-legend {
+      display: block;
+      margin: 8px 6px 0;
+      padding: 7px 9px;
+      border: 1px solid #cbd5e1;
+      border-radius: 7px;
+      background: #fff;
+      color: #111827;
+      font-size: 9px;
+      line-height: 1.28;
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+    .xrd-print-legend-title {
+      margin: 0 0 5px;
+      font-weight: 700;
+      color: #172a46;
+    }
+    .xrd-print-legend-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      column-gap: 14px;
+      row-gap: 3px;
+    }
+    .xrd-print-legend-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 5px;
+      min-width: 0;
+      word-break: keep-all;
+      overflow-wrap: anywhere;
+    }
+    .xrd-print-legend-item.is-raw {
+      font-weight: 700;
+    }
+    .xrd-print-legend-item.is-separator {
+      grid-column: 1 / -1;
+      color: #64748b;
+      font-weight: 700;
+      margin-top: 2px;
+    }
+    .xrd-print-legend-swatch {
+      flex: 0 0 18px;
+      width: 18px;
+      height: 0;
+      margin-top: 6px;
+      border-top: 2px solid currentColor;
+    }
+    .xrd-print-legend-label {
+      min-width: 0;
     }
     .xrd-table-scroll,
     .xrd-file-table-scroll,
@@ -2821,12 +2888,90 @@ def build_report_html(
     var button = document.getElementById("xrd-report-pdf-export");
     var gd = document.getElementById("xrd-plot");
     var originalLegendLayout = null;
+    var printLegend = null;
     function compactLayout(layout) {{
       var cleaned = {{}};
       Object.keys(layout || {{}}).forEach(function(key) {{
         if (layout[key] !== undefined) cleaned[key] = layout[key];
       }});
       return cleaned;
+    }}
+    function traceMeta(trace) {{
+      return (trace && trace.meta && typeof trace.meta === "object") ? trace.meta : {{}};
+    }}
+    function stripSeparator(name) {{
+      return String(name || "").replace(/^[-─\\s]+/, "").trim();
+    }}
+    function escapeHtml(value) {{
+      return String(value || "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+    }}
+    function safeCssColor(value) {{
+      return String(value || "#64748b").replace(/[;"<>]/g, "") || "#64748b";
+    }}
+    function traceVisible(trace) {{
+      return trace && trace.showlegend !== false && trace.visible !== "legendonly" && trace.visible !== false;
+    }}
+    function traceKind(trace) {{
+      var meta = traceMeta(trace);
+      if (meta.xrd_raw) return "raw";
+      if (meta.xrd_separator) return "separator";
+      if (meta.xrd_phase_candidate) return "phase";
+      return "";
+    }}
+    function traceColor(trace) {{
+      var line = trace && trace.line ? trace.line : {{}};
+      if (line.color) return line.color;
+      var marker = trace && trace.marker ? trace.marker : {{}};
+      return marker.color || "#64748b";
+    }}
+    function ensurePrintLegend() {{
+      if (!gd) return null;
+      if (!printLegend) {{
+        printLegend = document.createElement("div");
+        printLegend.className = "xrd-print-legend";
+        gd.insertAdjacentElement("afterend", printLegend);
+      }}
+      return printLegend;
+    }}
+    function refreshPrintLegend() {{
+      var host = ensurePrintLegend();
+      if (!host || !gd) return;
+      var traces = gd.data || [];
+      var rows = [];
+      traces.forEach(function(trace) {{
+        if (!traceVisible(trace)) return;
+        var kind = traceKind(trace);
+        if (!kind) return;
+        var label = stripSeparator(trace.name || "");
+        if (!label) return;
+        if (kind === "separator") {{
+          rows.push("<div class='xrd-print-legend-item is-separator'>"
+            + "<span class='xrd-print-legend-label'>" + escapeHtml(label) + "</span></div>");
+          return;
+        }}
+        var color = safeCssColor(traceColor(trace));
+        var className = kind === "raw"
+          ? "xrd-print-legend-item is-raw"
+          : "xrd-print-legend-item";
+        rows.push("<div class='" + className + "'>"
+          + "<span class='xrd-print-legend-swatch' style='color:" + color + "'></span>"
+          + "<span class='xrd-print-legend-label'>" + escapeHtml(label) + "</span>"
+          + "</div>");
+      }});
+      host.innerHTML = "<div class='xrd-print-legend-title'>범례</div>"
+        + "<div class='xrd-print-legend-grid'>" + rows.join("") + "</div>";
+    }}
+    function normalizeLegendHandleLabel() {{
+      if (!gd) return;
+      var handle = gd.querySelector(".rist-legend-drag-handle");
+      if (!handle) return;
+      handle.textContent = "범례";
+      handle.title = "이 바를 드래그해서 범례 위치 이동";
     }}
     function currentLegendLayout() {{
       if (!gd || !gd.layout) return null;
@@ -2845,23 +2990,34 @@ def build_report_html(
     }}
     function preparePrintLegend() {{
       if (!window.Plotly || !gd) return;
+      normalizeLegendHandleLabel();
+      refreshPrintLegend();
       if (!originalLegendLayout) originalLegendLayout = currentLegendLayout();
-      return window.Plotly.relayout(gd, {{
-        "legend.x": 0.99,
-        "legend.y": 0.99,
-        "legend.xanchor": "right",
-        "legend.yanchor": "top",
-        "legend.font.size": 10,
-        "legend.bgcolor": "rgba(255,255,255,0.9)",
-        "legend.bordercolor": "#cbd5e1",
-        "legend.borderwidth": 1,
-        "legend.itemsizing": "constant"
-      }});
     }}
     function restorePrintLegend() {{
       if (!window.Plotly || !gd || !originalLegendLayout) return;
       window.Plotly.relayout(gd, originalLegendLayout);
     }}
+    if (gd && gd.on) {{
+      gd.on("plotly_afterplot", function() {{
+        normalizeLegendHandleLabel();
+        refreshPrintLegend();
+      }});
+      gd.on("plotly_restyle", function() {{
+        normalizeLegendHandleLabel();
+        refreshPrintLegend();
+      }});
+      gd.on("plotly_relayout", function() {{
+        normalizeLegendHandleLabel();
+        refreshPrintLegend();
+      }});
+    }}
+    normalizeLegendHandleLabel();
+    refreshPrintLegend();
+    window.setTimeout(function() {{
+      normalizeLegendHandleLabel();
+      refreshPrintLegend();
+    }}, 600);
     window.addEventListener("beforeprint", preparePrintLegend);
     window.addEventListener("afterprint", restorePrintLegend);
     if (!button) return;

@@ -233,7 +233,14 @@ def test_build_report_html_contains_xrd_template_sections(tmp_path) -> None:
     assert ".xrd-comment-box[contenteditable=\"true\"]:focus" in html
     assert "#xrd-plot .modebar," in html
     assert "preparePrintLegend" in html
-    assert '"legend.font.size": 10' in html
+    assert "xrd-print-legend" in html
+    assert "refreshPrintLegend" in html
+    assert 'handle.textContent = "범례"' in html
+    assert "#xrd-plot .rist-legend-drag-handle" in html
+    assert "#xrd-plot .rist-xrd-legend-checkbox" in html
+    assert "#xrd-plot .rist-xrd-legend-branch" in html
+    assert "#xrd-plot .legend {" in html
+    assert "page-break-after: always" in html
     assert "피크 정보" in html
     assert "결정상(Phase) 정보" in html
     assert "주요상 (Major Phases)" in html
