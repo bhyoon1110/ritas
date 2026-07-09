@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
-from io import BytesIO
 import os
 import re
 import shutil
@@ -40,6 +39,7 @@ AHN_SUPPORTED_EXTENSIONS = (
 MAX_AHN_UPLOAD_FILE_BYTES = 250 * 1024 * 1024
 MAX_AHN_UPLOAD_TOTAL_BYTES = 1200 * 1024 * 1024
 AHN_REPORT_JOB_TTL_SECONDS = 2 * 60 * 60
+AHN_UPLOAD_CHUNK_BYTES = 1024 * 1024
 
 
 def _positive_int_env(name: str, default: int) -> int:
@@ -144,11 +144,11 @@ def _has_reportable_data(summary: dict[str, Any]) -> bool:
     return any(int(summary.get(key) or 0) > 0 for key in keys)
 
 
-def _extract_zip_bytes(data: bytes, target_root: Path) -> int:
+def _extract_zip_file(path: Path, target_root: Path) -> int:
     saved_count = 0
     extracted_bytes = 0
     try:
-        archive = zipfile.ZipFile(BytesIO(data))
+        archive = zipfile.ZipFile(path)
     except zipfile.BadZipFile as exc:
         raise ApiException(400, "INVALID_TEM_ZIP", "읽을 수 없는 ZIP 파일입니다.") from exc
 
@@ -184,6 +184,21 @@ def _extract_zip_bytes(data: bytes, target_root: Path) -> int:
     return saved_count
 
 
+def _extract_pending_zips(upload_root: Path) -> int:
+    extracted = 0
+    zip_paths = sorted(
+        [
+            path
+            for path in upload_root.rglob("*")
+            if path.is_file() and not path.name.startswith(".") and path.suffix.lower() == ".zip"
+        ],
+        key=lambda path: path.as_posix(),
+    )
+    for path in zip_paths:
+        extracted += _extract_zip_file(path, path.parent)
+    return extracted
+
+
 async def _save_ahn_uploads(files: list[UploadFile] | None, upload_root: Path) -> list[str]:
     if not files:
         raise ApiException(400, "TEM_FILES_REQUIRED", "TEM raw 폴더 또는 파일이 필요합니다.")
@@ -201,31 +216,36 @@ async def _save_ahn_uploads(files: list[UploadFile] | None, upload_root: Path) -
             unsupported.append(relative.as_posix())
             continue
 
-        data = await upload.read()
-        if not data:
-            continue
-        if len(data) > MAX_AHN_UPLOAD_FILE_BYTES:
-            raise ApiException(
-                413,
-                "TEM_FILE_TOO_LARGE",
-                f"{relative.name} 파일이 너무 큽니다. 파일당 최대 250MB입니다.",
-            )
-        total_bytes += len(data)
-        if total_bytes > MAX_AHN_UPLOAD_TOTAL_BYTES:
-            raise ApiException(
-                413,
-                "TEM_UPLOAD_TOO_LARGE",
-                "한 번에 업로드하는 TEM raw bundle의 총 크기는 1.2GB 이하여야 합니다.",
-            )
-
-        if suffix == ".zip":
-            extracted = _extract_zip_bytes(data, upload_root)
-            saved.append(f"{relative.as_posix()} ({extracted} files)")
-            continue
-
         destination = _unique_path(upload_root / relative)
         destination.parent.mkdir(parents=True, exist_ok=True)
-        destination.write_bytes(data)
+        written = 0
+        try:
+            with destination.open("wb") as output:
+                while True:
+                    chunk = await upload.read(AHN_UPLOAD_CHUNK_BYTES)
+                    if not chunk:
+                        break
+                    written += len(chunk)
+                    total_bytes += len(chunk)
+                    if written > MAX_AHN_UPLOAD_FILE_BYTES:
+                        raise ApiException(
+                            413,
+                            "TEM_FILE_TOO_LARGE",
+                            f"{relative.name} 파일이 너무 큽니다. 파일당 최대 250MB입니다.",
+                        )
+                    if total_bytes > MAX_AHN_UPLOAD_TOTAL_BYTES:
+                        raise ApiException(
+                            413,
+                            "TEM_UPLOAD_TOO_LARGE",
+                            "한 번에 업로드하는 TEM raw bundle의 총 크기는 1.2GB 이하여야 합니다.",
+                        )
+                    output.write(chunk)
+        finally:
+            await upload.close()
+
+        if not written:
+            destination.unlink(missing_ok=True)
+            continue
         saved.append(destination.relative_to(upload_root).as_posix())
 
     if unsupported:
@@ -337,9 +357,17 @@ def _run_ahn_job(job: AhnReportJob) -> None:
     try:
         _set_job_state(
             job,
-            progress_pct=30,
-            message="TEM/STEM/EDS raw bundle을 분석할 준비를 하는 중입니다.",
+            progress_pct=28,
+            message="ZIP 파일과 raw bundle 구조를 준비하는 중입니다.",
         )
+        extracted_count = _extract_pending_zips(job.input_root)
+        if extracted_count:
+            _set_job_state(
+                job,
+                progress_pct=32,
+                message=f"ZIP 파일 압축 해제 완료: {extracted_count}개 파일을 확인했습니다.",
+            )
+        job.input_root = _find_ahn_input_root(job.input_root)
 
         def update_progress(_stage: str, progress_pct: int, message: str) -> None:
             _set_job_state(job, progress_pct=progress_pct, message=message)
@@ -840,9 +868,9 @@ def build_ahn_page() -> str:
       var pct = 6;
       setProgress(pct, message || progressMessage(pct), true, false);
       progressTimer = setInterval(function() {
-        pct = Math.min(92, pct + (pct < 40 ? 4 : pct < 72 ? 3 : 1));
-        setProgress(pct, progressMessage(pct), true, false);
-        if (pct >= 92) stopProgressTimer();
+        pct = Math.min(24, pct + 2);
+        setProgress(pct, "raw 파일을 서버로 전송하고 작업을 접수하는 중입니다.", true, false);
+        if (pct >= 24) stopProgressTimer();
       }, 650);
     }
     function finishProgress(message) {

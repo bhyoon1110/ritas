@@ -146,6 +146,39 @@ def test_ahn_analyze_accepts_zipped_bundle_and_downloads_pptx() -> None:
         assert payload["downloads"]["pptx"].endswith("/download/pptx")
 
 
+def test_ahn_analyze_returns_before_zip_extraction_finishes(monkeypatch) -> None:
+    pytest.importorskip("pptx")
+    archive_bytes = BytesIO()
+    with zipfile.ZipFile(archive_bytes, "w") as archive:
+        archive.writestr("TESTData/stem/001_100kX.tif", _tiny_tiff_bytes())
+    original_extract = ahn_web._extract_pending_zips
+
+    def slow_extract(root):
+        time.sleep(0.5)
+        return original_extract(root)
+
+    monkeypatch.setattr(ahn_web, "_extract_pending_zips", slow_extract)
+
+    with TestClient(create_tem_preview_app()) as client:
+        started = time.perf_counter()
+        response = client.post(
+            "/api/v1/tem/analyze",
+            files=[
+                (
+                    "files",
+                    ("tem-bundle.zip", archive_bytes.getvalue(), "application/zip"),
+                ),
+            ],
+        )
+        elapsed = time.perf_counter() - started
+
+        assert response.status_code == 200
+        assert elapsed < 0.4
+        payload = _wait_for_tem_job(client, response.json(), timeout=5)
+        assert payload["status"] == "completed"
+        assert payload["summary"]["stemImageCount"] == 1
+
+
 def test_ahn_analyze_rejects_empty_upload() -> None:
     with TestClient(create_tem_preview_app()) as client:
         response = client.post("/api/v1/tem/analyze", files=[])
