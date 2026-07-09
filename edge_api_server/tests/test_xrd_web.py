@@ -141,6 +141,16 @@ def test_xrd_pdf_chrome_bin_env_override(monkeypatch, tmp_path) -> None:
     assert xrd_web._find_xrd_pdf_chrome() == str(chrome)
 
 
+def test_xrd_pdf_snap_failure_message_is_actionable() -> None:
+    message = xrd_web._xrd_pdf_failure_message(
+        "snap-confine is packaged without necessary permissions "
+        "cap_dac_override not found"
+    )
+
+    assert "NoNewPrivileges" in message
+    assert "daemon-reload" in message
+
+
 def test_xrd_workspace_is_not_cached() -> None:
     with TestClient(create_xrd_preview_app()) as client:
         response = client.get("/xrd")

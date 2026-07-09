@@ -25,7 +25,9 @@ RestartSec=5
 KillSignal=SIGINT
 
 # 보안 강화
-NoNewPrivileges=true
+# XRD PDF Export can launch snap Chromium. snap-confine must be allowed to
+# acquire its packaged capabilities, otherwise it fails with cap_dac_override.
+NoNewPrivileges=false
 ProtectSystem=full
 PrivateTmp=true
 

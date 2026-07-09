@@ -166,6 +166,15 @@ def _inject_xrd_print_page_css(html_text: str, *, landscape: bool) -> str:
     return style + html_text
 
 
+def _xrd_pdf_failure_message(error_text: str) -> str:
+    if "snap-confine" in error_text and "cap_dac_override" in error_text:
+        return (
+            "snap Chromium이 systemd NoNewPrivileges 제한 때문에 실행되지 못했습니다. "
+            "업데이트된 rist-edge-api.service를 설치하고 daemon-reload/restart를 실행하세요."
+        )
+    return "XRD PDF 생성 중 오류가 발생했습니다. 서버의 Chrome/Chromium 실행 환경을 확인하세요."
+
+
 def _render_xrd_html_pdf(html_text: str, *, landscape: bool) -> bytes:
     chrome = _find_xrd_pdf_chrome()
     if not chrome:
@@ -273,11 +282,12 @@ def _render_xrd_html_pdf(html_text: str, *, landscape: bool) -> bytes:
             message = (stderr or stdout or b"").decode("utf-8", errors="replace").strip()
             errors.append(f"{headless_arg}: exit={process.returncode} stderr={message[:800]}")
 
-    logger.error("XRD PDF 렌더링 실패: %s", " | ".join(errors))
+    error_text = " | ".join(errors)
+    logger.error("XRD PDF 렌더링 실패: %s", error_text)
     raise ApiException(
         500,
         "XRD_PDF_RENDER_FAILED",
-        "XRD PDF 생성 중 오류가 발생했습니다. 서버의 Chrome/Chromium 실행 환경을 확인하세요.",
+        _xrd_pdf_failure_message(error_text),
         retryable=True,
         details={"rendererErrors": errors[:3]},
     )

@@ -193,6 +193,20 @@ sudo systemctl restart rist-edge-api.service
 journalctl -u rist-edge-api.service -n 80 --no-pager
 ```
 
+Snap Chromium을 사용할 때 `snap-confine is packaged without necessary permissions`
+또는 `cap_dac_override not found` 오류가 나오면 `rist-edge-api.service`의
+`NoNewPrivileges` 제한 때문에 snap-confine이 필요한 capability를 얻지 못한 것이다.
+업데이트된 서비스 유닛을 systemd에 다시 설치한 뒤 재시작한다.
+
+```bash
+cd /home/rist/ritas
+git pull
+sudo install -m 644 edge_api_server/deploy/rist-edge-api.service /etc/systemd/system/rist-edge-api.service
+sudo systemctl daemon-reload
+sudo systemctl restart rist-edge-api.service
+systemctl show rist-edge-api.service -p NoNewPrivileges
+```
+
 rsync 로 배포한 경우는 다시 복사한 뒤 동일하게 의존성 설치/재시작을 수행한다.
 
 ### git pull 충돌 해결
