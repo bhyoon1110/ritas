@@ -2815,6 +2815,7 @@ def xrd_report_css() -> str:
       max-width: calc(100% - 24px) !important;
       height: 420px !important;
       min-height: 420px !important;
+      transform: translateX(8mm);
     }
     body.xrd-report-graph-landscape .xrd-print-legend-grid {
       column-count: 3;

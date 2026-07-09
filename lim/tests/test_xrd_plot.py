@@ -285,6 +285,7 @@ def test_build_report_html_contains_xrd_template_sections(tmp_path) -> None:
     assert "width: 98% !important" in html
     assert "max-width: 268mm !important" in html
     assert "width: min(1040px, calc(100% - 24px)) !important" in html
+    assert "transform: translateX(8mm)" in html
     assert "column-count: 3" in html
     assert "margin: 0 auto 6px" in html
     assert "margin: 8px 12px 0 6px" in html
