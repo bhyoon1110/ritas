@@ -63,6 +63,9 @@ def test_xrd_workspace_contains_upload_controls() -> None:
     assert "window.readOnlyReport=true" in page
     assert "data-read-only-report" in page
     assert "[contenteditable=true]" in page
+    assert "currentReportHtml" in page
+    assert "reportFrame.contentDocument.documentElement.outerHTML" in page
+    assert 'downloadLink.addEventListener("click"' in page
     assert "closest('#xrd-plot')" in page
     assert 'exampleButton.addEventListener("click"' in page
     assert "Bundle 안에 ICDD PDF 파일이 필요합니다." in page
@@ -315,15 +318,18 @@ def test_xrd_report_can_use_llm_comment_provider(tmp_path) -> None:
     def provider(context):
         captured.update(context)
         return {
-            "html": "<p><strong>요약</strong><br>LLM XRD 해석 초안</p>",
-            "note": "LLM 연결 확인",
+            "html": "<p><strong>요약</strong><br>XRD 분석결과</p>",
+            "note": "분석결과 확인",
         }
 
     result = build_xrd_html([(str(raw_path), str(pdf_dir))], comment_provider=provider)
 
     assert result["llm_comment_used"] is True
-    assert "LLM XRD 해석 초안" in result["html"]
-    assert "LLM 연결 확인" in result["html"]
+    assert "XRD 분석결과" in result["html"]
+    assert "분석결과 확인" in result["html"]
+    assert 'id="xrd-analysis-result" contenteditable="true"' in result["html"]
+    assert "#xrd-plot .modebar," in result["html"]
+    assert "preparePrintLegend" in result["html"]
     assert "#d62728" in result["html"]
     assert '"width":2.2' in result["html"]
     assert "autoScale2d" in result["html"]

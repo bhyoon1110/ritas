@@ -1,6 +1,6 @@
 """XRD raw 데이터(.txt)를 Plotly로 그리고, ICDD Card PDF의 피크 표를
 2θ 위치에 Norm. I.(0~100%) 높이의 수직 막대로 오버레이한다.
-또한 (AX) XRD Report 양식의 구조에 맞춰 그래프, 자동 해석 초안,
+또한 (AX) XRD Report 양식의 구조에 맞춰 그래프, 분석결과,
 피크 정보, 결정상(Phase) 정보를 한 HTML 보고서로 출력한다.
 
 ================================ 실행 방법 ================================
@@ -2610,6 +2610,8 @@ def xrd_report_css() -> str:
   .xrd-graph-frame { padding: 10px 12px 4px; }
   #xrd-plot { height: 510px !important; min-height: 420px; }
   .xrd-comment-box { padding: 16px 18px; border-radius: 10px; }
+  .xrd-comment-box[contenteditable="true"] { outline: none; }
+  .xrd-comment-box[contenteditable="true"]:focus { border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37, 99, 235, .16); }
   .xrd-comment-box p { margin: 0 0 12px; font-size: 14px; line-height: 1.65; }
   .xrd-comment-box p:last-child { margin-bottom: 0; }
   .xrd-table-scroll { border-radius: 10px; overflow: auto; max-height: 520px; }
@@ -2683,6 +2685,18 @@ def xrd_report_css() -> str:
     .xrd-report-page { max-width: none; padding: 0; }
     .xrd-report-pdf-button, .xrd-report-action-spacer { display: none !important; }
     .xrd-report-title { text-align: center; }
+    #xrd-plot .modebar,
+    #xrd-plot .rist-plot-control-row,
+    #xrd-plot .xrd-tool-toggle,
+    #xrd-plot .xrd-tool-panel,
+    #xrd-plot .rist-legend-edit-panel,
+    #xrd-plot .xrd-phase-group-panel {
+      display: none !important;
+      visibility: hidden !important;
+    }
+    #xrd-plot .legend text {
+      font-size: 10px !important;
+    }
     .xrd-table-scroll,
     .xrd-file-table-scroll,
     .xrd-phase-db-table-wrap {
@@ -2761,7 +2775,7 @@ def build_report_html(
     comments = comment_html or build_auto_interpretation_html(sample_name, groups, warnings)
     comment_note_text = (
         comment_note
-        or "raw 피크, ICDD 후보상, 첨부 표/이미지 정보를 기준으로 작성한 자동 해석 초안입니다."
+        or "raw 피크, ICDD 후보상, 첨부 표/이미지 정보를 기준으로 정리한 분석결과입니다."
     )
     image_info = build_image_display_html(image_files or [])
     peak_info = build_peak_info_html(groups, table_files or [], peak_tables or [])
@@ -2792,11 +2806,11 @@ def build_report_html(
     {image_info}
     <section class="xrd-report-section" id="xrd-llm-comment">
       <div class="xrd-section-head">
-        <h2>특이사항 / 자동 해석 초안</h2>
+        <h2>분석결과</h2>
         <p>{_esc(comment_note_text)}</p>
       </div>
       {warning_html}
-      <div class="xrd-comment-box">{comments}</div>
+      <div class="xrd-comment-box" id="xrd-analysis-result" contenteditable="true" spellcheck="false" aria-label="분석결과 편집">{comments}</div>
     </section>
     {peak_info}
     {phase_info}
@@ -2805,9 +2819,61 @@ def build_report_html(
   <script>
   (function() {{
     var button = document.getElementById("xrd-report-pdf-export");
+    var gd = document.getElementById("xrd-plot");
+    var originalLegendLayout = null;
+    function compactLayout(layout) {{
+      var cleaned = {{}};
+      Object.keys(layout || {{}}).forEach(function(key) {{
+        if (layout[key] !== undefined) cleaned[key] = layout[key];
+      }});
+      return cleaned;
+    }}
+    function currentLegendLayout() {{
+      if (!gd || !gd.layout) return null;
+      var legend = gd.layout.legend || {{}};
+      return compactLayout({{
+        "legend.x": legend.x,
+        "legend.y": legend.y,
+        "legend.xanchor": legend.xanchor,
+        "legend.yanchor": legend.yanchor,
+        "legend.font.size": legend.font && legend.font.size,
+        "legend.bgcolor": legend.bgcolor,
+        "legend.bordercolor": legend.bordercolor,
+        "legend.borderwidth": legend.borderwidth,
+        "legend.itemsizing": legend.itemsizing
+      }});
+    }}
+    function preparePrintLegend() {{
+      if (!window.Plotly || !gd) return;
+      if (!originalLegendLayout) originalLegendLayout = currentLegendLayout();
+      return window.Plotly.relayout(gd, {{
+        "legend.x": 0.99,
+        "legend.y": 0.99,
+        "legend.xanchor": "right",
+        "legend.yanchor": "top",
+        "legend.font.size": 10,
+        "legend.bgcolor": "rgba(255,255,255,0.9)",
+        "legend.bordercolor": "#cbd5e1",
+        "legend.borderwidth": 1,
+        "legend.itemsizing": "constant"
+      }});
+    }}
+    function restorePrintLegend() {{
+      if (!window.Plotly || !gd || !originalLegendLayout) return;
+      window.Plotly.relayout(gd, originalLegendLayout);
+    }}
+    window.addEventListener("beforeprint", preparePrintLegend);
+    window.addEventListener("afterprint", restorePrintLegend);
     if (!button) return;
     button.addEventListener("click", function() {{
-      window.print();
+      var relayout = preparePrintLegend();
+      if (relayout && relayout.then) {{
+        relayout.finally(function() {{
+          window.setTimeout(function() {{ window.print(); }}, 80);
+        }});
+      }} else {{
+        window.print();
+      }}
     }});
   }})();
   </script>

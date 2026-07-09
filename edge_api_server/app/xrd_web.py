@@ -100,6 +100,7 @@ _XRD_LLM_SYSTEM_PROMPT = (
     "PDF 폴더 구조에서 온 주요상/유사상/미량상 분류를 우선하고, raw 피크, ICDD 피크 대응, "
     "Peak list Excel, 첨부 이미지 정보를 함께 고려하세요.\n"
     "수식은 LaTeX/Markdown 수식 문법을 쓰지 말고 일반 텍스트로 쓰세요.\n"
+    "문안에는 LLM, AI, 자동 해석, 초안이라는 표현을 넣지 마세요.\n"
     "출력은 반드시 JSON 객체 하나로만 작성하고, 키는 "
     "major_phases/similar_uncertain_phases/minor_phases/advisory 입니다.\n"
     "- major_phases: '본 [샘플명] XRD 분석 결과, ... 주요 상으로 존재하는 것으로 판단됩니다.' 형식의 2~3문장\n"
@@ -247,10 +248,10 @@ def _html_lines(value: str) -> str:
 
 def _xrd_llm_comment_html(slots: dict[str, str]) -> str:
     labels = [
-        ("major_phases", "1. 주요 상 (Major Phases)"),
-        ("similar_uncertain_phases", "2. 유사 상 / 불확실 상 (Similar / Uncertain phases)"),
-        ("minor_phases", "3. 미량 상 (Minor Phases)"),
-        ("advisory", "안내 사항"),
+        ("major_phases", "주요상"),
+        ("similar_uncertain_phases", "유사상 / 불확실상"),
+        ("minor_phases", "미량상"),
+        ("advisory", "안내사항"),
     ]
     blocks = []
     for key, title in labels:
@@ -339,7 +340,7 @@ def _generate_xrd_llm_comment(
         return None
     return {
         "html": comment_html,
-        "note": "LLM이 raw 피크, ICDD 후보상, 첨부 표/이미지 JSON을 근거로 작성한 자동 해석 초안입니다.",
+        "note": "raw 피크, ICDD 후보상, 첨부 표/이미지 정보를 기준으로 정리한 분석결과입니다.",
     }
 
 
@@ -977,6 +978,7 @@ def build_xrd_page() -> str:
     var downloadUrl = null;
     var bundleItems = [];
     var reportFrame = null;
+    var latestReportHtml = "";
     var reportProgressTimer = null;
     var XRD_UPLOAD_CHUNK_BYTES = 4 * 1024 * 1024;
     var XRD_UPLOAD_CHUNK_RETRIES = 4;
@@ -1116,13 +1118,28 @@ def build_xrd_page() -> str:
       }
       return htmlText + patch;
     }
-    function setDownload(htmlText) {
+    function currentReportHtml() {
+      try {
+        if (reportFrame && reportFrame.contentDocument && reportFrame.contentDocument.documentElement) {
+          return "<!doctype html>\n" + reportFrame.contentDocument.documentElement.outerHTML;
+        }
+      } catch (_error) {
+        return latestReportHtml || "";
+      }
+      return latestReportHtml || "";
+    }
+    function refreshDownloadUrl(htmlText) {
       revokeDownload();
-      var downloadHtml = makeReadOnlyDownloadHtml(htmlText);
+      var sourceHtml = htmlText || currentReportHtml();
+      var downloadHtml = makeReadOnlyDownloadHtml(sourceHtml);
       downloadUrl = URL.createObjectURL(new Blob([downloadHtml], {type: "text/html;charset=utf-8"}));
       downloadLink.href = downloadUrl;
       downloadLink.download = "xrd-report.html";
       downloadLink.setAttribute("aria-disabled", "false");
+    }
+    function setDownload(htmlText) {
+      latestReportHtml = htmlText || "";
+      refreshDownloadUrl(latestReportHtml);
     }
     function parseErrorMessage(text, fallback) {
       if (!text) return fallback;
@@ -1419,6 +1436,13 @@ def build_xrd_page() -> str:
       reportFrame = iframe;
       setDownload(htmlText);
     }
+    downloadLink.addEventListener("click", function(event) {
+      if (downloadLink.getAttribute("aria-disabled") === "true") {
+        event.preventDefault();
+        return;
+      }
+      refreshDownloadUrl();
+    });
     function filesOf(input) {
       return Array.prototype.slice.call(input.files || []);
     }

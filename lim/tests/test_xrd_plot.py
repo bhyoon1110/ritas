@@ -228,7 +228,12 @@ def test_build_report_html_contains_xrd_template_sections(tmp_path) -> None:
     assert "position: static !important" in html
     assert "display: table-header-group" in html
     assert "상 동정 (Phase Identification) 결과" in html
-    assert "특이사항 / 자동 해석 초안" in html
+    assert "분석결과" in html
+    assert 'id="xrd-analysis-result" contenteditable="true"' in html
+    assert ".xrd-comment-box[contenteditable=\"true\"]:focus" in html
+    assert "#xrd-plot .modebar," in html
+    assert "preparePrintLegend" in html
+    assert '"legend.font.size": 10' in html
     assert "피크 정보" in html
     assert "결정상(Phase) 정보" in html
     assert "주요상 (Major Phases)" in html
