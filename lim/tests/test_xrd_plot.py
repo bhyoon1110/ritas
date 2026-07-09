@@ -240,6 +240,8 @@ def test_build_report_html_contains_xrd_template_sections(tmp_path) -> None:
     assert "#xrd-plot .rist-xrd-legend-checkbox" in html
     assert "#xrd-plot .rist-xrd-legend-branch" in html
     assert "#xrd-plot .legend {" in html
+    assert "column-count: 2" in html
+    assert "page-break-inside: auto" in html
     assert "page-break-after: always" in html
     assert "피크 정보" in html
     assert "결정상(Phase) 정보" in html

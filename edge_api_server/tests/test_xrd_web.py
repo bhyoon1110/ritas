@@ -353,6 +353,8 @@ def test_xrd_report_can_use_llm_comment_provider(tmp_path) -> None:
     assert "#xrd-plot .rist-xrd-legend-checkbox" in result["html"]
     assert "#xrd-plot .rist-xrd-legend-branch" in result["html"]
     assert "#xrd-plot .legend {" in result["html"]
+    assert "column-count: 2" in result["html"]
+    assert "page-break-inside: auto" in result["html"]
     assert "page-break-after: always" in result["html"]
     assert "#d62728" in result["html"]
     assert '"width":2.2' in result["html"]

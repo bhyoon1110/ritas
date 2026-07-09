@@ -2715,7 +2715,7 @@ def xrd_report_css() -> str:
     }
     .xrd-print-legend {
       display: block;
-      margin: 8px 6px 0;
+      margin: 10px 6px 0;
       padding: 7px 9px;
       border: 1px solid #cbd5e1;
       border-radius: 7px;
@@ -2723,8 +2723,8 @@ def xrd_report_css() -> str:
       color: #111827;
       font-size: 9px;
       line-height: 1.28;
-      break-inside: avoid;
-      page-break-inside: avoid;
+      break-inside: auto;
+      page-break-inside: auto;
     }
     .xrd-print-legend-title {
       margin: 0 0 5px;
@@ -2732,27 +2732,27 @@ def xrd_report_css() -> str:
       color: #172a46;
     }
     .xrd-print-legend-grid {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
+      column-count: 2;
       column-gap: 14px;
-      row-gap: 3px;
     }
     .xrd-print-legend-item {
       display: flex;
       align-items: flex-start;
       gap: 5px;
       min-width: 0;
+      margin: 0 0 3px;
       word-break: keep-all;
       overflow-wrap: anywhere;
+      break-inside: avoid;
+      page-break-inside: avoid;
     }
     .xrd-print-legend-item.is-raw {
       font-weight: 700;
     }
     .xrd-print-legend-item.is-separator {
-      grid-column: 1 / -1;
       color: #64748b;
       font-weight: 700;
-      margin-top: 2px;
+      margin: 4px 0 3px;
     }
     .xrd-print-legend-swatch {
       flex: 0 0 18px;
