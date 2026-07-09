@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from io import BytesIO
+import time
 import zipfile
 
 from fastapi.testclient import TestClient
@@ -49,8 +50,13 @@ def test_xrd_workspace_contains_upload_controls() -> None:
     assert "xrd-status-close" in page
     assert "status.appendChild(item)" in page
     assert "timer = setTimeout(remove, error ? 7200 : 4300)" in page
+    assert 'id="xrd-upload-progress"' in page
+    assert 'id="xrd-upload-progress-bar"' in page
     assert 'id="xrd-report-progress"' in page
     assert 'id="xrd-report-progress-bar"' in page
+    assert "setUploadProgress" in page
+    assert "waitForReportJob" in page
+    assert "/api/v1/xrd/report/jobs/" in page
     assert "startReportProgress" in page
     assert "finishReportProgress" in page
     assert "makeReadOnlyDownloadHtml" in page
@@ -224,15 +230,32 @@ def test_xrd_chunked_upload_session_retries_and_builds_report(tmp_path) -> None:
             data={"origin": "true"},
         )
         assert complete_response.status_code == 200
+        complete_payload = complete_response.json()
+        assert complete_payload["status"] in {"queued", "running", "completed"}
+        assert complete_payload["jobId"]
+
         repeat_complete_response = client.post(
             f"/api/v1/xrd/upload-sessions/{upload_id}/complete",
             data={"origin": "true"},
         )
         assert repeat_complete_response.status_code == 200
+        assert repeat_complete_response.json()["jobId"] == complete_payload["jobId"]
 
-    assert "sample Report" in complete_response.text
-    assert "상 동정 (Phase Identification) 결과" in complete_response.text
-    assert repeat_complete_response.text == complete_response.text
+        deadline = time.time() + 10
+        job_payload = complete_payload
+        while job_payload["status"] not in {"completed", "failed"} and time.time() < deadline:
+            time.sleep(0.05)
+            job_payload = client.get(
+                f"/api/v1/xrd/report/jobs/{complete_payload['jobId']}"
+            ).json()
+        assert job_payload["status"] == "completed"
+        html_response = client.get(
+            f"/api/v1/xrd/report/jobs/{complete_payload['jobId']}/html"
+        )
+        assert html_response.status_code == 200
+
+    assert "sample Report" in html_response.text
+    assert "상 동정 (Phase Identification) 결과" in html_response.text
 
 
 def test_xrd_analyze_skips_unreadable_pdf_in_bundle() -> None:

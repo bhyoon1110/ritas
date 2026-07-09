@@ -1,12 +1,16 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
 import html
 import math
 import os
 import re
 import shutil
 import tempfile
+from threading import Lock
 import time
+from uuid import uuid4
 import zipfile
 from io import BytesIO
 from pathlib import Path
@@ -14,7 +18,7 @@ from typing import Any
 
 from fastapi import APIRouter, FastAPI, File, Form, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from rist_common import get_logger
 
 from .path_bootstrap import add_project_package_paths
@@ -47,6 +51,7 @@ SUPPORTED_BUNDLE_EXTENSIONS = (
 MAX_XRD_UPLOAD_BYTES = 80 * 1024 * 1024
 MAX_XRD_UPLOAD_TOTAL_BYTES = 1200 * 1024 * 1024
 XRD_UPLOAD_CHUNK_BYTES = 4 * 1024 * 1024
+XRD_REPORT_JOB_TTL_SECONDS = 2 * 60 * 60
 xrd_upload_store = ChunkUploadStore(
     code_prefix="XRD",
     temp_prefix="rist-xrd-upload-",
@@ -54,7 +59,38 @@ xrd_upload_store = ChunkUploadStore(
     max_file_bytes=MAX_XRD_UPLOAD_BYTES,
     max_total_bytes=MAX_XRD_UPLOAD_TOTAL_BYTES,
 )
-_xrd_completed_upload_reports: dict[str, tuple[float, str]] = {}
+
+
+def _positive_int_env(name: str, default: int) -> int:
+    try:
+        value = int(os.getenv(name, str(default)))
+    except (TypeError, ValueError):
+        value = default
+    return max(1, value)
+
+
+@dataclass
+class XrdReportJob:
+    job_id: str
+    work_dir: Path
+    input_root: Path
+    settings: Settings | None
+    origin: bool
+    created_at: float
+    updated_at: float
+    status: str = "queued"
+    progress_pct: int = 5
+    message: str = "XRD 보고서 작업이 대기 중입니다."
+    html_result: str | None = None
+    error: dict[str, Any] | None = None
+
+
+_xrd_report_jobs: dict[str, XrdReportJob] = {}
+_xrd_report_jobs_lock = Lock()
+_xrd_report_executor = ThreadPoolExecutor(
+    max_workers=_positive_int_env("RIST_XRD_REPORT_WORKERS", 1),
+    thread_name_prefix="rist-xrd-report",
+)
 
 _XRD_LLM_SYSTEM_PROMPT = (
     "당신은 XRD 분석 보고서 작성 보조자입니다.\n"
@@ -325,6 +361,92 @@ def _xrd_comment_provider(
         )
 
     return provider
+
+
+def _api_error_payload(exc: ApiException) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "status": exc.status_code,
+        "code": exc.code,
+        "message": exc.message,
+        "retryable": exc.retryable,
+    }
+    if exc.details is not None:
+        payload["details"] = exc.details
+    return payload
+
+
+def _set_xrd_job_state(
+    job: XrdReportJob,
+    *,
+    status: str | None = None,
+    progress_pct: int | None = None,
+    message: str | None = None,
+    html_result: str | None = None,
+    error: dict[str, Any] | None = None,
+) -> None:
+    with _xrd_report_jobs_lock:
+        if status is not None:
+            job.status = status
+        if progress_pct is not None:
+            job.progress_pct = max(0, min(100, int(progress_pct)))
+        if message is not None:
+            job.message = message
+        if html_result is not None:
+            job.html_result = html_result
+        if error is not None:
+            job.error = error
+        job.updated_at = time.time()
+
+
+def _cleanup_xrd_report_jobs() -> None:
+    cutoff = time.time() - XRD_REPORT_JOB_TTL_SECONDS
+    expired_jobs: list[XrdReportJob] = []
+    with _xrd_report_jobs_lock:
+        for job_id, job in list(_xrd_report_jobs.items()):
+            if job.updated_at < cutoff:
+                expired_jobs.append(_xrd_report_jobs.pop(job_id))
+    keep_job_ids = set(_xrd_report_jobs)
+    xrd_upload_store.cleanup(keep_completed_refs=keep_job_ids)
+    for job in expired_jobs:
+        shutil.rmtree(job.work_dir, ignore_errors=True)
+
+
+def _create_xrd_report_job(
+    *,
+    input_root: Path,
+    work_dir: Path,
+    settings: Settings | None,
+    origin: bool,
+) -> XrdReportJob:
+    now = time.time()
+    job = XrdReportJob(
+        job_id=uuid4().hex,
+        work_dir=work_dir,
+        input_root=input_root,
+        settings=settings,
+        origin=origin,
+        created_at=now,
+        updated_at=now,
+    )
+    with _xrd_report_jobs_lock:
+        _xrd_report_jobs[job.job_id] = job
+    return job
+
+
+def _xrd_job_payload(job: XrdReportJob) -> dict[str, Any]:
+    downloads = None
+    if job.status == "completed":
+        downloads = {
+            "html": f"/api/v1/xrd/report/jobs/{job.job_id}/html",
+        }
+    return {
+        "jobId": job.job_id,
+        "status": job.status,
+        "progressPct": job.progress_pct,
+        "message": job.message,
+        "error": job.error,
+        "downloads": downloads,
+    }
 
 
 async def _save_uploads(
@@ -668,7 +790,7 @@ def build_xrd_page() -> str:
       opacity: .72;
     }
     .xrd-status-close:hover { opacity: 1; background: rgba(15, 23, 42, .06); }
-    .xrd-report-progress {
+    .xrd-progress {
       display: none;
       padding: 11px 14px 12px;
       border: 1px solid #bfdbfe;
@@ -677,21 +799,24 @@ def build_xrd_page() -> str:
       color: #1e3a8a;
       font-size: 13px;
     }
-    .xrd-report-progress.is-visible {
+    .xrd-progress.is-visible {
       position: fixed;
       left: 50%;
       top: 50%;
       z-index: 70;
-      display: block;
+      display: grid;
+      gap: 11px;
       width: min(560px, calc(100vw - 32px));
       transform: translate(-50%, -50%);
       box-shadow: 0 18px 48px rgba(15, 23, 42, 0.18);
     }
-    .xrd-report-progress.is-error {
+    .xrd-progress.is-error {
       border-color: #fecaca;
       background: #fef2f2;
       color: #991b1b;
     }
+    .xrd-progress-stage { display: none; }
+    .xrd-progress-stage.is-visible { display: block; }
     .xrd-report-progress-row {
       display: flex;
       align-items: center;
@@ -713,7 +838,8 @@ def build_xrd_page() -> str:
       background: var(--blue);
       transition: width 240ms ease;
     }
-    .xrd-report-progress.is-error .xrd-report-progress-bar { background: #dc2626; }
+    .xrd-upload-progress .xrd-report-progress-bar { background: #16a34a; }
+    .xrd-progress.is-error .xrd-report-progress-bar { background: #dc2626; }
     .xrd-preview {
       background: #fff;
       border: 1px solid var(--line);
@@ -795,13 +921,24 @@ def build_xrd_page() -> str:
         </form>
       </section>
       <div class="xrd-status-stack" id="xrd-status" aria-live="polite"></div>
-      <div class="xrd-report-progress" id="xrd-report-progress" aria-live="polite">
-        <div class="xrd-report-progress-row">
-          <span id="xrd-report-progress-label">보고서 생성 대기</span>
-          <span id="xrd-report-progress-value">0%</span>
+      <div class="xrd-progress" id="xrd-progress" aria-live="polite">
+        <div class="xrd-progress-stage xrd-upload-progress" id="xrd-upload-progress">
+          <div class="xrd-report-progress-row">
+            <span id="xrd-upload-progress-label">bundle 업로드 대기</span>
+            <span id="xrd-upload-progress-value">0%</span>
+          </div>
+          <div class="xrd-report-progress-track">
+            <div class="xrd-report-progress-bar" id="xrd-upload-progress-bar"></div>
+          </div>
         </div>
-        <div class="xrd-report-progress-track">
-          <div class="xrd-report-progress-bar" id="xrd-report-progress-bar"></div>
+        <div class="xrd-progress-stage xrd-report-progress" id="xrd-report-progress">
+          <div class="xrd-report-progress-row">
+            <span id="xrd-report-progress-label">보고서 생성 대기</span>
+            <span id="xrd-report-progress-value">0%</span>
+          </div>
+          <div class="xrd-report-progress-track">
+            <div class="xrd-report-progress-bar" id="xrd-report-progress-bar"></div>
+          </div>
         </div>
       </div>
       <section class="xrd-preview" id="xrd-preview">
@@ -828,6 +965,11 @@ def build_xrd_page() -> str:
     var drop = document.getElementById("xrd-drop");
     var fileList = document.getElementById("xrd-file-list");
     var bundleMeta = document.getElementById("xrd-bundle-meta");
+    var progress = document.getElementById("xrd-progress");
+    var uploadProgress = document.getElementById("xrd-upload-progress");
+    var uploadProgressLabel = document.getElementById("xrd-upload-progress-label");
+    var uploadProgressValue = document.getElementById("xrd-upload-progress-value");
+    var uploadProgressBar = document.getElementById("xrd-upload-progress-bar");
     var reportProgress = document.getElementById("xrd-report-progress");
     var reportProgressLabel = document.getElementById("xrd-report-progress-label");
     var reportProgressValue = document.getElementById("xrd-report-progress-value");
@@ -840,6 +982,10 @@ def build_xrd_page() -> str:
     var XRD_UPLOAD_CHUNK_RETRIES = 4;
     var XRD_MAX_FILE_BYTES = 80 * 1024 * 1024;
     var XRD_MAX_TOTAL_BYTES = 1200 * 1024 * 1024;
+    var uploadProgressVisible = false;
+    var reportProgressVisible = false;
+    var uploadProgressError = false;
+    var reportProgressError = false;
 
     function setStatus(message, error) {
       if (!message) return;
@@ -875,13 +1021,29 @@ def build_xrd_page() -> str:
       runButton.disabled = Boolean(value);
       exampleButton.disabled = Boolean(value);
     }
+    function updateProgressVisibility() {
+      progress.classList.toggle("is-visible", uploadProgressVisible || reportProgressVisible);
+      progress.classList.toggle("is-error", uploadProgressError || reportProgressError);
+      uploadProgress.classList.toggle("is-visible", uploadProgressVisible);
+      reportProgress.classList.toggle("is-visible", reportProgressVisible);
+    }
+    function setUploadProgress(percent, message, visible, error) {
+      var pct = Math.max(0, Math.min(100, Math.round(Number(percent) || 0)));
+      uploadProgressVisible = Boolean(visible);
+      uploadProgressError = Boolean(error);
+      uploadProgressLabel.textContent = message || "bundle 업로드 중입니다.";
+      uploadProgressValue.textContent = pct + "%";
+      uploadProgressBar.style.width = pct + "%";
+      updateProgressVisibility();
+    }
     function setReportProgress(percent, message, visible, error) {
       var pct = Math.max(0, Math.min(100, Math.round(Number(percent) || 0)));
-      reportProgress.classList.toggle("is-visible", Boolean(visible));
-      reportProgress.classList.toggle("is-error", Boolean(error));
+      reportProgressVisible = Boolean(visible);
+      reportProgressError = Boolean(error);
       reportProgressLabel.textContent = message || "보고서 생성 중입니다.";
       reportProgressValue.textContent = pct + "%";
       reportProgressBar.style.width = pct + "%";
+      updateProgressVisibility();
     }
     function stopReportProgressTimer() {
       if (reportProgressTimer) {
@@ -890,13 +1052,14 @@ def build_xrd_page() -> str:
       }
     }
     function progressMessage(percent) {
-      if (percent < 28) return "업로드 파일을 서버로 전송하는 중입니다.";
+      if (percent < 28) return "업로드된 bundle 파일을 분류하는 중입니다.";
       if (percent < 52) return "raw와 ICDD Card 데이터를 분석하는 중입니다.";
-      if (percent < 76) return "그래프와 후보상 정보를 구성하는 중입니다.";
+      if (percent < 76) return "그래프와 결정상 후보 정보를 구성하는 중입니다.";
       return "HTML 보고서를 렌더링하는 중입니다.";
     }
     function startReportProgress(message) {
       stopReportProgressTimer();
+      setUploadProgress(0, "bundle 업로드 대기", false, false);
       var pct = 6;
       setReportProgress(pct, message || progressMessage(pct), true, false);
       reportProgressTimer = setInterval(function() {
@@ -909,6 +1072,7 @@ def build_xrd_page() -> str:
       stopReportProgressTimer();
       setReportProgress(100, message || "보고서가 완성되었습니다.", true, false);
       setTimeout(function() {
+        setUploadProgress(0, "bundle 업로드 대기", false, false);
         setReportProgress(0, "보고서 생성 대기", false, false);
       }, 900);
     }
@@ -916,6 +1080,7 @@ def build_xrd_page() -> str:
       stopReportProgressTimer();
       setReportProgress(100, message || "보고서 생성에 실패했습니다.", true, true);
       setTimeout(function() {
+        setUploadProgress(0, "bundle 업로드 대기", false, false);
         setReportProgress(0, "보고서 생성 대기", false, false);
       }, 1800);
     }
@@ -986,7 +1151,7 @@ def build_xrd_page() -> str:
       }
       return JSON.parse(text);
     }
-    async function requestJsonPostWithRetry(url, attempts, retryMessage) {
+    async function requestJsonPostWithRetry(url, attempts, retryMessage, stage) {
       var lastError = null;
       for (var attempt = 1; attempt <= attempts; attempt += 1) {
         try {
@@ -994,7 +1159,11 @@ def build_xrd_page() -> str:
         } catch (error) {
           lastError = error;
           if (!(error.isNetworkError || error.isTransientError) || attempt >= attempts) break;
-          setReportProgress(6, retryMessage || "서버 응답을 다시 확인하는 중입니다.", true, false);
+          if (stage === "upload") {
+            setUploadProgress(2, retryMessage || "서버 응답을 다시 확인하는 중입니다.", true, false);
+          } else {
+            setReportProgress(6, retryMessage || "서버 응답을 다시 확인하는 중입니다.", true, false);
+          }
           await new Promise(function(resolve) { setTimeout(resolve, 700 * attempt); });
         }
       }
@@ -1012,10 +1181,10 @@ def build_xrd_page() -> str:
         xhr.upload.onprogress = function(event) {
           var loaded = event.lengthComputable ? event.loaded : 0;
           var pct = options.totalUploadBytes > 0
-            ? ((options.uploadedBefore + loaded) / options.totalUploadBytes) * 42
+            ? ((options.uploadedBefore + loaded) / options.totalUploadBytes) * 100
             : 0;
-          setReportProgress(
-            Math.max(6, Math.min(46, pct)),
+          setUploadProgress(
+            Math.max(1, Math.min(99, pct)),
             "bundle 업로드 중 (" + options.fileIndex + "/" + options.fileCount + "): " + options.path,
             true,
             false
@@ -1065,8 +1234,8 @@ def build_xrd_page() -> str:
         } catch (error) {
           lastError = error;
           if (!(error.isNetworkError || error.isTransientError) || attempt >= XRD_UPLOAD_CHUNK_RETRIES) break;
-          setReportProgress(
-            Math.max(6, Math.min(46, (options.uploadedBefore / options.totalUploadBytes) * 42)),
+          setUploadProgress(
+            Math.max(1, Math.min(99, (options.uploadedBefore / options.totalUploadBytes) * 100)),
             "업로드가 잠시 끊겨 같은 조각을 다시 전송합니다. (" + attempt + "/" + XRD_UPLOAD_CHUNK_RETRIES + ")",
             true,
             false
@@ -1094,11 +1263,11 @@ def build_xrd_page() -> str:
             error.isTransientError = response.status === 408 || response.status === 429 || response.status >= 500;
             throw error;
           }
-          return text;
+          return JSON.parse(text);
         } catch (error) {
           lastError = error;
           if (!(error.isNetworkError || error.isTransientError || error instanceof TypeError) || attempt >= 4) break;
-          setReportProgress(52, "보고서 생성 응답을 다시 확인하는 중입니다.", true, false);
+          setReportProgress(8, "보고서 작업 접수 응답을 다시 확인하는 중입니다.", true, false);
           await new Promise(function(resolve) { setTimeout(resolve, 900 * attempt); });
         }
       }
@@ -1125,11 +1294,12 @@ def build_xrd_page() -> str:
           throw new Error(item.path + " 파일이 너무 큽니다. 파일당 최대 80MB입니다.");
         }
       });
-      setReportProgress(4, "업로드 세션을 생성하는 중입니다.", true, false);
+      setUploadProgress(0, "업로드 세션을 생성하는 중입니다.", true, false);
       var session = await requestJsonPostWithRetry(
         "/api/v1/xrd/upload-sessions",
         3,
-        "업로드 세션 생성을 다시 시도하는 중입니다."
+        "업로드 세션 생성을 다시 시도하는 중입니다.",
+        "upload"
       );
       var uploadedBytes = 0;
       for (var fileIndex = 0; fileIndex < supported.length; fileIndex += 1) {
@@ -1157,8 +1327,88 @@ def build_xrd_page() -> str:
           uploadedBytes += blob.size;
         }
       }
-      setReportProgress(48, "업로드 완료. raw와 ICDD Card 데이터를 분석하는 중입니다.", true, false);
+      setUploadProgress(100, "bundle 업로드 완료. 보고서 작업을 접수하는 중입니다.", true, false);
+      setReportProgress(5, "보고서 작업을 접수하는 중입니다.", true, false);
       return completeUploadWithRetry(session.uploadId);
+    }
+    async function requestReportJob(url) {
+      var response;
+      try {
+        response = await fetch(url, {method: "GET"});
+      } catch (error) {
+        var wrapped = new Error("서버 연결이 끊겼습니다. 보고서 작업 상태를 다시 확인합니다.");
+        wrapped.cause = error;
+        wrapped.isNetworkError = true;
+        throw wrapped;
+      }
+      var text = await response.text();
+      if (!response.ok) {
+        var requestError = new Error(parseErrorMessage(text, "보고서 작업 상태 확인에 실패했습니다."));
+        requestError.isTransientError = response.status === 408 || response.status === 429 || response.status >= 500;
+        throw requestError;
+      }
+      return JSON.parse(text);
+    }
+    function sleep(ms) {
+      return new Promise(function(resolve) { setTimeout(resolve, ms); });
+    }
+    async function waitForReportJob(payload) {
+      if (!payload || !payload.jobId) return payload;
+      stopReportProgressTimer();
+      var current = payload;
+      var shownPct = 0;
+      var transientFailures = 0;
+      while (current && current.status !== "completed") {
+        if (current.status === "failed") {
+          var error = current.error || {};
+          throw new Error(error.message || current.message || "XRD 보고서 생성에 실패했습니다.");
+        }
+        shownPct = Math.max(shownPct, Number(current.progressPct || 8));
+        shownPct = Math.min(96, shownPct);
+        setReportProgress(
+          shownPct,
+          current.message || progressMessage(shownPct),
+          true,
+          false
+        );
+        await sleep(1200);
+        try {
+          current = await requestReportJob("/api/v1/xrd/report/jobs/" + encodeURIComponent(payload.jobId));
+          transientFailures = 0;
+        } catch (error) {
+          if (!(error.isNetworkError || error.isTransientError) || transientFailures >= 6) throw error;
+          transientFailures += 1;
+          setReportProgress(
+            shownPct,
+            "서버 응답을 다시 확인하는 중입니다. 네트워크가 잠시 불안정할 수 있습니다.",
+            true,
+            false
+          );
+          await sleep(1200);
+        }
+      }
+      return current;
+    }
+    async function fetchReportHtmlWithRetry(jobId) {
+      var lastError = null;
+      for (var attempt = 1; attempt <= 4; attempt += 1) {
+        try {
+          var response = await fetch("/api/v1/xrd/report/jobs/" + encodeURIComponent(jobId) + "/html");
+          var text = await response.text();
+          if (!response.ok) {
+            var error = new Error(parseErrorMessage(text, "완성된 보고서 HTML을 불러오지 못했습니다."));
+            error.isTransientError = response.status === 408 || response.status === 429 || response.status >= 500;
+            throw error;
+          }
+          return text;
+        } catch (error) {
+          lastError = error;
+          if (!(error.isNetworkError || error.isTransientError || error instanceof TypeError) || attempt >= 4) break;
+          setReportProgress(96, "완성된 보고서 화면을 다시 불러오는 중입니다.", true, false);
+          await sleep(700 * attempt);
+        }
+      }
+      throw lastError || new Error("완성된 보고서 HTML을 불러오지 못했습니다.");
     }
     function showHtml(htmlText) {
       empty.style.display = "none";
@@ -1326,6 +1576,7 @@ def build_xrd_page() -> str:
       empty.style.display = "flex";
       setStatus("XRD 파일을 선택하면 보고서를 생성할 수 있습니다.", false);
       stopReportProgressTimer();
+      setUploadProgress(0, "bundle 업로드 대기", false, false);
       setReportProgress(0, "보고서 생성 대기", false, false);
     });
     exampleButton.addEventListener("click", async function() {
@@ -1358,10 +1609,13 @@ def build_xrd_page() -> str:
         return;
       }
       setBusy(true);
-      startReportProgress("보고서 생성 요청을 준비하는 중입니다.");
+      stopReportProgressTimer();
+      setUploadProgress(0, "bundle 업로드를 준비하는 중입니다.", true, false);
+      setReportProgress(0, "업로드 완료 후 보고서 작업을 시작합니다.", true, false);
       try {
-        var text = await uploadBundleWithSession();
+        var payload = await waitForReportJob(await uploadBundleWithSession());
         setReportProgress(94, "보고서 화면을 준비하는 중입니다.", true, false);
+        var text = await fetchReportHtmlWithRetry(payload.jobId);
         showHtml(text);
         setStatus("XRD 보고서가 생성되었습니다.", false);
         finishReportProgress("XRD 보고서가 생성되었습니다.");
@@ -1395,6 +1649,27 @@ def _build_xrd_html_from_inputs(
     image_paths: list[str],
     origin: bool,
 ) -> str:
+    return _build_xrd_html_from_inputs_with_settings(
+        _request_settings(request),
+        root=root,
+        raw_paths=raw_paths,
+        pdf_dir=pdf_dir,
+        table_paths=table_paths,
+        image_paths=image_paths,
+        origin=origin,
+    )
+
+
+def _build_xrd_html_from_inputs_with_settings(
+    settings: Settings | None,
+    *,
+    root: Path,
+    raw_paths: list[str],
+    pdf_dir: str,
+    table_paths: list[str],
+    image_paths: list[str],
+    origin: bool,
+) -> str:
     if not raw_paths:
         raise ApiException(
             400,
@@ -1413,7 +1688,7 @@ def _build_xrd_html_from_inputs(
         image_files=image_paths,
         origin=origin,
         comment_provider=_xrd_comment_provider(
-            _request_settings(request),
+            settings,
             processed_dir=root / "images",
             logs_dir=root / "logs",
         ),
@@ -1421,13 +1696,90 @@ def _build_xrd_html_from_inputs(
     return result["html"]
 
 
+def _run_xrd_report_job(job: XrdReportJob) -> None:
+    _set_xrd_job_state(
+        job,
+        status="running",
+        progress_pct=8,
+        message="업로드된 bundle 파일을 분류하는 중입니다.",
+    )
+    root = job.work_dir / "report"
+    try:
+        root.mkdir(parents=True, exist_ok=True)
+        raw_paths, pdf_dir, table_paths, image_paths = _save_xrd_bundle_session_files(
+            job.input_root,
+            root,
+        )
+        _set_xrd_job_state(
+            job,
+            progress_pct=38,
+            message="raw와 ICDD Card 데이터를 분석하는 중입니다.",
+        )
+        html_result = _build_xrd_html_from_inputs_with_settings(
+            job.settings,
+            root=root,
+            raw_paths=raw_paths,
+            pdf_dir=pdf_dir,
+            table_paths=table_paths,
+            image_paths=image_paths,
+            origin=job.origin,
+        )
+    except ApiException as exc:
+        _set_xrd_job_state(
+            job,
+            status="failed",
+            progress_pct=100,
+            message=exc.message,
+            error=_api_error_payload(exc),
+        )
+        return
+    except Exception as exc:
+        logger.exception("XRD 보고서 생성 실패 (job_id=%s)", job.job_id)
+        api_exc = ApiException(
+            500,
+            "XRD_REPORT_BUILD_FAILED",
+            f"XRD 보고서 생성 중 오류가 발생했습니다: {exc}",
+            retryable=False,
+            details={"exceptionType": type(exc).__name__},
+        )
+        _set_xrd_job_state(
+            job,
+            status="failed",
+            progress_pct=100,
+            message=api_exc.message,
+            error=_api_error_payload(api_exc),
+        )
+        return
+
+    _set_xrd_job_state(
+        job,
+        status="completed",
+        progress_pct=100,
+        message="XRD 보고서가 완성되었습니다.",
+        html_result=html_result,
+    )
+
+
+def _submit_xrd_report_job(
+    *,
+    input_root: Path,
+    work_dir: Path,
+    settings: Settings | None,
+    origin: bool,
+) -> XrdReportJob:
+    job = _create_xrd_report_job(
+        input_root=input_root,
+        work_dir=work_dir,
+        settings=settings,
+        origin=origin,
+    )
+    _xrd_report_executor.submit(_run_xrd_report_job, job)
+    return job
+
+
 @router.post("/api/v1/xrd/upload-sessions", status_code=201, tags=["xrd"])
 def create_xrd_upload_session() -> dict:
-    xrd_upload_store.cleanup()
-    cutoff = time.time() - 2 * 60 * 60
-    for upload_id, (created_at, _html) in list(_xrd_completed_upload_reports.items()):
-        if created_at < cutoff:
-            _xrd_completed_upload_reports.pop(upload_id, None)
+    _cleanup_xrd_report_jobs()
     session = xrd_upload_store.create()
     return xrd_upload_store.payload(session)
 
@@ -1464,15 +1816,19 @@ async def upload_xrd_chunk(
     return payload
 
 
-@router.post("/api/v1/xrd/upload-sessions/{upload_id}/complete", response_class=HTMLResponse, tags=["xrd"])
+@router.post("/api/v1/xrd/upload-sessions/{upload_id}/complete", response_class=JSONResponse, tags=["xrd"])
 def complete_xrd_upload_session(
     request: Request,
     upload_id: str,
     origin: bool = Form(True),
-) -> HTMLResponse:
-    existing = _xrd_completed_upload_reports.get(upload_id)
-    if existing is not None:
-        return HTMLResponse(existing[1])
+) -> JSONResponse:
+    existing_job_id = xrd_upload_store.completed_ref(upload_id)
+    if existing_job_id is not None:
+        with _xrd_report_jobs_lock:
+            existing_job = _xrd_report_jobs.get(existing_job_id)
+        if existing_job is not None:
+            return JSONResponse(_xrd_job_payload(existing_job))
+
     session = xrd_upload_store.get(upload_id)
     incomplete_files = xrd_upload_store.incomplete_files(session)
     if incomplete_files:
@@ -1483,27 +1839,50 @@ def complete_xrd_upload_session(
             "XRD_UPLOAD_INCOMPLETE",
             f"아직 업로드가 완료되지 않은 파일이 있습니다: {preview}{more}",
         )
-    root = Path(tempfile.mkdtemp(prefix="rist-xrd-web-"))
-    try:
-        raw_paths, pdf_dir, table_paths, image_paths = _save_xrd_bundle_session_files(
-            session.input_root,
-            root,
+
+    job = _submit_xrd_report_job(
+        input_root=session.input_root,
+        work_dir=session.work_dir,
+        settings=_request_settings(request),
+        origin=origin,
+    )
+    xrd_upload_store.remember_completed_ref(upload_id, job.job_id)
+    xrd_upload_store.pop(upload_id)
+    return JSONResponse(_xrd_job_payload(job))
+
+
+@router.get("/api/v1/xrd/report/jobs/{job_id}", response_class=JSONResponse, tags=["xrd"])
+def get_xrd_report_job(job_id: str) -> JSONResponse:
+    _cleanup_xrd_report_jobs()
+    with _xrd_report_jobs_lock:
+        job = _xrd_report_jobs.get(job_id)
+    if job is None:
+        raise ApiException(
+            404,
+            "XRD_REPORT_JOB_NOT_FOUND",
+            "XRD 보고서 작업을 찾을 수 없습니다. 다시 생성해 주세요.",
         )
-        html_result = _build_xrd_html_from_inputs(
-            request,
-            root=root,
-            raw_paths=raw_paths,
-            pdf_dir=pdf_dir,
-            table_paths=table_paths,
-            image_paths=image_paths,
-            origin=origin,
+    return JSONResponse(_xrd_job_payload(job))
+
+
+@router.get("/api/v1/xrd/report/jobs/{job_id}/html", response_class=HTMLResponse, tags=["xrd"])
+def download_xrd_report_html(job_id: str) -> HTMLResponse:
+    with _xrd_report_jobs_lock:
+        job = _xrd_report_jobs.get(job_id)
+    if job is None:
+        raise ApiException(
+            404,
+            "XRD_REPORT_JOB_NOT_FOUND",
+            "XRD 보고서 작업을 찾을 수 없습니다. 다시 생성해 주세요.",
         )
-    finally:
-        xrd_upload_store.pop(upload_id)
-        shutil.rmtree(root, ignore_errors=True)
-        shutil.rmtree(session.work_dir, ignore_errors=True)
-    _xrd_completed_upload_reports[upload_id] = (time.time(), html_result)
-    return HTMLResponse(html_result)
+    if job.status != "completed" or not job.html_result:
+        raise ApiException(
+            409,
+            "XRD_REPORT_NOT_READY",
+            "XRD 보고서가 아직 완성되지 않았습니다.",
+            retryable=True,
+        )
+    return HTMLResponse(job.html_result)
 
 
 @router.post("/api/v1/xrd/analyze", response_class=HTMLResponse, tags=["xrd"])
