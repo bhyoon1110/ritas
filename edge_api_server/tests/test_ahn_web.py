@@ -53,6 +53,9 @@ def test_ahn_workspace_contains_folder_upload_controls() -> None:
     assert "/api/v1/tem/example" in page
     assert "/api/v1/tem/report/jobs/" in page
     assert "waitForReportJob" in page
+    assert "parseErrorMessage" in page
+    assert "서버 연결에 실패했습니다" in page
+    assert "transientFailures" in page
     assert "entryToBundleItems" in page
     assert "droppedBundleItems" in page
     assert "완료되면 다운로드 버튼이 활성화됩니다." in page

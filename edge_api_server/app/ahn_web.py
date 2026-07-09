@@ -1031,11 +1031,37 @@ def build_ahn_page() -> str:
       result.hidden = false;
       empty.hidden = true;
     }
+    function parseErrorMessage(text, fallback) {
+      if (!text) return fallback;
+      try {
+        var payload = JSON.parse(text);
+        return payload.message || payload.detail || text;
+      } catch (_error) {
+        return text;
+      }
+    }
+    function networkErrorMessage(_error, url) {
+      var target = String(url || "");
+      if (target.indexOf("/analyze") >= 0) {
+        return "서버 연결에 실패했습니다. 업로드 중 네트워크가 끊겼거나 Edge API 서비스가 재시작되었을 수 있습니다. 잠시 후 다시 시도하세요.";
+      }
+      return "서버 응답을 받지 못했습니다. 네트워크 또는 Edge API 서비스 상태를 확인하세요.";
+    }
     async function requestReport(url, formData) {
       var options = formData ? {method: "POST", body: formData} : {method: "GET"};
-      var response = await fetch(url, options);
+      var response;
+      try {
+        response = await fetch(url, options);
+      } catch (error) {
+        var wrapped = new Error(networkErrorMessage(error, url));
+        wrapped.cause = error;
+        wrapped.isNetworkError = true;
+        throw wrapped;
+      }
       var text = await response.text();
-      if (!response.ok) throw new Error(text || "보고서 생성 요청에 실패했습니다.");
+      if (!response.ok) {
+        throw new Error(parseErrorMessage(text, "보고서 생성 요청에 실패했습니다."));
+      }
       return JSON.parse(text);
     }
     function sleep(ms) {
@@ -1046,6 +1072,7 @@ def build_ahn_page() -> str:
       stopProgressTimer();
       var current = payload;
       var shownPct = 0;
+      var transientFailures = 0;
       while (current && current.status !== "completed") {
         if (current.status === "failed") {
           var error = current.error || {};
@@ -1060,7 +1087,20 @@ def build_ahn_page() -> str:
           false
         );
         await sleep(1500);
-        current = await requestReport("/api/v1/tem/report/jobs/" + encodeURIComponent(payload.jobId), null);
+        try {
+          current = await requestReport("/api/v1/tem/report/jobs/" + encodeURIComponent(payload.jobId), null);
+          transientFailures = 0;
+        } catch (error) {
+          if (!error.isNetworkError || transientFailures >= 4) throw error;
+          transientFailures += 1;
+          setProgress(
+            shownPct,
+            "서버 응답을 다시 확인하는 중입니다. 네트워크가 잠시 불안정할 수 있습니다.",
+            true,
+            false
+          );
+          await sleep(1200);
+        }
       }
       return current;
     }
