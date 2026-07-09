@@ -183,6 +183,63 @@ def seed_lims_request_search(db: dict) -> None:
                     output_order,
                     synced_at
                 ) VALUES (
+                    270849,
+                    '2025M01312',
+                    '2026-05-22',
+                    8,
+                    '접수',
+                    126,
+                    'M4',
+                    '분석의뢰',
+                    'P-TEM',
+                    '코팅층 두께 분석',
+                    11,
+                    'RIST 고객',
+                    105,
+                    '이티이엠',
+                    458468,
+                    'TEM 시료',
+                    3,
+                    485996,
+                    3915,
+                    'B54123',
+                    '투과전자현미경 코팅층 분석',
+                    2,
+                    '한분석',
+                    1,
+                    '2026-07-03 18:13:35'
+                )
+                """
+            )
+            cursor.execute(
+                """
+                INSERT INTO lims_req_ax_search (
+                    req_result_no,
+                    req_number,
+                    req_date,
+                    req_state,
+                    req_state_name,
+                    req_type_no,
+                    req_type_code,
+                    req_type_name,
+                    project_code,
+                    cust_req_name,
+                    customer_no,
+                    customer_name,
+                    req_user_no,
+                    req_user_name,
+                    smp_result_no,
+                    smp_result_name,
+                    smp_result_state,
+                    test_mtd_result_no,
+                    test_mtd_no,
+                    test_mtd_code,
+                    test_mtd_name,
+                    test_state,
+                    test_charger_name,
+                    output_order,
+                    synced_at
+                ) VALUES (
                     270847,
                     '2025M01310',
                     '2026-05-20',
@@ -323,6 +380,7 @@ def test_file_crud_and_request_list(tmp_path: Path, mariadb: dict) -> None:
     assert requests.status_code == 200
     all_items = requests.json()["items"]
     assert {item["experimentCode"] for item in all_items} == {
+        "B54123",
         "FTIR-QUAL",
         "RAMAN-QUAL",
     }
@@ -335,6 +393,7 @@ def test_file_crud_and_request_list(tmp_path: Path, mariadb: dict) -> None:
     completed_items = completed_requests.json()["items"]
     assert {item["experimentCode"] for item in completed_items} == {
         "A23141",
+        "B54123",
         "FTIR-QUAL",
         "RAMAN-QUAL",
     }
@@ -377,6 +436,16 @@ def test_file_crud_and_request_list(tmp_path: Path, mariadb: dict) -> None:
     assert completed_xrd_item["requestNumber"] == "2025M01309"
     assert completed_xrd_item["experimentCode"] == "A23141"
     assert completed_xrd_item["experimentName"] == "XRD 데이터 해석"
+
+    tem_requests = client.get(
+        "/api/v1/requests?experimentType=TEM", headers=headers()
+    )
+    assert tem_requests.status_code == 200
+    tem_item = tem_requests.json()["items"][0]
+    assert tem_item["requestNumber"] == "2025M01312"
+    assert tem_item["experimentCode"] == "B54123"
+    assert tem_item["experimentName"] == "투과전자현미경 코팅층 분석"
+    assert tem_item["testChargerName"] == "한분석"
 
     deleted = client.delete(
         f"/api/v1/jobs/{job_id}/files/raw/sample.txt",

@@ -6,6 +6,11 @@ Edge 보고서 worker가 최종 사용자용 보고서 ZIP을 같은 Edge 서버
 서비스로 전달한다. 분석 결과 JSON과 LLM 요청/응답 JSON은 Edge 내부 데이터이며
 이 인터페이스로 전송하지 않는다.
 
+FT-IR/Raman 웹 화면과 XRD/TEM C# 전송 프로그램은 모두 Edge 서버까지만
+파일과 보고서 생성 요청을 보낸다. Spring Boot 결과 전달 API의 호출 주체는
+항상 Edge 보고서 worker이며, XRD/TEM C# 프로그램은 이 API를 직접 호출하지
+않는다.
+
 ## 설정
 
 | 변수 | 기본값 | 설명 |
@@ -40,6 +45,17 @@ Idempotency-Key: {jobId}:report-package
 | `operatorId` | string | Y | 작업자 ID |
 | `packageSha256` | string | Y | ZIP 전체의 소문자 64자리 SHA-256 |
 | `package` | binary | Y | `application/zip` 최종 결과 ZIP |
+
+`requestNumber`, `experimentCode`, `equipmentCode`, `operatorId`는 Edge 작업 등록
+시 확정된 업무 식별값이다. XRD/TEM C# 연동에서는 C# 프로그램이
+`GET /api/v1/requests`에서 선택한 의뢰번호/실험코드와 실험 PC별 기본
+`equipmentCode`, 사용자 로그인/선택값의 `operatorId`를 `POST /api/v1/jobs`에
+전달하고, Edge worker가 동일 값을 이 API로 전달한다.
+
+현재 공통 작업 명세는 `experimentCode` 단일 필드를 사용한다. Spring Boot가
+LIMS 시험코드(`testMethodCode`)를 반드시 받아야 하고 Edge 내부 processor는
+`XRD`/`TEM` 같은 장비 구분명으로 라우팅해야 한다면, C# 계약 확정 전에
+`analysisType` 같은 별도 라우팅 필드 추가 여부를 결정해야 한다.
 
 성공은 모든 `2xx` 응답으로 판단한다. `408`, `429`, `500`, `502`, `503`, `504`와
 연결/시간 초과 오류는 설정된 횟수까지 같은 `Idempotency-Key`로 재시도한다.

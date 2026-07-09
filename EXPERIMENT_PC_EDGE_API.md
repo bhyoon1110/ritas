@@ -6,6 +6,9 @@
 전송 완료 후 보고서 생성을 요청하기 위한 REST API를 정의한다.
 
 이 문서의 호출 주체는 실험 PC 프로그램이고, 수신 주체는 Edge 분석 서버이다.
+FT-IR/Raman은 웹 화면에서 같은 개념을 사용하고, XRD/TEM은 별도 C# 전송
+프로그램이 본 명세의 공통 작업 API를 호출한다. C# 프로그램은 Spring Boot를
+직접 호출하지 않으며, 최종 보고서 ZIP 전달은 Edge 보고서 worker가 수행한다.
 
 ## 2. 기본 정보
 
@@ -98,6 +101,47 @@ Edge 서버는 작업 등록 시 서버 시간을 기준으로 작업 폴더를 
 
 보고서 생성 요청은 파일 검증 완료 후에만 허용한다.
 
+### 5.1 프로젝트별 적용 방식
+
+| 프로젝트 | 파일 전송 주체 | Edge 수신 API | 보고서 생성/전달 |
+|---|---|---|---|
+| FT-IR | Edge 웹 화면 | `/api/v1/ftir/*` 보고서 API | Edge가 보고서 ZIP 생성 후 Spring Boot로 전송 |
+| Raman | Edge 웹 화면 | `/api/v1/raman/*` 보고서 API | Edge가 보고서 ZIP 생성 후 Spring Boot로 전송 |
+| XRD | C# 전송 프로그램 | 본 문서의 `/api/v1/jobs`, `/files`, `/uploads/complete`, `/report` | Edge worker가 보고서 ZIP 생성 후 Spring Boot로 전송 |
+| TEM | C# 전송 프로그램 | 본 문서의 `/api/v1/jobs`, `/files`, `/uploads/complete`, `/report` | Edge worker가 보고서 ZIP 생성 후 Spring Boot로 전송 |
+
+XRD/TEM의 현재 웹 화면 API(`/api/v1/xrd/analyze`, `/api/v1/tem/analyze`)는
+브라우저 기반 미리보기/보고서 생성용이다. C# 연동 계약은 위 공통 작업 API를
+기준으로 한다.
+
+### 5.2 XRD/TEM C# 클라이언트 권장 흐름
+
+1. C# 프로그램이 `GET /api/v1/requests?experimentType=XRD` 또는
+   `GET /api/v1/requests?experimentType=TEM`으로 의뢰 목록을 조회한다.
+2. 사용자가 의뢰 항목을 선택한다.
+3. 선택 항목의 `requestNumber`, `experimentCode`와 C# 프로그램 설정에서 자동
+   입력된 `equipmentCode`, 사용자 로그인/선택값의 `operatorId`로
+   `POST /api/v1/jobs`를 호출한다.
+4. C# 프로그램이 원본 파일 bundle을 `POST /api/v1/jobs/{jobId}/files`로 전송한다.
+5. C# 프로그램이 최종 파일 목록으로
+   `POST /api/v1/jobs/{jobId}/uploads/complete`를 호출한다.
+6. C# 프로그램이 `POST /api/v1/jobs/{jobId}/report`로 보고서 생성을 요청한다.
+7. C# 프로그램은 `GET /api/v1/jobs/{jobId}`로 `COMPLETED` 또는 `FAILED` 상태를
+   확인한다. `COMPLETED`는 Edge가 Spring Boot로 최종 ZIP 전달까지 성공했다는
+   의미이다.
+
+현재 명세에서는 `pk.experimentCode` 값 하나가 Edge 작업 식별자와 Spring Boot
+전달 필드 `experimentCode`로 함께 사용된다. LIMS 시험코드가 `A23141`,
+`B54123`처럼 장비 구분명(`XRD`, `TEM`)과 다르고, Edge processor는 장비 구분명으로
+라우팅해야 하는 운영이면 C# 계약 확정 전에 다음 중 하나를 선택해야 한다.
+
+- `pk.experimentCode`를 LIMS 시험코드로 보내고, 서버의 processor 설정을 해당
+  시험코드별로 맞춘다.
+- 별도 필드(예: `analysisType`)를 추가해 Edge 내부 라우팅은 `XRD`/`TEM`,
+  Spring Boot 전달은 LIMS `experimentCode`로 분리한다.
+
+현 구현과 문서는 첫 번째 방식, 즉 단일 `experimentCode` 필드를 기준으로 한다.
+
 ## 6. 공통 헤더
 
 | 헤더 | 필수 | 설명 |
@@ -133,6 +177,10 @@ Idempotency-Key: 771e92ae-d06d-42e3-b2c8-d1846619987c
   }
 }
 ```
+
+`equipmentCode`는 XRD/TEM C# 전송 프로그램의 PC별 설정값으로 기본 입력한다.
+실험 PC가 정해지면 장비도 사실상 정해지므로 일반 사용자가 매번 입력하지
+않도록 하고, 필요 시 관리자 설정에서만 변경한다.
 
 파일 수와 전체 크기는 이 시점에 선언하지 않는다. 파일 업로드·교체·삭제를 마친
 뒤 `uploads/complete`에서 최종 파일 목록과 함께 확정한다.
@@ -427,10 +475,11 @@ Edge 로컬 MariaDB의 `lims_req_ax_search` 테이블을 조회해 LIMS 의뢰/�
 항목 목록을 반환한다. 이 API는 조회용이며 작업을 생성하지 않는다. 사용자는
 목록에서 의뢰번호와 시험 항목을 선택한 뒤 `POST /api/v1/jobs`를 호출한다.
 `experimentType`은 선택 파라미터이며, 화면별 조회 범위를 제한할 때 사용한다.
-현재 FT-IR 화면은 `FT-IR`, Raman 화면은 `RAMAN`을 전달한다.
+현재 FT-IR 화면은 `FT-IR`, Raman 화면은 `RAMAN`을 전달한다. XRD/TEM C#
+전송 프로그램은 각각 `XRD`, `TEM`을 전달한다.
 
 - `experimentType` 필터는 `test_mtd_code`, `test_mtd_name` 기준으로 적용한다.
-  예를 들어 `test_mtd_name`에 XRD, SEM, FT-IR, Raman처럼 시험/장비명이
+  예를 들어 `test_mtd_name`에 XRD, TEM, SEM, FT-IR, Raman처럼 시험/장비명이
   명시되어 있으면 해당 화면의 시험 항목만 조회한다.
 - 파라미터를 생략하면 완료되지 않은 전체 시험 항목을 조회한다.
 - `includeCompleted` 기본값은 `false`이다. `req_state_name`에 `완료`가
@@ -481,6 +530,12 @@ Edge 로컬 MariaDB의 `lims_req_ax_search` 테이블을 조회해 LIMS 의뢰/�
 `page`는 1 이상, `pageSize`는 1~200이다. 응답에는 의뢰번호 외에도 의뢰일,
 의뢰상태, 의뢰명, 시료명, 시험명, 의뢰자, 시험담당자 등 화면에서 상세 확인에
 필요한 LIMS 조회 정보가 포함된다.
+
+XRD/TEM C# 프로그램은 이 응답에서 `requestNumber`와 `experimentCode`를
+선택값으로 사용한다. `equipmentCode`는 실험 PC별 프로그램 설정값을 기본으로
+자동 입력하고, `operatorId`는 사용자 로그인 또는 선택값으로 채워 작업 등록
+API에 전달한다. `testChargerName`은 화면 표시용 담당자명이며, `operatorId`를
+대체하는 고유 식별자로 사용하지 않는다.
 
 ## 8. 작업 상태
 

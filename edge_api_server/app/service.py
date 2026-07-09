@@ -67,6 +67,7 @@ REQUEST_EXPERIMENT_ALIASES: dict[str, tuple[str, ...]] = {
     ),
     "raman": ("raman", "라만"),
     "xrd": ("xrd", "x-ray diffraction", "x ray diffraction", "x선", "엑스선"),
+    "tem": ("tem", "transmission electron", "투과전자", "전자현미경"),
     "sem": ("sem", "scanning electron", "주사전자", "전자현미경"),
 }
 
