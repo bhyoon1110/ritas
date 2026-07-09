@@ -240,8 +240,8 @@ def test_build_report_html_contains_xrd_template_sections(tmp_path) -> None:
     assert "refreshPrintLegend" in html
     assert 'gd.closest(".xrd-graph-frame")' in html
     assert 'graphFrame.querySelector(".xrd-print-legend")' in html
-    assert "PRINT_PLOT_HEIGHT = 390" in html
-    assert "PRINT_PLOT_WIDTH = 720" in html
+    assert "PRINT_PLOT_HEIGHT = 350" in html
+    assert "PRINT_PLOT_WIDTH = 620" in html
     assert "PRINT_LANDSCAPE_PLOT_HEIGHT = 420" in html
     assert "PRINT_LANDSCAPE_PLOT_WIDTH = 960" in html
     assert "applyReportPlotLayout" in html
@@ -271,16 +271,16 @@ def test_build_report_html_contains_xrd_template_sections(tmp_path) -> None:
     assert "@page xrd-graph-landscape { size: A4 landscape;" in html
     assert "body.xrd-report-graph-landscape #xrd-graph-section" in html
     assert ".xrd-graph-frame {\n      overflow: visible !important;" in html
-    assert "width: 96% !important" in html
-    assert "max-width: 184mm !important" in html
+    assert "width: 92% !important" in html
+    assert "max-width: 174mm !important" in html
     assert "margin: 0 auto !important" in html
-    assert "padding: 8px 16px 12px !important" in html
+    assert "padding: 8px 12px 12px !important" in html
     assert ".xrd-graph-frame::after" in html
     assert "pointer-events: none;\n      z-index: 3;" in html
     assert "#xrd-plot .plot-container,\n    #xrd-plot .svg-container," in html
     assert "width: 100% !important" in html
     assert "overflow: visible !important" in html
-    assert "width: min(720px, calc(100% - 32px)) !important" in html
+    assert "width: min(620px, calc(100% - 24px)) !important" in html
     assert "body.xrd-report-graph-landscape .xrd-graph-frame" in html
     assert "width: 96% !important" in html
     assert "max-width: 260mm !important" in html
@@ -291,7 +291,7 @@ def test_build_report_html_contains_xrd_template_sections(tmp_path) -> None:
     assert "graphFrame.getBoundingClientRect().width" in html
     assert "landscape ? 64 : 56" in html
     assert "#xrd-plot { height: 560px !important; min-height: 500px; }" in html
-    assert "height: 390px !important" in html
+    assert "height: 350px !important" in html
     assert 'style="height:560px; width:100%;"' in html
     assert "#xrd-peak-info" in html
     assert "page-break-before: always" in html

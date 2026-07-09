@@ -2775,10 +2775,10 @@ def xrd_report_css() -> str:
     }
     .xrd-graph-frame {
       overflow: visible !important;
-      width: 96% !important;
-      max-width: 184mm !important;
+      width: 92% !important;
+      max-width: 174mm !important;
       margin: 0 auto !important;
-      padding: 8px 16px 12px !important;
+      padding: 8px 12px 12px !important;
       border-radius: 12px;
       box-sizing: border-box;
       position: relative;
@@ -2796,10 +2796,10 @@ def xrd_report_css() -> str:
       z-index: 3;
     }
     #xrd-plot {
-      width: min(720px, calc(100% - 32px)) !important;
-      max-width: calc(100% - 32px) !important;
-      height: 390px !important;
-      min-height: 390px !important;
+      width: min(620px, calc(100% - 24px)) !important;
+      max-width: calc(100% - 24px) !important;
+      height: 350px !important;
+      min-height: 350px !important;
       margin: 0 auto 6px;
       overflow: visible !important;
       box-sizing: border-box;
@@ -3054,8 +3054,8 @@ def build_report_html(
     var originalLegendLayout = null;
     var printLegend = null;
     var printPageStyle = null;
-    var PRINT_PLOT_HEIGHT = 390;
-    var PRINT_PLOT_WIDTH = 720;
+    var PRINT_PLOT_HEIGHT = 350;
+    var PRINT_PLOT_WIDTH = 620;
     var PRINT_LANDSCAPE_PLOT_HEIGHT = 420;
     var PRINT_LANDSCAPE_PLOT_WIDTH = 960;
     function compactLayout(layout) {{
@@ -3305,7 +3305,6 @@ def build_report_html(
     function restoreAfterServerPdf() {{
       removePrintPageStyle();
       restorePrintLegend();
-      restoreScreenPlotLayout();
     }}
     function extractPdfErrorMessage(text) {{
       var fallback = "서버 PDF 생성에 실패했습니다. Chrome/Chromium 렌더러 설정을 확인한 뒤 다시 시도하세요.";
@@ -3381,25 +3380,28 @@ def build_report_html(
     }});
     if (!button) return;
     button.addEventListener("click", function() {{
-      var relayout = preparePrintLegend();
       var runExport = function() {{
         serverRenderPdf()
           .then(restoreAfterServerPdf)
           .catch(function(error) {{
             console.warn("XRD server PDF export failed.", error);
             if (window.location.protocol === "file:") {{
-              window.setTimeout(function() {{ window.print(); }}, 80);
+              var relayout = preparePrintLegend();
+              var printFallback = function() {{
+                window.setTimeout(function() {{ window.print(); }}, 80);
+              }};
+              if (relayout && relayout.then) {{
+                relayout.finally(printFallback);
+              }} else {{
+                printFallback();
+              }}
               return;
             }}
             restoreAfterServerPdf();
             window.alert(error && error.message ? error.message : "서버 PDF 생성에 실패했습니다.");
           }});
       }};
-      if (relayout && relayout.then) {{
-        relayout.finally(runExport);
-      }} else {{
-        runExport();
-      }}
+      runExport();
     }});
   }})();
   </script>
