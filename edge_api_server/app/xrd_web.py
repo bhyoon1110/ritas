@@ -34,7 +34,7 @@ from lim.xrd_plot import (
 )
 
 from .errors import ApiException, api_exception_handler, validation_exception_handler
-from .config import Settings
+from .config import PROJECT_DIR, Settings
 from .llm_client import LlmError, LocalLlmClient
 from .report import annotator
 from .report.builders import LlmSlotSpec
@@ -172,7 +172,19 @@ def _xrd_pdf_failure_message(error_text: str) -> str:
             "snap Chromium이 systemd NoNewPrivileges 제한 때문에 실행되지 못했습니다. "
             "업데이트된 rist-edge-api.service를 설치하고 daemon-reload/restart를 실행하세요."
         )
+    if "pdf_missing" in error_text:
+        return (
+            "Chrome/Chromium은 실행됐지만 PDF 파일을 만들지 못했습니다. "
+            "snap Chromium이 접근 가능한 RIST_XRD_PDF_RENDER_DIR 경로를 지정하고 디렉터리 권한을 확인하세요."
+        )
     return "XRD PDF 생성 중 오류가 발생했습니다. 서버의 Chrome/Chromium 실행 환경을 확인하세요."
+
+
+def _xrd_pdf_render_parent() -> Path:
+    configured = os.getenv("RIST_XRD_PDF_RENDER_DIR", "").strip()
+    render_dir = Path(configured).expanduser() if configured else PROJECT_DIR / "data" / "pdf_renders"
+    render_dir.mkdir(parents=True, exist_ok=True)
+    return render_dir
 
 
 def _render_xrd_html_pdf(html_text: str, *, landscape: bool) -> bytes:
@@ -185,7 +197,7 @@ def _render_xrd_html_pdf(html_text: str, *, landscape: bool) -> bytes:
             retryable=False,
         )
 
-    with tempfile.TemporaryDirectory(prefix="rist-xrd-pdf-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="rist-xrd-pdf-", dir=str(_xrd_pdf_render_parent())) as tmp:
         root = Path(tmp)
         html_path = root / "report.html"
         pdf_path = root / "report.pdf"
@@ -280,7 +292,12 @@ def _render_xrd_html_pdf(html_text: str, *, landscape: bool) -> bytes:
                 time.sleep(0.2)
 
             message = (stderr or stdout or b"").decode("utf-8", errors="replace").strip()
-            errors.append(f"{headless_arg}: exit={process.returncode} stderr={message[:800]}")
+            pdf_size = pdf_path.stat().st_size if pdf_path.exists() else 0
+            missing_marker = " pdf_missing=true" if pdf_size <= 0 else ""
+            errors.append(
+                f"{headless_arg}: exit={process.returncode} pdf_size={pdf_size}{missing_marker} "
+                f"stderr={message[:800]}"
+            )
 
     error_text = " | ".join(errors)
     logger.error("XRD PDF 렌더링 실패: %s", error_text)

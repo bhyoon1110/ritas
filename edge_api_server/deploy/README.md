@@ -187,11 +187,18 @@ sudo snap install chromium
 
 # systemd 환경에서 확실히 잡히도록 edge.env에 실제 경로 지정
 printf '\nRIST_PDF_CHROME_BIN=/snap/bin/chromium\n' | sudo tee -a /home/rist/ritas/edge.env
+sudo -u rist mkdir -p /home/rist/ritas/edge_api_server/data/pdf_renders
+printf '\nRIST_XRD_PDF_RENDER_DIR=/home/rist/ritas/edge_api_server/data/pdf_renders\n' | sudo tee -a /home/rist/ritas/edge.env
 sudo systemctl restart rist-edge-api.service
 
 # 반영 확인
 journalctl -u rist-edge-api.service -n 80 --no-pager
 ```
+
+Chrome이 `exit=0`으로 종료됐는데 PDF 파일을 만들지 못했다면 snap Chromium이
+systemd의 `/tmp` 네임스페이스를 제대로 쓰지 못한 경우가 많다. 이때는
+`RIST_XRD_PDF_RENDER_DIR`을 `/home/rist/...` 하위처럼 snap이 접근 가능한 경로로
+지정하고 해당 디렉터리를 `rist` 계정이 쓸 수 있게 만든다.
 
 Snap Chromium을 사용할 때 `snap-confine is packaged without necessary permissions`
 또는 `cap_dac_override not found` 오류가 나오면 `rist-edge-api.service`의

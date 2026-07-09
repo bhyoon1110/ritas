@@ -151,6 +151,23 @@ def test_xrd_pdf_snap_failure_message_is_actionable() -> None:
     assert "daemon-reload" in message
 
 
+def test_xrd_pdf_missing_failure_message_mentions_render_dir() -> None:
+    message = xrd_web._xrd_pdf_failure_message(
+        "--headless=new: exit=0 pdf_size=0 pdf_missing=true stderr=dbus warning"
+    )
+
+    assert "PDF 파일을 만들지 못했습니다" in message
+    assert "RIST_XRD_PDF_RENDER_DIR" in message
+
+
+def test_xrd_pdf_render_parent_uses_env(monkeypatch, tmp_path) -> None:
+    render_dir = tmp_path / "pdf-renders"
+    monkeypatch.setenv("RIST_XRD_PDF_RENDER_DIR", str(render_dir))
+
+    assert xrd_web._xrd_pdf_render_parent() == render_dir
+    assert render_dir.is_dir()
+
+
 def test_xrd_workspace_is_not_cached() -> None:
     with TestClient(create_xrd_preview_app()) as client:
         response = client.get("/xrd")
