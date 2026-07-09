@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from io import BytesIO
 import re
 import shutil
 import tempfile
+from threading import Lock
 import time
 from pathlib import Path
 from typing import Any
@@ -43,16 +45,24 @@ AHN_REPORT_JOB_TTL_SECONDS = 2 * 60 * 60
 class AhnReportJob:
     job_id: str
     work_dir: Path
+    input_root: Path
     output_dir: Path
     pptx_path: Path
     package_path: Path
     analysis_path: Path
     manifest_path: Path
-    manifest: dict[str, Any]
+    manifest: dict[str, Any] | None
     created_at: float
+    updated_at: float
+    status: str = "queued"
+    progress_pct: int = 5
+    message: str = "TEM 보고서 작업이 대기 중입니다."
+    error: dict[str, Any] | None = None
 
 
 _ahn_report_jobs: dict[str, AhnReportJob] = {}
+_ahn_report_jobs_lock = Lock()
+_ahn_report_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="rist-ahn-report")
 
 
 def _safe_relative_path(filename: str | None, fallback: str) -> Path:
@@ -222,13 +232,18 @@ async def _save_ahn_uploads(files: list[UploadFile] | None, upload_root: Path) -
 
 def _cleanup_old_jobs() -> None:
     now = time.time()
-    expired = [
-        job_id
-        for job_id, job in _ahn_report_jobs.items()
-        if now - job.created_at > AHN_REPORT_JOB_TTL_SECONDS
-    ]
-    for job_id in expired:
-        job = _ahn_report_jobs.pop(job_id, None)
+    with _ahn_report_jobs_lock:
+        expired = [
+            job_id
+            for job_id, job in _ahn_report_jobs.items()
+            if now - job.created_at > AHN_REPORT_JOB_TTL_SECONDS
+            and job.status not in {"queued", "running"}
+        ]
+        jobs = [
+            _ahn_report_jobs.pop(job_id, None)
+            for job_id in expired
+        ]
+    for job in jobs:
         if job:
             shutil.rmtree(job.work_dir, ignore_errors=True)
 
@@ -242,48 +257,138 @@ def _build_package(output_dir: Path, package_path: Path) -> Path:
     return package_path
 
 
-def _build_ahn_job(input_root: Path, work_dir: Path) -> AhnReportJob:
+def _set_job_state(
+    job: AhnReportJob,
+    *,
+    status: str | None = None,
+    progress_pct: int | None = None,
+    message: str | None = None,
+    error: dict[str, Any] | None = None,
+    manifest: dict[str, Any] | None = None,
+) -> None:
+    with _ahn_report_jobs_lock:
+        if status is not None:
+            job.status = status
+        if progress_pct is not None:
+            job.progress_pct = max(0, min(100, int(progress_pct)))
+        if message is not None:
+            job.message = message
+        if error is not None:
+            job.error = error
+        if manifest is not None:
+            job.manifest = manifest
+        job.updated_at = time.time()
+
+
+def _api_error_payload(exc: ApiException) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "status": exc.status_code,
+        "code": exc.code,
+        "message": exc.message,
+        "retryable": exc.retryable,
+    }
+    if exc.details is not None:
+        payload["details"] = exc.details
+    return payload
+
+
+def _create_ahn_job(input_root: Path, work_dir: Path) -> AhnReportJob:
     output_dir = work_dir / "output"
     pptx_path = output_dir / "tem-report.pptx"
+    job_id = uuid4().hex
+    now = time.time()
+    job = AhnReportJob(
+        job_id=job_id,
+        work_dir=work_dir,
+        input_root=input_root,
+        output_dir=output_dir,
+        pptx_path=pptx_path,
+        package_path=output_dir / "tem-report-package.zip",
+        analysis_path=output_dir / "analysis-result.json",
+        manifest_path=output_dir / "manifest.json",
+        manifest=None,
+        created_at=now,
+        updated_at=now,
+    )
+    with _ahn_report_jobs_lock:
+        _ahn_report_jobs[job_id] = job
+    return job
+
+
+def _run_ahn_job(job: AhnReportJob) -> None:
+    _set_job_state(
+        job,
+        status="running",
+        progress_pct=25,
+        message="TEM/STEM/EDS/코팅층 데이터를 분석하는 중입니다.",
+    )
     try:
+        _set_job_state(
+            job,
+            progress_pct=58,
+            message="분석 JSON과 PowerPoint 보고서를 생성하는 중입니다.",
+        )
         manifest = build_outputs(
-            input_dir=input_root,
-            output_dir=output_dir,
-            pptx_path=pptx_path,
+            input_dir=job.input_root,
+            output_dir=job.output_dir,
+            pptx_path=job.pptx_path,
             copy_raw_spreadsheets=True,
         )
-    except ApiException:
-        raise
+        _set_job_state(job, progress_pct=88, message="보고서 ZIP 패키지를 만드는 중입니다.")
+    except ApiException as exc:
+        _set_job_state(
+            job,
+            status="failed",
+            progress_pct=100,
+            message=exc.message,
+            error=_api_error_payload(exc),
+        )
+        return
     except Exception as exc:
-        logger.exception("TEM 보고서 생성 실패 (input_root=%s)", input_root)
-        raise ApiException(
+        logger.exception("TEM 보고서 생성 실패 (input_root=%s)", job.input_root)
+        api_exc = ApiException(
             500,
             "TEM_REPORT_BUILD_FAILED",
             f"TEM 보고서 생성 중 오류가 발생했습니다: {exc}",
             retryable=False,
             details={"exceptionType": type(exc).__name__},
-        ) from exc
+        )
+        _set_job_state(
+            job,
+            status="failed",
+            progress_pct=100,
+            message=api_exc.message,
+            error=_api_error_payload(api_exc),
+        )
+        return
     summary = manifest.get("summary") if isinstance(manifest.get("summary"), dict) else {}
     if not _has_reportable_data(summary):
-        raise ApiException(
+        api_exc = ApiException(
             400,
             "TEM_NO_REPORT_DATA",
             "입력 폴더에서 TEM, STEM, EDS, 코팅층 분석 대상 데이터를 찾지 못했습니다.",
         )
-    package_path = _build_package(output_dir, output_dir / "tem-report-package.zip")
-    job_id = uuid4().hex
-    job = AhnReportJob(
-        job_id=job_id,
-        work_dir=work_dir,
-        output_dir=output_dir,
-        pptx_path=pptx_path,
-        package_path=package_path,
-        analysis_path=output_dir / "analysis-result.json",
-        manifest_path=output_dir / "manifest.json",
+        _set_job_state(
+            job,
+            status="failed",
+            progress_pct=100,
+            message=api_exc.message,
+            error=_api_error_payload(api_exc),
+        )
+        return
+    _build_package(job.output_dir, job.package_path)
+    _set_job_state(
+        job,
+        status="completed",
+        progress_pct=100,
+        message="TEM 보고서가 완성되었습니다.",
         manifest=manifest,
-        created_at=time.time(),
     )
-    _ahn_report_jobs[job_id] = job
+
+
+def _submit_ahn_job(input_root: Path, work_dir: Path) -> AhnReportJob:
+    job = _create_ahn_job(input_root, work_dir)
+    _ahn_report_executor.submit(_run_ahn_job, job)
     return job
 
 
@@ -308,15 +413,23 @@ def _write_synthetic_tem_example(input_root: Path) -> Path:
 
 def _job_payload(job: AhnReportJob) -> dict[str, Any]:
     prefix = f"/api/v1/tem/report/jobs/{job.job_id}/download"
-    return {
-        "jobId": job.job_id,
-        "summary": job.manifest.get("summary") or {},
-        "manifest": job.manifest,
-        "downloads": {
+    manifest = job.manifest or {}
+    downloads = None
+    if job.status == "completed":
+        downloads = {
             "pptx": f"{prefix}/pptx",
             "package": f"{prefix}/package",
             "analysisJson": f"{prefix}/analysis-json",
-        },
+        }
+    return {
+        "jobId": job.job_id,
+        "status": job.status,
+        "progressPct": job.progress_pct,
+        "message": job.message,
+        "summary": manifest.get("summary") or {},
+        "manifest": manifest,
+        "downloads": downloads,
+        "error": job.error,
     }
 
 
@@ -689,7 +802,7 @@ def build_ahn_page() -> str:
       if (percent < 25) return "raw 파일을 서버로 전송하는 중입니다.";
       if (percent < 48) return "TEM/STEM/EDS/코팅층 폴더를 분류하는 중입니다.";
       if (percent < 72) return "코팅층 OCR과 분석 JSON을 만드는 중입니다.";
-      return "PowerPoint 보고서를 렌더링하는 중입니다.";
+      return "PowerPoint 보고서를 생성하는 중입니다. 완료되면 다운로드 버튼이 활성화됩니다.";
     }
     function setProgress(percent, message, visible, error) {
       var pct = Math.max(0, Math.min(100, Math.round(Number(percent) || 0)));
@@ -880,6 +993,35 @@ def build_ahn_page() -> str:
       if (!response.ok) throw new Error(text || "보고서 생성 요청에 실패했습니다.");
       return JSON.parse(text);
     }
+    function sleep(ms) {
+      return new Promise(function(resolve) { setTimeout(resolve, ms); });
+    }
+    async function waitForReportJob(payload) {
+      if (!payload || !payload.jobId) return payload;
+      var current = payload;
+      var shownPct = 0;
+      while (current && current.status !== "completed") {
+        if (current.status === "failed") {
+          var error = current.error || {};
+          throw new Error(error.message || current.message || "TEM 보고서 생성에 실패했습니다.");
+        }
+        shownPct = Math.max(
+          shownPct,
+          parseInt(progressValue.textContent, 10) || 0,
+          Number(current.progressPct || 8)
+        );
+        shownPct = Math.min(96, shownPct);
+        setProgress(
+          shownPct,
+          current.message || progressMessage(shownPct),
+          true,
+          false
+        );
+        await sleep(1500);
+        current = await requestReport("/api/v1/tem/report/jobs/" + encodeURIComponent(payload.jobId), null);
+      }
+      return current;
+    }
     bundleInput.addEventListener("change", function() {
       addBundleItems(fileInputItems(bundleInput));
       bundleInput.value = "";
@@ -927,7 +1069,7 @@ def build_ahn_page() -> str:
       setBusy(true);
       startProgress("TEM 예제 보고서를 생성하는 중입니다.");
       try {
-        var payload = await requestReport("/api/v1/tem/example", null);
+        var payload = await waitForReportJob(await requestReport("/api/v1/tem/example", null));
         renderSummary(payload);
         setStatus("TEM 예제 보고서가 생성되었습니다.", false);
         finishProgress("TEM 예제 보고서가 생성되었습니다.");
@@ -947,7 +1089,7 @@ def build_ahn_page() -> str:
       setBusy(true);
       startProgress("TEM 보고서 생성 요청을 준비하는 중입니다.");
       try {
-        var payload = await requestReport("/api/v1/tem/analyze", buildBundleFormData());
+        var payload = await waitForReportJob(await requestReport("/api/v1/tem/analyze", buildBundleFormData()));
         renderSummary(payload);
         setStatus("TEM 보고서가 생성되었습니다.", false);
         finishProgress("TEM 보고서가 생성되었습니다.");
@@ -981,11 +1123,11 @@ async def analyze_tem(
         upload_root = work_dir / "input"
         await _save_ahn_uploads(files, upload_root)
         input_root = _find_ahn_input_root(upload_root)
-        job = _build_ahn_job(input_root, work_dir)
+        job = _submit_ahn_job(input_root, work_dir)
     except Exception:
         shutil.rmtree(work_dir, ignore_errors=True)
         raise
-    logger.info("TEM 웹 보고서 생성 완료 (job_id=%s)", job.job_id)
+    logger.info("TEM 웹 보고서 작업 시작 (job_id=%s)", job.job_id)
     return JSONResponse(_job_payload(job))
 
 
@@ -998,11 +1140,24 @@ def tem_example() -> JSONResponse:
     try:
         if not input_root.exists():
             input_root = _write_synthetic_tem_example(work_dir / "input")
-        job = _build_ahn_job(input_root, work_dir)
+        job = _submit_ahn_job(input_root, work_dir)
     except Exception:
         shutil.rmtree(work_dir, ignore_errors=True)
         raise
-    logger.info("TEM 예제 웹 보고서 생성 완료 (job_id=%s)", job.job_id)
+    logger.info("TEM 예제 웹 보고서 작업 시작 (job_id=%s)", job.job_id)
+    return JSONResponse(_job_payload(job))
+
+
+@router.get("/api/v1/tem/report/jobs/{job_id}", response_class=JSONResponse, tags=["tem"])
+def get_tem_report_job(job_id: str) -> JSONResponse:
+    _cleanup_old_jobs()
+    job = _ahn_report_jobs.get(job_id)
+    if job is None:
+        raise ApiException(
+            404,
+            "TEM_REPORT_NOT_FOUND",
+            "TEM 보고서 작업 정보를 찾을 수 없습니다. 보고서를 다시 생성하세요.",
+        )
     return JSONResponse(_job_payload(job))
 
 
@@ -1015,6 +1170,13 @@ def download_tem_report(job_id: str, kind: str) -> FileResponse:
             404,
             "TEM_REPORT_NOT_FOUND",
             "TEM 보고서 다운로드 정보를 찾을 수 없습니다. 보고서를 다시 생성하세요.",
+        )
+    if job.status != "completed":
+        raise ApiException(
+            409,
+            "TEM_REPORT_NOT_READY",
+            "TEM 보고서가 아직 생성 중입니다. 완료 후 다시 다운로드하세요.",
+            details={"status": job.status, "progressPct": job.progress_pct},
         )
     if kind == "pptx":
         return FileResponse(

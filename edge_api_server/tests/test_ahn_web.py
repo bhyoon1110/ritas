@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from io import BytesIO
+import time
 import zipfile
 
 from fastapi.testclient import TestClient
@@ -15,6 +16,19 @@ def _tiny_tiff_bytes() -> bytes:
     buffer = BytesIO()
     Image.new("RGB", (80, 60), (220, 224, 230)).save(buffer, format="TIFF")
     return buffer.getvalue()
+
+
+def _wait_for_tem_job(client: TestClient, payload: dict, *, timeout: float = 8.0) -> dict:
+    assert payload["jobId"]
+    deadline = time.time() + timeout
+    current = payload
+    while current.get("status") not in {"completed", "failed"} and time.time() < deadline:
+        time.sleep(0.05)
+        response = client.get(f"/api/v1/tem/report/jobs/{payload['jobId']}")
+        assert response.status_code == 200
+        current = response.json()
+    assert current.get("status") in {"completed", "failed"}
+    return current
 
 
 def test_ahn_workspace_contains_folder_upload_controls() -> None:
@@ -35,9 +49,11 @@ def test_ahn_workspace_contains_folder_upload_controls() -> None:
     assert 'aria-disabled="true"' in page
     assert "/api/v1/tem/analyze" in page
     assert "/api/v1/tem/example" in page
+    assert "/api/v1/tem/report/jobs/" in page
+    assert "waitForReportJob" in page
     assert "entryToBundleItems" in page
     assert "droppedBundleItems" in page
-    assert "PowerPoint 보고서를 렌더링하는 중입니다." in page
+    assert "완료되면 다운로드 버튼이 활성화됩니다." in page
     assert "TEM/STEM" in page
 
 
@@ -68,7 +84,8 @@ def test_ahn_analyze_accepts_folder_bundle_and_downloads_pptx() -> None:
         )
 
         assert response.status_code == 200
-        payload = response.json()
+        payload = _wait_for_tem_job(client, response.json())
+        assert payload["status"] == "completed"
         assert payload["summary"]["stemImageCount"] == 1
         assert payload["summary"]["temImageCount"] == 0
         assert payload["downloads"]["pptx"].endswith("/download/pptx")
@@ -105,7 +122,8 @@ def test_ahn_analyze_accepts_zipped_bundle_and_downloads_pptx() -> None:
         )
 
         assert response.status_code == 200
-        payload = response.json()
+        payload = _wait_for_tem_job(client, response.json())
+        assert payload["status"] == "completed"
         assert payload["summary"]["stemImageCount"] == 1
         assert payload["summary"]["temImageCount"] == 0
         assert payload["downloads"]["pptx"].endswith("/download/pptx")
@@ -130,7 +148,8 @@ def test_tem_example_falls_back_when_sample_data_is_absent(tmp_path, monkeypatch
         response = client.get("/api/v1/tem/example")
 
     assert response.status_code == 200
-    payload = response.json()
+    payload = _wait_for_tem_job(client, response.json())
+    assert payload["status"] == "completed"
     assert payload["summary"]["temImageCount"] == 1
     assert payload["summary"]["stemImageCount"] == 1
     assert payload["summary"]["stemBfImageCount"] == 1
@@ -146,8 +165,9 @@ def test_tem_example_reports_build_failure_without_masking(monkeypatch) -> None:
     with TestClient(create_tem_preview_app(), raise_server_exceptions=False) as client:
         response = client.get("/api/v1/tem/example")
 
-    assert response.status_code == 500
-    payload = response.json()
-    assert payload["code"] == "TEM_REPORT_BUILD_FAILED"
-    assert "python-pptx missing" in payload["message"]
-    assert payload["details"]["exceptionType"] == "RuntimeError"
+    assert response.status_code == 200
+    payload = _wait_for_tem_job(client, response.json())
+    assert payload["status"] == "failed"
+    assert payload["error"]["code"] == "TEM_REPORT_BUILD_FAILED"
+    assert "python-pptx missing" in payload["error"]["message"]
+    assert payload["error"]["details"]["exceptionType"] == "RuntimeError"

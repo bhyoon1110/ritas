@@ -260,6 +260,7 @@ PPTX 보고서를 생성한다. Chrome 계열 브라우저에서는 `tem`, `stem
 GET  /tem
 POST /api/v1/tem/analyze
 GET  /api/v1/tem/example
+GET  /api/v1/tem/report/jobs/{jobId}
 GET  /api/v1/tem/report/jobs/{jobId}/download/pptx
 GET  /api/v1/tem/report/jobs/{jobId}/download/package
 GET  /api/v1/tem/report/jobs/{jobId}/download/analysis-json
@@ -267,8 +268,9 @@ GET  /api/v1/tem/report/jobs/{jobId}/download/analysis-json
 
 `POST /api/v1/tem/analyze`는 multipart `files` 필드 하나에 이미지, DOCX,
 spreadsheet, ZIP 파일을 함께 담아 보낸다. 서버는 `.tif/.tiff/.png/.jpg/.jpeg/.bmp/.webp`,
-`.docx`, `.xlsx/.xls/.csv/.tsv`, `.zip`을 지원한다. 생성 결과는 PPTX, 보고서 ZIP,
-분석 JSON 다운로드 링크로 제공된다.
+`.docx`, `.xlsx/.xls/.csv/.tsv`, `.zip`을 지원한다. 응답은 먼저 `jobId`를 반환하고,
+브라우저는 `GET /api/v1/tem/report/jobs/{jobId}`를 폴링해 `completed` 상태가 되면
+PPTX, 보고서 ZIP, 분석 JSON 다운로드 링크를 표시한다.
 
 DB 없이 TEM 화면만 개발할 때는 다음 명령을 사용할 수 있다.
 
