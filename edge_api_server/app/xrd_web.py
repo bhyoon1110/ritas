@@ -1121,7 +1121,7 @@ def build_xrd_page() -> str:
     function currentReportHtml() {
       try {
         if (reportFrame && reportFrame.contentDocument && reportFrame.contentDocument.documentElement) {
-          return "<!doctype html>\n" + reportFrame.contentDocument.documentElement.outerHTML;
+          return "<!doctype html>\\n" + reportFrame.contentDocument.documentElement.outerHTML;
         }
       } catch (_error) {
         return latestReportHtml || "";

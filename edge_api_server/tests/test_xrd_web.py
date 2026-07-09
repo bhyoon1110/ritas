@@ -65,6 +65,8 @@ def test_xrd_workspace_contains_upload_controls() -> None:
     assert "[contenteditable=true]" in page
     assert "currentReportHtml" in page
     assert "reportFrame.contentDocument.documentElement.outerHTML" in page
+    assert '"<!doctype html>\\n" + reportFrame.contentDocument.documentElement.outerHTML' in page
+    assert '"<!doctype html>\n" + reportFrame.contentDocument.documentElement.outerHTML' not in page
     assert 'downloadLink.addEventListener("click"' in page
     assert "closest('#xrd-plot')" in page
     assert 'exampleButton.addEventListener("click"' in page
