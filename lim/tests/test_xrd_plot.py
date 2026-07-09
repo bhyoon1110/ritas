@@ -246,6 +246,9 @@ def test_build_report_html_contains_xrd_template_sections(tmp_path) -> None:
     assert "PRINT_LANDSCAPE_PLOT_WIDTH = 960" in html
     assert "applyReportPlotLayout" in html
     assert "applyGraphPageMode" in html
+    assert "applyPrintPageStyle" in html
+    assert "@page :first { size: A4 landscape;" in html
+    assert "data-xrd-print-page-style" in html
     assert "restoreScreenPlotLayout" in html
     assert "window.Plotly.Plots.resize(gd)" in html
     assert "computePrintYRange" in html

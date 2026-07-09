@@ -3053,6 +3053,7 @@ def build_report_html(
     var gd = document.getElementById("xrd-plot");
     var originalLegendLayout = null;
     var printLegend = null;
+    var printPageStyle = null;
     var PRINT_PLOT_HEIGHT = 390;
     var PRINT_PLOT_WIDTH = 590;
     var PRINT_LANDSCAPE_PLOT_HEIGHT = 420;
@@ -3170,6 +3171,20 @@ def build_report_html(
       document.body.classList.toggle("xrd-report-graph-landscape", enabled);
       return enabled;
     }}
+    function removePrintPageStyle() {{
+      if (printPageStyle && printPageStyle.parentNode) {{
+        printPageStyle.parentNode.removeChild(printPageStyle);
+      }}
+      printPageStyle = null;
+    }}
+    function applyPrintPageStyle() {{
+      removePrintPageStyle();
+      if (!graphPageLandscapeEnabled()) return;
+      printPageStyle = document.createElement("style");
+      printPageStyle.setAttribute("data-xrd-print-page-style", "true");
+      printPageStyle.textContent = "@media print {{ @page :first {{ size: A4 landscape; margin: 9mm 10mm; }} }}";
+      document.head.appendChild(printPageStyle);
+    }}
     function currentXAxisRange() {{
       if (!gd) return null;
       var axis = (gd.layout && gd.layout.xaxis) || (gd._fullLayout && gd._fullLayout.xaxis) || {{}};
@@ -3238,6 +3253,7 @@ def build_report_html(
     function preparePrintLegend() {{
       if (!window.Plotly || !gd) return;
       applyGraphPageMode();
+      applyPrintPageStyle();
       normalizeLegendHandleLabel();
       refreshPrintLegend();
       if (!originalLegendLayout) originalLegendLayout = currentLegendLayout();
@@ -3280,9 +3296,11 @@ def build_report_html(
     normalizeLegendHandleLabel();
     refreshPrintLegend();
     applyGraphPageMode();
+    applyPrintPageStyle();
     if (landscapeOption) {{
       landscapeOption.addEventListener("change", function() {{
         applyGraphPageMode();
+        applyPrintPageStyle();
       }});
     }}
     window.setTimeout(function() {{
@@ -3292,6 +3310,7 @@ def build_report_html(
     }}, 600);
     window.addEventListener("beforeprint", preparePrintLegend);
     window.addEventListener("afterprint", function() {{
+      removePrintPageStyle();
       restorePrintLegend();
       restoreScreenPlotLayout();
     }});
