@@ -173,6 +173,26 @@ sudo -u rist ../.venv/bin/python -c "import pptx, pytesseract, cv2; print('AHN d
 sudo systemctl restart rist-edge-api.service
 ```
 
+XRD 보고서의 PDF Export는 서버에서 Chrome/Chromium headless 렌더러로 PDF를 만든다.
+`서버 PDF 생성에 실패했습니다` 또는 `XRD_PDF_RENDERER_NOT_AVAILABLE` 오류가
+나오면 Chromium 실행 파일을 설치하고 `/home/rist/ritas/edge.env`에 경로를 지정한다.
+
+```bash
+# 설치 여부 확인
+which chromium || which chromium-browser || which google-chrome || which google-chrome-stable || true
+ls -l /snap/bin/chromium /usr/bin/chromium /usr/bin/chromium-browser 2>/dev/null || true
+
+# Ubuntu snap chromium 예시
+sudo snap install chromium
+
+# systemd 환경에서 확실히 잡히도록 edge.env에 실제 경로 지정
+printf '\nRIST_PDF_CHROME_BIN=/snap/bin/chromium\n' | sudo tee -a /home/rist/ritas/edge.env
+sudo systemctl restart rist-edge-api.service
+
+# 반영 확인
+journalctl -u rist-edge-api.service -n 80 --no-pager
+```
+
 rsync 로 배포한 경우는 다시 복사한 뒤 동일하게 의존성 설치/재시작을 수행한다.
 
 ### git pull 충돌 해결

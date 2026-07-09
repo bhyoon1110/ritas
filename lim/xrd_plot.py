@@ -3298,6 +3298,21 @@ def build_report_html(
       restorePrintLegend();
       restoreScreenPlotLayout();
     }}
+    function extractPdfErrorMessage(text) {{
+      var fallback = "서버 PDF 생성에 실패했습니다. Chrome/Chromium 렌더러 설정을 확인한 뒤 다시 시도하세요.";
+      if (!text) return fallback;
+      try {{
+        var payload = JSON.parse(text);
+        var message = payload.message || fallback;
+        if (payload.code) message += " (" + payload.code + ")";
+        if (payload.details && Array.isArray(payload.details.rendererErrors) && payload.details.rendererErrors.length) {{
+          message += "\\n" + payload.details.rendererErrors.slice(0, 2).join("\\n");
+        }}
+        return message;
+      }} catch (error) {{
+        return text.length > 500 ? text.slice(0, 500) : text;
+      }}
+    }}
     function serverRenderPdf() {{
       if (window.location.protocol === "file:") {{
         return Promise.reject(new Error("file URL에서는 서버 PDF 생성을 사용할 수 없습니다."));
@@ -3312,7 +3327,7 @@ def build_report_html(
       }}).then(function(response) {{
         if (!response.ok) {{
           return response.text().then(function(text) {{
-            throw new Error(text || "서버 PDF 생성에 실패했습니다.");
+            throw new Error(extractPdfErrorMessage(text));
           }});
         }}
         return response.blob();
@@ -3368,7 +3383,7 @@ def build_report_html(
               return;
             }}
             restoreAfterServerPdf();
-            window.alert("서버 PDF 생성에 실패했습니다. Chrome/Chromium 렌더러 설정을 확인한 뒤 다시 시도하세요.");
+            window.alert(error && error.message ? error.message : "서버 PDF 생성에 실패했습니다.");
           }});
       }};
       if (relayout && relayout.then) {{

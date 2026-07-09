@@ -127,6 +127,12 @@ def _find_xrd_pdf_chrome() -> str | None:
     configured = os.getenv("RIST_PDF_CHROME_BIN", "").strip()
     candidates = [
         configured,
+        "/usr/bin/google-chrome",
+        "/usr/bin/google-chrome-stable",
+        "/usr/bin/chromium",
+        "/usr/bin/chromium-browser",
+        "/snap/bin/chromium",
+        "/snap/bin/chromium-browser",
         "google-chrome",
         "google-chrome-stable",
         "chromium",

@@ -133,6 +133,14 @@ def test_xrd_server_pdf_css_injection_sets_orientation() -> None:
     assert "data-xrd-server-pdf" in landscape
 
 
+def test_xrd_pdf_chrome_bin_env_override(monkeypatch, tmp_path) -> None:
+    chrome = tmp_path / "chromium"
+    chrome.write_text("#!/bin/sh\n", encoding="utf-8")
+    monkeypatch.setenv("RIST_PDF_CHROME_BIN", str(chrome))
+
+    assert xrd_web._find_xrd_pdf_chrome() == str(chrome)
+
+
 def test_xrd_workspace_is_not_cached() -> None:
     with TestClient(create_xrd_preview_app()) as client:
         response = client.get("/xrd")
