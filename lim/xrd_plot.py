@@ -2805,13 +2805,14 @@ def xrd_report_css() -> str:
       box-sizing: border-box;
     }
     body.xrd-report-graph-landscape .xrd-graph-frame {
-      width: 96% !important;
-      max-width: 260mm !important;
-      padding: 8px 16px 12px !important;
+      width: 98% !important;
+      max-width: 268mm !important;
+      padding: 8px 12px 12px !important;
+      text-align: center;
     }
     body.xrd-report-graph-landscape #xrd-plot {
-      width: min(960px, calc(100% - 32px)) !important;
-      max-width: calc(100% - 32px) !important;
+      width: min(1040px, calc(100% - 24px)) !important;
+      max-width: calc(100% - 24px) !important;
       height: 420px !important;
       min-height: 420px !important;
     }
@@ -3057,7 +3058,7 @@ def build_report_html(
     var PRINT_PLOT_HEIGHT = 350;
     var PRINT_PLOT_WIDTH = 620;
     var PRINT_LANDSCAPE_PLOT_HEIGHT = 420;
-    var PRINT_LANDSCAPE_PLOT_WIDTH = 960;
+    var PRINT_LANDSCAPE_PLOT_WIDTH = 1040;
     function compactLayout(layout) {{
       var cleaned = {{}};
       Object.keys(layout || {{}}).forEach(function(key) {{
@@ -3228,11 +3229,13 @@ def build_report_html(
       gd.style.height = plotHeight + "px";
       gd.style.minHeight = plotHeight + "px";
       gd.style.width = plotWidthLimit + "px";
-      gd.style.maxWidth = "calc(100% - 32px)";
+      gd.style.maxWidth = "calc(100% - 24px)";
+      gd.style.marginLeft = "auto";
+      gd.style.marginRight = "auto";
       var graphFrame = gd.closest ? gd.closest(".xrd-graph-frame") : null;
       var graphFrameWidth = graphFrame ? graphFrame.getBoundingClientRect().width : 0;
       var gdWidth = gd.getBoundingClientRect ? gd.getBoundingClientRect().width : gd.clientWidth;
-      var plotWidth = graphFrameWidth > 0 ? graphFrameWidth - (landscape ? 64 : 56) : gdWidth;
+      var plotWidth = graphFrameWidth > 0 ? graphFrameWidth - (landscape ? 40 : 56) : gdWidth;
       var layout = {{
         "height": plotHeight,
         "autosize": false,
