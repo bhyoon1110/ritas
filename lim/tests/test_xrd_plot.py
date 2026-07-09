@@ -220,7 +220,7 @@ def test_build_report_html_contains_xrd_template_sections(tmp_path) -> None:
     assert "Mix2 Report" in html
     assert 'id="xrd-report-pdf-export"' in html
     assert 'id="xrd-report-landscape-graph" checked' in html
-    assert "그래프 가로형" in html
+    assert "PDF 가로형" in html
     assert "window.print()" in html
     assert ".xrd-table-scroll," in html
     assert ".xrd-section-head h2 { flex: 0 0 min(260px, 36%);" in html
@@ -241,13 +241,13 @@ def test_build_report_html_contains_xrd_template_sections(tmp_path) -> None:
     assert 'gd.closest(".xrd-graph-frame")' in html
     assert 'graphFrame.querySelector(".xrd-print-legend")' in html
     assert "PRINT_PLOT_HEIGHT = 390" in html
-    assert "PRINT_PLOT_WIDTH = 590" in html
+    assert "PRINT_PLOT_WIDTH = 720" in html
     assert "PRINT_LANDSCAPE_PLOT_HEIGHT = 420" in html
     assert "PRINT_LANDSCAPE_PLOT_WIDTH = 960" in html
     assert "applyReportPlotLayout" in html
     assert "applyGraphPageMode" in html
     assert "applyPrintPageStyle" in html
-    assert "@page :first { size: A4 landscape;" in html
+    assert "@page { size: A4 landscape;" in html
     assert "data-xrd-print-page-style" in html
     assert "restoreScreenPlotLayout" in html
     assert "window.Plotly.Plots.resize(gd)" in html
@@ -264,16 +264,16 @@ def test_build_report_html_contains_xrd_template_sections(tmp_path) -> None:
     assert "@page xrd-graph-landscape { size: A4 landscape;" in html
     assert "body.xrd-report-graph-landscape #xrd-graph-section" in html
     assert ".xrd-graph-frame {\n      overflow: visible !important;" in html
-    assert "width: 84% !important" in html
-    assert "max-width: 158mm !important" in html
+    assert "width: 96% !important" in html
+    assert "max-width: 184mm !important" in html
     assert "margin: 0 auto !important" in html
-    assert "padding: 8px 14px 12px !important" in html
+    assert "padding: 8px 16px 12px !important" in html
     assert ".xrd-graph-frame::after" in html
     assert "pointer-events: none;\n      z-index: 3;" in html
     assert "#xrd-plot .plot-container,\n    #xrd-plot .svg-container," in html
     assert "width: 100% !important" in html
     assert "overflow: visible !important" in html
-    assert "width: min(590px, calc(100% - 28px)) !important" in html
+    assert "width: min(720px, calc(100% - 32px)) !important" in html
     assert "body.xrd-report-graph-landscape .xrd-graph-frame" in html
     assert "width: 96% !important" in html
     assert "max-width: 260mm !important" in html

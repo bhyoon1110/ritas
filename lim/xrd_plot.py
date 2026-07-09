@@ -2775,10 +2775,10 @@ def xrd_report_css() -> str:
     }
     .xrd-graph-frame {
       overflow: visible !important;
-      width: 84% !important;
-      max-width: 158mm !important;
+      width: 96% !important;
+      max-width: 184mm !important;
       margin: 0 auto !important;
-      padding: 8px 14px 12px !important;
+      padding: 8px 16px 12px !important;
       border-radius: 12px;
       box-sizing: border-box;
       position: relative;
@@ -2796,8 +2796,8 @@ def xrd_report_css() -> str:
       z-index: 3;
     }
     #xrd-plot {
-      width: min(590px, calc(100% - 28px)) !important;
-      max-width: calc(100% - 28px) !important;
+      width: min(720px, calc(100% - 32px)) !important;
+      max-width: calc(100% - 32px) !important;
       height: 390px !important;
       min-height: 390px !important;
       margin: 0 auto 6px;
@@ -3021,7 +3021,7 @@ def build_report_html(
       <div class="xrd-report-actions">
         <label class="xrd-report-pdf-option">
           <input type="checkbox" id="xrd-report-landscape-graph" checked>
-          그래프 가로형
+          PDF 가로형
         </label>
         <button type="button" class="xrd-report-pdf-button" id="xrd-report-pdf-export">PDF Export</button>
       </div>
@@ -3055,7 +3055,7 @@ def build_report_html(
     var printLegend = null;
     var printPageStyle = null;
     var PRINT_PLOT_HEIGHT = 390;
-    var PRINT_PLOT_WIDTH = 590;
+    var PRINT_PLOT_WIDTH = 720;
     var PRINT_LANDSCAPE_PLOT_HEIGHT = 420;
     var PRINT_LANDSCAPE_PLOT_WIDTH = 960;
     function compactLayout(layout) {{
@@ -3182,7 +3182,7 @@ def build_report_html(
       if (!graphPageLandscapeEnabled()) return;
       printPageStyle = document.createElement("style");
       printPageStyle.setAttribute("data-xrd-print-page-style", "true");
-      printPageStyle.textContent = "@media print {{ @page :first {{ size: A4 landscape; margin: 9mm 10mm; }} }}";
+      printPageStyle.textContent = "@media print {{ @page {{ size: A4 landscape; margin: 9mm 10mm; }} }}";
       document.head.appendChild(printPageStyle);
     }}
     function currentXAxisRange() {{
@@ -3228,7 +3228,7 @@ def build_report_html(
       gd.style.height = plotHeight + "px";
       gd.style.minHeight = plotHeight + "px";
       gd.style.width = plotWidthLimit + "px";
-      gd.style.maxWidth = "calc(100% - 28px)";
+      gd.style.maxWidth = "calc(100% - 32px)";
       var graphFrame = gd.closest ? gd.closest(".xrd-graph-frame") : null;
       var graphFrameWidth = graphFrame ? graphFrame.getBoundingClientRect().width : 0;
       var gdWidth = gd.getBoundingClientRect ? gd.getBoundingClientRect().width : gd.clientWidth;
