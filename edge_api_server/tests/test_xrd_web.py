@@ -61,7 +61,9 @@ def test_xrd_workspace_contains_upload_controls() -> None:
     assert 'exampleButton.addEventListener("click"' in page
     assert "Bundle 안에 ICDD PDF 파일이 필요합니다." in page
     assert "raw와 ICDD Card 데이터를 분석하는 중입니다." in page
-    assert "/api/v1/xrd/analyze" in page
+    assert "/api/v1/xrd/upload-sessions" in page
+    assert "uploadBundleWithSession" in page
+    assert "XRD_UPLOAD_CHUNK_RETRIES" in page
     assert "/api/v1/xrd/example" in page
     assert "LIM XRD" in page
 
@@ -160,6 +162,77 @@ def test_xrd_analyze_accepts_zipped_bundle(tmp_path) -> None:
     assert "sample Report" in response.text
     assert "상 동정 (Phase Identification) 결과" in response.text
     assert "peaks.csv" in response.text
+
+
+def test_xrd_chunked_upload_session_retries_and_builds_report(tmp_path) -> None:
+    raw = b"10 1\n20 3\n30 2\n"
+    first_chunk = raw[:5]
+    second_chunk = raw[5:]
+    pdf_name, pdf_bytes = _synthetic_pdf_upload(tmp_path)
+
+    with TestClient(create_xrd_preview_app()) as client:
+        session_response = client.post("/api/v1/xrd/upload-sessions")
+        assert session_response.status_code == 201
+        upload_id = session_response.json()["uploadId"]
+
+        first_data = {
+            "relative_path": "bundle/raw/sample.txt",
+            "offset": "0",
+            "total_size": str(len(raw)),
+            "chunk_index": "0",
+            "chunk_count": "2",
+        }
+        for _attempt in range(2):
+            chunk_response = client.post(
+                f"/api/v1/xrd/upload-sessions/{upload_id}/chunks",
+                data=first_data,
+                files={"file": ("chunk-0", first_chunk, "application/octet-stream")},
+            )
+            assert chunk_response.status_code == 200
+            assert chunk_response.json()["fileCompleted"] is False
+
+        chunk_response = client.post(
+            f"/api/v1/xrd/upload-sessions/{upload_id}/chunks",
+            data={
+                "relative_path": "bundle/raw/sample.txt",
+                "offset": str(len(first_chunk)),
+                "total_size": str(len(raw)),
+                "chunk_index": "1",
+                "chunk_count": "2",
+            },
+            files={"file": ("chunk-1", second_chunk, "application/octet-stream")},
+        )
+        assert chunk_response.status_code == 200
+        assert chunk_response.json()["fileCompleted"] is True
+
+        pdf_response = client.post(
+            f"/api/v1/xrd/upload-sessions/{upload_id}/chunks",
+            data={
+                "relative_path": f"bundle/ICDD Card/{pdf_name}",
+                "offset": "0",
+                "total_size": str(len(pdf_bytes)),
+                "chunk_index": "0",
+                "chunk_count": "1",
+            },
+            files={"file": ("chunk-pdf", pdf_bytes, "application/octet-stream")},
+        )
+        assert pdf_response.status_code == 200
+        assert pdf_response.json()["fileCompleted"] is True
+
+        complete_response = client.post(
+            f"/api/v1/xrd/upload-sessions/{upload_id}/complete",
+            data={"origin": "true"},
+        )
+        assert complete_response.status_code == 200
+        repeat_complete_response = client.post(
+            f"/api/v1/xrd/upload-sessions/{upload_id}/complete",
+            data={"origin": "true"},
+        )
+        assert repeat_complete_response.status_code == 200
+
+    assert "sample Report" in complete_response.text
+    assert "상 동정 (Phase Identification) 결과" in complete_response.text
+    assert repeat_complete_response.text == complete_response.text
 
 
 def test_xrd_analyze_skips_unreadable_pdf_in_bundle() -> None:

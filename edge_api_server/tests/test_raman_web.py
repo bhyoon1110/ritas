@@ -68,6 +68,9 @@ def test_raman_workspace_contains_upload_controls() -> None:
     assert page.index('id="raman-report"') < page.index('id="raman-clear"')
     assert page.index('id="raman-clear"') < page.index('id="raman-file-input"')
     assert "/api/v1/raman/report/jobs" in page
+    assert "/api/v1/raman/report/upload-sessions" in page
+    assert "uploadReportFilesWithSession" in page
+    assert "REPORT_UPLOAD_CHUNK_RETRIES" in page
     assert "/api/v1/raman/report/jobs/" in page
     assert "/send" in page
     assert 'id="raman-report-transfer"' in page
@@ -101,7 +104,7 @@ def test_raman_workspace_contains_upload_controls() -> None:
     assert "message.appendChild(link)" not in page
     assert "message.appendChild(send)" not in page
     assert "sendReportJob(job, send)" not in page
-    assert 'form.append("requestNumber", transfer.requestNumber)' in page
+    assert "requestNumber: transfer.requestNumber" in page
     assert 'experimentCode: transfer.limsExperimentCode' in page
     assert 'id="raman-report-progress"' in page
     assert ".raman-report-progress.is-error" in page
@@ -579,6 +582,92 @@ def test_raman_report_job_api_tracks_progress_and_downloads_package(monkeypatch)
     assert "LIMS-RAMAN-01" in html_report
     assert "RAMAN-EDGE-01" in html_report
     assert "operator01" in html_report
+
+
+def test_raman_report_chunked_upload_session_retries_and_downloads_package(monkeypatch) -> None:
+    use_fake_pptx_pdf_converter(monkeypatch)
+    content = MULTI_SAMPLE_TXT.read_bytes()
+    first_chunk = content[:120]
+    second_chunk = content[120:]
+
+    with TestClient(create_raman_preview_app()) as client:
+        analysis_response = client.post(
+            "/api/v1/raman/analyze",
+            files={"files": (MULTI_SAMPLE_TXT.name, content, "text/plain")},
+            data={"sensitivity": "25"},
+        )
+        assert analysis_response.status_code == 200
+        analysis = analysis_response.json()
+
+        session_response = client.post("/api/v1/raman/report/upload-sessions")
+        assert session_response.status_code == 201
+        upload_id = session_response.json()["uploadId"]
+
+        first_data = {
+            "relative_path": f"raw/{MULTI_SAMPLE_TXT.name}",
+            "offset": "0",
+            "total_size": str(len(content)),
+            "chunk_index": "0",
+            "chunk_count": "2",
+        }
+        for _attempt in range(2):
+            chunk_response = client.post(
+                f"/api/v1/raman/report/upload-sessions/{upload_id}/chunks",
+                data=first_data,
+                files={"file": ("chunk-0", first_chunk, "application/octet-stream")},
+            )
+            assert chunk_response.status_code == 200
+            assert chunk_response.json()["fileCompleted"] is False
+
+        chunk_response = client.post(
+            f"/api/v1/raman/report/upload-sessions/{upload_id}/chunks",
+            data={
+                "relative_path": f"raw/{MULTI_SAMPLE_TXT.name}",
+                "offset": str(len(first_chunk)),
+                "total_size": str(len(content)),
+                "chunk_index": "1",
+                "chunk_count": "2",
+            },
+            files={"file": ("chunk-1", second_chunk, "application/octet-stream")},
+        )
+        assert chunk_response.status_code == 200
+        assert chunk_response.json()["fileCompleted"] is True
+
+        complete_data = {
+            "analysis_json": json.dumps(analysis),
+            "figure_json": json.dumps(analysis["figure"]),
+            "figure_image": TINY_PNG_DATA_URL,
+            "requestNumber": "REQ-RAMAN-CHUNK",
+            "equipmentCode": "RAMAN-EDGE-01",
+            "operatorId": "operator01",
+        }
+        complete_response = client.post(
+            f"/api/v1/raman/report/upload-sessions/{upload_id}/complete",
+            data=complete_data,
+        )
+        assert complete_response.status_code == 202
+        repeat_complete_response = client.post(
+            f"/api/v1/raman/report/upload-sessions/{upload_id}/complete",
+            data=complete_data,
+        )
+        assert repeat_complete_response.status_code == 202
+        assert repeat_complete_response.json()["jobId"] == complete_response.json()["jobId"]
+        job = repeat_complete_response.json()
+        for _ in range(100):
+            status_response = client.get(f"/api/v1/raman/report/jobs/{job['jobId']}")
+            assert status_response.status_code == 200
+            job = status_response.json()
+            if job["status"] == "completed":
+                break
+            time.sleep(0.03)
+
+        assert job["status"] == "completed"
+        download_response = client.get(job["downloadUrl"])
+        assert download_response.status_code == 200
+        with zipfile.ZipFile(BytesIO(download_response.content)) as archive:
+            names = set(archive.namelist())
+        assert "report.pptx" in names
+        assert "raw_data.xlsx" in names
 
 
 def test_raman_report_job_accepts_large_multi_sample_lmr_payload(monkeypatch) -> None:

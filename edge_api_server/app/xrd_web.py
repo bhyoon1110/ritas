@@ -4,7 +4,9 @@ import html
 import math
 import os
 import re
+import shutil
 import tempfile
+import time
 import zipfile
 from io import BytesIO
 from pathlib import Path
@@ -31,6 +33,7 @@ from .config import Settings
 from .llm_client import LlmError, LocalLlmClient
 from .report import annotator
 from .report.builders import LlmSlotSpec
+from .upload_sessions import ChunkUploadStore
 
 router = APIRouter()
 logger = get_logger(__name__)
@@ -42,6 +45,16 @@ SUPPORTED_BUNDLE_EXTENSIONS = (
     RAW_EXTENSIONS | PDF_EXTENSIONS | TABLE_EXTENSIONS | IMAGE_EXTENSIONS | ZIP_EXTENSIONS
 )
 MAX_XRD_UPLOAD_BYTES = 80 * 1024 * 1024
+MAX_XRD_UPLOAD_TOTAL_BYTES = 1200 * 1024 * 1024
+XRD_UPLOAD_CHUNK_BYTES = 4 * 1024 * 1024
+xrd_upload_store = ChunkUploadStore(
+    code_prefix="XRD",
+    temp_prefix="rist-xrd-upload-",
+    allowed_extensions=SUPPORTED_BUNDLE_EXTENSIONS,
+    max_file_bytes=MAX_XRD_UPLOAD_BYTES,
+    max_total_bytes=MAX_XRD_UPLOAD_TOTAL_BYTES,
+)
+_xrd_completed_upload_reports: dict[str, tuple[float, str]] = {}
 
 _XRD_LLM_SYSTEM_PROMPT = (
     "당신은 XRD 분석 보고서 작성 보조자입니다.\n"
@@ -426,6 +439,78 @@ async def _save_xrd_bundle_uploads(
     return raw_paths, str(pdf_dir), table_paths, image_paths
 
 
+def _save_xrd_bundle_session_files(
+    input_root: Path,
+    root: Path,
+) -> tuple[list[str], str, list[str], list[str]]:
+    raw_paths: list[str] = []
+    table_paths: list[str] = []
+    image_paths: list[str] = []
+    pdf_dir = root / "pdf"
+    directories = {
+        "raw": root / "raw",
+        "pdf": pdf_dir,
+        "table": root / "tables",
+        "image": root / "images",
+    }
+    for directory in directories.values():
+        directory.mkdir(parents=True, exist_ok=True)
+
+    unsupported: list[str] = []
+    for index, path in enumerate(sorted(input_root.rglob("*")), start=1):
+        if not path.is_file() or path.name.endswith(".part"):
+            continue
+        relative_path = _safe_relative_path(
+            path.relative_to(input_root).as_posix(),
+            f"bundle-{index}",
+        )
+        filename = relative_path.name
+        suffix = relative_path.suffix.lower()
+        if _ignore_bundle_path(relative_path) or (not suffix and filename.startswith(".")):
+            continue
+        if suffix not in SUPPORTED_BUNDLE_EXTENSIONS:
+            unsupported.append(str(relative_path))
+            continue
+        if path.stat().st_size > MAX_XRD_UPLOAD_BYTES:
+            raise ApiException(
+                413,
+                "XRD_FILE_TOO_LARGE",
+                f"{filename} 파일이 너무 큽니다. 파일당 최대 80MB입니다.",
+            )
+        data = path.read_bytes()
+        if suffix in ZIP_EXTENSIONS:
+            unsupported.extend(
+                _save_xrd_zip_members(
+                    data=data,
+                    upload_name=filename,
+                    directories=directories,
+                    raw_paths=raw_paths,
+                    table_paths=table_paths,
+                    image_paths=image_paths,
+                )
+            )
+        else:
+            _save_xrd_bundle_payload(
+                relative_path=relative_path,
+                data=data,
+                directories=directories,
+                raw_paths=raw_paths,
+                table_paths=table_paths,
+                image_paths=image_paths,
+            )
+
+    if unsupported:
+        preview = ", ".join(unsupported[:5])
+        more = f" 외 {len(unsupported) - 5}개" if len(unsupported) > 5 else ""
+        allowed = ", ".join(sorted(SUPPORTED_BUNDLE_EXTENSIONS))
+        raise ApiException(
+            400,
+            "INVALID_XRD_FILE_TYPE",
+            f"지원하지 않는 파일이 포함되어 있습니다: {preview}{more}. 허용 형식: {allowed}",
+        )
+    return raw_paths, str(pdf_dir), table_paths, image_paths
+
+
 def build_xrd_page() -> str:
     return """<!doctype html>
 <html lang="ko">
@@ -751,6 +836,10 @@ def build_xrd_page() -> str:
     var bundleItems = [];
     var reportFrame = null;
     var reportProgressTimer = null;
+    var XRD_UPLOAD_CHUNK_BYTES = 4 * 1024 * 1024;
+    var XRD_UPLOAD_CHUNK_RETRIES = 4;
+    var XRD_MAX_FILE_BYTES = 80 * 1024 * 1024;
+    var XRD_MAX_TOTAL_BYTES = 1200 * 1024 * 1024;
 
     function setStatus(message, error) {
       if (!message) return;
@@ -869,6 +958,207 @@ def build_xrd_page() -> str:
       downloadLink.href = downloadUrl;
       downloadLink.download = "xrd-report.html";
       downloadLink.setAttribute("aria-disabled", "false");
+    }
+    function parseErrorMessage(text, fallback) {
+      if (!text) return fallback;
+      try {
+        var payload = JSON.parse(text);
+        return payload.message || payload.detail || text;
+      } catch (_error) {
+        return text;
+      }
+    }
+    async function requestJsonPost(url) {
+      var response;
+      try {
+        response = await fetch(url, {method: "POST"});
+      } catch (error) {
+        var wrapped = new Error("서버 응답을 받지 못했습니다. 네트워크 상태를 확인하세요.");
+        wrapped.cause = error;
+        wrapped.isNetworkError = true;
+        throw wrapped;
+      }
+      var text = await response.text();
+      if (!response.ok) {
+        var requestError = new Error(parseErrorMessage(text, "요청 처리에 실패했습니다."));
+        requestError.isTransientError = response.status === 408 || response.status === 429 || response.status >= 500;
+        throw requestError;
+      }
+      return JSON.parse(text);
+    }
+    async function requestJsonPostWithRetry(url, attempts, retryMessage) {
+      var lastError = null;
+      for (var attempt = 1; attempt <= attempts; attempt += 1) {
+        try {
+          return await requestJsonPost(url);
+        } catch (error) {
+          lastError = error;
+          if (!(error.isNetworkError || error.isTransientError) || attempt >= attempts) break;
+          setReportProgress(6, retryMessage || "서버 응답을 다시 확인하는 중입니다.", true, false);
+          await new Promise(function(resolve) { setTimeout(resolve, 700 * attempt); });
+        }
+      }
+      throw lastError || new Error("요청 처리에 실패했습니다.");
+    }
+    function requestUploadChunk(options) {
+      return new Promise(function(resolve, reject) {
+        var xhr = new XMLHttpRequest();
+        xhr.open(
+          "POST",
+          "/api/v1/xrd/upload-sessions/" + encodeURIComponent(options.uploadId) + "/chunks",
+          true
+        );
+        xhr.timeout = 120000;
+        xhr.upload.onprogress = function(event) {
+          var loaded = event.lengthComputable ? event.loaded : 0;
+          var pct = options.totalUploadBytes > 0
+            ? ((options.uploadedBefore + loaded) / options.totalUploadBytes) * 42
+            : 0;
+          setReportProgress(
+            Math.max(6, Math.min(46, pct)),
+            "bundle 업로드 중 (" + options.fileIndex + "/" + options.fileCount + "): " + options.path,
+            true,
+            false
+          );
+        };
+        xhr.onload = function() {
+          var text = xhr.responseText || "";
+          if (xhr.status >= 200 && xhr.status < 300) {
+            try {
+              resolve(JSON.parse(text));
+            } catch (_error) {
+              reject(new Error("서버 응답을 해석하지 못했습니다."));
+            }
+            return;
+          }
+          var error = new Error(parseErrorMessage(text, "업로드 조각 전송에 실패했습니다."));
+          error.isTransientError = xhr.status === 408 || xhr.status === 429 || xhr.status >= 500;
+          reject(error);
+        };
+        xhr.onerror = function(error) {
+          var wrapped = new Error("bundle 업로드 연결이 끊겼습니다. 같은 조각을 다시 전송합니다.");
+          wrapped.cause = error;
+          wrapped.isNetworkError = true;
+          reject(wrapped);
+        };
+        xhr.ontimeout = function(error) {
+          var wrapped = new Error("업로드 조각 전송 시간이 초과되었습니다. 같은 조각을 다시 전송합니다.");
+          wrapped.cause = error;
+          wrapped.isNetworkError = true;
+          reject(wrapped);
+        };
+        var form = new FormData();
+        form.append("relative_path", options.path);
+        form.append("offset", String(options.offset));
+        form.append("total_size", String(options.totalSize));
+        form.append("chunk_index", String(options.chunkIndex));
+        form.append("chunk_count", String(options.chunkCount));
+        form.append("file", options.blob, options.fileName);
+        xhr.send(form);
+      });
+    }
+    async function uploadChunkWithRetry(options) {
+      var lastError = null;
+      for (var attempt = 1; attempt <= XRD_UPLOAD_CHUNK_RETRIES; attempt += 1) {
+        try {
+          return await requestUploadChunk(options);
+        } catch (error) {
+          lastError = error;
+          if (!(error.isNetworkError || error.isTransientError) || attempt >= XRD_UPLOAD_CHUNK_RETRIES) break;
+          setReportProgress(
+            Math.max(6, Math.min(46, (options.uploadedBefore / options.totalUploadBytes) * 42)),
+            "업로드가 잠시 끊겨 같은 조각을 다시 전송합니다. (" + attempt + "/" + XRD_UPLOAD_CHUNK_RETRIES + ")",
+            true,
+            false
+          );
+          await new Promise(function(resolve) { setTimeout(resolve, 650 * attempt); });
+        }
+      }
+      throw lastError || new Error("업로드 조각 전송에 실패했습니다.");
+    }
+    async function completeUploadWithRetry(uploadId) {
+      var form = new FormData();
+      if (document.getElementById("xrd-origin").checked) {
+        form.append("origin", "true");
+      }
+      var lastError = null;
+      for (var attempt = 1; attempt <= 4; attempt += 1) {
+        try {
+          var response = await fetch(
+            "/api/v1/xrd/upload-sessions/" + encodeURIComponent(uploadId) + "/complete",
+            {method: "POST", body: form}
+          );
+          var text = await response.text();
+          if (!response.ok) {
+            var error = new Error(parseErrorMessage(text, "보고서 생성 요청에 실패했습니다."));
+            error.isTransientError = response.status === 408 || response.status === 429 || response.status >= 500;
+            throw error;
+          }
+          return text;
+        } catch (error) {
+          lastError = error;
+          if (!(error.isNetworkError || error.isTransientError || error instanceof TypeError) || attempt >= 4) break;
+          setReportProgress(52, "보고서 생성 응답을 다시 확인하는 중입니다.", true, false);
+          await new Promise(function(resolve) { setTimeout(resolve, 900 * attempt); });
+        }
+      }
+      throw lastError || new Error("보고서 생성 요청에 실패했습니다.");
+    }
+    async function uploadBundleWithSession() {
+      var supported = [];
+      var skipped = 0;
+      bundleItems.forEach(function(item) {
+        if (classifyFile(item.file) === "skip") skipped += 1;
+        else supported.push(item);
+      });
+      if (!supported.length) throw new Error("업로드할 수 있는 XRD bundle 파일이 없습니다.");
+      if (skipped) setStatus("지원하지 않는 파일 " + skipped + "개는 업로드에서 제외했습니다.", false);
+      var totalBytes = supported.reduce(function(total, item) {
+        return total + Number(item.file.size || 0);
+      }, 0);
+      if (totalBytes <= 0) throw new Error("빈 파일만 선택되어 있습니다.");
+      if (totalBytes > XRD_MAX_TOTAL_BYTES) {
+        throw new Error("XRD bundle의 총 크기는 1.2GB 이하여야 합니다.");
+      }
+      supported.forEach(function(item) {
+        if (item.file.size > XRD_MAX_FILE_BYTES) {
+          throw new Error(item.path + " 파일이 너무 큽니다. 파일당 최대 80MB입니다.");
+        }
+      });
+      setReportProgress(4, "업로드 세션을 생성하는 중입니다.", true, false);
+      var session = await requestJsonPostWithRetry(
+        "/api/v1/xrd/upload-sessions",
+        3,
+        "업로드 세션 생성을 다시 시도하는 중입니다."
+      );
+      var uploadedBytes = 0;
+      for (var fileIndex = 0; fileIndex < supported.length; fileIndex += 1) {
+        var item = supported[fileIndex];
+        var file = item.file;
+        var chunkCount = Math.max(1, Math.ceil(file.size / XRD_UPLOAD_CHUNK_BYTES));
+        for (var chunkIndex = 0; chunkIndex < chunkCount; chunkIndex += 1) {
+          var offset = chunkIndex * XRD_UPLOAD_CHUNK_BYTES;
+          var end = Math.min(file.size, offset + XRD_UPLOAD_CHUNK_BYTES);
+          var blob = file.slice(offset, end);
+          await uploadChunkWithRetry({
+            uploadId: session.uploadId,
+            path: item.path || file.name,
+            fileName: file.name,
+            blob: blob,
+            offset: offset,
+            totalSize: file.size,
+            chunkIndex: chunkIndex,
+            chunkCount: chunkCount,
+            uploadedBefore: uploadedBytes,
+            totalUploadBytes: totalBytes,
+            fileIndex: fileIndex + 1,
+            fileCount: supported.length
+          });
+          uploadedBytes += blob.size;
+        }
+      }
+      setReportProgress(48, "업로드 완료. raw와 ICDD Card 데이터를 분석하는 중입니다.", true, false);
+      return completeUploadWithRetry(session.uploadId);
     }
     function showHtml(htmlText) {
       empty.style.display = "none";
@@ -1070,10 +1360,7 @@ def build_xrd_page() -> str:
       setBusy(true);
       startReportProgress("보고서 생성 요청을 준비하는 중입니다.");
       try {
-        var data = buildBundleFormData();
-        var response = await fetch("/api/v1/xrd/analyze", {method: "POST", body: data});
-        var text = await response.text();
-        if (!response.ok) throw new Error(text || "보고서 생성 요청에 실패했습니다.");
+        var text = await uploadBundleWithSession();
         setReportProgress(94, "보고서 화면을 준비하는 중입니다.", true, false);
         showHtml(text);
         setStatus("XRD 보고서가 생성되었습니다.", false);
@@ -1096,6 +1383,127 @@ def build_xrd_page() -> str:
 @router.get("/xrd", response_class=HTMLResponse, include_in_schema=False)
 def xrd_page() -> HTMLResponse:
     return HTMLResponse(build_xrd_page())
+
+
+def _build_xrd_html_from_inputs(
+    request: Request,
+    *,
+    root: Path,
+    raw_paths: list[str],
+    pdf_dir: str,
+    table_paths: list[str],
+    image_paths: list[str],
+    origin: bool,
+) -> str:
+    if not raw_paths:
+        raise ApiException(
+            400,
+            "MISSING_XRD_INPUT",
+            "Bundle 안에 raw TXT 파일이 필요합니다.",
+        )
+    if not _has_pdf_files(pdf_dir):
+        raise ApiException(
+            400,
+            "MISSING_XRD_PDF",
+            "Bundle 안에 ICDD PDF 파일이 필요합니다.",
+        )
+    result = build_xrd_html(
+        [(path, pdf_dir) for path in raw_paths],
+        table_files=table_paths,
+        image_files=image_paths,
+        origin=origin,
+        comment_provider=_xrd_comment_provider(
+            _request_settings(request),
+            processed_dir=root / "images",
+            logs_dir=root / "logs",
+        ),
+    )
+    return result["html"]
+
+
+@router.post("/api/v1/xrd/upload-sessions", status_code=201, tags=["xrd"])
+def create_xrd_upload_session() -> dict:
+    xrd_upload_store.cleanup()
+    cutoff = time.time() - 2 * 60 * 60
+    for upload_id, (created_at, _html) in list(_xrd_completed_upload_reports.items()):
+        if created_at < cutoff:
+            _xrd_completed_upload_reports.pop(upload_id, None)
+    session = xrd_upload_store.create()
+    return xrd_upload_store.payload(session)
+
+
+@router.post("/api/v1/xrd/upload-sessions/{upload_id}/chunks", tags=["xrd"])
+async def upload_xrd_chunk(
+    upload_id: str,
+    relative_path: str = Form(...),
+    offset: int = Form(...),
+    total_size: int = Form(...),
+    chunk_index: int = Form(...),
+    chunk_count: int = Form(...),
+    file: UploadFile = File(...),
+) -> dict:
+    session = xrd_upload_store.get(upload_id)
+    file_state = await xrd_upload_store.write_chunk(
+        session,
+        relative_path=relative_path,
+        offset=offset,
+        total_size=total_size,
+        chunk_index=chunk_index,
+        chunk_count=chunk_count,
+        upload=file,
+    )
+    payload = xrd_upload_store.payload(session)
+    payload.update(
+        {
+            "relativePath": file_state.relative_path,
+            "uploadedFileBytes": file_state.uploaded_bytes,
+            "fileSize": file_state.total_size,
+            "fileCompleted": file_state.completed,
+        }
+    )
+    return payload
+
+
+@router.post("/api/v1/xrd/upload-sessions/{upload_id}/complete", response_class=HTMLResponse, tags=["xrd"])
+def complete_xrd_upload_session(
+    request: Request,
+    upload_id: str,
+    origin: bool = Form(True),
+) -> HTMLResponse:
+    existing = _xrd_completed_upload_reports.get(upload_id)
+    if existing is not None:
+        return HTMLResponse(existing[1])
+    session = xrd_upload_store.get(upload_id)
+    incomplete_files = xrd_upload_store.incomplete_files(session)
+    if incomplete_files:
+        preview = ", ".join(incomplete_files[:5])
+        more = f" 외 {len(incomplete_files) - 5}개" if len(incomplete_files) > 5 else ""
+        raise ApiException(
+            409,
+            "XRD_UPLOAD_INCOMPLETE",
+            f"아직 업로드가 완료되지 않은 파일이 있습니다: {preview}{more}",
+        )
+    root = Path(tempfile.mkdtemp(prefix="rist-xrd-web-"))
+    try:
+        raw_paths, pdf_dir, table_paths, image_paths = _save_xrd_bundle_session_files(
+            session.input_root,
+            root,
+        )
+        html_result = _build_xrd_html_from_inputs(
+            request,
+            root=root,
+            raw_paths=raw_paths,
+            pdf_dir=pdf_dir,
+            table_paths=table_paths,
+            image_paths=image_paths,
+            origin=origin,
+        )
+    finally:
+        xrd_upload_store.pop(upload_id)
+        shutil.rmtree(root, ignore_errors=True)
+        shutil.rmtree(session.work_dir, ignore_errors=True)
+    _xrd_completed_upload_reports[upload_id] = (time.time(), html_result)
+    return HTMLResponse(html_result)
 
 
 @router.post("/api/v1/xrd/analyze", response_class=HTMLResponse, tags=["xrd"])
@@ -1144,30 +1552,16 @@ async def analyze_xrd(
                 field_name="image",
             )
         )
-        if not raw_paths:
-            raise ApiException(
-                400,
-                "MISSING_XRD_INPUT",
-                "Bundle 안에 raw TXT 파일이 필요합니다.",
-            )
-        if not _has_pdf_files(pdf_dir):
-            raise ApiException(
-                400,
-                "MISSING_XRD_PDF",
-                "Bundle 안에 ICDD PDF 파일이 필요합니다.",
-            )
-        result = build_xrd_html(
-            [(path, pdf_dir) for path in raw_paths],
-            table_files=table_paths,
-            image_files=image_paths,
+        html_result = _build_xrd_html_from_inputs(
+            request,
+            root=root,
+            raw_paths=raw_paths,
+            pdf_dir=pdf_dir,
+            table_paths=table_paths,
+            image_paths=image_paths,
             origin=origin,
-            comment_provider=_xrd_comment_provider(
-                _request_settings(request),
-                processed_dir=root / "images",
-                logs_dir=root / "logs",
-            ),
         )
-    return HTMLResponse(result["html"])
+    return HTMLResponse(html_result)
 
 
 def _write_synthetic_xrd_raw(path: Path) -> None:

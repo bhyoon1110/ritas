@@ -56,6 +56,9 @@ def test_ftir_workspace_contains_upload_and_editor_controls() -> None:
     assert page.index('id="ftir-report"') < page.index('id="ftir-clear"')
     assert page.index('id="ftir-clear"') < page.index('id="ftir-file-input"')
     assert "/api/v1/ftir/report/jobs" in page
+    assert "/api/v1/ftir/report/upload-sessions" in page
+    assert "uploadReportFilesWithSession" in page
+    assert "REPORT_UPLOAD_CHUNK_RETRIES" in page
     assert "/api/v1/ftir/report/jobs/" in page
     assert "/send" in page
     assert 'id="ftir-report-transfer"' in page
@@ -89,7 +92,7 @@ def test_ftir_workspace_contains_upload_and_editor_controls() -> None:
     assert "message.appendChild(link)" not in page
     assert "message.appendChild(send)" not in page
     assert "sendReportJob(job, send)" not in page
-    assert 'form.append("requestNumber", transfer.requestNumber)' in page
+    assert "requestNumber: transfer.requestNumber" in page
     assert 'experimentCode: transfer.limsExperimentCode' in page
     assert 'id="ftir-report-progress"' in page
     assert ".ftir-report-progress.is-error" in page
@@ -426,6 +429,95 @@ def test_ftir_report_job_api_tracks_progress_and_downloads_package(
     assert "LIMS-FTIR-01" in html_report
     assert "FTIR-EDGE-01" in html_report
     assert "operator01" in html_report
+
+
+def test_ftir_report_chunked_upload_session_retries_and_downloads_package(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    use_fake_pptx_pdf_converter(monkeypatch)
+    dpt_bytes = synthetic_dpt()
+    first_chunk = dpt_bytes[:120]
+    second_chunk = dpt_bytes[120:]
+
+    with TestClient(create_ftir_preview_app(tmp_path / "libraries")) as client:
+        analysis_response = client.post(
+            "/api/v1/ftir/analyze",
+            files={"files": ("sample-a.dpt", dpt_bytes, "application/octet-stream")},
+            data={"sensitivity": "25"},
+        )
+        assert analysis_response.status_code == 200
+        analysis = analysis_response.json()
+
+        session_response = client.post("/api/v1/ftir/report/upload-sessions")
+        assert session_response.status_code == 201
+        upload_id = session_response.json()["uploadId"]
+
+        first_data = {
+            "relative_path": "raw/sample-a.dpt",
+            "offset": "0",
+            "total_size": str(len(dpt_bytes)),
+            "chunk_index": "0",
+            "chunk_count": "2",
+        }
+        for _attempt in range(2):
+            chunk_response = client.post(
+                f"/api/v1/ftir/report/upload-sessions/{upload_id}/chunks",
+                data=first_data,
+                files={"file": ("chunk-0", first_chunk, "application/octet-stream")},
+            )
+            assert chunk_response.status_code == 200
+            assert chunk_response.json()["fileCompleted"] is False
+
+        chunk_response = client.post(
+            f"/api/v1/ftir/report/upload-sessions/{upload_id}/chunks",
+            data={
+                "relative_path": "raw/sample-a.dpt",
+                "offset": str(len(first_chunk)),
+                "total_size": str(len(dpt_bytes)),
+                "chunk_index": "1",
+                "chunk_count": "2",
+            },
+            files={"file": ("chunk-1", second_chunk, "application/octet-stream")},
+        )
+        assert chunk_response.status_code == 200
+        assert chunk_response.json()["fileCompleted"] is True
+
+        complete_data = {
+            "analysis_json": json.dumps(analysis),
+            "figure_json": json.dumps(analysis["figure"]),
+            "figure_image": TINY_PNG_DATA_URL,
+            "requestNumber": "REQ-FTIR-CHUNK",
+            "equipmentCode": "FTIR-EDGE-01",
+            "operatorId": "operator01",
+        }
+        complete_response = client.post(
+            f"/api/v1/ftir/report/upload-sessions/{upload_id}/complete",
+            data=complete_data,
+        )
+        assert complete_response.status_code == 202
+        repeat_complete_response = client.post(
+            f"/api/v1/ftir/report/upload-sessions/{upload_id}/complete",
+            data=complete_data,
+        )
+        assert repeat_complete_response.status_code == 202
+        assert repeat_complete_response.json()["jobId"] == complete_response.json()["jobId"]
+        job = repeat_complete_response.json()
+        for _ in range(100):
+            status_response = client.get(f"/api/v1/ftir/report/jobs/{job['jobId']}")
+            assert status_response.status_code == 200
+            job = status_response.json()
+            if job["status"] == "completed":
+                break
+            time.sleep(0.03)
+
+        assert job["status"] == "completed"
+        download_response = client.get(job["downloadUrl"])
+        assert download_response.status_code == 200
+        with zipfile.ZipFile(BytesIO(download_response.content)) as archive:
+            names = set(archive.namelist())
+        assert "report.pptx" in names
+        assert "raw_data.xlsx" in names
 
 
 def test_preview_report_send_package_uses_transfer_metadata(

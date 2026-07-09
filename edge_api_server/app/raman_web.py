@@ -45,12 +45,14 @@ from .preview_report import (
     start_preview_report_job,
 )
 from .spring_callback import SpringCallbackError
+from .upload_sessions import ChunkUploadStore, read_completed_upload_files
 
 
 PLOT_DIV_ID = "raman-plot"
 MAX_RAMAN_PREVIEW_FILES = 10
 MAX_RAMAN_PREVIEW_FILE_BYTES = 20 * 1024 * 1024
 MAX_RAMAN_PREVIEW_TOTAL_BYTES = 50 * 1024 * 1024
+RAMAN_REPORT_UPLOAD_CHUNK_BYTES = 4 * 1024 * 1024
 DEFAULT_RAMAN_ASSIGNMENT_LIBRARY_ID = "general-raman"
 DEFAULT_RAMAN_FUNC_GROUPS_PATH = (
     Path(raman_preprocess_module.__file__).resolve().parent
@@ -62,6 +64,13 @@ DEFAULT_RAMAN_ASSIGNMENT_LIBRARY_DIR = (
 )
 logger = get_logger(__name__)
 router = APIRouter()
+raman_report_upload_store = ChunkUploadStore(
+    code_prefix="RAMAN_REPORT",
+    temp_prefix="rist-raman-report-upload-",
+    allowed_extensions=set(SUPPORTED_SUFFIXES),
+    max_file_bytes=MAX_RAMAN_PREVIEW_FILE_BYTES,
+    max_total_bytes=MAX_RAMAN_PREVIEW_TOTAL_BYTES,
+)
 
 
 class RamanPeakAssignmentWrite(BaseModel):
@@ -2827,6 +2836,8 @@ _UPLOAD_SCRIPT = """
   var MAX_FILES = 10;
   var MAX_FILE_BYTES = 20 * 1024 * 1024;
   var MAX_TOTAL_BYTES = 50 * 1024 * 1024;
+  var REPORT_UPLOAD_CHUNK_BYTES = 4 * 1024 * 1024;
+  var REPORT_UPLOAD_CHUNK_RETRIES = 4;
   var SESSION_DB_NAME = "rist-raman-workspace-v1";
   var SESSION_STORE = "workspace";
   var SESSION_KEY = "current";
@@ -4389,18 +4400,44 @@ _UPLOAD_SCRIPT = """
   }
 
   async function fetchJson(url, options) {
-    var response = await fetch(url, options || {});
+    var response;
+    try {
+      response = await fetch(url, options || {});
+    } catch (error) {
+      var wrapped = new Error("서버 응답을 받지 못했습니다. 네트워크 상태를 확인하세요.");
+      wrapped.cause = error;
+      wrapped.isNetworkError = true;
+      throw wrapped;
+    }
     var payload = await response.json().catch(function() { return {}; });
     if (!response.ok) {
-      throw new Error(payload.message || payload.error || "요청에 실패했습니다.");
+      var error = new Error(payload.message || payload.error || "요청에 실패했습니다.");
+      error.isTransientError = response.status === 408 || response.status === 429 || response.status >= 500;
+      throw error;
     }
     return payload;
   }
 
   async function pollReportJob(jobId) {
+    var transientFailures = 0;
     for (;;) {
       await wait(900);
-      var job = await fetchJson("/api/v1/raman/report/jobs/" + encodeURIComponent(jobId));
+      var job;
+      try {
+        job = await fetchJson("/api/v1/raman/report/jobs/" + encodeURIComponent(jobId));
+        transientFailures = 0;
+      } catch (error) {
+        if (!(error.isNetworkError || error.isTransientError) || transientFailures >= 6) throw error;
+        transientFailures += 1;
+        setReportProgress({
+          status: "running",
+          stage: "poll",
+          progressPct: 96,
+          message: "서버 응답을 다시 확인하는 중입니다. 네트워크가 잠시 불안정할 수 있습니다."
+        });
+        await wait(1000 + transientFailures * 400);
+        continue;
+      }
       setReportProgress(job);
       if (job.status === "completed") return job;
       if (job.status === "failed") {
@@ -4413,6 +4450,186 @@ _UPLOAD_SCRIPT = """
     updatePersistentReportDownload(job);
     setSuccessMessage("보고서가 완성되었습니다.");
     updateReportSendAvailability();
+  }
+
+  function requestReportUploadChunk(options) {
+    return new Promise(function(resolve, reject) {
+      var xhr = new XMLHttpRequest();
+      xhr.open(
+        "POST",
+        "/api/v1/raman/report/upload-sessions/" + encodeURIComponent(options.uploadId) + "/chunks",
+        true
+      );
+      xhr.timeout = 120000;
+      xhr.upload.onprogress = function(event) {
+        var loaded = event.lengthComputable ? event.loaded : 0;
+        var pct = options.totalUploadBytes > 0
+          ? ((options.uploadedBefore + loaded) / options.totalUploadBytes) * 88
+          : 0;
+        setReportProgress({
+          status: "running",
+          stage: "upload",
+          progressPct: Math.max(6, Math.min(88, pct)),
+          message: "raw 파일 업로드 중 (" + options.fileIndex + "/" + options.fileCount + "): " + options.path
+        });
+      };
+      xhr.onload = function() {
+        var text = xhr.responseText || "";
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            resolve(JSON.parse(text));
+          } catch (_error) {
+            reject(new Error("서버 응답을 해석하지 못했습니다."));
+          }
+          return;
+        }
+        var message = "업로드 조각 전송에 실패했습니다.";
+        try {
+          var payload = JSON.parse(text);
+          message = payload.message || payload.detail || message;
+        } catch (_error) {
+          if (text) message = text;
+        }
+        var error = new Error(message);
+        error.isTransientError = xhr.status === 408 || xhr.status === 429 || xhr.status >= 500;
+        reject(error);
+      };
+      xhr.onerror = function(error) {
+        var wrapped = new Error("raw 파일 업로드 연결이 끊겼습니다. 같은 조각을 다시 전송합니다.");
+        wrapped.cause = error;
+        wrapped.isNetworkError = true;
+        reject(wrapped);
+      };
+      xhr.ontimeout = function(error) {
+        var wrapped = new Error("업로드 조각 전송 시간이 초과되었습니다. 같은 조각을 다시 전송합니다.");
+        wrapped.cause = error;
+        wrapped.isNetworkError = true;
+        reject(wrapped);
+      };
+      var form = new FormData();
+      form.append("relative_path", options.path);
+      form.append("offset", String(options.offset));
+      form.append("total_size", String(options.totalSize));
+      form.append("chunk_index", String(options.chunkIndex));
+      form.append("chunk_count", String(options.chunkCount));
+      form.append("file", options.blob, options.fileName);
+      xhr.send(form);
+    });
+  }
+
+  async function uploadReportChunkWithRetry(options) {
+    var lastError = null;
+    for (var attempt = 1; attempt <= REPORT_UPLOAD_CHUNK_RETRIES; attempt += 1) {
+      try {
+        return await requestReportUploadChunk(options);
+      } catch (error) {
+        lastError = error;
+        if (!(error.isNetworkError || error.isTransientError) || attempt >= REPORT_UPLOAD_CHUNK_RETRIES) break;
+        setReportProgress({
+          status: "running",
+          stage: "upload",
+          progressPct: Math.max(6, Math.min(88, (options.uploadedBefore / options.totalUploadBytes) * 88)),
+          message: "업로드가 잠시 끊겨 같은 조각을 다시 전송합니다. (" + attempt + "/" + REPORT_UPLOAD_CHUNK_RETRIES + ")"
+        });
+        await wait(650 * attempt);
+      }
+    }
+    throw lastError || new Error("업로드 조각 전송에 실패했습니다.");
+  }
+
+  async function createReportUploadSessionWithRetry() {
+    for (var attempt = 1; attempt <= 3; attempt += 1) {
+      try {
+        return await fetchJson("/api/v1/raman/report/upload-sessions", {method: "POST"});
+      } catch (error) {
+        if (!(error.isNetworkError || error.isTransientError) || attempt >= 3) throw error;
+        setReportProgress({
+          status: "running",
+          stage: "upload",
+          progressPct: 4,
+          message: "업로드 세션 생성을 다시 시도하는 중입니다."
+        });
+        await wait(700 * attempt);
+      }
+    }
+  }
+
+  async function completeReportUploadWithRetry(uploadId, fields) {
+    var form = new FormData();
+    Object.keys(fields).forEach(function(key) {
+      form.append(key, fields[key]);
+    });
+    for (var attempt = 1; attempt <= 4; attempt += 1) {
+      try {
+        return await fetchJson(
+          "/api/v1/raman/report/upload-sessions/" + encodeURIComponent(uploadId) + "/complete",
+          {method: "POST", body: form}
+        );
+      } catch (error) {
+        if (!(error.isNetworkError || error.isTransientError) || attempt >= 4) throw error;
+        setReportProgress({
+          status: "running",
+          stage: "upload",
+          progressPct: 92,
+          message: "보고서 작업 접수 응답을 다시 확인하는 중입니다."
+        });
+        await wait(800 * attempt);
+      }
+    }
+  }
+
+  async function uploadReportFilesWithSession(reportFiles, completeFields) {
+    var totalBytes = reportFiles.reduce(function(total, file) {
+      return total + Number(file.size || 0);
+    }, 0);
+    if (totalBytes <= 0) throw new Error("빈 raw 파일만 선택되어 있습니다.");
+    if (totalBytes > MAX_TOTAL_BYTES) {
+      throw new Error("보고서 raw 파일의 총 크기는 50MB 이하여야 합니다.");
+    }
+    reportFiles.forEach(function(file) {
+      if (file.size > MAX_FILE_BYTES) {
+        throw new Error(file.name + " 파일이 너무 큽니다. 파일당 최대 20MB입니다.");
+      }
+    });
+    setReportProgress({
+      status: "running",
+      stage: "upload",
+      progressPct: 3,
+      message: "업로드 세션을 생성하는 중입니다."
+    });
+    var session = await createReportUploadSessionWithRetry();
+    var uploadedBytes = 0;
+    for (var fileIndex = 0; fileIndex < reportFiles.length; fileIndex += 1) {
+      var file = reportFiles[fileIndex];
+      var chunkCount = Math.max(1, Math.ceil(file.size / REPORT_UPLOAD_CHUNK_BYTES));
+      for (var chunkIndex = 0; chunkIndex < chunkCount; chunkIndex += 1) {
+        var offset = chunkIndex * REPORT_UPLOAD_CHUNK_BYTES;
+        var end = Math.min(file.size, offset + REPORT_UPLOAD_CHUNK_BYTES);
+        var blob = file.slice(offset, end);
+        await uploadReportChunkWithRetry({
+          uploadId: session.uploadId,
+          path: String(fileIndex + 1) + "/" + file.name,
+          fileName: file.name,
+          blob: blob,
+          offset: offset,
+          totalSize: file.size,
+          chunkIndex: chunkIndex,
+          chunkCount: chunkCount,
+          uploadedBefore: uploadedBytes,
+          totalUploadBytes: totalBytes,
+          fileIndex: fileIndex + 1,
+          fileCount: reportFiles.length
+        });
+        uploadedBytes += blob.size;
+      }
+    }
+    setReportProgress({
+      status: "running",
+      stage: "upload",
+      progressPct: 90,
+      message: "raw 파일 업로드 완료. 보고서 작업을 접수하는 중입니다."
+    });
+    return completeReportUploadWithRetry(session.uploadId, completeFields);
   }
 
   function updateIdleStatus() {
@@ -5308,17 +5525,13 @@ _UPLOAD_SCRIPT = """
         throw new Error("보고서에 표시할 raw 파일이 없습니다.");
       }
       var figureImage = await captureReportFigureImage(reportFigure);
-      var form = new FormData();
-      reportFiles.forEach(function(file) { form.append("files", file, file.name); });
-      form.append("analysis_json", JSON.stringify(reportAnalysisPayload()));
-      form.append("figure_json", JSON.stringify(compactReportFigurePayload(reportFigure)));
-      form.append("figure_image", figureImage);
-      form.append("requestNumber", transfer.requestNumber);
-      form.append("equipmentCode", transfer.equipmentCode);
-      form.append("operatorId", transfer.operatorId);
-      var job = await fetchJson("/api/v1/raman/report/jobs", {
-        method: "POST",
-        body: form
+      var job = await uploadReportFilesWithSession(reportFiles, {
+        analysis_json: JSON.stringify(reportAnalysisPayload()),
+        figure_json: JSON.stringify(compactReportFigurePayload(reportFigure)),
+        figure_image: figureImage,
+        requestNumber: transfer.requestNumber,
+        equipmentCode: transfer.equipmentCode,
+        operatorId: transfer.operatorId
       });
       setReportProgress(job);
       job = await pollReportJob(job.jobId);
@@ -5739,18 +5952,17 @@ def create_raman_preview_report(
     )
 
 
-@router.post("/api/v1/raman/report/jobs", status_code=202, tags=["raman"])
-def create_raman_preview_report_job(
+def _create_raman_report_job_from_uploaded(
     request: Request,
-    files: list[UploadFile] = File(...),
-    analysis_json: str = Form(...),
-    figure_json: str = Form(default=""),
-    figure_image: str = Form(...),
-    request_number: str = Form(default="", alias="requestNumber"),
-    equipment_code: str = Form(default="", alias="equipmentCode"),
-    operator_id: str = Form(default="", alias="operatorId"),
-) -> dict:
-    uploaded = _uploaded_raman_files(files)
+    *,
+    uploaded: list[tuple[str, bytes]],
+    analysis_json: str,
+    figure_json: str,
+    figure_image: str,
+    request_number: str,
+    equipment_code: str,
+    operator_id: str,
+) -> PreviewReportJob:
     try:
         analysis_payload = parse_analysis_payload(analysis_json, figure_json)
         image_bytes = decode_figure_image(figure_image)
@@ -5774,6 +5986,122 @@ def create_raman_preview_report_job(
         equipment_code=equipment_code,
         operator_id=operator_id,
         settings=getattr(request.app.state, "settings", None),
+    )
+    return job
+
+
+@router.post("/api/v1/raman/report/upload-sessions", status_code=201, tags=["raman"])
+def create_raman_report_upload_session() -> dict:
+    raman_report_upload_store.cleanup()
+    session = raman_report_upload_store.create()
+    return raman_report_upload_store.payload(session)
+
+
+@router.post("/api/v1/raman/report/upload-sessions/{upload_id}/chunks", tags=["raman"])
+async def upload_raman_report_chunk(
+    upload_id: str,
+    relative_path: str = Form(...),
+    offset: int = Form(...),
+    total_size: int = Form(...),
+    chunk_index: int = Form(...),
+    chunk_count: int = Form(...),
+    file: UploadFile = File(...),
+) -> dict:
+    session = raman_report_upload_store.get(upload_id)
+    file_state = await raman_report_upload_store.write_chunk(
+        session,
+        relative_path=relative_path,
+        offset=offset,
+        total_size=total_size,
+        chunk_index=chunk_index,
+        chunk_count=chunk_count,
+        upload=file,
+    )
+    payload = raman_report_upload_store.payload(session)
+    payload.update(
+        {
+            "relativePath": file_state.relative_path,
+            "uploadedFileBytes": file_state.uploaded_bytes,
+            "fileSize": file_state.total_size,
+            "fileCompleted": file_state.completed,
+        }
+    )
+    return payload
+
+
+@router.post("/api/v1/raman/report/upload-sessions/{upload_id}/complete", status_code=202, tags=["raman"])
+def complete_raman_report_upload_session(
+    request: Request,
+    upload_id: str,
+    analysis_json: str = Form(...),
+    figure_json: str = Form(default=""),
+    figure_image: str = Form(...),
+    request_number: str = Form(default="", alias="requestNumber"),
+    equipment_code: str = Form(default="", alias="equipmentCode"),
+    operator_id: str = Form(default="", alias="operatorId"),
+) -> dict:
+    existing_job_id = raman_report_upload_store.completed_ref(upload_id)
+    if existing_job_id:
+        store = preview_report_job_store(request.app)
+        existing_job = store.get(existing_job_id)
+        if existing_job is not None:
+            return _report_job_response(existing_job, prefix="/api/v1/raman/report/jobs")
+
+    session = raman_report_upload_store.get(upload_id)
+    incomplete_files = raman_report_upload_store.incomplete_files(session)
+    if incomplete_files:
+        preview = ", ".join(incomplete_files[:5])
+        more = f" 외 {len(incomplete_files) - 5}개" if len(incomplete_files) > 5 else ""
+        raise ApiException(
+            409,
+            "RAMAN_REPORT_UPLOAD_INCOMPLETE",
+            f"아직 업로드가 완료되지 않은 파일이 있습니다: {preview}{more}",
+        )
+    uploaded = read_completed_upload_files(session)
+    if not uploaded:
+        raise ApiException(400, "RAMAN_FILES_REQUIRED", "Raman raw 파일이 필요합니다.")
+    if len(uploaded) > MAX_RAMAN_PREVIEW_FILES:
+        raise ApiException(
+            400,
+            "TOO_MANY_RAMAN_FILES",
+            f"한 번에 최대 {MAX_RAMAN_PREVIEW_FILES}개 파일을 분석할 수 있습니다.",
+        )
+    job = _create_raman_report_job_from_uploaded(
+        request,
+        uploaded=uploaded,
+        analysis_json=analysis_json,
+        figure_json=figure_json,
+        figure_image=figure_image,
+        request_number=request_number,
+        equipment_code=equipment_code,
+        operator_id=operator_id,
+    )
+    raman_report_upload_store.pop(upload_id)
+    raman_report_upload_store.remember_completed_ref(upload_id, job.job_id)
+    return _report_job_response(job, prefix="/api/v1/raman/report/jobs")
+
+
+@router.post("/api/v1/raman/report/jobs", status_code=202, tags=["raman"])
+def create_raman_preview_report_job(
+    request: Request,
+    files: list[UploadFile] = File(...),
+    analysis_json: str = Form(...),
+    figure_json: str = Form(default=""),
+    figure_image: str = Form(...),
+    request_number: str = Form(default="", alias="requestNumber"),
+    equipment_code: str = Form(default="", alias="equipmentCode"),
+    operator_id: str = Form(default="", alias="operatorId"),
+) -> dict:
+    uploaded = _uploaded_raman_files(files)
+    job = _create_raman_report_job_from_uploaded(
+        request,
+        uploaded=uploaded,
+        analysis_json=analysis_json,
+        figure_json=figure_json,
+        figure_image=figure_image,
+        request_number=request_number,
+        equipment_code=equipment_code,
+        operator_id=operator_id,
     )
     return _report_job_response(job, prefix="/api/v1/raman/report/jobs")
 
