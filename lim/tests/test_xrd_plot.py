@@ -9,6 +9,7 @@ from lim.xrd_plot import (
     XRD_DOWNLOAD_IMAGE_FORMAT,
     XRD_IMAGE_FORMAT_SELECTOR,
     assign_relative_phase_categories,
+    build_image_display_html,
     build_phase_info_html,
     build_report_html,
     build_xrd_html,
@@ -17,6 +18,7 @@ from lim.xrd_plot import (
     pdf_peak_warning,
     parse_peak_list_table,
     read_xlsx_preview,
+    repair_korean_mojibake,
     sort_phase_candidates,
 )
 
@@ -101,6 +103,31 @@ def test_phase_category_uses_pdf_folder_names(tmp_path) -> None:
         "미량상",
         "folder",
     )
+
+
+def test_phase_category_repairs_cp949_zip_folder_mojibake(tmp_path) -> None:
+    pdf_root = tmp_path / "ICDD Card"
+    garbled_similar = "유사상 1".encode("cp949").decode("cp437")
+    similar = pdf_root / garbled_similar
+    similar.mkdir(parents=True)
+
+    assert repair_korean_mojibake(garbled_similar) == "유사상 1"
+    assert phase_category_from_pdf_path(str(similar / "TiO2.pdf"), str(pdf_root)) == (
+        "uncertain",
+        "유사상 1",
+        "folder",
+    )
+
+
+def test_image_display_repairs_cp949_zip_filename_mojibake(tmp_path) -> None:
+    garbled_name = "상매칭 보조 이미지.png".encode("cp949").decode("cp437")
+    image_path = tmp_path / garbled_name
+    image_path.write_bytes(TINY_PNG)
+
+    html = build_image_display_html([str(image_path)])
+
+    assert "상매칭 보조 이미지.png" in html
+    assert garbled_name not in html
 
 
 def test_phase_category_prefers_specific_folder_below_mixed_case_parent(tmp_path) -> None:
@@ -257,6 +284,7 @@ def test_build_report_html_contains_xrd_template_sections(tmp_path) -> None:
     assert "preparePrintLegend" in html
     assert "xrd-print-legend" in html
     assert "xrd-print-plot-image" in html
+    assert ".xrd-print-plot-image { display: none; }" in html
     assert "createPrintPlotImage" in html
     assert "window.Plotly.toImage" in html
     assert "frame.classList.add(\"has-print-plot\")" in html

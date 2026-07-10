@@ -11,6 +11,7 @@ import subprocess
 import tempfile
 from threading import Lock
 import time
+import unicodedata
 from uuid import uuid4
 import zipfile
 from io import BytesIO
@@ -328,9 +329,38 @@ def _render_xrd_html_pdf(html_text: str, *, landscape: bool) -> bytes:
     )
 
 
+_HANGUL_RE = re.compile(r"[\u3131-\u318e\uac00-\ud7a3]")
+
+
+def _hangul_count(value: str) -> int:
+    return len(_HANGUL_RE.findall(str(value or "")))
+
+
+def _repair_korean_mojibake_path(value: str | None) -> str:
+    text = str(value or "")
+    best = unicodedata.normalize("NFC", text)
+    best_score = _hangul_count(best)
+    for encoded_as in ("cp437", "latin1"):
+        for decoded_as in ("cp949", "euc-kr"):
+            try:
+                candidate = text.encode(encoded_as).decode(decoded_as)
+            except UnicodeError:
+                continue
+            candidate = unicodedata.normalize("NFC", candidate)
+            score = _hangul_count(candidate)
+            if score > best_score:
+                best = candidate
+                best_score = score
+    return best
+
+
 def _safe_relative_path(filename: str | None, fallback: str) -> Path:
     raw = str(filename or "").strip().replace("\\", "/")
-    parts = [part for part in raw.split("/") if part and part not in {".", ".."}]
+    parts = [
+        _repair_korean_mojibake_path(part)
+        for part in raw.split("/")
+        if part and part not in {".", ".."}
+    ]
     if not parts:
         parts = [fallback]
     safe_parts = []

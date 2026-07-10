@@ -278,12 +278,38 @@ def split_card_numbers(value: str) -> list[str]:
     return cards
 
 
+_HANGUL_RE = re.compile(r"[\u3131-\u318e\uac00-\ud7a3]")
+
+
+def _hangul_count(value: str) -> int:
+    return len(_HANGUL_RE.findall(str(value or "")))
+
+
+def repair_korean_mojibake(value: str) -> str:
+    """Repair common CP949-in-ZIP mojibake while leaving normal names untouched."""
+    text = str(value or "")
+    best = unicodedata.normalize("NFC", text)
+    best_score = _hangul_count(best)
+    for encoded_as in ("cp437", "latin1"):
+        for decoded_as in ("cp949", "euc-kr"):
+            try:
+                candidate = text.encode(encoded_as).decode(decoded_as)
+            except UnicodeError:
+                continue
+            candidate = unicodedata.normalize("NFC", candidate)
+            score = _hangul_count(candidate)
+            if score > best_score:
+                best = candidate
+                best_score = score
+    return best
+
+
 def _path_text(value: str) -> str:
-    return re.sub(r"\s+", "", unicodedata.normalize("NFC", str(value or "")).lower())
+    return re.sub(r"\s+", "", repair_korean_mojibake(value).lower())
 
 
 def _display_path_part(value: str) -> str:
-    return unicodedata.normalize("NFC", str(value or "").strip())
+    return repair_korean_mojibake(value).strip()
 
 
 def _phase_folder_category(part: str) -> tuple[str | None, str | None]:
@@ -2301,13 +2327,14 @@ def build_image_display_html(image_files: list[str]) -> str:
         return ""
     figures = []
     for path in image_files:
+        display_name = _display_path_part(Path(path).name)
         try:
             src = image_data_uri(path)
             figures.append(
                 f"""
                 <figure class="xrd-image-card">
-                  <img src="{src}" alt="{_esc(Path(path).name)}">
-                  <figcaption>{_esc(Path(path).name)}</figcaption>
+                  <img src="{src}" alt="{_esc(display_name)}">
+                  <figcaption>{_esc(display_name)}</figcaption>
                 </figure>
                 """
             )
@@ -2315,7 +2342,7 @@ def build_image_display_html(image_files: list[str]) -> str:
             figures.append(
                 f"""
                 <figure class="xrd-image-card">
-                  <div class="xrd-warning">{_esc(Path(path).name)} 이미지를 읽지 못했습니다: {_esc(exc)}</div>
+                  <div class="xrd-warning">{_esc(display_name)} 이미지를 읽지 못했습니다: {_esc(exc)}</div>
                 </figure>
                 """
             )
@@ -2716,6 +2743,7 @@ def xrd_report_css() -> str:
   .xrd-image-card img { display: block; width: 100%; height: auto; max-height: 520px; object-fit: contain; }
   .xrd-image-card figcaption { margin-top: 6px; font-size: 12px; color: #6b7280; text-align: center; }
   .xrd-print-legend { display: none; }
+  .xrd-print-plot-image { display: none; }
   .xrd-phase-group { border-radius: 10px; margin: 12px 0; padding: 0 12px 12px; }
   .xrd-phase-group summary { cursor: pointer; font-size: 16px; font-weight: 700; padding: 12px 0; }
   .xrd-phase-group summary span { color: #6b7280; font-size: 12px; margin-left: 6px; }

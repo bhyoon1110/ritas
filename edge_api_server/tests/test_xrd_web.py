@@ -530,3 +530,18 @@ def test_xrd_bundle_relative_path_is_preserved_for_phase_folders() -> None:
         "유사상 1",
         "TiO2 00-064-0863(S).pdf",
     )
+
+
+def test_xrd_bundle_repairs_cp949_zip_folder_mojibake() -> None:
+    garbled_similar = "유사상 1".encode("cp949").decode("cp437")
+
+    relative = _safe_relative_path(
+        f"ICDD Card (라이브러리 pdf)/{garbled_similar}/TiO2 00-064-0863(S).pdf",
+        "bundle-1",
+    )
+
+    assert relative.parts[-3:] == (
+        "ICDD Card (라이브러리 pdf)",
+        "유사상 1",
+        "TiO2 00-064-0863(S).pdf",
+    )
