@@ -3296,7 +3296,29 @@ def build_report_html(
         }}
       }}
       document.body.classList.toggle("xrd-report-graph-landscape", landscape);
-      return "<!doctype html>\\n" + document.documentElement.outerHTML;
+      var clone = document.documentElement.cloneNode(true);
+      var cloneBody = clone.querySelector("body");
+      if (cloneBody) cloneBody.classList.toggle("xrd-report-graph-landscape", landscape);
+      var cloneLandscapeOption = clone.querySelector("#xrd-report-landscape-graph");
+      if (cloneLandscapeOption) {{
+        if (landscape) {{
+          cloneLandscapeOption.setAttribute("checked", "checked");
+        }} else {{
+          cloneLandscapeOption.removeAttribute("checked");
+        }}
+      }}
+      Array.prototype.forEach.call(clone.querySelectorAll("script"), function(node) {{
+        node.remove();
+      }});
+      Array.prototype.forEach.call(
+        clone.querySelectorAll(
+          "#xrd-plot .modebar,#xrd-plot .rist-plot-control-row,#xrd-plot .xrd-tool-toggle,"
+          + "#xrd-plot .xrd-tool-panel,#xrd-plot .rist-legend-edit-panel,#xrd-plot .xrd-phase-group-panel,"
+          + "#xrd-plot .rist-legend-drag-handle,#xrd-plot .rist-xrd-legend-checkbox,#xrd-plot .rist-xrd-legend-branch"
+        ),
+        function(node) {{ node.remove(); }}
+      );
+      return "<!doctype html>\\n" + clone.outerHTML;
     }}
     function downloadPdfBlob(blob) {{
       var url = URL.createObjectURL(blob);
@@ -3312,6 +3334,7 @@ def build_report_html(
     function restoreAfterServerPdf() {{
       removePrintPageStyle();
       restorePrintLegend();
+      restoreScreenPlotLayout();
     }}
     function setPdfExportBusy(busy) {{
       if (!button) return;
@@ -3342,23 +3365,44 @@ def build_report_html(
       if (window.location.protocol === "file:") {{
         return Promise.reject(new Error("file URL에서는 서버 PDF 생성을 사용할 수 없습니다."));
       }}
-      return fetch("/api/v1/xrd/render-pdf", {{
-        method: "POST",
-        headers: {{"Content-Type": "application/json"}},
-        body: JSON.stringify({{
-          html: exportHtmlSnapshot(),
-          landscape: graphPageLandscapeEnabled()
-        }})
+      var prepared = preparePrintLegend();
+      return Promise.resolve(prepared).then(function() {{
+        return fetch("/api/v1/xrd/render-pdf", {{
+          method: "POST",
+          headers: {{"Content-Type": "application/json"}},
+          body: JSON.stringify({{
+            html: exportHtmlSnapshot(),
+            landscape: graphPageLandscapeEnabled()
+          }})
+        }});
       }}).then(function(response) {{
-        if (!response.ok) {{
-          return response.text().then(function(text) {{
-            throw new Error(extractPdfErrorMessage(text));
-          }});
-        }}
-        return response.blob();
-      }}).then(function(blob) {{
-        downloadPdfBlob(blob);
-      }});
+          if (!response.ok) {{
+            return response.text().then(function(text) {{
+              throw new Error(extractPdfErrorMessage(text));
+            }});
+          }}
+          return response.blob();
+        }}).then(function(blob) {{
+          downloadPdfBlob(blob);
+        }}).catch(function(error) {{
+          if (error && /Failed to fetch|NetworkError|Load failed/i.test(String(error.message || error))) {{
+            throw new Error(
+              "서버 PDF 생성 요청이 연결 중 끊겼습니다. 업로드 파일이 많거나 보고서가 커서 브라우저가 요청을 중단했을 수 있습니다."
+            );
+          }}
+          throw error;
+        }});
+    }}
+    function openBrowserPrintFallback() {{
+      var relayout = preparePrintLegend();
+      var printFallback = function() {{
+        window.setTimeout(function() {{ window.print(); }}, 80);
+      }};
+      if (relayout && relayout.then) {{
+        return relayout.finally(printFallback);
+      }} else {{
+        printFallback();
+      }}
     }}
     if (gd && gd.on) {{
       gd.on("plotly_afterplot", function() {{
@@ -3404,20 +3448,15 @@ def build_report_html(
           .then(restoreAfterServerPdf)
           .catch(function(error) {{
             console.warn("XRD server PDF export failed.", error);
-            if (window.location.protocol === "file:") {{
-              var relayout = preparePrintLegend();
-              var printFallback = function() {{
-                window.setTimeout(function() {{ window.print(); }}, 80);
-              }};
-              if (relayout && relayout.then) {{
-                return relayout.finally(printFallback);
-              }} else {{
-                printFallback();
-              }}
-              return;
-            }}
             restoreAfterServerPdf();
-            window.alert(error && error.message ? error.message : "서버 PDF 생성에 실패했습니다.");
+            var message = error && error.message ? error.message : "서버 PDF 생성에 실패했습니다.";
+            var shouldFallback = window.location.protocol === "file:"
+              || /연결 중 끊겼습니다|file URL|너무 큽니다/i.test(message);
+            if (shouldFallback) {{
+              window.alert(message + "\\n\\n브라우저 인쇄 창을 열겠습니다. 대상에서 PDF 저장을 선택해 주세요.");
+              return openBrowserPrintFallback();
+            }}
+            window.alert(message);
           }})
           .finally(function() {{
             setPdfExportBusy(false);

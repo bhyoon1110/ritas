@@ -274,6 +274,11 @@ def test_build_report_html_contains_xrd_template_sections(tmp_path) -> None:
     assert "serverRenderPdf" in html
     assert "/api/v1/xrd/render-pdf" in html
     assert "exportHtmlSnapshot" in html
+    assert 'clone.querySelectorAll("script")' in html
+    assert "node.remove();" in html
+    assert "서버 PDF 생성 요청이 연결 중 끊겼습니다" in html
+    assert "openBrowserPrintFallback" in html
+    assert "대상에서 PDF 저장을 선택" in html
     assert 'landscapeOption.removeAttribute("checked")' in html
     assert 'landscapeOption.setAttribute("checked", "checked")' in html
     assert "downloadPdfBlob" in html
