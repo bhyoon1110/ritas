@@ -364,7 +364,7 @@ def test_xrd_chunked_upload_session_retries_and_builds_report(tmp_path) -> None:
     assert "상 동정 (Phase Identification) 결과" in html_response.text
 
 
-def test_xrd_analyze_rejects_unreadable_pdf_in_bundle() -> None:
+def test_xrd_analyze_warns_for_pdf_that_cannot_be_extracted() -> None:
     raw = b"10 1\n20 3\n30 2\n"
 
     with TestClient(create_xrd_preview_app()) as client:
@@ -376,10 +376,30 @@ def test_xrd_analyze_rejects_unreadable_pdf_in_bundle() -> None:
             ],
         )
 
+    assert response.status_code == 200
+    assert "sample Report" in response.text
+    assert "not-a-card.pdf" in response.text
+    assert "자동 피크 표 추출에는 실패" in response.text
+    assert "No /Root object" not in response.text
+    assert "Is this really a PDF" not in response.text
+
+
+def test_xrd_analyze_rejects_file_with_pdf_suffix_but_no_pdf_header() -> None:
+    raw = b"10 1\n20 3\n30 2\n"
+
+    with TestClient(create_xrd_preview_app()) as client:
+        response = client.post(
+            "/api/v1/xrd/analyze",
+            files=[
+                ("files", ("sample.txt", raw, "text/plain")),
+                ("files", ("not-a-pdf.pdf", b"not a pdf", "application/pdf")),
+            ],
+        )
+
     assert response.status_code == 400
     assert "INVALID_XRD_PDF" in response.text
-    assert "not-a-card.pdf" in response.text
-    assert "원본 PDF를 다시 업로드" in response.text
+    assert "not-a-pdf.pdf" in response.text
+    assert "실제 PDF 문서가 아닙니다" in response.text
 
 
 def test_xrd_analyze_keeps_legacy_split_upload_fields(tmp_path) -> None:

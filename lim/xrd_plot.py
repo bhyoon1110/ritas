@@ -3672,7 +3672,8 @@ def build_xrd_html(
             except Exception:
                 warnings.append(
                     f"경고: '{os.path.basename(pdf_path)}' PDF를 읽지 못했습니다. "
-                    "파일이 손상되었거나 실제 PDF 문서가 아닙니다."
+                    "파일은 PDF 뷰어에서 열릴 수 있지만 자동 피크 표 추출에는 실패했습니다. "
+                    "ICDD Card의 표 구조가 이미지이거나 비표준 PDF일 수 있습니다."
                 )
                 continue
             if not peaks:

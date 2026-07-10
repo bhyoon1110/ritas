@@ -40,11 +40,6 @@ from .report import annotator
 from .report.builders import LlmSlotSpec
 from .upload_sessions import ChunkUploadStore
 
-try:
-    import pdfplumber
-except Exception:  # pragma: no cover - validated by runtime dependency tests
-    pdfplumber = None
-
 router = APIRouter()
 logger = get_logger(__name__)
 
@@ -355,25 +350,13 @@ def _has_pdf_files(directory: Path | str) -> bool:
 
 
 def _validate_xrd_pdf_payload(filename: str, data: bytes) -> None:
-    """Reject files that only have a .pdf suffix but are not readable PDFs."""
+    """Reject files that only have a .pdf suffix but are clearly not PDFs."""
     if b"%PDF-" not in data[:1024]:
         raise ApiException(
             400,
             "INVALID_XRD_PDF",
             f"{filename} 파일은 실제 PDF 문서가 아닙니다. 원본 ICDD Card PDF를 다시 업로드하세요.",
         )
-    if pdfplumber is None:
-        return
-    try:
-        with pdfplumber.open(BytesIO(data)) as pdf:
-            if len(pdf.pages) <= 0:
-                raise ValueError("empty PDF")
-    except Exception as exc:
-        raise ApiException(
-            400,
-            "INVALID_XRD_PDF",
-            f"{filename} 파일은 PDF 구조가 손상되었거나 ICDD Card로 읽을 수 없습니다. 원본 PDF를 다시 업로드하세요.",
-        ) from exc
 
 
 def _ignore_bundle_path(path: Path) -> bool:

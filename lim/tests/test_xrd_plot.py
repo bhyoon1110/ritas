@@ -60,7 +60,7 @@ def test_build_xrd_html_hides_internal_pdf_parse_errors(tmp_path) -> None:
     html = build_xrd_html([(str(raw_path), str(pdf_dir))])["html"]
 
     assert "not-a-card.pdf" in html
-    assert "파일이 손상되었거나 실제 PDF 문서가 아닙니다" in html
+    assert "자동 피크 표 추출에는 실패" in html
     assert "No /Root object" not in html
     assert "Is this really a PDF" not in html
 
