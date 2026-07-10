@@ -2784,21 +2784,17 @@ def xrd_report_css() -> str:
       max-width: 174mm !important;
       margin: 0 auto !important;
       padding: 8px 12px 12px !important;
+      border: 0 !important;
       border-radius: 12px;
+      box-shadow: inset 0 0 0 2px #111827;
       box-sizing: border-box;
       position: relative;
       break-inside: avoid;
       page-break-inside: avoid;
     }
     .xrd-graph-frame::after {
-      content: "";
-      position: absolute;
-      inset: 0;
-      border: 2px solid #111827;
-      border-radius: 12px;
-      box-sizing: border-box;
-      pointer-events: none;
-      z-index: 3;
+      display: none !important;
+      content: none !important;
     }
     #xrd-plot {
       width: min(620px, calc(100% - 24px)) !important;
@@ -2820,7 +2816,7 @@ def xrd_report_css() -> str:
       max-width: calc(100% - 24px) !important;
       height: 420px !important;
       min-height: 420px !important;
-      transform: translateX(8mm);
+      transform: none !important;
     }
     body.xrd-report-graph-landscape .xrd-print-legend-grid {
       column-count: 3;

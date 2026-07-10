@@ -295,8 +295,10 @@ def test_build_report_html_contains_xrd_template_sections(tmp_path) -> None:
     assert "max-width: 174mm !important" in html
     assert "margin: 0 auto !important" in html
     assert "padding: 8px 12px 12px !important" in html
+    assert "border: 0 !important" in html
+    assert "box-shadow: inset 0 0 0 2px #111827" in html
     assert ".xrd-graph-frame::after" in html
-    assert "pointer-events: none;\n      z-index: 3;" in html
+    assert "content: none !important" in html
     assert "#xrd-plot .plot-container,\n    #xrd-plot .svg-container," in html
     assert "width: 100% !important" in html
     assert "overflow: visible !important" in html
@@ -305,7 +307,7 @@ def test_build_report_html_contains_xrd_template_sections(tmp_path) -> None:
     assert "width: 98% !important" in html
     assert "max-width: 268mm !important" in html
     assert "width: min(1040px, calc(100% - 24px)) !important" in html
-    assert "transform: translateX(8mm)" in html
+    assert "transform: none !important" in html
     assert "column-count: 3" in html
     assert "margin: 0 auto 6px" in html
     assert "margin: 8px 12px 0 6px" in html
