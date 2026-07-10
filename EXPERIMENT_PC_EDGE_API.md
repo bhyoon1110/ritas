@@ -152,6 +152,109 @@ XRD/TEM의 현재 웹 화면 API(`/api/v1/xrd/analyze`, `/api/v1/tem/analyze`)�
 
 현 구현과 문서는 첫 번째 방식, 즉 단일 `experimentCode` 필드를 기준으로 한다.
 
+### 5.3 XRD/TEM raw bundle 구성
+
+C# 프로그램은 파일을 ZIP 하나로 묶어 보내는 방식보다, bundle 내부 파일을
+풀어서 각 파일의 `relativePath`를 보존해 `POST /api/v1/jobs/{jobId}/files`로
+전송하는 방식을 기본으로 한다. ZIP 파일 자체를 전송하려면 해당 실험
+processor가 ZIP 해제를 지원하도록 별도 합의가 필요하다.
+
+Edge 공통 업로드 API는 파일의 경로, 크기, SHA-256을 검증한다. 실제 보고서
+생성 가능 여부는 실험별 processor가 입력 bundle을 해석해
+`processed/*.json`을 만들 수 있는지에 따라 결정된다. 필수 파일이 부족하면
+보고서 생성 상태 조회에서 `ANALYSIS_RESULT_NOT_FOUND` 또는 processor 오류가
+반환될 수 있다.
+
+C# 프로그램이 `processed/*.json`을 직접 생성해 업로드할 필요는 없다. 다만
+Edge 서버에는 XRD/TEM 각각의 raw bundle을 읽어 구조화 분석 JSON을 생성하는
+processor 명령이 설정되어 있어야 한다. processor 설정이 없거나 입력 경로
+규칙이 맞지 않으면 raw 파일 전송과 `uploads/complete`가 성공해도 보고서
+생성은 실패한다.
+
+#### XRD bundle
+
+XRD는 HTML 보고서를 만들기 위해 raw XRD 패턴 파일과 ICDD Card PDF가 필요하다.
+피크 표와 보조 이미지는 선택 입력이다.
+
+```text
+bundle-root/
+  raw/
+    {sampleName}.txt              # 필수. XRD 측정 패턴
+  ICDD Card/
+    *.pdf                         # 필수. 상매칭 후보 카드 PDF 1개 이상
+  tables/
+    *.xlsx | *.csv | *.tsv        # 선택. 피크 정보/정량 표
+  images/
+    *.png | *.jpg | *.jpeg
+    *.webp | *.gif                # 선택. 그래프/상매칭 보조 이미지
+```
+
+지원 확장자:
+
+| 구분 | 확장자 | 필수 |
+|---|---|---:|
+| raw 패턴 | `.txt`, `.dat`, `.xy`, `.asc` | Y |
+| ICDD Card | `.pdf` | Y |
+| 표 | `.xlsx`, `.csv`, `.tsv` | N |
+| 이미지 | `.png`, `.jpg`, `.jpeg`, `.webp`, `.gif` | N |
+
+권장 규칙:
+
+- 한 작업은 기본적으로 하나의 XRD 보고서에 해당한다.
+- raw 패턴 파일과 ICDD Card PDF가 모두 있어야 HTML 보고서 생성이 가능하다.
+- raw 파일이 여러 개인 경우 어떤 파일을 대표 raw로 사용할지 processor 설정
+  또는 파일명 규칙을 사전에 확정해야 한다.
+- C# 프로그램은 `reportFormats: ["HTML"]`로 보고서 생성을 요청한다.
+
+#### TEM bundle
+
+TEM은 PPTX 보고서를 만들기 위해 `tem`, `stem`, `report`/`reports`, `scale`
+중 하나 이상의 섹션 폴더에 분석 가능한 파일이 있어야 한다. 코팅층 두께 분석,
+EDS mapping, TEM/STEM 이미지 슬라이드 중 어떤 장표를 만들지에 따라 필요한
+폴더가 달라진다.
+
+```text
+bundle-root/
+  tem/
+    {sampleName}/
+      *.tif | *.tiff | *.png
+      *.jpg | *.jpeg | *.bmp | *.webp     # TEM 이미지
+  stem/
+    *.tif | *.tiff | *.png
+    *.jpg | *.jpeg | *.bmp | *.webp       # STEM/BF-STEM 이미지
+  report/
+    *.docx                                # EDS MAP/Line/Point Word 보고서
+    *.xlsx | *.xls | *.xlsm | *.xlsb
+    *.csv | *.tsv                         # EDS raw spreadsheet
+  reports/
+    ...                                   # report와 동일하게 인식되는 별칭 폴더
+  scale/
+    {sampleName}/
+      *.tif | *.tiff | *.png
+      *.jpg | *.jpeg | *.bmp | *.webp     # 코팅층 두께 OCR 대상 이미지
+```
+
+지원 확장자:
+
+| 구분 | 확장자 | 필수 |
+|---|---|---:|
+| TEM/STEM/scale 이미지 | `.tif`, `.tiff`, `.png`, `.jpg`, `.jpeg`, `.bmp`, `.webp` | 조건부 |
+| EDS Word 보고서 | `.docx` | 조건부 |
+| EDS raw 표 | `.xlsx`, `.xls`, `.xlsm`, `.xlsb`, `.csv`, `.tsv` | 선택 |
+
+권장 규칙:
+
+- TEM 이미지 분석 장표가 필요하면 `tem/{sampleName}/` 아래에 시편별 이미지를
+  넣는다.
+- STEM/BF-STEM 장표가 필요하면 `stem/` 아래에 이미지를 넣는다.
+- EDS mapping/line/point 장표가 필요하면 `report/` 또는 `reports/` 아래에
+  Word 보고서를 넣는다. spreadsheet는 원본 보존과 point 표 fallback에 사용될
+  수 있다.
+- 코팅층 두께 OCR 장표가 필요하면 `scale/{sampleName}/` 아래에 두께 라벨이
+  포함된 이미지를 넣는다. `scale/` 바로 아래 이미지가 있으면 단일 시편
+  `Scale`로 처리한다.
+- C# 프로그램은 `reportFormats: ["PPTX"]`로 보고서 생성을 요청한다.
+
 ## 6. 공통 헤더
 
 | 헤더 | 필수 | 설명 |
