@@ -40,6 +40,11 @@ from .report import annotator
 from .report.builders import LlmSlotSpec
 from .upload_sessions import ChunkUploadStore
 
+try:
+    import pdfplumber
+except Exception:  # pragma: no cover - validated by runtime dependency tests
+    pdfplumber = None
+
 router = APIRouter()
 logger = get_logger(__name__)
 
@@ -349,6 +354,28 @@ def _has_pdf_files(directory: Path | str) -> bool:
     )
 
 
+def _validate_xrd_pdf_payload(filename: str, data: bytes) -> None:
+    """Reject files that only have a .pdf suffix but are not readable PDFs."""
+    if b"%PDF-" not in data[:1024]:
+        raise ApiException(
+            400,
+            "INVALID_XRD_PDF",
+            f"{filename} 파일은 실제 PDF 문서가 아닙니다. 원본 ICDD Card PDF를 다시 업로드하세요.",
+        )
+    if pdfplumber is None:
+        return
+    try:
+        with pdfplumber.open(BytesIO(data)) as pdf:
+            if len(pdf.pages) <= 0:
+                raise ValueError("empty PDF")
+    except Exception as exc:
+        raise ApiException(
+            400,
+            "INVALID_XRD_PDF",
+            f"{filename} 파일은 PDF 구조가 손상되었거나 ICDD Card로 읽을 수 없습니다. 원본 PDF를 다시 업로드하세요.",
+        ) from exc
+
+
 def _ignore_bundle_path(path: Path) -> bool:
     return any(part == "__MACOSX" for part in path.parts) or path.name.startswith(".")
 
@@ -368,6 +395,7 @@ def _save_xrd_bundle_payload(
         path = _unique_path(directories["raw"], filename)
         raw_paths.append(str(path))
     elif suffix in PDF_EXTENSIONS:
+        _validate_xrd_pdf_payload(filename, data)
         pdf_parent = directories["pdf"] / relative_path.parent
         pdf_parent.mkdir(parents=True, exist_ok=True)
         path = _unique_path(pdf_parent, filename)
@@ -686,6 +714,8 @@ async def _save_uploads(
                 "XRD_FILE_TOO_LARGE",
                 f"{filename} 파일이 너무 큽니다. 파일당 최대 80MB입니다.",
             )
+        if suffix in PDF_EXTENSIONS:
+            _validate_xrd_pdf_payload(filename, data)
         path = _unique_path(directory, filename)
         path.write_bytes(data)
         saved.append(str(path))

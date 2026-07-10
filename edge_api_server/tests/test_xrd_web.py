@@ -364,7 +364,7 @@ def test_xrd_chunked_upload_session_retries_and_builds_report(tmp_path) -> None:
     assert "상 동정 (Phase Identification) 결과" in html_response.text
 
 
-def test_xrd_analyze_skips_unreadable_pdf_in_bundle() -> None:
+def test_xrd_analyze_rejects_unreadable_pdf_in_bundle() -> None:
     raw = b"10 1\n20 3\n30 2\n"
 
     with TestClient(create_xrd_preview_app()) as client:
@@ -376,10 +376,10 @@ def test_xrd_analyze_skips_unreadable_pdf_in_bundle() -> None:
             ],
         )
 
-    assert response.status_code == 200
-    assert "sample Report" in response.text
+    assert response.status_code == 400
+    assert "INVALID_XRD_PDF" in response.text
     assert "not-a-card.pdf" in response.text
-    assert "PDF를 읽지 못했습니다" in response.text
+    assert "원본 PDF를 다시 업로드" in response.text
 
 
 def test_xrd_analyze_keeps_legacy_split_upload_fields(tmp_path) -> None:

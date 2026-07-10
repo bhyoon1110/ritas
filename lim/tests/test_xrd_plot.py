@@ -50,6 +50,21 @@ def test_pdf_peak_warning_is_empty_when_peaks_exist() -> None:
     assert pdf_peak_warning("cards", pdf_count=2, parsed_count=1) is None
 
 
+def test_build_xrd_html_hides_internal_pdf_parse_errors(tmp_path) -> None:
+    raw_path = tmp_path / "sample.txt"
+    raw_path.write_text("10 1\n20 3\n30 2\n", encoding="utf-8")
+    pdf_dir = tmp_path / "pdf"
+    pdf_dir.mkdir()
+    (pdf_dir / "not-a-card.pdf").write_bytes(b"%PDF-1.4\nbroken")
+
+    html = build_xrd_html([(str(raw_path), str(pdf_dir))])["html"]
+
+    assert "not-a-card.pdf" in html
+    assert "파일이 손상되었거나 실제 PDF 문서가 아닙니다" in html
+    assert "No /Root object" not in html
+    assert "Is this really a PDF" not in html
+
+
 def test_phase_label_uses_pdf_card_metadata() -> None:
     label = phase_label_from_metadata(
         {

@@ -3669,9 +3669,10 @@ def build_xrd_html(
         for pdf_path in pdf_files:
             try:
                 peaks = parse_pdf_peaks(pdf_path)
-            except Exception as exc:
+            except Exception:
                 warnings.append(
-                    f"경고: '{os.path.basename(pdf_path)}' PDF를 읽지 못했습니다: {exc}"
+                    f"경고: '{os.path.basename(pdf_path)}' PDF를 읽지 못했습니다. "
+                    "파일이 손상되었거나 실제 PDF 문서가 아닙니다."
                 )
                 continue
             if not peaks:
