@@ -256,6 +256,10 @@ def test_build_report_html_contains_xrd_template_sections(tmp_path) -> None:
     assert "#xrd-plot .modebar," in html
     assert "preparePrintLegend" in html
     assert "xrd-print-legend" in html
+    assert "xrd-print-plot-image" in html
+    assert "createPrintPlotImage" in html
+    assert "window.Plotly.toImage" in html
+    assert "frame.classList.add(\"has-print-plot\")" in html
     assert 'aria-label="XRD print legend"' in html
     assert "refreshPrintLegend" in html
     assert 'gd.closest(".xrd-graph-frame")' in html
@@ -269,10 +273,8 @@ def test_build_report_html_contains_xrd_template_sections(tmp_path) -> None:
     assert "applyPrintPageStyle" in html
     assert "@page { size: A4 portrait;" in html
     assert "data-xrd-print-page-style" in html
-    assert (
-        "body.xrd-report-graph-landscape #xrd-llm-comment { break-before: page; "
-        "page-break-before: always;"
-    ) in html
+    assert "body.xrd-report-graph-landscape #xrd-image-info," in html
+    assert "body.xrd-report-graph-landscape #xrd-llm-comment { break-before: page;" in html
     assert "restoreScreenPlotLayout" in html
     assert "window.Plotly.Plots.resize(gd)" in html
     assert "serverRenderPdf" in html
@@ -309,10 +311,10 @@ def test_build_report_html_contains_xrd_template_sections(tmp_path) -> None:
     assert "body.xrd-report-graph-landscape #xrd-phase-info" in html
     assert "page: auto;" in html
     assert "#xrd-graph-section .xrd-section-head + .xrd-graph-frame" in html
-    assert "#xrd-graph-section {\n      break-inside: avoid;" in html
+    assert "#xrd-graph-section {\n      page: auto;" in html
     assert ".xrd-graph-frame {\n      overflow: visible !important;" in html
     assert "width: 92% !important" in html
-    assert "max-width: 174mm !important" in html
+    assert "max-width: 178mm !important" in html
     assert "margin: 0 auto !important" in html
     assert "padding: 8px 12px 12px !important" in html
     assert "border: 0 !important" in html
@@ -322,11 +324,12 @@ def test_build_report_html_contains_xrd_template_sections(tmp_path) -> None:
     assert "#xrd-plot .plot-container,\n    #xrd-plot .svg-container," in html
     assert "width: 100% !important" in html
     assert "overflow: visible !important" in html
-    assert "width: min(620px, calc(100% - 24px)) !important" in html
+    assert ".xrd-graph-frame.has-print-plot #xrd-plot" in html
+    assert ".xrd-graph-frame.has-print-plot .xrd-print-plot-image" in html
     assert "body.xrd-report-graph-landscape .xrd-graph-frame" in html
     assert "width: 98% !important" in html
     assert "max-width: 268mm !important" in html
-    assert "width: min(1040px, calc(100% - 24px)) !important" in html
+    assert "body.xrd-report-graph-landscape #xrd-plot" in html
     assert "transform: none !important" in html
     assert "column-count: 3" in html
     assert "margin: 0 auto 6px" in html

@@ -2771,8 +2771,7 @@ def xrd_report_css() -> str:
     .xrd-report-section { margin-top: 10px; }
     .xrd-section-head { margin-bottom: 8px; padding-bottom: 5px; }
     #xrd-graph-section {
-      break-inside: avoid;
-      page-break-inside: avoid;
+      page: auto;
       break-after: page;
       page-break-after: always;
       margin-bottom: 0;
@@ -2790,6 +2789,10 @@ def xrd_report_css() -> str:
     }
     body.xrd-report-graph-landscape #xrd-image-info {
       page: xrd-graph-landscape;
+      break-before: page;
+      page-break-before: always;
+      break-after: page;
+      page-break-after: always;
     }
     body.xrd-report-graph-landscape #xrd-llm-comment,
     body.xrd-report-graph-landscape #xrd-peak-info,
@@ -2803,7 +2806,7 @@ def xrd_report_css() -> str:
     .xrd-graph-frame {
       overflow: visible !important;
       width: 92% !important;
-      max-width: 174mm !important;
+      max-width: 178mm !important;
       margin: 0 auto !important;
       padding: 8px 12px 12px !important;
       border: 0 !important;
@@ -2814,12 +2817,20 @@ def xrd_report_css() -> str:
       break-inside: avoid;
       page-break-inside: avoid;
     }
+    .xrd-print-plot-image {
+      display: none;
+      width: 100%;
+      max-width: 100%;
+      height: auto;
+      object-fit: contain;
+      margin: 0 auto 6px;
+    }
     .xrd-graph-frame::after {
       display: none !important;
       content: none !important;
     }
     #xrd-plot {
-      width: min(620px, calc(100% - 24px)) !important;
+      width: 100% !important;
       max-width: calc(100% - 24px) !important;
       height: 350px !important;
       min-height: 350px !important;
@@ -2834,11 +2845,23 @@ def xrd_report_css() -> str:
       text-align: center;
     }
     body.xrd-report-graph-landscape #xrd-plot {
-      width: min(1040px, calc(100% - 24px)) !important;
+      width: 100% !important;
       max-width: calc(100% - 24px) !important;
       height: 420px !important;
       min-height: 420px !important;
       transform: none !important;
+    }
+    .xrd-graph-frame.has-print-plot #xrd-plot {
+      display: none !important;
+      visibility: hidden !important;
+    }
+    .xrd-graph-frame.has-print-plot .xrd-print-plot-image {
+      display: block !important;
+      visibility: visible !important;
+      max-height: 118mm;
+    }
+    body.xrd-report-graph-landscape .xrd-graph-frame.has-print-plot .xrd-print-plot-image {
+      max-height: 126mm;
     }
     body.xrd-report-graph-landscape .xrd-print-legend-grid {
       column-count: 3;
@@ -3057,7 +3080,7 @@ def build_report_html(
         <h2>상 동정 (Phase Identification) 결과</h2>
         <p>측정 데이터와 ICDD Card 피크를 함께 표시합니다.</p>
       </div>
-      <div class="xrd-graph-frame">{plot_body}{print_legend}</div>
+      <div class="xrd-graph-frame">{plot_body}<img class="xrd-print-plot-image" alt="XRD graph print image">{print_legend}</div>
     </section>
     {image_info}
     <section class="xrd-report-section" id="xrd-llm-comment">
@@ -3081,6 +3104,7 @@ def build_report_html(
     var pdfButtonDefaultText = pdfButtonLabel ? pdfButtonLabel.textContent : "PDF Export";
     var originalLegendLayout = null;
     var printLegend = null;
+    var printPlotImage = null;
     var printPageStyle = null;
     var PRINT_PLOT_HEIGHT = 350;
     var PRINT_PLOT_WIDTH = 620;
@@ -3140,6 +3164,23 @@ def build_report_html(
         }}
       }}
       return printLegend;
+    }}
+    function graphFrame() {{
+      return gd && gd.closest ? gd.closest(".xrd-graph-frame") : null;
+    }}
+    function ensurePrintPlotImage() {{
+      var frame = graphFrame();
+      if (!frame) return null;
+      if (!printPlotImage) {{
+        printPlotImage = frame.querySelector(".xrd-print-plot-image");
+        if (!printPlotImage) {{
+          printPlotImage = document.createElement("img");
+          printPlotImage.className = "xrd-print-plot-image";
+          printPlotImage.alt = "XRD graph print image";
+          gd.insertAdjacentElement("afterend", printPlotImage);
+        }}
+      }}
+      return printPlotImage;
     }}
     function refreshPrintLegend() {{
       var host = ensurePrintLegend();
@@ -3210,7 +3251,7 @@ def build_report_html(
       if (!graphPageLandscapeEnabled()) return;
       printPageStyle = document.createElement("style");
       printPageStyle.setAttribute("data-xrd-print-page-style", "true");
-      printPageStyle.textContent = "@media print {{ @page {{ size: A4 portrait; margin: 9mm 10mm; }} @page xrd-graph-landscape {{ size: A4 landscape; margin: 9mm 10mm; }} body.xrd-report-graph-landscape #xrd-graph-section, body.xrd-report-graph-landscape #xrd-image-info {{ page: xrd-graph-landscape; }} body.xrd-report-graph-landscape #xrd-llm-comment, body.xrd-report-graph-landscape #xrd-peak-info, body.xrd-report-graph-landscape #xrd-phase-info {{ page: auto; }} body.xrd-report-graph-landscape #xrd-llm-comment {{ break-before: page; page-break-before: always; }} }}";
+      printPageStyle.textContent = "@media print {{ @page {{ size: A4 portrait; margin: 9mm 10mm; }} @page xrd-graph-landscape {{ size: A4 landscape; margin: 9mm 10mm; }} body.xrd-report-graph-landscape #xrd-graph-section, body.xrd-report-graph-landscape #xrd-image-info {{ page: xrd-graph-landscape; }} body.xrd-report-graph-landscape #xrd-llm-comment, body.xrd-report-graph-landscape #xrd-peak-info, body.xrd-report-graph-landscape #xrd-phase-info {{ page: auto; }} body.xrd-report-graph-landscape #xrd-image-info, body.xrd-report-graph-landscape #xrd-llm-comment {{ break-before: page; page-break-before: always; }} }}";
       document.head.appendChild(printPageStyle);
     }}
     function currentXAxisRange() {{
@@ -3280,6 +3321,81 @@ def build_report_html(
       }}
       return window.Plotly.relayout(gd, layout);
     }}
+    function clonePlotlyValue(value) {{
+      try {{
+        return JSON.parse(JSON.stringify(value || {{}}));
+      }} catch (error) {{
+        return value;
+      }}
+    }}
+    function printableTraces() {{
+      return (gd.data || []).filter(function(trace) {{
+        return traceVisible(trace) && traceKind(trace) !== "separator";
+      }}).map(function(trace) {{
+        var copy = clonePlotlyValue(trace);
+        copy.showlegend = false;
+        return copy;
+      }});
+    }}
+    function buildPrintPlotLayout(width, height) {{
+      var layout = clonePlotlyValue(gd.layout || {{}});
+      layout.width = width;
+      layout.height = height;
+      layout.autosize = false;
+      layout.showlegend = false;
+      layout.title = {{"text": ""}};
+      layout.margin = Object.assign({{}}, layout.margin || {{}}, {{
+        l: 78,
+        r: 32,
+        t: 24,
+        b: 72
+      }});
+      layout.paper_bgcolor = "#ffffff";
+      layout.plot_bgcolor = "#ffffff";
+      layout.xaxis = Object.assign({{}}, layout.xaxis || {{}}, {{automargin: true}});
+      layout.yaxis = Object.assign({{}}, layout.yaxis || {{}}, {{automargin: true}});
+      var yRange = computePrintYRange();
+      if (yRange) {{
+        layout.yaxis.autorange = false;
+        layout.yaxis.range = yRange;
+      }}
+      return layout;
+    }}
+    function createPrintPlotImage() {{
+      if (!window.Plotly || !gd || !window.Plotly.toImage) return Promise.resolve();
+      var image = ensurePrintPlotImage();
+      var frame = graphFrame();
+      if (!image || !frame) return Promise.resolve();
+      var landscape = graphPageLandscapeEnabled();
+      var width = landscape ? 1480 : 980;
+      var height = landscape ? 650 : 560;
+      var holder = document.createElement("div");
+      holder.style.position = "fixed";
+      holder.style.left = "-10000px";
+      holder.style.top = "0";
+      holder.style.width = width + "px";
+      holder.style.height = height + "px";
+      holder.style.background = "#fff";
+      document.body.appendChild(holder);
+      return window.Plotly.newPlot(holder, printableTraces(), buildPrintPlotLayout(width, height), {{
+        staticPlot: true,
+        displayModeBar: false,
+        responsive: false
+      }}).then(function() {{
+        return window.Plotly.toImage(holder, {{
+          format: "png",
+          width: width,
+          height: height,
+          scale: 2
+        }});
+      }}).then(function(src) {{
+        image.src = src;
+        frame.classList.add("has-print-plot");
+      }}).finally(function() {{
+        if (window.Plotly && window.Plotly.purge) window.Plotly.purge(holder);
+        if (holder.parentNode) holder.parentNode.removeChild(holder);
+      }});
+    }}
     function preparePrintLegend() {{
       if (!window.Plotly || !gd) return;
       applyGraphPageMode();
@@ -3287,7 +3403,7 @@ def build_report_html(
       normalizeLegendHandleLabel();
       refreshPrintLegend();
       if (!originalLegendLayout) originalLegendLayout = currentLegendLayout();
-      return applyReportPlotLayout();
+      return createPrintPlotImage();
     }}
     function restorePrintLegend() {{
       if (!window.Plotly || !gd || !originalLegendLayout) return;
@@ -3295,6 +3411,9 @@ def build_report_html(
     }}
     function restoreScreenPlotLayout() {{
       if (!window.Plotly || !gd) return;
+      var frame = graphFrame();
+      if (frame) frame.classList.remove("has-print-plot");
+      if (printPlotImage) printPlotImage.removeAttribute("src");
       gd.style.height = "560px";
       gd.style.minHeight = "500px";
       gd.style.width = "100%";
@@ -3459,6 +3578,12 @@ def build_report_html(
       refreshPrintLegend();
       if (window.Plotly && window.Plotly.Plots && gd) window.Plotly.Plots.resize(gd);
     }}, 600);
+    window.setTimeout(function() {{
+      if (!window.Plotly || !gd) return;
+      createPrintPlotImage().catch(function(error) {{
+        console.warn("XRD print graph snapshot failed.", error);
+      }});
+    }}, 1000);
     window.addEventListener("beforeprint", preparePrintLegend);
     window.addEventListener("afterprint", function() {{
       removePrintPageStyle();
