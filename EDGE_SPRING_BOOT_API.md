@@ -6,10 +6,9 @@ Edge 보고서 worker가 최종 사용자용 보고서 ZIP을 같은 Edge 서버
 서비스로 전달한다. 분석 결과 JSON과 LLM 요청/응답 JSON은 Edge 내부 데이터이며
 이 인터페이스로 전송하지 않는다.
 
-FT-IR/Raman 웹 화면과 XRD/TEM C# 전송 프로그램은 모두 Edge 서버까지만
-파일과 보고서 생성 요청을 보낸다. Spring Boot 결과 전달 API의 호출 주체는
-항상 Edge 보고서 worker이며, XRD/TEM C# 프로그램은 이 API를 직접 호출하지
-않는다.
+XRD/TEM C# 전송 프로그램은 Edge 서버까지만 파일과 보고서 생성 요청을 보낸다.
+Spring Boot 결과 전달 API의 호출 주체는 항상 Edge 보고서 worker이며,
+XRD/TEM C# 프로그램은 이 API를 직접 호출하지 않는다.
 
 ## 설정
 

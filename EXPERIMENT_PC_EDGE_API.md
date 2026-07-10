@@ -5,10 +5,10 @@
 실험 PC에서 생성된 실험 결과 파일 bundle을 Edge 분석 서버로 전송하고,
 전송 완료 후 보고서 생성을 요청하기 위한 REST API를 정의한다.
 
-이 문서의 호출 주체는 실험 PC 프로그램이고, 수신 주체는 Edge 분석 서버이다.
-FT-IR/Raman은 웹 화면에서 같은 개념을 사용하고, XRD/TEM은 별도 C# 전송
-프로그램이 본 명세의 공통 작업 API를 호출한다. C# 프로그램은 Spring Boot를
-직접 호출하지 않으며, 최종 보고서 ZIP 전달은 Edge 보고서 worker가 수행한다.
+이 문서의 호출 주체는 XRD/TEM 실험 PC의 C# 전송 프로그램이고, 수신 주체는
+Edge 분석 서버이다. C# 프로그램은 본 명세의 공통 작업 API를 호출하며,
+Spring Boot를 직접 호출하지 않는다. 최종 보고서 ZIP 전달은 Edge 보고서
+worker가 수행한다.
 
 ## 2. 기본 정보
 
@@ -105,8 +105,6 @@ Edge 서버는 작업 등록 시 서버 시간을 기준으로 작업 폴더를 
 
 | 프로젝트 | 파일 전송 주체 | Edge 수신 API | 보고서 생성/전달 |
 |---|---|---|---|
-| FT-IR | Edge 웹 화면 | `/api/v1/ftir/*` 보고서 API | Edge가 보고서 ZIP 생성 후 Spring Boot로 전송 |
-| Raman | Edge 웹 화면 | `/api/v1/raman/*` 보고서 API | Edge가 보고서 ZIP 생성 후 Spring Boot로 전송 |
 | XRD | C# 전송 프로그램 | 본 문서의 `/api/v1/jobs`, `/files`, `/uploads/complete`, `/report` | Edge worker가 보고서 ZIP 생성 후 Spring Boot로 전송 |
 | TEM | C# 전송 프로그램 | 본 문서의 `/api/v1/jobs`, `/files`, `/uploads/complete`, `/report` | Edge worker가 보고서 ZIP 생성 후 Spring Boot로 전송 |
 
@@ -493,8 +491,8 @@ Idempotency-Key: {jobId}:generate-report
 {
   "requestedAt": "2026-06-13T14:31:15.000+09:00",
   "options": {
-    "reportFormats": ["PDF", "PPTX", "HTML"],
-    "includeRawFiles": true
+    "reportFormats": ["HTML"],
+    "includeRawFiles": false
   }
 }
 ```
@@ -607,7 +605,7 @@ X-Request-Id: 771e92ae-d06d-42e3-b2c8-d1846619987c
 ### 7.6 의뢰 번호 목록 조회
 
 ```http
-GET /api/v1/requests?page=1&pageSize=50&experimentType=FT-IR&includeCompleted=false
+GET /api/v1/requests?page=1&pageSize=50&experimentType=XRD&includeCompleted=false
 X-Request-Id: 771e92ae-d06d-42e3-b2c8-d1846619987c
 ```
 
@@ -615,11 +613,10 @@ Edge 로컬 MariaDB의 `lims_req_ax_search` 테이블을 조회해 LIMS 의뢰/�
 항목 목록을 반환한다. 이 API는 조회용이며 작업을 생성하지 않는다. 사용자는
 목록에서 의뢰번호와 시험 항목을 선택한 뒤 `POST /api/v1/jobs`를 호출한다.
 `experimentType`은 선택 파라미터이며, 화면별 조회 범위를 제한할 때 사용한다.
-현재 FT-IR 화면은 `FT-IR`, Raman 화면은 `RAMAN`을 전달한다. XRD/TEM C#
-전송 프로그램은 각각 `XRD`, `TEM`을 전달한다.
+XRD/TEM C# 전송 프로그램은 각각 `XRD`, `TEM`을 전달한다.
 
 - `experimentType` 필터는 `test_mtd_code`, `test_mtd_name` 기준으로 적용한다.
-  예를 들어 `test_mtd_name`에 XRD, TEM, SEM, FT-IR, Raman처럼 시험/장비명이
+  예를 들어 `test_mtd_name`에 XRD, TEM, 전자현미경처럼 시험/장비명이
   명시되어 있으면 해당 화면의 시험 항목만 조회한다.
 - 파라미터를 생략하면 완료되지 않은 전체 시험 항목을 조회한다.
 - `includeCompleted` 기본값은 `false`이다. `req_state_name`에 `완료`가
@@ -630,36 +627,36 @@ Edge 로컬 MariaDB의 `lims_req_ax_search` 테이블을 조회해 LIMS 의뢰/�
 {
   "page": 1,
   "pageSize": 50,
-  "experimentType": "FT-IR",
+  "experimentType": "XRD",
   "items": [
     {
-      "requestResultNo": 270847,
-      "requestNumber": "2025M01310",
-      "requestDate": "2026-05-20",
+      "requestResultNo": 270846,
+      "requestNumber": "2025M01309",
+      "requestDate": "2026-05-19",
       "requestState": 8,
       "requestStateName": "접수",
-      "requestTypeNo": 124,
-      "requestTypeCode": "M2",
+      "requestTypeNo": 123,
+      "requestTypeCode": "M1",
       "requestTypeName": "분석의뢰",
-      "projectCode": "P-FTIR",
-      "customerRequestName": "첨가제 정성 분석",
+      "projectCode": "P-XRD",
+      "customerRequestName": "결정상 분석",
       "customerNo": 9,
       "customerName": "RIST 고객",
-      "requestUserNo": 103,
+      "requestUserNo": 102,
       "requestUserName": "김의뢰",
-      "sampleResultNo": 458466,
-      "sampleName": "FTIR 시료",
+      "sampleResultNo": 458465,
+      "sampleName": "XRD 시료",
       "sampleState": 3,
-      "testMethodResultNo": 485994,
-      "testMethodNo": 3913,
-      "testMethodCode": "FTIR-QUAL",
-      "testMethodName": "FT-IR 정성분석",
+      "testMethodResultNo": 485993,
+      "testMethodNo": 3912,
+      "testMethodCode": "A23141",
+      "testMethodName": "XRD 데이터 해석",
       "testState": 2,
-      "testChargerName": "박분석",
+      "testChargerName": "이현재",
       "outputOrder": 1,
       "syncedAt": "2026-07-03 18:10:35",
-      "experimentCode": "FTIR-QUAL",
-      "experimentName": "FT-IR 정성분석"
+      "experimentCode": "A23141",
+      "experimentName": "XRD 데이터 해석"
     }
   ]
 }
