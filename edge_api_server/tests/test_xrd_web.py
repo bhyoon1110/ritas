@@ -66,6 +66,10 @@ def test_xrd_workspace_contains_upload_controls() -> None:
     assert "startReportProgress" in page
     assert "finishReportProgress" in page
     assert "makeReadOnlyDownloadHtml" in page
+    assert "loadPlotlyAssetText" in page
+    assert "inlinePlotlyAsset" in page
+    assert 'data-xrd-embedded-plotly="true"' in page
+    assert "/xrd/assets/plotly.min.js" in page
     assert "window.readOnlyReport=true" in page
     assert "data-read-only-report" in page
     assert "[contenteditable=true]" in page
@@ -74,6 +78,7 @@ def test_xrd_workspace_contains_upload_controls() -> None:
     assert '"<!doctype html>\\n" + reportFrame.contentDocument.documentElement.outerHTML' in page
     assert '"<!doctype html>\n" + reportFrame.contentDocument.documentElement.outerHTML' not in page
     assert 'downloadLink.addEventListener("click"' in page
+    assert "다운로드 준비 중..." in page
     assert "closest('#xrd-plot')" in page
     assert 'exampleButton.addEventListener("click"' in page
     assert "Bundle 안에 ICDD PDF 파일이 필요합니다." in page
@@ -83,6 +88,16 @@ def test_xrd_workspace_contains_upload_controls() -> None:
     assert "XRD_UPLOAD_CHUNK_RETRIES" in page
     assert "/api/v1/xrd/example" in page
     assert "LIM XRD" in page
+
+
+def test_xrd_plotly_asset_route_serves_local_js() -> None:
+    client = TestClient(create_xrd_preview_app())
+
+    response = client.get("/xrd/assets/plotly.min.js")
+
+    assert response.status_code == 200
+    assert "application/javascript" in response.headers["content-type"]
+    assert b"Plotly" in response.content[:2000]
 
 
 def test_xrd_server_pdf_route_validates_html() -> None:

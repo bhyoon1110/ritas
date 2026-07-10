@@ -2983,6 +2983,7 @@ def build_report_html(
         image_filename=first_stem,
         image_format=XRD_DOWNLOAD_IMAGE_FORMAT,
         image_format_selector=XRD_IMAGE_FORMAT_SELECTOR,
+        include_plotlyjs="/xrd/assets/plotly.min.js",
         post_body_html=(
             build_xrd_axis_text_guard_js("xrd-plot")
             + build_xrd_legend_checkbox_js("xrd-plot")
@@ -3393,6 +3394,9 @@ def build_report_html(
           throw error;
         }});
     }}
+    function shouldUseBrowserPrint() {{
+      return window.readOnlyReport === true || window.location.protocol === "file:";
+    }}
     function openBrowserPrintFallback() {{
       var relayout = preparePrintLegend();
       var printFallback = function() {{
@@ -3443,6 +3447,13 @@ def build_report_html(
     button.addEventListener("click", function() {{
       if (button.disabled) return;
       setPdfExportBusy(true);
+      if (shouldUseBrowserPrint()) {{
+        Promise.resolve(openBrowserPrintFallback())
+          .finally(function() {{
+            setPdfExportBusy(false);
+          }});
+        return;
+      }}
       var runExport = function() {{
         serverRenderPdf()
           .then(restoreAfterServerPdf)

@@ -19,12 +19,14 @@ from typing import Any
 
 from fastapi import APIRouter, FastAPI, File, Form, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import HTMLResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from rist_common import get_logger
 
 from .path_bootstrap import add_project_package_paths
 
 add_project_package_paths()
+
+import plotly
 
 from lim.xrd_plot import (
     HEADER,
@@ -66,6 +68,10 @@ xrd_upload_store = ChunkUploadStore(
     max_file_bytes=MAX_XRD_UPLOAD_BYTES,
     max_total_bytes=MAX_XRD_UPLOAD_TOTAL_BYTES,
 )
+
+
+def plotly_asset_path() -> Path:
+    return Path(plotly.__file__).resolve().parent / "package_data" / "plotly.min.js"
 
 
 def _positive_int_env(name: str, default: int) -> int:
@@ -1195,6 +1201,8 @@ def build_xrd_page() -> str:
     var bundleItems = [];
     var reportFrame = null;
     var latestReportHtml = "";
+    var plotlyAssetTextPromise = null;
+    var downloadPreparing = false;
     var reportProgressTimer = null;
     var XRD_UPLOAD_CHUNK_BYTES = 4 * 1024 * 1024;
     var XRD_UPLOAD_CHUNK_RETRIES = 4;
@@ -1308,6 +1316,33 @@ def build_xrd_page() -> str:
       downloadLink.href = "#";
       downloadLink.setAttribute("aria-disabled", "true");
     }
+    function escapeScriptText(value) {
+      return String(value || "").replace(/<\/script/gi, "<\\/script");
+    }
+    function loadPlotlyAssetText() {
+      if (!plotlyAssetTextPromise) {
+        plotlyAssetTextPromise = fetch("/xrd/assets/plotly.min.js", {cache: "force-cache"})
+          .then(function(response) {
+            if (!response.ok) throw new Error("Plotly 자산을 불러오지 못했습니다.");
+            return response.text();
+          });
+      }
+      return plotlyAssetTextPromise;
+    }
+    function inlinePlotlyAsset(htmlText, plotlyText) {
+      if (!htmlText || htmlText.indexOf("data-xrd-embedded-plotly") >= 0) return htmlText;
+      var inlineScript = '<script data-xrd-embedded-plotly="true">\\n'
+        + escapeScriptText(plotlyText)
+        + '\\n</scr' + 'ipt>';
+      var pattern = /<script\\b[^>]*\\bsrc=["'](?:https:\\/\\/cdn\\.plot\\.ly\\/plotly-[^"']+\\.min\\.js|\\/xrd\\/assets\\/plotly\\.min\\.js)["'][^>]*>\\s*<\\/script>/i;
+      if (pattern.test(htmlText)) {
+        return htmlText.replace(pattern, inlineScript);
+      }
+      if (htmlText.indexOf("</head>") >= 0) {
+        return htmlText.replace("</head>", inlineScript + "</head>");
+      }
+      return inlineScript + htmlText;
+    }
     function readOnlyReportPatch() {
       return [
         "<script>",
@@ -1326,13 +1361,18 @@ def build_xrd_page() -> str:
         "</scr" + "ipt>"
       ].join("");
     }
-    function makeReadOnlyDownloadHtml(htmlText) {
-      if (!htmlText || htmlText.indexOf("window.readOnlyReport=true") >= 0) return htmlText;
+    async function makeReadOnlyDownloadHtml(htmlText) {
+      var downloadHtml = htmlText || "";
       var patch = readOnlyReportPatch();
-      if (htmlText.indexOf("</body>") >= 0) {
-        return htmlText.replace("</body>", patch + "</body>");
+      if (downloadHtml.indexOf("window.readOnlyReport=true") < 0) {
+        if (downloadHtml.indexOf("</body>") >= 0) {
+          downloadHtml = downloadHtml.replace("</body>", patch + "</body>");
+        } else {
+          downloadHtml += patch;
+        }
       }
-      return htmlText + patch;
+      var plotlyText = await loadPlotlyAssetText();
+      return inlinePlotlyAsset(downloadHtml, plotlyText);
     }
     function currentReportHtml() {
       try {
@@ -1344,18 +1384,25 @@ def build_xrd_page() -> str:
       }
       return latestReportHtml || "";
     }
-    function refreshDownloadUrl(htmlText) {
+    async function refreshDownloadUrl(htmlText) {
       revokeDownload();
       var sourceHtml = htmlText || currentReportHtml();
-      var downloadHtml = makeReadOnlyDownloadHtml(sourceHtml);
+      var downloadHtml = await makeReadOnlyDownloadHtml(sourceHtml);
       downloadUrl = URL.createObjectURL(new Blob([downloadHtml], {type: "text/html;charset=utf-8"}));
       downloadLink.href = downloadUrl;
       downloadLink.download = "xrd-report.html";
       downloadLink.setAttribute("aria-disabled", "false");
+      return downloadUrl;
     }
     function setDownload(htmlText) {
       latestReportHtml = htmlText || "";
-      refreshDownloadUrl(latestReportHtml);
+      refreshDownloadUrl(latestReportHtml).catch(function(error) {
+        setStatus(
+          (error && error.message ? error.message : "보고서 다운로드 파일 준비에 실패했습니다.")
+            + " 잠시 후 다시 시도하세요.",
+          true
+        );
+      });
     }
     function parseErrorMessage(text, fallback) {
       if (!text) return fallback;
@@ -1652,12 +1699,33 @@ def build_xrd_page() -> str:
       reportFrame = iframe;
       setDownload(htmlText);
     }
-    downloadLink.addEventListener("click", function(event) {
+    downloadLink.addEventListener("click", async function(event) {
+      event.preventDefault();
       if (downloadLink.getAttribute("aria-disabled") === "true") {
-        event.preventDefault();
         return;
       }
-      refreshDownloadUrl();
+      if (downloadPreparing) return;
+      downloadPreparing = true;
+      var previousText = downloadLink.textContent;
+      downloadLink.textContent = "다운로드 준비 중...";
+      try {
+        var url = await refreshDownloadUrl();
+        var link = document.createElement("a");
+        link.href = url;
+        link.download = "xrd-report.html";
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+      } catch (error) {
+        setStatus(
+          (error && error.message ? error.message : "보고서 다운로드 파일 준비에 실패했습니다.")
+            + " 다시 시도해 주세요.",
+          true
+        );
+      } finally {
+        downloadPreparing = false;
+        downloadLink.textContent = previousText || "보고서 다운로드";
+      }
     });
     function filesOf(input) {
       return Array.prototype.slice.call(input.files || []);
@@ -1872,6 +1940,22 @@ def build_xrd_page() -> str:
   </script>
 </body>
 </html>"""
+
+
+@router.get("/xrd/assets/plotly.min.js", include_in_schema=False)
+def xrd_plotly_asset() -> FileResponse:
+    path = plotly_asset_path()
+    if not path.is_file():
+        raise ApiException(
+            500,
+            "PLOTLY_ASSET_NOT_FOUND",
+            "Plotly 웹 자산을 찾을 수 없습니다.",
+        )
+    return FileResponse(
+        path,
+        media_type="application/javascript",
+        headers=XRD_NO_STORE_HEADERS,
+    )
 
 
 @router.get("/xrd", response_class=HTMLResponse, include_in_schema=False)

@@ -273,6 +273,8 @@ def test_build_report_html_contains_xrd_template_sections(tmp_path) -> None:
     assert "window.Plotly.Plots.resize(gd)" in html
     assert "serverRenderPdf" in html
     assert "/api/v1/xrd/render-pdf" in html
+    assert "shouldUseBrowserPrint" in html
+    assert "window.readOnlyReport === true" in html
     assert "exportHtmlSnapshot" in html
     assert 'clone.querySelectorAll("script")' in html
     assert "node.remove();" in html
@@ -288,6 +290,8 @@ def test_build_report_html_contains_xrd_template_sections(tmp_path) -> None:
     assert 'layout["width"] = Math.min(Math.floor(plotWidth), plotWidthLimit)' in html
     assert '"title.text": ""' in html
     assert 'handle.textContent = "범례"' in html
+    assert 'src="/xrd/assets/plotly.min.js"' in html
+    assert "https://cdn.plot.ly" not in html
     assert "#xrd-plot .rist-legend-drag-handle" in html
     assert "#xrd-plot .rist-xrd-legend-checkbox" in html
     assert "#xrd-plot .rist-xrd-legend-branch" in html
