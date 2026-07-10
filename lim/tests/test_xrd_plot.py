@@ -269,6 +269,10 @@ def test_build_report_html_contains_xrd_template_sections(tmp_path) -> None:
     assert "applyPrintPageStyle" in html
     assert "@page { size: A4 portrait;" in html
     assert "data-xrd-print-page-style" in html
+    assert (
+        "body.xrd-report-graph-landscape #xrd-llm-comment { break-before: page; "
+        "page-break-before: always;"
+    ) in html
     assert "restoreScreenPlotLayout" in html
     assert "window.Plotly.Plots.resize(gd)" in html
     assert "serverRenderPdf" in html
@@ -299,6 +303,13 @@ def test_build_report_html_contains_xrd_template_sections(tmp_path) -> None:
     assert ".xrd-report-header { display: none !important; }" in html
     assert "@page xrd-graph-landscape { size: A4 landscape;" in html
     assert "body.xrd-report-graph-landscape #xrd-graph-section" in html
+    assert "body.xrd-report-graph-landscape #xrd-image-info" in html
+    assert "body.xrd-report-graph-landscape #xrd-llm-comment" in html
+    assert "body.xrd-report-graph-landscape #xrd-peak-info" in html
+    assert "body.xrd-report-graph-landscape #xrd-phase-info" in html
+    assert "page: auto;" in html
+    assert "#xrd-graph-section .xrd-section-head + .xrd-graph-frame" in html
+    assert "#xrd-graph-section {\n      break-inside: avoid;" in html
     assert ".xrd-graph-frame {\n      overflow: visible !important;" in html
     assert "width: 92% !important" in html
     assert "max-width: 174mm !important" in html
