@@ -125,10 +125,20 @@ XRD/TEM의 현재 웹 화면 API(`/api/v1/xrd/analyze`, `/api/v1/tem/analyze`)�
 4. C# 프로그램이 원본 파일 bundle을 `POST /api/v1/jobs/{jobId}/files`로 전송한다.
 5. C# 프로그램이 최종 파일 목록으로
    `POST /api/v1/jobs/{jobId}/uploads/complete`를 호출한다.
-6. C# 프로그램이 `POST /api/v1/jobs/{jobId}/report`로 보고서 생성을 요청한다.
+6. 사용자가 C# 프로그램의 보고서 생성 버튼을 누르면 C# 프로그램이
+   `POST /api/v1/jobs/{jobId}/report`로 보고서 생성을 요청한다. XRD는
+   `reportFormats: ["HTML"]`, TEM은 `reportFormats: ["PPTX"]`를 보낸다.
 7. C# 프로그램은 `GET /api/v1/jobs/{jobId}`로 `COMPLETED` 또는 `FAILED` 상태를
    확인한다. `COMPLETED`는 Edge가 Spring Boot로 최종 ZIP 전달까지 성공했다는
    의미이다.
+
+| 프로젝트 | 보고서 생성 요청 `reportFormats` | Spring Boot 전달 ZIP의 핵심 산출물 |
+|---|---|---|
+| XRD | `["HTML"]` | `report.html`, `report.md`, 선택 `email_body.md` |
+| TEM | `["PPTX"]` | `report.pptx`, `report.md`, 선택 `email_body.md` |
+
+`includeRawFiles=true`를 보내면 위 산출물 외에 원본 bundle이 ZIP의 `raw/`
+경로에 포함된다. 기본값은 `false`이다.
 
 현재 명세에서는 `pk.experimentCode` 값 하나가 Edge 작업 식별자와 Spring Boot
 전달 필드 `experimentCode`로 함께 사용된다. LIMS 시험코드가 `A23141`,
@@ -397,6 +407,32 @@ Idempotency-Key: {jobId}:generate-report
   bundle을 `raw/` 경로로 함께 넣는다. `false`여도 원본은 Edge `input/`에
   보관하며 ZIP에만 포함하지 않는다.
 
+XRD/TEM C# 프로그램은 다음 형식을 사용한다.
+
+XRD HTML 보고서:
+
+```json
+{
+  "requestedAt": "2026-06-13T14:31:15.000+09:00",
+  "options": {
+    "reportFormats": ["HTML"],
+    "includeRawFiles": false
+  }
+}
+```
+
+TEM PPT 보고서:
+
+```json
+{
+  "requestedAt": "2026-06-13T14:31:15.000+09:00",
+  "options": {
+    "reportFormats": ["PPTX"],
+    "includeRawFiles": false
+  }
+}
+```
+
 #### 성공 응답: `202 Accepted`
 
 ```json
@@ -410,8 +446,9 @@ Idempotency-Key: {jobId}:generate-report
 이 API는 비동기 처리 시작만 보장한다. 최종 완료 여부는 상태 조회 응답으로
 확인한다.
 
-worker는 요청한 사용자용 `report.pdf`, `report.pptx`, `report.html` 및
-`report.md`를 만든 뒤 `{jobRoot}/report/report-package.zip`으로 묶는다.
+worker는 요청한 사용자용 `report.pdf`, `report.pptx`, `report.html` 중 해당
+형식만 렌더링하고, 공통 Markdown 요약인 `report.md`를 만든 뒤
+`{jobRoot}/report/report-package.zip`으로 묶는다.
 분석 결과 JSON, LLM 요청/응답 JSON, 내부 `report.json`은 Edge 내부 처리용이며
 Spring Boot 전달 ZIP에는 포함하지 않는다. 전달 API는
 [`EDGE_SPRING_BOOT_API.md`](EDGE_SPRING_BOOT_API.md)를 따른다.

@@ -77,12 +77,25 @@ report.pdf
 report.pptx
 report.html
 report.md
+email_body.md                 # LLM/규칙 기반 메일 문안이 생성된 경우
 raw/                         # includeRawFiles=true일 때만 포함
   원본 bundle의 상대 경로
 ```
 
-요청하지 않은 보고서 형식은 ZIP에 없다. `processed/*.json`, `report.json`,
-`logs/llm-request.json`, `logs/llm-response.json`은 포함하지 않는다.
+PDF/PPTX/HTML 중 요청하지 않은 보고서 형식은 ZIP에 없다. `report.md`는 공통
+요약 산출물로 항상 포함하고, `email_body.md`는 메일 문안이 생성된 경우에만
+포함한다. `processed/*.json`, `report.json`, `logs/llm-request.json`,
+`logs/llm-response.json`은 포함하지 않는다.
+
+XRD/TEM C# 연동에서 Spring Boot가 받는 ZIP의 기준 구성은 다음과 같다.
+
+| 프로젝트 | C# 보고서 생성 요청 | ZIP 필수 사용자 산출물 |
+|---|---|---|
+| XRD | `reportFormats: ["HTML"]` | `report.html`, `report.md` |
+| TEM | `reportFormats: ["PPTX"]` | `report.pptx`, `report.md` |
+
+`includeRawFiles=true`인 경우 두 프로젝트 모두 원본 bundle이 `raw/` 아래에
+추가된다.
 
 ## 상태 전환
 
