@@ -2617,6 +2617,15 @@ def _html_body_inner(html: str) -> str:
     return html[start + len("<body>"):end]
 
 
+def _remove_plotly_loader_scripts(html: str) -> str:
+    return re.sub(
+        r'<script\b[^>]*\bsrc=["\'](?:https://cdn\.plot\.ly/plotly-[^"\']+\.min\.js|/xrd/assets/plotly\.min\.js)["\'][^>]*>\s*</script>',
+        "",
+        html,
+        flags=re.IGNORECASE,
+    )
+
+
 def _trace_meta(trace: Any) -> dict[str, Any]:
     meta = getattr(trace, "meta", None)
     return meta if isinstance(meta, dict) else {}
@@ -3071,7 +3080,7 @@ def build_report_html(
     plot_body = re.sub(
         r'style="height:[^"]*?;\s*width:100%;"',
         'style="height:500px; width:100%;"',
-        _html_body_inner(plot_html),
+        _remove_plotly_loader_scripts(_html_body_inner(plot_html)),
         count=1,
     )
     print_legend = build_xrd_print_legend_html(fig)
@@ -3091,6 +3100,7 @@ def build_report_html(
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5">
   <title>{_esc(sample_name)} Report</title>
+  <script charset="utf-8" src="/xrd/assets/plotly.min.js"></script>
   {xrd_report_css()}
 </head>
 <body>

@@ -298,6 +298,9 @@ def test_build_report_html_contains_xrd_template_sections(tmp_path) -> None:
     assert "PDF 생성 중..." in html
     assert "setPdfExportBusy" in html
     assert "if (button.disabled) return;" in html
+    assert '<script charset="utf-8" src="/xrd/assets/plotly.min.js"></script>' in html
+    graph_frame_html = html.split('<div class="xrd-graph-frame">', 1)[1].split("</section>", 1)[0]
+    assert "/xrd/assets/plotly.min.js" not in graph_frame_html
     assert 'id="xrd-report-landscape-graph" checked' in html
     assert "그래프 가로형" in html
     assert "window.print()" in html
