@@ -1404,9 +1404,17 @@ def build_xrd_page() -> str:
       }
       return inlineScript + htmlText;
     }
+    function readOnlyReportPrelude() {
+      return [
+        '<script data-xrd-readonly-prelude="true">',
+        "window.readOnlyReport=true;",
+        "document.documentElement.setAttribute('data-read-only-report','true');",
+        "</scr" + "ipt>"
+      ].join("");
+    }
     function readOnlyReportPatch() {
       return [
-        "<script>",
+        '<script data-xrd-readonly-lock="true">',
         "window.readOnlyReport=true;",
         "(function(){",
         "function ready(fn){if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',fn,{once:true});}else{fn();}}",
@@ -1424,8 +1432,18 @@ def build_xrd_page() -> str:
     }
     async function makeReadOnlyDownloadHtml(htmlText) {
       var downloadHtml = htmlText || "";
+      var prelude = readOnlyReportPrelude();
       var patch = readOnlyReportPatch();
-      if (downloadHtml.indexOf("window.readOnlyReport=true") < 0) {
+      if (downloadHtml.indexOf("data-xrd-readonly-prelude") < 0) {
+        if (downloadHtml.indexOf("<head>") >= 0) {
+          downloadHtml = downloadHtml.replace("<head>", "<head>" + prelude);
+        } else if (downloadHtml.indexOf("</head>") >= 0) {
+          downloadHtml = downloadHtml.replace("</head>", prelude + "</head>");
+        } else {
+          downloadHtml = prelude + downloadHtml;
+        }
+      }
+      if (downloadHtml.indexOf("data-xrd-readonly-lock") < 0) {
         if (downloadHtml.indexOf("</body>") >= 0) {
           downloadHtml = downloadHtml.replace("</body>", patch + "</body>");
         } else {

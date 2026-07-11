@@ -511,6 +511,7 @@ def build_xrd_legend_checkbox_js(div_id: str) -> str:
 (function() {{
   var gd = document.getElementById("{div_id}");
   if (!gd) return;
+  if (window.readOnlyReport === true) return;
   var SVG_NS = "http://www.w3.org/2000/svg";
   function stripBox(text) {{
     return String(text || "").replace(/^[☑☐□✓]\\s*/, "");
@@ -947,7 +948,7 @@ def build_xrd_phase_group_editor_js(div_id: str) -> str:
 <script>
 (function() {
   var gd = document.getElementById(__DIV_JSON__);
-  if (!gd || !window.Plotly) return;
+  if (!gd || !window.Plotly || window.readOnlyReport === true) return;
 
   function ensureToolbar() {
     if (getComputedStyle(gd).position === "static") gd.style.position = "relative";
@@ -1438,6 +1439,7 @@ def build_xrd_tool_drawer_js(div_id: str) -> str:
 (function() {
   var gd = document.getElementById(__DIV_JSON__);
   if (!gd) return;
+  if (window.readOnlyReport === true) return;
 
   function install() {
     var toolbar = gd.querySelector(".rist-plot-control-row");
@@ -2753,6 +2755,17 @@ def xrd_report_css() -> str:
   .xrd-image-card figcaption { margin-top: 6px; font-size: 12px; color: #6b7280; text-align: center; }
   .xrd-print-legend { display: none; }
   .xrd-print-plot-image { display: none; }
+  html[data-read-only-report="true"] #xrd-plot .rist-plot-control-row,
+  html[data-read-only-report="true"] #xrd-plot .xrd-tool-toggle,
+  html[data-read-only-report="true"] #xrd-plot .xrd-tool-panel,
+  html[data-read-only-report="true"] #xrd-plot .rist-legend-edit-panel,
+  html[data-read-only-report="true"] #xrd-plot .xrd-phase-group-panel,
+  html[data-read-only-report="true"] #xrd-plot .rist-legend-drag-handle,
+  html[data-read-only-report="true"] #xrd-plot .rist-xrd-legend-checkbox,
+  html[data-read-only-report="true"] #xrd-plot .rist-xrd-legend-branch {
+    display: none !important;
+    visibility: hidden !important;
+  }
   .xrd-phase-group { border-radius: 10px; margin: 12px 0; padding: 0 12px 12px; }
   .xrd-phase-group summary { cursor: pointer; font-size: 16px; font-weight: 700; padding: 12px 0; }
   .xrd-phase-group summary span { color: #6b7280; font-size: 12px; margin-left: 6px; }
@@ -3290,9 +3303,12 @@ def build_report_html(
     function applyPrintPageStyle() {{
       removePrintPageStyle();
       if (!graphPageLandscapeEnabled()) return;
+      var browserPrint = shouldUseBrowserPrint();
       printPageStyle = document.createElement("style");
       printPageStyle.setAttribute("data-xrd-print-page-style", "true");
-      printPageStyle.textContent = "@media print {{ @page {{ size: A4 portrait; margin: 9mm 10mm; }} @page:first {{ size: A4 landscape; margin: 9mm 10mm; }} @page xrd-graph-landscape {{ size: A4 landscape; margin: 9mm 10mm; }} body.xrd-report-graph-landscape #xrd-graph-section, body.xrd-report-graph-landscape #xrd-image-info {{ page: xrd-graph-landscape; }} body.xrd-report-graph-landscape #xrd-llm-comment, body.xrd-report-graph-landscape #xrd-peak-info, body.xrd-report-graph-landscape #xrd-phase-info {{ page: auto; }} body.xrd-report-graph-landscape #xrd-image-info, body.xrd-report-graph-landscape #xrd-llm-comment {{ break-before: page; page-break-before: always; }} }}";
+      printPageStyle.textContent = browserPrint
+        ? "@media print {{ @page {{ size: A4 landscape; margin: 9mm 10mm; }} body.xrd-report-graph-landscape #xrd-image-info, body.xrd-report-graph-landscape #xrd-llm-comment {{ break-before: page; page-break-before: always; }} }}"
+        : "@media print {{ @page {{ size: A4 portrait; margin: 9mm 10mm; }} @page:first {{ size: A4 landscape; margin: 9mm 10mm; }} @page xrd-graph-landscape {{ size: A4 landscape; margin: 9mm 10mm; }} body.xrd-report-graph-landscape #xrd-graph-section, body.xrd-report-graph-landscape #xrd-image-info {{ page: xrd-graph-landscape; }} body.xrd-report-graph-landscape #xrd-llm-comment, body.xrd-report-graph-landscape #xrd-peak-info, body.xrd-report-graph-landscape #xrd-phase-info {{ page: auto; }} body.xrd-report-graph-landscape #xrd-image-info, body.xrd-report-graph-landscape #xrd-llm-comment {{ break-before: page; page-break-before: always; }} }}";
       document.head.appendChild(printPageStyle);
     }}
     function currentXAxisRange() {{

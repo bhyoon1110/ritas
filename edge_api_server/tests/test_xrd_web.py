@@ -78,6 +78,9 @@ def test_xrd_workspace_contains_upload_controls() -> None:
     assert "/xrd/assets/plotly.min.js" in page
     assert "window.readOnlyReport=true" in page
     assert "data-read-only-report" in page
+    assert "readOnlyReportPrelude" in page
+    assert "data-xrd-readonly-prelude" in page
+    assert "data-xrd-readonly-lock" in page
     assert "[contenteditable=true]" in page
     assert "currentReportHtml" in page
     assert "reportFrame.contentDocument.documentElement.outerHTML" in page
