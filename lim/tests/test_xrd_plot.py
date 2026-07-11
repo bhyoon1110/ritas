@@ -303,6 +303,7 @@ def test_build_report_html_contains_xrd_template_sections(tmp_path) -> None:
     assert "/xrd/assets/plotly.min.js" not in graph_frame_html
     assert 'id="xrd-report-landscape-graph" checked' in html
     assert "그래프 가로형" in html
+    assert ".xrd-report-pdf-option.is-hidden" in html
     assert "window.print()" in html
     assert ".xrd-table-scroll," in html
     assert ".xrd-section-head h2 { flex: 0 0 min(260px, 36%);" in html
@@ -338,6 +339,12 @@ def test_build_report_html_contains_xrd_template_sections(tmp_path) -> None:
     assert "data-xrd-print-page-style" in html
     assert "effectivePrintLandscapeEnabled" in html
     assert "return graphPageLandscapeEnabled();" in html
+    assert "function isMobileClient" in html
+    assert 'matchMedia("(max-width: 900px)")' in html
+    assert "function syncLandscapeOptionAvailability" in html
+    assert "return !isMobileClient() && (!landscapeOption || landscapeOption.checked);" in html
+    assert 'landscapeOption.disabled = true;' in html
+    assert 'if (label) label.classList.add("is-hidden");' in html
     assert "isMobileBrowserPrintClient" in html
     assert "var mobileBrowserPrint = isMobileBrowserPrintClient();" in html
     assert "max-width: 178mm !important" in html

@@ -2712,6 +2712,7 @@ def xrd_report_css() -> str:
   .xrd-report-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex: 0 0 auto; }
   .xrd-report-pdf-option { display: inline-flex; align-items: center; gap: 6px; min-height: 38px; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 7px; color: #172a46; background: #fff; font-size: 13px; font-weight: 700; box-sizing: border-box; white-space: nowrap; }
   .xrd-report-pdf-option input { width: 15px; height: 15px; margin: 0; accent-color: #2563eb; }
+  .xrd-report-pdf-option.is-hidden { display: none !important; }
   .xrd-report-pdf-button { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; gap: 7px; border: 1px solid #9fb6d6; background: #fff; color: #172a46; border-radius: 7px; min-height: 38px; padding: 8px 13px; font-size: 14px; font-weight: 700; cursor: pointer; }
   .xrd-report-pdf-button:hover { background: #eff6ff; border-color: #2563eb; }
   .xrd-report-pdf-button:disabled, .xrd-report-pdf-button.is-loading { cursor: progress; opacity: .76; }
@@ -3319,23 +3320,40 @@ def build_report_html(
       }});
     }}
     function graphPageLandscapeEnabled() {{
-      return !landscapeOption || landscapeOption.checked;
+      return !isMobileClient() && (!landscapeOption || landscapeOption.checked);
     }}
     function effectivePrintLandscapeEnabled() {{
       return graphPageLandscapeEnabled();
     }}
-    function isMobileBrowserPrintClient() {{
-      if (!shouldUseBrowserPrint()) return false;
+    function isMobileClient() {{
       var narrow = false;
       var coarse = false;
       try {{
-        narrow = window.matchMedia && window.matchMedia("(max-width: 760px)").matches;
+        narrow = window.matchMedia && window.matchMedia("(max-width: 900px)").matches;
         coarse = window.matchMedia && window.matchMedia("(pointer: coarse)").matches;
       }} catch (_error) {{
         narrow = false;
         coarse = false;
       }}
       return narrow || coarse || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || "");
+    }}
+    function isMobileBrowserPrintClient() {{
+      return shouldUseBrowserPrint() && isMobileClient();
+    }}
+    function syncLandscapeOptionAvailability() {{
+      if (!landscapeOption) return;
+      var label = landscapeOption.closest ? landscapeOption.closest(".xrd-report-pdf-option") : null;
+      if (isMobileClient()) {{
+        landscapeOption.checked = false;
+        landscapeOption.removeAttribute("checked");
+        landscapeOption.disabled = true;
+        landscapeOption.setAttribute("aria-disabled", "true");
+        if (label) label.classList.add("is-hidden");
+      }} else {{
+        landscapeOption.disabled = false;
+        landscapeOption.removeAttribute("aria-disabled");
+        if (label) label.classList.remove("is-hidden");
+      }}
     }}
     function isMobileReadOnlyScreen() {{
       if (window.readOnlyReport !== true) return false;
@@ -3726,6 +3744,7 @@ def build_report_html(
     }}
     normalizeLegendHandleLabel();
     refreshPrintLegend();
+    syncLandscapeOptionAvailability();
     applyGraphPageMode();
     applyPrintPageStyle();
     scheduleReadOnlyMobilePlotLayout();
@@ -3761,6 +3780,11 @@ def build_report_html(
       scheduleReadOnlyMobilePlotLayout();
     }});
     window.addEventListener("resize", scheduleReadOnlyMobilePlotLayout);
+    window.addEventListener("resize", function() {{
+      syncLandscapeOptionAvailability();
+      applyGraphPageMode();
+      applyPrintPageStyle();
+    }});
     if (!button) return;
     button.addEventListener("click", function() {{
       if (button.disabled) return;
