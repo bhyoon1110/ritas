@@ -336,8 +336,12 @@ def test_build_report_html_contains_xrd_template_sections(tmp_path) -> None:
     assert "applyPrintPageStyle" in html
     assert "@page { size: A4 portrait;" in html
     assert "data-xrd-print-page-style" in html
-    assert "var browserPrint = shouldUseBrowserPrint();" in html
-    assert "@media print { @page { size: landscape;" in html
+    assert "isMobileBrowserPrintClient" in html
+    assert "effectivePrintLandscapeEnabled" in html
+    assert "var mobileBrowserPrint = isMobileBrowserPrintClient();" in html
+    assert "max-width: 178mm !important" in html
+    assert "@page:first { size: A4 landscape;" in html
+    assert "@page { size: landscape;" not in html
     assert "body.xrd-report-graph-landscape #xrd-image-info," in html
     assert "body.xrd-report-graph-landscape #xrd-llm-comment { break-before: page;" in html
     assert "restoreScreenPlotLayout" in html

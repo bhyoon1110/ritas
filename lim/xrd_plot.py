@@ -3288,6 +3288,19 @@ def build_report_html(
     function graphPageLandscapeEnabled() {{
       return !landscapeOption || landscapeOption.checked;
     }}
+    function isMobileBrowserPrintClient() {{
+      if (!shouldUseBrowserPrint()) return false;
+      var narrow = false;
+      try {{
+        narrow = window.matchMedia && window.matchMedia("(max-width: 760px)").matches;
+      }} catch (_error) {{
+        narrow = false;
+      }}
+      return narrow || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || "");
+    }}
+    function effectivePrintLandscapeEnabled() {{
+      return graphPageLandscapeEnabled() && !isMobileBrowserPrintClient();
+    }}
     function applyGraphPageMode() {{
       var enabled = graphPageLandscapeEnabled();
       document.body.classList.toggle("xrd-report-graph-landscape", enabled);
@@ -3302,12 +3315,14 @@ def build_report_html(
     function applyPrintPageStyle() {{
       removePrintPageStyle();
       if (!graphPageLandscapeEnabled()) return;
-      var browserPrint = shouldUseBrowserPrint();
+      var mobileBrowserPrint = isMobileBrowserPrintClient();
       printPageStyle = document.createElement("style");
       printPageStyle.setAttribute("data-xrd-print-page-style", "true");
-      printPageStyle.textContent = browserPrint
-        ? "@media print {{ @page {{ size: landscape; margin: 9mm 10mm; }} @page:first {{ size: landscape; margin: 9mm 10mm; }} body.xrd-report-graph-landscape #xrd-image-info, body.xrd-report-graph-landscape #xrd-llm-comment {{ break-before: page; page-break-before: always; }} }}"
-        : "@media print {{ @page {{ size: A4 portrait; margin: 9mm 10mm; }} @page:first {{ size: A4 landscape; margin: 9mm 10mm; }} @page xrd-graph-landscape {{ size: A4 landscape; margin: 9mm 10mm; }} body.xrd-report-graph-landscape #xrd-graph-section, body.xrd-report-graph-landscape #xrd-image-info {{ page: xrd-graph-landscape; }} body.xrd-report-graph-landscape #xrd-llm-comment, body.xrd-report-graph-landscape #xrd-peak-info, body.xrd-report-graph-landscape #xrd-phase-info {{ page: auto; }} body.xrd-report-graph-landscape #xrd-image-info, body.xrd-report-graph-landscape #xrd-llm-comment {{ break-before: page; page-break-before: always; }} }}";
+      if (mobileBrowserPrint) {{
+        printPageStyle.textContent = "@media print {{ @page {{ size: A4 portrait; margin: 9mm 10mm; }} body.xrd-report-graph-landscape #xrd-graph-section {{ page: auto; }} body.xrd-report-graph-landscape .xrd-graph-frame {{ width: 92% !important; max-width: 178mm !important; }} body.xrd-report-graph-landscape #xrd-plot {{ height: 350px !important; min-height: 350px !important; }} body.xrd-report-graph-landscape .xrd-graph-frame.has-print-plot .xrd-print-plot-image {{ max-height: 118mm; }} body.xrd-report-graph-landscape .xrd-print-legend-grid {{ column-count: 2; }} body.xrd-report-graph-landscape #xrd-image-info, body.xrd-report-graph-landscape #xrd-llm-comment {{ break-before: page; page-break-before: always; }} }}";
+      }} else {{
+        printPageStyle.textContent = "@media print {{ @page {{ size: A4 portrait; margin: 9mm 10mm; }} @page:first {{ size: A4 landscape; margin: 9mm 10mm; }} @page xrd-graph-landscape {{ size: A4 landscape; margin: 9mm 10mm; }} body.xrd-report-graph-landscape #xrd-graph-section, body.xrd-report-graph-landscape #xrd-image-info {{ page: xrd-graph-landscape; }} body.xrd-report-graph-landscape #xrd-llm-comment, body.xrd-report-graph-landscape #xrd-peak-info, body.xrd-report-graph-landscape #xrd-phase-info {{ page: auto; }} body.xrd-report-graph-landscape #xrd-image-info, body.xrd-report-graph-landscape #xrd-llm-comment {{ break-before: page; page-break-before: always; }} }}";
+      }}
       document.head.appendChild(printPageStyle);
     }}
     function currentXAxisRange() {{
@@ -3422,7 +3437,7 @@ def build_report_html(
       var image = ensurePrintPlotImage();
       var frame = graphFrame();
       if (!image || !frame) return Promise.resolve();
-      var landscape = graphPageLandscapeEnabled();
+      var landscape = effectivePrintLandscapeEnabled();
       var width = landscape ? 1480 : 980;
       var height = landscape ? 650 : 560;
       var holder = document.createElement("div");
