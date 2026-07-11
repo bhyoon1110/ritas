@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from io import BytesIO
 import time
+import unicodedata
 import zipfile
 
 from fastapi.testclient import TestClient
@@ -544,4 +545,24 @@ def test_xrd_bundle_repairs_cp949_zip_folder_mojibake() -> None:
         "ICDD Card (라이브러리 pdf)",
         "유사상 1",
         "TiO2 00-064-0863(S).pdf",
+    )
+
+
+def test_xrd_bundle_repairs_utf8_nfd_zip_folder_mojibake() -> None:
+    garbled_similar = unicodedata.normalize("NFD", "유사상 2").encode("utf-8").decode("cp437")
+    garbled_icdd = (
+        unicodedata.normalize("NFD", "ICDD Card (라이브러리 pdf)")
+        .encode("utf-8")
+        .decode("cp437")
+    )
+
+    relative = _safe_relative_path(
+        f"{garbled_icdd}/{garbled_similar}/ZnO 01-082-9744(I).pdf",
+        "bundle-1",
+    )
+
+    assert relative.parts[-3:] == (
+        "ICDD Card (라이브러리 pdf)",
+        "유사상 2",
+        "ZnO 01-082-9744(I).pdf",
     )

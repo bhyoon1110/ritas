@@ -291,7 +291,7 @@ def repair_korean_mojibake(value: str) -> str:
     best = unicodedata.normalize("NFC", text)
     best_score = _hangul_count(best)
     for encoded_as in ("cp437", "latin1"):
-        for decoded_as in ("cp949", "euc-kr"):
+        for decoded_as in ("utf-8", "cp949", "euc-kr"):
             try:
                 candidate = text.encode(encoded_as).decode(decoded_as)
             except UnicodeError:
@@ -2713,7 +2713,7 @@ def xrd_report_css() -> str:
   .xrd-section-head p { flex: 1 1 auto; min-width: 0; margin: 2px 0 0; color: #6b7280; font-size: 12px; line-height: 1.45; text-align: right; word-break: keep-all; overflow-wrap: anywhere; }
   .xrd-graph-frame, .xrd-comment-box, .xrd-table-scroll, .xrd-phase-group { border: 2px solid #111827; border-radius: 18px; background: #fff; }
   .xrd-graph-frame { padding: 10px 12px 12px; }
-  #xrd-plot { height: 560px !important; min-height: 500px; }
+  #xrd-plot { height: 500px !important; min-height: 420px; }
   .xrd-comment-box { padding: 16px 18px; border-radius: 10px; }
   .xrd-comment-box[contenteditable="true"] { outline: none; }
   .xrd-comment-box[contenteditable="true"]:focus { border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37, 99, 235, .16); }
@@ -2785,9 +2785,12 @@ def xrd_report_css() -> str:
     .xrd-section-head { display: block; }
     .xrd-section-head h2 { flex-basis: auto; }
     .xrd-section-head p { text-align: left; margin-top: 4px; }
-    #xrd-plot { height: 500px !important; min-height: 460px; }
+    #xrd-plot { height: 400px !important; min-height: 340px; }
     .xrd-phase-grid { grid-template-columns: 1fr; }
     .xrd-image-grid { grid-template-columns: 1fr; }
+  }
+  @media (min-width: 761px) and (max-width: 1280px) {
+    #xrd-plot { height: 430px !important; min-height: 380px; }
   }
   @media print {
     @page { size: A4 portrait; margin: 9mm 10mm; }
@@ -3067,7 +3070,7 @@ def build_report_html(
     )
     plot_body = re.sub(
         r'style="height:[^"]*?;\s*width:100%;"',
-        'style="height:560px; width:100%;"',
+        'style="height:500px; width:100%;"',
         _html_body_inner(plot_html),
         count=1,
     )
@@ -3442,13 +3445,13 @@ def build_report_html(
       var frame = graphFrame();
       if (frame) frame.classList.remove("has-print-plot");
       if (printPlotImage) printPlotImage.removeAttribute("src");
-      gd.style.height = "560px";
-      gd.style.minHeight = "500px";
+      gd.style.height = "500px";
+      gd.style.minHeight = "420px";
       gd.style.width = "100%";
       gd.style.maxWidth = "";
       window.Plotly.relayout(gd, {{
         "autosize": true,
-        "height": 560,
+        "height": 500,
         "width": null,
         "margin.t": 28,
         "margin.b": 72

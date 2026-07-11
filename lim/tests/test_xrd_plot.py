@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import unicodedata
 import zipfile
 
 import plotly.graph_objects as go
@@ -119,8 +120,22 @@ def test_phase_category_repairs_cp949_zip_folder_mojibake(tmp_path) -> None:
     )
 
 
-def test_image_display_repairs_cp949_zip_filename_mojibake(tmp_path) -> None:
-    garbled_name = "상매칭 보조 이미지.png".encode("cp949").decode("cp437")
+def test_phase_category_repairs_utf8_nfd_zip_folder_mojibake(tmp_path) -> None:
+    pdf_root = tmp_path / "ICDD Card"
+    garbled_similar = unicodedata.normalize("NFD", "유사상 2").encode("utf-8").decode("cp437")
+    similar = pdf_root / garbled_similar
+    similar.mkdir(parents=True)
+
+    assert repair_korean_mojibake(garbled_similar) == "유사상 2"
+    assert phase_category_from_pdf_path(str(similar / "ZnO.pdf"), str(pdf_root)) == (
+        "uncertain",
+        "유사상 2",
+        "folder",
+    )
+
+
+def test_image_display_repairs_utf8_nfd_zip_filename_mojibake(tmp_path) -> None:
+    garbled_name = unicodedata.normalize("NFD", "상매칭 보조 이미지.png").encode("utf-8").decode("cp437")
     image_path = tmp_path / garbled_name
     image_path.write_bytes(TINY_PNG)
 
@@ -364,9 +379,11 @@ def test_build_report_html_contains_xrd_template_sections(tmp_path) -> None:
     assert "margin: 8px 12px 0 6px" in html
     assert "graphFrame.getBoundingClientRect().width" in html
     assert "landscape ? 40 : 56" in html
-    assert "#xrd-plot { height: 560px !important; min-height: 500px; }" in html
+    assert "#xrd-plot { height: 500px !important; min-height: 420px; }" in html
+    assert "@media (min-width: 761px) and (max-width: 1280px)" in html
+    assert "#xrd-plot { height: 430px !important; min-height: 380px; }" in html
     assert "height: 350px !important" in html
-    assert 'style="height:560px; width:100%;"' in html
+    assert 'style="height:500px; width:100%;"' in html
     assert "#xrd-peak-info" in html
     assert "page-break-before: always" in html
     assert "column-count: 2" in html
