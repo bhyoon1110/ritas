@@ -69,6 +69,11 @@ def test_xrd_workspace_contains_upload_controls() -> None:
     assert "makeReadOnlyDownloadHtml" in page
     assert "loadPlotlyAssetText" in page
     assert "inlinePlotlyAsset" in page
+    assert "textToBase64" in page
+    assert "embeddedPlotlyScript" in page
+    assert "JSON.stringify(encodedChunks)" in page
+    assert "(0,eval)(code)" in page
+    assert "escapeScriptText" not in page
     assert 'data-xrd-embedded-plotly="true"' in page
     assert "/xrd/assets/plotly.min.js" in page
     assert "window.readOnlyReport=true" in page

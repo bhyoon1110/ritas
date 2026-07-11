@@ -1352,9 +1352,6 @@ def build_xrd_page() -> str:
       downloadLink.href = "#";
       downloadLink.setAttribute("aria-disabled", "true");
     }
-    function escapeScriptText(value) {
-      return String(value || "").replace(/<\/script/gi, "<\\/script");
-    }
     function loadPlotlyAssetText() {
       if (!plotlyAssetTextPromise) {
         plotlyAssetTextPromise = fetch("/xrd/assets/plotly.min.js", {cache: "force-cache"})
@@ -1365,11 +1362,38 @@ def build_xrd_page() -> str:
       }
       return plotlyAssetTextPromise;
     }
+    function textToBase64(value) {
+      var bytes = new TextEncoder().encode(String(value || ""));
+      var parts = [];
+      var chunkSize = 0x8000;
+      for (var index = 0; index < bytes.length; index += chunkSize) {
+        parts.push(String.fromCharCode.apply(null, bytes.subarray(index, index + chunkSize)));
+      }
+      return btoa(parts.join(""));
+    }
+    function chunkString(value, size) {
+      var chunks = [];
+      for (var index = 0; index < value.length; index += size) {
+        chunks.push(value.slice(index, index + size));
+      }
+      return chunks;
+    }
+    function embeddedPlotlyScript(plotlyText) {
+      var encodedChunks = chunkString(textToBase64(plotlyText), 64000);
+      return '<script data-xrd-embedded-plotly="true">\\n'
+        + '(function(){'
+        + 'var encoded=' + JSON.stringify(encodedChunks) + '.join("");'
+        + 'var binary=atob(encoded);'
+        + 'var bytes=new Uint8Array(binary.length);'
+        + 'for(var index=0;index<binary.length;index++){bytes[index]=binary.charCodeAt(index);}'
+        + 'var code=window.TextDecoder?new TextDecoder("utf-8").decode(bytes):decodeURIComponent(escape(binary));'
+        + '(0,eval)(code);'
+        + '})();'
+        + '\\n</scr' + 'ipt>';
+    }
     function inlinePlotlyAsset(htmlText, plotlyText) {
       if (!htmlText || htmlText.indexOf("data-xrd-embedded-plotly") >= 0) return htmlText;
-      var inlineScript = '<script data-xrd-embedded-plotly="true">\\n'
-        + escapeScriptText(plotlyText)
-        + '\\n</scr' + 'ipt>';
+      var inlineScript = embeddedPlotlyScript(plotlyText);
       var pattern = /<script\\b[^>]*\\bsrc=["'](?:https:\\/\\/cdn\\.plot\\.ly\\/plotly-[^"']+\\.min\\.js|\\/xrd\\/assets\\/plotly\\.min\\.js)["'][^>]*>\\s*<\\/script>/i;
       if (pattern.test(htmlText)) {
         return htmlText.replace(pattern, inlineScript);
