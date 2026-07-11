@@ -337,7 +337,7 @@ def test_build_report_html_contains_xrd_template_sections(tmp_path) -> None:
     assert "@page { size: A4 portrait;" in html
     assert "data-xrd-print-page-style" in html
     assert "var browserPrint = shouldUseBrowserPrint();" in html
-    assert "@media print { @page { size: A4 landscape;" in html
+    assert "@media print { @page { size: landscape;" in html
     assert "body.xrd-report-graph-landscape #xrd-image-info," in html
     assert "body.xrd-report-graph-landscape #xrd-llm-comment { break-before: page;" in html
     assert "restoreScreenPlotLayout" in html
@@ -367,6 +367,7 @@ def test_build_report_html_contains_xrd_template_sections(tmp_path) -> None:
     assert "#xrd-plot .rist-xrd-legend-checkbox" in html
     assert "#xrd-plot .rist-xrd-legend-branch" in html
     assert 'html[data-read-only-report="true"] #xrd-plot .rist-plot-control-row' in html
+    assert 'html[data-read-only-report="true"] #xrd-plot .rist-legend-drag-handle' not in html
     assert "window.readOnlyReport === true) return;" in html
     assert "#xrd-plot .legend {" in html
     assert ".xrd-report-header { display: none !important; }" in html

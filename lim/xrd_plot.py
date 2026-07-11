@@ -2760,7 +2760,6 @@ def xrd_report_css() -> str:
   html[data-read-only-report="true"] #xrd-plot .xrd-tool-panel,
   html[data-read-only-report="true"] #xrd-plot .rist-legend-edit-panel,
   html[data-read-only-report="true"] #xrd-plot .xrd-phase-group-panel,
-  html[data-read-only-report="true"] #xrd-plot .rist-legend-drag-handle,
   html[data-read-only-report="true"] #xrd-plot .rist-xrd-legend-checkbox,
   html[data-read-only-report="true"] #xrd-plot .rist-xrd-legend-branch {
     display: none !important;
@@ -3307,7 +3306,7 @@ def build_report_html(
       printPageStyle = document.createElement("style");
       printPageStyle.setAttribute("data-xrd-print-page-style", "true");
       printPageStyle.textContent = browserPrint
-        ? "@media print {{ @page {{ size: A4 landscape; margin: 9mm 10mm; }} body.xrd-report-graph-landscape #xrd-image-info, body.xrd-report-graph-landscape #xrd-llm-comment {{ break-before: page; page-break-before: always; }} }}"
+        ? "@media print {{ @page {{ size: landscape; margin: 9mm 10mm; }} @page:first {{ size: landscape; margin: 9mm 10mm; }} body.xrd-report-graph-landscape #xrd-image-info, body.xrd-report-graph-landscape #xrd-llm-comment {{ break-before: page; page-break-before: always; }} }}"
         : "@media print {{ @page {{ size: A4 portrait; margin: 9mm 10mm; }} @page:first {{ size: A4 landscape; margin: 9mm 10mm; }} @page xrd-graph-landscape {{ size: A4 landscape; margin: 9mm 10mm; }} body.xrd-report-graph-landscape #xrd-graph-section, body.xrd-report-graph-landscape #xrd-image-info {{ page: xrd-graph-landscape; }} body.xrd-report-graph-landscape #xrd-llm-comment, body.xrd-report-graph-landscape #xrd-peak-info, body.xrd-report-graph-landscape #xrd-phase-info {{ page: auto; }} body.xrd-report-graph-landscape #xrd-image-info, body.xrd-report-graph-landscape #xrd-llm-comment {{ break-before: page; page-break-before: always; }} }}";
       document.head.appendChild(printPageStyle);
     }}
