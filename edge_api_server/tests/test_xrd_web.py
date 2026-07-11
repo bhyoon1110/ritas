@@ -84,6 +84,7 @@ def test_xrd_workspace_contains_upload_controls() -> None:
     assert "currentReportHtml" in page
     assert "removeDynamicReportState" in page
     assert "sanitizeDownloadHtml" in page
+    assert "data-xrd-downloaded-report" in page
     assert "#xrd-plot .rist-plot-control-row" in page
     assert ".xrd-graph-frame .xrd-print-legend" in page
     assert "var clone = reportFrame.contentDocument.documentElement.cloneNode(true);" in page

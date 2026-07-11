@@ -1429,6 +1429,7 @@ def build_xrd_page() -> str:
       try {
         var doc = new DOMParser().parseFromString(htmlText, "text/html");
         removeDynamicReportState(doc);
+        doc.documentElement.setAttribute("data-xrd-downloaded-report", "true");
         return "<!doctype html>\\n" + doc.documentElement.outerHTML;
       } catch (_error) {
         return htmlText || "";

@@ -2757,43 +2757,54 @@ def xrd_report_css() -> str:
   .xrd-image-card figcaption { margin-top: 6px; font-size: 12px; color: #6b7280; text-align: center; }
   .xrd-print-legend { display: none; }
   .xrd-print-plot-image { display: none; }
-  html[data-read-only-report="true"] .xrd-report-page {
+  html[data-read-only-report="true"] .xrd-report-page,
+  html[data-xrd-downloaded-report="true"] .xrd-report-page {
     overflow-x: hidden;
   }
-  html[data-read-only-report="true"] .xrd-graph-frame {
+  html[data-read-only-report="true"] .xrd-graph-frame,
+  html[data-xrd-downloaded-report="true"] .xrd-graph-frame {
     max-width: 100%;
     box-sizing: border-box;
   }
   @media screen and (max-width: 900px), screen and (pointer: coarse) {
-    html[data-read-only-report="true"] .xrd-report-page {
+    html[data-read-only-report="true"] .xrd-report-page,
+    html[data-xrd-downloaded-report="true"] .xrd-report-page {
       max-width: 100%;
       padding-left: 10px;
       padding-right: 10px;
     }
-    html[data-read-only-report="true"] .xrd-graph-frame {
+    html[data-read-only-report="true"] .xrd-graph-frame,
+    html[data-xrd-downloaded-report="true"] .xrd-graph-frame {
       overflow: hidden;
       padding: 8px 8px 10px;
     }
-    html[data-read-only-report="true"] #xrd-plot {
+    html[data-read-only-report="true"] #xrd-plot,
+    html[data-xrd-downloaded-report="true"] #xrd-plot {
       width: 100% !important;
       max-width: 100% !important;
-      height: 430px !important;
-      min-height: 360px !important;
+      height: min(380px, 46vh) !important;
+      min-height: 300px !important;
       overflow: hidden !important;
     }
     html[data-read-only-report="true"] #xrd-plot .plot-container,
+    html[data-xrd-downloaded-report="true"] #xrd-plot .plot-container,
     html[data-read-only-report="true"] #xrd-plot .svg-container,
-    html[data-read-only-report="true"] #xrd-plot .main-svg {
+    html[data-xrd-downloaded-report="true"] #xrd-plot .svg-container,
+    html[data-read-only-report="true"] #xrd-plot .main-svg,
+    html[data-xrd-downloaded-report="true"] #xrd-plot .main-svg {
       max-width: 100% !important;
       overflow: hidden !important;
     }
-    html[data-read-only-report="true"] #xrd-plot .modebar {
+    html[data-read-only-report="true"] #xrd-plot .modebar,
+    html[data-xrd-downloaded-report="true"] #xrd-plot .modebar {
       max-width: calc(100% - 12px);
       transform: scale(.92);
       transform-origin: top right;
     }
     html[data-read-only-report="true"] #xrd-plot .legend,
-    html[data-read-only-report="true"] #xrd-plot .rist-legend-drag-handle {
+    html[data-xrd-downloaded-report="true"] #xrd-plot .legend,
+    html[data-read-only-report="true"] #xrd-plot .rist-legend-drag-handle,
+    html[data-xrd-downloaded-report="true"] #xrd-plot .rist-legend-drag-handle {
       max-width: calc(100% - 18px) !important;
       box-sizing: border-box;
     }
@@ -3337,8 +3348,12 @@ def build_report_html(
       }}
       return narrow || coarse || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || "");
     }}
+    function isStandaloneReportScreen() {{
+      return window.readOnlyReport === true ||
+        document.documentElement.getAttribute("data-xrd-downloaded-report") === "true";
+    }}
     function isMobileReadOnlyScreen() {{
-      if (window.readOnlyReport !== true) return false;
+      if (!isStandaloneReportScreen()) return false;
       var narrow = false;
       var coarse = false;
       try {{
@@ -3446,11 +3461,12 @@ def build_report_html(
       var frame = graphFrame();
       var frameWidth = frame && frame.getBoundingClientRect ? frame.getBoundingClientRect().width : 0;
       var availableWidth = Math.max(320, Math.floor((frameWidth || window.innerWidth || 360) - 6));
-      var plotHeight = Math.max(430, Math.min(540, Math.floor((window.innerHeight || 720) * 0.58)));
+      var viewportHeight = window.innerHeight || document.documentElement.clientHeight || 720;
+      var plotHeight = Math.max(300, Math.min(380, Math.floor(viewportHeight * 0.44)));
       gd.style.width = "100%";
       gd.style.maxWidth = "100%";
       gd.style.height = plotHeight + "px";
-      gd.style.minHeight = "360px";
+      gd.style.minHeight = "300px";
       refreshPrintLegend();
       return window.Plotly.relayout(gd, {{
         "autosize": false,
