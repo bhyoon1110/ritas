@@ -336,9 +336,9 @@ def test_build_report_html_contains_xrd_template_sections(tmp_path) -> None:
     assert "applyPrintPageStyle" in html
     assert "@page { size: A4 portrait;" in html
     assert "data-xrd-print-page-style" in html
-    assert "isMobileBrowserPrintClient" in html
     assert "effectivePrintLandscapeEnabled" in html
-    assert "var mobileBrowserPrint = isMobileBrowserPrintClient();" in html
+    assert "return graphPageLandscapeEnabled();" in html
+    assert "isMobileBrowserPrintClient" not in html
     assert "max-width: 178mm !important" in html
     assert "@page:first { size: A4 landscape;" in html
     assert "@page { size: landscape;" not in html
@@ -370,14 +370,16 @@ def test_build_report_html_contains_xrd_template_sections(tmp_path) -> None:
     assert "#xrd-plot .rist-legend-drag-handle" in html
     assert "#xrd-plot .rist-xrd-legend-checkbox" in html
     assert "#xrd-plot .rist-xrd-legend-branch" in html
-    assert 'html[data-read-only-report="true"] #xrd-plot .rist-plot-control-row' in html
+    assert 'html[data-read-only-report="true"] #xrd-plot .rist-plot-control-row' not in html
     assert "@media screen and (max-width: 900px), screen and (pointer: coarse)" in html
     assert 'html[data-read-only-report="true"] #xrd-plot .rist-legend-drag-handle' in html
     assert "isMobileReadOnlyScreen" in html
     assert "applyReadOnlyMobilePlotLayout" in html
     assert "scheduleReadOnlyMobilePlotLayout" in html
     assert '"width": availableWidth' in html
-    assert "window.readOnlyReport === true) return;" in html
+    assert "window.readOnlyReport !== true) return false;" in html
+    assert '"legend.orientation": "h"' in html
+    assert '"legend.font.size": 10' in html
     assert "#xrd-plot .legend {" in html
     assert ".xrd-report-header { display: none !important; }" in html
     assert "@page:first { size: A4 landscape;" in html
