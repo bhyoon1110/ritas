@@ -64,8 +64,6 @@ def test_ahn_workspace_contains_folder_upload_controls() -> None:
     assert "transientFailures" in page
     assert "entryToBundleItems" in page
     assert "droppedBundleItems" in page
-    assert "hasTemBundleSection" in page
-    assert "XRD 예제나 ICDD/Peak list 번들은 XRD 화면에서 처리해야 합니다." in page
     assert "완료되면 다운로드 버튼이 활성화됩니다." in page
     assert "TEM/STEM" in page
 
@@ -266,32 +264,6 @@ def test_ahn_analyze_rejects_empty_upload() -> None:
 
     assert response.status_code == 400
     assert "TEM_FILES_REQUIRED" in response.text
-
-
-def test_ahn_analyze_fails_fast_for_non_tem_bundle() -> None:
-    with TestClient(create_tem_preview_app()) as client:
-        response = client.post(
-            "/api/v1/tem/analyze",
-            files=[
-                (
-                    "files",
-                    (
-                        "XRD/Peak List.csv",
-                        b"2theta,intensity\n29.4,100\n",
-                        "text/csv",
-                    ),
-                ),
-            ],
-        )
-
-        assert response.status_code == 200
-        payload = _wait_for_tem_job(client, response.json())
-
-    assert payload["status"] == "failed"
-    assert payload["error"]["code"] == "TEM_NO_REPORT_DATA"
-    assert "XRD 화면에서 처리하세요" in payload["error"]["message"]
-    assert payload["error"]["details"]["expectedFolders"] == ["tem", "stem", "report", "reports", "scale"]
-    assert payload["error"]["details"]["summary"]["spreadsheetCount"] == 1
 
 
 def test_tem_example_falls_back_when_sample_data_is_absent(tmp_path, monkeypatch) -> None:

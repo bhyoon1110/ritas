@@ -168,80 +168,6 @@ def _has_reportable_data(summary: dict[str, Any]) -> bool:
     return any(int(summary.get(key) or 0) > 0 for key in keys)
 
 
-def _relative_or_none(path: Path | None, root: Path) -> str | None:
-    if path is None:
-        return None
-    try:
-        return path.relative_to(root).as_posix()
-    except ValueError:
-        return path.as_posix()
-
-
-def _visible_file_count(root: Path | None, suffixes: set[str]) -> int:
-    if root is None or not root.exists():
-        return 0
-    return sum(
-        1
-        for path in root.rglob("*")
-        if path.is_file()
-        and not path.name.startswith(".")
-        and not path.name.startswith("~$")
-        and path.suffix.lower() in suffixes
-    )
-
-
-def _find_section_dirs(root: Path, *names: str) -> list[Path]:
-    wanted = {name.casefold() for name in names}
-    candidates = [root] + [path for path in root.rglob("*") if path.is_dir()]
-    return sorted(
-        [
-            path
-            for path in candidates
-            if path.is_dir() and not path.name.startswith(".") and path.name.casefold() in wanted
-        ],
-        key=lambda path: path.as_posix(),
-    )
-
-
-def _reportable_input_snapshot(input_root: Path) -> tuple[dict[str, int], dict[str, str | None]]:
-    tem_dirs = _find_section_dirs(input_root, "tem")
-    stem_dirs = _find_section_dirs(input_root, "stem")
-    report_dirs = _find_section_dirs(input_root, "report", "reports")
-    scale_dirs = _find_section_dirs(input_root, "scale")
-    folders = {
-        "tem": _relative_or_none(tem_dirs[0] if tem_dirs else None, input_root),
-        "stem": _relative_or_none(stem_dirs[0] if stem_dirs else None, input_root),
-        "report": _relative_or_none(report_dirs[0] if report_dirs else None, input_root),
-        "scale": _relative_or_none(scale_dirs[0] if scale_dirs else None, input_root),
-    }
-    summary = {
-        "temImageCount": sum(_visible_file_count(path, IMAGE_EXTENSIONS) for path in tem_dirs),
-        "stemImageCount": sum(_visible_file_count(path, IMAGE_EXTENSIONS) for path in stem_dirs),
-        "stemBfImageCount": 0,
-        "edsReportCount": sum(_visible_file_count(path, DOCX_EXTENSIONS) for path in report_dirs),
-        "spreadsheetCount": _visible_file_count(input_root, SPREADSHEET_EXTENSIONS),
-        "coatingImageCount": sum(_visible_file_count(path, IMAGE_EXTENSIONS) for path in scale_dirs),
-    }
-    return summary, folders
-
-
-def _tem_no_report_data_error(input_root: Path, *, summary: dict[str, Any] | None = None, folders: dict[str, Any] | None = None) -> ApiException:
-    return ApiException(
-        400,
-        "TEM_NO_REPORT_DATA",
-        "입력 폴더에서 TEM, STEM, EDS, 코팅층 분석 대상 데이터를 찾지 못했습니다. "
-        "TEM 화면에는 tem, stem, report/reports, scale 폴더가 포함된 TEM/STEM raw 폴더 또는 ZIP만 올릴 수 있습니다. "
-        "XRD 예제, ICDD Card, Peak list 번들은 XRD 화면에서 처리하세요.",
-        retryable=False,
-        details={
-            "inputRoot": str(input_root),
-            "expectedFolders": ["tem", "stem", "report", "reports", "scale"],
-            "folders": folders or {},
-            "summary": summary or {},
-        },
-    )
-
-
 def _extract_zip_file(path: Path, target_root: Path) -> int:
     saved_count = 0
     extracted_bytes = 0
@@ -659,13 +585,6 @@ def _run_ahn_job(job: AhnReportJob) -> None:
                 message=f"ZIP 파일 압축 해제 완료: {extracted_count}개 파일을 확인했습니다.",
             )
         job.input_root = _find_ahn_input_root(job.input_root)
-        input_summary, input_folders = _reportable_input_snapshot(job.input_root)
-        if not _has_reportable_data(input_summary):
-            raise _tem_no_report_data_error(
-                job.input_root,
-                summary=input_summary,
-                folders=input_folders,
-            )
 
         def update_progress(_stage: str, progress_pct: int, message: str) -> None:
             _set_job_state(job, progress_pct=progress_pct, message=message)
@@ -706,7 +625,11 @@ def _run_ahn_job(job: AhnReportJob) -> None:
         return
     summary = manifest.get("summary") if isinstance(manifest.get("summary"), dict) else {}
     if not _has_reportable_data(summary):
-        api_exc = _tem_no_report_data_error(job.input_root, summary=summary)
+        api_exc = ApiException(
+            400,
+            "TEM_NO_REPORT_DATA",
+            "입력 폴더에서 TEM, STEM, EDS, 코팅층 분석 대상 데이터를 찾지 못했습니다.",
+        )
         _set_job_state(
             job,
             status="failed",
@@ -1447,11 +1370,6 @@ def build_ahn_page() -> str:
       });
       return {supported: supported, skipped: skipped};
     }
-    function hasTemBundleSection(items) {
-      return items.some(function(item) {
-        return classifySection(item.path) !== "기타";
-      });
-    }
     function requestUploadChunk(options) {
       return new Promise(function(resolve, reject) {
         var xhr = new XMLHttpRequest();
@@ -1541,12 +1459,6 @@ def build_ahn_page() -> str:
       var selection = uploadableBundleItems();
       if (!selection.supported.length) {
         throw new Error("업로드할 수 있는 TEM raw 파일이 없습니다.");
-      }
-      var hasZip = selection.supported.some(function(item) {
-        return classifyFile(item.file) === "zip";
-      });
-      if (!hasZip && !hasTemBundleSection(selection.supported)) {
-        throw new Error("TEM/STEM 보고서 대상 폴더를 찾지 못했습니다. tem, stem, report/reports, scale 폴더가 포함된 TEM/STEM raw 폴더 또는 ZIP을 올려주세요. XRD 예제나 ICDD/Peak list 번들은 XRD 화면에서 처리해야 합니다.");
       }
       if (selection.skipped.length) {
         setStatus("지원하지 않는 파일 " + selection.skipped.length + "개는 업로드에서 제외했습니다.", false);
