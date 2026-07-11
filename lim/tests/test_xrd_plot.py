@@ -366,6 +366,7 @@ def test_build_report_html_contains_xrd_template_sections(tmp_path) -> None:
     assert "#xrd-plot .rist-xrd-legend-branch" in html
     assert "#xrd-plot .legend {" in html
     assert ".xrd-report-header { display: none !important; }" in html
+    assert "@page:first { size: A4 landscape;" in html
     assert "@page xrd-graph-landscape { size: A4 landscape;" in html
     assert "body.xrd-report-graph-landscape #xrd-graph-section" in html
     assert "body.xrd-report-graph-landscape #xrd-image-info" in html

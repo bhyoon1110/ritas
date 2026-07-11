@@ -160,6 +160,7 @@ def _find_xrd_pdf_chrome() -> str | None:
 
 def _inject_xrd_print_page_css(html_text: str, *, landscape: bool) -> str:
     graph_page_css = (
+        "@page:first { size: A4 landscape; margin: 9mm 10mm; }"
         "@page xrd-graph-landscape { size: A4 landscape; margin: 9mm 10mm; }"
         "body.xrd-report-graph-landscape #xrd-graph-section,"
         "body.xrd-report-graph-landscape #xrd-image-info { page: xrd-graph-landscape; }"
