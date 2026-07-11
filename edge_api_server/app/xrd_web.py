@@ -1430,8 +1430,38 @@ def build_xrd_page() -> str:
         "</scr" + "ipt>"
       ].join("");
     }
+    function removeDynamicReportState(root) {
+      if (!root || !root.querySelectorAll) return;
+      var selectors = [
+        "#xrd-plot .modebar",
+        "#xrd-plot .rist-plot-control-row",
+        "#xrd-plot .xrd-tool-toggle",
+        "#xrd-plot .xrd-tool-panel",
+        "#xrd-plot .rist-legend-edit-panel",
+        "#xrd-plot .xrd-phase-group-panel",
+        "#xrd-plot .rist-legend-drag-handle",
+        "#xrd-plot .rist-xrd-legend-checkbox",
+        "#xrd-plot .rist-xrd-legend-branch",
+        ".xrd-graph-frame .xrd-print-legend",
+        ".xrd-graph-frame .xrd-print-plot-image",
+        "style[data-xrd-print-page-style]"
+      ].join(",");
+      root.querySelectorAll(selectors).forEach(function(node) {
+        node.remove();
+      });
+    }
+    function sanitizeDownloadHtml(htmlText) {
+      if (!htmlText || typeof DOMParser === "undefined") return htmlText || "";
+      try {
+        var doc = new DOMParser().parseFromString(htmlText, "text/html");
+        removeDynamicReportState(doc);
+        return "<!doctype html>\\n" + doc.documentElement.outerHTML;
+      } catch (_error) {
+        return htmlText || "";
+      }
+    }
     async function makeReadOnlyDownloadHtml(htmlText) {
-      var downloadHtml = htmlText || "";
+      var downloadHtml = sanitizeDownloadHtml(htmlText || "");
       var prelude = readOnlyReportPrelude();
       var patch = readOnlyReportPatch();
       if (downloadHtml.indexOf("data-xrd-readonly-prelude") < 0) {
@@ -1456,7 +1486,9 @@ def build_xrd_page() -> str:
     function currentReportHtml() {
       try {
         if (reportFrame && reportFrame.contentDocument && reportFrame.contentDocument.documentElement) {
-          return "<!doctype html>\\n" + reportFrame.contentDocument.documentElement.outerHTML;
+          var clone = reportFrame.contentDocument.documentElement.cloneNode(true);
+          removeDynamicReportState(clone);
+          return "<!doctype html>\\n" + clone.outerHTML;
         }
       } catch (_error) {
         return latestReportHtml || "";

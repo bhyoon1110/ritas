@@ -83,9 +83,14 @@ def test_xrd_workspace_contains_upload_controls() -> None:
     assert "data-xrd-readonly-lock" in page
     assert "[contenteditable=true]" in page
     assert "currentReportHtml" in page
-    assert "reportFrame.contentDocument.documentElement.outerHTML" in page
-    assert '"<!doctype html>\\n" + reportFrame.contentDocument.documentElement.outerHTML' in page
-    assert '"<!doctype html>\n" + reportFrame.contentDocument.documentElement.outerHTML' not in page
+    assert "removeDynamicReportState" in page
+    assert "sanitizeDownloadHtml" in page
+    assert "#xrd-plot .rist-plot-control-row" in page
+    assert ".xrd-graph-frame .xrd-print-legend" in page
+    assert "var clone = reportFrame.contentDocument.documentElement.cloneNode(true);" in page
+    assert "removeDynamicReportState(clone);" in page
+    assert '"<!doctype html>\\n" + clone.outerHTML' in page
+    assert '"<!doctype html>\n" + clone.outerHTML' not in page
     assert 'downloadLink.addEventListener("click"' in page
     assert "다운로드 준비 중..." in page
     assert "closest('#xrd-plot')" in page

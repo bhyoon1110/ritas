@@ -975,6 +975,10 @@ def _legend_text_edit_js(div_id: str) -> str:
       toolbar.className = "rist-plot-control-row";
       gd.appendChild(toolbar);
     }}
+    Array.prototype.slice.call(toolbar.querySelectorAll(".rist-legend-edit-button"))
+      .forEach(function(node) {{ node.remove(); }});
+    Array.prototype.slice.call(gd.querySelectorAll(".rist-legend-edit-panel"))
+      .forEach(function(node) {{ node.remove(); }});
 
     var btn = document.createElement("button");
     btn.type = "button";
@@ -5394,11 +5398,18 @@ def _legend_drag_handle_js(div_id: str) -> str:
   gd._ristLegendDragHandleInstalled = true;
   if (getComputedStyle(gd).position === "static") gd.style.position = "relative";
 
-  var handle = document.createElement("div");
-  handle.className = "rist-legend-drag-handle";
+  var handles = Array.prototype.slice.call(gd.querySelectorAll(".rist-legend-drag-handle"));
+  var handle = handles.shift();
+  handles.forEach(function(node) {{ node.remove(); }});
+  if (!handle) {{
+    handle = document.createElement("div");
+    handle.className = "rist-legend-drag-handle";
+    gd.appendChild(handle);
+  }} else if (handle.parentNode !== gd) {{
+    gd.appendChild(handle);
+  }}
   handle.textContent = "범례 이동";
   handle.title = "이 바를 드래그해서 범례 위치 이동";
-  gd.appendChild(handle);
   var dragState = null;
   var updateFrame = 0;
   var previewLegendTransform = null;

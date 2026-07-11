@@ -338,8 +338,11 @@ def test_build_report_html_contains_xrd_template_sections(tmp_path) -> None:
     assert "data-xrd-print-page-style" in html
     assert "effectivePrintLandscapeEnabled" in html
     assert "return graphPageLandscapeEnabled();" in html
-    assert "isMobileBrowserPrintClient" not in html
+    assert "isMobileBrowserPrintClient" in html
+    assert "var mobileBrowserPrint = isMobileBrowserPrintClient();" in html
     assert "max-width: 178mm !important" in html
+    assert "@page { size: A4 landscape; margin: 9mm 10mm;" in html
+    assert "max-width: 268mm !important" in html
     assert "@page:first { size: A4 landscape;" in html
     assert "@page { size: landscape;" not in html
     assert "body.xrd-report-graph-landscape #xrd-image-info," in html

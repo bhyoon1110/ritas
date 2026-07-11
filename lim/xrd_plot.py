@@ -1447,6 +1447,10 @@ def build_xrd_tool_drawer_js(div_id: str) -> str:
     }
     if (toolbar.__xrdToolDrawerInstalled) return;
     toolbar.__xrdToolDrawerInstalled = true;
+    Array.prototype.slice.call(
+      toolbar.querySelectorAll(".xrd-tool-toggle,.xrd-tool-panel")
+    ).forEach(function(node) { node.remove(); });
+    toolbar.classList.remove("xrd-tool-drawer-installed");
     toolbar.classList.add("xrd-tool-drawer-installed");
 
     var existing = Array.prototype.slice.call(toolbar.children);
@@ -3320,6 +3324,19 @@ def build_report_html(
     function effectivePrintLandscapeEnabled() {{
       return graphPageLandscapeEnabled();
     }}
+    function isMobileBrowserPrintClient() {{
+      if (!shouldUseBrowserPrint()) return false;
+      var narrow = false;
+      var coarse = false;
+      try {{
+        narrow = window.matchMedia && window.matchMedia("(max-width: 760px)").matches;
+        coarse = window.matchMedia && window.matchMedia("(pointer: coarse)").matches;
+      }} catch (_error) {{
+        narrow = false;
+        coarse = false;
+      }}
+      return narrow || coarse || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || "");
+    }}
     function isMobileReadOnlyScreen() {{
       if (window.readOnlyReport !== true) return false;
       var narrow = false;
@@ -3347,9 +3364,14 @@ def build_report_html(
     function applyPrintPageStyle() {{
       removePrintPageStyle();
       if (!graphPageLandscapeEnabled()) return;
+      var mobileBrowserPrint = isMobileBrowserPrintClient();
       printPageStyle = document.createElement("style");
       printPageStyle.setAttribute("data-xrd-print-page-style", "true");
-      printPageStyle.textContent = "@media print {{ @page {{ size: A4 portrait; margin: 9mm 10mm; }} @page:first {{ size: A4 landscape; margin: 9mm 10mm; }} @page xrd-graph-landscape {{ size: A4 landscape; margin: 9mm 10mm; }} body.xrd-report-graph-landscape #xrd-graph-section, body.xrd-report-graph-landscape #xrd-image-info {{ page: xrd-graph-landscape; }} body.xrd-report-graph-landscape #xrd-llm-comment, body.xrd-report-graph-landscape #xrd-peak-info, body.xrd-report-graph-landscape #xrd-phase-info {{ page: auto; }} body.xrd-report-graph-landscape #xrd-image-info, body.xrd-report-graph-landscape #xrd-llm-comment {{ break-before: page; page-break-before: always; }} }}";
+      if (mobileBrowserPrint) {{
+        printPageStyle.textContent = "@media print {{ @page {{ size: A4 landscape; margin: 9mm 10mm; }} body.xrd-report-graph-landscape #xrd-graph-section, body.xrd-report-graph-landscape #xrd-image-info, body.xrd-report-graph-landscape #xrd-llm-comment, body.xrd-report-graph-landscape #xrd-peak-info, body.xrd-report-graph-landscape #xrd-phase-info {{ page: auto; }} body.xrd-report-graph-landscape .xrd-graph-frame {{ width: 96% !important; max-width: 268mm !important; }} body.xrd-report-graph-landscape .xrd-graph-frame.has-print-plot .xrd-print-plot-image {{ max-height: 126mm; }} body.xrd-report-graph-landscape .xrd-print-legend-grid {{ column-count: 3; }} body.xrd-report-graph-landscape #xrd-image-info, body.xrd-report-graph-landscape #xrd-llm-comment {{ break-before: page; page-break-before: always; }} }}";
+      }} else {{
+        printPageStyle.textContent = "@media print {{ @page {{ size: A4 portrait; margin: 9mm 10mm; }} @page:first {{ size: A4 landscape; margin: 9mm 10mm; }} @page xrd-graph-landscape {{ size: A4 landscape; margin: 9mm 10mm; }} body.xrd-report-graph-landscape #xrd-graph-section, body.xrd-report-graph-landscape #xrd-image-info {{ page: xrd-graph-landscape; }} body.xrd-report-graph-landscape #xrd-llm-comment, body.xrd-report-graph-landscape #xrd-peak-info, body.xrd-report-graph-landscape #xrd-phase-info {{ page: auto; }} body.xrd-report-graph-landscape #xrd-image-info, body.xrd-report-graph-landscape #xrd-llm-comment {{ break-before: page; page-break-before: always; }} }}";
+      }}
       document.head.appendChild(printPageStyle);
     }}
     function currentXAxisRange() {{
