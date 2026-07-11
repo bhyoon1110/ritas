@@ -3368,7 +3368,7 @@ def build_report_html(
       printPageStyle = document.createElement("style");
       printPageStyle.setAttribute("data-xrd-print-page-style", "true");
       if (mobileBrowserPrint) {{
-        printPageStyle.textContent = "@media print {{ @page {{ size: A4 landscape; margin: 9mm 10mm; }} body.xrd-report-graph-landscape #xrd-graph-section, body.xrd-report-graph-landscape #xrd-image-info, body.xrd-report-graph-landscape #xrd-llm-comment, body.xrd-report-graph-landscape #xrd-peak-info, body.xrd-report-graph-landscape #xrd-phase-info {{ page: auto; }} body.xrd-report-graph-landscape .xrd-graph-frame {{ width: 96% !important; max-width: 268mm !important; }} body.xrd-report-graph-landscape .xrd-graph-frame.has-print-plot .xrd-print-plot-image {{ max-height: 126mm; }} body.xrd-report-graph-landscape .xrd-print-legend-grid {{ column-count: 3; }} body.xrd-report-graph-landscape #xrd-image-info, body.xrd-report-graph-landscape #xrd-llm-comment {{ break-before: page; page-break-before: always; }} }}";
+        printPageStyle.textContent = "@media print {{ @page {{ size: A4 portrait; margin: 9mm 10mm; }} body.xrd-report-graph-landscape #xrd-graph-section, body.xrd-report-graph-landscape #xrd-image-info, body.xrd-report-graph-landscape #xrd-llm-comment, body.xrd-report-graph-landscape #xrd-peak-info, body.xrd-report-graph-landscape #xrd-phase-info {{ page: auto; }} body.xrd-report-graph-landscape .xrd-graph-frame {{ width: 98% !important; max-width: 188mm !important; }} body.xrd-report-graph-landscape .xrd-graph-frame.has-print-plot .xrd-print-plot-image {{ max-height: 118mm; }} body.xrd-report-graph-landscape .xrd-print-legend-grid {{ column-count: 2; }} body.xrd-report-graph-landscape #xrd-image-info, body.xrd-report-graph-landscape #xrd-llm-comment {{ break-before: page; page-break-before: always; }} }}";
       }} else {{
         printPageStyle.textContent = "@media print {{ @page {{ size: A4 portrait; margin: 9mm 10mm; }} @page:first {{ size: A4 landscape; margin: 9mm 10mm; }} @page xrd-graph-landscape {{ size: A4 landscape; margin: 9mm 10mm; }} body.xrd-report-graph-landscape #xrd-graph-section, body.xrd-report-graph-landscape #xrd-image-info {{ page: xrd-graph-landscape; }} body.xrd-report-graph-landscape #xrd-llm-comment, body.xrd-report-graph-landscape #xrd-peak-info, body.xrd-report-graph-landscape #xrd-phase-info {{ page: auto; }} body.xrd-report-graph-landscape #xrd-image-info, body.xrd-report-graph-landscape #xrd-llm-comment {{ break-before: page; page-break-before: always; }} }}";
       }}
@@ -3445,7 +3445,7 @@ def build_report_html(
       if (!window.Plotly || !gd || !isMobileReadOnlyScreen()) return null;
       var frame = graphFrame();
       var frameWidth = frame && frame.getBoundingClientRect ? frame.getBoundingClientRect().width : 0;
-      var availableWidth = Math.max(300, Math.floor((frameWidth || window.innerWidth || 360) - 18));
+      var availableWidth = Math.max(320, Math.floor((frameWidth || window.innerWidth || 360) - 6));
       var plotHeight = Math.max(430, Math.min(540, Math.floor((window.innerHeight || 720) * 0.58)));
       gd.style.width = "100%";
       gd.style.maxWidth = "100%";
@@ -3457,13 +3457,15 @@ def build_report_html(
         "width": availableWidth,
         "height": plotHeight,
         "title.text": "",
-        "margin.t": 20,
-        "margin.b": 104,
-        "legend.x": 0,
-        "legend.y": -0.22,
-        "legend.xanchor": "left",
+        "margin.l": 58,
+        "margin.r": 12,
+        "margin.t": 18,
+        "margin.b": 58,
+        "legend.x": 0.98,
+        "legend.y": 0.98,
+        "legend.xanchor": "right",
         "legend.yanchor": "top",
-        "legend.orientation": "h",
+        "legend.orientation": "v",
         "legend.font.size": 10
       }}).then(function() {{
         if (window.Plotly && window.Plotly.Plots) window.Plotly.Plots.resize(gd);

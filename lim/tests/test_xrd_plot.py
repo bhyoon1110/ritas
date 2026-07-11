@@ -341,7 +341,7 @@ def test_build_report_html_contains_xrd_template_sections(tmp_path) -> None:
     assert "isMobileBrowserPrintClient" in html
     assert "var mobileBrowserPrint = isMobileBrowserPrintClient();" in html
     assert "max-width: 178mm !important" in html
-    assert "@page { size: A4 landscape; margin: 9mm 10mm;" in html
+    assert "max-width: 188mm !important" in html
     assert "max-width: 268mm !important" in html
     assert "@page:first { size: A4 landscape;" in html
     assert "@page { size: landscape;" not in html
@@ -381,7 +381,10 @@ def test_build_report_html_contains_xrd_template_sections(tmp_path) -> None:
     assert "scheduleReadOnlyMobilePlotLayout" in html
     assert '"width": availableWidth' in html
     assert "window.readOnlyReport !== true) return false;" in html
-    assert '"legend.orientation": "h"' in html
+    assert '"legend.x": 0.98' in html
+    assert '"legend.y": 0.98' in html
+    assert '"legend.xanchor": "right"' in html
+    assert '"legend.orientation": "v"' in html
     assert '"legend.font.size": 10' in html
     assert "#xrd-plot .legend {" in html
     assert ".xrd-report-header { display: none !important; }" in html
