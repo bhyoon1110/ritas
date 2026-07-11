@@ -377,16 +377,14 @@ def test_build_report_html_contains_xrd_template_sections(tmp_path) -> None:
     assert 'html[data-read-only-report="true"] #xrd-plot .rist-plot-control-row' not in html
     assert "@media screen and (max-width: 900px), screen and (pointer: coarse)" in html
     assert 'html[data-read-only-report="true"] #xrd-plot .rist-legend-drag-handle' in html
-    assert 'html[data-xrd-downloaded-report="true"] #xrd-plot .rist-legend-drag-handle' in html
+    assert 'data-xrd-downloaded-report' not in html
     assert "height: min(380px, 46vh) !important;" in html
     assert "min-height: 300px !important;" in html
-    assert "isStandaloneReportScreen" in html
     assert "isMobileReadOnlyScreen" in html
     assert "applyReadOnlyMobilePlotLayout" in html
     assert "scheduleReadOnlyMobilePlotLayout" in html
     assert '"width": availableWidth' in html
-    assert 'document.documentElement.getAttribute("data-xrd-downloaded-report") === "true"' in html
-    assert "if (!isStandaloneReportScreen()) return false;" in html
+    assert "if (window.readOnlyReport !== true) return false;" in html
     assert "Math.max(300, Math.min(380" in html
     assert 'gd.style.minHeight = "300px";' in html
     assert '"legend.x": 0.98' in html

@@ -2757,29 +2757,24 @@ def xrd_report_css() -> str:
   .xrd-image-card figcaption { margin-top: 6px; font-size: 12px; color: #6b7280; text-align: center; }
   .xrd-print-legend { display: none; }
   .xrd-print-plot-image { display: none; }
-  html[data-read-only-report="true"] .xrd-report-page,
-  html[data-xrd-downloaded-report="true"] .xrd-report-page {
+  html[data-read-only-report="true"] .xrd-report-page {
     overflow-x: hidden;
   }
-  html[data-read-only-report="true"] .xrd-graph-frame,
-  html[data-xrd-downloaded-report="true"] .xrd-graph-frame {
+  html[data-read-only-report="true"] .xrd-graph-frame {
     max-width: 100%;
     box-sizing: border-box;
   }
   @media screen and (max-width: 900px), screen and (pointer: coarse) {
-    html[data-read-only-report="true"] .xrd-report-page,
-    html[data-xrd-downloaded-report="true"] .xrd-report-page {
+    html[data-read-only-report="true"] .xrd-report-page {
       max-width: 100%;
       padding-left: 10px;
       padding-right: 10px;
     }
-    html[data-read-only-report="true"] .xrd-graph-frame,
-    html[data-xrd-downloaded-report="true"] .xrd-graph-frame {
+    html[data-read-only-report="true"] .xrd-graph-frame {
       overflow: hidden;
       padding: 8px 8px 10px;
     }
-    html[data-read-only-report="true"] #xrd-plot,
-    html[data-xrd-downloaded-report="true"] #xrd-plot {
+    html[data-read-only-report="true"] #xrd-plot {
       width: 100% !important;
       max-width: 100% !important;
       height: min(380px, 46vh) !important;
@@ -2787,24 +2782,18 @@ def xrd_report_css() -> str:
       overflow: hidden !important;
     }
     html[data-read-only-report="true"] #xrd-plot .plot-container,
-    html[data-xrd-downloaded-report="true"] #xrd-plot .plot-container,
     html[data-read-only-report="true"] #xrd-plot .svg-container,
-    html[data-xrd-downloaded-report="true"] #xrd-plot .svg-container,
-    html[data-read-only-report="true"] #xrd-plot .main-svg,
-    html[data-xrd-downloaded-report="true"] #xrd-plot .main-svg {
+    html[data-read-only-report="true"] #xrd-plot .main-svg {
       max-width: 100% !important;
       overflow: hidden !important;
     }
-    html[data-read-only-report="true"] #xrd-plot .modebar,
-    html[data-xrd-downloaded-report="true"] #xrd-plot .modebar {
+    html[data-read-only-report="true"] #xrd-plot .modebar {
       max-width: calc(100% - 12px);
       transform: scale(.92);
       transform-origin: top right;
     }
     html[data-read-only-report="true"] #xrd-plot .legend,
-    html[data-xrd-downloaded-report="true"] #xrd-plot .legend,
-    html[data-read-only-report="true"] #xrd-plot .rist-legend-drag-handle,
-    html[data-xrd-downloaded-report="true"] #xrd-plot .rist-legend-drag-handle {
+    html[data-read-only-report="true"] #xrd-plot .rist-legend-drag-handle {
       max-width: calc(100% - 18px) !important;
       box-sizing: border-box;
     }
@@ -3348,12 +3337,8 @@ def build_report_html(
       }}
       return narrow || coarse || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || "");
     }}
-    function isStandaloneReportScreen() {{
-      return window.readOnlyReport === true ||
-        document.documentElement.getAttribute("data-xrd-downloaded-report") === "true";
-    }}
     function isMobileReadOnlyScreen() {{
-      if (!isStandaloneReportScreen()) return false;
+      if (window.readOnlyReport !== true) return false;
       var narrow = false;
       var coarse = false;
       try {{

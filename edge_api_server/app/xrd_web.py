@@ -1407,15 +1407,15 @@ def build_xrd_page() -> str:
     function removeDynamicReportState(root) {
       if (!root || !root.querySelectorAll) return;
       var selectors = [
-        "#xrd-plot .modebar",
-        "#xrd-plot .rist-plot-control-row",
-        "#xrd-plot .xrd-tool-toggle",
-        "#xrd-plot .xrd-tool-panel",
-        "#xrd-plot .rist-legend-edit-panel",
-        "#xrd-plot .xrd-phase-group-panel",
-        "#xrd-plot .rist-legend-drag-handle",
-        "#xrd-plot .rist-xrd-legend-checkbox",
-        "#xrd-plot .rist-xrd-legend-branch",
+        ".modebar",
+        ".rist-plot-control-row",
+        ".xrd-tool-toggle",
+        ".xrd-tool-panel",
+        ".rist-legend-edit-panel",
+        ".xrd-phase-group-panel",
+        ".rist-legend-drag-handle",
+        ".rist-xrd-legend-checkbox",
+        ".rist-xrd-legend-branch",
         ".xrd-graph-frame .xrd-print-legend",
         ".xrd-graph-frame .xrd-print-plot-image",
         "style[data-xrd-print-page-style]"
@@ -1429,7 +1429,6 @@ def build_xrd_page() -> str:
       try {
         var doc = new DOMParser().parseFromString(htmlText, "text/html");
         removeDynamicReportState(doc);
-        doc.documentElement.setAttribute("data-xrd-downloaded-report", "true");
         return "<!doctype html>\\n" + doc.documentElement.outerHTML;
       } catch (_error) {
         return htmlText || "";
