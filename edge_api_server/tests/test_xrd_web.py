@@ -548,6 +548,19 @@ def test_xrd_bundle_repairs_cp949_zip_folder_mojibake() -> None:
     )
 
 
+def test_xrd_bundle_keeps_normal_korean_paths() -> None:
+    relative = _safe_relative_path(
+        "ICDD Card (라이브러리 pdf)/유사상 1/상매칭 이미지.png",
+        "bundle-1",
+    )
+
+    assert relative.parts[-3:] == (
+        "ICDD Card (라이브러리 pdf)",
+        "유사상 1",
+        "상매칭 이미지.png",
+    )
+
+
 def test_xrd_bundle_repairs_utf8_nfd_zip_folder_mojibake() -> None:
     garbled_similar = unicodedata.normalize("NFD", "유사상 2").encode("utf-8").decode("cp437")
     garbled_icdd = (
@@ -564,5 +577,20 @@ def test_xrd_bundle_repairs_utf8_nfd_zip_folder_mojibake() -> None:
     assert relative.parts[-3:] == (
         "ICDD Card (라이브러리 pdf)",
         "유사상 2",
+        "ZnO 01-082-9744(I).pdf",
+    )
+
+
+def test_xrd_bundle_repairs_latin1_utf8_folder_mojibake() -> None:
+    garbled_similar = "유사상 1".encode("utf-8").decode("latin1")
+
+    relative = _safe_relative_path(
+        f"ICDD Card (라이브러리 pdf)/{garbled_similar}/ZnO 01-082-9744(I).pdf",
+        "bundle-1",
+    )
+
+    assert relative.parts[-3:] == (
+        "ICDD Card (라이브러리 pdf)",
+        "유사상 1",
         "ZnO 01-082-9744(I).pdf",
     )

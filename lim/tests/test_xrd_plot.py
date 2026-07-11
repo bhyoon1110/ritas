@@ -120,6 +120,12 @@ def test_phase_category_repairs_cp949_zip_folder_mojibake(tmp_path) -> None:
     )
 
 
+def test_korean_path_repair_keeps_normal_names() -> None:
+    assert repair_korean_mojibake("ICDD Card (라이브러리 pdf)/유사상 1") == (
+        "ICDD Card (라이브러리 pdf)/유사상 1"
+    )
+
+
 def test_phase_category_repairs_utf8_nfd_zip_folder_mojibake(tmp_path) -> None:
     pdf_root = tmp_path / "ICDD Card"
     garbled_similar = unicodedata.normalize("NFD", "유사상 2").encode("utf-8").decode("cp437")
@@ -136,6 +142,17 @@ def test_phase_category_repairs_utf8_nfd_zip_folder_mojibake(tmp_path) -> None:
 
 def test_image_display_repairs_utf8_nfd_zip_filename_mojibake(tmp_path) -> None:
     garbled_name = unicodedata.normalize("NFD", "상매칭 보조 이미지.png").encode("utf-8").decode("cp437")
+    image_path = tmp_path / garbled_name
+    image_path.write_bytes(TINY_PNG)
+
+    html = build_image_display_html([str(image_path)])
+
+    assert "상매칭 보조 이미지.png" in html
+    assert garbled_name not in html
+
+
+def test_image_display_repairs_latin1_utf8_filename_mojibake(tmp_path) -> None:
+    garbled_name = "상매칭 보조 이미지.png".encode("utf-8").decode("latin1")
     image_path = tmp_path / garbled_name
     image_path.write_bytes(TINY_PNG)
 

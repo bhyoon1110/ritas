@@ -340,7 +340,7 @@ def _repair_korean_mojibake_path(value: str | None) -> str:
     text = str(value or "")
     best = unicodedata.normalize("NFC", text)
     best_score = _hangul_count(best)
-    for encoded_as in ("cp437", "latin1"):
+    for encoded_as in ("cp437", "latin1", "cp1252"):
         for decoded_as in ("utf-8", "cp949", "euc-kr"):
             try:
                 candidate = text.encode(encoded_as).decode(decoded_as)
