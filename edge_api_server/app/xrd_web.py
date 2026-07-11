@@ -1404,32 +1404,6 @@ def build_xrd_page() -> str:
       }
       return inlineScript + htmlText;
     }
-    function readOnlyReportPrelude() {
-      return [
-        '<script data-xrd-readonly-prelude="true">',
-        "window.readOnlyReport=true;",
-        "document.documentElement.setAttribute('data-read-only-report','true');",
-        "</scr" + "ipt>"
-      ].join("");
-    }
-    function readOnlyReportPatch() {
-      return [
-        '<script data-xrd-readonly-lock="true">',
-        "window.readOnlyReport=true;",
-        "(function(){",
-        "function ready(fn){if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',fn,{once:true});}else{fn();}}",
-        "function inGraph(target){return !!(target&&target.closest&&target.closest('#xrd-plot'));}",
-        "function editableTarget(target){return !!(target&&target.closest&&target.closest('input,textarea,select,[contenteditable=true]'));}",
-        "ready(function(){",
-        "document.documentElement.setAttribute('data-read-only-report','true');",
-        "document.querySelectorAll('[contenteditable]').forEach(function(node){if(!inGraph(node))node.setAttribute('contenteditable','false');});",
-        "document.querySelectorAll('input,textarea,select').forEach(function(node){if(inGraph(node))return;if(node.tagName==='SELECT'){node.disabled=true;}else{node.readOnly=true;}});",
-        "['beforeinput','paste','drop','keydown'].forEach(function(name){document.addEventListener(name,function(ev){if(inGraph(ev.target))return;if(!editableTarget(ev.target))return;ev.preventDefault();ev.stopPropagation();},true);});",
-        "});",
-        "})();",
-        "</scr" + "ipt>"
-      ].join("");
-    }
     function removeDynamicReportState(root) {
       if (!root || !root.querySelectorAll) return;
       var selectors = [
@@ -1460,26 +1434,8 @@ def build_xrd_page() -> str:
         return htmlText || "";
       }
     }
-    async function makeReadOnlyDownloadHtml(htmlText) {
+    async function makeDownloadHtml(htmlText) {
       var downloadHtml = sanitizeDownloadHtml(htmlText || "");
-      var prelude = readOnlyReportPrelude();
-      var patch = readOnlyReportPatch();
-      if (downloadHtml.indexOf("data-xrd-readonly-prelude") < 0) {
-        if (downloadHtml.indexOf("<head>") >= 0) {
-          downloadHtml = downloadHtml.replace("<head>", "<head>" + prelude);
-        } else if (downloadHtml.indexOf("</head>") >= 0) {
-          downloadHtml = downloadHtml.replace("</head>", prelude + "</head>");
-        } else {
-          downloadHtml = prelude + downloadHtml;
-        }
-      }
-      if (downloadHtml.indexOf("data-xrd-readonly-lock") < 0) {
-        if (downloadHtml.indexOf("</body>") >= 0) {
-          downloadHtml = downloadHtml.replace("</body>", patch + "</body>");
-        } else {
-          downloadHtml += patch;
-        }
-      }
       var plotlyText = await loadPlotlyAssetText();
       return inlinePlotlyAsset(downloadHtml, plotlyText);
     }
@@ -1498,7 +1454,7 @@ def build_xrd_page() -> str:
     async function refreshDownloadUrl(htmlText) {
       revokeDownload();
       var sourceHtml = htmlText || currentReportHtml();
-      var downloadHtml = await makeReadOnlyDownloadHtml(sourceHtml);
+      var downloadHtml = await makeDownloadHtml(sourceHtml);
       downloadUrl = URL.createObjectURL(new Blob([downloadHtml], {type: "text/html;charset=utf-8"}));
       downloadLink.href = downloadUrl;
       downloadLink.download = "xrd-report.html";

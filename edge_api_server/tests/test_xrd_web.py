@@ -66,7 +66,7 @@ def test_xrd_workspace_contains_upload_controls() -> None:
     assert "/api/v1/xrd/report/jobs/" in page
     assert "startReportProgress" in page
     assert "finishReportProgress" in page
-    assert "makeReadOnlyDownloadHtml" in page
+    assert "makeDownloadHtml" in page
     assert "loadPlotlyAssetText" in page
     assert "inlinePlotlyAsset" in page
     assert "textToBase64" in page
@@ -76,12 +76,11 @@ def test_xrd_workspace_contains_upload_controls() -> None:
     assert "escapeScriptText" not in page
     assert 'data-xrd-embedded-plotly="true"' in page
     assert "/xrd/assets/plotly.min.js" in page
-    assert "window.readOnlyReport=true" in page
-    assert "data-read-only-report" in page
-    assert "readOnlyReportPrelude" in page
-    assert "data-xrd-readonly-prelude" in page
-    assert "data-xrd-readonly-lock" in page
-    assert "[contenteditable=true]" in page
+    assert "window.readOnlyReport=true" not in page
+    assert "data-read-only-report" not in page
+    assert "readOnlyReportPrelude" not in page
+    assert "data-xrd-readonly-prelude" not in page
+    assert "data-xrd-readonly-lock" not in page
     assert "currentReportHtml" in page
     assert "removeDynamicReportState" in page
     assert "sanitizeDownloadHtml" in page
@@ -93,7 +92,6 @@ def test_xrd_workspace_contains_upload_controls() -> None:
     assert '"<!doctype html>\n" + clone.outerHTML' not in page
     assert 'downloadLink.addEventListener("click"' in page
     assert "다운로드 준비 중..." in page
-    assert "closest('#xrd-plot')" in page
     assert 'exampleButton.addEventListener("click"' in page
     assert "Bundle 안에 ICDD PDF 파일이 필요합니다." in page
     assert "raw와 ICDD Card 데이터를 분석하는 중입니다." in page

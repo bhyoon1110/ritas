@@ -3696,7 +3696,7 @@ def build_report_html(
         }});
     }}
     function shouldUseBrowserPrint() {{
-      return window.readOnlyReport === true || window.location.protocol === "file:";
+      return window.readOnlyReport === true || !/^https?:$/.test(window.location.protocol || "");
     }}
     function openBrowserPrintFallback() {{
       var relayout = preparePrintLegend();

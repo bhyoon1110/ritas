@@ -353,6 +353,7 @@ def test_build_report_html_contains_xrd_template_sections(tmp_path) -> None:
     assert "/api/v1/xrd/render-pdf" in html
     assert "shouldUseBrowserPrint" in html
     assert "window.readOnlyReport === true" in html
+    assert '!/^https?:$/.test(window.location.protocol || "")' in html
     assert "exportHtmlSnapshot" in html
     assert 'clone.querySelectorAll("script")' in html
     assert "node.remove();" in html
