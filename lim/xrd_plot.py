@@ -2765,6 +2765,64 @@ def xrd_report_css() -> str:
     display: none !important;
     visibility: hidden !important;
   }
+  html[data-read-only-report="true"] .xrd-report-page {
+    overflow-x: hidden;
+  }
+  html[data-read-only-report="true"] .xrd-graph-frame {
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+  @media screen and (max-width: 900px), screen and (pointer: coarse) {
+    html[data-read-only-report="true"] .xrd-report-page {
+      max-width: 100%;
+      padding-left: 10px;
+      padding-right: 10px;
+    }
+    html[data-read-only-report="true"] .xrd-graph-frame {
+      overflow: hidden;
+      padding: 8px 8px 10px;
+    }
+    html[data-read-only-report="true"] #xrd-plot {
+      width: 100% !important;
+      max-width: 100% !important;
+      height: 430px !important;
+      min-height: 360px !important;
+      overflow: hidden !important;
+    }
+    html[data-read-only-report="true"] #xrd-plot .plot-container,
+    html[data-read-only-report="true"] #xrd-plot .svg-container,
+    html[data-read-only-report="true"] #xrd-plot .main-svg {
+      max-width: 100% !important;
+      overflow: hidden !important;
+    }
+    html[data-read-only-report="true"] #xrd-plot .modebar,
+    html[data-read-only-report="true"] #xrd-plot .rist-legend-drag-handle,
+    html[data-read-only-report="true"] #xrd-plot .legend {
+      display: none !important;
+      visibility: hidden !important;
+    }
+    html[data-read-only-report="true"] .xrd-print-legend {
+      display: block;
+      margin: 8px 0 0;
+      padding: 7px 8px;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      background: #fff;
+      color: #111827;
+      font-size: 10px;
+      line-height: 1.32;
+      box-sizing: border-box;
+    }
+    html[data-read-only-report="true"] .xrd-print-legend-title {
+      margin: 0 0 5px;
+      font-weight: 700;
+      color: #172a46;
+    }
+    html[data-read-only-report="true"] .xrd-print-legend-grid {
+      column-count: 1;
+      column-gap: 0;
+    }
+  }
   .xrd-phase-group { border-radius: 10px; margin: 12px 0; padding: 0 12px 12px; }
   .xrd-phase-group summary { cursor: pointer; font-size: 16px; font-weight: 700; padding: 12px 0; }
   .xrd-phase-group summary span { color: #6b7280; font-size: 12px; margin-left: 6px; }
@@ -3301,6 +3359,19 @@ def build_report_html(
     function effectivePrintLandscapeEnabled() {{
       return graphPageLandscapeEnabled() && !isMobileBrowserPrintClient();
     }}
+    function isMobileReadOnlyScreen() {{
+      if (window.readOnlyReport !== true) return false;
+      var narrow = false;
+      var coarse = false;
+      try {{
+        narrow = window.matchMedia && window.matchMedia("(max-width: 900px)").matches;
+        coarse = window.matchMedia && window.matchMedia("(pointer: coarse)").matches;
+      }} catch (_error) {{
+        narrow = false;
+        coarse = false;
+      }}
+      return narrow || coarse || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || "");
+    }}
     function applyGraphPageMode() {{
       var enabled = graphPageLandscapeEnabled();
       document.body.classList.toggle("xrd-report-graph-landscape", enabled);
@@ -3391,6 +3462,37 @@ def build_report_html(
         layout["yaxis.range"] = yRange;
       }}
       return window.Plotly.relayout(gd, layout);
+    }}
+    function applyReadOnlyMobilePlotLayout() {{
+      if (!window.Plotly || !gd || !isMobileReadOnlyScreen()) return null;
+      var frame = graphFrame();
+      var frameWidth = frame && frame.getBoundingClientRect ? frame.getBoundingClientRect().width : 0;
+      var availableWidth = Math.max(300, Math.floor((frameWidth || window.innerWidth || 360) - 18));
+      gd.style.width = "100%";
+      gd.style.maxWidth = "100%";
+      gd.style.height = "430px";
+      gd.style.minHeight = "360px";
+      refreshPrintLegend();
+      return window.Plotly.relayout(gd, {{
+        "autosize": false,
+        "width": availableWidth,
+        "height": 430,
+        "title.text": "",
+        "margin.t": 20,
+        "margin.b": 72
+      }}).then(function() {{
+        if (window.Plotly && window.Plotly.Plots) window.Plotly.Plots.resize(gd);
+      }});
+    }}
+    function scheduleReadOnlyMobilePlotLayout() {{
+      window.setTimeout(function() {{
+        var relayout = applyReadOnlyMobilePlotLayout();
+        if (relayout && relayout.catch) {{
+          relayout.catch(function(error) {{
+            console.warn("XRD mobile read-only plot layout failed.", error);
+          }});
+        }}
+      }}, 80);
     }}
     function clonePlotlyValue(value) {{
       try {{
@@ -3638,15 +3740,23 @@ def build_report_html(
     refreshPrintLegend();
     applyGraphPageMode();
     applyPrintPageStyle();
+    scheduleReadOnlyMobilePlotLayout();
     if (landscapeOption) {{
       landscapeOption.addEventListener("change", function() {{
         applyGraphPageMode();
         applyPrintPageStyle();
+        scheduleReadOnlyMobilePlotLayout();
       }});
     }}
     window.setTimeout(function() {{
       normalizeLegendHandleLabel();
       refreshPrintLegend();
+      var mobileRelayout = applyReadOnlyMobilePlotLayout();
+      if (mobileRelayout && mobileRelayout.catch) {{
+        mobileRelayout.catch(function(error) {{
+          console.warn("XRD mobile read-only plot layout failed.", error);
+        }});
+      }}
       if (window.Plotly && window.Plotly.Plots && gd) window.Plotly.Plots.resize(gd);
     }}, 600);
     window.setTimeout(function() {{
@@ -3660,7 +3770,9 @@ def build_report_html(
       removePrintPageStyle();
       restorePrintLegend();
       restoreScreenPlotLayout();
+      scheduleReadOnlyMobilePlotLayout();
     }});
+    window.addEventListener("resize", scheduleReadOnlyMobilePlotLayout);
     if (!button) return;
     button.addEventListener("click", function() {{
       if (button.disabled) return;

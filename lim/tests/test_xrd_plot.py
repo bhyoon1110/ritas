@@ -371,7 +371,12 @@ def test_build_report_html_contains_xrd_template_sections(tmp_path) -> None:
     assert "#xrd-plot .rist-xrd-legend-checkbox" in html
     assert "#xrd-plot .rist-xrd-legend-branch" in html
     assert 'html[data-read-only-report="true"] #xrd-plot .rist-plot-control-row' in html
-    assert 'html[data-read-only-report="true"] #xrd-plot .rist-legend-drag-handle' not in html
+    assert "@media screen and (max-width: 900px), screen and (pointer: coarse)" in html
+    assert 'html[data-read-only-report="true"] #xrd-plot .rist-legend-drag-handle' in html
+    assert "isMobileReadOnlyScreen" in html
+    assert "applyReadOnlyMobilePlotLayout" in html
+    assert "scheduleReadOnlyMobilePlotLayout" in html
+    assert '"width": availableWidth' in html
     assert "window.readOnlyReport === true) return;" in html
     assert "#xrd-plot .legend {" in html
     assert ".xrd-report-header { display: none !important; }" in html
