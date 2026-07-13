@@ -3,6 +3,7 @@ from __future__ import annotations
 from io import BytesIO
 import time
 import zipfile
+import zlib
 
 from fastapi.testclient import TestClient
 from PIL import Image
@@ -15,6 +16,19 @@ from app.ahn_web import build_ahn_page, create_tem_preview_app, _find_ahn_input_
 def _tiny_tiff_bytes() -> bytes:
     buffer = BytesIO()
     Image.new("RGB", (80, 60), (220, 224, 230)).save(buffer, format="TIFF")
+    return buffer.getvalue()
+
+
+def _minimal_ooxml_bytes(*, document: bool = False, binary_workbook: bool = False) -> bytes:
+    buffer = BytesIO()
+    with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("[Content_Types].xml", "<Types/>")
+        if document:
+            archive.writestr("word/document.xml", "<w:document xmlns:w='w'/>")
+        elif binary_workbook:
+            archive.writestr("xl/workbook.bin", b"workbook")
+        else:
+            archive.writestr("xl/workbook.xml", "<workbook/>")
     return buffer.getvalue()
 
 
@@ -61,6 +75,9 @@ def test_ahn_workspace_contains_folder_upload_controls() -> None:
     assert "서버 연결에 실패했습니다" in page
     assert "XMLHttpRequest" in page
     assert "raw 파일 업로드 중" in page
+    assert "chunkCrc32" in page
+    assert 'formData.append("chunk_crc32"' in page
+    assert "무결성 및 암호화 여부를 검사하는 중입니다" in page
     assert "transientFailures" in page
     assert "entryToBundleItems" in page
     assert "droppedBundleItems" in page
@@ -103,7 +120,7 @@ def test_ahn_analyze_accepts_folder_bundle_and_downloads_pptx() -> None:
                     "files",
                     (
                         "Bundle/raw data.xlsx",
-                        b"spreadsheet-placeholder",
+                        _minimal_ooxml_bytes(),
                         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     ),
                 ),
@@ -137,7 +154,7 @@ def test_ahn_analyze_accepts_zipped_bundle_and_downloads_pptx() -> None:
     archive_bytes = BytesIO()
     with zipfile.ZipFile(archive_bytes, "w") as archive:
         archive.writestr("TESTData/stem/001_100kX.tif", _tiny_tiff_bytes())
-        archive.writestr("TESTData/reports/001 point raw.xlsm", b"macro-spreadsheet")
+        archive.writestr("TESTData/reports/001 point raw.xlsm", _minimal_ooxml_bytes())
 
     with TestClient(create_tem_preview_app()) as client:
         response = client.post(
@@ -223,6 +240,187 @@ def test_ahn_chunked_upload_session_retries_and_downloads_package() -> None:
             names = set(package.namelist())
         assert "tem-report.pptx" in names
         assert "analysis-result.json" in names
+
+
+def test_ahn_chunked_upload_rejects_checksum_mismatch_without_storing_chunk() -> None:
+    image_bytes = _tiny_tiff_bytes()
+
+    with TestClient(create_tem_preview_app()) as client:
+        session_response = client.post("/api/v1/tem/upload-sessions")
+        upload_id = session_response.json()["uploadId"]
+        chunk_response = client.post(
+            f"/api/v1/tem/upload-sessions/{upload_id}/chunks",
+            data={
+                "relative_path": "Bundle/stem/001_100kX.tif",
+                "offset": "0",
+                "total_size": str(len(image_bytes)),
+                "chunk_index": "0",
+                "chunk_count": "1",
+                "chunk_crc32": "00000000",
+            },
+            files={"file": ("image.tif", image_bytes, "application/octet-stream")},
+        )
+
+        assert chunk_response.status_code == 400
+        payload = chunk_response.json()
+        assert payload["code"] == "TEM_UPLOAD_CHUNK_CHECKSUM_MISMATCH"
+        session = ahn_web._get_upload_session(upload_id)
+        state = session.files["Bundle/stem/001_100kX.tif"]
+        assert not (session.input_root / state.temp_path).exists()
+        assert state.uploaded_bytes == 0
+
+
+def test_ahn_chunked_upload_accepts_matching_checksum() -> None:
+    image_bytes = _tiny_tiff_bytes()
+    checksum = f"{zlib.crc32(image_bytes) & 0xFFFFFFFF:08x}"
+
+    with TestClient(create_tem_preview_app()) as client:
+        session_response = client.post("/api/v1/tem/upload-sessions")
+        upload_id = session_response.json()["uploadId"]
+        chunk_response = client.post(
+            f"/api/v1/tem/upload-sessions/{upload_id}/chunks",
+            data={
+                "relative_path": "Bundle/stem/001_100kX.tif",
+                "offset": "0",
+                "total_size": str(len(image_bytes)),
+                "chunk_index": "0",
+                "chunk_count": "1",
+                "chunk_crc32": checksum,
+            },
+            files={"file": ("image.tif", image_bytes, "application/octet-stream")},
+        )
+
+    assert chunk_response.status_code == 200
+    assert chunk_response.json()["fileCompleted"] is True
+
+
+def test_ahn_chunked_upload_rejects_corrupt_docx_before_report_job() -> None:
+    corrupt_docx = b"not-a-docx-container"
+
+    with TestClient(create_tem_preview_app()) as client:
+        session_response = client.post("/api/v1/tem/upload-sessions")
+        upload_id = session_response.json()["uploadId"]
+        chunk_response = client.post(
+            f"/api/v1/tem/upload-sessions/{upload_id}/chunks",
+            data={
+                "relative_path": "Bundle/reports/Project 1_Test MAP.docx",
+                "offset": "0",
+                "total_size": str(len(corrupt_docx)),
+                "chunk_index": "0",
+                "chunk_count": "1",
+            },
+            files={"file": ("report.docx", corrupt_docx, "application/octet-stream")},
+        )
+        assert chunk_response.status_code == 200
+        assert chunk_response.json()["fileCompleted"] is True
+
+        complete_response = client.post(f"/api/v1/tem/upload-sessions/{upload_id}/complete")
+
+    assert complete_response.status_code == 400
+    payload = complete_response.json()
+    assert payload["code"] == "TEM_UPLOAD_INTEGRITY_FAILED"
+    assert "Project 1_Test MAP.docx" in payload["message"]
+    assert "Office" in payload["message"]
+    assert "jobId" not in payload
+
+
+def test_ahn_chunked_upload_rechecks_stored_file_size_before_report_job() -> None:
+    image_bytes = _tiny_tiff_bytes()
+
+    with TestClient(create_tem_preview_app()) as client:
+        session_response = client.post("/api/v1/tem/upload-sessions")
+        upload_id = session_response.json()["uploadId"]
+        chunk_response = client.post(
+            f"/api/v1/tem/upload-sessions/{upload_id}/chunks",
+            data={
+                "relative_path": "Bundle/stem/001_100kX.tif",
+                "offset": "0",
+                "total_size": str(len(image_bytes)),
+                "chunk_index": "0",
+                "chunk_count": "1",
+            },
+            files={"file": ("image.tif", image_bytes, "application/octet-stream")},
+        )
+        assert chunk_response.status_code == 200
+        session = ahn_web._get_upload_session(upload_id)
+        state = session.files["Bundle/stem/001_100kX.tif"]
+        (session.input_root / state.stored_path).write_bytes(image_bytes[:-10])
+
+        complete_response = client.post(f"/api/v1/tem/upload-sessions/{upload_id}/complete")
+
+    assert complete_response.status_code == 409
+    payload = complete_response.json()
+    assert payload["code"] == "TEM_UPLOAD_STORAGE_MISMATCH"
+    assert payload["retryable"] is True
+    assert "001_100kX.tif" in payload["message"]
+
+
+def test_ahn_chunked_upload_rejects_drm_or_encrypted_office_before_report_job() -> None:
+    protected_docx = (
+        ahn_web.OLE_COMPOUND_MAGIC
+        + b"\x00" * 128
+        + "EncryptedPackage".encode("utf-16le")
+    )
+
+    with TestClient(create_tem_preview_app()) as client:
+        session_response = client.post("/api/v1/tem/upload-sessions")
+        upload_id = session_response.json()["uploadId"]
+        chunk_response = client.post(
+            f"/api/v1/tem/upload-sessions/{upload_id}/chunks",
+            data={
+                "relative_path": "Bundle/reports/Project 1_Protected Point.docx",
+                "offset": "0",
+                "total_size": str(len(protected_docx)),
+                "chunk_index": "0",
+                "chunk_count": "1",
+            },
+            files={"file": ("protected.docx", protected_docx, "application/octet-stream")},
+        )
+        assert chunk_response.status_code == 200
+
+        complete_response = client.post(f"/api/v1/tem/upload-sessions/{upload_id}/complete")
+
+    assert complete_response.status_code == 400
+    payload = complete_response.json()
+    assert payload["code"] == "TEM_PROTECTED_FILE"
+    assert "Project 1_Protected Point.docx" in payload["message"]
+    assert "DRM" in payload["message"] or "암호" in payload["message"]
+
+
+def test_ahn_analyze_rejects_corrupt_image_before_report_job() -> None:
+    with TestClient(create_tem_preview_app()) as client:
+        response = client.post(
+            "/api/v1/tem/analyze",
+            files=[
+                (
+                    "files",
+                    ("Bundle/stem/broken.tif", b"broken-image", "image/tiff"),
+                )
+            ],
+        )
+
+    assert response.status_code == 400
+    payload = response.json()
+    assert payload["code"] == "TEM_UPLOAD_INTEGRITY_FAILED"
+    assert "broken.tif" in payload["message"]
+
+
+def test_ahn_analyze_rejects_zip_with_corrupt_docx_before_report_job() -> None:
+    archive_bytes = BytesIO()
+    with zipfile.ZipFile(archive_bytes, "w") as archive:
+        archive.writestr("TESTData/stem/001_100kX.tif", _tiny_tiff_bytes())
+        archive.writestr("TESTData/reports/broken.docx", b"not-a-docx")
+
+    with TestClient(create_tem_preview_app()) as client:
+        response = client.post(
+            "/api/v1/tem/analyze",
+            files=[("files", ("tem-bundle.zip", archive_bytes.getvalue(), "application/zip"))],
+        )
+
+    assert response.status_code == 400
+    payload = response.json()
+    assert payload["code"] == "TEM_UPLOAD_INTEGRITY_FAILED"
+    assert "tem-bundle.zip::TESTData/reports/broken.docx" in payload["message"]
 
 
 def test_ahn_analyze_returns_before_zip_extraction_finishes(monkeypatch) -> None:

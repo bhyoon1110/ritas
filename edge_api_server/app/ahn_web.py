@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
+from io import BytesIO
 import os
 import re
 import shutil
@@ -14,11 +15,12 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 import zipfile
+import zlib
 
 from fastapi import APIRouter, FastAPI, File, Form, UploadFile
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, UnidentifiedImageError
 from rist_common import get_logger
 
 from .errors import ApiException, api_exception_handler, validation_exception_handler
@@ -41,6 +43,13 @@ MAX_AHN_UPLOAD_TOTAL_BYTES = 1200 * 1024 * 1024
 AHN_REPORT_JOB_TTL_SECONDS = 2 * 60 * 60
 AHN_UPLOAD_CHUNK_BYTES = 1024 * 1024
 AHN_UPLOAD_SESSION_TTL_SECONDS = 2 * 60 * 60
+OLE_COMPOUND_MAGIC = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
+OOXML_REQUIRED_MEMBERS = {
+    ".docx": {"[Content_Types].xml", "word/document.xml"},
+    ".xlsx": {"[Content_Types].xml", "xl/workbook.xml"},
+    ".xlsm": {"[Content_Types].xml", "xl/workbook.xml"},
+    ".xlsb": {"[Content_Types].xml", "xl/workbook.bin"},
+}
 
 
 def _positive_int_env(name: str, default: int) -> int:
@@ -166,6 +175,181 @@ def _has_reportable_data(summary: dict[str, Any]) -> bool:
         "coatingImageCount",
     )
     return any(int(summary.get(key) or 0) > 0 for key in keys)
+
+
+def _integrity_issue(path: str, reason: str, *, protected: bool = False) -> dict[str, Any]:
+    return {"path": path, "reason": reason, "protected": protected}
+
+
+def _ole_protection_marker(data: bytes) -> bool:
+    markers = ("EncryptedPackage", "EncryptionInfo", "DRMContent", "DataSpaces")
+    return any(
+        marker.encode("utf-16le") in data or marker.encode("ascii") in data
+        for marker in markers
+    )
+
+
+def _validate_image(source: Path | BytesIO | Any, display_path: str) -> list[dict[str, Any]]:
+    try:
+        with Image.open(source) as image:
+            image.verify()
+    except (Image.DecompressionBombError, UnidentifiedImageError, OSError, SyntaxError, ValueError) as exc:
+        return [_integrity_issue(display_path, f"이미지 파일을 열 수 없습니다: {exc}")]
+    return []
+
+
+def _validate_legacy_xls(source: Path | BytesIO, display_path: str) -> list[dict[str, Any]]:
+    if isinstance(source, Path):
+        with source.open("rb") as stream:
+            prefix = stream.read(8 * 1024 * 1024)
+    else:
+        source.seek(0)
+        prefix = source.read(8 * 1024 * 1024)
+        source.seek(0)
+    if not prefix.startswith(OLE_COMPOUND_MAGIC):
+        return [_integrity_issue(display_path, "확장자와 실제 파일 형식이 다른 XLS 파일입니다.")]
+    if _ole_protection_marker(prefix):
+        return [
+            _integrity_issue(
+                display_path,
+                "암호 또는 DRM으로 보호된 Excel 파일입니다. 보호를 해제한 뒤 다시 저장하세요.",
+                protected=True,
+            )
+        ]
+    return []
+
+
+def _validate_ooxml(
+    source: Path | BytesIO,
+    suffix: str,
+    display_path: str,
+) -> list[dict[str, Any]]:
+    if isinstance(source, Path):
+        with source.open("rb") as stream:
+            prefix = stream.read(8 * 1024 * 1024)
+    else:
+        source.seek(0)
+        prefix = source.read(8 * 1024 * 1024)
+        source.seek(0)
+    if prefix.startswith(OLE_COMPOUND_MAGIC):
+        protected = _ole_protection_marker(prefix)
+        reason = (
+            "암호 또는 DRM으로 보호된 Office 파일입니다. 보호를 해제한 뒤 새 파일로 저장하세요."
+            if protected
+            else "암호화된 Office 파일이거나 확장자와 실제 파일 형식이 다릅니다. 새 파일로 저장하세요."
+        )
+        return [_integrity_issue(display_path, reason, protected=True)]
+
+    try:
+        with zipfile.ZipFile(source) as archive:
+            encrypted = [item.filename for item in archive.infolist() if item.flag_bits & 0x1]
+            if encrypted:
+                return [
+                    _integrity_issue(
+                        display_path,
+                        "암호화된 Office 파일입니다. 암호를 제거한 뒤 다시 저장하세요.",
+                        protected=True,
+                    )
+                ]
+            bad_member = archive.testzip()
+            if bad_member:
+                return [_integrity_issue(display_path, f"Office 파일 내부가 손상되었습니다: {bad_member}")]
+            names = set(archive.namelist())
+    except (zipfile.BadZipFile, RuntimeError, OSError) as exc:
+        return [_integrity_issue(display_path, f"손상되었거나 올바르지 않은 Office 파일입니다: {exc}")]
+
+    missing = sorted(OOXML_REQUIRED_MEMBERS.get(suffix, set()) - names)
+    if missing:
+        return [
+            _integrity_issue(
+                display_path,
+                "Office 필수 구성 파일이 없습니다: " + ", ".join(missing),
+            )
+        ]
+    return []
+
+
+def _validate_zip_archive(path: Path, display_path: str) -> list[dict[str, Any]]:
+    issues: list[dict[str, Any]] = []
+    total_bytes = 0
+    try:
+        with zipfile.ZipFile(path) as archive:
+            encrypted = [item.filename for item in archive.infolist() if item.flag_bits & 0x1]
+            if encrypted:
+                return [
+                    _integrity_issue(
+                        display_path,
+                        "암호화된 ZIP 파일입니다. 암호를 제거한 뒤 다시 압축하세요.",
+                        protected=True,
+                    )
+                ]
+            bad_member = archive.testzip()
+            if bad_member:
+                return [_integrity_issue(display_path, f"ZIP 내부 파일이 손상되었습니다: {bad_member}")]
+            for member in archive.infolist():
+                if member.is_dir() or "__MACOSX" in Path(member.filename).parts:
+                    continue
+                total_bytes += int(member.file_size or 0)
+                if int(member.file_size or 0) > MAX_AHN_UPLOAD_FILE_BYTES:
+                    return [
+                        _integrity_issue(
+                            f"{display_path}::{member.filename}",
+                            "압축 해제 후 파일 크기가 250MB를 초과합니다.",
+                        )
+                    ]
+                if total_bytes > MAX_AHN_UPLOAD_TOTAL_BYTES:
+                    return [_integrity_issue(display_path, "압축 해제 후 전체 크기가 1.2GB를 초과합니다.")]
+                member_path = f"{display_path}::{member.filename}"
+                suffix = Path(member.filename).suffix.lower()
+                if suffix in OOXML_REQUIRED_MEMBERS:
+                    data = BytesIO(archive.read(member))
+                    issues.extend(_validate_ooxml(data, suffix, member_path))
+                elif suffix == ".xls":
+                    data = BytesIO(archive.read(member))
+                    issues.extend(_validate_legacy_xls(data, member_path))
+                elif suffix in IMAGE_EXTENSIONS:
+                    with archive.open(member) as stream:
+                        issues.extend(_validate_image(stream, member_path))
+    except (zipfile.BadZipFile, RuntimeError, OSError) as exc:
+        return [_integrity_issue(display_path, f"손상되었거나 올바르지 않은 ZIP 파일입니다: {exc}")]
+    return issues
+
+
+def _validate_ahn_upload_files(upload_root: Path) -> dict[str, Any]:
+    issues: list[dict[str, Any]] = []
+    checked = 0
+    for path in sorted(upload_root.rglob("*"), key=lambda item: item.as_posix()):
+        if not path.is_file() or path.name.startswith(".") or path.name.startswith("~$"):
+            continue
+        suffix = path.suffix.lower()
+        if suffix not in AHN_SUPPORTED_EXTENSIONS:
+            continue
+        checked += 1
+        display_path = path.relative_to(upload_root).as_posix()
+        if path.stat().st_size <= 0:
+            issues.append(_integrity_issue(display_path, "빈 파일입니다."))
+        elif suffix == ".zip":
+            issues.extend(_validate_zip_archive(path, display_path))
+        elif suffix in OOXML_REQUIRED_MEMBERS:
+            issues.extend(_validate_ooxml(path, suffix, display_path))
+        elif suffix == ".xls":
+            issues.extend(_validate_legacy_xls(path, display_path))
+        elif suffix in IMAGE_EXTENSIONS:
+            issues.extend(_validate_image(path, display_path))
+
+    if issues:
+        protected = any(bool(issue.get("protected")) for issue in issues)
+        preview = "; ".join(
+            f"{issue['path']}: {issue['reason']}" for issue in issues[:5]
+        )
+        more = f" 외 {len(issues) - 5}건" if len(issues) > 5 else ""
+        raise ApiException(
+            400,
+            "TEM_PROTECTED_FILE" if protected else "TEM_UPLOAD_INTEGRITY_FAILED",
+            f"TEM 업로드 파일 검증에 실패했습니다. {preview}{more}",
+            details={"checkedFileCount": checked, "invalidFiles": issues},
+        )
+    return {"checkedFileCount": checked, "invalidFileCount": 0}
 
 
 def _extract_zip_file(path: Path, target_root: Path) -> int:
@@ -294,6 +478,7 @@ async def _write_upload_chunk(
     total_size: int,
     chunk_index: int,
     chunk_count: int,
+    chunk_crc32: str | None,
     upload: UploadFile,
 ) -> AhnUploadFileState:
     relative = _safe_relative_path(relative_path, f"ahn-upload-{chunk_index}")
@@ -319,6 +504,9 @@ async def _write_upload_chunk(
         raise ApiException(400, "TEM_INVALID_UPLOAD_OFFSET", "TEM 업로드 offset 값이 올바르지 않습니다.")
     if chunk_index < 0 or chunk_count <= 0 or chunk_index >= chunk_count:
         raise ApiException(400, "TEM_INVALID_UPLOAD_CHUNK", "TEM 업로드 chunk 값이 올바르지 않습니다.")
+    expected_crc32 = str(chunk_crc32 or "").strip().lower()
+    if expected_crc32 and not re.fullmatch(r"[0-9a-f]{8}", expected_crc32):
+        raise ApiException(400, "TEM_INVALID_CHUNK_CHECKSUM", "TEM 업로드 조각 체크섬이 올바르지 않습니다.")
 
     file_key = relative.as_posix()
     with _ahn_upload_sessions_lock:
@@ -363,25 +551,41 @@ async def _write_upload_chunk(
         )
 
     written = 0
+    received_crc32 = 0
+    received_chunks: list[bytes] = []
     try:
-        temp_path.parent.mkdir(parents=True, exist_ok=True)
-        with temp_path.open("r+b" if temp_path.exists() else "wb") as output:
-            output.seek(offset)
-            while True:
-                chunk = await upload.read(AHN_UPLOAD_CHUNK_BYTES)
-                if not chunk:
-                    break
-                written += len(chunk)
-                if offset + written > total_size:
-                    raise ApiException(
-                        400,
-                        "TEM_UPLOAD_CHUNK_TOO_LARGE",
-                        "업로드 조각 크기가 파일 크기를 초과했습니다.",
-                    )
-                output.write(chunk)
-            output.truncate(offset + written)
+        while True:
+            chunk = await upload.read(AHN_UPLOAD_CHUNK_BYTES)
+            if not chunk:
+                break
+            written += len(chunk)
+            if offset + written > total_size:
+                raise ApiException(
+                    400,
+                    "TEM_UPLOAD_CHUNK_TOO_LARGE",
+                    "업로드 조각 크기가 파일 크기를 초과했습니다.",
+                )
+            received_crc32 = zlib.crc32(chunk, received_crc32)
+            received_chunks.append(chunk)
     finally:
         await upload.close()
+
+    actual_crc32 = f"{received_crc32 & 0xFFFFFFFF:08x}"
+    if expected_crc32 and actual_crc32 != expected_crc32:
+        raise ApiException(
+            400,
+            "TEM_UPLOAD_CHUNK_CHECKSUM_MISMATCH",
+            f"업로드 조각 무결성 검사에 실패했습니다: {relative.name}. 같은 파일을 다시 업로드하세요.",
+            retryable=True,
+            details={"expectedCrc32": expected_crc32, "actualCrc32": actual_crc32},
+        )
+
+    temp_path.parent.mkdir(parents=True, exist_ok=True)
+    with temp_path.open("r+b" if temp_path.exists() else "wb") as output:
+        output.seek(offset)
+        for chunk in received_chunks:
+            output.write(chunk)
+        output.truncate(offset + written)
 
     file_state.uploaded_bytes = min(total_size, offset + written)
     if file_state.uploaded_bytes == total_size:
@@ -572,11 +776,7 @@ def _run_ahn_job(job: AhnReportJob) -> None:
         message="TEM/STEM/EDS/코팅층 데이터를 분석하는 중입니다.",
     )
     try:
-        _set_job_state(
-            job,
-            progress_pct=28,
-            message="ZIP 파일과 raw bundle 구조를 준비하는 중입니다.",
-        )
+        _set_job_state(job, progress_pct=28, message="검증된 raw bundle 구조를 준비하는 중입니다.")
         extracted_count = _extract_pending_zips(job.input_root)
         if extracted_count:
             _set_job_state(
@@ -1429,9 +1629,32 @@ def build_ahn_page() -> str:
         formData.append("total_size", String(options.totalSize));
         formData.append("chunk_index", String(options.chunkIndex));
         formData.append("chunk_count", String(options.chunkCount));
+        formData.append("chunk_crc32", options.chunkCrc32 || "");
         formData.append("file", options.blob, options.fileName);
         xhr.send(formData);
       });
+    }
+    var crc32Table = null;
+    function getCrc32Table() {
+      if (crc32Table) return crc32Table;
+      crc32Table = new Uint32Array(256);
+      for (var index = 0; index < 256; index += 1) {
+        var value = index;
+        for (var bit = 0; bit < 8; bit += 1) {
+          value = (value & 1) ? (0xEDB88320 ^ (value >>> 1)) : (value >>> 1);
+        }
+        crc32Table[index] = value >>> 0;
+      }
+      return crc32Table;
+    }
+    async function chunkCrc32(blob) {
+      var bytes = new Uint8Array(await blob.arrayBuffer());
+      var table = getCrc32Table();
+      var crc = 0xFFFFFFFF;
+      for (var index = 0; index < bytes.length; index += 1) {
+        crc = table[(crc ^ bytes[index]) & 0xFF] ^ (crc >>> 8);
+      }
+      return ((crc ^ 0xFFFFFFFF) >>> 0).toString(16).padStart(8, "0");
     }
     async function uploadChunkWithRetry(options) {
       var lastError = null;
@@ -1495,6 +1718,7 @@ def build_ahn_page() -> str:
           var offset = chunkIndex * TEM_UPLOAD_CHUNK_BYTES;
           var end = Math.min(file.size, offset + TEM_UPLOAD_CHUNK_BYTES);
           var blob = file.slice(offset, end);
+          var checksum = await chunkCrc32(blob);
           await uploadChunkWithRetry({
             uploadId: session.uploadId,
             path: path,
@@ -1504,6 +1728,7 @@ def build_ahn_page() -> str:
             totalSize: file.size,
             chunkIndex: chunkIndex,
             chunkCount: chunkCount,
+            chunkCrc32: checksum,
             uploadedBefore: uploadedBytes,
             totalUploadBytes: totalBytes,
             fileIndex: fileIndex + 1,
@@ -1512,7 +1737,7 @@ def build_ahn_page() -> str:
           uploadedBytes += blob.size;
         }
       }
-      setUploadProgress(100, "raw 파일 업로드 완료. 보고서 작업을 접수하는 중입니다.", true, false);
+      setUploadProgress(100, "raw 파일 업로드 완료. 무결성 및 암호화 여부를 검사하는 중입니다.", true, false);
       return requestJsonPostWithRetry(
         "/api/v1/tem/upload-sessions/" + encodeURIComponent(session.uploadId) + "/complete",
         4,
@@ -1688,6 +1913,7 @@ async def upload_tem_chunk(
     total_size: int = Form(...),
     chunk_index: int = Form(...),
     chunk_count: int = Form(...),
+    chunk_crc32: str | None = Form(default=None),
     file: UploadFile = File(...),
 ) -> JSONResponse:
     session = _get_upload_session(upload_id)
@@ -1698,6 +1924,7 @@ async def upload_tem_chunk(
         total_size=total_size,
         chunk_index=chunk_index,
         chunk_count=chunk_count,
+        chunk_crc32=chunk_crc32,
         upload=file,
     )
     payload = _upload_session_payload(session)
@@ -1731,6 +1958,29 @@ def complete_tem_upload_session(upload_id: str) -> JSONResponse:
             "TEM_UPLOAD_INCOMPLETE",
             f"아직 업로드가 완료되지 않은 파일이 있습니다: {preview}{more}",
         )
+    storage_mismatches = []
+    for state in completed_files:
+        stored_path = session.input_root / state.stored_path
+        actual_size = stored_path.stat().st_size if stored_path.is_file() else -1
+        if actual_size != state.total_size:
+            storage_mismatches.append(
+                {
+                    "path": state.relative_path,
+                    "expectedBytes": state.total_size,
+                    "actualBytes": actual_size,
+                }
+            )
+    if storage_mismatches:
+        preview = ", ".join(item["path"] for item in storage_mismatches[:5])
+        more = f" 외 {len(storage_mismatches) - 5}개" if len(storage_mismatches) > 5 else ""
+        raise ApiException(
+            409,
+            "TEM_UPLOAD_STORAGE_MISMATCH",
+            f"서버에 완전히 저장되지 않은 파일이 있습니다: {preview}{more}. 해당 파일을 다시 업로드하세요.",
+            retryable=True,
+            details={"files": storage_mismatches},
+        )
+    _validate_ahn_upload_files(session.input_root)
     job = _submit_ahn_job(session.input_root, session.work_dir)
     with _ahn_upload_sessions_lock:
         _ahn_upload_sessions.pop(upload_id, None)
@@ -1753,6 +2003,7 @@ async def analyze_tem(
     try:
         upload_root = work_dir / "input"
         await _save_ahn_uploads(files, upload_root)
+        _validate_ahn_upload_files(upload_root)
         input_root = _find_ahn_input_root(upload_root)
         job = _submit_ahn_job(input_root, work_dir)
     except Exception:
