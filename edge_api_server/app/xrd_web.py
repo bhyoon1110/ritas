@@ -36,6 +36,7 @@ from lim.xrd_plot import (
 )
 
 from .errors import ApiException
+from .file_inspection import FileInspection, inspect_file_bytes
 from .error_archive import (
     ErrorArchive,
     error_archive as app_error_archive,
@@ -80,6 +81,7 @@ xrd_upload_store = ChunkUploadStore(
     allowed_extensions=SUPPORTED_BUNDLE_EXTENSIONS,
     max_file_bytes=MAX_XRD_UPLOAD_BYTES,
     max_total_bytes=MAX_XRD_UPLOAD_TOTAL_BYTES,
+    allow_unknown_extensions=True,
 )
 
 
@@ -408,14 +410,48 @@ def _has_pdf_files(directory: Path | str) -> bool:
     )
 
 
-def _validate_xrd_pdf_payload(filename: str, data: bytes) -> None:
-    """Reject files that only have a .pdf suffix but are clearly not PDFs."""
-    if b"%PDF-" not in data[:1024]:
+def _raise_xrd_protected_file(filename: str, inspection: FileInspection) -> None:
+    if not inspection.protected:
+        return
+    if inspection.kind == "pdf":
+        description = "암호 또는 DRM으로 보호된 PDF"
+    elif inspection.kind == "zip":
+        description = "암호화된 ZIP"
+    else:
+        description = "암호 또는 DRM으로 보호된 Office 파일"
+    raise ApiException(
+        400,
+        "XRD_PROTECTED_FILE",
+        f"{filename} 파일은 {description}입니다. 보호를 해제한 뒤 다시 저장하세요.",
+        details={"filename": filename, "detectedType": inspection.kind, "protected": True},
+    )
+
+
+def _validate_xrd_pdf_payload(
+    filename: str,
+    data: bytes,
+    inspection: FileInspection | None = None,
+) -> FileInspection:
+    """Validate PDF content and protection state without trusting its suffix."""
+    inspection = inspection or inspect_file_bytes(data, filename=filename)
+    _raise_xrd_protected_file(filename, inspection)
+    if inspection.kind != "pdf":
         raise ApiException(
             400,
             "INVALID_XRD_PDF",
-            f"{filename} 파일은 실제 PDF 문서가 아닙니다. 원본 ICDD Card PDF를 다시 업로드하세요.",
+            (
+                f"{filename} 파일은 실제 PDF 문서가 아닙니다"
+                f"(감지 형식: {inspection.kind}). 원본 ICDD Card PDF를 다시 업로드하세요."
+            ),
         )
+    return inspection
+
+
+def _canonical_xrd_relative_path(relative_path: Path, inspection: FileInspection) -> Path:
+    suffix = inspection.canonical_suffix
+    if not suffix or relative_path.suffix.lower() == suffix:
+        return relative_path
+    return relative_path.with_suffix(suffix)
 
 
 def _ignore_bundle_path(path: Path) -> bool:
@@ -432,21 +468,37 @@ def _save_xrd_bundle_payload(
     image_paths: list[str],
 ) -> bool:
     suffix = relative_path.suffix.lower()
-    filename = relative_path.name
-    if suffix in RAW_EXTENSIONS:
-        path = _unique_path(directories["raw"], filename)
-        raw_paths.append(str(path))
-    elif suffix in PDF_EXTENSIONS:
-        _validate_xrd_pdf_payload(filename, data)
+    inspection = inspect_file_bytes(data, filename=relative_path.name)
+    _raise_xrd_protected_file(relative_path.name, inspection)
+
+    if suffix in PDF_EXTENSIONS and inspection.kind != "pdf":
+        _validate_xrd_pdf_payload(relative_path.name, data, inspection)
+
+    if inspection.kind == "pdf":
+        relative_path = _canonical_xrd_relative_path(relative_path, inspection)
+        filename = relative_path.name
+        _validate_xrd_pdf_payload(filename, data, inspection)
         pdf_parent = directories["pdf"] / relative_path.parent
         pdf_parent.mkdir(parents=True, exist_ok=True)
         path = _unique_path(pdf_parent, filename)
-    elif suffix in TABLE_EXTENSIONS:
-        path = _unique_path(directories["table"], filename)
-        table_paths.append(str(path))
-    elif suffix in IMAGE_EXTENSIONS:
+    elif inspection.kind == "image":
+        relative_path = _canonical_xrd_relative_path(relative_path, inspection)
+        filename = relative_path.name
         path = _unique_path(directories["image"], filename)
         image_paths.append(str(path))
+    elif inspection.kind == "xlsx":
+        relative_path = _canonical_xrd_relative_path(relative_path, inspection)
+        filename = relative_path.name
+        path = _unique_path(directories["table"], filename)
+        table_paths.append(str(path))
+    elif suffix in RAW_EXTENSIONS and inspection.kind in {"text", "csv", "tsv"}:
+        filename = relative_path.name
+        path = _unique_path(directories["raw"], filename)
+        raw_paths.append(str(path))
+    elif suffix in TABLE_EXTENSIONS and inspection.kind in {"text", "csv", "tsv"}:
+        filename = relative_path.name
+        path = _unique_path(directories["table"], filename)
+        table_paths.append(str(path))
     else:
         return False
     path.write_bytes(data)
@@ -478,10 +530,6 @@ def _save_xrd_zip_members(
             )
             if _ignore_bundle_path(relative_path):
                 continue
-            suffix = relative_path.suffix.lower()
-            if suffix not in (SUPPORTED_BUNDLE_EXTENSIONS - ZIP_EXTENSIONS):
-                unsupported.append(relative_path.as_posix())
-                continue
             if int(member.file_size or 0) > MAX_XRD_UPLOAD_BYTES:
                 raise ApiException(
                     413,
@@ -495,14 +543,15 @@ def _save_xrd_zip_members(
                     "XRD_FILE_TOO_LARGE",
                     f"{relative_path.name} 파일이 너무 큽니다. 파일당 최대 80MB입니다.",
                 )
-            _save_xrd_bundle_payload(
+            if not _save_xrd_bundle_payload(
                 relative_path=relative_path,
                 data=payload,
                 directories=directories,
                 raw_paths=raw_paths,
                 table_paths=table_paths,
                 image_paths=image_paths,
-            )
+            ):
+                unsupported.append(relative_path.as_posix())
     return unsupported
 
 
@@ -751,14 +800,6 @@ async def _save_uploads(
     saved: list[str] = []
     for index, upload in enumerate(files, start=1):
         filename = _safe_name(upload.filename, f"{field_name}-{index}")
-        suffix = Path(filename).suffix.lower()
-        if suffix not in allowed_extensions:
-            allowed = ", ".join(sorted(allowed_extensions))
-            raise ApiException(
-                400,
-                "INVALID_XRD_FILE_TYPE",
-                f"{filename} 형식은 지원하지 않습니다. 허용 형식: {allowed}",
-            )
         data = await upload.read()
         if len(data) > MAX_XRD_UPLOAD_BYTES:
             raise ApiException(
@@ -766,8 +807,33 @@ async def _save_uploads(
                 "XRD_FILE_TOO_LARGE",
                 f"{filename} 파일이 너무 큽니다. 파일당 최대 80MB입니다.",
             )
-        if suffix in PDF_EXTENSIONS:
-            _validate_xrd_pdf_payload(filename, data)
+        inspection = inspect_file_bytes(data, filename=filename)
+        _raise_xrd_protected_file(filename, inspection)
+        suffix = Path(filename).suffix.lower()
+        accepted = False
+        if allowed_extensions & PDF_EXTENSIONS:
+            _validate_xrd_pdf_payload(filename, data, inspection)
+            filename = Path(filename).with_suffix(".pdf").name
+            accepted = True
+        elif allowed_extensions & IMAGE_EXTENSIONS and inspection.kind == "image":
+            filename = Path(filename).with_suffix(inspection.canonical_suffix or suffix).name
+            accepted = True
+        elif allowed_extensions & TABLE_EXTENSIONS and inspection.kind in {"xlsx", "csv", "tsv", "text"}:
+            canonical = inspection.canonical_suffix if inspection.kind != "text" else suffix
+            filename = Path(filename).with_suffix(canonical or suffix).name
+            accepted = True
+        elif allowed_extensions & RAW_EXTENSIONS and inspection.kind in {"text", "csv", "tsv"}:
+            accepted = suffix in RAW_EXTENSIONS
+        if not accepted:
+            allowed = ", ".join(sorted(allowed_extensions))
+            raise ApiException(
+                400,
+                "INVALID_XRD_FILE_TYPE",
+                (
+                    f"{filename} 파일의 실제 형식({inspection.kind})은 {field_name} 입력으로 지원하지 않습니다. "
+                    f"허용 형식: {allowed}"
+                ),
+            )
         path = _unique_path(directory, filename)
         path.write_bytes(data)
         saved.append(str(path))
@@ -795,11 +861,7 @@ async def _save_xrd_bundle_uploads(
     for index, upload in enumerate(files or [], start=1):
         relative_path = _safe_relative_path(upload.filename, f"bundle-{index}")
         filename = relative_path.name
-        suffix = relative_path.suffix.lower()
-        if _ignore_bundle_path(relative_path) or (not suffix and filename.startswith(".")):
-            continue
-        if suffix not in SUPPORTED_BUNDLE_EXTENSIONS:
-            unsupported.append(str(relative_path))
+        if _ignore_bundle_path(relative_path) or filename.startswith("."):
             continue
 
         data = await upload.read()
@@ -810,7 +872,9 @@ async def _save_xrd_bundle_uploads(
                 f"{filename} 파일이 너무 큽니다. 파일당 최대 80MB입니다.",
             )
 
-        if suffix in ZIP_EXTENSIONS:
+        inspection = inspect_file_bytes(data, filename=filename)
+        _raise_xrd_protected_file(filename, inspection)
+        if inspection.kind == "zip":
             unsupported.extend(
                 _save_xrd_zip_members(
                     data=data,
@@ -822,14 +886,15 @@ async def _save_xrd_bundle_uploads(
                 )
             )
         else:
-            _save_xrd_bundle_payload(
+            if not _save_xrd_bundle_payload(
                 relative_path=relative_path,
                 data=data,
                 directories=directories,
                 raw_paths=raw_paths,
                 table_paths=table_paths,
                 image_paths=image_paths,
-            )
+            ):
+                unsupported.append(str(relative_path))
 
     if unsupported:
         preview = ", ".join(unsupported[:5])
@@ -870,11 +935,7 @@ def _save_xrd_bundle_session_files(
             f"bundle-{index}",
         )
         filename = relative_path.name
-        suffix = relative_path.suffix.lower()
-        if _ignore_bundle_path(relative_path) or (not suffix and filename.startswith(".")):
-            continue
-        if suffix not in SUPPORTED_BUNDLE_EXTENSIONS:
-            unsupported.append(str(relative_path))
+        if _ignore_bundle_path(relative_path) or filename.startswith("."):
             continue
         if path.stat().st_size > MAX_XRD_UPLOAD_BYTES:
             raise ApiException(
@@ -883,7 +944,9 @@ def _save_xrd_bundle_session_files(
                 f"{filename} 파일이 너무 큽니다. 파일당 최대 80MB입니다.",
             )
         data = path.read_bytes()
-        if suffix in ZIP_EXTENSIONS:
+        inspection = inspect_file_bytes(data, filename=filename)
+        _raise_xrd_protected_file(filename, inspection)
+        if inspection.kind == "zip":
             unsupported.extend(
                 _save_xrd_zip_members(
                     data=data,
@@ -895,14 +958,15 @@ def _save_xrd_bundle_session_files(
                 )
             )
         else:
-            _save_xrd_bundle_payload(
+            if not _save_xrd_bundle_payload(
                 relative_path=relative_path,
                 data=data,
                 directories=directories,
                 raw_paths=raw_paths,
                 table_paths=table_paths,
                 image_paths=image_paths,
-            )
+            ):
+                unsupported.append(str(relative_path))
 
     if unsupported:
         preview = ", ".join(unsupported[:5])
@@ -1189,7 +1253,7 @@ def build_xrd_page() -> str:
     <main class="xrd-main">
       <section class="xrd-panel">
         <form id="xrd-form">
-          <input class="xrd-hidden-input" type="file" id="xrd-bundle-files" name="files" multiple accept=".txt,.dat,.xy,.asc,.pdf,.xlsx,.csv,.tsv,.png,.jpg,.jpeg,.webp,.gif,.zip">
+          <input class="xrd-hidden-input" type="file" id="xrd-bundle-files" name="files" multiple>
           <input class="xrd-hidden-input" type="file" id="xrd-bundle-folder" name="files" multiple webkitdirectory directory>
           <div class="xrd-drop" id="xrd-drop">
             <div>
@@ -1857,12 +1921,13 @@ def build_xrd_page() -> str:
     }
     function classifyFile(file) {
       var name = file.name.toLowerCase();
+      if (name.charAt(0) === "." || name.indexOf("~$") === 0) return "skip";
       if (/\\.(txt|dat|xy|asc)$/.test(name)) return "raw";
       if (/\\.pdf$/.test(name)) return "pdf";
       if (/\\.(xlsx|csv|tsv)$/.test(name)) return "table";
       if (/\\.(png|jpe?g|webp|gif)$/.test(name)) return "image";
       if (/\\.zip$/.test(name)) return "zip";
-      return "skip";
+      return "content";
     }
     function addBundleItems(items) {
       var seen = new Set(bundleItems.map(function(item) {
@@ -1878,7 +1943,7 @@ def build_xrd_page() -> str:
       renderFileList();
     }
     function renderFileList() {
-      var counts = {raw: 0, pdf: 0, table: 0, image: 0, zip: 0, skip: 0};
+      var counts = {raw: 0, pdf: 0, table: 0, image: 0, zip: 0, content: 0, skip: 0};
       var files = bundleItems.map(function(item) {
         var type = classifyFile(item.file);
         counts[type] = (counts[type] || 0) + 1;
@@ -1892,7 +1957,7 @@ def build_xrd_page() -> str:
         fileList.appendChild(chip);
       });
       bundleMeta.textContent = files.length
-        ? "raw " + counts.raw + " · pdf " + counts.pdf + " · table " + counts.table + " · image " + counts.image + " · zip " + counts.zip
+        ? "raw " + counts.raw + " · pdf " + counts.pdf + " · table " + counts.table + " · image " + counts.image + " · zip " + counts.zip + " · 내용 검사 " + counts.content
         : "선택된 파일 없음";
     }
     function fileInputItems(input) {
@@ -2033,11 +2098,12 @@ def build_xrd_page() -> str:
     form.addEventListener("submit", async function(event) {
       event.preventDefault();
       var hasZip = bundleItems.some(function(item) { return classifyFile(item.file) === "zip"; });
-      if (!hasZip && !bundleItems.some(function(item) { return classifyFile(item.file) === "raw"; })) {
+      var hasContentCheck = bundleItems.some(function(item) { return classifyFile(item.file) === "content"; });
+      if (!hasZip && !hasContentCheck && !bundleItems.some(function(item) { return classifyFile(item.file) === "raw"; })) {
         setStatus("Bundle 안에 raw TXT 파일이 필요합니다.", true);
         return;
       }
-      if (!hasZip && !bundleItems.some(function(item) { return classifyFile(item.file) === "pdf"; })) {
+      if (!hasZip && !hasContentCheck && !bundleItems.some(function(item) { return classifyFile(item.file) === "pdf"; })) {
         setStatus("Bundle 안에 ICDD PDF 파일이 필요합니다.", true);
         return;
       }

@@ -70,6 +70,7 @@ class ChunkUploadStore:
         allowed_extensions: set[str],
         max_file_bytes: int,
         max_total_bytes: int,
+        allow_unknown_extensions: bool = False,
         session_ttl_seconds: int = DEFAULT_SESSION_TTL_SECONDS,
         read_chunk_bytes: int = DEFAULT_READ_CHUNK_BYTES,
     ) -> None:
@@ -78,6 +79,7 @@ class ChunkUploadStore:
         self.allowed_extensions = {item.lower() for item in allowed_extensions}
         self.max_file_bytes = max_file_bytes
         self.max_total_bytes = max_total_bytes
+        self.allow_unknown_extensions = allow_unknown_extensions
         self.session_ttl_seconds = session_ttl_seconds
         self.read_chunk_bytes = read_chunk_bytes
         self._sessions: dict[str, UploadSession] = {}
@@ -185,7 +187,7 @@ class ChunkUploadStore:
                 f"{self.code_prefix}_INVALID_FILE_TYPE",
                 f"숨김 파일은 업로드하지 않습니다: {relative.as_posix()}",
             )
-        if suffix not in self.allowed_extensions:
+        if not self.allow_unknown_extensions and suffix not in self.allowed_extensions:
             allowed = ", ".join(sorted(self.allowed_extensions))
             raise ApiException(
                 400,

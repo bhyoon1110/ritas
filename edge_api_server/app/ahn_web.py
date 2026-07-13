@@ -24,6 +24,7 @@ from rist_common import get_logger
 
 from .errors import ApiException
 from .config import Settings
+from .file_inspection import FileInspection, inspect_file_bytes, inspect_file_path
 from .error_archive import (
     ErrorArchive,
     error_archive as app_error_archive,
@@ -198,6 +199,75 @@ def _integrity_issue(path: str, reason: str, *, protected: bool = False) -> dict
     return {"path": path, "reason": reason, "protected": protected}
 
 
+def _expected_ahn_kinds(suffix: str) -> set[str]:
+    if suffix in IMAGE_EXTENSIONS:
+        return {"image"}
+    if suffix == ".docx":
+        return {"docx"}
+    if suffix in {".xlsx", ".xlsm"}:
+        return {"xlsx", "xlsm"}
+    if suffix == ".xlsb":
+        return {"xlsb"}
+    if suffix == ".xls":
+        return {"xls", "ole"}
+    if suffix == ".csv":
+        return {"csv", "text"}
+    if suffix == ".tsv":
+        return {"tsv", "text"}
+    if suffix == ".zip":
+        return {"zip"}
+    return set()
+
+
+def _ahn_canonical_suffix(inspection: FileInspection) -> str | None:
+    if inspection.kind == "image":
+        return inspection.canonical_suffix
+    if inspection.kind in {"docx", "xlsx", "xlsm", "xlsb", "xls", "csv", "tsv", "zip"}:
+        return inspection.canonical_suffix
+    return None
+
+
+def _inspection_protection_issue(display_path: str, inspection: FileInspection) -> dict[str, Any] | None:
+    if not inspection.protected:
+        return None
+    if inspection.kind == "pdf":
+        reason = "암호 또는 DRM으로 보호된 PDF 파일입니다. 보호를 해제한 뒤 다시 저장하세요."
+    elif inspection.kind == "zip":
+        reason = "암호화된 ZIP 파일입니다. 암호를 제거한 뒤 다시 압축하세요."
+    else:
+        reason = "암호 또는 DRM으로 보호된 Office 파일입니다. 보호를 해제한 뒤 새 파일로 저장하세요."
+    return _integrity_issue(display_path, reason, protected=True)
+
+
+def _normalize_ahn_content_path(path: Path, upload_root: Path) -> tuple[Path, FileInspection, dict[str, Any] | None]:
+    display_path = path.relative_to(upload_root).as_posix()
+    inspection = inspect_file_path(path)
+    protection_issue = _inspection_protection_issue(display_path, inspection)
+    if protection_issue:
+        return path, inspection, protection_issue
+    if inspection.kind == "empty":
+        return path, inspection, _integrity_issue(display_path, "빈 파일입니다.")
+
+    suffix = path.suffix.lower()
+    expected = _expected_ahn_kinds(suffix)
+    if expected and inspection.kind not in expected:
+        actual = inspection.kind if inspection.recognized else "알 수 없는 형식"
+        expected_label = "Office 파일" if suffix in OOXML_REQUIRED_MEMBERS or suffix == ".xls" else "지원 파일"
+        return path, inspection, _integrity_issue(
+            display_path,
+            f"확장자({suffix})와 실제 {expected_label} 형식({actual})이 일치하지 않습니다.",
+        )
+
+    canonical_suffix = _ahn_canonical_suffix(inspection)
+    if not expected and canonical_suffix:
+        target = _unique_path(path.with_suffix(canonical_suffix))
+        path.rename(target)
+        return target, inspection, None
+    if not expected and not canonical_suffix:
+        return path, inspection, None
+    return path, inspection, None
+
+
 def _ole_protection_marker(data: bytes) -> bool:
     markers = ("EncryptedPackage", "EncryptionInfo", "DRMContent", "DataSpaces")
     return any(
@@ -317,16 +387,31 @@ def _validate_zip_archive(path: Path, display_path: str) -> list[dict[str, Any]]
                 if total_bytes > MAX_AHN_UPLOAD_TOTAL_BYTES:
                     return [_integrity_issue(display_path, "압축 해제 후 전체 크기가 1.2GB를 초과합니다.")]
                 member_path = f"{display_path}::{member.filename}"
+                if Path(member.filename).name.startswith(".") or Path(member.filename).name.startswith("~$"):
+                    continue
                 suffix = Path(member.filename).suffix.lower()
-                if suffix in OOXML_REQUIRED_MEMBERS:
-                    data = BytesIO(archive.read(member))
-                    issues.extend(_validate_ooxml(data, suffix, member_path))
-                elif suffix == ".xls":
-                    data = BytesIO(archive.read(member))
-                    issues.extend(_validate_legacy_xls(data, member_path))
-                elif suffix in IMAGE_EXTENSIONS:
-                    with archive.open(member) as stream:
-                        issues.extend(_validate_image(stream, member_path))
+                data = archive.read(member)
+                inspection = inspect_file_bytes(data, filename=member.filename)
+                protection_issue = _inspection_protection_issue(member_path, inspection)
+                if protection_issue:
+                    issues.append(protection_issue)
+                    continue
+                expected = _expected_ahn_kinds(suffix)
+                if expected and inspection.kind not in expected:
+                    actual = inspection.kind if inspection.recognized else "알 수 없는 형식"
+                    issues.append(
+                        _integrity_issue(
+                            member_path,
+                            f"확장자({suffix})와 실제 파일 형식({actual})이 일치하지 않습니다.",
+                        )
+                    )
+                    continue
+                if inspection.kind in {"docx", "xlsx", "xlsm", "xlsb"}:
+                    issues.extend(_validate_ooxml(BytesIO(data), inspection.canonical_suffix or suffix, member_path))
+                elif inspection.kind in {"xls", "ole"}:
+                    issues.extend(_validate_legacy_xls(BytesIO(data), member_path))
+                elif inspection.kind == "image":
+                    issues.extend(_validate_image(BytesIO(data), member_path))
     except (zipfile.BadZipFile, RuntimeError, OSError) as exc:
         return [_integrity_issue(display_path, f"손상되었거나 올바르지 않은 ZIP 파일입니다: {exc}")]
     return issues
@@ -335,23 +420,28 @@ def _validate_zip_archive(path: Path, display_path: str) -> list[dict[str, Any]]
 def _validate_ahn_upload_files(upload_root: Path) -> dict[str, Any]:
     issues: list[dict[str, Any]] = []
     checked = 0
-    for path in sorted(upload_root.rglob("*"), key=lambda item: item.as_posix()):
+    normalized: list[dict[str, str]] = []
+    paths = sorted(upload_root.rglob("*"), key=lambda item: item.as_posix())
+    for path in paths:
         if not path.is_file() or path.name.startswith(".") or path.name.startswith("~$"):
             continue
-        suffix = path.suffix.lower()
-        if suffix not in AHN_SUPPORTED_EXTENSIONS:
-            continue
         checked += 1
+        original_path = path.relative_to(upload_root).as_posix()
+        path, inspection, issue = _normalize_ahn_content_path(path, upload_root)
+        if issue:
+            issues.append(issue)
+            continue
         display_path = path.relative_to(upload_root).as_posix()
-        if path.stat().st_size <= 0:
-            issues.append(_integrity_issue(display_path, "빈 파일입니다."))
-        elif suffix == ".zip":
+        if display_path != original_path:
+            normalized.append({"from": original_path, "to": display_path, "type": inspection.kind})
+        suffix = path.suffix.lower()
+        if inspection.kind == "zip":
             issues.extend(_validate_zip_archive(path, display_path))
-        elif suffix in OOXML_REQUIRED_MEMBERS:
+        elif inspection.kind in {"docx", "xlsx", "xlsm", "xlsb"}:
             issues.extend(_validate_ooxml(path, suffix, display_path))
-        elif suffix == ".xls":
+        elif inspection.kind in {"xls", "ole"}:
             issues.extend(_validate_legacy_xls(path, display_path))
-        elif suffix in IMAGE_EXTENSIONS:
+        elif inspection.kind == "image":
             issues.extend(_validate_image(path, display_path))
 
     if issues:
@@ -366,7 +456,11 @@ def _validate_ahn_upload_files(upload_root: Path) -> dict[str, Any]:
             f"TEM 업로드 파일 검증에 실패했습니다. {preview}{more}",
             details={"checkedFileCount": checked, "invalidFiles": issues},
         )
-    return {"checkedFileCount": checked, "invalidFileCount": 0}
+    return {
+        "checkedFileCount": checked,
+        "invalidFileCount": 0,
+        "normalizedFiles": normalized,
+    }
 
 
 def _extract_zip_file(path: Path, target_root: Path) -> int:
@@ -383,9 +477,6 @@ def _extract_zip_file(path: Path, target_root: Path) -> int:
                 continue
             relative = _safe_relative_path(member.filename, "zip-file")
             if "__MACOSX" in relative.parts or relative.name.startswith("."):
-                continue
-            suffix = relative.suffix.lower()
-            if suffix not in (AHN_SUPPORTED_EXTENSIONS - {".zip"}):
                 continue
             size = int(member.file_size or 0)
             if size > MAX_AHN_UPLOAD_FILE_BYTES:
@@ -405,6 +496,16 @@ def _extract_zip_file(path: Path, target_root: Path) -> int:
             destination.parent.mkdir(parents=True, exist_ok=True)
             with archive.open(member) as source, destination.open("wb") as output:
                 shutil.copyfileobj(source, output)
+            normalized, _inspection, issue = _normalize_ahn_content_path(destination, target_root)
+            if issue:
+                normalized.unlink(missing_ok=True)
+                continue
+            if not _ahn_canonical_suffix(_inspection):
+                normalized.unlink(missing_ok=True)
+                continue
+            if normalized.suffix.lower() == ".zip":
+                normalized.unlink(missing_ok=True)
+                continue
             saved_count += 1
     return saved_count
 
@@ -430,15 +531,11 @@ async def _save_ahn_uploads(files: list[UploadFile] | None, upload_root: Path) -
 
     upload_root.mkdir(parents=True, exist_ok=True)
     saved: list[str] = []
-    unsupported: list[str] = []
     total_bytes = 0
     for index, upload in enumerate(files, start=1):
         relative = _safe_relative_path(upload.filename, f"ahn-file-{index}")
         suffix = relative.suffix.lower()
         if not suffix and relative.name.startswith("."):
-            continue
-        if suffix not in AHN_SUPPORTED_EXTENSIONS:
-            unsupported.append(relative.as_posix())
             continue
 
         destination = _unique_path(upload_root / relative)
@@ -473,15 +570,6 @@ async def _save_ahn_uploads(files: list[UploadFile] | None, upload_root: Path) -
             continue
         saved.append(destination.relative_to(upload_root).as_posix())
 
-    if unsupported:
-        preview = ", ".join(unsupported[:5])
-        more = f" 외 {len(unsupported) - 5}개" if len(unsupported) > 5 else ""
-        allowed = ", ".join(sorted(AHN_SUPPORTED_EXTENSIONS))
-        raise ApiException(
-            400,
-            "INVALID_TEM_FILE_TYPE",
-            f"지원하지 않는 파일이 포함되어 있습니다: {preview}{more}. 허용 형식: {allowed}",
-        )
     if not saved:
         raise ApiException(400, "TEM_FILES_REQUIRED", "분석 가능한 TEM 파일이 없습니다.")
     return saved
@@ -502,13 +590,6 @@ async def _write_upload_chunk(
     suffix = relative.suffix.lower()
     if not suffix and relative.name.startswith("."):
         raise ApiException(400, "INVALID_TEM_FILE_TYPE", f"숨김 파일은 업로드하지 않습니다: {relative}")
-    if suffix not in AHN_SUPPORTED_EXTENSIONS:
-        allowed = ", ".join(sorted(AHN_SUPPORTED_EXTENSIONS))
-        raise ApiException(
-            400,
-            "INVALID_TEM_FILE_TYPE",
-            f"지원하지 않는 파일입니다: {relative.as_posix()}. 허용 형식: {allowed}",
-        )
     if total_size <= 0:
         raise ApiException(400, "TEM_EMPTY_FILE", f"빈 파일은 업로드하지 않습니다: {relative.name}")
     if total_size > MAX_AHN_UPLOAD_FILE_BYTES:
@@ -1337,7 +1418,7 @@ def build_ahn_page() -> str:
     <main class="ahn-main">
       <section class="ahn-panel">
         <form id="ahn-form">
-          <input class="ahn-hidden-input" type="file" id="ahn-bundle-files" name="files" multiple accept=".tif,.tiff,.png,.jpg,.jpeg,.bmp,.webp,.docx,.xlsx,.xls,.xlsm,.xlsb,.csv,.tsv,.zip">
+          <input class="ahn-hidden-input" type="file" id="ahn-bundle-files" name="files" multiple>
           <input class="ahn-hidden-input" type="file" id="ahn-bundle-folder" name="files" multiple webkitdirectory directory>
           <div class="ahn-drop" id="ahn-drop">
             <div>
@@ -1560,11 +1641,12 @@ def build_ahn_page() -> str:
     }
     function classifyFile(file) {
       var name = file.name.toLowerCase();
+      if (name.charAt(0) === "." || name.indexOf("~$") === 0) return "skip";
       if (/\\.(tif|tiff|png|jpe?g|bmp|webp)$/.test(name)) return "image";
       if (/\\.docx$/.test(name)) return "docx";
       if (/\\.(xlsx|xls|xlsm|xlsb|csv|tsv)$/.test(name)) return "table";
       if (/\\.zip$/.test(name)) return "zip";
-      return "skip";
+      return "content";
     }
     function classifySection(path) {
       var lowered = String(path || "").toLowerCase().split("/");

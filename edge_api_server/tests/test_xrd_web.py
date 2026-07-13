@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from io import BytesIO
+from pathlib import Path
 import time
 import unicodedata
 import zipfile
@@ -353,7 +354,9 @@ def test_xrd_chunked_upload_session_retries_and_builds_report(tmp_path) -> None:
         pdf_response = client.post(
             f"/api/v1/xrd/upload-sessions/{upload_id}/chunks",
             data={
-                "relative_path": f"bundle/ICDD Card/{pdf_name}",
+                "relative_path": (
+                    f"bundle/ICDD Card/{Path(pdf_name).with_suffix('.payload').name}"
+                ),
                 "offset": "0",
                 "total_size": str(len(pdf_bytes)),
                 "chunk_index": "0",
@@ -433,6 +436,41 @@ def test_xrd_analyze_rejects_file_with_pdf_suffix_but_no_pdf_header() -> None:
     assert "INVALID_XRD_PDF" in response.text
     assert "not-a-pdf.pdf" in response.text
     assert "실제 PDF 문서가 아닙니다" in response.text
+
+
+def test_xrd_analyze_accepts_pdf_content_with_unknown_extension(tmp_path) -> None:
+    raw = b"10 1\n20 3\n30 2\n"
+    pdf_name, pdf_bytes = _synthetic_pdf_upload(tmp_path)
+
+    with TestClient(create_xrd_preview_app()) as client:
+        response = client.post(
+            "/api/v1/xrd/analyze",
+            files=[
+                ("files", ("sample.txt", raw, "text/plain")),
+                ("files", (Path(pdf_name).with_suffix(".payload").name, pdf_bytes, "application/octet-stream")),
+            ],
+        )
+
+    assert response.status_code == 200
+    assert "sample Report" in response.text
+
+
+def test_xrd_analyze_rejects_protected_pdf_from_content() -> None:
+    raw = b"10 1\n20 3\n30 2\n"
+    protected_pdf = b"%PDF-1.7\n1 0 obj\n<< /Encrypt 9 0 R >>\n%%EOF\n"
+
+    with TestClient(create_xrd_preview_app()) as client:
+        response = client.post(
+            "/api/v1/xrd/analyze",
+            files=[
+                ("files", ("sample.txt", raw, "text/plain")),
+                ("files", ("card.payload", protected_pdf, "application/octet-stream")),
+            ],
+        )
+
+    assert response.status_code == 400
+    assert "XRD_PROTECTED_FILE" in response.text
+    assert "DRM" in response.text or "암호" in response.text
 
 
 def test_xrd_analyze_keeps_legacy_split_upload_fields(tmp_path) -> None:

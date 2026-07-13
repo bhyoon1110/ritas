@@ -62,8 +62,8 @@ def test_ahn_workspace_contains_folder_upload_controls() -> None:
     assert 'id="ahn-download-package"' in page
     assert 'id="ahn-upload-progress"' in page
     assert 'aria-disabled="true"' in page
-    assert ".xlsm" in page
-    assert ".xlsb" in page
+    assert "xlsm" in page
+    assert "xlsb" in page
     assert "/api/v1/tem/upload-sessions" in page
     assert "/api/v1/tem/example" in page
     assert "/api/v1/tem/report/jobs/" in page
@@ -389,6 +389,53 @@ def test_ahn_chunked_upload_rejects_drm_or_encrypted_office_before_report_job() 
     assert payload["code"] == "TEM_PROTECTED_FILE"
     assert "Project 1_Protected Point.docx" in payload["message"]
     assert "DRM" in payload["message"] or "암호" in payload["message"]
+
+
+def test_ahn_validation_recovers_docx_with_unknown_extension(tmp_path) -> None:
+    upload_root = tmp_path / "upload"
+    source = upload_root / "Bundle" / "reports" / "Project 1_Test MAP.payload"
+    source.parent.mkdir(parents=True)
+    source.write_bytes(_minimal_ooxml_bytes(document=True))
+
+    result = ahn_web._validate_ahn_upload_files(upload_root)
+
+    normalized = upload_root / "Bundle" / "reports" / "Project 1_Test MAP.docx"
+    assert normalized.exists()
+    assert not source.exists()
+    assert result["normalizedFiles"] == [
+        {
+            "from": "Bundle/reports/Project 1_Test MAP.payload",
+            "to": "Bundle/reports/Project 1_Test MAP.docx",
+            "type": "docx",
+        }
+    ]
+
+
+def test_ahn_chunked_upload_detects_protected_office_with_unknown_extension() -> None:
+    protected = (
+        ahn_web.OLE_COMPOUND_MAGIC
+        + b"\x00" * 128
+        + "EncryptedPackage".encode("utf-16le")
+    )
+
+    with TestClient(create_tem_preview_app()) as client:
+        upload_id = client.post("/api/v1/tem/upload-sessions").json()["uploadId"]
+        chunk_response = client.post(
+            f"/api/v1/tem/upload-sessions/{upload_id}/chunks",
+            data={
+                "relative_path": "Bundle/reports/Project 1_Protected.payload",
+                "offset": "0",
+                "total_size": str(len(protected)),
+                "chunk_index": "0",
+                "chunk_count": "1",
+            },
+            files={"file": ("protected.payload", protected, "application/octet-stream")},
+        )
+        assert chunk_response.status_code == 200
+        complete_response = client.post(f"/api/v1/tem/upload-sessions/{upload_id}/complete")
+
+    assert complete_response.status_code == 400
+    assert complete_response.json()["code"] == "TEM_PROTECTED_FILE"
 
 
 def test_ahn_analyze_rejects_corrupt_image_before_report_job() -> None:
