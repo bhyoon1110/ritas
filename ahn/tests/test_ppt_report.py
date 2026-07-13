@@ -590,7 +590,10 @@ def test_point_eds_spectrum_tables_create_row_detail_slides(tmp_path, monkeypatc
         summary_units.append(tables[0].cell(0, 0).text)
         anchor = _pictures(slide)[0]
         assert anchor.left <= Inches(0.3)
-        assert anchor.width >= Inches(4.2)
+        assert anchor.width == Inches(4.0)
+        assert anchor.height == Inches(4.0)
+        assert anchor.crop_left > 0
+        assert anchor.crop_right > 0
     assert summary_units == ["Wt%", "At%"]
     summary_table_fonts = []
     for slide in list(prs.slides)[:2]:
@@ -608,6 +611,17 @@ def test_point_eds_spectrum_tables_create_row_detail_slides(tmp_path, monkeypatc
     assert summary_table_fonts
     assert min(summary_table_fonts) >= Pt(9)
     detail_table_fonts = []
+    detail_anchor = _pictures(prs.slides[2])[0]
+    detail_graph = _pictures(prs.slides[2])[1]
+    assert detail_anchor.width == Inches(4.0)
+    assert detail_anchor.height == Inches(4.0)
+    assert detail_anchor.crop_left > 0
+    assert detail_anchor.crop_right > 0
+    assert detail_graph.left == Inches(4.55)
+    assert detail_graph.width == Inches(5.98)
+    assert detail_graph.top >= Inches(3.08)
+    assert detail_graph.top + detail_graph.height <= Inches(3.08) + Inches(4.05)
+    assert detail_graph.height <= Inches(4.05)
     for shape in prs.slides[2].shapes:
         if not getattr(shape, "has_table", False):
             continue

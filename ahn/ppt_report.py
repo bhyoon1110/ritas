@@ -365,6 +365,28 @@ def _add_fit_picture(slide, path: Path, left, top, width, height, tmp_dir: Path)
     return slide.shapes.add_picture(str(converted), pic_left, pic_top, width=pic_w, height=pic_h)
 
 
+def _add_cover_picture(slide, path: Path, left, top, width, height, tmp_dir: Path):
+    """Fill a fixed slot while preserving aspect ratio and cropping centrally."""
+    converted = _convert_image(path, tmp_dir)
+    image_w, image_h = _image_size(converted)
+    if image_w <= 0 or image_h <= 0 or width <= 0 or height <= 0:
+        return None
+    picture = slide.shapes.add_picture(str(converted), left, top, width=width, height=height)
+    image_aspect = image_w / image_h
+    slot_aspect = width / height
+    if image_aspect > slot_aspect:
+        visible_fraction = slot_aspect / image_aspect
+        crop = max(0.0, (1.0 - visible_fraction) / 2.0)
+        picture.crop_left = crop
+        picture.crop_right = crop
+    elif image_aspect < slot_aspect:
+        visible_fraction = image_aspect / slot_aspect
+        crop = max(0.0, (1.0 - visible_fraction) / 2.0)
+        picture.crop_top = crop
+        picture.crop_bottom = crop
+    return picture
+
+
 def _caption_slot_for_image(slot: tuple[int, int, int, int]) -> tuple[int, int, int, int]:
     return (slot[0], slot[1] + slot[3] + CAPTION_GAP, slot[2], CAPTION_HEIGHT)
 
@@ -1167,7 +1189,7 @@ def _valid_point_tables(tables: list[list[list[str]]]) -> list[list[list[str]]]:
 
 
 def _eds_point_anchor_slot() -> tuple[int, int, int, int]:
-    return Inches(0.26), Inches(1.28), Inches(4.25), Inches(4.44)
+    return Inches(0.26), Inches(1.55), Inches(4.0), Inches(4.0)
 
 
 def _eds_point_table_area() -> tuple[int, int, int, int]:
@@ -1189,7 +1211,7 @@ def _add_eds_point_summary_slide(
     for table in point_tables:
         slide = _add_eds_slide(prs, template, "eds_table", title)
         if first_image:
-            _add_fit_picture(slide, first_image, *_eds_point_anchor_slot(), tmp_dir)
+            _add_cover_picture(slide, first_image, *_eds_point_anchor_slot(), tmp_dir)
         _add_point_composition_table(slide, table, _eds_right_slot())
 
 
@@ -1215,7 +1237,7 @@ def _add_eds_point_detail_slide(
 ) -> None:
     slide = _add_eds_slide(prs, template, "eds_line_first", f"{title}_{spectrum_label}")
     if first_image:
-        _add_fit_picture(slide, first_image, *_eds_point_anchor_slot(), tmp_dir)
+        _add_cover_picture(slide, first_image, *_eds_point_anchor_slot(), tmp_dir)
     slots = _eds_table_slots(len(point_tables), _eds_point_table_area())
     for table, slot in zip(point_tables, slots):
         _add_point_composition_table(slide, table, slot, body_index=body_index)
