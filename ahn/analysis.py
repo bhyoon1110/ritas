@@ -472,10 +472,13 @@ def _ocr_label_box(image: Image.Image, box: tuple[int, int, int, int], pytessera
         if not text:
             continue
         texts.append(text)
-        values.extend(_candidate_values_from_text(text, require_unit=False))
-    low_values = [value for value in values if value < 10]
-    if low_values:
-        values = low_values
+        parsed_values = _candidate_values_from_text(text, require_unit=False)
+        # Each detected box represents one white measurement label. Keep the
+        # first readable (grayscale) variant; threshold OCR is only a fallback
+        # and can invent a leading digit from the measurement line.
+        if parsed_values and not values:
+            values = parsed_values
+
     return values, texts
 
 
@@ -572,7 +575,6 @@ def _ocr_full_image(image: Image.Image, pytesseract: Any) -> tuple[list[float], 
     variants.append(("sharp", ImageOps.autocontrast(image).filter(ImageFilter.SHARPEN)))
 
     text_parts: list[str] = []
-    variant_values: list[list[float]] = []
     for label, variant in variants:
         try:
             text = _run_tesseract(pytesseract, variant, config="--psm 11", timeout=5).strip()
@@ -583,29 +585,30 @@ def _ocr_full_image(image: Image.Image, pytesseract: Any) -> tuple[list[float], 
         text_parts.append(f"[{label}]\n{text}")
         values = _candidate_values_from_text(text, require_unit=True)
         if values:
-            variant_values.append(values)
-    return _select_supported_ocr_values(variant_values), "\n\n".join(text_parts)
+            # The full image preserves italic leading digits that can be cut
+            # off by a tight white-label crop. A unit-confirmed result is
+            # therefore enough; avoid running the slower fallback variants.
+            return values, "\n\n".join(text_parts)
+    return [], "\n\n".join(text_parts)
 
 
-def _select_supported_ocr_values(variant_values: list[list[float]]) -> list[float]:
-    if not variant_values:
-        return []
-    primary = max(enumerate(variant_values), key=lambda item: (len(item[1]), -item[0]))[1]
-    supported: list[float] = []
-    for index, value in enumerate(primary):
-        close_values = [value]
-        for candidate_values in variant_values:
-            if candidate_values is primary or index >= len(candidate_values):
-                continue
-            candidate = candidate_values[index]
-            if abs(candidate - value) <= 0.25:
-                close_values.append(candidate)
-        if len(close_values) >= 2:
-            close_values.sort()
-            supported.append(round(close_values[len(close_values) // 2], 3))
-        else:
-            supported.append(value)
-    return supported
+def _reconcile_coating_ocr_values(label_values: list[float], full_values: list[float]) -> list[float]:
+    """Prefer unit-confirmed full-image readings over narrow label crops."""
+    if not full_values:
+        return label_values
+    if not label_values:
+        return full_values
+
+    matched_full_values = [
+        value
+        for value in full_values
+        if any(abs(value - label_value) <= 0.25 for label_value in label_values)
+    ]
+    # When every localized label has a matching full-image reading, discard
+    # additional full-image candidates produced by measurement-line artifacts.
+    if len(matched_full_values) >= len(label_values):
+        return matched_full_values
+    return full_values
 
 
 def _dedupe_values(values: list[float]) -> list[float]:
@@ -638,9 +641,10 @@ def _ocr_thickness_nm(path: Path) -> CoatingOcrResult:
     try:
         image = Image.open(path)
         image = ImageOps.exif_transpose(image).convert("L")
-        values, text = _ocr_label_boxes(image, pytesseract)
-        if not values:
-            values, text = _ocr_full_image(image, pytesseract)
+        label_values, label_text = _ocr_label_boxes(image, pytesseract)
+        full_values, full_text = _ocr_full_image(image, pytesseract)
+        values = _reconcile_coating_ocr_values(label_values, full_values)
+        text = "\n\n".join(part for part in (label_text, full_text) if part)
     except Exception as exc:  # pragma: no cover - depends on OCR runtime.
         return CoatingOcrResult(note=f"자동 판독 실패: {exc}", review_required=True)
 

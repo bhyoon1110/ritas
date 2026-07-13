@@ -4,10 +4,11 @@ from ahn.analysis import (
     COATING_LABEL_DETECTION_MAX_DIMENSION,
     CoatingOcrResult,
     _candidate_values_from_text,
-    _select_supported_ocr_values,
+    _reconcile_coating_ocr_values,
     collect_coating_samples,
     collect_project,
     extract_magnification,
+    _ocr_label_box,
     _ocr_label_boxes,
 )
 from PIL import Image
@@ -31,9 +32,6 @@ def test_coating_ocr_candidate_parser_keeps_multiple_labels() -> None:
     assert _candidate_values_from_text("236.12 nm\n200 nm") == [236.12]
     assert _candidate_values_from_text("15-74 rn") == [15.74]
     assert _candidate_values_from_text("15-74") == []
-    assert _select_supported_ocr_values(
-        [[14.39, 19.08, 14.54], [14.59, 14.54], [14.59, 19.08, 14.54]]
-    ) == [14.59, 19.08, 14.54]
 
 
 def test_coating_label_detection_normalizes_high_resolution_image(monkeypatch) -> None:
@@ -71,6 +69,29 @@ def test_coating_label_detection_normalizes_high_resolution_image(monkeypatch) -
     assert text == "3.87 nm"
     assert seen_sizes
     assert max(seen_sizes[0]) == COATING_LABEL_DETECTION_MAX_DIMENSION
+
+
+def test_coating_ocr_prefers_full_image_value_when_label_loses_leading_digit() -> None:
+    assert _reconcile_coating_ocr_values([5.74], [15.74]) == [15.74]
+    assert _reconcile_coating_ocr_values([2.21], [12.21]) == [12.21]
+
+
+def test_coating_ocr_keeps_label_value_when_full_image_has_no_measurement() -> None:
+    assert _reconcile_coating_ocr_values([3.87], []) == [3.87]
+
+
+def test_coating_ocr_discards_extra_full_image_artifact() -> None:
+    assert _reconcile_coating_ocr_values([7.66], [7.66, 17.661]) == [7.66]
+
+
+def test_coating_label_ocr_uses_threshold_variant_only_as_fallback(monkeypatch) -> None:
+    image = Image.new("L", (600, 600), color=80)
+    responses = iter(["7.66rm", "17.661"])
+    monkeypatch.setattr("ahn.analysis._run_tesseract", lambda *_args, **_kwargs: next(responses))
+
+    values, _texts = _ocr_label_box(image, (240, 300, 120, 35), object())
+
+    assert values == [7.66]
 
 
 def test_collect_project_reads_testdata_bundle() -> None:
