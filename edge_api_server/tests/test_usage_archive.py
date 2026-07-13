@@ -217,6 +217,10 @@ def test_operations_console_has_usage_and_error_tabs(tmp_path: Path) -> None:
     assert "보고서 완료" in operations.text
     assert "클라이언트 / 접속 위치" in operations.text
     assert "접속 IP" in operations.text
+    assert 'class="detail-backdrop"' in operations.text
+    assert 'role="dialog"' in operations.text
+    assert "function closeDetail()" in operations.text
+    assert "position:fixed" in operations.text
     assert errors.status_code == 200
     assert 'data-default-tab="errors"' in errors.text
     assert client.get("/api/v1/usage-events").json()["count"] == 0
