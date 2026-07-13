@@ -24,6 +24,11 @@ DEFAULT_SPRING_CALLBACK_URL = "http://127.0.0.1:8080/api/v1/edge/reports"
 @dataclass(frozen=True)
 class Settings:
     storage_root: Path
+    error_archive_root: Path | None = None
+    error_retention_days: int = 30
+    error_capture_files: bool = True
+    error_max_file_bytes: int = 512 * 1024 * 1024
+    error_max_total_bytes: int = 2 * 1024 * 1024 * 1024
     ftir_assignment_library_dir: Path = (
         PROJECT_DIR / "data" / "ftir_assignment_libraries"
     )
@@ -68,6 +73,9 @@ class Settings:
         storage_root = Path(
             os.getenv("RIST_STORAGE_ROOT", default_storage_root)
         ).expanduser()
+        error_archive_root = Path(
+            os.getenv("RIST_ERROR_ARCHIVE_ROOT", str(storage_root / "errors"))
+        ).expanduser()
         ftir_assignment_library_dir = Path(
             os.getenv(
                 "RIST_FTIR_ASSIGNMENT_LIBRARY_DIR",
@@ -82,6 +90,32 @@ class Settings:
         )
         return cls(
             storage_root=storage_root,
+            error_archive_root=error_archive_root,
+            error_retention_days=max(
+                1, int(os.getenv("RIST_ERROR_RETENTION_DAYS", "30"))
+            ),
+            error_capture_files=os.getenv(
+                "RIST_ERROR_CAPTURE_FILES", "true"
+            ).lower()
+            in {"1", "true", "yes", "on"},
+            error_max_file_bytes=max(
+                1,
+                int(
+                    os.getenv(
+                        "RIST_ERROR_MAX_FILE_BYTES",
+                        str(512 * 1024 * 1024),
+                    )
+                ),
+            ),
+            error_max_total_bytes=max(
+                1,
+                int(
+                    os.getenv(
+                        "RIST_ERROR_MAX_TOTAL_BYTES",
+                        str(2 * 1024 * 1024 * 1024),
+                    )
+                ),
+            ),
             ftir_assignment_library_dir=ftir_assignment_library_dir,
             ftir_assignment_library_delete_enabled=os.getenv(
                 "RIST_FTIR_ASSIGNMENT_LIBRARY_DELETE_ENABLED",

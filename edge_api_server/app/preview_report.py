@@ -17,6 +17,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from .config import Settings
+from .error_archive import ErrorArchive, record_background_error
 from .report.builders import get_builder
 from .llm_client import LlmError, LocalLlmClient
 from .report import annotator
@@ -47,6 +48,7 @@ class PreviewReportJob:
     tmp_root: Path | None = None
     package_path: Path | None = None
     error: str | None = None
+    error_event_id: str | None = None
 
     def to_dict(self, *, download_url: str | None = None) -> dict[str, Any]:
         payload = {
@@ -61,6 +63,8 @@ class PreviewReportJob:
         }
         if self.error:
             payload["error"] = self.error
+        if self.error_event_id:
+            payload["errorEventId"] = self.error_event_id
         if download_url and self.status == "completed":
             payload["downloadUrl"] = download_url
         return payload
@@ -147,7 +151,7 @@ class PreviewReportJobStore:
             job.package_path = package_path
             job.updated_at = _utc_now()
 
-    def fail(self, job_id: str, error: str) -> None:
+    def fail(self, job_id: str, error: str, *, error_event_id: str | None = None) -> None:
         with self._lock:
             job = self._jobs.get(job_id)
             if job is None:
@@ -157,6 +161,7 @@ class PreviewReportJobStore:
             job.progress_pct = 100
             job.message = "보고서 생성에 실패했습니다."
             job.error = error
+            job.error_event_id = error_event_id
             job.updated_at = _utc_now()
 
     def remove(self, job_id: str) -> None:
@@ -463,6 +468,9 @@ def run_preview_report_job(
     equipment_code: str = "",
     operator_id: str = "",
     settings: Any | None = None,
+    error_archive: ErrorArchive | None = None,
+    error_project: str = "EDGE",
+    failure_file_blobs: list[tuple[str, bytes]] | None = None,
 ) -> None:
     try:
         store.update(
@@ -501,7 +509,16 @@ def run_preview_report_job(
         )
         store.complete(job_id, tmp_root=tmp_root, package_path=package)
     except Exception as exc:
-        store.fail(job_id, str(exc))
+        event_id = record_background_error(
+            error_archive,
+            project=error_project,
+            code=f"{error_project.replace('-', '_')}_REPORT_BUILD_FAILED",
+            message=str(exc),
+            exception=exc,
+            job_id=job_id,
+            file_blobs=failure_file_blobs or (),
+        )
+        store.fail(job_id, str(exc), error_event_id=event_id)
 
 
 def _sample_label_keys(value: Any) -> set[str]:

@@ -8,7 +8,6 @@ import os
 import plotly
 import plotly.graph_objects as go
 from fastapi import APIRouter, BackgroundTasks, FastAPI, File, Form, Request, UploadFile
-from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
 
@@ -31,7 +30,9 @@ from rist_common.plotting import fig_to_responsive_html, peak_sensitivity_js
 from . import assignment_suggestions
 from .assignment_suggestions import AssignmentSuggestionRequest
 from .config import Settings
-from .errors import ApiException, api_exception_handler, validation_exception_handler
+from .errors import ApiException
+from .error_archive import install_error_management
+from .error_archive import error_archive as app_error_archive
 from .preview_report import (
     PreviewReportJob,
     PreviewReportSendRequest,
@@ -5925,6 +5926,8 @@ def create_raman_preview_report(
     operator_id: str = Form(default="", alias="operatorId"),
 ) -> FileResponse:
     uploaded = _uploaded_raman_files(files)
+    request.state.error_project = "RAMAN"
+    request.state.error_file_blobs = uploaded
     try:
         analysis_payload = parse_analysis_payload(analysis_json, figure_json)
         image_bytes = decode_figure_image(figure_image)
@@ -5963,6 +5966,8 @@ def _create_raman_report_job_from_uploaded(
     equipment_code: str,
     operator_id: str,
 ) -> PreviewReportJob:
+    request.state.error_project = "RAMAN"
+    request.state.error_file_blobs = uploaded
     try:
         analysis_payload = parse_analysis_payload(analysis_json, figure_json)
         image_bytes = decode_figure_image(figure_image)
@@ -5986,6 +5991,9 @@ def _create_raman_report_job_from_uploaded(
         equipment_code=equipment_code,
         operator_id=operator_id,
         settings=getattr(request.app.state, "settings", None),
+        error_archive=app_error_archive(request.app),
+        error_project="RAMAN",
+        failure_file_blobs=uploaded,
     )
     return job
 
@@ -5999,6 +6007,7 @@ def create_raman_report_upload_session() -> dict:
 
 @router.post("/api/v1/raman/report/upload-sessions/{upload_id}/chunks", tags=["raman"])
 async def upload_raman_report_chunk(
+    request: Request,
     upload_id: str,
     relative_path: str = Form(...),
     offset: int = Form(...),
@@ -6008,6 +6017,8 @@ async def upload_raman_report_chunk(
     file: UploadFile = File(...),
 ) -> dict:
     session = raman_report_upload_store.get(upload_id)
+    request.state.error_project = "RAMAN"
+    request.state.error_source_paths = [session.input_root]
     file_state = await raman_report_upload_store.write_chunk(
         session,
         relative_path=relative_path,
@@ -6048,6 +6059,8 @@ def complete_raman_report_upload_session(
             return _report_job_response(existing_job, prefix="/api/v1/raman/report/jobs")
 
     session = raman_report_upload_store.get(upload_id)
+    request.state.error_project = "RAMAN"
+    request.state.error_source_paths = [session.input_root]
     incomplete_files = raman_report_upload_store.incomplete_files(session)
     if incomplete_files:
         preview = ", ".join(incomplete_files[:5])
@@ -6168,7 +6181,8 @@ def send_raman_preview_report_job(
 
 def create_raman_preview_app() -> FastAPI:
     app = FastAPI(title="RIST Raman Preview")
-    app.add_exception_handler(ApiException, api_exception_handler)
-    app.add_exception_handler(RequestValidationError, validation_exception_handler)
+    settings = Settings.from_env()
+    app.state.settings = settings
+    install_error_management(app, settings)
     app.include_router(router)
     return app

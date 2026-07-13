@@ -36,10 +36,15 @@ export RIST_LLM_MODEL=gemma4-e4b
 | Edge 공개 주소 | `EDGE_SERVER_SCHEME/HOST/PORT` | `RIST_EDGE_PUBLIC_BASE_URL` | base URL은 scheme/host/port에서 자동 조합 |
 | Edge bind host/port | `EDGE_BIND_HOST`, `EDGE_SERVER_PORT` | `RIST_EDGE_BIND_HOST`, `RIST_EDGE_API_PORT` | systemd 기본은 production 프로파일 사용 |
 | 작업 저장소 | 앱 기본값 | `RIST_STORAGE_ROOT` | 기본값은 `<edge_api_server>/data/jobs` |
+| 오류 보관소 | 작업 저장소 하위 `errors` | `RIST_ERROR_*` | 로그·스택 트레이스·실패 파일을 `/errors`에서 통합 조회 |
 | Spring Boot 수신 URL | 앱 기본값 | `RIST_SPRING_CALLBACK_URL` | 기본값은 `http://127.0.0.1:8080/api/v1/edge/reports` |
 | LLM 주소/모델 | 앱 기본값 | `RIST_LLM_*` | 기본값은 로컬 vLLM `http://127.0.0.1:8001`, `gemma4-e4b` |
 | DB 접속 | 없음 | `RIST_DB_*` | 비밀번호가 포함되므로 `edge.env`에만 둔다 |
 | PDF 한글 폰트 | 없음 | `RIST_PDF_FONT_PATH` | 서버 설치 폰트 경로 |
+
+오류 관리 화면은 `http://<Edge 주소>:8000/errors`이다. 기본적으로 오류 기록은
+30일간 보관하며, 실패 당시의 업로드 파일도 함께 복사한다. 민감 파일을 보관하지
+않으려면 `RIST_ERROR_CAPTURE_FILES=false`로 설정하고 서비스를 재시작한다.
 
 현재 로컬 LLM 기본값은 `http://127.0.0.1:8001`, 모델
 `gemma4-e4b`, 컨텍스트 길이 `8192`, 출력 `max_tokens=1200`,

@@ -13,8 +13,6 @@ from fastapi import (
     Response,
     UploadFile,
 )
-from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
 
 from .path_bootstrap import add_project_package_paths
 
@@ -27,9 +25,8 @@ from .config import Settings
 from .database import Database
 from .errors import (
     ApiException,
-    api_exception_handler,
-    validation_exception_handler,
 )
+from .error_archive import install_error_management
 from .ftir_web import router as ftir_router
 from .llm_client import LlmError, LocalLlmClient
 from .models import (
@@ -114,8 +111,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         resolved_settings.edge_public_base_url,
     )
 
-    app.add_exception_handler(ApiException, api_exception_handler)
-    app.add_exception_handler(RequestValidationError, validation_exception_handler)
+    install_error_management(app, resolved_settings)
     app.include_router(ftir_router)
     app.include_router(raman_router)
     app.include_router(xrd_router)
@@ -338,22 +334,5 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             experiment_type,
             include_completed=include_completed,
         )
-
-    @app.exception_handler(Exception)
-    async def unhandled_exception_handler(
-        request: Request, exc: Exception
-    ) -> JSONResponse:
-        logger.exception(
-            "처리되지 않은 서버 오류 (%s %s)",
-            request.method,
-            request.url.path,
-        )
-        api_exc = ApiException(
-            500,
-            "INTERNAL_SERVER_ERROR",
-            "서버 내부 오류가 발생했습니다.",
-            retryable=True,
-        )
-        return await api_exception_handler(request, api_exc)
 
     return app

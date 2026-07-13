@@ -309,6 +309,11 @@ cd edge_api_server
 | `RIST_EDGE_BIND_HOST` | 프로파일 값 | Uvicorn bind 주소 재정의 |
 | `RIST_EDGE_API_PORT` | 프로파일 값 | Uvicorn 포트 재정의 |
 | `RIST_STORAGE_ROOT` | `edge_api_server/data/jobs` | 작업 파일 저장 루트 |
+| `RIST_ERROR_ARCHIVE_ROOT` | `<RIST_STORAGE_ROOT>/errors` | 통합 오류 로그와 실패 파일 보관 루트 |
+| `RIST_ERROR_RETENTION_DAYS` | `30` | 오류 기록 자동 보관 기간(일) |
+| `RIST_ERROR_CAPTURE_FILES` | `true` | 오류 당시 업로드/입력 파일 보관 여부 |
+| `RIST_ERROR_MAX_FILE_BYTES` | `536870912` | 오류 보관 개별 파일 최대 크기 |
+| `RIST_ERROR_MAX_TOTAL_BYTES` | `2147483648` | 오류 한 건당 보관 파일 총크기 상한 |
 | `RIST_FTIR_ASSIGNMENT_LIBRARY_DIR` | `edge_api_server/data/ftir_assignment_libraries` | FT-IR 피크 assignment 라이브러리 폴더 |
 | `RIST_FTIR_ASSIGNMENT_LIBRARY_DELETE_ENABLED` | `false` | `true`일 때 FT-IR 라이브러리 파일 삭제 API/UI 활성화. 서비스 재시작 후 반영 |
 | `RIST_DB_HOST` | `127.0.0.1` | MariaDB 호스트 |
@@ -357,6 +362,27 @@ cd edge_api_server
 - Spring Boot 전송 대상은 `RIST_SPRING_CALLBACK_URL` 하나로 관리한다.
 - Edge 공개 주소는 프로파일의 `EDGE_SERVER_SCHEME/HOST/PORT`에서 조합하고,
   필요하면 `RIST_EDGE_PUBLIC_BASE_URL`로 재정의한다.
+
+## 통합 오류 관리
+
+FT-IR, Raman, XRD, TEM 및 공통 Edge API 오류를 한 화면에서 확인한다.
+
+```text
+http://<Edge 서버>:8000/errors
+```
+
+- HTTP 요청 오류와 비동기 보고서 생성 오류를 프로젝트별로 모아 표시한다.
+- 오류 코드, 메시지, 작업 ID, 요청 경로, 스택 트레이스를 기록한다.
+- 실패 시점까지 업로드된 파일을 별도 오류 폴더에 복사하며, 개별 파일 또는
+  사건 전체 ZIP으로 내려받을 수 있다.
+- 목록에서 미해결/해결 상태를 변경하거나 보관 기록을 삭제할 수 있다.
+- API 오류 응답에는 추적용 `X-Error-Event-Id` 헤더가 포함되고, 비동기 보고서
+  상태 응답에는 `errorEventId`가 포함된다.
+
+기본 보관 위치는 `<RIST_STORAGE_ROOT>/errors`, 기간은 30일이다. 대용량 raw
+파일 때문에 디스크가 과도하게 사용되지 않도록 개별 파일 512 MiB, 오류 한 건
+전체 2 GiB 상한을 적용한다. 설정 변경 후에는 API와 worker 서비스를 함께
+재시작한다.
 
 ## 데이터베이스
 

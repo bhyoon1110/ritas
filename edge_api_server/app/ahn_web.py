@@ -17,13 +17,19 @@ from uuid import uuid4
 import zipfile
 import zlib
 
-from fastapi import APIRouter, FastAPI, File, Form, UploadFile
-from fastapi.exceptions import RequestValidationError
+from fastapi import APIRouter, FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from PIL import Image, ImageDraw, UnidentifiedImageError
 from rist_common import get_logger
 
-from .errors import ApiException, api_exception_handler, validation_exception_handler
+from .errors import ApiException
+from .config import Settings
+from .error_archive import (
+    ErrorArchive,
+    error_archive as app_error_archive,
+    install_error_management,
+    record_background_error,
+)
 from .path_bootstrap import add_project_package_paths
 
 add_project_package_paths()
@@ -71,12 +77,14 @@ class AhnReportJob:
     analysis_path: Path
     manifest_path: Path
     manifest: dict[str, Any] | None
+    error_archive: ErrorArchive | None
     created_at: float
     updated_at: float
     status: str = "queued"
     progress_pct: int = 5
     message: str = "TEM 보고서 작업이 대기 중입니다."
     error: dict[str, Any] | None = None
+    error_event_id: str | None = None
 
 
 @dataclass
@@ -745,7 +753,11 @@ def _api_error_payload(exc: ApiException) -> dict[str, Any]:
     return payload
 
 
-def _create_ahn_job(input_root: Path, work_dir: Path) -> AhnReportJob:
+def _create_ahn_job(
+    input_root: Path,
+    work_dir: Path,
+    error_archive: ErrorArchive | None,
+) -> AhnReportJob:
     output_dir = work_dir / "output"
     pptx_path = output_dir / "tem-report.pptx"
     job_id = uuid4().hex
@@ -760,6 +772,7 @@ def _create_ahn_job(input_root: Path, work_dir: Path) -> AhnReportJob:
         analysis_path=output_dir / "analysis-result.json",
         manifest_path=output_dir / "manifest.json",
         manifest=None,
+        error_archive=error_archive,
         created_at=now,
         updated_at=now,
     )
@@ -805,6 +818,18 @@ def _run_ahn_job(job: AhnReportJob) -> None:
             message=exc.message,
             error=_api_error_payload(exc),
         )
+        event_id = record_background_error(
+            job.error_archive,
+            project="TEM",
+            code=exc.code,
+            message=exc.message,
+            exception=exc,
+            job_id=job.job_id,
+            details=exc.details,
+            source_paths=[job.input_root],
+        )
+        with _ahn_report_jobs_lock:
+            job.error_event_id = event_id
         return
     except Exception as exc:
         logger.exception("TEM 보고서 생성 실패 (input_root=%s)", job.input_root)
@@ -822,6 +847,18 @@ def _run_ahn_job(job: AhnReportJob) -> None:
             message=api_exc.message,
             error=_api_error_payload(api_exc),
         )
+        event_id = record_background_error(
+            job.error_archive,
+            project="TEM",
+            code=api_exc.code,
+            message=api_exc.message,
+            exception=exc,
+            job_id=job.job_id,
+            details=api_exc.details,
+            source_paths=[job.input_root],
+        )
+        with _ahn_report_jobs_lock:
+            job.error_event_id = event_id
         return
     summary = manifest.get("summary") if isinstance(manifest.get("summary"), dict) else {}
     if not _has_reportable_data(summary):
@@ -837,6 +874,16 @@ def _run_ahn_job(job: AhnReportJob) -> None:
             message=api_exc.message,
             error=_api_error_payload(api_exc),
         )
+        event_id = record_background_error(
+            job.error_archive,
+            project="TEM",
+            code=api_exc.code,
+            message=api_exc.message,
+            job_id=job.job_id,
+            source_paths=[job.input_root],
+        )
+        with _ahn_report_jobs_lock:
+            job.error_event_id = event_id
         return
     _build_package(job.output_dir, job.package_path)
     _set_job_state(
@@ -848,8 +895,12 @@ def _run_ahn_job(job: AhnReportJob) -> None:
     )
 
 
-def _submit_ahn_job(input_root: Path, work_dir: Path) -> AhnReportJob:
-    job = _create_ahn_job(input_root, work_dir)
+def _submit_ahn_job(
+    input_root: Path,
+    work_dir: Path,
+    error_archive: ErrorArchive | None = None,
+) -> AhnReportJob:
+    job = _create_ahn_job(input_root, work_dir, error_archive)
     _ahn_report_executor.submit(_run_ahn_job, job)
     return job
 
@@ -892,6 +943,7 @@ def _job_payload(job: AhnReportJob) -> dict[str, Any]:
         "manifest": manifest,
         "downloads": downloads,
         "error": job.error,
+        "errorEventId": job.error_event_id,
     }
 
 
@@ -1907,6 +1959,7 @@ def create_tem_upload_session() -> JSONResponse:
 
 @router.post("/api/v1/tem/upload-sessions/{upload_id}/chunks", response_class=JSONResponse, tags=["tem"])
 async def upload_tem_chunk(
+    request: Request,
     upload_id: str,
     relative_path: str = Form(...),
     offset: int = Form(...),
@@ -1917,6 +1970,8 @@ async def upload_tem_chunk(
     file: UploadFile = File(...),
 ) -> JSONResponse:
     session = _get_upload_session(upload_id)
+    request.state.error_project = "TEM"
+    request.state.error_source_paths = [session.input_root]
     file_state = await _write_upload_chunk(
         session,
         relative_path=relative_path,
@@ -1940,12 +1995,14 @@ async def upload_tem_chunk(
 
 
 @router.post("/api/v1/tem/upload-sessions/{upload_id}/complete", response_class=JSONResponse, tags=["tem"])
-def complete_tem_upload_session(upload_id: str) -> JSONResponse:
+def complete_tem_upload_session(request: Request, upload_id: str) -> JSONResponse:
     _cleanup_old_jobs()
     existing_job = _job_for_completed_upload(upload_id)
     if existing_job is not None:
         return JSONResponse(_job_payload(existing_job))
     session = _get_upload_session(upload_id)
+    request.state.error_project = "TEM"
+    request.state.error_source_paths = [session.input_root]
     completed_files = [state for state in session.files.values() if state.completed]
     incomplete_files = [state.relative_path for state in session.files.values() if not state.completed]
     if not completed_files:
@@ -1981,7 +2038,11 @@ def complete_tem_upload_session(upload_id: str) -> JSONResponse:
             details={"files": storage_mismatches},
         )
     _validate_ahn_upload_files(session.input_root)
-    job = _submit_ahn_job(session.input_root, session.work_dir)
+    job = _submit_ahn_job(
+        session.input_root,
+        session.work_dir,
+        app_error_archive(request.app),
+    )
     with _ahn_upload_sessions_lock:
         _ahn_upload_sessions.pop(upload_id, None)
         _ahn_completed_upload_jobs[upload_id] = job.job_id
@@ -1996,25 +2057,28 @@ def complete_tem_upload_session(upload_id: str) -> JSONResponse:
 
 @router.post("/api/v1/tem/analyze", response_class=JSONResponse, tags=["tem"])
 async def analyze_tem(
+    request: Request,
     files: list[UploadFile] | None = File(default=None, alias="files"),
 ) -> JSONResponse:
     _cleanup_old_jobs()
     work_dir = Path(tempfile.mkdtemp(prefix="rist-ahn-web-"))
+    upload_root = work_dir / "input"
+    request.state.error_project = "TEM"
+    request.state.error_source_paths = [upload_root]
     try:
-        upload_root = work_dir / "input"
         await _save_ahn_uploads(files, upload_root)
         _validate_ahn_upload_files(upload_root)
         input_root = _find_ahn_input_root(upload_root)
-        job = _submit_ahn_job(input_root, work_dir)
+        job = _submit_ahn_job(input_root, work_dir, app_error_archive(request.app))
     except Exception:
-        shutil.rmtree(work_dir, ignore_errors=True)
+        request.state.error_cleanup_paths = [work_dir]
         raise
     logger.info("TEM 웹 보고서 작업 시작 (job_id=%s)", job.job_id)
     return JSONResponse(_job_payload(job))
 
 
 @router.get("/api/v1/tem/example", response_class=JSONResponse, tags=["tem"])
-def tem_example() -> JSONResponse:
+def tem_example(request: Request) -> JSONResponse:
     _cleanup_old_jobs()
     repo_root = Path(__file__).resolve().parents[2]
     input_root = repo_root / "ahn" / "data" / "TESTData"
@@ -2022,7 +2086,7 @@ def tem_example() -> JSONResponse:
     try:
         if not input_root.exists():
             input_root = _write_synthetic_tem_example(work_dir / "input")
-        job = _submit_ahn_job(input_root, work_dir)
+        job = _submit_ahn_job(input_root, work_dir, app_error_archive(request.app))
     except Exception:
         shutil.rmtree(work_dir, ignore_errors=True)
         raise
@@ -2083,8 +2147,9 @@ def download_tem_report(job_id: str, kind: str) -> FileResponse:
 
 def create_tem_preview_app() -> FastAPI:
     app = FastAPI(title="RIST TEM Preview")
-    app.add_exception_handler(ApiException, api_exception_handler)
-    app.add_exception_handler(RequestValidationError, validation_exception_handler)
+    settings = Settings.from_env()
+    app.state.settings = settings
+    install_error_management(app, settings)
     app.include_router(router)
     return app
 

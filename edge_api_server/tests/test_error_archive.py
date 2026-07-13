@@ -1,0 +1,140 @@
+from __future__ import annotations
+
+import io
+from pathlib import Path
+import zipfile
+
+from fastapi import FastAPI, Request
+from fastapi.testclient import TestClient
+
+from app.config import Settings
+from app.error_archive import (
+    ErrorArchive,
+    ErrorArchiveSettings,
+    install_error_management,
+    record_background_error,
+)
+from app.errors import ApiException
+
+
+def test_error_archive_persists_metadata_trace_and_files(tmp_path: Path) -> None:
+    source = tmp_path / "input"
+    source.mkdir()
+    (source / "분석 원본.txt").write_text("raw-data", encoding="utf-8")
+    archive = ErrorArchive(ErrorArchiveSettings(root=tmp_path / "errors"))
+
+    try:
+        raise RuntimeError("renderer failed")
+    except RuntimeError as exc:
+        event = archive.record(
+            project="TEM",
+            code="TEM_REPORT_BUILD_FAILED",
+            message="보고서 생성 실패",
+            exception=exc,
+            job_id="job-1",
+            source_paths=[source],
+            file_blobs=[("extra/상태.json", b"{}")],
+        )
+
+    stored = archive.get(str(event["eventId"]))
+    assert stored["project"] == "TEM"
+    assert stored["jobId"] == "job-1"
+    assert "RuntimeError: renderer failed" in stored["traceback"]
+    assert {item["sourceName"] for item in stored["files"]} == {
+        "분석 원본.txt",
+        "상태.json",
+    }
+    assert archive.file_path(str(event["eventId"]), "input/분석 원본.txt").read_text(
+        encoding="utf-8"
+    ) == "raw-data"
+
+
+def test_error_console_api_filters_downloads_resolves_and_deletes(tmp_path: Path) -> None:
+    app = FastAPI()
+    settings = Settings(
+        storage_root=tmp_path / "jobs",
+        error_archive_root=tmp_path / "errors",
+    )
+    archive = install_error_management(app, settings)
+    event = archive.record(
+        project="XRD",
+        code="XRD_BAD_INPUT",
+        message="PDF 파일 오류",
+        exception=RuntimeError("broken PDF"),
+        file_blobs=[("ICDD/card.pdf", b"pdf")],
+    )
+    event_id = str(event["eventId"])
+
+    client = TestClient(app)
+    assert client.get("/errors").status_code == 200
+    listing = client.get("/api/v1/errors", params={"project": "XRD"}).json()
+    assert listing["count"] == 1
+    assert listing["items"][0]["eventId"] == event_id
+
+    file_response = client.get(f"/api/v1/errors/{event_id}/files/ICDD/card.pdf")
+    assert file_response.content == b"pdf"
+    zip_response = client.get(f"/api/v1/errors/{event_id}/archive")
+    with zipfile.ZipFile(io.BytesIO(zip_response.content)) as bundle:
+        assert "event.json" in bundle.namelist()
+        assert "files/ICDD/card.pdf" in bundle.namelist()
+
+    resolved = client.patch(
+        f"/api/v1/errors/{event_id}", json={"status": "resolved"}
+    ).json()
+    assert resolved["status"] == "resolved"
+    persisted = (tmp_path / "errors" / event_id / "event.json").read_text(
+        encoding="utf-8"
+    )
+    assert '"traceback"' not in persisted
+    assert client.delete(f"/api/v1/errors/{event_id}").status_code == 204
+    assert client.get(f"/api/v1/errors/{event_id}").status_code == 404
+
+
+def test_installed_handler_records_request_files_and_returns_event_header(
+    tmp_path: Path,
+) -> None:
+    app = FastAPI()
+    settings = Settings(
+        storage_root=tmp_path / "jobs",
+        error_archive_root=tmp_path / "errors",
+    )
+    install_error_management(app, settings)
+    transient = tmp_path / "transient-upload"
+    transient.mkdir()
+    (transient / "sample.dpt").write_bytes(b"1 2")
+
+    @app.get("/api/v1/ftir/fail")
+    def fail(request: Request) -> None:
+        request.state.error_source_paths = [transient]
+        request.state.error_cleanup_paths = [transient]
+        raise ApiException(422, "FTIR_TEST_FAILURE", "분석 실패")
+
+    client = TestClient(app)
+    response = client.get("/api/v1/ftir/fail")
+    assert response.status_code == 422
+    event_id = response.headers["X-Error-Event-Id"]
+    event = client.get(f"/api/v1/errors/{event_id}").json()
+    assert event["project"] == "FT-IR"
+    assert event["files"][0]["sourceName"] == "sample.dpt"
+    assert not transient.exists()
+
+
+def test_background_error_helper_keeps_input_bundle(tmp_path: Path) -> None:
+    source = tmp_path / "bundle"
+    source.mkdir()
+    (source / "raw.txt").write_text("x", encoding="utf-8")
+    archive = ErrorArchive(ErrorArchiveSettings(root=tmp_path / "errors"))
+
+    event_id = record_background_error(
+        archive,
+        project="XRD",
+        code="XRD_REPORT_BUILD_FAILED",
+        message="failed",
+        job_id="job-xrd",
+        source_paths=[source],
+    )
+
+    assert event_id is not None
+    event = archive.get(event_id)
+    assert event["project"] == "XRD"
+    assert event["files"][0]["sourceName"] == "raw.txt"

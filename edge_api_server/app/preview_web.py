@@ -4,11 +4,11 @@ import os
 from pathlib import Path
 
 from fastapi import FastAPI
-from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse
 
 from .ahn_web import router as ahn_router
-from .errors import ApiException, api_exception_handler, validation_exception_handler
+from .config import Settings
+from .error_archive import install_error_management
 from .ftir_web import (
     DEFAULT_ASSIGNMENT_LIBRARY_DIR,
     router as ftir_router,
@@ -47,7 +47,7 @@ def _preview_index() -> str:
     }
     h1 { margin: 0 0 8px; font-size: 30px; }
     p { margin: 0 0 22px; color: #64748b; }
-    nav { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+    nav { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; }
     a {
       display: block;
       border: 1px solid #9fb6d6;
@@ -73,6 +73,7 @@ def _preview_index() -> str:
       <a href="/raman">Raman</a>
       <a href="/xrd">XRD</a>
       <a href="/tem">TEM</a>
+      <a href="/errors">오류 관리</a>
     </nav>
   </main>
 </body>
@@ -91,8 +92,9 @@ def create_preview_app() -> FastAPI:
     app.state.ftir_assignment_library_delete_enabled = _bool_env(
         "RIST_FTIR_ASSIGNMENT_LIBRARY_DELETE_ENABLED"
     )
-    app.add_exception_handler(ApiException, api_exception_handler)
-    app.add_exception_handler(RequestValidationError, validation_exception_handler)
+    settings = Settings.from_env()
+    app.state.settings = settings
+    install_error_management(app, settings)
     app.include_router(ftir_router)
     app.include_router(raman_router)
     app.include_router(xrd_router)

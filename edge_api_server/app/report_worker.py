@@ -10,6 +10,7 @@ from rist_common import get_logger
 
 from .config import Settings
 from .database import Database
+from .error_archive import ErrorArchive, ErrorArchiveSettings, record_background_error
 from .llm_client import LocalLlmClient
 from .manifest import write_manifest
 from .report import generate_report
@@ -34,6 +35,15 @@ class ReportWorker:
             settings.spring_callback_url,
             settings.spring_callback_timeout_seconds,
             settings.spring_callback_max_attempts,
+        )
+        self.error_archive = ErrorArchive(
+            ErrorArchiveSettings(
+                root=settings.error_archive_root or (settings.storage_root / "errors"),
+                retention_days=settings.error_retention_days,
+                capture_files=settings.error_capture_files,
+                max_file_bytes=settings.error_max_file_bytes,
+                max_total_bytes=settings.error_max_total_bytes,
+            )
         )
 
     def run_once(self) -> bool:
@@ -93,9 +103,10 @@ class ReportWorker:
                 "ANALYSIS_RESULT_NOT_FOUND",
                 str(exc),
                 False,
+                exc,
             )
         except SpringCallbackError as exc:
-            self._mark_failed(job_id, exc.code, str(exc), exc.retryable)
+            self._mark_failed(job_id, exc.code, str(exc), exc.retryable, exc)
         except Exception as exc:
             logger.exception("보고서 worker 처리 중 예외 발생 (job_id=%s)", job_id)
             self._mark_failed(
@@ -103,12 +114,18 @@ class ReportWorker:
                 "REPORT_WORKER_ERROR",
                 f"보고서 worker 오류: {exc}",
                 True,
+                exc,
             )
         finally:
             self._write_manifest(job_id)
 
     def _mark_failed(
-        self, job_id: str, code: str, message: str, retryable: bool
+        self,
+        job_id: str,
+        code: str,
+        message: str,
+        retryable: bool,
+        exception: BaseException | None = None,
     ) -> None:
         logger.error(
             "작업 실패 (job_id=%s, code=%s, retryable=%s): %s",
@@ -128,6 +145,24 @@ class ReportWorker:
             progress=50,
             completed_at=isoformat_kst(),
             error_json=json.dumps(error, ensure_ascii=False),
+        )
+        job = self.database.fetch_job(job_id)
+        source_paths = []
+        project = "EDGE"
+        if job:
+            project = str(job.get("experiment_code") or "EDGE")
+            relative_root = str(job.get("root_relative_path") or "").strip()
+            if relative_root:
+                source_paths.append(self.settings.storage_root / relative_root / "input")
+        record_background_error(
+            self.error_archive,
+            project=project,
+            code=code,
+            message=message,
+            exception=exception,
+            job_id=job_id,
+            details={"retryable": retryable},
+            source_paths=source_paths,
         )
 
     def _write_manifest(self, job_id: str) -> None:

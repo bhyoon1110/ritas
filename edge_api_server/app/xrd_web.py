@@ -19,7 +19,6 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, FastAPI, File, Form, Request, UploadFile
-from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from rist_common import get_logger
 
@@ -36,7 +35,13 @@ from lim.xrd_plot import (
     build_xrd_html,
 )
 
-from .errors import ApiException, api_exception_handler, validation_exception_handler
+from .errors import ApiException
+from .error_archive import (
+    ErrorArchive,
+    error_archive as app_error_archive,
+    install_error_management,
+    record_background_error,
+)
 from .config import PROJECT_DIR, Settings
 from .llm_client import LlmError, LocalLlmClient
 from .report import annotator
@@ -89,6 +94,7 @@ class XrdReportJob:
     work_dir: Path
     input_root: Path
     settings: Settings | None
+    error_archive: ErrorArchive | None
     origin: bool
     created_at: float
     updated_at: float
@@ -97,6 +103,7 @@ class XrdReportJob:
     message: str = "XRD 보고서 작업이 대기 중입니다."
     html_result: str | None = None
     error: dict[str, Any] | None = None
+    error_event_id: str | None = None
 
 
 _xrd_report_jobs: dict[str, XrdReportJob] = {}
@@ -671,6 +678,7 @@ def _create_xrd_report_job(
     input_root: Path,
     work_dir: Path,
     settings: Settings | None,
+    error_archive: ErrorArchive | None,
     origin: bool,
 ) -> XrdReportJob:
     now = time.time()
@@ -679,6 +687,7 @@ def _create_xrd_report_job(
         work_dir=work_dir,
         input_root=input_root,
         settings=settings,
+        error_archive=error_archive,
         origin=origin,
         created_at=now,
         updated_at=now,
@@ -700,6 +709,7 @@ def _xrd_job_payload(job: XrdReportJob) -> dict[str, Any]:
         "progressPct": job.progress_pct,
         "message": job.message,
         "error": job.error,
+        "errorEventId": job.error_event_id,
         "downloads": downloads,
     }
 
@@ -2123,6 +2133,18 @@ def _run_xrd_report_job(job: XrdReportJob) -> None:
             message=exc.message,
             error=_api_error_payload(exc),
         )
+        event_id = record_background_error(
+            job.error_archive,
+            project="XRD",
+            code=exc.code,
+            message=exc.message,
+            exception=exc,
+            job_id=job.job_id,
+            details=exc.details,
+            source_paths=[job.input_root],
+        )
+        with _xrd_report_jobs_lock:
+            job.error_event_id = event_id
         return
     except Exception as exc:
         logger.exception("XRD 보고서 생성 실패 (job_id=%s)", job.job_id)
@@ -2140,6 +2162,18 @@ def _run_xrd_report_job(job: XrdReportJob) -> None:
             message=api_exc.message,
             error=_api_error_payload(api_exc),
         )
+        event_id = record_background_error(
+            job.error_archive,
+            project="XRD",
+            code=api_exc.code,
+            message=api_exc.message,
+            exception=exc,
+            job_id=job.job_id,
+            details=api_exc.details,
+            source_paths=[job.input_root],
+        )
+        with _xrd_report_jobs_lock:
+            job.error_event_id = event_id
         return
 
     _set_xrd_job_state(
@@ -2156,12 +2190,14 @@ def _submit_xrd_report_job(
     input_root: Path,
     work_dir: Path,
     settings: Settings | None,
+    error_archive: ErrorArchive | None,
     origin: bool,
 ) -> XrdReportJob:
     job = _create_xrd_report_job(
         input_root=input_root,
         work_dir=work_dir,
         settings=settings,
+        error_archive=error_archive,
         origin=origin,
     )
     _xrd_report_executor.submit(_run_xrd_report_job, job)
@@ -2177,6 +2213,7 @@ def create_xrd_upload_session() -> dict:
 
 @router.post("/api/v1/xrd/upload-sessions/{upload_id}/chunks", tags=["xrd"])
 async def upload_xrd_chunk(
+    request: Request,
     upload_id: str,
     relative_path: str = Form(...),
     offset: int = Form(...),
@@ -2186,6 +2223,8 @@ async def upload_xrd_chunk(
     file: UploadFile = File(...),
 ) -> dict:
     session = xrd_upload_store.get(upload_id)
+    request.state.error_project = "XRD"
+    request.state.error_source_paths = [session.input_root]
     file_state = await xrd_upload_store.write_chunk(
         session,
         relative_path=relative_path,
@@ -2221,6 +2260,8 @@ def complete_xrd_upload_session(
             return JSONResponse(_xrd_job_payload(existing_job))
 
     session = xrd_upload_store.get(upload_id)
+    request.state.error_project = "XRD"
+    request.state.error_source_paths = [session.input_root]
     incomplete_files = xrd_upload_store.incomplete_files(session)
     if incomplete_files:
         preview = ", ".join(incomplete_files[:5])
@@ -2235,6 +2276,7 @@ def complete_xrd_upload_session(
         input_root=session.input_root,
         work_dir=session.work_dir,
         settings=_request_settings(request),
+        error_archive=app_error_archive(request.app),
         origin=origin,
     )
     xrd_upload_store.remember_completed_ref(upload_id, job.job_id)
@@ -2321,8 +2363,10 @@ async def analyze_xrd(
     image_files: list[UploadFile] | None = File(default=None, alias="imageFiles"),
     origin: bool = Form(True),
 ) -> HTMLResponse:
-    with tempfile.TemporaryDirectory(prefix="rist-xrd-web-") as tmp:
-        root = Path(tmp)
+    root = Path(tempfile.mkdtemp(prefix="rist-xrd-web-"))
+    request.state.error_project = "XRD"
+    request.state.error_source_paths = [root]
+    try:
         raw_paths, pdf_dir, table_paths, image_paths = await _save_xrd_bundle_uploads(
             files,
             root,
@@ -2366,6 +2410,10 @@ async def analyze_xrd(
             image_paths=image_paths,
             origin=origin,
         )
+    except Exception:
+        request.state.error_cleanup_paths = [root]
+        raise
+    shutil.rmtree(root, ignore_errors=True)
     return HTMLResponse(html_result, headers=XRD_NO_STORE_HEADERS)
 
 
@@ -2584,7 +2632,8 @@ def xrd_example(request: Request) -> HTMLResponse:
 
 def create_xrd_preview_app() -> FastAPI:
     app = FastAPI(title="RIST XRD Preview")
-    app.add_exception_handler(ApiException, api_exception_handler)
-    app.add_exception_handler(RequestValidationError, validation_exception_handler)
+    settings = Settings.from_env()
+    app.state.settings = settings
+    install_error_management(app, settings)
     app.include_router(router)
     return app
