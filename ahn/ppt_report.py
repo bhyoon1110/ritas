@@ -792,27 +792,31 @@ def _build_stem(prs, template: AhnTemplate | None, data: dict[str, Any], input_r
 
 
 def _eds_anchor_slot() -> tuple[int, int, int, int]:
-    return Inches(0.2), Inches(1.25), Inches(4.4), Inches(3.64)
+    return Inches(0.15), Inches(1.2), Inches(4.7), Inches(5.85)
 
 
 def _eds_right_slot() -> tuple[int, int, int, int]:
     return Inches(4.35), Inches(1.25), Inches(6.25), Inches(4.85)
 
 
+def _eds_map_grid_slot() -> tuple[int, int, int, int]:
+    return Inches(4.85), Inches(1.2), Inches(5.8), Inches(5.85)
+
+
 def _eds_full_grid_slot() -> tuple[int, int, int, int]:
-    return Inches(0.26), Inches(1.38), Inches(10.5), Inches(5.55)
+    return Inches(0.15), Inches(1.22), Inches(10.5), Inches(5.83)
 
 
 def _eds_line_anchor_slot() -> tuple[int, int, int, int]:
-    return Inches(0.2), Inches(1.25), Inches(4.35), Inches(3.44)
+    return Inches(0.15), Inches(1.2), Inches(4.7), Inches(5.85)
 
 
 def _eds_line_top_slot() -> tuple[int, int, int, int]:
-    return Inches(4.7), Inches(1.36), Inches(6.1), Inches(2.21)
+    return Inches(4.85), Inches(1.22), Inches(5.8), Inches(2.45)
 
 
 def _eds_line_bottom_slot() -> tuple[int, int, int, int]:
-    return Inches(4.7), Inches(3.66), Inches(6.1), Inches(2.94)
+    return Inches(4.85), Inches(3.7), Inches(5.8), Inches(3.35)
 
 
 def _eds_table_slots(count: int, area: tuple[int, int, int, int]) -> list[tuple[int, int, int, int]]:
@@ -846,7 +850,7 @@ def _add_eds_right_grid(
         slide,
         [{"path": str(path), "file_name": path.name, "magnification": ""} for path in images],
         tmp_dir,
-        *_eds_right_slot(),
+        *_eds_map_grid_slot(),
         cols,
         rows,
     )

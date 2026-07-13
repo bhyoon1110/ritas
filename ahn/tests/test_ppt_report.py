@@ -312,10 +312,11 @@ def test_point_eds_uses_matching_spreadsheet_when_docx_has_no_tables(tmp_path, m
 
 def test_line_eds_continuation_pages_use_full_width_graph_grid(tmp_path, monkeypatch) -> None:
     images = []
-    for index in range(10):
+    sizes = [(840, 559), (863, 212), (857, 281)] + [(802, 252)] * 7
+    for index, size in enumerate(sizes):
         image_path = tmp_path / f"eds-{index}.png"
         image_path.parent.mkdir(parents=True, exist_ok=True)
-        Image.new("RGB", (240, 100), (220, 224, 230)).save(image_path)
+        Image.new("RGB", size, (220, 224, 230)).save(image_path)
         images.append(image_path)
     report_path = tmp_path / "report" / "line.docx"
     report_path.parent.mkdir(parents=True, exist_ok=True)
@@ -344,10 +345,11 @@ def test_line_eds_continuation_pages_use_full_width_graph_grid(tmp_path, monkeyp
     first_slide_pictures = _pictures(prs.slides[0])
     anchor = first_slide_pictures[0]
     assert anchor.left <= Inches(0.3)
-    assert anchor.width >= Inches(4.0)
+    assert anchor.width >= Inches(4.5)
     right_pictures = [shape for shape in first_slide_pictures if shape.left >= Inches(4.5)]
     assert len(right_pictures) == 2
-    assert all(shape.width >= Inches(5.0) for shape in right_pictures)
+    assert all(shape.width >= Inches(5.6) for shape in right_pictures)
+    assert all(shape.left + shape.width <= Inches(10.7) for shape in right_pictures)
     continuation_pictures = _pictures(prs.slides[1])
     assert len(continuation_pictures) == 6
     left_groups = {round(shape.left / Inches(1), 1) for shape in continuation_pictures}
@@ -393,9 +395,9 @@ def test_line_eds_repeats_overview_and_graph_grid_per_data_block(tmp_path, monke
     assert any("0817 line scan_Data2" in title for title in titles)
     assert not any("Data1_Data" in title or "Data2_Data" in title for title in titles)
     assert len(_pictures(prs.slides[1])) == 6
-    assert all(shape.left >= Inches(0.2) for shape in _pictures(prs.slides[1]))
+    assert all(shape.left >= Inches(0.1) for shape in _pictures(prs.slides[1]))
     assert len(_pictures(prs.slides[3])) == 6
-    assert all(shape.left >= Inches(0.2) for shape in _pictures(prs.slides[3]))
+    assert all(shape.left >= Inches(0.1) for shape in _pictures(prs.slides[3]))
 
 
 def test_map_eds_pages_reuse_first_image_as_left_anchor(tmp_path, monkeypatch) -> None:
@@ -432,11 +434,17 @@ def test_map_eds_pages_reuse_first_image_as_left_anchor(tmp_path, monkeypatch) -
         pictures = _pictures(slide)
         anchor = pictures[0]
         assert anchor.left <= Inches(0.3)
-        assert anchor.width >= Inches(4.0)
+        assert anchor.width >= Inches(4.5)
     assert len([shape for shape in _pictures(prs.slides[0]) if shape.left >= Inches(4.0)]) == 6
     first_page_right = [shape for shape in _pictures(prs.slides[0]) if shape.left >= Inches(4.0)]
     assert len({round(shape.left / Inches(1), 2) for shape in first_page_right}) == 2
     assert len({round(shape.top / Inches(1), 2) for shape in first_page_right}) == 3
+    first_row = sorted(
+        [shape for shape in first_page_right if shape.top == min(item.top for item in first_page_right)],
+        key=lambda shape: shape.left,
+    )
+    assert first_row[1].left - (first_row[0].left + first_row[0].width) < Inches(0.9)
+    assert max(shape.left + shape.width for shape in first_page_right) >= Inches(10.1)
 
     single_right_picture = [shape for shape in _pictures(prs.slides[1]) if shape.left >= Inches(4.0)]
     assert len(single_right_picture) == 1
