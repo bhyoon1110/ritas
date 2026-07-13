@@ -25,6 +25,7 @@ def test_extract_magnification_from_ahn_file_names() -> None:
 
 def test_coating_ocr_candidate_parser_keeps_multiple_labels() -> None:
     assert _candidate_values_from_text("2.21 nm\n1.81 nm\n10 nm") == [2.21, 1.81]
+    assert _candidate_values_from_text("55.56 nm\n50 nm") == [55.56]
     assert _candidate_values_from_text("2. IS rm") == [2.18]
     assert _candidate_values_from_text("O.72 rm") == [0.72]
     assert _candidate_values_from_text("236.12 nm\n200 nm") == [236.12]

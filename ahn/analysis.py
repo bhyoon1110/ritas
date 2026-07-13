@@ -394,8 +394,6 @@ def _candidate_values_from_text(text: str, *, require_unit: bool = True) -> list
         integer = int(match.group(1))
         fraction = match.group(2)
         value = float(f"{integer}.{fraction}")
-        if 50 <= integer <= 59:
-            value = float(f"{integer - 50}.{fraction}")
         add_value(value)
 
     # A zero before the decimal point is frequently recognized as the letter
