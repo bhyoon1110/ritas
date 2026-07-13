@@ -1326,6 +1326,11 @@ def _eds_point_anchor_slot() -> tuple[int, int, int, int]:
     return Inches(0.26), Inches(1.55), Inches(4.0), Inches(4.0)
 
 
+def _eds_point_summary_table_slot() -> tuple[int, int, int, int]:
+    left, top, width, height = _eds_right_slot()
+    return left, top + Inches(0.12), width, height
+
+
 def _eds_point_table_area() -> tuple[int, int, int, int]:
     return Inches(4.55), Inches(1.20), Inches(5.98), Inches(1.78)
 
@@ -1346,7 +1351,7 @@ def _add_eds_point_summary_slide(
         slide = _add_eds_slide(prs, template, "eds_table", title)
         if first_image:
             _add_cover_picture(slide, first_image, *_eds_point_anchor_slot(), tmp_dir)
-        _add_point_composition_table(slide, table, _eds_right_slot())
+        _add_point_composition_table(slide, table, _eds_point_summary_table_slot())
 
 
 def _point_spectrum_labels(point_tables: list[list[list[str]]]) -> list[str]:
