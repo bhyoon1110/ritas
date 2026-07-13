@@ -108,6 +108,7 @@ class OcrCandidate:
     text: str
     confidence: float
     box: tuple[int, int, int, int] | None = None
+    source: str = ""
 
 
 @dataclass
@@ -519,12 +520,14 @@ def _ocr_label_box(image: Image.Image, box: tuple[int, int, int, int], pytessera
     return values, texts
 
 
-def _ocr_label_boxes(image: Image.Image, pytesseract: Any) -> tuple[list[float], str]:
+def _detect_coating_label_boxes(
+    image: Image.Image,
+) -> tuple[Image.Image, list[tuple[int, int, int, int]]]:
     try:
         import cv2  # type: ignore
         import numpy as np  # type: ignore
     except Exception:
-        return [], ""
+        return image, []
 
     detection_image = image
     if max(image.size) > COATING_LABEL_DETECTION_MAX_DIMENSION:
@@ -563,13 +566,11 @@ def _ocr_label_boxes(image: Image.Image, pytesseract: Any) -> tuple[list[float],
     )
     max_box_width = max(380, round(width * 0.48))
     max_box_height = max(100, round(height * 0.14))
-    values: list[float] = []
-    text_parts: list[str] = []
-    successful_boxes: list[tuple[int, int, int, int]] = []
+    detected_boxes: list[tuple[int, int, int, int]] = []
 
     def substantially_overlaps(box: tuple[int, int, int, int]) -> bool:
         x, y, box_w, box_h = box
-        for other_x, other_y, other_w, other_h in successful_boxes:
+        for other_x, other_y, other_w, other_h in detected_boxes:
             overlap_w = max(0, min(x + box_w, other_x + other_w) - max(x, other_x))
             overlap_h = max(0, min(y + box_h, other_y + other_h) - max(y, other_y))
             overlap = overlap_w * overlap_h
@@ -599,15 +600,24 @@ def _ocr_label_boxes(image: Image.Image, pytesseract: Any) -> tuple[list[float],
                 continue
             boxes.append((x, y, box_w, box_h))
 
-        for box in sorted(boxes, key=lambda item: (item[1], item[0]))[:12]:
+        for box in sorted(boxes, key=lambda item: (item[1], item[0], -(item[2] * item[3])))[:12]:
             if substantially_overlaps(box):
                 continue
-            box_values, texts = _ocr_label_box(detection_image, box, pytesseract)
-            text_parts.extend(texts)
-            if not box_values:
-                continue
-            values.extend(box_values)
-            successful_boxes.append(box)
+            detected_boxes.append(box)
+
+    return detection_image, detected_boxes[:12]
+
+
+def _ocr_label_boxes(image: Image.Image, pytesseract: Any) -> tuple[list[float], str]:
+    detection_image, boxes = _detect_coating_label_boxes(image)
+    values: list[float] = []
+    text_parts: list[str] = []
+    for box in boxes:
+        box_values, texts = _ocr_label_box(detection_image, box, pytesseract)
+        text_parts.extend(texts)
+        if not box_values:
+            continue
+        values.extend(box_values)
     return values, "\n".join(text_parts)
 
 
@@ -672,6 +682,198 @@ def _get_rapid_ocr_engine() -> Any:
 
         _rapid_ocr_engine = RapidOCR()
     return _rapid_ocr_engine
+
+
+def _run_rapid_label_ocr(image: Image.Image) -> tuple[list[OcrCandidate], str]:
+    """Read each detected white measurement label independently.
+
+    Cropping to the white label removes the diagonal measurement line that
+    can otherwise become a false leading digit (``5.80`` -> ``45.80``). It
+    also lets the OCR engine recover a second small label after the full-image
+    pass has already found another measurement.
+    """
+    try:
+        import numpy as np  # type: ignore
+        import rapidocr  # noqa: F401  # type: ignore
+    except Exception:
+        return [], ""
+
+    detection_image, boxes = _detect_coating_label_boxes(image)
+    if not boxes:
+        return [], ""
+
+    scale_x = image.width / detection_image.width
+    scale_y = image.height / detection_image.height
+    candidates: list[OcrCandidate] = []
+    text_parts: list[str] = []
+    for box_index, (x, y, box_w, box_h) in enumerate(boxes, start=1):
+        pad = 10
+        crop = detection_image.crop((
+            max(0, x - pad),
+            max(0, y - pad),
+            min(detection_image.width, x + box_w + pad),
+            min(detection_image.height, y + box_h + pad),
+        ))
+        crop = ImageOps.autocontrast(crop)
+        resize_scale = max(2, round(600 / max(crop.size)))
+        crop = crop.resize(
+            (crop.width * resize_scale, crop.height * resize_scale),
+            Image.Resampling.LANCZOS,
+        )
+
+        try:
+            with _rapid_ocr_lock:
+                result = _get_rapid_ocr_engine()(
+                    np.array(crop.convert("RGB")),
+                    text_score=0.45,
+                    box_thresh=0.25,
+                )
+        except Exception:
+            continue
+
+        best: OcrCandidate | None = None
+        texts = tuple(getattr(result, "txts", ()) or ())
+        scores = tuple(getattr(result, "scores", ()) or ())
+        original_box = (
+            round(x * scale_x),
+            round(y * scale_y),
+            max(1, round(box_w * scale_x)),
+            max(1, round(box_h * scale_y)),
+        )
+        for raw_text, raw_score in zip(texts, scores):
+            text = str(raw_text).strip()
+            score = float(raw_score)
+            text_parts.append(f"[label {box_index} {score:.3f}] {text}")
+            if score < RAPID_OCR_MIN_CONFIDENCE:
+                continue
+            values = _candidate_values_from_text(
+                text,
+                require_unit=False,
+                exclude_microscope_scale=False,
+            )
+            for value in values:
+                candidate = OcrCandidate(
+                    value_nm=value,
+                    text=text,
+                    confidence=score,
+                    box=original_box,
+                    source="rapid-label",
+                )
+                if best is None or candidate.confidence > best.confidence:
+                    best = candidate
+        if best is not None:
+            candidates.append(best)
+
+    return candidates, "\n".join(text_parts)
+
+
+def _boxes_represent_same_label(
+    first: tuple[int, int, int, int] | None,
+    second: tuple[int, int, int, int] | None,
+) -> bool:
+    if first is None or second is None:
+        return False
+    first_x, first_y, first_w, first_h = first
+    second_x, second_y, second_w, second_h = second
+    overlap_w = max(0, min(first_x + first_w, second_x + second_w) - max(first_x, second_x))
+    overlap_h = max(0, min(first_y + first_h, second_y + second_h) - max(first_y, second_y))
+    overlap = overlap_w * overlap_h
+    if overlap / max(1, min(first_w * first_h, second_w * second_h)) >= 0.25:
+        return True
+
+    first_center = (first_x + first_w / 2, first_y + first_h / 2)
+    second_center = (second_x + second_w / 2, second_y + second_h / 2)
+    return (
+        abs(first_center[0] - second_center[0]) <= max(first_w, second_w) * 0.45
+        and abs(first_center[1] - second_center[1]) <= max(first_h, second_h) * 0.75
+    )
+
+
+def _merge_rapid_ocr_candidates(
+    full_candidates: list[OcrCandidate],
+    label_candidates: list[OcrCandidate],
+) -> list[OcrCandidate]:
+    """Resolve full-image and isolated-label OCR without inventing digits.
+
+    The full-image pass usually preserves every digit, but a diagonal
+    measurement line can occasionally become a false prefix (``5.80`` ->
+    ``45.80``). Conversely, the isolated white-label pass can clip the first
+    digit and decimal point (``2.68`` -> ``68``). Use text shape and box
+    geometry together instead of trusting either pass unconditionally.
+    """
+    if not label_candidates:
+        return full_candidates
+
+    def has_decimal(candidate: OcrCandidate) -> bool:
+        return re.search(r"\d\s*[.\-]\s*\d", candidate.text) is not None
+
+    remaining_full = list(full_candidates)
+    merged: list[OcrCandidate] = []
+    for label_candidate in label_candidates:
+        matching_full = [
+            candidate
+            for candidate in remaining_full
+            if _boxes_represent_same_label(candidate.box, label_candidate.box)
+        ]
+        if not matching_full:
+            # An isolated decimal label can recover a second measurement
+            # missed by the full-image detector. A bare integer from an
+            # unmatched crop is normally a line fragment, scale-bar digit,
+            # or a clipped decimal label, so never add it by itself.
+            if has_decimal(label_candidate):
+                merged.append(label_candidate)
+            continue
+
+        full_candidate = max(matching_full, key=lambda candidate: candidate.confidence)
+        remaining_full = [candidate for candidate in remaining_full if candidate not in matching_full]
+        if abs(full_candidate.value_nm - label_candidate.value_nm) < 0.025:
+            merged.append(label_candidate)
+            continue
+
+        full_has_decimal = has_decimal(full_candidate)
+        label_has_decimal = has_decimal(label_candidate)
+        if full_has_decimal and not label_has_decimal:
+            merged.append(full_candidate)
+            continue
+        if label_has_decimal and not full_has_decimal:
+            merged.append(label_candidate)
+            continue
+
+        # If the full-image OCR box begins well before the isolated white
+        # rectangle, it includes the diagonal measurement line. That line is
+        # the source of false prefixes such as ``5.80`` -> ``45.80``.
+        full_x = full_candidate.box[0] if full_candidate.box else 0
+        label_x = label_candidate.box[0] if label_candidate.box else 0
+        label_width = label_candidate.box[2] if label_candidate.box else 0
+        # A real leading digit remains close to the detected white label.
+        # A measurement line interpreted as a digit starts substantially
+        # farther left. Twenty percent separates both cases in the reference
+        # corpus while preserving labels such as 12.21 and 15.74.
+        line_prefix_margin = max(12, round(label_width * 0.20))
+        if full_x < label_x - line_prefix_margin:
+            merged.append(label_candidate)
+        else:
+            # A leading digit located inside the white rectangle is real.
+            # Preserve the full reading when a tight crop loses it
+            # (``12.21`` -> ``2.21``).
+            merged.append(full_candidate)
+
+    merged.extend(remaining_full)
+
+    unique: list[OcrCandidate] = []
+    for candidate in merged:
+        if any(
+            abs(candidate.value_nm - existing.value_nm) < 0.025
+            and (
+                _boxes_represent_same_label(candidate.box, existing.box)
+                or candidate.box is None
+                or existing.box is None
+            )
+            for existing in unique
+        ):
+            continue
+        unique.append(candidate)
+    return unique
 
 
 def _run_rapid_ocr(image: Image.Image) -> tuple[list[OcrCandidate], str]:
@@ -744,7 +946,13 @@ def _run_rapid_ocr(image: Image.Image) -> tuple[list[OcrCandidate], str]:
                 continue
 
             candidates.extend(
-                OcrCandidate(value_nm=value, text=text, confidence=score, box=box)
+                OcrCandidate(
+                    value_nm=value,
+                    text=text,
+                    confidence=score,
+                    box=box,
+                    source=f"rapid-{variant_name}",
+                )
                 for value in values
             )
 
@@ -829,6 +1037,11 @@ def _ocr_thickness_nm(path: Path) -> CoatingOcrResult:
         image = Image.open(path)
         image = ImageOps.exif_transpose(image).convert("L")
         rapid_candidates, rapid_text = _run_rapid_ocr(image)
+        rapid_label_candidates, rapid_label_text = _run_rapid_label_ocr(image)
+        rapid_candidates = _merge_rapid_ocr_candidates(
+            rapid_candidates,
+            rapid_label_candidates,
+        )
 
         label_values: list[float] = []
         label_text = ""
@@ -850,6 +1063,7 @@ def _ocr_thickness_nm(path: Path) -> CoatingOcrResult:
             part
             for part in (
                 f"[rapidocr]\n{rapid_text}" if rapid_text else "",
+                f"[rapidocr-label]\n{rapid_label_text}" if rapid_label_text else "",
                 f"[tesseract-label]\n{label_text}" if label_text else "",
                 f"[tesseract-full]\n{full_text}" if full_text else "",
             )

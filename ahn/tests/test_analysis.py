@@ -6,6 +6,7 @@ from ahn.analysis import (
     OcrCandidate,
     _candidate_values_from_text,
     _is_microscope_scale_box,
+    _merge_rapid_ocr_candidates,
     _reconcile_coating_ocr_ensemble,
     _reconcile_coating_ocr_values,
     collect_coating_samples,
@@ -114,6 +115,95 @@ def test_coating_ocr_ensemble_does_not_add_tesseract_crop_noise() -> None:
 
 def test_coating_ocr_ensemble_uses_tesseract_when_neural_detector_misses() -> None:
     assert _reconcile_coating_ocr_ensemble([], [14.72], []) == [14.72]
+
+
+def test_coating_label_crop_removes_measurement_line_prefix() -> None:
+    full = [
+        OcrCandidate(
+            value_nm=45.80,
+            text="45.80 nm",
+            confidence=0.98,
+            box=(800, 700, 250, 80),
+            source="rapid-original",
+        ),
+    ]
+    label = [
+        OcrCandidate(
+            value_nm=5.80,
+            text="5.80",
+            confidence=1.0,
+            box=(860, 730, 180, 45),
+            source="rapid-label",
+        ),
+    ]
+
+    assert [candidate.value_nm for candidate in _merge_rapid_ocr_candidates(full, label)] == [5.80]
+
+
+def test_coating_label_crop_does_not_remove_real_leading_digit() -> None:
+    full = [
+        OcrCandidate(
+            value_nm=12.21,
+            text="12.21 nm",
+            confidence=0.99,
+            box=(571, 781, 132, 39),
+            source="rapid-original",
+        ),
+    ]
+    label = [
+        OcrCandidate(
+            value_nm=2.21,
+            text="2.21",
+            confidence=1.0,
+            box=(575, 789, 122, 26),
+            source="rapid-label",
+        ),
+    ]
+
+    assert [candidate.value_nm for candidate in _merge_rapid_ocr_candidates(full, label)] == [12.21]
+
+
+def test_coating_label_crop_adds_second_measurement_missed_by_full_image() -> None:
+    full = [
+        OcrCandidate(value_nm=3.20, text="3.20 nm", confidence=0.97, box=(569, 394, 255, 113)),
+    ]
+    labels = [
+        OcrCandidate(value_nm=3.20, text="3.20", confidence=1.0, box=(621, 442, 186, 43)),
+        OcrCandidate(value_nm=5.80, text="5.80", confidence=1.0, box=(859, 749, 186, 43)),
+    ]
+
+    assert [candidate.value_nm for candidate in _merge_rapid_ocr_candidates(full, labels)] == [3.20, 5.80]
+
+
+def test_coating_label_crop_preserves_full_decimal_when_crop_loses_decimal() -> None:
+    full = [
+        OcrCandidate(value_nm=2.68, text="2.68 nm", confidence=0.99, box=(842, 1164, 258, 82)),
+    ]
+    labels = [
+        OcrCandidate(value_nm=68.0, text="68", confidence=1.0, box=(862, 1182, 225, 52)),
+    ]
+
+    assert [candidate.value_nm for candidate in _merge_rapid_ocr_candidates(full, labels)] == [2.68]
+
+
+def test_coating_label_crop_discards_unmatched_integer_fragment() -> None:
+    full = [
+        OcrCandidate(value_nm=7.18, text="7.18 nm", confidence=0.99, box=(576, 325, 495, 140)),
+    ]
+    labels = [
+        OcrCandidate(value_nm=7.0, text="7", confidence=1.0, box=(592, 347, 460, 107)),
+        OcrCandidate(value_nm=1.0, text="1", confidence=1.0, box=(1195, 218, 82, 44)),
+    ]
+
+    assert [candidate.value_nm for candidate in _merge_rapid_ocr_candidates(full, labels)] == [7.18]
+
+
+def test_coating_label_crop_keeps_unmatched_decimal_measurement() -> None:
+    labels = [
+        OcrCandidate(value_nm=5.80, text="5.80", confidence=1.0, box=(859, 749, 186, 43)),
+    ]
+
+    assert [candidate.value_nm for candidate in _merge_rapid_ocr_candidates([], labels)] == [5.80]
 
 
 def test_coating_ocr_identifies_lower_left_scale_bar() -> None:
