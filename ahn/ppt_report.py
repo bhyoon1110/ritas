@@ -1245,12 +1245,30 @@ def _restyle_merged_header(cell, text: str, font_size: int) -> None:
             _set_run(run, size=font_size, bold=True, color=RGBColor(255, 255, 255))
 
 
+POINT_TABLE_TITLE_ROW_HEIGHT = int(Inches(0.27))
+POINT_SUMMARY_BODY_ROW_HEIGHT = int(Inches(0.55))
+
+
+def _point_table_slot(
+    slot: tuple[int, int, int, int],
+    row_count: int,
+    *,
+    compact: bool,
+) -> tuple[int, int, int, int]:
+    if not compact or row_count <= 1:
+        return slot
+    natural_height = POINT_TABLE_TITLE_ROW_HEIGHT + (
+        POINT_SUMMARY_BODY_ROW_HEIGHT * (row_count - 1)
+    )
+    return slot[0], slot[1], slot[2], min(slot[3], natural_height)
+
+
 def _set_point_table_row_heights(table_shape, total_height: int) -> None:
     row_count = len(table_shape.table.rows)
     if row_count <= 1:
         return
 
-    title_height = min(int(Inches(0.27)), total_height - (row_count - 1))
+    title_height = min(POINT_TABLE_TITLE_ROW_HEIGHT, total_height - (row_count - 1))
     body_height, extra = divmod(total_height - title_height, row_count - 1)
     table_shape.table.rows[0].height = title_height
     for row_index in range(1, row_count):
@@ -1270,18 +1288,23 @@ def _add_point_composition_table(
     if not rows:
         return None
     font_size = _point_table_font_size(rows, detail=body_index is not None)
+    table_slot = _point_table_slot(
+        slot,
+        len(rows),
+        compact=body_index is None,
+    )
     table_shape = _add_table(
         slide,
         rows,
-        *slot,
+        *table_slot,
         font_size=font_size,
-        column_widths=_point_table_column_widths(slot[2], rows),
+        column_widths=_point_table_column_widths(table_slot[2], rows),
         alignments=[PP_ALIGN.CENTER] * max(len(row) for row in rows),
         draw_borders=True,
     )
     if table_shape is None:
         return None
-    _set_point_table_row_heights(table_shape, slot[3])
+    _set_point_table_row_heights(table_shape, table_slot[3])
     cols = len(rows[0])
     if cols > 1:
         header_cell = table_shape.table.cell(0, 0)

@@ -669,11 +669,14 @@ def test_point_eds_spectrum_tables_create_row_detail_slides(tmp_path, monkeypatc
     assert table_counts == [1, 1, 2, 2]
     summary_units = []
     summary_title_row_heights = []
+    summary_table_heights = []
     for slide in list(prs.slides)[:2]:
-        tables = [shape.table for shape in slide.shapes if getattr(shape, "has_table", False)]
-        assert len(tables) == 1
-        summary_units.append(tables[0].cell(0, 0).text)
-        summary_title_row_heights.append(tables[0].rows[0].height)
+        table_shapes = [shape for shape in slide.shapes if getattr(shape, "has_table", False)]
+        assert len(table_shapes) == 1
+        table = table_shapes[0].table
+        summary_units.append(table.cell(0, 0).text)
+        summary_title_row_heights.append(table.rows[0].height)
+        summary_table_heights.append(table_shapes[0].height)
         anchor = _pictures(slide)[0]
         assert anchor.left <= Inches(0.3)
         assert anchor.width == Inches(4.0)
@@ -682,6 +685,7 @@ def test_point_eds_spectrum_tables_create_row_detail_slides(tmp_path, monkeypatc
         assert anchor.crop_right > 0
     assert summary_units == ["Wt%", "At%"]
     assert summary_title_row_heights == [Inches(0.27), Inches(0.27)]
+    assert summary_table_heights == [Inches(1.92), Inches(1.92)]
     summary_table_fonts = []
     for slide in list(prs.slides)[:2]:
         for shape in slide.shapes:
