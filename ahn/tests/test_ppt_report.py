@@ -434,9 +434,54 @@ def test_map_eds_pages_reuse_first_image_as_left_anchor(tmp_path, monkeypatch) -
         assert anchor.left <= Inches(0.3)
         assert anchor.width >= Inches(4.0)
     assert len([shape for shape in _pictures(prs.slides[0]) if shape.left >= Inches(4.0)]) == 6
+    first_page_right = [shape for shape in _pictures(prs.slides[0]) if shape.left >= Inches(4.0)]
+    assert len({round(shape.left / Inches(1), 2) for shape in first_page_right}) == 2
+    assert len({round(shape.top / Inches(1), 2) for shape in first_page_right}) == 3
+
     single_right_picture = [shape for shape in _pictures(prs.slides[1]) if shape.left >= Inches(4.0)]
     assert len(single_right_picture) == 1
-    assert single_right_picture[0].width >= Inches(5.5)
+    assert single_right_picture[0].left == min(shape.left for shape in first_page_right)
+    assert single_right_picture[0].top == min(shape.top for shape in first_page_right)
+    assert single_right_picture[0].width == first_page_right[0].width
+    assert single_right_picture[0].height == first_page_right[0].height
+
+
+def test_map_eds_partial_page_keeps_fixed_two_by_three_slots(tmp_path, monkeypatch) -> None:
+    images = []
+    for index in range(9):
+        image_path = tmp_path / f"map-partial-{index}.png"
+        _write_image(image_path)
+        images.append(image_path)
+    report_path = tmp_path / "report" / "map-partial.docx"
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_bytes(b"placeholder")
+
+    monkeypatch.setattr(
+        "ahn.ppt_report.extract_docx",
+        lambda _docx_path, _extract_dir: SimpleNamespace(media_paths=images, tables=[]),
+    )
+    project = _base_project(tmp_path)
+    project["eds_reports"] = [
+        {
+            "path": "report/map-partial.docx",
+            "file_name": "map-partial.docx",
+            "title": "Sample 2 MAP2",
+            "sample_name": "Sample 2",
+            "analysis_type": "MAP",
+        }
+    ]
+    output = tmp_path / "map-partial.pptx"
+
+    build_pptx(project, output)
+
+    prs = Presentation(output)
+    full_page = [shape for shape in _pictures(prs.slides[0]) if shape.left >= Inches(4.0)]
+    partial_page = [shape for shape in _pictures(prs.slides[1]) if shape.left >= Inches(4.0)]
+    assert len(partial_page) == 2
+    assert partial_page[0].top == partial_page[1].top == min(shape.top for shape in full_page)
+    assert [shape.left for shape in partial_page] == sorted({shape.left for shape in full_page})
+    assert all(shape.width == full_page[0].width for shape in partial_page)
+    assert all(shape.height == full_page[0].height for shape in partial_page)
 
 
 def test_point_eds_detail_pages_keep_first_image_on_left(tmp_path, monkeypatch) -> None:

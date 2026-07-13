@@ -1,13 +1,16 @@
 from pathlib import Path
 
 from ahn.analysis import (
+    COATING_LABEL_DETECTION_MAX_DIMENSION,
     CoatingOcrResult,
     _candidate_values_from_text,
     _select_supported_ocr_values,
     collect_coating_samples,
     collect_project,
     extract_magnification,
+    _ocr_label_boxes,
 )
+from PIL import Image
 from ahn.processor import build_outputs
 
 
@@ -23,9 +26,48 @@ def test_extract_magnification_from_ahn_file_names() -> None:
 def test_coating_ocr_candidate_parser_keeps_multiple_labels() -> None:
     assert _candidate_values_from_text("2.21 nm\n1.81 nm\n10 nm") == [2.21, 1.81]
     assert _candidate_values_from_text("2. IS rm") == [2.18]
+    assert _candidate_values_from_text("O.72 rm") == [0.72]
+    assert _candidate_values_from_text("236.12 nm\n200 nm") == [236.12]
     assert _select_supported_ocr_values(
         [[14.39, 19.08, 14.54], [14.59, 14.54], [14.59, 19.08, 14.54]]
     ) == [14.59, 19.08, 14.54]
+
+
+def test_coating_label_detection_normalizes_high_resolution_image(monkeypatch) -> None:
+    image = Image.new("L", (4000, 3000), color=80)
+    seen_sizes = []
+
+    def fake_label_box(detection_image, _box, _pytesseract):
+        seen_sizes.append(detection_image.size)
+        return [3.87], ["3.87 nm"]
+
+    monkeypatch.setattr("ahn.analysis._ocr_label_box", fake_label_box)
+
+    import cv2
+    import numpy as np
+
+    original_components = cv2.connectedComponentsWithStats
+
+    def fake_components(_closed, _connectivity):
+        stats = np.array(
+            [
+                [0, 0, 0, 0, 0],
+                [700, 800, 650, 145, 78000],
+            ],
+            dtype=np.int32,
+        )
+        return 2, np.zeros((1, 1), dtype=np.int32), stats, np.zeros((2, 2))
+
+    monkeypatch.setattr(cv2, "connectedComponentsWithStats", fake_components)
+    try:
+        values, text = _ocr_label_boxes(image, object())
+    finally:
+        monkeypatch.setattr(cv2, "connectedComponentsWithStats", original_components)
+
+    assert values == [3.87]
+    assert text == "3.87 nm"
+    assert seen_sizes
+    assert max(seen_sizes[0]) == COATING_LABEL_DETECTION_MAX_DIMENSION
 
 
 def test_collect_project_reads_testdata_bundle() -> None:

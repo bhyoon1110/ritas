@@ -820,21 +820,13 @@ def _add_eds_right_grid(
 ) -> None:
     if not images:
         return
-    if len(images) == 1:
-        effective_cols, effective_rows = 1, 1
-    elif len(images) == 2:
-        effective_cols, effective_rows = 1, 2
-    elif len(images) <= 4:
-        effective_cols, effective_rows = 2, 2
-    else:
-        effective_cols, effective_rows = cols, rows
     _add_absolute_image_grid(
         slide,
         [{"path": str(path), "file_name": path.name, "magnification": ""} for path in images],
         tmp_dir,
         *_eds_right_slot(),
-        effective_cols,
-        effective_rows,
+        cols,
+        rows,
     )
 
 
@@ -884,7 +876,7 @@ def _add_eds_map_slide(
     if not first_image and not map_images:
         return
     slide = _add_eds_slide(prs, template, "eds_map", title)
-    _add_eds_anchor_grid(slide, first_image, map_images, tmp_dir, cols=3, rows=2)
+    _add_eds_anchor_grid(slide, first_image, map_images, tmp_dir, cols=2, rows=3)
 
 
 def _add_eds_map_pages(

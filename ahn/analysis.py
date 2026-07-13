@@ -29,9 +29,11 @@ from PIL import Image, ImageFilter, ImageOps
 IMAGE_EXTENSIONS = {".tif", ".tiff", ".png", ".jpg", ".jpeg", ".bmp", ".webp"}
 DOCX_EXTENSIONS = {".docx"}
 SPREADSHEET_EXTENSIONS = {".xlsx", ".xls", ".xlsm", ".xlsb", ".csv", ".tsv"}
-MAX_COATING_THICKNESS_NM = 40.0
+MAX_COATING_THICKNESS_NM = 500.0
+MICROSCOPE_SCALE_VALUES_NM = {5, 10, 20, 50, 100, 200, 500}
 DEFAULT_COATING_OCR_WORKERS = 2
 MAX_COATING_OCR_WORKERS = 4
+COATING_LABEL_DETECTION_MAX_DIMENSION = 1800
 
 
 @dataclass
@@ -381,12 +383,12 @@ def _candidate_values_from_text(text: str, *, require_unit: bool = True) -> list
     values: list[float] = []
 
     def add_value(value: float) -> None:
-        if abs(value - round(value)) < 0.001 and round(value) in {5, 10, 50}:
+        if abs(value - round(value)) < 0.001 and round(value) in MICROSCOPE_SCALE_VALUES_NM:
             return
         if 0.1 <= value <= MAX_COATING_THICKNESS_NM:
             values.append(value)
 
-    for match in re.finditer(r"(?<!\d)(\d{1,2})\s*\.\s*(\d{1,3})(?!\d)", normalized):
+    for match in re.finditer(r"(?<!\d)(\d{1,3})\s*\.\s*(\d{1,3})(?!\d)", normalized):
         if require_unit and not _unit_nearby(normalized, match.start(), match.end()):
             continue
         integer = int(match.group(1))
@@ -395,6 +397,13 @@ def _candidate_values_from_text(text: str, *, require_unit: bool = True) -> list
         if 50 <= integer <= 59:
             value = float(f"{integer - 50}.{fraction}")
         add_value(value)
+
+    # A zero before the decimal point is frequently recognized as the letter
+    # O on the white measurement labels (for example, ``O.72 rm``).
+    for match in re.finditer(r"(?<![A-Za-z0-9])[Oo]\s*\.\s*(\d{1,3})(?!\d)", normalized):
+        if require_unit and not _unit_nearby(normalized, match.start(), match.end()):
+            continue
+        add_value(float(f"0.{match.group(1)}"))
 
     # Tesseract often reads the leading "11" as "LL" or "II" on TEM labels.
     for match in re.finditer(r"(?<![A-Za-z0-9])([lLiI]{1,2})\s*\.\s*(\d{1,3})", normalized):
@@ -451,7 +460,7 @@ def _ocr_label_box(image: Image.Image, box: tuple[int, int, int, int], pytessera
 
     texts: list[str] = []
     values: list[float] = []
-    config = "--psm 8 -c tessedit_char_whitelist=0123456789.nmriuy"
+    config = "--psm 8 -c tessedit_char_whitelist=0123456789.Oonmriuy"
     for variant in variants:
         try:
             text = _run_tesseract(pytesseract, variant, config=config, timeout=2).strip()
@@ -474,7 +483,15 @@ def _ocr_label_boxes(image: Image.Image, pytesseract: Any) -> tuple[list[float],
     except Exception:
         return [], ""
 
-    gray = np.array(image)
+    detection_image = image
+    if max(image.size) > COATING_LABEL_DETECTION_MAX_DIMENSION:
+        scale = COATING_LABEL_DETECTION_MAX_DIMENSION / max(image.size)
+        detection_image = image.resize(
+            (max(1, round(image.width * scale)), max(1, round(image.height * scale))),
+            Image.Resampling.LANCZOS,
+        )
+
+    gray = np.array(detection_image)
     height, width = gray.shape
     _, thresholded = cv2.threshold(gray, 235, 255, cv2.THRESH_BINARY)
     closed = cv2.morphologyEx(
@@ -484,10 +501,17 @@ def _ocr_label_boxes(image: Image.Image, pytesseract: Any) -> tuple[list[float],
     )
     count, _labels, stats, _centroids = cv2.connectedComponentsWithStats(closed, 8)
     boxes: list[tuple[int, int, int, int]] = []
+    max_box_width = max(380, round(width * 0.48))
+    max_box_height = max(100, round(height * 0.14))
     for index in range(1, count):
         x, y, box_w, box_h, area = [int(value) for value in stats[index]]
         fill = area / max(1, box_w * box_h)
-        if not (45 <= box_w <= 380 and 18 <= box_h <= 100 and area >= 700 and fill >= 0.25):
+        if not (
+            45 <= box_w <= max_box_width
+            and 18 <= box_h <= max_box_height
+            and area >= 700
+            and fill >= 0.25
+        ):
             continue
         if y <= height * 0.08 or x <= 5 or x + box_w >= width - 5:
             continue
@@ -504,7 +528,7 @@ def _ocr_label_boxes(image: Image.Image, pytesseract: Any) -> tuple[list[float],
     values: list[float] = []
     text_parts: list[str] = []
     for box in sorted(boxes, key=lambda item: (item[1], item[0]))[:10]:
-        box_values, texts = _ocr_label_box(image, box, pytesseract)
+        box_values, texts = _ocr_label_box(detection_image, box, pytesseract)
         values.extend(box_values)
         text_parts.extend(texts)
     return values, "\n".join(text_parts)
