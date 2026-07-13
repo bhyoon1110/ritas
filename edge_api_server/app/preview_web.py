@@ -73,7 +73,7 @@ def build_workspace_index() -> str:
       <a href="/raman">Raman</a>
       <a href="/xrd">XRD</a>
       <a href="/tem">TEM</a>
-      <a href="/errors">오류 관리</a>
+      <a href="/operations">운영 관리</a>
     </nav>
   </main>
 </body>

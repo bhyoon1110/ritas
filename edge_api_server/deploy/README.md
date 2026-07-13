@@ -139,8 +139,8 @@ sudo docker compose -f deploy/docker-compose.vllm.yml ps
 journalctl -u rist-edge-api.service -f
 journalctl -u rist-edge-worker.service -f
 
-# 프로젝트 통합 오류 화면
-# http://<Edge 서버 주소>:8000/errors
+# 프로젝트 통합 운영 관리 화면 (사용 기록 | 오류 기록)
+# http://<Edge 서버 주소>:8000/operations
 sudo docker logs -f vllm-gemma4-e4b
 
 # 재시작 / 중지

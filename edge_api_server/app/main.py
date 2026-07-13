@@ -46,6 +46,7 @@ from .preview_web import build_workspace_index
 from .raman_web import router as raman_router
 from .service import EdgeService
 from .xrd_web import router as xrd_router
+from .usage_archive import set_usage_context
 
 logger = get_logger(__name__)
 
@@ -183,6 +184,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             payload,
             request.client.host if request.client else None,
             idempotency_key,
+        )
+        set_usage_context(
+            request,
+            project=payload.pk.experiment_code,
+            job_id=str(result.get("jobId") or ""),
+            request_number=payload.pk.request_number,
+            experiment_code=payload.pk.experiment_code,
+            equipment_code=payload.pk.equipment_code,
+            operator_id=payload.pk.operator_id,
         )
         response.status_code = status_code
         return result

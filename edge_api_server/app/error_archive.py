@@ -21,6 +21,12 @@ from pydantic import BaseModel
 from rist_common import get_logger
 
 from .errors import ApiException, error_response
+from .usage_archive import (
+    UsageArchive,
+    UsageArchiveSettings,
+    usage_archive,
+    usage_logging_middleware,
+)
 
 
 logger = get_logger(__name__)
@@ -491,6 +497,18 @@ def install_error_management(app: FastAPI, settings: object) -> ErrorArchive:
         )
     )
     app.state.error_archive = archive
+    configured_usage_root = getattr(settings, "usage_log_root", None)
+    usage_root = Path(
+        configured_usage_root
+        or (Path(getattr(settings, "storage_root")) / "usage")
+    )
+    app.state.usage_archive = UsageArchive(
+        UsageArchiveSettings(
+            root=usage_root,
+            retention_days=int(getattr(settings, "usage_log_retention_days", 90)),
+        )
+    )
+    app.middleware("http")(usage_logging_middleware)
     app.include_router(router)
     app.add_exception_handler(ApiException, archived_api_exception_handler)
     from fastapi.exceptions import RequestValidationError
@@ -509,7 +527,47 @@ def _archive_or_404(request: Request) -> ErrorArchive:
 
 @router.get("/errors", response_class=HTMLResponse, include_in_schema=False)
 def error_console() -> HTMLResponse:
-    return HTMLResponse(_ERROR_CONSOLE_HTML)
+    return HTMLResponse(_operations_console_html("errors"))
+
+
+@router.get("/operations", response_class=HTMLResponse, include_in_schema=False)
+def operations_console() -> HTMLResponse:
+    return HTMLResponse(_operations_console_html("usage"))
+
+
+@router.get("/api/v1/usage-events", tags=["operations"])
+def list_usage_events(
+    request: Request,
+    project: str = Query(default=""),
+    result: str = Query(default=""),
+    q: str = Query(default=""),
+    date_from: str = Query(default="", alias="dateFrom"),
+    date_to: str = Query(default="", alias="dateTo"),
+    limit: int = Query(default=200, ge=1, le=1000),
+) -> dict[str, object]:
+    archive = usage_archive(request.app)
+    if archive is None:
+        raise HTTPException(status_code=503, detail="사용 기록 저장소가 구성되지 않았습니다.")
+    items = archive.list(
+        project=project,
+        result=result,
+        query=q,
+        date_from=date_from,
+        date_to=date_to,
+        limit=limit,
+    )
+    return {"items": items, "count": len(items)}
+
+
+@router.get("/api/v1/usage-events/{event_id}", tags=["operations"])
+def get_usage_event(request: Request, event_id: str) -> dict[str, object]:
+    archive = usage_archive(request.app)
+    if archive is None:
+        raise HTTPException(status_code=503, detail="사용 기록 저장소가 구성되지 않았습니다.")
+    try:
+        return archive.get(event_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="사용 기록을 찾을 수 없습니다.") from exc
 
 
 @router.get("/api/v1/errors", tags=["errors"])
@@ -580,18 +638,67 @@ def download_error_archive(
     return FileResponse(path, media_type="application/zip", filename=f"rist-error-{event_id}.zip")
 
 
-_ERROR_CONSOLE_HTML = r'''<!doctype html>
-<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>RIST 오류 관리</title><style>
-:root{font-family:Arial,"Noto Sans KR",sans-serif;color:#172033;background:#f4f6f8}*{box-sizing:border-box}body{margin:0}.top{height:64px;background:#fff;border-bottom:1px solid #d8dee8;display:flex;align-items:center;justify-content:space-between;padding:0 24px}.top h1{font-size:21px;margin:0}.top a{color:#42526b;text-decoration:none}.wrap{padding:20px 24px 40px}.filters{display:grid;grid-template-columns:160px 160px minmax(220px,1fr) auto;gap:8px;margin-bottom:14px}.filters select,.filters input,.filters button{height:40px;border:1px solid #bcc7d6;border-radius:6px;background:#fff;padding:0 12px;font:inherit}.filters button{background:#183153;color:#fff;border-color:#183153;cursor:pointer}.summary{font-size:13px;color:#5f6b7a;margin:8px 0}.panel{background:#fff;border:1px solid #d8dee8;border-radius:7px;overflow:hidden}.table-wrap{overflow:auto}table{border-collapse:collapse;width:100%;min-width:960px}th,td{border-bottom:1px solid #e4e8ef;padding:11px 12px;text-align:left;vertical-align:top;font-size:13px}th{background:#eef2f6;color:#405069;position:sticky;top:0}tr{cursor:pointer}tr:hover{background:#f7f9fc}.badge{display:inline-block;border-radius:12px;padding:3px 8px;font-size:12px;background:#e8edf4}.badge.open{background:#fee2e2;color:#9b1c1c}.badge.resolved{background:#dcfce7;color:#166534}.code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}.empty{padding:54px;text-align:center;color:#738096}.detail{display:none;margin-top:16px;padding:18px}.detail.open{display:block}.detail-head{display:flex;align-items:flex-start;justify-content:space-between;gap:20px}.detail h2{font-size:18px;margin:0 0 5px}.actions{display:flex;gap:7px;flex-wrap:wrap}.actions button,.actions a{height:36px;border:1px solid #aeb9c8;border-radius:5px;background:#fff;color:#24364d;padding:0 11px;display:inline-flex;align-items:center;text-decoration:none;cursor:pointer;font:inherit}.actions .danger{color:#a11b1b}.meta{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:16px 0}.meta div{background:#f5f7fa;border-radius:5px;padding:10px}.meta b{display:block;font-size:11px;color:#687587;margin-bottom:5px}.message{border-left:4px solid #d64545;background:#fff4f4;padding:12px;margin:12px 0;white-space:pre-wrap}.files{display:grid;gap:6px}.file{display:flex;justify-content:space-between;align-items:center;gap:12px;border:1px solid #dce2ea;border-radius:5px;padding:8px 10px}.file a{word-break:break-all}.trace{white-space:pre-wrap;overflow:auto;max-height:320px;background:#111827;color:#dbe5f3;padding:12px;border-radius:5px;font:12px ui-monospace,SFMono-Regular,Menlo,monospace}.muted{color:#6b7788}@media(max-width:760px){.top{padding:0 14px}.wrap{padding:14px}.filters{grid-template-columns:1fr 1fr}.filters input{grid-column:1/-1}.meta{grid-template-columns:1fr 1fr}.detail-head{display:block}.actions{margin-top:12px}}
-</style></head><body><header class="top"><h1>RIST 오류 관리</h1><a href="/">작업 화면</a></header><main class="wrap">
-<section class="filters"><select id="project"><option value="">전체 프로젝트</option><option>FT-IR</option><option>RAMAN</option><option>XRD</option><option>TEM</option><option>EDGE</option></select><select id="status"><option value="">전체 상태</option><option value="open">미해결</option><option value="resolved">해결</option></select><input id="query" placeholder="코드, 메시지, 작업 ID 검색"><button id="refresh">조회</button></section><div class="summary" id="summary"></div>
-<section class="panel table-wrap"><table><thead><tr><th>발생 시각</th><th>프로젝트</th><th>상태</th><th>오류 코드</th><th>메시지</th><th>파일</th></tr></thead><tbody id="rows"></tbody></table><div class="empty" id="empty" hidden>오류 기록이 없습니다.</div></section><section class="panel detail" id="detail"></section></main>
-<script>
-const $=id=>document.getElementById(id);const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));let items=[];
-async function api(url,opt){const r=await fetch(url,opt);if(!r.ok){let m='요청 처리 실패';try{const p=await r.json();m=p.detail||p.message||m}catch(e){}throw new Error(m)}return r.status===204?null:r.json()}
-function size(v){let n=Number(v||0),u=['B','KB','MB','GB'];let i=0;while(n>=1024&&i<3){n/=1024;i++}return (i?n.toFixed(1):n)+' '+u[i]}
-async function load(){const p=new URLSearchParams({project:$('project').value,status:$('status').value,q:$('query').value,limit:'500'});const data=await api('/api/v1/errors?'+p);items=data.items||[];$('summary').textContent=items.length+'건';$('empty').hidden=!!items.length;$('rows').innerHTML=items.map(x=>`<tr data-id="${esc(x.eventId)}"><td>${esc(x.timestamp)}</td><td>${esc(x.project)}</td><td><span class="badge ${esc(x.status)}">${x.status==='resolved'?'해결':'미해결'}</span></td><td class="code">${esc(x.code)}</td><td>${esc(x.message)}</td><td>${(x.files||[]).length}개</td></tr>`).join('');document.querySelectorAll('tr[data-id]').forEach(r=>r.onclick=()=>show(r.dataset.id))}
-async function show(id){const x=await api('/api/v1/errors/'+encodeURIComponent(id));const files=(x.files||[]).map(f=>`<div class="file"><a href="/api/v1/errors/${encodeURIComponent(id)}/files/${f.path.split('/').map(encodeURIComponent).join('/')}">${esc(f.path)}</a><span>${size(f.sizeBytes)}</span></div>`).join('')||'<div class="muted">보관된 실패 파일이 없습니다.</div>';const trace=x.traceback||'';$('detail').className='panel detail open';$('detail').innerHTML=`<div class="detail-head"><div><h2>${esc(x.project)} · <span class="code">${esc(x.code)}</span></h2><span class="muted">${esc(x.eventId)}</span></div><div class="actions"><a href="/api/v1/errors/${encodeURIComponent(id)}/archive">전체 ZIP</a><button id="toggle">${x.status==='resolved'?'미해결로 변경':'해결 처리'}</button><button class="danger" id="delete">삭제</button></div></div><div class="meta"><div><b>발생 시각</b>${esc(x.timestamp)}</div><div><b>작업 ID</b>${esc(x.jobId||'-')}</div><div><b>요청 ID</b>${esc(x.requestId||'-')}</div><div><b>경로</b>${esc((x.request||{}).endpoint||'-')}</div></div><div class="message">${esc(x.message)}</div><h3>실패 파일</h3><div class="files">${files}</div>${x.filesTruncated?'<p class="muted">보존 용량 제한으로 일부 파일은 제외되었습니다.</p>':''}${trace?'<h3>스택 트레이스</h3><pre class="trace">'+esc(trace)+'</pre>':''}`;$('toggle').onclick=async()=>{await api('/api/v1/errors/'+encodeURIComponent(id),{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:x.status==='resolved'?'open':'resolved'})});await load();await show(id)};$('delete').onclick=async()=>{if(!confirm('이 오류 기록과 보관 파일을 삭제할까요?'))return;await api('/api/v1/errors/'+encodeURIComponent(id),{method:'DELETE'});$('detail').className='panel detail';await load()}}
-$('refresh').onclick=load;$('query').onkeydown=e=>{if(e.key==='Enter')load()};load().catch(e=>$('summary').textContent=e.message);
-</script></body></html>'''
+def _operations_console_html(default_tab: str) -> str:
+    normalized = "errors" if default_tab == "errors" else "usage"
+    return _OPERATIONS_CONSOLE_HTML.replace("__DEFAULT_TAB__", normalized)
+
+
+_OPERATIONS_CONSOLE_HTML = r'''<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>RIST 운영 관리</title>
+  <style>
+    :root{font-family:Arial,"Noto Sans KR",sans-serif;color:#172033;background:#f4f6f8}
+    *{box-sizing:border-box}html,body{margin:0;max-width:100%;overflow-x:hidden}.top{min-height:64px;background:#fff;border-bottom:1px solid #d8dee8;display:flex;align-items:center;justify-content:space-between;padding:0 24px;gap:16px}.top h1{font-size:21px;margin:0}.top a{color:#42526b;text-decoration:none}.wrap{padding:20px 24px 40px;max-width:100%;min-width:0}.tabs{display:flex;gap:4px;border-bottom:1px solid #ccd5e1;margin-bottom:16px;max-width:100%}.tab{border:0;background:transparent;color:#657286;font:inherit;font-weight:700;padding:11px 18px;cursor:pointer;border-bottom:3px solid transparent}.tab.active{color:#183153;border-color:#2563eb}.filters{display:grid;grid-template-columns:150px 150px 145px 145px minmax(220px,1fr) auto;gap:8px;margin-bottom:12px;min-width:0}.filters select,.filters input,.filters button{height:40px;width:100%;max-width:100%;border:1px solid #bcc7d6;border-radius:6px;background:#fff;padding:0 11px;font:inherit;min-width:0}.filters button{background:#183153;color:#fff;border-color:#183153;cursor:pointer}.summary{font-size:13px;color:#5f6b7a;margin:8px 0}.panel{background:#fff;border:1px solid #d8dee8;border-radius:7px;overflow:hidden;max-width:100%;min-width:0}.table-wrap{width:100%;overflow-x:auto;overflow-y:hidden}table{border-collapse:collapse;width:100%;min-width:1080px}th,td{border-bottom:1px solid #e4e8ef;padding:11px 12px;text-align:left;vertical-align:top;font-size:13px}th{background:#eef2f6;color:#405069;position:sticky;top:0}tbody tr{cursor:pointer}tbody tr:hover{background:#f7f9fc}.badge{display:inline-block;border-radius:12px;padding:3px 8px;font-size:12px;background:#e8edf4;white-space:nowrap}.badge.open,.badge.failure{background:#fee2e2;color:#9b1c1c}.badge.resolved,.badge.success{background:#dcfce7;color:#166534}.code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}.empty{padding:54px;text-align:center;color:#738096}.detail{display:none;margin-top:16px;padding:18px}.detail.open{display:block}.detail-head{display:flex;align-items:flex-start;justify-content:space-between;gap:20px}.detail h2{font-size:18px;margin:0 0 5px}.actions{display:flex;gap:7px;flex-wrap:wrap}.actions button,.actions a{height:36px;border:1px solid #aeb9c8;border-radius:5px;background:#fff;color:#24364d;padding:0 11px;display:inline-flex;align-items:center;text-decoration:none;cursor:pointer;font:inherit}.actions .danger{color:#a11b1b}.meta{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:16px 0}.meta div{background:#f5f7fa;border-radius:5px;padding:10px;min-width:0;overflow-wrap:anywhere}.meta b{display:block;font-size:11px;color:#687587;margin-bottom:5px}.message{border-left:4px solid #d64545;background:#fff4f4;padding:12px;margin:12px 0;white-space:pre-wrap}.files{display:grid;gap:6px}.file{display:flex;justify-content:space-between;align-items:center;gap:12px;border:1px solid #dce2ea;border-radius:5px;padding:8px 10px}.file a{word-break:break-all}.trace{white-space:pre-wrap;overflow:auto;max-height:320px;background:#111827;color:#dbe5f3;padding:12px;border-radius:5px;font:12px ui-monospace,SFMono-Regular,Menlo,monospace}.muted{color:#6b7788}.usage-only.hidden{display:none}
+    @media(max-width:980px){.filters{grid-template-columns:1fr 1fr 1fr}.filters .query{grid-column:1/3}.meta{grid-template-columns:1fr 1fr}}
+    @media(max-width:640px){.top{padding:12px 14px}.top h1{font-size:19px}.wrap{padding:14px}.tabs{margin-bottom:12px}.tab{flex:1;padding:10px 8px}.filters{grid-template-columns:1fr 1fr}.filters .query{grid-column:1/-1}.filters button{grid-column:1/-1}.detail-head{display:block}.actions{margin-top:12px}.meta{grid-template-columns:1fr}.file{align-items:flex-start;flex-direction:column}}
+  </style>
+</head>
+<body data-default-tab="__DEFAULT_TAB__">
+  <header class="top"><h1>RIST 운영 관리</h1><a href="/">작업 화면</a></header>
+  <main class="wrap">
+    <nav class="tabs" aria-label="운영 관리 메뉴">
+      <button type="button" class="tab" id="usage-tab" data-tab="usage">사용 기록</button>
+      <button type="button" class="tab" id="errors-tab" data-tab="errors">오류 기록</button>
+    </nav>
+    <section class="filters">
+      <select id="project" aria-label="프로젝트">
+        <option value="">전체 프로젝트</option><option>FT-IR</option><option>RAMAN</option><option>XRD</option><option>TEM</option><option>EDGE</option>
+      </select>
+      <select id="state" aria-label="결과 또는 상태"></select>
+      <input class="usage-only" id="date-from" type="date" aria-label="시작일">
+      <input class="usage-only" id="date-to" type="date" aria-label="종료일">
+      <input class="query" id="query" placeholder="의뢰번호, 작업 ID, 코드, 메시지 검색">
+      <button type="button" id="refresh">조회</button>
+    </section>
+    <div class="summary" id="summary"></div>
+    <section class="panel table-wrap">
+      <table><thead><tr id="head-row"></tr></thead><tbody id="rows"></tbody></table>
+      <div class="empty" id="empty" hidden>기록이 없습니다.</div>
+    </section>
+    <section class="panel detail" id="detail"></section>
+  </main>
+  <script>
+  (function(){
+    const $=id=>document.getElementById(id);
+    const esc=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+    let activeTab=document.body.dataset.defaultTab==='errors'?'errors':'usage';
+    function localDate(value){if(!value)return '-';try{return new Date(value).toLocaleString('ko-KR')}catch(_error){return value}}
+    function size(value){let n=Number(value||0),units=['B','KB','MB','GB'],index=0;while(n>=1024&&index<3){n/=1024;index+=1}return(index?n.toFixed(1):n)+' '+units[index]}
+    function duration(value){const ms=Number(value||0);return ms>=1000?(ms/1000).toFixed(ms>=10000?1:2)+'초':ms+'ms'}
+    async function api(url,options){const response=await fetch(url,options);if(!response.ok){let message='요청 처리 실패';try{const payload=await response.json();message=payload.detail||payload.message||message}catch(_error){}throw new Error(message)}return response.status===204?null:response.json()}
+    function setDefaultDates(){if($('date-from').value)return;const end=new Date(),start=new Date();start.setDate(end.getDate()-7);$('date-from').value=start.toISOString().slice(0,10);$('date-to').value=end.toISOString().slice(0,10)}
+    function setTab(tab,loadNow){activeTab=tab==='errors'?'errors':'usage';document.querySelectorAll('.tab').forEach(button=>button.classList.toggle('active',button.dataset.tab===activeTab));document.querySelectorAll('.usage-only').forEach(element=>element.classList.toggle('hidden',activeTab!=='usage'));$('state').innerHTML=activeTab==='usage'?'<option value="">전체 결과</option><option value="success">성공</option><option value="failure">실패</option>':'<option value="">전체 상태</option><option value="open">미해결</option><option value="resolved">해결</option>';$('head-row').innerHTML=activeTab==='usage'?'<th>발생 시각</th><th>프로젝트</th><th>동작</th><th>결과</th><th>처리시간</th><th>의뢰번호</th><th>작업 ID</th><th>접속 위치</th>':'<th>발생 시각</th><th>프로젝트</th><th>상태</th><th>오류 코드</th><th>메시지</th><th>파일</th>';$('detail').className='panel detail';$('empty').textContent=activeTab==='usage'?'사용 기록이 없습니다.':'오류 기록이 없습니다.';history.replaceState(null,'',activeTab==='usage'?'/operations':'/errors');if(activeTab==='usage')setDefaultDates();if(loadNow)load()}
+    async function load(){const params=new URLSearchParams({project:$('project').value,q:$('query').value,limit:'500'});let endpoint;if(activeTab==='usage'){params.set('result',$('state').value);params.set('dateFrom',$('date-from').value);params.set('dateTo',$('date-to').value);endpoint='/api/v1/usage-events?'+params}else{params.set('status',$('state').value);endpoint='/api/v1/errors?'+params}const data=await api(endpoint);const items=data.items||[];$('summary').textContent=items.length+'건';$('empty').hidden=Boolean(items.length);$('rows').innerHTML=activeTab==='usage'?usageRows(items):errorRows(items);document.querySelectorAll('tr[data-id]').forEach(row=>row.onclick=()=>show(row.dataset.id))}
+    function usageRows(items){return items.map(item=>`<tr data-id="${esc(item.eventId)}"><td>${esc(localDate(item.timestamp))}</td><td>${esc(item.project)}</td><td>${esc(item.action)}</td><td><span class="badge ${esc(item.result)}">${item.result==='failure'?'실패':'성공'}</span></td><td>${esc(duration(item.durationMs))}</td><td>${esc(item.requestNumber||'-')}</td><td class="code">${esc(item.jobId||'-')}</td><td>${esc((item.request||{}).client||'-')}</td></tr>`).join('')}
+    function errorRows(items){return items.map(item=>`<tr data-id="${esc(item.eventId)}"><td>${esc(localDate(item.timestamp))}</td><td>${esc(item.project)}</td><td><span class="badge ${esc(item.status)}">${item.status==='resolved'?'해결':'미해결'}</span></td><td class="code">${esc(item.code)}</td><td>${esc(item.message)}</td><td>${(item.files||[]).length}개</td></tr>`).join('')}
+    async function show(id){if(activeTab==='usage'){showUsage(await api('/api/v1/usage-events/'+encodeURIComponent(id)));return}showError(await api('/api/v1/errors/'+encodeURIComponent(id)))}
+    function showUsage(item){const request=item.request||{};$('detail').className='panel detail open';$('detail').innerHTML=`<div class="detail-head"><div><h2>${esc(item.project)} · ${esc(item.action)}</h2><span class="muted code">${esc(item.eventId)}</span></div><span class="badge ${esc(item.result)}">${item.result==='failure'?'실패':'성공'}</span></div><div class="meta"><div><b>발생 시각</b>${esc(localDate(item.timestamp))}</div><div><b>처리시간</b>${esc(duration(item.durationMs))}</div><div><b>HTTP 상태</b>${esc(item.statusCode)}</div><div><b>요청 경로</b>${esc(request.method||'-')} ${esc(request.endpoint||'-')}</div><div><b>의뢰번호</b>${esc(item.requestNumber||'-')}</div><div><b>작업 ID</b>${esc(item.jobId||'-')}</div><div><b>실험코드 / 장비</b>${esc(item.experimentCode||'-')} / ${esc(item.equipmentCode||'-')}</div><div><b>실험자</b>${esc(item.operatorId||'-')}</div><div><b>요청 ID</b>${esc(item.requestId||'-')}</div><div><b>접속 위치</b>${esc(request.client||'-')}</div><div><b>브라우저</b>${esc(request.userAgent||'-')}</div></div>`}
+    function showError(item){const files=(item.files||[]).map(file=>`<div class="file"><a href="/api/v1/errors/${encodeURIComponent(item.eventId)}/files/${file.path.split('/').map(encodeURIComponent).join('/')}">${esc(file.path)}</a><span>${size(file.sizeBytes)}</span></div>`).join('')||'<div class="muted">보관된 실패 파일이 없습니다.</div>';const trace=item.traceback||'';$('detail').className='panel detail open';$('detail').innerHTML=`<div class="detail-head"><div><h2>${esc(item.project)} · <span class="code">${esc(item.code)}</span></h2><span class="muted code">${esc(item.eventId)}</span></div><div class="actions"><a href="/api/v1/errors/${encodeURIComponent(item.eventId)}/archive">전체 ZIP</a><button id="toggle">${item.status==='resolved'?'미해결로 변경':'해결 처리'}</button><button class="danger" id="delete">삭제</button></div></div><div class="meta"><div><b>발생 시각</b>${esc(localDate(item.timestamp))}</div><div><b>작업 ID</b>${esc(item.jobId||'-')}</div><div><b>요청 ID</b>${esc(item.requestId||'-')}</div><div><b>경로</b>${esc((item.request||{}).endpoint||'-')}</div></div><div class="message">${esc(item.message)}</div><h3>실패 파일</h3><div class="files">${files}</div>${item.filesTruncated?'<p class="muted">보존 용량 제한으로 일부 파일은 제외되었습니다.</p>':''}${trace?'<h3>스택 트레이스</h3><pre class="trace">'+esc(trace)+'</pre>':''}`;$('toggle').onclick=async()=>{await api('/api/v1/errors/'+encodeURIComponent(item.eventId),{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:item.status==='resolved'?'open':'resolved'})});await load();await show(item.eventId)};$('delete').onclick=async()=>{if(!confirm('이 오류 기록과 보관 파일을 삭제할까요?'))return;await api('/api/v1/errors/'+encodeURIComponent(item.eventId),{method:'DELETE'});$('detail').className='panel detail';await load()}}
+    document.querySelectorAll('.tab').forEach(button=>button.onclick=()=>setTab(button.dataset.tab,true));$('refresh').onclick=()=>load().catch(error=>$('summary').textContent=error.message);$('query').onkeydown=event=>{if(event.key==='Enter')$('refresh').click()};setTab(activeTab,false);load().catch(error=>$('summary').textContent=error.message);
+  })();
+  </script>
+</body>
+</html>'''

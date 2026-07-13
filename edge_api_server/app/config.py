@@ -29,6 +29,8 @@ class Settings:
     error_capture_files: bool = True
     error_max_file_bytes: int = 512 * 1024 * 1024
     error_max_total_bytes: int = 2 * 1024 * 1024 * 1024
+    usage_log_root: Path | None = None
+    usage_log_retention_days: int = 90
     ftir_assignment_library_dir: Path = (
         PROJECT_DIR / "data" / "ftir_assignment_libraries"
     )
@@ -76,6 +78,9 @@ class Settings:
         error_archive_root = Path(
             os.getenv("RIST_ERROR_ARCHIVE_ROOT", str(storage_root / "errors"))
         ).expanduser()
+        usage_log_root = Path(
+            os.getenv("RIST_USAGE_LOG_ROOT", str(storage_root / "usage"))
+        ).expanduser()
         ftir_assignment_library_dir = Path(
             os.getenv(
                 "RIST_FTIR_ASSIGNMENT_LIBRARY_DIR",
@@ -115,6 +120,10 @@ class Settings:
                         str(2 * 1024 * 1024 * 1024),
                     )
                 ),
+            ),
+            usage_log_root=usage_log_root,
+            usage_log_retention_days=max(
+                1, int(os.getenv("RIST_USAGE_LOG_RETENTION_DAYS", "90"))
             ),
             ftir_assignment_library_dir=ftir_assignment_library_dir,
             ftir_assignment_library_delete_enabled=os.getenv(

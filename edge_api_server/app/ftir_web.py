@@ -45,6 +45,7 @@ from .preview_report import (
 )
 from .spring_callback import SpringCallbackError
 from .upload_sessions import ChunkUploadStore, read_completed_upload_files
+from .usage_archive import set_usage_context
 
 
 PLOT_DIV_ID = "peak-plot"
@@ -5245,6 +5246,14 @@ def create_ftir_preview_report(
     equipment_code: str = Form(default="", alias="equipmentCode"),
     operator_id: str = Form(default="", alias="operatorId"),
 ) -> FileResponse:
+    set_usage_context(
+        request,
+        project="FT-IR",
+        request_number=request_number,
+        experiment_code="FT-IR",
+        equipment_code=equipment_code,
+        operator_id=operator_id,
+    )
     uploaded = _uploaded_dpt_files(files)
     request.state.error_project = "FT-IR"
     request.state.error_file_blobs = uploaded
@@ -5296,6 +5305,15 @@ def _create_ftir_report_job_from_uploaded(
 
     store = preview_report_job_store(request.app)
     job = store.create(filename="ftir-report-package.zip")
+    set_usage_context(
+        request,
+        project="FT-IR",
+        job_id=job.job_id,
+        request_number=request_number,
+        experiment_code="FT-IR",
+        equipment_code=equipment_code,
+        operator_id=operator_id,
+    )
 
     def raw_series_factory() -> list[RawSeries]:
         return _build_ftir_raw_series(uploaded)
@@ -5376,6 +5394,15 @@ def complete_ftir_report_upload_session(
         store = preview_report_job_store(request.app)
         existing_job = store.get(existing_job_id)
         if existing_job is not None:
+            set_usage_context(
+                request,
+                project="FT-IR",
+                job_id=existing_job.job_id,
+                request_number=request_number,
+                experiment_code="FT-IR",
+                equipment_code=equipment_code,
+                operator_id=operator_id,
+            )
             return _report_job_response(existing_job, prefix="/api/v1/ftir/report/jobs")
 
     session = ftir_report_upload_store.get(upload_id)
@@ -5475,6 +5502,15 @@ def send_ftir_preview_report_job(
     job_id: str,
     payload: PreviewReportSendRequest,
 ) -> dict:
+    set_usage_context(
+        request,
+        project="FT-IR",
+        job_id=job_id,
+        request_number=payload.request_number,
+        experiment_code=payload.experiment_code,
+        equipment_code=payload.equipment_code,
+        operator_id=payload.operator_id,
+    )
     store = preview_report_job_store(request.app)
     job = store.get(job_id)
     if job is None:

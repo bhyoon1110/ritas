@@ -23,6 +23,7 @@ def test_combined_preview_app_serves_all_preview_pages() -> None:
     assert 'href="/raman"' in home.text
     assert 'href="/xrd"' in home.text
     assert 'href="/tem"' in home.text
+    assert 'href="/operations"' in home.text
     assert ftir.status_code == 200
     assert raman.status_code == 200
     assert xrd.status_code == 200
@@ -40,6 +41,7 @@ def test_edge_app_root_serves_workspace_index(tmp_path) -> None:
     with patch("app.main.Database.from_settings", return_value=database):
         with TestClient(create_app(settings)) as client:
             home = client.get("/")
+            operations = client.get("/operations")
             errors = client.get("/errors")
 
     assert home.status_code == 200
@@ -47,5 +49,8 @@ def test_edge_app_root_serves_workspace_index(tmp_path) -> None:
     assert 'href="/raman"' in home.text
     assert 'href="/xrd"' in home.text
     assert 'href="/tem"' in home.text
+    assert operations.status_code == 200
+    assert "사용 기록" in operations.text
+    assert "오류 기록" in operations.text
     assert errors.status_code == 200
     assert '<a href="/">작업 화면</a>' in errors.text

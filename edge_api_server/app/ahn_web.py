@@ -31,6 +31,7 @@ from .error_archive import (
     record_background_error,
 )
 from .path_bootstrap import add_project_package_paths
+from .usage_archive import set_usage_context
 
 add_project_package_paths()
 
@@ -2058,6 +2059,12 @@ def complete_tem_upload_session(request: Request, upload_id: str) -> JSONRespons
     _cleanup_old_jobs()
     existing_job = _job_for_completed_upload(upload_id)
     if existing_job is not None:
+        set_usage_context(
+            request,
+            project="TEM",
+            job_id=existing_job.job_id,
+            experiment_code="TEM",
+        )
         return JSONResponse(_job_payload(existing_job))
     session = _get_upload_session(upload_id)
     request.state.error_project = "TEM"
@@ -2102,6 +2109,12 @@ def complete_tem_upload_session(request: Request, upload_id: str) -> JSONRespons
         session.work_dir,
         app_error_archive(request.app),
     )
+    set_usage_context(
+        request,
+        project="TEM",
+        job_id=job.job_id,
+        experiment_code="TEM",
+    )
     with _ahn_upload_sessions_lock:
         _ahn_upload_sessions.pop(upload_id, None)
         _ahn_completed_upload_jobs[upload_id] = job.job_id
@@ -2119,6 +2132,7 @@ async def analyze_tem(
     request: Request,
     files: list[UploadFile] | None = File(default=None, alias="files"),
 ) -> JSONResponse:
+    set_usage_context(request, project="TEM", experiment_code="TEM")
     _cleanup_old_jobs()
     work_dir = Path(tempfile.mkdtemp(prefix="rist-ahn-web-"))
     upload_root = work_dir / "input"
@@ -2133,11 +2147,13 @@ async def analyze_tem(
         request.state.error_cleanup_paths = [work_dir]
         raise
     logger.info("TEM 웹 보고서 작업 시작 (job_id=%s)", job.job_id)
+    set_usage_context(request, job_id=job.job_id)
     return JSONResponse(_job_payload(job))
 
 
 @router.get("/api/v1/tem/example", response_class=JSONResponse, tags=["tem"])
 def tem_example(request: Request) -> JSONResponse:
+    set_usage_context(request, project="TEM", experiment_code="TEM")
     _cleanup_old_jobs()
     repo_root = Path(__file__).resolve().parents[2]
     input_root = repo_root / "ahn" / "data" / "TESTData"
@@ -2150,6 +2166,7 @@ def tem_example(request: Request) -> JSONResponse:
         shutil.rmtree(work_dir, ignore_errors=True)
         raise
     logger.info("TEM 예제 웹 보고서 작업 시작 (job_id=%s)", job.job_id)
+    set_usage_context(request, job_id=job.job_id)
     return JSONResponse(_job_payload(job))
 
 

@@ -82,6 +82,29 @@ def test_storage_root_env_overrides_profile(monkeypatch, tmp_path: Path) -> None
     assert settings.llm_max_tokens == 1200
 
 
+def test_usage_log_settings_follow_storage_root_and_allow_override(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    write_profile(tmp_path / "development.env", "192.168.0.10", "development")
+    write_profile(tmp_path / "production.env", "bhyoon.me", "production")
+    storage_root = tmp_path / "jobs"
+    monkeypatch.setenv("RIST_CONFIG_DIR", str(tmp_path))
+    monkeypatch.setenv("RIST_ENV", "development")
+    monkeypatch.setenv("RIST_STORAGE_ROOT", str(storage_root))
+    monkeypatch.delenv("RIST_USAGE_LOG_ROOT", raising=False)
+    monkeypatch.setenv("RIST_USAGE_LOG_RETENTION_DAYS", "45")
+
+    settings = Settings.from_env()
+
+    assert settings.usage_log_root == storage_root / "usage"
+    assert settings.usage_log_retention_days == 45
+
+    override = tmp_path / "audit"
+    monkeypatch.setenv("RIST_USAGE_LOG_ROOT", str(override))
+    assert Settings.from_env().usage_log_root == override
+
+
 def test_llm_runtime_env(monkeypatch, tmp_path: Path) -> None:
     write_profile(tmp_path / "development.env", "192.168.0.10", "development")
     write_profile(tmp_path / "production.env", "bhyoon.me", "production")

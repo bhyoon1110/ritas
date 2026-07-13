@@ -309,6 +309,8 @@ cd edge_api_server
 | `RIST_EDGE_BIND_HOST` | 프로파일 값 | Uvicorn bind 주소 재정의 |
 | `RIST_EDGE_API_PORT` | 프로파일 값 | Uvicorn 포트 재정의 |
 | `RIST_STORAGE_ROOT` | `edge_api_server/data/jobs` | 작업 파일 저장 루트 |
+| `RIST_USAGE_LOG_ROOT` | `<RIST_STORAGE_ROOT>/usage` | 운영 관리 사용 기록 저장 루트 |
+| `RIST_USAGE_LOG_RETENTION_DAYS` | `90` | 사용 기록 자동 보관 기간(일) |
 | `RIST_ERROR_ARCHIVE_ROOT` | `<RIST_STORAGE_ROOT>/errors` | 통합 오류 로그와 실패 파일 보관 루트 |
 | `RIST_ERROR_RETENTION_DAYS` | `30` | 오류 기록 자동 보관 기간(일) |
 | `RIST_ERROR_CAPTURE_FILES` | `true` | 오류 당시 업로드/입력 파일 보관 여부 |
@@ -363,14 +365,19 @@ cd edge_api_server
 - Edge 공개 주소는 프로파일의 `EDGE_SERVER_SCHEME/HOST/PORT`에서 조합하고,
   필요하면 `RIST_EDGE_PUBLIC_BASE_URL`로 재정의한다.
 
-## 통합 오류 관리
+## 운영 관리
 
-FT-IR, Raman, XRD, TEM 및 공통 Edge API 오류를 한 화면에서 확인한다.
+FT-IR, Raman, XRD, TEM 및 공통 Edge API의 사용 기록과 오류 기록을 한 화면에서
+탭으로 나누어 확인한다.
 
 ```text
-http://<Edge 서버>:8000/errors
+http://<Edge 서버>:8000/operations
 ```
 
+- **사용 기록**: 화면 진입, 의뢰 조회, 업로드 완료, 보고서 생성·다운로드·전송 등
+  실제 사용자 동작을 프로젝트, 처리 결과, 날짜, 의뢰번호, 작업 ID로 검색한다.
+- 업로드 청크와 보고서 상태 반복 조회처럼 운영 이력으로 의미가 낮은 내부 요청은
+  사용 기록에서 제외한다.
 - HTTP 요청 오류와 비동기 보고서 생성 오류를 프로젝트별로 모아 표시한다.
 - 오류 코드, 메시지, 작업 ID, 요청 경로, 스택 트레이스를 기록한다.
 - 실패 시점까지 업로드된 파일을 별도 오류 폴더에 복사하며, 개별 파일 또는
@@ -379,10 +386,11 @@ http://<Edge 서버>:8000/errors
 - API 오류 응답에는 추적용 `X-Error-Event-Id` 헤더가 포함되고, 비동기 보고서
   상태 응답에는 `errorEventId`가 포함된다.
 
-기본 보관 위치는 `<RIST_STORAGE_ROOT>/errors`, 기간은 30일이다. 대용량 raw
-파일 때문에 디스크가 과도하게 사용되지 않도록 개별 파일 512 MiB, 오류 한 건
-전체 2 GiB 상한을 적용한다. 설정 변경 후에는 API와 worker 서비스를 함께
-재시작한다.
+사용 기록의 기본 보관 위치는 `<RIST_STORAGE_ROOT>/usage`, 기간은 90일이다.
+오류 기록은 `<RIST_STORAGE_ROOT>/errors`에 30일간 보관한다. 대용량 raw 파일
+때문에 디스크가 과도하게 사용되지 않도록 개별 파일 512 MiB, 오류 한 건 전체
+2 GiB 상한을 적용한다. 기존 `/errors` 주소는 오류 기록 탭으로 바로 진입하는
+호환 주소로 유지한다. 설정 변경 후에는 API와 worker 서비스를 함께 재시작한다.
 
 ## 데이터베이스
 

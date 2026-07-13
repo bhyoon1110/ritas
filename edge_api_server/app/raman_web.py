@@ -47,6 +47,7 @@ from .preview_report import (
 )
 from .spring_callback import SpringCallbackError
 from .upload_sessions import ChunkUploadStore, read_completed_upload_files
+from .usage_archive import set_usage_context
 
 
 PLOT_DIV_ID = "raman-plot"
@@ -5925,6 +5926,14 @@ def create_raman_preview_report(
     equipment_code: str = Form(default="", alias="equipmentCode"),
     operator_id: str = Form(default="", alias="operatorId"),
 ) -> FileResponse:
+    set_usage_context(
+        request,
+        project="RAMAN",
+        request_number=request_number,
+        experiment_code="RAMAN",
+        equipment_code=equipment_code,
+        operator_id=operator_id,
+    )
     uploaded = _uploaded_raman_files(files)
     request.state.error_project = "RAMAN"
     request.state.error_file_blobs = uploaded
@@ -5976,6 +5985,15 @@ def _create_raman_report_job_from_uploaded(
 
     store = preview_report_job_store(request.app)
     job = store.create(filename="raman-report-package.zip")
+    set_usage_context(
+        request,
+        project="RAMAN",
+        job_id=job.job_id,
+        request_number=request_number,
+        experiment_code="RAMAN",
+        equipment_code=equipment_code,
+        operator_id=operator_id,
+    )
 
     def raw_series_factory() -> list[RawSeries]:
         return _build_raman_raw_series(uploaded)
@@ -6056,6 +6074,15 @@ def complete_raman_report_upload_session(
         store = preview_report_job_store(request.app)
         existing_job = store.get(existing_job_id)
         if existing_job is not None:
+            set_usage_context(
+                request,
+                project="RAMAN",
+                job_id=existing_job.job_id,
+                request_number=request_number,
+                experiment_code="RAMAN",
+                equipment_code=equipment_code,
+                operator_id=operator_id,
+            )
             return _report_job_response(existing_job, prefix="/api/v1/raman/report/jobs")
 
     session = raman_report_upload_store.get(upload_id)
@@ -6155,6 +6182,15 @@ def send_raman_preview_report_job(
     job_id: str,
     payload: PreviewReportSendRequest,
 ) -> dict:
+    set_usage_context(
+        request,
+        project="RAMAN",
+        job_id=job_id,
+        request_number=payload.request_number,
+        experiment_code=payload.experiment_code,
+        equipment_code=payload.equipment_code,
+        operator_id=payload.operator_id,
+    )
     store = preview_report_job_store(request.app)
     job = store.get(job_id)
     if job is None:

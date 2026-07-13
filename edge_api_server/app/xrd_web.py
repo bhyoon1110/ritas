@@ -47,6 +47,7 @@ from .llm_client import LlmError, LocalLlmClient
 from .report import annotator
 from .report.builders import LlmSlotSpec
 from .upload_sessions import ChunkUploadStore
+from .usage_archive import set_usage_context
 
 router = APIRouter()
 logger = get_logger(__name__)
@@ -2257,6 +2258,12 @@ def complete_xrd_upload_session(
         with _xrd_report_jobs_lock:
             existing_job = _xrd_report_jobs.get(existing_job_id)
         if existing_job is not None:
+            set_usage_context(
+                request,
+                project="XRD",
+                job_id=existing_job.job_id,
+                experiment_code="XRD",
+            )
             return JSONResponse(_xrd_job_payload(existing_job))
 
     session = xrd_upload_store.get(upload_id)
@@ -2278,6 +2285,12 @@ def complete_xrd_upload_session(
         settings=_request_settings(request),
         error_archive=app_error_archive(request.app),
         origin=origin,
+    )
+    set_usage_context(
+        request,
+        project="XRD",
+        job_id=job.job_id,
+        experiment_code="XRD",
     )
     xrd_upload_store.remember_completed_ref(upload_id, job.job_id)
     xrd_upload_store.pop(upload_id)
@@ -2363,6 +2376,7 @@ async def analyze_xrd(
     image_files: list[UploadFile] | None = File(default=None, alias="imageFiles"),
     origin: bool = Form(True),
 ) -> HTMLResponse:
+    set_usage_context(request, project="XRD", experiment_code="XRD")
     root = Path(tempfile.mkdtemp(prefix="rist-xrd-web-"))
     request.state.error_project = "XRD"
     request.state.error_source_paths = [root]
