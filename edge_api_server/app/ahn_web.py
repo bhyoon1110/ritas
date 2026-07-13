@@ -1341,8 +1341,23 @@ def build_ahn_page() -> str:
       background: var(--blue);
       transition: width 240ms ease;
     }
+    .ahn-collect-progress .ahn-progress-track { position: relative; }
+    .ahn-collect-progress .ahn-progress-bar {
+      position: absolute;
+      left: 0;
+      width: 38%;
+      animation: ahn-collect-progress 1.05s ease-in-out infinite;
+      transition: none;
+    }
     .ahn-upload-progress .ahn-progress-bar { background: #16a34a; }
     .ahn-progress.is-error .ahn-progress-bar { background: #dc2626; }
+    @keyframes ahn-collect-progress {
+      0% { transform: translateX(-110%); }
+      100% { transform: translateX(280%); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .ahn-collect-progress .ahn-progress-bar { animation-duration: 2.4s; }
+    }
     .ahn-result {
       display: grid;
       gap: 14px;
@@ -1436,6 +1451,15 @@ def build_ahn_page() -> str:
       </section>
       <div class="ahn-status-stack" id="ahn-status" aria-live="polite"></div>
       <div class="ahn-progress" id="ahn-progress" aria-live="polite">
+        <div class="ahn-progress-stage ahn-collect-progress" id="ahn-collect-progress">
+          <div class="ahn-progress-row">
+            <span id="ahn-collect-progress-label">선택한 파일 목록을 준비하는 중입니다.</span>
+            <span>처리 중</span>
+          </div>
+          <div class="ahn-progress-track">
+            <div class="ahn-progress-bar"></div>
+          </div>
+        </div>
         <div class="ahn-progress-stage ahn-upload-progress" id="ahn-upload-progress">
           <div class="ahn-progress-row">
             <span id="ahn-upload-progress-label">raw 파일 업로드 대기</span>
@@ -1483,6 +1507,8 @@ def build_ahn_page() -> str:
     var fileList = document.getElementById("ahn-file-list");
     var bundleMeta = document.getElementById("ahn-bundle-meta");
     var progress = document.getElementById("ahn-progress");
+    var collectProgress = document.getElementById("ahn-collect-progress");
+    var collectProgressLabel = document.getElementById("ahn-collect-progress-label");
     var uploadProgress = document.getElementById("ahn-upload-progress");
     var uploadProgressLabel = document.getElementById("ahn-upload-progress-label");
     var uploadProgressValue = document.getElementById("ahn-upload-progress-value");
@@ -1503,6 +1529,7 @@ def build_ahn_page() -> str:
     var TEM_UPLOAD_CHUNK_RETRIES = 4;
     var TEM_MAX_FILE_BYTES = 250 * 1024 * 1024;
     var TEM_MAX_TOTAL_BYTES = 1200 * 1024 * 1024;
+    var collectProgressVisible = false;
     var uploadProgressVisible = false;
     var reportProgressVisible = false;
     var uploadProgressError = false;
@@ -1517,15 +1544,23 @@ def build_ahn_page() -> str:
       addFolderButton.disabled = operationBusy || collectingFiles;
       clearButton.disabled = operationBusy || collectingFiles;
       drop.setAttribute("aria-busy", collectingFiles ? "true" : "false");
+      form.setAttribute("aria-busy", collectingFiles ? "true" : "false");
     }
 
     function setCollectingFiles(value, message) {
       collectingFiles = Boolean(value);
       if (collectingFiles) {
-        bundleMeta.textContent = message || "첨부 파일 목록을 읽는 중입니다.";
-      } else {
-        renderFileList();
+        var label = message || "첨부 파일 목록을 읽는 중입니다.";
+        bundleMeta.textContent = label;
+        collectProgressLabel.textContent = label;
+        collectProgressVisible = true;
+        updateProgressVisibility();
+        syncActionState();
+        return;
       }
+      renderFileList();
+      collectProgressVisible = false;
+      updateProgressVisibility();
       syncActionState();
     }
 
@@ -1567,8 +1602,12 @@ def build_ahn_page() -> str:
       return "PowerPoint 보고서를 생성하는 중입니다. 완료되면 다운로드 버튼이 활성화됩니다.";
     }
     function updateProgressVisibility() {
-      progress.classList.toggle("is-visible", uploadProgressVisible || reportProgressVisible);
+      progress.classList.toggle(
+        "is-visible",
+        collectProgressVisible || uploadProgressVisible || reportProgressVisible
+      );
       progress.classList.toggle("is-error", uploadProgressError || reportProgressError);
+      collectProgress.classList.toggle("is-visible", collectProgressVisible);
       uploadProgress.classList.toggle("is-visible", uploadProgressVisible);
       reportProgress.classList.toggle("is-visible", reportProgressVisible);
     }
@@ -1667,10 +1706,10 @@ def build_ahn_page() -> str:
           bundleItems.push(item);
         }
       });
-      renderFileList();
     }
     function renderFileList() {
       var counts = {TEM: 0, STEM: 0, EDS: 0, "코팅층": 0, "기타": 0};
+      var fragment = document.createDocumentFragment();
       fileList.replaceChildren();
       bundleItems.forEach(function(item) {
         var section = classifySection(item.path);
@@ -1678,8 +1717,9 @@ def build_ahn_page() -> str:
         var chip = document.createElement("span");
         chip.className = "ahn-chip";
         chip.textContent = section + " · " + item.path;
-        fileList.appendChild(chip);
+        fragment.appendChild(chip);
       });
+      fileList.appendChild(fragment);
       bundleMeta.textContent = bundleItems.length
         ? "TEM " + counts.TEM + " · STEM " + counts.STEM + " · EDS " + counts.EDS + " · 코팅층 " + counts["코팅층"] + " · 기타 " + counts["기타"]
         : "선택된 파일 없음";
@@ -2121,23 +2161,34 @@ def build_ahn_page() -> str:
       };
       input.click();
     }
-    bundleInput.addEventListener("change", function() {
+    function waitForCollectionPaint() {
+      return new Promise(function(resolve) {
+        var schedulePaint = window.requestAnimationFrame || function(callback) {
+          return setTimeout(callback, 16);
+        };
+        schedulePaint(function() {
+          setTimeout(resolve, 0);
+        });
+      });
+    }
+    async function collectSelectedFiles(input, message) {
+      if (!collectingFiles) setCollectingFiles(true, message);
       try {
-        addBundleItems(fileInputItems(bundleInput));
+        await waitForCollectionPaint();
+        addBundleItems(fileInputItems(input));
+      } catch (error) {
+        setStatus(error.message || String(error), true);
       } finally {
-        bundleInput.oncancel = null;
-        bundleInput.value = "";
+        input.oncancel = null;
+        input.value = "";
         setCollectingFiles(false);
       }
+    }
+    bundleInput.addEventListener("change", function() {
+      collectSelectedFiles(bundleInput, "첨부할 파일 목록을 읽는 중입니다.");
     });
     folderInput.addEventListener("change", function() {
-      try {
-        addBundleItems(fileInputItems(folderInput));
-      } finally {
-        folderInput.oncancel = null;
-        folderInput.value = "";
-        setCollectingFiles(false);
-      }
+      collectSelectedFiles(folderInput, "폴더 안의 raw 파일 목록을 읽는 중입니다.");
     });
     addFilesButton.addEventListener("click", function() {
       openBundlePicker(bundleInput, "첨부할 파일 목록을 읽는 중입니다.");
@@ -2157,6 +2208,7 @@ def build_ahn_page() -> str:
       drop.classList.remove("dragover");
       setCollectingFiles(true, "드롭한 폴더의 raw 파일 목록을 읽는 중입니다.");
       try {
+        await waitForCollectionPaint();
         addBundleItems(await droppedBundleItems(event.dataTransfer));
         setStatus("TEM raw bundle 파일이 추가되었습니다.", false);
       } catch (error) {

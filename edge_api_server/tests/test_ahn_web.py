@@ -61,6 +61,8 @@ def test_ahn_workspace_contains_folder_upload_controls() -> None:
     assert 'id="ahn-download-pptx"' in page
     assert 'id="ahn-download-package"' in page
     assert 'id="ahn-upload-progress"' in page
+    assert 'id="ahn-collect-progress"' in page
+    assert "선택한 파일 목록을 준비하는 중입니다." in page
     assert 'aria-disabled="true"' in page
     assert "xlsm" in page
     assert "xlsb" in page
@@ -82,6 +84,8 @@ def test_ahn_workspace_contains_folder_upload_controls() -> None:
     assert "entryToBundleItems" in page
     assert "droppedBundleItems" in page
     assert "collectingFiles" in page
+    assert "waitForCollectionPaint" in page
+    assert "requestAnimationFrame" in page
     assert "syncActionState" in page
     assert "폴더 안의 raw 파일 목록을 읽는 중입니다." in page
     assert "목록 표시가 완료된 뒤 다시 실행하세요." in page
