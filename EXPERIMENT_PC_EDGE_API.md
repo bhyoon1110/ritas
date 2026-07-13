@@ -260,6 +260,18 @@ bundle-root/
 | `X-Request-Id` | Y | 호출 추적용 UUID. 재시도 시 같은 값 사용 |
 | `Idempotency-Key` | POST/PUT/DELETE | 중복 처리 방지 키. 재시도 시 같은 값 사용 |
 | `Content-Type` | 본문 전송 시 | JSON 또는 multipart 요청의 콘텐츠 타입 |
+| `X-Client-Type` | N | 운영 기록의 클라이언트 유형. C# 프로그램은 `C#/.NET` 권장 |
+| `X-Client-Name` | N | 운영 기록에 표시할 프로그램명. 예: `RIST XRD Uploader` |
+| `X-Client-Version` | N | 운영 기록에 표시할 프로그램 버전 |
+
+`X-Client-*` 헤더를 생략해도 본 문서의 공통 작업 API는 실험 PC C# 전송
+프로그램 호출로 분류한다. 다만 여러 버전의 전송 프로그램을 구분하고 장애를
+추적하려면 세 헤더를 모든 요청에 일관되게 보내는 것을 권장한다.
+
+Edge 운영 관리 화면(`/operations`)에는 C# 요청의 작업 PK, `jobId`, 실험 PC,
+클라이언트 버전과 파일 상대 경로·원본명·크기·SHA-256이 기록된다. 파일 전송
+완료 요청에는 최종 파일 수와 전체 크기도 기록된다. 업로드 검증 또는 처리에
+실패한 요청은 동일한 정보가 오류 기록에도 연결된다.
 
 ## 7. API
 
@@ -338,6 +350,9 @@ bundle 내 파일을 한 개씩 전송한다. 하위 폴더 구조가 필요한 
 POST /api/v1/jobs/{jobId}/files
 Content-Type: multipart/form-data
 Idempotency-Key: {jobId}:{relativePath}:{sha256}
+X-Client-Type: C#/.NET
+X-Client-Name: RIST XRD Uploader
+X-Client-Version: 1.0.0
 ```
 
 #### multipart 필드

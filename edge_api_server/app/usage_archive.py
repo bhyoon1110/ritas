@@ -86,6 +86,15 @@ def action_from_request(method: str, path: str) -> str:
     return f"{upper_method} 요청"
 
 
+def client_type_from_user_agent(user_agent: str | None) -> str | None:
+    lowered = str(user_agent or "").casefold()
+    if any(marker in lowered for marker in (".net", "dotnet", "csharp", "restsharp")):
+        return "C#/.NET"
+    if any(marker in lowered for marker in ("mozilla/", "chrome/", "safari/", "firefox/")):
+        return "브라우저"
+    return None
+
+
 def should_record_usage(method: str, path: str) -> bool:
     lowered = path.lower()
     if lowered in {"/health", "/health/llm", "/operations", "/errors"}:
@@ -142,6 +151,16 @@ class UsageArchive:
         operator_id: str | None = None,
         client: str | None = None,
         user_agent: str | None = None,
+        client_type: str | None = None,
+        client_name: str | None = None,
+        client_version: str | None = None,
+        source_host_name: str | None = None,
+        file_relative_path: str | None = None,
+        file_name: str | None = None,
+        file_size_bytes: int | None = None,
+        file_sha256: str | None = None,
+        file_count: int | None = None,
+        total_size_bytes: int | None = None,
     ) -> dict[str, object]:
         now = datetime.now(KST).replace(microsecond=0)
         event: dict[str, object] = {
@@ -158,6 +177,22 @@ class UsageArchive:
             "experimentCode": experiment_code,
             "equipmentCode": equipment_code,
             "operatorId": operator_id,
+            "clientApplication": {
+                "type": client_type,
+                "name": client_name,
+                "version": client_version,
+                "sourceHostName": source_host_name,
+            },
+            "file": {
+                "relativePath": file_relative_path,
+                "name": file_name,
+                "sizeBytes": file_size_bytes,
+                "sha256": file_sha256,
+            },
+            "transfer": {
+                "fileCount": file_count,
+                "totalSizeBytes": total_size_bytes,
+            },
             "request": {
                 "method": method.upper(),
                 "endpoint": endpoint,
@@ -207,6 +242,9 @@ class UsageArchive:
                 if result and str(item.get("result", "")).casefold() != result.casefold():
                     continue
                 if needle:
+                    client_application = item.get("clientApplication") or {}
+                    file_context = item.get("file") or {}
+                    request_context = item.get("request") or {}
                     haystack = " ".join(
                         str(item.get(key, ""))
                         for key in (
@@ -220,7 +258,20 @@ class UsageArchive:
                             "equipmentCode",
                             "operatorId",
                         )
-                    ).casefold()
+                    ) + " " + " ".join(
+                        str(value)
+                        for value in (
+                            client_application.get("type", ""),
+                            client_application.get("name", ""),
+                            client_application.get("version", ""),
+                            client_application.get("sourceHostName", ""),
+                            file_context.get("relativePath", ""),
+                            file_context.get("name", ""),
+                            file_context.get("sha256", ""),
+                            request_context.get("client", ""),
+                        )
+                    )
+                    haystack = haystack.casefold()
                     if needle not in haystack:
                         continue
                 items.append(item)
@@ -261,6 +312,16 @@ def set_usage_context(
     experiment_code: str | None = None,
     equipment_code: str | None = None,
     operator_id: str | None = None,
+    client_type: str | None = None,
+    client_name: str | None = None,
+    client_version: str | None = None,
+    source_host_name: str | None = None,
+    file_relative_path: str | None = None,
+    file_name: str | None = None,
+    file_size_bytes: int | None = None,
+    file_sha256: str | None = None,
+    file_count: int | None = None,
+    total_size_bytes: int | None = None,
 ) -> None:
     values = {
         "usage_project": project,
@@ -270,10 +331,23 @@ def set_usage_context(
         "usage_experiment_code": experiment_code,
         "usage_equipment_code": equipment_code,
         "usage_operator_id": operator_id,
+        "usage_client_type": client_type,
+        "usage_client_name": client_name,
+        "usage_client_version": client_version,
+        "usage_source_host_name": source_host_name,
+        "usage_file_relative_path": file_relative_path,
+        "usage_file_name": file_name,
+        "usage_file_size_bytes": file_size_bytes,
+        "usage_file_sha256": file_sha256,
+        "usage_file_count": file_count,
+        "usage_total_size_bytes": total_size_bytes,
     }
     for name, value in values.items():
         if value is not None and str(value).strip():
             setattr(request.state, name, str(value).strip())
+
+    if project is not None and str(project).strip():
+        request.state.error_project = str(project).strip()
 
 
 def _state_value(request: Request, name: str) -> str | None:
@@ -282,6 +356,16 @@ def _state_value(request: Request, name: str) -> str | None:
         return None
     text = str(value).strip()
     return text or None
+
+
+def _state_int(request: Request, name: str) -> int | None:
+    value = getattr(request.state, name, None)
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _path_value(request: Request, name: str) -> str | None:
@@ -333,6 +417,24 @@ async def usage_logging_middleware(request: Request, call_next):
                     or request.headers.get("X-Operator-Id"),
                     client=request.client.host if request.client else None,
                     user_agent=request.headers.get("user-agent"),
+                    client_type=_state_value(request, "usage_client_type")
+                    or request.headers.get("X-Client-Type")
+                    or client_type_from_user_agent(request.headers.get("user-agent")),
+                    client_name=_state_value(request, "usage_client_name")
+                    or request.headers.get("X-Client-Name"),
+                    client_version=_state_value(request, "usage_client_version")
+                    or request.headers.get("X-Client-Version"),
+                    source_host_name=_state_value(request, "usage_source_host_name"),
+                    file_relative_path=_state_value(
+                        request, "usage_file_relative_path"
+                    ),
+                    file_name=_state_value(request, "usage_file_name"),
+                    file_size_bytes=_state_int(request, "usage_file_size_bytes"),
+                    file_sha256=_state_value(request, "usage_file_sha256"),
+                    file_count=_state_int(request, "usage_file_count"),
+                    total_size_bytes=_state_int(
+                        request, "usage_total_size_bytes"
+                    ),
                 )
             except Exception:
                 logger.exception("사용 기록 저장 실패 (%s %s)", request.method, path)

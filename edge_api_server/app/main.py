@@ -54,6 +54,44 @@ logger = get_logger(__name__)
 MAX_IDEMPOTENCY_KEY_LENGTH = 128
 
 
+def _set_experiment_pc_usage_context(
+    request: Request,
+    database: Database,
+    job_id: str,
+    *,
+    action: str | None = None,
+    file_relative_path: str | None = None,
+    file_name: str | None = None,
+    file_size_bytes: int | None = None,
+    file_sha256: str | None = None,
+    file_count: int | None = None,
+    total_size_bytes: int | None = None,
+) -> None:
+    job = database.fetch_job(job_id)
+    set_usage_context(
+        request,
+        project=str((job or {}).get("experiment_code") or "EDGE"),
+        action=action,
+        job_id=job_id,
+        request_number=(job or {}).get("request_number"),
+        experiment_code=(job or {}).get("experiment_code"),
+        equipment_code=(job or {}).get("equipment_code"),
+        operator_id=(job or {}).get("operator_id"),
+        client_type=request.headers.get("X-Client-Type") or "C#/.NET",
+        client_name=request.headers.get("X-Client-Name")
+        or "실험 PC 전송 프로그램",
+        client_version=request.headers.get("X-Client-Version")
+        or (job or {}).get("client_version"),
+        source_host_name=(job or {}).get("source_host_name"),
+        file_relative_path=file_relative_path,
+        file_name=file_name,
+        file_size_bytes=file_size_bytes,
+        file_sha256=file_sha256,
+        file_count=file_count,
+        total_size_bytes=total_size_bytes,
+    )
+
+
 def required_request_id(
     x_request_id: str | None = Header(default=None, alias="X-Request-Id"),
 ) -> str:
@@ -180,6 +218,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         _: str = Depends(required_request_id),
         idempotency_key: str = Depends(required_idempotency_key),
     ) -> dict:
+        set_usage_context(
+            request,
+            project=payload.pk.experiment_code,
+            request_number=payload.pk.request_number,
+            experiment_code=payload.pk.experiment_code,
+            equipment_code=payload.pk.equipment_code,
+            operator_id=payload.pk.operator_id,
+            client_type=request.headers.get("X-Client-Type") or "C#/.NET",
+            client_name=request.headers.get("X-Client-Name")
+            or "실험 PC 전송 프로그램",
+            client_version=request.headers.get("X-Client-Version")
+            or payload.source_pc.client_version,
+            source_host_name=payload.source_pc.host_name,
+        )
         status_code, result = service.create_job(
             payload,
             request.client.host if request.client else None,
@@ -206,6 +258,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     def upload_file(
         job_id: str,
+        request: Request,
         response: Response,
         file: UploadFile = File(...),
         relative_path: str = Form(..., alias="relativePath"),
@@ -215,6 +268,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         _: str = Depends(required_request_id),
         idempotency_key: str = Depends(required_idempotency_key),
     ) -> dict:
+        _set_experiment_pc_usage_context(
+            request,
+            database,
+            job_id,
+            file_relative_path=relative_path,
+            file_name=file.filename,
+            file_size_bytes=size_bytes,
+            file_sha256=sha256,
+        )
         status_code, result = service.upload_file(
             job_id,
             file,
@@ -237,6 +299,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def replace_file(
         job_id: str,
         relative_path: str,
+        request: Request,
         response: Response,
         file: UploadFile = File(...),
         size_bytes: int = Form(..., alias="sizeBytes"),
@@ -245,6 +308,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         _: str = Depends(required_request_id),
         idempotency_key: str = Depends(required_idempotency_key),
     ) -> dict:
+        _set_experiment_pc_usage_context(
+            request,
+            database,
+            job_id,
+            file_relative_path=relative_path,
+            file_name=file.filename,
+            file_size_bytes=size_bytes,
+            file_sha256=sha256,
+        )
         status_code, result = service.upload_file(
             job_id,
             file,
@@ -264,7 +336,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         response_model_by_alias=True,
         tags=["files"],
     )
-    def list_files(job_id: str, _: str = Depends(required_request_id)) -> dict:
+    def list_files(
+        job_id: str, request: Request, _: str = Depends(required_request_id)
+    ) -> dict:
+        _set_experiment_pc_usage_context(request, database, job_id)
         return service.list_files(job_id)
 
     @app.delete(
@@ -274,9 +349,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def delete_file(
         job_id: str,
         relative_path: str,
+        request: Request,
         _: str = Depends(required_request_id),
         idempotency_key: str = Depends(required_idempotency_key),
     ) -> dict:
+        file_record = database.fetch_file(job_id, relative_path)
+        _set_experiment_pc_usage_context(
+            request,
+            database,
+            job_id,
+            file_relative_path=relative_path,
+            file_name=relative_path.rsplit("/", 1)[-1],
+            file_size_bytes=(file_record or {}).get("size_bytes"),
+            file_sha256=(file_record or {}).get("sha256"),
+        )
         _, result = service.delete_file(job_id, relative_path, idempotency_key)
         return result
 
@@ -289,10 +375,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def complete_upload(
         job_id: str,
         payload: CompleteUploadRequest,
+        request: Request,
         response: Response,
         _: str = Depends(required_request_id),
         idempotency_key: str = Depends(required_idempotency_key),
     ) -> dict:
+        _set_experiment_pc_usage_context(
+            request,
+            database,
+            job_id,
+            file_count=payload.file_count,
+            total_size_bytes=payload.total_size_bytes,
+        )
         status_code, result = service.complete_upload(
             job_id, payload, idempotency_key
         )
@@ -309,10 +403,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def request_report(
         job_id: str,
         payload: GenerateReportRequest,
+        request: Request,
         response: Response,
         _: str = Depends(required_request_id),
         idempotency_key: str = Depends(required_idempotency_key),
     ) -> dict:
+        _set_experiment_pc_usage_context(request, database, job_id)
         status_code, result = service.request_report(
             job_id, payload, idempotency_key
         )
@@ -327,8 +423,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     def get_job(
         job_id: str,
+        request: Request,
         _: str = Depends(required_request_id),
     ) -> dict:
+        _set_experiment_pc_usage_context(request, database, job_id)
         return service.status_response(job_id)
 
     @app.get(

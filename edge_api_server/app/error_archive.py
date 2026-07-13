@@ -129,6 +129,9 @@ class ErrorArchive:
         endpoint: str | None = None,
         client: str | None = None,
         user_agent: str | None = None,
+        client_application: dict[str, object] | None = None,
+        file_context: dict[str, object] | None = None,
+        transfer_context: dict[str, object] | None = None,
         details: object | None = None,
         exception: BaseException | None = None,
         source_paths: Iterable[Path] = (),
@@ -160,6 +163,9 @@ class ErrorArchive:
                 "client": client,
                 "userAgent": user_agent,
             },
+            "clientApplication": _json_safe(client_application or {}),
+            "file": _json_safe(file_context or {}),
+            "transfer": _json_safe(transfer_context or {}),
             "details": _json_safe(details),
             "exceptionType": type(exception).__name__ if exception else None,
             "traceAvailable": bool(trace),
@@ -321,9 +327,23 @@ class ErrorArchive:
             if status and str(item.get("status", "")).casefold() != status.casefold():
                 continue
             if needle:
+                client_application = item.get("clientApplication") or {}
+                file_context = item.get("file") or {}
                 haystack = " ".join(
                     str(item.get(key, "")) for key in ("eventId", "project", "code", "message", "jobId", "requestId")
-                ).casefold()
+                ) + " " + " ".join(
+                    str(value)
+                    for value in (
+                        client_application.get("type", ""),
+                        client_application.get("name", ""),
+                        client_application.get("version", ""),
+                        client_application.get("sourceHostName", ""),
+                        file_context.get("relativePath", ""),
+                        file_context.get("name", ""),
+                        file_context.get("sha256", ""),
+                    )
+                )
+                haystack = haystack.casefold()
                 if needle not in haystack:
                     continue
             items.append(item)
@@ -419,6 +439,25 @@ def _record_request(request: Request, exc: ApiException, original: BaseException
         return
     source_paths = getattr(request.state, "error_source_paths", ())
     file_blobs = getattr(request.state, "error_file_blobs", ())
+    client_application = {
+        "type": getattr(request.state, "usage_client_type", None)
+        or request.headers.get("X-Client-Type"),
+        "name": getattr(request.state, "usage_client_name", None)
+        or request.headers.get("X-Client-Name"),
+        "version": getattr(request.state, "usage_client_version", None)
+        or request.headers.get("X-Client-Version"),
+        "sourceHostName": getattr(request.state, "usage_source_host_name", None),
+    }
+    file_context = {
+        "relativePath": getattr(request.state, "usage_file_relative_path", None),
+        "name": getattr(request.state, "usage_file_name", None),
+        "sizeBytes": getattr(request.state, "usage_file_size_bytes", None),
+        "sha256": getattr(request.state, "usage_file_sha256", None),
+    }
+    transfer_context = {
+        "fileCount": getattr(request.state, "usage_file_count", None),
+        "totalSizeBytes": getattr(request.state, "usage_total_size_bytes", None),
+    }
     try:
         event = archive.record(
             project=getattr(request.state, "error_project", None) or _project_from_path(request.url.path),
@@ -432,6 +471,9 @@ def _record_request(request: Request, exc: ApiException, original: BaseException
             endpoint=request.url.path,
             client=request.client.host if request.client else None,
             user_agent=request.headers.get("user-agent"),
+            client_application=client_application,
+            file_context=file_context,
+            transfer_context=transfer_context,
             details=exc.details,
             exception=original,
             source_paths=source_paths,
@@ -690,13 +732,13 @@ _OPERATIONS_CONSOLE_HTML = r'''<!doctype html>
     function duration(value){const ms=Number(value||0);return ms>=1000?(ms/1000).toFixed(ms>=10000?1:2)+'초':ms+'ms'}
     async function api(url,options){const response=await fetch(url,options);if(!response.ok){let message='요청 처리 실패';try{const payload=await response.json();message=payload.detail||payload.message||message}catch(_error){}throw new Error(message)}return response.status===204?null:response.json()}
     function setDefaultDates(){if($('date-from').value)return;const end=new Date(),start=new Date();start.setDate(end.getDate()-7);$('date-from').value=start.toISOString().slice(0,10);$('date-to').value=end.toISOString().slice(0,10)}
-    function setTab(tab,loadNow){activeTab=tab==='errors'?'errors':'usage';document.querySelectorAll('.tab').forEach(button=>button.classList.toggle('active',button.dataset.tab===activeTab));document.querySelectorAll('.usage-only').forEach(element=>element.classList.toggle('hidden',activeTab!=='usage'));$('state').innerHTML=activeTab==='usage'?'<option value="">전체 결과</option><option value="success">성공</option><option value="failure">실패</option>':'<option value="">전체 상태</option><option value="open">미해결</option><option value="resolved">해결</option>';$('head-row').innerHTML=activeTab==='usage'?'<th>발생 시각</th><th>프로젝트</th><th>동작</th><th>결과</th><th>처리시간</th><th>의뢰번호</th><th>작업 ID</th><th>접속 위치</th>':'<th>발생 시각</th><th>프로젝트</th><th>상태</th><th>오류 코드</th><th>메시지</th><th>파일</th>';$('detail').className='panel detail';$('empty').textContent=activeTab==='usage'?'사용 기록이 없습니다.':'오류 기록이 없습니다.';history.replaceState(null,'',activeTab==='usage'?'/operations':'/errors');if(activeTab==='usage')setDefaultDates();if(loadNow)load()}
+    function setTab(tab,loadNow){activeTab=tab==='errors'?'errors':'usage';document.querySelectorAll('.tab').forEach(button=>button.classList.toggle('active',button.dataset.tab===activeTab));document.querySelectorAll('.usage-only').forEach(element=>element.classList.toggle('hidden',activeTab!=='usage'));$('state').innerHTML=activeTab==='usage'?'<option value="">전체 결과</option><option value="success">성공</option><option value="failure">실패</option>':'<option value="">전체 상태</option><option value="open">미해결</option><option value="resolved">해결</option>';$('head-row').innerHTML=activeTab==='usage'?'<th>발생 시각</th><th>프로젝트</th><th>동작</th><th>결과</th><th>처리시간</th><th>의뢰번호</th><th>작업 ID</th><th>클라이언트</th>':'<th>발생 시각</th><th>프로젝트</th><th>상태</th><th>오류 코드</th><th>메시지</th><th>파일</th>';$('detail').className='panel detail';$('empty').textContent=activeTab==='usage'?'사용 기록이 없습니다.':'오류 기록이 없습니다.';history.replaceState(null,'',activeTab==='usage'?'/operations':'/errors');if(activeTab==='usage')setDefaultDates();if(loadNow)load()}
     async function load(){const params=new URLSearchParams({project:$('project').value,q:$('query').value,limit:'500'});let endpoint;if(activeTab==='usage'){params.set('result',$('state').value);params.set('dateFrom',$('date-from').value);params.set('dateTo',$('date-to').value);endpoint='/api/v1/usage-events?'+params}else{params.set('status',$('state').value);endpoint='/api/v1/errors?'+params}const data=await api(endpoint);const items=data.items||[];$('summary').textContent=items.length+'건';$('empty').hidden=Boolean(items.length);$('rows').innerHTML=activeTab==='usage'?usageRows(items):errorRows(items);document.querySelectorAll('tr[data-id]').forEach(row=>row.onclick=()=>show(row.dataset.id))}
-    function usageRows(items){return items.map(item=>`<tr data-id="${esc(item.eventId)}"><td>${esc(localDate(item.timestamp))}</td><td>${esc(item.project)}</td><td>${esc(item.action)}</td><td><span class="badge ${esc(item.result)}">${item.result==='failure'?'실패':'성공'}</span></td><td>${esc(duration(item.durationMs))}</td><td>${esc(item.requestNumber||'-')}</td><td class="code">${esc(item.jobId||'-')}</td><td>${esc((item.request||{}).client||'-')}</td></tr>`).join('')}
+    function usageRows(items){return items.map(item=>{const app=item.clientApplication||{};const label=[app.type,app.sourceHostName].filter(Boolean).join(' · ')||((item.request||{}).client||'-');return `<tr data-id="${esc(item.eventId)}"><td>${esc(localDate(item.timestamp))}</td><td>${esc(item.project)}</td><td>${esc(item.action)}</td><td><span class="badge ${esc(item.result)}">${item.result==='failure'?'실패':'성공'}</span></td><td>${esc(duration(item.durationMs))}</td><td>${esc(item.requestNumber||'-')}</td><td class="code">${esc(item.jobId||'-')}</td><td>${esc(label)}</td></tr>`}).join('')}
     function errorRows(items){return items.map(item=>`<tr data-id="${esc(item.eventId)}"><td>${esc(localDate(item.timestamp))}</td><td>${esc(item.project)}</td><td><span class="badge ${esc(item.status)}">${item.status==='resolved'?'해결':'미해결'}</span></td><td class="code">${esc(item.code)}</td><td>${esc(item.message)}</td><td>${(item.files||[]).length}개</td></tr>`).join('')}
     async function show(id){if(activeTab==='usage'){showUsage(await api('/api/v1/usage-events/'+encodeURIComponent(id)));return}showError(await api('/api/v1/errors/'+encodeURIComponent(id)))}
-    function showUsage(item){const request=item.request||{};$('detail').className='panel detail open';$('detail').innerHTML=`<div class="detail-head"><div><h2>${esc(item.project)} · ${esc(item.action)}</h2><span class="muted code">${esc(item.eventId)}</span></div><span class="badge ${esc(item.result)}">${item.result==='failure'?'실패':'성공'}</span></div><div class="meta"><div><b>발생 시각</b>${esc(localDate(item.timestamp))}</div><div><b>처리시간</b>${esc(duration(item.durationMs))}</div><div><b>HTTP 상태</b>${esc(item.statusCode)}</div><div><b>요청 경로</b>${esc(request.method||'-')} ${esc(request.endpoint||'-')}</div><div><b>의뢰번호</b>${esc(item.requestNumber||'-')}</div><div><b>작업 ID</b>${esc(item.jobId||'-')}</div><div><b>실험코드 / 장비</b>${esc(item.experimentCode||'-')} / ${esc(item.equipmentCode||'-')}</div><div><b>실험자</b>${esc(item.operatorId||'-')}</div><div><b>요청 ID</b>${esc(item.requestId||'-')}</div><div><b>접속 위치</b>${esc(request.client||'-')}</div><div><b>브라우저</b>${esc(request.userAgent||'-')}</div></div>`}
-    function showError(item){const files=(item.files||[]).map(file=>`<div class="file"><a href="/api/v1/errors/${encodeURIComponent(item.eventId)}/files/${file.path.split('/').map(encodeURIComponent).join('/')}">${esc(file.path)}</a><span>${size(file.sizeBytes)}</span></div>`).join('')||'<div class="muted">보관된 실패 파일이 없습니다.</div>';const trace=item.traceback||'';$('detail').className='panel detail open';$('detail').innerHTML=`<div class="detail-head"><div><h2>${esc(item.project)} · <span class="code">${esc(item.code)}</span></h2><span class="muted code">${esc(item.eventId)}</span></div><div class="actions"><a href="/api/v1/errors/${encodeURIComponent(item.eventId)}/archive">전체 ZIP</a><button id="toggle">${item.status==='resolved'?'미해결로 변경':'해결 처리'}</button><button class="danger" id="delete">삭제</button></div></div><div class="meta"><div><b>발생 시각</b>${esc(localDate(item.timestamp))}</div><div><b>작업 ID</b>${esc(item.jobId||'-')}</div><div><b>요청 ID</b>${esc(item.requestId||'-')}</div><div><b>경로</b>${esc((item.request||{}).endpoint||'-')}</div></div><div class="message">${esc(item.message)}</div><h3>실패 파일</h3><div class="files">${files}</div>${item.filesTruncated?'<p class="muted">보존 용량 제한으로 일부 파일은 제외되었습니다.</p>':''}${trace?'<h3>스택 트레이스</h3><pre class="trace">'+esc(trace)+'</pre>':''}`;$('toggle').onclick=async()=>{await api('/api/v1/errors/'+encodeURIComponent(item.eventId),{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:item.status==='resolved'?'open':'resolved'})});await load();await show(item.eventId)};$('delete').onclick=async()=>{if(!confirm('이 오류 기록과 보관 파일을 삭제할까요?'))return;await api('/api/v1/errors/'+encodeURIComponent(item.eventId),{method:'DELETE'});$('detail').className='panel detail';await load()}}
+    function showUsage(item){const request=item.request||{},app=item.clientApplication||{},file=item.file||{},transfer=item.transfer||{};const fileLabel=file.relativePath||file.name||'-';$('detail').className='panel detail open';$('detail').innerHTML=`<div class="detail-head"><div><h2>${esc(item.project)} · ${esc(item.action)}</h2><span class="muted code">${esc(item.eventId)}</span></div><span class="badge ${esc(item.result)}">${item.result==='failure'?'실패':'성공'}</span></div><div class="meta"><div><b>발생 시각</b>${esc(localDate(item.timestamp))}</div><div><b>처리시간</b>${esc(duration(item.durationMs))}</div><div><b>HTTP 상태</b>${esc(item.statusCode)}</div><div><b>요청 경로</b>${esc(request.method||'-')} ${esc(request.endpoint||'-')}</div><div><b>의뢰번호</b>${esc(item.requestNumber||'-')}</div><div><b>작업 ID</b>${esc(item.jobId||'-')}</div><div><b>실험코드 / 장비</b>${esc(item.experimentCode||'-')} / ${esc(item.equipmentCode||'-')}</div><div><b>실험자</b>${esc(item.operatorId||'-')}</div><div><b>클라이언트</b>${esc(app.type||'-')} · ${esc(app.name||'-')}</div><div><b>버전 / 실험 PC</b>${esc(app.version||'-')} / ${esc(app.sourceHostName||'-')}</div><div><b>파일</b>${esc(fileLabel)}</div><div><b>파일 크기</b>${file.sizeBytes==null?'-':esc(size(file.sizeBytes))}</div><div><b>SHA-256</b><span class="code">${esc(file.sha256||'-')}</span></div><div><b>전송 합계</b>${transfer.fileCount==null?'-':esc(transfer.fileCount+'개 / '+size(transfer.totalSizeBytes||0))}</div><div><b>요청 ID</b>${esc(item.requestId||'-')}</div><div><b>접속 위치</b>${esc(request.client||'-')}</div><div><b>User-Agent</b>${esc(request.userAgent||'-')}</div></div>`}
+    function showError(item){const files=(item.files||[]).map(file=>`<div class="file"><a href="/api/v1/errors/${encodeURIComponent(item.eventId)}/files/${file.path.split('/').map(encodeURIComponent).join('/')}">${esc(file.path)}</a><span>${size(file.sizeBytes)}</span></div>`).join('')||'<div class="muted">보관된 실패 파일이 없습니다.</div>';const trace=item.traceback||'',app=item.clientApplication||{},file=item.file||{};$('detail').className='panel detail open';$('detail').innerHTML=`<div class="detail-head"><div><h2>${esc(item.project)} · <span class="code">${esc(item.code)}</span></h2><span class="muted code">${esc(item.eventId)}</span></div><div class="actions"><a href="/api/v1/errors/${encodeURIComponent(item.eventId)}/archive">전체 ZIP</a><button id="toggle">${item.status==='resolved'?'미해결로 변경':'해결 처리'}</button><button class="danger" id="delete">삭제</button></div></div><div class="meta"><div><b>발생 시각</b>${esc(localDate(item.timestamp))}</div><div><b>작업 ID</b>${esc(item.jobId||'-')}</div><div><b>요청 ID</b>${esc(item.requestId||'-')}</div><div><b>경로</b>${esc((item.request||{}).endpoint||'-')}</div><div><b>클라이언트</b>${esc(app.type||'-')} · ${esc(app.name||'-')}</div><div><b>버전 / 실험 PC</b>${esc(app.version||'-')} / ${esc(app.sourceHostName||'-')}</div><div><b>요청 파일</b>${esc(file.relativePath||file.name||'-')}</div><div><b>요청 파일 크기</b>${file.sizeBytes==null?'-':esc(size(Number(file.sizeBytes)))}</div></div><div class="message">${esc(item.message)}</div><h3>실패 파일</h3><div class="files">${files}</div>${item.filesTruncated?'<p class="muted">보존 용량 제한으로 일부 파일은 제외되었습니다.</p>':''}${trace?'<h3>스택 트레이스</h3><pre class="trace">'+esc(trace)+'</pre>':''}`;$('toggle').onclick=async()=>{await api('/api/v1/errors/'+encodeURIComponent(item.eventId),{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:item.status==='resolved'?'open':'resolved'})});await load();await show(item.eventId)};$('delete').onclick=async()=>{if(!confirm('이 오류 기록과 보관 파일을 삭제할까요?'))return;await api('/api/v1/errors/'+encodeURIComponent(item.eventId),{method:'DELETE'});$('detail').className='panel detail';await load()}}
     document.querySelectorAll('.tab').forEach(button=>button.onclick=()=>setTab(button.dataset.tab,true));$('refresh').onclick=()=>load().catch(error=>$('summary').textContent=error.message);$('query').onkeydown=event=>{if(event.key==='Enter')$('refresh').click()};setTab(activeTab,false);load().catch(error=>$('summary').textContent=error.message);
   })();
   </script>

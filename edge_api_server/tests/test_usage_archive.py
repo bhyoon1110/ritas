@@ -8,6 +8,8 @@ from fastapi.testclient import TestClient
 
 from app.config import Settings
 from app.error_archive import install_error_management
+from app.errors import ApiException
+from app.main import _set_experiment_pc_usage_context
 from app.usage_archive import UsageArchive, UsageArchiveSettings, set_usage_context
 
 
@@ -24,6 +26,13 @@ def test_usage_archive_records_filters_and_reads_event(tmp_path: Path) -> None:
         job_id="job-xrd-1",
         request_number="REQ-2026-001",
         client="127.0.0.1",
+        client_type="C#/.NET",
+        client_version="2.1.0",
+        source_host_name="LAB-XRD-01",
+        file_relative_path="raw/Mix2.txt",
+        file_name="Mix2.txt",
+        file_size_bytes=532481,
+        file_sha256="a" * 64,
     )
     archive.record(
         project="TEM",
@@ -42,6 +51,20 @@ def test_usage_archive_records_filters_and_reads_event(tmp_path: Path) -> None:
     assert [item["jobId"] for item in archive.list(query="REQ-2026-001")] == [
         "job-xrd-1"
     ]
+    assert [item["jobId"] for item in archive.list(query="LAB-XRD-01")] == [
+        "job-xrd-1"
+    ]
+    assert [item["jobId"] for item in archive.list(query="raw/Mix2.txt")] == [
+        "job-xrd-1"
+    ]
+    stored = archive.get(str(success["eventId"]))
+    assert stored["clientApplication"] == {
+        "type": "C#/.NET",
+        "name": None,
+        "version": "2.1.0",
+        "sourceHostName": "LAB-XRD-01",
+    }
+    assert stored["file"]["sizeBytes"] == 532481
 
 
 def test_usage_middleware_records_user_actions_and_skips_repeated_requests(
@@ -135,5 +158,102 @@ def test_operations_console_has_usage_and_error_tabs(tmp_path: Path) -> None:
     assert 'data-default-tab="usage"' in operations.text
     assert "사용 기록" in operations.text
     assert "오류 기록" in operations.text
+    assert "클라이언트" in operations.text
     assert errors.status_code == 200
     assert 'data-default-tab="errors"' in errors.text
+
+
+def test_csharp_file_upload_usage_includes_job_client_and_file_context(
+    tmp_path: Path,
+) -> None:
+    app = FastAPI()
+    settings = Settings(
+        storage_root=tmp_path / "jobs",
+        error_archive_root=tmp_path / "errors",
+        usage_log_root=tmp_path / "usage",
+    )
+    install_error_management(app, settings)
+
+    class FakeDatabase:
+        @staticmethod
+        def fetch_job(job_id: str) -> dict[str, object]:
+            return {
+                "job_id": job_id,
+                "request_number": "REQ-CSHARP-001",
+                "experiment_code": "XRD",
+                "equipment_code": "XRD-01",
+                "operator_id": "operator-7",
+                "source_host_name": "LAB-PC-XRD-07",
+                "client_version": "1.4.2",
+            }
+
+    @app.post("/api/v1/jobs/{job_id}/files")
+    def upload_from_csharp(job_id: str, request: Request) -> JSONResponse:
+        _set_experiment_pc_usage_context(
+            request,
+            FakeDatabase(),  # type: ignore[arg-type]
+            job_id,
+            file_relative_path="raw/sample.txt",
+            file_name="sample.txt",
+            file_size_bytes=128,
+            file_sha256="b" * 64,
+        )
+        return JSONResponse({"status": "UPLOADED"}, status_code=201)
+
+    @app.put("/api/v1/jobs/{job_id}/files/{relative_path:path}")
+    def failed_upload_from_csharp(
+        job_id: str, relative_path: str, request: Request
+    ) -> JSONResponse:
+        _set_experiment_pc_usage_context(
+            request,
+            FakeDatabase(),  # type: ignore[arg-type]
+            job_id,
+            file_relative_path=relative_path,
+            file_name=relative_path.rsplit("/", 1)[-1],
+            file_size_bytes=256,
+            file_sha256="c" * 64,
+        )
+        raise ApiException(422, "FILE_HASH_MISMATCH", "파일 해시 불일치")
+
+    client = TestClient(app)
+    response = client.post(
+        "/api/v1/jobs/job-csharp-1/files",
+        headers={
+            "X-Request-Id": "request-csharp-1",
+            "X-Client-Type": "C#/.NET",
+            "X-Client-Name": "RIST XRD Uploader",
+        },
+    )
+    assert response.status_code == 201
+
+    item = client.get("/api/v1/usage-events?q=sample.txt").json()["items"][0]
+    assert item["project"] == "XRD"
+    assert item["action"] == "파일 업로드"
+    assert item["jobId"] == "job-csharp-1"
+    assert item["requestNumber"] == "REQ-CSHARP-001"
+    assert item["clientApplication"] == {
+        "type": "C#/.NET",
+        "name": "RIST XRD Uploader",
+        "version": "1.4.2",
+        "sourceHostName": "LAB-PC-XRD-07",
+    }
+    assert item["file"] == {
+        "relativePath": "raw/sample.txt",
+        "name": "sample.txt",
+        "sizeBytes": 128,
+        "sha256": "b" * 64,
+    }
+
+    failed = client.put(
+        "/api/v1/jobs/job-csharp-1/files/raw/broken.txt",
+        headers={
+            "X-Request-Id": "request-csharp-2",
+            "X-Client-Type": "C#/.NET",
+            "X-Client-Name": "RIST XRD Uploader",
+        },
+    )
+    assert failed.status_code == 422
+    error_item = client.get("/api/v1/errors?q=broken.txt").json()["items"][0]
+    assert error_item["project"] == "XRD"
+    assert error_item["clientApplication"]["type"] == "C#/.NET"
+    assert error_item["file"]["relativePath"] == "raw/broken.txt"
