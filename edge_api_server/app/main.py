@@ -13,6 +13,7 @@ from fastapi import (
     Response,
     UploadFile,
 )
+from fastapi.responses import HTMLResponse
 
 from .path_bootstrap import add_project_package_paths
 
@@ -41,6 +42,7 @@ from .models import (
     RequestListResponse,
     UploadFileResponse,
 )
+from .preview_web import build_workspace_index
 from .raman_web import router as raman_router
 from .service import EdgeService
 from .xrd_web import router as xrd_router
@@ -116,6 +118,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(raman_router)
     app.include_router(xrd_router)
     app.include_router(ahn_router)
+
+    @app.get("/", response_class=HTMLResponse, include_in_schema=False)
+    def workspace_index() -> HTMLResponse:
+        return HTMLResponse(build_workspace_index())
 
     @app.get("/health", tags=["system"])
     def health() -> dict[str, str | int]:

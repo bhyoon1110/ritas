@@ -21,7 +21,7 @@ def _bool_env(name: str, default: str = "false") -> bool:
     return os.getenv(name, default).lower() in {"1", "true", "yes", "on"}
 
 
-def _preview_index() -> str:
+def build_workspace_index() -> str:
     return """<!doctype html>
 <html lang="ko">
 <head>
@@ -102,7 +102,7 @@ def create_preview_app() -> FastAPI:
 
     @app.get("/", response_class=HTMLResponse, include_in_schema=False)
     def index() -> HTMLResponse:
-        return HTMLResponse(_preview_index())
+        return HTMLResponse(build_workspace_index())
 
     @app.get("/health", include_in_schema=False)
     def health() -> dict[str, str]:
