@@ -144,6 +144,29 @@ def client_type_from_user_agent(user_agent: str | None) -> str | None:
     return None
 
 
+def client_network_context(
+    *,
+    client: str | None,
+    forwarded_for: str | None = None,
+    real_ip: str | None = None,
+) -> dict[str, str | None]:
+    forwarded = str(forwarded_for or "").strip() or None
+    real = str(real_ip or "").strip() or None
+    peer = str(client or "").strip() or None
+    forwarded_client = None
+    if forwarded:
+        forwarded_client = next(
+            (part.strip() for part in forwarded.split(",") if part.strip()),
+            None,
+        )
+    return {
+        "clientIp": forwarded_client or real or peer,
+        "peerIp": peer,
+        "forwardedFor": forwarded,
+        "realIp": real,
+    }
+
+
 def should_record_usage(method: str, path: str) -> bool:
     lowered = path.lower()
     if lowered in {"/health", "/health/llm", "/operations", "/errors"}:
@@ -200,6 +223,8 @@ class UsageArchive:
         equipment_code: str | None = None,
         operator_id: str | None = None,
         client: str | None = None,
+        forwarded_for: str | None = None,
+        real_ip: str | None = None,
         user_agent: str | None = None,
         client_type: str | None = None,
         client_name: str | None = None,
@@ -213,6 +238,11 @@ class UsageArchive:
         total_size_bytes: int | None = None,
     ) -> dict[str, object]:
         now = datetime.now(KST).replace(microsecond=0)
+        network = client_network_context(
+            client=client,
+            forwarded_for=forwarded_for,
+            real_ip=real_ip,
+        )
         event: dict[str, object] = {
             "eventId": "usage-" + now.strftime("%Y%m%d-%H%M%S-") + uuid4().hex[:8],
             "timestamp": now.isoformat(),
@@ -254,6 +284,7 @@ class UsageArchive:
                 "endpoint": endpoint,
                 "routePath": route_path,
                 "client": client,
+                **network,
                 "userAgent": (user_agent or "")[:500] or None,
             },
         }
@@ -333,6 +364,9 @@ class UsageArchive:
                             file_context.get("name", ""),
                             file_context.get("sha256", ""),
                             request_context.get("client", ""),
+                            request_context.get("clientIp", ""),
+                            request_context.get("peerIp", ""),
+                            request_context.get("forwardedFor", ""),
                         )
                     )
                     haystack = haystack.casefold()
@@ -442,6 +476,27 @@ def _path_value(request: Request, name: str) -> str | None:
     return text or None
 
 
+def request_usage_client_context(request: Request) -> dict[str, str | None]:
+    """Snapshot the initiating client before work moves to a background thread."""
+    user_agent = request.headers.get("user-agent")
+    return {
+        "client": request.client.host if request.client else None,
+        "forwarded_for": request.headers.get("X-Forwarded-For"),
+        "real_ip": request.headers.get("X-Real-IP"),
+        "user_agent": user_agent,
+        "client_type": _state_value(request, "usage_client_type")
+        or request.headers.get("X-Client-Type")
+        or client_type_from_user_agent(user_agent),
+        "client_name": _state_value(request, "usage_client_name")
+        or request.headers.get("X-Client-Name"),
+        "client_version": _state_value(request, "usage_client_version")
+        or request.headers.get("X-Client-Version"),
+        "source_host_name": _state_value(request, "usage_source_host_name")
+        or request.headers.get("X-Source-Host-Name"),
+        "request_id": request.headers.get("X-Request-Id"),
+    }
+
+
 async def usage_logging_middleware(request: Request, call_next):
     path = request.url.path
     if not should_record_usage(request.method, path):
@@ -483,6 +538,8 @@ async def usage_logging_middleware(request: Request, call_next):
                     operator_id=_state_value(request, "usage_operator_id")
                     or request.headers.get("X-Operator-Id"),
                     client=request.client.host if request.client else None,
+                    forwarded_for=request.headers.get("X-Forwarded-For"),
+                    real_ip=request.headers.get("X-Real-IP"),
                     user_agent=request.headers.get("user-agent"),
                     client_type=_state_value(request, "usage_client_type")
                     or request.headers.get("X-Client-Type")
@@ -491,7 +548,8 @@ async def usage_logging_middleware(request: Request, call_next):
                     or request.headers.get("X-Client-Name"),
                     client_version=_state_value(request, "usage_client_version")
                     or request.headers.get("X-Client-Version"),
-                    source_host_name=_state_value(request, "usage_source_host_name"),
+                    source_host_name=_state_value(request, "usage_source_host_name")
+                    or request.headers.get("X-Source-Host-Name"),
                     file_relative_path=_state_value(
                         request, "usage_file_relative_path"
                     ),
@@ -522,10 +580,12 @@ def record_background_usage(
     operator_id: str | None = None,
     file_name: str | None = None,
     file_size_bytes: int | None = None,
+    client_context: dict[str, str | None] | None = None,
 ) -> dict[str, object] | None:
     if archive is None:
         return None
     try:
+        context = client_context or {}
         return archive.record(
             project=project,
             action=action,
@@ -544,6 +604,15 @@ def record_background_usage(
             operator_id=operator_id,
             file_name=file_name,
             file_size_bytes=file_size_bytes,
+            request_id=context.get("request_id"),
+            client=context.get("client"),
+            forwarded_for=context.get("forwarded_for"),
+            real_ip=context.get("real_ip"),
+            user_agent=context.get("user_agent"),
+            client_type=context.get("client_type"),
+            client_name=context.get("client_name"),
+            client_version=context.get("client_version"),
+            source_host_name=context.get("source_host_name"),
         )
     except Exception:
         logger.exception("백그라운드 사용 기록 저장 실패 (job_id=%s)", job_id)

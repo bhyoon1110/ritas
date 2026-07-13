@@ -34,6 +34,7 @@ from .path_bootstrap import add_project_package_paths
 from .usage_archive import (
     UsageArchive,
     record_background_usage,
+    request_usage_client_context,
     set_usage_context,
     usage_archive as app_usage_archive,
 )
@@ -85,6 +86,7 @@ class AhnReportJob:
     manifest: dict[str, Any] | None
     error_archive: ErrorArchive | None
     usage_archive: UsageArchive | None
+    usage_client_context: dict[str, str | None]
     created_at: float
     updated_at: float
     status: str = "queued"
@@ -765,6 +767,7 @@ def _create_ahn_job(
     work_dir: Path,
     error_archive: ErrorArchive | None,
     usage_archive: UsageArchive | None = None,
+    usage_client_context: dict[str, str | None] | None = None,
 ) -> AhnReportJob:
     output_dir = work_dir / "output"
     pptx_path = output_dir / "tem-report.pptx"
@@ -782,6 +785,7 @@ def _create_ahn_job(
         manifest=None,
         error_archive=error_archive,
         usage_archive=usage_archive,
+        usage_client_context=usage_client_context or {},
         created_at=now,
         updated_at=now,
     )
@@ -849,6 +853,7 @@ def _run_ahn_job(job: AhnReportJob) -> None:
             job_id=job.job_id,
             endpoint=f"/background/tem/report/jobs/{job.job_id}",
             experiment_code="TEM",
+            client_context=job.usage_client_context,
         )
         return
     except Exception as exc:
@@ -888,6 +893,7 @@ def _run_ahn_job(job: AhnReportJob) -> None:
             job_id=job.job_id,
             endpoint=f"/background/tem/report/jobs/{job.job_id}",
             experiment_code="TEM",
+            client_context=job.usage_client_context,
         )
         return
     summary = manifest.get("summary") if isinstance(manifest.get("summary"), dict) else {}
@@ -923,6 +929,7 @@ def _run_ahn_job(job: AhnReportJob) -> None:
             job_id=job.job_id,
             endpoint=f"/background/tem/report/jobs/{job.job_id}",
             experiment_code="TEM",
+            client_context=job.usage_client_context,
         )
         return
     try:
@@ -964,6 +971,7 @@ def _run_ahn_job(job: AhnReportJob) -> None:
             job_id=job.job_id,
             endpoint=f"/background/tem/report/jobs/{job.job_id}",
             experiment_code="TEM",
+            client_context=job.usage_client_context,
         )
         return
     _set_job_state(
@@ -986,6 +994,7 @@ def _run_ahn_job(job: AhnReportJob) -> None:
         file_size_bytes=(
             job.package_path.stat().st_size if job.package_path.is_file() else None
         ),
+        client_context=job.usage_client_context,
     )
 
 
@@ -994,8 +1003,15 @@ def _submit_ahn_job(
     work_dir: Path,
     error_archive: ErrorArchive | None = None,
     usage_archive: UsageArchive | None = None,
+    usage_client_context: dict[str, str | None] | None = None,
 ) -> AhnReportJob:
-    job = _create_ahn_job(input_root, work_dir, error_archive, usage_archive)
+    job = _create_ahn_job(
+        input_root,
+        work_dir,
+        error_archive,
+        usage_archive,
+        usage_client_context,
+    )
     _ahn_report_executor.submit(_run_ahn_job, job)
     return job
 
@@ -2203,6 +2219,7 @@ def complete_tem_upload_session(request: Request, upload_id: str) -> JSONRespons
         session.work_dir,
         app_error_archive(request.app),
         app_usage_archive(request.app),
+        request_usage_client_context(request),
     )
     set_usage_context(
         request,
@@ -2242,6 +2259,7 @@ async def analyze_tem(
             work_dir,
             app_error_archive(request.app),
             app_usage_archive(request.app),
+            request_usage_client_context(request),
         )
     except Exception:
         request.state.error_cleanup_paths = [work_dir]
@@ -2266,6 +2284,7 @@ def tem_example(request: Request) -> JSONResponse:
             work_dir,
             app_error_archive(request.app),
             app_usage_archive(request.app),
+            request_usage_client_context(request),
         )
     except Exception:
         shutil.rmtree(work_dir, ignore_errors=True)

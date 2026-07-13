@@ -25,6 +25,17 @@ from .usage_archive import (
 logger = get_logger(__name__)
 
 
+def _job_usage_client_context(job: dict[str, Any] | None) -> dict[str, str | None]:
+    item = job or {}
+    return {
+        "client": item.get("observed_remote_ip") or item.get("declared_ip_address"),
+        "client_type": "C#/.NET",
+        "client_name": "실험 PC 클라이언트",
+        "client_version": item.get("client_version"),
+        "source_host_name": item.get("source_host_name"),
+    }
+
+
 class ReportWorker:
     def __init__(
         self,
@@ -125,6 +136,7 @@ class ReportWorker:
                 file_size_bytes=(
                     package_path.stat().st_size if package_path.is_file() else None
                 ),
+                client_context=_job_usage_client_context(job),
             )
         except FileNotFoundError as exc:
             self._mark_failed(
@@ -216,6 +228,7 @@ class ReportWorker:
             experiment_code=(job or {}).get("experiment_code"),
             equipment_code=(job or {}).get("equipment_code"),
             operator_id=(job or {}).get("operator_id"),
+            client_context=_job_usage_client_context(job),
         )
 
     def _write_manifest(self, job_id: str) -> None:

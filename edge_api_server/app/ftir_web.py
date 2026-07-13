@@ -45,7 +45,11 @@ from .preview_report import (
 )
 from .spring_callback import SpringCallbackError
 from .upload_sessions import ChunkUploadStore, read_completed_upload_files
-from .usage_archive import set_usage_context, usage_archive as app_usage_archive
+from .usage_archive import (
+    request_usage_client_context,
+    set_usage_context,
+    usage_archive as app_usage_archive,
+)
 
 
 PLOT_DIV_ID = "peak-plot"
@@ -5336,6 +5340,7 @@ def _create_ftir_report_job_from_uploaded(
         settings=getattr(request.app.state, "settings", None),
         error_archive=app_error_archive(request.app),
         usage_archive=app_usage_archive(request.app),
+        usage_client_context=request_usage_client_context(request),
         error_project="FT-IR",
         failure_file_blobs=uploaded,
     )

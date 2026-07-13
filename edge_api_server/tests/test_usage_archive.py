@@ -31,6 +31,8 @@ def test_usage_archive_records_filters_and_reads_event(tmp_path: Path) -> None:
         job_id="job-xrd-1",
         request_number="REQ-2026-001",
         client="127.0.0.1",
+        forwarded_for="203.0.113.17, 10.0.0.8",
+        real_ip="10.0.0.8",
         client_type="C#/.NET",
         client_version="2.1.0",
         source_host_name="LAB-XRD-01",
@@ -60,6 +62,16 @@ def test_usage_archive_records_filters_and_reads_event(tmp_path: Path) -> None:
         experiment_code="XRD",
         file_name="xrd-report.html",
         file_size_bytes=4096,
+        client_context={
+            "client": "127.0.0.1",
+            "forwarded_for": "203.0.113.17, 10.0.0.8",
+            "real_ip": "10.0.0.8",
+            "client_type": "C#/.NET",
+            "client_name": "RIST XRD Uploader",
+            "client_version": "2.1.0",
+            "source_host_name": "LAB-XRD-01",
+            "request_id": "request-xrd-1",
+        },
     )
 
     assert archive.get(str(success["eventId"]))["requestNumber"] == "REQ-2026-001"
@@ -71,9 +83,7 @@ def test_usage_archive_records_filters_and_reads_event(tmp_path: Path) -> None:
     assert [item["jobId"] for item in archive.list(query="REQ-2026-001")] == [
         "job-xrd-1"
     ]
-    assert [item["jobId"] for item in archive.list(query="LAB-XRD-01")] == [
-        "job-xrd-1"
-    ]
+    assert len(archive.list(query="LAB-XRD-01")) == 2
     assert [item["jobId"] for item in archive.list(query="raw/Mix2.txt")] == [
         "job-xrd-1"
     ]
@@ -85,9 +95,23 @@ def test_usage_archive_records_filters_and_reads_event(tmp_path: Path) -> None:
         "sourceHostName": "LAB-XRD-01",
     }
     assert stored["file"]["sizeBytes"] == 532481
+    assert stored["request"] == {
+        "method": "POST",
+        "endpoint": "/api/v1/xrd/report",
+        "routePath": None,
+        "client": "127.0.0.1",
+        "clientIp": "203.0.113.17",
+        "peerIp": "127.0.0.1",
+        "forwardedFor": "203.0.113.17, 10.0.0.8",
+        "realIp": "10.0.0.8",
+        "userAgent": None,
+    }
     assert success["activityType"] == "REPORT_REQUEST"
     assert completed is not None
     assert completed["activityType"] == "REPORT_COMPLETE"
+    assert completed["clientApplication"]["sourceHostName"] == "LAB-XRD-01"
+    assert completed["request"]["clientIp"] == "203.0.113.17"
+    assert completed["requestId"] == "request-xrd-1"
     assert archive.list(activity_type="REPORT_COMPLETE") == [completed]
 
 
@@ -191,6 +215,8 @@ def test_operations_console_has_usage_and_error_tabs(tmp_path: Path) -> None:
     assert "클라이언트" in operations.text
     assert "전체 기록 유형" in operations.text
     assert "보고서 완료" in operations.text
+    assert "클라이언트 / 접속 위치" in operations.text
+    assert "접속 IP" in operations.text
     assert errors.status_code == 200
     assert 'data-default-tab="errors"' in errors.text
 

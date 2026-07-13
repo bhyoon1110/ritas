@@ -50,6 +50,7 @@ from .upload_sessions import ChunkUploadStore
 from .usage_archive import (
     UsageArchive,
     record_background_usage,
+    request_usage_client_context,
     set_usage_context,
     usage_archive as app_usage_archive,
 )
@@ -102,6 +103,7 @@ class XrdReportJob:
     settings: Settings | None
     error_archive: ErrorArchive | None
     usage_archive: UsageArchive | None
+    usage_client_context: dict[str, str | None]
     origin: bool
     created_at: float
     updated_at: float
@@ -687,6 +689,7 @@ def _create_xrd_report_job(
     settings: Settings | None,
     error_archive: ErrorArchive | None,
     usage_archive: UsageArchive | None,
+    usage_client_context: dict[str, str | None],
     origin: bool,
 ) -> XrdReportJob:
     now = time.time()
@@ -697,6 +700,7 @@ def _create_xrd_report_job(
         settings=settings,
         error_archive=error_archive,
         usage_archive=usage_archive,
+        usage_client_context=usage_client_context,
         origin=origin,
         created_at=now,
         updated_at=now,
@@ -2164,6 +2168,7 @@ def _run_xrd_report_job(job: XrdReportJob) -> None:
             job_id=job.job_id,
             endpoint=f"/background/xrd/report/jobs/{job.job_id}",
             experiment_code="XRD",
+            client_context=job.usage_client_context,
         )
         return
     except Exception as exc:
@@ -2203,6 +2208,7 @@ def _run_xrd_report_job(job: XrdReportJob) -> None:
             job_id=job.job_id,
             endpoint=f"/background/xrd/report/jobs/{job.job_id}",
             experiment_code="XRD",
+            client_context=job.usage_client_context,
         )
         return
 
@@ -2224,6 +2230,7 @@ def _run_xrd_report_job(job: XrdReportJob) -> None:
         experiment_code="XRD",
         file_name="xrd-report.html",
         file_size_bytes=len(html_result.encode("utf-8")),
+        client_context=job.usage_client_context,
     )
 
 
@@ -2234,6 +2241,7 @@ def _submit_xrd_report_job(
     settings: Settings | None,
     error_archive: ErrorArchive | None,
     usage_archive: UsageArchive | None,
+    usage_client_context: dict[str, str | None],
     origin: bool,
 ) -> XrdReportJob:
     job = _create_xrd_report_job(
@@ -2242,6 +2250,7 @@ def _submit_xrd_report_job(
         settings=settings,
         error_archive=error_archive,
         usage_archive=usage_archive,
+        usage_client_context=usage_client_context,
         origin=origin,
     )
     _xrd_report_executor.submit(_run_xrd_report_job, job)
@@ -2328,6 +2337,7 @@ def complete_xrd_upload_session(
         settings=_request_settings(request),
         error_archive=app_error_archive(request.app),
         usage_archive=app_usage_archive(request.app),
+        usage_client_context=request_usage_client_context(request),
         origin=origin,
     )
     set_usage_context(

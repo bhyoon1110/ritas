@@ -472,6 +472,7 @@ def run_preview_report_job(
     settings: Any | None = None,
     error_archive: ErrorArchive | None = None,
     usage_archive: UsageArchive | None = None,
+    usage_client_context: dict[str, str | None] | None = None,
     error_project: str = "EDGE",
     failure_file_blobs: list[tuple[str, bytes]] | None = None,
 ) -> None:
@@ -526,6 +527,7 @@ def run_preview_report_job(
             operator_id=operator_id,
             file_name=package.name,
             file_size_bytes=package.stat().st_size if package.is_file() else None,
+            client_context=usage_client_context,
         )
     except Exception as exc:
         event_id = record_background_error(
@@ -550,6 +552,7 @@ def run_preview_report_job(
             experiment_code=experiment_code,
             equipment_code=equipment_code,
             operator_id=operator_id,
+            client_context=usage_client_context,
         )
 
 
