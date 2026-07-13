@@ -388,11 +388,16 @@ def _candidate_values_from_text(text: str, *, require_unit: bool = True) -> list
         if 0.1 <= value <= MAX_COATING_THICKNESS_NM:
             values.append(value)
 
-    for match in re.finditer(r"(?<!\d)(\d{1,3})\s*\.\s*(\d{1,3})(?!\d)", normalized):
-        if require_unit and not _unit_nearby(normalized, match.start(), match.end()):
+    # A decimal point on a narrow italic label is occasionally read as a
+    # hyphen (for example, ``15-74 rn``). Accept that form only when an OCR
+    # approximation of the nm unit is adjacent, so ranges and file names do
+    # not become thickness candidates.
+    for match in re.finditer(r"(?<!\d)(\d{1,3})\s*([.\-])\s*(\d{1,3})(?!\d)", normalized):
+        unit_nearby = _unit_nearby(normalized, match.start(), match.end())
+        if (require_unit or match.group(2) == "-") and not unit_nearby:
             continue
         integer = int(match.group(1))
-        fraction = match.group(2)
+        fraction = match.group(3)
         value = float(f"{integer}.{fraction}")
         add_value(value)
 
@@ -492,43 +497,69 @@ def _ocr_label_boxes(image: Image.Image, pytesseract: Any) -> tuple[list[float],
     gray = np.array(detection_image)
     height, width = gray.shape
     _, thresholded = cv2.threshold(gray, 235, 255, cv2.THRESH_BINARY)
-    closed = cv2.morphologyEx(
-        thresholded,
-        cv2.MORPH_CLOSE,
-        cv2.getStructuringElement(cv2.MORPH_RECT, (17, 7)),
+    masks = (
+        # Remove the diagonal measurement line while retaining the compact
+        # white label. This is the reliable path for small labels such as
+        # ``15.74 nm`` on a noisy TEM background.
+        (cv2.morphologyEx(
+            thresholded,
+            cv2.MORPH_OPEN,
+            cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3)),
+        ), 450, 0.10),
+        # Keep the previous joining pass as a fallback for fragmented labels.
+        (cv2.morphologyEx(
+            thresholded,
+            cv2.MORPH_CLOSE,
+            cv2.getStructuringElement(cv2.MORPH_RECT, (17, 7)),
+        ), 700, 0.25),
     )
-    count, _labels, stats, _centroids = cv2.connectedComponentsWithStats(closed, 8)
-    boxes: list[tuple[int, int, int, int]] = []
     max_box_width = max(380, round(width * 0.48))
     max_box_height = max(100, round(height * 0.14))
-    for index in range(1, count):
-        x, y, box_w, box_h, area = [int(value) for value in stats[index]]
-        fill = area / max(1, box_w * box_h)
-        if not (
-            45 <= box_w <= max_box_width
-            and 18 <= box_h <= max_box_height
-            and area >= 700
-            and fill >= 0.25
-        ):
-            continue
-        if y <= height * 0.08 or x <= 5 or x + box_w >= width - 5:
-            continue
-        # The microscope scale bar labels live in the lower-left corner and
-        # should not be counted as coating-thickness measurements.
-        if y > height * 0.84 and x < width * 0.28:
-            continue
-        center_x = x + box_w / 2
-        center_y = y + box_h / 2
-        if any(abs(center_x - (bx + bw / 2)) < 18 and abs(center_y - (by + bh / 2)) < 18 for bx, by, bw, bh in boxes):
-            continue
-        boxes.append((x, y, box_w, box_h))
-
     values: list[float] = []
     text_parts: list[str] = []
-    for box in sorted(boxes, key=lambda item: (item[1], item[0]))[:10]:
-        box_values, texts = _ocr_label_box(detection_image, box, pytesseract)
-        values.extend(box_values)
-        text_parts.extend(texts)
+    successful_boxes: list[tuple[int, int, int, int]] = []
+
+    def substantially_overlaps(box: tuple[int, int, int, int]) -> bool:
+        x, y, box_w, box_h = box
+        for other_x, other_y, other_w, other_h in successful_boxes:
+            overlap_w = max(0, min(x + box_w, other_x + other_w) - max(x, other_x))
+            overlap_h = max(0, min(y + box_h, other_y + other_h) - max(y, other_y))
+            overlap = overlap_w * overlap_h
+            if overlap / max(1, min(box_w * box_h, other_w * other_h)) >= 0.35:
+                return True
+        return False
+
+    for mask, min_area, min_fill in masks:
+        count, _labels, stats, _centroids = cv2.connectedComponentsWithStats(mask, 8)
+        boxes: list[tuple[int, int, int, int]] = []
+        for index in range(1, count):
+            x, y, box_w, box_h, area = [int(value) for value in stats[index]]
+            fill = area / max(1, box_w * box_h)
+            if not (
+                45 <= box_w <= max_box_width
+                and 18 <= box_h <= max_box_height
+                and box_w / max(1, box_h) >= 1.35
+                and area >= min_area
+                and fill >= min_fill
+            ):
+                continue
+            if y <= height * 0.08 or x <= 5 or x + box_w >= width - 5:
+                continue
+            # The microscope scale bar labels live in the lower-left corner
+            # and should not be counted as coating-thickness measurements.
+            if y > height * 0.84 and x < width * 0.28:
+                continue
+            boxes.append((x, y, box_w, box_h))
+
+        for box in sorted(boxes, key=lambda item: (item[1], item[0]))[:12]:
+            if substantially_overlaps(box):
+                continue
+            box_values, texts = _ocr_label_box(detection_image, box, pytesseract)
+            text_parts.extend(texts)
+            if not box_values:
+                continue
+            values.extend(box_values)
+            successful_boxes.append(box)
     return values, "\n".join(text_parts)
 
 
@@ -551,8 +582,6 @@ def _ocr_full_image(image: Image.Image, pytesseract: Any) -> tuple[list[float], 
             continue
         text_parts.append(f"[{label}]\n{text}")
         values = _candidate_values_from_text(text, require_unit=True)
-        if not values:
-            values = _candidate_values_from_text(text, require_unit=False)
         if values:
             variant_values.append(values)
     return _select_supported_ocr_values(variant_values), "\n\n".join(text_parts)

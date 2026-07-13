@@ -29,6 +29,8 @@ def test_coating_ocr_candidate_parser_keeps_multiple_labels() -> None:
     assert _candidate_values_from_text("2. IS rm") == [2.18]
     assert _candidate_values_from_text("O.72 rm") == [0.72]
     assert _candidate_values_from_text("236.12 nm\n200 nm") == [236.12]
+    assert _candidate_values_from_text("15-74 rn") == [15.74]
+    assert _candidate_values_from_text("15-74") == []
     assert _select_supported_ocr_values(
         [[14.39, 19.08, 14.54], [14.59, 14.54], [14.59, 19.08, 14.54]]
     ) == [14.59, 19.08, 14.54]
