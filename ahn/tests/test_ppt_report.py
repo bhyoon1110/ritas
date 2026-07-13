@@ -668,10 +668,12 @@ def test_point_eds_spectrum_tables_create_row_detail_slides(tmp_path, monkeypatc
     ]
     assert table_counts == [1, 1, 2, 2]
     summary_units = []
+    summary_title_row_heights = []
     for slide in list(prs.slides)[:2]:
         tables = [shape.table for shape in slide.shapes if getattr(shape, "has_table", False)]
         assert len(tables) == 1
         summary_units.append(tables[0].cell(0, 0).text)
+        summary_title_row_heights.append(tables[0].rows[0].height)
         anchor = _pictures(slide)[0]
         assert anchor.left <= Inches(0.3)
         assert anchor.width == Inches(4.0)
@@ -679,6 +681,7 @@ def test_point_eds_spectrum_tables_create_row_detail_slides(tmp_path, monkeypatc
         assert anchor.crop_left > 0
         assert anchor.crop_right > 0
     assert summary_units == ["Wt%", "At%"]
+    assert summary_title_row_heights == [Inches(0.27), Inches(0.27)]
     summary_table_fonts = []
     for slide in list(prs.slides)[:2]:
         for shape in slide.shapes:
@@ -695,6 +698,7 @@ def test_point_eds_spectrum_tables_create_row_detail_slides(tmp_path, monkeypatc
     assert summary_table_fonts
     assert min(summary_table_fonts) >= Pt(9)
     detail_table_fonts = []
+    detail_title_row_heights = []
     detail_anchor = _pictures(prs.slides[2])[0]
     detail_graph = _pictures(prs.slides[2])[1]
     assert detail_anchor.width == Inches(4.0)
@@ -709,6 +713,7 @@ def test_point_eds_spectrum_tables_create_row_detail_slides(tmp_path, monkeypatc
     for shape in prs.slides[2].shapes:
         if not getattr(shape, "has_table", False):
             continue
+        detail_title_row_heights.append(shape.table.rows[0].height)
         for row in shape.table.rows:
             for cell in row.cells:
                 for paragraph in cell.text_frame.paragraphs:
@@ -717,6 +722,7 @@ def test_point_eds_spectrum_tables_create_row_detail_slides(tmp_path, monkeypatc
                             detail_table_fonts.append(run.font.size)
     assert detail_table_fonts
     assert min(detail_table_fonts) >= Pt(9)
+    assert detail_title_row_heights == summary_title_row_heights
     table_text = _pptx_table_text(output)
     assert "At%" in table_text
     assert "Wt%" in table_text

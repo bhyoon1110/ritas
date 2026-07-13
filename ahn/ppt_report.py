@@ -1245,6 +1245,20 @@ def _restyle_merged_header(cell, text: str, font_size: int) -> None:
             _set_run(run, size=font_size, bold=True, color=RGBColor(255, 255, 255))
 
 
+def _set_point_table_row_heights(table_shape, total_height: int) -> None:
+    row_count = len(table_shape.table.rows)
+    if row_count <= 1:
+        return
+
+    title_height = min(int(Inches(0.27)), total_height - (row_count - 1))
+    body_height, extra = divmod(total_height - title_height, row_count - 1)
+    table_shape.table.rows[0].height = title_height
+    for row_index in range(1, row_count):
+        table_shape.table.rows[row_index].height = body_height + (
+            1 if row_index <= extra else 0
+        )
+
+
 def _add_point_composition_table(
     slide,
     table: list[list[str]],
@@ -1267,6 +1281,7 @@ def _add_point_composition_table(
     )
     if table_shape is None:
         return None
+    _set_point_table_row_heights(table_shape, slot[3])
     cols = len(rows[0])
     if cols > 1:
         header_cell = table_shape.table.cell(0, 0)
