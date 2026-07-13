@@ -3,7 +3,10 @@ from pathlib import Path
 from ahn.analysis import (
     COATING_LABEL_DETECTION_MAX_DIMENSION,
     CoatingOcrResult,
+    OcrCandidate,
     _candidate_values_from_text,
+    _is_microscope_scale_box,
+    _reconcile_coating_ocr_ensemble,
     _reconcile_coating_ocr_values,
     collect_coating_samples,
     collect_project,
@@ -32,6 +35,14 @@ def test_coating_ocr_candidate_parser_keeps_multiple_labels() -> None:
     assert _candidate_values_from_text("236.12 nm\n200 nm") == [236.12]
     assert _candidate_values_from_text("15-74 rn") == [15.74]
     assert _candidate_values_from_text("15-74") == []
+    assert _candidate_values_from_text(
+        "10 nm",
+        exclude_microscope_scale=False,
+    ) == [10.0]
+    assert _candidate_values_from_text(
+        "12.21 nm",
+        exclude_microscope_scale=False,
+    ) == [12.21]
 
 
 def test_coating_label_detection_normalizes_high_resolution_image(monkeypatch) -> None:
@@ -82,6 +93,32 @@ def test_coating_ocr_keeps_label_value_when_full_image_has_no_measurement() -> N
 
 def test_coating_ocr_discards_extra_full_image_artifact() -> None:
     assert _reconcile_coating_ocr_values([7.66], [7.66, 17.661]) == [7.66]
+
+
+def test_coating_ocr_ensemble_restores_leading_digit() -> None:
+    candidates = [
+        OcrCandidate(value_nm=12.21, text="12.21 nm", confidence=0.99),
+    ]
+
+    assert _reconcile_coating_ocr_ensemble(candidates, [2.21], []) == [12.21]
+    assert _reconcile_coating_ocr_ensemble(candidates, [22.21], []) == [12.21]
+
+
+def test_coating_ocr_ensemble_does_not_add_tesseract_crop_noise() -> None:
+    candidates = [
+        OcrCandidate(value_nm=7.66, text="7.66 nm", confidence=0.98),
+    ]
+
+    assert _reconcile_coating_ocr_ensemble(candidates, [7.0, 17.66], []) == [7.66]
+
+
+def test_coating_ocr_ensemble_uses_tesseract_when_neural_detector_misses() -> None:
+    assert _reconcile_coating_ocr_ensemble([], [14.72], []) == [14.72]
+
+
+def test_coating_ocr_identifies_lower_left_scale_bar() -> None:
+    assert _is_microscope_scale_box((50, 900, 160, 60), (1000, 1000))
+    assert not _is_microscope_scale_box((500, 500, 160, 60), (1000, 1000))
 
 
 def test_coating_label_ocr_uses_threshold_variant_only_as_fallback(monkeypatch) -> None:
