@@ -67,6 +67,7 @@ class PreviewReportJob:
             payload["error"] = self.error
         if self.error_event_id:
             payload["errorEventId"] = self.error_event_id
+            payload["errorFeedbackUrl"] = f"/error-feedback/{self.error_event_id}"
         if download_url and self.status == "completed":
             payload["downloadUrl"] = download_url
         return payload

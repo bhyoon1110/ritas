@@ -734,9 +734,24 @@ API에 전달한다. `testChargerName`은 화면 표시용 담당자명이며, `
 ```
 
 오류가 Edge 통합 오류 보관소에 기록되면 응답 헤더에
-`X-Error-Event-Id`가 포함된다. 운영자는 `/errors` 화면에서 이 ID로 로그와
-실패 당시 보관 파일을 조회할 수 있다. 이 관리 화면은 실험 PC 업무 API가
-아니므로 내부 운영망에서만 접근을 허용한다.
+`X-Error-Event-Id`가 포함되고, `X-Error-Comment-Url`에는 고객 코멘트 입력
+주소가 포함된다. JSON 오류 본문에도 같은 값을 `errorEventId`,
+`errorFeedbackUrl`로 제공한다. 운영자는 `/errors` 화면에서 이 ID로 로그와 실패 당시 보관
+파일을 조회할 수 있다. 고객 또는 실험 PC 프로그램은 다음 API로 재현 상황을
+추가할 수 있다.
+
+```http
+POST /api/v1/errors/{errorEventId}/comments
+Content-Type: application/json
+
+{
+  "author": "실험실 PC 사용자",
+  "content": "Windows 11에서 같은 PDF를 업로드하면 반복해서 발생합니다."
+}
+```
+
+브라우저에서는 `/error-feedback/{errorEventId}`를 열어 같은 내용을 입력한다.
+오류 관리 화면과 고객 입력 화면은 내부 운영망에서만 접근을 허용한다.
 
 ## 10. 재시도 및 타임아웃
 

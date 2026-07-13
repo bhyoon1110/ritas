@@ -1055,6 +1055,9 @@ def _job_payload(job: AhnReportJob) -> dict[str, Any]:
         "downloads": downloads,
         "error": job.error,
         "errorEventId": job.error_event_id,
+        "errorFeedbackUrl": (
+            f"/error-feedback/{job.error_event_id}" if job.error_event_id else None
+        ),
     }
 
 
@@ -1531,13 +1534,23 @@ def build_ahn_page() -> str:
         setProgress(0, "보고서 생성 대기", false, false);
       }, 900);
     }
-    function failProgress(message) {
+    function failProgress(message, feedbackUrl) {
       stopProgressTimer();
       setProgress(100, message || "보고서 생성에 실패했습니다.", true, true);
+      if (feedbackUrl) {
+        var feedbackLink = document.createElement("a");
+        feedbackLink.href = feedbackUrl;
+        feedbackLink.target = "_blank";
+        feedbackLink.rel = "noopener";
+        feedbackLink.textContent = "오류 코멘트 남기기";
+        feedbackLink.style.cssText = "margin-left:8px;color:inherit;font-weight:700;text-decoration:underline";
+        progressLabel.appendChild(document.createTextNode(" "));
+        progressLabel.appendChild(feedbackLink);
+      }
       setTimeout(function() {
         setUploadProgress(0, "raw 파일 업로드 대기", false, false);
         setProgress(0, "보고서 생성 대기", false, false);
-      }, 1800);
+      }, feedbackUrl ? 10000 : 1800);
     }
     function filesOf(input) {
       return Array.prototype.slice.call(input.files || []);
@@ -1696,6 +1709,21 @@ def build_ahn_page() -> str:
         return text;
       }
     }
+    function errorFromResponse(source, text, fallback) {
+      var payload = {};
+      try { payload = JSON.parse(text || "{}"); } catch (_error) {}
+      var getHeader = source && source.headers && source.headers.get
+        ? function(name) { return source.headers.get(name); }
+        : source && source.getResponseHeader
+          ? function(name) { return source.getResponseHeader(name); }
+          : function() { return null; };
+      var error = new Error(payload.message || payload.detail || parseErrorMessage(text, fallback));
+      error.errorEventId = payload.errorEventId || getHeader("X-Error-Event-Id");
+      error.errorFeedbackUrl = payload.errorFeedbackUrl
+        || getHeader("X-Error-Comment-Url")
+        || (error.errorEventId ? "/error-feedback/" + encodeURIComponent(error.errorEventId) : "");
+      return error;
+    }
     function networkErrorMessage(_error, url) {
       var target = String(url || "");
       if (target.indexOf("/analyze") >= 0) {
@@ -1718,7 +1746,7 @@ def build_ahn_page() -> str:
       }
       var text = await response.text();
       if (!response.ok) {
-        var error = new Error(parseErrorMessage(text, "요청 처리에 실패했습니다."));
+        var error = errorFromResponse(response, text, "요청 처리에 실패했습니다.");
         error.isTransientError = response.status === 408 || response.status === 429 || response.status >= 500;
         throw error;
       }
@@ -1786,7 +1814,7 @@ def build_ahn_page() -> str:
           }
           return;
         }
-          var error = new Error(parseErrorMessage(text, "업로드 조각 전송에 실패했습니다."));
+          var error = errorFromResponse(xhr, text, "업로드 조각 전송에 실패했습니다.");
           error.isTransientError = xhr.status === 408 || xhr.status === 429 || xhr.status >= 500;
           reject(error);
         };
@@ -1942,7 +1970,7 @@ def build_ahn_page() -> str:
       }
       var text = await response.text();
       if (!response.ok) {
-        var error = new Error(parseErrorMessage(text, "보고서 생성 요청에 실패했습니다."));
+        var error = errorFromResponse(response, text, "보고서 생성 요청에 실패했습니다.");
         error.isTransientError = response.status === 408 || response.status === 429 || response.status >= 500;
         throw error;
       }
@@ -1960,7 +1988,11 @@ def build_ahn_page() -> str:
       while (current && current.status !== "completed") {
         if (current.status === "failed") {
           var error = current.error || {};
-          throw new Error(error.message || current.message || "TEM 보고서 생성에 실패했습니다.");
+          var reportError = new Error(error.message || current.message || "TEM 보고서 생성에 실패했습니다.");
+          reportError.errorEventId = current.errorEventId;
+          reportError.errorFeedbackUrl = current.errorFeedbackUrl
+            || (current.errorEventId ? "/error-feedback/" + encodeURIComponent(current.errorEventId) : "");
+          throw reportError;
         }
         shownPct = Math.max(shownPct, Number(current.progressPct || 8));
         shownPct = Math.min(96, shownPct);
@@ -2075,7 +2107,10 @@ def build_ahn_page() -> str:
         finishProgress("TEM 예제 보고서가 생성되었습니다.");
       } catch (error) {
         setStatus(error.message || String(error), true);
-        failProgress(error.message || "예제 보고서 생성에 실패했습니다.");
+        failProgress(
+          error.message || "예제 보고서 생성에 실패했습니다.",
+          error.errorFeedbackUrl || ""
+        );
       } finally {
         setBusy(false);
       }
@@ -2101,7 +2136,10 @@ def build_ahn_page() -> str:
         finishProgress("TEM 보고서가 생성되었습니다.");
       } catch (error) {
         setStatus(error.message || String(error), true);
-        failProgress(error.message || "보고서 생성에 실패했습니다.");
+        failProgress(
+          error.message || "보고서 생성에 실패했습니다.",
+          error.errorFeedbackUrl || ""
+        );
       } finally {
         setBusy(false);
       }

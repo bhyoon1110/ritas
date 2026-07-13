@@ -394,8 +394,13 @@ http://<Edge 서버>:8000/operations
 - 실패 시점까지 업로드된 파일을 별도 오류 폴더에 복사하며, 개별 파일 또는
   사건 전체 ZIP으로 내려받을 수 있다.
 - 목록에서 미해결/해결 상태를 변경하거나 보관 기록을 삭제할 수 있다.
-- API 오류 응답에는 추적용 `X-Error-Event-Id` 헤더가 포함되고, 비동기 보고서
-  상태 응답에는 `errorEventId`가 포함된다.
+- 오류 상세의 `고객 코멘트`에서 재현 상황과 추가 설명을 기록한다. 고객에게는
+  `/error-feedback/{errorEventId}` 주소를 전달하면 오류 로그나 보관 파일을
+  노출하지 않고 해당 오류에 코멘트만 남길 수 있다.
+- API 오류 응답에는 추적용 `X-Error-Event-Id`와 고객 입력 주소인
+  `X-Error-Comment-Url` 헤더가 포함된다. JSON 본문과 비동기 보고서 상태에도
+  동일한 `errorEventId`, `errorFeedbackUrl`이 포함되므로 브라우저와 C# 클라이언트
+  모두 실패 직후 고객 코멘트 화면을 열 수 있다.
 
 사용 기록의 기본 보관 위치는 `<RIST_STORAGE_ROOT>/usage`, 기간은 90일이다.
 오류 기록은 `<RIST_STORAGE_ROOT>/errors`에 30일간 보관한다. 대용량 raw 파일

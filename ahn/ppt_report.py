@@ -1166,7 +1166,12 @@ def _add_point_composition_table(
 
 
 def _valid_point_tables(tables: list[list[list[str]]]) -> list[list[list[str]]]:
-    return [table for table in tables[:2] if _is_point_spectrum_table(table)]
+    valid = [table for table in tables if _is_point_spectrum_table(table)]
+    unit_order = {"wt%": 0, "at%": 1}
+    return sorted(
+        valid[:2],
+        key=lambda table: unit_order.get(_point_table_unit(table).lower(), 2),
+    )
 
 
 def _eds_point_anchor_slot() -> tuple[int, int, int, int]:
@@ -1189,11 +1194,11 @@ def _add_eds_point_summary_slide(
     point_tables: list[list[list[str]]],
     tmp_dir: Path,
 ) -> None:
-    slide = _add_eds_slide(prs, template, "eds_table", title)
-    _add_eds_anchor_image(slide, first_image, tmp_dir)
-    slots = _eds_table_slots(len(point_tables), _eds_right_slot())
-    for table, slot in zip(point_tables, slots):
-        _add_point_composition_table(slide, table, slot)
+    for table in point_tables:
+        slide = _add_eds_slide(prs, template, "eds_table", title)
+        if first_image:
+            _add_fit_picture(slide, first_image, *_eds_point_anchor_slot(), tmp_dir)
+        _add_point_composition_table(slide, table, _eds_right_slot())
 
 
 def _point_spectrum_labels(point_tables: list[list[list[str]]]) -> list[str]:

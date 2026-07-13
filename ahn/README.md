@@ -81,9 +81,10 @@ STEM EDS 보고서는 Word 1페이지의 기준 이미지를 왼쪽에 크게 �
 기준 이미지를 왼쪽에 유지한다. MAP 후속 이미지는 기준 이미지 오른쪽의
 3x2 영역에 순차 배치한다. Line scan은 Data 블록 단위로 기준 이미지,
 라인 이미지, 전체 그래프를 먼저 배치하고 이후 원소별 그래프를 2x3으로
-배치한다. Point는 Word의 Spectrum 표 2개를 `At%/Wt%` 상단 병합 행과
-함께 정리하고, 각 Spectrum row마다 기준 이미지, 해당 row의 조성표,
-Spectrum 그래프를 별도 장표로 생성한다.
+배치한다. Point는 Word의 Spectrum 표를 `Wt%`, `At%` 순서의 별도 장표로
+나누고 두 장 모두 같은 기준 이미지를 왼쪽에 크게 배치한다. 각 Spectrum
+row마다 기준 이미지, 해당 row의 조성표, Spectrum 그래프를 별도 장표로
+생성한다.
 
 예시 JSON:
 

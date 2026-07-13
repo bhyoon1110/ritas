@@ -41,9 +41,14 @@ def error_response(request: Request, exc: ApiException) -> JSONResponse:
         retryable=exc.retryable,
         details=exc.details,
     )
+    content = payload.model_dump(by_alias=True, exclude_none=True)
+    event_id = getattr(request.state, "error_event_id", None)
+    if event_id:
+        content["errorEventId"] = str(event_id)
+        content["errorFeedbackUrl"] = f"/error-feedback/{event_id}"
     return JSONResponse(
         status_code=exc.status_code,
-        content=payload.model_dump(by_alias=True, exclude_none=True),
+        content=content,
     )
 
 
@@ -63,4 +68,3 @@ async def validation_exception_handler(
             details=exc.errors(),
         ),
     )
-

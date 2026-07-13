@@ -531,29 +531,39 @@ def test_point_eds_spectrum_tables_create_row_detail_slides(tmp_path, monkeypatc
     build_pptx(project, output)
 
     prs = Presentation(output)
-    assert len(prs.slides) == 3
-    assert _pptx_picture_counts(output) == [1, 2, 2]
+    assert len(prs.slides) == 4
+    assert _pptx_picture_counts(output) == [1, 1, 2, 2]
     table_counts = [
         sum(1 for shape in slide.shapes if getattr(shape, "has_table", False))
         for slide in prs.slides
     ]
-    assert table_counts == [2, 2, 2]
+    assert table_counts == [1, 1, 2, 2]
+    summary_units = []
+    for slide in list(prs.slides)[:2]:
+        tables = [shape.table for shape in slide.shapes if getattr(shape, "has_table", False)]
+        assert len(tables) == 1
+        summary_units.append(tables[0].cell(0, 0).text)
+        anchor = _pictures(slide)[0]
+        assert anchor.left <= Inches(0.3)
+        assert anchor.width >= Inches(4.2)
+    assert summary_units == ["Wt%", "At%"]
     summary_table_fonts = []
-    for shape in prs.slides[0].shapes:
-        if not getattr(shape, "has_table", False):
-            continue
-        assert shape.table.columns[0].width >= Inches(0.8)
-        assert shape.table.columns[0].width > shape.table.columns[1].width
-        for row in shape.table.rows:
-            for cell in row.cells:
-                for paragraph in cell.text_frame.paragraphs:
-                    for run in paragraph.runs:
-                        if run.font.size:
-                            summary_table_fonts.append(run.font.size)
+    for slide in list(prs.slides)[:2]:
+        for shape in slide.shapes:
+            if not getattr(shape, "has_table", False):
+                continue
+            assert shape.table.columns[0].width >= Inches(0.8)
+            assert shape.table.columns[0].width > shape.table.columns[1].width
+            for row in shape.table.rows:
+                for cell in row.cells:
+                    for paragraph in cell.text_frame.paragraphs:
+                        for run in paragraph.runs:
+                            if run.font.size:
+                                summary_table_fonts.append(run.font.size)
     assert summary_table_fonts
     assert min(summary_table_fonts) >= Pt(9)
     detail_table_fonts = []
-    for shape in prs.slides[1].shapes:
+    for shape in prs.slides[2].shapes:
         if not getattr(shape, "has_table", False):
             continue
         for row in shape.table.rows:

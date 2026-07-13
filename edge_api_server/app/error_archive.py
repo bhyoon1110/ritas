@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from html import escape
 import json
 import mimetypes
 from pathlib import Path
@@ -16,7 +17,7 @@ import zipfile
 
 from fastapi import APIRouter, BackgroundTasks, FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, HTMLResponse, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from rist_common import get_logger
 
@@ -46,6 +47,11 @@ class ErrorArchiveSettings:
 
 class ErrorStatusUpdate(BaseModel):
     status: str
+
+
+class ErrorCommentCreate(BaseModel):
+    author: str = Field(default="고객", max_length=100)
+    content: str = Field(min_length=1, max_length=4000)
 
 
 def _json_safe(value: object) -> object:
@@ -172,6 +178,7 @@ class ErrorArchive:
             "files": [],
             "filesTruncated": False,
             "capturedBytes": 0,
+            "comments": [],
         }
         captured: list[dict[str, object]] = []
         total_bytes = 0
@@ -298,6 +305,7 @@ class ErrorArchive:
         if not path.is_file():
             raise FileNotFoundError(event_id)
         event = json.loads(path.read_text(encoding="utf-8"))
+        event.setdefault("comments", [])
         trace_path = event_dir / "traceback.txt"
         if trace_path.is_file():
             event["traceback"] = trace_path.read_text(encoding="utf-8")
@@ -322,6 +330,7 @@ class ErrorArchive:
                 item = json.loads(event_path.read_text(encoding="utf-8"))
             except (OSError, json.JSONDecodeError):
                 continue
+            item.setdefault("comments", [])
             if project and str(item.get("project", "")).casefold() != project.casefold():
                 continue
             if status and str(item.get("status", "")).casefold() != status.casefold():
@@ -367,6 +376,37 @@ class ErrorArchive:
             )
             self._write_event(event_dir, event)
         return event
+
+    def add_comment(
+        self,
+        event_id: str,
+        *,
+        author: str,
+        content: str,
+        source: str = "customer",
+    ) -> dict[str, object]:
+        normalized_author = author.strip() or "고객"
+        normalized_content = content.strip()
+        if not normalized_content:
+            raise ValueError("content")
+        comment = {
+            "commentId": uuid4().hex,
+            "author": normalized_author[:100],
+            "content": normalized_content[:4000],
+            "source": source,
+            "createdAt": datetime.now(KST).replace(microsecond=0).isoformat(),
+        }
+        with self._lock:
+            event_dir = self._event_dir(event_id)
+            event = self.get(event_id)
+            event.pop("traceback", None)
+            comments = event.setdefault("comments", [])
+            if not isinstance(comments, list):
+                comments = []
+                event["comments"] = comments
+            comments.append(comment)
+            self._write_event(event_dir, event)
+        return comment
 
     def delete(self, event_id: str) -> None:
         with self._lock:
@@ -492,6 +532,7 @@ async def archived_api_exception_handler(request: Request, exc: ApiException):
     event_id = getattr(request.state, "error_event_id", None)
     if event_id:
         response.headers["X-Error-Event-Id"] = str(event_id)
+        response.headers["X-Error-Comment-Url"] = f"/error-feedback/{event_id}"
     return response
 
 
@@ -507,6 +548,7 @@ async def archived_validation_exception_handler(request: Request, exc: Exception
     event_id = getattr(request.state, "error_event_id", None)
     if event_id:
         response.headers["X-Error-Event-Id"] = str(event_id)
+        response.headers["X-Error-Comment-Url"] = f"/error-feedback/{event_id}"
     return response
 
 
@@ -523,6 +565,7 @@ async def archived_unhandled_exception_handler(request: Request, exc: Exception)
     event_id = getattr(request.state, "error_event_id", None)
     if event_id:
         response.headers["X-Error-Event-Id"] = str(event_id)
+        response.headers["X-Error-Comment-Url"] = f"/error-feedback/{event_id}"
     return response
 
 
@@ -575,6 +618,32 @@ def error_console() -> HTMLResponse:
 @router.get("/operations", response_class=HTMLResponse, include_in_schema=False)
 def operations_console() -> HTMLResponse:
     return HTMLResponse(_operations_console_html("usage"))
+
+
+@router.get("/error-feedback/{event_id}", response_class=HTMLResponse, include_in_schema=False)
+def error_feedback(request: Request, event_id: str) -> HTMLResponse:
+    try:
+        event = _archive_or_404(request).get(event_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="오류 기록을 찾을 수 없습니다.") from exc
+    comments = event.get("comments") if isinstance(event.get("comments"), list) else []
+    comment_items = "".join(
+        "<article><div><b>"
+        + escape(str(comment.get("author") or "고객"))
+        + "</b><time>"
+        + escape(str(comment.get("createdAt") or ""))
+        + "</time></div><p>"
+        + escape(str(comment.get("content") or ""))
+        + "</p></article>"
+        for comment in comments
+        if isinstance(comment, dict)
+    ) or '<p class="muted">등록된 코멘트가 없습니다.</p>'
+    event_id_json = json.dumps(event_id, ensure_ascii=False)
+    return HTMLResponse(
+        f'''<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>오류 코멘트</title><style>
+        :root{{font-family:Arial,"Noto Sans KR",sans-serif;color:#172033;background:#f4f6f8}}*{{box-sizing:border-box}}body{{margin:0;padding:24px}}main{{max-width:760px;margin:auto;background:#fff;border:1px solid #d8dee8;border-radius:7px;padding:24px}}h1{{font-size:24px;margin:0 0 8px}}.meta{{color:#687587;margin-bottom:18px}}.message{{border-left:4px solid #d64545;background:#fff4f4;padding:12px;white-space:pre-wrap}}article{{border:1px solid #dce2ea;border-radius:6px;padding:12px;margin:8px 0}}article div{{display:flex;justify-content:space-between;gap:12px}}article time,.muted{{color:#6b7788;font-size:13px}}article p{{white-space:pre-wrap;margin:9px 0 0}}label{{display:block;font-weight:700;margin:14px 0 6px}}input,textarea{{width:100%;border:1px solid #aeb9c8;border-radius:5px;padding:10px;font:inherit}}textarea{{min-height:120px;resize:vertical}}button{{margin-top:12px;height:42px;border:0;border-radius:5px;background:#183153;color:#fff;padding:0 18px;font:inherit;font-weight:700}}#status{{margin-left:10px;color:#166534}}@media(max-width:640px){{body{{padding:12px}}main{{padding:18px}}article div{{display:block}}}}
+        </style></head><body><main><h1>오류 코멘트</h1><div class="meta">{escape(str(event.get('project') or 'EDGE'))} · {escape(str(event.get('code') or 'UNKNOWN_ERROR'))}<br><code>{escape(event_id)}</code></div><div class="message">{escape(str(event.get('message') or '오류가 발생했습니다.'))}</div><h2>등록된 코멘트</h2><section id="comments">{comment_items}</section><label for="author">작성자</label><input id="author" maxlength="100" value="고객"><label for="content">코멘트</label><textarea id="content" maxlength="4000" placeholder="오류가 발생한 상황과 재현 방법을 적어주세요."></textarea><button id="submit" type="button">코멘트 등록</button><span id="status"></span></main><script>const eventId={event_id_json};document.getElementById('submit').onclick=async()=>{{const button=document.getElementById('submit'),status=document.getElementById('status'),content=document.getElementById('content').value.trim();if(!content){{status.textContent='코멘트를 입력하세요.';return}}button.disabled=true;status.textContent='등록 중...';try{{const response=await fetch('/api/v1/errors/'+encodeURIComponent(eventId)+'/comments',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{author:document.getElementById('author').value,content}})}});if(!response.ok)throw new Error('코멘트 등록에 실패했습니다.');location.reload()}}catch(error){{status.textContent=error.message;button.disabled=false}}}};</script></body></html>'''
+    )
 
 
 @router.get("/api/v1/usage-events", tags=["operations"])
@@ -630,6 +699,24 @@ def list_errors(
 def get_error(request: Request, event_id: str) -> dict[str, object]:
     try:
         return _archive_or_404(request).get(event_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="오류 기록을 찾을 수 없습니다.") from exc
+
+
+@router.post("/api/v1/errors/{event_id}/comments", status_code=201, tags=["errors"])
+def add_error_comment(
+    request: Request,
+    event_id: str,
+    payload: ErrorCommentCreate,
+) -> dict[str, object]:
+    try:
+        return _archive_or_404(request).add_comment(
+            event_id,
+            author=payload.author,
+            content=payload.content,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="코멘트를 입력하세요.") from exc
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="오류 기록을 찾을 수 없습니다.") from exc
 
@@ -695,9 +782,9 @@ _OPERATIONS_CONSOLE_HTML = r'''<!doctype html>
   <title>RIST 운영 관리</title>
   <style>
     :root{font-family:Arial,"Noto Sans KR",sans-serif;color:#172033;background:#f4f6f8}
-    *{box-sizing:border-box}html,body{margin:0;max-width:100%;overflow-x:hidden}.top{min-height:64px;background:#fff;border-bottom:1px solid #d8dee8;display:flex;align-items:center;justify-content:space-between;padding:0 24px;gap:16px}.top h1{font-size:21px;margin:0}.top a{color:#42526b;text-decoration:none}.wrap{padding:20px 24px 40px;width:100%;max-width:100%;min-width:0;overflow:hidden}.tabs{display:flex;gap:4px;border-bottom:1px solid #ccd5e1;margin-bottom:16px;width:100%;max-width:100%}.tab{min-width:0;border:0;background:transparent;color:#657286;font:inherit;font-weight:700;padding:11px 18px;cursor:pointer;border-bottom:3px solid transparent}.tab.active{color:#183153;border-color:#2563eb}.filters{display:grid;grid-template-columns:150px 150px 170px 145px 145px minmax(220px,1fr) auto;gap:8px;width:100%;margin-bottom:12px;min-width:0}.filters select,.filters input,.filters button{height:40px;width:100%;max-width:100%;border:1px solid #bcc7d6;border-radius:6px;background:#fff;padding:0 11px;font:inherit;min-width:0}.filters button{background:#183153;color:#fff;border-color:#183153;cursor:pointer}.summary{font-size:13px;color:#5f6b7a;margin:8px 0}.panel{background:#fff;border:1px solid #d8dee8;border-radius:7px;overflow:hidden;max-width:100%;min-width:0}.table-wrap{width:100%;overflow-x:auto;overflow-y:hidden}table{border-collapse:collapse;width:100%;min-width:1180px}th,td{border-bottom:1px solid #e4e8ef;padding:11px 12px;text-align:left;vertical-align:top;font-size:13px}th{background:#eef2f6;color:#405069;position:sticky;top:0}tbody tr{cursor:pointer}tbody tr:hover{background:#f7f9fc}.badge{display:inline-block;border-radius:12px;padding:3px 8px;font-size:12px;background:#e8edf4;white-space:nowrap}.badge.open,.badge.failure{background:#fee2e2;color:#9b1c1c}.badge.resolved,.badge.success{background:#dcfce7;color:#166534}.badge.report-complete{background:#dbeafe;color:#1e40af}.badge.screen-view{background:#f1f5f9;color:#475569}.code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}.empty{padding:54px;text-align:center;color:#738096}.detail{display:none;margin-top:16px;padding:18px}.detail.open{display:block}.detail-head{display:flex;align-items:flex-start;justify-content:space-between;gap:20px}.detail h2{font-size:18px;margin:0 0 5px}.actions{display:flex;gap:7px;flex-wrap:wrap}.actions button,.actions a{height:36px;border:1px solid #aeb9c8;border-radius:5px;background:#fff;color:#24364d;padding:0 11px;display:inline-flex;align-items:center;text-decoration:none;cursor:pointer;font:inherit}.actions .danger{color:#a11b1b}.meta{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:16px 0}.meta div{background:#f5f7fa;border-radius:5px;padding:10px;min-width:0;overflow-wrap:anywhere}.meta b{display:block;font-size:11px;color:#687587;margin-bottom:5px}.message{border-left:4px solid #d64545;background:#fff4f4;padding:12px;margin:12px 0;white-space:pre-wrap}.files{display:grid;gap:6px}.file{display:flex;justify-content:space-between;align-items:center;gap:12px;border:1px solid #dce2ea;border-radius:5px;padding:8px 10px}.file a{word-break:break-all}.trace{white-space:pre-wrap;overflow:auto;max-height:320px;background:#111827;color:#dbe5f3;padding:12px;border-radius:5px;font:12px ui-monospace,SFMono-Regular,Menlo,monospace}.muted{color:#6b7788}.usage-only.hidden{display:none}
+    *{box-sizing:border-box}html,body{margin:0;max-width:100%;overflow-x:hidden}.top{min-height:64px;background:#fff;border-bottom:1px solid #d8dee8;display:flex;align-items:center;justify-content:space-between;padding:0 24px;gap:16px}.top h1{font-size:21px;margin:0}.top a{color:#42526b;text-decoration:none}.wrap{padding:20px 24px 40px;width:100%;max-width:100%;min-width:0;overflow:hidden}.tabs{display:flex;gap:4px;border-bottom:1px solid #ccd5e1;margin-bottom:16px;width:100%;max-width:100%}.tab{min-width:0;border:0;background:transparent;color:#657286;font:inherit;font-weight:700;padding:11px 18px;cursor:pointer;border-bottom:3px solid transparent}.tab.active{color:#183153;border-color:#2563eb}.filters{display:grid;grid-template-columns:150px 150px 170px 145px 145px minmax(220px,1fr) auto;gap:8px;width:100%;margin-bottom:12px;min-width:0}.filters select,.filters input,.filters button{height:40px;width:100%;max-width:100%;border:1px solid #bcc7d6;border-radius:6px;background:#fff;padding:0 11px;font:inherit;min-width:0}.filters button{background:#183153;color:#fff;border-color:#183153;cursor:pointer}.summary{font-size:13px;color:#5f6b7a;margin:8px 0}.panel{background:#fff;border:1px solid #d8dee8;border-radius:7px;overflow:hidden;max-width:100%;min-width:0}.table-wrap{width:100%;overflow-x:auto;overflow-y:hidden}table{border-collapse:collapse;width:100%;min-width:1180px}th,td{border-bottom:1px solid #e4e8ef;padding:11px 12px;text-align:left;vertical-align:top;font-size:13px}th{background:#eef2f6;color:#405069;position:sticky;top:0}tbody tr{cursor:pointer}tbody tr:hover{background:#f7f9fc}.badge{display:inline-block;border-radius:12px;padding:3px 8px;font-size:12px;background:#e8edf4;white-space:nowrap}.badge.open,.badge.failure{background:#fee2e2;color:#9b1c1c}.badge.resolved,.badge.success{background:#dcfce7;color:#166534}.badge.report-complete{background:#dbeafe;color:#1e40af}.badge.screen-view{background:#f1f5f9;color:#475569}.code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}.empty{padding:54px;text-align:center;color:#738096}.detail{display:none;margin-top:16px;padding:18px}.detail.open{display:block}.detail-head{display:flex;align-items:flex-start;justify-content:space-between;gap:20px}.detail h2{font-size:18px;margin:0 0 5px}.actions{display:flex;gap:7px;flex-wrap:wrap}.actions button,.actions a{height:36px;border:1px solid #aeb9c8;border-radius:5px;background:#fff;color:#24364d;padding:0 11px;display:inline-flex;align-items:center;text-decoration:none;cursor:pointer;font:inherit}.actions .danger{color:#a11b1b}.meta{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:16px 0}.meta div{background:#f5f7fa;border-radius:5px;padding:10px;min-width:0;overflow-wrap:anywhere}.meta b{display:block;font-size:11px;color:#687587;margin-bottom:5px}.message{border-left:4px solid #d64545;background:#fff4f4;padding:12px;margin:12px 0;white-space:pre-wrap}.files{display:grid;gap:6px}.file{display:flex;justify-content:space-between;align-items:center;gap:12px;border:1px solid #dce2ea;border-radius:5px;padding:8px 10px}.file a{word-break:break-all}.comments{display:grid;gap:7px}.comment{border:1px solid #dce2ea;border-radius:5px;padding:10px}.comment-head{display:flex;justify-content:space-between;gap:12px}.comment p{margin:8px 0 0;white-space:pre-wrap}.comment-form{display:grid;grid-template-columns:minmax(120px,180px) minmax(240px,1fr) auto;gap:8px;margin-top:9px}.comment-form input,.comment-form textarea,.comment-form button{border:1px solid #aeb9c8;border-radius:5px;padding:9px;font:inherit}.comment-form textarea{min-height:42px;resize:vertical}.comment-form button{background:#183153;color:#fff;border-color:#183153;cursor:pointer}.trace{white-space:pre-wrap;overflow:auto;max-height:320px;background:#111827;color:#dbe5f3;padding:12px;border-radius:5px;font:12px ui-monospace,SFMono-Regular,Menlo,monospace}.muted{color:#6b7788}.usage-only.hidden{display:none}
     @media(max-width:980px){.filters{grid-template-columns:1fr 1fr 1fr}.filters .query{grid-column:1/3}.meta{grid-template-columns:1fr 1fr}}
-    @media(max-width:640px){.top{padding:12px 14px}.top h1{font-size:19px}.wrap{padding:14px}.tabs{margin-bottom:12px}.tab{flex:1;padding:10px 8px}.filters{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.filters .query{grid-column:1/-1}.filters button{grid-column:1/-1}.detail-head{display:block}.actions{margin-top:12px}.meta{grid-template-columns:1fr}.file{align-items:flex-start;flex-direction:column}}
+    @media(max-width:640px){.top{padding:12px 14px}.top h1{font-size:19px}.wrap{padding:14px}.tabs{margin-bottom:12px}.tab{flex:1;padding:10px 8px}.filters{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.filters .query{grid-column:1/-1}.filters button{grid-column:1/-1}.detail-head{display:block}.actions{margin-top:12px}.meta{grid-template-columns:1fr}.file{align-items:flex-start;flex-direction:column}.comment-form{grid-template-columns:1fr}.comment-head{display:block}}
   </style>
 </head>
 <body data-default-tab="__DEFAULT_TAB__">
@@ -753,7 +840,7 @@ _OPERATIONS_CONSOLE_HTML = r'''<!doctype html>
     function errorRows(items){return items.map(item=>`<tr data-id="${esc(item.eventId)}"><td>${esc(localDate(item.timestamp))}</td><td>${esc(item.project)}</td><td><span class="badge ${esc(item.status)}">${item.status==='resolved'?'해결':'미해결'}</span></td><td class="code">${esc(item.code)}</td><td>${esc(item.message)}</td><td>${(item.files||[]).length}개</td></tr>`).join('')}
     async function show(id){if(activeTab==='usage'){showUsage(await api('/api/v1/usage-events/'+encodeURIComponent(id)));return}showError(await api('/api/v1/errors/'+encodeURIComponent(id)))}
     function showUsage(item){const request=item.request||{},app=item.clientApplication||{},file=item.file||{},transfer=item.transfer||{};const fileLabel=file.relativePath||file.name||'-',peer=request.peerIp||request.client||'-';$('detail').className='panel detail open';$('detail').innerHTML=`<div class="detail-head"><div><h2>${esc(item.project)} · ${esc(item.action)}</h2><span class="muted code">${esc(item.eventId)}</span></div><span class="badge ${esc(item.result)}">${item.result==='failure'?'실패':'성공'}</span></div><div class="meta"><div><b>기록 유형</b>${esc(activityLabel(item.activityType||'ACTION'))}</div><div><b>발생 시각</b>${esc(localDate(item.timestamp))}</div><div><b>처리시간</b>${esc(duration(item.durationMs))}</div><div><b>HTTP 상태</b>${esc(item.statusCode)}</div><div><b>요청 경로</b>${esc(request.method||'-')} ${esc(request.endpoint||'-')}</div><div><b>의뢰번호</b>${esc(item.requestNumber||'-')}</div><div><b>작업 ID</b>${esc(item.jobId||'-')}</div><div><b>실험코드 / 장비</b>${esc(item.experimentCode||'-')} / ${esc(item.equipmentCode||'-')}</div><div><b>실험자</b>${esc(item.operatorId||'-')}</div><div><b>클라이언트</b>${esc(app.type||'-')} · ${esc(app.name||'-')}</div><div><b>버전 / 실험 PC</b>${esc(app.version||'-')} / ${esc(app.sourceHostName||'-')}</div><div><b>접속 IP</b>${esc(request.clientIp||peer)}</div><div><b>서버 연결 IP</b>${esc(peer)}</div><div><b>프록시 전달 경로</b>${esc(request.forwardedFor||'-')}</div><div><b>파일</b>${esc(fileLabel)}</div><div><b>파일 크기</b>${file.sizeBytes==null?'-':esc(size(file.sizeBytes))}</div><div><b>SHA-256</b><span class="code">${esc(file.sha256||'-')}</span></div><div><b>전송 합계</b>${transfer.fileCount==null?'-':esc(transfer.fileCount+'개 / '+size(transfer.totalSizeBytes||0))}</div><div><b>요청 ID</b>${esc(item.requestId||'-')}</div><div><b>User-Agent</b>${esc(request.userAgent||'-')}</div></div>`}
-    function showError(item){const files=(item.files||[]).map(file=>`<div class="file"><a href="/api/v1/errors/${encodeURIComponent(item.eventId)}/files/${file.path.split('/').map(encodeURIComponent).join('/')}">${esc(file.path)}</a><span>${size(file.sizeBytes)}</span></div>`).join('')||'<div class="muted">보관된 실패 파일이 없습니다.</div>';const trace=item.traceback||'',app=item.clientApplication||{},file=item.file||{};$('detail').className='panel detail open';$('detail').innerHTML=`<div class="detail-head"><div><h2>${esc(item.project)} · <span class="code">${esc(item.code)}</span></h2><span class="muted code">${esc(item.eventId)}</span></div><div class="actions"><a href="/api/v1/errors/${encodeURIComponent(item.eventId)}/archive">전체 ZIP</a><button id="toggle">${item.status==='resolved'?'미해결로 변경':'해결 처리'}</button><button class="danger" id="delete">삭제</button></div></div><div class="meta"><div><b>발생 시각</b>${esc(localDate(item.timestamp))}</div><div><b>작업 ID</b>${esc(item.jobId||'-')}</div><div><b>요청 ID</b>${esc(item.requestId||'-')}</div><div><b>경로</b>${esc((item.request||{}).endpoint||'-')}</div><div><b>클라이언트</b>${esc(app.type||'-')} · ${esc(app.name||'-')}</div><div><b>버전 / 실험 PC</b>${esc(app.version||'-')} / ${esc(app.sourceHostName||'-')}</div><div><b>요청 파일</b>${esc(file.relativePath||file.name||'-')}</div><div><b>요청 파일 크기</b>${file.sizeBytes==null?'-':esc(size(Number(file.sizeBytes)))}</div></div><div class="message">${esc(item.message)}</div><h3>실패 파일</h3><div class="files">${files}</div>${item.filesTruncated?'<p class="muted">보존 용량 제한으로 일부 파일은 제외되었습니다.</p>':''}${trace?'<h3>스택 트레이스</h3><pre class="trace">'+esc(trace)+'</pre>':''}`;$('toggle').onclick=async()=>{await api('/api/v1/errors/'+encodeURIComponent(item.eventId),{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:item.status==='resolved'?'open':'resolved'})});await load();await show(item.eventId)};$('delete').onclick=async()=>{if(!confirm('이 오류 기록과 보관 파일을 삭제할까요?'))return;await api('/api/v1/errors/'+encodeURIComponent(item.eventId),{method:'DELETE'});$('detail').className='panel detail';await load()}}
+    function showError(item){const files=(item.files||[]).map(file=>`<div class="file"><a href="/api/v1/errors/${encodeURIComponent(item.eventId)}/files/${file.path.split('/').map(encodeURIComponent).join('/')}">${esc(file.path)}</a><span>${size(file.sizeBytes)}</span></div>`).join('')||'<div class="muted">보관된 실패 파일이 없습니다.</div>';const comments=(item.comments||[]).map(comment=>`<div class="comment"><div class="comment-head"><b>${esc(comment.author||'고객')}</b><span class="muted">${esc(localDate(comment.createdAt))}</span></div><p>${esc(comment.content)}</p></div>`).join('')||'<div class="muted">등록된 코멘트가 없습니다.</div>';const trace=item.traceback||'',app=item.clientApplication||{},file=item.file||{};$('detail').className='panel detail open';$('detail').innerHTML=`<div class="detail-head"><div><h2>${esc(item.project)} · <span class="code">${esc(item.code)}</span></h2><span class="muted code">${esc(item.eventId)}</span></div><div class="actions"><a href="/error-feedback/${encodeURIComponent(item.eventId)}" target="_blank">고객 입력 화면</a><a href="/api/v1/errors/${encodeURIComponent(item.eventId)}/archive">전체 ZIP</a><button id="toggle">${item.status==='resolved'?'미해결로 변경':'해결 처리'}</button><button class="danger" id="delete">삭제</button></div></div><div class="meta"><div><b>발생 시각</b>${esc(localDate(item.timestamp))}</div><div><b>작업 ID</b>${esc(item.jobId||'-')}</div><div><b>요청 ID</b>${esc(item.requestId||'-')}</div><div><b>경로</b>${esc((item.request||{}).endpoint||'-')}</div><div><b>클라이언트</b>${esc(app.type||'-')} · ${esc(app.name||'-')}</div><div><b>버전 / 실험 PC</b>${esc(app.version||'-')} / ${esc(app.sourceHostName||'-')}</div><div><b>요청 파일</b>${esc(file.relativePath||file.name||'-')}</div><div><b>요청 파일 크기</b>${file.sizeBytes==null?'-':esc(size(Number(file.sizeBytes)))}</div></div><div class="message">${esc(item.message)}</div><h3>고객 코멘트</h3><div class="comments">${comments}</div><div class="comment-form"><input id="comment-author" maxlength="100" value="고객" aria-label="작성자"><textarea id="comment-content" maxlength="4000" placeholder="오류가 발생한 상황과 재현 방법" aria-label="코멘트"></textarea><button id="add-comment" type="button">코멘트 등록</button></div><h3>실패 파일</h3><div class="files">${files}</div>${item.filesTruncated?'<p class="muted">보존 용량 제한으로 일부 파일은 제외되었습니다.</p>':''}${trace?'<h3>스택 트레이스</h3><pre class="trace">'+esc(trace)+'</pre>':''}`;$('add-comment').onclick=async()=>{const content=$('comment-content').value.trim();if(!content){alert('코멘트를 입력하세요.');return}await api('/api/v1/errors/'+encodeURIComponent(item.eventId)+'/comments',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({author:$('comment-author').value,content})});await show(item.eventId)};$('toggle').onclick=async()=>{await api('/api/v1/errors/'+encodeURIComponent(item.eventId),{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:item.status==='resolved'?'open':'resolved'})});await load();await show(item.eventId)};$('delete').onclick=async()=>{if(!confirm('이 오류 기록과 보관 파일을 삭제할까요?'))return;await api('/api/v1/errors/'+encodeURIComponent(item.eventId),{method:'DELETE'});$('detail').className='panel detail';await load()}}
     document.querySelectorAll('.tab').forEach(button=>button.onclick=()=>setTab(button.dataset.tab,true));$('refresh').onclick=()=>load().catch(error=>$('summary').textContent=error.message);$('query').onkeydown=event=>{if(event.key==='Enter')$('refresh').click()};setTab(activeTab,false);load().catch(error=>$('summary').textContent=error.message);
   })();
   </script>

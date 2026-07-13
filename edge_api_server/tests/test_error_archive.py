@@ -66,10 +66,26 @@ def test_error_console_api_filters_downloads_resolves_and_deletes(tmp_path: Path
     event_id = str(event["eventId"])
 
     client = TestClient(app)
-    assert client.get("/errors").status_code == 200
+    console_response = client.get("/errors")
+    assert console_response.status_code == 200
+    assert "고객 코멘트" in console_response.text
     listing = client.get("/api/v1/errors", params={"project": "XRD"}).json()
     assert listing["count"] == 1
     assert listing["items"][0]["eventId"] == event_id
+    assert listing["items"][0]["comments"] == []
+
+    comment = client.post(
+        f"/api/v1/errors/{event_id}/comments",
+        json={"author": "고객 A", "content": "Windows에서 같은 PDF를 올리면 재현됩니다."},
+    )
+    assert comment.status_code == 201
+    assert comment.json()["author"] == "고객 A"
+    assert comment.json()["content"] == "Windows에서 같은 PDF를 올리면 재현됩니다."
+    detail = client.get(f"/api/v1/errors/{event_id}").json()
+    assert detail["comments"][0]["source"] == "customer"
+    feedback = client.get(f"/error-feedback/{event_id}")
+    assert feedback.status_code == 200
+    assert "Windows에서 같은 PDF를 올리면 재현됩니다." in feedback.text
 
     file_response = client.get(f"/api/v1/errors/{event_id}/files/ICDD/card.pdf")
     assert file_response.content == b"pdf"
@@ -113,6 +129,9 @@ def test_installed_handler_records_request_files_and_returns_event_header(
     response = client.get("/api/v1/ftir/fail")
     assert response.status_code == 422
     event_id = response.headers["X-Error-Event-Id"]
+    assert response.headers["X-Error-Comment-Url"] == f"/error-feedback/{event_id}"
+    assert response.json()["errorEventId"] == event_id
+    assert response.json()["errorFeedbackUrl"] == f"/error-feedback/{event_id}"
     event = client.get(f"/api/v1/errors/{event_id}").json()
     assert event["project"] == "FT-IR"
     assert event["files"][0]["sourceName"] == "sample.dpt"

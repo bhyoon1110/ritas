@@ -4373,10 +4373,21 @@ _UPLOAD_SCRIPT = """
       reportProgressBar.style.width = Math.max(pct, 100) + "%";
       reportProgressValue.textContent = "100%";
       reportProgressLabel.textContent = job.error || job.message || "보고서 생성에 실패했습니다.";
+      var feedbackUrl = job.errorFeedbackUrl || (job.errorEventId ? "/error-feedback/" + encodeURIComponent(job.errorEventId) : "");
+      if (feedbackUrl) {
+        var feedbackLink = document.createElement("a");
+        feedbackLink.href = feedbackUrl;
+        feedbackLink.target = "_blank";
+        feedbackLink.rel = "noopener";
+        feedbackLink.textContent = "오류 코멘트 남기기";
+        feedbackLink.style.cssText = "margin-left:8px;color:inherit;font-weight:700;text-decoration:underline";
+        reportProgressLabel.appendChild(document.createTextNode(" "));
+        reportProgressLabel.appendChild(feedbackLink);
+      }
       status.textContent = "보고서 생성 실패";
       reportProgressHideTimer = setTimeout(function() {
         setReportProgress(null);
-      }, 1800);
+      }, feedbackUrl ? 10000 : 1800);
       return;
     }
     if (job.status === "completed" || pct >= 100) {
@@ -4419,6 +4430,10 @@ _UPLOAD_SCRIPT = """
     if (!response.ok) {
       var error = new Error(payload.message || payload.error || "요청에 실패했습니다.");
       error.isTransientError = response.status === 408 || response.status === 429 || response.status >= 500;
+      error.errorEventId = payload.errorEventId || response.headers.get("X-Error-Event-Id");
+      error.errorFeedbackUrl = payload.errorFeedbackUrl
+        || response.headers.get("X-Error-Comment-Url")
+        || (error.errorEventId ? "/error-feedback/" + encodeURIComponent(error.errorEventId) : "");
       throw error;
     }
     return payload;
@@ -4447,7 +4462,10 @@ _UPLOAD_SCRIPT = """
       setReportProgress(job);
       if (job.status === "completed") return job;
       if (job.status === "failed") {
-        throw new Error(job.error || job.message || "보고서 생성에 실패했습니다.");
+        var reportError = new Error(job.error || job.message || "보고서 생성에 실패했습니다.");
+        reportError.errorEventId = job.errorEventId;
+        reportError.errorFeedbackUrl = job.errorFeedbackUrl;
+        throw reportError;
       }
     }
   }
@@ -4490,14 +4508,19 @@ _UPLOAD_SCRIPT = """
           return;
         }
         var message = "업로드 조각 전송에 실패했습니다.";
+        var payload = {};
         try {
-          var payload = JSON.parse(text);
+          payload = JSON.parse(text);
           message = payload.message || payload.detail || message;
         } catch (_error) {
           if (text) message = text;
         }
         var error = new Error(message);
         error.isTransientError = xhr.status === 408 || xhr.status === 429 || xhr.status >= 500;
+        error.errorEventId = payload.errorEventId || xhr.getResponseHeader("X-Error-Event-Id");
+        error.errorFeedbackUrl = payload.errorFeedbackUrl
+          || xhr.getResponseHeader("X-Error-Comment-Url")
+          || (error.errorEventId ? "/error-feedback/" + encodeURIComponent(error.errorEventId) : "");
         reject(error);
       };
       xhr.onerror = function(error) {
@@ -5548,6 +5571,13 @@ _UPLOAD_SCRIPT = """
     } catch (err) {
       setMessage(err.message || "보고서 생성에 실패했습니다.");
       status.textContent = "보고서 생성 실패";
+      setReportProgress({
+        status: "failed",
+        progressPct: 100,
+        error: err.message || "보고서 생성에 실패했습니다.",
+        errorEventId: err.errorEventId,
+        errorFeedbackUrl: err.errorFeedbackUrl
+      });
     } finally {
       setBusy(false);
       loading.textContent = "Raman 전처리 중...";

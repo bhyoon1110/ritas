@@ -723,6 +723,9 @@ def _xrd_job_payload(job: XrdReportJob) -> dict[str, Any]:
         "message": job.message,
         "error": job.error,
         "errorEventId": job.error_event_id,
+        "errorFeedbackUrl": (
+            f"/error-feedback/{job.error_event_id}" if job.error_event_id else None
+        ),
         "downloads": downloads,
     }
 
@@ -1362,13 +1365,23 @@ def build_xrd_page() -> str:
         setReportProgress(0, "보고서 생성 대기", false, false);
       }, 900);
     }
-    function failReportProgress(message) {
+    function failReportProgress(message, feedbackUrl) {
       stopReportProgressTimer();
       setReportProgress(100, message || "보고서 생성에 실패했습니다.", true, true);
+      if (feedbackUrl) {
+        var feedbackLink = document.createElement("a");
+        feedbackLink.href = feedbackUrl;
+        feedbackLink.target = "_blank";
+        feedbackLink.rel = "noopener";
+        feedbackLink.textContent = "오류 코멘트 남기기";
+        feedbackLink.style.cssText = "margin-left:8px;color:inherit;font-weight:700;text-decoration:underline";
+        reportProgressLabel.appendChild(document.createTextNode(" "));
+        reportProgressLabel.appendChild(feedbackLink);
+      }
       setTimeout(function() {
         setUploadProgress(0, "bundle 업로드 대기", false, false);
         setReportProgress(0, "보고서 생성 대기", false, false);
-      }, 1800);
+      }, feedbackUrl ? 10000 : 1800);
     }
     function revokeDownload() {
       if (downloadUrl) URL.revokeObjectURL(downloadUrl);
@@ -1503,6 +1516,21 @@ def build_xrd_page() -> str:
         return text;
       }
     }
+    function errorFromResponse(source, text, fallback) {
+      var payload = {};
+      try { payload = JSON.parse(text || "{}"); } catch (_error) {}
+      var getHeader = source && source.headers && source.headers.get
+        ? function(name) { return source.headers.get(name); }
+        : source && source.getResponseHeader
+          ? function(name) { return source.getResponseHeader(name); }
+          : function() { return null; };
+      var error = new Error(payload.message || payload.detail || parseErrorMessage(text, fallback));
+      error.errorEventId = payload.errorEventId || getHeader("X-Error-Event-Id");
+      error.errorFeedbackUrl = payload.errorFeedbackUrl
+        || getHeader("X-Error-Comment-Url")
+        || (error.errorEventId ? "/error-feedback/" + encodeURIComponent(error.errorEventId) : "");
+      return error;
+    }
     async function requestJsonPost(url) {
       var response;
       try {
@@ -1515,7 +1543,7 @@ def build_xrd_page() -> str:
       }
       var text = await response.text();
       if (!response.ok) {
-        var requestError = new Error(parseErrorMessage(text, "요청 처리에 실패했습니다."));
+        var requestError = errorFromResponse(response, text, "요청 처리에 실패했습니다.");
         requestError.isTransientError = response.status === 408 || response.status === 429 || response.status >= 500;
         throw requestError;
       }
@@ -1570,7 +1598,7 @@ def build_xrd_page() -> str:
             }
             return;
           }
-          var error = new Error(parseErrorMessage(text, "업로드 조각 전송에 실패했습니다."));
+          var error = errorFromResponse(xhr, text, "업로드 조각 전송에 실패했습니다.");
           error.isTransientError = xhr.status === 408 || xhr.status === 429 || xhr.status >= 500;
           reject(error);
         };
@@ -1629,7 +1657,7 @@ def build_xrd_page() -> str:
           );
           var text = await response.text();
           if (!response.ok) {
-            var error = new Error(parseErrorMessage(text, "보고서 생성 요청에 실패했습니다."));
+            var error = errorFromResponse(response, text, "보고서 생성 요청에 실패했습니다.");
             error.isTransientError = response.status === 408 || response.status === 429 || response.status >= 500;
             throw error;
           }
@@ -1713,7 +1741,7 @@ def build_xrd_page() -> str:
       }
       var text = await response.text();
       if (!response.ok) {
-        var requestError = new Error(parseErrorMessage(text, "보고서 작업 상태 확인에 실패했습니다."));
+        var requestError = errorFromResponse(response, text, "보고서 작업 상태 확인에 실패했습니다.");
         requestError.isTransientError = response.status === 408 || response.status === 429 || response.status >= 500;
         throw requestError;
       }
@@ -1731,7 +1759,11 @@ def build_xrd_page() -> str:
       while (current && current.status !== "completed") {
         if (current.status === "failed") {
           var error = current.error || {};
-          throw new Error(error.message || current.message || "XRD 보고서 생성에 실패했습니다.");
+          var reportError = new Error(error.message || current.message || "XRD 보고서 생성에 실패했습니다.");
+          reportError.errorEventId = current.errorEventId;
+          reportError.errorFeedbackUrl = current.errorFeedbackUrl
+            || (current.errorEventId ? "/error-feedback/" + encodeURIComponent(current.errorEventId) : "");
+          throw reportError;
         }
         shownPct = Math.max(shownPct, Number(current.progressPct || 8));
         shownPct = Math.min(96, shownPct);
@@ -1766,7 +1798,7 @@ def build_xrd_page() -> str:
           var response = await fetch("/api/v1/xrd/report/jobs/" + encodeURIComponent(jobId) + "/html");
           var text = await response.text();
           if (!response.ok) {
-            var error = new Error(parseErrorMessage(text, "완성된 보고서 HTML을 불러오지 못했습니다."));
+            var error = errorFromResponse(response, text, "완성된 보고서 HTML을 불러오지 못했습니다.");
             error.isTransientError = response.status === 408 || response.status === 429 || response.status >= 500;
             throw error;
           }
@@ -1983,14 +2015,17 @@ def build_xrd_page() -> str:
       try {
         var response = await fetch("/api/v1/xrd/example");
         var text = await response.text();
-        if (!response.ok) throw new Error(text || "예제 보고서를 불러오지 못했습니다.");
+        if (!response.ok) throw errorFromResponse(response, text, "예제 보고서를 불러오지 못했습니다.");
         setReportProgress(94, "예제 보고서 화면을 준비하는 중입니다.", true, false);
         showHtml(text);
         setStatus("예제 보고서를 불러왔습니다.", false);
         finishReportProgress("예제 보고서가 준비되었습니다.");
       } catch (error) {
         setStatus(error.message || String(error), true);
-        failReportProgress(error.message || "예제 보고서를 불러오지 못했습니다.");
+        failReportProgress(
+          error.message || "예제 보고서를 불러오지 못했습니다.",
+          error.errorFeedbackUrl || ""
+        );
       } finally {
         setBusy(false);
       }
@@ -2019,7 +2054,10 @@ def build_xrd_page() -> str:
         finishReportProgress("XRD 보고서가 생성되었습니다.");
       } catch (error) {
         setStatus(error.message || String(error), true);
-        failReportProgress(error.message || "보고서 생성에 실패했습니다.");
+        failReportProgress(
+          error.message || "보고서 생성에 실패했습니다.",
+          error.errorFeedbackUrl || ""
+        );
       } finally {
         setBusy(false);
       }
