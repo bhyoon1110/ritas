@@ -1216,7 +1216,7 @@ def build_ahn_page() -> str:
       </div>
       <div class="ahn-actions">
         <button type="button" id="ahn-example">예제 불러오기</button>
-        <button type="submit" form="ahn-form" class="primary" id="ahn-run">보고서 생성</button>
+        <button type="submit" form="ahn-form" class="primary" id="ahn-run" disabled>보고서 생성</button>
         <button type="button" id="ahn-clear">초기화</button>
       </div>
     </header>
@@ -1312,6 +1312,27 @@ def build_ahn_page() -> str:
     var reportProgressVisible = false;
     var uploadProgressError = false;
     var reportProgressError = false;
+    var operationBusy = false;
+    var collectingFiles = false;
+
+    function syncActionState() {
+      runButton.disabled = operationBusy || collectingFiles || !bundleItems.length;
+      exampleButton.disabled = operationBusy || collectingFiles;
+      addFilesButton.disabled = operationBusy || collectingFiles;
+      addFolderButton.disabled = operationBusy || collectingFiles;
+      clearButton.disabled = operationBusy || collectingFiles;
+      drop.setAttribute("aria-busy", collectingFiles ? "true" : "false");
+    }
+
+    function setCollectingFiles(value, message) {
+      collectingFiles = Boolean(value);
+      if (collectingFiles) {
+        bundleMeta.textContent = message || "첨부 파일 목록을 읽는 중입니다.";
+      } else {
+        renderFileList();
+      }
+      syncActionState();
+    }
 
     function setStatus(message, error) {
       if (!message) return;
@@ -1340,9 +1361,9 @@ def build_ahn_page() -> str:
       timer = setTimeout(remove, error ? 7200 : 4300);
     }
     function setBusy(value) {
+      operationBusy = Boolean(value);
       busy.classList.toggle("show", Boolean(value));
-      runButton.disabled = Boolean(value);
-      exampleButton.disabled = Boolean(value);
+      syncActionState();
     }
     function progressMessage(percent) {
       if (percent < 25) return "raw 파일을 서버로 전송하는 중입니다.";
@@ -1456,6 +1477,7 @@ def build_ahn_page() -> str:
       bundleMeta.textContent = bundleItems.length
         ? "TEM " + counts.TEM + " · STEM " + counts.STEM + " · EDS " + counts.EDS + " · 코팅층 " + counts["코팅층"] + " · 기타 " + counts["기타"]
         : "선택된 파일 없음";
+      syncActionState();
     }
     function fileInputItems(input) {
       return filesOf(input).map(function(file) {
@@ -1855,16 +1877,49 @@ def build_ahn_page() -> str:
       }
       return current;
     }
+    function openBundlePicker(input, message) {
+      setCollectingFiles(true, message);
+      var released = false;
+      function releaseIfCancelled() {
+        if (released) return;
+        setTimeout(function() {
+          if (!released && !(input.files || []).length) {
+            released = true;
+            setCollectingFiles(false);
+          }
+        }, 450);
+      }
+      window.addEventListener("focus", releaseIfCancelled, {once: true});
+      input.oncancel = function() {
+        released = true;
+        setCollectingFiles(false);
+      };
+      input.click();
+    }
     bundleInput.addEventListener("change", function() {
-      addBundleItems(fileInputItems(bundleInput));
-      bundleInput.value = "";
+      try {
+        addBundleItems(fileInputItems(bundleInput));
+      } finally {
+        bundleInput.oncancel = null;
+        bundleInput.value = "";
+        setCollectingFiles(false);
+      }
     });
     folderInput.addEventListener("change", function() {
-      addBundleItems(fileInputItems(folderInput));
-      folderInput.value = "";
+      try {
+        addBundleItems(fileInputItems(folderInput));
+      } finally {
+        folderInput.oncancel = null;
+        folderInput.value = "";
+        setCollectingFiles(false);
+      }
     });
-    addFilesButton.addEventListener("click", function() { bundleInput.click(); });
-    addFolderButton.addEventListener("click", function() { folderInput.click(); });
+    addFilesButton.addEventListener("click", function() {
+      openBundlePicker(bundleInput, "첨부할 파일 목록을 읽는 중입니다.");
+    });
+    addFolderButton.addEventListener("click", function() {
+      openBundlePicker(folderInput, "폴더 안의 raw 파일 목록을 읽는 중입니다.");
+    });
     drop.addEventListener("dragover", function(event) {
       event.preventDefault();
       drop.classList.add("dragover");
@@ -1875,14 +1930,14 @@ def build_ahn_page() -> str:
     drop.addEventListener("drop", async function(event) {
       event.preventDefault();
       drop.classList.remove("dragover");
-      setBusy(true);
+      setCollectingFiles(true, "드롭한 폴더의 raw 파일 목록을 읽는 중입니다.");
       try {
         addBundleItems(await droppedBundleItems(event.dataTransfer));
         setStatus("TEM raw bundle 파일이 추가되었습니다.", false);
       } catch (error) {
         setStatus(error.message || String(error), true);
       } finally {
-        setBusy(false);
+        setCollectingFiles(false);
       }
     });
     clearButton.addEventListener("click", function() {
@@ -1916,6 +1971,10 @@ def build_ahn_page() -> str:
     });
     form.addEventListener("submit", async function(event) {
       event.preventDefault();
+      if (collectingFiles) {
+        setStatus("첨부 파일 목록을 읽는 중입니다. 목록 표시가 완료된 뒤 다시 실행하세요.", true);
+        return;
+      }
       if (!bundleItems.length) {
         setStatus("TEM raw 폴더 또는 ZIP 파일을 먼저 추가하세요.", true);
         return;
