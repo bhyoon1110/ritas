@@ -1595,12 +1595,6 @@ def _add_coating_image_only_slides(
 
 
 def _coating_final_grid_shape(count: int) -> tuple[int, int]:
-    if count <= 2:
-        return max(1, count), 1
-    if count <= 4:
-        return 2, 2
-    if count <= 6:
-        return 3, 2
     if count <= 9:
         return 3, 3
     return 4, 3

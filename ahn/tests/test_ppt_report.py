@@ -679,7 +679,43 @@ def test_large_coating_sample_uses_image_pages_then_summary_table(tmp_path) -> N
     table_picture = pictures[-1]
     assert table_picture.width <= Inches(3.0)
     assert table_picture.left >= Inches(7.6)
+    final_images = pictures[:-1]
+    assert len(final_images) == 2
+    assert final_images[0].top == final_images[1].top
+    assert final_images[0].width == final_images[1].width
+    assert final_images[0].width < Inches(2.3)
     assert _black_grid_rule_count(prs.slides[1]) == 0
+
+
+def test_coating_summary_page_keeps_three_by_three_slots_for_three_images(tmp_path) -> None:
+    project = _base_project(tmp_path)
+    measurements = []
+    for index in range(1, 16):
+        image_path = tmp_path / f"coating-{index}.png"
+        _write_image(image_path)
+        measurements.append(
+            {
+                "index": index,
+                "path": image_path.name,
+                "file_name": image_path.name,
+                "magnification": "",
+                "thickness_nm": float(index),
+                "thickness_values_nm": [float(index)],
+            }
+        )
+    project["coating_samples"] = [{"sample_name": "Scale-B", "measurements": measurements}]
+    output = tmp_path / "coating-grid-report.pptx"
+
+    build_pptx(project, output)
+
+    prs = Presentation(output)
+    pictures = _pictures(prs.slides[1])
+    final_images = pictures[:-1]
+    assert len(final_images) == 3
+    assert len({shape.top for shape in final_images}) == 1
+    assert [shape.left for shape in final_images] == sorted(shape.left for shape in final_images)
+    assert len({shape.width for shape in final_images}) == 1
+    assert len({shape.height for shape in final_images}) == 1
 
 
 def test_grid_slides_place_remainder_images_from_upper_left_and_sort_by_magnification(tmp_path) -> None:
