@@ -1211,8 +1211,8 @@ def _normalized_point_composition_rows(
 def _point_table_font_size(rows: list[list[str]], *, detail: bool = False) -> int:
     cols = max((len(row) for row in rows), default=0)
     if detail:
-        return 9 if cols > 9 else 10
-    return 9
+        return 10 if cols > 9 else 11
+    return 10
 
 
 def _point_table_column_widths(width: int, rows: list[list[str]]) -> list[int] | None:

@@ -703,7 +703,7 @@ def test_point_eds_spectrum_tables_create_row_detail_slides(tmp_path, monkeypatc
                             if run.font.size:
                                 summary_table_fonts.append(run.font.size)
     assert summary_table_fonts
-    assert min(summary_table_fonts) >= Pt(9)
+    assert min(summary_table_fonts) >= Pt(10)
     detail_table_fonts = []
     detail_title_row_heights = []
     detail_anchor = _pictures(prs.slides[2])[0]
@@ -730,7 +730,7 @@ def test_point_eds_spectrum_tables_create_row_detail_slides(tmp_path, monkeypatc
                         if run.font.size:
                             detail_table_fonts.append(run.font.size)
     assert detail_table_fonts
-    assert min(detail_table_fonts) >= Pt(9)
+    assert min(detail_table_fonts) >= Pt(10)
     assert sorted(detail_table_tops) == [Inches(1.32), Inches(2.29)]
     assert detail_title_row_heights == summary_title_row_heights
     table_text = _pptx_table_text(output)
