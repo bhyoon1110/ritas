@@ -16,6 +16,11 @@ from .manifest import write_manifest
 from .report import generate_report
 from .spring_callback import SpringCallbackClient, SpringCallbackError
 from .time_utils import isoformat_kst
+from .usage_archive import (
+    UsageArchive,
+    UsageArchiveSettings,
+    record_background_usage,
+)
 
 logger = get_logger(__name__)
 
@@ -45,6 +50,12 @@ class ReportWorker:
                 max_total_bytes=settings.error_max_total_bytes,
             )
         )
+        self.usage_archive = UsageArchive(
+            UsageArchiveSettings(
+                root=settings.usage_log_root or (settings.storage_root / "usage"),
+                retention_days=settings.usage_log_retention_days,
+            )
+        )
 
     def run_once(self) -> bool:
         queued = self.database.fetch_jobs_by_status("QUEUED", limit=1)
@@ -62,6 +73,7 @@ class ReportWorker:
 
     def process_job(self, job: dict[str, Any]) -> None:
         job_id = job["job_id"]
+        started = time.perf_counter()
         try:
             generated_at = isoformat_kst()
             document = generate_report(
@@ -97,6 +109,23 @@ class ReportWorker:
                 job_id,
                 document.llm_used,
             )
+            record_background_usage(
+                self.usage_archive,
+                project=str(job.get("experiment_code") or "EDGE"),
+                action="보고서 생성 완료",
+                result="success",
+                duration_ms=round((time.perf_counter() - started) * 1000),
+                job_id=job_id,
+                endpoint=f"/background/edge/report/jobs/{job_id}",
+                request_number=job.get("request_number"),
+                experiment_code=job.get("experiment_code"),
+                equipment_code=job.get("equipment_code"),
+                operator_id=job.get("operator_id"),
+                file_name=package_path.name,
+                file_size_bytes=(
+                    package_path.stat().st_size if package_path.is_file() else None
+                ),
+            )
         except FileNotFoundError as exc:
             self._mark_failed(
                 job_id,
@@ -104,9 +133,17 @@ class ReportWorker:
                 str(exc),
                 False,
                 exc,
+                duration_ms=round((time.perf_counter() - started) * 1000),
             )
         except SpringCallbackError as exc:
-            self._mark_failed(job_id, exc.code, str(exc), exc.retryable, exc)
+            self._mark_failed(
+                job_id,
+                exc.code,
+                str(exc),
+                exc.retryable,
+                exc,
+                duration_ms=round((time.perf_counter() - started) * 1000),
+            )
         except Exception as exc:
             logger.exception("보고서 worker 처리 중 예외 발생 (job_id=%s)", job_id)
             self._mark_failed(
@@ -115,6 +152,7 @@ class ReportWorker:
                 f"보고서 worker 오류: {exc}",
                 True,
                 exc,
+                duration_ms=round((time.perf_counter() - started) * 1000),
             )
         finally:
             self._write_manifest(job_id)
@@ -126,6 +164,8 @@ class ReportWorker:
         message: str,
         retryable: bool,
         exception: BaseException | None = None,
+        *,
+        duration_ms: int = 0,
     ) -> None:
         logger.error(
             "작업 실패 (job_id=%s, code=%s, retryable=%s): %s",
@@ -163,6 +203,19 @@ class ReportWorker:
             job_id=job_id,
             details={"retryable": retryable},
             source_paths=source_paths,
+        )
+        record_background_usage(
+            self.usage_archive,
+            project=project,
+            action="보고서 생성 실패",
+            result="failure",
+            duration_ms=duration_ms,
+            job_id=job_id,
+            endpoint=f"/background/edge/report/jobs/{job_id}",
+            request_number=(job or {}).get("request_number"),
+            experiment_code=(job or {}).get("experiment_code"),
+            equipment_code=(job or {}).get("equipment_code"),
+            operator_id=(job or {}).get("operator_id"),
         )
 
     def _write_manifest(self, job_id: str) -> None:

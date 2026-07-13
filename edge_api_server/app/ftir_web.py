@@ -45,7 +45,7 @@ from .preview_report import (
 )
 from .spring_callback import SpringCallbackError
 from .upload_sessions import ChunkUploadStore, read_completed_upload_files
-from .usage_archive import set_usage_context
+from .usage_archive import set_usage_context, usage_archive as app_usage_archive
 
 
 PLOT_DIV_ID = "peak-plot"
@@ -5276,6 +5276,11 @@ def create_ftir_preview_report(
     except Exception as exc:
         raise ApiException(422, "FTIR_REPORT_FAILED", str(exc)) from exc
 
+    set_usage_context(
+        request,
+        action="보고서 생성 완료",
+        activity_type="REPORT_COMPLETE",
+    )
     background_tasks.add_task(cleanup_preview_report, tmp_root)
     return FileResponse(
         package,
@@ -5330,6 +5335,7 @@ def _create_ftir_report_job_from_uploaded(
         operator_id=operator_id,
         settings=getattr(request.app.state, "settings", None),
         error_archive=app_error_archive(request.app),
+        usage_archive=app_usage_archive(request.app),
         error_project="FT-IR",
         failure_file_blobs=uploaded,
     )

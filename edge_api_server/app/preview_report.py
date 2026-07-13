@@ -8,6 +8,7 @@ import json
 import shutil
 import tempfile
 from threading import Lock, Thread
+from time import perf_counter
 from uuid import uuid4
 import zipfile
 from dataclasses import dataclass
@@ -26,6 +27,7 @@ from .report.package import build_report_package
 from .report.renderers import convert_pptx_to_pdf, render_report_formats
 from .spring_callback import SpringCallbackClient, SpringCallbackError
 from .storage import atomic_write_json
+from .usage_archive import UsageArchive, record_background_usage
 
 
 @dataclass(frozen=True)
@@ -469,9 +471,11 @@ def run_preview_report_job(
     operator_id: str = "",
     settings: Any | None = None,
     error_archive: ErrorArchive | None = None,
+    usage_archive: UsageArchive | None = None,
     error_project: str = "EDGE",
     failure_file_blobs: list[tuple[str, bytes]] | None = None,
 ) -> None:
+    started = perf_counter()
     try:
         store.update(
             job_id,
@@ -508,6 +512,21 @@ def run_preview_report_job(
             progress=progress,
         )
         store.complete(job_id, tmp_root=tmp_root, package_path=package)
+        record_background_usage(
+            usage_archive,
+            project=error_project,
+            action="보고서 생성 완료",
+            result="success",
+            duration_ms=round((perf_counter() - started) * 1000),
+            job_id=job_id,
+            endpoint=f"/background/{experiment_code.lower()}/report/jobs/{job_id}",
+            request_number=request_number,
+            experiment_code=experiment_code,
+            equipment_code=equipment_code,
+            operator_id=operator_id,
+            file_name=package.name,
+            file_size_bytes=package.stat().st_size if package.is_file() else None,
+        )
     except Exception as exc:
         event_id = record_background_error(
             error_archive,
@@ -519,6 +538,19 @@ def run_preview_report_job(
             file_blobs=failure_file_blobs or (),
         )
         store.fail(job_id, str(exc), error_event_id=event_id)
+        record_background_usage(
+            usage_archive,
+            project=error_project,
+            action="보고서 생성 실패",
+            result="failure",
+            duration_ms=round((perf_counter() - started) * 1000),
+            job_id=job_id,
+            endpoint=f"/background/{experiment_code.lower()}/report/jobs/{job_id}",
+            request_number=request_number,
+            experiment_code=experiment_code,
+            equipment_code=equipment_code,
+            operator_id=operator_id,
+        )
 
 
 def _sample_label_keys(value: Any) -> set[str]:

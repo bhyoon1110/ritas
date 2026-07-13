@@ -10,7 +10,12 @@ from app.config import Settings
 from app.error_archive import install_error_management
 from app.errors import ApiException
 from app.main import _set_experiment_pc_usage_context
-from app.usage_archive import UsageArchive, UsageArchiveSettings, set_usage_context
+from app.usage_archive import (
+    UsageArchive,
+    UsageArchiveSettings,
+    record_background_usage,
+    set_usage_context,
+)
 
 
 def test_usage_archive_records_filters_and_reads_event(tmp_path: Path) -> None:
@@ -44,9 +49,24 @@ def test_usage_archive_records_filters_and_reads_event(tmp_path: Path) -> None:
         endpoint="/api/v1/tem/upload-sessions/upload-1/complete",
         job_id="job-tem-1",
     )
+    completed = record_background_usage(
+        archive,
+        project="XRD",
+        action="보고서 생성 완료",
+        result="success",
+        duration_ms=3200,
+        job_id="job-xrd-1",
+        endpoint="/background/xrd/report/jobs/job-xrd-1",
+        experiment_code="XRD",
+        file_name="xrd-report.html",
+        file_size_bytes=4096,
+    )
 
     assert archive.get(str(success["eventId"]))["requestNumber"] == "REQ-2026-001"
-    assert [item["jobId"] for item in archive.list(project="XRD")] == ["job-xrd-1"]
+    assert [item["jobId"] for item in archive.list(project="XRD")] == [
+        "job-xrd-1",
+        "job-xrd-1",
+    ]
     assert [item["jobId"] for item in archive.list(result="failure")] == ["job-tem-1"]
     assert [item["jobId"] for item in archive.list(query="REQ-2026-001")] == [
         "job-xrd-1"
@@ -65,6 +85,10 @@ def test_usage_archive_records_filters_and_reads_event(tmp_path: Path) -> None:
         "sourceHostName": "LAB-XRD-01",
     }
     assert stored["file"]["sizeBytes"] == 532481
+    assert success["activityType"] == "REPORT_REQUEST"
+    assert completed is not None
+    assert completed["activityType"] == "REPORT_COMPLETE"
+    assert archive.list(activity_type="REPORT_COMPLETE") == [completed]
 
 
 def test_usage_middleware_records_user_actions_and_skips_repeated_requests(
@@ -130,6 +154,12 @@ def test_usage_middleware_records_user_actions_and_skips_repeated_requests(
     assert ftir_report["experimentCode"] == "FT-IR"
     assert ftir_report["statusCode"] == 202
     assert ftir_report["durationMs"] >= 0
+    assert ftir_report["activityType"] == "REPORT_REQUEST"
+    screen_views = client.get(
+        "/api/v1/usage-events?activityType=SCREEN_VIEW"
+    ).json()["items"]
+    assert len(screen_views) == 1
+    assert screen_views[0]["action"] == "작업 화면 조회"
     tem_failures = [
         item
         for item in listing["items"]
@@ -159,6 +189,8 @@ def test_operations_console_has_usage_and_error_tabs(tmp_path: Path) -> None:
     assert "사용 기록" in operations.text
     assert "오류 기록" in operations.text
     assert "클라이언트" in operations.text
+    assert "전체 기록 유형" in operations.text
+    assert "보고서 완료" in operations.text
     assert errors.status_code == 200
     assert 'data-default-tab="errors"' in errors.text
 
@@ -229,6 +261,7 @@ def test_csharp_file_upload_usage_includes_job_client_and_file_context(
     item = client.get("/api/v1/usage-events?q=sample.txt").json()["items"][0]
     assert item["project"] == "XRD"
     assert item["action"] == "파일 업로드"
+    assert item["activityType"] == "FILE_TRANSFER"
     assert item["jobId"] == "job-csharp-1"
     assert item["requestNumber"] == "REQ-CSHARP-001"
     assert item["clientApplication"] == {

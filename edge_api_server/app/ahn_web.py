@@ -31,7 +31,12 @@ from .error_archive import (
     record_background_error,
 )
 from .path_bootstrap import add_project_package_paths
-from .usage_archive import set_usage_context
+from .usage_archive import (
+    UsageArchive,
+    record_background_usage,
+    set_usage_context,
+    usage_archive as app_usage_archive,
+)
 
 add_project_package_paths()
 
@@ -79,6 +84,7 @@ class AhnReportJob:
     manifest_path: Path
     manifest: dict[str, Any] | None
     error_archive: ErrorArchive | None
+    usage_archive: UsageArchive | None
     created_at: float
     updated_at: float
     status: str = "queued"
@@ -758,6 +764,7 @@ def _create_ahn_job(
     input_root: Path,
     work_dir: Path,
     error_archive: ErrorArchive | None,
+    usage_archive: UsageArchive | None = None,
 ) -> AhnReportJob:
     output_dir = work_dir / "output"
     pptx_path = output_dir / "tem-report.pptx"
@@ -774,6 +781,7 @@ def _create_ahn_job(
         manifest_path=output_dir / "manifest.json",
         manifest=None,
         error_archive=error_archive,
+        usage_archive=usage_archive,
         created_at=now,
         updated_at=now,
     )
@@ -783,6 +791,7 @@ def _create_ahn_job(
 
 
 def _run_ahn_job(job: AhnReportJob) -> None:
+    started = time.perf_counter()
     _set_job_state(
         job,
         status="running",
@@ -831,6 +840,16 @@ def _run_ahn_job(job: AhnReportJob) -> None:
         )
         with _ahn_report_jobs_lock:
             job.error_event_id = event_id
+        record_background_usage(
+            job.usage_archive,
+            project="TEM",
+            action="보고서 생성 실패",
+            result="failure",
+            duration_ms=round((time.perf_counter() - started) * 1000),
+            job_id=job.job_id,
+            endpoint=f"/background/tem/report/jobs/{job.job_id}",
+            experiment_code="TEM",
+        )
         return
     except Exception as exc:
         logger.exception("TEM 보고서 생성 실패 (input_root=%s)", job.input_root)
@@ -860,6 +879,16 @@ def _run_ahn_job(job: AhnReportJob) -> None:
         )
         with _ahn_report_jobs_lock:
             job.error_event_id = event_id
+        record_background_usage(
+            job.usage_archive,
+            project="TEM",
+            action="보고서 생성 실패",
+            result="failure",
+            duration_ms=round((time.perf_counter() - started) * 1000),
+            job_id=job.job_id,
+            endpoint=f"/background/tem/report/jobs/{job.job_id}",
+            experiment_code="TEM",
+        )
         return
     summary = manifest.get("summary") if isinstance(manifest.get("summary"), dict) else {}
     if not _has_reportable_data(summary):
@@ -885,8 +914,58 @@ def _run_ahn_job(job: AhnReportJob) -> None:
         )
         with _ahn_report_jobs_lock:
             job.error_event_id = event_id
+        record_background_usage(
+            job.usage_archive,
+            project="TEM",
+            action="보고서 생성 실패",
+            result="failure",
+            duration_ms=round((time.perf_counter() - started) * 1000),
+            job_id=job.job_id,
+            endpoint=f"/background/tem/report/jobs/{job.job_id}",
+            experiment_code="TEM",
+        )
         return
-    _build_package(job.output_dir, job.package_path)
+    try:
+        _build_package(job.output_dir, job.package_path)
+    except Exception as exc:
+        logger.exception("TEM 보고서 패키지 생성 실패 (job_id=%s)", job.job_id)
+        api_exc = ApiException(
+            500,
+            "TEM_REPORT_PACKAGE_FAILED",
+            f"TEM 보고서 ZIP 패키지 생성 중 오류가 발생했습니다: {exc}",
+            retryable=False,
+            details={"exceptionType": type(exc).__name__},
+        )
+        _set_job_state(
+            job,
+            status="failed",
+            progress_pct=100,
+            message=api_exc.message,
+            error=_api_error_payload(api_exc),
+        )
+        event_id = record_background_error(
+            job.error_archive,
+            project="TEM",
+            code=api_exc.code,
+            message=api_exc.message,
+            exception=exc,
+            job_id=job.job_id,
+            details=api_exc.details,
+            source_paths=[job.output_dir],
+        )
+        with _ahn_report_jobs_lock:
+            job.error_event_id = event_id
+        record_background_usage(
+            job.usage_archive,
+            project="TEM",
+            action="보고서 생성 실패",
+            result="failure",
+            duration_ms=round((time.perf_counter() - started) * 1000),
+            job_id=job.job_id,
+            endpoint=f"/background/tem/report/jobs/{job.job_id}",
+            experiment_code="TEM",
+        )
+        return
     _set_job_state(
         job,
         status="completed",
@@ -894,14 +973,29 @@ def _run_ahn_job(job: AhnReportJob) -> None:
         message="TEM 보고서가 완성되었습니다.",
         manifest=manifest,
     )
+    record_background_usage(
+        job.usage_archive,
+        project="TEM",
+        action="보고서 생성 완료",
+        result="success",
+        duration_ms=round((time.perf_counter() - started) * 1000),
+        job_id=job.job_id,
+        endpoint=f"/background/tem/report/jobs/{job.job_id}",
+        experiment_code="TEM",
+        file_name=job.package_path.name,
+        file_size_bytes=(
+            job.package_path.stat().st_size if job.package_path.is_file() else None
+        ),
+    )
 
 
 def _submit_ahn_job(
     input_root: Path,
     work_dir: Path,
     error_archive: ErrorArchive | None = None,
+    usage_archive: UsageArchive | None = None,
 ) -> AhnReportJob:
-    job = _create_ahn_job(input_root, work_dir, error_archive)
+    job = _create_ahn_job(input_root, work_dir, error_archive, usage_archive)
     _ahn_report_executor.submit(_run_ahn_job, job)
     return job
 
@@ -2108,6 +2202,7 @@ def complete_tem_upload_session(request: Request, upload_id: str) -> JSONRespons
         session.input_root,
         session.work_dir,
         app_error_archive(request.app),
+        app_usage_archive(request.app),
     )
     set_usage_context(
         request,
@@ -2142,7 +2237,12 @@ async def analyze_tem(
         await _save_ahn_uploads(files, upload_root)
         _validate_ahn_upload_files(upload_root)
         input_root = _find_ahn_input_root(upload_root)
-        job = _submit_ahn_job(input_root, work_dir, app_error_archive(request.app))
+        job = _submit_ahn_job(
+            input_root,
+            work_dir,
+            app_error_archive(request.app),
+            app_usage_archive(request.app),
+        )
     except Exception:
         request.state.error_cleanup_paths = [work_dir]
         raise
@@ -2161,7 +2261,12 @@ def tem_example(request: Request) -> JSONResponse:
     try:
         if not input_root.exists():
             input_root = _write_synthetic_tem_example(work_dir / "input")
-        job = _submit_ahn_job(input_root, work_dir, app_error_archive(request.app))
+        job = _submit_ahn_job(
+            input_root,
+            work_dir,
+            app_error_archive(request.app),
+            app_usage_archive(request.app),
+        )
     except Exception:
         shutil.rmtree(work_dir, ignore_errors=True)
         raise

@@ -22,6 +22,18 @@ REPORT_JOB_STATUS_RE = re.compile(
     re.IGNORECASE,
 )
 
+ACTIVITY_TYPE_LABELS = {
+    "SCREEN_VIEW": "화면 조회",
+    "LOOKUP": "정보 조회",
+    "FILE_TRANSFER": "파일 전송",
+    "REPORT_REQUEST": "보고서 생성 요청",
+    "REPORT_COMPLETE": "보고서 완료",
+    "REPORT_FAILED": "보고서 실패",
+    "REPORT_DOWNLOAD": "보고서 다운로드",
+    "REPORT_SEND": "보고서 전송",
+    "ACTION": "업무 실행",
+}
+
 
 @dataclass(frozen=True)
 class UsageArchiveSettings:
@@ -86,6 +98,43 @@ def action_from_request(method: str, path: str) -> str:
     return f"{upper_method} 요청"
 
 
+def activity_type_from_action(
+    action: str,
+    *,
+    method: str = "",
+    result: str = "success",
+) -> str:
+    text = str(action or "").strip()
+    if text == "작업 화면 조회":
+        return "SCREEN_VIEW"
+    if text == "보고서 생성 완료":
+        return "REPORT_COMPLETE"
+    if text == "보고서 생성 실패":
+        return "REPORT_FAILED"
+    if "보고서 생성" in text or text == "업로드 완료 및 보고서 생성":
+        return "REPORT_REQUEST"
+    if "보고서 다운로드" in text:
+        return "REPORT_DOWNLOAD"
+    if "보고서 전송" in text:
+        return "REPORT_SEND"
+    if any(
+        marker in text
+        for marker in (
+            "업로드 시작",
+            "파일 업로드",
+            "파일 수정",
+            "파일 삭제",
+            "파일 전송 완료",
+        )
+    ):
+        return "FILE_TRANSFER"
+    if "조회" in text or method.upper() == "GET":
+        return "LOOKUP"
+    if str(result).lower() == "failure" and "보고서" in text:
+        return "REPORT_FAILED"
+    return "ACTION"
+
+
 def client_type_from_user_agent(user_agent: str | None) -> str | None:
     lowered = str(user_agent or "").casefold()
     if any(marker in lowered for marker in (".net", "dotnet", "csharp", "restsharp")):
@@ -142,6 +191,7 @@ class UsageArchive:
         duration_ms: int,
         method: str,
         endpoint: str,
+        activity_type: str | None = None,
         route_path: str | None = None,
         job_id: str | None = None,
         request_id: str | None = None,
@@ -168,6 +218,12 @@ class UsageArchive:
             "timestamp": now.isoformat(),
             "project": str(project or "EDGE").upper(),
             "action": str(action or "요청"),
+            "activityType": activity_type
+            or activity_type_from_action(
+                action,
+                method=method,
+                result=result,
+            ),
             "result": "failure" if str(result).lower() == "failure" else "success",
             "statusCode": int(status_code),
             "durationMs": max(0, int(duration_ms)),
@@ -214,6 +270,7 @@ class UsageArchive:
         *,
         project: str = "",
         result: str = "",
+        activity_type: str = "",
         query: str = "",
         date_from: str = "",
         date_to: str = "",
@@ -241,6 +298,12 @@ class UsageArchive:
                     continue
                 if result and str(item.get("result", "")).casefold() != result.casefold():
                     continue
+                if (
+                    activity_type
+                    and str(item.get("activityType", "")).casefold()
+                    != activity_type.casefold()
+                ):
+                    continue
                 if needle:
                     client_application = item.get("clientApplication") or {}
                     file_context = item.get("file") or {}
@@ -251,6 +314,7 @@ class UsageArchive:
                             "eventId",
                             "project",
                             "action",
+                            "activityType",
                             "jobId",
                             "requestId",
                             "requestNumber",
@@ -307,6 +371,7 @@ def set_usage_context(
     *,
     project: str | None = None,
     action: str | None = None,
+    activity_type: str | None = None,
     job_id: str | None = None,
     request_number: str | None = None,
     experiment_code: str | None = None,
@@ -326,6 +391,7 @@ def set_usage_context(
     values = {
         "usage_project": project,
         "usage_action": action,
+        "usage_activity_type": activity_type,
         "usage_job_id": job_id,
         "usage_request_number": request_number,
         "usage_experiment_code": experiment_code,
@@ -402,6 +468,7 @@ async def usage_logging_middleware(request: Request, call_next):
                     project=project,
                     action=_state_value(request, "usage_action")
                     or action_from_request(request.method, path),
+                    activity_type=_state_value(request, "usage_activity_type"),
                     result="failure" if status_code >= 400 else "success",
                     status_code=status_code,
                     duration_ms=duration_ms,
@@ -438,3 +505,46 @@ async def usage_logging_middleware(request: Request, call_next):
                 )
             except Exception:
                 logger.exception("사용 기록 저장 실패 (%s %s)", request.method, path)
+
+
+def record_background_usage(
+    archive: UsageArchive | None,
+    *,
+    project: str,
+    action: str,
+    result: str,
+    duration_ms: int,
+    job_id: str,
+    endpoint: str,
+    request_number: str | None = None,
+    experiment_code: str | None = None,
+    equipment_code: str | None = None,
+    operator_id: str | None = None,
+    file_name: str | None = None,
+    file_size_bytes: int | None = None,
+) -> dict[str, object] | None:
+    if archive is None:
+        return None
+    try:
+        return archive.record(
+            project=project,
+            action=action,
+            result=result,
+            status_code=200 if result == "success" else 500,
+            duration_ms=duration_ms,
+            method="BACKGROUND",
+            endpoint=endpoint,
+            activity_type=(
+                "REPORT_COMPLETE" if result == "success" else "REPORT_FAILED"
+            ),
+            job_id=job_id,
+            request_number=request_number,
+            experiment_code=experiment_code,
+            equipment_code=equipment_code,
+            operator_id=operator_id,
+            file_name=file_name,
+            file_size_bytes=file_size_bytes,
+        )
+    except Exception:
+        logger.exception("백그라운드 사용 기록 저장 실패 (job_id=%s)", job_id)
+        return None

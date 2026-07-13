@@ -47,7 +47,12 @@ from .llm_client import LlmError, LocalLlmClient
 from .report import annotator
 from .report.builders import LlmSlotSpec
 from .upload_sessions import ChunkUploadStore
-from .usage_archive import set_usage_context
+from .usage_archive import (
+    UsageArchive,
+    record_background_usage,
+    set_usage_context,
+    usage_archive as app_usage_archive,
+)
 
 router = APIRouter()
 logger = get_logger(__name__)
@@ -96,6 +101,7 @@ class XrdReportJob:
     input_root: Path
     settings: Settings | None
     error_archive: ErrorArchive | None
+    usage_archive: UsageArchive | None
     origin: bool
     created_at: float
     updated_at: float
@@ -680,6 +686,7 @@ def _create_xrd_report_job(
     work_dir: Path,
     settings: Settings | None,
     error_archive: ErrorArchive | None,
+    usage_archive: UsageArchive | None,
     origin: bool,
 ) -> XrdReportJob:
     now = time.time()
@@ -689,6 +696,7 @@ def _create_xrd_report_job(
         input_root=input_root,
         settings=settings,
         error_archive=error_archive,
+        usage_archive=usage_archive,
         origin=origin,
         created_at=now,
         updated_at=now,
@@ -2099,6 +2107,7 @@ def _build_xrd_html_from_inputs_with_settings(
 
 
 def _run_xrd_report_job(job: XrdReportJob) -> None:
+    started = time.perf_counter()
     _set_xrd_job_state(
         job,
         status="running",
@@ -2146,6 +2155,16 @@ def _run_xrd_report_job(job: XrdReportJob) -> None:
         )
         with _xrd_report_jobs_lock:
             job.error_event_id = event_id
+        record_background_usage(
+            job.usage_archive,
+            project="XRD",
+            action="보고서 생성 실패",
+            result="failure",
+            duration_ms=round((time.perf_counter() - started) * 1000),
+            job_id=job.job_id,
+            endpoint=f"/background/xrd/report/jobs/{job.job_id}",
+            experiment_code="XRD",
+        )
         return
     except Exception as exc:
         logger.exception("XRD 보고서 생성 실패 (job_id=%s)", job.job_id)
@@ -2175,6 +2194,16 @@ def _run_xrd_report_job(job: XrdReportJob) -> None:
         )
         with _xrd_report_jobs_lock:
             job.error_event_id = event_id
+        record_background_usage(
+            job.usage_archive,
+            project="XRD",
+            action="보고서 생성 실패",
+            result="failure",
+            duration_ms=round((time.perf_counter() - started) * 1000),
+            job_id=job.job_id,
+            endpoint=f"/background/xrd/report/jobs/{job.job_id}",
+            experiment_code="XRD",
+        )
         return
 
     _set_xrd_job_state(
@@ -2184,6 +2213,18 @@ def _run_xrd_report_job(job: XrdReportJob) -> None:
         message="XRD 보고서가 완성되었습니다.",
         html_result=html_result,
     )
+    record_background_usage(
+        job.usage_archive,
+        project="XRD",
+        action="보고서 생성 완료",
+        result="success",
+        duration_ms=round((time.perf_counter() - started) * 1000),
+        job_id=job.job_id,
+        endpoint=f"/background/xrd/report/jobs/{job.job_id}",
+        experiment_code="XRD",
+        file_name="xrd-report.html",
+        file_size_bytes=len(html_result.encode("utf-8")),
+    )
 
 
 def _submit_xrd_report_job(
@@ -2192,6 +2233,7 @@ def _submit_xrd_report_job(
     work_dir: Path,
     settings: Settings | None,
     error_archive: ErrorArchive | None,
+    usage_archive: UsageArchive | None,
     origin: bool,
 ) -> XrdReportJob:
     job = _create_xrd_report_job(
@@ -2199,6 +2241,7 @@ def _submit_xrd_report_job(
         work_dir=work_dir,
         settings=settings,
         error_archive=error_archive,
+        usage_archive=usage_archive,
         origin=origin,
     )
     _xrd_report_executor.submit(_run_xrd_report_job, job)
@@ -2284,6 +2327,7 @@ def complete_xrd_upload_session(
         work_dir=session.work_dir,
         settings=_request_settings(request),
         error_archive=app_error_archive(request.app),
+        usage_archive=app_usage_archive(request.app),
         origin=origin,
     )
     set_usage_context(
@@ -2427,6 +2471,11 @@ async def analyze_xrd(
     except Exception:
         request.state.error_cleanup_paths = [root]
         raise
+    set_usage_context(
+        request,
+        action="보고서 생성 완료",
+        activity_type="REPORT_COMPLETE",
+    )
     shutil.rmtree(root, ignore_errors=True)
     return HTMLResponse(html_result, headers=XRD_NO_STORE_HEADERS)
 
