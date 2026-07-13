@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any, Iterable
 from zipfile import ZipFile
 
-from PIL import Image, ImageDraw, ImageFont, ImageOps
+from PIL import Image, ImageChops, ImageDraw, ImageFont, ImageOps, ImageStat
 
 from .docx_extract import extract_docx
 
@@ -320,85 +320,90 @@ def _add_header(slide, section_title: str) -> None:
     line.line.color.rgb = BLUE
 
 
+def _image_background_color(image: Image.Image) -> tuple[int, int, int] | None:
+    width, height = image.size
+    patch = max(2, min(width, height) // 50)
+    corners = (
+        (0, 0, patch, patch),
+        (width - patch, 0, width, patch),
+        (0, height - patch, patch, height),
+        (width - patch, height - patch, width, height),
+    )
+    medians = [tuple(int(value) for value in ImageStat.Stat(image.crop(box)).median[:3]) for box in corners]
+    if any(min(color) < 235 for color in medians):
+        return None
+    if any(max(color[channel] for color in medians) - min(color[channel] for color in medians) > 18 for channel in range(3)):
+        return None
+    return tuple(round(sum(color[channel] for color in medians) / len(medians)) for channel in range(3))
+
+
+def _projection_content_bounds(mask: Image.Image, *, horizontal: bool) -> tuple[int, int] | None:
+    length = mask.width if horizontal else mask.height
+    projection_size = (length, 1) if horizontal else (1, length)
+    projection = mask.resize(projection_size, Image.Resampling.BOX)
+    flattened_data = getattr(projection, "get_flattened_data", projection.getdata)
+    values = list(flattened_data())
+    active = [index for index, value in enumerate(values) if value >= 2]
+    if not active:
+        return None
+    return active[0], active[-1] + 1
+
+
+def _image_content_bounds(image: Image.Image) -> tuple[int, int, int, int]:
+    """Return visible content bounds while retaining labels, axes, legends, and scale bars."""
+    source_width, source_height = image.size
+    if source_width <= 0 or source_height <= 0:
+        return 0, 0, source_width, source_height
+
+    preview = image.convert("RGB")
+    preview.thumbnail((1000, 1000), Image.Resampling.LANCZOS)
+    background_color = _image_background_color(preview)
+    if background_color is None:
+        return 0, 0, source_width, source_height
+
+    background = Image.new("RGB", preview.size, background_color)
+    difference = ImageChops.difference(preview, background).convert("L")
+    mask = difference.point(lambda value: 255 if value >= 18 else 0, mode="L")
+    horizontal = _projection_content_bounds(mask, horizontal=True)
+    vertical = _projection_content_bounds(mask, horizontal=False)
+    if horizontal is None or vertical is None:
+        return 0, 0, source_width, source_height
+
+    left, right = horizontal
+    top, bottom = vertical
+    width, height = preview.size
+    padding_x = max(2, int((right - left) * 0.018))
+    padding_y = max(2, int((bottom - top) * 0.018))
+    left = max(0, left - padding_x)
+    right = min(width, right + padding_x)
+    top = max(0, top - padding_y)
+    bottom = min(height, bottom + padding_y)
+
+    if left <= int(width * 0.025):
+        left = 0
+    if right >= int(width * 0.975):
+        right = width
+    if top <= int(height * 0.025):
+        top = 0
+    if bottom >= int(height * 0.975):
+        bottom = height
+    if (right - left) / width < 0.22:
+        left, right = 0, width
+    if (bottom - top) / height < 0.22:
+        top, bottom = 0, height
+
+    return (
+        int(left * source_width / width),
+        int(top * source_height / height),
+        int(right * source_width / width),
+        int(bottom * source_height / height),
+    )
+
+
 def _convert_image(path: Path, tmp_dir: Path) -> Path:
     cache_dir = tmp_dir / "converted-images"
     cache_dir.mkdir(parents=True, exist_ok=True)
-    digest = hashlib.sha1(str(path.resolve()).encode("utf-8")).hexdigest()[:16]
-    target = cache_dir / f"{digest}.jpg"
-    if target.exists():
-        return target
-    with Image.open(path) as image:
-        image = ImageOps.exif_transpose(image)
-        if image.mode == "RGBA":
-            background = Image.new("RGB", image.size, (255, 255, 255))
-            background.paste(image, mask=image.getchannel("A"))
-            image = background
-        elif image.mode != "RGB":
-            image = image.convert("RGB")
-        image.thumbnail((1600, 1600), Image.Resampling.LANCZOS)
-        image.save(target, format="JPEG", quality=88, optimize=True)
-    return target
-
-
-def _eds_anchor_horizontal_bounds(image: Image.Image) -> tuple[int, int]:
-    """Find a dense image region while ignoring white side margins from Word exports."""
-    source_width, source_height = image.size
-    if source_width <= 0 or source_height <= 0:
-        return 0, source_width
-
-    preview = image.convert("L")
-    preview.thumbnail((1000, 1000), Image.Resampling.LANCZOS)
-    width, height = preview.size
-    flattened_data = getattr(preview, "get_flattened_data", preview.getdata)
-    pixels = list(flattened_data())
-    dark_counts = [0] * width
-    for row_start in range(0, len(pixels), width):
-        for column, value in enumerate(pixels[row_start:row_start + width]):
-            if value < 242:
-                dark_counts[column] += 1
-
-    minimum_dark_pixels = max(4, int(height * 0.045))
-    active_columns = [count >= minimum_dark_pixels for count in dark_counts]
-    # Bridge narrow white gaps caused by borders, scale bars, or compressed source images.
-    gap_start: int | None = None
-    for column, active in enumerate(active_columns + [True]):
-        if not active and gap_start is None:
-            gap_start = column
-        elif active and gap_start is not None:
-            if column - gap_start <= max(3, int(width * 0.008)):
-                active_columns[gap_start:column] = [True] * (column - gap_start)
-            gap_start = None
-
-    runs: list[tuple[int, int]] = []
-    run_start: int | None = None
-    for column, active in enumerate(active_columns + [False]):
-        if active and run_start is None:
-            run_start = column
-        elif not active and run_start is not None:
-            runs.append((run_start, column))
-            run_start = None
-    if not runs:
-        return 0, source_width
-
-    left, right = max(runs, key=lambda bounds: bounds[1] - bounds[0])
-    retained_fraction = (right - left) / width
-    if retained_fraction < 0.4 or retained_fraction > 0.94:
-        return 0, source_width
-
-    padding = max(2, int((right - left) * 0.018))
-    left = max(0, left - padding)
-    right = min(width, right + padding)
-    source_left = int(left * source_width / width)
-    source_right = int(right * source_width / width)
-    if source_right - source_left < int(source_width * 0.4):
-        return 0, source_width
-    return source_left, source_right
-
-
-def _convert_eds_anchor_image(path: Path, tmp_dir: Path) -> Path:
-    cache_dir = tmp_dir / "converted-images"
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    cache_key = f"eds-anchor-trim-v1:{path.resolve()}"
+    cache_key = f"content-trim-v2:{path.resolve()}"
     digest = hashlib.sha1(cache_key.encode("utf-8")).hexdigest()[:16]
     target = cache_dir / f"{digest}.jpg"
     if target.exists():
@@ -411,9 +416,9 @@ def _convert_eds_anchor_image(path: Path, tmp_dir: Path) -> Path:
             image = background
         elif image.mode != "RGB":
             image = image.convert("RGB")
-        left, right = _eds_anchor_horizontal_bounds(image)
-        if left > 0 or right < image.width:
-            image = image.crop((left, 0, right, image.height))
+        bounds = _image_content_bounds(image)
+        if bounds != (0, 0, image.width, image.height):
+            image = image.crop(bounds)
         image.thumbnail((1600, 1600), Image.Resampling.LANCZOS)
         image.save(target, format="JPEG", quality=90, optimize=True)
     return target
@@ -448,7 +453,7 @@ def _add_fit_picture(slide, path: Path, left, top, width, height, tmp_dir: Path)
 
 
 def _add_eds_anchor_picture(slide, path: Path, left, top, width, height, tmp_dir: Path):
-    converted = _convert_eds_anchor_image(path, tmp_dir)
+    converted = _convert_image(path, tmp_dir)
     return _add_fit_converted_picture(slide, converted, left, top, width, height)
 
 

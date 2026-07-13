@@ -15,6 +15,7 @@ from pptx.util import Inches, Pt
 from ahn.ppt_report import (
     _coating_rows,
     _coating_table_font_size,
+    _convert_image,
     _point_table_column_widths,
     build_pptx,
 )
@@ -37,6 +38,18 @@ def _write_eds_anchor_with_side_margins(path: Path) -> None:
     draw.rectangle((245, 70, 755, 530), fill=(72, 76, 82))
     draw.text((420, 35), "Electron Image 22", fill=(20, 20, 20))
     draw.line((285, 555, 405, 555), fill=(20, 20, 20), width=5)
+    image.save(path)
+
+
+def _write_graph_with_margins(path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    image = Image.new("RGB", (1600, 1000), (255, 255, 255))
+    draw = ImageDraw.Draw(image)
+    draw.text((570, 55), "All Elements", fill=(20, 20, 20))
+    draw.rectangle((220, 135, 1400, 825), outline=(25, 25, 25), width=5)
+    draw.line((240, 760, 510, 420, 790, 650, 1080, 280, 1380, 560), fill=(15, 115, 220), width=7)
+    draw.text((1240, 160), "Fe Wt%", fill=(20, 20, 20))
+    draw.text((760, 855), "Distance (nm)", fill=(20, 20, 20))
     image.save(path)
 
 
@@ -497,7 +510,24 @@ def test_map_eds_anchor_trims_internal_white_side_margins(tmp_path, monkeypatch)
     anchor = _pictures(Presentation(output).slides[0])[0]
     assert anchor.left <= Inches(0.3)
     assert anchor.width >= Inches(4.5)
-    assert anchor.height >= Inches(5.0)
+    assert anchor.height >= Inches(4.5)
+
+
+def test_common_image_conversion_trims_graph_margins_and_keeps_full_bleed_images(tmp_path) -> None:
+    graph_path = tmp_path / "graph-with-margins.png"
+    _write_graph_with_margins(graph_path)
+    converted_graph = _convert_image(graph_path, tmp_path / "graph-cache")
+    with Image.open(converted_graph) as graph:
+        assert graph.width < 1400
+        assert graph.height < 900
+        assert graph.width > 1100
+        assert graph.height > 700
+
+    full_bleed_path = tmp_path / "full-bleed.png"
+    Image.new("RGB", (1000, 600), (70, 75, 80)).save(full_bleed_path)
+    converted_full_bleed = _convert_image(full_bleed_path, tmp_path / "full-bleed-cache")
+    with Image.open(converted_full_bleed) as full_bleed:
+        assert full_bleed.size == (1000, 600)
 
 
 def test_map_eds_partial_page_keeps_fixed_two_by_three_slots(tmp_path, monkeypatch) -> None:
