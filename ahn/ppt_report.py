@@ -1332,11 +1332,11 @@ def _eds_point_summary_table_slot() -> tuple[int, int, int, int]:
 
 
 def _eds_point_table_area() -> tuple[int, int, int, int]:
-    return Inches(4.55), Inches(1.20), Inches(5.98), Inches(1.78)
+    return Inches(4.55), Inches(1.32), Inches(5.98), Inches(1.78)
 
 
 def _eds_point_graph_slot() -> tuple[int, int, int, int]:
-    return Inches(4.55), Inches(3.08), Inches(5.98), Inches(4.05)
+    return Inches(4.55), Inches(3.20), Inches(5.98), Inches(4.05)
 
 
 def _add_eds_point_summary_slide(

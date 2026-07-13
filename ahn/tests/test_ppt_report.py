@@ -714,12 +714,14 @@ def test_point_eds_spectrum_tables_create_row_detail_slides(tmp_path, monkeypatc
     assert detail_anchor.crop_right > 0
     assert detail_graph.left == Inches(4.55)
     assert detail_graph.width == Inches(5.98)
-    assert detail_graph.top >= Inches(3.08)
-    assert detail_graph.top + detail_graph.height <= Inches(3.08) + Inches(4.05)
+    assert detail_graph.top >= Inches(3.20)
+    assert detail_graph.top + detail_graph.height <= Inches(3.20) + Inches(4.05)
     assert detail_graph.height <= Inches(4.05)
+    detail_table_tops = []
     for shape in prs.slides[2].shapes:
         if not getattr(shape, "has_table", False):
             continue
+        detail_table_tops.append(shape.top)
         detail_title_row_heights.append(shape.table.rows[0].height)
         for row in shape.table.rows:
             for cell in row.cells:
@@ -729,6 +731,7 @@ def test_point_eds_spectrum_tables_create_row_detail_slides(tmp_path, monkeypatc
                             detail_table_fonts.append(run.font.size)
     assert detail_table_fonts
     assert min(detail_table_fonts) >= Pt(9)
+    assert sorted(detail_table_tops) == [Inches(1.32), Inches(2.29)]
     assert detail_title_row_heights == summary_title_row_heights
     table_text = _pptx_table_text(output)
     assert "At%" in table_text
