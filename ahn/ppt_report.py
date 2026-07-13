@@ -340,6 +340,85 @@ def _convert_image(path: Path, tmp_dir: Path) -> Path:
     return target
 
 
+def _eds_anchor_horizontal_bounds(image: Image.Image) -> tuple[int, int]:
+    """Find a dense image region while ignoring white side margins from Word exports."""
+    source_width, source_height = image.size
+    if source_width <= 0 or source_height <= 0:
+        return 0, source_width
+
+    preview = image.convert("L")
+    preview.thumbnail((1000, 1000), Image.Resampling.LANCZOS)
+    width, height = preview.size
+    flattened_data = getattr(preview, "get_flattened_data", preview.getdata)
+    pixels = list(flattened_data())
+    dark_counts = [0] * width
+    for row_start in range(0, len(pixels), width):
+        for column, value in enumerate(pixels[row_start:row_start + width]):
+            if value < 242:
+                dark_counts[column] += 1
+
+    minimum_dark_pixels = max(4, int(height * 0.045))
+    active_columns = [count >= minimum_dark_pixels for count in dark_counts]
+    # Bridge narrow white gaps caused by borders, scale bars, or compressed source images.
+    gap_start: int | None = None
+    for column, active in enumerate(active_columns + [True]):
+        if not active and gap_start is None:
+            gap_start = column
+        elif active and gap_start is not None:
+            if column - gap_start <= max(3, int(width * 0.008)):
+                active_columns[gap_start:column] = [True] * (column - gap_start)
+            gap_start = None
+
+    runs: list[tuple[int, int]] = []
+    run_start: int | None = None
+    for column, active in enumerate(active_columns + [False]):
+        if active and run_start is None:
+            run_start = column
+        elif not active and run_start is not None:
+            runs.append((run_start, column))
+            run_start = None
+    if not runs:
+        return 0, source_width
+
+    left, right = max(runs, key=lambda bounds: bounds[1] - bounds[0])
+    retained_fraction = (right - left) / width
+    if retained_fraction < 0.4 or retained_fraction > 0.94:
+        return 0, source_width
+
+    padding = max(2, int((right - left) * 0.018))
+    left = max(0, left - padding)
+    right = min(width, right + padding)
+    source_left = int(left * source_width / width)
+    source_right = int(right * source_width / width)
+    if source_right - source_left < int(source_width * 0.4):
+        return 0, source_width
+    return source_left, source_right
+
+
+def _convert_eds_anchor_image(path: Path, tmp_dir: Path) -> Path:
+    cache_dir = tmp_dir / "converted-images"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    cache_key = f"eds-anchor-trim-v1:{path.resolve()}"
+    digest = hashlib.sha1(cache_key.encode("utf-8")).hexdigest()[:16]
+    target = cache_dir / f"{digest}.jpg"
+    if target.exists():
+        return target
+    with Image.open(path) as image:
+        image = ImageOps.exif_transpose(image)
+        if image.mode == "RGBA":
+            background = Image.new("RGB", image.size, (255, 255, 255))
+            background.paste(image, mask=image.getchannel("A"))
+            image = background
+        elif image.mode != "RGB":
+            image = image.convert("RGB")
+        left, right = _eds_anchor_horizontal_bounds(image)
+        if left > 0 or right < image.width:
+            image = image.crop((left, 0, right, image.height))
+        image.thumbnail((1600, 1600), Image.Resampling.LANCZOS)
+        image.save(target, format="JPEG", quality=90, optimize=True)
+    return target
+
+
 def _image_size(path: Path) -> tuple[int, int]:
     with Image.open(path) as image:
         return image.size
@@ -352,8 +431,7 @@ def _image_aspect(path: Path) -> float:
     return width / height
 
 
-def _add_fit_picture(slide, path: Path, left, top, width, height, tmp_dir: Path):
-    converted = _convert_image(path, tmp_dir)
+def _add_fit_converted_picture(slide, converted: Path, left, top, width, height):
     image_w, image_h = _image_size(converted)
     if image_w <= 0 or image_h <= 0:
         return None
@@ -363,6 +441,15 @@ def _add_fit_picture(slide, path: Path, left, top, width, height, tmp_dir: Path)
     pic_left = int(left + (width - pic_w) / 2)
     pic_top = int(top + (height - pic_h) / 2)
     return slide.shapes.add_picture(str(converted), pic_left, pic_top, width=pic_w, height=pic_h)
+
+
+def _add_fit_picture(slide, path: Path, left, top, width, height, tmp_dir: Path):
+    return _add_fit_converted_picture(slide, _convert_image(path, tmp_dir), left, top, width, height)
+
+
+def _add_eds_anchor_picture(slide, path: Path, left, top, width, height, tmp_dir: Path):
+    converted = _convert_eds_anchor_image(path, tmp_dir)
+    return _add_fit_converted_picture(slide, converted, left, top, width, height)
 
 
 def _add_cover_picture(slide, path: Path, left, top, width, height, tmp_dir: Path):
@@ -833,7 +920,7 @@ def _eds_table_slots(count: int, area: tuple[int, int, int, int]) -> list[tuple[
 
 def _add_eds_anchor_image(slide, first_image: Path | None, tmp_dir: Path) -> None:
     if first_image:
-        _add_fit_picture(slide, first_image, *_eds_anchor_slot(), tmp_dir)
+        _add_eds_anchor_picture(slide, first_image, *_eds_anchor_slot(), tmp_dir)
 
 
 def _add_eds_right_grid(
@@ -876,7 +963,7 @@ def _add_eds_line_overview(
     tmp_dir: Path,
 ) -> None:
     if first_image:
-        _add_fit_picture(slide, first_image, *_eds_line_anchor_slot(), tmp_dir)
+        _add_eds_anchor_picture(slide, first_image, *_eds_line_anchor_slot(), tmp_dir)
     if line_images[:1]:
         _add_fit_picture(slide, line_images[0], *_eds_line_top_slot(), tmp_dir)
     if line_images[1:2]:

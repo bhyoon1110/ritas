@@ -5,7 +5,7 @@ from types import SimpleNamespace
 from zipfile import ZipFile
 
 import pytest
-from PIL import Image
+from PIL import Image, ImageDraw
 
 pptx = pytest.importorskip("pptx")
 Presentation = pptx.Presentation
@@ -28,6 +28,16 @@ def _write_image(path: Path) -> None:
 def _write_sized_image(path: Path, size: tuple[int, int]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     Image.new("RGB", size, (220, 224, 230)).save(path)
+
+
+def _write_eds_anchor_with_side_margins(path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    image = Image.new("RGB", (1000, 600), (255, 255, 255))
+    draw = ImageDraw.Draw(image)
+    draw.rectangle((245, 70, 755, 530), fill=(72, 76, 82))
+    draw.text((420, 35), "Electron Image 22", fill=(20, 20, 20))
+    draw.line((285, 555, 405, 555), fill=(20, 20, 20), width=5)
+    image.save(path)
 
 
 def _write_minimal_xlsx(path: Path, rows: list[list[str]]) -> None:
@@ -452,6 +462,42 @@ def test_map_eds_pages_reuse_first_image_as_left_anchor(tmp_path, monkeypatch) -
     assert single_right_picture[0].top == min(shape.top for shape in first_page_right)
     assert single_right_picture[0].width == first_page_right[0].width
     assert single_right_picture[0].height == first_page_right[0].height
+
+
+def test_map_eds_anchor_trims_internal_white_side_margins(tmp_path, monkeypatch) -> None:
+    anchor_path = tmp_path / "map-anchor-with-margins.png"
+    _write_eds_anchor_with_side_margins(anchor_path)
+    images = [anchor_path]
+    for index in range(6):
+        image_path = tmp_path / f"map-element-{index}.png"
+        _write_image(image_path)
+        images.append(image_path)
+    report_path = tmp_path / "report" / "map.docx"
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_bytes(b"placeholder")
+
+    monkeypatch.setattr(
+        "ahn.ppt_report.extract_docx",
+        lambda _docx_path, _extract_dir: SimpleNamespace(media_paths=images, tables=[]),
+    )
+    project = _base_project(tmp_path)
+    project["eds_reports"] = [
+        {
+            "path": "report/map.docx",
+            "file_name": "map.docx",
+            "title": "1-40 MAP2",
+            "sample_name": "1-40",
+            "analysis_type": "MAP",
+        }
+    ]
+    output = tmp_path / "report.pptx"
+
+    build_pptx(project, output)
+
+    anchor = _pictures(Presentation(output).slides[0])[0]
+    assert anchor.left <= Inches(0.3)
+    assert anchor.width >= Inches(4.5)
+    assert anchor.height >= Inches(5.0)
 
 
 def test_map_eds_partial_page_keeps_fixed_two_by_three_slots(tmp_path, monkeypatch) -> None:
