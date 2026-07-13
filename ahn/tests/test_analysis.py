@@ -5,7 +5,9 @@ from ahn.analysis import (
     CoatingOcrResult,
     OcrCandidate,
     _candidate_values_from_text,
+    _extract_coating_label_crop,
     _is_microscope_scale_box,
+    _join_coating_label_tokens,
     _merge_rapid_ocr_candidates,
     _reconcile_coating_ocr_ensemble,
     _reconcile_coating_ocr_values,
@@ -15,7 +17,7 @@ from ahn.analysis import (
     _ocr_label_box,
     _ocr_label_boxes,
 )
-from PIL import Image
+from PIL import Image, ImageDraw
 from ahn.processor import build_outputs
 
 
@@ -44,6 +46,43 @@ def test_coating_ocr_candidate_parser_keeps_multiple_labels() -> None:
         "12.21 nm",
         exclude_microscope_scale=False,
     ) == [12.21]
+
+
+def test_coating_label_crop_isolates_white_rectangle_from_leader_line() -> None:
+    image = Image.new("L", (500, 300), color=70)
+    draw = ImageDraw.Draw(image)
+    draw.line((120, 220, 180, 158), fill=255, width=6)
+    draw.rectangle((180, 120, 350, 165), fill=255)
+    draw.rectangle((210, 132, 225, 153), fill=0)
+
+    crop, refined_box = _extract_coating_label_crop(image, (174, 116, 182, 54))
+
+    assert 178 <= refined_box[0] <= 182
+    assert 118 <= refined_box[1] <= 122
+    assert refined_box[2] >= 168
+    assert refined_box[3] >= 43
+    assert crop.getpixel((0, 0)) == 255
+    assert crop.width > refined_box[2]
+
+
+def test_coating_label_crop_does_not_trim_wide_leading_digit_region() -> None:
+    image = Image.new("L", (500, 300), color=70)
+    draw = ImageDraw.Draw(image)
+    draw.rectangle((100, 120, 350, 165), fill=255)
+    # Mimic a tall italic leading digit that lowers the white fill ratio for
+    # more than 15% of the label width.
+    draw.rectangle((106, 121, 151, 157), fill=0)
+
+    _crop, refined_box = _extract_coating_label_crop(image, (96, 116, 260, 54))
+
+    assert refined_box[0] <= 102
+    assert refined_box[2] >= 245
+
+
+def test_coating_label_tokens_reassemble_split_decimal() -> None:
+    assert _join_coating_label_tokens(("2.", "68", "nm")) == "2.68nm"
+    assert _join_coating_label_tokens(("2.8", ".82", "nm")) == "2.82nm"
+    assert _join_coating_label_tokens(("18.52", "nm")) == "18.52nm"
 
 
 def test_coating_label_detection_normalizes_high_resolution_image(monkeypatch) -> None:

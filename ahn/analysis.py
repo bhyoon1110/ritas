@@ -472,16 +472,147 @@ def _run_tesseract(pytesseract: Any, image: Image.Image, config: str, timeout: i
         return pytesseract.image_to_string(image, config=config)
 
 
-def _ocr_label_box(image: Image.Image, box: tuple[int, int, int, int], pytesseract: Any) -> tuple[list[float], list[str]]:
+def _extract_coating_label_crop(
+    image: Image.Image,
+    box: tuple[int, int, int, int],
+) -> tuple[Image.Image, tuple[int, int, int, int]]:
+    """Return only the white measurement rectangle, without its leader line.
+
+    The detector box is already close to the label, but a diagonal measurement
+    line can touch its left edge. Re-detect the bright rectangular component in
+    a small search area, crop to that exact rectangle, and add a clean white
+    OCR margin instead of retaining pixels from outside the label.
+    """
     width, height = image.size
     x, y, box_w, box_h = box
-    pad = 12
-    crop = image.crop((
-        max(0, x - pad),
-        max(0, y - pad),
-        min(width, x + box_w + pad),
-        min(height, y + box_h + pad),
-    ))
+    refined_box = box
+
+    try:
+        import cv2  # type: ignore
+        import numpy as np  # type: ignore
+
+        horizontal_pad = max(12, round(box_w * 0.22))
+        vertical_pad = max(5, round(box_h * 0.22))
+        search_left = max(0, x - horizontal_pad)
+        search_top = max(0, y - vertical_pad)
+        search_right = min(width, x + box_w + horizontal_pad)
+        search_bottom = min(height, y + box_h + vertical_pad)
+        search = np.array(
+            image.crop((search_left, search_top, search_right, search_bottom)).convert("L")
+        )
+
+        # The label background is close to pure white. A horizontal opening
+        # disconnects the thin diagonal leader while retaining the filled
+        # rectangle around the dark text glyphs.
+        bright = np.where(search >= 225, 255, 0).astype("uint8")
+        kernel_width = max(5, min(25, round(box_h * 0.18) * 2 + 1))
+        clean = cv2.morphologyEx(
+            bright,
+            cv2.MORPH_OPEN,
+            cv2.getStructuringElement(cv2.MORPH_RECT, (kernel_width, 3)),
+        )
+        count, component_labels, stats, _centroids = cv2.connectedComponentsWithStats(clean, 8)
+        local_box = (x - search_left, y - search_top, box_w, box_h)
+        candidates: list[tuple[float, float, int, tuple[int, int, int, int]]] = []
+        for index in range(1, count):
+            component_x, component_y, component_w, component_h, area = [
+                int(value) for value in stats[index]
+            ]
+            component_mask = (
+                component_labels[
+                    component_y : component_y + component_h,
+                    component_x : component_x + component_w,
+                ]
+                == index
+            )
+            column_fill = component_mask.sum(axis=0)
+            row_fill = component_mask.sum(axis=1)
+            solid_columns = np.flatnonzero(column_fill >= max(3, component_h * 0.40))
+            solid_rows = np.flatnonzero(row_fill >= max(3, component_w * 0.40))
+            if solid_columns.size and solid_rows.size:
+                trim_left = int(solid_columns[0])
+                trim_right = int(solid_columns[-1]) + 1
+                trim_top = int(solid_rows[0])
+                trim_bottom = int(solid_rows[-1]) + 1
+                # Only trim a thin protrusion. A large low-fill region can be
+                # the italic leading digit and its white backing, so removing
+                # more than 15% would turn ``11.95`` into ``1.95``.
+                if (
+                    trim_left <= component_w * 0.15
+                    and component_w - trim_right <= component_w * 0.15
+                    and trim_top <= component_h * 0.15
+                    and component_h - trim_bottom <= component_h * 0.15
+                ):
+                    component_x += trim_left
+                    component_y += trim_top
+                    component_w = trim_right - trim_left
+                    component_h = trim_bottom - trim_top
+                    component_mask = component_mask[
+                        trim_top:trim_bottom,
+                        trim_left:trim_right,
+                    ]
+                    area = int(component_mask.sum())
+            overlap_w = max(
+                0,
+                min(component_x + component_w, local_box[0] + local_box[2])
+                - max(component_x, local_box[0]),
+            )
+            overlap_h = max(
+                0,
+                min(component_y + component_h, local_box[1] + local_box[3])
+                - max(component_y, local_box[1]),
+            )
+            overlap = overlap_w * overlap_h
+            overlap_ratio = overlap / max(1, box_w * box_h)
+            fill = area / max(1, component_w * component_h)
+            if not (
+                overlap_ratio >= 0.45
+                and component_w >= box_w * 0.65
+                and component_h >= box_h * 0.55
+                and component_w / max(1, component_h) >= 1.25
+                and fill >= 0.25
+            ):
+                continue
+            candidates.append(
+                (
+                    overlap_ratio,
+                    fill,
+                    area,
+                    (
+                        search_left + component_x,
+                        search_top + component_y,
+                        component_w,
+                        component_h,
+                    ),
+                )
+            )
+        if candidates:
+            refined_box = max(candidates, key=lambda item: item[:3])[3]
+    except Exception:  # pragma: no cover - optional OpenCV refinement.
+        pass
+
+    refined_x, refined_y, refined_w, refined_h = refined_box
+    crop = image.crop(
+        (
+            refined_x,
+            refined_y,
+            min(width, refined_x + refined_w),
+            min(height, refined_y + refined_h),
+        )
+    )
+    # OCR needs breathing room around italic digits, but the margin must not
+    # come from the microscope image because it can contain the leader line.
+    clean_margin = max(8, round(refined_h * 0.22))
+    crop = ImageOps.expand(crop, border=clean_margin, fill=255)
+    return crop, refined_box
+
+
+def _ocr_label_box(
+    image: Image.Image,
+    box: tuple[int, int, int, int],
+    pytesseract: Any,
+) -> tuple[list[float], list[str]]:
+    crop, _refined_box = _extract_coating_label_crop(image, box)
     crop = ImageOps.autocontrast(crop)
     scale = 5 if max(crop.size) < 450 else 3
     crop = crop.resize((crop.width * scale, crop.height * scale), Image.Resampling.LANCZOS)
@@ -684,6 +815,39 @@ def _get_rapid_ocr_engine() -> Any:
     return _rapid_ocr_engine
 
 
+def _join_coating_label_tokens(tokens: tuple[str, ...]) -> str:
+    """Reassemble tokens split by OCR inside one isolated white label."""
+    compact = [re.sub(r"\s+", "", token) for token in tokens if token.strip()]
+    if not compact:
+        return ""
+
+    numeric = ""
+    suffix = ""
+    for token in compact:
+        if re.search(r"[nNrR][mMiI]?", token):
+            suffix = "nm"
+            token = re.split(r"[nNrR]", token, maxsplit=1, flags=re.IGNORECASE)[0]
+        token = re.sub(r"[^0-9.\-]", "", token)
+        if not token:
+            continue
+        if not numeric:
+            numeric = token
+            continue
+        if numeric.endswith("."):
+            numeric += token.lstrip(".")
+            continue
+        if token.startswith(".") and "." in numeric:
+            integer, fraction = numeric.split(".", 1)
+            next_fraction = token[1:]
+            if next_fraction.startswith(fraction):
+                numeric = f"{integer}.{next_fraction}"
+            continue
+        if "." not in numeric:
+            numeric += token
+
+    return f"{numeric}{suffix}" if numeric else ""
+
+
 def _run_rapid_label_ocr(image: Image.Image) -> tuple[list[OcrCandidate], str]:
     """Read each detected white measurement label independently.
 
@@ -706,14 +870,9 @@ def _run_rapid_label_ocr(image: Image.Image) -> tuple[list[OcrCandidate], str]:
     scale_y = image.height / detection_image.height
     candidates: list[OcrCandidate] = []
     text_parts: list[str] = []
-    for box_index, (x, y, box_w, box_h) in enumerate(boxes, start=1):
-        pad = 10
-        crop = detection_image.crop((
-            max(0, x - pad),
-            max(0, y - pad),
-            min(detection_image.width, x + box_w + pad),
-            min(detection_image.height, y + box_h + pad),
-        ))
+    for box_index, box in enumerate(boxes, start=1):
+        crop, refined_box = _extract_coating_label_crop(detection_image, box)
+        x, y, box_w, box_h = refined_box
         crop = ImageOps.autocontrast(crop)
         resize_scale = max(2, round(600 / max(crop.size)))
         crop = crop.resize(
@@ -760,6 +919,32 @@ def _run_rapid_label_ocr(image: Image.Image) -> tuple[list[OcrCandidate], str]:
                     source="rapid-label",
                 )
                 if best is None or candidate.confidence > best.confidence:
+                    best = candidate
+
+        combined_text = _join_coating_label_tokens(tuple(str(text) for text in texts))
+        combined_score = min((float(score) for score in scores), default=0.0)
+        if combined_text:
+            text_parts.append(f"[label {box_index} combined {combined_score:.3f}] {combined_text}")
+            for value in _candidate_values_from_text(
+                combined_text,
+                require_unit=False,
+                exclude_microscope_scale=False,
+            ):
+                candidate = OcrCandidate(
+                    value_nm=value,
+                    text=combined_text,
+                    confidence=combined_score,
+                    box=original_box,
+                    source="rapid-label-combined",
+                )
+                if best is None or (
+                    re.search(r"\d[.\-]\d", candidate.text)
+                    and (
+                        not re.search(r"\d[.\-]\d", best.text)
+                        or len(re.sub(r"\D", "", candidate.text))
+                        > len(re.sub(r"\D", "", best.text))
+                    )
+                ):
                     best = candidate
         if best is not None:
             candidates.append(best)
