@@ -21,6 +21,17 @@ REPORT_JOB_STATUS_RE = re.compile(
     r"^/api/v1/(?:ftir|raman|xrd|tem)/report/jobs/[^/]+$",
     re.IGNORECASE,
 )
+OPERATIONS_MANAGEMENT_PATHS = {
+    "/operations",
+    "/errors",
+    "/api/v1/errors",
+    "/api/v1/usage-events",
+}
+OPERATIONS_MANAGEMENT_PREFIXES = (
+    "/error-feedback/",
+    "/api/v1/errors/",
+    "/api/v1/usage-events/",
+)
 
 ACTIVITY_TYPE_LABELS = {
     "SCREEN_VIEW": "화면 조회",
@@ -167,11 +178,20 @@ def client_network_context(
     }
 
 
+def is_operations_management_path(path: str) -> bool:
+    lowered = "/" + str(path or "").strip().lstrip("/").lower()
+    normalized = lowered.rstrip("/") or "/"
+    return normalized in OPERATIONS_MANAGEMENT_PATHS or any(
+        lowered.startswith(prefix) for prefix in OPERATIONS_MANAGEMENT_PREFIXES
+    )
+
+
 def should_record_usage(method: str, path: str) -> bool:
     lowered = path.lower()
-    if lowered in {"/health", "/health/llm", "/operations", "/errors"}:
+    normalized = lowered.rstrip("/") or "/"
+    if normalized in {"/health", "/health/llm"}:
         return False
-    if lowered.startswith("/api/v1/errors") or lowered.startswith("/api/v1/usage-events"):
+    if is_operations_management_path(path):
         return False
     if "/assets/" in lowered or lowered.endswith("favicon.ico"):
         return False
@@ -325,6 +345,14 @@ class UsageArchive:
                     item = json.loads(line)
                 except json.JSONDecodeError:
                     continue
+                raw_request_context = item.get("request") or {}
+                request_context = (
+                    raw_request_context if isinstance(raw_request_context, dict) else {}
+                )
+                if is_operations_management_path(
+                    str(request_context.get("endpoint") or "")
+                ):
+                    continue
                 if project and str(item.get("project", "")).casefold() != project.casefold():
                     continue
                 if result and str(item.get("result", "")).casefold() != result.casefold():
@@ -338,7 +366,6 @@ class UsageArchive:
                 if needle:
                     client_application = item.get("clientApplication") or {}
                     file_context = item.get("file") or {}
-                    request_context = item.get("request") or {}
                     haystack = " ".join(
                         str(item.get(key, ""))
                         for key in (

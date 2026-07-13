@@ -219,6 +219,18 @@ def test_operations_console_has_usage_and_error_tabs(tmp_path: Path) -> None:
     assert "접속 IP" in operations.text
     assert errors.status_code == 200
     assert 'data-default-tab="errors"' in errors.text
+    assert client.get("/api/v1/usage-events").json()["count"] == 0
+
+    app.state.usage_archive.record(
+        project="EDGE",
+        action="GET 요청",
+        result="success",
+        status_code=200,
+        duration_ms=10,
+        method="GET",
+        endpoint="/operations/",
+    )
+    assert client.get("/api/v1/usage-events").json()["count"] == 0
 
 
 def test_csharp_file_upload_usage_includes_job_client_and_file_context(
