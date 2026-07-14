@@ -501,9 +501,100 @@ def _extract_coating_label_crop(
             image.crop((search_left, search_top, search_right, search_bottom)).convert("L")
         )
 
-        # The label background is close to pure white. A horizontal opening
-        # disconnects the thin diagonal leader while retaining the filled
-        # rectangle around the dark text glyphs.
+        local_box = (x - search_left, y - search_top, box_w, box_h)
+
+        # The top and bottom margins of the white label contain long,
+        # horizontal bright runs. Their median start/end positions recover the
+        # axis-aligned rectangle even when a diagonal leader is connected to
+        # one corner. Text holes do not affect those margin rows.
+        run_candidates: list[
+            tuple[float, int, tuple[int, int, int, int]]
+        ] = []
+        for threshold in (235, 225, 210):
+            bright_rows = search >= threshold
+            rows: list[tuple[int, int, int]] = []
+            minimum_run = max(24, round(box_w * 0.42))
+            expected_left = local_box[0]
+            expected_right = local_box[0] + box_w
+            for row_index, row in enumerate(bright_rows):
+                padded = np.pad(row.astype("int8"), (1, 1))
+                transitions = np.diff(padded)
+                starts = np.flatnonzero(transitions == 1)
+                ends = np.flatnonzero(transitions == -1)
+                for run_left, run_right in zip(starts, ends):
+                    run_width = int(run_right - run_left)
+                    overlap = max(
+                        0,
+                        min(int(run_right), expected_right)
+                        - max(int(run_left), expected_left),
+                    )
+                    if (
+                        run_width >= minimum_run
+                        and run_width <= box_w * 1.30
+                        and overlap >= box_w * 0.32
+                    ):
+                        rows.append((row_index, int(run_left), int(run_right)))
+            if len(rows) < 3:
+                continue
+
+            median_left = float(np.median([row[1] for row in rows]))
+            median_right = float(np.median([row[2] for row in rows]))
+            tolerance = max(6, round(box_w * 0.12))
+            aligned = [
+                row
+                for row in rows
+                if abs(row[1] - median_left) <= tolerance
+                and abs(row[2] - median_right) <= tolerance
+            ]
+            if len(aligned) < 3:
+                continue
+
+            rectangle_left = round(float(np.median([row[1] for row in aligned])))
+            rectangle_right = round(float(np.median([row[2] for row in aligned])))
+            rectangle_top = min(row[0] for row in aligned)
+            rectangle_bottom = max(row[0] for row in aligned) + 1
+            rectangle_width = rectangle_right - rectangle_left
+            rectangle_height = rectangle_bottom - rectangle_top
+            if not (
+                rectangle_width >= box_w * 0.55
+                and rectangle_height >= box_h * 0.40
+                and rectangle_width / max(1, rectangle_height) >= 1.25
+            ):
+                continue
+            overlap_width = max(
+                0,
+                min(rectangle_right, expected_right)
+                - max(rectangle_left, expected_left),
+            )
+            overlap_height = max(
+                0,
+                min(rectangle_bottom, local_box[1] + box_h)
+                - max(rectangle_top, local_box[1]),
+            )
+            overlap_ratio = overlap_width * overlap_height / max(1, box_w * box_h)
+            # The detector box represents the white label itself. A long,
+            # dark leading digit can split most rows into a shorter bright
+            # run; never accept that right-hand remainder as the full label.
+            if overlap_ratio < 0.35 or overlap_width / max(1, box_w) < 0.82:
+                continue
+            run_candidates.append(
+                (
+                    overlap_ratio,
+                    len(aligned),
+                    (
+                        search_left + rectangle_left,
+                        search_top + rectangle_top,
+                        rectangle_width,
+                        rectangle_height,
+                    ),
+                )
+            )
+
+        if run_candidates:
+            refined_box = max(run_candidates, key=lambda item: item[:2])[2]
+
+        # Fallback for compressed labels whose clean top/bottom white margins
+        # are too short for the run detector.
         bright = np.where(search >= 225, 255, 0).astype("uint8")
         kernel_width = max(5, min(25, round(box_h * 0.18) * 2 + 1))
         clean = cv2.morphologyEx(
@@ -512,7 +603,6 @@ def _extract_coating_label_crop(
             cv2.getStructuringElement(cv2.MORPH_RECT, (kernel_width, 3)),
         )
         count, component_labels, stats, _centroids = cv2.connectedComponentsWithStats(clean, 8)
-        local_box = (x - search_left, y - search_top, box_w, box_h)
         candidates: list[tuple[float, float, int, tuple[int, int, int, int]]] = []
         for index in range(1, count):
             component_x, component_y, component_w, component_h, area = [
@@ -586,7 +676,7 @@ def _extract_coating_label_crop(
                     ),
                 )
             )
-        if candidates:
+        if candidates and not run_candidates:
             refined_box = max(candidates, key=lambda item: item[:3])[3]
     except Exception:  # pragma: no cover - optional OpenCV refinement.
         pass
@@ -600,6 +690,37 @@ def _extract_coating_label_crop(
             min(height, refined_y + refined_h),
         )
     )
+    try:
+        import cv2  # type: ignore
+        import numpy as np  # type: ignore
+
+        crop_array = np.array(crop.convert("L"))
+        dark = np.where(crop_array <= 205, 255, 0).astype("uint8")
+        count, labels, stats, _centroids = cv2.connectedComponentsWithStats(dark, 8)
+        artifact_mask = np.zeros_like(dark)
+        edge_tolerance = 2
+        for index in range(1, count):
+            component_x, component_y, component_w, component_h, _area = [
+                int(value) for value in stats[index]
+            ]
+            touches_boundary = (
+                component_x <= edge_tolerance
+                or component_y <= edge_tolerance
+                or component_x + component_w >= crop.width - edge_tolerance
+                or component_y + component_h >= crop.height - edge_tolerance
+            )
+            if touches_boundary:
+                artifact_mask[labels == index] = 255
+        if artifact_mask.any():
+            artifact_mask = cv2.dilate(
+                artifact_mask,
+                cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3)),
+            )
+            crop_array[artifact_mask > 0] = 255
+            crop = Image.fromarray(crop_array)
+    except Exception:  # pragma: no cover - optional OpenCV cleanup.
+        pass
+
     # OCR needs breathing room around italic digits, but the margin must not
     # come from the microscope image because it can contain the leader line.
     clean_margin = max(8, round(refined_h * 0.22))

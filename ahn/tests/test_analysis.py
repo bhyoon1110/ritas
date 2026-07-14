@@ -51,8 +51,9 @@ def test_coating_ocr_candidate_parser_keeps_multiple_labels() -> None:
 def test_coating_label_crop_isolates_white_rectangle_from_leader_line() -> None:
     image = Image.new("L", (500, 300), color=70)
     draw = ImageDraw.Draw(image)
-    draw.line((120, 220, 180, 158), fill=255, width=6)
     draw.rectangle((180, 120, 350, 165), fill=255)
+    draw.line((120, 220, 190, 150), fill=255, width=9)
+    draw.line((120, 220, 190, 150), fill=0, width=3)
     draw.rectangle((210, 132, 225, 153), fill=0)
 
     crop, refined_box = _extract_coating_label_crop(image, (174, 116, 182, 54))
@@ -63,6 +64,11 @@ def test_coating_label_crop_isolates_white_rectangle_from_leader_line() -> None:
     assert refined_box[3] >= 43
     assert crop.getpixel((0, 0)) == 255
     assert crop.width > refined_box[2]
+    # The black center of the leader touches the left label boundary but is
+    # removed before OCR; the interior text glyph remains.
+    margin = (crop.width - refined_box[2]) // 2
+    assert crop.crop((margin, margin, margin + 8, crop.height - margin)).getextrema()[0] == 255
+    assert crop.getextrema()[0] == 0
 
 
 def test_coating_label_crop_does_not_trim_wide_leading_digit_region() -> None:
