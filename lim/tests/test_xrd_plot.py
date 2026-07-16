@@ -409,8 +409,9 @@ def test_build_report_html_contains_xrd_template_sections(tmp_path) -> None:
     assert "전체 범례 보기" in html
     assert "ID: " in html
     assert 'gd.dataset.xrdLegendMode = mode' in html
-    assert 'layout["legend.x"] = 0.93' in html
-    assert 'layout["legend.y"] = 0.985' in html
+    assert 'layout["legend.x"] = 0.965' in html
+    assert 'layout["legend.y"] = 0.91' in html
+    assert 'path.setAttribute("d", "M5,0h12")' in html
     assert 'html[data-read-only-report="true"] #xrd-plot .rist-plot-control-row' not in html
     assert "@media screen and (max-width: 900px), screen and (pointer: coarse)" in html
     assert 'html[data-read-only-report="true"] #xrd-plot .rist-legend-drag-handle' in html
@@ -490,7 +491,7 @@ def test_build_report_html_contains_xrd_template_sections(tmp_path) -> None:
     assert "xrd-rank-1" in html
     assert "xrd-tool-toggle" in html
     assert 'toggle.setAttribute("aria-label", "그래프 도구")' in html
-    assert "setLegendTextX(row, textNode, tx + offset + 20)" in html
+    assert "setLegendTextX(row, textNode, tx + offset + 18)" in html
     assert "xrd-tool-panel" in html
     assert "xrd-tool-opacity-slider" in html
     assert "function controlRank(node)" in html

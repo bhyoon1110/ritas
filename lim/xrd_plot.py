@@ -640,10 +640,16 @@ def build_xrd_legend_checkbox_js(div_id: str) -> str:
   }}
   function baseTextX(row, textNode) {{
     var stored = row.getAttribute("data-rist-xrd-legend-text-x");
-    if (stored != null) return Number(stored) || 40;
+    if (stored != null) return Number(stored) || 20;
     var current = Number(textNode.getAttribute("x") || 40);
-    row.setAttribute("data-rist-xrd-legend-text-x", String(current));
-    return current;
+    var compact = Math.max(20, current - 20);
+    row.setAttribute("data-rist-xrd-legend-text-x", String(compact));
+    return compact;
+  }}
+  function shortenLegendSwatch(row) {{
+    Array.prototype.slice.call(row.querySelectorAll("g.legendlines path")).forEach(function(path) {{
+      path.setAttribute("d", "M5,0h12");
+    }});
   }}
   function setLegendTextX(row, textNode, targetX) {{
     var value = String(targetX);
@@ -667,7 +673,7 @@ def build_xrd_legend_checkbox_js(div_id: str) -> str:
     var tx = baseTextX(row, textNode);
     var ty = Number(textNode.getAttribute("y") || 0);
     var offset = Number(indent || 0);
-    setLegendTextX(row, textNode, tx + offset + 20);
+    setLegendTextX(row, textNode, tx + offset + 18);
     mark.setAttribute("transform", "translate(" + (tx + offset) + "," + (ty - 10) + ")");
   }}
   function paintCheckbox(mark, visible) {{
@@ -693,7 +699,8 @@ def build_xrd_legend_checkbox_js(div_id: str) -> str:
       var base = stripBox(node.textContent || "");
       var kind = legendKind(row);
       var isChild = kind === "phase" || kind === "separator";
-      var indent = isChild ? 22 : 0;
+      var indent = isChild ? 12 : 0;
+      shortenLegendSwatch(row);
       if (kind === "separator" || base.trim().indexOf("────────") === 0) {{
         removeCheckbox(row);
         if (isChild) {{
@@ -706,7 +713,7 @@ def build_xrd_legend_checkbox_js(div_id: str) -> str:
         }}
         node.textContent = base;
         node.style.fill = "#94a3b8";
-        node.style.fontSize = "11px";
+        node.style.fontSize = "10px";
         node.style.fontWeight = "600";
         node.style.opacity = "1";
         node.style.textDecoration = "none";
@@ -715,7 +722,7 @@ def build_xrd_legend_checkbox_js(div_id: str) -> str:
       if (isChild) {{
         var branch = ensureBranch(row);
         placeBranch(branch, row, node, indent);
-        node.style.fontSize = "11px";
+        node.style.fontSize = "10px";
         node.style.fontWeight = "400";
         node.style.fill = "#334155";
       }} else {{
@@ -884,7 +891,7 @@ def build_xrd_legend_view_controls_js(div_id: str) -> str:
     var primary = compact
       ? plainText(meta.xrd_phase_name || source)
       : source;
-    return compact ? truncate(primary, 28) : primary;
+    return compact ? truncate(primary, 36) : primary;
   }
 
   function formattedName(trace) {
@@ -902,9 +909,9 @@ def build_xrd_legend_view_controls_js(div_id: str) -> str:
     var source = sourceLabel(trace, meta);
     if (meta.xrd_separator) {
       source = source.replace(/^[-─\s]+/, "").trim();
-      return escapeHtml(mode === "compact" ? truncate(source, 28) : source);
+      return escapeHtml(mode === "compact" ? truncate(source, 34) : source);
     }
-    return escapeHtml(mode === "compact" ? truncate(source, 26) : source);
+    return escapeHtml(mode === "compact" ? truncate(source, 30) : source);
   }
 
   function legendCurves() {
@@ -936,9 +943,9 @@ def build_xrd_legend_view_controls_js(div_id: str) -> str:
         "legend.traceorder": "grouped"
       };
       if (placeAtInitialPosition) {
-        layout["legend.x"] = 0.93;
+        layout["legend.x"] = 0.965;
         layout["legend.xanchor"] = "right";
-        layout["legend.y"] = 0.985;
+        layout["legend.y"] = 0.91;
         layout["legend.yanchor"] = "top";
       }
       return window.Plotly.relayout(gd, layout);
