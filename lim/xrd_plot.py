@@ -645,9 +645,16 @@ def build_xrd_legend_checkbox_js(div_id: str) -> str:
     row.setAttribute("data-rist-xrd-legend-text-x", String(current));
     return current;
   }}
+  function setLegendTextX(row, textNode, targetX) {{
+    var value = String(targetX);
+    textNode.setAttribute("x", value);
+    Array.prototype.slice.call(textNode.querySelectorAll("tspan")).forEach(function(tspan) {{
+      tspan.setAttribute("x", value);
+    }});
+  }}
   function restoreTextX(row, textNode) {{
     var tx = baseTextX(row, textNode);
-    textNode.setAttribute("x", String(tx));
+    setLegendTextX(row, textNode, tx);
   }}
   function placeBranch(branch, row, textNode, indent) {{
     var tx = baseTextX(row, textNode);
@@ -660,8 +667,8 @@ def build_xrd_legend_checkbox_js(div_id: str) -> str:
     var tx = baseTextX(row, textNode);
     var ty = Number(textNode.getAttribute("y") || 0);
     var offset = Number(indent || 0);
-    textNode.setAttribute("x", String(tx + offset + 18));
-    mark.setAttribute("transform", "translate(" + (tx + offset + 2) + "," + (ty - 10) + ")");
+    setLegendTextX(row, textNode, tx + offset + 20);
+    mark.setAttribute("transform", "translate(" + (tx + offset) + "," + (ty - 10) + ")");
   }}
   function paintCheckbox(mark, visible) {{
     var rect = mark.querySelector("rect");
@@ -692,7 +699,7 @@ def build_xrd_legend_checkbox_js(div_id: str) -> str:
         if (isChild) {{
           var separatorBranch = ensureBranch(row);
           placeBranch(separatorBranch, row, node, indent);
-          node.setAttribute("x", String(baseTextX(row, node) + indent + 8));
+          setLegendTextX(row, node, baseTextX(row, node) + indent + 8);
         }} else {{
           removeBranch(row);
           restoreTextX(row, node);
@@ -795,9 +802,9 @@ def build_xrd_legend_view_controls_js(div_id: str) -> str:
 #__DIV_ID__ .rist-xrd-legend-restore {
   position: absolute;
   z-index: 19;
-  top: 42px;
-  right: 10px;
-  width: 32px;
+  top: 44px;
+  right: 44px;
+  width: 30px;
   height: 30px;
   border: 1px solid #cbd5e1;
   border-radius: 5px;
@@ -929,7 +936,7 @@ def build_xrd_legend_view_controls_js(div_id: str) -> str:
         "legend.traceorder": "grouped"
       };
       if (placeAtInitialPosition) {
-        layout["legend.x"] = 0.84;
+        layout["legend.x"] = 0.93;
         layout["legend.xanchor"] = "right";
         layout["legend.y"] = 0.985;
         layout["legend.yanchor"] = "top";
@@ -1626,8 +1633,8 @@ def build_xrd_tool_drawer_js(div_id: str) -> str:
     snippet = r"""
 <style>
 #__DIV_ID__ .rist-plot-control-row.xrd-tool-drawer-installed {
-  top: 58px;
-  right: 30px;
+  top: 44px;
+  right: 8px;
   z-index: 32;
   display: block;
   width: auto;
@@ -1637,16 +1644,26 @@ def build_xrd_tool_drawer_js(div_id: str) -> str:
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 54px;
+  width: 30px;
+  min-width: 30px;
   height: 30px;
   border: 1px solid #a8bbd3;
   border-radius: 5px;
   background: rgba(255,255,255,0.96);
   color: #1f2933;
   cursor: pointer;
-  font: bold 12px Arial, sans-serif;
-  padding: 0 12px;
+  padding: 0;
   box-shadow: 0 2px 8px rgba(15,23,42,0.14);
+}
+#__DIV_ID__ .xrd-tool-toggle svg {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  pointer-events: none;
 }
 #__DIV_ID__ .xrd-tool-toggle:hover {
   border-color: #7891a8;
@@ -1741,8 +1758,8 @@ def build_xrd_tool_drawer_js(div_id: str) -> str:
 }
 @media (max-width: 640px) {
   #__DIV_ID__ .rist-plot-control-row.xrd-tool-drawer-installed {
-    top: 50px;
-    right: 12px;
+    top: 42px;
+    right: 6px;
   }
   #__DIV_ID__ .xrd-tool-panel {
     width: min(340px, calc(100vw - 24px));
@@ -1773,8 +1790,14 @@ def build_xrd_tool_drawer_js(div_id: str) -> str:
     var toggle = document.createElement("button");
     toggle.type = "button";
     toggle.className = "xrd-tool-toggle";
-    toggle.textContent = "도구";
+    toggle.innerHTML = "<svg viewBox='0 0 24 24' aria-hidden='true'>"
+      + "<path d='M4 21v-7'></path><path d='M4 10V3'></path>"
+      + "<path d='M12 21v-9'></path><path d='M12 8V3'></path>"
+      + "<path d='M20 21v-5'></path><path d='M20 12V3'></path>"
+      + "<path d='M1 14h6'></path><path d='M9 8h6'></path><path d='M17 16h6'></path>"
+      + "</svg>";
     toggle.setAttribute("aria-expanded", "false");
+    toggle.setAttribute("aria-label", "그래프 도구");
     toggle.title = "그래프 도구";
 
     var panel = document.createElement("div");

@@ -553,7 +553,7 @@ def test_xrd_report_can_use_llm_comment_provider(tmp_path) -> None:
     assert "window.getComputedStyle(row).opacity" in result["html"]
     assert 'gd.on("plotly_restyle", schedule)' in result["html"]
     assert 'row.setAttribute("data-rist-xrd-legend-text-x"' in result["html"]
-    assert 'textNode.setAttribute("x", String(tx + offset + 18))' in result["html"]
+    assert "setLegendTextX(row, textNode, tx + offset + 20)" in result["html"]
     assert "rist-xrd-legend-branch" in result["html"]
     assert "function legendKind(row)" in result["html"]
     assert "xrd_raw_group" in result["html"]
