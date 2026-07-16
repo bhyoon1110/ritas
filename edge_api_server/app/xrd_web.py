@@ -134,11 +134,10 @@ _XRD_LLM_SYSTEM_PROMPT = (
     "수식은 LaTeX/Markdown 수식 문법을 쓰지 말고 일반 텍스트로 쓰세요.\n"
     "문안에는 LLM, AI, 자동 해석, 초안이라는 표현을 넣지 마세요.\n"
     "출력은 반드시 JSON 객체 하나로만 작성하고, 키는 "
-    "major_phases/similar_uncertain_phases/minor_phases/advisory 입니다.\n"
+    "major_phases/similar_uncertain_phases/minor_phases 입니다.\n"
     "- major_phases: '본 [샘플명] XRD 분석 결과, ... 주요 상으로 존재하는 것으로 판단됩니다.' 형식의 2~3문장\n"
     "- similar_uncertain_phases: 유사상 후보와 구분 한계를 2~3문장\n"
-    "- minor_phases: 미량상 후보와 근거를 1~2문장\n"
-    "- advisory: 원소 정보(XRF/ICP/EDS) 공유 시 추가 검토 가능, 없으면 XRD 단독 해석 한계를 고정 안내문으로 2문장"
+    "- minor_phases: 미량상 후보와 근거를 1~2문장"
 )
 
 
@@ -570,7 +569,6 @@ def _xrd_llm_comment_html(slots: dict[str, str]) -> str:
         ("major_phases", "주요상"),
         ("similar_uncertain_phases", "유사상 / 불확실상"),
         ("minor_phases", "미량상"),
-        ("advisory", "안내사항"),
     ]
     blocks = []
     for key, title in labels:
@@ -605,12 +603,6 @@ def _xrd_llm_fallback(context: dict[str, Any]) -> dict[str, str]:
         "minor_phases": (
             f"미량 상 후보는 {minor}건입니다. 피크 대응이 제한적인 후보는 미약한 피크 또는 배경 후보로 검토해야 합니다."
         ),
-        "advisory": (
-            "유사 상 구분 및 불순물/미량 상 확인을 위해 시료에 포함될 수 있는 주요 원소 정보(XRF/ICP/EDS)를 공유해주시면 "
-            "상 후보를 원소 제약 조건으로 추가 검토할 수 있습니다.\n"
-            "원소 정보가 없을 경우 XRD 결과만으로는 결정학적으로 유사한 상 구분 및 미량상 확인에 한계가 있어 "
-            "원소 성분 분석을 권장드립니다."
-        ),
     }
 
 
@@ -628,7 +620,6 @@ def _generate_xrd_llm_comment(
             "major_phases",
             "similar_uncertain_phases",
             "minor_phases",
-            "advisory",
         ],
         fallback=_xrd_llm_fallback(context),
     )

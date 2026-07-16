@@ -183,6 +183,20 @@ def test_image_display_repairs_latin1_utf8_filename_mojibake(tmp_path) -> None:
     assert garbled_name not in html
 
 
+def test_image_display_adds_phase_review_heading_only_when_requested(tmp_path) -> None:
+    image_path = tmp_path / "phase-match.png"
+    image_path.write_bytes(TINY_PNG)
+
+    plain_html = build_image_display_html([str(image_path)])
+    phase_review_html = build_image_display_html(
+        [str(image_path)],
+        show_phase_review_heading=True,
+    )
+
+    assert "유사상 미량상 확인" not in plain_html
+    assert "유사상 미량상 확인" in phase_review_html
+
+
 def test_phase_category_prefers_specific_folder_below_mixed_case_parent(tmp_path) -> None:
     pdf_root = tmp_path / "pdf"
     card_root = (
@@ -488,9 +502,13 @@ def test_build_report_html_contains_xrd_template_sections(tmp_path) -> None:
     assert "주요상 (Major Phases)" in html
     assert "Peak list Excel Display" in html
     assert "peaks.csv" in html
-    assert "그래프/상매칭 보조 이미지" in html
+    assert "유사상 미량상 확인" not in html
     assert "phase-match.png" in html
     assert "data:image/png;base64" in html
+    assert "추가 검토 안내" in html
+    assert "주요 원소 정보(XRF/ICP/EDS)를 공유해주시면" in html
+    assert "원소 성분 분석을 권장드립니다." in html
+    assert "안내사항" not in html
     assert "xrd-rank-1" in html
     assert "xrd-tool-toggle" in html
     assert 'toggle.setAttribute("aria-label", "그래프 도구")' in html
@@ -562,7 +580,7 @@ def test_phase_info_displays_db_peaks_and_highlights_similar_overlaps() -> None:
     assert html.count('class="xrd-phase-overlap-row"') == 3
 
 
-def test_xrd_html_does_not_draw_peak_number_markers_from_peak_list(tmp_path) -> None:
+def test_xrd_html_draws_numbered_peak_graph_from_peak_list(tmp_path) -> None:
     raw_path = tmp_path / "Mix3.txt"
     raw_path.write_text("10 1\n25.309 100\n30 3\n37.876 40\n", encoding="utf-8")
     pdf_dir = tmp_path / "pdf"
@@ -576,8 +594,76 @@ def test_xrd_html_does_not_draw_peak_number_markers_from_peak_list(tmp_path) -> 
 
     result = build_xrd_html([(str(raw_path), str(pdf_dir))], table_files=[str(table_path)])
 
-    assert "xrd_peak_list_marker" not in result["html"]
-    assert "Peak No." not in result["html"]
+    assert "xrd_peak_list_marker" in result["html"]
+    assert "Peak No." in result["html"]
+    assert "그래프 피크 번호" in result["html"]
+    assert "xrd-numbered-peak-plot" in result["html"]
+
+
+def test_peak_list_adds_phase_formula_and_norm_columns_from_icdd_candidates(tmp_path) -> None:
+    raw_path = tmp_path / "Mix3.txt"
+    raw_path.write_text("10 1\n25.309 100\n30 3\n", encoding="utf-8")
+    pdf_dir = tmp_path / "pdf"
+    pdf_dir.mkdir()
+    table_path = tmp_path / "Peak list.csv"
+    table_path.write_text("No.,2theta,Card No\n1,25.309,00-064-0863\n", encoding="utf-8")
+    candidate = {
+        "label": "Anatase, syn (TiO2) / 00-064-0863(S)",
+        "color": "#e41a1c",
+        "peaks": [
+            {
+                "no": "1",
+                "two_theta": 25.309,
+                "d": "3.516",
+                "norm": 100.0,
+                "hkl": "1 0 1",
+            }
+        ],
+        "trace_idx": 1,
+        "metadata": {
+            "phase_name": "Anatase, syn",
+            "formula": "Ti O2",
+            "card_no": "00-064-0863",
+        },
+        "match": {"score": 90.0, "matched_count": 1, "important_count": 1},
+        "category": "major",
+    }
+    fig = go.Figure()
+    fig.add_trace(
+        go.Scatter(
+            x=[10, 25.309, 30],
+            y=[1, 100, 3],
+            mode="lines",
+            name="Mix3",
+            meta={"xrd_raw": True},
+        )
+    )
+
+    html = build_report_html(
+        fig,
+        sample_name="Mix3",
+        groups=[("Mix3", "#d62728", [candidate])],
+        group_map={"Mix3": [0, 1]},
+        warnings=[],
+        table_files=[str(table_path)],
+        peak_tables=[parse_peak_list_table(str(table_path))],
+        image_files=[],
+        origin=False,
+        first_stem="Mix3",
+        raw_line_indices=[0],
+        highlight_groups={0: [0, 1]},
+    )
+
+    assert "Phase Name" in html
+    assert "Chemical Formula" in html
+    assert "Norm. I." in html
+    assert 'class="xrd-peak-col-phase"' in html
+    assert 'class="xrd-peak-col-formula"' in html
+    assert 'class="xrd-peak-col-norm"' in html
+    assert "Anatase, syn" in html
+    assert "TiO2" in html
+    assert "100.00" in html
+    assert "ICDD Card PDF에서 추출한 후보 피크" not in html
 
 
 def test_read_xlsx_preview_reads_first_sheet(tmp_path) -> None:

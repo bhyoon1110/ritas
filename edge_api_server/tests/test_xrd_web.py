@@ -279,8 +279,8 @@ def test_xrd_analyze_includes_table_and_image_inputs(tmp_path) -> None:
     assert response.status_code == 200
     assert "Peak list Excel Display" in response.text
     assert "peaks.csv" in response.text
-    assert "그래프/상매칭 보조 이미지" in response.text
     assert "match.png" in response.text
+    assert "유사상 미량상 확인" not in response.text
     assert "data:image/png;base64" in response.text
 
 

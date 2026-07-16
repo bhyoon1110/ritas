@@ -94,6 +94,13 @@ HEADER = ["No.", "2θ, °", "d-value", "Norm. I.", "h k l"]
 XRD_DOWNLOAD_IMAGE_FORMAT = "jpeg"
 XRD_IMAGE_FORMAT_SELECTOR = False
 
+XRD_FIXED_ELEMENT_GUIDANCE = (
+    "유사 상 구분 및 불순물/미량 상 확인을 위해, 시료에 포함될 수 있는 주요 원소 정보"
+    "(XRF/ICP/EDS)를 공유해주시면 상 후보를 원소 제약 조건으로 추가 검토할 수 있습니다.",
+    "원소 정보가 없을 경우, XRD 결과만으로는 결정학적으로 유사한 상 구분 및 미량상 "
+    "확인하는 데 한계가 있어 원소 성분 분석을 권장드립니다.",
+)
+
 # raw 라인 색상(여러 raw 파일을 구분). 첫 번째 측정 데이터는 보고서 기본 빨간색.
 RAW_LINE_COLORS = [
     "#d62728", "#1f3b73", "#7a1f1f", "#1f5c2e",
@@ -2047,6 +2054,21 @@ def _find_column(headers: list[str], *needles: str) -> int | None:
     return None
 
 
+def _peak_display_column_class(header: str) -> str:
+    normalized = _normalized_header(header)
+    if "phasename" in normalized:
+        return "xrd-peak-col-phase"
+    if "chemicalformula" in normalized or normalized == "formula":
+        return "xrd-peak-col-formula"
+    if "normi" in normalized or "normalizedintensity" in normalized:
+        return "xrd-peak-col-norm"
+    if normalized in {"no", "number", "peakno"}:
+        return "xrd-peak-col-no"
+    if normalized.startswith("2θ") or "2theta" in normalized:
+        return "xrd-peak-col-theta"
+    return "xrd-peak-col-data"
+
+
 def _is_esd_header(header: str) -> bool:
     normalized = _normalized_header(header)
     return normalized in {"esd", "esd"} or "esd" in normalized
@@ -2323,11 +2345,6 @@ def build_auto_interpretation_html(sample_name: str, groups, warnings: list[str]
             "<strong>C. 미량상 (Minor Phases)</strong><br>"
             "미량상 후보는 없습니다."
         ),
-        (
-            "<strong>안내</strong><br>"
-            "유사상 구분 및 불순물/미량상 확인을 위해 XRF, ICP, EDS 등 원소 성분 정보를 "
-            "함께 검토하면 후보상을 더 좁힐 수 있습니다."
-        ),
     ]
     if warnings:
         paragraphs.append(
@@ -2597,7 +2614,74 @@ def _peak_row_card_match(peak: dict[str, Any], known_cards: set[str]) -> bool:
     return bool(cards) and any(card in known_cards for card in cards)
 
 
-def _peak_list_display_html(peak_tables: list[dict[str, Any]], known_cards: set[str]) -> str:
+def _peak_candidate_values(peak: dict[str, Any], groups) -> dict[str, str]:
+    card_numbers = set(peak.get("card_numbers") or [])
+    theta = _float_or_none(peak.get("two_theta"))
+    peak_phase_name = str(peak.get("phase_name") or "").strip().lower()
+    peak_formula = re.sub(r"\s+", "", str(peak.get("formula") or "")).lower()
+    matched_items = []
+    for _raw_stem, _raw_color, items in groups:
+        for item in items:
+            metadata = item.get("metadata") or {}
+            card_no = normalize_card_no(metadata.get("card_no") or "")
+            if card_numbers and card_no not in card_numbers:
+                continue
+            item_phase_name = str(metadata.get("phase_name") or "").strip().lower()
+            item_formula = re.sub(r"\s+", "", str(metadata.get("formula") or "")).lower()
+            if not card_numbers and peak_phase_name and peak_phase_name not in item_phase_name:
+                continue
+            if not card_numbers and peak_formula and peak_formula != item_formula:
+                continue
+            if not card_numbers and not peak_phase_name and not peak_formula:
+                candidate_thetas = [
+                    float(value)
+                    for value in (
+                        _float_or_none(candidate.get("two_theta"))
+                        for candidate in (item.get("peaks") or [])
+                    )
+                    if value is not None
+                ]
+                if theta is None or not candidate_thetas or min(abs(value - theta) for value in candidate_thetas) > 0.35:
+                    continue
+            matched_items.append(item)
+
+    def unique_join(values: list[str]) -> str:
+        return " / ".join(dict.fromkeys(value for value in values if value))
+
+    phase_names = []
+    formulas = []
+    norms = []
+    for item in matched_items:
+        metadata = item.get("metadata") or {}
+        phase_names.append(str(metadata.get("phase_name") or "").strip())
+        formulas.append(_compact_formula(str(metadata.get("formula") or "").strip()))
+        if theta is None:
+            continue
+        candidates = [
+            candidate
+            for candidate in (item.get("peaks") or [])
+            if _float_or_none(candidate.get("two_theta")) is not None
+        ]
+        if not candidates:
+            continue
+        closest = min(candidates, key=lambda candidate: abs(float(candidate["two_theta"]) - theta))
+        if abs(float(closest["two_theta"]) - theta) <= 0.35:
+            norm = _float_or_none(closest.get("norm"))
+            if norm is not None:
+                norms.append(f"{norm:.2f}")
+
+    return {
+        "phase_name": unique_join(phase_names),
+        "formula": unique_join(formulas),
+        "norm_i": unique_join(norms),
+    }
+
+
+def _peak_list_display_html(
+    peak_tables: list[dict[str, Any]],
+    known_cards: set[str],
+    groups,
+) -> str:
     if not peak_tables:
         return ""
     blocks = []
@@ -2611,7 +2695,7 @@ def _peak_list_display_html(peak_tables: list[dict[str, Any]], known_cards: set[
                 "</article>"
             )
             continue
-        headers = table.get("display_headers") or []
+        headers = list(table.get("display_headers") or [])
         rows = table.get("display_rows") or []
         if not headers or not rows:
             blocks.append(
@@ -2621,16 +2705,35 @@ def _peak_list_display_html(peak_tables: list[dict[str, Any]], known_cards: set[
                 "</article>"
             )
             continue
-        header_html = "<th>Card No<br>연동</th>" + "".join(
-            f"<th>{_esc(header)}</th>" for header in headers
+        required_columns = [
+            ("Phase Name", "phase_name"),
+            ("Chemical Formula", "formula"),
+            ("Norm. I.", "norm_i"),
+        ]
+        for label, _key in required_columns:
+            if _find_column(headers, label) is None:
+                headers.append(label)
+        column_classes = [_peak_display_column_class(header) for header in headers]
+        header_html = '<th class="xrd-peak-col-check">Card No<br>연동</th>' + "".join(
+            f'<th class="{column_class}">{_esc(header)}</th>'
+            for header, column_class in zip(headers, column_classes)
         )
         body_rows = []
         for display_row, peak in rows:
+            rendered_row = list(display_row) + [""] * max(0, len(headers) - len(display_row))
+            candidate_values = _peak_candidate_values(peak, groups)
+            for label, key in required_columns:
+                column_index = _find_column(headers, label)
+                if column_index is not None and not str(rendered_row[column_index] or "").strip():
+                    rendered_row[column_index] = candidate_values[key]
             matched = _peak_row_card_match(peak, known_cards)
             row_class = " class=\"xrd-overlap-row\"" if peak.get("is_overlap") else ""
             checked = " checked" if matched else ""
             title = "ICDD 후보 Card No와 연동됨" if matched else "ICDD 후보 Card No와 매칭되지 않아 기본 해제"
-            cells = "".join(f"<td>{_esc(cell)}</td>" for cell in display_row)
+            cells = "".join(
+                f'<td class="{column_class}">{_esc(cell)}</td>'
+                for cell, column_class in zip(rendered_row, column_classes)
+            )
             body_rows.append(
                 f"<tr{row_class} data-card-nos=\"{_esc(','.join(peak.get('card_numbers') or []))}\">"
                 f"<td class=\"xrd-card-check\"><input type=\"checkbox\" disabled{checked} title=\"{_esc(title)}\"></td>"
@@ -2670,7 +2773,11 @@ def build_excel_display_html(table_files: list[str]) -> str:
 """
 
 
-def build_image_display_html(image_files: list[str]) -> str:
+def build_image_display_html(
+    image_files: list[str],
+    *,
+    show_phase_review_heading: bool = False,
+) -> str:
     if not image_files:
         return ""
     figures = []
@@ -2694,14 +2801,118 @@ def build_image_display_html(image_files: list[str]) -> str:
                 </figure>
                 """
             )
+    heading = (
+        """
+  <div class="xrd-subsection-head">
+    <h3>유사상 미량상 확인</h3>
+  </div>
+"""
+        if show_phase_review_heading
+        else ""
+    )
     return f"""
 <section class="xrd-report-section" id="xrd-image-info">
-  <div class="xrd-section-head">
-    <h2>그래프/상매칭 보조 이미지</h2>
-    <p>입력 bundle에 포함된 이미지 파일을 보고서에 함께 표시합니다.</p>
-  </div>
+  {heading}
   <div class="xrd-image-grid">{''.join(figures)}</div>
 </section>
+"""
+
+
+def build_numbered_peak_graph_html(fig, peak_tables: list[dict[str, Any]]) -> str:
+    peaks = [
+        peak
+        for table in peak_tables
+        for peak in (table.get("peaks") or [])
+        if _float_or_none(peak.get("two_theta")) is not None
+    ]
+    raw_traces = [
+        trace
+        for trace in fig.data
+        if isinstance(getattr(trace, "meta", None), dict) and trace.meta.get("xrd_raw")
+    ]
+    if not peaks or not raw_traces:
+        return ""
+
+    numbered = go.Figure()
+    for trace in raw_traces:
+        trace_x = list(trace.x) if trace.x is not None else []
+        trace_y = list(trace.y) if trace.y is not None else []
+        numbered.add_trace(
+            go.Scatter(
+                x=trace_x,
+                y=trace_y,
+                mode="lines",
+                name=str(trace.name or "raw"),
+                line=dict(
+                    color=getattr(getattr(trace, "line", None), "color", None) or "#d62728",
+                    width=2,
+                ),
+                hovertemplate="2θ=%{x:.3f}°<br>Intensity=%{y:.2f}<extra>%{fullData.name}</extra>",
+            )
+        )
+
+    marker_x: list[float] = []
+    marker_y: list[float] = []
+    marker_text: list[str] = []
+    for peak in peaks:
+        theta = float(peak["two_theta"])
+        choices = []
+        for trace in raw_traces:
+            trace_x = list(trace.x) if trace.x is not None else []
+            trace_y = list(trace.y) if trace.y is not None else []
+            points = [
+                (float(x), float(y))
+                for x, y in zip(trace_x, trace_y)
+                if _float_or_none(x) is not None and _float_or_none(y) is not None
+            ]
+            if not points:
+                continue
+            point = min(points, key=lambda value: abs(value[0] - theta))
+            choices.append(point)
+        if not choices:
+            continue
+        selected_x, selected_y = max(choices, key=lambda value: value[1])
+        marker_x.append(selected_x)
+        marker_y.append(selected_y)
+        marker_text.append(str(peak.get("no") or len(marker_text) + 1))
+
+    if marker_x:
+        numbered.add_trace(
+            go.Scatter(
+                x=marker_x,
+                y=marker_y,
+                mode="markers+text",
+                text=marker_text,
+                textposition="top center",
+                textfont=dict(size=11, color="#172a46"),
+                marker=dict(size=7, color="#172a46", line=dict(width=1, color="#ffffff")),
+                name="Peak No.",
+                showlegend=False,
+                hovertemplate="Peak %{text}<br>2θ=%{x:.3f}°<br>Intensity=%{y:.2f}<extra></extra>",
+                meta={"xrd_peak_list_marker": True},
+            )
+        )
+    numbered.update_layout(
+        height=340,
+        margin=dict(l=62, r=24, t=26, b=58),
+        paper_bgcolor="#ffffff",
+        plot_bgcolor="#ffffff",
+        hovermode="closest",
+        xaxis=dict(title="2θ (°)", showline=True, mirror=True, linecolor="#111827"),
+        yaxis=dict(title="Intensity (cps)", showline=True, mirror=True, linecolor="#111827"),
+        legend=dict(orientation="h", x=0, y=1.08),
+    )
+    graph_html = numbered.to_html(
+        full_html=False,
+        include_plotlyjs=False,
+        div_id="xrd-numbered-peak-plot",
+        config={"displayModeBar": False, "responsive": True},
+    )
+    return f"""
+  <div class="xrd-numbered-peak-block">
+    <h3>그래프 피크 번호</h3>
+    <div class="xrd-numbered-peak-graph">{graph_html}</div>
+  </div>
 """
 
 
@@ -2709,6 +2920,7 @@ def build_peak_info_html(
     groups,
     table_files: list[str] | None = None,
     peak_tables: list[dict[str, Any]] | None = None,
+    numbered_peak_graph_html: str = "",
 ) -> str:
     known_cards = _card_no_set_from_groups(groups)
     rows = []
@@ -2735,13 +2947,8 @@ def build_peak_info_html(
         if rows
         else '<tr><td colspan="7" class="xrd-empty">추출된 피크 정보가 없습니다.</td></tr>'
     )
-    return f"""
-<section class="xrd-report-section" id="xrd-peak-info">
-  <div class="xrd-section-head">
-    <h2>피크 정보</h2>
-    <p>Excel Peak list의 2θ/Card No/Phase Name을 기준으로 피크 번호와 후보상 연동을 표시합니다.</p>
-  </div>
-  {_peak_list_display_html(peak_tables or [], known_cards) or build_excel_display_html(table_files or [])}
+    has_peak_list = any(table.get("display_rows") for table in (peak_tables or []))
+    candidate_peak_table = "" if has_peak_list else f"""
   <div class="xrd-table-scroll">
     <table class="xrd-report-table xrd-peak-table">
       <caption>ICDD Card PDF에서 추출한 후보 피크</caption>
@@ -2754,6 +2961,16 @@ def build_peak_info_html(
       <tbody>{body}</tbody>
     </table>
   </div>
+"""
+    return f"""
+<section class="xrd-report-section" id="xrd-peak-info">
+  <div class="xrd-section-head">
+    <h2>피크 정보</h2>
+    <p>Excel Peak list의 2θ/Card No/Phase Name을 기준으로 피크 번호와 후보상 연동을 표시합니다.</p>
+  </div>
+  {numbered_peak_graph_html}
+  {_peak_list_display_html(peak_tables or [], known_cards, groups) or build_excel_display_html(table_files or [])}
+  {candidate_peak_table}
 </section>
 """
 
@@ -3085,6 +3302,11 @@ def xrd_report_css() -> str:
   .xrd-comment-box[contenteditable="true"]:focus { border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37, 99, 235, .16); }
   .xrd-comment-box p { margin: 0 0 12px; font-size: 14px; line-height: 1.65; }
   .xrd-comment-box p:last-child { margin-bottom: 0; }
+  .xrd-fixed-guidance { border: 1px solid #93c5fd; border-left: 5px solid #2563eb; border-radius: 8px; background: #eff6ff; padding: 14px 16px; }
+  .xrd-fixed-guidance p { margin: 0 0 8px; font-size: 14px; line-height: 1.65; color: #172a46; }
+  .xrd-fixed-guidance p:last-child { margin-bottom: 0; }
+  .xrd-subsection-head { border-bottom: 1px solid #d1d5db; padding-bottom: 6px; margin-bottom: 10px; }
+  .xrd-subsection-head h3 { margin: 0; font-size: 16px; color: #172a46; }
   .xrd-table-scroll { border-radius: 10px; overflow: auto; max-height: 520px; }
   .xrd-report-table, .xrd-mini-table { width: 100%; border-collapse: collapse; font-size: 12px; }
   .xrd-report-table caption { caption-side: top; text-align: left; font-weight: 700; padding: 8px 0; color: #374151; }
@@ -3100,6 +3322,10 @@ def xrd_report_css() -> str:
   .xrd-overlap-row { background: #fff7cc !important; }
   .xrd-provided-block { margin: 0 0 14px; }
   .xrd-provided-block > h3 { font-size: 14px; margin: 0 0 8px; }
+  .xrd-numbered-peak-block { margin: 0 0 16px; }
+  .xrd-numbered-peak-block > h3 { font-size: 14px; margin: 0 0 8px; }
+  .xrd-numbered-peak-graph { height: 340px; border: 1px solid #cbd5e1; border-radius: 8px; overflow: hidden; background: #fff; }
+  #xrd-numbered-peak-plot { width: 100% !important; height: 340px !important; }
   .xrd-file-table { margin: 10px 0 14px; }
   .xrd-file-table h3 { font-size: 13px; margin: 0 0 6px; color: #374151; }
   .xrd-file-table-scroll { max-height: 360px; border-width: 1px; border-radius: 8px; }
@@ -3195,6 +3421,7 @@ def xrd_report_css() -> str:
     #xrd-plot { height: 400px !important; min-height: 340px; }
     .xrd-phase-grid { grid-template-columns: 1fr; }
     .xrd-image-grid { grid-template-columns: 1fr; }
+    .xrd-numbered-peak-graph, #xrd-numbered-peak-plot { height: 300px !important; }
   }
   @media (min-width: 761px) and (max-width: 1280px) {
     #xrd-plot { height: 430px !important; min-height: 380px; }
@@ -3316,6 +3543,14 @@ def xrd_report_css() -> str:
       break-before: page;
       page-break-before: always;
     }
+    .xrd-numbered-peak-block {
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+    .xrd-numbered-peak-graph, #xrd-numbered-peak-plot {
+      height: 92mm !important;
+      max-height: 92mm !important;
+    }
     #xrd-plot .modebar,
     #xrd-plot .rist-plot-control-row,
     #xrd-plot .xrd-tool-toggle,
@@ -3404,6 +3639,26 @@ def xrd_report_css() -> str:
       break-inside: avoid;
       page-break-inside: avoid;
     }
+    .xrd-peak-list-display {
+      width: 100% !important;
+      table-layout: fixed;
+      font-size: 6.5px;
+    }
+    .xrd-peak-list-display th,
+    .xrd-peak-list-display td {
+      min-width: 0 !important;
+      padding: 2px 3px !important;
+      white-space: normal !important;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+      line-height: 1.15;
+    }
+    .xrd-peak-list-display .xrd-peak-col-check { width: 5%; }
+    .xrd-peak-list-display .xrd-peak-col-no { width: 4%; }
+    .xrd-peak-list-display .xrd-peak-col-theta { width: 7%; }
+    .xrd-peak-list-display .xrd-peak-col-phase { width: 25%; }
+    .xrd-peak-list-display .xrd-peak-col-formula { width: 16%; }
+    .xrd-peak-list-display .xrd-peak-col-norm { width: 7%; }
     .xrd-phase-group {
       break-inside: avoid;
       page-break-inside: avoid;
@@ -3490,8 +3745,21 @@ def build_report_html(
         comment_note
         or "raw 피크, ICDD 후보상, 첨부 표/이미지 정보를 기준으로 정리한 분석결과입니다."
     )
-    image_info = build_image_display_html(image_files or [])
-    peak_info = build_peak_info_html(groups, table_files or [], peak_tables or [])
+    grouped_phases = _phase_groups(groups)
+    show_phase_review_heading = bool(
+        grouped_phases.get("uncertain") or grouped_phases.get("minor")
+    )
+    image_info = build_image_display_html(
+        image_files or [],
+        show_phase_review_heading=show_phase_review_heading,
+    )
+    numbered_peak_graph = build_numbered_peak_graph_html(fig, peak_tables or [])
+    peak_info = build_peak_info_html(
+        groups,
+        table_files or [],
+        peak_tables or [],
+        numbered_peak_graph,
+    )
     phase_info = build_phase_info_html(groups, peak_tables or [])
     group_toggle_js = build_group_toggle_js("xrd-plot", group_map)
     return f"""<!doctype html>
@@ -3531,6 +3799,15 @@ def build_report_html(
       </div>
       {warning_html}
       <div class="xrd-comment-box" id="xrd-analysis-result" contenteditable="true" spellcheck="false" aria-label="분석결과 편집">{comments}</div>
+    </section>
+    <section class="xrd-report-section" id="xrd-element-guidance">
+      <div class="xrd-section-head">
+        <h2>추가 검토 안내</h2>
+      </div>
+      <div class="xrd-fixed-guidance">
+        <p>{_esc(XRD_FIXED_ELEMENT_GUIDANCE[0])}</p>
+        <p>{_esc(XRD_FIXED_ELEMENT_GUIDANCE[1])}</p>
+      </div>
     </section>
     {peak_info}
     {phase_info}
