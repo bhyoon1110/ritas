@@ -93,6 +93,7 @@ HEADER = ["No.", "2θ, °", "d-value", "Norm. I.", "h k l"]
 
 XRD_DOWNLOAD_IMAGE_FORMAT = "jpeg"
 XRD_IMAGE_FORMAT_SELECTOR = False
+XRD_SIMILAR_PHASE_TOLERANCE = 0.06
 
 XRD_FIXED_ELEMENT_GUIDANCE = (
     "유사 상 구분 및 불순물/미량 상 확인을 위해, 시료에 포함될 수 있는 주요 원소 정보"
@@ -2978,26 +2979,44 @@ def build_peak_info_html(
 def _phase_overlap_peak_indices(
     items: list[dict[str, Any]],
     *,
-    tolerance: float = 0.25,
+    tolerance: float = XRD_SIMILAR_PHASE_TOLERANCE,
 ) -> dict[int, set[int]]:
-    """같은 유사상 묶음 안에서 2θ가 겹치는 PDF DB 피크 행을 찾는다."""
-    points: list[tuple[int, int, float]] = []
-    overlaps: dict[int, set[int]] = {}
+    """같은 유사상 폴더의 모든 PDF 페이즈에 공통인 2θ 피크를 찾는다."""
+    if len(items) < 2:
+        return {}
+
+    phase_points: list[tuple[int, list[tuple[int, float]]]] = []
     for item in items:
         trace_idx = int(item.get("trace_idx") or -1)
-        overlaps.setdefault(trace_idx, set())
+        points: list[tuple[int, float]] = []
         for peak_index, peak in enumerate(item.get("peaks") or []):
             theta = _float_or_none(peak.get("two_theta"))
             if theta is not None:
-                points.append((trace_idx, peak_index, theta))
+                points.append((peak_index, theta))
+        if not points:
+            return {}
+        phase_points.append((trace_idx, points))
 
-    for left_index, (left_trace, left_peak, left_theta) in enumerate(points):
-        for right_trace, right_peak, right_theta in points[left_index + 1:]:
-            if left_trace == right_trace:
-                continue
-            if abs(left_theta - right_theta) <= tolerance:
-                overlaps.setdefault(left_trace, set()).add(left_peak)
-                overlaps.setdefault(right_trace, set()).add(right_peak)
+    overlaps: dict[int, set[int]] = {
+        trace_idx: set() for trace_idx, _points in phase_points
+    }
+    _, anchor_points = min(phase_points, key=lambda value: len(value[1]))
+    epsilon = 1e-9
+    for _anchor_peak_index, anchor_theta in anchor_points:
+        matched: list[tuple[int, int, float]] = []
+        for trace_idx, points in phase_points:
+            peak_index, theta = min(
+                points,
+                key=lambda value: abs(value[1] - anchor_theta),
+            )
+            if abs(theta - anchor_theta) > tolerance + epsilon:
+                break
+            matched.append((trace_idx, peak_index, theta))
+        else:
+            matched_thetas = [theta for _trace_idx, _peak_index, theta in matched]
+            if max(matched_thetas) - min(matched_thetas) <= tolerance + epsilon:
+                for trace_idx, peak_index, _theta in matched:
+                    overlaps[trace_idx].add(peak_index)
     return overlaps
 
 
@@ -3018,38 +3037,6 @@ def _phase_db_peak_rows(peaks: list[dict[str, Any]], overlap_indices: set[int] |
             )
         )
     return "".join(rows) or '<tr><td colspan="5">-</td></tr>'
-
-
-def _phase_excel_overlap_peak_indices(
-    item: dict[str, Any],
-    peak_tables: list[dict[str, Any]] | None,
-    *,
-    tolerance: float = 0.25,
-) -> set[int]:
-    """Peak list Excel에서 겹침으로 표시된 행과 가까운 PDF DB 피크 행을 찾는다."""
-    if not peak_tables:
-        return set()
-    card_no = normalize_card_no((item.get("metadata") or {}).get("card_no") or "")
-    overlap_thetas: list[float] = []
-    for table in peak_tables:
-        for peak in table.get("peaks") or []:
-            if not peak.get("is_overlap"):
-                continue
-            theta = _float_or_none(peak.get("two_theta"))
-            if theta is None:
-                continue
-            card_numbers = peak.get("card_numbers") or []
-            if card_no and card_numbers and card_no not in card_numbers:
-                continue
-            overlap_thetas.append(theta)
-    indices: set[int] = set()
-    for index, peak in enumerate(item.get("peaks") or []):
-        theta = _float_or_none(peak.get("two_theta"))
-        if theta is None:
-            continue
-        if any(abs(theta - excel_theta) <= tolerance for excel_theta in overlap_thetas):
-            indices.add(index)
-    return indices
 
 
 def _phase_db_peak_table_html(item: dict[str, Any], overlap_indices: set[int]) -> str:
@@ -3096,7 +3083,14 @@ def build_phase_info_html(groups, peak_tables: list[dict[str, Any]] | None = Non
                 )
             overlap_indices = (
                 _phase_overlap_peak_indices(group_items)
-                if category == "uncertain" and len(group_items) > 1
+                if (
+                    category == "uncertain"
+                    and len(group_items) > 1
+                    and all(
+                        item.get("category_source") == "folder"
+                        for item in group_items
+                    )
+                )
                 else {}
             )
             cards = []
@@ -3126,7 +3120,6 @@ def build_phase_info_html(groups, peak_tables: list[dict[str, Any]] | None = Non
                 )
                 trace_idx = int(item.get("trace_idx") or -1)
                 row_highlights = set(overlap_indices.get(trace_idx) or set())
-                row_highlights.update(_phase_excel_overlap_peak_indices(item, peak_tables))
                 cards.append(
                     f"""
                     <article class="xrd-phase-card xrd-card xrd-phase-db-card" data-trace="{item['trace_idx']}">
@@ -3135,7 +3128,7 @@ def build_phase_info_html(groups, peak_tables: list[dict[str, Any]] | None = Non
                         <div class="xrd-phase-meta-chips">{meta_html}</div>
                       </header>
                       {_phase_db_peak_table_html(item, row_highlights)}
-                      <p class="xrd-table-note">노란 행은 유사상 그룹 또는 Peak list Excel에서 겹치는 DB 피크입니다.</p>
+                      <p class="xrd-table-note">노란 행은 같은 유사상 폴더의 모든 PDF 페이즈에서 2θ가 ±0.06° 이내로 공통인 DB 피크입니다.</p>
                     </article>
                     """
                 )
@@ -3167,7 +3160,7 @@ def build_phase_info_html(groups, peak_tables: list[dict[str, Any]] | None = Non
 <section class="xrd-report-section" id="xrd-phase-info">
   <div class="xrd-section-head">
     <h2>결정상(Phase) 정보</h2>
-    <p>PDF/DB 카드의 결정상 정보를 주요상, 유사/불확실상, 미량상 후보로 묶어 표시합니다. 유사상 그룹과 Peak list Excel에서 겹치는 피크는 노란색으로 강조합니다.</p>
+    <p>PDF/DB 카드의 결정상 정보를 주요상, 유사/불확실상, 미량상 후보로 묶어 표시합니다. 같은 유사상 폴더의 모든 PDF 페이즈에서 2θ가 ±0.06° 이내로 공통인 피크만 노란색으로 강조합니다.</p>
   </div>
   {''.join(sections)}
 </section>

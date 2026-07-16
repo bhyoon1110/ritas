@@ -9,6 +9,8 @@ import plotly.graph_objects as go
 from lim.xrd_plot import (
     XRD_DOWNLOAD_IMAGE_FORMAT,
     XRD_IMAGE_FORMAT_SELECTOR,
+    XRD_SIMILAR_PHASE_TOLERANCE,
+    _phase_overlap_peak_indices,
     assign_relative_phase_categories,
     build_image_display_html,
     build_phase_info_html,
@@ -522,7 +524,7 @@ def test_build_report_html_contains_xrd_template_sections(tmp_path) -> None:
     assert "plotly" in html.lower()
 
 
-def test_phase_info_displays_db_peaks_and_highlights_similar_overlaps() -> None:
+def test_phase_info_highlights_only_common_peaks_from_similar_folder_pdfs() -> None:
     base = {
         "color": "#e41a1c",
         "metadata": {
@@ -533,6 +535,7 @@ def test_phase_info_displays_db_peaks_and_highlights_similar_overlaps() -> None:
         },
         "match": {"score": 80.0, "matched_count": 3, "important_count": 4},
         "category": "uncertain",
+        "category_source": "folder",
         "folder_group": "유사상 1",
     }
     first = {
@@ -554,20 +557,7 @@ def test_phase_info_displays_db_peaks_and_highlights_similar_overlaps() -> None:
         ],
     }
 
-    peak_tables = [
-        {
-            "peaks": [
-                {
-                    "no": "2",
-                    "two_theta": 37.876,
-                    "card_numbers": ["000640863"],
-                    "is_overlap": True,
-                }
-            ]
-        }
-    ]
-
-    html = build_phase_info_html([("Mix3", "#d62728", [first, second])], peak_tables=peak_tables)
+    html = build_phase_info_html([("Mix3", "#d62728", [first, second])])
 
     assert "유사상 1" in html
     assert "유사/불확실상 2건" in html
@@ -577,7 +567,72 @@ def test_phase_info_displays_db_peaks_and_highlights_similar_overlaps() -> None:
     assert "d-value" in html
     assert "Norm. I." in html
     assert "xrd-phase-overlap-row" in html
-    assert html.count('class="xrd-phase-overlap-row"') == 3
+    assert html.count('class="xrd-phase-overlap-row"') == 2
+    assert "±0.06°" in html
+    assert "Peak list Excel에서 겹치는" not in html
+
+
+def test_similar_phase_overlap_requires_every_phase_within_tolerance() -> None:
+    items = [
+        {
+            "trace_idx": 1,
+            "peaks": [
+                {"two_theta": 25.300},
+                {"two_theta": 37.000},
+            ],
+        },
+        {
+            "trace_idx": 2,
+            "peaks": [
+                {"two_theta": 25.340},
+                {"two_theta": 37.055},
+            ],
+        },
+        {
+            "trace_idx": 3,
+            "peaks": [
+                {"two_theta": 25.359},
+                {"two_theta": 37.080},
+            ],
+        },
+    ]
+
+    overlaps = _phase_overlap_peak_indices(items)
+
+    assert XRD_SIMILAR_PHASE_TOLERANCE == 0.06
+    assert overlaps == {1: {0}, 2: {0}, 3: {0}}
+
+
+def test_phase_info_does_not_highlight_auto_classified_uncertain_phases() -> None:
+    base = {
+        "label": "Candidate",
+        "color": "#e41a1c",
+        "metadata": {
+            "phase_name": "Candidate",
+            "formula": "AB2",
+            "card_no": "00-000-0001",
+            "quality_mark": "S",
+        },
+        "match": {"score": 70.0, "matched_count": 2, "important_count": 3},
+        "category": "uncertain",
+        "category_source": "score",
+        "folder_group": "자동 분류",
+        "peaks": [
+            {
+                "no": "1",
+                "two_theta": 25.300,
+                "d": "3.500",
+                "norm": 100.0,
+                "hkl": "1 0 0",
+            },
+        ],
+    }
+    first = {**base, "trace_idx": 1}
+    second = {**base, "trace_idx": 2, "color": "#4daf4a"}
+
+    html = build_phase_info_html([("Mix3", "#d62728", [first, second])])
+
+    assert "xrd-phase-overlap-row" not in html
 
 
 def test_xrd_html_draws_numbered_peak_graph_from_peak_list(tmp_path) -> None:
