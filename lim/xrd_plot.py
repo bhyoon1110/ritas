@@ -664,17 +664,15 @@ def build_xrd_legend_checkbox_js(div_id: str) -> str:
   }}
   function placeBranch(branch, row, textNode, indent) {{
     var tx = baseTextX(row, textNode);
-    var ty = Number(textNode.getAttribute("y") || 0);
-    branch.setAttribute("transform", "translate(" + (tx + indent - 14) + "," + (ty - 8) + ")");
+    branch.setAttribute("transform", "translate(" + (tx + indent - 14) + ",0)");
     var path = branch.querySelector("path");
-    path.setAttribute("d", "M0 0 V12 M0 8 H10");
+    path.setAttribute("d", "M0 -8 V8 M0 0 H10");
   }}
   function placeCheckbox(mark, row, textNode, indent) {{
     var tx = baseTextX(row, textNode);
-    var ty = Number(textNode.getAttribute("y") || 0);
     var offset = Number(indent || 0);
     setLegendTextX(row, textNode, tx + offset + 18);
-    mark.setAttribute("transform", "translate(" + (tx + offset) + "," + (ty - 10) + ")");
+    mark.setAttribute("transform", "translate(" + (tx + offset) + ",-6)");
   }}
   function paintCheckbox(mark, visible) {{
     var rect = mark.querySelector("rect");

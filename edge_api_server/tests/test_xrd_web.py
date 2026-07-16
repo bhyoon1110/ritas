@@ -555,6 +555,7 @@ def test_xrd_report_can_use_llm_comment_provider(tmp_path) -> None:
     assert 'row.setAttribute("data-rist-xrd-legend-text-x"' in result["html"]
     assert "setLegendTextX(row, textNode, tx + offset + 18)" in result["html"]
     assert "rist-xrd-legend-branch" in result["html"]
+    assert 'path.setAttribute("d", "M0 -8 V8 M0 0 H10")' in result["html"]
     assert "function legendKind(row)" in result["html"]
     assert "xrd_raw_group" in result["html"]
     assert "xrd_legend_kind" in result["html"]

@@ -412,6 +412,9 @@ def test_build_report_html_contains_xrd_template_sections(tmp_path) -> None:
     assert 'layout["legend.x"] = 0.965' in html
     assert 'layout["legend.y"] = 0.91' in html
     assert 'path.setAttribute("d", "M5,0h12")' in html
+    assert 'path.setAttribute("d", "M0 -8 V8 M0 0 H10")' in html
+    assert '",0)")' in html
+    assert '",-6)")' in html
     assert 'html[data-read-only-report="true"] #xrd-plot .rist-plot-control-row' not in html
     assert "@media screen and (max-width: 900px), screen and (pointer: coarse)" in html
     assert 'html[data-read-only-report="true"] #xrd-plot .rist-legend-drag-handle' in html
