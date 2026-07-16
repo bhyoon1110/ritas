@@ -759,7 +759,15 @@ def _legend_text_edit_js(div_id: str) -> str:
   }}
 
   function legendDisplayToEdit(value) {{
-    return String(value || "").replace(/<br\\s*\\/?>/gi, "\\n");
+    return String(value || "")
+      .replace(/<br\\s*\\/?>/gi, "\\n")
+      .replace(/<[^>]*>/g, "");
+  }}
+
+  function editableTraceName(curve) {{
+    var meta = traceMeta(curve);
+    if (meta.xrd_phase_label) return String(meta.xrd_phase_label);
+    return traceName(curve);
   }}
 
   function legendEditToDisplay(value) {{
@@ -1182,7 +1190,7 @@ def _legend_text_edit_js(div_id: str) -> str:
         var removeButton = row.querySelector(".rist-legend-group-remove");
         var deleteButton = row.querySelector(".rist-legend-peak-delete");
         if (colorInput) colorInput.value = traceColor(curve);
-        nameInput.value = legendDisplayToEdit(traceName(curve));
+        nameInput.value = legendDisplayToEdit(editableTraceName(curve));
         if (peakCurve && kindBadge) {{
           kindBadge.draggable = true;
           kindBadge.title = "피크 그룹으로 드래그";
@@ -1325,7 +1333,10 @@ def _legend_text_edit_js(div_id: str) -> str:
           return;
         }}
         var nextName = legendEditToDisplay(nameInput.value);
-        if (nextName && nextName !== traceName(curve)) updateName(curve, nextName);
+        var currentName = legendEditToDisplay(
+          legendDisplayToEdit(editableTraceName(curve))
+        );
+        if (nextName && nextName !== currentName) updateName(curve, nextName);
         if (colorInput && normalizeColor(colorInput.value) !== traceColor(curve)) {{
           updateColor(curve, colorInput.value);
         }}

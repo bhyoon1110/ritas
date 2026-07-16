@@ -687,7 +687,7 @@ def build_xrd_legend_checkbox_js(div_id: str) -> str:
       var kind = legendKind(row);
       var isChild = kind === "phase" || kind === "separator";
       var indent = isChild ? 22 : 0;
-      if (base.trim().indexOf("────────") === 0) {{
+      if (kind === "separator" || base.trim().indexOf("────────") === 0) {{
         removeCheckbox(row);
         if (isChild) {{
           var separatorBranch = ensureBranch(row);
@@ -720,7 +720,7 @@ def build_xrd_legend_checkbox_js(div_id: str) -> str:
       var mark = ensureCheckbox(row);
       placeCheckbox(mark, row, node, indent);
       paintCheckbox(mark, rowVisible(row));
-      node.textContent = base;
+      if (/^[☑☐□✓]\s*/.test(node.textContent || "")) node.textContent = base;
     }});
   }}
   function schedule() {{ setTimeout(refreshLegendCheckboxes, 0); }}
@@ -733,6 +733,316 @@ def build_xrd_legend_checkbox_js(div_id: str) -> str:
 }})();
 </script>
 """
+
+
+def build_xrd_legend_view_controls_js(div_id: str) -> str:
+    """XRD 범례를 우측 상단 축소형으로 시작하고 숨김/확장 제어를 제공한다."""
+    snippet = r"""
+<style>
+#__DIV_ID__ .rist-legend-drag-handle.rist-xrd-legend-toolbar {
+  justify-content: flex-start;
+  gap: 2px;
+  height: 24px;
+  min-width: 116px;
+  padding: 1px 3px 1px 7px;
+  border-radius: 5px 5px 0 0;
+  font-size: 10px;
+}
+#__DIV_ID__ .rist-xrd-legend-handle-label {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+  pointer-events: none;
+}
+#__DIV_ID__ .rist-xrd-legend-control,
+#__DIV_ID__ .rist-xrd-legend-restore {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 21px;
+  height: 21px;
+  flex: 0 0 21px;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: #334155;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+#__DIV_ID__ .rist-xrd-legend-control:hover,
+#__DIV_ID__ .rist-xrd-legend-control:focus-visible,
+#__DIV_ID__ .rist-xrd-legend-restore:hover,
+#__DIV_ID__ .rist-xrd-legend-restore:focus-visible {
+  background: #dbeafe;
+  color: #1d4ed8;
+  outline: none;
+}
+#__DIV_ID__ .rist-xrd-legend-control svg,
+#__DIV_ID__ .rist-xrd-legend-restore svg {
+  width: 15px;
+  height: 15px;
+  stroke: currentColor;
+  stroke-width: 2;
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+#__DIV_ID__ .rist-xrd-legend-restore {
+  position: absolute;
+  z-index: 19;
+  top: 42px;
+  right: 10px;
+  width: 32px;
+  height: 30px;
+  border: 1px solid #cbd5e1;
+  border-radius: 5px;
+  background: rgba(255,255,255,0.96);
+  box-shadow: 0 2px 8px rgba(15,23,42,0.14);
+}
+#__DIV_ID__ .rist-xrd-legend-restore[hidden] {
+  display: none !important;
+}
+#__DIV_ID__.rist-xrd-legend-hidden .rist-legend-drag-handle {
+  display: none !important;
+}
+</style>
+<script>
+(function() {
+  var gd = document.getElementById(__DIV_JSON__);
+  if (!gd || !window.Plotly || gd._ristXrdLegendControlsInstalled) return;
+  gd._ristXrdLegendControlsInstalled = true;
+  if (getComputedStyle(gd).position === "static") gd.style.position = "relative";
+
+  var mode = "compact";
+  var applying = false;
+  var hidden = false;
+  var restoreButton = document.createElement("button");
+  restoreButton.type = "button";
+  restoreButton.className = "rist-xrd-legend-restore";
+  restoreButton.title = "범례 표시";
+  restoreButton.setAttribute("aria-label", "범례 표시");
+  restoreButton.hidden = true;
+  restoreButton.innerHTML = "<svg viewBox='0 0 24 24' aria-hidden='true'>"
+    + "<path d='M2.1 12a10.8 10.8 0 0 1 19.8 0 10.8 10.8 0 0 1-19.8 0Z'></path>"
+    + "<circle cx='12' cy='12' r='3'></circle></svg>";
+  gd.appendChild(restoreButton);
+
+  function traceMeta(trace) {
+    return (trace && trace.meta && typeof trace.meta === "object") ? trace.meta : {};
+  }
+
+  function plainText(value) {
+    return String(value || "")
+      .replace(/<br\s*\/?>/gi, " / ")
+      .replace(/<[^>]*>/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  function escapeHtml(value) {
+    return String(value || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/\"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
+  function truncate(value, limit) {
+    value = String(value || "");
+    if (value.length <= limit) return value;
+    return value.slice(0, Math.max(1, limit - 1)).trimEnd() + "…";
+  }
+
+  function sourceLabel(trace, meta) {
+    if (meta.xrd_phase_label) return plainText(meta.xrd_phase_label);
+    if (meta.xrd_legend_source_label) return plainText(meta.xrd_legend_source_label);
+    var source = plainText(trace && trace.name);
+    meta.xrd_legend_source_label = source;
+    return source;
+  }
+
+  function phasePrimary(trace, meta, compact) {
+    var source = sourceLabel(trace, meta);
+    var card = plainText(meta.xrd_phase_card_no || "");
+    if (card) {
+      var suffix = new RegExp("\\s*\\/\\s*" + card.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\s*$");
+      source = source.replace(suffix, "").trim();
+    }
+    var primary = compact
+      ? plainText(meta.xrd_phase_name || source)
+      : source;
+    return compact ? truncate(primary, 28) : primary;
+  }
+
+  function formattedName(trace) {
+    var meta = traceMeta(trace);
+    if (meta.xrd_phase_candidate) {
+      var primary = phasePrimary(trace, meta, mode === "compact");
+      var card = plainText(meta.xrd_phase_card_no || "");
+      if (mode === "compact") card = truncate(card, 24);
+      return escapeHtml(primary)
+        + (card
+          ? "<br><span style='font-size:9px;color:#64748b'>ID: "
+            + escapeHtml(card) + "</span>"
+          : "");
+    }
+    var source = sourceLabel(trace, meta);
+    if (meta.xrd_separator) {
+      source = source.replace(/^[-─\s]+/, "").trim();
+      return escapeHtml(mode === "compact" ? truncate(source, 28) : source);
+    }
+    return escapeHtml(mode === "compact" ? truncate(source, 26) : source);
+  }
+
+  function legendCurves() {
+    var curves = [];
+    (gd.data || []).forEach(function(trace, curve) {
+      var meta = traceMeta(trace);
+      if (meta.xrd_raw || meta.xrd_separator || meta.xrd_phase_candidate) curves.push(curve);
+    });
+    return curves;
+  }
+
+  function applyMode(nextMode, placeAtInitialPosition) {
+    mode = nextMode === "full" ? "full" : "compact";
+    gd.dataset.xrdLegendMode = mode;
+    var curves = legendCurves();
+    var names = curves.map(function(curve) { return formattedName(gd.data[curve]); });
+    applying = true;
+    var restyle = curves.length
+      ? window.Plotly.restyle(gd, { name: names }, curves)
+      : Promise.resolve();
+    Promise.resolve(restyle).then(function() {
+      var layout = {
+        "showlegend": !hidden,
+        "legend.orientation": "v",
+        "legend.font.size": mode === "compact" ? 10 : 11,
+        "legend.bgcolor": "rgba(255,255,255,0.92)",
+        "legend.bordercolor": "rgba(203,213,225,0.9)",
+        "legend.borderwidth": 1,
+        "legend.traceorder": "grouped"
+      };
+      if (placeAtInitialPosition) {
+        layout["legend.x"] = 0.84;
+        layout["legend.xanchor"] = "right";
+        layout["legend.y"] = 0.985;
+        layout["legend.yanchor"] = "top";
+      }
+      return window.Plotly.relayout(gd, layout);
+    }).finally(function() {
+      applying = false;
+      installToolbar();
+    });
+  }
+
+  function iconButton(className, title, svgMarkup) {
+    var button = document.createElement("button");
+    button.type = "button";
+    button.className = "rist-xrd-legend-control " + className;
+    button.title = title;
+    button.setAttribute("aria-label", title);
+    button.innerHTML = svgMarkup;
+    ["pointerdown", "mousedown", "touchstart"].forEach(function(eventName) {
+      button.addEventListener(eventName, function(event) { event.stopPropagation(); });
+    });
+    return button;
+  }
+
+  function installToolbar() {
+    if (hidden) return;
+    var handle = gd.querySelector(".rist-legend-drag-handle");
+    if (!handle) return;
+    handle.classList.add("rist-xrd-legend-toolbar");
+    var label = handle.querySelector(".rist-xrd-legend-handle-label");
+    var toggle = handle.querySelector(".rist-xrd-legend-size-toggle");
+    var hide = handle.querySelector(".rist-xrd-legend-hide");
+    if (!label || !toggle || !hide) {
+      handle.innerHTML = "";
+      label = document.createElement("span");
+      label.className = "rist-xrd-legend-handle-label";
+      label.textContent = "범례";
+      toggle = iconButton(
+        "rist-xrd-legend-size-toggle",
+        "전체 범례 보기",
+        "<svg viewBox='0 0 24 24' aria-hidden='true'><path d='M9 3H5a2 2 0 0 0-2 2v4'></path>"
+          + "<path d='m3 3 6 6'></path><path d='m21 3-6 6'></path>"
+          + "<path d='M15 3h4a2 2 0 0 1 2 2v4'></path>"
+          + "<path d='m3 21 6-6'></path><path d='M3 15v4a2 2 0 0 0 2 2h4'></path>"
+          + "<path d='m21 21-6-6'></path><path d='M15 21h4a2 2 0 0 0 2-2v-4'></path></svg>"
+      );
+      hide = iconButton(
+        "rist-xrd-legend-hide",
+        "범례 숨김",
+        "<svg viewBox='0 0 24 24' aria-hidden='true'><path d='m2 2 20 20'></path>"
+          + "<path d='M6.7 6.7A10.7 10.7 0 0 0 2.1 12a10.8 10.8 0 0 0 15.2 5.3'></path>"
+          + "<path d='M10.7 10.7a2 2 0 0 0 2.6 2.6'></path>"
+          + "<path d='M9.9 4.2A10.8 10.8 0 0 1 21.9 12a10.8 10.8 0 0 1-2.2 3.2'></path></svg>"
+      );
+      toggle.addEventListener("click", function(event) {
+        event.preventDefault();
+        event.stopPropagation();
+        applyMode(mode === "compact" ? "full" : "compact", false);
+      });
+      hide.addEventListener("click", function(event) {
+        event.preventDefault();
+        event.stopPropagation();
+        hidden = true;
+        gd.classList.add("rist-xrd-legend-hidden");
+        restoreButton.hidden = false;
+        window.Plotly.relayout(gd, { showlegend: false });
+      });
+      handle.appendChild(label);
+      handle.appendChild(toggle);
+      handle.appendChild(hide);
+    }
+    label.textContent = mode === "compact" ? "범례 · 축소" : "범례 · 전체";
+    toggle.title = mode === "compact" ? "전체 범례 보기" : "축소 범례 보기";
+    toggle.setAttribute("aria-label", toggle.title);
+    handle.title = "빈 영역을 드래그해서 범례 위치 이동";
+  }
+
+  restoreButton.addEventListener("click", function(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    hidden = false;
+    gd.classList.remove("rist-xrd-legend-hidden");
+    restoreButton.hidden = true;
+    window.Plotly.relayout(gd, { showlegend: true }).then(function() {
+      installToolbar();
+    });
+  });
+
+  gd.addEventListener("rist-legend-name-change", function(event) {
+    var detail = event.detail || {};
+    (detail.curves || [detail.curve]).forEach(function(curve) {
+      var trace = (gd.data || [])[curve];
+      var meta = traceMeta(trace);
+      if (meta.xrd_phase_candidate) meta.xrd_phase_label = plainText(detail.name);
+    });
+    applyMode(mode, false);
+  });
+  gd.addEventListener("xrd-legend-source-change", function() {
+    applyMode(mode, false);
+  });
+  gd.addEventListener("rist-plot-data-replaced", function() {
+    applyMode("compact", true);
+  });
+  if (gd.on) gd.on("plotly_afterplot", function() {
+    if (!applying) window.requestAnimationFrame(installToolbar);
+  });
+  setTimeout(function() { applyMode("compact", true); }, 0);
+})();
+</script>
+"""
+    return snippet.replace("__DIV_ID__", div_id).replace(
+        "__DIV_JSON__", json.dumps(div_id)
+    )
 
 
 def build_xrd_axis_text_guard_js(div_id: str) -> str:
@@ -1011,7 +1321,13 @@ def build_xrd_phase_group_editor_js(div_id: str) -> str:
   }
 
   function restyleLabel(curve, value) {
-    window.Plotly.restyle(gd, { name: value || "Phase" }, [curve]);
+    var item = phaseCurves().filter(function(entry) { return entry.curve === curve; })[0];
+    if (item) item.meta.xrd_phase_label = value || "Phase";
+    window.Plotly.restyle(gd, { name: value || "Phase" }, [curve]).then(function() {
+      gd.dispatchEvent(new CustomEvent("xrd-legend-source-change", {
+        detail: { curve: curve, name: value || "Phase" }
+      }));
+    });
   }
 
   function applyGroup(curves, name, color) {
@@ -1194,7 +1510,7 @@ def build_xrd_phase_group_editor_js(div_id: str) -> str:
     chip.style.backgroundColor = currentColor(item);
     var input = document.createElement("input");
     input.className = "xrd-phase-label-input";
-    input.value = item.trace.name || "";
+    input.value = item.meta.xrd_phase_label || item.trace.name || "";
     input.title = "범례 이름";
     input.addEventListener("change", function() {
       restyleLabel(item.curve, input.value);
@@ -2663,7 +2979,15 @@ def _trace_legend_kind(trace: Any) -> str:
 
 
 def _strip_legend_separator(name: str) -> str:
-    return re.sub(r"^[-─\s]+", "", str(name or "")).strip()
+    plain = re.sub(r"<br\s*/?>", " / ", str(name or ""), flags=re.IGNORECASE)
+    plain = re.sub(r"<[^>]+>", "", plain)
+    return re.sub(r"^[-─\s]+", "", plain).strip()
+
+
+def _trace_legend_label(trace: Any) -> str:
+    meta = _trace_meta(trace)
+    source = meta.get("xrd_phase_label") or getattr(trace, "name", "") or ""
+    return _strip_legend_separator(str(source))
 
 
 def build_xrd_print_legend_html(fig) -> str:
@@ -2674,7 +2998,7 @@ def build_xrd_print_legend_html(fig) -> str:
         kind = _trace_legend_kind(trace)
         if not kind:
             continue
-        label = _strip_legend_separator(getattr(trace, "name", "") or "")
+        label = _trace_legend_label(trace)
         if not label:
             continue
         if kind == "separator":
@@ -3103,6 +3427,7 @@ def build_report_html(
         fig,
         div_id="xrd-plot",
         origin=origin,
+        responsive_legend=False,
         legend_breakpoint_px=LEGEND_BREAKPOINT_PX,
         wide_legend_inside=True,
         crosshair=True,
@@ -3118,6 +3443,7 @@ def build_report_html(
         post_body_html=(
             build_xrd_axis_text_guard_js("xrd-plot")
             + build_xrd_legend_checkbox_js("xrd-plot")
+            + build_xrd_legend_view_controls_js("xrd-plot")
             + build_xrd_phase_group_editor_js("xrd-plot")
             + build_xrd_tool_drawer_js("xrd-plot")
         ),
@@ -3208,7 +3534,15 @@ def build_report_html(
       return (trace && trace.meta && typeof trace.meta === "object") ? trace.meta : {{}};
     }}
     function stripSeparator(name) {{
-      return String(name || "").replace(/^[-─\\s]+/, "").trim();
+      return String(name || "")
+        .replace(/<br\\s*\\/?>/gi, " / ")
+        .replace(/<[^>]+>/g, "")
+        .replace(/^[-─\\s]+/, "")
+        .trim();
+    }}
+    function traceLegendLabel(trace) {{
+      var meta = traceMeta(trace);
+      return stripSeparator(meta.xrd_phase_label || trace.name || "");
     }}
     function escapeHtml(value) {{
       return String(value || "")
@@ -3278,7 +3612,7 @@ def build_report_html(
         if (!traceVisible(trace)) return;
         var kind = traceKind(trace);
         if (!kind) return;
-        var label = stripSeparator(trace.name || "");
+        var label = traceLegendLabel(trace);
         if (!label) return;
         if (kind === "separator") {{
           rows.push("<div class='xrd-print-legend-item is-separator'>"
@@ -3301,6 +3635,12 @@ def build_report_html(
       if (!gd) return;
       var handle = gd.querySelector(".rist-legend-drag-handle");
       if (!handle) return;
+      var label = handle.querySelector(".rist-xrd-legend-handle-label");
+      if (label) {{
+        label.textContent = label.textContent || "범례";
+        handle.title = "빈 영역을 드래그해서 범례 위치 이동";
+        return;
+      }}
       handle.textContent = "범례";
       handle.title = "이 바를 드래그해서 범례 위치 이동";
     }}
@@ -4221,6 +4561,7 @@ def build_xrd_html(
             fig,
             div_id="xrd-plot",
             origin=origin,
+            responsive_legend=False,
             legend_breakpoint_px=LEGEND_BREAKPOINT_PX,
             wide_legend_inside=True,
             crosshair=True,
@@ -4235,6 +4576,7 @@ def build_xrd_html(
             post_body_html=(
                 build_xrd_axis_text_guard_js("xrd-plot")
                 + build_xrd_legend_checkbox_js("xrd-plot")
+                + build_xrd_legend_view_controls_js("xrd-plot")
                 + build_xrd_phase_group_editor_js("xrd-plot")
                 + build_xrd_tool_drawer_js("xrd-plot")
             )

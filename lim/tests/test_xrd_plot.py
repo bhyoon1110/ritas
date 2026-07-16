@@ -13,6 +13,7 @@ from lim.xrd_plot import (
     build_image_display_html,
     build_phase_info_html,
     build_report_html,
+    build_xrd_print_legend_html,
     build_xrd_html,
     phase_category_from_pdf_path,
     phase_label_from_metadata,
@@ -33,6 +34,26 @@ TINY_PNG = base64.b64decode(
 def test_xrd_download_plot_uses_fixed_jpeg_format() -> None:
     assert XRD_DOWNLOAD_IMAGE_FORMAT == "jpeg"
     assert XRD_IMAGE_FORMAT_SELECTOR is False
+
+
+def test_xrd_print_legend_uses_unformatted_phase_source_label() -> None:
+    fig = go.Figure()
+    fig.add_trace(
+        go.Scatter(
+            x=[1, 2],
+            y=[1, 2],
+            name="Anatase<br><span>ID: 00-064-0863</span>",
+            meta={
+                "xrd_phase_candidate": True,
+                "xrd_phase_label": "Anatase / 00-064-0863",
+            },
+        )
+    )
+
+    legend = build_xrd_print_legend_html(fig)
+
+    assert "Anatase / 00-064-0863" in legend
+    assert "&lt;span" not in legend
 
 
 def test_pdf_peak_warning_explains_missing_pdf_files() -> None:
@@ -381,6 +402,15 @@ def test_build_report_html_contains_xrd_template_sections(tmp_path) -> None:
     assert "#xrd-plot .rist-legend-drag-handle" in html
     assert "#xrd-plot .rist-xrd-legend-checkbox" in html
     assert "#xrd-plot .rist-xrd-legend-branch" in html
+    assert "rist-xrd-legend-size-toggle" in html
+    assert "rist-xrd-legend-hide" in html
+    assert "rist-xrd-legend-restore" in html
+    assert "범례 · 축소" in html
+    assert "전체 범례 보기" in html
+    assert "ID: " in html
+    assert 'gd.dataset.xrdLegendMode = mode' in html
+    assert 'layout["legend.x"] = 0.84' in html
+    assert 'layout["legend.y"] = 0.985' in html
     assert 'html[data-read-only-report="true"] #xrd-plot .rist-plot-control-row' not in html
     assert "@media screen and (max-width: 900px), screen and (pointer: coarse)" in html
     assert 'html[data-read-only-report="true"] #xrd-plot .rist-legend-drag-handle' in html
