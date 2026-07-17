@@ -3795,7 +3795,7 @@ def build_report_html(
     </section>
     <section class="xrd-report-section" id="xrd-element-guidance">
       <div class="xrd-section-head">
-        <h2>추가 검토 안내</h2>
+        <h2>안내 사항</h2>
       </div>
       <div class="xrd-fixed-guidance">
         <p>{_esc(XRD_FIXED_ELEMENT_GUIDANCE[0])}</p>

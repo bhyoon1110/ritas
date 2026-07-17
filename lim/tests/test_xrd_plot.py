@@ -507,7 +507,8 @@ def test_build_report_html_contains_xrd_template_sections(tmp_path) -> None:
     assert "유사상 미량상 확인" not in html
     assert "phase-match.png" in html
     assert "data:image/png;base64" in html
-    assert "추가 검토 안내" in html
+    assert "안내 사항" in html
+    assert "추가 검토 안내" not in html
     assert "주요 원소 정보(XRF/ICP/EDS)를 공유해주시면" in html
     assert "원소 성분 분석을 권장드립니다." in html
     assert "안내사항" not in html
