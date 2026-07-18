@@ -121,7 +121,9 @@ XRD/TEM의 현재 웹 화면 API(`/api/v1/xrd/analyze`, `/api/v1/tem/analyze`)�
    입력된 `equipmentCode`, 사용자 로그인/선택값의 `operatorId`로
    `POST /api/v1/jobs`를 호출한다.
 4. C# 프로그램이 원본 파일 bundle을 `POST /api/v1/jobs/{jobId}/files`로 전송한다.
-5. C# 프로그램이 최종 파일 목록으로
+5. 모든 파일 업로드가 성공하면 C# 프로그램이
+   `GET /api/v1/jobs/{jobId}/files`로 서버에 등록된 최종 파일 목록을 다시 조회한다.
+   응답의 `files`가 1개 이상일 때만 그 목록으로
    `POST /api/v1/jobs/{jobId}/uploads/complete`를 호출한다.
 6. 사용자가 C# 프로그램의 보고서 생성 버튼을 누르면 C# 프로그램이
    `POST /api/v1/jobs/{jobId}/report`로 보고서 생성을 요청한다. XRD는
@@ -445,6 +447,21 @@ DELETE /api/v1/jobs/{jobId}/files/{relativePath}
 분석에 사용할 최종 입력 파일 집합을 확정하는 선언이며, Edge 서버는 실제
 업로드 파일의 개수, 전체 크기, 개별 해시를 검증한다.
 
+완료 요청 본문은 사용자가 선택한 로컬 파일 목록이 아니라, 모든 업로드가
+끝난 뒤 `GET /api/v1/jobs/{jobId}/files`에서 받은 **서버 등록 파일 목록**으로
+구성하는 것을 권장한다. 다음 조건을 하나라도 만족하지 않으면 C# 프로그램은
+완료 API를 호출하지 말고 사용자에게 업로드 미완료를 표시한다.
+
+- `files.Count >= 1`
+- `fileCount == files.Count`
+- `totalSizeBytes == files.Sum(file => file.sizeBytes)`
+- 모든 파일에 `relativePath`, `sizeBytes`, 소문자 64자리 `sha256`이 있음
+- 전송을 시작한 모든 파일의 업로드 응답이 성공이고 서버 파일 목록에도 존재함
+
+특히 `fileCount: 0`, `files: []`인 빈 bundle은 허용하지 않으며 서버는
+`422 Unprocessable Entity`를 반환한다. 빈 bundle 검증을 의도한 부정 테스트가
+아니라면 이 요청을 보내는 것은 C# 클라이언트 구현 오류이다.
+
 ```http
 POST /api/v1/jobs/{jobId}/uploads/complete
 Content-Type: application/json
@@ -480,6 +497,44 @@ Idempotency-Key: {jobId}:uploads-complete
 `files`에는 실제 bundle의 전체 파일을 전달한다. `fileCount`는 `files` 배열
 길이와 같아야 하고, `totalSizeBytes`는 파일 크기의 합계와 같아야 한다.
 
+#### C# 완료 요청 구성 예시
+
+아래 예시는 서버 파일 목록 조회 결과를 기준으로 완료 본문을 만드는 핵심
+검증 로직이다. `JobFilesResponse.Files`에는 7.2절의 파일 목록 응답을 역직렬화한
+값이 들어 있다고 가정한다.
+
+```csharp
+var serverFiles = jobFilesResponse.Files;
+if (serverFiles is null || serverFiles.Count == 0)
+{
+    throw new InvalidOperationException(
+        "서버에 등록된 파일이 없어 uploads/complete를 호출할 수 없습니다.");
+}
+
+var completeBody = new
+{
+    fileCount = serverFiles.Count,
+    totalSizeBytes = serverFiles.Sum(file => file.SizeBytes),
+    files = serverFiles.Select(file => new
+    {
+        relativePath = file.RelativePath,
+        sizeBytes = file.SizeBytes,
+        sha256 = file.Sha256.ToLowerInvariant()
+    }).ToArray()
+};
+
+using var completeRequest = new HttpRequestMessage(
+    HttpMethod.Post,
+    $"api/v1/jobs/{jobId}/uploads/complete");
+completeRequest.Headers.Add("X-Request-Id", requestId);
+completeRequest.Headers.Add("Idempotency-Key", $"{jobId}:uploads-complete");
+completeRequest.Content = JsonContent.Create(completeBody);
+
+using var completeResponse = await httpClient.SendAsync(completeRequest);
+// 400/409/410/422는 요청을 수정하기 전에는 자동 재시도하지 않는다.
+completeResponse.EnsureSuccessStatusCode();
+```
+
 동일한 `Idempotency-Key`와 동일한 요청 본문으로 재호출하면 기존
 `FILES_VERIFIED` 응답을 반환한다. 이미 검증이 끝난 작업에 다른 파일 목록을
 보내면 `409 Conflict`를 반환한다.
@@ -499,7 +554,8 @@ Idempotency-Key: {jobId}:uploads-complete
 
 - `409 Conflict`: 아직 업로드 중이거나 이미 보고서 생성이 시작됨
 - `410 Gone`: 업로드 유효기간 만료
-- `422 Unprocessable Entity`: 누락 파일, 개수, 크기 또는 해시 불일치
+- `422 Unprocessable Entity`: 빈 `files`, `fileCount < 1`, 누락 파일, 개수,
+  크기 또는 해시 불일치
 
 ### 7.4 보고서 생성 요청
 
