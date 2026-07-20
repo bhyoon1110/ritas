@@ -7,6 +7,7 @@ import zipfile
 
 import pytest
 
+from app.preview_report import PreviewReportSendRequest, send_preview_report_package
 from app.report_queue import ReportQueueError, enqueue_report_package
 
 
@@ -115,3 +116,49 @@ def test_enqueue_report_package_rejects_invalid_zip(tmp_path: Path) -> None:
 
     assert captured.value.code == "REPORT_PACKAGE_INVALID_ZIP"
     assert captured.value.retryable is False
+
+
+def test_send_preview_report_package_publishes_and_queues(
+    tmp_path: Path,
+) -> None:
+    storage_root = tmp_path / "shared"
+    source = tmp_path / "temporary" / "report-package.zip"
+    package_bytes = write_zip(source)
+    database = CapturingDatabase()
+    job = SimpleNamespace(
+        job_id="tem-job-1",
+        status="completed",
+        package_path=source,
+    )
+    payload = PreviewReportSendRequest(
+        requestNumber="REQ-001",
+        experimentCode="TEM",
+        equipmentCode="TEM-EDGE-01",
+        operatorId="operator-1",
+    )
+
+    result = send_preview_report_package(
+        settings=settings(storage_root),
+        database=database,
+        job=job,
+        payload=payload,
+    )
+
+    published = (
+        storage_root
+        / "web-reports"
+        / "TEM"
+        / "tem-job-1"
+        / "report-package.zip"
+    )
+    assert published.read_bytes() == package_bytes
+    assert result["queued"] is True
+    assert result["sent"] is False
+    assert result["packageRelativePath"] == (
+        "web-reports/TEM/tem-job-1/report-package.zip"
+    )
+    assert database.values["request_number"] == "REQ-001"
+    assert database.values["experiment_code"] == "TEM"
+    assert database.values["equipment_code"] == "TEM-EDGE-01"
+    assert database.values["operator_id"] == "operator-1"
+    assert database.values["package_sha256"] == hashlib.sha256(package_bytes).hexdigest()

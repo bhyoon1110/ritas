@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from io import BytesIO
 from pathlib import Path
+from types import SimpleNamespace
 import time
 import unicodedata
 import zipfile
@@ -101,7 +102,64 @@ def test_xrd_workspace_contains_upload_controls() -> None:
     assert "uploadBundleWithSession" in page
     assert "XRD_UPLOAD_CHUNK_RETRIES" in page
     assert "/api/v1/xrd/example" in page
+    assert 'id="xrd-report-transfer"' in page
+    assert 'id="xrd-request-load"' in page
+    assert 'id="xrd-request-select"' in page
+    assert 'data-xrd-transfer-field="requestNumber"' in page
+    assert 'data-xrd-transfer-field="limsExperimentCode"' in page
+    assert 'id="xrd-report-send" disabled' in page
+    assert 'REQUEST_EXPERIMENT_TYPE = "XRD"' in page
+    assert 'encodeURIComponent(lastReportJob.jobId) + "/send"' in page
     assert "LIM XRD" in page
+
+
+def test_xrd_send_route_queues_completed_package(monkeypatch, tmp_path) -> None:
+    package_path = tmp_path / "xrd-report-package.zip"
+    with zipfile.ZipFile(package_path, "w") as archive:
+        archive.writestr("xrd-report.html", "report")
+    job = SimpleNamespace(
+        job_id="xrd-job-1",
+        status="completed",
+        package_path=package_path,
+    )
+    captured = {}
+
+    def fake_send_preview_report_package(**values):
+        captured.update(values)
+        return {
+            "queued": True,
+            "sent": False,
+            "transferId": "transfer-1",
+            "status": "PENDING",
+        }
+
+    monkeypatch.setattr(
+        xrd_web,
+        "send_preview_report_package",
+        fake_send_preview_report_package,
+    )
+    with xrd_web._xrd_report_jobs_lock:
+        xrd_web._xrd_report_jobs[job.job_id] = job
+    try:
+        with TestClient(create_xrd_preview_app()) as client:
+            response = client.post(
+                "/api/v1/xrd/report/jobs/xrd-job-1/send",
+                json={
+                    "requestNumber": "REQ-001",
+                    "experimentCode": "XRD",
+                    "equipmentCode": "XRD-EDGE-01",
+                    "operatorId": "operator-1",
+                },
+            )
+    finally:
+        with xrd_web._xrd_report_jobs_lock:
+            xrd_web._xrd_report_jobs.pop(job.job_id, None)
+
+    assert response.status_code == 200
+    assert response.json()["transferId"] == "transfer-1"
+    assert captured["job"] is job
+    assert captured["payload"].request_number == "REQ-001"
+    assert captured["payload"].experiment_code == "XRD"
 
 
 def test_xrd_plotly_asset_route_serves_local_js() -> None:
@@ -391,13 +449,20 @@ def test_xrd_chunked_upload_session_retries_and_builds_report(tmp_path) -> None:
                 f"/api/v1/xrd/report/jobs/{complete_payload['jobId']}"
             ).json()
         assert job_payload["status"] == "completed"
+        assert job_payload["downloads"]["package"].endswith("/package")
         html_response = client.get(
             f"/api/v1/xrd/report/jobs/{complete_payload['jobId']}/html"
         )
         assert html_response.status_code == 200
+        package_response = client.get(job_payload["downloads"]["package"])
+        assert package_response.status_code == 200
+        with zipfile.ZipFile(BytesIO(package_response.content)) as package:
+            package_names = set(package.namelist())
 
     assert "sample Report" in html_response.text
     assert "상 동정 (Phase Identification) 결과" in html_response.text
+    assert "xrd-report.html" in package_names
+    assert "xrd-report-package.zip" not in package_names
 
 
 def test_xrd_analyze_warns_for_pdf_that_cannot_be_extracted() -> None:

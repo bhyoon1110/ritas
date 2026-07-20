@@ -45,8 +45,10 @@ from .error_archive import (
 )
 from .config import PROJECT_DIR, Settings
 from .llm_client import LlmError, LocalLlmClient
+from .preview_report import PreviewReportSendRequest, send_preview_report_package
 from .report import annotator
 from .report.builders import LlmSlotSpec
+from .report_queue import ReportQueueError
 from .upload_sessions import ChunkUploadStore
 from .usage_archive import (
     UsageArchive,
@@ -102,6 +104,7 @@ class XrdReportJob:
     job_id: str
     work_dir: Path
     input_root: Path
+    package_path: Path
     settings: Settings | None
     error_archive: ErrorArchive | None
     usage_archive: UsageArchive | None
@@ -733,10 +736,12 @@ def _create_xrd_report_job(
     origin: bool,
 ) -> XrdReportJob:
     now = time.time()
+    job_id = uuid4().hex
     job = XrdReportJob(
-        job_id=uuid4().hex,
+        job_id=job_id,
         work_dir=work_dir,
         input_root=input_root,
+        package_path=work_dir / "xrd-report-package.zip",
         settings=settings,
         error_archive=error_archive,
         usage_archive=usage_archive,
@@ -755,6 +760,7 @@ def _xrd_job_payload(job: XrdReportJob) -> dict[str, Any]:
     if job.status == "completed":
         downloads = {
             "html": f"/api/v1/xrd/report/jobs/{job.job_id}/html",
+            "package": f"/api/v1/xrd/report/jobs/{job.job_id}/package",
         }
     return {
         "jobId": job.job_id,
@@ -1195,6 +1201,57 @@ def build_xrd_page() -> str:
       display: block;
       background: #fff;
     }
+    .xrd-transfer {
+      display: grid;
+      gap: 12px;
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+    }
+    .xrd-transfer-head,
+    .xrd-transfer-actions {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .xrd-transfer-head strong { color: var(--ink); }
+    .xrd-request-picker {
+      display: grid;
+      grid-template-columns: auto minmax(240px, 1fr);
+      gap: 10px;
+    }
+    .xrd-request-picker select,
+    .xrd-transfer-grid input {
+      width: 100%;
+      min-width: 0;
+      min-height: 40px;
+      border: 1px solid #bfd0e4;
+      border-radius: 6px;
+      background: #fff;
+      color: var(--ink);
+      padding: 8px 10px;
+      font: inherit;
+    }
+    .xrd-request-detail {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 7px 14px;
+      min-height: 22px;
+      color: #475569;
+      font-size: 13px;
+    }
+    .xrd-request-detail.is-empty { color: var(--muted); }
+    .xrd-request-detail b { margin-right: 4px; color: #1e3a5f; }
+    .xrd-transfer-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(150px, 1fr));
+      gap: 10px;
+    }
+    .xrd-transfer-grid label { min-width: 0; color: #475569; font-size: 13px; }
+    .xrd-transfer-grid span { display: block; margin-bottom: 5px; font-weight: 700; }
     .xrd-empty {
       height: 720px;
       display: flex;
@@ -1224,6 +1281,8 @@ def build_xrd_page() -> str:
       .xrd-actions { width: 100%; justify-content: flex-end; }
       button, .xrd-download { min-height: 40px; padding: 8px 11px; font-size: 14px; }
       .xrd-preview iframe { height: 780px; }
+      .xrd-request-picker { grid-template-columns: 1fr; }
+      .xrd-transfer-grid { grid-template-columns: repeat(2, minmax(120px, 1fr)); }
     }
   </style>
 </head>
@@ -1260,6 +1319,29 @@ def build_xrd_page() -> str:
           <label class="xrd-check"><input type="checkbox" id="xrd-origin" name="origin" value="true" checked> Origin 스타일</label>
           <div class="xrd-files" id="xrd-file-list"></div>
         </form>
+      </section>
+      <section class="xrd-transfer" id="xrd-report-transfer">
+        <div class="xrd-transfer-head">
+          <strong>보고서 전송 정보</strong>
+          <span>보고서 확인 후 공유 저장소와 LIMS 전송 대기열에 등록합니다.</span>
+        </div>
+        <div class="xrd-request-picker">
+          <button type="button" id="xrd-request-load">의뢰 조회</button>
+          <select id="xrd-request-select" aria-label="XRD 의뢰 선택">
+            <option value="">의뢰 조회 후 항목을 선택하세요</option>
+          </select>
+        </div>
+        <div class="xrd-request-detail is-empty" id="xrd-request-detail">XRD 의뢰를 조회하면 상세 정보가 표시됩니다.</div>
+        <div class="xrd-transfer-grid">
+          <label><span>의뢰번호</span><input type="text" data-xrd-transfer-field="requestNumber" readonly></label>
+          <label><span>실험코드</span><input type="text" data-xrd-transfer-field="limsExperimentCode" readonly></label>
+          <label><span>실험장비</span><input type="text" data-xrd-transfer-field="equipmentCode" value="XRD-EDGE-01"></label>
+          <label><span>실험자</span><input type="text" data-xrd-transfer-field="operatorId" value="SSO-PENDING"></label>
+        </div>
+        <div class="xrd-transfer-actions">
+          <span>의뢰번호, 실험코드, 실험장비, 실험자가 모두 있어야 전송할 수 있습니다.</span>
+          <button type="button" class="primary" id="xrd-report-send" disabled>보고서 전송</button>
+        </div>
       </section>
       <div class="xrd-status-stack" id="xrd-status" aria-live="polite"></div>
       <div class="xrd-progress" id="xrd-progress" aria-live="polite">
@@ -1315,6 +1397,13 @@ def build_xrd_page() -> str:
     var reportProgressLabel = document.getElementById("xrd-report-progress-label");
     var reportProgressValue = document.getElementById("xrd-report-progress-value");
     var reportProgressBar = document.getElementById("xrd-report-progress-bar");
+    var requestLoad = document.getElementById("xrd-request-load");
+    var requestSelect = document.getElementById("xrd-request-select");
+    var requestDetail = document.getElementById("xrd-request-detail");
+    var reportSendButton = document.getElementById("xrd-report-send");
+    var reportTransferControls = Array.prototype.slice.call(
+      document.querySelectorAll("[data-xrd-transfer-field]")
+    );
     var downloadUrl = null;
     var bundleItems = [];
     var reportFrame = null;
@@ -1330,6 +1419,9 @@ def build_xrd_page() -> str:
     var reportProgressVisible = false;
     var uploadProgressError = false;
     var reportProgressError = false;
+    var requestItems = [];
+    var lastReportJob = null;
+    var REQUEST_EXPERIMENT_TYPE = "XRD";
 
     function setStatus(message, error) {
       if (!message) return;
@@ -1364,6 +1456,95 @@ def build_xrd_page() -> str:
       busy.classList.toggle("show", Boolean(value));
       runButton.disabled = Boolean(value);
       exampleButton.disabled = Boolean(value);
+      requestLoad.disabled = Boolean(value);
+      updateReportSendAvailability();
+    }
+    function reportTransferValue(field) {
+      var control = reportTransferControls.find(function(item) {
+        return item.dataset.xrdTransferField === field;
+      });
+      return control ? String(control.value || "").trim() : "";
+    }
+    function setReportTransferValue(field, value) {
+      reportTransferControls.forEach(function(control) {
+        if (control.dataset.xrdTransferField === field) control.value = value || "";
+      });
+    }
+    function reportTransferFormState() {
+      return {
+        requestNumber: reportTransferValue("requestNumber"),
+        limsExperimentCode: reportTransferValue("limsExperimentCode"),
+        equipmentCode: reportTransferValue("equipmentCode"),
+        operatorId: reportTransferValue("operatorId")
+      };
+    }
+    function selectedRequestItem() {
+      var index = Number(requestSelect.value);
+      return Number.isInteger(index) && index >= 0 ? requestItems[index] || null : null;
+    }
+    function requestOptionLabel(item) {
+      return [
+        item.requestNumber || "(의뢰번호 없음)",
+        item.requestDate || "",
+        item.requestStateName || "",
+        item.experimentCode || item.testMethodCode || "(실험코드 없음)",
+        item.experimentName || item.testMethodName || "",
+        item.sampleName || "",
+        item.customerRequestName || ""
+      ].filter(Boolean).join(" · ");
+    }
+    function renderRequestDetail(item) {
+      requestDetail.replaceChildren();
+      if (!item) {
+        requestDetail.classList.add("is-empty");
+        requestDetail.textContent = requestItems.length
+          ? "의뢰를 선택하면 상세 정보가 표시됩니다."
+          : "조회된 XRD 의뢰가 없습니다.";
+        return;
+      }
+      requestDetail.classList.remove("is-empty");
+      [
+        ["의뢰번호", item.requestNumber], ["의뢰일", item.requestDate],
+        ["상태", item.requestStateName], ["의뢰명", item.customerRequestName],
+        ["시료", item.sampleName], ["실험코드", item.experimentCode || item.testMethodCode],
+        ["시험명", item.experimentName || item.testMethodName],
+        ["담당자", item.testChargerName], ["고객", item.customerName]
+      ].forEach(function(row) {
+        if (!row[1]) return;
+        var entry = document.createElement("span");
+        var label = document.createElement("b");
+        label.textContent = row[0];
+        entry.appendChild(label);
+        entry.appendChild(document.createTextNode(String(row[1])));
+        requestDetail.appendChild(entry);
+      });
+    }
+    function renderRequestOptions(items) {
+      requestSelect.replaceChildren();
+      var emptyOption = document.createElement("option");
+      emptyOption.value = "";
+      emptyOption.textContent = items.length ? "의뢰를 선택하세요" : "조회된 의뢰가 없습니다";
+      requestSelect.appendChild(emptyOption);
+      items.forEach(function(item, index) {
+        var option = document.createElement("option");
+        option.value = String(index);
+        option.textContent = requestOptionLabel(item);
+        requestSelect.appendChild(option);
+      });
+      renderRequestDetail(null);
+      updateReportSendAvailability();
+    }
+    function updateReportSendAvailability() {
+      var transfer = reportTransferFormState();
+      var ready = Boolean(
+        lastReportJob && lastReportJob.jobId && lastReportJob.status === "completed"
+        && transfer.requestNumber && transfer.limsExperimentCode
+        && transfer.equipmentCode && transfer.operatorId
+      );
+      reportSendButton.disabled = !ready || busy.classList.contains("show");
+      reportSendButton.title = ready
+        ? "완성된 XRD 보고서를 LIMS 전송 대기열에 등록합니다."
+        : "보고서 완료 및 전송 정보 입력 후 전송할 수 있습니다.";
     }
     function updateProgressVisibility() {
       progress.classList.toggle("is-visible", uploadProgressVisible || reportProgressVisible);
@@ -1603,6 +1784,94 @@ def build_xrd_page() -> str:
         throw requestError;
       }
       return JSON.parse(text);
+    }
+    async function requestJson(url, options) {
+      var response;
+      try {
+        response = await fetch(url, options || {});
+      } catch (error) {
+        var wrapped = new Error("서버 응답을 받지 못했습니다. 네트워크 상태를 확인하세요.");
+        wrapped.cause = error;
+        throw wrapped;
+      }
+      var text = await response.text();
+      if (!response.ok) throw errorFromResponse(response, text, "요청 처리에 실패했습니다.");
+      return text ? JSON.parse(text) : {};
+    }
+    async function loadRequestItems() {
+      requestLoad.disabled = true;
+      requestLoad.textContent = "조회 중...";
+      try {
+        var payload = await requestJson(
+          "/api/v1/requests?page=1&pageSize=200&experimentType="
+            + encodeURIComponent(REQUEST_EXPERIMENT_TYPE)
+        );
+        requestItems = Array.isArray(payload.items) ? payload.items : [];
+        renderRequestOptions(requestItems);
+        setStatus(requestItems.length
+          ? "XRD 의뢰 목록을 불러왔습니다."
+          : "조회된 XRD 의뢰가 없습니다.", false);
+      } catch (error) {
+        setStatus(error.message || "의뢰 목록 조회에 실패했습니다.", true);
+      } finally {
+        requestLoad.disabled = false;
+        requestLoad.textContent = "의뢰 조회";
+      }
+    }
+    function applySelectedRequest() {
+      var item = selectedRequestItem();
+      if (!item) {
+        renderRequestDetail(null);
+        return;
+      }
+      setReportTransferValue("requestNumber", item.requestNumber || "");
+      setReportTransferValue(
+        "limsExperimentCode",
+        item.experimentCode || item.testMethodCode || ""
+      );
+      var equipmentCode = item.equipmentCode || item.deviceCode || item.instrumentCode;
+      if (equipmentCode) setReportTransferValue("equipmentCode", equipmentCode);
+      renderRequestDetail(item);
+      updateReportSendAvailability();
+    }
+    async function sendReportJob() {
+      if (!lastReportJob || !lastReportJob.jobId) {
+        setStatus("전송할 XRD 보고서를 먼저 생성하세요.", true);
+        return;
+      }
+      var transfer = reportTransferFormState();
+      if (!transfer.requestNumber || !transfer.limsExperimentCode
+          || !transfer.equipmentCode || !transfer.operatorId) {
+        setStatus("의뢰번호, 실험코드, 실험장비, 실험자를 모두 입력하세요.", true);
+        return;
+      }
+      reportSendButton.disabled = true;
+      reportSendButton.textContent = "전송 등록 중...";
+      try {
+        var result = await requestJson(
+          "/api/v1/xrd/report/jobs/" + encodeURIComponent(lastReportJob.jobId) + "/send",
+          {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({
+              requestNumber: transfer.requestNumber,
+              experimentCode: transfer.limsExperimentCode,
+              equipmentCode: transfer.equipmentCode,
+              operatorId: transfer.operatorId
+            })
+          }
+        );
+        setStatus(
+          "XRD 보고서를 공유 저장소에 게시하고 전송 대기열에 등록했습니다."
+            + (result.transferId ? " 전송 ID: " + result.transferId : ""),
+          false
+        );
+      } catch (error) {
+        setStatus(error.message || "XRD 보고서 전송 등록에 실패했습니다.", true);
+      } finally {
+        reportSendButton.textContent = "보고서 전송";
+        updateReportSendAvailability();
+      }
     }
     async function requestJsonPostWithRetry(url, attempts, retryMessage, stage) {
       var lastError = null;
@@ -2057,6 +2326,7 @@ def build_xrd_page() -> str:
       bundleItems = [];
       renderFileList();
       reportFrame = null;
+      lastReportJob = null;
       revokeDownload();
       preview.replaceChildren(empty);
       empty.style.display = "flex";
@@ -2064,8 +2334,11 @@ def build_xrd_page() -> str:
       stopReportProgressTimer();
       setUploadProgress(0, "bundle 업로드 대기", false, false);
       setReportProgress(0, "보고서 생성 대기", false, false);
+      updateReportSendAvailability();
     });
     exampleButton.addEventListener("click", async function() {
+      lastReportJob = null;
+      updateReportSendAvailability();
       setBusy(true);
       startReportProgress("예제 보고서를 불러오는 중입니다.");
       try {
@@ -2107,6 +2380,8 @@ def build_xrd_page() -> str:
         setReportProgress(94, "보고서 화면을 준비하는 중입니다.", true, false);
         var text = await fetchReportHtmlWithRetry(payload.jobId);
         showHtml(text);
+        lastReportJob = payload;
+        updateReportSendAvailability();
         setStatus("XRD 보고서가 생성되었습니다.", false);
         finishReportProgress("XRD 보고서가 생성되었습니다.");
       } catch (error) {
@@ -2119,6 +2394,14 @@ def build_xrd_page() -> str:
         setBusy(false);
       }
     });
+    requestLoad.addEventListener("click", loadRequestItems);
+    requestSelect.addEventListener("change", applySelectedRequest);
+    reportTransferControls.forEach(function(control) {
+      control.addEventListener("input", updateReportSendAvailability);
+      control.addEventListener("change", updateReportSendAvailability);
+    });
+    reportSendButton.addEventListener("click", sendReportJob);
+    renderRequestOptions([]);
     renderFileList();
     setStatus("XRD 파일을 선택하면 보고서를 생성할 수 있습니다.", false);
   })();
@@ -2205,6 +2488,19 @@ def _build_xrd_html_from_inputs_with_settings(
     return result["html"]
 
 
+def _build_xrd_report_package(report_root: Path, package_path: Path) -> None:
+    package_path.parent.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(
+        package_path,
+        "w",
+        compression=zipfile.ZIP_DEFLATED,
+        compresslevel=6,
+    ) as archive:
+        for path in sorted(report_root.rglob("*")):
+            if path.is_file() and path != package_path:
+                archive.write(path, path.relative_to(report_root).as_posix())
+
+
 def _run_xrd_report_job(job: XrdReportJob) -> None:
     started = time.perf_counter()
     _set_xrd_job_state(
@@ -2234,6 +2530,13 @@ def _run_xrd_report_job(job: XrdReportJob) -> None:
             image_paths=image_paths,
             origin=job.origin,
         )
+        _set_xrd_job_state(
+            job,
+            progress_pct=92,
+            message="전송용 XRD 보고서 패키지를 구성하는 중입니다.",
+        )
+        (root / "xrd-report.html").write_text(html_result, encoding="utf-8")
+        _build_xrd_report_package(root, job.package_path)
     except ApiException as exc:
         _set_xrd_job_state(
             job,
@@ -2478,6 +2781,79 @@ def download_xrd_report_html(job_id: str) -> HTMLResponse:
             retryable=True,
         )
     return HTMLResponse(job.html_result, headers=XRD_NO_STORE_HEADERS)
+
+
+@router.get("/api/v1/xrd/report/jobs/{job_id}/package", tags=["xrd"])
+def download_xrd_report_package(job_id: str) -> FileResponse:
+    with _xrd_report_jobs_lock:
+        job = _xrd_report_jobs.get(job_id)
+    if job is None:
+        raise ApiException(
+            404,
+            "XRD_REPORT_JOB_NOT_FOUND",
+            "XRD 보고서 작업을 찾을 수 없습니다. 다시 생성해 주세요.",
+        )
+    if job.status != "completed":
+        raise ApiException(
+            409,
+            "XRD_REPORT_JOB_NOT_READY",
+            "XRD 보고서가 아직 완성되지 않았습니다.",
+            retryable=True,
+        )
+    if not job.package_path.is_file():
+        raise ApiException(
+            410,
+            "XRD_REPORT_PACKAGE_EXPIRED",
+            "XRD 보고서 패키지가 만료되었습니다. 다시 생성해 주세요.",
+        )
+    return FileResponse(
+        job.package_path,
+        media_type="application/zip",
+        filename="xrd-report-package.zip",
+    )
+
+
+@router.post("/api/v1/xrd/report/jobs/{job_id}/send", tags=["xrd"])
+def send_xrd_report_job(
+    request: Request,
+    job_id: str,
+    payload: PreviewReportSendRequest,
+) -> dict[str, Any]:
+    set_usage_context(
+        request,
+        project="XRD",
+        job_id=job_id,
+        request_number=payload.request_number,
+        experiment_code=payload.experiment_code,
+        equipment_code=payload.equipment_code,
+        operator_id=payload.operator_id,
+    )
+    with _xrd_report_jobs_lock:
+        job = _xrd_report_jobs.get(job_id)
+    if job is None:
+        raise ApiException(
+            404,
+            "XRD_REPORT_JOB_NOT_FOUND",
+            "XRD 보고서 작업을 찾을 수 없습니다. 다시 생성해 주세요.",
+        )
+    try:
+        return send_preview_report_package(
+            settings=getattr(request.app.state, "settings", None),
+            database=getattr(request.app.state, "database", None),
+            job=job,
+            payload=payload,
+        )
+    except FileNotFoundError as exc:
+        raise ApiException(410, "XRD_REPORT_PACKAGE_EXPIRED", str(exc)) from exc
+    except ValueError as exc:
+        raise ApiException(409, "XRD_REPORT_JOB_NOT_READY", str(exc)) from exc
+    except ReportQueueError as exc:
+        raise ApiException(
+            503 if exc.retryable else 500,
+            exc.code,
+            str(exc),
+            retryable=exc.retryable,
+        ) from exc
 
 
 @router.post("/api/v1/xrd/render-pdf", response_class=Response, tags=["xrd"])

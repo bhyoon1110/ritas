@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from io import BytesIO
+from types import SimpleNamespace
 import time
 import zipfile
 import zlib
@@ -90,7 +91,65 @@ def test_ahn_workspace_contains_folder_upload_controls() -> None:
     assert "폴더 안의 raw 파일 목록을 읽는 중입니다." in page
     assert "목록 표시가 완료된 뒤 다시 실행하세요." in page
     assert "완료되면 다운로드 버튼이 활성화됩니다." in page
+    assert 'id="ahn-report-transfer"' in page
+    assert 'id="ahn-request-load"' in page
+    assert 'id="ahn-request-select"' in page
+    assert 'data-ahn-transfer-field="requestNumber"' in page
+    assert 'data-ahn-transfer-field="limsExperimentCode"' in page
+    assert 'id="ahn-report-send" disabled' in page
+    assert 'REQUEST_EXPERIMENT_TYPE = "TEM"' in page
+    assert 'encodeURIComponent(lastReportJob.jobId) + "/send"' in page
     assert "TEM/STEM" in page
+
+
+def test_tem_send_route_queues_completed_package(monkeypatch, tmp_path) -> None:
+    package_path = tmp_path / "tem-report-package.zip"
+    with zipfile.ZipFile(package_path, "w") as archive:
+        archive.writestr("tem-report.pptx", b"pptx")
+    job = SimpleNamespace(
+        job_id="tem-job-1",
+        status="completed",
+        package_path=package_path,
+    )
+    captured = {}
+
+    def fake_send_preview_report_package(**values):
+        captured.update(values)
+        return {
+            "queued": True,
+            "sent": False,
+            "transferId": "transfer-1",
+            "status": "PENDING",
+        }
+
+    monkeypatch.setattr(
+        ahn_web,
+        "send_preview_report_package",
+        fake_send_preview_report_package,
+    )
+    monkeypatch.setattr(ahn_web, "_cleanup_old_jobs", lambda: None)
+    with ahn_web._ahn_report_jobs_lock:
+        ahn_web._ahn_report_jobs[job.job_id] = job
+    try:
+        with TestClient(create_tem_preview_app()) as client:
+            response = client.post(
+                "/api/v1/tem/report/jobs/tem-job-1/send",
+                json={
+                    "requestNumber": "REQ-001",
+                    "experimentCode": "TEM",
+                    "equipmentCode": "TEM-EDGE-01",
+                    "operatorId": "operator-1",
+                },
+            )
+    finally:
+        with ahn_web._ahn_report_jobs_lock:
+            ahn_web._ahn_report_jobs.pop(job.job_id, None)
+
+    assert response.status_code == 200
+    assert response.json()["transferId"] == "transfer-1"
+    assert captured["job"] is job
+    assert captured["payload"].request_number == "REQ-001"
+    assert captured["payload"].experiment_code == "TEM"
 
 
 def test_ahn_input_root_finds_browser_top_level_folder(tmp_path) -> None:

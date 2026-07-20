@@ -32,6 +32,8 @@ from .error_archive import (
     record_background_error,
 )
 from .path_bootstrap import add_project_package_paths
+from .preview_report import PreviewReportSendRequest, send_preview_report_package
+from .report_queue import ReportQueueError
 from .usage_archive import (
     UsageArchive,
     record_background_usage,
@@ -1381,6 +1383,57 @@ def build_ahn_page() -> str:
     .ahn-summary-item span { display: block; color: var(--muted); font-size: 13px; }
     .ahn-summary-item strong { display: block; margin-top: 5px; font-size: 22px; color: var(--ink); }
     .ahn-downloads { display: flex; gap: 8px; flex-wrap: wrap; }
+    .ahn-transfer {
+      display: grid;
+      gap: 12px;
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+    }
+    .ahn-transfer-head,
+    .ahn-transfer-actions {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .ahn-transfer-head strong { color: var(--ink); }
+    .ahn-request-picker {
+      display: grid;
+      grid-template-columns: auto minmax(240px, 1fr);
+      gap: 10px;
+    }
+    .ahn-request-picker select,
+    .ahn-transfer-grid input {
+      width: 100%;
+      min-width: 0;
+      min-height: 40px;
+      border: 1px solid #bfd0e4;
+      border-radius: 6px;
+      background: #fff;
+      color: var(--ink);
+      padding: 8px 10px;
+      font: inherit;
+    }
+    .ahn-request-detail {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 7px 14px;
+      min-height: 22px;
+      color: #475569;
+      font-size: 13px;
+    }
+    .ahn-request-detail.is-empty { color: var(--muted); }
+    .ahn-request-detail b { margin-right: 4px; color: #1e3a5f; }
+    .ahn-transfer-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(150px, 1fr));
+      gap: 10px;
+    }
+    .ahn-transfer-grid label { min-width: 0; color: #475569; font-size: 13px; }
+    .ahn-transfer-grid span { display: block; margin-bottom: 5px; font-weight: 700; }
     .ahn-empty {
       min-height: 220px;
       display: flex;
@@ -1414,6 +1467,8 @@ def build_ahn_page() -> str:
       .ahn-actions { width: 100%; justify-content: flex-end; }
       button, .ahn-download { min-height: 40px; padding: 8px 11px; font-size: 14px; }
       .ahn-summary { grid-template-columns: repeat(2, minmax(120px, 1fr)); }
+      .ahn-request-picker { grid-template-columns: 1fr; }
+      .ahn-transfer-grid { grid-template-columns: repeat(2, minmax(120px, 1fr)); }
     }
   </style>
 </head>
@@ -1487,6 +1542,31 @@ def build_ahn_page() -> str:
           <a href="#" class="ahn-download" id="ahn-download-json" aria-disabled="true">분석 JSON 다운로드</a>
         </div>
       </section>
+      <section class="ahn-transfer" id="ahn-report-transfer">
+        <div class="ahn-transfer-head">
+          <strong>보고서 전송 정보</strong>
+          <span>보고서를 확인한 뒤 공유 저장소와 LIMS 전송 대기열에 등록합니다.</span>
+        </div>
+        <div class="ahn-request-picker">
+          <button type="button" id="ahn-request-load">의뢰 조회</button>
+          <select id="ahn-request-select" aria-label="TEM 의뢰 선택">
+            <option value="">의뢰 조회 후 항목을 선택하세요</option>
+          </select>
+        </div>
+        <div class="ahn-request-detail is-empty" id="ahn-request-detail">
+          TEM 의뢰를 조회하면 상세 정보가 표시됩니다.
+        </div>
+        <div class="ahn-transfer-grid">
+          <label><span>의뢰번호</span><input type="text" data-ahn-transfer-field="requestNumber" readonly></label>
+          <label><span>실험코드</span><input type="text" data-ahn-transfer-field="limsExperimentCode" readonly></label>
+          <label><span>실험장비</span><input type="text" data-ahn-transfer-field="equipmentCode" value="TEM-EDGE-01"></label>
+          <label><span>실험자</span><input type="text" data-ahn-transfer-field="operatorId" value="SSO-PENDING"></label>
+        </div>
+        <div class="ahn-transfer-actions">
+          <span>의뢰번호, 실험코드, 실험장비, 실험자가 모두 있어야 전송할 수 있습니다.</span>
+          <button type="button" class="primary" id="ahn-report-send" disabled>보고서 전송</button>
+        </div>
+      </section>
       <section class="ahn-empty" id="ahn-empty">TEM/STEM/EDS/코팅층 raw 폴더를 올리면 PPT 보고서를 생성합니다.</section>
     </main>
   </div>
@@ -1523,6 +1603,13 @@ def build_ahn_page() -> str:
     var downloadPptx = document.getElementById("ahn-download-pptx");
     var downloadPackage = document.getElementById("ahn-download-package");
     var downloadJson = document.getElementById("ahn-download-json");
+    var requestLoad = document.getElementById("ahn-request-load");
+    var requestSelect = document.getElementById("ahn-request-select");
+    var requestDetail = document.getElementById("ahn-request-detail");
+    var reportSendButton = document.getElementById("ahn-report-send");
+    var reportTransferControls = Array.prototype.slice.call(
+      document.querySelectorAll("[data-ahn-transfer-field]")
+    );
     var bundleItems = [];
     var progressTimer = null;
     var TEM_UPLOAD_CHUNK_BYTES = 4 * 1024 * 1024;
@@ -1536,6 +1623,9 @@ def build_ahn_page() -> str:
     var reportProgressError = false;
     var operationBusy = false;
     var collectingFiles = false;
+    var requestItems = [];
+    var lastReportJob = null;
+    var REQUEST_EXPERIMENT_TYPE = "TEM";
 
     function syncActionState() {
       runButton.disabled = operationBusy || collectingFiles || !bundleItems.length;
@@ -1543,8 +1633,10 @@ def build_ahn_page() -> str:
       addFilesButton.disabled = operationBusy || collectingFiles;
       addFolderButton.disabled = operationBusy || collectingFiles;
       clearButton.disabled = operationBusy || collectingFiles;
+      requestLoad.disabled = operationBusy || collectingFiles;
       drop.setAttribute("aria-busy", collectingFiles ? "true" : "false");
       form.setAttribute("aria-busy", collectingFiles ? "true" : "false");
+      updateReportSendAvailability();
     }
 
     function setCollectingFiles(value, message) {
@@ -1594,6 +1686,93 @@ def build_ahn_page() -> str:
       operationBusy = Boolean(value);
       busy.classList.toggle("show", Boolean(value));
       syncActionState();
+    }
+    function reportTransferValue(field) {
+      var control = reportTransferControls.find(function(item) {
+        return item.dataset.ahnTransferField === field;
+      });
+      return control ? String(control.value || "").trim() : "";
+    }
+    function setReportTransferValue(field, value) {
+      reportTransferControls.forEach(function(control) {
+        if (control.dataset.ahnTransferField === field) control.value = value || "";
+      });
+    }
+    function reportTransferFormState() {
+      return {
+        requestNumber: reportTransferValue("requestNumber"),
+        limsExperimentCode: reportTransferValue("limsExperimentCode"),
+        equipmentCode: reportTransferValue("equipmentCode"),
+        operatorId: reportTransferValue("operatorId")
+      };
+    }
+    function selectedRequestItem() {
+      var index = Number(requestSelect.value);
+      return Number.isInteger(index) && index >= 0 ? requestItems[index] || null : null;
+    }
+    function requestOptionLabel(item) {
+      return [
+        item.requestNumber || "(의뢰번호 없음)",
+        item.requestDate || "",
+        item.requestStateName || "",
+        item.experimentCode || item.testMethodCode || "(실험코드 없음)",
+        item.experimentName || item.testMethodName || "",
+        item.sampleName || "",
+        item.customerRequestName || ""
+      ].filter(Boolean).join(" · ");
+    }
+    function renderRequestDetail(item) {
+      requestDetail.replaceChildren();
+      if (!item) {
+        requestDetail.classList.add("is-empty");
+        requestDetail.textContent = requestItems.length
+          ? "의뢰를 선택하면 상세 정보가 표시됩니다."
+          : "조회된 TEM 의뢰가 없습니다.";
+        return;
+      }
+      requestDetail.classList.remove("is-empty");
+      [
+        ["의뢰번호", item.requestNumber], ["의뢰일", item.requestDate],
+        ["상태", item.requestStateName], ["의뢰명", item.customerRequestName],
+        ["시료", item.sampleName], ["실험코드", item.experimentCode || item.testMethodCode],
+        ["시험명", item.experimentName || item.testMethodName],
+        ["담당자", item.testChargerName], ["고객", item.customerName]
+      ].forEach(function(row) {
+        if (!row[1]) return;
+        var entry = document.createElement("span");
+        var label = document.createElement("b");
+        label.textContent = row[0];
+        entry.appendChild(label);
+        entry.appendChild(document.createTextNode(String(row[1])));
+        requestDetail.appendChild(entry);
+      });
+    }
+    function renderRequestOptions(items) {
+      requestSelect.replaceChildren();
+      var emptyOption = document.createElement("option");
+      emptyOption.value = "";
+      emptyOption.textContent = items.length ? "의뢰를 선택하세요" : "조회된 의뢰가 없습니다";
+      requestSelect.appendChild(emptyOption);
+      items.forEach(function(item, index) {
+        var option = document.createElement("option");
+        option.value = String(index);
+        option.textContent = requestOptionLabel(item);
+        requestSelect.appendChild(option);
+      });
+      renderRequestDetail(null);
+      updateReportSendAvailability();
+    }
+    function updateReportSendAvailability() {
+      var transfer = reportTransferFormState();
+      var ready = Boolean(
+        lastReportJob && lastReportJob.jobId && lastReportJob.status === "completed"
+        && transfer.requestNumber && transfer.limsExperimentCode
+        && transfer.equipmentCode && transfer.operatorId
+      );
+      reportSendButton.disabled = !ready || operationBusy || collectingFiles;
+      reportSendButton.title = ready
+        ? "완성된 TEM 보고서를 LIMS 전송 대기열에 등록합니다."
+        : "보고서 완료 및 전송 정보 입력 후 전송할 수 있습니다.";
     }
     function progressMessage(percent) {
       if (percent < 25) return "raw 파일을 서버로 전송하는 중입니다.";
@@ -1873,6 +2052,105 @@ def build_ahn_page() -> str:
         throw error;
       }
       return JSON.parse(text);
+    }
+    async function requestJson(url, options) {
+      var response;
+      try {
+        response = await fetch(url, options || {});
+      } catch (error) {
+        var wrapped = new Error(networkErrorMessage(error, url));
+        wrapped.cause = error;
+        wrapped.isNetworkError = true;
+        throw wrapped;
+      }
+      var text = await response.text();
+      if (!response.ok) {
+        throw errorFromResponse(response, text, "요청 처리에 실패했습니다.");
+      }
+      return text ? JSON.parse(text) : {};
+    }
+    async function loadRequestItems() {
+      requestLoad.disabled = true;
+      requestLoad.textContent = "조회 중...";
+      try {
+        var payload = await requestJson(
+          "/api/v1/requests?page=1&pageSize=200&experimentType="
+            + encodeURIComponent(REQUEST_EXPERIMENT_TYPE)
+        );
+        requestItems = Array.isArray(payload.items) ? payload.items : [];
+        renderRequestOptions(requestItems);
+        setStatus(
+          requestItems.length
+            ? "TEM 의뢰 목록을 불러왔습니다."
+            : "조회된 TEM 의뢰가 없습니다.",
+          false
+        );
+      } catch (error) {
+        requestItems = [];
+        renderRequestOptions([]);
+        setStatus(error.message || "TEM 의뢰 조회에 실패했습니다.", true);
+      } finally {
+        requestLoad.textContent = "의뢰 조회";
+        syncActionState();
+      }
+    }
+    function applySelectedRequest() {
+      var item = selectedRequestItem();
+      if (!item) {
+        setReportTransferValue("requestNumber", "");
+        setReportTransferValue("limsExperimentCode", "");
+        renderRequestDetail(null);
+        updateReportSendAvailability();
+        return;
+      }
+      setReportTransferValue("requestNumber", item.requestNumber || "");
+      setReportTransferValue(
+        "limsExperimentCode",
+        item.experimentCode || item.testMethodCode || REQUEST_EXPERIMENT_TYPE
+      );
+      var equipmentCode = item.equipmentCode || item.deviceCode || item.instrumentCode;
+      if (equipmentCode) setReportTransferValue("equipmentCode", equipmentCode);
+      renderRequestDetail(item);
+      updateReportSendAvailability();
+    }
+    async function sendReportJob() {
+      var transfer = reportTransferFormState();
+      if (!lastReportJob || !lastReportJob.jobId || lastReportJob.status !== "completed") {
+        setStatus("먼저 TEM 보고서를 생성하고 확인하세요.", true);
+        return;
+      }
+      if (!transfer.requestNumber || !transfer.limsExperimentCode
+          || !transfer.equipmentCode || !transfer.operatorId) {
+        setStatus("의뢰번호, 실험코드, 실험장비, 실험자를 모두 입력하세요.", true);
+        return;
+      }
+      reportSendButton.disabled = true;
+      reportSendButton.textContent = "전송 등록 중...";
+      try {
+        var result = await requestJson(
+          "/api/v1/tem/report/jobs/" + encodeURIComponent(lastReportJob.jobId) + "/send",
+          {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({
+              requestNumber: transfer.requestNumber,
+              experimentCode: transfer.limsExperimentCode,
+              equipmentCode: transfer.equipmentCode,
+              operatorId: transfer.operatorId
+            })
+          }
+        );
+        setStatus(
+          "TEM 보고서를 공유 저장소에 게시하고 전송 대기열에 등록했습니다."
+            + (result.transferId ? " 전송 ID: " + result.transferId : ""),
+          false
+        );
+      } catch (error) {
+        setStatus(error.message || "TEM 보고서 전송 등록에 실패했습니다.", true);
+      } finally {
+        reportSendButton.textContent = "보고서 전송";
+        updateReportSendAvailability();
+      }
     }
     async function requestJsonPostWithRetry(url, attempts, retryMessage) {
       var lastError = null;
@@ -2220,6 +2498,7 @@ def build_ahn_page() -> str:
     clearButton.addEventListener("click", function() {
       form.reset();
       bundleItems = [];
+      lastReportJob = null;
       renderFileList();
       result.hidden = true;
       empty.hidden = false;
@@ -2230,8 +2509,11 @@ def build_ahn_page() -> str:
       setUploadProgress(0, "raw 파일 업로드 대기", false, false);
       setProgress(0, "보고서 생성 대기", false, false);
       setStatus("TEM raw 폴더를 선택하면 보고서를 생성할 수 있습니다.", false);
+      updateReportSendAvailability();
     });
     exampleButton.addEventListener("click", async function() {
+      lastReportJob = null;
+      updateReportSendAvailability();
       setBusy(true);
       startProgress("TEM 예제 보고서를 생성하는 중입니다.");
       try {
@@ -2259,12 +2541,15 @@ def build_ahn_page() -> str:
         setStatus("TEM raw 폴더 또는 ZIP 파일을 먼저 추가하세요.", true);
         return;
       }
+      lastReportJob = null;
+      updateReportSendAvailability();
       setBusy(true);
       stopProgressTimer();
       setUploadProgress(0, "raw 파일 업로드를 준비하는 중입니다.", true, false);
       setProgress(0, "업로드 완료 후 보고서 작업을 시작합니다.", true, false);
       try {
         var payload = await waitForReportJob(await uploadBundleWithSession());
+        lastReportJob = payload;
         renderSummary(payload);
         setStatus("TEM 보고서가 생성되었습니다.", false);
         finishProgress("TEM 보고서가 생성되었습니다.");
@@ -2278,6 +2563,14 @@ def build_ahn_page() -> str:
         setBusy(false);
       }
     });
+    requestLoad.addEventListener("click", loadRequestItems);
+    requestSelect.addEventListener("change", applySelectedRequest);
+    reportTransferControls.forEach(function(control) {
+      control.addEventListener("input", updateReportSendAvailability);
+      control.addEventListener("change", updateReportSendAvailability);
+    });
+    reportSendButton.addEventListener("click", sendReportJob);
+    renderRequestOptions([]);
     renderFileList();
     setStatus("TEM raw 폴더를 선택하면 보고서를 생성할 수 있습니다.", false);
   })();
@@ -2515,6 +2808,50 @@ def download_tem_report(job_id: str, kind: str) -> FileResponse:
             filename="analysis-result.json",
         )
     raise ApiException(404, "TEM_REPORT_FILE_NOT_FOUND", "지원하지 않는 TEM 보고서 파일입니다.")
+
+
+@router.post("/api/v1/tem/report/jobs/{job_id}/send", tags=["tem"])
+def send_tem_report_job(
+    request: Request,
+    job_id: str,
+    payload: PreviewReportSendRequest,
+) -> dict[str, Any]:
+    set_usage_context(
+        request,
+        project="TEM",
+        job_id=job_id,
+        request_number=payload.request_number,
+        experiment_code=payload.experiment_code,
+        equipment_code=payload.equipment_code,
+        operator_id=payload.operator_id,
+    )
+    _cleanup_old_jobs()
+    with _ahn_report_jobs_lock:
+        job = _ahn_report_jobs.get(job_id)
+    if job is None:
+        raise ApiException(
+            404,
+            "TEM_REPORT_NOT_FOUND",
+            "TEM 보고서 작업 정보를 찾을 수 없습니다. 보고서를 다시 생성하세요.",
+        )
+    try:
+        return send_preview_report_package(
+            settings=getattr(request.app.state, "settings", None),
+            database=getattr(request.app.state, "database", None),
+            job=job,
+            payload=payload,
+        )
+    except FileNotFoundError as exc:
+        raise ApiException(410, "TEM_REPORT_PACKAGE_EXPIRED", str(exc)) from exc
+    except ValueError as exc:
+        raise ApiException(409, "TEM_REPORT_NOT_READY", str(exc)) from exc
+    except ReportQueueError as exc:
+        raise ApiException(
+            503 if exc.retryable else 500,
+            exc.code,
+            str(exc),
+            retryable=exc.retryable,
+        ) from exc
 
 
 def create_tem_preview_app() -> FastAPI:
