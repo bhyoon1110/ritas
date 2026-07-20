@@ -18,7 +18,6 @@ DEFAULT_LLM_VALIDATE_MODEL = True
 DEFAULT_LLM_INCLUDE_IMAGES = True
 DEFAULT_LLM_MAX_IMAGES = 3
 DEFAULT_LLM_MAX_IMAGE_BYTES = 2 * 1024 * 1024
-DEFAULT_SPRING_CALLBACK_URL = "http://127.0.0.1:8080/api/v1/edge/reports"
 
 
 @dataclass(frozen=True)
@@ -64,9 +63,8 @@ class Settings:
     llm_max_input_chars: int = 200_000
     processor_timeout_seconds: float = 600.0
     worker_poll_seconds: float = 2.0
-    spring_callback_url: str = ""
-    spring_callback_timeout_seconds: float = 60.0
-    spring_callback_max_attempts: int = 3
+    report_storage_key: str = "RIST_REPORTS"
+    report_transfer_max_attempts: int = 5
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -220,13 +218,11 @@ class Settings:
             worker_poll_seconds=float(
                 os.getenv("RIST_WORKER_POLL_SECONDS", "2")
             ),
-            spring_callback_url=os.getenv(
-                "RIST_SPRING_CALLBACK_URL", DEFAULT_SPRING_CALLBACK_URL
-            ).rstrip("/"),
-            spring_callback_timeout_seconds=float(
-                os.getenv("RIST_SPRING_CALLBACK_TIMEOUT_SECONDS", "60")
+            report_storage_key=(
+                os.getenv("RIST_REPORT_STORAGE_KEY", "RIST_REPORTS").strip()
+                or "RIST_REPORTS"
             ),
-            spring_callback_max_attempts=int(
-                os.getenv("RIST_SPRING_CALLBACK_MAX_ATTEMPTS", "3")
+            report_transfer_max_attempts=max(
+                1, int(os.getenv("RIST_REPORT_TRANSFER_MAX_ATTEMPTS", "5"))
             ),
         )

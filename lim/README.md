@@ -91,6 +91,6 @@ Edge worker가 자동 processor를 실행하게 하려면 `RIST_PROCESSOR_COMMAN
 export RIST_PROCESSOR_COMMAND_XRD='python -m lim.xrd.cli "{input_dir}/raw.txt" "{input_dir}/ICDD Card" -o "{report_dir}/xrd-report.html"'
 ```
 
-현재 XRD CLI는 `report_dir`에 바로 전달 가능한 보고서형 HTML을 생성한다. 이후
-Spring Boot 전송 ZIP에 포함하려면 Edge processor 명령의 `-o` 경로를
+현재 XRD CLI는 `report_dir`에 바로 배포 가능한 보고서형 HTML을 생성한다. 공유
+저장소 최종 ZIP에 포함하려면 Edge processor 명령의 `-o` 경로를
 `{report_dir}` 아래로 지정한다.

@@ -788,6 +788,14 @@ def test_worker_calls_local_llm_and_saves_report(
     assert updated["status"] == "COMPLETED"
     assert updated["progress"] == 100
     assert updated["completed_at"] is not None
+    report_run = database.fetch_report_run_by_source_job(job_id)
+    assert report_run is not None
+    assert report_run["generation_status"] == "READY"
+    assert report_run["package_relative_path"].endswith("report/report-package.zip")
+    transfer = database.fetch_report_transfer_for_report(report_run["report_id"])
+    assert transfer is not None
+    assert transfer["status"] == "PENDING"
+    assert transfer["attempt_count"] == 0
     assert captured["url"].endswith("/v1/chat/completions")
     assert captured["body"]["model"] == "local-model"
     assert captured["body"]["temperature"] == 0.2
@@ -900,6 +908,11 @@ def test_worker_completes_report_without_llm(
     assert updated is not None
     assert updated["status"] == "COMPLETED"
     assert updated["progress"] == 100
+    report_run = database.fetch_report_run_by_source_job(job_id)
+    assert report_run is not None
+    transfer = database.fetch_report_transfer_for_report(report_run["report_id"])
+    assert transfer is not None
+    assert transfer["status"] == "PENDING"
     assert (job_root / "report" / "report.pptx").exists()
     report_doc = json.loads(
         (job_root / "report" / "report.json").read_text(encoding="utf-8")

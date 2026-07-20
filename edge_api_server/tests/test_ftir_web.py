@@ -521,29 +521,21 @@ def test_ftir_report_chunked_upload_session_retries_and_downloads_package(
 
 
 def test_preview_report_send_package_uses_transfer_metadata(
-    monkeypatch,
     tmp_path: Path,
 ) -> None:
     captured: dict[str, object] = {}
 
-    class FakeSpringCallbackClient:
-        def __init__(self, url: str, timeout: float, attempts: int) -> None:
-            captured["config"] = (url, timeout, attempts)
+    class FakeDatabase:
+        def enqueue_report_transfer(self, **values: object) -> dict[str, object]:
+            captured.update(values)
+            return {
+                "transfer_id": values["transfer_id"],
+                "status": "PENDING",
+            }
 
-        @property
-        def enabled(self) -> bool:
-            return True
-
-        def deliver(self, job: dict, package_path: Path) -> None:
-            captured["job"] = job
-            captured["package_path"] = package_path
-
-        def close(self) -> None:
-            captured["closed"] = True
-
-    monkeypatch.setattr(preview_report, "SpringCallbackClient", FakeSpringCallbackClient)
     package = tmp_path / "report-package.zip"
-    package.write_bytes(b"zip")
+    with zipfile.ZipFile(package, "w") as archive:
+        archive.writestr("report.pptx", b"pptx")
     job = preview_report.PreviewReportJob(
         job_id="preview-job-1",
         filename="report-package.zip",
@@ -564,32 +556,34 @@ def test_preview_report_send_package_uses_transfer_metadata(
         }
     )
     settings = SimpleNamespace(
-        spring_callback_url="http://spring.local/api/v1/edge/reports",
-        spring_callback_timeout_seconds=3.0,
-        spring_callback_max_attempts=2,
+        storage_root=tmp_path / "shared",
+        report_storage_key="RIST_REPORTS",
+        report_transfer_max_attempts=4,
     )
 
     result = preview_report.send_preview_report_package(
         settings=settings,
+        database=FakeDatabase(),
         job=job,
         payload=payload,
     )
 
-    assert result["sent"] is True
-    assert captured["config"] == (
-        "http://spring.local/api/v1/edge/reports",
-        3.0,
-        2,
+    assert result["queued"] is True
+    assert result["sent"] is False
+    assert result["status"] == "PENDING"
+    assert result["storageKey"] == "RIST_REPORTS"
+    assert result["packageRelativePath"] == (
+        "web-reports/LIMS-FTIR-01/preview-job-1/report-package.zip"
     )
-    assert captured["job"] == {
-        "job_id": "preview-job-1",
-        "request_number": "REQ-SEND-001",
-        "experiment_code": "LIMS-FTIR-01",
-        "equipment_code": "FTIR-EDGE-01",
-        "operator_id": "operator01",
-    }
-    assert captured["package_path"] == package
-    assert captured["closed"] is True
+    persisted = settings.storage_root / result["packageRelativePath"]
+    assert persisted.is_file()
+    assert zipfile.is_zipfile(persisted)
+    assert captured["request_number"] == "REQ-SEND-001"
+    assert captured["experiment_code"] == "LIMS-FTIR-01"
+    assert captured["equipment_code"] == "FTIR-EDGE-01"
+    assert captured["operator_id"] == "operator01"
+    assert captured["package_relative_path"] == result["packageRelativePath"]
+    assert captured["max_attempts"] == 4
 
 
 def test_ftir_analysis_api_rejects_non_dpt(tmp_path: Path) -> None:

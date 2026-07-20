@@ -14,7 +14,7 @@ from .error_archive import ErrorArchive, ErrorArchiveSettings, record_background
 from .llm_client import LocalLlmClient
 from .manifest import write_manifest
 from .report import generate_report
-from .spring_callback import SpringCallbackClient, SpringCallbackError
+from .report_queue import ReportQueueError, enqueue_report_package
 from .time_utils import isoformat_kst
 from .usage_archive import (
     UsageArchive,
@@ -42,16 +42,10 @@ class ReportWorker:
         settings: Settings,
         database: Database,
         llm_client: LocalLlmClient,
-        spring_client: SpringCallbackClient | None = None,
     ) -> None:
         self.settings = settings
         self.database = database
         self.llm_client = llm_client
-        self.spring_client = spring_client or SpringCallbackClient(
-            settings.spring_callback_url,
-            settings.spring_callback_timeout_seconds,
-            settings.spring_callback_max_attempts,
-        )
         self.error_archive = ErrorArchive(
             ErrorArchiveSettings(
                 root=settings.error_archive_root or (settings.storage_root / "errors"),
@@ -99,15 +93,25 @@ class ReportWorker:
                 / "report"
                 / "report-package.zip"
             )
-            if self.spring_client.enabled:
-                self.database.update_job(
-                    job_id,
-                    status="CALLBACK_PENDING",
-                    progress=90,
-                    error_json=None,
-                )
-                self._write_manifest(job_id)
-                self.spring_client.deliver(job, package_path)
+            self.database.update_job(
+                job_id,
+                progress=90,
+                error_json=None,
+            )
+            self._write_manifest(job_id)
+            transfer = enqueue_report_package(
+                settings=self.settings,
+                database=self.database,
+                report_id=job_id,
+                package_path=package_path,
+                source_job_id=job_id,
+                request_number=job["request_number"],
+                experiment_code=job["experiment_code"],
+                equipment_code=job["equipment_code"],
+                operator_id=job["operator_id"],
+                report_options=job.get("report_options_json"),
+                generated_at=generated_at,
+            )
             self.database.update_job(
                 job_id,
                 status="COMPLETED",
@@ -116,8 +120,9 @@ class ReportWorker:
                 error_json=None,
             )
             logger.info(
-                "보고서 생성 및 작업 완료 (job_id=%s, llm_used=%s)",
+                "보고서 생성 및 전송 큐 등록 완료 (job_id=%s, transfer_id=%s, llm_used=%s)",
                 job_id,
+                transfer["transferId"],
                 document.llm_used,
             )
             record_background_usage(
@@ -147,7 +152,7 @@ class ReportWorker:
                 exc,
                 duration_ms=round((time.perf_counter() - started) * 1000),
             )
-        except SpringCallbackError as exc:
+        except ReportQueueError as exc:
             self._mark_failed(
                 job_id,
                 exc.code,
@@ -264,7 +269,6 @@ def main() -> None:
             worker.run_once()
         finally:
             worker.llm_client.close()
-            worker.spring_client.close()
             worker.database.close()
         return
 
@@ -288,7 +292,6 @@ def main() -> None:
                 time.sleep(worker.settings.worker_poll_seconds)
     finally:
         worker.llm_client.close()
-        worker.spring_client.close()
         worker.database.close()
         logger.info("보고서 worker가 종료되었습니다.")
 

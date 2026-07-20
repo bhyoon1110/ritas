@@ -25,7 +25,12 @@ from .report import annotator
 from .report.model import ReportFigure
 from .report.package import build_report_package
 from .report.renderers import convert_pptx_to_pdf, render_report_formats
-from .spring_callback import SpringCallbackClient, SpringCallbackError
+from .database import Database
+from .report_queue import (
+    ReportQueueError,
+    enqueue_report_package,
+    persist_preview_report_package,
+)
 from .storage import atomic_write_json
 from .usage_archive import UsageArchive, record_background_usage
 
@@ -263,6 +268,7 @@ def preview_report_job_store(app: Any) -> PreviewReportJobStore:
 def send_preview_report_package(
     *,
     settings: Any | None,
+    database: Database | None,
     job: PreviewReportJob,
     payload: PreviewReportSendRequest,
 ) -> dict[str, Any]:
@@ -270,37 +276,39 @@ def send_preview_report_package(
         raise ValueError("보고서가 아직 완성되지 않았습니다.")
     if not job.package_path.is_file():
         raise FileNotFoundError("보고서 파일이 만료되었습니다.")
+    if database is None:
+        raise ReportQueueError(
+            "REPORT_QUEUE_DATABASE_UNAVAILABLE",
+            "보고서 전송 큐를 등록할 데이터베이스가 연결되어 있지 않습니다.",
+            retryable=True,
+        )
     resolved_settings = settings or Settings.from_env()
-    client = SpringCallbackClient(
-        resolved_settings.spring_callback_url,
-        resolved_settings.spring_callback_timeout_seconds,
-        resolved_settings.spring_callback_max_attempts,
+    shared_package = persist_preview_report_package(
+        settings=resolved_settings,
+        report_id=job.job_id,
+        experiment_code=payload.experiment_code,
+        source_path=job.package_path,
     )
-    try:
-        if not client.enabled:
-            raise SpringCallbackError(
-                "SPRING_CALLBACK_DISABLED",
-                "Spring Boot 전송 URL이 설정되어 있지 않습니다.",
-                retryable=False,
-            )
-        callback_job = {
-            "job_id": job.job_id,
-            "request_number": payload.request_number,
-            "experiment_code": payload.experiment_code,
-            "equipment_code": payload.equipment_code,
-            "operator_id": payload.operator_id,
-        }
-        client.deliver(callback_job, job.package_path)
-        return {
-            "sent": True,
-            "jobId": job.job_id,
-            "requestNumber": payload.request_number,
-            "experimentCode": payload.experiment_code,
-            "equipmentCode": payload.equipment_code,
-            "operatorId": payload.operator_id,
-        }
-    finally:
-        client.close()
+    result = enqueue_report_package(
+        settings=resolved_settings,
+        database=database,
+        report_id=job.job_id,
+        package_path=shared_package,
+        source_job_id=None,
+        request_number=payload.request_number,
+        experiment_code=payload.experiment_code,
+        equipment_code=payload.equipment_code,
+        operator_id=payload.operator_id,
+    )
+    return {
+        **result,
+        "sent": False,
+        "jobId": job.job_id,
+        "requestNumber": payload.request_number,
+        "experimentCode": payload.experiment_code,
+        "equipmentCode": payload.equipment_code,
+        "operatorId": payload.operator_id,
+    }
 
 
 def parse_analysis_payload(analysis_json: str, figure_json: str | None = None) -> dict[str, Any]:
@@ -440,7 +448,7 @@ def build_preview_report_package(
             report_dir / "report.pptx",
             report_dir / "report-from-pptx.pdf",
         )
-        _emit_progress(progress, "package", 95, "전달 ZIP을 패키징하는 중입니다.")
+        _emit_progress(progress, "package", 95, "최종 ZIP을 패키징하는 중입니다.")
         package = build_report_package(
             report_dir,
             job_root / "input",

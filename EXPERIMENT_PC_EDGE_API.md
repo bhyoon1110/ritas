@@ -7,8 +7,8 @@
 
 이 문서의 호출 주체는 XRD/TEM 실험 PC의 C# 전송 프로그램이고, 수신 주체는
 Edge 분석 서버이다. C# 프로그램은 본 명세의 공통 작업 API를 호출하며,
-Spring Boot를 직접 호출하지 않는다. 최종 보고서 ZIP 전달은 Edge 보고서
-worker가 수행한다.
+Spring Boot를 직접 호출하지 않는다. Edge 보고서 worker는 최종 보고서 ZIP을
+공유 저장소에 게시하고 DB 전송 큐에 상대 경로를 등록한다.
 
 ## 2. 기본 정보
 
@@ -105,8 +105,8 @@ Edge 서버는 작업 등록 시 서버 시간을 기준으로 작업 폴더를 
 
 | 프로젝트 | 파일 전송 주체 | Edge 수신 API | 보고서 생성/전달 |
 |---|---|---|---|
-| XRD | C# 전송 프로그램 | 본 문서의 `/api/v1/jobs`, `/files`, `/uploads/complete`, `/report` | Edge worker가 보고서 ZIP 생성 후 Spring Boot로 전송 |
-| TEM | C# 전송 프로그램 | 본 문서의 `/api/v1/jobs`, `/files`, `/uploads/complete`, `/report` | Edge worker가 보고서 ZIP 생성 후 Spring Boot로 전송 |
+| XRD | C# 전송 프로그램 | 본 문서의 `/api/v1/jobs`, `/files`, `/uploads/complete`, `/report` | Edge worker가 보고서 ZIP 생성 후 공유 저장소 게시 및 DB 큐 등록 |
+| TEM | C# 전송 프로그램 | 본 문서의 `/api/v1/jobs`, `/files`, `/uploads/complete`, `/report` | Edge worker가 보고서 ZIP 생성 후 공유 저장소 게시 및 DB 큐 등록 |
 
 XRD/TEM의 현재 웹 화면 API(`/api/v1/xrd/analyze`, `/api/v1/tem/analyze`)는
 브라우저 기반 미리보기/보고서 생성용이다. C# 연동 계약은 위 공통 작업 API를
@@ -129,10 +129,10 @@ XRD/TEM의 현재 웹 화면 API(`/api/v1/xrd/analyze`, `/api/v1/tem/analyze`)�
    `POST /api/v1/jobs/{jobId}/report`로 보고서 생성을 요청한다. XRD는
    `reportFormats: ["HTML"]`, TEM은 `reportFormats: ["PPTX"]`를 보낸다.
 7. C# 프로그램은 `GET /api/v1/jobs/{jobId}`로 `COMPLETED` 또는 `FAILED` 상태를
-   확인한다. `COMPLETED`는 Edge가 Spring Boot로 최종 ZIP 전달까지 성공했다는
-   의미이다.
+   확인한다. `COMPLETED`는 Edge가 최종 ZIP을 공유 저장소에 게시하고 DB 전송
+   큐 등록까지 성공했다는 의미이다. LIMS 전송 결과는 별도 큐 상태로 관리한다.
 
-| 프로젝트 | 보고서 생성 요청 `reportFormats` | Spring Boot 전달 ZIP의 핵심 산출물 |
+| 프로젝트 | 보고서 생성 요청 `reportFormats` | 공유 저장소 최종 ZIP의 핵심 산출물 |
 |---|---|---|
 | XRD | `["HTML"]` | `report.html`, `report.md`, 선택 `email_body.md` |
 | TEM | `["PPTX"]` | `report.pptx`, `report.md`, 선택 `email_body.md` |
@@ -584,7 +584,7 @@ Idempotency-Key: {jobId}:generate-report
 - `reportFormats` 지원값: `PPTX`, `PDF`, `HTML` (중복 불가)
 - 두 형식을 모두 생략한 경우 기본값: `PPTX`
 - `includeRawFiles`를 생략한 경우 기본값: `false`
-- `includeRawFiles=true`이면 Edge가 Spring Boot로 전달하는 최종 ZIP에 원본
+- `includeRawFiles=true`이면 Edge가 공유 저장소에 게시하는 최종 ZIP에 원본
   bundle을 `raw/` 경로로 함께 넣는다. `false`여도 원본은 Edge `input/`에
   보관하며 ZIP에만 포함하지 않는다.
 
@@ -631,7 +631,7 @@ worker는 요청한 사용자용 `report.pdf`, `report.pptx`, `report.html` 중 
 형식만 렌더링하고, 공통 Markdown 요약인 `report.md`를 만든 뒤
 `{jobRoot}/report/report-package.zip`으로 묶는다.
 분석 결과 JSON, LLM 요청/응답 JSON, 내부 `report.json`은 Edge 내부 처리용이며
-Spring Boot 전달 ZIP에는 포함하지 않는다. 전달 API는
+공유 저장소 최종 ZIP에는 포함하지 않는다. DB 큐 및 공유 저장소 계약은
 [`EDGE_SPRING_BOOT_API.md`](EDGE_SPRING_BOOT_API.md)를 따른다.
 
 #### 오류
@@ -673,10 +673,10 @@ X-Request-Id: 771e92ae-d06d-42e3-b2c8-d1846619987c
 {
   "jobId": "e575b716-25d6-49c6-a7c0-3e2b7136fb2c",
   "status": "FAILED",
-  "progress": 50,
+  "progress": 90,
   "error": {
-    "code": "SPRING_CALLBACK_CONNECTION_FAILED",
-    "message": "Spring Boot 결과 전달 연결에 실패했습니다.",
+    "code": "REPORT_QUEUE_REGISTRATION_FAILED",
+    "message": "보고서 전송 큐 등록에 실패했습니다.",
     "retryable": true
   }
 }
@@ -764,11 +764,17 @@ API에 전달한다. `testChargerName`은 화면 표시용 담당자명이며, `
 | `FILES_VERIFIED` | 파일 수신 및 무결성 검증 완료 |
 | `QUEUED` | 보고서 생성 대기 |
 | `PROCESSING` | 전처리, 분석 또는 보고서 생성 중 |
-| `CALLBACK_PENDING` | 최종 ZIP 생성 완료, Spring Boot 전달 중 |
-| `COMPLETED` | Spring Boot가 ZIP을 성공적으로 수신 |
+| `COMPLETED` | 최종 ZIP 생성, 공유 저장소 확정 및 DB 전송 큐 등록 완료 |
 | `FAILED` | 복구되지 않은 오류로 작업 실패 |
 
 상태는 이전 단계로 되돌리지 않는다.
+
+`COMPLETED`는 Edge 작업 완료를 뜻하며 LIMS 전송 완료를 뜻하지 않는다.
+Spring Boot는 `report_transfers` 큐를 스케줄링해 공유 저장소의 ZIP을 직접 읽고
+LIMS에 전달한다. LIMS 전달 상태는 `PENDING`, `PROCESSING`, `RETRY_WAIT`,
+`COMPLETED`, `FAILED`, `CANCELLED`로 별도 관리하며, 상세 계약과 스키마는
+`EDGE_SPRING_BOOT_API.md` 및
+`edge_api_server/deploy/mariadb_report_queue.sql`을 따른다.
 
 `uploadExpiresAt` 이후 검증이 완료되지 않은 작업은 `UPLOAD_EXPIRED`로
 전환한다. 만료된 작업에 대한 파일 업로드와 업로드 완료 요청은

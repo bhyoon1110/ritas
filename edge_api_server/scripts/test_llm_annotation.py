@@ -10,7 +10,7 @@
      JSON(FTIR verdict)과 (선택) 작은 이미지를 processed/ 에 넣는다.
   3) generate_report() 로 규칙 기반 보고서 + 실제 LLM 슬롯 주석을 생성한다.
   4) LLM 사용 여부/슬롯 문안/이미지 첨부 여부와 내부 JSON, 사용자용 보고서,
-     전달 ZIP 경로를 출력한다.
+     최종 ZIP 경로를 출력한다.
 
 실행 예 (엣지):
     cd /home/rist/ritas/edge_api_server
@@ -441,7 +441,7 @@ def main() -> int:
     print(f"  report.json : {job_root / 'report' / 'report.json'}")
     print(f"  report.md   : {job_root / 'report' / 'report.md'}")
     print(f"  report.pptx : {job_root / 'report' / 'report.pptx'}")
-    print(f"  전달 ZIP   : {job_root / 'report' / 'report-package.zip'}")
+    print(f"  최종 ZIP   : {job_root / 'report' / 'report-package.zip'}")
     print(f"  llm 로그    : {job_root / 'logs'}")
     print()
     print(f"{DIM}정리하려면: rm -rf {tmp_root}{RESET}")

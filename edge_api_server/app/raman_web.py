@@ -45,7 +45,7 @@ from .preview_report import (
     send_preview_report_package,
     start_preview_report_job,
 )
-from .spring_callback import SpringCallbackError
+from .report_queue import ReportQueueError
 from .upload_sessions import ChunkUploadStore, read_completed_upload_files
 from .usage_archive import (
     request_usage_client_context,
@@ -3847,7 +3847,7 @@ _UPLOAD_SCRIPT = """
     var hasReport = !!(lastReportJob && lastReportJob.jobId);
     reportSendButton.disabled = !hasReport;
     reportSendButton.title = hasReport
-      ? "완성된 보고서 ZIP을 전송합니다."
+      ? "완성된 보고서를 LIMS 전송 대기열에 등록합니다."
       : "보고서 생성이 완료되면 전송할 수 있습니다.";
   }
 
@@ -5495,7 +5495,7 @@ _UPLOAD_SCRIPT = """
     var transfer = validateReportTransfer();
     if (!transfer) return;
     if (button) button.disabled = true;
-    status.textContent = "보고서 전송 중";
+    status.textContent = "보고서 전송 대기 등록 중";
     try {
       var result = await fetchJson(
         "/api/v1/raman/report/jobs/" + encodeURIComponent(job.jobId) + "/send",
@@ -5511,13 +5511,13 @@ _UPLOAD_SCRIPT = """
         }
       );
       setSuccessMessage(
-        "보고서 전송 완료: "
+        "보고서 전송 대기 등록 완료: "
         + result.requestNumber + " / " + result.experimentCode
       );
-      status.textContent = "보고서 전송 완료";
+      status.textContent = "보고서 전송 대기 등록 완료";
     } catch (err) {
-      setMessage(err.message || "보고서 전송에 실패했습니다.");
-      status.textContent = "보고서 전송 실패";
+      setMessage(err.message || "보고서 전송 대기 등록에 실패했습니다.");
+      status.textContent = "보고서 전송 대기 등록 실패";
     } finally {
       if (button) button.disabled = false;
       updateReportSendAvailability();
@@ -6239,6 +6239,7 @@ def send_raman_preview_report_job(
     try:
         return send_preview_report_package(
             settings=getattr(request.app.state, "settings", None),
+            database=getattr(request.app.state, "database", None),
             job=job,
             payload=payload,
         )
@@ -6247,9 +6248,9 @@ def send_raman_preview_report_job(
         raise ApiException(410, "RAMAN_REPORT_PACKAGE_EXPIRED", str(exc)) from exc
     except ValueError as exc:
         raise ApiException(409, "RAMAN_REPORT_JOB_NOT_READY", str(exc)) from exc
-    except SpringCallbackError as exc:
+    except ReportQueueError as exc:
         raise ApiException(
-            502 if exc.retryable else 500,
+            503 if exc.retryable else 500,
             exc.code,
             str(exc),
             retryable=exc.retryable,

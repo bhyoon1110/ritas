@@ -124,6 +124,96 @@ _SCHEMA: tuple[str, ...] = (
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     """,
     """
+    CREATE TABLE IF NOT EXISTS report_runs (
+        report_id VARCHAR(36) NOT NULL,
+        source_job_id VARCHAR(36),
+        request_number VARCHAR(128) NOT NULL,
+        experiment_code VARCHAR(64) NOT NULL,
+        equipment_code VARCHAR(64) NOT NULL,
+        operator_id VARCHAR(100) NOT NULL,
+        version_no INT NOT NULL DEFAULT 1,
+        generation_status VARCHAR(32) NOT NULL,
+        storage_key VARCHAR(64) NOT NULL DEFAULT 'RIST_REPORTS',
+        package_relative_path VARCHAR(512) NOT NULL,
+        package_file_name VARCHAR(255) NOT NULL,
+        package_size_bytes BIGINT NOT NULL,
+        package_sha256 CHAR(64) NOT NULL,
+        report_options_json LONGTEXT,
+        generated_at VARCHAR(64) NOT NULL,
+        created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+        updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6)
+            ON UPDATE CURRENT_TIMESTAMP(6),
+        PRIMARY KEY (report_id),
+        UNIQUE KEY uq_report_runs_package_path (
+            storage_key,
+            package_relative_path
+        ),
+        UNIQUE KEY uq_report_runs_job_version (source_job_id, version_no),
+        KEY idx_report_runs_request (request_number, experiment_code),
+        CONSTRAINT fk_report_runs_job FOREIGN KEY (source_job_id)
+            REFERENCES jobs(job_id) ON DELETE SET NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS report_transfers (
+        transfer_id VARCHAR(36) NOT NULL,
+        report_id VARCHAR(36) NOT NULL,
+        request_number VARCHAR(128) NOT NULL,
+        experiment_code VARCHAR(64) NOT NULL,
+        equipment_code VARCHAR(64) NOT NULL,
+        operator_id VARCHAR(100) NOT NULL,
+        destination VARCHAR(64) NOT NULL DEFAULT 'LIMS',
+        status VARCHAR(32) NOT NULL,
+        attempt_count INT NOT NULL DEFAULT 0,
+        max_attempts INT NOT NULL DEFAULT 5,
+        idempotency_key VARCHAR(128) NOT NULL,
+        lease_owner VARCHAR(128),
+        lease_until DATETIME(6),
+        next_retry_at DATETIME(6),
+        requested_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+        started_at DATETIME(6),
+        completed_at DATETIME(6),
+        external_tracking_id VARCHAR(255),
+        last_error_code VARCHAR(128),
+        last_error_message TEXT,
+        created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+        updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6)
+            ON UPDATE CURRENT_TIMESTAMP(6),
+        PRIMARY KEY (transfer_id),
+        UNIQUE KEY uq_report_transfers_report_destination (report_id, destination),
+        UNIQUE KEY uq_report_transfers_idempotency (idempotency_key),
+        KEY idx_report_transfers_scheduler (
+            status,
+            next_retry_at,
+            lease_until,
+            requested_at
+        ),
+        CONSTRAINT fk_report_transfers_report FOREIGN KEY (report_id)
+            REFERENCES report_runs(report_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS report_transfer_attempts (
+        attempt_id BIGINT NOT NULL AUTO_INCREMENT,
+        transfer_id VARCHAR(36) NOT NULL,
+        attempt_no INT NOT NULL,
+        worker_id VARCHAR(128),
+        started_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+        finished_at DATETIME(6),
+        success BOOLEAN,
+        response_code VARCHAR(128),
+        response_message TEXT,
+        error_code VARCHAR(128),
+        error_message TEXT,
+        transport_details_json LONGTEXT,
+        PRIMARY KEY (attempt_id),
+        UNIQUE KEY uq_report_transfer_attempt (transfer_id, attempt_no),
+        KEY idx_report_transfer_attempts_transfer (transfer_id, started_at),
+        CONSTRAINT fk_report_transfer_attempts_transfer FOREIGN KEY (transfer_id)
+            REFERENCES report_transfers(transfer_id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    """,
+    """
     CREATE OR REPLACE VIEW request_summary AS
     SELECT request_number,
            COUNT(*) AS job_count,
@@ -620,6 +710,168 @@ class Database:
                     created_at,
                 ),
             )
+
+    def enqueue_report_transfer(
+        self,
+        *,
+        report_id: str,
+        transfer_id: str,
+        source_job_id: str | None,
+        request_number: str,
+        experiment_code: str,
+        equipment_code: str,
+        operator_id: str,
+        storage_key: str,
+        package_relative_path: str,
+        package_file_name: str,
+        package_size_bytes: int,
+        package_sha256: str,
+        report_options_json: str | None,
+        generated_at: str,
+        max_attempts: int,
+        destination: str = "LIMS",
+    ) -> dict[str, Any]:
+        """보고서 메타데이터와 LIMS 전송 큐를 같은 트랜잭션으로 등록한다."""
+        idempotency_key = f"{report_id}:{destination}"
+        with self.transaction() as connection:
+            connection.execute(
+                """
+                INSERT INTO report_runs (
+                    report_id,
+                    source_job_id,
+                    request_number,
+                    experiment_code,
+                    equipment_code,
+                    operator_id,
+                    version_no,
+                    generation_status,
+                    storage_key,
+                    package_relative_path,
+                    package_file_name,
+                    package_size_bytes,
+                    package_sha256,
+                    report_options_json,
+                    generated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, 1, 'READY', ?, ?, ?, ?, ?, ?, ?)
+                ON DUPLICATE KEY UPDATE
+                    request_number = VALUES(request_number),
+                    experiment_code = VALUES(experiment_code),
+                    equipment_code = VALUES(equipment_code),
+                    operator_id = VALUES(operator_id),
+                    generation_status = 'READY',
+                    storage_key = VALUES(storage_key),
+                    package_relative_path = VALUES(package_relative_path),
+                    package_file_name = VALUES(package_file_name),
+                    package_size_bytes = VALUES(package_size_bytes),
+                    package_sha256 = VALUES(package_sha256),
+                    report_options_json = VALUES(report_options_json),
+                    generated_at = VALUES(generated_at),
+                    updated_at = CURRENT_TIMESTAMP(6)
+                """,
+                (
+                    report_id,
+                    source_job_id,
+                    request_number,
+                    experiment_code,
+                    equipment_code,
+                    operator_id,
+                    storage_key,
+                    package_relative_path,
+                    package_file_name,
+                    package_size_bytes,
+                    package_sha256,
+                    report_options_json,
+                    generated_at,
+                ),
+            )
+            connection.execute(
+                """
+                INSERT INTO report_transfers (
+                    transfer_id,
+                    report_id,
+                    request_number,
+                    experiment_code,
+                    equipment_code,
+                    operator_id,
+                    destination,
+                    status,
+                    attempt_count,
+                    max_attempts,
+                    idempotency_key
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, 'PENDING', 0, ?, ?)
+                ON DUPLICATE KEY UPDATE
+                    request_number = VALUES(request_number),
+                    experiment_code = VALUES(experiment_code),
+                    equipment_code = VALUES(equipment_code),
+                    operator_id = VALUES(operator_id),
+                    max_attempts = VALUES(max_attempts),
+                    updated_at = CURRENT_TIMESTAMP(6)
+                """,
+                (
+                    transfer_id,
+                    report_id,
+                    request_number,
+                    experiment_code,
+                    equipment_code,
+                    operator_id,
+                    destination,
+                    max_attempts,
+                    idempotency_key,
+                ),
+            )
+            transfer = connection.execute(
+                """
+                SELECT * FROM report_transfers
+                WHERE report_id = ? AND destination = ?
+                """,
+                (report_id, destination),
+            ).fetchone()
+        if transfer is None:  # pragma: no cover - DB 무결성 방어
+            raise RuntimeError("등록한 보고서 전송 큐를 조회할 수 없습니다.")
+        return transfer
+
+    def fetch_report_run(self, report_id: str) -> dict[str, Any] | None:
+        with self._connect() as connection:
+            return connection.execute(
+                "SELECT * FROM report_runs WHERE report_id = ?",
+                (report_id,),
+            ).fetchone()
+
+    def fetch_report_run_by_source_job(
+        self,
+        source_job_id: str,
+    ) -> dict[str, Any] | None:
+        with self._connect() as connection:
+            return connection.execute(
+                """
+                SELECT * FROM report_runs
+                WHERE source_job_id = ?
+                ORDER BY version_no DESC, created_at DESC
+                LIMIT 1
+                """,
+                (source_job_id,),
+            ).fetchone()
+
+    def fetch_report_transfer(self, transfer_id: str) -> dict[str, Any] | None:
+        with self._connect() as connection:
+            return connection.execute(
+                "SELECT * FROM report_transfers WHERE transfer_id = ?",
+                (transfer_id,),
+            ).fetchone()
+
+    def fetch_report_transfer_for_report(
+        self,
+        report_id: str,
+        destination: str = "LIMS",
+    ) -> dict[str, Any] | None:
+        with self._connect() as connection:
+            return connection.execute(
+                """
+                SELECT * FROM report_transfers
+                WHERE report_id = ? AND destination = ?
+                """,
+                (report_id, destination),
+            ).fetchone()
 
     def delete_idempotency(self, endpoint: str, idempotency_key: str) -> None:
         with self.transaction() as connection:

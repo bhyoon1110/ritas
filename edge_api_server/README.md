@@ -30,7 +30,8 @@
 작성한 뒤, 로컬 LLM으로 자유서술 슬롯만 보강한다. 요청한 PDF/PPTX/HTML과
 Markdown을 `report-package.zip`으로 패키징하며, `includeRawFiles=true`이면
 원본 bundle도 함께 넣는다. 분석 결과와 LLM용 JSON은 Edge 내부 데이터로 ZIP에
-포함하지 않는다. Spring Boot 전달 계약은 루트의 `EDGE_SPRING_BOOT_API.md`를 따른다.
+포함하지 않는다. 공유 저장소 및 DB 전송 큐 계약은 루트의
+`EDGE_SPRING_BOOT_API.md`를 따른다.
 
 ## 설치 및 실행
 
@@ -352,16 +353,17 @@ cd edge_api_server
 | `RIST_TEM_REPORT_WORKERS` | `1` | TEM/STEM 웹 보고서 동시 생성 작업 수. PPT/OCR 메모리 사용량 때문에 기본은 순차 처리 |
 | `RIST_TEM_OCR_WORKERS` | `2` | TEM 코팅층 두께 OCR 병렬 처리 수. CPU 여유가 있으면 최대 4까지 권장 |
 | `RIST_WORKER_POLL_SECONDS` | `2` | worker 큐 조회 간격 |
-| `RIST_SPRING_CALLBACK_URL` | `http://127.0.0.1:8080/api/v1/edge/reports` | 로컬 Spring Boot 결과 수신 URL |
-| `RIST_SPRING_CALLBACK_TIMEOUT_SECONDS` | `60` | Spring Boot 전달 제한 시간 |
-| `RIST_SPRING_CALLBACK_MAX_ATTEMPTS` | `3` | Spring Boot 전달 최대 시도 횟수 |
+| `RIST_REPORT_STORAGE_KEY` | `RIST_REPORTS` | DB 상대 경로를 해석할 공유 저장소 논리 키 |
+| `RIST_REPORT_TRANSFER_MAX_ATTEMPTS` | `5` | LIMS 전송 큐 최대 시도 횟수 |
 
 `config/environments/*.env`는 git으로 공유하는 Edge scheme/host/port/bind 기본값만
 담는다. 서버마다 달라지는 런타임 값은 `/home/rist/ritas/edge.env` 한 곳에서
 관리한다.
 
 - LLM 주소/모델은 `RIST_LLM_*`를 사용한다.
-- Spring Boot 전송 대상은 `RIST_SPRING_CALLBACK_URL` 하나로 관리한다.
+- 최종 ZIP은 `RIST_STORAGE_ROOT` 공유 저장소에 두고 DB에는
+  `RIST_REPORT_STORAGE_KEY`와 상대 경로만 등록한다. Spring Boot는 큐를 조회해
+  같은 공유 저장소에서 ZIP을 직접 읽는다.
 - Edge 공개 주소는 프로파일의 `EDGE_SERVER_SCHEME/HOST/PORT`에서 조합하고,
   필요하면 `RIST_EDGE_PUBLIC_BASE_URL`로 재정의한다.
 

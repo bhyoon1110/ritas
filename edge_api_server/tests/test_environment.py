@@ -46,7 +46,8 @@ def test_settings_switch_to_production(monkeypatch, tmp_path: Path) -> None:
     assert settings.environment == "production"
     assert settings.edge_public_base_url == "http://bhyoon.me:8000"
     assert settings.api_port == 8000
-    assert settings.spring_callback_url == "http://127.0.0.1:8080/api/v1/edge/reports"
+    assert settings.report_storage_key == "RIST_REPORTS"
+    assert settings.report_transfer_max_attempts == 5
 
 
 def test_storage_root_defaults_to_edge_data_jobs(
@@ -155,15 +156,15 @@ def test_ftir_assignment_library_delete_flag_env(
     assert settings.ftir_assignment_library_delete_enabled is True
 
 
-def test_spring_callback_url_overrides_profile(monkeypatch, tmp_path: Path) -> None:
+def test_report_transfer_settings_override_profile(monkeypatch, tmp_path: Path) -> None:
     write_profile(tmp_path / "development.env", "bhyoon.me", "development")
     write_profile(tmp_path / "production.env", "192.168.0.10", "production")
     monkeypatch.setenv("RIST_CONFIG_DIR", str(tmp_path))
     monkeypatch.setenv("RIST_ENV", "development")
-    monkeypatch.setenv(
-        "RIST_SPRING_CALLBACK_URL", "http://127.0.0.1:9090/custom/results"
-    )
+    monkeypatch.setenv("RIST_REPORT_STORAGE_KEY", "RIST_SHARED_REPORTS")
+    monkeypatch.setenv("RIST_REPORT_TRANSFER_MAX_ATTEMPTS", "7")
 
     settings = Settings.from_env()
 
-    assert settings.spring_callback_url == "http://127.0.0.1:9090/custom/results"
+    assert settings.report_storage_key == "RIST_SHARED_REPORTS"
+    assert settings.report_transfer_max_attempts == 7

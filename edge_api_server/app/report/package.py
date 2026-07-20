@@ -13,7 +13,7 @@ def build_report_package(
     *,
     include_raw_files: bool,
 ) -> Path:
-    """Spring Boot 전달용 최종 결과 ZIP을 만들고 내부 JSON은 제외한다."""
+    """공유 저장소에 게시할 최종 결과 ZIP을 만들고 내부 JSON은 제외한다."""
     package_path = report_dir / "report-package.zip"
     with zipfile.ZipFile(package_path, "w", zipfile.ZIP_DEFLATED) as archive:
         for path in sorted(report_dir.rglob("*")):

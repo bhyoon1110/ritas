@@ -37,7 +37,8 @@ export RIST_LLM_MODEL=gemma4-e4b
 | Edge bind host/port | `EDGE_BIND_HOST`, `EDGE_SERVER_PORT` | `RIST_EDGE_BIND_HOST`, `RIST_EDGE_API_PORT` | systemd 기본은 production 프로파일 사용 |
 | 작업 저장소 | 앱 기본값 | `RIST_STORAGE_ROOT` | 기본값은 `<edge_api_server>/data/jobs` |
 | 오류 보관소 | 작업 저장소 하위 `errors` | `RIST_ERROR_*` | 로그·스택 트레이스·실패 파일을 `/errors`에서 통합 조회 |
-| Spring Boot 수신 URL | 앱 기본값 | `RIST_SPRING_CALLBACK_URL` | 기본값은 `http://127.0.0.1:8080/api/v1/edge/reports` |
+| 보고서 공유 저장소 | `RIST_REPORTS` | `RIST_STORAGE_ROOT`, `RIST_REPORT_STORAGE_KEY` | DB에는 storage key와 ZIP 상대 경로만 등록하고 Spring Boot가 공유 저장소에서 직접 읽는다 |
+| LIMS 전송 재시도 | `5` | `RIST_REPORT_TRANSFER_MAX_ATTEMPTS` | Spring Boot가 소비하는 DB 전송 큐의 최대 시도 횟수 |
 | LLM 주소/모델 | 앱 기본값 | `RIST_LLM_*` | 기본값은 로컬 vLLM `http://127.0.0.1:8001`, `gemma4-e4b` |
 | DB 접속 | 없음 | `RIST_DB_*` | 비밀번호가 포함되므로 `edge.env`에만 둔다 |
 | PDF 한글 폰트 | 없음 | `RIST_PDF_FONT_PATH` | 서버 설치 폰트 경로 |

@@ -182,7 +182,7 @@ def test_shared_plotly_module_applies_legend_text(tmp_path) -> None:
     assert "data-clear" in html
     assert "data-first-curve" in html
     assert "nextTitle === manualPeakGroupName(firstCurve)" in html
-    assert "nextName && nextName !== traceName(curve)" in html
+    assert "nextName && nextName !== currentName" in html
     assert "is-pending-clear" in html
     assert "manualPeakGroupKey" in html
     assert "manualPeakGroupName" in html

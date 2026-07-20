@@ -1,0 +1,117 @@
+from __future__ import annotations
+
+import hashlib
+from pathlib import Path
+from types import SimpleNamespace
+import zipfile
+
+import pytest
+
+from app.report_queue import ReportQueueError, enqueue_report_package
+
+
+class CapturingDatabase:
+    def __init__(self) -> None:
+        self.values: dict[str, object] = {}
+
+    def enqueue_report_transfer(self, **values: object) -> dict[str, object]:
+        self.values = values
+        return {
+            "transfer_id": values["transfer_id"],
+            "status": "PENDING",
+        }
+
+
+def settings(storage_root: Path) -> SimpleNamespace:
+    return SimpleNamespace(
+        storage_root=storage_root,
+        report_storage_key="RIST_REPORTS",
+        report_transfer_max_attempts=5,
+    )
+
+
+def write_zip(path: Path) -> bytes:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr("report.pptx", b"pptx")
+        archive.writestr("report.md", "report")
+    return path.read_bytes()
+
+
+def test_enqueue_report_package_registers_relative_shared_path_and_integrity(
+    tmp_path: Path,
+) -> None:
+    storage_root = tmp_path / "shared"
+    package = storage_root / "jobs" / "job-1" / "report" / "report-package.zip"
+    package_bytes = write_zip(package)
+    database = CapturingDatabase()
+
+    result = enqueue_report_package(
+        settings=settings(storage_root),
+        database=database,
+        report_id="job-1",
+        package_path=package,
+        source_job_id="job-1",
+        request_number="REQ-001",
+        experiment_code="FT-IR",
+        equipment_code="FTIR-01",
+        operator_id="operator-1",
+        report_options={"reportFormats": ["PPTX"]},
+    )
+
+    assert result["queued"] is True
+    assert result["status"] == "PENDING"
+    assert result["storageKey"] == "RIST_REPORTS"
+    assert result["packageRelativePath"] == (
+        "jobs/job-1/report/report-package.zip"
+    )
+    assert database.values["package_relative_path"] == result["packageRelativePath"]
+    assert database.values["package_size_bytes"] == len(package_bytes)
+    assert database.values["package_sha256"] == hashlib.sha256(package_bytes).hexdigest()
+    assert database.values["max_attempts"] == 5
+
+
+def test_enqueue_report_package_rejects_path_outside_shared_root(
+    tmp_path: Path,
+) -> None:
+    package = tmp_path / "outside" / "report-package.zip"
+    write_zip(package)
+
+    with pytest.raises(ReportQueueError) as captured:
+        enqueue_report_package(
+            settings=settings(tmp_path / "shared"),
+            database=CapturingDatabase(),
+            report_id="job-1",
+            package_path=package,
+            source_job_id="job-1",
+            request_number="REQ-001",
+            experiment_code="XRD",
+            equipment_code="XRD-01",
+            operator_id="operator-1",
+        )
+
+    assert captured.value.code == "REPORT_PACKAGE_OUTSIDE_SHARED_STORAGE"
+    assert captured.value.retryable is False
+
+
+def test_enqueue_report_package_rejects_invalid_zip(tmp_path: Path) -> None:
+    storage_root = tmp_path / "shared"
+    package = storage_root / "report-package.zip"
+    package.parent.mkdir(parents=True)
+    package.write_bytes(b"not-a-zip")
+
+    with pytest.raises(ReportQueueError) as captured:
+        enqueue_report_package(
+            settings=settings(storage_root),
+            database=CapturingDatabase(),
+            report_id="job-1",
+            package_path=package,
+            source_job_id="job-1",
+            request_number="REQ-001",
+            experiment_code="TEM",
+            equipment_code="TEM-01",
+            operator_id="operator-1",
+        )
+
+    assert captured.value.code == "REPORT_PACKAGE_INVALID_ZIP"
+    assert captured.value.retryable is False
