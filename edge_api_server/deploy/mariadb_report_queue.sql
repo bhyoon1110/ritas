@@ -1,26 +1,47 @@
 -- RIST 보고서 공유 저장소/DB 전송 큐 스키마
 -- 선행 조건: 기존 jobs 테이블이 같은 스키마에 존재해야 한다.
 -- ZIP 본문이나 절대 경로는 DB에 저장하지 않는다.
+-- 컬럼 설명 확인: SHOW FULL COLUMNS FROM <table_name>;
+-- 테이블 설명 확인: SHOW TABLE STATUS LIKE '<table_name>';
+-- 주의: 이미 생성된 테이블은 CREATE TABLE IF NOT EXISTS 재실행만으로
+-- COMMENT가 갱신되지 않는다. 기존 테이블은 별도 ALTER TABLE migration이 필요하다.
 
 CREATE TABLE IF NOT EXISTS report_runs (
-    report_id VARCHAR(36) NOT NULL,
-    source_job_id VARCHAR(36),
-    request_number VARCHAR(128) NOT NULL,
-    experiment_code VARCHAR(64) NOT NULL,
-    equipment_code VARCHAR(64) NOT NULL,
-    operator_id VARCHAR(100) NOT NULL,
-    version_no INT NOT NULL DEFAULT 1,
-    generation_status VARCHAR(32) NOT NULL,
-    storage_key VARCHAR(64) NOT NULL DEFAULT 'RIST_REPORTS',
-    package_relative_path VARCHAR(512) NOT NULL,
-    package_file_name VARCHAR(255) NOT NULL,
-    package_size_bytes BIGINT NOT NULL,
-    package_sha256 CHAR(64) NOT NULL,
-    report_options_json LONGTEXT,
-    generated_at VARCHAR(64) NOT NULL,
-    created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    report_id VARCHAR(36) NOT NULL
+        COMMENT '보고서 생성 건 UUID. report_runs 기본키',
+    source_job_id VARCHAR(36)
+        COMMENT '보고서를 생성한 Edge 작업 ID. jobs.job_id 참조, 작업 삭제 시 NULL',
+    request_number VARCHAR(128) NOT NULL
+        COMMENT 'LIMS 의뢰번호. 보고서와 전송 건을 업무적으로 조회하는 기준',
+    experiment_code VARCHAR(64) NOT NULL
+        COMMENT '실험 코드. 예: FT-IR, RAMAN, XRD, TEM',
+    equipment_code VARCHAR(64) NOT NULL
+        COMMENT '보고서를 생성한 실험 장비 코드',
+    operator_id VARCHAR(100) NOT NULL
+        COMMENT '보고서 생성 또는 전송을 요청한 실험자/사용자 식별자',
+    version_no INT NOT NULL DEFAULT 1
+        COMMENT '동일 Edge 작업에서 재생성된 보고서 버전. 1부터 증가',
+    generation_status VARCHAR(32) NOT NULL
+        COMMENT '보고서 생성 상태. READY는 ZIP 생성과 무결성 검증이 완료되어 전송 가능한 상태',
+    storage_key VARCHAR(64) NOT NULL DEFAULT 'RIST_REPORTS'
+        COMMENT '공유 저장소 루트 별칭. 절대 경로 대신 Spring Boot 설정의 root key와 매핑',
+    package_relative_path VARCHAR(512) NOT NULL
+        COMMENT 'storage_key 루트 기준 보고서 ZIP 상대 경로. 절대 경로 및 상위 경로 이동 금지',
+    package_file_name VARCHAR(255) NOT NULL
+        COMMENT '사용자 다운로드 및 LIMS 전송에 사용할 보고서 ZIP 파일명',
+    package_size_bytes BIGINT NOT NULL
+        COMMENT '생성 완료 시점의 보고서 ZIP 크기(bytes). 전송 전 무결성 검증에 사용',
+    package_sha256 CHAR(64) NOT NULL
+        COMMENT '보고서 ZIP SHA-256 소문자 16진수 해시. 공유 저장소 파일 검증에 사용',
+    report_options_json LONGTEXT
+        COMMENT '생성 당시 보고서 형식, 포함 파일 등 옵션 JSON. 없으면 NULL',
+    generated_at VARCHAR(64) NOT NULL
+        COMMENT 'Edge가 기록한 보고서 생성 시각 ISO-8601 문자열. 시간대 포함',
+    created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6)
+        COMMENT 'DB 레코드 최초 등록 시각',
     updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6)
-        ON UPDATE CURRENT_TIMESTAMP(6),
+        ON UPDATE CURRENT_TIMESTAMP(6)
+        COMMENT 'DB 레코드 최종 변경 시각',
     PRIMARY KEY (report_id),
     UNIQUE KEY uq_report_runs_package_path (
         storage_key,
@@ -30,32 +51,55 @@ CREATE TABLE IF NOT EXISTS report_runs (
     KEY idx_report_runs_request (request_number, experiment_code),
     CONSTRAINT fk_report_runs_job FOREIGN KEY (source_job_id)
         REFERENCES jobs(job_id) ON DELETE SET NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  COMMENT='Edge가 생성하고 검증한 보고서 ZIP의 버전, 공유 저장소 위치 및 무결성 정보';
 
 CREATE TABLE IF NOT EXISTS report_transfers (
-    transfer_id VARCHAR(36) NOT NULL,
-    report_id VARCHAR(36) NOT NULL,
-    request_number VARCHAR(128) NOT NULL,
-    experiment_code VARCHAR(64) NOT NULL,
-    equipment_code VARCHAR(64) NOT NULL,
-    operator_id VARCHAR(100) NOT NULL,
-    destination VARCHAR(64) NOT NULL DEFAULT 'LIMS',
-    status VARCHAR(32) NOT NULL,
-    attempt_count INT NOT NULL DEFAULT 0,
-    max_attempts INT NOT NULL DEFAULT 5,
-    idempotency_key VARCHAR(128) NOT NULL,
-    lease_owner VARCHAR(128),
-    lease_until DATETIME(6),
-    next_retry_at DATETIME(6),
-    requested_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
-    started_at DATETIME(6),
-    completed_at DATETIME(6),
-    external_tracking_id VARCHAR(255),
-    last_error_code VARCHAR(128),
-    last_error_message TEXT,
-    created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    transfer_id VARCHAR(36) NOT NULL
+        COMMENT '보고서 전송 큐 UUID. report_transfers 기본키',
+    report_id VARCHAR(36) NOT NULL
+        COMMENT '전송할 보고서 ID. report_runs.report_id 참조',
+    request_number VARCHAR(128) NOT NULL
+        COMMENT 'LIMS 의뢰번호 스냅샷. 큐 조회와 장애 대응 시 사용',
+    experiment_code VARCHAR(64) NOT NULL
+        COMMENT '실험 코드 스냅샷. 예: FT-IR, RAMAN, XRD, TEM',
+    equipment_code VARCHAR(64) NOT NULL
+        COMMENT '실험 장비 코드 스냅샷',
+    operator_id VARCHAR(100) NOT NULL
+        COMMENT '전송 요청 실험자/사용자 식별자 스냅샷',
+    destination VARCHAR(64) NOT NULL DEFAULT 'LIMS'
+        COMMENT '전송 대상 시스템 코드. 기본값 LIMS',
+    status VARCHAR(32) NOT NULL
+        COMMENT '큐 상태: PENDING, PROCESSING, RETRY_WAIT, COMPLETED, FAILED, CANCELLED',
+    attempt_count INT NOT NULL DEFAULT 0
+        COMMENT 'worker가 선점하여 시작한 누적 전송 시도 횟수',
+    max_attempts INT NOT NULL DEFAULT 5
+        COMMENT '자동 재시도를 포함한 최대 전송 시도 횟수',
+    idempotency_key VARCHAR(128) NOT NULL
+        COMMENT '중복 LIMS 전송 방지 키. 전체 큐에서 고유',
+    lease_owner VARCHAR(128)
+        COMMENT '현재 작업을 선점한 Spring Boot worker 식별자. 미선점 상태는 NULL',
+    lease_until DATETIME(6)
+        COMMENT '현재 worker 선점 만료 시각. 만료 후 다른 worker가 복구 가능',
+    next_retry_at DATETIME(6)
+        COMMENT 'RETRY_WAIT 상태에서 다음 선점이 허용되는 시각',
+    requested_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6)
+        COMMENT 'Edge가 전송을 요청하여 큐에 등록한 시각',
+    started_at DATETIME(6)
+        COMMENT '최초 전송 처리가 시작된 시각',
+    completed_at DATETIME(6)
+        COMMENT 'COMPLETED, FAILED 또는 CANCELLED 최종 종료 시각',
+    external_tracking_id VARCHAR(255)
+        COMMENT 'LIMS가 반환한 접수번호, 문서번호 또는 외부 추적 ID',
+    last_error_code VARCHAR(128)
+        COMMENT '가장 최근 전송 실패의 표준 오류 코드',
+    last_error_message TEXT
+        COMMENT '가장 최근 전송 실패 요약. 민감정보와 파일 본문 저장 금지',
+    created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6)
+        COMMENT 'DB 레코드 최초 등록 시각',
     updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6)
-        ON UPDATE CURRENT_TIMESTAMP(6),
+        ON UPDATE CURRENT_TIMESTAMP(6)
+        COMMENT 'DB 레코드 최종 변경 시각',
     PRIMARY KEY (transfer_id),
     UNIQUE KEY uq_report_transfers_report_destination (report_id, destination),
     UNIQUE KEY uq_report_transfers_idempotency (idempotency_key),
@@ -67,24 +111,38 @@ CREATE TABLE IF NOT EXISTS report_transfers (
     ),
     CONSTRAINT fk_report_transfers_report FOREIGN KEY (report_id)
         REFERENCES report_runs(report_id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  COMMENT='Spring Boot가 선점하여 LIMS로 전달하는 보고서 전송 큐와 현재 상태';
 
 CREATE TABLE IF NOT EXISTS report_transfer_attempts (
-    attempt_id BIGINT NOT NULL AUTO_INCREMENT,
-    transfer_id VARCHAR(36) NOT NULL,
-    attempt_no INT NOT NULL,
-    worker_id VARCHAR(128),
-    started_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
-    finished_at DATETIME(6),
-    success BOOLEAN,
-    response_code VARCHAR(128),
-    response_message TEXT,
-    error_code VARCHAR(128),
-    error_message TEXT,
-    transport_details_json LONGTEXT,
+    attempt_id BIGINT NOT NULL AUTO_INCREMENT
+        COMMENT '전송 시도 이력 자동 증가 기본키',
+    transfer_id VARCHAR(36) NOT NULL
+        COMMENT '대상 전송 큐 ID. report_transfers.transfer_id 참조',
+    attempt_no INT NOT NULL
+        COMMENT '해당 transfer_id 내 1부터 증가하는 전송 시도 순번',
+    worker_id VARCHAR(128)
+        COMMENT '실제 전송을 수행한 Spring Boot worker 식별자',
+    started_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6)
+        COMMENT '해당 전송 시도 시작 시각',
+    finished_at DATETIME(6)
+        COMMENT '해당 전송 시도 종료 시각. 처리 중이면 NULL',
+    success BOOLEAN
+        COMMENT '성공 여부. 처리 중 NULL, 성공 TRUE, 실패 FALSE',
+    response_code VARCHAR(128)
+        COMMENT 'LIMS 또는 전송 어댑터가 반환한 응답 코드',
+    response_message TEXT
+        COMMENT 'LIMS 또는 전송 어댑터의 응답 요약. 민감정보 저장 금지',
+    error_code VARCHAR(128)
+        COMMENT '실패 시 표준 오류 코드. 성공 또는 처리 중이면 NULL',
+    error_message TEXT
+        COMMENT '실패 원인 요약. 자격증명, 원문 파일 등 민감정보 저장 금지',
+    transport_details_json LONGTEXT
+        COMMENT '전송 시간, 대상 식별자 등 진단용 JSON. ZIP 본문과 자격증명 저장 금지',
     PRIMARY KEY (attempt_id),
     UNIQUE KEY uq_report_transfer_attempt (transfer_id, attempt_no),
     KEY idx_report_transfer_attempts_transfer (transfer_id, started_at),
     CONSTRAINT fk_report_transfer_attempts_transfer FOREIGN KEY (transfer_id)
         REFERENCES report_transfers(transfer_id) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  COMMENT='각 보고서 전송 시도의 성공, 실패, 응답 및 진단 감사 이력';
