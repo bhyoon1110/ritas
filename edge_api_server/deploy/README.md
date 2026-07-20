@@ -32,6 +32,35 @@ worker 를 start 하면 vLLM compose 스택도 함께 올라온다(선택 의존
 실패한다. 가상환경은 저장소 루트(`/home/rist/ritas/.venv`)에 하나만 두고
 `common` 과 `edge_api_server` 가 공유한다.
 
+### 보고서 전송 큐 DB 생성
+
+최초 설치처럼 기존 큐 데이터를 보존하면서 없는 테이블만 생성할 때는 일반 DDL을
+실행한다.
+
+```bash
+cd /home/rist/ritas/edge_api_server/deploy
+mysql --default-character-set=utf8mb4 \
+  -h "$RIST_DB_HOST" -P "$RIST_DB_PORT" \
+  -u "$RIST_DB_USER" -p "$RIST_DB_NAME" \
+  < mariadb_report_queue.sql
+```
+
+개발 DB의 기존 보고서/전송 큐 이력을 모두 삭제하고, 최신 컬럼 및 테이블 COMMENT가
+포함된 구조로 새로 만들 때만 재생성 전용 DDL을 실행한다. 이 스크립트는
+`report_transfer_attempts`, `report_transfers`, `report_runs`만 자식부터 순서대로
+삭제하며 기존 `jobs` 테이블은 보존한다.
+
+```bash
+cd /home/rist/ritas/edge_api_server/deploy
+mysql --default-character-set=utf8mb4 \
+  -h "$RIST_DB_HOST" -P "$RIST_DB_PORT" \
+  -u "$RIST_DB_USER" -p "$RIST_DB_NAME" \
+  < mariadb_report_queue_recreate.sql
+```
+
+운영 DB에서는 재생성 DDL을 실행하지 말고 별도 `ALTER TABLE` migration을 적용한다.
+재생성 전에 필요한 큐 이력을 반드시 백업한다.
+
 ## 1. 코드 배포
 
 ### 방법 A — git clone (권장)

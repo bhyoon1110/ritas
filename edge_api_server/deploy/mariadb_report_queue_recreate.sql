@@ -1,3 +1,16 @@
+-- RIST 보고서 전송 큐 신규 재생성 전용 DDL
+-- 경고: 아래 3개 테이블과 그 안의 모든 보고서/전송 이력을 삭제한 뒤 다시 생성한다.
+-- jobs 및 lims_req_ax_search 등 기존 업무 테이블은 삭제하거나 변경하지 않는다.
+-- 운영 DB에서는 반드시 백업과 변경 승인을 받은 뒤 실행한다.
+-- 실행 예:
+--   mysql --default-character-set=utf8mb4 -h <host> -P <port> \
+--     -u <user> -p <database> < mariadb_report_queue_recreate.sql
+--
+-- 삭제 순서는 외래키의 자식에서 부모 순서다.
+DROP TABLE IF EXISTS report_transfer_attempts;
+DROP TABLE IF EXISTS report_transfers;
+DROP TABLE IF EXISTS report_runs;
+
 -- RIST 보고서 공유 저장소/DB 전송 큐 스키마
 -- 선행 조건: 기존 jobs 테이블이 같은 스키마에 존재해야 한다.
 -- ZIP 본문이나 절대 경로는 DB에 저장하지 않는다.
@@ -5,8 +18,6 @@
 -- 테이블 설명 확인: SHOW TABLE STATUS LIKE '<table_name>';
 -- 주의: 이미 생성된 테이블은 CREATE TABLE IF NOT EXISTS 재실행만으로
 -- COMMENT가 갱신되지 않는다. 기존 테이블은 별도 ALTER TABLE migration이 필요하다.
--- 기존 큐 데이터까지 삭제하고 이 정의로 새로 생성하려면
--- mariadb_report_queue_recreate.sql을 사용한다.
 
 CREATE TABLE IF NOT EXISTS report_runs (
     report_id VARCHAR(36) NOT NULL
@@ -148,3 +159,4 @@ CREATE TABLE IF NOT EXISTS report_transfer_attempts (
         REFERENCES report_transfers(transfer_id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
   COMMENT='각 보고서 전송 시도의 성공, 실패, 응답 및 진단 감사 이력';
+
