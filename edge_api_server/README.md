@@ -355,10 +355,10 @@ cd edge_api_server
 | `RIST_WORKER_POLL_SECONDS` | `2` | worker 큐 조회 간격 |
 | `RIST_REPORT_STORAGE_KEY` | `RIST_REPORTS` | DB 상대 경로를 해석할 공유 저장소 논리 키 |
 | `RIST_REPORT_TRANSFER_MAX_ATTEMPTS` | `5` | LIMS 전송 큐 최대 시도 횟수 |
-| `RIST_REPORT_TEST_RETENTION_DAYS` | `7` | 전송하지 않은 테스트 보고서 자동 정리 보존일 |
-| `RIST_REPORT_FAILED_RETENTION_DAYS` | `30` | 실패·취소 보고서 보존일 |
-| `RIST_REPORT_COMPLETED_RETENTION_DAYS` | `90` | LIMS 전송 완료 보고서 보존일 |
-| `RIST_REPORT_TRASH_RETENTION_DAYS` | `7` | 휴지통 이동 후 실제 삭제까지의 보존일 |
+| `RIST_REPORT_TEST_RETENTION_DAYS` | `7` | 미전송 테스트 보고서 DB 정책 최초 생성 기본값 |
+| `RIST_REPORT_FAILED_RETENTION_DAYS` | `30` | 실패·취소 보고서 DB 정책 최초 생성 기본값 |
+| `RIST_REPORT_COMPLETED_RETENTION_DAYS` | `90` | LIMS 완료 보고서 DB 정책 최초 생성 기본값 |
+| `RIST_REPORT_TRASH_RETENTION_DAYS` | `7` | 휴지통 DB 정책 최초 생성 기본값 |
 
 `config/environments/*.env`는 git으로 공유하는 Edge scheme/host/port/bind 기본값만
 담는다. 서버마다 달라지는 런타임 값은 `/home/rist/ritas/edge.env` 한 곳에서
@@ -421,6 +421,11 @@ http://<Edge 서버>:8000/report-management
   `web-reports` 파일을 표시한다.
 - 실패·취소 전송 재시도, 대기 전송 취소, 테스트 표시, 보존 고정, 보존 기한 직접
   지정, 정리 대상 미리보기와 선택 일괄 정리를 지원한다.
+- `보존 정책 설정`에서 미전송 테스트, 실패·취소, LIMS 완료, 휴지통 파일의
+  보존일과 자동 정리 여부를 변경할 수 있다. 변경값은 DB에 저장되어 API와
+  worker에 즉시 적용되므로 서비스 재시작이 필요하지 않다.
+- 활성 전송(`PENDING`, `PROCESSING`, `RETRY_WAIT`) 삭제 금지와 보존 고정 보고서의
+  자동 정리 제외 규칙은 안전 정책으로 고정되어 운영 화면에서 해제할 수 없다.
 
 파일 정리는 즉시 삭제하지 않는다. 활성 전송(`PENDING`, `PROCESSING`,
 `RETRY_WAIT`)과 보존 고정 보고서는 정리할 수 없으며, 선택 항목 중 하나라도
@@ -428,14 +433,16 @@ http://<Edge 서버>:8000/report-management
 `<RIST_STORAGE_ROOT>/.report-trash`로 이동하고 DB에 작업자·사유·휴지통 경로를
 기록한다. 다른 보고서가 같은 파일을 참조하면 해당 물리 파일은 유지한다.
 
-기본 자동 보존 정책은 미전송 테스트 7일, 실패·취소 30일, LIMS 완료 90일이다.
-휴지통 파일은 7일 뒤 실제 삭제되며 위 환경 변수로 기간을 조정할 수 있다.
+기본 자동 보존 정책은 미전송 테스트 7일, 실패·취소 30일, LIMS 완료 90일이며
+휴지통 파일은 7일 뒤 실제 삭제한다. 위 환경 변수는 DB에 정책 행이 없을 때만
+사용하는 최초 생성 기본값이다. 이후 변경은 운영 관리 화면에서 수행한다.
 
 사용 기록의 기본 보관 위치는 `<RIST_STORAGE_ROOT>/usage`, 기간은 90일이다.
 오류 기록은 `<RIST_STORAGE_ROOT>/errors`에 30일간 보관한다. 대용량 raw 파일
 때문에 디스크가 과도하게 사용되지 않도록 개별 파일 512 MiB, 오류 한 건 전체
 2 GiB 상한을 적용한다. 기존 `/errors` 주소는 오류 기록 탭으로 바로 진입하는
-호환 주소로 유지한다. 설정 변경 후에는 API와 worker 서비스를 함께 재시작한다.
+호환 주소로 유지한다. 사용·오류 기록 관련 환경 설정을 변경한 경우에는 API와
+worker 서비스를 함께 재시작한다.
 
 ## 데이터베이스
 

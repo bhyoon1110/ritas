@@ -47,8 +47,9 @@ mysql --default-character-set=utf8mb4 \
 
 개발 DB의 기존 보고서/전송 큐 이력을 모두 삭제하고, 최신 컬럼 및 테이블 COMMENT가
 포함된 구조로 새로 만들 때만 재생성 전용 DDL을 실행한다. 이 스크립트는
-`report_artifacts`, `report_transfer_attempts`, `report_transfers`, `report_runs`를
-자식부터 순서대로 삭제하며 기존 `jobs` 테이블은 보존한다.
+`report_transfer_attempts`, `report_transfers`, `report_artifacts`,
+`report_retention_policies`, `report_runs`를 자식부터 순서대로 삭제하며 기존
+`jobs` 테이블은 보존한다.
 
 ```bash
 cd /home/rist/ritas/edge_api_server/deploy
@@ -61,8 +62,9 @@ mysql --default-character-set=utf8mb4 \
 운영 DB에서는 재생성 DDL을 실행하지 말고 별도 `ALTER TABLE` migration을 적용한다.
 재생성 전에 필요한 큐 이력을 반드시 백업한다.
 
-기존 `report_runs`와 전송 이력을 유지하면서 보고서 파일 관리 컬럼과
-`report_artifacts`만 추가하려면 다음 비파괴 마이그레이션을 실행한다.
+기존 `report_runs`와 전송 이력을 유지하면서 보고서 파일 관리 컬럼,
+`report_artifacts`, `report_retention_policies`를 추가하려면 다음 비파괴
+마이그레이션을 실행한다. 이미 `report_artifacts`가 있어도 반복 실행할 수 있다.
 
 ```bash
 cd /home/rist/ritas/edge_api_server/deploy
@@ -182,12 +184,18 @@ journalctl -u rist-edge-worker.service -f
 # 프로젝트 통합 운영 관리 화면 (사용 기록 | 오류 기록 | 보고서/파일 관리)
 # http://<Edge 서버 주소>:8000/operations
 # http://<Edge 서버 주소>:8000/report-management
+# 보고서/파일 관리의 `보존 정책 설정`에서 미전송 테스트, 실패·취소,
+# LIMS 전송 완료, 휴지통 보존 기간과 자동 정리 여부를 변경할 수 있다.
+# 저장값은 DB에 즉시 반영되며 이후 조회/정리부터 적용되므로 서비스 재시작은 필요 없다.
 sudo docker logs -f vllm-gemma4-e4b
 
 # 보고서 보존 정책 자동 정리 상태 및 수동 실행
 systemctl status rist-report-cleanup.timer
 sudo systemctl start rist-report-cleanup.service
 journalctl -u rist-report-cleanup.service -n 100 --no-pager
+
+# 보존 정책 API 확인
+curl http://127.0.0.1:8000/api/v1/report-management/policies
 
 # 재시작 / 중지
 sudo systemctl restart rist-edge-api.service
@@ -343,6 +351,7 @@ RIST_DB_POOL_TIMEOUT_SECONDS=10
 # 공유 저장소 / DB 보고서 전송 큐
 RIST_REPORT_STORAGE_KEY=RIST_REPORTS
 RIST_REPORT_TRANSFER_MAX_ATTEMPTS=5
+# 아래 값은 report_retention_policies 행이 없을 때 사용하는 최초 생성 기본값이다.
 RIST_REPORT_TEST_RETENTION_DAYS=7
 RIST_REPORT_FAILED_RETENTION_DAYS=30
 RIST_REPORT_COMPLETED_RETENTION_DAYS=90

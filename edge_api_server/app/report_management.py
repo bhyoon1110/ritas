@@ -17,6 +17,24 @@ from .database import Database
 router = APIRouter()
 KST = timezone(timedelta(hours=9))
 ACTIVE_TRANSFER_STATUSES = {"PENDING", "PROCESSING", "RETRY_WAIT"}
+RETENTION_POLICY_DEFINITIONS = {
+    "UNSENT_TEST": {
+        "label": "미전송 테스트 보고서",
+        "description": "전송 큐에 등록되지 않은 테스트 보고서를 생성 시점부터 보존합니다.",
+    },
+    "FAILED_OR_CANCELLED": {
+        "label": "실패·취소 보고서",
+        "description": "FAILED 또는 CANCELLED 전송 보고서를 마지막 처리 시점부터 보존합니다.",
+    },
+    "COMPLETED": {
+        "label": "LIMS 전송 완료 보고서",
+        "description": "LIMS 전송 완료가 확인된 보고서를 완료 시점부터 보존합니다.",
+    },
+    "TRASH": {
+        "label": "휴지통 파일",
+        "description": "휴지통으로 이동한 파일을 실제로 삭제하기 전까지 보존합니다.",
+    },
+}
 
 
 class ReportLifecycleUpdate(BaseModel):
@@ -32,6 +50,20 @@ class ReportCleanupRequest(BaseModel):
     report_ids: list[str] = Field(alias="reportIds", min_length=1, max_length=500)
     actor: str = Field(default="운영 관리자", max_length=100)
     reason: str = Field(default="보존 정책에 따른 정리", max_length=500)
+
+    model_config = {"populate_by_name": True}
+
+
+class RetentionPolicyValue(BaseModel):
+    retention_days: int = Field(alias="retentionDays", ge=1, le=3650)
+    auto_cleanup_enabled: bool = Field(alias="autoCleanupEnabled")
+
+    model_config = {"populate_by_name": True}
+
+
+class RetentionPolicyUpdateRequest(BaseModel):
+    policies: dict[str, RetentionPolicyValue]
+    actor: str = Field(default="운영 관리자", min_length=1, max_length=100)
 
     model_config = {"populate_by_name": True}
 
@@ -83,20 +115,116 @@ def _parse_datetime(value: object) -> datetime | None:
     return parsed.astimezone(KST)
 
 
-def _retention_deadline(row: dict[str, Any], settings: Any) -> tuple[datetime | None, str]:
+def _default_retention_policies(settings: Any) -> dict[str, dict[str, Any]]:
+    return {
+        "UNSENT_TEST": {
+            "retention_days": max(1, int(settings.report_test_retention_days)),
+            "auto_cleanup_enabled": True,
+            "description": RETENTION_POLICY_DEFINITIONS["UNSENT_TEST"]["description"],
+        },
+        "FAILED_OR_CANCELLED": {
+            "retention_days": max(1, int(settings.report_failed_retention_days)),
+            "auto_cleanup_enabled": True,
+            "description": RETENTION_POLICY_DEFINITIONS["FAILED_OR_CANCELLED"]["description"],
+        },
+        "COMPLETED": {
+            "retention_days": max(1, int(settings.report_completed_retention_days)),
+            "auto_cleanup_enabled": True,
+            "description": RETENTION_POLICY_DEFINITIONS["COMPLETED"]["description"],
+        },
+        "TRASH": {
+            "retention_days": max(1, int(settings.report_trash_retention_days)),
+            "auto_cleanup_enabled": True,
+            "description": RETENTION_POLICY_DEFINITIONS["TRASH"]["description"],
+        },
+    }
+
+
+def _load_retention_policies(settings: Any, database: Database) -> dict[str, dict[str, Any]]:
+    defaults = _default_retention_policies(settings)
+    database.ensure_report_retention_policies(defaults)
+    policies = defaults.copy()
+    for row in database.list_report_retention_policies():
+        policy_key = str(row.get("policy_key") or "").upper()
+        if policy_key not in defaults:
+            continue
+        policies[policy_key] = {
+            **defaults[policy_key],
+            **row,
+            "retention_days": max(1, int(row.get("retention_days") or 1)),
+            "auto_cleanup_enabled": bool(row.get("auto_cleanup_enabled")),
+        }
+    return policies
+
+
+def _retention_policy_response(settings: Any, database: Database) -> dict[str, Any]:
+    policies = _load_retention_policies(settings, database)
+    items: list[dict[str, Any]] = []
+    for policy_key, definition in RETENTION_POLICY_DEFINITIONS.items():
+        policy = policies[policy_key]
+        items.append(
+            {
+                "policyKey": policy_key,
+                "label": definition["label"],
+                "description": definition["description"],
+                "retentionDays": int(policy["retention_days"]),
+                "autoCleanupEnabled": bool(policy["auto_cleanup_enabled"]),
+                "updatedAt": policy.get("updated_at"),
+                "updatedBy": policy.get("updated_by"),
+            }
+        )
+    return {
+        "policies": items,
+        "fixedRules": [
+            {
+                "label": "활성 전송 삭제 금지",
+                "description": "PENDING, PROCESSING, RETRY_WAIT 상태의 보고서는 삭제할 수 없습니다.",
+            },
+            {
+                "label": "보존 지정 자동 정리 제외",
+                "description": "보존 지정한 보고서는 기간과 관계없이 자동 정리하지 않습니다.",
+            },
+        ],
+    }
+
+
+def _retention_deadline(
+    row: dict[str, Any],
+    settings: Any,
+    policies: dict[str, dict[str, Any]] | None = None,
+) -> tuple[datetime | None, str, str | None, bool]:
+    resolved = policies or _default_retention_policies(settings)
     explicit = _parse_datetime(row.get("retention_until"))
     if explicit is not None:
-        return explicit, "직접 지정"
+        return explicit, "직접 지정", "EXPLICIT", True
     status = str(row.get("transfer_status") or "NOT_QUEUED").upper()
     generated = _parse_datetime(row.get("generated_at") or row.get("created_at"))
     completed = _parse_datetime(row.get("transfer_completed_at") or row.get("updated_at"))
     if bool(row.get("is_test")) and status == "NOT_QUEUED" and generated:
-        return generated + timedelta(days=max(1, int(settings.report_test_retention_days))), "미전송 테스트"
+        policy = resolved["UNSENT_TEST"]
+        return (
+            generated + timedelta(days=int(policy["retention_days"])),
+            "미전송 테스트",
+            "UNSENT_TEST",
+            bool(policy["auto_cleanup_enabled"]),
+        )
     if status in {"FAILED", "CANCELLED"} and completed:
-        return completed + timedelta(days=max(1, int(settings.report_failed_retention_days))), status
+        policy = resolved["FAILED_OR_CANCELLED"]
+        return (
+            completed + timedelta(days=int(policy["retention_days"])),
+            status,
+            "FAILED_OR_CANCELLED",
+            bool(policy["auto_cleanup_enabled"]),
+        )
     if status == "COMPLETED" and completed:
-        return completed + timedelta(days=max(1, int(settings.report_completed_retention_days))), "LIMS 전송 완료"
-    return None, "자동 정리 제외"
+        policy = resolved["COMPLETED"]
+        return (
+            completed + timedelta(days=int(policy["retention_days"])),
+            "LIMS 전송 완료",
+            "COMPLETED",
+            bool(policy["auto_cleanup_enabled"]),
+        )
+    return None, "자동 정리 제외", None, False
 
 
 def _artifact_state(settings: Any, artifact: dict[str, Any]) -> dict[str, Any]:
@@ -128,8 +256,16 @@ def _artifact_state(settings: Any, artifact: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _decorate_row(row: dict[str, Any], settings: Any, *, include_artifacts: bool) -> dict[str, Any]:
-    deadline, policy = _retention_deadline(row, settings)
+def _decorate_row(
+    row: dict[str, Any],
+    settings: Any,
+    *,
+    include_artifacts: bool,
+    policies: dict[str, dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    deadline, policy, policy_key, auto_cleanup_enabled = _retention_deadline(
+        row, settings, policies
+    )
     now = datetime.now(KST)
     transfer_status = str(row.get("transfer_status") or "NOT_QUEUED").upper()
     pinned = bool(row.get("pinned"))
@@ -140,7 +276,10 @@ def _decorate_row(row: dict[str, Any], settings: Any, *, include_artifacts: bool
         "transfer_status": transfer_status,
         "retentionDeadline": deadline.isoformat() if deadline else None,
         "retentionPolicy": policy,
+        "retentionPolicyKey": policy_key,
+        "autoCleanupEnabled": auto_cleanup_enabled,
         "cleanupEligible": eligible,
+        "autoCleanupEligible": eligible and auto_cleanup_enabled,
         "deleteBlockedReason": (
             "활성 전송 작업" if active else "보존 지정" if pinned else "보존 기한 미도래" if deadline else "자동 정리 제외"
         ) if not eligible else None,
@@ -172,8 +311,14 @@ def _trash_report(
     row: dict[str, Any],
     actor: str,
     reason: str,
+    policies: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    decorated = _decorate_row(row, settings, include_artifacts=True)
+    decorated = _decorate_row(
+        row,
+        settings,
+        include_artifacts=True,
+        policies=policies,
+    )
     if not decorated["cleanupEligible"]:
         raise HTTPException(
             status_code=409,
@@ -239,8 +384,14 @@ def _trash_report(
 
 def cleanup_expired_reports(*, settings: Any, database: Database, actor: str = "system") -> list[dict[str, Any]]:
     results: list[dict[str, Any]] = []
+    policies = _load_retention_policies(settings, database)
     for summary in database.list_report_management(include_deleted=False, limit=1000):
-        if not _decorate_row(summary, settings, include_artifacts=False)["cleanupEligible"]:
+        if not _decorate_row(
+            summary,
+            settings,
+            include_artifacts=False,
+            policies=policies,
+        )["autoCleanupEligible"]:
             continue
         detail = database.fetch_report_management(str(summary["report_id"]))
         if detail:
@@ -251,18 +402,26 @@ def cleanup_expired_reports(*, settings: Any, database: Database, actor: str = "
                     row=detail,
                     actor=actor,
                     reason="자동 보존 정책 만료",
+                    policies=policies,
                 )
             )
-    _purge_old_trash(settings)
+    _purge_old_trash(settings, policies=policies)
     return results
 
 
-def _purge_old_trash(settings: Any) -> int:
+def _purge_old_trash(
+    settings: Any,
+    *,
+    policies: dict[str, dict[str, Any]] | None = None,
+) -> int:
+    trash_policy = (policies or _default_retention_policies(settings))["TRASH"]
+    if not bool(trash_policy["auto_cleanup_enabled"]):
+        return 0
     root = _storage_root(settings) / ".report-trash"
     if not root.is_dir():
         return 0
     cutoff = datetime.now(timezone.utc) - timedelta(
-        days=max(1, int(settings.report_trash_retention_days))
+        days=max(1, int(trash_policy["retention_days"]))
     )
     removed = 0
     for child in root.iterdir():
@@ -282,6 +441,47 @@ def report_management_console() -> HTMLResponse:
     return HTMLResponse(html_path.read_text(encoding="utf-8"))
 
 
+@router.get("/api/v1/report-management/policies", tags=["report-management"])
+def retention_policies(request: Request) -> dict[str, Any]:
+    return _retention_policy_response(_settings(request), _database(request))
+
+
+@router.put("/api/v1/report-management/policies", tags=["report-management"])
+def update_retention_policies(
+    request: Request,
+    payload: RetentionPolicyUpdateRequest,
+) -> dict[str, Any]:
+    expected = set(RETENTION_POLICY_DEFINITIONS)
+    normalized = {key.upper(): value for key, value in payload.policies.items()}
+    supplied = set(normalized)
+    if supplied != expected or len(payload.policies) != len(expected):
+        missing = sorted(expected - supplied)
+        unknown = sorted(supplied - expected)
+        details: list[str] = []
+        if missing:
+            details.append("누락: " + ", ".join(missing))
+        if unknown:
+            details.append("지원하지 않음: " + ", ".join(unknown))
+        raise HTTPException(
+            status_code=422,
+            detail="보존 정책 구성이 올바르지 않습니다. " + "; ".join(details),
+        )
+    settings = _settings(request)
+    database = _database(request)
+    _load_retention_policies(settings, database)
+    database.update_report_retention_policies(
+        {
+            key: {
+                "retention_days": value.retention_days,
+                "auto_cleanup_enabled": value.auto_cleanup_enabled,
+            }
+            for key, value in normalized.items()
+        },
+        actor=payload.actor.strip() or "운영 관리자",
+    )
+    return _retention_policy_response(settings, database)
+
+
 @router.get("/api/v1/report-management", tags=["report-management"])
 def list_reports(
     request: Request,
@@ -291,14 +491,25 @@ def list_reports(
     include_deleted: bool = Query(default=False, alias="includeDeleted"),
     limit: int = Query(default=300, ge=1, le=1000),
 ) -> dict[str, Any]:
-    rows = _database(request).list_report_management(
+    database = _database(request)
+    settings = _settings(request)
+    policies = _load_retention_policies(settings, database)
+    rows = database.list_report_management(
         query=q,
         experiment_code=experiment_code,
         transfer_status=transfer_status,
         include_deleted=include_deleted,
         limit=limit,
     )
-    items = [_decorate_row(row, _settings(request), include_artifacts=False) for row in rows]
+    items = [
+        _decorate_row(
+            row,
+            settings,
+            include_artifacts=False,
+            policies=policies,
+        )
+        for row in rows
+    ]
     return {"items": items, "count": len(items)}
 
 
@@ -382,11 +593,18 @@ def _orphan_files(settings: Any, known: set[str]) -> list[dict[str, Any]]:
 @router.get("/api/v1/report-management/cleanup-preview", tags=["report-management"])
 def cleanup_preview(request: Request) -> dict[str, Any]:
     settings = _settings(request)
+    database = _database(request)
+    policies = _load_retention_policies(settings, database)
     items = [
-        _decorate_row(row, settings, include_artifacts=False)
-        for row in _database(request).list_report_management(include_deleted=False, limit=1000)
+        _decorate_row(
+            row,
+            settings,
+            include_artifacts=False,
+            policies=policies,
+        )
+        for row in database.list_report_management(include_deleted=False, limit=1000)
     ]
-    candidates = [item for item in items if item["cleanupEligible"]]
+    candidates = [item for item in items if item["autoCleanupEligible"]]
     return {
         "items": candidates,
         "count": len(candidates),
@@ -408,10 +626,17 @@ def download_artifact(request: Request, artifact_id: str) -> FileResponse:
 
 @router.get("/api/v1/report-management/{report_id}", tags=["report-management"])
 def report_detail(request: Request, report_id: str) -> dict[str, Any]:
-    row = _database(request).fetch_report_management(report_id)
+    database = _database(request)
+    settings = _settings(request)
+    row = database.fetch_report_management(report_id)
     if row is None:
         raise HTTPException(status_code=404, detail="보고서 생성 기록을 찾을 수 없습니다.")
-    return _decorate_row(row, _settings(request), include_artifacts=True)
+    return _decorate_row(
+        row,
+        settings,
+        include_artifacts=True,
+        policies=_load_retention_policies(settings, database),
+    )
 
 
 @router.patch("/api/v1/report-management/{report_id}", tags=["report-management"])
@@ -427,7 +652,13 @@ def update_report(request: Request, report_id: str, payload: ReportLifecycleUpda
         update_retention=payload.update_retention,
     )
     row = database.fetch_report_management(report_id)
-    return _decorate_row(row or {}, _settings(request), include_artifacts=True)
+    settings = _settings(request)
+    return _decorate_row(
+        row or {},
+        settings,
+        include_artifacts=True,
+        policies=_load_retention_policies(settings, database),
+    )
 
 
 @router.post("/api/v1/report-management/{report_id}/verify", tags=["report-management"])
@@ -477,13 +708,19 @@ def cancel_transfer(request: Request, report_id: str) -> dict[str, Any]:
 def cleanup_reports(request: Request, payload: ReportCleanupRequest) -> dict[str, Any]:
     settings = _settings(request)
     database = _database(request)
+    policies = _load_retention_policies(settings, database)
     rows: list[dict[str, Any]] = []
     blocked: list[str] = []
     for report_id in dict.fromkeys(payload.report_ids):
         row = database.fetch_report_management(report_id)
         if row is None:
             raise HTTPException(status_code=404, detail=f"{report_id}: 보고서 기록을 찾을 수 없습니다.")
-        decorated = _decorate_row(row, settings, include_artifacts=False)
+        decorated = _decorate_row(
+            row,
+            settings,
+            include_artifacts=False,
+            policies=policies,
+        )
         if not decorated["cleanupEligible"]:
             blocked.append(f"{report_id}: {decorated['deleteBlockedReason']}")
         rows.append(row)
@@ -502,7 +739,8 @@ def cleanup_reports(request: Request, payload: ReportCleanupRequest) -> dict[str
                 row=row,
                 actor=payload.actor,
                 reason=payload.reason,
+                policies=policies,
             )
         )
-    purged = _purge_old_trash(settings)
+    purged = _purge_old_trash(settings, policies=policies)
     return {"items": results, "count": len(results), "purgedTrashDirectories": purged}

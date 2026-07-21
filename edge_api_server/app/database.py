@@ -243,6 +243,37 @@ _SCHEMA: tuple[str, ...] = (
       COMMENT='보고서 ZIP, 개별 산출물 및 RAW 파일의 위치, 무결성, 보존 및 삭제 상태'
     """,
     """
+    CREATE TABLE IF NOT EXISTS report_retention_policies (
+        policy_key VARCHAR(32) NOT NULL
+            COMMENT '보존 정책 식별자. UNSENT_TEST, FAILED_OR_CANCELLED, COMPLETED, TRASH',
+        retention_days INT NOT NULL
+            COMMENT '기준 시각부터 자동 정리 또는 물리 삭제까지 보존할 일수',
+        auto_cleanup_enabled BOOLEAN NOT NULL DEFAULT TRUE
+            COMMENT 'TRUE이면 자동 정리 배치가 이 정책을 적용',
+        description VARCHAR(255) NOT NULL
+            COMMENT '운영 화면에 표시할 정책 설명',
+        updated_by VARCHAR(100)
+            COMMENT '마지막으로 정책을 변경한 사용자 식별자',
+        created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6)
+            COMMENT '정책 최초 등록 시각',
+        updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6)
+            ON UPDATE CURRENT_TIMESTAMP(6)
+            COMMENT '정책 최종 변경 시각',
+        PRIMARY KEY (policy_key),
+        CONSTRAINT chk_report_retention_days CHECK (retention_days BETWEEN 1 AND 3650)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+      COMMENT='운영 화면에서 즉시 변경하는 보고서 및 휴지통 자동 정리 정책'
+    """,
+    """
+    INSERT IGNORE INTO report_retention_policies (
+        policy_key, retention_days, auto_cleanup_enabled, description, updated_by
+    ) VALUES
+        ('UNSENT_TEST', 7, TRUE, '전송 큐에 등록되지 않은 테스트 보고서 보존 기간', 'schema-default'),
+        ('FAILED_OR_CANCELLED', 30, TRUE, '실패 또는 취소된 전송 보고서 보존 기간', 'schema-default'),
+        ('COMPLETED', 90, TRUE, 'LIMS 전송 완료 시점 이후 보고서 보존 기간', 'schema-default'),
+        ('TRASH', 7, TRUE, '휴지통 이동 후 실제 파일을 물리 삭제하기까지의 기간', 'schema-default')
+    """,
+    """
     CREATE TABLE IF NOT EXISTS report_transfers (
         transfer_id VARCHAR(36) NOT NULL
             COMMENT '보고서 전송 큐 UUID. report_transfers 기본키',
@@ -1308,6 +1339,71 @@ class Database:
                 f"UPDATE report_runs SET {', '.join(assignments)} WHERE report_id = ?",
                 tuple(values),
             )
+
+    def ensure_report_retention_policies(
+        self,
+        defaults: dict[str, dict[str, Any]],
+    ) -> None:
+        """환경 기본값으로 누락된 정책만 채우고 운영자가 저장한 값은 보존한다."""
+        with self.transaction() as connection:
+            for policy_key, policy in defaults.items():
+                connection.execute(
+                    """
+                    INSERT IGNORE INTO report_retention_policies (
+                        policy_key,
+                        retention_days,
+                        auto_cleanup_enabled,
+                        description,
+                        updated_by
+                    ) VALUES (?, ?, ?, ?, 'environment-default')
+                    """,
+                    (
+                        policy_key,
+                        int(policy["retention_days"]),
+                        bool(policy.get("auto_cleanup_enabled", True)),
+                        str(policy["description"]),
+                    ),
+                )
+
+    def list_report_retention_policies(self) -> list[dict[str, Any]]:
+        with self._connect() as connection:
+            return connection.execute(
+                """
+                SELECT * FROM report_retention_policies
+                ORDER BY FIELD(
+                    policy_key,
+                    'UNSENT_TEST',
+                    'FAILED_OR_CANCELLED',
+                    'COMPLETED',
+                    'TRASH'
+                )
+                """
+            ).fetchall()
+
+    def update_report_retention_policies(
+        self,
+        policies: dict[str, dict[str, Any]],
+        *,
+        actor: str,
+    ) -> None:
+        with self.transaction() as connection:
+            for policy_key, policy in policies.items():
+                connection.execute(
+                    """
+                    UPDATE report_retention_policies
+                    SET retention_days = ?,
+                        auto_cleanup_enabled = ?,
+                        updated_by = ?,
+                        updated_at = CURRENT_TIMESTAMP(6)
+                    WHERE policy_key = ?
+                    """,
+                    (
+                        int(policy["retention_days"]),
+                        bool(policy["auto_cleanup_enabled"]),
+                        actor,
+                        policy_key,
+                    ),
+                )
 
     def retry_report_transfer(self, report_id: str) -> bool:
         with self.transaction() as connection:

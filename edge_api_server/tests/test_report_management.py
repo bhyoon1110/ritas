@@ -71,6 +71,7 @@ def test_report_management_console_serves_bundled_ui() -> None:
     assert response.status_code == 200
     assert "보고서/파일 관리" in response.text
     assert "선택 항목 휴지통 이동" in response.text
+    assert "보존 정책 설정" in response.text
     assert "/api/v1/report-management/summary" in response.text
 
 
@@ -105,6 +106,137 @@ def test_retention_policy_only_selects_expired_inactive_reports(tmp_path: Path) 
     assert pinned["cleanupEligible"] is False
     assert pinned["deleteBlockedReason"] == "보존 지정"
     assert completed_too_recently["cleanupEligible"] is False
+
+
+def test_disabled_policy_keeps_manual_cleanup_but_stops_automatic_cleanup(
+    tmp_path: Path,
+) -> None:
+    configured = settings(tmp_path)
+    policies = {
+        "UNSENT_TEST": {
+            "retention_days": 7,
+            "auto_cleanup_enabled": False,
+            "description": "test",
+        }
+    }
+
+    expired_test = _decorate_row(
+        report_row(),
+        configured,
+        include_artifacts=False,
+        policies=policies,
+    )
+
+    assert expired_test["cleanupEligible"] is True
+    assert expired_test["autoCleanupEligible"] is False
+    assert expired_test["autoCleanupEnabled"] is False
+
+
+class PolicyDatabase:
+    def __init__(self) -> None:
+        self.rows: dict[str, dict[str, object]] = {}
+
+    def ensure_report_retention_policies(
+        self,
+        defaults: dict[str, dict[str, object]],
+    ) -> None:
+        for key, value in defaults.items():
+            self.rows.setdefault(
+                key,
+                {
+                    "policy_key": key,
+                    **value,
+                    "updated_at": None,
+                    "updated_by": None,
+                },
+            )
+
+    def list_report_retention_policies(self) -> list[dict[str, object]]:
+        return list(self.rows.values())
+
+    def update_report_retention_policies(
+        self,
+        policies: dict[str, dict[str, object]],
+        *,
+        actor: str,
+    ) -> None:
+        for key, value in policies.items():
+            self.rows[key].update(value)
+            self.rows[key]["updated_by"] = actor
+
+
+def test_retention_policy_api_reads_and_updates_all_policies(tmp_path: Path) -> None:
+    app = FastAPI()
+    database = PolicyDatabase()
+    app.state.settings = settings(tmp_path)
+    app.state.database = database
+    app.include_router(router)
+    client = TestClient(app)
+
+    response = client.get("/api/v1/report-management/policies")
+
+    assert response.status_code == 200
+    assert [item["policyKey"] for item in response.json()["policies"]] == [
+        "UNSENT_TEST",
+        "FAILED_OR_CANCELLED",
+        "COMPLETED",
+        "TRASH",
+    ]
+
+    response = client.put(
+        "/api/v1/report-management/policies",
+        json={
+            "actor": "admin-user",
+            "policies": {
+                "unsent_test": {
+                    "retentionDays": 14,
+                    "autoCleanupEnabled": False,
+                },
+                "FAILED_OR_CANCELLED": {
+                    "retentionDays": 45,
+                    "autoCleanupEnabled": True,
+                },
+                "COMPLETED": {
+                    "retentionDays": 120,
+                    "autoCleanupEnabled": True,
+                },
+                "TRASH": {
+                    "retentionDays": 10,
+                    "autoCleanupEnabled": False,
+                },
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    items = {item["policyKey"]: item for item in response.json()["policies"]}
+    assert items["UNSENT_TEST"]["retentionDays"] == 14
+    assert items["UNSENT_TEST"]["autoCleanupEnabled"] is False
+    assert items["UNSENT_TEST"]["updatedBy"] == "admin-user"
+    assert items["TRASH"]["retentionDays"] == 10
+    assert items["TRASH"]["autoCleanupEnabled"] is False
+
+
+def test_retention_policy_api_requires_all_policy_keys(tmp_path: Path) -> None:
+    app = FastAPI()
+    app.state.settings = settings(tmp_path)
+    app.state.database = PolicyDatabase()
+    app.include_router(router)
+
+    response = TestClient(app).put(
+        "/api/v1/report-management/policies",
+        json={
+            "policies": {
+                "UNSENT_TEST": {
+                    "retentionDays": 7,
+                    "autoCleanupEnabled": True,
+                }
+            }
+        },
+    )
+
+    assert response.status_code == 422
+    assert "누락" in response.json()["detail"]
 
 
 def test_trash_report_moves_artifact_and_records_sha_state(tmp_path: Path) -> None:

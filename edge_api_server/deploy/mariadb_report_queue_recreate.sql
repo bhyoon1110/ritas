@@ -1,5 +1,5 @@
 -- RIST 보고서 전송 큐 신규 재생성 전용 DDL
--- 경고: 아래 4개 테이블과 그 안의 모든 보고서/파일/전송 이력을 삭제한 뒤 다시 생성한다.
+-- 경고: 아래 5개 테이블과 그 안의 모든 보고서/파일/전송/보존 정책을 삭제한 뒤 다시 생성한다.
 -- jobs 및 lims_req_ax_search 등 기존 업무 테이블은 삭제하거나 변경하지 않는다.
 -- 운영 DB에서는 반드시 백업과 변경 승인을 받은 뒤 실행한다.
 -- 실행 예:
@@ -10,6 +10,7 @@
 DROP TABLE IF EXISTS report_transfer_attempts;
 DROP TABLE IF EXISTS report_transfers;
 DROP TABLE IF EXISTS report_artifacts;
+DROP TABLE IF EXISTS report_retention_policies;
 DROP TABLE IF EXISTS report_runs;
 
 -- RIST 보고서 공유 저장소/DB 전송 큐 스키마
@@ -119,6 +120,35 @@ CREATE TABLE IF NOT EXISTS report_artifacts (
         REFERENCES jobs(job_id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
   COMMENT='보고서 ZIP, 개별 산출물, 원본 RAW 파일의 위치, 무결성, 보존 및 휴지통 상태';
+
+CREATE TABLE IF NOT EXISTS report_retention_policies (
+    policy_key VARCHAR(32) NOT NULL
+        COMMENT '보존 정책 식별자. UNSENT_TEST, FAILED_OR_CANCELLED, COMPLETED, TRASH',
+    retention_days INT NOT NULL
+        COMMENT '기준 시각부터 자동 정리 또는 물리 삭제까지 보존할 일수',
+    auto_cleanup_enabled BOOLEAN NOT NULL DEFAULT TRUE
+        COMMENT 'TRUE이면 자동 정리 배치가 이 정책을 적용',
+    description VARCHAR(255) NOT NULL
+        COMMENT '운영 화면에 표시할 정책 설명',
+    updated_by VARCHAR(100)
+        COMMENT '마지막으로 정책을 변경한 사용자 식별자',
+    created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6)
+        COMMENT '정책 최초 등록 시각',
+    updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6)
+        ON UPDATE CURRENT_TIMESTAMP(6)
+        COMMENT '정책 최종 변경 시각',
+    PRIMARY KEY (policy_key),
+    CONSTRAINT chk_report_retention_days CHECK (retention_days BETWEEN 1 AND 3650)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  COMMENT='운영 화면에서 즉시 변경하는 보고서 및 휴지통 자동 정리 정책';
+
+INSERT IGNORE INTO report_retention_policies (
+    policy_key, retention_days, auto_cleanup_enabled, description, updated_by
+) VALUES
+    ('UNSENT_TEST', 7, TRUE, '전송 큐에 등록되지 않은 테스트 보고서 보존 기간', 'schema-default'),
+    ('FAILED_OR_CANCELLED', 30, TRUE, '실패 또는 취소된 전송 보고서 보존 기간', 'schema-default'),
+    ('COMPLETED', 90, TRUE, 'LIMS 전송 완료 시점 이후 보고서 보존 기간', 'schema-default'),
+    ('TRASH', 7, TRUE, '휴지통 이동 후 실제 파일을 물리 삭제하기까지의 기간', 'schema-default');
 
 CREATE TABLE IF NOT EXISTS report_transfers (
     transfer_id VARCHAR(36) NOT NULL
