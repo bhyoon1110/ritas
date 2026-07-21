@@ -5,6 +5,7 @@ import plotly.graph_objects as go
 from rist_common.plotting import (
     LEGEND_BREAKPOINT_PX,
     apply_legend_text,
+    origin_style_toggle_js,
     peak_sensitivity_js,
     write_responsive_html,
 )
@@ -37,6 +38,20 @@ def test_shared_plotly_module_accepts_local_plotly_asset(tmp_path) -> None:
     )
 
     assert 'src="/assets/plotly.min.js"' in output.read_text(encoding="utf-8")
+
+
+def test_origin_style_toggle_installs_shared_runtime() -> None:
+    script = origin_style_toggle_js("shared-plot", "origin-toggle")
+
+    assert 'document.getElementById("shared-plot")' in script
+    assert 'document.getElementById("origin-toggle")' in script
+    assert "gd._ristOriginStyle" in script
+    assert "styleLayout" in script
+    assert 'CustomEvent("rist-origin-style-change"' in script
+    assert "showline: true" in script
+    assert "showline: false" in script
+    assert "if (value === undefined) return undefined" in script
+    assert 'name === "title" || name === "minor"' in script
 
 
 def test_shared_plotly_module_applies_legend_text(tmp_path) -> None:

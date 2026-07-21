@@ -23,7 +23,11 @@ from ftir.preprocess import load_dpt
 from ftir.plotting import ftir_abs_trans_toggle_js
 from ftir.web_analysis import DptAnalysisError, WN_MAX, WN_MIN, analyze_dpt_files
 from rist_common import get_logger
-from rist_common.plotting import fig_to_responsive_html, peak_sensitivity_js
+from rist_common.plotting import (
+    fig_to_responsive_html,
+    origin_style_toggle_js,
+    peak_sensitivity_js,
+)
 
 from .errors import ApiException
 from .error_archive import install_error_management
@@ -285,6 +289,27 @@ body {
   align-items: center;
   gap: 8px;
   margin-left: auto;
+}
+.ftir-origin-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid #9fb3c8;
+  border-radius: 4px;
+  background: #fff;
+  color: #243b53;
+  cursor: pointer;
+  font-size: 11px;
+  white-space: nowrap;
+  box-sizing: border-box;
+}
+.ftir-origin-toggle input {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: #2563eb;
 }
 .ftir-status {
   max-width: 360px;
@@ -1458,20 +1483,25 @@ body {
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    width: 30px;
     height: 30px;
     border: 1px solid #9fb3c8;
     border-radius: 4px;
     background: rgba(255,255,255,0.96);
     color: #243b53;
     cursor: pointer;
-    font: bold 11px Arial, sans-serif;
-    padding: 0 10px;
+    padding: 0;
     box-shadow: 0 1px 5px rgba(15,23,42,0.12);
   }
   #peak-plot.rist-ftir-tools-open .rist-ftir-tools-toggle {
     border-color: #2563eb;
     background: #dbeafe;
     color: #1d4ed8;
+  }
+  #peak-plot .rist-tools-toggle-icon {
+    display: block;
+    width: 16px;
+    height: 16px;
   }
   #peak-plot .rist-plot-control-row {
     left: auto !important;
@@ -1577,8 +1607,9 @@ body {
   #peak-plot .rist-ftir-tools-toggle {
     top: 42px;
     right: 8px;
+    width: 28px;
     height: 28px;
-    padding: 0 8px;
+    padding: 0;
   }
   #peak-plot .rist-plot-control-row {
     right: 8px !important;
@@ -1608,6 +1639,10 @@ _PAGE_SHELL = """
   </div>
   <div class="ftir-app-actions">
     <span class="ftir-status" id="ftir-status">대기</span>
+    <label class="ftir-origin-toggle" title="Origin 스타일 적용">
+      <input type="checkbox" id="ftir-origin" checked>
+      <span>Origin 스타일</span>
+    </label>
     <button type="button" class="ftir-clear-button" id="ftir-report">보고서 생성</button>
     <button type="button" class="ftir-clear-button" id="ftir-clear">초기화</button>
     <label class="ftir-file-button">
@@ -1858,8 +1893,9 @@ _FTIR_TOOL_PANEL_SCRIPT = """
   var button = document.createElement("button");
   button.type = "button";
   button.className = "rist-ftir-tools-toggle";
-  button.textContent = "도구";
+  button.innerHTML = "<svg class='rist-tools-toggle-icon lucide lucide-sliders-horizontal' aria-hidden='true' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><line x1='21' x2='14' y1='4' y2='4'></line><line x1='10' x2='3' y1='4' y2='4'></line><line x1='21' x2='12' y1='12' y2='12'></line><line x1='8' x2='3' y1='12' y2='12'></line><line x1='21' x2='16' y1='20' y2='20'></line><line x1='12' x2='3' y1='20' y2='20'></line><line x1='14' x2='14' y1='2' y2='6'></line><line x1='8' x2='8' y1='10' y2='14'></line><line x1='16' x2='16' y1='18' y2='22'></line></svg>";
   button.title = "그래프 도구 열기";
+  button.setAttribute("aria-label", "그래프 도구 열기");
   button.setAttribute("aria-expanded", "false");
   gd.appendChild(button);
   var toolbar = gd.querySelector(".rist-plot-control-row");
@@ -1909,7 +1945,8 @@ _FTIR_TOOL_PANEL_SCRIPT = """
   function setOpen(open) {
     gd.classList.toggle("rist-ftir-tools-open", open);
     button.setAttribute("aria-expanded", open ? "true" : "false");
-    button.textContent = open ? "닫기" : "도구";
+    button.title = open ? "그래프 도구 닫기" : "그래프 도구 열기";
+    button.setAttribute("aria-label", button.title);
     if (open) gd.dispatchEvent(new CustomEvent("rist-open-edit-tool"));
     gd.dispatchEvent(new CustomEvent("rist-ftir-tools-toggle", {
       detail: {open: open}
@@ -2035,6 +2072,7 @@ _UPLOAD_SCRIPT = """
   var reportProgressHideTimer = null;
   var clearButton = document.getElementById("ftir-clear");
   var reportButton = document.getElementById("ftir-report");
+  var originToggle = document.getElementById("ftir-origin");
   var libraryInput = document.getElementById("ftir-library-input");
   var libraryList = document.getElementById("ftir-library-list");
   var libraryFilter = document.getElementById("ftir-library-filter");
@@ -2480,8 +2518,27 @@ _UPLOAD_SCRIPT = """
     return JSON.parse(JSON.stringify(emptyData));
   }
 
+  function originStyleEnabled() {
+    return !originToggle || originToggle.checked;
+  }
+
+  function setOriginStyleEnabled(enabled, applyNow) {
+    if (gd._ristOriginStyle) {
+      return gd._ristOriginStyle.setEnabled(enabled, applyNow, false);
+    }
+    if (originToggle) originToggle.checked = Boolean(enabled);
+    return Promise.resolve();
+  }
+
+  function withOriginStyle(layout) {
+    if (gd._ristOriginStyle) {
+      return gd._ristOriginStyle.styleLayout(layout || {}, originStyleEnabled());
+    }
+    return JSON.parse(JSON.stringify(layout || {}));
+  }
+
   function freshEmptyLayout() {
-    return JSON.parse(JSON.stringify(emptyLayout));
+    return withOriginStyle(JSON.parse(JSON.stringify(emptyLayout)));
   }
 
   function currentWorkspaceState() {
@@ -2491,6 +2548,7 @@ _UPLOAD_SCRIPT = """
       selectedLibraryIds: selectedLibraryIds.slice(),
       reportMetadata: reportMetadataFormState(),
       reportTransfer: reportTransferFormState(),
+      originStyle: originStyleEnabled(),
       sensitivity: gd._ristPeakSensitivityValue || 25,
       statusText: status.textContent || "",
       analysisPayload: latestAnalysisPayload,
@@ -2547,6 +2605,7 @@ _UPLOAD_SCRIPT = """
       selectedLibraryIds = (state.selectedLibraryIds || []).slice();
       applyReportMetadataFormState(state.reportMetadata || {});
       applyReportTransferFormState(state.reportTransfer || {});
+      setOriginStyleEnabled(state.originStyle !== false, false);
       latestAnalysisPayload = state.analysisPayload || null;
       updateReportSendAvailability();
       if (Number.isFinite(Number(state.sensitivity))) {
@@ -2558,7 +2617,7 @@ _UPLOAD_SCRIPT = """
         return window.Plotly.react(
           gd,
           state.plotData,
-          state.plotLayout,
+          withOriginStyle(state.plotLayout),
           gd._context
         ).then(function() {
           dispatchDataReplaced(gd._ristPeakSensitivityValue || 25);
@@ -2588,6 +2647,7 @@ _UPLOAD_SCRIPT = """
       "rist-peak-group-clear",
       "rist-peak-group-update",
       "rist-history-restored",
+      "rist-origin-style-change",
       "rist-plot-data-replaced"
     ].forEach(function(name) {
       gd.addEventListener(name, scheduleWorkspaceSave);
@@ -4512,6 +4572,7 @@ _UPLOAD_SCRIPT = """
     setBusy(false);
     setMessage("");
     updateIdleStatus();
+    setOriginStyleEnabled(true, false);
     window.Plotly.react(gd, freshEmptyData(), freshEmptyLayout(), gd._context).then(function() {
       dispatchDataReplaced(25);
       return applyResponsiveLayout();
@@ -4555,7 +4616,7 @@ _UPLOAD_SCRIPT = """
       return window.Plotly.react(
         gd,
         payload.figure.data,
-        payload.figure.layout,
+        withOriginStyle(payload.figure.layout),
         gd._context
       ).then(function() {
         var peakCount = payload.samples.reduce(function(total, sample) {
@@ -5033,7 +5094,8 @@ _UPLOAD_SCRIPT = """
 @lru_cache(maxsize=1)
 def build_ftir_page() -> str:
     extra_scripts = (
-        peak_sensitivity_js(PLOT_DIV_ID, initial="low")
+        origin_style_toggle_js(PLOT_DIV_ID, "ftir-origin", enabled=True)
+        + peak_sensitivity_js(PLOT_DIV_ID, initial="low")
         + _FTIR_TOOL_PANEL_SCRIPT
         + ftir_abs_trans_toggle_js(
             PLOT_DIV_ID,
@@ -5049,6 +5111,7 @@ def build_ftir_page() -> str:
     page = fig_to_responsive_html(
         _blank_figure(),
         div_id=PLOT_DIV_ID,
+        origin=True,
         include_plotlyjs="/ftir/assets/plotly.min.js",
         responsive_legend=False,
         crosshair=True,

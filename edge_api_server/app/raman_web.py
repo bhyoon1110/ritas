@@ -25,7 +25,11 @@ from ftir.assignment_libraries import (
     MAX_LIBRARY_BYTES,
 )
 from rist_common import get_logger
-from rist_common.plotting import fig_to_responsive_html, peak_sensitivity_js
+from rist_common.plotting import (
+    fig_to_responsive_html,
+    origin_style_toggle_js,
+    peak_sensitivity_js,
+)
 
 from . import assignment_suggestions
 from .assignment_suggestions import AssignmentSuggestionRequest
@@ -294,6 +298,27 @@ body { overflow-x: hidden; }
   align-items: center;
   gap: 8px;
   margin-left: auto;
+}
+.raman-origin-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid #9fb3c8;
+  border-radius: 4px;
+  background: #fff;
+  color: #243b53;
+  cursor: pointer;
+  font-size: 11px;
+  white-space: nowrap;
+  box-sizing: border-box;
+}
+.raman-origin-toggle input {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: #2563eb;
 }
 .raman-status {
   max-width: 360px;
@@ -1421,20 +1446,25 @@ body { overflow-x: hidden; }
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    width: 30px;
     height: 30px;
     border: 1px solid #9fb3c8;
     border-radius: 4px;
     background: rgba(255,255,255,0.96);
     color: #243b53;
     cursor: pointer;
-    font: bold 11px Arial, sans-serif;
-    padding: 0 10px;
+    padding: 0;
     box-shadow: 0 1px 5px rgba(15,23,42,0.12);
   }
   #raman-plot.rist-raman-tools-open .rist-raman-tools-toggle {
     border-color: #2563eb;
     background: #dbeafe;
     color: #1d4ed8;
+  }
+  #raman-plot .rist-tools-toggle-icon {
+    display: block;
+    width: 16px;
+    height: 16px;
   }
   #raman-plot .rist-plot-control-row {
     left: auto !important;
@@ -1563,8 +1593,9 @@ body { overflow-x: hidden; }
   #raman-plot .rist-raman-tools-toggle {
     top: 42px;
     right: 8px;
+    width: 28px;
     height: 28px;
-    padding: 0 8px;
+    padding: 0;
   }
   #raman-plot .rist-plot-control-row {
     right: 8px !important;
@@ -1596,6 +1627,10 @@ _PAGE_SHELL = """
   </div>
   <div class="raman-actions">
     <span class="raman-status" id="raman-status">Raman raw 파일을 업로드하세요</span>
+    <label class="raman-origin-toggle" title="Origin 스타일 적용">
+      <input type="checkbox" id="raman-origin" checked>
+      <span>Origin 스타일</span>
+    </label>
     <button class="raman-clear-button" id="raman-report" type="button">보고서 생성</button>
     <button class="raman-clear-button" id="raman-clear" type="button">초기화</button>
     <label class="raman-file-button" for="raman-file-input">파일 선택</label>
@@ -1909,8 +1944,9 @@ _RAMAN_TOOL_PANEL_SCRIPT = """
   var button = document.createElement("button");
   button.type = "button";
   button.className = "rist-raman-tools-toggle";
-  button.textContent = "도구";
+  button.innerHTML = "<svg class='rist-tools-toggle-icon lucide lucide-sliders-horizontal' aria-hidden='true' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><line x1='21' x2='14' y1='4' y2='4'></line><line x1='10' x2='3' y1='4' y2='4'></line><line x1='21' x2='12' y1='12' y2='12'></line><line x1='8' x2='3' y1='12' y2='12'></line><line x1='21' x2='16' y1='20' y2='20'></line><line x1='12' x2='3' y1='20' y2='20'></line><line x1='14' x2='14' y1='2' y2='6'></line><line x1='8' x2='8' y1='10' y2='14'></line><line x1='16' x2='16' y1='18' y2='22'></line></svg>";
   button.title = "그래프 도구 열기";
+  button.setAttribute("aria-label", "그래프 도구 열기");
   button.setAttribute("aria-expanded", "false");
   gd.appendChild(button);
   var toolbar = gd.querySelector(".rist-plot-control-row");
@@ -1960,7 +1996,8 @@ _RAMAN_TOOL_PANEL_SCRIPT = """
   function setOpen(open) {
     gd.classList.toggle("rist-raman-tools-open", open);
     button.setAttribute("aria-expanded", open ? "true" : "false");
-    button.textContent = open ? "닫기" : "도구";
+    button.title = open ? "그래프 도구 닫기" : "그래프 도구 열기";
+    button.setAttribute("aria-label", button.title);
     if (open) gd.dispatchEvent(new CustomEvent("rist-open-edit-tool"));
     gd.dispatchEvent(new CustomEvent("rist-raman-tools-toggle", {
       detail: {open: open}
@@ -2775,6 +2812,7 @@ _UPLOAD_SCRIPT = """
   var reportProgressHideTimer = null;
   var clearButton = document.getElementById("raman-clear");
   var reportButton = document.getElementById("raman-report");
+  var originToggle = document.getElementById("raman-origin");
   var libraryInput = document.getElementById("raman-library-input");
   var libraryList = document.getElementById("raman-library-list");
   var libraryFilter = document.getElementById("raman-library-filter");
@@ -3225,8 +3263,27 @@ _UPLOAD_SCRIPT = """
     return JSON.parse(JSON.stringify(emptyData));
   }
 
+  function originStyleEnabled() {
+    return !originToggle || originToggle.checked;
+  }
+
+  function setOriginStyleEnabled(enabled, applyNow) {
+    if (gd._ristOriginStyle) {
+      return gd._ristOriginStyle.setEnabled(enabled, applyNow, false);
+    }
+    if (originToggle) originToggle.checked = Boolean(enabled);
+    return Promise.resolve();
+  }
+
+  function withOriginStyle(layout) {
+    if (gd._ristOriginStyle) {
+      return gd._ristOriginStyle.styleLayout(layout || {}, originStyleEnabled());
+    }
+    return JSON.parse(JSON.stringify(layout || {}));
+  }
+
   function freshEmptyLayout() {
-    return JSON.parse(JSON.stringify(emptyLayout));
+    return withOriginStyle(JSON.parse(JSON.stringify(emptyLayout)));
   }
 
   function currentWorkspaceState() {
@@ -3236,6 +3293,7 @@ _UPLOAD_SCRIPT = """
       selectedLibraryIds: selectedLibraryIds.slice(),
       reportMetadata: reportMetadataFormState(),
       reportTransfer: reportTransferFormState(),
+      originStyle: originStyleEnabled(),
       sensitivity: gd._ristPeakSensitivityValue || 25,
       statusText: status.textContent || "",
       analysisPayload: latestAnalysisPayload,
@@ -3293,6 +3351,7 @@ _UPLOAD_SCRIPT = """
       latestAnalysisPayload = state.analysisPayload || null;
       applyReportMetadataFormState(state.reportMetadata || {});
       applyReportTransferFormState(state.reportTransfer || {});
+      setOriginStyleEnabled(state.originStyle !== false, false);
       updateReportSendAvailability();
       if (Number.isFinite(Number(state.sensitivity))) {
         gd._ristPeakSensitivityValue = Number(state.sensitivity);
@@ -3303,7 +3362,7 @@ _UPLOAD_SCRIPT = """
         return window.Plotly.react(
           gd,
           state.plotData,
-          state.plotLayout,
+          withOriginStyle(state.plotLayout),
           gd._context
         ).then(function() {
           dispatchDataReplaced(gd._ristPeakSensitivityValue || 25);
@@ -3333,6 +3392,7 @@ _UPLOAD_SCRIPT = """
       "rist-peak-group-clear",
       "rist-peak-group-update",
       "rist-history-restored",
+      "rist-origin-style-change",
       "rist-plot-data-replaced",
       "rist-raman-stack-change"
     ].forEach(function(name) {
@@ -5218,6 +5278,7 @@ _UPLOAD_SCRIPT = """
     renderFiles();
     setMessage("");
     status.textContent = "Raman raw 파일을 업로드하세요";
+    setOriginStyleEnabled(true, false);
     if (window.Plotly) {
       window.Plotly.react(gd, freshEmptyData(), freshEmptyLayout(), gd._context).then(function() {
         dispatchDataReplaced(25);
@@ -5258,7 +5319,7 @@ _UPLOAD_SCRIPT = """
       await window.Plotly.react(
         gd,
         payload.figure.data || [],
-        payload.figure.layout || {},
+        withOriginStyle(payload.figure.layout || {}),
         gd._context
       );
       gd._ristPeakSensitivityValue = payload.settings.sensitivity || sensitivity;
@@ -5759,6 +5820,7 @@ def build_raman_page() -> str:
     page = fig_to_responsive_html(
         _blank_figure(),
         div_id=PLOT_DIV_ID,
+        origin=True,
         include_plotlyjs="/raman/assets/plotly.min.js",
         responsive_legend=False,
         crosshair=True,
@@ -5770,7 +5832,8 @@ def build_raman_page() -> str:
         image_format_selector=True,
         image_filename="raman_peak_analysis",
         post_body_html=(
-            peak_sensitivity_js(PLOT_DIV_ID, initial="25")
+            origin_style_toggle_js(PLOT_DIV_ID, "raman-origin", enabled=True)
+            + peak_sensitivity_js(PLOT_DIV_ID, initial="25")
             + _RAMAN_TOOL_PANEL_SCRIPT
             + _RAMAN_STACK_SCRIPT
             + _RAMAN_RATIO_SCRIPT

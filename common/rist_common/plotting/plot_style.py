@@ -81,6 +81,136 @@ def apply_origin_style(fig):
     return fig
 
 
+def origin_style_toggle_js(
+    div_id: str,
+    toggle_id: str,
+    *,
+    enabled: bool = True,
+) -> str:
+    """브라우저에서 Plotly Origin 스타일을 전환하는 공통 컨트롤을 설치한다.
+
+    축 범위·제목·방향 같은 분석 설정은 유지하고 축선·눈금·그리드·폰트만
+    전환한다. 설치된 API는 동적 ``Plotly.react`` 경로에서도 같은 스타일을
+    적용할 수 있도록 ``gd._ristOriginStyle.styleLayout`` 을 제공한다.
+    """
+    template = r"""
+<script>
+(function() {
+  var gd = document.getElementById(__DIV_ID__);
+  var toggle = document.getElementById(__TOGGLE_ID__);
+  if (!gd || !toggle || gd._ristOriginStyle) return;
+
+  var originAxis = {
+    showline: true,
+    linecolor: "black",
+    linewidth: 2,
+    mirror: true,
+    ticks: "inside",
+    ticklen: 7,
+    tickwidth: 2,
+    tickcolor: "black",
+    showgrid: false,
+    zeroline: false,
+    tickfont: {family: "Arial", size: 14, color: "black"},
+    title: {font: {family: "Arial", size: 18, color: "black"}},
+    minor: {ticks: "inside", ticklen: 4, tickwidth: 1.5, tickcolor: "black"}
+  };
+  var standardAxis = {
+    showline: false,
+    linecolor: "#2a3f5f",
+    linewidth: 1,
+    mirror: false,
+    ticks: "outside",
+    ticklen: 5,
+    tickwidth: 1,
+    tickcolor: "#2a3f5f",
+    showgrid: true,
+    gridcolor: "#e5e7eb",
+    zeroline: false,
+    tickfont: {family: "Arial, Noto Sans KR, sans-serif", size: 14, color: "#2a3f5f"},
+    title: {font: {family: "Arial, Noto Sans KR, sans-serif", size: 18, color: "#2a3f5f"}},
+    minor: {ticks: ""}
+  };
+
+  function clone(value) {
+    if (value === undefined) return undefined;
+    return JSON.parse(JSON.stringify(value));
+  }
+
+  function axisKeys(layout) {
+    var keys = Object.keys(layout || {}).filter(function(key) {
+      return /^(xaxis|yaxis)\d*$/.test(key);
+    });
+    if (keys.indexOf("xaxis") < 0) keys.push("xaxis");
+    if (keys.indexOf("yaxis") < 0) keys.push("yaxis");
+    return keys;
+  }
+
+  function styleLayout(layout, useOrigin) {
+    var next = clone(layout);
+    var style = useOrigin ? originAxis : standardAxis;
+    axisKeys(next).forEach(function(key) {
+      var axis = Object.assign({}, next[key] || {});
+      Object.keys(style).forEach(function(name) {
+        if (name === "title" || name === "minor") {
+          axis[name] = Object.assign({}, axis[name] || {}, clone(style[name]));
+        } else {
+          axis[name] = clone(style[name]);
+        }
+      });
+      next[key] = axis;
+    });
+    next.plot_bgcolor = "white";
+    next.paper_bgcolor = "white";
+    next.font = Object.assign({}, next.font || {}, useOrigin ? {
+      family: "Arial",
+      color: "black"
+    } : {
+      family: "Arial, Noto Sans KR, sans-serif",
+      color: "#2a3f5f"
+    });
+    return next;
+  }
+
+  var api = {
+    enabled: __INITIAL_ENABLED__,
+    styleLayout: styleLayout,
+    setEnabled: function(value, applyNow, notify) {
+      api.enabled = Boolean(value);
+      toggle.checked = api.enabled;
+      if (!applyNow || !window.Plotly) return Promise.resolve();
+      return window.Plotly.react(
+        gd,
+        gd.data || [],
+        styleLayout(gd.layout || {}, api.enabled),
+        gd._context
+      ).then(function() {
+        gd.dispatchEvent(new CustomEvent("rist-plot-data-replaced"));
+        if (notify !== false) {
+          gd.dispatchEvent(new CustomEvent("rist-origin-style-change", {
+            detail: {enabled: api.enabled}
+          }));
+        }
+        window.Plotly.Plots.resize(gd);
+      });
+    }
+  };
+
+  gd._ristOriginStyle = api;
+  toggle.checked = api.enabled;
+  toggle.addEventListener("change", function() {
+    api.setEnabled(toggle.checked, true, true);
+  });
+})();
+</script>
+"""
+    return (
+        template.replace("__DIV_ID__", json.dumps(div_id))
+        .replace("__TOGGLE_ID__", json.dumps(toggle_id))
+        .replace("__INITIAL_ENABLED__", "true" if enabled else "false")
+    )
+
+
 def apply_crosshair_spikes(fig):
     """마우스 커서 위치에 십자 점선(spike line)을 표시하도록 축을 설정한다."""
     spike = dict(

@@ -51,6 +51,14 @@ def test_ftir_workspace_contains_upload_and_editor_controls() -> None:
 
     assert 'id="ftir-file-input"' in page
     assert 'id="ftir-drop-zone"' in page
+    assert 'id="ftir-origin" checked' in page
+    assert "Origin 스타일" in page
+    assert "gd._ristOriginStyle" in page
+    assert "originStyle: originStyleEnabled()" in page
+    assert "withOriginStyle(payload.figure.layout)" in page
+    assert 'CustomEvent("rist-origin-style-change"' in page
+    assert "lucide-sliders-horizontal" in page
+    assert 'button.textContent = open ? "닫기" : "도구"' not in page
     assert '<button type="button" class="ftir-clear-button" id="ftir-clear">초기화</button>' in page
     assert 'id="ftir-report"' in page
     assert page.index('id="ftir-report"') < page.index('id="ftir-clear"')

@@ -64,6 +64,14 @@ def test_raman_workspace_contains_upload_controls() -> None:
     page = build_raman_page()
 
     assert 'id="raman-file-input"' in page
+    assert 'id="raman-origin" checked' in page
+    assert "Origin 스타일" in page
+    assert "gd._ristOriginStyle" in page
+    assert "originStyle: originStyleEnabled()" in page
+    assert "withOriginStyle(payload.figure.layout || {})" in page
+    assert 'CustomEvent("rist-origin-style-change"' in page
+    assert "lucide-sliders-horizontal" in page
+    assert 'button.textContent = open ? "닫기" : "도구"' not in page
     assert 'id="raman-report"' in page
     assert page.index('id="raman-report"') < page.index('id="raman-clear"')
     assert page.index('id="raman-clear"') < page.index('id="raman-file-input"')
