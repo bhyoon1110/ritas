@@ -56,6 +56,7 @@ def test_xrd_workspace_contains_upload_controls() -> None:
     assert "보고서 다운로드" in page
     assert 'id="xrd-download" aria-disabled="true"' in page
     assert 'class="xrd-status-stack" id="xrd-status"' in page
+    assert page.index('id="xrd-status"') < page.index('id="xrd-report-transfer"')
     assert "xrd-status-close" in page
     assert "status.appendChild(item)" in page
     assert "timer = setTimeout(remove, error ? 7200 : 4300)" in page

@@ -1324,6 +1324,7 @@ def build_xrd_page() -> str:
           <div class="xrd-files" id="xrd-file-list"></div>
         </form>
       </section>
+      <div class="xrd-status-stack" id="xrd-status" aria-live="polite"></div>
       <section class="xrd-transfer" id="xrd-report-transfer">
         <div class="xrd-transfer-head">
           <strong>보고서 전송 정보</strong>
@@ -1347,7 +1348,6 @@ def build_xrd_page() -> str:
           <button type="button" class="primary" id="xrd-report-send" disabled>보고서 전송</button>
         </div>
       </section>
-      <div class="xrd-status-stack" id="xrd-status" aria-live="polite"></div>
       <div class="xrd-progress" id="xrd-progress" aria-live="polite">
         <div class="xrd-progress-stage xrd-upload-progress" id="xrd-upload-progress">
           <div class="xrd-report-progress-row">

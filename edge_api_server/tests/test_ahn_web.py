@@ -92,6 +92,7 @@ def test_ahn_workspace_contains_folder_upload_controls() -> None:
     assert "목록 표시가 완료된 뒤 다시 실행하세요." in page
     assert "완료되면 다운로드 버튼이 활성화됩니다." in page
     assert 'id="ahn-report-transfer"' in page
+    assert page.index('id="ahn-status"') < page.index('id="ahn-report-transfer"')
     assert 'id="ahn-request-load"' in page
     assert 'id="ahn-request-select"' in page
     assert 'X-Request-Id": "tem-request-list-' in page
