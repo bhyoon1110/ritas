@@ -355,6 +355,10 @@ cd edge_api_server
 | `RIST_WORKER_POLL_SECONDS` | `2` | worker 큐 조회 간격 |
 | `RIST_REPORT_STORAGE_KEY` | `RIST_REPORTS` | DB 상대 경로를 해석할 공유 저장소 논리 키 |
 | `RIST_REPORT_TRANSFER_MAX_ATTEMPTS` | `5` | LIMS 전송 큐 최대 시도 횟수 |
+| `RIST_REPORT_TEST_RETENTION_DAYS` | `7` | 전송하지 않은 테스트 보고서 자동 정리 보존일 |
+| `RIST_REPORT_FAILED_RETENTION_DAYS` | `30` | 실패·취소 보고서 보존일 |
+| `RIST_REPORT_COMPLETED_RETENTION_DAYS` | `90` | LIMS 전송 완료 보고서 보존일 |
+| `RIST_REPORT_TRASH_RETENTION_DAYS` | `7` | 휴지통 이동 후 실제 삭제까지의 보존일 |
 
 `config/environments/*.env`는 git으로 공유하는 Edge scheme/host/port/bind 기본값만
 담는다. 서버마다 달라지는 런타임 값은 `/home/rist/ritas/edge.env` 한 곳에서
@@ -369,11 +373,17 @@ cd edge_api_server
 
 ## 운영 관리
 
-FT-IR, Raman, XRD, TEM 및 공통 Edge API의 사용 기록과 오류 기록을 한 화면에서
-탭으로 나누어 확인한다.
+FT-IR, Raman, XRD, TEM 및 공통 Edge API의 사용 기록, 오류 기록, 보고서와 파일
+보존 상태를 한 화면에서 탭으로 나누어 확인한다.
 
 ```text
 http://<Edge 서버>:8000/operations
+```
+
+보고서와 저장소 관리 탭은 다음 주소로 직접 열 수도 있다.
+
+```text
+http://<Edge 서버>:8000/report-management
 ```
 
 - **사용 기록**: 화면 진입, 의뢰 조회, 업로드 완료, 보고서 생성·다운로드·전송 등
@@ -403,6 +413,23 @@ http://<Edge 서버>:8000/operations
   `X-Error-Comment-Url` 헤더가 포함된다. JSON 본문과 비동기 보고서 상태에도
   동일한 `errorEventId`, `errorFeedbackUrl`이 포함되므로 브라우저와 C# 클라이언트
   모두 실패 직후 고객 코멘트 화면을 열 수 있다.
+- **보고서/파일 관리**에서는 의뢰번호, 프로젝트, 장비, 실험자, 보고서 생성·전송
+  상태, 최근 오류, 보존 기한과 LIMS 완료 시각을 함께 조회한다.
+- `report_artifacts`에 등록된 RAW/ZIP/PPTX/PDF/HTML/XLSX/IMAGE의 실제 존재 여부,
+  크기, SHA-256, 공유 저장소 상대 경로를 확인하고 개별 파일을 내려받을 수 있다.
+- 저장소 전체·프로젝트별 사용량, DB에만 있는 파일, DB 등록 없이 남은
+  `web-reports` 파일을 표시한다.
+- 실패·취소 전송 재시도, 대기 전송 취소, 테스트 표시, 보존 고정, 보존 기한 직접
+  지정, 정리 대상 미리보기와 선택 일괄 정리를 지원한다.
+
+파일 정리는 즉시 삭제하지 않는다. 활성 전송(`PENDING`, `PROCESSING`,
+`RETRY_WAIT`)과 보존 고정 보고서는 정리할 수 없으며, 선택 항목 중 하나라도
+차단되면 일괄 정리 전체가 중단된다. 정리 대상 파일은 먼저
+`<RIST_STORAGE_ROOT>/.report-trash`로 이동하고 DB에 작업자·사유·휴지통 경로를
+기록한다. 다른 보고서가 같은 파일을 참조하면 해당 물리 파일은 유지한다.
+
+기본 자동 보존 정책은 미전송 테스트 7일, 실패·취소 30일, LIMS 완료 90일이다.
+휴지통 파일은 7일 뒤 실제 삭제되며 위 환경 변수로 기간을 조정할 수 있다.
 
 사용 기록의 기본 보관 위치는 `<RIST_STORAGE_ROOT>/usage`, 기간은 90일이다.
 오류 기록은 `<RIST_STORAGE_ROOT>/errors`에 30일간 보관한다. 대용량 raw 파일

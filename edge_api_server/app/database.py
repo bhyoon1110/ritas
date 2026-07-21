@@ -153,6 +153,18 @@ _SCHEMA: tuple[str, ...] = (
             COMMENT '보고서 ZIP SHA-256 소문자 16진수 해시. 공유 저장소 파일 검증에 사용',
         report_options_json LONGTEXT
             COMMENT '생성 당시 보고서 형식, 포함 파일 등 옵션 JSON. 없으면 NULL',
+        is_test BOOLEAN NOT NULL DEFAULT FALSE
+            COMMENT '운영 전송 대상이 아닌 테스트 보고서 여부',
+        pinned BOOLEAN NOT NULL DEFAULT FALSE
+            COMMENT 'TRUE이면 자동 정리 대상에서 제외',
+        retention_until DATETIME(6)
+            COMMENT '사용자가 지정한 최소 보존 기한. NULL이면 상태별 기본 정책 적용',
+        deleted_at DATETIME(6)
+            COMMENT '관리 화면에서 파일을 휴지통으로 이동한 시각',
+        deleted_by VARCHAR(100)
+            COMMENT '삭제 또는 정리를 실행한 작업자 식별자',
+        delete_reason VARCHAR(255)
+            COMMENT '삭제 또는 자동 정리 사유',
         generated_at VARCHAR(64) NOT NULL
             COMMENT 'Edge가 기록한 보고서 생성 시각 ISO-8601 문자열. 시간대 포함',
         created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6)
@@ -171,6 +183,64 @@ _SCHEMA: tuple[str, ...] = (
             REFERENCES jobs(job_id) ON DELETE SET NULL
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
       COMMENT='Edge가 생성하고 검증한 보고서 ZIP의 버전, 공유 저장소 위치 및 무결성 정보'
+    """,
+    """
+    ALTER TABLE report_runs
+        ADD COLUMN IF NOT EXISTS is_test BOOLEAN NOT NULL DEFAULT FALSE
+            COMMENT '운영 전송 대상이 아닌 테스트 보고서 여부',
+        ADD COLUMN IF NOT EXISTS pinned BOOLEAN NOT NULL DEFAULT FALSE
+            COMMENT 'TRUE이면 자동 정리 대상에서 제외',
+        ADD COLUMN IF NOT EXISTS retention_until DATETIME(6)
+            COMMENT '사용자가 지정한 최소 보존 기한',
+        ADD COLUMN IF NOT EXISTS deleted_at DATETIME(6)
+            COMMENT '관리 화면에서 파일을 휴지통으로 이동한 시각',
+        ADD COLUMN IF NOT EXISTS deleted_by VARCHAR(100)
+            COMMENT '삭제 또는 정리를 실행한 작업자 식별자',
+        ADD COLUMN IF NOT EXISTS delete_reason VARCHAR(255)
+            COMMENT '삭제 또는 자동 정리 사유'
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS report_artifacts (
+        artifact_id VARCHAR(36) NOT NULL
+            COMMENT '보고서 산출물 UUID',
+        report_id VARCHAR(36) NOT NULL
+            COMMENT 'report_runs.report_id 참조',
+        source_job_id VARCHAR(36)
+            COMMENT 'RAW 파일의 원본 Edge 작업 ID',
+        artifact_type VARCHAR(32) NOT NULL
+            COMMENT 'RAW, PPTX, PDF, HTML, XLSX, ZIP, IMAGE 중 하나',
+        storage_key VARCHAR(64) NOT NULL
+            COMMENT '공유 저장소 루트 별칭',
+        relative_path VARCHAR(512) NOT NULL
+            COMMENT '공유 저장소 루트 기준 파일 상대 경로',
+        file_name VARCHAR(255) NOT NULL
+            COMMENT '다운로드 파일명',
+        size_bytes BIGINT NOT NULL
+            COMMENT '파일 크기(bytes)',
+        sha256 CHAR(64)
+            COMMENT '파일 SHA-256. 미확인 상태는 NULL',
+        retention_until DATETIME(6)
+            COMMENT '산출물별 최소 보존 기한',
+        trash_relative_path VARCHAR(512)
+            COMMENT '휴지통 이동 후 공유 저장소 기준 상대 경로',
+        deleted_at DATETIME(6)
+            COMMENT '휴지통으로 이동한 시각',
+        created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+        updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6)
+            ON UPDATE CURRENT_TIMESTAMP(6),
+        PRIMARY KEY (artifact_id),
+        UNIQUE KEY uq_report_artifacts_path (
+            report_id,
+            storage_key,
+            relative_path
+        ),
+        KEY idx_report_artifacts_report (report_id, artifact_type, deleted_at),
+        CONSTRAINT fk_report_artifacts_report FOREIGN KEY (report_id)
+            REFERENCES report_runs(report_id) ON DELETE CASCADE,
+        CONSTRAINT fk_report_artifacts_job FOREIGN KEY (source_job_id)
+            REFERENCES jobs(job_id) ON DELETE SET NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+      COMMENT='보고서 ZIP, 개별 산출물 및 RAW 파일의 위치, 무결성, 보존 및 삭제 상태'
     """,
     """
     CREATE TABLE IF NOT EXISTS report_transfers (
@@ -788,6 +858,23 @@ class Database:
         """보고서 메타데이터와 LIMS 전송 큐를 같은 트랜잭션으로 등록한다."""
         idempotency_key = f"{report_id}:{destination}"
         with self.transaction() as connection:
+            existing_report = connection.execute(
+                "SELECT version_no FROM report_runs WHERE report_id = ?",
+                (report_id,),
+            ).fetchone()
+            if existing_report is not None:
+                version_no = int(existing_report["version_no"])
+            elif source_job_id:
+                version_row = connection.execute(
+                    """
+                    SELECT COALESCE(MAX(version_no), 0) + 1 AS next_version
+                    FROM report_runs WHERE source_job_id = ?
+                    """,
+                    (source_job_id,),
+                ).fetchone()
+                version_no = int(version_row["next_version"])
+            else:
+                version_no = 1
             connection.execute(
                 """
                 INSERT INTO report_runs (
@@ -806,7 +893,7 @@ class Database:
                     package_sha256,
                     report_options_json,
                     generated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, 1, 'READY', ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, 'READY', ?, ?, ?, ?, ?, ?, ?)
                 ON DUPLICATE KEY UPDATE
                     request_number = VALUES(request_number),
                     experiment_code = VALUES(experiment_code),
@@ -829,6 +916,7 @@ class Database:
                     experiment_code,
                     equipment_code,
                     operator_id,
+                    version_no,
                     storage_key,
                     package_relative_path,
                     package_file_name,
@@ -883,6 +971,412 @@ class Database:
         if transfer is None:  # pragma: no cover - DB 무결성 방어
             raise RuntimeError("등록한 보고서 전송 큐를 조회할 수 없습니다.")
         return transfer
+
+    def register_report_run(
+        self,
+        *,
+        report_id: str,
+        source_job_id: str | None,
+        request_number: str,
+        experiment_code: str,
+        equipment_code: str,
+        operator_id: str,
+        storage_key: str,
+        package_relative_path: str,
+        package_file_name: str,
+        package_size_bytes: int,
+        package_sha256: str,
+        report_options_json: str | None,
+        generated_at: str,
+        is_test: bool = False,
+    ) -> dict[str, Any]:
+        """전송 여부와 무관하게 생성 완료된 보고서를 등록한다."""
+        with self.transaction() as connection:
+            existing_report = connection.execute(
+                "SELECT version_no FROM report_runs WHERE report_id = ?",
+                (report_id,),
+            ).fetchone()
+            if existing_report is not None:
+                version_no = int(existing_report["version_no"])
+            elif source_job_id:
+                version_row = connection.execute(
+                    """
+                    SELECT COALESCE(MAX(version_no), 0) + 1 AS next_version
+                    FROM report_runs WHERE source_job_id = ?
+                    """,
+                    (source_job_id,),
+                ).fetchone()
+                version_no = int(version_row["next_version"])
+            else:
+                version_no = 1
+            connection.execute(
+                """
+                INSERT INTO report_runs (
+                    report_id,
+                    source_job_id,
+                    request_number,
+                    experiment_code,
+                    equipment_code,
+                    operator_id,
+                    version_no,
+                    generation_status,
+                    storage_key,
+                    package_relative_path,
+                    package_file_name,
+                    package_size_bytes,
+                    package_sha256,
+                    report_options_json,
+                    is_test,
+                    generated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, 'READY', ?, ?, ?, ?, ?, ?, ?, ?)
+                ON DUPLICATE KEY UPDATE
+                    request_number = VALUES(request_number),
+                    experiment_code = VALUES(experiment_code),
+                    equipment_code = VALUES(equipment_code),
+                    operator_id = VALUES(operator_id),
+                    generation_status = 'READY',
+                    storage_key = VALUES(storage_key),
+                    package_relative_path = VALUES(package_relative_path),
+                    package_file_name = VALUES(package_file_name),
+                    package_size_bytes = VALUES(package_size_bytes),
+                    package_sha256 = VALUES(package_sha256),
+                    report_options_json = VALUES(report_options_json),
+                    is_test = VALUES(is_test),
+                    deleted_at = NULL,
+                    deleted_by = NULL,
+                    delete_reason = NULL,
+                    generated_at = VALUES(generated_at),
+                    updated_at = CURRENT_TIMESTAMP(6)
+                """,
+                (
+                    report_id,
+                    source_job_id,
+                    request_number,
+                    experiment_code,
+                    equipment_code,
+                    operator_id,
+                    version_no,
+                    storage_key,
+                    package_relative_path,
+                    package_file_name,
+                    package_size_bytes,
+                    package_sha256,
+                    report_options_json,
+                    bool(is_test),
+                    generated_at,
+                ),
+            )
+            row = connection.execute(
+                "SELECT * FROM report_runs WHERE report_id = ?",
+                (report_id,),
+            ).fetchone()
+        if row is None:  # pragma: no cover - DB 무결성 방어
+            raise RuntimeError("등록한 보고서 생성 기록을 조회할 수 없습니다.")
+        return row
+
+    def upsert_report_artifact(
+        self,
+        *,
+        artifact_id: str,
+        report_id: str,
+        source_job_id: str | None,
+        artifact_type: str,
+        storage_key: str,
+        relative_path: str,
+        file_name: str,
+        size_bytes: int,
+        sha256: str | None,
+        retention_until: Any = None,
+    ) -> None:
+        with self.transaction() as connection:
+            connection.execute(
+                """
+                INSERT INTO report_artifacts (
+                    artifact_id,
+                    report_id,
+                    source_job_id,
+                    artifact_type,
+                    storage_key,
+                    relative_path,
+                    file_name,
+                    size_bytes,
+                    sha256,
+                    retention_until
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON DUPLICATE KEY UPDATE
+                    source_job_id = VALUES(source_job_id),
+                    artifact_type = VALUES(artifact_type),
+                    file_name = VALUES(file_name),
+                    size_bytes = VALUES(size_bytes),
+                    sha256 = VALUES(sha256),
+                    retention_until = VALUES(retention_until),
+                    trash_relative_path = NULL,
+                    deleted_at = NULL,
+                    updated_at = CURRENT_TIMESTAMP(6)
+                """,
+                (
+                    artifact_id,
+                    report_id,
+                    source_job_id,
+                    artifact_type,
+                    storage_key,
+                    relative_path,
+                    file_name,
+                    int(size_bytes),
+                    sha256,
+                    retention_until,
+                ),
+            )
+
+    def list_report_artifacts(self, report_id: str) -> list[dict[str, Any]]:
+        with self._connect() as connection:
+            return connection.execute(
+                """
+                SELECT * FROM report_artifacts
+                WHERE report_id = ?
+                ORDER BY deleted_at IS NOT NULL, artifact_type, file_name
+                """,
+                (report_id,),
+            ).fetchall()
+
+    def fetch_report_artifact(self, artifact_id: str) -> dict[str, Any] | None:
+        with self._connect() as connection:
+            return connection.execute(
+                "SELECT * FROM report_artifacts WHERE artifact_id = ?",
+                (artifact_id,),
+            ).fetchone()
+
+    def count_active_artifact_references(
+        self,
+        relative_path: str,
+        *,
+        excluding_report_id: str,
+    ) -> int:
+        """Count other live reports that still reference the same stored file."""
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT COUNT(DISTINCT report_id) AS reference_count
+                FROM report_artifacts
+                WHERE relative_path = ?
+                  AND report_id <> ?
+                  AND deleted_at IS NULL
+                """,
+                (relative_path, excluding_report_id),
+            ).fetchone()
+        return int((row or {}).get("reference_count") or 0)
+
+    def list_report_management(
+        self,
+        *,
+        query: str = "",
+        experiment_code: str = "",
+        transfer_status: str = "",
+        include_deleted: bool = False,
+        limit: int = 300,
+    ) -> list[dict[str, Any]]:
+        clauses = ["1 = 1"]
+        params: list[Any] = []
+        if not include_deleted:
+            clauses.append("r.deleted_at IS NULL")
+        if query.strip():
+            like = f"%{query.strip()}%"
+            clauses.append(
+                "(r.report_id LIKE ? OR r.request_number LIKE ? "
+                "OR r.equipment_code LIKE ? OR r.operator_id LIKE ?)"
+            )
+            params.extend([like, like, like, like])
+        if experiment_code.strip():
+            clauses.append("r.experiment_code = ?")
+            params.append(experiment_code.strip())
+        if transfer_status.strip():
+            if transfer_status.strip().upper() == "NOT_QUEUED":
+                clauses.append("t.transfer_id IS NULL")
+            else:
+                clauses.append("t.status = ?")
+                params.append(transfer_status.strip().upper())
+        params.append(max(1, min(int(limit), 1000)))
+        with self._connect() as connection:
+            return connection.execute(
+                f"""
+                SELECT
+                    r.*,
+                    t.transfer_id,
+                    t.status AS transfer_status,
+                    t.attempt_count,
+                    t.max_attempts,
+                    t.completed_at AS transfer_completed_at,
+                    t.last_error_code,
+                    t.last_error_message,
+                    t.external_tracking_id,
+                    COALESCE(a.artifact_count, 0) AS artifact_count,
+                    COALESCE(a.artifact_size_bytes, 0) AS artifact_size_bytes,
+                    COALESCE(a.active_artifact_count, 0) AS active_artifact_count
+                FROM report_runs r
+                LEFT JOIN report_transfers t
+                    ON t.report_id = r.report_id AND t.destination = 'LIMS'
+                LEFT JOIN (
+                    SELECT
+                        report_id,
+                        COUNT(*) AS artifact_count,
+                        COALESCE(SUM(CASE WHEN deleted_at IS NULL
+                            THEN size_bytes ELSE 0 END), 0) AS artifact_size_bytes,
+                        COALESCE(SUM(CASE WHEN deleted_at IS NULL
+                            THEN 1 ELSE 0 END), 0) AS active_artifact_count
+                    FROM report_artifacts
+                    GROUP BY report_id
+                ) a ON a.report_id = r.report_id
+                WHERE {' AND '.join(clauses)}
+                ORDER BY r.created_at DESC
+                LIMIT ?
+                """,
+                tuple(params),
+            ).fetchall()
+
+    def fetch_report_management(self, report_id: str) -> dict[str, Any] | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT
+                    r.*,
+                    t.transfer_id,
+                    t.status AS transfer_status,
+                    t.attempt_count,
+                    t.max_attempts,
+                    t.requested_at,
+                    t.started_at AS transfer_started_at,
+                    t.completed_at AS transfer_completed_at,
+                    t.last_error_code,
+                    t.last_error_message,
+                    t.external_tracking_id
+                FROM report_runs r
+                LEFT JOIN report_transfers t
+                    ON t.report_id = r.report_id AND t.destination = 'LIMS'
+                WHERE r.report_id = ?
+                """,
+                (report_id,),
+            ).fetchone()
+            if row is None:
+                return None
+            row["artifacts"] = connection.execute(
+                """
+                SELECT * FROM report_artifacts
+                WHERE report_id = ?
+                ORDER BY deleted_at IS NOT NULL, artifact_type, file_name
+                """,
+                (report_id,),
+            ).fetchall()
+            transfer_id = row.get("transfer_id")
+            row["attempts"] = (
+                connection.execute(
+                    """
+                    SELECT * FROM report_transfer_attempts
+                    WHERE transfer_id = ? ORDER BY attempt_no DESC
+                    """,
+                    (transfer_id,),
+                ).fetchall()
+                if transfer_id
+                else []
+            )
+            return row
+
+    def update_report_lifecycle(
+        self,
+        report_id: str,
+        *,
+        is_test: bool | None = None,
+        pinned: bool | None = None,
+        retention_until: Any = None,
+        update_retention: bool = False,
+    ) -> None:
+        assignments: list[str] = []
+        values: list[Any] = []
+        if is_test is not None:
+            assignments.append("is_test = ?")
+            values.append(bool(is_test))
+        if pinned is not None:
+            assignments.append("pinned = ?")
+            values.append(bool(pinned))
+        if update_retention:
+            assignments.append("retention_until = ?")
+            values.append(retention_until)
+        if not assignments:
+            return
+        values.append(report_id)
+        with self.transaction() as connection:
+            connection.execute(
+                f"UPDATE report_runs SET {', '.join(assignments)} WHERE report_id = ?",
+                tuple(values),
+            )
+
+    def retry_report_transfer(self, report_id: str) -> bool:
+        with self.transaction() as connection:
+            cursor = connection.execute(
+                """
+                UPDATE report_transfers
+                SET status = 'PENDING',
+                    next_retry_at = NULL,
+                    lease_owner = NULL,
+                    lease_until = NULL,
+                    completed_at = NULL,
+                    last_error_code = NULL,
+                    last_error_message = NULL,
+                    updated_at = CURRENT_TIMESTAMP(6)
+                WHERE report_id = ? AND status IN ('FAILED', 'CANCELLED')
+                """,
+                (report_id,),
+            )
+            return bool(cursor.rowcount)
+
+    def cancel_report_transfer(self, report_id: str) -> bool:
+        with self.transaction() as connection:
+            cursor = connection.execute(
+                """
+                UPDATE report_transfers
+                SET status = 'CANCELLED',
+                    completed_at = CURRENT_TIMESTAMP(6),
+                    lease_owner = NULL,
+                    lease_until = NULL,
+                    next_retry_at = NULL,
+                    updated_at = CURRENT_TIMESTAMP(6)
+                WHERE report_id = ? AND status IN ('PENDING', 'RETRY_WAIT')
+                """,
+                (report_id,),
+            )
+            return bool(cursor.rowcount)
+
+    def mark_report_trashed(
+        self,
+        report_id: str,
+        *,
+        deleted_by: str,
+        reason: str,
+        artifacts: list[tuple[str, str]],
+    ) -> None:
+        with self.transaction() as connection:
+            for artifact_id, trash_relative_path in artifacts:
+                connection.execute(
+                    """
+                    UPDATE report_artifacts
+                    SET trash_relative_path = ?,
+                        deleted_at = CURRENT_TIMESTAMP(6),
+                        updated_at = CURRENT_TIMESTAMP(6)
+                    WHERE artifact_id = ? AND report_id = ?
+                    """,
+                    (trash_relative_path, artifact_id, report_id),
+                )
+            connection.execute(
+                """
+                UPDATE report_runs
+                SET deleted_at = CURRENT_TIMESTAMP(6),
+                    deleted_by = ?,
+                    delete_reason = ?,
+                    generation_status = 'TRASHED',
+                    updated_at = CURRENT_TIMESTAMP(6)
+                WHERE report_id = ?
+                """,
+                (deleted_by, reason, report_id),
+            )
 
     def fetch_report_run(self, report_id: str) -> dict[str, Any] | None:
         with self._connect() as connection:

@@ -3,7 +3,7 @@
 # RIST Edge 서버 배포 스크립트 (Ubuntu)
 # - rist 전용 계정 생성
 # - Python(>=3.11) 가상환경 구성 및 의존성 설치
-#   - systemd 서비스 등록(rist-edge-api, rist-edge-worker, rist-vllm)
+#   - systemd 서비스 등록(rist-edge-api, rist-edge-worker, rist-vllm, 보고서 정리 timer)
 #
 # 사용법:  sudo bash deploy/install.sh
 #
@@ -107,11 +107,14 @@ install -m 644 "${EDGE_DIR}/deploy/rist-edge-worker.service" /etc/systemd/system
 # vLLM 은 rist-vllm.service(docker compose) 로 구동한다.
 # worker 가 이 유닛을 Wants/After 로 참조하므로, worker 기동 시 함께 올라온다.
 install -m 644 "${EDGE_DIR}/deploy/rist-vllm.service" /etc/systemd/system/rist-vllm.service
+install -m 644 "${EDGE_DIR}/deploy/rist-report-cleanup.service" /etc/systemd/system/rist-report-cleanup.service
+install -m 644 "${EDGE_DIR}/deploy/rist-report-cleanup.timer" /etc/systemd/system/rist-report-cleanup.timer
 
 systemctl daemon-reload
 systemctl enable --now rist-edge-api.service
 systemctl enable rist-vllm.service
 systemctl enable --now rist-edge-worker.service
+systemctl enable --now rist-report-cleanup.timer
 
 echo "==> 8. 방화벽(8000 포트) 개방"
 if command -v ufw &>/dev/null; then
@@ -122,5 +125,6 @@ echo
 echo "완료. 상태 확인:"
 echo "  systemctl status rist-edge-api.service"
 echo "  systemctl status rist-edge-worker.service"
+echo "  systemctl status rist-report-cleanup.timer"
 echo "  journalctl -u rist-edge-api.service -f"
 echo "  curl http://127.0.0.1:8000/health"

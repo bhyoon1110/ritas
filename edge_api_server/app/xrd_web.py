@@ -44,11 +44,12 @@ from .error_archive import (
     record_background_error,
 )
 from .config import PROJECT_DIR, Settings
+from .database import Database
 from .llm_client import LlmError, LocalLlmClient
 from .preview_report import PreviewReportSendRequest, send_preview_report_package
 from .report import annotator
 from .report.builders import LlmSlotSpec
-from .report_queue import ReportQueueError
+from .report_queue import ReportQueueError, register_generated_report_package
 from .upload_sessions import ChunkUploadStore
 from .usage_archive import (
     UsageArchive,
@@ -106,6 +107,7 @@ class XrdReportJob:
     input_root: Path
     package_path: Path
     settings: Settings | None
+    database: Database | None
     error_archive: ErrorArchive | None
     usage_archive: UsageArchive | None
     usage_client_context: dict[str, str | None]
@@ -730,6 +732,7 @@ def _create_xrd_report_job(
     input_root: Path,
     work_dir: Path,
     settings: Settings | None,
+    database: Database | None,
     error_archive: ErrorArchive | None,
     usage_archive: UsageArchive | None,
     usage_client_context: dict[str, str | None],
@@ -743,6 +746,7 @@ def _create_xrd_report_job(
         input_root=input_root,
         package_path=work_dir / "xrd-report-package.zip",
         settings=settings,
+        database=database,
         error_archive=error_archive,
         usage_archive=usage_archive,
         usage_client_context=usage_client_context,
@@ -2537,6 +2541,14 @@ def _run_xrd_report_job(job: XrdReportJob) -> None:
         )
         (root / "xrd-report.html").write_text(html_result, encoding="utf-8")
         _build_xrd_report_package(root, job.package_path)
+        job.package_path = register_generated_report_package(
+            settings=job.settings,
+            database=job.database,
+            report_id=job.job_id,
+            package_path=job.package_path,
+            experiment_code="XRD",
+            is_test=True,
+        )
     except ApiException as exc:
         _set_xrd_job_state(
             job,
@@ -2637,6 +2649,7 @@ def _submit_xrd_report_job(
     input_root: Path,
     work_dir: Path,
     settings: Settings | None,
+    database: Database | None,
     error_archive: ErrorArchive | None,
     usage_archive: UsageArchive | None,
     usage_client_context: dict[str, str | None],
@@ -2646,6 +2659,7 @@ def _submit_xrd_report_job(
         input_root=input_root,
         work_dir=work_dir,
         settings=settings,
+        database=database,
         error_archive=error_archive,
         usage_archive=usage_archive,
         usage_client_context=usage_client_context,
@@ -2733,6 +2747,7 @@ def complete_xrd_upload_session(
         input_root=session.input_root,
         work_dir=session.work_dir,
         settings=_request_settings(request),
+        database=getattr(request.app.state, "database", None),
         error_archive=app_error_archive(request.app),
         usage_archive=app_usage_archive(request.app),
         usage_client_context=request_usage_client_context(request),

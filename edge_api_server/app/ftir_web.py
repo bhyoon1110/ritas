@@ -5368,6 +5368,7 @@ def _create_ftir_report_job_from_uploaded(
         equipment_code=equipment_code,
         operator_id=operator_id,
         settings=getattr(request.app.state, "settings", None),
+        database=getattr(request.app.state, "database", None),
         error_archive=app_error_archive(request.app),
         usage_archive=app_usage_archive(request.app),
         usage_client_context=request_usage_client_context(request),

@@ -24,6 +24,7 @@ from rist_common import get_logger
 
 from .errors import ApiException
 from .config import Settings
+from .database import Database
 from .file_inspection import FileInspection, inspect_file_bytes, inspect_file_path
 from .error_archive import (
     ErrorArchive,
@@ -33,7 +34,7 @@ from .error_archive import (
 )
 from .path_bootstrap import add_project_package_paths
 from .preview_report import PreviewReportSendRequest, send_preview_report_package
-from .report_queue import ReportQueueError
+from .report_queue import ReportQueueError, register_generated_report_package
 from .usage_archive import (
     UsageArchive,
     record_background_usage,
@@ -87,6 +88,8 @@ class AhnReportJob:
     analysis_path: Path
     manifest_path: Path
     manifest: dict[str, Any] | None
+    settings: Settings | None
+    database: Database | None
     error_archive: ErrorArchive | None
     usage_archive: UsageArchive | None
     usage_client_context: dict[str, str | None]
@@ -849,6 +852,8 @@ def _create_ahn_job(
     input_root: Path,
     work_dir: Path,
     error_archive: ErrorArchive | None,
+    settings: Settings | None = None,
+    database: Database | None = None,
     usage_archive: UsageArchive | None = None,
     usage_client_context: dict[str, str | None] | None = None,
 ) -> AhnReportJob:
@@ -866,6 +871,8 @@ def _create_ahn_job(
         analysis_path=output_dir / "analysis-result.json",
         manifest_path=output_dir / "manifest.json",
         manifest=None,
+        settings=settings,
+        database=database,
         error_archive=error_archive,
         usage_archive=usage_archive,
         usage_client_context=usage_client_context or {},
@@ -1017,6 +1024,14 @@ def _run_ahn_job(job: AhnReportJob) -> None:
         return
     try:
         _build_package(job.output_dir, job.package_path)
+        job.package_path = register_generated_report_package(
+            settings=job.settings,
+            database=job.database,
+            report_id=job.job_id,
+            package_path=job.package_path,
+            experiment_code="TEM",
+            is_test=True,
+        )
     except Exception as exc:
         logger.exception("TEM 보고서 패키지 생성 실패 (job_id=%s)", job.job_id)
         api_exc = ApiException(
@@ -1085,6 +1100,8 @@ def _submit_ahn_job(
     input_root: Path,
     work_dir: Path,
     error_archive: ErrorArchive | None = None,
+    settings: Settings | None = None,
+    database: Database | None = None,
     usage_archive: UsageArchive | None = None,
     usage_client_context: dict[str, str | None] | None = None,
 ) -> AhnReportJob:
@@ -1092,6 +1109,8 @@ def _submit_ahn_job(
         input_root,
         work_dir,
         error_archive,
+        settings,
+        database,
         usage_archive,
         usage_client_context,
     )
@@ -2683,6 +2702,8 @@ def complete_tem_upload_session(request: Request, upload_id: str) -> JSONRespons
         session.input_root,
         session.work_dir,
         app_error_archive(request.app),
+        getattr(request.app.state, "settings", None),
+        getattr(request.app.state, "database", None),
         app_usage_archive(request.app),
         request_usage_client_context(request),
     )
@@ -2723,6 +2744,8 @@ async def analyze_tem(
             input_root,
             work_dir,
             app_error_archive(request.app),
+            getattr(request.app.state, "settings", None),
+            getattr(request.app.state, "database", None),
             app_usage_archive(request.app),
             request_usage_client_context(request),
         )
@@ -2748,6 +2771,8 @@ def tem_example(request: Request) -> JSONResponse:
             input_root,
             work_dir,
             app_error_archive(request.app),
+            getattr(request.app.state, "settings", None),
+            getattr(request.app.state, "database", None),
             app_usage_archive(request.app),
             request_usage_client_context(request),
         )

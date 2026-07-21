@@ -1,0 +1,16 @@
+[Unit]
+Description=RIST report retention and storage cleanup
+After=network-online.target mariadb.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=rist
+Group=rist
+WorkingDirectory=/home/rist/ritas/edge_api_server
+Environment=RIST_ENV=production
+EnvironmentFile=-/home/rist/ritas/edge.env
+ExecStart=/home/rist/ritas/.venv/bin/python scripts/cleanup_report_storage.py
+NoNewPrivileges=true
+ProtectSystem=full
+PrivateTmp=true

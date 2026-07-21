@@ -65,6 +65,10 @@ class Settings:
     worker_poll_seconds: float = 2.0
     report_storage_key: str = "RIST_REPORTS"
     report_transfer_max_attempts: int = 5
+    report_test_retention_days: int = 7
+    report_failed_retention_days: int = 30
+    report_completed_retention_days: int = 90
+    report_trash_retention_days: int = 7
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -224,5 +228,17 @@ class Settings:
             ),
             report_transfer_max_attempts=max(
                 1, int(os.getenv("RIST_REPORT_TRANSFER_MAX_ATTEMPTS", "5"))
+            ),
+            report_test_retention_days=max(
+                1, int(os.getenv("RIST_REPORT_TEST_RETENTION_DAYS", "7"))
+            ),
+            report_failed_retention_days=max(
+                1, int(os.getenv("RIST_REPORT_FAILED_RETENTION_DAYS", "30"))
+            ),
+            report_completed_retention_days=max(
+                1, int(os.getenv("RIST_REPORT_COMPLETED_RETENTION_DAYS", "90"))
+            ),
+            report_trash_retention_days=max(
+                1, int(os.getenv("RIST_REPORT_TRASH_RETENTION_DAYS", "7"))
             ),
         )

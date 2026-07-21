@@ -47,8 +47,8 @@ mysql --default-character-set=utf8mb4 \
 
 개발 DB의 기존 보고서/전송 큐 이력을 모두 삭제하고, 최신 컬럼 및 테이블 COMMENT가
 포함된 구조로 새로 만들 때만 재생성 전용 DDL을 실행한다. 이 스크립트는
-`report_transfer_attempts`, `report_transfers`, `report_runs`만 자식부터 순서대로
-삭제하며 기존 `jobs` 테이블은 보존한다.
+`report_artifacts`, `report_transfer_attempts`, `report_transfers`, `report_runs`를
+자식부터 순서대로 삭제하며 기존 `jobs` 테이블은 보존한다.
 
 ```bash
 cd /home/rist/ritas/edge_api_server/deploy
@@ -60,6 +60,17 @@ mysql --default-character-set=utf8mb4 \
 
 운영 DB에서는 재생성 DDL을 실행하지 말고 별도 `ALTER TABLE` migration을 적용한다.
 재생성 전에 필요한 큐 이력을 반드시 백업한다.
+
+기존 `report_runs`와 전송 이력을 유지하면서 보고서 파일 관리 컬럼과
+`report_artifacts`만 추가하려면 다음 비파괴 마이그레이션을 실행한다.
+
+```bash
+cd /home/rist/ritas/edge_api_server/deploy
+mysql --default-character-set=utf8mb4 \
+  -h "$RIST_DB_HOST" -P "$RIST_DB_PORT" \
+  -u "$RIST_DB_USER" -p "$RIST_DB_NAME" \
+  < mariadb_report_artifacts_migration.sql
+```
 
 ## 1. 코드 배포
 
@@ -168,9 +179,15 @@ sudo docker compose -f deploy/docker-compose.vllm.yml ps
 journalctl -u rist-edge-api.service -f
 journalctl -u rist-edge-worker.service -f
 
-# 프로젝트 통합 운영 관리 화면 (사용 기록 | 오류 기록)
+# 프로젝트 통합 운영 관리 화면 (사용 기록 | 오류 기록 | 보고서/파일 관리)
 # http://<Edge 서버 주소>:8000/operations
+# http://<Edge 서버 주소>:8000/report-management
 sudo docker logs -f vllm-gemma4-e4b
+
+# 보고서 보존 정책 자동 정리 상태 및 수동 실행
+systemctl status rist-report-cleanup.timer
+sudo systemctl start rist-report-cleanup.service
+journalctl -u rist-report-cleanup.service -n 100 --no-pager
 
 # 재시작 / 중지
 sudo systemctl restart rist-edge-api.service
@@ -326,6 +343,10 @@ RIST_DB_POOL_TIMEOUT_SECONDS=10
 # 공유 저장소 / DB 보고서 전송 큐
 RIST_REPORT_STORAGE_KEY=RIST_REPORTS
 RIST_REPORT_TRANSFER_MAX_ATTEMPTS=5
+RIST_REPORT_TEST_RETENTION_DAYS=7
+RIST_REPORT_FAILED_RETENTION_DAYS=30
+RIST_REPORT_COMPLETED_RETENTION_DAYS=90
+RIST_REPORT_TRASH_RETENTION_DAYS=7
 
 # 로컬 LLM
 RIST_LLM_BASE_URL=http://127.0.0.1:8001

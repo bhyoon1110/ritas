@@ -1,0 +1,11 @@
+[Unit]
+Description=Run RIST report retention cleanup daily
+
+[Timer]
+OnCalendar=*-*-* 03:30:00 Asia/Seoul
+Persistent=true
+RandomizedDelaySec=10m
+Unit=rist-report-cleanup.service
+
+[Install]
+WantedBy=timers.target

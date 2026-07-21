@@ -30,6 +30,7 @@ from .report_queue import (
     ReportQueueError,
     enqueue_report_package,
     persist_preview_report_package,
+    register_generated_report_package,
 )
 from .storage import atomic_write_json
 from .usage_archive import UsageArchive, record_background_usage
@@ -342,6 +343,7 @@ def build_preview_report_package(
     equipment_code: str = "",
     operator_id: str = "",
     settings: Any | None = None,
+    database: Database | None = None,
     progress: Callable[[str, int, str], None] | None = None,
 ) -> tuple[Path, Path]:
     tmp_root = Path(tempfile.mkdtemp(prefix="rist-preview-report-"))
@@ -479,6 +481,7 @@ def run_preview_report_job(
     equipment_code: str = "",
     operator_id: str = "",
     settings: Any | None = None,
+    database: Database | None = None,
     error_archive: ErrorArchive | None = None,
     usage_archive: UsageArchive | None = None,
     usage_client_context: dict[str, str | None] | None = None,
@@ -520,6 +523,18 @@ def run_preview_report_job(
             operator_id=operator_id,
             settings=settings,
             progress=progress,
+        )
+        package = register_generated_report_package(
+            settings=settings,
+            database=database,
+            report_id=job_id,
+            package_path=package,
+            source_job_id=None,
+            request_number=request_number,
+            experiment_code=experiment_code,
+            equipment_code=equipment_code,
+            operator_id=operator_id,
+            report_options=analysis_payload.get("reportOptions"),
         )
         store.complete(job_id, tmp_root=tmp_root, package_path=package)
         record_background_usage(
