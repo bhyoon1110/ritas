@@ -46,6 +46,11 @@ def test_xrd_workspace_contains_upload_controls() -> None:
     assert "droppedBundleItems" in page
     assert 'id="xrd-origin" name="origin" value="true" checked' in page
     assert 'id="xrd-example"' in page
+    assert 'id="xrd-run" disabled' in page
+    assert "runButton.disabled = operationBusy || collectingFiles || !bundleItems.length" in page
+    assert "function setCollectingFiles(value, message)" in page
+    assert "폴더 안의 XRD 파일 목록을 읽는 중입니다." in page
+    assert "첨부 파일 목록을 읽는 중입니다. 목록 표시가 완료된 뒤 다시 실행하세요." in page
     assert 'http-equiv="Cache-Control"' in page
     assert 'content="no-store, no-cache, must-revalidate, max-age=0"' in page
     assert 'http-equiv="Pragma"' in page

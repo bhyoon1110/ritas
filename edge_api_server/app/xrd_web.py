@@ -1299,7 +1299,7 @@ def build_xrd_page() -> str:
       </div>
       <div class="xrd-actions">
         <button type="button" id="xrd-example">예제 불러오기</button>
-        <button type="submit" form="xrd-form" class="primary" id="xrd-run">보고서 생성</button>
+        <button type="submit" form="xrd-form" class="primary" id="xrd-run" disabled>보고서 생성</button>
         <button type="button" id="xrd-clear">초기화</button>
         <a href="#" class="xrd-download" id="xrd-download" aria-disabled="true">보고서 다운로드</a>
       </div>
@@ -1423,6 +1423,8 @@ def build_xrd_page() -> str:
     var reportProgressVisible = false;
     var uploadProgressError = false;
     var reportProgressError = false;
+    var operationBusy = false;
+    var collectingFiles = false;
     var requestItems = [];
     var lastReportJob = null;
     var REQUEST_EXPERIMENT_TYPE = "XRD";
@@ -1456,12 +1458,31 @@ def build_xrd_page() -> str:
       close.addEventListener("click", remove);
       timer = setTimeout(remove, error ? 7200 : 4300);
     }
-    function setBusy(value) {
-      busy.classList.toggle("show", Boolean(value));
-      runButton.disabled = Boolean(value);
-      exampleButton.disabled = Boolean(value);
-      requestLoad.disabled = Boolean(value);
+    function syncActionState() {
+      runButton.disabled = operationBusy || collectingFiles || !bundleItems.length;
+      exampleButton.disabled = operationBusy || collectingFiles;
+      addFilesButton.disabled = operationBusy || collectingFiles;
+      addFolderButton.disabled = operationBusy || collectingFiles;
+      clearButton.disabled = operationBusy || collectingFiles;
+      requestLoad.disabled = operationBusy || collectingFiles;
+      drop.setAttribute("aria-busy", collectingFiles ? "true" : "false");
+      form.setAttribute("aria-busy", collectingFiles ? "true" : "false");
       updateReportSendAvailability();
+    }
+    function setCollectingFiles(value, message) {
+      collectingFiles = Boolean(value);
+      if (collectingFiles) {
+        bundleMeta.textContent = message || "첨부 파일 목록을 읽는 중입니다.";
+        syncActionState();
+        return;
+      }
+      renderFileList();
+      syncActionState();
+    }
+    function setBusy(value) {
+      operationBusy = Boolean(value);
+      busy.classList.toggle("show", operationBusy);
+      syncActionState();
     }
     function reportTransferValue(field) {
       var control = reportTransferControls.find(function(item) {
@@ -1545,7 +1566,7 @@ def build_xrd_page() -> str:
         && transfer.requestNumber && transfer.limsExperimentCode
         && transfer.equipmentCode && transfer.operatorId
       );
-      reportSendButton.disabled = !ready || busy.classList.contains("show");
+      reportSendButton.disabled = !ready || operationBusy || collectingFiles;
       reportSendButton.title = ready
         ? "완성된 XRD 보고서를 LIMS 전송 대기열에 등록합니다."
         : "보고서 완료 및 전송 정보 입력 후 전송할 수 있습니다.";
@@ -2226,6 +2247,7 @@ def build_xrd_page() -> str:
       bundleMeta.textContent = files.length
         ? "raw " + counts.raw + " · pdf " + counts.pdf + " · table " + counts.table + " · image " + counts.image + " · zip " + counts.zip + " · 내용 검사 " + counts.content
         : "선택된 파일 없음";
+      syncActionState();
     }
     function fileInputItems(input) {
       return filesOf(input).map(function(file) {
@@ -2288,16 +2310,58 @@ def build_xrd_page() -> str:
       var items = await droppedBundleItems(dataTransfer);
       addBundleItems(items);
     }
+    function openBundlePicker(input, message) {
+      setCollectingFiles(true, message);
+      var released = false;
+      function releaseIfCancelled() {
+        if (released) return;
+        setTimeout(function() {
+          if (!released && !(input.files || []).length) {
+            released = true;
+            setCollectingFiles(false);
+          }
+        }, 450);
+      }
+      window.addEventListener("focus", releaseIfCancelled, {once: true});
+      input.oncancel = function() {
+        released = true;
+        setCollectingFiles(false);
+      };
+      input.click();
+    }
+    function waitForCollectionPaint() {
+      return new Promise(function(resolve) {
+        var schedulePaint = window.requestAnimationFrame || function(callback) {
+          return setTimeout(callback, 16);
+        };
+        schedulePaint(function() { setTimeout(resolve, 0); });
+      });
+    }
+    async function collectSelectedFiles(input, message) {
+      if (!collectingFiles) setCollectingFiles(true, message);
+      try {
+        await waitForCollectionPaint();
+        addBundleItems(fileInputItems(input));
+      } catch (error) {
+        setStatus(error.message || String(error), true);
+      } finally {
+        input.oncancel = null;
+        input.value = "";
+        setCollectingFiles(false);
+      }
+    }
     bundleInput.addEventListener("change", function() {
-      addBundleItems(fileInputItems(bundleInput));
-      bundleInput.value = "";
+      collectSelectedFiles(bundleInput, "첨부할 파일 목록을 읽는 중입니다.");
     });
     folderInput.addEventListener("change", function() {
-      addBundleItems(fileInputItems(folderInput));
-      folderInput.value = "";
+      collectSelectedFiles(folderInput, "폴더 안의 XRD 파일 목록을 읽는 중입니다.");
     });
-    addFilesButton.addEventListener("click", function() { bundleInput.click(); });
-    addFolderButton.addEventListener("click", function() { folderInput.click(); });
+    addFilesButton.addEventListener("click", function() {
+      openBundlePicker(bundleInput, "첨부할 파일 목록을 읽는 중입니다.");
+    });
+    addFolderButton.addEventListener("click", function() {
+      openBundlePicker(folderInput, "폴더 안의 XRD 파일 목록을 읽는 중입니다.");
+    });
     function buildBundleFormData() {
       var data = new FormData();
       bundleItems.forEach(function(item) {
@@ -2318,14 +2382,15 @@ def build_xrd_page() -> str:
     drop.addEventListener("drop", async function(event) {
       event.preventDefault();
       drop.classList.remove("dragover");
-      setBusy(true);
+      setCollectingFiles(true, "드롭한 폴더의 XRD 파일 목록을 읽는 중입니다.");
       try {
+        await waitForCollectionPaint();
         await routeDroppedFiles(event.dataTransfer);
         setStatus("XRD bundle 파일이 추가되었습니다.", false);
       } catch (error) {
         setStatus(error.message || String(error), true);
       } finally {
-        setBusy(false);
+        setCollectingFiles(false);
       }
     });
     clearButton.addEventListener("click", function() {
@@ -2368,6 +2433,10 @@ def build_xrd_page() -> str:
     });
     form.addEventListener("submit", async function(event) {
       event.preventDefault();
+      if (collectingFiles) {
+        setStatus("첨부 파일 목록을 읽는 중입니다. 목록 표시가 완료된 뒤 다시 실행하세요.", true);
+        return;
+      }
       var hasZip = bundleItems.some(function(item) { return classifyFile(item.file) === "zip"; });
       var hasContentCheck = bundleItems.some(function(item) { return classifyFile(item.file) === "content"; });
       if (!hasZip && !hasContentCheck && !bundleItems.some(function(item) { return classifyFile(item.file) === "raw"; })) {
