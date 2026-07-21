@@ -105,6 +105,7 @@ def test_xrd_workspace_contains_upload_controls() -> None:
     assert 'id="xrd-report-transfer"' in page
     assert 'id="xrd-request-load"' in page
     assert 'id="xrd-request-select"' in page
+    assert 'X-Request-Id": "xrd-request-list-' in page
     assert 'data-xrd-transfer-field="requestNumber"' in page
     assert 'data-xrd-transfer-field="limsExperimentCode"' in page
     assert 'id="xrd-report-send" disabled' in page

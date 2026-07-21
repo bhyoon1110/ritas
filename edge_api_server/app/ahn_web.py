@@ -2094,7 +2094,10 @@ def build_ahn_page() -> str:
       try {
         var payload = await requestJson(
           "/api/v1/requests?page=1&pageSize=200&experimentType="
-            + encodeURIComponent(REQUEST_EXPERIMENT_TYPE)
+            + encodeURIComponent(REQUEST_EXPERIMENT_TYPE),
+          {
+            headers: {"X-Request-Id": "tem-request-list-" + Date.now()}
+          }
         );
         requestItems = Array.isArray(payload.items) ? payload.items : [];
         renderRequestOptions(requestItems);

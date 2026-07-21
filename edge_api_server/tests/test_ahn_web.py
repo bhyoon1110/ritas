@@ -94,6 +94,7 @@ def test_ahn_workspace_contains_folder_upload_controls() -> None:
     assert 'id="ahn-report-transfer"' in page
     assert 'id="ahn-request-load"' in page
     assert 'id="ahn-request-select"' in page
+    assert 'X-Request-Id": "tem-request-list-' in page
     assert 'data-ahn-transfer-field="requestNumber"' in page
     assert 'data-ahn-transfer-field="limsExperimentCode"' in page
     assert 'id="ahn-report-send" disabled' in page
