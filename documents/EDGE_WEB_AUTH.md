@@ -8,7 +8,8 @@ SSO 연동이 준비되지 않은 기간에도 가입과 관리자 승인을 거
 
 ## 2. 권한 흐름
 
-1. 사용자가 `/signup`에서 이메일, 이름, 비밀번호로 가입한다.
+1. 사용자가 `/signup`에서 로그인 ID, 이름, 비밀번호로 가입한다. 이메일은 연락용
+   선택 정보이며 로그인과 SSO 식별에 사용하지 않는다.
 2. 관리자가 `/admin/users`에서 회원을 `ACTIVE`로 변경하고 FTIR, RAMAN, XRD,
    TEM 중 필요한 프로젝트를 승인한다.
 3. 승인된 사용자는 `/login`으로 로그인하여 허용된 프로젝트의 파일 업로드,
@@ -18,7 +19,7 @@ SSO 연동이 준비되지 않은 기간에도 가입과 관리자 승인을 거
 6. 전송 버튼을 누를 때 프로젝트 권한, `REPORT_SENDER`, SSO 연결, 최근 SSO
    인증 시각을 다시 검사한다.
 7. 인증이 오래되었으면 SSO 재인증 후 전송한다. 전송 작업의 실험자는 화면의
-   임의 입력값이 아니라 SSO의 사번, 이메일, `sub` 순서로 결정한다.
+   임의 입력값이 아니라 SSO의 사번, `sub` 순서로 결정한다.
 
 회원 상태는 `PENDING`, `ACTIVE`, `SUSPENDED`로 관리한다. `ADMIN` 역할은 회원과
 권한 관리 및 운영 관리 화면 접근을 허용한다. 관리자는 모든 프로젝트 화면에
@@ -27,12 +28,12 @@ SSO 연동이 준비되지 않은 기간에도 가입과 관리자 승인을 거
 
 ## 3. 최초 관리자
 
-운영 배포 전 `RIST_AUTH_BOOTSTRAP_ADMIN_EMAILS`에 최초 관리자 이메일을 지정하는
-방식을 권장한다. 이 값이 있으면 해당 이메일로 가입한 회원만 자동으로 활성화되고
+운영 배포 전 `RIST_AUTH_BOOTSTRAP_ADMIN_IDS`에 최초 관리자 로그인 ID(권장값
+`admin`)를 지정한다. 이 값이 있으면 해당 ID로 가입한 회원만 자동으로 활성화되고
 `ADMIN`, `REPORT_SENDER`, 전체 프로젝트 권한을 받는다. 값이 비어 있는 초기
 설치에서는 첫 가입자 한 명이 최초 관리자가 된다.
 
-최초 관리자 생성 후에는 환경 변수에서 이메일을 제거해도 기존 권한은 유지된다.
+최초 관리자 생성 후에는 환경 변수에서 ID를 제거해도 기존 권한은 유지된다.
 
 ## 4. 화면 및 API
 
@@ -54,7 +55,7 @@ SSO 연동이 준비되지 않은 기간에도 가입과 관리자 승인을 거
 
 | 테이블 | 역할 |
 |---|---|
-| `app_users` | 로컬 회원과 승인 상태 |
+| `app_users` | 로그인 ID, 선택 연락 이메일, 로컬 회원과 승인 상태 |
 | `user_project_permissions` | 회원별 FTIR, RAMAN, XRD, TEM 권한 |
 | `user_roles` | `ADMIN`, `REPORT_SENDER` 역할 |
 | `sso_identities` | 로컬 회원과 사내 OIDC 계정 연결 |
@@ -72,8 +73,10 @@ mysql --default-character-set=utf8mb4 \
   < mariadb_auth_migration.sql
 ```
 
-이 스크립트는 `CREATE TABLE IF NOT EXISTS` 방식이므로 기존 회원 데이터를
-삭제하지 않는다.
+이 스크립트는 기존 회원 데이터를 삭제하지 않는다. 이메일 로그인 버전에서 다시
+실행하면 기존 이메일 전체를 `login_id`로 이관하므로 종전 이메일 문자열을 로그인
+ID 칸에 입력해 계속 로그인할 수 있다. 관리자는 이후 원하는 신규 ID의 계정을
+만들고 권한을 이전할 수 있다.
 
 ## 6. 환경 설정
 
@@ -84,7 +87,7 @@ RIST_AUTH_ENABLED=true
 RIST_AUTH_SESSION_HOURS=12
 RIST_AUTH_RECENT_SSO_MINUTES=30
 RIST_AUTH_COOKIE_SECURE=false
-RIST_AUTH_BOOTSTRAP_ADMIN_EMAILS=admin@example.com
+RIST_AUTH_BOOTSTRAP_ADMIN_IDS=admin
 
 RIST_SSO_PROVIDER_NAME=RIST SSO
 RIST_SSO_ISSUER_URL=https://sso.example.com
@@ -111,7 +114,7 @@ sudo systemctl status rist-edge-api.service
 ## 7. 권장 적용 순서
 
 1. 인증 DB 마이그레이션을 실행한다.
-2. 최초 관리자 이메일과 쿠키 설정을 `edge.env`에 추가한다.
+2. 최초 관리자 로그인 ID와 쿠키 설정을 `edge.env`에 추가한다.
 3. 서비스를 재시작하고 최초 관리자로 가입한다.
 4. 일반 회원 가입, 승인, 프로젝트별 보고서 생성을 검증한다.
 5. 사내 OIDC 클라이언트 발급 후 issuer, client, redirect URI를 설정한다.

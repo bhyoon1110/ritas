@@ -73,7 +73,7 @@ class Settings:
     auth_session_hours: int = 12
     auth_recent_sso_minutes: int = 30
     auth_cookie_secure: bool = False
-    auth_bootstrap_admin_emails: tuple[str, ...] = ()
+    auth_bootstrap_admin_ids: tuple[str, ...] = ()
     sso_provider_name: str = "RIST SSO"
     sso_issuer_url: str = ""
     sso_client_id: str = ""
@@ -264,14 +264,14 @@ class Settings:
                 "true" if common.environment == "production" else "false",
             ).lower()
             in {"1", "true", "yes", "on"},
-            auth_bootstrap_admin_emails=tuple(
+            auth_bootstrap_admin_ids=tuple(
                 sorted(
                     {
-                        email.strip().lower()
-                        for email in os.getenv(
-                            "RIST_AUTH_BOOTSTRAP_ADMIN_EMAILS", ""
+                        login_id.strip().lower()
+                        for login_id in os.getenv(
+                            "RIST_AUTH_BOOTSTRAP_ADMIN_IDS", ""
                         ).split(",")
-                        if email.strip()
+                        if login_id.strip()
                     }
                 )
             ),

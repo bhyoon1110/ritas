@@ -371,7 +371,8 @@ _SCHEMA: tuple[str, ...] = (
     """
     CREATE TABLE IF NOT EXISTS app_users (
         user_id VARCHAR(36) NOT NULL COMMENT '로컬 회원 UUID',
-        email VARCHAR(255) NOT NULL COMMENT '로그인 이메일. 소문자로 정규화',
+        login_id VARCHAR(255) NOT NULL COMMENT '로컬 로그인 ID. 소문자로 정규화',
+        email VARCHAR(255) COMMENT '선택 연락 이메일. 로그인 식별자로 사용하지 않음',
         password_hash VARCHAR(512) NOT NULL COMMENT 'scrypt 비밀번호 해시. 원문 저장 금지',
         display_name VARCHAR(100) NOT NULL COMMENT '화면과 감사 로그에 표시할 이름',
         status VARCHAR(32) NOT NULL DEFAULT 'PENDING'
@@ -381,6 +382,7 @@ _SCHEMA: tuple[str, ...] = (
         updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6)
             ON UPDATE CURRENT_TIMESTAMP(6),
         PRIMARY KEY (user_id),
+        UNIQUE KEY uq_app_users_login_id (login_id),
         UNIQUE KEY uq_app_users_email (email),
         KEY idx_app_users_status (status, created_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4

@@ -7,6 +7,8 @@ from starlette.requests import Request
 
 from app.auth import (
     AuthContext,
+    LoginRequest,
+    SignupRequest,
     authenticated_transfer_payload,
     hash_password,
     is_bootstrap_admin,
@@ -28,6 +30,7 @@ def _context(
 ) -> AuthContext:
     return AuthContext(
         user_id="user-1",
+        login_id="user01",
         email="user@example.com",
         display_name="사용자",
         status="ACTIVE",
@@ -97,17 +100,30 @@ def test_project_for_path() -> None:
 
 
 def test_bootstrap_admin_policy() -> None:
-    assert is_bootstrap_admin("first@example.com", first_user=True, configured_emails=())
+    assert is_bootstrap_admin("first", first_user=True, configured_ids=())
     assert is_bootstrap_admin(
-        "admin@example.com",
+        "ADMIN",
         first_user=False,
-        configured_emails=("admin@example.com",),
+        configured_ids=("admin",),
     )
     assert not is_bootstrap_admin(
-        "first@example.com",
+        "first",
         first_user=True,
-        configured_emails=("admin@example.com",),
+        configured_ids=("admin",),
     )
+
+
+def test_login_id_models_normalize_and_allow_optional_email() -> None:
+    signup = SignupRequest(
+        loginId="  Test.User_01  ",
+        password="correct horse battery staple",
+        displayName="사용자",
+    )
+    login = LoginRequest(loginId="  TEST.USER_01 ", password="password")
+
+    assert signup.login_id == "test.user_01"
+    assert signup.email is None
+    assert login.login_id == "test.user_01"
 
 
 def test_transfer_auth_disabled_keeps_payload(tmp_path) -> None:

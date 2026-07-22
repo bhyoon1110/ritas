@@ -363,7 +363,7 @@ cd edge_api_server
 | `RIST_AUTH_SESSION_HOURS` | `12` | 로컬 로그인 세션 유지 시간 |
 | `RIST_AUTH_RECENT_SSO_MINUTES` | `30` | 보고서 전송에 인정할 최근 SSO 인증 시간 |
 | `RIST_AUTH_COOKIE_SECURE` | production `true` | HTTPS에서만 세션 쿠키를 보내는 보안 설정. HTTP 개발 서버는 `false` |
-| `RIST_AUTH_BOOTSTRAP_ADMIN_EMAILS` | 빈 값 | 쉼표로 구분한 최초 관리자 이메일. 빈 초기 설치는 첫 가입자가 관리자 |
+| `RIST_AUTH_BOOTSTRAP_ADMIN_IDS` | 빈 값 | 쉼표로 구분한 최초 관리자 로그인 ID. 빈 초기 설치는 첫 가입자가 관리자 |
 | `RIST_SSO_PROVIDER_NAME` | `RIST SSO` | 화면과 DB에 표시할 사내 OIDC 공급자 이름 |
 | `RIST_SSO_ISSUER_URL` | 없음 | OIDC issuer URL |
 | `RIST_SSO_CLIENT_ID` | 없음 | Edge 웹용 OIDC client ID |

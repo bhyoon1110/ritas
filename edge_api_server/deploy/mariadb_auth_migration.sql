@@ -5,14 +5,15 @@
 --     -h 127.0.0.1 -P 3306 -u root -p rist_edge \
 --     < mariadb_auth_migration.sql
 --
--- 기존 테이블과 회원 데이터는 삭제하지 않는다. 동일 스키마에 재실행해도
--- CREATE TABLE IF NOT EXISTS 정책에 따라 안전하게 종료된다.
+-- 기존 테이블과 회원 데이터는 삭제하지 않는다. 이메일 로그인 스키마에 다시
+-- 실행하면 기존 이메일을 login_id로 이관하고 나머지 테이블은 유지한다.
 
 SET NAMES utf8mb4;
 
 CREATE TABLE IF NOT EXISTS app_users (
     user_id VARCHAR(36) NOT NULL COMMENT '로컬 회원 UUID',
-    email VARCHAR(255) NOT NULL COMMENT '로그인 이메일. 소문자로 정규화',
+    login_id VARCHAR(255) NOT NULL COMMENT '로컬 로그인 ID. 소문자로 정규화',
+    email VARCHAR(255) COMMENT '선택 연락 이메일. 로그인 식별자로 사용하지 않음',
     password_hash VARCHAR(512) NOT NULL COMMENT 'scrypt 비밀번호 해시. 원문 저장 금지',
     display_name VARCHAR(100) NOT NULL COMMENT '화면과 감사 로그에 표시할 이름',
     status VARCHAR(32) NOT NULL DEFAULT 'PENDING'
@@ -23,10 +24,31 @@ CREATE TABLE IF NOT EXISTS app_users (
     updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6)
         ON UPDATE CURRENT_TIMESTAMP(6) COMMENT '회원 정보 최종 변경 시각',
     PRIMARY KEY (user_id),
+    UNIQUE KEY uq_app_users_login_id (login_id),
     UNIQUE KEY uq_app_users_email (email),
     KEY idx_app_users_status (status, created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
   COMMENT='Edge 웹 화면에 로그인하는 로컬 회원과 관리자 승인 상태';
+
+-- 이메일 로그인 버전으로 이미 생성된 DB도 같은 파일을 재실행하면 안전하게
+-- login_id 기반으로 전환한다. 기존 회원은 기존 이메일 전체를 login_id로
+-- 이관하므로 마이그레이션 직후에도 종전 이메일 문자열로 로그인할 수 있다.
+ALTER TABLE app_users
+    ADD COLUMN IF NOT EXISTS login_id VARCHAR(255) NULL
+        COMMENT '로컬 로그인 ID. 소문자로 정규화' AFTER user_id;
+
+UPDATE app_users
+   SET login_id = LOWER(email)
+ WHERE login_id IS NULL OR TRIM(login_id) = '';
+
+ALTER TABLE app_users
+    MODIFY COLUMN login_id VARCHAR(255) NOT NULL
+        COMMENT '로컬 로그인 ID. 소문자로 정규화',
+    MODIFY COLUMN email VARCHAR(255) NULL
+        COMMENT '선택 연락 이메일. 로그인 식별자로 사용하지 않음';
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_app_users_login_id
+    ON app_users (login_id);
 
 CREATE TABLE IF NOT EXISTS user_project_permissions (
     user_id VARCHAR(36) NOT NULL COMMENT '권한을 부여받은 app_users.user_id',

@@ -29,12 +29,14 @@ PROJECT_CODES = ("FTIR", "RAMAN", "XRD", "TEM")
 ROLE_CODES = ("ADMIN", "REPORT_SENDER")
 USER_STATUSES = ("PENDING", "ACTIVE", "SUSPENDED")
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+LOGIN_ID_RE = re.compile(r"^[a-zA-Z0-9._-]+$")
 
 
 @dataclass(frozen=True)
 class AuthContext:
     user_id: str
-    email: str
+    login_id: str
+    email: str | None
     display_name: str
     status: str
     session_id: str
@@ -50,13 +52,24 @@ class AuthContext:
 
 
 class SignupRequest(BaseModel):
-    email: str = Field(min_length=5, max_length=255)
+    login_id: str = Field(alias="loginId", min_length=3, max_length=64)
+    email: str | None = Field(default=None, max_length=255)
     password: str = Field(min_length=10, max_length=200)
     display_name: str = Field(alias="displayName", min_length=1, max_length=100)
 
+    @field_validator("login_id")
+    @classmethod
+    def validate_login_id(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if not LOGIN_ID_RE.fullmatch(normalized):
+            raise ValueError("로그인 ID는 영문, 숫자, 점, 밑줄, 하이픈만 사용할 수 있습니다.")
+        return normalized
+
     @field_validator("email")
     @classmethod
-    def validate_email(cls, value: str) -> str:
+    def validate_email(cls, value: str | None) -> str | None:
+        if value is None or not value.strip():
+            return None
         normalized = value.strip().lower()
         if not EMAIL_RE.fullmatch(normalized):
             raise ValueError("올바른 이메일 형식이 아닙니다.")
@@ -69,13 +82,13 @@ class SignupRequest(BaseModel):
 
 
 class LoginRequest(BaseModel):
-    email: str = Field(min_length=5, max_length=255)
+    login_id: str = Field(alias="loginId", min_length=3, max_length=255)
     password: str = Field(min_length=1, max_length=200)
     return_to: str = Field(default="/", alias="returnTo", max_length=512)
 
-    @field_validator("email")
+    @field_validator("login_id")
     @classmethod
-    def normalize_email(cls, value: str) -> str:
+    def normalize_login_id(cls, value: str) -> str:
         return value.strip().lower()
 
 
@@ -178,14 +191,14 @@ def project_for_path(path: str) -> str | None:
 
 
 def is_bootstrap_admin(
-    email: str,
+    login_id: str,
     *,
     first_user: bool,
-    configured_emails: tuple[str, ...],
+    configured_ids: tuple[str, ...],
 ) -> bool:
-    normalized_email = email.strip().lower()
-    configured = {item.strip().lower() for item in configured_emails if item.strip()}
-    return normalized_email in configured or (first_user and not configured)
+    normalized_id = login_id.strip().lower()
+    configured = {item.strip().lower() for item in configured_ids if item.strip()}
+    return normalized_id in configured or (first_user and not configured)
 
 
 def _request_ip(request: Request) -> str | None:
@@ -227,28 +240,35 @@ class AuthService:
         user_id = str(uuid4())
         with self.database.transaction() as connection:
             existing = connection.execute(
-                "SELECT user_id FROM app_users WHERE email = ?", (payload.email,)
+                "SELECT user_id FROM app_users WHERE login_id = ?", (payload.login_id,)
             ).fetchone()
             if existing:
-                raise ApiException(409, "EMAIL_ALREADY_REGISTERED", "이미 가입된 이메일입니다.")
+                raise ApiException(409, "LOGIN_ID_ALREADY_REGISTERED", "이미 사용 중인 로그인 ID입니다.")
+            if payload.email:
+                existing_email = connection.execute(
+                    "SELECT user_id FROM app_users WHERE email = ?", (payload.email,)
+                ).fetchone()
+                if existing_email:
+                    raise ApiException(409, "EMAIL_ALREADY_REGISTERED", "이미 등록된 이메일입니다.")
             count = connection.execute(
                 "SELECT COUNT(*) AS count FROM app_users"
             ).fetchone()
             first_user = int((count or {}).get("count") or 0) == 0
             bootstrap_admin = is_bootstrap_admin(
-                payload.email,
+                payload.login_id,
                 first_user=first_user,
-                configured_emails=self.settings.auth_bootstrap_admin_emails,
+                configured_ids=self.settings.auth_bootstrap_admin_ids,
             )
             status = "ACTIVE" if bootstrap_admin else "PENDING"
             connection.execute(
                 """
                 INSERT INTO app_users (
-                    user_id, email, password_hash, display_name, status
-                ) VALUES (?, ?, ?, ?, ?)
+                    user_id, login_id, email, password_hash, display_name, status
+                ) VALUES (?, ?, ?, ?, ?, ?)
                 """,
                 (
                     user_id,
+                    payload.login_id,
                     payload.email,
                     hash_password(payload.password),
                     payload.display_name,
@@ -274,7 +294,11 @@ class AuthService:
             True,
             user_id=user_id,
             request=request,
-            details={"status": status, "bootstrapAdmin": bootstrap_admin},
+            details={
+                "loginId": payload.login_id,
+                "status": status,
+                "bootstrapAdmin": bootstrap_admin,
+            },
         )
         return {"userId": user_id, "status": status}
 
@@ -283,7 +307,7 @@ class AuthService:
     ) -> tuple[AuthContext, str]:
         with self.database.transaction() as connection:
             user = connection.execute(
-                "SELECT * FROM app_users WHERE email = ?", (payload.email,)
+                "SELECT * FROM app_users WHERE login_id = ?", (payload.login_id,)
             ).fetchone()
 
         if not user or not verify_password(payload.password, user["password_hash"]):
@@ -291,9 +315,9 @@ class AuthService:
                 "LOGIN",
                 False,
                 request=request,
-                details={"email": payload.email},
+                details={"loginId": payload.login_id},
             )
-            raise ApiException(401, "LOGIN_FAILED", "이메일 또는 비밀번호를 확인하세요.")
+            raise ApiException(401, "LOGIN_FAILED", "로그인 ID 또는 비밀번호를 확인하세요.")
         if user["status"] != "ACTIVE":
             self._audit(
                 "LOGIN",
@@ -346,7 +370,7 @@ class AuthService:
         with self.database.transaction() as connection:
             row = connection.execute(
                 """
-                SELECT u.user_id, u.email, u.display_name, u.status,
+                SELECT u.user_id, u.login_id, u.email, u.display_name, u.status,
                        s.session_id, s.expires_at, s.sso_authenticated_at
                   FROM auth_sessions s
                   JOIN app_users u ON u.user_id = s.user_id
@@ -382,6 +406,7 @@ class AuthService:
             )
         return AuthContext(
             user_id=row["user_id"],
+            login_id=row["login_id"],
             email=row["email"],
             display_name=row["display_name"],
             status=row["status"],
@@ -404,7 +429,7 @@ class AuthService:
         with self.database.transaction() as connection:
             users = connection.execute(
                 """
-                SELECT user_id, email, display_name, status, last_login_at,
+                SELECT user_id, login_id, email, display_name, status, last_login_at,
                        created_at, updated_at
                   FROM app_users ORDER BY created_at DESC
                 """
@@ -681,6 +706,7 @@ def _context_payload(context: AuthContext, settings: Settings) -> dict[str, Any]
     )
     return {
         "userId": context.user_id,
+        "loginId": context.login_id,
         "email": context.email,
         "displayName": context.display_name,
         "status": context.status,
@@ -756,7 +782,7 @@ def authenticated_transfer_payload(
         )
     identity = context.sso_identity
     operator_id = str(
-        identity.get("employee_id") or identity.get("email") or identity.get("subject") or context.email
+        identity.get("employee_id") or identity.get("subject") or context.login_id
     )[:100]
     return payload.model_copy(update={"operator_id": operator_id})
 
@@ -778,19 +804,19 @@ button,.button{{display:inline-flex;align-items:center;justify-content:center;mi
 
 def _login_page(return_to: str) -> str:
     body = f"""<section class="panel"><h1>RIST Edge 로그인</h1><p>승인받은 프로젝트에서 분석하고 보고서를 생성할 수 있습니다.</p>
-<form id="form"><label>이메일</label><input name="email" type="email" autocomplete="username" required>
+<form id="form"><label>로그인 ID</label><input name="loginId" autocomplete="username" minlength="3" maxlength="255" required>
 <label>비밀번호</label><input name="password" type="password" autocomplete="current-password" required>
 <p id="message" class="error"></p><div class="row"><button>로그인</button><a class="button secondary" href="/signup">회원가입</a></div></form></section>
-<script>document.getElementById('form').onsubmit=async(e)=>{{e.preventDefault();const f=new FormData(e.target);const r=await fetch('/api/v1/auth/login',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{email:f.get('email'),password:f.get('password'),returnTo:{json.dumps(return_to)}}})}});const d=await r.json();if(!r.ok){{message.textContent=d.message||'로그인에 실패했습니다.';return}}location.href=d.returnTo||'/';}};</script>"""
+<script>document.getElementById('form').onsubmit=async(e)=>{{e.preventDefault();const f=new FormData(e.target);const r=await fetch('/api/v1/auth/login',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{loginId:f.get('loginId'),password:f.get('password'),returnTo:{json.dumps(return_to)}}})}});const d=await r.json();if(!r.ok){{message.textContent=d.message||'로그인에 실패했습니다.';return}}location.href=d.returnTo||'/';}};</script>"""
     return _page("RIST Edge 로그인", body)
 
 
 def _signup_page() -> str:
     body = """<section class="panel"><h1>회원가입</h1><p>가입 후 관리자가 FTIR, Raman, XRD, TEM 접근 권한을 승인합니다. SSO 연결 전에도 승인된 프로젝트의 보고서 생성은 가능합니다.</p>
-<form id="form"><label>이름</label><input name="displayName" maxlength="100" required><label>이메일</label><input name="email" type="email" required>
+<form id="form"><label>이름</label><input name="displayName" maxlength="100" required><label>로그인 ID</label><input name="loginId" minlength="3" maxlength="64" pattern="[A-Za-z0-9._-]+" autocomplete="username" required><p class="muted">영문, 숫자, 점, 밑줄, 하이픈을 사용할 수 있습니다.</p><label>이메일 (선택)</label><input name="email" type="email" autocomplete="email">
 <label>비밀번호</label><input name="password" type="password" minlength="10" required><p class="muted">10자 이상으로 입력하세요.</p>
 <p id="message"></p><div class="row"><button>가입 신청</button><a class="button secondary" href="/login">로그인</a></div></form></section>
-<script>const form=document.getElementById('form'),message=document.getElementById('message');form.onsubmit=async(e)=>{e.preventDefault();const f=new FormData(form);const r=await fetch('/api/v1/auth/signup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(Object.fromEntries(f))});const d=await r.json();message.className=r.ok?'muted':'error';message.textContent=r.ok?(d.status==='ACTIVE'?'가입되었습니다. 로그인하세요.':'가입 신청이 완료되었습니다. 관리자 승인을 기다려 주세요.'):(d.message||'가입에 실패했습니다.');};</script>"""
+<script>const form=document.getElementById('form'),message=document.getElementById('message');form.onsubmit=async(e)=>{e.preventDefault();const f=new FormData(form),body=Object.fromEntries(f);if(!body.email)delete body.email;const r=await fetch('/api/v1/auth/signup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const d=await r.json();message.className=r.ok?'muted':'error';message.textContent=r.ok?(d.status==='ACTIVE'?'가입되었습니다. 로그인하세요.':'가입 신청이 완료되었습니다. 관리자 승인을 기다려 주세요.'):(d.message||'가입에 실패했습니다.');};</script>"""
     return _page("RIST Edge 회원가입", body)
 
 
@@ -802,7 +828,8 @@ def _account_page(context: AuthContext, settings: Settings) -> str:
         if context.is_admin or project in context.projects
     ) or '<span class="muted">아직 승인된 프로젝트가 없습니다.</span>'
     sso_text = "연결됨" if data["ssoLinked"] else "연결 안 됨"
-    body = f"""<section class="panel"><div class="row" style="justify-content:space-between"><div><h1>{escape(context.display_name)}</h1><p>{escape(context.email)}</p></div><button class="secondary" id="logout">로그아웃</button></div>
+    email_text = f" · {escape(context.email)}" if context.email else ""
+    body = f"""<section class="panel"><div class="row" style="justify-content:space-between"><div><h1>{escape(context.display_name)}</h1><p>로그인 ID: <strong>{escape(context.login_id)}</strong>{email_text}</p></div><button class="secondary" id="logout">로그아웃</button></div>
 <h2>승인된 프로젝트</h2><div class="row">{project_links}</div><h2>보고서 전송 인증</h2><p>사내 SSO: <strong>{sso_text}</strong><br>최근 전송 인증: <strong>{'유효' if data['ssoRecentlyAuthenticated'] else '재인증 필요'}</strong></p>
 <a class="button" href="/auth/sso/start?returnTo=/account">{escape(settings.sso_provider_name)} 연결 / 재인증</a>
 {'<h2>관리</h2><div class="row"><a class="button secondary" href="/admin/users">회원·권한 관리</a><a class="button secondary" href="/operations">운영 관리</a></div>' if context.is_admin else ''}
@@ -815,7 +842,7 @@ def _admin_page() -> str:
 <script>
 const projects=['FTIR','RAMAN','XRD','TEM'],roles=['ADMIN','REPORT_SENDER'],users=document.getElementById('users'),message=document.getElementById('message');
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-async function load(){const r=await fetch('/api/v1/auth/admin/users');const d=await r.json();if(!r.ok){message.textContent=d.message;return}users.innerHTML=d.items.map(u=>`<article class="user" data-id="${esc(u.userId)}"><strong>${esc(u.displayName)}</strong> <span class="muted">${esc(u.email)}</span><div class="row"><select class="status" style="width:auto">${['PENDING','ACTIVE','SUSPENDED'].map(x=>`<option ${x===u.status?'selected':''}>${x}</option>`).join('')}</select><div class="checks">${projects.map(x=>`<label><input class="project" type="checkbox" value="${x}" ${u.projects.includes(x)?'checked':''}> ${x}</label>`).join('')}</div><div class="checks">${roles.map(x=>`<label><input class="role" type="checkbox" value="${x}" ${u.roles.includes(x)?'checked':''}> ${x}</label>`).join('')}</div><button onclick="save(this)">저장</button></div><small class="muted">SSO ${u.sso?'연결됨':'미연결'}</small></article>`).join('')}
+async function load(){const r=await fetch('/api/v1/auth/admin/users');const d=await r.json();if(!r.ok){message.textContent=d.message;return}users.innerHTML=d.items.map(u=>`<article class="user" data-id="${esc(u.userId)}"><strong>${esc(u.displayName)}</strong> <span class="muted">ID: ${esc(u.loginId)}${u.email?' · '+esc(u.email):''}</span><div class="row"><select class="status" style="width:auto">${['PENDING','ACTIVE','SUSPENDED'].map(x=>`<option ${x===u.status?'selected':''}>${x}</option>`).join('')}</select><div class="checks">${projects.map(x=>`<label><input class="project" type="checkbox" value="${x}" ${u.projects.includes(x)?'checked':''}> ${x}</label>`).join('')}</div><div class="checks">${roles.map(x=>`<label><input class="role" type="checkbox" value="${x}" ${u.roles.includes(x)?'checked':''}> ${x}</label>`).join('')}</div><button onclick="save(this)">저장</button></div><small class="muted">SSO ${u.sso?'연결됨':'미연결'}</small></article>`).join('')}
 async function save(btn){const el=btn.closest('.user');const body={status:el.querySelector('.status').value,projects:[...el.querySelectorAll('.project:checked')].map(x=>x.value),roles:[...el.querySelectorAll('.role:checked')].map(x=>x.value)};const r=await fetch('/api/v1/auth/admin/users/'+el.dataset.id,{method:'PATCH',headers:{'Content-Type':'application/json','X-Requested-With':'RIST-Admin'},body:JSON.stringify(body)});const d=await r.json();message.className=r.ok?'muted':'error';message.textContent=r.ok?'저장되었습니다.':d.message;}
 load();
 </script>"""
@@ -914,6 +941,7 @@ def install_auth(app: FastAPI, settings: Settings, database: Database) -> None:
             items.append(
                 {
                     "userId": user["user_id"],
+                    "loginId": user["login_id"],
                     "email": user["email"],
                     "displayName": user["display_name"],
                     "status": user["status"],
