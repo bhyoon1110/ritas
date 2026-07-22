@@ -8,10 +8,11 @@ import shutil
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, Request
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, Response
 from pydantic import BaseModel, Field
 
 from .database import Database
+from .xrd_portable_html import make_xrd_html_portable
 
 
 router = APIRouter()
@@ -613,7 +614,7 @@ def cleanup_preview(request: Request) -> dict[str, Any]:
 
 
 @router.get("/api/v1/report-management/artifacts/{artifact_id}/download", tags=["report-management"])
-def download_artifact(request: Request, artifact_id: str) -> FileResponse:
+def download_artifact(request: Request, artifact_id: str) -> Response:
     artifact = _database(request).fetch_report_artifact(artifact_id)
     if artifact is None or artifact.get("deleted_at"):
         raise HTTPException(status_code=404, detail="보고서 파일을 찾을 수 없습니다.")
@@ -621,6 +622,15 @@ def download_artifact(request: Request, artifact_id: str) -> FileResponse:
     if not path.is_file():
         raise HTTPException(status_code=404, detail="DB에는 기록되어 있으나 실제 파일이 없습니다.")
     media_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+    if path.suffix.lower() in {".html", ".htm"}:
+        html_text = path.read_text(encoding="utf-8")
+        portable_html = make_xrd_html_portable(html_text)
+        if portable_html != html_text:
+            file_name = str(artifact.get("file_name") or path.name).replace('"', "")
+            return HTMLResponse(
+                portable_html,
+                headers={"Content-Disposition": f'attachment; filename="{file_name}"'},
+            )
     return FileResponse(path, media_type=media_type, filename=str(artifact.get("file_name") or path.name))
 
 

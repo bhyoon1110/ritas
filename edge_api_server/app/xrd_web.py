@@ -26,8 +26,6 @@ from .path_bootstrap import add_project_package_paths
 
 add_project_package_paths()
 
-import plotly
-
 from lim.xrd_plot import (
     HEADER,
     IMAGE_EXTENSIONS,
@@ -58,6 +56,7 @@ from .usage_archive import (
     set_usage_context,
     usage_archive as app_usage_archive,
 )
+from .xrd_portable_html import make_xrd_html_portable, plotly_asset_path
 
 router = APIRouter()
 logger = get_logger(__name__)
@@ -86,10 +85,6 @@ xrd_upload_store = ChunkUploadStore(
     max_total_bytes=MAX_XRD_UPLOAD_TOTAL_BYTES,
     allow_unknown_extensions=True,
 )
-
-
-def plotly_asset_path() -> Path:
-    return Path(plotly.__file__).resolve().parent / "package_data" / "plotly.min.js"
 
 
 def _positive_int_env(name: str, default: int) -> int:
@@ -2611,7 +2606,8 @@ def _run_xrd_report_job(job: XrdReportJob) -> None:
             progress_pct=92,
             message="전송용 XRD 보고서 패키지를 구성하는 중입니다.",
         )
-        (root / "xrd-report.html").write_text(html_result, encoding="utf-8")
+        portable_html = make_xrd_html_portable(html_result)
+        (root / "xrd-report.html").write_text(portable_html, encoding="utf-8")
         _build_xrd_report_package(root, job.package_path)
         job.package_path = register_generated_report_package(
             settings=job.settings,

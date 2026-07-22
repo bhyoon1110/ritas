@@ -432,6 +432,21 @@ def test_xrd_chunked_upload_session_retries_and_builds_report(tmp_path) -> None:
         assert pdf_response.status_code == 200
         assert pdf_response.json()["fileCompleted"] is True
 
+        peak_list = b"No.,2theta\n1,20\n2,30\n"
+        peak_response = client.post(
+            f"/api/v1/xrd/upload-sessions/{upload_id}/chunks",
+            data={
+                "relative_path": "bundle/Peak list.csv",
+                "offset": "0",
+                "total_size": str(len(peak_list)),
+                "chunk_index": "0",
+                "chunk_count": "1",
+            },
+            files={"file": ("chunk-peak-list", peak_list, "text/csv")},
+        )
+        assert peak_response.status_code == 200
+        assert peak_response.json()["fileCompleted"] is True
+
         complete_response = client.post(
             f"/api/v1/xrd/upload-sessions/{upload_id}/complete",
             data={"origin": "true"},
@@ -465,10 +480,15 @@ def test_xrd_chunked_upload_session_retries_and_builds_report(tmp_path) -> None:
         assert package_response.status_code == 200
         with zipfile.ZipFile(BytesIO(package_response.content)) as package:
             package_names = set(package.namelist())
+            packaged_html = package.read("xrd-report.html").decode("utf-8")
 
     assert "sample Report" in html_response.text
     assert "상 동정 (Phase Identification) 결과" in html_response.text
     assert "xrd-report.html" in package_names
+    assert 'data-xrd-embedded-plotly="true"' in packaged_html
+    assert 'src="/xrd/assets/plotly.min.js"' not in packaged_html
+    assert 'id="xrd-plot"' in packaged_html
+    assert 'id="xrd-numbered-peak-plot"' in packaged_html
     assert "xrd-report-package.zip" not in package_names
 
 

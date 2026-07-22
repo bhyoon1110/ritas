@@ -165,6 +165,55 @@ class PolicyDatabase:
             self.rows[key]["updated_by"] = actor
 
 
+class ArtifactDatabase:
+    def __init__(self, artifact: dict[str, object]) -> None:
+        self.artifact = artifact
+
+    def fetch_report_artifact(self, artifact_id: str) -> dict[str, object] | None:
+        if artifact_id != self.artifact["artifact_id"]:
+            return None
+        return self.artifact
+
+
+def test_artifact_download_repairs_legacy_xrd_html(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    report_path = tmp_path / "reports" / "xrd-report.html"
+    report_path.parent.mkdir(parents=True)
+    report_path.write_text(
+        '<script src="/xrd/assets/plotly.min.js"></script><div id="xrd-plot"></div>',
+        encoding="utf-8",
+    )
+    app = FastAPI()
+    app.state.settings = settings(tmp_path)
+    app.state.database = ArtifactDatabase(
+        {
+            "artifact_id": "artifact-xrd-html",
+            "relative_path": "reports/xrd-report.html",
+            "file_name": "xrd-report.html",
+            "deleted_at": None,
+        }
+    )
+    app.include_router(router)
+    monkeypatch.setattr(
+        "app.report_management.make_xrd_html_portable",
+        lambda html_text: html_text.replace(
+            '<script src="/xrd/assets/plotly.min.js"></script>',
+            '<script data-xrd-embedded-plotly="true">window.Plotly={};</script>',
+        ),
+    )
+
+    response = TestClient(app).get(
+        "/api/v1/report-management/artifacts/artifact-xrd-html/download"
+    )
+
+    assert response.status_code == 200
+    assert response.headers["content-disposition"] == 'attachment; filename="xrd-report.html"'
+    assert 'data-xrd-embedded-plotly="true"' in response.text
+    assert 'src="/xrd/assets/plotly.min.js"' not in response.text
+
+
 def test_retention_policy_api_reads_and_updates_all_policies(tmp_path: Path) -> None:
     app = FastAPI()
     database = PolicyDatabase()
