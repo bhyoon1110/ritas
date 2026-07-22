@@ -110,6 +110,10 @@ def test_admin_page_exposes_member_permissions_and_sso_state() -> None:
     assert 'href="/errors"' in html
     assert 'href="/report-management"' in html
     assert 'href="/admin/users"' in html
+    assert 'main class="wide"' in html
+    assert 'href="/account"' in html
+    assert 'id="logout-button"' in html
+    assert "/api/v1/auth/logout" in html
     assert "회원 관리" in html
     assert "승인 대기" in html
     assert "프로젝트 접근 및 보고서 생성" in html

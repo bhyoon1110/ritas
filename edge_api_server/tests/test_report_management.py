@@ -75,6 +75,9 @@ def test_report_management_console_serves_bundled_ui() -> None:
     assert "/api/v1/report-management/summary" in response.text
     assert 'href="/admin/users"' in response.text
     assert "회원 관리" in response.text
+    assert 'href="/account"' in response.text
+    assert 'id="logout-button"' in response.text
+    assert "/api/v1/auth/logout" in response.text
     assert 'id="page-size"' in response.text
     assert 'id="prev-page"' in response.text
     assert 'id="next-page"' in response.text
