@@ -105,6 +105,7 @@ def test_ahn_workspace_contains_folder_upload_controls() -> None:
 
 
 def test_tem_send_route_queues_completed_package(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("RIST_AUTH_ENABLED", "false")
     package_path = tmp_path / "tem-report-package.zip"
     with zipfile.ZipFile(package_path, "w") as archive:
         archive.writestr("tem-report.pptx", b"pptx")

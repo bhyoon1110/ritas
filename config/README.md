@@ -41,6 +41,8 @@ export RIST_LLM_MODEL=gemma4-e4b
 | LIMS 전송 재시도 | `5` | `RIST_REPORT_TRANSFER_MAX_ATTEMPTS` | Spring Boot가 소비하는 DB 전송 큐의 최대 시도 횟수 |
 | LLM 주소/모델 | 앱 기본값 | `RIST_LLM_*` | 기본값은 로컬 vLLM `http://127.0.0.1:8001`, `gemma4-e4b` |
 | DB 접속 | 없음 | `RIST_DB_*` | 비밀번호가 포함되므로 `edge.env`에만 둔다 |
+| 웹 회원/권한 | 앱 기본값 | `RIST_AUTH_*` | 로컬 회원 승인, 프로젝트 접근, 세션 및 최근 SSO 인증 정책 |
+| 사내 SSO | 없음 | `RIST_SSO_*` | OIDC issuer/client 비밀값이므로 `edge.env`에만 둔다 |
 | PDF 한글 폰트 | 없음 | `RIST_PDF_FONT_PATH` | 서버 설치 폰트 경로 |
 
 오류 관리 화면은 `http://<Edge 주소>:8000/errors`이다. 기본적으로 오류 기록은
@@ -52,6 +54,15 @@ export RIST_LLM_MODEL=gemma4-e4b
 `temperature=0.1`이다. `/v1/models`에서 모델 존재 여부를 확인하고
 `processed` 폴더의 분석 이미지를 최대 3개까지 vision 입력으로 사용할 수
 있다. 운영 값은 `/home/rist/ritas/edge.env`의 `RIST_LLM_*` 항목에서 관리한다.
+
+웹 회원 인증을 켜면 가입한 사용자는 관리자가 `ACTIVE` 상태와 프로젝트
+권한을 부여한 뒤 FTIR, Raman, XRD, TEM 화면에서 보고서를 생성할 수 있다.
+보고서 전송은 추가로 `REPORT_SENDER` 역할, 사내 SSO 연결, 최근 SSO 재인증이
+필요하다. OIDC 설정과 클라이언트 비밀값은 프로파일 파일에 중복하지 않고
+`/home/rist/ritas/edge.env`의 `RIST_AUTH_*`, `RIST_SSO_*`에서만 관리한다.
+현재 HTTP 주소를 쓰는 동안 `RIST_AUTH_COOKIE_SECURE=false`로 두고, HTTPS를
+적용하면 반드시 `true`로 변경한다. 상세 절차는 `documents/EDGE_WEB_AUTH.md`를
+참조한다.
 
 기본 설정 디렉터리는 프로젝트 루트의 `config/environments`이다. 배포 위치가
 다르면 `RIST_CONFIG_DIR`에 프로파일 파일이 있는 디렉터리를 지정한다.

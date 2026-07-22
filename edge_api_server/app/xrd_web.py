@@ -34,6 +34,7 @@ from lim.xrd_plot import (
 )
 
 from .errors import ApiException
+from .auth import authenticated_transfer_payload
 from .file_inspection import FileInspection, inspect_file_bytes
 from .error_archive import (
     ErrorArchive,
@@ -2902,14 +2903,15 @@ def send_xrd_report_job(
     job_id: str,
     payload: PreviewReportSendRequest,
 ) -> dict[str, Any]:
+    effective_payload = authenticated_transfer_payload(request, payload, "XRD")
     set_usage_context(
         request,
         project="XRD",
         job_id=job_id,
-        request_number=payload.request_number,
-        experiment_code=payload.experiment_code,
-        equipment_code=payload.equipment_code,
-        operator_id=payload.operator_id,
+        request_number=effective_payload.request_number,
+        experiment_code=effective_payload.experiment_code,
+        equipment_code=effective_payload.equipment_code,
+        operator_id=effective_payload.operator_id,
     )
     with _xrd_report_jobs_lock:
         job = _xrd_report_jobs.get(job_id)
@@ -2924,7 +2926,7 @@ def send_xrd_report_job(
             settings=getattr(request.app.state, "settings", None),
             database=getattr(request.app.state, "database", None),
             job=job,
-            payload=payload,
+            payload=effective_payload,
         )
     except FileNotFoundError as exc:
         raise ApiException(410, "XRD_REPORT_PACKAGE_EXPIRED", str(exc)) from exc

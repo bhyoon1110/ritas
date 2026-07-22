@@ -33,6 +33,7 @@ from .errors import ApiException
 from .error_archive import install_error_management
 from .error_archive import error_archive as app_error_archive
 from . import assignment_suggestions
+from .auth import authenticated_transfer_payload
 from .assignment_suggestions import AssignmentSuggestionRequest
 from .config import Settings
 from .preview_report import (
@@ -5607,14 +5608,15 @@ def send_ftir_preview_report_job(
     job_id: str,
     payload: PreviewReportSendRequest,
 ) -> dict:
+    effective_payload = authenticated_transfer_payload(request, payload, "FTIR")
     set_usage_context(
         request,
         project="FT-IR",
         job_id=job_id,
-        request_number=payload.request_number,
-        experiment_code=payload.experiment_code,
-        equipment_code=payload.equipment_code,
-        operator_id=payload.operator_id,
+        request_number=effective_payload.request_number,
+        experiment_code=effective_payload.experiment_code,
+        equipment_code=effective_payload.equipment_code,
+        operator_id=effective_payload.operator_id,
     )
     store = preview_report_job_store(request.app)
     job = store.get(job_id)
@@ -5625,7 +5627,7 @@ def send_ftir_preview_report_job(
             settings=getattr(request.app.state, "settings", None),
             database=getattr(request.app.state, "database", None),
             job=job,
-            payload=payload,
+            payload=effective_payload,
         )
     except FileNotFoundError as exc:
         store.remove(job_id)

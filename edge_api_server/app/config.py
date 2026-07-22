@@ -69,6 +69,16 @@ class Settings:
     report_failed_retention_days: int = 30
     report_completed_retention_days: int = 90
     report_trash_retention_days: int = 7
+    auth_enabled: bool = False
+    auth_session_hours: int = 12
+    auth_recent_sso_minutes: int = 30
+    auth_cookie_secure: bool = False
+    auth_bootstrap_admin_emails: tuple[str, ...] = ()
+    sso_provider_name: str = "RIST SSO"
+    sso_issuer_url: str = ""
+    sso_client_id: str = ""
+    sso_client_secret: str = ""
+    sso_scopes: str = "openid profile email"
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -240,5 +250,40 @@ class Settings:
             ),
             report_trash_retention_days=max(
                 1, int(os.getenv("RIST_REPORT_TRASH_RETENTION_DAYS", "7"))
+            ),
+            auth_enabled=os.getenv("RIST_AUTH_ENABLED", "true").lower()
+            in {"1", "true", "yes", "on"},
+            auth_session_hours=max(
+                1, int(os.getenv("RIST_AUTH_SESSION_HOURS", "12"))
+            ),
+            auth_recent_sso_minutes=max(
+                1, int(os.getenv("RIST_AUTH_RECENT_SSO_MINUTES", "30"))
+            ),
+            auth_cookie_secure=os.getenv(
+                "RIST_AUTH_COOKIE_SECURE",
+                "true" if common.environment == "production" else "false",
+            ).lower()
+            in {"1", "true", "yes", "on"},
+            auth_bootstrap_admin_emails=tuple(
+                sorted(
+                    {
+                        email.strip().lower()
+                        for email in os.getenv(
+                            "RIST_AUTH_BOOTSTRAP_ADMIN_EMAILS", ""
+                        ).split(",")
+                        if email.strip()
+                    }
+                )
+            ),
+            sso_provider_name=(
+                os.getenv("RIST_SSO_PROVIDER_NAME", "RIST SSO").strip()
+                or "RIST SSO"
+            ),
+            sso_issuer_url=os.getenv("RIST_SSO_ISSUER_URL", "").strip().rstrip("/"),
+            sso_client_id=os.getenv("RIST_SSO_CLIENT_ID", "").strip(),
+            sso_client_secret=os.getenv("RIST_SSO_CLIENT_SECRET", "").strip(),
+            sso_scopes=(
+                os.getenv("RIST_SSO_SCOPES", "openid profile email").strip()
+                or "openid profile email"
             ),
         )

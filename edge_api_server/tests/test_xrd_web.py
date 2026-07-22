@@ -121,6 +121,7 @@ def test_xrd_workspace_contains_upload_controls() -> None:
 
 
 def test_xrd_send_route_queues_completed_package(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("RIST_AUTH_ENABLED", "false")
     package_path = tmp_path / "xrd-report-package.zip"
     with zipfile.ZipFile(package_path, "w") as archive:
         archive.writestr("xrd-report.html", "report")

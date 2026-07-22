@@ -359,6 +359,16 @@ cd edge_api_server
 | `RIST_REPORT_FAILED_RETENTION_DAYS` | `30` | 실패·취소 보고서 DB 정책 최초 생성 기본값 |
 | `RIST_REPORT_COMPLETED_RETENTION_DAYS` | `90` | LIMS 완료 보고서 DB 정책 최초 생성 기본값 |
 | `RIST_REPORT_TRASH_RETENTION_DAYS` | `7` | 휴지통 DB 정책 최초 생성 기본값 |
+| `RIST_AUTH_ENABLED` | `true` | 웹 회원 로그인과 프로젝트별 접근 제어 사용 여부 |
+| `RIST_AUTH_SESSION_HOURS` | `12` | 로컬 로그인 세션 유지 시간 |
+| `RIST_AUTH_RECENT_SSO_MINUTES` | `30` | 보고서 전송에 인정할 최근 SSO 인증 시간 |
+| `RIST_AUTH_COOKIE_SECURE` | production `true` | HTTPS에서만 세션 쿠키를 보내는 보안 설정. HTTP 개발 서버는 `false` |
+| `RIST_AUTH_BOOTSTRAP_ADMIN_EMAILS` | 빈 값 | 쉼표로 구분한 최초 관리자 이메일. 빈 초기 설치는 첫 가입자가 관리자 |
+| `RIST_SSO_PROVIDER_NAME` | `RIST SSO` | 화면과 DB에 표시할 사내 OIDC 공급자 이름 |
+| `RIST_SSO_ISSUER_URL` | 없음 | OIDC issuer URL |
+| `RIST_SSO_CLIENT_ID` | 없음 | Edge 웹용 OIDC client ID |
+| `RIST_SSO_CLIENT_SECRET` | 없음 | Edge 웹용 OIDC client secret |
+| `RIST_SSO_SCOPES` | `openid profile email` | OIDC 요청 scope |
 
 `config/environments/*.env`는 git으로 공유하는 Edge scheme/host/port/bind 기본값만
 담는다. 서버마다 달라지는 런타임 값은 `/home/rist/ritas/edge.env` 한 곳에서
@@ -370,6 +380,24 @@ cd edge_api_server
   같은 공유 저장소에서 ZIP을 직접 읽는다.
 - Edge 공개 주소는 프로파일의 `EDGE_SERVER_SCHEME/HOST/PORT`에서 조합하고,
   필요하면 `RIST_EDGE_PUBLIC_BASE_URL`로 재정의한다.
+
+## 웹 회원과 사내 SSO
+
+`RIST_AUTH_ENABLED=true`이면 가입한 회원은 관리자 승인과 프로젝트 권한을 받은
+뒤 FTIR, Raman, XRD, TEM 화면에서 보고서를 생성할 수 있다. 보고서 생성에는
+사내 SSO가 필요하지 않다. LIMS 전송에는 `REPORT_SENDER` 역할, 연결된 사내 SSO,
+최근 SSO 재인증이 모두 필요하며 전송 작업자 값은 SSO 사용자 정보로 기록한다.
+
+```text
+/signup       로컬 회원 가입
+/login        로그인
+/account      프로젝트 및 SSO 상태 확인
+/admin/users  회원 승인과 프로젝트·전송 역할 관리
+```
+
+DB 적용과 OIDC Redirect URI, 최초 관리자 생성 및 배포 순서는
+[`documents/EDGE_WEB_AUTH.md`](../documents/EDGE_WEB_AUTH.md)를 참조한다. 실험 PC의
+C# 작업 API는 브라우저 회원 쿠키 인증과 분리되어 기존 인터페이스를 유지한다.
 
 ## 운영 관리
 

@@ -22,6 +22,7 @@ add_project_package_paths()
 from rist_common import get_logger
 
 from .ahn_web import router as ahn_router
+from .auth import install_auth
 from .config import Settings
 from .database import Database
 from .errors import (
@@ -153,6 +154,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
 
     install_error_management(app, resolved_settings)
+    install_auth(app, resolved_settings, database)
     app.include_router(ftir_router)
     app.include_router(raman_router)
     app.include_router(xrd_router)

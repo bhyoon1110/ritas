@@ -23,6 +23,7 @@ from PIL import Image, ImageDraw, UnidentifiedImageError
 from rist_common import get_logger
 
 from .errors import ApiException
+from .auth import authenticated_transfer_payload
 from .config import Settings
 from .database import Database
 from .file_inspection import FileInspection, inspect_file_bytes, inspect_file_path
@@ -2844,14 +2845,15 @@ def send_tem_report_job(
     job_id: str,
     payload: PreviewReportSendRequest,
 ) -> dict[str, Any]:
+    effective_payload = authenticated_transfer_payload(request, payload, "TEM")
     set_usage_context(
         request,
         project="TEM",
         job_id=job_id,
-        request_number=payload.request_number,
-        experiment_code=payload.experiment_code,
-        equipment_code=payload.equipment_code,
-        operator_id=payload.operator_id,
+        request_number=effective_payload.request_number,
+        experiment_code=effective_payload.experiment_code,
+        equipment_code=effective_payload.equipment_code,
+        operator_id=effective_payload.operator_id,
     )
     _cleanup_old_jobs()
     with _ahn_report_jobs_lock:
@@ -2867,7 +2869,7 @@ def send_tem_report_job(
             settings=getattr(request.app.state, "settings", None),
             database=getattr(request.app.state, "database", None),
             job=job,
-            payload=payload,
+            payload=effective_payload,
         )
     except FileNotFoundError as exc:
         raise ApiException(410, "TEM_REPORT_PACKAGE_EXPIRED", str(exc)) from exc
