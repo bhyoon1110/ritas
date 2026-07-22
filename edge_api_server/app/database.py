@@ -1330,6 +1330,7 @@ class Database:
         transfer_status: str = "",
         include_deleted: bool = False,
         limit: int = 300,
+        offset: int = 0,
     ) -> list[dict[str, Any]]:
         clauses = ["1 = 1"]
         params: list[Any] = []
@@ -1351,7 +1352,9 @@ class Database:
             else:
                 clauses.append("t.status = ?")
                 params.append(transfer_status.strip().upper())
-        params.append(max(1, min(int(limit), 1000)))
+        params.extend(
+            [max(1, min(int(limit), 1000)), max(0, int(offset))]
+        )
         with self._connect() as connection:
             return connection.execute(
                 f"""
@@ -1384,10 +1387,51 @@ class Database:
                 ) a ON a.report_id = r.report_id
                 WHERE {' AND '.join(clauses)}
                 ORDER BY r.created_at DESC
-                LIMIT ?
+                LIMIT ? OFFSET ?
                 """,
                 tuple(params),
             ).fetchall()
+
+    def count_report_management(
+        self,
+        *,
+        query: str = "",
+        experiment_code: str = "",
+        transfer_status: str = "",
+        include_deleted: bool = False,
+    ) -> int:
+        clauses = ["1 = 1"]
+        params: list[Any] = []
+        if not include_deleted:
+            clauses.append("r.deleted_at IS NULL")
+        if query.strip():
+            like = f"%{query.strip()}%"
+            clauses.append(
+                "(r.report_id LIKE ? OR r.request_number LIKE ? "
+                "OR r.equipment_code LIKE ? OR r.operator_id LIKE ?)"
+            )
+            params.extend([like, like, like, like])
+        if experiment_code.strip():
+            clauses.append("r.experiment_code = ?")
+            params.append(experiment_code.strip())
+        if transfer_status.strip():
+            if transfer_status.strip().upper() == "NOT_QUEUED":
+                clauses.append("t.transfer_id IS NULL")
+            else:
+                clauses.append("t.status = ?")
+                params.append(transfer_status.strip().upper())
+        with self._connect() as connection:
+            row = connection.execute(
+                f"""
+                SELECT COUNT(*) AS report_count
+                FROM report_runs r
+                LEFT JOIN report_transfers t
+                    ON t.report_id = r.report_id AND t.destination = 'LIMS'
+                WHERE {' AND '.join(clauses)}
+                """,
+                tuple(params),
+            ).fetchone()
+        return int((row or {}).get("report_count") or 0)
 
     def fetch_report_management(self, report_id: str) -> dict[str, Any] | None:
         with self._connect() as connection:

@@ -75,6 +75,9 @@ def test_report_management_console_serves_bundled_ui() -> None:
     assert "/api/v1/report-management/summary" in response.text
     assert 'href="/admin/users"' in response.text
     assert "회원 관리" in response.text
+    assert 'id="page-size"' in response.text
+    assert 'id="prev-page"' in response.text
+    assert 'id="next-page"' in response.text
 
 
 def test_retention_policy_only_selects_expired_inactive_reports(tmp_path: Path) -> None:
@@ -165,6 +168,21 @@ class PolicyDatabase:
         for key, value in policies.items():
             self.rows[key].update(value)
             self.rows[key]["updated_by"] = actor
+
+
+class PagedReportDatabase(PolicyDatabase):
+    def __init__(self) -> None:
+        super().__init__()
+        self.list_kwargs: dict[str, object] = {}
+        self.count_kwargs: dict[str, object] = {}
+
+    def count_report_management(self, **kwargs: object) -> int:
+        self.count_kwargs = kwargs
+        return 61
+
+    def list_report_management(self, **kwargs: object) -> list[dict[str, object]]:
+        self.list_kwargs = kwargs
+        return [report_row(report_id="report-26")]
 
 
 class ArtifactDatabase:
@@ -288,6 +306,30 @@ def test_retention_policy_api_requires_all_policy_keys(tmp_path: Path) -> None:
 
     assert response.status_code == 422
     assert "누락" in response.json()["detail"]
+
+
+def test_report_management_api_uses_server_side_pagination(tmp_path: Path) -> None:
+    app = FastAPI()
+    database = PagedReportDatabase()
+    app.state.settings = settings(tmp_path)
+    app.state.database = database
+    app.include_router(router)
+
+    response = TestClient(app).get(
+        "/api/v1/report-management",
+        params={"page": 2, "pageSize": 25, "experimentCode": "XRD"},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["count"] == 1
+    assert data["total"] == 61
+    assert data["page"] == 2
+    assert data["pageSize"] == 25
+    assert data["totalPages"] == 3
+    assert database.count_kwargs["experiment_code"] == "XRD"
+    assert database.list_kwargs["limit"] == 25
+    assert database.list_kwargs["offset"] == 25
 
 
 def test_trash_report_moves_artifact_and_records_sha_state(tmp_path: Path) -> None:

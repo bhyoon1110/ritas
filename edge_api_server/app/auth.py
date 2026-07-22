@@ -92,6 +92,31 @@ class LoginRequest(BaseModel):
         return value.strip().lower()
 
 
+class ProfileUpdateRequest(BaseModel):
+    display_name: str = Field(alias="displayName", min_length=1, max_length=100)
+    email: str | None = Field(default=None, max_length=255)
+
+    @field_validator("display_name")
+    @classmethod
+    def strip_name(cls, value: str) -> str:
+        return value.strip()
+
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, value: str | None) -> str | None:
+        if value is None or not value.strip():
+            return None
+        normalized = value.strip().lower()
+        if not EMAIL_RE.fullmatch(normalized):
+            raise ValueError("올바른 이메일 형식이 아닙니다.")
+        return normalized
+
+
+class PasswordChangeRequest(BaseModel):
+    current_password: str = Field(alias="currentPassword", min_length=1, max_length=200)
+    new_password: str = Field(alias="newPassword", min_length=10, max_length=200)
+
+
 class AdminUserUpdate(BaseModel):
     status: str
     projects: list[str] = Field(default_factory=list)
@@ -424,6 +449,94 @@ class AuthService:
                 "UPDATE auth_sessions SET revoked_at = ? WHERE session_id = ?",
                 (_utc_now(), context.session_id),
             )
+
+    def update_profile(
+        self,
+        context: AuthContext,
+        payload: ProfileUpdateRequest,
+        request: Request,
+    ) -> dict[str, Any]:
+        now = _utc_now()
+        with self.database.transaction() as connection:
+            if payload.email:
+                existing = connection.execute(
+                    "SELECT user_id FROM app_users WHERE email = ? AND user_id <> ?",
+                    (payload.email, context.user_id),
+                ).fetchone()
+                if existing:
+                    raise ApiException(
+                        409,
+                        "EMAIL_ALREADY_REGISTERED",
+                        "이미 등록된 이메일입니다.",
+                    )
+            connection.execute(
+                """
+                UPDATE app_users
+                   SET display_name = ?, email = ?, updated_at = ?
+                 WHERE user_id = ?
+                """,
+                (payload.display_name, payload.email, now, context.user_id),
+            )
+        self._audit(
+            "PROFILE_UPDATE",
+            True,
+            user_id=context.user_id,
+            request=request,
+            details={"emailChanged": payload.email != context.email},
+        )
+        return {
+            "updated": True,
+            "displayName": payload.display_name,
+            "email": payload.email,
+        }
+
+    def change_password(
+        self,
+        context: AuthContext,
+        payload: PasswordChangeRequest,
+        request: Request,
+    ) -> dict[str, bool]:
+        with self.database.transaction() as connection:
+            user = connection.execute(
+                "SELECT password_hash FROM app_users WHERE user_id = ?",
+                (context.user_id,),
+            ).fetchone()
+        if not user or not verify_password(
+            payload.current_password, user["password_hash"]
+        ):
+            self._audit(
+                "PASSWORD_CHANGE",
+                False,
+                user_id=context.user_id,
+                request=request,
+                details={"reason": "current_password_invalid"},
+            )
+            raise ApiException(
+                400,
+                "CURRENT_PASSWORD_INVALID",
+                "현재 비밀번호가 일치하지 않습니다.",
+            )
+
+        now = _utc_now()
+        with self.database.transaction() as connection:
+            connection.execute(
+                "UPDATE app_users SET password_hash = ?, updated_at = ? WHERE user_id = ?",
+                (hash_password(payload.new_password), now, context.user_id),
+            )
+            connection.execute(
+                """
+                UPDATE auth_sessions SET revoked_at = ?
+                 WHERE user_id = ? AND revoked_at IS NULL
+                """,
+                (now, context.user_id),
+            )
+        self._audit(
+            "PASSWORD_CHANGE",
+            True,
+            user_id=context.user_id,
+            request=request,
+        )
+        return {"changed": True, "loginRequired": True}
 
     def list_users(self) -> list[dict[str, Any]]:
         with self.database.transaction() as connection:
@@ -797,8 +910,9 @@ h1{{font-size:28px;margin:0 0 8px}} h2{{font-size:18px;margin:22px 0 10px}} p{{c
 label{{display:block;font-weight:650;margin:14px 0 5px}} input,select{{width:100%;min-height:42px;border:1px solid #aebbd0;border-radius:6px;padding:9px 11px;font:inherit}}
 button,.button{{display:inline-flex;align-items:center;justify-content:center;min-height:42px;border:1px solid #1769aa;border-radius:6px;background:#1769aa;color:#fff;padding:8px 15px;font-weight:700;text-decoration:none;cursor:pointer}}
 .secondary{{background:#fff;color:#1769aa}} .row{{display:flex;gap:10px;align-items:center;flex-wrap:wrap}} .muted{{color:#6b778c}} .error{{color:#b42318;white-space:pre-wrap}}
+.success{{color:#166534;white-space:pre-wrap}} .settings-grid{{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;margin-top:20px}} .settings-card{{border:1px solid #e0e6ee;border-radius:7px;padding:18px}} .settings-card h2{{margin-top:0}}
 .user{{border-top:1px solid #e2e7ef;padding:16px 0}} .checks{{display:flex;gap:14px;flex-wrap:wrap}} .checks label{{font-weight:500;margin:0}} .checks input{{width:auto;min-height:auto}}
-@media(max-width:640px){{main{{padding:22px 14px}}.panel{{padding:18px}}h1{{font-size:23px}}}}
+@media(max-width:640px){{main{{padding:22px 14px}}.panel{{padding:18px}}h1{{font-size:23px}}.settings-grid{{grid-template-columns:1fr}}}}
 </style></head><body><main>{body}</main></body></html>"""
 
 
@@ -828,12 +942,19 @@ def _account_page(context: AuthContext, settings: Settings) -> str:
         if context.is_admin or project in context.projects
     ) or '<span class="muted">아직 승인된 프로젝트가 없습니다.</span>'
     sso_text = "연결됨" if data["ssoLinked"] else "연결 안 됨"
-    email_text = f" · {escape(context.email)}" if context.email else ""
-    body = f"""<section class="panel"><div class="row" style="justify-content:space-between"><div><h1>{escape(context.display_name)}</h1><p>로그인 ID: <strong>{escape(context.login_id)}</strong>{email_text}</p></div><button class="secondary" id="logout">로그아웃</button></div>
+    body = f"""<section class="panel"><div class="row" style="justify-content:space-between"><div><h1>내 계정</h1><p><strong>{escape(context.display_name)}</strong> · 로그인 ID {escape(context.login_id)}</p></div><button class="secondary" id="logout" type="button">로그아웃</button></div>
+<div class="settings-grid"><form class="settings-card" id="profile-form"><h2>회원정보 수정</h2><label>로그인 ID</label><input value="{escape(context.login_id)}" disabled><label>이름</label><input name="displayName" maxlength="100" value="{escape(context.display_name)}" required><label>이메일 (선택)</label><input name="email" type="email" maxlength="255" value="{escape(context.email or '')}"><p id="profile-message"></p><button type="submit">회원정보 저장</button></form>
+<form class="settings-card" id="password-form"><h2>비밀번호 변경</h2><label>현재 비밀번호</label><input name="currentPassword" type="password" autocomplete="current-password" required><label>새 비밀번호</label><input name="newPassword" type="password" autocomplete="new-password" minlength="10" required><label>새 비밀번호 확인</label><input name="confirmPassword" type="password" autocomplete="new-password" minlength="10" required><p class="muted">변경 후 모든 기기에서 로그아웃됩니다.</p><p id="password-message"></p><button type="submit">비밀번호 변경</button></form></div>
 <h2>승인된 프로젝트</h2><div class="row">{project_links}</div><h2>보고서 전송 인증</h2><p>사내 SSO: <strong>{sso_text}</strong><br>최근 전송 인증: <strong>{'유효' if data['ssoRecentlyAuthenticated'] else '재인증 필요'}</strong></p>
 <a class="button" href="/auth/sso/start?returnTo=/account">{escape(settings.sso_provider_name)} 연결 / 재인증</a>
 {'<h2>관리</h2><div class="row"><a class="button secondary" href="/admin/users">회원·권한 관리</a><a class="button secondary" href="/operations">운영 관리</a></div>' if context.is_admin else ''}
-</section><script>document.getElementById('logout').onclick=async()=>{{await fetch('/api/v1/auth/logout',{{method:'POST'}});location.href='/login';}};</script>"""
+</section><script>
+const profileForm=document.getElementById('profile-form'),passwordForm=document.getElementById('password-form');
+async function jsonRequest(url,body){{const response=await fetch(url,{{method:url.endsWith('/password')?'POST':'PATCH',headers:{{'Content-Type':'application/json','X-Requested-With':'RIST-Account'}},body:JSON.stringify(body)}});const data=await response.json().catch(()=>({{}}));if(!response.ok)throw new Error(data.message||'요청을 처리하지 못했습니다.');return data}}
+profileForm.onsubmit=async event=>{{event.preventDefault();const message=document.getElementById('profile-message'),button=profileForm.querySelector('button');button.disabled=true;try{{const form=new FormData(profileForm);await jsonRequest('/api/v1/auth/me',{{displayName:form.get('displayName'),email:form.get('email')||null}});message.className='success';message.textContent='회원정보를 저장했습니다.'}}catch(error){{message.className='error';message.textContent=error.message}}finally{{button.disabled=false}}}};
+passwordForm.onsubmit=async event=>{{event.preventDefault();const form=new FormData(passwordForm),message=document.getElementById('password-message'),button=passwordForm.querySelector('button');if(form.get('newPassword')!==form.get('confirmPassword')){{message.className='error';message.textContent='새 비밀번호 확인이 일치하지 않습니다.';return}}button.disabled=true;try{{await jsonRequest('/api/v1/auth/password',{{currentPassword:form.get('currentPassword'),newPassword:form.get('newPassword')}});message.className='success';message.textContent='비밀번호를 변경했습니다. 다시 로그인해 주세요.';setTimeout(()=>location.href='/login',700)}}catch(error){{message.className='error';message.textContent=error.message;button.disabled=false}}}};
+document.getElementById('logout').onclick=async()=>{{await fetch('/api/v1/auth/logout',{{method:'POST',headers:{{'X-Requested-With':'RIST-Account'}}}});location.href='/login';}};
+</script>"""
     return _page("내 계정", body)
 
 
@@ -952,6 +1073,24 @@ def install_auth(app: FastAPI, settings: Settings, database: Database) -> None:
     @router.get("/api/v1/auth/me", tags=["auth"])
     def me(request: Request) -> dict[str, Any]:
         return _context_payload(require_context(request), settings)
+
+    @router.patch("/api/v1/auth/me", tags=["auth"])
+    def update_me(
+        payload: ProfileUpdateRequest, request: Request
+    ) -> dict[str, Any]:
+        if request.headers.get("X-Requested-With") != "RIST-Account":
+            raise ApiException(403, "CSRF_CHECK_FAILED", "계정 요청을 확인할 수 없습니다.")
+        return service.update_profile(require_context(request), payload, request)
+
+    @router.post("/api/v1/auth/password", tags=["auth"])
+    def change_password(
+        payload: PasswordChangeRequest, request: Request, response: Response
+    ) -> dict[str, bool]:
+        if request.headers.get("X-Requested-With") != "RIST-Account":
+            raise ApiException(403, "CSRF_CHECK_FAILED", "계정 요청을 확인할 수 없습니다.")
+        result = service.change_password(require_context(request), payload, request)
+        response.delete_cookie(SESSION_COOKIE, path="/")
+        return result
 
     @router.get("/api/v1/auth/admin/users", tags=["auth"])
     def admin_users(request: Request) -> dict[str, Any]:

@@ -490,17 +490,26 @@ def list_reports(
     experiment_code: str = Query(default="", alias="experimentCode"),
     transfer_status: str = Query(default="", alias="transferStatus"),
     include_deleted: bool = Query(default=False, alias="includeDeleted"),
-    limit: int = Query(default=300, ge=1, le=1000),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=25, alias="pageSize", ge=1, le=100),
+    limit: int | None = Query(default=None, ge=1, le=1000),
 ) -> dict[str, Any]:
     database = _database(request)
     settings = _settings(request)
     policies = _load_retention_policies(settings, database)
+    effective_page = 1 if limit is not None else page
+    effective_size = limit if limit is not None else page_size
+    filters = {
+        "query": q,
+        "experiment_code": experiment_code,
+        "transfer_status": transfer_status,
+        "include_deleted": include_deleted,
+    }
+    total = database.count_report_management(**filters)
     rows = database.list_report_management(
-        query=q,
-        experiment_code=experiment_code,
-        transfer_status=transfer_status,
-        include_deleted=include_deleted,
-        limit=limit,
+        **filters,
+        limit=effective_size,
+        offset=(effective_page - 1) * effective_size,
     )
     items = [
         _decorate_row(
@@ -511,7 +520,15 @@ def list_reports(
         )
         for row in rows
     ]
-    return {"items": items, "count": len(items)}
+    total_pages = max(1, (total + effective_size - 1) // effective_size)
+    return {
+        "items": items,
+        "count": len(items),
+        "total": total,
+        "page": effective_page,
+        "pageSize": effective_size,
+        "totalPages": total_pages,
+    }
 
 
 @router.get("/api/v1/report-management/summary", tags=["report-management"])

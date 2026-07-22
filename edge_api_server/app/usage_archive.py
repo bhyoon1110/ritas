@@ -327,10 +327,37 @@ class UsageArchive:
         date_to: str = "",
         limit: int = 200,
     ) -> list[dict[str, object]]:
+        items, _ = self.list_page(
+            project=project,
+            result=result,
+            activity_type=activity_type,
+            query=query,
+            date_from=date_from,
+            date_to=date_to,
+            page=1,
+            page_size=limit,
+        )
+        return items
+
+    def list_page(
+        self,
+        *,
+        project: str = "",
+        result: str = "",
+        activity_type: str = "",
+        query: str = "",
+        date_from: str = "",
+        date_to: str = "",
+        page: int = 1,
+        page_size: int = 25,
+    ) -> tuple[list[dict[str, object]], int]:
         self.cleanup()
         needle = query.casefold().strip()
         items: list[dict[str, object]] = []
-        maximum = max(1, min(1000, limit))
+        current_page = max(1, int(page))
+        maximum = max(1, min(1000, int(page_size)))
+        offset = (current_page - 1) * maximum
+        total = 0
         for path in sorted(self.root.glob("*.jsonl"), reverse=True):
             if date_from and path.stem < date_from:
                 continue
@@ -399,10 +426,10 @@ class UsageArchive:
                     haystack = haystack.casefold()
                     if needle not in haystack:
                         continue
-                items.append(item)
-                if len(items) >= maximum:
-                    return items
-        return items
+                if total >= offset and len(items) < maximum:
+                    items.append(item)
+                total += 1
+        return items, total
 
     def get(self, event_id: str) -> dict[str, object]:
         if not EVENT_ID_RE.fullmatch(event_id):

@@ -106,6 +106,33 @@ def test_error_console_api_filters_downloads_resolves_and_deletes(tmp_path: Path
     assert client.get(f"/api/v1/errors/{event_id}").status_code == 404
 
 
+def test_error_console_api_paginates_results(tmp_path: Path) -> None:
+    app = FastAPI()
+    settings = Settings(
+        storage_root=tmp_path / "jobs",
+        error_archive_root=tmp_path / "errors",
+    )
+    archive = install_error_management(app, settings)
+    for index in range(3):
+        archive.record(
+            project="TEM",
+            code=f"TEM_TEST_{index}",
+            message=f"test error {index}",
+        )
+
+    response = TestClient(app).get(
+        "/api/v1/errors", params={"page": 2, "pageSize": 1}
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["count"] == 1
+    assert data["total"] == 3
+    assert data["page"] == 2
+    assert data["pageSize"] == 1
+    assert data["totalPages"] == 3
+
+
 def test_installed_handler_records_request_files_and_returns_event_header(
     tmp_path: Path,
 ) -> None:

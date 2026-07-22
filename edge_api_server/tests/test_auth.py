@@ -8,7 +8,10 @@ from starlette.requests import Request
 from app.auth import (
     AuthContext,
     LoginRequest,
+    PasswordChangeRequest,
+    ProfileUpdateRequest,
     SignupRequest,
+    _account_page,
     _admin_page,
     authenticated_transfer_payload,
     hash_password,
@@ -141,6 +144,33 @@ def test_login_id_models_normalize_and_allow_optional_email() -> None:
     assert signup.login_id == "test.user_01"
     assert signup.email is None
     assert login.login_id == "test.user_01"
+
+
+def test_account_page_exposes_profile_password_and_logout(tmp_path) -> None:
+    html = _account_page(_context(), Settings(storage_root=tmp_path))
+
+    assert 'id="profile-form"' in html
+    assert 'id="password-form"' in html
+    assert 'id="logout"' in html
+    assert "/api/v1/auth/me" in html
+    assert "/api/v1/auth/password" in html
+    assert "/api/v1/auth/logout" in html
+
+
+def test_account_update_models_normalize_values() -> None:
+    profile = ProfileUpdateRequest(
+        displayName="  시험 사용자  ",
+        email="  USER@EXAMPLE.COM  ",
+    )
+    password = PasswordChangeRequest(
+        currentPassword="existing-password",
+        newPassword="new-password-123",
+    )
+
+    assert profile.display_name == "시험 사용자"
+    assert profile.email == "user@example.com"
+    assert password.current_password == "existing-password"
+    assert password.new_password == "new-password-123"
 
 
 def test_transfer_auth_disabled_keeps_payload(tmp_path) -> None:

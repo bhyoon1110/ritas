@@ -163,6 +163,18 @@ def test_usage_middleware_records_user_actions_and_skips_repeated_requests(
 
     listing = client.get("/api/v1/usage-events").json()
     assert listing["count"] == 3
+    assert listing["total"] == 3
+    assert listing["page"] == 1
+    assert listing["pageSize"] == 25
+    assert listing["totalPages"] == 1
+    paged = client.get(
+        "/api/v1/usage-events", params={"page": 2, "pageSize": 1}
+    ).json()
+    assert paged["count"] == 1
+    assert paged["total"] == 3
+    assert paged["page"] == 2
+    assert paged["pageSize"] == 1
+    assert paged["totalPages"] == 3
     by_action = {item["action"]: item for item in listing["items"]}
     assert by_action["작업 화면 조회"]["project"] == "FT-IR"
     ftir_report = next(
@@ -223,6 +235,9 @@ def test_operations_console_has_usage_and_error_tabs(tmp_path: Path) -> None:
     assert 'role="dialog"' in operations.text
     assert "function closeDetail()" in operations.text
     assert "position:fixed" in operations.text
+    assert 'id="page-size"' in operations.text
+    assert 'id="prev-page"' in operations.text
+    assert 'id="next-page"' in operations.text
     assert errors.status_code == 200
     assert 'data-default-tab="errors"' in errors.text
     assert client.get("/api/v1/usage-events").json()["count"] == 0
