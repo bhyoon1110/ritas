@@ -218,6 +218,8 @@ def test_operations_console_has_usage_and_error_tabs(tmp_path: Path) -> None:
     assert "클라이언트 / 접속 위치" in operations.text
     assert "접속 IP" in operations.text
     assert 'class="detail-backdrop"' in operations.text
+    assert 'href="/admin/users"' in operations.text
+    assert "회원 관리" in operations.text
     assert 'role="dialog"' in operations.text
     assert "function closeDetail()" in operations.text
     assert "position:fixed" in operations.text

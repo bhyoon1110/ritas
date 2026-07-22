@@ -9,6 +9,7 @@ from app.auth import (
     AuthContext,
     LoginRequest,
     SignupRequest,
+    _admin_page,
     authenticated_transfer_payload,
     hash_password,
     is_bootstrap_admin,
@@ -97,6 +98,22 @@ def test_project_for_path() -> None:
     assert project_for_path("/xrd/example") == "XRD"
     assert project_for_path("/api/v1/tem/report") == "TEM"
     assert project_for_path("/operations") is None
+
+
+def test_admin_page_exposes_member_permissions_and_sso_state() -> None:
+    html = _admin_page()
+
+    assert 'href="/operations"' in html
+    assert 'href="/errors"' in html
+    assert 'href="/report-management"' in html
+    assert 'href="/admin/users"' in html
+    assert "회원 관리" in html
+    assert "승인 대기" in html
+    assert "프로젝트 접근 및 보고서 생성" in html
+    assert "운영 관리자" in html
+    assert "보고서 전송 권한" in html
+    assert "최근 SSO 인증" in html
+    assert "/api/v1/auth/admin/users" in html
 
 
 def test_bootstrap_admin_policy() -> None:

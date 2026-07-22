@@ -73,6 +73,8 @@ def test_report_management_console_serves_bundled_ui() -> None:
     assert "선택 항목 휴지통 이동" in response.text
     assert "보존 정책 설정" in response.text
     assert "/api/v1/report-management/summary" in response.text
+    assert 'href="/admin/users"' in response.text
+    assert "회원 관리" in response.text
 
 
 def test_retention_policy_only_selects_expired_inactive_reports(tmp_path: Path) -> None:

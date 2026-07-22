@@ -47,6 +47,11 @@ SSO 연동이 준비되지 않은 기간에도 가입과 관리자 승인을 거
 | `/auth/sso/callback` | OIDC 콜백 |
 | `/api/v1/auth/me` | 현재 로그인 사용자와 권한 조회 |
 
+운영 관리 화면은 `사용 기록 | 오류 기록 | 보고서/파일 관리 | 회원 관리` 네 탭으로
+구성한다. 회원 관리에서는 가입 승인 상태, FTIR/RAMAN/XRD/TEM 접근권한,
+`ADMIN`·`REPORT_SENDER` 역할, SSO 연결·활성 여부, 사번과 최근 SSO 인증 시각을
+한 화면에서 조회하고 변경한다.
+
 실험 PC의 C# 클라이언트가 사용하는 `/api/v1/jobs`, `/api/v1/jobs/{jobId}/...`,
 `/api/v1/requests`는 브라우저 회원 쿠키 인증과 분리한다. 기존
 `X-Request-Id`와 클라이언트 식별 헤더 정책을 그대로 사용한다.
@@ -77,6 +82,20 @@ mysql --default-character-set=utf8mb4 \
 실행하면 기존 이메일 전체를 `login_id`로 이관하므로 종전 이메일 문자열을 로그인
 ID 칸에 입력해 계속 로그인할 수 있다. 관리자는 이후 원하는 신규 ID의 계정을
 만들고 권한을 이전할 수 있다.
+
+관리자 행의 상태만 DB에서 수동으로 `ACTIVE`로 바꾼 경우에는 `ADMIN` 역할이 없어
+회원 관리 화면에 접근할 수 없다. 다음 보정 스크립트는 로그인 ID `admin`에 관리자,
+보고서 전송, 전체 프로젝트 권한을 중복 없이 부여한다.
+
+```bash
+cd ~/ritas/edge_api_server/deploy
+mysql --default-character-set=utf8mb4 \
+  -h 127.0.0.1 -P 3306 \
+  -u root -p rist_edge \
+  < mariadb_grant_admin.sql
+```
+
+적용 후에는 로그아웃했다가 다시 로그인한다.
 
 ## 6. 환경 설정
 

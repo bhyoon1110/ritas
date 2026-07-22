@@ -797,6 +797,7 @@ _OPERATIONS_CONSOLE_HTML = r'''<!doctype html>
       <button type="button" class="tab" id="usage-tab" data-tab="usage">사용 기록</button>
       <button type="button" class="tab" id="errors-tab" data-tab="errors">오류 기록</button>
       <a class="tab" href="/report-management">보고서/파일 관리</a>
+      <a class="tab" href="/admin/users">회원 관리</a>
     </nav>
     <section class="filters">
       <select id="project" aria-label="프로젝트">

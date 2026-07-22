@@ -388,6 +388,11 @@ cd edge_api_server
 사내 SSO가 필요하지 않다. LIMS 전송에는 `REPORT_SENDER` 역할, 연결된 사내 SSO,
 최근 SSO 재인증이 모두 필요하며 전송 작업자 값은 SSO 사용자 정보로 기록한다.
 
+관리자는 운영 관리의 `회원 관리` 탭(`/admin/users`)에서 가입 승인 상태,
+프로젝트별 접근권한, `ADMIN`·`REPORT_SENDER` 역할과 SSO 연결·최근 인증 상태를
+확인하고 변경한다. 관리자 상태만 수동으로 활성화해 역할이 누락된 경우에는
+`deploy/mariadb_grant_admin.sql`을 실행한 뒤 다시 로그인한다.
+
 ```text
 /signup       로컬 회원 가입
 /login        로그인
