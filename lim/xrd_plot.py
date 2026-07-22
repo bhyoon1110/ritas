@@ -2848,6 +2848,7 @@ def build_numbered_peak_graph_html(fig, peak_tables: list[dict[str, Any]]) -> st
                     color=getattr(getattr(trace, "line", None), "color", None) or "#d62728",
                     width=2,
                 ),
+                showlegend=False,
                 hovertemplate="2θ=%{x:.3f}°<br>Intensity=%{y:.2f}<extra>%{fullData.name}</extra>",
             )
         )
@@ -2901,7 +2902,7 @@ def build_numbered_peak_graph_html(fig, peak_tables: list[dict[str, Any]]) -> st
         hovermode="closest",
         xaxis=dict(title="2θ (°)", showline=True, mirror=True, linecolor="#111827"),
         yaxis=dict(title="Intensity (cps)", showline=True, mirror=True, linecolor="#111827"),
-        legend=dict(orientation="h", x=0, y=1.08),
+        showlegend=False,
     )
     graph_html = numbered.to_html(
         full_html=False,

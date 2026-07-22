@@ -654,6 +654,10 @@ def test_xrd_html_draws_numbered_peak_graph_from_peak_list(tmp_path) -> None:
     assert "Peak No." in result["html"]
     assert "그래프 피크 번호" in result["html"]
     assert "xrd-numbered-peak-plot" in result["html"]
+    numbered_graph_html = result["html"].split('id="xrd-numbered-peak-plot"', 1)[1]
+    numbered_graph_html = numbered_graph_html.split("</section>", 1)[0]
+    assert '"showlegend":false' in numbered_graph_html
+    assert '"legend":{"orientation"' not in numbered_graph_html
 
 
 def test_peak_list_adds_phase_formula_and_norm_columns_from_icdd_candidates(tmp_path) -> None:
