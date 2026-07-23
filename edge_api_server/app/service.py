@@ -20,6 +20,7 @@ from .models import (
     CompleteUploadRequest,
     CreateJobRequest,
     GenerateReportRequest,
+    RegenerateReportSignalRequest,
 )
 from .manifest import write_manifest
 from .storage import (
@@ -132,6 +133,55 @@ class EdgeService:
             response,
             isoformat_kst(),
         )
+
+    @synchronized
+    def receive_report_regeneration_signal(
+        self,
+        report_id: str,
+        request: RegenerateReportSignalRequest,
+        idempotency_key: str,
+    ) -> tuple[int, dict[str, Any]]:
+        endpoint = f"POST:/api/v1/reports/{report_id}/regenerate"
+        request_hash = self.request_hash(request)
+        cached = self.get_idempotent_response(
+            endpoint, idempotency_key, request_hash
+        )
+        if cached:
+            return cached
+
+        report = self.database.fetch_report_run(report_id)
+        if not report or report.get("deleted_at") is not None:
+            raise ApiException(
+                404,
+                "REPORT_NOT_FOUND",
+                "보고서 생성 기록을 찾을 수 없습니다.",
+                details={"reportId": report_id},
+            )
+
+        received_at = isoformat_kst()
+        response = {
+            "signalId": str(uuid4()),
+            "reportId": report_id,
+            "sourceJobId": report.get("source_job_id"),
+            "status": "RECEIVED",
+            "receivedAt": received_at,
+            "executionQueued": False,
+        }
+        self.save_idempotent_response(
+            endpoint,
+            idempotency_key,
+            request_hash,
+            202,
+            response,
+        )
+        logger.info(
+            "보고서 재생성 신호 접수 (report_id=%s, source_job_id=%s, "
+            "signal_id=%s, execution_queued=false)",
+            report_id,
+            report.get("source_job_id"),
+            response["signalId"],
+        )
+        return 202, response
 
     @staticmethod
     def upload_cache_matches_file(

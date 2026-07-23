@@ -87,6 +87,8 @@ def action_from_request(method: str, path: str) -> str:
         return "예제 보고서 생성"
     if lowered.endswith("/send"):
         return "보고서 전송"
+    if lowered.startswith("/api/v1/reports/") and lowered.endswith("/regenerate"):
+        return "보고서 재생성 신호 접수"
     if lowered.endswith("/render-pdf"):
         return "PDF 보고서 생성"
     if "/download" in lowered or lowered.endswith("/html"):
@@ -122,6 +124,8 @@ def activity_type_from_action(
         return "REPORT_COMPLETE"
     if text == "보고서 생성 실패":
         return "REPORT_FAILED"
+    if text == "보고서 재생성 신호 접수":
+        return "REPORT_REGENERATE_SIGNAL"
     if "보고서 생성" in text or text == "업로드 완료 및 보고서 생성":
         return "REPORT_REQUEST"
     if "보고서 다운로드" in text:

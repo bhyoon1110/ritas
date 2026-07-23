@@ -556,6 +556,76 @@ def test_full_upload_and_report_flow(tmp_path: Path, mariadb: dict) -> None:
     assert len(manifests) == 1
 
 
+def test_report_regeneration_signal_is_received_without_execution(
+    tmp_path: Path, mariadb: dict
+) -> None:
+    client = create_client(tmp_path, mariadb)
+    database = client.app.state.database
+    report_id = str(uuid4())
+    database.register_report_run(
+        report_id=report_id,
+        source_job_id=None,
+        request_number="REQ-2026-REGENERATE",
+        experiment_code="XRD",
+        equipment_code="XRD-01",
+        operator_id="spring-boot",
+        storage_key="RIST_REPORTS",
+        package_relative_path=f"web-reports/XRD/{report_id}/report-package.zip",
+        package_file_name="report-package.zip",
+        package_size_bytes=1024,
+        package_sha256="a" * 64,
+        report_options_json=None,
+        generated_at="2026-07-23T10:00:00+09:00",
+    )
+
+    idempotency_key = str(uuid4())
+    payload = {
+        "requestedAt": "2026-07-23T10:30:00+09:00",
+        "requestedBy": "local-spring-boot",
+        "reason": "태블릿에서 재생성 요청",
+    }
+    received = client.post(
+        f"/api/v1/reports/{report_id}/regenerate",
+        json=payload,
+        headers=headers(idempotency_key),
+    )
+    assert received.status_code == 202
+    assert received.json() == {
+        "signalId": received.json()["signalId"],
+        "reportId": report_id,
+        "sourceJobId": None,
+        "status": "RECEIVED",
+        "receivedAt": received.json()["receivedAt"],
+        "executionQueued": False,
+    }
+    assert database.fetch_report_transfer_for_report(report_id) is None
+
+    repeated = client.post(
+        f"/api/v1/reports/{report_id}/regenerate",
+        json=payload,
+        headers=headers(idempotency_key),
+    )
+    assert repeated.status_code == 202
+    assert repeated.json() == received.json()
+
+    reused = client.post(
+        f"/api/v1/reports/{report_id}/regenerate",
+        json={**payload, "reason": "다른 재생성 요청"},
+        headers=headers(idempotency_key),
+    )
+    assert reused.status_code == 409
+    assert reused.json()["code"] == "IDEMPOTENCY_KEY_REUSED"
+
+    missing = client.post(
+        f"/api/v1/reports/{uuid4()}/regenerate",
+        json={},
+        headers=headers(str(uuid4())),
+    )
+    assert missing.status_code == 404
+    assert missing.json()["code"] == "REPORT_NOT_FOUND"
+    assert not list((tmp_path / "jobs").rglob("report-request.json"))
+
+
 def test_rejects_hash_mismatch(tmp_path: Path, mariadb: dict) -> None:
     client = create_client(tmp_path, mariadb)
     content = b"test"

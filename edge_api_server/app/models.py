@@ -154,6 +154,23 @@ class GenerateReportResponse(ApiModel):
     accepted_at: str = Field(alias="acceptedAt")
 
 
+class RegenerateReportSignalRequest(ApiModel):
+    requested_at: str | None = Field(default=None, alias="requestedAt")
+    requested_by: str | None = Field(
+        default=None, alias="requestedBy", max_length=100
+    )
+    reason: str | None = Field(default=None, max_length=1000)
+
+
+class RegenerateReportSignalResponse(ApiModel):
+    signal_id: str = Field(alias="signalId")
+    report_id: str = Field(alias="reportId")
+    source_job_id: str | None = Field(alias="sourceJobId")
+    status: Literal["RECEIVED"]
+    received_at: str = Field(alias="receivedAt")
+    execution_queued: bool = Field(alias="executionQueued")
+
+
 class ErrorDetail(ApiModel):
     code: str
     message: str

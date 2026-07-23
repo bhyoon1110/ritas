@@ -40,6 +40,8 @@ from .models import (
     GenerateReportRequest,
     GenerateReportResponse,
     JobStatusResponse,
+    RegenerateReportSignalRequest,
+    RegenerateReportSignalResponse,
     RequestListResponse,
     UploadFileResponse,
 )
@@ -413,6 +415,43 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         _set_experiment_pc_usage_context(request, database, job_id)
         status_code, result = service.request_report(
             job_id, payload, idempotency_key
+        )
+        response.status_code = status_code
+        return result
+
+    @app.post(
+        "/api/v1/reports/{report_id}/regenerate",
+        response_model=RegenerateReportSignalResponse,
+        response_model_by_alias=True,
+        status_code=202,
+        tags=["reports"],
+    )
+    def receive_report_regeneration_signal(
+        report_id: str,
+        payload: RegenerateReportSignalRequest,
+        request: Request,
+        response: Response,
+        _: str = Depends(required_request_id),
+        idempotency_key: str = Depends(required_idempotency_key),
+    ) -> dict:
+        report = database.fetch_report_run(report_id)
+        set_usage_context(
+            request,
+            project=str((report or {}).get("experiment_code") or "EDGE"),
+            action="보고서 재생성 신호 접수",
+            activity_type="REPORT_REGENERATE_SIGNAL",
+            job_id=(report or {}).get("source_job_id"),
+            request_number=(report or {}).get("request_number"),
+            experiment_code=(report or {}).get("experiment_code"),
+            equipment_code=(report or {}).get("equipment_code"),
+            operator_id=(report or {}).get("operator_id"),
+            client_type=request.headers.get("X-Client-Type") or "Spring Boot",
+            client_name=request.headers.get("X-Client-Name")
+            or "Local Spring Boot",
+            client_version=request.headers.get("X-Client-Version"),
+        )
+        status_code, result = service.receive_report_regeneration_signal(
+            report_id, payload, idempotency_key
         )
         response.status_code = status_code
         return result

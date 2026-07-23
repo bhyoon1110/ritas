@@ -2,9 +2,9 @@
 
 > 대상: Spring Boot/LIMS 인터페이스 개발자
 >
-> 버전: 2.0
+> 버전: 2.1
 >
-> 기준일: 2026-07-20
+> 기준일: 2026-07-23
 >
 > 연동 방식: 공유 저장소 + MariaDB 전송 큐
 
@@ -55,6 +55,7 @@ Spring Boot 스케줄러가 DB 큐를 선점하고 같은 공유 저장소에서
 - 전송 성공, 실패와 시도 이력 저장
 - 운영 조회, 수동 재시도와 취소 기준
 - 배포 설정과 인수 테스트 기준
+- 동일 Edge 호스트의 Spring Boot가 보내는 보고서 재생성 제어 신호 수신 계약
 
 ### 3.2 포함하지 않는 범위
 
@@ -844,7 +845,77 @@ SHOW CREATE TABLE report_transfer_attempts;
 | 14 | LIMS 429/5xx | 재시도 후 성공 또는 최대 시도 실패 |
 | 15 | 운영자 수동 재시도 | 감사 로그와 새 attempt 생성 |
 
-## 25. 제거된 HTTP 계약
+## 25. 보고서 재생성 제어 신호 API
+
+최종 보고서를 확인한 사용자가 향후 재생성을 요청할 수 있도록, 동일 Edge
+호스트의 Spring Boot가 Edge API에 재생성 **신호만** 전달하는 계약이다.
+
+```http
+POST http://127.0.0.1:8000/api/v1/reports/{reportId}/regenerate
+X-Request-Id: 9ca59aa7-5b71-4478-b8c6-92b615075e58
+Idempotency-Key: d2649725-87cf-4e78-af3d-cf45cb7ea9eb
+X-Client-Type: Spring Boot
+X-Client-Name: Local Spring Boot
+Content-Type: application/json
+```
+
+요청 본문 예시:
+
+```json
+{
+  "requestedAt": "2026-07-23T10:30:00+09:00",
+  "requestedBy": "user01",
+  "reason": "태블릿에서 보고서 재생성 요청"
+}
+```
+
+세 필드는 모두 선택 사항이므로 정보가 없으면 빈 JSON 객체 `{}`를 보낼 수
+있다. `requestedBy`는 100자, `reason`은 1,000자를 넘을 수 없다.
+
+정상 접수 응답:
+
+```http
+HTTP/1.1 202 Accepted
+Content-Type: application/json
+```
+
+```json
+{
+  "signalId": "27b3cfb0-0f82-428e-ab96-2ec7812fd4aa",
+  "reportId": "a6dd9821-e89a-4350-bd82-d2af7ca67a82",
+  "sourceJobId": "31eac2b5-2ebd-45a4-9b71-fd6dc335a92e",
+  "status": "RECEIVED",
+  "receivedAt": "2026-07-23T10:30:01.218+09:00",
+  "executionQueued": false
+}
+```
+
+현재 단계의 동작 범위는 다음과 같다.
+
+1. `reportId`가 삭제되지 않은 `report_runs` 기록인지 확인한다.
+2. 필수 헤더와 본문 형식을 검증한다.
+3. 신호 식별자와 접수 시각을 발급하고 사용 기록에 남긴다.
+4. 같은 `Idempotency-Key`와 같은 본문을 다시 보내면 최초 응답을 그대로
+   반환한다.
+
+`executionQueued=false`는 실제 보고서 생성 작업이 아직 큐에 등록되지
+않았다는 뜻이다. 이 API는 현재 다음 작업을 수행하지 않는다.
+
+- 새 `report_runs` 버전 생성
+- 원본 raw 파일 재분석 및 보고서 렌더링
+- `report_transfers` 등록 또는 변경
+- LIMS 전송
+
+같은 `Idempotency-Key`를 다른 본문에 재사용하면 `409
+IDEMPOTENCY_KEY_REUSED`, 존재하지 않거나 삭제된 보고서는 `404
+REPORT_NOT_FOUND`를 반환한다. 필수 헤더 누락은 `400`, 본문 검증 실패는
+`400`이다.
+
+이 엔드포인트는 Spring Boot와 Edge API가 같은 호스트에 있다는 전제로
+`127.0.0.1`을 사용한다. 외부 DMZ나 태블릿은 이 주소를 직접 호출하지 않고,
+Spring Boot가 외부 요청을 받은 뒤 로컬 Edge API로 전달한다.
+
+## 26. 제거된 HTTP 계약
 
 다음 항목은 더 이상 사용하지 않는다.
 
@@ -860,7 +931,7 @@ SHOW CREATE TABLE report_transfer_attempts;
 Spring Boot와 전송 큐를 직접 호출하지 않고 `GET /api/v1/jobs/{jobId}`로 Edge
 보고서 생성 완료까지만 확인한다.
 
-## 26. Spring Boot 개발 완료 기준
+## 27. Spring Boot 개발 완료 기준
 
 다음 조건을 모두 만족해야 연동 완료로 본다.
 

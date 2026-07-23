@@ -854,6 +854,13 @@ def _public_path(request: Request) -> bool:
     # 실험 PC/C# 인터페이스는 브라우저 회원 인증과 분리한다.
     if path == "/api/v1/jobs" or path == "/api/v1/requests" or path.startswith("/api/v1/jobs/"):
         return True
+    # 동일 Edge 호스트의 Spring Boot가 호출하는 기계 간 재생성 신호 API.
+    if (
+        path.startswith("/api/v1/reports/")
+        and path.endswith("/regenerate")
+        and request.method == "POST"
+    ):
+        return True
     return False
 
 
