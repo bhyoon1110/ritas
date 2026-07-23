@@ -1294,6 +1294,7 @@ def build_xrd_page() -> str:
         <span>raw upload · ICDD peak overlay · report preview</span>
       </div>
       <div class="xrd-actions">
+        <a class="xrd-download" id="xrd-admin-link" href="/operations" hidden>운영 관리</a>
         <button type="button" id="xrd-example">예제 불러오기</button>
         <button type="submit" form="xrd-form" class="primary" id="xrd-run" disabled>보고서 생성</button>
         <button type="button" id="xrd-clear">초기화</button>
@@ -1380,6 +1381,7 @@ def build_xrd_page() -> str:
     var runButton = document.getElementById("xrd-run");
     var clearButton = document.getElementById("xrd-clear");
     var exampleButton = document.getElementById("xrd-example");
+    var adminLink = document.getElementById("xrd-admin-link");
     var downloadLink = document.getElementById("xrd-download");
     var preview = document.getElementById("xrd-preview");
     var empty = document.getElementById("xrd-empty");
@@ -1423,6 +1425,24 @@ def build_xrd_page() -> str:
     var collectingFiles = false;
     var requestItems = [];
     var lastReportJob = null;
+
+    function revealAdminOperationsLink() {
+      if (!adminLink) return;
+      fetch("/api/v1/auth/me", {
+        credentials: "same-origin",
+        headers: {"Accept": "application/json"}
+      }).then(function(response) {
+        if (!response.ok) throw new Error("auth lookup failed");
+        return response.json();
+      }).then(function(payload) {
+        var roles = payload && Array.isArray(payload.roles) ? payload.roles : [];
+        adminLink.hidden = roles.indexOf("ADMIN") === -1;
+      }).catch(function() {
+        adminLink.hidden = true;
+      });
+    }
+
+    revealAdminOperationsLink();
     var REQUEST_EXPERIMENT_TYPE = "XRD";
 
     function setStatus(message, error) {

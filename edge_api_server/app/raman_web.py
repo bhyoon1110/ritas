@@ -343,6 +343,8 @@ body { overflow-x: hidden; }
   font-size: 11px;
   padding: 0 10px;
   box-sizing: border-box;
+  text-decoration: none;
+  white-space: nowrap;
 }
 .raman-file-button:hover,
 .raman-clear-button:hover {
@@ -1628,6 +1630,7 @@ _PAGE_SHELL = """
   </div>
   <div class="raman-actions">
     <span class="raman-status" id="raman-status">Raman raw 파일을 업로드하세요</span>
+    <a class="raman-clear-button" id="raman-admin-link" href="/operations" hidden>운영 관리</a>
     <label class="raman-origin-toggle" title="Origin 스타일 적용">
       <input type="checkbox" id="raman-origin" checked>
       <span>Origin 스타일</span>
@@ -2811,6 +2814,7 @@ _UPLOAD_SCRIPT = """
   var reportProgressValue = document.getElementById("raman-report-progress-value");
   var reportProgressBar = document.getElementById("raman-report-progress-bar");
   var reportProgressHideTimer = null;
+  var adminLink = document.getElementById("raman-admin-link");
   var clearButton = document.getElementById("raman-clear");
   var reportButton = document.getElementById("raman-report");
   var originToggle = document.getElementById("raman-origin");
@@ -2851,6 +2855,24 @@ _UPLOAD_SCRIPT = """
   var reportSampleConditionList = document.getElementById("raman-report-sample-condition-list");
   var MESSAGE_AUTO_HIDE_MS = 5000;
   var messageTimer = null;
+
+  function revealAdminOperationsLink() {
+    if (!adminLink) return;
+    fetch("/api/v1/auth/me", {
+      credentials: "same-origin",
+      headers: {"Accept": "application/json"}
+    }).then(function(response) {
+      if (!response.ok) throw new Error("auth lookup failed");
+      return response.json();
+    }).then(function(payload) {
+      var roles = payload && Array.isArray(payload.roles) ? payload.roles : [];
+      adminLink.hidden = roles.indexOf("ADMIN") === -1;
+    }).catch(function() {
+      adminLink.hidden = true;
+    });
+  }
+
+  revealAdminOperationsLink();
   if (!gd || !input || !dropZone || !prompt || !fileList || !status || !message
       || !loading || !clearButton || !libraryInput || !libraryList
       || !libraryFilter || !libraryNew || !libraryModal || !libraryDialogClose

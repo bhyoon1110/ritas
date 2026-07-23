@@ -334,6 +334,8 @@ body {
   font-size: 11px;
   padding: 0 10px;
   box-sizing: border-box;
+  text-decoration: none;
+  white-space: nowrap;
 }
 .ftir-file-button:hover,
 .ftir-clear-button:hover {
@@ -1640,6 +1642,7 @@ _PAGE_SHELL = """
   </div>
   <div class="ftir-app-actions">
     <span class="ftir-status" id="ftir-status">대기</span>
+    <a class="ftir-clear-button" id="ftir-admin-link" href="/operations" hidden>운영 관리</a>
     <label class="ftir-origin-toggle" title="Origin 스타일 적용">
       <input type="checkbox" id="ftir-origin" checked>
       <span>Origin 스타일</span>
@@ -2071,6 +2074,7 @@ _UPLOAD_SCRIPT = """
   var reportProgressValue = document.getElementById("ftir-report-progress-value");
   var reportProgressBar = document.getElementById("ftir-report-progress-bar");
   var reportProgressHideTimer = null;
+  var adminLink = document.getElementById("ftir-admin-link");
   var clearButton = document.getElementById("ftir-clear");
   var reportButton = document.getElementById("ftir-report");
   var originToggle = document.getElementById("ftir-origin");
@@ -2106,6 +2110,24 @@ _UPLOAD_SCRIPT = """
   var reportOptionsReset = document.getElementById("ftir-report-options-reset");
   var MESSAGE_AUTO_HIDE_MS = 5000;
   var messageTimer = null;
+
+  function revealAdminOperationsLink() {
+    if (!adminLink) return;
+    fetch("/api/v1/auth/me", {
+      credentials: "same-origin",
+      headers: {"Accept": "application/json"}
+    }).then(function(response) {
+      if (!response.ok) throw new Error("auth lookup failed");
+      return response.json();
+    }).then(function(payload) {
+      var roles = payload && Array.isArray(payload.roles) ? payload.roles : [];
+      adminLink.hidden = roles.indexOf("ADMIN") === -1;
+    }).catch(function() {
+      adminLink.hidden = true;
+    });
+  }
+
+  revealAdminOperationsLink();
   if (!gd || !input || !dropZone || !libraryInput || !libraryList
       || !libraryFilter
       || !libraryNew || !libraryModal || !libraryDialogClose

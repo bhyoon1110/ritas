@@ -64,6 +64,9 @@ def test_raman_workspace_contains_upload_controls() -> None:
     page = build_raman_page()
 
     assert 'id="raman-file-input"' in page
+    assert 'id="raman-admin-link" href="/operations" hidden>운영 관리</a>' in page
+    assert 'fetch("/api/v1/auth/me"' in page
+    assert 'roles.indexOf("ADMIN") === -1' in page
     assert 'id="raman-origin" checked' in page
     assert "Origin 스타일" in page
     assert "gd._ristOriginStyle" in page
