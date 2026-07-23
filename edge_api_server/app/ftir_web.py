@@ -1643,7 +1643,6 @@ _PAGE_SHELL = """
   <div class="ftir-app-actions">
     <span class="ftir-status" id="ftir-status">대기</span>
     <a class="ftir-clear-button" id="ftir-admin-link" href="/operations" hidden>운영 관리</a>
-    <button type="button" class="ftir-clear-button" id="ftir-logout" hidden>로그아웃</button>
     <label class="ftir-origin-toggle" title="Origin 스타일 적용">
       <input type="checkbox" id="ftir-origin" checked>
       <span>Origin 스타일</span>
@@ -1655,6 +1654,7 @@ _PAGE_SHELL = """
       <input id="ftir-file-input" class="ftir-file-input" type="file"
              accept=".dpt" multiple>
     </label>
+    <button type="button" class="ftir-clear-button" id="ftir-logout" hidden>로그아웃</button>
   </div>
 </header>
 <section class="ftir-library-band" aria-label="피크 assignment 라이브러리">

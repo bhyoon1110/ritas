@@ -38,6 +38,7 @@ def test_xrd_workspace_contains_upload_controls() -> None:
     assert 'fetch("/api/v1/auth/me"' in page
     assert 'fetch("/api/v1/auth/logout"' in page
     assert 'roles.indexOf("ADMIN") === -1' in page
+    assert page.index('id="xrd-logout"') > page.index('id="xrd-download"')
     assert 'id="xrd-bundle-folder"' in page
     assert 'class="xrd-hidden-input"' in page
     assert 'name="files"' in page

@@ -55,6 +55,7 @@ def test_ahn_workspace_contains_folder_upload_controls() -> None:
     assert 'fetch("/api/v1/auth/me"' in page
     assert 'fetch("/api/v1/auth/logout"' in page
     assert 'roles.indexOf("ADMIN") === -1' in page
+    assert page.index('id="ahn-logout"') > page.index('id="ahn-clear"')
     assert 'id="ahn-bundle-folder"' in page
     assert "webkitdirectory" in page
     assert "TEM raw bundle 추가" in page

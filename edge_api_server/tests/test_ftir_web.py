@@ -55,6 +55,7 @@ def test_ftir_workspace_contains_upload_and_editor_controls() -> None:
     assert 'fetch("/api/v1/auth/me"' in page
     assert 'fetch("/api/v1/auth/logout"' in page
     assert 'roles.indexOf("ADMIN") === -1' in page
+    assert page.index('id="ftir-logout"') > page.index('id="ftir-file-input"')
     assert 'id="ftir-drop-zone"' in page
     assert 'id="ftir-origin" checked' in page
     assert "Origin 스타일" in page

@@ -1631,7 +1631,6 @@ _PAGE_SHELL = """
   <div class="raman-actions">
     <span class="raman-status" id="raman-status">Raman raw 파일을 업로드하세요</span>
     <a class="raman-clear-button" id="raman-admin-link" href="/operations" hidden>운영 관리</a>
-    <button class="raman-clear-button" id="raman-logout" type="button" hidden>로그아웃</button>
     <label class="raman-origin-toggle" title="Origin 스타일 적용">
       <input type="checkbox" id="raman-origin" checked>
       <span>Origin 스타일</span>
@@ -1641,6 +1640,7 @@ _PAGE_SHELL = """
     <label class="raman-file-button" for="raman-file-input">파일 선택</label>
     <input class="raman-file-input" id="raman-file-input" type="file"
            accept=".txt,.csv,.tsv,.xlsx,.xlsm" multiple>
+    <button class="raman-clear-button" id="raman-logout" type="button" hidden>로그아웃</button>
   </div>
 </header>
 <section class="raman-library-band" aria-label="Raman 피크 assignment 라이브러리">

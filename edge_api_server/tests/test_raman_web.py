@@ -69,6 +69,7 @@ def test_raman_workspace_contains_upload_controls() -> None:
     assert 'fetch("/api/v1/auth/me"' in page
     assert 'fetch("/api/v1/auth/logout"' in page
     assert 'roles.indexOf("ADMIN") === -1' in page
+    assert page.index('id="raman-logout"') > page.index('id="raman-file-input"')
     assert 'id="raman-origin" checked' in page
     assert "Origin 스타일" in page
     assert "gd._ristOriginStyle" in page
