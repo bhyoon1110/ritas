@@ -1295,6 +1295,7 @@ def build_xrd_page() -> str:
       </div>
       <div class="xrd-actions">
         <a class="xrd-download" id="xrd-admin-link" href="/operations" hidden>운영 관리</a>
+        <button type="button" id="xrd-logout" hidden>로그아웃</button>
         <button type="button" id="xrd-example">예제 불러오기</button>
         <button type="submit" form="xrd-form" class="primary" id="xrd-run" disabled>보고서 생성</button>
         <button type="button" id="xrd-clear">초기화</button>
@@ -1382,6 +1383,7 @@ def build_xrd_page() -> str:
     var clearButton = document.getElementById("xrd-clear");
     var exampleButton = document.getElementById("xrd-example");
     var adminLink = document.getElementById("xrd-admin-link");
+    var logoutButton = document.getElementById("xrd-logout");
     var downloadLink = document.getElementById("xrd-download");
     var preview = document.getElementById("xrd-preview");
     var empty = document.getElementById("xrd-empty");
@@ -1426,8 +1428,7 @@ def build_xrd_page() -> str:
     var requestItems = [];
     var lastReportJob = null;
 
-    function revealAdminOperationsLink() {
-      if (!adminLink) return;
+    function configureAuthenticatedActions() {
       fetch("/api/v1/auth/me", {
         credentials: "same-origin",
         headers: {"Accept": "application/json"}
@@ -1436,13 +1437,32 @@ def build_xrd_page() -> str:
         return response.json();
       }).then(function(payload) {
         var roles = payload && Array.isArray(payload.roles) ? payload.roles : [];
-        adminLink.hidden = roles.indexOf("ADMIN") === -1;
+        if (adminLink) adminLink.hidden = roles.indexOf("ADMIN") === -1;
+        if (logoutButton) logoutButton.hidden = false;
       }).catch(function() {
-        adminLink.hidden = true;
+        if (adminLink) adminLink.hidden = true;
+        if (logoutButton) logoutButton.hidden = true;
       });
     }
 
-    revealAdminOperationsLink();
+    function logoutFromProject() {
+      if (!logoutButton) return;
+      logoutButton.disabled = true;
+      fetch("/api/v1/auth/logout", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: {"X-Requested-With": "RIST-Project"}
+      }).then(function(response) {
+        if (!response.ok) throw new Error("logout failed");
+        window.location.href = "/login";
+      }).catch(function() {
+        logoutButton.disabled = false;
+        window.alert("로그아웃하지 못했습니다. 다시 시도하세요.");
+      });
+    }
+
+    if (logoutButton) logoutButton.addEventListener("click", logoutFromProject);
+    configureAuthenticatedActions();
     var REQUEST_EXPERIMENT_TYPE = "XRD";
 
     function setStatus(message, error) {

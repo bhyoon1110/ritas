@@ -1643,6 +1643,7 @@ _PAGE_SHELL = """
   <div class="ftir-app-actions">
     <span class="ftir-status" id="ftir-status">대기</span>
     <a class="ftir-clear-button" id="ftir-admin-link" href="/operations" hidden>운영 관리</a>
+    <button type="button" class="ftir-clear-button" id="ftir-logout" hidden>로그아웃</button>
     <label class="ftir-origin-toggle" title="Origin 스타일 적용">
       <input type="checkbox" id="ftir-origin" checked>
       <span>Origin 스타일</span>
@@ -2108,11 +2109,11 @@ _UPLOAD_SCRIPT = """
   var reportOptionsCancel = document.getElementById("ftir-report-options-cancel");
   var reportOptionsSave = document.getElementById("ftir-report-options-save");
   var reportOptionsReset = document.getElementById("ftir-report-options-reset");
+  var logoutButton = document.getElementById("ftir-logout");
   var MESSAGE_AUTO_HIDE_MS = 5000;
   var messageTimer = null;
 
-  function revealAdminOperationsLink() {
-    if (!adminLink) return;
+  function configureAuthenticatedActions() {
     fetch("/api/v1/auth/me", {
       credentials: "same-origin",
       headers: {"Accept": "application/json"}
@@ -2121,13 +2122,32 @@ _UPLOAD_SCRIPT = """
       return response.json();
     }).then(function(payload) {
       var roles = payload && Array.isArray(payload.roles) ? payload.roles : [];
-      adminLink.hidden = roles.indexOf("ADMIN") === -1;
+      if (adminLink) adminLink.hidden = roles.indexOf("ADMIN") === -1;
+      if (logoutButton) logoutButton.hidden = false;
     }).catch(function() {
-      adminLink.hidden = true;
+      if (adminLink) adminLink.hidden = true;
+      if (logoutButton) logoutButton.hidden = true;
     });
   }
 
-  revealAdminOperationsLink();
+  function logoutFromProject() {
+    if (!logoutButton) return;
+    logoutButton.disabled = true;
+    fetch("/api/v1/auth/logout", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: {"X-Requested-With": "RIST-Project"}
+    }).then(function(response) {
+      if (!response.ok) throw new Error("logout failed");
+      window.location.href = "/login";
+    }).catch(function() {
+      logoutButton.disabled = false;
+      window.alert("로그아웃하지 못했습니다. 다시 시도하세요.");
+    });
+  }
+
+  if (logoutButton) logoutButton.addEventListener("click", logoutFromProject);
+  configureAuthenticatedActions();
   if (!gd || !input || !dropZone || !libraryInput || !libraryList
       || !libraryFilter
       || !libraryNew || !libraryModal || !libraryDialogClose

@@ -1631,6 +1631,7 @@ _PAGE_SHELL = """
   <div class="raman-actions">
     <span class="raman-status" id="raman-status">Raman raw 파일을 업로드하세요</span>
     <a class="raman-clear-button" id="raman-admin-link" href="/operations" hidden>운영 관리</a>
+    <button class="raman-clear-button" id="raman-logout" type="button" hidden>로그아웃</button>
     <label class="raman-origin-toggle" title="Origin 스타일 적용">
       <input type="checkbox" id="raman-origin" checked>
       <span>Origin 스타일</span>
@@ -2853,11 +2854,11 @@ _UPLOAD_SCRIPT = """
   var reportOptionsReset = document.getElementById("raman-report-options-reset");
   var reportCommonApply = document.getElementById("raman-report-apply-common-conditions");
   var reportSampleConditionList = document.getElementById("raman-report-sample-condition-list");
+  var logoutButton = document.getElementById("raman-logout");
   var MESSAGE_AUTO_HIDE_MS = 5000;
   var messageTimer = null;
 
-  function revealAdminOperationsLink() {
-    if (!adminLink) return;
+  function configureAuthenticatedActions() {
     fetch("/api/v1/auth/me", {
       credentials: "same-origin",
       headers: {"Accept": "application/json"}
@@ -2866,13 +2867,32 @@ _UPLOAD_SCRIPT = """
       return response.json();
     }).then(function(payload) {
       var roles = payload && Array.isArray(payload.roles) ? payload.roles : [];
-      adminLink.hidden = roles.indexOf("ADMIN") === -1;
+      if (adminLink) adminLink.hidden = roles.indexOf("ADMIN") === -1;
+      if (logoutButton) logoutButton.hidden = false;
     }).catch(function() {
-      adminLink.hidden = true;
+      if (adminLink) adminLink.hidden = true;
+      if (logoutButton) logoutButton.hidden = true;
     });
   }
 
-  revealAdminOperationsLink();
+  function logoutFromProject() {
+    if (!logoutButton) return;
+    logoutButton.disabled = true;
+    fetch("/api/v1/auth/logout", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: {"X-Requested-With": "RIST-Project"}
+    }).then(function(response) {
+      if (!response.ok) throw new Error("logout failed");
+      window.location.href = "/login";
+    }).catch(function() {
+      logoutButton.disabled = false;
+      window.alert("로그아웃하지 못했습니다. 다시 시도하세요.");
+    });
+  }
+
+  if (logoutButton) logoutButton.addEventListener("click", logoutFromProject);
+  configureAuthenticatedActions();
   if (!gd || !input || !dropZone || !prompt || !fileList || !status || !message
       || !loading || !clearButton || !libraryInput || !libraryList
       || !libraryFilter || !libraryNew || !libraryModal || !libraryDialogClose

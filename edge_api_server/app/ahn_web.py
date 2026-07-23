@@ -1501,6 +1501,7 @@ def build_ahn_page() -> str:
       </div>
       <div class="ahn-actions">
         <a class="ahn-download" id="ahn-admin-link" href="/operations" hidden>운영 관리</a>
+        <button type="button" id="ahn-logout" hidden>로그아웃</button>
         <button type="button" id="ahn-example">예제 불러오기</button>
         <button type="submit" form="ahn-form" class="primary" id="ahn-run" disabled>보고서 생성</button>
         <button type="button" id="ahn-clear">초기화</button>
@@ -1629,6 +1630,7 @@ def build_ahn_page() -> str:
     var requestSelect = document.getElementById("ahn-request-select");
     var requestDetail = document.getElementById("ahn-request-detail");
     var reportSendButton = document.getElementById("ahn-report-send");
+    var logoutButton = document.getElementById("ahn-logout");
     var reportTransferControls = Array.prototype.slice.call(
       document.querySelectorAll("[data-ahn-transfer-field]")
     );
@@ -1649,8 +1651,7 @@ def build_ahn_page() -> str:
     var lastReportJob = null;
     var REQUEST_EXPERIMENT_TYPE = "TEM";
 
-    function revealAdminOperationsLink() {
-      if (!adminLink) return;
+    function configureAuthenticatedActions() {
       fetch("/api/v1/auth/me", {
         credentials: "same-origin",
         headers: {"Accept": "application/json"}
@@ -1659,13 +1660,32 @@ def build_ahn_page() -> str:
         return response.json();
       }).then(function(payload) {
         var roles = payload && Array.isArray(payload.roles) ? payload.roles : [];
-        adminLink.hidden = roles.indexOf("ADMIN") === -1;
+        if (adminLink) adminLink.hidden = roles.indexOf("ADMIN") === -1;
+        if (logoutButton) logoutButton.hidden = false;
       }).catch(function() {
-        adminLink.hidden = true;
+        if (adminLink) adminLink.hidden = true;
+        if (logoutButton) logoutButton.hidden = true;
       });
     }
 
-    revealAdminOperationsLink();
+    function logoutFromProject() {
+      if (!logoutButton) return;
+      logoutButton.disabled = true;
+      fetch("/api/v1/auth/logout", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: {"X-Requested-With": "RIST-Project"}
+      }).then(function(response) {
+        if (!response.ok) throw new Error("logout failed");
+        window.location.href = "/login";
+      }).catch(function() {
+        logoutButton.disabled = false;
+        window.alert("로그아웃하지 못했습니다. 다시 시도하세요.");
+      });
+    }
+
+    if (logoutButton) logoutButton.addEventListener("click", logoutFromProject);
+    configureAuthenticatedActions();
 
     function syncActionState() {
       runButton.disabled = operationBusy || collectingFiles || !bundleItems.length;
