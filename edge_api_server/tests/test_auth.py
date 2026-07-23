@@ -121,6 +121,14 @@ def test_admin_page_exposes_member_permissions_and_sso_state() -> None:
     assert "보고서 전송 권한" in html
     assert "최근 SSO 인증" in html
     assert "/api/v1/auth/admin/users" in html
+    assert 'id="select-all-members"' in html
+    assert 'id="bulk-approve"' in html
+    assert 'id="bulk-project"' in html
+    assert 'id="bulk-grant"' in html
+    assert 'id="bulk-revoke"' in html
+    assert 'data-member-row' in html
+    assert 'id="member-drawer"' in html
+    assert 'id="drawer-save"' in html
 
 
 def test_bootstrap_admin_policy() -> None:
