@@ -1,5 +1,5 @@
 -- RIST 보고서 전송 큐 신규 재생성 전용 DDL
--- 경고: 아래 5개 테이블과 그 안의 모든 보고서/파일/전송/보존 정책을 삭제한 뒤 다시 생성한다.
+-- 경고: 아래 6개 테이블과 그 안의 모든 보고서/파일/전송/보존/재생성 신호를 삭제한 뒤 다시 생성한다.
 -- jobs 및 lims_req_ax_search 등 기존 업무 테이블은 삭제하거나 변경하지 않는다.
 -- 운영 DB에서는 반드시 백업과 변경 승인을 받은 뒤 실행한다.
 -- 실행 예:
@@ -9,6 +9,7 @@
 -- 삭제 순서는 외래키의 자식에서 부모 순서다.
 DROP TABLE IF EXISTS report_transfer_attempts;
 DROP TABLE IF EXISTS report_transfers;
+DROP TABLE IF EXISTS report_regeneration_requests;
 DROP TABLE IF EXISTS report_artifacts;
 DROP TABLE IF EXISTS report_retention_policies;
 DROP TABLE IF EXISTS report_runs;
@@ -80,6 +81,47 @@ CREATE TABLE IF NOT EXISTS report_runs (
         REFERENCES jobs(job_id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
   COMMENT='Edge가 생성하고 검증한 보고서 ZIP의 버전, 공유 저장소 위치 및 무결성 정보';
+
+CREATE TABLE IF NOT EXISTS report_regeneration_requests (
+    signal_id VARCHAR(36) NOT NULL
+        COMMENT '재생성 신호 UUID. report_regeneration_requests 기본키',
+    report_id VARCHAR(36) NOT NULL
+        COMMENT '재생성 대상 report_runs.report_id',
+    source_job_id VARCHAR(36)
+        COMMENT '대상 보고서의 원본 jobs.job_id. 작업 삭제 시 NULL',
+    requested_at VARCHAR(64)
+        COMMENT '호출자가 전달한 재생성 요청 시각 ISO-8601 문자열',
+    requested_by VARCHAR(100)
+        COMMENT '재생성을 요청한 사용자 또는 시스템 식별자',
+    reason VARCHAR(1000)
+        COMMENT '재생성을 요청한 업무 사유',
+    prompt TEXT NOT NULL
+        COMMENT '보고서 재생성 시 적용할 사용자 지시문. 고정 분석 정책을 대체하지 않음',
+    status VARCHAR(32) NOT NULL DEFAULT 'RECEIVED'
+        COMMENT '신호 처리 상태. 현재는 RECEIVED만 사용',
+    idempotency_key VARCHAR(128) NOT NULL
+        COMMENT '동일 재생성 신호 중복 접수를 방지하는 요청 키',
+    received_at VARCHAR(64) NOT NULL
+        COMMENT 'Edge가 신호를 접수한 시각 ISO-8601 문자열',
+    processed_at VARCHAR(64)
+        COMMENT '향후 재생성 worker가 신호 처리를 완료한 시각',
+    created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6)
+        COMMENT 'DB 레코드 생성 시각',
+    updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6)
+        ON UPDATE CURRENT_TIMESTAMP(6)
+        COMMENT 'DB 레코드 최종 변경 시각',
+    PRIMARY KEY (signal_id),
+    UNIQUE KEY uq_report_regeneration_idempotency (
+        report_id,
+        idempotency_key
+    ),
+    KEY idx_report_regeneration_status (status, created_at),
+    CONSTRAINT fk_report_regeneration_report FOREIGN KEY (report_id)
+        REFERENCES report_runs(report_id) ON DELETE CASCADE,
+    CONSTRAINT fk_report_regeneration_job FOREIGN KEY (source_job_id)
+        REFERENCES jobs(job_id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  COMMENT='Spring Boot가 전달한 보고서 재생성 프롬프트와 신호 처리 상태';
 
 CREATE TABLE IF NOT EXISTS report_artifacts (
     artifact_id VARCHAR(36) NOT NULL

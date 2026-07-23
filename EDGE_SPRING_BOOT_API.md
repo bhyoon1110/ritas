@@ -2,7 +2,7 @@
 
 > 대상: Spring Boot/LIMS 인터페이스 개발자
 >
-> 버전: 2.1
+> 버전: 2.2
 >
 > 기준일: 2026-07-23
 >
@@ -184,7 +184,8 @@ Spring Boot는 다음 항목을 모두 확인해야 한다.
 
 ## 7. DB 구성
 
-운영 흐름은 기존 `jobs`와 신규 3개 테이블로 구성한다.
+LIMS 전송 흐름은 기존 `jobs`와 보고서 큐 테이블로 구성한다. 보고서 재생성
+신호와 프롬프트는 전송 큐와 분리해 `report_regeneration_requests`에 보존한다.
 
 | 테이블 | 소유/기록 주체 | 목적 |
 |---|---|---|
@@ -192,10 +193,12 @@ Spring Boot는 다음 항목을 모두 확인해야 한다.
 | `report_runs` | Edge | 최종 보고서 패키지 위치와 무결성 메타데이터 |
 | `report_transfers` | Edge 등록, Spring 갱신 | LIMS 전송 큐와 최종 상태 |
 | `report_transfer_attempts` | Spring | 실제 LIMS 전송 시도 이력 |
+| `report_regeneration_requests` | Edge | Spring이 전달한 재생성 프롬프트와 신호 상태 |
 
-신규 3개 테이블은 현재 운영 DB에 자동으로 존재한다고 가정하면 안 된다. 최초
-배포 전에 `edge_api_server/deploy/mariadb_report_queue.sql`을 DBA가 적용하고
-테이블과 외래키 생성 여부를 확인해야 한다.
+LIMS 전송용 3개 테이블과 재생성 신호 테이블은 현재 운영 DB에 자동으로
+존재한다고 가정하면 안 된다. 최초 배포 전에
+`edge_api_server/deploy/mariadb_report_queue.sql`을 DBA가 적용하고 테이블과
+외래키 생성 여부를 확인해야 한다.
 
 ## 8. 컬럼 상세
 
@@ -292,6 +295,25 @@ Spring Boot는 다음 항목을 모두 확인해야 한다.
 | `transport_details_json` | N | 전송 시간 등 소형 메타데이터 JSON |
 
 ZIP, 인증 토큰, 전체 응답 본문과 stack trace는 이 테이블에 저장하지 않는다.
+
+### 8.5 `report_regeneration_requests`
+
+| 컬럼 | 필수 | 설명 |
+|---|---:|---|
+| `signal_id` | Y | Edge가 발급한 재생성 신호 UUID |
+| `report_id` | Y | 재생성 대상 `report_runs.report_id` |
+| `source_job_id` | N | 원본 Edge 작업 ID |
+| `requested_at` | N | 호출자가 기록한 요청 시각 |
+| `requested_by` | N | 재생성을 요청한 사용자 또는 시스템 |
+| `reason` | N | 재생성이 필요한 업무 사유 |
+| `prompt` | Y | 보고서에 적용할 구체적인 수정 지시문 |
+| `status` | Y | 현재는 `RECEIVED` 사용 |
+| `idempotency_key` | Y | 동일 신호 중복 접수 방지 키 |
+| `received_at` | Y | Edge 신호 접수 시각 |
+| `processed_at` | N | 향후 재생성 worker 처리 완료 시각 |
+
+`prompt`는 감사와 후속 worker 연결을 위해 원문을 보존한다. 인증정보, 개인
+민감정보, 원본 파일 본문은 프롬프트에 포함하지 않는다.
 
 ## 9. 상태 모델
 
@@ -812,17 +834,19 @@ WHERE table_schema = DATABASE()
       'jobs',
       'report_runs',
       'report_transfers',
-      'report_transfer_attempts'
+      'report_transfer_attempts',
+      'report_regeneration_requests'
   )
 ORDER BY table_name;
 ```
 
-네 행이 모두 조회되어야 한다.
+다섯 행이 모두 조회되어야 한다.
 
 ```sql
 SHOW CREATE TABLE report_runs;
 SHOW CREATE TABLE report_transfers;
 SHOW CREATE TABLE report_transfer_attempts;
+SHOW CREATE TABLE report_regeneration_requests;
 ```
 
 ## 24. 인수 테스트
@@ -865,12 +889,21 @@ Content-Type: application/json
 {
   "requestedAt": "2026-07-23T10:30:00+09:00",
   "requestedBy": "user01",
-  "reason": "태블릿에서 보고서 재생성 요청"
+  "reason": "태블릿 검토 후 고객용 요약 보완 요청",
+  "prompt": "현재 raw 데이터와 확정된 피크를 기준으로 고객용 요약을 세 문장으로 줄이고, 확정되지 않은 물질은 후보로 표현해 보고서를 다시 생성해 주세요."
 }
 ```
 
-세 필드는 모두 선택 사항이므로 정보가 없으면 빈 JSON 객체 `{}`를 보낼 수
-있다. `requestedBy`는 100자, `reason`은 1,000자를 넘을 수 없다.
+`prompt`는 필수이며 공백을 제외한 1자 이상 4,000자 이하여야 한다.
+`requestedAt`, `requestedBy`, `reason`은 선택 사항이다. `requestedBy`는 최대
+100자, `reason`은 최대 1,000자다.
+
+- `reason`: 왜 재생성이 필요한지 기록하는 업무 사유
+- `prompt`: 무엇을 어떻게 바꿀지 설명하는 실제 재생성 지시
+
+프롬프트는 고객 요약 길이, 강조할 관찰사항, 표현 방식처럼 보고서 문안과 구성을
+조정하는 데 사용한다. raw 데이터, 현재 그래프와 편집된 피크 정보, 고정된 분석
+및 안전 정책을 대체하지 않으며 데이터에 없는 결과를 만들도록 지시해서는 안 된다.
 
 정상 접수 응답:
 
@@ -894,8 +927,10 @@ Content-Type: application/json
 
 1. `reportId`가 삭제되지 않은 `report_runs` 기록인지 확인한다.
 2. 필수 헤더와 본문 형식을 검증한다.
-3. 신호 식별자와 접수 시각을 발급하고 사용 기록에 남긴다.
-4. 같은 `Idempotency-Key`와 같은 본문을 다시 보내면 최초 응답을 그대로
+3. 신호 식별자와 접수 시각을 발급한다.
+4. 프롬프트와 요청 메타데이터를 `report_regeneration_requests`에 저장하고 사용
+   기록을 남긴다.
+5. 같은 `Idempotency-Key`와 같은 본문을 다시 보내면 최초 응답을 그대로
    반환한다.
 
 `executionQueued=false`는 실제 보고서 생성 작업이 아직 큐에 등록되지
@@ -909,7 +944,8 @@ Content-Type: application/json
 같은 `Idempotency-Key`를 다른 본문에 재사용하면 `409
 IDEMPOTENCY_KEY_REUSED`, 존재하지 않거나 삭제된 보고서는 `404
 REPORT_NOT_FOUND`를 반환한다. 필수 헤더 누락은 `400`, 본문 검증 실패는
-`400`이다.
+`400`이다. `prompt`가 없거나 공백뿐이거나 4,000자를 초과해도 `400
+REQUEST_VALIDATION_FAILED`를 반환한다.
 
 이 엔드포인트는 Spring Boot와 Edge API가 같은 호스트에 있다는 전제로
 `127.0.0.1`을 사용한다. 외부 DMZ나 태블릿은 이 주소를 직접 호출하지 않고,
@@ -955,8 +991,9 @@ Spring Boot와 전송 큐를 직접 호출하지 않고 `GET /api/v1/jobs/{jobId
 아래 DDL을 최초 실행하면 테이블과 모든 컬럼에 설명이 함께 등록된다. 이미 같은
 테이블이 만들어진 환경에서는 `CREATE TABLE IF NOT EXISTS`를 다시 실행해도 기존
 COMMENT가 바뀌지 않으므로, 변경된 설명은 별도 `ALTER TABLE` migration으로
-반영해야 한다. 현재 개발 DB처럼 신규 3개 테이블이 아직 없는 환경에서는 아래
-DDL을 그대로 한 번 실행하면 된다.
+반영해야 한다. 신규 환경에서는 아래 DDL을 그대로 한 번 실행하면 된다. 기존
+큐 테이블이 있는 환경에서 재생성 신호 테이블만 추가할 때는
+`edge_api_server/deploy/mariadb_report_regeneration_migration.sql`을 실행한다.
 
 ```sql
 -- RIST 보고서 공유 저장소/DB 전송 큐 스키마
@@ -1014,6 +1051,47 @@ CREATE TABLE IF NOT EXISTS report_runs (
         REFERENCES jobs(job_id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
   COMMENT='Edge가 생성하고 검증한 보고서 ZIP의 버전, 공유 저장소 위치 및 무결성 정보';
+
+CREATE TABLE IF NOT EXISTS report_regeneration_requests (
+    signal_id VARCHAR(36) NOT NULL
+        COMMENT '재생성 신호 UUID. report_regeneration_requests 기본키',
+    report_id VARCHAR(36) NOT NULL
+        COMMENT '재생성 대상 report_runs.report_id',
+    source_job_id VARCHAR(36)
+        COMMENT '대상 보고서의 원본 jobs.job_id. 작업 삭제 시 NULL',
+    requested_at VARCHAR(64)
+        COMMENT '호출자가 전달한 재생성 요청 시각 ISO-8601 문자열',
+    requested_by VARCHAR(100)
+        COMMENT '재생성을 요청한 사용자 또는 시스템 식별자',
+    reason VARCHAR(1000)
+        COMMENT '재생성을 요청한 업무 사유',
+    prompt TEXT NOT NULL
+        COMMENT '보고서 재생성 시 적용할 사용자 지시문. 고정 분석 정책을 대체하지 않음',
+    status VARCHAR(32) NOT NULL DEFAULT 'RECEIVED'
+        COMMENT '신호 처리 상태. 현재는 RECEIVED만 사용',
+    idempotency_key VARCHAR(128) NOT NULL
+        COMMENT '동일 재생성 신호 중복 접수를 방지하는 요청 키',
+    received_at VARCHAR(64) NOT NULL
+        COMMENT 'Edge가 신호를 접수한 시각 ISO-8601 문자열',
+    processed_at VARCHAR(64)
+        COMMENT '향후 재생성 worker가 신호 처리를 완료한 시각',
+    created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6)
+        COMMENT 'DB 레코드 생성 시각',
+    updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6)
+        ON UPDATE CURRENT_TIMESTAMP(6)
+        COMMENT 'DB 레코드 최종 변경 시각',
+    PRIMARY KEY (signal_id),
+    UNIQUE KEY uq_report_regeneration_idempotency (
+        report_id,
+        idempotency_key
+    ),
+    KEY idx_report_regeneration_status (status, created_at),
+    CONSTRAINT fk_report_regeneration_report FOREIGN KEY (report_id)
+        REFERENCES report_runs(report_id) ON DELETE CASCADE,
+    CONSTRAINT fk_report_regeneration_job FOREIGN KEY (source_job_id)
+        REFERENCES jobs(job_id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  COMMENT='Spring Boot가 전달한 보고서 재생성 프롬프트와 신호 처리 상태';
 
 CREATE TABLE IF NOT EXISTS report_transfers (
     transfer_id VARCHAR(36) NOT NULL

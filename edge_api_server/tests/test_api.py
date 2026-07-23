@@ -583,6 +583,7 @@ def test_report_regeneration_signal_is_received_without_execution(
         "requestedAt": "2026-07-23T10:30:00+09:00",
         "requestedBy": "local-spring-boot",
         "reason": "태블릿에서 재생성 요청",
+        "prompt": "고객 요약을 세 문장으로 줄여 보고서를 다시 생성해 주세요.",
     }
     received = client.post(
         f"/api/v1/reports/{report_id}/regenerate",
@@ -599,6 +600,11 @@ def test_report_regeneration_signal_is_received_without_execution(
         "executionQueued": False,
     }
     assert database.fetch_report_transfer_for_report(report_id) is None
+    regeneration = database.fetch_report_regeneration_request(
+        received.json()["signalId"]
+    )
+    assert regeneration is not None
+    assert regeneration["prompt"] == payload["prompt"]
 
     repeated = client.post(
         f"/api/v1/reports/{report_id}/regenerate",
@@ -618,10 +624,26 @@ def test_report_regeneration_signal_is_received_without_execution(
 
     missing = client.post(
         f"/api/v1/reports/{uuid4()}/regenerate",
-        json={},
+        json={"prompt": "보고서를 다시 생성해 주세요."},
         headers=headers(str(uuid4())),
     )
     assert missing.status_code == 404
+
+    missing_prompt = client.post(
+        f"/api/v1/reports/{report_id}/regenerate",
+        json={"reason": "프롬프트 누락"},
+        headers=headers(str(uuid4())),
+    )
+    assert missing_prompt.status_code == 400
+    assert missing_prompt.json()["code"] == "REQUEST_VALIDATION_FAILED"
+
+    blank_prompt = client.post(
+        f"/api/v1/reports/{report_id}/regenerate",
+        json={"prompt": "   "},
+        headers=headers(str(uuid4())),
+    )
+    assert blank_prompt.status_code == 400
+    assert blank_prompt.json()["code"] == "REQUEST_VALIDATION_FAILED"
     assert missing.json()["code"] == "REPORT_NOT_FOUND"
     assert not list((tmp_path / "jobs").rglob("report-request.json"))
 

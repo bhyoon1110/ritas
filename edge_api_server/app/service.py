@@ -159,14 +159,26 @@ class EdgeService:
             )
 
         received_at = isoformat_kst()
+        signal_id = str(uuid4())
         response = {
-            "signalId": str(uuid4()),
+            "signalId": signal_id,
             "reportId": report_id,
             "sourceJobId": report.get("source_job_id"),
             "status": "RECEIVED",
             "receivedAt": received_at,
             "executionQueued": False,
         }
+        self.database.insert_report_regeneration_request(
+            signal_id=signal_id,
+            report_id=report_id,
+            source_job_id=report.get("source_job_id"),
+            requested_at=request.requested_at,
+            requested_by=request.requested_by,
+            reason=request.reason,
+            prompt=request.prompt,
+            idempotency_key=idempotency_key,
+            received_at=received_at,
+        )
         self.save_idempotent_response(
             endpoint,
             idempotency_key,
@@ -176,10 +188,11 @@ class EdgeService:
         )
         logger.info(
             "보고서 재생성 신호 접수 (report_id=%s, source_job_id=%s, "
-            "signal_id=%s, execution_queued=false)",
+            "signal_id=%s, prompt_length=%s, execution_queued=false)",
             report_id,
             report.get("source_job_id"),
             response["signalId"],
+            len(request.prompt),
         )
         return 202, response
 
