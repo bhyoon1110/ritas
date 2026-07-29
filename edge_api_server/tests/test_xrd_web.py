@@ -123,7 +123,8 @@ def test_xrd_workspace_contains_upload_controls() -> None:
     assert 'id="xrd-report-send" disabled' in page
     assert 'REQUEST_EXPERIMENT_TYPE = "XRD"' in page
     assert 'encodeURIComponent(lastReportJob.jobId) + "/send"' in page
-    assert "LIM XRD" in page
+    assert "<h1>XRD</h1>" in page
+    assert "LIM XRD" not in page
 
 
 def test_xrd_send_route_queues_completed_package(monkeypatch, tmp_path) -> None:

@@ -1290,7 +1290,7 @@ def build_xrd_page() -> str:
   <div class="xrd-shell">
     <header class="xrd-topbar">
       <div class="xrd-brand">
-        <h1>LIM XRD</h1>
+        <h1>XRD</h1>
         <span>raw upload · ICDD peak overlay · report preview</span>
       </div>
       <div class="xrd-actions">
