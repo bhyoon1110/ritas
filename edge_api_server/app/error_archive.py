@@ -334,16 +334,29 @@ class ErrorArchive:
         project: str = "",
         status: str = "",
         query: str = "",
+        date_from: str = "",
+        date_to: str = "",
+        sort_by: str = "timestamp",
+        sort_dir: str = "desc",
         page: int = 1,
         page_size: int = 25,
     ) -> tuple[list[dict[str, object]], int]:
         self.cleanup()
-        items: list[dict[str, object]] = []
+        matches: list[dict[str, object]] = []
         needle = query.casefold().strip()
+        projects = {
+            value.strip().casefold()
+            for value in project.split(",")
+            if value.strip()
+        }
+        statuses = {
+            value.strip().casefold()
+            for value in status.split(",")
+            if value.strip()
+        }
         current_page = max(1, int(page))
         maximum = max(1, min(1000, int(page_size)))
         offset = (current_page - 1) * maximum
-        total = 0
         for child in sorted(self.root.iterdir(), reverse=True):
             event_path = child / "event.json"
             if not event_path.is_file():
@@ -353,9 +366,20 @@ class ErrorArchive:
             except (OSError, json.JSONDecodeError):
                 continue
             item.setdefault("comments", [])
-            if project and str(item.get("project", "")).casefold() != project.casefold():
+            item_date = str(item.get("timestamp") or "")[:10]
+            if date_from and item_date < date_from:
                 continue
-            if status and str(item.get("status", "")).casefold() != status.casefold():
+            if date_to and item_date > date_to:
+                continue
+            if (
+                projects
+                and str(item.get("project", "")).casefold() not in projects
+            ):
+                continue
+            if (
+                statuses
+                and str(item.get("status", "")).casefold() not in statuses
+            ):
                 continue
             if needle:
                 client_application = item.get("clientApplication") or {}
@@ -377,10 +401,32 @@ class ErrorArchive:
                 haystack = haystack.casefold()
                 if needle not in haystack:
                     continue
-            if total >= offset and len(items) < maximum:
-                items.append(item)
-            total += 1
-        return items, total
+            matches.append(item)
+
+        sort_accessors = {
+            "timestamp": lambda item: item.get("timestamp"),
+            "project": lambda item: item.get("project"),
+            "status": lambda item: item.get("status"),
+            "code": lambda item: item.get("code"),
+            "message": lambda item: item.get("message"),
+            "fileCount": lambda item: len(item.get("files") or []),
+        }
+        accessor = sort_accessors.get(sort_by, sort_accessors["timestamp"])
+
+        def sort_key(item: dict[str, object]) -> object:
+            value = accessor(item)
+            if sort_by == "fileCount":
+                return int(value or 0)
+            return str(value or "").casefold()
+
+        populated: list[dict[str, object]] = []
+        missing: list[dict[str, object]] = []
+        for item in matches:
+            value = accessor(item)
+            (missing if value is None or value == "" else populated).append(item)
+        populated.sort(key=sort_key, reverse=sort_dir.casefold() != "asc")
+        matches = populated + missing
+        return matches[offset : offset + maximum], len(matches)
 
     def update_status(self, event_id: str, status: str) -> dict[str, object]:
         normalized = status.strip().lower()
@@ -680,6 +726,8 @@ def list_usage_events(
     q: str = Query(default=""),
     date_from: str = Query(default="", alias="dateFrom"),
     date_to: str = Query(default="", alias="dateTo"),
+    sort_by: str = Query(default="timestamp", alias="sortBy"),
+    sort_dir: str = Query(default="desc", alias="sortDir"),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=25, alias="pageSize", ge=1, le=100),
     limit: int | None = Query(default=None, ge=1, le=1000),
@@ -696,6 +744,8 @@ def list_usage_events(
         query=q,
         date_from=date_from,
         date_to=date_to,
+        sort_by=sort_by,
+        sort_dir=sort_dir,
         page=effective_page,
         page_size=effective_size,
     )
@@ -727,6 +777,10 @@ def list_errors(
     project: str = Query(default=""),
     status: str = Query(default=""),
     q: str = Query(default=""),
+    date_from: str = Query(default="", alias="dateFrom"),
+    date_to: str = Query(default="", alias="dateTo"),
+    sort_by: str = Query(default="timestamp", alias="sortBy"),
+    sort_dir: str = Query(default="desc", alias="sortDir"),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=25, alias="pageSize", ge=1, le=100),
     limit: int | None = Query(default=None, ge=1, le=1000),
@@ -737,6 +791,10 @@ def list_errors(
         project=project,
         status=status,
         query=q,
+        date_from=date_from,
+        date_to=date_to,
+        sort_by=sort_by,
+        sort_dir=sort_dir,
         page=effective_page,
         page_size=effective_size,
     )
@@ -840,8 +898,9 @@ _OPERATIONS_CONSOLE_HTML = r'''<!doctype html>
     :root{font-family:Arial,"Noto Sans KR",sans-serif;color:#172033;background:#f4f6f8}
     *{box-sizing:border-box}html,body{margin:0;max-width:100%;overflow-x:hidden}.top{min-height:64px;background:#fff;border-bottom:1px solid #d8dee8;display:flex;align-items:center;justify-content:space-between;padding:0 24px;gap:16px}.top h1{font-size:21px;margin:0}.top-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.top-actions a,.logout-button{display:inline-flex;align-items:center;justify-content:center;min-height:38px;border:1px solid #bcc7d6;border-radius:6px;background:#fff;color:#42526b;padding:7px 12px;text-decoration:none;font:inherit;font-weight:700;cursor:pointer}.logout-button:disabled{opacity:.55;cursor:wait}.wrap{padding:20px 24px 40px;width:100%;max-width:100%;min-width:0;overflow:hidden}.tabs{display:flex;gap:4px;border-bottom:1px solid #ccd5e1;margin-bottom:16px;width:100%;max-width:100%}.tab{min-width:0;border:0;background:transparent;color:#657286;font:inherit;font-weight:700;padding:11px 18px;cursor:pointer;border-bottom:3px solid transparent}.tab.active{color:#183153;border-color:#2563eb}.filters{display:grid;grid-template-columns:150px 150px 170px 145px 145px minmax(220px,1fr) auto;gap:8px;width:100%;margin-bottom:12px;min-width:0}.filters select,.filters input,.filters button{height:40px;width:100%;max-width:100%;border:1px solid #bcc7d6;border-radius:6px;background:#fff;padding:0 11px;font:inherit;min-width:0}.filters button{background:#183153;color:#fff;border-color:#183153;cursor:pointer}.summary{font-size:13px;color:#5f6b7a;margin:8px 0}.panel{background:#fff;border:1px solid #d8dee8;border-radius:7px;overflow:hidden;max-width:100%;min-width:0}.table-wrap{width:100%;overflow-x:auto;overflow-y:hidden}table{border-collapse:collapse;width:100%;min-width:1180px}th,td{border-bottom:1px solid #e4e8ef;padding:11px 12px;text-align:left;vertical-align:top;font-size:13px}th{background:#eef2f6;color:#405069;position:sticky;top:0}tbody tr{cursor:pointer}tbody tr:hover{background:#f7f9fc}tbody tr.selected{background:#eaf2ff;box-shadow:inset 3px 0 #2563eb}.badge{display:inline-block;border-radius:12px;padding:3px 8px;font-size:12px;background:#e8edf4;white-space:nowrap}.badge.open,.badge.failure{background:#fee2e2;color:#9b1c1c}.badge.resolved,.badge.success{background:#dcfce7;color:#166534}.badge.report-complete{background:#dbeafe;color:#1e40af}.badge.screen-view{background:#f1f5f9;color:#475569}.code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}.empty{padding:54px;text-align:center;color:#738096}.detail-backdrop{display:none;position:fixed;inset:0;background:rgba(15,23,42,.38);z-index:1000}.detail-backdrop.open{display:block}.detail{display:none;position:fixed;z-index:1001;top:12px;right:12px;bottom:12px;width:min(820px,calc(100vw - 48px));padding:0;overflow-y:auto;box-shadow:0 18px 50px rgba(15,23,42,.24)}.detail.open{display:block}.detail-toolbar{position:sticky;top:0;z-index:2;min-height:52px;padding:0 16px;display:flex;align-items:center;justify-content:space-between;background:#fff;border-bottom:1px solid #d8dee8}.detail-toolbar b{font-size:15px}.detail-close{width:36px;height:36px;border:0;border-radius:5px;background:transparent;color:#42526b;font-size:26px;line-height:1;cursor:pointer}.detail-close:hover{background:#eef2f6}.detail-content{padding:18px}.detail-head{display:flex;align-items:flex-start;justify-content:space-between;gap:20px}.detail h2{font-size:18px;margin:0 0 5px}.actions{display:flex;gap:7px;flex-wrap:wrap}.actions button,.actions a{height:36px;border:1px solid #aeb9c8;border-radius:5px;background:#fff;color:#24364d;padding:0 11px;display:inline-flex;align-items:center;text-decoration:none;cursor:pointer;font:inherit}.actions .danger{color:#a11b1b}.meta{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:16px 0}.meta div{background:#f5f7fa;border-radius:5px;padding:10px;min-width:0;overflow-wrap:anywhere}.meta b{display:block;font-size:11px;color:#687587;margin-bottom:5px}.message{border-left:4px solid #d64545;background:#fff4f4;padding:12px;margin:12px 0;white-space:pre-wrap}.files{display:grid;gap:6px}.file{display:flex;justify-content:space-between;align-items:center;gap:12px;border:1px solid #dce2ea;border-radius:5px;padding:8px 10px}.file a{word-break:break-all}.comments{display:grid;gap:7px}.comment{border:1px solid #dce2ea;border-radius:5px;padding:10px}.comment-head{display:flex;justify-content:space-between;gap:12px}.comment p{margin:8px 0 0;white-space:pre-wrap}.comment-form{display:grid;grid-template-columns:minmax(120px,180px) minmax(240px,1fr) auto;gap:8px;margin-top:9px}.comment-form input,.comment-form textarea,.comment-form button{border:1px solid #aeb9c8;border-radius:5px;padding:9px;font:inherit}.comment-form textarea{min-height:42px;resize:vertical}.comment-form button{background:#183153;color:#fff;border-color:#183153;cursor:pointer}.trace{white-space:pre-wrap;overflow:auto;max-height:320px;background:#111827;color:#dbe5f3;padding:12px;border-radius:5px;font:12px ui-monospace,SFMono-Regular,Menlo,monospace}.muted{color:#6b7788}.usage-only.hidden{display:none}body.detail-open{overflow:hidden}
     .top{flex-wrap:wrap}.top-actions{justify-content:flex-end}.pager{display:flex;align-items:center;justify-content:flex-end;gap:8px;margin-top:12px}.pager label{display:flex;align-items:center;gap:7px;color:#5f6b7a;font-size:13px}.pager select,.pager button{height:36px;border:1px solid #bcc7d6;border-radius:5px;background:#fff;padding:0 10px;font:inherit}.pager button{cursor:pointer}.pager button:disabled{opacity:.45;cursor:not-allowed}.page-info{min-width:80px;text-align:center;font-size:13px;color:#42526b}
+    .filters{grid-template-columns:160px 160px 180px 142px 142px auto minmax(220px,1fr) auto}.multi-filter{position:relative;height:40px;min-width:0}.multi-filter summary{height:40px;display:flex;align-items:center;justify-content:space-between;gap:8px;border:1px solid #bcc7d6;border-radius:6px;background:#fff;padding:0 11px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;list-style:none}.multi-filter summary::-webkit-details-marker{display:none}.multi-filter summary:after{content:"▾";flex:0 0 auto;color:#64748b}.multi-filter[open] summary{border-color:#2563eb;box-shadow:0 0 0 2px rgba(37,99,235,.12)}.multi-menu{position:absolute;z-index:20;top:44px;left:0;min-width:230px;max-height:310px;overflow:auto;background:#fff;border:1px solid #bcc7d6;border-radius:6px;box-shadow:0 10px 26px rgba(15,23,42,.16);padding:7px}.multi-menu label{display:flex;align-items:center;gap:8px;padding:8px;border-radius:4px;cursor:pointer;white-space:nowrap}.multi-menu label:hover{background:#f1f5f9}.multi-menu input{width:17px;height:17px;margin:0}.multi-menu .clear-filter{height:32px;margin-top:5px;background:#fff;color:#334155;border-color:#cbd5e1}.date-clear{background:#fff!important;color:#334155!important;border-color:#bcc7d6!important;white-space:nowrap}.sort-button{width:100%;display:flex;align-items:center;justify-content:space-between;gap:7px;border:0;background:transparent;color:inherit;font:inherit;font-weight:700;padding:0;cursor:pointer;text-align:left}.sort-button .sort-mark{color:#2563eb}.table-wrap table{table-layout:fixed}.table-wrap th,.table-wrap td{overflow:hidden;text-overflow:ellipsis}.table-wrap td{overflow-wrap:anywhere}.table-wrap th{white-space:nowrap}.page-numbers{display:flex;gap:4px}.page-numbers button{min-width:36px;padding:0 8px}.page-numbers button.active{background:#183153;color:#fff;border-color:#183153}.page-jump{width:72px;height:36px;border:1px solid #bcc7d6;border-radius:5px;padding:0 8px;font:inherit}.usage-table{width:1365px;min-width:1365px;max-width:1365px}.error-table{width:1120px;min-width:1120px;max-width:1120px}
     @media(max-width:980px){.filters{grid-template-columns:1fr 1fr 1fr}.filters .query{grid-column:1/3}.meta{grid-template-columns:1fr 1fr}}
-    @media(max-width:640px){.top{padding:12px 14px}.top .top-actions{width:100%}.top h1{font-size:19px}.wrap{padding:14px}.tabs{margin-bottom:12px}.tab{flex:1;padding:10px 8px}.filters{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.filters .query{grid-column:1/-1}.filters button{grid-column:1/-1}.detail{inset:0;width:100%;max-width:none;border:0;border-radius:0}.detail-content{padding:14px}.detail-head{display:block}.actions{margin-top:12px}.meta{grid-template-columns:1fr}.file{align-items:flex-start;flex-direction:column}.comment-form{grid-template-columns:1fr}.comment-head{display:block}}
+    @media(max-width:640px){.top{padding:12px 14px}.top .top-actions{width:100%}.top h1{font-size:19px}.wrap{padding:14px}.tabs{margin-bottom:12px}.tab{flex:1;padding:10px 8px}.filters{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.filters .query{grid-column:1/-1}.filters #refresh{grid-column:1/-1}.multi-menu{position:fixed;left:14px;right:14px;top:auto;min-width:0}.pager{justify-content:center;flex-wrap:wrap}.page-numbers{order:3;width:100%;justify-content:center}.detail{inset:0;width:100%;max-width:none;border:0;border-radius:0}.detail-content{padding:14px}.detail-head{display:block}.actions{margin-top:12px}.meta{grid-template-columns:1fr}.file{align-items:flex-start;flex-direction:column}.comment-form{grid-template-columns:1fr}.comment-head{display:block}}
   </style>
 </head>
 <body data-default-tab="__DEFAULT_TAB__">
@@ -854,35 +913,29 @@ _OPERATIONS_CONSOLE_HTML = r'''<!doctype html>
       <a class="tab" href="/admin/users">회원 관리</a>
     </nav>
     <section class="filters">
-      <select id="project" aria-label="프로젝트">
-        <option value="">전체 프로젝트</option><option>FT-IR</option><option>RAMAN</option><option>XRD</option><option>TEM</option><option>EDGE</option>
-      </select>
-      <select id="state" aria-label="결과 또는 상태"></select>
-      <select class="usage-only" id="activity-type" aria-label="사용 기록 유형">
-        <option value="">전체 기록 유형</option>
-        <option value="SCREEN_VIEW">화면 조회</option>
-        <option value="LOOKUP">정보 조회</option>
-        <option value="FILE_TRANSFER">파일 전송</option>
-        <option value="REPORT_REQUEST">보고서 생성 요청</option>
-        <option value="REPORT_COMPLETE">보고서 완료</option>
-        <option value="REPORT_FAILED">보고서 실패</option>
-        <option value="REPORT_DOWNLOAD">보고서 다운로드</option>
-        <option value="REPORT_SEND">보고서 전송</option>
-        <option value="ACTION">기타 업무 실행</option>
-      </select>
-      <input class="usage-only" id="date-from" type="date" aria-label="시작일">
-      <input class="usage-only" id="date-to" type="date" aria-label="종료일">
+      <details class="multi-filter" id="project" data-all-label="전체 프로젝트"><summary>전체 프로젝트</summary><div class="multi-menu">
+        <label><input type="checkbox" value="FT-IR">FT-IR</label><label><input type="checkbox" value="RAMAN">RAMAN</label><label><input type="checkbox" value="XRD">XRD</label><label><input type="checkbox" value="TEM">TEM</label><label><input type="checkbox" value="EDGE">EDGE</label>
+        <button type="button" class="clear-filter" data-filter="project">전체 해제</button>
+      </div></details>
+      <details class="multi-filter" id="state" data-all-label="전체 결과"><summary>전체 결과</summary><div class="multi-menu"></div></details>
+      <details class="multi-filter usage-only" id="activity-type" data-all-label="전체 기록 유형"><summary>전체 기록 유형</summary><div class="multi-menu">
+        <label><input type="checkbox" value="SCREEN_VIEW">화면 조회</label><label><input type="checkbox" value="LOOKUP">정보 조회</label><label><input type="checkbox" value="FILE_TRANSFER">파일 전송</label><label><input type="checkbox" value="REPORT_REQUEST">보고서 생성 요청</label><label><input type="checkbox" value="REPORT_COMPLETE">보고서 완료</label><label><input type="checkbox" value="REPORT_FAILED">보고서 실패</label><label><input type="checkbox" value="REPORT_DOWNLOAD">보고서 다운로드</label><label><input type="checkbox" value="REPORT_SEND">보고서 전송</label><label><input type="checkbox" value="ACTION">기타 업무 실행</label>
+        <button type="button" class="clear-filter" data-filter="activity-type">전체 해제</button>
+      </div></details>
+      <input id="date-from" type="date" aria-label="시작일">
+      <input id="date-to" type="date" aria-label="종료일">
+      <button type="button" class="date-clear" id="all-dates">전체 기간</button>
       <input class="query" id="query" placeholder="의뢰번호, 작업 ID, 코드, 메시지 검색">
       <button type="button" id="refresh">조회</button>
     </section>
     <div class="summary" id="summary"></div>
     <section class="panel table-wrap">
-      <table><thead><tr id="head-row"></tr></thead><tbody id="rows"></tbody></table>
+      <table id="record-table"><colgroup id="column-widths"></colgroup><thead><tr id="head-row"></tr></thead><tbody id="rows"></tbody></table>
       <div class="empty" id="empty" hidden>기록이 없습니다.</div>
     </section>
     <div class="pager" aria-label="목록 페이지 이동">
       <label>페이지당 <select id="page-size"><option>25</option><option>50</option><option>100</option></select></label>
-      <button type="button" id="prev-page">이전</button><span class="page-info" id="page-info">1 / 1</span><button type="button" id="next-page">다음</button>
+      <button type="button" id="first-page" title="첫 페이지">처음</button><button type="button" id="prev-page">이전</button><div class="page-numbers" id="page-numbers"></div><span class="page-info" id="page-info">1 / 1</span><button type="button" id="next-page">다음</button><button type="button" id="last-page" title="마지막 페이지">끝</button><input class="page-jump" id="page-jump" type="number" min="1" value="1" aria-label="이동할 페이지"><button type="button" id="go-page">이동</button>
     </div>
   </main>
   <div class="detail-backdrop" id="detail-backdrop" aria-hidden="true"></div>
@@ -891,7 +944,7 @@ _OPERATIONS_CONSOLE_HTML = r'''<!doctype html>
   (function(){
     const $=id=>document.getElementById(id);
     const esc=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
-    let activeTab=document.body.dataset.defaultTab==='errors'?'errors':'usage',currentPage=1,totalPages=1;
+    let activeTab=document.body.dataset.defaultTab==='errors'?'errors':'usage',currentPage=1,totalPages=1,sortBy='timestamp',sortDir='desc';
     function localDate(value){if(!value)return '-';try{return new Date(value).toLocaleString('ko-KR')}catch(_error){return value}}
     function size(value){let n=Number(value||0),units=['B','KB','MB','GB'],index=0;while(n>=1024&&index<3){n/=1024;index+=1}return(index?n.toFixed(1):n)+' '+units[index]}
     function duration(value){const ms=Number(value||0);return ms>=1000?(ms/1000).toFixed(ms>=10000?1:2)+'초':ms+'ms'}
@@ -899,16 +952,34 @@ _OPERATIONS_CONSOLE_HTML = r'''<!doctype html>
     async function api(url,options){const response=await fetch(url,options);if(!response.ok){let message='요청 처리 실패';try{const payload=await response.json();message=payload.detail||payload.message||message}catch(_error){}throw new Error(message)}return response.status===204?null:response.json()}
     function closeDetail(){$('detail').className='panel detail';$('detail').innerHTML='';$('detail-backdrop').className='detail-backdrop';document.body.classList.remove('detail-open');document.querySelectorAll('tr[data-id]').forEach(row=>row.classList.remove('selected'))}
     function openDetail(content){$('detail').className='panel detail open';$('detail').innerHTML=`<div class="detail-toolbar"><b>상세 정보</b><button type="button" class="detail-close" id="detail-close" aria-label="상세 정보 닫기">&times;</button></div><div class="detail-content">${content}</div>`;$('detail-backdrop').className='detail-backdrop open';document.body.classList.add('detail-open');$('detail-close').onclick=closeDetail;$('detail-close').focus()}
-    function setDefaultDates(){if($('date-from').value)return;const end=new Date(),start=new Date();start.setDate(end.getDate()-7);$('date-from').value=start.toISOString().slice(0,10);$('date-to').value=end.toISOString().slice(0,10)}
-    function setTab(tab,loadNow){activeTab=tab==='errors'?'errors':'usage';currentPage=1;document.querySelectorAll('.tab').forEach(button=>button.classList.toggle('active',button.dataset.tab===activeTab));document.querySelectorAll('.usage-only').forEach(element=>element.classList.toggle('hidden',activeTab!=='usage'));$('state').innerHTML=activeTab==='usage'?'<option value="">전체 결과</option><option value="success">성공</option><option value="failure">실패</option>':'<option value="">전체 상태</option><option value="open">미해결</option><option value="resolved">해결</option>';$('head-row').innerHTML=activeTab==='usage'?'<th>발생 시각</th><th>프로젝트</th><th>기록 유형</th><th>동작</th><th>결과</th><th>처리시간</th><th>의뢰번호</th><th>작업 ID</th><th>클라이언트 / 접속 위치</th>':'<th>발생 시각</th><th>프로젝트</th><th>상태</th><th>오류 코드</th><th>메시지</th><th>파일</th>';closeDetail();$('empty').textContent=activeTab==='usage'?'사용 기록이 없습니다.':'오류 기록이 없습니다.';history.replaceState(null,'',activeTab==='usage'?'/operations':'/errors');if(activeTab==='usage')setDefaultDates();if(loadNow)load()}
-    async function load(){const params=new URLSearchParams({project:$('project').value,q:$('query').value,page:String(currentPage),pageSize:$('page-size').value});let endpoint;if(activeTab==='usage'){params.set('result',$('state').value);params.set('activityType',$('activity-type').value);params.set('dateFrom',$('date-from').value);params.set('dateTo',$('date-to').value);endpoint='/api/v1/usage-events?'+params}else{params.set('status',$('state').value);endpoint='/api/v1/errors?'+params}const data=await api(endpoint);const items=data.items||[];currentPage=Number(data.page||1);totalPages=Number(data.totalPages||1);$('summary').textContent=`전체 ${Number(data.total||0).toLocaleString('ko-KR')}건 · 현재 ${items.length}건`;$('page-info').textContent=`${currentPage} / ${totalPages}`;$('prev-page').disabled=currentPage<=1;$('next-page').disabled=currentPage>=totalPages;$('empty').hidden=Boolean(items.length);$('rows').innerHTML=activeTab==='usage'?usageRows(items):errorRows(items);document.querySelectorAll('tr[data-id]').forEach(row=>row.onclick=()=>show(row.dataset.id))}
+    function selectedValues(id){return [...$(id).querySelectorAll('input[type="checkbox"]:checked')].map(input=>input.value)}
+    function refreshFilterLabel(id){const element=$(id),values=selectedValues(id),allLabel=element.dataset.allLabel||'전체';element.querySelector('summary').textContent=values.length?(values.length<=2?values.join(', '):`${values.slice(0,2).join(', ')} 외 ${values.length-2}개`):allLabel}
+    function setFilterOptions(id,options,allLabel){const element=$(id);element.dataset.allLabel=allLabel;element.querySelector('.multi-menu').innerHTML=options.map(option=>`<label><input type="checkbox" value="${esc(option.value)}">${esc(option.label)}</label>`).join('')+`<button type="button" class="clear-filter" data-filter="${id}">전체 해제</button>`;refreshFilterLabel(id);bindFilter(id)}
+    function sortable(label,key){const mark=sortBy===key?(sortDir==='asc'?'▲':'▼'):'';return `<th><button type="button" class="sort-button" data-sort="${key}"><span>${label}</span><span class="sort-mark">${mark}</span></button></th>`}
+    function renderHead(){if(activeTab==='usage'){$('record-table').className='usage-table';$('column-widths').innerHTML='<col style="width:165px"><col style="width:105px"><col style="width:125px"><col style="width:180px"><col style="width:85px"><col style="width:90px"><col style="width:145px"><col style="width:210px"><col style="width:260px">';$('head-row').innerHTML=sortable('발생 시각','timestamp')+sortable('프로젝트','project')+sortable('기록 유형','activityType')+sortable('동작','action')+sortable('결과','result')+sortable('처리시간','durationMs')+sortable('의뢰번호','requestNumber')+sortable('작업 ID','jobId')+sortable('클라이언트 / 접속 위치','client')}else{$('record-table').className='error-table';$('column-widths').innerHTML='<col style="width:165px"><col style="width:110px"><col style="width:95px"><col style="width:165px"><col style="width:500px"><col style="width:85px">';$('head-row').innerHTML=sortable('발생 시각','timestamp')+sortable('프로젝트','project')+sortable('상태','status')+sortable('오류 코드','code')+sortable('메시지','message')+sortable('파일','fileCount')}document.querySelectorAll('[data-sort]').forEach(button=>button.onclick=()=>{const key=button.dataset.sort;if(sortBy===key)sortDir=sortDir==='asc'?'desc':'asc';else{sortBy=key;sortDir=key==='timestamp'?'desc':'asc'}currentPage=1;renderHead();load().catch(error=>$('summary').textContent=error.message)})}
+    function setTab(tab,loadNow){activeTab=tab==='errors'?'errors':'usage';currentPage=1;sortBy='timestamp';sortDir='desc';document.querySelectorAll('.tab').forEach(button=>button.classList.toggle('active',button.dataset.tab===activeTab));document.querySelectorAll('.usage-only').forEach(element=>element.classList.toggle('hidden',activeTab!=='usage'));setFilterOptions('state',activeTab==='usage'?[{value:'success',label:'성공'},{value:'failure',label:'실패'}]:[{value:'open',label:'미해결'},{value:'resolved',label:'해결'}],activeTab==='usage'?'전체 결과':'전체 상태');renderHead();closeDetail();$('empty').textContent=activeTab==='usage'?'사용 기록이 없습니다.':'오류 기록이 없습니다.';history.replaceState(null,'',activeTab==='usage'?'/operations':'/errors');if(loadNow)load()}
+    function renderPager(){const start=Math.max(1,Math.min(currentPage-3,totalPages-6)),end=Math.min(totalPages,start+6);$('page-numbers').innerHTML=Array.from({length:Math.max(0,end-start+1)},(_,index)=>{const page=start+index;return `<button type="button" class="${page===currentPage?'active':''}" data-page="${page}" aria-label="${page} 페이지">${page}</button>`}).join('');$('page-numbers').querySelectorAll('[data-page]').forEach(button=>button.onclick=()=>goPage(Number(button.dataset.page)));$('page-info').textContent=`${currentPage} / ${totalPages}`;$('page-jump').value=currentPage;$('first-page').disabled=$('prev-page').disabled=currentPage<=1;$('last-page').disabled=$('next-page').disabled=currentPage>=totalPages}
+    function goPage(page){const target=Math.max(1,Math.min(Number(page)||1,totalPages));if(target===currentPage)return;currentPage=target;load().catch(error=>$('summary').textContent=error.message)}
+    async function load(){const params=new URLSearchParams({project:selectedValues('project').join(','),q:$('query').value,page:String(currentPage),pageSize:$('page-size').value,dateFrom:$('date-from').value,dateTo:$('date-to').value,sortBy,sortDir});let endpoint;if(activeTab==='usage'){params.set('result',selectedValues('state').join(','));params.set('activityType',selectedValues('activity-type').join(','));endpoint='/api/v1/usage-events?'+params}else{params.set('status',selectedValues('state').join(','));endpoint='/api/v1/errors?'+params}const data=await api(endpoint);const items=data.items||[];currentPage=Number(data.page||1);totalPages=Math.max(1,Number(data.totalPages||1));$('summary').textContent=`전체 ${Number(data.total||0).toLocaleString('ko-KR')}건 · 현재 ${items.length}건 · ${sortDir==='asc'?'오름차순':'내림차순'}`;renderPager();$('empty').hidden=Boolean(items.length);$('rows').innerHTML=activeTab==='usage'?usageRows(items):errorRows(items);document.querySelectorAll('tr[data-id]').forEach(row=>row.onclick=()=>show(row.dataset.id))}
     function usageRows(items){return items.map(item=>{const app=item.clientApplication||{},request=item.request||{},client=[app.type,app.name].filter(Boolean).join(' · ')||'-',ip=request.clientIp||request.client||'',location=[app.sourceHostName?'PC '+app.sourceHostName:'',ip?'IP '+ip:''].filter(Boolean).join(' · ')||'-',type=item.activityType||'ACTION';return `<tr data-id="${esc(item.eventId)}"><td>${esc(localDate(item.timestamp))}</td><td>${esc(item.project)}</td><td><span class="badge ${type==='REPORT_COMPLETE'?'report-complete':type==='SCREEN_VIEW'?'screen-view':''}">${esc(activityLabel(type))}</span></td><td>${esc(item.action)}</td><td><span class="badge ${esc(item.result)}">${item.result==='failure'?'실패':'성공'}</span></td><td>${esc(duration(item.durationMs))}</td><td>${esc(item.requestNumber||'-')}</td><td class="code">${esc(item.jobId||'-')}</td><td><b>${esc(client)}</b><br><span class="muted">${esc(location)}</span></td></tr>`}).join('')}
     function errorRows(items){return items.map(item=>`<tr data-id="${esc(item.eventId)}"><td>${esc(localDate(item.timestamp))}</td><td>${esc(item.project)}</td><td><span class="badge ${esc(item.status)}">${item.status==='resolved'?'해결':'미해결'}</span></td><td class="code">${esc(item.code)}</td><td>${esc(item.message)}</td><td>${(item.files||[]).length}개</td></tr>`).join('')}
     async function show(id){document.querySelectorAll('tr[data-id]').forEach(row=>row.classList.toggle('selected',row.dataset.id===id));if(activeTab==='usage'){showUsage(await api('/api/v1/usage-events/'+encodeURIComponent(id)));return}showError(await api('/api/v1/errors/'+encodeURIComponent(id)))}
     function showUsage(item){const request=item.request||{},app=item.clientApplication||{},file=item.file||{},transfer=item.transfer||{};const fileLabel=file.relativePath||file.name||'-',peer=request.peerIp||request.client||'-';openDetail(`<div class="detail-head"><div><h2>${esc(item.project)} · ${esc(item.action)}</h2><span class="muted code">${esc(item.eventId)}</span></div><span class="badge ${esc(item.result)}">${item.result==='failure'?'실패':'성공'}</span></div><div class="meta"><div><b>기록 유형</b>${esc(activityLabel(item.activityType||'ACTION'))}</div><div><b>발생 시각</b>${esc(localDate(item.timestamp))}</div><div><b>처리시간</b>${esc(duration(item.durationMs))}</div><div><b>HTTP 상태</b>${esc(item.statusCode)}</div><div><b>요청 경로</b>${esc(request.method||'-')} ${esc(request.endpoint||'-')}</div><div><b>의뢰번호</b>${esc(item.requestNumber||'-')}</div><div><b>작업 ID</b>${esc(item.jobId||'-')}</div><div><b>실험코드 / 장비</b>${esc(item.experimentCode||'-')} / ${esc(item.equipmentCode||'-')}</div><div><b>실험자</b>${esc(item.operatorId||'-')}</div><div><b>클라이언트</b>${esc(app.type||'-')} · ${esc(app.name||'-')}</div><div><b>버전 / 실험 PC</b>${esc(app.version||'-')} / ${esc(app.sourceHostName||'-')}</div><div><b>접속 IP</b>${esc(request.clientIp||peer)}</div><div><b>서버 연결 IP</b>${esc(peer)}</div><div><b>프록시 전달 경로</b>${esc(request.forwardedFor||'-')}</div><div><b>파일</b>${esc(fileLabel)}</div><div><b>파일 크기</b>${file.sizeBytes==null?'-':esc(size(file.sizeBytes))}</div><div><b>SHA-256</b><span class="code">${esc(file.sha256||'-')}</span></div><div><b>전송 합계</b>${transfer.fileCount==null?'-':esc(transfer.fileCount+'개 / '+size(transfer.totalSizeBytes||0))}</div><div><b>요청 ID</b>${esc(item.requestId||'-')}</div><div><b>User-Agent</b>${esc(request.userAgent||'-')}</div></div>`)}
     function showError(item){const files=(item.files||[]).map(file=>`<div class="file"><a href="/api/v1/errors/${encodeURIComponent(item.eventId)}/files/${file.path.split('/').map(encodeURIComponent).join('/')}">${esc(file.path)}</a><span>${size(file.sizeBytes)}</span></div>`).join('')||'<div class="muted">보관된 실패 파일이 없습니다.</div>';const comments=(item.comments||[]).map(comment=>`<div class="comment"><div class="comment-head"><b>${esc(comment.author||'고객')}</b><span class="muted">${esc(localDate(comment.createdAt))}</span></div><p>${esc(comment.content)}</p></div>`).join('')||'<div class="muted">등록된 코멘트가 없습니다.</div>';const trace=item.traceback||'',app=item.clientApplication||{},file=item.file||{};openDetail(`<div class="detail-head"><div><h2>${esc(item.project)} · <span class="code">${esc(item.code)}</span></h2><span class="muted code">${esc(item.eventId)}</span></div><div class="actions"><a href="/error-feedback/${encodeURIComponent(item.eventId)}" target="_blank">고객 입력 화면</a><a href="/api/v1/errors/${encodeURIComponent(item.eventId)}/archive">전체 ZIP</a><button id="toggle">${item.status==='resolved'?'미해결로 변경':'해결 처리'}</button><button class="danger" id="delete">삭제</button></div></div><div class="meta"><div><b>발생 시각</b>${esc(localDate(item.timestamp))}</div><div><b>작업 ID</b>${esc(item.jobId||'-')}</div><div><b>요청 ID</b>${esc(item.requestId||'-')}</div><div><b>경로</b>${esc((item.request||{}).endpoint||'-')}</div><div><b>클라이언트</b>${esc(app.type||'-')} · ${esc(app.name||'-')}</div><div><b>버전 / 실험 PC</b>${esc(app.version||'-')} / ${esc(app.sourceHostName||'-')}</div><div><b>요청 파일</b>${esc(file.relativePath||file.name||'-')}</div><div><b>요청 파일 크기</b>${file.sizeBytes==null?'-':esc(size(Number(file.sizeBytes)))}</div></div><div class="message">${esc(item.message)}</div><h3>고객 코멘트</h3><div class="comments">${comments}</div><div class="comment-form"><input id="comment-author" maxlength="100" value="고객" aria-label="작성자"><textarea id="comment-content" maxlength="4000" placeholder="오류가 발생한 상황과 재현 방법" aria-label="코멘트"></textarea><button id="add-comment" type="button">코멘트 등록</button></div><h3>실패 파일</h3><div class="files">${files}</div>${item.filesTruncated?'<p class="muted">보존 용량 제한으로 일부 파일은 제외되었습니다.</p>':''}${trace?'<h3>스택 트레이스</h3><pre class="trace">'+esc(trace)+'</pre>':''}`);$('add-comment').onclick=async()=>{const content=$('comment-content').value.trim();if(!content){alert('코멘트를 입력하세요.');return}await api('/api/v1/errors/'+encodeURIComponent(item.eventId)+'/comments',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({author:$('comment-author').value,content})});await show(item.eventId)};$('toggle').onclick=async()=>{await api('/api/v1/errors/'+encodeURIComponent(item.eventId),{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:item.status==='resolved'?'open':'resolved'})});await load();await show(item.eventId)};$('delete').onclick=async()=>{if(!confirm('이 오류 기록과 보관 파일을 삭제할까요?'))return;await api('/api/v1/errors/'+encodeURIComponent(item.eventId),{method:'DELETE'});closeDetail();await load()}}
     async function logout(){const button=$('logout-button');button.disabled=true;try{const response=await fetch('/api/v1/auth/logout',{method:'POST',headers:{'X-Requested-With':'RIST-Operations'}});if(!response.ok)throw new Error('로그아웃하지 못했습니다.');location.href='/login'}catch(error){button.disabled=false;$('summary').textContent=error.message}}
-    document.querySelectorAll('.tab[data-tab]').forEach(button=>button.onclick=()=>setTab(button.dataset.tab,true));$('refresh').onclick=()=>{currentPage=1;load().catch(error=>$('summary').textContent=error.message)};$('query').onkeydown=event=>{if(event.key==='Enter')$('refresh').click()};$('page-size').onchange=()=>{currentPage=1;load().catch(error=>$('summary').textContent=error.message)};$('prev-page').onclick=()=>{if(currentPage>1){currentPage-=1;load().catch(error=>$('summary').textContent=error.message)}};$('next-page').onclick=()=>{if(currentPage<totalPages){currentPage+=1;load().catch(error=>$('summary').textContent=error.message)}};$('logout-button').onclick=logout;$('detail-backdrop').onclick=closeDetail;document.addEventListener('keydown',event=>{if(event.key==='Escape'&&$('detail').classList.contains('open'))closeDetail()});setTab(activeTab,false);load().catch(error=>$('summary').textContent=error.message);
+    function bindFilter(id){const element=$(id);element.querySelectorAll('input[type="checkbox"]').forEach(input=>input.onchange=()=>{refreshFilterLabel(id);currentPage=1;load().catch(error=>$('summary').textContent=error.message)});const clear=element.querySelector('.clear-filter');if(clear)clear.onclick=event=>{event.preventDefault();event.stopPropagation();element.querySelectorAll('input[type="checkbox"]').forEach(input=>input.checked=false);refreshFilterLabel(id);currentPage=1;load().catch(error=>$('summary').textContent=error.message)}}
+    document.querySelectorAll('.tab[data-tab]').forEach(button=>button.onclick=()=>setTab(button.dataset.tab,true));
+    $('refresh').onclick=()=>{currentPage=1;load().catch(error=>$('summary').textContent=error.message)};
+    $('query').onkeydown=event=>{if(event.key==='Enter')$('refresh').click()};
+    $('page-size').onchange=()=>{currentPage=1;load().catch(error=>$('summary').textContent=error.message)};
+    $('first-page').onclick=()=>goPage(1);$('prev-page').onclick=()=>goPage(currentPage-1);$('next-page').onclick=()=>goPage(currentPage+1);$('last-page').onclick=()=>goPage(totalPages);$('go-page').onclick=()=>goPage($('page-jump').value);$('page-jump').onkeydown=event=>{if(event.key==='Enter')$('go-page').click()};
+    $('all-dates').onclick=()=>{$('date-from').value='';$('date-to').value='';currentPage=1;load().catch(error=>$('summary').textContent=error.message)};
+    $('date-from').onchange=$('date-to').onchange=()=>{currentPage=1;load().catch(error=>$('summary').textContent=error.message)};
+    $('logout-button').onclick=logout;$('detail-backdrop').onclick=closeDetail;
+    document.addEventListener('toggle',event=>{if(event.target.matches&&event.target.matches('.multi-filter[open]'))document.querySelectorAll('.multi-filter[open]').forEach(element=>{if(element!==event.target)element.open=false})},true);
+    document.addEventListener('click',event=>{if(!event.target.closest('.multi-filter'))document.querySelectorAll('.multi-filter[open]').forEach(element=>element.open=false)});
+    document.addEventListener('keydown',event=>{if(event.key==='Escape'){document.querySelectorAll('.multi-filter[open]').forEach(element=>element.open=false);if($('detail').classList.contains('open'))closeDetail()}});
+    setTab(activeTab,false);bindFilter('project');bindFilter('activity-type');refreshFilterLabel('project');refreshFilterLabel('activity-type');load().catch(error=>$('summary').textContent=error.message);
   })();
   </script>
 </body>

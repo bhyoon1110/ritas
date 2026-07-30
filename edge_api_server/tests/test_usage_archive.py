@@ -115,6 +115,67 @@ def test_usage_archive_records_filters_and_reads_event(tmp_path: Path) -> None:
     assert archive.list(activity_type="REPORT_COMPLETE") == [completed]
 
 
+def test_usage_archive_supports_multi_filters_dates_sorting_and_pages(
+    tmp_path: Path,
+) -> None:
+    archive = UsageArchive(UsageArchiveSettings(root=tmp_path / "usage"))
+    ftir = archive.record(
+        project="FT-IR",
+        action="보고서 생성 요청",
+        result="success",
+        status_code=202,
+        duration_ms=10,
+        method="POST",
+        endpoint="/api/v1/ftir/report",
+    )
+    raman = archive.record(
+        project="RAMAN",
+        action="보고서 생성 요청",
+        result="success",
+        status_code=202,
+        duration_ms=30,
+        method="POST",
+        endpoint="/api/v1/raman/report",
+    )
+    archive.record(
+        project="TEM",
+        action="보고서 생성 실패",
+        result="failure",
+        status_code=500,
+        duration_ms=20,
+        method="POST",
+        endpoint="/api/v1/tem/report",
+    )
+    event_date = str(ftir["timestamp"])[:10]
+
+    first_page, total = archive.list_page(
+        project="FT-IR,RAMAN",
+        result="success",
+        activity_type="REPORT_REQUEST",
+        date_from=event_date,
+        date_to=event_date,
+        sort_by="durationMs",
+        sort_dir="desc",
+        page=1,
+        page_size=1,
+    )
+    second_page, second_total = archive.list_page(
+        project="FT-IR,RAMAN",
+        result="success",
+        activity_type="REPORT_REQUEST",
+        date_from=event_date,
+        date_to=event_date,
+        sort_by="durationMs",
+        sort_dir="desc",
+        page=2,
+        page_size=1,
+    )
+
+    assert total == second_total == 2
+    assert first_page == [raman]
+    assert second_page == [ftir]
+
+
 def test_usage_middleware_records_user_actions_and_skips_repeated_requests(
     tmp_path: Path,
 ) -> None:
@@ -239,8 +300,17 @@ def test_operations_console_has_usage_and_error_tabs(tmp_path: Path) -> None:
     assert "function closeDetail()" in operations.text
     assert "position:fixed" in operations.text
     assert 'id="page-size"' in operations.text
+    assert 'id="first-page"' in operations.text
     assert 'id="prev-page"' in operations.text
     assert 'id="next-page"' in operations.text
+    assert 'id="last-page"' in operations.text
+    assert 'id="page-jump"' in operations.text
+    assert 'id="date-from"' in operations.text
+    assert 'id="date-to"' in operations.text
+    assert 'id="all-dates"' in operations.text
+    assert 'data-all-label="전체 프로젝트"' in operations.text
+    assert "table-layout:fixed" in operations.text
+    assert "data-sort=" in operations.text
     assert errors.status_code == 200
     assert 'data-default-tab="errors"' in errors.text
     assert client.get("/api/v1/usage-events").json()["count"] == 0

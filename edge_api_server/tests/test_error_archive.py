@@ -133,6 +133,55 @@ def test_error_console_api_paginates_results(tmp_path: Path) -> None:
     assert data["totalPages"] == 3
 
 
+def test_error_archive_supports_multi_filters_dates_sorting_and_pages(
+    tmp_path: Path,
+) -> None:
+    archive = ErrorArchive(ErrorArchiveSettings(root=tmp_path / "errors"))
+    xrd = archive.record(
+        project="XRD",
+        code="XRD_BAD_INPUT",
+        message="XRD input failed",
+    )
+    tem = archive.record(
+        project="TEM",
+        code="TEM_BAD_INPUT",
+        message="TEM input failed",
+    )
+    archive.record(
+        project="FT-IR",
+        code="FTIR_BAD_INPUT",
+        message="FT-IR input failed",
+    )
+    archive.update_status(str(tem["eventId"]), "resolved")
+    event_date = str(xrd["timestamp"])[:10]
+
+    first_page, total = archive.list_page(
+        project="XRD,TEM",
+        status="open,resolved",
+        date_from=event_date,
+        date_to=event_date,
+        sort_by="project",
+        sort_dir="asc",
+        page=1,
+        page_size=1,
+    )
+    second_page, second_total = archive.list_page(
+        project="XRD,TEM",
+        status="open,resolved",
+        date_from=event_date,
+        date_to=event_date,
+        sort_by="project",
+        sort_dir="asc",
+        page=2,
+        page_size=1,
+    )
+
+    assert total == second_total == 2
+    assert first_page[0]["project"] == "TEM"
+    assert first_page[0]["status"] == "resolved"
+    assert second_page[0]["project"] == "XRD"
+
+
 def test_installed_handler_records_request_files_and_returns_event_header(
     tmp_path: Path,
 ) -> None:

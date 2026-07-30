@@ -352,16 +352,32 @@ class UsageArchive:
         query: str = "",
         date_from: str = "",
         date_to: str = "",
+        sort_by: str = "timestamp",
+        sort_dir: str = "desc",
         page: int = 1,
         page_size: int = 25,
     ) -> tuple[list[dict[str, object]], int]:
         self.cleanup()
         needle = query.casefold().strip()
-        items: list[dict[str, object]] = []
+        matches: list[dict[str, object]] = []
+        projects = {
+            value.strip().casefold()
+            for value in project.split(",")
+            if value.strip()
+        }
+        results = {
+            value.strip().casefold()
+            for value in result.split(",")
+            if value.strip()
+        }
+        activity_types = {
+            value.strip().casefold()
+            for value in activity_type.split(",")
+            if value.strip()
+        }
         current_page = max(1, int(page))
         maximum = max(1, min(1000, int(page_size)))
         offset = (current_page - 1) * maximum
-        total = 0
         for path in sorted(self.root.glob("*.jsonl"), reverse=True):
             if date_from and path.stem < date_from:
                 continue
@@ -384,14 +400,20 @@ class UsageArchive:
                     str(request_context.get("endpoint") or "")
                 ):
                     continue
-                if project and str(item.get("project", "")).casefold() != project.casefold():
-                    continue
-                if result and str(item.get("result", "")).casefold() != result.casefold():
+                if (
+                    projects
+                    and str(item.get("project", "")).casefold() not in projects
+                ):
                     continue
                 if (
-                    activity_type
+                    results
+                    and str(item.get("result", "")).casefold() not in results
+                ):
+                    continue
+                if (
+                    activity_types
                     and str(item.get("activityType", "")).casefold()
-                    != activity_type.casefold()
+                    not in activity_types
                 ):
                     continue
                 if needle:
@@ -430,10 +452,42 @@ class UsageArchive:
                     haystack = haystack.casefold()
                     if needle not in haystack:
                         continue
-                if total >= offset and len(items) < maximum:
-                    items.append(item)
-                total += 1
-        return items, total
+                matches.append(item)
+
+        sort_accessors = {
+            "timestamp": lambda item: item.get("timestamp"),
+            "project": lambda item: item.get("project"),
+            "action": lambda item: item.get("action"),
+            "activityType": lambda item: item.get("activityType"),
+            "result": lambda item: item.get("result"),
+            "durationMs": lambda item: item.get("durationMs"),
+            "requestNumber": lambda item: item.get("requestNumber"),
+            "jobId": lambda item: item.get("jobId"),
+            "client": lambda item: (
+                item.get("request", {}).get("clientIp")
+                if isinstance(item.get("request"), dict)
+                else None
+            ),
+        }
+        accessor = sort_accessors.get(sort_by, sort_accessors["timestamp"])
+
+        def sort_key(item: dict[str, object]) -> object:
+            value = accessor(item)
+            if sort_by == "durationMs":
+                try:
+                    return int(value or 0)
+                except (TypeError, ValueError):
+                    return 0
+            return str(value or "").casefold()
+
+        populated: list[dict[str, object]] = []
+        missing: list[dict[str, object]] = []
+        for item in matches:
+            value = accessor(item)
+            (missing if value is None or value == "" else populated).append(item)
+        populated.sort(key=sort_key, reverse=sort_dir.casefold() != "asc")
+        matches = populated + missing
+        return matches[offset : offset + maximum], len(matches)
 
     def get(self, event_id: str) -> dict[str, object]:
         if not EVENT_ID_RE.fullmatch(event_id):

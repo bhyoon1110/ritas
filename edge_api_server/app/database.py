@@ -1370,6 +1370,10 @@ class Database:
         query: str = "",
         experiment_code: str = "",
         transfer_status: str = "",
+        date_from: str = "",
+        date_to: str = "",
+        sort_by: str = "createdAt",
+        sort_dir: str = "desc",
         include_deleted: bool = False,
         limit: int = 300,
         offset: int = 0,
@@ -1385,15 +1389,52 @@ class Database:
                 "OR r.equipment_code LIKE ? OR r.operator_id LIKE ?)"
             )
             params.extend([like, like, like, like])
-        if experiment_code.strip():
-            clauses.append("r.experiment_code = ?")
-            params.append(experiment_code.strip())
-        if transfer_status.strip():
-            if transfer_status.strip().upper() == "NOT_QUEUED":
-                clauses.append("t.transfer_id IS NULL")
-            else:
-                clauses.append("t.status = ?")
-                params.append(transfer_status.strip().upper())
+        experiment_codes = [
+            value.strip() for value in experiment_code.split(",") if value.strip()
+        ]
+        if experiment_codes:
+            clauses.append(
+                f"r.experiment_code IN ({','.join('?' for _ in experiment_codes)})"
+            )
+            params.extend(experiment_codes)
+        transfer_statuses = [
+            value.strip().upper()
+            for value in transfer_status.split(",")
+            if value.strip()
+        ]
+        if transfer_statuses:
+            queued_statuses = [
+                value for value in transfer_statuses if value != "NOT_QUEUED"
+            ]
+            status_parts: list[str] = []
+            if "NOT_QUEUED" in transfer_statuses:
+                status_parts.append("t.transfer_id IS NULL")
+            if queued_statuses:
+                status_parts.append(
+                    f"t.status IN ({','.join('?' for _ in queued_statuses)})"
+                )
+                params.extend(queued_statuses)
+            clauses.append("(" + " OR ".join(status_parts) + ")")
+        if date_from.strip():
+            clauses.append("DATE(r.created_at) >= ?")
+            params.append(date_from.strip())
+        if date_to.strip():
+            clauses.append("DATE(r.created_at) <= ?")
+            params.append(date_to.strip())
+        sort_columns = {
+            "createdAt": "r.created_at",
+            "requestNumber": "r.request_number",
+            "experimentCode": "r.experiment_code",
+            "equipmentCode": "r.equipment_code",
+            "operatorId": "r.operator_id",
+            "status": "r.status",
+            "transferStatus": "COALESCE(t.status, 'NOT_QUEUED')",
+            "fileSize": "artifact_size_bytes",
+            "retentionUntil": "r.retention_until",
+            "lastError": "t.last_error_message",
+        }
+        order_column = sort_columns.get(sort_by, sort_columns["createdAt"])
+        order_direction = "ASC" if sort_dir.casefold() == "asc" else "DESC"
         params.extend(
             [max(1, min(int(limit), 1000)), max(0, int(offset))]
         )
@@ -1428,7 +1469,7 @@ class Database:
                     GROUP BY report_id
                 ) a ON a.report_id = r.report_id
                 WHERE {' AND '.join(clauses)}
-                ORDER BY r.created_at DESC
+                ORDER BY {order_column} {order_direction}, r.report_id DESC
                 LIMIT ? OFFSET ?
                 """,
                 tuple(params),
@@ -1440,6 +1481,8 @@ class Database:
         query: str = "",
         experiment_code: str = "",
         transfer_status: str = "",
+        date_from: str = "",
+        date_to: str = "",
         include_deleted: bool = False,
     ) -> int:
         clauses = ["1 = 1"]
@@ -1453,15 +1496,38 @@ class Database:
                 "OR r.equipment_code LIKE ? OR r.operator_id LIKE ?)"
             )
             params.extend([like, like, like, like])
-        if experiment_code.strip():
-            clauses.append("r.experiment_code = ?")
-            params.append(experiment_code.strip())
-        if transfer_status.strip():
-            if transfer_status.strip().upper() == "NOT_QUEUED":
-                clauses.append("t.transfer_id IS NULL")
-            else:
-                clauses.append("t.status = ?")
-                params.append(transfer_status.strip().upper())
+        experiment_codes = [
+            value.strip() for value in experiment_code.split(",") if value.strip()
+        ]
+        if experiment_codes:
+            clauses.append(
+                f"r.experiment_code IN ({','.join('?' for _ in experiment_codes)})"
+            )
+            params.extend(experiment_codes)
+        transfer_statuses = [
+            value.strip().upper()
+            for value in transfer_status.split(",")
+            if value.strip()
+        ]
+        if transfer_statuses:
+            queued_statuses = [
+                value for value in transfer_statuses if value != "NOT_QUEUED"
+            ]
+            status_parts: list[str] = []
+            if "NOT_QUEUED" in transfer_statuses:
+                status_parts.append("t.transfer_id IS NULL")
+            if queued_statuses:
+                status_parts.append(
+                    f"t.status IN ({','.join('?' for _ in queued_statuses)})"
+                )
+                params.extend(queued_statuses)
+            clauses.append("(" + " OR ".join(status_parts) + ")")
+        if date_from.strip():
+            clauses.append("DATE(r.created_at) >= ?")
+            params.append(date_from.strip())
+        if date_to.strip():
+            clauses.append("DATE(r.created_at) <= ?")
+            params.append(date_to.strip())
         with self._connect() as connection:
             row = connection.execute(
                 f"""

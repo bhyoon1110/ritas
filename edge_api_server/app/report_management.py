@@ -489,6 +489,10 @@ def list_reports(
     q: str = Query(default=""),
     experiment_code: str = Query(default="", alias="experimentCode"),
     transfer_status: str = Query(default="", alias="transferStatus"),
+    date_from: str = Query(default="", alias="dateFrom"),
+    date_to: str = Query(default="", alias="dateTo"),
+    sort_by: str = Query(default="createdAt", alias="sortBy"),
+    sort_dir: str = Query(default="desc", alias="sortDir"),
     include_deleted: bool = Query(default=False, alias="includeDeleted"),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=25, alias="pageSize", ge=1, le=100),
@@ -503,11 +507,15 @@ def list_reports(
         "query": q,
         "experiment_code": experiment_code,
         "transfer_status": transfer_status,
+        "date_from": date_from,
+        "date_to": date_to,
         "include_deleted": include_deleted,
     }
     total = database.count_report_management(**filters)
     rows = database.list_report_management(
         **filters,
+        sort_by=sort_by,
+        sort_dir=sort_dir,
         limit=effective_size,
         offset=(effective_page - 1) * effective_size,
     )

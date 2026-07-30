@@ -79,8 +79,17 @@ def test_report_management_console_serves_bundled_ui() -> None:
     assert 'id="logout-button"' in response.text
     assert "/api/v1/auth/logout" in response.text
     assert 'id="page-size"' in response.text
+    assert 'id="first-page"' in response.text
     assert 'id="prev-page"' in response.text
     assert 'id="next-page"' in response.text
+    assert 'id="last-page"' in response.text
+    assert 'id="page-jump"' in response.text
+    assert 'id="date-from"' in response.text
+    assert 'id="date-to"' in response.text
+    assert 'id="all-dates"' in response.text
+    assert 'data-all-label="전체 프로젝트"' in response.text
+    assert "table-layout:fixed" in response.text
+    assert "data-sort=" in response.text
 
 
 def test_retention_policy_only_selects_expired_inactive_reports(tmp_path: Path) -> None:
@@ -320,7 +329,16 @@ def test_report_management_api_uses_server_side_pagination(tmp_path: Path) -> No
 
     response = TestClient(app).get(
         "/api/v1/report-management",
-        params={"page": 2, "pageSize": 25, "experimentCode": "XRD"},
+        params={
+            "page": 2,
+            "pageSize": 25,
+            "experimentCode": "XRD,TEM",
+            "transferStatus": "PENDING,NOT_QUEUED",
+            "dateFrom": "2026-07-01",
+            "dateTo": "2026-07-30",
+            "sortBy": "requestNumber",
+            "sortDir": "asc",
+        },
     )
 
     assert response.status_code == 200
@@ -330,7 +348,12 @@ def test_report_management_api_uses_server_side_pagination(tmp_path: Path) -> No
     assert data["page"] == 2
     assert data["pageSize"] == 25
     assert data["totalPages"] == 3
-    assert database.count_kwargs["experiment_code"] == "XRD"
+    assert database.count_kwargs["experiment_code"] == "XRD,TEM"
+    assert database.count_kwargs["transfer_status"] == "PENDING,NOT_QUEUED"
+    assert database.count_kwargs["date_from"] == "2026-07-01"
+    assert database.count_kwargs["date_to"] == "2026-07-30"
+    assert database.list_kwargs["sort_by"] == "requestNumber"
+    assert database.list_kwargs["sort_dir"] == "asc"
     assert database.list_kwargs["limit"] == 25
     assert database.list_kwargs["offset"] == 25
 
