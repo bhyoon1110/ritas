@@ -129,6 +129,10 @@ def test_admin_page_exposes_member_permissions_and_sso_state() -> None:
     assert 'data-member-row' in html
     assert 'id="member-drawer"' in html
     assert 'id="drawer-save"' in html
+    assert "table-layout:fixed" in html
+    assert "min-width:1266px" in html
+    assert '<col style="width:220px"><col style="width:190px">' in html
+    assert "overflow-wrap:anywhere" in html
 
 
 def test_bootstrap_admin_policy() -> None:
