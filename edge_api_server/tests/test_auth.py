@@ -133,6 +133,8 @@ def test_admin_page_exposes_member_permissions_and_sso_state() -> None:
     assert "min-width:1266px" in html
     assert '<col style="width:220px"><col style="width:190px">' in html
     assert "overflow-wrap:anywhere" in html
+    assert ".member-select,#select-all-members,input.project,input.role" in html
+    assert ".member-select,#select-all-members,.project,.role" not in html
 
 
 def test_bootstrap_admin_policy() -> None:
