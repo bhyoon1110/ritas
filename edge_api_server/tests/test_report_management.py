@@ -87,6 +87,9 @@ def test_report_management_console_serves_bundled_ui() -> None:
     assert 'id="date-from"' in response.text
     assert 'id="date-to"' in response.text
     assert 'id="all-dates"' in response.text
+    assert 'class="date-range"' in response.text
+    assert "@media(max-width:1180px)" in response.text
+    assert ".date-range{display:grid" in response.text
     assert 'data-all-label="전체 프로젝트"' in response.text
     assert "table-layout:fixed" in response.text
     assert "data-sort=" in response.text
