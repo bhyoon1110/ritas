@@ -492,6 +492,8 @@ def test_shared_peak_editor_adds_peak_controls(tmp_path) -> None:
     assert "previousScrollZoom" in html
     assert "gd._context.scrollZoom = false" in html
     assert "dragmode: false" in html
+    assert "gd._ristSetEditMode = applyMode" in html
+    assert "return modePromise" in html
     assert "gd._ristEditModeBlockerInstalled" in html
     assert "rist-edit-mode-change" in html
     assert "rist-open-edit-tool" in html
@@ -637,6 +639,20 @@ def test_axis_controls_add_range_tick_and_axis_drag_controls(tmp_path) -> None:
     assert "numberField(axis, \"to\", \"To\")" in html
     assert "data-axis-field='tick'" in html
     assert "data-axis-auto=" in html
+    assert "type='text' inputmode='text'" in html
+    assert '.replace(/[−–—﹣－]/g, "-")' in html
+    assert "if (!normalized) return null" in html
+    assert "data-axis-action='zoom-in'" in html
+    assert "data-axis-action='zoom-out'" in html
+    assert "data-axis-action='crop'" in html
+    assert "function zoomByFactor(factor)" in html
+    assert "zoomByFactor(0.8)" in html
+    assert "zoomByFactor(1.25)" in html
+    assert "function normalizedCropRange(axis, values)" in html
+    assert 'gd.on("plotly_selected"' in html
+    assert 'dragmode: "select"' in html
+    assert "cropHint.hidden = false" in html
+    assert "if (cropSession) cancelCrop()" in html
     assert "towardIncreasingValue" in html
     assert "var DRAG_ACTIVATION_PX = 10" in html
     assert "var AXIS_DOUBLE_TAP_MS = 420" in html
