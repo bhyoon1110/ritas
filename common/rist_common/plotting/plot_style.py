@@ -6196,13 +6196,17 @@ def _axis_controls_js(div_id: str) -> str:
   color: #fff;
 }
 #__PLOT_ID_CSS__.rist-axis-scale-x,
-#__PLOT_ID_CSS__ .xaxislayer-above,
-#__PLOT_ID_CSS__ .xaxislayer-below {
+#__PLOT_ID_CSS__ .xtick,
+#__PLOT_ID_CSS__ .xtitle,
+#__PLOT_ID_CSS__ .xlines-above,
+#__PLOT_ID_CSS__ .xlines-below {
   cursor: ew-resize;
 }
 #__PLOT_ID_CSS__.rist-axis-scale-y,
-#__PLOT_ID_CSS__ .yaxislayer-above,
-#__PLOT_ID_CSS__ .yaxislayer-below {
+#__PLOT_ID_CSS__ .ytick,
+#__PLOT_ID_CSS__ .ytitle,
+#__PLOT_ID_CSS__ .ylines-above,
+#__PLOT_ID_CSS__ .ylines-below {
   cursor: ns-resize;
 }
 #__PLOT_ID_CSS__.rist-axis-scale-x,
@@ -6439,6 +6443,7 @@ def _axis_controls_js(div_id: str) -> str:
 
   var drag = null;
   var pendingFrame = 0;
+  var DRAG_ACTIVATION_PX = 10;
 
   function plotBox() {
     var full = gd._fullLayout || {};
@@ -6454,16 +6459,16 @@ def _axis_controls_js(div_id: str) -> str:
   function axisFromPointer(ev) {
     if (!ev.target || !ev.target.closest) return null;
     if (ev.target.closest(".modebar,.legend,.rist-plot-control-row,.rist-axis-control-panel,.annotation,.shapelayer")) return null;
-    if (ev.target.closest(".xaxislayer-above,.xaxislayer-below")) return "x";
-    if (ev.target.closest(".yaxislayer-above,.yaxislayer-below")) return "y";
+    if (ev.target.closest(".xtick,.g-xtitle,.xtitle,.xlines-above,.xlines-below")) return "x";
+    if (ev.target.closest(".ytick,.g-ytitle,.ytitle,.ylines-above,.ylines-below")) return "y";
     var rect = gd.getBoundingClientRect();
     var box = plotBox();
     var x = ev.clientX - rect.left;
     var y = ev.clientY - rect.top;
     var xBand = x >= box.left && x <= box.left + box.width
-      && y >= box.top + box.height - 3 && y <= box.top + box.height + 52;
+      && y >= box.top + box.height + 1 && y <= box.top + box.height + 52;
     var yBand = y >= box.top && y <= box.top + box.height
-      && x >= Math.max(0, box.left - 62) && x <= box.left + 3;
+      && x >= Math.max(0, box.left - 62) && x <= box.left - 1;
     if (xBand && yBand) {
       var xDistance = Math.abs(y - (box.top + box.height));
       var yDistance = Math.abs(x - box.left);
@@ -6485,7 +6490,7 @@ def _axis_controls_js(div_id: str) -> str:
         : drag.startY - drag.clientY;
       var direction = drag.range[1] >= drag.range[0] ? 1 : -1;
       var towardIncreasingValue = movement * direction;
-      if (Math.abs(towardIncreasingValue) < 3) return;
+      if (Math.abs(towardIncreasingValue) < DRAG_ACTIVATION_PX) return;
       if (!drag.captured && gd._ristHistory && gd._ristHistory.capture) {
         gd._ristHistory.capture();
         drag.captured = true;

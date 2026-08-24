@@ -638,6 +638,14 @@ def test_axis_controls_add_range_tick_and_axis_drag_controls(tmp_path) -> None:
     assert "data-axis-field='tick'" in html
     assert "data-axis-auto=" in html
     assert "towardIncreasingValue" in html
+    assert "var DRAG_ACTIVATION_PX = 10" in html
+    assert "Math.abs(towardIncreasingValue) < DRAG_ACTIVATION_PX" in html
+    assert '.closest(".xtick,.g-xtitle,.xtitle,.xlines-above,.xlines-below")' in html
+    assert '.closest(".ytick,.g-ytitle,.ytitle,.ylines-above,.ylines-below")' in html
+    assert "box.top + box.height + 1" in html
+    assert "x <= box.left - 1" in html
+    assert '.closest(".xaxislayer-above,.xaxislayer-below")' not in html
+    assert '.closest(".yaxislayer-above,.yaxislayer-below")' not in html
     assert "Math.exp(-towardIncreasingValue / 180)" in html
     assert 'updates[name + ".tickmode"] = value.automatic ? "auto" : "linear"' in html
     assert 'gd.addEventListener("rist-plot-data-replaced"' in html
