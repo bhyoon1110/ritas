@@ -3431,6 +3431,7 @@ _UPLOAD_SCRIPT = """
       "rist-legend-color-change",
       "rist-sample-line-style-change",
       "rist-legend-visibility-change",
+      "rist-peak-label-visibility-change",
       "rist-peak-delete",
       "rist-peak-group-change",
       "rist-peak-group-clear",

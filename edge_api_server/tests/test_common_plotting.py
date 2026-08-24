@@ -214,6 +214,14 @@ def test_shared_plotly_module_applies_legend_text(tmp_path) -> None:
     assert 'kind: "group"' in html
     assert "rist-legend-bulk-controls" in html
     assert "rist-legend-bulk-button" in html
+    assert "피크 표시" in html
+    assert "피크 숨김" in html
+    assert "피크 라벨" in html
+    assert "setPeakLegendVisibility" in html
+    assert "ristPeakLabelsVisible" in html
+    assert "rist-peak-label-toggle" in html
+    assert "rist-peak-label-visibility-change" in html
+    assert "if (!isPeakCurve(i)) continue;" in html
     assert "rist-legend-name-change" in html
     assert "rist-legend-color-change" in html
     assert "rist-legend-visibility-change" in html
@@ -358,6 +366,9 @@ def test_shared_peak_editor_adds_peak_controls(tmp_path) -> None:
     assert "sampleParentVisible" in html
     assert "peakUserVisibilityStore" in html
     assert "peakUserVisibilityKey" in html
+    assert "function peakLabelsVisible" in html
+    assert "refreshPeakLabelVisibility" in html
+    assert 'gd.addEventListener("rist-peak-label-visibility-change"' in html
     assert "setPeakUserVisibility" in html
     assert "peakUserVisible" in html
     assert "rememberPeakUserVisibility" in html
@@ -558,6 +569,9 @@ def test_peak_sensitivity_control_filters_detected_peak_metadata() -> None:
     assert "updateStatus(eligibleCount)" in html
     assert "gd._ristPeakSensitivityValue = sensitivity" in html
     assert "rist-peak-sensitivity-change" in html
+    assert "peakUserVisible" in html
+    assert "peakLabelsVisible" in html
+    assert "eligible && peakUserVisible(i)" in html
     assert "value='25'" in html
 
 
