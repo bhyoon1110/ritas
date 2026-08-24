@@ -6118,6 +6118,15 @@ def _axis_controls_js(div_id: str) -> str:
   grid-template-columns: 42px minmax(0,1fr) minmax(0,1fr) minmax(0,1fr);
   gap: 8px;
   align-items: end;
+  padding: 7px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  box-sizing: border-box;
+}
+#__PLOT_ID_CSS__ .rist-axis-control-axis.is-target {
+  border-color: #93c5fd;
+  background: #eff6ff;
+  box-shadow: inset 3px 0 #2563eb;
 }
 #__PLOT_ID_CSS__ .rist-axis-control-axis > strong {
   align-self: center;
@@ -6257,7 +6266,7 @@ def _axis_controls_js(div_id: str) -> str:
   panel.setAttribute("role", "dialog");
   panel.setAttribute("aria-label", "축 범위 및 눈금 설정");
   panel.innerHTML =
-    "<header class='rist-axis-control-head'><span>축 범위 및 눈금</span>"
+    "<header class='rist-axis-control-head'><span data-axis-panel-title>축 범위 및 눈금</span>"
     + "<button type='button' class='rist-axis-control-close' aria-label='닫기'>×</button></header>"
     + "<div class='rist-axis-control-body'>"
     + axisFields("x", "X축") + axisFields("y", "Y축")
@@ -6343,19 +6352,41 @@ def _axis_controls_js(div_id: str) -> str:
     panel.querySelector(".rist-axis-control-status").textContent = "";
   }
 
-  function setOpen(open) {
+  function markTargetAxis(axis) {
+    panel.querySelectorAll("[data-axis-row]").forEach(function(row) {
+      row.classList.toggle("is-target", row.getAttribute("data-axis-row") === axis);
+    });
+    var title = panel.querySelector("[data-axis-panel-title]");
+    if (title) title.textContent = axis ? axis.toUpperCase() + "축 범위 및 눈금" : "축 범위 및 눈금";
+  }
+
+  function focusTargetAxis(axis) {
+    if (!axis) return;
+    requestAnimationFrame(function() {
+      var input = field(axis, "from");
+      if (!input || panel.hidden) return;
+      input.focus({preventScroll: true});
+      if (input.select) input.select();
+    });
+  }
+
+  function setOpen(open, targetAxis) {
     panel.hidden = !open;
     button.setAttribute("aria-expanded", open ? "true" : "false");
     if (open) {
       syncPanel();
+      markTargetAxis(targetAxis || null);
       gd.dispatchEvent(new CustomEvent("rist-open-edit-tool"));
+      focusTargetAxis(targetAxis || null);
+    } else {
+      markTargetAxis(null);
     }
   }
 
   button.addEventListener("click", function(ev) {
     ev.preventDefault();
     ev.stopPropagation();
-    setOpen(panel.hidden);
+    setOpen(panel.hidden, null);
   });
   panel.querySelector(".rist-axis-control-close").addEventListener("click", function() {
     setOpen(false);
@@ -6444,6 +6475,9 @@ def _axis_controls_js(div_id: str) -> str:
   var drag = null;
   var pendingFrame = 0;
   var DRAG_ACTIVATION_PX = 10;
+  var AXIS_DOUBLE_TAP_MS = 420;
+  var AXIS_DOUBLE_TAP_DISTANCE_PX = 20;
+  var lastAxisTap = null;
 
   function plotBox() {
     var full = gd._fullLayout || {};
@@ -6541,6 +6575,7 @@ def _axis_controls_js(div_id: str) -> str:
 
   function finishScale(ev) {
     if (!drag || (ev && ev.pointerId !== drag.pointerId)) return;
+    var completedDrag = drag;
     if (pendingFrame) {
       cancelAnimationFrame(pendingFrame);
       pendingFrame = 0;
@@ -6548,14 +6583,33 @@ def _axis_controls_js(div_id: str) -> str:
     if (
       gd.hasPointerCapture
       && gd.releasePointerCapture
-      && gd.hasPointerCapture(drag.pointerId)
+      && gd.hasPointerCapture(completedDrag.pointerId)
     ) {
-      gd.releasePointerCapture(drag.pointerId);
+      gd.releasePointerCapture(completedDrag.pointerId);
     }
     gd.classList.remove("rist-axis-scale-x", "rist-axis-scale-y");
-    var changed = drag.captured;
+    var changed = completedDrag.captured;
     drag = null;
     if (changed) gd.dispatchEvent(new CustomEvent("rist-axis-settings-change"));
+    if (!changed && ev) {
+      var now = performance.now();
+      var isDoubleTap = lastAxisTap
+        && lastAxisTap.axis === completedDrag.axis
+        && now - lastAxisTap.at <= AXIS_DOUBLE_TAP_MS
+        && Math.hypot(ev.clientX - lastAxisTap.x, ev.clientY - lastAxisTap.y)
+          <= AXIS_DOUBLE_TAP_DISTANCE_PX;
+      if (isDoubleTap) {
+        lastAxisTap = null;
+        setOpen(true, completedDrag.axis);
+      } else {
+        lastAxisTap = {
+          axis: completedDrag.axis,
+          at: now,
+          x: ev.clientX,
+          y: ev.clientY
+        };
+      }
+    }
     if (ev) {
       ev.preventDefault();
       ev.stopImmediatePropagation();
@@ -6563,6 +6617,13 @@ def _axis_controls_js(div_id: str) -> str:
   }
   gd.addEventListener("pointerup", finishScale, true);
   gd.addEventListener("pointercancel", finishScale, true);
+  gd.addEventListener("dblclick", function(ev) {
+    var axis = axisFromPointer(ev);
+    if (!axis) return;
+    setOpen(true, axis);
+    ev.preventDefault();
+    ev.stopImmediatePropagation();
+  }, true);
   gd.addEventListener("rist-plot-data-replaced", function() {
     initialRanges.xaxis = currentRange("xaxis");
     initialRanges.yaxis = currentRange("yaxis");

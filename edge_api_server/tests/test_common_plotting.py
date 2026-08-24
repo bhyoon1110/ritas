@@ -639,6 +639,8 @@ def test_axis_controls_add_range_tick_and_axis_drag_controls(tmp_path) -> None:
     assert "data-axis-auto=" in html
     assert "towardIncreasingValue" in html
     assert "var DRAG_ACTIVATION_PX = 10" in html
+    assert "var AXIS_DOUBLE_TAP_MS = 420" in html
+    assert "var AXIS_DOUBLE_TAP_DISTANCE_PX = 20" in html
     assert "Math.abs(towardIncreasingValue) < DRAG_ACTIVATION_PX" in html
     assert '.closest(".xtick,.g-xtitle,.xtitle,.xlines-above,.xlines-below")' in html
     assert '.closest(".ytick,.g-ytitle,.ytitle,.ylines-above,.ylines-below")' in html
@@ -647,6 +649,11 @@ def test_axis_controls_add_range_tick_and_axis_drag_controls(tmp_path) -> None:
     assert '.closest(".xaxislayer-above,.xaxislayer-below")' not in html
     assert '.closest(".yaxislayer-above,.yaxislayer-below")' not in html
     assert "Math.exp(-towardIncreasingValue / 180)" in html
+    assert 'setOpen(true, completedDrag.axis)' in html
+    assert 'gd.addEventListener("dblclick"' in html
+    assert 'setOpen(true, axis)' in html
+    assert 'input.focus({preventScroll: true})' in html
+    assert 'row.classList.toggle("is-target"' in html
     assert 'updates[name + ".tickmode"] = value.automatic ? "auto" : "linear"' in html
     assert 'gd.addEventListener("rist-plot-data-replaced"' in html
     assert 'initialRanges.xaxis = currentRange("xaxis")' in html
