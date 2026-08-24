@@ -654,6 +654,26 @@ def test_axis_controls_add_range_tick_and_axis_drag_controls(tmp_path) -> None:
     assert "zoomByFactor(0.8)" in html
     assert "zoomByFactor(1.25)" in html
     assert "function normalizedCropRange(axis, values)" in html
+    assert 'var CROP_META_KEY = "ristCropRanges"' in html
+    assert "var range = axis.layout.range || axis.full.range || [];" in html
+    assert "function clampRangeToCrop(axisName, requestedRange)" in html
+    assert "function requestedRangeFromRelayout(axisName, eventData)" in html
+    assert "function enforceCropBounds(eventData)" in html
+    assert 'eventData[axisName + ".range[0]"]' in html
+    assert 'eventData[axisName + ".autorange"] === true' in html
+    assert "var cropClampPending = false" in html
+    assert "var cropClampTimer = 0" in html
+    assert "cropClampTimer = window.setTimeout(function()" in html
+    assert "var cropRequestedRanges = {}" in html
+    assert "cropClampPending = true" in html
+    assert "if (cropClampPending) enforceCropBounds()" in html
+    assert 'gd.on("plotly_relayout", enforceCropBounds)' in html
+    assert 'cropRanges[axis + "axis"] = range.slice()' in html
+    assert 'updates[name + ".range"] = clampRangeToCrop(name, [value.from, value.to])' in html
+    assert 'updates[axisName + ".range"] = clampRangeToCrop(axisName, [' in html
+    assert 'updates[drag.axis + "axis.range"] = clampRangeToCrop(' in html
+    assert "cropRanges[axisName] = null" in html
+    assert 'gd.addEventListener("rist-history-restored"' in html
     assert 'gd.on("plotly_selected"' in html
     assert 'dragmode: "select"' in html
     assert "cropHint.hidden = false" in html

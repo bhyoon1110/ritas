@@ -6421,7 +6421,9 @@ def _axis_controls_js(div_id: str) -> str:
 
   function currentRange(axisName) {
     var axis = currentAxis(axisName);
-    var range = axis.full.range || axis.layout.range || [];
+    // During plotly_relayout, layout.range is updated before _fullLayout.range.
+    // Prefer it so crop-boundary enforcement evaluates the requested range.
+    var range = axis.layout.range || axis.full.range || [];
     if (range.length < 2) return null;
     var first = finiteNumber(range[0]);
     var second = finiteNumber(range[1]);
@@ -6446,6 +6448,141 @@ def _axis_controls_js(div_id: str) -> str:
     xaxis: currentRange("xaxis"),
     yaxis: currentRange("yaxis")
   };
+  var CROP_META_KEY = "ristCropRanges";
+
+  function copyRange(range) {
+    if (!Array.isArray(range) || range.length < 2) return null;
+    var first = finiteNumber(range[0]);
+    var second = finiteNumber(range[1]);
+    return first == null || second == null || first === second ? null : [first, second];
+  }
+
+  function cropRangesFromLayout() {
+    var layoutMeta = gd.layout && gd.layout.meta;
+    var fullMeta = gd._fullLayout && gd._fullLayout.meta;
+    var stored = layoutMeta && typeof layoutMeta === "object"
+      ? layoutMeta[CROP_META_KEY]
+      : null;
+    if (!stored && fullMeta && typeof fullMeta === "object") {
+      stored = fullMeta[CROP_META_KEY];
+    }
+    return {
+      xaxis: copyRange(stored && stored.xaxis),
+      yaxis: copyRange(stored && stored.yaxis)
+    };
+  }
+
+  var cropRanges = cropRangesFromLayout();
+
+  function cropMeta(updates) {
+    var currentMeta = gd.layout && gd.layout.meta;
+    var meta = currentMeta && typeof currentMeta === "object"
+      ? Object.assign({}, currentMeta)
+      : {};
+    var stored = {};
+    if (cropRanges.xaxis) stored.xaxis = cropRanges.xaxis.slice();
+    if (cropRanges.yaxis) stored.yaxis = cropRanges.yaxis.slice();
+    if (stored.xaxis || stored.yaxis) meta[CROP_META_KEY] = stored;
+    else delete meta[CROP_META_KEY];
+    updates.meta = meta;
+  }
+
+  function sameRange(first, second) {
+    if (!first || !second) return first === second;
+    var scale = Math.max(
+      1,
+      Math.abs(first[0]),
+      Math.abs(first[1]),
+      Math.abs(second[0]),
+      Math.abs(second[1])
+    );
+    return Math.abs(first[0] - second[0]) <= scale * 1e-9
+      && Math.abs(first[1] - second[1]) <= scale * 1e-9;
+  }
+
+  function clampRangeToCrop(axisName, requestedRange) {
+    var range = copyRange(requestedRange);
+    var boundary = copyRange(cropRanges[axisName]);
+    if (!range || !boundary) return range;
+    var reversed = range[0] > range[1];
+    var low = Math.min(range[0], range[1]);
+    var high = Math.max(range[0], range[1]);
+    var boundaryLow = Math.min(boundary[0], boundary[1]);
+    var boundaryHigh = Math.max(boundary[0], boundary[1]);
+    var width = high - low;
+    var boundaryWidth = boundaryHigh - boundaryLow;
+    if (width >= boundaryWidth) {
+      low = boundaryLow;
+      high = boundaryHigh;
+    } else {
+      if (low < boundaryLow) {
+        high += boundaryLow - low;
+        low = boundaryLow;
+      }
+      if (high > boundaryHigh) {
+        low -= high - boundaryHigh;
+        high = boundaryHigh;
+      }
+      low = Math.max(boundaryLow, low);
+      high = Math.min(boundaryHigh, high);
+    }
+    return reversed ? [high, low] : [low, high];
+  }
+
+  var enforcingCropBounds = false;
+  var cropClampTimer = 0;
+  var cropClampPending = false;
+  var cropRequestedRanges = {};
+
+  function requestedRangeFromRelayout(axisName, eventData) {
+    if (!eventData || typeof eventData !== "object") return null;
+    var complete = copyRange(eventData[axisName + ".range"]);
+    if (complete) return complete;
+    var first = finiteNumber(eventData[axisName + ".range[0]"]);
+    var second = finiteNumber(eventData[axisName + ".range[1]"]);
+    if (first != null && second != null && first !== second) return [first, second];
+    if (eventData[axisName + ".autorange"] === true && cropRanges[axisName]) {
+      return cropRanges[axisName].slice();
+    }
+    return null;
+  }
+
+  function enforceCropBounds(eventData) {
+    ["xaxis", "yaxis"].forEach(function(axisName) {
+      var requested = requestedRangeFromRelayout(axisName, eventData);
+      if (requested) cropRequestedRanges[axisName] = requested;
+    });
+    cropClampPending = true;
+    if (enforcingCropBounds || cropClampTimer) return;
+    cropClampTimer = window.setTimeout(function() {
+      cropClampTimer = 0;
+      cropClampPending = false;
+      var requestedRanges = cropRequestedRanges;
+      cropRequestedRanges = {};
+      var updates = {};
+      var changed = false;
+      ["xaxis", "yaxis"].forEach(function(axisName) {
+        if (!cropRanges[axisName]) return;
+        var range = requestedRanges[axisName] || currentRange(axisName);
+        var bounded = clampRangeToCrop(axisName, range);
+        if (!range || !bounded || sameRange(range, bounded)) return;
+        updates[axisName + ".range"] = bounded;
+        updates[axisName + ".autorange"] = false;
+        updates[axisName + ".fixedrange"] = false;
+        changed = true;
+      });
+      if (!changed) return;
+      enforcingCropBounds = true;
+      window.Plotly.relayout(gd, updates).then(function() {
+        enforcingCropBounds = false;
+        syncPanel();
+        if (cropClampPending) enforceCropBounds();
+      }, function() {
+        enforcingCropBounds = false;
+        if (cropClampPending) enforceCropBounds();
+      });
+    }, 0);
+  }
 
   function field(axis, name) {
     return panel.querySelector("[data-axis='" + axis + "'][data-axis-field='" + name + "']");
@@ -6630,7 +6767,7 @@ def _axis_controls_js(div_id: str) -> str:
 
   function updatesForAxis(axis, value, updates) {
     var name = axis + "axis";
-    updates[name + ".range"] = [value.from, value.to];
+    updates[name + ".range"] = clampRangeToCrop(name, [value.from, value.to]);
     updates[name + ".autorange"] = false;
     updates[name + ".fixedrange"] = false;
     updates[name + ".tickmode"] = value.automatic ? "auto" : "linear";
@@ -6666,6 +6803,7 @@ def _axis_controls_js(div_id: str) -> str:
     var updates = {};
     activeAxes().forEach(function(axis) {
       var axisName = axis + "axis";
+      cropRanges[axisName] = null;
       updates[axisName + ".tickmode"] = "auto";
       updates[axisName + ".dtick"] = null;
       updates[axisName + ".minor.tickmode"] = "auto";
@@ -6677,6 +6815,7 @@ def _axis_controls_js(div_id: str) -> str:
         updates[axisName + ".autorange"] = false;
       }
     });
+    cropMeta(updates);
     if (gd._ristHistory && gd._ristHistory.capture) gd._ristHistory.capture();
     window.Plotly.relayout(gd, updates).then(function() {
       syncPanel();
@@ -6692,10 +6831,10 @@ def _axis_controls_js(div_id: str) -> str:
       var range = currentRange(axisName);
       if (!range || range[0] === range[1]) return;
       var center = (range[0] + range[1]) / 2;
-      updates[axisName + ".range"] = [
+      updates[axisName + ".range"] = clampRangeToCrop(axisName, [
         center + (range[0] - center) * factor,
         center + (range[1] - center) * factor
-      ];
+      ]);
       updates[axisName + ".autorange"] = false;
       updates[axisName + ".fixedrange"] = false;
       changed = true;
@@ -6794,12 +6933,14 @@ def _axis_controls_js(div_id: str) -> str:
     session.axes.forEach(function(axis) {
       var range = normalizedCropRange(axis, eventData && eventData.range && eventData.range[axis]);
       if (!range) return;
+      cropRanges[axis + "axis"] = range.slice();
       updates[axis + "axis.range"] = range;
       updates[axis + "axis.autorange"] = false;
       updates[axis + "axis.fixedrange"] = false;
       changed = true;
     });
     if (!changed) return;
+    cropMeta(updates);
     cropSession = null;
     if (gd._ristHistory && gd._ristHistory.capture) gd._ristHistory.capture();
     updates.dragmode = restoredDragmode(session);
@@ -6811,6 +6952,8 @@ def _axis_controls_js(div_id: str) -> str:
       gd.dispatchEvent(new CustomEvent("rist-axis-settings-change"));
     });
   });
+
+  gd.on("plotly_relayout", enforceCropBounds);
 
   document.addEventListener("pointerdown", function(ev) {
     if (panel.hidden) return;
@@ -6888,7 +7031,10 @@ def _axis_controls_js(div_id: str) -> str:
         center + (drag.range[1] - center) * factor
       ];
       var updates = {};
-      updates[drag.axis + "axis.range"] = next;
+      updates[drag.axis + "axis.range"] = clampRangeToCrop(
+        drag.axis + "axis",
+        next
+      );
       updates[drag.axis + "axis.autorange"] = false;
       updates[drag.axis + "axis.fixedrange"] = false;
       window.Plotly.relayout(gd, updates);
@@ -6980,9 +7126,18 @@ def _axis_controls_js(div_id: str) -> str:
   });
   gd.addEventListener("rist-plot-data-replaced", function() {
     if (cropSession) cancelCrop();
+    cropRanges.xaxis = null;
+    cropRanges.yaxis = null;
+    if (gd.layout && gd.layout.meta && typeof gd.layout.meta === "object") {
+      delete gd.layout.meta[CROP_META_KEY];
+    }
     initialRanges.xaxis = currentRange("xaxis");
     initialRanges.yaxis = currentRange("yaxis");
     setOpen(false);
+  });
+  gd.addEventListener("rist-history-restored", function() {
+    cropRanges = cropRangesFromLayout();
+    enforceCropBounds();
   });
 })();
 </script>
