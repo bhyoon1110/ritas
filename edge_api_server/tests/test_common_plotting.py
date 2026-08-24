@@ -649,11 +649,17 @@ def test_axis_controls_add_range_tick_and_axis_drag_controls(tmp_path) -> None:
     assert '.closest(".xaxislayer-above,.xaxislayer-below")' not in html
     assert '.closest(".yaxislayer-above,.yaxislayer-below")' not in html
     assert "Math.exp(-towardIncreasingValue / 180)" in html
-    assert 'setOpen(true, completedDrag.axis)' in html
+    assert 'setOpen(true, completedDrag.axis, ev)' in html
     assert 'gd.addEventListener("dblclick"' in html
-    assert 'setOpen(true, axis)' in html
+    assert 'setOpen(true, axis, ev)' in html
     assert 'input.focus({preventScroll: true})' in html
     assert 'row.classList.toggle("is-target"' in html
+    assert 'row.hidden = Boolean(axis && rowAxis !== axis)' in html
+    assert 'panel.classList.toggle("is-axis-specific", Boolean(axis))' in html
+    assert 'activeAxes().forEach(function(axis)' in html
+    assert 'function positionTargetPanel(axis, anchorEvent)' in html
+    assert 'var belowAxis = box.top + box.height + 12' in html
+    assert 'left = outsideLeft >= 8 ? outsideLeft : box.left + 12' in html
     assert 'updates[name + ".tickmode"] = value.automatic ? "auto" : "linear"' in html
     assert 'gd.addEventListener("rist-plot-data-replaced"' in html
     assert 'initialRanges.xaxis = currentRange("xaxis")' in html

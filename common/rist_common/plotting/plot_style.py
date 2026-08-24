@@ -6083,6 +6083,9 @@ def _axis_controls_js(div_id: str) -> str:
 #__PLOT_ID_CSS__ .rist-axis-control-panel[hidden] {
   display: none !important;
 }
+#__PLOT_ID_CSS__ .rist-axis-control-panel.is-axis-specific {
+  width: min(365px, calc(100% - 24px));
+}
 #__PLOT_ID_CSS__ .rist-axis-control-head {
   display: flex;
   align-items: center;
@@ -6127,6 +6130,9 @@ def _axis_controls_js(div_id: str) -> str:
   border-color: #93c5fd;
   background: #eff6ff;
   box-shadow: inset 3px 0 #2563eb;
+}
+#__PLOT_ID_CSS__ .rist-axis-control-axis[hidden] {
+  display: none !important;
 }
 #__PLOT_ID_CSS__ .rist-axis-control-axis > strong {
   align-self: center;
@@ -6227,6 +6233,9 @@ def _axis_controls_js(div_id: str) -> str:
   #__PLOT_ID_CSS__ .rist-axis-control-panel {
     top: 70px;
     right: 8px;
+    width: calc(100% - 16px);
+  }
+  #__PLOT_ID_CSS__ .rist-axis-control-panel.is-axis-specific {
     width: calc(100% - 16px);
   }
   #__PLOT_ID_CSS__ .rist-axis-control-axis {
@@ -6352,12 +6361,72 @@ def _axis_controls_js(div_id: str) -> str:
     panel.querySelector(".rist-axis-control-status").textContent = "";
   }
 
+  var activeAxis = null;
+
+  function activeAxes() {
+    return activeAxis ? [activeAxis] : ["x", "y"];
+  }
+
   function markTargetAxis(axis) {
     panel.querySelectorAll("[data-axis-row]").forEach(function(row) {
-      row.classList.toggle("is-target", row.getAttribute("data-axis-row") === axis);
+      var rowAxis = row.getAttribute("data-axis-row");
+      row.hidden = Boolean(axis && rowAxis !== axis);
+      row.classList.toggle("is-target", rowAxis === axis);
     });
+    panel.classList.toggle("is-axis-specific", Boolean(axis));
     var title = panel.querySelector("[data-axis-panel-title]");
     if (title) title.textContent = axis ? axis.toUpperCase() + "축 범위 및 눈금" : "축 범위 및 눈금";
+  }
+
+  function resetPanelPosition() {
+    panel.style.removeProperty("left");
+    panel.style.removeProperty("top");
+    panel.style.removeProperty("right");
+    panel.style.removeProperty("bottom");
+  }
+
+  function clampPanelPosition(value, panelSize, containerSize) {
+    var minimum = 8;
+    var maximum = Math.max(minimum, containerSize - panelSize - minimum);
+    return Math.max(minimum, Math.min(maximum, value));
+  }
+
+  function positionTargetPanel(axis, anchorEvent) {
+    if (!axis) {
+      resetPanelPosition();
+      return;
+    }
+    requestAnimationFrame(function() {
+      if (panel.hidden || activeAxis !== axis) return;
+      var rect = gd.getBoundingClientRect();
+      var box = plotBox();
+      var panelWidth = panel.offsetWidth;
+      var panelHeight = panel.offsetHeight;
+      var containerWidth = Math.max(gd.clientWidth, rect.width);
+      var containerHeight = Math.max(gd.clientHeight, rect.height);
+      var anchorX = anchorEvent && Number.isFinite(anchorEvent.clientX)
+        ? anchorEvent.clientX - rect.left
+        : box.left + box.width / 2;
+      var anchorY = anchorEvent && Number.isFinite(anchorEvent.clientY)
+        ? anchorEvent.clientY - rect.top
+        : box.top + box.height / 2;
+      var left;
+      var top;
+      if (axis === "x") {
+        left = anchorX - panelWidth / 2;
+        var belowAxis = box.top + box.height + 12;
+        var aboveAxis = box.top + box.height - panelHeight - 12;
+        top = belowAxis + panelHeight <= containerHeight - 8 ? belowAxis : aboveAxis;
+      } else {
+        var outsideLeft = box.left - panelWidth - 12;
+        left = outsideLeft >= 8 ? outsideLeft : box.left + 12;
+        top = anchorY - panelHeight / 2;
+      }
+      panel.style.left = Math.round(clampPanelPosition(left, panelWidth, containerWidth)) + "px";
+      panel.style.top = Math.round(clampPanelPosition(top, panelHeight, containerHeight)) + "px";
+      panel.style.right = "auto";
+      panel.style.bottom = "auto";
+    });
   }
 
   function focusTargetAxis(axis) {
@@ -6370,16 +6439,20 @@ def _axis_controls_js(div_id: str) -> str:
     });
   }
 
-  function setOpen(open, targetAxis) {
+  function setOpen(open, targetAxis, anchorEvent) {
     panel.hidden = !open;
     button.setAttribute("aria-expanded", open ? "true" : "false");
     if (open) {
+      activeAxis = targetAxis || null;
       syncPanel();
-      markTargetAxis(targetAxis || null);
+      markTargetAxis(activeAxis);
+      positionTargetPanel(activeAxis, anchorEvent || null);
       gd.dispatchEvent(new CustomEvent("rist-open-edit-tool"));
-      focusTargetAxis(targetAxis || null);
+      focusTargetAxis(activeAxis);
     } else {
+      activeAxis = null;
       markTargetAxis(null);
+      resetPanelPosition();
     }
   }
 
@@ -6426,8 +6499,9 @@ def _axis_controls_js(div_id: str) -> str:
     var status = panel.querySelector(".rist-axis-control-status");
     try {
       var updates = {};
-      updatesForAxis("x", readAxis("x"), updates);
-      updatesForAxis("y", readAxis("y"), updates);
+      activeAxes().forEach(function(axis) {
+        updatesForAxis(axis, readAxis(axis), updates);
+      });
       if (gd._ristHistory && gd._ristHistory.capture) gd._ristHistory.capture();
       window.Plotly.relayout(gd, updates).then(function() {
         status.textContent = "";
@@ -6440,22 +6514,17 @@ def _axis_controls_js(div_id: str) -> str:
   });
 
   panel.querySelector("[data-axis-action='reset']").addEventListener("click", function() {
-    var updates = {
-      "xaxis.tickmode": "auto",
-      "xaxis.dtick": null,
-      "xaxis.fixedrange": false,
-      "yaxis.tickmode": "auto",
-      "yaxis.dtick": null,
-      "yaxis.fixedrange": false
-    };
-    if (initialRanges.xaxis) {
-      updates["xaxis.range"] = initialRanges.xaxis.slice();
-      updates["xaxis.autorange"] = false;
-    }
-    if (initialRanges.yaxis) {
-      updates["yaxis.range"] = initialRanges.yaxis.slice();
-      updates["yaxis.autorange"] = false;
-    }
+    var updates = {};
+    activeAxes().forEach(function(axis) {
+      var axisName = axis + "axis";
+      updates[axisName + ".tickmode"] = "auto";
+      updates[axisName + ".dtick"] = null;
+      updates[axisName + ".fixedrange"] = false;
+      if (initialRanges[axisName]) {
+        updates[axisName + ".range"] = initialRanges[axisName].slice();
+        updates[axisName + ".autorange"] = false;
+      }
+    });
     if (gd._ristHistory && gd._ristHistory.capture) gd._ristHistory.capture();
     window.Plotly.relayout(gd, updates).then(function() {
       syncPanel();
@@ -6600,7 +6669,7 @@ def _axis_controls_js(div_id: str) -> str:
           <= AXIS_DOUBLE_TAP_DISTANCE_PX;
       if (isDoubleTap) {
         lastAxisTap = null;
-        setOpen(true, completedDrag.axis);
+        setOpen(true, completedDrag.axis, ev);
       } else {
         lastAxisTap = {
           axis: completedDrag.axis,
@@ -6620,10 +6689,13 @@ def _axis_controls_js(div_id: str) -> str:
   gd.addEventListener("dblclick", function(ev) {
     var axis = axisFromPointer(ev);
     if (!axis) return;
-    setOpen(true, axis);
+    setOpen(true, axis, ev);
     ev.preventDefault();
     ev.stopImmediatePropagation();
   }, true);
+  window.addEventListener("resize", function() {
+    if (!panel.hidden && activeAxis) positionTargetPanel(activeAxis, null);
+  });
   gd.addEventListener("rist-plot-data-replaced", function() {
     initialRanges.xaxis = currentRange("xaxis");
     initialRanges.yaxis = currentRange("yaxis");
