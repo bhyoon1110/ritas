@@ -611,3 +611,29 @@ def test_apply_legend_text_renames_without_html_output() -> None:
     apply_legend_text(figure, {"Raw": "원본"})
 
     assert figure.data[0].name == "원본"
+
+
+def test_axis_controls_add_range_tick_and_axis_drag_controls(tmp_path) -> None:
+    figure = go.Figure(data=[go.Scatter(x=[1, 2], y=[3, 4])])
+    output = tmp_path / "axis-controls.html"
+
+    write_responsive_html(
+        figure,
+        str(output),
+        div_id="axis-plot",
+        axis_controls=True,
+    )
+
+    html = output.read_text(encoding="utf-8")
+    assert "rist-axis-control-button" in html
+    assert "축 범위 및 눈금 설정" in html
+    assert "numberField(axis, \"from\", \"From\")" in html
+    assert "numberField(axis, \"to\", \"To\")" in html
+    assert "data-axis-field='tick'" in html
+    assert "data-axis-auto=" in html
+    assert "towardIncreasingValue" in html
+    assert "Math.exp(-towardIncreasingValue / 180)" in html
+    assert 'updates[name + ".tickmode"] = value.automatic ? "auto" : "linear"' in html
+    assert 'gd.addEventListener("rist-plot-data-replaced"' in html
+    assert 'initialRanges.xaxis = currentRange("xaxis")' in html
+    assert 'initialRanges.yaxis = currentRange("yaxis")' in html

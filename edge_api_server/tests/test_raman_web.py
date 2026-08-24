@@ -227,6 +227,9 @@ def test_raman_workspace_contains_upload_controls() -> None:
     assert "/raman/assets/plotly.min.js" in page
     assert "RIN Raman" in page
     assert "rist-peak-sensitivity-control" in page
+    assert "rist-axis-control-button" in page
+    assert "축 범위 및 눈금 설정" in page
+    assert "towardIncreasingValue" in page
     assert "rist-raman-stack-control" in page
     assert "rist-raman-ratio-control" in page
     assert "ristRamanStack" in page
@@ -327,6 +330,10 @@ def test_raman_blank_figure_starts_without_reserved_legend_margin() -> None:
     assert len(figure.data) == 0
     assert figure.layout.margin.r == 70
     assert figure.layout.yaxis.title.text == "Intensity (a.u.)"
+    assert figure.layout.xaxis.tickmode == "auto"
+    assert figure.layout.yaxis.tickmode == "auto"
+    assert figure.layout.xaxis.fixedrange is False
+    assert figure.layout.yaxis.fixedrange is False
 
 
 def test_raman_analyze_api_stacks_multiple_samples() -> None:
@@ -344,6 +351,10 @@ def test_raman_analyze_api_stacks_multiple_samples() -> None:
     assert response.status_code == 200
     figure = response.json()["figure"]
     assert figure["layout"]["yaxis"]["title"]["text"] == "Intensity (a.u.)"
+    assert figure["layout"]["xaxis"]["tickmode"] == "auto"
+    assert figure["layout"]["yaxis"]["tickmode"] == "auto"
+    assert figure["layout"]["xaxis"]["fixedrange"] is False
+    assert figure["layout"]["yaxis"]["fixedrange"] is False
     stack = figure["layout"]["meta"]["ristRamanStack"]
     assert stack["enabled"] is True
     assert stack["sampleOffsets"]["sample:0"] == 0

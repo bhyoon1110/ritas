@@ -178,6 +178,10 @@ def test_peak_fig_labels_show_functional_group_names() -> None:
     assert fig.layout.title.yanchor == "top"
     assert fig.layout.margin.t == 100
     assert fig.layout.margin.b >= 120
+    assert fig.layout.xaxis.tickmode == "auto"
+    assert fig.layout.yaxis.tickmode == "auto"
+    assert fig.layout.xaxis.fixedrange is False
+    assert fig.layout.yaxis.fixedrange is False
 
 
 def test_interactive_peak_candidates_include_all_sensitivity_levels() -> None:
@@ -302,3 +306,7 @@ def test_multi_peak_fig_groups_peaks_under_each_sample() -> None:
     assert fig.layout.margin.t == 105
     assert fig.layout.meta["ristPeakLabels"][0]["labelKey"] == "sample:0:peak:C-O stretch"
     assert fig.layout.meta["ristPeakLabels"][1]["labelKey"] == "sample:1:peak:unknown:1100.0"
+    assert fig.layout.xaxis.tickmode == "auto"
+    assert fig.layout.yaxis.tickmode == "auto"
+    assert fig.layout.xaxis.fixedrange is False
+    assert fig.layout.yaxis.fixedrange is False

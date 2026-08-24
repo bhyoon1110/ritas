@@ -264,8 +264,8 @@ def build_multi_raman_fig(
             range=[shift_min, shift_max],
             showgrid=True,
             gridcolor="#e8e8e8",
-            tickmode="linear",
-            dtick=500,
+            tickmode="auto",
+            fixedrange=False,
             minor=dict(showgrid=True, gridcolor="#f4f4f4"),
         ),
         yaxis=dict(
@@ -277,6 +277,8 @@ def build_multi_raman_fig(
                 (max(sample_offsets.values()) if sample_offsets else 0.0)
                 + max_y * 1.65,
             ],
+            tickmode="auto",
+            fixedrange=False,
         ),
         annotations=annotations,
         legend=dict(

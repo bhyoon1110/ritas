@@ -417,12 +417,13 @@ def build_peak_fig(
         xaxis=dict(
             title="Wavenumber (cm⁻¹)", range=[wn_max, wn_min],
             showgrid=True, gridcolor="#e8e8e8",
-            tickmode="linear", dtick=500,
+            tickmode="auto", fixedrange=False,
             minor=dict(showgrid=True, gridcolor="#f4f4f4"),
         ),
         yaxis=dict(
             title="Normalized Absorbance", showgrid=True, gridcolor="#e8e8e8",
             range=[-0.05, max(peak_val) * 1.6 if len(peak_val) else 1.3],
+            tickmode="auto", fixedrange=False,
         ),
         annotations=annotations,
         legend=dict(
@@ -617,7 +618,7 @@ def build_multi_peak_fig(
         xaxis=dict(
             title="Wavenumber (cm⁻¹)", range=[wn_max, wn_min],
             showgrid=True, gridcolor="#e8e8e8",
-            tickmode="linear", dtick=500,
+            tickmode="auto", fixedrange=False,
             minor=dict(showgrid=True, gridcolor="#f4f4f4"),
         ),
         yaxis=dict(
@@ -626,6 +627,7 @@ def build_multi_peak_fig(
                 min_y - max(y_span * 0.08, 0.02),
                 max_y + max(y_span * 0.25, 0.08),
             ],
+            tickmode="auto", fixedrange=False,
         ),
         annotations=annotations,
         legend=dict(
@@ -766,12 +768,13 @@ def build_comparison_fig(sample_vec, grid, best_per_material, plot_top_n, sample
         xaxis=dict(
             title="Wavenumber (cm⁻¹)", range=[wn_max, wn_min],
             showgrid=True, gridcolor="#e8e8e8",
-            tickmode="linear", dtick=500,
+            tickmode="auto", fixedrange=False,
             minor=dict(showgrid=True, gridcolor="#f4f4f4"),
         ),
         yaxis=dict(
             title="Normalized Absorbance (offset)",
             showgrid=False, zeroline=False, showticklabels=False,
+            tickmode="auto", fixedrange=False,
         ),
         annotations=cmp_annotations,
         legend=dict(

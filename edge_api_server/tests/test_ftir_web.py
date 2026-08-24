@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient
 
 from app import assignment_suggestions, preview_report
 from app.ftir_web import (
+    _blank_figure,
     build_ftir_page,
     create_ftir_preview_app,
     plotly_asset_path,
@@ -218,6 +219,9 @@ def test_ftir_workspace_contains_upload_and_editor_controls() -> None:
     assert "/ftir/assets/plotly.min.js" in page
     assert "rist-shape-tool-button" in page
     assert "rist-peak-sensitivity-control" in page
+    assert "rist-axis-control-button" in page
+    assert "축 범위 및 눈금 설정" in page
+    assert "towardIncreasingValue" in page
     assert "rist-ftir-tools-toggle" in page
     assert "rist-ftir-tools-open" in page
     assert "rist-ftir-tools-head" in page
@@ -268,6 +272,16 @@ def test_ftir_workspace_contains_upload_and_editor_controls() -> None:
     assert plotly_asset_path().is_file()
 
 
+def test_ftir_blank_figure_uses_auto_axis_ticks() -> None:
+    figure = _blank_figure()
+
+    assert figure.layout.xaxis.tickmode == "auto"
+    assert figure.layout.yaxis.tickmode == "auto"
+    assert figure.layout.xaxis.fixedrange is False
+    assert figure.layout.yaxis.fixedrange is False
+    assert list(figure.layout.xaxis.range) == [4000, 400]
+
+
 def test_ftir_analysis_api_accepts_multiple_dpt_files(tmp_path: Path) -> None:
     with TestClient(create_ftir_preview_app(tmp_path / "libraries")) as client:
         response = client.post(
@@ -291,6 +305,11 @@ def test_ftir_analysis_api_accepts_multiple_dpt_files(tmp_path: Path) -> None:
     assert payload["settings"]["sensitivity"] == 25
     assert payload["settings"]["assignmentLibraries"][0]["id"] == "general-ftir"
     assert payload["figure"]["data"]
+    layout = payload["figure"]["layout"]
+    assert layout["xaxis"]["tickmode"] == "auto"
+    assert layout["yaxis"]["tickmode"] == "auto"
+    assert layout["xaxis"]["fixedrange"] is False
+    assert layout["yaxis"]["fixedrange"] is False
 
 
 def test_ftir_analysis_extracts_optional_dpt_metadata(tmp_path: Path) -> None:

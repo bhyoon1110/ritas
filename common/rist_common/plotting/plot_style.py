@@ -6000,6 +6000,544 @@ def _legend_drag_handle_js(div_id: str) -> str:
 """
 
 
+def _axis_controls_js(div_id: str) -> str:
+    """축 범위·눈금 설정과 축 직접 드래그 확대/축소 UI를 추가한다."""
+    template = r"""
+<style>
+#__PLOT_ID_CSS__ .rist-axis-control-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 34px;
+  width: 34px;
+  height: 34px;
+  min-width: 34px;
+  padding: 0;
+  border: 1px solid #a8bdd6;
+  border-radius: 5px;
+  background: rgba(255,255,255,0.96);
+  color: #244866;
+  cursor: pointer;
+  box-sizing: border-box;
+}
+#__PLOT_ID_CSS__ .rist-axis-control-button:hover,
+#__PLOT_ID_CSS__ .rist-axis-control-button[aria-expanded="true"] {
+  border-color: #3b82f6;
+  background: #eaf4ff;
+  color: #075985;
+}
+#__PLOT_ID_CSS__ .rist-axis-control-button svg {
+  width: 18px;
+  height: 18px;
+  pointer-events: none;
+}
+#__PLOT_ID_CSS__ .rist-axis-control-panel {
+  position: absolute;
+  z-index: 72;
+  top: 78px;
+  right: 12px;
+  width: min(430px, calc(100% - 24px));
+  border: 1px solid #94a3b8;
+  border-radius: 6px;
+  background: rgba(255,255,255,0.98);
+  color: #1e293b;
+  box-shadow: 0 10px 26px rgba(15,23,42,0.2);
+  font: 13px Arial, "Noto Sans KR", sans-serif;
+  letter-spacing: 0;
+  box-sizing: border-box;
+}
+#__PLOT_ID_CSS__ .rist-axis-control-panel[hidden] {
+  display: none !important;
+}
+#__PLOT_ID_CSS__ .rist-axis-control-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 38px;
+  padding: 0 10px 0 12px;
+  border-bottom: 1px solid #d8e0e8;
+  background: #f4f7fa;
+  font-weight: 700;
+  box-sizing: border-box;
+}
+#__PLOT_ID_CSS__ .rist-axis-control-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #475569;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+#__PLOT_ID_CSS__ .rist-axis-control-body {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+#__PLOT_ID_CSS__ .rist-axis-control-axis {
+  display: grid;
+  grid-template-columns: 42px minmax(0,1fr) minmax(0,1fr) minmax(0,1fr);
+  gap: 8px;
+  align-items: end;
+}
+#__PLOT_ID_CSS__ .rist-axis-control-axis > strong {
+  align-self: center;
+  color: #173f5f;
+  font-size: 14px;
+}
+#__PLOT_ID_CSS__ .rist-axis-control-field {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+#__PLOT_ID_CSS__ .rist-axis-control-field > span {
+  color: #526273;
+  font-size: 11px;
+}
+#__PLOT_ID_CSS__ .rist-axis-control-field input[type="number"] {
+  width: 100%;
+  min-width: 0;
+  height: 34px;
+  padding: 5px 7px;
+  border: 1px solid #b8c5d1;
+  border-radius: 4px;
+  background: #fff;
+  color: #1f2937;
+  font: inherit;
+  box-sizing: border-box;
+}
+#__PLOT_ID_CSS__ .rist-axis-control-field input[type="number"]:disabled {
+  background: #eef2f6;
+  color: #94a3b8;
+}
+#__PLOT_ID_CSS__ .rist-axis-control-auto {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 26px;
+  color: #475569;
+  cursor: pointer;
+  user-select: none;
+}
+#__PLOT_ID_CSS__ .rist-axis-control-auto input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+}
+#__PLOT_ID_CSS__ .rist-axis-control-help {
+  margin: 0;
+  color: #64748b;
+  font-size: 11px;
+  line-height: 1.45;
+}
+#__PLOT_ID_CSS__ .rist-axis-control-status {
+  min-height: 16px;
+  margin: 0;
+  color: #b42318;
+  font-size: 11px;
+}
+#__PLOT_ID_CSS__ .rist-axis-control-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+#__PLOT_ID_CSS__ .rist-axis-control-actions button {
+  min-height: 34px;
+  padding: 6px 12px;
+  border: 1px solid #a8bdd6;
+  border-radius: 4px;
+  background: #fff;
+  color: #244866;
+  font-weight: 700;
+  cursor: pointer;
+}
+#__PLOT_ID_CSS__ .rist-axis-control-actions .is-primary {
+  border-color: #2563eb;
+  background: #2563eb;
+  color: #fff;
+}
+#__PLOT_ID_CSS__.rist-axis-scale-x,
+#__PLOT_ID_CSS__ .xaxislayer-above,
+#__PLOT_ID_CSS__ .xaxislayer-below {
+  cursor: ew-resize;
+}
+#__PLOT_ID_CSS__.rist-axis-scale-y,
+#__PLOT_ID_CSS__ .yaxislayer-above,
+#__PLOT_ID_CSS__ .yaxislayer-below {
+  cursor: ns-resize;
+}
+#__PLOT_ID_CSS__.rist-axis-scale-x,
+#__PLOT_ID_CSS__.rist-axis-scale-y {
+  user-select: none;
+  touch-action: none;
+}
+@media (max-width: 560px) {
+  #__PLOT_ID_CSS__ .rist-axis-control-panel {
+    top: 70px;
+    right: 8px;
+    width: calc(100% - 16px);
+  }
+  #__PLOT_ID_CSS__ .rist-axis-control-axis {
+    grid-template-columns: 32px repeat(3, minmax(0,1fr));
+    gap: 5px;
+  }
+  #__PLOT_ID_CSS__ .rist-axis-control-field input[type="number"] {
+    padding-inline: 5px;
+  }
+}
+</style>
+<script>
+(function() {
+  var gd = document.getElementById(__PLOT_ID_JSON__);
+  if (!gd || gd._ristAxisControlsInstalled || !window.Plotly) return;
+  gd._ristAxisControlsInstalled = true;
+  if (getComputedStyle(gd).position === "static") gd.style.position = "relative";
+
+  var toolbar = gd.querySelector(".rist-plot-control-row");
+  if (!toolbar) {
+    toolbar = document.createElement("div");
+    toolbar.className = "rist-plot-control-row";
+    gd.appendChild(toolbar);
+  }
+  var button = document.createElement("button");
+  button.type = "button";
+  button.className = "rist-axis-control-button";
+  button.title = "축 범위 및 눈금 설정";
+  button.setAttribute("aria-label", button.title);
+  button.setAttribute("aria-expanded", "false");
+  button.innerHTML = "<svg class='lucide lucide-ruler' aria-hidden='true' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M21.3 8.7 8.7 21.3a2.4 2.4 0 0 1-3.4 0l-2.6-2.6a2.4 2.4 0 0 1 0-3.4L15.3 2.7a2.4 2.4 0 0 1 3.4 0l2.6 2.6a2.4 2.4 0 0 1 0 3.4Z'/><path d='m7.5 10.5 2 2'/><path d='m10.5 7.5 2 2'/><path d='m13.5 4.5 2 2'/><path d='m4.5 13.5 2 2'/></svg>";
+  toolbar.appendChild(button);
+
+  var panel = document.createElement("section");
+  panel.className = "rist-axis-control-panel";
+  panel.hidden = true;
+  panel.setAttribute("role", "dialog");
+  panel.setAttribute("aria-label", "축 범위 및 눈금 설정");
+  panel.innerHTML =
+    "<header class='rist-axis-control-head'><span>축 범위 및 눈금</span>"
+    + "<button type='button' class='rist-axis-control-close' aria-label='닫기'>×</button></header>"
+    + "<div class='rist-axis-control-body'>"
+    + axisFields("x", "X축") + axisFields("y", "Y축")
+    + "<p class='rist-axis-control-help'>눈금 간격을 자동으로 두면 확대 범위에 맞춰 눈금과 수치 간격이 조절됩니다. 축 위를 값이 커지는 방향으로 드래그하면 확대되고 반대 방향으로 드래그하면 축소됩니다.</p>"
+    + "<p class='rist-axis-control-status' aria-live='polite'></p>"
+    + "<div class='rist-axis-control-actions'><button type='button' data-axis-action='reset'>초기 범위</button>"
+    + "<button type='button' class='is-primary' data-axis-action='apply'>적용</button></div></div>";
+  gd.appendChild(panel);
+
+  function axisFields(axis, label) {
+    return "<div class='rist-axis-control-axis' data-axis-row='" + axis + "'>"
+      + "<strong>" + label + "</strong>"
+      + numberField(axis, "from", "From")
+      + numberField(axis, "to", "To")
+      + "<label class='rist-axis-control-field'><span>눈금 간격</span>"
+      + "<input type='number' step='any' inputmode='decimal' data-axis='" + axis + "' data-axis-field='tick'></label>"
+      + "<span></span><label class='rist-axis-control-auto'><input type='checkbox' data-axis-auto='" + axis + "' checked>자동 눈금</label>"
+      + "</div>";
+  }
+
+  function numberField(axis, field, label) {
+    return "<label class='rist-axis-control-field'><span>" + label + "</span>"
+      + "<input type='number' step='any' inputmode='decimal' data-axis='" + axis + "' data-axis-field='" + field + "'></label>";
+  }
+
+  function finiteNumber(value) {
+    var parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  function cleanNumber(value) {
+    if (!Number.isFinite(Number(value))) return "";
+    return String(Number(Number(value).toPrecision(10)));
+  }
+
+  function currentAxis(axisName) {
+    var full = gd._fullLayout && gd._fullLayout[axisName];
+    var layout = gd.layout && gd.layout[axisName];
+    return {full: full || {}, layout: layout || {}};
+  }
+
+  function currentRange(axisName) {
+    var axis = currentAxis(axisName);
+    var range = axis.full.range || axis.layout.range || [];
+    if (range.length < 2) return null;
+    var first = finiteNumber(range[0]);
+    var second = finiteNumber(range[1]);
+    return first == null || second == null ? null : [first, second];
+  }
+
+  var initialRanges = {
+    xaxis: currentRange("xaxis"),
+    yaxis: currentRange("yaxis")
+  };
+
+  function field(axis, name) {
+    return panel.querySelector("[data-axis='" + axis + "'][data-axis-field='" + name + "']");
+  }
+
+  function autoField(axis) {
+    return panel.querySelector("[data-axis-auto='" + axis + "']");
+  }
+
+  function syncAxis(axis) {
+    var axisName = axis + "axis";
+    var state = currentAxis(axisName);
+    var range = currentRange(axisName);
+    if (range) {
+      field(axis, "from").value = cleanNumber(range[0]);
+      field(axis, "to").value = cleanNumber(range[1]);
+    }
+    var dtick = finiteNumber(state.layout.dtick);
+    if (dtick == null) dtick = finiteNumber(state.full.dtick);
+    var manual = state.layout.tickmode === "linear" && dtick != null && dtick > 0;
+    autoField(axis).checked = !manual;
+    field(axis, "tick").disabled = !manual;
+    field(axis, "tick").value = manual ? cleanNumber(dtick) : "";
+  }
+
+  function syncPanel() {
+    syncAxis("x");
+    syncAxis("y");
+    panel.querySelector(".rist-axis-control-status").textContent = "";
+  }
+
+  function setOpen(open) {
+    panel.hidden = !open;
+    button.setAttribute("aria-expanded", open ? "true" : "false");
+    if (open) {
+      syncPanel();
+      gd.dispatchEvent(new CustomEvent("rist-open-edit-tool"));
+    }
+  }
+
+  button.addEventListener("click", function(ev) {
+    ev.preventDefault();
+    ev.stopPropagation();
+    setOpen(panel.hidden);
+  });
+  panel.querySelector(".rist-axis-control-close").addEventListener("click", function() {
+    setOpen(false);
+  });
+  panel.querySelectorAll("[data-axis-auto]").forEach(function(input) {
+    input.addEventListener("change", function() {
+      var axis = input.getAttribute("data-axis-auto");
+      field(axis, "tick").disabled = input.checked;
+      if (input.checked) field(axis, "tick").value = "";
+    });
+  });
+
+  function readAxis(axis) {
+    var from = finiteNumber(field(axis, "from").value);
+    var to = finiteNumber(field(axis, "to").value);
+    if (from == null || to == null || from === to) {
+      throw new Error(axis.toUpperCase() + "축 From/To에 서로 다른 수치를 입력하세요.");
+    }
+    var automatic = autoField(axis).checked;
+    var tick = automatic ? null : finiteNumber(field(axis, "tick").value);
+    if (!automatic && (tick == null || tick <= 0)) {
+      throw new Error(axis.toUpperCase() + "축 눈금 간격은 0보다 커야 합니다.");
+    }
+    return {from: from, to: to, automatic: automatic, tick: tick};
+  }
+
+  function updatesForAxis(axis, value, updates) {
+    var name = axis + "axis";
+    updates[name + ".range"] = [value.from, value.to];
+    updates[name + ".autorange"] = false;
+    updates[name + ".fixedrange"] = false;
+    updates[name + ".tickmode"] = value.automatic ? "auto" : "linear";
+    updates[name + ".dtick"] = value.automatic ? null : value.tick;
+  }
+
+  panel.querySelector("[data-axis-action='apply']").addEventListener("click", function() {
+    var status = panel.querySelector(".rist-axis-control-status");
+    try {
+      var updates = {};
+      updatesForAxis("x", readAxis("x"), updates);
+      updatesForAxis("y", readAxis("y"), updates);
+      if (gd._ristHistory && gd._ristHistory.capture) gd._ristHistory.capture();
+      window.Plotly.relayout(gd, updates).then(function() {
+        status.textContent = "";
+        setOpen(false);
+        gd.dispatchEvent(new CustomEvent("rist-axis-settings-change"));
+      });
+    } catch (err) {
+      status.textContent = err && err.message ? err.message : "축 설정을 확인하세요.";
+    }
+  });
+
+  panel.querySelector("[data-axis-action='reset']").addEventListener("click", function() {
+    var updates = {
+      "xaxis.tickmode": "auto",
+      "xaxis.dtick": null,
+      "xaxis.fixedrange": false,
+      "yaxis.tickmode": "auto",
+      "yaxis.dtick": null,
+      "yaxis.fixedrange": false
+    };
+    if (initialRanges.xaxis) {
+      updates["xaxis.range"] = initialRanges.xaxis.slice();
+      updates["xaxis.autorange"] = false;
+    }
+    if (initialRanges.yaxis) {
+      updates["yaxis.range"] = initialRanges.yaxis.slice();
+      updates["yaxis.autorange"] = false;
+    }
+    if (gd._ristHistory && gd._ristHistory.capture) gd._ristHistory.capture();
+    window.Plotly.relayout(gd, updates).then(function() {
+      syncPanel();
+      gd.dispatchEvent(new CustomEvent("rist-axis-settings-change"));
+    });
+  });
+
+  document.addEventListener("pointerdown", function(ev) {
+    if (panel.hidden) return;
+    if (panel.contains(ev.target) || button.contains(ev.target)) return;
+    setOpen(false);
+  });
+  document.addEventListener("keydown", function(ev) {
+    if (ev.key === "Escape" && !panel.hidden) setOpen(false);
+  });
+
+  var drag = null;
+  var pendingFrame = 0;
+
+  function plotBox() {
+    var full = gd._fullLayout || {};
+    var size = full._size || {};
+    return {
+      left: Number(size.l || 0),
+      top: Number(size.t || 0),
+      width: Number(size.w || 0),
+      height: Number(size.h || 0)
+    };
+  }
+
+  function axisFromPointer(ev) {
+    if (!ev.target || !ev.target.closest) return null;
+    if (ev.target.closest(".modebar,.legend,.rist-plot-control-row,.rist-axis-control-panel,.annotation,.shapelayer")) return null;
+    if (ev.target.closest(".xaxislayer-above,.xaxislayer-below")) return "x";
+    if (ev.target.closest(".yaxislayer-above,.yaxislayer-below")) return "y";
+    var rect = gd.getBoundingClientRect();
+    var box = plotBox();
+    var x = ev.clientX - rect.left;
+    var y = ev.clientY - rect.top;
+    var xBand = x >= box.left && x <= box.left + box.width
+      && y >= box.top + box.height - 3 && y <= box.top + box.height + 52;
+    var yBand = y >= box.top && y <= box.top + box.height
+      && x >= Math.max(0, box.left - 62) && x <= box.left + 3;
+    if (xBand && yBand) {
+      var xDistance = Math.abs(y - (box.top + box.height));
+      var yDistance = Math.abs(x - box.left);
+      return xDistance <= yDistance ? "x" : "y";
+    }
+    return xBand ? "x" : (yBand ? "y" : null);
+  }
+
+  function scheduleScale(ev) {
+    if (!drag) return;
+    drag.clientX = ev.clientX;
+    drag.clientY = ev.clientY;
+    if (pendingFrame) return;
+    pendingFrame = requestAnimationFrame(function() {
+      pendingFrame = 0;
+      if (!drag) return;
+      var movement = drag.axis === "x"
+        ? drag.clientX - drag.startX
+        : drag.startY - drag.clientY;
+      var direction = drag.range[1] >= drag.range[0] ? 1 : -1;
+      var towardIncreasingValue = movement * direction;
+      if (Math.abs(towardIncreasingValue) < 3) return;
+      if (!drag.captured && gd._ristHistory && gd._ristHistory.capture) {
+        gd._ristHistory.capture();
+        drag.captured = true;
+      }
+      var factor = Math.exp(-towardIncreasingValue / 180);
+      factor = Math.max(0.08, Math.min(12, factor));
+      var center = (drag.range[0] + drag.range[1]) / 2;
+      var next = [
+        center + (drag.range[0] - center) * factor,
+        center + (drag.range[1] - center) * factor
+      ];
+      var updates = {};
+      updates[drag.axis + "axis.range"] = next;
+      updates[drag.axis + "axis.autorange"] = false;
+      updates[drag.axis + "axis.fixedrange"] = false;
+      window.Plotly.relayout(gd, updates);
+    });
+  }
+
+  gd.addEventListener("pointerdown", function(ev) {
+    if (ev.pointerType === "mouse" && ev.button !== 0) return;
+    var axis = axisFromPointer(ev);
+    if (!axis) return;
+    var range = currentRange(axis + "axis");
+    if (!range || range[0] === range[1]) return;
+    drag = {
+      axis: axis,
+      pointerId: ev.pointerId,
+      startX: ev.clientX,
+      startY: ev.clientY,
+      clientX: ev.clientX,
+      clientY: ev.clientY,
+      range: range.slice(),
+      captured: false
+    };
+    gd.classList.add(axis === "x" ? "rist-axis-scale-x" : "rist-axis-scale-y");
+    if (gd.setPointerCapture) gd.setPointerCapture(ev.pointerId);
+    ev.preventDefault();
+    ev.stopImmediatePropagation();
+  }, true);
+
+  gd.addEventListener("pointermove", function(ev) {
+    if (!drag || ev.pointerId !== drag.pointerId) return;
+    scheduleScale(ev);
+    ev.preventDefault();
+    ev.stopImmediatePropagation();
+  }, true);
+
+  function finishScale(ev) {
+    if (!drag || (ev && ev.pointerId !== drag.pointerId)) return;
+    if (pendingFrame) {
+      cancelAnimationFrame(pendingFrame);
+      pendingFrame = 0;
+    }
+    if (
+      gd.hasPointerCapture
+      && gd.releasePointerCapture
+      && gd.hasPointerCapture(drag.pointerId)
+    ) {
+      gd.releasePointerCapture(drag.pointerId);
+    }
+    gd.classList.remove("rist-axis-scale-x", "rist-axis-scale-y");
+    var changed = drag.captured;
+    drag = null;
+    if (changed) gd.dispatchEvent(new CustomEvent("rist-axis-settings-change"));
+    if (ev) {
+      ev.preventDefault();
+      ev.stopImmediatePropagation();
+    }
+  }
+  gd.addEventListener("pointerup", finishScale, true);
+  gd.addEventListener("pointercancel", finishScale, true);
+  gd.addEventListener("rist-plot-data-replaced", function() {
+    initialRanges.xaxis = currentRange("xaxis");
+    initialRanges.yaxis = currentRange("yaxis");
+    setOpen(false);
+  });
+})();
+</script>
+"""
+    return (
+        template.replace("__PLOT_ID_CSS__", div_id)
+        .replace("__PLOT_ID_JSON__", json.dumps(div_id))
+    )
+
+
 def fig_to_responsive_html(
     fig,
     *,
@@ -6019,6 +6557,7 @@ def fig_to_responsive_html(
     legend_text_edit: bool = False,
     peak_editor: bool = False,
     shape_editor: bool = False,
+    axis_controls: bool = False,
     image_format: str = "svg",
     image_filename: str = "plot",
     image_scale: float = 2,
@@ -6043,6 +6582,7 @@ def fig_to_responsive_html(
     - legend_text_edit=True 면 생성된 HTML에서 범례 항목을 더블클릭해 수정할 수 있다.
     - peak_editor=True 면 피크 marker/라벨/보조선을 HTML에서 추가·삭제할 수 있다.
     - shape_editor=True 면 사각형과 텍스트 박스를 그래프에 추가·편집할 수 있다.
+    - axis_controls=True 면 축 범위·눈금 설정과 축 드래그 확대/축소를 추가한다.
     - image_format 은 모드바 카메라(Download plot) 버튼의 기본 저장 형식(svg/png/jpeg/webp).
     - image_filename / image_scale 은 저장 파일명·배율.
     - image_format_selector=True 면 그래프 우상단에 형식 선택 드롭다운 + 저장 버튼을 띄운다.
@@ -6131,6 +6671,9 @@ def fig_to_responsive_html(
         html = html.replace("</body>", _plot_edit_history_js(div_id) + "</body>", 1)
         html = html.replace("</body>", _edit_mode_toggle_js(div_id) + "</body>", 1)
 
+    if axis_controls:
+        html = html.replace("</body>", _axis_controls_js(div_id) + "</body>", 1)
+
     if trace_highlight:
         html = html.replace(
             "</body>",
@@ -6169,6 +6712,7 @@ def write_responsive_html(
     legend_text_edit: bool = False,
     peak_editor: bool = False,
     shape_editor: bool = False,
+    axis_controls: bool = False,
     image_format: str = "svg",
     image_filename: str = "plot",
     image_scale: float = 2,
@@ -6196,6 +6740,7 @@ def write_responsive_html(
         legend_text_edit=legend_text_edit,
         peak_editor=peak_editor,
         shape_editor=shape_editor,
+        axis_controls=axis_controls,
         image_format=image_format,
         image_filename=image_filename,
         image_scale=image_scale,
