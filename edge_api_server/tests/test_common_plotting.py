@@ -153,6 +153,16 @@ def test_shared_plotly_module_applies_legend_text(tmp_path) -> None:
     assert "legendEditToDisplay" in html
     assert 'ev.key === "Enter" && (ev.ctrlKey || ev.metaKey)' in html
     assert "rist-legend-color-input" in html
+    assert "rist-legend-sample-dash" in html
+    assert "샘플 선 색상" in html
+    assert "샘플 선 종류" in html
+    assert "<option value='solid'>실선</option>" in html
+    assert "<option value='dot'>점선</option>" in html
+    assert "<option value='dash'>파선</option>" in html
+    assert "<option value='dashdot'>일점쇄선</option>" in html
+    assert '"line.dash": dash' in html
+    assert "sampleCurvesForLegendItem" in html
+    assert "rist-sample-line-style-change" in html
     assert "rist-legend-group-row" in html
     assert "rist-legend-group-title" in html
     assert "rist-legend-group-color" in html

@@ -2684,6 +2684,7 @@ _UPLOAD_SCRIPT = """
     [
       "rist-legend-name-change",
       "rist-legend-color-change",
+      "rist-sample-line-style-change",
       "rist-legend-visibility-change",
       "rist-peak-delete",
       "rist-peak-group-change",

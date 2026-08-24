@@ -790,6 +790,20 @@ def _legend_text_edit_js(div_id: str) -> str:
   padding: 2px;
   box-sizing: border-box;
 }}
+#{div_id} .rist-legend-sample-dash {{
+  flex: 0 0 82px;
+  width: 82px;
+  height: 28px;
+  min-width: 0;
+  border: 1px solid #9fb3c8;
+  border-radius: 4px;
+  background: #fff;
+  color: #1f2933;
+  cursor: pointer;
+  font: 11px Arial, sans-serif;
+  padding: 3px 4px;
+  box-sizing: border-box;
+}}
 #{div_id} .rist-legend-edit-actions {{
   position: sticky;
   bottom: -10px;
@@ -918,6 +932,17 @@ def _legend_text_edit_js(div_id: str) -> str:
     return "#374151";
   }}
 
+  function normalizeDash(value) {{
+    var dash = String(value || "solid");
+    return ["solid", "dot", "dash", "longdash", "dashdot", "longdashdot"]
+      .indexOf(dash) >= 0 ? dash : "solid";
+  }}
+
+  function traceDash(curve) {{
+    var tr = (gd.data || [])[curve] || {{}};
+    return normalizeDash(tr.line && tr.line.dash);
+  }}
+
   function traceMeta(curve) {{
     var tr = (gd.data || [])[curve] || {{}};
     return tr.meta && typeof tr.meta === "object" ? tr.meta : {{}};
@@ -963,6 +988,16 @@ def _legend_text_edit_js(div_id: str) -> str:
     var curves = [];
     for (var i = 0; i < data.length; i++) {{
       if (isPeakCurve(i) && legendEditGroup(i) === editGroup) curves.push(i);
+    }}
+    return curves.length ? curves : [curve];
+  }}
+
+  function sampleCurvesForLegendItem(curve) {{
+    var editGroup = legendEditGroup(curve);
+    var data = gd.data || [];
+    var curves = [];
+    for (var i = 0; i < data.length; i++) {{
+      if (isSampleCurve(i) && legendEditGroup(i) === editGroup) curves.push(i);
     }}
     return curves.length ? curves : [curve];
   }}
@@ -1100,6 +1135,26 @@ def _legend_text_edit_js(div_id: str) -> str:
       "marker.color": color
     }}, curves).then(function() {{
       dispatchColorChange(curves, color);
+    }});
+  }}
+
+  function updateSampleLineStyle(curve, colorValue, dashValue) {{
+    var color = normalizeColor(colorValue);
+    var dash = normalizeDash(dashValue);
+    if (!window.Plotly) return;
+    if (gd._ristHistory) gd._ristHistory.capture();
+    var curves = sampleCurvesForLegendItem(curve);
+    window.Plotly.restyle(gd, {{
+      "line.color": color,
+      "line.dash": dash,
+      "marker.color": color
+    }}, curves).then(function() {{
+      dispatchColorChange(curves, color);
+      try {{
+        gd.dispatchEvent(new CustomEvent("rist-sample-line-style-change", {{
+          detail: {{ curves: curves, color: color, dash: dash }}
+        }}));
+      }} catch (e) {{}}
     }});
   }}
 
@@ -1306,7 +1361,19 @@ def _legend_text_edit_js(div_id: str) -> str:
         row.innerHTML = "<span class='rist-legend-row-kind'>"
           + (sampleCurve ? "샘플" : (peakCurve ? "피크" : "항목"))
           + "</span>"
-          + (groupKey ? "" : "<input class='rist-legend-color-input' type='color'>")
+          + (groupKey ? "" : "<input class='rist-legend-color-input' type='color'"
+            + " title='" + (sampleCurve ? "샘플 선 색상" : "색상 선택") + "'"
+            + " aria-label='" + (sampleCurve ? "샘플 선 색상" : "색상 선택") + "'>")
+          + (sampleCurve
+            ? "<select class='rist-legend-sample-dash' title='샘플 선 종류' aria-label='샘플 선 종류'>"
+              + "<option value='solid'>실선</option>"
+              + "<option value='dot'>점선</option>"
+              + "<option value='dash'>파선</option>"
+              + "<option value='longdash'>긴 파선</option>"
+              + "<option value='dashdot'>일점쇄선</option>"
+              + "<option value='longdashdot'>긴 일점쇄선</option>"
+              + "</select>"
+            : "")
           + "<textarea class='rist-legend-edit-input' rows='1'></textarea>"
           + (peakCurve && groupKey
             ? "<button type='button' class='rist-legend-group-remove' title='그룹에서 제외'>−</button>"
@@ -1315,11 +1382,13 @@ def _legend_text_edit_js(div_id: str) -> str:
             ? "<button type='button' class='rist-legend-peak-delete' title='피크 삭제'>×</button>"
             : "");
         var colorInput = row.querySelector(".rist-legend-color-input");
+        var dashInput = row.querySelector(".rist-legend-sample-dash");
         var nameInput = row.querySelector(".rist-legend-edit-input");
         var kindBadge = row.querySelector(".rist-legend-row-kind");
         var removeButton = row.querySelector(".rist-legend-group-remove");
         var deleteButton = row.querySelector(".rist-legend-peak-delete");
         if (colorInput) colorInput.value = traceColor(curve);
+        if (dashInput) dashInput.value = traceDash(curve);
         nameInput.value = legendDisplayToEdit(editableTraceName(curve));
         if (peakCurve && kindBadge) {{
           kindBadge.draggable = true;
@@ -1448,6 +1517,7 @@ def _legend_text_edit_js(div_id: str) -> str:
         var curve = parseInt(row.getAttribute("data-curve"), 10);
         var nameInput = row.querySelector(".rist-legend-edit-input");
         var colorInput = row.querySelector(".rist-legend-color-input");
+        var dashInput = row.querySelector(".rist-legend-sample-dash");
         if (!Number.isFinite(curve) || !nameInput) return;
         if (row.getAttribute("data-delete") === "true") {{
           deleteCurves = deleteCurves.concat(peakCurvesForLegendItem(curve));
@@ -1467,7 +1537,11 @@ def _legend_text_edit_js(div_id: str) -> str:
           legendDisplayToEdit(editableTraceName(curve))
         );
         if (nextName && nextName !== currentName) updateName(curve, nextName);
-        if (colorInput && normalizeColor(colorInput.value) !== traceColor(curve)) {{
+        if (isSampleCurve(curve) && colorInput && dashInput
+            && (normalizeColor(colorInput.value) !== traceColor(curve)
+              || normalizeDash(dashInput.value) !== traceDash(curve))) {{
+          updateSampleLineStyle(curve, colorInput.value, dashInput.value);
+        }} else if (colorInput && normalizeColor(colorInput.value) !== traceColor(curve)) {{
           updateColor(curve, colorInput.value);
         }}
       }});
