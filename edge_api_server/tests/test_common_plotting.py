@@ -637,7 +637,12 @@ def test_axis_controls_add_range_tick_and_axis_drag_controls(tmp_path) -> None:
     assert "축 범위 및 눈금 설정" in html
     assert "numberField(axis, \"from\", \"From\")" in html
     assert "numberField(axis, \"to\", \"To\")" in html
-    assert "data-axis-field='tick'" in html
+    assert 'intervalField(axis, "label-step", "숫자 표시 간격")' in html
+    assert 'intervalField(axis, "minor-step", "보조 눈금 간격")' in html
+    assert "data-axis-field='decimals'" in html
+    assert "숫자 표시 간격" in html
+    assert "보조 눈금 간격" in html
+    assert "소수 자릿수" in html
     assert "data-axis-auto=" in html
     assert "type='text' inputmode='text'" in html
     assert '.replace(/[−–—﹣－]/g, "-")' in html
@@ -677,6 +682,11 @@ def test_axis_controls_add_range_tick_and_axis_drag_controls(tmp_path) -> None:
     assert 'var belowAxis = box.top + box.height + 12' in html
     assert 'left = outsideLeft >= 8 ? outsideLeft : box.left + 12' in html
     assert 'updates[name + ".tickmode"] = value.automatic ? "auto" : "linear"' in html
+    assert 'updates[name + ".dtick"] = value.automatic ? null : value.labelStep' in html
+    assert 'updates[name + ".minor.tickmode"]' in html
+    assert 'updates[name + ".minor.dtick"] = value.automatic ? null : value.minorStep' in html
+    assert 'updates[name + ".tickformat"] = value.decimals == null' in html
+    assert 'function decimalPlacesFromFormat(format)' in html
     assert 'gd.addEventListener("rist-plot-data-replaced"' in html
     assert 'initialRanges.xaxis = currentRange("xaxis")' in html
     assert 'initialRanges.yaxis = currentRange("yaxis")' in html

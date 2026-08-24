@@ -6152,7 +6152,8 @@ def _axis_controls_js(div_id: str) -> str:
   color: #526273;
   font-size: 11px;
 }
-#__PLOT_ID_CSS__ .rist-axis-control-field input {
+#__PLOT_ID_CSS__ .rist-axis-control-field input,
+#__PLOT_ID_CSS__ .rist-axis-control-field select {
   width: 100%;
   min-width: 0;
   height: 34px;
@@ -6164,7 +6165,8 @@ def _axis_controls_js(div_id: str) -> str:
   font: inherit;
   box-sizing: border-box;
 }
-#__PLOT_ID_CSS__ .rist-axis-control-field input:disabled {
+#__PLOT_ID_CSS__ .rist-axis-control-field input:disabled,
+#__PLOT_ID_CSS__ .rist-axis-control-field select:disabled {
   background: #eef2f6;
   color: #94a3b8;
 }
@@ -6176,6 +6178,8 @@ def _axis_controls_js(div_id: str) -> str:
   color: #475569;
   cursor: pointer;
   user-select: none;
+  align-self: end;
+  padding-bottom: 5px;
 }
 #__PLOT_ID_CSS__ .rist-axis-control-auto input {
   width: 16px;
@@ -6346,7 +6350,7 @@ def _axis_controls_js(div_id: str) -> str:
     + "<button type='button' class='rist-axis-control-close' aria-label='닫기'>×</button></header>"
     + "<div class='rist-axis-control-body'>"
     + axisFields("x", "X축") + axisFields("y", "Y축")
-    + "<p class='rist-axis-control-help'>눈금 간격을 자동으로 두면 확대 범위에 맞춰 눈금과 수치 간격이 조절됩니다. 보기 도구로 확대·축소하거나 그래프에서 필요한 영역만 드래그해 자를 수 있습니다.</p>"
+    + "<p class='rist-axis-control-help'>숫자 표시 간격은 라벨이 있는 큰 눈금, 보조 눈금 간격은 그 사이의 작은 눈금을 조절합니다. 자동 간격을 사용하면 확대 범위에 맞춰 함께 조절됩니다.</p>"
     + "<p class='rist-axis-control-status' aria-live='polite'></p>"
     + "<div class='rist-axis-control-footer'><div class='rist-axis-control-view-actions' aria-label='그래프 보기 도구'>"
     + "<button type='button' data-axis-action='zoom-in' title='확대' aria-label='확대'><svg class='lucide lucide-zoom-in' aria-hidden='true' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='11' cy='11' r='8'/><path d='m21 21-4.3-4.3'/><path d='M11 8v6'/><path d='M8 11h6'/></svg></button>"
@@ -6367,15 +6371,30 @@ def _axis_controls_js(div_id: str) -> str:
       + "<strong>" + label + "</strong>"
       + numberField(axis, "from", "From")
       + numberField(axis, "to", "To")
-      + "<label class='rist-axis-control-field'><span>눈금 간격</span>"
-      + "<input type='number' step='any' inputmode='decimal' data-axis='" + axis + "' data-axis-field='tick'></label>"
-      + "<span></span><label class='rist-axis-control-auto'><input type='checkbox' data-axis-auto='" + axis + "' checked>자동 눈금</label>"
+      + intervalField(axis, "label-step", "숫자 표시 간격")
+      + "<span></span>"
+      + intervalField(axis, "minor-step", "보조 눈금 간격")
+      + decimalField(axis)
+      + "<label class='rist-axis-control-auto'><input type='checkbox' data-axis-auto='" + axis + "' checked>자동 간격</label>"
       + "</div>";
   }
 
   function numberField(axis, field, label) {
     return "<label class='rist-axis-control-field'><span>" + label + "</span>"
       + "<input type='text' inputmode='text' autocomplete='off' spellcheck='false' data-axis='" + axis + "' data-axis-field='" + field + "'></label>";
+  }
+
+  function intervalField(axis, field, label) {
+    return "<label class='rist-axis-control-field'><span>" + label + "</span>"
+      + "<input type='text' inputmode='decimal' autocomplete='off' spellcheck='false' data-axis='" + axis + "' data-axis-field='" + field + "'></label>";
+  }
+
+  function decimalField(axis) {
+    return "<label class='rist-axis-control-field'><span>소수 자릿수</span>"
+      + "<select data-axis='" + axis + "' data-axis-field='decimals'>"
+      + "<option value=''>자동</option><option value='0'>0</option><option value='1'>1</option>"
+      + "<option value='2'>2</option><option value='3'>3</option><option value='4'>4</option>"
+      + "<option value='5'>5</option><option value='6'>6</option></select></label>";
   }
 
   function finiteNumber(value) {
@@ -6409,6 +6428,20 @@ def _axis_controls_js(div_id: str) -> str:
     return first == null || second == null ? null : [first, second];
   }
 
+  function nestedAxisValue(state, group, name) {
+    var layoutGroup = state.layout && state.layout[group];
+    var fullGroup = state.full && state.full[group];
+    var value = layoutGroup && layoutGroup[name];
+    return value == null && fullGroup ? fullGroup[name] : value;
+  }
+
+  function decimalPlacesFromFormat(format) {
+    var match = /^\.(\d+)f$/.exec(String(format || ""));
+    if (!match) return "";
+    var places = Number(match[1]);
+    return Number.isInteger(places) && places >= 0 && places <= 6 ? String(places) : "";
+  }
+
   var initialRanges = {
     xaxis: currentRange("xaxis"),
     yaxis: currentRange("yaxis")
@@ -6432,10 +6465,19 @@ def _axis_controls_js(div_id: str) -> str:
     }
     var dtick = finiteNumber(state.layout.dtick);
     if (dtick == null) dtick = finiteNumber(state.full.dtick);
-    var manual = state.layout.tickmode === "linear" && dtick != null && dtick > 0;
+    var tickmode = state.layout.tickmode || state.full.tickmode;
+    var manual = tickmode === "linear" && dtick != null && dtick > 0;
+    var minorDtick = finiteNumber(nestedAxisValue(state, "minor", "dtick"));
     autoField(axis).checked = !manual;
-    field(axis, "tick").disabled = !manual;
-    field(axis, "tick").value = manual ? cleanNumber(dtick) : "";
+    field(axis, "label-step").disabled = !manual;
+    field(axis, "minor-step").disabled = !manual;
+    field(axis, "label-step").value = manual ? cleanNumber(dtick) : "";
+    field(axis, "minor-step").value = manual && minorDtick != null && minorDtick > 0
+      ? cleanNumber(minorDtick)
+      : "";
+    field(axis, "decimals").value = decimalPlacesFromFormat(
+      state.layout.tickformat || state.full.tickformat
+    );
   }
 
   function syncPanel() {
@@ -6550,8 +6592,12 @@ def _axis_controls_js(div_id: str) -> str:
   panel.querySelectorAll("[data-axis-auto]").forEach(function(input) {
     input.addEventListener("change", function() {
       var axis = input.getAttribute("data-axis-auto");
-      field(axis, "tick").disabled = input.checked;
-      if (input.checked) field(axis, "tick").value = "";
+      field(axis, "label-step").disabled = input.checked;
+      field(axis, "minor-step").disabled = input.checked;
+      if (input.checked) {
+        field(axis, "label-step").value = "";
+        field(axis, "minor-step").value = "";
+      }
     });
   });
 
@@ -6562,11 +6608,24 @@ def _axis_controls_js(div_id: str) -> str:
       throw new Error(axis.toUpperCase() + "축 From/To에 서로 다른 수치를 입력하세요.");
     }
     var automatic = autoField(axis).checked;
-    var tick = automatic ? null : finiteNumber(field(axis, "tick").value);
-    if (!automatic && (tick == null || tick <= 0)) {
-      throw new Error(axis.toUpperCase() + "축 눈금 간격은 0보다 커야 합니다.");
+    var labelStep = automatic ? null : finiteNumber(field(axis, "label-step").value);
+    var minorStep = automatic ? null : finiteNumber(field(axis, "minor-step").value);
+    if (!automatic && (labelStep == null || labelStep <= 0)) {
+      throw new Error(axis.toUpperCase() + "축 숫자 표시 간격은 0보다 커야 합니다.");
     }
-    return {from: from, to: to, automatic: automatic, tick: tick};
+    if (!automatic && minorStep != null && minorStep <= 0) {
+      throw new Error(axis.toUpperCase() + "축 보조 눈금 간격은 0보다 커야 합니다.");
+    }
+    var decimalsText = field(axis, "decimals").value;
+    var decimals = decimalsText === "" ? null : Number(decimalsText);
+    return {
+      from: from,
+      to: to,
+      automatic: automatic,
+      labelStep: labelStep,
+      minorStep: minorStep,
+      decimals: Number.isInteger(decimals) ? decimals : null
+    };
   }
 
   function updatesForAxis(axis, value, updates) {
@@ -6575,7 +6634,14 @@ def _axis_controls_js(div_id: str) -> str:
     updates[name + ".autorange"] = false;
     updates[name + ".fixedrange"] = false;
     updates[name + ".tickmode"] = value.automatic ? "auto" : "linear";
-    updates[name + ".dtick"] = value.automatic ? null : value.tick;
+    updates[name + ".dtick"] = value.automatic ? null : value.labelStep;
+    updates[name + ".minor.tickmode"] = value.automatic || value.minorStep == null
+      ? "auto"
+      : "linear";
+    updates[name + ".minor.dtick"] = value.automatic ? null : value.minorStep;
+    updates[name + ".tickformat"] = value.decimals == null
+      ? null
+      : "." + value.decimals + "f";
   }
 
   panel.querySelector("[data-axis-action='apply']").addEventListener("click", function() {
@@ -6602,6 +6668,9 @@ def _axis_controls_js(div_id: str) -> str:
       var axisName = axis + "axis";
       updates[axisName + ".tickmode"] = "auto";
       updates[axisName + ".dtick"] = null;
+      updates[axisName + ".minor.tickmode"] = "auto";
+      updates[axisName + ".minor.dtick"] = null;
+      updates[axisName + ".tickformat"] = null;
       updates[axisName + ".fixedrange"] = false;
       if (initialRanges[axisName]) {
         updates[axisName + ".range"] = initialRanges[axisName].slice();
