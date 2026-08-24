@@ -1643,34 +1643,6 @@ def _legend_text_edit_js(div_id: str) -> str:
       }});
   }}
 
-  function traceVisible(curve) {{
-    var tr = (gd.data || [])[curve] || {{}};
-    return tr.visible !== false && tr.visible !== "legendonly";
-  }}
-
-  function sampleGroupForCurve(curve) {{
-    var meta = traceMeta(curve);
-    return String(
-      meta.rist_sample_group
-      || (meta.rist_peak && meta.rist_peak.sample_group)
-      || ""
-    );
-  }}
-
-  function sampleParentVisibleForCurve(curve) {{
-    var group = sampleGroupForCurve(curve);
-    if (!group) return true;
-    var data = gd.data || [];
-    for (var i = 0; i < data.length; i++) {{
-      var meta = traceMeta(i);
-      if (meta.rist_sample_parent
-          && String(meta.rist_sample_group || "") === group) {{
-        return traceVisible(i);
-      }}
-    }}
-    return true;
-  }}
-
   function peakMatchesCurrentSensitivity(curve) {{
     var peak = traceMeta(curve).rist_peak;
     if (!peak || !Number.isFinite(Number(peak.sensitivity_min))) return true;
@@ -1679,21 +1651,61 @@ def _legend_text_edit_js(div_id: str) -> str:
     return Number(peak.sensitivity_min) <= current;
   }}
 
-  function setPeakLegendVisibility(visible) {{
-    if (!window.Plotly) return;
+  function refreshPeakLegendEntryStateFromLayout() {{
+    var layoutMeta = gd.layout && gd.layout.meta && typeof gd.layout.meta === "object"
+      ? gd.layout.meta : {{}};
+    gd._ristPeakLegendEntriesVisible = layoutMeta.ristPeakLegendEntriesVisible !== false;
+    return gd._ristPeakLegendEntriesVisible;
+  }}
+
+  function peakLegendEntriesVisible() {{
+    if (typeof gd._ristPeakLegendEntriesVisible !== "boolean") {{
+      return refreshPeakLegendEntryStateFromLayout();
+    }}
+    return gd._ristPeakLegendEntriesVisible;
+  }}
+
+  function peakLegendEntryValues(visible) {{
     var curves = [];
     var values = [];
+    var seen = {{}};
     for (var i = 0; i < (gd.data || []).length; i++) {{
       if (!isPeakCurve(i)) continue;
+      var meta = traceMeta(i);
+      var key = String(
+        meta.rist_legend_edit_group
+        || (meta.rist_peak && meta.rist_peak.label_key)
+        || "curve:" + i
+      );
+      var eligible = peakMatchesCurrentSensitivity(i);
       curves.push(i);
-      if (!peakMatchesCurrentSensitivity(i)) values.push(false);
-      else if (visible === "legendonly") values.push("legendonly");
-      else values.push(sampleParentVisibleForCurve(i) ? true : "legendonly");
+      values.push(!!visible && eligible && !seen[key]);
+      if (eligible) seen[key] = true;
     }}
-    if (!curves.length) return;
+    return {{ curves: curves, values: values }};
+  }}
+
+  function setPeakLegendEntriesVisibility(visible) {{
+    if (!window.Plotly) return;
+    var nextVisible = !!visible;
+    var update = peakLegendEntryValues(nextVisible);
+    if (!update.curves.length) return;
     if (gd._ristHistory) gd._ristHistory.capture();
-    window.Plotly.restyle(gd, {{ visible: values }}, curves).then(function() {{
-      dispatchVisibilityChange(curves, values, visible !== "legendonly");
+    gd._ristPeakLegendEntriesVisible = nextVisible;
+    var layoutMeta = Object.assign(
+      {{}},
+      gd.layout && gd.layout.meta && typeof gd.layout.meta === "object"
+        ? gd.layout.meta : {{}}
+    );
+    layoutMeta.ristPeakLegendEntriesVisible = nextVisible;
+    window.Plotly.update(gd, {{
+      showlegend: update.values
+    }}, {{
+      meta: layoutMeta
+    }}, update.curves).then(function() {{
+      gd.dispatchEvent(new CustomEvent("rist-peak-legend-entries-change", {{
+        detail: {{ visible: nextVisible }}
+      }}));
     }});
   }}
 
@@ -1748,6 +1760,14 @@ def _legend_text_edit_js(div_id: str) -> str:
     bulk.querySelectorAll("[data-peak-control]").forEach(function(button) {{
       button.hidden = !hasPeaks;
     }});
+    bulk.querySelectorAll("[data-peak-legend-visible]").forEach(function(button) {{
+      var requested = button.getAttribute("data-peak-legend-visible") === "true";
+      button.classList.toggle("is-active", requested === peakLegendEntriesVisible());
+      button.setAttribute(
+        "aria-pressed",
+        requested === peakLegendEntriesVisible() ? "true" : "false"
+      );
+    }});
     updatePeakLabelButton(bulk.querySelector(".rist-peak-label-toggle"));
   }}
 
@@ -1767,8 +1787,8 @@ def _legend_text_edit_js(div_id: str) -> str:
     bulk.innerHTML =
       "<button type='button' class='rist-legend-bulk-button' data-visible='true'>\ubaa8\ub450 \ud45c\uc2dc</button>"
       + "<button type='button' class='rist-legend-bulk-button' data-visible='legendonly'>\ubaa8\ub450 \uc228\uae40</button>"
-      + "<button type='button' class='rist-legend-bulk-button' data-peak-control data-peak-visible='true'>\ud53c\ud06c \ud45c\uc2dc</button>"
-      + "<button type='button' class='rist-legend-bulk-button' data-peak-control data-peak-visible='legendonly'>\ud53c\ud06c \uc228\uae40</button>"
+      + "<button type='button' class='rist-legend-bulk-button' data-peak-control data-peak-legend-visible='true'>\ud53c\ud06c \ubc94\ub840 \ud45c\uc2dc</button>"
+      + "<button type='button' class='rist-legend-bulk-button' data-peak-control data-peak-legend-visible='false'>\ud53c\ud06c \ubc94\ub840 \uc228\uae40</button>"
       + "<button type='button' class='rist-legend-bulk-button rist-peak-label-toggle' data-peak-control aria-pressed='true'>\ud53c\ud06c \ub77c\ubca8</button>";
     toolbar.appendChild(bulk);
     refreshPeakBulkControls(bulk);
@@ -1782,9 +1802,9 @@ def _legend_text_edit_js(div_id: str) -> str:
         setPeakLabelVisibility(!peakLabelsVisible(), b);
         return;
       }}
-      if (b.hasAttribute("data-peak-visible")) {{
-        setPeakLegendVisibility(
-          b.getAttribute("data-peak-visible") === "true" ? true : "legendonly"
+      if (b.hasAttribute("data-peak-legend-visible")) {{
+        setPeakLegendEntriesVisibility(
+          b.getAttribute("data-peak-legend-visible") === "true"
         );
         return;
       }}
@@ -1794,11 +1814,16 @@ def _legend_text_edit_js(div_id: str) -> str:
     }});
 
     gd.addEventListener("rist-history-restored", function() {{
+      refreshPeakLegendEntryStateFromLayout();
       refreshPeakLabelStateFromLayout();
       refreshPeakBulkControls(bulk);
     }});
     gd.addEventListener("rist-plot-data-replaced", function() {{
+      refreshPeakLegendEntryStateFromLayout();
       refreshPeakLabelStateFromLayout();
+      refreshPeakBulkControls(bulk);
+    }});
+    gd.addEventListener("rist-peak-legend-entries-change", function() {{
       refreshPeakBulkControls(bulk);
     }});
     gd.on("plotly_afterplot", function() {{
@@ -1964,6 +1989,12 @@ def peak_sensitivity_js(div_id: str, initial: str = "medium") -> str:
     return gd._ristPeakLabelsVisible;
   }}
 
+  function peakLegendEntriesVisible() {{
+    var layoutMeta = gd.layout && gd.layout.meta && typeof gd.layout.meta === "object"
+      ? gd.layout.meta : {{}};
+    return layoutMeta.ristPeakLegendEntriesVisible !== false;
+  }}
+
   function currentVisibleCount() {{
     var data = gd.data || [];
     var count = 0;
@@ -1998,7 +2029,11 @@ def peak_sensitivity_js(div_id: str, initial: str = "medium") -> str:
         || (meta.rist_peak && meta.rist_peak.label_key)
         || "curve:" + i
       );
-      var nextShowlegend = eligible && !seenLegendItems[editGroup];
+      var nextShowlegend = (
+        peakLegendEntriesVisible()
+        && eligible
+        && !seenLegendItems[editGroup]
+      );
       if (eligible) {{
         seenLegendItems[editGroup] = true;
         eligibleCount += 1;
@@ -3075,17 +3110,6 @@ def peak_editor_js(div_id: str) -> str:
     return true;
   }}
 
-  function peakCurvesForLegendCurve(curve) {{
-    if (!isPeakCurve(curve)) return [];
-    var key = labelKeyForTrace(curve);
-    var data = gd.data || [];
-    var curves = [];
-    for (var i = 0; i < data.length; i++) {{
-      if (isPeakCurve(i) && labelKeyForTrace(i) === key) curves.push(i);
-    }}
-    return curves.length ? curves : [curve];
-  }}
-
   function updateHiddenSamplePeakLegendLocks() {{
     legendTraceItems().forEach(function(item) {{
       var curve = curveFromLegendItem(item);
@@ -3104,35 +3128,8 @@ def peak_editor_js(div_id: str) -> str:
   function handlePeakLegendClick(ev) {{
     var curve = curveFromLegendEvent(ev);
     if (!isPeakCurve(curve)) return;
-    if (shouldBlockHiddenSamplePeakCurve(curve)) return false;
-    var curves = peakCurvesForLegendCurve(curve);
-    var previousUserVisibility = curves.map(function(item) {{
-      return peakUserVisible(item);
-    }});
-    var nextVisible = !peakUserVisible(curve);
-    var visibility = curves.map(function(item) {{
-      setPeakUserVisibility(item, nextVisible);
-      if (!peakMatchesCurrentSensitivity(item)) return false;
-      return nextVisible ? true : "legendonly";
-    }});
-    window.Plotly.restyle(gd, {{ visible: visibility }}, curves).then(function() {{
-      try {{
-        gd.dispatchEvent(new CustomEvent("rist-legend-visibility-change", {{
-          detail: {{
-            curves: curves,
-            visible: visibility,
-            userVisible: nextVisible
-          }}
-        }}));
-      }} catch (e) {{}}
-      syncVisibility();
-      updateHiddenSamplePeakLegendLocks();
-    }}).catch(function(err) {{
-      curves.forEach(function(item, pos) {{
-        setPeakUserVisibility(item, previousUserVisibility[pos]);
-      }});
-      console.error("RIST peak legend visibility update failed", err);
-    }});
+    // Peak legend rows describe graph annotations. Clicking a row must not
+    // hide the marker, connector, or label from the graph.
     return false;
   }}
 

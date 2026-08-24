@@ -214,10 +214,13 @@ def test_shared_plotly_module_applies_legend_text(tmp_path) -> None:
     assert 'kind: "group"' in html
     assert "rist-legend-bulk-controls" in html
     assert "rist-legend-bulk-button" in html
-    assert "피크 표시" in html
-    assert "피크 숨김" in html
+    assert "피크 범례 표시" in html
+    assert "피크 범례 숨김" in html
     assert "피크 라벨" in html
-    assert "setPeakLegendVisibility" in html
+    assert "setPeakLegendEntriesVisibility" in html
+    assert "ristPeakLegendEntriesVisible" in html
+    assert "showlegend: update.values" in html
+    assert "rist-peak-legend-entries-change" in html
     assert "ristPeakLabelsVisible" in html
     assert "rist-peak-label-toggle" in html
     assert "rist-peak-label-visibility-change" in html
@@ -386,18 +389,15 @@ def test_shared_peak_editor_adds_peak_controls(tmp_path) -> None:
     assert "blockHiddenSamplePeakLegendToggle" in html
     assert "interceptHiddenSamplePeakLegendToggle" in html
     assert "updateHiddenSamplePeakLegendLocks" in html
-    assert "peakCurvesForLegendCurve" in html
-    assert "labelKeyForTrace(i) === key" in html
     assert "rist-legend-locked-by-hidden-sample" in html
     assert "pointer-events: none" in html
     assert 'item.setAttribute("aria-disabled", "true")' in html
     assert '"pointerdown", "mousedown", "click", "dblclick", "touchstart", "touchend"' in html
     assert "document.addEventListener(type, interceptHiddenSamplePeakLegendToggle, true)" in html
     assert "handlePeakLegendClick" in html
-    assert "var nextVisible = !peakUserVisible(curve)" in html
-    assert "window.Plotly.restyle(gd, { visible: visibility }, curves)" in html
-    assert "userVisible: nextVisible" in html
-    assert "RIST peak legend visibility update failed" in html
+    assert "Peak legend rows describe graph annotations" in html
+    assert "var nextVisible = !peakUserVisible(curve)" not in html
+    assert "RIST peak legend visibility update failed" not in html
     assert 'gd.on("plotly_legendclick", handlePeakLegendClick)' in html
     assert 'gd.on("plotly_legenddoubleclick", blockHiddenSamplePeakLegendToggle)' in html
     assert 'gd.on("plotly_afterplot", updateHiddenSamplePeakLegendLocks)' in html
