@@ -386,12 +386,18 @@ def test_shared_peak_editor_adds_peak_controls(tmp_path) -> None:
     assert "blockHiddenSamplePeakLegendToggle" in html
     assert "interceptHiddenSamplePeakLegendToggle" in html
     assert "updateHiddenSamplePeakLegendLocks" in html
+    assert "peakCurvesForLegendCurve" in html
+    assert "labelKeyForTrace(i) === key" in html
     assert "rist-legend-locked-by-hidden-sample" in html
     assert "pointer-events: none" in html
     assert 'item.setAttribute("aria-disabled", "true")' in html
     assert '"pointerdown", "mousedown", "click", "dblclick", "touchstart", "touchend"' in html
     assert "document.addEventListener(type, interceptHiddenSamplePeakLegendToggle, true)" in html
     assert "handlePeakLegendClick" in html
+    assert "var nextVisible = !peakUserVisible(curve)" in html
+    assert "window.Plotly.restyle(gd, { visible: visibility }, curves)" in html
+    assert "userVisible: nextVisible" in html
+    assert "RIST peak legend visibility update failed" in html
     assert 'gd.on("plotly_legendclick", handlePeakLegendClick)' in html
     assert 'gd.on("plotly_legenddoubleclick", blockHiddenSamplePeakLegendToggle)' in html
     assert 'gd.on("plotly_afterplot", updateHiddenSamplePeakLegendLocks)' in html

@@ -3075,6 +3075,17 @@ def peak_editor_js(div_id: str) -> str:
     return true;
   }}
 
+  function peakCurvesForLegendCurve(curve) {{
+    if (!isPeakCurve(curve)) return [];
+    var key = labelKeyForTrace(curve);
+    var data = gd.data || [];
+    var curves = [];
+    for (var i = 0; i < data.length; i++) {{
+      if (isPeakCurve(i) && labelKeyForTrace(i) === key) curves.push(i);
+    }}
+    return curves.length ? curves : [curve];
+  }}
+
   function updateHiddenSamplePeakLegendLocks() {{
     legendTraceItems().forEach(function(item) {{
       var curve = curveFromLegendItem(item);
@@ -3087,16 +3098,42 @@ def peak_editor_js(div_id: str) -> str:
 
   function blockHiddenSamplePeakLegendToggle(ev) {{
     var curve = curveFromLegendEvent(ev);
-    if (!shouldBlockHiddenSamplePeakCurve(curve)) return;
-    return false;
+    if (isPeakCurve(curve)) return false;
   }}
 
   function handlePeakLegendClick(ev) {{
     var curve = curveFromLegendEvent(ev);
+    if (!isPeakCurve(curve)) return;
     if (shouldBlockHiddenSamplePeakCurve(curve)) return false;
-    if (isPeakCurve(curve)) {{
-      setPeakUserVisibility(curve, !traceVisible(curve));
-    }}
+    var curves = peakCurvesForLegendCurve(curve);
+    var previousUserVisibility = curves.map(function(item) {{
+      return peakUserVisible(item);
+    }});
+    var nextVisible = !peakUserVisible(curve);
+    var visibility = curves.map(function(item) {{
+      setPeakUserVisibility(item, nextVisible);
+      if (!peakMatchesCurrentSensitivity(item)) return false;
+      return nextVisible ? true : "legendonly";
+    }});
+    window.Plotly.restyle(gd, {{ visible: visibility }}, curves).then(function() {{
+      try {{
+        gd.dispatchEvent(new CustomEvent("rist-legend-visibility-change", {{
+          detail: {{
+            curves: curves,
+            visible: visibility,
+            userVisible: nextVisible
+          }}
+        }}));
+      }} catch (e) {{}}
+      syncVisibility();
+      updateHiddenSamplePeakLegendLocks();
+    }}).catch(function(err) {{
+      curves.forEach(function(item, pos) {{
+        setPeakUserVisibility(item, previousUserVisibility[pos]);
+      }});
+      console.error("RIST peak legend visibility update failed", err);
+    }});
+    return false;
   }}
 
   function recordPeakUserVisibilityFromRestyle(restyleEvent) {{
