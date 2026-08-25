@@ -6249,6 +6249,12 @@ def _axis_controls_js(div_id: str) -> str:
   font-weight: 700;
   cursor: pointer;
 }
+#__PLOT_ID_CSS__ .rist-axis-control-actions button:disabled {
+  border-color: #d6dee8;
+  background: #f3f6f9;
+  color: #94a3b8;
+  cursor: default;
+}
 #__PLOT_ID_CSS__ .rist-axis-control-actions .is-primary {
   border-color: #2563eb;
   background: #2563eb;
@@ -6356,7 +6362,8 @@ def _axis_controls_js(div_id: str) -> str:
     + "<button type='button' data-axis-action='zoom-in' title='확대' aria-label='확대'><svg class='lucide lucide-zoom-in' aria-hidden='true' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='11' cy='11' r='8'/><path d='m21 21-4.3-4.3'/><path d='M11 8v6'/><path d='M8 11h6'/></svg></button>"
     + "<button type='button' data-axis-action='zoom-out' title='축소' aria-label='축소'><svg class='lucide lucide-zoom-out' aria-hidden='true' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='11' cy='11' r='8'/><path d='m21 21-4.3-4.3'/><path d='M8 11h6'/></svg></button>"
     + "<button type='button' data-axis-action='crop' title='드래그 영역 자르기' aria-label='드래그 영역 자르기'><svg class='lucide lucide-crop' aria-hidden='true' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M6 2v14a2 2 0 0 0 2 2h14'/><path d='M18 22V8a2 2 0 0 0-2-2H2'/></svg></button></div>"
-    + "<div class='rist-axis-control-actions'><button type='button' data-axis-action='reset'>초기 범위</button>"
+    + "<div class='rist-axis-control-actions'><button type='button' data-axis-action='uncrop' title='Crop 전 전체 영역으로 복원' disabled>Crop 해제</button>"
+    + "<button type='button' data-axis-action='reset'>초기 범위</button>"
     + "<button type='button' class='is-primary' data-axis-action='apply'>적용</button></div></div></div>";
   gd.appendChild(panel);
 
@@ -6449,6 +6456,7 @@ def _axis_controls_js(div_id: str) -> str:
     yaxis: currentRange("yaxis")
   };
   var CROP_META_KEY = "ristCropRanges";
+  var CROP_RESTORE_META_KEY = "ristCropRestoreRanges";
 
   function copyRange(range) {
     if (!Array.isArray(range) || range.length < 2) return null;
@@ -6457,14 +6465,14 @@ def _axis_controls_js(div_id: str) -> str:
     return first == null || second == null || first === second ? null : [first, second];
   }
 
-  function cropRangesFromLayout() {
+  function rangesFromLayout(metaKey) {
     var layoutMeta = gd.layout && gd.layout.meta;
     var fullMeta = gd._fullLayout && gd._fullLayout.meta;
     var stored = layoutMeta && typeof layoutMeta === "object"
-      ? layoutMeta[CROP_META_KEY]
+      ? layoutMeta[metaKey]
       : null;
     if (!stored && fullMeta && typeof fullMeta === "object") {
-      stored = fullMeta[CROP_META_KEY];
+      stored = fullMeta[metaKey];
     }
     return {
       xaxis: copyRange(stored && stored.xaxis),
@@ -6472,18 +6480,32 @@ def _axis_controls_js(div_id: str) -> str:
     };
   }
 
+  function cropRangesFromLayout() {
+    return rangesFromLayout(CROP_META_KEY);
+  }
+
+  function cropRestoreRangesFromLayout() {
+    return rangesFromLayout(CROP_RESTORE_META_KEY);
+  }
+
   var cropRanges = cropRangesFromLayout();
+  var cropRestoreRanges = cropRestoreRangesFromLayout();
+
+  function storeRangesInMeta(meta, metaKey, ranges) {
+    var stored = {};
+    if (ranges.xaxis) stored.xaxis = ranges.xaxis.slice();
+    if (ranges.yaxis) stored.yaxis = ranges.yaxis.slice();
+    if (stored.xaxis || stored.yaxis) meta[metaKey] = stored;
+    else delete meta[metaKey];
+  }
 
   function cropMeta(updates) {
     var currentMeta = gd.layout && gd.layout.meta;
     var meta = currentMeta && typeof currentMeta === "object"
       ? Object.assign({}, currentMeta)
       : {};
-    var stored = {};
-    if (cropRanges.xaxis) stored.xaxis = cropRanges.xaxis.slice();
-    if (cropRanges.yaxis) stored.yaxis = cropRanges.yaxis.slice();
-    if (stored.xaxis || stored.yaxis) meta[CROP_META_KEY] = stored;
-    else delete meta[CROP_META_KEY];
+    storeRangesInMeta(meta, CROP_META_KEY, cropRanges);
+    storeRangesInMeta(meta, CROP_RESTORE_META_KEY, cropRestoreRanges);
     updates.meta = meta;
   }
 
@@ -6533,6 +6555,7 @@ def _axis_controls_js(div_id: str) -> str:
   var cropClampTimer = 0;
   var cropClampPending = false;
   var cropRequestedRanges = {};
+  var cropRequestedAutorange = {};
 
   function requestedRangeFromRelayout(axisName, eventData) {
     if (!eventData || typeof eventData !== "object") return null;
@@ -6551,6 +6574,9 @@ def _axis_controls_js(div_id: str) -> str:
     ["xaxis", "yaxis"].forEach(function(axisName) {
       var requested = requestedRangeFromRelayout(axisName, eventData);
       if (requested) cropRequestedRanges[axisName] = requested;
+      if (eventData && eventData[axisName + ".autorange"] === true) {
+        cropRequestedAutorange[axisName] = true;
+      }
     });
     cropClampPending = true;
     if (enforcingCropBounds || cropClampTimer) return;
@@ -6558,14 +6584,20 @@ def _axis_controls_js(div_id: str) -> str:
       cropClampTimer = 0;
       cropClampPending = false;
       var requestedRanges = cropRequestedRanges;
+      var requestedAutorange = cropRequestedAutorange;
       cropRequestedRanges = {};
+      cropRequestedAutorange = {};
       var updates = {};
       var changed = false;
       ["xaxis", "yaxis"].forEach(function(axisName) {
         if (!cropRanges[axisName]) return;
         var range = requestedRanges[axisName] || currentRange(axisName);
         var bounded = clampRangeToCrop(axisName, range);
-        if (!range || !bounded || sameRange(range, bounded)) return;
+        var visibleRange = currentRange(axisName);
+        var requestWasClamped = range && bounded && !sameRange(range, bounded);
+        var visibleNeedsUpdate = !visibleRange || !bounded || !sameRange(visibleRange, bounded);
+        if (!range || !bounded) return;
+        if (!requestedAutorange[axisName] && !requestWasClamped && !visibleNeedsUpdate) return;
         updates[axisName + ".range"] = bounded;
         updates[axisName + ".autorange"] = false;
         updates[axisName + ".fixedrange"] = false;
@@ -6620,6 +6652,13 @@ def _axis_controls_js(div_id: str) -> str:
   function syncPanel() {
     syncAxis("x");
     syncAxis("y");
+    var hasActiveCrop = activeAxes().some(function(axis) {
+      return Boolean(cropRanges[axis + "axis"]);
+    });
+    var uncropButton = panel.querySelector("[data-axis-action='uncrop']");
+    uncropButton.disabled = !hasActiveCrop;
+    var resetButton = panel.querySelector("[data-axis-action='reset']");
+    resetButton.textContent = hasActiveCrop ? "Crop 범위" : "초기 범위";
     panel.querySelector(".rist-axis-control-status").textContent = "";
   }
 
@@ -6803,18 +6842,45 @@ def _axis_controls_js(div_id: str) -> str:
     var updates = {};
     activeAxes().forEach(function(axis) {
       var axisName = axis + "axis";
-      cropRanges[axisName] = null;
       updates[axisName + ".tickmode"] = "auto";
       updates[axisName + ".dtick"] = null;
       updates[axisName + ".minor.tickmode"] = "auto";
       updates[axisName + ".minor.dtick"] = null;
       updates[axisName + ".tickformat"] = null;
       updates[axisName + ".fixedrange"] = false;
-      if (initialRanges[axisName]) {
-        updates[axisName + ".range"] = initialRanges[axisName].slice();
+      var resetRange = cropRanges[axisName] || initialRanges[axisName];
+      if (resetRange) {
+        updates[axisName + ".range"] = resetRange.slice();
         updates[axisName + ".autorange"] = false;
       }
     });
+    cropMeta(updates);
+    if (gd._ristHistory && gd._ristHistory.capture) gd._ristHistory.capture();
+    window.Plotly.relayout(gd, updates).then(function() {
+      syncPanel();
+      gd.dispatchEvent(new CustomEvent("rist-axis-settings-change"));
+    });
+  });
+
+  panel.querySelector("[data-axis-action='uncrop']").addEventListener("click", function() {
+    var updates = {};
+    var changed = false;
+    activeAxes().forEach(function(axis) {
+      var axisName = axis + "axis";
+      if (!cropRanges[axisName]) return;
+      var restoreRange = cropRestoreRanges[axisName] || initialRanges[axisName];
+      cropRanges[axisName] = null;
+      cropRestoreRanges[axisName] = null;
+      if (restoreRange) {
+        updates[axisName + ".range"] = restoreRange.slice();
+        updates[axisName + ".autorange"] = false;
+      } else {
+        updates[axisName + ".autorange"] = true;
+      }
+      updates[axisName + ".fixedrange"] = false;
+      changed = true;
+    });
+    if (!changed) return;
     cropMeta(updates);
     if (gd._ristHistory && gd._ristHistory.capture) gd._ristHistory.capture();
     window.Plotly.relayout(gd, updates).then(function() {
@@ -6933,10 +6999,15 @@ def _axis_controls_js(div_id: str) -> str:
     session.axes.forEach(function(axis) {
       var range = normalizedCropRange(axis, eventData && eventData.range && eventData.range[axis]);
       if (!range) return;
-      cropRanges[axis + "axis"] = range.slice();
-      updates[axis + "axis.range"] = range;
-      updates[axis + "axis.autorange"] = false;
-      updates[axis + "axis.fixedrange"] = false;
+      var axisName = axis + "axis";
+      if (!cropRanges[axisName] && !cropRestoreRanges[axisName]) {
+        cropRestoreRanges[axisName] = copyRange(initialRanges[axisName])
+          || currentRange(axisName);
+      }
+      cropRanges[axisName] = range.slice();
+      updates[axisName + ".range"] = range;
+      updates[axisName + ".autorange"] = false;
+      updates[axisName + ".fixedrange"] = false;
       changed = true;
     });
     if (!changed) return;
@@ -7128,8 +7199,11 @@ def _axis_controls_js(div_id: str) -> str:
     if (cropSession) cancelCrop();
     cropRanges.xaxis = null;
     cropRanges.yaxis = null;
+    cropRestoreRanges.xaxis = null;
+    cropRestoreRanges.yaxis = null;
     if (gd.layout && gd.layout.meta && typeof gd.layout.meta === "object") {
       delete gd.layout.meta[CROP_META_KEY];
+      delete gd.layout.meta[CROP_RESTORE_META_KEY];
     }
     initialRanges.xaxis = currentRange("xaxis");
     initialRanges.yaxis = currentRange("yaxis");
@@ -7137,6 +7211,7 @@ def _axis_controls_js(div_id: str) -> str:
   });
   gd.addEventListener("rist-history-restored", function() {
     cropRanges = cropRangesFromLayout();
+    cropRestoreRanges = cropRestoreRangesFromLayout();
     enforceCropBounds();
   });
 })();
