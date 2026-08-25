@@ -152,6 +152,7 @@ def ftir_abs_trans_toggle_js(div_id: str, *, yaxis_titles: dict[str, dict[str, s
 
   function applyMode(nextMode) {{
     if (!window.Plotly) return;
+    gd._ristFtirSignalMode = nextMode;
     if (!gd._ristFtirUnitOriginalShapes) {{
       gd._ristFtirUnitOriginalShapes = (gd.layout.shapes || []).slice();
       gd._ristFtirUnitOriginalAnnotations = (gd.layout.annotations || []).map(function(a) {{
@@ -184,6 +185,10 @@ def ftir_abs_trans_toggle_js(div_id: str, *, yaxis_titles: dict[str, dict[str, s
         layout.annotations = gd._ristFtirUnitOriginalAnnotations || [];
       }}
       return window.Plotly.relayout(gd, layout);
+    }}).then(function() {{
+      gd.dispatchEvent(new CustomEvent("rist-ftir-signal-mode-change", {{
+        detail: {{mode: nextMode}}
+      }}));
     }});
     mode = nextMode;
     btn.textContent = nextMode === "transmittance" ? "흡광도 보기" : "투과도 보기";
@@ -209,6 +214,7 @@ def ftir_abs_trans_toggle_js(div_id: str, *, yaxis_titles: dict[str, dict[str, s
 
   function resetMode() {{
     mode = "absorbance";
+    gd._ristFtirSignalMode = mode;
     btn.textContent = "투과도 보기";
     gd._ristFtirUnitOriginalShapes = (gd.layout.shapes || []).map(function(shape) {{
       return Object.assign({{}}, shape);
@@ -241,6 +247,416 @@ def ftir_abs_trans_toggle_js(div_id: str, *, yaxis_titles: dict[str, dict[str, s
 }})();
 </script>
 """
+
+
+def ftir_stack_js(div_id: str) -> str:
+    """FT-IR 다중 시료 스택 표시와 시료별 Y 이동 제어를 추가한다."""
+    template = r"""
+<script>
+(function() {
+  var gd = document.getElementById(__DIV_ID__);
+  if (!gd || !window.Plotly || gd._ristFtirStackInstalled) return;
+  gd._ristFtirStackInstalled = true;
+  var state = {
+    initialized: false,
+    enabled: false,
+    gap: 1.2,
+    positions: {},
+    order: [],
+    units: {absorbance: 1, transmittance: 100},
+    traces: {},
+    annotations: {},
+    shapes: {},
+    dragMode: false,
+    dragging: null,
+    autoLayout: true,
+    compactTimer: null,
+    raf: null
+  };
+
+  function traceMeta(index) {
+    var trace = (gd.data || [])[index] || {};
+    return trace.meta && typeof trace.meta === "object" ? trace.meta : {};
+  }
+
+  function groupOfTrace(index) {
+    var meta = traceMeta(index);
+    return String(meta.rist_sample_group || (meta.rist_peak && meta.rist_peak.sample_group) || "");
+  }
+
+  function stackMeta() {
+    if (!gd.layout.meta || typeof gd.layout.meta !== "object") gd.layout.meta = {};
+    if (!gd.layout.meta.ristFtirStack) gd.layout.meta.ristFtirStack = {};
+    return gd.layout.meta.ristFtirStack;
+  }
+
+  function numberArray(values) {
+    return Array.prototype.slice.call(values || []).map(function(value) {
+      var next = Number(value);
+      return Number.isFinite(next) ? next : 0;
+    });
+  }
+
+  function discoverOrder() {
+    var seen = {};
+    var order = [];
+    (gd.data || []).forEach(function(trace, index) {
+      var group = groupOfTrace(index);
+      if (!group || !traceMeta(index).rist_sample_parent || seen[group]) return;
+      seen[group] = true;
+      order.push(group);
+    });
+    return order;
+  }
+
+  function traceVisible(index) {
+    var trace = (gd.data || [])[index] || {};
+    return trace.visible !== false && trace.visible !== "legendonly";
+  }
+
+  function sampleVisible(group) {
+    var found = false;
+    var visible = false;
+    Object.keys(state.traces).forEach(function(indexText) {
+      var index = Number(indexText);
+      var base = state.traces[index];
+      if (!base || base.group !== group || !base.parent) return;
+      found = true;
+      visible = traceVisible(index);
+    });
+    return found ? visible : true;
+  }
+
+  function labelItems() {
+    return gd.layout.meta && Array.isArray(gd.layout.meta.ristPeakLabels)
+      ? gd.layout.meta.ristPeakLabels : [];
+  }
+
+  function labelFor(key, index) {
+    return labelItems().find(function(item) { return item[key] === index; }) || null;
+  }
+
+  function mode() {
+    return gd._ristFtirSignalMode === "transmittance" ? "transmittance" : "absorbance";
+  }
+
+  function offsetFor(group, signalMode) {
+    if (!state.enabled) return 0;
+    return Number(state.positions[group] || 0) * Number(state.units[signalMode] || 1);
+  }
+
+  function initState() {
+    var meta = stackMeta();
+    state.enabled = !!meta.enabled;
+    state.gap = Number.isFinite(Number(meta.gap)) ? Number(meta.gap) : 1.2;
+    state.units = Object.assign(
+      {absorbance: 1, transmittance: 100},
+      meta.modeUnits || {}
+    );
+    state.order = Array.isArray(meta.sampleOrder) && meta.sampleOrder.length
+      ? meta.sampleOrder.map(String) : discoverOrder();
+    state.positions = {};
+    state.order.forEach(function(group, index) {
+      var configured = meta.samplePositions && meta.samplePositions[group];
+      state.positions[group] = Number.isFinite(Number(configured))
+        ? Number(configured) : (state.enabled ? index * state.gap : 0);
+    });
+
+    state.traces = {};
+    (gd.data || []).forEach(function(trace, index) {
+      var group = groupOfTrace(index);
+      var toggle = traceMeta(index).ftir_signal_toggle;
+      if (!group || !toggle || !Object.prototype.hasOwnProperty.call(state.positions, group)) return;
+      var absOffset = Number(traceMeta(index).rist_ftir_stack_offset_absorbance);
+      var transOffset = Number(traceMeta(index).rist_ftir_stack_offset_transmittance);
+      if (!Number.isFinite(absOffset)) absOffset = offsetFor(group, "absorbance");
+      if (!Number.isFinite(transOffset)) transOffset = offsetFor(group, "transmittance");
+      state.traces[index] = {
+        group: group,
+        parent: !!traceMeta(index).rist_sample_parent,
+        absorbance: numberArray(toggle.absorbance_y).map(function(value) { return value - absOffset; }),
+        transmittance: numberArray(toggle.transmittance_y).map(function(value) { return value - transOffset; })
+      };
+    });
+
+    state.annotations = {};
+    (gd.layout.annotations || []).forEach(function(annotation, index) {
+      var label = labelFor("annotationIndex", index);
+      if (!label) return;
+      var group = String(label.legendgroup || "");
+      if (!Object.prototype.hasOwnProperty.call(state.positions, group)) return;
+      var baseY = Number(label.annotationBaseY);
+      if (!Number.isFinite(baseY)) baseY = Number(annotation.y) - offsetFor(group, "absorbance");
+      state.annotations[index] = {group: group, y: baseY};
+    });
+
+    state.shapes = {};
+    (gd.layout.shapes || []).forEach(function(shape, index) {
+      var label = labelFor("shapeIndex", index);
+      if (!label) return;
+      var group = String(label.legendgroup || "");
+      if (!Object.prototype.hasOwnProperty.call(state.positions, group)) return;
+      var y0 = Number(label.shapeBaseY0);
+      var y1 = Number(label.shapeBaseY1);
+      if (!Number.isFinite(y0)) y0 = Number(shape.y0) - offsetFor(group, "absorbance");
+      if (!Number.isFinite(y1)) y1 = Number(shape.y1) - offsetFor(group, "absorbance");
+      state.shapes[index] = {group: group, y0: y0, y1: y1};
+    });
+    state.initialized = true;
+    syncControls();
+  }
+
+  function fitRange(signalMode) {
+    var low = Infinity;
+    var high = -Infinity;
+    Object.keys(state.traces).forEach(function(indexText) {
+      var index = Number(indexText);
+      var base = state.traces[index];
+      if (!base.parent || !sampleVisible(base.group)) return;
+      var offset = offsetFor(base.group, signalMode);
+      base[signalMode].forEach(function(value) {
+        low = Math.min(low, value + offset);
+        high = Math.max(high, value + offset);
+      });
+    });
+    if (!Number.isFinite(low) || !Number.isFinite(high)) return null;
+    var span = Math.max(high - low, signalMode === "transmittance" ? 1 : 0.02);
+    return [low - span * 0.08, high + span * 0.18];
+  }
+
+  function updateMeta() {
+    var meta = stackMeta();
+    meta.enabled = state.enabled;
+    meta.gap = state.gap;
+    meta.samplePositions = Object.assign({}, state.positions);
+    meta.sampleOrder = state.order.slice();
+    meta.modeUnits = Object.assign({}, state.units);
+  }
+
+  function applyOffsets() {
+    if (!state.initialized) initState();
+    var signalMode = mode();
+    var data = gd.data || [];
+    Object.keys(state.traces).forEach(function(indexText) {
+      var index = Number(indexText);
+      var base = state.traces[index];
+      var absOffset = offsetFor(base.group, "absorbance");
+      var transOffset = offsetFor(base.group, "transmittance");
+      var toggle = data[index].meta.ftir_signal_toggle;
+      toggle.absorbance_y = base.absorbance.map(function(value) { return value + absOffset; });
+      toggle.transmittance_y = base.transmittance.map(function(value) { return value + transOffset; });
+      data[index].y = signalMode === "transmittance" ? toggle.transmittance_y : toggle.absorbance_y;
+      data[index].meta.rist_ftir_stack_position = Number(state.positions[base.group] || 0);
+      data[index].meta.rist_ftir_stack_offset_absorbance = absOffset;
+      data[index].meta.rist_ftir_stack_offset_transmittance = transOffset;
+    });
+
+    var layout = gd.layout || {};
+    if (signalMode === "absorbance") {
+      layout.annotations = (layout.annotations || []).map(function(annotation, index) {
+        var base = state.annotations[index];
+        if (!base) return annotation;
+        var next = Object.assign({}, annotation);
+        next.y = base.y + offsetFor(base.group, "absorbance");
+        return next;
+      });
+      layout.shapes = (layout.shapes || []).map(function(shape, index) {
+        var base = state.shapes[index];
+        if (!base) return shape;
+        var offset = offsetFor(base.group, "absorbance");
+        var next = Object.assign({}, shape);
+        next.y0 = base.y0 + offset;
+        next.y1 = base.y1 + offset;
+        return next;
+      });
+      gd._ristFtirUnitOriginalAnnotations = (layout.annotations || []).map(function(item) {
+        return Object.assign({}, item);
+      });
+      gd._ristFtirUnitOriginalShapes = (layout.shapes || []).map(function(item) {
+        return Object.assign({}, item);
+      });
+    }
+    if (!layout.yaxis) layout.yaxis = {};
+    var range = fitRange(signalMode);
+    if (range) layout.yaxis.range = range;
+    updateMeta();
+    syncControls();
+    return window.Plotly.react(gd, data, layout, gd._context).then(function() {
+      gd.dispatchEvent(new CustomEvent("rist-ftir-stack-change"));
+    });
+  }
+
+  function requestApply() {
+    if (state.raf) return;
+    state.raf = requestAnimationFrame(function() {
+      state.raf = null;
+      applyOffsets();
+    });
+  }
+
+  function resetPositions() {
+    var visibleIndex = 0;
+    state.order.forEach(function(group) {
+      if (state.enabled && sampleVisible(group)) {
+        state.positions[group] = visibleIndex * state.gap;
+        visibleIndex += 1;
+      } else {
+        state.positions[group] = 0;
+      }
+    });
+    state.autoLayout = true;
+  }
+
+  function scheduleCompaction() {
+    if (state.compactTimer) return;
+    state.compactTimer = setTimeout(function() {
+      state.compactTimer = null;
+      if (!state.initialized) initState();
+      if (!state.enabled || !state.autoLayout || state.dragging) return;
+      resetPositions();
+      applyOffsets();
+    }, 0);
+  }
+
+  function plotPoint(ev) {
+    var drag = gd.querySelector(".nsewdrag");
+    var layout = gd._fullLayout || {};
+    if (!drag || !layout.xaxis || !layout.yaxis) return null;
+    var rect = drag.getBoundingClientRect();
+    if (ev.clientX < rect.left || ev.clientX > rect.right || ev.clientY < rect.top || ev.clientY > rect.bottom) return null;
+    return {
+      x: layout.xaxis.p2d(ev.clientX - rect.left),
+      y: layout.yaxis.p2d(ev.clientY - rect.top),
+      rect: rect,
+      xaxis: layout.xaxis,
+      yaxis: layout.yaxis
+    };
+  }
+
+  function nearestSample(ev) {
+    var point = plotPoint(ev);
+    if (!point) return null;
+    var best = null;
+    (gd.data || []).forEach(function(trace, index) {
+      var base = state.traces[index];
+      if (!base || !base.parent || !traceVisible(index)) return;
+      var xs = numberArray(trace.x);
+      var nearest = -1;
+      var nearestDelta = Infinity;
+      xs.forEach(function(value, itemIndex) {
+        var delta = Math.abs(value - point.x);
+        if (delta < nearestDelta) { nearest = itemIndex; nearestDelta = delta; }
+      });
+      if (nearest < 0) return;
+      var currentMode = mode();
+      var y = base[currentMode][nearest] + offsetFor(base.group, currentMode);
+      var dx = Math.abs(point.xaxis.d2p(xs[nearest]) - (ev.clientX - point.rect.left));
+      var dy = Math.abs(point.yaxis.d2p(y) - (ev.clientY - point.rect.top));
+      var distance = Math.sqrt(dx * dx + dy * dy);
+      if (distance <= 36 && (!best || distance < best.distance)) {
+        best = {group: base.group, point: point, distance: distance};
+      }
+    });
+    return best;
+  }
+
+  function syncControls() {
+    if (!stackButton || !dragButton || !gapSlider || !gapValue) return;
+    var hasMultipleSamples = state.order.length > 1;
+    stackButton.classList.toggle("is-active", !!state.enabled);
+    dragButton.classList.toggle("is-active", !!state.dragMode);
+    stackButton.disabled = !hasMultipleSamples;
+    dragButton.disabled = !hasMultipleSamples;
+    gapSlider.disabled = !hasMultipleSamples;
+    gapSlider.value = String(Math.round(state.gap * 100));
+    gapValue.textContent = state.gap.toFixed(1);
+    gd.classList.toggle("rist-ftir-y-drag-active", !!state.dragMode);
+  }
+
+  if (getComputedStyle(gd).position === "static") gd.style.position = "relative";
+  var toolbar = gd.querySelector(".rist-plot-control-row");
+  if (!toolbar) {
+    toolbar = document.createElement("div");
+    toolbar.className = "rist-plot-control-row";
+    gd.appendChild(toolbar);
+  }
+  var control = document.createElement("div");
+  control.className = "rist-ftir-stack-control";
+  control.innerHTML =
+    "<button type='button' class='rist-ftir-stack-button' title='시료를 위아래로 벌려서 보기'>스택</button>"
+    + "<input class='rist-ftir-stack-gap' type='range' min='60' max='220' step='5' value='120' title='스택 간격' aria-label='스택 간격'>"
+    + "<span class='rist-ftir-stack-value'>1.2</span>"
+    + "<button type='button' class='rist-ftir-stack-button' title='시료 곡선을 위아래로 드래그'>Y 이동</button>";
+  toolbar.appendChild(control);
+  var buttons = control.querySelectorAll(".rist-ftir-stack-button");
+  var stackButton = buttons[0];
+  var dragButton = buttons[1];
+  var gapSlider = control.querySelector(".rist-ftir-stack-gap");
+  var gapValue = control.querySelector(".rist-ftir-stack-value");
+
+  stackButton.addEventListener("click", function() {
+    state.enabled = !state.enabled;
+    resetPositions();
+    applyOffsets();
+  });
+  dragButton.addEventListener("click", function() {
+    state.dragMode = !state.dragMode;
+    syncControls();
+  });
+  gapSlider.addEventListener("input", function() {
+    state.gap = Math.max(0.6, Math.min(2.2, Number(gapSlider.value) / 100));
+    if (state.enabled) resetPositions();
+    applyOffsets();
+  });
+
+  gd.addEventListener("pointerdown", function(ev) {
+    if (!state.dragMode) return;
+    if (!state.initialized) initState();
+    var nearest = nearestSample(ev);
+    if (!nearest) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    if (ev.stopImmediatePropagation) ev.stopImmediatePropagation();
+    state.dragging = {
+      group: nearest.group,
+      startY: nearest.point.y,
+      startPosition: Number(state.positions[nearest.group] || 0)
+    };
+  }, true);
+
+  document.addEventListener("pointermove", function(ev) {
+    if (!state.dragging) return;
+    var point = plotPoint(ev);
+    if (!point) return;
+    var unit = Number(state.units[mode()] || 1);
+    state.positions[state.dragging.group] =
+      state.dragging.startPosition + (point.y - state.dragging.startY) / unit;
+    state.autoLayout = false;
+    state.enabled = state.order.some(function(group) {
+      return Math.abs(Number(state.positions[group] || 0)) > 0.001;
+    });
+    requestApply();
+  });
+  document.addEventListener("pointerup", function() { state.dragging = null; });
+  document.addEventListener("pointercancel", function() { state.dragging = null; });
+
+  gd.addEventListener("rist-plot-data-replaced", function() {
+    state.initialized = false;
+    state.autoLayout = true;
+    setTimeout(initState, 0);
+  });
+  gd.addEventListener("rist-ftir-signal-mode-change", function() {
+    if (!state.initialized) initState();
+    applyOffsets();
+  });
+  gd.on("plotly_restyle", scheduleCompaction);
+  gd.addEventListener("rist-legend-visibility-change", scheduleCompaction);
+  gd._ristFtirSignalMode = gd._ristFtirSignalMode || "absorbance";
+  initState();
+})();
+</script>
+"""
+    return template.replace("__DIV_ID__", json.dumps(div_id))
 
 
 def build_preprocess_fig(raw, sample_vec, grid, sample_label, wn_min, wn_max):
@@ -454,19 +870,56 @@ def build_multi_peak_fig(
     peak_labels = []
     max_y = float("-inf")
     min_y = float("inf")
+    stack_enabled = len(samples) > 1
+    stack_gap = 1.2
+    absorbance_values = [
+        float(value)
+        for sample in samples
+        for value in np.asarray(
+            sample.get("display_vec", sample["sample_vec"]),
+            dtype=float,
+        )
+        if np.isfinite(value)
+    ]
+    transmittance_values = [
+        float(value)
+        for sample in samples
+        for value in _transmittance_percent(
+            sample.get("display_vec", sample["sample_vec"]),
+        )
+        if np.isfinite(value)
+    ]
+    absorbance_unit = max(
+        (max(absorbance_values) - min(absorbance_values))
+        if absorbance_values else 0.0,
+        0.1,
+    )
+    transmittance_unit = max(
+        (max(transmittance_values) - min(transmittance_values))
+        if transmittance_values else 0.0,
+        10.0,
+    )
+    sample_positions = {
+        _sample_key(index): (index * stack_gap if stack_enabled else 0.0)
+        for index in range(len(samples))
+    }
 
     for sample_no, sample in enumerate(samples):
         sample_key = _sample_key(sample_no)
         label = sample["label"]
         grid = sample["grid"]
         analysis_vec = sample["sample_vec"]
-        sample_vec = sample.get("display_vec", analysis_vec)
+        sample_vec = np.asarray(sample.get("display_vec", analysis_vec), dtype=float)
+        stack_position = sample_positions[sample_key]
+        absorbance_offset = stack_position * absorbance_unit
+        transmittance_offset = stack_position * transmittance_unit
+        plotted_sample_vec = sample_vec + absorbance_offset
         color = SAMPLE_PALETTE[sample_no % len(SAMPLE_PALETTE)]
         if len(sample_vec):
             sample_min = float(np.nanmin(sample_vec))
             sample_max = float(np.nanmax(sample_vec))
-            max_y = max(max_y, sample_max)
-            min_y = min(min_y, sample_min)
+            max_y = max(max_y, sample_max + absorbance_offset)
+            min_y = min(min_y, sample_min + absorbance_offset)
         else:
             sample_min = 0.0
             sample_max = 1.0
@@ -478,18 +931,24 @@ def build_multi_peak_fig(
 
         raw_trace = _enable_abs_trans_toggle(
             go.Scatter(
-                x=grid, y=sample_vec, mode="lines", name=label,
+                x=grid, y=plotted_sample_vec, mode="lines", name=label,
                 legendgroup=sample_key,
                 legendgrouptitle_text=label,
                 line=dict(color=color, width=1.8),
                 hovertemplate=f"<b>{label}</b><br>%{{x:.1f}} cm⁻¹ | %{{y:.4f}}<extra></extra>",
             ),
-            sample_vec,
+            plotted_sample_vec,
+            absorbance_offset=absorbance_offset,
+            transmittance_offset=transmittance_offset,
         )
         _merge_trace_meta(raw_trace, {
             "rist_sample_group": sample_key,
             "rist_sample_parent": True,
             "rist_legend_edit_group": sample_key,
+            "rist_ftir_stack_position": stack_position,
+            "rist_ftir_stack_offset_absorbance": absorbance_offset,
+            "rist_ftir_stack_offset_transmittance": transmittance_offset,
+            "rist_ftir_sample_index": sample_no,
         })
         fig.add_trace(raw_trace)
 
@@ -518,11 +977,12 @@ def build_multi_peak_fig(
         for peak_no, candidate in enumerate(candidates):
             wn = candidate["wn"]
             peak_index = int(candidate["index"])
-            val = (
+            base_val = (
                 float(sample_vec[peak_index])
                 if 0 <= peak_index < len(sample_vec)
                 else float(candidate["value"])
             )
+            val = base_val + absorbance_offset
             fwhm = candidate["fwhm"]
             initially_visible = candidate["initial"]
             assignment = _peak_assignment(wn, func_groups)
@@ -552,6 +1012,8 @@ def build_multi_peak_fig(
                     ),
                 ),
                 [val],
+                absorbance_offset=absorbance_offset,
+                transmittance_offset=transmittance_offset,
             )
             _merge_trace_meta(peak_trace, {
                 "rist_sample_group": sample_key,
@@ -565,7 +1027,12 @@ def build_multi_peak_fig(
                     "sensitivity_levels": candidate["levels"],
                     "sensitivity_min": candidate["sensitivity_min"],
                     "assignments": assignment["assignments"],
+                    "base_y": base_val,
                 },
+                "rist_ftir_stack_position": stack_position,
+                "rist_ftir_stack_offset_absorbance": absorbance_offset,
+                "rist_ftir_stack_offset_transmittance": transmittance_offset,
+                "rist_ftir_sample_index": sample_no,
             })
             fig.add_trace(peak_trace)
             if initially_visible:
@@ -594,8 +1061,12 @@ def build_multi_peak_fig(
                     "legendgroup": sample_key,
                     "labelKey": label_key,
                     "wnText": f"{wn:.0f}",
+                    "annotationBaseY": y_label - absorbance_offset,
+                    "shapeBaseY0": min(0, sample_min),
+                    "shapeBaseY1": base_val,
                 })
-                fig.add_shape(type="line", x0=wn, x1=wn, y0=min(0, sample_min), y1=val,
+                fig.add_shape(type="line", x0=wn, x1=wn,
+                              y0=min(0, sample_min) + absorbance_offset, y1=val,
                               line=dict(color=peak_color, width=0.8, dash="dot"),
                               visible=initially_visible)
 
@@ -641,7 +1112,19 @@ def build_multi_peak_fig(
         plot_bgcolor="white", paper_bgcolor="#fafafa",
         height=720, hovermode="closest",
         margin=dict(l=70, r=260, t=105, b=70),
-        meta={"ristPeakLabels": peak_labels},
+        meta={
+            "ristPeakLabels": peak_labels,
+            "ristFtirStack": {
+                "enabled": stack_enabled,
+                "gap": stack_gap,
+                "samplePositions": sample_positions,
+                "sampleOrder": [_sample_key(index) for index in range(len(samples))],
+                "modeUnits": {
+                    "absorbance": absorbance_unit,
+                    "transmittance": transmittance_unit,
+                },
+            },
+        },
     )
     return fig
 

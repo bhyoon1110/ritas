@@ -20,7 +20,7 @@ from ftir.assignment_libraries import (
 )
 from ftir.findings import DEFAULT_FUNC_GROUPS_PATH
 from ftir.preprocess import load_dpt
-from ftir.plotting import ftir_abs_trans_toggle_js
+from ftir.plotting import ftir_abs_trans_toggle_js, ftir_stack_js
 from ftir.web_analysis import DptAnalysisError, WN_MAX, WN_MIN, analyze_dpt_files
 from rist_common import get_logger
 from rist_common.plotting import (
@@ -1360,6 +1360,57 @@ body {
 #peak-plot .rist-ftir-tools-head {
   display: none;
 }
+#peak-plot .rist-ftir-stack-control {
+  order: 14;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 7px;
+  border: 1px solid #9fb3c8;
+  border-radius: 4px;
+  background: rgba(255,255,255,0.94);
+  box-sizing: border-box;
+}
+#peak-plot .rist-ftir-stack-button {
+  height: 24px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: #334e68;
+  cursor: pointer;
+  padding: 0 6px;
+  font: 11px Arial, sans-serif;
+  white-space: nowrap;
+}
+#peak-plot .rist-ftir-stack-button:hover {
+  background: #edf2f7;
+}
+#peak-plot .rist-ftir-stack-button.is-active {
+  background: #dbeafe;
+  color: #1d4ed8;
+  font-weight: bold;
+}
+#peak-plot .rist-ftir-stack-button:disabled,
+#peak-plot .rist-ftir-stack-gap:disabled {
+  cursor: default;
+  opacity: 0.42;
+}
+#peak-plot .rist-ftir-stack-gap {
+  width: 72px;
+  margin: 0;
+  accent-color: #52606d;
+  cursor: pointer;
+}
+#peak-plot .rist-ftir-stack-value {
+  min-width: 25px;
+  color: #334e68;
+  text-align: right;
+  font: bold 11px Arial, sans-serif;
+}
+#peak-plot.rist-ftir-y-drag-active .nsewdrag {
+  cursor: ns-resize !important;
+}
 @media (max-width: 760px) {
   .ftir-app-bar {
     align-items: flex-start;
@@ -1597,6 +1648,22 @@ body {
   #peak-plot .rist-peak-sensitivity-value {
     min-width: 24px;
   }
+  #peak-plot .rist-ftir-stack-control {
+    height: 28px;
+    gap: 5px;
+    padding: 0 6px;
+  }
+  #peak-plot .rist-ftir-stack-button {
+    height: 24px;
+    padding: 0 6px;
+    font-size: 11px;
+  }
+  #peak-plot .rist-ftir-stack-gap {
+    width: 58px;
+  }
+  #peak-plot .rist-ftir-stack-value {
+    min-width: 24px;
+  }
   #peak-plot .rist-peak-group-name {
     width: 96px;
     flex: 0 0 96px;
@@ -1629,6 +1696,9 @@ body {
     padding: 0 6px;
   }
   #peak-plot .rist-peak-sensitivity-slider {
+    width: 48px;
+  }
+  #peak-plot .rist-ftir-stack-gap {
     width: 48px;
   }
 }
@@ -5153,6 +5223,7 @@ def build_ftir_page() -> str:
                 }
             },
         )
+        + ftir_stack_js(PLOT_DIV_ID)
         + _UPLOAD_SCRIPT
     )
     page = fig_to_responsive_html(

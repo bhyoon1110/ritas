@@ -64,6 +64,11 @@ def test_ftir_workspace_contains_upload_and_editor_controls() -> None:
     assert "originStyle: originStyleEnabled()" in page
     assert "withOriginStyle(payload.figure.layout)" in page
     assert 'CustomEvent("rist-origin-style-change"' in page
+    assert "rist-ftir-stack-control" in page
+    assert "rist-ftir-stack-gap" in page
+    assert "rist-ftir-y-drag-active" in page
+    assert "rist-ftir-stack-change" in page
+    assert "rist-ftir-signal-mode-change" in page
     assert "lucide-sliders-horizontal" in page
     assert 'button.textContent = open ? "닫기" : "도구"' not in page
     assert '<button type="button" class="ftir-clear-button" id="ftir-clear">초기화</button>' in page
@@ -310,6 +315,25 @@ def test_ftir_analysis_api_accepts_multiple_dpt_files(tmp_path: Path) -> None:
     assert layout["yaxis"]["tickmode"] == "auto"
     assert layout["xaxis"]["fixedrange"] is False
     assert layout["yaxis"]["fixedrange"] is False
+    stack = layout["meta"]["ristFtirStack"]
+    assert stack["enabled"] is True
+    assert stack["gap"] == 1.2
+    assert stack["sampleOrder"] == ["sample:0", "sample:1"]
+    assert stack["samplePositions"] == {"sample:0": 0.0, "sample:1": 1.2}
+    assert stack["modeUnits"]["absorbance"] > 0
+    assert stack["modeUnits"]["transmittance"] > 0
+
+    sample_traces = [
+        trace
+        for trace in payload["figure"]["data"]
+        if trace.get("meta", {}).get("rist_sample_parent")
+    ]
+    assert len(sample_traces) == 2
+    assert sample_traces[0]["meta"]["rist_ftir_stack_offset_absorbance"] == 0.0
+    assert sample_traces[1]["meta"]["rist_ftir_stack_offset_absorbance"] > 0.0
+    assert sample_traces[1]["meta"]["rist_ftir_stack_offset_transmittance"] > 0.0
+    toggle = sample_traces[1]["meta"]["ftir_signal_toggle"]
+    assert toggle["absorbance_y"] != toggle["transmittance_y"]
 
 
 def test_ftir_analysis_extracts_optional_dpt_metadata(tmp_path: Path) -> None:
