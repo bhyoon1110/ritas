@@ -196,6 +196,12 @@ def test_shared_plotly_module_applies_legend_text(tmp_path) -> None:
     assert '" is-peak"' in html
     assert '"샘플" : (peakCurve ? "피크" : "항목")' in html
     assert "rist-legend-peak-delete" in html
+    assert "rist-legend-delete-all-peaks" in html
+    assert "피크 전체 삭제" in html
+    assert "전체 삭제 취소" in html
+    assert "setDeleteAllPeaksPending" in html
+    assert "data-delete-all-peaks" in html
+    assert "if (isPeakCurve(peakCurve)) deleteCurves.push(peakCurve);" in html
     assert "is-pending-delete" in html
     assert "data-delete" in html
     assert "dispatchPeakDelete" in html

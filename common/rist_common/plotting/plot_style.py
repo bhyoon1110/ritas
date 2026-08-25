@@ -809,11 +809,33 @@ def _legend_text_edit_js(div_id: str) -> str:
   bottom: -10px;
   z-index: 2;
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
+  gap: 8px;
   margin: 10px -10px -10px;
   padding: 10px;
   border-top: 1px solid #d7dee8;
   background: rgba(255,255,255,0.98);
+}}
+#{div_id} .rist-legend-delete-all-peaks {{
+  flex: 0 0 auto;
+  border: 1px solid #d5a3a3;
+  border-radius: 4px;
+  background: #fff;
+  color: #9b2c2c;
+  cursor: pointer;
+  font: 12px Arial, sans-serif;
+  padding: 5px 8px;
+}}
+#{div_id} .rist-legend-delete-all-peaks.is-active {{
+  border-color: #9b2c2c;
+  background: #9b2c2c;
+  color: #fff;
+}}
+#{div_id} .rist-legend-delete-all-peaks:disabled {{
+  border-color: #d7dee8;
+  background: #f5f7fa;
+  color: #9aa5b1;
+  cursor: default;
 }}
 #{div_id} .rist-legend-bulk-controls {{
   order: 10;
@@ -1196,6 +1218,7 @@ def _legend_text_edit_js(div_id: str) -> str:
       + "<button type='button' class='rist-legend-edit-close' aria-label='close'>×</button>"
       + "</div><div class='rist-legend-edit-body'></div>"
       + "<div class='rist-legend-edit-actions'>"
+      + "<button class='rist-legend-delete-all-peaks' type='button'>피크 전체 삭제</button>"
       + "<button class='rist-legend-edit-save-all' type='button'>\uc804\uccb4 \uc800\uc7a5</button>"
       + "</div>";
     toolbar.appendChild(btn);
@@ -1207,7 +1230,36 @@ def _legend_text_edit_js(div_id: str) -> str:
 
     var panelHead = panel.querySelector(".rist-legend-edit-head");
     var opacitySlider = panel.querySelector(".rist-legend-opacity-slider");
+    var deleteAllPeaksButton = panel.querySelector(".rist-legend-delete-all-peaks");
     var panelDrag = null;
+
+    function hasPeakCurves() {{
+      for (var i = 0; i < (gd.data || []).length; i++) {{
+        if (isPeakCurve(i)) return true;
+      }}
+      return false;
+    }}
+
+    function syncDeleteAllPeaksButton() {{
+      var pending = panel.getAttribute("data-delete-all-peaks") === "true";
+      deleteAllPeaksButton.disabled = !hasPeakCurves();
+      deleteAllPeaksButton.classList.toggle("is-active", pending);
+      deleteAllPeaksButton.textContent = pending ? "전체 삭제 취소" : "피크 전체 삭제";
+      deleteAllPeaksButton.title = pending
+        ? "모든 피크 삭제 예약 취소"
+        : "모든 피크를 삭제 예정으로 표시";
+    }}
+
+    function setDeleteAllPeaksPending(pending) {{
+      panel.setAttribute("data-delete-all-peaks", pending ? "true" : "false");
+      panel.querySelectorAll(".rist-legend-edit-row.is-peak").forEach(function(row) {{
+        row.setAttribute("data-delete", pending ? "true" : "false");
+        row.setAttribute("data-remove-group", "false");
+        row.classList.toggle("is-pending-delete", pending);
+        row.classList.remove("is-pending-group-remove");
+      }});
+      syncDeleteAllPeaksButton();
+    }}
 
     opacitySlider.addEventListener("input", function(ev) {{
       var value = Math.max(55, Math.min(100, Number(ev.target.value) || 97));
@@ -1273,6 +1325,7 @@ def _legend_text_edit_js(div_id: str) -> str:
       var body = panel.querySelector(".rist-legend-edit-body");
       var idxs = visibleLegendTraceIndexes();
       body.innerHTML = "";
+      panel.setAttribute("data-delete-all-peaks", "false");
       var draggedPeak = null;
 
       var items = [];
@@ -1422,12 +1475,14 @@ def _legend_text_edit_js(div_id: str) -> str:
             ev.preventDefault();
             ev.stopPropagation();
             var pending = row.getAttribute("data-delete") !== "true";
+            panel.setAttribute("data-delete-all-peaks", "false");
             row.setAttribute("data-delete", pending ? "true" : "false");
             row.classList.toggle("is-pending-delete", pending);
             if (pending) {{
               row.setAttribute("data-remove-group", "false");
               row.classList.remove("is-pending-group-remove");
             }}
+            syncDeleteAllPeaksButton();
           }});
         }}
         if (removeButton) {{
@@ -1515,11 +1570,17 @@ def _legend_text_edit_js(div_id: str) -> str:
           appendCurveRow(curve, groupKey);
         }});
       }});
+      syncDeleteAllPeaksButton();
     }}
 
     function saveAllRows() {{
       var deleteCurves = [];
       var groupRemovals = {{}};
+      if (panel.getAttribute("data-delete-all-peaks") === "true") {{
+        for (var peakCurve = 0; peakCurve < (gd.data || []).length; peakCurve++) {{
+          if (isPeakCurve(peakCurve)) deleteCurves.push(peakCurve);
+        }}
+      }}
       panel.querySelectorAll(".rist-legend-edit-row").forEach(function(row) {{
         var curve = parseInt(row.getAttribute("data-curve"), 10);
         var nameInput = row.querySelector(".rist-legend-edit-input");
@@ -1614,6 +1675,13 @@ def _legend_text_edit_js(div_id: str) -> str:
     panel.querySelector(".rist-legend-edit-close").addEventListener("click", function(ev) {{
       ev.preventDefault();
       closePanel();
+    }});
+    deleteAllPeaksButton.addEventListener("click", function(ev) {{
+      ev.preventDefault();
+      ev.stopPropagation();
+      setDeleteAllPeaksPending(
+        panel.getAttribute("data-delete-all-peaks") !== "true"
+      );
     }});
     panel.querySelector(".rist-legend-edit-save-all").addEventListener("click", saveAllRows);
     document.addEventListener("click", function(ev) {{
