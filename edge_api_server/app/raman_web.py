@@ -682,6 +682,7 @@ body { overflow-x: hidden; }
 }
 #raman-plot.rist-raman-y-drag-active .nsewdrag {
   cursor: ns-resize;
+  touch-action: none;
 }
 #raman-plot .rist-plot-control-row > * {
   flex: 0 0 auto;
@@ -2132,7 +2133,9 @@ _RAMAN_STACK_SCRIPT = """
     dragging: null,
     autoLayout: true,
     compactTimer: null,
-    raf: null
+    raf: null,
+    applyInFlight: false,
+    applyPending: false
   };
 
   function traceMeta(index) {
@@ -2314,12 +2317,14 @@ _RAMAN_STACK_SCRIPT = """
     meta.sampleOrder = state.order.slice();
   }
 
-  function applyOffsets() {
+  function applyOffsets(options) {
+    options = options || {};
     if (!state.initialized) initState();
     var data = gd.data || [];
     Object.keys(state.baseTraces).forEach(function(indexText) {
       var index = Number(indexText);
       var base = state.baseTraces[index];
+      if (!base || !data[index]) return;
       var offset = Number(state.offsets[base.group] || 0);
       data[index].y = base.y.map(function(value) { return value + offset; });
       if (data[index].meta && typeof data[index].meta === "object") {
@@ -2345,7 +2350,7 @@ _RAMAN_STACK_SCRIPT = """
       return next;
     });
     if (!layout.yaxis) layout.yaxis = {};
-    layout.yaxis.range = fitRange();
+    if (!options.preserveView) layout.yaxis.range = fitRange();
     updateMeta();
     syncControls();
     return window.Plotly.react(gd, data, layout, gd._context).then(function() {
@@ -2354,10 +2359,21 @@ _RAMAN_STACK_SCRIPT = """
   }
 
   function requestApply() {
-    if (state.raf) return;
+    state.applyPending = true;
+    if (state.raf || state.applyInFlight) return;
     state.raf = window.requestAnimationFrame(function() {
       state.raf = null;
-      applyOffsets();
+      if (!state.applyPending) return;
+      state.applyPending = false;
+      state.applyInFlight = true;
+      Promise.resolve().then(function() {
+        return applyOffsets({preserveView: true});
+      }).catch(function(error) {
+        console.error("Raman Y 이동 반영 실패", error);
+      }).then(function() {
+        state.applyInFlight = false;
+        if (state.applyPending) requestApply();
+      });
     });
   }
 
@@ -2508,37 +2524,71 @@ _RAMAN_STACK_SCRIPT = """
     ev.preventDefault();
     ev.stopPropagation();
     if (ev.stopImmediatePropagation) ev.stopImmediatePropagation();
+    var startPixelY = ev.clientY - nearest.point.rect.top;
+    var nextY = nearest.point.yaxis.p2d(startPixelY + 1);
     state.dragging = {
       group: nearest.group,
-      startY: nearest.point.y,
+      pointerId: ev.pointerId,
+      startClientY: ev.clientY,
+      dataPerPixel: Number(nextY) - Number(nearest.point.y),
       startOffset: Number(state.offsets[nearest.group] || 0)
     };
+    try { gd.setPointerCapture(ev.pointerId); } catch (error) {}
   }, true);
 
   document.addEventListener("pointermove", function(ev) {
-    if (!state.dragging) return;
-    var point = plotPoint(ev);
-    if (!point) return;
+    if (!state.dragging || ev.pointerId !== state.dragging.pointerId) return;
     state.offsets[state.dragging.group] =
-      state.dragging.startOffset + (point.y - state.dragging.startY);
+      state.dragging.startOffset
+      + (ev.clientY - state.dragging.startClientY) * state.dragging.dataPerPixel;
     state.autoLayout = false;
     state.enabled = state.order.some(function(group) {
       return Math.abs(Number(state.offsets[group] || 0)) > 0.001;
     });
     requestApply();
   });
-  document.addEventListener("pointerup", function() {
+
+  function finishStackDrag(ev) {
+    if (!state.dragging) return;
+    if (ev && ev.pointerId != null && ev.pointerId !== state.dragging.pointerId) return;
+    var pointerId = state.dragging.pointerId;
     state.dragging = null;
-  });
-  document.addEventListener("pointercancel", function() {
-    state.dragging = null;
+    try {
+      if (gd.hasPointerCapture(pointerId)) gd.releasePointerCapture(pointerId);
+    } catch (error) {}
+  }
+
+  function rebuildStackReferences() {
+    finishStackDrag();
+    state.applyPending = false;
+    if (state.raf) {
+      window.cancelAnimationFrame(state.raf);
+      state.raf = null;
+    }
+    state.initialized = false;
+    function rebuildWhenIdle() {
+      if (state.applyInFlight) {
+        window.setTimeout(rebuildWhenIdle, 0);
+        return;
+      }
+      initState();
+    }
+    window.setTimeout(rebuildWhenIdle, 0);
+  }
+
+  document.addEventListener("pointerup", finishStackDrag);
+  document.addEventListener("pointercancel", finishStackDrag);
+  gd.addEventListener("lostpointercapture", finishStackDrag, true);
+  window.addEventListener("blur", function() { finishStackDrag(); });
+  document.addEventListener("visibilitychange", function() {
+    if (document.hidden) finishStackDrag();
   });
 
   gd.addEventListener("rist-plot-data-replaced", function() {
-    state.initialized = false;
     state.autoLayout = true;
-    setTimeout(initState, 0);
+    rebuildStackReferences();
   });
+  gd.addEventListener("rist-plot-structure-changed", rebuildStackReferences);
   gd.on("plotly_restyle", function() {
     scheduleStackCompaction();
   });

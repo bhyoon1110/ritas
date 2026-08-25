@@ -271,7 +271,9 @@ def ftir_stack_js(div_id: str) -> str:
     dragging: null,
     autoLayout: true,
     compactTimer: null,
-    raf: null
+    raf: null,
+    applyInFlight: false,
+    applyPending: false
   };
 
   function traceMeta(index) {
@@ -433,13 +435,16 @@ def ftir_stack_js(div_id: str) -> str:
     meta.modeUnits = Object.assign({}, state.units);
   }
 
-  function applyOffsets() {
+  function applyOffsets(options) {
+    options = options || {};
     if (!state.initialized) initState();
     var signalMode = mode();
     var data = gd.data || [];
     Object.keys(state.traces).forEach(function(indexText) {
       var index = Number(indexText);
       var base = state.traces[index];
+      if (!base || !data[index] || !data[index].meta
+          || !data[index].meta.ftir_signal_toggle) return;
       var absOffset = offsetFor(base.group, "absorbance");
       var transOffset = offsetFor(base.group, "transmittance");
       var toggle = data[index].meta.ftir_signal_toggle;
@@ -477,8 +482,10 @@ def ftir_stack_js(div_id: str) -> str:
       });
     }
     if (!layout.yaxis) layout.yaxis = {};
-    var range = fitRange(signalMode);
-    if (range) layout.yaxis.range = range;
+    if (!options.preserveView) {
+      var range = fitRange(signalMode);
+      if (range) layout.yaxis.range = range;
+    }
     updateMeta();
     syncControls();
     return window.Plotly.react(gd, data, layout, gd._context).then(function() {
@@ -487,10 +494,21 @@ def ftir_stack_js(div_id: str) -> str:
   }
 
   function requestApply() {
-    if (state.raf) return;
+    state.applyPending = true;
+    if (state.raf || state.applyInFlight) return;
     state.raf = requestAnimationFrame(function() {
       state.raf = null;
-      applyOffsets();
+      if (!state.applyPending) return;
+      state.applyPending = false;
+      state.applyInFlight = true;
+      Promise.resolve().then(function() {
+        return applyOffsets({preserveView: true});
+      }).catch(function(error) {
+        console.error("FT-IR Y 이동 반영 실패", error);
+      }).then(function() {
+        state.applyInFlight = false;
+        if (state.applyPending) requestApply();
+      });
     });
   }
 
@@ -617,34 +635,72 @@ def ftir_stack_js(div_id: str) -> str:
     ev.preventDefault();
     ev.stopPropagation();
     if (ev.stopImmediatePropagation) ev.stopImmediatePropagation();
+    var startPixelY = ev.clientY - nearest.point.rect.top;
+    var nextY = nearest.point.yaxis.p2d(startPixelY + 1);
     state.dragging = {
       group: nearest.group,
-      startY: nearest.point.y,
+      pointerId: ev.pointerId,
+      startClientY: ev.clientY,
+      dataPerPixel: Number(nextY) - Number(nearest.point.y),
       startPosition: Number(state.positions[nearest.group] || 0)
     };
+    try { gd.setPointerCapture(ev.pointerId); } catch (error) {}
   }, true);
 
   document.addEventListener("pointermove", function(ev) {
-    if (!state.dragging) return;
-    var point = plotPoint(ev);
-    if (!point) return;
+    if (!state.dragging || ev.pointerId !== state.dragging.pointerId) return;
     var unit = Number(state.units[mode()] || 1);
     state.positions[state.dragging.group] =
-      state.dragging.startPosition + (point.y - state.dragging.startY) / unit;
+      state.dragging.startPosition
+      + (ev.clientY - state.dragging.startClientY) * state.dragging.dataPerPixel / unit;
     state.autoLayout = false;
     state.enabled = state.order.some(function(group) {
       return Math.abs(Number(state.positions[group] || 0)) > 0.001;
     });
     requestApply();
   });
-  document.addEventListener("pointerup", function() { state.dragging = null; });
-  document.addEventListener("pointercancel", function() { state.dragging = null; });
+
+  function finishStackDrag(ev) {
+    if (!state.dragging) return;
+    if (ev && ev.pointerId != null && ev.pointerId !== state.dragging.pointerId) return;
+    var pointerId = state.dragging.pointerId;
+    state.dragging = null;
+    try {
+      if (gd.hasPointerCapture(pointerId)) gd.releasePointerCapture(pointerId);
+    } catch (error) {}
+  }
+
+  function rebuildStackReferences() {
+    finishStackDrag();
+    state.applyPending = false;
+    if (state.raf) {
+      cancelAnimationFrame(state.raf);
+      state.raf = null;
+    }
+    state.initialized = false;
+    function rebuildWhenIdle() {
+      if (state.applyInFlight) {
+        setTimeout(rebuildWhenIdle, 0);
+        return;
+      }
+      initState();
+    }
+    setTimeout(rebuildWhenIdle, 0);
+  }
+
+  document.addEventListener("pointerup", finishStackDrag);
+  document.addEventListener("pointercancel", finishStackDrag);
+  gd.addEventListener("lostpointercapture", finishStackDrag, true);
+  window.addEventListener("blur", function() { finishStackDrag(); });
+  document.addEventListener("visibilitychange", function() {
+    if (document.hidden) finishStackDrag();
+  });
 
   gd.addEventListener("rist-plot-data-replaced", function() {
-    state.initialized = false;
     state.autoLayout = true;
-    setTimeout(initState, 0);
+    rebuildStackReferences();
   });
+  gd.addEventListener("rist-plot-structure-changed", rebuildStackReferences);
   gd.addEventListener("rist-ftir-signal-mode-change", function() {
     if (!state.initialized) initState();
     applyOffsets();

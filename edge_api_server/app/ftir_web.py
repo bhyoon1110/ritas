@@ -1410,6 +1410,7 @@ body {
 }
 #peak-plot.rist-ftir-y-drag-active .nsewdrag {
   cursor: ns-resize !important;
+  touch-action: none;
 }
 @media (max-width: 760px) {
   .ftir-app-bar {

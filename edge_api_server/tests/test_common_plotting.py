@@ -364,7 +364,14 @@ def test_shared_peak_editor_adds_peak_controls(tmp_path) -> None:
     assert "Plotly.deleteTraces" in html
     assert 'gd.addEventListener("rist-peak-delete"' in html
     assert ".sort(function(a, b) { return b - a; })" in html
-    assert "return promise.then(function() { return deletePeakTrace(curve, true); })" in html
+    assert (
+        "return promise.then(function() { return deletePeakTrace(curve, true, true); })"
+        in html
+    )
+    assert "rist-plot-structure-changed" in html
+    assert 'reason: "peak-added"' in html
+    assert 'reason: "peak-deleted"' in html
+    assert 'reason: "peaks-deleted"' in html
     assert "captureevents: true" in html
     assert "updatePeakColorList" in html
     assert "rist-legend-color-change" in html
@@ -730,5 +737,13 @@ def test_axis_controls_add_range_tick_and_axis_drag_controls(tmp_path) -> None:
     assert 'updates[name + ".tickformat"] = value.decimals == null' in html
     assert 'function decimalPlacesFromFormat(format)' in html
     assert 'gd.addEventListener("rist-plot-data-replaced"' in html
+    assert 'gd.addEventListener("rist-plot-structure-changed"' in html
+    assert 'gd.addEventListener("lostpointercapture"' in html
+    assert 'gd.addEventListener("pointercancel", function(ev)' in html
+    assert 'window.addEventListener("blur"' in html
+    assert 'document.addEventListener("visibilitychange"' in html
+    assert "finishScale(null, true)" in html
+    assert "finishScale(ev, false, true)" in html
+    assert "finishScale(ev, true, true)" in html
     assert 'initialRanges.xaxis = currentRange("xaxis")' in html
     assert 'initialRanges.yaxis = currentRange("yaxis")' in html

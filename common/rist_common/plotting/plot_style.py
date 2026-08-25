@@ -3399,11 +3399,15 @@ def peak_editor_js(div_id: str) -> str:
         "meta.ristPeakLabels": labels,
         annotations: annotations,
         shapes: shapes
+      }}).then(function() {{
+        gd.dispatchEvent(new CustomEvent("rist-plot-structure-changed", {{
+          detail: {{reason: "peak-added"}}
+        }}));
       }});
     }});
   }}
 
-  function deletePeakTrace(curve, skipHistory) {{
+  function deletePeakTrace(curve, skipHistory, deferStructureEvent) {{
     if (!window.Plotly || curve == null || curve < 0) return Promise.resolve();
     var labels = meta();
     var label = labelForCurve(curve);
@@ -3439,6 +3443,12 @@ def peak_editor_js(div_id: str) -> str:
         "meta.ristPeakLabels": labels,
         annotations: annotations,
         shapes: shapes
+      }}).then(function() {{
+        if (!deferStructureEvent) {{
+          gd.dispatchEvent(new CustomEvent("rist-plot-structure-changed", {{
+            detail: {{reason: "peak-deleted"}}
+          }}));
+        }}
       }});
     }});
   }}
@@ -3582,8 +3592,13 @@ def peak_editor_js(div_id: str) -> str:
       .sort(function(a, b) {{ return b - a; }});
     if (curves.length && gd._ristHistory) gd._ristHistory.capture();
     curves.reduce(function(promise, curve) {{
-      return promise.then(function() {{ return deletePeakTrace(curve, true); }});
-    }}, Promise.resolve());
+      return promise.then(function() {{ return deletePeakTrace(curve, true, true); }});
+    }}, Promise.resolve()).then(function() {{
+      if (!curves.length) return;
+      gd.dispatchEvent(new CustomEvent("rist-plot-structure-changed", {{
+        detail: {{reason: "peaks-deleted"}}
+      }}));
+    }});
   }});
 
   gd.addEventListener("rist-peak-actions-disabled", function(ev) {{
@@ -7270,9 +7285,10 @@ def _axis_controls_js(div_id: str) -> str:
     ev.stopImmediatePropagation();
   }, true);
 
-  function finishScale(ev) {
-    if (!drag || (ev && ev.pointerId !== drag.pointerId)) return;
+  function finishScale(ev, cancelled, preservePropagation) {
+    if (!drag || (ev && ev.pointerId != null && ev.pointerId !== drag.pointerId)) return;
     var completedDrag = drag;
+    drag = null;
     if (pendingFrame) {
       cancelAnimationFrame(pendingFrame);
       pendingFrame = 0;
@@ -7285,10 +7301,9 @@ def _axis_controls_js(div_id: str) -> str:
       gd.releasePointerCapture(completedDrag.pointerId);
     }
     gd.classList.remove("rist-axis-scale-x", "rist-axis-scale-y");
-    var changed = completedDrag.captured;
-    drag = null;
+    var changed = completedDrag.captured && !cancelled;
     if (changed) gd.dispatchEvent(new CustomEvent("rist-axis-settings-change"));
-    if (!changed && ev) {
+    if (!changed && !cancelled && ev) {
       var now = performance.now();
       var isDoubleTap = lastAxisTap
         && lastAxisTap.axis === completedDrag.axis
@@ -7309,11 +7324,30 @@ def _axis_controls_js(div_id: str) -> str:
     }
     if (ev) {
       ev.preventDefault();
-      ev.stopImmediatePropagation();
+      if (!preservePropagation) ev.stopImmediatePropagation();
     }
   }
-  gd.addEventListener("pointerup", finishScale, true);
-  gd.addEventListener("pointercancel", finishScale, true);
+  gd.addEventListener("pointerup", function(ev) {
+    finishScale(ev, false);
+  }, true);
+  gd.addEventListener("pointercancel", function(ev) {
+    finishScale(ev, true);
+  }, true);
+  gd.addEventListener("lostpointercapture", function(ev) {
+    finishScale(ev, true);
+  }, true);
+  window.addEventListener("pointerup", function(ev) {
+    finishScale(ev, false, true);
+  }, true);
+  window.addEventListener("pointercancel", function(ev) {
+    finishScale(ev, true, true);
+  }, true);
+  window.addEventListener("blur", function() {
+    finishScale(null, true);
+  });
+  document.addEventListener("visibilitychange", function() {
+    if (document.hidden) finishScale(null, true);
+  });
   gd.addEventListener("dblclick", function(ev) {
     var axis = axisFromPointer(ev);
     if (!axis) return;
@@ -7325,6 +7359,7 @@ def _axis_controls_js(div_id: str) -> str:
     if (!panel.hidden && activeAxis) positionTargetPanel(activeAxis, null);
   });
   gd.addEventListener("rist-plot-data-replaced", function() {
+    finishScale(null, true);
     if (cropSession) cancelCrop();
     cropRanges.xaxis = null;
     cropRanges.yaxis = null;
@@ -7337,6 +7372,9 @@ def _axis_controls_js(div_id: str) -> str:
     initialRanges.xaxis = currentRange("xaxis");
     initialRanges.yaxis = currentRange("yaxis");
     setOpen(false);
+  });
+  gd.addEventListener("rist-plot-structure-changed", function() {
+    finishScale(null, true);
   });
   gd.addEventListener("rist-history-restored", function() {
     cropRanges = cropRangesFromLayout();

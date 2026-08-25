@@ -238,6 +238,13 @@ def test_raman_workspace_contains_upload_controls() -> None:
     assert "function scheduleStackCompaction" in page
     assert 'gd.addEventListener("rist-legend-visibility-change", scheduleStackCompaction)' in page
     assert 'gd.on("plotly_restyle", function()' in page
+    assert "applyInFlight" in page
+    assert "preserveView: true" in page
+    assert "startClientY" in page
+    assert "rebuildStackReferences" in page
+    assert "rist-plot-structure-changed" in page
+    assert "lostpointercapture" in page
+    assert "touch-action: none" in page
     assert "I(num)/I(den)" in page
     assert "분자 선택" in page
     assert "분모 선택" in page

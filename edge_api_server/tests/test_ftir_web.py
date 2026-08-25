@@ -68,6 +68,13 @@ def test_ftir_workspace_contains_upload_and_editor_controls() -> None:
     assert "rist-ftir-stack-gap" in page
     assert "rist-ftir-y-drag-active" in page
     assert "rist-ftir-stack-change" in page
+    assert "applyInFlight" in page
+    assert "preserveView: true" in page
+    assert "startClientY" in page
+    assert "rebuildStackReferences" in page
+    assert "rist-plot-structure-changed" in page
+    assert "lostpointercapture" in page
+    assert "touch-action: none" in page
     assert "rist-ftir-signal-mode-change" in page
     assert "lucide-sliders-horizontal" in page
     assert 'button.textContent = open ? "닫기" : "도구"' not in page
