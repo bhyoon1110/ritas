@@ -313,6 +313,11 @@ def test_shared_peak_editor_adds_peak_controls(tmp_path) -> None:
     assert "togglePeakSelection" in html
     assert 'if (prev === "select" && mode !== "select")' in html
     assert "var peakActionButtonsDisabled = false" in html
+    assert "gd._ristPeakEditMode = mode" in html
+    assert 'detail: {mode: "peak-" + nextMode}' in html
+    assert 'activeMode === "peak-" + mode' in html
+    assert 'detail: {mode: "shape-edit"}' in html
+    assert 'gd.addEventListener("rist-exclusive-interaction-start"' in html
     assert "function setPeakActionButtonsDisabled" in html
     assert 'addBtn.disabled = peakActionButtonsDisabled' in html
     assert 'gd.addEventListener("rist-peak-actions-disabled"' in html
@@ -706,7 +711,17 @@ def test_axis_controls_add_range_tick_and_axis_drag_controls(tmp_path) -> None:
     assert 'gd.on("plotly_selected"' in html
     assert 'dragmode: "select"' in html
     assert "cropHint.hidden = false" in html
-    assert "if (cropSession) cancelCrop()" in html
+    assert "if (cropSession || cropPending) cancelCrop()" in html
+    assert "var cropPending = false" in html
+    assert "var cropStartToken = 0" in html
+    assert 'detail: {mode: "crop"}' in html
+    assert "Promise.all([Promise.resolve(cancelPromise), Promise.resolve(editPromise)])" in html
+    assert 'gd.addEventListener("rist-exclusive-interaction-start"' in html
+    assert 'gd.classList.contains("rist-axis-crop-mode")' in html
+    assert "gd._ristFtirYDragMode" in html
+    assert "gd._ristRamanYDragMode" in html
+    assert "gd._ristRamanRatioMode" in html
+    assert 'gd._ristPeakEditMode !== "none"' in html
     assert "towardIncreasingValue" in html
     assert "var DRAG_ACTIVATION_PX = 10" in html
     assert "var AXIS_DOUBLE_TAP_MS = 420" in html

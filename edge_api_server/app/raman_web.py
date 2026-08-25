@@ -2529,6 +2529,7 @@ _RAMAN_STACK_SCRIPT = """
   }
 
   function syncControls() {
+    gd._ristRamanYDragMode = !!state.dragMode;
     if (!stackButton || !dragButton || !gapSlider || !gapValue) return;
     var hasSamples = state.order.length > 0;
     stackButton.classList.toggle("is-active", !!state.enabled);
@@ -2539,6 +2540,18 @@ _RAMAN_STACK_SCRIPT = """
     gapSlider.value = String(Math.round(state.gap * 100));
     gapValue.textContent = state.gap.toFixed(1);
     gd.classList.toggle("rist-raman-y-drag-active", !!state.dragMode);
+  }
+
+  function setDragMode(enabled, announce) {
+    var nextEnabled = !!enabled;
+    if (nextEnabled && !state.dragMode && announce !== false) {
+      gd.dispatchEvent(new CustomEvent("rist-exclusive-interaction-start", {
+        detail: {mode: "raman-y-drag"}
+      }));
+    }
+    state.dragMode = nextEnabled;
+    if (!nextEnabled) finishStackDrag();
+    syncControls();
   }
 
   if (getComputedStyle(gd).position === "static") gd.style.position = "relative";
@@ -2567,8 +2580,7 @@ _RAMAN_STACK_SCRIPT = """
     applyOffsets();
   });
   dragButton.addEventListener("click", function() {
-    state.dragMode = !state.dragMode;
-    syncControls();
+    setDragMode(!state.dragMode, true);
   });
   gapSlider.addEventListener("input", function() {
     state.gap = Math.max(0.6, Math.min(2.2, Number(gapSlider.value) / 100));
@@ -2577,7 +2589,11 @@ _RAMAN_STACK_SCRIPT = """
   });
 
   gd.addEventListener("pointerdown", function(ev) {
-    if (!state.dragMode) return;
+    if (
+      !state.dragMode
+      || gd.classList.contains("rist-axis-crop-mode")
+      || gd._ristEditMode
+    ) return;
     if (!state.initialized) initState();
     var nearest = nearestSample(ev);
     if (!nearest) return;
@@ -2643,6 +2659,12 @@ _RAMAN_STACK_SCRIPT = """
   window.addEventListener("blur", function() { finishStackDrag(); });
   document.addEventListener("visibilitychange", function() {
     if (document.hidden) finishStackDrag();
+  });
+
+  gd.addEventListener("rist-exclusive-interaction-start", function(ev) {
+    var activeMode = String(ev.detail && ev.detail.mode || "");
+    if (!state.dragMode || !activeMode || activeMode === "raman-y-drag") return;
+    setDragMode(false, false);
   });
 
   gd.addEventListener("rist-plot-data-replaced", function() {
@@ -2802,6 +2824,18 @@ _RAMAN_RATIO_SCRIPT = """
     }));
   }
 
+  function setRatioMode(enabled, announce) {
+    var nextEnabled = !!enabled;
+    if (nextEnabled && !ratioMode && announce !== false) {
+      gd.dispatchEvent(new CustomEvent("rist-exclusive-interaction-start", {
+        detail: {mode: "raman-ratio"}
+      }));
+    }
+    ratioMode = nextEnabled;
+    pendingNumerator = null;
+    syncControls();
+  }
+
   function pickPeak(curve) {
     var peak = peakMeta(curve);
     if (!peak) return false;
@@ -2878,9 +2912,7 @@ _RAMAN_RATIO_SCRIPT = """
   var status = control.querySelector(".rist-raman-ratio-status");
 
   ratioButton.addEventListener("click", function() {
-    ratioMode = !ratioMode;
-    pendingNumerator = null;
-    syncControls();
+    setRatioMode(!ratioMode, true);
   });
   clearButton.addEventListener("click", function() {
     ratios = [];
@@ -2901,10 +2933,14 @@ _RAMAN_RATIO_SCRIPT = """
   gd.addEventListener("rist-raman-stack-change", function() {
     if (ratios.length) renderRatios();
   });
+  gd.addEventListener("rist-exclusive-interaction-start", function(ev) {
+    var activeMode = String(ev.detail && ev.detail.mode || "");
+    if (!ratioMode || !activeMode || activeMode === "raman-ratio") return;
+    setRatioMode(false, false);
+  });
   gd.addEventListener("rist-plot-data-replaced", function() {
     ratios = [];
-    ratioMode = false;
-    pendingNumerator = null;
+    setRatioMode(false, false);
     setTimeout(syncControls, 0);
   });
   syncControls();

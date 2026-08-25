@@ -230,6 +230,14 @@ def test_raman_workspace_contains_upload_controls() -> None:
     assert "rist-axis-control-button" in page
     assert "축 범위 및 눈금 설정" in page
     assert "towardIncreasingValue" in page
+    assert "gd._ristRamanYDragMode = !!state.dragMode" in page
+    assert 'detail: {mode: "raman-y-drag"}' in page
+    assert 'activeMode === "raman-y-drag"' in page
+    assert 'gd.classList.contains("rist-axis-crop-mode")' in page
+    assert "function setRatioMode(enabled, announce)" in page
+    assert 'detail: {mode: "raman-ratio"}' in page
+    assert 'activeMode === "raman-ratio"' in page
+    assert 'gd.addEventListener("rist-exclusive-interaction-start"' in page
     assert "rist-raman-stack-control" in page
     assert "rist-raman-ratio-control" in page
     assert "ristRamanStack" in page

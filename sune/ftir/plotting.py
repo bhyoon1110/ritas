@@ -639,6 +639,7 @@ def ftir_stack_js(div_id: str) -> str:
   }
 
   function syncControls() {
+    gd._ristFtirYDragMode = !!state.dragMode;
     if (!stackButton || !dragButton || !gapSlider || !gapValue) return;
     var hasMultipleSamples = state.order.length > 1;
     stackButton.classList.toggle("is-active", !!state.enabled);
@@ -649,6 +650,18 @@ def ftir_stack_js(div_id: str) -> str:
     gapSlider.value = String(Math.round(state.gap * 100));
     gapValue.textContent = state.gap.toFixed(1);
     gd.classList.toggle("rist-ftir-y-drag-active", !!state.dragMode);
+  }
+
+  function setDragMode(enabled, announce) {
+    var nextEnabled = !!enabled;
+    if (nextEnabled && !state.dragMode && announce !== false) {
+      gd.dispatchEvent(new CustomEvent("rist-exclusive-interaction-start", {
+        detail: {mode: "ftir-y-drag"}
+      }));
+    }
+    state.dragMode = nextEnabled;
+    if (!nextEnabled) finishStackDrag();
+    syncControls();
   }
 
   if (getComputedStyle(gd).position === "static") gd.style.position = "relative";
@@ -678,8 +691,7 @@ def ftir_stack_js(div_id: str) -> str:
     applyOffsets();
   });
   dragButton.addEventListener("click", function() {
-    state.dragMode = !state.dragMode;
-    syncControls();
+    setDragMode(!state.dragMode, true);
   });
   gapSlider.addEventListener("input", function() {
     state.gap = Math.max(0.6, Math.min(2.2, Number(gapSlider.value) / 100));
@@ -688,7 +700,11 @@ def ftir_stack_js(div_id: str) -> str:
   });
 
   gd.addEventListener("pointerdown", function(ev) {
-    if (!state.dragMode) return;
+    if (
+      !state.dragMode
+      || gd.classList.contains("rist-axis-crop-mode")
+      || gd._ristEditMode
+    ) return;
     if (!state.initialized) initState();
     var nearest = nearestSample(ev);
     if (!nearest) return;
@@ -755,6 +771,12 @@ def ftir_stack_js(div_id: str) -> str:
   window.addEventListener("blur", function() { finishStackDrag(); });
   document.addEventListener("visibilitychange", function() {
     if (document.hidden) finishStackDrag();
+  });
+
+  gd.addEventListener("rist-exclusive-interaction-start", function(ev) {
+    var activeMode = String(ev.detail && ev.detail.mode || "");
+    if (!state.dragMode || !activeMode || activeMode === "ftir-y-drag") return;
+    setDragMode(false, false);
   });
 
   gd.addEventListener("rist-plot-data-replaced", function() {

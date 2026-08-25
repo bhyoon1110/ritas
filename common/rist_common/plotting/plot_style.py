@@ -2349,6 +2349,7 @@ def peak_editor_js(div_id: str) -> str:
   var gd = document.getElementById("{div_id}");
   if (!gd) return;
   var mode = "none";
+  gd._ristPeakEditMode = mode;
   var selectedPeaks = [];
   var peakActionButtonsDisabled = false;
 
@@ -3453,11 +3454,18 @@ def peak_editor_js(div_id: str) -> str:
     }});
   }}
 
-  function setMode(next) {{
+  function setMode(next, announce) {{
     if (peakActionButtonsDisabled
         && (next === "add" || next === "delete" || next === "select")) return;
+    var nextMode = mode === next ? "none" : next;
+    if (nextMode !== "none" && announce !== false) {{
+      gd.dispatchEvent(new CustomEvent("rist-exclusive-interaction-start", {{
+        detail: {{mode: "peak-" + nextMode}}
+      }}));
+    }}
     var prev = mode;
-    mode = mode === next ? "none" : next;
+    mode = nextMode;
+    gd._ristPeakEditMode = mode;
     if (prev === "select" && mode !== "select") {{
       clearPeakSelection();
     }}
@@ -3503,6 +3511,12 @@ def peak_editor_js(div_id: str) -> str:
     selectBtn.disabled = peakActionButtonsDisabled;
     if (peakActionButtonsDisabled) setMode("none");
   }}
+
+  gd.addEventListener("rist-exclusive-interaction-start", function(ev) {{
+    var activeMode = String(ev.detail && ev.detail.mode || "");
+    if (mode === "none" || !activeMode || activeMode === "peak-" + mode) return;
+    setMode("none", false);
+  }});
 
   var groupNameInput = document.createElement("input");
   groupNameInput.type = "text";
@@ -3845,10 +3859,15 @@ def _edit_mode_toggle_js(div_id: str) -> str:
     }}
   }}
 
-  function applyMode(enabled) {{
+  function applyMode(enabled, announce) {{
     var nextEnabled = !!enabled;
     var changed = !!gd._ristEditMode !== nextEnabled;
     var modePromise = Promise.resolve();
+    if (nextEnabled && changed && announce !== false) {{
+      gd.dispatchEvent(new CustomEvent("rist-exclusive-interaction-start", {{
+        detail: {{mode: "shape-edit"}}
+      }}));
+    }}
     gd._ristEditMode = nextEnabled;
     gd.classList.toggle("rist-edit-mode", nextEnabled);
     if (button) {{
@@ -3884,6 +3903,12 @@ def _edit_mode_toggle_js(div_id: str) -> str:
   }}
 
   gd._ristSetEditMode = applyMode;
+
+  gd.addEventListener("rist-exclusive-interaction-start", function(ev) {{
+    var activeMode = String(ev.detail && ev.detail.mode || "");
+    if (!gd._ristEditMode || !activeMode || activeMode === "shape-edit") return;
+    applyMode(false, false);
+  }});
 
   function toggleMode(ev) {{
     if (ev) {{
@@ -7069,6 +7094,8 @@ def _axis_controls_js(div_id: str) -> str:
   });
 
   var cropSession = null;
+  var cropPending = false;
+  var cropStartToken = 0;
 
   function normalizedCropRange(axis, values) {
     if (!Array.isArray(values) || values.length < 2) return null;
@@ -7103,21 +7130,31 @@ def _axis_controls_js(div_id: str) -> str:
   }
 
   function cancelCrop() {
-    if (!cropSession) return;
+    if (!cropSession && !cropPending) return Promise.resolve();
+    cropStartToken += 1;
+    cropPending = false;
+    if (!cropSession) return Promise.resolve();
     var session = cropSession;
     cropSession = null;
-    finishCropUi(session);
+    return finishCropUi(session);
   }
 
   function beginCrop() {
-    if (cropSession) cancelCrop();
+    var cancelPromise = cancelCrop();
+    var startToken = ++cropStartToken;
+    cropPending = true;
     var axes = activeAxes().slice();
     var previousSelectdirection = gd.layout && gd.layout.selectdirection;
     var editPromise = typeof gd._ristSetEditMode === "function"
       ? gd._ristSetEditMode(false)
       : Promise.resolve();
     setOpen(false);
-    Promise.resolve(editPromise).then(function() {
+    gd.dispatchEvent(new CustomEvent("rist-exclusive-interaction-start", {
+      detail: {mode: "crop"}
+    }));
+    Promise.all([Promise.resolve(cancelPromise), Promise.resolve(editPromise)]).then(function() {
+      if (startToken !== cropStartToken) return;
+      cropPending = false;
       var previousDragmode = gd.layout && gd.layout.dragmode;
       cropSession = {
         axes: axes,
@@ -7134,6 +7171,12 @@ def _axis_controls_js(div_id: str) -> str:
   }
 
   panel.querySelector("[data-axis-action='crop']").addEventListener("click", beginCrop);
+
+  gd.addEventListener("rist-exclusive-interaction-start", function(ev) {
+    var activeMode = String(ev.detail && ev.detail.mode || "");
+    if (!activeMode || activeMode === "crop") return;
+    cancelCrop();
+  });
 
   gd.on("plotly_selected", function(eventData) {
     if (!cropSession) return;
@@ -7177,7 +7220,7 @@ def _axis_controls_js(div_id: str) -> str:
   });
   document.addEventListener("keydown", function(ev) {
     if (ev.key !== "Escape") return;
-    if (cropSession) cancelCrop();
+    if (cropSession || cropPending) cancelCrop();
     if (!panel.hidden) setOpen(false);
   });
 
@@ -7258,6 +7301,15 @@ def _axis_controls_js(div_id: str) -> str:
 
   gd.addEventListener("pointerdown", function(ev) {
     if (ev.pointerType === "mouse" && ev.button !== 0) return;
+    if (
+      cropPending
+      || gd.classList.contains("rist-axis-crop-mode")
+      || gd._ristEditMode
+      || gd._ristFtirYDragMode
+      || gd._ristRamanYDragMode
+      || gd._ristRamanRatioMode
+      || (gd._ristPeakEditMode && gd._ristPeakEditMode !== "none")
+    ) return;
     var axis = axisFromPointer(ev);
     if (!axis) return;
     var range = currentRange(axis + "axis");
@@ -7360,7 +7412,7 @@ def _axis_controls_js(div_id: str) -> str:
   });
   gd.addEventListener("rist-plot-data-replaced", function() {
     finishScale(null, true);
-    if (cropSession) cancelCrop();
+    if (cropSession || cropPending) cancelCrop();
     cropRanges.xaxis = null;
     cropRanges.yaxis = null;
     cropRestoreRanges.xaxis = null;

@@ -238,6 +238,11 @@ def test_ftir_workspace_contains_upload_and_editor_controls() -> None:
     assert "rist-axis-control-button" in page
     assert "축 범위 및 눈금 설정" in page
     assert "towardIncreasingValue" in page
+    assert "gd._ristFtirYDragMode = !!state.dragMode" in page
+    assert 'detail: {mode: "ftir-y-drag"}' in page
+    assert 'activeMode === "ftir-y-drag"' in page
+    assert 'gd.classList.contains("rist-axis-crop-mode")' in page
+    assert 'gd.addEventListener("rist-exclusive-interaction-start"' in page
     assert "rist-ftir-tools-toggle" in page
     assert "rist-ftir-tools-open" in page
     assert "rist-ftir-tools-head" in page
