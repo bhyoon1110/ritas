@@ -662,6 +662,15 @@ def test_axis_controls_add_range_tick_and_axis_drag_controls(tmp_path) -> None:
     assert "function clampRangeToCrop(axisName, requestedRange)" in html
     assert "function requestedRangeFromRelayout(axisName, eventData)" in html
     assert "function enforceCropBounds(eventData)" in html
+    assert "function modebarAxisAction(target)" in html
+    assert 'title.indexOf("reset axes")' in html
+    assert 'title.indexOf("autoscale")' in html
+    assert "function autorangeForAxis(axisName)" in html
+    assert 'return reference && reference[0] > reference[1] ? "reversed" : true' in html
+    assert "function runModebarAxisAction(action)" in html
+    assert 'gd.addEventListener("click", function(ev)' in html
+    assert "ev.stopImmediatePropagation()" in html
+    assert "updates[axisName + \".range\"] = cropRange" in html
     assert 'eventData[axisName + ".range[0]"]' in html
     assert 'eventData[axisName + ".autorange"] === true' in html
     assert "var cropClampPending = false" in html

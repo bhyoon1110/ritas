@@ -6616,6 +6616,67 @@ def _axis_controls_js(div_id: str) -> str:
     }, 0);
   }
 
+  function modebarAxisAction(target) {
+    if (!target || !target.closest) return null;
+    var modebarButton = target.closest("a.modebar-btn");
+    if (!modebarButton || !gd.contains(modebarButton)) return null;
+    if (modebarButton.classList.contains("rist-edit-mode-disabled")) return null;
+    var title = String(
+      modebarButton.getAttribute("data-title")
+      || modebarButton.getAttribute("title")
+      || modebarButton.getAttribute("aria-label")
+      || ""
+    ).trim().toLowerCase();
+    if (title.indexOf("reset axes") >= 0 || title.indexOf("축 재설정") >= 0) {
+      return "reset";
+    }
+    if (title.indexOf("autoscale") >= 0 || title.indexOf("자동 스케일") >= 0) {
+      return "autoscale";
+    }
+    return null;
+  }
+
+  function autorangeForAxis(axisName) {
+    var reference = copyRange(initialRanges[axisName]) || currentRange(axisName);
+    return reference && reference[0] > reference[1] ? "reversed" : true;
+  }
+
+  function runModebarAxisAction(action) {
+    var updates = {};
+    ["xaxis", "yaxis"].forEach(function(axisName) {
+      var cropRange = copyRange(cropRanges[axisName]);
+      if (cropRange) {
+        updates[axisName + ".range"] = cropRange;
+        updates[axisName + ".autorange"] = false;
+      } else if (action === "reset") {
+        var resetRange = copyRange(initialRanges[axisName]);
+        if (resetRange) {
+          updates[axisName + ".range"] = resetRange;
+          updates[axisName + ".autorange"] = false;
+        } else {
+          updates[axisName + ".autorange"] = autorangeForAxis(axisName);
+        }
+      } else {
+        updates[axisName + ".autorange"] = autorangeForAxis(axisName);
+      }
+      updates[axisName + ".fixedrange"] = false;
+    });
+    cropMeta(updates);
+    if (gd._ristHistory && gd._ristHistory.capture) gd._ristHistory.capture();
+    return window.Plotly.relayout(gd, updates).then(function() {
+      syncPanel();
+      gd.dispatchEvent(new CustomEvent("rist-axis-settings-change"));
+    });
+  }
+
+  gd.addEventListener("click", function(ev) {
+    var action = modebarAxisAction(ev.target);
+    if (!action) return;
+    ev.preventDefault();
+    ev.stopImmediatePropagation();
+    runModebarAxisAction(action);
+  }, true);
+
   function field(axis, name) {
     return panel.querySelector("[data-axis='" + axis + "'][data-axis-field='" + name + "']");
   }
