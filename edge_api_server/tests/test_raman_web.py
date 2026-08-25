@@ -233,6 +233,10 @@ def test_raman_workspace_contains_upload_controls() -> None:
     assert "rist-raman-stack-control" in page
     assert "rist-raman-ratio-control" in page
     assert "ristRamanStack" in page
+    assert "function syncStackYAxis(layout)" in page
+    assert 'axis.showticklabels = false' in page
+    assert 'axis.ticks = ""' in page
+    assert "restoreAxisProperty" in page
     assert "function visibleStackGroups" in page
     assert "function compactVisibleStackOffsets" in page
     assert "function scheduleStackCompaction" in page

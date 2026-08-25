@@ -68,6 +68,10 @@ def test_ftir_workspace_contains_upload_and_editor_controls() -> None:
     assert "rist-ftir-stack-gap" in page
     assert "rist-ftir-y-drag-active" in page
     assert "rist-ftir-stack-change" in page
+    assert "function syncStackYAxis(layout)" in page
+    assert 'axis.showticklabels = false' in page
+    assert 'axis.ticks = ""' in page
+    assert "restoreAxisProperty" in page
     assert "applyInFlight" in page
     assert "preserveView: true" in page
     assert "startClientY" in page

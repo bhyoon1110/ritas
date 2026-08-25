@@ -2135,7 +2135,8 @@ _RAMAN_STACK_SCRIPT = """
     compactTimer: null,
     raf: null,
     applyInFlight: false,
-    applyPending: false
+    applyPending: false,
+    yAxisDisplay: null
   };
 
   function traceMeta(index) {
@@ -2156,6 +2157,62 @@ _RAMAN_STACK_SCRIPT = """
     if (!gd.layout.meta || typeof gd.layout.meta !== "object") gd.layout.meta = {};
     if (!gd.layout.meta.ristRamanStack) gd.layout.meta.ristRamanStack = {};
     return gd.layout.meta.ristRamanStack;
+  }
+
+  function axisProperty(axis, key) {
+    var exists = Object.prototype.hasOwnProperty.call(axis, key);
+    return {exists: exists, value: exists ? axis[key] : null};
+  }
+
+  function restoreAxisProperty(axis, key, saved) {
+    if (saved && saved.exists) axis[key] = saved.value;
+    else delete axis[key];
+  }
+
+  function savedYAxisDisplay(value) {
+    if (!value || typeof value !== "object") return null;
+    return {
+      showticklabels: value.showticklabels || {exists: false, value: null},
+      ticks: value.ticks || {exists: false, value: null},
+      ticklen: value.ticklen || {exists: false, value: null}
+    };
+  }
+
+  function syncStackYAxis(layout) {
+    if (!layout.yaxis) layout.yaxis = {};
+    var axis = layout.yaxis;
+    if (state.enabled) {
+      if (!state.yAxisDisplay) {
+        state.yAxisDisplay = {
+          showticklabels: axisProperty(axis, "showticklabels"),
+          ticks: axisProperty(axis, "ticks"),
+          ticklen: axisProperty(axis, "ticklen")
+        };
+      }
+      axis.showticklabels = false;
+      axis.ticks = "";
+      axis.ticklen = 0;
+      return;
+    }
+    if (!state.yAxisDisplay) return;
+    restoreAxisProperty(axis, "showticklabels", state.yAxisDisplay.showticklabels);
+    restoreAxisProperty(axis, "ticks", state.yAxisDisplay.ticks);
+    restoreAxisProperty(axis, "ticklen", state.yAxisDisplay.ticklen);
+    state.yAxisDisplay = null;
+  }
+
+  function applyInitialYAxisDisplay() {
+    if (!state.enabled) return;
+    var layout = gd.layout || {};
+    syncStackYAxis(layout);
+    updateMeta();
+    window.Plotly.relayout(gd, {
+      "yaxis.showticklabels": false,
+      "yaxis.ticks": "",
+      "yaxis.ticklen": 0
+    }).catch(function(error) {
+      console.error("Raman 스택 Y축 표시 반영 실패", error);
+    });
   }
 
   function numberArray(values) {
@@ -2239,6 +2296,7 @@ _RAMAN_STACK_SCRIPT = """
   function initState() {
     var meta = stackMeta();
     state.enabled = !!meta.enabled;
+    state.yAxisDisplay = savedYAxisDisplay(meta.yAxisDisplay);
     state.gap = Number.isFinite(Number(meta.gap)) ? Number(meta.gap) : 1.2;
     state.order = Array.isArray(meta.sampleOrder) && meta.sampleOrder.length
       ? meta.sampleOrder.map(String)
@@ -2315,6 +2373,7 @@ _RAMAN_STACK_SCRIPT = """
     meta.gap = state.gap;
     meta.sampleOffsets = Object.assign({}, state.offsets);
     meta.sampleOrder = state.order.slice();
+    meta.yAxisDisplay = state.yAxisDisplay;
   }
 
   function applyOffsets(options) {
@@ -2350,6 +2409,7 @@ _RAMAN_STACK_SCRIPT = """
       return next;
     });
     if (!layout.yaxis) layout.yaxis = {};
+    syncStackYAxis(layout);
     if (!options.preserveView) layout.yaxis.range = fitRange();
     updateMeta();
     syncControls();
@@ -2572,6 +2632,7 @@ _RAMAN_STACK_SCRIPT = """
         return;
       }
       initState();
+      applyInitialYAxisDisplay();
     }
     window.setTimeout(rebuildWhenIdle, 0);
   }
@@ -2594,6 +2655,7 @@ _RAMAN_STACK_SCRIPT = """
   });
   gd.addEventListener("rist-legend-visibility-change", scheduleStackCompaction);
   initState();
+  applyInitialYAxisDisplay();
 })();
 </script>
 """

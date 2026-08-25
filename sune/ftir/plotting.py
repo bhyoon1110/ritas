@@ -273,7 +273,8 @@ def ftir_stack_js(div_id: str) -> str:
     compactTimer: null,
     raf: null,
     applyInFlight: false,
-    applyPending: false
+    applyPending: false,
+    yAxisDisplay: null
   };
 
   function traceMeta(index) {
@@ -290,6 +291,62 @@ def ftir_stack_js(div_id: str) -> str:
     if (!gd.layout.meta || typeof gd.layout.meta !== "object") gd.layout.meta = {};
     if (!gd.layout.meta.ristFtirStack) gd.layout.meta.ristFtirStack = {};
     return gd.layout.meta.ristFtirStack;
+  }
+
+  function axisProperty(axis, key) {
+    var exists = Object.prototype.hasOwnProperty.call(axis, key);
+    return {exists: exists, value: exists ? axis[key] : null};
+  }
+
+  function restoreAxisProperty(axis, key, saved) {
+    if (saved && saved.exists) axis[key] = saved.value;
+    else delete axis[key];
+  }
+
+  function savedYAxisDisplay(value) {
+    if (!value || typeof value !== "object") return null;
+    return {
+      showticklabels: value.showticklabels || {exists: false, value: null},
+      ticks: value.ticks || {exists: false, value: null},
+      ticklen: value.ticklen || {exists: false, value: null}
+    };
+  }
+
+  function syncStackYAxis(layout) {
+    if (!layout.yaxis) layout.yaxis = {};
+    var axis = layout.yaxis;
+    if (state.enabled) {
+      if (!state.yAxisDisplay) {
+        state.yAxisDisplay = {
+          showticklabels: axisProperty(axis, "showticklabels"),
+          ticks: axisProperty(axis, "ticks"),
+          ticklen: axisProperty(axis, "ticklen")
+        };
+      }
+      axis.showticklabels = false;
+      axis.ticks = "";
+      axis.ticklen = 0;
+      return;
+    }
+    if (!state.yAxisDisplay) return;
+    restoreAxisProperty(axis, "showticklabels", state.yAxisDisplay.showticklabels);
+    restoreAxisProperty(axis, "ticks", state.yAxisDisplay.ticks);
+    restoreAxisProperty(axis, "ticklen", state.yAxisDisplay.ticklen);
+    state.yAxisDisplay = null;
+  }
+
+  function applyInitialYAxisDisplay() {
+    if (!state.enabled) return;
+    var layout = gd.layout || {};
+    syncStackYAxis(layout);
+    updateMeta();
+    window.Plotly.relayout(gd, {
+      "yaxis.showticklabels": false,
+      "yaxis.ticks": "",
+      "yaxis.ticklen": 0
+    }).catch(function(error) {
+      console.error("FT-IR 스택 Y축 표시 반영 실패", error);
+    });
   }
 
   function numberArray(values) {
@@ -350,6 +407,7 @@ def ftir_stack_js(div_id: str) -> str:
   function initState() {
     var meta = stackMeta();
     state.enabled = !!meta.enabled;
+    state.yAxisDisplay = savedYAxisDisplay(meta.yAxisDisplay);
     state.gap = Number.isFinite(Number(meta.gap)) ? Number(meta.gap) : 1.2;
     state.units = Object.assign(
       {absorbance: 1, transmittance: 100},
@@ -433,6 +491,7 @@ def ftir_stack_js(div_id: str) -> str:
     meta.samplePositions = Object.assign({}, state.positions);
     meta.sampleOrder = state.order.slice();
     meta.modeUnits = Object.assign({}, state.units);
+    meta.yAxisDisplay = state.yAxisDisplay;
   }
 
   function applyOffsets(options) {
@@ -482,6 +541,7 @@ def ftir_stack_js(div_id: str) -> str:
       });
     }
     if (!layout.yaxis) layout.yaxis = {};
+    syncStackYAxis(layout);
     if (!options.preserveView) {
       var range = fitRange(signalMode);
       if (range) layout.yaxis.range = range;
@@ -684,6 +744,7 @@ def ftir_stack_js(div_id: str) -> str:
         return;
       }
       initState();
+      applyInitialYAxisDisplay();
     }
     setTimeout(rebuildWhenIdle, 0);
   }
@@ -709,6 +770,7 @@ def ftir_stack_js(div_id: str) -> str:
   gd.addEventListener("rist-legend-visibility-change", scheduleCompaction);
   gd._ristFtirSignalMode = gd._ristFtirSignalMode || "absorbance";
   initState();
+  applyInitialYAxisDisplay();
 })();
 </script>
 """
