@@ -201,6 +201,9 @@ def ftir_abs_trans_toggle_js(div_id: str, *, yaxis_titles: dict[str, dict[str, s
   btn.addEventListener("click", function(ev) {{
     ev.preventDefault();
     ev.stopPropagation();
+    gd.dispatchEvent(new CustomEvent("rist-exclusive-interaction-start", {{
+      detail: {{mode: "ftir-signal-mode"}}
+    }}));
     applyMode(mode === "absorbance" ? "transmittance" : "absorbance");
   }});
   if (getComputedStyle(gd).position === "static") gd.style.position = "relative";
@@ -686,6 +689,9 @@ def ftir_stack_js(div_id: str) -> str:
   var gapValue = control.querySelector(".rist-ftir-stack-value");
 
   stackButton.addEventListener("click", function() {
+    gd.dispatchEvent(new CustomEvent("rist-exclusive-interaction-start", {
+      detail: {mode: "ftir-stack-layout"}
+    }));
     state.enabled = !state.enabled;
     resetPositions();
     applyOffsets();
@@ -694,6 +700,9 @@ def ftir_stack_js(div_id: str) -> str:
     setDragMode(!state.dragMode, true);
   });
   gapSlider.addEventListener("input", function() {
+    gd.dispatchEvent(new CustomEvent("rist-exclusive-interaction-start", {
+      detail: {mode: "ftir-stack-layout"}
+    }));
     state.gap = Math.max(0.6, Math.min(2.2, Number(gapSlider.value) / 100));
     if (state.enabled) resetPositions();
     applyOffsets();
@@ -701,10 +710,25 @@ def ftir_stack_js(div_id: str) -> str:
 
   gd.addEventListener("pointerdown", function(ev) {
     if (
-      !state.dragMode
+      (ev.pointerType === "mouse" && ev.button !== 0)
+      || state.dragging
+      || !state.dragMode
+      || gd._ristAxisCropActive
       || gd.classList.contains("rist-axis-crop-mode")
       || gd._ristEditMode
+      || gd._ristShapeDrawMode
+      || gd._ristAxisScaleActive
+      || gd._ristAxisSettingsOpen
+      || gd._ristRamanRatioMode
+      || gd._ristPeakSensitivityInteracting
+      || gd._ristLegendEditOpen
+      || gd._ristLegendDragging
+      || gd._ristInlineTextEditing
+      || (gd._ristPeakEditMode && gd._ristPeakEditMode !== "none")
     ) return;
+    if (ev.target && ev.target.closest && ev.target.closest(
+      ".rist-legend-drag-handle,.legend,.modebar,.rist-plot-control-row,.rist-legend-edit-panel"
+    )) return;
     if (!state.initialized) initState();
     var nearest = nearestSample(ev);
     if (!nearest) return;

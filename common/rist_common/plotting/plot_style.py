@@ -199,6 +199,9 @@ def origin_style_toggle_js(
   gd._ristOriginStyle = api;
   toggle.checked = api.enabled;
   toggle.addEventListener("change", function() {
+    gd.dispatchEvent(new CustomEvent("rist-exclusive-interaction-start", {
+      detail: {mode: "origin-style"}
+    }));
     api.setEnabled(toggle.checked, true, true);
   });
 })();
@@ -452,6 +455,7 @@ def _title_edit_js(div_id: str) -> str:
   var gd = document.getElementById("{div_id}");
   if (!gd) return;
   var editing = false;
+  var activeFinish = null;
   function titleParts() {{
     var full = (gd.layout && gd.layout.title && gd.layout.title.text) || "";
     var i = full.indexOf("<span");
@@ -460,7 +464,7 @@ def _title_edit_js(div_id: str) -> str:
       : [full.trim(), ""];
   }}
   gd.addEventListener("dblclick", function(e) {{
-    if (editing) return;
+    if (editing || gd._ristInlineTextEditing) return;
     var t = gd.querySelector(".gtitle");
     if (!t) return;
     // 제목 텍스트는 pointer-events가 없을 수 있어 좌표로 직접 판정한다.
@@ -469,7 +473,12 @@ def _title_edit_js(div_id: str) -> str:
         e.clientY < tr.top - 6 || e.clientY > tr.bottom + 6) return;
     e.preventDefault();
     e.stopPropagation();
+    if (e.stopImmediatePropagation) e.stopImmediatePropagation();
     editing = true;
+    gd._ristInlineTextEditing = true;
+    gd.dispatchEvent(new CustomEvent("rist-exclusive-interaction-start", {{
+      detail: {{mode: "inline-text-edit"}}
+    }}));
     var p = titleParts();
     var gr = gd.getBoundingClientRect();
     var inp = document.createElement("input");
@@ -488,6 +497,8 @@ def _title_edit_js(div_id: str) -> str:
     function finish(save) {{
       if (!editing) return;
       editing = false;
+      activeFinish = null;
+      gd._ristInlineTextEditing = false;
       if (save && inp.value.trim() !== "") {{
         var suffix = p[1] ? " " + p[1] : "";
         if (gd._ristHistory) gd._ristHistory.capture();
@@ -495,6 +506,7 @@ def _title_edit_js(div_id: str) -> str:
       }}
       if (inp.parentNode) inp.parentNode.removeChild(inp);
     }}
+    activeFinish = finish;
     inp.addEventListener("keydown", function(ev) {{
       if (ev.key === "Enter") finish(true);
       else if (ev.key === "Escape") finish(false);
@@ -504,6 +516,10 @@ def _title_edit_js(div_id: str) -> str:
       inp.addEventListener("blur", function() {{ finish(true); }});
     }}, 250);
   }}, true);
+  gd.addEventListener("rist-exclusive-interaction-start", function(ev) {{
+    var nextMode = ev && ev.detail && ev.detail.mode;
+    if (nextMode !== "inline-text-edit" && activeFinish) activeFinish(false);
+  }});
 }})();
 </script>
 """
@@ -891,6 +907,7 @@ def _legend_text_edit_js(div_id: str) -> str:
   var gd = document.getElementById("{div_id}");
   if (!gd) return;
   var editing = false;
+  var activeFinish = null;
 
   function visibleLegendTraceIndexes() {{
     var fd = gd._fullData || gd.data || [];
@@ -1223,15 +1240,19 @@ def _legend_text_edit_js(div_id: str) -> str:
       + "</div>";
     toolbar.appendChild(btn);
     gd.appendChild(panel);
+    gd._ristLegendEditOpen = false;
+    var panelDrag = null;
+    var panelDragPointerId = null;
 
     function closePanel() {{
+      finishPanelDrag();
       panel.style.display = "none";
+      gd._ristLegendEditOpen = false;
     }}
 
     var panelHead = panel.querySelector(".rist-legend-edit-head");
     var opacitySlider = panel.querySelector(".rist-legend-opacity-slider");
     var deleteAllPeaksButton = panel.querySelector(".rist-legend-delete-all-peaks");
-    var panelDrag = null;
 
     function hasPeakCurves() {{
       for (var i = 0; i < (gd.data || []).length; i++) {{
@@ -1276,7 +1297,7 @@ def _legend_text_edit_js(div_id: str) -> str:
     }}
 
     panelHead.addEventListener("pointerdown", function(ev) {{
-      if (ev.button !== 0
+      if (ev.button !== 0 || panelDrag
           || ev.target.closest("button,input,.rist-legend-opacity-control")) return;
       var gdRect = gd.getBoundingClientRect();
       var panelRect = panel.getBoundingClientRect();
@@ -1284,15 +1305,19 @@ def _legend_text_edit_js(div_id: str) -> str:
         offsetX: ev.clientX - panelRect.left,
         offsetY: ev.clientY - panelRect.top
       }};
+      panelDragPointerId = ev.pointerId;
       panel.style.left = (panelRect.left - gdRect.left) + "px";
       panel.style.top = (panelRect.top - gdRect.top) + "px";
       panel.style.right = "auto";
       panel.classList.add("is-panel-dragging");
+      if (panelHead.setPointerCapture) {{
+        try {{ panelHead.setPointerCapture(ev.pointerId); }} catch (ignore) {{}}
+      }}
       ev.preventDefault();
     }});
 
     document.addEventListener("pointermove", function(ev) {{
-      if (!panelDrag) return;
+      if (!panelDrag || ev.pointerId !== panelDragPointerId) return;
       var gdRect = gd.getBoundingClientRect();
       var position = constrainPanelPosition(
         ev.clientX - gdRect.left - panelDrag.offsetX,
@@ -1303,14 +1328,26 @@ def _legend_text_edit_js(div_id: str) -> str:
       ev.preventDefault();
     }});
 
-    function finishPanelDrag() {{
-      if (!panelDrag) return;
+    function finishPanelDrag(ev) {{
+      if (ev && panelDragPointerId != null
+          && ev.pointerId != null && ev.pointerId !== panelDragPointerId) return;
+      var pointerId = panelDragPointerId;
       panelDrag = null;
+      panelDragPointerId = null;
       panel.classList.remove("is-panel-dragging");
+      if (pointerId != null && panelHead.hasPointerCapture
+          && panelHead.hasPointerCapture(pointerId)) {{
+        try {{ panelHead.releasePointerCapture(pointerId); }} catch (ignore) {{}}
+      }}
     }}
 
     document.addEventListener("pointerup", finishPanelDrag);
     document.addEventListener("pointercancel", finishPanelDrag);
+    panelHead.addEventListener("lostpointercapture", finishPanelDrag);
+    window.addEventListener("blur", function() {{ finishPanelDrag(); }});
+    document.addEventListener("visibilitychange", function() {{
+      if (document.hidden) finishPanelDrag();
+    }});
     window.addEventListener("resize", function() {{
       if (!panel.style.left || panel.style.display !== "block") return;
       var position = constrainPanelPosition(
@@ -1663,14 +1700,15 @@ def _legend_text_edit_js(div_id: str) -> str:
       ev.stopPropagation();
       var willOpen = panel.style.display !== "block";
       if (willOpen) {{
-        var shapePanel = gd.querySelector(".rist-shape-editor-panel");
-        if (shapePanel) {{
-          shapePanel.style.display = "none";
-          gd.dispatchEvent(new CustomEvent("rist-shape-editor-close"));
-        }}
+        gd.dispatchEvent(new CustomEvent("rist-exclusive-interaction-start", {{
+          detail: {{mode: "legend-edit"}}
+        }}));
+        gd._ristLegendEditOpen = true;
         renderRows();
+        panel.style.display = "block";
+      }} else {{
+        closePanel();
       }}
-      panel.style.display = willOpen ? "block" : "none";
     }});
     panel.querySelector(".rist-legend-edit-close").addEventListener("click", function(ev) {{
       ev.preventDefault();
@@ -1691,6 +1729,11 @@ def _legend_text_edit_js(div_id: str) -> str:
     }});
     document.addEventListener("keydown", function(ev) {{
       if (ev.key === "Escape") closePanel();
+    }});
+    gd.addEventListener("rist-exclusive-interaction-start", function(ev) {{
+      var activeMode = String(ev.detail && ev.detail.mode || "");
+      if (!activeMode || activeMode === "legend-edit") return;
+      if (panel.style.display === "block") closePanel();
     }});
     gd.addEventListener("rist-peak-group-change", function() {{
       if (panel.style.display === "block") renderRows();
@@ -1867,15 +1910,24 @@ def _legend_text_edit_js(div_id: str) -> str:
       ev.preventDefault();
       ev.stopPropagation();
       if (b.classList.contains("rist-peak-label-toggle")) {{
+        gd.dispatchEvent(new CustomEvent("rist-exclusive-interaction-start", {{
+          detail: {{mode: "peak-label-visibility"}}
+        }}));
         setPeakLabelVisibility(!peakLabelsVisible(), b);
         return;
       }}
       if (b.hasAttribute("data-peak-legend-visible")) {{
+        gd.dispatchEvent(new CustomEvent("rist-exclusive-interaction-start", {{
+          detail: {{mode: "peak-legend-visibility"}}
+        }}));
         setPeakLegendEntriesVisibility(
           b.getAttribute("data-peak-legend-visible") === "true"
         );
         return;
       }}
+      gd.dispatchEvent(new CustomEvent("rist-exclusive-interaction-start", {{
+        detail: {{mode: "trace-visibility"}}
+      }}));
       setAllLegendVisibility(
         b.getAttribute("data-visible") === "true" ? true : "legendonly"
       );
@@ -1903,12 +1955,17 @@ def _legend_text_edit_js(div_id: str) -> str:
   installLegendBulkControls();
 
   gd.addEventListener("dblclick", function(e) {{
-    if (editing) return;
+    if (editing || gd._ristInlineTextEditing) return;
     var picked = legendItemFor(e.target);
     if (!picked) return;
     e.preventDefault();
     e.stopPropagation();
+    if (e.stopImmediatePropagation) e.stopImmediatePropagation();
     editing = true;
+    gd._ristInlineTextEditing = true;
+    gd.dispatchEvent(new CustomEvent("rist-exclusive-interaction-start", {{
+      detail: {{mode: "inline-text-edit"}}
+    }}));
 
     var tr = picked.text.getBoundingClientRect();
     var gr = gd.getBoundingClientRect();
@@ -1931,9 +1988,12 @@ def _legend_text_edit_js(div_id: str) -> str:
     function finish(save) {{
       if (!editing) return;
       editing = false;
+      activeFinish = null;
+      gd._ristInlineTextEditing = false;
       if (save) updateName(picked.curve, inp.value);
       if (inp.parentNode) inp.parentNode.removeChild(inp);
     }}
+    activeFinish = finish;
     inp.addEventListener("keydown", function(ev) {{
       if (ev.key === "Enter") finish(true);
       else if (ev.key === "Escape") finish(false);
@@ -1942,6 +2002,10 @@ def _legend_text_edit_js(div_id: str) -> str:
       inp.addEventListener("blur", function() {{ finish(true); }});
     }}, 250);
   }}, true);
+  gd.addEventListener("rist-exclusive-interaction-start", function(ev) {{
+    var nextMode = ev && ev.detail && ev.detail.mode;
+    if (nextMode !== "inline-text-edit" && activeFinish) activeFinish(false);
+  }});
 }})();
 </script>
 """
@@ -2212,6 +2276,7 @@ def peak_sensitivity_js(div_id: str, initial: str = "medium") -> str:
   var numberInput = control.querySelector(".rist-peak-sensitivity-number");
   var value = control.querySelector(".rist-peak-sensitivity-value");
   var sliderPointerActive = false;
+  var sliderPointerId = null;
   var sliderKeyboardActive = false;
   var numberInputActive = false;
 
@@ -2219,30 +2284,64 @@ def peak_sensitivity_js(div_id: str, initial: str = "medium") -> str:
     var active = sliderPointerActive || sliderKeyboardActive || numberInputActive;
     var wasActive = !!gd._ristPeakSensitivityInteracting;
     gd._ristPeakSensitivityInteracting = active;
+    if (!wasActive && active) {{
+      gd.dispatchEvent(new CustomEvent("rist-exclusive-interaction-start", {{
+        detail: {{mode: "peak-sensitivity"}}
+      }}));
+    }}
     if (wasActive && !active) {{
       gd.dispatchEvent(new CustomEvent("rist-peak-sensitivity-interaction-end"));
     }}
   }}
 
-  slider.addEventListener("pointerdown", function() {{
+  function cancelSensitivityInteraction() {{
+    var pointerId = sliderPointerId;
+    sliderPointerActive = false;
+    sliderPointerId = null;
+    sliderKeyboardActive = false;
+    numberInputActive = false;
+    if (pointerId != null && slider.hasPointerCapture
+        && slider.hasPointerCapture(pointerId)) {{
+      try {{ slider.releasePointerCapture(pointerId); }} catch (ignore) {{}}
+    }}
+    updateSensitivityInteraction();
+  }}
+
+  function finishSliderPointer(ev) {{
+    if (!sliderPointerActive) return;
+    if (ev && ev.pointerId != null && ev.pointerId !== sliderPointerId) return;
+    var pointerId = sliderPointerId;
+    sliderPointerActive = false;
+    sliderPointerId = null;
+    if (pointerId != null && slider.hasPointerCapture
+        && slider.hasPointerCapture(pointerId)) {{
+      try {{ slider.releasePointerCapture(pointerId); }} catch (ignore) {{}}
+    }}
+    updateSensitivityInteraction();
+  }}
+
+  slider.addEventListener("pointerdown", function(ev) {{
+    if ((ev.pointerType === "mouse" && ev.button !== 0)
+        || sliderPointerId != null) return;
     sliderPointerActive = true;
+    sliderPointerId = ev.pointerId;
+    if (slider.setPointerCapture) {{
+      try {{ slider.setPointerCapture(ev.pointerId); }} catch (ignore) {{}}
+    }}
     updateSensitivityInteraction();
   }});
-  document.addEventListener("pointerup", function() {{
-    if (!sliderPointerActive) return;
-    sliderPointerActive = false;
-    updateSensitivityInteraction();
-  }});
-  document.addEventListener("pointercancel", function() {{
-    if (!sliderPointerActive) return;
-    sliderPointerActive = false;
-    updateSensitivityInteraction();
-  }});
+  document.addEventListener("pointerup", finishSliderPointer);
+  document.addEventListener("pointercancel", finishSliderPointer);
+  slider.addEventListener("lostpointercapture", finishSliderPointer);
   slider.addEventListener("keydown", function() {{
     sliderKeyboardActive = true;
     updateSensitivityInteraction();
   }});
   slider.addEventListener("keyup", function() {{
+    sliderKeyboardActive = false;
+    updateSensitivityInteraction();
+  }});
+  slider.addEventListener("blur", function() {{
     sliderKeyboardActive = false;
     updateSensitivityInteraction();
   }});
@@ -2253,6 +2352,15 @@ def peak_sensitivity_js(div_id: str, initial: str = "medium") -> str:
   numberInput.addEventListener("blur", function() {{
     numberInputActive = false;
     updateSensitivityInteraction();
+  }});
+  window.addEventListener("blur", cancelSensitivityInteraction);
+  document.addEventListener("visibilitychange", function() {{
+    if (document.hidden) cancelSensitivityInteraction();
+  }});
+  gd.addEventListener("rist-exclusive-interaction-start", function(ev) {{
+    var activeMode = String(ev.detail && ev.detail.mode || "");
+    if (!activeMode || activeMode === "peak-sensitivity") return;
+    cancelSensitivityInteraction();
   }});
   slider.addEventListener("input", function() {{
     requestSensitivity(slider.value);
@@ -2352,6 +2460,24 @@ def peak_editor_js(div_id: str) -> str:
   gd._ristPeakEditMode = mode;
   var selectedPeaks = [];
   var peakActionButtonsDisabled = false;
+
+  function blockedByOtherInteraction() {{
+    return !!(
+      gd._ristAxisCropActive
+      || gd.classList.contains("rist-axis-crop-mode")
+      || gd._ristEditMode
+      || gd._ristShapeDrawMode
+      || gd._ristAxisScaleActive
+      || gd._ristAxisSettingsOpen
+      || gd._ristFtirYDragMode
+      || gd._ristRamanYDragMode
+      || gd._ristRamanRatioMode
+      || gd._ristPeakSensitivityInteracting
+      || gd._ristLegendEditOpen
+      || gd._ristLegendDragging
+      || gd._ristInlineTextEditing
+    );
+  }}
 
   function esc(s) {{
     return String(s == null ? "" : s)
@@ -2988,7 +3114,7 @@ def peak_editor_js(div_id: str) -> str:
 
   function nearestPeakCurveFromEvent(ev) {{
     if (ev.target && ev.target.closest
-        && ev.target.closest(".legend,.modebar,.rist-plot-control-row,.rist-legend-edit-panel")) {{
+        && ev.target.closest(".legend,.modebar,.rist-plot-control-row,.rist-legend-edit-panel,.rist-legend-drag-handle")) {{
       return null;
     }}
     var fl = gd._fullLayout;
@@ -3548,7 +3674,10 @@ def peak_editor_js(div_id: str) -> str:
 
   gd.addEventListener("click", function(ev) {{
     if (mode !== "add") return;
-    if (ev.target.closest(".rist-plot-control-row")) return;
+    if (blockedByOtherInteraction()) return;
+    if (ev.target.closest(
+      ".legend,.modebar,.rist-plot-control-row,.rist-legend-edit-panel,.rist-legend-drag-handle"
+    )) return;
     var pt = dataPointFromEvent(ev);
     if (!pt) return;
     ev.preventDefault();
@@ -3556,25 +3685,57 @@ def peak_editor_js(div_id: str) -> str:
     addPeakAt(pt);
   }}, true);
 
+  var pendingPeakNativeClick = null;
+  var suppressPeakPlotlyClickUntil = 0;
+
+  function stopPeakSelectEvent(ev) {{
+    ev.preventDefault();
+    ev.stopPropagation();
+    if (ev.stopImmediatePropagation) ev.stopImmediatePropagation();
+  }}
+
+  function matchesPendingPeakNativeClick(ev) {{
+    if (!pendingPeakNativeClick || Date.now() > pendingPeakNativeClick.until) return false;
+    var x = Number(ev.clientX);
+    var y = Number(ev.clientY);
+    if (!Number.isFinite(x) || !Number.isFinite(y)
+        || !Number.isFinite(pendingPeakNativeClick.x)
+        || !Number.isFinite(pendingPeakNativeClick.y)) return true;
+    var dx = x - pendingPeakNativeClick.x;
+    var dy = y - pendingPeakNativeClick.y;
+    return dx * dx + dy * dy <= 18 * 18;
+  }}
+
   function handlePeakSelectPointer(ev) {{
     if (mode !== "delete" && mode !== "select") return;
-    if (ev.target.closest(".legend,.modebar,.rist-plot-control-row,.rist-legend-edit-panel")) return;
-    if (ev.type === "click" && gd._ristHandledPeakSelectClick) {{
-      ev.preventDefault();
-      ev.stopPropagation();
+    if (blockedByOtherInteraction()) return;
+    if (ev.target.closest(
+      ".legend,.modebar,.rist-plot-control-row,.rist-legend-edit-panel,.rist-legend-drag-handle"
+    )) return;
+    if (ev.type === "mousedown") {{
+      pendingPeakNativeClick = null;
+      suppressPeakPlotlyClickUntil = 0;
+    }} else if (ev.type === "click" && matchesPendingPeakNativeClick(ev)) {{
+      pendingPeakNativeClick = null;
+      stopPeakSelectEvent(ev);
       return;
     }}
     var curve = nearestPeakCurveFromEvent(ev);
     if (curve == null) return;
-    ev.preventDefault();
-    ev.stopPropagation();
-    gd._ristHandledPeakSelectClick = true;
-    gd._ristHandledPeakSelectAt = Date.now();
+    stopPeakSelectEvent(ev);
+    var handledAt = Date.now();
+    if (ev.type === "mousedown") {{
+      pendingPeakNativeClick = {{
+        x: Number(ev.clientX),
+        y: Number(ev.clientY),
+        until: handledAt + 1200
+      }};
+    }} else {{
+      pendingPeakNativeClick = null;
+    }}
+    suppressPeakPlotlyClickUntil = handledAt + 1200;
     if (mode === "delete") deletePeakTrace(curve);
     else togglePeakSelection(curve);
-    setTimeout(function() {{
-      gd._ristHandledPeakSelectClick = false;
-    }}, 250);
   }}
 
   gd.addEventListener("mousedown", handlePeakSelectPointer, true);
@@ -3582,10 +3743,11 @@ def peak_editor_js(div_id: str) -> str:
 
   gd.on("plotly_click", function(ev) {{
     if (mode !== "delete" && mode !== "select") return;
-    if (
-        gd._ristHandledPeakSelectClick
-        || (gd._ristHandledPeakSelectAt && Date.now() - gd._ristHandledPeakSelectAt < 250)
-    ) return;
+    if (blockedByOtherInteraction()) return;
+    if (Date.now() <= suppressPeakPlotlyClickUntil) {{
+      suppressPeakPlotlyClickUntil = 0;
+      return;
+    }}
     var point = ev && ev.points && ev.points[0];
     if (!point) return;
     if (mode === "delete") deletePeakTrace(point.curveNumber);
@@ -3918,12 +4080,27 @@ def _edit_mode_toggle_js(div_id: str) -> str:
     applyMode(!gd._ristEditMode);
   }}
 
-  function blockNavigationModeButton(ev) {{
-    if (!gd._ristEditMode) return;
+  function navigationModeButton(ev) {{
     var item = ev.target && ev.target.closest
       ? ev.target.closest("a.modebar-btn")
       : null;
-    if (!item || item === button || !isNavigationModeButton(item)) return;
+    return item && item !== button && isNavigationModeButton(item) ? item : null;
+  }}
+
+  function handleNavigationModePointerDown(ev) {{
+    if (!navigationModeButton(ev)) return;
+    if (!gd._ristEditMode) {{
+      gd.dispatchEvent(new CustomEvent("rist-exclusive-interaction-start", {{
+        detail: {{mode: "plotly-navigation"}}
+      }}));
+      return;
+    }}
+    ev.preventDefault();
+    ev.stopPropagation();
+  }}
+
+  function blockNavigationModeButton(ev) {{
+    if (!gd._ristEditMode || !navigationModeButton(ev)) return;
     ev.preventDefault();
     ev.stopPropagation();
   }}
@@ -3954,7 +4131,7 @@ def _edit_mode_toggle_js(div_id: str) -> str:
     modebar.appendChild(button);
     if (!gd._ristEditModeBlockerInstalled) {{
       gd._ristEditModeBlockerInstalled = true;
-      gd.addEventListener("pointerdown", blockNavigationModeButton, true);
+      gd.addEventListener("pointerdown", handleNavigationModePointerDown, true);
       gd.addEventListener("click", blockNavigationModeButton, true);
     }}
     applyMode(!!gd._ristEditMode);
@@ -4013,6 +4190,25 @@ def _trace_highlight_js(div_id: str, pickable=None, groups=None) -> str:
   var GROUPS = {groups_js};       // 대표→그룹 멤버
   var hiCurve = -1;   // 현재 강조/격리 중인 트레이스
   var mode = "none"; // "none" | "highlight"(반투명 강조) | "isolate"(격리)
+
+  function hasExclusivePointerMode() {{
+    return !!(
+      gd._ristEditMode
+      || gd._ristShapeDrawMode
+      || gd._ristAxisScaleActive
+      || gd._ristAxisSettingsOpen
+      || gd._ristAxisCropActive
+      || gd.classList.contains("rist-axis-crop-mode")
+      || gd._ristFtirYDragMode
+      || gd._ristRamanYDragMode
+      || gd._ristRamanRatioMode
+      || gd._ristPeakSensitivityInteracting
+      || gd._ristLegendEditOpen
+      || gd._ristLegendDragging
+      || gd._ristInlineTextEditing
+      || (gd._ristPeakEditMode && gd._ristPeakEditMode !== "none")
+    );
+  }}
 
   function idxArr() {{
     var n = (gd.data || []).length, a = [];
@@ -4097,6 +4293,7 @@ def _trace_highlight_js(div_id: str, pickable=None, groups=None) -> str:
   // Plotly 자체 이벤트(plotly_doubleclick)를 사용한다.
   gd.on("plotly_doubleclick", function() {{
     if (!window.Plotly) return false;
+    if (hasExclusivePointerMode()) return false;
     var modifier = gd._lastPtr && gd._lastPtr.modifier;
     if (!modifier) return true;
     var cn = pickCurve();
@@ -4449,6 +4646,7 @@ def shape_editor_js(div_id: str) -> str:
   var selectedKind = "";
   var drawKind = "rect";
   var drawMode = false;
+  gd._ristShapeDrawMode = false;
   var drawStart = null;
   var transformState = null;
   var panelDragState = null;
@@ -4810,8 +5008,18 @@ def shape_editor_js(div_id: str) -> str:
     gd.dispatchEvent(new CustomEvent("rist-open-edit-tool"));
   }}
 
-  function setDrawMode(enabled) {{
-    drawMode = !!enabled;
+  function announceShapeMode() {{
+    gd.dispatchEvent(new CustomEvent("rist-exclusive-interaction-start", {{
+      detail: {{mode: "shape-edit"}}
+    }}));
+  }}
+
+  function setDrawMode(enabled, announce) {{
+    var nextEnabled = !!enabled;
+    var changed = drawMode !== nextEnabled;
+    if (nextEnabled && changed && announce !== false) announceShapeMode();
+    drawMode = nextEnabled;
+    gd._ristShapeDrawMode = drawMode;
     if (drawMode) requestMobileEditMode();
     toolButton.classList.toggle("is-active", drawMode);
     drawButton.classList.toggle("is-active", drawMode);
@@ -4833,12 +5041,11 @@ def shape_editor_js(div_id: str) -> str:
       button.classList.toggle("is-active", button.dataset.kind === drawKind);
     }});
     textOptions.style.display = drawKind === "text" ? "block" : "none";
-    setDrawMode(drawMode);
+    setDrawMode(drawMode, false);
   }}
 
   function openPanel() {{
-    var legendPanel = gd.querySelector(".rist-legend-edit-panel");
-    if (legendPanel) legendPanel.style.display = "none";
+    if (panel.style.display !== "block") announceShapeMode();
     panel.style.display = "block";
     requestMobileEditMode();
     syncShapeEditingState();
@@ -4846,7 +5053,8 @@ def shape_editor_js(div_id: str) -> str:
 
   function closePanel() {{
     panel.style.display = "none";
-    setDrawMode(false);
+    setDrawMode(false, false);
+    cancelShapePointerInteraction();
     syncShapeEditingState();
   }}
 
@@ -4858,14 +5066,49 @@ def shape_editor_js(div_id: str) -> str:
     }});
   }}
 
-  function clearSelection() {{
+  function cancelShapePointerInteraction() {{
     if (previewFrame) {{
       cancelAnimationFrame(previewFrame);
       previewFrame = 0;
     }}
+    var transformPointerId = transformState && transformState.pointerId;
+    var drawPointerId = drawStart && drawStart.pointerId;
+    var panelPointerId = panelDragState && panelDragState.pointerId;
+    transformState = null;
+    drawStart = null;
+    panelDragState = null;
+    if (transformPointerId != null
+        && selection.hasPointerCapture
+        && selection.hasPointerCapture(transformPointerId)) {{
+      try {{ selection.releasePointerCapture(transformPointerId); }} catch (ignore) {{}}
+    }}
+    if (drawPointerId != null
+        && gd.hasPointerCapture
+        && gd.hasPointerCapture(drawPointerId)) {{
+      try {{ gd.releasePointerCapture(drawPointerId); }} catch (ignore) {{}}
+    }}
+    if (panelPointerId != null
+        && panelHead.hasPointerCapture
+        && panelHead.hasPointerCapture(panelPointerId)) {{
+      try {{ panelHead.releasePointerCapture(panelPointerId); }} catch (ignore) {{}}
+    }}
+    preview.style.display = "none";
+  }}
+
+  function finishShapePanelDrag(ev) {{
+    if (!panelDragState) return;
+    if (ev && ev.pointerId != null && ev.pointerId !== panelDragState.pointerId) return;
+    var pointerId = panelDragState.pointerId;
+    panelDragState = null;
+    if (panelHead.hasPointerCapture && panelHead.hasPointerCapture(pointerId)) {{
+      try {{ panelHead.releasePointerCapture(pointerId); }} catch (ignore) {{}}
+    }}
+  }}
+
+  function clearSelection() {{
+    cancelShapePointerInteraction();
     selectedId = "";
     selectedKind = "";
-    transformState = null;
     editSnapshot = null;
     selection.style.display = "none";
     updateSelectionButtons();
@@ -5377,21 +5620,50 @@ def shape_editor_js(div_id: str) -> str:
     }}).then(updateSelectionOverlay);
   }}
 
+  function shapeBlockedByOtherInteraction() {{
+    return !!(
+      gd._ristLegendDragging
+      || gd._ristInlineTextEditing
+      || gd._ristAxisScaleActive
+      || gd._ristAxisSettingsOpen
+      || gd._ristAxisCropActive
+      || gd.classList.contains("rist-axis-crop-mode")
+      || gd._ristFtirYDragMode
+      || gd._ristRamanYDragMode
+      || gd._ristRamanRatioMode
+      || gd._ristPeakSensitivityInteracting
+      || gd._ristLegendEditOpen
+      || (gd._ristPeakEditMode && gd._ristPeakEditMode !== "none")
+    );
+  }}
+
   gd.addEventListener("pointerdown", function(ev) {{
-    if (ev.target.closest(
-      ".rist-shape-editor-panel, .rist-plot-control-row, .modebar"
-    )) return;
+    if (
+      (ev.pointerType === "mouse" && ev.button !== 0)
+      || drawStart
+      || transformState
+      || panelDragState
+      || shapeBlockedByOtherInteraction()
+      || ev.target.closest(
+        ".rist-shape-editor-panel, .rist-plot-control-row, .modebar, .legend, .rist-legend-drag-handle"
+      )
+    ) return;
     if (!drawMode && ev.target.closest(".rist-shape-selection")) return;
     var point = plotPoint(ev);
     if (!point) return;
     if (drawMode) {{
+      announceShapeMode();
       ev._ristShapeEditorHandled = true;
       drawStart = {{
+        pointerId: ev.pointerId,
         clientX: ev.clientX,
         clientY: ev.clientY,
         x: point.x,
         y: point.y
       }};
+      if (gd.setPointerCapture) {{
+        try {{ gd.setPointerCapture(ev.pointerId); }} catch (ignore) {{}}
+      }}
       preview.style.display = "block";
       ev.preventDefault();
       ev.stopPropagation();
@@ -5410,7 +5682,8 @@ def shape_editor_js(div_id: str) -> str:
   }}, true);
 
   panelHead.addEventListener("pointerdown", function(ev) {{
-    if (ev.target.closest(".rist-shape-editor-close")) return;
+    if (ev.button !== 0 || panelDragState
+        || ev.target.closest(".rist-shape-editor-close")) return;
     var panelRect = panel.getBoundingClientRect();
     var plotRect = gd.getBoundingClientRect();
     panelDragState = {{
@@ -5420,13 +5693,15 @@ def shape_editor_js(div_id: str) -> str:
       plotLeft: plotRect.left,
       plotTop: plotRect.top
     }};
-    panelHead.setPointerCapture(ev.pointerId);
+    if (panelHead.setPointerCapture) {{
+      try {{ panelHead.setPointerCapture(ev.pointerId); }} catch (ignore) {{}}
+    }}
     ev.preventDefault();
     ev.stopPropagation();
   }});
 
   panelHead.addEventListener("pointermove", function(ev) {{
-    if (!panelDragState) return;
+    if (!panelDragState || ev.pointerId !== panelDragState.pointerId) return;
     setPanelPosition(
       ev.clientX - panelDragState.plotLeft - panelDragState.dx,
       ev.clientY - panelDragState.plotTop - panelDragState.dy
@@ -5436,24 +5711,26 @@ def shape_editor_js(div_id: str) -> str:
   }});
 
   panelHead.addEventListener("pointerup", function(ev) {{
-    if (panelDragState && panelHead.hasPointerCapture(panelDragState.pointerId)) {{
-      panelHead.releasePointerCapture(panelDragState.pointerId);
-    }}
-    panelDragState = null;
+    if (!panelDragState || ev.pointerId !== panelDragState.pointerId) return;
+    finishShapePanelDrag(ev);
     ev.preventDefault();
     ev.stopPropagation();
   }});
 
-  panelHead.addEventListener("pointercancel", function() {{
-    panelDragState = null;
-  }});
+  panelHead.addEventListener("pointercancel", finishShapePanelDrag);
+  panelHead.addEventListener("lostpointercapture", finishShapePanelDrag);
 
   selection.addEventListener("pointerdown", function(ev) {{
+    if ((ev.pointerType === "mouse" && ev.button !== 0)
+        || transformState || drawStart || panelDragState
+        || shapeBlockedByOtherInteraction()) return;
     if (!selectedId || !selectedKind) return;
     var bounds = shapeClientBounds(selectedShape());
     if (!bounds) return;
+    announceShapeMode();
     var handle = ev.target.closest(".rist-shape-resize-handle");
     transformState = {{
+      pointerId: ev.pointerId,
       mode: handle ? handle.dataset.dir : "move",
       startX: ev.clientX,
       startY: ev.clientY,
@@ -5461,7 +5738,9 @@ def shape_editor_js(div_id: str) -> str:
       bounds: bounds,
       captured: false
     }};
-    selection.setPointerCapture(ev.pointerId);
+    if (selection.setPointerCapture) {{
+      try {{ selection.setPointerCapture(ev.pointerId); }} catch (ignore) {{}}
+    }}
     ev._ristShapeEditorHandled = true;
     ev.preventDefault();
     ev.stopPropagation();
@@ -5469,6 +5748,7 @@ def shape_editor_js(div_id: str) -> str:
 
   document.addEventListener("pointermove", function(ev) {{
     if (transformState) {{
+      if (ev.pointerId !== transformState.pointerId) return;
       if (!transformState.captured
           && (Math.abs(ev.clientX - transformState.startX) > 1
               || Math.abs(ev.clientY - transformState.startY) > 1)) {{
@@ -5481,6 +5761,7 @@ def shape_editor_js(div_id: str) -> str:
       return;
     }}
     if (drawStart) {{
+      if (ev.pointerId !== drawStart.pointerId) return;
       var gdRect = gd.getBoundingClientRect();
       var left = Math.min(drawStart.clientX, ev.clientX) - gdRect.left;
       var top = Math.min(drawStart.clientY, ev.clientY) - gdRect.top;
@@ -5494,19 +5775,24 @@ def shape_editor_js(div_id: str) -> str:
 
   document.addEventListener("pointerup", function(ev) {{
     if (transformState) {{
+      if (ev.pointerId !== transformState.pointerId) return;
       var transform = transformState;
-      if (selection.hasPointerCapture(ev.pointerId)) {{
-        selection.releasePointerCapture(ev.pointerId);
-      }}
       transformState = null;
+      if (selection.hasPointerCapture(ev.pointerId)) {{
+        try {{ selection.releasePointerCapture(ev.pointerId); }} catch (ignore) {{}}
+      }}
       if (transform.captured) applyTransformedBounds(transform.bounds);
       else updateSelectionOverlay();
       ev.preventDefault();
       return;
     }}
     if (drawStart) {{
+      if (ev.pointerId !== drawStart.pointerId) return;
       var start = drawStart;
       drawStart = null;
+      if (gd.hasPointerCapture && gd.hasPointerCapture(start.pointerId)) {{
+        try {{ gd.releasePointerCapture(start.pointerId); }} catch (ignore) {{}}
+      }}
       preview.style.display = "none";
       var point = plotPoint(ev);
       if (!point
@@ -5518,13 +5804,38 @@ def shape_editor_js(div_id: str) -> str:
   }});
 
   document.addEventListener("pointercancel", function(ev) {{
-    if (transformState && selection.hasPointerCapture(ev.pointerId)) {{
-      selection.releasePointerCapture(ev.pointerId);
-    }}
+    if (transformState && ev.pointerId !== transformState.pointerId) return;
+    if (drawStart && ev.pointerId !== drawStart.pointerId) return;
+    cancelShapePointerInteraction();
+    updateSelectionOverlay();
+  }});
+  selection.addEventListener("lostpointercapture", function(ev) {{
+    if (!transformState || ev.pointerId !== transformState.pointerId) return;
     transformState = null;
+    updateSelectionOverlay();
+  }});
+  gd.addEventListener("lostpointercapture", function(ev) {{
+    if (!drawStart || ev.pointerId !== drawStart.pointerId) return;
     drawStart = null;
     preview.style.display = "none";
+  }});
+  window.addEventListener("blur", function() {{
+    cancelShapePointerInteraction();
     updateSelectionOverlay();
+  }});
+  document.addEventListener("visibilitychange", function() {{
+    if (!document.hidden) return;
+    cancelShapePointerInteraction();
+    updateSelectionOverlay();
+  }});
+
+  gd.addEventListener("rist-exclusive-interaction-start", function(ev) {{
+    var activeMode = String(ev.detail && ev.detail.mode || "");
+    if (!activeMode || activeMode === "shape-edit") return;
+    clearSelection();
+    panel.style.display = "none";
+    setDrawMode(false, false);
+    syncShapeEditingState();
   }});
 
   toolButton.addEventListener("click", function(ev) {{
@@ -5791,6 +6102,9 @@ def _plot_edit_history_js(div_id: str) -> str:
 
   function undo() {{
     if (!undoStack.length || restoring) return;
+    gd.dispatchEvent(new CustomEvent("rist-exclusive-interaction-start", {{
+      detail: {{mode: "history-undo"}}
+    }}));
     var state = undoStack.pop();
     redoStack.push(snapshot());
     restore(state);
@@ -5798,6 +6112,9 @@ def _plot_edit_history_js(div_id: str) -> str:
 
   function redo() {{
     if (!redoStack.length || restoring) return;
+    gd.dispatchEvent(new CustomEvent("rist-exclusive-interaction-start", {{
+      detail: {{mode: "history-redo"}}
+    }}));
     var state = redoStack.pop();
     undoStack.push(snapshot());
     restore(state);
@@ -5818,15 +6135,36 @@ def _plot_edit_history_js(div_id: str) -> str:
     redo: redo,
     reset: reset
   }};
+  gd.setAttribute("data-rist-history-enabled", "true");
+  function activateHistoryPlot() {{
+    window.__ristActiveHistoryPlot = gd;
+  }}
+  gd.addEventListener("pointerdown", activateHistoryPlot, true);
+  gd.addEventListener("focusin", activateHistoryPlot, true);
   undoButton.addEventListener("click", undo);
   redoButton.addEventListener("click", redo);
   gd.on("plotly_legendclick", function() {{ capture(); }});
   gd.addEventListener("rist-plot-data-replaced", reset);
   document.addEventListener("keydown", function(ev) {{
+    if (ev.defaultPrevented || ev.isComposing || ev.altKey) return;
     var target = ev.target;
-    if (target && target.closest && target.closest("input,textarea,select")) return;
+    if (target && (
+      target.isContentEditable
+      || (target.closest && target.closest(
+        "input,textarea,select,[contenteditable]:not([contenteditable='false'])"
+      ))
+    )) return;
     var modifier = ev.ctrlKey || ev.metaKey;
     if (!modifier) return;
+    var activePlot = window.__ristActiveHistoryPlot;
+    if (activePlot && !activePlot.isConnected) {{
+      window.__ristActiveHistoryPlot = null;
+      activePlot = null;
+    }}
+    if (activePlot && activePlot !== gd) return;
+    if (!activePlot && document.querySelectorAll(
+      "[data-rist-history-enabled='true']"
+    ).length > 1) return;
     var key = String(ev.key || "").toLowerCase();
     if (key === "z" && ev.shiftKey) {{
       ev.preventDefault();
@@ -5967,6 +6305,7 @@ def _legend_drag_handle_js(div_id: str) -> str:
   handle.textContent = "범례 이동";
   handle.title = "이 바를 드래그해서 범례 위치 이동";
   var dragState = null;
+  gd._ristLegendDragging = false;
   var updateFrame = 0;
   var previewLegendTransform = null;
 
@@ -6069,7 +6408,7 @@ def _legend_drag_handle_js(div_id: str) -> str:
   }}
 
   handle.addEventListener("pointerdown", function(ev) {{
-    if (ev.button !== 0) return;
+    if (ev.button !== 0 || dragState) return;
     var layout = legendLayout();
     var size = plotSize();
     var gdRect = gd.getBoundingClientRect();
@@ -6087,14 +6426,20 @@ def _legend_drag_handle_js(div_id: str) -> str:
       plotWidth: size.width,
       plotHeight: size.height
     }};
-    handle.setPointerCapture(ev.pointerId);
+    gd._ristLegendDragging = true;
+    gd.dispatchEvent(new CustomEvent("rist-exclusive-interaction-start", {{
+      detail: {{mode: "legend-drag"}}
+    }}));
+    if (handle.setPointerCapture) {{
+      try {{ handle.setPointerCapture(ev.pointerId); }} catch (ignore) {{}}
+    }}
     handle.classList.add("is-dragging");
     ev.preventDefault();
     ev.stopPropagation();
   }});
 
   handle.addEventListener("pointermove", function(ev) {{
-    if (!dragState) return;
+    if (!dragState || ev.pointerId !== dragState.pointerId) return;
     var dx = ev.clientX - dragState.startX;
     var dy = ev.clientY - dragState.startY;
     handle.style.left = Math.round(dragState.handleLeft + dx) + "px";
@@ -6108,30 +6453,50 @@ def _legend_drag_handle_js(div_id: str) -> str:
     ev.stopPropagation();
   }});
 
-  function finishDrag(ev) {{
-    if (!dragState) return;
-    var nextX = dragState.nextX;
-    var nextY = dragState.nextY;
-    if (handle.hasPointerCapture(dragState.pointerId)) {{
-      handle.releasePointerCapture(dragState.pointerId);
+  function endDrag(ev, commit) {{
+    if (!dragState) {{
+      gd._ristLegendDragging = false;
+      return;
     }}
+    var completedDrag = dragState;
     dragState = null;
+    gd._ristLegendDragging = false;
+    if (handle.hasPointerCapture && handle.releasePointerCapture
+        && handle.hasPointerCapture(completedDrag.pointerId)) {{
+      try {{ handle.releasePointerCapture(completedDrag.pointerId); }} catch (ignore) {{}}
+    }}
     handle.classList.remove("is-dragging");
     clearLegendPreview();
-    window.Plotly.relayout(gd, {{
-      "legend.x": nextX,
-      "legend.y": nextY
-    }}).then(function() {{
+    if (commit) {{
+      window.Plotly.relayout(gd, {{
+        "legend.x": completedDrag.nextX,
+        "legend.y": completedDrag.nextY
+      }}).then(function() {{
+        scheduleHandlePosition();
+      }}).catch(function() {{
+        scheduleHandlePosition();
+      }});
+    }} else {{
       scheduleHandlePosition();
-    }});
+    }}
     if (ev) {{
       ev.preventDefault();
       ev.stopPropagation();
     }}
   }}
 
-  handle.addEventListener("pointerup", finishDrag);
-  handle.addEventListener("pointercancel", finishDrag);
+  handle.addEventListener("pointerup", function(ev) {{ endDrag(ev, true); }});
+  handle.addEventListener("pointercancel", function(ev) {{ endDrag(ev, false); }});
+  handle.addEventListener("lostpointercapture", function(ev) {{ endDrag(ev, false); }});
+  window.addEventListener("blur", function() {{ endDrag(null, false); }});
+  document.addEventListener("visibilitychange", function() {{
+    if (document.hidden) endDrag(null, false);
+  }});
+  gd.addEventListener("rist-exclusive-interaction-start", function(ev) {{
+    var activeMode = String(ev.detail && ev.detail.mode || "");
+    if (!activeMode || activeMode === "legend-drag") return;
+    endDrag(null, false);
+  }});
   gd.on("plotly_afterplot", scheduleHandlePosition);
   gd.on("plotly_relayout", scheduleHandlePosition);
   gd.on("plotly_restyle", scheduleHandlePosition);
@@ -6782,6 +7147,9 @@ def _axis_controls_js(div_id: str) -> str:
     if (!action) return;
     ev.preventDefault();
     ev.stopImmediatePropagation();
+    gd.dispatchEvent(new CustomEvent("rist-exclusive-interaction-start", {
+      detail: {mode: "axis-" + action}
+    }));
     runModebarAxisAction(action);
   }, true);
 
@@ -6832,6 +7200,8 @@ def _axis_controls_js(div_id: str) -> str:
   }
 
   var activeAxis = null;
+  gd._ristAxisSettingsOpen = false;
+  gd._ristAxisScaleActive = false;
 
   function activeAxes() {
     return activeAxis ? [activeAxis] : ["x", "y"];
@@ -6909,15 +7279,21 @@ def _axis_controls_js(div_id: str) -> str:
     });
   }
 
-  function setOpen(open, targetAxis, anchorEvent) {
-    panel.hidden = !open;
-    button.setAttribute("aria-expanded", open ? "true" : "false");
-    if (open) {
+  function setOpen(open, targetAxis, anchorEvent, announce) {
+    var nextOpen = !!open;
+    if (nextOpen && panel.hidden && announce !== false) {
+      gd.dispatchEvent(new CustomEvent("rist-exclusive-interaction-start", {
+        detail: {mode: "axis-settings"}
+      }));
+    }
+    gd._ristAxisSettingsOpen = nextOpen;
+    panel.hidden = !nextOpen;
+    button.setAttribute("aria-expanded", nextOpen ? "true" : "false");
+    if (nextOpen) {
       activeAxis = targetAxis || null;
       syncPanel();
       markTargetAxis(activeAxis);
       positionTargetPanel(activeAxis, anchorEvent || null);
-      gd.dispatchEvent(new CustomEvent("rist-open-edit-tool"));
       focusTargetAxis(activeAxis);
     } else {
       activeAxis = null;
@@ -7096,6 +7472,7 @@ def _axis_controls_js(div_id: str) -> str:
   var cropSession = null;
   var cropPending = false;
   var cropStartToken = 0;
+  gd._ristAxisCropActive = false;
 
   function normalizedCropRange(axis, values) {
     if (!Array.isArray(values) || values.length < 2) return null;
@@ -7118,6 +7495,7 @@ def _axis_controls_js(div_id: str) -> str:
   }
 
   function finishCropUi(session) {
+    gd._ristAxisCropActive = false;
     gd.classList.remove("rist-axis-crop-mode");
     cropHint.hidden = true;
     return window.Plotly.relayout(gd, {
@@ -7130,9 +7508,13 @@ def _axis_controls_js(div_id: str) -> str:
   }
 
   function cancelCrop() {
-    if (!cropSession && !cropPending) return Promise.resolve();
+    if (!cropSession && !cropPending) {
+      gd._ristAxisCropActive = false;
+      return Promise.resolve();
+    }
     cropStartToken += 1;
     cropPending = false;
+    gd._ristAxisCropActive = false;
     if (!cropSession) return Promise.resolve();
     var session = cropSession;
     cropSession = null;
@@ -7143,6 +7525,7 @@ def _axis_controls_js(div_id: str) -> str:
     var cancelPromise = cancelCrop();
     var startToken = ++cropStartToken;
     cropPending = true;
+    gd._ristAxisCropActive = true;
     var axes = activeAxes().slice();
     var previousSelectdirection = gd.layout && gd.layout.selectdirection;
     var editPromise = typeof gd._ristSetEditMode === "function"
@@ -7153,7 +7536,10 @@ def _axis_controls_js(div_id: str) -> str:
       detail: {mode: "crop"}
     }));
     Promise.all([Promise.resolve(cancelPromise), Promise.resolve(editPromise)]).then(function() {
-      if (startToken !== cropStartToken) return;
+      if (startToken !== cropStartToken) {
+        gd._ristAxisCropActive = false;
+        return;
+      }
       cropPending = false;
       var previousDragmode = gd.layout && gd.layout.dragmode;
       cropSession = {
@@ -7167,6 +7553,13 @@ def _axis_controls_js(div_id: str) -> str:
         dragmode: "select",
         selectdirection: axes.length === 1 ? (axes[0] === "x" ? "h" : "v") : "any"
       });
+    }).catch(function() {
+      if (startToken === cropStartToken) {
+        cropPending = false;
+        gd._ristAxisCropActive = false;
+        gd.classList.remove("rist-axis-crop-mode");
+        cropHint.hidden = true;
+      }
     });
   }
 
@@ -7200,6 +7593,7 @@ def _axis_controls_js(div_id: str) -> str:
     if (!changed) return;
     cropMeta(updates);
     cropSession = null;
+    gd._ristAxisCropActive = false;
     if (gd._ristHistory && gd._ristHistory.capture) gd._ristHistory.capture();
     updates.dragmode = restoredDragmode(session);
     updates.selectdirection = session.previousSelectdirection || "any";
@@ -7244,7 +7638,7 @@ def _axis_controls_js(div_id: str) -> str:
 
   function axisFromPointer(ev) {
     if (!ev.target || !ev.target.closest) return null;
-    if (ev.target.closest(".modebar,.legend,.rist-plot-control-row,.rist-axis-control-panel,.annotation,.shapelayer")) return null;
+    if (ev.target.closest(".modebar,.legend,.rist-legend-drag-handle,.rist-plot-control-row,.rist-axis-control-panel,.annotation,.shapelayer")) return null;
     if (ev.target.closest(".xtick,.g-xtitle,.xtitle,.xlines-above,.xlines-below")) return "x";
     if (ev.target.closest(".ytick,.g-ytitle,.ytitle,.ylines-above,.ylines-below")) return "y";
     var rect = gd.getBoundingClientRect();
@@ -7302,18 +7696,34 @@ def _axis_controls_js(div_id: str) -> str:
   gd.addEventListener("pointerdown", function(ev) {
     if (ev.pointerType === "mouse" && ev.button !== 0) return;
     if (
-      cropPending
+      drag
+      || cropPending
+      || gd._ristAxisCropActive
       || gd.classList.contains("rist-axis-crop-mode")
-      || gd._ristEditMode
-      || gd._ristFtirYDragMode
-      || gd._ristRamanYDragMode
-      || gd._ristRamanRatioMode
-      || (gd._ristPeakEditMode && gd._ristPeakEditMode !== "none")
+      || gd._ristAxisScaleActive
+      || gd._ristPeakSensitivityInteracting
+      || gd._ristLegendDragging
+      || gd._ristInlineTextEditing
     ) return;
     var axis = axisFromPointer(ev);
     if (!axis) return;
     var range = currentRange(axis + "axis");
     if (!range || range[0] === range[1]) return;
+    gd.dispatchEvent(new CustomEvent("rist-exclusive-interaction-start", {
+      detail: {mode: "axis-scale"}
+    }));
+    if (
+      gd._ristEditMode
+      || gd._ristShapeDrawMode
+      || gd._ristAxisSettingsOpen
+      || gd._ristFtirYDragMode
+      || gd._ristRamanYDragMode
+      || gd._ristRamanRatioMode
+      || gd._ristLegendEditOpen
+      || gd._ristInlineTextEditing
+      || (gd._ristPeakEditMode && gd._ristPeakEditMode !== "none")
+    ) return;
+    gd._ristAxisScaleActive = true;
     drag = {
       axis: axis,
       pointerId: ev.pointerId,
@@ -7325,7 +7735,9 @@ def _axis_controls_js(div_id: str) -> str:
       captured: false
     };
     gd.classList.add(axis === "x" ? "rist-axis-scale-x" : "rist-axis-scale-y");
-    if (gd.setPointerCapture) gd.setPointerCapture(ev.pointerId);
+    if (gd.setPointerCapture) {
+      try { gd.setPointerCapture(ev.pointerId); } catch (ignore) {}
+    }
     ev.preventDefault();
     ev.stopImmediatePropagation();
   }, true);
@@ -7338,9 +7750,14 @@ def _axis_controls_js(div_id: str) -> str:
   }, true);
 
   function finishScale(ev, cancelled, preservePropagation) {
-    if (!drag || (ev && ev.pointerId != null && ev.pointerId !== drag.pointerId)) return;
+    if (!drag) {
+      gd._ristAxisScaleActive = false;
+      return;
+    }
+    if (ev && ev.pointerId != null && ev.pointerId !== drag.pointerId) return;
     var completedDrag = drag;
     drag = null;
+    gd._ristAxisScaleActive = false;
     if (pendingFrame) {
       cancelAnimationFrame(pendingFrame);
       pendingFrame = 0;
@@ -7350,28 +7767,33 @@ def _axis_controls_js(div_id: str) -> str:
       && gd.releasePointerCapture
       && gd.hasPointerCapture(completedDrag.pointerId)
     ) {
-      gd.releasePointerCapture(completedDrag.pointerId);
+      try { gd.releasePointerCapture(completedDrag.pointerId); } catch (ignore) {}
     }
     gd.classList.remove("rist-axis-scale-x", "rist-axis-scale-y");
     var changed = completedDrag.captured && !cancelled;
     if (changed) gd.dispatchEvent(new CustomEvent("rist-axis-settings-change"));
     if (!changed && !cancelled && ev) {
-      var now = performance.now();
-      var isDoubleTap = lastAxisTap
-        && lastAxisTap.axis === completedDrag.axis
-        && now - lastAxisTap.at <= AXIS_DOUBLE_TAP_MS
-        && Math.hypot(ev.clientX - lastAxisTap.x, ev.clientY - lastAxisTap.y)
-          <= AXIS_DOUBLE_TAP_DISTANCE_PX;
-      if (isDoubleTap) {
-        lastAxisTap = null;
-        setOpen(true, completedDrag.axis, ev);
+      var supportsTapDouble = ev.pointerType === "touch" || ev.pointerType === "pen";
+      if (supportsTapDouble) {
+        var now = performance.now();
+        var isDoubleTap = lastAxisTap
+          && lastAxisTap.axis === completedDrag.axis
+          && now - lastAxisTap.at <= AXIS_DOUBLE_TAP_MS
+          && Math.hypot(ev.clientX - lastAxisTap.x, ev.clientY - lastAxisTap.y)
+            <= AXIS_DOUBLE_TAP_DISTANCE_PX;
+        if (isDoubleTap) {
+          lastAxisTap = null;
+          setOpen(true, completedDrag.axis, ev);
+        } else {
+          lastAxisTap = {
+            axis: completedDrag.axis,
+            at: now,
+            x: ev.clientX,
+            y: ev.clientY
+          };
+        }
       } else {
-        lastAxisTap = {
-          axis: completedDrag.axis,
-          at: now,
-          x: ev.clientX,
-          y: ev.clientY
-        };
+        lastAxisTap = null;
       }
     }
     if (ev) {
@@ -7379,6 +7801,19 @@ def _axis_controls_js(div_id: str) -> str:
       if (!preservePropagation) ev.stopImmediatePropagation();
     }
   }
+
+  gd.addEventListener("rist-exclusive-interaction-start", function(ev) {
+    var activeMode = String(ev.detail && ev.detail.mode || "");
+    if (!activeMode) return;
+    if (activeMode !== "axis-scale") finishScale(null, true);
+    if (activeMode !== "axis-scale" && activeMode !== "axis-settings") {
+      lastAxisTap = null;
+    }
+    if (activeMode !== "axis-settings" && !panel.hidden) {
+      setOpen(false, null, null, false);
+    }
+  });
+
   gd.addEventListener("pointerup", function(ev) {
     finishScale(ev, false);
   }, true);

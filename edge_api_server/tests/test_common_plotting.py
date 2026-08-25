@@ -98,6 +98,12 @@ def test_shared_plotly_module_applies_legend_text(tmp_path) -> None:
     assert "rist-history-restored" in html
     assert 'key === "z" && ev.shiftKey' in html
     assert 'key === "y"' in html
+    assert 'gd.setAttribute("data-rist-history-enabled", "true")' in html
+    assert "window.__ristActiveHistoryPlot = gd" in html
+    assert "if (ev.defaultPrevented || ev.isComposing || ev.altKey) return" in html
+    assert "target.isContentEditable" in html
+    assert "[contenteditable]:not([contenteditable='false'])" in html
+    assert "if (activePlot && activePlot !== gd) return" in html
     assert "rist-legend-edit-panel" in html
     assert "rist-legend-drag-handle" in html
     assert "범례 이동" in html
@@ -126,8 +132,8 @@ def test_shared_plotly_module_applies_legend_text(tmp_path) -> None:
     assert "clearLegendPreview()" in html
     assert "handle.addEventListener(\"pointerdown\"" in html
     assert "window.Plotly.relayout(gd, {" in html
-    assert "\"legend.x\": nextX" in html
-    assert "\"legend.y\": nextY" in html
+    assert "\"legend.x\": completedDrag.nextX" in html
+    assert "\"legend.y\": completedDrag.nextY" in html
     assert "max-width: calc(100% - 16px)" in html
     assert "overflow-x: hidden" in html
     assert "rist-legend-opacity-control" in html
@@ -348,8 +354,10 @@ def test_shared_peak_editor_adds_peak_controls(tmp_path) -> None:
     assert 'if (mode !== "delete" && mode !== "select") return' in html
     assert 'if (mode === "delete") deletePeakTrace(curve)' in html
     assert 'gd.addEventListener("mousedown", handlePeakSelectPointer, true)' in html
-    assert 'ev.type === "click" && gd._ristHandledPeakSelectClick' in html
-    assert "gd._ristHandledPeakSelectAt = Date.now()" in html
+    assert 'ev.type === "click" && matchesPendingPeakNativeClick(ev)' in html
+    assert "!Number.isFinite(pendingPeakNativeClick.x)" in html
+    assert "suppressPeakPlotlyClickUntil = handledAt + 1200" in html
+    assert "if (ev.stopImmediatePropagation) ev.stopImmediatePropagation()" in html
     assert "ev.event" in html
     assert "피크 선택 필요" in html
     assert "적용 실패" in html
@@ -562,7 +570,21 @@ def test_shared_peak_editor_adds_peak_controls(tmp_path) -> None:
     assert "function updateSelectionOverlay" in html
     assert 'mode: handle ? handle.dataset.dir : "move"' in html
     assert 'gd.addEventListener("pointerdown"' in html
-    assert '".rist-shape-editor-panel, .rist-plot-control-row, .modebar"' in html
+    assert (
+        '".rist-shape-editor-panel, .rist-plot-control-row, .modebar, '
+        '.legend, .rist-legend-drag-handle"' in html
+    )
+    assert "function shapeBlockedByOtherInteraction()" in html
+    assert "gd._ristAxisScaleActive" in html
+    assert "gd._ristAxisSettingsOpen" in html
+    assert "gd._ristAxisCropActive" in html
+    assert "gd._ristFtirYDragMode" in html
+    assert "gd._ristRamanYDragMode" in html
+    assert "gd._ristRamanRatioMode" in html
+    assert "gd._ristPeakSensitivityInteracting" in html
+    assert "gd._ristLegendEditOpen" in html
+    assert "gd._ristPeakEditMode" in html
+    assert html.count("shapeBlockedByOtherInteraction()") == 3
     assert 'if (!drawMode && ev.target.closest(".rist-shape-selection")) return' in html
     assert 'gd.on("plotly_clickannotation"' in html
     assert "syncOriginalArrays" in html
@@ -585,6 +607,7 @@ def test_peak_sensitivity_control_filters_detected_peak_metadata() -> None:
     assert "sliderKeyboardActive" in html
     assert "numberInputActive" in html
     assert "rist-peak-sensitivity-interaction-end" in html
+    assert 'detail: {mode: "peak-sensitivity"}' in html
     assert "min='0' max='100'" in html
     assert "피크 검출 민감도 수치" in html
     assert 'eligible ? (on ? true : "legendonly") : false' in html
@@ -714,6 +737,11 @@ def test_axis_controls_add_range_tick_and_axis_drag_controls(tmp_path) -> None:
     assert "if (cropSession || cropPending) cancelCrop()" in html
     assert "var cropPending = false" in html
     assert "var cropStartToken = 0" in html
+    assert "gd._ristAxisCropActive = false" in html
+    assert "gd._ristAxisSettingsOpen = false" in html
+    assert "gd._ristAxisScaleActive = false" in html
+    assert 'activeMode !== "axis-scale" && activeMode !== "axis-settings"' in html
+    assert "lastAxisTap = null" in html
     assert 'detail: {mode: "crop"}' in html
     assert "Promise.all([Promise.resolve(cancelPromise), Promise.resolve(editPromise)])" in html
     assert 'gd.addEventListener("rist-exclusive-interaction-start"' in html
@@ -721,11 +749,33 @@ def test_axis_controls_add_range_tick_and_axis_drag_controls(tmp_path) -> None:
     assert "gd._ristFtirYDragMode" in html
     assert "gd._ristRamanYDragMode" in html
     assert "gd._ristRamanRatioMode" in html
+    assert "gd._ristPeakSensitivityInteracting" in html
+    assert "gd._ristLegendEditOpen" in html
     assert 'gd._ristPeakEditMode !== "none"' in html
+    axis_pointer_handler = html.split(
+        'gd.addEventListener("pointerdown", function(ev) {',
+    )[-1].split('gd.addEventListener("pointermove", function(ev) {', 1)[0]
+    assert axis_pointer_handler.index("var axis = axisFromPointer(ev)") < (
+        axis_pointer_handler.index('detail: {mode: "axis-scale"}')
+    )
+    assert axis_pointer_handler.index('detail: {mode: "axis-scale"}') < (
+        axis_pointer_handler.index("gd._ristFtirYDragMode")
+    )
+    assert axis_pointer_handler.index('detail: {mode: "axis-scale"}') < (
+        axis_pointer_handler.index("gd._ristRamanYDragMode")
+    )
+    assert axis_pointer_handler.index('detail: {mode: "axis-scale"}') < (
+        axis_pointer_handler.index("gd._ristAxisScaleActive = true")
+    )
     assert "towardIncreasingValue" in html
     assert "var DRAG_ACTIVATION_PX = 10" in html
     assert "var AXIS_DOUBLE_TAP_MS = 420" in html
     assert "var AXIS_DOUBLE_TAP_DISTANCE_PX = 20" in html
+    assert (
+        'var supportsTapDouble = ev.pointerType === "touch" '
+        '|| ev.pointerType === "pen";'
+    ) in html
+    assert "if (supportsTapDouble)" in html
     assert "Math.abs(towardIncreasingValue) < DRAG_ACTIVATION_PX" in html
     assert '.closest(".xtick,.g-xtitle,.xtitle,.xlines-above,.xlines-below")' in html
     assert '.closest(".ytick,.g-ytitle,.ytitle,.ylines-above,.ylines-below")' in html

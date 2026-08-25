@@ -1995,9 +1995,42 @@ _FTIR_TOOL_PANEL_SCRIPT = """
   var opacity = toolbar.querySelector(".rist-ftir-tools-opacity");
   var closeButton = toolbar.querySelector(".rist-ftir-tools-close");
   var dragState = null;
+  var opacityPointerId = null;
 
   function clamp(value, min, max) {
     return Math.max(min, Math.min(max, value));
+  }
+
+  function safeHasPointerCapture(target, pointerId) {
+    if (!target || pointerId == null || !target.hasPointerCapture) return false;
+    try { return target.hasPointerCapture(pointerId); } catch (error) { return false; }
+  }
+
+  function releasePointer(target, pointerId) {
+    if (!target || !target.releasePointerCapture
+        || !safeHasPointerCapture(target, pointerId)) return;
+    try { target.releasePointerCapture(pointerId); } catch (error) {}
+  }
+
+  function finishOpacityDrag(ev) {
+    if (opacityPointerId == null) return;
+    if (ev && ev.pointerId != null && ev.pointerId !== opacityPointerId) return;
+    var pointerId = opacityPointerId;
+    opacityPointerId = null;
+    releasePointer(opacity, pointerId);
+  }
+
+  function finishPanelDrag(ev) {
+    if (!dragState) return;
+    if (ev && ev.pointerId != null && ev.pointerId !== dragState.pointerId) return;
+    var pointerId = dragState.pointerId;
+    dragState = null;
+    releasePointer(head, pointerId);
+  }
+
+  function cancelToolPointerInteractions() {
+    finishOpacityDrag();
+    finishPanelDrag();
   }
 
   function keepPanelInBounds(left, top) {
@@ -2021,6 +2054,7 @@ _FTIR_TOOL_PANEL_SCRIPT = """
   }
 
   function setOpen(open) {
+    if (!open) cancelToolPointerInteractions();
     gd.classList.toggle("rist-ftir-tools-open", open);
     button.setAttribute("aria-expanded", open ? "true" : "false");
     button.title = open ? "그래프 도구 닫기" : "그래프 도구 열기";
@@ -2062,30 +2096,30 @@ _FTIR_TOOL_PANEL_SCRIPT = """
       setToolPanelAlpha(Number(opacity.value) || 97);
     });
     opacity.addEventListener("pointerdown", function(ev) {
+      if (ev.button !== 0 || opacityPointerId != null) return;
       ev.stopPropagation();
-      opacity.setPointerCapture(ev.pointerId);
+      opacityPointerId = ev.pointerId;
+      if (opacity.setPointerCapture) {
+        try { opacity.setPointerCapture(ev.pointerId); } catch (error) {}
+      }
       setToolPanelAlphaFromPointer(ev);
       ev.preventDefault();
     });
     opacity.addEventListener("pointermove", function(ev) {
-      if (!opacity.hasPointerCapture(ev.pointerId)) return;
+      if (opacityPointerId == null || ev.pointerId !== opacityPointerId) return;
       setToolPanelAlphaFromPointer(ev);
       ev.preventDefault();
     });
     opacity.addEventListener("pointerup", function(ev) {
-      if (opacity.hasPointerCapture(ev.pointerId)) {
-        opacity.releasePointerCapture(ev.pointerId);
-      }
+      finishOpacityDrag(ev);
       ev.preventDefault();
     });
-    opacity.addEventListener("pointercancel", function(ev) {
-      if (opacity.hasPointerCapture(ev.pointerId)) {
-        opacity.releasePointerCapture(ev.pointerId);
-      }
-    });
+    opacity.addEventListener("pointercancel", finishOpacityDrag);
+    opacity.addEventListener("lostpointercapture", finishOpacityDrag);
   }
   if (head) {
     head.addEventListener("pointerdown", function(ev) {
+      if (ev.button !== 0 || dragState) return;
       if (ev.target.closest(".rist-ftir-tools-opacity,.rist-ftir-tools-close")) return;
       var rect = toolbar.getBoundingClientRect();
       var plotRect = gd.getBoundingClientRect();
@@ -2096,11 +2130,13 @@ _FTIR_TOOL_PANEL_SCRIPT = """
         plotLeft: plotRect.left,
         plotTop: plotRect.top
       };
-      head.setPointerCapture(ev.pointerId);
+      if (head.setPointerCapture) {
+        try { head.setPointerCapture(ev.pointerId); } catch (error) {}
+      }
       ev.preventDefault();
     });
     head.addEventListener("pointermove", function(ev) {
-      if (!dragState) return;
+      if (!dragState || ev.pointerId !== dragState.pointerId) return;
       setPanelPosition(
         ev.clientX - dragState.plotLeft - dragState.dx,
         ev.clientY - dragState.plotTop - dragState.dy
@@ -2108,16 +2144,16 @@ _FTIR_TOOL_PANEL_SCRIPT = """
       ev.preventDefault();
     });
     head.addEventListener("pointerup", function(ev) {
-      if (dragState && head.hasPointerCapture(dragState.pointerId)) {
-        head.releasePointerCapture(dragState.pointerId);
-      }
-      dragState = null;
+      finishPanelDrag(ev);
       ev.preventDefault();
     });
-    head.addEventListener("pointercancel", function() {
-      dragState = null;
-    });
+    head.addEventListener("pointercancel", finishPanelDrag);
+    head.addEventListener("lostpointercapture", finishPanelDrag);
   }
+  window.addEventListener("blur", cancelToolPointerInteractions);
+  document.addEventListener("visibilitychange", function() {
+    if (document.hidden) cancelToolPointerInteractions();
+  });
   document.addEventListener("pointerdown", function(ev) {
     if (!gd.classList.contains("rist-ftir-tools-open")) return;
     if (ev.target.closest("#peak-plot .rist-plot-control-row")) return;

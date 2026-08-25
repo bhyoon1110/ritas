@@ -242,6 +242,12 @@ def test_ftir_workspace_contains_upload_and_editor_controls() -> None:
     assert 'detail: {mode: "ftir-y-drag"}' in page
     assert 'activeMode === "ftir-y-drag"' in page
     assert 'gd.classList.contains("rist-axis-crop-mode")' in page
+    assert "gd._ristAxisCropActive" in page
+    assert "gd._ristShapeDrawMode" in page
+    assert "gd._ristAxisScaleActive" in page
+    assert "gd._ristAxisSettingsOpen" in page
+    assert "gd._ristPeakSensitivityInteracting" in page
+    assert "gd._ristLegendEditOpen" in page
     assert 'gd.addEventListener("rist-exclusive-interaction-start"' in page
     assert "rist-ftir-tools-toggle" in page
     assert "rist-ftir-tools-open" in page

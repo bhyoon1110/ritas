@@ -1976,9 +1976,42 @@ _RAMAN_TOOL_PANEL_SCRIPT = """
   var opacity = toolbar.querySelector(".rist-raman-tools-opacity");
   var closeButton = toolbar.querySelector(".rist-raman-tools-close");
   var dragState = null;
+  var opacityPointerId = null;
 
   function clamp(value, min, max) {
     return Math.max(min, Math.min(max, value));
+  }
+
+  function safeHasPointerCapture(target, pointerId) {
+    if (!target || pointerId == null || !target.hasPointerCapture) return false;
+    try { return target.hasPointerCapture(pointerId); } catch (error) { return false; }
+  }
+
+  function releasePointer(target, pointerId) {
+    if (!target || !target.releasePointerCapture
+        || !safeHasPointerCapture(target, pointerId)) return;
+    try { target.releasePointerCapture(pointerId); } catch (error) {}
+  }
+
+  function finishOpacityDrag(ev) {
+    if (opacityPointerId == null) return;
+    if (ev && ev.pointerId != null && ev.pointerId !== opacityPointerId) return;
+    var pointerId = opacityPointerId;
+    opacityPointerId = null;
+    releasePointer(opacity, pointerId);
+  }
+
+  function finishPanelDrag(ev) {
+    if (!dragState) return;
+    if (ev && ev.pointerId != null && ev.pointerId !== dragState.pointerId) return;
+    var pointerId = dragState.pointerId;
+    dragState = null;
+    releasePointer(head, pointerId);
+  }
+
+  function cancelToolPointerInteractions() {
+    finishOpacityDrag();
+    finishPanelDrag();
   }
 
   function keepPanelInBounds(left, top) {
@@ -2002,6 +2035,7 @@ _RAMAN_TOOL_PANEL_SCRIPT = """
   }
 
   function setOpen(open) {
+    if (!open) cancelToolPointerInteractions();
     gd.classList.toggle("rist-raman-tools-open", open);
     button.setAttribute("aria-expanded", open ? "true" : "false");
     button.title = open ? "그래프 도구 닫기" : "그래프 도구 열기";
@@ -2043,30 +2077,30 @@ _RAMAN_TOOL_PANEL_SCRIPT = """
       setToolPanelAlpha(Number(opacity.value) || 97);
     });
     opacity.addEventListener("pointerdown", function(ev) {
+      if (ev.button !== 0 || opacityPointerId != null) return;
       ev.stopPropagation();
-      opacity.setPointerCapture(ev.pointerId);
+      opacityPointerId = ev.pointerId;
+      if (opacity.setPointerCapture) {
+        try { opacity.setPointerCapture(ev.pointerId); } catch (error) {}
+      }
       setToolPanelAlphaFromPointer(ev);
       ev.preventDefault();
     });
     opacity.addEventListener("pointermove", function(ev) {
-      if (!opacity.hasPointerCapture(ev.pointerId)) return;
+      if (opacityPointerId == null || ev.pointerId !== opacityPointerId) return;
       setToolPanelAlphaFromPointer(ev);
       ev.preventDefault();
     });
     opacity.addEventListener("pointerup", function(ev) {
-      if (opacity.hasPointerCapture(ev.pointerId)) {
-        opacity.releasePointerCapture(ev.pointerId);
-      }
+      finishOpacityDrag(ev);
       ev.preventDefault();
     });
-    opacity.addEventListener("pointercancel", function(ev) {
-      if (opacity.hasPointerCapture(ev.pointerId)) {
-        opacity.releasePointerCapture(ev.pointerId);
-      }
-    });
+    opacity.addEventListener("pointercancel", finishOpacityDrag);
+    opacity.addEventListener("lostpointercapture", finishOpacityDrag);
   }
   if (head) {
     head.addEventListener("pointerdown", function(ev) {
+      if (ev.button !== 0 || dragState) return;
       if (ev.target.closest(".rist-raman-tools-opacity,.rist-raman-tools-close")) return;
       var rect = toolbar.getBoundingClientRect();
       var plotRect = gd.getBoundingClientRect();
@@ -2077,11 +2111,13 @@ _RAMAN_TOOL_PANEL_SCRIPT = """
         plotLeft: plotRect.left,
         plotTop: plotRect.top
       };
-      head.setPointerCapture(ev.pointerId);
+      if (head.setPointerCapture) {
+        try { head.setPointerCapture(ev.pointerId); } catch (error) {}
+      }
       ev.preventDefault();
     });
     head.addEventListener("pointermove", function(ev) {
-      if (!dragState) return;
+      if (!dragState || ev.pointerId !== dragState.pointerId) return;
       setPanelPosition(
         ev.clientX - dragState.plotLeft - dragState.dx,
         ev.clientY - dragState.plotTop - dragState.dy
@@ -2089,16 +2125,16 @@ _RAMAN_TOOL_PANEL_SCRIPT = """
       ev.preventDefault();
     });
     head.addEventListener("pointerup", function(ev) {
-      if (dragState && head.hasPointerCapture(dragState.pointerId)) {
-        head.releasePointerCapture(dragState.pointerId);
-      }
-      dragState = null;
+      finishPanelDrag(ev);
       ev.preventDefault();
     });
-    head.addEventListener("pointercancel", function() {
-      dragState = null;
-    });
+    head.addEventListener("pointercancel", finishPanelDrag);
+    head.addEventListener("lostpointercapture", finishPanelDrag);
   }
+  window.addEventListener("blur", cancelToolPointerInteractions);
+  document.addEventListener("visibilitychange", function() {
+    if (document.hidden) cancelToolPointerInteractions();
+  });
   document.addEventListener("pointerdown", function(ev) {
     if (!gd.classList.contains("rist-raman-tools-open")) return;
     if (ev.target.closest("#raman-plot .rist-plot-control-row")) return;
@@ -2575,6 +2611,9 @@ _RAMAN_STACK_SCRIPT = """
   var dragButton = control.querySelectorAll(".rist-raman-stack-button")[1];
 
   stackButton.addEventListener("click", function() {
+    gd.dispatchEvent(new CustomEvent("rist-exclusive-interaction-start", {
+      detail: {mode: "raman-stack-layout"}
+    }));
     state.enabled = !state.enabled;
     resetStackOffsets();
     applyOffsets();
@@ -2583,6 +2622,9 @@ _RAMAN_STACK_SCRIPT = """
     setDragMode(!state.dragMode, true);
   });
   gapSlider.addEventListener("input", function() {
+    gd.dispatchEvent(new CustomEvent("rist-exclusive-interaction-start", {
+      detail: {mode: "raman-stack-layout"}
+    }));
     state.gap = Math.max(0.6, Math.min(2.2, Number(gapSlider.value) / 100));
     if (state.enabled) resetStackOffsets();
     applyOffsets();
@@ -2590,10 +2632,25 @@ _RAMAN_STACK_SCRIPT = """
 
   gd.addEventListener("pointerdown", function(ev) {
     if (
-      !state.dragMode
+      (ev.pointerType === "mouse" && ev.button !== 0)
+      || state.dragging
+      || !state.dragMode
+      || gd._ristAxisCropActive
       || gd.classList.contains("rist-axis-crop-mode")
       || gd._ristEditMode
+      || gd._ristShapeDrawMode
+      || gd._ristAxisScaleActive
+      || gd._ristAxisSettingsOpen
+      || gd._ristRamanRatioMode
+      || gd._ristPeakSensitivityInteracting
+      || gd._ristLegendEditOpen
+      || gd._ristLegendDragging
+      || gd._ristInlineTextEditing
+      || (gd._ristPeakEditMode && gd._ristPeakEditMode !== "none")
     ) return;
+    if (ev.target && ev.target.closest && ev.target.closest(
+      ".rist-legend-drag-handle,.legend,.modebar,.rist-plot-control-row,.rist-legend-edit-panel"
+    )) return;
     if (!state.initialized) initState();
     var nearest = nearestSample(ev);
     if (!nearest) return;
@@ -2693,6 +2750,24 @@ _RAMAN_RATIO_SCRIPT = """
   var pendingNumerator = null;
   var ratios = [];
   var nextRatioId = 1;
+
+  function ratioBlockedByOtherInteraction() {
+    return !!(
+      gd._ristAxisCropActive
+      || gd.classList.contains("rist-axis-crop-mode")
+      || gd._ristEditMode
+      || gd._ristShapeDrawMode
+      || gd._ristAxisScaleActive
+      || gd._ristAxisSettingsOpen
+      || gd._ristFtirYDragMode
+      || gd._ristRamanYDragMode
+      || gd._ristPeakSensitivityInteracting
+      || gd._ristLegendEditOpen
+      || gd._ristLegendDragging
+      || gd._ristInlineTextEditing
+      || (gd._ristPeakEditMode && gd._ristPeakEditMode !== "none")
+    );
+  }
 
   function traceMeta(curve) {
     var trace = (gd.data || [])[curve] || {};
@@ -2873,24 +2948,56 @@ _RAMAN_RATIO_SCRIPT = """
     return gd._ristNearestPeakCurveFromEvent(ev);
   }
 
+  var pendingRatioNativeClick = null;
+  var suppressRatioPlotlyClickUntil = 0;
+
+  function stopRatioPeakEvent(ev) {
+    ev.preventDefault();
+    ev.stopPropagation();
+    if (ev.stopImmediatePropagation) ev.stopImmediatePropagation();
+  }
+
+  function matchesPendingRatioNativeClick(ev) {
+    if (!pendingRatioNativeClick || Date.now() > pendingRatioNativeClick.until) return false;
+    var x = Number(ev.clientX);
+    var y = Number(ev.clientY);
+    if (!Number.isFinite(x) || !Number.isFinite(y)
+        || !Number.isFinite(pendingRatioNativeClick.x)
+        || !Number.isFinite(pendingRatioNativeClick.y)) return true;
+    var dx = x - pendingRatioNativeClick.x;
+    var dy = y - pendingRatioNativeClick.y;
+    return dx * dx + dy * dy <= 18 * 18;
+  }
+
   function handleRatioPeakPointer(ev) {
     if (!ratioMode) return;
-    if (ev.target.closest(".legend,.modebar,.rist-plot-control-row,.rist-legend-edit-panel")) return;
-    if (ev.type === "click" && gd._ristHandledRamanRatioClick) {
-      ev.preventDefault();
-      ev.stopPropagation();
+    if (ratioBlockedByOtherInteraction()) return;
+    if (ev.target.closest(
+      ".legend,.modebar,.rist-plot-control-row,.rist-legend-edit-panel,.rist-legend-drag-handle"
+    )) return;
+    if (ev.type === "mousedown") {
+      pendingRatioNativeClick = null;
+      suppressRatioPlotlyClickUntil = 0;
+    } else if (ev.type === "click" && matchesPendingRatioNativeClick(ev)) {
+      pendingRatioNativeClick = null;
+      stopRatioPeakEvent(ev);
       return;
     }
     var curve = peakCurveFromEvent(ev);
     if (curve == null) return;
-    ev.preventDefault();
-    ev.stopPropagation();
-    gd._ristHandledRamanRatioClick = true;
-    gd._ristHandledRamanRatioAt = Date.now();
+    stopRatioPeakEvent(ev);
+    var handledAt = Date.now();
+    if (ev.type === "mousedown") {
+      pendingRatioNativeClick = {
+        x: Number(ev.clientX),
+        y: Number(ev.clientY),
+        until: handledAt + 1200
+      };
+    } else {
+      pendingRatioNativeClick = null;
+    }
+    suppressRatioPlotlyClickUntil = handledAt + 1200;
     pickPeak(curve);
-    setTimeout(function() {
-      gd._ristHandledRamanRatioClick = false;
-    }, 250);
   }
 
   if (getComputedStyle(gd).position === "static") gd.style.position = "relative";
@@ -2923,10 +3030,11 @@ _RAMAN_RATIO_SCRIPT = """
   gd.addEventListener("click", handleRatioPeakPointer, true);
   gd.on("plotly_click", function(ev) {
     if (!ratioMode || !ev || !ev.points || !ev.points.length) return;
-    if (
-      gd._ristHandledRamanRatioClick
-      || (gd._ristHandledRamanRatioAt && Date.now() - gd._ristHandledRamanRatioAt < 250)
-    ) return;
+    if (ratioBlockedByOtherInteraction()) return;
+    if (Date.now() <= suppressRatioPlotlyClickUntil) {
+      suppressRatioPlotlyClickUntil = 0;
+      return;
+    }
     var curve = ev.points[0].curveNumber;
     pickPeak(curve);
   });

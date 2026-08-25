@@ -234,7 +234,14 @@ def test_raman_workspace_contains_upload_controls() -> None:
     assert 'detail: {mode: "raman-y-drag"}' in page
     assert 'activeMode === "raman-y-drag"' in page
     assert 'gd.classList.contains("rist-axis-crop-mode")' in page
+    assert "gd._ristAxisCropActive" in page
+    assert "gd._ristShapeDrawMode" in page
+    assert "gd._ristAxisScaleActive" in page
+    assert "gd._ristAxisSettingsOpen" in page
+    assert "gd._ristPeakSensitivityInteracting" in page
+    assert "gd._ristLegendEditOpen" in page
     assert "function setRatioMode(enabled, announce)" in page
+    assert "function ratioBlockedByOtherInteraction()" in page
     assert 'detail: {mode: "raman-ratio"}' in page
     assert 'activeMode === "raman-ratio"' in page
     assert 'gd.addEventListener("rist-exclusive-interaction-start"' in page
@@ -327,7 +334,9 @@ def test_raman_workspace_contains_upload_controls() -> None:
     assert "function handleRatioPeakPointer" in page
     assert "gd._ristNearestPeakCurveFromEvent(ev)" in page
     assert 'gd.addEventListener("mousedown", handleRatioPeakPointer, true)' in page
-    assert "gd._ristHandledRamanRatioAt = Date.now()" in page
+    assert 'ev.type === "click" && matchesPendingRatioNativeClick(ev)' in page
+    assert "!Number.isFinite(pendingRatioNativeClick.x)" in page
+    assert "suppressRatioPlotlyClickUntil = handledAt + 1200" in page
     assert 'new CustomEvent("rist-peak-actions-disabled"' in page
     assert "detail: {disabled: ratioMode}" in page
     assert "annotationPosition" in page
