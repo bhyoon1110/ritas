@@ -2994,10 +2994,6 @@ def peak_editor_js(div_id: str) -> str:
     return String(color || "#ef4444");
   }}
 
-  function labelForCurve(curve) {{
-    return meta().find(function(label) {{ return label.traceIndex === curve; }}) || null;
-  }}
-
   function selectedPeakCurves() {{
     var data = gd.data || [];
     var fromMeta = [];
@@ -3858,40 +3854,133 @@ def peak_editor_js(div_id: str) -> str:
     }});
   }}
 
-  function deletePeakTrace(curve, skipHistory, deferStructureEvent) {{
-    if (!window.Plotly || curve == null || curve < 0) return Promise.resolve();
+  function deletePeakTraces(curves, skipHistory, deferStructureEvent) {{
+    if (!window.Plotly) return Promise.resolve([]);
+    var data = gd.data || [];
+    var sourceAnnotations = gd.layout.annotations || [];
+    var sourceShapes = gd.layout.shapes || [];
     var labels = meta();
-    var label = labelForCurve(curve);
-    var tr = (gd.data || [])[curve] || {{}};
-    var isPeak = label || (tr.meta && tr.meta.rist_peak);
-    if (!isPeak) return Promise.resolve();
-    if (!skipHistory && gd._ristHistory) gd._ristHistory.capture();
-    var annotations = (gd.layout.annotations || []).slice();
-    var shapes = (gd.layout.shapes || []).slice();
-    if (label) {{
-      annotations.splice(label.annotationIndex, 1);
-      shapes.splice(label.shapeIndex, 1);
-      if (gd._ristFtirUnitOriginalAnnotations) {{
-        gd._ristFtirUnitOriginalAnnotations.splice(label.annotationIndex, 1);
-      }}
-      if (gd._ristFtirUnitOriginalShapes) {{
-        gd._ristFtirUnitOriginalShapes.splice(label.shapeIndex, 1);
-      }}
-      labels = labels.filter(function(item) {{ return item.traceIndex !== curve; }});
+    function validIndex(value, limit) {{
+      if (value == null || value === "") return null;
+      var index = Number(value);
+      return Number.isInteger(index) && index >= 0 && index < limit ? index : null;
     }}
-    selectedPeaks = selectedPeaks.filter(function(item) {{ return item !== curve; }});
-    labels.forEach(function(item) {{
-      if (label && item.annotationIndex > label.annotationIndex) item.annotationIndex -= 1;
-      if (label && item.shapeIndex > label.shapeIndex) item.shapeIndex -= 1;
-      if (item.traceIndex > curve) item.traceIndex -= 1;
+    var labeledCurves = {{}};
+    labels.forEach(function(label) {{
+      var traceIndex = validIndex(label && label.traceIndex, data.length);
+      if (traceIndex != null) labeledCurves[traceIndex] = true;
     }});
-    return window.Plotly.deleteTraces(gd, [curve]).then(function() {{
-      selectedPeaks = selectedPeaks.map(function(item) {{
-        return item > curve ? item - 1 : item;
+    var peakCurves = (Array.isArray(curves) ? curves : [])
+      .map(function(curve) {{ return validIndex(curve, data.length); }})
+      .filter(function(curve, index, values) {{
+        return curve != null
+          && values.indexOf(curve) === index
+          && (labeledCurves[curve] || isPeakCurve(curve));
+      }})
+      .sort(function(a, b) {{ return a - b; }});
+    if (!peakCurves.length) return Promise.resolve([]);
+    if (!skipHistory && gd._ristHistory) gd._ristHistory.capture();
+
+    var deletedTraces = {{}};
+    peakCurves.forEach(function(curve) {{ deletedTraces[curve] = true; }});
+    var traceIndexMap = {{}};
+    var nextTraceIndex = 0;
+    for (var traceIndex = 0; traceIndex < data.length; traceIndex++) {{
+      if (deletedTraces[traceIndex]) continue;
+      traceIndexMap[traceIndex] = nextTraceIndex;
+      nextTraceIndex += 1;
+    }}
+
+    var removedAnnotationIndexes = {{}};
+    var removedShapeIndexes = {{}};
+    var retainedAnnotationIndexes = {{}};
+    var retainedShapeIndexes = {{}};
+    labels.forEach(function(label) {{
+      label = label || {{}};
+      var traceIndex = validIndex(label.traceIndex, data.length);
+      var annotationIndex = validIndex(label.annotationIndex, sourceAnnotations.length);
+      var shapeIndex = validIndex(label.shapeIndex, sourceShapes.length);
+      var annotationTarget = deletedTraces[traceIndex]
+        ? removedAnnotationIndexes : retainedAnnotationIndexes;
+      var shapeTarget = deletedTraces[traceIndex]
+        ? removedShapeIndexes : retainedShapeIndexes;
+      if (annotationIndex != null) {{
+        annotationTarget[annotationIndex] = true;
+      }}
+      if (shapeIndex != null) {{
+        shapeTarget[shapeIndex] = true;
+      }}
+    }});
+    Object.keys(retainedAnnotationIndexes).forEach(function(index) {{
+      delete removedAnnotationIndexes[index];
+    }});
+    Object.keys(retainedShapeIndexes).forEach(function(index) {{
+      delete removedShapeIndexes[index];
+    }});
+
+    function filterIndexedValues(values, removedIndexes, indexMap) {{
+      var filtered = [];
+      (values || []).forEach(function(value, index) {{
+        if (removedIndexes[index]) return;
+        indexMap[index] = filtered.length;
+        filtered.push(value);
       }});
+      return filtered;
+    }}
+
+    var annotationIndexMap = {{}};
+    var shapeIndexMap = {{}};
+    var annotations = filterIndexedValues(
+      sourceAnnotations, removedAnnotationIndexes, annotationIndexMap
+    );
+    var shapes = filterIndexedValues(
+      sourceShapes, removedShapeIndexes, shapeIndexMap
+    );
+    if (gd._ristFtirUnitOriginalAnnotations) {{
+      gd._ristFtirUnitOriginalAnnotations = filterIndexedValues(
+        gd._ristFtirUnitOriginalAnnotations, removedAnnotationIndexes, {{}}
+      );
+    }}
+    if (gd._ristFtirUnitOriginalShapes) {{
+      gd._ristFtirUnitOriginalShapes = filterIndexedValues(
+        gd._ristFtirUnitOriginalShapes, removedShapeIndexes, {{}}
+      );
+    }}
+
+    var nextLabels = [];
+    labels.forEach(function(label) {{
+      label = label || {{}};
+      var traceIndex = validIndex(label.traceIndex, data.length);
+      if (traceIndex != null && deletedTraces[traceIndex]) return;
+      var nextLabel = Object.assign({{}}, label);
+      if (traceIndex != null
+          && Object.prototype.hasOwnProperty.call(traceIndexMap, traceIndex)) {{
+        nextLabel.traceIndex = traceIndexMap[traceIndex];
+      }}
+      var annotationIndex = validIndex(label.annotationIndex, sourceAnnotations.length);
+      if (annotationIndex != null
+          && Object.prototype.hasOwnProperty.call(annotationIndexMap, annotationIndex)) {{
+        nextLabel.annotationIndex = annotationIndexMap[annotationIndex];
+      }}
+      var shapeIndex = validIndex(label.shapeIndex, sourceShapes.length);
+      if (shapeIndex != null
+          && Object.prototype.hasOwnProperty.call(shapeIndexMap, shapeIndex)) {{
+        nextLabel.shapeIndex = shapeIndexMap[shapeIndex];
+      }}
+      nextLabels.push(nextLabel);
+    }});
+
+    selectedPeaks = selectedPeaks
+      .filter(function(curve) {{ return !deletedTraces[curve]; }})
+      .map(function(curve) {{ return traceIndexMap[curve]; }})
+      .filter(function(curve, index, values) {{
+        return Number.isInteger(curve) && values.indexOf(curve) === index;
+      }});
+
+    return window.Plotly.deleteTraces(gd, peakCurves).then(function() {{
       updateSelectButton();
       return window.Plotly.relayout(gd, {{
-        "meta.ristPeakLabels": labels,
+        "meta.ristPeakLabels": nextLabels,
         annotations: annotations,
         shapes: shapes
       }}).then(function() {{
@@ -3900,8 +3989,13 @@ def peak_editor_js(div_id: str) -> str:
             detail: {{reason: "peak-deleted"}}
           }}));
         }}
+        return peakCurves;
       }});
     }});
+  }}
+
+  function deletePeakTrace(curve, skipHistory, deferStructureEvent) {{
+    return deletePeakTraces([curve], skipHistory, deferStructureEvent);
   }}
 
   function setMode(next, announce) {{
@@ -4085,19 +4179,13 @@ def peak_editor_js(div_id: str) -> str:
   gd.addEventListener("rist-peak-delete", function(ev) {{
     var detail = ev.detail || {{}};
     var curves = Array.isArray(detail.curves) ? detail.curves.slice() : [];
-    curves = curves
-      .filter(function(curve, index, values) {{
-        return Number.isFinite(curve) && values.indexOf(curve) === index;
-      }})
-      .sort(function(a, b) {{ return b - a; }});
-    if (curves.length && gd._ristHistory) gd._ristHistory.capture();
-    curves.reduce(function(promise, curve) {{
-      return promise.then(function() {{ return deletePeakTrace(curve, true, true); }});
-    }}, Promise.resolve()).then(function() {{
-      if (!curves.length) return;
+    deletePeakTraces(curves, false, true).then(function(deletedCurves) {{
+      if (!deletedCurves.length) return;
       gd.dispatchEvent(new CustomEvent("rist-plot-structure-changed", {{
         detail: {{reason: "peaks-deleted"}}
       }}));
+    }}).catch(function(err) {{
+      console.error("RIST peak batch delete failed", err);
     }});
   }});
 
