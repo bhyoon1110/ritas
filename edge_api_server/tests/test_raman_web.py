@@ -252,6 +252,10 @@ def test_raman_workspace_contains_upload_controls() -> None:
     assert "rist-raman-ratio-control" in page
     assert "ristRamanStack" in page
     assert "function syncStackYAxis(layout)" in page
+    assert "function visualLegendOrder()" in page
+    assert "function syncLegendRanks(data)" in page
+    assert "trace.legendrank = groupRanks[group] * 100000" in page
+    assert "stackMeta().legendOrder = groups" in page
     assert 'axis.showticklabels = false' in page
     assert 'axis.ticks = ""' in page
     assert "restoreAxisProperty" in page

@@ -99,6 +99,11 @@ def test_shared_plotly_module_applies_legend_text(tmp_path) -> None:
     assert 'gd.addEventListener("rist-peak-sensitivity-change"' in html
     assert 'gd.addEventListener("rist-plot-data-replaced"' in html
     assert 'gd.addEventListener("rist-plot-structure-changed"' in html
+    assert 'gd.addEventListener("rist-ftir-stack-change"' in html
+    assert 'gd.addEventListener("rist-raman-stack-change"' in html
+    assert "leftTrace.legendrank" in html
+    assert "rightTrace.legendrank" in html
+    assert "leftRank - rightRank || left - right" in html
     assert "if (!peakMatchesCurrentSensitivity(curve)) continue" in html
     assert 'key === "z" && ev.shiftKey' in html
     assert 'key === "y"' in html
@@ -410,6 +415,9 @@ def test_shared_peak_editor_adds_peak_controls(tmp_path) -> None:
     assert "recordPeakUserVisibilityFromCustomEvent" in html
     assert "gd._ristApplyingPeakSensitivity" in html
     assert "visibleLegendTraceIndexes" in html
+    assert "leftTrace.legendrank" in html
+    assert "rightTrace.legendrank" in html
+    assert "leftRank - rightRank || left - right" in html
     assert "legendTraceItems" in html
     assert "curveFromLegendDatum" in html
     assert "curveFromLegendItem" in html

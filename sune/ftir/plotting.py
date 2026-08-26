@@ -339,16 +339,8 @@ def ftir_stack_js(div_id: str) -> str:
   }
 
   function applyInitialYAxisDisplay() {
-    if (!state.enabled) return;
-    var layout = gd.layout || {};
-    syncStackYAxis(layout);
-    updateMeta();
-    window.Plotly.relayout(gd, {
-      "yaxis.showticklabels": false,
-      "yaxis.ticks": "",
-      "yaxis.ticklen": 0
-    }).catch(function(error) {
-      console.error("FT-IR 스택 Y축 표시 반영 실패", error);
+    applyOffsets({preserveView: true}).catch(function(error) {
+      console.error("FT-IR 스택 초기 표시 반영 실패", error);
     });
   }
 
@@ -497,6 +489,42 @@ def ftir_stack_js(div_id: str) -> str:
     meta.yAxisDisplay = state.yAxisDisplay;
   }
 
+  function visualLegendOrder() {
+    var originalIndexes = {};
+    state.order.forEach(function(group, index) {
+      originalIndexes[group] = index;
+    });
+    var groups = state.order.slice();
+    if (!state.enabled) return groups;
+    return groups.sort(function(left, right) {
+      var delta = Number(state.positions[right] || 0)
+        - Number(state.positions[left] || 0);
+      if (Math.abs(delta) > 0.0001) return delta;
+      return originalIndexes[left] - originalIndexes[right];
+    });
+  }
+
+  function syncLegendRanks(data) {
+    var groups = visualLegendOrder();
+    var groupRanks = {};
+    var itemRanks = {};
+    groups.forEach(function(group, index) {
+      groupRanks[group] = index;
+      itemRanks[group] = 0;
+    });
+    (data || []).forEach(function(trace, index) {
+      var group = groupOfTrace(index);
+      if (!Object.prototype.hasOwnProperty.call(groupRanks, group)) return;
+      var meta = traceMeta(index);
+      var itemRank = itemRanks[group] || 0;
+      trace.legendrank = groupRanks[group] * 100000
+        + (meta.rist_sample_parent ? 0 : 10000)
+        + itemRank;
+      itemRanks[group] = itemRank + 1;
+    });
+    stackMeta().legendOrder = groups;
+  }
+
   function applyOffsets(options) {
     options = options || {};
     if (!state.initialized) initState();
@@ -517,6 +545,7 @@ def ftir_stack_js(div_id: str) -> str:
       data[index].meta.rist_ftir_stack_offset_absorbance = absOffset;
       data[index].meta.rist_ftir_stack_offset_transmittance = transOffset;
     });
+    syncLegendRanks(data);
 
     var layout = gd.layout || {};
     if (signalMode === "absorbance") {

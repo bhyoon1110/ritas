@@ -920,6 +920,15 @@ def _legend_text_edit_js(div_id: str) -> str:
       if (!peakMatchesCurrentSensitivity(curve)) continue;
       idxs.push(curve);
     }}
+    idxs.sort(function(left, right) {{
+      var leftTrace = (gd.data || [])[left] || {{}};
+      var rightTrace = (gd.data || [])[right] || {{}};
+      var leftRank = Number(leftTrace.legendrank);
+      var rightRank = Number(rightTrace.legendrank);
+      if (!Number.isFinite(leftRank)) leftRank = 1000;
+      if (!Number.isFinite(rightRank)) rightRank = 1000;
+      return leftRank - rightRank || left - right;
+    }});
     return idxs;
   }}
 
@@ -1750,6 +1759,12 @@ def _legend_text_edit_js(div_id: str) -> str:
       if (panel.style.display === "block") renderRows();
     }});
     gd.addEventListener("rist-plot-structure-changed", function() {{
+      if (panel.style.display === "block") renderRows();
+    }});
+    gd.addEventListener("rist-ftir-stack-change", function() {{
+      if (panel.style.display === "block") renderRows();
+    }});
+    gd.addEventListener("rist-raman-stack-change", function() {{
       if (panel.style.display === "block") renderRows();
     }});
   }}
@@ -2597,6 +2612,15 @@ def peak_editor_js(div_id: str) -> str:
       if (!peakMatchesCurrentSensitivity(curve)) continue;
       idxs.push(curve);
     }}
+    idxs.sort(function(left, right) {{
+      var leftTrace = (gd.data || [])[left] || {{}};
+      var rightTrace = (gd.data || [])[right] || {{}};
+      var leftRank = Number(leftTrace.legendrank);
+      var rightRank = Number(rightTrace.legendrank);
+      if (!Number.isFinite(leftRank)) leftRank = 1000;
+      if (!Number.isFinite(rightRank)) rightRank = 1000;
+      return leftRank - rightRank || left - right;
+    }});
     return idxs;
   }}
 
