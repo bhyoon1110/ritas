@@ -916,7 +916,9 @@ def _legend_text_edit_js(div_id: str) -> str:
       var tr = fd[i];
       if (!tr) continue;
       if (tr.showlegend === false) continue;
-      idxs.push(typeof tr.index === "number" ? tr.index : i);
+      var curve = typeof tr.index === "number" ? tr.index : i;
+      if (!peakMatchesCurrentSensitivity(curve)) continue;
+      idxs.push(curve);
     }}
     return idxs;
   }}
@@ -1741,6 +1743,15 @@ def _legend_text_edit_js(div_id: str) -> str:
     gd.addEventListener("rist-history-restored", function() {{
       if (panel.style.display === "block") renderRows();
     }});
+    gd.addEventListener("rist-peak-sensitivity-change", function() {{
+      if (panel.style.display === "block") renderRows();
+    }});
+    gd.addEventListener("rist-plot-data-replaced", function() {{
+      if (panel.style.display === "block") renderRows();
+    }});
+    gd.addEventListener("rist-plot-structure-changed", function() {{
+      if (panel.style.display === "block") renderRows();
+    }});
   }}
 
   function setAllLegendVisibility(visible) {{
@@ -1759,6 +1770,7 @@ def _legend_text_edit_js(div_id: str) -> str:
     if (!peak || !Number.isFinite(Number(peak.sensitivity_min))) return true;
     var current = Number(gd._ristPeakSensitivityValue);
     if (!Number.isFinite(current)) return true;
+    if (current <= 0) return false;
     return Number(peak.sensitivity_min) <= current;
   }}
 
@@ -2129,16 +2141,24 @@ def peak_sensitivity_js(div_id: str, initial: str = "medium") -> str:
 
   function currentVisibleCount() {{
     var data = gd.data || [];
+    var sensitivity = Number(gd._ristPeakSensitivityValue);
+    if (!Number.isFinite(sensitivity) || sensitivity <= 0) return 0;
     var count = 0;
     for (var i = 0; i < data.length; i++) {{
       var minimum = minimumSensitivity(i);
-      if (minimum != null && minimum <= gd._ristPeakSensitivityValue) count += 1;
+      if (minimum != null && minimum <= sensitivity) count += 1;
     }}
     return count;
   }}
 
   function updateStatus(count) {{
     value.textContent = count + "개";
+  }}
+
+  function dispatchSensitivityChange(sensitivity, count) {{
+    gd.dispatchEvent(new CustomEvent("rist-peak-sensitivity-change", {{
+      detail: {{ sensitivity: sensitivity, count: count }}
+    }}));
   }}
 
   function applySensitivity(sensitivity) {{
@@ -2152,7 +2172,7 @@ def peak_sensitivity_js(div_id: str, initial: str = "medium") -> str:
     for (var i = 0; i < data.length; i++) {{
       var minimum = minimumSensitivity(i);
       if (minimum == null) continue;
-      var eligible = minimum <= sensitivity;
+      var eligible = sensitivity > 0 && minimum <= sensitivity;
       var on = eligible && peakUserVisible(i) && sampleVisible(sampleGroup(i));
       var visibility = eligible ? (on ? true : "legendonly") : false;
       var meta = traceMeta(i);
@@ -2182,9 +2202,14 @@ def peak_sensitivity_js(div_id: str, initial: str = "medium") -> str:
         changedShowlegend.push(nextShowlegend);
       }}
     }}
-    if (!Object.keys(visibleByCurve).length) return Promise.resolve();
+    if (!Object.keys(visibleByCurve).length) {{
+      updateStatus(0);
+      dispatchSensitivityChange(sensitivity, 0);
+      return Promise.resolve();
+    }}
     if (!changedCurves.length) {{
       updateStatus(eligibleCount);
+      dispatchSensitivityChange(sensitivity, eligibleCount);
       return Promise.resolve();
     }}
 
@@ -2223,9 +2248,7 @@ def peak_sensitivity_js(div_id: str, initial: str = "medium") -> str:
     }}, changedCurves).then(function() {{
       gd._ristApplyingPeakSensitivity = false;
       updateStatus(eligibleCount);
-      gd.dispatchEvent(new CustomEvent("rist-peak-sensitivity-change", {{
-        detail: {{ sensitivity: sensitivity }}
-      }}));
+      dispatchSensitivityChange(sensitivity, eligibleCount);
     }}).catch(function(err) {{
       gd._ristApplyingPeakSensitivity = false;
       throw err;
@@ -2570,7 +2593,9 @@ def peak_editor_js(div_id: str) -> str:
     for (var i = 0; i < fd.length; i++) {{
       var tr = fd[i];
       if (!tr || tr.showlegend === false) continue;
-      idxs.push(typeof tr.index === "number" ? tr.index : i);
+      var curve = typeof tr.index === "number" ? tr.index : i;
+      if (!peakMatchesCurrentSensitivity(curve)) continue;
+      idxs.push(curve);
     }}
     return idxs;
   }}
@@ -3207,6 +3232,7 @@ def peak_editor_js(div_id: str) -> str:
     if (!peak || !Number.isFinite(Number(peak.sensitivity_min))) return true;
     var sensitivity = Number(gd._ristPeakSensitivityValue);
     if (!Number.isFinite(sensitivity)) return true;
+    if (sensitivity <= 0) return false;
     return Number(peak.sensitivity_min) <= sensitivity;
   }}
 
@@ -7531,6 +7557,9 @@ def _axis_controls_js(div_id: str) -> str:
     var editPromise = typeof gd._ristSetEditMode === "function"
       ? gd._ristSetEditMode(false)
       : Promise.resolve();
+    if (typeof gd._ristSetYDragMode === "function") {
+      gd._ristSetYDragMode(false);
+    }
     setOpen(false);
     gd.dispatchEvent(new CustomEvent("rist-exclusive-interaction-start", {
       detail: {mode: "crop"}

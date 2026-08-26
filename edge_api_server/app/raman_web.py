@@ -2590,6 +2590,10 @@ _RAMAN_STACK_SCRIPT = """
     syncControls();
   }
 
+  gd._ristSetYDragMode = function(enabled) {
+    setDragMode(enabled, false);
+  };
+
   if (getComputedStyle(gd).position === "static") gd.style.position = "relative";
   var toolbar = gd.querySelector(".rist-plot-control-row");
   if (!toolbar) {
@@ -3587,6 +3591,12 @@ _UPLOAD_SCRIPT = """
     return withOriginStyle(JSON.parse(JSON.stringify(emptyLayout)));
   }
 
+  function currentPeakSensitivity() {
+    var sensitivity = Number(gd._ristPeakSensitivityValue);
+    if (!Number.isFinite(sensitivity)) return 25;
+    return Math.max(0, Math.min(100, Math.round(sensitivity)));
+  }
+
   function currentWorkspaceState() {
     return {
       version: 1,
@@ -3595,7 +3605,7 @@ _UPLOAD_SCRIPT = """
       reportMetadata: reportMetadataFormState(),
       reportTransfer: reportTransferFormState(),
       originStyle: originStyleEnabled(),
-      sensitivity: gd._ristPeakSensitivityValue || 25,
+      sensitivity: currentPeakSensitivity(),
       statusText: status.textContent || "",
       analysisPayload: latestAnalysisPayload,
       plotData: JSON.parse(JSON.stringify(gd.data || [])),
@@ -3666,7 +3676,7 @@ _UPLOAD_SCRIPT = """
           withOriginStyle(state.plotLayout),
           gd._context
         ).then(function() {
-          dispatchDataReplaced(gd._ristPeakSensitivityValue || 25);
+          dispatchDataReplaced(currentPeakSensitivity());
           window.Plotly.Plots.resize(gd);
           return state;
         }).finally(function() {
@@ -5604,9 +5614,8 @@ _UPLOAD_SCRIPT = """
     try {
       var form = new FormData();
       files.forEach(function(file) { form.append("files", file); });
-      var sensitivity = gd._ristPeakSensitivityValue;
-      if (!Number.isFinite(Number(sensitivity))) sensitivity = 25;
-      form.append("sensitivity", String(Math.max(0, Math.min(100, Number(sensitivity)))));
+      var sensitivity = currentPeakSensitivity();
+      form.append("sensitivity", String(sensitivity));
       form.append("assignment_library_selection_explicit", "true");
       selectedLibraryIds.forEach(function(id) {
         form.append("assignment_library_ids", id);
@@ -5625,7 +5634,10 @@ _UPLOAD_SCRIPT = """
         withOriginStyle(payload.figure.layout || {}),
         gd._context
       );
-      gd._ristPeakSensitivityValue = payload.settings.sensitivity || sensitivity;
+      var responseSensitivity = Number(payload.settings && payload.settings.sensitivity);
+      gd._ristPeakSensitivityValue = Number.isFinite(responseSensitivity)
+        ? Math.max(0, Math.min(100, Math.round(responseSensitivity)))
+        : sensitivity;
       dispatchDataReplaced(gd._ristPeakSensitivityValue);
       await applyResponsiveLayout();
       window.Plotly.Plots.resize(gd);

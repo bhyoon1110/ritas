@@ -206,7 +206,7 @@ def test_interactive_peak_candidates_include_all_sensitivity_levels() -> None:
     assert by_index[80]["levels"] == ["high", "low", "medium"]
     assert 0 < by_index[20]["sensitivity_min"] <= 100
     assert 0 < by_index[50]["sensitivity_min"] < by_index[20]["sensitivity_min"]
-    assert by_index[80]["sensitivity_min"] == 0
+    assert by_index[80]["sensitivity_min"] == 1
     assert by_index[20]["initial"] is False
     assert by_index[80]["initial"] is True
 

@@ -154,13 +154,19 @@ def analyze_dpt_files(
                 return_mask=True,
                 normalize=False,
             )
-            peak_idx, peak_wn, peak_val, peak_fwhm = detect_peaks_with_fwhm(
-                sample_vec,
-                grid,
-                params["height"],
-                params["prominence"],
-                params["distance"],
-            )
+            if sensitivity == 0:
+                peak_idx = np.empty(0, dtype=int)
+                peak_wn = np.empty(0, dtype=float)
+                peak_val = np.empty(0, dtype=float)
+                peak_fwhm = np.empty(0, dtype=float)
+            else:
+                peak_idx, peak_wn, peak_val, peak_fwhm = detect_peaks_with_fwhm(
+                    sample_vec,
+                    grid,
+                    params["height"],
+                    params["prominence"],
+                    params["distance"],
+                )
         except Exception as exc:
             raise DptAnalysisError(
                 "DPT_ANALYSIS_FAILED",

@@ -96,6 +96,10 @@ def test_shared_plotly_module_applies_legend_text(tmp_path) -> None:
     assert "MAX_HISTORY = 50" in html
     assert "window.Plotly.react" in html
     assert "rist-history-restored" in html
+    assert 'gd.addEventListener("rist-peak-sensitivity-change"' in html
+    assert 'gd.addEventListener("rist-plot-data-replaced"' in html
+    assert 'gd.addEventListener("rist-plot-structure-changed"' in html
+    assert "if (!peakMatchesCurrentSensitivity(curve)) continue" in html
     assert 'key === "z" && ev.shiftKey' in html
     assert 'key === "y"' in html
     assert 'gd.setAttribute("data-rist-history-enabled", "true")' in html
@@ -611,6 +615,8 @@ def test_peak_sensitivity_control_filters_detected_peak_metadata() -> None:
     assert "min='0' max='100'" in html
     assert "피크 검출 민감도 수치" in html
     assert 'eligible ? (on ? true : "legendonly") : false' in html
+    assert "sensitivity > 0 && minimum <= sensitivity" in html
+    assert "if (!Number.isFinite(sensitivity) || sensitivity <= 0) return 0" in html
     assert "changedCurves" in html
     assert "currentVisibility !== visibility" in html
     assert "if (!changedCurves.length)" in html
@@ -618,6 +624,8 @@ def test_peak_sensitivity_control_filters_detected_peak_metadata() -> None:
     assert "updateStatus(eligibleCount)" in html
     assert "gd._ristPeakSensitivityValue = sensitivity" in html
     assert "rist-peak-sensitivity-change" in html
+    assert "dispatchSensitivityChange(sensitivity, eligibleCount)" in html
+    assert "detail: { sensitivity: sensitivity, count: count }" in html
     assert "peakUserVisible" in html
     assert "peakLabelsVisible" in html
     assert "eligible && peakUserVisible(i)" in html
@@ -743,6 +751,7 @@ def test_axis_controls_add_range_tick_and_axis_drag_controls(tmp_path) -> None:
     assert 'activeMode !== "axis-scale" && activeMode !== "axis-settings"' in html
     assert "lastAxisTap = null" in html
     assert 'detail: {mode: "crop"}' in html
+    assert 'gd._ristSetYDragMode(false)' in html
     assert "Promise.all([Promise.resolve(cancelPromise), Promise.resolve(editPromise)])" in html
     assert 'gd.addEventListener("rist-exclusive-interaction-start"' in html
     assert 'gd.classList.contains("rist-axis-crop-mode")' in html

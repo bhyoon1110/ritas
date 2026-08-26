@@ -231,6 +231,7 @@ def test_raman_workspace_contains_upload_controls() -> None:
     assert "축 범위 및 눈금 설정" in page
     assert "towardIncreasingValue" in page
     assert "gd._ristRamanYDragMode = !!state.dragMode" in page
+    assert "gd._ristSetYDragMode = function(enabled)" in page
     assert 'detail: {mode: "raman-y-drag"}' in page
     assert 'activeMode === "raman-y-drag"' in page
     assert 'gd.classList.contains("rist-axis-crop-mode")' in page
@@ -268,6 +269,9 @@ def test_raman_workspace_contains_upload_controls() -> None:
     assert "분자 선택" in page
     assert "분모 선택" in page
     assert "Y 이동" in page
+    assert "function currentPeakSensitivity()" in page
+    assert "_ristPeakSensitivityValue || 25" not in page
+    assert "payload.settings.sensitivity || sensitivity" not in page
     assert "rist-raman-tools-toggle" in page
     assert "rist-raman-tools-open" in page
     assert "rist-raman-tools-head" in page
@@ -472,6 +476,38 @@ def test_raman_analyze_api_accepts_txt_sample() -> None:
         isinstance(trace.get("meta", {}).get("rist_peak", {}).get("base_y"), float)
         for trace in payload["figure"]["data"]
         if trace.get("meta", {}).get("rist_peak")
+    )
+
+
+def test_raman_analysis_zero_sensitivity_disables_detected_peaks() -> None:
+    with TestClient(create_raman_preview_app()) as client:
+        response = client.post(
+            "/api/v1/raman/analyze",
+            files={
+                "files": (
+                    SAMPLE_TXT.name,
+                    SAMPLE_TXT.read_bytes(),
+                    "text/plain",
+                )
+            },
+            data={"sensitivity": "0"},
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["settings"]["sensitivity"] == 0
+    assert payload["samples"][0]["peakCount"] == 0
+    peak_traces = [
+        trace
+        for trace in payload["figure"]["data"]
+        if trace.get("meta", {}).get("rist_peak", {}).get("source") == "detected"
+    ]
+    assert peak_traces
+    assert all(trace.get("visible") is False for trace in peak_traces)
+    assert all(trace.get("showlegend") is False for trace in peak_traces)
+    assert all(
+        trace["meta"]["rist_peak"]["sensitivity_min"] >= 1
+        for trace in peak_traces
     )
 
 

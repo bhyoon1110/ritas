@@ -76,7 +76,7 @@ def build_interactive_peak_candidates(
 ) -> list[dict]:
     first_seen: dict[int, int] = {}
     preset_indexes: dict[int, set[int]] = {}
-    for sensitivity in range(101):
+    for sensitivity in range(1, 101):
         params = peak_params_for_sensitivity(sensitivity)
         indexes, _ = find_peaks(
             values,
@@ -116,4 +116,3 @@ def build_interactive_peak_candidates(
             }
         )
     return candidates
-

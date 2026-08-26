@@ -48,6 +48,23 @@ def test_ftir_web_figure_displays_non_normalized_absorbance() -> None:
     assert max(toggle["absorbance_y"]) > 1.0
 
 
+def test_zero_sensitivity_returns_no_detected_peaks() -> None:
+    result = analyze_dpt_files(
+        [("sample-a.dpt", synthetic_dpt())],
+        sensitivity=0,
+    )
+
+    assert result["settings"]["sensitivity"] == 0
+    assert result["samples"][0]["peakCount"] == 0
+    detected = [
+        trace
+        for trace in result["figure"]["data"]
+        if trace.get("meta", {}).get("rist_peak", {}).get("source") == "detected"
+    ]
+    assert detected
+    assert all(trace.get("visible") is False for trace in detected)
+
+
 def test_analyze_uploaded_dpt_rejects_insufficient_data() -> None:
     with pytest.raises(DptAnalysisError) as exc_info:
         analyze_dpt_files([("empty.dpt", b"400,0.1\n500,0.2\n")])

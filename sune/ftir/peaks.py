@@ -75,7 +75,7 @@ def build_interactive_peak_candidates(
     selected_fwhm,
     initial_sensitivity="medium",
 ):
-    """현재 검출 결과와 0~100 민감도 범위의 피크 후보를 병합한다."""
+    """현재 검출 결과와 1~100 민감도 범위의 피크 후보를 병합한다."""
     candidates = {}
 
     def add_candidates(
@@ -116,7 +116,7 @@ def build_interactive_peak_candidates(
 
     first_seen = {}
     preset_indexes = {}
-    for sensitivity in range(101):
+    for sensitivity in range(1, 101):
         params = peak_params_for_sensitivity(sensitivity)
         indexes, _ = find_peaks(
             vec,

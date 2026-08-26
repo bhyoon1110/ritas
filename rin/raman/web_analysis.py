@@ -92,13 +92,19 @@ def analyze_raman_files(
                     smooth_window=SMOOTH_WINDOW,
                     smooth_poly=SMOOTH_POLY,
                 )
-                peak_shift, peak_val, peak_fwhm, peak_idx = detect_peaks_with_fwhm(
-                    processed,
-                    grid,
-                    height=float(params["height"]),
-                    prominence=float(params["prominence"]),
-                    distance=int(params["distance"]),
-                )
+                if sensitivity == 0:
+                    peak_shift = np.empty(0, dtype=float)
+                    peak_val = np.empty(0, dtype=float)
+                    peak_fwhm = np.empty(0, dtype=float)
+                    peak_idx = np.empty(0, dtype=int)
+                else:
+                    peak_shift, peak_val, peak_fwhm, peak_idx = detect_peaks_with_fwhm(
+                        processed,
+                        grid,
+                        height=float(params["height"]),
+                        prominence=float(params["prominence"]),
+                        distance=int(params["distance"]),
+                    )
                 label = _sample_label(raw_sample.label or filename, used_labels)
                 samples.append(
                     {

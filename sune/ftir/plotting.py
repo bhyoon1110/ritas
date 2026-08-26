@@ -667,6 +667,10 @@ def ftir_stack_js(div_id: str) -> str:
     syncControls();
   }
 
+  gd._ristSetYDragMode = function(enabled) {
+    setDragMode(enabled, false);
+  };
+
   if (getComputedStyle(gd).position === "static") gd.style.position = "relative";
   var toolbar = gd.querySelector(".rist-plot-control-row");
   if (!toolbar) {
