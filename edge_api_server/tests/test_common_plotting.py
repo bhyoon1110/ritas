@@ -177,6 +177,8 @@ def test_shared_plotly_module_applies_legend_text(tmp_path) -> None:
     assert "<option value='dashdot'>일점쇄선</option>" in html
     assert '"line.dash": dash' in html
     assert "sampleCurvesForLegendItem" in html
+    assert 'if (isSampleCurve(curve)) update["legendgrouptitle.text"] = value;' in html
+    assert "window.Plotly.restyle(gd, update, curves)" in html
     assert "rist-sample-line-style-change" in html
     assert "rist-legend-group-row" in html
     assert "rist-legend-group-title" in html

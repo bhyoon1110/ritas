@@ -1148,7 +1148,9 @@ def _legend_text_edit_js(div_id: str) -> str:
       }}
     }}
     if (!curves.length) curves = [curve];
-    window.Plotly.restyle(gd, {{ "name": value }}, curves).then(function() {{
+    var update = {{ "name": value }};
+    if (isSampleCurve(curve)) update["legendgrouptitle.text"] = value;
+    window.Plotly.restyle(gd, update, curves).then(function() {{
       try {{
         gd.dispatchEvent(new CustomEvent("rist-legend-name-change", {{
           detail: {{
