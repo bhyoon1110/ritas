@@ -643,7 +643,7 @@ body { overflow-x: hidden; }
   color: #9b1c1c;
 }
 #raman-plot .rist-raman-stack-control {
-  order: 14;
+  order: 40;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -675,7 +675,8 @@ body { overflow-x: hidden; }
   accent-color: #52606d;
 }
 #raman-plot .rist-raman-stack-value {
-  min-width: 24px;
+  flex: 0 0 28px;
+  width: 28px;
   color: #334e68;
   font: bold 10px Arial, sans-serif;
   text-align: right;
@@ -697,7 +698,7 @@ body { overflow-x: hidden; }
   --rist-raman-tool-panel-alpha: 0.97;
 }
 #raman-plot .rist-raman-ratio-control {
-  order: 18;
+  order: 70;
   display: flex;
   align-items: center;
   gap: 5px;
@@ -725,7 +726,9 @@ body { overflow-x: hidden; }
   color: #1d4ed8;
 }
 #raman-plot .rist-raman-ratio-status {
-  min-width: 44px;
+  flex: 0 0 96px;
+  width: 96px;
+  min-width: 96px;
   max-width: 96px;
   overflow: hidden;
   color: #334e68;
@@ -1507,9 +1510,9 @@ body { overflow-x: hidden; }
     padding: 0 2px 6px;
     border-bottom: 1px solid #d7dee8;
     color: #243b53;
-    cursor: move;
+    cursor: default;
     font: bold 12px Arial, sans-serif;
-    touch-action: none;
+    touch-action: auto;
     user-select: none;
   }
   #raman-plot .rist-raman-tools-head span:first-child {
@@ -1560,7 +1563,9 @@ body { overflow-x: hidden; }
     padding: 0 6px;
   }
   #raman-plot .rist-raman-ratio-status {
-    min-width: 36px;
+    flex-basis: 76px;
+    width: 76px;
+    min-width: 76px;
     max-width: 76px;
   }
   #raman-plot .rist-raman-stack-button {
@@ -1573,7 +1578,8 @@ body { overflow-x: hidden; }
     width: 54px;
   }
   #raman-plot .rist-raman-stack-value {
-    min-width: 20px;
+    flex-basis: 24px;
+    width: 24px;
   }
   #raman-plot .rist-peak-sensitivity-slider {
     width: 54px;
@@ -1582,7 +1588,8 @@ body { overflow-x: hidden; }
     width: 38px;
   }
   #raman-plot .rist-peak-sensitivity-value {
-    min-width: 24px;
+    flex-basis: 32px;
+    width: 32px;
   }
   #raman-plot .rist-peak-group-name {
     width: 96px;
@@ -1972,10 +1979,8 @@ _RAMAN_TOOL_PANEL_SCRIPT = """
       + "<button type='button' class='rist-raman-tools-close' aria-label='도구창 닫기'>×</button>";
     toolbar.insertBefore(head, toolbar.firstChild);
   }
-  var head = toolbar.querySelector(".rist-raman-tools-head");
   var opacity = toolbar.querySelector(".rist-raman-tools-opacity");
   var closeButton = toolbar.querySelector(".rist-raman-tools-close");
-  var dragState = null;
   var opacityPointerId = null;
 
   function clamp(value, min, max) {
@@ -2001,41 +2006,19 @@ _RAMAN_TOOL_PANEL_SCRIPT = """
     releasePointer(opacity, pointerId);
   }
 
-  function finishPanelDrag(ev) {
-    if (!dragState) return;
-    if (ev && ev.pointerId != null && ev.pointerId !== dragState.pointerId) return;
-    var pointerId = dragState.pointerId;
-    dragState = null;
-    releasePointer(head, pointerId);
-  }
-
   function cancelToolPointerInteractions() {
     finishOpacityDrag();
-    finishPanelDrag();
   }
 
-  function keepPanelInBounds(left, top) {
-    var plotRect = gd.getBoundingClientRect();
-    var width = toolbar.offsetWidth || 320;
-    var height = toolbar.offsetHeight || 180;
-    var title = gd.querySelector(".gtitle");
-    var titleBottom = title ? title.getBoundingClientRect().bottom - plotRect.top + 8 : 0;
-    var minTop = Math.max(window.innerWidth <= 420 ? 76 : 70, titleBottom);
-    return {
-      left: clamp(left, 8, Math.max(8, plotRect.width - width - 8)),
-      top: clamp(top, minTop, Math.max(minTop, plotRect.height - height - 8))
-    };
-  }
-
-  function setPanelPosition(left, top) {
-    var next = keepPanelInBounds(left, top);
-    toolbar.style.setProperty("left", next.left + "px", "important");
-    toolbar.style.setProperty("right", "auto", "important");
-    toolbar.style.setProperty("top", next.top + "px", "important");
+  function resetToolPanelPosition() {
+    toolbar.style.removeProperty("left");
+    toolbar.style.removeProperty("right");
+    toolbar.style.removeProperty("top");
   }
 
   function setOpen(open) {
     if (!open) cancelToolPointerInteractions();
+    if (open) resetToolPanelPosition();
     gd.classList.toggle("rist-raman-tools-open", open);
     button.setAttribute("aria-expanded", open ? "true" : "false");
     button.title = open ? "그래프 도구 닫기" : "그래프 도구 열기";
@@ -2098,40 +2081,9 @@ _RAMAN_TOOL_PANEL_SCRIPT = """
     opacity.addEventListener("pointercancel", finishOpacityDrag);
     opacity.addEventListener("lostpointercapture", finishOpacityDrag);
   }
-  if (head) {
-    head.addEventListener("pointerdown", function(ev) {
-      if (ev.button !== 0 || dragState) return;
-      if (ev.target.closest(".rist-raman-tools-opacity,.rist-raman-tools-close")) return;
-      var rect = toolbar.getBoundingClientRect();
-      var plotRect = gd.getBoundingClientRect();
-      dragState = {
-        pointerId: ev.pointerId,
-        dx: ev.clientX - rect.left,
-        dy: ev.clientY - rect.top,
-        plotLeft: plotRect.left,
-        plotTop: plotRect.top
-      };
-      if (head.setPointerCapture) {
-        try { head.setPointerCapture(ev.pointerId); } catch (error) {}
-      }
-      ev.preventDefault();
-    });
-    head.addEventListener("pointermove", function(ev) {
-      if (!dragState || ev.pointerId !== dragState.pointerId) return;
-      setPanelPosition(
-        ev.clientX - dragState.plotLeft - dragState.dx,
-        ev.clientY - dragState.plotTop - dragState.dy
-      );
-      ev.preventDefault();
-    });
-    head.addEventListener("pointerup", function(ev) {
-      finishPanelDrag(ev);
-      ev.preventDefault();
-    });
-    head.addEventListener("pointercancel", finishPanelDrag);
-    head.addEventListener("lostpointercapture", finishPanelDrag);
-  }
+  resetToolPanelPosition();
   window.addEventListener("blur", cancelToolPointerInteractions);
+  window.addEventListener("resize", resetToolPanelPosition);
   document.addEventListener("visibilitychange", function() {
     if (document.hidden) cancelToolPointerInteractions();
   });
@@ -2144,6 +2096,7 @@ _RAMAN_TOOL_PANEL_SCRIPT = """
   });
   gd.addEventListener("rist-plot-data-replaced", function() {
     setOpen(false);
+    resetToolPanelPosition();
   });
 })();
 </script>

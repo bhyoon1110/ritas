@@ -283,7 +283,6 @@ def test_raman_workspace_contains_upload_controls() -> None:
     assert "rist-raman-tools-head" in page
     assert "rist-raman-tools-opacity" in page
     assert "setToolPanelAlphaFromPointer" in page
-    assert "setPanelPosition" in page
     assert 'gd.dispatchEvent(new CustomEvent("rist-open-edit-tool"))' in page
     assert 'new CustomEvent("rist-raman-tools-toggle"' in page
     assert "setOpen(!gd.classList.contains" in page
@@ -298,10 +297,23 @@ def test_raman_workspace_contains_upload_controls() -> None:
     assert "max-width: calc(100% - 24px)" in page
     assert "justify-content: flex-end" in page
     assert "text-align: right" in page
-    assert 'var title = gd.querySelector(".gtitle")' in page
-    assert "var titleBottom = title ? title.getBoundingClientRect().bottom - plotRect.top + 8 : 0" in page
-    assert "var minTop = Math.max(window.innerWidth <= 420 ? 76 : 70, titleBottom)" in page
-    assert "top: clamp(top, minTop, Math.max(minTop, plotRect.height - height - 8))" in page
+    assert "function resetToolPanelPosition()" in page
+    assert 'toolbar.style.removeProperty("left")' in page
+    assert 'toolbar.style.removeProperty("right")' in page
+    assert 'toolbar.style.removeProperty("top")' in page
+    assert 'window.addEventListener("resize", resetToolPanelPosition)' in page
+    assert 'head.addEventListener("pointerdown"' not in page
+    assert "button.disabled = !hasPeaks" in page
+    assert "button.hidden = !hasPeaks" not in page
+    assert "#raman-plot .rist-axis-control-button {\n  order: 10;" in page
+    assert "#raman-plot .rist-history-controls {\n  order: 20;" in page
+    assert "#raman-plot .rist-legend-bulk-controls {\n  order: 30;" in page
+    assert "#raman-plot .rist-raman-stack-control {\n  order: 40;" in page
+    assert "#raman-plot .rist-peak-add-button {\n  order: 50;" in page
+    assert "#raman-plot .rist-raman-ratio-control {\n  order: 70;" in page
+    assert "#raman-plot .rist-peak-sensitivity-control {\n  order: 80;" in page
+    assert "#raman-plot .rist-legend-edit-button {\n  order: 90;" in page
+    assert "#raman-plot .rist-shape-tool-button {\n  order: 100;" in page
     assert "@media (max-width: 760px)" in page
     assert "@media (max-width: 1440px)" in page
     assert "@media (max-width: 420px)" in page

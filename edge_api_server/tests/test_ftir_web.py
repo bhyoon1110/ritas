@@ -272,10 +272,24 @@ def test_ftir_workspace_contains_upload_and_editor_controls() -> None:
     assert "max-width: calc(100% - 24px)" in page
     assert "justify-content: flex-end" in page
     assert "text-align: right" in page
-    assert 'var title = gd.querySelector(".gtitle")' in page
-    assert "var titleBottom = title ? title.getBoundingClientRect().bottom - plotRect.top + 8 : 0" in page
-    assert "var minTop = Math.max(window.innerWidth <= 420 ? 76 : 70, titleBottom)" in page
-    assert "top: clamp(top, minTop, Math.max(minTop, plotRect.height - height - 8))" in page
+    assert "function resetToolPanelPosition()" in page
+    assert 'toolbar.style.removeProperty("left")' in page
+    assert 'toolbar.style.removeProperty("right")' in page
+    assert 'toolbar.style.removeProperty("top")' in page
+    assert 'window.addEventListener("resize", resetToolPanelPosition)' in page
+    assert 'head.addEventListener("pointerdown"' not in page
+    assert "button.disabled = !hasPeaks" in page
+    assert "button.hidden = !hasPeaks" not in page
+    assert "#peak-plot .rist-axis-control-button {\n  order: 10;" in page
+    assert "#peak-plot .rist-history-controls {\n  order: 20;" in page
+    assert "#peak-plot .rist-legend-bulk-controls {\n  order: 30;" in page
+    assert "#peak-plot .rist-ftir-stack-control {\n  order: 40;" in page
+    assert "#peak-plot .rist-peak-add-button {\n  order: 50;" in page
+    assert "#peak-plot .rist-peak-sensitivity-control {\n  order: 80;" in page
+    assert "#peak-plot .rist-legend-edit-button {\n  order: 90;" in page
+    assert "#peak-plot .rist-shape-tool-button {\n  order: 100;" in page
+    assert "#peak-plot .rist-ftir-unit-toggle {\n  order: 110;" in page
+    assert "alignToolbarWithLegend" not in page
     assert "rist-plot-data-replaced" in page
     assert "rist-ftir-workspace-v1" in page
     assert "indexedDB.open(SESSION_DB_NAME, 1)" in page

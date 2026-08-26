@@ -245,7 +245,7 @@ def test_peak_label_sync_script_listens_for_legend_edits() -> None:
     assert "rist-peak-edit-button" in html
 
 
-def test_ftir_toggle_aligns_toolbar_with_legend_right_edge() -> None:
+def test_ftir_toggle_keeps_toolbar_position_fixed() -> None:
     html = ftir_abs_trans_toggle_js(
         "peak-plot",
         yaxis_titles={
@@ -256,13 +256,13 @@ def test_ftir_toggle_aligns_toolbar_with_legend_right_edge() -> None:
         },
     )
 
-    assert "function alignToolbarWithLegend()" in html
-    assert 'gd.querySelector(".legend")' in html
-    assert "gdRect.right - legendRect.right" in html
-    assert "gd._ristPeakSensitivityInteracting" in html
-    assert 'gd.on("plotly_afterplot", alignToolbarWithLegend)' in html
-    assert "rist-peak-sensitivity-interaction-end" in html
-    assert 'window.addEventListener("resize", alignToolbarWithLegend)' in html
+    assert "#peak-plot .rist-ftir-unit-toggle {\n  order: 110;" in html
+    assert 'toolbar.style.removeProperty("left")' in html
+    assert 'toolbar.style.removeProperty("right")' in html
+    assert 'toolbar.style.removeProperty("top")' in html
+    assert "alignToolbarWithLegend" not in html
+    assert "gdRect.right - legendRect.right" not in html
+    assert "toolbar.style.right =" not in html
 
 
 def test_multi_peak_fig_groups_peaks_under_each_sample() -> None:

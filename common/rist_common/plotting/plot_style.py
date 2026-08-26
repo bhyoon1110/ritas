@@ -543,7 +543,7 @@ def _legend_text_edit_js(div_id: str) -> str:
   align-items: center;
 }}
 #{div_id} .rist-legend-edit-button {{
-  order: 20;
+  order: 90;
   border: 1px solid #c7d0dd;
   border-radius: 4px;
   background: rgba(255,255,255,0.92);
@@ -854,7 +854,7 @@ def _legend_text_edit_js(div_id: str) -> str:
   cursor: default;
 }}
 #{div_id} .rist-legend-bulk-controls {{
-  order: 10;
+  order: 30;
   display: flex;
   gap: 8px;
   align-items: center;
@@ -872,6 +872,10 @@ def _legend_text_edit_js(div_id: str) -> str:
   border-color: #3b82f6;
   background: #dbeafe;
   color: #1d4ed8;
+}}
+#{div_id} .rist-legend-bulk-button:disabled {{
+  opacity: 0.42;
+  cursor: default;
 }}
 #{div_id} .rist-legend-edit-input {{
   flex: 1 1 auto;
@@ -1898,7 +1902,10 @@ def _legend_text_edit_js(div_id: str) -> str:
       }}
     }}
     bulk.querySelectorAll("[data-peak-control]").forEach(function(button) {{
-      button.hidden = !hasPeaks;
+      button.hidden = false;
+      button.disabled = !hasPeaks;
+      button.classList.toggle("is-unavailable", !hasPeaks);
+      button.setAttribute("aria-disabled", hasPeaks ? "false" : "true");
     }});
     bulk.querySelectorAll("[data-peak-legend-visible]").forEach(function(button) {{
       var requested = button.getAttribute("data-peak-legend-visible") === "true";
@@ -2046,7 +2053,7 @@ def peak_sensitivity_js(div_id: str, initial: str = "medium") -> str:
     return f"""
 <style>
 #{div_id} .rist-peak-sensitivity-control {{
-  order: 19;
+  order: 80;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -2076,7 +2083,8 @@ def peak_sensitivity_js(div_id: str, initial: str = "medium") -> str:
   box-sizing: border-box;
 }}
 #{div_id} .rist-peak-sensitivity-value {{
-  min-width: 28px;
+  flex: 0 0 38px;
+  width: 38px;
   color: #334e68;
   font: bold 10px Arial, sans-serif;
   text-align: right;
@@ -2444,7 +2452,6 @@ def peak_editor_js(div_id: str) -> str:
     return f"""
 <style>
 #{div_id} .rist-peak-edit-button {{
-  order: 15;
   border: 1px solid #9fb3c8;
   border-radius: 4px;
   background: #f5f7fa;
@@ -2458,8 +2465,17 @@ def peak_editor_js(div_id: str) -> str:
   border-color: #3b82f6;
   color: #1d4ed8;
 }}
+#{div_id} .rist-peak-add-button {{
+  order: 50;
+}}
+#{div_id} .rist-peak-delete-button {{
+  order: 51;
+}}
+#{div_id} .rist-peak-select-button {{
+  order: 52;
+}}
 #{div_id} .rist-peak-group-name {{
-  order: 16;
+  order: 60;
   width: 116px;
   min-width: 0;
   border: 1px solid #c7d0dd;
@@ -2471,7 +2487,7 @@ def peak_editor_js(div_id: str) -> str:
   box-sizing: border-box;
 }}
 #{div_id} .rist-peak-group-color {{
-  order: 17;
+  order: 61;
   width: 30px;
   height: 28px;
   border: 1px solid #c7d0dd;
@@ -2482,7 +2498,7 @@ def peak_editor_js(div_id: str) -> str:
   box-sizing: border-box;
 }}
 #{div_id} .rist-peak-group-apply {{
-  order: 18;
+  order: 62;
 }}
 #{div_id} .legend g.traces.rist-legend-locked-by-hidden-sample,
 #{div_id} .legend g.traces.rist-legend-locked-by-hidden-sample * {{
@@ -3749,7 +3765,7 @@ def peak_editor_js(div_id: str) -> str:
 
   var addBtn = document.createElement("button");
   addBtn.type = "button";
-  addBtn.className = "rist-peak-edit-button";
+  addBtn.className = "rist-peak-edit-button rist-peak-add-button";
   addBtn.textContent = "피크 추가";
   addBtn.addEventListener("click", function(ev) {{
     ev.preventDefault();
@@ -3759,7 +3775,7 @@ def peak_editor_js(div_id: str) -> str:
 
   var delBtn = document.createElement("button");
   delBtn.type = "button";
-  delBtn.className = "rist-peak-edit-button";
+  delBtn.className = "rist-peak-edit-button rist-peak-delete-button";
   delBtn.textContent = "피크 삭제";
   delBtn.addEventListener("click", function(ev) {{
     ev.preventDefault();
@@ -3769,7 +3785,7 @@ def peak_editor_js(div_id: str) -> str:
 
   var selectBtn = document.createElement("button");
   selectBtn.type = "button";
-  selectBtn.className = "rist-peak-edit-button";
+  selectBtn.className = "rist-peak-edit-button rist-peak-select-button";
   selectBtn.textContent = "피크 선택";
   selectBtn.addEventListener("click", function(ev) {{
     ev.preventDefault();
@@ -4468,7 +4484,7 @@ def shape_editor_js(div_id: str) -> str:
     return f"""
 <style>
 #{div_id} .rist-shape-tool-button {{
-  order: 22;
+  order: 100;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -6111,7 +6127,7 @@ def _plot_edit_history_js(div_id: str) -> str:
     return f"""
 <style>
 #{div_id} .rist-history-controls {{
-  order: 5;
+  order: 20;
   display: flex;
   gap: 8px;
   align-items: center;
@@ -6663,6 +6679,7 @@ def _axis_controls_js(div_id: str) -> str:
     template = r"""
 <style>
 #__PLOT_ID_CSS__ .rist-axis-control-button {
+  order: 10;
   display: inline-flex;
   align-items: center;
   justify-content: center;

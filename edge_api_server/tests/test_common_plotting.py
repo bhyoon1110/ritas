@@ -113,6 +113,11 @@ def test_shared_plotly_module_applies_legend_text(tmp_path) -> None:
     assert "target.isContentEditable" in html
     assert "[contenteditable]:not([contenteditable='false'])" in html
     assert "if (activePlot && activePlot !== gd) return" in html
+    assert "button.disabled = !hasPeaks" in html
+    assert "button.hidden = !hasPeaks" not in html
+    assert "order: 20" in html
+    assert "order: 30" in html
+    assert "order: 90" in html
     assert "rist-legend-edit-panel" in html
     assert "rist-legend-drag-handle" in html
     assert "범례 이동" in html
@@ -338,6 +343,16 @@ def test_shared_peak_editor_adds_peak_controls(tmp_path) -> None:
     assert "function setPeakActionButtonsDisabled" in html
     assert 'addBtn.disabled = peakActionButtonsDisabled' in html
     assert 'gd.addEventListener("rist-peak-actions-disabled"' in html
+    assert "rist-peak-add-button" in html
+    assert "rist-peak-delete-button" in html
+    assert "rist-peak-select-button" in html
+    assert "order: 50" in html
+    assert "order: 51" in html
+    assert "order: 52" in html
+    assert "order: 60" in html
+    assert "order: 61" in html
+    assert "order: 62" in html
+    assert "order: 100" in html
     assert "manual-peak-group:" in html
     assert "function manualPeakAssignmentAt(x)" in html
     assert "ristManualPeakAssignments" in html

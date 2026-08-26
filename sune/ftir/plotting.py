@@ -120,7 +120,7 @@ def ftir_abs_trans_toggle_js(div_id: str, *, yaxis_titles: dict[str, dict[str, s
   align-items: center;
 }}
 #{div_id} .rist-ftir-unit-toggle {{
-  order: 30;
+  order: 110;
   border: 1px solid #c7d0dd;
   border-radius: 4px;
   background: rgba(255,255,255,0.92);
@@ -214,6 +214,9 @@ def ftir_abs_trans_toggle_js(div_id: str, *, yaxis_titles: dict[str, dict[str, s
     gd.appendChild(toolbar);
   }}
   toolbar.appendChild(btn);
+  toolbar.style.removeProperty("left");
+  toolbar.style.removeProperty("right");
+  toolbar.style.removeProperty("top");
 
   function resetMode() {{
     mode = "absorbance";
@@ -228,25 +231,6 @@ def ftir_abs_trans_toggle_js(div_id: str, *, yaxis_titles: dict[str, dict[str, s
   }}
   gd.addEventListener("rist-plot-data-replaced", resetMode);
 
-  function alignToolbarWithLegend() {{
-    if (gd._ristPeakSensitivityInteracting) return;
-    var legend = gd.querySelector(".legend");
-    if (!legend) {{
-      toolbar.style.right = "30px";
-      return;
-    }}
-    var gdRect = gd.getBoundingClientRect();
-    var legendRect = legend.getBoundingClientRect();
-    var right = Math.max(8, Math.round(gdRect.right - legendRect.right));
-    toolbar.style.right = right + "px";
-  }}
-
-  requestAnimationFrame(alignToolbarWithLegend);
-  gd.on("plotly_afterplot", alignToolbarWithLegend);
-  gd.addEventListener("rist-peak-sensitivity-interaction-end", function() {{
-    requestAnimationFrame(alignToolbarWithLegend);
-  }});
-  window.addEventListener("resize", alignToolbarWithLegend);
 }})();
 </script>
 """
