@@ -2565,9 +2565,93 @@ def peak_editor_js(div_id: str) -> str:
     return n.toFixed(Math.abs(n) >= 100 ? 0 : 2) + " peak";
   }}
 
+  function safeLegendNameHtml(value) {{
+    return String(value == null ? "" : value)
+      .split("<br>")
+      .map(function(part) {{ return esc(part); }})
+      .join("<br>");
+  }}
+
   function labelText(xText, name) {{
     return "<b>" + esc(xText) + "</b><br><span style='font-size:10px'>"
-      + esc(name) + "</span>";
+      + safeLegendNameHtml(name) + "</span>";
+  }}
+
+  function manualPeakAssignmentAt(x) {{
+    var layoutMeta = gd.layout && gd.layout.meta && typeof gd.layout.meta === "object"
+      ? gd.layout.meta : {{}};
+    var catalog = layoutMeta.ristManualPeakAssignments;
+    if (!catalog || !Array.isArray(catalog.items)) return null;
+    var wavenumber = Number(x);
+    if (!Number.isFinite(wavenumber)) return null;
+    var selected = {{}};
+    var libraryOrder = [];
+    catalog.items.forEach(function(item) {{
+      item = item && typeof item === "object" ? item : {{}};
+      var center = Number(item.centerWavenumber);
+      var tolerance = Number(item.tolerance);
+      var name = String(item.name || "").trim();
+      if (!Number.isFinite(center) || !(tolerance > 0) || !name) return;
+      var delta = Math.abs(wavenumber - center);
+      if (delta > tolerance) return;
+      var libraryId = String(item.libraryId || "default");
+      var candidate = {{
+        name: name,
+        color: String(item.color || "#64748b"),
+        note: String(item.note || ""),
+        libraryId: libraryId,
+        libraryName: String(item.libraryName || ""),
+        centerWavenumber: center,
+        tolerance: tolerance,
+        delta: delta
+      }};
+      var current = selected[libraryId];
+      if (!current) libraryOrder.push(libraryId);
+      if (!current || candidate.tolerance < current.tolerance
+          || (candidate.tolerance === current.tolerance
+            && candidate.delta < current.delta)) {{
+        selected[libraryId] = candidate;
+      }}
+    }});
+    var assignments = libraryOrder.map(function(libraryId) {{
+      return selected[libraryId];
+    }}).filter(Boolean);
+    if (!assignments.length) return null;
+    var names = [];
+    assignments.forEach(function(item) {{
+      if (names.indexOf(item.name) < 0) names.push(item.name);
+    }});
+    var defaultLibraryId = String(catalog.defaultLibraryId || "default");
+    var preferred = assignments[0];
+    assignments.some(function(item) {{
+      if (item.libraryId === defaultLibraryId) return false;
+      preferred = item;
+      return true;
+    }});
+    var noteParts = assignments.map(function(item) {{
+      var source = item.libraryName || item.libraryId;
+      var detail = source + ": " + item.name;
+      if (item.note) detail += " — " + item.note;
+      return esc(detail);
+    }});
+    return {{
+      name: names.join("<br>"),
+      nameHtml: names.map(function(name) {{ return esc(name); }}).join("<br>"),
+      color: preferred.color,
+      noteHtml: noteParts.join("<br>"),
+      assignments: assignments.map(function(item) {{
+        return {{
+          name: item.name,
+          color: item.color,
+          note: item.note,
+          library_id: item.libraryId,
+          library_name: item.libraryName,
+          center_wn: item.centerWavenumber,
+          tolerance: item.tolerance,
+          delta: item.delta
+        }};
+      }})
+    }};
   }}
 
   function traceVisible(curve) {{
@@ -3490,14 +3574,19 @@ def peak_editor_js(div_id: str) -> str:
     if (!window.Plotly || !pt) return;
     if (gd._ristHistory) gd._ristHistory.capture();
     var xText = isFinite(Number(pt.x)) ? Number(pt.x).toFixed(0) : String(pt.x);
-    var name = peakName(pt.x);
+    var assignment = manualPeakAssignmentAt(pt.x);
+    var name = assignment ? assignment.name : peakName(pt.x);
     var group = "user-peak-" + Date.now() + "-" + Math.floor(Math.random() * 10000);
     var parentSampleGroup = pt.curve == null ? "" : sampleGroup(pt.curve);
     var legendGroup = parentSampleGroup || group;
     var traceIndex = (gd.data || []).length;
     var annotationIndex = (gd.layout.annotations || []).length;
     var shapeIndex = (gd.layout.shapes || []).length;
-    var color = "#ef4444";
+    var color = assignment ? assignment.color : "#ef4444";
+    var hoverDetails = assignment
+      ? "<br>" + assignment.nameHtml
+        + (assignment.noteHtml ? "<br><i>" + assignment.noteHtml + "</i>" : "")
+      : "";
     var tr = {{
       type: "scatter",
       mode: "markers",
@@ -3515,12 +3604,18 @@ def peak_editor_js(div_id: str) -> str:
       meta: {{
         rist_legend_edit_group: group,
         rist_peak: {{
+          source: "user",
           user: true,
+          x: Number(pt.x),
+          label: name,
           sample_group: parentSampleGroup,
-          label_key: group
+          label_key: group,
+          assignments: assignment ? assignment.assignments : [],
+          base_y: Number(pt.y)
         }}
       }},
-      hovertemplate: "<b>%{{x:.2f}}</b><br>%{{y:.4f}}<extra></extra>"
+      hovertemplate: "<b>%{{x:.2f}}</b>" + hoverDetails
+        + "<br>%{{y:.4f}}<extra></extra>"
     }};
     var ann = {{
       x: pt.x,

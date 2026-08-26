@@ -339,6 +339,11 @@ def test_shared_peak_editor_adds_peak_controls(tmp_path) -> None:
     assert 'addBtn.disabled = peakActionButtonsDisabled' in html
     assert 'gd.addEventListener("rist-peak-actions-disabled"' in html
     assert "manual-peak-group:" in html
+    assert "function manualPeakAssignmentAt(x)" in html
+    assert "ristManualPeakAssignments" in html
+    assert "candidate.tolerance < current.tolerance" in html
+    assert "var assignment = manualPeakAssignmentAt(pt.x);" in html
+    assert "assignments: assignment ? assignment.assignments : []" in html
     assert "manual_group_key" in html
     assert "group_color" in html
     assert "rist_color_group" in html

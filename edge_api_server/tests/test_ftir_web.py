@@ -346,6 +346,22 @@ def test_ftir_analysis_api_accepts_multiple_dpt_files(tmp_path: Path) -> None:
     assert layout["yaxis"]["tickmode"] == "auto"
     assert layout["xaxis"]["fixedrange"] is False
     assert layout["yaxis"]["fixedrange"] is False
+    manual_assignments = layout["meta"]["ristManualPeakAssignments"]
+    assert manual_assignments["defaultLibraryId"] == "general-ftir"
+    assert manual_assignments["items"]
+    assert {
+        "centerWavenumber",
+        "tolerance",
+        "name",
+        "color",
+        "note",
+        "libraryId",
+        "libraryName",
+    } <= manual_assignments["items"][0].keys()
+    assert all(
+        item["libraryId"] == "general-ftir"
+        for item in manual_assignments["items"]
+    )
     stack = layout["meta"]["ristFtirStack"]
     assert stack["enabled"] is True
     assert stack["gap"] == 1.2
@@ -740,6 +756,10 @@ def test_explicit_empty_library_selection_disables_assignment(
     assert response.status_code == 200
     payload = response.json()
     assert payload["settings"]["assignmentLibraries"] == []
+    assert payload["figure"]["layout"]["meta"]["ristManualPeakAssignments"] == {
+        "defaultLibraryId": "general-ftir",
+        "items": [],
+    }
     peak_names = [
         trace.get("name", "")
         for trace in payload["figure"]["data"]
@@ -862,6 +882,16 @@ def test_assignment_library_api_upload_select_and_edit(tmp_path: Path) -> None:
         assert [
             item["id"] for item in payload["settings"]["assignmentLibraries"]
         ] == ["material-a", "material-b"]
+        manual_assignments = payload["figure"]["layout"]["meta"][
+            "ristManualPeakAssignments"
+        ]
+        assert manual_assignments["defaultLibraryId"] == "general-ftir"
+        assert [
+            item["libraryId"] for item in manual_assignments["items"]
+        ] == ["material-a", "material-b"]
+        assert [
+            item["name"] for item in manual_assignments["items"]
+        ] == ["Carbonyl A", "Carbonyl B"]
         peak_names = [
             trace.get("name", "")
             for trace in payload["figure"]["data"]

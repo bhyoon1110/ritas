@@ -11,6 +11,7 @@ import numpy as np
 
 from .assignment_libraries import (
     AssignmentLibrary,
+    DEFAULT_LIBRARY_ID,
     flatten_assignment_libraries,
 )
 from .findings import load_func_groups
@@ -205,6 +206,29 @@ def analyze_dpt_files(
         WN_MAX,
         initial_sensitivity=sensitivity,
     )
+    default_library_id = (
+        DEFAULT_LIBRARY_ID if assignment_libraries is not None else "default"
+    )
+    manual_peak_assignments = []
+    for raw in func_groups:
+        center, tolerance, name, color, note = raw[:5]
+        library_id = raw[5] if len(raw) > 5 else default_library_id
+        library_name = raw[6] if len(raw) > 6 else ""
+        manual_peak_assignments.append({
+            "centerWavenumber": float(center),
+            "tolerance": float(tolerance),
+            "name": str(name),
+            "color": str(color),
+            "note": str(note),
+            "libraryId": str(library_id),
+            "libraryName": str(library_name),
+        })
+    figure_meta = dict(figure.layout.meta or {})
+    figure_meta["ristManualPeakAssignments"] = {
+        "defaultLibraryId": default_library_id,
+        "items": manual_peak_assignments,
+    }
+    figure.update_layout(meta=figure_meta)
     return {
         "figure": json.loads(figure.to_json()),
         "samples": summaries,
