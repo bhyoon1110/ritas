@@ -1855,6 +1855,8 @@ def _legend_text_edit_js(div_id: str) -> str:
   function peakMatchesCurrentSensitivity(curve) {{
     var peak = traceMeta(curve).rist_peak;
     if (!peak || !Number.isFinite(Number(peak.sensitivity_min))) return true;
+    if (typeof gd._ristDetectedPeakOverridden === "function"
+        && gd._ristDetectedPeakOverridden(curve)) return false;
     var current = Number(gd._ristPeakSensitivityValue);
     if (!Number.isFinite(current)) return true;
     if (current <= 0) return false;
@@ -2230,14 +2232,26 @@ def peak_sensitivity_js(div_id: str, initial: str = "medium") -> str:
     return layoutMeta.ristPeakLegendEntriesVisible !== false;
   }}
 
+  function manualDetectedPeakOverrideKeys() {{
+    if (typeof gd._ristManualDetectedPeakOverrideKeys !== "function") return null;
+    return gd._ristManualDetectedPeakOverrideKeys();
+  }}
+
+  function detectedPeakOverridden(curve, overrideKeys) {{
+    if (typeof gd._ristDetectedPeakOverridden !== "function") return false;
+    return gd._ristDetectedPeakOverridden(curve, overrideKeys);
+  }}
+
   function currentVisibleCount() {{
     var data = gd.data || [];
     var sensitivity = Number(gd._ristPeakSensitivityValue);
     if (!Number.isFinite(sensitivity) || sensitivity <= 0) return 0;
+    var overrideKeys = manualDetectedPeakOverrideKeys();
     var count = 0;
     for (var i = 0; i < data.length; i++) {{
       var minimum = minimumSensitivity(i);
-      if (minimum != null && minimum <= sensitivity) count += 1;
+      if (minimum != null && minimum <= sensitivity
+          && !detectedPeakOverridden(i, overrideKeys)) count += 1;
     }}
     return count;
   }}
@@ -2260,10 +2274,12 @@ def peak_sensitivity_js(div_id: str, initial: str = "medium") -> str:
     var seenLegendItems = {{}};
     var visibleByCurve = {{}};
     var eligibleCount = 0;
+    var overrideKeys = manualDetectedPeakOverrideKeys();
     for (var i = 0; i < data.length; i++) {{
       var minimum = minimumSensitivity(i);
       if (minimum == null) continue;
-      var eligible = sensitivity > 0 && minimum <= sensitivity;
+      var eligible = sensitivity > 0 && minimum <= sensitivity
+        && !detectedPeakOverridden(i, overrideKeys);
       var on = eligible && peakUserVisible(i) && sampleVisible(sampleGroup(i));
       var visibility = eligible ? (on ? true : "legendonly") : false;
       var meta = traceMeta(i);
@@ -2488,6 +2504,12 @@ def peak_sensitivity_js(div_id: str, initial: str = "medium") -> str:
       ? Number(detail.sensitivity)
       : gd._ristPeakSensitivityValue;
     requestSensitivity(next);
+  }});
+  gd.addEventListener("rist-plot-structure-changed", function() {{
+    requestSensitivity(gd._ristPeakSensitivityValue);
+  }});
+  gd.addEventListener("rist-history-restored", function() {{
+    requestSensitivity(gd._ristPeakSensitivityValue);
   }});
   updateStatus(currentVisibleCount());
 }})();
@@ -2869,6 +2891,62 @@ def peak_editor_js(div_id: str) -> str:
     var meta = traceMeta(curve);
     return !!(meta && meta.rist_peak);
   }}
+
+  function peakPositionKey(group, x) {{
+    x = Number(x);
+    if (!Number.isFinite(x)) return "";
+    return String(group || "") + "|" + x.toPrecision(15);
+  }}
+
+  function peakX(curve) {{
+    var trace = (gd.data || [])[curve] || {{}};
+    var peak = traceMeta(curve).rist_peak || {{}};
+    var x = Number(peak.x);
+    if (!Number.isFinite(x) && trace.x && trace.x.length) x = Number(trace.x[0]);
+    return Number.isFinite(x) ? x : null;
+  }}
+
+  function detectedPeakOverrideKey(curve) {{
+    var peak = traceMeta(curve).rist_peak;
+    if (!peak || peak.source !== "detected") return "";
+    return peakPositionKey(sampleGroup(curve), peakX(curve));
+  }}
+
+  var manualDetectedPeakOverrideCache = null;
+
+  function invalidateManualDetectedPeakOverrides() {{
+    manualDetectedPeakOverrideCache = null;
+  }}
+
+  function manualDetectedPeakOverrideKeys() {{
+    if (manualDetectedPeakOverrideCache) return manualDetectedPeakOverrideCache;
+    var keys = Object.create(null);
+    var data = gd.data || [];
+    for (var curve = 0; curve < data.length; curve++) {{
+      var peak = traceMeta(curve).rist_peak;
+      if (!peak || (peak.source !== "user" && peak.user !== true)) continue;
+      var explicitKey = String(peak.overrides_detected_peak_key || "");
+      if (explicitKey) keys[explicitKey] = true;
+      var positionKey = peakPositionKey(sampleGroup(curve), peakX(curve));
+      if (positionKey) keys[positionKey] = true;
+    }}
+    manualDetectedPeakOverrideCache = keys;
+    return keys;
+  }}
+
+  function detectedPeakOverridden(curve, overrideKeys) {{
+    var key = detectedPeakOverrideKey(curve);
+    if (!key) return false;
+    var keys = overrideKeys || manualDetectedPeakOverrideKeys();
+    return !!(keys && Object.prototype.hasOwnProperty.call(keys, key));
+  }}
+
+  gd._ristDetectedPeakOverrideKey = detectedPeakOverrideKey;
+  gd._ristManualDetectedPeakOverrideKeys = manualDetectedPeakOverrideKeys;
+  gd._ristDetectedPeakOverridden = detectedPeakOverridden;
+  gd.addEventListener("rist-plot-structure-changed", invalidateManualDetectedPeakOverrides);
+  gd.addEventListener("rist-plot-data-replaced", invalidateManualDetectedPeakOverrides);
+  gd.addEventListener("rist-history-restored", invalidateManualDetectedPeakOverrides);
 
   function isMaximumSensitivityPeakCurve(curve) {{
     var peak = traceMeta(curve).rist_peak;
@@ -3488,9 +3566,10 @@ def peak_editor_js(div_id: str) -> str:
     return curves;
   }}
 
-  function peakMatchesCurrentSensitivity(curve) {{
+  function peakMatchesCurrentSensitivity(curve, overrideKeys) {{
     var peak = traceMeta(curve).rist_peak;
     if (!peak || !Number.isFinite(Number(peak.sensitivity_min))) return true;
+    if (detectedPeakOverridden(curve, overrideKeys)) return false;
     var sensitivity = Number(gd._ristPeakSensitivityValue);
     if (!Number.isFinite(sensitivity)) return true;
     if (sensitivity <= 0) return false;
@@ -3506,6 +3585,7 @@ def peak_editor_js(div_id: str) -> str:
     if (!Array.isArray(curves)) curves = [curves];
     var visibleValues = update.visible;
     var pending = [];
+    var overrideKeys = manualDetectedPeakOverrideKeys();
     curves.forEach(function(curve, pos) {{
       if (!isSampleParent(curve)) return;
       var group = sampleGroup(curve);
@@ -3516,7 +3596,7 @@ def peak_editor_js(div_id: str) -> str:
       var parentVisible = visible !== false && visible !== "legendonly";
       if (!parentVisible) rememberPeakUserVisibility(childCurves);
       var childVisibility = childCurves.map(function(childCurve) {{
-        if (!peakMatchesCurrentSensitivity(childCurve)) return false;
+        if (!peakMatchesCurrentSensitivity(childCurve, overrideKeys)) return false;
         if (!parentVisible) return "legendonly";
         return peakUserVisible(childCurve) ? true : "legendonly";
       }});
@@ -3784,6 +3864,9 @@ def peak_editor_js(div_id: str) -> str:
           label_key: group,
           assignments: assignment ? assignment.assignments : [],
           assignment_sensitivity: assignment ? 100 : null,
+          overrides_detected_peak_key: detectedPeakOverrideKey(
+            pt.maximumSensitivityPeakCurve
+          ) || null,
           base_y: Number(pt.y)
         }}
       }},

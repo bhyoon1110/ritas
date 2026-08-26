@@ -483,6 +483,13 @@ def test_shared_peak_editor_adds_peak_controls(tmp_path) -> None:
     assert "var assignment = assignmentForMaximumSensitivityPeak(" in html
     assert "assignments: assignment ? assignment.assignments : []" in html
     assert "assignment_sensitivity: assignment ? 100 : null" in html
+    assert "function detectedPeakOverrideKey(curve)" in html
+    assert "function manualDetectedPeakOverrideKeys()" in html
+    assert "function detectedPeakOverridden(curve, overrideKeys)" in html
+    assert "gd._ristDetectedPeakOverridden = detectedPeakOverridden" in html
+    assert "overrides_detected_peak_key: detectedPeakOverrideKey(" in html
+    assert 'peak.source !== "user" && peak.user !== true' in html
+    assert "positionKey" in html
     assert "manual_group_key" in html
     assert "group_color" in html
     assert "rist_color_group" in html
@@ -595,7 +602,10 @@ def test_shared_peak_editor_adds_peak_controls(tmp_path) -> None:
     assert 'gd.on("plotly_afterplot", updateHiddenSamplePeakLegendLocks)' in html
     assert "peakMatchesCurrentSensitivity" in html
     assert "if (!parentVisible) rememberPeakUserVisibility(childCurves)" in html
-    assert "if (!peakMatchesCurrentSensitivity(childCurve)) return false" in html
+    assert (
+        "if (!peakMatchesCurrentSensitivity(childCurve, overrideKeys)) return false"
+        in html
+    )
     assert 'return peakUserVisible(childCurve) ? true : "legendonly"' in html
     assert "rist-shape-tool-button" in html
     assert "lucide lucide-square" in html
@@ -791,6 +801,11 @@ def test_peak_sensitivity_control_filters_detected_peak_metadata() -> None:
     assert "peakUserVisible" in html
     assert "peakLabelsVisible" in html
     assert "eligible && peakUserVisible(i)" in html
+    assert "manualDetectedPeakOverrideKeys" in html
+    assert "detectedPeakOverridden(i, overrideKeys)" in html
+    assert "!detectedPeakOverridden(i, overrideKeys)" in html
+    assert 'gd.addEventListener("rist-plot-structure-changed"' in html
+    assert 'gd.addEventListener("rist-history-restored"' in html
     assert "value='25'" in html
 
 
