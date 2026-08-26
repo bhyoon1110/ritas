@@ -72,7 +72,7 @@ def test_title_editor_can_clear_and_reopen_an_empty_title(tmp_path) -> None:
     assert 'inp.value.trim() !== ""' not in html
 
 
-def test_image_export_uses_sample_only_offscreen_figure(tmp_path) -> None:
+def test_image_export_keeps_visible_peaks_with_sample_only_legend(tmp_path) -> None:
     figure = go.Figure(
         data=[
             go.Scatter(
@@ -123,11 +123,15 @@ def test_image_export_uses_sample_only_offscreen_figure(tmp_path) -> None:
     assert "function chooseLegendPlacement" in html
     assert "function segmentIntersectsLegendCandidate" in html
     assert "gd._ristBuildImageExportPayload = buildImageExportPayload" in html
-    assert "var labelledPeakTraces = labelledPeakTraceIndexes(layout)" in html
-    assert "labelledPeakTraces[index] && !isSampleTrace(trace)" in html
-    assert "if (hasSampleMetadata && !isSampleTrace(trace)) return" in html
+    assert "if (!traceIsVisible(trace)) return" in html
+    assert "? isSampleTrace(trace)" in html
+    assert "var visiblePeakTraceCount = exportData.filter(isPeakTrace).length" in html
+    assert "stripPeakArtifacts" not in html
     assert "delete trace.legendrank" not in html
-    assert "layout.meta.ristPeakLabels = []" in html
+    assert "layout.meta.ristPeakLabels = []" not in html
+    assert "var legendData = data.filter(function(trace)" in html
+    assert "legendData.forEach(function(trace)" in html
+    assert "legendData.length * 23 + 18" in html
     assert 'corner: "top-left"' in html
     assert "var topLeftOccupied = scores[0] > 0" in html
     assert "if (topLeftOccupied)" in html
@@ -143,6 +147,11 @@ def test_image_export_uses_sample_only_offscreen_figure(tmp_path) -> None:
     assert "legendOverlapScores: placement.scores" in html
     assert "legendReservedTopHeadroom: reservedTopHeadroom" in html
     assert "legendHeadroomAdjustments: headroomAdjustments" in html
+    assert 'if (!layout.meta || typeof layout.meta !== "object"' in html
+    assert "sampleLegendOnly: hasSampleMetadata" in html
+    assert "peaksIncluded: visiblePeakTraceCount > 0" in html
+    assert "visiblePeakTraceCount: visiblePeakTraceCount" in html
+    assert "peaksRemoved: false" in html
     assert 'xref: "paper"' in html
     assert 'yref: "paper"' in html
     assert "layout.margin = {" in html
@@ -150,6 +159,7 @@ def test_image_export_uses_sample_only_offscreen_figure(tmp_path) -> None:
     assert "window.Plotly.newPlot(" in html
     assert "window.Plotly.downloadImage(temp" in html
     assert "window.Plotly.downloadImage(gd" not in html
+    assert 'ev.target.closest(".modebar-btn")' in html
     assert "removeExportPlot(temp)" in html
 
 

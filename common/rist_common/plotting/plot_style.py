@@ -4420,15 +4420,15 @@ def peak_editor_js(div_id: str) -> str:
 
 
 def _image_download_js(div_id: str, formats, filename: str, scale: float) -> str:
-    """샘플 중심의 이미지 저장과 형식 선택 팝업을 제공하는 JS 스니펫.
+    """그래프 이미지 저장과 형식 선택 팝업을 제공하는 JS 스니펫.
 
     화면에 보이는 Figure를 직접 변경하지 않고 저장 전용 Figure를 만든다. 저장본은
-    피크 trace/라벨/보조선을 제외하고 샘플 trace만 범례에 표시하며, 범례는
-    기본적으로 그래프 안쪽 좌측 상단에 둔다. 좌측 상단을 곡선·점·도형이
-    점유하면 나머지 세 모서리 중 완전히 빈 곳으로만 옮긴다. 네 곳이 모두
-    차 있으면 저장본의 Y축 상단 범위를 늘려 좌측 상단 범례 공간을 별도로
-    확보한다. 외부 범례용 여백도 제거해 plot 영역을 이미지 전체에 가깝게
-    확장한다.
+    현재 표시 중인 피크 trace·라벨·보조선을 포함하되 범례에는 샘플 trace만
+    표시한다. 범례는 기본적으로 그래프 안쪽 좌측 상단에 두고, 좌측 상단을
+    곡선·피크·라벨·도형이 점유하면 나머지 세 모서리 중 완전히 빈 곳으로만
+    옮긴다. 네 곳이 모두 차 있으면 저장본의 Y축 상단 범위를 늘려 좌측 상단
+    범례 공간을 별도로 확보한다. 외부 범례용 여백도 제거해 plot 영역을 이미지
+    전체에 가깝게 확장한다.
     """
     opts = "".join(
         f"<button data-fmt='{f}' style='display:block;width:100%;text-align:left;"
@@ -4486,56 +4486,6 @@ def _image_download_js(div_id: str, formats, filename: str, scale: float) -> str
 
   function isSampleTrace(trace) {
     return !!traceMeta(trace).rist_sample_parent;
-  }
-
-  function isPeakAnnotation(annotation) {
-    var name = String(annotation && annotation.name || "");
-    return /(?:^|[_:-])(?:ftir_|raman_|rist_user_)?peak_label(?:[_:-]|$)/i.test(name);
-  }
-
-  function isPeakShape(shape) {
-    var name = String(shape && shape.name || "");
-    return /^rist_(?:user_)?peak(?:[_:-]|$)/i.test(name);
-  }
-
-  function labelledPeakTraceIndexes(layout) {
-    var indexes = {};
-    var labels = layout.meta && Array.isArray(layout.meta.ristPeakLabels)
-      ? layout.meta.ristPeakLabels : [];
-    labels.forEach(function(label) {
-      var value = label && label.traceIndex;
-      var index = Number(value);
-      if (value !== undefined && value !== null && Number.isFinite(index)) {
-        indexes[index] = true;
-      }
-    });
-    return indexes;
-  }
-
-  function stripPeakArtifacts(layout) {
-    var labels = layout.meta && Array.isArray(layout.meta.ristPeakLabels)
-      ? layout.meta.ristPeakLabels : [];
-    var peakAnnotations = {};
-    var peakShapes = {};
-    labels.forEach(function(label) {
-      var annotationValue = label && label.annotationIndex;
-      var shapeValue = label && label.shapeIndex;
-      var annotationIndex = Number(annotationValue);
-      var shapeIndex = Number(shapeValue);
-      if (annotationValue !== undefined && annotationValue !== null
-          && Number.isFinite(annotationIndex)) peakAnnotations[annotationIndex] = true;
-      if (shapeValue !== undefined && shapeValue !== null
-          && Number.isFinite(shapeIndex)) peakShapes[shapeIndex] = true;
-    });
-    layout.annotations = (layout.annotations || []).filter(function(annotation, index) {
-      return !peakAnnotations[index] && !isPeakAnnotation(annotation);
-    });
-    layout.shapes = (layout.shapes || []).filter(function(shape, index) {
-      return !peakShapes[index] && !isPeakShape(shape);
-    });
-    if (!layout.meta || typeof layout.meta !== "object") layout.meta = {};
-    layout.meta.ristPeakLabels = [];
-    return layout;
   }
 
   function arrayValues(values) {
@@ -4649,13 +4599,20 @@ def _image_download_js(div_id: str, formats, filename: str, scale: float) -> str
     var margin = layout.margin || {};
     var plotWidth = Math.max(320, width - Number(margin.l || 0) - Number(margin.r || 0));
     var plotHeight = Math.max(240, height - Number(margin.t || 0) - Number(margin.b || 0));
+    var legendData = data.filter(function(trace) {
+      return traceIsVisible(trace) && trace.showlegend !== false
+        && String(trace.name || "").trim() !== "";
+    });
     var longestName = 0;
-    data.forEach(function(trace) {
+    legendData.forEach(function(trace) {
       var plainName = String(trace && trace.name || "").replace(/<[^>]*>/g, "");
       longestName = Math.max(longestName, plainName.length);
     });
     var legendWidth = Math.max(0.16, Math.min(0.38, (longestName * 6.5 + 54) / plotWidth));
-    var legendHeight = Math.max(0.08, Math.min(0.42, (data.length * 23 + 18) / plotHeight));
+    var legendHeight = Math.max(
+      0.08,
+      Math.min(0.42, (legendData.length * 23 + 18) / plotHeight)
+    );
     var candidates = [
       {corner: "top-left", x: 0.018, y: 0.982, xanchor: "left", yanchor: "top",
        left: 0, right: legendWidth + 0.025, bottom: 1 - legendHeight - 0.025, top: 1},
@@ -4794,21 +4751,19 @@ def _image_download_js(div_id: str, formats, filename: str, scale: float) -> str
   function buildImageExportPayload(sourceData, sourceLayout, width, height) {
     var data = cloneValue(sourceData, []);
     var layout = cloneValue(sourceLayout, {});
-    var labelledPeakTraces = labelledPeakTraceIndexes(layout);
-    stripPeakArtifacts(layout);
     var hasSampleMetadata = data.some(isSampleTrace);
     var exportData = [];
-    data.forEach(function(trace, index) {
-      if (!traceIsVisible(trace) || isPeakTrace(trace)
-          || (labelledPeakTraces[index] && !isSampleTrace(trace))) return;
-      if (hasSampleMetadata && !isSampleTrace(trace)) return;
+    data.forEach(function(trace) {
+      if (!traceIsVisible(trace)) return;
       trace.visible = true;
       trace.showlegend = hasSampleMetadata
-        ? true : (trace.showlegend !== false && String(trace.name || "").trim() !== "");
+        ? isSampleTrace(trace)
+        : (trace.showlegend !== false && String(trace.name || "").trim() !== "");
       trace.legendgroup = "";
       delete trace.legendgrouptitle;
       exportData.push(trace);
     });
+    var visiblePeakTraceCount = exportData.filter(isPeakTrace).length;
 
     var titleText = layout.title && typeof layout.title === "object"
       ? String(layout.title.text || "").trim() : String(layout.title || "").trim();
@@ -4854,9 +4809,14 @@ def _image_download_js(div_id: str, formats, filename: str, scale: float) -> str
       font: Object.assign({}, originalLegend.font || {}, {size: 11})
     });
     layout.showlegend = hasLegend;
+    if (!layout.meta || typeof layout.meta !== "object" || Array.isArray(layout.meta)) {
+      layout.meta = {};
+    }
     layout.meta.ristImageExport = {
-      sampleOnly: hasSampleMetadata,
-      peaksRemoved: true,
+      sampleLegendOnly: hasSampleMetadata,
+      peaksIncluded: visiblePeakTraceCount > 0,
+      visiblePeakTraceCount: visiblePeakTraceCount,
+      peaksRemoved: false,
       legendCorner: placement.corner,
       legendMoved: placement.corner !== "top-left",
       legendOverlapScores: placement.scores,
@@ -4937,7 +4897,8 @@ def _image_download_js(div_id: str, formats, filename: str, scale: float) -> str
 
   // 모드바의 'Download plot' 버튼 클릭을 가로채 팝업 표시
   document.addEventListener("click", function(ev) {
-    var btn = ev.target.closest("a.modebar-btn");
+    // Plotly 5는 <a>, Plotly 6은 <button>을 사용하므로 태그에 의존하지 않는다.
+    var btn = ev.target.closest(".modebar-btn");
     if (btn && /Download/i.test(btn.getAttribute("data-title") || "")
         && gd.contains(btn)) {
       ev.preventDefault();
