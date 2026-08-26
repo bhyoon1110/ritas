@@ -864,12 +864,26 @@ def test_raman_assignment_library_api_defaults_and_assigns_sample() -> None:
     assert response.status_code == 200
     payload = response.json()
     assert payload["settings"]["assignmentLibraries"][0]["id"] == "general-raman"
-    peak_names = [
-        trace.get("name", "")
+    maximum_sensitivity_peaks = [
+        trace
         for trace in payload["figure"]["data"]
-        if trace.get("meta", {}).get("rist_peak")
+        if 0
+        < trace.get("meta", {}).get("rist_peak", {}).get(
+            "sensitivity_min", 101
+        )
+        <= 100
     ]
-    assert any("D band" in name or "G band" in name for name in peak_names)
+    assert maximum_sensitivity_peaks
+    assert any(
+        "D band" in trace.get("name", "") or "G band" in trace.get("name", "")
+        for trace in maximum_sensitivity_peaks
+    )
+    assigned_libraries = {
+        assignment["library_id"]
+        for trace in maximum_sensitivity_peaks
+        for assignment in trace["meta"]["rist_peak"]["assignments"]
+    }
+    assert assigned_libraries == {"general-raman"}
 
 
 def test_raman_assignment_library_suggest_api_returns_draft(monkeypatch) -> None:

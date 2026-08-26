@@ -2659,6 +2659,45 @@ def peak_editor_js(div_id: str) -> str:
       + safeLegendNameHtml(name) + "</span>";
   }}
 
+  function formatPeakAssignments(assignments, defaultLibraryId) {{
+    assignments = Array.isArray(assignments) ? assignments.filter(Boolean) : [];
+    if (!assignments.length) return null;
+    var names = [];
+    assignments.forEach(function(item) {{
+      if (names.indexOf(item.name) < 0) names.push(item.name);
+    }});
+    var preferred = assignments[0];
+    assignments.some(function(item) {{
+      if (item.libraryId === defaultLibraryId) return false;
+      preferred = item;
+      return true;
+    }});
+    var noteParts = assignments.map(function(item) {{
+      var source = item.libraryName || item.libraryId;
+      var detail = source + ": " + item.name;
+      if (item.note) detail += " — " + item.note;
+      return esc(detail);
+    }});
+    return {{
+      name: names.join("<br>"),
+      nameHtml: names.map(function(name) {{ return esc(name); }}).join("<br>"),
+      color: preferred.color,
+      noteHtml: noteParts.join("<br>"),
+      assignments: assignments.map(function(item) {{
+        return {{
+          name: item.name,
+          color: item.color,
+          note: item.note,
+          library_id: item.libraryId,
+          library_name: item.libraryName,
+          center_wn: item.centerWavenumber,
+          tolerance: item.tolerance,
+          delta: item.delta
+        }};
+      }})
+    }};
+  }}
+
   function manualPeakAssignmentAt(x) {{
     var layoutMeta = gd.layout && gd.layout.meta && typeof gd.layout.meta === "object"
       ? gd.layout.meta : {{}};
@@ -2698,42 +2737,8 @@ def peak_editor_js(div_id: str) -> str:
     var assignments = libraryOrder.map(function(libraryId) {{
       return selected[libraryId];
     }}).filter(Boolean);
-    if (!assignments.length) return null;
-    var names = [];
-    assignments.forEach(function(item) {{
-      if (names.indexOf(item.name) < 0) names.push(item.name);
-    }});
     var defaultLibraryId = String(catalog.defaultLibraryId || "default");
-    var preferred = assignments[0];
-    assignments.some(function(item) {{
-      if (item.libraryId === defaultLibraryId) return false;
-      preferred = item;
-      return true;
-    }});
-    var noteParts = assignments.map(function(item) {{
-      var source = item.libraryName || item.libraryId;
-      var detail = source + ": " + item.name;
-      if (item.note) detail += " — " + item.note;
-      return esc(detail);
-    }});
-    return {{
-      name: names.join("<br>"),
-      nameHtml: names.map(function(name) {{ return esc(name); }}).join("<br>"),
-      color: preferred.color,
-      noteHtml: noteParts.join("<br>"),
-      assignments: assignments.map(function(item) {{
-        return {{
-          name: item.name,
-          color: item.color,
-          note: item.note,
-          library_id: item.libraryId,
-          library_name: item.libraryName,
-          center_wn: item.centerWavenumber,
-          tolerance: item.tolerance,
-          delta: item.delta
-        }};
-      }})
-    }};
+    return formatPeakAssignments(assignments, defaultLibraryId);
   }}
 
   function traceVisible(curve) {{
@@ -2864,6 +2869,74 @@ def peak_editor_js(div_id: str) -> str:
     var meta = traceMeta(curve);
     return !!(meta && meta.rist_peak);
   }}
+
+  function isMaximumSensitivityPeakCurve(curve) {{
+    var peak = traceMeta(curve).rist_peak;
+    if (!peak || peak.source !== "detected") return false;
+    var minimum = Number(peak.sensitivity_min);
+    if (Number.isFinite(minimum)) return minimum > 0 && minimum <= 100;
+    var levels = Array.isArray(peak.sensitivity_levels) ? peak.sensitivity_levels : [];
+    return levels.indexOf("high") >= 0;
+  }}
+
+  function maximumSensitivityPeakForSample(group, targetX) {{
+    group = String(group || "");
+    targetX = Number(targetX);
+    if (!group || !Number.isFinite(targetX)) return null;
+    var data = gd.data || [];
+    var best = null;
+    var bestDistance = Infinity;
+    for (var curve = 0; curve < data.length; curve++) {{
+      if (!isMaximumSensitivityPeakCurve(curve) || sampleGroup(curve) !== group) continue;
+      var trace = data[curve] || {{}};
+      var peak = traceMeta(curve).rist_peak || {{}};
+      var x = Number(peak.x);
+      if (!Number.isFinite(x) && trace.x && trace.x.length) x = Number(trace.x[0]);
+      var y = trace.y && trace.y.length ? Number(trace.y[0]) : Number(peak.base_y);
+      if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+      var distance = Math.abs(x - targetX);
+      if (distance < bestDistance) {{
+        bestDistance = distance;
+        best = {{x: x, y: y, curve: curve, distance: distance}};
+      }}
+    }}
+    return best;
+  }}
+
+  function assignmentForMaximumSensitivityPeak(curve) {{
+    if (!isMaximumSensitivityPeakCurve(curve)) return null;
+    var peak = traceMeta(curve).rist_peak || {{}};
+    var assignments = Array.isArray(peak.assignments) ? peak.assignments : [];
+    var normalized = assignments.map(function(item) {{
+      item = item && typeof item === "object" ? item : {{}};
+      var name = String(item.name || "").trim();
+      if (!name) return null;
+      var center = Number(item.center_wn);
+      if (!Number.isFinite(center)) center = Number(item.centerWavenumber);
+      if (!Number.isFinite(center)) center = Number(peak.x);
+      var tolerance = Number(item.tolerance);
+      var delta = Number(item.delta);
+      return {{
+        name: name,
+        color: String(item.color || "#64748b"),
+        note: String(item.note || ""),
+        libraryId: String(item.library_id || item.libraryId || "default"),
+        libraryName: String(item.library_name || item.libraryName || ""),
+        centerWavenumber: center,
+        tolerance: Number.isFinite(tolerance) ? tolerance : 0,
+        delta: Number.isFinite(delta) ? delta : Math.abs(Number(peak.x) - center)
+      }};
+    }}).filter(Boolean);
+    var layoutMeta = gd.layout && gd.layout.meta && typeof gd.layout.meta === "object"
+      ? gd.layout.meta : {{}};
+    var catalog = layoutMeta.ristManualPeakAssignments || {{}};
+    var defaultLibraryId = String(catalog.defaultLibraryId || "default");
+    return formatPeakAssignments(normalized, defaultLibraryId)
+      || manualPeakAssignmentAt(peak.x);
+  }}
+
+  gd._ristMaximumSensitivityPeakForSample = maximumSensitivityPeakForSample;
+  gd._ristAssignmentForMaximumSensitivityPeak = assignmentForMaximumSensitivityPeak;
 
   function peakUserVisibilityStore() {{
     if (!gd._ristPeakUserVisibility || typeof gd._ristPeakUserVisibility !== "object") {{
@@ -3625,6 +3698,25 @@ def peak_editor_js(div_id: str) -> str:
         targetTrace = t;
       }}
     }}
+    if (targetTrace >= 0) {{
+      var maximumPeak = maximumSensitivityPeakForSample(
+        sampleGroup(targetTrace), curX
+      );
+      var maximumPeakPixel = maximumPeak && xa.d2p
+        ? Number(xa.d2p(maximumPeak.x)) : NaN;
+      if (maximumPeak && Number.isFinite(maximumPeakPixel)
+          && Math.abs(maximumPeakPixel - px) <= 36) {{
+        return {{
+          x: maximumPeak.x,
+          y: maximumPeak.y,
+          curve: targetTrace,
+          maximumSensitivityPeakCurve: maximumPeak.curve,
+          assumedSensitivity: 100,
+          localMaximum: true,
+          yNearestTrace: true
+        }};
+      }}
+    }}
     for (var t2 = 0; t2 < data.length; t2++) {{
       if (targetTrace >= 0 && t2 !== targetTrace) continue;
       var tr2 = data[t2];
@@ -3656,7 +3748,9 @@ def peak_editor_js(div_id: str) -> str:
     if (!window.Plotly || !pt) return;
     if (gd._ristHistory) gd._ristHistory.capture();
     var xText = isFinite(Number(pt.x)) ? Number(pt.x).toFixed(0) : String(pt.x);
-    var assignment = manualPeakAssignmentAt(pt.x);
+    var assignment = assignmentForMaximumSensitivityPeak(
+      pt.maximumSensitivityPeakCurve
+    );
     var name = assignment ? assignment.name : peakName(pt.x);
     var group = "user-peak-" + Date.now() + "-" + Math.floor(Math.random() * 10000);
     var parentSampleGroup = pt.curve == null ? "" : sampleGroup(pt.curve);
@@ -3693,6 +3787,7 @@ def peak_editor_js(div_id: str) -> str:
           sample_group: parentSampleGroup,
           label_key: group,
           assignments: assignment ? assignment.assignments : [],
+          assignment_sensitivity: assignment ? 100 : null,
           base_y: Number(pt.y)
         }}
       }},

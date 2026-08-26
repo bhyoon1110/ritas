@@ -918,12 +918,25 @@ def test_assignment_library_api_upload_select_and_edit(tmp_path: Path) -> None:
         assert [
             item["name"] for item in manual_assignments["items"]
         ] == ["Carbonyl A", "Carbonyl B"]
-        peak_names = [
-            trace.get("name", "")
+        maximum_sensitivity_peaks = [
+            trace
             for trace in payload["figure"]["data"]
-            if trace.get("meta", {}).get("rist_peak")
+            if 0
+            < trace.get("meta", {}).get("rist_peak", {}).get(
+                "sensitivity_min", 101
+            )
+            <= 100
         ]
-        assert any("Carbonyl A<br>Carbonyl B" in name for name in peak_names)
+        assert maximum_sensitivity_peaks
+        assert any(
+            "Carbonyl A<br>Carbonyl B" in trace.get("name", "")
+            for trace in maximum_sensitivity_peaks
+        )
+        assert {
+            assignment["library_id"]
+            for trace in maximum_sensitivity_peaks
+            for assignment in trace["meta"]["rist_peak"]["assignments"]
+        } == {"material-a", "material-b"}
 
 
 def test_assignment_library_suggest_api_returns_draft(

@@ -468,10 +468,21 @@ def test_shared_peak_editor_adds_peak_controls(tmp_path) -> None:
     assert "order: 100" in html
     assert "manual-peak-group:" in html
     assert "function manualPeakAssignmentAt(x)" in html
+    assert "function formatPeakAssignments(assignments, defaultLibraryId)" in html
     assert "ristManualPeakAssignments" in html
     assert "candidate.tolerance < current.tolerance" in html
-    assert "var assignment = manualPeakAssignmentAt(pt.x);" in html
+    assert "function isMaximumSensitivityPeakCurve(curve)" in html
+    assert "minimum > 0 && minimum <= 100" in html
+    assert 'levels.indexOf("high") >= 0' in html
+    assert "function maximumSensitivityPeakForSample(group, targetX)" in html
+    assert "gd._ristMaximumSensitivityPeakForSample" in html
+    assert "Math.abs(maximumPeakPixel - px) <= 36" in html
+    assert "maximumSensitivityPeakCurve: maximumPeak.curve" in html
+    assert "function assignmentForMaximumSensitivityPeak(curve)" in html
+    assert "gd._ristAssignmentForMaximumSensitivityPeak" in html
+    assert "var assignment = assignmentForMaximumSensitivityPeak(" in html
     assert "assignments: assignment ? assignment.assignments : []" in html
+    assert "assignment_sensitivity: assignment ? 100 : null" in html
     assert "manual_group_key" in html
     assert "group_color" in html
     assert "rist_color_group" in html
