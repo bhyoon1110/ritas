@@ -240,6 +240,22 @@ def test_raman_workspace_contains_upload_controls() -> None:
     assert "gd._ristSetEditMode(false, false);" in page
     assert 'detail: {mode: "raman-y-drag"}' in page
     assert 'activeMode === "raman-y-drag"' in page
+    assert "function exitYDragModeOnOutsidePointer(ev)" in page
+    assert (
+        'document.addEventListener("pointerdown", '
+        "exitYDragModeOnOutsidePointer, true)"
+        in page
+    )
+    assert (
+        "if (!nearest) {\n"
+        "      setDragMode(false, false);\n"
+        "      return;\n"
+        "    }"
+        in page
+    )
+    assert page.index(
+        'gd.classList.toggle("rist-raman-y-drag-active", !!state.dragMode)'
+    ) < page.index("if (!stackButton || !dragButton || !gapSlider || !gapValue) return")
     assert 'gd.classList.contains("rist-axis-crop-mode")' in page
     assert "gd._ristAxisCropActive" in page
     assert "gd._ristShapeDrawMode" in page

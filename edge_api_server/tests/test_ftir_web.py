@@ -260,6 +260,22 @@ def test_ftir_workspace_contains_upload_and_editor_controls() -> None:
     assert "gd._ristSetEditMode(false, false);" in page
     assert 'detail: {mode: "ftir-y-drag"}' in page
     assert 'activeMode === "ftir-y-drag"' in page
+    assert "function exitYDragModeOnOutsidePointer(ev)" in page
+    assert (
+        'document.addEventListener("pointerdown", '
+        "exitYDragModeOnOutsidePointer, true)"
+        in page
+    )
+    assert (
+        "if (!nearest) {\n"
+        "      setDragMode(false, false);\n"
+        "      return;\n"
+        "    }"
+        in page
+    )
+    assert page.index(
+        'gd.classList.toggle("rist-ftir-y-drag-active", !!state.dragMode)'
+    ) < page.index("if (!stackButton || !dragButton || !gapSlider || !gapValue) return")
     assert 'gd.classList.contains("rist-axis-crop-mode")' in page
     assert "gd._ristAxisCropActive" in page
     assert "gd._ristShapeDrawMode" in page

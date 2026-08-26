@@ -2556,6 +2556,7 @@ _RAMAN_STACK_SCRIPT = """
 
   function syncControls() {
     gd._ristRamanYDragMode = !!state.dragMode;
+    gd.classList.toggle("rist-raman-y-drag-active", !!state.dragMode);
     if (!stackButton || !dragButton || !gapSlider || !gapValue) return;
     var hasSamples = state.order.length > 0;
     stackButton.classList.toggle("is-active", !!state.enabled);
@@ -2565,7 +2566,6 @@ _RAMAN_STACK_SCRIPT = """
     gapSlider.disabled = !hasSamples;
     gapSlider.value = String(Math.round(state.gap * 100));
     gapValue.textContent = state.gap.toFixed(1);
-    gd.classList.toggle("rist-raman-y-drag-active", !!state.dragMode);
   }
 
   function setDragMode(enabled, announce) {
@@ -2627,6 +2627,14 @@ _RAMAN_STACK_SCRIPT = """
     applyOffsets();
   });
 
+  function exitYDragModeOnOutsidePointer(ev) {
+    if (!state.dragMode || state.dragging) return;
+    if (ev.target && gd.contains(ev.target)) return;
+    setDragMode(false, false);
+  }
+
+  document.addEventListener("pointerdown", exitYDragModeOnOutsidePointer, true);
+
   gd.addEventListener("pointerdown", function(ev) {
     if (
       (ev.pointerType === "mouse" && ev.button !== 0)
@@ -2650,7 +2658,10 @@ _RAMAN_STACK_SCRIPT = """
     )) return;
     if (!state.initialized) initState();
     var nearest = nearestSample(ev);
-    if (!nearest) return;
+    if (!nearest) {
+      setDragMode(false, false);
+      return;
+    }
     ev.preventDefault();
     ev.stopPropagation();
     if (ev.stopImmediatePropagation) ev.stopImmediatePropagation();

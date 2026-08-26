@@ -656,6 +656,7 @@ def ftir_stack_js(div_id: str) -> str:
 
   function syncControls() {
     gd._ristFtirYDragMode = !!state.dragMode;
+    gd.classList.toggle("rist-ftir-y-drag-active", !!state.dragMode);
     if (!stackButton || !dragButton || !gapSlider || !gapValue) return;
     var hasMultipleSamples = state.order.length > 1;
     stackButton.classList.toggle("is-active", !!state.enabled);
@@ -665,7 +666,6 @@ def ftir_stack_js(div_id: str) -> str:
     gapSlider.disabled = !hasMultipleSamples;
     gapSlider.value = String(Math.round(state.gap * 100));
     gapValue.textContent = state.gap.toFixed(1);
-    gd.classList.toggle("rist-ftir-y-drag-active", !!state.dragMode);
   }
 
   function setDragMode(enabled, announce) {
@@ -728,6 +728,14 @@ def ftir_stack_js(div_id: str) -> str:
     applyOffsets();
   });
 
+  function exitYDragModeOnOutsidePointer(ev) {
+    if (!state.dragMode || state.dragging) return;
+    if (ev.target && gd.contains(ev.target)) return;
+    setDragMode(false, false);
+  }
+
+  document.addEventListener("pointerdown", exitYDragModeOnOutsidePointer, true);
+
   gd.addEventListener("pointerdown", function(ev) {
     if (
       (ev.pointerType === "mouse" && ev.button !== 0)
@@ -751,7 +759,10 @@ def ftir_stack_js(div_id: str) -> str:
     )) return;
     if (!state.initialized) initState();
     var nearest = nearestSample(ev);
-    if (!nearest) return;
+    if (!nearest) {
+      setDragMode(false, false);
+      return;
+    }
     ev.preventDefault();
     ev.stopPropagation();
     if (ev.stopImmediatePropagation) ev.stopImmediatePropagation();
