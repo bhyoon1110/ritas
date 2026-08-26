@@ -232,6 +232,8 @@ def test_raman_workspace_contains_upload_controls() -> None:
     assert "towardIncreasingValue" in page
     assert "gd._ristRamanYDragMode = !!state.dragMode" in page
     assert "gd._ristSetYDragMode = function(enabled)" in page
+    assert 'if (nextEnabled && typeof gd._ristSetEditMode === "function")' in page
+    assert "gd._ristSetEditMode(false, false);" in page
     assert 'detail: {mode: "raman-y-drag"}' in page
     assert 'activeMode === "raman-y-drag"' in page
     assert 'gd.classList.contains("rist-axis-crop-mode")' in page

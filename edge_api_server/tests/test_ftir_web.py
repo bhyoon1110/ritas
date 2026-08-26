@@ -240,6 +240,8 @@ def test_ftir_workspace_contains_upload_and_editor_controls() -> None:
     assert "towardIncreasingValue" in page
     assert "gd._ristFtirYDragMode = !!state.dragMode" in page
     assert "gd._ristSetYDragMode = function(enabled)" in page
+    assert 'if (nextEnabled && typeof gd._ristSetEditMode === "function")' in page
+    assert "gd._ristSetEditMode(false, false);" in page
     assert 'detail: {mode: "ftir-y-drag"}' in page
     assert 'activeMode === "ftir-y-drag"' in page
     assert 'gd.classList.contains("rist-axis-crop-mode")' in page

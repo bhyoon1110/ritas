@@ -2580,6 +2580,9 @@ _RAMAN_STACK_SCRIPT = """
 
   function setDragMode(enabled, announce) {
     var nextEnabled = !!enabled;
+    if (nextEnabled && typeof gd._ristSetEditMode === "function") {
+      gd._ristSetEditMode(false, false);
+    }
     if (nextEnabled && !state.dragMode && announce !== false) {
       gd.dispatchEvent(new CustomEvent("rist-exclusive-interaction-start", {
         detail: {mode: "raman-y-drag"}
