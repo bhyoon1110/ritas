@@ -443,7 +443,10 @@ def _title_edit_js(div_id: str) -> str:
     """제목을 더블클릭하면 HTML 태그 없이 본문 글자만 인라인 편집하는 JS 스니펫.
 
     - 단일 클릭이 아니라 더블클릭에서만 편집창이 열린다.
-    - 제목 텍스트의 <span ...> 접미(부제)는 그대로 보존하고 본문만 수정한다.
+    - 제목 텍스트의 <span ...> 접미(부제)는 본문이 있을 때 보존한다.
+    - 입력값을 모두 지우면 부제를 포함한 제목 전체를 빈 값으로 저장한다.
+    - 제목이 비어 Plotly의 .gtitle DOM이 사라져도 상단 제목 여백을
+      더블클릭하면 다시 제목을 입력할 수 있다.
     - Enter=저장, Escape=취소, 입력창 바깥 클릭(blur)=저장.
     - Plotly 네이티브 제목 편집 시 나타나는 빈 부제 자리표시자
       ("Click to enter Plot subtitle")는 CSS로 숨긴다.
@@ -463,14 +466,57 @@ def _title_edit_js(div_id: str) -> str:
       ? [full.slice(0, i).trim(), full.slice(i)]   // [본문, 접미(span)]
       : [full.trim(), ""];
   }}
+  function titleEditBounds() {{
+    var gr = gd.getBoundingClientRect();
+    var t = gd.querySelector(".gtitle");
+    if (t) {{
+      var tr = t.getBoundingClientRect();
+      if (tr && tr.width > 1 && tr.height > 1) {{
+        return {{
+          left: tr.left - 6,
+          right: tr.right + 6,
+          top: tr.top - 6,
+          bottom: tr.bottom + 6,
+          width: tr.width,
+          fallback: false
+        }};
+      }}
+    }}
+
+    // 빈 제목은 Plotly가 .gtitle 요소를 생성하지 않는다. 플롯 상단
+    // 마진을 제목 편집 영역으로 유지해 다시 입력할 수 있게 한다.
+    var fullLayout = gd._fullLayout || {{}};
+    var size = fullLayout._size || {{}};
+    var marginTop = Number(size.t);
+    var marginLeft = Number(size.l);
+    var marginRight = Number(size.r);
+    if (!Number.isFinite(marginTop)) marginTop = 72;
+    if (!Number.isFinite(marginLeft) || marginLeft < 0) marginLeft = 8;
+    if (!Number.isFinite(marginRight) || marginRight < 0) marginRight = 8;
+    var left = gr.left + Math.max(8, marginLeft);
+    var right = gr.right - Math.max(8, marginRight);
+    if (right - left < 160) {{
+      left = gr.left + 8;
+      right = gr.right - 8;
+    }}
+    return {{
+      left: left,
+      right: right,
+      top: gr.top + 4,
+      // 마진이 작은 모바일/읽기전용 화면에서 플롯 본문을 덮지 않는다.
+      bottom: gr.top + Math.max(14, Math.min(marginTop - 2, 76)),
+      width: Math.max(0, right - left),
+      fallback: true
+    }};
+  }}
   gd.addEventListener("dblclick", function(e) {{
     if (editing || gd._ristInlineTextEditing) return;
-    var t = gd.querySelector(".gtitle");
-    if (!t) return;
+    if (e.target && e.target.closest &&
+        e.target.closest(".modebar,.legend,.rist-plot-control-row")) return;
     // 제목 텍스트는 pointer-events가 없을 수 있어 좌표로 직접 판정한다.
-    var tr = t.getBoundingClientRect();
-    if (e.clientX < tr.left - 6 || e.clientX > tr.right + 6 ||
-        e.clientY < tr.top - 6 || e.clientY > tr.bottom + 6) return;
+    var bounds = titleEditBounds();
+    if (e.clientX < bounds.left || e.clientX > bounds.right ||
+        e.clientY < bounds.top || e.clientY > bounds.bottom) return;
     e.preventDefault();
     e.stopPropagation();
     if (e.stopImmediatePropagation) e.stopImmediatePropagation();
@@ -484,12 +530,20 @@ def _title_edit_js(div_id: str) -> str:
     var inp = document.createElement("input");
     inp.type = "text";
     inp.value = p[0];
+    inp.placeholder = "그래프 제목 입력";
+    inp.setAttribute("aria-label", "그래프 제목");
     inp.style.cssText = "position:absolute;z-index:30;font:bold 20px Arial;"
       + "padding:2px 6px;border:1px solid #4a90d9;border-radius:4px;"
       + "background:#fff;color:#222;box-sizing:border-box;";
-    inp.style.left = (tr.left - gr.left) + "px";
-    inp.style.top = (tr.top - gr.top - 2) + "px";
-    inp.style.minWidth = Math.max(tr.width + 40, 220) + "px";
+    var inputLeft = Math.max(8, bounds.left - gr.left);
+    var availableWidth = Math.max(120, gr.width - inputLeft - 8);
+    var desiredWidth = bounds.fallback
+      ? Math.min(Math.max(bounds.width, 220), 420)
+      : Math.max(bounds.width + 40, 220);
+    inp.style.left = inputLeft + "px";
+    inp.style.top = Math.max(4, bounds.top - gr.top - 2) + "px";
+    inp.style.width = Math.min(desiredWidth, availableWidth) + "px";
+    inp.style.maxWidth = availableWidth + "px";
     if (getComputedStyle(gd).position === "static") gd.style.position = "relative";
     gd.appendChild(inp);
     inp.focus();
@@ -499,17 +553,29 @@ def _title_edit_js(div_id: str) -> str:
       editing = false;
       activeFinish = null;
       gd._ristInlineTextEditing = false;
-      if (save && inp.value.trim() !== "") {{
-        var suffix = p[1] ? " " + p[1] : "";
+      var nextMain = inp.value.trim();
+      var suffix = nextMain && p[1] ? " " + p[1] : "";
+      var nextTitle = nextMain + suffix;
+      var currentTitle = String(
+        (gd.layout && gd.layout.title && gd.layout.title.text) || ""
+      );
+      if (save && nextTitle !== currentTitle) {{
         if (gd._ristHistory) gd._ristHistory.capture();
-        window.Plotly.relayout(gd, {{ "title.text": inp.value.trim() + suffix }});
+        window.Plotly.relayout(gd, {{ "title.text": nextTitle }});
       }}
       if (inp.parentNode) inp.parentNode.removeChild(inp);
     }}
     activeFinish = finish;
     inp.addEventListener("keydown", function(ev) {{
-      if (ev.key === "Enter") finish(true);
-      else if (ev.key === "Escape") finish(false);
+      if (ev.key === "Enter") {{
+        ev.preventDefault();
+        ev.stopPropagation();
+        finish(true);
+      }} else if (ev.key === "Escape") {{
+        ev.preventDefault();
+        ev.stopPropagation();
+        finish(false);
+      }}
     }});
     // 더블클릭 직후의 우발적 blur로 즉시 닫히지 않도록 잠시 뒤 등록
     setTimeout(function() {{

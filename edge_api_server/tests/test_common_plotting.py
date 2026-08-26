@@ -40,6 +40,38 @@ def test_shared_plotly_module_accepts_local_plotly_asset(tmp_path) -> None:
     assert 'src="/assets/plotly.min.js"' in output.read_text(encoding="utf-8")
 
 
+def test_title_editor_can_clear_and_reopen_an_empty_title(tmp_path) -> None:
+    figure = go.Figure(data=[go.Scatter(x=[1, 2], y=[3, 4])])
+    figure.update_layout(
+        title={
+            "text": (
+                "Original title "
+                "<span style='font-size:12px'>Original subtitle</span>"
+            )
+        }
+    )
+    output = tmp_path / "editable-title.html"
+
+    write_responsive_html(
+        figure,
+        str(output),
+        div_id="editable-title-plot",
+        title_edit=True,
+    )
+
+    html = output.read_text(encoding="utf-8")
+    assert "function titleEditBounds()" in html
+    assert 'var t = gd.querySelector(".gtitle")' in html
+    assert "var fullLayout = gd._fullLayout" in html
+    assert "marginTop = 72" in html
+    assert "bounds.fallback" in html
+    assert 'inp.placeholder = "그래프 제목 입력"' in html
+    assert "var nextTitle = nextMain + suffix" in html
+    assert "if (save && nextTitle !== currentTitle)" in html
+    assert 'window.Plotly.relayout(gd, { "title.text": nextTitle })' in html
+    assert 'inp.value.trim() !== ""' not in html
+
+
 def test_image_export_uses_sample_only_offscreen_figure(tmp_path) -> None:
     figure = go.Figure(
         data=[
