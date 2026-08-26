@@ -4131,8 +4131,10 @@ def _image_download_js(div_id: str, formats, filename: str, scale: float) -> str
     화면에 보이는 Figure를 직접 변경하지 않고 저장 전용 Figure를 만든다. 저장본은
     피크 trace/라벨/보조선을 제외하고 샘플 trace만 범례에 표시하며, 범례는
     기본적으로 그래프 안쪽 좌측 상단에 둔다. 좌측 상단을 곡선·점·도형이
-    점유하면 나머지 세 모서리 중 가장 덜 겹치는 곳으로 옮긴다. 외부 범례용
-    여백도 제거해 plot 영역을 이미지 전체에 가깝게 확장한다.
+    점유하면 나머지 세 모서리 중 완전히 빈 곳으로만 옮긴다. 네 곳이 모두
+    차 있으면 저장본의 Y축 상단 범위를 늘려 좌측 상단 범례 공간을 별도로
+    확보한다. 외부 범례용 여백도 제거해 plot 영역을 이미지 전체에 가깝게
+    확장한다.
     """
     opts = "".join(
         f"<button data-fmt='{f}' style='display:block;width:100%;text-align:left;"
@@ -4441,19 +4443,27 @@ def _image_download_js(div_id: str, formats, filename: str, scale: float) -> str
     });
 
     // 좌측 상단이 비어 있으면 다른 모서리의 점수와 관계없이
-    // 항상 기본 위치를 유지한다. 겹칠 때만 나머지 세 곳을 비교한다.
+    // 항상 기본 위치를 유지한다. 좌측 상단이 찼 때도 점수가
+    // 0인(완전히 빈) 다른 모서리만 선택한다. 네 곳이 모두 찼 경우
+    // 저장 전용 y 범위에 상단 여백을 만들 수 있도록 신호한다.
     var topLeftOccupied = scores[0] > 0;
     var bestIndex = 0;
+    var hasEmptyCandidate = !topLeftOccupied;
     if (topLeftOccupied) {
-      bestIndex = 1;
-      for (var candidateIndex = 2; candidateIndex < candidates.length; candidateIndex++) {
-        if (scores[candidateIndex] < scores[bestIndex]) bestIndex = candidateIndex;
+      for (var candidateIndex = 1; candidateIndex < candidates.length; candidateIndex++) {
+        if (scores[candidateIndex] !== 0) continue;
+        bestIndex = candidateIndex;
+        hasEmptyCandidate = true;
+        break;
       }
     }
     var best = candidates[bestIndex];
     return {
       corner: best.corner,
       topLeftOccupied: topLeftOccupied,
+      hasEmptyCandidate: hasEmptyCandidate,
+      requiresTopHeadroom: !hasEmptyCandidate,
+      legendHeight: legendHeight,
       scores: scores.slice(),
       legend: {
         x: best.x,
@@ -4462,6 +4472,29 @@ def _image_download_js(div_id: str, formats, filename: str, scale: float) -> str
         yanchor: best.yanchor
       }
     };
+  }
+
+  function reserveTopLegendHeadroom(data, layout, placement) {
+    var yaxis = layout.yaxis && typeof layout.yaxis === "object"
+      ? layout.yaxis : {};
+    var axisType = String(yaxis.type || "linear").toLowerCase();
+    if (axisType === "category" || axisType === "multicategory"
+        || axisType === "date") return false;
+    var range = dataAxisRange(data, layout, "y");
+    var start = Number(range[0]);
+    var end = Number(range[1]);
+    if (!Number.isFinite(start) || !Number.isFinite(end) || start === end) return false;
+
+    // 필요 이상으로 곡선을 압축하지 않도록 6~14%씩 단계적으로
+    // 늘린다. 시작값(화면 하단)은 그대로라 스택 순서도 유지된다.
+    var fraction = Number(placement.legendHeight || 0) * 0.45;
+    fraction = Math.max(0.06, Math.min(0.14, fraction));
+    var expandedEnd = start + (end - start) / (1 - fraction);
+    if (!Number.isFinite(expandedEnd) || expandedEnd === end) return false;
+    yaxis.range = [start, expandedEnd];
+    yaxis.autorange = false;
+    layout.yaxis = yaxis;
+    return true;
   }
 
   function buildImageExportPayload(sourceData, sourceLayout, width, height) {
@@ -4502,7 +4535,16 @@ def _image_download_js(div_id: str, formats, filename: str, scale: float) -> str
       layout[key].automargin = true;
     });
 
+    var hasLegend = exportData.some(function(trace) { return trace.showlegend !== false; });
     var placement = chooseLegendPlacement(exportData, layout, width, height);
+    var reservedTopHeadroom = false;
+    var headroomAdjustments = 0;
+    while (hasLegend && placement.requiresTopHeadroom && headroomAdjustments < 6
+        && reserveTopLegendHeadroom(exportData, layout, placement)) {
+      reservedTopHeadroom = true;
+      headroomAdjustments += 1;
+      placement = chooseLegendPlacement(exportData, layout, width, height);
+    }
     var originalLegend = layout.legend && typeof layout.legend === "object"
       ? layout.legend : {};
     layout.legend = Object.assign({}, originalLegend, placement.legend, {
@@ -4517,13 +4559,15 @@ def _image_download_js(div_id: str, formats, filename: str, scale: float) -> str
       title: {text: ""},
       font: Object.assign({}, originalLegend.font || {}, {size: 11})
     });
-    layout.showlegend = exportData.some(function(trace) { return trace.showlegend !== false; });
+    layout.showlegend = hasLegend;
     layout.meta.ristImageExport = {
       sampleOnly: hasSampleMetadata,
       peaksRemoved: true,
       legendCorner: placement.corner,
       legendMoved: placement.corner !== "top-left",
-      legendOverlapScores: placement.scores
+      legendOverlapScores: placement.scores,
+      legendReservedTopHeadroom: reservedTopHeadroom,
+      legendHeadroomAdjustments: headroomAdjustments
     };
     return {data: exportData, layout: layout};
   }

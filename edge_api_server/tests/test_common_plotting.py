@@ -131,12 +131,18 @@ def test_image_export_uses_sample_only_offscreen_figure(tmp_path) -> None:
     assert 'corner: "top-left"' in html
     assert "var topLeftOccupied = scores[0] > 0" in html
     assert "if (topLeftOccupied)" in html
-    assert "bestIndex = 1" in html
-    assert "for (var candidateIndex = 2" in html
+    assert "if (scores[candidateIndex] !== 0) continue" in html
     assert "topLeftOccupied: topLeftOccupied" in html
+    assert "requiresTopHeadroom: !hasEmptyCandidate" in html
+    assert "function reserveTopLegendHeadroom" in html
+    assert "var expandedEnd = start + (end - start) / (1 - fraction)" in html
+    assert "while (hasLegend && placement.requiresTopHeadroom" in html
+    assert "headroomAdjustments < 6" in html
     assert "legendCorner: placement.corner" in html
     assert 'legendMoved: placement.corner !== "top-left"' in html
     assert "legendOverlapScores: placement.scores" in html
+    assert "legendReservedTopHeadroom: reservedTopHeadroom" in html
+    assert "legendHeadroomAdjustments: headroomAdjustments" in html
     assert 'xref: "paper"' in html
     assert 'yref: "paper"' in html
     assert "layout.margin = {" in html
