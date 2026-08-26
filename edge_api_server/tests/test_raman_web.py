@@ -443,6 +443,11 @@ def test_raman_analyze_api_stacks_multiple_samples() -> None:
         if trace.get("meta", {}).get("rist_sample_parent")
     ]
     assert len(parent_traces) == 2
+    assert all(
+        not trace.get("legendgrouptitle", {}).get("text")
+        for trace in parent_traces
+    )
+    assert all(trace.get("showlegend") is True for trace in parent_traces)
     assert parent_traces[0]["meta"]["rist_raman_stack_offset"] == 0
     assert parent_traces[1]["meta"]["rist_raman_stack_offset"] > 0
     assert parent_traces[1]["y"][0] > parent_traces[0]["y"][0]
@@ -592,6 +597,11 @@ def test_raman_analyze_api_expands_multi_sample_txt() -> None:
         "LiOH_2",
         "LiOH",
     ]
+    assert all(
+        not trace.get("legendgrouptitle", {}).get("text")
+        for trace in parent_traces
+    )
+    assert all(trace.get("showlegend") is True for trace in parent_traces)
     assert payload["figure"]["layout"]["meta"]["ristRamanStack"]["enabled"] is True
 
 

@@ -924,7 +924,7 @@ def build_peak_fig(
         go.Scatter(
             x=grid, y=sample_vec, mode="lines", name=sample_label,
             legendgroup=sample_key,
-            legendgrouptitle_text=sample_label,
+            showlegend=True,
             line=dict(color="#374151", width=1.8),
             hovertemplate="%{x:.1f} cm⁻¹ | %{y:.4f}<extra></extra>",
         ),
@@ -1145,7 +1145,7 @@ def build_multi_peak_fig(
             go.Scatter(
                 x=grid, y=plotted_sample_vec, mode="lines", name=label,
                 legendgroup=sample_key,
-                legendgrouptitle_text=label,
+                showlegend=True,
                 line=dict(color=color, width=1.8),
                 hovertemplate=f"<b>{label}</b><br>%{{x:.1f}} cm⁻¹ | %{{y:.4f}}<extra></extra>",
             ),

@@ -418,6 +418,11 @@ def test_ftir_analysis_api_accepts_multiple_dpt_files(tmp_path: Path) -> None:
         if trace.get("meta", {}).get("rist_sample_parent")
     ]
     assert len(sample_traces) == 2
+    assert all(
+        not trace.get("legendgrouptitle", {}).get("text")
+        for trace in sample_traces
+    )
+    assert all(trace.get("showlegend") is True for trace in sample_traces)
     assert sample_traces[0]["meta"]["rist_ftir_stack_offset_absorbance"] == 0.0
     assert sample_traces[1]["meta"]["rist_ftir_stack_offset_absorbance"] > 0.0
     assert sample_traces[1]["meta"]["rist_ftir_stack_offset_transmittance"] > 0.0

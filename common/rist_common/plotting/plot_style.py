@@ -1219,7 +1219,6 @@ def _legend_text_edit_js(div_id: str) -> str:
     }}
     if (!curves.length) curves = [curve];
     var update = {{ "name": value }};
-    if (isSampleCurve(curve)) update["legendgrouptitle.text"] = value;
     window.Plotly.restyle(gd, update, curves).then(function() {{
       try {{
         gd.dispatchEvent(new CustomEvent("rist-legend-name-change", {{
@@ -2595,6 +2594,10 @@ def peak_editor_js(div_id: str) -> str:
 #{div_id} .legend g.traces.rist-legend-locked-by-hidden-sample {{
   opacity: 0.45;
 }}
+#{div_id} .legend g.traces.rist-sample-legend-item text.legendtext {{
+  font-size: 11px !important;
+  font-weight: 700 !important;
+}}
 </style>
 <script>
 (function() {{
@@ -2786,6 +2789,26 @@ def peak_editor_js(div_id: str) -> str:
     var meta = traceMeta(curve);
     return !!meta.rist_sample_parent;
   }}
+
+  function normalizeSampleLegendEntries() {{
+    if (!window.Plotly) return Promise.resolve();
+    var curves = [];
+    (gd.data || []).forEach(function(trace, curve) {{
+      if (!isSampleParent(curve)) return;
+      var title = trace && trace.legendgrouptitle;
+      var hasHeader = !!(title && String(title.text || "").trim());
+      if (!hasHeader && trace.showlegend === true) return;
+      curves.push(curve);
+    }});
+    if (!curves.length) return Promise.resolve();
+    return window.Plotly.restyle(gd, {{
+      "legendgrouptitle.text": curves.map(function() {{ return ""; }}),
+      showlegend: curves.map(function() {{ return true; }})
+    }}, curves).catch(function(err) {{
+      console.error("RIST sample legend normalization failed", err);
+    }});
+  }}
+  gd._ristNormalizeSampleLegendEntries = normalizeSampleLegendEntries;
 
   function sampleParentVisible(group) {{
     if (!group) return true;
@@ -3676,7 +3699,9 @@ def peak_editor_js(div_id: str) -> str:
     legendTraceItems().forEach(function(item) {{
       var curve = curveFromLegendItem(item);
       var locked = !!shouldBlockHiddenSamplePeakCurve(curve);
+      var sampleItem = curve != null && isSampleParent(curve);
       item.classList.toggle("rist-legend-locked-by-hidden-sample", locked);
+      item.classList.toggle("rist-sample-legend-item", sampleItem);
       if (locked) item.setAttribute("aria-disabled", "true");
       else item.removeAttribute("aria-disabled");
     }});
@@ -4341,12 +4366,14 @@ def peak_editor_js(div_id: str) -> str:
     );
   }});
   gd.addEventListener("rist-history-restored", function() {{
+    normalizeSampleLegendEntries();
     refreshPeakLabelVisibility();
     selectedPeaks = [];
     updateSelectButton();
     syncVisibility();
   }});
   gd.addEventListener("rist-plot-data-replaced", function() {{
+    normalizeSampleLegendEntries();
     refreshPeakLabelVisibility();
     gd._ristPeakUserVisibility = {{}};
     selectedPeaks = [];
@@ -4385,6 +4412,7 @@ def peak_editor_js(div_id: str) -> str:
       updateHiddenSamplePeakLegendLocks();
     }}, 0);
   }});
+  normalizeSampleLegendEntries();
   updateHiddenSamplePeakLegendLocks();
 }})();
 </script>

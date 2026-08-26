@@ -118,7 +118,7 @@ def build_multi_raman_fig(
             mode="lines",
             name=label,
             legendgroup=sample_key,
-            legendgrouptitle_text=label,
+            showlegend=True,
             line=dict(color=color, width=1.8),
             hovertemplate=(
                 f"<b>{label}</b><br>%{{x:.1f}} cm⁻¹ | %{{customdata:.4f}}"

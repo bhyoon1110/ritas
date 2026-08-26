@@ -295,7 +295,7 @@ def test_shared_plotly_module_applies_legend_text(tmp_path) -> None:
     assert "<option value='dashdot'>일점쇄선</option>" in html
     assert '"line.dash": dash' in html
     assert "sampleCurvesForLegendItem" in html
-    assert 'if (isSampleCurve(curve)) update["legendgrouptitle.text"] = value;' in html
+    assert 'if (isSampleCurve(curve)) update["legendgrouptitle.text"] = value;' not in html
     assert "window.Plotly.restyle(gd, update, curves)" in html
     assert "rist-sample-line-style-change" in html
     assert "rist-legend-group-row" in html
@@ -589,6 +589,15 @@ def test_shared_peak_editor_adds_peak_controls(tmp_path) -> None:
     assert "interceptHiddenSamplePeakLegendToggle" in html
     assert "updateHiddenSamplePeakLegendLocks" in html
     assert "rist-legend-locked-by-hidden-sample" in html
+    assert "rist-sample-legend-item" in html
+    assert "font-size: 11px !important" in html
+    assert "font-weight: 700 !important" in html
+    assert "function normalizeSampleLegendEntries()" in html
+    assert "gd._ristNormalizeSampleLegendEntries = normalizeSampleLegendEntries" in html
+    assert "showlegend: curves.map(function() { return true; })" in html
+    assert 'item.classList.toggle("rist-sample-legend-item", sampleItem)' in html
+    assert 'gd.addEventListener("rist-history-restored"' in html
+    assert 'gd.addEventListener("rist-plot-data-replaced"' in html
     assert "pointer-events: none" in html
     assert 'item.setAttribute("aria-disabled", "true")' in html
     assert '"pointerdown", "mousedown", "click", "dblclick", "touchstart", "touchend"' in html

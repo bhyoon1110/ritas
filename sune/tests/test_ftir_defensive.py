@@ -171,6 +171,8 @@ def test_peak_fig_labels_show_functional_group_names() -> None:
     assert fig.data[1].meta["rist_peak"]["source"] == "detected"
     assert "sensitivity_min" in fig.data[1].meta["rist_peak"]
     assert fig.data[0].meta["rist_sample_parent"] is True
+    assert not fig.data[0].legendgrouptitle.text
+    assert fig.data[0].showlegend is True
     assert fig.data[1].meta["rist_sample_group"] == "sample:0"
     assert fig.data[1].meta["rist_peak"]["sample_group"] == "sample:0"
     assert fig.layout.legend.orientation == "h"
@@ -294,10 +296,14 @@ def test_multi_peak_fig_groups_peaks_under_each_sample() -> None:
     assert fig.data[0].name == "sample-a"
     assert fig.data[0].legendgroup == "sample:0"
     assert fig.data[0].meta["rist_sample_parent"] is True
+    assert not fig.data[0].legendgrouptitle.text
+    assert fig.data[0].showlegend is True
     assert fig.data[1].legendgroup == "sample:0"
     assert fig.data[1].meta["rist_peak"]["sample_group"] == "sample:0"
     assert fig.data[2].name == "sample-b"
     assert fig.data[2].legendgroup == "sample:1"
+    assert not fig.data[2].legendgrouptitle.text
+    assert fig.data[2].showlegend is True
     assert fig.data[3].legendgroup == "sample:1"
     assert fig.layout.legend.orientation == "v"
     assert fig.layout.legend.groupclick == "toggleitem"
