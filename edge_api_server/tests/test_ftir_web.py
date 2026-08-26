@@ -82,7 +82,15 @@ def test_ftir_workspace_contains_upload_and_editor_controls() -> None:
     assert "rebuildStackReferences" in page
     assert "rist-plot-structure-changed" in page
     assert "lostpointercapture" in page
-    assert "touch-action: none" in page
+    assert "#peak-plot.rist-ftir-y-drag-active .plot-container," in page
+    assert "#peak-plot.rist-ftir-y-drag-active .svg-container" in page
+    assert "touch-action: none !important" in page
+    assert "overscroll-behavior: contain" in page
+    assert "function handleStackPointerMove(ev)" in page
+    assert 'document.addEventListener("pointermove", handleStackPointerMove, {' in page
+    assert 'gd.addEventListener("touchmove", preventStackTouchScroll, {' in page
+    assert "capture: true" in page
+    assert "passive: false" in page
     assert "rist-ftir-signal-mode-change" in page
     assert "lucide-sliders-horizontal" in page
     assert 'button.textContent = open ? "닫기" : "도구"' not in page

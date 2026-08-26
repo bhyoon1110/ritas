@@ -767,8 +767,11 @@ def ftir_stack_js(div_id: str) -> str:
     try { gd.setPointerCapture(ev.pointerId); } catch (error) {}
   }, true);
 
-  document.addEventListener("pointermove", function(ev) {
+  function handleStackPointerMove(ev) {
     if (!state.dragging || ev.pointerId !== state.dragging.pointerId) return;
+    if (ev.cancelable) ev.preventDefault();
+    ev.stopPropagation();
+    if (ev.stopImmediatePropagation) ev.stopImmediatePropagation();
     var unit = Number(state.units[mode()] || 1);
     state.positions[state.dragging.group] =
       state.dragging.startPosition
@@ -778,6 +781,20 @@ def ftir_stack_js(div_id: str) -> str:
       return Math.abs(Number(state.positions[group] || 0)) > 0.001;
     });
     requestApply();
+  }
+
+  function preventStackTouchScroll(ev) {
+    if (!state.dragging) return;
+    if (ev.cancelable) ev.preventDefault();
+  }
+
+  document.addEventListener("pointermove", handleStackPointerMove, {
+    capture: true,
+    passive: false
+  });
+  gd.addEventListener("touchmove", preventStackTouchScroll, {
+    capture: true,
+    passive: false
   });
 
   function finishStackDrag(ev) {

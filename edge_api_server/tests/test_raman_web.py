@@ -274,7 +274,15 @@ def test_raman_workspace_contains_upload_controls() -> None:
     assert "rebuildStackReferences" in page
     assert "rist-plot-structure-changed" in page
     assert "lostpointercapture" in page
-    assert "touch-action: none" in page
+    assert "#raman-plot.rist-raman-y-drag-active .plot-container," in page
+    assert "#raman-plot.rist-raman-y-drag-active .svg-container" in page
+    assert "touch-action: none !important" in page
+    assert "overscroll-behavior: contain" in page
+    assert "function handleStackPointerMove(ev)" in page
+    assert 'document.addEventListener("pointermove", handleStackPointerMove, {' in page
+    assert 'gd.addEventListener("touchmove", preventStackTouchScroll, {' in page
+    assert "capture: true" in page
+    assert "passive: false" in page
     assert "I(num)/I(den)" in page
     assert "분자 선택" in page
     assert "분모 선택" in page

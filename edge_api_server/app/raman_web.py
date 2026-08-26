@@ -681,9 +681,17 @@ body { overflow-x: hidden; }
   font: bold 10px Arial, sans-serif;
   text-align: right;
 }
+#raman-plot.rist-raman-y-drag-active .plot-container,
+#raman-plot.rist-raman-y-drag-active .svg-container,
+#raman-plot.rist-raman-y-drag-active .main-svg,
+#raman-plot.rist-raman-y-drag-active .plot,
+#raman-plot.rist-raman-y-drag-active .draglayer,
+#raman-plot.rist-raman-y-drag-active .nsewdrag {
+  touch-action: none !important;
+  overscroll-behavior: contain;
+}
 #raman-plot.rist-raman-y-drag-active .nsewdrag {
   cursor: ns-resize;
-  touch-action: none;
 }
 #raman-plot .rist-plot-control-row > * {
   flex: 0 0 auto;
@@ -2658,8 +2666,11 @@ _RAMAN_STACK_SCRIPT = """
     try { gd.setPointerCapture(ev.pointerId); } catch (error) {}
   }, true);
 
-  document.addEventListener("pointermove", function(ev) {
+  function handleStackPointerMove(ev) {
     if (!state.dragging || ev.pointerId !== state.dragging.pointerId) return;
+    if (ev.cancelable) ev.preventDefault();
+    ev.stopPropagation();
+    if (ev.stopImmediatePropagation) ev.stopImmediatePropagation();
     state.offsets[state.dragging.group] =
       state.dragging.startOffset
       + (ev.clientY - state.dragging.startClientY) * state.dragging.dataPerPixel;
@@ -2668,6 +2679,20 @@ _RAMAN_STACK_SCRIPT = """
       return Math.abs(Number(state.offsets[group] || 0)) > 0.001;
     });
     requestApply();
+  }
+
+  function preventStackTouchScroll(ev) {
+    if (!state.dragging) return;
+    if (ev.cancelable) ev.preventDefault();
+  }
+
+  document.addEventListener("pointermove", handleStackPointerMove, {
+    capture: true,
+    passive: false
+  });
+  gd.addEventListener("touchmove", preventStackTouchScroll, {
+    capture: true,
+    passive: false
   });
 
   function finishStackDrag(ev) {

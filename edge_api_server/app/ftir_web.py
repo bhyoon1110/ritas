@@ -1409,9 +1409,17 @@ body {
   text-align: right;
   font: bold 11px Arial, sans-serif;
 }
+#peak-plot.rist-ftir-y-drag-active .plot-container,
+#peak-plot.rist-ftir-y-drag-active .svg-container,
+#peak-plot.rist-ftir-y-drag-active .main-svg,
+#peak-plot.rist-ftir-y-drag-active .plot,
+#peak-plot.rist-ftir-y-drag-active .draglayer,
+#peak-plot.rist-ftir-y-drag-active .nsewdrag {
+  touch-action: none !important;
+  overscroll-behavior: contain;
+}
 #peak-plot.rist-ftir-y-drag-active .nsewdrag {
   cursor: ns-resize !important;
-  touch-action: none;
 }
 @media (max-width: 760px) {
   .ftir-app-bar {
