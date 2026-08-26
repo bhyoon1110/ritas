@@ -4129,9 +4129,10 @@ def _image_download_js(div_id: str, formats, filename: str, scale: float) -> str
     """샘플 중심의 이미지 저장과 형식 선택 팝업을 제공하는 JS 스니펫.
 
     화면에 보이는 Figure를 직접 변경하지 않고 저장 전용 Figure를 만든다. 저장본은
-    피크 trace/라벨/보조선을 제외하고 샘플 trace만 범례에 표시하며, 범례를 데이터가
-    가장 적은 그래프 안쪽 모서리(동률이면 좌측 상단)에 둔다. 외부 범례용 여백도
-    제거해 plot 영역을 이미지 전체에 가깝게 확장한다.
+    피크 trace/라벨/보조선을 제외하고 샘플 trace만 범례에 표시하며, 범례는
+    기본적으로 그래프 안쪽 좌측 상단에 둔다. 좌측 상단을 곡선·점·도형이
+    점유하면 나머지 세 모서리 중 가장 덜 겹치는 곳으로 옮긴다. 외부 범례용
+    여백도 제거해 plot 영역을 이미지 전체에 가깝게 확장한다.
     """
     opts = "".join(
         f"<button data-fmt='{f}' style='display:block;width:100%;text-align:left;"
@@ -4298,6 +4299,56 @@ def _image_download_js(div_id: str, formats, filename: str, scale: float) -> str
     return (number - range[0]) / (range[1] - range[0]);
   }
 
+  function pointInsideLegendCandidate(x, y, candidate) {
+    return x >= candidate.left && x <= candidate.right
+      && y >= candidate.bottom && y <= candidate.top;
+  }
+
+  function segmentIntersectsLegendCandidate(x0, y0, x1, y1, candidate) {
+    if (pointInsideLegendCandidate(x0, y0, candidate)
+        || pointInsideLegendCandidate(x1, y1, candidate)) return true;
+    if (Math.max(x0, x1) < candidate.left || Math.min(x0, x1) > candidate.right
+        || Math.max(y0, y1) < candidate.bottom || Math.min(y0, y1) > candidate.top) {
+      return false;
+    }
+
+    // Liang-Barsky clipping으로 두 표본점 사이의 선이 범례 영역을
+    // 통과하는지 확인한다. 점만 검사하면 희소한 곡선을 놓칠 수 있다.
+    var dx = x1 - x0;
+    var dy = y1 - y0;
+    var p = [-dx, dx, -dy, dy];
+    var q = [
+      x0 - candidate.left,
+      candidate.right - x0,
+      y0 - candidate.bottom,
+      candidate.top - y0
+    ];
+    var lower = 0;
+    var upper = 1;
+    for (var edge = 0; edge < p.length; edge++) {
+      if (Math.abs(p[edge]) < 1e-12) {
+        if (q[edge] < 0) return false;
+        continue;
+      }
+      var ratio = q[edge] / p[edge];
+      if (p[edge] < 0) {
+        if (ratio > upper) return false;
+        lower = Math.max(lower, ratio);
+      } else {
+        if (ratio < lower) return false;
+        upper = Math.min(upper, ratio);
+      }
+    }
+    return lower <= upper;
+  }
+
+  function traceConnectsPoints(trace) {
+    var type = String(trace && trace.type || "scatter").toLowerCase();
+    if (type !== "scatter" && type !== "scattergl") return false;
+    var mode = String(trace && trace.mode || "lines").toLowerCase();
+    return mode.indexOf("lines") >= 0;
+  }
+
   function chooseLegendPlacement(data, layout, width, height) {
     var margin = layout.margin || {};
     var plotWidth = Math.max(320, width - Number(margin.l || 0) - Number(margin.r || 0));
@@ -4329,17 +4380,25 @@ def _image_download_js(div_id: str, formats, filename: str, scale: float) -> str
       var xs = arrayValues(trace && trace.x);
       var ys = arrayValues(trace && trace.y);
       var count = Math.min(xs.length, ys.length);
-      var step = Math.max(1, Math.ceil(count / 700));
-      for (var index = 0; index < count; index += step) {
+      var connectsPoints = traceConnectsPoints(trace);
+      var previous = null;
+      for (var index = 0; index < count; index++) {
         var nx = normalizedValue(xs[index], xaxis, xrange);
         var ny = normalizedValue(ys[index], yaxis, yrange);
-        if (!Number.isFinite(nx) || !Number.isFinite(ny)) continue;
+        if (!Number.isFinite(nx) || !Number.isFinite(ny)) {
+          previous = null;
+          continue;
+        }
         candidates.forEach(function(candidate, candidateIndex) {
-          if (nx >= candidate.left && nx <= candidate.right
-              && ny >= candidate.bottom && ny <= candidate.top) {
-            scores[candidateIndex] += 1;
+          if (pointInsideLegendCandidate(nx, ny, candidate)) {
+            scores[candidateIndex] += 2;
           }
+          if (connectsPoints && previous
+              && segmentIntersectsLegendCandidate(
+                previous.x, previous.y, nx, ny, candidate
+              )) scores[candidateIndex] += 1;
         });
+        previous = {x: nx, y: ny};
       }
     });
 
@@ -4351,8 +4410,7 @@ def _image_download_js(div_id: str, formats, filename: str, scale: float) -> str
         ? Number(annotation.y) : normalizedValue(annotation.y, yaxis, yrange);
       if (!Number.isFinite(nx) || !Number.isFinite(ny)) return;
       candidates.forEach(function(candidate, candidateIndex) {
-        if (nx >= candidate.left && nx <= candidate.right
-            && ny >= candidate.bottom && ny <= candidate.top) {
+        if (pointInsideLegendCandidate(nx, ny, candidate)) {
           scores[candidateIndex] += 12;
         }
       });
@@ -4382,13 +4440,21 @@ def _image_download_js(div_id: str, formats, filename: str, scale: float) -> str
       });
     });
 
+    // 좌측 상단이 비어 있으면 다른 모서리의 점수와 관계없이
+    // 항상 기본 위치를 유지한다. 겹칠 때만 나머지 세 곳을 비교한다.
+    var topLeftOccupied = scores[0] > 0;
     var bestIndex = 0;
-    for (var candidateIndex = 1; candidateIndex < candidates.length; candidateIndex++) {
-      if (scores[candidateIndex] < scores[bestIndex]) bestIndex = candidateIndex;
+    if (topLeftOccupied) {
+      bestIndex = 1;
+      for (var candidateIndex = 2; candidateIndex < candidates.length; candidateIndex++) {
+        if (scores[candidateIndex] < scores[bestIndex]) bestIndex = candidateIndex;
+      }
     }
     var best = candidates[bestIndex];
     return {
       corner: best.corner,
+      topLeftOccupied: topLeftOccupied,
+      scores: scores.slice(),
       legend: {
         x: best.x,
         y: best.y,
@@ -4441,6 +4507,8 @@ def _image_download_js(div_id: str, formats, filename: str, scale: float) -> str
       ? layout.legend : {};
     layout.legend = Object.assign({}, originalLegend, placement.legend, {
       orientation: "v",
+      xref: "paper",
+      yref: "paper",
       traceorder: "normal",
       tracegroupgap: 4,
       bgcolor: "rgba(255,255,255,0.84)",
@@ -4453,7 +4521,9 @@ def _image_download_js(div_id: str, formats, filename: str, scale: float) -> str
     layout.meta.ristImageExport = {
       sampleOnly: hasSampleMetadata,
       peaksRemoved: true,
-      legendCorner: placement.corner
+      legendCorner: placement.corner,
+      legendMoved: placement.corner !== "top-left",
+      legendOverlapScores: placement.scores
     };
     return {data: exportData, layout: layout};
   }

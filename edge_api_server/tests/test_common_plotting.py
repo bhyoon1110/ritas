@@ -121,6 +121,7 @@ def test_image_export_uses_sample_only_offscreen_figure(tmp_path) -> None:
     html = output.read_text(encoding="utf-8")
     assert "function buildImageExportPayload" in html
     assert "function chooseLegendPlacement" in html
+    assert "function segmentIntersectsLegendCandidate" in html
     assert "gd._ristBuildImageExportPayload = buildImageExportPayload" in html
     assert "var labelledPeakTraces = labelledPeakTraceIndexes(layout)" in html
     assert "labelledPeakTraces[index] && !isSampleTrace(trace)" in html
@@ -128,7 +129,16 @@ def test_image_export_uses_sample_only_offscreen_figure(tmp_path) -> None:
     assert "delete trace.legendrank" not in html
     assert "layout.meta.ristPeakLabels = []" in html
     assert 'corner: "top-left"' in html
+    assert "var topLeftOccupied = scores[0] > 0" in html
+    assert "if (topLeftOccupied)" in html
+    assert "bestIndex = 1" in html
+    assert "for (var candidateIndex = 2" in html
+    assert "topLeftOccupied: topLeftOccupied" in html
     assert "legendCorner: placement.corner" in html
+    assert 'legendMoved: placement.corner !== "top-left"' in html
+    assert "legendOverlapScores: placement.scores" in html
+    assert 'xref: "paper"' in html
+    assert 'yref: "paper"' in html
     assert "layout.margin = {" in html
     assert "autoexpand: false" in html
     assert "window.Plotly.newPlot(" in html
