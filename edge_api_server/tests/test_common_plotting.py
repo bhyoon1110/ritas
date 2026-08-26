@@ -40,6 +40,71 @@ def test_shared_plotly_module_accepts_local_plotly_asset(tmp_path) -> None:
     assert 'src="/assets/plotly.min.js"' in output.read_text(encoding="utf-8")
 
 
+def test_image_export_uses_sample_only_offscreen_figure(tmp_path) -> None:
+    figure = go.Figure(
+        data=[
+            go.Scatter(
+                x=[4000, 2000, 400],
+                y=[0.1, 0.7, 0.2],
+                name="Sample A",
+                legendgroup="sample:0",
+                legendgrouptitle_text="Sample A",
+                meta={"rist_sample_group": "sample:0", "rist_sample_parent": True},
+            ),
+            go.Scatter(
+                x=[2000],
+                y=[0.7],
+                mode="markers",
+                name="Peak A",
+                meta={
+                    "rist_sample_group": "sample:0",
+                    "rist_peak": {"sample_group": "sample:0", "source": "detected"},
+                },
+            ),
+        ]
+    )
+    figure.add_annotation(
+        x=2000,
+        y=0.8,
+        text="2000",
+        name="ftir_peak_label_0_0",
+    )
+    figure.add_shape(type="line", x0=2000, x1=2000, y0=0, y1=0.7)
+    figure.update_layout(
+        meta={
+            "ristPeakLabels": [
+                {"traceIndex": 1, "annotationIndex": 0, "shapeIndex": 0}
+            ]
+        }
+    )
+    output = tmp_path / "image-export.html"
+
+    write_responsive_html(
+        figure,
+        str(output),
+        div_id="image-export-plot",
+        image_format_selector=True,
+    )
+
+    html = output.read_text(encoding="utf-8")
+    assert "function buildImageExportPayload" in html
+    assert "function chooseLegendPlacement" in html
+    assert "gd._ristBuildImageExportPayload = buildImageExportPayload" in html
+    assert "var labelledPeakTraces = labelledPeakTraceIndexes(layout)" in html
+    assert "labelledPeakTraces[index] && !isSampleTrace(trace)" in html
+    assert "if (hasSampleMetadata && !isSampleTrace(trace)) return" in html
+    assert "delete trace.legendrank" not in html
+    assert "layout.meta.ristPeakLabels = []" in html
+    assert 'corner: "top-left"' in html
+    assert "legendCorner: placement.corner" in html
+    assert "layout.margin = {" in html
+    assert "autoexpand: false" in html
+    assert "window.Plotly.newPlot(" in html
+    assert "window.Plotly.downloadImage(temp" in html
+    assert "window.Plotly.downloadImage(gd" not in html
+    assert "removeExportPlot(temp)" in html
+
+
 def test_origin_style_toggle_installs_shared_runtime() -> None:
     script = origin_style_toggle_js("shared-plot", "origin-toggle")
 

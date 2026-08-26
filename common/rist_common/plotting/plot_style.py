@@ -4060,11 +4060,12 @@ def peak_editor_js(div_id: str) -> str:
 
 
 def _image_download_js(div_id: str, formats, filename: str, scale: float) -> str:
-    """다운로드(카메라) 버튼을 누르면 저장 형식 선택 팝업을 띄우는 JS 스니펫.
+    """샘플 중심의 이미지 저장과 형식 선택 팝업을 제공하는 JS 스니펫.
 
-    - Plotly 모드바의 'Download plot' 버튼 클릭을 가로채 형식 선택 팝업을 표시한다.
-    - 형식(svg/png/jpeg/webp)을 고르면 Plotly.downloadImage 로 저장하고 팝업은 사라진다.
-    - 팝업 바깥을 클릭하거나 Esc 를 누르면 저장 없이 닫힌다.
+    화면에 보이는 Figure를 직접 변경하지 않고 저장 전용 Figure를 만든다. 저장본은
+    피크 trace/라벨/보조선을 제외하고 샘플 trace만 범례에 표시하며, 범례를 데이터가
+    가장 적은 그래프 안쪽 모서리(동률이면 좌측 상단)에 둔다. 외부 범례용 여백도
+    제거해 plot 영역을 이미지 전체에 가깝게 확장한다.
     """
     opts = "".join(
         f"<button data-fmt='{f}' style='display:block;width:100%;text-align:left;"
@@ -4072,10 +4073,10 @@ def _image_download_js(div_id: str, formats, filename: str, scale: float) -> str
         f"padding:5px 12px;'>{f.upper()}</button>"
         for f in formats
     )
-    return f"""
+    template = r"""
 <script>
-(function() {{
-  var gd = document.getElementById("{div_id}");
+(function() {
+  var gd = document.getElementById(__PLOT_ID_JSON__);
   if (!gd) return;
 
   var pop = document.createElement("div");
@@ -4083,54 +4084,409 @@ def _image_download_js(div_id: str, formats, filename: str, scale: float) -> str
     + "background:#fff;border:1px solid #ccc;border-radius:6px;"
     + "box-shadow:0 2px 10px rgba(0,0,0,0.18);padding:4px 0;min-width:90px;";
   pop.innerHTML = "<div style='font:11px Arial;color:#888;padding:3px 12px 5px;'>"
-    + "\uc800\uc7a5 \ud615\uc2dd</div>{opts}";
+    + "\uc800\uc7a5 \ud615\uc2dd</div>__FORMAT_BUTTONS__";
   document.body.appendChild(pop);
 
-  function hide() {{ pop.style.display = "none"; }}
-  function showAt(x, y) {{
+  function hide() { pop.style.display = "none"; }
+  function showAt(x, y) {
     pop.style.display = "block";
     var w = pop.offsetWidth, h = pop.offsetHeight;
     var vw = window.innerWidth, vh = window.innerHeight;
     pop.style.left = Math.max(6, Math.min(x, vw - w - 6)) + "px";
     pop.style.top  = Math.max(6, Math.min(y, vh - h - 6)) + "px";
-  }}
+  }
 
-  pop.addEventListener("click", function(ev) {{
+  function cloneValue(value, fallback) {
+    try {
+      return JSON.parse(JSON.stringify(value == null ? fallback : value, function(_key, item) {
+        if (typeof ArrayBuffer !== "undefined" && ArrayBuffer.isView(item)) {
+          return Array.prototype.slice.call(item);
+        }
+        return item;
+      }));
+    } catch (err) {
+      return fallback;
+    }
+  }
+
+  function traceMeta(trace) {
+    return trace && trace.meta && typeof trace.meta === "object" ? trace.meta : {};
+  }
+
+  function traceIsVisible(trace) {
+    return !!trace && trace.visible !== false && trace.visible !== "legendonly";
+  }
+
+  function isPeakTrace(trace) {
+    return !!traceMeta(trace).rist_peak;
+  }
+
+  function isSampleTrace(trace) {
+    return !!traceMeta(trace).rist_sample_parent;
+  }
+
+  function isPeakAnnotation(annotation) {
+    var name = String(annotation && annotation.name || "");
+    return /(?:^|[_:-])(?:ftir_|raman_|rist_user_)?peak_label(?:[_:-]|$)/i.test(name);
+  }
+
+  function isPeakShape(shape) {
+    var name = String(shape && shape.name || "");
+    return /^rist_(?:user_)?peak(?:[_:-]|$)/i.test(name);
+  }
+
+  function labelledPeakTraceIndexes(layout) {
+    var indexes = {};
+    var labels = layout.meta && Array.isArray(layout.meta.ristPeakLabels)
+      ? layout.meta.ristPeakLabels : [];
+    labels.forEach(function(label) {
+      var value = label && label.traceIndex;
+      var index = Number(value);
+      if (value !== undefined && value !== null && Number.isFinite(index)) {
+        indexes[index] = true;
+      }
+    });
+    return indexes;
+  }
+
+  function stripPeakArtifacts(layout) {
+    var labels = layout.meta && Array.isArray(layout.meta.ristPeakLabels)
+      ? layout.meta.ristPeakLabels : [];
+    var peakAnnotations = {};
+    var peakShapes = {};
+    labels.forEach(function(label) {
+      var annotationValue = label && label.annotationIndex;
+      var shapeValue = label && label.shapeIndex;
+      var annotationIndex = Number(annotationValue);
+      var shapeIndex = Number(shapeValue);
+      if (annotationValue !== undefined && annotationValue !== null
+          && Number.isFinite(annotationIndex)) peakAnnotations[annotationIndex] = true;
+      if (shapeValue !== undefined && shapeValue !== null
+          && Number.isFinite(shapeIndex)) peakShapes[shapeIndex] = true;
+    });
+    layout.annotations = (layout.annotations || []).filter(function(annotation, index) {
+      return !peakAnnotations[index] && !isPeakAnnotation(annotation);
+    });
+    layout.shapes = (layout.shapes || []).filter(function(shape, index) {
+      return !peakShapes[index] && !isPeakShape(shape);
+    });
+    if (!layout.meta || typeof layout.meta !== "object") layout.meta = {};
+    layout.meta.ristPeakLabels = [];
+    return layout;
+  }
+
+  function arrayValues(values) {
+    if (Array.isArray(values)) return values;
+    if (typeof ArrayBuffer !== "undefined" && ArrayBuffer.isView(values)) {
+      return Array.prototype.slice.call(values);
+    }
+    if (!values || typeof values !== "object") return [];
+    return Object.keys(values).filter(function(key) {
+      return /^\d+$/.test(key);
+    }).sort(function(left, right) {
+      return Number(left) - Number(right);
+    }).map(function(key) {
+      return values[key];
+    });
+  }
+
+  function axisValue(value, axis) {
+    var number = Number(value);
+    if (!Number.isFinite(number)) return NaN;
+    if (axis && axis.type === "log") {
+      return number > 0 ? Math.log(number) / Math.LN10 : NaN;
+    }
+    return number;
+  }
+
+  function dataAxisRange(data, layout, kind) {
+    var axis = layout[kind + "axis"] || {};
+    var configured = Array.isArray(axis.range) ? axis.range : [];
+    if (configured.length >= 2
+        && Number.isFinite(Number(configured[0]))
+        && Number.isFinite(Number(configured[1]))
+        && Number(configured[0]) !== Number(configured[1])) {
+      return [Number(configured[0]), Number(configured[1])];
+    }
+    var low = Infinity;
+    var high = -Infinity;
+    data.forEach(function(trace) {
+      arrayValues(trace && trace[kind]).forEach(function(value) {
+        var number = axisValue(value, axis);
+        if (!Number.isFinite(number)) return;
+        low = Math.min(low, number);
+        high = Math.max(high, number);
+      });
+    });
+    if (!Number.isFinite(low) || !Number.isFinite(high)) return [0, 1];
+    if (low === high) {
+      low -= 0.5;
+      high += 0.5;
+    }
+    return axis.autorange === "reversed" ? [high, low] : [low, high];
+  }
+
+  function normalizedValue(value, axis, range) {
+    var number = axisValue(value, axis);
+    if (!Number.isFinite(number) || range[0] === range[1]) return NaN;
+    return (number - range[0]) / (range[1] - range[0]);
+  }
+
+  function chooseLegendPlacement(data, layout, width, height) {
+    var margin = layout.margin || {};
+    var plotWidth = Math.max(320, width - Number(margin.l || 0) - Number(margin.r || 0));
+    var plotHeight = Math.max(240, height - Number(margin.t || 0) - Number(margin.b || 0));
+    var longestName = 0;
+    data.forEach(function(trace) {
+      var plainName = String(trace && trace.name || "").replace(/<[^>]*>/g, "");
+      longestName = Math.max(longestName, plainName.length);
+    });
+    var legendWidth = Math.max(0.16, Math.min(0.38, (longestName * 6.5 + 54) / plotWidth));
+    var legendHeight = Math.max(0.08, Math.min(0.42, (data.length * 23 + 18) / plotHeight));
+    var candidates = [
+      {corner: "top-left", x: 0.018, y: 0.982, xanchor: "left", yanchor: "top",
+       left: 0, right: legendWidth + 0.025, bottom: 1 - legendHeight - 0.025, top: 1},
+      {corner: "top-right", x: 0.982, y: 0.982, xanchor: "right", yanchor: "top",
+       left: 1 - legendWidth - 0.025, right: 1, bottom: 1 - legendHeight - 0.025, top: 1},
+      {corner: "bottom-left", x: 0.018, y: 0.018, xanchor: "left", yanchor: "bottom",
+       left: 0, right: legendWidth + 0.025, bottom: 0, top: legendHeight + 0.025},
+      {corner: "bottom-right", x: 0.982, y: 0.018, xanchor: "right", yanchor: "bottom",
+       left: 1 - legendWidth - 0.025, right: 1, bottom: 0, top: legendHeight + 0.025}
+    ];
+    var scores = candidates.map(function() { return 0; });
+    var xaxis = layout.xaxis || {};
+    var yaxis = layout.yaxis || {};
+    var xrange = dataAxisRange(data, layout, "x");
+    var yrange = dataAxisRange(data, layout, "y");
+
+    data.forEach(function(trace) {
+      var xs = arrayValues(trace && trace.x);
+      var ys = arrayValues(trace && trace.y);
+      var count = Math.min(xs.length, ys.length);
+      var step = Math.max(1, Math.ceil(count / 700));
+      for (var index = 0; index < count; index += step) {
+        var nx = normalizedValue(xs[index], xaxis, xrange);
+        var ny = normalizedValue(ys[index], yaxis, yrange);
+        if (!Number.isFinite(nx) || !Number.isFinite(ny)) continue;
+        candidates.forEach(function(candidate, candidateIndex) {
+          if (nx >= candidate.left && nx <= candidate.right
+              && ny >= candidate.bottom && ny <= candidate.top) {
+            scores[candidateIndex] += 1;
+          }
+        });
+      }
+    });
+
+    (layout.annotations || []).forEach(function(annotation) {
+      if (!annotation || annotation.visible === false) return;
+      var nx = annotation.xref === "paper"
+        ? Number(annotation.x) : normalizedValue(annotation.x, xaxis, xrange);
+      var ny = annotation.yref === "paper"
+        ? Number(annotation.y) : normalizedValue(annotation.y, yaxis, yrange);
+      if (!Number.isFinite(nx) || !Number.isFinite(ny)) return;
+      candidates.forEach(function(candidate, candidateIndex) {
+        if (nx >= candidate.left && nx <= candidate.right
+            && ny >= candidate.bottom && ny <= candidate.top) {
+          scores[candidateIndex] += 12;
+        }
+      });
+    });
+
+    (layout.shapes || []).forEach(function(shape) {
+      if (!shape || shape.visible === false) return;
+      var xref = String(shape.xref || "x");
+      var yref = String(shape.yref || "y");
+      var nx0 = xref === "paper"
+        ? Number(shape.x0) : normalizedValue(shape.x0, xaxis, xrange);
+      var nx1 = xref === "paper"
+        ? Number(shape.x1) : normalizedValue(shape.x1, xaxis, xrange);
+      var ny0 = yref === "paper"
+        ? Number(shape.y0) : normalizedValue(shape.y0, yaxis, yrange);
+      var ny1 = yref === "paper"
+        ? Number(shape.y1) : normalizedValue(shape.y1, yaxis, yrange);
+      if (![nx0, nx1, ny0, ny1].every(Number.isFinite)) return;
+      var shapeLeft = Math.min(nx0, nx1);
+      var shapeRight = Math.max(nx0, nx1);
+      var shapeBottom = Math.min(ny0, ny1);
+      var shapeTop = Math.max(ny0, ny1);
+      candidates.forEach(function(candidate, candidateIndex) {
+        var overlaps = shapeRight >= candidate.left && shapeLeft <= candidate.right
+          && shapeTop >= candidate.bottom && shapeBottom <= candidate.top;
+        if (overlaps) scores[candidateIndex] += 10;
+      });
+    });
+
+    var bestIndex = 0;
+    for (var candidateIndex = 1; candidateIndex < candidates.length; candidateIndex++) {
+      if (scores[candidateIndex] < scores[bestIndex]) bestIndex = candidateIndex;
+    }
+    var best = candidates[bestIndex];
+    return {
+      corner: best.corner,
+      legend: {
+        x: best.x,
+        y: best.y,
+        xanchor: best.xanchor,
+        yanchor: best.yanchor
+      }
+    };
+  }
+
+  function buildImageExportPayload(sourceData, sourceLayout, width, height) {
+    var data = cloneValue(sourceData, []);
+    var layout = cloneValue(sourceLayout, {});
+    var labelledPeakTraces = labelledPeakTraceIndexes(layout);
+    stripPeakArtifacts(layout);
+    var hasSampleMetadata = data.some(isSampleTrace);
+    var exportData = [];
+    data.forEach(function(trace, index) {
+      if (!traceIsVisible(trace) || isPeakTrace(trace)
+          || (labelledPeakTraces[index] && !isSampleTrace(trace))) return;
+      if (hasSampleMetadata && !isSampleTrace(trace)) return;
+      trace.visible = true;
+      trace.showlegend = hasSampleMetadata
+        ? true : (trace.showlegend !== false && String(trace.name || "").trim() !== "");
+      trace.legendgroup = "";
+      delete trace.legendgrouptitle;
+      exportData.push(trace);
+    });
+
+    var titleText = layout.title && typeof layout.title === "object"
+      ? String(layout.title.text || "").trim() : String(layout.title || "").trim();
+    layout.autosize = false;
+    layout.width = width;
+    layout.height = height;
+    layout.margin = {
+      l: 72,
+      r: 24,
+      t: titleText ? 68 : 28,
+      b: 66,
+      pad: 0,
+      autoexpand: false
+    };
+    Object.keys(layout).forEach(function(key) {
+      if (!/^xaxis\d*$/.test(key) && !/^yaxis\d*$/.test(key)) return;
+      if (!layout[key] || typeof layout[key] !== "object") layout[key] = {};
+      layout[key].automargin = true;
+    });
+
+    var placement = chooseLegendPlacement(exportData, layout, width, height);
+    var originalLegend = layout.legend && typeof layout.legend === "object"
+      ? layout.legend : {};
+    layout.legend = Object.assign({}, originalLegend, placement.legend, {
+      orientation: "v",
+      traceorder: "normal",
+      tracegroupgap: 4,
+      bgcolor: "rgba(255,255,255,0.84)",
+      bordercolor: "rgba(100,116,139,0.65)",
+      borderwidth: 1,
+      title: {text: ""},
+      font: Object.assign({}, originalLegend.font || {}, {size: 11})
+    });
+    layout.showlegend = exportData.some(function(trace) { return trace.showlegend !== false; });
+    layout.meta.ristImageExport = {
+      sampleOnly: hasSampleMetadata,
+      peaksRemoved: true,
+      legendCorner: placement.corner
+    };
+    return {data: exportData, layout: layout};
+  }
+
+  function exportDimensions() {
+    var fullLayout = gd._fullLayout || {};
+    return {
+      width: Math.max(900, Math.round(fullLayout.width || gd.clientWidth || 1200)),
+      height: Math.max(600, Math.round(fullLayout.height || gd.clientHeight || 720))
+    };
+  }
+
+  function removeExportPlot(temp) {
+    if (window.Plotly && typeof window.Plotly.purge === "function") {
+      window.Plotly.purge(temp);
+    }
+    temp.remove();
+  }
+
+  function downloadImage(format) {
+    if (!window.Plotly || gd._ristImageExportPromise) return;
+    var dimensions = exportDimensions();
+    var payload = buildImageExportPayload(
+      gd.data || [], gd.layout || {}, dimensions.width, dimensions.height
+    );
+    var temp = document.createElement("div");
+    temp.setAttribute("aria-hidden", "true");
+    temp.style.cssText = "position:fixed;left:-10000px;top:0;pointer-events:none;"
+      + "width:" + dimensions.width + "px;height:" + dimensions.height + "px;";
+    document.body.appendChild(temp);
+    gd.setAttribute("data-rist-image-exporting", "true");
+    gd._ristImageExportPromise = window.Plotly.newPlot(
+      temp,
+      payload.data,
+      payload.layout,
+      {responsive: false, displayModeBar: false, staticPlot: true}
+    ).then(function() {
+      return window.Plotly.downloadImage(temp, {
+        format: format,
+        filename: __FILENAME_JSON__,
+        scale: __IMAGE_SCALE__,
+        width: dimensions.width,
+        height: dimensions.height
+      });
+    }).catch(function(err) {
+      console.error("RIST image export failed", err);
+      try {
+        gd.dispatchEvent(new CustomEvent("rist-image-export-error", {detail: {error: err}}));
+      } catch (eventError) {}
+    }).then(function(result) {
+      removeExportPlot(temp);
+      gd._ristImageExportPromise = null;
+      gd.removeAttribute("data-rist-image-exporting");
+      return result;
+    }, function(err) {
+      removeExportPlot(temp);
+      gd._ristImageExportPromise = null;
+      gd.removeAttribute("data-rist-image-exporting");
+      throw err;
+    });
+  }
+
+  gd._ristBuildImageExportPayload = buildImageExportPayload;
+  gd._ristChooseImageLegendPlacement = chooseLegendPlacement;
+
+  pop.addEventListener("click", function(ev) {
     var b = ev.target.closest("button[data-fmt]");
     if (!b) return;
     ev.stopPropagation();
     hide();
-    if (!window.Plotly) return;
-    var fl = gd._fullLayout || {{}};
-    window.Plotly.downloadImage(gd, {{
-      format: b.getAttribute("data-fmt"),
-      filename: "{filename}",
-      scale: {scale},
-      width: fl.width || gd.clientWidth,
-      height: fl.height || gd.clientHeight
-    }});
-  }});
+    downloadImage(b.getAttribute("data-fmt"));
+  });
 
   // 모드바의 'Download plot' 버튼 클릭을 가로채 팝업 표시
-  document.addEventListener("click", function(ev) {{
+  document.addEventListener("click", function(ev) {
     var btn = ev.target.closest("a.modebar-btn");
     if (btn && /Download/i.test(btn.getAttribute("data-title") || "")
-        && gd.contains(btn)) {{
+        && gd.contains(btn)) {
       ev.preventDefault();
       ev.stopPropagation();
       var r = btn.getBoundingClientRect();
       showAt(r.left, r.bottom + 4);
       return;
-    }}
+    }
     if (!pop.contains(ev.target)) hide();
-  }}, true);
+  }, true);
 
-  document.addEventListener("keydown", function(ev) {{
+  document.addEventListener("keydown", function(ev) {
     if (ev.key === "Escape") hide();
-  }});
-}})();
+  });
+})();
 </script>
 """
+    return (
+        template.replace("__PLOT_ID_JSON__", json.dumps(div_id))
+        .replace("__FORMAT_BUTTONS__", opts)
+        .replace("__FILENAME_JSON__", json.dumps(filename))
+        .replace("__IMAGE_SCALE__", str(float(scale)))
+    )
 
 
 def _edit_mode_toggle_js(div_id: str) -> str:

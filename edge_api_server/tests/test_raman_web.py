@@ -210,6 +210,10 @@ def test_raman_workspace_contains_upload_controls() -> None:
     assert "z-index: 200" in page
     assert "background: rgba(248,250,252,0.76)" in page
     assert "Plotly.toImage" in page
+    assert "function buildImageExportPayload" in page
+    assert "gd._ristBuildImageExportPayload = buildImageExportPayload" in page
+    assert "window.Plotly.downloadImage(temp" in page
+    assert "layout.meta.ristPeakLabels = []" in page
     assert 'id="raman-file-list"' in page
     assert 'id="raman-drop-zone"' in page
     assert 'id="raman-drop-prompt"' in page
