@@ -15,9 +15,14 @@ from app.report_management import _decorate_row, _trash_report, router
 KST = timezone(timedelta(hours=9))
 
 
-def settings(storage_root: Path) -> SimpleNamespace:
+def settings(
+    storage_root: Path,
+    *,
+    analysis_type_map: tuple[tuple[str, str], ...] = (),
+) -> SimpleNamespace:
     return SimpleNamespace(
         storage_root=storage_root,
+        analysis_type_map=analysis_type_map,
         report_test_retention_days=7,
         report_failed_retention_days=30,
         report_completed_retention_days=90,
@@ -359,6 +364,35 @@ def test_report_management_api_uses_server_side_pagination(tmp_path: Path) -> No
     assert database.list_kwargs["sort_dir"] == "asc"
     assert database.list_kwargs["limit"] == 25
     assert database.list_kwargs["offset"] == 25
+
+
+def test_report_management_maps_lims_codes_to_project_filter_and_display(
+    tmp_path: Path,
+) -> None:
+    app = FastAPI()
+    database = PagedReportDatabase()
+    database.list_report_management = lambda **kwargs: [
+        report_row(
+            report_id="report-xrd",
+            experiment_code="A23141",
+            equipment_code="AX-01",
+        )
+    ]
+    app.state.settings = settings(
+        tmp_path,
+        analysis_type_map=(("A23141", "XRD"), ("B54123", "TEM")),
+    )
+    app.state.database = database
+    app.include_router(router)
+
+    response = TestClient(app).get(
+        "/api/v1/report-management",
+        params={"experimentCode": "XRD"},
+    )
+
+    assert response.status_code == 200
+    assert database.count_kwargs["experiment_code"] == "XRD,A23141"
+    assert response.json()["items"][0]["analysis_type"] == "XRD"
 
 
 def test_trash_report_moves_artifact_and_records_sha_state(tmp_path: Path) -> None:

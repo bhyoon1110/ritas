@@ -11,6 +11,7 @@ from app.preview_report import PreviewReportSendRequest, send_preview_report_pac
 from app.report_queue import (
     ReportQueueError,
     enqueue_report_package,
+    enqueue_registered_report_package,
     register_generated_report_package,
 )
 
@@ -153,6 +154,91 @@ def test_enqueue_report_package_rejects_invalid_zip(tmp_path: Path) -> None:
 
     assert captured.value.code == "REPORT_PACKAGE_INVALID_ZIP"
     assert captured.value.retryable is False
+
+
+def test_enqueue_registered_report_rechecks_published_package_integrity(
+    tmp_path: Path,
+) -> None:
+    storage_root = tmp_path / "shared"
+    package = (
+        storage_root
+        / "web-reports"
+        / "XRD"
+        / "report-1"
+        / "report-package.zip"
+    )
+    package_bytes = write_zip(package)
+    report = {
+        "report_id": "report-1",
+        "source_job_id": None,
+        "request_number": "REQ-001",
+        "experiment_code": "XRD",
+        "equipment_code": "XRD-01",
+        "operator_id": "operator-1",
+        "generation_status": "READY",
+        "storage_key": "RIST_REPORTS",
+        "package_relative_path": package.relative_to(storage_root).as_posix(),
+        "package_size_bytes": len(package_bytes),
+        "package_sha256": hashlib.sha256(package_bytes).hexdigest(),
+        "report_options_json": None,
+        "generated_at": "2026-08-26T10:00:00+09:00",
+    }
+
+    package.write_bytes(package_bytes + b"tampered")
+
+    with pytest.raises(ReportQueueError) as captured:
+        enqueue_registered_report_package(
+            settings=settings(storage_root),
+            database=CapturingDatabase(),
+            report=report,
+            operator_id="SSO-EMP-001",
+        )
+
+    assert captured.value.code == "REPORT_PACKAGE_INTEGRITY_MISMATCH"
+    assert captured.value.retryable is False
+
+
+def test_enqueue_registered_report_preserves_existing_report_metadata(
+    tmp_path: Path,
+) -> None:
+    storage_root = tmp_path / "shared"
+    package = (
+        storage_root
+        / "web-reports"
+        / "A23141"
+        / "report-1"
+        / "report-package.zip"
+    )
+    package_bytes = write_zip(package)
+    database = CapturingDatabase()
+    report = {
+        "report_id": "report-1",
+        "source_job_id": None,
+        "request_number": "REQ-001",
+        "experiment_code": "A23141",
+        "equipment_code": "AX-01",
+        "operator_id": "csharp-operator",
+        "generation_status": "READY",
+        "storage_key": "RIST_REPORTS",
+        "package_relative_path": package.relative_to(storage_root).as_posix(),
+        "package_size_bytes": len(package_bytes),
+        "package_sha256": hashlib.sha256(package_bytes).hexdigest(),
+        "report_options_json": None,
+        "generated_at": "2026-08-26T10:00:00+09:00",
+        "is_test": True,
+    }
+
+    result = enqueue_registered_report_package(
+        settings=settings(storage_root),
+        database=database,
+        report=report,
+        operator_id="SSO-EMP-001",
+    )
+
+    assert result["status"] == "PENDING"
+    assert database.report_runs == []
+    assert database.values["operator_id"] == "SSO-EMP-001"
+    assert database.values["register_report_run"] is False
 
 
 def test_send_preview_report_package_publishes_and_queues(

@@ -18,13 +18,17 @@ worker 를 start 하면 vLLM compose 스택도 함께 올라온다(선택 의존
 
 ## 전제 조건
 
-서버의 다음 경로에 세 폴더가 함께 배포되어 있어야 한다.
+서버의 다음 경로에 분석 프로젝트와 Edge 폴더가 함께 배포되어 있어야 한다.
 
 ```text
 /home/rist/ritas/
   .venv/            # 저장소 루트 단일 가상환경(common, edge_api_server 공용)
   common/
   config/
+  sune/
+  rin/
+  lim/
+  ahn/
   edge_api_server/
 ```
 
@@ -102,7 +106,7 @@ sudo git clone https://github.com/bhyoon1110/ritas.git /home/rist/ritas
 
 ```bash
 rsync -av --exclude '.venv' --exclude 'data/jobs' --exclude 'data/logs' \
-  ./common ./config ./edge_api_server ./edge.env.example \
+  ./common ./config ./sune ./rin ./lim ./ahn ./edge_api_server ./edge.env.example \
   rist-server:/home/rist/ritas/
 ```
 

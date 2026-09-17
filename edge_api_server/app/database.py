@@ -1052,6 +1052,7 @@ class Database:
         generated_at: str,
         max_attempts: int,
         destination: str = "LIMS",
+        register_report_run: bool = True,
     ) -> dict[str, Any]:
         """보고서 메타데이터와 LIMS 전송 큐를 같은 트랜잭션으로 등록한다."""
         idempotency_key = f"{report_id}:{destination}"
@@ -1060,70 +1061,73 @@ class Database:
                 "SELECT version_no FROM report_runs WHERE report_id = ?",
                 (report_id,),
             ).fetchone()
-            if existing_report is not None:
-                version_no = int(existing_report["version_no"])
-            elif source_job_id:
-                version_row = connection.execute(
+            if not register_report_run and existing_report is None:
+                raise RuntimeError("전송할 기존 보고서 생성 기록을 찾을 수 없습니다.")
+            if register_report_run:
+                if existing_report is not None:
+                    version_no = int(existing_report["version_no"])
+                elif source_job_id:
+                    version_row = connection.execute(
+                        """
+                        SELECT COALESCE(MAX(version_no), 0) + 1 AS next_version
+                        FROM report_runs WHERE source_job_id = ?
+                        """,
+                        (source_job_id,),
+                    ).fetchone()
+                    version_no = int(version_row["next_version"])
+                else:
+                    version_no = 1
+                connection.execute(
                     """
-                    SELECT COALESCE(MAX(version_no), 0) + 1 AS next_version
-                    FROM report_runs WHERE source_job_id = ?
+                    INSERT INTO report_runs (
+                        report_id,
+                        source_job_id,
+                        request_number,
+                        experiment_code,
+                        equipment_code,
+                        operator_id,
+                        version_no,
+                        generation_status,
+                        storage_key,
+                        package_relative_path,
+                        package_file_name,
+                        package_size_bytes,
+                        package_sha256,
+                        report_options_json,
+                        generated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, 'READY', ?, ?, ?, ?, ?, ?, ?)
+                    ON DUPLICATE KEY UPDATE
+                        request_number = VALUES(request_number),
+                        experiment_code = VALUES(experiment_code),
+                        equipment_code = VALUES(equipment_code),
+                        operator_id = VALUES(operator_id),
+                        generation_status = 'READY',
+                        storage_key = VALUES(storage_key),
+                        package_relative_path = VALUES(package_relative_path),
+                        package_file_name = VALUES(package_file_name),
+                        package_size_bytes = VALUES(package_size_bytes),
+                        package_sha256 = VALUES(package_sha256),
+                        report_options_json = VALUES(report_options_json),
+                        generated_at = VALUES(generated_at),
+                        updated_at = CURRENT_TIMESTAMP(6)
                     """,
-                    (source_job_id,),
-                ).fetchone()
-                version_no = int(version_row["next_version"])
-            else:
-                version_no = 1
-            connection.execute(
-                """
-                INSERT INTO report_runs (
-                    report_id,
-                    source_job_id,
-                    request_number,
-                    experiment_code,
-                    equipment_code,
-                    operator_id,
-                    version_no,
-                    generation_status,
-                    storage_key,
-                    package_relative_path,
-                    package_file_name,
-                    package_size_bytes,
-                    package_sha256,
-                    report_options_json,
-                    generated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, 'READY', ?, ?, ?, ?, ?, ?, ?)
-                ON DUPLICATE KEY UPDATE
-                    request_number = VALUES(request_number),
-                    experiment_code = VALUES(experiment_code),
-                    equipment_code = VALUES(equipment_code),
-                    operator_id = VALUES(operator_id),
-                    generation_status = 'READY',
-                    storage_key = VALUES(storage_key),
-                    package_relative_path = VALUES(package_relative_path),
-                    package_file_name = VALUES(package_file_name),
-                    package_size_bytes = VALUES(package_size_bytes),
-                    package_sha256 = VALUES(package_sha256),
-                    report_options_json = VALUES(report_options_json),
-                    generated_at = VALUES(generated_at),
-                    updated_at = CURRENT_TIMESTAMP(6)
-                """,
-                (
-                    report_id,
-                    source_job_id,
-                    request_number,
-                    experiment_code,
-                    equipment_code,
-                    operator_id,
-                    version_no,
-                    storage_key,
-                    package_relative_path,
-                    package_file_name,
-                    package_size_bytes,
-                    package_sha256,
-                    report_options_json,
-                    generated_at,
-                ),
-            )
+                    (
+                        report_id,
+                        source_job_id,
+                        request_number,
+                        experiment_code,
+                        equipment_code,
+                        operator_id,
+                        version_no,
+                        storage_key,
+                        package_relative_path,
+                        package_file_name,
+                        package_size_bytes,
+                        package_sha256,
+                        report_options_json,
+                        generated_at,
+                    ),
+                )
             connection.execute(
                 """
                 INSERT INTO report_transfers (

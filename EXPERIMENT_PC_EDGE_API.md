@@ -8,7 +8,9 @@
 이 문서의 호출 주체는 XRD/TEM 실험 PC의 C# 전송 프로그램이고, 수신 주체는
 Edge 분석 서버이다. C# 프로그램은 본 명세의 공통 작업 API를 호출하며,
 Spring Boot를 직접 호출하지 않는다. Edge 보고서 worker는 최종 보고서 ZIP을
-공유 저장소에 게시하고 DB 전송 큐에 상대 경로를 등록한다.
+공유 저장소에 게시하고 `report_runs`에 상대 경로와 무결성 정보를 등록한다.
+사용자가 웹 검토 화면에서 파일을 확인하고 SSO 인증으로 전송을 승인한 뒤에만
+`report_transfers` 전송 큐가 생성된다.
 
 ## 2. 기본 정보
 
@@ -105,8 +107,8 @@ Edge 서버는 작업 등록 시 서버 시간을 기준으로 작업 폴더를 
 
 | 프로젝트 | 파일 전송 주체 | Edge 수신 API | 보고서 생성/전달 |
 |---|---|---|---|
-| XRD | C# 전송 프로그램 | 본 문서의 `/api/v1/jobs`, `/files`, `/uploads/complete`, `/report` | Edge worker가 보고서 ZIP 생성 후 공유 저장소 게시 및 DB 큐 등록 |
-| TEM | C# 전송 프로그램 | 본 문서의 `/api/v1/jobs`, `/files`, `/uploads/complete`, `/report` | Edge worker가 보고서 ZIP 생성 후 공유 저장소 게시 및 DB 큐 등록 |
+| XRD | C# 전송 프로그램 | 본 문서의 `/api/v1/jobs`, `/files`, `/uploads/complete`, `/report` | 기존 XRD 분석기로 HTML ZIP 생성 → 웹 검토/SSO 승인 → DB 전송 큐 등록 |
+| TEM | C# 전송 프로그램 | 본 문서의 `/api/v1/jobs`, `/files`, `/uploads/complete`, `/report` | 기존 TEM 분석기로 PPTX ZIP 생성 → 웹 검토/SSO 승인 → DB 전송 큐 등록 |
 
 XRD/TEM의 현재 웹 화면 API(`/api/v1/xrd/analyze`, `/api/v1/tem/analyze`)는
 브라우저 기반 미리보기/보고서 생성용이다. C# 연동 계약은 위 공통 작업 API를
@@ -129,8 +131,13 @@ XRD/TEM의 현재 웹 화면 API(`/api/v1/xrd/analyze`, `/api/v1/tem/analyze`)�
    `POST /api/v1/jobs/{jobId}/report`로 보고서 생성을 요청한다. XRD는
    `reportFormats: ["HTML"]`, TEM은 `reportFormats: ["PPTX"]`를 보낸다.
 7. C# 프로그램은 `GET /api/v1/jobs/{jobId}`로 `COMPLETED` 또는 `FAILED` 상태를
-   확인한다. `COMPLETED`는 Edge가 최종 ZIP을 공유 저장소에 게시하고 DB 전송
-   큐 등록까지 성공했다는 의미이다. LIMS 전송 결과는 별도 큐 상태로 관리한다.
+   확인한다. `COMPLETED` 응답의 `reviewUrl`을 사용자의 기본 브라우저로 연다.
+8. 사용자는 웹 검토 화면에서 ZIP을 내려받아 확인하고 SSO 인증 후 LIMS 전송을
+   승인한다. 이때 처음으로 `report_transfers(PENDING)`가 생성된다.
+
+C# 프로그램은 SSO ID/PW를 받거나 `/send` API를 직접 호출하지 않는다. 보고서
+생성까지는 실험 PC용 기계 API가 담당하고, 전송 승인은 로그인된 브라우저 세션에서
+사람이 수행한다.
 
 | 프로젝트 | 보고서 생성 요청 `reportFormats` | 공유 저장소 최종 ZIP의 핵심 산출물 |
 |---|---|---|
@@ -140,36 +147,34 @@ XRD/TEM의 현재 웹 화면 API(`/api/v1/xrd/analyze`, `/api/v1/tem/analyze`)�
 `includeRawFiles=true`를 보내면 위 산출물 외에 원본 bundle이 ZIP의 `raw/`
 경로에 포함된다. 기본값은 `false`이다.
 
-현재 명세에서는 `pk.experimentCode` 값 하나가 Edge 작업 식별자와 Spring Boot
-전달 필드 `experimentCode`로 함께 사용된다. LIMS 시험코드가 `A23141`,
-`B54123`처럼 장비 구분명(`XRD`, `TEM`)과 다르고, Edge processor는 장비 구분명으로
-라우팅해야 하는 운영이면 C# 계약 확정 전에 다음 중 하나를 선택해야 한다.
+`pk.experimentCode`에는 의뢰 조회에서 받은 LIMS 시험코드(`A23141`, `B54123` 등)를
+그대로 보낸다. C# 요청 스키마에는 별도 `analysisType` 필드를 추가하지 않는다.
+Edge는 `RIST_ANALYSIS_TYPE_MAP` 설정으로 LIMS 코드를 `XRD` 또는 `TEM` 내부 분석기에
+연결하고, 매핑이 없으면 `experimentCode`와 `equipmentCode`의 `XRD`/`TEM` 표기를
+보조 판별에 사용한다.
 
-- `pk.experimentCode`를 LIMS 시험코드로 보내고, 서버의 processor 설정을 해당
-  시험코드별로 맞춘다.
-- 별도 필드(예: `analysisType`)를 추가해 Edge 내부 라우팅은 `XRD`/`TEM`,
-  Spring Boot 전달은 LIMS `experimentCode`로 분리한다.
+```dotenv
+RIST_ANALYSIS_TYPE_MAP=A23141=XRD,B54123=TEM
+```
 
-현 구현과 문서는 첫 번째 방식, 즉 단일 `experimentCode` 필드를 기준으로 한다.
+원본 LIMS 시험코드는 `report_runs`와 Spring Boot 전송 필드에 그대로 보존되고,
+내부 판별값은 상태 응답의 `analysisType`으로 따로 제공된다. 따라서 이미 전달한
+C# 요청 DTO를 변경할 필요가 없다.
 
 ### 5.3 XRD/TEM raw bundle 구성
 
-C# 프로그램은 파일을 ZIP 하나로 묶어 보내는 방식보다, bundle 내부 파일을
-풀어서 각 파일의 `relativePath`를 보존해 `POST /api/v1/jobs/{jobId}/files`로
-전송하는 방식을 기본으로 한다. ZIP 파일 자체를 전송하려면 해당 실험
-processor가 ZIP 해제를 지원하도록 별도 합의가 필요하다.
+C# 프로그램은 bundle 내부 파일을 풀어서 각 파일의 `relativePath`를 보존해
+`POST /api/v1/jobs/{jobId}/files`로 전송하는 방식을 권장한다. 현재 내장 XRD/TEM
+분석기는 ZIP도 검사·해제할 수 있으므로 장비 프로그램 특성상 ZIP 하나가 더
+안정적이면 ZIP 전송도 가능하다.
 
 Edge 공통 업로드 API는 파일의 경로, 크기, SHA-256을 검증한다. 실제 보고서
-생성 가능 여부는 실험별 processor가 입력 bundle을 해석해
-`processed/*.json`을 만들 수 있는지에 따라 결정된다. 필수 파일이 부족하면
-보고서 생성 상태 조회에서 `ANALYSIS_RESULT_NOT_FOUND` 또는 processor 오류가
-반환될 수 있다.
-
-C# 프로그램이 `processed/*.json`을 직접 생성해 업로드할 필요는 없다. 다만
-Edge 서버에는 XRD/TEM 각각의 raw bundle을 읽어 구조화 분석 JSON을 생성하는
-processor 명령이 설정되어 있어야 한다. processor 설정이 없거나 입력 경로
-규칙이 맞지 않으면 raw 파일 전송과 `uploads/complete`가 성공해도 보고서
-생성은 실패한다.
+생성 가능 여부는 내장 분석기가 bundle을 해석할 때 최종 확인한다. XRD는 웹
+화면과 같은 `lim.xrd_plot` 기반 HTML 생성기를, TEM은 같은 `ahn.processor`와
+PPT 템플릿 생성기를 사용한다. C# 프로그램이 `processed/*.json`을 만들거나 별도
+processor 명령을 설정할 필요가 없다. 필수 파일이 부족하거나 손상된 경우 상태
+조회에서 `MISSING_XRD_INPUT`, `MISSING_XRD_PDF`, `TEM_UPLOAD_INTEGRITY_FAILED`,
+`TEM_NO_REPORT_DATA` 등의 구체적인 오류를 반환한다.
 
 #### XRD bundle
 
@@ -202,8 +207,7 @@ bundle-root/
 
 - 한 작업은 기본적으로 하나의 XRD 보고서에 해당한다.
 - raw 패턴 파일과 ICDD Card PDF가 모두 있어야 HTML 보고서 생성이 가능하다.
-- raw 파일이 여러 개인 경우 어떤 파일을 대표 raw로 사용할지 processor 설정
-  또는 파일명 규칙을 사전에 확정해야 한다.
+- raw 파일이 여러 개인 경우 같은 XRD 보고서의 복수 시료 그래프로 처리한다.
 - C# 프로그램은 `reportFormats: ["HTML"]`로 보고서 생성을 요청한다.
 
 #### TEM bundle
@@ -631,7 +635,8 @@ worker는 요청한 사용자용 `report.pdf`, `report.pptx`, `report.html` 중 
 형식만 렌더링하고, 공통 Markdown 요약인 `report.md`를 만든 뒤
 `{jobRoot}/report/report-package.zip`으로 묶는다.
 분석 결과 JSON, LLM 요청/응답 JSON, 내부 `report.json`은 Edge 내부 처리용이며
-공유 저장소 최종 ZIP에는 포함하지 않는다. DB 큐 및 공유 저장소 계약은
+공유 저장소 최종 ZIP에는 포함하지 않는다. 보고서 등록·SSO 승인·DB 큐 및 공유
+저장소 계약은
 [`EDGE_SPRING_BOOT_API.md`](EDGE_SPRING_BOOT_API.md)를 따른다.
 
 #### 오류
@@ -660,12 +665,40 @@ X-Request-Id: 771e92ae-d06d-42e3-b2c8-d1846619987c
   },
   "status": "PROCESSING",
   "progress": 65,
+  "analysisType": "XRD",
   "createdAt": "2026-06-13T14:30:25.123+09:00",
   "processingStartedAt": "2026-06-13T14:31:16.003+09:00",
   "completedAt": null,
   "error": null
 }
 ```
+
+보고서 생성이 완료되어 사용자 검토를 기다리는 응답은 다음과 같다.
+
+```json
+{
+  "jobId": "e575b716-25d6-49c6-a7c0-3e2b7136fb2c",
+  "pk": {
+    "requestNumber": "2025M01309",
+    "experimentCode": "A23141",
+    "equipmentCode": "XRD-01",
+    "operatorId": "user01"
+  },
+  "status": "COMPLETED",
+  "progress": 100,
+  "analysisType": "XRD",
+  "reportId": "e575b716-25d6-49c6-a7c0-3e2b7136fb2c",
+  "reportStatus": "READY_FOR_REVIEW",
+  "reviewUrl": "/reports/e575b716-25d6-49c6-a7c0-3e2b7136fb2c",
+  "completedAt": "2026-06-13T14:32:12.003+09:00",
+  "error": null
+}
+```
+
+- `analysisType`: Edge 내부 분석기 구분값 `XRD` 또는 `TEM`
+- `reportStatus`: 전송 전에는 `READY_FOR_REVIEW`, 승인 후에는 `PENDING`,
+  `PROCESSING`, `RETRY_WAIT`, `COMPLETED`, `FAILED`, `CANCELLED` 중 하나
+- `reviewUrl`: 사용자가 브라우저에서 보고서를 확인하고 SSO 전송을 승인할 주소
 
 실패한 경우:
 
@@ -675,14 +708,31 @@ X-Request-Id: 771e92ae-d06d-42e3-b2c8-d1846619987c
   "status": "FAILED",
   "progress": 90,
   "error": {
-    "code": "REPORT_QUEUE_REGISTRATION_FAILED",
-    "message": "보고서 전송 큐 등록에 실패했습니다.",
-    "retryable": true
+    "code": "MISSING_XRD_PDF",
+    "message": "Bundle 안에 ICDD PDF 파일이 필요합니다.",
+    "retryable": false
   }
 }
 ```
 
-### 7.6 의뢰 번호 목록 조회
+### 7.6 보고서 검토 및 SSO 전송 승인
+
+`reviewUrl`은 C# 프로그램이 API로 처리하는 주소가 아니라 사용자의 브라우저에서
+여는 웹 화면이다. 운영에서 `RIST_AUTH_ENABLED=true`이면 로컬 로그인과 해당
+프로젝트 접근권한이 필요하다. ZIP 다운로드 후 전송 버튼을 누르면
+`REPORT_SENDER` 역할, 연결된 SSO 계정, 최근 SSO 재인증을 다시 검사한다.
+
+```text
+GET  /reports/{reportId}                    검토 화면
+GET  /api/v1/reports/{reportId}/package     ZIP 다운로드
+POST /api/v1/reports/{reportId}/send        브라우저 세션의 SSO 승인 후 큐 등록
+```
+
+전송 시 `operatorId`는 C# 요청의 임의 문자열이 아니라 검증된 SSO 사번으로
+덮어써서 전송 큐에 기록한다. 생성된 ZIP의 크기와 SHA-256도 등록 당시 값과 다시
+대조하며, 불일치하면 큐를 만들지 않는다.
+
+### 7.7 의뢰 번호 목록 조회
 
 ```http
 GET /api/v1/requests?page=1&pageSize=50&experimentType=XRD&includeCompleted=false
@@ -764,15 +814,16 @@ API에 전달한다. `testChargerName`은 화면 표시용 담당자명이며, `
 | `FILES_VERIFIED` | 파일 수신 및 무결성 검증 완료 |
 | `QUEUED` | 보고서 생성 대기 |
 | `PROCESSING` | 전처리, 분석 또는 보고서 생성 중 |
-| `COMPLETED` | 최종 ZIP 생성, 공유 저장소 확정 및 DB 전송 큐 등록 완료 |
+| `COMPLETED` | 최종 ZIP 생성, 공유 저장소 확정 및 `report_runs` 등록 완료. 사용자 검토 대기 |
 | `FAILED` | 복구되지 않은 오류로 작업 실패 |
 
 상태는 이전 단계로 되돌리지 않는다.
 
-`COMPLETED`는 Edge 작업 완료를 뜻하며 LIMS 전송 완료를 뜻하지 않는다.
-Spring Boot는 `report_transfers` 큐를 스케줄링해 공유 저장소의 ZIP을 직접 읽고
-LIMS에 전달한다. LIMS 전달 상태는 `PENDING`, `PROCESSING`, `RETRY_WAIT`,
-`COMPLETED`, `FAILED`, `CANCELLED`로 별도 관리하며, 상세 계약과 스키마는
+`COMPLETED`는 Edge 생성 작업 완료를 뜻하며 전송 큐 등록이나 LIMS 전송 완료를
+뜻하지 않는다. 사용자의 검토와 SSO 승인 후 `report_transfers(PENDING)`가 생기면
+Spring Boot가 공유 저장소의 ZIP을 직접 읽고 LIMS에 전달한다. LIMS 전달 상태는
+`PENDING`, `PROCESSING`, `RETRY_WAIT`, `COMPLETED`, `FAILED`, `CANCELLED`로 별도
+관리하며, 상세 계약과 스키마는
 `EDGE_SPRING_BOOT_API.md` 및
 `edge_api_server/deploy/mariadb_report_queue.sql`을 따른다.
 

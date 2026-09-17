@@ -17,6 +17,7 @@
 - 로컬 LLM 모델 조회 및 설정 모델 검증(`/v1/models`)
 - LLM 입력 크기 제한과 vLLM 오류 변환
 - 전처리 JSON 및 선택적 분석 이미지 입력
+- C# raw bundle을 기존 XRD HTML/TEM PPTX 생성기에 직접 연결하는 내장 adapter
 - 작업 상태 조회
 - MariaDB 기반 작업, 파일, 멱등 요청 저장
 - 업로드 유효기간 만료 처리
@@ -26,18 +27,19 @@
 - TEM/STEM/EDS/코팅층 raw 폴더 업로드와 PowerPoint 보고서 생성
 
 보고서 생성 API는 요청을 작업 폴더의 `queue` 영역에 기록한다. 별도 worker는
-`processed` 폴더에 장비별 분석 코드가 생성한 JSON을 읽고 규칙 기반 보고서를
-작성한 뒤, 로컬 LLM으로 자유서술 슬롯만 보강한다. 요청한 PDF/PPTX/HTML과
-Markdown을 `report-package.zip`으로 패키징하며, `includeRawFiles=true`이면
-원본 bundle도 함께 넣는다. 분석 결과와 LLM용 JSON은 Edge 내부 데이터로 ZIP에
-포함하지 않는다. 공유 저장소 및 DB 전송 큐 계약은 루트의
+C# XRD/TEM raw bundle이면 웹 화면과 같은 XRD HTML 또는 TEM PPTX 생성기를 직접
+사용하고, 구조화 JSON이 있는 다른 작업은 공통 규칙 기반 보고서와 로컬 LLM
+자유서술 보강 경로를 사용한다. 결과를 `report-package.zip`으로 패키징하며,
+`includeRawFiles=true`이면 원본 bundle도 함께 넣는다. 생성된 ZIP은 공유 저장소와
+`report_runs`에 먼저 등록되고, 사용자가 웹에서 검토하고 SSO 전송을 승인한 뒤에만
+`report_transfers(PENDING)`가 생긴다. 공유 저장소 및 DB 전송 큐 계약은 루트의
 `EDGE_SPRING_BOOT_API.md`를 따른다.
 
 ## 설치 및 실행
 
 Python 3.11 이상이 필요하다.
 
-Edge 서버에는 프로젝트 루트의 다음 세 폴더를 같은 부모 경로 아래에
+Edge 서버에는 프로젝트 루트의 다음 폴더를 같은 부모 경로 아래에
 배포해야 한다.
 
 ```text
@@ -45,6 +47,9 @@ RIST/
   common/
   config/
   sune/
+  rin/
+  lim/
+  ahn/
   edge_api_server/
 ```
 
@@ -336,6 +341,7 @@ cd edge_api_server
 | `RIST_UPLOAD_EXPIRY_HOURS` | `24` | 업로드 유효시간 |
 | `RIST_MAX_UPLOAD_BYTES` | `2147483648` | 개별 파일 최대 크기 |
 | `RIST_SUPPORTED_EXPERIMENT_CODES` | 빈 값 | 쉼표 구분 허용 실험코드. 빈 값이면 제한 없음 |
+| `RIST_ANALYSIS_TYPE_MAP` | 빈 값 | LIMS 시험코드/장비코드를 내장 분석기와 연결. 예: `A23141=XRD,B54123=TEM` |
 | `RIST_LLM_BASE_URL` | `http://127.0.0.1:8001` | OpenAI 호환 로컬 LLM 주소 |
 | `RIST_LLM_MODEL` | `gemma4-e4b` | `/v1/chat/completions` 요청의 model 값 |
 | `RIST_LLM_TIMEOUT_SECONDS` | `180` | LLM 요청 제한 시간 |
@@ -411,6 +417,8 @@ POSCO SSO 비밀번호 검증은 브라우저부터 Edge까지 HTTPS인 경우�
 DB 적용, POSCO SID·서버 IP 등록, DNS/CA 및 최초 관리자 생성·배포 순서는
 [`documents/EDGE_WEB_AUTH.md`](../documents/EDGE_WEB_AUTH.md)를 참조한다. 실험 PC의
 C# 작업 API는 브라우저 회원 쿠키 인증과 분리되어 기존 인터페이스를 유지한다.
+C# 상태 응답의 `reviewUrl`을 브라우저로 열면 생성된 ZIP을 확인할 수 있으며,
+LIMS 전송은 그 화면에서 `REPORT_SENDER`와 최근 SSO 인증을 검사한 뒤 승인한다.
 
 ## 운영 관리
 
@@ -575,8 +583,16 @@ curl http://127.0.0.1:8000/health/llm
 {jobRoot}/queue/report-request.json
 ```
 
-장비별 processor는 LLM 실행 전에 구조화 분석 결과 JSON을 다음 위치에
-하나 이상 생성해야 한다.
+C# raw-only XRD/TEM 작업은 별도 processor 명령 없이 내장 adapter로 처리한다.
+
+- XRD: `input/`의 raw 패턴과 ICDD PDF를 분류해 `lim.xrd_plot` 기반 오프라인
+  HTML 보고서를 생성한다.
+- TEM: `input/`의 `tem`, `stem`, `report`/`reports`, `scale` 구조를 검사해
+  `ahn.processor`와 템플릿 기반 PPTX를 생성한다.
+- LIMS 시험코드가 분석기 이름과 다르면 `RIST_ANALYSIS_TYPE_MAP`으로 연결한다.
+
+FT-IR/Raman 또는 별도 사용자 processor를 사용하는 공통 경로는 LLM 실행 전에
+구조화 분석 결과 JSON을 다음 위치에 하나 이상 생성해야 한다.
 
 ```text
 {jobRoot}/processed/analysis-result.json
@@ -596,12 +612,6 @@ worker가 보고서 생성 전에 해당 명령을 실행한다. 환경 변수 �
 {report_dir}
 {experiment_code}
 {job_id}
-```
-
-예시:
-
-```bash
-export RIST_PROCESSOR_COMMAND_XRD='python -m lim.xrd.cli "{input_dir}/raw.txt" "{input_dir}/ICDD Card" -o "{processed_dir}/xrd.html"'
 ```
 
 이미지 입력을 사용할 경우 `processed` 폴더에 `png`, `jpg`, `jpeg`, `webp`
@@ -630,7 +640,7 @@ worker가 생성하는 파일:
 {jobRoot}/logs/processor-<experiment>.json
 {jobRoot}/report/report.json
 {jobRoot}/report/report.md
-{jobRoot}/report/report.pptx 또는 report.pdf
+{jobRoot}/report/report.pptx, report.pdf 또는 report.html
 ```
 
 LLM에는 원본 bundle을 보내지 않고 `processed` 폴더의 JSON과 허용된 분석
@@ -638,7 +648,9 @@ LLM에는 원본 bundle을 보내지 않고 `processed` 폴더의 JSON과 허용
 보고서는 먼저 규칙 기반 작성기가 판정, 수치, 표를 결정론적으로 채운 뒤,
 LLM이 `summary`, `narrative`, `caption` 자유서술 슬롯만 보조 작성한다.
 LLM 호출이 실패해도 규칙 기반 기본 문안으로 `report.json`, `report.md`,
-요청 포맷의 PPTX/PDF를 완성하며, 작업은 `COMPLETED`, 진행률 100%로 종료된다.
+요청 포맷의 PPTX/PDF를 완성한다. 내장 XRD/TEM 경로를 포함해 작업이
+`COMPLETED`, 진행률 100%가 되면 보고서는 `READY_FOR_REVIEW`이며 아직 LIMS 전송
+큐에는 등록되지 않은 상태다.
 
 FT-IR 작업은 라이브러리 매칭 결과와 룰 기반 판정을 구분해 고정 섹션을 만들고,
 단정적 해석을 피하는 전용 프롬프트로 자유서술 슬롯만 보강한다.

@@ -197,6 +197,10 @@ class JobStatusResponse(ApiModel):
     )
     completed_at: str | None = Field(default=None, alias="completedAt")
     error: ErrorDetail | None = None
+    analysis_type: str | None = Field(default=None, alias="analysisType")
+    report_id: str | None = Field(default=None, alias="reportId")
+    report_status: str | None = Field(default=None, alias="reportStatus")
+    review_url: str | None = Field(default=None, alias="reviewUrl")
 
 
 class ApiError(ApiModel):

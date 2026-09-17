@@ -15,18 +15,24 @@ def build_report_package(
 ) -> Path:
     """공유 저장소에 게시할 최종 결과 ZIP을 만들고 내부 JSON은 제외한다."""
     package_path = report_dir / "report-package.zip"
+    archived_names: set[str] = set()
     with zipfile.ZipFile(package_path, "w", zipfile.ZIP_DEFLATED) as archive:
         for path in sorted(report_dir.rglob("*")):
             if not path.is_file() or path == package_path:
                 continue
             if path.suffix.lower() in _INTERNAL_REPORT_SUFFIXES:
                 continue
-            archive.write(path, path.relative_to(report_dir).as_posix())
+            archive_name = path.relative_to(report_dir).as_posix()
+            archive.write(path, archive_name)
+            archived_names.add(archive_name)
         if include_raw_files and input_dir.exists():
             for path in sorted(input_dir.rglob("*")):
                 if path.is_file():
-                    archive.write(
-                        path,
-                        (Path("raw") / path.relative_to(input_dir)).as_posix(),
-                    )
+                    archive_name = (
+                        Path("raw") / path.relative_to(input_dir)
+                    ).as_posix()
+                    if archive_name in archived_names:
+                        continue
+                    archive.write(path, archive_name)
+                    archived_names.add(archive_name)
     return package_path

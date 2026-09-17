@@ -170,6 +170,18 @@ def test_report_transfer_settings_override_profile(monkeypatch, tmp_path: Path) 
     assert settings.report_transfer_max_attempts == 7
 
 
+def test_analysis_type_map_is_loaded_from_runtime_env(monkeypatch, tmp_path: Path) -> None:
+    write_profile(tmp_path / "development.env", "bhyoon.me", "development")
+    write_profile(tmp_path / "production.env", "192.168.0.10", "production")
+    monkeypatch.setenv("RIST_CONFIG_DIR", str(tmp_path))
+    monkeypatch.setenv("RIST_ENV", "development")
+    monkeypatch.setenv("RIST_ANALYSIS_TYPE_MAP", "A23141=XRD, B54123:TEM")
+
+    settings = Settings.from_env()
+
+    assert settings.analysis_type_map == (("A23141", "XRD"), ("B54123", "TEM"))
+
+
 def test_posco_sso_settings_are_loaded_from_runtime_env(
     monkeypatch,
     tmp_path: Path,

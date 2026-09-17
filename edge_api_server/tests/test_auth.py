@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+import json
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -275,6 +276,20 @@ def test_validation_error_details_redact_credentials() -> None:
     assert rendered.count("[REDACTED]") == 3
 
 
+def test_validation_error_details_are_json_serializable() -> None:
+    redacted = redact_validation_errors(
+        [
+            {
+                "loc": ("body", "prompt"),
+                "ctx": {"error": ValueError("must not be blank")},
+                "input": "   ",
+            }
+        ]
+    )
+
+    assert "must not be blank" in json.dumps(redacted)
+
+
 class _Result:
     def __init__(self, row: dict | None = None) -> None:
         self.row = row
@@ -481,8 +496,16 @@ def test_transfer_requires_recent_sso(tmp_path) -> None:
     )
 
     try:
-        authenticated_transfer_payload(_request(tmp_path, context), _payload(), "FTIR")
+        authenticated_transfer_payload(
+            _request(tmp_path, context),
+            _payload(),
+            "FTIR",
+            return_to="/reports/report-1",
+        )
     except ApiException as exc:
         assert exc.code == "SSO_REAUTH_REQUIRED"
+        assert exc.details == {
+            "reauthUrl": "/auth/sso/start?returnTo=%2Freports%2Freport-1"
+        }
     else:
         raise AssertionError("최근 SSO 재인증 없이 전송이 허용되었습니다.")

@@ -6,6 +6,8 @@ from pathlib import Path
 
 from rist_common.config import load_environment
 
+from .experiment_routing import parse_analysis_type_map
+
 
 PROJECT_DIR = Path(__file__).resolve().parents[1]
 DEFAULT_LLM_BASE_URL = "http://127.0.0.1:8001"
@@ -49,6 +51,7 @@ class Settings:
     upload_expiry_hours: float = 24.0
     max_upload_bytes: int = 2 * 1024 * 1024 * 1024
     supported_experiment_codes: frozenset[str] = frozenset()
+    analysis_type_map: tuple[tuple[str, str], ...] = ()
     llm_base_url: str = DEFAULT_LLM_BASE_URL
     llm_model: str = DEFAULT_LLM_MODEL
     llm_timeout_seconds: float = 180.0
@@ -185,6 +188,9 @@ class Settings:
                 os.getenv("RIST_MAX_UPLOAD_BYTES", str(2 * 1024 * 1024 * 1024))
             ),
             supported_experiment_codes=supported,
+            analysis_type_map=parse_analysis_type_map(
+                os.getenv("RIST_ANALYSIS_TYPE_MAP", "")
+            ),
             llm_base_url=os.getenv(
                 "RIST_LLM_BASE_URL", DEFAULT_LLM_BASE_URL
             ).rstrip("/"),

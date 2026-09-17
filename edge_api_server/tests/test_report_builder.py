@@ -1109,6 +1109,11 @@ def test_report_package_excludes_internal_json_and_optionally_includes_raw(tmp_p
     (input_dir / "raw.csv").write_text("raw", encoding="utf-8")
     (report_dir / "report.json").parent.mkdir(parents=True)
     (report_dir / "report.json").write_text("internal", encoding="utf-8")
+    (report_dir / "raw").mkdir()
+    (report_dir / "raw" / "raw.csv").write_text(
+        "processor-preserved-raw",
+        encoding="utf-8",
+    )
 
     rendered = render_report_formats(document, report_dir, ["HTML", "PPTX"])
     (report_dir / "email_body.md").write_text("메일 본문", encoding="utf-8")
@@ -1116,8 +1121,12 @@ def test_report_package_excludes_internal_json_and_optionally_includes_raw(tmp_p
 
     assert {path.name for path in rendered} == {"report.html", "report.pptx"}
     with zipfile.ZipFile(package) as archive:
-        names = set(archive.namelist())
+        archive_names = archive.namelist()
+        names = set(archive_names)
+        preserved_raw = archive.read("raw/raw.csv").decode("utf-8")
     assert {"report.html", "report.pptx", "email_body.md", "raw/raw.csv"} <= names
+    assert archive_names.count("raw/raw.csv") == 1
+    assert preserved_raw == "processor-preserved-raw"
     assert "report.json" not in names
 
 

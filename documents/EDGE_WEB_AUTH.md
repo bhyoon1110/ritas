@@ -63,6 +63,13 @@ SSO 연동이 준비되지 않은 기간에도 가입과 관리자 승인을 거
 `/api/v1/requests`는 브라우저 회원 쿠키 인증과 분리한다. 기존
 `X-Request-Id`와 클라이언트 식별 헤더 정책을 그대로 사용한다.
 
+C# 보고서 worker는 생성된 ZIP을 `report_runs`에 등록하되 전송 큐는 만들지
+않는다. `GET /api/v1/jobs/{jobId}`가 반환하는 `/reports/{reportId}` 검토 화면은
+브라우저 로그인이 필요하다. 사용자가 ZIP을 확인한 뒤 전송 버튼을 누를 때
+프로젝트 권한, `REPORT_SENDER`, 연결된 SSO 계정과 최근 SSO 인증을 검사하고,
+통과한 경우에만 `report_transfers(PENDING)`를 생성한다. C# 프로그램은 SSO
+ID/PW를 취급하거나 전송 API를 직접 호출하지 않는다.
+
 ## 5. DB 테이블
 
 | 테이블 | 역할 |

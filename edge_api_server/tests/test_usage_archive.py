@@ -335,7 +335,9 @@ def test_csharp_file_upload_usage_includes_job_client_and_file_context(
         storage_root=tmp_path / "jobs",
         error_archive_root=tmp_path / "errors",
         usage_log_root=tmp_path / "usage",
+        analysis_type_map=(("A23141", "XRD"),),
     )
+    app.state.settings = settings
     install_error_management(app, settings)
 
     class FakeDatabase:
@@ -344,8 +346,8 @@ def test_csharp_file_upload_usage_includes_job_client_and_file_context(
             return {
                 "job_id": job_id,
                 "request_number": "REQ-CSHARP-001",
-                "experiment_code": "XRD",
-                "equipment_code": "XRD-01",
+                "experiment_code": "A23141",
+                "equipment_code": "AX-01",
                 "operator_id": "operator-7",
                 "source_host_name": "LAB-PC-XRD-07",
                 "client_version": "1.4.2",
@@ -396,6 +398,7 @@ def test_csharp_file_upload_usage_includes_job_client_and_file_context(
     assert item["activityType"] == "FILE_TRANSFER"
     assert item["jobId"] == "job-csharp-1"
     assert item["requestNumber"] == "REQ-CSHARP-001"
+    assert item["experimentCode"] == "A23141"
     assert item["clientApplication"] == {
         "type": "C#/.NET",
         "name": "RIST XRD Uploader",

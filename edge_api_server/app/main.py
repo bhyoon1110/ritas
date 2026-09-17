@@ -29,6 +29,7 @@ from .errors import (
     ApiException,
 )
 from .error_archive import install_error_management
+from .experiment_routing import resolve_analysis_type
 from .ftir_web import router as ftir_router
 from .llm_client import LlmError, LocalLlmClient
 from .models import (
@@ -47,6 +48,7 @@ from .models import (
 )
 from .preview_web import build_workspace_index
 from .raman_web import router as raman_router
+from .report_delivery import router as report_delivery_router
 from .service import EdgeService
 from .xrd_web import router as xrd_router
 from .usage_archive import set_usage_context
@@ -55,6 +57,20 @@ logger = get_logger(__name__)
 
 # idempotency_records.idempotency_key 컬럼 길이와 일치(초과 시 DB 오류 대신 400 반환).
 MAX_IDEMPOTENCY_KEY_LENGTH = 128
+
+
+def _project_for_identifiers(
+    request: Request,
+    *,
+    experiment_code: object,
+    equipment_code: object = "",
+) -> str:
+    settings = getattr(request.app.state, "settings", None)
+    return resolve_analysis_type(
+        experiment_code=experiment_code,
+        equipment_code=equipment_code,
+        configured_map=getattr(settings, "analysis_type_map", ()),
+    ) or str(experiment_code or "EDGE")
 
 
 def _set_experiment_pc_usage_context(
@@ -73,7 +89,11 @@ def _set_experiment_pc_usage_context(
     job = database.fetch_job(job_id)
     set_usage_context(
         request,
-        project=str((job or {}).get("experiment_code") or "EDGE"),
+        project=_project_for_identifiers(
+            request,
+            experiment_code=(job or {}).get("experiment_code"),
+            equipment_code=(job or {}).get("equipment_code"),
+        ),
         action=action,
         job_id=job_id,
         request_number=(job or {}).get("request_number"),
@@ -157,6 +177,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     install_error_management(app, resolved_settings)
     install_auth(app, resolved_settings, database)
+    app.include_router(report_delivery_router)
     app.include_router(ftir_router)
     app.include_router(raman_router)
     app.include_router(xrd_router)
@@ -222,9 +243,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         _: str = Depends(required_request_id),
         idempotency_key: str = Depends(required_idempotency_key),
     ) -> dict:
+        usage_project = _project_for_identifiers(
+            request,
+            experiment_code=payload.pk.experiment_code,
+            equipment_code=payload.pk.equipment_code,
+        )
         set_usage_context(
             request,
-            project=payload.pk.experiment_code,
+            project=usage_project,
             request_number=payload.pk.request_number,
             experiment_code=payload.pk.experiment_code,
             equipment_code=payload.pk.equipment_code,
@@ -243,7 +269,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         set_usage_context(
             request,
-            project=payload.pk.experiment_code,
+            project=usage_project,
             job_id=str(result.get("jobId") or ""),
             request_number=payload.pk.request_number,
             experiment_code=payload.pk.experiment_code,
@@ -437,7 +463,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         report = database.fetch_report_run(report_id)
         set_usage_context(
             request,
-            project=str((report or {}).get("experiment_code") or "EDGE"),
+            project=_project_for_identifiers(
+                request,
+                experiment_code=(report or {}).get("experiment_code"),
+                equipment_code=(report or {}).get("equipment_code"),
+            ),
             action="보고서 재생성 신호 접수",
             activity_type="REPORT_REGENERATE_SIGNAL",
             job_id=(report or {}).get("source_job_id"),

@@ -1069,12 +1069,15 @@ def authenticated_transfer_payload(
     request: Request,
     payload: PreviewReportSendRequest,
     project_code: str,
+    *,
+    return_to: str | None = None,
 ) -> PreviewReportSendRequest:
     settings = getattr(request.app.state, "settings", None)
     if not settings or not getattr(settings, "auth_enabled", False):
         return payload
     context = require_context(request)
     project = project_code.strip().upper().replace("-", "")
+    reauth_return_to = safe_return_to(return_to or f"/{project.lower()}")
     if not context.is_admin and project not in context.projects:
         raise ApiException(403, "PROJECT_ACCESS_DENIED", "이 프로젝트의 보고서 전송 권한이 없습니다.")
     if "REPORT_SENDER" not in context.roles:
@@ -1084,7 +1087,7 @@ def authenticated_transfer_payload(
             403,
             "SSO_LINK_REQUIRED",
             "보고서 전송 전에 사내 SSO 계정을 연결해야 합니다.",
-            details={"reauthUrl": "/auth/sso/start?" + urlencode({"returnTo": f"/{project.lower()}"})},
+            details={"reauthUrl": "/auth/sso/start?" + urlencode({"returnTo": reauth_return_to})},
         )
     cutoff = _utc_now() - timedelta(minutes=settings.auth_recent_sso_minutes)
     if not context.sso_authenticated_at or context.sso_authenticated_at < cutoff:
@@ -1092,7 +1095,7 @@ def authenticated_transfer_payload(
             401,
             "SSO_REAUTH_REQUIRED",
             "보고서 전송을 위해 사내 SSO 인증을 다시 진행하세요.",
-            details={"reauthUrl": "/auth/sso/start?" + urlencode({"returnTo": f"/{project.lower()}"})},
+            details={"reauthUrl": "/auth/sso/start?" + urlencode({"returnTo": reauth_return_to})},
         )
     identity = context.sso_identity
     operator_id = str(

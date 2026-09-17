@@ -12,6 +12,7 @@ from fastapi.responses import FileResponse, HTMLResponse, Response
 from pydantic import BaseModel, Field
 
 from .database import Database
+from .experiment_routing import normalize_project_code, resolve_analysis_type
 from .xrd_portable_html import make_xrd_html_portable
 
 
@@ -88,6 +89,30 @@ def _settings(request: Request) -> Any:
 
 def _storage_root(settings: Any) -> Path:
     return Path(settings.storage_root).expanduser().resolve()
+
+
+def _analysis_type(row: dict[str, Any], settings: Any) -> str:
+    return resolve_analysis_type(
+        experiment_code=row.get("experiment_code"),
+        equipment_code=row.get("equipment_code"),
+        configured_map=getattr(settings, "analysis_type_map", ()),
+    ) or str(row.get("experiment_code") or "UNKNOWN")
+
+
+def _expand_experiment_code_filter(value: str, settings: Any) -> str:
+    requested = [item.strip() for item in value.split(",") if item.strip()]
+    if not requested:
+        return ""
+    selected_projects = {
+        project
+        for item in requested
+        if (project := normalize_project_code(item)) is not None
+    }
+    expanded = list(requested)
+    for source, target in getattr(settings, "analysis_type_map", ()):
+        if normalize_project_code(target) in selected_projects and source not in expanded:
+            expanded.append(source)
+    return ",".join(expanded)
 
 
 def _safe_storage_path(settings: Any, relative_path: str) -> Path:
@@ -274,6 +299,7 @@ def _decorate_row(
     eligible = bool(deadline and deadline <= now and not active and not pinned and not row.get("deleted_at"))
     output = {
         **row,
+        "analysis_type": _analysis_type(row, settings),
         "transfer_status": transfer_status,
         "retentionDeadline": deadline.isoformat() if deadline else None,
         "retentionPolicy": policy,
@@ -503,9 +529,13 @@ def list_reports(
     policies = _load_retention_policies(settings, database)
     effective_page = 1 if limit is not None else page
     effective_size = limit if limit is not None else page_size
+    expanded_experiment_code = _expand_experiment_code_filter(
+        experiment_code,
+        settings,
+    )
     filters = {
         "query": q,
-        "experiment_code": experiment_code,
+        "experiment_code": expanded_experiment_code,
         "transfer_status": transfer_status,
         "date_from": date_from,
         "date_to": date_to,
@@ -549,7 +579,7 @@ def report_summary(request: Request) -> dict[str, Any]:
     missing = 0
     known: set[str] = set()
     for row in rows:
-        code = str(row.get("experiment_code") or "UNKNOWN")
+        code = _analysis_type(row, settings)
         size = int(row.get("artifact_size_bytes") or 0)
         total_size += size
         bucket = projects.setdefault(code, {"count": 0, "sizeBytes": 0})

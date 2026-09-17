@@ -2,9 +2,9 @@
 
 > 대상: Spring Boot/LIMS 인터페이스 개발자
 >
-> 버전: 2.2
+> 버전: 2.3
 >
-> 기준일: 2026-07-23
+> 기준일: 2026-09-17
 >
 > 연동 방식: 공유 저장소 + MariaDB 전송 큐
 
@@ -23,7 +23,9 @@ Spring Boot 스케줄러가 DB 큐를 선점하고 같은 공유 저장소에서
   -> Edge 작업 등록 및 raw 업로드
   -> Edge 보고서 생성 요청
   -> Edge가 공유 저장소에 report-package.zip 확정
-  -> Edge가 report_runs + report_transfers(PENDING) 등록
+  -> Edge가 report_runs(READY) 등록
+  -> 사용자가 웹에서 보고서 검토 + SSO 전송 승인
+  -> Edge가 report_transfers(PENDING) 등록
   -> Spring Boot 스케줄러가 전송 작업 선점
   -> 공유 저장소 ZIP 크기/SHA-256/형식 검증
   -> LIMS 전송
@@ -44,6 +46,8 @@ Spring Boot 스케줄러가 DB 큐를 선점하고 같은 공유 저장소에서
 6. 파일 I/O와 LIMS 통신 중에는 DB 행 잠금을 유지하지 않는다.
 7. 모든 전송 시도는 감사 가능한 이력으로 남긴다.
 8. 전송 중인 ZIP은 삭제하거나 같은 경로에 덮어쓰지 않는다.
+9. 보고서 생성만으로는 전송 큐를 만들지 않으며, 로그인 사용자와 최근 SSO
+   인증을 확인한 명시적 승인 후에만 큐를 만든다.
 
 ## 3. 범위와 비범위
 
@@ -70,7 +74,8 @@ Spring Boot 스케줄러가 DB 큐를 선점하고 같은 공유 저장소에서
 | 구성요소 | 책임 |
 |---|---|
 | 실험 PC/C# | Edge 작업 생성, raw 업로드, 업로드 완료, 보고서 생성 요청, Edge 상태 조회 |
-| Edge API/worker | 보고서 생성, 공유 ZIP 확정, 크기/SHA-256/ZIP 검증, DB 큐 등록 |
+| Edge API/worker | 보고서 생성, 공유 ZIP 확정, 크기/SHA-256/ZIP 검증, `report_runs` 등록 |
+| Edge 웹 사용자 | 보고서 다운로드·검토, 프로젝트 권한 및 SSO 인증으로 LIMS 전송 승인 |
 | MariaDB | 보고서 위치와 무결성 메타데이터, 전송 상태, 시도 이력 보관 |
 | 공유 저장소 | Edge와 Spring Boot가 함께 접근하는 최종 ZIP 원본 보관 |
 | Spring Boot scheduler | 큐 선점, 파일 재검증, LIMS 전송, 결과와 재시도 상태 기록 |
@@ -90,12 +95,14 @@ LIMS 전송 상태는 `report_transfers.status`로 판단한다.
 5. Edge worker가 분석과 렌더링을 수행한다.
 6. Edge가 최종 `report-package.zip`을 공유 저장소 안에 확정한다.
 7. Edge가 ZIP 형식, 파일 크기와 SHA-256을 검증한다.
-8. Edge가 하나의 DB 트랜잭션으로 `report_runs`와
-   `report_transfers(PENDING)`를 등록한다.
-9. 큐 등록까지 성공하면 Edge가 `jobs.status=COMPLETED`로 변경한다.
+8. Edge가 `report_runs(READY)`와 산출물 정보를 등록한다.
+9. 보고서 등록까지 성공하면 Edge가 `jobs.status=COMPLETED`로 변경한다.
+10. C# 상태 응답은 `reportStatus=READY_FOR_REVIEW`와 `reviewUrl`을 제공한다.
+11. 사용자가 검토 화면에서 ZIP을 확인하고 최근 SSO 인증으로 전송을 승인하면
+    Edge가 `report_transfers(PENDING)`를 등록한다.
 
-`jobs.COMPLETED`는 **보고서 생성, 공유 저장소 게시와 DB 큐 등록 완료**를
-의미한다. LIMS 전송 완료를 의미하지 않는다.
+`jobs.COMPLETED`는 **보고서 생성, 공유 저장소 게시와 `report_runs` 등록 완료**를
+의미한다. 전송 큐 등록 또는 LIMS 전송 완료를 의미하지 않는다.
 
 ### 5.2 Spring Boot 전송 단계
 
@@ -158,10 +165,10 @@ rist:
 
 ```text
 DB storage_key              RIST_REPORTS
-DB package_relative_path    jobs/abc/report/report-package.zip
+DB package_relative_path    web-reports/A23141/abc/report-package.zip
 
-Edge 실제 경로              /mnt/rist/reports/jobs/abc/report/report-package.zip
-Spring 실제 경로            D:\rist-share\jobs\abc\report\report-package.zip
+Edge 실제 경로              /mnt/rist/reports/web-reports/A23141/abc/report-package.zip
+Spring 실제 경로            D:\rist-share\web-reports\A23141\abc\report-package.zip
 ```
 
 `package_relative_path`는 `/` 구분자를 사용하는 POSIX 상대 경로다. Spring은
@@ -223,7 +230,7 @@ LIMS 전송용 3개 테이블과 재생성 신호 테이블은 현재 운영 DB�
 | `report_id` | Y | UUID 형식 보고서 ID |
 | `source_job_id` | N | 원본 Edge 작업 ID. 웹 보고서는 `NULL` 가능 |
 | `request_number` | Y | 의뢰번호 |
-| `experiment_code` | Y | `FT-IR`, `RAMAN`, `XRD`, `TEM` 등 |
+| `experiment_code` | Y | LIMS 시험코드. 예: `A23141`, `B54123` 또는 직접 구분값 `XRD`, `TEM` |
 | `equipment_code` | Y | 실험장비 코드 |
 | `operator_id` | Y | 실험자/작업자 식별자 |
 | `version_no` | Y | 같은 작업의 보고서 버전. 기본 1 |
@@ -338,9 +345,9 @@ ZIP, 인증 토큰, 전체 응답 본문과 stack trace는 이 테이블에 저�
 
 허용되지 않은 상태 전이는 거부하고 운영 로그에 남긴다.
 
-## 10. Edge 큐 등록 계약
+## 10. Edge 보고서 등록 및 승인 후 큐 계약
 
-### 10.1 등록 전 검증
+### 10.1 생성 보고서 등록 전 검증
 
 Edge는 DB 등록 전에 다음을 확인한다.
 
@@ -351,17 +358,34 @@ Edge는 DB 등록 전에 다음을 확인한다.
 5. SHA-256을 계산할 수 있는가
 6. 상대 경로가 POSIX 형식이며 `..`를 포함하지 않는가
 
-### 10.2 등록 트랜잭션
+### 10.2 생성 완료 등록
 
-하나의 DB 트랜잭션에서 다음을 수행한다.
+보고서 생성 worker는 다음을 수행한다.
 
 1. `report_runs`를 upsert한다.
-2. `report_transfers`를 `PENDING`으로 insert한다.
-3. 중복 등록 시 기존 전송 행을 재사용하고 완료 상태를 되돌리지 않는다.
-4. 두 작업 중 하나라도 실패하면 전체를 rollback한다.
+2. ZIP과 개별 산출물을 `report_artifacts`에 등록한다.
+3. `jobs.status=COMPLETED`와 상태 응답의 `READY_FOR_REVIEW`를 확정한다.
+4. 이 단계에서는 `report_transfers` 행을 생성하지 않는다.
 
-큐 등록 후에만 `jobs.status=COMPLETED`로 변경한다. 큐 등록 실패 시 Edge 작업은
-`FAILED`, 오류 코드는 `REPORT_QUEUE_REGISTRATION_FAILED`가 된다.
+보고서 게시 또는 등록이 실패하면 Edge 작업은 `FAILED`가 되며, 전송 큐는 생기지
+않는다.
+
+### 10.3 사용자 승인과 전송 큐 등록
+
+사용자는 `/reports/{reportId}`에서 ZIP을 확인한다. `/api/v1/reports/{reportId}/send`
+요청 시 Edge는 다음 항목을 모두 검사한 뒤 하나의 DB 트랜잭션으로
+`report_transfers(PENDING)`를 등록한다.
+
+1. 로그인 계정이 해당 XRD/TEM 프로젝트 접근권한을 가졌는가
+2. `REPORT_SENDER` 역할이 있는가
+3. SSO 계정이 연결되어 있고 최근 재인증 시간이 정책 이내인가
+4. `report_runs.generation_status=READY`이며 삭제되지 않았는가
+5. 저장소 키와 상대 경로가 유효하고 저장소 루트를 벗어나지 않는가
+6. 현재 ZIP 크기와 SHA-256이 생성 시 등록값과 일치하는가
+
+전송 큐의 `operator_id`에는 C# 업로드 단계의 입력값 대신 검증된 SSO 사번을
+기록한다. 같은 `(report_id, destination)` 요청은 기존 행을 재사용하며 완료 상태를
+되돌리지 않는다. 실패·취소 큐의 재시도는 운영 관리 기능으로만 수행한다.
 
 ## 11. Spring Boot 구현 계약
 
@@ -963,9 +987,11 @@ Spring Boot가 외부 요청을 받은 뒤 로컬 Edge API로 전달한다.
 - `RIST_SPRING_CALLBACK_MAX_ATTEMPTS`
 - `CALLBACK_PENDING` 작업 상태
 
-실험 PC/C# 프로그램의 기존 Edge 업로드 API에는 변화가 없다. C# 프로그램은
-Spring Boot와 전송 큐를 직접 호출하지 않고 `GET /api/v1/jobs/{jobId}`로 Edge
-보고서 생성 완료까지만 확인한다.
+실험 PC/C# 프로그램의 기존 Edge 요청 DTO와 업로드 API에는 호환성을 깨는 변화가
+없다. C# 프로그램은 Spring Boot와 전송 큐를 직접 호출하지 않고
+`GET /api/v1/jobs/{jobId}`로 Edge 보고서 생성 완료를 확인한 뒤 응답의
+`reviewUrl`을 사용자의 브라우저로 연다. SSO 자격정보와 전송 승인은 C# 프로그램이
+처리하지 않는다.
 
 ## 27. Spring Boot 개발 완료 기준
 

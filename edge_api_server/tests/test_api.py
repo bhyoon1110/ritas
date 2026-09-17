@@ -1,14 +1,18 @@
 from __future__ import annotations
 
 import hashlib
+from io import BytesIO
 import json
 from pathlib import Path
 from uuid import uuid4
+import zipfile
 
 import httpx
 import pymysql
 from fastapi.testclient import TestClient
+from PIL import Image
 
+from app import xrd_web
 from app.config import Settings
 from app.llm_client import LocalLlmClient
 from app.main import create_app
@@ -23,7 +27,12 @@ def headers(idempotency_key: str | None = None) -> dict[str, str]:
     return result
 
 
-def create_client(tmp_path: Path, db: dict) -> TestClient:
+def create_client(
+    tmp_path: Path,
+    db: dict,
+    *,
+    analysis_type_map: tuple[tuple[str, str], ...] = (),
+) -> TestClient:
     settings = Settings(
         storage_root=tmp_path / "jobs",
         db_host=db["host"],
@@ -33,7 +42,8 @@ def create_client(tmp_path: Path, db: dict) -> TestClient:
         db_password=db["password"],
         upload_expiry_hours=24,
         max_upload_bytes=1024 * 1024,
-        supported_experiment_codes=frozenset({"XRD", "FT-IR"}),
+        supported_experiment_codes=frozenset({"XRD", "FT-IR", "TEM"}),
+        analysis_type_map=analysis_type_map,
     )
     return TestClient(create_app(settings))
 
@@ -52,6 +62,73 @@ def job_payload() -> dict:
             "clientVersion": "1.0.0",
         },
     }
+
+
+def upload_bundle(
+    client: TestClient,
+    job_id: str,
+    files: dict[str, bytes],
+) -> None:
+    uploaded: list[dict[str, object]] = []
+    for relative_path, content in files.items():
+        digest = hashlib.sha256(content).hexdigest()
+        response = client.post(
+            f"/api/v1/jobs/{job_id}/files",
+            files={
+                "file": (
+                    Path(relative_path).name,
+                    content,
+                    "application/octet-stream",
+                )
+            },
+            data={
+                "relativePath": relative_path,
+                "sizeBytes": str(len(content)),
+                "sha256": digest,
+            },
+            headers=headers(f"{job_id}:{digest[:24]}"),
+        )
+        assert response.status_code == 201, response.text
+        uploaded.append(
+            {
+                "relativePath": relative_path,
+                "sizeBytes": len(content),
+                "sha256": digest,
+            }
+        )
+    completed = client.post(
+        f"/api/v1/jobs/{job_id}/uploads/complete",
+        json={
+            "fileCount": len(uploaded),
+            "totalSizeBytes": sum(int(item["sizeBytes"]) for item in uploaded),
+            "files": uploaded,
+        },
+        headers=headers(f"{job_id}:uploads-complete"),
+    )
+    assert completed.status_code == 200, completed.text
+
+
+def run_worker(client: TestClient) -> None:
+    def unexpected_llm_call(_: httpx.Request) -> httpx.Response:
+        raise AssertionError("특화 XRD/TEM 보고서는 공통 LLM worker를 호출하지 않습니다.")
+
+    llm_client = LocalLlmClient(
+        "http://127.0.0.1:8001",
+        "local-model",
+        10,
+        0.2,
+        validate_model=False,
+        transport=httpx.MockTransport(unexpected_llm_call),
+    )
+    worker = ReportWorker(
+        client.app.state.settings,
+        client.app.state.database,
+        llm_client,
+    )
+    try:
+        assert worker.run_once() is True
+    finally:
+        llm_client.close()
 
 
 def seed_lims_request_search(db: dict) -> None:
@@ -883,7 +960,25 @@ def test_worker_calls_local_llm_and_saves_report(
     report_run = database.fetch_report_run_by_source_job(job_id)
     assert report_run is not None
     assert report_run["generation_status"] == "READY"
-    assert report_run["package_relative_path"].endswith("report/report-package.zip")
+    assert report_run["package_relative_path"].endswith(
+        f"web-reports/XRD/{job_id}/report-package.zip"
+    )
+    transfer = database.fetch_report_transfer_for_report(report_run["report_id"])
+    assert transfer is None
+    status_response = client.get(f"/api/v1/jobs/{job_id}", headers=headers())
+    assert status_response.status_code == 200
+    status_payload = status_response.json()
+    assert status_payload["analysisType"] == "XRD"
+    assert status_payload["reportId"] == report_run["report_id"]
+    assert status_payload["reportStatus"] == "READY_FOR_REVIEW"
+    assert status_payload["reviewUrl"] == f"/reports/{report_run['report_id']}"
+    assert client.get(status_payload["reviewUrl"]).status_code == 200
+    assert client.get(
+        f"/api/v1/reports/{report_run['report_id']}/package"
+    ).status_code == 200
+    queued = client.post(f"/api/v1/reports/{report_run['report_id']}/send")
+    assert queued.status_code == 200, queued.text
+    assert queued.json()["status"] == "PENDING"
     transfer = database.fetch_report_transfer_for_report(report_run["report_id"])
     assert transfer is not None
     assert transfer["status"] == "PENDING"
@@ -1003,8 +1098,9 @@ def test_worker_completes_report_without_llm(
     report_run = database.fetch_report_run_by_source_job(job_id)
     assert report_run is not None
     transfer = database.fetch_report_transfer_for_report(report_run["report_id"])
-    assert transfer is not None
-    assert transfer["status"] == "PENDING"
+    assert transfer is None
+    status_payload = client.get(f"/api/v1/jobs/{job_id}", headers=headers()).json()
+    assert status_payload["reportStatus"] == "READY_FOR_REVIEW"
     assert (job_root / "report" / "report.pptx").exists()
     report_doc = json.loads(
         (job_root / "report" / "report.json").read_text(encoding="utf-8")
@@ -1020,6 +1116,178 @@ def test_worker_completes_report_without_llm(
     assert summary_section["paragraphs"][0]
 
 
+def test_csharp_xrd_raw_bundle_generates_reviewable_report_then_queues_on_send(
+    monkeypatch,
+    tmp_path: Path,
+    mariadb: dict,
+) -> None:
+    client = create_client(
+        tmp_path,
+        mariadb,
+        analysis_type_map=(("A23141", "XRD"),),
+    )
+    payload = job_payload()
+    payload["pk"]["experimentCode"] = "A23141"
+    payload["pk"]["equipmentCode"] = "AX-01"
+    created = client.post(
+        "/api/v1/jobs",
+        json=payload,
+        headers=headers(str(uuid4())),
+    )
+    assert created.status_code == 201, created.text
+    job_id = created.json()["jobId"]
+
+    source = tmp_path / "xrd-source"
+    xrd_web._write_synthetic_icdd_pdf_dir(source)
+    pdf_path = next(source.glob("*.pdf"))
+    upload_bundle(
+        client,
+        job_id,
+        {
+            "raw/sample.txt": b"10 1\n20 3\n30 2\n",
+            f"ICDD Card/{pdf_path.name}": pdf_path.read_bytes(),
+        },
+    )
+    requested = client.post(
+        f"/api/v1/jobs/{job_id}/report",
+        json={"options": {"reportFormats": ["HTML"]}},
+        headers=headers(f"{job_id}:generate-report"),
+    )
+    assert requested.status_code == 202, requested.text
+    monkeypatch.setattr(
+        xrd_web,
+        "_xrd_comment_provider",
+        lambda *_args, **_kwargs: None,
+    )
+
+    run_worker(client)
+
+    status = client.get(f"/api/v1/jobs/{job_id}", headers=headers()).json()
+    assert status["status"] == "COMPLETED"
+    assert status["analysisType"] == "XRD"
+    assert status["reportStatus"] == "READY_FOR_REVIEW"
+    report = client.app.state.database.fetch_report_run(status["reportId"])
+    assert report is not None
+    package = client.app.state.settings.storage_root / report["package_relative_path"]
+    with zipfile.ZipFile(package) as archive:
+        names = set(archive.namelist())
+        assert {"report.html", "report.md"} <= names
+        assert (
+            'data-xrd-embedded-plotly="true"'
+            in archive.read("report.html").decode("utf-8")
+        )
+    assert (
+        client.app.state.database.fetch_report_transfer_for_report(status["reportId"])
+        is None
+    )
+    usage_items = client.get(
+        "/api/v1/usage-events",
+        params={"project": "XRD"},
+    ).json()["items"]
+    completed_usage = next(
+        item for item in usage_items if item["action"] == "보고서 생성 완료"
+    )
+    assert completed_usage["experimentCode"] == "A23141"
+
+    queued = client.post(f"/api/v1/reports/{status['reportId']}/send")
+    assert queued.status_code == 200, queued.text
+    assert queued.json()["status"] == "PENDING"
+
+
+def test_csharp_xrd_rejects_wrong_report_format_before_queueing(
+    tmp_path: Path,
+    mariadb: dict,
+) -> None:
+    client = create_client(
+        tmp_path,
+        mariadb,
+        analysis_type_map=(("A23141", "XRD"),),
+    )
+    payload = job_payload()
+    payload["pk"]["requestNumber"] = "REQ-XRD-FORMAT"
+    payload["pk"]["experimentCode"] = "A23141"
+    payload["pk"]["equipmentCode"] = "AX-01"
+    created = client.post(
+        "/api/v1/jobs",
+        json=payload,
+        headers=headers(str(uuid4())),
+    )
+    job_id = created.json()["jobId"]
+    upload_bundle(client, job_id, {"raw/sample.txt": b"10 1\n20 2\n"})
+
+    rejected = client.post(
+        f"/api/v1/jobs/{job_id}/report",
+        json={"options": {"reportFormats": ["PPTX"]}},
+        headers=headers(f"{job_id}:wrong-format"),
+    )
+
+    assert rejected.status_code == 422
+    assert rejected.json()["code"] == "XRD_REPORT_FORMAT_REQUIRED"
+    status = client.get(f"/api/v1/jobs/{job_id}", headers=headers()).json()
+    assert status["status"] == "FILES_VERIFIED"
+
+    accepted = client.post(
+        f"/api/v1/jobs/{job_id}/report",
+        json={"options": {"reportFormats": ["HTML"]}},
+        headers=headers(f"{job_id}:correct-format"),
+    )
+    assert accepted.status_code == 202
+
+
+def test_csharp_tem_raw_bundle_generates_reviewable_pptx(
+    tmp_path: Path,
+    mariadb: dict,
+) -> None:
+    client = create_client(
+        tmp_path,
+        mariadb,
+        analysis_type_map=(("B54123", "TEM"),),
+    )
+    payload = job_payload()
+    payload["pk"]["requestNumber"] = "REQ-TEM-001"
+    payload["pk"]["experimentCode"] = "B54123"
+    payload["pk"]["equipmentCode"] = "EM-01"
+    created = client.post(
+        "/api/v1/jobs",
+        json=payload,
+        headers=headers(str(uuid4())),
+    )
+    assert created.status_code == 201, created.text
+    job_id = created.json()["jobId"]
+
+    image_stream = BytesIO()
+    Image.new("RGB", (32, 24), "white").save(image_stream, format="TIFF")
+    upload_bundle(
+        client,
+        job_id,
+        {"Bundle/stem/001_100kX.tif": image_stream.getvalue()},
+    )
+    requested = client.post(
+        f"/api/v1/jobs/{job_id}/report",
+        json={"options": {"reportFormats": ["PPTX"]}},
+        headers=headers(f"{job_id}:generate-report"),
+    )
+    assert requested.status_code == 202, requested.text
+
+    run_worker(client)
+
+    status = client.get(f"/api/v1/jobs/{job_id}", headers=headers()).json()
+    assert status["status"] == "COMPLETED"
+    assert status["analysisType"] == "TEM"
+    assert status["reportStatus"] == "READY_FOR_REVIEW"
+    report = client.app.state.database.fetch_report_run(status["reportId"])
+    assert report is not None
+    package = client.app.state.settings.storage_root / report["package_relative_path"]
+    with zipfile.ZipFile(package) as archive:
+        names = set(archive.namelist())
+        assert {"report.pptx", "report.md"} <= names
+        assert archive.read("report.pptx").startswith(b"PK")
+    assert (
+        client.app.state.database.fetch_report_transfer_for_report(status["reportId"])
+        is None
+    )
+
+
 
 def test_worker_fails_without_structured_analysis(
     tmp_path: Path, mariadb: dict
@@ -1027,9 +1295,12 @@ def test_worker_fails_without_structured_analysis(
     client = create_client(tmp_path, mariadb)
     content = b"xrd data"
     digest = hashlib.sha256(content).hexdigest()
+    payload = job_payload()
+    payload["pk"]["experimentCode"] = "FT-IR"
+    payload["pk"]["equipmentCode"] = "FTIR-01"
     create_response = client.post(
         "/api/v1/jobs",
-        json=job_payload(),
+        json=payload,
         headers=headers(str(uuid4())),
     )
     job_id = create_response.json()["jobId"]

@@ -28,6 +28,10 @@ def _normalized_field_name(value: object) -> str:
 
 
 def _redact_sensitive_input(value: object) -> object:
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, BaseException):
+        return str(value)
     if isinstance(value, Mapping):
         return {
             key: (
@@ -41,7 +45,7 @@ def _redact_sensitive_input(value: object) -> object:
         return [_redact_sensitive_input(item) for item in value]
     if isinstance(value, tuple):
         return tuple(_redact_sensitive_input(item) for item in value)
-    return value
+    return str(value)
 
 
 def redact_validation_errors(errors: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -49,8 +53,12 @@ def redact_validation_errors(errors: list[dict[str, Any]]) -> list[dict[str, Any
 
     redacted: list[dict[str, Any]] = []
     for error in errors:
-        item = dict(error)
-        location = item.get("loc") or ()
+        raw_item = dict(error)
+        location = raw_item.get("loc") or ()
+        item = {
+            key: _redact_sensitive_input(value)
+            for key, value in raw_item.items()
+        }
         sensitive_location = any(
             _normalized_field_name(part) in _SENSITIVE_FIELD_NAMES
             for part in location

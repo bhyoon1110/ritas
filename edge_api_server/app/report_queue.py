@@ -34,6 +34,7 @@ def enqueue_report_package(
     operator_id: str,
     report_options: Any = None,
     generated_at: str | None = None,
+    register_report_run: bool = True,
 ) -> dict[str, Any]:
     """Register a completed shared-storage ZIP for downstream LIMS delivery."""
     if database is None:
@@ -76,20 +77,21 @@ def enqueue_report_package(
         )
 
     resolved_source_job_id = _existing_source_job_id(database, source_job_id)
-    _register_shared_report(
-        settings=settings,
-        database=database,
-        report_id=report_id,
-        package_path=resolved_package,
-        source_job_id=resolved_source_job_id,
-        request_number=request_number,
-        experiment_code=experiment_code,
-        equipment_code=equipment_code,
-        operator_id=operator_id,
-        report_options=report_options,
-        generated_at=generated_at,
-        is_test=False,
-    )
+    if register_report_run:
+        _register_shared_report(
+            settings=settings,
+            database=database,
+            report_id=report_id,
+            package_path=resolved_package,
+            source_job_id=resolved_source_job_id,
+            request_number=request_number,
+            experiment_code=experiment_code,
+            equipment_code=equipment_code,
+            operator_id=operator_id,
+            report_options=report_options,
+            generated_at=generated_at,
+            is_test=False,
+        )
 
     transfer_id = str(
         uuid5(NAMESPACE_URL, f"rist-report-transfer:{report_id}:LIMS")
@@ -111,6 +113,7 @@ def enqueue_report_package(
             report_options_json=_json_or_none(report_options),
             generated_at=generated_at or isoformat_kst(),
             max_attempts=max(1, int(settings.report_transfer_max_attempts)),
+            register_report_run=register_report_run,
         )
     except ReportQueueError:
         raise
@@ -130,6 +133,87 @@ def enqueue_report_package(
         "packageRelativePath": normalized_relative_path,
         "packageSizeBytes": resolved_package.stat().st_size,
     }
+
+
+def enqueue_registered_report_package(
+    *,
+    settings: Any,
+    database: Database | None,
+    report: dict[str, Any],
+    operator_id: str,
+) -> dict[str, Any]:
+    """Queue an already generated report after user/SSO authorization."""
+    if database is None:
+        raise ReportQueueError(
+            "REPORT_QUEUE_DATABASE_UNAVAILABLE",
+            "보고서 전송 큐를 등록할 데이터베이스가 연결되어 있지 않습니다.",
+            retryable=True,
+        )
+    if report.get("deleted_at") is not None:
+        raise ReportQueueError(
+            "REPORT_PACKAGE_DELETED",
+            "삭제되었거나 휴지통으로 이동한 보고서는 전송할 수 없습니다.",
+            retryable=False,
+        )
+    if str(report.get("generation_status") or "") != "READY":
+        raise ReportQueueError(
+            "REPORT_PACKAGE_NOT_READY",
+            "보고서 생성과 무결성 등록이 완료되지 않았습니다.",
+            retryable=False,
+        )
+    expected_storage_key = str(settings.report_storage_key)
+    if str(report.get("storage_key") or "") != expected_storage_key:
+        raise ReportQueueError(
+            "REPORT_STORAGE_KEY_MISMATCH",
+            "보고서 저장소 키가 현재 Edge 설정과 일치하지 않습니다.",
+            retryable=False,
+        )
+    relative = Path(str(report.get("package_relative_path") or ""))
+    if not relative.parts or relative.is_absolute() or ".." in relative.parts:
+        raise ReportQueueError(
+            "REPORT_PACKAGE_PATH_INVALID",
+            "공유 저장소 상대 경로가 올바르지 않습니다.",
+            retryable=False,
+        )
+    storage_root = Path(settings.storage_root).expanduser().resolve()
+    package_path = (storage_root / relative).resolve()
+    if package_path != storage_root and storage_root not in package_path.parents:
+        raise ReportQueueError(
+            "REPORT_PACKAGE_PATH_INVALID",
+            "공유 저장소 상대 경로가 저장소 루트를 벗어났습니다.",
+            retryable=False,
+        )
+    if not package_path.is_file():
+        raise ReportQueueError(
+            "REPORT_PACKAGE_NOT_FOUND",
+            "전송할 보고서 ZIP을 공유 저장소에서 찾을 수 없습니다.",
+            retryable=True,
+        )
+    actual_size = package_path.stat().st_size
+    actual_sha256 = _sha256_file(package_path)
+    if (
+        actual_size != int(report.get("package_size_bytes") or -1)
+        or actual_sha256 != str(report.get("package_sha256") or "")
+    ):
+        raise ReportQueueError(
+            "REPORT_PACKAGE_INTEGRITY_MISMATCH",
+            "보고서 ZIP의 크기 또는 SHA-256이 생성 시점과 일치하지 않습니다.",
+            retryable=False,
+        )
+    return enqueue_report_package(
+        settings=settings,
+        database=database,
+        report_id=str(report["report_id"]),
+        package_path=package_path,
+        source_job_id=report.get("source_job_id"),
+        request_number=str(report.get("request_number") or ""),
+        experiment_code=str(report.get("experiment_code") or ""),
+        equipment_code=str(report.get("equipment_code") or ""),
+        operator_id=operator_id,
+        report_options=report.get("report_options_json"),
+        generated_at=str(report.get("generated_at") or "") or None,
+        register_report_run=False,
+    )
 
 
 def register_generated_report_package(

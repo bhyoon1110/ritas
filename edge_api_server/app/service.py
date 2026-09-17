@@ -16,6 +16,7 @@ from rist_common import get_logger
 from .config import Settings
 from .database import Database, TERMINAL_STATUSES
 from .errors import ApiException
+from .experiment_routing import analysis_type_for_job, mapped_analysis_type_for_job
 from .models import (
     CompleteUploadRequest,
     CreateJobRequest,
@@ -23,6 +24,10 @@ from .models import (
     RegenerateReportSignalRequest,
 )
 from .manifest import write_manifest
+from .specialized_reports import (
+    specialized_report_type,
+    validate_specialized_report_request,
+)
 from .storage import (
     atomic_write_json,
     resolve_under,
@@ -733,13 +738,26 @@ class EdgeService:
                 f"현재 상태({job['status']})에서는 보고서를 생성할 수 없습니다.",
                 job_id=job_id,
             )
+        analysis_type = analysis_type_for_job(job, self.settings)
         supported = self.settings.supported_experiment_codes
-        if supported and job["experiment_code"].upper() not in supported:
+        if (
+            supported
+            and job["experiment_code"].upper() not in supported
+            and (analysis_type or "") not in supported
+        ):
             raise ApiException(
                 422,
                 "PROCESSOR_NOT_FOUND",
                 "해당 실험코드를 처리할 processor가 등록되어 있지 않습니다.",
                 job_id=job_id,
+            )
+
+        specialized_type = specialized_report_type(self.settings, job)
+        mapped_type = mapped_analysis_type_for_job(job, self.settings)
+        if specialized_type is not None and mapped_type == specialized_type:
+            validate_specialized_report_request(
+                specialized_type,
+                [str(item) for item in (request.options.report_formats or [])],
             )
 
         accepted_at = isoformat_kst()
@@ -754,6 +772,7 @@ class EdgeService:
             },
             "requestedAt": request.requested_at or accepted_at,
             "acceptedAt": accepted_at,
+            "analysisType": analysis_type,
             "options": options,
             "inputDirectory": (
                 Path(job["root_relative_path"]) / "input"
@@ -789,7 +808,13 @@ class EdgeService:
     def status_response(self, job_id: str) -> dict[str, Any]:
         job = self.require_job(job_id)
         error = json.loads(job["error_json"]) if job["error_json"] else None
-        return {
+        report = self.database.fetch_report_run_by_source_job(job_id)
+        transfer = (
+            self.database.fetch_report_transfer_for_report(report["report_id"])
+            if report
+            else None
+        )
+        response = {
             "jobId": job_id,
             "pk": {
                 "requestNumber": job["request_number"],
@@ -803,7 +828,19 @@ class EdgeService:
             "processingStartedAt": job["processing_started_at"],
             "completedAt": job["completed_at"],
             "error": error,
+            "analysisType": analysis_type_for_job(job, self.settings),
         }
+        if report:
+            response.update(
+                {
+                    "reportId": report["report_id"],
+                    "reportStatus": (
+                        transfer["status"] if transfer else "READY_FOR_REVIEW"
+                    ),
+                    "reviewUrl": f"/reports/{report['report_id']}",
+                }
+            )
+        return response
 
     def write_manifest(self, job_id: str) -> None:
         write_manifest(self.settings, self.database, job_id)

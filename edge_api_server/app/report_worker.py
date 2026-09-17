@@ -10,11 +10,14 @@ from rist_common import get_logger
 
 from .config import Settings
 from .database import Database
+from .errors import ApiException
 from .error_archive import ErrorArchive, ErrorArchiveSettings, record_background_error
+from .experiment_routing import analysis_type_for_job
 from .llm_client import LocalLlmClient
 from .manifest import write_manifest
 from .report import generate_report
-from .report_queue import ReportQueueError, enqueue_report_package
+from .report_queue import ReportQueueError, register_generated_report_package
+from .specialized_reports import generate_specialized_report
 from .time_utils import isoformat_kst
 from .usage_archive import (
     UsageArchive,
@@ -79,38 +82,48 @@ class ReportWorker:
     def process_job(self, job: dict[str, Any]) -> None:
         job_id = job["job_id"]
         started = time.perf_counter()
+        analysis_type = analysis_type_for_job(job, self.settings) or str(
+            job.get("experiment_code") or "EDGE"
+        )
         try:
             generated_at = isoformat_kst()
-            document = generate_report(
-                self.settings,
-                job,
-                llm_client=self.llm_client,
-                generated_at=generated_at,
-            )
-            package_path = (
-                self.settings.storage_root
-                / job["root_relative_path"]
-                / "report"
-                / "report-package.zip"
-            )
+            specialized = generate_specialized_report(self.settings, job)
+            if specialized is None:
+                document = generate_report(
+                    self.settings,
+                    job,
+                    llm_client=self.llm_client,
+                    generated_at=generated_at,
+                )
+                package_path = (
+                    self.settings.storage_root
+                    / job["root_relative_path"]
+                    / "report"
+                    / "report-package.zip"
+                )
+                llm_used = document.llm_used
+            else:
+                package_path = specialized.package_path
+                llm_used = False
+                analysis_type = specialized.analysis_type
             self.database.update_job(
                 job_id,
                 progress=90,
                 error_json=None,
             )
             self._write_manifest(job_id)
-            transfer = enqueue_report_package(
+            published_package = register_generated_report_package(
                 settings=self.settings,
                 database=self.database,
                 report_id=job_id,
                 package_path=package_path,
+                experiment_code=job["experiment_code"],
                 source_job_id=job_id,
                 request_number=job["request_number"],
-                experiment_code=job["experiment_code"],
                 equipment_code=job["equipment_code"],
                 operator_id=job["operator_id"],
                 report_options=job.get("report_options_json"),
-                generated_at=generated_at,
+                is_test=False,
             )
             self.database.update_job(
                 job_id,
@@ -120,14 +133,14 @@ class ReportWorker:
                 error_json=None,
             )
             logger.info(
-                "보고서 생성 및 전송 큐 등록 완료 (job_id=%s, transfer_id=%s, llm_used=%s)",
+                "보고서 생성 및 SSO 검토 등록 완료 (job_id=%s, analysis_type=%s, llm_used=%s)",
                 job_id,
-                transfer["transferId"],
-                document.llm_used,
+                analysis_type,
+                llm_used,
             )
             record_background_usage(
                 self.usage_archive,
-                project=str(job.get("experiment_code") or "EDGE"),
+                project=analysis_type,
                 action="보고서 생성 완료",
                 result="success",
                 duration_ms=round((time.perf_counter() - started) * 1000),
@@ -137,11 +150,22 @@ class ReportWorker:
                 experiment_code=job.get("experiment_code"),
                 equipment_code=job.get("equipment_code"),
                 operator_id=job.get("operator_id"),
-                file_name=package_path.name,
+                file_name=published_package.name,
                 file_size_bytes=(
-                    package_path.stat().st_size if package_path.is_file() else None
+                    published_package.stat().st_size
+                    if published_package.is_file()
+                    else None
                 ),
                 client_context=_job_usage_client_context(job),
+            )
+        except ApiException as exc:
+            self._mark_failed(
+                job_id,
+                exc.code,
+                exc.message,
+                exc.retryable,
+                exc,
+                duration_ms=round((time.perf_counter() - started) * 1000),
             )
         except FileNotFoundError as exc:
             self._mark_failed(
@@ -207,7 +231,9 @@ class ReportWorker:
         source_paths = []
         project = "EDGE"
         if job:
-            project = str(job.get("experiment_code") or "EDGE")
+            project = analysis_type_for_job(job, self.settings) or str(
+                job.get("experiment_code") or "EDGE"
+            )
             relative_root = str(job.get("root_relative_path") or "").strip()
             if relative_root:
                 source_paths.append(self.settings.storage_root / relative_root / "input")
