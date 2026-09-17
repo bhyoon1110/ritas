@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import io
+import json
 from pathlib import Path
 import zipfile
 
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
+from pydantic import BaseModel, Field
 
 from app.config import Settings
 from app.error_archive import (
@@ -15,6 +17,10 @@ from app.error_archive import (
     record_background_error,
 )
 from app.errors import ApiException
+
+
+class _CredentialValidationPayload(BaseModel):
+    password: str = Field(max_length=4)
 
 
 def test_error_archive_persists_metadata_trace_and_files(tmp_path: Path) -> None:
@@ -212,6 +218,35 @@ def test_installed_handler_records_request_files_and_returns_event_header(
     assert event["project"] == "FT-IR"
     assert event["files"][0]["sourceName"] == "sample.dpt"
     assert not transient.exists()
+
+
+def test_validation_errors_never_archive_or_return_passwords(tmp_path: Path) -> None:
+    app = FastAPI()
+    settings = Settings(
+        storage_root=tmp_path / "jobs",
+        error_archive_root=tmp_path / "errors",
+    )
+    archive = install_error_management(app, settings)
+
+    @app.post("/api/v1/auth/test-password-validation")
+    def validate_credentials(
+        payload: _CredentialValidationPayload,
+    ) -> dict[str, bool]:
+        return {"accepted": True}
+
+    secret = "must-never-be-persisted"
+    response = TestClient(app).post(
+        "/api/v1/auth/test-password-validation",
+        json={"password": secret},
+    )
+
+    assert response.status_code == 400
+    assert secret not in json.dumps(response.json())
+    assert response.json()["details"][0]["input"] == "[REDACTED]"
+    event_id = response.headers["X-Error-Event-Id"]
+    stored = archive.get(event_id)
+    assert secret not in json.dumps(stored, ensure_ascii=False)
+    assert "traceback" not in stored
 
 
 def test_background_error_helper_keeps_input_bundle(tmp_path: Path) -> None:

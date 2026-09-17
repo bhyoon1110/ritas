@@ -364,8 +364,14 @@ cd edge_api_server
 | `RIST_AUTH_RECENT_SSO_MINUTES` | `30` | 보고서 전송에 인정할 최근 SSO 인증 시간 |
 | `RIST_AUTH_COOKIE_SECURE` | production `true` | HTTPS에서만 세션 쿠키를 보내는 보안 설정. HTTP 개발 서버는 `false` |
 | `RIST_AUTH_BOOTSTRAP_ADMIN_IDS` | 빈 값 | 쉼표로 구분한 최초 관리자 로그인 ID. 빈 초기 설치는 첫 가입자가 관리자 |
-| `RIST_SSO_PROVIDER_NAME` | `RIST SSO` | 화면과 DB에 표시할 사내 OIDC 공급자 이름 |
-| `RIST_SSO_ISSUER_URL` | 없음 | OIDC issuer URL |
+| `RIST_SSO_MODE` | `posco` | `posco` 서버측 ID/PW 검증 또는 선택적 `oidc` 방식 |
+| `RIST_SSO_PROVIDER_NAME` | `RIST SSO` | 화면과 DB에 표시할 SSO 공급자 이름 |
+| `RIST_SSO_VALIDATION_URL` | 없음 | POSCO SSO HTTPS 검증 URL. 개발계와 운영계를 명시적으로 구분 |
+| `RIST_SSO_SID` | 없음 | SSO 담당자가 발급한 시스템 SID. 저장소에 커밋하지 않음 |
+| `RIST_SSO_CA_BUNDLE` | 없음 | OS가 사내 CA를 신뢰하지 않을 때 사용할 PEM CA bundle 경로 |
+| `RIST_SSO_CONNECT_TIMEOUT_SECONDS` | `2` | POSCO SSO TCP/TLS 연결 제한시간 |
+| `RIST_SSO_READ_TIMEOUT_SECONDS` | `4` | POSCO SSO 응답 제한시간 |
+| `RIST_SSO_ISSUER_URL` | 없음 | 선택적 OIDC 모드의 issuer URL |
 | `RIST_SSO_CLIENT_ID` | 없음 | Edge 웹용 OIDC client ID |
 | `RIST_SSO_CLIENT_SECRET` | 없음 | Edge 웹용 OIDC client secret |
 | `RIST_SSO_SCOPES` | `openid profile email` | OIDC 요청 scope |
@@ -387,6 +393,8 @@ cd edge_api_server
 뒤 FTIR, Raman, XRD, TEM 화면에서 보고서를 생성할 수 있다. 보고서 생성에는
 사내 SSO가 필요하지 않다. LIMS 전송에는 `REPORT_SENDER` 역할, 연결된 사내 SSO,
 최근 SSO 재인증이 모두 필요하며 전송 작업자 값은 SSO 사용자 정보로 기록한다.
+POSCO SSO 비밀번호 검증은 브라우저부터 Edge까지 HTTPS인 경우에만 활성화되며,
+`RIST_EDGE_PUBLIC_BASE_URL=https://...`와 `RIST_AUTH_COOKIE_SECURE=true`가 필요하다.
 
 관리자는 운영 관리의 `회원 관리` 탭(`/admin/users`)에서 가입 승인 상태,
 프로젝트별 접근권한, `ADMIN`·`REPORT_SENDER` 역할과 SSO 연결·최근 인증 상태를
@@ -400,7 +408,7 @@ cd edge_api_server
 /admin/users  회원 승인과 프로젝트·전송 역할 관리
 ```
 
-DB 적용과 OIDC Redirect URI, 최초 관리자 생성 및 배포 순서는
+DB 적용, POSCO SID·서버 IP 등록, DNS/CA 및 최초 관리자 생성·배포 순서는
 [`documents/EDGE_WEB_AUTH.md`](../documents/EDGE_WEB_AUTH.md)를 참조한다. 실험 PC의
 C# 작업 API는 브라우저 회원 쿠키 인증과 분리되어 기존 인터페이스를 유지한다.
 

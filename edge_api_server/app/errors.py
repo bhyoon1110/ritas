@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 from fastapi import Request
@@ -8,6 +9,60 @@ from fastapi.responses import JSONResponse
 
 from .models import ApiError
 from .time_utils import isoformat_kst
+
+
+_SENSITIVE_FIELD_NAMES = {
+    "authorization",
+    "clientsecret",
+    "confirmpassword",
+    "currentpassword",
+    "newpassword",
+    "password",
+    "secret",
+    "token",
+}
+
+
+def _normalized_field_name(value: object) -> str:
+    return "".join(character for character in str(value).lower() if character.isalnum())
+
+
+def _redact_sensitive_input(value: object) -> object:
+    if isinstance(value, Mapping):
+        return {
+            key: (
+                "[REDACTED]"
+                if _normalized_field_name(key) in _SENSITIVE_FIELD_NAMES
+                else _redact_sensitive_input(item)
+            )
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [_redact_sensitive_input(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_redact_sensitive_input(item) for item in value)
+    return value
+
+
+def redact_validation_errors(errors: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Remove credentials from Pydantic validation details and error archives."""
+
+    redacted: list[dict[str, Any]] = []
+    for error in errors:
+        item = dict(error)
+        location = item.get("loc") or ()
+        sensitive_location = any(
+            _normalized_field_name(part) in _SENSITIVE_FIELD_NAMES
+            for part in location
+        )
+        if "input" in item:
+            item["input"] = (
+                "[REDACTED]"
+                if sensitive_location
+                else _redact_sensitive_input(item["input"])
+            )
+        redacted.append(item)
+    return redacted
 
 
 class ApiException(Exception):
@@ -65,6 +120,6 @@ async def validation_exception_handler(
             400,
             "REQUEST_VALIDATION_FAILED",
             "요청 형식이 올바르지 않습니다.",
-            details=exc.errors(),
+            details=redact_validation_errors(exc.errors()),
         ),
     )

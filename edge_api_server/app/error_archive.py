@@ -21,7 +21,7 @@ from pydantic import BaseModel, Field
 
 from rist_common import get_logger
 
-from .errors import ApiException, error_response
+from .errors import ApiException, error_response, redact_validation_errors
 from .usage_archive import (
     UsageArchive,
     UsageArchiveSettings,
@@ -605,13 +605,17 @@ async def archived_api_exception_handler(request: Request, exc: ApiException):
 
 
 async def archived_validation_exception_handler(request: Request, exc: Exception):
+    errors = getattr(exc, "errors", lambda: [])()
     api_exc = ApiException(
         400,
         "REQUEST_VALIDATION_FAILED",
         "요청 형식이 올바르지 않습니다.",
-        details=getattr(exc, "errors", lambda: [])(),
+        details=redact_validation_errors(errors),
     )
-    _record_request(request, api_exc, exc)
+    # RequestValidationError text can contain the rejected input itself. The
+    # sanitized details above are sufficient and avoid writing secrets to a
+    # traceback file.
+    _record_request(request, api_exc)
     response = error_response(request, api_exc)
     event_id = getattr(request.state, "error_event_id", None)
     if event_id:

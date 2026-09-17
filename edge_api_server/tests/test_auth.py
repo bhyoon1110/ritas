@@ -3,25 +3,29 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 
 from fastapi import FastAPI
+from fastapi.testclient import TestClient
 from starlette.requests import Request
 
 from app.auth import (
+    AuthService,
     AuthContext,
     LoginRequest,
     PasswordChangeRequest,
+    PoscoSsoVerifyRequest,
     ProfileUpdateRequest,
     SignupRequest,
     _account_page,
     _admin_page,
     authenticated_transfer_payload,
     hash_password,
+    install_auth,
     is_bootstrap_admin,
     project_for_path,
     safe_return_to,
     verify_password,
 )
 from app.config import Settings
-from app.errors import ApiException
+from app.errors import ApiException, redact_validation_errors
 from app.preview_report import PreviewReportSendRequest
 
 
@@ -165,7 +169,13 @@ def test_login_id_models_normalize_and_allow_optional_email() -> None:
 
 
 def test_account_page_exposes_profile_password_and_logout(tmp_path) -> None:
-    html = _account_page(_context(), Settings(storage_root=tmp_path))
+    html = _account_page(
+        _context(),
+        Settings(
+            storage_root=tmp_path,
+            edge_public_base_url="https://edge.example.com",
+        ),
+    )
 
     assert 'id="profile-form"' in html
     assert 'id="password-form"' in html
@@ -173,6 +183,45 @@ def test_account_page_exposes_profile_password_and_logout(tmp_path) -> None:
     assert "/api/v1/auth/me" in html
     assert "/api/v1/auth/password" in html
     assert "/api/v1/auth/logout" in html
+    assert 'id="sso-form"' in html
+    assert "/api/v1/auth/sso/verify" in html
+    assert "저장하거나 감사 로그에 남기지 않습니다" in html
+
+
+def test_account_page_blocks_posco_password_form_until_https(tmp_path) -> None:
+    html = _account_page(
+        _context(),
+        Settings(
+            storage_root=tmp_path,
+            sso_mode="posco",
+            edge_public_base_url="http://edge.example.com",
+        ),
+    )
+
+    assert 'id="sso-form"' not in html
+    assert "Edge HTTPS 적용 후 인증할 수 있습니다" in html
+
+
+def test_account_page_keeps_oidc_redirect_mode(tmp_path) -> None:
+    html = _account_page(
+        _context(),
+        Settings(storage_root=tmp_path, sso_mode="oidc"),
+    )
+
+    assert 'id="sso-form"' not in html
+    assert 'href="/auth/sso/start?returnTo=/account"' in html
+
+
+def test_posco_sso_start_routes_to_local_account_form(tmp_path) -> None:
+    service = AuthService(
+        Settings(storage_root=tmp_path, sso_mode="posco"),
+        _FakeDatabase(),
+        _FakePoscoClient(True),
+    )
+
+    assert service.start_sso(_context(), "/ftir?tab=report") == (
+        "/account?ssoReturnTo=%2Fftir%3Ftab%3Dreport#sso-auth"
+    )
 
 
 def test_account_update_models_normalize_values() -> None:
@@ -189,6 +238,192 @@ def test_account_update_models_normalize_values() -> None:
     assert profile.email == "user@example.com"
     assert password.current_password == "existing-password"
     assert password.new_password == "new-password-123"
+
+
+def test_posco_sso_request_strips_id_but_preserves_case_and_password() -> None:
+    payload = PoscoSsoVerifyRequest(
+        username="  EMPLOYEE01  ",
+        password="case-sensitive-password",
+        returnTo="/ftir",
+    )
+
+    assert payload.username == "EMPLOYEE01"
+    assert payload.password == "case-sensitive-password"
+    assert payload.return_to == "/ftir"
+
+
+def test_validation_error_details_redact_credentials() -> None:
+    redacted = redact_validation_errors(
+        [
+            {"loc": ("body", "password"), "input": "top-secret"},
+            {
+                "loc": ("body",),
+                "input": {
+                    "username": "employee",
+                    "currentPassword": "old-secret",
+                    "profile": {"token": "hidden"},
+                },
+            },
+        ]
+    )
+
+    rendered = repr(redacted)
+    assert "top-secret" not in rendered
+    assert "old-secret" not in rendered
+    assert "hidden" not in rendered
+    assert "employee" in rendered
+    assert rendered.count("[REDACTED]") == 3
+
+
+class _Result:
+    def __init__(self, row: dict | None = None) -> None:
+        self.row = row
+
+    def fetchone(self) -> dict | None:
+        return self.row
+
+
+class _FakeConnection:
+    def __init__(self, owner: dict | None = None) -> None:
+        self.owner = owner
+        self.statements: list[tuple[str, tuple]] = []
+
+    def execute(self, sql: str, params: tuple = ()) -> _Result:
+        normalized = " ".join(sql.split())
+        self.statements.append((normalized, tuple(params)))
+        if normalized.startswith("SELECT user_id FROM sso_identities"):
+            return _Result(self.owner)
+        return _Result()
+
+
+class _Transaction:
+    def __init__(self, connection: _FakeConnection) -> None:
+        self.connection = connection
+
+    def __enter__(self) -> _FakeConnection:
+        return self.connection
+
+    def __exit__(self, exc_type, exc, traceback) -> None:
+        return None
+
+
+class _FakeDatabase:
+    def __init__(self, owner: dict | None = None) -> None:
+        self.connection = _FakeConnection(owner)
+
+    def transaction(self) -> _Transaction:
+        return _Transaction(self.connection)
+
+
+class _FakePoscoClient:
+    def __init__(self, result: bool) -> None:
+        self.result = result
+        self.calls: list[tuple[str, str]] = []
+
+    def validate(self, username: str, password: str) -> bool:
+        self.calls.append((username, password))
+        return self.result
+
+
+def test_posco_sso_success_links_employee_and_updates_current_session(tmp_path) -> None:
+    database = _FakeDatabase()
+    client = _FakePoscoClient(True)
+    settings = Settings(
+        storage_root=tmp_path,
+        sso_mode="posco",
+        sso_provider_name="POSCO SSO",
+    )
+    service = AuthService(settings, database, client)
+    context = _context()
+    payload = PoscoSsoVerifyRequest(
+        username="EMPLOYEE01",
+        password="temporary-secret",
+        returnTo="/ftir",
+    )
+
+    result = service.verify_posco_sso(
+        context,
+        payload,
+        _request(tmp_path, context),
+    )
+
+    assert result["authenticated"] is True
+    assert result["employeeId"] == "EMPLOYEE01"
+    assert result["returnTo"] == "/ftir"
+    assert client.calls == [("EMPLOYEE01", "temporary-secret")]
+    statements = database.connection.statements
+    assert any("INSERT INTO sso_identities" in sql for sql, _ in statements)
+    assert any("UPDATE auth_sessions SET sso_authenticated_at" in sql for sql, _ in statements)
+    assert any("employee01" in params for _, params in statements)
+    assert "temporary-secret" not in repr(statements)
+
+
+def test_posco_sso_f_result_does_not_link_identity(tmp_path) -> None:
+    database = _FakeDatabase()
+    context = _context()
+    service = AuthService(
+        Settings(storage_root=tmp_path, sso_mode="posco"),
+        database,
+        _FakePoscoClient(False),
+    )
+
+    try:
+        service.verify_posco_sso(
+            context,
+            PoscoSsoVerifyRequest(username="employee", password="wrong-password"),
+            _request(tmp_path, context),
+        )
+    except ApiException as exc:
+        assert exc.code == "SSO_VALIDATION_REJECTED"
+    else:
+        raise AssertionError("SSO F 응답이 인증 성공으로 처리되었습니다.")
+    assert not any(
+        "INSERT INTO sso_identities" in sql
+        for sql, _ in database.connection.statements
+    )
+    assert "wrong-password" not in repr(database.connection.statements)
+
+
+def test_auth_routes_include_server_side_posco_verification(tmp_path) -> None:
+    app = FastAPI()
+
+    install_auth(
+        app,
+        Settings(storage_root=tmp_path, sso_mode="posco"),
+        _FakeDatabase(),
+    )
+
+    routes = {
+        (route.path, frozenset(route.methods or ()))
+        for route in app.routes
+        if hasattr(route, "methods")
+    }
+    assert (
+        "/api/v1/auth/sso/verify",
+        frozenset({"POST"}),
+    ) in routes
+
+
+def test_posco_sso_api_rejects_http_before_authentication_or_body_use(tmp_path) -> None:
+    app = FastAPI()
+    database = _FakeDatabase()
+    install_auth(
+        app,
+        Settings(storage_root=tmp_path, sso_mode="posco"),
+        database,
+    )
+    secret = "must-not-be-processed-over-http"
+
+    response = TestClient(app).post(
+        "/api/v1/auth/sso/verify",
+        headers={"X-Requested-With": "RIST-Account"},
+        json={"username": "employee01", "password": secret},
+    )
+
+    assert response.status_code == 426
+    assert response.json()["code"] == "SSO_HTTPS_REQUIRED"
+    assert secret not in response.text
+    assert database.connection.statements == []
 
 
 def test_transfer_auth_disabled_keeps_payload(tmp_path) -> None:

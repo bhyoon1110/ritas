@@ -81,8 +81,8 @@ CREATE TABLE IF NOT EXISTS user_roles (
 CREATE TABLE IF NOT EXISTS sso_identities (
     identity_id VARCHAR(36) NOT NULL COMMENT 'SSO 연결 UUID',
     user_id VARCHAR(36) NOT NULL COMMENT 'SSO 계정과 연결된 로컬 회원',
-    provider VARCHAR(64) NOT NULL COMMENT 'OIDC 공급자 식별자',
-    subject VARCHAR(255) NOT NULL COMMENT 'OIDC sub. 공급자 내 불변 사용자 식별자',
+    provider VARCHAR(64) NOT NULL COMMENT 'SSO 공급자 식별자',
+    subject VARCHAR(255) NOT NULL COMMENT '공급자 내 불변 사용자 ID 또는 정규화된 사번',
     employee_id VARCHAR(100) COMMENT 'SSO가 제공한 사번 또는 업무 사용자 ID',
     email VARCHAR(255) COMMENT 'SSO가 제공한 이메일 스냅샷',
     display_name VARCHAR(100) COMMENT 'SSO가 제공한 표시 이름 스냅샷',
@@ -98,7 +98,7 @@ CREATE TABLE IF NOT EXISTS sso_identities (
     CONSTRAINT fk_sso_identity_user FOREIGN KEY (user_id)
         REFERENCES app_users(user_id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-  COMMENT='로컬 회원과 사내 OIDC SSO 계정 연결 및 최근 인증 이력';
+  COMMENT='로컬 회원과 사내 SSO 계정 연결 및 최근 인증 이력';
 
 CREATE TABLE IF NOT EXISTS auth_sessions (
     session_id VARCHAR(36) NOT NULL COMMENT '로그인 세션 UUID',

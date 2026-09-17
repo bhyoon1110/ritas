@@ -21,6 +21,12 @@ from pydantic import BaseModel, Field, field_validator
 from .config import Settings
 from .database import Database
 from .errors import ApiException, error_response
+from .posco_sso import (
+    PoscoSsoClient,
+    PoscoSsoConfigurationError,
+    PoscoSsoProtocolError,
+    PoscoSsoUnavailableError,
+)
 from .preview_report import PreviewReportSendRequest
 
 
@@ -115,6 +121,20 @@ class ProfileUpdateRequest(BaseModel):
 class PasswordChangeRequest(BaseModel):
     current_password: str = Field(alias="currentPassword", min_length=1, max_length=200)
     new_password: str = Field(alias="newPassword", min_length=10, max_length=200)
+
+
+class PoscoSsoVerifyRequest(BaseModel):
+    username: str = Field(min_length=1, max_length=100)
+    password: str = Field(min_length=1, max_length=200)
+    return_to: str = Field(default="/account", alias="returnTo", max_length=512)
+
+    @field_validator("username")
+    @classmethod
+    def validate_username(cls, value: str) -> str:
+        normalized = value.strip()
+        if not LOGIN_ID_RE.fullmatch(normalized):
+            raise ValueError("SSO ID는 영문, 숫자, 점, 밑줄, 하이픈만 사용할 수 있습니다.")
+        return normalized
 
 
 class AdminUserUpdate(BaseModel):
@@ -231,10 +251,45 @@ def _request_ip(request: Request) -> str | None:
     return forwarded or (request.client.host if request.client else None)
 
 
+def _sso_mode(settings: Settings) -> str:
+    return str(settings.sso_mode or "").strip().lower()
+
+
+def _edge_public_https(settings: Settings) -> bool:
+    try:
+        return httpx.URL(settings.edge_public_base_url).scheme == "https"
+    except (TypeError, ValueError):
+        return False
+
+
+def _request_is_https(request: Request) -> bool:
+    return request.url.scheme.lower() == "https"
+
+
+def _posco_sso_account_url(return_to: str) -> str:
+    return (
+        "/account?"
+        + urlencode({"ssoReturnTo": safe_return_to(return_to, "/account")})
+        + "#sso-auth"
+    )
+
+
 class AuthService:
-    def __init__(self, settings: Settings, database: Database) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        database: Database,
+        posco_sso_client: PoscoSsoClient | None = None,
+    ) -> None:
         self.settings = settings
         self.database = database
+        self.posco_sso_client = posco_sso_client or PoscoSsoClient(
+            validation_url=settings.sso_validation_url,
+            sid=settings.sso_sid,
+            ca_bundle=settings.sso_ca_bundle,
+            connect_timeout_seconds=settings.sso_connect_timeout_seconds,
+            read_timeout_seconds=settings.sso_read_timeout_seconds,
+        )
 
     def _audit(
         self,
@@ -650,7 +705,146 @@ class AuthService:
         )
         return {"updated": True, "userId": target_user_id}
 
+    def verify_posco_sso(
+        self,
+        context: AuthContext,
+        payload: PoscoSsoVerifyRequest,
+        request: Request,
+    ) -> dict[str, Any]:
+        if _sso_mode(self.settings) != "posco":
+            raise ApiException(
+                409,
+                "SSO_MODE_MISMATCH",
+                "현재 서버는 POSCO ID/PW 검증 방식으로 설정되어 있지 않습니다.",
+            )
+        try:
+            valid = self.posco_sso_client.validate(
+                payload.username,
+                payload.password,
+            )
+        except PoscoSsoConfigurationError as exc:
+            self._audit(
+                "SSO_VERIFY",
+                False,
+                user_id=context.user_id,
+                request=request,
+                details={"reason": "configuration"},
+            )
+            raise ApiException(
+                503,
+                "SSO_NOT_CONFIGURED",
+                "POSCO SSO 서버 URL, SID 또는 인증서 설정을 확인해 주세요.",
+            ) from exc
+        except PoscoSsoUnavailableError as exc:
+            self._audit(
+                "SSO_VERIFY",
+                False,
+                user_id=context.user_id,
+                request=request,
+                details={"reason": "unavailable"},
+            )
+            raise ApiException(
+                503,
+                "SSO_UNAVAILABLE",
+                "POSCO SSO 서버에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.",
+                retryable=True,
+            ) from exc
+        except PoscoSsoProtocolError as exc:
+            self._audit(
+                "SSO_VERIFY",
+                False,
+                user_id=context.user_id,
+                request=request,
+                details={"reason": "protocol"},
+            )
+            raise ApiException(
+                502,
+                "SSO_RESPONSE_INVALID",
+                "POSCO SSO 서버 응답이 올바르지 않습니다.",
+                retryable=True,
+            ) from exc
+
+        if not valid:
+            self._audit(
+                "SSO_VERIFY",
+                False,
+                user_id=context.user_id,
+                request=request,
+                details={"reason": "rejected"},
+            )
+            raise ApiException(
+                401,
+                "SSO_VALIDATION_REJECTED",
+                "SSO ID/PW가 올바르지 않거나 현재 Edge 서버 IP가 허용되지 않았습니다.",
+            )
+
+        now = _utc_now()
+        subject = payload.username.casefold()
+        with self.database.transaction() as connection:
+            owned = connection.execute(
+                """
+                SELECT user_id FROM sso_identities
+                 WHERE provider = ? AND subject = ?
+                """,
+                (self.settings.sso_provider_name, subject),
+            ).fetchone()
+            if owned and owned["user_id"] != context.user_id:
+                raise ApiException(
+                    409,
+                    "SSO_ALREADY_LINKED",
+                    "이 SSO 계정은 다른 회원과 연결되어 있습니다.",
+                )
+            connection.execute(
+                "DELETE FROM sso_identities WHERE user_id = ? AND provider = ?",
+                (context.user_id, self.settings.sso_provider_name),
+            )
+            connection.execute(
+                """
+                INSERT INTO sso_identities (
+                    identity_id, user_id, provider, subject, employee_id,
+                    email, display_name, active, last_authenticated_at
+                ) VALUES (?, ?, ?, ?, ?, NULL, NULL, TRUE, ?)
+                """,
+                (
+                    str(uuid4()),
+                    context.user_id,
+                    self.settings.sso_provider_name,
+                    subject,
+                    payload.username,
+                    now,
+                ),
+            )
+            connection.execute(
+                """
+                UPDATE auth_sessions SET sso_authenticated_at = ?
+                 WHERE session_id = ? AND user_id = ? AND revoked_at IS NULL
+                """,
+                (now, context.session_id, context.user_id),
+            )
+        self._audit(
+            "SSO_VERIFY",
+            True,
+            user_id=context.user_id,
+            request=request,
+            details={"provider": self.settings.sso_provider_name},
+        )
+        return {
+            "authenticated": True,
+            "ssoLinked": True,
+            "employeeId": payload.username,
+            "returnTo": safe_return_to(payload.return_to, "/account"),
+        }
+
     def start_sso(self, context: AuthContext, return_to: str) -> str:
+        mode = _sso_mode(self.settings)
+        if mode == "posco":
+            return _posco_sso_account_url(return_to)
+        if mode != "oidc":
+            raise ApiException(
+                503,
+                "SSO_MODE_INVALID",
+                "지원하지 않는 SSO 연동 방식이 설정되어 있습니다.",
+            )
         if not (
             self.settings.sso_issuer_url
             and self.settings.sso_client_id
@@ -950,17 +1144,35 @@ def _account_page(context: AuthContext, settings: Settings) -> str:
         if context.is_admin or project in context.projects
     ) or '<span class="muted">아직 승인된 프로젝트가 없습니다.</span>'
     sso_text = "연결됨" if data["ssoLinked"] else "연결 안 됨"
+    mode = _sso_mode(settings)
+    if mode == "posco" and _edge_public_https(settings):
+        current_employee_id = str(
+            (context.sso_identity or {}).get("employee_id") or context.login_id
+        )
+        sso_control = f"""<form class="settings-card" id="sso-form">
+<h2>{escape(settings.sso_provider_name)} 연결 / 재인증</h2>
+<p class="muted">입력한 SSO 비밀번호는 Edge 서버가 POSCO SSO로 즉시 검증하며 저장하거나 감사 로그에 남기지 않습니다.</p>
+<label for="sso-username">SSO ID</label><input id="sso-username" name="username" maxlength="100" pattern="[A-Za-z0-9._-]+" autocomplete="username" value="{escape(current_employee_id)}" required>
+<label for="sso-password">SSO 비밀번호</label><input id="sso-password" name="password" type="password" maxlength="200" autocomplete="current-password" required>
+<p id="sso-message"></p><button type="submit">SSO 인증</button></form>"""
+    elif mode == "posco":
+        sso_control = '<p class="error">SSO 비밀번호 보호를 위해 Edge HTTPS 적용 후 인증할 수 있습니다.</p>'
+    elif mode == "oidc":
+        sso_control = f'<a class="button" href="/auth/sso/start?returnTo=/account">{escape(settings.sso_provider_name)} 연결 / 재인증</a>'
+    else:
+        sso_control = '<p class="error">지원하지 않는 SSO 연동 방식이 설정되어 있습니다.</p>'
     body = f"""<section class="panel"><div class="row" style="justify-content:space-between"><div><h1>내 계정</h1><p><strong>{escape(context.display_name)}</strong> · 로그인 ID {escape(context.login_id)}</p></div><button class="secondary" id="logout" type="button">로그아웃</button></div>
 <div class="settings-grid"><form class="settings-card" id="profile-form"><h2>회원정보 수정</h2><label>로그인 ID</label><input value="{escape(context.login_id)}" disabled><label>이름</label><input name="displayName" maxlength="100" value="{escape(context.display_name)}" required><label>이메일 (선택)</label><input name="email" type="email" maxlength="255" value="{escape(context.email or '')}"><p id="profile-message"></p><button type="submit">회원정보 저장</button></form>
 <form class="settings-card" id="password-form"><h2>비밀번호 변경</h2><label>현재 비밀번호</label><input name="currentPassword" type="password" autocomplete="current-password" required><label>새 비밀번호</label><input name="newPassword" type="password" autocomplete="new-password" minlength="10" required><label>새 비밀번호 확인</label><input name="confirmPassword" type="password" autocomplete="new-password" minlength="10" required><p class="muted">변경 후 모든 기기에서 로그아웃됩니다.</p><p id="password-message"></p><button type="submit">비밀번호 변경</button></form></div>
-<h2>승인된 프로젝트</h2><div class="row">{project_links}</div><h2>보고서 전송 인증</h2><p>사내 SSO: <strong>{sso_text}</strong><br>최근 전송 인증: <strong>{'유효' if data['ssoRecentlyAuthenticated'] else '재인증 필요'}</strong></p>
-<a class="button" href="/auth/sso/start?returnTo=/account">{escape(settings.sso_provider_name)} 연결 / 재인증</a>
+<h2>승인된 프로젝트</h2><div class="row">{project_links}</div><section id="sso-auth"><h2>보고서 전송 인증</h2><p>사내 SSO: <strong>{sso_text}</strong><br>최근 전송 인증: <strong>{'유효' if data['ssoRecentlyAuthenticated'] else '재인증 필요'}</strong></p>
+{sso_control}</section>
 {'<h2>관리</h2><div class="row"><a class="button secondary" href="/admin/users">회원·권한 관리</a><a class="button secondary" href="/operations">운영 관리</a></div>' if context.is_admin else ''}
 </section><script>
-const profileForm=document.getElementById('profile-form'),passwordForm=document.getElementById('password-form');
+const profileForm=document.getElementById('profile-form'),passwordForm=document.getElementById('password-form'),ssoForm=document.getElementById('sso-form');
 async function jsonRequest(url,body){{const response=await fetch(url,{{method:url.endsWith('/password')?'POST':'PATCH',headers:{{'Content-Type':'application/json','X-Requested-With':'RIST-Account'}},body:JSON.stringify(body)}});const data=await response.json().catch(()=>({{}}));if(!response.ok)throw new Error(data.message||'요청을 처리하지 못했습니다.');return data}}
 profileForm.onsubmit=async event=>{{event.preventDefault();const message=document.getElementById('profile-message'),button=profileForm.querySelector('button');button.disabled=true;try{{const form=new FormData(profileForm);await jsonRequest('/api/v1/auth/me',{{displayName:form.get('displayName'),email:form.get('email')||null}});message.className='success';message.textContent='회원정보를 저장했습니다.'}}catch(error){{message.className='error';message.textContent=error.message}}finally{{button.disabled=false}}}};
 passwordForm.onsubmit=async event=>{{event.preventDefault();const form=new FormData(passwordForm),message=document.getElementById('password-message'),button=passwordForm.querySelector('button');if(form.get('newPassword')!==form.get('confirmPassword')){{message.className='error';message.textContent='새 비밀번호 확인이 일치하지 않습니다.';return}}button.disabled=true;try{{await jsonRequest('/api/v1/auth/password',{{currentPassword:form.get('currentPassword'),newPassword:form.get('newPassword')}});message.className='success';message.textContent='비밀번호를 변경했습니다. 다시 로그인해 주세요.';setTimeout(()=>location.href='/login',700)}}catch(error){{message.className='error';message.textContent=error.message;button.disabled=false}}}};
+if(ssoForm)ssoForm.onsubmit=async event=>{{event.preventDefault();const form=new FormData(ssoForm),message=document.getElementById('sso-message'),button=ssoForm.querySelector('button'),password=ssoForm.elements.password;button.disabled=true;message.className='muted';message.textContent='SSO 인증 중...';try{{const params=new URLSearchParams(location.search),response=await fetch('/api/v1/auth/sso/verify',{{method:'POST',headers:{{'Content-Type':'application/json','X-Requested-With':'RIST-Account'}},body:JSON.stringify({{username:form.get('username'),password:form.get('password'),returnTo:params.get('ssoReturnTo')||'/account'}})}}),data=await response.json().catch(()=>({{}}));if(!response.ok)throw new Error(data.message||'SSO 인증에 실패했습니다.');message.className='success';message.textContent='SSO 인증을 완료했습니다.';setTimeout(()=>location.href=data.returnTo||'/account',350)}}catch(error){{message.className='error';message.textContent=error.message;button.disabled=false}}finally{{password.value=''}}}};
 document.getElementById('logout').onclick=async()=>{{await fetch('/api/v1/auth/logout',{{method:'POST',headers:{{'X-Requested-With':'RIST-Account'}}}});location.href='/login';}};
 </script>"""
     return _page("내 계정", body)
@@ -1020,6 +1232,18 @@ def install_auth(app: FastAPI, settings: Settings, database: Database) -> None:
 
     @app.middleware("http")
     async def authentication_middleware(request: Request, call_next: Any) -> Response:
+        if (
+            request.url.path == "/api/v1/auth/sso/verify"
+            and not _request_is_https(request)
+        ):
+            return error_response(
+                request,
+                ApiException(
+                    426,
+                    "SSO_HTTPS_REQUIRED",
+                    "SSO 비밀번호 보호를 위해 HTTPS로 접속해 주세요.",
+                ),
+            )
         if not settings.auth_enabled:
             return await call_next(request)
         context = service.context_from_token(request.cookies.get(SESSION_COOKIE))
@@ -1147,6 +1371,25 @@ def install_auth(app: FastAPI, settings: Settings, database: Database) -> None:
         if request.headers.get("X-Requested-With") != "RIST-Admin":
             raise ApiException(403, "CSRF_CHECK_FAILED", "관리 화면 요청을 확인할 수 없습니다.")
         return service.update_user(user_id, payload, context, request)
+
+    @router.post("/api/v1/auth/sso/verify", tags=["auth"])
+    def sso_verify(
+        payload: PoscoSsoVerifyRequest,
+        request: Request,
+    ) -> dict[str, Any]:
+        if not _request_is_https(request):
+            raise ApiException(
+                426,
+                "SSO_HTTPS_REQUIRED",
+                "SSO 비밀번호 보호를 위해 HTTPS로 접속해 주세요.",
+            )
+        if request.headers.get("X-Requested-With") != "RIST-Account":
+            raise ApiException(
+                403,
+                "CSRF_CHECK_FAILED",
+                "계정 요청을 확인할 수 없습니다.",
+            )
+        return service.verify_posco_sso(require_context(request), payload, request)
 
     @router.get("/auth/sso/start", include_in_schema=False)
     def sso_start(request: Request, returnTo: str = "/account") -> RedirectResponse:

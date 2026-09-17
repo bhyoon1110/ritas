@@ -168,3 +168,48 @@ def test_report_transfer_settings_override_profile(monkeypatch, tmp_path: Path) 
 
     assert settings.report_storage_key == "RIST_SHARED_REPORTS"
     assert settings.report_transfer_max_attempts == 7
+
+
+def test_posco_sso_settings_are_loaded_from_runtime_env(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    write_profile(tmp_path / "development.env", "bhyoon.me", "development")
+    write_profile(tmp_path / "production.env", "192.168.0.10", "production")
+    ca_bundle = tmp_path / "posco-ca.pem"
+    monkeypatch.setenv("RIST_CONFIG_DIR", str(tmp_path))
+    monkeypatch.setenv("RIST_ENV", "development")
+    monkeypatch.setenv("RIST_SSO_MODE", "POSCO")
+    monkeypatch.setenv(
+        "RIST_SSO_VALIDATION_URL",
+        "https://uswpsso.posco.net/idms/U61/jsp/userValidSSOM.jsp",
+    )
+    monkeypatch.setenv("RIST_SSO_SID", "issued-sid")
+    monkeypatch.setenv("RIST_SSO_CA_BUNDLE", str(ca_bundle))
+    monkeypatch.setenv("RIST_SSO_CONNECT_TIMEOUT_SECONDS", "2.5")
+    monkeypatch.setenv("RIST_SSO_READ_TIMEOUT_SECONDS", "4.5")
+
+    settings = Settings.from_env()
+
+    assert settings.sso_mode == "posco"
+    assert settings.sso_validation_url.startswith("https://uswpsso.posco.net/")
+    assert settings.sso_sid == "issued-sid"
+    assert settings.sso_ca_bundle == ca_bundle
+    assert settings.sso_connect_timeout_seconds == 2.5
+    assert settings.sso_read_timeout_seconds == 4.5
+
+
+def test_existing_oidc_settings_select_oidc_when_mode_is_not_explicit(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    write_profile(tmp_path / "development.env", "bhyoon.me", "development")
+    write_profile(tmp_path / "production.env", "192.168.0.10", "production")
+    monkeypatch.setenv("RIST_CONFIG_DIR", str(tmp_path))
+    monkeypatch.setenv("RIST_ENV", "development")
+    monkeypatch.delenv("RIST_SSO_MODE", raising=False)
+    monkeypatch.setenv("RIST_SSO_ISSUER_URL", "https://sso.example.com")
+    monkeypatch.setenv("RIST_SSO_CLIENT_ID", "client-id")
+    monkeypatch.setenv("RIST_SSO_CLIENT_SECRET", "client-secret")
+
+    assert Settings.from_env().sso_mode == "oidc"

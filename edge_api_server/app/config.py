@@ -75,6 +75,12 @@ class Settings:
     auth_cookie_secure: bool = False
     auth_bootstrap_admin_ids: tuple[str, ...] = ()
     sso_provider_name: str = "RIST SSO"
+    sso_mode: str = "posco"
+    sso_validation_url: str = ""
+    sso_sid: str = ""
+    sso_ca_bundle: Path | None = None
+    sso_connect_timeout_seconds: float = 2.0
+    sso_read_timeout_seconds: float = 4.0
     sso_issuer_url: str = ""
     sso_client_id: str = ""
     sso_client_secret: str = ""
@@ -100,6 +106,15 @@ class Settings:
             )
         ).expanduser()
         configured_pdf_font = os.getenv("RIST_PDF_FONT_PATH", "").strip()
+        configured_sso_ca_bundle = os.getenv("RIST_SSO_CA_BUNDLE", "").strip()
+        configured_sso_mode = os.getenv("RIST_SSO_MODE", "").strip().lower()
+        if not configured_sso_mode:
+            oidc_values = (
+                os.getenv("RIST_SSO_ISSUER_URL", "").strip(),
+                os.getenv("RIST_SSO_CLIENT_ID", "").strip(),
+                os.getenv("RIST_SSO_CLIENT_SECRET", "").strip(),
+            )
+            configured_sso_mode = "oidc" if all(oidc_values) else "posco"
         supported = frozenset(
             code.strip().upper()
             for code in os.getenv("RIST_SUPPORTED_EXPERIMENT_CODES", "").split(",")
@@ -278,6 +293,24 @@ class Settings:
             sso_provider_name=(
                 os.getenv("RIST_SSO_PROVIDER_NAME", "RIST SSO").strip()
                 or "RIST SSO"
+            ),
+            sso_mode=configured_sso_mode,
+            sso_validation_url=os.getenv(
+                "RIST_SSO_VALIDATION_URL", ""
+            ).strip(),
+            sso_sid=os.getenv("RIST_SSO_SID", "").strip(),
+            sso_ca_bundle=(
+                Path(configured_sso_ca_bundle).expanduser()
+                if configured_sso_ca_bundle
+                else None
+            ),
+            sso_connect_timeout_seconds=max(
+                0.1,
+                float(os.getenv("RIST_SSO_CONNECT_TIMEOUT_SECONDS", "2")),
+            ),
+            sso_read_timeout_seconds=max(
+                0.1,
+                float(os.getenv("RIST_SSO_READ_TIMEOUT_SECONDS", "4")),
             ),
             sso_issuer_url=os.getenv("RIST_SSO_ISSUER_URL", "").strip().rstrip("/"),
             sso_client_id=os.getenv("RIST_SSO_CLIENT_ID", "").strip(),
