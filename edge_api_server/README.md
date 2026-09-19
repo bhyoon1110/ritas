@@ -101,6 +101,12 @@ API 문서:
 - XRD 웹 미리보기: `http://bhyoon.me:8000/xrd`
 - TEM/STEM 보고서 생성: `http://bhyoon.me:8000/tem`
 
+XRD/TEM 실험 PC 연동용 빌드 가능한 .NET 8 참조 클라이언트는
+`edge_api_server/examples/csharp-edge-client/`에 있다. 이 예제는 의뢰 조회,
+파일별 SHA-256 업로드, 서버 목록 재검증, 보고서 생성·상태 폴링과 브라우저
+`reviewUrl` 전달까지 구현한다. SSO 인증정보와 전송 승인은 C# 프로그램에서
+취급하지 않는다.
+
 ## FT-IR 웹 분석
 
 `/ftir`은 빈 Plotly 그래프에서 시작하며 DPT 파일 선택과 드래그 앤 드롭을

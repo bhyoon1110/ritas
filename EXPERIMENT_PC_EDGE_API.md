@@ -161,6 +161,52 @@ RIST_ANALYSIS_TYPE_MAP=A23141=XRD,B54123=TEM
 내부 판별값은 상태 응답의 `analysisType`으로 따로 제공된다. 따라서 이미 전달한
 C# 요청 DTO를 변경할 필요가 없다.
 
+#### 5.2.1 실행 가능한 C# 참조 구현
+
+별도 C# 개발자가 본 계약을 바로 확인할 수 있도록 외부 NuGet 패키지가 필요 없는
+.NET 8 콘솔 참조 구현을 함께 제공한다.
+
+```text
+edge_api_server/examples/csharp-edge-client/
+  Rist.EdgeClient.csproj
+  Program.cs
+  README.md
+```
+
+참조 구현은 다음 세 명령을 지원한다.
+
+| 명령 | 용도 |
+|---|---|
+| `requests` | `lims_req_ax_search` 기반 XRD/TEM 의뢰 목록 조회 |
+| `manifest` | 전송 전 로컬 bundle의 상대 경로, 크기와 SHA-256 확인 |
+| `submit` | 작업 생성, 업로드, 서버 목록 재검증, 완료 확정, 보고서 생성과 상태 폴링 |
+
+```bash
+dotnet build edge_api_server/examples/csharp-edge-client/Rist.EdgeClient.csproj \
+  --configuration Release
+
+dotnet run \
+  --project edge_api_server/examples/csharp-edge-client/Rist.EdgeClient.csproj \
+  -- submit \
+  --base-url https://edge.example \
+  --analysis-type XRD \
+  --input /data/xrd/request-001 \
+  --request-number 2026M00001 \
+  --experiment-code A23141 \
+  --equipment-code XRD-PC-01 \
+  --operator-id employee01 \
+  --open-review
+```
+
+중단 후 같은 업무키로 다시 실행하면 현재 작업 상태와 서버 파일 목록을 조회한다.
+이미 일치하는 파일은 건너뛰고, 같은 경로의 내용이 달라진 파일은 업로드 확정 전에
+교체한다. 서버에 로컬 bundle과 관계없는 파일이 있거나 확정된 bundle의 해시가
+달라지면 임의 삭제·덮어쓰기를 하지 않고 중단한다.
+
+이 구현은 SSO ID/PW를 받지 않으며 `/api/v1/reports/{reportId}/send`도 호출하지
+않는다. 최종 `reviewUrl`을 출력하거나 `--open-review`로 브라우저를 열 뿐이며,
+로그인·SSO 재인증과 LIMS 전송 승인은 사용자가 브라우저에서 수행한다.
+
 ### 5.3 XRD/TEM raw bundle 구성
 
 C# 프로그램은 bundle 내부 파일을 풀어서 각 파일의 `relativePath`를 보존해

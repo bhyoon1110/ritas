@@ -62,6 +62,10 @@ RitasAxApp/captures/
 RitasAxApp/.externalNativeBuild/
 RitasAxApp/.cxx/
 
+# .NET reference client build outputs
+edge_api_server/examples/csharp-edge-client/bin/
+edge_api_server/examples/csharp-edge-client/obj/
+
 # Model weights and archives
 models/
 *.safetensors
