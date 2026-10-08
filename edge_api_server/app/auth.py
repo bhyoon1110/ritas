@@ -19,6 +19,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from pydantic import BaseModel, Field, ValidationError, field_validator
 from starlette.concurrency import run_in_threadpool
 
+from .browser_support import BROWSER_POLICY_TEXT, with_browser_support_notice
 from .config import Settings
 from .database import Database
 from .errors import ApiException, error_response
@@ -1116,7 +1117,7 @@ def _page(title: str, body: str, *, wide: bool = False, auth_form: bool = False)
     # IE8 cannot style HTML5 main/section without a script-based HTML5 shim.
     opening = '<div class="auth-shell">' if auth_form else f'<main{main_class}>'
     closing = '</div>' if auth_form else '</main>'
-    return f"""<!doctype html>
+    html = f"""<!doctype html>
 <html lang="ko"><head><meta charset="utf-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{escape(title)}</title><style>
 *{{box-sizing:border-box}} body{{margin:0;background:#f5f7fa;color:#172b4d;font:15px/1.5 system-ui,-apple-system,sans-serif;letter-spacing:0}}
@@ -1131,11 +1132,14 @@ button,.button{{display:inline-flex;align-items:center;justify-content:center;mi
 @media(max-width:640px){{main{{padding:22px 14px}}main.wide{{padding:0}}.panel{{padding:18px}}h1{{font-size:23px}}.settings-grid{{grid-template-columns:1fr}}}}
 @media(max-width:640px){{.auth-shell{{padding:22px 14px}}}}
 </style></head><body>{opening}{body}{closing}</body></html>"""
+    return html if auth_form else with_browser_support_notice(html)
 
 
-_AUTH_BROWSER_NOTICE = """<p class="muted">로그인·회원가입은 JavaScript 없이도 사용할 수 있습니다.
-분석·그래프 편집·SSO 화면은 최신 브라우저를 사용해 주세요.
-구형 운영체제의 HTTPS 연결 오류는 이 화면의 호환성 보완으로 해결되지 않습니다.</p>"""
+_AUTH_BROWSER_NOTICE = (
+    f'<p class="muted">{BROWSER_POLICY_TEXT}</p>'
+    '<p class="muted">로그인·회원가입의 기본 제출은 JavaScript 없이도 가능합니다. '
+    '이는 구형 환경의 분석·그래프·SSO 지원이나 HTTPS 연결을 보장하지 않습니다.</p>'
+)
 
 
 def _auth_hidden_fields(return_to: str, csrf_token: str) -> str:

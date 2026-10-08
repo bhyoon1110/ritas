@@ -12,6 +12,7 @@ from fastapi.responses import FileResponse, HTMLResponse, Response
 from pydantic import BaseModel, Field
 
 from .database import Database
+from .browser_support import with_browser_support_notice
 from .experiment_routing import normalize_project_code, resolve_analysis_type
 from .xrd_portable_html import make_xrd_html_portable
 
@@ -465,7 +466,7 @@ def _purge_old_trash(
 @router.get("/report-management", response_class=HTMLResponse, include_in_schema=False)
 def report_management_console() -> HTMLResponse:
     html_path = Path(__file__).with_name("report_management.html")
-    return HTMLResponse(html_path.read_text(encoding="utf-8"))
+    return HTMLResponse(with_browser_support_notice(html_path.read_text(encoding="utf-8")))
 
 
 @router.get("/api/v1/report-management/policies", tags=["report-management"])

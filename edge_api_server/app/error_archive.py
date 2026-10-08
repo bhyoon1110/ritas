@@ -22,6 +22,7 @@ from pydantic import BaseModel, Field
 from rist_common import get_logger
 
 from .errors import ApiException, error_response, redact_validation_errors
+from .browser_support import with_browser_support_notice
 from .usage_archive import (
     UsageArchive,
     UsageArchiveSettings,
@@ -687,12 +688,12 @@ def _archive_or_404(request: Request) -> ErrorArchive:
 
 @router.get("/errors", response_class=HTMLResponse, include_in_schema=False)
 def error_console() -> HTMLResponse:
-    return HTMLResponse(_operations_console_html("errors"))
+    return HTMLResponse(with_browser_support_notice(_operations_console_html("errors")))
 
 
 @router.get("/operations", response_class=HTMLResponse, include_in_schema=False)
 def operations_console() -> HTMLResponse:
-    return HTMLResponse(_operations_console_html("usage"))
+    return HTMLResponse(with_browser_support_notice(_operations_console_html("usage")))
 
 
 @router.get("/error-feedback/{event_id}", response_class=HTMLResponse, include_in_schema=False)

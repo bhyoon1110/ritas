@@ -33,6 +33,7 @@ from rist_common.plotting import (
 
 from . import assignment_suggestions
 from .auth import authenticated_transfer_payload
+from .browser_support import with_browser_support_notice
 from .assignment_suggestions import AssignmentSuggestionRequest
 from .config import Settings
 from .errors import ApiException
@@ -6179,7 +6180,7 @@ def build_raman_page() -> str:
         config={"scrollZoom": True},
     )
     page = page.replace("</head>", _PAGE_STYLE + "</head>", 1)
-    return page.replace("<body>", "<body>" + _PAGE_SHELL, 1)
+    return with_browser_support_notice(page.replace("<body>", "<body>" + _PAGE_SHELL, 1))
 
 
 @router.get("/raman", response_class=HTMLResponse, include_in_schema=False)

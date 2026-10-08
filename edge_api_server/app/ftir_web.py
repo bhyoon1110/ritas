@@ -34,6 +34,7 @@ from .error_archive import install_error_management
 from .error_archive import error_archive as app_error_archive
 from . import assignment_suggestions
 from .auth import authenticated_transfer_payload
+from .browser_support import with_browser_support_notice
 from .assignment_suggestions import AssignmentSuggestionRequest
 from .config import Settings
 from .preview_report import (
@@ -5244,7 +5245,7 @@ def build_ftir_page() -> str:
         config={"scrollZoom": True},
     )
     page = page.replace("</head>", _PAGE_STYLE + "</head>", 1)
-    return page.replace("<body>", "<body>" + _PAGE_SHELL, 1)
+    return with_browser_support_notice(page.replace("<body>", "<body>" + _PAGE_SHELL, 1))
 
 
 @router.get("/ftir", response_class=HTMLResponse, include_in_schema=False)

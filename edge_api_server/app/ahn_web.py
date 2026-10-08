@@ -24,6 +24,7 @@ from rist_common import get_logger
 
 from .errors import ApiException
 from .auth import authenticated_transfer_payload
+from .browser_support import with_browser_support_notice
 from .config import Settings
 from .database import Database
 from .file_inspection import FileInspection, inspect_file_bytes, inspect_file_path
@@ -1165,7 +1166,7 @@ def _job_payload(job: AhnReportJob) -> dict[str, Any]:
 
 
 def build_ahn_page() -> str:
-    return """<!doctype html>
+    page = """<!doctype html>
 <html lang="ko">
 <head>
   <meta charset="utf-8">
@@ -2640,6 +2641,7 @@ def build_ahn_page() -> str:
   </script>
 </body>
 </html>"""
+    return with_browser_support_notice(page)
 
 
 @router.get("/tem", response_class=HTMLResponse, include_in_schema=False)

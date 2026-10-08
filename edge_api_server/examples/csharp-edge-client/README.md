@@ -3,6 +3,17 @@
 별도 C# 전송 프로그램 개발자가 `EXPERIMENT_PC_EDGE_API.md` 계약을 그대로
 확인할 수 있는 .NET 8 콘솔 참조 구현이다. 외부 NuGet 패키지를 사용하지 않는다.
 
+이 참조 예제는 Windows XP/Windows 7 운영용 클라이언트가 아니다. 실제 구형
+장비 프로그램의 OS·.NET 런타임·TLS 지원은 C# 개발자가 별도 확인해야 한다.
+호환되는 전송 프로그램 또는 최신 전송 중계 PC 사용을 결정하되, HTTPS 인증서
+검증을 해제하거나 SSO 인증을 우회하지 않는다. 보고서 검토·전송 승인은 보안
+지원 중인 OS의 최신 Chrome에서 수행하고, 최신 Edge도 호환 확인 대상으로 둔다.
+실제 구형 PC용 전송 프로그램은 검토 URL 자동 열기를 피하고, 반환된 `reviewUrl`을
+최신 업무 PC에서 열도록 구성할 수 있다. 이 참조 예제의 `--open-review` 옵션은
+.NET 8을 지원하는 환경에서만 사용한다. 외부 실제 전송 프로그램을 이 예제로
+자동 대체하지 않는다.
+참고: [.NET의 Windows 지원 범위](https://learn.microsoft.com/en-us/dotnet/core/install/windows).
+
 이 예제의 범위는 다음과 같다.
 
 1. LIMS 의뢰 목록 조회

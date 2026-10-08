@@ -39,6 +39,12 @@ C# XRD/TEM raw bundle이면 웹 화면과 같은 XRD HTML 또는 TEM PPTX 생성
 
 Python 3.11 이상이 필요하다.
 
+웹 화면은 보안 지원 중인 OS의 최신 Chrome을 기본 대상으로 하고, 최신 Edge를
+호환 확인 대상으로 유지한다. XP/Windows 7/IE는 정식 웹 지원 대상이 아니다.
+기존 모바일 동작과 JavaScript 없는 로그인·가입 폼은 유지한다. 지원 정책과
+출시 전 확인 항목은 [루트 README](../README.md#웹-브라우저-지원-정책) 및
+[웹 인증 명세](../documents/EDGE_WEB_AUTH.md#11-chrome-중심-지원-및-출시-검증)를 참고한다.
+
 Edge 서버에는 프로젝트 루트의 다음 폴더를 같은 부모 경로 아래에
 배포해야 한다.
 

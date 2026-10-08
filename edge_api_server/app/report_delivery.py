@@ -11,6 +11,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import FileResponse, HTMLResponse
 
 from .auth import authenticated_transfer_payload, require_context
+from .browser_support import with_browser_support_notice
 from .config import Settings
 from .database import Database
 from .errors import ApiException
@@ -213,4 +214,4 @@ def generated_report_page(request: Request, report_id: str) -> HTMLResponse:
 <div class="grid"><div class="item"><b>의뢰번호</b>{escape(str(state['requestNumber'] or '-'))}</div><div class="item"><b>분석 / 실험코드</b>{escape(project)} / {escape(str(state['experimentCode'] or '-'))}</div><div class="item"><b>장비코드</b>{escape(str(state['equipmentCode'] or '-'))}</div><div class="item"><b>전송 상태</b><span id="status">{escape(str(state['transferStatus']))}</span></div><div class="item"><b>생성 시각</b>{escape(str(state['generatedAt'] or '-'))}</div><div class="item"><b>보고서 ID</b>{escape(report_id)}</div></div>
 <div class="actions"><a class="button secondary" href="/api/v1/reports/{encoded_id}/package">ZIP 다운로드</a><a class="button secondary" href="{escape(sso_url)}">SSO 재인증</a><button id="send" type="button"{disabled}>{escape(button_label)}</button></div><div id="message" class="muted"></div></section></main>
 <script>const button=document.getElementById('send'),message=document.getElementById('message'),statusNode=document.getElementById('status');if(button)button.addEventListener('click',async()=>{{button.disabled=true;message.textContent='전송 큐에 등록하는 중입니다.';try{{const response=await fetch('/api/v1/reports/{encoded_id}/send',{{method:'POST',headers:{{'X-Request-Id':'report-send-'+Date.now()}}}});const payload=await response.json();if(!response.ok){{if(payload.details&&payload.details.reauthUrl)location.href=payload.details.reauthUrl;throw new Error(payload.message||payload.detail||'전송 요청에 실패했습니다.')}}statusNode.textContent=payload.status||'PENDING';message.textContent='LIMS 전송 큐에 등록했습니다. 실제 완료 상태는 운영 화면에서 확인할 수 있습니다.';button.textContent='전송 요청됨'}}catch(error){{message.textContent=error.message||String(error);button.disabled=false}}}});</script></body></html>"""
-    return HTMLResponse(html, headers={"Cache-Control": "no-store"})
+    return HTMLResponse(with_browser_support_notice(html), headers={"Cache-Control": "no-store"})

@@ -35,6 +35,7 @@ from lim.xrd_plot import (
 
 from .errors import ApiException
 from .auth import authenticated_transfer_payload
+from .browser_support import with_browser_support_notice
 from .file_inspection import FileInspection, inspect_file_bytes
 from .error_archive import (
     ErrorArchive,
@@ -978,7 +979,7 @@ def _save_xrd_bundle_session_files(
 
 
 def build_xrd_page() -> str:
-    return """<!doctype html>
+    page = """<!doctype html>
 <html lang="ko">
 <head>
   <meta charset="utf-8">
@@ -2520,6 +2521,7 @@ def build_xrd_page() -> str:
   </script>
 </body>
 </html>"""
+    return with_browser_support_notice(page)
 
 
 @router.get("/xrd/assets/plotly.min.js", include_in_schema=False)
