@@ -58,6 +58,17 @@ python -m app.report_worker
 
 자세한 내용은 [Edge API README](edge_api_server/README.md)를 참고한다.
 
+## 웹 로그인·브라우저 호환성
+
+`/login`과 `/signup`은 JavaScript 없이 동작하는 HTML POST 양식이다. 구형
+브라우저에서도 서버가 입력 검증과 오류 안내를 처리하며, 쿠키와 동일 출처 요청
+확인이 필요하다. 기존 JSON 인증 API와 가입 승인·프로젝트 권한·SSO 정책은 유지한다.
+
+이 호환성 범위는 로그인·회원가입이며, 분석·그래프 편집·SSO·운영 화면 전체의
+구형 IE 지원을 의미하지 않는다. 구형 OS의 TLS/인증서 오류는 별개이므로 HTTPS나
+인증서 검증을 약화하지 않는다. 상세 배포·점검 방법은
+[웹 인증 명세](documents/EDGE_WEB_AUTH.md#10-로그인회원가입의-구형-브라우저-호환성)를 참고한다.
+
 ## 저장소 제외 대상
 
 실험 원본과 결과, 로컬 라이브러리 데이터, 모델 가중치, SQLite DB, 가상환경,

@@ -211,3 +211,52 @@ Edge 서버에서 선택한 호스트가 올바르게 해석되고 TCP 443에 �
 7. 테스트 계정으로 `T`, 잘못된 비밀번호로 `F`, 미등록 IP 환경에서 `F`를 각각 확인한다.
 8. 인증 직후 보고서 전송, 최근 SSO 인증 만료 후 차단 및 재인증을 검증한다.
 9. 운영 SID와 운영 출발지 IP를 별도로 등록한 뒤 운영 URL로 전환한다.
+
+## 10. 로그인·회원가입의 구형 브라우저 호환성
+
+로그인·가입 화면은 `fetch`, `async/await`, `FormData.get`, `Object.fromEntries`
+의존성을 제거하고 기본 HTML 양식으로 동작한다. `GET /login`, `GET /signup`에서
+양식을 받고, 같은 주소에 `application/x-www-form-urlencoded` POST로 제출한다.
+비밀번호는 URL/쿼리 문자열에 넣지 않으며 오류 화면에도 재표시하지 않는다.
+기존 `/api/v1/auth/login`, `/api/v1/auth/signup` JSON API는 그대로 유지한다.
+
+- 입력 검증은 서버에서 동일한 Pydantic 모델로 수행한다. HTML5의 `required`,
+  `minlength`를 지원하지 않는 브라우저도 비밀번호 길이 등의 정책을 우회할 수 없다.
+- 가입 성공은 로그인 화면으로 303 리다이렉트한다. 새로고침으로 가입 요청이
+  반복되지 않으며, 기존 관리자 지정·일반 회원 승인 대기 정책을 유지한다.
+- 로그인 성공은 기존 인증 서비스가 발급한 HttpOnly 세션 쿠키를 설정하고 안전한
+  내부 `returnTo` 경로로 303 리다이렉트한다. 쿠키에는 구형 브라우저를 위한
+  `Expires`도 함께 설정하며 Secure/SameSite 정책을 낮추지 않는다.
+- 인증 양식과 응답은 `Cache-Control: no-store`로 캐시하지 않는다. 오류가 나면
+  ID·이름·이메일만 HTML 이스케이프하여 유지하고 비밀번호는 다시 입력하게 한다.
+- HTML 폼에는 쿠키와 대조하는 CSRF 토큰을 넣는다. POST의 `Origin`이 없으면
+  구형 IE가 보내는 `Referer`로 동일 출처를 확인한다. 둘 다 없거나 출처가 다르면
+  거부한다. 따라서 쿠키를 허용하고 보안 프록시가 동일 출처 Referer를 제거하지
+  않도록 해야 한다. 별도의 비밀키/DB 마이그레이션은 필요하지 않다.
+- `RIST_AUTH_COOKIE_SECURE=true`인 배포에서 HTTP 주소로 접속하면 HTTPS 접속
+  안내를 표시하고 폼 제출을 거부한다. 리버스 프록시는 Host를 보존하고 신뢰된
+  프록시에서 전달한 HTTPS scheme이 앱까지 반영되어야 한다.
+
+### 적용 범위와 점검
+
+이번 호환성 보완은 로그인·회원가입에 한정한다. `/account`의 SSO·회원정보 수정,
+관리 화면, FTIR/Raman 등의 분석·그래프 편집은 여전히 현대적인 JavaScript와
+브라우저 API를 사용한다. 전체 시스템의 Windows XP/IE 지원을 보장하지 않는다.
+실제 XP/IE 및 Windows 7/Edge 장비에서의 검증은 별도로 필요하다.
+계정 화면의 스크립트가 실패하면 기본 POST가 안전 안내 화면으로 이동하며,
+비밀번호를 URL에 노출하거나 회원정보·비밀번호 변경·SSO 인증을 실행하지 않는다.
+
+1. 서버에 수정 버전을 배포하고 API 서비스를 재시작한다.
+2. 브라우저에서 로그인·가입 화면을 새로 연다. JavaScript를 꺼도 가입 신청,
+   잘못된 입력 안내, 승인된 회원 로그인이 되는지 확인한다.
+3. 화면은 열리지만 실패하면 화면 오류와 브라우저 버전을 확인한다. 로그인 후
+   다시 로그인 화면으로 돌아오면 쿠키 차단, Secure 쿠키와 HTTP 주소 혼용,
+   리버스 프록시의 Host/scheme 전달을 점검한다.
+4. 화면 자체가 열리지 않으면 DNS/네트워크/인증서/TLS 문제부터 확인한다.
+   브라우저나 OS가 서버의 보안 통신을 지원하지 못하는 경우 TLS 또는 인증서
+   검증을 낮추지 말고 지원되는 OS·브라우저를 사용한다.
+
+Windows 7용 Edge는 Microsoft의 지원 이력상 109가 마지막 버전이다.
+이는 프로젝트 전체의 호환성 보장을 의미하지 않으며 Windows 7이라는 이유만으로
+이번 장애를 JavaScript 미지원으로 단정해서는 안 된다.
+참고: [Microsoft Edge 지원 운영체제](https://learn.microsoft.com/en-us/deployedge/microsoft-edge-supported-operating-systems).

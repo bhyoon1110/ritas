@@ -10,13 +10,14 @@ import json
 import re
 import secrets
 from typing import Any
-from urllib.parse import urlencode
+from urllib.parse import parse_qs, urlencode, urlsplit
 from uuid import uuid4
 
 import httpx
 from fastapi import APIRouter, FastAPI, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, ValidationError, field_validator
+from starlette.concurrency import run_in_threadpool
 
 from .config import Settings
 from .database import Database
@@ -31,6 +32,9 @@ from .preview_report import PreviewReportSendRequest
 
 
 SESSION_COOKIE = "rist_session"
+AUTH_FORM_COOKIE = "rist_auth_form"
+AUTH_FORM_TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]{43}$")
+AUTH_FORM_HEADERS = {"Cache-Control": "no-store", "Pragma": "no-cache"}
 PROJECT_CODES = ("FTIR", "RAMAN", "XRD", "TEM")
 ROLE_CODES = ("ADMIN", "REPORT_SENDER")
 USER_STATUSES = ("PENDING", "ACTIVE", "SUSPENDED")
@@ -84,7 +88,10 @@ class SignupRequest(BaseModel):
     @field_validator("display_name")
     @classmethod
     def strip_name(cls, value: str) -> str:
-        return value.strip()
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("이름을 입력하세요.")
+        return normalized
 
 
 class LoginRequest(BaseModel):
@@ -213,7 +220,7 @@ def safe_return_to(value: str | None, default: str = "/") -> str:
     candidate = str(value or "").strip()
     if not candidate.startswith("/") or candidate.startswith("//"):
         return default
-    if "\r" in candidate or "\n" in candidate:
+    if "\\" in candidate or any(ord(char) < 32 or ord(char) == 127 for char in candidate):
         return default
     return candidate[:512]
 
@@ -1104,10 +1111,13 @@ def authenticated_transfer_payload(
     return payload.model_copy(update={"operator_id": operator_id})
 
 
-def _page(title: str, body: str, *, wide: bool = False) -> str:
+def _page(title: str, body: str, *, wide: bool = False, auth_form: bool = False) -> str:
     main_class = ' class="wide"' if wide else ""
+    # IE8 cannot style HTML5 main/section without a script-based HTML5 shim.
+    opening = '<div class="auth-shell">' if auth_form else f'<main{main_class}>'
+    closing = '</div>' if auth_form else '</main>'
     return f"""<!doctype html>
-<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<html lang="ko"><head><meta charset="utf-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{escape(title)}</title><style>
 *{{box-sizing:border-box}} body{{margin:0;background:#f5f7fa;color:#172b4d;font:15px/1.5 system-ui,-apple-system,sans-serif;letter-spacing:0}}
 main{{max-width:1080px;margin:0 auto;padding:40px 20px}} main.wide{{max-width:none;margin:0;padding:0}} .panel{{background:#fff;border:1px solid #d7dee8;border-radius:8px;padding:24px}}
@@ -1117,26 +1127,121 @@ button,.button{{display:inline-flex;align-items:center;justify-content:center;mi
 .secondary{{background:#fff;color:#1769aa}} .row{{display:flex;gap:10px;align-items:center;flex-wrap:wrap}} .muted{{color:#6b778c}} .error{{color:#b42318;white-space:pre-wrap}}
 .success{{color:#166534;white-space:pre-wrap}} .settings-grid{{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;margin-top:20px}} .settings-card{{border:1px solid #e0e6ee;border-radius:7px;padding:18px}} .settings-card h2{{margin-top:0}}
 .user{{border-top:1px solid #e2e7ef;padding:16px 0}} .checks{{display:flex;gap:14px;flex-wrap:wrap}} .checks label{{font-weight:500;margin:0}} .checks input{{width:auto;min-height:auto}}
+.auth-shell{{max-width:1080px;margin:0 auto;padding:40px 20px}} .auth-shell .row{{display:block}} .auth-shell button,.auth-shell .button{{display:inline-block;vertical-align:middle;margin-right:10px;margin-bottom:6px}} .auth-shell label{{font-weight:bold}}
 @media(max-width:640px){{main{{padding:22px 14px}}main.wide{{padding:0}}.panel{{padding:18px}}h1{{font-size:23px}}.settings-grid{{grid-template-columns:1fr}}}}
-</style></head><body><main{main_class}>{body}</main></body></html>"""
+@media(max-width:640px){{.auth-shell{{padding:22px 14px}}}}
+</style></head><body>{opening}{body}{closing}</body></html>"""
 
 
-def _login_page(return_to: str) -> str:
-    body = f"""<section class="panel"><h1>RIST Edge 로그인</h1><p>승인받은 프로젝트에서 분석하고 보고서를 생성할 수 있습니다.</p>
-<form id="form"><label>로그인 ID</label><input name="loginId" autocomplete="username" minlength="3" maxlength="255" required>
-<label>비밀번호</label><input name="password" type="password" autocomplete="current-password" required>
-<p id="message" class="error"></p><div class="row"><button>로그인</button><a class="button secondary" href="/signup">회원가입</a></div></form></section>
-<script>document.getElementById('form').onsubmit=async(e)=>{{e.preventDefault();const f=new FormData(e.target);const r=await fetch('/api/v1/auth/login',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{loginId:f.get('loginId'),password:f.get('password'),returnTo:{json.dumps(return_to)}}})}});const d=await r.json();if(!r.ok){{message.textContent=d.message||'로그인에 실패했습니다.';return}}location.href=d.returnTo||'/';}};</script>"""
-    return _page("RIST Edge 로그인", body)
+_AUTH_BROWSER_NOTICE = """<p class="muted">로그인·회원가입은 JavaScript 없이도 사용할 수 있습니다.
+분석·그래프 편집·SSO 화면은 최신 브라우저를 사용해 주세요.
+구형 운영체제의 HTTPS 연결 오류는 이 화면의 호환성 보완으로 해결되지 않습니다.</p>"""
 
 
-def _signup_page() -> str:
-    body = """<section class="panel"><h1>회원가입</h1><p>가입 후 관리자가 FTIR, Raman, XRD, TEM 접근 권한을 승인합니다. SSO 연결 전에도 승인된 프로젝트의 보고서 생성은 가능합니다.</p>
-<form id="form"><label>이름</label><input name="displayName" maxlength="100" required><label>로그인 ID</label><input name="loginId" minlength="3" maxlength="64" pattern="[A-Za-z0-9._-]+" autocomplete="username" required><p class="muted">영문, 숫자, 점, 밑줄, 하이픈을 사용할 수 있습니다.</p><label>이메일 (선택)</label><input name="email" type="email" autocomplete="email">
-<label>비밀번호</label><input name="password" type="password" minlength="10" required><p class="muted">10자 이상으로 입력하세요.</p>
-<p id="message"></p><div class="row"><button>가입 신청</button><a class="button secondary" href="/login">로그인</a></div></form></section>
-<script>const form=document.getElementById('form'),message=document.getElementById('message');form.onsubmit=async(e)=>{e.preventDefault();const f=new FormData(form),body=Object.fromEntries(f);if(!body.email)delete body.email;const r=await fetch('/api/v1/auth/signup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const d=await r.json();message.className=r.ok?'muted':'error';message.textContent=r.ok?(d.status==='ACTIVE'?'가입되었습니다. 로그인하세요.':'가입 신청이 완료되었습니다. 관리자 승인을 기다려 주세요.'):(d.message||'가입에 실패했습니다.');};</script>"""
-    return _page("RIST Edge 회원가입", body)
+def _auth_hidden_fields(return_to: str, csrf_token: str) -> str:
+    return (
+        f'<input type="hidden" name="returnTo" value="{escape(safe_return_to(return_to))}">'
+        f'<input type="hidden" name="csrfToken" value="{escape(csrf_token)}">'
+    )
+
+
+def _login_page(
+    return_to: str,
+    *,
+    csrf_token: str = "",
+    message: str = "",
+    success: bool = False,
+    values: dict[str, str] | None = None,
+) -> str:
+    login_id = (values or {}).get("loginId", "")
+    signup_url = "/signup?" + urlencode({"returnTo": safe_return_to(return_to)})
+    body = f"""<div class="panel"><h1>RIST Edge 로그인</h1><p>승인받은 프로젝트에서 분석하고 보고서를 생성할 수 있습니다.</p>
+<p id="message" class="{'success' if success else 'error'}" role="status">{escape(message)}</p>
+<form id="form" method="post" action="/login" accept-charset="UTF-8">
+{_auth_hidden_fields(return_to, csrf_token)}
+<label for="login-id">로그인 ID</label><input id="login-id" name="loginId" autocomplete="username" minlength="3" maxlength="255" value="{escape(login_id)}" required>
+<label for="login-password">비밀번호</label><input id="login-password" name="password" type="password" autocomplete="current-password" maxlength="200" required>
+<p class="muted">쿠키를 허용해야 로그인 상태가 유지됩니다.</p>
+<div class="row"><button type="submit">로그인</button><a class="button secondary" href="{escape(signup_url)}">회원가입</a></div></form>
+{_AUTH_BROWSER_NOTICE}</div>"""
+    return _page("RIST Edge 로그인", body, auth_form=True)
+
+
+def _signup_page(
+    return_to: str = "/",
+    *,
+    csrf_token: str = "",
+    message: str = "",
+    values: dict[str, str] | None = None,
+) -> str:
+    values = values or {}
+    login_url = "/login?" + urlencode({"returnTo": safe_return_to(return_to)})
+    body = f"""<div class="panel"><h1>회원가입</h1><p>가입 후 관리자가 FTIR, Raman, XRD, TEM 접근 권한을 승인합니다. SSO 연결 전에도 승인된 프로젝트의 보고서 생성은 가능합니다.</p>
+<p id="message" class="error" role="status">{escape(message)}</p>
+<form id="form" method="post" action="/signup" accept-charset="UTF-8">
+{_auth_hidden_fields(return_to, csrf_token)}
+<label for="signup-name">이름</label><input id="signup-name" name="displayName" maxlength="100" value="{escape(values.get('displayName', ''))}" required>
+<label for="signup-id">로그인 ID</label><input id="signup-id" name="loginId" minlength="3" maxlength="64" pattern="[A-Za-z0-9._-]+" autocomplete="username" value="{escape(values.get('loginId', ''))}" required><p class="muted">영문, 숫자, 점, 밑줄, 하이픈을 사용할 수 있습니다.</p>
+<label for="signup-email">이메일 (선택)</label><input id="signup-email" name="email" type="email" maxlength="255" autocomplete="email" value="{escape(values.get('email', ''))}">
+<label for="signup-password">비밀번호</label><input id="signup-password" name="password" type="password" autocomplete="new-password" minlength="10" maxlength="200" required><p class="muted">10자 이상으로 입력하세요.</p>
+<div class="row"><button type="submit">가입 신청</button><a class="button secondary" href="{escape(login_url)}">로그인</a></div></form>
+{_AUTH_BROWSER_NOTICE}</div>"""
+    return _page("RIST Edge 회원가입", body, auth_form=True)
+
+
+def _auth_form_origin(value: str) -> tuple[str, str, int] | None:
+    try:
+        parsed = urlsplit(value)
+        if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+            return None
+        if parsed.username is not None or parsed.password is not None or "\\" in value:
+            return None
+        return parsed.scheme, parsed.hostname, parsed.port or (443 if parsed.scheme == "https" else 80)
+    except ValueError:
+        return None
+
+
+async def _read_auth_form(request: Request, settings: Settings) -> dict[str, str]:
+    if settings.auth_cookie_secure and not _request_is_https(request):
+        raise ApiException(426, "AUTH_HTTPS_REQUIRED", "보안 쿠키 설정을 사용 중입니다. HTTPS 주소로 접속하세요.")
+    # Old IE does not send Origin on form POST. Require same-origin Referer then;
+    # do not rely on SameSite, which those browsers also do not implement.
+    source = request.headers.get("Origin")
+    if source is None:
+        source = request.headers.get("Referer", "")
+    if _auth_form_origin(source) != _auth_form_origin(str(request.url)):
+        raise ApiException(403, "CSRF_CHECK_FAILED", "요청 출처를 확인할 수 없습니다. 이 사이트의 로그인·가입 화면에서 다시 제출하세요.")
+    if request.headers.get("Content-Type", "").split(";", 1)[0].strip().lower() != "application/x-www-form-urlencoded":
+        raise ApiException(415, "AUTH_FORM_INVALID", "로그인·가입 양식으로 다시 제출하세요.")
+    body = bytearray()
+    async for chunk in request.stream():
+        if len(body) + len(chunk) > 8192:
+            raise ApiException(413, "AUTH_FORM_TOO_LARGE", "입력 내용이 너무 깁니다.")
+        body.extend(chunk)
+    try:
+        fields = parse_qs(body.decode("utf-8"), keep_blank_values=True, max_num_fields=12, errors="strict")
+    except (UnicodeError, ValueError):
+        raise ApiException(400, "AUTH_FORM_INVALID", "입력 내용을 확인하고 다시 제출하세요.") from None
+    if any(len(items) != 1 for items in fields.values()):
+        raise ApiException(400, "AUTH_FORM_INVALID", "중복된 입력 항목이 있습니다. 화면을 새로 열어 주세요.")
+    values = {key: items[0] for key, items in fields.items()}
+    cookie = request.cookies.get(AUTH_FORM_COOKIE, "")
+    token = values.pop("csrfToken", "")
+    if not AUTH_FORM_TOKEN_RE.fullmatch(cookie) or not AUTH_FORM_TOKEN_RE.fullmatch(token) or not hmac.compare_digest(cookie, token):
+        raise ApiException(403, "CSRF_CHECK_FAILED", "인증 화면이 만료되었거나 쿠키가 차단되어 있습니다. 쿠키를 허용하고 다시 입력하세요.")
+    return values
+
+
+def _auth_form_validation_message(exc: ValidationError, *, signup: bool) -> str:
+    # Never echo Pydantic's input/context: it may include the submitted password.
+    field = exc.errors(include_input=False, include_context=False)[0]["loc"][0]
+    return {
+        "loginId": "로그인 ID를 확인하세요. 가입 ID는 영문·숫자·점·밑줄·하이픈 3~64자입니다." if signup else "로그인 ID를 3~255자로 입력하세요.",
+        "password": "비밀번호를 10~200자로 입력하세요." if signup else "비밀번호를 1~200자로 입력하세요.",
+        "displayName": "이름을 1~100자로 입력하세요.",
+        "email": "올바른 이메일 주소를 입력하거나 비워 두세요.",
+        "returnTo": "이동할 주소가 올바르지 않습니다. 로그인 화면을 다시 열어 주세요.",
+    }.get(str(field), "입력 내용을 확인하고 다시 제출하세요.")
 
 
 def _account_page(context: AuthContext, settings: Settings) -> str:
@@ -1152,7 +1257,7 @@ def _account_page(context: AuthContext, settings: Settings) -> str:
         current_employee_id = str(
             (context.sso_identity or {}).get("employee_id") or context.login_id
         )
-        sso_control = f"""<form class="settings-card" id="sso-form">
+        sso_control = f"""<form class="settings-card" id="sso-form" method="post" action="/account" accept-charset="UTF-8">
 <h2>{escape(settings.sso_provider_name)} 연결 / 재인증</h2>
 <p class="muted">입력한 SSO 비밀번호는 Edge 서버가 POSCO SSO로 즉시 검증하며 저장하거나 감사 로그에 남기지 않습니다.</p>
 <label for="sso-username">SSO ID</label><input id="sso-username" name="username" maxlength="100" pattern="[A-Za-z0-9._-]+" autocomplete="username" value="{escape(current_employee_id)}" required>
@@ -1165,8 +1270,8 @@ def _account_page(context: AuthContext, settings: Settings) -> str:
     else:
         sso_control = '<p class="error">지원하지 않는 SSO 연동 방식이 설정되어 있습니다.</p>'
     body = f"""<section class="panel"><div class="row" style="justify-content:space-between"><div><h1>내 계정</h1><p><strong>{escape(context.display_name)}</strong> · 로그인 ID {escape(context.login_id)}</p></div><button class="secondary" id="logout" type="button">로그아웃</button></div>
-<div class="settings-grid"><form class="settings-card" id="profile-form"><h2>회원정보 수정</h2><label>로그인 ID</label><input value="{escape(context.login_id)}" disabled><label>이름</label><input name="displayName" maxlength="100" value="{escape(context.display_name)}" required><label>이메일 (선택)</label><input name="email" type="email" maxlength="255" value="{escape(context.email or '')}"><p id="profile-message"></p><button type="submit">회원정보 저장</button></form>
-<form class="settings-card" id="password-form"><h2>비밀번호 변경</h2><label>현재 비밀번호</label><input name="currentPassword" type="password" autocomplete="current-password" required><label>새 비밀번호</label><input name="newPassword" type="password" autocomplete="new-password" minlength="10" required><label>새 비밀번호 확인</label><input name="confirmPassword" type="password" autocomplete="new-password" minlength="10" required><p class="muted">변경 후 모든 기기에서 로그아웃됩니다.</p><p id="password-message"></p><button type="submit">비밀번호 변경</button></form></div>
+<div class="settings-grid"><form class="settings-card" id="profile-form" method="post" action="/account" accept-charset="UTF-8"><h2>회원정보 수정</h2><label>로그인 ID</label><input value="{escape(context.login_id)}" disabled><label>이름</label><input name="displayName" maxlength="100" value="{escape(context.display_name)}" required><label>이메일 (선택)</label><input name="email" type="email" maxlength="255" value="{escape(context.email or '')}"><p id="profile-message"></p><button type="submit">회원정보 저장</button></form>
+<form class="settings-card" id="password-form" method="post" action="/account" accept-charset="UTF-8"><h2>비밀번호 변경</h2><label>현재 비밀번호</label><input name="currentPassword" type="password" autocomplete="current-password" required><label>새 비밀번호</label><input name="newPassword" type="password" autocomplete="new-password" minlength="10" required><label>새 비밀번호 확인</label><input name="confirmPassword" type="password" autocomplete="new-password" minlength="10" required><p class="muted">변경 후 모든 기기에서 로그아웃됩니다.</p><p id="password-message"></p><button type="submit">비밀번호 변경</button></form></div>
 <h2>승인된 프로젝트</h2><div class="row">{project_links}</div><section id="sso-auth"><h2>보고서 전송 인증</h2><p>사내 SSO: <strong>{sso_text}</strong><br>최근 전송 인증: <strong>{'유효' if data['ssoRecentlyAuthenticated'] else '재인증 필요'}</strong></p>
 {sso_control}</section>
 {'<h2>관리</h2><div class="row"><a class="button secondary" href="/admin/users">회원·권한 관리</a><a class="button secondary" href="/operations">운영 관리</a></div>' if context.is_admin else ''}
@@ -1233,6 +1338,49 @@ def install_auth(app: FastAPI, settings: Settings, database: Database) -> None:
     app.state.auth_service = service
     router = APIRouter()
 
+    def form_response(
+        request: Request,
+        *,
+        signup: bool = False,
+        return_to: str = "/",
+        message: str = "",
+        success: bool = False,
+        values: dict[str, str] | None = None,
+        status_code: int = 200,
+    ) -> HTMLResponse:
+        token = request.cookies.get(AUTH_FORM_COOKIE, "")
+        if not AUTH_FORM_TOKEN_RE.fullmatch(token):
+            token = secrets.token_urlsafe(32)
+        if settings.auth_cookie_secure and not _request_is_https(request):
+            message = "보안 쿠키 설정을 사용 중입니다. HTTPS 주소로 접속하세요."
+            success = False
+        options = dict(csrf_token=token, message=message, values=values)
+        html = _signup_page(return_to, **options) if signup else _login_page(return_to, success=success, **options)
+        response = HTMLResponse(html, status_code=status_code, headers=AUTH_FORM_HEADERS)
+        response.set_cookie(
+            AUTH_FORM_COOKIE,
+            token,
+            httponly=True,
+            secure=settings.auth_cookie_secure,
+            samesite="lax",
+            max_age=3600,
+            expires=3600,
+            path="/",
+        )
+        return response
+
+    def set_session_cookie(response: Response, raw_token: str) -> None:
+        response.set_cookie(
+            SESSION_COOKIE,
+            raw_token,
+            httponly=True,
+            secure=settings.auth_cookie_secure,
+            samesite="lax",
+            max_age=settings.auth_session_hours * 3600,
+            expires=settings.auth_session_hours * 3600,
+            path="/",
+        )
+
     @app.middleware("http")
     async def authentication_middleware(request: Request, call_next: Any) -> Response:
         if (
@@ -1272,18 +1420,73 @@ def install_auth(app: FastAPI, settings: Settings, database: Database) -> None:
         return await call_next(request)
 
     @router.get("/login", response_class=HTMLResponse, include_in_schema=False)
-    def login_page(request: Request, returnTo: str = "/") -> Response:
+    def login_page(request: Request, returnTo: str = "/", registered: str = "") -> Response:
         if getattr(request.state, "auth_context", None):
-            return RedirectResponse(safe_return_to(returnTo), status_code=303)
-        return HTMLResponse(_login_page(safe_return_to(returnTo)))
+            return RedirectResponse(safe_return_to(returnTo), status_code=303, headers=AUTH_FORM_HEADERS)
+        message = {
+            "PENDING": "가입 신청이 완료되었습니다. 관리자 승인을 기다려 주세요.",
+            "ACTIVE": "가입되었습니다. 로그인하세요.",
+        }.get(registered, "")
+        return form_response(request, return_to=returnTo, message=message, success=bool(message))
 
     @router.get("/signup", response_class=HTMLResponse, include_in_schema=False)
-    def signup_page() -> HTMLResponse:
-        return HTMLResponse(_signup_page())
+    def signup_page(request: Request, returnTo: str = "/") -> HTMLResponse:
+        return form_response(request, signup=True, return_to=returnTo)
+
+    @router.post("/login", response_class=HTMLResponse, include_in_schema=False)
+    @router.post("/signup", response_class=HTMLResponse, include_in_schema=False)
+    async def submit_auth_form(request: Request) -> Response:
+        signup = request.url.path == "/signup"
+        values: dict[str, str] = {}
+        return_to = "/"
+        try:
+            values = await _read_auth_form(request, settings)
+            return_to = safe_return_to(values.get("returnTo"))
+            if signup:
+                payload = SignupRequest.model_validate(values)
+                result = await run_in_threadpool(service.signup, payload, request)
+                # POST/Redirect/GET prevents a refresh from submitting signup twice.
+                return RedirectResponse(
+                    "/login?" + urlencode({"registered": result["status"], "returnTo": return_to}),
+                    status_code=303,
+                    headers=AUTH_FORM_HEADERS,
+                )
+            payload = LoginRequest.model_validate(values)
+            _, raw_token = await run_in_threadpool(service.login, payload, request)
+            response = RedirectResponse(return_to, status_code=303, headers=AUTH_FORM_HEADERS)
+            set_session_cookie(response, raw_token)
+            return response
+        except ValidationError as exc:
+            message = _auth_form_validation_message(exc, signup=signup)
+            status_code = 400
+        except ApiException as exc:
+            message, status_code = exc.message, exc.status_code
+        return form_response(
+            request, signup=signup, return_to=return_to, values=values,
+            message=message, status_code=status_code,
+        )
 
     @router.get("/account", response_class=HTMLResponse, include_in_schema=False)
     def account_page(request: Request) -> HTMLResponse:
         return HTMLResponse(_account_page(require_context(request), settings))
+
+    @router.post("/account", response_class=HTMLResponse, include_in_schema=False)
+    def unsupported_account_form(request: Request) -> HTMLResponse:
+        # Failed/disabled JS must not send account/SSO passwords in a GET URL.
+        # This fallback deliberately makes no account changes and ignores the body.
+        require_context(request)
+        return HTMLResponse(
+            _page(
+                "브라우저 확인 필요",
+                '<div class="panel"><h1>브라우저 확인이 필요합니다.</h1>'
+                '<p>회원정보·비밀번호 변경과 SSO 인증에는 최신 브라우저와 JavaScript가 필요합니다. '
+                '요청한 변경이나 인증은 처리하지 않았습니다.</p>'
+                '<a class="button" href="/account">내 계정으로 돌아가기</a></div>',
+                auth_form=True,
+            ),
+            status_code=409,
+            headers=AUTH_FORM_HEADERS,
+        )
 
     @router.get("/admin/users", response_class=HTMLResponse, include_in_schema=False)
     def admin_page() -> HTMLResponse:
@@ -1296,15 +1499,7 @@ def install_auth(app: FastAPI, settings: Settings, database: Database) -> None:
     @router.post("/api/v1/auth/login", tags=["auth"])
     def login(payload: LoginRequest, request: Request, response: Response) -> dict[str, Any]:
         context, raw_token = service.login(payload, request)
-        response.set_cookie(
-            SESSION_COOKIE,
-            raw_token,
-            httponly=True,
-            secure=settings.auth_cookie_secure,
-            samesite="lax",
-            max_age=settings.auth_session_hours * 3600,
-            path="/",
-        )
+        set_session_cookie(response, raw_token)
         return {
             "authenticated": True,
             "returnTo": safe_return_to(payload.return_to),
