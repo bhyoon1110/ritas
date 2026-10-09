@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from io import BytesIO
+from io import BytesIO, StringIO
 from pathlib import Path
 
 import numpy as np
@@ -152,16 +152,24 @@ def _parse_text_metadata(content: bytes) -> dict[str, str]:
 
 def _read_text_table(content: bytes) -> list[RamanRawSample]:
     metadata = _parse_text_metadata(content)
+    text = _decode_text(content)
     last_error: Exception | None = None
     for kwargs in (
         {"sep": "\t", "engine": "python", "comment": "#"},
         {"sep": r"\s+", "engine": "python", "comment": "#"},
         {"sep": None, "engine": "python", "comment": "#"},
-        {"sep": r"\s+", "engine": "python", "comment": "#", "header": None},
         {"sep": ",", "engine": "python", "comment": "#"},
     ):
         try:
-            frame = pd.read_csv(BytesIO(content), **kwargs)
+            frame = pd.read_csv(StringIO(text), **kwargs)
+            # pandas assumes the first row is a header. Numeric column names
+            # instead indicate headerless measurements; reread before testing
+            # the minimum point count so even a ten-point file stays valid.
+            header_values = pd.to_numeric(pd.Index(frame.columns), errors="coerce")
+            if len(header_values) >= 2 and np.isfinite(header_values).all():
+                frame = pd.read_csv(StringIO(text), header=None, **kwargs)
+                # Synthetic column numbers must not become sample names.
+                frame.columns = [f"Unnamed: {index}" for index in range(len(frame.columns))]
             return _numeric_samples(frame, metadata=metadata)
         except Exception as exc:
             last_error = exc

@@ -43,7 +43,7 @@ export RIST_LLM_MODEL=gemma4-e4b
 | DB 접속 | 없음 | `RIST_DB_*` | 비밀번호가 포함되므로 `edge.env`에만 둔다 |
 | 웹 회원/권한 | 앱 기본값 | `RIST_AUTH_*` | 로컬 회원 승인, 프로젝트 접근, 세션 및 최근 SSO 인증 정책 |
 | 사내 SSO | 없음 | `RIST_SSO_*` | POSCO SID 또는 OIDC client 비밀값이므로 `edge.env`에만 둔다 |
-| PDF 한글 폰트 | 없음 | `RIST_PDF_FONT_PATH` | 서버 설치 폰트 경로 |
+| PDF 한글 폰트 | 없음 | `RIST_PDF_FONT_PATH` | ReportLab 임베딩 및 PPTX→PDF 변환에 사용할 서버 설치 폰트 경로 |
 
 오류 관리 화면은 `http://<Edge 주소>:8000/errors`이다. 기본적으로 오류 기록은
 30일간 보관하며, 실패 당시의 업로드 파일도 함께 복사한다. 민감 파일을 보관하지

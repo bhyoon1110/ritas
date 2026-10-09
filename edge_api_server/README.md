@@ -549,6 +549,13 @@ Ubuntu 서버에서 자동 탐색 또는 명시 경로를 사용하려면 한글
 sudo apt install -y fonts-nanum
 ```
 
+PPTX 기반 PDF는 별도로 LibreOffice/soffice를 사용한다. 이 변환에도
+`RIST_PDF_FONT_PATH`가 가리키는 폰트의 디렉터리를 전달한다. macOS의 headless
+변환기는 설치된 시스템/사용자 폰트를 찾도록 변환별 임시 fontconfig와 캐시를
+사용하며, 변환 후 정리한다. 운영자가 지정한 `FONTCONFIG_FILE`, `FONTCONFIG_PATH`,
+`SAL_FONTPATH`는 보존한다. 이 처리는 폰트를 설치하지 않으므로 Linux 운영 서버에는
+위와 같이 실제 한글 폰트가 설치되어 있어야 한다.
+
 ## 테스트
 
 ```bash

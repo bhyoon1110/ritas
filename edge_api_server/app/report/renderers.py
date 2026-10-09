@@ -12,6 +12,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import unicodedata
 import zipfile
@@ -80,6 +81,49 @@ class PptxPdfConversionError(RuntimeError):
     """PPTX를 PDF로 변환하지 못했을 때의 보고서 렌더링 오류."""
 
 
+def _macos_pptx_font_dirs() -> list[Path]:
+    return [
+        Path("/Library/Fonts"),
+        Path("/System/Library/Fonts"),
+        Path("/System/Library/Fonts/Supplemental"),
+        Path.home() / "Library/Fonts",
+    ]
+
+
+def _pptx_pdf_converter_env(work_dir: Path) -> dict[str, str]:
+    """Give headless LibreOffice font discovery without changing the server env."""
+    env = os.environ.copy()
+    font_dirs = [item for item in env.get("SAL_FONTPATH", "").split(os.pathsep) if item]
+    configured_font = env.get("RIST_PDF_FONT_PATH", "").strip()
+    if configured_font:
+        font_path = Path(configured_font).expanduser()
+        if font_path.is_file():
+            font_dirs.append(str(font_path.resolve().parent))
+    if sys.platform == "darwin":
+        font_dirs.extend(str(path) for path in _macos_pptx_font_dirs() if path.is_dir())
+    font_dirs = list(dict.fromkeys(font_dirs))
+    if font_dirs:
+        env["SAL_FONTPATH"] = os.pathsep.join(font_dirs)
+
+    # Some headless macOS builds use fontconfig instead of CoreText and cannot
+    # discover the installed Korean fonts. Keep any operator-supplied config;
+    # otherwise provide a conversion-local config/cache, never a global one.
+    if sys.platform == "darwin" and not env.get("FONTCONFIG_FILE") and not env.get("FONTCONFIG_PATH"):
+        font_config = work_dir / "fonts.conf"
+        font_cache = work_dir / "font-cache"
+        font_cache.mkdir()
+        font_config.write_text(
+            '<?xml version="1.0"?>\n<fontconfig>\n'
+            + "".join(f"  <dir>{html.escape(directory)}</dir>\n" for directory in font_dirs)
+            + f"  <cachedir>{html.escape(str(font_cache.resolve()))}</cachedir>\n"
+            + "</fontconfig>\n",
+            encoding="utf-8",
+        )
+        env["FONTCONFIG_FILE"] = str(font_config.resolve())
+        env["FONTCONFIG_PATH"] = str(work_dir.resolve())
+    return env
+
+
 def convert_pptx_to_pdf(
     pptx_path: Path,
     pdf_path: Path,
@@ -123,6 +167,7 @@ def convert_pptx_to_pdf(
                 check=False,
                 text=True,
                 timeout=timeout_seconds,
+                env=_pptx_pdf_converter_env(tmp_dir),
             )
         except subprocess.TimeoutExpired as exc:
             raise PptxPdfConversionError(

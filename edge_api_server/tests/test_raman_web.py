@@ -6,6 +6,7 @@ from pathlib import Path
 import time
 import zipfile
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app import assignment_suggestions, preview_report
@@ -451,6 +452,53 @@ def test_raman_analyze_api_stacks_multiple_samples() -> None:
     assert parent_traces[0]["meta"]["rist_raman_stack_offset"] == 0
     assert parent_traces[1]["meta"]["rist_raman_stack_offset"] > 0
     assert parent_traces[1]["y"][0] > parent_traces[0]["y"][0]
+
+
+@pytest.mark.parametrize("suffix,separator", [("csv", ","), ("txt", "\t"), ("tsv", "\t"), ("txt", " "), ("csv", ";")])
+@pytest.mark.parametrize("point_count", [10, 20])
+def test_raman_headerless_raw_preserves_first_measurement(suffix, separator, point_count) -> None:
+    rows = [f"{100 + index * 5}{separator}{index + 1}" for index in range(point_count)]
+    samples = load_raman_raw_samples(f"sample.{suffix}", ("\n".join(rows) + "\n").encode())
+
+    assert len(samples) == 1
+    assert samples[0].label is None
+    assert samples[0].frame["shift"].tolist() == list(range(100, 100 + point_count * 5, 5))
+    assert samples[0].frame["intensity"].tolist() == list(range(1, point_count + 1))
+
+
+@pytest.mark.parametrize("encoding", ["utf-8-sig", "cp949"])
+def test_raman_headerless_raw_preserves_comments_and_encoding(encoding) -> None:
+    rows = ["# 시료: 양극", "", *[f"{100 + index * 5}\t{index + 1}" for index in range(20)]]
+    samples = load_raman_raw_samples("sample.txt", ("\n".join(rows) + "\n").encode(encoding))
+
+    assert samples[0].metadata == {"시료": "양극"}
+    assert len(samples[0].frame) == 20
+    assert samples[0].frame["shift"].iloc[0] == 100
+
+
+def test_raman_headerless_raw_preserves_duplicate_first_row_values() -> None:
+    rows = [f"{100 + index * 5},{100 + index}" for index in range(20)]
+    sample = load_raman_raw_samples("sample.csv", ("\n".join(rows) + "\n").encode())[0]
+
+    assert sample.label is None
+    assert len(sample.frame) == 20
+    assert sample.frame.iloc[0].tolist() == [100, 100]
+
+
+def test_raman_headerless_analyze_api_preserves_point_count_and_file_label() -> None:
+    rows = [f"{100 + index * 5},{index + 1}" for index in range(20)]
+    with TestClient(create_raman_preview_app()) as client:
+        response = client.post(
+            "/api/v1/raman/analyze",
+            files={"files": ("headerless.csv", ("\n".join(rows) + "\n").encode(), "text/csv")},
+            data={"sensitivity": "0"},
+        )
+
+    assert response.status_code == 200
+    sample = response.json()["samples"][0]
+    assert sample["pointCount"] == 20
+    assert sample["label"] == "headerless"
+    assert sample["peakCount"] == 0
 
 
 def test_raman_raw_loader_reads_instrument_txt() -> None:
