@@ -1299,7 +1299,7 @@ def _admin_page() -> str:
 <div class="admin-shell">
   <header class="admin-top"><div><h1>RIST 운영 관리</h1><span class="muted">회원 승인과 접근·전송 권한 관리</span></div><div class="top-actions"><a href="/">작업 화면</a><a href="/account">내 계정</a><button class="logout-button" id="logout-button" type="button">로그아웃</button></div></header>
   <div class="admin-content">
-  <nav class="admin-tabs" aria-label="운영 관리 메뉴"><a class="admin-tab" href="/operations">사용 기록</a><a class="admin-tab" href="/errors">오류 기록</a><a class="admin-tab" href="/report-management">보고서/파일 관리</a><a class="admin-tab active" href="/admin/users" aria-current="page">회원 관리</a></nav>
+  <nav class="admin-tabs" aria-label="운영 관리 메뉴"><a class="admin-tab" href="/operations">사용 기록</a><a class="admin-tab" href="/errors">오류 기록</a><a class="admin-tab" href="/report-management">보고서/파일 관리</a><a class="admin-tab active" href="/admin/users" aria-current="page">회원 관리</a><a class="admin-tab" href="/voc">VOC 관리</a></nav>
   <section class="admin-panel">
     <h2>회원 관리</h2><p class="muted">가입 승인, 프로젝트 접근권한, 관리자·보고서 전송 역할과 SSO 인증 상태를 확인하고 변경합니다.</p>
     <p id="message" class="message" hidden></p>
@@ -1409,7 +1409,9 @@ def install_auth(app: FastAPI, settings: Settings, database: Database) -> None:
             if _is_api(request.url.path):
                 return error_response(request, ApiException(401, "AUTHENTICATION_REQUIRED", "로그인이 필요합니다."))
             return RedirectResponse(
-                "/login?" + urlencode({"returnTo": safe_return_to(request.url.path)}),
+                "/login?" + urlencode({"returnTo": safe_return_to(
+                    request.url.path + ("?" + request.url.query if request.url.query else "")
+                )}),
                 status_code=303,
             )
         if _admin_path(request.url.path) and not context.is_admin:

@@ -48,7 +48,7 @@ def build_workspace_index() -> str:
     }
     h1 { margin: 0 0 8px; font-size: 30px; }
     p { margin: 0 0 22px; color: #64748b; }
-    nav { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; }
+    nav { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
     a {
       display: block;
       border: 1px solid #9fb6d6;
@@ -75,6 +75,7 @@ def build_workspace_index() -> str:
       <a href="/xrd">XRD</a>
       <a href="/tem">TEM</a>
       <a href="/operations">운영 관리</a>
+      <a href="/voc">VOC 게시판</a>
     </nav>
   </main>
 </body>

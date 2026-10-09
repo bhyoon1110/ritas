@@ -1728,6 +1728,7 @@ _PAGE_SHELL = """
   <div class="ftir-app-actions">
     <span class="ftir-status" id="ftir-status">대기</span>
     <a class="ftir-clear-button" id="ftir-admin-link" href="/operations" hidden>운영 관리</a>
+    <a class="ftir-clear-button" href="/voc?project=FTIR" target="_blank" rel="noopener">VOC · 의견 보내기</a>
     <label class="ftir-origin-toggle" title="Origin 스타일 적용">
       <input type="checkbox" id="ftir-origin" checked>
       <span>Origin 스타일</span>

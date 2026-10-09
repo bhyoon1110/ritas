@@ -916,6 +916,7 @@ _OPERATIONS_CONSOLE_HTML = r'''<!doctype html>
       <button type="button" class="tab" id="errors-tab" data-tab="errors">오류 기록</button>
       <a class="tab" href="/report-management">보고서/파일 관리</a>
       <a class="tab" href="/admin/users">회원 관리</a>
+      <a class="tab" href="/voc">VOC 관리</a>
     </nav>
     <section class="filters">
       <details class="multi-filter" id="project" data-all-label="전체 프로젝트"><summary>전체 프로젝트</summary><div class="multi-menu">

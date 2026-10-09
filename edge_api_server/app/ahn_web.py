@@ -1502,6 +1502,7 @@ def build_ahn_page() -> str:
       </div>
       <div class="ahn-actions">
         <a class="ahn-download" id="ahn-admin-link" href="/operations" hidden>운영 관리</a>
+        <a class="ahn-download" href="/voc?project=TEM" target="_blank" rel="noopener">VOC · 의견 보내기</a>
         <button type="button" id="ahn-example">예제 불러오기</button>
         <button type="submit" form="ahn-form" class="primary" id="ahn-run" disabled>보고서 생성</button>
         <button type="button" id="ahn-clear">초기화</button>

@@ -1296,6 +1296,7 @@ def build_xrd_page() -> str:
       </div>
       <div class="xrd-actions">
         <a class="xrd-download" id="xrd-admin-link" href="/operations" hidden>운영 관리</a>
+        <a class="xrd-download" href="/voc?project=XRD" target="_blank" rel="noopener">VOC · 의견 보내기</a>
         <button type="button" id="xrd-example">예제 불러오기</button>
         <button type="submit" form="xrd-form" class="primary" id="xrd-run" disabled>보고서 생성</button>
         <button type="button" id="xrd-clear">초기화</button>

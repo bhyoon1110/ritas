@@ -52,6 +52,7 @@ from .report_delivery import router as report_delivery_router
 from .service import EdgeService
 from .xrd_web import router as xrd_router
 from .usage_archive import set_usage_context
+from .voc import router as voc_router
 
 logger = get_logger(__name__)
 
@@ -177,6 +178,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     install_error_management(app, resolved_settings)
     install_auth(app, resolved_settings, database)
+    app.include_router(voc_router)
     app.include_router(report_delivery_router)
     app.include_router(ftir_router)
     app.include_router(raman_router)

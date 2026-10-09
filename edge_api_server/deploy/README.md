@@ -78,6 +78,24 @@ mysql --default-character-set=utf8mb4 \
   < mariadb_report_artifacts_migration.sql
 ```
 
+### VOC 게시판 DB 추가
+
+기존 인증 스키마(`app_users`)가 있는 Edge DB에 `voc_requests`, `voc_events`를 추가한다.
+일반적인 앱 재시작에서는 자동 생성된다. DB 변경을 별도로 관리하는 환경은 다음
+비파괴 SQL을 먼저 적용한다. 반복 실행할 수 있고 기존 회원·실험·보고서 데이터는 보존한다.
+
+```bash
+cd /home/rist/ritas/edge_api_server/deploy
+mysql --default-character-set=utf8mb4 \
+  -h "$RIST_DB_HOST" -P "$RIST_DB_PORT" \
+  -u "$RIST_DB_USER" -p "$RIST_DB_NAME" \
+  < mariadb_voc_migration.sql
+```
+
+새 코드 배포와 Edge API 재시작 후 동일 실험 회원 간 조회, 다른 실험 접근 차단,
+관리자 조치 완료, 작성자 본인 확인을 점검한다. `RIST_AUTH_ENABLED=true`가 필요하며
+VOC만을 위한 SSO 인증이나 새 환경변수는 없다. DB 백업에는 두 VOC 테이블도 포함한다.
+
 ## 1. 코드 배포
 
 ### 방법 A — git clone (권장)

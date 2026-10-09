@@ -1650,6 +1650,7 @@ _PAGE_SHELL = """
   <div class="raman-actions">
     <span class="raman-status" id="raman-status">Raman raw 파일을 업로드하세요</span>
     <a class="raman-clear-button" id="raman-admin-link" href="/operations" hidden>운영 관리</a>
+    <a class="raman-clear-button" href="/voc?project=RAMAN" target="_blank" rel="noopener">VOC · 의견 보내기</a>
     <label class="raman-origin-toggle" title="Origin 스타일 적용">
       <input type="checkbox" id="raman-origin" checked>
       <span>Origin 스타일</span>

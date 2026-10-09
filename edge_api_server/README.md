@@ -25,6 +25,7 @@
 - DPT 다중 업로드·드래그 앤 드롭 FT-IR 웹 분석
 - 업로드 바이트 기반 전처리·피크 분석과 Plotly Figure JSON 응답
 - TEM/STEM/EDS/코팅층 raw 폴더 업로드와 PowerPoint 보고서 생성
+- 실험별 VOC 게시판, 관리자 조치 및 작성자 확인 이력
 
 보고서 생성 API는 요청을 작업 폴더의 `queue` 영역에 기록한다. 별도 worker는
 C# XRD/TEM raw bundle이면 웹 화면과 같은 XRD HTML 또는 TEM PPTX 생성기를 직접
@@ -112,6 +113,64 @@ XRD/TEM 실험 PC 연동용 빌드 가능한 .NET 8 참조 클라이언트는
 파일별 SHA-256 업로드, 서버 목록 재검증, 보고서 생성·상태 폴링과 브라우저
 `reviewUrl` 전달까지 구현한다. SSO 인증정보와 전송 승인은 C# 프로그램에서
 취급하지 않는다.
+
+## 실험별 VOC 게시판
+
+네 실험 화면의 VOC 버튼은 `/voc?project=FTIR|RAMAN|XRD|TEM`을 별도 탭으로 연다.
+`/voc`는 접근 가능한 실험 전체를 보여 준다. 관리자 메뉴에서도 같은 게시판에 접근한다.
+목록은 실험·상태·검색어(제목/내용/작성자 이름/로그인 ID) 필터와 페이지네이션을 지원한다.
+
+일반 회원은 **현재 승인된 동일 실험의 모든 VOC**를 조회한다. 권한이 없는 실험의
+내용·건수·처리 이력은 노출하지 않으며 권한 회수는 다음 요청부터 적용한다.
+등록자 ID/이름과 실험 페이지 경로는 서버가 세션/프로젝트 코드에서 결정한다.
+작성자의 이름과 로그인 ID, VOC 내용, 관리자 조치와 이력은 같은 실험 회원에게 공개되므로
+비밀번호나 민감한 원본 데이터는 작성하지 않는다. 관리자는 전체 실험을 조회한다.
+
+상태는 `OPEN`(접수), `IN_PROGRESS`(조치 중), `RESOLVED`(조치 완료·확인 대기),
+`CONFIRMED`(작성자 확인 완료)이다. 관리자가 앞의 세 상태를 변경하고 조치 내용을 남긴다.
+`RESOLVED`에는 공백이 아닌 조치 내용이 필수다. 작성자 본인만 조치 결과를 확인해
+`CONFIRMED`로 변경할 수 있다. 관리자도 타인의 확인을 대신할 수 없고, 확인 이후에는
+기록이 확정되어 변경할 수 없다. 확인 전에는 관리자가 조치 중으로 되돌릴 수 있다.
+삭제/첨부/댓글/메일 알림은 제공하지 않는다. SSO 여부나 보고서 전송 권한과는 무관하다.
+
+| 메서드·경로 | 역할 |
+|---|---|
+| `GET /api/v1/voc` | 권한 범위 내 목록/상태별 건수 (`project`, `status`, `q`, `page`, `pageSize`) |
+| `POST /api/v1/voc` | `{project, title, content}`로 등록; `Idempotency-Key` UUID 필수 |
+| `GET /api/v1/voc/{vocId}` | 본문·조치 결과·처리 이력 조회 |
+| `POST /api/v1/voc/{vocId}/status` | 관리자: `{expectedVersion, status, note}` |
+| `POST /api/v1/voc/{vocId}/confirm` | 작성자: `{expectedVersion}`으로 조치 확인 |
+
+모든 API는 로그인 세션이 필요하고 변경 요청에는 `X-Requested-With: RIST-VOC`가 필요하다.
+인증을 비활성화한 개발 환경에서도 VOC를 익명으로 공개하지 않는다.
+등록 제목은 1–160자, 본문/조치 내용은 최대 10,000자, 목록은 기본 20건/최대 100건이다.
+같은 회원의 동일 요청 키 재전송은 글을 중복 생성하지 않는다. 다른 내용으로 같은 키를
+재사용하면 409를 반환한다. 상태 변경은 행 잠금과 버전 검사를 사용하며 오래된 화면의
+수정/확인에는 409를 반환하므로 최신 조치 내용을 다시 읽고 제출해야 한다.
+이미 성공한 확인의 재전송은 이력을 추가하지 않는다. 잘못된 입력은 400, 미로그인은 401,
+변경 권한 부족은 403, 접근 불가 글 ID는 404다. 응답은 `Cache-Control: no-store`다.
+
+DB는 `voc_requests`와 `voc_events`를 사용하며 UTC 시각을 저장한다(화면은 한국 시간).
+앱 시작 시 누락된 테이블을 생성하며 기존 보고서/분석 데이터는 변경하지 않는다.
+운영 DB 사전 반영이 필요하면 인증 스키마 적용 후
+[`deploy/mariadb_voc_migration.sql`](deploy/mariadb_voc_migration.sql)을 실행한다.
+실행 방법은 [배포 문서](deploy/README.md#voc-게시판-db-추가)에 있다.
+
+회귀 검증은 `tests/test_voc.py`(실제 격리 MariaDB 사용)와
+`tests/voc_board.test.cjs`(DOM/이벤트 실행 및 생성 JavaScript 문법 검사)로 나눈다.
+저장소 루트에서 Python 테스트용 가상환경과 `RIST_TEST_DB_*`를 지정해 실행한다.
+DOM 테스트의 npm 패키지는 프로젝트가 아닌 임시 폴더에 설치할 수 있다.
+
+```bash
+PYTHONPATH=edge_api_server:common:sune:rin:. python -m pytest edge_api_server/tests/test_voc.py
+VOC_JS_DIR=$(mktemp -d)
+npm install --prefix "$VOC_JS_DIR" --ignore-scripts --no-audit --no-fund jsdom@26 acorn@8
+NODE_PATH="$VOC_JS_DIR/node_modules" PYTHONPATH=edge_api_server:common:sune:rin:. \
+  node --test edge_api_server/tests/voc_board.test.cjs
+```
+
+Node 테스트는 기본 `python3`을 사용한다. 다른 가상환경은 `RIST_TEST_PYTHON`에
+Python 실행 파일 경로를 지정한다. DOM 테스트는 화면 렌더링/모바일 실기 검증을 대체하지 않는다.
 
 ## FT-IR 웹 분석
 
