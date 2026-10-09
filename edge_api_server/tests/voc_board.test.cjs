@@ -47,6 +47,7 @@ function setup(t,role,handler) {
   w.HTMLDialogElement.prototype.close=function(){this.removeAttribute('open');this.dispatchEvent(new w.Event('close'));};
   w.fetch=async(url,options)=>{calls.push({url,options});return handler(url,options);};
   for(const script of d.scripts) acorn.parse(script.textContent,{ecmaVersion:2022});
+  w.eval(Array.from(d.scripts).find(script=>script.textContent.includes('window.RIST_VOC_CONFIG=')).textContent);
   w.eval(Array.from(d.scripts).find(script=>script.textContent.includes('const config=')).textContent);
   return {w,d,calls,$:id=>d.getElementById(id),submit:id=>d.getElementById(id).dispatchEvent(new w.Event('submit',{bubbles:true,cancelable:true}))};
 }

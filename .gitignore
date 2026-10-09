@@ -17,6 +17,7 @@ __pycache__/
 htmlcov/
 .venv*/
 venv/
+edge_api_server/browser_compat/node_modules/
 
 # Local environment and secrets
 .env

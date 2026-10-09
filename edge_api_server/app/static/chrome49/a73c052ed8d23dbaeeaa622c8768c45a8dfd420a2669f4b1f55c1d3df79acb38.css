@@ -1,0 +1,11 @@
+/* Old Chromium only. Deliberately favors readable wrapping over CSS Grid. */
+html.rist-chrome49 body{font-family:Arial,"Malgun Gothic","Noto Sans KR",sans-serif}
+.rist-chrome49 [hidden]{display:none!important}
+.rist-chrome49 .ahn-main>*{margin-bottom:16px}
+.rist-chrome49 .ahn-brand h1{margin-right:14px}
+.rist-chrome49 .settings-card,.rist-chrome49 .ahn-transfer-grid>*,.rist-chrome49 .ahn-request-detail>*{margin-bottom:12px}
+.rist-chrome49 .ftir-library-backdrop,.rist-chrome49 .ahn-busy-overlay,.rist-chrome49 .drawer-backdrop{top:0;right:0;bottom:0;left:0}
+.rist-chrome49 .rist-shape-style-grid,.rist-chrome49 .rist-axis-control-grid{display:block}
+.rist-chrome49 .rist-shape-style-grid>*,.rist-chrome49 .rist-axis-control-grid>*{display:inline-block;vertical-align:middle;margin:4px;max-width:100%}
+.rist-chrome49 input,.rist-chrome49 select,.rist-chrome49 textarea{max-width:100%}
+.rist-chrome49 .ahn-progress-bar,.rist-chrome49 .ftir-progress-bar{min-height:8px}

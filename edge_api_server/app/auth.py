@@ -1045,6 +1045,8 @@ def _admin_path(path: str) -> bool:
 
 def _public_path(request: Request) -> bool:
     path = request.url.path
+    if path.startswith("/assets/browser-compat/"):
+        return True  # Static, content-addressed compatibility assets, no user data.
     if path in {"/login", "/signup", "/health", "/health/llm", "/openapi.json", "/docs", "/redoc"}:
         return True
     if path.startswith(("/auth/sso/callback", "/api/v1/auth/signup", "/api/v1/auth/login")):

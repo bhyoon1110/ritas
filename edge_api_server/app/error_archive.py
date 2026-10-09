@@ -644,6 +644,9 @@ async def archived_unhandled_exception_handler(request: Request, exc: Exception)
 
 def install_error_management(app: FastAPI, settings: object) -> ErrorArchive:
     from .report_management import router as report_management_router
+    from .browser_compat import install_browser_compat
+
+    install_browser_compat(app)
 
     configured_root = getattr(settings, "error_archive_root", None)
     root = Path(configured_root or (Path(getattr(settings, "storage_root")) / "errors"))
@@ -702,6 +705,10 @@ def error_feedback(request: Request, event_id: str) -> HTMLResponse:
         event = _archive_or_404(request).get(event_id)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="오류 기록을 찾을 수 없습니다.") from exc
+    return _error_feedback_page(event_id, event)
+
+
+def _error_feedback_page(event_id: str, event: dict) -> HTMLResponse:
     comments = event.get("comments") if isinstance(event.get("comments"), list) else []
     comment_items = "".join(
         "<article><div><b>"
@@ -714,11 +721,10 @@ def error_feedback(request: Request, event_id: str) -> HTMLResponse:
         for comment in comments
         if isinstance(comment, dict)
     ) or '<p class="muted">등록된 코멘트가 없습니다.</p>'
-    event_id_json = json.dumps(event_id, ensure_ascii=False)
     return HTMLResponse(
         f'''<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>오류 코멘트</title><style>
         :root{{font-family:Arial,"Noto Sans KR",sans-serif;color:#172033;background:#f4f6f8}}*{{box-sizing:border-box}}body{{margin:0;padding:24px}}main{{max-width:760px;margin:auto;background:#fff;border:1px solid #d8dee8;border-radius:7px;padding:24px}}h1{{font-size:24px;margin:0 0 8px}}.meta{{color:#687587;margin-bottom:18px}}.message{{border-left:4px solid #d64545;background:#fff4f4;padding:12px;white-space:pre-wrap}}article{{border:1px solid #dce2ea;border-radius:6px;padding:12px;margin:8px 0}}article div{{display:flex;justify-content:space-between;gap:12px}}article time,.muted{{color:#6b7788;font-size:13px}}article p{{white-space:pre-wrap;margin:9px 0 0}}label{{display:block;font-weight:700;margin:14px 0 6px}}input,textarea{{width:100%;border:1px solid #aeb9c8;border-radius:5px;padding:10px;font:inherit}}textarea{{min-height:120px;resize:vertical}}button{{margin-top:12px;height:42px;border:0;border-radius:5px;background:#183153;color:#fff;padding:0 18px;font:inherit;font-weight:700}}#status{{margin-left:10px;color:#166534}}@media(max-width:640px){{body{{padding:12px}}main{{padding:18px}}article div{{display:block}}}}
-        </style></head><body><main><h1>오류 코멘트</h1><div class="meta">{escape(str(event.get('project') or 'EDGE'))} · {escape(str(event.get('code') or 'UNKNOWN_ERROR'))}<br><code>{escape(event_id)}</code></div><div class="message">{escape(str(event.get('message') or '오류가 발생했습니다.'))}</div><h2>등록된 코멘트</h2><section id="comments">{comment_items}</section><label for="author">작성자</label><input id="author" maxlength="100" value="고객"><label for="content">코멘트</label><textarea id="content" maxlength="4000" placeholder="오류가 발생한 상황과 재현 방법을 적어주세요."></textarea><button id="submit" type="button">코멘트 등록</button><span id="status"></span></main><script>const eventId={event_id_json};document.getElementById('submit').onclick=async()=>{{const button=document.getElementById('submit'),status=document.getElementById('status'),content=document.getElementById('content').value.trim();if(!content){{status.textContent='코멘트를 입력하세요.';return}}button.disabled=true;status.textContent='등록 중...';try{{const response=await fetch('/api/v1/errors/'+encodeURIComponent(eventId)+'/comments',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{author:document.getElementById('author').value,content}})}});if(!response.ok)throw new Error('코멘트 등록에 실패했습니다.');location.reload()}}catch(error){{status.textContent=error.message;button.disabled=false}}}};</script></body></html>'''
+        </style></head><body data-event-id="{escape(event_id)}"><main><h1>오류 코멘트</h1><div class="meta">{escape(str(event.get('project') or 'EDGE'))} · {escape(str(event.get('code') or 'UNKNOWN_ERROR'))}<br><code>{escape(event_id)}</code></div><div class="message">{escape(str(event.get('message') or '오류가 발생했습니다.'))}</div><h2>등록된 코멘트</h2><section id="comments">{comment_items}</section><label for="author">작성자</label><input id="author" maxlength="100" value="고객"><label for="content">코멘트</label><textarea id="content" maxlength="4000" placeholder="오류가 발생한 상황과 재현 방법을 적어주세요."></textarea><button id="submit" type="button">코멘트 등록</button><span id="status"></span></main><script>const eventId=document.body.getAttribute('data-event-id');document.getElementById('submit').onclick=async()=>{{const button=document.getElementById('submit'),status=document.getElementById('status'),content=document.getElementById('content').value.trim();if(!content){{status.textContent='코멘트를 입력하세요.';return}}button.disabled=true;status.textContent='등록 중...';try{{const response=await fetch('/api/v1/errors/'+encodeURIComponent(eventId)+'/comments',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{author:document.getElementById('author').value,content}})}});if(!response.ok)throw new Error('코멘트 등록에 실패했습니다.');location.reload()}}catch(error){{status.textContent=error.message;button.disabled=false}}}};</script></body></html>'''
     )
 
 

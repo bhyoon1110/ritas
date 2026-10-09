@@ -82,9 +82,11 @@ dialog{width:min(780px,calc(100% - 24px));max-height:90vh;max-height:90dvh;borde
 <button class="primary" type="submit" id="action-submit">조치 저장</button></form></section>
 <section class="section"><h3>처리 이력</h3><ol class="events" id="events"></ol></section></div></div></dialog>
 <script>
+window.RIST_VOC_CONFIG=__VOC_CONFIG__;
+</script><script>
 (function(){
 'use strict';
-const config=__VOC_CONFIG__, $=id=>document.getElementById(id);
+const config=window.RIST_VOC_CONFIG, $=id=>document.getElementById(id);
 let page=1, total=0, listVersion=0, detailVersion=0, current=null, currentId=null;
 let createKey=null, createPayload=null;
 const pageSize=20, dialog=$('detail');

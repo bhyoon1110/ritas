@@ -11,13 +11,22 @@ import re
 
 BROWSER_POLICY_TEXT = (
     "권장 환경: 보안 지원 중인 운영체제의 최신 Chrome. "
-    "최신 Edge는 호환 확인 대상이며, Windows XP·Windows 7·Internet Explorer는 정식 지원하지 않습니다."
+    "Chrome 49.0.2623.75~109 및 구형 Edge에는 호환 모드를 적용합니다. "
+    "XP와 구형 브라우저는 보안 지원이 종료되었으므로 격리된 실험망에서만 사용하세요. Internet Explorer는 지원하지 않습니다."
 )
 
 BROWSER_SUPPORT_SCRIPT = r"""(function () {
   var warning = document.getElementById('rist-browser-warning');
   var reasonNode = document.getElementById('rist-browser-warning-reason');
   if (!warning || !reasonNode) return;
+  if (window.RIST_BROWSER_PROFILE === 'chrome49') {
+    warning.className = 'rist-compat-notice';
+    var heading = warning.getElementsByTagName('strong')[0];
+    if (heading) heading.textContent = 'Chrome 49 / 구형 브라우저 호환 모드';
+    reasonNode.textContent = '구형 브라우저 호환 모드입니다. 분석·보고서 처리는 Edge 서버에서 수행합니다. 보안 지원이 종료된 환경이므로 외부 인터넷 사용은 피하세요.';
+    warning.style.display = 'block';
+    return;
+  }
   var ua = navigator.userAgent || '';
   var reason = '';
   var chromium = /(?:Chrome|Chromium|Edg)\/(\d+)/.exec(ua);
@@ -50,6 +59,9 @@ BROWSER_SUPPORT_SCRIPT = r"""(function () {
 _NOTICE = """<style>
 #rist-browser-warning,.rist-browser-noscript{box-sizing:border-box;max-width:1080px;margin:12px auto;padding:12px 16px;border:1px solid #d69e2e;border-radius:6px;background:#fff8df;color:#624500;font:14px/1.5 Arial,sans-serif;text-align:left;overflow-wrap:break-word;word-wrap:break-word}
 #rist-browser-warning p,.rist-browser-noscript p{margin:4px 0;color:#624500;font:inherit}
+#rist-browser-warning.rist-compat-notice{max-width:none;margin:0;padding:8px 20px;border-radius:0;border-color:#b9cde3;background:#eef5fc;color:#254563;font-size:12px}
+#rist-browser-warning.rist-compat-notice p{color:#254563}
+#rist-browser-warning.rist-compat-notice p~p{display:none}
 @media(max-width:640px){#rist-browser-warning,.rist-browser-noscript{margin:8px;padding:10px 12px}}
 @media print{#rist-browser-warning,.rist-browser-noscript{display:none!important}}
 </style>
@@ -57,7 +69,7 @@ _NOTICE = """<style>
 <strong>브라우저 환경을 확인해 주세요.</strong>
 <p id="rist-browser-warning-reason"></p>
 <p>지원되는 운영체제의 최신 Chrome에서 다시 열어 주세요. 최신 Edge는 호환 확인 대상입니다.</p>
-<p>구형 장비 PC에서는 데이터를 수집하고, 분석·보고서 검토·SSO 인증은 별도 최신 PC에서 진행하는 것을 권장합니다.</p>
+<p>Chrome 49 이상 구형 Chromium에는 호환 화면이 자동 적용됩니다. HTTPS 연결 및 인증서 문제는 별도 서버·장비 설정 확인이 필요합니다.</p>
 </div>
 <noscript><div class="rist-browser-noscript"><strong>분석·보고서·SSO 화면에는 JavaScript가 필요합니다.</strong>
 <p>지원되는 운영체제의 최신 Chrome을 권장합니다. 로그인·회원가입의 기본 제출은 JavaScript 없이도 가능합니다.</p></div></noscript>
