@@ -290,9 +290,12 @@ Windows 업무 PC는 Windows 11을 권장하며, 최신 Edge에서도 핵심 경
   적용된 경우에는 지원 제외 경고 대신 호환 모드 안내를 표시한다.
   Supermium/최신 엔진 + 구형 Windows는 최신 UI를 유지하고 OS 보안 안내만 표시한다.
   Supermium 브랜드(UA 또는 Client Hints)가 없으면 Chrome과 강제로 구분하지 않는다.
-  `?browser=supermium`은 이 브라우저의 저사양 UI 정책 선택이며 localStorage에 저장한다.
+  `?browser=supermium`은 이 브라우저의 Supermium 식별 설정이며 localStorage에 저장한다.
   `?browser=auto`로 해제하고, 저장소 사용이 차단되면 현재 URL에서만 적용한다.
   이 선택은 서버 인증·권한·SSO·Chrome 49 자산 분기에는 영향을 주지 않는다.
+  TEM 성능 정책은 이 선택 및 OS 이름과 분리되어 있다. 브라우저 보고 메모리 4GB 초과·
+  논리 CPU 2개 초과가 모두 확인되면 4MiB 전송/목록 500개, 그 외 또는 정보가 부족하면
+  2MiB 전송/목록 200개를 사용한다. 실시간 여유 자원을 측정하는 기능은 아니다.
   110 이상을 정식 최소 지원 버전으로 선언하는 것은 아니며, UA를 보안 판단에
   사용하지 않는다. 사용자 에이전트 위장·OS 식별 한계 때문에 경고 부재가
   호환성이나 보안 지원의 보증은 아니다.

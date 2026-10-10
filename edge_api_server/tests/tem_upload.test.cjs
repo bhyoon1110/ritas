@@ -7,13 +7,22 @@ const {JSDOM} = require('jsdom');
 const acorn = require('acorn');
 const html = execFileSync(process.env.RIST_TEST_PYTHON || 'python3', ['-c',
   'from app.ahn_web import build_ahn_page; print(build_ahn_page())'], {encoding:'utf8'});
-const script = [...html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)].map(m=>m[1]).find(s=>s.includes('function chunkCrc32'));
+const scripts = [...html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)].map(m=>m[1]);
+const script = scripts.find(s=>s.includes('function chunkCrc32'));
+const profileScript = scripts.find(s=>s.includes('window.RIST_CLIENT_PROFILE ='));
 const response = data => ({ok:true,status:200,json:async()=>data,text:async()=>JSON.stringify(data)});
 function setup(t, low=true) {
   const dom = new JSDOM(html, {runScripts:'outside-only',url:'http://localhost/tem'});
   t.after(()=>dom.window.close());
   const w = dom.window;
-  w.RIST_CLIENT_PROFILE = {lowResource:low,uploadChunkBytes:(low?2:4)*1024*1024,fileListLimit:low?200:500};
+  Object.defineProperties(w.navigator, {
+    userAgent: {get:()=> 'Windows NT 6.1; Chrome/150.0 Supermium/150.0'},
+    deviceMemory: {get:()=>low?2:8},
+    hardwareConcurrency: {get:()=>low?2:8}
+  });
+  w.eval(profileScript);
+  assert.equal(w.RIST_CLIENT_PROFILE.browser,'supermium');
+  assert.equal(w.RIST_CLIENT_PROFILE.lowResource,low);
   w.fetch = async()=>response({roles:[]});
   w.eval(script.replace('\n    renderRequestOptions([]);', `
     window.__tem = {chunkCrc32, entryToBundleItems, addBundleItems, renderFileList, uploadBundleWithSession,
@@ -51,6 +60,7 @@ for(const low of [true,false]) test(`bounded file-list DOM retains every selecte
   assert.equal(api.items().length,3000);
   assert.equal(d.querySelectorAll('.ahn-chip').length,(low?200:500)+1);
   assert.match(d.body.textContent,/목록만 생략/);
+  assert.match(d.body.textContent,low?/자원 절약 모드: 2MB/:/일반 성능 모드: 4MB/);
   api.addBundleItems(files);
   assert.equal(api.items().length,3000);
   assert.throws(()=>api.addBundleItems(Array.from({length:3000},(_,i)=>({path:`tem/${i}.tif`,file:files[i].file}))),/5000/);
@@ -80,8 +90,8 @@ test('empty/deep directory trees are bounded too',async t=>{
   await assert.rejects(api.entryToBundleItems(entry,'',[],0,{visited:10000}),/한도/);
 });
 
-test('5MiB upload is sequential 2+2+1MiB with CRC retry and deferred validation',async t=>{
-  const {w,api}=setup(t);
+for(const low of [true,false]) test(`Supermium 5MiB upload uses hardware budget with CRC retry (low=${low})`,async t=>{
+  const {w,api}=setup(t,low);
   const chunks=[],urls=[];let active=0,peak=0,failed=false;
   w.fetch=async url=>{urls.push(url);return response(url.includes('/complete')?{jobId:'job',status:'queued'}:{uploadId:'session'});};
   w.XMLHttpRequest=class {
@@ -102,10 +112,10 @@ test('5MiB upload is sequential 2+2+1MiB with CRC retry and deferred validation'
   api.addBundleItems([{path:'data.zip',file:new w.File([new Uint8Array(5*1024*1024)],'data.zip')}]);
   assert.equal((await api.uploadBundleWithSession()).jobId,'job');
   assert.equal(peak,1);
-  assert.equal(chunks.length,4);
+  assert.equal(chunks.length,low?4:3);
   assert.deepEqual(chunks[0],chunks[1]);
-  assert.deepEqual(chunks.map(x=>x.size),[2,2,2,1].map(x=>x*1024*1024));
-  assert.deepEqual(chunks.map(x=>x.offset),[0,0,2,4].map(x=>x*1024*1024));
+  assert.deepEqual(chunks.map(x=>x.size),(low?[2,2,2,1]:[4,4,1]).map(x=>x*1024*1024));
+  assert.deepEqual(chunks.map(x=>x.offset),(low?[0,0,2,4]:[0,0,4]).map(x=>x*1024*1024));
   assert.ok(chunks.every(x=>/^[0-9a-f]{8}$/.test(x.crc)));
   assert.ok(urls.includes('/api/v1/tem/upload-sessions/session/complete?defer_validation=true'));
 });

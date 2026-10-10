@@ -2093,7 +2093,7 @@ def build_ahn_page() -> str:
       }
       fileList.appendChild(fragment);
       bundleMeta.textContent = bundleItems.length
-        ? "TEM " + counts.TEM + " · STEM " + counts.STEM + " · EDS " + counts.EDS + " · 코팅층 " + counts["코팅층"] + " · 기타 " + counts["기타"] + " · " + (clientProfile.lowResource !== false ? "저사양 PC: 2MB" : "4MB") + " 순차 전송"
+        ? "TEM " + counts.TEM + " · STEM " + counts.STEM + " · EDS " + counts.EDS + " · 코팅층 " + counts["코팅층"] + " · 기타 " + counts["기타"] + " · " + (clientProfile.lowResource !== false ? "자원 절약 모드: 2MB" : "일반 성능 모드: 4MB") + " 순차 전송"
         : "선택된 파일 없음";
       syncActionState();
     }

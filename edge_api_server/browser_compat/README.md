@@ -45,8 +45,14 @@ Chrome/Windows 10으로 표시될 수 있으므로 UA만으로 모든 Supermium�
 ([공식 Client Hints 구현](https://github.com/win32ss/supermium/blob/main/client_hints.patch),
 [실제 헤더 보고](https://github.com/win32ss/supermium/issues/1692))
 
-식별자가 숨겨져도 브라우저가 제공한 자원 정보로 TEM 전송 크기를 조정한다. 메모리
-정보가 없으면 보수적으로 2MB 순차 전송을 사용한다. 명시적 모드는
+브라우저 엔진 호환성과 자원 정책은 분리되어 있다. Supermium 여부, 구형 Windows 여부,
+수동 식별 설정은 저사양 정책을 강제하지 않는다. 식별자가 숨겨져도 브라우저가 제공한
+메모리(`deviceMemory`) 4GB 초과·논리 CPU(`hardwareConcurrency`) 2개 초과가 모두
+확인되면 4MiB 순차 전송/목록 500개, 그 외에는 2MiB/200개를 사용한다.
+어느 한 값이라도 미제공·유효하지 않으면 보수적으로 자원 절약 모드를 적용한다.
+이는 대략적인 자원 힌트이며 실시간 여유 메모리/CPU 부하 측정이 아니다.
+Chrome 49처럼 메모리 API가 없거나 비보안 HTTP 접속에서 정보가 제한되는 경우에도
+기능을 막지 않고 작은 전송 조각을 사용한다. 명시적 브라우저 식별 모드는
 `/ftir?browser=supermium` 또는 `/tem?browser=supermium`으로 선택하고 `?browser=auto`로
 해제한다. localStorage를 차단한 PC에서는 URL 옵션이 있는 화면에만 유지된다.
 이 설정은 Chrome 49의 호환 번들을 우회하거나 인증/SSO를 완화하지 않는다.
@@ -63,6 +69,14 @@ python -m pytest tests/test_tem_resources.py tests/test_browser_support.py tests
 파일 규모별 검증 후 적용한다. [공식 릴리스](https://github.com/win32ss/supermium/releases/tag/v150-r2)
 
 ### 공통 검증
+
+2026-10-10 자원 정책 분리 검증: Python 612개와 JavaScript 22개 테스트를 통과했다.
+격리 Chrome에서 Supermium 명시 UA/Client Hints/수동 설정, Chrome으로 표시되는 경우,
+최신 Chrome, Chrome 49 UA와 고사양·저사양·자원 정보 누락을 조합한 9개 시나리오를
+확인했다. 같은 약 30MiB TEM ZIP을 고사양 모의에서는 4MiB씩 8조각, 저사양 모의에서는
+2MiB씩 15조각으로 전송하여 모두 보고서 생성·다운로드와 ZIP CRC를 확인했다.
+목록 200/500개 제한, 수동 식별 설정의 페이지 간 유지·해제, 최신/호환 자산 선택,
+FTIR 민감도 및 Crop/Y 이동 배타 동작도 확인했다. 실제 XP/Supermium 실기 시험은 아니다.
 
 2026-10-10 추가 검증: Supermium 명시 UA와 Chrome으로 표시되는 경우의 수동 설정,
 최신 Chrome, Chrome 49 기능 제한 모의 환경에서 가입·로그인, FTIR 분석·피크 민감도·

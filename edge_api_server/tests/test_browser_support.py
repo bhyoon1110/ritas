@@ -125,10 +125,13 @@ def test_detector_is_harmless_if_notice_nodes_are_missing():
     {"ua": "Chrome/150.0", "preference": "supermium"},
     {"ua": "Chrome/150.0", "search": "?browser=supermium", "blockedStorage": True},
 ])
-def test_supermium_native_profile_uses_low_memory_uploads(options):
-    result = _detect(**options, profile=True, memory=8, cores=8)
-    assert result["profile"] == {"browser": "supermium", "lowResource": True, "uploadChunkBytes": 2 * 1024 * 1024, "fileListLimit": 200}
+@pytest.mark.parametrize("memory,cores,low", [(8, 8, False), (4, 8, True), (8, 2, True), (None, 8, True), (8, None, True)])
+def test_supermium_native_profile_uses_hardware_policy(options, memory, cores, low):
+    result = _detect(**options, profile=True, memory=memory, cores=cores)
+    assert result["profile"] == {"browser": "supermium", "lowResource": low, "uploadChunkBytes": (2 if low else 4) * 1024 * 1024, "fileListLimit": 200 if low else 500}
     assert "Supermium" in result["heading"]
+    assert ("자원 절약 모드" if low else "일반 성능 모드") in result["heading"]
+    assert ("2MB" if low else "4MB") in result["reason"]
     assert "필수 브라우저 기능이 없습니다" not in result["reason"]
 
 
@@ -139,11 +142,28 @@ def test_masked_supermium_is_not_misidentified_and_unknown_memory_is_conservativ
     assert result["display"] == "none"
 
 
-@pytest.mark.parametrize("memory,cores,low", [(2, 8, True), (8, 2, True), (8, 8, False)])
-def test_resource_policy_is_capability_based_not_only_brand(memory, cores, low):
-    result = _detect("Chrome/150.0", memory=memory, cores=cores, profile=True)
+@pytest.mark.parametrize("ua", ["Chrome/150.0", "Windows NT 5.1; Chrome/150.0", "Windows NT 6.1; Chrome/150.0 Supermium/150.0"])
+@pytest.mark.parametrize("memory,cores,low", [
+    (2, 8, True), (4, 8, True), (8, 2, True), (8, 4, False), (8, 8, False),
+    (None, 8, True), (8, None, True), (0, 8, True), (8, 0, True),
+    (-1, 8, True), (8, -1, True), ("invalid", 8, True), (8, "invalid", True),
+    ("Infinity", 8, True), (8, "Infinity", True),
+])
+def test_resource_policy_is_capability_based_not_brand_or_os(ua, memory, cores, low):
+    result = _detect(ua, memory=memory, cores=cores, profile=True)
     assert result["profile"]["lowResource"] is low
     assert result["profile"]["uploadChunkBytes"] == (2 if low else 4) * 1024 * 1024
+    assert result["profile"]["fileListLimit"] == (200 if low else 500)
+
+
+def test_engine_compatibility_is_independent_of_hardware_policy():
+    # Actual Chrome 49 normally omits deviceMemory, hence defaults to small chunks.
+    # Even supplied hardware hints must never disable its compatibility profile.
+    for memory, cores, low in [(None, 8, True), (8, 8, False)]:
+        result = _detect("Chrome/49.0", serverProfile="chrome49", memory=memory, cores=cores, profile=True)
+        assert result["profile"]["browser"] == "chrome49"
+        assert result["profile"]["lowResource"] is low
+        assert "호환 모드" in result["heading"]
 
 
 def test_preference_cannot_bypass_chrome49_assets_or_missing_features():
@@ -158,6 +178,7 @@ def test_auto_preference_reset_and_old_os_modern_engine_guidance():
     result = _detect("Chrome/150.0", preference="supermium", search="?browser=auto", memory=8, cores=8, profile=True)
     assert result["preference"] == ""
     assert result["profile"]["browser"] == "modern"
+    assert result["profile"]["lowResource"] is False
     result = _detect("Windows NT 5.1; Chrome/150.0", profile=True)
     assert "최신 Chromium" in result["heading"]
     assert "지원 대상이 아닙니다" not in result["reason"]
