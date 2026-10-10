@@ -288,6 +288,11 @@ Windows 업무 PC는 Windows 11을 권장하며, 최신 Edge에서도 핵심 경
 - 안내 스크립트는 ES5로 작성한다. IE/구형 Edge, 알려진 구형 Windows,
   Chromium 109 이하 또는 필수 API 누락을 감지하면 이유를 표시한다. 호환 모드가
   적용된 경우에는 지원 제외 경고 대신 호환 모드 안내를 표시한다.
+  Supermium/최신 엔진 + 구형 Windows는 최신 UI를 유지하고 OS 보안 안내만 표시한다.
+  Supermium 브랜드(UA 또는 Client Hints)가 없으면 Chrome과 강제로 구분하지 않는다.
+  `?browser=supermium`은 이 브라우저의 저사양 UI 정책 선택이며 localStorage에 저장한다.
+  `?browser=auto`로 해제하고, 저장소 사용이 차단되면 현재 URL에서만 적용한다.
+  이 선택은 서버 인증·권한·SSO·Chrome 49 자산 분기에는 영향을 주지 않는다.
   110 이상을 정식 최소 지원 버전으로 선언하는 것은 아니며, UA를 보안 판단에
   사용하지 않는다. 사용자 에이전트 위장·OS 식별 한계 때문에 경고 부재가
   호환성이나 보안 지원의 보증은 아니다.

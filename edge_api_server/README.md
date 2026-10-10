@@ -351,17 +351,42 @@ GET  /api/v1/tem/report/jobs/{jobId}/download/analysis-json
 ```
 
 브라우저는 업로드 세션을 만들고 파일을 조각 단위로 전송한 뒤 `complete`를 호출한다.
-브라우저와 서버는 각 1MB 조각의 CRC32를 대조하고, 서버는 모든 조각과 실제 저장
+Supermium/Chrome 49/구형 Windows/메모리 4GB 이하/CPU 2코어 이하 또는 메모리 정보 미제공
+PC는 2MB, 그 외 일반 PC는 4MB를 **한 조각씩** 전송한다. CRC32는 256KB 블록으로
+나누어 계산하며 블록마다 UI에 실행 시간을 돌려준다. 파일 목록은 200개(일반 PC 500개)만
+화면에 그리되 업로드 대상은 유지한다. 폴더 탐색도 파일을 순차 수집한다.
+
+브라우저와 서버는 각 조각의 CRC32를 대조하고, 서버는 모든 조각과 실제 저장
 크기가 일치하는지 다시 확인한다. 이어서 이미지 디코딩과
 ZIP/DOCX/XLSX/XLSM/XLSB 내부 구조 및 CRC를 검사한다. 암호화 ZIP이나 암호·DRM으로
 보호된 Office 파일, 확장자와 실제 형식이 다른 파일은 문제 파일명을 포함한 오류로
-차단하며 이 검증이 모두 끝난 뒤에만 `jobId`를 발급한다.
+차단한다. 웹 화면은 `complete?defer_validation=true`로 먼저 `jobId`를 받고, 검증과
+보고서 생성 전체를 제한된 서버 대기열에서 수행한다. 검증 실패는 job의 `failed`/`error`로
+표시하고 다운로드를 활성화하지 않는다. 완료 요청 재전송은 같은 `jobId`를 반환한다.
+기존 `complete`(옵션 생략)는 종전처럼 검증 후 job을 발급하므로 연동 계약을 유지한다.
+대기열이 가득 차면 `503 TEM_REPORT_QUEUE_FULL`이며, 저장된 업로드 세션을 유지하므로
+같은 세션의 `complete`를 나중에 재시도할 수 있다(서버 재시작을 넘는 영구 복구는 아님).
 
 `POST /api/v1/tem/analyze`는 같은 검증을 사용하는 단일 multipart 호환 API다.
+이 API도 `?defer_validation=true`를 선택할 수 있으며, 생략 시 기존 응답을 유지한다.
 서버는 `.tif/.tiff/.png/.jpg/.jpeg/.bmp/.webp`, `.docx`,
 `.xlsx/.xls/.xlsm/.xlsb/.csv/.tsv`, `.zip`을 지원한다. 브라우저는 발급된 `jobId`로
 `GET /api/v1/tem/report/jobs/{jobId}`를 폴링해 `completed` 상태가 되면 PPTX,
 보고서 ZIP, 분석 JSON 다운로드 링크를 표시한다.
+
+자원 보호는 TEM 웹 API 프로세스별로 적용한다. C# 공통 작업 API/별도 보고서 worker의
+자원 정책까지 변경하지 않는다. 저사양 Edge에서는 API worker 수를 1로 유지한다.
+
+- 파일당 250MiB, 원본과 압축 해제 항목을 합한 묶음 1200MiB, 기본 5,000개 파일/압축 항목.
+- 조각은 최대 8MiB. 서버는 1MiB 버퍼로 임시 디스크에 저장·CRC 검증 후 `.part`에 반영하여
+  잘못된 체크섬/재전송이 기존 바이트를 덮지 않게 한다. 세션의 동시 쓰기를 차단한다.
+- ZIP은 메타데이터 한도를 해제 전에 검사하고 각 멤버를 디스크에 순차 검증한다.
+  여러 ZIP 및 확장자가 잘못된 ZIP도 합산한다. Office 내부 확장 크기는 기본 256MiB,
+  이미지는 기본 4,000만 픽셀(Word 포함) 한도다. 원본을 몰래 축소하지 않고 분할을 안내한다.
+- 검증 전 묶음 예산의 2배와 여유 공간 256MiB를 확보할 수 있는지 확인하고, 조각 저장과
+  ZIP 해제 전에도 확인한다. 다른 프로세스의 사용량 증가나 OS OOM 종료까지 보장하지는 않는다.
+- 기본 동시 처리 1개 + 대기 4개. 동기 API 검증도 같은 처리 슬롯을 공유한다.
+  서버 메모리/디스크와 현장 보고서 크기를 측정한 뒤 한도를 변경한다.
 
 DB 없이 TEM 화면만 개발할 때는 다음 명령을 사용할 수 있다.
 
@@ -432,6 +457,11 @@ cd edge_api_server
 | `RIST_PROCESSOR_TIMEOUT_SECONDS` | `600` | 자동 processor 실행 제한 시간 |
 | `RIST_PROCESSOR_COMMAND_<EXPERIMENT>` | 없음 | 분석 JSON이 없을 때 실행할 processor 명령 템플릿 |
 | `RIST_TEM_REPORT_WORKERS` | `1` | TEM/STEM 웹 보고서 동시 생성 작업 수. PPT/OCR 메모리 사용량 때문에 기본은 순차 처리 |
+| `RIST_TEM_REPORT_QUEUE_SIZE` | `4` | 실행 중 작업 외 TEM 웹 보고서 최대 대기 수(프로세스별) |
+| `RIST_TEM_MAX_FILES` | `5000` | TEM 서버의 입력/압축 항목 수 한도. 웹 선택 UI의 상한도 5,000개 |
+| `RIST_TEM_MAX_IMAGE_PIXELS` | `40000000` | TEM/Word 이미지당 픽셀 수 상한 |
+| `RIST_TEM_MAX_OFFICE_EXPANDED_BYTES` | `268435456` | Office 파일 내부 해제 크기 상한 |
+| `RIST_TEM_DISK_RESERVE_BYTES` | `268435456` | TEM 임시 저장소에 남길 최소 디스크 여유 공간 |
 | `RIST_TEM_OCR_WORKERS` | `2` | TEM 코팅층 두께 OCR 병렬 처리 수. CPU 여유가 있으면 최대 4까지 권장 |
 | `RIST_WORKER_POLL_SECONDS` | `2` | worker 큐 조회 간격 |
 | `RIST_REPORT_STORAGE_KEY` | `RIST_REPORTS` | DB 상대 경로를 해석할 공유 저장소 논리 키 |

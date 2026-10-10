@@ -32,6 +32,24 @@ def test_profile_negotiation(ua, expected):
     assert browser_profile(ua) == expected
 
 
+@pytest.mark.parametrize("ua,hints,expected", [
+    (MODERN + " Supermium/150.0", "", "supermium"),
+    (MODERN, '"Chromium";v="150", "Supermium";v="150"', "supermium"),
+    (MODERN, '"Google Chrome";v="150"', "modern"),
+    (CHROME49, '"Supermium";v="150"', "chrome49"),
+])
+def test_supermium_uses_native_assets_without_guessing_masked_brand(ua, hints, expected):
+    assert browser_profile(ua, hints) == expected
+
+
+def test_supermium_native_html_and_cache_negotiation(preview):
+    response = preview.get('/tem', headers={'User-Agent': MODERN, 'Sec-CH-UA': '"Supermium";v="150"'})
+    assert response.status_code == 200
+    assert response.headers['x-rist-browser-profile'] == 'supermium'
+    assert 'Sec-CH-UA' in response.headers['vary']
+    assert ASSET_PREFIX not in response.text
+
+
 def test_every_live_ui_template_has_current_prebuilt_assets():
     path = Path(__file__).resolve().parents[1] / "browser_compat" / "collect.py"
     spec = importlib.util.spec_from_file_location("rist_compat_collector", path)

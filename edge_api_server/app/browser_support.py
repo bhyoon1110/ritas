@@ -11,11 +11,45 @@ import re
 
 BROWSER_POLICY_TEXT = (
     "권장 환경: 보안 지원 중인 운영체제의 최신 Chrome. "
-    "Chrome 49.0.2623.75~109 및 구형 Edge에는 호환 모드를 적용합니다. "
+    "Supermium 등 최신 Chromium 엔진은 기본 화면을, Chrome 49.0.2623.75~109 및 구형 Edge는 호환 화면을 사용합니다. "
     "XP와 구형 브라우저는 보안 지원이 종료되었으므로 격리된 실험망에서만 사용하세요. Internet Explorer는 지원하지 않습니다."
 )
 
 BROWSER_SUPPORT_SCRIPT = r"""(function () {
+  // Supermium can identify as Google Chrome, including its Client Hints.
+  // Never infer its brand from a Windows/Chrome version alone. A per-browser
+  // preference is available for masked UAs; it cannot disable legacy shims.
+  var ua = navigator.userAgent || '';
+  var chromium = /(?:Chrome|Chromium|Edg)\/(\d+)/.exec(ua);
+  var supermium = /\bSupermium\/(\d+)/i.test(ua);
+  var brands = navigator.userAgentData && navigator.userAgentData.brands || [];
+  for (var b = 0; b < brands.length; b += 1) {
+    if (/^Supermium$/i.test(brands[b].brand || '')) supermium = true;
+  }
+  var preference = '';
+  var search = window.location && window.location.search || '';
+  var override = /(?:^|[?&])browser=(supermium|auto)(?:&|$)/.exec(search);
+  try {
+    preference = window.localStorage.getItem('rist.browser.preference') || '';
+    if (override) {
+      preference = override[1] === 'supermium' ? 'supermium' : '';
+      if (preference) window.localStorage.setItem('rist.browser.preference', preference);
+      else window.localStorage.removeItem('rist.browser.preference');
+    }
+  } catch (_storageError) { /* blocked storage must not break the application */ }
+  if (override) preference = override[1] === 'supermium' ? 'supermium' : '';
+  supermium = supermium || preference === 'supermium';
+  var oldWindows = /Windows NT (?:5\.[0-9]+|6\.[0-3])(?:[;)\s]|$)/.test(ua);
+  var legacy = window.RIST_BROWSER_PROFILE === 'chrome49';
+  var memory = Number(navigator.deviceMemory) || 0;
+  var cores = Number(navigator.hardwareConcurrency) || 0;
+  var lowResource = legacy || supermium || oldWindows || !memory || memory <= 4 || (cores > 0 && cores <= 2);
+  window.RIST_CLIENT_PROFILE = {
+    browser: legacy ? 'chrome49' : (supermium ? 'supermium' : 'modern'),
+    lowResource: lowResource,
+    uploadChunkBytes: (lowResource ? 2 : 4) * 1024 * 1024,
+    fileListLimit: lowResource ? 200 : 500
+  };
   var warning = document.getElementById('rist-browser-warning');
   var reasonNode = document.getElementById('rist-browser-warning-reason');
   if (!warning || !reasonNode) return;
@@ -27,13 +61,11 @@ BROWSER_SUPPORT_SCRIPT = r"""(function () {
     warning.style.display = 'block';
     return;
   }
-  var ua = navigator.userAgent || '';
   var reason = '';
-  var chromium = /(?:Chrome|Chromium|Edg)\/(\d+)/.exec(ua);
   if (/MSIE\s|Trident\/|Edge\//.test(ua)) {
     reason = 'Internet Explorer 및 구형 Edge는 분석·그래프·SSO 화면의 지원 대상이 아닙니다.';
-  } else if (/Windows NT (?:5\.[0-9]+|6\.[0-3])(?:[;)\s]|$)/.test(ua)) {
-    reason = '이 Windows 버전은 지원 대상이 아닙니다. 브라우저만 바꾸어도 모든 기능이 보장되지는 않습니다.';
+  } else if (oldWindows && (!chromium || parseInt(chromium[1], 10) < 110) && !supermium) {
+    reason = '이 Windows 버전은 보안 지원이 종료되었습니다. 구형 브라우저 호환 화면을 사용하고 격리된 실험망에서만 접속하세요.';
   } else if (chromium && parseInt(chromium[1], 10) <= 109) {
     // A known-obsolete floor, NOT a promise that 110+ is current/supported.
     reason = '오래된 Chromium 계열 브라우저입니다. 지원되는 운영체제에서 최신 버전으로 업데이트해 주세요.';
@@ -49,6 +81,12 @@ BROWSER_SUPPORT_SCRIPT = r"""(function () {
   if (!window.URL || typeof window.URL.createObjectURL !== 'function') missing.push('파일 다운로드');
   if (missing.length) {
     reason += (reason ? ' ' : '') + '필수 브라우저 기능이 없습니다: ' + missing.join(', ') + '.';
+  }
+  if (!reason && (supermium || oldWindows)) {
+    warning.className = 'rist-compat-notice';
+    var title = warning.getElementsByTagName('strong')[0];
+    if (title) title.textContent = supermium ? 'Supermium · 저사양 PC 최적화' : '최신 Chromium · 저사양 PC 최적화';
+    reason = '최신 엔진의 그래프·화면 기능을 사용하며 TEM 파일은 작은 조각으로 순차 전송합니다. 분석·보고서는 Edge 서버에서 처리합니다. XP 등 보안 지원이 종료된 OS는 격리된 실험망에서만 사용하세요.';
   }
   if (!reason) return;
   if (typeof reasonNode.textContent !== 'undefined') reasonNode.textContent = reason;

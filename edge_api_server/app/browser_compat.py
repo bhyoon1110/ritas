@@ -24,11 +24,15 @@ STYLE_RE = re.compile(r"(<style\b[^>]*>)(.*?)(</style>)", re.I | re.S)
 logger = logging.getLogger(__name__)
 
 
-def browser_profile(user_agent: str) -> str:
+def browser_profile(user_agent: str, client_hints: str = "") -> str:
     chromium = re.search(r"(?:Chrome|Chromium)/(\d+)", user_agent)
     edge = re.search(r"Edge/(\d+)", user_agent)
     if edge or (chromium and 49 <= int(chromium[1]) < 110):
         return "chrome49"
+    # Default Supermium UAs/brands can be identical to Chrome. Only use an
+    # explicit brand; both modern profiles intentionally serve native assets.
+    if re.search(r"\bSupermium/\d+", user_agent, re.I) or re.search(r'"Supermium"\s*;\s*v="\d+', client_hints, re.I):
+        return "supermium"
     return "modern"
 
 
@@ -75,7 +79,8 @@ class BrowserCompatibilityMiddleware:
     async def __call__(self, scope, receive, send):
         if scope["type"] != "http" or not (scope["path"] in UI_PATHS or scope["path"].startswith(("/reports/", "/error-feedback/"))):
             return await self.app(scope, receive, send)
-        profile = browser_profile(Headers(scope=scope).get("user-agent", ""))
+        request_headers = Headers(scope=scope)
+        profile = browser_profile(request_headers.get("user-agent", ""), request_headers.get("sec-ch-ua", ""))
         start = None
         body = bytearray()
 
@@ -84,6 +89,7 @@ class BrowserCompatibilityMiddleware:
             if message["type"] == "http.response.start":
                 headers = MutableHeaders(scope=message)
                 headers.add_vary_header("User-Agent")
+                headers.add_vary_header("Sec-CH-UA")
                 headers["X-RIST-Browser-Profile"] = profile
                 if profile == "chrome49" and message["status"] == 200 and "text/html" in headers.get("content-type", ""):
                     start = message

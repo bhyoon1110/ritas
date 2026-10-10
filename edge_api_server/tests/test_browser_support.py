@@ -19,7 +19,8 @@ from app.preview_web import build_workspace_index, create_preview_app
 _RUN_DETECTOR = r"""
 const vm = require('node:vm');
 const input = JSON.parse(require('node:fs').readFileSync(0, 'utf8'));
-const banner = {style: {display: 'none'}};
+const heading = {textContent: ''};
+const banner = {style: {display: 'none'}, getElementsByTagName: () => [heading]};
 const reason = input.legacyText ? {innerText: ''} : {textContent: ''};
 function FormData() {}
 FormData.prototype.get = function () {};
@@ -28,6 +29,13 @@ const window = {
   Promise: function () {}, FormData: FormData, FileReader: function () {},
   Blob: function () {}, URLSearchParams: function () {}, URL: {createObjectURL: function () {}}
 };
+window.RIST_BROWSER_PROFILE = input.serverProfile;
+window.location = {search: input.search || ''};
+window.localStorage = {
+  getItem: () => { if (input.blockedStorage) throw Error('blocked'); return input.preference || ''; },
+  setItem: (_key, value) => { input.preference = value; },
+  removeItem: () => { input.preference = ''; }
+};
 for (const name of input.missing || []) {
   if (name === 'FormData.get') delete FormData.prototype.get;
   else if (name === 'URL.createObjectURL') delete window.URL.createObjectURL;
@@ -35,7 +43,7 @@ for (const name of input.missing || []) {
 }
 const sandbox = {
   window: window,
-  navigator: {userAgent: input.ua},
+  navigator: {userAgent: input.ua, deviceMemory: input.memory, hardwareConcurrency: input.cores, userAgentData: {brands: input.brands || []}},
   document: {getElementById: function (id) {
     if (input.noNodes) return null;
     if (id === 'rist-browser-warning') return banner;
@@ -44,17 +52,19 @@ const sandbox = {
   }}
 };
 vm.runInNewContext(input.script, sandbox, {timeout: 1000});
-process.stdout.write(JSON.stringify({display: banner.style.display, reason: reason.textContent || reason.innerText || ''}));
+const output = {display: banner.style.display, reason: reason.textContent || reason.innerText || ''};
+if (input.profile) Object.assign(output, {profile: window.RIST_CLIENT_PROFILE, heading: heading.textContent, preference: input.preference || ''});
+process.stdout.write(JSON.stringify(output));
 """
 
 
-def _detect(ua: str, *, missing: list[str] | None = None, legacy_text: bool = False, no_nodes: bool = False) -> dict:
+def _detect(ua: str, *, missing: list[str] | None = None, legacy_text: bool = False, no_nodes: bool = False, **options) -> dict:
     node = shutil.which("node")
     if not node:
         pytest.skip("브라우저 안내 스크립트 단위 검증에 Node.js가 필요합니다.")
     result = subprocess.run(
         [node, "-e", _RUN_DETECTOR],
-        input=json.dumps({"script": BROWSER_SUPPORT_SCRIPT, "ua": ua, "missing": missing or [], "legacyText": legacy_text, "noNodes": no_nodes}),
+        input=json.dumps({"script": BROWSER_SUPPORT_SCRIPT, "ua": ua, "missing": missing or [], "legacyText": legacy_text, "noNodes": no_nodes, **options}),
         text=True, capture_output=True, timeout=10, check=True,
     )
     return json.loads(result.stdout)
@@ -106,6 +116,51 @@ def test_detector_does_not_need_the_apis_it_warns_about_or_textcontent():
 
 def test_detector_is_harmless_if_notice_nodes_are_missing():
     assert _detect("MSIE 8.0", no_nodes=True) == {"display": "none", "reason": ""}
+
+
+@pytest.mark.parametrize("options", [
+    {"ua": "Chrome/150.0 Supermium/150.0"},
+    {"ua": "Chrome/150.0", "brands": [{"brand": "Supermium", "version": "150"}]},
+    {"ua": "Chrome/150.0", "search": "?browser=supermium"},
+    {"ua": "Chrome/150.0", "preference": "supermium"},
+    {"ua": "Chrome/150.0", "search": "?browser=supermium", "blockedStorage": True},
+])
+def test_supermium_native_profile_uses_low_memory_uploads(options):
+    result = _detect(**options, profile=True, memory=8, cores=8)
+    assert result["profile"] == {"browser": "supermium", "lowResource": True, "uploadChunkBytes": 2 * 1024 * 1024, "fileListLimit": 200}
+    assert "Supermium" in result["heading"]
+    assert "필수 브라우저 기능이 없습니다" not in result["reason"]
+
+
+def test_masked_supermium_is_not_misidentified_and_unknown_memory_is_conservative():
+    result = _detect("Windows NT 10.0; Chrome/150.0", brands=[{"brand": "Google Chrome", "version": "150"}], profile=True)
+    assert result["profile"]["browser"] == "modern"
+    assert result["profile"]["lowResource"] is True
+    assert result["display"] == "none"
+
+
+@pytest.mark.parametrize("memory,cores,low", [(2, 8, True), (8, 2, True), (8, 8, False)])
+def test_resource_policy_is_capability_based_not_only_brand(memory, cores, low):
+    result = _detect("Chrome/150.0", memory=memory, cores=cores, profile=True)
+    assert result["profile"]["lowResource"] is low
+    assert result["profile"]["uploadChunkBytes"] == (2 if low else 4) * 1024 * 1024
+
+
+def test_preference_cannot_bypass_chrome49_assets_or_missing_features():
+    result = _detect("Chrome/49.0", search="?browser=supermium", serverProfile="chrome49", profile=True)
+    assert result["profile"]["browser"] == "chrome49"
+    assert "호환 모드" in result["heading"]
+    result = _detect("Chrome/150.0 Supermium/150.0", missing=["fetch"])
+    assert "필수 브라우저 기능이 없습니다" in result["reason"]
+
+
+def test_auto_preference_reset_and_old_os_modern_engine_guidance():
+    result = _detect("Chrome/150.0", preference="supermium", search="?browser=auto", memory=8, cores=8, profile=True)
+    assert result["preference"] == ""
+    assert result["profile"]["browser"] == "modern"
+    result = _detect("Windows NT 5.1; Chrome/150.0", profile=True)
+    assert "최신 Chromium" in result["heading"]
+    assert "지원 대상이 아닙니다" not in result["reason"]
 
 
 def test_notice_is_inserted_once_before_application_scripts_and_does_not_overlay_plot():

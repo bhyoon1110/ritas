@@ -127,7 +127,11 @@ def _inspect_zip(source: str | Path | BinaryIO) -> FileInspection:
             content_types = b""
             if "[Content_Types].xml" in names:
                 try:
-                    content_types = archive.read("[Content_Types].xml")
+                    # Identification only needs the XML prefix. A hostile ZIP
+                    # must not allocate its entire declared member before the
+                    # workspace's decompression/resource checks can run.
+                    with archive.open("[Content_Types].xml") as member:
+                        content_types = member.read(64 * 1024)
                 except (RuntimeError, OSError, KeyError):
                     content_types = b""
             office_kind = _ooxml_kind(names, content_types)

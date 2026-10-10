@@ -16,7 +16,7 @@ UA는 자산 선택에만 사용하며 권한 판단에는 사용하지 않는�
 - Grid/gap/min()/inset 일부를 Flexbox/여백/폭 제한으로 대체한다. 최신 화면에는 적용하지 않는다.
 - 해시가 포함된 JS/CSS와 manifest, 라이선스를 `../app/static/chrome49/`에 함께 커밋한다.
   서버에는 Node/Babel/npm/CDN이 필요 없다. Python 의존성과 DB 스키마 변경도 없다.
-- HTML 캐시는 User-Agent별로 분리한다. 개인별 VOC 설정은 공유 JS에 넣지 않는다.
+- HTML 캐시는 User-Agent 및 Sec-CH-UA별로 분리한다. 개인별 VOC 설정은 공유 JS에 넣지 않는다.
 - UI 소스가 변했는데 재빌드하지 않은 경우 Chrome 49에 고장 난 JS를 보내지 않고
   읽을 수 있는 503 배포 안내를 표시한다. 최신 브라우저는 이 검사를 적용하지 않는다.
 
@@ -36,6 +36,47 @@ npm test
 서버에는 Git pull/오프라인 bundle 적용 후 API 재시작으로 반영된다.
 
 ## 검증 범위와 한계
+
+### Supermium 및 저사양 PC
+
+Supermium 150은 네이티브 최신 화면을 사용한다. 구형 폴리필로 fetch/Pointer Events/Grid를
+교체하지 않는다. 명시적인 Supermium UA/Client Hints 브랜드는 식별하되, 기본 설정에서
+Chrome/Windows 10으로 표시될 수 있으므로 UA만으로 모든 Supermium을 식별할 수는 없다.
+([공식 Client Hints 구현](https://github.com/win32ss/supermium/blob/main/client_hints.patch),
+[실제 헤더 보고](https://github.com/win32ss/supermium/issues/1692))
+
+식별자가 숨겨져도 브라우저가 제공한 자원 정보로 TEM 전송 크기를 조정한다. 메모리
+정보가 없으면 보수적으로 2MB 순차 전송을 사용한다. 명시적 모드는
+`/ftir?browser=supermium` 또는 `/tem?browser=supermium`으로 선택하고 `?browser=auto`로
+해제한다. localStorage를 차단한 PC에서는 URL 옵션이 있는 화면에만 유지된다.
+이 설정은 Chrome 49의 호환 번들을 우회하거나 인증/SSO를 완화하지 않는다.
+
+TEM 브라우저 검증 실행(이 디렉터리의 의존성을 설치한 뒤 `edge_api_server/`에서):
+
+```bash
+NODE_PATH=./browser_compat/node_modules RIST_TEST_PYTHON=/absolute/path/to/python node --test tests/tem_upload.test.cjs
+python -m pytest tests/test_tem_resources.py tests/test_browser_support.py tests/test_browser_compat.py
+```
+
+32비트 XP의 실제 메모리 한계, TLS, GPU/렌더러는 현대 Chrome의 UA·자원 정보·CPU 제한
+시험으로 재현되지 않는다. Supermium 150 R2는 배포 당시 pre-release이므로 현장 장비에서
+파일 규모별 검증 후 적용한다. [공식 릴리스](https://github.com/win32ss/supermium/releases/tag/v150-r2)
+
+### 공통 검증
+
+2026-10-10 추가 검증: Supermium 명시 UA와 Chrome으로 표시되는 경우의 수동 설정,
+최신 Chrome, Chrome 49 기능 제한 모의 환경에서 가입·로그인, FTIR 분석·피크 민감도·
+Y 이동/Crop 배타·PNG/ZIP 저장, TEM ZIP 업로드·PPTX 패키지 다운로드, 계정 변경,
+VOC 작성·조치·확인을 실행했다. Supermium 모의는 CPU 6배 지연 상태로 수행했고,
+약 96MiB ZIP(합성 STEM TIFF 8개)을 49개 조각으로 전송해 모두 보고서에 반영했다.
+ZIP CRC도 확인했다. 이것은 macOS의 별도 Chrome 프로필 시험이며 실제 XP/Supermium
+바이너리, 운영 SSO/LIMS/LLM을 실행했다는 의미가 아니다.
+
+메모리 회귀는 32MiB ZIP 멤버 검증의 Python 추적 할당 피크 24MiB 미만,
+8MiB 조각 수신 5MiB 미만을 확인한다. 이는 **해당 함수의 Python 할당** 기준으로,
+프로세스 전체 RSS·이미지 라이브러리의 네이티브 할당·실제 XP 브라우저 메모리와 다르다.
+대용량 CRC의 256KiB 읽기/이벤트 루프 양보, 3,000개 파일 목록의 DOM 제한, 조각 재시도,
+ZIP/이미지/디스크/대기열 제한, 완료 요청 경합 및 검증 실패 차단을 자동 회귀로 포함했다.
 
 자동 검증: 템플릿/해시 동기화, UA 분기, ES5 구문, 미지원 API 폴백, multipart와
 로그인 쿠키, 요청 취소, Pointer Events, 인증/업로드/보고서 회귀 테스트.

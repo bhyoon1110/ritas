@@ -9,7 +9,7 @@ import os
 import re
 import shutil
 import tempfile
-from threading import Lock
+from threading import BoundedSemaphore, Lock
 import time
 from pathlib import Path
 from typing import Any
@@ -17,8 +17,9 @@ from uuid import uuid4
 import zipfile
 import zlib
 
-from fastapi import APIRouter, FastAPI, File, Form, Request, UploadFile
+from fastapi import APIRouter, FastAPI, File, Form, Query, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from starlette.concurrency import run_in_threadpool
 from PIL import Image, ImageDraw, UnidentifiedImageError
 from rist_common import get_logger
 
@@ -27,7 +28,7 @@ from .auth import authenticated_transfer_payload
 from .browser_support import with_browser_support_notice
 from .config import Settings
 from .database import Database
-from .file_inspection import FileInspection, inspect_file_bytes, inspect_file_path
+from .file_inspection import FileInspection, inspect_file_path
 from .error_archive import (
     ErrorArchive,
     error_archive as app_error_archive,
@@ -79,6 +80,22 @@ def _positive_int_env(name: str, default: int) -> int:
     return max(1, value)
 
 
+MAX_AHN_UPLOAD_FILES = _positive_int_env("RIST_TEM_MAX_FILES", 5000)
+MAX_AHN_IMAGE_PIXELS = _positive_int_env("RIST_TEM_MAX_IMAGE_PIXELS", 40_000_000)
+MAX_AHN_OFFICE_EXPANDED_BYTES = _positive_int_env("RIST_TEM_MAX_OFFICE_EXPANDED_BYTES", 256 * 1024 * 1024)
+AHN_DISK_RESERVE_BYTES = _positive_int_env("RIST_TEM_DISK_RESERVE_BYTES", 256 * 1024 * 1024)
+MAX_AHN_CHUNK_BYTES = 8 * 1024 * 1024
+AHN_REPORT_WORKERS = _positive_int_env("RIST_TEM_REPORT_WORKERS", 1)
+AHN_REPORT_QUEUE_SIZE = _positive_int_env("RIST_TEM_REPORT_QUEUE_SIZE", 4)
+
+
+def _require_disk_space(path: Path, required_bytes: int) -> None:
+    if shutil.disk_usage(path).free < required_bytes + AHN_DISK_RESERVE_BYTES:
+        raise ApiException(507, "TEM_INSUFFICIENT_DISK_SPACE",
+                           "Edge 서버의 임시 저장 공간이 부족합니다. 관리자에게 저장 공간 확보를 요청한 뒤 다시 시도하세요.",
+                           retryable=True)
+
+
 @dataclass
 class AhnReportJob:
     job_id: str
@@ -102,6 +119,7 @@ class AhnReportJob:
     message: str = "TEM 보고서 작업이 대기 중입니다."
     error: dict[str, Any] | None = None
     error_event_id: str | None = None
+    validate_upload: bool = False
 
 
 @dataclass
@@ -122,6 +140,8 @@ class AhnUploadSession:
     created_at: float
     updated_at: float
     files: dict[str, AhnUploadFileState] = field(default_factory=dict)
+    lock: Any = field(default_factory=Lock, repr=False)
+    finalized: bool = False
 
 
 _ahn_report_jobs: dict[str, AhnReportJob] = {}
@@ -130,9 +150,12 @@ _ahn_upload_sessions: dict[str, AhnUploadSession] = {}
 _ahn_completed_upload_jobs: dict[str, str] = {}
 _ahn_upload_sessions_lock = Lock()
 _ahn_report_executor = ThreadPoolExecutor(
-    max_workers=_positive_int_env("RIST_TEM_REPORT_WORKERS", 1),
+    max_workers=AHN_REPORT_WORKERS,
     thread_name_prefix="rist-ahn-report",
 )
+# Also gate synchronous legacy API validation, not just the report executor.
+_ahn_processing_slots = BoundedSemaphore(AHN_REPORT_WORKERS)
+_ahn_pending_slots = BoundedSemaphore(AHN_REPORT_WORKERS + AHN_REPORT_QUEUE_SIZE)
 
 
 def _safe_relative_path(filename: str | None, fallback: str) -> Path:
@@ -286,10 +309,32 @@ def _ole_protection_marker(data: bytes) -> bool:
 def _validate_image(source: Path | BytesIO | Any, display_path: str) -> list[dict[str, Any]]:
     try:
         with Image.open(source) as image:
+            if image.width * image.height > MAX_AHN_IMAGE_PIXELS:
+                return [_integrity_issue(display_path, f"이미지 해상도가 서버 처리 한도({MAX_AHN_IMAGE_PIXELS:,} 픽셀)를 초과합니다. 분할하거나 크기를 줄여 업로드하세요.")]
             image.verify()
     except (Image.DecompressionBombError, UnidentifiedImageError, OSError, SyntaxError, ValueError) as exc:
         return [_integrity_issue(display_path, f"이미지 파일을 열 수 없습니다: {exc}")]
     return []
+
+
+def _archive_limits(archive: zipfile.ZipFile, *, office: bool = False) -> tuple[int, int]:
+    """Check metadata BEFORE inflating even one member (including CRC checks)."""
+    members = archive.infolist()
+    if len(members) > MAX_AHN_UPLOAD_FILES:
+        raise ValueError(f"압축 내부 항목 수가 {MAX_AHN_UPLOAD_FILES:,}개를 초과합니다. 묶음을 나누어 업로드하세요.")
+    total = 0
+    count = 0
+    for member in members:
+        if member.is_dir():
+            continue
+        count += 1
+        if member.file_size > MAX_AHN_UPLOAD_FILE_BYTES:
+            raise ValueError(f"압축 해제 후 파일 크기가 250MB를 초과합니다: {member.filename}")
+        total += member.file_size
+    limit = MAX_AHN_OFFICE_EXPANDED_BYTES if office else MAX_AHN_UPLOAD_TOTAL_BYTES
+    if total > limit:
+        raise ValueError(f"압축 해제 후 전체 크기가 처리 한도({limit // (1024 * 1024)}MB)를 초과합니다.")
+    return count, total
 
 
 def _validate_legacy_xls(source: Path | BytesIO, display_path: str) -> list[dict[str, Any]]:
@@ -336,6 +381,7 @@ def _validate_ooxml(
 
     try:
         with zipfile.ZipFile(source) as archive:
+            _archive_limits(archive, office=True)
             encrypted = [item.filename for item in archive.infolist() if item.flag_bits & 0x1]
             if encrypted:
                 return [
@@ -349,7 +395,14 @@ def _validate_ooxml(
             if bad_member:
                 return [_integrity_issue(display_path, f"Office 파일 내부가 손상되었습니다: {bad_member}")]
             names = set(archive.namelist())
-    except (zipfile.BadZipFile, RuntimeError, OSError) as exc:
+            # Word embeds images that are later decoded by the report builder.
+            for member in archive.infolist():
+                if member.filename.startswith("word/media/") and Path(member.filename).suffix.lower() in IMAGE_EXTENSIONS:
+                    with archive.open(member) as stream:
+                        issues = _validate_image(stream, f"{display_path}::{member.filename}")
+                    if issues:
+                        return issues
+    except (zipfile.BadZipFile, RuntimeError, OSError, ValueError) as exc:
         return [_integrity_issue(display_path, f"손상되었거나 올바르지 않은 Office 파일입니다: {exc}")]
 
     missing = sorted(OOXML_REQUIRED_MEMBERS.get(suffix, set()) - names)
@@ -365,9 +418,9 @@ def _validate_ooxml(
 
 def _validate_zip_archive(path: Path, display_path: str) -> list[dict[str, Any]]:
     issues: list[dict[str, Any]] = []
-    total_bytes = 0
     try:
         with zipfile.ZipFile(path) as archive:
+            _archive_limits(archive)
             encrypted = [item.filename for item in archive.infolist() if item.flag_bits & 0x1]
             if encrypted:
                 return [
@@ -377,49 +430,37 @@ def _validate_zip_archive(path: Path, display_path: str) -> list[dict[str, Any]]
                         protected=True,
                     )
                 ]
-            bad_member = archive.testzip()
-            if bad_member:
-                return [_integrity_issue(display_path, f"ZIP 내부 파일이 손상되었습니다: {bad_member}")]
             for member in archive.infolist():
                 if member.is_dir() or "__MACOSX" in Path(member.filename).parts:
                     continue
-                total_bytes += int(member.file_size or 0)
-                if int(member.file_size or 0) > MAX_AHN_UPLOAD_FILE_BYTES:
-                    return [
-                        _integrity_issue(
-                            f"{display_path}::{member.filename}",
-                            "압축 해제 후 파일 크기가 250MB를 초과합니다.",
-                        )
-                    ]
-                if total_bytes > MAX_AHN_UPLOAD_TOTAL_BYTES:
-                    return [_integrity_issue(display_path, "압축 해제 후 전체 크기가 1.2GB를 초과합니다.")]
                 member_path = f"{display_path}::{member.filename}"
                 if Path(member.filename).name.startswith(".") or Path(member.filename).name.startswith("~$"):
                     continue
                 suffix = Path(member.filename).suffix.lower()
-                data = archive.read(member)
-                inspection = inspect_file_bytes(data, filename=member.filename)
-                protection_issue = _inspection_protection_issue(member_path, inspection)
-                if protection_issue:
-                    issues.append(protection_issue)
-                    continue
-                expected = _expected_ahn_kinds(suffix)
-                if expected and inspection.kind not in expected:
-                    actual = inspection.kind if inspection.recognized else "알 수 없는 형식"
-                    issues.append(
-                        _integrity_issue(
-                            member_path,
-                            f"확장자({suffix})와 실제 파일 형식({actual})이 일치하지 않습니다.",
-                        )
-                    )
-                    continue
-                if inspection.kind in {"docx", "xlsx", "xlsm", "xlsb"}:
-                    issues.extend(_validate_ooxml(BytesIO(data), inspection.canonical_suffix or suffix, member_path))
-                elif inspection.kind in {"xls", "ole"}:
-                    issues.extend(_validate_legacy_xls(BytesIO(data), member_path))
-                elif inspection.kind == "image":
-                    issues.extend(_validate_image(BytesIO(data), member_path))
-    except (zipfile.BadZipFile, RuntimeError, OSError) as exc:
+                # Never archive.read(member): a single allowed TIFF can be 250MB.
+                # Streaming to disk verifies CRC on EOF and bounds Python buffers.
+                with tempfile.TemporaryDirectory(prefix="rist-tem-verify-", dir=path.parent) as temp:
+                    probe = Path(temp) / "member"
+                    _require_disk_space(path.parent, member.file_size)
+                    with archive.open(member) as source, probe.open("wb") as output:
+                        shutil.copyfileobj(source, output, AHN_UPLOAD_CHUNK_BYTES)
+                    inspection = inspect_file_path(probe)
+                    protection_issue = _inspection_protection_issue(member_path, inspection)
+                    if protection_issue:
+                        issues.append(protection_issue)
+                        continue
+                    expected = _expected_ahn_kinds(suffix)
+                    if expected and inspection.kind not in expected:
+                        actual = inspection.kind if inspection.recognized else "알 수 없는 형식"
+                        issues.append(_integrity_issue(member_path, f"확장자({suffix})와 실제 파일 형식({actual})이 일치하지 않습니다."))
+                        continue
+                    if inspection.kind in {"docx", "xlsx", "xlsm", "xlsb"}:
+                        issues.extend(_validate_ooxml(probe, inspection.canonical_suffix or suffix, member_path))
+                    elif inspection.kind in {"xls", "ole"}:
+                        issues.extend(_validate_legacy_xls(probe, member_path))
+                    elif inspection.kind == "image":
+                        issues.extend(_validate_image(probe, member_path))
+    except (zipfile.BadZipFile, RuntimeError, OSError, ValueError) as exc:
         return [_integrity_issue(display_path, f"손상되었거나 올바르지 않은 ZIP 파일입니다: {exc}")]
     return issues
 
@@ -428,7 +469,30 @@ def _validate_ahn_upload_files(upload_root: Path) -> dict[str, Any]:
     issues: list[dict[str, Any]] = []
     checked = 0
     normalized: list[dict[str, str]] = []
-    paths = sorted(upload_root.rglob("*"), key=lambda item: item.as_posix())
+    paths = []
+    for path in upload_root.rglob("*"):
+        if path.is_file():
+            paths.append(path)
+            if len(paths) > MAX_AHN_UPLOAD_FILES:
+                raise ApiException(413, "TEM_TOO_MANY_FILES", f"한 묶음은 최대 {MAX_AHN_UPLOAD_FILES:,}개 파일입니다. 묶음을 나누어 업로드하세요.")
+    paths.sort(key=lambda item: item.as_posix())
+    # Budget across ALL ZIPs plus loose files, not separately per archive.
+    expanded_bytes = 0
+    expanded_count = 0
+    for path in paths:
+        expanded_bytes += path.stat().st_size
+        expanded_count += 1
+        if zipfile.is_zipfile(path):
+            try:
+                with zipfile.ZipFile(path) as archive:
+                    count, size = _archive_limits(archive)
+                expanded_bytes += size
+                expanded_count += count
+            except (zipfile.BadZipFile, ValueError) as exc:
+                raise ApiException(400, "TEM_UPLOAD_INTEGRITY_FAILED", f"{path.name}: {exc}") from exc
+    if expanded_bytes > MAX_AHN_UPLOAD_TOTAL_BYTES or expanded_count > MAX_AHN_UPLOAD_FILES:
+        raise ApiException(413, "TEM_EXPANDED_BUNDLE_TOO_LARGE", "원본과 ZIP 해제 파일을 합한 용량 또는 파일 수가 처리 한도를 초과합니다. 묶음을 나누어 업로드하세요.")
+    _require_disk_space(upload_root, expanded_bytes * 2)
     for path in paths:
         if not path.is_file() or path.name.startswith(".") or path.name.startswith("~$"):
             continue
@@ -479,6 +543,11 @@ def _extract_zip_file(path: Path, target_root: Path) -> int:
         raise ApiException(400, "INVALID_TEM_ZIP", "읽을 수 없는 ZIP 파일입니다.") from exc
 
     with archive:
+        try:
+            _count, expanded = _archive_limits(archive)
+        except ValueError as exc:
+            raise ApiException(413, "TEM_EXPANDED_BUNDLE_TOO_LARGE", str(exc)) from exc
+        _require_disk_space(target_root, expanded)
         for member in archive.infolist():
             if member.is_dir():
                 continue
@@ -535,6 +604,8 @@ def _extract_pending_zips(upload_root: Path) -> int:
 async def _save_ahn_uploads(files: list[UploadFile] | None, upload_root: Path) -> list[str]:
     if not files:
         raise ApiException(400, "TEM_FILES_REQUIRED", "TEM raw 폴더 또는 파일이 필요합니다.")
+    if len(files) > MAX_AHN_UPLOAD_FILES:
+        raise ApiException(413, "TEM_TOO_MANY_FILES", f"한 묶음은 최대 {MAX_AHN_UPLOAD_FILES:,}개 파일입니다.")
 
     upload_root.mkdir(parents=True, exist_ok=True)
     saved: list[str] = []
@@ -582,7 +653,27 @@ async def _save_ahn_uploads(files: list[UploadFile] | None, upload_root: Path) -
     return saved
 
 
-async def _write_upload_chunk(
+async def _write_upload_chunk(session: AhnUploadSession, **kwargs) -> AhnUploadFileState:
+    # A retry must never truncate a concurrent write/finalization of this session.
+    if not session.lock.acquire(blocking=False):
+        await kwargs["upload"].close()
+        raise ApiException(409, "TEM_UPLOAD_BUSY", "이 업로드의 다른 조각을 처리 중입니다. 잠시 후 다시 시도하세요.", retryable=True)
+    try:
+        if session.finalized:
+            raise ApiException(409, "TEM_UPLOAD_FINALIZED", "이미 보고서 처리에 넘긴 업로드입니다. 파일을 변경하려면 새 업로드를 시작하세요.")
+        return await _write_upload_chunk_locked(session, **kwargs)
+    except OSError as exc:
+        if exc.errno == 28:
+            raise ApiException(507, "TEM_INSUFFICIENT_DISK_SPACE", "Edge 서버의 임시 저장 공간이 부족합니다.", retryable=True) from exc
+        raise
+    finally:
+        try:
+            await kwargs["upload"].close()
+        finally:
+            session.lock.release()
+
+
+async def _write_upload_chunk_locked(
     session: AhnUploadSession,
     *,
     relative_path: str,
@@ -617,6 +708,8 @@ async def _write_upload_chunk(
     with _ahn_upload_sessions_lock:
         file_state = session.files.get(file_key)
         if file_state is None:
+            if len(session.files) >= MAX_AHN_UPLOAD_FILES:
+                raise ApiException(413, "TEM_TOO_MANY_FILES", f"한 묶음은 최대 {MAX_AHN_UPLOAD_FILES:,}개 파일입니다.")
             expected_total = _upload_session_expected_total(session) + total_size
             if expected_total > MAX_AHN_UPLOAD_TOTAL_BYTES:
                 raise ApiException(
@@ -657,40 +750,41 @@ async def _write_upload_chunk(
 
     written = 0
     received_crc32 = 0
-    received_chunks: list[bytes] = []
-    try:
+    _require_disk_space(session.work_dir, min(MAX_AHN_CHUNK_BYTES, total_size - offset) * 2)
+    # Stage on disk until the CRC is verified; a corrupt retry leaves existing
+    # .part bytes intact. Never accumulate an arbitrarily sized request in RAM.
+    with tempfile.TemporaryFile(dir=session.work_dir) as received:
         while True:
             chunk = await upload.read(AHN_UPLOAD_CHUNK_BYTES)
             if not chunk:
                 break
             written += len(chunk)
-            if offset + written > total_size:
+            if written > MAX_AHN_CHUNK_BYTES or offset + written > total_size:
                 raise ApiException(
                     400,
                     "TEM_UPLOAD_CHUNK_TOO_LARGE",
-                    "업로드 조각 크기가 파일 크기를 초과했습니다.",
+                    "업로드 조각이 8MB 또는 전체 파일 크기를 초과했습니다.",
                 )
             received_crc32 = zlib.crc32(chunk, received_crc32)
-            received_chunks.append(chunk)
-    finally:
-        await upload.close()
+            received.write(chunk)
+        if not written:
+            raise ApiException(400, "TEM_EMPTY_CHUNK", "빈 업로드 조각은 저장하지 않습니다.")
+        actual_crc32 = f"{received_crc32 & 0xFFFFFFFF:08x}"
+        if expected_crc32 and actual_crc32 != expected_crc32:
+            raise ApiException(
+                400,
+                "TEM_UPLOAD_CHUNK_CHECKSUM_MISMATCH",
+                f"업로드 조각 무결성 검사에 실패했습니다: {relative.name}. 같은 파일을 다시 업로드하세요.",
+                retryable=True,
+                details={"expectedCrc32": expected_crc32, "actualCrc32": actual_crc32},
+            )
 
-    actual_crc32 = f"{received_crc32 & 0xFFFFFFFF:08x}"
-    if expected_crc32 and actual_crc32 != expected_crc32:
-        raise ApiException(
-            400,
-            "TEM_UPLOAD_CHUNK_CHECKSUM_MISMATCH",
-            f"업로드 조각 무결성 검사에 실패했습니다: {relative.name}. 같은 파일을 다시 업로드하세요.",
-            retryable=True,
-            details={"expectedCrc32": expected_crc32, "actualCrc32": actual_crc32},
-        )
-
-    temp_path.parent.mkdir(parents=True, exist_ok=True)
-    with temp_path.open("r+b" if temp_path.exists() else "wb") as output:
-        output.seek(offset)
-        for chunk in received_chunks:
-            output.write(chunk)
-        output.truncate(offset + written)
+        temp_path.parent.mkdir(parents=True, exist_ok=True)
+        received.seek(0)
+        with temp_path.open("r+b" if temp_path.exists() else "wb") as output:
+            output.seek(offset)
+            shutil.copyfileobj(received, output, AHN_UPLOAD_CHUNK_BYTES)
+            output.truncate(offset + written)
 
     file_state.uploaded_bytes = min(total_size, offset + written)
     if file_state.uploaded_bytes == total_size:
@@ -743,7 +837,7 @@ def _cleanup_old_upload_sessions() -> None:
         expired = [
             upload_id
             for upload_id, session in _ahn_upload_sessions.items()
-            if now - session.updated_at > AHN_UPLOAD_SESSION_TTL_SECONDS
+            if now - session.updated_at > AHN_UPLOAD_SESSION_TTL_SECONDS and not session.lock.locked()
         ]
         sessions = [
             _ahn_upload_sessions.pop(upload_id, None)
@@ -803,6 +897,8 @@ def _upload_session_payload(session: AhnUploadSession) -> dict[str, Any]:
         "completedFileCount": len(completed_files),
         "uploadedBytes": uploaded_bytes,
         "totalBytes": total_size,
+        "maxFileCount": MAX_AHN_UPLOAD_FILES,
+        "maxChunkBytes": MAX_AHN_CHUNK_BYTES,
     }
 
 
@@ -887,14 +983,22 @@ def _create_ahn_job(
 
 
 def _run_ahn_job(job: AhnReportJob) -> None:
+    with _ahn_processing_slots:
+        _process_ahn_job(job)
+
+
+def _process_ahn_job(job: AhnReportJob) -> None:
     started = time.perf_counter()
     _set_job_state(
         job,
         status="running",
-        progress_pct=25,
+        progress_pct=15 if job.validate_upload else 25,
         message="TEM/STEM/EDS/코팅층 데이터를 분석하는 중입니다.",
     )
     try:
+        if job.validate_upload:
+            _set_job_state(job, progress_pct=15, message="서버에서 raw 파일의 무결성·암호화·처리 용량을 검사하는 중입니다.")
+            _validate_ahn_upload_files(job.input_root)
         _set_job_state(job, progress_pct=28, message="검증된 raw bundle 구조를 준비하는 중입니다.")
         extracted_count = _extract_pending_zips(job.input_root)
         if extracted_count:
@@ -952,8 +1056,9 @@ def _run_ahn_job(job: AhnReportJob) -> None:
         logger.exception("TEM 보고서 생성 실패 (input_root=%s)", job.input_root)
         api_exc = ApiException(
             500,
-            "TEM_REPORT_BUILD_FAILED",
-            f"TEM 보고서 생성 중 오류가 발생했습니다: {exc}",
+            "TEM_MEMORY_LIMIT" if isinstance(exc, MemoryError) else "TEM_REPORT_BUILD_FAILED",
+            ("Edge 서버의 메모리가 부족합니다. 입력 묶음을 나누거나 큰 이미지의 크기를 줄여 다시 시도하세요."
+             if isinstance(exc, MemoryError) else f"TEM 보고서 생성 중 오류가 발생했습니다: {exc}"),
             retryable=False,
             details={"exceptionType": type(exc).__name__},
         )
@@ -1106,17 +1211,25 @@ def _submit_ahn_job(
     database: Database | None = None,
     usage_archive: UsageArchive | None = None,
     usage_client_context: dict[str, str | None] | None = None,
+    *,
+    validate_upload: bool = False,
 ) -> AhnReportJob:
-    job = _create_ahn_job(
-        input_root,
-        work_dir,
-        error_archive,
-        settings,
-        database,
-        usage_archive,
-        usage_client_context,
-    )
-    _ahn_report_executor.submit(_run_ahn_job, job)
+    slots = _ahn_pending_slots
+    if not slots.acquire(blocking=False):
+        raise ApiException(503, "TEM_REPORT_QUEUE_FULL", "Edge 서버의 TEM 처리 대기열이 가득 찼습니다. 기존 작업 완료 후 다시 시도하세요.", retryable=True)
+    job = None
+    try:
+        job = _create_ahn_job(input_root, work_dir, error_archive, settings, database,
+                              usage_archive, usage_client_context)
+        job.validate_upload = validate_upload
+        future = _ahn_report_executor.submit(_run_ahn_job, job)
+        future.add_done_callback(lambda _future: slots.release())
+    except BaseException:
+        slots.release()
+        if job is not None:
+            with _ahn_report_jobs_lock:
+                _ahn_report_jobs.pop(job.job_id, None)
+        raise
     return job
 
 
@@ -1638,7 +1751,10 @@ def build_ahn_page() -> str:
     );
     var bundleItems = [];
     var progressTimer = null;
-    var TEM_UPLOAD_CHUNK_BYTES = 4 * 1024 * 1024;
+    var clientProfile = window.RIST_CLIENT_PROFILE || {};
+    var TEM_UPLOAD_CHUNK_BYTES = clientProfile.uploadChunkBytes || 2 * 1024 * 1024;
+    var TEM_FILE_LIST_LIMIT = clientProfile.fileListLimit || 200;
+    var TEM_MAX_FILES = 5000;
     var TEM_UPLOAD_CHUNK_RETRIES = 4;
     var TEM_MAX_FILE_BYTES = 250 * 1024 * 1024;
     var TEM_MAX_TOTAL_BYTES = 1200 * 1024 * 1024;
@@ -1937,36 +2053,54 @@ def build_ahn_page() -> str:
       return "기타";
     }
     function addBundleItems(items) {
+      if (items.length > TEM_MAX_FILES) {
+        throw new Error("파일이 너무 많습니다. " + TEM_MAX_FILES + "개 이하로 나누어 선택하세요.");
+      }
       var seen = new Set(bundleItems.map(function(item) {
         return item.path + "|" + item.file.size + "|" + item.file.lastModified;
       }));
+      var additions = [];
       items.forEach(function(item) {
         var key = item.path + "|" + item.file.size + "|" + item.file.lastModified;
         if (!seen.has(key)) {
           seen.add(key);
-          bundleItems.push(item);
+          additions.push(item);
         }
       });
+      if (bundleItems.length + additions.length > TEM_MAX_FILES) {
+        throw new Error("선택 가능한 파일 수는 " + TEM_MAX_FILES + "개입니다. 묶음을 나누어 업로드하세요.");
+      }
+      bundleItems = bundleItems.concat(additions);
     }
     function renderFileList() {
       var counts = {TEM: 0, STEM: 0, EDS: 0, "코팅층": 0, "기타": 0};
       var fragment = document.createDocumentFragment();
       fileList.replaceChildren();
-      bundleItems.forEach(function(item) {
+      bundleItems.forEach(function(item, index) {
         var section = classifySection(item.path);
         counts[section] = (counts[section] || 0) + 1;
+        if (index >= TEM_FILE_LIST_LIMIT) return;
         var chip = document.createElement("span");
         chip.className = "ahn-chip";
         chip.textContent = section + " · " + item.path;
         fragment.appendChild(chip);
       });
+      if (bundleItems.length > TEM_FILE_LIST_LIMIT) {
+        var more = document.createElement("span");
+        more.className = "ahn-chip";
+        more.textContent = "외 " + (bundleItems.length - TEM_FILE_LIST_LIMIT) + "개 · 목록만 생략하며 모든 선택 파일은 업로드됩니다.";
+        fragment.appendChild(more);
+      }
       fileList.appendChild(fragment);
       bundleMeta.textContent = bundleItems.length
-        ? "TEM " + counts.TEM + " · STEM " + counts.STEM + " · EDS " + counts.EDS + " · 코팅층 " + counts["코팅층"] + " · 기타 " + counts["기타"]
+        ? "TEM " + counts.TEM + " · STEM " + counts.STEM + " · EDS " + counts.EDS + " · 코팅층 " + counts["코팅층"] + " · 기타 " + counts["기타"] + " · " + (clientProfile.lowResource !== false ? "저사양 PC: 2MB" : "4MB") + " 순차 전송"
         : "선택된 파일 없음";
       syncActionState();
     }
     function fileInputItems(input) {
+      if (input.files && input.files.length > TEM_MAX_FILES) {
+        throw new Error("파일이 너무 많습니다. " + TEM_MAX_FILES + "개 이하로 나누어 선택하세요.");
+      }
       return filesOf(input).map(function(file) {
         return bundleItem(file, file.webkitRelativePath || file.name);
       });
@@ -1981,43 +2115,58 @@ def build_ahn_page() -> str:
               return;
             }
             entries = entries.concat(Array.prototype.slice.call(batch));
+            if (entries.length > TEM_MAX_FILES) {
+              reject(new Error("폴더 항목이 너무 많습니다. 폴더를 나누어 업로드하세요."));
+              return;
+            }
             readBatch();
           }, reject);
         }
         readBatch();
       });
     }
-    function entryToBundleItems(entry, prefix) {
+    async function entryToBundleItems(entry, prefix, collected, depth, walkState) {
       prefix = prefix || "";
+      collected = collected || [];
+      depth = depth || 0;
+      walkState = walkState || {visited: 0};
+      walkState.visited += 1;
+      if (depth > 32 || walkState.visited > TEM_MAX_FILES * 2 || (entry.isFile && collected.length >= TEM_MAX_FILES)) {
+        throw new Error("폴더 깊이 또는 파일 수 한도를 초과했습니다. 폴더를 나누어 업로드하세요.");
+      }
       if (entry.isFile) {
-        return new Promise(function(resolve, reject) {
+        var file = await new Promise(function(resolve, reject) {
           entry.file(function(file) {
-            resolve([bundleItem(file, prefix + file.name)]);
+            resolve(file);
           }, reject);
         });
+        collected.push(bundleItem(file, prefix + file.name));
+        if (collected.length % 50 === 0) await sleep(0);
       }
       if (entry.isDirectory) {
-        return readAllDirectoryEntries(entry.createReader()).then(function(entries) {
-          return Promise.all(entries.map(function(child) {
-            return entryToBundleItems(child, prefix + entry.name + "/");
-          })).then(function(groups) {
-            return groups.reduce(function(acc, group) { return acc.concat(group); }, []);
-          });
-        });
+        var entries = await readAllDirectoryEntries(entry.createReader());
+        for (var index = 0; index < entries.length; index += 1) {
+          await entryToBundleItems(entries[index], prefix + entry.name + "/", collected, depth + 1, walkState);
+        }
       }
-      return Promise.resolve([]);
+      return collected;
     }
     async function droppedBundleItems(dataTransfer) {
+      if ((dataTransfer.items || []).length > TEM_MAX_FILES || (dataTransfer.files || []).length > TEM_MAX_FILES) {
+        throw new Error("파일이 너무 많습니다. 묶음을 나누어 선택하세요.");
+      }
       var items = Array.prototype.slice.call(dataTransfer.items || []);
       var entries = items
         .filter(function(item) { return item.kind === "file" && item.webkitGetAsEntry; })
         .map(function(item) { return item.webkitGetAsEntry(); })
         .filter(Boolean);
       if (entries.length) {
-        var groups = await Promise.all(entries.map(function(entry) {
-          return entryToBundleItems(entry, "");
-        }));
-        return groups.reduce(function(acc, group) { return acc.concat(group); }, []);
+        var collected = [];
+        var walkState = {visited: 0};
+        for (var index = 0; index < entries.length; index += 1) {
+          await entryToBundleItems(entries[index], "", collected, 0, walkState);
+        }
+        return collected;
       }
       return Array.prototype.slice.call(dataTransfer.files || []).map(function(file) {
         return bundleItem(file, file.webkitRelativePath || file.name);
@@ -2280,7 +2429,9 @@ def build_ahn_page() -> str:
           return;
         }
           var error = errorFromResponse(xhr, text, "업로드 조각 전송에 실패했습니다.");
-          error.isTransientError = xhr.status === 408 || xhr.status === 429 || xhr.status >= 500;
+          var failure = {};
+          try { failure = JSON.parse(text); } catch (_parseError) {}
+          error.isTransientError = failure.retryable === true || xhr.status === 408 || xhr.status === 429 || xhr.status >= 500;
           reject(error);
         };
         xhr.onerror = function(error) {
@@ -2326,11 +2477,26 @@ def build_ahn_page() -> str:
       return crc32Table;
     }
     async function chunkCrc32(blob) {
-      var bytes = new Uint8Array(await blob.arrayBuffer());
       var table = getCrc32Table();
       var crc = 0xFFFFFFFF;
-      for (var index = 0; index < bytes.length; index += 1) {
-        crc = table[(crc ^ bytes[index]) & 0xFF] ^ (crc >>> 8);
+      // At most 256KB is read into JS at a time, even for a 4MB upload chunk.
+      // Yield between blocks so slow 32-bit CPUs can paint/respond to input.
+      var blockBytes = 256 * 1024;
+      for (var offset = 0; offset < blob.size; offset += blockBytes) {
+        var block = blob.slice(offset, Math.min(blob.size, offset + blockBytes));
+        var buffer = typeof block.arrayBuffer === "function" ? await block.arrayBuffer() : await new Promise(function(resolve, reject) {
+          var reader = new FileReader();
+          reader.onload = function() { resolve(reader.result); };
+          reader.onerror = function() { reject(new Error("업로드 파일을 읽지 못했습니다.")); };
+          reader.readAsArrayBuffer(block);
+        });
+        var bytes = new Uint8Array(buffer);
+        for (var index = 0; index < bytes.length; index += 1) {
+          crc = table[(crc ^ bytes[index]) & 0xFF] ^ (crc >>> 8);
+        }
+        bytes = null;
+        buffer = null;
+        await sleep(0);
       }
       return ((crc ^ 0xFFFFFFFF) >>> 0).toString(16).padStart(8, "0");
     }
@@ -2386,6 +2552,9 @@ def build_ahn_page() -> str:
         "업로드 세션 생성을 다시 시도하는 중입니다."
       );
       var uploadedBytes = 0;
+      if (selection.supported.length > (session.maxFileCount || TEM_MAX_FILES)) {
+        throw new Error("서버 파일 수 한도를 초과했습니다. 묶음을 나누어 업로드하세요.");
+      }
       for (var fileIndex = 0; fileIndex < selection.supported.length; fileIndex += 1) {
         var item = selection.supported[fileIndex];
         var file = item.file;
@@ -2417,7 +2586,7 @@ def build_ahn_page() -> str:
       }
       setUploadProgress(100, "raw 파일 업로드 완료. 무결성 및 암호화 여부를 검사하는 중입니다.", true, false);
       return requestJsonPostWithRetry(
-        "/api/v1/tem/upload-sessions/" + encodeURIComponent(session.uploadId) + "/complete",
+        "/api/v1/tem/upload-sessions/" + encodeURIComponent(session.uploadId) + "/complete?defer_validation=true",
         4,
         "보고서 작업 접수 응답을 다시 확인하는 중입니다."
       );
@@ -2696,7 +2865,7 @@ async def upload_tem_chunk(
 
 
 @router.post("/api/v1/tem/upload-sessions/{upload_id}/complete", response_class=JSONResponse, tags=["tem"])
-def complete_tem_upload_session(request: Request, upload_id: str) -> JSONResponse:
+def complete_tem_upload_session(request: Request, upload_id: str, defer_validation: bool = Query(False)) -> JSONResponse:
     _cleanup_old_jobs()
     existing_job = _job_for_completed_upload(upload_id)
     if existing_job is not None:
@@ -2707,7 +2876,23 @@ def complete_tem_upload_session(request: Request, upload_id: str) -> JSONRespons
             experiment_code="TEM",
         )
         return JSONResponse(_job_payload(existing_job))
-    session = _get_upload_session(upload_id)
+    try:
+        session = _get_upload_session(upload_id)
+    except ApiException:
+        # Another complete request may have moved the session between lookups.
+        existing_job = _job_for_completed_upload(upload_id)
+        if existing_job is not None:
+            return JSONResponse(_job_payload(existing_job))
+        raise
+    with session.lock:
+        existing_job = _job_for_completed_upload(upload_id)
+        if existing_job is not None:
+            return JSONResponse(_job_payload(existing_job))
+        return _complete_tem_upload_session(request, session, defer_validation=defer_validation)
+
+
+def _complete_tem_upload_session(request: Request, session: AhnUploadSession, *, defer_validation: bool) -> JSONResponse:
+    upload_id = session.upload_id
     request.state.error_project = "TEM"
     request.state.error_source_paths = [session.input_root]
     completed_files = [state for state in session.files.values() if state.completed]
@@ -2744,7 +2929,9 @@ def complete_tem_upload_session(request: Request, upload_id: str) -> JSONRespons
             retryable=True,
             details={"files": storage_mismatches},
         )
-    _validate_ahn_upload_files(session.input_root)
+    if not defer_validation:
+        with _ahn_processing_slots:
+            _validate_ahn_upload_files(session.input_root)
     job = _submit_ahn_job(
         session.input_root,
         session.work_dir,
@@ -2753,7 +2940,9 @@ def complete_tem_upload_session(request: Request, upload_id: str) -> JSONRespons
         getattr(request.app.state, "database", None),
         app_usage_archive(request.app),
         request_usage_client_context(request),
+        validate_upload=defer_validation,
     )
+    session.finalized = True
     set_usage_context(
         request,
         project="TEM",
@@ -2776,6 +2965,7 @@ def complete_tem_upload_session(request: Request, upload_id: str) -> JSONRespons
 async def analyze_tem(
     request: Request,
     files: list[UploadFile] | None = File(default=None, alias="files"),
+    defer_validation: bool = Query(False),
 ) -> JSONResponse:
     set_usage_context(request, project="TEM", experiment_code="TEM")
     _cleanup_old_jobs()
@@ -2785,7 +2975,11 @@ async def analyze_tem(
     request.state.error_source_paths = [upload_root]
     try:
         await _save_ahn_uploads(files, upload_root)
-        _validate_ahn_upload_files(upload_root)
+        if not defer_validation:
+            def validate():
+                with _ahn_processing_slots:
+                    _validate_ahn_upload_files(upload_root)
+            await run_in_threadpool(validate)
         input_root = _find_ahn_input_root(upload_root)
         job = _submit_ahn_job(
             input_root,
@@ -2795,6 +2989,7 @@ async def analyze_tem(
             getattr(request.app.state, "database", None),
             app_usage_archive(request.app),
             request_usage_client_context(request),
+            validate_upload=defer_validation,
         )
     except Exception:
         request.state.error_cleanup_paths = [work_dir]
