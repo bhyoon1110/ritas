@@ -37,6 +37,75 @@ npm test
 
 ## 검증 범위와 한계
 
+### 실제 Windows XP VM 실기 검증 (2026-10-10)
+
+코드 기준 `8bb3b68`에서 Windows XP Professional SP3 **32비트**를 실제로 부팅하고,
+Chrome **49.0.2623.75**와 Supermium **150 R2 / 150.0.7871.255(32비트)** 바이너리로
+시험했다. UA만 바꾼 모의 시험과 다르다. 환경은 Apple Silicon Mac의 QEMU 11.1.1/TCG,
+논리 CPU 1개·RAM 2GB·1024×768이며, 별도 FastAPI 서버와 임시 MariaDB를 사용했다.
+분석 입력은 합성 데이터다.
+
+| 실제 XP에서 확인한 항목 | Chrome 49 | Supermium 150 |
+| --- | --- | --- |
+| 가입·로그인·한국어 화면 표시 | 통과 | 통과 |
+| FTIR DPT 2개 분석, 민감도 0에서 피크 숨김·민감도 복원 | 통과 | 통과 |
+| 실제 마우스 Y 드래그의 축 범위 유지, Crop 진입 시 Y 이동 해제 | 통과 | 통과 |
+| PNG 저장 후 XP 기본 뷰어로 피크 정보·좌측 상단 샘플 범례 확인 | 통과 | 통과 |
+| FTIR 보고서 ZIP 생성·실제 다운로드 | 통과 | 통과 |
+| 약 30MiB TEM ZIP을 2MiB씩 15개 조각으로 전송 | 통과 | 통과 |
+| TEM 3장·STEM 2장 반영, PPTX 포함 ZIP 다운로드 | 통과 | 통과 |
+| 계정 이름 저장, VOC 등록→관리자 조치→작성자 확인 | 통과 | 통과 |
+| Raman/XRD 초기 화면 전환(분석 시험은 아님) | 통과 | 통과 |
+| 자산 선택 | Chrome 49 호환 자산 | 네이티브 최신 자산, 호환 번들 없음 |
+
+두 브라우저에서 XP 디스크에 저장한 FTIR/TEM ZIP **4개 모두**를 서버가 생성한 원본과
+XP의 `fc /b`로 비교하여 바이트 단위 일치를 확인했다. 원본 ZIP의 전체 멤버 CRC도
+통과했다. FTIR PNG는 두 브라우저 모두 실제 저장 파일을 XP 기본 이미지 뷰어에서 열었다.
+Chrome 49는 시험 도구 보정 후 그래프와 TEM/VOC 단계를 나누어 재실행한 결과다.
+실험 화면에서 수집된 미처리 JavaScript 예외는 0개였다. 최종 전체 회귀는 Python
+**612 passed**(기존 deprecation warning 16개), JavaScript **22 passed**였다.
+
+실제 Supermium은 기본 UA를 Windows 10/Win64/Chrome 150으로 표시했다. 그 상태에서도
+최신 자산과 자원 절약 정책(`lowResource=true`, 2MiB/200개)이 함께 선택됐다.
+`?browser=supermium` 선택, 다른 실험 페이지로 설정 유지, `?browser=auto` 해제도
+실제 브라우저에서 통과했으며, 수동 식별 때문에 2MiB 정책이 달라지지 않았다.
+Supermium의 `chrome://version`에서 실제 OS는 Windows XP(Build 2600)로 확인했다.
+시험 실행 배치에는 추가하지 않았지만 실제 명령줄에는 `--no-sandbox`가 표시됐다.
+따라서 브라우저 샌드박스가 활성화된 보안 시험으로 간주하지 않으며, 이 기능 시험이
+구형 OS나 브라우저의 보안 보호를 보장하는 것은 아니다.
+
+**안정성 미해결 사항:** Chrome 49 기능 시험 완료 후 저장 PNG를 브라우저 파일 URL로
+열려던 단계에서 XP VM이 한 차례 재시작됐다. XP Save Dump 이벤트 1001에는
+bugcheck `0x1000000A`가 기록됐다. 원인은 확정하지 않았으며, 웹앱 오류가 아니라거나
+해결됐다고 단정하지 않는다. 재부팅 후 같은 PNG는 XP 기본 뷰어에서 정상 표시됐고,
+이후 Supermium 기능 시험은 완료됐다. 따라서 기능 통과를 XP 장시간 안정성 보장으로
+해석하지 않는다.
+
+외부 인터넷은 차단하고 테스트 서버만 연결했다. 게스트 내부 루프백 디버깅을 사용했고
+방화벽·인증서 검증을 끄거나 외부 디버그 포트를 개방하지 않았다. 이번 실기는 **HTTP**의
+격리 서버 시험으로, 운영 HTTPS/인증서·POSCO SSO·LIMS·실제 LLM·현장 원본 데이터·
+수GB 업로드는 검증하지 않았다. XP 커널 재시작과 실제 장비의 메모리/드라이버 조건은
+현장 확인 항목으로 남는다. 아래 공통 검증 절은 앞서 수행한 모의 시험을 별도로 기록한다.
+
+VM 디스크, 브라우저, 합성 입력, 화면·JSON 결과, `final-regression.xml`과 시험 DB의
+`test-db-snapshot.sql`은 저장소 밖의
+`/Volumes/DATA/VMs/rist-xp-test.eVtP54/`에 보관했다. OS/브라우저 바이너리나 VM 디스크는
+Git에 넣지 않는다. 같은 Mac에서 재실행할 때 테스트 DB의 기동 완료를 기다린 뒤
+별도 터미널에서 서버와 VM을 실행한다:
+
+```bash
+docker start rist-xp-test-db
+sh /Volumes/DATA/VMs/rist-xp-test.eVtP54/run-server.sh
+# 다른 터미널
+sh /Volumes/DATA/VMs/rist-xp-test.eVtP54/run-xp.sh
+open vnc://127.0.0.1:5931
+```
+
+VM의 접속 주소는 `http://10.0.2.100:43310`이다. DB는 tmpfs이므로 컨테이너를 재시작하면
+합성 회원/VOC가 초기화되며, 격리 서버의 bootstrap ID로 다시 가입해야 한다. 운영 계정과
+데이터를 사용하지 않는다. 이 환경은 해당 Mac의 QEMU/Docker 및 보존된 Python 런타임에
+의존한다. XP는 설치 직후 정품 인증 유예 상태로 시험했으며 인증 우회는 하지 않았다.
+
 ### Supermium 및 저사양 PC
 
 Supermium 150은 네이티브 최신 화면을 사용한다. 구형 폴리필로 fetch/Pointer Events/Grid를
