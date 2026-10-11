@@ -9,3 +9,8 @@ html.rist-chrome49 body{font-family:Arial,"Malgun Gothic","Noto Sans KR",sans-se
 .rist-chrome49 .rist-shape-style-grid>*,.rist-chrome49 .rist-axis-control-grid>*{display:inline-block;vertical-align:middle;margin:4px;max-width:100%}
 .rist-chrome49 input,.rist-chrome49 select,.rist-chrome49 textarea{max-width:100%}
 .rist-chrome49 .ahn-progress-bar,.rist-chrome49 .ftir-progress-bar{min-height:8px}
+/* The wide, single-row toolbars need horizontal gaps, not vertical reserves. */
+@media (min-width:1441px){
+  .rist-chrome49 #peak-plot .rist-plot-control-row *,
+  .rist-chrome49 #raman-plot .rist-plot-control-row *{margin-bottom:0!important}
+}

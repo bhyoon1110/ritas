@@ -1357,6 +1357,10 @@ body {
   min-height: 540px;
   height: calc(100vh - 170px) !important;
 }
+#peak-plot .rist-plot-control-row {
+  top: 34px !important;
+  /* Override the shared controls loaded later; keep clear of the plot. */
+}
 #peak-plot .rist-ftir-tools-toggle,
 #peak-plot .rist-ftir-tools-head {
   display: none;

@@ -1360,6 +1360,10 @@ body { overflow-x: hidden; }
   min-height: 540px;
   height: calc(100vh - 170px) !important;
 }
+#raman-plot .rist-plot-control-row {
+  top: 34px !important;
+  /* Override the shared controls loaded later; keep clear of the plot. */
+}
 @media (max-width: 760px) {
   .raman-app-bar {
     align-items: flex-start;

@@ -292,6 +292,7 @@ def test_ftir_workspace_contains_upload_and_editor_controls() -> None:
     assert 'gd.dispatchEvent(new CustomEvent("rist-open-edit-tool"))' in page
     assert 'new CustomEvent("rist-ftir-tools-toggle"' in page
     assert "--rist-ftir-tool-panel-alpha" in page
+    assert "#peak-plot .rist-plot-control-row {\n  top: 34px !important;" in page
     assert "@media (max-width: 1440px)" in page
     assert "z-index: 56" in page
     assert "z-index: 55" in page

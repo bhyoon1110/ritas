@@ -315,6 +315,7 @@ def test_raman_workspace_contains_upload_controls() -> None:
     assert 'gd.dispatchEvent(new CustomEvent("rist-open-edit-tool"))' in page
     assert 'new CustomEvent("rist-raman-tools-toggle"' in page
     assert "setOpen(!gd.classList.contains" in page
+    assert "#raman-plot .rist-plot-control-row {\n  top: 34px !important;" in page
     assert "gd._ristRamanRatioMode && gd.contains(ev.target)" in page
     assert "gd._ristRamanRatioMode = ratioMode" in page
     assert "ratioMode = false" in page

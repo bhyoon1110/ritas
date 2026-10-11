@@ -79,6 +79,15 @@ def test_third_party_and_css_sources_match_build_inputs():
     assert hashlib.sha256(plotly_asset_path().read_bytes()).hexdigest() == assets['plotlySourceSha256']
 
 
+@pytest.mark.parametrize("plot_id", ["peak-plot", "raman-plot"])
+def test_wide_spectrum_toolbar_does_not_stack_legacy_gap_margins(plot_id):
+    css = (ASSET_ROOT / manifest()["css"]).read_text(encoding="utf-8")
+    rules = re.search(r"@media\s*\(min-width:\s*1441px\)\s*\{(.*?)\n\}", css, re.S)
+    assert rules is not None
+    assert f".rist-chrome49 #{plot_id} .rist-plot-control-row *" in rules[1]
+    assert "margin-bottom:0!important" in rules[1]
+
+
 def test_stale_application_script_is_not_silently_sent_to_old_browser():
     with pytest.raises(ValueError, match="stale"):
         compatible_html('<html><head></head><body><script>async function newUnbuiltCode(){}</script></body></html>')
