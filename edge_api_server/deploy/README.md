@@ -66,6 +66,141 @@ mysql --default-character-set=utf8mb4 \
 운영 DB에서는 재생성 DDL을 실행하지 말고 별도 `ALTER TABLE` migration을 적용한다.
 재생성 전에 필요한 큐 이력을 반드시 백업한다.
 
+### 폐쇄망 HTTPS 자동 설정
+
+기존 Edge 설치 후 [`setup_https.sh`](setup_https.sh)로 Nginx HTTPS 앞단을 추가할 수
+있다. 기본 주소는 `https://10.10.1.31`, Python은 `127.0.0.1:8000`에만 바인딩한다.
+**API 재시작과 실험 PC/C# 접속 주소 변경이 필요하므로 진행 중인 업로드가 없는
+유지보수 시간에 적용한다.** worker, Spring, DB, LLM은 재시작하지 않는다.
+
+스크립트는 인터넷 접속, 패키지 다운로드, 방화벽 변경을 하지 않는다. Ubuntu에
+`nginx`, `openssl` 1.1.1 이상, `curl`, `iproute2`(`ss`), `util-linux`(`flock`),
+systemd가 있어야 한다. 없으면 동일 Ubuntu 버전/CPU 아키텍처의 의존 패키지를
+사내 패키지 서버 또는 USB로 먼저 설치한다. 443이 다른 Spring/Nginx 서비스에
+이미 사용되면 기존 서비스를 변경하지 않고 중단한다. 필요한 경우
+`--https-port 8443`을 지정하고 클라이언트 주소·방화벽도 그 포트로 맞춘다.
+
+#### A. 사내 인증서 사용 (권장)
+
+```bash
+cd /home/rist/ritas
+
+# 기본 동작은 계획만 출력하며 파일/서비스를 변경하지 않는다.
+bash edge_api_server/deploy/setup_https.sh plan
+
+# Edge에서 키/CSR 생성. 키는 서버 밖으로 전달하지 않는다.
+sudo bash edge_api_server/deploy/setup_https.sh csr --host 10.10.1.31
+```
+
+`/etc/rist/tls/edge.csr`만 사내 발급기관에 전달한다. 서버 인증서는 **SAN에
+`IP:10.10.1.31`**, 서버 인증 용도를 포함해야 한다. DNS 이름을 사용할 때는
+`--host`에 그 이름을 지정하고 DNS SAN으로 발급한다. 서버 인증서부터 중간 인증서
+순서의 PEM 체인과 **루트 CA 인증서 한 개의 PEM 파일**을 받는다. CA의 폐기 확인
+정책(CRL/OCSP)도 폐쇄망에서 충족 가능한지 확인한다.
+
+```bash
+# 발급받은 공개 인증서만 USB에서 반입한다. 아래 파일명은 예시다.
+sudo bash edge_api_server/deploy/setup_https.sh apply \
+  --host 10.10.1.31 \
+  --cert /media/usb/edge-chain.pem \
+  --ca-cert /media/usb/root-ca.crt
+
+# 설치된 HTTPS/프록시를 다시 검사한다.
+sudo bash edge_api_server/deploy/setup_https.sh check --host 10.10.1.31
+```
+
+기존 키를 이용한다면 `csr`를 실행하지 않고 `apply --key /절대경로/edge.key`를
+지정한다. 갱신 시에는 새 디렉터리에서 CSR을 만들고 새 키/체인으로 `apply`한다.
+`init-ca`, `csr`, `sign`은 기존 키/CSR/발급 인증서를 덮어쓰지 않는다.
+
+#### B. 사내 CA가 없는 경우: 별도 Linux 관리 PC에서 내부 CA 발급
+
+보안 담당자의 승인을 받은 내부 CA만 사용한다. **CA 개인키를 Edge나 Git, 실험실
+PC에 복사하지 않는다.** 아래 CA 작업은 별도의 Linux 관리 PC에서 실행한다.
+명령은 OpenSSL이 CA 암호를 직접 질문한다. 비대화형 발급은 root/관리자만 읽는
+권한 `600` 또는 `400` 파일을 `--ca-pass-file /절대경로/암호파일`로 지정한다.
+암호/개인키를 명령행 인수 값, 채팅, Git에 넣지 않는다.
+
+```bash
+# 별도 관리 PC: 암호화된 CA 개인키 + 10년 루트 인증서 (최초 한 번)
+sudo bash setup_https.sh init-ca --ca-dir /opt/rist-offline-ca
+
+# Edge에서 A의 csr 명령 실행 후, 공개 CSR만 관리 PC로 옮긴다.
+# 관리 PC: 서버 인증서 발급 (기본 365일, SAN/서버 용도 포함)
+sudo bash setup_https.sh sign \
+  --ca-dir /opt/rist-offline-ca \
+  --host 10.10.1.31 \
+  --csr /media/usb/edge.csr \
+  --out /var/tmp/rist-edge.crt
+```
+
+발급된 `rist-edge.crt`와 `/opt/rist-offline-ca/root-ca.crt` 공개 파일만 Edge로
+옮겨 A의 `apply --cert ... --ca-cert ...`를 실행한다. 생성된 CA 개인키는
+암호화되며 발급 임시 디렉터리도 권한 700이다. CA/발급 이력은 관리 PC에서
+보안 정책에 따라 백업·보관한다. 자동 갱신 스케줄러는 포함하지 않는다.
+
+#### 자동 처리와 복원
+
+- 인증서 만료까지 30일 이상, SAN 주소, 서버 인증 용도, CA 체인, 키 일치를 검사한다.
+- `edge.env`를 실행하지 않고 HTTPS/보안 쿠키/로그인/바인드 주소/포트/프록시 신뢰
+  6개 키만 갱신한다. 기존 DB 비밀번호, SSO URL/SID/CA, 저장소, LLM 값과 파일
+  소유자·권한은 보존한다. 백업 내용을 로그에 출력하지 않는다.
+- Nginx 설정은 별도 관리 파일에만 기록한다. 기본 업로드 요청 한도 2100MiB,
+  본문/프록시 대기 900초, 요청 버퍼링 해제로 기존 청크 전송을 유지한다.
+  앱 자체의 업로드·압축 해제 한도는 변경하지 않는다.
+- 신뢰할 프록시는 `127.0.0.1`만 허용한다. 사용자 제공 전달 헤더는 Nginx에서
+  덮어쓴다. 공개 프록시의 보고서 재생성 제어 API는 403으로 차단하며 같은 호스트의
+  Spring은 내부 `127.0.0.1:8000`을 사용한다. 이 차단은 앱 자체의 M2M 인증 구현을
+  대신하지 않는다.
+- 설정 문법뿐 아니라 실제 HTTPS `/health`, 내부 API의 loopback 바인드,
+  인증정보 없는 SSO 요청의 HTTPS 인식(401/403/422, **426은 실패**)을 검사한다.
+  실패하면 이전 파일과 Nginx 실행·활성화 상태를 자동 복원한다.
+- `/var/backups/rist-https/backup.*`에는 **DB 비밀번호·서버 키**도 포함된다.
+  root 소유/권한 700으로 보관하며 공개 인증서 배포 폴더에 복사하지 않는다.
+  명시적 rollback 직전 상태도 추가 백업하므로 복원 작업 자체도 되돌릴 수 있다.
+
+```bash
+# apply 출력에 표시된 정확한 백업 디렉터리로 복원한다.
+sudo bash edge_api_server/deploy/setup_https.sh rollback \
+  --backup /var/backups/rist-https/backup.XXXXXXXX
+```
+
+최초 설치 복원에서는 새로 만든 관리 파일만 제거하고 기존 파일을 돌려놓는다.
+발급 원본 및 적용/복원 백업은 보존한다. 심볼릭 링크 경로, Git 내부 개인키/백업,
+다른 Nginx 설정 파일, 충돌하는 포트에는 자동 적용하지 않는다.
+TLS/CA/백업 디렉터리가 이미 있으면 실행 사용자 소유·권한 700이어야 한다.
+공용 디렉터리를 자동 chmod하지 않으며 `/etc/ssl` 같은 시스템 PKI 루트는 대상으로
+허용하지 않는다. 전용 디렉터리 경로를 사용한다.
+
+#### 별도로 필요한 현장 작업
+
+1. 실험 PC에서 Edge의 TCP 443(또는 지정 포트)으로 통신을 허용한다. 스크립트는
+   UFW/망 방화벽 규칙을 변경하지 않는다.
+2. `/etc/rist/tls/client-ca.cer` **공개 루트 인증서만** 실험실 PC로 배포한다.
+   발급기관/Edge 출력의 SHA-256 지문을 대조한 뒤 Windows의 신뢰할 수 있는 루트
+   인증기관 저장소에 등록한다. 중간 CA가 필요하면 중간 인증기관 저장소에 등록한다.
+   서버 개인키·CA 개인키·`edge.env`·백업은 배포하지 않는다.
+3. Supermium 북마크와 C# API Base URL을 `https://10.10.1.31`로 바꾼다.
+   8000의 외부 접속은 더 이상 허용되지 않는다. C#의 TLS/인증서 신뢰도 별도 확인한다.
+4. 실제 XP/Supermium에서 경고 없는 TLS 접속, 로그인/가입, 실제 SSO, 네 실험의
+   업로드/보고서/다운로드를 검증한다. OS/PC 시간도 확인한다. 인증서 검증을 끄거나
+   TLS 1.0/1.1로 낮추지 않는다.
+5. Edge→SSO TCP 443, Edge→LIMS 지정 포트, SID/출발지 IP 등록과 실제 LIMS 전송은
+   별도 작업이다. 스크립트 성공은 실제 SSO/LIMS 연동 성공을 의미하지 않는다.
+
+개발 검증은 운영 서버가 아닌 일회용 Ubuntu 컨테이너에서
+`python3 -m pytest edge_api_server/deploy/tests/test_setup_https.py`로 수행한다.
+테스트는 root 권한과 `openssl`, `nginx`, `curl`, `iproute2`, `util-linux`, pytest가
+필요하며 임시 경로/테스트 서비스 대역만 사용한다. 운영 Edge에서 테스트하지 않는다.
+
+인터넷이 있는 개발 PC에서는 다음과 같이 재현할 수 있다. 패키지 다운로드는 **테스트
+이미지 빌드에서만** 일어나며 운영 설치 스크립트는 다운로드하지 않는다.
+
+```bash
+docker build -t rist-https-tests edge_api_server/deploy/tests
+docker run --rm --mount type=bind,source="$PWD",target=/src,readonly rist-https-tests
+```
+
 기존 `report_runs`와 전송 이력을 유지하면서 보고서 파일 관리 컬럼,
 `report_artifacts`, `report_retention_policies`를 추가하려면 다음 비파괴
 마이그레이션을 실행한다. 이미 `report_artifacts`가 있어도 반복 실행할 수 있다.

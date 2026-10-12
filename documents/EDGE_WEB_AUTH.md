@@ -139,6 +139,13 @@ Java 예제에 포함된 trust-all `X509TrustManager`와 무조건 `true`인
 리버스 프록시에서 종료한 뒤 `RIST_EDGE_PUBLIC_BASE_URL=https://...`와
 `RIST_AUTH_COOKIE_SECURE=true`를 함께 적용한다.
 
+폐쇄망 자동 구성은 [`setup_https.sh`](../edge_api_server/deploy/setup_https.sh)를
+사용할 수 있다. 사내 인증서 또는 별도 관리 PC에서 발급한 내부 CA 인증서를 적용하고,
+기존 설정 백업·Nginx 프록시·보안 쿠키·실제 TLS/HTTPS 전달 검사·실패 시 복원을
+수행한다. 패키지를 다운로드하거나 방화벽·실험 PC의 CA 신뢰를 자동 변경하지 않는다.
+[실행 순서와 현장 확인 항목](../edge_api_server/deploy/README.md#폐쇄망-https-자동-설정)을
+참고한다. HTTPS 구성 성공과 실제 SSO/LIMS 인증 성공은 별도로 검증한다.
+
 ## 7. 환경 설정
 
 서버별 값은 `/home/rist/ritas/edge.env`에서 관리한다.

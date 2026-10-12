@@ -58,6 +58,13 @@ python -m app.report_worker
 
 자세한 내용은 [Edge API README](edge_api_server/README.md)를 참고한다.
 
+폐쇄망 Edge의 HTTPS는 [자동 설정 스크립트](edge_api_server/deploy/setup_https.sh)로
+구성할 수 있다. 사내 인증서 적용 또는 별도 관리 PC의 내부 CA/CSR 발급, 기존 설정
+백업, Nginx/보안 쿠키 설정, 실제 TLS 검사, 실패 시 복원을 지원한다.
+기본 주소는 `https://10.10.1.31`이며 Python의 8000 포트는 내부 전용으로 전환한다.
+패키지 반입·방화벽 허용·실험 PC/C#의 주소 및 CA 신뢰 등록은 별도이며,
+[HTTPS 배포 절차](edge_api_server/deploy/README.md#폐쇄망-https-자동-설정)를 따른다.
+
 ## 웹 브라우저 지원 정책
 
 - 주 지원·최적화 대상: 보안 지원 중인 OS의 최신 안정 버전 Chrome.
