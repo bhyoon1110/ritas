@@ -1,4 +1,4 @@
-"""Chrome-first support guidance for interactive web pages, not report exports.
+"""Browser support guidance for interactive web pages, not report exports.
 
 This is advisory, not authentication or a browser allowlist. Keep the detector
 ES5-compatible so a broken modern application script cannot hide the warning.
@@ -10,7 +10,7 @@ import re
 
 
 BROWSER_POLICY_TEXT = (
-    "권장 환경: 보안 지원 중인 운영체제의 최신 Chrome. "
+    "실험실 기준 브라우저: Supermium 144. 최신 Chrome·Edge와의 호환성도 유지합니다. "
     "Supermium 등 최신 Chromium 엔진은 기본 화면을, Chrome 49.0.2623.75~109 및 구형 Edge는 호환 화면을 사용합니다. "
     "XP와 구형 브라우저는 보안 지원이 종료되었으므로 격리된 실험망에서만 사용하세요. Internet Explorer는 지원하지 않습니다."
 )

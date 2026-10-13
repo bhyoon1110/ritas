@@ -118,13 +118,13 @@ def test_detector_is_harmless_if_notice_nodes_are_missing():
     assert _detect("MSIE 8.0", no_nodes=True) == {"display": "none", "reason": ""}
 
 
-@pytest.mark.parametrize("options", [
-    {"ua": "Chrome/150.0 Supermium/150.0"},
-    {"ua": "Chrome/150.0", "brands": [{"brand": "Supermium", "version": "150"}]},
-    {"ua": "Chrome/150.0", "search": "?browser=supermium"},
-    {"ua": "Chrome/150.0", "preference": "supermium"},
-    {"ua": "Chrome/150.0", "search": "?browser=supermium", "blockedStorage": True},
-])
+@pytest.mark.parametrize("options", [options for version in (144, 150) for options in (
+    {"ua": f"Chrome/{version}.0 Supermium/{version}.0"},
+    {"ua": f"Chrome/{version}.0", "brands": [{"brand": "Supermium", "version": str(version)}]},
+    {"ua": f"Chrome/{version}.0", "search": "?browser=supermium"},
+    {"ua": f"Chrome/{version}.0", "preference": "supermium"},
+    {"ua": f"Chrome/{version}.0", "search": "?browser=supermium", "blockedStorage": True},
+)])
 @pytest.mark.parametrize("memory,cores,low", [(8, 8, False), (4, 8, True), (8, 2, True), (None, 8, True), (8, None, True)])
 def test_supermium_native_profile_uses_hardware_policy(options, memory, cores, low):
     result = _detect(**options, profile=True, memory=memory, cores=cores)
@@ -135,14 +135,18 @@ def test_supermium_native_profile_uses_hardware_policy(options, memory, cores, l
     assert "필수 브라우저 기능이 없습니다" not in result["reason"]
 
 
-def test_masked_supermium_is_not_misidentified_and_unknown_memory_is_conservative():
-    result = _detect("Windows NT 10.0; Chrome/150.0", brands=[{"brand": "Google Chrome", "version": "150"}], profile=True)
+@pytest.mark.parametrize("version", [144, 150])
+def test_masked_supermium_is_not_misidentified_and_unknown_memory_is_conservative(version):
+    result = _detect(f"Windows NT 10.0; Chrome/{version}.0", brands=[{"brand": "Google Chrome", "version": str(version)}], profile=True)
     assert result["profile"]["browser"] == "modern"
     assert result["profile"]["lowResource"] is True
     assert result["display"] == "none"
 
 
-@pytest.mark.parametrize("ua", ["Chrome/150.0", "Windows NT 5.1; Chrome/150.0", "Windows NT 6.1; Chrome/150.0 Supermium/150.0"])
+@pytest.mark.parametrize("ua", [ua for version in (144, 150) for ua in (
+    f"Chrome/{version}.0", f"Windows NT 5.1; Chrome/{version}.0",
+    f"Windows NT 6.1; Chrome/{version}.0 Supermium/{version}.0",
+)])
 @pytest.mark.parametrize("memory,cores,low", [
     (2, 8, True), (4, 8, True), (8, 2, True), (8, 4, False), (8, 8, False),
     (None, 8, True), (8, None, True), (0, 8, True), (8, 0, True),
@@ -198,7 +202,9 @@ def test_notice_is_inserted_once_before_application_scripts_and_does_not_overlay
     assert with_browser_support_notice('{"status":"ok"}') == '{"status":"ok"}'
 
 
-def test_login_signup_keep_script_free_fallback_and_display_chrome_first_policy():
+def test_login_signup_keep_script_free_fallback_and_display_lab_browser_policy():
+    assert "실험실 기준 브라우저: Supermium 144" in BROWSER_POLICY_TEXT
+    assert "최신 Chrome·Edge" in BROWSER_POLICY_TEXT
     for html in (_login_page("/"), _signup_page()):
         assert BROWSER_POLICY_TEXT in html
         assert '<script' not in html

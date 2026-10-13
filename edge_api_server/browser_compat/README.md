@@ -5,6 +5,23 @@
 프로파일로 분류한다. 그 외 브라우저는 기존 화면을 사용한다. IE 지원 구현은 아니다.
 UA는 자산 선택에만 사용하며 권한 판단에는 사용하지 않는다.
 
+## 실험실 우선 검증 기준
+
+현장 XP 장비의 기준 브라우저는 **Supermium 144 안정판**이다. 재현 기준은
+**144.0.7559.256 R5 32비트**이며, 현장의 세부 빌드가 다르면 같은 빌드로도 확인한다.
+[공식 144 R5 릴리스](https://github.com/win32ss/supermium/releases/tag/v144-r5)의
+`supermium_144_32_nonsetup.zip` SHA-256은 다음과 같다.
+
+```text
+17acfcdf89ea651905053b50b0fce5a28db19cb2c69ed5579c7b177806ed6d31
+```
+
+144는 네이티브 화면을 사용한다. 150만을 허용하는 분기나 최신 버전으로 위장해야 하는
+조건은 없으며, 144/150·Chrome으로 표시되는 경우·수동 식별·Client Hints와 자원 정책을
+회귀 테스트에 함께 포함한다. TEM 파일 목록 3,000개 보존, 2MiB/4MiB 순차 전송과
+CRC 재시도도 두 버전의 모의 환경에서 검사한다. 브라우저 버전별 검사와 실제 XP 실기
+결과는 구분하며, 최신 Chrome·Edge와 Chrome 49의 기존 호환 경로를 유지한다.
+
 ## 구조와 배포
 
 - 서버의 HTML 화면에만 호환 코드를 적용한다. JSON API, 업로드/다운로드 스트림,
@@ -36,6 +53,25 @@ npm test
 서버에는 Git pull/오프라인 bundle 적용 후 API 재시작으로 반영된다.
 
 ## 검증 범위와 한계
+
+### Supermium 144 우선 검증 보완 (2026-10-13)
+
+격리 MariaDB를 포함한 Python 회귀 **704 passed**, TEM/VOC/호환 런타임 JavaScript
+**26 passed**를 확인했다. 144/150의 자산 선택·인증 화면·자원 정책과 저사양/고사양
+TEM 순차 전송·목록 제한·CRC 재시도를 포함한다. 이는 실제 XP 기능 시험과 다르다.
+
+공식 SHA-256이 일치하는 144 R5 포터블을 기존 XP SP3 32비트 디스크의 별도 QCOW2
+오버레이에 준비했다. CPU 1개·RAM 2GB·1024×768이며, 외부 인터넷은 차단하고 임시
+서버만 연결했다. 실제 요청은 `Windows NT 10.0; Win64; x64; Chrome/144.0.0.0`으로
+표시됐고 로그인 HTML은 200/`modern` 자산으로 전달됐다. 그러나 기본 실행에서 브라우저
+창 내용이 보이지 않는 현상을 관찰했고, Mac이 다시 잠겨 화면 조작과 추가 진단이 중단됐다.
+`--disable-gpu` 진단은 완료하지 못했다. 유사한 [상위 프로젝트 보고](https://github.com/win32ss/supermium/issues/1953)가
+있지만 동일 원인이나 해결 여부는 확정하지 않는다.
+
+따라서 **144의 실제 로그인·FTIR 조작/PNG·TEM 30MiB 업로드/보고서 다운로드는 아직
+통과 처리하지 않는다.** 아래 2026-10-10의 150 실기 기록을 144 결과로 대신하지 않는다.
+시험 자료는 저장소 밖 `/Volumes/DATA/VMs/rist-supermium144.yFyLWq/`에 보존하며,
+브라우저 바이너리·VM·합성 계정은 운영 저장소나 운영 DB에 넣지 않는다.
 
 ### 실제 Windows XP VM 실기 검증 (2026-10-10)
 
@@ -108,7 +144,7 @@ VM의 접속 주소는 `http://10.0.2.100:43310`이다. DB는 tmpfs이므로 컨
 
 ### Supermium 및 저사양 PC
 
-Supermium 150은 네이티브 최신 화면을 사용한다. 구형 폴리필로 fetch/Pointer Events/Grid를
+Supermium 144/150은 네이티브 화면을 사용한다. 구형 폴리필로 fetch/Pointer Events/Grid를
 교체하지 않는다. 명시적인 Supermium UA/Client Hints 브랜드는 식별하되, 기본 설정에서
 Chrome/Windows 10으로 표시될 수 있으므로 UA만으로 모든 Supermium을 식별할 수는 없다.
 ([공식 Client Hints 구현](https://github.com/win32ss/supermium/blob/main/client_hints.patch),
@@ -174,7 +210,8 @@ ZIP의 8개 조각 업로드·보고서 저장, 계정 수정, VOC 등록·조�
 특히 Y 이동 중 Plotly의 마우스 확대가 중복 실행되지 않고 축 범위가 유지되는지 확인했다.
 외부 LLM·실제 POSCO SSO·LIMS에 연결하지 않은 합성 데이터 검증이다.
 
-현장 확인은 **실제 XP + Chrome 49.0.2623.75**에서 별도로 해야 한다:
+현장 확인은 **실제 XP + 설치된 Supermium 144 세부 빌드**를 우선으로 하며,
+Chrome 49.0.2623.75 호환 경로를 사용하는 장비도 별도로 확인한다:
 
 1. HTTPS/인증서 연결, 가입·승인·로그인·로그아웃.
 2. 실제 FTIR DPT의 분석, 피크/범례 편집, Crop/Y 이동, 이미지/보고서 다운로드.

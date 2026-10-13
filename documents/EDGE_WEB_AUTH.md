@@ -269,17 +269,19 @@ Windows 7용 Edge는 Microsoft의 지원 이력상 109가 마지막 버전이다
 이번 장애를 JavaScript 미지원으로 단정해서는 안 된다.
 참고: [Microsoft Edge 지원 운영체제](https://learn.microsoft.com/en-us/deployedge/microsoft-edge-supported-operating-systems).
 
-## 11. Chrome 중심 지원 및 출시 검증
+## 11. 실험실 브라우저 지원 및 출시 검증
 
 > Chrome 49 호환 모드 추가: XP 장비에는 Chrome 49.0.2623.75를 기준으로 호환 자산을
 > 제공한다. Chromium 49~109와 EdgeHTML 요청에만 ES5/브라우저 API/CSS 폴백을 적용하며
 > 최신 브라우저는 기존 코드로 실행한다. [빌드·배포·현장 검증](../edge_api_server/browser_compat/README.md)
-> 절차를 따른다. 아래 기존 최신 브라우저 권장 정책과 HTTPS/SSO 조건은 유지한다.
+> 절차를 따른다. 최신 브라우저 호환성과 HTTPS/SSO 조건은 유지한다.
 
-최적화·출시 검증의 주 대상은 보안 지원 중인 OS의 최신 안정 버전 Chrome이다.
-Windows 업무 PC는 Windows 11을 권장하며, 최신 Edge에서도 핵심 경로를 확인한다.
+실험실 우선 최적화·출시 검증 기준은 XP SP3 32비트의 Supermium 144 안정판이다.
+재현 기준은 144.0.7559.256 R5 32비트이며 현장 세부 빌드가 다르면 추가 확인한다.
+보안 지원 중인 OS의 최신 Chrome·Edge에서도 핵심 경로를 확인하고,
+Windows 업무 PC는 Windows 11을 권장한다.
 이는 브라우저별로 서로 다른 인증·권한 정책을 적용한다는 의미가 아니다.
-특정 옛 Chrome 버전에 고정하지 않고 배포 검증 시 OS·브라우저·버전·확인 일자를
+기준 버전 지정과 실기 검증 완료는 구분하며, 배포 검증 시 OS·브라우저·버전·확인 일자를
 기록한다. Windows 7의 Chrome 109가 최신 지원 브라우저라는 뜻으로 안내하지 않는다.
 참고: [Chrome 시스템 요구사항](https://support.google.com/chrome/a/answer/7100626?hl=ko).
 
@@ -289,7 +291,9 @@ Windows 업무 PC는 Windows 11을 권장하며, 최신 Edge에서도 핵심 경
 
 ### 구현 범위
 
-- 로그인·가입은 정적인 Chrome 중심 지원 안내와 기존 무스크립트 POST를 유지한다.
+- 로그인·가입은 Supermium 144를 실험실 기준으로 안내하고 기존 무스크립트 POST를 유지한다.
+  메인의 고정된 Chrome 권장 문구는 표시하지 않는다. 최신 Chrome·Edge 호환성과
+  XP Chrome 49의 기존 호환 경로는 함께 유지한다.
 - 첫 화면, FTIR/Raman/XRD/TEM, 계정·회원 관리, 운영·보고서 관리·C# 보고서 검토
   화면에 공통 브라우저 안내를 넣는다.
 - 안내 스크립트는 ES5로 작성한다. IE/구형 Edge, 알려진 구형 Windows,

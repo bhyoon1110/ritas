@@ -7,10 +7,11 @@ from pathlib import Path
 import re
 
 from fastapi import FastAPI
+from fastapi.responses import HTMLResponse
 from fastapi.testclient import TestClient
 import pytest
 
-from app.auth import AuthContext
+from app.auth import AuthContext, _login_page, _signup_page
 from app.browser_compat import ASSET_ROOT, ASSET_PREFIX, browser_profile, compatible_html, install_browser_compat, manifest
 from app.error_archive import _error_feedback_page
 from app.ftir_web import plotly_asset_path
@@ -20,12 +21,14 @@ from app.voc_web import build_voc_page
 
 CHROME49 = "Mozilla/5.0 (Windows NT 5.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/49.0.2623.75 Safari/537.36"
 MODERN = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/150.0.0.0 Safari/537.36"
+SUPERMIUM144 = "Mozilla/5.0 (Windows NT 5.1) Chrome/144.0.7559.256 Safari/537.36"
 
 
 @pytest.mark.parametrize("ua,expected", [
     (CHROME49,"chrome49"), ("Chrome/109.0 Edg/109.0", "chrome49"),
     ("Chrome/42.0 Edge/12.0", "chrome49"), (MODERN,"modern"),
-    ("Chrome/150.0 Edg/150.0", "modern"), ("Chrome/48.0", "modern"),
+    ("Chrome/150.0 Edg/150.0", "modern"), (SUPERMIUM144, "modern"),
+    ("Chrome/48.0", "modern"),
     ("MSIE 8.0; Windows NT 5.1", "modern"), ("Version/18.0 Safari/605.1.15", "modern"),
 ])
 def test_profile_negotiation(ua, expected):
@@ -33,6 +36,10 @@ def test_profile_negotiation(ua, expected):
 
 
 @pytest.mark.parametrize("ua,hints,expected", [
+    (SUPERMIUM144 + " Supermium/144.0", "", "supermium"),
+    (SUPERMIUM144, '"Chromium";v="144", "Supermium";v="144"', "supermium"),
+    (SUPERMIUM144, '"Google Chrome";v="144"', "modern"),
+    (CHROME49, '"Supermium";v="144"', "chrome49"),
     (MODERN + " Supermium/150.0", "", "supermium"),
     (MODERN, '"Chromium";v="150", "Supermium";v="150"', "supermium"),
     (MODERN, '"Google Chrome";v="150"', "modern"),
@@ -42,12 +49,36 @@ def test_supermium_uses_native_assets_without_guessing_masked_brand(ua, hints, e
     assert browser_profile(ua, hints) == expected
 
 
-def test_supermium_native_html_and_cache_negotiation(preview):
-    response = preview.get('/tem', headers={'User-Agent': MODERN, 'Sec-CH-UA': '"Supermium";v="150"'})
+@pytest.mark.parametrize("ua,version", [(SUPERMIUM144, 144), (MODERN, 150)])
+@pytest.mark.parametrize("path", ["/", "/ftir", "/raman", "/xrd", "/tem"])
+def test_supermium_native_html_and_cache_negotiation(preview, ua, version, path):
+    response = preview.get(path, headers={'User-Agent': ua, 'Sec-CH-UA': f'"Supermium";v="{version}"'})
     assert response.status_code == 200
     assert response.headers['x-rist-browser-profile'] == 'supermium'
     assert 'Sec-CH-UA' in response.headers['vary']
     assert ASSET_PREFIX not in response.text
+
+
+@pytest.mark.parametrize("version", [144, 150])
+@pytest.mark.parametrize("path", ["/login", "/signup"])
+def test_supermium_auth_form_templates_use_native_assets(version, path):
+    app = FastAPI()
+    install_browser_compat(app)
+
+    @app.get("/login", response_class=HTMLResponse)
+    def login():
+        return _login_page("/")
+
+    @app.get("/signup", response_class=HTMLResponse)
+    def signup():
+        return _signup_page()
+
+    with TestClient(app) as client:
+        response = client.get(path, headers={"User-Agent": f"Chrome/{version}.0 Supermium/{version}.0"})
+    assert response.status_code == 200
+    assert response.headers["x-rist-browser-profile"] == "supermium"
+    assert ASSET_PREFIX not in response.text
+    assert 'method="post"' in response.text
 
 
 def test_every_live_ui_template_has_current_prebuilt_assets():

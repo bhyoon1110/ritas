@@ -11,12 +11,12 @@ const scripts = [...html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)].map(m
 const script = scripts.find(s=>s.includes('function chunkCrc32'));
 const profileScript = scripts.find(s=>s.includes('window.RIST_CLIENT_PROFILE ='));
 const response = data => ({ok:true,status:200,json:async()=>data,text:async()=>JSON.stringify(data)});
-function setup(t, low=true) {
+function setup(t, low=true, version=144) {
   const dom = new JSDOM(html, {runScripts:'outside-only',url:'http://localhost/tem'});
   t.after(()=>dom.window.close());
   const w = dom.window;
   Object.defineProperties(w.navigator, {
-    userAgent: {get:()=> 'Windows NT 6.1; Chrome/150.0 Supermium/150.0'},
+    userAgent: {get:()=> `Windows NT 6.1; Chrome/${version}.0 Supermium/${version}.0`},
     deviceMemory: {get:()=>low?2:8},
     hardwareConcurrency: {get:()=>low?2:8}
   });
@@ -53,8 +53,8 @@ test('checksum reads <=256KB blocks and yields without reading the entire chunk'
   assert.ok(ticks>=16,`UI ticks: ${ticks}`);
 });
 
-for(const low of [true,false]) test(`bounded file-list DOM retains every selected file (low=${low})`,t=>{
-  const {api,d}=setup(t,low);
+for(const version of [144,150]) for(const low of [true,false]) test(`Supermium ${version} bounded file-list DOM retains every selected file (low=${low})`,t=>{
+  const {api,d}=setup(t,low,version);
   const files=Array.from({length:3000},(_,i)=>({path:`stem/${i}.tif`,file:{name:`${i}.tif`,size:100,lastModified:0}}));
   api.addBundleItems(files);api.renderFileList();
   assert.equal(api.items().length,3000);
@@ -90,8 +90,8 @@ test('empty/deep directory trees are bounded too',async t=>{
   await assert.rejects(api.entryToBundleItems(entry,'',[],0,{visited:10000}),/한도/);
 });
 
-for(const low of [true,false]) test(`Supermium 5MiB upload uses hardware budget with CRC retry (low=${low})`,async t=>{
-  const {w,api}=setup(t,low);
+for(const version of [144,150]) for(const low of [true,false]) test(`Supermium ${version} 5MiB upload uses hardware budget with CRC retry (low=${low})`,async t=>{
+  const {w,api}=setup(t,low,version);
   const chunks=[],urls=[];let active=0,peak=0,failed=false;
   w.fetch=async url=>{urls.push(url);return response(url.includes('/complete')?{jobId:'job',status:'queued'}:{uploadId:'session'});};
   w.XMLHttpRequest=class {
