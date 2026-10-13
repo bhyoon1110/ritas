@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 
 from .ahn_web import router as ahn_router
-from .browser_support import BROWSER_POLICY_TEXT, with_browser_support_notice
+from .browser_support import with_browser_support_notice
 from .config import Settings
 from .error_archive import install_error_management
 from .ftir_web import (
@@ -80,7 +80,6 @@ def build_workspace_index() -> str:
   </main>
 </body>
 </html>"""
-    page = page.replace('</nav>', '</nav><p style="font-size:14px;margin:20px 0 0">' + BROWSER_POLICY_TEXT + '</p>', 1)
     return with_browser_support_notice(page)
 
 

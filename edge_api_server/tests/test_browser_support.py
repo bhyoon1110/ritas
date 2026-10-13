@@ -203,8 +203,19 @@ def test_login_signup_keep_script_free_fallback_and_display_chrome_first_policy(
         assert BROWSER_POLICY_TEXT in html
         assert '<script' not in html
         assert 'method="post"' in html
-    assert BROWSER_POLICY_TEXT in build_workspace_index()
     assert 'id="rist-browser-warning"' in _admin_page()
+
+
+def test_workspace_index_omits_permanent_browser_recommendation_but_keeps_advisory():
+    html = build_workspace_index()
+    main = html.split("<main>", 1)[1].split("</main>", 1)[0]
+    assert BROWSER_POLICY_TEXT not in html
+    assert "Chrome" not in main
+    assert "크롬" not in main
+    for path in ("/ftir", "/raman", "/xrd", "/tem", "/operations", "/voc"):
+        assert f'href="{path}"' in main
+    assert 'id="rist-browser-warning"' in html
+    assert BROWSER_SUPPORT_SCRIPT in html
 
 
 @pytest.mark.parametrize("path", ["/", "/ftir", "/raman", "/xrd", "/tem", "/operations", "/errors", "/report-management"])
