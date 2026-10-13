@@ -1667,7 +1667,7 @@ _PAGE_SHELL = """
     </label>
     <button class="raman-clear-button" id="raman-report" type="button">보고서 생성</button>
     <button class="raman-clear-button" id="raman-clear" type="button">초기화</button>
-    <label class="raman-file-button" for="raman-file-input">파일 선택</label>
+    <label class="raman-file-button" for="raman-file-input">Raw 파일 선택</label>
     <input class="raman-file-input" id="raman-file-input" type="file"
            accept=".txt,.csv,.tsv,.xlsx,.xlsm" multiple>
     <a class="raman-clear-button" id="raman-account-link" href="/account" target="_blank" rel="noopener" hidden>회원정보 관리</a>
@@ -1683,10 +1683,10 @@ _PAGE_SHELL = """
   </div>
   <button type="button" class="raman-library-new"
           id="raman-library-new">새 라이브러리</button>
-  <label class="raman-library-upload">
-    파일 가져오기
+  <label class="raman-library-upload" title="JSON/CSV: 피크 라이브러리 · TXT/TSV/Excel: raw 데이터 분석">
+    피크 라이브러리 가져오기
     <input id="raman-library-input" class="raman-file-input" type="file"
-           accept=".json,.csv">
+           accept=".json,.csv,.txt,.tsv,.xlsx,.xlsm">
   </label>
 </section>
 <section class="raman-drop-zone" id="raman-drop-zone">
@@ -2449,7 +2449,7 @@ _RAMAN_STACK_SCRIPT = """
     });
     if (!layout.yaxis) layout.yaxis = {};
     syncStackYAxis(layout);
-    if (!options.preserveView) layout.yaxis.range = fitRange();
+    if (!options.preserveView && !layout.yaxis.fixedrange) layout.yaxis.range = fitRange();
     updateMeta();
     syncControls();
     return window.Plotly.react(gd, data, layout, gd._context).then(function() {
@@ -2779,6 +2779,16 @@ _RAMAN_STACK_SCRIPT = """
 
 
 _RAMAN_RATIO_SCRIPT = """
+<style>
+#raman-plot .rist-raman-ratio-editor header { display:flex; align-items:center; justify-content:space-between; }
+#raman-plot .rist-raman-ratio-editor label { display:block; margin:10px 0; }
+#raman-plot .rist-raman-ratio-editor select,
+#raman-plot .rist-raman-ratio-editor input { display:block; width:100%; min-width:0; box-sizing:border-box; margin-top:4px; padding:5px; border:1px solid #b8c5d1; border-radius:4px; font:inherit; }
+#raman-plot .rist-raman-ratio-editor button { padding:5px 8px; border:1px solid #b8c5d1; border-radius:4px; background:#f8fafc; color:#102a43; font:inherit; cursor:pointer; }
+#raman-plot .rist-raman-ratio-editor [aria-pressed='true'] { border-color:#2563eb; background:#eff6ff; }
+#raman-plot .rist-raman-ratio-editor [data-ratio-delete],
+#raman-plot .rist-raman-ratio-editor [data-ratio-error] { color:#b42318; }
+</style>
 <script>
 (function() {
   var gd = document.getElementById("raman-plot");
@@ -2788,6 +2798,41 @@ _RAMAN_RATIO_SCRIPT = """
   var pendingNumerator = null;
   var ratios = [];
   var nextRatioId = 1;
+  var selectedRatioId = null;
+  var ratioMetaKey = "ristRamanRatios";
+
+  function peakKey(curve) {
+    return JSON.stringify([sampleGroup(curve), peakX(curve)]);
+  }
+
+  function resolveRatios() {
+    var curves = {};
+    (gd.data || []).forEach(function(trace, curve) {
+      if (peakMeta(curve)) curves[peakKey(curve)] = curve;
+    });
+    ratios = ratios.filter(function(item) {
+      item.numeratorCurve = curves[item.numeratorKey];
+      item.denominatorCurve = curves[item.denominatorKey];
+      return item.numeratorCurve != null && item.denominatorCurve != null;
+    });
+  }
+
+  function ratioMeta() {
+    var meta = Object.assign({}, gd.layout.meta || {});
+    meta[ratioMetaKey] = ratios.map(function(item) { return Object.assign({}, item); });
+    return meta;
+  }
+
+  function restoreRatios() {
+    var saved = (gd.layout.meta || {})[ratioMetaKey];
+    ratios = Array.isArray(saved) ? saved.map(function(item) { return Object.assign({}, item); }) : [];
+    resolveRatios();
+    nextRatioId = ratios.reduce(function(max, item) { return Math.max(max, Number(item.id) + 1); }, 1);
+    selectedRatioId = null;
+    closeRatioEditor();
+    setRatioMode(false, false);
+    if (ratios.length) renderRatios().then(syncControls);
+  }
 
   function ratioBlockedByOtherInteraction() {
     return !!(
@@ -2881,9 +2926,7 @@ _RAMAN_RATIO_SCRIPT = """
   function renderRatios() {
     var annotations = withoutRatioItems(gd.layout.annotations);
     var shapes = withoutRatioItems(gd.layout.shapes);
-    ratios = ratios.filter(function(item) {
-      return peakMeta(item.numeratorCurve) && peakMeta(item.denominatorCurve);
-    });
+    resolveRatios();
     ratios.forEach(function(item) {
       var x0 = peakX(item.numeratorCurve);
       var x1 = peakX(item.denominatorCurve);
@@ -2892,20 +2935,13 @@ _RAMAN_RATIO_SCRIPT = """
       if (![x0, x1, y0, y1].every(Number.isFinite)) return;
       var y = Math.max(y0, y1) + 0.14;
       var name = ratioPrefix() + item.id;
-      shapes.push({
-        type: "line",
-        x0: x0,
-        x1: x1,
-        y0: y,
-        y1: y,
-        line: {color: "#111827", width: 1.3, dash: "dash"},
-        name: name
-      });
       annotations.push({
-        x: (x0 + x1) / 2,
-        y: y + 0.045,
-        text: ratioText(item),
+        x: (x0 + x1) / 2 + Number(item.dx || 0),
+        y: y + 0.045 + Number(item.dy || 0),
+        text: (item.title ? escapeRatioText(item.title) + "<br>" : "") + ratioText(item),
         showarrow: false,
+        captureevents: true,
+        visible: ratioSampleVisible(item),
         font: {size: 11, color: "#111827"},
         bgcolor: "rgba(255,255,255,0.92)",
         bordercolor: "#111827",
@@ -2914,7 +2950,15 @@ _RAMAN_RATIO_SCRIPT = """
         name: name
       });
     });
-    return window.Plotly.relayout(gd, {annotations: annotations, shapes: shapes});
+    return window.Plotly.relayout(gd, {annotations: annotations, shapes: shapes, meta: ratioMeta()});
+  }
+
+  function escapeRatioText(value) {
+    return String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+
+  function captureRatioHistory() {
+    if (gd._ristHistory) gd._ristHistory.capture();
   }
 
   function setStatus(text) {
@@ -2971,10 +3015,13 @@ _RAMAN_RATIO_SCRIPT = """
       setStatus("분모 0");
       return true;
     }
+    captureRatioHistory();
     ratios.push({
       id: nextRatioId++,
       numeratorCurve: pendingNumerator.curve,
-      denominatorCurve: curve
+      denominatorCurve: curve,
+      numeratorKey: peakKey(pendingNumerator.curve),
+      denominatorKey: peakKey(curve)
     });
     pendingNumerator = null;
     renderRatios().then(syncControls);
@@ -3011,7 +3058,7 @@ _RAMAN_RATIO_SCRIPT = """
     if (!ratioMode) return;
     if (ratioBlockedByOtherInteraction()) return;
     if (ev.target.closest(
-      ".legend,.modebar,.rist-plot-control-row,.rist-legend-edit-panel,.rist-legend-drag-handle"
+      ".legend,.modebar,.annotation,[role='dialog'],.rist-plot-control-row,.rist-legend-edit-panel,.rist-legend-drag-handle"
     )) return;
     if (ev.type === "mousedown") {
       pendingRatioNativeClick = null;
@@ -3049,20 +3096,169 @@ _RAMAN_RATIO_SCRIPT = """
   control.className = "rist-raman-ratio-control";
   control.innerHTML =
     "<button type='button' class='rist-raman-ratio-button' title='분자 피크와 분모 피크를 차례로 선택'>비율</button>"
-    + "<button type='button' class='rist-raman-ratio-button' title='표시한 비율 삭제'>삭제</button>"
+    + "<button type='button' class='rist-raman-ratio-button' title='비율 라벨 개별 수정 및 삭제'>비율 관리</button>"
     + "<span class='rist-raman-ratio-status'></span>";
   toolbar.appendChild(control);
   var ratioButton = control.querySelectorAll(".rist-raman-ratio-button")[0];
   var clearButton = control.querySelectorAll(".rist-raman-ratio-button")[1];
   var status = control.querySelector(".rist-raman-ratio-status");
 
+  var editor = document.createElement("section");
+  editor.className = "rist-raman-ratio-editor";
+  editor.hidden = true;
+  editor.setAttribute("role", "dialog");
+  editor.setAttribute("aria-label", "비율 라벨 관리");
+  editor.style.cssText = "position:absolute;z-index:45;top:100px;right:12px;width:340px;max-width:calc(100% - 24px);max-height:65%;overflow:auto;box-sizing:border-box;padding:12px;background:#fff;border:1px solid #9fb3c8;border-radius:6px;box-shadow:0 4px 18px rgba(0,0,0,.18);font:12px Arial;color:#102a43;";
+  editor.innerHTML = "<header><strong>비율 라벨 관리</strong> <button type='button' data-ratio-close>닫기</button></header>"
+    + "<p>항목별 수정·삭제 / 그래프 라벨 더블클릭으로 바로 수정</p><div data-ratio-list></div>"
+    + "<form data-ratio-form hidden><p data-ratio-sample></p>"
+    + "<label>분자 피크 <select aria-label='분자 피크' data-ratio-numerator></select></label>"
+    + "<label>분모 피크 <select aria-label='분모 피크' data-ratio-denominator></select></label>"
+    + "<label>라벨 제목 (선택) <input aria-label='비율 라벨 제목' data-ratio-title maxlength='120'></label>"
+    + "<p data-ratio-error role='status'></p><button type='submit'>적용</button> "
+    + "<button type='button' data-ratio-delete>이 비율 삭제</button></form>";
+  gd.appendChild(editor);
+
+  function selectedRatio() {
+    return ratios.filter(function(item) { return item.id === selectedRatioId; })[0];
+  }
+
+  function sampleName(item) {
+    var group = sampleGroup(item.numeratorCurve);
+    var trace = (gd.data || []).filter(function(t) {
+      return t.meta && t.meta.rist_sample_parent && t.meta.rist_sample_group === group;
+    })[0];
+    return trace ? String(trace.name || group).replace(/<[^>]*>/g, "") : group;
+  }
+
+  function ratioSampleVisible(item) {
+    var group = sampleGroup(item.numeratorCurve);
+    return !(gd.data || []).some(function(trace) {
+      return trace.meta && trace.meta.rist_sample_parent && trace.meta.rist_sample_group === group
+        && (trace.visible === false || trace.visible === "legendonly");
+    });
+  }
+
+  function closeRatioEditor() {
+    if (!editor || editor.hidden) return;
+    editor.hidden = true;
+    gd._ristInlineTextEditing = false;
+  }
+
+  function openRatioEditor(id) {
+    gd.dispatchEvent(new CustomEvent("rist-exclusive-interaction-start", {detail: {mode: "raman-ratio-edit"}}));
+    setRatioMode(false, false);
+    resolveRatios();
+    selectedRatioId = id == null ? null : id;
+    editor.hidden = false;
+    gd._ristInlineTextEditing = true;
+    var list = editor.querySelector("[data-ratio-list]");
+    list.textContent = ratios.length ? "" : "표시된 비율이 없습니다.";
+    ratios.forEach(function(item) {
+      var row = document.createElement("p");
+      var edit = document.createElement("button");
+      edit.type = "button";
+      edit.style.cssText = "max-width:100%;white-space:normal;text-align:left;overflow-wrap:break-word;";
+      edit.textContent = sampleName(item) + " · " + (item.title ? item.title + " · " : "") + ratioText(item);
+      edit.setAttribute("data-ratio-id", String(item.id));
+      edit.setAttribute("aria-pressed", item.id === selectedRatioId ? "true" : "false");
+      edit.addEventListener("click", function() { openRatioEditor(item.id); });
+      row.appendChild(edit);
+      list.appendChild(row);
+    });
+    var item = selectedRatio();
+    editor.querySelector("[data-ratio-form]").hidden = !item;
+    if (!item) return;
+    editor.querySelector("[data-ratio-sample]").textContent = sampleName(item);
+    editor.querySelector("[data-ratio-title]").value = item.title || "";
+    editor.querySelector("[data-ratio-error]").textContent = "";
+    ["numerator", "denominator"].forEach(function(role) {
+      var select = editor.querySelector("[data-ratio-" + role + "]");
+      select.textContent = "";
+      (gd.data || []).forEach(function(trace, curve) {
+        if (!peakMeta(curve) || sampleGroup(curve) !== sampleGroup(item.numeratorCurve)) return;
+        var option = document.createElement("option");
+        option.value = String(curve);
+        option.textContent = labelFor(curve) + " cm⁻¹ · " + String(trace.name || "").replace(/<[^>]*>/g, "");
+        select.appendChild(option);
+      });
+      select.value = String(item[role + "Curve"]);
+    });
+    editor.querySelector("[data-ratio-title]").focus();
+  }
+
+  editor.querySelector("[data-ratio-close]").addEventListener("click", closeRatioEditor);
+  editor.addEventListener("keydown", function(ev) {
+    if (ev.key === "Escape") { ev.stopPropagation(); closeRatioEditor(); }
+  });
+  editor.querySelector("[data-ratio-form]").addEventListener("submit", function(ev) {
+    ev.preventDefault();
+    var item = selectedRatio();
+    if (!item) return;
+    var numerator = Number(editor.querySelector("[data-ratio-numerator]").value);
+    var denominator = Number(editor.querySelector("[data-ratio-denominator]").value);
+    if (!peakMeta(numerator) || !peakMeta(denominator)
+        || sampleGroup(numerator) !== sampleGroup(denominator)
+        || !Number.isFinite(peakValue(numerator)) || !Number.isFinite(peakValue(denominator))
+        || Math.abs(peakValue(denominator)) < 1e-12) {
+      editor.querySelector("[data-ratio-error]").textContent = "같은 샘플의 유효한 피크를 선택하세요. 분모는 0일 수 없습니다.";
+      return;
+    }
+    captureRatioHistory();
+    item.numeratorKey = peakKey(numerator);
+    item.denominatorKey = peakKey(denominator);
+    item.title = editor.querySelector("[data-ratio-title]").value.trim();
+    renderRatios().then(syncControls);
+    closeRatioEditor();
+  });
+  editor.querySelector("[data-ratio-delete]").addEventListener("click", function() {
+    if (!selectedRatio()) return;
+    captureRatioHistory();
+    ratios = ratios.filter(function(item) { return item.id !== selectedRatioId; });
+    renderRatios().then(function() { syncControls(); openRatioEditor(null); });
+  });
+
+  function ratioIdAt(index) {
+    var annotation = (gd.layout.annotations || [])[index];
+    var name = String(annotation && annotation.name || "");
+    return name.indexOf(ratioPrefix()) === 0 ? Number(name.slice(ratioPrefix().length)) : null;
+  }
+  gd.addEventListener("dblclick", function(ev) {
+    var node = ev.target.closest(".annotation");
+    var id = node ? ratioIdAt(Number(node.getAttribute("data-index"))) : null;
+    if (id == null) return;
+    ev.preventDefault();
+    ev.stopImmediatePropagation();
+    openRatioEditor(id);
+  }, true);
+  var lastLabelClick = null;
+  gd.on("plotly_clickannotation", function(ev) {
+    var id = ratioIdAt(ev.index);
+    if (id == null) return;
+    if (lastLabelClick && lastLabelClick.id === id && Date.now() - lastLabelClick.at < 450) {
+      lastLabelClick = null;
+      openRatioEditor(id);
+    } else {
+      selectedRatioId = id;
+      lastLabelClick = {id: id, at: Date.now()};
+    }
+  });
+  gd.on("plotly_relayout", function(updates) {
+    if (!Object.keys(updates || {}).some(function(key) { return /^annotations\\[\\d+\\]\\.(x|y)$/.test(key); })) return;
+    ratios.forEach(function(item) {
+      var annotation = (gd.layout.annotations || []).filter(function(a) { return a.name === ratioPrefix() + item.id; })[0];
+      if (!annotation) return;
+      item.dx = Number(annotation.x) - (peakX(item.numeratorCurve) + peakX(item.denominatorCurve)) / 2;
+      item.dy = Number(annotation.y) - Math.max(plottedPeakY(item.numeratorCurve), plottedPeakY(item.denominatorCurve)) - 0.185;
+    });
+    window.Plotly.relayout(gd, {meta: ratioMeta()});
+  });
+
   ratioButton.addEventListener("click", function() {
     setRatioMode(!ratioMode, true);
   });
   clearButton.addEventListener("click", function() {
-    ratios = [];
-    pendingNumerator = null;
-    renderRatios().then(syncControls);
+    openRatioEditor(selectedRatioId);
   });
   gd.addEventListener("mousedown", handleRatioPeakPointer, true);
   gd.addEventListener("click", handleRatioPeakPointer, true);
@@ -3079,16 +3275,22 @@ _RAMAN_RATIO_SCRIPT = """
   gd.addEventListener("rist-raman-stack-change", function() {
     if (ratios.length) renderRatios();
   });
+  gd.addEventListener("rist-plot-structure-changed", function() {
+    closeRatioEditor();
+    pendingNumerator = null;
+    renderRatios().then(syncControls);
+  });
   gd.addEventListener("rist-exclusive-interaction-start", function(ev) {
     var activeMode = String(ev.detail && ev.detail.mode || "");
+    if (activeMode !== "raman-ratio-edit" && editor && !editor.hidden) {
+      closeRatioEditor();
+      if (activeMode === "inline-text-edit") gd._ristInlineTextEditing = true;
+    }
     if (!ratioMode || !activeMode || activeMode === "raman-ratio") return;
     setRatioMode(false, false);
   });
-  gd.addEventListener("rist-plot-data-replaced", function() {
-    ratios = [];
-    setRatioMode(false, false);
-    setTimeout(syncControls, 0);
-  });
+  gd.addEventListener("rist-plot-data-replaced", restoreRatios);
+  gd.addEventListener("rist-history-restored", restoreRatios);
   syncControls();
 })();
 </script>
@@ -5562,6 +5764,12 @@ _UPLOAD_SCRIPT = """
 
   function uploadLibrary(file) {
     if (!file) return;
+    // Raw spectra are not assignment libraries. Use the same raw-file path
+    // as the main chooser and drag/drop when selected here by mistake.
+    if (/\\.(txt|tsv|xlsx|xlsm)$/i.test(file.name)) {
+      addFiles([file]);
+      return;
+    }
     if (!/\\.(json|csv)$/i.test(file.name)) {
       setMessage("JSON 또는 CSV 라이브러리 파일만 업로드할 수 있습니다.");
       return;
@@ -6180,6 +6388,8 @@ def build_raman_page() -> str:
         peak_editor=True,
         shape_editor=True,
         axis_controls=True,
+        axis_locks=True,
+        scroll_zoom_y_only=True,
         title_edit=True,
         trace_highlight=True,
         image_format_selector=True,

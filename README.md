@@ -18,6 +18,8 @@
 `RitasAxApp/`는 현재 실제 운영 대상이 아니며, 프로젝트 파악과 문서 기준에서는
 `sune`, `lim`, `ahn`, `rin` 네 영역을 활성 프로젝트로 본다.
 
+Raman raw 업로드, 축 고정, 비율 라벨 개별 편집 사용법은 [Raman 사용 안내](rin/README.md)를 참고한다.
+
 ## API 명세
 
 - [실험 PC - Edge 서버](EXPERIMENT_PC_EDGE_API.md)

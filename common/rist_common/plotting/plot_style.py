@@ -1003,10 +1003,14 @@ def _legend_text_edit_js(div_id: str) -> str:
   }}
 
   function legendItemFor(target) {{
-    var text = target && target.closest ? target.closest("text.legendtext") : null;
-    if (!text) return null;
-    var item = text.closest("g.traces");
+    // Plotly puts a transparent legendtoggle rectangle over the text.
+    var item = target && target.closest ? target.closest("g.legend g.traces") : null;
     if (!item) return null;
+    var text = item.querySelector("text.legendtext");
+    if (!text) return null;
+    var datum = item.__data__;
+    var trace = Array.isArray(datum) && datum[0] ? datum[0].trace : null;
+    if (trace && Number.isInteger(trace.index)) return {{text: text, curve: trace.index}};
     var items = Array.prototype.slice.call(
       gd.querySelectorAll("g.legend g.traces")
     ).filter(function(node) {{
@@ -2057,13 +2061,80 @@ def _legend_text_edit_js(div_id: str) -> str:
   installPanel();
   installLegendBulkControls();
 
-  gd.addEventListener("dblclick", function(e) {{
-    if (editing || gd._ristInlineTextEditing) return;
-    var picked = legendItemFor(e.target);
+  var legendPointerState = null;
+  var pendingSampleLegendClick = null;
+  function cancelSampleLegendClick() {{
+    if (pendingSampleLegendClick) clearTimeout(pendingSampleLegendClick.timer);
+    pendingSampleLegendClick = null;
+  }}
+  gd._ristHandleEditableLegendClick = function(ev) {{
+    var trace = (gd.data || [])[ev.curveNumber];
+    if (trace && trace.meta && trace.meta.rist_peak) return false;
+    if (!trace || !trace.meta || !trace.meta.rist_sample_parent) return;
+    if (editing || gd._ristInlineTextEditing) return false;
+    var pending = pendingSampleLegendClick;
+    if (pending && pending.curve === ev.curveNumber) {{
+      cancelSampleLegendClick();
+      var items = gd.querySelectorAll("g.legend g.traces");
+      for (var i = 0; i < items.length; i++) {{
+        var picked = legendItemFor(items[i]);
+        if (picked && picked.curve === ev.curveNumber) editLegendItem(picked);
+      }}
+      return false;
+    }}
+    cancelSampleLegendClick();
+    pendingSampleLegendClick = {{curve: ev.curveNumber, timer: setTimeout(function() {{
+      pendingSampleLegendClick = null;
+      if (editing || gd._ristInlineTextEditing || gd.data[ev.curveNumber] !== trace) return;
+      // Peak-editor synchronizes the children of this sample after restyle.
+      var visible = trace.visible === false || trace.visible === "legendonly";
+      window.Plotly.restyle(gd, {{visible: visible ? true : "legendonly"}}, [ev.curveNumber]);
+    }}, Math.max(350, Number(gd._context.doubleClickDelay) || 300))}};
+    return false;
+  }};
+  gd.addEventListener("rist-plot-data-replaced", cancelSampleLegendClick);
+  gd.addEventListener("rist-history-restored", cancelSampleLegendClick);
+  function rememberLegendVisibility(ev) {{
+    var picked = legendItemFor(ev.target);
     if (!picked) return;
-    e.preventDefault();
-    e.stopPropagation();
-    if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+    var now = Date.now();
+    if (legendPointerState && legendPointerState.curve === picked.curve
+        && now - legendPointerState.at < 500) return;
+    legendPointerState = {{curve: picked.curve, at: now, visible: (gd.data || []).map(function(trace) {{
+      return trace.visible == null ? true : trace.visible;
+    }})}};
+  }}
+  gd.addEventListener("pointerdown", rememberLegendVisibility, true);
+  gd.addEventListener("mousedown", rememberLegendVisibility, true);
+
+  function editLegendItem(picked) {{
+    if (editing || gd._ristInlineTextEditing) return;
+    if (!picked) return;
+    cancelSampleLegendClick();
+    // Plotly queues the first legend click on the legend layout object. The
+    // native dblclick path must cancel it too, before relayout replaces it.
+    var legendLayout = gd._fullLayout && gd._fullLayout.legend;
+    if (legendLayout && legendLayout._clickTimeout) {{
+      clearTimeout(legendLayout._clickTimeout);
+      legendLayout._clickTimeout = null;
+    }}
+    // A delayed second click may already have toggled a sample and its peaks.
+    // Editing a name must not change which spectra are displayed.
+    if (legendPointerState && legendPointerState.curve === picked.curve
+        && Date.now() - legendPointerState.at < 1000
+        && legendPointerState.visible.length === (gd.data || []).length) {{
+      var visible = legendPointerState.visible;
+      var curves = [];
+      var values = [];
+      (gd.data || []).forEach(function(trace, curve) {{
+        if ((trace.visible == null ? true : trace.visible) !== visible[curve]) {{
+          curves.push(curve);
+          values.push(visible[curve]);
+        }}
+      }});
+      if (curves.length) window.Plotly.restyle(gd, {{visible: values}}, curves);
+    }}
+    legendPointerState = null;
     editing = true;
     gd._ristInlineTextEditing = true;
     gd.dispatchEvent(new CustomEvent("rist-exclusive-interaction-start", {{
@@ -2076,6 +2147,7 @@ def _legend_text_edit_js(div_id: str) -> str:
 
     var inp = document.createElement("input");
     inp.type = "text";
+    inp.setAttribute("aria-label", "범례 이름 수정");
     inp.value = current;
     inp.style.cssText = "position:absolute;z-index:40;font:12px Arial;"
       + "padding:2px 6px;border:1px solid #4a90d9;border-radius:4px;"
@@ -2104,7 +2176,27 @@ def _legend_text_edit_js(div_id: str) -> str:
     setTimeout(function() {{
       inp.addEventListener("blur", function() {{ finish(true); }});
     }}, 250);
+  }}
+  gd.addEventListener("dblclick", function(e) {{
+    var picked = legendItemFor(e.target);
+    if (!picked) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    editLegendItem(picked);
   }}, true);
+  // Plotly's drag handler can consume the native dblclick. Its own legend
+  // event also lets us cancel the default 'isolate this trace' operation.
+  gd._ristHandleEditableLegendDoubleClick = function(ev) {{
+    var items = gd.querySelectorAll("g.legend g.traces");
+    for (var i = 0; i < items.length; i++) {{
+      var picked = legendItemFor(items[i]);
+      if (picked && picked.curve === ev.curveNumber) {{
+        editLegendItem(picked);
+        return false;
+      }}
+    }}
+    return false;
+  }};
   gd.addEventListener("rist-exclusive-interaction-start", function(ev) {{
     var nextMode = ev && ev.detail && ev.detail.mode;
     if (nextMode !== "inline-text-edit" && activeFinish) activeFinish(false);
@@ -7097,7 +7189,16 @@ def _plot_edit_history_js(div_id: str) -> str:
   gd.addEventListener("focusin", activateHistoryPlot, true);
   undoButton.addEventListener("click", undo);
   redoButton.addEventListener("click", redo);
-  gd.on("plotly_legendclick", function() {{ capture(); }});
+  // Plotly uses only the LAST listener's return value to cancel its default.
+  // Route editing through this final listener instead of losing an earlier
+  // handler's false when history/peak handlers are installed afterwards.
+  gd.on("plotly_legendclick", function(ev) {{
+    capture();
+    if (gd._ristHandleEditableLegendClick) return gd._ristHandleEditableLegendClick(ev);
+  }});
+  gd.on("plotly_legenddoubleclick", function(ev) {{
+    if (gd._ristHandleEditableLegendDoubleClick) return gd._ristHandleEditableLegendDoubleClick(ev);
+  }});
   gd.addEventListener("rist-plot-data-replaced", reset);
   document.addEventListener("keydown", function(ev) {{
     if (ev.defaultPrevented || ev.isComposing || ev.altKey) return;
@@ -7465,7 +7566,7 @@ def _legend_drag_handle_js(div_id: str) -> str:
 """
 
 
-def _axis_controls_js(div_id: str) -> str:
+def _axis_controls_js(div_id: str, *, axis_locks: bool = False, scroll_zoom_y_only: bool = False) -> str:
     """축 범위·눈금, 확대·축소, 드래그 자르기 UI를 추가한다."""
     template = r"""
 <style>
@@ -7614,6 +7715,12 @@ def _axis_controls_js(div_id: str) -> str:
   height: 16px;
   margin: 0;
 }
+#__PLOT_ID_CSS__ .rist-axis-control-checks {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  white-space: nowrap;
+}
 #__PLOT_ID_CSS__ .rist-axis-control-help {
   margin: 0;
   color: #64748b;
@@ -7757,6 +7864,8 @@ def _axis_controls_js(div_id: str) -> str:
   var gd = document.getElementById(__PLOT_ID_JSON__);
   if (!gd || gd._ristAxisControlsInstalled || !window.Plotly) return;
   gd._ristAxisControlsInstalled = true;
+  var axisLocksEnabled = __AXIS_LOCKS__;
+  var scrollZoomYOnly = __SCROLL_ZOOM_Y_ONLY__;
   if (getComputedStyle(gd).position === "static") gd.style.position = "relative";
 
   var toolbar = gd.querySelector(".rist-plot-control-row");
@@ -7784,7 +7893,8 @@ def _axis_controls_js(div_id: str) -> str:
     + "<button type='button' class='rist-axis-control-close' aria-label='닫기'>×</button></header>"
     + "<div class='rist-axis-control-body'>"
     + axisFields("x", "X축") + axisFields("y", "Y축")
-    + "<p class='rist-axis-control-help'>숫자 표시 간격은 라벨이 있는 큰 눈금, 보조 눈금 간격은 그 사이의 작은 눈금을 조절합니다. 자동 간격을 사용하면 확대 범위에 맞춰 함께 조절됩니다.</p>"
+    + "<p class='rist-axis-control-help'>숫자 표시 간격은 라벨이 있는 큰 눈금, 보조 눈금 간격은 그 사이의 작은 눈금을 조절합니다. 자동 간격을 사용하면 확대 범위에 맞춰 함께 조절됩니다."
+    + (axisLocksEnabled ? " 축 고정은 마우스 확대·이동·Crop을 막습니다. 숫자를 직접 입력해 범위를 바꾸는 것은 가능합니다." : "") + "</p>"
     + "<p class='rist-axis-control-status' aria-live='polite'></p>"
     + "<div class='rist-axis-control-footer'><div class='rist-axis-control-view-actions' aria-label='그래프 보기 도구'>"
     + "<button type='button' data-axis-action='zoom-in' title='확대' aria-label='확대'><svg class='lucide lucide-zoom-in' aria-hidden='true' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='11' cy='11' r='8'/><path d='m21 21-4.3-4.3'/><path d='M11 8v6'/><path d='M8 11h6'/></svg></button>"
@@ -7810,8 +7920,9 @@ def _axis_controls_js(div_id: str) -> str:
       + "<span></span>"
       + intervalField(axis, "minor-step", "보조 눈금 간격")
       + decimalField(axis)
-      + "<label class='rist-axis-control-auto'><input type='checkbox' data-axis-auto='" + axis + "' checked>자동 간격</label>"
-      + "</div>";
+      + "<div class='rist-axis-control-checks'><label class='rist-axis-control-auto'><input type='checkbox' data-axis-auto='" + axis + "' checked>자동 간격</label>"
+      + (axisLocksEnabled ? "<label class='rist-axis-control-auto'><input type='checkbox' data-axis-lock='" + axis + "'>" + label + " 고정</label>" : "")
+      + "</div></div>";
   }
 
   function numberField(axis, field, label) {
@@ -7863,6 +7974,10 @@ def _axis_controls_js(div_id: str) -> str:
     var first = finiteNumber(range[0]);
     var second = finiteNumber(range[1]);
     return first == null || second == null ? null : [first, second];
+  }
+
+  function axisLocked(axisName) {
+    return axisLocksEnabled && currentAxis(axisName).layout.fixedrange === true;
   }
 
   function nestedAxisValue(state, group, name) {
@@ -8028,7 +8143,7 @@ def _axis_controls_js(div_id: str) -> str:
         if (!requestedAutorange[axisName] && !requestWasClamped && !visibleNeedsUpdate) return;
         updates[axisName + ".range"] = bounded;
         updates[axisName + ".autorange"] = false;
-        updates[axisName + ".fixedrange"] = false;
+        updates[axisName + ".fixedrange"] = axisLocked(axisName);
         changed = true;
       });
       if (!changed) return;
@@ -8072,6 +8187,7 @@ def _axis_controls_js(div_id: str) -> str:
   function runModebarAxisAction(action) {
     var updates = {};
     ["xaxis", "yaxis"].forEach(function(axisName) {
+      if (axisLocked(axisName)) return;
       var cropRange = copyRange(cropRanges[axisName]);
       if (cropRange) {
         updates[axisName + ".range"] = cropRange;
@@ -8119,6 +8235,8 @@ def _axis_controls_js(div_id: str) -> str:
   function syncAxis(axis) {
     var axisName = axis + "axis";
     var state = currentAxis(axisName);
+    var lock = panel.querySelector("[data-axis-lock='" + axis + "']");
+    if (lock) lock.checked = axisLocked(axisName);
     var range = currentRange(axisName);
     if (range) {
       field(axis, "from").value = cleanNumber(range[0]);
@@ -8297,6 +8415,7 @@ def _axis_controls_js(div_id: str) -> str:
     return {
       from: from,
       to: to,
+      locked: axisLocksEnabled && panel.querySelector("[data-axis-lock='" + axis + "']").checked,
       automatic: automatic,
       labelStep: labelStep,
       minorStep: minorStep,
@@ -8308,7 +8427,7 @@ def _axis_controls_js(div_id: str) -> str:
     var name = axis + "axis";
     updates[name + ".range"] = clampRangeToCrop(name, [value.from, value.to]);
     updates[name + ".autorange"] = false;
-    updates[name + ".fixedrange"] = false;
+    updates[name + ".fixedrange"] = value.locked;
     updates[name + ".tickmode"] = value.automatic ? "auto" : "linear";
     updates[name + ".dtick"] = value.automatic ? null : value.labelStep;
     updates[name + ".minor.tickmode"] = value.automatic || value.minorStep == null
@@ -8342,6 +8461,7 @@ def _axis_controls_js(div_id: str) -> str:
     var updates = {};
     activeAxes().forEach(function(axis) {
       var axisName = axis + "axis";
+      if (axisLocked(axisName)) return;
       updates[axisName + ".tickmode"] = "auto";
       updates[axisName + ".dtick"] = null;
       updates[axisName + ".minor.tickmode"] = "auto";
@@ -8367,6 +8487,7 @@ def _axis_controls_js(div_id: str) -> str:
     var changed = false;
     activeAxes().forEach(function(axis) {
       var axisName = axis + "axis";
+      if (axisLocked(axisName)) return;
       if (!cropRanges[axisName]) return;
       var restoreRange = cropRestoreRanges[axisName] || initialRanges[axisName];
       cropRanges[axisName] = null;
@@ -8394,6 +8515,7 @@ def _axis_controls_js(div_id: str) -> str:
     var changed = false;
     activeAxes().forEach(function(axis) {
       var axisName = axis + "axis";
+      if (axisLocked(axisName)) return;
       var range = currentRange(axisName);
       if (!range || range[0] === range[1]) return;
       var center = (range[0] + range[1]) / 2;
@@ -8477,11 +8599,15 @@ def _axis_controls_js(div_id: str) -> str:
   }
 
   function beginCrop() {
+    var axes = activeAxes().filter(function(axis) { return !axisLocked(axis + "axis"); });
+    if (!axes.length) {
+      panel.querySelector(".rist-axis-control-status").textContent = "축 고정을 해제한 뒤 자르기를 사용하세요.";
+      return;
+    }
     var cancelPromise = cancelCrop();
     var startToken = ++cropStartToken;
     cropPending = true;
     gd._ristAxisCropActive = true;
-    var axes = activeAxes().slice();
     var previousSelectdirection = gd.layout && gd.layout.selectdirection;
     var editPromise = typeof gd._ristSetEditMode === "function"
       ? gd._ristSetEditMode(false)
@@ -8535,6 +8661,7 @@ def _axis_controls_js(div_id: str) -> str:
     var updates = {};
     var changed = false;
     session.axes.forEach(function(axis) {
+      if (axisLocked(axis + "axis")) return;
       var range = normalizedCropRange(axis, eventData && eventData.range && eventData.range[axis]);
       if (!range) return;
       var axisName = axis + "axis";
@@ -8594,6 +8721,36 @@ def _axis_controls_js(div_id: str) -> str:
     };
   }
 
+  // Intercept Plotly's two-axis wheel zoom, including when shape editing
+  // temporarily disables scrollZoom. Range coordinates also support log axes.
+  var lastWheelAt = 0;
+  if (scrollZoomYOnly) gd.addEventListener("wheel", function(ev) {
+    if (ev.target.closest(".modebar,.legend,.rist-plot-control-row,input,textarea,select,button,[role='dialog']")) return;
+    var rect = gd.getBoundingClientRect();
+    var box = plotBox();
+    var x = ev.clientX - rect.left;
+    var y = ev.clientY - rect.top;
+    if (!box.height || x < box.left || x > box.left + box.width
+        || y < box.top || y > box.top + box.height) return;
+    ev.preventDefault();
+    ev.stopImmediatePropagation();
+    if (axisLocked("yaxis") || gd._ristAxisCropActive || gd._ristAxisScaleActive
+        || gd._ristShapeDrawMode || gd._ristInlineTextEditing) return;
+    var range = currentRange("yaxis");
+    var delta = Number(ev.deltaY) * (ev.deltaMode === 1 ? 16 : ev.deltaMode === 2 ? box.height : 1);
+    if (!range || !Number.isFinite(delta) || delta === 0) return;
+    var factor = Math.exp(Math.max(-0.5, Math.min(0.5, delta * 0.002)));
+    var anchor = range[1] + (range[0] - range[1]) * (y - box.top) / box.height;
+    var next = clampRangeToCrop("yaxis", range.map(function(value) {
+      return anchor + (value - anchor) * factor;
+    }));
+    if (!next || !next.every(Number.isFinite) || Math.abs(next[1] - next[0]) < 1e-12) return;
+    var now = Date.now();
+    if (now - lastWheelAt > 350 && gd._ristHistory) gd._ristHistory.capture();
+    lastWheelAt = now;
+    window.Plotly.relayout(gd, {"yaxis.range": next, "yaxis.autorange": false});
+  }, {capture: true, passive: false});
+
   function axisFromPointer(ev) {
     if (!ev.target || !ev.target.closest) return null;
     if (ev.target.closest(".modebar,.legend,.rist-legend-drag-handle,.rist-plot-control-row,.rist-axis-control-panel,.annotation,.shapelayer")) return null;
@@ -8623,6 +8780,7 @@ def _axis_controls_js(div_id: str) -> str:
     pendingFrame = requestAnimationFrame(function() {
       pendingFrame = 0;
       if (!drag) return;
+      if (axisLocked(drag.axis + "axis")) return;
       var movement = drag.axis === "x"
         ? drag.clientX - drag.startX
         : drag.startY - drag.clientY;
@@ -8832,6 +8990,8 @@ def _axis_controls_js(div_id: str) -> str:
     return (
         template.replace("__PLOT_ID_CSS__", div_id)
         .replace("__PLOT_ID_JSON__", json.dumps(div_id))
+        .replace("__AXIS_LOCKS__", json.dumps(axis_locks))
+        .replace("__SCROLL_ZOOM_Y_ONLY__", json.dumps(scroll_zoom_y_only))
     )
 
 
@@ -8855,6 +9015,8 @@ def fig_to_responsive_html(
     peak_editor: bool = False,
     shape_editor: bool = False,
     axis_controls: bool = False,
+    axis_locks: bool = False,
+    scroll_zoom_y_only: bool = False,
     image_format: str = "svg",
     image_filename: str = "plot",
     image_scale: float = 2,
@@ -8969,7 +9131,9 @@ def fig_to_responsive_html(
         html = html.replace("</body>", _edit_mode_toggle_js(div_id) + "</body>", 1)
 
     if axis_controls:
-        html = html.replace("</body>", _axis_controls_js(div_id) + "</body>", 1)
+        html = html.replace("</body>", _axis_controls_js(
+            div_id, axis_locks=axis_locks, scroll_zoom_y_only=scroll_zoom_y_only
+        ) + "</body>", 1)
 
     if trace_highlight:
         html = html.replace(
@@ -9010,6 +9174,8 @@ def write_responsive_html(
     peak_editor: bool = False,
     shape_editor: bool = False,
     axis_controls: bool = False,
+    axis_locks: bool = False,
+    scroll_zoom_y_only: bool = False,
     image_format: str = "svg",
     image_filename: str = "plot",
     image_scale: float = 2,
@@ -9038,6 +9204,8 @@ def write_responsive_html(
         peak_editor=peak_editor,
         shape_editor=shape_editor,
         axis_controls=axis_controls,
+        axis_locks=axis_locks,
+        scroll_zoom_y_only=scroll_zoom_y_only,
         image_format=image_format,
         image_filename=image_filename,
         image_scale=image_scale,
