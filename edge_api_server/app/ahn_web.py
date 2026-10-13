@@ -2051,6 +2051,7 @@ def build_ahn_page() -> str:
       return "content";
     }
     function classifySection(path) {
+      if (/\\.docx$/i.test(String(path || ""))) return "EDS";
       var lowered = String(path || "").toLowerCase().split("/");
       if (lowered.indexOf("tem") >= 0) return "TEM";
       if (lowered.indexOf("stem") >= 0) return "STEM";
@@ -2157,26 +2158,44 @@ def build_ahn_page() -> str:
       }
       return collected;
     }
-    async function droppedBundleItems(dataTransfer) {
+    function captureDroppedItems(dataTransfer) {
+      // Drag data is readable only during the synchronous drop event. Keep
+      // handles, not file contents, before yielding to paint or directory I/O.
+      if (!dataTransfer) return [];
       if ((dataTransfer.items || []).length > TEM_MAX_FILES || (dataTransfer.files || []).length > TEM_MAX_FILES) {
         throw new Error("파일이 너무 많습니다. 묶음을 나누어 선택하세요.");
       }
       var items = Array.prototype.slice.call(dataTransfer.items || []);
-      var entries = items
-        .filter(function(item) { return item.kind === "file" && item.webkitGetAsEntry; })
-        .map(function(item) { return item.webkitGetAsEntry(); })
-        .filter(Boolean);
-      if (entries.length) {
-        var collected = [];
-        var walkState = {visited: 0};
-        for (var index = 0; index < entries.length; index += 1) {
-          await entryToBundleItems(entries[index], "", collected, 0, walkState);
-        }
-        return collected;
-      }
-      return Array.prototype.slice.call(dataTransfer.files || []).map(function(file) {
-        return bundleItem(file, file.webkitRelativePath || file.name);
+      var captured = [];
+      items.forEach(function(item) {
+        if (item.kind !== "file") return;
+        var entry = null;
+        try {
+          var getEntry = item.getAsEntry || item.webkitGetAsEntry;
+          if (getEntry) entry = getEntry.call(item);
+        } catch (_) { /* Fall back per file, not for the whole drop. */ }
+        var file = !entry && item.getAsFile ? item.getAsFile() : null;
+        if (entry || file) captured.push({entry: entry, file: file});
       });
+      if (!captured.length) {
+        captured = Array.prototype.slice.call(dataTransfer.files || []).map(function(file) {
+          return {file: file};
+        });
+      }
+      return captured;
+    }
+    async function droppedBundleItems(captured) {
+      var collected = [];
+      var walkState = {visited: 0};
+      for (var index = 0; index < captured.length; index += 1) {
+        var item = captured[index];
+        if (item.entry) {
+          await entryToBundleItems(item.entry, "", collected, 0, walkState);
+        } else if (item.file) {
+          collected.push(bundleItem(item.file));
+        }
+      }
+      return collected;
     }
     function formatBytes(bytes) {
       var value = Number(bytes) || 0;
@@ -2660,24 +2679,16 @@ def build_ahn_page() -> str:
       }
       return current;
     }
-    function openBundlePicker(input, message) {
-      setCollectingFiles(true, message);
-      var released = false;
-      function releaseIfCancelled() {
-        if (released) return;
-        setTimeout(function() {
-          if (!released && !(input.files || []).length) {
-            released = true;
-            setCollectingFiles(false);
-          }
-        }, 450);
+    function openBundlePicker(input) {
+      if (operationBusy || collectingFiles) return;
+      // A picker is not collection. Older Windows browsers do not reliably
+      // emit cancel/focus, so never lock the page while the dialog is open.
+      input.value = "";
+      try {
+        input.click();
+      } catch (error) {
+        setStatus(error.message || String(error), true);
       }
-      window.addEventListener("focus", releaseIfCancelled, {once: true});
-      input.oncancel = function() {
-        released = true;
-        setCollectingFiles(false);
-      };
-      input.click();
     }
     function waitForCollectionPaint() {
       return new Promise(function(resolve) {
@@ -2690,14 +2701,18 @@ def build_ahn_page() -> str:
       });
     }
     async function collectSelectedFiles(input, message) {
-      if (!collectingFiles) setCollectingFiles(true, message);
+      if (operationBusy || collectingFiles) {
+        input.value = "";
+        return;
+      }
+      if (!(input.files || []).length) return;
+      setCollectingFiles(true, message);
       try {
         await waitForCollectionPaint();
         addBundleItems(fileInputItems(input));
       } catch (error) {
         setStatus(error.message || String(error), true);
       } finally {
-        input.oncancel = null;
         input.value = "";
         setCollectingFiles(false);
       }
@@ -2709,13 +2724,15 @@ def build_ahn_page() -> str:
       collectSelectedFiles(folderInput, "폴더 안의 raw 파일 목록을 읽는 중입니다.");
     });
     addFilesButton.addEventListener("click", function() {
-      openBundlePicker(bundleInput, "첨부할 파일 목록을 읽는 중입니다.");
+      openBundlePicker(bundleInput);
     });
     addFolderButton.addEventListener("click", function() {
-      openBundlePicker(folderInput, "폴더 안의 raw 파일 목록을 읽는 중입니다.");
+      openBundlePicker(folderInput);
     });
     drop.addEventListener("dragover", function(event) {
       event.preventDefault();
+      if (operationBusy || collectingFiles) return;
+      if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
       drop.classList.add("dragover");
     });
     drop.addEventListener("dragleave", function() {
@@ -2724,10 +2741,17 @@ def build_ahn_page() -> str:
     drop.addEventListener("drop", async function(event) {
       event.preventDefault();
       drop.classList.remove("dragover");
+      if (operationBusy || collectingFiles) {
+        setStatus("현재 작업이 완료된 뒤 파일을 추가하세요.", true);
+        return;
+      }
       setCollectingFiles(true, "드롭한 폴더의 raw 파일 목록을 읽는 중입니다.");
       try {
+        var captured = captureDroppedItems(event.dataTransfer);
         await waitForCollectionPaint();
-        addBundleItems(await droppedBundleItems(event.dataTransfer));
+        var items = await droppedBundleItems(captured);
+        if (!items.length) throw new Error("첨부할 파일을 찾지 못했습니다. 파일/폴더 추가 버튼 또는 ZIP 파일을 사용하세요.");
+        addBundleItems(items);
         setStatus("TEM raw bundle 파일이 추가되었습니다.", false);
       } catch (error) {
         setStatus(error.message || String(error), true);

@@ -26,7 +26,7 @@ function setup(t, low=true, version=144) {
   w.fetch = async()=>response({roles:[]});
   w.eval(script.replace('\n    renderRequestOptions([]);', `
     window.__tem = {chunkCrc32, entryToBundleItems, addBundleItems, renderFileList, uploadBundleWithSession,
-      items:function(){return bundleItems;}};
+      setBusy, items:function(){return bundleItems;}};
     renderRequestOptions([]);`));
   assert.ok(w.__tem);
   return {w,d:w.document,api:w.__tem};
@@ -36,6 +36,103 @@ test('TEM script syntax and known CRC32 vector with FileReader fallback',async t
   acorn.parse(script,{ecmaVersion:'latest'});
   const {w,api}=setup(t);
   assert.equal(await api.chunkCrc32(new w.Blob(['123456789'])),'cbf43926');
+});
+
+async function finishCollection(d) {
+  for (let attempt=0; attempt<200; attempt++) {
+    if (d.getElementById('ahn-drop').getAttribute('aria-busy') !== 'true') return;
+    await new Promise(resolve=>setTimeout(resolve,5));
+  }
+  assert.fail('file collection did not finish');
+}
+
+function dropEvent(w, d, transfer) {
+  const event=new w.Event('drop',{bubbles:true,cancelable:true});
+  Object.defineProperty(event,'dataTransfer',{value:transfer});
+  d.getElementById('ahn-drop').dispatchEvent(event);
+  assert.equal(event.defaultPrevented,true);
+}
+
+test('drop captures protected file data synchronously before the paint yield',async t=>{
+  const {w,d,api}=setup(t);
+  const file=new w.File(['docx'],'test.docx');
+  let readable=true;
+  dropEvent(w,d,{get files(){return readable?[file]:[];}});
+  readable=false; // Browser protects the drag store when dispatch returns.
+  await finishCollection(d);
+  assert.equal(api.items().length,1);
+  assert.equal(api.items()[0].file,file);
+  assert.match(d.getElementById('ahn-bundle-meta').textContent,/EDS 1/);
+  assert.equal(d.getElementById('ahn-run').disabled,false);
+});
+
+test('drop keeps directory handles and a loose file whose entry API returns null',async t=>{
+  const {w,d,api}=setup(t);
+  let readable=true;
+  const file=new w.File(['docx'],'standalone.docx');
+  const children=Array.from({length:120},(_,i)=>({isFile:true,file:resolve=>
+    setTimeout(()=>resolve(new w.File(['x'],`${i}.tiff`)),0)}));
+  const entry={name:'tem',isDirectory:true,createReader(){let offset=0;return {readEntries(resolve){
+    const batch=children.slice(offset,offset+100);offset+=100;setTimeout(()=>resolve(batch),0);
+  }};}};
+  dropEvent(w,d,{items:[
+    {kind:'file',webkitGetAsEntry:()=>readable?entry:null},
+    {kind:'file',webkitGetAsEntry:()=>null,getAsFile:()=>readable?file:null}
+  ]});
+  readable=false;
+  await finishCollection(d);
+  assert.equal(api.items().length,121);
+  assert.equal(api.items()[119].path,'tem/119.tiff');
+  assert.equal(api.items()[120].path,'standalone.docx');
+});
+
+test('empty and failed drops report an error and release the collection lock',async t=>{
+  const {w,d,api}=setup(t);
+  dropEvent(w,d,{files:[]});
+  await finishCollection(d);
+  assert.match(d.getElementById('ahn-status').textContent,/첨부할 파일을 찾지 못했습니다/);
+  dropEvent(w,d,{items:[{kind:'file',webkitGetAsEntry:()=>({isFile:true,file:(_resolve,reject)=>
+    reject(new Error('Access denied'))})}]});
+  await finishCollection(d);
+  assert.match(d.getElementById('ahn-status').textContent,/Access denied/);
+  assert.equal(api.items().length,0);
+  assert.equal(d.getElementById('ahn-add-folder').disabled,false);
+});
+
+test('opening or cancelling either picker never starts collection or disables the page',t=>{
+  const {w,d}=setup(t);
+  for(const kind of ['files','folder']) {
+    const input=d.getElementById(`ahn-bundle-${kind}`);
+    let opens=0;
+    input.click=()=>opens++;
+    d.getElementById(`ahn-add-${kind}`).click();
+    assert.equal(opens,1);
+    assert.equal(d.getElementById('ahn-drop').getAttribute('aria-busy'),'false');
+    assert.equal(d.getElementById('ahn-add-folder').disabled,false);
+    assert.equal(d.getElementById('ahn-collect-progress').classList.contains('is-visible'),false);
+    input.dispatchEvent(new w.Event('cancel'));
+    w.dispatchEvent(new w.Event('focus'));
+    d.getElementById(`ahn-add-${kind}`).click();
+    assert.equal(opens,2);
+  }
+});
+
+test('folder selection starts collection on change, keeps relative paths and blocks overlapping drops',async t=>{
+  const {w,d,api}=setup(t);
+  const input=d.getElementById('ahn-bundle-folder');
+  const file=new w.File(['x'],'sample.docx');
+  Object.defineProperty(file,'webkitRelativePath',{value:'bundle/reports/sample.docx'});
+  Object.defineProperty(input,'files',{value:[file]});
+  input.dispatchEvent(new w.Event('change'));
+  assert.equal(d.getElementById('ahn-drop').getAttribute('aria-busy'),'true');
+  dropEvent(w,d,{files:[new w.File(['x'],'extra.docx')]});
+  await finishCollection(d);
+  assert.deepEqual(Array.from(api.items(),item=>item.path),['bundle/reports/sample.docx']);
+  api.setBusy(true);
+  dropEvent(w,d,{files:[new w.File(['x'],'extra.docx')]});
+  assert.equal(api.items().length,1);
+  api.setBusy(false);
+  assert.equal(d.getElementById('ahn-run').disabled,false);
 });
 
 test('checksum reads <=256KB blocks and yields without reading the entire chunk',async t=>{

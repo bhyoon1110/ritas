@@ -5,6 +5,7 @@ from types import SimpleNamespace
 import time
 import zipfile
 import zlib
+from pathlib import Path
 
 from fastapi.testclient import TestClient
 from PIL import Image
@@ -31,6 +32,44 @@ def _minimal_ooxml_bytes(*, document: bool = False, binary_workbook: bool = Fals
         else:
             archive.writestr("xl/workbook.xml", "<workbook/>")
     return buffer.getvalue()
+
+
+def _image_docx_bytes() -> bytes:
+    buffer = BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr("[Content_Types].xml", "<Types/>")
+        archive.writestr("word/document.xml", '<w:document '
+            'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" '
+            'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" '
+            'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+            '<w:body><a:blip r:embed="image"/></w:body></w:document>')
+        archive.writestr("word/_rels/document.xml.rels", '<Relationships '
+            'xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            '<Relationship Id="image" Target="media/image.tiff"/></Relationships>')
+        archive.writestr("word/media/image.tiff", _tiny_tiff_bytes())
+    return buffer.getvalue()
+
+
+@pytest.mark.parametrize("paths", [
+    ["first MAP.docx", "second MAP.docx"],
+    ["Bundle/reports/first MAP.docx", "Bundle/reports/nested/second MAP.docx"],
+])
+def test_tem_multiple_docx_upload_generates_each_document_slide(paths):
+    from pptx import Presentation
+    with TestClient(create_tem_preview_app()) as client:
+        response = client.post("/api/v1/tem/analyze", files=[
+            ("files", (path, _image_docx_bytes(), "application/octet-stream")) for path in paths
+        ])
+        assert response.status_code == 200
+        payload = _wait_for_tem_job(client, response.json())
+        assert payload["status"] == "completed", payload
+        assert payload["summary"]["edsReportCount"] == 2
+        pptx = client.get(payload["downloads"]["pptx"])
+        slides = Presentation(BytesIO(pptx.content)).slides
+        assert len(slides) == 2
+        for slide, path in zip(slides, paths):
+            assert Path(path).stem in " ".join(shape.text for shape in slide.shapes if shape.has_text_frame)
+            assert sum(shape.shape_type == 13 for shape in slide.shapes) == 1
 
 
 def _wait_for_tem_job(client: TestClient, payload: dict, *, timeout: float = 8.0) -> dict:

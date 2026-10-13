@@ -322,22 +322,27 @@ def _sample_from_eds_title(title: str) -> str:
 
 def collect_eds_reports(root: Path) -> tuple[list[EdsReport], list[SpreadsheetFile]]:
     report_dirs = find_named_dirs(root, "report", "reports")
-    if not report_dirs:
-        return [], collect_spreadsheets(root, [])
-
     reports = []
-    for report_dir in report_dirs:
-        for path in _visible_files(report_dir, DOCX_EXTENSIONS):
-            title = _eds_title(path)
-            reports.append(
-                EdsReport(
-                    path=_relative(path, root),
-                    file_name=path.name,
-                    title=title,
-                    sample_name=_sample_from_eds_title(title),
-                    analysis_type=_eds_type(title),
-                )
+    # File picker uploads have no enclosing report/ folder. A selected folder
+    # can also contain per-sample subfolders; neither should silently lose DOCX.
+    paths = sorted(
+        (path for path in root.rglob("*")
+         if path.is_file() and path.suffix.lower() in DOCX_EXTENSIONS
+         and not any(part.startswith((".", "~$")) or part == "__MACOSX"
+                     for part in path.relative_to(root).parts)),
+        key=lambda path: natural_key(path.relative_to(root).as_posix()),
+    )
+    for path in paths:
+        title = _eds_title(path)
+        reports.append(
+            EdsReport(
+                path=_relative(path, root),
+                file_name=path.name,
+                title=title,
+                sample_name=_sample_from_eds_title(title),
+                analysis_type=_eds_type(title),
             )
+        )
     spreadsheets = collect_spreadsheets(root, report_dirs)
     return reports, spreadsheets
 

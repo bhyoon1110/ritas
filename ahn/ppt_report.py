@@ -1457,13 +1457,21 @@ def _add_eds_tables_slide(prs, template: AhnTemplate | None, title: str, images:
 def _build_eds(prs, template: AhnTemplate | None, data: dict[str, Any], input_root: Path, tmp_dir: Path) -> None:
     for report in data.get("eds_reports") or []:
         docx_path = _path(input_root, report["path"])
-        extract_dir = tmp_dir / "docx" / docx_path.stem
+        # Different sample folders often contain the same report filename.
+        # Conversion caches key on the extracted path, so isolate each source.
+        source_key = hashlib.sha256(str(docx_path.resolve()).encode("utf-8")).hexdigest()[:20]
+        extract_dir = tmp_dir / "docx" / source_key
         extracted = extract_docx(docx_path, extract_dir)
         images = extracted.media_paths
         tables = _eds_report_tables(data, report, input_root, extracted.tables)
         analysis_type = str(report.get("analysis_type") or "").upper()
         title = report.get("title") or docx_path.stem
-        if analysis_type == "MAP":
+        if not images and not tables:
+            raise ValueError(f"{report['path']}: DOCX에서 보고서에 사용할 이미지 또는 표를 찾지 못했습니다. Word에서 내용을 확인한 뒤 DOCX로 다시 저장하세요.")
+        if not images:
+            for index in range(0, len(tables), 2):
+                _add_eds_tables_slide(prs, template, title, images, tables[index:index + 2], tmp_dir)
+        elif analysis_type == "MAP":
             _add_eds_map_pages(prs, template, title, images, tmp_dir)
         elif analysis_type == "LINE":
             _add_eds_line_pages(prs, template, title, images, tmp_dir)

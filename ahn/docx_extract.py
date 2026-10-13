@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import posixpath
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -13,6 +14,7 @@ NS = {
     "r": "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
     "w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
     "rel": "http://schemas.openxmlformats.org/package/2006/relationships",
+    "v": "urn:schemas-microsoft-com:vml",
 }
 
 
@@ -31,8 +33,10 @@ def _relationship_map(zip_file: ZipFile) -> dict[str, str]:
     for rel in rels.findall("rel:Relationship", NS):
         rid = rel.attrib.get("Id", "")
         target = rel.attrib.get("Target", "")
-        if rid and target:
-            result[rid] = "word/" + target.lstrip("/")
+        if rid and target and rel.attrib.get("TargetMode", "").lower() != "external":
+            member = posixpath.normpath(target.lstrip("/") if target.startswith("/") else "word/" + target)
+            if member.startswith("word/media/"):
+                result[rid] = member
     return result
 
 
@@ -43,8 +47,16 @@ def _media_order(zip_file: ZipFile) -> list[str]:
     except KeyError:
         return []
     ordered = []
-    for blip in document.findall(".//a:blip", NS):
-        rid = blip.attrib.get(f"{{{NS['r']}}}embed")
+    # Instrument-generated Word reports may mix DrawingML and older VML.
+    # Iteration preserves document order and deduplicates AlternateContent's
+    # modern/fallback references to the same image.
+    for blip in document.iter():
+        if blip.tag == f"{{{NS['a']}}}blip":
+            rid = blip.attrib.get(f"{{{NS['r']}}}embed")
+        elif blip.tag == f"{{{NS['v']}}}imagedata":
+            rid = blip.attrib.get(f"{{{NS['r']}}}id")
+        else:
+            continue
         target = rels.get(rid or "")
         if target and target not in ordered:
             ordered.append(target)
