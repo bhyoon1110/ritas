@@ -1279,6 +1279,8 @@ def build_xrd_page() -> str:
       .xrd-brand h1 { font-size: 25px; }
       .xrd-brand span { display: block; margin-top: 4px; white-space: normal; }
       .xrd-main { padding: 14px 12px 24px; }
+      .xrd-topbar { flex-wrap: wrap; }
+      .xrd-brand { flex: 1 1 100%; }
       .xrd-actions { width: 100%; justify-content: flex-end; }
       button, .xrd-download { min-height: 40px; padding: 8px 11px; font-size: 14px; }
       .xrd-preview iframe { height: 780px; }
@@ -1301,6 +1303,7 @@ def build_xrd_page() -> str:
         <button type="submit" form="xrd-form" class="primary" id="xrd-run" disabled>보고서 생성</button>
         <button type="button" id="xrd-clear">초기화</button>
         <a href="#" class="xrd-download" id="xrd-download" aria-disabled="true">보고서 다운로드</a>
+        <a class="xrd-download" id="xrd-account-link" href="/account" target="_blank" rel="noopener" hidden>회원정보 관리</a>
         <button type="button" id="xrd-logout" hidden>로그아웃</button>
       </div>
     </header>
@@ -1386,6 +1389,7 @@ def build_xrd_page() -> str:
     var exampleButton = document.getElementById("xrd-example");
     var adminLink = document.getElementById("xrd-admin-link");
     var logoutButton = document.getElementById("xrd-logout");
+    var accountLink = document.getElementById("xrd-account-link");
     var downloadLink = document.getElementById("xrd-download");
     var preview = document.getElementById("xrd-preview");
     var empty = document.getElementById("xrd-empty");
@@ -1440,15 +1444,17 @@ def build_xrd_page() -> str:
       }).then(function(payload) {
         var roles = payload && Array.isArray(payload.roles) ? payload.roles : [];
         if (adminLink) adminLink.hidden = roles.indexOf("ADMIN") === -1;
+        if (accountLink) accountLink.hidden = false;
         if (logoutButton) logoutButton.hidden = false;
       }).catch(function() {
         if (adminLink) adminLink.hidden = true;
+        if (accountLink) accountLink.hidden = true;
         if (logoutButton) logoutButton.hidden = true;
       });
     }
 
     function logoutFromProject() {
-      if (!logoutButton) return;
+      if (!logoutButton || logoutButton.disabled) return;
       logoutButton.disabled = true;
       fetch("/api/v1/auth/logout", {
         method: "POST",

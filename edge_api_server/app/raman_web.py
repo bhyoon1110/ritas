@@ -277,14 +277,17 @@ body { overflow-x: hidden; }
 .raman-app-bar {
   display: flex;
   align-items: center;
+  gap: 12px;
   min-height: 54px;
-  padding: 0 22px;
+  padding: 8px 22px;
   border-bottom: 1px solid #d9e2ec;
   background: #fff;
   box-sizing: border-box;
 }
 .raman-brand {
   display: flex;
+  flex-shrink: 0;
+  max-width: 100%;
   align-items: baseline;
   gap: 9px;
   min-width: 0;
@@ -299,7 +302,10 @@ body { overflow-x: hidden; }
 }
 .raman-actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
+  justify-content: flex-end;
+  min-width: 0;
   gap: 8px;
   margin-left: auto;
 }
@@ -1664,6 +1670,7 @@ _PAGE_SHELL = """
     <label class="raman-file-button" for="raman-file-input">파일 선택</label>
     <input class="raman-file-input" id="raman-file-input" type="file"
            accept=".txt,.csv,.tsv,.xlsx,.xlsm" multiple>
+    <a class="raman-clear-button" id="raman-account-link" href="/account" target="_blank" rel="noopener" hidden>회원정보 관리</a>
     <button class="raman-clear-button" id="raman-logout" type="button" hidden>로그아웃</button>
   </div>
 </header>
@@ -3144,6 +3151,7 @@ _UPLOAD_SCRIPT = """
   var reportCommonApply = document.getElementById("raman-report-apply-common-conditions");
   var reportSampleConditionList = document.getElementById("raman-report-sample-condition-list");
   var logoutButton = document.getElementById("raman-logout");
+  var accountLink = document.getElementById("raman-account-link");
   var MESSAGE_AUTO_HIDE_MS = 5000;
   var messageTimer = null;
 
@@ -3157,15 +3165,17 @@ _UPLOAD_SCRIPT = """
     }).then(function(payload) {
       var roles = payload && Array.isArray(payload.roles) ? payload.roles : [];
       if (adminLink) adminLink.hidden = roles.indexOf("ADMIN") === -1;
+      if (accountLink) accountLink.hidden = false;
       if (logoutButton) logoutButton.hidden = false;
     }).catch(function() {
       if (adminLink) adminLink.hidden = true;
+      if (accountLink) accountLink.hidden = true;
       if (logoutButton) logoutButton.hidden = true;
     });
   }
 
   function logoutFromProject() {
-    if (!logoutButton) return;
+    if (!logoutButton || logoutButton.disabled) return;
     logoutButton.disabled = true;
     fetch("/api/v1/auth/logout", {
       method: "POST",

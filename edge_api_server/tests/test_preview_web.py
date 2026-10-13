@@ -6,7 +6,19 @@ from fastapi.testclient import TestClient
 
 from app.config import Settings
 from app.main import create_app
-from app.preview_web import create_preview_app
+from app.preview_web import build_workspace_index, create_preview_app
+
+
+def test_workspace_index_exposes_authenticated_account_actions() -> None:
+    page = build_workspace_index()
+    assert 'id="workspace-account-actions" aria-label="회원 메뉴" hidden' in page
+    assert '<a href="/account">회원정보 관리</a>' in page
+    assert '<nav class="workspace-projects" aria-label="실험 메뉴">' in page
+    assert 'id="workspace-logout">로그아웃</button>' in page
+    assert 'id="workspace-admin-link" href="/operations" hidden' in page
+    assert 'fetch("/api/v1/auth/me"' in page
+    assert 'fetch("/api/v1/auth/logout"' in page
+    assert 'if (!response.ok) throw new Error("logout failed")' in page
 
 
 def test_combined_preview_app_serves_all_preview_pages() -> None:

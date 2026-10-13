@@ -1598,6 +1598,8 @@ def build_ahn_page() -> str:
       .ahn-brand h1 { font-size: 25px; }
       .ahn-brand span { display: block; margin-top: 4px; white-space: normal; }
       .ahn-main { padding: 14px 12px 24px; }
+      .ahn-topbar { flex-wrap: wrap; }
+      .ahn-brand { flex: 1 1 100%; }
       .ahn-actions { width: 100%; justify-content: flex-end; }
       button, .ahn-download { min-height: 40px; padding: 8px 11px; font-size: 14px; }
       .ahn-summary { grid-template-columns: repeat(2, minmax(120px, 1fr)); }
@@ -1619,6 +1621,7 @@ def build_ahn_page() -> str:
         <button type="button" id="ahn-example">예제 불러오기</button>
         <button type="submit" form="ahn-form" class="primary" id="ahn-run" disabled>보고서 생성</button>
         <button type="button" id="ahn-clear">초기화</button>
+        <a class="ahn-download" id="ahn-account-link" href="/account" target="_blank" rel="noopener" hidden>회원정보 관리</a>
         <button type="button" id="ahn-logout" hidden>로그아웃</button>
       </div>
     </header>
@@ -1746,6 +1749,7 @@ def build_ahn_page() -> str:
     var requestDetail = document.getElementById("ahn-request-detail");
     var reportSendButton = document.getElementById("ahn-report-send");
     var logoutButton = document.getElementById("ahn-logout");
+    var accountLink = document.getElementById("ahn-account-link");
     var reportTransferControls = Array.prototype.slice.call(
       document.querySelectorAll("[data-ahn-transfer-field]")
     );
@@ -1779,15 +1783,17 @@ def build_ahn_page() -> str:
       }).then(function(payload) {
         var roles = payload && Array.isArray(payload.roles) ? payload.roles : [];
         if (adminLink) adminLink.hidden = roles.indexOf("ADMIN") === -1;
+        if (accountLink) accountLink.hidden = false;
         if (logoutButton) logoutButton.hidden = false;
       }).catch(function() {
         if (adminLink) adminLink.hidden = true;
+        if (accountLink) accountLink.hidden = true;
         if (logoutButton) logoutButton.hidden = true;
       });
     }
 
     function logoutFromProject() {
-      if (!logoutButton) return;
+      if (!logoutButton || logoutButton.disabled) return;
       logoutButton.disabled = true;
       fetch("/api/v1/auth/logout", {
         method: "POST",

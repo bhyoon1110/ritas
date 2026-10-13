@@ -41,14 +41,21 @@ def build_workspace_index() -> str:
     }
     main {
       width: min(720px, calc(100vw - 32px));
+      box-sizing: border-box;
       background: #fff;
       border: 1px solid #cbd5e1;
       border-radius: 10px;
       padding: 28px;
     }
     h1 { margin: 0 0 8px; font-size: 30px; }
+    .workspace-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 8px; }
+    .workspace-header h1 { margin: 0; }
+    .workspace-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
+    .workspace-actions a, .workspace-actions button { border: 1px solid #9fb6d6; border-radius: 6px; padding: 8px 12px; color: #172a46; background: #fff; font: inherit; font-size: 14px; font-weight: 700; text-decoration: none; cursor: pointer; }
+    .workspace-actions button:disabled { opacity: .55; cursor: wait; }
+    .workspace-actions[hidden], #workspace-admin-link[hidden] { display: none; }
     p { margin: 0 0 22px; color: #64748b; }
-    nav { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+    .workspace-projects { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
     a {
       display: block;
       border: 1px solid #9fb6d6;
@@ -62,22 +69,64 @@ def build_workspace_index() -> str:
       background: #fff;
     }
     a:hover { border-color: #2563eb; background: #f1f7ff; }
-    @media (max-width: 640px) { nav { grid-template-columns: 1fr; } }
+    @media (max-width: 640px) { .workspace-projects { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
   <main>
-    <h1>RIST Preview</h1>
+    <header class="workspace-header">
+      <h1>RIST Preview</h1>
+      <nav class="workspace-actions" id="workspace-account-actions" aria-label="회원 메뉴" hidden>
+        <a href="/account">회원정보 관리</a>
+        <button type="button" id="workspace-logout">로그아웃</button>
+      </nav>
+    </header>
     <p>FT-IR, Raman, XRD, TEM 화면을 같은 포트에서 확인합니다.</p>
-    <nav>
+    <nav class="workspace-projects" aria-label="실험 메뉴">
       <a href="/ftir">FT-IR</a>
       <a href="/raman">Raman</a>
       <a href="/xrd">XRD</a>
       <a href="/tem">TEM</a>
-      <a href="/operations">운영 관리</a>
+      <a id="workspace-admin-link" href="/operations" hidden>운영 관리</a>
       <a href="/voc">VOC 게시판</a>
     </nav>
   </main>
+  <script>
+  (function() {
+    var actions = document.getElementById("workspace-account-actions");
+    var adminLink = document.getElementById("workspace-admin-link");
+    var logoutButton = document.getElementById("workspace-logout");
+    fetch("/api/v1/auth/me", {
+      credentials: "same-origin",
+      headers: {"Accept": "application/json"}
+    }).then(function(response) {
+      if (!response.ok) throw new Error("auth lookup failed");
+      return response.json();
+    }).then(function(payload) {
+      var roles = payload && Array.isArray(payload.roles) ? payload.roles : [];
+      actions.hidden = false;
+      adminLink.hidden = roles.indexOf("ADMIN") === -1;
+    }).catch(function() {
+      actions.hidden = true;
+      adminLink.hidden = true;
+    });
+    logoutButton.addEventListener("click", function() {
+      if (logoutButton.disabled) return;
+      logoutButton.disabled = true;
+      fetch("/api/v1/auth/logout", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: {"X-Requested-With": "RIST-Project"}
+      }).then(function(response) {
+        if (!response.ok) throw new Error("logout failed");
+        window.location.href = "/login";
+      }).catch(function() {
+        logoutButton.disabled = false;
+        window.alert("로그아웃하지 못했습니다. 다시 시도하세요.");
+      });
+    });
+  })();
+  </script>
 </body>
 </html>"""
     return with_browser_support_notice(page)

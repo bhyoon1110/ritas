@@ -267,14 +267,17 @@ body {
 .ftir-app-bar {
   display: flex;
   align-items: center;
+  gap: 12px;
   min-height: 54px;
-  padding: 0 22px;
+  padding: 8px 22px;
   border-bottom: 1px solid #d9e2ec;
   background: #ffffff;
   box-sizing: border-box;
 }
 .ftir-brand {
   display: flex;
+  flex-shrink: 0;
+  max-width: 100%;
   align-items: baseline;
   gap: 9px;
   min-width: 0;
@@ -290,7 +293,10 @@ body {
 }
 .ftir-app-actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
+  justify-content: flex-end;
+  min-width: 0;
   gap: 8px;
   margin-left: auto;
 }
@@ -1744,6 +1750,7 @@ _PAGE_SHELL = """
       <input id="ftir-file-input" class="ftir-file-input" type="file"
              accept=".dpt" multiple>
     </label>
+    <a class="ftir-clear-button" id="ftir-account-link" href="/account" target="_blank" rel="noopener" hidden>회원정보 관리</a>
     <button type="button" class="ftir-clear-button" id="ftir-logout" hidden>로그아웃</button>
   </div>
 </header>
@@ -2182,6 +2189,7 @@ _UPLOAD_SCRIPT = """
   var reportOptionsSave = document.getElementById("ftir-report-options-save");
   var reportOptionsReset = document.getElementById("ftir-report-options-reset");
   var logoutButton = document.getElementById("ftir-logout");
+  var accountLink = document.getElementById("ftir-account-link");
   var MESSAGE_AUTO_HIDE_MS = 5000;
   var messageTimer = null;
 
@@ -2195,15 +2203,17 @@ _UPLOAD_SCRIPT = """
     }).then(function(payload) {
       var roles = payload && Array.isArray(payload.roles) ? payload.roles : [];
       if (adminLink) adminLink.hidden = roles.indexOf("ADMIN") === -1;
+      if (accountLink) accountLink.hidden = false;
       if (logoutButton) logoutButton.hidden = false;
     }).catch(function() {
       if (adminLink) adminLink.hidden = true;
+      if (accountLink) accountLink.hidden = true;
       if (logoutButton) logoutButton.hidden = true;
     });
   }
 
   function logoutFromProject() {
-    if (!logoutButton) return;
+    if (!logoutButton || logoutButton.disabled) return;
     logoutButton.disabled = true;
     fetch("/api/v1/auth/logout", {
       method: "POST",
