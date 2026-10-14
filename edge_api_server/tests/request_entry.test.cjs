@@ -48,6 +48,13 @@ async function setup(t, prefix, mode) {
     script=fs.readFileSync(path.join(assetRoot,manifest.scripts[key]),'utf8');
   }
   const hook=/function reportTransferValue\(field\)\s*\{/;
+  if(gd) {
+    let dependency=[...pages[prefix].matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)]
+      .map(m=>m[1]).find(s=>s.includes('rist-spectrum-work-template'));
+    if(mode==='chrome49') dependency=fs.readFileSync(path.join(assetRoot,
+      manifest.scripts[createHash('sha256').update(dependency.trim()).digest('hex')]),'utf8');
+    w.eval(dependency);
+  }
   assert(hook.test(script));
   w.eval(script.replace(hook, `
     window.__requestEntry = {

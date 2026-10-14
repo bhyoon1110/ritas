@@ -170,7 +170,7 @@ def ftir_abs_trans_toggle_js(div_id: str, *, yaxis_titles: dict[str, dict[str, s
         : pair[1].absorbance_y);
     }});
     var restyle = ys.length ? window.Plotly.restyle(gd, {{ y: ys }}, indexes) : Promise.resolve();
-    restyle.then(function() {{
+    var task = restyle.then(function() {{
       var layout = {{}};
       Object.keys(TITLES).forEach(function(axis) {{
         var t = TITLES[axis] || {{}};
@@ -193,7 +193,9 @@ def ftir_abs_trans_toggle_js(div_id: str, *, yaxis_titles: dict[str, dict[str, s
     }});
     mode = nextMode;
     btn.textContent = nextMode === "transmittance" ? "흡광도 보기" : "투과도 보기";
+    return task;
   }}
+  gd._ristSetSignalMode = applyMode;
 
   var btn = document.createElement("button");
   btn.type = "button";
@@ -324,7 +326,7 @@ def ftir_stack_js(div_id: str) -> str:
   }
 
   function applyInitialYAxisDisplay() {
-    applyOffsets({preserveView: true}).catch(function(error) {
+    return applyOffsets({preserveView: true}).catch(function(error) {
       console.error("FT-IR 스택 초기 표시 반영 실패", error);
     });
   }
@@ -831,16 +833,32 @@ def ftir_stack_js(div_id: str) -> str:
       state.raf = null;
     }
     state.initialized = false;
-    function rebuildWhenIdle() {
-      if (state.applyInFlight) {
-        setTimeout(rebuildWhenIdle, 0);
-        return;
+    gd._ristStackReady = new Promise(function(resolve, reject) {
+      function rebuildWhenIdle() {
+        if (state.applyInFlight) {
+          setTimeout(rebuildWhenIdle, 0);
+          return;
+        }
+        try {
+          initState();
+          applyInitialYAxisDisplay().then(resolve, reject);
+        } catch (error) { reject(error); }
       }
-      initState();
-      applyInitialYAxisDisplay();
-    }
-    setTimeout(rebuildWhenIdle, 0);
+      setTimeout(rebuildWhenIdle, 0);
+    });
+    return gd._ristStackReady;
   }
+
+  gd._ristApplyStackSettings = function(settings) {
+    return Promise.resolve(gd._ristStackReady).then(function() {
+      if (!state.initialized) initState();
+      setDragMode(false, false);
+      state.enabled = settings.enabled;
+      state.gap = settings.gap;
+      resetPositions();
+      return applyOffsets();
+    });
+  };
 
   document.addEventListener("pointerup", finishStackDrag);
   document.addEventListener("pointercancel", finishStackDrag);
@@ -863,7 +881,7 @@ def ftir_stack_js(div_id: str) -> str:
   gd.addEventListener("rist-plot-structure-changed", rebuildStackReferences);
   gd.addEventListener("rist-ftir-signal-mode-change", function() {
     if (!state.initialized) initState();
-    applyOffsets();
+    gd._ristStackReady = applyOffsets();
   });
   gd.on("plotly_restyle", scheduleCompaction);
   gd.addEventListener("rist-legend-visibility-change", scheduleCompaction);

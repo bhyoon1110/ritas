@@ -35,6 +35,7 @@ from .error_archive import error_archive as app_error_archive
 from . import assignment_suggestions
 from .auth import authenticated_transfer_payload
 from .browser_support import with_browser_support_notice
+from .work_template import work_template_script
 from .assignment_suggestions import AssignmentSuggestionRequest
 from .config import Settings
 from .preview_report import (
@@ -2338,6 +2339,7 @@ _UPLOAD_SCRIPT = """
   var workspaceDbPromise = null;
   var restoreInProgress = false;
   var saveTimer = 0;
+  var workTemplate = null;
 
   function cloneReportOptions(source) {
     var result = {};
@@ -2687,11 +2689,13 @@ _UPLOAD_SCRIPT = """
   function currentWorkspaceState() {
     return {
       version: 1,
+      workTemplate: workTemplate ? workTemplate.state() : null,
       files: files.map(fileRecord),
       selectedLibraryIds: selectedLibraryIds.slice(),
       reportMetadata: reportMetadataFormState(),
       reportTransfer: reportTransferFormState(),
       originStyle: originStyleEnabled(),
+      signalMode: gd._ristFtirSignalMode || "absorbance",
       sensitivity: currentPeakSensitivity(),
       statusText: status.textContent || "",
       analysisPayload: latestAnalysisPayload,
@@ -2701,7 +2705,7 @@ _UPLOAD_SCRIPT = """
   }
 
   function saveWorkspaceNow() {
-    if (restoreInProgress) return Promise.resolve();
+    if (restoreInProgress || (workTemplate && workTemplate.isImporting())) return Promise.resolve();
     return workspaceStore("readwrite").then(function(store) {
       return new Promise(function(resolve, reject) {
         var request = store.put(currentWorkspaceState(), SESSION_KEY);
@@ -2764,6 +2768,14 @@ _UPLOAD_SCRIPT = """
           gd._context
         ).then(function() {
           dispatchDataReplaced(currentPeakSensitivity());
+          return gd._ristStackReady;
+        }).then(function() {
+          if (state.signalMode === "transmittance" && gd._ristSetSignalMode) {
+            return gd._ristSetSignalMode(state.signalMode);
+          }
+        }).then(function() {
+          return gd._ristStackReady;
+        }).then(function() {
           window.Plotly.Plots.resize(gd);
           return state;
         }).finally(function() {
@@ -3332,9 +3344,12 @@ _UPLOAD_SCRIPT = """
   }
 
   function setBusy(busy) {
+    if (workTemplate) workTemplate.setBusy(busy);
     loading.classList.toggle("is-visible", busy);
     input.disabled = busy;
     reportButton.disabled = busy;
+    clearButton.disabled = busy;
+    fileList.querySelectorAll("button").forEach(function(control) { control.disabled = busy; });
     reportMetaControls.forEach(function(control) {
       control.disabled = busy;
     });
@@ -4694,6 +4709,7 @@ _UPLOAD_SCRIPT = """
   }
 
   function addFiles(incoming) {
+    if (workTemplate && workTemplate.isBusy()) { setMessage("현재 처리가 끝난 후 RAW를 추가하세요."); return; }
     setMessage("");
     var previousFiles = files.slice();
     var accepted;
@@ -4759,6 +4775,7 @@ _UPLOAD_SCRIPT = """
       "legend.y": 1.0,
       "legend.yanchor": "top"
     };
+    if (workTemplate) workTemplate.responsiveLayout(updates, mobile);
     return window.Plotly.relayout(gd, sizing ? sizing.applyLayout(updates) : updates);
   }
   gd._ristApplyResponsiveLayout = applyResponsiveLayout;
@@ -4808,12 +4825,13 @@ _UPLOAD_SCRIPT = """
       return payload;
     }).then(function(payload) {
       if (controller !== activeController) return;
+      if (workTemplate) workTemplate.prepare(payload.figure);
       latestAnalysisPayload = JSON.parse(JSON.stringify(payload));
       populateReportMetadataFromPayload(payload);
       return window.Plotly.react(
         gd,
         payload.figure.data,
-        withOriginStyle(gd._ristPlotSize
+        withOriginStyle(gd._ristPlotSize && !(workTemplate && workTemplate.isActive())
           ? gd._ristPlotSize.preserve(payload.figure.layout) : payload.figure.layout),
         gd._context
       ).then(function() {
@@ -4826,13 +4844,17 @@ _UPLOAD_SCRIPT = """
         dispatchDataReplaced(payload.settings.sensitivity);
         return applyResponsiveLayout();
       }).then(function() {
+        return workTemplate ? workTemplate.apply() : null;
+      }).then(function() {
         window.Plotly.Plots.resize(gd);
         scheduleWorkspaceSave();
+        return true;
       });
     }).catch(function(err) {
       if (err.name === "AbortError") return;
       setMessage(err.message || "DPT 분석에 실패했습니다.");
       status.textContent = "분석 실패";
+      return false;
     }).finally(function() {
       if (controller === activeController) {
         controller = null;
@@ -5245,6 +5267,8 @@ _UPLOAD_SCRIPT = """
   });
   reportButton.addEventListener("click", createReport);
   clearButton.addEventListener("click", function() {
+    if (workTemplate && workTemplate.isBusy()) return;
+    if (workTemplate) workTemplate.clear();
     files = [];
     latestAnalysisPayload = null;
     setReportProgress(null);
@@ -5293,8 +5317,45 @@ _UPLOAD_SCRIPT = """
   renderReportDatalists();
   installReportOptionPickers();
   installWorkspaceAutosave();
+  workTemplate = window.RistWorkTemplate.install({
+    experiment: "FTIR", gd: gd,
+    hasFiles: function() { return files.length > 0; },
+    libraries: function() { return libraries; },
+    snapshot: function() {
+      return {analysis: latestAnalysisPayload, metadata: reportMetadataFormState(), status: status.textContent};
+    },
+    restoreContext: function(saved) {
+      latestAnalysisPayload = saved.analysis; applyReportMetadataFormState(saved.metadata);
+      status.textContent = saved.status;
+    },
+    environment: function() {
+      var conditions = {};
+      reportMetaControls.forEach(function(control) { conditions[control.dataset.reportField] = control.value || ""; });
+      return {sensitivity: currentPeakSensitivity(), libraryIds: selectedLibraryIds.slice(),
+        originStyle: originStyleEnabled(), conditions: conditions};
+    },
+    setEnvironment: function(settings) {
+      gd._ristPeakSensitivityValue = settings.sensitivity;
+      selectedLibraryIds = settings.libraryIds.slice();
+      setOriginStyleEnabled(settings.originStyle, false);
+      reportMetaControls.forEach(function(control) {
+        var field = control.dataset.reportField;
+        if (Object.prototype.hasOwnProperty.call(settings.conditions, field)) control.value = settings.conditions[field];
+      });
+      renderLibraries();
+      if (!files.length) dispatchDataReplaced(settings.sensitivity);
+    },
+    invalidateReport: function() {
+      lastReportJob = null;
+      updatePersistentReportDownload(null); updateReportSendAvailability();
+      setReportProgress(null);
+    },
+    analyze: analyze, save: scheduleWorkspaceSave
+  });
   restoreWorkspace().then(function(restored) {
     return loadLibraries(restored && restored.selectedLibraryIds).then(function() {
+      if (restored) workTemplate.restore(restored.workTemplate);
+      workTemplate.setReady();
       if (restored) return applyResponsiveLayout();
       renderFiles();
       return applyResponsiveLayout();
@@ -5321,6 +5382,7 @@ def build_ftir_page() -> str:
             },
         )
         + ftir_stack_js(PLOT_DIV_ID)
+        + work_template_script()
         + _UPLOAD_SCRIPT
     )
     page = fig_to_responsive_html(

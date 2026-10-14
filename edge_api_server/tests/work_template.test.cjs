@@ -1,0 +1,223 @@
+// Exercise shipped native and Chrome49 code, including real page/stack controllers.
+const {test} = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const {execFileSync} = require('node:child_process');
+const {createHash} = require('node:crypto');
+const {JSDOM} = require('jsdom');
+const clone = value => JSON.parse(JSON.stringify(value));
+const tick = () => new Promise(resolve => setTimeout(resolve,100));
+const pages = {};
+for(const experiment of ['ftir','raman']) pages[experiment] = execFileSync(
+  process.env.RIST_TEST_PYTHON || 'python3', ['-c',
+    `from app.path_bootstrap import add_project_package_paths; add_project_package_paths(); from app.${experiment}_web import build_${experiment}_page; print(build_${experiment}_page())`],
+  {encoding:'utf8',maxBuffer:8*1024*1024});
+const root = path.resolve(__dirname,'../app/static/chrome49');
+const manifest = JSON.parse(fs.readFileSync(path.join(root,'manifest.json'),'utf8'));
+
+function figure(experiment, count=2) {
+  const data = Array.from({length:count}, (_,i) => ({
+    name:'NEW RAW '+i, x:[400,500,600], y:[-3+i,30+i,5+i], customdata:[-3+i,30+i,5+i],
+    line:{color:'#123456',width:1,dash:'solid'}, legendgroup:'sample:'+i,
+    meta:{rist_sample_parent:true,rist_sample_group:'sample:'+i,rist_raman_stack_offset:0,
+      rist_ftir_stack_offset_absorbance:0,rist_ftir_stack_offset_transmittance:0,
+      ...(experiment==='ftir'?{ftir_signal_toggle:{absorbance_y:[-3+i,30+i,5+i],transmittance_y:[40+i,50+i,60+i]}}:{})}
+  }));
+  return {data,layout:{title:{text:'NEW RAW'},xaxis:{range:[700,300]},yaxis:{range:[-5,40]},
+    legend:{x:1.02,y:1,orientation:'v'},annotations:[],shapes:[],meta:{ristPeakLabels:[],
+      [experiment==='ftir'?'ristFtirStack':'ristRamanStack']:{enabled:false,gap:1.2,unit:33,
+        modeUnits:{absorbance:33,transmittance:100},sampleOrder:data.map(t=>t.legendgroup),
+        sampleOffsets:Object.fromEntries(data.map(t=>[t.legendgroup,0])),
+        samplePositions:Object.fromEntries(data.map(t=>[t.legendgroup,0]))}}}};
+}
+function sampleTemplate(experiment) {
+  return {format:'rist-spectrum-work-template',version:1,experiment:experiment.toUpperCase(),name:'검증 템플릿',
+    settings:{sensitivity:0,libraryIds:['custom'],originStyle:true,
+      signalMode:experiment==='ftir'?'absorbance':'intensity',stack:{enabled:true,gap:1.8},
+      plotSize:{width:1000,ratio:'4:3'},axes:{xaxis:{fixedrange:true},yaxis:{fixedrange:false}},
+      legend:{font:{size:14},x:0.02,y:0.98,xanchor:'left',yanchor:'top'},
+      peakLabelsVisible:false,peakLegendEntriesVisible:false,sampleStyles:[{color:'#e11d48',width:3,dash:'dash'}],
+      conditions:experiment==='ftir'?{detector:'Template detector'}:{excitationWavelength:'532'}}};
+}
+function setup(t,experiment,mode) {
+  const dom = new JSDOM(pages[experiment],{runScripts:'outside-only',url:'http://rist.test/'+experiment,pretendToBeVisual:true});
+  const w=dom.window,d=w.document,gd=d.getElementById(experiment==='ftir'?'peak-plot':'raman-plot');
+  t.after(()=>{w.dispatchEvent(new w.Event('pagehide'));w.close();});
+  Object.defineProperty(gd.parentElement,'clientWidth',{value:1500});
+  Object.defineProperty(gd,'clientWidth',{get:()=>parseFloat(gd.style.width)||1500});
+  Object.defineProperty(gd,'clientHeight',{value:720});
+  const initial=figure(experiment,0); gd.data=initial.data; gd.layout=initial.layout; gd._context={};
+  const handlers={},downloads=[],requests=[]; let fail=false, sampleCount=2, controller, savedEnvironment;
+  const emit=(name,payload)=>{for(const fn of handlers[name]||[])fn(payload);};
+  gd.on=(name,fn)=>{(handlers[name] ||= []).push(fn);return gd;};
+  function set(object,key,value) { const keys=key.split('.');for(const part of keys.slice(0,-1)) object=object[part] ||= {};object[keys.at(-1)]=value; }
+  function full() { gd._fullLayout={...clone(gd.layout),_size:{w:900,h:500},xaxis:{...gd.layout.xaxis,_length:900},yaxis:{...gd.layout.yaxis,_length:500}}; }
+  full();
+  w.Plotly={
+    react:async(_,data,layout)=>{gd.data=data;gd.layout=layout;full();emit('plotly_afterplot');},
+    relayout:async(_,patch)=>{for(const [key,value] of Object.entries(patch))set(gd.layout,key,clone(value));full();emit('plotly_relayout',patch);emit('plotly_afterplot');},
+    restyle:async(_,patch,indexes)=>{for(const [pos,index] of indexes.entries())for(const [key,value] of Object.entries(patch))set(gd.data[index],key,clone(Array.isArray(value)?value[pos]:value));full();},
+    update:async(_,data,layout,indexes)=>{await w.Plotly.restyle(gd,data,indexes);await w.Plotly.relayout(gd,layout);},
+    Plots:{resize:()=>{}}
+  };
+  w.URL.createObjectURL=blob=>{downloads.push(blob);return 'blob:test';}; w.URL.revokeObjectURL=()=>{};
+  d.addEventListener('click',ev=>{if(ev.target.tagName==='A'&&ev.target.download)ev.preventDefault();});
+  w.confirm=()=>true;
+  if(mode==='chrome49') w.eval(fs.readFileSync(path.join(root,manifest.runtime),'utf8'));
+  w.fetch=async(url,options={})=>{
+    if(url.endsWith('/assignment-libraries'))return {ok:true,json:async()=>({libraries:[
+      {id:'default',name:'Default',valid:true,defaultSelected:true,assignmentCount:1},
+      {id:'custom',name:'Custom',valid:true,assignmentCount:2}],deleteEnabled:false})};
+    if(url.endsWith('/analyze')) {
+      requests.push({sensitivity:options.body.get('sensitivity'),libraries:options.body.getAll('assignment_library_ids')});
+      if(fail)return {ok:false,json:async()=>({message:'test failure'})};
+      return {ok:true,json:async()=>({figure:figure(experiment,sampleCount),
+        settings:{sensitivity:Number(options.body.get('sensitivity'))},
+        samples:Array.from({length:sampleCount},(_,i)=>({label:'NEW RAW '+i,fileName:'new-'+i,peakCount:0,metadata:{}}))})};
+    }
+    return {ok:false,status:401,json:async()=>({})};
+  };
+  const sources=[...pages[experiment].matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)].map(m=>m[1]);
+  function run(token) {
+    let source=sources.find(s=>s.includes(token));assert(source,token);
+    if(mode==='chrome49') {
+      const name=manifest.scripts[createHash('sha256').update(source.trim()).digest('hex')];
+      assert(name,'rebuild assets: '+token);source=fs.readFileSync(path.join(root,name),'utf8');
+    }
+    w.eval(source);
+  }
+  run('styleLayout: styleLayout');run('var axisLocksEnabled');run('var ratios =');
+  if(experiment==='ftir')run('function tracesWithToggle');
+  run(experiment==='ftir'?'gd._ristFtirStackInstalled':'gd._ristRamanStackInstalled');
+  run('gd._ristPeakSensitivityInstalled');
+  run('rist-spectrum-work-template');
+  const install=w.RistWorkTemplate.install;
+  w.RistWorkTemplate.install=options=>{savedEnvironment=options;controller=install(options);return controller;};
+  run('function currentWorkspaceState');
+  function upload(input,file) { Object.defineProperty(input,'files',{configurable:true,value:[file]});input.dispatchEvent(new w.Event('change',{bubbles:true})); }
+  return {w,d,gd,run,requests,downloads,template:()=>controller,options:()=>savedEnvironment,
+    fail:()=>{fail=true;},setCount:value=>{sampleCount=value;},
+    addRaw:async()=>{upload(d.getElementById(experiment+'-file-input'),new w.File(['raw'],experiment==='ftir'?'new.dpt':'new.txt'));await tick();await tick();},
+    read:blob=>new Promise((resolve,reject)=>{const reader=new w.FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsText(blob);}),
+    uploadTemplate:async(value,name='template.json')=>{upload(d.querySelector('[data-template-file]'),new w.File([value],name));await tick();await tick();}
+  };
+}
+
+for(const mode of ['native','chrome49']) for(const experiment of ['ftir','raman']) {
+  const label=experiment+'/'+mode;
+  test(label+': file round trip excludes RAW/evidence/identities; optional ranges and empty title survive',async t=>{
+    const h=setup(t,experiment,mode);await tick();await h.addRaw();
+    h.gd.layout.title.text='OLD SAMPLE SECRET';
+    h.gd.layout.shapes=[{name:'old box',x0:10,x1:20}];
+    if(experiment==='raman')h.d.querySelector('[data-report-field="conditionDetail"]').value='OLD SAMPLE HEADER '.repeat(500);
+    h.d.querySelector('[data-transfer-field="requestNumber"]').value='OLD-REQUEST';
+    h.d.querySelector('[data-template-save]').click();assert.equal(h.downloads.length,1);
+    const text=await h.read(h.downloads[0]),value=h.w.RistWorkTemplate.parse(text,experiment.toUpperCase());
+    for(const word of ['OLD SAMPLE','OLD-REQUEST','old box','NEW RAW','customdata','transmittance_y','conditionDetail'])assert(!text.includes(word),word);
+    assert(!value.settings.axes.xaxis.range);
+    assert.deepEqual(clone(value.settings.sampleStyles),[{color:'#123456',width:1,dash:'solid'},{color:'#123456',width:1,dash:'solid'}]);
+    h.gd.layout.title.text='';h.d.querySelector('[data-template-title]').checked=true;h.d.querySelector('[data-template-ranges]').checked=true;
+    h.d.querySelector('[data-template-save]').click();const next=JSON.parse(await h.read(h.downloads[1]));
+    assert.equal(next.settings.title,'');assert.deepEqual(next.settings.axes.xaxis.range,[700,300]);
+  });
+  test(label+': load before RAW, then recompute with chosen sensitivity/libraries and new-scale stack',async t=>{
+    const h=setup(t,experiment,mode);await tick();
+    await h.uploadTemplate(JSON.stringify(sampleTemplate(experiment)));
+    assert.equal(h.requests.length,0);assert(h.template().state());
+    await h.addRaw();assert.deepEqual(h.requests[0],{sensitivity:'0',libraries:['custom']});
+    assert.equal(h.gd.data[0].name,'NEW RAW 0');assert.equal(h.gd.data[0].line.color,'#e11d48');
+    assert.equal(h.gd.data[1].line.color,'#123456','extra sample keeps original style');
+    assert.deepEqual(clone(h.gd.data[0].customdata),[-3,30,5]);
+    assert.deepEqual(clone(h.gd.data[1].y),[-2,31,6].map(y=>y+33*1.8));
+    assert.equal(h.gd.layout.xaxis.fixedrange,true);
+    assert.equal(h.gd.layout.meta.ristPlotSize.ratio,'4:3');assert.equal(h.gd.layout.width,1000);
+    assert.equal(h.gd.layout.legend.x,0.02);
+    assert.equal(h.gd.layout.meta.ristPeakLabelsVisible,false);
+    assert.equal(h.d.querySelector('.rist-peak-sensitivity-number').value,'0');
+    assert(h.gd.layout.yaxis.range[1]>90,'new RAW Y range, not previous dataset range');
+    assert.equal(h.d.querySelector('[data-report-field="'+(experiment==='ftir'?'detector':'excitationWavelength')+'"]').value,
+      experiment==='ftir'?'Template detector':'532');
+    h.d.querySelector('[data-template-clear]').click();assert.equal(h.template().state(),null);
+    assert.equal(h.gd.data[0].line.color,'#e11d48','detach keeps current plot');
+  });
+  test(label+': invalid file/version/project/values/missing library never changes current settings',async t=>{
+    const h=setup(t,experiment,mode);await tick();
+    const good=sampleTemplate(experiment),before=clone(h.options().environment());
+    const invalid=['{',JSON.stringify({...good,version:2}),JSON.stringify({...good,experiment:'XRD'}),
+      JSON.stringify({...good,settings:{...good.settings,sensitivity:101}}),
+      JSON.stringify({...good,settings:{...good.settings,libraryIds:['missing']}}),
+      '{"__proto__":{"polluted":true}}',' '.repeat(256*1024+1)];
+    for(const raw of invalid) {
+      await h.uploadTemplate(raw);
+      assert.equal(h.template().state(),null);assert.deepEqual(clone(h.options().environment()),before);
+      assert(h.d.querySelector('[data-template-status]').textContent.length>0);
+    }
+    assert.equal({}.polluted,undefined);
+  });
+  test(label+': cancel and server failure preserve current edited graph and settings; controls recover',async t=>{
+    const h=setup(t,experiment,mode);await tick();await h.addRaw();
+    h.gd.data[0].name='CURRENT EDIT';h.gd.layout.annotations=[{text:'manual note',x:1,y:2}];
+    const data=clone(h.gd.data),env=clone(h.options().environment());
+    h.w.confirm=()=>false;assert.equal(await h.template().load(sampleTemplate(experiment)),false);
+    assert.deepEqual(clone(h.gd.data),data);assert.equal(h.template().state(),null);
+    h.w.confirm=()=>true;h.fail();
+    await assert.rejects(h.template().load(sampleTemplate(experiment)),/분석에 실패/);
+    assert.deepEqual(clone(h.options().environment()),env);assert.equal(h.template().state(),null);
+    assert.equal(h.gd.data[0].name,'CURRENT EDIT');assert.equal(h.gd.layout.annotations[0].text,'manual note');
+    assert.equal(h.d.querySelector('[data-template-load]').disabled,false);
+  });
+  test(label+': import onto existing RAW clears old evidence, respects saved ranges and keeps request identity',async t=>{
+    const h=setup(t,experiment,mode);await tick();await h.addRaw();
+    h.gd.layout.shapes=[{name:'OLD EVIDENCE'}];h.gd.data[0].name='OLD CUSTOM NAME';
+    const request=h.d.querySelector('[data-transfer-field="requestNumber"]');request.value='KEEP-REQUEST';
+    const value=sampleTemplate(experiment);value.settings.axes.xaxis.range=[650,450];value.settings.axes.yaxis.range=[-20,200];
+    h.gd.layout.meta.ristPlotSize={width:1200,ratio:'16:9'};
+    value.settings.title='';h.setCount(3);
+    assert.equal(await h.template().load(value),true);await tick();
+    assert.equal(request.value,'KEEP-REQUEST');assert.equal(h.gd.data.length,3);
+    assert.equal(h.gd.data[0].name,'NEW RAW 0');assert.equal(h.gd.layout.shapes.length,0);
+    assert.equal(h.gd.layout.title.text,'');assert.deepEqual(clone(h.gd.layout.xaxis.range),[650,450]);
+    assert.equal(h.gd.layout.meta.ristPlotSize.width,1000,'loaded template wins over previously selected plot size');
+    assert.deepEqual(clone(h.gd.layout.yaxis.range),[-20,200]);
+    h.d.getElementById(experiment+'-clear').click();await tick();assert.equal(h.template().state(),null);
+  });
+  test(label+': active selection restores, rejects missing libraries, and mismatched file cannot change analysis',async t=>{
+    const h=setup(t,experiment,mode);await tick();
+    const value=sampleTemplate(experiment);
+    h.template().restore(value);assert.deepEqual(clone(h.template().state()),value);
+    assert.equal(h.d.querySelector('[data-template-name]').value,value.name);
+    h.template().restore({...value,settings:{...value.settings,libraryIds:['removed-library']}});
+    assert.equal(h.template().state(),null);
+    assert.match(h.d.querySelector('[data-template-status]').textContent,/자동 적용을 해제/);
+    h.template().restore(value);
+    await h.uploadTemplate(JSON.stringify({...value,experiment:'TEM'}));
+    assert.deepEqual(clone(h.template().state()),value);
+  });
+  test(label+': a rendering failure rolls back the graph, manual evidence and report context',async t=>{
+    const h=setup(t,experiment,mode);await tick();await h.addRaw();
+    h.gd.data[0].name='BEFORE FAILURE';h.gd.layout.annotations=[{text:'KEEP MANUAL NOTE',x:500,y:12}];
+    const savedEnvironment=clone(h.options().environment()),savedMeta=clone(h.options().snapshot().metadata);
+    const relayout=h.w.Plotly.relayout;let injected=false;
+    h.w.Plotly.relayout=async(gd,patch)=>{
+      if(patch['xaxis.fixedrange']===true&&!injected){injected=true;throw Error('synthetic render failure');}
+      return relayout(gd,patch);
+    };
+    await assert.rejects(h.template().load(sampleTemplate(experiment)),/분석에 실패/);
+    assert(injected);assert.equal(h.gd.data[0].name,'BEFORE FAILURE');
+    assert.equal(h.gd.layout.annotations[0].text,'KEEP MANUAL NOTE');
+    assert.deepEqual(clone(h.options().environment()),savedEnvironment);
+    assert.deepEqual(clone(h.options().snapshot().metadata),savedMeta);
+    assert.equal(h.template().state(),null);
+  });
+  if(experiment==='ftir')test(label+': transmittance/absorbance and stack templates do not cumulatively alter RAW',async t=>{
+    const h=setup(t,experiment,mode);await tick();await h.addRaw();
+    const value=sampleTemplate(experiment);value.settings.signalMode='transmittance';
+    await h.template().load(value);await tick();
+    assert.equal(h.gd._ristFtirSignalMode,'transmittance');
+    assert.deepEqual(clone(h.gd.data[1].y),[41,51,61].map(y=>y+180));
+    value.settings.stack.enabled=false;value.settings.signalMode='absorbance';
+    await h.template().load(value);await tick();
+    assert.deepEqual(clone(h.gd.data[1].y),[-2,31,6]);assert.equal(h.gd._ristFtirSignalMode,'absorbance');
+  });
+}

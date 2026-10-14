@@ -34,6 +34,7 @@ from rist_common.plotting import (
 from . import assignment_suggestions
 from .auth import authenticated_transfer_payload
 from .browser_support import with_browser_support_notice
+from .work_template import work_template_script
 from .assignment_suggestions import AssignmentSuggestionRequest
 from .config import Settings
 from .errors import ApiException
@@ -2223,7 +2224,7 @@ _RAMAN_STACK_SCRIPT = """
   }
 
   function applyInitialYAxisDisplay() {
-    applyOffsets({preserveView: true}).catch(function(error) {
+    return applyOffsets({preserveView: true}).catch(function(error) {
       console.error("Raman 스택 초기 표시 반영 실패", error);
     });
   }
@@ -2756,16 +2757,32 @@ _RAMAN_STACK_SCRIPT = """
       state.raf = null;
     }
     state.initialized = false;
-    function rebuildWhenIdle() {
-      if (state.applyInFlight) {
-        window.setTimeout(rebuildWhenIdle, 0);
-        return;
+    gd._ristStackReady = new Promise(function(resolve, reject) {
+      function rebuildWhenIdle() {
+        if (state.applyInFlight) {
+          window.setTimeout(rebuildWhenIdle, 0);
+          return;
+        }
+        try {
+          initState();
+          applyInitialYAxisDisplay().then(resolve, reject);
+        } catch (error) { reject(error); }
       }
-      initState();
-      applyInitialYAxisDisplay();
-    }
-    window.setTimeout(rebuildWhenIdle, 0);
+      window.setTimeout(rebuildWhenIdle, 0);
+    });
+    return gd._ristStackReady;
   }
+
+  gd._ristApplyStackSettings = function(settings) {
+    return Promise.resolve(gd._ristStackReady).then(function() {
+      if (!state.initialized) initState();
+      setDragMode(false, false);
+      state.enabled = settings.enabled;
+      state.gap = settings.gap;
+      resetStackOffsets();
+      return applyOffsets();
+    });
+  };
 
   document.addEventListener("pointerup", finishStackDrag);
   document.addEventListener("pointercancel", finishStackDrag);
@@ -3510,6 +3527,7 @@ _UPLOAD_SCRIPT = """
   var workspaceDbPromise = null;
   var restoreInProgress = false;
   var saveTimer = 0;
+  var workTemplate = null;
 
   function cloneReportOptions(source) {
     var result = {};
@@ -3862,6 +3880,7 @@ _UPLOAD_SCRIPT = """
   function currentWorkspaceState() {
     return {
       version: 1,
+      workTemplate: workTemplate ? workTemplate.state() : null,
       files: files.map(fileRecord),
       selectedLibraryIds: selectedLibraryIds.slice(),
       reportMetadata: reportMetadataFormState(),
@@ -3876,7 +3895,7 @@ _UPLOAD_SCRIPT = """
   }
 
   function saveWorkspaceNow() {
-    if (restoreInProgress) return Promise.resolve();
+    if (restoreInProgress || (workTemplate && workTemplate.isImporting())) return Promise.resolve();
     return workspaceStore("readwrite").then(function(store) {
       return new Promise(function(resolve, reject) {
         var request = store.put(currentWorkspaceState(), SESSION_KEY);
@@ -4005,6 +4024,7 @@ _UPLOAD_SCRIPT = """
       "legend.y": 1.0,
       "legend.yanchor": "top"
     };
+    if (workTemplate) workTemplate.responsiveLayout(updates, compact);
     return window.Plotly.relayout(gd, sizing ? sizing.applyLayout(updates) : updates);
   }
   gd._ristApplyResponsiveLayout = applyResponsiveLayout;
@@ -5008,9 +5028,11 @@ _UPLOAD_SCRIPT = """
   }
 
   function setBusy(busy) {
+    if (workTemplate) workTemplate.setBusy(busy);
     loading.classList.toggle("is-visible", busy);
     input.disabled = busy;
     reportButton.disabled = busy;
+    fileList.querySelectorAll("button").forEach(function(control) { control.disabled = busy; });
     clearButton.disabled = busy;
     reportMetaControls.forEach(function(control) {
       control.disabled = busy;
@@ -5945,13 +5967,14 @@ _UPLOAD_SCRIPT = """
         body: form
       });
       var payload = await apiPayload(response, "Raman 분석에 실패했습니다.");
+      if (workTemplate) workTemplate.prepare(payload.figure);
       latestAnalysisPayload = JSON.parse(JSON.stringify(payload));
       syncReportSampleConditionSets();
       populateReportMetadataFromPayload(payload);
       await window.Plotly.react(
         gd,
         payload.figure.data || [],
-        withOriginStyle(gd._ristPlotSize
+        withOriginStyle(gd._ristPlotSize && !(workTemplate && workTemplate.isActive())
           ? gd._ristPlotSize.preserve(payload.figure.layout || {}) : (payload.figure.layout || {})),
         gd._context
       );
@@ -5961,6 +5984,7 @@ _UPLOAD_SCRIPT = """
         : sensitivity;
       dispatchDataReplaced(gd._ristPeakSensitivityValue);
       await applyResponsiveLayout();
+      if (workTemplate) await workTemplate.apply();
       window.Plotly.Plots.resize(gd);
       var libraryCount = selectedLibraryIds.length;
       status.textContent = payload.samples.map(function(item) {
@@ -5968,8 +5992,10 @@ _UPLOAD_SCRIPT = """
       }).join(" · ") + " · 라이브러리 " + libraryCount + "개";
       renderFiles();
       scheduleWorkspaceSave();
+      return true;
     } catch (err) {
       setMessage(err.message || String(err));
+      return false;
     } finally {
       setBusy(false);
     }
@@ -6306,6 +6332,7 @@ _UPLOAD_SCRIPT = """
   }
 
   function addFiles(list) {
+    if (workTemplate && workTemplate.isBusy()) { setMessage("현재 처리가 끝난 후 RAW를 추가하세요."); return; }
     var next = files.slice();
     var seen = {};
     next.forEach(function(file) { seen[fileKey(file)] = true; });
@@ -6422,6 +6449,8 @@ _UPLOAD_SCRIPT = """
     }
   });
   clearButton.addEventListener("click", function() {
+    if (workTemplate && workTemplate.isBusy()) return;
+    if (workTemplate) workTemplate.clear();
     latestAnalysisPayload = null;
     setReportProgress(null);
     setMessage("");
@@ -6462,8 +6491,52 @@ _UPLOAD_SCRIPT = """
   renderReportSampleConditionSets([]);
   installReportOptionPickers();
   installWorkspaceAutosave();
+  workTemplate = window.RistWorkTemplate.install({
+    experiment: "RAMAN", gd: gd,
+    hasFiles: function() { return files.length > 0; },
+    libraries: function() { return libraries; },
+    snapshot: function() {
+      return {analysis: latestAnalysisPayload, metadata: reportMetadataFormState(), status: status.textContent};
+    },
+    restoreContext: function(saved) {
+      latestAnalysisPayload = saved.analysis; applyReportMetadataFormState(saved.metadata);
+      status.textContent = saved.status;
+    },
+    environment: function() {
+      var conditions = {};
+      reportMetaControls.forEach(function(control) { conditions[control.dataset.reportField] = control.value || ""; });
+      return {sensitivity: currentPeakSensitivity(), libraryIds: selectedLibraryIds.slice(),
+        originStyle: originStyleEnabled(), conditions: conditions};
+    },
+    setEnvironment: function(settings) {
+      gd._ristPeakSensitivityValue = settings.sensitivity;
+      selectedLibraryIds = settings.libraryIds.slice();
+      setOriginStyleEnabled(settings.originStyle, false);
+      reportMetaControls.forEach(function(control) {
+        var field = control.dataset.reportField;
+        if (Object.prototype.hasOwnProperty.call(settings.conditions, field)) control.value = settings.conditions[field];
+      });
+      renderLibraries();
+      if (!files.length) dispatchDataReplaced(settings.sensitivity);
+    },
+    invalidateReport: function() {
+      lastReportJob = null;
+      updatePersistentReportDownload(null); updateReportSendAvailability();
+      setReportProgress(null);
+    },
+    applied: function(settings) {
+      // Common template conditions are explicit; per-sample identities are never imported.
+      reportSampleConditionList.querySelectorAll("[data-sample-condition-field]").forEach(function(control) {
+        var value = settings.conditions[control.dataset.sampleConditionField];
+        if (value) control.value = value;
+      });
+    },
+    analyze: analyze, save: scheduleWorkspaceSave
+  });
   restoreWorkspace().then(function(restored) {
     return loadLibraries(restored && restored.selectedLibraryIds).then(function() {
+      if (restored) workTemplate.restore(restored.workTemplate);
+      workTemplate.setReady();
       if (restored) return applyResponsiveLayout();
       renderFiles();
       return applyResponsiveLayout();
@@ -6498,6 +6571,7 @@ def build_raman_page() -> str:
             + _RAMAN_TOOL_PANEL_SCRIPT
             + _RAMAN_STACK_SCRIPT
             + _RAMAN_RATIO_SCRIPT
+            + work_template_script()
             + _UPLOAD_SCRIPT
         ),
         config={"scrollZoom": True},

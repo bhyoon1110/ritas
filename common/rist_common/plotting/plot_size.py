@@ -113,10 +113,12 @@ _HTML = r"""
     appliedSignature = signature();
     if (!active(value)) {
       gd.classList.remove("rist-size-compact");
+      // Workspace/template restores may carry a desktop Plotly width even
+      // without an explicit size preference. Recompute it for this viewport.
+      updates.width = null;
+      updates.autosize = true;
       if (applied) {
         restoreStyles();
-        updates.width = null;
-        updates.autosize = true;
         if (updates.height == null) updates.height = null;
       }
       applied = false;

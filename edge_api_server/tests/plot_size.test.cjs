@@ -60,7 +60,7 @@ function setup(t, experiment, mode) {
   const upload=scripts.find(s=>s.includes('function applyResponsiveLayout()'));
   const responsive=upload.match(/function applyResponsiveLayout\(\) \{[\s\S]*?gd\._ristApplyResponsiveLayout = applyResponsiveLayout;/)[0];
   const capture=upload.match(/async function captureReportFigureImage\(figure\) \{[\s\S]*?\n  \}/)[0];
-  w.eval('(function(){var gd=document.getElementById('+JSON.stringify(gd.id)+');'+responsive+capture+';gd.testCapture=captureReportFigureImage;})();');
+  w.eval('(function(){var workTemplate=null;var gd=document.getElementById('+JSON.stringify(gd.id)+');'+responsive+capture+';gd.testCapture=captureReportFigureImage;})();');
   const q=s=>d.querySelector(s);
   async function set(width,ratio) {
     q('[data-plot-width]').value=width;q('[data-plot-ratio]').value=ratio;
@@ -104,6 +104,17 @@ for(const mode of ['native','chrome49'])for(const experiment of ['ftir','raman']
     assert.equal(h.gd.style.cssText,original);assert.equal(h.gd.layout.width,null);assert.equal(h.gd.layout.autosize,true);
     assert(!h.gd.classList.contains('rist-size-compact'));
     const fallback={width:900,height:640};assert.equal(h.gd._ristPlotSize.exportDimensions(fallback),fallback);
+  });
+  test(`${prefix}: an automatic restored workspace drops its stale desktop width on mobile`,async t=>{
+    const h=setup(t,experiment,mode);
+    h.gd.layout.width=1280;h.gd.layout.autosize=false;
+    h.gd.layout.meta.ristPlotSize={width:null,ratio:'auto'};
+    await h.resize(390);
+    // In auto mode the page's resize listener owns resizing, not the custom-size controller.
+    await h.gd._ristApplyResponsiveLayout();
+    assert.equal(h.gd.layout.width,null);
+    assert.equal(h.gd.layout.autosize,true);
+    assert.equal(h.gd.layout.legend.orientation,'h');
   });
   test(`${prefix}: invalid widths never change layout or history`,async t=>{
     const h=setup(t,experiment,mode);
