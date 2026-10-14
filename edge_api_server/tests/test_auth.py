@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 import json
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from starlette.requests import Request
@@ -448,8 +449,10 @@ def test_transfer_auth_disabled_keeps_payload(tmp_path) -> None:
     assert authenticated_transfer_payload(request, payload, "FTIR") is payload
 
 
-def test_transfer_uses_recent_sso_identity_as_operator(tmp_path) -> None:
+@pytest.mark.parametrize("project", ["FTIR", "RAMAN", "XRD", "TEM"])
+def test_transfer_uses_recent_sso_identity_as_operator(tmp_path, project) -> None:
     context = _context(
+        projects=frozenset({project}),
         sso_identity={
             "subject": "sso-subject",
             "employee_id": "EMP-001",
@@ -457,40 +460,53 @@ def test_transfer_uses_recent_sso_identity_as_operator(tmp_path) -> None:
         },
         sso_authenticated_at=datetime.utcnow() - timedelta(minutes=5),
     )
-    result = authenticated_transfer_payload(_request(tmp_path, context), _payload(), "FTIR")
+    payload = PreviewReportSendRequest(
+        requestNumber="  MANUAL-001  ",
+        experimentCode="  LIMS-CODE  ",
+        equipmentCode="DEVICE-01",
+        operatorId="화면 입력값",
+    )
+    result = authenticated_transfer_payload(_request(tmp_path, context), payload, project)
 
     assert result.operator_id == "EMP-001"
-    assert result.request_number == "REQ-1"
+    assert result.request_number == "MANUAL-001"
+    assert result.experiment_code == "LIMS-CODE"
+    assert result.equipment_code == "DEVICE-01"
 
 
-def test_transfer_requires_sender_role(tmp_path) -> None:
+@pytest.mark.parametrize("project", ["FTIR", "RAMAN", "XRD", "TEM"])
+def test_transfer_requires_sender_role(tmp_path, project) -> None:
     context = _context(
+        projects=frozenset({project}),
         roles=frozenset(),
         sso_identity={"subject": "sso-subject"},
         sso_authenticated_at=datetime.utcnow(),
     )
 
     try:
-        authenticated_transfer_payload(_request(tmp_path, context), _payload(), "FTIR")
+        authenticated_transfer_payload(_request(tmp_path, context), _payload(), project)
     except ApiException as exc:
         assert exc.code == "REPORT_SEND_PERMISSION_REQUIRED"
     else:
         raise AssertionError("보고서 전송 역할이 없는데 전송이 허용되었습니다.")
 
 
-def test_transfer_requires_linked_sso(tmp_path) -> None:
-    context = _context(sso_authenticated_at=datetime.utcnow())
+@pytest.mark.parametrize("project", ["FTIR", "RAMAN", "XRD", "TEM"])
+def test_transfer_requires_linked_sso(tmp_path, project) -> None:
+    context = _context(projects=frozenset({project}), sso_authenticated_at=datetime.utcnow())
 
     try:
-        authenticated_transfer_payload(_request(tmp_path, context), _payload(), "FTIR")
+        authenticated_transfer_payload(_request(tmp_path, context), _payload(), project)
     except ApiException as exc:
         assert exc.code == "SSO_LINK_REQUIRED"
     else:
         raise AssertionError("SSO 연결 없이 전송이 허용되었습니다.")
 
 
-def test_transfer_requires_recent_sso(tmp_path) -> None:
+@pytest.mark.parametrize("project", ["FTIR", "RAMAN", "XRD", "TEM"])
+def test_transfer_requires_recent_sso(tmp_path, project) -> None:
     context = _context(
+        projects=frozenset({project}),
         sso_identity={"subject": "sso-subject"},
         sso_authenticated_at=datetime.utcnow() - timedelta(minutes=31),
     )
@@ -499,7 +515,7 @@ def test_transfer_requires_recent_sso(tmp_path) -> None:
         authenticated_transfer_payload(
             _request(tmp_path, context),
             _payload(),
-            "FTIR",
+            project,
             return_to="/reports/report-1",
         )
     except ApiException as exc:
@@ -509,3 +525,15 @@ def test_transfer_requires_recent_sso(tmp_path) -> None:
         }
     else:
         raise AssertionError("최근 SSO 재인증 없이 전송이 허용되었습니다.")
+
+
+@pytest.mark.parametrize("project", ["FTIR", "RAMAN", "XRD", "TEM"])
+def test_manual_transfer_requires_project_access(tmp_path, project) -> None:
+    context = _context(
+        projects=frozenset(),
+        sso_identity={"subject": "sso-subject"},
+        sso_authenticated_at=datetime.utcnow(),
+    )
+    with pytest.raises(ApiException) as raised:
+        authenticated_transfer_payload(_request(tmp_path, context), _payload(), project)
+    assert raised.value.code == "PROJECT_ACCESS_DENIED"

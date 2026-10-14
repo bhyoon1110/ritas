@@ -1341,8 +1341,8 @@ def build_xrd_page() -> str:
         </div>
         <div class="xrd-request-detail is-empty" id="xrd-request-detail">XRD 의뢰를 조회하면 상세 정보가 표시됩니다.</div>
         <div class="xrd-transfer-grid">
-          <label><span>의뢰번호</span><input type="text" data-xrd-transfer-field="requestNumber" readonly></label>
-          <label><span>실험코드</span><input type="text" data-xrd-transfer-field="limsExperimentCode" readonly></label>
+          <label><span>의뢰번호</span><input type="text" data-xrd-transfer-field="requestNumber" placeholder="조회 후 선택하거나 직접 입력" maxlength="100"></label>
+          <label><span>실험코드</span><input type="text" data-xrd-transfer-field="limsExperimentCode" placeholder="LIMS 실험코드 (전송 시 필수)" maxlength="50"></label>
           <label><span>실험장비</span><input type="text" data-xrd-transfer-field="equipmentCode" value="XRD-EDGE-01"></label>
           <label><span>실험자</span><input type="text" data-xrd-transfer-field="operatorId" value="SSO-PENDING"></label>
         </div>
@@ -1548,8 +1548,23 @@ def build_xrd_page() -> str:
       };
     }
     function selectedRequestItem() {
+      if (requestSelect.value === "") return null;
       var index = Number(requestSelect.value);
       return Number.isInteger(index) && index >= 0 ? requestItems[index] || null : null;
+    }
+    function handleReportTransferInput() {
+      var selected = selectedRequestItem();
+      if (selected) {
+        var code = String(selected.experimentCode || selected.testMethodCode || "").trim();
+        var numberChanged = reportTransferValue("requestNumber") !== String(selected.requestNumber || "").trim();
+        var codeChanged = reportTransferValue("limsExperimentCode") !== code;
+        if (numberChanged || codeChanged) {
+          requestSelect.value = "";
+          if (numberChanged && !codeChanged) setReportTransferValue("limsExperimentCode", "");
+        }
+      }
+      renderRequestDetail(selectedRequestItem());
+      updateReportSendAvailability();
     }
     function requestOptionLabel(item) {
       return [
@@ -1566,9 +1581,9 @@ def build_xrd_page() -> str:
       requestDetail.replaceChildren();
       if (!item) {
         requestDetail.classList.add("is-empty");
-        requestDetail.textContent = requestItems.length
-          ? "의뢰를 선택하면 상세 정보가 표시됩니다."
-          : "조회된 XRD 의뢰가 없습니다.";
+        requestDetail.textContent = reportTransferValue("requestNumber")
+          ? "직접 입력한 의뢰번호입니다. 전송 전 의뢰번호와 LIMS 실험코드를 확인하세요."
+          : "의뢰를 조회하여 선택하거나 아래에 의뢰번호를 직접 입력하세요.";
         return;
       }
       requestDetail.classList.remove("is-empty");
@@ -1894,6 +1909,7 @@ def build_xrd_page() -> str:
       var item = selectedRequestItem();
       if (!item) {
         renderRequestDetail(null);
+        updateReportSendAvailability();
         return;
       }
       setReportTransferValue("requestNumber", item.requestNumber || "");
@@ -2517,8 +2533,8 @@ def build_xrd_page() -> str:
     requestLoad.addEventListener("click", loadRequestItems);
     requestSelect.addEventListener("change", applySelectedRequest);
     reportTransferControls.forEach(function(control) {
-      control.addEventListener("input", updateReportSendAvailability);
-      control.addEventListener("change", updateReportSendAvailability);
+      control.addEventListener("input", handleReportTransferInput);
+      control.addEventListener("change", handleReportTransferInput);
     });
     reportSendButton.addEventListener("click", sendReportJob);
     renderRequestOptions([]);

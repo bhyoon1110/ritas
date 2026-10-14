@@ -1777,7 +1777,7 @@ _PAGE_SHELL = """
 </section>
 <section class="ftir-report-meta-band" id="ftir-report-transfer">
   <details class="ftir-report-meta-panel" open>
-    <summary>보고서 전송 정보 <span>의뢰 조회 + 전송 필수 정보</span></summary>
+    <summary>보고서 전송 정보 <span>의뢰 조회 또는 직접 입력</span></summary>
     <div class="ftir-report-meta-toolbar">
       <select class="ftir-report-request-select" id="ftir-request-select">
         <option value="">의뢰 조회 후 선택</option>
@@ -1791,17 +1791,17 @@ _PAGE_SHELL = """
               id="ftir-report-send" disabled>보고서 전송</button>
     </div>
     <div class="ftir-report-request-detail is-empty" id="ftir-request-detail">
-      의뢰 조회 후 항목을 선택하면 의뢰명, 시료, 담당자, 상태를 확인할 수 있습니다.
+      의뢰를 조회하여 선택하거나 아래에 의뢰번호를 직접 입력하세요.
     </div>
     <div class="ftir-report-meta-grid">
       <label class="ftir-report-meta-field">
         <span>의뢰번호</span>
-        <input type="text" placeholder="의뢰 조회 후 선택"
+        <input type="text" placeholder="조회 후 선택하거나 직접 입력" maxlength="100"
                data-transfer-field="requestNumber">
       </label>
       <label class="ftir-report-meta-field">
         <span>실험코드</span>
-        <input type="text" placeholder="LIMS 실험코드"
+        <input type="text" placeholder="LIMS 실험코드 (전송 시 필수)" maxlength="50"
                data-transfer-field="limsExperimentCode">
       </label>
       <label class="ftir-report-meta-field">
@@ -2826,10 +2826,12 @@ _UPLOAD_SCRIPT = """
   function reportTransferFormState() {
     var state = {};
     reportTransferControls.forEach(function(control) {
-      state[control.dataset.transferField] = control.value || "";
+      state[control.dataset.transferField] = String(control.value || "").trim();
     });
     var selected = selectedRequestItem();
-    if (selected) {
+    if (selected
+        && state.requestNumber === String(selected.requestNumber || "").trim()
+        && state.limsExperimentCode === String(selected.experimentCode || selected.testMethodCode || "").trim()) {
       state.limsExperimentName = selected.experimentName || selected.testMethodName || "";
       state.sampleName = selected.sampleName || "";
       state.requestResultNo = selected.requestResultNo || "";
@@ -2846,6 +2848,7 @@ _UPLOAD_SCRIPT = """
         control.value = state[field] || "";
       }
     });
+    renderRequestDetail(selectedRequestItem());
   }
 
   function reportTransferValue(field) {
@@ -2880,8 +2883,25 @@ _UPLOAD_SCRIPT = """
   }
 
   function selectedRequestItem() {
+    if (requestSelect.value === "") return null;
     var index = Number(requestSelect.value);
     return Number.isInteger(index) && index >= 0 ? requestItems[index] || null : null;
+  }
+
+  function handleReportTransferInput() {
+    var selected = selectedRequestItem();
+    if (selected) {
+      var code = String(selected.experimentCode || selected.testMethodCode || "").trim();
+      var numberChanged = reportTransferValue("requestNumber") !== String(selected.requestNumber || "").trim();
+      var codeChanged = reportTransferValue("limsExperimentCode") !== code;
+      if (numberChanged || codeChanged) {
+        requestSelect.value = "";
+        if (numberChanged && !codeChanged) setReportTransferValue("limsExperimentCode", "");
+      }
+    }
+    renderRequestDetail(selectedRequestItem());
+    updateReportSendAvailability();
+    scheduleWorkspaceSave();
   }
 
   function requestDisplayValue(value) {
@@ -2924,9 +2944,9 @@ _UPLOAD_SCRIPT = """
     requestDetail.textContent = "";
     if (!item) {
       requestDetail.classList.add("is-empty");
-      requestDetail.textContent = requestItems.length
-        ? "의뢰를 선택하면 상세 정보가 표시됩니다."
-        : "의뢰 조회 후 항목을 선택하면 의뢰명, 시료, 담당자, 상태를 확인할 수 있습니다.";
+      requestDetail.textContent = reportTransferValue("requestNumber")
+        ? "직접 입력한 의뢰번호입니다. 전송 전 의뢰번호와 LIMS 실험코드를 확인하세요."
+        : "의뢰를 조회하여 선택하거나 아래에 의뢰번호를 직접 입력하세요.";
       return;
     }
     requestDetail.classList.remove("is-empty");
@@ -2985,7 +3005,12 @@ _UPLOAD_SCRIPT = """
 
   function applySelectedRequest() {
     var item = selectedRequestItem();
-    if (!item) return;
+    if (!item) {
+      renderRequestDetail(null);
+      updateReportSendAvailability();
+      scheduleWorkspaceSave();
+      return;
+    }
     setReportTransferValue("requestNumber", item.requestNumber || "");
     setReportTransferValue(
       "limsExperimentCode",
@@ -5077,10 +5102,8 @@ _UPLOAD_SCRIPT = """
   requestLoad.addEventListener("click", loadRequestItems);
   requestSelect.addEventListener("change", applySelectedRequest);
   reportTransferControls.forEach(function(control) {
-    control.addEventListener("change", scheduleWorkspaceSave);
-    control.addEventListener("input", scheduleWorkspaceSave);
-    control.addEventListener("change", updateReportSendAvailability);
-    control.addEventListener("input", updateReportSendAvailability);
+    control.addEventListener("change", handleReportTransferInput);
+    control.addEventListener("input", handleReportTransferInput);
   });
   reportSendButton.addEventListener("click", function() {
     sendReportJob(lastReportJob, reportSendButton);
