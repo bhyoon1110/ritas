@@ -312,7 +312,9 @@ def send_preview_report_package(
     }
 
 
-def parse_analysis_payload(analysis_json: str, figure_json: str | None = None) -> dict[str, Any]:
+def parse_analysis_payload(analysis_json: str, figure_json: str | None = None, viewer_figure=None) -> dict[str, Any]:
+    from .report.spectrum_viewer import read_viewer_snapshot
+
     payload = json.loads(analysis_json)
     if not isinstance(payload, dict):
         raise ValueError("analysis_json은 JSON 객체여야 합니다.")
@@ -320,6 +322,9 @@ def parse_analysis_payload(analysis_json: str, figure_json: str | None = None) -
         figure = json.loads(figure_json)
         if isinstance(figure, dict):
             payload["figure"] = figure
+    snapshot = read_viewer_snapshot(viewer_figure)
+    if snapshot is not None:
+        payload["viewerFigure"] = snapshot
     return payload
 
 
@@ -449,6 +454,14 @@ def build_preview_report_package(
         convert_pptx_to_pdf(
             report_dir / "report.pptx",
             report_dir / "report-from-pptx.pdf",
+        )
+        from .report.spectrum_viewer import build_spectrum_viewer
+
+        _emit_progress(progress, "preview", 93, "PPT 페이지와 열람용 그래프를 준비하는 중입니다.")
+        build_spectrum_viewer(
+            report_dir,
+            title=f"{experiment_code} 분석 보고서 · {request_number or '결과 미리보기'}",
+            figure=analysis_payload.get("viewerFigure") or analysis_payload.get("figure") or {},
         )
         _emit_progress(progress, "package", 95, "최종 ZIP을 패키징하는 중입니다.")
         package = build_report_package(

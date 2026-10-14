@@ -33,7 +33,12 @@ def use_fake_pptx_pdf_converter(monkeypatch) -> None:
     def fake_convert(pptx_path: Path, pdf_path: Path) -> Path:
         assert pptx_path.name == "report.pptx"
         assert pdf_path.name == "report-from-pptx.pdf"
-        pdf_path.write_bytes(b"%PDF-1.4\n% RIST test PDF\n")
+        from reportlab.pdfgen.canvas import Canvas
+        canvas = Canvas(str(pdf_path))
+        for index in range(2):
+            canvas.drawString(50, 750, f"Mock PPT page {index + 1}")
+            canvas.showPage()
+        canvas.save()
         return pdf_path
 
     monkeypatch.setattr(preview_report, "convert_pptx_to_pdf", fake_convert)
@@ -531,7 +536,8 @@ def test_ftir_report_api_builds_package_with_graph_and_raw_xlsx(
             "current_graph.png",
         } <= names
         assert "report.json" not in names
-        html_report = archive.read("report.html").decode("utf-8")
+        assert 'name="rist-report-viewer"' in archive.read("report.html").decode("utf-8")
+        html_report = archive.read("report-summary.html").decode("utf-8")
         with zipfile.ZipFile(BytesIO(archive.read("report.pptx"))) as pptx_archive:
             ppt_text = "\n".join(
                 pptx_archive.read(name).decode("utf-8")
@@ -614,6 +620,10 @@ def test_ftir_report_job_api_tracks_progress_and_downloads_package(
         assert job["status"] == "completed"
         assert job["progressPct"] == 100
         assert job["downloadUrl"].endswith(f"/{job['jobId']}/download")
+        preview_response = client.get(job["previewUrl"])
+        assert preview_response.status_code == 200
+        assert 'id=\'page-select\'' in preview_response.text
+        assert "sandbox" in preview_response.headers["content-security-policy"]
         download_response = client.get(job["downloadUrl"])
 
     assert download_response.status_code == 200
@@ -628,7 +638,8 @@ def test_ftir_report_job_api_tracks_progress_and_downloads_package(
         "current_graph.png",
     } <= names
     with zipfile.ZipFile(BytesIO(download_response.content)) as archive:
-        html_report = archive.read("report.html").decode("utf-8")
+        assert 'name="rist-report-viewer"' in archive.read("report.html").decode("utf-8")
+        html_report = archive.read("report-summary.html").decode("utf-8")
     assert "REQ-FTIR-001" in html_report
     assert "LIMS-FTIR-01" in html_report
     assert "FTIR-EDGE-01" in html_report

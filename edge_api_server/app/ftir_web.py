@@ -207,7 +207,10 @@ def _build_ftir_raw_series(uploaded: list[tuple[str, bytes]]) -> list[RawSeries]
 
 def _report_job_response(job: PreviewReportJob, *, prefix: str) -> dict:
     download_url = f"{prefix}/{job.job_id}/download"
-    return job.to_dict(download_url=download_url)
+    result = job.to_dict(download_url=download_url)
+    if job.status == "completed":
+        result["previewUrl"] = f"{prefix}/{job.job_id}/preview"
+    return result
 
 
 def plotly_asset_path() -> Path:
@@ -1787,6 +1790,9 @@ _PAGE_SHELL = """
       <a class="ftir-report-option-button ftir-report-download-link is-disabled"
          id="ftir-report-download" href="#" aria-disabled="true"
          title="보고서 생성이 완료되면 다운로드할 수 있습니다.">보고서 다운로드</a>
+      <a class="ftir-report-option-button ftir-report-download-link is-disabled"
+         id="ftir-report-preview" href="#" aria-disabled="true" target="_blank" rel="noopener"
+         title="보고서 생성 후 PPT 페이지와 열람용 그래프를 확인합니다.">보고서 미리보기</a>
       <button type="button" class="ftir-report-option-button"
               id="ftir-report-send" disabled>보고서 전송</button>
     </div>
@@ -2181,6 +2187,10 @@ _UPLOAD_SCRIPT = """
   var requestSelect = document.getElementById("ftir-request-select");
   var requestDetail = document.getElementById("ftir-request-detail");
   var reportDownloadLink = document.getElementById("ftir-report-download");
+  var reportPreviewLink = document.getElementById("ftir-report-preview");
+  if (reportPreviewLink) reportPreviewLink.addEventListener("click", function(event) {
+    if (reportPreviewLink.getAttribute("aria-disabled") === "true") event.preventDefault();
+  });
   var reportSendButton = document.getElementById("ftir-report-send");
   var reportOptionsOpen = document.getElementById("ftir-report-options-open");
   var reportOptionsModal = document.getElementById("ftir-report-options-modal");
@@ -3041,6 +3051,12 @@ _UPLOAD_SCRIPT = """
   }
 
   function updatePersistentReportDownload(job) {
+    if (reportPreviewLink) {
+      var ready = !!(job && job.previewUrl);
+      reportPreviewLink.href = ready ? job.previewUrl : "#";
+      reportPreviewLink.classList.toggle("is-disabled", !ready);
+      reportPreviewLink.setAttribute("aria-disabled", ready ? "false" : "true");
+    }
     if (!reportDownloadLink) return;
     if (!job || !job.jobId) {
       reportDownloadLink.classList.add("is-disabled");
@@ -4952,16 +4968,26 @@ _UPLOAD_SCRIPT = """
     return filteredReportFigurePayload();
   }
 
-  function compactReportFigurePayload(figure) {
+  function compactReportFigurePayload(figure, forViewer) {
     var payload = JSON.parse(JSON.stringify(figure || {}));
     payload.data = (payload.data || []).map(function(trace) {
       var compact = Object.assign({}, trace);
-      delete compact.x;
-      delete compact.y;
+      if (!forViewer) {
+        delete compact.x;
+        delete compact.y;
+      }
+      if (compact.meta) {
+        compact.meta = Object.assign({}, compact.meta);
+        compact.meta.rist_view_offset = Number(compact.meta.rist_raman_stack_offset
+          || compact.meta["rist_ftir_stack_offset_" + (gd._ristFtirSignalMode || "absorbance")] || 0);
+        delete compact.meta.ftir_signal_toggle;
+      }
       delete compact.z;
-      delete compact.customdata;
-      delete compact.text;
-      delete compact.hovertext;
+      if (!forViewer) {
+        delete compact.customdata;
+        delete compact.text;
+        delete compact.hovertext;
+      }
       return compact;
     });
     return payload;
@@ -5071,6 +5097,7 @@ _UPLOAD_SCRIPT = """
       var job = await uploadReportFilesWithSession(reportFiles, {
         analysis_json: JSON.stringify(reportAnalysisPayload()),
         figure_json: JSON.stringify(compactReportFigurePayload(reportFigure)),
+        viewer_figure: new Blob([JSON.stringify(compactReportFigurePayload(reportFigure, true))], {type: "application/json"}),
         figure_image: figureImage,
         requestNumber: transfer.requestNumber,
         equipmentCode: transfer.equipmentCode,
@@ -5504,6 +5531,7 @@ def create_ftir_preview_report(
     files: list[UploadFile] = File(...),
     analysis_json: str = Form(...),
     figure_json: str = Form(default=""),
+    viewer_figure: UploadFile | None = File(default=None),
     figure_image: str = Form(...),
     request_number: str = Form(default="", alias="requestNumber"),
     equipment_code: str = Form(default="", alias="equipmentCode"),
@@ -5521,7 +5549,7 @@ def create_ftir_preview_report(
     request.state.error_project = "FT-IR"
     request.state.error_file_blobs = uploaded
     try:
-        analysis_payload = parse_analysis_payload(analysis_json, figure_json)
+        analysis_payload = parse_analysis_payload(analysis_json, figure_json, viewer_figure)
         image_bytes = decode_figure_image(figure_image)
         raw_series = _build_ftir_raw_series(uploaded)
         tmp_root, package = build_preview_report_package(
@@ -5562,11 +5590,12 @@ def _create_ftir_report_job_from_uploaded(
     request_number: str,
     equipment_code: str,
     operator_id: str,
+    viewer_figure: UploadFile | None = None,
 ) -> PreviewReportJob:
     request.state.error_project = "FT-IR"
     request.state.error_file_blobs = uploaded
     try:
-        analysis_payload = parse_analysis_payload(analysis_json, figure_json)
+        analysis_payload = parse_analysis_payload(analysis_json, figure_json, viewer_figure)
         image_bytes = decode_figure_image(figure_image)
     except ValueError as exc:
         raise ApiException(400, "FTIR_REPORT_INVALID_PAYLOAD", str(exc)) from exc
@@ -5655,6 +5684,7 @@ def complete_ftir_report_upload_session(
     upload_id: str,
     analysis_json: str = Form(...),
     figure_json: str = Form(default=""),
+    viewer_figure: UploadFile | None = File(default=None),
     figure_image: str = Form(...),
     request_number: str = Form(default="", alias="requestNumber"),
     equipment_code: str = Form(default="", alias="equipmentCode"),
@@ -5702,6 +5732,7 @@ def complete_ftir_report_upload_session(
         uploaded=uploaded,
         analysis_json=analysis_json,
         figure_json=figure_json,
+        viewer_figure=viewer_figure,
         figure_image=figure_image,
         request_number=request_number,
         equipment_code=equipment_code,
@@ -5718,6 +5749,7 @@ def create_ftir_preview_report_job(
     files: list[UploadFile] = File(...),
     analysis_json: str = Form(...),
     figure_json: str = Form(default=""),
+    viewer_figure: UploadFile | None = File(default=None),
     figure_image: str = Form(...),
     request_number: str = Form(default="", alias="requestNumber"),
     equipment_code: str = Form(default="", alias="equipmentCode"),
@@ -5729,6 +5761,7 @@ def create_ftir_preview_report_job(
         uploaded=uploaded,
         analysis_json=analysis_json,
         figure_json=figure_json,
+        viewer_figure=viewer_figure,
         figure_image=figure_image,
         request_number=request_number,
         equipment_code=equipment_code,
@@ -5744,6 +5777,18 @@ def get_ftir_preview_report_job(request: Request, job_id: str) -> dict:
     if job is None:
         raise ApiException(404, "FTIR_REPORT_JOB_NOT_FOUND", "보고서 작업을 찾을 수 없습니다.")
     return _report_job_response(job, prefix="/api/v1/ftir/report/jobs")
+
+
+@router.get("/api/v1/ftir/report/jobs/{job_id}/preview", tags=["ftir"])
+def preview_ftir_report_job(request: Request, job_id: str) -> HTMLResponse:
+    from .report.spectrum_viewer import spectrum_preview_response
+
+    job = preview_report_job_store(request.app).get(job_id)
+    if job is None or job.filename != "ftir-report-package.zip":
+        raise ApiException(404, "FTIR_REPORT_JOB_NOT_FOUND", "보고서 작업을 찾을 수 없습니다.")
+    if job.status != "completed" or job.package_path is None:
+        raise ApiException(409, "FTIR_REPORT_JOB_NOT_READY", "보고서가 아직 완성되지 않았습니다.")
+    return spectrum_preview_response(job.package_path)
 
 
 @router.get("/api/v1/ftir/report/jobs/{job_id}/download", tags=["ftir"])

@@ -738,6 +738,28 @@ Docker가 있는 개발 장비에서는 임시 MariaDB를 자동으로 띄워 �
 PYTHON_BIN=.venv/bin/python scripts/run_mariadb_tests.sh
 ```
 
+## FTIR/Raman 발행 보고서 미리보기
+
+- 보고서 생성이 끝나면 실험 화면의 `보고서 미리보기` 또는 `/reports/{reportId}`의
+  `PPT · 그래프 미리보기`를 연다. 기존 로그인/프로젝트 권한 검사와 SSO 전송 요건은 유지한다.
+- `/api/v1/{ftir|raman}/report/jobs/{jobId}/preview`는 현재 작업의 ZIP을 읽고,
+  `/api/v1/reports/{reportId}/preview`는 DB에 등록된 공유 저장소 ZIP을 읽는다.
+- ZIP의 `report.html`은 실제 `report-from-pptx.pdf`에서 렌더링한 PPT 페이지와
+  독립된 열람용 Plotly 그래프를 포함한다. `report-summary.html`은 기존 정적 본문이다.
+  Plotly와 페이지 이미지를 HTML에 포함하므로 오프라인에서도 사용할 수 있다.
+- 그래프는 발행 좌표/피크/주석을 스냅샷으로 보존한다. 중첩/스택은 Y 표시 위치만 바꾸며
+  `발행본으로 복원`하면 원본 표시로 돌아간다. 분석 편집 코드와 저장/전송 API는 없으며
+  서버 미리보기는 별도 CSP sandbox로 격리한다. 다운로드 파일 자체는 DRM 대상이 아니다.
+- 클라이언트는 기존 `figure_json` 메타데이터 외에 `viewer_figure` JSON 파일 파트를 보낸다.
+  텍스트 파트 제한과 구분하여 50MiB 이하로 제한한다. 이전 클라이언트처럼 좌표가 없는
+  요청은 정적 그래프 이미지와 재생성 안내를 표시하며 좌표를 재분석해서 만들지 않는다.
+- 기존 LibreOffice/soffice PPT→PDF 변환과 `pdfplumber`의 PDFium 렌더러를 사용한다.
+  페이지별 1280px JPEG를 생성하고 200페이지/이미지 합계 40MiB/HTML 80MiB로 제한한다.
+  브라우저는 현재 페이지 이미지만 디코딩하고 그래프는 탭을 열 때 초기화한다.
+- DB 스키마 변경은 없다. 기존 DB 전송 큐의 ZIP 안에 미리보기도 포함된다.
+  최신 코드·호환 자산 배포와 서버 재시작 후 브라우저를 새로고침하고 새 보고서를 생성한다.
+  기존 ZIP은 자동 변환하지 않으며, 기존 보고서 미리보기 요청에는 재생성 안내를 반환한다.
+
 ## 로컬 LLM 및 보고서 worker
 
 로컬 LLM은 다음 주소에서 OpenAI 호환 API를 제공해야 한다.

@@ -1,0 +1,95 @@
+const {test} = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const {execFileSync} = require('node:child_process');
+const {JSDOM} = require('jsdom');
+const acorn = require('acorn');
+const clone = x => JSON.parse(JSON.stringify(x));
+const tick = () => new Promise(resolve => setTimeout(resolve, 20));
+const html = execFileSync(process.env.RIST_TEST_PYTHON || 'python3', ['-c',
+  "from edge_api_server.tests.test_spectrum_viewer import sample_figure; from app.report import spectrum_viewer as v; v.get_plotlyjs=lambda:''; print(v.viewer_html(title='Test report',figure=sample_figure(),slides=['data:image/jpeg;base64,one','data:image/jpeg;base64,two']))"], {encoding:'utf8'});
+const program = fs.readFileSync(path.join(__dirname, '../app/report/spectrum_viewer.js'), 'utf8');
+const clientPrograms=JSON.parse(execFileSync(process.env.RIST_TEST_PYTHON || 'python3',['-c',
+  "import json; from app import ftir_web,raman_web; print(json.dumps([ftir_web._UPLOAD_SCRIPT,raman_web._UPLOAD_SCRIPT]))"],{encoding:'utf8'}));
+function setup(t, empty=false) {
+  const dom=new JSDOM(html,{runScripts:'outside-only',pretendToBeVisual:true});
+  t.after(()=>dom.window.close());
+  const w=dom.window,d=w.document,q=id=>d.getElementById(id),gd=q('report-graph'),handlers={};
+  let calls=0,config;
+  if(empty){const p=JSON.parse(q('report-data').textContent);p.figure.data=[];q('report-data').textContent=JSON.stringify(p);}
+  gd.on=(name,fn)=>{handlers[name]=fn;};
+  const render=async(target,data,layout,c)=>{calls++;target.data=data;target.layout=layout;config=c;await tick();};
+  w.Plotly={newPlot:render,react:render,relayout:async(target,patch)=>Object.assign(target.layout,patch)};
+  w.eval(program);
+  const published=clone(JSON.parse(q('report-data').textContent).figure);
+  return {w,d,q,gd,handlers,published,calls:()=>calls,config:()=>config,
+    open:async()=>{q('graph-tab').click();await tick();},
+    change:async value=>{q('view-mode').value=value;q('view-mode').dispatchEvent(new w.Event('change'));await tick();}};
+}
+test('viewer program is ES5, has no editor or network API',()=>{
+  acorn.parse(program,{ecmaVersion:5});
+  assert(!/fetch\(|XMLHttpRequest|contenteditable|_ristPeakEditor/.test(program));
+});
+for (const [index,kind] of ['ftir','raman'].entries()) test(kind+' client snapshot keeps displayed coordinates, text and current signal offset',()=>{
+  const source=clientPrograms[index].match(/function compactReportFigurePayload\(figure, forViewer\) \{[\s\S]*?\n  \}/)[0];
+  const fn=new Function('gd',source+';return compactReportFigurePayload;')({_ristFtirSignalMode:'transmittance'});
+  const input={data:[{x:[1,2],y:[17,18],text:['a','b'],customdata:[[1],[2]],meta:{rist_sample_parent:true,
+    ftir_signal_toggle:{absorbance_y:[999]},rist_ftir_stack_offset_absorbance:3,rist_ftir_stack_offset_transmittance:7,
+    ...(kind==='raman'?{rist_raman_stack_offset:9}:{})}}],layout:{title:{text:'Fixed'}}};
+  const before=clone(input),snapshot=fn(input,true),compact=fn(input,false);
+  assert.deepEqual(snapshot.data[0].x,[1,2]);assert.deepEqual(snapshot.data[0].y,[17,18]);
+  assert.deepEqual(snapshot.data[0].text,['a','b']);assert.equal(snapshot.data[0].meta.rist_view_offset,kind==='raman'?9:7);
+  assert.equal(snapshot.data[0].meta.ftir_signal_toggle,undefined);assert.equal(compact.data[0].x,undefined);
+  assert.deepEqual(input,before);
+});
+test('real PDF page list shows one page at a time and graph is lazy',async t=>{
+  const h=setup(t);assert.equal(h.calls(),0);
+  assert.equal(h.q('page-select').options.length,2);assert.equal(h.q('previous').disabled,true);
+  h.q('next').click();assert.equal(h.q('page-count').textContent,'2 / 2');assert.equal(h.q('next').disabled,true);
+  assert(h.q('slide-image').src.endsWith('two'));h.q('previous').click();assert(h.q('slide-image').src.endsWith('one'));
+  await h.open();assert.equal(h.calls(),1);assert.equal(h.config().editable,false);assert.equal(h.config().scrollZoom,true);
+  assert(Object.values(h.config().edits).every(v=>v===false));
+  assert.deepEqual(clone(h.gd.data).map(t=>t.y),h.published.data.map(t=>t.y));
+});
+test('overlay/stack shift only Y display and attached peaks/ratios, restore is exact',async t=>{
+  const h=setup(t);await h.open();await h.change('overlay');
+  assert.deepEqual(clone(h.gd.data[0].y),[1,3,2]);assert.deepEqual(clone(h.gd.data[1].y),[3]);
+  assert.equal(h.gd.layout.annotations[0].y,4);assert.equal(h.gd.layout.annotations[1].y,5);
+  assert.equal(h.gd.layout.annotations[1].text,'Ratio: 2.5');assert.equal(h.gd.layout.shapes[0].y0,3);
+  await h.change('stack');
+  const delta=h.gd.data[0].y[1]-13;
+  assert.equal(h.gd.data[1].y[0],13+delta);assert.equal(h.gd.layout.annotations[0].y,14+delta);
+  assert.deepEqual(clone(h.gd.data[0].x),[4000,1700,400]);
+  h.q('reset-view').click();await tick();
+  assert.deepEqual(clone(h.gd.data).map(t=>t.y),h.published.data.map(t=>t.y));
+  assert.deepEqual(clone(h.gd.layout.annotations),h.published.layout.annotations);
+  assert.deepEqual(clone(h.gd.layout.shapes),h.published.layout.shapes);
+  assert.deepEqual(clone(h.gd.layout.xaxis.range),[4000,400]);assert.deepEqual(clone(h.gd.layout.yaxis.range),[0,16]);
+});
+test('sample visibility includes linked peaks and labels without changing issued data',async t=>{
+  const h=setup(t);await h.open();assert.equal(h.handlers.plotly_legendclick({curveNumber:0}),false);await tick();
+  assert.equal(h.gd.data[0].visible,'legendonly');assert.equal(h.gd.data[1].visible,'legendonly');
+  assert.equal(h.gd.layout.annotations[0].visible,false);assert.equal(h.gd.layout.annotations[1].visible,false);
+  assert.equal(h.gd.layout.shapes[0].visible,false);assert.equal(h.gd.data[2].visible,true);
+  assert.deepEqual(JSON.parse(h.q('report-data').textContent).figure,h.published);
+});
+test('rapid mode changes serialize Plotly work and end with the requested display',async t=>{
+  const h=setup(t);await h.open();
+  for(const mode of ['overlay','stack','original']) {h.q('view-mode').value=mode;h.q('view-mode').dispatchEvent(new h.w.Event('change'));}
+  await tick();await tick();await tick();
+  assert.deepEqual(clone(h.gd.data).map(t=>t.y),h.published.data.map(t=>t.y));
+});
+test('legacy compact requests explicitly show a static fallback, no fabricated coordinates',async t=>{
+  const h=setup(t,true);await h.open();assert.equal(h.calls(),0);assert.equal(h.q('view-mode').disabled,true);
+  assert.equal(h.q('graph-fallback').hidden,false);assert(h.q('graph-message').textContent.includes('이전 요청'));
+});
+test('mobile layout keeps a usable plot and places legend below it',async t=>{
+  const h=setup(t);
+  Object.defineProperty(h.gd.parentNode,'clientWidth',{get:()=>374});
+  await h.open();
+  assert.equal(h.gd.layout.width,374);assert(h.gd.layout.height>=600);
+  assert.equal(h.gd.layout.legend.orientation,'h');assert(h.gd.layout.legend.y<0);
+  assert(h.gd.layout.width-h.gd.layout.margin.l-h.gd.layout.margin.r>=300);
+  assert.equal(h.gd.style.marginTop,'36px');
+});
