@@ -329,6 +329,9 @@ def test_build_report_html_contains_xrd_template_sections(tmp_path) -> None:
     )
 
     assert "Mix2 Report" in html
+    assert "window.__ristColorPaletteInstalled" in html
+    assert "기본 색상표" in html
+    assert "xrd-phase-group-color" in html
     assert 'id="xrd-report-pdf-export"' in html
     assert "xrd-report-pdf-button-label" in html
     assert "xrd-report-pdf-spinner" in html

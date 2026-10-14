@@ -56,6 +56,24 @@ test('all emitted inline programs parse, Raman opts into axis locks and Y-only w
   assert.match(html,/var scrollZoomYOnly = true/);
 });
 
+test('palette selection preserves legend editor and its explicit save/undo contract',async t=>{
+  const {w,d,gd,run}=setup(t);
+  gd.data=[{name:'Sample A',x:[1,2],y:[1,2],line:{color:'#377eb8',dash:'solid'},meta:{rist_sample_parent:true}}];
+  run('window.__ristColorPaletteInstalled');run('function legendItemFor');
+  gd._ristHistory=null;run('var undoStack');await tick();await tick();
+  d.querySelector('.rist-legend-edit-button').click();
+  const input=d.querySelector('.rist-legend-color-input');
+  input.getClientRects=()=>[{}];input.getBoundingClientRect=()=>({left:10,top:10,bottom:40});
+  input.click();assert.equal(d.querySelector('#rist-color-palette').style.display,'block');
+  d.querySelector('[data-palette-color="#e41a1c"]').click();
+  assert.equal(input.value,'#e41a1c');assert.equal(gd.data[0].line.color,'#377eb8');
+  assert.equal(d.querySelector('.rist-legend-edit-panel').style.display,'block');
+  d.querySelector('.rist-legend-edit-save-all').click();await tick();
+  assert.equal(gd.data[0].line.color,'#e41a1c');
+  gd._ristHistory.undo();await tick();assert.equal(gd.data[0].line.color,'#377eb8');
+  gd._ristHistory.redo();await tick();assert.equal(gd.data[0].line.color,'#e41a1c');
+});
+
 for(const editing of [false,true]) test(`wheel changes Y only, including editing=${editing}`,t=>{
   const {w,gd,run,captures}=setup(t);run('var axisLocksEnabled');
   gd._ristEditMode=editing;gd._context.scrollZoom=!editing;

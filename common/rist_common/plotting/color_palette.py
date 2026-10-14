@@ -1,0 +1,239 @@
+"""Offline, document-wide palette for existing color inputs (including dynamic editors)."""
+
+
+def color_palette_html() -> str:
+    # Keep inputs and their input/change contracts intact: legend/library saving,
+    # shape previews and undo history remain owned by their existing controllers.
+    return r"""
+<style>
+#rist-color-palette{position:fixed;z-index:2147483000;display:none;box-sizing:border-box;width:326px;max-width:calc(100vw - 16px);padding:12px;border:1px solid #a9b9cc;border-radius:10px;background:#fff;color:#172b4d;box-shadow:0 8px 30px rgba(15,23,42,.25);font:13px/1.4 Arial,sans-serif;overflow-y:auto;overscroll-behavior:contain;text-align:left}
+#rist-color-palette *{box-sizing:border-box}
+#rist-color-palette .rist-palette-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+#rist-color-palette .rist-palette-close{border:0;background:#fff;color:#334155;font:22px Arial;cursor:pointer;width:30px;height:30px;padding:0}
+#rist-color-palette .rist-palette-grid{display:flex;flex-wrap:wrap;margin:0 -2px 8px}
+#rist-color-palette .rist-palette-swatch{flex:0 0 calc(10% - 4px);width:calc(10% - 4px);min-width:0;height:26px;min-height:26px;padding:0;margin:2px;border:1px solid rgba(15,23,42,.25);border-radius:4px;cursor:pointer}
+#rist-color-palette .rist-palette-swatch[aria-pressed=true]{outline:2px solid #172b4d;outline-offset:1px;box-shadow:inset 0 0 0 2px #fff}
+#rist-color-palette button:focus,#rist-color-palette input:focus,#rist-color-palette summary:focus{outline:2px solid #2563eb;outline-offset:1px}
+#rist-color-palette .rist-palette-label{font-size:12px;color:#526277;margin:4px 0}
+#rist-color-palette .rist-palette-custom{display:flex;align-items:center;margin-top:8px}
+#rist-color-palette .rist-palette-preview{flex:0 0 32px;height:32px;border:1px solid #a9b9cc;border-radius:4px;margin-right:8px}
+#rist-color-palette .rist-palette-hex{width:0;min-width:0;flex:1 1 auto;height:34px;min-height:34px;margin:0 8px 0 0;padding:4px 8px;border:1px solid #a9b9cc;border-radius:4px;font:14px monospace;color:#172b4d;background:#fff}
+#rist-color-palette .rist-palette-apply{height:34px;min-height:34px;flex:0 0 auto;margin:0;padding:4px 12px;border:1px solid #1769aa;border-radius:5px;background:#1769aa;color:white;font:13px Arial;cursor:pointer}
+#rist-color-palette .rist-palette-error{margin:6px 0 0;color:#b42318;font-size:12px}
+#rist-color-palette .rist-palette-error:empty{display:none}
+#rist-color-palette details{margin:10px 0 0;border-top:1px solid #e2e8f0;padding-top:8px}
+#rist-color-palette summary{cursor:pointer;font-weight:bold}
+#rist-color-palette .rist-palette-slider{display:flex;align-items:center;margin:8px 0 0;font-size:12px}
+#rist-color-palette .rist-palette-slider span{flex:0 0 34px}
+#rist-color-palette input[type=range]{width:100%;min-width:0;flex:1 1 auto;height:24px;margin:0;padding:0;cursor:pointer;accent-color:#1769aa}
+@media print{#rist-color-palette{display:none!important}}
+</style>
+<script>
+(function() {
+  if (window.__ristColorPaletteInstalled) return;
+  window.__ristColorPaletteInstalled = true;
+  var popup = null, source = null, observer = null, frame = 0;
+  var hexInput, preview, error, sliders, recentGrid;
+  var recent = [], storageKey = "rist-color-palette-recent-v1";
+
+  function hex(value) {
+    var text = String(value || "").trim().toLowerCase();
+    if (/^#?[0-9a-f]{3}$/.test(text)) {
+      text = text.replace("#", "");
+      return "#" + text.split("").map(function(c) { return c + c; }).join("");
+    }
+    return /^#?[0-9a-f]{6}$/.test(text) ? "#" + text.replace("#", "") : null;
+  }
+  function hslColor(h, s, l) {
+    h = h / 60; s = s / 100; l = l / 100;
+    var c = (1 - Math.abs(2 * l - 1)) * s;
+    var x = c * (1 - Math.abs(h % 2 - 1));
+    var m = l - c / 2;
+    var rgb = h < 1 ? [c,x,0] : h < 2 ? [x,c,0] : h < 3 ? [0,c,x]
+      : h < 4 ? [0,x,c] : h < 5 ? [x,0,c] : [c,0,x];
+    return "#" + rgb.map(function(v) { return ("0" + Math.round((v + m) * 255).toString(16)).slice(-2); }).join("");
+  }
+  function colorHsl(value) {
+    var rgb = [1,3,5].map(function(i) { return parseInt(value.slice(i,i+2),16) / 255; });
+    var max = Math.max.apply(null,rgb), min = Math.min.apply(null,rgb), d = max - min;
+    var l = (max + min) / 2, h = 0, s = 0;
+    if (d) {
+      s = d / (1 - Math.abs(2 * l - 1));
+      h = max === rgb[0] ? ((rgb[1]-rgb[2])/d + (rgb[1]<rgb[2] ? 6 : 0))
+        : max === rgb[1] ? (rgb[2]-rgb[0])/d + 2 : (rgb[0]-rgb[1])/d + 4;
+    }
+    return [Math.round(h*60),Math.round(s*100),Math.round(l*100)];
+  }
+  function isColorInput(node) {
+    return node && node.tagName === "INPUT" && node.getAttribute("type") === "color";
+  }
+  function usable(node) {
+    return node && document.documentElement.contains(node) && !node.disabled && !node.readOnly
+      && node.getClientRects().length > 0 && window.getComputedStyle(node).visibility !== "hidden";
+  }
+  function close(restoreFocus) {
+    var previous = source;
+    source = null;
+    if (observer) { observer.disconnect(); observer = null; }
+    if (frame) { window.cancelAnimationFrame(frame); frame = 0; }
+    if (popup) popup.style.display = "none";
+    if (previous) previous.setAttribute("aria-expanded", "false");
+    if (restoreFocus && usable(previous)) previous.focus();
+  }
+  function position() {
+    if (!usable(source)) { close(false); return; }
+    var width = document.documentElement.clientWidth || window.innerWidth;
+    var height = window.innerHeight || document.documentElement.clientHeight;
+    popup.style.maxHeight = Math.max(80,height-16) + "px";
+    var rect = source.getBoundingClientRect(), box = popup.getBoundingClientRect();
+    var left = Math.max(8,Math.min(rect.left,width-box.width-8));
+    var top = rect.bottom + 6;
+    if (top + box.height > height-8) top = rect.top-box.height-6;
+    popup.style.left = left + "px";
+    popup.style.top = Math.max(8,Math.min(top,height-box.height-8)) + "px";
+  }
+  function setPreview(value, syncSliders) {
+    hexInput.value = value.toUpperCase();
+    preview.style.backgroundColor = value;
+    preview.setAttribute("aria-label", "선택 색상 " + value.toUpperCase());
+    error.textContent = "";
+    hexInput.removeAttribute("aria-invalid");
+    if (syncSliders) colorHsl(value).forEach(function(v,i) { sliders[i].value = String(v); });
+    Array.prototype.forEach.call(popup.querySelectorAll("[data-palette-color]"),function(button) {
+      button.setAttribute("aria-pressed",button.getAttribute("data-palette-color") === value ? "true" : "false");
+    });
+  }
+  function remember(value) {
+    recent = [value].concat(recent.filter(function(item) { return item !== value; })).slice(0,10);
+    try { window.localStorage.setItem(storageKey,JSON.stringify(recent)); } catch (_) {}
+  }
+  function apply(value) {
+    var selected = hex(value);
+    if (!selected) {
+      error.textContent = "HEX 색상은 #RRGGBB 또는 #RGB 형식으로 입력하세요.";
+      hexInput.setAttribute("aria-invalid","true"); hexInput.focus(); return;
+    }
+    if (!usable(source)) { close(false); return; }
+    var target = source;
+    // Exactly one commit, never a stream of Plotly/history updates while browsing colors.
+    close(true);
+    remember(selected);
+    if (target.value.toLowerCase() === selected) return;
+    target.value = selected;
+    ["input","change"].forEach(function(name) {
+      var event = document.createEvent("Event");
+      event.initEvent(name,true,false); target.dispatchEvent(event);
+    });
+  }
+  function swatch(grid, value) {
+    var button = document.createElement("button");
+    button.type = "button"; button.className = "rist-palette-swatch";
+    button.style.backgroundColor = value;
+    button.setAttribute("data-palette-color",value);
+    button.setAttribute("aria-label","색상 " + value.toUpperCase());
+    button.title = value.toUpperCase();
+    button.addEventListener("click",function() { apply(value); });
+    grid.appendChild(button);
+  }
+  function build() {
+    if (popup) return;
+    popup = document.createElement("div"); popup.id = "rist-color-palette";
+    popup.setAttribute("role","dialog"); popup.setAttribute("aria-label","색상 팔레트");
+    popup.innerHTML = '<div class="rist-palette-head"><strong>색상 팔레트</strong>'
+      + '<button class="rist-palette-close" type="button" aria-label="색상 팔레트 닫기">×</button></div>'
+      + '<div class="rist-palette-grid rist-palette-presets" role="group" aria-label="기본 색상표"></div>'
+      + '<div class="rist-palette-label">최근 사용</div><div class="rist-palette-grid rist-palette-recent" role="group" aria-label="최근 사용 색상"></div>'
+      + '<div class="rist-palette-custom"><span class="rist-palette-preview" role="img"></span>'
+      + '<input class="rist-palette-hex" type="text" maxlength="7" aria-label="HEX 색상 코드" spellcheck="false" autocomplete="off">'
+      + '<button class="rist-palette-apply" type="button">적용</button></div>'
+      + '<div class="rist-palette-error" role="alert"></div><details><summary>직접 조절</summary>'
+      + '<label class="rist-palette-slider"><span>색조</span><input type="range" min="0" max="360" step="1" aria-label="색조"></label>'
+      + '<label class="rist-palette-slider"><span>채도</span><input type="range" min="0" max="100" step="1" aria-label="채도"></label>'
+      + '<label class="rist-palette-slider"><span>명도</span><input type="range" min="0" max="100" step="1" aria-label="명도"></label></details>';
+    document.body.appendChild(popup);
+    hexInput = popup.querySelector(".rist-palette-hex"); preview = popup.querySelector(".rist-palette-preview");
+    error = popup.querySelector(".rist-palette-error"); recentGrid = popup.querySelector(".rist-palette-recent");
+    sliders = Array.prototype.slice.call(popup.querySelectorAll("input[type=range]"));
+    var grid = popup.querySelector(".rist-palette-presets");
+    ["#000000","#333333","#666666","#999999","#cccccc","#ffffff","#e41a1c","#377eb8","#4daf4a","#984ea3"].forEach(function(value) { swatch(grid,value); });
+    [90,80,65,50,40,30,20].forEach(function(lightness) {
+      [0,25,45,65,100,155,185,215,260,320].forEach(function(hue) { swatch(grid,hslColor(hue,75,lightness)); });
+    });
+    popup.querySelector(".rist-palette-close").addEventListener("click",function() { close(true); });
+    popup.querySelector(".rist-palette-apply").addEventListener("click",function() { apply(hexInput.value); });
+    popup.addEventListener("click",function(ev) { ev.stopPropagation(); });
+    popup.addEventListener("wheel",function(ev) { ev.stopPropagation(); });
+    popup.querySelector("details").addEventListener("toggle",position);
+    hexInput.addEventListener("input",function() {
+      var value = hex(hexInput.value);
+      if (value) {
+        preview.style.backgroundColor = value;
+        colorHsl(value).forEach(function(v,i) { sliders[i].value = String(v); });
+        error.textContent = ""; hexInput.removeAttribute("aria-invalid");
+      }
+    });
+    sliders.forEach(function(slider) {
+      slider.addEventListener("input",function() { setPreview(hslColor(+sliders[0].value,+sliders[1].value,+sliders[2].value),false); });
+    });
+  }
+  function open(input) {
+    if (!usable(input)) return;
+    if (source === input) { close(true); return; }
+    close(false); build(); source = input;
+    try {
+      var stored = JSON.parse(window.localStorage.getItem(storageKey) || "[]");
+      if (Array.isArray(stored)) recent = stored.map(hex).filter(function(v,i,a) { return v && a.indexOf(v) === i; }).slice(0,10);
+    } catch (_) {}
+    recentGrid.textContent = "";
+    recent.forEach(function(value) { swatch(recentGrid,value); });
+    popup.querySelector(".rist-palette-label").style.display = recent.length ? "block" : "none";
+    popup.querySelector("details").open = false;
+    setPreview(hex(input.value) || "#000000",true);
+    input.setAttribute("aria-haspopup","dialog"); input.setAttribute("aria-expanded","true");
+    popup.style.display = "block"; position(); hexInput.focus();
+    // Watch only while open; no per-input listeners or full-DOM rescans on large libraries.
+    if (window.MutationObserver) {
+      observer = new MutationObserver(function() {
+        if (frame) return;
+        frame = window.requestAnimationFrame(function() { frame = 0; if (!usable(source)) close(false); });
+      });
+      observer.observe(document.body,{childList:true,subtree:true,attributes:true,attributeFilter:["style","class","hidden","disabled"]});
+    }
+  }
+  document.addEventListener("click",function(ev) {
+    if (isColorInput(ev.target)) { ev.preventDefault(); ev.stopImmediatePropagation(); open(ev.target); }
+  },true);
+  ["pointerdown","mousedown","touchstart"].forEach(function(name) {
+    document.addEventListener(name,function(ev) {
+      if (isColorInput(ev.target) || (popup && popup.contains(ev.target))) {
+        // Keep Plotly/shape/legend dragging from capturing palette gestures.
+        ev.stopImmediatePropagation();
+      } else if (source) close(false);
+    },true);
+  });
+  document.addEventListener("keydown",function(ev) {
+    if (isColorInput(ev.target) && (ev.key === "Enter" || ev.key === " " || ev.key === "Spacebar")) {
+      ev.preventDefault(); ev.stopImmediatePropagation(); open(ev.target); return;
+    }
+    if (!source) return;
+    if (ev.key === "Escape" || ev.key === "Esc") {
+      ev.preventDefault(); ev.stopImmediatePropagation(); close(true);
+    } else if (ev.target === hexInput && ev.key === "Enter") {
+      ev.preventDefault(); ev.stopImmediatePropagation(); apply(hexInput.value);
+    } else if (popup.contains(ev.target) && (ev.ctrlKey || ev.metaKey)) {
+      ev.stopImmediatePropagation(); // Text undo remains local, never graph undo.
+    }
+  },true);
+  document.addEventListener("focusin",function(ev) {
+    if (source && ev.target !== source && !popup.contains(ev.target)) close(false);
+  });
+  document.addEventListener("scroll",function(ev) {
+    if (source && !popup.contains(ev.target)) close(false);
+  },true);
+  window.addEventListener("resize",function() { if (source) position(); });
+  window.addEventListener("blur",function() { close(false); });
+  window.addEventListener("pagehide",function() { close(false); });
+  document.addEventListener("visibilitychange",function() { if (document.hidden) close(false); });
+})();
+</script>
+"""

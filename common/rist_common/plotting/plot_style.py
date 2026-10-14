@@ -31,6 +31,8 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping
 
+from .color_palette import color_palette_html
+
 # 범례 위치 전환 기준 화면 너비(px). 이 값 이상이면 그래프 안쪽(세로),
 # 미만이면 그래프 아래(가로)로 범례를 배치한다.
 LEGEND_BREAKPOINT_PX = 768
@@ -9104,6 +9106,9 @@ def fig_to_responsive_html(
     )
 
     html = html.replace("<head>", "<head>\n  " + _VIEWPORT_META, 1)
+
+    # One delegated palette also serves color inputs added later by page editors.
+    html = html.replace("</body>", color_palette_html() + "</body>", 1)
 
     if responsive_legend:
         js = _responsive_legend_js(div_id, wide_legend_inside, legend_breakpoint_px)

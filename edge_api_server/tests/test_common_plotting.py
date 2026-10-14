@@ -7,6 +7,7 @@ from rist_common.plotting import (
     apply_legend_text,
     origin_style_toggle_js,
     peak_sensitivity_js,
+    shape_editor_js,
     write_responsive_html,
 )
 
@@ -25,6 +26,9 @@ def test_shared_plotly_module_writes_responsive_html(tmp_path) -> None:
     assert '"annotationTail": true' in html
     assert '"annotationText": false' in html
     assert LEGEND_BREAKPOINT_PX > 0
+    assert html.count("window.__ristColorPaletteInstalled = true") == 1
+    assert "기본 색상표" in html
+    assert "HEX 색상 코드" in html
 
 
 def test_shared_plotly_module_accepts_local_plotly_asset(tmp_path) -> None:
@@ -719,7 +723,9 @@ def test_shared_peak_editor_adds_peak_controls(tmp_path) -> None:
     assert "rist-edit-mode-change" in html
     assert "rist-open-edit-tool" in html
     assert "rist-shape-apply" not in html
-    assert ">적용</button>" not in html
+    # The shape editor stays live-preview-only; the independent palette has
+    # its own custom-color Apply button.
+    assert ">적용</button>" not in shape_editor_js("peak-plot")
     assert "function deleteSelection" in html
     assert "var editSnapshot = null" in html
     assert "function captureEditSnapshot" in html
