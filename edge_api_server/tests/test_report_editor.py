@@ -1,0 +1,233 @@
+from copy import deepcopy
+from dataclasses import replace
+from datetime import datetime, timezone
+import base64
+from io import BytesIO
+import json
+import time
+from types import SimpleNamespace
+import xml.etree.ElementTree as ET
+import zipfile
+
+from fastapi.testclient import TestClient
+import pytest
+
+from app import preview_report, report_editor
+from app.auth import AuthContext
+from app.ftir_web import create_ftir_preview_app
+from app.raman_web import create_raman_preview_app
+from app.report.editable import ensure_editable_fields, transfer_values, document_from_dict
+from app.report.model import ReportDocument, ReportSection, ReportTable
+from app.report.renderers import render_pptx, _document_metadata, _report_readable_text
+from app.report.edited_analysis import analysis_preview
+from edge_api_server.tests.test_edited_report_analysis import edited_payload
+from edge_api_server.tests.test_ftir_web import TINY_PNG_DATA_URL, use_fake_pptx_pdf_converter
+
+
+def edit_request(document):
+    value = deepcopy(document)
+    for section in value['sections']:
+        section.pop('columns')
+        section.pop('source')
+    return value
+
+
+@pytest.fixture(params=['ftir', 'raman'])
+def prepared(request, tmp_path, monkeypatch):
+    use_fake_pptx_pdf_converter(monkeypatch)
+    from app.report import spectrum_viewer
+    monkeypatch.setattr(spectrum_viewer, 'get_plotlyjs', lambda: '')
+    kind = request.param
+    app = create_ftir_preview_app(tmp_path / 'libraries') if kind == 'ftir' else create_raman_preview_app()
+    app.state.settings = None
+    @app.middleware('http')
+    async def identity(request, call_next):
+        request.state.auth_context=getattr(app.state,'actor',None)
+        return await call_next(request)
+    payload = edited_payload()
+    payload['reportConditionFields'] = [{'target':'공통', 'label':'검토 메모', 'value':''}]
+    root, package = preview_report.build_preview_report_package(
+        experiment_code='FT-IR' if kind == 'ftir' else 'RAMAN', analysis_payload=payload,
+        raw_series=[preview_report.RawSeries('sample.dpt',[1500,1700,1900],[1,3,1])],
+        figure_image=base64.b64decode(TINY_PNG_DATA_URL.split(',')[1]))
+    store = preview_report.preview_report_job_store(app)
+    job = store.create(filename=kind + '-report-package.zip', owner_user_id='owner')
+    job.transfer_metadata = transfer_values(payload)
+    store.complete(job.job_id, tmp_root=root, package_path=package)
+    # Simulate the output of a successful LLM call, without contacting a real model.
+    path = root / 'job/report/report.json'
+    document = json.loads(path.read_text())
+    for section in document['sections']:
+        if section['sectionId'] == 'summary':
+            section.update(paragraphs=['모의 AI 초안 · 검토 전'], source='llm')
+    path.write_text(json.dumps(document, ensure_ascii=False), encoding='utf-8')
+    def unexpected_llm(*args, **kwargs):
+        raise AssertionError('Revision must not call LLM')
+    monkeypatch.setattr(preview_report, 'LocalLlmClient', unexpected_llm)
+    prefix = '/api/v1/' + kind + '/report/jobs'
+    with TestClient(app) as client:
+        yield SimpleNamespace(client=client, app=app, store=store, job=job, prefix=prefix, kind=kind,
+                              url=prefix + '/' + job.job_id)
+    for job_id in list(store._jobs):
+        store.remove(job_id)
+
+
+def wait_revision(h, job_id):
+    for _ in range(300):
+        job = h.client.get(h.prefix + '/' + job_id).json()
+        if job['status'] in {'completed', 'failed'}:
+            return job
+        time.sleep(.02)
+    pytest.fail('revision timed out')
+
+
+def test_blank_fields_edit_revision_and_recipient_integrity(prepared, monkeypatch):
+    h = prepared
+    before = h.job.package_path.read_bytes()
+    page = h.client.get(h.url + '/edit')
+    assert page.status_code == 200 and page.headers['cache-control'] == 'no-store'
+    assert '수정 내용 저장' in page.text and "frame-ancestors 'self'" in page.headers['content-security-policy']
+    response = h.client.get(h.url + '/editor-data')
+    assert response.headers['cache-control'] == 'no-store'
+    model = response.json()['document']
+    assert all(not v for v in model['transfer'].values())
+    condition = next(s for s in model['sections'] if s['sectionId'] == 'experiment_conditions')
+    assert len(condition['rows']) >= 7 and any(r[-1] == '' for r in condition['rows'])
+    assert ['공통','실험환경/비고',''] in condition['rows']
+    edits = edit_request(model)
+    edits['title'] = '검토 완료 분석 보고서'
+    edits['transfer'] = dict(requestNumber='REQ-REVIEW', limsExperimentCode='LIMS-001', equipmentCode='LAB-1', operatorId='operator1')
+    summary = next(s for s in edits['sections'] if s['sectionId'] == 'summary')
+    summary['paragraphs'] = ['분석자가 확인한 피크입니다. <script>alert(1)</script> 물질 확정은 추가 검증이 필요합니다.']
+    next(s for s in edits['sections'] if s['sectionId'] == 'experiment_conditions')['rows'][0][-1] = '온도 23°C · 습도 45%'
+    edits['auxiliary']['email_body'] = '검토 완료된 보고서를 첨부합니다.'
+    registered = []
+    def register(**kwargs):
+        registered.append(kwargs)
+        return kwargs['package_path']
+    monkeypatch.setattr(report_editor, 'register_generated_report_package', register)
+    response = h.client.post(h.url + '/revisions', json=edits, headers={'X-Requested-With':'RIST-Report-Editor'})
+    assert response.status_code == 202, response.text
+    revised = wait_revision(h, response.json()['jobId'])
+    assert revised['status'] == 'completed', revised
+    assert revised['parentJobId'] == h.job.job_id and revised['jobId'] != h.job.job_id
+    assert revised['transfer'] == edits['transfer']
+    assert registered[0]['report_id'] == revised['jobId']
+    assert registered[0]['request_number'] == 'REQ-REVIEW'
+    assert registered[0]['report_options']['revisionOf'] == h.job.job_id
+    assert h.job.package_path.read_bytes() == before
+    saved = h.client.get(h.prefix + '/' + revised['jobId'] + '/editor-data').json()['document']
+    assert saved['transfer'] == edits['transfer'] and saved['title'] == edits['title']
+    assert next(s for s in saved['sections'] if s['sectionId']=='summary')['source']=='user'
+    original = zipfile.ZipFile(BytesIO(before))
+    with zipfile.ZipFile(BytesIO(h.client.get(revised['downloadUrl']).content)) as archive:
+        for name in ['current_graph.png','raw_data.xlsx']:
+            assert archive.read(name) == original.read(name)
+        html = archive.read('report.html').decode()
+        assert '분석자가 확인한 피크' in html and '사용자 수정' in html
+        assert '<script>alert(1)</script>' not in html
+        assert 'XMLHttpRequest' not in html and 'contenteditable' not in html
+        assert '온도 23°C' in archive.read('report-summary.html').decode()
+        assert 'REQ-REVIEW' in archive.read('report.md').decode()
+        assert '검토 완료된 보고서' in archive.read('email_body.md').decode()
+        with zipfile.ZipFile(BytesIO(archive.read('report.pptx'))) as ppt:
+            texts = ppt_text(ppt)
+            assert 'REQ-REVIEW' in texts and 'LIMS-001' in texts
+            assert '분석자가확인한피크' in ''.join(texts.split())
+
+
+def test_editor_validation_csrf_and_expiration(prepared):
+    h=prepared
+    edits=edit_request(h.client.get(h.url+'/editor-data').json()['document'])
+    assert h.client.post(h.url+'/revisions',json=edits).status_code==403
+    headers={'X-Requested-With':'RIST-Report-Editor','Origin':'https://untrusted.example'}
+    assert h.client.post(h.url+'/revisions',json=edits,headers=headers).status_code==403
+    headers.pop('Origin')
+    for mutation in ['extra','sections','table']:
+        bad=deepcopy(edits)
+        if mutation=='extra': bad['filePath']='/etc/passwd'
+        if mutation=='sections': bad['sections']=[]
+        if mutation=='table': next(s for s in bad['sections'] if s['rows'] is not None)['rows'].append(['extra'])
+        assert h.client.post(h.url+'/revisions',json=bad,headers=headers).status_code==422
+    assert h.client.post(h.url+'/revisions',content=b'x'*(2*1024*1024+1),headers=headers).status_code==413
+    assert report_editor._REVISION_SLOT.acquire(False)
+    try:
+        assert h.client.post(h.url+'/revisions',json=edits,headers=headers).status_code==429
+    finally:
+        report_editor._REVISION_SLOT.release()
+    other='raman' if h.kind=='ftir' else 'ftir'
+    assert report_editor._load_document(h.job).title
+    h.job.filename=other+'-report-package.zip'
+    assert h.client.get(h.url+'/edit').status_code==404
+    h.job.filename=h.kind+'-report-package.zip'
+    (h.job.tmp_root/'job/report/report.json').unlink()
+    assert h.client.get(h.url+'/editor-data').status_code==410
+
+
+def test_editor_owner_project_and_sso(prepared):
+    h=prepared
+    h.app.state.settings=SimpleNamespace(auth_enabled=True)
+    context=AuthContext(user_id='other',login_id='sso-login',email=None,display_name='Reviewer',status='ACTIVE',
+        session_id='session',session_expires_at=datetime.now(timezone.utc),sso_authenticated_at=None,
+        projects=frozenset({h.kind.upper()}),roles=frozenset(),sso_identity=None)
+    h.app.state.actor=context
+    assert h.client.get(h.url+'/editor-data').status_code==403
+    h.app.state.actor=replace(context,user_id='owner',projects=frozenset())
+    assert h.client.get(h.url+'/editor-data').status_code==403
+    h.app.state.actor=replace(context,user_id='owner',sso_identity={'employee_id':'sso-operator'})
+    response=h.client.get(h.url+'/editor-data')
+    assert response.status_code==200 and response.json()['authenticatedOperatorId']=='sso-operator'
+    h.app.state.actor=replace(context,user_id='admin',projects=frozenset(),roles=frozenset({'ADMIN'}))
+    assert h.client.get(h.url+'/edit').status_code==200
+
+
+def test_failed_revision_keeps_original_and_releases_capacity(prepared, monkeypatch):
+    h=prepared
+    before=h.job.package_path.read_bytes()
+    edits=edit_request(h.client.get(h.url+'/editor-data').json()['document'])
+    def fail(*args, **kwargs): raise RuntimeError('render unavailable')
+    monkeypatch.setattr(preview_report,'render_report_formats',fail)
+    response=h.client.post(h.url+'/revisions',json=edits,headers={'X-Requested-With':'RIST-Report-Editor'})
+    assert wait_revision(h,response.json()['jobId'])['status']=='failed'
+    assert h.job.package_path.read_bytes()==before
+    assert report_editor._REVISION_SLOT.acquire(False)
+    report_editor._REVISION_SLOT.release()
+
+
+def test_transfer_metadata_mismatch_rejected(prepared):
+    h=prepared
+    payload=preview_report.PreviewReportSendRequest(requestNumber='REQ',experimentCode='FTIR',equipmentCode='EQ',operatorId='OP')
+    with pytest.raises(ValueError,match='보고서 내용과 다릅니다'):
+        preview_report.send_preview_report_package(job=h.job,payload=payload,settings=SimpleNamespace(),database=None)
+
+
+def ppt_text(archive):
+    return '\n'.join(''.join(ET.fromstring(archive.read(name)).itertext())
+        for name in archive.namelist() if name.startswith('ppt/slides/slide') and name.endswith('.xml'))
+
+
+def test_complete_conditions_and_user_prose_survive_ppt(tmp_path):
+    document=ReportDocument('test','검토 보고서','FT-IR',{},'2026-10-15')
+    long_text='장비 환경과 측정 조건을 확인하였습니다. '*45+'최종 검토 문장입니다.'
+    document.sections=[ReportSection('summary','해석',paragraphs=[long_text],source='user'),
+                       ReportSection('experiment_conditions','실험조건 및 실험환경',table=ReportTable(['대상','항목','값'],
+                         [[f'시료{i}',f'조건{i}',f'값{i}'] for i in range(24)]))]
+    ensure_editable_fields(document,{},'FT-IR',transfer_values({}))
+    assert _document_metadata(document)[:4]==[('의뢰번호',''),('실험코드',''),('실험장비',''),('실험자','')]
+    document.section('experiment_conditions').table.rows.append(['공통','비고',long_text])
+    path=tmp_path/'test.pptx';render_pptx(document,path)
+    with zipfile.ZipFile(path) as archive:
+        text=ppt_text(archive)
+    assert '연동 예정' not in text and '실험조건 기준' not in text
+    for i in range(24): assert f'값{i}' in text
+    assert text.count('최종 검토 문장입니다.') >= 2  # Both prose and table endings, over multiple pages.
+    assert analysis_preview(document)['status']=='reviewed'
+    copy=document_from_dict(document.to_dict(),image_path=tmp_path/'graph.png')
+    assert copy.to_dict()==document.to_dict()
+
+
+def test_explicit_blank_conditions_override_raw_metadata():
+    document=ReportDocument('test','test','FT-IR',{},'2026-10-15',sections=[
+        ReportSection('experiment_conditions','조건',table=ReportTable(['대상','항목','값'],[['sample','Resolution','4 cm-1']]))])
+    ensure_editable_fields(document,{'reportConditionFields':[{'target':'공통','label':'Resolution','value':''}]},'FT-IR',transfer_values({}))
+    assert [r for r in document.section('experiment_conditions').table.rows if r[1]=='Resolution']==[['공통','Resolution','']]

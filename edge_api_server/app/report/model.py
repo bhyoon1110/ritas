@@ -67,7 +67,7 @@ class ReportSection:
     paragraphs: list[str] = field(default_factory=list)
     bullets: list[str] = field(default_factory=list)
     table: ReportTable | None = None
-    # "rule": 규칙이 결정론적으로 작성, "llm": LLM이 채운 자유서술
+    # "rule": 규칙 기반, "llm": LLM 초안, "user": 분석자 수정
     source: str = "rule"
 
     def to_dict(self) -> dict[str, Any]:
@@ -135,9 +135,10 @@ class ReportDocument:
 
     def to_markdown(self) -> str:
         lines: list[str] = [f"# {self.title}", ""]
+        display_code = self.pk.get("experimentCode", "") if self.section("report_transfer") else self.experiment_code
         meta = (
             f"- 의뢰번호: {self.pk.get('requestNumber', '')}\n"
-            f"- 실험코드: {self.experiment_code}  장비: {self.pk.get('equipmentCode', '')}"
+            f"- 실험코드: {display_code}  장비: {self.pk.get('equipmentCode', '')}"
             f"  실험자: {self.pk.get('operatorId', '')}\n"
             f"- 생성시각: {self.generated_at}"
         )

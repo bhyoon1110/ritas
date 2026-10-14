@@ -58,6 +58,9 @@ class PreviewReportJob:
     package_path: Path | None = None
     error: str | None = None
     error_event_id: str | None = None
+    owner_user_id: str | None = None
+    parent_job_id: str | None = None
+    transfer_metadata: dict[str, str] | None = None
 
     def to_dict(self, *, download_url: str | None = None) -> dict[str, Any]:
         payload = {
@@ -77,6 +80,10 @@ class PreviewReportJob:
             payload["errorFeedbackUrl"] = f"/error-feedback/{self.error_event_id}"
         if download_url and self.status == "completed":
             payload["downloadUrl"] = download_url
+        if self.parent_job_id:
+            payload["parentJobId"] = self.parent_job_id
+        if self.transfer_metadata is not None:
+            payload["transfer"] = dict(self.transfer_metadata)
         return payload
 
 
@@ -103,7 +110,7 @@ class PreviewReportJobStore:
         self._lock = Lock()
         self._ttl = timedelta(seconds=ttl_seconds)
 
-    def create(self, *, filename: str) -> PreviewReportJob:
+    def create(self, *, filename: str, owner_user_id: str | None = None, parent_job_id: str | None = None) -> PreviewReportJob:
         self.cleanup_expired()
         now = _utc_now()
         job = PreviewReportJob(
@@ -115,6 +122,8 @@ class PreviewReportJobStore:
             message="보고서 생성 요청을 접수했습니다.",
             created_at=now,
             updated_at=now,
+            owner_user_id=owner_user_id,
+            parent_job_id=parent_job_id,
         )
         with self._lock:
             self._jobs[job.job_id] = job
@@ -278,6 +287,11 @@ def send_preview_report_package(
         raise ValueError("보고서가 아직 완성되지 않았습니다.")
     if not job.package_path.is_file():
         raise FileNotFoundError("보고서 파일이 만료되었습니다.")
+    if getattr(job, "transfer_metadata", None) is not None:
+        expected = {"requestNumber": payload.request_number, "limsExperimentCode": payload.experiment_code,
+                    "equipmentCode": payload.equipment_code, "operatorId": payload.operator_id}
+        if job.transfer_metadata != expected:
+            raise ValueError("전송 정보가 보고서 내용과 다릅니다. 보고서 미리보기에서 전송 정보(SSO 실험자 포함)를 수정·저장한 뒤 다시 전송하세요.")
     if database is None:
         raise ReportQueueError(
             "REPORT_QUEUE_DATABASE_UNAVAILABLE",
@@ -392,6 +406,9 @@ def build_preview_report_package(
             job,
             [{"relativePath": analysis_path.name, "data": analysis_payload}],
         )
+        from .report.editable import ensure_editable_fields, transfer_values
+        transfer = transfer_values(analysis_payload, request_number, equipment_code, operator_id)
+        ensure_editable_fields(document, analysis_payload, experiment_code, transfer)
         spec = builder.llm_slots(
             job,
             [{"relativePath": analysis_path.name, "data": analysis_payload}],
@@ -554,6 +571,10 @@ def run_preview_report_job(
             operator_id=operator_id,
             report_options=analysis_payload.get("reportOptions"),
         )
+        from .report.editable import transfer_values
+        current_job = store.get(job_id)
+        if current_job:
+            current_job.transfer_metadata = transfer_values(analysis_payload, request_number, equipment_code, operator_id)
         store.complete(job_id, tmp_root=tmp_root, package_path=package)
         record_background_usage(
             usage_archive,

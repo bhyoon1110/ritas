@@ -155,12 +155,12 @@ def _analysis_html(analysis: dict | None) -> str:
     if not analysis:
         return ""
     status = analysis.get("status")
-    label = {"generated": "로컬 AI 해석 · 분석자 검토 필요",
+    label = {"reviewed": "분석자 수정 문안 포함 · 최종 내용 확인 필요", "generated": "로컬 AI 해석 · 분석자 검토 필요",
              "partial": "로컬 AI 해석 일부 생성 · 나머지는 규칙 기반 요약"}.get(status,
              "로컬 AI 해석 미생성 · 규칙 기반 요약")
     sections = []
     for section in analysis.get("sections") or []:
-        source = "로컬 AI" if section.get("source") == "llm" else "규칙 기반"
+        source = {"llm": "로컬 AI", "user": "사용자 수정"}.get(section.get("source"), "규칙 기반")
         paragraphs = "".join("<p>" + escape(str(text)).replace("\n", "<br>") + "</p>"
                              for text in section.get("paragraphs") or [])
         sections.append("<article><h2>" + escape(str(section.get("heading") or "분석 결과"))

@@ -210,6 +210,7 @@ def _report_job_response(job: PreviewReportJob, *, prefix: str) -> dict:
     result = job.to_dict(download_url=download_url)
     if job.status == "completed":
         result["previewUrl"] = f"{prefix}/{job.job_id}/preview"
+        result["editUrl"] = f"{prefix}/{job.job_id}/edit"
     return result
 
 
@@ -1792,7 +1793,7 @@ _PAGE_SHELL = """
          title="보고서 생성이 완료되면 다운로드할 수 있습니다.">보고서 다운로드</a>
       <a class="ftir-report-option-button ftir-report-download-link is-disabled"
          id="ftir-report-preview" href="#" aria-disabled="true" target="_blank" rel="noopener"
-         title="보고서 생성 후 PPT 페이지와 열람용 그래프를 확인합니다.">보고서 미리보기</a>
+         title="PPT 페이지를 확인하고 전송정보·실험조건·분석 문안을 수정합니다.">보고서 미리보기</a>
       <button type="button" class="ftir-report-option-button"
               id="ftir-report-send" disabled>보고서 전송</button>
     </div>
@@ -3053,7 +3054,7 @@ _UPLOAD_SCRIPT = """
   function updatePersistentReportDownload(job) {
     if (reportPreviewLink) {
       var ready = !!(job && job.previewUrl);
-      reportPreviewLink.href = ready ? job.previewUrl : "#";
+      reportPreviewLink.href = ready ? (job.editUrl || job.previewUrl) : "#";
       reportPreviewLink.classList.toggle("is-disabled", !ready);
       reportPreviewLink.setAttribute("aria-disabled", ready ? "false" : "true");
     }
@@ -3094,6 +3095,21 @@ _UPLOAD_SCRIPT = """
     }
     return transfer;
   }
+
+  window.addEventListener("storage", function(event) {
+    if (event.key !== "rist-report-revision" || !event.newValue || !lastReportJob) return;
+    var change;
+    try { change = JSON.parse(event.newValue); } catch (_) { return; }
+    if (change.previousJobId !== lastReportJob.jobId || !change.job) return;
+    fetchJson("/api/v1/ftir/report/jobs/" + encodeURIComponent(change.job.jobId)).then(function(job) {
+      if (!lastReportJob || job.parentJobId !== lastReportJob.jobId || job.status !== "completed") return;
+      lastReportJob = job;
+      requestSelect.value = "";
+      Object.keys(job.transfer || {}).forEach(function(key) { setReportTransferValue(key, job.transfer[key]); });
+      updatePersistentReportDownload(job); updateReportSendAvailability(); scheduleWorkspaceSave();
+      setSuccessMessage("미리보기 수정본을 반영했습니다. 다운로드와 전송은 수정본을 사용합니다.");
+    }).catch(function(error) { setMessage(error.message || "수정본 정보를 확인하지 못했습니다."); });
+  });
 
   function normalizedMetadataKey(value) {
     return String(value || "")
@@ -3238,6 +3254,9 @@ _UPLOAD_SCRIPT = """
     var payload = JSON.parse(JSON.stringify(latestAnalysisPayload || {}));
     delete payload.figure;
     var conditions = reportMetadataConditions();
+    payload.reportConditionFields = reportMetaControls.map(function(control) {
+      return {target: "공통", label: control.dataset.reportLabel || control.dataset.reportField, value: (control.value || "").trim()};
+    });
     if (Object.keys(conditions).length) {
       payload.experimentConditions = Object.assign(
         {},
@@ -5605,7 +5624,7 @@ def _create_ftir_report_job_from_uploaded(
         raise ApiException(400, "FTIR_REPORT_INVALID_PAYLOAD", str(exc)) from exc
 
     store = preview_report_job_store(request.app)
-    job = store.create(filename="ftir-report-package.zip")
+    job = store.create(filename="ftir-report-package.zip", owner_user_id=getattr(getattr(request.state, "auth_context", None), "user_id", None))
     set_usage_context(
         request,
         project="FT-IR",
@@ -5855,6 +5874,10 @@ def send_ftir_preview_report_job(
             str(exc),
             retryable=exc.retryable,
         ) from exc
+
+
+from .report_editor import install_report_editor
+install_report_editor(router, "ftir")
 
 
 def create_ftir_preview_app(

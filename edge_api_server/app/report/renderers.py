@@ -18,6 +18,7 @@ import textwrap
 import unicodedata
 import zipfile
 from datetime import datetime
+from dataclasses import replace
 from pathlib import Path
 
 from reportlab.lib import colors
@@ -274,6 +275,11 @@ def _document_metadata(
     include_pending: bool = True,
     include_generated: bool = True,
 ) -> list[tuple[str, str]]:
+    if document.section("report_transfer") is not None:
+        rows = [(label, str(value)) for label, value in document.section("report_transfer").table.rows]
+        if include_generated:
+            rows.append(("생성시각", _short_report_datetime(document.generated_at)))
+        return rows
     request_number = _clean_report_meta_value(document.pk.get("requestNumber"))
     equipment = _clean_report_meta_value(document.pk.get("equipmentCode"))
     operator = _clean_report_meta_value(document.pk.get("operatorId"))
@@ -1199,19 +1205,45 @@ def _pptx_slide_payloads(document: ReportDocument) -> list[dict[str, object]]:
         if section.section_id in summarized_sections:
             continue
         if section.table is not None:
-            slides.append(_pptx_table_payload(document, section))
+            if document.section("report_transfer") is not None:
+                slides.extend(_pptx_complete_table_payloads(document, section))
+            else:
+                slides.append(_pptx_table_payload(document, section))
         else:
-            slides.append(_pptx_text_payload(document, section.heading, _section_lines(section)[:10]))
+            if document.section("report_transfer") is not None:
+                lines = [part for line in _section_lines(section) for part in textwrap.wrap(
+                    _report_readable_text(line), width=40, break_on_hyphens=False)]
+                for start in range(0, max(1, len(lines)), 8):
+                    slides.append(_pptx_text_payload(document, section.heading, lines[start:start + 8]))
+            else:
+                slides.append(_pptx_text_payload(document, section.heading, _section_lines(section)[:10]))
     return slides
 
 
+def _pptx_complete_table_payloads(document, section):
+    """Paginate analyst content instead of truncating rows or cell endings."""
+    table = section.table
+    widths = _table_column_widths(table, 68)
+    rows = []
+    for row in _normalized_table_rows(table):
+        cells = [[part for line in str(cell).splitlines() for part in textwrap.wrap(
+            _report_readable_text(line), width=max(6, int(widths[i])), break_on_hyphens=False)] or [""]
+            for i, cell in enumerate(row)]
+        rows.extend([[cell[n] if n < len(cell) else "" for cell in cells]
+                     for n in range(max(map(len, cells)))])
+    for start in range(0, max(1, len(rows)), 9):
+        page = replace(table, rows=rows[start:start + 9], merge_columns=[])
+        heading = section.heading + (f" · {start // 9 + 1}" if len(rows) > 9 else "")
+        yield _pptx_table_payload(document, replace(section, heading=heading, table=page))
+
+
 def _pptx_llm_detail_payloads(document: ReportDocument) -> list[dict[str, object]]:
-    if document.experiment_code.upper() not in {"FTIR", "FT-IR", "IR", "RAMAN", "RIN", "RIN-RAMAN"}:
+    if document.section("report_transfer") is None and document.experiment_code.upper() not in {"FTIR", "FT-IR", "IR", "RAMAN", "RIN", "RIN-RAMAN"}:
         return []
     slides = []
-    for section_id in ("summary", "key_findings", "interpretation", "qc_notes", "narrative"):
+    for section_id in ("summary", "key_findings", "interpretation", "qc_notes", "narrative", "caption"):
         section = document.section(section_id)
-        if section is None or section.source != "llm":
+        if section is None or section.source not in {"llm", "user"}:
             continue
         original = _section_lines(section)
         if section_id == "summary":
@@ -1592,7 +1624,7 @@ def _pptx_title_slide(document: ReportDocument) -> str:
                 cy=card_h,
                 fill=PPTX_CARD,
                 line=PPTX_LINE,
-                text=[label, str(value or "-")],
+                text=[label, str(value)],
                 font_size=1250,
                 color=PPTX_TEXT,
                 bold=False,
@@ -1821,6 +1853,10 @@ def _pptx_overview_slide(document: ReportDocument) -> str:
         ("실험코드", _clean_report_meta_value(document.experiment_code) or "-", PPTX_GREEN),
         ("장비", _clean_report_meta_value(document.pk.get("equipmentCode")) or "실험조건 기준", PPTX_ORANGE),
     ]
+    if document.section("report_transfer") is not None:
+        cards = [("의뢰번호", document.pk.get("requestNumber", ""), PPTX_BLUE),
+                 ("실험코드", document.pk.get("experimentCode", ""), PPTX_GREEN),
+                 ("장비", document.pk.get("equipmentCode", ""), PPTX_ORANGE)]
     for idx, (label, value, color) in enumerate(cards):
         shapes.append(
             _pptx_shape(
@@ -1832,7 +1868,7 @@ def _pptx_overview_slide(document: ReportDocument) -> str:
                 cy=1005840,
                 fill=PPTX_CARD,
                 line=PPTX_LINE,
-                text=[label, str(value or "-")],
+                text=[label, str(value)],
                 font_size=1500,
                 color=PPTX_TEXT,
                 inset=137160,
@@ -2049,6 +2085,8 @@ def _pptx_table_slide(document: ReportDocument, section: ReportSection) -> str:
                 column_index=col_idx,
                 column_count=col_count,
             )
+            if document.section("report_transfer") is not None:
+                display_value = _report_readable_text(value)
             shapes.append(
                 _pptx_shape(
                     shape_id,
