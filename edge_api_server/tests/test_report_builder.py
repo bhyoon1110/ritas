@@ -1244,14 +1244,14 @@ def test_raman_builder_maps_web_analysis_payload(tmp_path) -> None:
     assert conditions.table.column_widths == [0.14, 0.28, 0.58]
     assert conditions.table.to_dict()["columnWidths"] == [0.14, 0.28, 0.58]
     assert conditions.table.rows[:8] == [
-        ["LiOH_1", "Excitation Wavelength", "532.06 nm"],
-        ["LiOH_1", "Laser current", "10 mA"],
-        ["LiOH_1", "Excitation Power", "1 mW"],
-        ["LiOH_1", "Excitation Power density", "0.1 mW/um2"],
-        ["LiOH_1", "ND filter", "ND 1.0"],
-        ["LiOH_1", "Spectrograph Center wavelength", "650 nm"],
-        ["LiOH_1", "Grating", "1800 g/mm"],
-        ["LiOH_1", "Slit width", "50 um"],
+        ["공통", "Excitation Wavelength", "532.06 nm"],
+        ["공통", "Laser current", "10 mA"],
+        ["공통", "Excitation Power", "1 mW"],
+        ["공통", "Excitation Power density", "0.1 mW/um2"],
+        ["공통", "ND filter", "ND 1.0"],
+        ["공통", "Spectrograph Center wavelength", "650 nm"],
+        ["공통", "Grating", "1800 g/mm"],
+        ["공통", "Slit width", "50 um"],
     ]
     assert document.section("raman_samples") is not None
     assert document.section("raman_libraries") is None
@@ -1287,7 +1287,9 @@ def test_raman_builder_maps_web_analysis_payload(tmp_path) -> None:
 
     rendered = render_requested_report(document, tmp_path, "PPTX")
     with zipfile.ZipFile(rendered) as archive:
-        overview_slide = archive.read("ppt/slides/slide2.xml").decode("utf-8")
+        conditions_slide = archive.read("ppt/slides/slide2.xml").decode("utf-8")
+        assert "공통 실험환경/조건" in conditions_slide
+        overview_slide = archive.read("ppt/slides/slide3.xml").decode("utf-8")
     assert "분석 요약" in overview_slide
     assert "RAMAN" in overview_slide
     assert 'name="Summary text"' in overview_slide
@@ -1302,7 +1304,7 @@ def test_raman_builder_maps_web_analysis_payload(tmp_path) -> None:
     assert '<col style="width:58.00%">' in html_text
 
 
-def test_raman_builder_keeps_duplicate_sample_conditions() -> None:
+def test_raman_builder_preserves_different_sample_conditions() -> None:
     payload = {
         "samples": [
             {"label": "S1", "pointCount": 10, "peakCount": 0},
@@ -1324,14 +1326,14 @@ def test_raman_builder_keeps_duplicate_sample_conditions() -> None:
     assert conditions is not None and conditions.table is not None
     assert ["S1", "Excitation Wavelength", "532 nm"] in conditions.table.rows
     assert ["S2", "Excitation Wavelength", "785 nm"] in conditions.table.rows
-    assert ["S1", "Laser current", "10 mA"] in conditions.table.rows
+    assert ["공통", "Laser current", "10 mA"] in conditions.table.rows
 
     spec = RamanReportBuilder().llm_slots({**_job(), "experiment_code": "RAMAN"}, analysis)
     assert spec is not None
     assert ["S2", "Excitation Wavelength", "785 nm"] in spec.facts["experiment_conditions"]
 
 
-def test_raman_pptx_truncates_long_condition_cells(tmp_path) -> None:
+def test_raman_pptx_preserves_long_common_conditions(tmp_path) -> None:
     long_note = " ".join(f"조건{i}" for i in range(1, 40))
     payload = {
         "metadata": {
@@ -1363,7 +1365,7 @@ def test_raman_pptx_truncates_long_condition_cells(tmp_path) -> None:
         )
     assert long_note not in slide_text
     assert "조건1 조건2 조건3" in slide_text
-    assert "…" in slide_text
+    assert "조건39" in slide_text
     assert 'sz="1250"' in slide_text
 
 

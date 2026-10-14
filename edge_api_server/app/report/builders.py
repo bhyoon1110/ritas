@@ -1337,6 +1337,66 @@ def _experiment_condition_rows(
     return _sort_condition_rows(rows, preferred_order)
 
 
+def _raman_experiment_condition_rows(payload: dict[str, Any]) -> list[list[str]]:
+    """One common condition set; retain genuinely different source conditions."""
+    lookup = _condition_alias_lookup(_RAMAN_CONDITION_ALIASES)
+    rows = _experiment_condition_rows(payload, aliases=_RAMAN_CONDITION_ALIASES)
+    ordered: dict[tuple[str, str], str] = {}
+    for target, label, value in rows:
+        # Submitted conditions precede raw metadata and must not be overwritten.
+        ordered.setdefault((target, label), value)
+    explicit = payload.get("reportConditionFields")
+    if isinstance(explicit, list):
+        for row in explicit:
+            if not isinstance(row, dict) or not row.get("label"):
+                continue
+            target = str(row.get("target") or "공통")
+            label = _condition_label(str(row["label"]), lookup)
+            value = str(row.get("value") or "").strip()
+            if target == "공통":
+                ordered = {key: val for key, val in ordered.items() if key[1] != label}
+            elif not value:
+                # Empty sample overrides inherit the common form, including blanks.
+                continue
+            ordered[(target, label)] = value
+
+    samples = [s for s in _as_list(payload.get("samples")) if isinstance(s, dict)]
+    sources = {
+        str(s.get("label") or s.get("fileName") or s.get("sample") or "시료"):
+        str(s.get("fileName") or s.get("label") or s.get("sample") or "시료")
+        for s in samples
+    }
+    grouped: dict[str, dict[str, str]] = {}
+    for (target, label), value in ordered.items():
+        grouped.setdefault(label, {})[target] = value
+    result = []
+    for label, targets in grouped.items():
+        if sources and set(sources).issubset(targets):
+            targets.pop("공통", None)  # All samples have explicit overrides.
+        values: dict[str, list[str]] = {}
+        for target, value in targets.items():
+            values.setdefault(value, []).append(target)
+        if len(values) == 1:
+            result.append(["공통", label, next(iter(values))])
+            continue
+        for value, names in values.items():
+            if "공통" in names:
+                target = "공통"
+            else:
+                # Distinguish files, not every column/sample of the same TXT.
+                target_names = []
+                for name in names:
+                    source = sources.get(name, name)
+                    conflicting = any(sources.get(other, other) == source and other_value != value
+                                      for other, other_value in targets.items())
+                    display = name if conflicting else source
+                    if display not in target_names:
+                        target_names.append(display)
+                target = ", ".join(target_names)
+            result.append([target, label, value])
+    return _sort_condition_rows(result, _RAMAN_CONDITION_ORDER)
+
+
 def _report_context(payload: dict[str, Any]) -> dict[str, Any]:
     context = payload.get("reportContext")
     return context if isinstance(context, dict) else {}
@@ -1946,6 +2006,7 @@ class RamanReportBuilder(ReportBuilder):
         "graph_operations는 보고서 생성 시점의 그래프 표시모드, 민감도, 이름수정, 사용자 추가 피크, 그룹, 강도비, 도형/텍스트 주석을 요약한 값입니다.\n"
         "graph_operations.interpretation_points가 있으면 사용자가 그래프에서 강조한 해석 포인트로 보고서 문안에 반영하세요.\n"
         "sample_peak_summary, ratio_annotations, display_settings가 있으면 주요 band, 강도비, 스택/전처리 조건을 우선 설명하세요.\n"
+        "실험환경/조건은 보고서 앞부분의 공통 조건 표에 한 번만 기재되므로 문안에 조건 목록을 반복하거나 샘플별로 나열하지 마세요.\n"
         "key_findings와 qc_notes는 '주요 band: ...'처럼 짧은 제목이 있는 여러 줄 문장으로 작성하세요.\n"
         "보고서 문안에는 라이브러리 이름, 라이브러리 적용 여부, 라이브러리 매칭 섹션을 쓰지 마세요.\n"
         "Raman 피크 assignment는 후보 소견으로 표현하고, assignment가 없는 피크는 단정하지 마세요.\n"
@@ -1977,13 +2038,14 @@ class RamanReportBuilder(ReportBuilder):
             generated_at=job.get("_generated_at", ""),
             sections=self._meta_sections(job, payload),
         )
-        document.sections.append(
-            self._experiment_conditions_section(
-                payload,
-                aliases=_RAMAN_CONDITION_ALIASES,
-                preferred_order=_RAMAN_CONDITION_ORDER,
-            )
-        )
+        document.sections.insert(0, ReportSection(
+            "experiment_conditions", "공통 실험환경/조건",
+            table=ReportTable(
+                ["대상", "항목", "값"], _raman_experiment_condition_rows(payload),
+                merge_columns=[0], alignments=["center", "left", "left"],
+                vertical_alignment="middle", column_widths=[0.14, 0.28, 0.58],
+            ),
+        ))
         document.sections.append(self._sample_section(payload))
         document.sections.append(self._peak_section(payload))
         document.sections.append(
@@ -2066,7 +2128,6 @@ class RamanReportBuilder(ReportBuilder):
         assigned_count = _raman_assignment_count(payload)
         peak_lines = _raman_primary_peak_lines(payload)
         ratio_lines = _raman_ratio_annotations(payload)
-        condition_text = _raman_condition_summary(payload)
         display_settings = _raman_display_settings(payload)
         stack_text = "스택 표시가 적용되어 샘플 간 피크 패턴 비교가 쉽도록 Y축 평행이동이 반영되었습니다." if display_settings["stack_enabled"] else ""
         primary_peak_sentence = (
@@ -2097,8 +2158,6 @@ class RamanReportBuilder(ReportBuilder):
             key_lines.append(f"강도비: {', '.join(ratio_lines[:3])}")
         elif _raman_has_carbon_dg(payload):
             key_lines.append("강도비: Carbon D/G band 쌍은 결함도/graphitic 특성 비교에 활용할 수 있습니다.")
-        if condition_text:
-            key_lines.append(f"실험조건: {condition_text}")
         key_findings = "\n".join(key_lines[:5])
 
         interpretation_parts = [
@@ -2161,11 +2220,7 @@ class RamanReportBuilder(ReportBuilder):
                 "baseline": settings.get("baseline"),
                 "smooth": settings.get("smooth"),
             },
-            "experiment_conditions": _experiment_condition_rows(
-                payload,
-                aliases=_RAMAN_CONDITION_ALIASES,
-                preferred_order=_RAMAN_CONDITION_ORDER,
-            ),
+            "experiment_conditions": _raman_experiment_condition_rows(payload),
             "current_peaks": _figure_peak_facts(
                 payload,
                 x_label="cm-1",

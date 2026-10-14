@@ -1134,9 +1134,14 @@ def render_pdf(
         Spacer(1, 4 * mm),
     ]
 
-    story.extend(_pdf_figure_story(document, styles, available_width))
+    common_conditions = _raman_common_conditions(document)
+    if common_conditions is None:
+        story.extend(_pdf_figure_story(document, styles, available_width))
 
-    for section in document.sections:
+    ordered_sections = ([common_conditions] if common_conditions else []) + [
+        section for section in document.sections if section is not common_conditions
+    ]
+    for section in ordered_sections:
         story.append(Paragraph(_pdf_text(section.heading), styles["section"]))
         for paragraph in section.paragraphs:
             story.append(Paragraph(_pdf_text(paragraph), styles["paragraph"]))
@@ -1148,6 +1153,8 @@ def render_pdf(
         if table is not None:
             story.append(table)
             story.append(Spacer(1, 2 * mm))
+        if section is common_conditions:
+            story.extend(_pdf_figure_story(document, styles, available_width))
 
     footer = _pdf_footer(document, font_name)
     pdf_doc.build(story, onFirstPage=footer, onLaterPages=footer)
@@ -1178,8 +1185,17 @@ def render_pptx(document: ReportDocument, path: Path) -> None:
                 archive.write(media_path, f"ppt/media/{media_name}")
 
 
+def _raman_common_conditions(document: ReportDocument) -> ReportSection | None:
+    if document.section("raman_samples") is not None or document.experiment_code in {"RAMAN", "RIN", "RIN-RAMAN"}:
+        return document.section("experiment_conditions")
+    return None
+
+
 def _pptx_slide_payloads(document: ReportDocument) -> list[dict[str, object]]:
     slides: list[dict[str, object]] = [_pptx_title_payload(document)]
+    common_conditions = _raman_common_conditions(document)
+    if common_conditions is not None and common_conditions.table is not None:
+        slides.extend(_pptx_complete_table_payloads(document, common_conditions))
     if document.section("summary") is not None or document.section("key_findings") is not None:
         slides.append(_pptx_overview_payload(document))
 
@@ -1206,7 +1222,7 @@ def _pptx_slide_payloads(document: ReportDocument) -> list[dict[str, object]]:
 
     summarized_sections = {"summary", "key_findings", "caption", *_INSIGHT_SECTION_IDS}
     for section in document.sections:
-        if section.section_id in summarized_sections:
+        if section.section_id in summarized_sections or (section is common_conditions and section.table is not None):
             continue
         if section.table is not None:
             if document.section("report_transfer") is not None:
@@ -1227,6 +1243,12 @@ def _pptx_slide_payloads(document: ReportDocument) -> list[dict[str, object]]:
 def _pptx_complete_table_payloads(document, section):
     """Paginate analyst content instead of truncating rows or cell endings."""
     table = section.table
+    is_common = section is _raman_common_conditions(document)
+    if is_common and table.columns == ["대상", "항목", "값"] and all(row[0] == "공통" for row in table.rows):
+        # The heading establishes the common scope; use the space for readable labels.
+        table = replace(table, columns=["항목", "값"], rows=[row[1:] for row in table.rows],
+                        merge_columns=[], alignments=["left", "left"], column_widths=[0.45, 0.55])
+    page_size = 10 if is_common else 9
     widths = _table_column_widths(table, 68)
     rows = []
     for row in _normalized_table_rows(table):
@@ -1235,9 +1257,9 @@ def _pptx_complete_table_payloads(document, section):
             for i, cell in enumerate(row)]
         rows.extend([[cell[n] if n < len(cell) else "" for cell in cells]
                      for n in range(max(map(len, cells)))])
-    for start in range(0, max(1, len(rows)), 9):
-        page = replace(table, rows=rows[start:start + 9], merge_columns=[])
-        heading = section.heading + (f" · {start // 9 + 1}" if len(rows) > 9 else "")
+    for start in range(0, max(1, len(rows)), page_size):
+        page = replace(table, rows=rows[start:start + page_size], merge_columns=[])
+        heading = section.heading + (f" · {start // page_size + 1}" if len(rows) > page_size else "")
         yield _pptx_table_payload(document, replace(section, heading=heading, table=page))
 
 
@@ -2054,7 +2076,7 @@ def _pptx_table_slide(document: ReportDocument, section: ReportSection) -> str:
     table = section.table
     if table is None:
         return _pptx_text_slide(document, section.heading, _section_lines(section)[:10])
-    max_rows = 9
+    max_rows = 10 if section.section_id == "experiment_conditions" and _raman_common_conditions(document) is not None else 9
     all_rows = _normalized_table_rows(table)
     rows = all_rows[:max_rows]
     omitted = max(0, len(all_rows) - len(rows))

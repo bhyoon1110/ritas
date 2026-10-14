@@ -48,7 +48,7 @@ function setup(t,experiment,mode) {
   Object.defineProperty(gd,'clientWidth',{get:()=>parseFloat(gd.style.width)||1500});
   Object.defineProperty(gd,'clientHeight',{value:720});
   const initial=figure(experiment,0); gd.data=initial.data; gd.layout=initial.layout; gd._context={};
-  const handlers={},downloads=[],requests=[]; let fail=false, sampleCount=2, controller, savedEnvironment;
+  const handlers={},downloads=[],requests=[]; let fail=false, sampleCount=2, controller, savedEnvironment, rawMetadata=[];
   const emit=(name,payload)=>{for(const fn of handlers[name]||[])fn(payload);};
   gd.on=(name,fn)=>{(handlers[name] ||= []).push(fn);return gd;};
   function set(object,key,value) { const keys=key.split('.');for(const part of keys.slice(0,-1)) object=object[part] ||= {};object[keys.at(-1)]=value; }
@@ -74,7 +74,7 @@ function setup(t,experiment,mode) {
       if(fail)return {ok:false,json:async()=>({message:'test failure'})};
       return {ok:true,json:async()=>({figure:figure(experiment,sampleCount),
         settings:{sensitivity:Number(options.body.get('sensitivity'))},
-        samples:Array.from({length:sampleCount},(_,i)=>({label:'NEW RAW '+i,fileName:'new-'+i,peakCount:0,metadata:{}}))})};
+        samples:Array.from({length:sampleCount},(_,i)=>({label:'NEW RAW '+i,fileName:'new-'+i,peakCount:0,metadata:rawMetadata[i]||{}}))})};
     }
     return {ok:false,status:401,json:async()=>({})};
   };
@@ -98,6 +98,7 @@ function setup(t,experiment,mode) {
   function upload(input,file) { Object.defineProperty(input,'files',{configurable:true,value:[file]});input.dispatchEvent(new w.Event('change',{bubbles:true})); }
   return {w,d,gd,run,requests,downloads,template:()=>controller,options:()=>savedEnvironment,
     fail:()=>{fail=true;},setCount:value=>{sampleCount=value;},
+    setMetadata:value=>{rawMetadata=value;},
     addRaw:async()=>{upload(d.getElementById(experiment+'-file-input'),new w.File(['raw'],experiment==='ftir'?'new.dpt':'new.txt'));await tick();await tick();},
     read:blob=>new Promise((resolve,reject)=>{const reader=new w.FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsText(blob);}),
     uploadTemplate:async(value,name='template.json')=>{upload(d.querySelector('[data-template-file]'),new w.File([value],name));await tick();await tick();}
@@ -106,6 +107,19 @@ function setup(t,experiment,mode) {
 
 for(const mode of ['native','chrome49']) for(const experiment of ['ftir','raman']) {
   const label=experiment+'/'+mode;
+  if(experiment==='raman')test(label+': common raw metadata is not repeated per sample in condition details',async t=>{
+    const h=setup(t,experiment,mode);await tick();
+    const metadata={'Excitation Wavelength':'532 nm','Grating':'1800 g/mm','Exposure Time':'3 s','constructor':'Raw export field'};
+    h.setMetadata([metadata,metadata]);await h.addRaw();
+    assert.equal(h.d.querySelector('[data-report-field="excitationWavelength"]').value,'532 nm');
+    assert.equal(h.d.querySelector('[data-report-field="conditionDetail"]').value,'Exposure Time: 3 s\nconstructor: Raw export field');
+    for(const input of h.d.querySelectorAll('[data-sample-condition-field="conditionDetail"]'))assert.equal(input.value,'Exposure Time: 3 s\nconstructor: Raw export field');
+  });
+  if(experiment==='raman')test(label+': different raw metadata values retain their sample attribution',async t=>{
+    const h=setup(t,experiment,mode);await tick();
+    h.setMetadata([{'Exposure Time':'3 s'},{'Exposure Time':'5 s'}]);await h.addRaw();
+    assert.equal(h.d.querySelector('[data-report-field="conditionDetail"]').value,'NEW RAW 0 - Exposure Time: 3 s\nNEW RAW 1 - Exposure Time: 5 s');
+  });
   test(label+': file round trip excludes RAW/evidence/identities; optional ranges and empty title survive',async t=>{
     const h=setup(t,experiment,mode);await tick();await h.addRaw();
     h.gd.layout.title.text='OLD SAMPLE SECRET';

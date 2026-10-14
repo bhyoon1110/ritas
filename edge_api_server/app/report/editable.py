@@ -1,7 +1,7 @@
 """Analyst-editable report content; never included in recipient HTML programs."""
 from copy import deepcopy
 
-from .builders import _FTIR_CONDITION_ORDER, _RAMAN_CONDITION_ORDER
+from .builders import _FTIR_CONDITION_ORDER, _RAMAN_CONDITION_ORDER, _raman_experiment_condition_rows
 from .model import ReportDocument, ReportFigure, ReportSection, ReportTable
 
 TRANSFER_FIELDS = {"requestNumber": "의뢰번호", "limsExperimentCode": "실험코드",
@@ -43,12 +43,15 @@ def ensure_editable_fields(document, payload, project, transfer):
     apply_transfer(document, transfer, project)
     section = document.section("experiment_conditions")
     rows = deepcopy(section.table.rows) if section and section.table else []
+    is_raman = project in {"RAMAN", "RIN", "RIN-RAMAN"}
+    if is_raman:
+        rows = _raman_experiment_condition_rows(payload)
     # Explicit form values win over raw metadata for the same target/label.
     ordered = {}
     for target, label, value in rows:
         ordered[(target, label)] = value
     explicit = payload.get("reportConditionFields")
-    if isinstance(explicit, list):
+    if isinstance(explicit, list) and not is_raman:
         for row in explicit:
             if isinstance(row, dict) and row.get("label"):
                 target, label = str(row.get("target") or "공통"), str(row["label"])
@@ -64,6 +67,8 @@ def ensure_editable_fields(document, payload, project, transfer):
         section = ReportSection("experiment_conditions", "실험조건 및 실험환경")
         document.sections.insert(1, section)
     section.paragraphs = []
+    if is_raman:
+        section.heading = "공통 실험환경/조건"
     section.table = ReportTable(["대상", "항목", "값"], rows, merge_columns=[0],
                                 column_widths=[0.14, 0.28, 0.58])
 

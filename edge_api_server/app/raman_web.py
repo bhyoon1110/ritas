@@ -4770,16 +4770,30 @@ _UPLOAD_SCRIPT = """
   }
 
   function metadataDetailText(items) {
-    var seen = {};
+    var grouped = Object.create(null);
     var lines = [];
     items.forEach(function(item) {
-      var key = item.sample + "|" + item.key + "|" + item.value;
-      if (seen[key]) return;
-      seen[key] = true;
-      lines.push(
-        (item.sample ? item.sample + " - " : "")
-        + item.key + ": " + item.value
-      );
+      var key = normalizedMetadataKey(item.key);
+      // Dedicated fields already contain these values; "기타" is for extra metadata.
+      var known = reportConditionFieldConfigs().some(function(config) {
+        return config.field !== "conditionDetail" && reportMetadataAliases(config.field).some(function(alias) {
+          return normalizedMetadataKey(alias) === key;
+        });
+      });
+      if (known) return;
+      if (!grouped[key]) grouped[key] = [];
+      var match = grouped[key].find(function(entry) { return entry.value === item.value; });
+      if (!match) {
+        match = {key: item.key, value: item.value, samples: []};
+        grouped[key].push(match);
+      }
+      if (item.sample && match.samples.indexOf(item.sample) < 0) match.samples.push(item.sample);
+    });
+    Object.keys(grouped).forEach(function(key) {
+      grouped[key].forEach(function(item) {
+        lines.push((grouped[key].length > 1 && item.samples.length ? item.samples.join(", ") + " - " : "")
+          + item.key + ": " + item.value);
+      });
     });
     return lines.join("\\n");
   }
