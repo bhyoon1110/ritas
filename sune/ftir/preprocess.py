@@ -4,16 +4,59 @@
 # ─────────────────────────────────────────────────────────────────────────────
 """FTIR spectrum loading and preprocessing utilities."""
 
+from contextlib import nullcontext
+import csv
+from os import PathLike
+
 import numpy as np
 import pandas as pd
 from scipy.interpolate import interp1d
 from scipy.signal import savgol_filter, find_peaks
 
 
+def _dpt_separator(source):
+    """Find the first numeric pair, leaving the stream at the start of its row."""
+    while True:
+        position = source.tell()
+        line = source.readline()
+        if not line:
+            return None
+        if isinstance(line, bytes):
+            line = line.decode("utf-8-sig")
+        line = line.strip().lstrip("\ufeff")
+        if not line or line.startswith(("#", ";")):
+            continue
+        line = line.split("#", 1)[0].strip()
+        separator = "," if "," in line else r"\s+"
+        fields = next(csv.reader([line])) if separator == "," else line.split()
+        if len(fields) != 2:
+            continue
+        try:
+            values = [float(value) for value in fields]
+        except ValueError:
+            continue
+        if not np.isfinite(values).all():
+            continue
+        source.seek(position)
+        return separator
+
+
 def load_dpt(path, wn_min, wn_max):
-    """Bruker DPT (wavenumber, intensity) 파일 로드"""
-    df = pd.read_csv(path, header=None, names=["wn", "y"])
+    """Load comma- or whitespace-delimited DPT wavenumber/intensity pairs."""
+    source_context = (
+        open(path, "rb") if isinstance(path, (str, PathLike)) else nullcontext(path)
+    )
+    with source_context as source:
+        separator = _dpt_separator(source)
+        if separator is None:
+            return pd.DataFrame(columns=["wn", "y"], dtype=float)
+        # Parse without names so extra columns cannot silently become an index.
+        df = pd.read_csv(
+            source, sep=separator, header=None, encoding="utf-8-sig", comment="#",
+        )
+    df.columns = ["wn", "y"]
     df = df.apply(pd.to_numeric, errors="coerce").dropna()
+    df = df[np.isfinite(df["wn"]) & np.isfinite(df["y"])]
     df = df[(df["wn"] >= wn_min) & (df["wn"] <= wn_max)]
     return df.sort_values("wn")
 

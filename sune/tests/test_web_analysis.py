@@ -70,3 +70,14 @@ def test_analyze_uploaded_dpt_rejects_insufficient_data() -> None:
         analyze_dpt_files([("empty.dpt", b"400,0.1\n500,0.2\n")])
 
     assert exc_info.value.code == "INSUFFICIENT_DPT_DATA"
+
+
+@pytest.mark.parametrize("separator", [b"\t", b" ", b"   "])
+def test_dpt_whitespace_delimiters_match_comma_analysis(separator: bytes) -> None:
+    content = synthetic_dpt()
+    baseline = analyze_dpt_files([("sample.dpt", content)], sensitivity=25)
+    result = analyze_dpt_files(
+        [("sample.dpt", content.replace(b",", separator).replace(b"\n", b"\r\n"))],
+        sensitivity=25,
+    )
+    assert result == baseline

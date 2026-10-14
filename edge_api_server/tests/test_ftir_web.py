@@ -8,8 +8,10 @@ from io import BytesIO
 from types import SimpleNamespace
 import zipfile
 from pathlib import Path
+import xml.etree.ElementTree as ET
 
 from fastapi.testclient import TestClient
+import pytest
 
 from app import assignment_suggestions, preview_report
 from app.ftir_web import (
@@ -464,11 +466,14 @@ def test_ftir_analysis_zero_sensitivity_disables_detected_peaks(tmp_path: Path) 
     )
 
 
-def test_ftir_analysis_extracts_optional_dpt_metadata(tmp_path: Path) -> None:
+@pytest.mark.parametrize("separator", [b",", b"\t", b"   "])
+def test_ftir_analysis_extracts_optional_dpt_metadata(
+    tmp_path: Path, separator: bytes,
+) -> None:
     content = (
         b"# Resolution: 4 cm-1\n"
         b"# Measurement Mode: ATR\n"
-        + synthetic_dpt()
+        + synthetic_dpt().replace(b",", separator)
     )
     with TestClient(create_ftir_preview_app(tmp_path / "libraries")) as client:
         response = client.post(
@@ -481,24 +486,28 @@ def test_ftir_analysis_extracts_optional_dpt_metadata(tmp_path: Path) -> None:
     sample = response.json()["samples"][0]
     assert sample["metadata"]["Resolution"] == "4 cm-1"
     assert sample["metadata"]["Measurement Mode"] == "ATR"
+    assert sample["pointCount"] == 241
 
 
+@pytest.mark.parametrize("separator", [b",", b"\t", b"   "])
 def test_ftir_report_api_builds_package_with_graph_and_raw_xlsx(
     tmp_path: Path,
     monkeypatch,
+    separator: bytes,
 ) -> None:
     use_fake_pptx_pdf_converter(monkeypatch)
+    content = synthetic_dpt().replace(b",", separator)
     with TestClient(create_ftir_preview_app(tmp_path / "libraries")) as client:
         analysis_response = client.post(
             "/api/v1/ftir/analyze",
-            files={"files": ("sample-a.dpt", synthetic_dpt(), "application/octet-stream")},
+            files={"files": ("sample-a.dpt", content, "application/octet-stream")},
             data={"sensitivity": "25"},
         )
         assert analysis_response.status_code == 200
         analysis = analysis_response.json()
         report_response = client.post(
             "/api/v1/ftir/report",
-            files={"files": ("sample-a.dpt", synthetic_dpt(), "application/octet-stream")},
+            files={"files": ("sample-a.dpt", content, "application/octet-stream")},
             data={
                 "analysis_json": json.dumps(analysis),
                 "figure_json": json.dumps(analysis["figure"]),
@@ -547,6 +556,13 @@ def test_ftir_report_api_builds_package_with_graph_and_raw_xlsx(
         with zipfile.ZipFile(BytesIO(archive.read("raw_data.xlsx"))) as xlsx_archive:
             sheet_xml = xlsx_archive.read("xl/worksheets/sheet1.xml").decode("utf-8")
         assert "wavenumber(cm-1)/샘플명" in sheet_xml
+        ns = {"s": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
+        rows = ET.fromstring(sheet_xml).findall("s:sheetData/s:row", ns)
+        assert len(rows) == 242  # Header plus every original raw data pair.
+        for row, raw_line in zip(rows[1:], synthetic_dpt().splitlines()):
+            actual = [float(cell.text) for cell in row.findall("s:c/s:v", ns)]
+            expected = [float(value) for value in raw_line.split(b",")]
+            assert actual == pytest.approx(expected, rel=1e-12, abs=1e-12)
 
 
 def test_ftir_report_job_api_tracks_progress_and_downloads_package(
