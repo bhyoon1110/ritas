@@ -77,7 +77,10 @@ def test_raman_workspace_contains_upload_controls() -> None:
     assert "Origin 스타일" in page
     assert "gd._ristOriginStyle" in page
     assert "originStyle: originStyleEnabled()" in page
-    assert "withOriginStyle(payload.figure.layout || {})" in page
+    assert "withOriginStyle(gd._ristPlotSize" in page
+    assert "gd._ristPlotSize.preserve(payload.figure.layout || {})" in page
+    assert 'data-plot-ratio' in page
+    assert 'sizing.applyLayout(updates)' in page
     assert 'CustomEvent("rist-origin-style-change"' in page
     assert "lucide-sliders-horizontal" in page
     assert 'button.textContent = open ? "닫기" : "도구"' not in page
@@ -349,7 +352,7 @@ def test_raman_workspace_contains_upload_controls() -> None:
     assert "@media (max-width: 760px)" in page
     assert "@media (max-width: 1440px)" in page
     assert "@media (max-width: 420px)" in page
-    assert "var compact = window.innerWidth <= 760" in page
+    assert "var compact = (sizing ? sizing.viewportWidth() : window.innerWidth) <= 760" in page
     assert "toolsOpen" not in page
     assert '"height": 900' in page
     assert '"margin.t": 82' in page

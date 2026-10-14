@@ -56,6 +56,24 @@ test('all emitted inline programs parse, Raman opts into axis locks and Y-only w
   assert.match(html,/var scrollZoomYOnly = true/);
 });
 
+test('plot size applies and restores through the real undo/redo controller',async t=>{
+  const {gd,d,w,run}=setup(t);
+  Object.defineProperty(gd.parentElement,'clientWidth',{value:1400});
+  run('var axisLocksEnabled');
+  gd._ristHistory=null;run('var undoStack');run('var ratios =');
+  d.querySelector('[data-plot-width]').value='1000';
+  d.querySelector('[data-plot-ratio]').value='4:3';
+  d.querySelector('[data-plot-size-apply]').click();
+  await new Promise(r=>setTimeout(r,120));
+  assert.equal(gd.layout.width,1000);assert.equal(gd.style.height,'750px');
+  gd._ristHistory.undo();await new Promise(r=>setTimeout(r,120));
+  assert.equal(gd.style.width,'100%');assert.equal(d.querySelector('[data-plot-ratio]').value,'auto');
+  gd._ristHistory.redo();await new Promise(r=>setTimeout(r,120));
+  assert.equal(gd.layout.width,1000);assert.equal(gd.style.height,'750px');
+  assert.equal(d.querySelector('[data-plot-width]').value,'1000');
+  w.dispatchEvent(new w.Event('pagehide'));
+});
+
 test('raw Raman stack uses the measurement scale, fits negatives and restores exact values',async t=>{
   const {gd,d,run,dispatch}=setup(t);
   const original=[[-400,12000,300],[-200,6000,900]];

@@ -32,6 +32,7 @@ import json
 from collections.abc import Mapping
 
 from .color_palette import color_palette_html
+from .plot_size import plot_size_controls_html
 
 # 범례 위치 전환 기준 화면 너비(px). 이 값 이상이면 그래프 안쪽(세로),
 # 미만이면 그래프 아래(가로)로 범례를 배치한다.
@@ -4928,10 +4929,11 @@ def _image_download_js(div_id: str, formats, filename: str, scale: float) -> str
 
   function exportDimensions() {
     var fullLayout = gd._fullLayout || {};
-    return {
+    var fallback = {
       width: Math.max(900, Math.round(fullLayout.width || gd.clientWidth || 1200)),
       height: Math.max(600, Math.round(fullLayout.height || gd.clientHeight || 720))
     };
+    return gd._ristPlotSize ? gd._ristPlotSize.exportDimensions(fallback) : fallback;
   }
 
   function removeExportPlot(temp) {
@@ -9145,6 +9147,7 @@ def fig_to_responsive_html(
         html = html.replace("</body>", _axis_controls_js(
             div_id, axis_locks=axis_locks, scroll_zoom_y_only=scroll_zoom_y_only
         ) + "</body>", 1)
+        html = html.replace("</body>", plot_size_controls_html(div_id) + "</body>", 1)
 
     if trace_highlight:
         html = html.replace(

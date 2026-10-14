@@ -4701,8 +4701,9 @@ _UPLOAD_SCRIPT = """
   }
 
   function applyResponsiveLayout() {
-    var mobile = window.innerWidth <= 760;
-    return window.Plotly.relayout(gd, mobile ? {
+    var sizing = gd._ristPlotSize;
+    var mobile = (sizing ? sizing.viewportWidth() : window.innerWidth) <= 760;
+    var updates = mobile ? {
       "height": 900,
       "margin.t": 82,
       "margin.r": 30,
@@ -4722,8 +4723,10 @@ _UPLOAD_SCRIPT = """
       "legend.xanchor": "left",
       "legend.y": 1.0,
       "legend.yanchor": "top"
-    });
+    };
+    return window.Plotly.relayout(gd, sizing ? sizing.applyLayout(updates) : updates);
   }
+  gd._ristApplyResponsiveLayout = applyResponsiveLayout;
 
   function resetGraph() {
     if (controller) controller.abort();
@@ -4775,7 +4778,8 @@ _UPLOAD_SCRIPT = """
       return window.Plotly.react(
         gd,
         payload.figure.data,
-        withOriginStyle(payload.figure.layout),
+        withOriginStyle(gd._ristPlotSize
+          ? gd._ristPlotSize.preserve(payload.figure.layout) : payload.figure.layout),
         gd._context
       ).then(function() {
         var peakCount = payload.samples.reduce(function(total, sample) {
@@ -4964,8 +4968,11 @@ _UPLOAD_SCRIPT = """
   }
 
   async function captureReportFigureImage(figure) {
-    var width = Math.max(900, Math.round(gd.clientWidth || 1200));
-    var height = Math.max(640, Math.round(gd.clientHeight || 800));
+    var dimensions = {width: Math.max(900, Math.round(gd.clientWidth || 1200)),
+      height: Math.max(640, Math.round(gd.clientHeight || 800))};
+    if (gd._ristPlotSize) dimensions = gd._ristPlotSize.exportDimensions(dimensions);
+    var width = dimensions.width;
+    var height = dimensions.height;
     var temp = document.createElement("div");
     temp.style.position = "fixed";
     temp.style.left = "-10000px";
@@ -4978,7 +4985,7 @@ _UPLOAD_SCRIPT = """
       await window.Plotly.newPlot(
         temp,
         figure.data || [],
-        figure.layout || {},
+        Object.assign({}, figure.layout || {}, {width: width, height: height, autosize: false}),
         Object.assign({}, gd._context || {}, {responsive: false})
       );
       return await window.Plotly.toImage(temp, {

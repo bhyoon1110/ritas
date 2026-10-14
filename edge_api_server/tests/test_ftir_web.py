@@ -65,7 +65,10 @@ def test_ftir_workspace_contains_upload_and_editor_controls() -> None:
     assert "Origin 스타일" in page
     assert "gd._ristOriginStyle" in page
     assert "originStyle: originStyleEnabled()" in page
-    assert "withOriginStyle(payload.figure.layout)" in page
+    assert "withOriginStyle(gd._ristPlotSize" in page
+    assert "gd._ristPlotSize.preserve(payload.figure.layout)" in page
+    assert 'data-plot-ratio' in page
+    assert 'sizing.applyLayout(updates)' in page
     assert 'CustomEvent("rist-origin-style-change"' in page
     assert "rist-ftir-stack-control" in page
     assert "rist-ftir-stack-gap" in page
