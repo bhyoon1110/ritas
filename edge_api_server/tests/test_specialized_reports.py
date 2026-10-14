@@ -95,8 +95,11 @@ def test_xrd_raw_bundle_generates_portable_html_package(monkeypatch, tmp_path: P
     html = result.primary_path.read_text(encoding="utf-8")
     assert "sample Report" in html
     assert "상 동정 (Phase Identification) 결과" in html
+    assert 'id="xrd-analysis-result" contenteditable="false"' in html
+    assert 'aria-label="분석결과 (읽기 전용)"' in html
     with zipfile.ZipFile(result.package_path) as archive:
         assert {"report.html", "report.md"} <= set(archive.namelist())
+        assert archive.read("report.html").decode("utf-8") == html
 
 
 def test_tem_raw_bundle_generates_template_pptx_package(tmp_path: Path) -> None:

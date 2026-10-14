@@ -7,6 +7,7 @@ from pathlib import Path
 import re
 
 import plotly
+from lxml import html as lxml_html
 
 
 XRD_PLOTLY_MARKER = 'data-xrd-embedded-plotly="true"'
@@ -49,8 +50,34 @@ def _embedded_plotly_script(asset_path: Path) -> str:
     )
 
 
+def _lock_analysis_result(html_text: str) -> str:
+    """Freeze only the published prose, leaving graph/print controls intact.
+
+    This is a view-only UI, not tamper protection for files edited externally.
+    Parse our generated report with large-text support for embedded image assets.
+    """
+    if not html_text or "xrd-analysis-result" not in html_text:
+        return html_text
+    root = lxml_html.document_fromstring(
+        html_text, parser=lxml_html.HTMLParser(no_network=True, huge_tree=True),
+    )
+    result = root.get_element_by_id("xrd-analysis-result", None)
+    if result is None:
+        return html_text
+    result.set("contenteditable", "false")
+    result.set("role", "textbox")
+    result.set("aria-readonly", "true")
+    result.set("aria-multiline", "true")
+    result.set("aria-label", "분석결과 (읽기 전용)")
+    for child in result.xpath(".//*[@contenteditable]"):
+        child.set("contenteditable", "false")
+    return "<!doctype html>\n" + lxml_html.tostring(root, encoding="unicode", method="html")
+
+
 def make_xrd_html_portable(html_text: str, *, asset_path: Path | None = None) -> str:
-    """Embed Plotly so both XRD graphs work in downloaded/offline HTML files."""
+    """Publish read-only analysis text and embed Plotly for offline graphs."""
+    # Lock even reports that already embed Plotly or do not need that asset.
+    html_text = _lock_analysis_result(html_text)
     if not html_text or XRD_PLOTLY_MARKER in html_text:
         return html_text
 

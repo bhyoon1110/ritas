@@ -498,6 +498,9 @@ def test_xrd_chunked_upload_session_retries_and_builds_report(tmp_path) -> None:
     assert 'src="/xrd/assets/plotly.min.js"' not in packaged_html
     assert 'id="xrd-plot"' in packaged_html
     assert 'id="xrd-numbered-peak-plot"' in packaged_html
+    assert 'id="xrd-analysis-result" contenteditable="true"' in html_response.text
+    assert 'id="xrd-analysis-result" contenteditable="false"' in packaged_html
+    assert 'aria-label="분석결과 (읽기 전용)"' in packaged_html
     assert "xrd-report-package.zip" not in package_names
 
 

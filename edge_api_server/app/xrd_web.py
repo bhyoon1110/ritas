@@ -1781,13 +1781,26 @@ def build_xrd_page() -> str:
       });
     }
     function sanitizeDownloadHtml(htmlText) {
-      if (!htmlText || typeof DOMParser === "undefined") return htmlText || "";
+      if (!htmlText) return "";
       try {
         var doc = new DOMParser().parseFromString(htmlText, "text/html");
         removeDynamicReportState(doc);
+        // Change the export copy only. The analyst's live iframe stays editable.
+        var result = doc.getElementById("xrd-analysis-result");
+        if (result) {
+          result.setAttribute("contenteditable", "false");
+          result.setAttribute("role", "textbox");
+          result.setAttribute("aria-readonly", "true");
+          result.setAttribute("aria-multiline", "true");
+          result.setAttribute("aria-label", "분석결과 (읽기 전용)");
+          Array.prototype.forEach.call(result.querySelectorAll("[contenteditable]"), function(node) {
+            node.setAttribute("contenteditable", "false");
+          });
+        }
         return "<!doctype html>\\n" + doc.documentElement.outerHTML;
       } catch (_error) {
-        return htmlText || "";
+        // Do not silently offer an editable file when export preparation fails.
+        throw new Error("분석결과를 읽기 전용으로 저장하지 못했습니다. 다시 시도하세요.");
       }
     }
     async function makeDownloadHtml(htmlText) {
