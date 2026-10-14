@@ -38,6 +38,7 @@ from reportlab.platypus import (
 )
 
 from .model import ReportDocument, ReportFigure, ReportSection, ReportTable
+from .posco_template import MEDIA_NAME, load_posco_layout, posco_layout_rels, uses_posco_template
 
 PPTX_SLIDE_W = 12192000
 PPTX_SLIDE_H = 6858000
@@ -1155,6 +1156,7 @@ def render_pdf(
 def render_pptx(document: ReportDocument, path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     slides = _pptx_slide_payloads(document)
+    posco_layout = load_posco_layout(PPTX_SLIDE_W) if uses_posco_template(document.experiment_code) else None
     with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as archive:
         archive.writestr("[Content_Types].xml", _pptx_content_types(len(slides)))
         archive.writestr("_rels/.rels", _pptx_root_rels())
@@ -1165,8 +1167,10 @@ def render_pptx(document: ReportDocument, path: Path) -> None:
         archive.writestr("ppt/theme/theme1.xml", _pptx_theme())
         archive.writestr("ppt/slideMasters/slideMaster1.xml", _pptx_empty_master())
         archive.writestr("ppt/slideMasters/_rels/slideMaster1.xml.rels", _pptx_master_rels())
-        archive.writestr("ppt/slideLayouts/slideLayout1.xml", _pptx_empty_layout())
-        archive.writestr("ppt/slideLayouts/_rels/slideLayout1.xml.rels", _pptx_layout_rels())
+        archive.writestr("ppt/slideLayouts/slideLayout1.xml", posco_layout[0] if posco_layout else _pptx_empty_layout())
+        archive.writestr("ppt/slideLayouts/_rels/slideLayout1.xml.rels", posco_layout_rels() if posco_layout else _pptx_layout_rels())
+        if posco_layout:
+            archive.writestr(f"ppt/media/{MEDIA_NAME}", posco_layout[1])
         for idx, slide in enumerate(slides, start=1):
             archive.writestr(f"ppt/slides/slide{idx}.xml", slide["xml"])
             archive.writestr(f"ppt/slides/_rels/slide{idx}.xml.rels", slide["rels"])
@@ -1484,7 +1488,11 @@ def _pptx_text_shape(
     )
 
 
-def _pptx_frame(shapes: list[str], *, background: str = PPTX_BG) -> str:
+def _pptx_frame(
+    shapes: list[str], *, background: str = PPTX_BG, document: ReportDocument | None = None,
+) -> str:
+    if document is not None and uses_posco_template(document.experiment_code):
+        background = "FFFFFF"
     return f"""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
   <p:cSld><p:bg><p:bgPr>{_pptx_fill(background)}</p:bgPr></p:bg><p:spTree>
@@ -1495,6 +1503,15 @@ def _pptx_frame(shapes: list[str], *, background: str = PPTX_BG) -> str:
 
 
 def _pptx_header_shapes(document: ReportDocument, title: str) -> list[str]:
+    if uses_posco_template(document.experiment_code):
+        return [
+            _pptx_posco_banner_title(document),
+            _pptx_text_shape(
+                3, "Slide title", x=PPTX_MARGIN_X, y=720000,
+                cx=10972800, cy=280000, lines=[title], font_size=2000,
+                color=PPTX_NAVY, bold=True, inset=0,
+            ),
+        ]
     return [
         _pptx_shape(
             2,
@@ -1534,6 +1551,15 @@ def _pptx_header_shapes(document: ReportDocument, title: str) -> list[str]:
             inset=0,
         ),
     ]
+
+
+def _pptx_posco_banner_title(document: ReportDocument) -> str:
+    experiment = "Raman" if document.experiment_code.strip().upper() in {"RAMAN", "RIN", "RIN-RAMAN"} else "FT-IR"
+    return _pptx_text_shape(
+        2, "Experiment banner title", x=254000, y=160020,
+        cx=8500000, cy=400050, lines=[f"{experiment} 분석 결과"],
+        font_size=2000, color="FFFFFF", bold=True, inset=0,
+    )
 
 
 def _pptx_footer_shape(document: ReportDocument, shape_id: int) -> str:
@@ -1633,7 +1659,9 @@ def _pptx_title_slide(document: ReportDocument) -> str:
                 space_after_pts=100,
             )
         )
-    return _pptx_frame(shapes, background=PPTX_BG)
+    if uses_posco_template(document.experiment_code):
+        shapes[0] = _pptx_posco_banner_title(document)
+    return _pptx_frame(shapes, background=PPTX_BG, document=document)
 
 
 def _sentence_lines(text: str, *, max_items: int = 5) -> list[str]:
@@ -1887,7 +1915,7 @@ def _pptx_overview_slide(document: ReportDocument) -> str:
             )
         )
     shapes.append(_pptx_footer_shape(document, 40))
-    return _pptx_frame(shapes)
+    return _pptx_frame(shapes, document=document)
 
 
 def _pptx_insights_slide(document: ReportDocument) -> str:
@@ -1965,7 +1993,7 @@ def _pptx_insights_slide(document: ReportDocument) -> str:
         )
         shape_id += 4
     shapes.append(_pptx_footer_shape(document, shape_id + 1))
-    return _pptx_frame(shapes)
+    return _pptx_frame(shapes, document=document)
 
 
 def _pptx_text_slide(document: ReportDocument, title: str, lines: list[str]) -> str:
@@ -2006,7 +2034,7 @@ def _pptx_text_slide(document: ReportDocument, title: str, lines: list[str]) -> 
         ]
     )
     shapes.append(_pptx_footer_shape(document, 20))
-    return _pptx_frame(shapes)
+    return _pptx_frame(shapes, document=document)
 
 
 def _pptx_table_cell_text(value: object, *, column_index: int, column_count: int) -> str:
@@ -2125,7 +2153,7 @@ def _pptx_table_slide(document: ReportDocument, section: ReportSection) -> str:
         )
         shape_id += 1
     shapes.append(_pptx_footer_shape(document, shape_id + 1))
-    return _pptx_frame(shapes)
+    return _pptx_frame(shapes, document=document)
 
 
 def _pptx_image_slide(
@@ -2171,7 +2199,7 @@ def _pptx_image_slide(
             )
         )
     shapes.append(_pptx_footer_shape(document, 20))
-    return _pptx_frame(shapes)
+    return _pptx_frame(shapes, document=document)
 
 
 def _pptx_content_types(slide_count: int) -> str:

@@ -36,6 +36,14 @@ C# XRD/TEM raw bundle이면 웹 화면과 같은 XRD HTML 또는 TEM PPTX 생성
 `report_transfers(PENDING)`가 생긴다. 공유 저장소 및 DB 전송 큐 계약은 루트의
 `EDGE_SPRING_BOOT_API.md`를 따른다.
 
+### FTIR/Raman PPT 기본 양식
+
+FTIR/Raman **PPT 보고서 배경**은 `ahn/resources/templates/ahn_tem_template.pptx`의
+포스코 배경을 공통 렌더러에서 재사용한다. 템플릿 원본을 배포에 포함해야 하며,
+샘플 이미지·TEM 제목·고정 페이지 번호는 가져오지 않는다. 기존 16:9 보고서의 내용과
+PPT에서 변환하는 PDF/페이지 미리보기를 유지한다. 별도 설정·DB 변경은 없으며
+새 보고서 생성 또는 보고서 수정 저장 시 적용된다. 아래의 작업 설정 JSON과는 별개이다.
+
 ### FTIR/Raman 작업 템플릿
 
 `/ftir`와 `/raman`의 **템플릿 저장 / 템플릿 불러오기**는 분석 데이터와 분리된
