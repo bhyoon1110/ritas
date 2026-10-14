@@ -151,7 +151,26 @@ def viewer_script() -> str:
     return Path(__file__).with_name("spectrum_viewer.js").read_text(encoding="utf-8")
 
 
-def viewer_html(*, title: str, figure: dict, slides: list[str], fallback_image: str = "") -> str:
+def _analysis_html(analysis: dict | None) -> str:
+    if not analysis:
+        return ""
+    status = analysis.get("status")
+    label = {"generated": "로컬 AI 해석 · 분석자 검토 필요",
+             "partial": "로컬 AI 해석 일부 생성 · 나머지는 규칙 기반 요약"}.get(status,
+             "로컬 AI 해석 미생성 · 규칙 기반 요약")
+    sections = []
+    for section in analysis.get("sections") or []:
+        source = "로컬 AI" if section.get("source") == "llm" else "규칙 기반"
+        paragraphs = "".join("<p>" + escape(str(text)).replace("\n", "<br>") + "</p>"
+                             for text in section.get("paragraphs") or [])
+        sections.append("<article><h2>" + escape(str(section.get("heading") or "분석 결과"))
+                        + " <small>" + source + "</small></h2>" + paragraphs + "</article>")
+    return ("<section id='analysis-panel'><p class='analysis-status' role='status'>" + label + "</p>"
+            + "<p class='notice'>보고서 생성 시점의 피크와 주석을 기준으로 작성했습니다. 사용자 메모와 피크명은 해석 참고 정보이며 확정 동정이 아닙니다. 그래프 수정 후에는 분석 화면에서 보고서를 다시 생성하세요.</p>"
+            + "".join(sections) + "</section>")
+
+
+def viewer_html(*, title: str, figure: dict, slides: list[str], fallback_image: str = "", analysis: dict | None = None) -> str:
     payload = json.dumps({"figure": readonly_figure(figure), "slides": slides,
                           "fallback": fallback_image}, cls=PlotlyJSONEncoder,
                          ensure_ascii=False, separators=(",", ":")).replace("<", "\\u003c")
@@ -160,9 +179,12 @@ def viewer_html(*, title: str, figure: dict, slides: list[str], fallback_image: 
             + "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; connect-src 'none'\">"
             + "<title>" + escape(title) + "</title><style>" + _STYLE + "</style></head><body>"
             + "<header><h1>" + escape(title) + "</h1><p>확정된 분석 보고서 · 열람 전용</p>"
-            + "<nav aria-label='보고서 보기'><button id='slides-tab' aria-pressed='true'>PPT 페이지</button>"
+            + "<nav aria-label='보고서 보기'>"
+            + ("<button id='analysis-tab' aria-pressed='true'>분석 결과</button>" if analysis else "")
+            + "<button id='slides-tab' aria-pressed='" + ("false" if analysis else "true") + "'>PPT 페이지</button>"
             + "<button id='graph-tab' aria-pressed='false'>인터랙티브 그래프</button></nav></header>"
-            + "<main><section id='slides-panel'><div class='controls'><button id='previous'>이전</button>"
+            + "<main>" + _analysis_html(analysis)
+            + "<section id='slides-panel'" + (" hidden" if analysis else "") + "><div class='controls'><button id='previous'>이전</button>"
             + "<label>페이지 <select id='page-select' aria-label='PPT 페이지 선택'></select></label>"
             + "<span id='page-count' aria-live='polite'></span><button id='next'>다음</button></div>"
             + "<img id='slide-image' alt='PPT 페이지'></section>"
@@ -176,10 +198,10 @@ def viewer_html(*, title: str, figure: dict, slides: list[str], fallback_image: 
             + "<script>" + get_plotlyjs() + "</script><script>" + viewer_script() + "</script></body></html>")
 
 
-def build_spectrum_viewer(report_dir: Path, *, title: str, figure: dict) -> Path:
+def build_spectrum_viewer(report_dir: Path, *, title: str, figure: dict, analysis: dict | None = None) -> Path:
     slides = render_slide_images(report_dir / "report-from-pptx.pdf")
     fallback = "data:image/png;base64," + base64.b64encode((report_dir / "current_graph.png").read_bytes()).decode("ascii")
-    content = viewer_html(title=title, figure=figure, slides=slides, fallback_image=fallback)
+    content = viewer_html(title=title, figure=figure, slides=slides, fallback_image=fallback, analysis=analysis)
     if len(content.encode("utf-8")) > MAX_VIEWER_BYTES:
         raise ValueError("열람용 HTML 크기가 80MB를 초과했습니다.")
     summary = report_dir / "report.html"
@@ -210,6 +232,8 @@ _STYLE = """
 *{box-sizing:border-box}body{margin:0;background:#f1f5f9;color:#1e293b;font:15px Arial,sans-serif}
 header{padding:20px 24px;background:#fff;border-bottom:1px solid #cbd5e1}h1{margin:0;font-size:22px}
 header p{color:#64748b;font-size:13px}nav,.controls{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+#analysis-panel{max-width:1000px;margin:auto}#analysis-panel article{background:#fff;padding:18px 22px;border:1px solid #cbd5e1;border-radius:6px;margin:14px 0;overflow-wrap:break-word}
+#analysis-panel h2{font-size:18px;margin:0 0 12px}#analysis-panel p{line-height:1.85;white-space:normal}#analysis-panel small{font-size:12px;font-weight:normal;color:#64748b}.analysis-status{color:#1e40af;font-weight:bold}
 button,select{font:inherit;min-height:38px;padding:7px 12px;border:1px solid #94a3b8;border-radius:5px;background:#fff;color:#1e293b}
 button{cursor:pointer}button[aria-pressed=true]{background:#1d4ed8;color:#fff;border-color:#1d4ed8}button:disabled{opacity:.45;cursor:default}
 main{padding:16px;max-width:1500px;margin:auto}.controls{margin-bottom:12px}#slide-image,#graph-fallback{display:block;width:100%;height:auto;margin:auto;border:1px solid #cbd5e1;background:#fff}

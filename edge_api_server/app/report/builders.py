@@ -614,6 +614,8 @@ def _raman_ratio_annotations(payload: dict[str, Any]) -> list[str]:
     for annotation in _as_list(layout.get("annotations")):
         if not isinstance(annotation, dict):
             continue
+        if not _trace_is_visible(annotation):
+            continue
         name = str(annotation.get("name") or "")
         if not name.startswith("rist_raman_ratio:"):
             continue
@@ -920,6 +922,8 @@ def _user_annotation_summary(layout: dict[str, Any]) -> dict[str, Any]:
     for index, annotation in enumerate(annotations):
         if not isinstance(annotation, dict):
             continue
+        if not _trace_is_visible(annotation):
+            continue
         if index in peak_annotations or _named_layout_item_is_ratio(annotation):
             continue
         text = _truncate_text(annotation.get("text"), max_chars=80)
@@ -928,6 +932,8 @@ def _user_annotation_summary(layout: dict[str, Any]) -> dict[str, Any]:
     shape_count = 0
     for index, shape in enumerate(shapes):
         if not isinstance(shape, dict):
+            continue
+        if not _trace_is_visible(shape):
             continue
         if index in peak_shapes or _named_layout_item_is_ratio(shape):
             continue
@@ -1560,7 +1566,7 @@ class FtirReportBuilder(ReportBuilder):
             total_detected = _total_sample_peak_count(verdict)
             if sample_count:
                 bullets.append(f"분석 시료: {sample_text} ({sample_count}개)")
-            if total_detected:
+            if total_detected and not verdict.get("_edited_report"):
                 bullets.append(f"전처리 단계 검출 피크 후보: {total_detected}개")
             bullets.append(f"현재 그래프 표시 피크: {current_peaks}개")
             bullets.append("현재 판정은 그래프에 남아 있는 피크와 피크 assignment 기반 후보 소견입니다.")
@@ -1659,7 +1665,8 @@ class FtirReportBuilder(ReportBuilder):
             )
             key_findings = (
                 f"분석 시료 수는 {sample_count}개입니다. "
-                f"전처리 단계 검출 피크 후보는 {total_detected}개이며 현재 표시 피크는 {current_peaks}개입니다."
+                + (f"현재 표시 피크는 {current_peaks}개입니다." if verdict.get("_edited_report") else
+                   f"전처리 단계 검출 피크 후보는 {total_detected}개이며 현재 표시 피크는 {current_peaks}개입니다.")
             )
             interpretation = (
                 "현재 그래프에 남아 있는 피크 위치와 피크 assignment를 기준으로 해석했습니다. "
@@ -2017,7 +2024,7 @@ class RamanReportBuilder(ReportBuilder):
                     ),
                     _normalize_report_text(str(sample.get("fileName") or "-")),
                     str(sample.get("pointCount") or "-"),
-                    str(sample.get("peakCount") or "-"),
+                    str(sample["peakCount"]) if sample.get("peakCount") is not None else "-",
                 ]
             )
         if not rows:
@@ -2078,7 +2085,9 @@ class RamanReportBuilder(ReportBuilder):
             f"{ratio_clause}, 피크 assignment는 후보 소견이므로 최종 해석은 실험조건과 전처리 상태를 함께 검토해야 합니다."
         )
         key_lines = [
-            f"현재 그래프 기준: 분석 시료 {sample_count}개, 전처리 검출 피크 후보 {total_peaks}개, 현재 표시 피크 {current_peaks}개가 반영되었습니다.",
+            (f"현재 그래프 기준: 분석 시료 {sample_count}개, 현재 표시 피크 {current_peaks}개가 반영되었습니다."
+             if payload.get("_edited_report") else
+             f"현재 그래프 기준: 분석 시료 {sample_count}개, 전처리 검출 피크 후보 {total_peaks}개, 현재 표시 피크 {current_peaks}개가 반영되었습니다."),
         ]
         if peak_lines:
             key_lines.extend(f"주요 band: {line}" for line in peak_lines[:3])

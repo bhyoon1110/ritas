@@ -6003,7 +6003,11 @@ _UPLOAD_SCRIPT = """
       var name = sample && (sample.label || sample.fileName || sample.name);
       if (name) allSampleNames[String(name)] = true;
     });
-    payload.samples = payload.samples.filter(function(sample, index) {
+    payload.samples = payload.samples.map(function(sample, index) {
+      return Object.assign({}, sample, {sample_group: String(sample && (
+        sample.sample_group || sample.sampleGroup || sample.group || sample.key
+      ) || ("sample:" + index))});
+    }).filter(function(sample, index) {
       var group = sample && (
         sample.sample_group || sample.sampleGroup || sample.group || sample.key
       );

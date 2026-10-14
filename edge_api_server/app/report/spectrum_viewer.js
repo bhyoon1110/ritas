@@ -179,15 +179,19 @@
     document.getElementById("graph-fallback").hidden = false;
     document.getElementById("graph-fallback").src = payload.fallback;
   }
-  function tab(graphActive) {
-    document.getElementById("slides-panel").hidden = graphActive;
-    document.getElementById("graph-panel").hidden = !graphActive;
-    document.getElementById("slides-tab").setAttribute("aria-pressed", String(!graphActive));
-    document.getElementById("graph-tab").setAttribute("aria-pressed", String(graphActive));
-    if (graphActive && !initialized) { draw(); }
+  function tab(active) {
+    ["analysis", "slides", "graph"].forEach(function (name) {
+      var panel = document.getElementById(name + "-panel");
+      var button = document.getElementById(name + "-tab");
+      if (panel) panel.hidden = active !== name;
+      if (button) button.setAttribute("aria-pressed", String(active === name));
+    });
+    if (active === "graph" && !initialized) { draw(); }
   }
-  document.getElementById("slides-tab").onclick = function () { tab(false); };
-  document.getElementById("graph-tab").onclick = function () { tab(true); };
+  document.getElementById("slides-tab").onclick = function () { tab("slides"); };
+  document.getElementById("graph-tab").onclick = function () { tab("graph"); };
+  var analysisTab = document.getElementById("analysis-tab");
+  if (analysisTab) analysisTab.onclick = function () { tab("analysis"); };
   mode.onchange = draw;
   document.getElementById("reset-view").onclick = function () { mode.value = "original"; hidden = {}; draw(); };
   var resizeTimer;

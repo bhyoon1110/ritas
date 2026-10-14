@@ -4864,7 +4864,11 @@ _UPLOAD_SCRIPT = """
     if (!visibleGroups || !Array.isArray(payload.samples)) return payload;
     var visible = {};
     visibleGroups.forEach(function(group) { visible[group] = true; });
-    payload.samples = payload.samples.filter(function(sample, index) {
+    payload.samples = payload.samples.map(function(sample, index) {
+      return Object.assign({}, sample, {sample_group: String(sample && (
+        sample.sample_group || sample.sampleGroup || sample.group || sample.key
+      ) || ("sample:" + index))});
+    }).filter(function(sample, index) {
       var group = sample && (
         sample.sample_group || sample.sampleGroup || sample.group || sample.key
       );

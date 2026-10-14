@@ -14,6 +14,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import textwrap
 import unicodedata
 import zipfile
 from datetime import datetime
@@ -1189,6 +1190,10 @@ def _pptx_slide_payloads(document: ReportDocument) -> list[dict[str, object]]:
     if any(document.section(section_id) is not None for section_id in _INSIGHT_SECTION_IDS):
         slides.append(_pptx_insights_payload(document))
 
+    # Summary cards intentionally shorten text. Preserve the full AI interpretation
+    # separately when those cards omit anything, including review caveats.
+    slides.extend(_pptx_llm_detail_payloads(document))
+
     summarized_sections = {"summary", "key_findings", "caption", *_INSIGHT_SECTION_IDS}
     for section in document.sections:
         if section.section_id in summarized_sections:
@@ -1197,6 +1202,32 @@ def _pptx_slide_payloads(document: ReportDocument) -> list[dict[str, object]]:
             slides.append(_pptx_table_payload(document, section))
         else:
             slides.append(_pptx_text_payload(document, section.heading, _section_lines(section)[:10]))
+    return slides
+
+
+def _pptx_llm_detail_payloads(document: ReportDocument) -> list[dict[str, object]]:
+    if document.experiment_code.upper() not in {"FTIR", "FT-IR", "IR", "RAMAN", "RIN", "RIN-RAMAN"}:
+        return []
+    slides = []
+    for section_id in ("summary", "key_findings", "interpretation", "qc_notes", "narrative"):
+        section = document.section(section_id)
+        if section is None or section.source != "llm":
+            continue
+        original = _section_lines(section)
+        if section_id == "summary":
+            shown = _overview_pptx_lines(_section_text_lines(section, max_items=4), max_items=3, max_chars=92)
+        elif section_id == "key_findings":
+            shown = _overview_pptx_lines(_section_text_lines(section, max_items=5), max_items=4, max_chars=86)
+        else:
+            shown = _short_pptx_lines(_section_text_lines(section, max_items=3), max_items=2, max_chars=105)
+        if "".join("".join(original).split()) == "".join("".join(shown).split()):
+            continue
+        # Bounded lines/pages prevent text overflow without discarding the ending.
+        lines = [part for line in original for part in textwrap.wrap(
+            _report_readable_text(line), width=40, break_on_hyphens=False)]
+        for start in range(0, len(lines), 8):
+            suffix = f" · {start // 8 + 1}" if len(lines) > 8 else ""
+            slides.append(_pptx_text_payload(document, section.heading + " · 전문" + suffix, lines[start:start + 8]))
     return slides
 
 

@@ -22,6 +22,7 @@ from .error_archive import ErrorArchive, record_background_error
 from .report.builders import get_builder
 from .llm_client import LlmError, LocalLlmClient
 from .report import annotator
+from .report.edited_analysis import prepare_edited_report, edited_graph_spec, analysis_preview
 from .report.model import ReportFigure
 from .report.package import build_report_package
 from .report.renderers import convert_pptx_to_pdf, render_report_formats
@@ -353,6 +354,7 @@ def build_preview_report_package(
 ) -> tuple[Path, Path]:
     tmp_root = Path(tempfile.mkdtemp(prefix="rist-preview-report-"))
     try:
+        analysis_payload = prepare_edited_report(analysis_payload)
         raw_series = _filter_raw_series_for_payload(
             raw_series,
             analysis_payload,
@@ -395,9 +397,11 @@ def build_preview_report_package(
             [{"relativePath": analysis_path.name, "data": analysis_payload}],
         )
         if spec is not None:
+            spec = edited_graph_spec(spec, analysis_payload, experiment_code)
+        if spec is not None:
             document.ensure_auxiliary_texts(spec.fallback)
         if spec is not None and settings is not None:
-            _emit_progress(progress, "llm", 58, "LLM 문안을 생성하는 중입니다.")
+            _emit_progress(progress, "llm", 58, "편집된 피크와 주석으로 로컬 AI 해석을 생성하는 중입니다.")
             llm_client = LocalLlmClient(
                 settings.llm_base_url,
                 settings.llm_model,
@@ -462,6 +466,7 @@ def build_preview_report_package(
             report_dir,
             title=f"{experiment_code} 분석 보고서 · {request_number or '결과 미리보기'}",
             figure=analysis_payload.get("viewerFigure") or analysis_payload.get("figure") or {},
+            analysis=analysis_preview(document),
         )
         _emit_progress(progress, "package", 95, "최종 ZIP을 패키징하는 중입니다.")
         package = build_report_package(

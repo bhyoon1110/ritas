@@ -10,10 +10,12 @@ const tick = () => new Promise(resolve => setTimeout(resolve, 20));
 const html = execFileSync(process.env.RIST_TEST_PYTHON || 'python3', ['-c',
   "from edge_api_server.tests.test_spectrum_viewer import sample_figure; from app.report import spectrum_viewer as v; v.get_plotlyjs=lambda:''; print(v.viewer_html(title='Test report',figure=sample_figure(),slides=['data:image/jpeg;base64,one','data:image/jpeg;base64,two']))"], {encoding:'utf8'});
 const program = fs.readFileSync(path.join(__dirname, '../app/report/spectrum_viewer.js'), 'utf8');
+const analysisHtml = execFileSync(process.env.RIST_TEST_PYTHON || 'python3', ['-c',
+  "from edge_api_server.tests.test_spectrum_viewer import sample_figure; from app.report import spectrum_viewer as v; v.get_plotlyjs=lambda:''; print(v.viewer_html(title='Edited report',figure=sample_figure(),slides=['data:image/jpeg;base64,one'],analysis={'status':'generated','sections':[{'heading':'해석','paragraphs':['1700 cm-1 피크와 관심 영역을 검토했습니다.'],'source':'llm'}]}))"], {encoding:'utf8'});
 const clientPrograms=JSON.parse(execFileSync(process.env.RIST_TEST_PYTHON || 'python3',['-c',
   "import json; from app import ftir_web,raman_web; print(json.dumps([ftir_web._UPLOAD_SCRIPT,raman_web._UPLOAD_SCRIPT]))"],{encoding:'utf8'}));
-function setup(t, empty=false) {
-  const dom=new JSDOM(html,{runScripts:'outside-only',pretendToBeVisual:true});
+function setup(t, empty=false, source=html) {
+  const dom=new JSDOM(source,{runScripts:'outside-only',pretendToBeVisual:true});
   t.after(()=>dom.window.close());
   const w=dom.window,d=w.document,q=id=>d.getElementById(id),gd=q('report-graph'),handlers={};
   let calls=0,config;
@@ -51,6 +53,31 @@ test('real PDF page list shows one page at a time and graph is lazy',async t=>{
   await h.open();assert.equal(h.calls(),1);assert.equal(h.config().editable,false);assert.equal(h.config().scrollZoom,true);
   assert(Object.values(h.config().edits).every(v=>v===false));
   assert.deepEqual(clone(h.gd.data).map(t=>t.y),h.published.data.map(t=>t.y));
+});
+test('analysis opens first, stays frozen across graph display changes, and has no edit actions',async t=>{
+  const h=setup(t,false,analysisHtml);
+  assert.equal(h.q('analysis-panel').hidden,false);
+  assert.equal(h.q('slides-panel').hidden,true);
+  assert.equal(h.q('analysis-tab').getAttribute('aria-pressed'),'true');
+  assert.equal(h.calls(),0);
+  const prose=h.q('analysis-panel').textContent;
+  assert(prose.includes('1700 cm-1'));
+  await h.open();await h.change('stack');
+  h.q('analysis-tab').click();
+  assert.equal(h.q('analysis-panel').hidden,false);
+  assert.equal(h.q('graph-panel').hidden,true);
+  assert.equal(h.q('analysis-panel').textContent,prose);
+  assert.equal(h.q('analysis-panel').querySelectorAll('button,input,textarea,[contenteditable]').length,0);
+  h.q('slides-tab').click();
+  assert.equal(h.q('analysis-panel').hidden,true);assert.equal(h.q('slides-panel').hidden,false);
+});
+for (const [index,kind] of ['ftir','raman'].entries()) test(kind+' hidden samples retain stable groups for edited report metadata',()=>{
+  const source=clientPrograms[index].match(/function filterReportAnalysisPayload\(payload\) \{[\s\S]*?\n  \}/)[0];
+  const fn=new Function('visibleReportSampleGroups',source+';return filterReportAnalysisPayload;')(()=>['sample:2']);
+  const payload={samples:[{label:'Hidden 1'},{label:'Hidden 2'},{label:'Renamed',metadata:{Resolution:'4'}}]};
+  const result=fn(payload);
+  assert.equal(result.samples.length,1);assert.equal(result.samples[0].sample_group,'sample:2');
+  assert.equal(result.samples[0].metadata.Resolution,'4');assert.equal(result.sample,'Renamed');
 });
 test('overlay/stack shift only Y display and attached peaks/ratios, restore is exact',async t=>{
   const h=setup(t);await h.open();await h.change('overlay');
