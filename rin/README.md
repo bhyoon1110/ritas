@@ -21,9 +21,16 @@ cd edge_api_server
 
 현재 지원하는 raw 입력은 다음과 같다.
 
-- `.txt`, `.csv`, `.tsv`: 주석(`#`)과 헤더를 건너뛰고 첫 숫자 2열을
-  Raman shift / intensity로 사용
+- `.txt`, `.csv`, `.tsv`: 주석(`#`)과 헤더를 읽고 숫자 열을
+  Raman shift / intensity로 사용. 반복된 shift/intensity 쌍 또는 공통 shift와
+  여러 intensity 열을 시료별로 구분하며 시료명·측정 조건을 보존한다.
+- 텍스트 인코딩: UTF-8(선택적 BOM), CP949 및 BOM이 있는 UTF-16/UTF-32(LE/BE).
+  CRLF·LF·CR 및 혼합 줄바꿈을 지원한다. UTF-16/UTF-32가 손상되거나 잘린 경우에는
+  다른 인코딩으로 오인하지 않고 오류를 표시한다.
 - `.xlsx`, `.xlsm`: `openpyxl` 설치 환경에서 첫 sheet의 첫 숫자 2열을 사용
+
+텍스트 인코딩·줄바꿈 처리는 그래프 미리보기와 보고서의 RAW 데이터 추출에
+동일하게 적용된다. 원본 파일을 별도로 변환할 필요는 없다.
 
 분석 흐름은 다음과 같다.
 

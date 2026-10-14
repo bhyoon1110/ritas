@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import codecs
 from dataclasses import dataclass
 from io import BytesIO, StringIO
 from pathlib import Path
@@ -120,6 +121,19 @@ def _numeric_samples(
 
 
 def _decode_text(content: bytes) -> str:
+    # UTF-32 LE shares the UTF-16 LE prefix, so test the longer BOM first.
+    # Do not let these instrument exports fall through to the Latin-1 fallback.
+    for markers, encoding in (
+        ((codecs.BOM_UTF32_LE, codecs.BOM_UTF32_BE), "utf-32"),
+        ((codecs.BOM_UTF16_LE, codecs.BOM_UTF16_BE), "utf-16"),
+    ):
+        if content.startswith(markers):
+            try:
+                return content.decode(encoding)
+            except UnicodeDecodeError as exc:
+                raise RamanRawError(
+                    f"{encoding.upper()} Raman raw 텍스트가 손상되었거나 잘렸습니다."
+                ) from exc
     for encoding in ("utf-8-sig", "utf-8", "cp949", "latin1"):
         try:
             return content.decode(encoding)
@@ -128,9 +142,9 @@ def _decode_text(content: bytes) -> str:
     return content.decode("utf-8", errors="replace")
 
 
-def _parse_text_metadata(content: bytes) -> dict[str, str]:
+def _parse_text_metadata(text: str) -> dict[str, str]:
     metadata: dict[str, str] = {}
-    for line in _decode_text(content).splitlines():
+    for line in text.splitlines():
         stripped = line.strip()
         if not stripped:
             continue
@@ -151,8 +165,8 @@ def _parse_text_metadata(content: bytes) -> dict[str, str]:
 
 
 def _read_text_table(content: bytes) -> list[RamanRawSample]:
-    metadata = _parse_text_metadata(content)
     text = _decode_text(content)
+    metadata = _parse_text_metadata(text)
     last_error: Exception | None = None
     for kwargs in (
         {"sep": "\t", "engine": "python", "comment": "#"},
@@ -161,13 +175,13 @@ def _read_text_table(content: bytes) -> list[RamanRawSample]:
         {"sep": ",", "engine": "python", "comment": "#"},
     ):
         try:
-            frame = pd.read_csv(StringIO(text), **kwargs)
+            frame = pd.read_csv(StringIO(text, newline=None), **kwargs)
             # pandas assumes the first row is a header. Numeric column names
             # instead indicate headerless measurements; reread before testing
             # the minimum point count so even a ten-point file stays valid.
             header_values = pd.to_numeric(pd.Index(frame.columns), errors="coerce")
             if len(header_values) >= 2 and np.isfinite(header_values).all():
-                frame = pd.read_csv(StringIO(text), header=None, **kwargs)
+                frame = pd.read_csv(StringIO(text, newline=None), header=None, **kwargs)
                 # Synthetic column numbers must not become sample names.
                 frame.columns = [f"Unnamed: {index}" for index in range(len(frame.columns))]
             return _numeric_samples(frame, metadata=metadata)

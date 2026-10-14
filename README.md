@@ -19,6 +19,8 @@
 `sune`, `lim`, `ahn`, `rin` 네 영역을 활성 프로젝트로 본다.
 
 Raman raw 업로드, 축 고정, 비율 라벨 개별 편집 사용법은 [Raman 사용 안내](rin/README.md)를 참고한다.
+Raman 텍스트 raw는 UTF-8/CP949 및 BOM이 있는 UTF-16/UTF-32를 지원하며,
+CRLF·LF·CR 줄바꿈과 한 파일 안의 여러 시료를 미리보기·보고서에서 함께 처리한다.
 
 ## API 명세
 

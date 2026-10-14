@@ -4,6 +4,7 @@ import json
 from io import BytesIO
 from pathlib import Path
 import time
+import xml.etree.ElementTree as ET
 import zipfile
 
 import pytest
@@ -655,9 +656,12 @@ def test_raman_analyze_api_expands_multi_sample_txt() -> None:
     assert payload["figure"]["layout"]["meta"]["ristRamanStack"]["enabled"] is True
 
 
-def test_raman_report_api_builds_package_with_graph_and_raw_xlsx(monkeypatch) -> None:
+@pytest.mark.parametrize("encoding", ["utf-8", "utf-16", "utf-32"])
+def test_raman_report_api_builds_package_with_graph_and_raw_xlsx(monkeypatch, encoding) -> None:
     use_fake_pptx_pdf_converter(monkeypatch)
-    content = MULTI_SAMPLE_TXT.read_bytes()
+    original = MULTI_SAMPLE_TXT.read_bytes()
+    content = original.decode("utf-8").encode(encoding)
+    expected_samples = load_raman_raw_samples(MULTI_SAMPLE_TXT.name, original)
     with TestClient(create_raman_preview_app()) as client:
         analysis_response = client.post(
             "/api/v1/raman/analyze",
@@ -666,6 +670,9 @@ def test_raman_report_api_builds_package_with_graph_and_raw_xlsx(monkeypatch) ->
         )
         assert analysis_response.status_code == 200
         analysis = analysis_response.json()
+        assert [sample["label"] for sample in analysis["samples"]] == [
+            sample.label for sample in expected_samples
+        ]
         report_response = client.post(
             "/api/v1/raman/report",
             files={"files": (MULTI_SAMPLE_TXT.name, content, "text/plain")},
@@ -712,6 +719,23 @@ def test_raman_report_api_builds_package_with_graph_and_raw_xlsx(monkeypatch) ->
         assert "LLM 사용" not in ppt_text
         assert "라이브러리" not in ppt_text
         assert "<a:t>LLM</a:t>" not in ppt_text
+        with zipfile.ZipFile(BytesIO(archive.read("raw_data.xlsx"))) as workbook:
+            sheet = ET.fromstring(workbook.read("xl/worksheets/sheet1.xml"))
+        ns = {"s": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
+        rows = sheet.findall("s:sheetData/s:row", ns)
+        lookups = [
+            {round(float(x), 8): float(y) for x, y in sample.frame.to_numpy()}
+            for sample in expected_samples
+        ]
+        axes = sorted(set().union(*(lookup.keys() for lookup in lookups)))
+        assert len(rows) == len(axes) + 1
+        for row, axis in zip(rows[1:], axes):
+            values = [
+                float(cell.find("s:v", ns).text) if cell.find("s:v", ns) is not None else None
+                for cell in row.findall("s:c", ns)
+            ]
+            expected = [axis, *[lookup.get(axis) for lookup in lookups]]
+            assert values == pytest.approx(expected)
 
 
 def test_raman_report_job_api_tracks_progress_and_downloads_package(monkeypatch) -> None:
