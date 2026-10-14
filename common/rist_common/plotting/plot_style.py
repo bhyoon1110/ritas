@@ -7987,7 +7987,34 @@ def _axis_controls_js(div_id: str, *, axis_locks: bool = False, scroll_zoom_y_on
   }
 
   function axisLocked(axisName) {
-    return axisLocksEnabled && currentAxis(axisName).layout.fixedrange === true;
+    return currentAxis(axisName).layout.fixedrange === true;
+  }
+
+  function stackZoomEnabled() {
+    var meta = gd.layout && gd.layout.meta || {};
+    return !!((meta.ristFtirStack && meta.ristFtirStack.enabled)
+      || (meta.ristRamanStack && meta.ristRamanStack.enabled));
+  }
+
+  function scaledAxisRange(axisName, range, factor, anchor) {
+    // range[0] is the screen-bottom endpoint even for reversed/log Y axes.
+    // Read the current view, not a cached zero/raw minimum: Crop, manual ranges,
+    // history and sample Y moves must not snap back to an old baseline.
+    var bottomAnchored = axisName === "yaxis" && stackZoomEnabled();
+    if (bottomAnchored) anchor = range[0];
+    var next = [
+      anchor + (range[0] - anchor) * factor,
+      anchor + (range[1] - anchor) * factor
+    ];
+    if (!next.every(Number.isFinite) || Math.abs(next[1] - next[0]) < 1e-12) return null;
+    var boundary = cropRanges[axisName];
+    if (bottomAnchored && boundary) {
+      // A zoom-out at the Crop ceiling must shorten the span, not shift bottom.
+      next[1] = Math.max(Math.min(boundary[0], boundary[1]),
+        Math.min(Math.max(boundary[0], boundary[1]), next[1]));
+      if (next[0] === next[1]) return null;
+    }
+    return clampRangeToCrop(axisName, next);
   }
 
   function nestedAxisValue(state, group, name) {
@@ -8171,9 +8198,14 @@ def _axis_controls_js(div_id: str, *, axis_locks: bool = False, scroll_zoom_y_on
 
   function modebarAxisAction(target) {
     if (!target || !target.closest) return null;
-    var modebarButton = target.closest("a.modebar-btn");
+    var modebarButton = target.closest(".modebar-btn");
     if (!modebarButton || !gd.contains(modebarButton)) return null;
     if (modebarButton.classList.contains("rist-edit-mode-disabled")) return null;
+    if (stackZoomEnabled() && !gd._ristEditMode
+        && modebarButton.getAttribute("data-attr") === "zoom") {
+      var zoom = modebarButton.getAttribute("data-val");
+      if (zoom === "in" || zoom === "out") return "zoom-" + zoom;
+    }
     var title = String(
       modebarButton.getAttribute("data-title")
       || modebarButton.getAttribute("title")
@@ -8195,6 +8227,10 @@ def _axis_controls_js(div_id: str, *, axis_locks: bool = False, scroll_zoom_y_on
   }
 
   function runModebarAxisAction(action) {
+    if (action === "zoom-in" || action === "zoom-out") {
+      zoomByFactor(action === "zoom-in" ? 0.5 : 2, ["x", "y"]);
+      return;
+    }
     var updates = {};
     ["xaxis", "yaxis"].forEach(function(axisName) {
       if (axisLocked(axisName)) return;
@@ -8520,19 +8556,18 @@ def _axis_controls_js(div_id: str, *, axis_locks: bool = False, scroll_zoom_y_on
     });
   });
 
-  function zoomByFactor(factor) {
+  function zoomByFactor(factor, axes) {
     var updates = {};
     var changed = false;
-    activeAxes().forEach(function(axis) {
+    (axes || activeAxes()).forEach(function(axis) {
       var axisName = axis + "axis";
       if (axisLocked(axisName)) return;
       var range = currentRange(axisName);
       if (!range || range[0] === range[1]) return;
       var center = (range[0] + range[1]) / 2;
-      updates[axisName + ".range"] = clampRangeToCrop(axisName, [
-        center + (range[0] - center) * factor,
-        center + (range[1] - center) * factor
-      ]);
+      var next = scaledAxisRange(axisName, range, factor, center);
+      if (!next) return;
+      updates[axisName + ".range"] = next;
       updates[axisName + ".autorange"] = false;
       updates[axisName + ".fixedrange"] = false;
       changed = true;
@@ -8731,10 +8766,12 @@ def _axis_controls_js(div_id: str, *, axis_locks: bool = False, scroll_zoom_y_on
     };
   }
 
-  // Intercept Plotly's two-axis wheel zoom, including when shape editing
-  // temporarily disables scrollZoom. Range coordinates also support log axes.
+  // Raman keeps Y-only wheel zoom (including shape editing). FTIR intercepts
+  // only stacked wheel zoom, retaining cursor-centered X and normal-mode Plotly.
   var lastWheelAt = 0;
-  if (scrollZoomYOnly) gd.addEventListener("wheel", function(ev) {
+  gd.addEventListener("wheel", function(ev) {
+    if (!scrollZoomYOnly && (!stackZoomEnabled()
+        || !gd._context || !gd._context.scrollZoom)) return;
     if (ev.target.closest(".modebar,.legend,.rist-plot-control-row,input,textarea,select,button,[role='dialog']")) return;
     var rect = gd.getBoundingClientRect();
     var box = plotBox();
@@ -8744,21 +8781,28 @@ def _axis_controls_js(div_id: str, *, axis_locks: bool = False, scroll_zoom_y_on
         || y < box.top || y > box.top + box.height) return;
     ev.preventDefault();
     ev.stopImmediatePropagation();
-    if (axisLocked("yaxis") || gd._ristAxisCropActive || gd._ristAxisScaleActive
+    if (gd._ristAxisCropActive || gd._ristAxisScaleActive
         || gd._ristShapeDrawMode || gd._ristInlineTextEditing) return;
-    var range = currentRange("yaxis");
     var delta = Number(ev.deltaY) * (ev.deltaMode === 1 ? 16 : ev.deltaMode === 2 ? box.height : 1);
-    if (!range || !Number.isFinite(delta) || delta === 0) return;
+    if (!Number.isFinite(delta) || delta === 0) return;
     var factor = Math.exp(Math.max(-0.5, Math.min(0.5, delta * 0.002)));
-    var anchor = range[1] + (range[0] - range[1]) * (y - box.top) / box.height;
-    var next = clampRangeToCrop("yaxis", range.map(function(value) {
-      return anchor + (value - anchor) * factor;
-    }));
-    if (!next || !next.every(Number.isFinite) || Math.abs(next[1] - next[0]) < 1e-12) return;
+    var updates = {};
+    (scrollZoomYOnly ? ["y"] : ["x", "y"]).forEach(function(axis) {
+      var name = axis + "axis";
+      var range = currentRange(name);
+      if (!range || axisLocked(name)) return;
+      var fraction = axis === "x" ? (x - box.left) / box.width : 1 - (y - box.top) / box.height;
+      var anchor = range[0] + (range[1] - range[0]) * fraction;
+      var next = scaledAxisRange(name, range, factor, anchor);
+      if (!next) return;
+      updates[name + ".range"] = next;
+      updates[name + ".autorange"] = false;
+    });
+    if (!Object.keys(updates).length) return;
     var now = Date.now();
     if (now - lastWheelAt > 350 && gd._ristHistory) gd._ristHistory.capture();
     lastWheelAt = now;
-    window.Plotly.relayout(gd, {"yaxis.range": next, "yaxis.autorange": false});
+    window.Plotly.relayout(gd, updates);
   }, {capture: true, passive: false});
 
   function axisFromPointer(ev) {
@@ -8804,15 +8848,10 @@ def _axis_controls_js(div_id: str, *, axis_locks: bool = False, scroll_zoom_y_on
       var factor = Math.exp(-towardIncreasingValue / 180);
       factor = Math.max(0.08, Math.min(12, factor));
       var center = (drag.range[0] + drag.range[1]) / 2;
-      var next = [
-        center + (drag.range[0] - center) * factor,
-        center + (drag.range[1] - center) * factor
-      ];
+      var next = scaledAxisRange(drag.axis + "axis", drag.range, factor, center);
+      if (!next) return;
       var updates = {};
-      updates[drag.axis + "axis.range"] = clampRangeToCrop(
-        drag.axis + "axis",
-        next
-      );
+      updates[drag.axis + "axis.range"] = next;
       updates[drag.axis + "axis.autorange"] = false;
       updates[drag.axis + "axis.fixedrange"] = false;
       window.Plotly.relayout(gd, updates);

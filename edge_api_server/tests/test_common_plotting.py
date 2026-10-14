@@ -903,7 +903,7 @@ def test_axis_controls_add_range_tick_and_axis_drag_controls(tmp_path) -> None:
     assert "data-axis-action='crop'" in html
     assert "data-axis-action='uncrop'" in html
     assert "Crop 전 전체 영역으로 복원" in html
-    assert "function zoomByFactor(factor)" in html
+    assert "function zoomByFactor(factor, axes)" in html
     assert "zoomByFactor(0.8)" in html
     assert "zoomByFactor(1.25)" in html
     assert "function normalizedCropRange(axis, values)" in html
@@ -934,8 +934,9 @@ def test_axis_controls_add_range_tick_and_axis_drag_controls(tmp_path) -> None:
     assert 'gd.on("plotly_relayout", enforceCropBounds)' in html
     assert "cropRanges[axisName] = range.slice()" in html
     assert 'updates[name + ".range"] = clampRangeToCrop(name, [value.from, value.to])' in html
-    assert 'updates[axisName + ".range"] = clampRangeToCrop(axisName, [' in html
-    assert 'updates[drag.axis + "axis.range"] = clampRangeToCrop(' in html
+    assert 'function scaledAxisRange(axisName, range, factor, anchor)' in html
+    assert 'if (bottomAnchored) anchor = range[0]' in html
+    assert 'updates[drag.axis + "axis.range"] = next' in html
     assert "var resetRange = cropRanges[axisName] || initialRanges[axisName]" in html
     assert "var restoreRange = cropRestoreRanges[axisName] || initialRanges[axisName]" in html
     assert "cropRestoreRanges[axisName] = null" in html
