@@ -132,8 +132,20 @@ def readonly_figure(source: dict) -> dict:
             ratio_groups["rist_raman_ratio:" + str(ratio["id"])] = group
         except (KeyError, ValueError, TypeError, IndexError):
             continue
+    stack = meta.get("ristFtirStack") or meta.get("ristRamanStack") or {}
+    if not isinstance(stack, dict):
+        stack = {}
+    saved_axis = stack.get("yAxisDisplay") or {}
+    axis_display = {
+        key: deepcopy(saved_axis[key])
+        for key in ("ticks", "ticklen", "showgrid", "zeroline",
+                    "minorTicks", "minorTicklen", "minorShowgrid")
+        if isinstance(saved_axis, dict) and isinstance(saved_axis.get(key), dict)
+    }
     layout["meta"] = {"labels": labels, "ratioGroups": ratio_groups,
-                      "size": meta.get("ristPlotSize") or {}}
+                      "size": meta.get("ristPlotSize") or {},
+                      "stacked": bool(stack.get("enabled", any(t["meta"]["offset"] for t in data))),
+                      "yAxisDisplay": axis_display}
     layout.update(template=None, dragmode="zoom")
     for name in ("xaxis", "yaxis"):
         layout.setdefault(name, {})["fixedrange"] = False

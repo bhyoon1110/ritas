@@ -76,8 +76,83 @@ function setup(t, kind, mode) {
   return {w,d,gd,key,q,action,wheel,modebar,run,emit,dispatch,sync,updates,captures:()=>captures};
 }
 
+async function displayFixture(t, kind, mode, saved) {
+  const h = setup(t,kind,mode);
+  h.gd.data = [0,1].map(i => ({name:'Sample '+i,x:[100,200,300],y:[1,3,2],
+    meta:{rist_sample_parent:true,rist_sample_group:'sample:'+i,rist_raman_stack_offset:0,
+      rist_ftir_stack_offset_absorbance:0,rist_ftir_stack_offset_transmittance:0,
+      ftir_signal_toggle:{absorbance_y:[1,3,2],transmittance_y:[30,20,10]}}}));
+  h.gd.layout.yaxis = {range:[0,10],showticklabels:true,ticks:'inside',ticklen:7,
+    showgrid:true,zeroline:true,dtick:2,tickformat:'.2f',title:{text:'Measured signal'},
+    minor:{ticks:'inside',ticklen:4,showgrid:true,dtick:0.5,tickcolor:'#ff0000'}};
+  h.gd.layout.meta[h.key] = {enabled:false,gap:1.2,unit:3,modeUnits:{absorbance:3,transmittance:100},
+    sampleOrder:['sample:0','sample:1'],sampleOffsets:{'sample:0':0,'sample:1':0},samplePositions:{'sample:0':0,'sample:1':0}};
+  if (saved) {
+    h.gd.layout.meta[h.key].enabled = true;
+    h.gd.layout.meta[h.key].yAxisDisplay = saved;
+    h.gd.layout.yaxis.showticklabels = false; h.gd.layout.yaxis.ticks = ''; h.gd.layout.yaxis.ticklen = 0;
+  }
+  h.sync(); h.run(kind === 'ftir' ? 'gd._ristFtirStackInstalled' : 'gd._ristRamanStackInstalled'); await tick();
+  h.toggle = () => h.q('.rist-'+kind+'-stack-button').click();
+  return h;
+}
+
+function assertStackAxis(axis) {
+  assert.equal(axis.showticklabels,false); assert.equal(axis.ticks,''); assert.equal(axis.ticklen,0);
+  assert.equal(axis.minor.ticks,''); assert.equal(axis.minor.ticklen,0);
+  assert.equal(axis.showgrid,false); assert.equal(axis.minor.showgrid,false); assert.equal(axis.zeroline,false);
+}
+
 for (const mode of ['native','chrome49']) for (const kind of ['ftir','raman']) {
   const label = kind+'/'+mode;
+  test(label+': stack hides major/minor Y scale, then restores it without losing new tick intervals', async t => {
+    const h = await displayFixture(t,kind,mode), x = clone(h.gd.layout.xaxis);
+    h.toggle(); await tick(); assertStackAxis(h.gd.layout.yaxis);
+    const data = clone(h.gd.data), y = h.gd.layout.yaxis;
+    await h.w.Plotly.relayout(h.gd,{'yaxis.dtick':4,'yaxis.minor.dtick':0.25});
+    h.action('zoom-in'); await tick(); assertStackAxis(h.gd.layout.yaxis);
+    h.dispatch('rist-plot-structure-changed'); await h.gd._ristStackReady;
+    assertStackAxis(h.gd.layout.yaxis); assert.deepEqual(clone(h.gd.data),data);
+    h.run('function buildImageExportPayload');
+    const exported=h.gd._ristBuildImageExportPayload(h.gd.data,h.gd.layout,1200,720);
+    assertStackAxis(exported.layout.yaxis);
+    h.toggle(); await tick();
+    assert.equal(y.showticklabels,true); assert.equal(y.ticks,'inside'); assert.equal(y.ticklen,7);
+    assert.equal(y.minor.ticks,'inside'); assert.equal(y.minor.ticklen,4);
+    assert.equal(y.showgrid,true); assert.equal(y.minor.showgrid,true); assert.equal(y.zeroline,true);
+    assert.equal(y.dtick,4); assert.equal(y.minor.dtick,0.25); assert.equal(y.tickformat,'.2f');
+    assert.equal(y.minor.tickcolor,'#ff0000'); assert.equal(y.title.text,'Measured signal');
+    assert.equal(h.gd.layout.xaxis.range[0],(x.range[0]+x.range[1])/2+(x.range[0]-x.range[1])*0.4);
+    h.toggle(); await tick(); assertStackAxis(h.gd.layout.yaxis);
+    h.toggle(); await tick(); assert.equal(h.gd.layout.yaxis.showticklabels,true);
+  });
+  test(label+': Origin on/off while stacked stays hidden and restores the newly selected style', async t => {
+    const h = await displayFixture(t,kind,mode);
+    h.run('var originAxis ='); h.toggle(); await tick();
+    for (const origin of [false,true,false]) {
+      await h.gd._ristOriginStyle.setEnabled(origin,true,false); await h.gd._ristStackReady;
+      assertStackAxis(h.gd.layout.yaxis);
+      h.toggle(); await tick();
+      assert.equal(h.gd.layout.yaxis.showticklabels,true);
+      assert.equal(h.gd.layout.yaxis.ticks,origin?'inside':'outside');
+      assert.equal(h.gd.layout.yaxis.ticklen,origin?7:5);
+      assert.equal(h.gd.layout.yaxis.minor.ticks,origin?'inside':'');
+      assert.equal(h.gd.layout.yaxis.showgrid,!origin);
+      assert.equal(h.gd.layout.yaxis.minor.dtick,0.5);
+      h.toggle(); await tick(); assertStackAxis(h.gd.layout.yaxis);
+    }
+  });
+  test(label+': older major-only stack snapshots gain minor hiding and normal scale returns on unstack/reload', async t => {
+    const h = await displayFixture(t,kind,mode,{ticks:{exists:true,value:'inside'},ticklen:{exists:true,value:7},
+      showticklabels:{exists:true,value:false}});
+    assertStackAxis(h.gd.layout.yaxis);
+    h.toggle(); await tick();
+    assert.equal(h.gd.layout.yaxis.showticklabels,true); assert.equal(h.gd.layout.yaxis.minor.ticks,'inside');
+    assert.equal(h.gd.layout.yaxis.minor.ticklen,4); assert.equal(h.gd.layout.yaxis.minor.showgrid,true);
+    h.gd.layout.yaxis.showticklabels = false;
+    h.dispatch('rist-plot-data-replaced'); await h.gd._ristStackReady;
+    assert.equal(h.gd.layout.yaxis.showticklabels,true);
+  });
   test(label+': +/- controls anchor the displayed bottom without altering RAW, offsets, labels or shapes', async t => {
     const h = setup(t,kind,mode), before = clone(h.gd.data), meta = clone(h.gd.layout.meta);
     h.gd.layout.annotations = [{x:200,y:40,text:'Peak'}]; h.gd.layout.shapes = [{y0:10,y1:40}];

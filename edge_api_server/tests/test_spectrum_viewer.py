@@ -67,6 +67,18 @@ def test_hidden_peak_labels_are_not_published():
     assert [a["text"] for a in figure["layout"]["annotations"]] == ["Ratio: 2.5"]
 
 
+@pytest.mark.parametrize("key", ["ristFtirStack", "ristRamanStack"])
+def test_readonly_snapshot_keeps_only_stack_axis_display_fields(key):
+    source = sample_figure()
+    saved = {"ticks": {"exists": True, "value": "outside"},
+             "minorTicklen": {"exists": True, "value": 4}, "unrelated": {"value": "omit"}}
+    source["layout"]["meta"][key] = {"enabled": True, "yAxisDisplay": saved}
+    result = viewer.readonly_figure(source)
+    assert result["layout"]["meta"]["stacked"] is True
+    assert result["layout"]["meta"]["yAxisDisplay"] == {k: saved[k] for k in ("ticks", "minorTicklen")}
+    assert source["layout"]["meta"][key]["yAxisDisplay"] == saved
+
+
 def test_snapshot_file_and_limits(monkeypatch):
     figure = sample_figure()
     upload = UploadFile(filename="figure.json", file=BytesIO(json.dumps(figure).encode()))

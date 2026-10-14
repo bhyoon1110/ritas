@@ -129,6 +129,32 @@
       delete figure.layout.yaxis.range;
       figure.layout.yaxis.autorange = true;
     }
+    var axis = figure.layout.yaxis;
+    var minor = axis.minor || (axis.minor = {});
+    var stacked = mode.value === "stack" || (mode.value === "original" && figure.layout.meta.stacked);
+    var saved = figure.layout.meta.yAxisDisplay || {};
+    function restore(target, key, entry, fallback) {
+      if (entry) {
+        if (entry.exists) target[key] = entry.value;
+        else delete target[key];
+      } else if (figure.layout.meta.stacked) target[key] = fallback;
+    }
+    if (stacked) {
+      axis.showticklabels = false;
+      axis.ticks = ""; axis.ticklen = 0; axis.showgrid = false; axis.zeroline = false;
+      minor.ticks = ""; minor.ticklen = 0; minor.showgrid = false;
+    } else {
+      axis.showticklabels = true;
+      // Original stacked layouts carry hidden ticks: recover only visibility,
+      // leaving tick spacing, ranges, units and published analysis unchanged.
+      restore(axis, "ticks", saved.ticks, "inside");
+      restore(axis, "ticklen", saved.ticklen, 7);
+      restore(axis, "showgrid", saved.showgrid, false);
+      restore(axis, "zeroline", saved.zeroline, false);
+      restore(minor, "ticks", saved.minorTicks, "inside");
+      restore(minor, "ticklen", saved.minorTicklen, 4);
+      restore(minor, "showgrid", saved.minorShowgrid, false);
+    }
     dimensions(figure.layout);
     return figure;
   }

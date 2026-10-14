@@ -2193,33 +2193,48 @@ _RAMAN_STACK_SCRIPT = """
 
   function savedYAxisDisplay(value) {
     if (!value || typeof value !== "object") return null;
-    return {
-      showticklabels: value.showticklabels || {exists: false, value: null},
-      ticks: value.ticks || {exists: false, value: null},
-      ticklen: value.ticklen || {exists: false, value: null}
-    };
+    return Object.assign({}, value);
   }
 
   function syncStackYAxis(layout) {
     if (!layout.yaxis) layout.yaxis = {};
     var axis = layout.yaxis;
+    var minor = Object.assign({}, axis.minor || {});
+    var fields = ["ticks", "ticklen", "showgrid", "zeroline"];
+    var minorFields = {minorTicks: "ticks", minorTicklen: "ticklen", minorShowgrid: "showgrid"};
     if (state.enabled) {
-      if (!state.yAxisDisplay) {
-        state.yAxisDisplay = {
-          showticklabels: axisProperty(axis, "showticklabels"),
-          ticks: axisProperty(axis, "ticks"),
-          ticklen: axisProperty(axis, "ticklen")
-        };
-      }
+      if (!state.yAxisDisplay) state.yAxisDisplay = {};
+      // Fill absent fields too: older saved workspaces only stored major ticks.
+      fields.forEach(function(key) {
+        if (!state.yAxisDisplay[key]) state.yAxisDisplay[key] = axisProperty(axis, key);
+      });
+      Object.keys(minorFields).forEach(function(key) {
+        if (!state.yAxisDisplay[key]) state.yAxisDisplay[key] = axisProperty(minor, minorFields[key]);
+      });
       axis.showticklabels = false;
       axis.ticks = "";
       axis.ticklen = 0;
+      axis.showgrid = false;
+      axis.zeroline = false;
+      minor.ticks = "";
+      minor.ticklen = 0;
+      minor.showgrid = false;
+      axis.minor = minor;
       return;
     }
+    // A non-stacked plot always has an interpretable measurement scale, even
+    // when restoring an older workspace with stale showticklabels=false.
+    axis.showticklabels = true;
     if (!state.yAxisDisplay) return;
-    restoreAxisProperty(axis, "showticklabels", state.yAxisDisplay.showticklabels);
-    restoreAxisProperty(axis, "ticks", state.yAxisDisplay.ticks);
-    restoreAxisProperty(axis, "ticklen", state.yAxisDisplay.ticklen);
+    fields.forEach(function(key) {
+      if (state.yAxisDisplay[key]) restoreAxisProperty(axis, key, state.yAxisDisplay[key]);
+    });
+    Object.keys(minorFields).forEach(function(key) {
+      if (state.yAxisDisplay[key]) restoreAxisProperty(minor, minorFields[key], state.yAxisDisplay[key]);
+    });
+    // Restore visibility only; keep dtick/tickmode edited while stacked.
+    if (Object.keys(minor).length) axis.minor = minor;
+    else delete axis.minor;
     state.yAxisDisplay = null;
   }
 

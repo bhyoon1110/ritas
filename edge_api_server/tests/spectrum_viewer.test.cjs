@@ -120,3 +120,33 @@ test('mobile layout keeps a usable plot and places legend below it',async t=>{
   assert(h.gd.layout.width-h.gd.layout.margin.l-h.gd.layout.margin.r>=300);
   assert.equal(h.gd.style.marginTop,'36px');
 });
+
+test('report stack hides all Y scale marks, overlay restores labels, original display remains stacked',async t=>{
+  const h=setup(t);await h.open();
+  const data=clone(h.gd.data), annotations=clone(h.gd.layout.annotations);
+  for(const mode of ['original','overlay','stack','overlay','original']) {
+    await h.change(mode);
+    const y=h.gd.layout.yaxis;
+    if(mode==='overlay') {assert.equal(y.showticklabels,true);assert.equal(y.ticks,'inside');assert.equal(y.minor.ticklen,4);}
+    else {assert.equal(y.showticklabels,false);assert.equal(y.ticks,'');assert.equal(y.ticklen,0);
+      assert.equal(y.minor.ticks,'');assert.equal(y.minor.ticklen,0);assert.equal(y.showgrid,false);assert.equal(y.minor.showgrid,false);}
+  }
+  assert.deepEqual(clone(h.gd.data),data);assert.deepEqual(clone(h.gd.layout.annotations),annotations);
+});
+
+test('report overlay restores saved normal display and keeps edited tick intervals',async t=>{
+  const source=new JSDOM(html);
+  const node=source.window.document.getElementById('report-data'),payload=JSON.parse(node.textContent);
+  payload.figure.layout.yaxis={showticklabels:false,ticks:'',ticklen:0,showgrid:false,range:[0,16],dtick:2,
+    minor:{ticks:'',ticklen:0,showgrid:false,dtick:0.5}};
+  payload.figure.layout.meta.yAxisDisplay={ticks:{exists:true,value:'outside'},ticklen:{exists:true,value:5},
+    showgrid:{exists:true,value:true},minorTicks:{exists:true,value:'inside'},minorTicklen:{exists:true,value:3},
+    minorShowgrid:{exists:true,value:true}};
+  node.textContent=JSON.stringify(payload);
+  const h=setup(t,false,source.serialize());source.window.close();await h.open();await h.change('overlay');
+  const y=h.gd.layout.yaxis;
+  assert.equal(y.showticklabels,true);assert.equal(y.ticks,'outside');assert.equal(y.ticklen,5);
+  assert.equal(y.showgrid,true);assert.equal(y.minor.ticks,'inside');assert.equal(y.minor.ticklen,3);
+  assert.equal(y.minor.showgrid,true);assert.equal(y.dtick,2);assert.equal(y.minor.dtick,0.5);
+  await h.change('stack');assert.equal(h.gd.layout.yaxis.minor.ticks,'');
+});

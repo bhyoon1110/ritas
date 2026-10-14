@@ -161,6 +161,34 @@ def origin_style_toggle_js(
           axis[name] = clone(style[name]);
         }
       });
+      var meta = next.meta || {};
+      var stack = meta.ristFtirStack || meta.ristRamanStack;
+      if (key === "yaxis" && stack && stack.enabled) {
+        // Style switches must neither expose stacked Y ticks nor restore the
+        // previous style's ticks when stack is subsequently turned off.
+        var saved = stack.yAxisDisplay || (stack.yAxisDisplay = {});
+        function remember(target, name, savedKey, changed) {
+          if (!saved[savedKey] || changed) saved[savedKey] = {
+            exists: Object.prototype.hasOwnProperty.call(target, name), value: target[name]
+          };
+        }
+        ["ticks", "ticklen", "showgrid", "zeroline"].forEach(function(name) {
+          remember(axis, name, name, Object.prototype.hasOwnProperty.call(style, name));
+        });
+        var minorFields = {minorTicks: "ticks", minorTicklen: "ticklen", minorShowgrid: "showgrid"};
+        Object.keys(minorFields).forEach(function(savedKey) {
+          var name = minorFields[savedKey];
+          remember(axis.minor, name, savedKey, Object.prototype.hasOwnProperty.call(style.minor, name));
+        });
+        axis.showticklabels = false;
+        axis.ticks = "";
+        axis.ticklen = 0;
+        axis.showgrid = false;
+        axis.zeroline = false;
+        axis.minor.ticks = "";
+        axis.minor.ticklen = 0;
+        axis.minor.showgrid = false;
+      }
       next[key] = axis;
     });
     next.plot_bgcolor = "white";
