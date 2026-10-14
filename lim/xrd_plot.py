@@ -2847,6 +2847,8 @@ def build_numbered_peak_graph_html(fig, peak_tables: list[dict[str, Any]]) -> st
                 line=dict(
                     color=getattr(getattr(trace, "line", None), "color", None) or "#d62728",
                     width=2,
+                    shape="linear",
+                    simplify=False,
                 ),
                 showlegend=False,
                 hovertemplate="2θ=%{x:.3f}°<br>Intensity=%{y:.2f}<extra>%{fullData.name}</extra>",
@@ -4679,7 +4681,7 @@ def build_xrd_html(
                 y=ry,
                 mode="lines",
                 name=raw_stem,
-                line=dict(color=raw_color, width=RAW_LINE_WIDTH),
+                line=dict(color=raw_color, width=RAW_LINE_WIDTH, shape="linear", simplify=False),
                 meta={
                     "xrd_raw": True,
                     "xrd_raw_stem": raw_stem,

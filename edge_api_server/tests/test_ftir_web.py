@@ -409,10 +409,10 @@ def test_ftir_analysis_api_accepts_multiple_dpt_files(tmp_path: Path) -> None:
         for item in manual_assignments["items"]
     )
     stack = layout["meta"]["ristFtirStack"]
-    assert stack["enabled"] is True
+    assert stack["enabled"] is False
     assert stack["gap"] == 1.2
     assert stack["sampleOrder"] == ["sample:0", "sample:1"]
-    assert stack["samplePositions"] == {"sample:0": 0.0, "sample:1": 1.2}
+    assert stack["samplePositions"] == {"sample:0": 0.0, "sample:1": 0.0}
     assert stack["modeUnits"]["absorbance"] > 0
     assert stack["modeUnits"]["transmittance"] > 0
 
@@ -428,8 +428,8 @@ def test_ftir_analysis_api_accepts_multiple_dpt_files(tmp_path: Path) -> None:
     )
     assert all(trace.get("showlegend") is True for trace in sample_traces)
     assert sample_traces[0]["meta"]["rist_ftir_stack_offset_absorbance"] == 0.0
-    assert sample_traces[1]["meta"]["rist_ftir_stack_offset_absorbance"] > 0.0
-    assert sample_traces[1]["meta"]["rist_ftir_stack_offset_transmittance"] > 0.0
+    assert sample_traces[1]["meta"]["rist_ftir_stack_offset_absorbance"] == 0.0
+    assert sample_traces[1]["meta"]["rist_ftir_stack_offset_transmittance"] == 0.0
     toggle = sample_traces[1]["meta"]["ftir_signal_toggle"]
     assert toggle["absorbance_y"] != toggle["transmittance_y"]
 

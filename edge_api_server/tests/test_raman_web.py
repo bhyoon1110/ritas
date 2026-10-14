@@ -418,7 +418,7 @@ def test_raman_blank_figure_starts_without_reserved_legend_margin() -> None:
     assert figure.layout.yaxis.fixedrange is False
 
 
-def test_raman_analyze_api_stacks_multiple_samples() -> None:
+def test_raman_analyze_api_keeps_raw_values_without_automatic_stack() -> None:
     content = SAMPLE_TXT.read_bytes()
     with TestClient(create_raman_preview_app()) as client:
         response = client.post(
@@ -438,9 +438,10 @@ def test_raman_analyze_api_stacks_multiple_samples() -> None:
     assert figure["layout"]["xaxis"]["fixedrange"] is False
     assert figure["layout"]["yaxis"]["fixedrange"] is False
     stack = figure["layout"]["meta"]["ristRamanStack"]
-    assert stack["enabled"] is True
+    assert stack["enabled"] is False
     assert stack["sampleOffsets"]["sample:0"] == 0
-    assert stack["sampleOffsets"]["sample:1"] > 0
+    assert stack["sampleOffsets"]["sample:1"] == 0
+    assert stack["unit"] > 0
 
     parent_traces = [
         trace for trace in figure["data"]
@@ -453,8 +454,11 @@ def test_raman_analyze_api_stacks_multiple_samples() -> None:
     )
     assert all(trace.get("showlegend") is True for trace in parent_traces)
     assert parent_traces[0]["meta"]["rist_raman_stack_offset"] == 0
-    assert parent_traces[1]["meta"]["rist_raman_stack_offset"] > 0
-    assert parent_traces[1]["y"][0] > parent_traces[0]["y"][0]
+    assert parent_traces[1]["meta"]["rist_raman_stack_offset"] == 0
+    assert parent_traces[1]["y"] == parent_traces[0]["y"]
+    raw = load_raman_raw_samples(SAMPLE_TXT.name, content)[0].frame
+    assert parent_traces[0]["x"] == raw["shift"].tolist()
+    assert parent_traces[0]["y"] == raw["intensity"].tolist()
 
 
 @pytest.mark.parametrize("suffix,separator", [("csv", ","), ("txt", "\t"), ("tsv", "\t"), ("txt", " "), ("csv", ";")])
@@ -653,7 +657,7 @@ def test_raman_analyze_api_expands_multi_sample_txt() -> None:
         for trace in parent_traces
     )
     assert all(trace.get("showlegend") is True for trace in parent_traces)
-    assert payload["figure"]["layout"]["meta"]["ristRamanStack"]["enabled"] is True
+    assert payload["figure"]["layout"]["meta"]["ristRamanStack"]["enabled"] is False
 
 
 @pytest.mark.parametrize("encoding", ["utf-8", "utf-16", "utf-32"])
@@ -892,10 +896,13 @@ def test_raman_report_chunked_upload_session_retries_and_downloads_package(monke
 def test_raman_report_job_accepts_large_multi_sample_lmr_payload(monkeypatch) -> None:
     use_fake_pptx_pdf_converter(monkeypatch)
     content = LARGE_LMR_TXT.read_bytes()
+    # Raw display no longer expands each spectrum onto a 2200-point grid.
+    # Use two real multi-sample inputs to retain this >1 MiB boundary test.
+    uploads = [("files", (name, content, "text/plain")) for name in (LARGE_LMR_TXT.name, "second.txt")]
     with TestClient(create_raman_preview_app()) as client:
         analysis_response = client.post(
             "/api/v1/raman/analyze",
-            files={"files": (LARGE_LMR_TXT.name, content, "text/plain")},
+            files=uploads,
             data={"sensitivity": "25"},
         )
         assert analysis_response.status_code == 200
@@ -909,7 +916,7 @@ def test_raman_report_job_accepts_large_multi_sample_lmr_payload(monkeypatch) ->
 
         job_response = client.post(
             "/api/v1/raman/report/jobs",
-            files={"files": (LARGE_LMR_TXT.name, content, "text/plain")},
+            files=uploads,
             data={
                 "analysis_json": json.dumps(analysis),
                 "figure_json": json.dumps(figure),

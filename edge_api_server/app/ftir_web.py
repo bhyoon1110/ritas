@@ -194,7 +194,7 @@ def _uploaded_dpt_files(files: list[UploadFile]) -> list[tuple[str, bytes]]:
 def _build_ftir_raw_series(uploaded: list[tuple[str, bytes]]) -> list[RawSeries]:
     raw_series = []
     for filename, content in uploaded:
-        frame = load_dpt(BytesIO(content), WN_MIN, WN_MAX)
+        frame = load_dpt(BytesIO(content), float("-inf"), float("inf"))
         raw_series.append(
             RawSeries(
                 label=Path(filename).stem,
@@ -1922,6 +1922,7 @@ _PAGE_SHELL = """
   </details>
 </section>
 <div class="ftir-message" id="ftir-message" role="alert"></div>
+<p style="margin:6px 12px;font-size:12px;color:#526277">새 분석은 Raw 원본값으로 표시합니다. 평활화·보정·정규화는 피크 검출용입니다. 스택·Y 이동은 표시 위치 변경, 투과도 보기는 단위 변환입니다. 이전 저장 작업은 재분석해야 적용됩니다.</p>
 <div class="ftir-report-progress" id="ftir-report-progress" aria-live="polite">
   <div class="ftir-report-progress-row">
     <span id="ftir-report-progress-label">보고서 생성 대기</span>

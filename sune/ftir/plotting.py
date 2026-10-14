@@ -13,6 +13,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from scipy.signal import find_peaks
 from rist_common.plotting import peak_editor_js
+from rist_common.plotting.raw_spectrum import peaks_on_raw_points
 
 from .findings import assign_group_candidates
 from .peaks import build_interactive_peak_candidates
@@ -460,6 +461,10 @@ def ftir_stack_js(div_id: str) -> str:
     });
     if (!Number.isFinite(low) || !Number.isFinite(high)) return null;
     var span = Math.max(high - low, signalMode === "transmittance" ? 1 : 0.02);
+    if (signalMode === "absorbance") {
+      // Match the initial raw figure so toggling stack off does not also zoom Y.
+      return [low - Math.max(span * 0.08, 0.02), high + Math.max(span * 0.25, 0.08)];
+    }
     return [low - span * 0.08, high + span * 0.18];
   }
 
@@ -1082,7 +1087,8 @@ def build_multi_peak_fig(
     peak_labels = []
     max_y = float("-inf")
     min_y = float("inf")
-    stack_enabled = len(samples) > 1
+    # Raw Y values are the default. Vertical separation is an explicit choice.
+    stack_enabled = False
     stack_gap = 1.2
     absorbance_values = [
         float(value)
@@ -1120,6 +1126,7 @@ def build_multi_peak_fig(
         sample_key = _sample_key(sample_no)
         label = sample["label"]
         grid = sample["grid"]
+        display_grid = sample.get("display_grid", grid)
         analysis_vec = sample["sample_vec"]
         sample_vec = np.asarray(sample.get("display_vec", analysis_vec), dtype=float)
         stack_position = sample_positions[sample_key]
@@ -1143,10 +1150,10 @@ def build_multi_peak_fig(
 
         raw_trace = _enable_abs_trans_toggle(
             go.Scatter(
-                x=grid, y=plotted_sample_vec, mode="lines", name=label,
+                x=display_grid, y=plotted_sample_vec, mode="lines", name=label,
                 legendgroup=sample_key,
                 showlegend=True,
-                line=dict(color=color, width=1.8),
+                line=dict(color=color, width=1.8, shape="linear", simplify=False),
                 hovertemplate=f"<b>{label}</b><br>%{{x:.1f}} cm⁻¹ | %{{y:.4f}}<extra></extra>",
             ),
             plotted_sample_vec,
@@ -1177,6 +1184,7 @@ def build_multi_peak_fig(
             peak_fwhm,
             initial_sensitivity=initial_sensitivity,
         )
+        candidates = peaks_on_raw_points(candidates, display_grid, sample_vec, x_key="wn")
         top_peak_indexes = {
             candidate["index"]
             for candidate in sorted(
@@ -1188,12 +1196,7 @@ def build_multi_peak_fig(
 
         for peak_no, candidate in enumerate(candidates):
             wn = candidate["wn"]
-            peak_index = int(candidate["index"])
-            base_val = (
-                float(sample_vec[peak_index])
-                if 0 <= peak_index < len(sample_vec)
-                else float(candidate["value"])
-            )
+            base_val = candidate["raw_value"]
             val = base_val + absorbance_offset
             fwhm = candidate["fwhm"]
             initially_visible = candidate["initial"]
@@ -1219,7 +1222,7 @@ def build_multi_peak_fig(
                     showlegend=initially_visible and label_key not in seen_label_keys,
                     hovertemplate=(
                         f"<b>{label}</b><br>{wn:.1f} cm⁻¹<br>{display_name}<br>"
-                        f"Value: %{{y:.4f}}<br>FWHM: {fwhm:.1f} cm⁻¹<br>"
+                        f"Value: %{{y:.4f}}<br>FWHM (분석 추정): {fwhm:.1f} cm⁻¹<br>"
                         f"<i>{note}</i><extra></extra>"
                     ),
                 ),

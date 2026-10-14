@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import base64
+import json
+import re
 import unicodedata
 import zipfile
 
@@ -89,6 +91,22 @@ def test_build_xrd_html_hides_internal_pdf_parse_errors(tmp_path) -> None:
     assert "자동 피크 표 추출에는 실패" in html
     assert "No /Root object" not in html
     assert "Is this really a PDF" not in html
+
+
+def test_xrd_main_graph_keeps_all_measured_coordinates(tmp_path) -> None:
+    raw_path = tmp_path / "sample.txt"
+    points = [(10, -20), (10.001, 50000), (10.015, 7), (20.22, 82), (60, 31)]
+    raw_path.write_text("\n".join(f"{x} {y}" for x, y in points), encoding="utf-8")
+    pdf_dir = tmp_path / "pdf"
+    pdf_dir.mkdir()
+    html = build_xrd_html([(str(raw_path), str(pdf_dir))])["html"]
+    start = re.search(r'Plotly\.newPlot\(\s*"xrd-plot",\s*', html).end()
+    traces, _ = json.JSONDecoder().raw_decode(html[start:])
+    raw = next(t for t in traces if t.get("meta", {}).get("xrd_raw"))
+    assert raw["x"] == [x for x, _ in points]
+    assert raw["y"] == [y for _, y in points]
+    assert raw["line"]["shape"] == "linear"
+    assert raw["line"]["simplify"] is False
 
 
 def test_phase_label_uses_pdf_card_metadata() -> None:

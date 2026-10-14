@@ -3949,6 +3949,9 @@ def peak_editor_js(div_id: str) -> str:
     var name = assignment ? assignment.name : peakName(pt.x);
     var group = "user-peak-" + Date.now() + "-" + Math.floor(Math.random() * 10000);
     var parentSampleGroup = pt.curve == null ? "" : sampleGroup(pt.curve);
+    var parentTrace = (gd.data || [])[pt.curve] || {{}};
+    var parentMeta = parentTrace.meta || {{}};
+    var ramanOffset = Number(parentMeta.rist_raman_stack_offset || 0);
     var legendGroup = parentSampleGroup || group;
     var traceIndex = (gd.data || []).length;
     var annotationIndex = (gd.layout.annotations || []).length;
@@ -3986,12 +3989,15 @@ def peak_editor_js(div_id: str) -> str:
           overrides_detected_peak_key: detectedPeakOverrideKey(
             pt.maximumSensitivityPeakCurve
           ) || null,
-          base_y: Number(pt.y)
+          base_y: Number(pt.y) - ramanOffset
         }}
       }},
       hovertemplate: "<b>%{{x:.2f}}</b>" + hoverDetails
         + "<br>%{{y:.4f}}<extra></extra>"
     }};
+    if (Object.prototype.hasOwnProperty.call(parentMeta, "rist_raman_stack_offset")) {{
+      tr.meta.rist_raman_stack_offset = ramanOffset;
+    }}
     var ann = {{
       x: pt.x,
       y: pt.y,

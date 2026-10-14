@@ -43,7 +43,9 @@ def _clean_numeric_pair(shift: pd.Series, intensity: pd.Series) -> pd.DataFrame:
     result = result.replace([np.inf, -np.inf], np.nan).dropna()
     if len(result) < 10:
         raise RamanRawError("유효한 Raman 데이터 포인트가 부족합니다.")
-    return result.sort_values("shift").drop_duplicates("shift")
+    # Repeated X measurements are still measurements, not rows to average or
+    # discard silently in the displayed raw curve.
+    return result.sort_values("shift", kind="stable")
 
 
 def _sample_label_from_columns(shift_name: str, intensity_name: str) -> str | None:

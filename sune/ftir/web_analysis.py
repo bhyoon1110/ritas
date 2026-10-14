@@ -121,7 +121,9 @@ def analyze_dpt_files(
     for filename, content in files:
         metadata = _parse_dpt_metadata(content)
         try:
-            raw = load_dpt(BytesIO(content), WN_MIN, WN_MAX)
+            # Preserve all finite measurements for display, including points
+            # outside the standard peak-analysis range.
+            raw = load_dpt(BytesIO(content), -np.inf, np.inf)
         except Exception as exc:
             raise DptAnalysisError(
                 "INVALID_DPT",
@@ -144,16 +146,6 @@ def analyze_dpt_files(
                 SMOOTH_WINDOW,
                 SMOOTH_POLY,
                 return_mask=True,
-            )
-            display_vec, _ = preprocess(
-                raw["wn"].to_numpy(),
-                raw["y"].to_numpy(),
-                grid,
-                smooth,
-                SMOOTH_WINDOW,
-                SMOOTH_POLY,
-                return_mask=True,
-                normalize=False,
             )
             if sensitivity == 0:
                 peak_idx = np.empty(0, dtype=int)
@@ -181,10 +173,11 @@ def analyze_dpt_files(
                 "label": label,
                 "grid": grid,
                 "sample_vec": sample_vec,
-                "display_vec": display_vec,
+                "display_grid": raw["wn"].to_numpy(),
+                "display_vec": raw["y"].to_numpy(),
                 "peak_idx": peak_idx,
                 "peak_wn": peak_wn,
-                "peak_val": display_vec[peak_idx],
+                "peak_val": peak_val,
                 "analysis_peak_val": peak_val,
                 "peak_fwhm": peak_fwhm,
             }
@@ -202,8 +195,8 @@ def analyze_dpt_files(
     figure = build_multi_peak_fig(
         samples,
         func_groups,
-        WN_MIN,
-        WN_MAX,
+        min(float(sample["display_grid"][0]) for sample in samples),
+        max(float(sample["display_grid"][-1]) for sample in samples),
         initial_sensitivity=sensitivity,
     )
     default_library_id = (
@@ -229,6 +222,11 @@ def analyze_dpt_files(
         "items": manual_peak_assignments,
     }
     figure.update_layout(meta=figure_meta)
+    for index, summary in enumerate(summaries):
+        summary["peakCount"] = sum(
+            bool(trace.visible) for trace in figure.data
+            if (trace.meta or {}).get("rist_peak", {}).get("sample_group") == f"sample:{index}"
+        )
     return {
         "figure": json.loads(figure.to_json()),
         "samples": summaries,
@@ -238,6 +236,9 @@ def analyze_dpt_files(
             "prominence": float(params["prominence"]),
             "distance": int(params["distance"]),
             "smooth": smooth,
+            "displayMode": "raw",
+            "displayPreprocessing": False,
+            "analysisPreprocessing": {"smooth": smooth, "baseline": True, "normalize": True},
             "wavenumberMin": WN_MIN,
             "wavenumberMax": WN_MAX,
             "assignmentLibraries": [

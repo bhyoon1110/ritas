@@ -58,7 +58,7 @@ def load_dpt(path, wn_min, wn_max):
     df = df.apply(pd.to_numeric, errors="coerce").dropna()
     df = df[np.isfinite(df["wn"]) & np.isfinite(df["y"])]
     df = df[(df["wn"] >= wn_min) & (df["wn"] <= wn_max)]
-    return df.sort_values("wn")
+    return df.sort_values("wn", kind="stable")
 
 def load_csv(path, wn_min, wn_max):
     """라이브러리 CSV (wavenumber, absorbance) 로드"""

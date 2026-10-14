@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import numpy as np
+from rist_common.plotting.raw_spectrum import peaks_on_raw_points
 import plotly.graph_objects as go
 
 from .peaks import build_interactive_peak_candidates
@@ -93,12 +94,21 @@ def build_multi_raman_fig(
     fig = go.Figure()
     annotations = []
     peak_labels = []
-    max_y = 1.0
+    min_y, max_y = float("inf"), float("-inf")
     func_groups = func_groups or []
     stack_gap = 1.2
-    stack_enabled = len(samples) > 1
+    stack_enabled = False
+    raw_values = [
+        np.asarray(sample.get("display_vec", sample["processed"]), dtype=float)
+        for sample in samples
+    ]
+    nonempty = [values for values in raw_values if len(values)]
+    stack_unit = max(
+        max(float(np.max(v)) for v in nonempty) - min(float(np.min(v)) for v in nonempty),
+        1e-9,
+    ) if nonempty else 1.0
     sample_offsets = {
-        _sample_key(index): (index * stack_gap if stack_enabled else 0.0)
+        _sample_key(index): (index * stack_gap * stack_unit if stack_enabled else 0.0)
         for index in range(len(samples))
     }
 
@@ -106,20 +116,25 @@ def build_multi_raman_fig(
         sample_key = _sample_key(sample_no)
         label = sample["label"]
         grid = sample["grid"]
-        values = sample["processed"]
+        analysis_values = sample["processed"]
+        values = np.asarray(sample.get("display_vec", analysis_values), dtype=float)
+        display_grid = sample.get("display_grid", grid)
         stack_offset = sample_offsets[sample_key]
         plotted_values = values + stack_offset
         color = SAMPLE_PALETTE[sample_no % len(SAMPLE_PALETTE)]
-        max_y = max(max_y, float(np.nanmax(values)) if len(values) else 1.0)
+        sample_min = float(np.min(values)) if len(values) else 0.0
+        sample_span = max(float(np.ptp(values)), 1e-9) if len(values) else 1.0
+        min_y = min(min_y, sample_min + stack_offset)
+        max_y = max(max_y, sample_min + sample_span + stack_offset)
 
         sample_trace = go.Scatter(
-            x=grid,
+            x=display_grid,
             y=plotted_values,
             mode="lines",
             name=label,
             legendgroup=sample_key,
             showlegend=True,
-            line=dict(color=color, width=1.8),
+            line=dict(color=color, width=1.8, shape="linear", simplify=False),
             hovertemplate=(
                 f"<b>{label}</b><br>%{{x:.1f}} cm⁻¹ | %{{customdata:.4f}}"
                 "<extra></extra>"
@@ -136,11 +151,12 @@ def build_multi_raman_fig(
         fig.add_trace(sample_trace)
 
         candidates = build_interactive_peak_candidates(
-            values,
+            analysis_values,
             grid,
             sample["peak_idx"],
             initial_sensitivity=initial_sensitivity,
         )
+        candidates = peaks_on_raw_points(candidates, display_grid, values, x_key="shift")
         top_peak_indexes = {
             candidate["index"]
             for candidate in sorted(candidates, key=lambda item: -item["value"])[:25]
@@ -149,7 +165,7 @@ def build_multi_raman_fig(
 
         for peak_no, candidate in enumerate(candidates):
             shift = candidate["shift"]
-            value = candidate["value"]
+            value = candidate["raw_value"]
             fwhm = candidate["fwhm"]
             initially_visible = candidate["initial"]
             assignment = _peak_assignment(shift, func_groups)
@@ -175,7 +191,7 @@ def build_multi_raman_fig(
                 hovertemplate=(
                     f"<b>{label}</b><br>{shift:.1f} cm⁻¹<br>"
                     f"{display_name}<br>Intensity: {value:.4f}"
-                    f"<br>FWHM: {fwhm:.1f} cm⁻¹<br><i>{note}</i>"
+                    f"<br>FWHM (분석 추정): {fwhm:.1f} cm⁻¹<br><i>{note}</i>"
                     "<extra></extra>"
                 ),
             )
@@ -201,8 +217,8 @@ def build_multi_raman_fig(
                 seen_label_keys.add(label_key)
 
             if candidate["index"] in top_peak_indexes:
-                base_y_label = value + 0.06 + (
-                    0.05 if (len(annotations) + peak_no) % 2 == 0 else 0.0
+                base_y_label = value + sample_span * 0.06 + (
+                    sample_span * 0.05 if (len(annotations) + peak_no) % 2 == 0 else 0.0
                 )
                 y_label = base_y_label + stack_offset
                 annotation_index = len(annotations)
@@ -237,7 +253,7 @@ def build_multi_raman_fig(
                         "labelKey": label_key,
                         "wnText": f"{shift:.0f}",
                         "annotationBaseY": float(base_y_label),
-                        "shapeBaseY0": 0.0,
+                        "shapeBaseY0": min(0.0, sample_min),
                         "shapeBaseY1": float(value),
                     }
                 )
@@ -245,7 +261,7 @@ def build_multi_raman_fig(
                     type="line",
                     x0=shift,
                     x1=shift,
-                    y0=stack_offset,
+                    y0=min(0.0, sample_min) + stack_offset,
                     y1=value + stack_offset,
                     line=dict(color=peak_color, width=0.8, dash="dot"),
                     visible=initially_visible,
@@ -256,6 +272,10 @@ def build_multi_raman_fig(
     )
     if len(samples) > 3:
         title += f" 외 {len(samples) - 3}개"
+
+    if not np.isfinite(min_y) or not np.isfinite(max_y):
+        min_y, max_y = 0.0, 1.0
+    y_span = max(max_y - min_y, abs(max_y) * 0.01, 1e-9)
 
     fig.update_layout(
         title=dict(text=title, font=dict(size=18), x=0.01, y=0.98, yanchor="top"),
@@ -273,9 +293,8 @@ def build_multi_raman_fig(
             showgrid=True,
             gridcolor="#e8e8e8",
             range=[
-                -0.05,
-                (max(sample_offsets.values()) if sample_offsets else 0.0)
-                + max_y * 1.65,
+                min_y - y_span * 0.08,
+                max_y + y_span * 0.25,
             ],
             tickmode="auto",
             fixedrange=False,
@@ -307,6 +326,7 @@ def build_multi_raman_fig(
             "ristRamanStack": {
                 "enabled": stack_enabled,
                 "gap": stack_gap,
+                "unit": stack_unit,
                 "sampleOffsets": sample_offsets,
                 "sampleOrder": [_sample_key(index) for index in range(len(samples))],
             },

@@ -56,6 +56,68 @@ test('all emitted inline programs parse, Raman opts into axis locks and Y-only w
   assert.match(html,/var scrollZoomYOnly = true/);
 });
 
+test('raw Raman stack uses the measurement scale, fits negatives and restores exact values',async t=>{
+  const {gd,d,run,dispatch}=setup(t);
+  const original=[[-400,12000,300],[-200,6000,900]];
+  gd.data=original.map((y,i)=>({name:'Sample '+i,x:[100,150,200],y:y.slice(),customdata:y.slice(),
+    meta:{rist_sample_group:'sample:'+i,rist_sample_parent:true,rist_raman_stack_offset:0}}));
+  gd.layout.meta={ristRamanStack:{enabled:false,gap:1.2,unit:12400,
+    sampleOffsets:{'sample:0':0,'sample:1':0},sampleOrder:['sample:0','sample:1']}};
+  run('gd._ristRamanStackInstalled');await tick();
+  const stack=d.querySelector('.rist-raman-stack-button');
+  assert.deepEqual(clone(gd.data.map(t=>t.y)),original);
+  stack.click();await tick();
+  assert.equal(gd.data[1].meta.rist_raman_stack_offset,14880);
+  assert.deepEqual(clone(gd.data[1].y),original[1].map(y=>y+14880));
+  assert.deepEqual(clone(gd.data[1].customdata),original[1]);
+  assert(gd.layout.yaxis.range[0]<-400);assert(gd.layout.yaxis.range[1]>20880);
+  stack.click();await tick();
+  assert.deepEqual(clone(gd.data.map(t=>t.y)),original);
+  assert(gd.layout.yaxis.range[0]<-400);assert(gd.layout.yaxis.range[1]>12000);
+  // Structure refresh/undo metadata must keep the raw-scale stack unit.
+  dispatch('rist-plot-structure-changed');await tick();stack.click();await tick();
+  assert.equal(gd.data[1].meta.rist_raman_stack_offset,14880);
+});
+
+test('manual Raman peak retains raw intensity even when added to a vertically shifted curve',async t=>{
+  const {gd,d,w,run}=setup(t);
+  gd.data=[{name:'Sample',x:[100,200,300],y:[14980,26880,15180],
+    meta:{rist_sample_parent:true,rist_sample_group:'sample:0',rist_raman_stack_offset:14880}}];
+  gd._fullLayout.xaxis.p2d=x=>x;gd._fullLayout.yaxis.p2d=y=>30000-y;
+  const drag=d.createElement('div');drag.className='nsewdrag';gd.appendChild(drag);
+  drag.getBoundingClientRect=()=>({left:0,top:0,width:400,height:300});
+  w.Plotly.addTraces=async(_,trace)=>{gd.data.push(trace);};
+  run('function addPeakAt');
+  d.querySelector('.rist-peak-add-button').click();
+  drag.dispatchEvent(new w.MouseEvent('click',{bubbles:true,cancelable:true,clientX:200,clientY:100}));
+  await tick();
+  assert.equal(gd.data.length,2);
+  assert.equal(gd.data[1].meta.rist_peak.base_y,12000);
+  assert.equal(gd.data[1].meta.rist_raman_stack_offset,14880);
+  assert.equal(gd.data[1].y[0],26880);
+});
+
+test('FTIR stack round-trip preserves raw values and the initial raw Y range',async t=>{
+  const {gd,d,w}=setup(t);
+  const program=execFileSync(process.env.RIST_TEST_PYTHON || 'python3',['-c',
+    'from ftir.plotting import ftir_stack_js; print(ftir_stack_js("raman-plot"))'],{encoding:'utf8'}).match(/<script>([\s\S]*?)<\/script>/)[1];
+  const original=[[0.1,0.5,0.2],[-0.2,1.3,0.3]];
+  gd.data=original.map((y,i)=>({name:'Sample '+i,x:[100,150,200],y:y.slice(),
+    meta:{rist_sample_group:'sample:'+i,rist_sample_parent:true,rist_ftir_stack_offset_absorbance:0,
+      rist_ftir_stack_offset_transmittance:0,ftir_signal_toggle:{absorbance_y:y.slice(),
+        transmittance_y:y.map(v=>100*Math.pow(10,-v))}}}));
+  const initialRange=[-0.2-1.5*0.08,1.3+1.5*0.25];
+  gd.layout.yaxis.range=initialRange.slice();
+  gd.layout.meta={ristFtirStack:{enabled:false,gap:1.2,modeUnits:{absorbance:1.5,transmittance:100},
+    samplePositions:{'sample:0':0,'sample:1':0},sampleOrder:['sample:0','sample:1']}};
+  w.eval(program);await tick();
+  const stack=d.querySelector('.rist-ftir-stack-button');
+  stack.click();await tick();assert(gd.data[1].y[1]>1.3);
+  stack.click();await tick();
+  assert.deepEqual(clone(gd.data.map(t=>t.y)),original);
+  assert.deepEqual(clone(gd.layout.yaxis.range),initialRange);
+});
+
 test('palette selection preserves legend editor and its explicit save/undo contract',async t=>{
   const {w,d,gd,run}=setup(t);
   gd.data=[{name:'Sample A',x:[1,2],y:[1,2],line:{color:'#377eb8',dash:'solid'},meta:{rist_sample_parent:true}}];

@@ -195,7 +195,9 @@ def _build_raman_raw_series(uploaded: list[tuple[str, bytes]]) -> list[RawSeries
     raw_series: list[RawSeries] = []
     used_labels: set[str] = set()
     for filename, content in uploaded:
-        samples = load_raman_raw_samples(filename, content)
+        samples = load_raman_raw_samples(
+            filename, content, shift_min=float("-inf"), shift_max=float("inf"),
+        )
         for sample in samples:
             label = sample.label or Path(filename).stem
             base = label
@@ -1911,6 +1913,7 @@ _PAGE_SHELL = """
   </details>
 </section>
 <div class="raman-message" id="raman-message"></div>
+<p style="margin:6px 12px;font-size:12px;color:#526277">새 분석은 Raw 원본값으로 표시합니다. 평활화·보정·정규화는 피크 검출용입니다. 스택·Y 이동은 표시 위치만 변경합니다. 이전 저장 작업은 재분석해야 적용됩니다.</p>
 <div class="raman-report-progress" id="raman-report-progress" aria-live="polite">
   <div class="raman-report-progress-row">
     <span id="raman-report-progress-label">보고서 생성 대기</span>
@@ -2134,6 +2137,7 @@ _RAMAN_STACK_SCRIPT = """
     initialized: false,
     enabled: false,
     gap: 1.2,
+    unit: 1,
     offsets: {},
     order: [],
     baseTraces: {},
@@ -2300,6 +2304,7 @@ _RAMAN_STACK_SCRIPT = """
     state.enabled = !!meta.enabled;
     state.yAxisDisplay = savedYAxisDisplay(meta.yAxisDisplay);
     state.gap = Number.isFinite(Number(meta.gap)) ? Number(meta.gap) : 1.2;
+    state.unit = Number(meta.unit) > 0 && Number.isFinite(Number(meta.unit)) ? Number(meta.unit) : 1;
     state.order = Array.isArray(meta.sampleOrder) && meta.sampleOrder.length
       ? meta.sampleOrder.map(String)
       : discoverOrder();
@@ -2308,7 +2313,7 @@ _RAMAN_STACK_SCRIPT = """
       var configured = meta.sampleOffsets && meta.sampleOffsets[group];
       state.offsets[group] = Number.isFinite(Number(configured))
         ? Number(configured)
-        : (state.enabled ? index * state.gap : 0);
+        : (state.enabled ? index * state.gap * state.unit : 0);
     });
 
     state.baseTraces = {};
@@ -2361,18 +2366,25 @@ _RAMAN_STACK_SCRIPT = """
     if (!groups.length) return [-0.05, 1.65];
     var low = Infinity;
     var high = -Infinity;
-    groups.forEach(function(group) {
-      var offset = Number(state.offsets[group] || 0);
-      low = Math.min(low, offset - 0.08);
-      high = Math.max(high, offset + 1.65);
+    Object.keys(state.baseTraces).forEach(function(index) {
+      var base = state.baseTraces[index];
+      if (!base.parent || groups.indexOf(base.group) < 0) return;
+      var offset = Number(state.offsets[base.group] || 0);
+      base.y.forEach(function(value) {
+        low = Math.min(low, value + offset);
+        high = Math.max(high, value + offset);
+      });
     });
-    return [low, high];
+    if (!Number.isFinite(low) || !Number.isFinite(high)) return [-0.05, 1.65];
+    var span = Math.max(high - low, Math.abs(high) * 0.01, 1e-9);
+    return [low - span * 0.08, high + span * 0.25];
   }
 
   function updateMeta() {
     var meta = stackMeta();
     meta.enabled = state.enabled;
     meta.gap = state.gap;
+    meta.unit = state.unit;
     meta.sampleOffsets = Object.assign({}, state.offsets);
     meta.sampleOrder = state.order.slice();
     meta.yAxisDisplay = state.yAxisDisplay;
@@ -2482,7 +2494,7 @@ _RAMAN_STACK_SCRIPT = """
     var visibleIndex = 0;
     state.order.forEach(function(group) {
       if (state.enabled && sampleVisible(group)) {
-        state.offsets[group] = visibleIndex * state.gap;
+        state.offsets[group] = visibleIndex * state.gap * state.unit;
         visibleIndex += 1;
       } else {
         state.offsets[group] = 0;

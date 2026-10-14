@@ -27,7 +27,6 @@ from .plotting import (
     build_bar_fig,
     build_comparison_fig,
     build_multi_peak_fig,
-    build_peak_fig,
     build_preprocess_fig,
     ftir_abs_trans_toggle_js,
 )
@@ -303,9 +302,12 @@ def _run_single(dpt_path, args, rules_dir, rule_names, rule_categories):
         df_patterns.to_csv(patterns_csv, index=False, encoding="utf-8-sig")
         print(f"       패턴 분석 저장: {patterns_csv}")
 
-    fig_peak = build_peak_fig(
-        sample_vec, GRID, peak_idx, peak_wn, peak_val, peak_fwhm,
-        func_groups, sample_label, WN_MIN, WN_MAX,
+    fig_peak = build_multi_peak_fig(
+        [{"label": sample_label, "grid": GRID, "sample_vec": sample_vec,
+          "display_grid": raw["wn"].to_numpy(), "display_vec": raw["y"].to_numpy(),
+          "peak_idx": peak_idx, "peak_wn": peak_wn, "peak_val": peak_val,
+          "peak_fwhm": peak_fwhm}],
+        func_groups, WN_MIN, WN_MAX,
         initial_sensitivity=args.peak_sensitivity,
     )
     peak_html = os.path.join(output_dir, f"{stem}_peaks.html")
@@ -328,7 +330,7 @@ def _run_single(dpt_path, args, rules_dir, rule_names, rule_categories):
                 "peak-plot",
                 yaxis_titles={
                     "yaxis": {
-                        "absorbance": "Normalized Absorbance",
+                        "absorbance": "Absorbance",
                         "transmittance": "Transmittance (%)",
                     },
                 },
@@ -567,6 +569,8 @@ def _run_multi_peak_overlay(dpt_paths, args):
             "label": label,
             "grid": GRID,
             "sample_vec": sample_vec,
+            "display_grid": raw["wn"].to_numpy(),
+            "display_vec": raw["y"].to_numpy(),
             "peak_idx": peak_idx,
             "peak_wn": peak_wn,
             "peak_val": peak_val,
@@ -615,7 +619,7 @@ def _run_multi_peak_overlay(dpt_paths, args):
                 "peak-plot",
                 yaxis_titles={
                     "yaxis": {
-                        "absorbance": "Normalized Absorbance",
+                        "absorbance": "Absorbance",
                         "transmittance": "Transmittance (%)",
                     },
                 },

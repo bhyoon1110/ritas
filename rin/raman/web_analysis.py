@@ -70,8 +70,8 @@ def analyze_raman_files(
             raw_samples = load_raman_raw_samples(
                 filename,
                 content,
-                shift_min=SHIFT_MIN,
-                shift_max=SHIFT_MAX,
+                shift_min=-np.inf,
+                shift_max=np.inf,
             )
         except RamanRawError as exc:
             raise RamanAnalysisError(
@@ -111,6 +111,8 @@ def analyze_raman_files(
                         "label": label,
                         "grid": grid,
                         "processed": processed,
+                        "display_grid": raw["shift"].to_numpy(),
+                        "display_vec": raw["intensity"].to_numpy(),
                         "peak_idx": peak_idx,
                         "peak_shift": peak_shift,
                         "peak_val": peak_val,
@@ -135,11 +137,16 @@ def analyze_raman_files(
 
     figure = build_multi_raman_fig(
         samples,
-        shift_min=SHIFT_MIN,
-        shift_max=SHIFT_MAX,
+        shift_min=min(float(sample["display_grid"][0]) for sample in samples),
+        shift_max=max(float(sample["display_grid"][-1]) for sample in samples),
         func_groups=func_groups,
         initial_sensitivity=sensitivity,
     )
+    for index, summary in enumerate(summaries):
+        summary["peakCount"] = sum(
+            bool(trace.visible) for trace in figure.data
+            if (trace.meta or {}).get("rist_peak", {}).get("sample_group") == f"sample:{index}"
+        )
     return {
         "figure": json.loads(figure.to_json()),
         "samples": summaries,
@@ -150,6 +157,9 @@ def analyze_raman_files(
             "distance": int(params["distance"]),
             "smooth": smooth,
             "baseline": baseline,
+            "displayMode": "raw",
+            "displayPreprocessing": False,
+            "analysisPreprocessing": {"smooth": smooth, "baseline": baseline, "normalize": True},
             "shiftMin": SHIFT_MIN,
             "shiftMax": SHIFT_MAX,
             "assignmentLibraries": [
