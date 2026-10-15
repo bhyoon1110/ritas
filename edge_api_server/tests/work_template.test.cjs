@@ -123,6 +123,7 @@ for(const mode of ['native','chrome49']) for(const experiment of ['ftir','raman'
   test(label+': file round trip excludes RAW/evidence/identities; optional ranges and empty title survive',async t=>{
     const h=setup(t,experiment,mode);await tick();await h.addRaw();
     h.gd.layout.title.text='OLD SAMPLE SECRET';
+    h.gd.layout.meta.ristPeaksVisible=false;
     h.gd.layout.shapes=[{name:'old box',x0:10,x1:20}];
     if(experiment==='raman')h.d.querySelector('[data-report-field="conditionDetail"]').value='OLD SAMPLE HEADER '.repeat(500);
     h.d.querySelector('[data-transfer-field="requestNumber"]').value='OLD-REQUEST';
@@ -135,6 +136,7 @@ for(const mode of ['native','chrome49']) for(const experiment of ['ftir','raman'
     h.gd.layout.title.text='';h.d.querySelector('[data-template-title]').checked=true;h.d.querySelector('[data-template-ranges]').checked=true;
     h.d.querySelector('[data-template-save]').click();const next=JSON.parse(await h.read(h.downloads[1]));
     assert.equal(next.settings.title,'');assert.deepEqual(next.settings.axes.xaxis.range,[700,300]);
+    assert.equal(next.settings.peaksVisible,false);
     assert.deepEqual(next.settings.sampleStyles.map(s=>s.width),[3.5,0.5]);
   });
   test(label+': load before RAW, then recompute with chosen sensitivity/libraries and new-scale stack',async t=>{
@@ -151,6 +153,7 @@ for(const mode of ['native','chrome49']) for(const experiment of ['ftir','raman'
     assert.equal(h.gd.layout.meta.ristPlotSize.ratio,'4:3');assert.equal(h.gd.layout.width,1000);
     assert.equal(h.gd.layout.legend.x,0.02);
     assert.equal(h.gd.layout.meta.ristPeakLabelsVisible,false);
+    assert.equal(h.gd.layout.meta.ristPeaksVisible,true,'old templates default to visible');
     assert.equal(h.d.querySelector('.rist-peak-sensitivity-number').value,'0');
     assert(h.gd.layout.yaxis.range[1]>90,'new RAW Y range, not previous dataset range');
     assert.equal(h.d.querySelector('[data-report-field="'+(experiment==='ftir'?'detector':'excitationWavelength')+'"]').value,
@@ -189,10 +192,12 @@ for(const mode of ['native','chrome49']) for(const experiment of ['ftir','raman'
     h.gd.layout.shapes=[{name:'OLD EVIDENCE'}];h.gd.data[0].name='OLD CUSTOM NAME';
     const request=h.d.querySelector('[data-transfer-field="requestNumber"]');request.value='KEEP-REQUEST';
     const value=sampleTemplate(experiment);value.settings.axes.xaxis.range=[650,450];value.settings.axes.yaxis.range=[-20,200];
+    value.settings.peaksVisible=false;
     h.gd.layout.meta.ristPlotSize={width:1200,ratio:'16:9'};
     value.settings.title='';h.setCount(3);
     assert.equal(await h.template().load(value),true);await tick();
     assert.equal(request.value,'KEEP-REQUEST');assert.equal(h.gd.data.length,3);
+    assert.equal(h.gd.layout.meta.ristPeaksVisible,false);
     assert.equal(h.gd.data[0].name,'NEW RAW 0');assert.equal(h.gd.layout.shapes.length,0);
     assert.equal(h.gd.layout.title.text,'');assert.deepEqual(clone(h.gd.layout.xaxis.range),[650,450]);
     assert.equal(h.gd.layout.meta.ristPlotSize.width,1000,'loaded template wins over previously selected plot size');
@@ -202,6 +207,7 @@ for(const mode of ['native','chrome49']) for(const experiment of ['ftir','raman'
   test(label+': active selection restores, rejects missing libraries, and mismatched file cannot change analysis',async t=>{
     const h=setup(t,experiment,mode);await tick();
     const value=sampleTemplate(experiment);
+    value.settings.peaksVisible=true;
     h.template().restore(value);assert.deepEqual(clone(h.template().state()),value);
     assert.equal(h.d.querySelector('[data-template-name]').value,value.name);
     h.template().restore({...value,settings:{...value.settings,libraryIds:['removed-library']}});

@@ -99,6 +99,7 @@
     settings.axes = {xaxis: axis(object(input.axes).xaxis), yaxis: axis(input.axes.yaxis)};
     settings.legend = legend(input.legend);
     settings.peakLabelsVisible = boolean(input.peakLabelsVisible);
+    settings.peaksVisible = own(input, "peaksVisible") ? boolean(input.peaksVisible) : true;
     settings.peakLegendEntriesVisible = boolean(input.peakLegendEntriesVisible);
     if (!Array.isArray(input.sampleStyles) || input.sampleStyles.length > 100) invalid();
     settings.sampleStyles = input.sampleStyles.map(function(style) {
@@ -144,6 +145,7 @@
       plotSize: meta.ristPlotSize || {width: null, ratio: "auto"},
       axes: {}, legend: layout.legend || {},
       peakLabelsVisible: meta.ristPeakLabelsVisible !== false,
+      peaksVisible: meta.ristPeaksVisible !== false,
       peakLegendEntriesVisible: meta.ristPeakLegendEntriesVisible !== false,
       sampleStyles: (gd.data || []).filter(function(trace) {
         return trace.meta && trace.meta.rist_sample_parent;
@@ -161,6 +163,7 @@
     var s = template.settings, layout = figure.layout, meta = layout.meta || (layout.meta = {});
     meta.ristPlotSize = clone(s.plotSize);
     meta.ristPeakLabelsVisible = s.peakLabelsVisible;
+    meta.ristPeaksVisible = s.peaksVisible;
     meta.ristPeakLegendEntriesVisible = s.peakLegendEntriesVisible;
     // Map appearance by RAW sample order, never by an old name/id; extra samples keep their own style.
     var index = 0;

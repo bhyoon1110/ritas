@@ -27,7 +27,7 @@ function setup(t,kind,mode,pointer=false) {
       rist_peak:{label_key:'peak:1',sample_group:'sample:0',label:'C–O',x:200}}}];
   gd.layout={meta:{ristPeakLabels:[{traceIndex:1,annotationIndex:0,shapeIndex:-1,labelKey:'peak:1',legendgroup:'peak:1',wnText:'200 cm⁻¹'}]},
     xaxis:{range:[0,4000]},yaxis:{range:[0,4]},dragmode:'zoom',shapes:[],annotations:[
-      {text:'<b>200 cm⁻¹</b><br>C–O',x:200,y:3,ax:0,ay:-40,font:{color:'#ff0000'},captureevents:true},
+      {text:'<b>200 cm⁻¹</b><br>C–O',x:200,y:3,ax:0,ay:-40,font:{color:'#ff0000'},captureevents:true,visible:true},
       {name:'rist_text_box_text:1',text:'A &amp; B<br>메모',x:500,y:1,width:180,height:60,font:{size:16,color:'#112233'}}]};
   gd._context={scrollZoom:true};
   const sync=()=>{gd._fullLayout={...clone(gd.layout),_size:{l:60,t:100,w:800,h:400}};
@@ -51,13 +51,14 @@ function setup(t,kind,mode,pointer=false) {
   }
   w.Plotly={
     restyle:async(_,patch,curves)=>{for (const [pos,curve] of curves.entries()) for(const [key,value] of Object.entries(patch))
-      setPath(gd.data[curve],key,Array.isArray(value)?value[pos % value.length]:value);sync();emit('plotly_afterplot');},
+      setPath(gd.data[curve],key,Array.isArray(value)?value[pos % value.length]:value);sync();emit('plotly_restyle',[patch,curves]);emit('plotly_afterplot');},
     relayout:async(_,patch)=>{updates.push(clone(patch));for (const [key,val] of Object.entries(patch)) setPath(gd.layout,key,val);sync();emit('plotly_relayout',patch);emit('plotly_afterplot');},
     react:async(_,data,layout)=>{gd.data=data;gd.layout=layout;sync();emit('plotly_afterplot');},
     addTraces:async(_,trace)=>{gd.data.push(trace);},
     deleteTraces:async(_,curves)=>{gd.data=gd.data.filter((_,i)=>!curves.includes(i));},
     Plots:{resize:()=>{}},purge:()=>{}
   };
+  w.Plotly.update=async(_,data,layout,curves)=>{await w.Plotly.restyle(gd,data,curves);await w.Plotly.relayout(gd,layout);};
   if (mode==='chrome49') w.eval(fs.readFileSync(path.join(assets,manifest.runtime),'utf8'));
   const scripts=[...pages[kind].matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)].map(m=>m[1]);
   const run=token=>{
@@ -88,6 +89,68 @@ function shapeFixture(h) {
 
 for (const kind of ['ftir','raman']) for (const mode of ['native','chrome49']) {
   const label=kind+'/'+mode;
+  test(label+': peak display hides only points/labels/connectors and restores exact styling/evidence',async t=>{
+    const h=setup(t,kind,mode);shapeFixture(h);await tick();
+    const peak=h.gd.data[1];peak.mode='markers';peak.hoverinfo='x+y';peak.hovertemplate='%{x}: %{y}';
+    const raw=clone(h.gd.data[0]),before=clone(peak),annotations=clone(h.gd.layout.annotations),shapes=clone(h.gd.layout.shapes);
+    const button=h.q('.rist-peak-display-toggle');assert.equal(button.textContent,'피크 표시');
+    button.click();await tick();
+    assert.equal(button.getAttribute('aria-pressed'),'false');assert.equal(h.gd.layout.meta.ristPeaksVisible,false);
+    assert.equal(peak.mode,'none');assert.equal(peak.hoverinfo,'skip');assert.equal(peak.hovertemplate,null);
+    assert.equal(peak.visible,before.visible);assert.deepEqual(clone(peak.meta.rist_peak),before.meta.rist_peak);
+    assert.deepEqual(clone(h.gd.data[0]),raw);assert.deepEqual(clone(peak.x),before.x);assert.deepEqual(clone(peak.y),before.y);
+    assert.equal(h.gd.layout.annotations[0].visible,false);assert.equal(h.gd.layout.shapes[0].visible,false);
+    assert.deepEqual(clone(h.gd.layout.annotations[1]),annotations[1]);assert.deepEqual(clone(h.gd.layout.shapes[1]),shapes[1]);
+    assert.equal(h.gd._ristNearestPeakCurveFromEvent({clientX:200,clientY:100,target:h.gd}),null);
+    h.q('.rist-peak-label-toggle').click();await tick(); // Remember independent label preference.
+    button.click();await tick();
+    assert.deepEqual(clone(peak),before);assert.equal(h.gd.layout.annotations[0].visible,false);
+    h.q('.rist-peak-label-toggle').click();await tick();
+    assert.equal(h.gd.layout.annotations[0].visible,true);assert.equal(h.gd.layout.shapes[0].visible,true);
+  });
+  test(label+': display toggle supports undo/redo, saved work restoration, and old work defaults',async t=>{
+    const h=setup(t,kind,mode);shapeFixture(h);await tick();h.gd.data[1].mode='markers';
+    const button=h.q('.rist-peak-display-toggle');button.click();await tick();
+    const saved={data:clone(h.gd.data),layout:clone(h.gd.layout)};
+    h.gd._ristHistory.undo();await tick();assert.equal(h.gd.data[1].mode,'markers');assert.equal(button.getAttribute('aria-pressed'),'true');
+    h.gd._ristHistory.redo();await tick();assert.equal(h.gd.data[1].mode,'none');assert.equal(h.gd.layout.annotations[0].visible,false);
+    h.gd.data=saved.data;h.gd.layout=saved.layout;h.dispatch('rist-plot-data-replaced');await tick();
+    assert.equal(button.getAttribute('aria-pressed'),'false');button.click();await tick();assert.equal(h.gd.data[1].mode,'markers');
+    delete h.gd.layout.meta.ristPeaksVisible;h.dispatch('rist-plot-data-replaced');await tick();
+    assert.equal(button.getAttribute('aria-pressed'),'true');assert.equal(h.gd.layout.annotations[0].visible,true);
+  });
+  test(label+': sensitivity and all/sample visibility changes cannot unmask hidden peaks',async t=>{
+    const h=setup(t,kind,mode);shapeFixture(h);await tick();
+    h.gd.data[1].meta.rist_peak.sensitivity_min=20;h.gd.data[1].mode='markers';
+    h.run('gd._ristPeakSensitivityInstalled');h.q('.rist-peak-display-toggle').click();await tick();
+    for(const value of [0,100,0,100]) {
+      const input=h.q('.rist-peak-sensitivity-number');input.value=String(value);input.dispatchEvent(new h.w.Event('input'));await tick();
+      assert.equal(h.gd.data[1].mode,'none');assert.equal(h.gd.layout.annotations[0].visible,false);
+      assert.equal(h.gd.data[1].visible,value===0?false:true);
+    }
+    for(const visible of ['legendonly',true]) {
+      await h.w.Plotly.restyle(h.gd,{visible},[0]);await tick();
+      assert.equal(h.gd.data[1].mode,'none');assert.equal(h.gd.layout.annotations[0].visible,false);
+    }
+    h.q('[data-visible="true"]').click();await tick();assert.equal(h.gd.data[1].mode,'none');
+    h.q('.rist-peak-display-toggle').click();await tick();
+    assert.equal(h.gd.data[1].mode,'markers');assert.equal(h.gd.layout.annotations[0].visible,true);
+  });
+  test(label+': new peaks stay hidden, rapid toggles settle, and exports omit only peak graphics',async t=>{
+    const h=setup(t,kind,mode);shapeFixture(h);await tick();h.run('function buildImageExportPayload');
+    const button=h.q('.rist-peak-display-toggle');button.click();await tick();
+    const added=clone(h.gd.data[1]);delete added.meta.rist_peak_display;added.mode='markers';added.name='Manual';added.meta.rist_peak.source='user';
+    await h.w.Plotly.addTraces(h.gd,added);h.emit('plotly_afterplot');await tick();assert.equal(added.mode,'none');
+    const snapshot=clone({data:h.gd.data,layout:h.gd.layout});
+    const output=h.gd._ristBuildImageExportPayload(h.gd.data,h.gd.layout,1000,700);
+    assert.equal(output.data.length,1);assert.equal(output.data[0].name,'Sample');
+    assert.equal(output.layout.annotations[0].visible,false);assert.equal(output.layout.shapes[0].visible,false);
+    assert.equal(output.layout.annotations[1].text,snapshot.layout.annotations[1].text);
+    assert.deepEqual(clone({data:h.gd.data,layout:h.gd.layout}),snapshot);
+    button.click();button.click();button.click();await tick();
+    assert.equal(button.getAttribute('aria-pressed'),'true');assert.equal(h.gd.data[1].mode,'markers');assert.equal(added.mode,'markers');
+    assert.equal(h.gd._ristBuildImageExportPayload(h.gd.data,h.gd.layout,1000,700).data.length,3);
+  });
   test(label+': sample width saves with color/dash, only changes its RAW trace, and supports undo/redo',async t=>{
     const h=setup(t,kind,mode);
     h.gd.data[0].line={width:1.25,color:'#123456',dash:'solid'};

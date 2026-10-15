@@ -382,6 +382,9 @@ def test_shared_plotly_module_applies_legend_text(tmp_path) -> None:
     assert "ristPeakLabelsVisible" in html
     assert "rist-peak-label-toggle" in html
     assert "rist-peak-label-visibility-change" in html
+    assert "rist-peak-display-toggle" in html
+    assert "rist-peak-display-change" in html
+    assert "ristPeaksVisible" in html
     assert "if (!isPeakCurve(i)) continue;" in html
     assert "rist-legend-name-change" in html
     assert "rist-legend-color-change" in html

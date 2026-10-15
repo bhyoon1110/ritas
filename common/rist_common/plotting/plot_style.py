@@ -2092,6 +2092,18 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
     }});
   }}
 
+  function peaksDisplayed() {{
+    return !(gd.layout && gd.layout.meta && gd.layout.meta.ristPeaksVisible === false);
+  }}
+
+  function setPeakDisplayVisibility(visible) {{
+    if (!window.Plotly) return;
+    if (gd._ristHistory) gd._ristHistory.capture();
+    window.Plotly.relayout(gd, {{"meta.ristPeaksVisible": !!visible}}).then(function() {{
+      gd.dispatchEvent(new CustomEvent("rist-peak-display-change"));
+    }});
+  }}
+
   function refreshPeakBulkControls(bulk) {{
     var hasPeaks = false;
     for (var i = 0; i < (gd.data || []).length; i++) {{
@@ -2115,6 +2127,15 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
       );
     }});
     updatePeakLabelButton(bulk.querySelector(".rist-peak-label-toggle"));
+    var displayButton = bulk.querySelector(".rist-peak-display-toggle");
+    if (displayButton) {{
+      var displayed = peaksDisplayed();
+      displayButton.classList.toggle("is-active", displayed);
+      displayButton.setAttribute("aria-pressed", displayed ? "true" : "false");
+      displayButton.title = displayed
+        ? "피크 점·라벨·연결선 숨김 (분석 정보 유지)"
+        : "피크 점·라벨·연결선 표시 (라벨 설정 유지)";
+    }}
   }}
 
   function installLegendBulkControls() {{
@@ -2136,6 +2157,10 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
       + "<button type='button' class='rist-legend-bulk-button' data-peak-control data-peak-legend-visible='true'>\ud53c\ud06c \ubc94\ub840 \ud45c\uc2dc</button>"
       + "<button type='button' class='rist-legend-bulk-button' data-peak-control data-peak-legend-visible='false'>\ud53c\ud06c \ubc94\ub840 \uc228\uae40</button>"
       + "<button type='button' class='rist-legend-bulk-button rist-peak-label-toggle' data-peak-control aria-pressed='true'>\ud53c\ud06c \ub77c\ubca8</button>";
+    if (directAnnotationEdit) {{
+      bulk.innerHTML += "<button type='button' class='rist-legend-bulk-button rist-peak-display-toggle'"
+        + " data-peak-control aria-pressed='true'>피크 표시</button>";
+    }}
     toolbar.appendChild(bulk);
     refreshPeakBulkControls(bulk);
 
@@ -2144,6 +2169,13 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
       if (!b) return;
       ev.preventDefault();
       ev.stopPropagation();
+      if (b.classList.contains("rist-peak-display-toggle")) {{
+        gd.dispatchEvent(new CustomEvent("rist-exclusive-interaction-start", {{
+          detail: {{mode: "peak-display"}}
+        }}));
+        setPeakDisplayVisibility(!peaksDisplayed());
+        return;
+      }}
       if (b.classList.contains("rist-peak-label-toggle")) {{
         gd.dispatchEvent(new CustomEvent("rist-exclusive-interaction-start", {{
           detail: {{mode: "peak-label-visibility"}}
@@ -2578,12 +2610,13 @@ def peak_sensitivity_js(div_id: str, initial: str = "medium") -> str:
 
   function peakLabelsVisible() {{
     if (typeof gd._ristPeakLabelsVisible === "boolean") {{
-      return gd._ristPeakLabelsVisible;
+      return gd._ristPeakLabelsVisible
+        && !(gd.layout.meta && gd.layout.meta.ristPeaksVisible === false);
     }}
     var layoutMeta = gd.layout && gd.layout.meta && typeof gd.layout.meta === "object"
       ? gd.layout.meta : {{}};
     gd._ristPeakLabelsVisible = layoutMeta.ristPeakLabelsVisible !== false;
-    return gd._ristPeakLabelsVisible;
+    return gd._ristPeakLabelsVisible && layoutMeta.ristPeaksVisible !== false;
   }}
 
   function peakLegendEntriesVisible() {{
@@ -3022,9 +3055,55 @@ def peak_editor_js(div_id: str) -> str:
 
   function peakLabelsVisible() {{
     if (typeof gd._ristPeakLabelsVisible !== "boolean") {{
-      return refreshPeakLabelVisibility();
+      refreshPeakLabelVisibility();
     }}
-    return gd._ristPeakLabelsVisible;
+    return gd._ristPeakLabelsVisible && peaksDisplayed();
+  }}
+
+  function peaksDisplayed() {{
+    return !(gd.layout && gd.layout.meta && gd.layout.meta.ristPeaksVisible === false);
+  }}
+
+  // Presentation only: do not change trace.visible/user_visible or remove RAW/
+  // peak evidence. Persist the original render settings for history/workspaces.
+  // mode:none + hoverinfo:skip also prevents invisible peak hit/hover targets.
+  var syncingPeakDisplay = false;
+  function syncPeakDisplay() {{
+    if (!window.Plotly || syncingPeakDisplay) return;
+    var displayed = peaksDisplayed();
+    var curves = [], modes = [], hoverinfos = [], templates = [], metadata = [];
+    (gd.data || []).forEach(function(trace, curve) {{
+      if (!isPeakCurve(curve)) return;
+      var saved = trace.meta && trace.meta.rist_peak_display;
+      if (displayed ? !saved : !!saved && trace.mode === "none"
+          && trace.hoverinfo === "skip" && trace.hovertemplate == null) return;
+      var nextMeta = Object.assign({{}}, trace.meta || {{}});
+      if (!saved) saved = {{
+        mode: trace.mode == null ? "markers" : trace.mode,
+        hoverinfo: trace.hoverinfo == null ? null : trace.hoverinfo,
+        hovertemplate: trace.hovertemplate == null ? null : trace.hovertemplate
+      }};
+      if (displayed) delete nextMeta.rist_peak_display;
+      else nextMeta.rist_peak_display = saved;
+      curves.push(curve);
+      modes.push(displayed ? saved.mode : "none");
+      hoverinfos.push(displayed ? saved.hoverinfo : "skip");
+      templates.push(displayed ? saved.hovertemplate : null);
+      metadata.push(nextMeta);
+    }});
+    if (!curves.length) return;
+    syncingPeakDisplay = true;
+    gd._ristPeakDisplayReady = window.Plotly.restyle(gd, {{
+      mode: modes, hoverinfo: hoverinfos, hovertemplate: templates, meta: metadata
+    }}, curves).then(function() {{
+      syncVisibility();
+      syncingPeakDisplay = false;
+      // A new dataset or another toggle may arrive during the Plotly update.
+      syncPeakDisplay();
+    }}).catch(function(err) {{
+      syncingPeakDisplay = false;
+      console.error("RIST peak display update failed", err);
+    }});
   }}
 
   function peakName(x) {{
@@ -3861,6 +3940,7 @@ def peak_editor_js(div_id: str) -> str:
   }}
 
   function nearestPeakCurveFromEvent(ev) {{
+    if (!peaksDisplayed()) return null;
     if (ev.target && ev.target.closest
         && ev.target.closest(".legend,.modebar,.rist-plot-control-row,.rist-legend-edit-panel,.rist-legend-drag-handle")) {{
       return null;
@@ -4638,6 +4718,7 @@ def peak_editor_js(div_id: str) -> str:
 
   gd.on("plotly_click", function(ev) {{
     if (mode !== "delete" && mode !== "select") return;
+    if (!peaksDisplayed()) return;
     if (blockedByOtherInteraction()) return;
     if (gd._ristEditableAnnotationAt && ev && gd._ristEditableAnnotationAt(ev.event)) return;
     if (Date.now() <= suppressPeakPlotlyClickUntil) {{
@@ -4756,6 +4837,13 @@ def peak_editor_js(div_id: str) -> str:
     gd._ristPeakLabelsVisible = detail.visible !== false;
     syncVisibility();
   }});
+  gd.addEventListener("rist-peak-display-change", function() {{
+    selectedPeaks = [];
+    updateSelectButton();
+    syncPeakDisplay();
+    syncVisibility();
+  }});
+  gd.on("plotly_afterplot", syncPeakDisplay);
   ["pointerdown", "mousedown", "click", "dblclick", "touchstart", "touchend"].forEach(function(type) {{
     document.addEventListener(type, interceptHiddenSamplePeakLegendToggle, true);
     gd.addEventListener(type, interceptHiddenSamplePeakLegendToggle, true);
@@ -4783,6 +4871,7 @@ def peak_editor_js(div_id: str) -> str:
     }}, 0);
   }});
   normalizeSampleLegendEntries();
+  syncPeakDisplay();
   updateHiddenSamplePeakLegendLocks();
 }})();
 </script>
@@ -5121,10 +5210,18 @@ def _image_download_js(div_id: str, formats, filename: str, scale: float) -> str
   function buildImageExportPayload(sourceData, sourceLayout, width, height) {
     var data = cloneValue(sourceData, []);
     var layout = cloneValue(sourceLayout, {});
+    var peaksHidden = layout.meta && layout.meta.ristPeaksVisible === false;
+    if (peaksHidden) (layout.meta.ristPeakLabels || []).forEach(function(label) {
+      var annotation = (layout.annotations || [])[label.annotationIndex];
+      var shape = (layout.shapes || [])[label.shapeIndex];
+      if (annotation) annotation.visible = false;
+      if (shape) shape.visible = false;
+    });
     var hasSampleMetadata = data.some(isSampleTrace);
     var exportData = [];
     data.forEach(function(trace) {
       if (!traceIsVisible(trace)) return;
+      if (peaksHidden && isPeakTrace(trace)) return;
       trace.visible = true;
       trace.showlegend = hasSampleMetadata
         ? isSampleTrace(trace)

@@ -81,6 +81,18 @@ def test_readonly_snapshot_keeps_only_stack_axis_display_fields(key):
     assert source["layout"]["meta"][key]["yAxisDisplay"] == saved
 
 
+def test_peak_display_switch_omits_peak_graphics_but_keeps_sample_and_other_notes():
+    source = sample_figure()
+    source["layout"]["meta"]["ristPeaksVisible"] = False
+    before = deepcopy(source)
+    result = viewer.readonly_figure(source)
+    assert source == before
+    assert [item["name"] for item in result["data"]] == ["Sample A", "Sample B"]
+    assert result["layout"]["meta"]["labels"] == []
+    assert [a["text"] for a in result["layout"]["annotations"]] == ["Ratio: 2.5"]
+    assert result["layout"].get("shapes", []) == []
+
+
 def test_snapshot_file_and_limits(monkeypatch):
     figure = sample_figure()
     upload = UploadFile(filename="figure.json", file=BytesIO(json.dumps(figure).encode()))

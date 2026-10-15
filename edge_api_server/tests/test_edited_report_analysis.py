@@ -86,6 +86,24 @@ def test_final_edit_evidence_excludes_old_results_and_keeps_box_coordinates(expe
 
 
 @pytest.mark.parametrize("experiment", ["FT-IR", "RAMAN"])
+def test_display_only_peak_toggle_does_not_delete_table_or_llm_evidence(experiment):
+    payload = edited_payload()
+    _, before_doc, before_spec = build_spec(payload, experiment)
+    figure = payload["viewerFigure"]
+    figure["layout"]["meta"]["ristPeaksVisible"] = False
+    figure["layout"]["annotations"][0]["visible"] = False
+    figure["layout"]["shapes"][0]["visible"] = False
+    for trace in figure["data"]:
+        if (trace.get("meta") or {}).get("rist_peak"):
+            trace.update(mode="none", hoverinfo="skip", hovertemplate=None)
+    prepared, document, spec = build_spec(payload, experiment)
+    assert spec.facts["current_peaks"] == before_spec.facts["current_peaks"]
+    assert spec.facts["visible_peak_count"] == 1
+    assert prepared["samples"][0]["peakCount"] == 1
+    assert document.to_markdown() == before_doc.to_markdown()
+
+
+@pytest.mark.parametrize("experiment", ["FT-IR", "RAMAN"])
 def test_zero_peaks_do_not_revive_original_analysis(experiment):
     payload = edited_payload()
     payload["viewerFigure"]["data"] = payload["viewerFigure"]["data"][:1]

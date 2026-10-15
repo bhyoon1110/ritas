@@ -79,6 +79,8 @@ def readonly_figure(source: dict) -> dict:
     for index, trace in enumerate(source.get("data") or []):
         if trace.get("visible") in (False, "legendonly"):
             continue
+        if meta.get("ristPeaksVisible") is False and (trace.get("meta") or {}).get("rist_peak"):
+            continue  # Display-only switch; analysis evidence is kept in the source.
         if trace.get("type", "scatter") not in {"scatter", "scattergl"}:
             continue
         if not isinstance(trace.get("x"), list) or not isinstance(trace.get("y"), list):
