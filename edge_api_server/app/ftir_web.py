@@ -269,6 +269,13 @@ html, body {
 body {
   overflow-x: hidden;
 }
+/* Keep action captions intact; their containers wrap whole controls instead. */
+button,
+.ftir-report-option-button {
+  white-space: nowrap;
+  word-break: normal;
+  overflow-wrap: normal;
+}
 .ftir-app-bar {
   display: flex;
   align-items: center;
@@ -839,6 +846,7 @@ body {
 }
 .ftir-library-dialog-footer {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   flex: 0 0 auto;
@@ -850,10 +858,13 @@ body {
 }
 .ftir-library-dialog-footer-actions {
   display: flex;
+  flex-wrap: wrap;
+  flex: 0 0 auto;
   gap: 8px;
   margin-left: auto;
 }
 .ftir-library-dialog-button {
+  flex-shrink: 0;
   height: 30px;
   border: 1px solid #9fb3c8;
   border-radius: 4px;
@@ -1144,6 +1155,8 @@ body {
   font: 11px Arial, "Noto Sans KR", sans-serif;
   padding: 6px 8px;
   text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .ftir-report-picker-item:hover,
 .ftir-report-picker-item:focus {
@@ -1475,6 +1488,7 @@ body {
     grid-template-columns: 1fr;
   }
   .ftir-library-band {
+    flex-wrap: wrap;
     gap: 7px;
     padding: 7px 12px;
   }
@@ -2475,6 +2489,7 @@ _UPLOAD_SCRIPT = """
         item.className = "ftir-report-picker-item";
         item.setAttribute("role", "option");
         item.textContent = value;
+        item.title = value;
         item.addEventListener("click", function() {
           control.value = value;
           control.dispatchEvent(new Event("input", {bubbles: true}));

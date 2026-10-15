@@ -225,6 +225,11 @@ test('ratios have no connector and edit/delete only the selected sample ratio',a
   d.querySelectorAll('.rist-raman-ratio-button')[1].click();
   const rows=d.querySelectorAll('[data-ratio-id]');
   assert.equal(rows.length,2);assert.match(rows[1].textContent,/Sample B/);
+  for(const row of rows) {
+    assert.equal(row.style.whiteSpace,'nowrap');
+    assert.equal(row.style.textOverflow,'ellipsis');
+    assert.equal(row.title,row.textContent);
+  }
   rows[0].click();
   d.querySelector('[data-ratio-title]').value='<script>test</script>';
   d.querySelector('[data-ratio-denominator]').value='3';

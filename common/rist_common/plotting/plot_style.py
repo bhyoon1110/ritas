@@ -666,7 +666,7 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
 #{div_id} .rist-legend-edit-panel {{
   position: absolute;
   top: 94px;
-  right: 30px;
+  right: 8px;
   z-index: 21;
   display: none;
   width: min(360px, calc(100% - 16px));
@@ -935,6 +935,7 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
   bottom: -10px;
   z-index: 2;
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   gap: 8px;
   margin: 10px -10px -10px;
@@ -951,6 +952,10 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
   cursor: pointer;
   font: 12px Arial, sans-serif;
   padding: 5px 8px;
+}}
+#{div_id} .rist-legend-edit-panel button {{
+  white-space: nowrap;
+  flex-shrink: 0;
 }}
 #{div_id} .rist-legend-delete-all-peaks.is-active {{
   border-color: #9b2c2c;
@@ -5593,7 +5598,7 @@ def shape_editor_js(div_id: str) -> str:
 #{div_id} .rist-shape-editor-panel {{
   position: absolute;
   top: 94px;
-  right: 30px;
+  right: 8px;
   z-index: 23;
   display: none;
   width: min(310px, calc(100% - 16px));
@@ -5603,6 +5608,10 @@ def shape_editor_js(div_id: str) -> str:
   box-shadow: 0 4px 18px rgba(0,0,0,0.16);
   padding: 10px;
   box-sizing: border-box;
+}}
+#{div_id} .rist-shape-editor-panel button {{
+  white-space: nowrap;
+  flex-shrink: 0;
 }}
 #{div_id} .rist-shape-kind-tabs {{
   display: grid;
@@ -5775,6 +5784,7 @@ def shape_editor_js(div_id: str) -> str:
 }}
 #{div_id} .rist-shape-editor-actions {{
   display: flex;
+  flex-wrap: wrap;
   gap: 7px;
   justify-content: flex-end;
   margin-top: 10px;

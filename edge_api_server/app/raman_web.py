@@ -307,6 +307,13 @@ body { overflow-x: hidden; }
   color: #52606d;
   font-size: 12px;
 }
+/* Keep action captions intact; their containers wrap whole controls instead. */
+button,
+.raman-report-option-button {
+  white-space: nowrap;
+  word-break: normal;
+  overflow-wrap: normal;
+}
 .raman-actions {
   display: flex;
   flex-wrap: wrap;
@@ -506,6 +513,7 @@ body { overflow-x: hidden; }
 }
 .raman-library-dialog-actions {
   justify-content: flex-end;
+  flex-wrap: wrap;
   border-top: 1px solid #d9e2ec;
   border-bottom: 0;
 }
@@ -637,6 +645,7 @@ body { overflow-x: hidden; }
   font: 16px/1 Arial, sans-serif;
 }
 .raman-library-dialog-button {
+  flex-shrink: 0;
   height: 30px;
   border: 1px solid #9fb3c8;
   border-radius: 4px;
@@ -1152,6 +1161,8 @@ body { overflow-x: hidden; }
   font: 11px Arial, "Noto Sans KR", sans-serif;
   padding: 6px 8px;
   text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .raman-report-picker-item:hover,
 .raman-report-picker-item:focus {
@@ -3209,8 +3220,9 @@ _RAMAN_RATIO_SCRIPT = """
       var row = document.createElement("p");
       var edit = document.createElement("button");
       edit.type = "button";
-      edit.style.cssText = "max-width:100%;white-space:normal;text-align:left;overflow-wrap:break-word;";
+      edit.style.cssText = "max-width:100%;white-space:nowrap;text-align:left;overflow:hidden;text-overflow:ellipsis;";
       edit.textContent = sampleName(item) + " · " + (item.title ? item.title + " · " : "") + ratioText(item);
+      edit.title = edit.textContent;
       edit.setAttribute("data-ratio-id", String(item.id));
       edit.setAttribute("aria-pressed", item.id === selectedRatioId ? "true" : "false");
       edit.addEventListener("click", function() { openRatioEditor(item.id); });
@@ -3678,6 +3690,7 @@ _UPLOAD_SCRIPT = """
         item.className = "raman-report-picker-item";
         item.setAttribute("role", "option");
         item.textContent = value;
+        item.title = value;
         item.addEventListener("click", function() {
           control.value = value;
           control.dispatchEvent(new Event("input", {bubbles: true}));
