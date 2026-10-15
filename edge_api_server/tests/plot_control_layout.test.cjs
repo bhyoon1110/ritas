@@ -68,9 +68,12 @@ for (const kind of ['ftir','raman']) {
       assert.equal(button['min-height'],'28px');
       assert.equal(declarations('.rist-legend-sample-width-actions').display,'flex');
       assert.equal(declarations('.rist-legend-sample-width-actions').flex,'0 0 auto');
-      assert.equal(declarations('.rist-legend-peak-source')['word-break'],'break-word');
-      assert.equal(declarations('.rist-legend-peak-source')['max-width'],'100%');
-      assert.equal(declarations('.rist-legend-peak-body .rist-legend-edit-input')['flex-basis'],'0');
+      assert.equal(declarations('.rist-legend-raw-name')['word-break'],'break-word');
+      assert.equal(declarations('.rist-legend-raw-name')['max-width'],'100%');
+      assert.equal(declarations('.rist-legend-peak-label').flex,'1 1 0');
+      assert.equal(declarations('.rist-legend-raw-tree > summary').display,'flex');
+      assert.equal(declarations('.rist-legend-raw-count')['white-space'],'nowrap');
+      assert.equal(declarations('.rist-legend-raw-peaks')['border-left'],'1px solid #c7d0dd');
     });
     test(kind+'/'+mode+': page, template and library actions have single-line captions and wrapping groups',()=>{
       function pageDecl(selector) {

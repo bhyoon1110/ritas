@@ -260,7 +260,7 @@ for (const kind of ['ftir','raman']) for (const mode of ['native','chrome49']) {
     toggle.click();await tick();assert.equal(toggle.textContent,'범례 숨김');assert(toggle.classList.contains('is-active'));
     toggle.click();await tick();assert.equal(toggle.textContent,'범례 표시');assert(!toggle.classList.contains('is-active'));
   });
-  test(label+': every peak shows its Raw even in mixed-sample groups; rename preserves pending edits',async t=>{
+  test(label+': Raw trees keep mixed-sample groups separate; renaming preserves pending edits',async t=>{
     const h=setup(t,kind,mode);await tick();
     const parent=clone(h.gd.data[0]);parent.name='Other raw.txt';parent.meta.rist_sample_group=parent.legendgroup='sample:1';
     const peak=clone(h.gd.data[1]);peak.meta.rist_sample_group=peak.meta.rist_peak.sample_group='sample:1';
@@ -268,22 +268,84 @@ for (const kind of ['ftir','raman']) for (const mode of ['native','chrome49']) {
     h.gd.data.push(parent,peak);
     for(const i of [1,3]) {h.gd.data[i].meta.rist_peak.manual_group_key='manual-peak-group:shared';h.gd.data[i].meta.rist_peak.group_name='Shared group';}
     h.dispatch('rist-plot-data-replaced');h.q('.rist-legend-edit-button').click();
-    const sources=()=>[...h.gd.querySelectorAll('.rist-legend-peak-source')].map(n=>n.textContent);
-    assert.deepEqual(sources(),['Raw: Sample','Raw: Other raw.txt']);
-    assert.equal(h.gd.querySelectorAll('.is-group-member .rist-legend-peak-source').length,2);
+    const sources=()=>[...h.gd.querySelectorAll('.rist-legend-raw-name')].map(n=>n.textContent);
+    assert.deepEqual(sources(),['Sample','Other raw.txt']);
+    assert.equal(h.gd.querySelectorAll('.rist-legend-raw-tree .is-group-member').length,2);
+    assert.equal(h.gd.querySelectorAll('.rist-legend-manual-groups .rist-legend-group-row').length,1);
+    assert.equal(h.gd.querySelectorAll('.rist-legend-manual-groups .is-peak').length,0);
     h.q('.rist-legend-peak-details').open=true;
     const pending=h.q('.is-peak textarea');pending.value='아직 저장하지 않은 피크';
     h.gd.data[0].name='Renamed<br>sample.dpt';h.dispatch('rist-legend-name-change');
-    assert.equal(sources()[0],'Raw: Renamed\nsample.dpt');
+    assert.equal(sources()[0],'Renamed\nsample.dpt');
     assert.equal(h.q('.is-peak textarea'),pending);assert.equal(pending.value,'아직 저장하지 않은 피크');
     assert(h.q('.rist-legend-peak-details').open);
     h.q('.is-sample textarea').value='Saved sample';h.q('.rist-legend-edit-save-all').click();await tick();
-    assert.equal(sources()[0],'Raw: Saved sample');
+    assert.equal(sources()[0],'Saved sample');
     h.gd.data[0].name='<img src=x onerror=alert(1)>Safe raw';h.dispatch('rist-legend-name-change');
-    assert.equal(sources()[0],'Raw: Safe raw');assert.equal(h.q('.rist-legend-peak-source img'),null);
+    assert.equal(sources()[0],'Safe raw');assert.equal(h.q('.rist-legend-raw-name img'),null);
     h.gd.data[1].meta.rist_sample_group=h.gd.data[1].meta.rist_peak.sample_group='missing';
-    h.dispatch('rist-peak-sensitivity-change');assert.equal(sources()[0],'Raw: 소속 샘플 확인 불가');
+    h.dispatch('rist-peak-sensitivity-change');assert.equal(sources()[2],'소속 샘플 확인 불가');
+    assert.equal(h.q('.rist-legend-raw-tree[data-sample-group="missing"] .is-peak').getAttribute('data-curve'),'1');
     assert(h.q('.rist-legend-peak-details').open);
+  });
+  test(label+': Raw trees group by stable identity, show positions/counts and retain collapse through refresh/reorder',async t=>{
+    const h=setup(t,kind,mode);await tick();h.gd.data[0].name='Same raw';
+    const parent=clone(h.gd.data[0]);parent.legendgroup=parent.meta.rist_sample_group='sample:1';
+    const other=clone(h.gd.data[1]);other.meta.rist_sample_group=other.meta.rist_peak.sample_group='sample:1';
+    other.meta.rist_legend_edit_group=other.meta.rist_peak.label_key='other';
+    const second=clone(h.gd.data[1]);second.meta.rist_legend_edit_group=second.meta.rist_peak.label_key='second';
+    second.meta.rist_peak.x=250.25;second.x=[250.25];second.meta.rist_peak.source='user';
+    h.gd.data.push(parent,other,second);h.dispatch('rist-plot-data-replaced');
+    h.q('.rist-legend-edit-button').click();
+    const tree=key=>h.q('.rist-legend-raw-tree[data-sample-group="'+key+'"]');
+    assert.equal(h.gd.querySelectorAll('.rist-legend-raw-tree').length,2);
+    assert.equal(tree('sample:0').querySelectorAll('.is-peak').length,2);
+    assert.equal(tree('sample:1').querySelectorAll('.is-peak').length,1);
+    assert.equal(tree('sample:0').querySelector('.rist-legend-raw-count').textContent,'피크 2개');
+    assert.equal(tree('sample:0').querySelector('[data-curve="4"] .rist-legend-peak-info').textContent,'250.3 cm⁻¹');
+    const before=clone(h.gd.data),layout=clone(h.gd.layout);
+    tree('sample:0').open=false;
+    assert.deepEqual(clone(h.gd.data),before);assert.deepEqual(clone(h.gd.layout),layout);
+    h.gd.data[1].meta.rist_peak.sensitivity_min=25;h.gd._ristPeakSensitivityValue=0;
+    h.dispatch('rist-peak-sensitivity-change');
+    assert(!tree('sample:0').open);assert.equal(tree('sample:0').querySelector('.rist-legend-raw-count').textContent,'피크 1개');
+    h.gd._ristPeakSensitivityValue=100;h.dispatch('rist-peak-sensitivity-change');
+    assert(!tree('sample:0').open);assert.equal(tree('sample:0').querySelector('.rist-legend-raw-count').textContent,'피크 2개');
+    h.gd.data[2].legendrank=0;h.gd.data[0].legendrank=10;h.dispatch('rist-'+kind+'-stack-change');
+    assert.equal(h.q('.rist-legend-raw-tree').getAttribute('data-sample-group'),'sample:1');assert(!tree('sample:0').open);
+    h.q('.rist-legend-edit-close').click();h.q('.rist-legend-edit-button').click();assert(!tree('sample:0').open);
+    await h.gd._ristDeleteSample(0);await tick();assert.equal(tree('sample:0'),null);assert(tree('sample:1'));
+    h.gd._ristHistory.undo();await tick();assert(tree('sample:0'));assert(!tree('sample:0').open);
+  });
+  test(label+': deleting the last peak leaves an empty Raw branch and undo restores its count',async t=>{
+    const h=setup(t,kind,mode);await tick();h.q('.rist-legend-edit-button').click();
+    h.q('.is-peak .rist-legend-peak-delete').click();h.q('.rist-legend-raw-tree').open=false;
+    h.q('.rist-legend-edit-save-all').click();await tick();
+    assert.equal(h.gd.data.length,1);assert.equal(h.q('.rist-legend-raw-count').textContent,'피크 0개');
+    assert(h.q('.rist-legend-raw-empty'));assert(!h.q('.rist-legend-raw-tree').open);
+    h.gd._ristHistory.undo();await tick();
+    assert.equal(h.q('.rist-legend-raw-count').textContent,'피크 1개');assert.equal(h.q('.rist-legend-raw-empty'),null);
+  });
+  test(label+': shared group edits, selected additions, removals and clear keep Raw ownership intact',async t=>{
+    const h=setup(t,kind,mode);await tick();
+    const parent=clone(h.gd.data[0]);parent.name='Other';parent.meta.rist_sample_group=parent.legendgroup='sample:1';
+    const other=clone(h.gd.data[1]);other.meta.rist_sample_group=other.meta.rist_peak.sample_group='sample:1';
+    other.meta.rist_legend_edit_group=other.meta.rist_peak.label_key='other';
+    const extra=clone(h.gd.data[1]);extra.meta.rist_legend_edit_group=extra.meta.rist_peak.label_key='extra';extra.meta.rist_peak.selected=true;
+    h.gd.data.push(parent,other,extra);
+    for(const i of [1,3]) Object.assign(h.gd.data[i].meta.rist_peak,{manual_group_key:'manual-peak-group:Shared',group_name:'Shared'});
+    h.dispatch('rist-plot-data-replaced');h.q('.rist-legend-edit-button').click();
+    h.q('.rist-legend-group-add').click();h.q('.rist-legend-group-title').value='Renamed';
+    h.q('.rist-legend-group-color').value='#00aa55';h.q('.rist-legend-edit-save-all').click();await tick();
+    for(const i of [1,3,4]) {assert.equal(h.gd.data[i].meta.rist_peak.group_name,'Renamed');assert.equal(h.gd.data[i].marker.color,'#00aa55');}
+    assert.equal(h.gd.querySelectorAll('.rist-legend-group-row').length,1);
+    assert.equal(h.gd.querySelectorAll('.rist-legend-raw-tree[data-sample-group="sample:0"] .is-peak').length,2);
+    assert.equal(h.gd.querySelectorAll('.rist-legend-raw-tree[data-sample-group="sample:1"] .is-peak').length,1);
+    h.q('.is-peak[data-curve="3"] .rist-legend-group-remove').click();h.q('.rist-legend-edit-save-all').click();await tick();
+    assert(!h.gd.data[3].meta.rist_peak.manual_group_key);assert.equal(h.gd.data[1].meta.rist_peak.group_name,'Renamed');
+    h.q('.rist-legend-group-clear').click();h.q('.rist-legend-edit-save-all').click();await tick();
+    assert.equal(h.gd.querySelectorAll('.rist-legend-group-row').length,0);assert.equal(h.gd.querySelectorAll('.rist-legend-raw-tree .is-peak').length,3);
+    for(const i of [1,3,4]) assert(!h.gd.data[i].meta.rist_peak.manual_group_key);
   });
   if(kind==='raman') test(label+': Raw deletion removes only its ratios and undo restores their peak references',async t=>{
     const h=setup(t,kind,mode);await tick();

@@ -786,22 +786,56 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
 #{div_id} .rist-legend-edit-row.is-peak.is-group-member {{
   margin-left: 30px;
 }}
-#{div_id} .rist-legend-peak-body .rist-legend-edit-row.is-peak {{
-  flex-wrap: wrap;
+#{div_id} .rist-legend-raw-tree {{ margin-top: 8px; min-width: 0; }}
+#{div_id} .rist-legend-raw-tree > summary {{
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 6px;
+  border: 1px solid #d7e0e8;
+  border-radius: 4px;
+  background: #eef4f8;
+  color: #174a68;
+  font: bold 12px/1.4 Arial, sans-serif;
+  list-style: none;
 }}
-#{div_id} .rist-legend-peak-body .rist-legend-edit-input {{
-  flex-basis: 0;
-}}
-#{div_id} .rist-legend-peak-source {{
-  flex: 0 0 100%;
+#{div_id} .rist-legend-raw-tree > summary::-webkit-details-marker {{ display: none; }}
+#{div_id} .rist-legend-raw-tree > summary::before {{ content: "▶"; flex: 0 0 auto; font-size: 9px; }}
+#{div_id} .rist-legend-raw-tree[open] > summary::before {{ content: "▼"; }}
+#{div_id} .rist-legend-raw-tree > summary:focus {{ outline: 2px solid #3b82f6; outline-offset: 1px; }}
+#{div_id} .rist-legend-raw-name {{
+  flex: 1 1 auto;
   min-width: 0;
   max-width: 100%;
-  color: #174a68;
-  font: bold 11px/1.4 Arial, sans-serif;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   word-break: break-word;
 }}
+#{div_id} .rist-legend-raw-count {{ flex: 0 0 auto; white-space: nowrap; font: 10px Arial, sans-serif; }}
+#{div_id} .rist-legend-raw-peaks {{ margin-left: 7px; border-left: 1px solid #c7d0dd; }}
+#{div_id} .rist-legend-raw-peaks .rist-legend-edit-row.is-peak {{
+  margin: 6px 0 0;
+  padding-left: 12px;
+  border-left: 0;
+}}
+#{div_id} .rist-legend-raw-peaks .rist-legend-edit-row.is-peak::before {{
+  left: 0;
+  top: 13px;
+  width: 9px;
+  border-top: 1px solid #c7d0dd;
+}}
+#{div_id} .rist-legend-peak-label {{ flex: 1 1 0; min-width: 0; }}
+#{div_id} .rist-legend-peak-label textarea {{ display: block; width: 100%; }}
+#{div_id} .rist-legend-peak-info,
+#{div_id} .rist-legend-raw-empty,
+#{div_id} .rist-legend-group-help {{
+  color: #627d98;
+  font: 10px/1.4 Arial, sans-serif;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}}
+#{div_id} .rist-legend-raw-empty {{ margin: 6px 0 0; padding-left: 12px; }}
+#{div_id} .rist-legend-manual-groups {{ margin-top: 12px; border-top: 1px solid #d7e0e8; padding-top: 8px; }}
 #{div_id} .rist-legend-edit-row.is-pending-delete {{
   opacity: 0.58;
 }}
@@ -1312,11 +1346,14 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
     return !!traceMeta(curve).rist_peak;
   }}
 
-  function sampleNameForCurve(curve) {{
+  function sampleGroupForCurve(curve) {{
     var meta = traceMeta(curve);
-    var sampleGroup = meta.rist_sample_group
-      || (meta.rist_peak && meta.rist_peak.sample_group)
-      || "";
+    return String(meta.rist_sample_group
+      || (meta.rist_peak && meta.rist_peak.sample_group) || "");
+  }}
+
+  function sampleNameForCurve(curve) {{
+    var sampleGroup = sampleGroupForCurve(curve);
     if (!sampleGroup) return "";
     var data = gd.data || [];
     for (var i = 0; i < data.length; i++) {{
@@ -1700,14 +1737,20 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
       panel.style.top = position.top + "px";
     }});
 
-    function refreshPeakSources() {{
-      panel.querySelectorAll(".rist-legend-peak-source").forEach(function(source) {{
-        var row = source.parentNode;
-        var curve = parseInt(row.getAttribute("data-curve"), 10);
-        var sampleName = legendDisplayToEdit(sampleNameForCurve(curve)).trim();
-        source.textContent = "Raw: " + (sampleName || "소속 샘플 확인 불가");
-        source.title = source.textContent;
-        row.title = sampleName ? sampleName + " 샘플의 피크" : source.textContent;
+    var rawTreeOpen = Object.create(null);
+
+    function refreshRawTreeNames() {{
+      var names = Object.create(null);
+      (gd.data || []).forEach(function(trace, curve) {{
+        if (isSampleCurve(curve)) {{
+          names[sampleGroupForCurve(curve) || "curve:" + curve] = legendDisplayToEdit(traceName(curve)).trim();
+        }}
+      }});
+      panel.querySelectorAll(".rist-legend-raw-tree").forEach(function(tree) {{
+        var name = names[tree.getAttribute("data-sample-group")] || "소속 샘플 확인 불가";
+        var label = tree.querySelector(".rist-legend-raw-name");
+        label.textContent = name;
+        label.title = name;
       }});
     }}
 
@@ -1715,6 +1758,11 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
       var body = panel.querySelector(".rist-legend-edit-body");
       var previousDetails = body.querySelector(".rist-legend-peak-details");
       var detailsOpen = !!(previousDetails && previousDetails.open);
+      body.querySelectorAll(".rist-legend-raw-tree").forEach(function(tree) {{
+        rawTreeOpen[tree.getAttribute("data-sample-group")] = tree.open;
+      }});
+      var previousGroups = body.querySelector(".rist-legend-manual-groups");
+      var groupsOpen = !previousGroups || previousGroups.open;
       var error = panel.querySelector(".rist-legend-edit-error");
       error.textContent = "";
       error.style.display = "none";
@@ -1731,6 +1779,30 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
       peakDetails.className = "rist-legend-peak-details";
       peakDetails.innerHTML = "<summary>피크 상세 편집</summary><div class='rist-legend-peak-body'></div>";
       var peakBody = peakDetails.querySelector(".rist-legend-peak-body");
+      var rawTrees = Object.create(null);
+      var manualGroups = document.createElement("details");
+      manualGroups.className = "rist-legend-manual-groups";
+      manualGroups.open = groupsOpen;
+      manualGroups.innerHTML = "<summary>피크 그룹 공통 설정</summary>"
+        + "<p class='rist-legend-group-help'>여러 Raw에 속한 피크도 같은 그룹 설정을 공유합니다. 그룹 해제는 피크를 삭제하지 않습니다.</p>";
+
+      function rawTreeForCurve(curve) {{
+        var key = sampleGroupForCurve(curve) || (isSampleCurve(curve) ? "curve:" + curve : "unassigned");
+        if (!rawTrees[key]) {{
+          var tree = document.createElement("details");
+          tree.className = "rist-legend-raw-tree";
+          tree.setAttribute("data-sample-group", key);
+          tree.open = rawTreeOpen[key] !== false;
+          tree.innerHTML = "<summary><span class='rist-legend-raw-name'></span>"
+            + "<span class='rist-legend-raw-count'></span></summary><div class='rist-legend-raw-peaks'></div>";
+          rawTrees[key] = tree;
+          peakBody.appendChild(tree);
+        }}
+        return rawTrees[key];
+      }}
+      if (directAnnotationEdit) idxs.forEach(function(curve) {{
+        if (isSampleCurve(curve)) rawTreeForCurve(curve);
+      }});
       panel.setAttribute("data-delete-all-peaks", "false");
       var draggedPeak = null;
 
@@ -1820,13 +1892,11 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
           + (groupKey ? " is-group-member" : "");
         row.setAttribute("data-curve", String(curve));
         if (groupKey) row.setAttribute("data-group-key", groupKey);
-        if (peakCurve) {{
+        if (peakCurve && !directAnnotationEdit) {{
           var sampleName = sampleNameForCurve(curve);
           if (sampleName) row.title = sampleName + " 샘플의 피크";
         }}
-        row.innerHTML = (directAnnotationEdit && peakCurve
-          ? "<div class='rist-legend-peak-source'></div>" : "")
-          + "<span class='rist-legend-row-kind'>"
+        row.innerHTML = "<span class='rist-legend-row-kind'>"
           + (sampleCurve ? "샘플" : (peakCurve ? "피크" : "항목"))
           + "</span>"
           + (sampleCurve ? "<textarea class='rist-legend-edit-input' rows='1'></textarea><div class='rist-legend-sample-style'>" : "")
@@ -1850,7 +1920,9 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
                 : "")
               + "</div>"
             : "")
-          + (sampleCurve ? "</div>" : "<textarea class='rist-legend-edit-input' rows='1'></textarea>")
+          + (sampleCurve ? "</div>" : (directAnnotationEdit && peakCurve
+            ? "<div class='rist-legend-peak-label'><textarea class='rist-legend-edit-input' rows='1' aria-label='피크 이름'></textarea><div class='rist-legend-peak-info'></div></div>"
+            : "<textarea class='rist-legend-edit-input' rows='1'></textarea>"))
           + (peakCurve && groupKey
             ? "<button type='button' class='rist-legend-group-remove' title='그룹에서 제외'>−</button>"
             : "")
@@ -1879,6 +1951,17 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
         if (dashInput) dashInput.value = traceDash(curve);
         if (widthInput) widthInput.value = String(traceLineWidth(curve));
         nameInput.value = legendDisplayToEdit(editableTraceName(curve));
+        var peakInfo = row.querySelector(".rist-legend-peak-info");
+        if (peakInfo) {{
+          var peak = traceMeta(curve).rist_peak;
+          var x = peak.x;
+          if (x == null) x = ((gd.data || [])[curve].x || [])[0];
+          var position = x != null && Number.isFinite(Number(x))
+            ? String(Math.round(Number(x) * 10) / 10) + " cm⁻¹" : "위치 정보 없음";
+          peakInfo.textContent = position + (groupKey
+            ? " · 그룹: " + legendDisplayToEdit(manualPeakGroupName(curve)) : "");
+          peakInfo.title = peakInfo.textContent;
+        }}
         if (peakCurve && kindBadge) {{
           kindBadge.draggable = true;
           kindBadge.title = "피크 그룹으로 드래그";
@@ -1933,7 +2016,8 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
             saveAllRows();
           }}
         }});
-        (directAnnotationEdit && peakCurve ? peakBody : body).appendChild(row);
+        (directAnnotationEdit && peakCurve
+          ? rawTreeForCurve(curve).querySelector(".rist-legend-raw-peaks") : body).appendChild(row);
       }}
 
       items.forEach(function(item) {{
@@ -1994,13 +2078,27 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
           groupRow.setAttribute("data-clear", pending ? "true" : "false");
           groupRow.classList.toggle("is-pending-clear", pending);
         }});
-        (directAnnotationEdit ? peakBody : body).appendChild(groupRow);
+        (directAnnotationEdit ? manualGroups : body).appendChild(groupRow);
         item.curves.forEach(function(curve) {{
           appendCurveRow(curve, groupKey);
         }});
       }});
-      if (directAnnotationEdit && peakBody.children.length) body.appendChild(peakDetails);
-      refreshPeakSources();
+      if (directAnnotationEdit) {{
+        Object.keys(rawTrees).forEach(function(key) {{
+          var tree = rawTrees[key];
+          var count = tree.querySelectorAll(".is-peak").length;
+          tree.querySelector(".rist-legend-raw-count").textContent = "피크 " + count + "개";
+          if (!count) {{
+            var empty = document.createElement("p");
+            empty.className = "rist-legend-raw-empty";
+            empty.textContent = "현재 민감도에서 표시할 피크가 없습니다.";
+            tree.querySelector(".rist-legend-raw-peaks").appendChild(empty);
+          }}
+        }});
+        if (manualGroups.querySelector(".rist-legend-group-row")) peakBody.appendChild(manualGroups);
+        if (peakBody.children.length) body.appendChild(peakDetails);
+        refreshRawTreeNames();
+      }}
       syncDeleteAllPeaksButton();
     }}
 
@@ -2168,7 +2266,7 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
       if (panel.style.display === "block") renderRows();
     }});
     gd.addEventListener("rist-legend-name-change", function() {{
-      if (panel.style.display === "block") refreshPeakSources();
+      if (panel.style.display === "block") refreshRawTreeNames();
     }});
     gd.addEventListener("rist-history-restored", function() {{
       if (panel.style.display === "block") renderRows();
