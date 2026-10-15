@@ -3031,18 +3031,19 @@ def build_phase_info_html(groups, peak_tables: list[dict[str, Any]] | None = Non
                 phase_name = metadata.get("phase_name") or item["label"]
                 card_no = metadata.get("card_no") or "-"
                 quality = metadata.get("quality_mark") or "-"
-                match = item["match"]
                 meta_bits = [
                     ("Phase name", phase_name),
                     ("Formula", formula or "-"),
                     ("PDF Card", card_no),
                     ("QM", quality),
-                    (
+                ]
+                if category != "major":
+                    match = item["match"]
+                    meta_bits.append((
                         "raw 피크 대응",
                         f"{match['score']:.1f}% "
                         f"({match['matched_count']}/{match['important_count']})",
-                    ),
-                ]
+                    ))
                 meta_html = "".join(
                     '<span class="xrd-phase-meta-chip">'
                     f'<b>{_esc(label)}</b>{_esc(value)}'

@@ -603,6 +603,34 @@ def test_build_report_html_contains_xrd_template_sections(tmp_path) -> None:
     assert "plotly" in html.lower()
 
 
+@pytest.mark.parametrize("category", ["major", "minor", "uncertain"])
+def test_phase_info_omits_raw_match_only_for_major_phases(category) -> None:
+    item = {
+        "label": "Anatase / 00-064-0863",
+        "color": "#e41a1c",
+        "trace_idx": 1,
+        "category": category,
+        "metadata": {"phase_name": "Anatase", "formula": "Ti O2",
+                     "card_no": "00-064-0863", "quality_mark": "S"},
+        "match": {"score": 83.5, "matched_count": 4, "important_count": 5},
+        "peaks": [{"no": "1", "two_theta": 25.309, "d": "3.516",
+                   "norm": 100.0, "hkl": "1 0 1"}],
+    }
+    before = json.dumps(item, sort_keys=True)
+    root = html_tree.fromstring(build_phase_info_html([("Sample", "#000", [item])]))
+    card = root.find('.//article[@data-trace="1"]')
+    chips = card.findall('.//span[@class="xrd-phase-meta-chip"]')
+    expected = ["Phase name", "Formula", "PDF Card", "QM"]
+    if category != "major":
+        expected.append("raw 피크 대응")
+    assert [chip.find('b').text for chip in chips] == expected
+    assert ("83.5% (4/5)" in card.text_content()) is (category != "major")
+    assert [cell.text_content() for cell in card.findall('.//tbody/tr/td')] == [
+        "1", "25.309", "3.516", "100.00", "1 0 1",
+    ]
+    assert json.dumps(item, sort_keys=True) == before  # Classification data is untouched.
+
+
 def test_phase_info_highlights_only_common_peaks_from_similar_folder_pdfs() -> None:
     base = {
         "color": "#e41a1c",

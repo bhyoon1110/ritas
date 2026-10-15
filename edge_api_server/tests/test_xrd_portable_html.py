@@ -71,6 +71,41 @@ def test_portable_peak_list_keeps_uploaded_values_identical_to_preview(tmp_path:
         assert not table.findall(".//input")
 
 
+def test_major_phase_raw_match_is_absent_in_preview_and_saved_report(tmp_path: Path) -> None:
+    import plotly.graph_objects as go
+    from lim.xrd_plot import build_report_html
+
+    items = [
+        {"label": f"Phase {category}", "color": "#e41a1c", "trace_idx": index,
+         "category": category,
+         "metadata": {"phase_name": f"Phase {category}", "formula": "Ti O2",
+                      "card_no": "00-064-0863", "quality_mark": "S"},
+         "match": {"score": 83.5, "matched_count": 4, "important_count": 5},
+         "peaks": [{"no": "1", "two_theta": 25.309, "d": "3.516",
+                    "norm": 100.0, "hkl": "1 0 1"}]}
+        for index, category in enumerate(["major", "minor", "uncertain"], start=1)
+    ]
+    fig = go.Figure(go.Scatter(x=[10, 25.309, 30], y=[1, 100, 2], mode="lines", name="Sample"))
+    preview = build_report_html(
+        fig, sample_name="Sample", groups=[("Sample", "#000", items)],
+        group_map={"Sample": [0]}, warnings=[], origin=False, first_stem="Sample",
+        raw_line_indices=[0], highlight_groups={0: [0]},
+    )
+    asset = tmp_path / "plotly.min.js"
+    asset.write_text("window.Plotly={};", encoding="utf-8")
+    saved = make_xrd_html_portable(preview, asset_path=asset)
+    for report in (preview, saved):
+        phases = lxml_html.fromstring(report).get_element_by_id("xrd-phase-info")
+        for index in (1, 2, 3):
+            card = phases.find(f'.//article[@data-trace="{index}"]')
+            assert card is not None
+            assert ("raw 피크 대응" in card.text_content()) is (index != 1)
+            assert ("83.5% (4/5)" in card.text_content()) is (index != 1)
+            assert "PDF Card" in card.text_content()
+            assert "QM" in card.text_content()
+            assert "25.309" in card.text_content()
+
+
 @pytest.mark.parametrize("loader", [
     '<script src="/xrd/assets/plotly.min.js"></script>',
     '<script data-xrd-embedded-plotly="true">window.Plotly={};</script>',
