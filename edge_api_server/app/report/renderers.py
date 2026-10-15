@@ -1237,7 +1237,7 @@ def _pptx_slide_payloads(document: ReportDocument) -> list[dict[str, object]]:
         if section.section_id in summarized_sections or (section is common_conditions and section.table is not None):
             continue
         if section.table is not None:
-            if document.section("report_transfer") is not None:
+            if document.section("report_transfer") is not None or section.section_id in {"raman_peaks", "raman_ratios"}:
                 slides.extend(_pptx_complete_table_payloads(document, section))
             else:
                 slides.append(_pptx_table_payload(document, section))
@@ -1254,6 +1254,9 @@ def _pptx_slide_payloads(document: ReportDocument) -> list[dict[str, object]]:
 
 def _pptx_complete_table_payloads(document, section):
     """Paginate analyst content instead of truncating rows or cell endings."""
+    if section.section_id in {"raman_peaks", "raman_ratios"}:
+        yield from _pptx_raman_table_payloads(document, section)
+        return
     table = section.table
     is_common = section is _raman_common_conditions(document)
     if is_common and table.columns == ["대상", "항목", "값"] and all(row[0] == "공통" for row in table.rows):
@@ -1273,6 +1276,39 @@ def _pptx_complete_table_payloads(document, section):
         page = replace(table, rows=rows[start:start + page_size], merge_columns=[])
         heading = section.heading + (f" · {start // page_size + 1}" if len(rows) > page_size else "")
         yield _pptx_table_payload(document, replace(section, heading=heading, table=page))
+
+
+def _raman_table_row_height(row):
+    return max(396240, max(len(str(cell).splitlines()) or 1 for cell in row) * 200000 + 137160)
+
+
+def _pptx_raman_table_payloads(document, section):
+    """Keep a peak/pair in one row, including multi-line names and positions."""
+    table = section.table
+    widths = _table_column_widths(table, 68)
+    rows = []
+    for row in _normalized_table_rows(table):
+        cells = [[part for line in str(cell).splitlines() for part in textwrap.wrap(
+            _report_readable_text(line), width=max(6, int(widths[i])), break_on_hyphens=False)] or [""]
+            for i, cell in enumerate(row)]
+        # Very long analyst edits continue without losing the shorter identifying cells.
+        for start in range(0, max(map(len, cells)), 6):
+            rows.append(["\n".join(cell[start:start + 6] if len(cell) > start else cell[:6])
+                         for cell in cells])
+    pages, page, used = [], [], 548640
+    for row in rows:
+        height = _raman_table_row_height(row)
+        if page and (used + height > 4663440 or len(page) == 9):
+            pages.append(page)
+            page, used = [], 548640
+        page.append(row)
+        used += height
+    if page or not pages:
+        pages.append(page)
+    for index, page in enumerate(pages):
+        heading = section.heading + (f" · {index + 1}" if len(pages) > 1 else "")
+        yield _pptx_table_payload(document, replace(section, heading=heading,
+                                  table=replace(table, rows=page, merge_columns=[])))
 
 
 def _pptx_llm_detail_payloads(document: ReportDocument) -> list[dict[str, object]]:
@@ -2105,6 +2141,10 @@ def _pptx_table_slide(document: ReportDocument, section: ReportSection) -> str:
     h = 4663440
     row_count = max(1, len(rows) + 1)
     row_h = min(548640, max(396240, h // min(row_count, max_rows + 1)))
+    is_raman_table = section.section_id in {"raman_peaks", "raman_ratios"}
+    if is_raman_table:
+        row_h = 548640  # Header height; body rows retain complete multi-line cells.
+    body_heights = [_raman_table_row_height(row) if is_raman_table else row_h for row in rows]
     col_count = max(1, len(table.columns))
     col_widths = [int(value) for value in _table_column_widths(table, w)]
     col_widths[-1] += w - sum(col_widths)
@@ -2147,19 +2187,19 @@ def _pptx_table_slide(document: ReportDocument, section: ReportSection) -> str:
                 column_index=col_idx,
                 column_count=col_count,
             )
-            if document.section("report_transfer") is not None:
+            if document.section("report_transfer") is not None or section.section_id in {"raman_peaks", "raman_ratios"}:
                 display_value = _report_readable_text(value)
             shapes.append(
                 _pptx_shape(
                     shape_id,
                     f"Cell {row_idx}-{col_idx}",
                     x=col_offsets[col_idx],
-                    y=y + (row_idx + 1) * row_h,
+                    y=y + row_h + sum(body_heights[:row_idx]),
                     cx=col_widths[col_idx],
-                    cy=row_h * span,
+                    cy=sum(body_heights[row_idx:row_idx + span]),
                     fill=fill,
                     line=PPTX_LINE,
-                    text=[display_value],
+                    text=display_value.splitlines() if is_raman_table else [display_value],
                     font_size=1250,
                     color=PPTX_TEXT,
                     inset=68580,
@@ -2186,6 +2226,12 @@ def _pptx_table_slide(document: ReportDocument, section: ReportSection) -> str:
             )
         )
         shape_id += 1
+    if section.section_id in {"raman_peaks", "raman_ratios"} and section.paragraphs:
+        shapes.append(_pptx_text_shape(
+            shape_id, "Table explanation", x=PPTX_MARGIN_X, y=5989320,
+            cx=10972800, cy=411480, lines=section.paragraphs,
+            font_size=1000, color=PPTX_MUTED, inset=0,
+        ))
     shapes.append(_pptx_footer_shape(document, shape_id + 1))
     return _pptx_frame(shapes, document=document)
 

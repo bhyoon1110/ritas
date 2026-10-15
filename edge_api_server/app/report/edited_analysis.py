@@ -200,5 +200,7 @@ def edited_graph_spec(spec: LlmSlotSpec, payload: dict, experiment_code: str) ->
 def analysis_preview(document) -> dict[str, Any]:
     sections = [s for s in document.sections if s.section_id in {"summary", "key_findings", "interpretation", "qc_notes"}]
     generated = sum(section.source == "llm" for section in sections)
+    tables = [s for s in document.sections if s.section_id in {"raman_peaks", "raman_ratios"}]
     return {"status": "reviewed" if any(s.source == "user" for s in sections) else "generated" if generated == len(sections) and generated else "partial" if generated else "fallback",
-            "sections": [{"heading": s.heading, "paragraphs": s.paragraphs, "source": s.source} for s in sections]}
+            "sections": [{"heading": s.heading, "paragraphs": s.paragraphs, "source": s.source,
+                          **({"table": s.table.to_dict()} if s.table else {})} for s in sections + tables]}

@@ -1260,10 +1260,9 @@ def test_raman_builder_maps_web_analysis_payload(tmp_path) -> None:
     assert document.section("raman_libraries") is None
     peaks = document.section("raman_peaks")
     assert peaks is not None and peaks.table is not None
-    assert peaks.table.alignments == ["center", "center", "center"]
+    assert peaks.table.alignments == ["left", "left", "right", "right"]
     assert peaks.table.vertical_alignment == "middle"
-    assert peaks.table.rows[0][1] == "518.0 cm-1"
-    assert peaks.table.rows[0][2] == "사용자 수정 LiOH peak"
+    assert peaks.table.rows[0][1:] == ["사용자 수정 LiOH peak", "518", "0.42"]
     assert len(peaks.table.rows) == 1
     graph_state = document.section("graph_state")
     assert graph_state is not None

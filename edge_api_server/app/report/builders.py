@@ -9,6 +9,8 @@ LLM이 채울 자유서술 슬롯(summary/narrative/caption)에는 규칙 기반
 from __future__ import annotations
 
 import html
+import json
+import math
 import re
 import unicodedata
 from dataclasses import dataclass, field
@@ -623,6 +625,64 @@ def _raman_ratio_annotations(payload: dict[str, Any]) -> list[str]:
         if text:
             ratios.append(text)
     return list(dict.fromkeys(ratios))[:6]
+
+
+def _raman_table_number(value: Any) -> str:
+    number = _first_numeric(value)
+    return format(number, ".10g") if number is not None and math.isfinite(number) else "-"
+
+
+def _raman_table_peaks(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    # Narrative evidence is bounded, but the published table must retain every peak.
+    return _figure_peak_facts(payload, x_label="cm-1", max_items=max(1, len(_figure_data(payload))))
+
+
+def _raman_ratio_rows(payload: dict[str, Any]) -> list[list[str]]:
+    figure = payload.get("figure") or {}
+    layout = figure.get("layout") or {}
+    meta = layout.get("meta") or {}
+    annotations = {str(item.get("name")): item for item in _as_list(layout.get("annotations"))
+                   if isinstance(item, dict) and str(item.get("name", "")).startswith("rist_raman_ratio:")}
+    peaks = {(peak["sample_group"], peak["position"]): peak for peak in _raman_table_peaks(payload)}
+
+    def resolve(key):
+        # Trace indices change when peaks are deleted. Use the same stable keys as the UI.
+        try:
+            group, position = json.loads(key)
+            return peaks.get((str(group), float(position)))
+        except (TypeError, ValueError):
+            return None
+
+    rows = []
+    handled = set()
+    for ratio in _as_list(meta.get("ristRamanRatios")):
+        if not isinstance(ratio, dict):
+            continue
+        name = "rist_raman_ratio:" + str(ratio.get("id"))
+        handled.add(name)
+        annotation = annotations.get(name)
+        if annotation is not None and not _trace_is_visible(annotation):
+            continue
+        numerator, denominator = resolve(ratio.get("numeratorKey")), resolve(ratio.get("denominatorKey"))
+        if not numerator or not denominator or numerator["sample_group"] != denominator["sample_group"]:
+            continue  # Hidden/deleted peaks and cross-sample pairs are not published.
+        n, d = numerator["base_intensity"], denominator["base_intensity"]
+        valid = n is not None and d is not None and math.isfinite(n) and math.isfinite(d) and abs(d) >= 1e-12
+        value = n / d if valid else None
+        value_text = f"{value:.3f}" if value is not None and math.isfinite(value) else "계산 불가"
+        cells = [f"{peak['label']} ({_raman_table_number(peak['position'])} cm⁻¹)"
+                 for peak in (numerator, denominator)]
+        rows.append([numerator["sample"], _clean_report_text(ratio.get("title")) or "강도비",
+                     *cells, value_text])
+    # Old reports only saved the displayed annotation. Preserve it without inventing
+    # sample identities or intensities from rounded label text.
+    for name, annotation in annotations.items():
+        if name in handled or not _trace_is_visible(annotation):
+            continue
+        text = _clean_report_text(annotation.get("text"))
+        if text:
+            rows.append(["-", text, "-", "-", "원문 참조"])
+    return rows
 
 
 def _raman_condition_summary(payload: dict[str, Any]) -> str:
@@ -2048,6 +2108,7 @@ class RamanReportBuilder(ReportBuilder):
         ))
         document.sections.append(self._sample_section(payload))
         document.sections.append(self._peak_section(payload))
+        document.sections.append(self._ratio_section(payload))
         document.sections.append(
             self._graph_state_section(payload, experiment_code="RAMAN")
         )
@@ -2104,19 +2165,34 @@ class RamanReportBuilder(ReportBuilder):
         )
 
     def _peak_section(self, payload: dict[str, Any]) -> ReportSection:
-        rows = _figure_peak_rows(payload, x_label="cm-1")
+        rows = [[peak["sample"], peak["label"], _raman_table_number(peak["position"]),
+                 _raman_table_number(peak["base_intensity"])] for peak in _raman_table_peaks(payload)]
         if not rows:
-            return ReportSection("raman_peaks", "주요 Raman 피크", paragraphs=["보고서용 피크 상세 정보가 없습니다."])
+            return ReportSection("raman_peaks", "Raman 피크 분석표", paragraphs=["현재 그래프에 표시된 피크가 없습니다."])
         return ReportSection(
             "raman_peaks",
-            "주요 Raman 피크",
+            "Raman 피크 분석표",
+            paragraphs=["Position은 Raman shift이며, Intensity는 현재 분석 데이터에서 스택/Y축 이동량을 제외한 강도입니다."],
             table=ReportTable(
-                ["시료", "Raman shift", "Assignment"],
+                ["시료", "피크명", "Position (cm⁻¹)", "Intensity (a.u.)"],
                 rows,
-                merge_columns=[0],
-                alignments=["center", "center", "center"],
+                alignments=["left", "left", "right", "right"],
                 vertical_alignment="middle",
+                column_widths=[0.25, 0.31, 0.22, 0.22],
             ),
+        )
+
+    def _ratio_section(self, payload: dict[str, Any]) -> ReportSection:
+        rows = _raman_ratio_rows(payload)
+        if not rows:
+            return ReportSection("raman_ratios", "Raman 분석 비율표", paragraphs=["현재 그래프에서 선택한 분석 비율이 없습니다."])
+        return ReportSection(
+            "raman_ratios", "Raman 분석 비율표",
+            paragraphs=["강도비 = 분자 피크 Intensity / 분모 피크 Intensity. 괄호 안은 Position (cm⁻¹)입니다. "
+                        "스택/Y축 이동량을 제외한 강도로 계산하며, 분모가 0에 가까우면 계산 불가로 표시합니다."],
+            table=ReportTable(["시료", "비율명", "분자 피크", "분모 피크", "강도비"], rows,
+                              alignments=["left", "left", "left", "left", "right"],
+                              vertical_alignment="middle", column_widths=[0.2, 0.2, 0.24, 0.24, 0.12]),
         )
 
     def _fallback_texts(self, job: dict[str, Any], payload: dict[str, Any]) -> dict[str, str]:

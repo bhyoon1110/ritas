@@ -175,6 +175,13 @@ def _analysis_html(analysis: dict | None) -> str:
         source = {"llm": "로컬 AI", "user": "사용자 수정"}.get(section.get("source"), "규칙 기반")
         paragraphs = "".join("<p>" + escape(str(text)).replace("\n", "<br>") + "</p>"
                              for text in section.get("paragraphs") or [])
+        table = section.get("table")
+        if table:
+            columns = "".join("<th scope='col'>" + escape(str(value)) + "</th>" for value in table.get("columns") or [])
+            rows = "".join("<tr>" + "".join("<td>" + escape(str(value)).replace("\n", "<br>") + "</td>"
+                                         for value in row) + "</tr>" for row in table.get("rows") or [])
+            paragraphs += ("<div class='analysis-table' tabindex='0' role='region' aria-label='분석 데이터 표'>"
+                           "<table><thead><tr>" + columns + "</tr></thead><tbody>" + rows + "</tbody></table></div>")
         sections.append("<article><h2>" + escape(str(section.get("heading") or "분석 결과"))
                         + " <small>" + source + "</small></h2>" + paragraphs + "</article>")
     return ("<section id='analysis-panel'><p class='analysis-status' role='status'>" + label + "</p>"
@@ -246,6 +253,7 @@ header{padding:20px 24px;background:#fff;border-bottom:1px solid #cbd5e1}h1{marg
 header p{color:#64748b;font-size:13px}nav,.controls{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
 #analysis-panel{max-width:1000px;margin:auto}#analysis-panel article{background:#fff;padding:18px 22px;border:1px solid #cbd5e1;border-radius:6px;margin:14px 0;overflow-wrap:break-word}
 #analysis-panel h2{font-size:18px;margin:0 0 12px}#analysis-panel p{line-height:1.85;white-space:normal}#analysis-panel small{font-size:12px;font-weight:normal;color:#64748b}.analysis-status{color:#1e40af;font-weight:bold}
+.analysis-table{max-width:100%;overflow-x:auto}.analysis-table table{border-collapse:collapse;width:100%;min-width:560px;font-size:13px}.analysis-table th,.analysis-table td{border:1px solid #cbd5e1;padding:8px;vertical-align:middle;text-align:left;overflow-wrap:break-word}.analysis-table th{background:#eaf2fd}.analysis-table tbody tr:nth-child(even){background:#f8fafc}
 button,select{font:inherit;min-height:38px;padding:7px 12px;border:1px solid #94a3b8;border-radius:5px;background:#fff;color:#1e293b}
 button{cursor:pointer;white-space:nowrap;word-break:normal;overflow-wrap:normal;flex-shrink:0}button[aria-pressed=true]{background:#1d4ed8;color:#fff;border-color:#1d4ed8}button:disabled{opacity:.45;cursor:default}
 main{padding:16px;max-width:1500px;margin:auto}.controls{margin-bottom:12px}#slide-image,#graph-fallback{display:block;width:100%;height:auto;margin:auto;border:1px solid #cbd5e1;background:#fff}
