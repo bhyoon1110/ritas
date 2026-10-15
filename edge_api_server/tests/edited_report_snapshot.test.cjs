@@ -62,20 +62,24 @@ for (const [index,kind] of ['ftir','raman'].entries()) {
       reportAnalysisPayload:()=>clone(currentAnalysis), currentFigurePayload:()=>clone(ctx.figure),
       captureReportFigureImage:f=>{imageFigure=f;return new Promise(resolve=>captureFinish=resolve);},
       uploadReportFilesWithSession:async(files,body)=>{posted=body;return {jobId:'frozen'};},
-      pollReportJob:async()=>({jobId:'frozen',status:'completed'}),Blob,
+      pollReportJob:async()=>({jobId:'frozen',status:'completed'}),Blob,atob,
       reportPreviewLink:{getAttribute:()=> 'false',addEventListener:(_,fn)=>handler=fn},
       window:{confirm:message=>{ctx.warning=message;return false;}}});
     ctx.figure=fixture();
-    vm.runInContext(helpers+extract(source,'createReport'),ctx);
+    vm.runInContext(helpers+(kind==='ftir'?extract(source,'reportImageFile'):'')+extract(source,'createReport'),ctx);
     const request=ctx.createReport();
     assert.equal(imageFigure,undefined); // Wait for outstanding stack coordinates.
     stackFinish(); await new Promise(resolve=>setImmediate(resolve));
     assert(imageFigure);
     ctx.figure.data[1].name='later edit'; currentAnalysis.samples[0].label='later sample';
-    captureFinish('png'); await request;
+    captureFinish('data:image/png;base64,aW1hZ2U='); await request;
     assert.equal(JSON.parse(posted.analysis_json).samples[0].label,'before');
     assert.equal(JSON.parse(posted.figure_json).data[1].name,'Edited peak');
     assert.equal(JSON.parse(await posted.viewer_figure.text()).data[1].name,'Edited peak');
+    if (kind==='ftir') {
+      assert.equal(posted.figure_image,undefined);
+      assert.equal(await posted.figure_image_file.text(),'image');
+    }
     assert.equal(imageFigure.data[1].name,'Edited peak');
     assert.equal(ctx.lastReportJob.jobId,'frozen');
     vm.runInContext(source.match(/if \(reportPreviewLink\) reportPreviewLink.addEventListener\("click", function\(event\) \{[\s\S]*?\n  \}\);/)[0],ctx);

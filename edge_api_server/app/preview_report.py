@@ -4,6 +4,7 @@ import base64
 from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
 import html
+from io import BytesIO
 import json
 import shutil
 import tempfile
@@ -351,6 +352,40 @@ def decode_figure_image(data_url: str) -> bytes:
         return base64.b64decode(encoded, validate=True)
     except Exception as exc:
         raise ValueError("figure_image를 디코딩할 수 없습니다.") from exc
+
+
+MAX_FIGURE_IMAGE_BYTES = 16 * 1024 * 1024
+MAX_FIGURE_IMAGE_PIXELS = 32 * 1024 * 1024
+
+
+def read_figure_image(data_url: str = "", upload=None) -> bytes:
+    """Read a bounded PNG upload; retain the data-URL API for older clients."""
+    if upload is None:
+        if len(data_url) > 128 + 4 * ((MAX_FIGURE_IMAGE_BYTES + 2) // 3):
+            raise ValueError("보고서 그래프 이미지는 16MB 이하여야 합니다. 그래프 크기를 줄여 주세요.")
+        image_bytes = decode_figure_image(data_url)
+    else:
+        # UploadFile is already spooled by Starlette. Never read an unbounded file.
+        image_bytes = upload.file.read(MAX_FIGURE_IMAGE_BYTES + 1)
+    if len(image_bytes) > MAX_FIGURE_IMAGE_BYTES:
+        raise ValueError("보고서 그래프 이미지는 16MB 이하여야 합니다. 그래프 크기를 줄여 주세요.")
+    if not image_bytes:
+        raise ValueError("보고서 그래프 이미지가 비어 있습니다.")
+    if upload is not None:
+        from PIL import Image
+
+        try:
+            with Image.open(BytesIO(image_bytes)) as image:
+                if image.format != "PNG":
+                    raise ValueError("보고서 그래프 이미지는 PNG 파일이어야 합니다.")
+                if image.width * image.height > MAX_FIGURE_IMAGE_PIXELS:
+                    raise ValueError("보고서 그래프 이미지 해상도가 너무 큽니다. 그래프 크기를 줄여 주세요.")
+                image.verify()
+        except ValueError:
+            raise
+        except Exception as exc:
+            raise ValueError("보고서 그래프 PNG 파일을 읽을 수 없습니다. 다시 생성해 주세요.") from exc
+    return image_bytes
 
 
 def build_preview_report_package(

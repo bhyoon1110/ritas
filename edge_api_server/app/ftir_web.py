@@ -44,7 +44,7 @@ from .preview_report import (
     RawSeries,
     build_preview_report_package,
     cleanup_preview_report,
-    decode_figure_image,
+    read_figure_image,
     parse_analysis_payload,
     preview_report_job_store,
     send_preview_report_package,
@@ -3455,6 +3455,18 @@ _UPLOAD_SCRIPT = """
     return new Promise(function(resolve) { setTimeout(resolve, ms); });
   }
 
+  function requestErrorMessage(payload, statusCode) {
+    payload = payload || {};
+    var messages = [payload.message, payload.error, payload.detail];
+    for (var i = 0; i < messages.length; i += 1) {
+      if (typeof messages[i] === "string" && messages[i].trim()) return messages[i];
+    }
+    // Do not stringify validation objects: they may contain submitted input.
+    if (statusCode === 413) return "전송 데이터가 서버의 허용 크기를 초과했습니다. (HTTP 413)";
+    if (statusCode === 422) return "보고서 요청 형식이 올바르지 않습니다. 화면을 새로고침하고 다시 시도하세요. (HTTP 422)";
+    return "요청에 실패했습니다. (HTTP " + statusCode + ")";
+  }
+
   async function fetchJson(url, options) {
     var response;
     try {
@@ -3465,9 +3477,9 @@ _UPLOAD_SCRIPT = """
       wrapped.isNetworkError = true;
       throw wrapped;
     }
-    var payload = await response.json().catch(function() { return {}; });
+    var payload = await response.json().catch(function() { return {}; }) || {};
     if (!response.ok) {
-      var error = new Error(payload.message || payload.error || "요청에 실패했습니다.");
+      var error = new Error(requestErrorMessage(payload, response.status));
       error.isTransientError = response.status === 408 || response.status === 429 || response.status >= 500;
       error.errorEventId = payload.errorEventId || response.headers.get("X-Error-Event-Id");
       error.errorFeedbackUrl = payload.errorFeedbackUrl
@@ -3625,7 +3637,8 @@ _UPLOAD_SCRIPT = """
   async function completeReportUploadWithRetry(uploadId, fields) {
     var form = new FormData();
     Object.keys(fields).forEach(function(key) {
-      form.append(key, fields[key]);
+      if (key === "figure_image_file") form.append(key, fields[key], "current_graph.png");
+      else form.append(key, fields[key]);
     });
     for (var attempt = 1; attempt <= 4; attempt += 1) {
       try {
@@ -5151,6 +5164,30 @@ _UPLOAD_SCRIPT = """
     return JSON.stringify(compact);
   }
 
+  function reportImageFile(dataUrl) {
+    var prefix = "data:image/png;base64,";
+    if (typeof dataUrl !== "string" || dataUrl.indexOf(prefix) !== 0) {
+      throw new Error("보고서 그래프 PNG를 만들지 못했습니다. 다시 시도하세요.");
+    }
+    var maxBytes = 16 * 1024 * 1024;
+    if (dataUrl.length - prefix.length > 4 * Math.ceil(maxBytes / 3)) {
+      throw new Error("보고서 그래프 이미지는 16MB 이하여야 합니다. 그래프 크기를 줄여 주세요.");
+    }
+    // Decode small base64 blocks, not a second full-size binary string (32-bit PCs).
+    var parts = [];
+    for (var offset = prefix.length; offset < dataUrl.length; offset += 32768) {
+      var binary = atob(dataUrl.slice(offset, offset + 32768));
+      var bytes = new Uint8Array(binary.length);
+      for (var i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+      parts.push(bytes);
+    }
+    var image = new Blob(parts, {type: "image/png"});
+    if (!image.size || image.size > maxBytes) {
+      throw new Error("보고서 그래프 이미지가 비어 있거나 16MB를 초과했습니다.");
+    }
+    return image;
+  }
+
   async function createReport() {
     if (!files.length) {
       setMessage("보고서를 생성하려면 DPT 파일을 먼저 업로드하세요.");
@@ -5190,7 +5227,7 @@ _UPLOAD_SCRIPT = """
         analysis_json: JSON.stringify(reportAnalysis),
         figure_json: JSON.stringify(compactFigure),
         viewer_figure: new Blob([JSON.stringify(viewerFigure)], {type: "application/json"}),
-        figure_image: figureImage,
+        figure_image_file: reportImageFile(figureImage),
         requestNumber: transfer.requestNumber,
         equipmentCode: transfer.equipmentCode,
         operatorId: transfer.operatorId
@@ -5665,7 +5702,8 @@ def create_ftir_preview_report(
     analysis_json: str = Form(...),
     figure_json: str = Form(default=""),
     viewer_figure: UploadFile | None = File(default=None),
-    figure_image: str = Form(...),
+    figure_image: str = Form(default=""),
+    figure_image_file: UploadFile | None = File(default=None),
     request_number: str = Form(default="", alias="requestNumber"),
     equipment_code: str = Form(default="", alias="equipmentCode"),
     operator_id: str = Form(default="", alias="operatorId"),
@@ -5683,7 +5721,7 @@ def create_ftir_preview_report(
     request.state.error_file_blobs = uploaded
     try:
         analysis_payload = parse_analysis_payload(analysis_json, figure_json, viewer_figure)
-        image_bytes = decode_figure_image(figure_image)
+        image_bytes = read_figure_image(figure_image, figure_image_file)
         raw_series = _build_ftir_raw_series(uploaded)
         tmp_root, package = build_preview_report_package(
             experiment_code="FT-IR",
@@ -5724,12 +5762,13 @@ def _create_ftir_report_job_from_uploaded(
     equipment_code: str,
     operator_id: str,
     viewer_figure: UploadFile | None = None,
+    figure_image_file: UploadFile | None = None,
 ) -> PreviewReportJob:
     request.state.error_project = "FT-IR"
     request.state.error_file_blobs = uploaded
     try:
         analysis_payload = parse_analysis_payload(analysis_json, figure_json, viewer_figure)
-        image_bytes = decode_figure_image(figure_image)
+        image_bytes = read_figure_image(figure_image, figure_image_file)
     except ValueError as exc:
         raise ApiException(400, "FTIR_REPORT_INVALID_PAYLOAD", str(exc)) from exc
 
@@ -5818,7 +5857,8 @@ def complete_ftir_report_upload_session(
     analysis_json: str = Form(...),
     figure_json: str = Form(default=""),
     viewer_figure: UploadFile | None = File(default=None),
-    figure_image: str = Form(...),
+    figure_image: str = Form(default=""),
+    figure_image_file: UploadFile | None = File(default=None),
     request_number: str = Form(default="", alias="requestNumber"),
     equipment_code: str = Form(default="", alias="equipmentCode"),
     operator_id: str = Form(default="", alias="operatorId"),
@@ -5867,6 +5907,7 @@ def complete_ftir_report_upload_session(
         figure_json=figure_json,
         viewer_figure=viewer_figure,
         figure_image=figure_image,
+        figure_image_file=figure_image_file,
         request_number=request_number,
         equipment_code=equipment_code,
         operator_id=operator_id,
@@ -5883,7 +5924,8 @@ def create_ftir_preview_report_job(
     analysis_json: str = Form(...),
     figure_json: str = Form(default=""),
     viewer_figure: UploadFile | None = File(default=None),
-    figure_image: str = Form(...),
+    figure_image: str = Form(default=""),
+    figure_image_file: UploadFile | None = File(default=None),
     request_number: str = Form(default="", alias="requestNumber"),
     equipment_code: str = Form(default="", alias="equipmentCode"),
     operator_id: str = Form(default="", alias="operatorId"),
@@ -5896,6 +5938,7 @@ def create_ftir_preview_report_job(
         figure_json=figure_json,
         viewer_figure=viewer_figure,
         figure_image=figure_image,
+        figure_image_file=figure_image_file,
         request_number=request_number,
         equipment_code=equipment_code,
         operator_id=operator_id,
