@@ -2324,27 +2324,27 @@ def build_auto_interpretation_html(sample_name: str, groups, warnings: list[str]
     sample = _esc(sample_name)
     paragraphs = [
         (
-            "<strong>A. 주요상 (Major Phases)</strong><br>"
+            "<strong>주요상</strong><br>"
             f"본 {sample} 시료의 XRD 패턴은 {names(major)} 후보와 주요 피크 위치가 "
             "상대적으로 잘 대응합니다. 해당 후보는 주요상으로 우선 검토할 수 있습니다."
             if major else
-            "<strong>A. 주요상 (Major Phases)</strong><br>"
+            "<strong>주요상</strong><br>"
             f"본 {sample} 시료에서 자동 기준을 만족하는 주요상 후보는 아직 없습니다."
         ),
         (
-            "<strong>B. 유사상 / 불확실상 (Uncertain / Similar Phases)</strong><br>"
+            "<strong>미량상</strong><br>"
+            f"{names(minor)} 후보는 피크 대응이 제한적이어서 미량상 또는 배경 후보로 검토됩니다."
+            if minor else
+            "<strong>미량상</strong><br>"
+            "미량상 후보는 없습니다."
+        ),
+        (
+            "<strong>추정상</strong><br>"
             f"{names(uncertain)} 후보는 일부 주요 피크가 raw 패턴과 근접하지만, "
             "현재 데이터만으로 확정 구분하기에는 불확실성이 있습니다."
             if uncertain else
-            "<strong>B. 유사상 / 불확실상 (Uncertain / Similar Phases)</strong><br>"
-            "유사상으로 분류된 후보는 없습니다."
-        ),
-        (
-            "<strong>C. 미량상 (Minor Phases)</strong><br>"
-            f"{names(minor)} 후보는 피크 대응이 제한적이어서 미량상 또는 배경 후보로 검토됩니다."
-            if minor else
-            "<strong>C. 미량상 (Minor Phases)</strong><br>"
-            "미량상 후보는 없습니다."
+            "<strong>추정상</strong><br>"
+            "추정상으로 분류된 후보는 없습니다."
         ),
     ]
     if warnings:
@@ -2756,7 +2756,7 @@ def _peak_list_display_html(
         )
     return f"""
   <div class="xrd-provided-block">
-    <h3>Peak list Excel Display</h3>
+    <h3>그래프 피크 번호</h3>
     {''.join(blocks)}
   </div>
 """
@@ -2778,19 +2778,21 @@ def build_image_display_html(
     image_files: list[str],
     *,
     show_phase_review_heading: bool = False,
+    section_title: str | None = None,
 ) -> str:
     if not image_files:
         return ""
     figures = []
     for path in image_files:
         display_name = _display_path_part(Path(path).name)
+        caption = Path(display_name).stem
         try:
             src = image_data_uri(path)
             figures.append(
                 f"""
                 <figure class="xrd-image-card">
-                  <img src="{src}" alt="{_esc(display_name)}">
-                  <figcaption>{_esc(display_name)}</figcaption>
+                  <img src="{src}" alt="{_esc(caption)}">
+                  <figcaption>{_esc(caption)}</figcaption>
                 </figure>
                 """
             )
@@ -2811,6 +2813,11 @@ def build_image_display_html(
         if show_phase_review_heading
         else ""
     )
+    if section_title:
+        heading = (
+            '<div class="xrd-section-head">'
+            f'<h2 class="xrd-phase-identification-title">{_esc(section_title)}</h2></div>'
+        )
     return f"""
 <section class="xrd-report-section" id="xrd-image-info">
   {heading}
@@ -2970,7 +2977,6 @@ def build_peak_info_html(
 <section class="xrd-report-section" id="xrd-peak-info">
   <div class="xrd-section-head">
     <h2>피크 정보</h2>
-    <p>Excel Peak list의 2θ/Card No/Phase Name을 기준으로 피크 번호와 후보상 연동을 표시합니다.</p>
   </div>
   {numbered_peak_graph_html}
   {_peak_list_display_html(peak_tables or [], known_cards, groups) or build_excel_display_html(table_files or [])}
@@ -3289,6 +3295,7 @@ def xrd_report_css() -> str:
   .xrd-report-section h2 { font-size: 17px; margin: 0 0 8px; }
   .xrd-section-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; border-bottom: 1px solid #d1d5db; padding-bottom: 6px; margin-bottom: 10px; }
   .xrd-section-head h2 { flex: 0 0 min(260px, 36%); line-height: 1.25; word-break: keep-all; overflow-wrap: normal; }
+  .xrd-section-head .xrd-phase-identification-title { flex: 0 0 auto; white-space: nowrap; }
   .xrd-section-head p { flex: 1 1 auto; min-width: 0; margin: 2px 0 0; color: #6b7280; font-size: 12px; line-height: 1.45; text-align: right; word-break: keep-all; overflow-wrap: anywhere; }
   .xrd-graph-frame, .xrd-comment-box, .xrd-table-scroll, .xrd-phase-group { border: 2px solid #111827; border-radius: 18px; background: #fff; }
   .xrd-graph-frame { padding: 10px 12px 12px; }
@@ -3413,9 +3420,10 @@ def xrd_report_css() -> str:
     .xrd-report-pdf-option { min-height: 36px; padding: 7px 10px; font-size: 12px; }
     .xrd-section-head { display: block; }
     .xrd-section-head h2 { flex-basis: auto; }
+    .xrd-section-head .xrd-phase-identification-title { font-size: 15px; }
     .xrd-section-head p { text-align: left; margin-top: 4px; }
     #xrd-plot { height: 400px !important; min-height: 340px; }
-    .xrd-phase-grid { grid-template-columns: 1fr; }
+    .xrd-phase-grid, .xrd-phase-card-grid { grid-template-columns: minmax(0,1fr); }
     .xrd-image-grid { grid-template-columns: 1fr; }
     .xrd-numbered-peak-graph, #xrd-numbered-peak-plot { height: 300px !important; }
   }
@@ -3741,14 +3749,14 @@ def build_report_html(
         comment_note
         or "raw 피크, ICDD 후보상, 첨부 표/이미지 정보를 기준으로 정리한 분석결과입니다."
     )
-    grouped_phases = _phase_groups(groups)
-    show_phase_review_heading = bool(
-        grouped_phases.get("uncertain") or grouped_phases.get("minor")
-    )
     image_info = build_image_display_html(
         image_files or [],
-        show_phase_review_heading=show_phase_review_heading,
+        section_title="상 동정 (Phase Identification) 결과",
     )
+    # Keep the two heading positions while exchanging their contents. Without
+    # an attachment retain the graph under the phase-identification heading.
+    graph_heading = "유사상 미량상 확인" if image_info else "상 동정 (Phase Identification) 결과"
+    graph_heading_class = "" if image_info else ' class="xrd-phase-identification-title"'
     numbered_peak_graph = build_numbered_peak_graph_html(fig, peak_tables or [])
     peak_info = build_peak_info_html(
         groups,
@@ -3780,14 +3788,14 @@ def build_report_html(
         <button type="button" class="xrd-report-pdf-button" id="xrd-report-pdf-export"><span class="xrd-report-pdf-button-label">PDF Export</span><span class="xrd-report-pdf-spinner" aria-hidden="true"></span></button>
       </div>
     </header>
+    {image_info}
     <section class="xrd-report-section" id="xrd-graph-section">
       <div class="xrd-section-head">
-        <h2>상 동정 (Phase Identification) 결과</h2>
+        <h2{graph_heading_class}>{graph_heading}</h2>
         <p>측정 데이터와 ICDD Card 피크를 함께 표시합니다.</p>
       </div>
       <div class="xrd-graph-frame">{plot_body}<img class="xrd-print-plot-image" alt="XRD graph print image">{print_legend}</div>
     </section>
-    {image_info}
     <section class="xrd-report-section" id="xrd-llm-comment">
       <div class="xrd-section-head">
         <h2>분석결과</h2>

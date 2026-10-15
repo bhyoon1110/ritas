@@ -7,6 +7,8 @@ import unicodedata
 import zipfile
 
 import plotly.graph_objects as go
+import pytest
+from lxml import html as html_tree
 
 from lim.xrd_plot import (
     XRD_DOWNLOAD_IMAGE_FORMAT,
@@ -14,6 +16,7 @@ from lim.xrd_plot import (
     XRD_SIMILAR_PHASE_TOLERANCE,
     _phase_overlap_peak_indices,
     assign_relative_phase_categories,
+    build_auto_interpretation_html,
     build_image_display_html,
     build_phase_info_html,
     build_report_html,
@@ -188,7 +191,8 @@ def test_image_display_repairs_utf8_nfd_zip_filename_mojibake(tmp_path) -> None:
 
     html = build_image_display_html([str(image_path)])
 
-    assert "상매칭 보조 이미지.png" in html
+    assert "<figcaption>상매칭 보조 이미지</figcaption>" in html
+    assert "상매칭 보조 이미지.png" not in html
     assert garbled_name not in html
 
 
@@ -199,7 +203,8 @@ def test_image_display_repairs_latin1_utf8_filename_mojibake(tmp_path) -> None:
 
     html = build_image_display_html([str(image_path)])
 
-    assert "상매칭 보조 이미지.png" in html
+    assert "<figcaption>상매칭 보조 이미지</figcaption>" in html
+    assert "상매칭 보조 이미지.png" not in html
     assert garbled_name not in html
 
 
@@ -215,6 +220,53 @@ def test_image_display_adds_phase_review_heading_only_when_requested(tmp_path) -
 
     assert "유사상 미량상 확인" not in plain_html
     assert "유사상 미량상 확인" in phase_review_html
+
+
+@pytest.mark.parametrize("with_image", [True, False])
+def test_report_exchanges_image_graph_contents_and_preserves_peak_table(tmp_path, with_image):
+    image_path = tmp_path / "상매칭 이미지.png"
+    image_path.write_bytes(TINY_PNG)
+    table_path = tmp_path / "peaks.csv"
+    table_path.write_text("No.,2theta,Card No\n1,20,00-001-0001\n", encoding="utf-8")
+    figure = go.Figure(go.Scatter(x=[10, 20, 30], y=[1, 3, 1], name="Raw"))
+    report = build_report_html(
+        figure, sample_name="배치 검증", groups=[], group_map={}, warnings=[],
+        image_files=[str(image_path)] if with_image else [],
+        peak_tables=[parse_peak_list_table(str(table_path))],
+        origin=True, first_stem="sample", raw_line_indices=[0], highlight_groups={},
+    )
+    tree = html_tree.fromstring(report)
+    graph = tree.get_element_by_id("xrd-graph-section")
+    assert len(graph.xpath('.//*[@id="xrd-plot"]')) == 1
+    if with_image:
+        section = tree.get_element_by_id("xrd-image-info")
+        assert section.xpath(".//h2/text()") == ["상 동정 (Phase Identification) 결과"]
+        assert section.xpath(".//figcaption/text()") == ["상매칭 이미지"]
+        assert not section.xpath('.//*[@id="xrd-plot"]')
+        assert graph.xpath(".//h2/text()") == ["유사상 미량상 확인"]
+        assert report.index('id="xrd-image-info"') < report.index('id="xrd-graph-section"')
+    else:
+        assert not tree.xpath('//*[@id="xrd-image-info"]')
+        assert graph.xpath(".//h2/text()") == ["상 동정 (Phase Identification) 결과"]
+    assert tree.xpath('//h2[@class="xrd-phase-identification-title"]')
+    assert 'white-space: nowrap' in report
+    assert '.xrd-phase-card-grid { grid-template-columns: minmax(0,1fr); }' in report
+    assert tree.xpath('//div[@class="xrd-provided-block"]/h3/text()') == ["그래프 피크 번호"]
+    assert tree.xpath('//table[contains(@class,"xrd-peak-list-display")]//tbody/tr/td/text()')
+    assert "Excel Peak list의 2θ/Card No/Phase Name" not in report
+    assert "Peak list Excel Display" not in report
+    assert tree.get_element_by_id("xrd-analysis-result").get("contenteditable") == "true"
+
+
+def test_rule_based_analysis_uses_major_minor_estimated_headings_without_reclassification():
+    items = [{"category": category, "metadata": {"phase_name": name}, "label": name}
+             for category, name in [("major", "Major-A"), ("uncertain", "Estimate-B"), ("minor", "Minor-C")]]
+    tree = html_tree.fragment_fromstring(build_auto_interpretation_html("sample", [("raw", "red", items)], []), create_parent=True)
+    paragraphs = tree.xpath("./p")
+    assert [p.xpath("./strong/text()")[0] for p in paragraphs] == ["주요상", "미량상", "추정상"]
+    for paragraph, name in zip(paragraphs, ["Major-A", "Minor-C", "Estimate-B"]):
+        assert name in paragraph.text_content()
+    assert items[1]["category"] == "uncertain"
 
 
 def test_phase_category_prefers_specific_folder_below_mixed_case_parent(tmp_path) -> None:
@@ -523,10 +575,11 @@ def test_build_report_html_contains_xrd_template_sections(tmp_path) -> None:
     assert "피크 정보" in html
     assert "결정상(Phase) 정보" in html
     assert "주요상 (Major Phases)" in html
-    assert "Peak list Excel Display" in html
+    assert "Peak list Excel Display" not in html
+    assert "그래프 피크 번호" in html
     assert "peaks.csv" in html
-    assert "유사상 미량상 확인" not in html
-    assert "phase-match.png" in html
+    assert "유사상 미량상 확인" in html
+    assert "<figcaption>phase-match</figcaption>" in html
     assert "data:image/png;base64" in html
     assert "안내 사항" in html
     assert "추가 검토 안내" not in html

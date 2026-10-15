@@ -131,14 +131,15 @@ _XRD_LLM_SYSTEM_PROMPT = (
     "제공된 구조화 JSON만 근거로 한국어 문안을 작성하세요. "
     "제공되지 않은 물질명, 결정상, 원인, 수치를 추측하지 마세요.\n"
     "ICDD 후보상은 확정 동정이 아니라 후보 소견으로 표현하세요.\n"
-    "PDF 폴더 구조에서 온 주요상/유사상/미량상 분류를 우선하고, raw 피크, ICDD 피크 대응, "
+    "PDF 폴더 구조에서 온 주요상/미량상/추정상 분류를 우선하고, raw 피크, ICDD 피크 대응, "
+    "기존 유사상·불확실상(uncertain) 분류는 문안에서 '추정상'으로 표기하세요. "
     "Peak list Excel, 첨부 이미지 정보를 함께 고려하세요.\n"
     "수식은 LaTeX/Markdown 수식 문법을 쓰지 말고 일반 텍스트로 쓰세요.\n"
     "문안에는 LLM, AI, 자동 해석, 초안이라는 표현을 넣지 마세요.\n"
     "출력은 반드시 JSON 객체 하나로만 작성하고, 키는 "
     "major_phases/similar_uncertain_phases/minor_phases 입니다.\n"
     "- major_phases: '본 [샘플명] XRD 분석 결과, ... 주요 상으로 존재하는 것으로 판단됩니다.' 형식의 2~3문장\n"
-    "- similar_uncertain_phases: 유사상 후보와 구분 한계를 2~3문장\n"
+    "- similar_uncertain_phases: 추정상 후보와 구분 한계를 2~3문장\n"
     "- minor_phases: 미량상 후보와 근거를 1~2문장"
 )
 
@@ -569,8 +570,8 @@ def _html_lines(value: str) -> str:
 def _xrd_llm_comment_html(slots: dict[str, str]) -> str:
     labels = [
         ("major_phases", "주요상"),
-        ("similar_uncertain_phases", "유사상 / 불확실상"),
         ("minor_phases", "미량상"),
+        ("similar_uncertain_phases", "추정상"),
     ]
     blocks = []
     for key, title in labels:
@@ -599,7 +600,7 @@ def _xrd_llm_fallback(context: dict[str, Any]) -> dict[str, str]:
             f"raw 피크 {raw_peak_count}개와 ICDD 카드 피크의 위치 대응을 기준으로 주요 상 존재 가능성을 검토했습니다."
         ),
         "similar_uncertain_phases": (
-            f"유사 상/불확실 상 후보는 {uncertain}건입니다. "
+            f"추정상 후보는 {uncertain}건입니다. "
             "주요 피크 위치가 일부 겹치는 후보는 현재 XRD 데이터만으로 명확히 구분하기 어렵습니다."
         ),
         "minor_phases": (

@@ -29,6 +29,19 @@ def _synthetic_pdf_upload(tmp_path):
     return pdf_path.name, pdf_path.read_bytes()
 
 
+def test_xrd_llm_analysis_uses_estimated_label_and_keeps_slot_mapping():
+    slots = {"major_phases": "Major-A", "minor_phases": "Minor-C", "similar_uncertain_phases": "Estimate-B"}
+    result = xrd_web._xrd_llm_comment_html(slots)
+    assert result == "\n".join([
+        "<p><strong>주요상</strong><br>Major-A</p>",
+        "<p><strong>미량상</strong><br>Minor-C</p>",
+        "<p><strong>추정상</strong><br>Estimate-B</p>",
+    ])
+    fallback = xrd_web._xrd_llm_fallback({"phase_category_counts": {"uncertain": 2}})
+    assert "추정상 후보는 2건" in fallback["similar_uncertain_phases"]
+    assert "문안에서 '추정상'으로 표기" in xrd_web._XRD_LLM_SYSTEM_PROMPT
+
+
 def test_xrd_workspace_contains_upload_controls() -> None:
     page = build_xrd_page()
 
@@ -351,10 +364,11 @@ def test_xrd_analyze_includes_table_and_image_inputs(tmp_path) -> None:
         )
 
     assert response.status_code == 200
-    assert "Peak list Excel Display" in response.text
+    assert "Peak list Excel Display" not in response.text
+    assert "그래프 피크 번호" in response.text
     assert "peaks.csv" in response.text
-    assert "match.png" in response.text
-    assert "유사상 미량상 확인" not in response.text
+    assert "<figcaption>match</figcaption>" in response.text
+    assert "유사상 미량상 확인" in response.text
     assert "data:image/png;base64" in response.text
 
 
