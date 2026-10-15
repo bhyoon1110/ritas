@@ -48,9 +48,10 @@ def test_portable_peak_list_keeps_uploaded_values_identical_to_preview(tmp_path:
     cards.mkdir()
     source = tmp_path / "Peak list.csv"
     source.write_text(
-        "No.,2theta," + "e.s.d.," * 19 + "Phase Name,Chemical Formula,Card No,Norm. I.\n"
-        + "1,25.309," + "0.001," * 19 + '"Anatase, syn: 1 0 1",Ti O2,00-064-0863,4.0500\n'
-        + "2,25.310," + "0.001," * 19 + ",,00-064-0863,0\n",
+        "No.,2theta," + "e.s.d.," * 19 + 'Phase Name,Chemical Formula,Card No,Norm. I.,"Size, Å"\n'
+        + "1,25.309," + "0.001," * 19 + '"Anatase, syn: 1 0 1",Ti O2,00-064-0863,4.0500,468.3250\n'
+        + "2,25.310," + "0.001," * 19 + ",,00-064-0863,0,0\n"
+        + "3,25.311," + "0.001," * 19 + ",,00-064-0863,,\n",
         encoding="utf-8",
     )
     preview = build_xrd_html([(str(raw), str(cards))], table_files=[str(source)])["html"]
@@ -58,9 +59,10 @@ def test_portable_peak_list_keeps_uploaded_values_identical_to_preview(tmp_path:
     asset.write_text("window.Plotly={};", encoding="utf-8")
     saved = make_xrd_html_portable(preview, asset_path=asset)
     expected = [
-        ["No.", "2theta", "Phase Name", "Chemical Formula", "Card No", "Norm. I."],
-        ["1", "25.309", "Anatase, syn: 1 0 1", "Ti O2", "00-064-0863", "4.0500"],
-        ["2", "25.310", "", "", "00-064-0863", "0"],
+        ["No.", "2theta", "Phase Name", "Chemical Formula", "Card No", "Norm. I.", "Size, Å"],
+        ["1", "25.309", "Anatase, syn: 1 0 1", "Ti O2", "00-064-0863", "4.0500", "468.3250"],
+        ["2", "25.310", "", "", "00-064-0863", "0", "0"],
+        ["3", "25.311", "", "", "00-064-0863", "", ""],
     ]
     for report in (preview, saved):
         table = lxml_html.fromstring(report).find('.//table[@class="xrd-report-table xrd-peak-list-display"]')

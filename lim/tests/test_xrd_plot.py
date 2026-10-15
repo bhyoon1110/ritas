@@ -805,13 +805,13 @@ def test_peak_list_does_not_add_missing_columns_from_icdd_candidates(tmp_path) -
 @pytest.mark.parametrize("source_format", ["csv", "tsv", "xlsx", "xlsx-absolute"])
 @pytest.mark.parametrize("wide", [False, True], ids=["compact", "columns-after-12"])
 def test_peak_list_report_preserves_source_values_and_blanks(tmp_path, source_format, wide) -> None:
-    # Match the instrument export: target fields occur at columns 22–25.
+    # Target fields beyond the first 12 columns must retain their original values.
     leading = ["No.", "2θ, °"] + (["e.s.d."] * 19 if wide else [])
-    headers = leading + ["Phase Name", "Chemical Formula", "Card No", "Norm. I."]
+    headers = leading + ["Phase Name", "Chemical Formula", "Card No", "Norm. I.", "Size, Å"]
     values = [
-        ["Anatase, syn: 1 0 1,Brookite: 2 1 0", "Ti O2,Ti O2", "00-064-0863,01-075-2548", "4.0500"],
-        ["", "", "00-064-0863", ""],
-        ["User <phase> & name", "Ca ( C O3 )", "00-064-0863", "0"],
+        ["Anatase, syn: 1 0 1,Brookite: 2 1 0", "Ti O2,Ti O2", "00-064-0863,01-075-2548", "4.0500", "468.3250"],
+        ["", "", "00-064-0863", "", ""],
+        ["User <phase> & name", "Ca ( C O3 )", "00-064-0863", "0", "0"],
     ]
     rows = [headers] + [
         [str(index), "25.309"] + (["0.001"] * 19 if wide else []) + row
@@ -829,9 +829,9 @@ def test_peak_list_report_preserves_source_values_and_blanks(tmp_path, source_fo
                 ref = f"{chr(65 + col_index)}{row_index}"
                 if row_index > 1 and not value:
                     continue  # Sparse XLSX cells must stay empty, not shift columns.
-                if row_index > 1 and col_index in (0, 1, len(headers) - 1):
+                if row_index > 1 and col_index in (0, 1, headers.index("Norm. I."), headers.index("Size, Å")):
                     cells.append(f'<c r="{ref}"><v>{escape(value)}</v></c>')
-                elif row_index > 1 and col_index == len(headers) - 3:
+                elif row_index > 1 and col_index == headers.index("Chemical Formula"):
                     # Rich-text/subscript chemical formula uses multiple text runs.
                     cells.append(f'<c r="{ref}" t="inlineStr"><is><r><t>{escape(value[:2])}</t></r>'
                                  f'<r><t>{escape(value[2:])}</t></r></is></c>')
@@ -850,7 +850,7 @@ def test_peak_list_report_preserves_source_values_and_blanks(tmp_path, source_fo
     before = source.read_bytes()
     table = parse_peak_list_table(str(source))
     assert not table["error"]
-    expected_headers = ["No.", "2θ, °", "Phase Name", "Chemical Formula", "Card No", "Norm. I."]
+    expected_headers = ["No.", "2θ, °", "Phase Name", "Chemical Formula", "Card No", "Norm. I.", "Size, Å"]
     assert table["display_headers"] == expected_headers
     assert table["peaks"][0]["phase_name"] == values[0][0]
     assert table["peaks"][0]["formula"] == values[0][1]
@@ -873,6 +873,43 @@ def test_peak_list_report_preserves_source_values_and_blanks(tmp_path, source_fo
     assert source.read_bytes() == before
     # General previews retain their bounded width; only Peak list selection reads all columns.
     assert len(read_table_preview(str(source))["rows"][0]) == min(len(headers), 12)
+
+
+@pytest.mark.parametrize("size_header", ["Size, Å", "Size, A"])
+def test_peak_list_adds_size_without_dropping_existing_columns(tmp_path, size_header) -> None:
+    headers = ["No.", "2θ, °", "e.s.d.", "d, Å", "e.s.d.", "Height, cps", "e.s.d.",
+               "FWHM, °", "e.s.d.", "Int. I., cps°", "e.s.d.", "Int. W., °", "e.s.d.",
+               "Asymmetry", "e.s.d.", "Decay(ηL/mL)", "e.s.d.", "Decay(ηH/mH)", "e.s.d.",
+               size_header, "e.s.d.", "Phase Name", "Chemical Formula", "Card No", "Norm. I.", "Profile Type"]
+    values = ["1", "23.09088", "0.001", "3.84861", "0.001", "54.6", "0.1",
+              "0.1808", "0.001", "15.04", "0.001", "0.2755", "0.001", "0.595", "0.001",
+              "0.5", "0.001", "0.5", "0.001", "468.3250", "0.001", "Calcite: 0 1 2",
+              "Ca C O3", "00-047-1743", "4.05", "Pseudo-Voigt"]
+    source = tmp_path / "Peak list.csv"
+    with source.open("w", encoding="utf-8", newline="") as stream:
+        csv.writer(stream).writerows([headers, values])
+    table = parse_peak_list_table(str(source))
+    # All prior 12 columns stay present; Size is added in source order as column 13.
+    expected_indices = [0, 1, 3, 5, 7, 9, 11, 13, 19, 21, 22, 23, 24]
+    assert table["display_headers"] == [headers[i] for i in expected_indices]
+    assert table["display_rows"][0][0] == [values[i] for i in expected_indices]
+    rendered = html_tree.fromstring(build_peak_info_html([], peak_tables=[table]))
+    assert rendered.find('.//table').get("data-xrd-expanded-columns") == "true"
+    size = rendered.find('.//td[@class="xrd-peak-col-size"]')
+    assert size is not None and size.text_content() == "468.3250"
+
+
+def test_peak_list_does_not_duplicate_size_or_expand_other_columns(tmp_path) -> None:
+    source = tmp_path / "Peak list.csv"
+    with source.open("w", encoding="utf-8", newline="") as stream:
+        csv.writer(stream).writerows([
+            ["No.", "2theta", "Size, Å"] + [f"Extra {i}" for i in range(15)],
+            ["1", "23.09", "0"] + [str(i) for i in range(15)],
+        ])
+    table = parse_peak_list_table(str(source))
+    assert len(table["display_headers"]) == 12
+    assert table["display_headers"].count("Size, Å") == 1
+    assert table["display_rows"][0][0][2] == "0"
 
 
 def test_read_xlsx_preview_reads_first_sheet(tmp_path) -> None:

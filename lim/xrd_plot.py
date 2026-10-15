@@ -2069,6 +2069,8 @@ def _peak_display_column_class(header: str) -> str:
         return "xrd-peak-col-formula"
     if "normi" in normalized or "normalizedintensity" in normalized:
         return "xrd-peak-col-norm"
+    if normalized in {"size", "sizea", "sizeangstrom"}:
+        return "xrd-peak-col-size"
     if "cardno" in normalized:
         return "xrd-peak-col-card"
     if normalized in {"no", "number", "peakno"}:
@@ -2113,6 +2115,8 @@ def parse_peak_list_table(path: str) -> dict[str, Any]:
     col_formula = _find_column(headers, "Chemical Formula")
     col_card = _find_column(headers, "Card No")
     col_norm = _find_column(headers, "Norm. I.")
+    col_size = next((index for index, header in enumerate(headers)
+                     if _normalized_header(header) in {"size", "sizea", "sizeangstrom"}), None)
 
     non_esd_indices = [
         index for index, header in enumerate(headers)
@@ -2133,6 +2137,10 @@ def parse_peak_list_table(path: str) -> dict[str, Any]:
         if index not in display_indices:
             display_indices.append(index)
     display_indices = display_indices[:MAX_REPORT_TABLE_COLS]
+    # Keep the existing report columns and include the instrument's Size value
+    # even when it follows the 12-column selection limit. Never infer a size.
+    if col_size is not None and col_size not in display_indices:
+        display_indices = sorted(display_indices + [col_size])
     display_headers = [headers[index] for index in display_indices]
 
     display_rows = []
@@ -2660,7 +2668,7 @@ def _peak_list_display_html(
             <article class="xrd-file-table">
               <h3>{_esc(filename)}</h3>
               <div class="xrd-table-scroll xrd-file-table-scroll">
-                <table class="xrd-report-table xrd-peak-list-display">
+                <table class="xrd-report-table xrd-peak-list-display" data-xrd-expanded-columns="{str(len(headers) > MAX_REPORT_TABLE_COLS).lower()}">
                   <thead><tr>{header_html}</tr></thead>
                   <tbody>{''.join(body_rows)}</tbody>
                 </table>
@@ -3277,6 +3285,7 @@ def xrd_report_css() -> str:
   .xrd-peak-list-display td.xrd-peak-col-formula,
   .xrd-peak-list-display td.xrd-peak-col-card { white-space: normal; overflow-wrap: break-word; }
   .xrd-report-table.xrd-peak-list-display td.xrd-peak-col-theta,
+  .xrd-report-table.xrd-peak-list-display td.xrd-peak-col-size,
   .xrd-report-table.xrd-peak-list-display td.xrd-peak-col-norm { text-align: right; }
   .xrd-overlap-row { background: #fff7cc !important; }
   .xrd-provided-block { margin: 0 0 14px; }
@@ -3630,6 +3639,8 @@ def xrd_report_css() -> str:
     .xrd-peak-list-display .xrd-peak-col-phase { width: 25%; }
     .xrd-peak-list-display .xrd-peak-col-formula { width: 16%; }
     .xrd-peak-list-display .xrd-peak-col-norm { width: 7%; }
+    .xrd-peak-list-display .xrd-peak-col-size { width: 6%; }
+    .xrd-peak-list-display[data-xrd-expanded-columns="true"] .xrd-peak-col-phase { width: 19%; }
     .xrd-phase-group {
       break-inside: avoid;
       page-break-inside: avoid;
