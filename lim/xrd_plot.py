@@ -132,6 +132,7 @@ TABLE_EXTENSIONS = {".csv", ".tsv", ".xlsx"}
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
 MAX_REPORT_TABLE_ROWS = 80
 MAX_REPORT_TABLE_COLS = 12
+MAX_SOURCE_TABLE_COLS = 16_384  # XLSX column limit; also bound sparse/malformed input.
 
 
 # ----------------------------------------------------------------------------
@@ -1952,8 +1953,11 @@ def _xlsx_shared_strings(archive: zipfile.ZipFile) -> list[str]:
     return values
 
 
-def read_xlsx_preview(path: str) -> list[list[str]]:
+def read_xlsx_preview(
+    path: str, *, max_cols: int | None = MAX_REPORT_TABLE_COLS
+) -> list[list[str]]:
     """외부 의존성 없이 XLSX 첫 번째 워크시트를 HTML 미리보기용으로 읽는다."""
+    column_limit = MAX_SOURCE_TABLE_COLS if max_cols is None else min(max_cols, MAX_SOURCE_TABLE_COLS)
     with zipfile.ZipFile(path) as archive:
         shared_strings = _xlsx_shared_strings(archive)
         workbook = ET.fromstring(archive.read("xl/workbook.xml"))
@@ -1973,7 +1977,7 @@ def read_xlsx_preview(path: str) -> list[list[str]]:
                 for rel in rels.findall("rel:Relationship", rel_ns):
                     if rel.attrib.get("Id") == rid:
                         target = rel.attrib.get("Target", "worksheets/sheet1.xml")
-                        sheet_path = "xl/" + target.lstrip("/")
+                        sheet_path = target.lstrip("/") if target.startswith("/") else "xl/" + target
                         break
 
         sheet = ET.fromstring(archive.read(sheet_path))
@@ -1981,36 +1985,36 @@ def read_xlsx_preview(path: str) -> list[list[str]]:
         for c in sheet.findall(".//a:sheetData/a:row/a:c", ns):
             cell_ref = c.attrib.get("r", "")
             row_idx, col_idx = _cell_ref_to_index(cell_ref)
-            if row_idx >= MAX_REPORT_TABLE_ROWS or col_idx >= MAX_REPORT_TABLE_COLS:
+            if row_idx >= MAX_REPORT_TABLE_ROWS or col_idx >= column_limit:
                 continue
             cell_type = c.attrib.get("t")
             value_node = c.find("a:v", ns)
-            inline_node = c.find("a:is/a:t", ns)
+            inline_nodes = c.findall("a:is//a:t", ns)
             value = ""
             if cell_type == "s" and value_node is not None:
                 try:
                     value = shared_strings[int(value_node.text or "0")]
                 except (IndexError, ValueError):
                     value = value_node.text or ""
-            elif inline_node is not None:
-                value = inline_node.text or ""
+            elif inline_nodes:
+                value = "".join(node.text or "" for node in inline_nodes)
             elif value_node is not None:
                 value = value_node.text or ""
             rows.setdefault(row_idx, {})[col_idx] = value
         if not rows:
             return []
         max_row = min(max(rows) + 1, MAX_REPORT_TABLE_ROWS)
-        max_col = min(
-            max((max(cols) if cols else 0) for cols in rows.values()) + 1,
-            MAX_REPORT_TABLE_COLS,
-        )
+        max_col = max((max(cols) if cols else 0) for cols in rows.values()) + 1
         return [
             [rows.get(r, {}).get(c, "") for c in range(max_col)]
             for r in range(max_row)
         ]
 
 
-def read_delimited_preview(path: str, delimiter: str | None = None) -> list[list[str]]:
+def read_delimited_preview(
+    path: str, delimiter: str | None = None, *, max_cols: int | None = MAX_REPORT_TABLE_COLS
+) -> list[list[str]]:
+    column_limit = MAX_SOURCE_TABLE_COLS if max_cols is None else min(max_cols, MAX_SOURCE_TABLE_COLS)
     with open(path, "r", encoding="utf-8-sig", errors="ignore", newline="") as fh:
         if delimiter is None:
             sample = fh.read(4096)
@@ -2020,21 +2024,23 @@ def read_delimited_preview(path: str, delimiter: str | None = None) -> list[list
         reader = csv.reader(fh, delimiter=delimiter)
         rows = []
         for row in reader:
-            rows.append(row[:MAX_REPORT_TABLE_COLS])
+            rows.append(row[:column_limit])
             if len(rows) >= MAX_REPORT_TABLE_ROWS:
                 break
     return rows
 
 
-def read_table_preview(path: str) -> dict[str, Any]:
+def read_table_preview(
+    path: str, *, max_cols: int | None = MAX_REPORT_TABLE_COLS
+) -> dict[str, Any]:
     ext = Path(path).suffix.lower()
     try:
         if ext == ".xlsx":
-            rows = read_xlsx_preview(path)
+            rows = read_xlsx_preview(path, max_cols=max_cols)
         elif ext == ".tsv":
-            rows = read_delimited_preview(path, "\t")
+            rows = read_delimited_preview(path, "\t", max_cols=max_cols)
         elif ext == ".csv":
-            rows = read_delimited_preview(path)
+            rows = read_delimited_preview(path, max_cols=max_cols)
         else:
             return {"path": path, "rows": [], "error": f"지원하지 않는 표 형식: {ext}"}
         return {"path": path, "rows": rows, "error": ""}
@@ -2063,6 +2069,8 @@ def _peak_display_column_class(header: str) -> str:
         return "xrd-peak-col-formula"
     if "normi" in normalized or "normalizedintensity" in normalized:
         return "xrd-peak-col-norm"
+    if "cardno" in normalized:
+        return "xrd-peak-col-card"
     if normalized in {"no", "number", "peakno"}:
         return "xrd-peak-col-no"
     if normalized.startswith("2θ") or "2theta" in normalized:
@@ -2084,7 +2092,9 @@ def _float_or_none(value: Any) -> float | None:
 
 def parse_peak_list_table(path: str) -> dict[str, Any]:
     """Peak list CSV/XLSX를 보고서 표/그래프 피크 번호 표시용으로 구조화한다."""
-    preview = read_table_preview(path)
+    # Peak exports place Phase Name/Formula/Card No/Norm. I. after many e.s.d.
+    # columns. Select report columns only AFTER reading the complete source row.
+    preview = read_table_preview(path, max_cols=None)
     rows = preview.get("rows") or []
     if preview.get("error") or not rows:
         return {
@@ -2600,88 +2610,8 @@ def _table_preview_html(table: dict[str, Any]) -> str:
     """
 
 
-def _card_no_set_from_groups(groups) -> set[str]:
-    cards: set[str] = set()
-    for _raw_stem, _raw_color, items in groups:
-        for item in items:
-            card = normalize_card_no((item.get("metadata") or {}).get("card_no") or "")
-            if card:
-                cards.add(card)
-    return cards
-
-
-def _peak_row_card_match(peak: dict[str, Any], known_cards: set[str]) -> bool:
-    cards = peak.get("card_numbers") or []
-    return bool(cards) and any(card in known_cards for card in cards)
-
-
-def _peak_candidate_values(peak: dict[str, Any], groups) -> dict[str, str]:
-    card_numbers = set(peak.get("card_numbers") or [])
-    theta = _float_or_none(peak.get("two_theta"))
-    peak_phase_name = str(peak.get("phase_name") or "").strip().lower()
-    peak_formula = re.sub(r"\s+", "", str(peak.get("formula") or "")).lower()
-    matched_items = []
-    for _raw_stem, _raw_color, items in groups:
-        for item in items:
-            metadata = item.get("metadata") or {}
-            card_no = normalize_card_no(metadata.get("card_no") or "")
-            if card_numbers and card_no not in card_numbers:
-                continue
-            item_phase_name = str(metadata.get("phase_name") or "").strip().lower()
-            item_formula = re.sub(r"\s+", "", str(metadata.get("formula") or "")).lower()
-            if not card_numbers and peak_phase_name and peak_phase_name not in item_phase_name:
-                continue
-            if not card_numbers and peak_formula and peak_formula != item_formula:
-                continue
-            if not card_numbers and not peak_phase_name and not peak_formula:
-                candidate_thetas = [
-                    float(value)
-                    for value in (
-                        _float_or_none(candidate.get("two_theta"))
-                        for candidate in (item.get("peaks") or [])
-                    )
-                    if value is not None
-                ]
-                if theta is None or not candidate_thetas or min(abs(value - theta) for value in candidate_thetas) > 0.35:
-                    continue
-            matched_items.append(item)
-
-    def unique_join(values: list[str]) -> str:
-        return " / ".join(dict.fromkeys(value for value in values if value))
-
-    phase_names = []
-    formulas = []
-    norms = []
-    for item in matched_items:
-        metadata = item.get("metadata") or {}
-        phase_names.append(str(metadata.get("phase_name") or "").strip())
-        formulas.append(_compact_formula(str(metadata.get("formula") or "").strip()))
-        if theta is None:
-            continue
-        candidates = [
-            candidate
-            for candidate in (item.get("peaks") or [])
-            if _float_or_none(candidate.get("two_theta")) is not None
-        ]
-        if not candidates:
-            continue
-        closest = min(candidates, key=lambda candidate: abs(float(candidate["two_theta"]) - theta))
-        if abs(float(closest["two_theta"]) - theta) <= 0.35:
-            norm = _float_or_none(closest.get("norm"))
-            if norm is not None:
-                norms.append(f"{norm:.2f}")
-
-    return {
-        "phase_name": unique_join(phase_names),
-        "formula": unique_join(formulas),
-        "norm_i": unique_join(norms),
-    }
-
-
 def _peak_list_display_html(
     peak_tables: list[dict[str, Any]],
-    known_cards: set[str],
-    groups,
 ) -> str:
     if not peak_tables:
         return ""
@@ -2706,38 +2636,23 @@ def _peak_list_display_html(
                 "</article>"
             )
             continue
-        required_columns = [
-            ("Phase Name", "phase_name"),
-            ("Chemical Formula", "formula"),
-            ("Norm. I.", "norm_i"),
-        ]
-        for label, _key in required_columns:
-            if _find_column(headers, label) is None:
-                headers.append(label)
         column_classes = [_peak_display_column_class(header) for header in headers]
-        header_html = '<th class="xrd-peak-col-check">Card No<br>연동</th>' + "".join(
+        header_html = "".join(
             f'<th class="{column_class}">{_esc(header)}</th>'
             for header, column_class in zip(headers, column_classes)
         )
         body_rows = []
         for display_row, peak in rows:
+            # The uploaded Peak list is authoritative, including blank cells and
+            # zero intensities. ICDD candidate data belongs in its own tables.
             rendered_row = list(display_row) + [""] * max(0, len(headers) - len(display_row))
-            candidate_values = _peak_candidate_values(peak, groups)
-            for label, key in required_columns:
-                column_index = _find_column(headers, label)
-                if column_index is not None and not str(rendered_row[column_index] or "").strip():
-                    rendered_row[column_index] = candidate_values[key]
-            matched = _peak_row_card_match(peak, known_cards)
             row_class = " class=\"xrd-overlap-row\"" if peak.get("is_overlap") else ""
-            checked = " checked" if matched else ""
-            title = "ICDD 후보 Card No와 연동됨" if matched else "ICDD 후보 Card No와 매칭되지 않아 기본 해제"
             cells = "".join(
                 f'<td class="{column_class}">{_esc(cell)}</td>'
                 for cell, column_class in zip(rendered_row, column_classes)
             )
             body_rows.append(
                 f"<tr{row_class} data-card-nos=\"{_esc(','.join(peak.get('card_numbers') or []))}\">"
-                f"<td class=\"xrd-card-check\"><input type=\"checkbox\" disabled{checked} title=\"{_esc(title)}\"></td>"
                 f"{cells}</tr>"
             )
         blocks.append(
@@ -2933,7 +2848,6 @@ def build_peak_info_html(
     peak_tables: list[dict[str, Any]] | None = None,
     numbered_peak_graph_html: str = "",
 ) -> str:
-    known_cards = _card_no_set_from_groups(groups)
     rows = []
     for raw_stem, _raw_color, items in groups:
         for item in items:
@@ -2979,7 +2893,7 @@ def build_peak_info_html(
     <h2>피크 정보</h2>
   </div>
   {numbered_peak_graph_html}
-  {_peak_list_display_html(peak_tables or [], known_cards, groups) or build_excel_display_html(table_files or [])}
+  {_peak_list_display_html(peak_tables or []) or build_excel_display_html(table_files or [])}
   {candidate_peak_table}
 </section>
 """
@@ -3316,12 +3230,13 @@ def xrd_report_css() -> str:
   .xrd-report-table th, .xrd-report-table td, .xrd-mini-table th, .xrd-mini-table td { border: 1px solid #d1d5db; padding: 6px 8px; vertical-align: middle; }
   .xrd-report-table th { background: #f3f4f6; position: sticky; top: 0; z-index: 1; }
   .xrd-report-table td:nth-child(4), .xrd-report-table td:nth-child(5), .xrd-report-table td:nth-child(6), .xrd-report-table td:nth-child(7) { text-align: right; }
-  .xrd-peak-list-display th, .xrd-peak-list-display td { text-align: center; }
+  .xrd-report-table.xrd-peak-list-display th, .xrd-report-table.xrd-peak-list-display td { text-align: center; }
   .xrd-peak-list-display td { white-space: nowrap; }
-  .xrd-peak-list-display td:nth-child(3),
-  .xrd-peak-list-display td:nth-child(5),
-  .xrd-peak-list-display td:nth-child(7) { text-align: right; }
-  .xrd-card-check input { width: 15px; height: 15px; accent-color: #2563eb; }
+  .xrd-peak-list-display td.xrd-peak-col-phase,
+  .xrd-peak-list-display td.xrd-peak-col-formula,
+  .xrd-peak-list-display td.xrd-peak-col-card { white-space: normal; overflow-wrap: break-word; }
+  .xrd-report-table.xrd-peak-list-display td.xrd-peak-col-theta,
+  .xrd-report-table.xrd-peak-list-display td.xrd-peak-col-norm { text-align: right; }
   .xrd-overlap-row { background: #fff7cc !important; }
   .xrd-provided-block { margin: 0 0 14px; }
   .xrd-provided-block > h3 { font-size: 14px; margin: 0 0 8px; }
@@ -3657,7 +3572,6 @@ def xrd_report_css() -> str:
       word-break: break-word;
       line-height: 1.15;
     }
-    .xrd-peak-list-display .xrd-peak-col-check { width: 5%; }
     .xrd-peak-list-display .xrd-peak-col-no { width: 4%; }
     .xrd-peak-list-display .xrd-peak-col-theta { width: 7%; }
     .xrd-peak-list-display .xrd-peak-col-phase { width: 25%; }

@@ -39,6 +39,36 @@ def test_make_xrd_html_portable_is_idempotent(tmp_path: Path) -> None:
     assert make_xrd_html_portable(once, asset_path=asset) == once
 
 
+def test_portable_peak_list_keeps_uploaded_values_identical_to_preview(tmp_path: Path) -> None:
+    from lim.xrd_plot import build_xrd_html
+
+    raw = tmp_path / "sample.txt"
+    raw.write_text("10 1\n25.309 100\n30 2\n", encoding="utf-8")
+    cards = tmp_path / "cards"
+    cards.mkdir()
+    source = tmp_path / "Peak list.csv"
+    source.write_text(
+        "No.,2theta," + "e.s.d.," * 19 + "Phase Name,Chemical Formula,Card No,Norm. I.\n"
+        + "1,25.309," + "0.001," * 19 + '"Anatase, syn: 1 0 1",Ti O2,00-064-0863,4.0500\n'
+        + "2,25.310," + "0.001," * 19 + ",,00-064-0863,0\n",
+        encoding="utf-8",
+    )
+    preview = build_xrd_html([(str(raw), str(cards))], table_files=[str(source)])["html"]
+    asset = tmp_path / "plotly.min.js"
+    asset.write_text("window.Plotly={};", encoding="utf-8")
+    saved = make_xrd_html_portable(preview, asset_path=asset)
+    expected = [
+        ["No.", "2theta", "Phase Name", "Chemical Formula", "Card No", "Norm. I."],
+        ["1", "25.309", "Anatase, syn: 1 0 1", "Ti O2", "00-064-0863", "4.0500"],
+        ["2", "25.310", "", "", "00-064-0863", "0"],
+    ]
+    for report in (preview, saved):
+        table = lxml_html.fromstring(report).find('.//table[@class="xrd-report-table xrd-peak-list-display"]')
+        assert table is not None
+        assert [[cell.text_content() for cell in row] for row in table.findall(".//tr")] == expected
+        assert not table.findall(".//input")
+
+
 @pytest.mark.parametrize("loader", [
     '<script src="/xrd/assets/plotly.min.js"></script>',
     '<script data-xrd-embedded-plotly="true">window.Plotly={};</script>',

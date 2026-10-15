@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import base64
+import csv
 import json
 import re
 import unicodedata
 import zipfile
+from xml.sax.saxutils import escape
 
 import plotly.graph_objects as go
 import pytest
@@ -18,6 +20,7 @@ from lim.xrd_plot import (
     assign_relative_phase_categories,
     build_auto_interpretation_html,
     build_image_display_html,
+    build_peak_info_html,
     build_phase_info_html,
     build_report_html,
     build_xrd_print_legend_html,
@@ -26,6 +29,7 @@ from lim.xrd_plot import (
     phase_label_from_metadata,
     pdf_peak_warning,
     parse_peak_list_table,
+    read_table_preview,
     read_xlsx_preview,
     repair_korean_mojibake,
     sort_phase_candidates,
@@ -734,7 +738,7 @@ def test_xrd_html_draws_numbered_peak_graph_from_peak_list(tmp_path) -> None:
     assert '"legend":{"orientation"' not in numbered_graph_html
 
 
-def test_peak_list_adds_phase_formula_and_norm_columns_from_icdd_candidates(tmp_path) -> None:
+def test_peak_list_does_not_add_missing_columns_from_icdd_candidates(tmp_path) -> None:
     raw_path = tmp_path / "Mix3.txt"
     raw_path.write_text("10 1\n25.309 100\n30 3\n", encoding="utf-8")
     pdf_dir = tmp_path / "pdf"
@@ -788,16 +792,87 @@ def test_peak_list_adds_phase_formula_and_norm_columns_from_icdd_candidates(tmp_
         highlight_groups={0: [0, 1]},
     )
 
-    assert "Phase Name" in html
-    assert "Chemical Formula" in html
-    assert "Norm. I." in html
-    assert 'class="xrd-peak-col-phase"' in html
-    assert 'class="xrd-peak-col-formula"' in html
-    assert 'class="xrd-peak-col-norm"' in html
+    table = html_tree.fromstring(html).find('.//table[@class="xrd-report-table xrd-peak-list-display"]')
+    assert table is not None
+    assert [cell.text_content() for cell in table.findall("thead/tr/th")] == ["No.", "2theta", "Card No"]
+    assert [cell.text_content() for cell in table.findall("tbody/tr/td")] == ["1", "25.309", "00-064-0863"]
+    assert not table.findall(".//input")
+    # Candidate information still belongs to the separate phase section.
     assert "Anatase, syn" in html
-    assert "TiO2" in html
-    assert "100.00" in html
     assert "ICDD Card PDF에서 추출한 후보 피크" not in html
+
+
+@pytest.mark.parametrize("source_format", ["csv", "tsv", "xlsx", "xlsx-absolute"])
+@pytest.mark.parametrize("wide", [False, True], ids=["compact", "columns-after-12"])
+def test_peak_list_report_preserves_source_values_and_blanks(tmp_path, source_format, wide) -> None:
+    # Match the instrument export: target fields occur at columns 22–25.
+    leading = ["No.", "2θ, °"] + (["e.s.d."] * 19 if wide else [])
+    headers = leading + ["Phase Name", "Chemical Formula", "Card No", "Norm. I."]
+    values = [
+        ["Anatase, syn: 1 0 1,Brookite: 2 1 0", "Ti O2,Ti O2", "00-064-0863,01-075-2548", "4.0500"],
+        ["", "", "00-064-0863", ""],
+        ["User <phase> & name", "Ca ( C O3 )", "00-064-0863", "0"],
+    ]
+    rows = [headers] + [
+        [str(index), "25.309"] + (["0.001"] * 19 if wide else []) + row
+        for index, row in enumerate(values, start=1)
+    ]
+    source = tmp_path / ("Peak list." + source_format.split("-")[0])
+    if source.suffix != ".xlsx":
+        with source.open("w", encoding="utf-8-sig", newline="") as stream:
+            csv.writer(stream, delimiter="\t" if source.suffix == ".tsv" else ",").writerows(rows)
+    else:
+        xml_rows = []
+        for row_index, row in enumerate(rows, start=1):
+            cells = []
+            for col_index, value in enumerate(row):
+                ref = f"{chr(65 + col_index)}{row_index}"
+                if row_index > 1 and not value:
+                    continue  # Sparse XLSX cells must stay empty, not shift columns.
+                if row_index > 1 and col_index in (0, 1, len(headers) - 1):
+                    cells.append(f'<c r="{ref}"><v>{escape(value)}</v></c>')
+                elif row_index > 1 and col_index == len(headers) - 3:
+                    # Rich-text/subscript chemical formula uses multiple text runs.
+                    cells.append(f'<c r="{ref}" t="inlineStr"><is><r><t>{escape(value[:2])}</t></r>'
+                                 f'<r><t>{escape(value[2:])}</t></r></is></c>')
+                else:
+                    cells.append(f'<c r="{ref}" t="inlineStr"><is><t>{escape(value)}</t></is></c>')
+            xml_rows.append(f'<row r="{row_index}">{"".join(cells)}</row>')
+        target = "/xl/worksheets/peaks.xml" if source_format == "xlsx-absolute" else "worksheets/peaks.xml"
+        with zipfile.ZipFile(source, "w") as archive:
+            archive.writestr("xl/workbook.xml", '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
+                             'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+                             '<sheets><sheet name="Peaks" sheetId="1" r:id="rId1"/></sheets></workbook>')
+            archive.writestr("xl/_rels/workbook.xml.rels", '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+                             f'<Relationship Id="rId1" Target="{target}"/></Relationships>')
+            archive.writestr("xl/worksheets/peaks.xml", '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+                             f'<sheetData>{"".join(xml_rows)}</sheetData></worksheet>')
+    before = source.read_bytes()
+    table = parse_peak_list_table(str(source))
+    assert not table["error"]
+    expected_headers = ["No.", "2θ, °", "Phase Name", "Chemical Formula", "Card No", "Norm. I."]
+    assert table["display_headers"] == expected_headers
+    assert table["peaks"][0]["phase_name"] == values[0][0]
+    assert table["peaks"][0]["formula"] == values[0][1]
+    assert table["peaks"][0]["norm_i"] == 4.05
+    assert table["peaks"][1]["norm_i"] is None
+    assert table["peaks"][2]["norm_i"] == 0.0
+    # Even a matching ICDD card/angle must never overwrite blank source fields.
+    candidate = {"label": "Different candidate", "trace_idx": 1,
+                 "metadata": {"phase_name": "ICDD inferred name", "formula": "Different formula", "card_no": "00-064-0863"},
+                 "peaks": [{"no": "1", "two_theta": 25.309, "d": "3.516", "norm": 100.0, "hkl": "1 0 1"}]}
+    report = build_peak_info_html([("Sample", "#000", [candidate])], peak_tables=[table])
+    root = html_tree.fromstring(report)
+    rendered = root.find('.//table[@class="xrd-report-table xrd-peak-list-display"]')
+    assert [cell.text_content() for cell in rendered.findall("thead/tr/th")] == expected_headers
+    actual = [[cell.text_content() for cell in row.findall("td")] for row in rendered.findall("tbody/tr")]
+    assert actual == [[str(i), "25.309"] + row for i, row in enumerate(values, start=1)]
+    assert len(rendered.findall('tbody/tr[@class="xrd-overlap-row"]')) == 1
+    assert not rendered.findall(".//input")
+    assert "Card No<br>연동" not in report
+    assert source.read_bytes() == before
+    # General previews retain their bounded width; only Peak list selection reads all columns.
+    assert len(read_table_preview(str(source))["rows"][0]) == min(len(headers), 12)
 
 
 def test_read_xlsx_preview_reads_first_sheet(tmp_path) -> None:
@@ -838,12 +913,14 @@ def test_read_xlsx_preview_reads_first_sheet(tmp_path) -> None:
             """<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
               <sheetData>
                 <row r="1"><c r="A1" t="s"><v>0</v></c><c r="B1" t="s"><v>1</v></c></row>
-                <row r="2"><c r="A2"><v>1</v></c><c r="B2" t="s"><v>2</v></c></row>
+                <row r="2"><c r="A2"><v>1</v></c><c r="B2" t="s"><v>2</v></c>
+                  <c r="ZZZZ2"><v>999</v></c></row>
               </sheetData>
             </worksheet>""",
         )
 
     assert read_xlsx_preview(str(xlsx_path)) == [["No.", "Phase Name"], ["1", "Anatase"]]
+    assert read_xlsx_preview(str(xlsx_path), max_cols=None) == [["No.", "Phase Name"], ["1", "Anatase"]]
 
 
 def test_parse_peak_list_table_filters_esd_and_extracts_card_numbers(tmp_path) -> None:
