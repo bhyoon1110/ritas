@@ -18,6 +18,9 @@ from lim.xrd_plot import (
     XRD_SIMILAR_PHASE_TOLERANCE,
     _phase_overlap_peak_indices,
     _peak_list_phase_hkls,
+    _phase_section_separator_label,
+    _phase_folder_group_key,
+    _table_preview_html,
     assign_relative_phase_categories,
     build_auto_interpretation_html,
     build_image_display_html,
@@ -196,7 +199,8 @@ def test_image_display_repairs_utf8_nfd_zip_filename_mojibake(tmp_path) -> None:
 
     html = build_image_display_html([str(image_path)])
 
-    assert "<figcaption>상매칭 보조 이미지</figcaption>" in html
+    assert 'alt="상매칭 보조 이미지"' in html
+    assert "<figcaption>" not in html
     assert "상매칭 보조 이미지.png" not in html
     assert garbled_name not in html
 
@@ -208,7 +212,8 @@ def test_image_display_repairs_latin1_utf8_filename_mojibake(tmp_path) -> None:
 
     html = build_image_display_html([str(image_path)])
 
-    assert "<figcaption>상매칭 보조 이미지</figcaption>" in html
+    assert 'alt="상매칭 보조 이미지"' in html
+    assert "<figcaption>" not in html
     assert "상매칭 보조 이미지.png" not in html
     assert garbled_name not in html
 
@@ -223,8 +228,49 @@ def test_image_display_adds_phase_review_heading_only_when_requested(tmp_path) -
         show_phase_review_heading=True,
     )
 
-    assert "유사상 미량상 확인" not in plain_html
-    assert "유사상 미량상 확인" in phase_review_html
+    assert "추정상 미량상 확인" not in plain_html
+    assert "추정상 미량상 확인" in phase_review_html
+
+
+@pytest.mark.parametrize("folder,label", [
+    ("유사상 1", "추정상 1"),
+    ("불확실상 2", "추정상 2"),
+    ("유사/불확실상 3", "추정상 3"),
+    ("유사상/불확실상 4", "추정상 4"),
+    ("Similar Phases 5", "추정상 5"),
+    ("Uncertain Phases 6", "추정상 6"),
+    ("추정상 7", "추정상 7"),
+    ("Tentative Phases 8", "추정상 8"),
+])
+def test_tentative_phase_labels_preserve_source_folder_and_group_key(tmp_path, folder, label):
+    card = tmp_path / folder / "card.pdf"
+    category, source_folder, source = phase_category_from_pdf_path(str(card), str(tmp_path))
+    assert (category, source_folder, source) == ("uncertain", folder.split("/")[-1], "folder")
+    # Combined display labels can contain '/', unlike a single path component.
+    item = {"category": category, "folder_group": folder}
+    before = dict(item)
+    assert _phase_folder_group_key(item) == folder
+    assert _phase_section_separator_label(item) == f"──────── {label} (Tentative Phases)"
+    assert item == before
+
+
+def test_table_cleanup_preserves_data_errors_and_truncation_warnings():
+    # Suppress filename subtitles, not content or warnings about missing data.
+    for source in [
+        {"path": "Peak list.csv", "error": "읽기 실패"},
+        {"path": "Peak list.csv", "rows": []},
+        {"path": "Peak list.csv", "rows": [["Value"]] + [[str(i)] for i in range(79)]},
+    ]:
+        root = html_tree.fromstring(_table_preview_html(source))
+        assert not root.findall(".//h3")
+        assert not root.findall('.//p[@class="xrd-table-note"]')
+        if source.get("error"):
+            assert "Peak list.csv: 읽기 실패" in root.text_content()
+        elif not source["rows"]:
+            assert "표시할 데이터가 없습니다." in root.text_content()
+        else:
+            assert len(root.findall(".//tbody/tr")) == 79
+            assert "상위 80행" in root.find('.//p[@class="xrd-warning"]').text
 
 
 @pytest.mark.parametrize("with_image", [True, False])
@@ -246,9 +292,10 @@ def test_report_exchanges_image_graph_contents_and_preserves_peak_table(tmp_path
     if with_image:
         section = tree.get_element_by_id("xrd-image-info")
         assert section.xpath(".//h2/text()") == ["상 동정 (Phase Identification) 결과"]
-        assert section.xpath(".//figcaption/text()") == ["상매칭 이미지"]
+        assert not section.xpath(".//figcaption")
+        assert section.xpath(".//img/@alt") == ["상매칭 이미지"]
         assert not section.xpath('.//*[@id="xrd-plot"]')
-        assert graph.xpath(".//h2/text()") == ["유사상 미량상 확인"]
+        assert graph.xpath(".//h2/text()") == ["추정상 미량상 확인"]
         assert report.index('id="xrd-image-info"') < report.index('id="xrd-graph-section"')
     else:
         assert not tree.xpath('//*[@id="xrd-image-info"]')
@@ -256,7 +303,7 @@ def test_report_exchanges_image_graph_contents_and_preserves_peak_table(tmp_path
     assert tree.xpath('//h2[@class="xrd-phase-identification-title"]')
     assert 'white-space: nowrap' in report
     assert '.xrd-phase-card-grid { grid-template-columns: minmax(0,1fr); }' in report
-    assert tree.xpath('//div[@class="xrd-provided-block"]/h3/text()') == ["그래프 피크 번호"]
+    assert not tree.xpath('//div[@class="xrd-provided-block"]//h3')
     assert tree.xpath('//table[contains(@class,"xrd-peak-list-display")]//tbody/tr/td/text()')
     assert "Excel Peak list의 2θ/Card No/Phase Name" not in report
     assert "Peak list Excel Display" not in report
@@ -422,7 +469,7 @@ def test_build_report_html_contains_xrd_template_sections(tmp_path) -> None:
     assert "window.print()" in html
     assert ".xrd-table-scroll," in html
     assert ".xrd-section-head h2 { flex: 0 0 min(260px, 36%);" in html
-    assert ".xrd-section-head p { flex: 1 1 auto; min-width: 0;" in html
+    assert not html_tree.fromstring(html).xpath('//div[@class="xrd-section-head"]/p')
     assert "max-height: none !important" in html
     assert "overflow: visible !important" in html
     assert "position: static !important" in html
@@ -581,10 +628,11 @@ def test_build_report_html_contains_xrd_template_sections(tmp_path) -> None:
     assert "결정상(Phase) 정보" in html
     assert "주요상 (Major Phases)" in html
     assert "Peak list Excel Display" not in html
-    assert "그래프 피크 번호" in html
+    assert "그래프 피크 번호" not in html
     assert "peaks.csv" in html
-    assert "유사상 미량상 확인" in html
-    assert "<figcaption>phase-match</figcaption>" in html
+    assert "추정상 미량상 확인" in html
+    assert 'alt="phase-match"' in html
+    assert "<figcaption>" not in html
     assert "data:image/png;base64" in html
     assert "안내 사항" in html
     assert "추가 검토 안내" not in html
@@ -669,7 +717,7 @@ def test_major_phase_highlights_require_excel_phase_name_and_hkl(tmp_path) -> No
     card = root.find('.//article[@data-trace="1"]')
     highlighted = card.findall('.//tr[@class="xrd-phase-overlap-row"]')
     assert [row.find('td').text for row in highlighted] == ["1", "3", "4"]
-    assert "Phase Name과 h k l이 모두 일치" in card.text_content()
+    assert "Phase Name과 h k l이 모두 일치" not in card.text_content()
     assert "±0.06°" not in card.text_content()
     assert "raw 피크 대응" not in card.text_content()
     assert json.dumps(peak_table, sort_keys=True) == before
@@ -732,8 +780,10 @@ def test_phase_info_highlights_only_common_peaks_from_similar_folder_pdfs() -> N
     table = {"peaks": [{"phase_name": "Anatase: 0 0 4"}]}
     html = build_phase_info_html([("Mix3", "#d62728", [first, second])], [table])
 
-    assert "유사상 1" in html
-    assert "유사/불확실상 2건" in html
+    assert "추정상 1" in html
+    assert "추정상 2건" in html
+    assert "유사상" not in html
+    assert "불확실상" not in html
     assert "xrd-similar-phase-cluster" in html
     assert "xrd-phase-meta-chip" in html
     assert "xrd-db-peak-table" in html
@@ -741,7 +791,7 @@ def test_phase_info_highlights_only_common_peaks_from_similar_folder_pdfs() -> N
     assert "Norm. I." in html
     assert "xrd-phase-overlap-row" in html
     assert html.count('class="xrd-phase-overlap-row"') == 2
-    assert "±0.06°" in html
+    assert "±0.06°" not in html
     assert "Peak list Excel에서 겹치는" not in html
 
 
@@ -824,7 +874,7 @@ def test_xrd_html_draws_numbered_peak_graph_from_peak_list(tmp_path) -> None:
 
     assert "xrd_peak_list_marker" in result["html"]
     assert "Peak No." in result["html"]
-    assert "그래프 피크 번호" in result["html"]
+    assert "그래프 피크 번호" not in result["html"]
     assert "xrd-numbered-peak-plot" in result["html"]
     numbered_graph_html = result["html"].split('id="xrd-numbered-peak-plot"', 1)[1]
     numbered_graph_html = numbered_graph_html.split("</section>", 1)[0]

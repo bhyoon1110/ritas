@@ -369,10 +369,12 @@ def test_xrd_analyze_includes_table_and_image_inputs(tmp_path) -> None:
 
     assert response.status_code == 200
     assert "Peak list Excel Display" not in response.text
-    assert "그래프 피크 번호" in response.text
+    assert "그래프 피크 번호" not in response.text
     assert "peaks.csv" in response.text
-    assert "<figcaption>match</figcaption>" in response.text
-    assert "유사상 미량상 확인" in response.text
+    assert 'alt="match"' in response.text
+    assert "<figcaption>" not in response.text
+    assert "<h3>peaks.csv</h3>" not in response.text
+    assert "추정상 미량상 확인" in response.text
     assert "data:image/png;base64" in response.text
 
 
@@ -642,7 +644,7 @@ def test_xrd_report_can_use_llm_comment_provider(tmp_path) -> None:
 
     assert result["llm_comment_used"] is True
     assert "XRD 분석결과" in result["html"]
-    assert "분석결과 확인" in result["html"]
+    assert "분석결과 확인" not in result["html"]  # Explanatory subtitle is omitted.
     assert 'id="xrd-analysis-result" contenteditable="true"' in result["html"]
     assert "#xrd-plot .modebar," in result["html"]
     assert "preparePrintLegend" in result["html"]

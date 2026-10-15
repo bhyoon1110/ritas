@@ -96,7 +96,7 @@ XRD_IMAGE_FORMAT_SELECTOR = False
 XRD_SIMILAR_PHASE_TOLERANCE = 0.06
 
 XRD_FIXED_ELEMENT_GUIDANCE = (
-    "유사 상 구분 및 불순물/미량 상 확인을 위해, 시료에 포함될 수 있는 주요 원소 정보"
+    "추정상 구분 및 불순물/미량 상 확인을 위해, 시료에 포함될 수 있는 주요 원소 정보"
     "(XRF/ICP/EDS)를 공유해주시면 상 후보를 원소 제약 조건으로 추가 검토할 수 있습니다.",
     "원소 정보가 없을 경우, XRD 결과만으로는 결정학적으로 유사한 상 구분 및 미량상 "
     "확인하는 데 한계가 있어 원소 성분 분석을 권장드립니다.",
@@ -118,13 +118,13 @@ PEAK_PALETTE = [
 
 PHASE_GROUPS = {
     "major": "주요상 (Major Phases)",
-    "uncertain": "유사/불확실상 (Uncertain / Similar Phases)",
+    "uncertain": "추정상 (Tentative Phases)",
     "minor": "미량상 후보 (Minor Phase Candidates)",
 }
 
 PHASE_CATEGORY_SHORT_LABELS = {
     "major": "주요상",
-    "uncertain": "유사상",
+    "uncertain": "유사상",  # Stable source/group key; rename only when displayed.
     "minor": "미량상",
 }
 
@@ -331,8 +331,10 @@ def _phase_folder_category(part: str) -> tuple[str | None, str | None]:
     has_similar = (
         "유사" in text
         or "불확실" in text
+        or "추정상" in text
         or "similar" in text
         or "uncertain" in text
+        or "tentative" in text
     )
     # "주요상_유사상 Case" 같은 상위 설명 폴더는 실제 분류 폴더가 아니므로
     # 그 아래의 더 구체적인 "주요상", "유사상 1" 폴더가 우선되게 건너뛴다.
@@ -474,6 +476,17 @@ def _phase_folder_group_key(item: dict[str, Any]) -> str:
     return folder_group
 
 
+def _phase_group_display_label(category: str, folder_group: str) -> str:
+    """Rename report labels only; preserve source folders and grouping keys."""
+    if category != "uncertain":
+        return folder_group
+    return re.sub(
+        r"(?:유사\s*상?\s*[/·]\s*)?불확실\s*상|유사\s*상"
+        r"|(?:uncertain\s*/\s*similar|similar|uncertain|tentative)\s+phases?",
+        "추정상", folder_group, flags=re.IGNORECASE,
+    )
+
+
 def sort_phase_candidates(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return sorted(
         items,
@@ -494,10 +507,11 @@ def _phase_category_separator_label(category: str) -> str:
 def _phase_section_separator_label(item: dict[str, Any]) -> str:
     category = str(item.get("category") or "")
     title = PHASE_GROUPS.get(category, category)
-    folder_group = _phase_folder_group_key(item)
-    if folder_group and folder_group not in {PHASE_CATEGORY_SHORT_LABELS.get(category), title}:
+    folder_group = _phase_group_display_label(category, _phase_folder_group_key(item))
+    short_label = _phase_group_display_label(category, PHASE_CATEGORY_SHORT_LABELS.get(category, ""))
+    if folder_group and folder_group not in {short_label, title}:
         if category == "uncertain":
-            return f"──────── {folder_group} (Similar Phases)"
+            return f"──────── {folder_group} (Tentative Phases)"
         if category == "major":
             return f"──────── {folder_group} (Major Phases)"
         if category == "minor":
@@ -2570,16 +2584,14 @@ def _table_preview_html(table: dict[str, Any]) -> str:
     if table.get("error"):
         return (
             '<article class="xrd-file-table">'
-            f"<h3>{_esc(filename)}</h3>"
-            f'<p class="xrd-warning">{_esc(table["error"])}</p>'
+            f'<p class="xrd-warning">{_esc(filename)}: {_esc(table["error"])}</p>'
             "</article>"
         )
     rows = table.get("rows") or []
     if not rows:
         return (
             '<article class="xrd-file-table">'
-            f"<h3>{_esc(filename)}</h3>"
-            '<p class="xrd-empty">표시할 데이터가 없습니다.</p>'
+            f'<p class="xrd-empty">{_esc(filename)}: 표시할 데이터가 없습니다.</p>'
             "</article>"
         )
     head = rows[0]
@@ -2601,12 +2613,11 @@ def _table_preview_html(table: dict[str, Any]) -> str:
     note = ""
     if len(rows) >= MAX_REPORT_TABLE_ROWS:
         note = (
-            f'<p class="xrd-table-note">표시는 상위 {MAX_REPORT_TABLE_ROWS}행, '
+            f'<p class="xrd-warning">표시는 상위 {MAX_REPORT_TABLE_ROWS}행, '
             f"{MAX_REPORT_TABLE_COLS}열로 제한했습니다.</p>"
         )
     return f"""
-    <article class="xrd-file-table">
-      <h3>{_esc(filename)}</h3>
+    <article class="xrd-file-table" aria-label="{_esc(filename)}">
       <div class="xrd-table-scroll xrd-file-table-scroll">
         <table class="xrd-report-table">
           <thead><tr>{header_html}</tr></thead>
@@ -2629,8 +2640,7 @@ def _peak_list_display_html(
         if table.get("error"):
             blocks.append(
                 '<article class="xrd-file-table">'
-                f"<h3>{_esc(filename)}</h3>"
-                f'<p class="xrd-warning">{_esc(table["error"])}</p>'
+                f'<p class="xrd-warning">{_esc(filename)}: {_esc(table["error"])}</p>'
                 "</article>"
             )
             continue
@@ -2639,8 +2649,7 @@ def _peak_list_display_html(
         if not headers or not rows:
             blocks.append(
                 '<article class="xrd-file-table">'
-                f"<h3>{_esc(filename)}</h3>"
-                '<p class="xrd-empty">표시할 Peak list 데이터가 없습니다.</p>'
+                f'<p class="xrd-empty">{_esc(filename)}: 표시할 Peak list 데이터가 없습니다.</p>'
                 "</article>"
             )
             continue
@@ -2665,21 +2674,18 @@ def _peak_list_display_html(
             )
         blocks.append(
             f"""
-            <article class="xrd-file-table">
-              <h3>{_esc(filename)}</h3>
+            <article class="xrd-file-table" aria-label="{_esc(filename)}">
               <div class="xrd-table-scroll xrd-file-table-scroll">
                 <table class="xrd-report-table xrd-peak-list-display" data-xrd-expanded-columns="{str(len(headers) > MAX_REPORT_TABLE_COLS).lower()}">
                   <thead><tr>{header_html}</tr></thead>
                   <tbody>{''.join(body_rows)}</tbody>
                 </table>
               </div>
-              <p class="xrd-table-note">e.s.d. 열은 제외했습니다. 노란 행은 여러 Card No/Phase가 겹친 피크입니다.</p>
             </article>
             """
         )
     return f"""
   <div class="xrd-provided-block">
-    <h3>그래프 피크 번호</h3>
     {''.join(blocks)}
   </div>
 """
@@ -2691,7 +2697,6 @@ def build_excel_display_html(table_files: list[str]) -> str:
     previews = [_table_preview_html(read_table_preview(path)) for path in table_files]
     return f"""
   <div class="xrd-provided-block">
-    <h3>제공된 Excel/CSV 파일 Display</h3>
     {''.join(previews)}
   </div>
 """
@@ -2715,7 +2720,6 @@ def build_image_display_html(
                 f"""
                 <figure class="xrd-image-card">
                   <img src="{src}" alt="{_esc(caption)}">
-                  <figcaption>{_esc(caption)}</figcaption>
                 </figure>
                 """
             )
@@ -2730,7 +2734,7 @@ def build_image_display_html(
     heading = (
         """
   <div class="xrd-subsection-head">
-    <h3>유사상 미량상 확인</h3>
+    <h3>추정상 미량상 확인</h3>
   </div>
 """
         if show_phase_review_heading
@@ -2844,7 +2848,6 @@ def build_numbered_peak_graph_html(fig, peak_tables: list[dict[str, Any]]) -> st
     )
     return f"""
   <div class="xrd-numbered-peak-block">
-    <h3>그래프 피크 번호</h3>
     <div class="xrd-numbered-peak-graph">{graph_html}</div>
   </div>
 """
@@ -3035,17 +3038,19 @@ def build_phase_info_html(groups, peak_tables: list[dict[str, Any]] | None = Non
             subgroup_items.setdefault(folder_group, []).append(item)
         subgroup_blocks = []
         for subgroup_index, (folder_group, group_items) in enumerate(subgroup_items.items(), start=1):
+            display_group = _phase_group_display_label(category, folder_group)
+            short_label = _phase_group_display_label(category, PHASE_CATEGORY_SHORT_LABELS.get(category, ""))
             show_subgroup = (
                 len(subgroup_items) > 1
-                or folder_group
-                not in {PHASE_CATEGORY_SHORT_LABELS.get(category), title, "자동 분류", ""}
+                or display_group
+                not in {short_label, title, "자동 분류", ""}
             )
             if category == "uncertain":
-                group_label = folder_group if show_subgroup else f"유사상 {subgroup_index}"
+                group_label = display_group if show_subgroup else f"추정상 {subgroup_index}"
                 heading = (
                     '<h3 class="xrd-phase-subgroup-title xrd-similar-group-title">'
                     f'<span>{_esc(group_label)}</span>'
-                    f'<small>유사/불확실상 {len(group_items)}건</small>'
+                    f'<small>추정상 {len(group_items)}건</small>'
                     '</h3>'
                 )
             else:
@@ -3093,14 +3098,12 @@ def build_phase_info_html(groups, peak_tables: list[dict[str, Any]] | None = Non
                 )
                 trace_idx = int(item.get("trace_idx") or -1)
                 row_highlights = set(overlap_indices.get(trace_idx) or set())
-                highlight_note = "노란 행은 같은 유사상 폴더의 모든 PDF 페이즈에서 2θ가 ±0.06° 이내로 공통인 DB 피크입니다."
                 if category == "major":
                     assigned_hkls = excel_phase_hkls.get(_normalized_phase_name(metadata.get("phase_name")), set())
                     row_highlights = {
                         index for index, peak in enumerate(item["peaks"])
                         if _parse_hkl(peak.get("hkl")) in assigned_hkls
                     }
-                    highlight_note = "노란 행은 피크정보(Excel)의 Phase Name과 h k l이 모두 일치하는 DB 피크입니다."
                 cards.append(
                     f"""
                     <article class="xrd-phase-card xrd-card xrd-phase-db-card" data-trace="{item['trace_idx']}">
@@ -3109,7 +3112,6 @@ def build_phase_info_html(groups, peak_tables: list[dict[str, Any]] | None = Non
                         <div class="xrd-phase-meta-chips">{meta_html}</div>
                       </header>
                       {_phase_db_peak_table_html(item, row_highlights)}
-                      <p class="xrd-table-note">{highlight_note}</p>
                     </article>
                     """
                 )
@@ -3141,7 +3143,6 @@ def build_phase_info_html(groups, peak_tables: list[dict[str, Any]] | None = Non
 <section class="xrd-report-section" id="xrd-phase-info">
   <div class="xrd-section-head">
     <h2>결정상(Phase) 정보</h2>
-    <p>주요상은 피크정보(Excel)의 Phase Name과 h k l이 모두 일치하는 피크를 노란색으로 강조합니다. 유사/불확실상은 같은 유사상 폴더의 모든 PDF 페이즈에서 2θ가 ±0.06° 이내로 공통인 피크를 강조합니다.</p>
   </div>
   {''.join(sections)}
 </section>
@@ -3309,7 +3310,6 @@ def xrd_report_css() -> str:
   .xrd-section-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; border-bottom: 1px solid #d1d5db; padding-bottom: 6px; margin-bottom: 10px; }
   .xrd-section-head h2 { flex: 0 0 min(260px, 36%); line-height: 1.25; word-break: keep-all; overflow-wrap: normal; }
   .xrd-section-head .xrd-phase-identification-title { flex: 0 0 auto; white-space: nowrap; }
-  .xrd-section-head p { flex: 1 1 auto; min-width: 0; margin: 2px 0 0; color: #6b7280; font-size: 12px; line-height: 1.45; text-align: right; word-break: keep-all; overflow-wrap: anywhere; }
   .xrd-graph-frame, .xrd-comment-box, .xrd-table-scroll, .xrd-phase-group { border: 2px solid #111827; border-radius: 18px; background: #fff; }
   .xrd-graph-frame { padding: 10px 12px 12px; }
   #xrd-plot { height: 500px !important; min-height: 420px; }
@@ -3339,20 +3339,15 @@ def xrd_report_css() -> str:
   .xrd-report-table.xrd-peak-list-display td.xrd-peak-col-norm { text-align: right; }
   .xrd-overlap-row { background: #fff7cc !important; }
   .xrd-provided-block { margin: 0 0 14px; }
-  .xrd-provided-block > h3 { font-size: 14px; margin: 0 0 8px; }
   .xrd-numbered-peak-block { margin: 0 0 16px; }
-  .xrd-numbered-peak-block > h3 { font-size: 14px; margin: 0 0 8px; }
   .xrd-numbered-peak-graph { height: 340px; border: 1px solid #cbd5e1; border-radius: 8px; overflow: hidden; background: #fff; }
   .xrd-numbered-print-image { display: none; }
   #xrd-numbered-peak-plot { width: 100% !important; height: 340px !important; }
   .xrd-file-table { margin: 10px 0 14px; }
-  .xrd-file-table h3 { font-size: 13px; margin: 0 0 6px; color: #374151; }
   .xrd-file-table-scroll { max-height: 360px; border-width: 1px; border-radius: 8px; }
-  .xrd-table-note { color: #6b7280; font-size: 12px; margin: 6px 0 0; }
   .xrd-image-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
   .xrd-image-card { margin: 0; border: 2px solid #111827; border-radius: 14px; padding: 10px; background: #fff; }
   .xrd-image-card img { display: block; width: 100%; height: auto; max-height: 520px; object-fit: contain; }
-  .xrd-image-card figcaption { margin-top: 6px; font-size: 12px; color: #6b7280; text-align: center; }
   .xrd-print-legend { display: none; }
   .xrd-print-plot-image { display: none; }
   html[data-read-only-report="true"] .xrd-report-page {
@@ -3437,7 +3432,6 @@ def xrd_report_css() -> str:
     .xrd-section-head { display: block; }
     .xrd-section-head h2 { flex-basis: auto; }
     .xrd-section-head .xrd-phase-identification-title { font-size: 15px; }
-    .xrd-section-head p { text-align: left; margin-top: 4px; }
     #xrd-plot { height: 400px !important; min-height: 340px; }
     .xrd-phase-grid, .xrd-phase-card-grid { grid-template-columns: minmax(0,1fr); }
     .xrd-image-grid { grid-template-columns: 1fr; }
@@ -3773,17 +3767,15 @@ def build_report_html(
     print_legend = build_xrd_print_legend_html(fig)
     warning_html = "".join(f'<div class="xrd-warning">{_esc(w)}</div>' for w in warnings)
     comments = comment_html or build_auto_interpretation_html(sample_name, groups, warnings)
-    comment_note_text = (
-        comment_note
-        or "raw 피크, ICDD 후보상, 첨부 표/이미지 정보를 기준으로 정리한 분석결과입니다."
-    )
+    # Keep accepting comment_note for existing callers, but omit explanatory
+    # subtitles from the report. Actual analysis and warning content is kept.
     image_info = build_image_display_html(
         image_files or [],
         section_title="상 동정 (Phase Identification) 결과",
     )
     # Keep the two heading positions while exchanging their contents. Without
     # an attachment retain the graph under the phase-identification heading.
-    graph_heading = "유사상 미량상 확인" if image_info else "상 동정 (Phase Identification) 결과"
+    graph_heading = "추정상 미량상 확인" if image_info else "상 동정 (Phase Identification) 결과"
     graph_heading_class = "" if image_info else ' class="xrd-phase-identification-title"'
     numbered_peak_graph = build_numbered_peak_graph_html(fig, peak_tables or [])
     peak_info = build_peak_info_html(
@@ -3820,14 +3812,12 @@ def build_report_html(
     <section class="xrd-report-section" id="xrd-graph-section">
       <div class="xrd-section-head">
         <h2{graph_heading_class}>{graph_heading}</h2>
-        <p>측정 데이터와 ICDD Card 피크를 함께 표시합니다.</p>
       </div>
       <div class="xrd-graph-frame">{plot_body}<img class="xrd-print-plot-image" alt="XRD graph print image">{print_legend}</div>
     </section>
     <section class="xrd-report-section" id="xrd-llm-comment">
       <div class="xrd-section-head">
         <h2>분석결과</h2>
-        <p>{_esc(comment_note_text)}</p>
       </div>
       {warning_html}
       <div class="xrd-comment-box" id="xrd-analysis-result" contenteditable="true" spellcheck="false" aria-label="분석결과 편집">{comments}</div>

@@ -111,6 +111,72 @@ def test_major_phase_excel_highlights_without_raw_match_in_preview_and_saved_rep
             assert [row.find('td').text for row in highlighted] == (["1"] if index == 1 else [])
 
 
+@pytest.mark.parametrize("with_image", [True, False])
+def test_voc_cleanup_in_generated_preview_and_portable_report(tmp_path, monkeypatch, with_image):
+    from lim import xrd_plot
+
+    captured = {}
+    build_report = xrd_plot.build_report_html
+
+    def capture_figure(fig, **kwargs):
+        captured["figure"] = fig
+        return build_report(fig, **kwargs)
+
+    monkeypatch.setattr(xrd_plot, "build_report_html", capture_figure)
+    raw = tmp_path / "sample.txt"
+    raw.write_text("10 1\n25.309 100\n30 2\n", encoding="utf-8")
+    cards = tmp_path / "cards"
+    similar = cards / "유사상 1"
+    similar.mkdir(parents=True)
+    (similar / "phase.pdf").touch()
+    peak = {"no": "1", "two_theta": 25.309, "d": "3.516", "norm": 100.0, "hkl": "1 0 1"}
+    monkeypatch.setattr(xrd_plot, "parse_pdf_peaks", lambda _: [peak])
+    monkeypatch.setattr(xrd_plot, "parse_pdf_card_metadata", lambda _: {
+        "phase_name": "Anatase, syn", "formula": "Ti O2", "card_no": "00-064-0863",
+    })
+    source = tmp_path / "Peak list.csv"
+    source.write_text('No.,2theta,Phase Name\n1,25.309,"Anatase, syn: 1 0 1"\n', encoding="utf-8")
+    image = tmp_path / "상매칭 이미지.png"
+    image.write_bytes(base64.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMB"
+        "/gL+X7sAAAAASUVORK5CYII="
+    ))
+    result = xrd_plot.build_xrd_html(
+        [(str(raw), str(cards))], table_files=[str(source)],
+        image_files=[str(image)] if with_image else [],
+        comment_provider=lambda _: {"html": "<p>검토한 분석결과</p>", "note": "회색 설명문"},
+    )
+    preview = result["html"]
+    separators = [trace for trace in captured["figure"].data if (trace.meta or {}).get("xrd_separator")]
+    assert len(separators) == 1
+    assert separators[0].name == "──────── 추정상 1 (Tentative Phases)"
+    assert separators[0].meta["xrd_folder_group"] == "유사상 1"
+    asset = tmp_path / "plotly.min.js"
+    asset.write_text("window.Plotly={};", encoding="utf-8")
+    saved = make_xrd_html_portable(preview, asset_path=asset)
+    for report, editable in [(preview, "true"), (saved, "false")]:
+        tree = lxml_html.fromstring(report)
+        assert not tree.xpath('//div[@class="xrd-section-head"]/p')
+        assert not tree.xpath('//p[@class="xrd-table-note"] | //figcaption')
+        assert not tree.xpath('//article[@class="xrd-file-table"]/h3')
+        assert not tree.xpath('//div[@class="xrd-provided-block"]/h3 | //div[@class="xrd-numbered-peak-block"]/h3')
+        assert "그래프 피크 번호" not in report
+        assert "Peak list Excel Display" not in report
+        assert "회색 설명문" not in report
+        # Ignore scripts/metadata: original folder keys must remain intact.
+        visible = " ".join(tree.xpath('//body//text()[not(ancestor::script) and not(ancestor::style)]'))
+        assert "유사상" not in visible and "불확실상" not in visible
+        assert "추정상 1" in visible
+        assert "추정상 (Tentative Phases)" in visible
+        assert tree.xpath('//div[contains(@class,"is-separator")]/span/text()') == ["추정상 1 (Tentative Phases)"]
+        assert tree.get_element_by_id("xrd-analysis-result").get("contenteditable") == editable
+        assert tree.get_element_by_id("xrd-analysis-result").text_content() == "검토한 분석결과"
+        assert tree.get_element_by_id("xrd-numbered-peak-plot") is not None
+        table = tree.find('.//table[@class="xrd-report-table xrd-peak-list-display"]')
+        assert [cell.text_content() for cell in table.findall(".//tbody/tr/td")] == ["1", "25.309", "Anatase, syn: 1 0 1"]
+        assert bool(tree.xpath('//section[@id="xrd-image-info"]//img')) is with_image
+
+
 @pytest.mark.parametrize("loader", [
     '<script src="/xrd/assets/plotly.min.js"></script>',
     '<script data-xrd-embedded-plotly="true">window.Plotly={};</script>',
