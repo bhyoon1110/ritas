@@ -232,18 +232,19 @@
     var band = document.createElement("section");
     band.className = "rist-work-template-band";
     band.setAttribute("aria-label", "작업 템플릿");
-    band.style.cssText = "padding:10px 16px;border-bottom:1px solid #d7dee8;background:#f8fafc;font-size:12px;";
-    band.innerHTML = '<div style="display:flex;flex-wrap:wrap;align-items:center;">'
-      + '<strong style="margin:4px 8px 4px 0">작업 템플릿</strong>'
-      + '<input data-template-name aria-label="템플릿 이름" maxlength="120" placeholder="템플릿 이름" style="max-width:180px;margin:4px;padding:5px">'
-      + '<label style="margin:4px"><input type="checkbox" data-template-ranges> 축 범위 포함</label>'
-      + '<label style="margin:4px"><input type="checkbox" data-template-title> 제목 포함</label>'
-      + '<button type="button" data-template-save style="margin:4px;padding:5px 9px">템플릿 저장</button>'
-      + '<button type="button" data-template-load style="margin:4px;padding:5px 9px">템플릿 불러오기</button>'
-      + '<button type="button" data-template-clear style="margin:4px;padding:5px 9px">자동 적용 해제</button>'
+    band.innerHTML = '<div class="rist-work-template-controls">'
+      + '<strong class="rist-work-template-title">작업 템플릿</strong>'
+      + '<input class="rist-work-template-name" data-template-name aria-label="템플릿 이름" maxlength="120" placeholder="템플릿 이름">'
+      + '<div class="rist-work-template-options">'
+      + '<label class="rist-work-template-option"><input type="checkbox" data-template-ranges> 축 범위 포함</label>'
+      + '<label class="rist-work-template-option"><input type="checkbox" data-template-title> 제목 포함</label></div>'
+      + '<div class="rist-work-template-actions">'
+      + '<button type="button" class="rist-work-template-button" data-template-save>템플릿 저장</button>'
+      + '<button type="button" class="rist-work-template-button" data-template-load>템플릿 불러오기</button>'
+      + '<button type="button" class="rist-work-template-button" data-template-clear>자동 적용 해제</button></div>'
       + '<input type="file" accept=".json" data-template-file hidden></div>'
-      + '<p style="margin:5px 0;color:#52606d">표시 설정·색상·스택·민감도·라이브러리 선택·공통 실험조건을 저장합니다. RAW·시료명·피크/도형/비율 결과·의뢰정보·Raman 세부조건 원문은 제외합니다. 색상은 새 시료 순서대로 적용됩니다. 축 범위 미포함 시 새 데이터에 맞춥니다.</p>'
-      + '<p data-template-status role="status" aria-live="polite" style="margin:4px 0;overflow-wrap:break-word"></p>';
+      + '<p class="rist-work-template-help">표시 설정·색상·스택·민감도·라이브러리 선택·공통 실험조건을 저장합니다. RAW·시료명·피크/도형/비율 결과·의뢰정보·Raman 세부조건 원문은 제외합니다. 색상은 새 시료 순서대로 적용됩니다. 축 범위 미포함 시 새 데이터에 맞춥니다.</p>'
+      + '<p class="rist-work-template-status" data-template-status role="status" aria-live="polite"></p>';
     var anchor = document.querySelector("." + options.experiment.toLowerCase() + "-library-band");
     anchor.parentNode.insertBefore(band, anchor.nextSibling);
     var q = function(selector) { return band.querySelector(selector); };

@@ -107,6 +107,25 @@ function setup(t,experiment,mode) {
 
 for(const mode of ['native','chrome49']) for(const experiment of ['ftir','raman']) {
   const label=experiment+'/'+mode;
+  test(label+': template controls use the shared band styles without changing ready/busy states',async t=>{
+    const h=setup(t,experiment,mode);await tick();
+    const band=h.d.querySelector('.rist-work-template-band');
+    assert.equal(band.previousElementSibling.className,experiment+'-library-band');
+    assert.equal(band.getAttribute('aria-label'),'작업 템플릿');
+    assert(!band.hasAttribute('style'));assert.equal(band.querySelectorAll('[style]').length,0);
+    assert.equal(band.querySelectorAll('.rist-work-template-button').length,3);
+    assert.equal(band.querySelectorAll('.rist-work-template-options input[type=checkbox]').length,2);
+    assert(band.querySelector('[data-template-file]').hidden);
+    assert.equal(band.querySelector('[data-template-status]').getAttribute('aria-live'),'polite');
+    assert(!band.querySelector('[data-template-load]').disabled);
+    assert(!band.querySelector('[data-template-save]').disabled);
+    assert(band.querySelector('[data-template-clear]').disabled);
+    h.template().setBusy(true);
+    assert([...band.querySelectorAll('button,input')].every(n=>n.disabled));
+    h.template().setBusy(false);
+    assert(!band.querySelector('[data-template-load]').disabled);
+    assert(band.querySelector('[data-template-clear]').disabled);
+  });
   if(experiment==='raman')test(label+': common raw metadata is not repeated per sample in condition details',async t=>{
     const h=setup(t,experiment,mode);await tick();
     const metadata={'Excitation Wavelength':'532 nm','Grating':'1800 g/mm','Exposure Time':'3 s','constructor':'Raw export field'};

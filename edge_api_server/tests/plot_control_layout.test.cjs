@@ -94,6 +94,29 @@ for (const kind of ['ftir','raman']) {
       });
       assert.ok(mobileWrap,'mobile library controls must wrap, not push the library list outside the viewport');
     });
+    test(kind+'/'+mode+': template band matches library typography, control sizing and responsive spacing',()=>{
+      function decl(selector,media=false) {
+        const result={};
+        ast.walkRules(rule=>{
+          if (!rule.selectors.includes(selector)) return;
+          if (media ? rule.parent.params!=='(max-width: 760px)' : rule.parent.type!=='root') return;
+          rule.walkDecls(d=>{result[d.prop]=d.value;});
+        });
+        return result;
+      }
+      const template=decl('.rist-work-template-band'),library=decl('.'+kind+'-library-band');
+      for(const prop of ['padding','border-bottom','background','box-sizing']) assert.equal(template[prop],library[prop],prop);
+      const button=decl('.rist-work-template-button'),upload=decl('.'+kind+'-library-upload');
+      for(const prop of ['height','font-size','border','border-radius','color','padding','box-sizing']) assert.equal(button[prop],upload[prop],prop);
+      assert.equal(button['white-space'],'nowrap');assert.equal(button.flex,'0 0 auto');
+      assert.equal(decl('.rist-work-template-name').font,decl('.'+kind+'-library-filter').font);
+      assert.equal(decl('.rist-work-template-name').height,decl('.'+kind+'-library-filter').height);
+      assert.equal(decl('.rist-work-template-title')['font-size'],decl('.'+kind+'-library-title')['font-size']);
+      assert.equal(decl('.rist-work-template-title')['font-weight'],decl('.'+kind+'-library-title')['font-weight']);
+      assert.equal(decl('.rist-work-template-band',true).padding,decl('.'+kind+'-library-band',true).padding);
+      for(const part of ['controls','options','actions']) assert.equal(decl('.rist-work-template-'+part)['flex-wrap'],'wrap');
+      assert.equal(decl('.rist-work-template-help')['word-break'],'break-word');
+    });
   }
 }
 
