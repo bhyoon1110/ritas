@@ -639,6 +639,18 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
   display: flex;
   gap: 8px;
   align-items: center;
+  max-width: calc(100% - 60px);
+  flex-wrap: wrap;
+}}
+#{div_id} .rist-plot-control-row > * {{
+  flex-shrink: 0;
+}}
+#{div_id} .rist-plot-control-row button {{
+  white-space: nowrap;
+  word-break: normal;
+  overflow-wrap: normal;
+  flex-shrink: 0;
+  line-height: 1.2;
 }}
 #{div_id} .rist-legend-edit-button {{
   order: 90;
@@ -954,6 +966,9 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
 #{div_id} .rist-legend-bulk-controls {{
   order: 30;
   display: flex;
+  flex-wrap: wrap;
+  min-width: 0;
+  max-width: 100%;
   gap: 8px;
   align-items: center;
 }}
@@ -7965,17 +7980,23 @@ def _axis_controls_js(div_id: str, *, axis_locks: bool = False, scroll_zoom_y_on
 }
 #__PLOT_ID_CSS__ .rist-axis-control-actions {
   display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
   justify-content: flex-end;
-  gap: 8px;
+  gap: 6px;
+  max-width: 100%;
+  margin-left: auto;
 }
 #__PLOT_ID_CSS__ .rist-axis-control-footer {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
 }
 #__PLOT_ID_CSS__ .rist-axis-control-view-actions {
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
   gap: 6px;
 }
@@ -8005,13 +8026,21 @@ def _axis_controls_js(div_id: str, *, axis_locks: bool = False, scroll_zoom_y_on
   pointer-events: none;
 }
 #__PLOT_ID_CSS__ .rist-axis-control-actions button {
+  flex: 0 0 auto;
   min-height: 34px;
-  padding: 6px 12px;
+  padding: 6px 8px;
   border: 1px solid #a8bdd6;
   border-radius: 4px;
   background: #fff;
   color: #244866;
+  font-family: inherit;
+  font-size: 12px;
   font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+  word-break: normal;
+  overflow-wrap: normal;
+  box-sizing: border-box;
   cursor: pointer;
 }
 #__PLOT_ID_CSS__ .rist-axis-control-actions button:disabled {

@@ -1507,7 +1507,7 @@ body { overflow-x: hidden; }
     top: 70px !important;
     z-index: 55;
     width: min(860px, calc(100% - 24px)) !important;
-    max-width: calc(100% - 24px);
+    max-width: calc(100% - 24px) !important;
     max-height: min(360px, calc(100% - 86px));
     display: none !important;
     flex-wrap: wrap;
@@ -1640,7 +1640,7 @@ body { overflow-x: hidden; }
     right: 8px !important;
     top: 76px !important;
     width: calc(100% - 16px) !important;
-    max-width: calc(100% - 16px);
+    max-width: calc(100% - 16px) !important;
     gap: 5px;
   }
   #raman-plot .rist-legend-edit-button,
