@@ -622,11 +622,12 @@ def _title_edit_js(div_id: str) -> str:
 """
 
 
-def _legend_text_edit_js(div_id: str) -> str:
+def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -> str:
     """HTML 화면에서 범례 항목을 수정하는 JS 스니펫.
 
     - 범례 텍스트 더블클릭: 해당 항목을 바로 인라인 편집
-    - 그래프 우상단 "범례 수정" 버튼: 범례 항목 목록을 패널에서 일괄 편집
+    - FTIR/Raman: 피크 라벨과 텍스트 박스도 더블클릭으로 직접 편집
+    - 범례 관리 패널은 색상/선 모양 등 고급 설정과 일괄 편집용으로 유지
     """
     return f"""
 <style>
@@ -1009,6 +1010,7 @@ def _legend_text_edit_js(div_id: str) -> str:
   if (!gd) return;
   var editing = false;
   var activeFinish = null;
+  var directAnnotationEdit = {str(direct_annotation_edit).lower()};
 
   function visibleLegendTraceIndexes() {{
     var fd = gd._fullData || gd.data || [];
@@ -1239,7 +1241,7 @@ def _legend_text_edit_js(div_id: str) -> str:
 
   function updateName(curve, value) {{
     value = String(value || "").trim();
-    if (value === "" || !window.Plotly) return;
+    if (value === "" || value === traceName(curve) || !window.Plotly) return;
     if (gd._ristHistory) gd._ristHistory.capture();
     var data = gd.data || [];
     var base = data[curve] || {{}};
@@ -1339,12 +1341,13 @@ def _legend_text_edit_js(div_id: str) -> str:
     var btn = document.createElement("button");
     btn.type = "button";
     btn.className = "rist-legend-edit-button";
-    btn.textContent = "\ubc94\ub840 \uc218\uc815";
+    btn.textContent = directAnnotationEdit ? "범례·스타일" : "\ubc94\ub840 \uc218\uc815";
+    if (directAnnotationEdit) btn.title = "이름은 범례·피크 라벨을 더블클릭하여 수정 / 색상·선 모양·일괄 관리는 이 창에서 설정";
 
     var panel = document.createElement("div");
     panel.className = "rist-legend-edit-panel";
     panel.innerHTML = "<div class='rist-legend-edit-head'>"
-      + "<span>\ubc94\ub840 \uc218\uc815</span>"
+      + "<span>" + btn.textContent + "</span>"
       + "<label class='rist-legend-opacity-control' title='창 투명도'>"
       + "<input class='rist-legend-opacity-slider' type='range' min='55' max='100' value='97' "
       + "step='1' aria-label='범례 수정창 투명도'>"
@@ -2138,9 +2141,81 @@ def _legend_text_edit_js(div_id: str) -> str:
   gd.addEventListener("pointerdown", rememberLegendVisibility, true);
   gd.addEventListener("mousedown", rememberLegendVisibility, true);
 
+  function annotationItem(index, node) {{
+    if (!directAnnotationEdit || index == null || !Number.isInteger(Number(index))) return null;
+    index = Number(index);
+    var layout = gd.layout || {{}};
+    var annotation = (layout.annotations || [])[index];
+    if (!annotation || annotation.visible === false) return null;
+    var name = String(annotation.name || "");
+    if (name.indexOf("rist_text_box_text:") === 0) {{
+      return {{kind: "text", index: index, name: name, text: node, key: name}};
+    }}
+    var labels = (layout.meta || {{}}).ristPeakLabels || [];
+    for (var i = 0; i < labels.length; i++) {{
+      var label = labels[i];
+      var trace = (gd.data || [])[label.traceIndex];
+      if (label.annotationIndex === index && trace && trace.meta && trace.meta.rist_peak
+          && trace.visible !== false && trace.visible !== "legendonly") {{
+        return {{kind: "peak", index: index, curve: label.traceIndex, text: node,
+          key: "peak:" + label.traceIndex}};
+      }}
+    }}
+    return null;
+  }}
+
+  function annotationItemAt(ev) {{
+    if (!directAnnotationEdit || !ev || !ev.target || !ev.target.closest) return null;
+    if (ev.target.closest("input,textarea,button,select,.legend,.modebar,.rist-plot-control-row,"
+        + ".rist-legend-edit-panel,.rist-shape-editor-panel,.rist-shape-resize-handle")) return null;
+    var node = ev.target.closest(".annotation[data-index]");
+    if (node) {{
+      var direct = annotationItem(node.getAttribute("data-index"),
+        node.querySelector(".annotation-text") || node);
+      if (direct) return direct;
+    }}
+    // Shape-edit mode has a transparent interaction layer above the SVG.
+    // Hit-test only the label text, never the annotation's long arrow bounds.
+    var nodes = gd.querySelectorAll(".annotation[data-index]");
+    for (var i = nodes.length - 1; i >= 0; i--) {{
+      var text = nodes[i].querySelector(".annotation-text");
+      if (!text) continue;
+      var rect = text.getBoundingClientRect();
+      if (rect.width > 0 && rect.height > 0 && ev.clientX >= rect.left
+          && ev.clientX <= rect.right && ev.clientY >= rect.top && ev.clientY <= rect.bottom) {{
+        var picked = annotationItem(nodes[i].getAttribute("data-index"), text);
+        if (picked) return picked;
+      }}
+    }}
+    // Also allow empty text boxes (and their padding) to be edited.
+    var box = gd._ristTextBoxAtPoint && gd._ristTextBoxAtPoint(ev);
+    return box ? annotationItem(box.index, box.node || gd) : null;
+  }}
+  if (directAnnotationEdit) gd._ristEditableAnnotationAt = annotationItemAt;
+
+  function annotationPlainText(value) {{
+    var decoder = document.createElement("textarea");
+    decoder.innerHTML = legendDisplayToEdit(value);
+    return decoder.value;
+  }}
+  function updateTextBox(name, value) {{
+    var annotations = (gd.layout.annotations || []).slice();
+    var index = annotations.findIndex(function(a) {{ return a.name === name; }});
+    if (index < 0 || annotationPlainText(annotations[index].text) === value) return;
+    if (gd._ristHistory) gd._ristHistory.capture();
+    var text = String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;").replace(/\\r?\\n/g, "<br>");
+    annotations[index] = Object.assign({{}}, annotations[index], {{text: text}});
+    (gd._ristFtirUnitOriginalAnnotations || []).forEach(function(a) {{
+      if (a.name === name) a.text = text;
+    }});
+    window.Plotly.relayout(gd, {{annotations: annotations}});
+  }}
+
   function editLegendItem(picked) {{
     if (editing || gd._ristInlineTextEditing) return;
     if (!picked) return;
+    cancelAnnotationTap();
     cancelSampleLegendClick();
     // Plotly queues the first legend click on the legend layout object. The
     // native dblclick path must cancel it too, before relayout replaces it.
@@ -2151,7 +2226,7 @@ def _legend_text_edit_js(div_id: str) -> str:
     }}
     // A delayed second click may already have toggled a sample and its peaks.
     // Editing a name must not change which spectra are displayed.
-    if (legendPointerState && legendPointerState.curve === picked.curve
+    if (!picked.kind && legendPointerState && legendPointerState.curve === picked.curve
         && Date.now() - legendPointerState.at < 1000
         && legendPointerState.visible.length === (gd.data || []).length) {{
       var visible = legendPointerState.visible;
@@ -2172,20 +2247,27 @@ def _legend_text_edit_js(div_id: str) -> str:
       detail: {{mode: "inline-text-edit"}}
     }}));
 
-    var tr = picked.text.getBoundingClientRect();
+    var tr = (picked.text || gd).getBoundingClientRect();
     var gr = gd.getBoundingClientRect();
-    var current = traceName(picked.curve) || picked.text.textContent || "";
+    var trace = (gd.data || [])[picked.curve];
+    var current = picked.kind === "text"
+      ? annotationPlainText((gd.layout.annotations[picked.index] || {{}}).text)
+      : legendDisplayToEdit(editableTraceName(picked.curve));
 
-    var inp = document.createElement("input");
-    inp.type = "text";
-    inp.setAttribute("aria-label", "범례 이름 수정");
+    var inp = document.createElement(directAnnotationEdit ? "textarea" : "input");
+    if (!directAnnotationEdit) inp.type = "text";
+    else inp.rows = Math.min(6, Math.max(2, current.split("\\n").length));
+    inp.setAttribute("aria-label", picked.kind === "text" ? "텍스트 박스 내용 수정"
+      : picked.kind === "peak" ? "피크 라벨 이름 수정" : "범례 이름 수정");
+    inp.title = "Enter: 저장 / Shift+Enter: 줄바꿈 / Esc: 취소";
     inp.value = current;
-    inp.style.cssText = "position:absolute;z-index:40;font:12px Arial;"
+    inp.style.cssText = "position:absolute;z-index:40;font:14px Arial;line-height:1.4;"
       + "padding:2px 6px;border:1px solid #4a90d9;border-radius:4px;"
-      + "background:#fff;color:#222;box-sizing:border-box;";
-    inp.style.left = (tr.left - gr.left - 4) + "px";
-    inp.style.top = (tr.top - gr.top - 3) + "px";
-    inp.style.minWidth = Math.max(tr.width + 40, 120) + "px";
+      + "background:#fff;color:#222;box-sizing:border-box;resize:none;";
+    var width = Math.min(Math.max(tr.width + 40, 220), Math.max(120, gr.width - 16));
+    inp.style.left = Math.max(4, Math.min(tr.left - gr.left - 4, gr.width - width - 8)) + "px";
+    inp.style.top = Math.max(4, Math.min(tr.top - gr.top - 3, gr.height - 145)) + "px";
+    inp.style.width = width + "px";
     if (getComputedStyle(gd).position === "static") gd.style.position = "relative";
     gd.appendChild(inp);
     inp.focus();
@@ -2196,25 +2278,81 @@ def _legend_text_edit_js(div_id: str) -> str:
       editing = false;
       activeFinish = null;
       gd._ristInlineTextEditing = false;
-      if (save) updateName(picked.curve, inp.value);
+      cancelAnnotationTap();
+      if (save && inp.value !== current) {{
+        if (picked.kind === "text") updateTextBox(picked.name, inp.value);
+        else if ((gd.data || [])[picked.curve] === trace) {{
+          updateName(picked.curve, legendEditToDisplay(inp.value));
+        }}
+      }}
       if (inp.parentNode) inp.parentNode.removeChild(inp);
     }}
     activeFinish = finish;
+    var composing = false;
+    inp.addEventListener("compositionstart", function() {{ composing = true; }});
+    inp.addEventListener("compositionend", function() {{ composing = false; }});
     inp.addEventListener("keydown", function(ev) {{
-      if (ev.key === "Enter") finish(true);
-      else if (ev.key === "Escape") finish(false);
+      ev.stopPropagation();
+      if (composing || ev.isComposing || ev.keyCode === 229) return;
+      if (ev.key === "Enter" && !ev.shiftKey) {{ ev.preventDefault(); finish(true); }}
+      else if (ev.key === "Escape") {{ ev.preventDefault(); finish(false); }}
     }});
     setTimeout(function() {{
       inp.addEventListener("blur", function() {{ finish(true); }});
     }}, 250);
   }}
   gd.addEventListener("dblclick", function(e) {{
-    var picked = legendItemFor(e.target);
+    var picked = legendItemFor(e.target) || annotationItemAt(e);
     if (!picked) return;
     e.preventDefault();
     e.stopImmediatePropagation();
     editLegendItem(picked);
   }}, true);
+  var annotationDown = null, annotationTap = null, lastNativeAnnotation = 0;
+  function cancelAnnotationTap() {{ annotationDown = annotationTap = null; }}
+  if (directAnnotationEdit) {{
+    // Plotly/shape dragging can consume native dblclick. Recognize two completed
+    // stationary taps; a drag must never become an accidental name edit.
+    var pointerEvents = !!window.PointerEvent;
+    var downEvent = pointerEvents ? "pointerdown" : "mousedown";
+    var upEvent = pointerEvents ? "pointerup" : "mouseup";
+    var moveEvent = pointerEvents ? "pointermove" : "mousemove";
+    gd.addEventListener(downEvent, function(ev) {{
+      if (ev.button !== 0 || editing) return;
+      var picked = annotationItemAt(ev);
+      if (!picked) {{ annotationTap = null; return; }}
+      lastNativeAnnotation = Date.now();
+      annotationDown = {{picked: picked, x: ev.clientX, y: ev.clientY}};
+      if (annotationTap && annotationTap.key === picked.key
+          && Date.now() - annotationTap.at < 500
+          && Math.abs(ev.clientX - annotationTap.x) < 6 && Math.abs(ev.clientY - annotationTap.y) < 6) {{
+        annotationDown = annotationTap = null;
+        ev.preventDefault(); ev.stopImmediatePropagation();
+        editLegendItem(picked);
+      }}
+    }}, true);
+    document.addEventListener(moveEvent, function(ev) {{
+      if (annotationDown && (Math.abs(ev.clientX - annotationDown.x) > 5
+          || Math.abs(ev.clientY - annotationDown.y) > 5)) annotationDown = annotationTap = null;
+    }}, true);
+    document.addEventListener(upEvent, function() {{
+      if (!annotationDown) return;
+      annotationTap = {{key: annotationDown.picked.key, at: Date.now(),
+        x: annotationDown.x, y: annotationDown.y}};
+      annotationDown = null;
+    }}, true);
+    window.addEventListener("blur", cancelAnnotationTap);
+    gd.addEventListener("pointercancel", cancelAnnotationTap);
+    gd.on("plotly_clickannotation", function(ev) {{
+      if (editing || Date.now() - lastNativeAnnotation < 800) return;
+      var picked = annotationItem(ev && ev.index,
+        gd.querySelector('.annotation[data-index="' + (ev && ev.index) + '"] .annotation-text'));
+      if (!picked) return;
+      if (annotationTap && annotationTap.key === picked.key && Date.now() - annotationTap.at < 500) {{
+        cancelAnnotationTap(); editLegendItem(picked);
+      }} else annotationTap = {{key: picked.key, at: Date.now()}};
+    }});
+  }}
   // Plotly's drag handler can consume the native dblclick. Its own legend
   // event also lets us cancel the default 'isolate this trace' operation.
   gd._ristHandleEditableLegendDoubleClick = function(ev) {{
@@ -2231,6 +2369,12 @@ def _legend_text_edit_js(div_id: str) -> str:
   gd.addEventListener("rist-exclusive-interaction-start", function(ev) {{
     var nextMode = ev && ev.detail && ev.detail.mode;
     if (nextMode !== "inline-text-edit" && activeFinish) activeFinish(false);
+  }});
+  ["rist-plot-data-replaced", "rist-history-restored", "rist-plot-structure-changed"].forEach(function(name) {{
+    gd.addEventListener(name, function() {{
+      if (activeFinish) activeFinish(false);
+      if (directAnnotationEdit) cancelAnnotationTap();
+    }});
   }});
 }})();
 </script>
@@ -4330,6 +4474,7 @@ def peak_editor_js(div_id: str) -> str:
   gd.addEventListener("click", function(ev) {{
     if (mode !== "add") return;
     if (blockedByOtherInteraction()) return;
+    if (gd._ristEditableAnnotationAt && gd._ristEditableAnnotationAt(ev)) return;
     if (ev.target.closest(
       ".legend,.modebar,.rist-plot-control-row,.rist-legend-edit-panel,.rist-legend-drag-handle"
     )) return;
@@ -4364,6 +4509,7 @@ def peak_editor_js(div_id: str) -> str:
   function handlePeakSelectPointer(ev) {{
     if (mode !== "delete" && mode !== "select") return;
     if (blockedByOtherInteraction()) return;
+    if (gd._ristEditableAnnotationAt && gd._ristEditableAnnotationAt(ev)) return;
     if (ev.target.closest(
       ".legend,.modebar,.rist-plot-control-row,.rist-legend-edit-panel,.rist-legend-drag-handle"
     )) return;
@@ -4399,6 +4545,7 @@ def peak_editor_js(div_id: str) -> str:
   gd.on("plotly_click", function(ev) {{
     if (mode !== "delete" && mode !== "select") return;
     if (blockedByOtherInteraction()) return;
+    if (gd._ristEditableAnnotationAt && ev && gd._ristEditableAnnotationAt(ev.event)) return;
     if (Date.now() <= suppressPeakPlotlyClickUntil) {{
       suppressPeakPlotlyClickUntil = 0;
       return;
@@ -5736,6 +5883,7 @@ def shape_editor_js(div_id: str) -> str:
   var panelDragState = null;
   var editSnapshot = null;
   var previewFrame = 0;
+  var selectionPanelTimer = null;
   var cornerRadiusPrefix = "rist_corner_radius:";
 
   function clamp(value, min, max) {{
@@ -5864,7 +6012,7 @@ def shape_editor_js(div_id: str) -> str:
     + "<button type='button' class='rist-shape-kind-button' data-kind='text'>텍스트 박스</button>"
     + "</div>"
     + "<div class='rist-shape-text-options'>"
-    + "<input class='rist-shape-editor-text' type='text' value='텍스트' aria-label='도형 글자'>"
+    + "<textarea class='rist-shape-editor-text' rows='2' aria-label='도형 글자'>텍스트</textarea>"
     + "<div class='rist-shape-font-row'>"
     + "<span>글자색</span><input class='rist-shape-font-color rist-shape-color' type='color' value='#1f2933'>"
     + "<span>크기</span><input class='rist-shape-font-size' type='number' min='8' max='72' step='1' value='12' aria-label='글자 크기'>"
@@ -6190,6 +6338,8 @@ def shape_editor_js(div_id: str) -> str:
   }}
 
   function clearSelection() {{
+    if (selectionPanelTimer) clearTimeout(selectionPanelTimer);
+    selectionPanelTimer = null;
     cancelShapePointerInteraction();
     selectedId = "";
     selectedKind = "";
@@ -6277,7 +6427,10 @@ def shape_editor_js(div_id: str) -> str:
     var annotation = ai >= 0 ? annotations[ai] : null;
     setDrawKind(kind);
     if (annotation) {{
-      textInput.value = String(annotation.text || "").replace(/<[^>]*>/g, "");
+      var decoder = document.createElement("textarea");
+      decoder.innerHTML = String(annotation.text || "")
+        .replace(/<br\\s*\\/?>/gi, "\\n").replace(/<[^>]*>/g, "");
+      textInput.value = decoder.value;
       fontColorInput.value = rgbaToHex(
         annotation.font && annotation.font.color,
         "#1f2933"
@@ -6312,7 +6465,7 @@ def shape_editor_js(div_id: str) -> str:
     updateFillControl();
     updateSelectionButtons();
     captureEditSnapshot();
-    openPanel();
+    openSelectionPanel();
     requestAnimationFrame(updateSelectionOverlay);
     return Promise.resolve();
   }}
@@ -6336,7 +6489,7 @@ def shape_editor_js(div_id: str) -> str:
 
   function selectShape(id, kind) {{
     if (selectedId === id && selectedKind === kind) {{
-      openPanel();
+      openSelectionPanel();
       return Promise.resolve();
     }}
     if (selectedId) {{
@@ -6345,6 +6498,18 @@ def shape_editor_js(div_id: str) -> str:
       }});
     }}
     return beginShapeSelection(id, kind);
+  }}
+
+  function openSelectionPanel() {{
+    if (selectionPanelTimer) clearTimeout(selectionPanelTimer);
+    // Do not let a first-click style panel cover the text before the second
+    // click arrives. A single click still exposes all advanced shape controls.
+    if (selectedKind === "text" && gd._ristEditableAnnotationAt && panel.style.display !== "block") {{
+      selectionPanelTimer = setTimeout(function() {{
+        selectionPanelTimer = null;
+        if (selectedId && !gd._ristInlineTextEditing) openPanel();
+      }}, 520);
+    }} else openPanel();
   }}
 
   function syncOriginalArrays(id, kind, shape, annotation, remove) {{
@@ -6409,6 +6574,7 @@ def shape_editor_js(div_id: str) -> str:
     return pending.then(function() {{
       var shapes = (gd.layout.shapes || []).map(clone);
       var annotations = (gd.layout.annotations || []).map(clone);
+      var beforeShapes = shapes.slice(), beforeAnnotations = annotations.slice();
       var si = shapeIndex(selectedId, selectedKind, shapes);
       var ai = annotationIndex(selectedId, annotations);
       if (si < 0 || (selectedKind === "text" && ai < 0)) return;
@@ -6421,11 +6587,24 @@ def shape_editor_js(div_id: str) -> str:
       if (!changed) return;
       recordEditHistory();
       reorderOriginalArrays(selectedId, selectedKind, direction);
-      return window.Plotly.relayout(gd, {{
-        shapes: shapes,
-        annotations: annotations
-      }}).then(updateSelectionOverlay);
+      return window.Plotly.relayout(gd,
+        reindexedShapeLayout(shapes, annotations, beforeShapes, beforeAnnotations)
+      ).then(updateSelectionOverlay);
     }});
+  }}
+
+  function reindexedShapeLayout(shapes, annotations, beforeShapes, beforeAnnotations) {{
+    var update = {{shapes: shapes, annotations: annotations}};
+    var labels = (gd.layout.meta || {{}}).ristPeakLabels;
+    if (Array.isArray(labels)) {{
+      update["meta.ristPeakLabels"] = labels.map(function(label) {{
+        var next = clone(label);
+        if (label.annotationIndex >= 0) next.annotationIndex = annotations.indexOf(beforeAnnotations[label.annotationIndex]);
+        if (label.shapeIndex >= 0) next.shapeIndex = shapes.indexOf(beforeShapes[label.shapeIndex]);
+        return next;
+      }});
+    }}
+    return update;
   }}
 
   function editedObjectsFromControls() {{
@@ -6442,7 +6621,7 @@ def shape_editor_js(div_id: str) -> str:
     applyShapeGeometry(shape);
     var annotation = ai >= 0 ? deepClone(annotations[ai]) : null;
     if (annotation) {{
-      annotation.text = esc(textInput.value || "텍스트");
+      annotation.text = esc(textInput.value).replace(/\\r?\\n/g, "<br>");
       annotation.font = Object.assign({{}}, annotation.font || {{}}, {{
         color: fontColorInput.value,
         size: fontSizeValue()
@@ -6512,7 +6691,7 @@ def shape_editor_js(div_id: str) -> str:
         yref: "y",
         x: (x0 + x1) / 2,
         y: (y0 + y1) / 2,
-        text: esc(textInput.value || "텍스트"),
+        text: esc(textInput.value).replace(/\\r?\\n/g, "<br>"),
         name: textName(id),
         showarrow: false,
         captureevents: true,
@@ -6543,6 +6722,7 @@ def shape_editor_js(div_id: str) -> str:
     var kind = selectedKind;
     var shapes = (gd.layout.shapes || []).map(clone);
     var annotations = (gd.layout.annotations || []).map(clone);
+    var beforeShapes = shapes.slice(), beforeAnnotations = annotations.slice();
     var si = shapeIndex(id, kind, shapes);
     var ai = annotationIndex(id, annotations);
     if (si < 0 || (kind === "text" && ai < 0)) return;
@@ -6553,7 +6733,9 @@ def shape_editor_js(div_id: str) -> str:
     if (ai >= 0) annotations.splice(ai, 1);
     syncOriginalArrays(id, kind, shape, annotation, true);
     clearSelection();
-    window.Plotly.relayout(gd, {{ shapes: shapes, annotations: annotations }});
+    window.Plotly.relayout(gd,
+      reindexedShapeLayout(shapes, annotations, beforeShapes, beforeAnnotations)
+    );
   }}
 
   function plotPoint(ev) {{
@@ -6720,6 +6902,15 @@ def shape_editor_js(div_id: str) -> str:
       || (gd._ristPeakEditMode && gd._ristPeakEditMode !== "none")
     );
   }}
+
+  gd._ristTextBoxAtPoint = function(ev) {{
+    var point = plotPoint(ev);
+    var object = point && objectAtPoint(point);
+    if (!object || object.kind !== "text") return null;
+    var index = annotationIndex(object.id, gd.layout.annotations || []);
+    if (index < 0) return null;
+    return {{index: index, node: gd.querySelector('.annotation[data-index="' + index + '"] .annotation-text')}};
+  }};
 
   gd.addEventListener("pointerdown", function(ev) {{
     if (
@@ -6995,6 +7186,7 @@ def shape_editor_js(div_id: str) -> str:
   }});
   deleteButton.addEventListener("click", deleteSelection);
   gd.on("plotly_clickannotation", function(ev) {{
+    if (gd._ristInlineTextEditing) return;
     var annotation = ev && ev.annotation;
     var name = annotation && String(annotation.name || "");
     if (name.indexOf("rist_text_box_text:") !== 0) return;
@@ -9198,7 +9390,9 @@ def fig_to_responsive_html(
         html = html.replace("</body>", _title_edit_js(div_id) + "</body>", 1)
 
     if legend_text_edit:
-        html = html.replace("</body>", _legend_text_edit_js(div_id) + "</body>", 1)
+        html = html.replace("</body>", _legend_text_edit_js(
+            div_id, direct_annotation_edit=peak_editor
+        ) + "</body>", 1)
 
     if peak_editor:
         html = html.replace("</body>", peak_editor_js(div_id) + "</body>", 1)
