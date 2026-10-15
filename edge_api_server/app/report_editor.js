@@ -35,7 +35,7 @@
     save.disabled = busy || !model;
     send.disabled = busy || dirty || !!activeRevision || !model;
     download.setAttribute("aria-disabled", String(busy || dirty || !!activeRevision || !model));
-    Array.prototype.forEach.call(editor.querySelectorAll("input,textarea"),function (input) { input.disabled = sending; });
+    Array.prototype.forEach.call(document.querySelectorAll("#editor input,#editor textarea,#mail-editor textarea"),function (input) { input.disabled = sending; });
     if (lookup) lookup.availability();
     direct.lock(sending);
   }
@@ -228,8 +228,15 @@
       } sections.push(entry);
     });
     commonVariables(editor);
-    var mail = element("details", editor); element("summary", mail, "보고서 안내 메일 문안");
-    ["email_subject","email_body"].forEach(function (key) { auxiliary[key] = bind("auxiliary/" + key,field(mail,key === "email_subject" ? "메일 제목" : "메일 본문",model.auxiliary[key] || "",key === "email_body")); });
+    var mailPane = document.getElementById("mail-editor"); mailPane.textContent = "";
+    var mail = element("details", mailPane); mail.open = true; element("summary", mail, "보고서 안내 메일 문안");
+    element("p",mail,"보고서와 함께 제공되는 안내 문안입니다. 입력 내용은 자동 저장되며, 입력칸의 아래쪽 모서리를 드래그해 높이를 더 늘릴 수 있습니다.").className = "muted";
+    ["email_subject","email_body"].forEach(function (key) {
+      var isBody = key === "email_body";
+      var input = bind("auxiliary/" + key,field(mail,isBody ? "메일 본문" : "메일 제목",model.auxiliary[key] || "",true));
+      input.className = isBody ? "mail-body" : "mail-subject"; input.rows = isBody ? 12 : 2;
+      auxiliary[key] = input;
+    });
     saved = JSON.stringify(collect()); dirty = false;
     if (data.authenticatedOperatorId) {
       inputs.operatorId.readOnly = true;

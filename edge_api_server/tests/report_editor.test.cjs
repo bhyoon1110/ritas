@@ -56,6 +56,21 @@ test('analyst editor is ES5 and renders text without HTML interpretation',t=>{
   assert.equal(h.q('slide-image').getAttribute('src'),h.prefix+'/original/edit-slides/0');
   assert(h.field('분석 결과 요약 · 문단 1').closest('details').hidden);
 });
+for(const kind of ['ftir','raman']) test(kind+' mail draft uses wide resizable fields and keeps autosaving long text',t=>{
+  const h=setup(t,kind),subject=h.field('메일 제목'),body=h.field('메일 본문');
+  assert.equal(subject.tagName,'TEXTAREA');assert.equal(subject.rows,2);assert.equal(body.rows,12);
+  assert(h.q('mail-editor').contains(subject));assert(h.q('mail-editor').contains(body));
+  assert(!h.q('editor').contains(body));assert(subject.closest('details').open);
+  assert.equal(subject.className,'mail-subject');assert.equal(body.className,'mail-body');
+  const title='FTIR 및 Raman 분석 결과 보고서 · 시료와 실험 조건을 포함한 긴 안내 제목';
+  const content=('실험 조건과 피크 해석 결과를 확인해 주세요.\n').repeat(45);
+  h.input('메일 제목',title);h.input('메일 본문',content);body.focus();h.delay();h.tick();
+  h.input('메일 본문',content+'추가 안내');h.finish();
+  assert.equal(h.d.activeElement,body);assert.equal(body.value,content+'추가 안내');h.tick();
+  assert.equal(h.posts[1].body.auxiliary.email_subject,title);
+  assert.equal(h.posts[1].body.auxiliary.email_body,content+'추가 안내');
+  assert.equal(h.q('download').getAttribute('aria-disabled'),'false');
+});
 for(const kind of ['ftir','raman']) test(kind+' saves blank fields and edited AI prose into new revision',t=>{
   const h=setup(t,kind);
   h.input('의뢰번호','REQ-1');h.input('실험코드','LIMS-01');h.input('실험장비','LAB1');h.input('실험자','OP1');
