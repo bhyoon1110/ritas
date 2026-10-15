@@ -44,6 +44,7 @@ function setup(t) {
     },
     Plots:{resize:()=>{}}, purge:()=>{}
   };
+  w.Plotly.update=async(_,data,layout,curves)=>{await w.Plotly.restyle(gd,data,curves);await w.Plotly.relayout(gd,layout);};
   let captures=0;
   gd._ristHistory={capture:()=>captures++};
   const dispatch=name=>gd.dispatchEvent(new w.CustomEvent(name));

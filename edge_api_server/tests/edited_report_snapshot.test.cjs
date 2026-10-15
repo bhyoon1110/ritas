@@ -20,6 +20,19 @@ function fixture() {
 for (const [index,kind] of ['ftir','raman'].entries()) {
   const source = programs[index];
   const helpers = extract(source,'compactReportFigurePayload') + extract(source,'reportSnapshotSignature');
+  test(kind+' removing the last Raw sample never reintroduces original files or sample metadata',()=>{
+    const ctx=vm.createContext({gd:{data:[],layout:{meta:{ristDeletedSampleGroups:['sample:0']}}},
+      latestAnalysisPayload:{samples:[{label:'Deleted'}]},files:[{name:'deleted.raw'}]});
+    const names=['traceVisibleForReport','traceMetaForReport','sampleGroupForReportTrace','reportSampleVisibility',
+      'visibleReportSampleGroups','filterReportAnalysisPayload','reportFilesForVisibleSamples'];
+    vm.runInContext(names.map(name=>extract(source,name)).join('\n'),ctx);
+    assert.equal(ctx.reportFilesForVisibleSamples().length,0);
+    assert.equal(ctx.filterReportAnalysisPayload({samples:[{label:'Deleted'}]}).samples.length,0);
+    ctx.gd.data=[{name:'Kept',meta:{rist_sample_parent:true,rist_sample_group:'sample:1'}}];
+    ctx.latestAnalysisPayload.samples.push({label:'Kept'});ctx.files.push({name:'kept.raw'});
+    assert.deepEqual(clone(ctx.reportFilesForVisibleSamples()),[{name:'kept.raw'}]);
+    assert.deepEqual(clone(ctx.filterReportAnalysisPayload({samples:ctx.latestAnalysisPayload.samples}).samples),[{label:'Kept',sample_group:'sample:1'}]);
+  });
   test(kind+' snapshot detects analytical edits but omits raw arrays and responsive dimensions', () => {
     acorn.parse(helpers,{ecmaVersion:5});
     const ctx = vm.createContext({gd:{}}); vm.runInContext(helpers,ctx);

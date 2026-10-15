@@ -93,6 +93,18 @@ def test_peak_display_switch_omits_peak_graphics_but_keeps_sample_and_other_note
     assert result["layout"].get("shapes", []) == []
 
 
+@pytest.mark.parametrize("visible", [False, True])
+def test_sample_legend_visibility_font_and_exported_colors_survive_readonly_snapshot(visible):
+    source = sample_figure()
+    source["layout"].update(showlegend=visible, legend={"font": {"size": 22, "weight": 700}})
+    source["data"][0]["name"] = "<span style='color:#e11d48'>Sample A</span>"
+    result = viewer.readonly_figure(source)
+    assert result["layout"]["showlegend"] is visible
+    assert result["layout"]["legend"]["font"] == {"size": 22, "weight": 700}
+    assert result["data"][0]["name"] == source["data"][0]["name"]
+    assert result["data"][1]["showlegend"] is False
+
+
 def test_snapshot_file_and_limits(monkeypatch):
     figure = sample_figure()
     upload = UploadFile(filename="figure.json", file=BytesIO(json.dumps(figure).encode()))

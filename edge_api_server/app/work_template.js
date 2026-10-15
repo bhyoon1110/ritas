@@ -37,6 +37,7 @@
   function font(value) {
     var out = {}, input = object(value);
     if (own(input, "size")) out.size = number(input.size, 6, 72);
+    if (own(input, "weight")) out.weight = choice(input.weight, [400, 700]);
     if (own(input, "family")) out.family = text(input.family, 200);
     if (own(input, "color")) out.color = color(input.color);
     return out;
@@ -99,6 +100,7 @@
     settings.axes = {xaxis: axis(object(input.axes).xaxis), yaxis: axis(input.axes.yaxis)};
     settings.legend = legend(input.legend);
     settings.peakLabelsVisible = boolean(input.peakLabelsVisible);
+    settings.legendVisible = own(input, "legendVisible") ? boolean(input.legendVisible) : false;
     settings.peaksVisible = own(input, "peaksVisible") ? boolean(input.peaksVisible) : true;
     settings.peakLegendEntriesVisible = boolean(input.peakLegendEntriesVisible);
     if (!Array.isArray(input.sampleStyles) || input.sampleStyles.length > 100) invalid();
@@ -145,6 +147,7 @@
       plotSize: meta.ristPlotSize || {width: null, ratio: "auto"},
       axes: {}, legend: layout.legend || {},
       peakLabelsVisible: meta.ristPeakLabelsVisible !== false,
+      legendVisible: meta.ristLegendVisible === true,
       peaksVisible: meta.ristPeaksVisible !== false,
       peakLegendEntriesVisible: meta.ristPeakLegendEntriesVisible !== false,
       sampleStyles: (gd.data || []).filter(function(trace) {
@@ -163,6 +166,10 @@
     var s = template.settings, layout = figure.layout, meta = layout.meta || (layout.meta = {});
     meta.ristPlotSize = clone(s.plotSize);
     meta.ristPeakLabelsVisible = s.peakLabelsVisible;
+    meta.ristSampleLegendOnly = true;
+    meta.ristLegendVisible = s.legendVisible;
+    layout.showlegend = s.legendVisible;
+    layout.legend = Object.assign({}, layout.legend || {}, {font: Object.assign({size:16, weight:700}, s.legend.font || {})});
     meta.ristPeaksVisible = s.peaksVisible;
     meta.ristPeakLegendEntriesVisible = s.peakLegendEntriesVisible;
     // Map appearance by RAW sample order, never by an old name/id; extra samples keep their own style.

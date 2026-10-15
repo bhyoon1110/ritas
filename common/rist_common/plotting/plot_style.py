@@ -724,10 +724,27 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
   background: transparent;
   color: #52606d;
   cursor: pointer;
-  font: 18px Arial, sans-serif;
+  font: 12px Arial, sans-serif;
   line-height: 1;
   padding: 0 4px;
 }}
+#{div_id} .rist-legend-appearance {{
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0 10px;
+  font: 12px Arial, sans-serif;
+}}
+#{div_id} .rist-legend-appearance label {{ white-space: nowrap; }}
+#{div_id} .rist-legend-font-size {{ width: 48px; }}
+#{div_id} .rist-legend-sample-delete {{
+  flex: 0 0 auto;
+  color: #b91c1c;
+  white-space: nowrap;
+}}
+#{div_id} .rist-legend-peak-details {{ border-top: 1px solid #d7dee8; margin-top: 10px; padding-top: 8px; }}
+#{div_id} .rist-legend-peak-details summary {{ cursor: pointer; font: 12px Arial, sans-serif; }}
 #{div_id} .rist-legend-edit-row {{
   display: flex;
   gap: 6px;
@@ -1064,15 +1081,83 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
   var editing = false;
   var activeFinish = null;
   var directAnnotationEdit = {str(direct_annotation_edit).lower()};
+  gd._ristSampleLegendOnly = directAnnotationEdit;
 
-  function visibleLegendTraceIndexes() {{
+  function spectrumLegendVisible() {{
+    return !!(gd.layout && gd.layout.meta && gd.layout.meta.ristLegendVisible === true);
+  }}
+
+  function paintSampleLegendLabels() {{
+    if (!directAnnotationEdit) return;
+    gd.querySelectorAll("g.legend g.traces").forEach(function(item) {{
+      var picked = legendItemFor(item);
+      if (!picked || !isSampleCurve(picked.curve)) return;
+      var color = traceColor(picked.curve);
+      picked.text.style.fill = color;
+      picked.text.querySelectorAll("tspan").forEach(function(span) {{ span.style.fill = color; }});
+    }});
+  }}
+
+  var normalizingSpectrumLegend = false;
+  function syncSpectrumLegend() {{
+    if (!directAnnotationEdit || !window.Plotly || normalizingSpectrumLegend) return;
+    var layout = gd.layout || {{}};
+    var saved = layout.meta || {{}};
+    var patch = {{}};
+    if (saved.ristSampleLegendOnly !== true) {{
+      patch["meta.ristSampleLegendOnly"] = true;
+      patch["legend.font.size"] = 16;
+      patch["legend.font.weight"] = 700;
+    }}
+    if (saved.ristLegendVisible == null) patch["meta.ristLegendVisible"] = false;
+    if (layout.showlegend !== spectrumLegendVisible()) patch.showlegend = spectrumLegendVisible();
+    if (saved.ristPeakLegendEntriesVisible !== false) patch["meta.ristPeakLegendEntriesVisible"] = false;
+    var curves = [], values = [];
+    (gd.data || []).forEach(function(trace, index) {{
+      if (!isSampleCurve(index) && !isPeakCurve(index)) return;
+      var desired = isSampleCurve(index);
+      if (trace.showlegend === desired) return;
+      curves.push(index); values.push(desired);
+    }});
+    paintSampleLegendLabels();
+    if (!curves.length && !Object.keys(patch).length) return;
+    normalizingSpectrumLegend = true;
+    var action = curves.length
+      ? window.Plotly.update(gd, {{showlegend: values}}, patch, curves)
+      : window.Plotly.relayout(gd, patch);
+    action.then(function() {{
+      normalizingSpectrumLegend = false;
+      paintSampleLegendLabels();
+      syncSpectrumLegend();
+    }}).catch(function(err) {{
+      normalizingSpectrumLegend = false;
+      console.error("RIST spectrum legend update failed", err);
+    }});
+  }}
+
+  // Only decorate copies sent to image/report renderers; live sample identities
+  // and analytical names remain plain. Plotly rich text carries per-row colors.
+  if (directAnnotationEdit) gd._ristPrepareLegendFigure = function(figure) {{
+    var result = Object.assign({{}}, figure);
+    result.data = (figure.data || []).map(function(trace) {{
+      if (!trace.meta || !trace.meta.rist_sample_parent) return trace;
+      var plain = legendDisplayToEdit(trace.name);
+      var safe = plain.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\\n/g, "<br>");
+      var color = normalizeColor(trace.line && trace.line.color || trace.marker && trace.marker.color);
+      return Object.assign({{}}, trace, {{name: "<span style='color:" + color + "'>" + safe + "</span>"}});
+    }});
+    return result;
+  }};
+
+  function visibleLegendTraceIndexes(forEditor) {{
     var fd = gd._fullData || gd.data || [];
     var idxs = [];
     for (var i = 0; i < fd.length; i++) {{
       var tr = fd[i];
       if (!tr) continue;
-      if (tr.showlegend === false) continue;
       var curve = typeof tr.index === "number" ? tr.index : i;
+      if (tr.showlegend === false && !(directAnnotationEdit && forEditor
+          && (isSampleCurve(curve) || isPeakCurve(curve)))) continue;
       if (!peakMatchesCurrentSensitivity(curve)) continue;
       idxs.push(curve);
     }}
@@ -1394,6 +1479,22 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
     }});
   }}
 
+  function refreshLegendVisibilityButtons() {{
+    gd.querySelectorAll(".rist-legend-visible-toggle").forEach(function(button) {{
+      var visible = spectrumLegendVisible();
+      button.textContent = visible ? "범례 숨김" : "범례 표시";
+      button.classList.toggle("is-active", visible);
+      button.setAttribute("aria-pressed", visible ? "true" : "false");
+    }});
+  }}
+
+  function toggleSpectrumLegend() {{
+    if (gd._ristHistory) gd._ristHistory.capture();
+    var visible = !spectrumLegendVisible();
+    window.Plotly.relayout(gd, {{showlegend: visible, "meta.ristLegendVisible": visible}})
+      .then(refreshLegendVisibilityButtons);
+  }}
+
   function installPanel() {{
     if (gd._ristLegendEditInstalled) return;
     gd._ristLegendEditInstalled = true;
@@ -1423,7 +1524,7 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
       + "<input class='rist-legend-opacity-slider' type='range' min='55' max='100' value='97' "
       + "step='1' aria-label='범례 수정창 투명도'>"
       + "</label>"
-      + "<button type='button' class='rist-legend-edit-close' aria-label='close'>×</button>"
+      + "<button type='button' class='rist-legend-edit-close' aria-label='범례 수정창 닫기'>닫기</button>"
       + "</div><div class='rist-legend-edit-body'></div>"
       + "<div class='rist-legend-edit-error' role='alert'></div>"
       + "<div class='rist-legend-edit-actions'>"
@@ -1432,6 +1533,15 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
       + "</div>";
     toolbar.appendChild(btn);
     gd.appendChild(panel);
+    if (directAnnotationEdit) {{
+      var appearance = document.createElement("div");
+      appearance.className = "rist-legend-appearance";
+      appearance.innerHTML = "<button type='button' class='rist-legend-visible-toggle'>범례 표시</button>"
+        + "<label>글자 크기 <input type='number' class='rist-legend-font-size' min='10' max='32' step='1' aria-label='범례 글자 크기'> px</label>"
+        + "<label><input type='checkbox' class='rist-legend-font-bold' aria-label='범례 굵게'>굵게</label>";
+      panel.insertBefore(appearance, panel.querySelector(".rist-legend-edit-body"));
+      appearance.querySelector(".rist-legend-visible-toggle").addEventListener("click", toggleSpectrumLegend);
+    }}
     gd._ristLegendEditOpen = false;
     var panelDrag = null;
     var panelDragPointerId = null;
@@ -1552,11 +1662,24 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
 
     function renderRows() {{
       var body = panel.querySelector(".rist-legend-edit-body");
+      var previousDetails = body.querySelector(".rist-legend-peak-details");
+      var detailsOpen = !!(previousDetails && previousDetails.open);
       var error = panel.querySelector(".rist-legend-edit-error");
       error.textContent = "";
       error.style.display = "none";
-      var idxs = visibleLegendTraceIndexes();
+      var idxs = visibleLegendTraceIndexes(true);
       body.innerHTML = "";
+      if (directAnnotationEdit) {{
+        var font = gd.layout.legend && gd.layout.legend.font || {{}};
+        panel.querySelector(".rist-legend-font-size").value = String(font.size || 16);
+        panel.querySelector(".rist-legend-font-bold").checked = font.weight !== 400;
+        refreshLegendVisibilityButtons();
+      }}
+      var peakDetails = document.createElement("details");
+      peakDetails.open = detailsOpen;
+      peakDetails.className = "rist-legend-peak-details";
+      peakDetails.innerHTML = "<summary>피크 상세 편집</summary><div class='rist-legend-peak-body'></div>";
+      var peakBody = peakDetails.querySelector(".rist-legend-peak-body");
       panel.setAttribute("data-delete-all-peaks", "false");
       var draggedPeak = null;
 
@@ -1676,6 +1799,9 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
             : "")
           + (peakCurve
             ? "<button type='button' class='rist-legend-peak-delete' title='피크 삭제'>×</button>"
+            : "")
+          + (sampleCurve && directAnnotationEdit
+            ? "<button type='button' class='rist-legend-sample-delete' title='현재 그래프에서 샘플과 연결 피크 제거 (원본 파일 유지)'>Raw 삭제</button>"
             : "");
         var colorInput = row.querySelector(".rist-legend-color-input");
         var dashInput = row.querySelector(".rist-legend-sample-dash");
@@ -1684,6 +1810,17 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
         var kindBadge = row.querySelector(".rist-legend-row-kind");
         var removeButton = row.querySelector(".rist-legend-group-remove");
         var deleteButton = row.querySelector(".rist-legend-peak-delete");
+        var sampleDeleteButton = row.querySelector(".rist-legend-sample-delete");
+        if (sampleDeleteButton) sampleDeleteButton.addEventListener("click", function() {{
+          if (!gd._ristDeleteSample) return;
+          if (!window.confirm("이 샘플과 연결된 피크·비율을 현재 그래프에서 삭제할까요? 저장하지 않은 창의 편집 내용은 취소됩니다. 원본 파일은 유지되며 실행취소로 복원할 수 있습니다.")) return;
+          sampleDeleteButton.disabled = true;
+          gd._ristDeleteSample(curve).catch(function(err) {{
+            error.textContent = "Raw 그래프 삭제에 실패했습니다: " + err.message;
+            error.style.display = "block";
+            sampleDeleteButton.disabled = false;
+          }});
+        }});
         if (colorInput) colorInput.value = traceColor(curve);
         if (dashInput) dashInput.value = traceDash(curve);
         if (widthInput) widthInput.value = String(traceLineWidth(curve));
@@ -1742,7 +1879,7 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
             saveAllRows();
           }}
         }});
-        body.appendChild(row);
+        (directAnnotationEdit && peakCurve ? peakBody : body).appendChild(row);
       }}
 
       items.forEach(function(item) {{
@@ -1803,15 +1940,27 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
           groupRow.setAttribute("data-clear", pending ? "true" : "false");
           groupRow.classList.toggle("is-pending-clear", pending);
         }});
-        body.appendChild(groupRow);
+        (directAnnotationEdit ? peakBody : body).appendChild(groupRow);
         item.curves.forEach(function(curve) {{
           appendCurveRow(curve, groupKey);
         }});
       }});
+      if (directAnnotationEdit && peakBody.children.length) body.appendChild(peakDetails);
       syncDeleteAllPeaksButton();
     }}
 
     function saveAllRows() {{
+      if (directAnnotationEdit) {{
+        var fontInput = panel.querySelector(".rist-legend-font-size");
+        var fontSize = Number(fontInput.value);
+        if (!fontInput.value || !Number.isInteger(fontSize) || fontSize < 10 || fontSize > 32) {{
+          var fontError = panel.querySelector(".rist-legend-edit-error");
+          fontError.textContent = "범례 글자 크기는 10~32 px 정수로 입력하세요.";
+          fontError.style.display = "block";
+          fontInput.focus();
+          return;
+        }}
+      }}
       var invalidWidth = null;
       panel.querySelectorAll(".rist-legend-sample-width").forEach(function(input) {{
         var invalid = sampleLineWidth(input.value) === null;
@@ -1822,6 +1971,14 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
       widthError.textContent = invalidWidth ? "선 굵기는 0.1~20 px 사이의 숫자로 입력하세요." : "";
       widthError.style.display = invalidWidth ? "block" : "none";
       if (invalidWidth) {{ invalidWidth.focus(); return; }}
+      if (directAnnotationEdit) {{
+        var weight = panel.querySelector(".rist-legend-font-bold").checked ? 700 : 400;
+        var currentFont = gd.layout.legend && gd.layout.legend.font || {{}};
+        if (currentFont.size !== fontSize || currentFont.weight !== weight) {{
+          if (gd._ristHistory) gd._ristHistory.capture();
+          window.Plotly.relayout(gd, {{"legend.font.size": fontSize, "legend.font.weight": weight}});
+        }}
+      }}
       var deleteCurves = [];
       var groupRemovals = {{}};
       if (panel.getAttribute("data-delete-all-peaks") === "true") {{
@@ -1906,7 +2063,7 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
         );
       }});
       dispatchPeakDelete(deleteCurves);
-      closePanel();
+      if (!directAnnotationEdit) closePanel();
     }}
 
     btn.addEventListener("click", function(ev) {{
@@ -1920,7 +2077,7 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
         gd._ristLegendEditOpen = true;
         renderRows();
         panel.style.display = "block";
-      }} else {{
+      }} else if (!directAnnotationEdit) {{
         closePanel();
       }}
     }});
@@ -1937,14 +2094,17 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
     }});
     panel.querySelector(".rist-legend-edit-save-all").addEventListener("click", saveAllRows);
     document.addEventListener("click", function(ev) {{
+      if (directAnnotationEdit) return;
       if (panel.style.display !== "block") return;
       if (panel.contains(ev.target) || btn.contains(ev.target)) return;
       closePanel();
     }});
     document.addEventListener("keydown", function(ev) {{
+      if (directAnnotationEdit) return;
       if (ev.key === "Escape") closePanel();
     }});
     gd.addEventListener("rist-exclusive-interaction-start", function(ev) {{
+      if (directAnnotationEdit) return;
       var activeMode = String(ev.detail && ev.detail.mode || "");
       if (!activeMode || activeMode === "legend-edit") return;
       if (panel.style.display === "block") closePanel();
@@ -2002,6 +2162,7 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
   }}
 
   function peakLegendEntriesVisible() {{
+    if (gd._ristSampleLegendOnly) return false;
     if (typeof gd._ristPeakLegendEntriesVisible !== "boolean") {{
       return refreshPeakLegendEntryStateFromLayout();
     }}
@@ -2158,6 +2319,11 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
       + "<button type='button' class='rist-legend-bulk-button' data-peak-control data-peak-legend-visible='false'>\ud53c\ud06c \ubc94\ub840 \uc228\uae40</button>"
       + "<button type='button' class='rist-legend-bulk-button rist-peak-label-toggle' data-peak-control aria-pressed='true'>\ud53c\ud06c \ub77c\ubca8</button>";
     if (directAnnotationEdit) {{
+      bulk.querySelectorAll("[data-peak-legend-visible]").forEach(function(button) {{ button.remove(); }});
+      var legendToggle = document.createElement("button");
+      legendToggle.type = "button";
+      legendToggle.className = "rist-legend-bulk-button rist-legend-visible-toggle";
+      bulk.insertBefore(legendToggle, bulk.firstChild);
       bulk.innerHTML += "<button type='button' class='rist-legend-bulk-button rist-peak-display-toggle'"
         + " data-peak-control aria-pressed='true'>피크 표시</button>";
     }}
@@ -2169,6 +2335,10 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
       if (!b) return;
       ev.preventDefault();
       ev.stopPropagation();
+      if (b.classList.contains("rist-legend-visible-toggle")) {{
+        toggleSpectrumLegend();
+        return;
+      }}
       if (b.classList.contains("rist-peak-display-toggle")) {{
         gd.dispatchEvent(new CustomEvent("rist-exclusive-interaction-start", {{
           detail: {{mode: "peak-display"}}
@@ -2220,6 +2390,14 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
 
   installPanel();
   installLegendBulkControls();
+  if (directAnnotationEdit) {{
+    gd.on("plotly_afterplot", function() {{ syncSpectrumLegend(); refreshLegendVisibilityButtons(); }});
+    ["rist-history-restored", "rist-plot-data-replaced", "rist-plot-structure-changed"].forEach(function(name) {{
+      gd.addEventListener(name, syncSpectrumLegend);
+    }});
+    syncSpectrumLegend();
+    refreshLegendVisibilityButtons();
+  }}
 
   var legendPointerState = null;
   var pendingSampleLegendClick = null;
@@ -2620,6 +2798,7 @@ def peak_sensitivity_js(div_id: str, initial: str = "medium") -> str:
   }}
 
   function peakLegendEntriesVisible() {{
+    if (gd._ristSampleLegendOnly) return false;
     var layoutMeta = gd.layout && gd.layout.meta && typeof gd.layout.meta === "object"
       ? gd.layout.meta : {{}};
     return layoutMeta.ristPeakLegendEntriesVisible !== false;
@@ -2987,10 +3166,6 @@ def peak_editor_js(div_id: str) -> str:
 }}
 #{div_id} .legend g.traces.rist-legend-locked-by-hidden-sample {{
   opacity: 0.45;
-}}
-#{div_id} .legend g.traces.rist-sample-legend-item text.legendtext {{
-  font-size: 11px !important;
-  font-weight: 700 !important;
 }}
 </style>
 <script>
@@ -4315,7 +4490,7 @@ def peak_editor_js(div_id: str) -> str:
       y: [pt.y],
       name: name,
       legendgroup: legendGroup,
-      showlegend: true,
+      showlegend: !gd._ristSampleLegendOnly,
       marker: {{
         color: color,
         size: 9,
@@ -4409,7 +4584,7 @@ def peak_editor_js(div_id: str) -> str:
     }});
   }}
 
-  function deletePeakTraces(curves, skipHistory, deferStructureEvent) {{
+  function deletePeakTraces(curves, skipHistory, deferStructureEvent, deletedGroups) {{
     if (!window.Plotly) return Promise.resolve([]);
     var data = gd.data || [];
     var sourceAnnotations = gd.layout.annotations || [];
@@ -4430,7 +4605,8 @@ def peak_editor_js(div_id: str) -> str:
       .filter(function(curve, index, values) {{
         return curve != null
           && values.indexOf(curve) === index
-          && (labeledCurves[curve] || isPeakCurve(curve));
+          && (labeledCurves[curve] || isPeakCurve(curve)
+            || (deletedGroups && deletedGroups.indexOf(sampleGroup(curve)) >= 0));
       }})
       .sort(function(a, b) {{ return a - b; }});
     if (!peakCurves.length) return Promise.resolve([]);
@@ -4534,20 +4710,36 @@ def peak_editor_js(div_id: str) -> str:
 
     return window.Plotly.deleteTraces(gd, peakCurves).then(function() {{
       updateSelectButton();
-      return window.Plotly.relayout(gd, {{
+      var patch = {{
         "meta.ristPeakLabels": nextLabels,
         annotations: annotations,
         shapes: shapes
-      }}).then(function() {{
+      }};
+      if (deletedGroups) {{
+        patch["meta.ristDeletedSampleGroups"] = ((gd.layout.meta || {{}}).ristDeletedSampleGroups || [])
+          .concat(deletedGroups).filter(function(group, index, all) {{ return all.indexOf(group) === index; }});
+      }}
+      return window.Plotly.relayout(gd, patch).then(function() {{
         if (!deferStructureEvent) {{
           gd.dispatchEvent(new CustomEvent("rist-plot-structure-changed", {{
-            detail: {{reason: "peak-deleted"}}
+            detail: {{reason: deletedGroups ? "sample-deleted" : "peak-deleted"}}
           }}));
         }}
         return peakCurves;
       }});
     }});
   }}
+
+  gd._ristDeleteSample = function(curve) {{
+    if (!isSampleParent(curve)) return Promise.resolve([]);
+    var group = sampleGroup(curve);
+    if (!group) return Promise.reject(new Error("샘플 연결 정보를 찾을 수 없습니다."));
+    var curves = [];
+    (gd.data || []).forEach(function(trace, index) {{
+      if (sampleGroup(index) === group) curves.push(index);
+    }});
+    return deletePeakTraces(curves, false, false, [group]);
+  }};
 
   function deletePeakTrace(curve, skipHistory, deferStructureEvent) {{
     return deletePeakTraces([curve], skipHistory, deferStructureEvent);
@@ -5062,15 +5254,23 @@ def _image_download_js(div_id: str, formats, filename: str, scale: float) -> str
       return traceIsVisible(trace) && trace.showlegend !== false
         && String(trace.name || "").trim() !== "";
     });
-    var longestName = 0;
+    var legendFont = layout.legend && layout.legend.font || {};
+    var fontSize = Number(legendFont.size) || 16;
+    var characterWidth = fontSize * (Number(legendFont.weight || 700) >= 600 ? 0.68 : 0.62);
+    var longestName = 0, lineCount = 0;
     legendData.forEach(function(trace) {
-      var plainName = String(trace && trace.name || "").replace(/<[^>]*>/g, "");
-      longestName = Math.max(longestName, plainName.length);
+      var lines = String(trace && trace.name || "").replace(/<br\s*\/?\s*>/gi, "\n")
+        .replace(/<[^>]*>/g, "").split("\n");
+      lineCount += lines.length;
+      lines.forEach(function(line) {
+        // Wide Korean/CJK glyphs need more room than Latin characters.
+        longestName = Math.max(longestName, line.replace(/[^\x00-\xff]/g, "WW").length);
+      });
     });
-    var legendWidth = Math.max(0.16, Math.min(0.38, (longestName * 6.5 + 54) / plotWidth));
+    var legendWidth = Math.max(0.16, Math.min(0.9, (longestName * characterWidth + 54) / plotWidth));
     var legendHeight = Math.max(
       0.08,
-      Math.min(0.42, (legendData.length * 23 + 18) / plotHeight)
+      Math.min(0.9, (lineCount * Math.max(23, fontSize * 1.35) + 18) / plotHeight)
     );
     var candidates = [
       {corner: "top-left", x: 0.018, y: 0.982, xanchor: "left", yanchor: "top",
@@ -5251,7 +5451,8 @@ def _image_download_js(div_id: str, formats, filename: str, scale: float) -> str
       layout[key].automargin = true;
     });
 
-    var hasLegend = exportData.some(function(trace) { return trace.showlegend !== false; });
+    var hasLegend = !(layout.meta && layout.meta.ristLegendVisible === false)
+      && exportData.some(function(trace) { return trace.showlegend !== false; });
     var placement = chooseLegendPlacement(exportData, layout, width, height);
     var reservedTopHeadroom = false;
     var headroomAdjustments = 0;
@@ -5273,7 +5474,7 @@ def _image_download_js(div_id: str, formats, filename: str, scale: float) -> str
       bordercolor: "rgba(100,116,139,0.65)",
       borderwidth: 1,
       title: {text: ""},
-      font: Object.assign({}, originalLegend.font || {}, {size: 11})
+      font: Object.assign({size: 16, weight: 700}, originalLegend.font || {})
     });
     layout.showlegend = hasLegend;
     if (!layout.meta || typeof layout.meta !== "object" || Array.isArray(layout.meta)) {
@@ -5290,7 +5491,8 @@ def _image_download_js(div_id: str, formats, filename: str, scale: float) -> str
       legendReservedTopHeadroom: reservedTopHeadroom,
       legendHeadroomAdjustments: headroomAdjustments
     };
-    return {data: exportData, layout: layout};
+    var figure = {data: exportData, layout: layout};
+    return gd._ristPrepareLegendFigure ? gd._ristPrepareLegendFigure(figure) : figure;
   }
 
   function exportDimensions() {

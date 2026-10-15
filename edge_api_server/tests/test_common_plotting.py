@@ -135,7 +135,7 @@ def test_image_export_keeps_visible_peaks_with_sample_only_legend(tmp_path) -> N
     assert "layout.meta.ristPeakLabels = []" not in html
     assert "var legendData = data.filter(function(trace)" in html
     assert "legendData.forEach(function(trace)" in html
-    assert "legendData.length * 23 + 18" in html
+    assert "lineCount * Math.max(23, fontSize * 1.35) + 18" in html
     assert 'corner: "top-left"' in html
     assert "var topLeftOccupied = scores[0] > 0" in html
     assert "if (topLeftOccupied)" in html
@@ -213,6 +213,8 @@ def test_shared_plotly_module_applies_legend_text(tmp_path) -> None:
     assert "rist-plot-control-row" in html
     assert "top: 58px" in html
     assert "rist-legend-edit-button" in html
+    assert "rist-legend-font-size" in html
+    assert 'patch["legend.font.weight"] = 700' in html
     assert "rist-history-controls" in html
     assert "rist-history-undo" in html
     assert "rist-history-redo" in html
@@ -558,7 +560,7 @@ def test_shared_peak_editor_adds_peak_controls(tmp_path) -> None:
     assert "Plotly.addTraces" in html
     assert "Plotly.deleteTraces" in html
     assert 'gd.addEventListener("rist-peak-delete"' in html
-    assert "function deletePeakTraces(curves, skipHistory, deferStructureEvent)" in html
+    assert "function deletePeakTraces(curves, skipHistory, deferStructureEvent, deletedGroups)" in html
     assert ".sort(function(a, b) { return a - b; })" in html
     assert "window.Plotly.deleteTraces(gd, peakCurves)" in html
     assert "return deletePeakTraces([curve], skipHistory, deferStructureEvent)" in html
@@ -573,7 +575,7 @@ def test_shared_peak_editor_adds_peak_controls(tmp_path) -> None:
     )
     assert "rist-plot-structure-changed" in html
     assert 'reason: "peak-added"' in html
-    assert 'reason: "peak-deleted"' in html
+    assert 'reason: deletedGroups ? "sample-deleted" : "peak-deleted"' in html
     assert 'reason: "peaks-deleted"' in html
     assert "captureevents: true" in html
     assert "updatePeakColorList" in html
@@ -610,8 +612,7 @@ def test_shared_peak_editor_adds_peak_controls(tmp_path) -> None:
     assert "updateHiddenSamplePeakLegendLocks" in html
     assert "rist-legend-locked-by-hidden-sample" in html
     assert "rist-sample-legend-item" in html
-    assert "font-size: 11px !important" in html
-    assert "font-weight: 700 !important" in html
+    assert "font-size: 11px !important" not in html
     assert "function normalizeSampleLegendEntries()" in html
     assert "gd._ristNormalizeSampleLegendEntries = normalizeSampleLegendEntries" in html
     assert "showlegend: curves.map(function() { return true; })" in html

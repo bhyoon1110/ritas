@@ -4014,6 +4014,7 @@ _UPLOAD_SCRIPT = """
       "rist-legend-visibility-change",
       "rist-peak-label-visibility-change",
       "rist-peak-display-change",
+      "rist-plot-structure-changed",
       "rist-peak-delete",
       "rist-peak-group-change",
       "rist-peak-group-clear",
@@ -6069,6 +6070,10 @@ _UPLOAD_SCRIPT = """
     var visible = {};
     var hidden = {};
     var hasParents = false;
+    ((gd.layout && gd.layout.meta && gd.layout.meta.ristDeletedSampleGroups) || []).forEach(function(group) {
+      hidden[group] = true;
+      hasParents = true;
+    });
     (data || []).forEach(function(trace) {
       var meta = traceMetaForReport(trace);
       var group = sampleGroupForReportTrace(trace);
@@ -6222,6 +6227,7 @@ _UPLOAD_SCRIPT = """
   }
 
   function compactReportFigurePayload(figure, forViewer) {
+    if (forViewer && gd._ristPrepareLegendFigure) figure = gd._ristPrepareLegendFigure(figure);
     var payload = JSON.parse(JSON.stringify(figure || {}));
     payload.data = (payload.data || []).map(function(trace) {
       var compact = Object.assign({}, trace);
@@ -6247,6 +6253,7 @@ _UPLOAD_SCRIPT = """
   }
 
   async function captureReportFigureImage(figure) {
+    if (gd._ristPrepareLegendFigure) figure = gd._ristPrepareLegendFigure(figure);
     var dimensions = {width: Math.max(900, Math.round(gd.clientWidth || 1200)),
       height: Math.max(640, Math.round(gd.clientHeight || 800))};
     if (gd._ristPlotSize) dimensions = gd._ristPlotSize.exportDimensions(dimensions);

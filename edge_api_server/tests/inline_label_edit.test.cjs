@@ -143,7 +143,7 @@ for (const kind of ['ftir','raman']) for (const mode of ['native','chrome49']) {
     await h.w.Plotly.addTraces(h.gd,added);h.emit('plotly_afterplot');await tick();assert.equal(added.mode,'none');
     const snapshot=clone({data:h.gd.data,layout:h.gd.layout});
     const output=h.gd._ristBuildImageExportPayload(h.gd.data,h.gd.layout,1000,700);
-    assert.equal(output.data.length,1);assert.equal(output.data[0].name,'Sample');
+    assert.equal(output.data.length,1);assert.match(output.data[0].name,/>Sample<\/span>/);
     assert.equal(output.layout.annotations[0].visible,false);assert.equal(output.layout.shapes[0].visible,false);
     assert.equal(output.layout.annotations[1].text,snapshot.layout.annotations[1].text);
     assert.deepEqual(clone({data:h.gd.data,layout:h.gd.layout}),snapshot);
@@ -174,6 +174,95 @@ for (const kind of ['ftir','raman']) for (const mode of ['native','chrome49']) {
     h.q('.rist-legend-edit-button').click();assert.equal(h.q('.rist-legend-sample-width').value,'3.5');
     h.q('.rist-legend-edit-save-all').click();await tick();assert.equal(events.length,1,'unchanged save is a no-op');
   });
+  test(label+': sample-only legend starts hidden, toggles without hiding peaks, and survives history',async t=>{
+    const h=setup(t,kind,mode);await tick();
+    assert.equal(h.gd.layout.showlegend,false);assert.equal(h.gd.layout.legend.font.size,16);assert.equal(h.gd.layout.legend.font.weight,700);
+    assert.equal(h.gd.data[0].showlegend,true);assert.equal(h.gd.data[1].showlegend,false);
+    assert.equal(h.q('[data-peak-legend-visible]'),null);
+    const button=h.q('.rist-legend-bulk-controls .rist-legend-visible-toggle');button.click();await tick();
+    assert.equal(h.gd.layout.showlegend,true);assert.equal(button.textContent,'범례 숨김');
+    assert.notEqual(h.gd.data[1].visible,false);assert.equal(h.gd.layout.annotations[0].visible,true);
+    h.gd._ristHistory.undo();await tick();assert.equal(h.gd.layout.showlegend,false);
+    h.gd._ristHistory.redo();await tick();assert.equal(h.gd.layout.showlegend,true);
+    h.gd.data[1].showlegend=true;h.dispatch('rist-plot-data-replaced');await tick();
+    assert.equal(h.gd.layout.showlegend,true);assert.equal(h.gd.data[1].showlegend,false);
+    h.q('.rist-legend-edit-button').click();
+    assert.equal(h.q('.rist-legend-peak-details').open,false);
+    assert.equal(h.q('.rist-legend-peak-details .is-peak').getAttribute('data-curve'),'1');
+    assert.equal(h.q('.rist-legend-edit-body > .is-sample').getAttribute('data-curve'),'0');
+  });
+  test(label+': legend editor only closes with Close, preserving pending edits across outside/Escape/mode/save',async t=>{
+    const h=setup(t,kind,mode);await tick();h.q('.rist-legend-edit-button').click();
+    const panel=h.q('.rist-legend-edit-panel'),input=h.q('.is-sample textarea');input.value='Edited Sample';
+    h.d.body.click();h.key(h.d.body,'Escape');h.q('.rist-legend-edit-button').click();
+    h.gd.dispatchEvent(new h.w.CustomEvent('rist-exclusive-interaction-start',{detail:{mode:'shape-edit'}}));
+    assert.equal(panel.style.display,'block');assert.equal(h.gd._ristLegendEditOpen,true);assert.equal(input.value,'Edited Sample');
+    h.q('.rist-legend-edit-save-all').click();await tick();
+    assert.equal(h.gd.data[0].name,'Edited Sample');assert.equal(panel.style.display,'block');
+    h.q('.rist-legend-edit-close').click();assert.equal(panel.style.display,'none');assert.equal(h.gd._ristLegendEditOpen,false);
+  });
+  test(label+': legend font/color sync and export styling never rewrite live names/RAW',async t=>{
+    const h=setup(t,kind,mode);await tick();h.run('function buildImageExportPayload');
+    h.q('.rist-legend-edit-button').click();
+    const size=h.q('.rist-legend-font-size');
+    for(const bad of ['9','33','12.5','']) {size.value=bad;h.q('.rist-legend-edit-save-all').click();assert.equal(h.gd.layout.legend.font.size,16);}
+    size.value='22';h.q('.rist-legend-font-bold').checked=false;
+    h.q('.is-sample .rist-legend-color-input').value='#e11d48';
+    h.q('.rist-legend-edit-save-all').click();await tick();
+    assert.equal(h.gd.layout.legend.font.size,22);assert.equal(h.gd.layout.legend.font.weight,400);
+    assert.equal(h.q('text.legendtext').style.fill,'#e11d48');assert.equal(h.gd.data[0].name,'Sample');
+    const figure={data:h.gd.data,layout:h.gd.layout},before=clone(figure);
+    const hidden=h.gd._ristBuildImageExportPayload(figure.data,figure.layout,1000,700);assert.equal(hidden.layout.showlegend,false);
+    h.q('.rist-legend-appearance .rist-legend-visible-toggle').click();await tick();
+    const styled=h.gd._ristPrepareLegendFigure(figure);
+    assert.match(styled.data[0].name,/color:#e11d48.*Sample/);assert.equal(h.gd.data[0].name,'Sample');
+    const exported=h.gd._ristBuildImageExportPayload(h.gd.data,h.gd.layout,1000,700);
+    assert.equal(exported.layout.showlegend,true);assert.equal(exported.layout.legend.font.size,22);assert.equal(exported.layout.legend.font.weight,400);
+    assert.deepEqual(clone(h.gd.data),before.data);
+  });
+  test(label+': image export collision checks scale with the selected legend font',async t=>{
+    const h=setup(t,kind,mode);await tick();h.run('function buildImageExportPayload');
+    const data=[{name:'Sample12',x:[1000],y:[3.8],meta:{rist_sample_parent:true}}];
+    const layout={xaxis:{range:[0,4000]},yaxis:{range:[0,4]},meta:{ristLegendVisible:true},legend:{font:{size:10,weight:700}}};
+    const small=h.gd._ristBuildImageExportPayload(data,layout,1000,700);
+    assert.equal(small.layout.meta.ristImageExport.legendCorner,'top-left');
+    layout.legend.font.size=32;
+    const large=h.gd._ristBuildImageExportPayload(data,layout,1000,700);
+    assert.equal(large.layout.meta.ristImageExport.legendCorner,'top-right');
+  });
+  test(label+': deleting a Raw graph removes associated peaks only, remaps labels, and undoes/redoes',async t=>{
+    const h=setup(t,kind,mode);shapeFixture(h);await tick();
+    const parent=clone(h.gd.data[0]);parent.name='Other';parent.meta.rist_sample_group=parent.legendgroup='sample:1';
+    const peak=clone(h.gd.data[1]);peak.meta.rist_sample_group=peak.meta.rist_peak.sample_group='sample:1';peak.meta.rist_peak.label_key='other';
+    h.gd.data.push(parent,peak);h.gd.layout.annotations.push({text:'Other peak',x:200,y:3});
+    h.gd.layout.meta.ristPeakLabels.push({traceIndex:3,annotationIndex:2,shapeIndex:-1});
+    h.dispatch('rist-plot-data-replaced');await tick();
+    const before=clone({data:h.gd.data,layout:h.gd.layout});
+    h.q('.rist-legend-edit-button').click();h.w.confirm=()=>false;h.q('.rist-legend-sample-delete').click();await tick();assert.equal(h.gd.data.length,4);
+    h.w.confirm=()=>true;h.q('.rist-legend-sample-delete').click();await tick();
+    assert.equal(h.gd.data.length,2);assert.equal(h.gd.data[0].name,'Other');assert.equal(h.gd.layout.meta.ristPeakLabels[0].traceIndex,1);
+    assert.equal(h.gd.layout.meta.ristPeakLabels[0].annotationIndex,1);assert.equal(h.gd.layout.annotations[0].name,'rist_text_box_text:1');
+    assert.equal(h.gd.layout.shapes.length,1);assert.equal(h.gd.layout.shapes[0].name,'rist_text_box:1');
+    assert.equal(h.q('.rist-legend-edit-panel').style.display,'block');assert.deepEqual(clone(h.gd.layout.meta.ristDeletedSampleGroups),['sample:0']);
+    h.gd._ristHistory.undo();await tick();assert.deepEqual(clone(h.gd.data),before.data);assert.equal(h.gd.layout.meta.ristPeakLabels.length,2);
+    h.gd._ristHistory.redo();await tick();assert.equal(h.gd.data.length,2);
+    await h.gd._ristDeleteSample(0);await tick();assert.equal(h.gd.data.length,0);assert.equal(h.gd.layout.meta.ristDeletedSampleGroups.length,2);
+  });
+  if(kind==='raman') test(label+': Raw deletion removes only its ratios and undo restores their peak references',async t=>{
+    const h=setup(t,kind,mode);await tick();
+    const peak=clone(h.gd.data[1]);peak.x=[250];peak.meta.rist_peak.x=250;peak.meta.rist_peak.label_key='peak:2';
+    h.gd.data.push(peak);
+    h.gd.layout.meta.ristRamanRatios=[{id:1,numeratorKey:'["sample:0",200]',denominatorKey:'["sample:0",250]'}];
+    h.run('var ratioMode =');h.dispatch('rist-plot-data-replaced');await tick();
+    assert.equal(h.gd.layout.meta.ristRamanRatios.length,1);
+    assert(h.gd.layout.annotations.some(a=>a.name==='rist_raman_ratio:1'));
+    await h.gd._ristDeleteSample(0);await tick();
+    assert.equal(h.gd.layout.meta.ristRamanRatios.length,0);assert(!h.gd.layout.annotations.some(a=>a.name==='rist_raman_ratio:1'));
+    h.gd._ristHistory.undo();await tick();
+    assert.equal(h.gd.layout.meta.ristRamanRatios.length,1);assert(h.gd.layout.annotations.some(a=>a.name==='rist_raman_ratio:1'));
+    assert.equal(h.gd.layout.meta.ristRamanRatios[0].numeratorCurve,1);
+    assert.equal(h.gd.layout.meta.ristRamanRatios[0].denominatorCurve,2);
+  });
   test(label+': invalid width blocks the whole save without changing names or colors; bounds/decimals work',async t=>{
     const h=setup(t,kind,mode),before=clone(h.gd.data);
     h.q('.rist-legend-edit-button').click();
@@ -198,6 +287,7 @@ for (const kind of ['ftir','raman']) for (const mode of ['native','chrome49']) {
     h.emit('plotly_doubleclick');await tick();assert.equal(h.gd.data[0].line.width,1.5*2.2);
     h.q('.rist-legend-edit-button').click();assert.equal(h.q('.rist-legend-sample-width').value,'1.5');
     h.q('.rist-legend-sample-width').value='4';h.q('.rist-legend-edit-save-all').click();await tick();
+    h.q('.rist-legend-edit-close').click();
     h.emit('plotly_doubleclick');await tick();h.emit('plotly_doubleclick');await tick();
     assert.equal(h.gd.data[0].line.width,4);
     h.gd.data[0].line.width=0.5;h.dispatch('rist-plot-data-replaced');

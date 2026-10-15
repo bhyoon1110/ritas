@@ -68,7 +68,7 @@ def render_slide_images(pdf_path: Path) -> list[str]:
 def readonly_figure(source: dict) -> dict:
     """Keep published coordinates/labels, never ship analysis editor programs."""
     layout_keys = {"title", "xaxis", "yaxis", "annotations", "shapes", "font", "legend",
-                   "paper_bgcolor", "plot_bgcolor", "margin", "width", "height", "meta"}
+                   "paper_bgcolor", "plot_bgcolor", "margin", "width", "height", "meta", "showlegend"}
     trace_keys = {"x", "y", "name", "mode", "line", "marker", "opacity", "hovertemplate",
                   "hoverinfo", "customdata", "showlegend", "legendgroup", "legendrank", "text",
                   "textposition", "textfont", "connectgaps", "fill", "fillcolor"}
