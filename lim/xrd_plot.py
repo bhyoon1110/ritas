@@ -2951,6 +2951,46 @@ def _phase_overlap_peak_indices(
     return overlaps
 
 
+def _normalized_phase_name(value: Any) -> str:
+    # Keep qualifiers such as ", syn" and "Mg-bearing": these identify the phase.
+    text = unicodedata.normalize("NFKC", str(value or "")).casefold()
+    return re.sub(r"\s*,\s*", ",", " ".join(text.split()))
+
+
+def _parse_hkl(value: Any) -> tuple[int, int, int] | None:
+    text = unicodedata.normalize("NFKC", str(value or "")).strip().replace("−", "-")
+    if (text.startswith("(") and text.endswith(")")) or (text.startswith("[") and text.endswith("]")):
+        text = text[1:-1].strip()
+    match = re.fullmatch(r"([+-]?\d+)[\s,]+([+-]?\d+)[\s,]+([+-]?\d+)", text)
+    if not match:
+        return None  # Do not guess compact/ambiguous indices such as "101".
+    return tuple(int(part) for part in match.groups())
+
+
+def _peak_list_phase_hkls(peak_tables: list[dict[str, Any]]) -> dict[str, set[tuple[int, int, int]]]:
+    assignments: dict[str, set[tuple[int, int, int]]] = {}
+    # Split at completed "phase: h k l" assignments, not every comma: phase
+    # names themselves can contain commas ("Anatase, syn", "Calcite, Mg-bearing").
+    pattern = re.compile(
+        r"(?:^|(?<=[,;\n]))\s*([^:;\n]+?)\s*:\s*"
+        r"(\([^()]+\)|\[[^\[\]]+\]|[^,;\n]+?)\s*(?=$|[,;\n])"
+    )
+    for table in peak_tables:
+        if table.get("error"):
+            continue
+        records = [peak for _row, peak in table.get("display_rows") or []]
+        if not records:
+            records = table.get("peaks") or []
+        for peak in records:
+            value = unicodedata.normalize("NFKC", str(peak.get("phase_name") or ""))
+            for match in pattern.finditer(value):
+                name = _normalized_phase_name(match.group(1))
+                hkl = _parse_hkl(match.group(2))
+                if name and hkl is not None:
+                    assignments.setdefault(name, set()).add(hkl)
+    return assignments
+
+
 def _phase_db_peak_rows(peaks: list[dict[str, Any]], overlap_indices: set[int] | None = None) -> str:
     rows = []
     overlap_indices = overlap_indices or set()
@@ -2985,6 +3025,7 @@ def _phase_db_peak_table_html(item: dict[str, Any], overlap_indices: set[int]) -
 
 def build_phase_info_html(groups, peak_tables: list[dict[str, Any]] | None = None) -> str:
     grouped = _phase_groups(groups)
+    excel_phase_hkls = _peak_list_phase_hkls(peak_tables or [])
     sections = []
     for category, title in PHASE_GROUPS.items():
         items = grouped.get(category, [])
@@ -3052,6 +3093,14 @@ def build_phase_info_html(groups, peak_tables: list[dict[str, Any]] | None = Non
                 )
                 trace_idx = int(item.get("trace_idx") or -1)
                 row_highlights = set(overlap_indices.get(trace_idx) or set())
+                highlight_note = "노란 행은 같은 유사상 폴더의 모든 PDF 페이즈에서 2θ가 ±0.06° 이내로 공통인 DB 피크입니다."
+                if category == "major":
+                    assigned_hkls = excel_phase_hkls.get(_normalized_phase_name(metadata.get("phase_name")), set())
+                    row_highlights = {
+                        index for index, peak in enumerate(item["peaks"])
+                        if _parse_hkl(peak.get("hkl")) in assigned_hkls
+                    }
+                    highlight_note = "노란 행은 피크정보(Excel)의 Phase Name과 h k l이 모두 일치하는 DB 피크입니다."
                 cards.append(
                     f"""
                     <article class="xrd-phase-card xrd-card xrd-phase-db-card" data-trace="{item['trace_idx']}">
@@ -3060,7 +3109,7 @@ def build_phase_info_html(groups, peak_tables: list[dict[str, Any]] | None = Non
                         <div class="xrd-phase-meta-chips">{meta_html}</div>
                       </header>
                       {_phase_db_peak_table_html(item, row_highlights)}
-                      <p class="xrd-table-note">노란 행은 같은 유사상 폴더의 모든 PDF 페이즈에서 2θ가 ±0.06° 이내로 공통인 DB 피크입니다.</p>
+                      <p class="xrd-table-note">{highlight_note}</p>
                     </article>
                     """
                 )
@@ -3092,7 +3141,7 @@ def build_phase_info_html(groups, peak_tables: list[dict[str, Any]] | None = Non
 <section class="xrd-report-section" id="xrd-phase-info">
   <div class="xrd-section-head">
     <h2>결정상(Phase) 정보</h2>
-    <p>PDF/DB 카드의 결정상 정보를 주요상, 유사/불확실상, 미량상 후보로 묶어 표시합니다. 같은 유사상 폴더의 모든 PDF 페이즈에서 2θ가 ±0.06° 이내로 공통인 피크만 노란색으로 강조합니다.</p>
+    <p>주요상은 피크정보(Excel)의 Phase Name과 h k l이 모두 일치하는 피크를 노란색으로 강조합니다. 유사/불확실상은 같은 유사상 폴더의 모든 PDF 페이즈에서 2θ가 ±0.06° 이내로 공통인 피크를 강조합니다.</p>
   </div>
   {''.join(sections)}
 </section>

@@ -17,6 +17,7 @@ from lim.xrd_plot import (
     XRD_IMAGE_FORMAT_SELECTOR,
     XRD_SIMILAR_PHASE_TOLERANCE,
     _phase_overlap_peak_indices,
+    _peak_list_phase_hkls,
     assign_relative_phase_categories,
     build_auto_interpretation_html,
     build_image_display_html,
@@ -631,6 +632,69 @@ def test_phase_info_omits_raw_match_only_for_major_phases(category) -> None:
     assert json.dumps(item, sort_keys=True) == before  # Classification data is untouched.
 
 
+@pytest.mark.parametrize("value,expected", [
+    ("Anatase, syn: 1 0 1,Rutile, syn: 0 0 2", {"anatase,syn": {(1, 0, 1)}, "rutile,syn": {(0, 0, 2)}}),
+    (" Calcite, Mg-bearing, syn : 1 0 10;Zincite, syn: 1 1 −2", {"calcite,mg-bearing,syn": {(1, 0, 10)}, "zincite,syn": {(1, 1, -2)}}),
+    ("ANATASE,  syn: (1, 0, 1)\nRutile, syn: [0 0 2]", {"anatase,syn": {(1, 0, 1)}, "rutile,syn": {(0, 0, 2)}}),
+    ("Calcite: +1 00 10,Calcite: 1 0 10", {"calcite": {(1, 0, 10)}}),
+    ("Anatase: invalid,Rutile: 0 0 2", {"rutile": {(0, 0, 2)}}),
+    ("Anatase: 101,Rutile: 1 0,Calcite: 1 0 1 2", {}),
+    ("Anatase: 1 0 1 extra", {}),
+    ("Anatase, syn", {}),
+    ("Unknown", {}),
+    ("", {}),
+])
+def test_peak_list_phase_hkls_parses_exact_phase_and_indices(value, expected) -> None:
+    assert _peak_list_phase_hkls([{"peaks": [{"phase_name": value}]}]) == expected
+
+
+def test_major_phase_highlights_require_excel_phase_name_and_hkl(tmp_path) -> None:
+    source = tmp_path / "Peak list.csv"
+    with source.open("w", encoding="utf-8", newline="") as stream:
+        csv.writer(stream).writerows([
+            ["No.", "2theta", "Phase Name", "Card No"],
+            ["1", "25.309", "Anatase, syn: 1 0 1,Rutile, syn: 0 0 2", "same-card"],
+            ["2", "30", "Anatase, syn: 1 0 10", "different-card"],
+            ["3", "", "Anatase, syn: 1 1 −2", ""],
+            ["4", "25.309", "Anatase, syn", "same-card"],
+        ])
+    peak_table = parse_peak_list_table(str(source))
+    peaks = [{"no": str(i), "two_theta": 25.309, "d": "3.516", "norm": 100.0, "hkl": hkl}
+             for i, hkl in enumerate(["1 0 1", "0 0 2", "1 0 10", "1 1 -2", "1 1 2", "0 0 4", "101"], start=1)]
+    item = {"label": "Anatase, syn / same-card", "color": "#e41a1c", "trace_idx": 1,
+            "category": "major", "metadata": {"phase_name": " ANATASE,  syn ", "card_no": "same-card"},
+            "peaks": peaks}
+    before = json.dumps(peak_table, sort_keys=True)
+    root = html_tree.fromstring(build_phase_info_html([("Sample", "#000", [item])], [peak_table]))
+    card = root.find('.//article[@data-trace="1"]')
+    highlighted = card.findall('.//tr[@class="xrd-phase-overlap-row"]')
+    assert [row.find('td').text for row in highlighted] == ["1", "3", "4"]
+    assert "Phase Name과 h k l이 모두 일치" in card.text_content()
+    assert "±0.06°" not in card.text_content()
+    assert "raw 피크 대응" not in card.text_content()
+    assert json.dumps(peak_table, sort_keys=True) == before
+    # Similar names, absent Excel data, or missing/invalid assignments must not
+    # fall back to Card No, 2theta, partial names, or unsigned/compact indices.
+    for name, tables in [
+        ("Anatase", [peak_table]), ("Anatase, natural", [peak_table]),
+        ("Anatase, syn", []), ("Anatase, syn", [{"peaks": [{"phase_name": "Anatase, syn"}]}]),
+        ("Anatase, syn", [{"error": "Invalid source", "peaks": [{"phase_name": "Anatase, syn: 1 0 1"}]}]),
+    ]:
+        other = {**item, "metadata": {"phase_name": name, "card_no": "same-card"}}
+        result = html_tree.fromstring(build_phase_info_html([("Sample", "#000", [other])], tables))
+        assert not result.findall('.//tr[@class="xrd-phase-overlap-row"]')
+
+
+def test_excel_assignments_do_not_highlight_minor_phases() -> None:
+    item = {"label": "Anatase", "color": "#000", "trace_idx": 1, "category": "minor",
+            "metadata": {"phase_name": "Anatase"},
+            "match": {"score": 20.0, "matched_count": 1, "important_count": 5},
+            "peaks": [{"no": "1", "two_theta": 25.309, "d": "3.516", "norm": 100.0, "hkl": "1 0 1"}]}
+    table = {"peaks": [{"phase_name": "Anatase: 1 0 1"}]}
+    root = html_tree.fromstring(build_phase_info_html([("Sample", "#000", [item])], [table]))
+    assert not root.findall('.//tr[@class="xrd-phase-overlap-row"]')
+
+
 def test_phase_info_highlights_only_common_peaks_from_similar_folder_pdfs() -> None:
     base = {
         "color": "#e41a1c",
@@ -664,7 +728,9 @@ def test_phase_info_highlights_only_common_peaks_from_similar_folder_pdfs() -> N
         ],
     }
 
-    html = build_phase_info_html([("Mix3", "#d62728", [first, second])])
+    # Excel lists a non-common reflection; uncertain-phase rules must stay unchanged.
+    table = {"peaks": [{"phase_name": "Anatase: 0 0 4"}]}
+    html = build_phase_info_html([("Mix3", "#d62728", [first, second])], [table])
 
     assert "유사상 1" in html
     assert "유사/불확실상 2건" in html
@@ -899,6 +965,10 @@ def test_peak_list_report_preserves_source_values_and_blanks(tmp_path, source_fo
     assert not rendered.findall(".//input")
     assert "Card No<br>연동" not in report
     assert source.read_bytes() == before
+    phase_item = {**candidate, "color": "#000", "category": "major",
+                  "metadata": {"phase_name": "Anatase, syn"}}
+    phase_report = html_tree.fromstring(build_phase_info_html([("Sample", "#000", [phase_item])], [table]))
+    assert len(phase_report.findall('.//tr[@class="xrd-phase-overlap-row"]')) == 1
     # General previews retain their bounded width; only Peak list selection reads all columns.
     assert len(read_table_preview(str(source))["rows"][0]) == min(len(headers), 12)
 

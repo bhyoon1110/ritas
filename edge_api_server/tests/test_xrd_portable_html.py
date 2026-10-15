@@ -71,9 +71,9 @@ def test_portable_peak_list_keeps_uploaded_values_identical_to_preview(tmp_path:
         assert not table.findall(".//input")
 
 
-def test_major_phase_raw_match_is_absent_in_preview_and_saved_report(tmp_path: Path) -> None:
+def test_major_phase_excel_highlights_without_raw_match_in_preview_and_saved_report(tmp_path: Path) -> None:
     import plotly.graph_objects as go
-    from lim.xrd_plot import build_report_html
+    from lim.xrd_plot import build_report_html, parse_peak_list_table
 
     items = [
         {"label": f"Phase {category}", "color": "#e41a1c", "trace_idx": index,
@@ -81,15 +81,18 @@ def test_major_phase_raw_match_is_absent_in_preview_and_saved_report(tmp_path: P
          "metadata": {"phase_name": f"Phase {category}", "formula": "Ti O2",
                       "card_no": "00-064-0863", "quality_mark": "S"},
          "match": {"score": 83.5, "matched_count": 4, "important_count": 5},
-         "peaks": [{"no": "1", "two_theta": 25.309, "d": "3.516",
-                    "norm": 100.0, "hkl": "1 0 1"}]}
+         "peaks": [{"no": "1", "two_theta": 25.309, "d": "3.516", "norm": 100.0, "hkl": "1 0 1"},
+                   {"no": "2", "two_theta": 37.876, "d": "2.373", "norm": 21.7, "hkl": "0 0 4"}]}
         for index, category in enumerate(["major", "minor", "uncertain"], start=1)
     ]
     fig = go.Figure(go.Scatter(x=[10, 25.309, 30], y=[1, 100, 2], mode="lines", name="Sample"))
+    source = tmp_path / "Peak list.csv"
+    source.write_text("No.,2theta,Phase Name\n1,25.309,Phase major: 1 0 1\n2,37.876,Phase minor: 0 0 4\n", encoding="utf-8")
     preview = build_report_html(
         fig, sample_name="Sample", groups=[("Sample", "#000", items)],
         group_map={"Sample": [0]}, warnings=[], origin=False, first_stem="Sample",
         raw_line_indices=[0], highlight_groups={0: [0]},
+        table_files=[str(source)], peak_tables=[parse_peak_list_table(str(source))],
     )
     asset = tmp_path / "plotly.min.js"
     asset.write_text("window.Plotly={};", encoding="utf-8")
@@ -104,6 +107,8 @@ def test_major_phase_raw_match_is_absent_in_preview_and_saved_report(tmp_path: P
             assert "PDF Card" in card.text_content()
             assert "QM" in card.text_content()
             assert "25.309" in card.text_content()
+            highlighted = card.findall('.//tr[@class="xrd-phase-overlap-row"]')
+            assert [row.find('td').text for row in highlighted] == (["1"] if index == 1 else [])
 
 
 @pytest.mark.parametrize("loader", [
