@@ -2205,7 +2205,10 @@ _UPLOAD_SCRIPT = """
   var reportDownloadLink = document.getElementById("ftir-report-download");
   var reportPreviewLink = document.getElementById("ftir-report-preview");
   if (reportPreviewLink) reportPreviewLink.addEventListener("click", function(event) {
-    if (reportPreviewLink.getAttribute("aria-disabled") === "true") event.preventDefault();
+    if (reportPreviewLink.getAttribute("aria-disabled") === "true") { event.preventDefault(); return; }
+    if (lastReportSnapshot && lastReportSnapshot !== reportSnapshotSignature(currentFigurePayload())) {
+      if (!window.confirm("보고서 생성 후 그래프가 변경되었습니다. 최신 편집 결과로 LLM 분석 멘트를 만들려면 ‘보고서 생성’을 다시 눌러 주세요. 기존 보고서의 수동 수정 내용은 자동으로 옮겨지지 않습니다. 이전 그래프 기준의 미리보기를 열까요?")) event.preventDefault();
+    }
   });
   var reportSendButton = document.getElementById("ftir-report-send");
   var reportOptionsOpen = document.getElementById("ftir-report-options-open");
@@ -2280,6 +2283,7 @@ _UPLOAD_SCRIPT = """
   var libraryPreviewFrame = 0;
   var requestItems = [];
   var lastReportJob = null;
+  var lastReportSnapshot = null;
   var REQUEST_EXPERIMENT_TYPE = "FT-IR";
   var DEFAULT_EQUIPMENT_CODE = "FTIR-EDGE-01";
   var controller = null;
@@ -5124,6 +5128,21 @@ _UPLOAD_SCRIPT = """
     }
   }
 
+  function reportSnapshotSignature(figure) {
+    var compact = compactReportFigurePayload(figure);
+    (compact.data || []).forEach(function(trace, index) {
+      if (trace.meta && trace.meta.rist_peak) {
+        trace.x = figure.data[index].x;
+        trace.y = figure.data[index].y;
+      }
+    });
+    // Responsive resizing is not an analytical edit. Do not serialize RAW arrays.
+    delete compact.layout.width;
+    delete compact.layout.height;
+    delete compact.layout.autosize;
+    return JSON.stringify(compact);
+  }
+
   async function createReport() {
     if (!files.length) {
       setMessage("보고서를 생성하려면 DPT 파일을 먼저 업로드하세요.");
@@ -5148,16 +5167,21 @@ _UPLOAD_SCRIPT = """
     });
     status.textContent = "보고서 생성 중";
     try {
+      await Promise.resolve(gd._ristStackReady);
       var reportFigure = currentFigurePayload();
+      var reportSnapshot = reportSnapshotSignature(reportFigure);
+      var reportAnalysis = reportAnalysisPayload();
+      var compactFigure = compactReportFigurePayload(reportFigure);
+      var viewerFigure = compactReportFigurePayload(reportFigure, true);
       var reportFiles = reportFilesForVisibleSamples();
       if (!reportFiles.length) {
         throw new Error("보고서에 표시할 raw 파일이 없습니다.");
       }
       var figureImage = await captureReportFigureImage(reportFigure);
       var job = await uploadReportFilesWithSession(reportFiles, {
-        analysis_json: JSON.stringify(reportAnalysisPayload()),
-        figure_json: JSON.stringify(compactReportFigurePayload(reportFigure)),
-        viewer_figure: new Blob([JSON.stringify(compactReportFigurePayload(reportFigure, true))], {type: "application/json"}),
+        analysis_json: JSON.stringify(reportAnalysis),
+        figure_json: JSON.stringify(compactFigure),
+        viewer_figure: new Blob([JSON.stringify(viewerFigure)], {type: "application/json"}),
         figure_image: figureImage,
         requestNumber: transfer.requestNumber,
         equipmentCode: transfer.equipmentCode,
@@ -5167,6 +5191,7 @@ _UPLOAD_SCRIPT = """
       job = await pollReportJob(job.jobId);
       setReportProgress(job);
       lastReportJob = job;
+      lastReportSnapshot = reportSnapshot;
       setReportDownloadLink(job);
       status.textContent = "보고서 생성 완료";
     } catch (err) {

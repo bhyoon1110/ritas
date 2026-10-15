@@ -198,6 +198,101 @@ def test_small_model_budget_reduces_facts_without_mutating_original(tmp_path):
     assert len(spec.facts["current_peaks"]) == 48 and tokens >= 768
 
 
+@pytest.mark.parametrize("experiment", ["FT-IR", "RAMAN"])
+def test_late_user_edits_take_priority_over_earlier_detected_peaks(experiment, tmp_path):
+    payload = edited_payload()
+    figure = payload["viewerFigure"]
+    figure["data"] = figure["data"][:1]
+    figure["layout"]["annotations"] = []
+    figure["layout"]["shapes"] = [{"type": "rect", "x0": 1603, "x1": 1603, "y0": 12, "y1": 14}]
+    figure["layout"]["meta"] = {}
+    for i in range(104):
+        peak = {"x": 1500 + i, "sample_group": "sample:2", "label": f"피크 {i}"}
+        if i == 100:
+            peak["user"] = True
+        if i == 102:
+            peak["group_name"] = "관심 그룹"
+        figure["data"].append({"name": "최종 수정명" if i == 101 else peak["label"], "x": [1500+i], "y": [13],
+                               "meta": {"rist_peak": peak, "rist_view_offset": 10}})
+    _, _, spec = build_spec(payload, experiment)
+    current = spec.facts["current_peaks"]
+    assert [p["position_cm-1"] for p in current[:4]] == [1600, 1601, 1602, 1603]
+    assert [p["edit_roles"] for p in current[:4]] == [["manual"], ["renamed"], ["grouped"], ["region"]]
+    assert current[1]["label"] == "최종 수정명"
+    assert spec.facts["graph_notes"]["regions"][0]["included_peak_ids"] == ["p104"]
+    assert spec.facts["omitted_peak_count"] == 56
+    class Client:
+        def get_model_info(self):
+            return {"max_model_len": 8192}
+    content, _ = annotator._fit_edited_evidence(Settings(storage_root=tmp_path, llm_include_images=False,
+                                                       llm_max_input_chars=4000), Client(), spec, tmp_path)
+    reduced = json.loads(content.split("\n\n", 1)[1])
+    assert reduced["included_peak_count"] < 48
+    assert reduced["current_peaks"][0]["position_cm-1"] == 1600
+    assert all(p["intensity"] == 3 for p in reduced["current_peaks"])
+
+
+def test_ratio_evidence_uses_same_current_values_as_report_table():
+    from edge_api_server.tests.test_raman_report_tables import payload_for_tables
+    payload = payload_for_tables()
+    payload["viewerFigure"]["data"][1]["name"] = "편집 D"
+    payload["viewerFigure"]["data"][1]["y"] = [13]
+    # Annotation is deliberately stale; final measurements are authoritative.
+    payload["viewerFigure"]["layout"]["annotations"][0]["text"] = "STALE_RATIO=999"
+    _, document, spec = build_spec(payload, "RAMAN")
+    ratios = spec.facts["graph_notes"]["ratio_measurements"]
+    assert len(ratios) == 2
+    assert ratios[0]["sample"] == "시료 1" and ratios[1]["sample"] == "시료 2"
+    assert ratios[0]["numerator"]["label"] == "편집 D"
+    assert ratios[0]["numerator"]["intensity"] == 3
+    assert ratios[0]["denominator"]["intensity"] == 4
+    assert ratios[0]["value"] == 0.75
+    assert ratios[0]["value_text"] == document.section("raman_ratios").table.rows[0][-1] == "0.750"
+    assert "STALE_RATIO" not in json.dumps(spec.facts)
+    assert "STALE_RATIO" not in document.to_markdown()  # Offline/failure fallback agrees too.
+    assert all("ratio" in peak["edit_roles"] for peak in spec.facts["current_peaks"])
+
+
+@pytest.mark.parametrize("kind", ["delete", "hide", "zero"])
+def test_deleted_or_invalid_ratio_evidence_is_not_recreated_from_old_annotation(kind):
+    from edge_api_server.tests.test_raman_report_tables import payload_for_tables
+    payload = payload_for_tables(1)
+    traces = payload["viewerFigure"]["data"]
+    if kind == "delete":
+        del traces[2]
+    elif kind == "hide":
+        traces[2]["visible"] = False
+    else:
+        traces[2]["y"] = [10]  # Zero after removing the display offset.
+    _, _, spec = build_spec(payload, "RAMAN")
+    notes = spec.facts["graph_notes"]
+    assert notes["ratio_annotations"] == []
+    if kind == "zero":
+        assert notes["ratio_measurements"][0]["value"] is None
+        assert notes["ratio_measurements"][0]["value_text"] == "계산 불가"
+    else:
+        assert notes["ratio_measurements"] == []
+
+
+def test_small_context_keeps_zero_peak_notes_instead_of_failing(tmp_path):
+    payload = edited_payload()
+    payload["viewerFigure"]["data"] = payload["viewerFigure"]["data"][:1]
+    payload["viewerFigure"]["layout"]["meta"] = {}
+    payload["viewerFigure"]["layout"]["annotations"] = [{"text": f"메모 {i}: " + "검토 근거 " * 30} for i in range(8)]
+    _, _, spec = build_spec(payload)
+    class Client:
+        def get_model_info(self):
+            return {"max_model_len": 8192}
+    content, _ = annotator._fit_edited_evidence(Settings(storage_root=tmp_path, llm_include_images=False,
+                                                       llm_max_input_chars=1800), Client(), spec, tmp_path)
+    reduced = json.loads(content.split("\n\n", 1)[1])
+    assert reduced["current_peaks"] == [] and reduced["visible_peak_count"] == 0
+    notes = reduced["graph_notes"]
+    assert 0 < len(notes["text_notes"]) < 8
+    assert len(notes["text_notes"]) + notes["omitted_notes"] == 8
+    assert len(spec.facts["graph_notes"]["text_notes"]) == 8
+
+
 def test_ppt_keeps_all_ai_caveats_when_summary_cards_shorten_them(tmp_path):
     from pptx import Presentation
     _, document, _ = build_spec(edited_payload())

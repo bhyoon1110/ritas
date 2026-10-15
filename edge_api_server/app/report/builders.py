@@ -610,6 +610,17 @@ def _raman_assignment_count(payload: dict[str, Any]) -> int:
 
 
 def _raman_ratio_annotations(payload: dict[str, Any]) -> list[str]:
+    if payload.get("_edited_report"):
+        ratios = []
+        for ratio in _raman_ratio_facts(payload)[:6]:
+            if "legacy_text" in ratio:
+                ratios.append(ratio["legacy_text"])
+            else:
+                n, d = ratio["numerator"], ratio["denominator"]
+                ratios.append(f"{ratio['sample']} · {ratio['title']} · "
+                              f"{n['label']} ({_raman_table_number(n['position'])} cm⁻¹) / "
+                              f"{d['label']} ({_raman_table_number(d['position'])} cm⁻¹) = {ratio['value_text']}")
+        return ratios
     figure = payload.get("figure") if isinstance(payload.get("figure"), dict) else {}
     layout = figure.get("layout") if isinstance(figure.get("layout"), dict) else {}
     ratios: list[str] = []
@@ -637,13 +648,15 @@ def _raman_table_peaks(payload: dict[str, Any]) -> list[dict[str, Any]]:
     return _figure_peak_facts(payload, x_label="cm-1", max_items=max(1, len(_figure_data(payload))))
 
 
-def _raman_ratio_rows(payload: dict[str, Any]) -> list[list[str]]:
+def _raman_ratio_facts(payload: dict[str, Any], peaks=None) -> list[dict[str, Any]]:
+    """Resolve final ratio pairs once for both report tables and LLM evidence."""
     figure = payload.get("figure") or {}
     layout = figure.get("layout") or {}
     meta = layout.get("meta") or {}
     annotations = {str(item.get("name")): item for item in _as_list(layout.get("annotations"))
                    if isinstance(item, dict) and str(item.get("name", "")).startswith("rist_raman_ratio:")}
-    peaks = {(peak["sample_group"], peak["position"]): peak for peak in _raman_table_peaks(payload)}
+    peaks = {(peak["sample_group"], peak["position"]): peak
+             for peak in (_raman_table_peaks(payload) if peaks is None else peaks)}
 
     def resolve(key):
         # Trace indices change when peaks are deleted. Use the same stable keys as the UI.
@@ -653,7 +666,7 @@ def _raman_ratio_rows(payload: dict[str, Any]) -> list[list[str]]:
         except (TypeError, ValueError):
             return None
 
-    rows = []
+    facts = []
     handled = set()
     for ratio in _as_list(meta.get("ristRamanRatios")):
         if not isinstance(ratio, dict):
@@ -670,10 +683,10 @@ def _raman_ratio_rows(payload: dict[str, Any]) -> list[list[str]]:
         valid = n is not None and d is not None and math.isfinite(n) and math.isfinite(d) and abs(d) >= 1e-12
         value = n / d if valid else None
         value_text = f"{value:.3f}" if value is not None and math.isfinite(value) else "계산 불가"
-        cells = [f"{peak['label']} ({_raman_table_number(peak['position'])} cm⁻¹)"
-                 for peak in (numerator, denominator)]
-        rows.append([numerator["sample"], _clean_report_text(ratio.get("title")) or "강도비",
-                     *cells, value_text])
+        facts.append({"sample": numerator["sample"], "title": _clean_report_text(ratio.get("title")) or "강도비",
+                      "numerator": numerator, "denominator": denominator,
+                      "value": value if value is not None and math.isfinite(value) else None,
+                      "value_text": value_text})
     # Old reports only saved the displayed annotation. Preserve it without inventing
     # sample identities or intensities from rounded label text.
     for name, annotation in annotations.items():
@@ -681,7 +694,19 @@ def _raman_ratio_rows(payload: dict[str, Any]) -> list[list[str]]:
             continue
         text = _clean_report_text(annotation.get("text"))
         if text:
-            rows.append(["-", text, "-", "-", "원문 참조"])
+            facts.append({"legacy_text": text})
+    return facts
+
+
+def _raman_ratio_rows(payload: dict[str, Any]) -> list[list[str]]:
+    rows = []
+    for ratio in _raman_ratio_facts(payload):
+        if "legacy_text" in ratio:
+            rows.append(["-", ratio["legacy_text"], "-", "-", "원문 참조"])
+            continue
+        cells = [f"{peak['label']} ({_raman_table_number(peak['position'])} cm⁻¹)"
+                 for peak in (ratio["numerator"], ratio["denominator"])]
+        rows.append([ratio["sample"], ratio["title"], *cells, ratio["value_text"]])
     return rows
 
 

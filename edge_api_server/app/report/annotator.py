@@ -177,7 +177,23 @@ def _fit_edited_evidence(settings, llm_client, spec, processed_dir):
                 continue
             peaks = facts["current_peaks"]
             if len(peaks) <= 1:
-                raise
+                # An edited graph may have no peaks but many user notes/ratios.
+                # Reduce those explicitly instead of abandoning local AI entirely.
+                notes = facts["graph_notes"]
+                candidates = [(notes, key, omitted) for key, omitted in (
+                    ("text_notes", "omitted_notes"), ("regions", "omitted_regions"),
+                    ("ratio_measurements", "omitted_ratios"), ("ratio_annotations", "omitted_ratios"))]
+                candidates += [(facts, "experiment_conditions", "omitted_conditions"),
+                               (facts, "samples", "omitted_samples")]
+                candidates = [item for item in candidates if len(item[0].get(item[1], [])) > 1]
+                if not candidates:
+                    raise
+                parent, key, omitted = max(candidates, key=lambda item: len(json.dumps(item[0][item[1]], ensure_ascii=False)))
+                items = parent[key]
+                keep = max(1, len(items) // 2)
+                parent[omitted] = parent.get(omitted, 0) + len(items) - keep
+                parent[key] = items[:keep]
+                continue
             facts["current_peaks"] = peaks[:max(1, len(peaks)//2)]
             facts["included_peak_count"] = len(facts["current_peaks"])
             facts["omitted_peak_count"] = facts["visible_peak_count"] - facts["included_peak_count"]
