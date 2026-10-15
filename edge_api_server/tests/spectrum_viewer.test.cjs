@@ -14,8 +14,8 @@ const analysisHtml = execFileSync(process.env.RIST_TEST_PYTHON || 'python3', ['-
   "from edge_api_server.tests.test_spectrum_viewer import sample_figure; from app.report import spectrum_viewer as v; v.get_plotlyjs=lambda:''; print(v.viewer_html(title='Edited report',figure=sample_figure(),slides=['data:image/jpeg;base64,one'],analysis={'status':'generated','sections':[{'heading':'해석','paragraphs':['1700 cm-1 피크와 관심 영역을 검토했습니다.'],'source':'llm'}]}))"], {encoding:'utf8'});
 const clientPrograms=JSON.parse(execFileSync(process.env.RIST_TEST_PYTHON || 'python3',['-c',
   "import json; from app import ftir_web,raman_web; print(json.dumps([ftir_web._UPLOAD_SCRIPT,raman_web._UPLOAD_SCRIPT]))"],{encoding:'utf8'}));
-function setup(t, empty=false, source=html) {
-  const dom=new JSDOM(source,{runScripts:'outside-only',pretendToBeVisual:true});
+function setup(t, empty=false, source=html, hash='') {
+  const dom=new JSDOM(source,{runScripts:'outside-only',pretendToBeVisual:true,url:'http://localhost/preview'+hash});
   t.after(()=>dom.window.close());
   const w=dom.window,d=w.document,q=id=>d.getElementById(id),gd=q('report-graph'),handlers={};
   let calls=0,config;
@@ -54,11 +54,11 @@ test('real PDF page list shows one page at a time and graph is lazy',async t=>{
   assert(Object.values(h.config().edits).every(v=>v===false));
   assert.deepEqual(clone(h.gd.data).map(t=>t.y),h.published.data.map(t=>t.y));
 });
-test('analysis opens first, stays frozen across graph display changes, and has no edit actions',async t=>{
+test('PPT opens first; analysis stays frozen across graph display changes and has no edit actions',async t=>{
   const h=setup(t,false,analysisHtml);
-  assert.equal(h.q('analysis-panel').hidden,false);
-  assert.equal(h.q('slides-panel').hidden,true);
-  assert.equal(h.q('analysis-tab').getAttribute('aria-pressed'),'true');
+  assert.equal(h.q('analysis-panel').hidden,true);
+  assert.equal(h.q('slides-panel').hidden,false);
+  assert.equal(h.q('slides-tab').getAttribute('aria-pressed'),'true');
   assert.equal(h.calls(),0);
   const prose=h.q('analysis-panel').textContent;
   assert(prose.includes('1700 cm-1'));
@@ -70,6 +70,13 @@ test('analysis opens first, stays frozen across graph display changes, and has n
   assert.equal(h.q('analysis-panel').querySelectorAll('button,input,textarea,[contenteditable]').length,0);
   h.q('slides-tab').click();
   assert.equal(h.q('analysis-panel').hidden,true);assert.equal(h.q('slides-panel').hidden,false);
+});
+test('refresh restores the requested PPT page and clamps it when the deck shrinks',t=>{
+  const h=setup(t,false,html,'#view=slides&page=1');assert.equal(h.q('page-count').textContent,'2 / 2');
+  const shorter=setup(t,false,analysisHtml,'#view=analysis&page=199');
+  assert.equal(shorter.q('page-count').textContent,'1 / 1');assert.equal(shorter.q('analysis-panel').hidden,false);
+  const invalid=setup(t,false,html,'#view=invalid&page=-1');
+  assert.equal(invalid.q('page-count').textContent,'1 / 2');assert.equal(invalid.q('slides-panel').hidden,false);
 });
 for (const [index,kind] of ['ftir','raman'].entries()) test(kind+' hidden samples retain stable groups for edited report metadata',()=>{
   const source=clientPrograms[index].match(/function filterReportAnalysisPayload\(payload\) \{[\s\S]*?\n  \}/)[0];

@@ -24,7 +24,9 @@ def transfer_values(payload, request_number="", equipment_code="", operator_id="
 def apply_transfer(document, transfer, project):
     document.pk.update(requestNumber=transfer["requestNumber"], experimentCode=transfer["limsExperimentCode"],
                        equipmentCode=transfer["equipmentCode"], operatorId=transfer["operatorId"])
-    document.experiment_code = transfer["limsExperimentCode"] or project
+    # Rendering/experiment behavior uses the project, not the opaque LIMS test
+    # method code. The latter belongs in pk and the authoritative transfer table.
+    document.experiment_code = project
     section = document.section("report_transfer")
     table = ReportTable(["항목", "내용"], [[label, transfer[key]] for key, label in TRANSFER_FIELDS.items()],
                         column_widths=[0.28, 0.72])

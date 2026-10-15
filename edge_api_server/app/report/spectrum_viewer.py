@@ -186,7 +186,7 @@ def _analysis_html(analysis: dict | None) -> str:
                            "<table><thead><tr>" + columns + "</tr></thead><tbody>" + rows + "</tbody></table></div>")
         sections.append("<article><h2>" + escape(str(section.get("heading") or "분석 결과"))
                         + " <small>" + source + "</small></h2>" + paragraphs + "</article>")
-    return ("<section id='analysis-panel'><p class='analysis-status' role='status'>" + label + "</p>"
+    return ("<section id='analysis-panel' hidden><p class='analysis-status' role='status'>" + label + "</p>"
             + "<p class='notice'>보고서 생성 시점의 피크와 주석을 기준으로 작성했습니다. 사용자 메모와 피크명은 해석 참고 정보이며 확정 동정이 아닙니다. 그래프 수정 후에는 분석 화면에서 보고서를 다시 생성하세요.</p>"
             + "".join(sections) + "</section>")
 
@@ -201,11 +201,11 @@ def viewer_html(*, title: str, figure: dict, slides: list[str], fallback_image: 
             + "<title>" + escape(title) + "</title><style>" + _STYLE + "</style></head><body>"
             + "<header><h1>" + escape(title) + "</h1><p>확정된 분석 보고서 · 열람 전용</p>"
             + "<nav aria-label='보고서 보기'>"
-            + ("<button id='analysis-tab' aria-pressed='true'>분석 결과</button>" if analysis else "")
-            + "<button id='slides-tab' aria-pressed='" + ("false" if analysis else "true") + "'>PPT 페이지</button>"
+            + "<button id='slides-tab' aria-pressed='true'>PPT 페이지</button>"
+            + ("<button id='analysis-tab' aria-pressed='false'>분석 결과</button>" if analysis else "")
             + "<button id='graph-tab' aria-pressed='false'>인터랙티브 그래프</button></nav></header>"
             + "<main>" + _analysis_html(analysis)
-            + "<section id='slides-panel'" + (" hidden" if analysis else "") + "><div class='controls'><button id='previous'>이전</button>"
+            + "<section id='slides-panel'><div class='controls'><button id='previous'>이전</button>"
             + "<label>페이지 <select id='page-select' aria-label='PPT 페이지 선택'></select></label>"
             + "<span id='page-count' aria-live='polite'></span><button id='next'>다음</button></div>"
             + "<img id='slide-image' alt='PPT 페이지'></section>"

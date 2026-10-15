@@ -8,11 +8,18 @@
   var message = document.getElementById("graph-message");
   var pageSelect = document.getElementById("page-select");
   var page = 0;
+  var activeView = "slides";
+  var initialPage = /(?:^#|&)page=(\d+)(?:&|$)/.exec(window.location.hash);
+  var initialView = /(?:^#|&)view=(slides|analysis|graph)(?:&|$)/.exec(window.location.hash);
   var initialized = false;
   var busy = false;
   var pending = false;
   var hidden = {};
   function clone(value) { return JSON.parse(JSON.stringify(value)); }
+  function notifyView() {
+    // Presentation state only; never accept edits or expose report content across frames.
+    if (window.parent !== window) window.parent.postMessage({type:"rist-report-view-state",view:activeView,page:page}, "*");
+  }
   function showPage(index) {
     page = Math.max(0, Math.min(payload.slides.length - 1, index));
     document.getElementById("slide-image").src = payload.slides[page];
@@ -21,6 +28,7 @@
     document.getElementById("page-count").textContent = (page + 1) + " / " + payload.slides.length;
     document.getElementById("previous").disabled = page === 0;
     document.getElementById("next").disabled = page === payload.slides.length - 1;
+    notifyView();
   }
   payload.slides.forEach(function (_, index) {
     var option = document.createElement("option");
@@ -31,7 +39,7 @@
   pageSelect.addEventListener("change", function () { showPage(Number(pageSelect.value)); });
   document.getElementById("previous").onclick = function () { showPage(page - 1); };
   document.getElementById("next").onclick = function () { showPage(page + 1); };
-  showPage(0);
+  showPage(initialPage ? Number(initialPage[1]) : 0);
 
   function dimensions(layout) {
     var size = (original.layout.meta || {}).size || {};
@@ -206,6 +214,7 @@
     document.getElementById("graph-fallback").src = payload.fallback;
   }
   function tab(active) {
+    activeView = active;
     ["analysis", "slides", "graph"].forEach(function (name) {
       var panel = document.getElementById(name + "-panel");
       var button = document.getElementById(name + "-tab");
@@ -213,11 +222,13 @@
       if (button) button.setAttribute("aria-pressed", String(active === name));
     });
     if (active === "graph" && !initialized) { draw(); }
+    notifyView();
   }
   document.getElementById("slides-tab").onclick = function () { tab("slides"); };
   document.getElementById("graph-tab").onclick = function () { tab("graph"); };
   var analysisTab = document.getElementById("analysis-tab");
   if (analysisTab) analysisTab.onclick = function () { tab("analysis"); };
+  tab(initialView && document.getElementById(initialView[1] + "-panel") ? initialView[1] : "slides");
   mode.onchange = draw;
   document.getElementById("reset-view").onclick = function () { mode.value = "original"; hidden = {}; draw(); };
   var resizeTimer;

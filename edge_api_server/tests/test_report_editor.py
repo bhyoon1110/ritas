@@ -86,7 +86,7 @@ def test_blank_fields_edit_revision_and_recipient_integrity(prepared, monkeypatc
     before = h.job.package_path.read_bytes()
     page = h.client.get(h.url + '/edit')
     assert page.status_code == 200 and page.headers['cache-control'] == 'no-store'
-    assert '수정 내용 저장' in page.text and "frame-ancestors 'self'" in page.headers['content-security-policy']
+    assert '자동 저장' in page.text and "frame-ancestors 'self'" in page.headers['content-security-policy']
     response = h.client.get(h.url + '/editor-data')
     assert response.headers['cache-control'] == 'no-store'
     model = response.json()['document']
@@ -134,6 +134,10 @@ def test_blank_fields_edit_revision_and_recipient_integrity(prepared, monkeypatc
             texts = ppt_text(ppt)
             assert 'REQ-REVIEW' in texts and 'LIMS-001' in texts
             assert '분석자가확인한피크' in ''.join(texts.split())
+            assert 'ppt/media/posco-tem-banner.jpeg' in ppt.namelist()
+            assert 'Experiment banner title' in ppt.read('ppt/slides/slide1.xml').decode()
+    revision_document = report_editor._load_document(h.store.get(revised['jobId']))
+    assert revision_document.experiment_code == ('FT-IR' if h.kind == 'ftir' else 'RAMAN')
 
 
 def test_editor_validation_csrf_and_expiration(prepared):
@@ -231,3 +235,18 @@ def test_explicit_blank_conditions_override_raw_metadata():
         ReportSection('experiment_conditions','조건',table=ReportTable(['대상','항목','값'],[['sample','Resolution','4 cm-1']]))])
     ensure_editable_fields(document,{'reportConditionFields':[{'target':'공통','label':'Resolution','value':''}]},'FT-IR',transfer_values({}))
     assert [r for r in document.section('experiment_conditions').table.rows if r[1]=='Resolution']==[['공통','Resolution','']]
+
+
+@pytest.mark.parametrize('project', ['FT-IR', 'RAMAN'])
+def test_initial_lims_code_does_not_replace_project_or_posco_template(tmp_path, project):
+    document = ReportDocument('test', '의뢰 조회 보고서', project, {}, '2026-10-15')
+    transfer = transfer_values({'reportContext': {'requestNumber': 'REQ-LOOKUP', 'limsExperimentCode': 'TST-123'}})
+    ensure_editable_fields(document, {}, project, transfer)
+    assert document.experiment_code == project
+    assert document.pk['experimentCode'] == 'TST-123'
+    assert ('실험코드', 'TST-123') in _document_metadata(document)
+    path = tmp_path / 'initial.pptx'
+    render_pptx(document, path)
+    with zipfile.ZipFile(path) as ppt:
+        assert 'ppt/media/posco-tem-banner.jpeg' in ppt.namelist()
+        assert 'TST-123' in ppt_text(ppt)
