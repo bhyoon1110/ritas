@@ -248,6 +248,43 @@ for (const kind of ['ftir','raman']) for (const mode of ['native','chrome49']) {
     h.gd._ristHistory.redo();await tick();assert.equal(h.gd.data.length,2);
     await h.gd._ristDeleteSample(0);await tick();assert.equal(h.gd.data.length,0);assert.equal(h.gd.layout.meta.ristDeletedSampleGroups.length,2);
   });
+  test(label+': panel buttons share styling and Raw delete stays beside width inside sample style',async t=>{
+    const h=setup(t,kind,mode);await tick();h.q('.rist-legend-edit-button').click();
+    const toggle=h.q('.rist-legend-appearance .rist-legend-visible-toggle');
+    assert(toggle.classList.contains('rist-legend-panel-button'));
+    const remove=h.q('.is-sample .rist-legend-sample-delete');
+    assert(remove.classList.contains('rist-legend-panel-button'));
+    assert(remove.closest('.rist-legend-sample-style'));
+    assert.equal(remove.previousElementSibling.className,'rist-legend-sample-width-label');
+    assert.equal(remove.parentNode.className,'rist-legend-sample-width-actions');
+    toggle.click();await tick();assert.equal(toggle.textContent,'범례 숨김');assert(toggle.classList.contains('is-active'));
+    toggle.click();await tick();assert.equal(toggle.textContent,'범례 표시');assert(!toggle.classList.contains('is-active'));
+  });
+  test(label+': every peak shows its Raw even in mixed-sample groups; rename preserves pending edits',async t=>{
+    const h=setup(t,kind,mode);await tick();
+    const parent=clone(h.gd.data[0]);parent.name='Other raw.txt';parent.meta.rist_sample_group=parent.legendgroup='sample:1';
+    const peak=clone(h.gd.data[1]);peak.meta.rist_sample_group=peak.meta.rist_peak.sample_group='sample:1';
+    peak.meta.rist_legend_edit_group=peak.meta.rist_peak.label_key='other';
+    h.gd.data.push(parent,peak);
+    for(const i of [1,3]) {h.gd.data[i].meta.rist_peak.manual_group_key='manual-peak-group:shared';h.gd.data[i].meta.rist_peak.group_name='Shared group';}
+    h.dispatch('rist-plot-data-replaced');h.q('.rist-legend-edit-button').click();
+    const sources=()=>[...h.gd.querySelectorAll('.rist-legend-peak-source')].map(n=>n.textContent);
+    assert.deepEqual(sources(),['Raw: Sample','Raw: Other raw.txt']);
+    assert.equal(h.gd.querySelectorAll('.is-group-member .rist-legend-peak-source').length,2);
+    h.q('.rist-legend-peak-details').open=true;
+    const pending=h.q('.is-peak textarea');pending.value='아직 저장하지 않은 피크';
+    h.gd.data[0].name='Renamed<br>sample.dpt';h.dispatch('rist-legend-name-change');
+    assert.equal(sources()[0],'Raw: Renamed\nsample.dpt');
+    assert.equal(h.q('.is-peak textarea'),pending);assert.equal(pending.value,'아직 저장하지 않은 피크');
+    assert(h.q('.rist-legend-peak-details').open);
+    h.q('.is-sample textarea').value='Saved sample';h.q('.rist-legend-edit-save-all').click();await tick();
+    assert.equal(sources()[0],'Raw: Saved sample');
+    h.gd.data[0].name='<img src=x onerror=alert(1)>Safe raw';h.dispatch('rist-legend-name-change');
+    assert.equal(sources()[0],'Raw: Safe raw');assert.equal(h.q('.rist-legend-peak-source img'),null);
+    h.gd.data[1].meta.rist_sample_group=h.gd.data[1].meta.rist_peak.sample_group='missing';
+    h.dispatch('rist-peak-sensitivity-change');assert.equal(sources()[0],'Raw: 소속 샘플 확인 불가');
+    assert(h.q('.rist-legend-peak-details').open);
+  });
   if(kind==='raman') test(label+': Raw deletion removes only its ratios and undo restores their peak references',async t=>{
     const h=setup(t,kind,mode);await tick();
     const peak=clone(h.gd.data[1]);peak.x=[250];peak.meta.rist_peak.x=250;peak.meta.rist_peak.label_key='peak:2';

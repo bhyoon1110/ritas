@@ -22,7 +22,8 @@ for (const kind of ['ftir','raman']) {
     const ast = postcss.parse(css.join('\n'));
     function declarations(selector) {
       const result = {};
-      ast.walkRules('#'+id+' '+selector,rule=>{
+      ast.walkRules(rule=>{
+        if (!rule.selectors.includes('#'+id+' '+selector)) return;
         // Base rules apply at every viewport; narrower rules may adjust size.
         if (rule.parent.type !== 'root') return;
         rule.walkDecls(decl=>{result[decl.prop]=decl.value;});
@@ -57,6 +58,19 @@ for (const kind of ['ftir','raman']) {
       for (const selector of ['.rist-legend-edit-actions','.rist-shape-editor-actions']) {
         assert.equal(declarations(selector)['flex-wrap'],'wrap');
       }
+    });
+    test(kind+'/'+mode+': legend buttons match Save; width/delete stay together and Raw attribution wraps',()=>{
+      const button=declarations('.rist-legend-panel-button');
+      const save=declarations('.rist-legend-edit-save-all');
+      for(const prop of ['border','border-radius','font','line-height','min-height','padding','box-sizing']) {
+        assert.equal(button[prop],save[prop],prop);
+      }
+      assert.equal(button['min-height'],'28px');
+      assert.equal(declarations('.rist-legend-sample-width-actions').display,'flex');
+      assert.equal(declarations('.rist-legend-sample-width-actions').flex,'0 0 auto');
+      assert.equal(declarations('.rist-legend-peak-source')['word-break'],'break-word');
+      assert.equal(declarations('.rist-legend-peak-source')['max-width'],'100%');
+      assert.equal(declarations('.rist-legend-peak-body .rist-legend-edit-input')['flex-basis'],'0');
     });
     test(kind+'/'+mode+': page, template and library actions have single-line captions and wrapping groups',()=>{
       function pageDecl(selector) {

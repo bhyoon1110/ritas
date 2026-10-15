@@ -786,6 +786,22 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
 #{div_id} .rist-legend-edit-row.is-peak.is-group-member {{
   margin-left: 30px;
 }}
+#{div_id} .rist-legend-peak-body .rist-legend-edit-row.is-peak {{
+  flex-wrap: wrap;
+}}
+#{div_id} .rist-legend-peak-body .rist-legend-edit-input {{
+  flex-basis: 0;
+}}
+#{div_id} .rist-legend-peak-source {{
+  flex: 0 0 100%;
+  min-width: 0;
+  max-width: 100%;
+  color: #174a68;
+  font: bold 11px/1.4 Arial, sans-serif;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}}
 #{div_id} .rist-legend-edit-row.is-pending-delete {{
   opacity: 0.58;
 }}
@@ -964,6 +980,12 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
   color: #1f2933;
   font: 11px Arial, sans-serif;
 }}
+#{div_id} .rist-legend-sample-width-actions {{
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+}}
 #{div_id} .rist-legend-sample-width {{
   width: 62px;
   height: 28px;
@@ -1063,7 +1085,8 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
   min-height: 28px;
   max-height: 96px;
 }}
-#{div_id} .rist-legend-edit-save-all {{
+#{div_id} .rist-legend-edit-save-all,
+#{div_id} .rist-legend-panel-button {{
   flex: 0 0 auto;
   border: 1px solid #9fb3c8;
   border-radius: 4px;
@@ -1071,7 +1094,24 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
   color: #1f2933;
   cursor: pointer;
   font: 12px Arial, sans-serif;
+  line-height: 16px;
+  min-height: 28px;
+  box-sizing: border-box;
   padding: 5px 8px;
+}}
+#{div_id} .rist-legend-panel-button.is-active {{
+  border-color: #3b82f6;
+  background: #dbeafe;
+  color: #1d4ed8;
+}}
+#{div_id} .rist-legend-panel-button.rist-legend-sample-delete {{
+  border-color: #d5a3a3;
+  background: #fff;
+  color: #9b2c2c;
+}}
+#{div_id} .rist-legend-panel-button:disabled {{
+  opacity: 0.42;
+  cursor: default;
 }}
 </style>
 <script>
@@ -1536,7 +1576,7 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
     if (directAnnotationEdit) {{
       var appearance = document.createElement("div");
       appearance.className = "rist-legend-appearance";
-      appearance.innerHTML = "<button type='button' class='rist-legend-visible-toggle'>범례 표시</button>"
+      appearance.innerHTML = "<button type='button' class='rist-legend-panel-button rist-legend-visible-toggle'>범례 표시</button>"
         + "<label>글자 크기 <input type='number' class='rist-legend-font-size' min='10' max='32' step='1' aria-label='범례 글자 크기'> px</label>"
         + "<label><input type='checkbox' class='rist-legend-font-bold' aria-label='범례 굵게'>굵게</label>";
       panel.insertBefore(appearance, panel.querySelector(".rist-legend-edit-body"));
@@ -1660,6 +1700,17 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
       panel.style.top = position.top + "px";
     }});
 
+    function refreshPeakSources() {{
+      panel.querySelectorAll(".rist-legend-peak-source").forEach(function(source) {{
+        var row = source.parentNode;
+        var curve = parseInt(row.getAttribute("data-curve"), 10);
+        var sampleName = legendDisplayToEdit(sampleNameForCurve(curve)).trim();
+        source.textContent = "Raw: " + (sampleName || "소속 샘플 확인 불가");
+        source.title = source.textContent;
+        row.title = sampleName ? sampleName + " 샘플의 피크" : source.textContent;
+      }});
+    }}
+
     function renderRows() {{
       var body = panel.querySelector(".rist-legend-edit-body");
       var previousDetails = body.querySelector(".rist-legend-peak-details");
@@ -1773,7 +1824,9 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
           var sampleName = sampleNameForCurve(curve);
           if (sampleName) row.title = sampleName + " 샘플의 피크";
         }}
-        row.innerHTML = "<span class='rist-legend-row-kind'>"
+        row.innerHTML = (directAnnotationEdit && peakCurve
+          ? "<div class='rist-legend-peak-source'></div>" : "")
+          + "<span class='rist-legend-row-kind'>"
           + (sampleCurve ? "샘플" : (peakCurve ? "피크" : "항목"))
           + "</span>"
           + (sampleCurve ? "<textarea class='rist-legend-edit-input' rows='1'></textarea><div class='rist-legend-sample-style'>" : "")
@@ -1789,9 +1842,13 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
               + "<option value='dashdot'>일점쇄선</option>"
               + "<option value='longdashdot'>긴 일점쇄선</option>"
               + "</select>"
-              + "<label class='rist-legend-sample-width-label'>굵기 "
+              + "<div class='rist-legend-sample-width-actions'><label class='rist-legend-sample-width-label'>굵기 "
               + "<input class='rist-legend-sample-width' type='number' min='0.1' max='20' step='any'"
               + " title='샘플 선 굵기 (0.1~20 px)' aria-label='샘플 선 굵기'> px</label>"
+              + (directAnnotationEdit
+                ? "<button type='button' class='rist-legend-panel-button rist-legend-sample-delete' title='현재 그래프에서 샘플과 연결 피크 제거 (원본 파일 유지)'>Raw 삭제</button>"
+                : "")
+              + "</div>"
             : "")
           + (sampleCurve ? "</div>" : "<textarea class='rist-legend-edit-input' rows='1'></textarea>")
           + (peakCurve && groupKey
@@ -1799,9 +1856,6 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
             : "")
           + (peakCurve
             ? "<button type='button' class='rist-legend-peak-delete' title='피크 삭제'>×</button>"
-            : "")
-          + (sampleCurve && directAnnotationEdit
-            ? "<button type='button' class='rist-legend-sample-delete' title='현재 그래프에서 샘플과 연결 피크 제거 (원본 파일 유지)'>Raw 삭제</button>"
             : "");
         var colorInput = row.querySelector(".rist-legend-color-input");
         var dashInput = row.querySelector(".rist-legend-sample-dash");
@@ -1946,6 +2000,7 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
         }});
       }});
       if (directAnnotationEdit && peakBody.children.length) body.appendChild(peakDetails);
+      refreshPeakSources();
       syncDeleteAllPeaksButton();
     }}
 
@@ -2111,6 +2166,9 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
     }});
     gd.addEventListener("rist-peak-group-change", function() {{
       if (panel.style.display === "block") renderRows();
+    }});
+    gd.addEventListener("rist-legend-name-change", function() {{
+      if (panel.style.display === "block") refreshPeakSources();
     }});
     gd.addEventListener("rist-history-restored", function() {{
       if (panel.style.display === "block") renderRows();
