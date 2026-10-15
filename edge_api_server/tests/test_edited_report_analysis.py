@@ -153,6 +153,16 @@ def test_many_peaks_are_fairly_bounded_and_omissions_are_explicit():
 def test_llm_request_to_ppt_and_html_preview(tmp_path, monkeypatch, failure, experiment):
     use_fake_pptx_pdf_converter(monkeypatch)
     captured = []
+    email_body = (
+        "안녕하십니까. Edited sample의 분석 보고서를 안내드립니다.\n\n"
+        "주요 관찰\n- 1700 cm⁻¹에서 수정 C=O 후보 피크가 확인되며 관심 영역에 포함됩니다.\n"
+        "- 사용자 메모에는 산화 가능성 비교가 기록되어 있습니다.\n\n"
+        "검토 사항\n피크명과 메모는 확정 동정이 아닌 후보 해석입니다. 관심 영역과 표시 높이는 "
+        "분석자의 강조 설정이므로 농도나 함량으로 해석하지 마십시오. 결과는 현재 편집된 피크 "
+        "기준이며, 필요하면 표준품 비교와 반복 측정으로 후보를 확인해 주시기 바랍니다.\n\n"
+        "상세 그래프와 분석 내용은 첨부 보고서에서 확인하실 수 있습니다. "
+        "추가로 확인할 사항이 있으면 말씀해 주십시오. 감사합니다."
+    )
     def handler(request):
         if request.url.path == "/v1/models":
             return httpx.Response(200, json={"data": [{"id": "gemma4-e4b", "max_model_len": 8192}]})
@@ -162,6 +172,8 @@ def test_llm_request_to_ppt_and_html_preview(tmp_path, monkeypatch, failure, exp
             return httpx.Response(503, json={"error": {"message": "MOCK_PRIVATE_LLM_FAILURE_503"}})
         response = {key: "1700 cm⁻¹의 수정 C=O 후보와 강조 영역을 확인했습니다. 사용자 메모의 산화 가능성은 추가 검토가 필요합니다."
                     for key in ("summary", "key_findings", "interpretation", "qc_notes", "narrative", "caption", "email_body", "email_subject")}
+        if len(captured) == 2:
+            response = {"email_subject": f"[RIST] Edited sample {experiment} 분석 결과 및 피크 검토 안내", "email_body": email_body}
         return httpx.Response(200, json={"choices": [{"message": {"content": json.dumps(response, ensure_ascii=False)}}]})
     monkeypatch.setattr(preview_report, "LocalLlmClient", lambda *args: LocalLlmClient(*args, transport=httpx.MockTransport(handler)))
     settings = Settings(storage_root=tmp_path, llm_include_images=False)
@@ -171,6 +183,7 @@ def test_llm_request_to_ppt_and_html_preview(tmp_path, monkeypatch, failure, exp
         figure_image=preview_report.decode_figure_image(TINY_PNG_DATA_URL), settings=settings)
     try:
         assert captured
+        assert len(captured) == (1 if failure else 2)
         prompt = captured[0]["messages"][-1]["content"]
         assert "DELETED" not in prompt and "STALE FIGURE" not in prompt
         assert '"position_cm-1":1700.0' in prompt and '"included_peak_ids":["p1"]' in prompt
@@ -181,6 +194,12 @@ def test_llm_request_to_ppt_and_html_preview(tmp_path, monkeypatch, failure, exp
                 assert "로컬 AI 해석 미생성 · 규칙 기반 요약" in html
                 assert "MOCK_PRIVATE_LLM_FAILURE_503" not in html
             else:
+                email = archive.read("email_body.md").decode()
+                assert email_body in email and experiment in email
+                from app.report.editable import document_from_dict, editor_document
+                document = document_from_dict(json.loads((root / "job/report/report.json").read_text()),
+                                              image_path=root / "job/report/current_graph.png")
+                assert editor_document(document)["auxiliary"]["email_body"] == email_body
                 assert "로컬 AI 해석 · 분석자 검토 필요" in html
                 assert "사용자 메모의 산화 가능성은 추가 검토" in html
                 from io import BytesIO

@@ -453,7 +453,7 @@ def build_preview_report_package(
         if spec is not None:
             document.ensure_auxiliary_texts(spec.fallback)
         if spec is not None and settings is not None:
-            _emit_progress(progress, "llm", 58, "편집된 피크와 주석으로 로컬 AI 해석을 생성하는 중입니다.")
+            _emit_progress(progress, "llm", 58, "편집된 피크와 주석으로 로컬 AI 해석과 안내 메일을 생성하는 중입니다.")
             llm_client = LocalLlmClient(
                 settings.llm_base_url,
                 settings.llm_model,

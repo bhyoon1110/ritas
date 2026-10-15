@@ -206,6 +206,7 @@ def edited_graph_spec(spec: LlmSlotSpec, payload: dict, experiment_code: str) ->
         region.pop("peak_ids", None)
     facts = {
         "experiment": experiment_code, "evidence_source": "final_edited_graph",
+        "report_context": spec.facts.get("report_context", {}),
         "current_peaks": compact, "visible_peak_count": len(peaks),
         "included_peak_count": len(compact), "omitted_peak_count": len(peaks)-len(compact),
         "edited_peak_count": sum(bool(peak["edit_roles"]) for peak in peaks),

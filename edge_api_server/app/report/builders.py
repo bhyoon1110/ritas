@@ -188,6 +188,14 @@ def _job_meta_value(
     return value
 
 
+def _report_email_context(job: dict[str, Any], payload: dict[str, Any]) -> dict[str, str]:
+    context = payload.get("reportContext")
+    context = context if isinstance(context, dict) else {}
+    request = _job_meta_value(job, "request_number") or _job_meta_value(context, "requestNumber")
+    # Only the request identifier is needed for the salutation, not user/SSO details.
+    return {"request_number": _clean_report_text(request)[:100]}
+
+
 @dataclass
 class LlmSlotSpec:
     """LLM 주석 단계에 전달할 명세(실험 종류별 프롬프트/근거/기본 문안)."""
@@ -1630,7 +1638,7 @@ class FtirReportBuilder(ReportBuilder):
         "- narrative: 주요 근거와 해석에 대한 보조 설명(4문장 이내)\n"
         "- caption: 발표자료용 한 문장 캡션\n"
         "- email_subject: 메일 제목 1줄\n"
-        "- email_body: 첨부 보고서 안내 메일 본문. Markdown 형식으로 8문장 이내"
+        "- email_body: 주요 피크 관찰·후보 해석·검토 한계를 담은 안내 메일 본문"
     )
 
     def build(
@@ -2011,6 +2019,7 @@ class FtirReportBuilder(ReportBuilder):
         cv = verdict.get("combined_verdict") or {}
         facts = {
             "experiment": "FT-IR",
+            "report_context": _report_email_context(job, verdict),
             "sample": verdict.get("sample"),
             "samples": verdict.get("samples"),
             "tier": verdict.get("tier"),
@@ -2104,7 +2113,7 @@ class RamanReportBuilder(ReportBuilder):
         "- narrative: 주요 근거 보조 설명(4문장 이내)\n"
         "- caption: 발표자료용 한 문장 캡션\n"
         "- email_subject: 메일 제목 1줄\n"
-        "- email_body: 첨부 보고서 안내 메일 본문. Markdown 형식으로 8문장 이내"
+        "- email_body: 주요 band·선택 강도비·검토 한계를 담은 안내 메일 본문"
     )
 
     def build(self, job: dict[str, Any], analysis: list[AnalysisItem]) -> ReportDocument:
@@ -2313,6 +2322,7 @@ class RamanReportBuilder(ReportBuilder):
         settings = payload.get("settings") if isinstance(payload.get("settings"), dict) else {}
         facts = {
             "experiment": "RAMAN",
+            "report_context": _report_email_context(job, payload),
             "samples": payload.get("samples"),
             "settings": {
                 "sensitivity": settings.get("sensitivity"),

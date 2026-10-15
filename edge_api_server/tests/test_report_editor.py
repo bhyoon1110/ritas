@@ -100,7 +100,8 @@ def test_blank_fields_edit_revision_and_recipient_integrity(prepared, monkeypatc
     summary = next(s for s in edits['sections'] if s['sectionId'] == 'summary')
     summary['paragraphs'] = ['분석자가 확인한 피크입니다. <script>alert(1)</script> 물질 확정은 추가 검증이 필요합니다.']
     next(s for s in edits['sections'] if s['sectionId'] == 'experiment_conditions')['rows'][0][-1] = '온도 23°C · 습도 45%'
-    edits['auxiliary']['email_body'] = '검토 완료된 보고서를 첨부합니다.'
+    edits['auxiliary']['email_subject'] = '[RIST] 분석자가 검토한 보고서 안내'
+    edits['auxiliary']['email_body'] = '검토 완료된 보고서를 첨부합니다.\n\n' + '피크의 후보 해석과 확인 사항을 검토해 주세요.\n' * 25
     registered = []
     def register(**kwargs):
         registered.append(kwargs)
@@ -118,6 +119,7 @@ def test_blank_fields_edit_revision_and_recipient_integrity(prepared, monkeypatc
     assert h.job.package_path.read_bytes() == before
     saved = h.client.get(h.prefix + '/' + revised['jobId'] + '/editor-data').json()['document']
     assert saved['transfer'] == edits['transfer'] and saved['title'] == edits['title']
+    assert saved['auxiliary'] == edits['auxiliary']  # Never regenerate or shorten an edited AI draft.
     assert next(s for s in saved['sections'] if s['sectionId']=='summary')['source']=='user'
     original = zipfile.ZipFile(BytesIO(before))
     with zipfile.ZipFile(BytesIO(h.client.get(revised['downloadUrl']).content)) as archive:
@@ -129,7 +131,7 @@ def test_blank_fields_edit_revision_and_recipient_integrity(prepared, monkeypatc
         assert 'XMLHttpRequest' not in html and 'contenteditable' not in html
         assert '온도 23°C' in archive.read('report-summary.html').decode()
         assert 'REQ-REVIEW' in archive.read('report.md').decode()
-        assert '검토 완료된 보고서' in archive.read('email_body.md').decode()
+        assert edits['auxiliary']['email_body'] in archive.read('email_body.md').decode()
         with zipfile.ZipFile(BytesIO(archive.read('report.pptx'))) as ppt:
             texts = ppt_text(ppt)
             assert 'REQ-REVIEW' in texts and 'LIMS-001' in texts
