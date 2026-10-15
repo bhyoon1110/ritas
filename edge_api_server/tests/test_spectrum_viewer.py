@@ -17,6 +17,7 @@ def sample_figure():
     return {
         "data": [
             {"x": [4000, 1700, 400], "y": [11, 13, 12], "name": "Sample A", "mode": "lines",
+             "line": {"width": 3.5, "dash": "dash", "color": "#123456"},
              "meta": {"rist_sample_group": "sample:0", "rist_sample_parent": True, "rist_view_offset": 10}},
             {"x": [1700], "y": [13], "name": "C=O", "mode": "markers",
              "meta": {"rist_sample_group": "sample:0", "rist_peak": {"label_key": "carbonyl"}, "rist_view_offset": 10}},
@@ -43,6 +44,7 @@ def test_readonly_snapshot_preserves_issued_values_and_no_edit_programs(monkeypa
     assert original == before
     for old, new in zip(original["data"], result["data"]):
         assert old["x"] == new["x"] and old["y"] == new["y"]
+        assert old.get("line") == new.get("line")
     assert result["layout"]["shapes"][0]["editable"] is False
     assert result["layout"]["annotations"][0]["captureevents"] is False
     assert result["data"][1]["showlegend"] is False

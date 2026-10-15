@@ -43,8 +43,8 @@ function setup(t, experiment, mode) {
     }
     gd._fullLayout=clone(gd.layout);emit('plotly_afterplot');emit('plotly_relayout',patch);
   },newPlot:async(target,data,layout)=>{target.data=data;target.layout=layout;},
-  downloadImage:async(target,options)=>{exports.push({layout:clone(target.layout),options:clone(options)});},
-  toImage:async(target,options)=>{exports.push({layout:clone(target.layout),options:clone(options)});return 'data:image/png;base64,test';},
+  downloadImage:async(target,options)=>{exports.push({data:clone(target.data),layout:clone(target.layout),options:clone(options)});},
+  toImage:async(target,options)=>{exports.push({data:clone(target.data),layout:clone(target.layout),options:clone(options)});return 'data:image/png;base64,test';},
   purge:()=>{}};
   if(mode==='chrome49')w.eval(fs.readFileSync(path.join(assetRoot,manifest.runtime),'utf8'));
   function program(token) {
@@ -142,12 +142,14 @@ for(const mode of ['native','chrome49'])for(const experiment of ['ftir','raman']
   });
   test(`${prefix}: image download and report PNG use selected dimensions without changing live graph`,async t=>{
     const h=setup(t,experiment,mode);await h.set('1200','16:9');
+    h.gd.data[0].line={width:3.5,dash:'dash',color:'#123456'};
     h.run('function buildImageExportPayload');
     const snapshot=clone(h.gd.layout);
     const download=h.d.querySelector('[data-fmt="png"]');assert(download);download.click();await tick();
     assert.equal(h.exports.length,1);assert.equal(h.exports[0].options.width,1200);assert.equal(h.exports[0].options.height,675);
     await h.gd.testCapture({data:h.gd.data,layout:h.gd.layout});
     assert.equal(h.exports.length,2);assert.equal(h.exports[1].options.width,1200);assert.equal(h.exports[1].layout.height,675);
+    for(const output of h.exports) assert.deepEqual(output.data[0].line,{width:3.5,dash:'dash',color:'#123456'});
     assert.deepEqual(clone(h.gd.layout),snapshot);
   });
 }

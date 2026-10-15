@@ -50,7 +50,8 @@ function setup(t,kind,mode,pointer=false) {
     obj[parts.at(-1)]=clone(value);
   }
   w.Plotly={
-    restyle:async(_,patch,curves)=>{for (const curve of curves) Object.assign(gd.data[curve],clone(patch));sync();emit('plotly_afterplot');},
+    restyle:async(_,patch,curves)=>{for (const [pos,curve] of curves.entries()) for(const [key,value] of Object.entries(patch))
+      setPath(gd.data[curve],key,Array.isArray(value)?value[pos % value.length]:value);sync();emit('plotly_afterplot');},
     relayout:async(_,patch)=>{updates.push(clone(patch));for (const [key,val] of Object.entries(patch)) setPath(gd.layout,key,val);sync();emit('plotly_relayout',patch);emit('plotly_afterplot');},
     react:async(_,data,layout)=>{gd.data=data;gd.layout=layout;sync();emit('plotly_afterplot');},
     addTraces:async(_,trace)=>{gd.data.push(trace);},
@@ -87,6 +88,59 @@ function shapeFixture(h) {
 
 for (const kind of ['ftir','raman']) for (const mode of ['native','chrome49']) {
   const label=kind+'/'+mode;
+  test(label+': sample width saves with color/dash, only changes its RAW trace, and supports undo/redo',async t=>{
+    const h=setup(t,kind,mode);
+    h.gd.data[0].line={width:1.25,color:'#123456',dash:'solid'};
+    h.gd.data.push({name:'Other',x:[100,200],y:[2,4],line:{width:2,color:'#654321'},showlegend:true,legendgrouptitle:{text:''},
+      meta:{rist_sample_parent:true,rist_sample_group:'sample:1'}});
+    const before=clone(h.gd.data),events=[];
+    h.gd.addEventListener('rist-sample-line-style-change',ev=>events.push(clone(ev.detail)));
+    h.q('.rist-legend-edit-button').click();
+    assert.equal(h.q('.rist-legend-sample-width').value,'1.25');
+    assert.equal(h.q('.is-peak .rist-legend-sample-width'),null);
+    h.q('.rist-legend-sample-width').value='3.5';
+    h.q('.rist-legend-sample-dash').value='dash';
+    h.q('.is-sample .rist-legend-color-input').value='#abcdef';
+    h.q('.rist-legend-edit-save-all').click();await tick();
+    assert.deepEqual(clone(h.gd.data[0].line),{width:3.5,color:'#abcdef',dash:'dash'});
+    assert.deepEqual(clone(h.gd.data.slice(1)),before.slice(1));
+    assert.deepEqual(clone(h.gd.data[0].x),before[0].x);assert.deepEqual(clone(h.gd.data[0].y),before[0].y);
+    assert.equal(events.length,1);assert.equal(events[0].width,3.5);assert.deepEqual(events[0].curves,[0]);
+    h.gd._ristHistory.undo();await tick();assert.deepEqual(clone(h.gd.data),before);
+    h.gd._ristHistory.redo();await tick();assert.equal(h.gd.data[0].line.width,3.5);
+    h.q('.rist-legend-edit-button').click();assert.equal(h.q('.rist-legend-sample-width').value,'3.5');
+    h.q('.rist-legend-edit-save-all').click();await tick();assert.equal(events.length,1,'unchanged save is a no-op');
+  });
+  test(label+': invalid width blocks the whole save without changing names or colors; bounds/decimals work',async t=>{
+    const h=setup(t,kind,mode),before=clone(h.gd.data);
+    h.q('.rist-legend-edit-button').click();
+    const width=h.q('.rist-legend-sample-width');
+    h.q('.is-sample .rist-legend-edit-input').value='pending name';
+    h.q('.is-sample .rist-legend-color-input').value='#abcdef';
+    for(const value of ['', '0', '-1', '20.1', 'Infinity', 'text']) {
+      width.value=value;h.q('.rist-legend-edit-save-all').click();await tick();
+      assert.equal(width.getAttribute('aria-invalid'),'true');
+      assert.match(h.q('.rist-legend-edit-error').textContent,/0.1~20/);
+      assert.deepEqual(clone(h.gd.data),before);assert.equal(h.q('.rist-legend-edit-panel').style.display,'block');
+    }
+    for(const value of ['0.1','20','1.25']) {
+      h.q('.rist-legend-sample-width').value=value;h.q('.rist-legend-edit-save-all').click();await tick();
+      assert.equal(h.gd.data[0].line.width,Number(value));h.q('.rist-legend-edit-button').click();
+      assert.equal(h.q('.rist-legend-edit-error').textContent,'');
+    }
+  });
+  if(kind==='raman') test(label+': highlight reset preserves newly saved width and new RAW does not inherit a stale width cache',async t=>{
+    const h=setup(t,kind,mode);h.gd.data[0].line={width:1.5,color:'#123456'};
+    h.run('var DIM =');h.gd._snapCurve=0;h.gd._lastPtr={modifier:true};
+    h.emit('plotly_doubleclick');await tick();assert.equal(h.gd.data[0].line.width,1.5*2.2);
+    h.q('.rist-legend-edit-button').click();assert.equal(h.q('.rist-legend-sample-width').value,'1.5');
+    h.q('.rist-legend-sample-width').value='4';h.q('.rist-legend-edit-save-all').click();await tick();
+    h.emit('plotly_doubleclick');await tick();h.emit('plotly_doubleclick');await tick();
+    assert.equal(h.gd.data[0].line.width,4);
+    h.gd.data[0].line.width=0.5;h.dispatch('rist-plot-data-replaced');
+    h.emit('plotly_doubleclick');await tick();assert.equal(h.gd.data[0].line.width,0.5*2.2);
+    h.emit('plotly_doubleclick');await tick();assert.equal(h.gd.data[0].line.width,0.5);
+  });
   test(label+': peak name updates its legend/annotation/original cache, preserves values, and undoes/redoes',async t=>{
     const h=setup(t,kind,mode),before=clone(h.gd.layout.annotations[0]),raw=clone(h.gd.data[1]);
     const inp=h.open();assert.equal(inp.value,'C–O');assert.equal(inp.getAttribute('aria-label'),'피크 라벨 이름 수정');

@@ -737,6 +737,7 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
   max-width: 100%;
 }}
 #{div_id} .rist-legend-edit-row.is-sample {{
+  flex-wrap: wrap;
   margin: 12px 0 5px;
   padding: 6px;
   border: 1px solid #b8c8d8;
@@ -929,6 +930,38 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
   font: 11px Arial, sans-serif;
   padding: 3px 4px;
   box-sizing: border-box;
+}}
+#{div_id} .rist-legend-sample-style {{
+  display: flex;
+  flex: 1 0 100%;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}}
+#{div_id} .rist-legend-sample-width-label {{
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+  color: #1f2933;
+  font: 11px Arial, sans-serif;
+}}
+#{div_id} .rist-legend-sample-width {{
+  width: 62px;
+  height: 28px;
+  min-width: 0;
+  padding: 3px 4px;
+  border: 1px solid #9fb3c8;
+  border-radius: 4px;
+  box-sizing: border-box;
+  font: 12px Arial, sans-serif;
+}}
+#{div_id} .rist-legend-edit-error {{
+  display: none;
+  color: #9b2c2c;
+  font: 12px Arial, sans-serif;
+  margin-top: 8px;
 }}
 #{div_id} .rist-legend-edit-actions {{
   position: sticky;
@@ -1123,6 +1156,22 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
   function traceDash(curve) {{
     var tr = (gd.data || [])[curve] || {{}};
     return normalizeDash(tr.line && tr.line.dash);
+  }}
+
+  function sampleLineWidth(value) {{
+    if (value == null || String(value).trim() === "") return null;
+    var width = Number(value);
+    return Number.isFinite(width) && width >= 0.1 && width <= 20 ? width : null;
+  }}
+
+  function traceLineWidth(curve) {{
+    var tr = (gd.data || [])[curve] || {{}};
+    var width = tr.line && tr.line.width;
+    if (gd._hiState && gd._hiState.mode === "highlight" && gd._origLW) {{
+      width = gd._origLW[curve];
+    }}
+    var normalized = sampleLineWidth(width);
+    return normalized === null ? 2 : normalized;
   }}
 
   function traceMeta(curve) {{
@@ -1323,21 +1372,23 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
     }});
   }}
 
-  function updateSampleLineStyle(curve, colorValue, dashValue) {{
+  function updateSampleLineStyle(curve, colorValue, dashValue, widthValue) {{
     var color = normalizeColor(colorValue);
     var dash = normalizeDash(dashValue);
-    if (!window.Plotly) return;
+    var width = sampleLineWidth(widthValue);
+    if (!window.Plotly || width === null) return;
     if (gd._ristHistory) gd._ristHistory.capture();
     var curves = sampleCurvesForLegendItem(curve);
     window.Plotly.restyle(gd, {{
       "line.color": color,
       "line.dash": dash,
+      "line.width": width,
       "marker.color": color
     }}, curves).then(function() {{
       dispatchColorChange(curves, color);
       try {{
         gd.dispatchEvent(new CustomEvent("rist-sample-line-style-change", {{
-          detail: {{ curves: curves, color: color, dash: dash }}
+          detail: {{ curves: curves, color: color, dash: dash, width: width }}
         }}));
       }} catch (e) {{}}
     }});
@@ -1362,7 +1413,7 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
     btn.type = "button";
     btn.className = "rist-legend-edit-button";
     btn.textContent = directAnnotationEdit ? "범례·스타일" : "\ubc94\ub840 \uc218\uc815";
-    if (directAnnotationEdit) btn.title = "이름은 범례·피크 라벨을 더블클릭하여 수정 / 색상·선 모양·일괄 관리는 이 창에서 설정";
+    if (directAnnotationEdit) btn.title = "이름은 범례·피크 라벨을 더블클릭하여 수정 / 색상·선 모양·선 굵기·일괄 관리는 이 창에서 설정";
 
     var panel = document.createElement("div");
     panel.className = "rist-legend-edit-panel";
@@ -1374,6 +1425,7 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
       + "</label>"
       + "<button type='button' class='rist-legend-edit-close' aria-label='close'>×</button>"
       + "</div><div class='rist-legend-edit-body'></div>"
+      + "<div class='rist-legend-edit-error' role='alert'></div>"
       + "<div class='rist-legend-edit-actions'>"
       + "<button class='rist-legend-delete-all-peaks' type='button'>피크 전체 삭제</button>"
       + "<button class='rist-legend-edit-save-all' type='button'>\uc804\uccb4 \uc800\uc7a5</button>"
@@ -1500,6 +1552,9 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
 
     function renderRows() {{
       var body = panel.querySelector(".rist-legend-edit-body");
+      var error = panel.querySelector(".rist-legend-edit-error");
+      error.textContent = "";
+      error.style.display = "none";
       var idxs = visibleLegendTraceIndexes();
       body.innerHTML = "";
       panel.setAttribute("data-delete-all-peaks", "false");
@@ -1598,6 +1653,7 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
         row.innerHTML = "<span class='rist-legend-row-kind'>"
           + (sampleCurve ? "샘플" : (peakCurve ? "피크" : "항목"))
           + "</span>"
+          + (sampleCurve ? "<textarea class='rist-legend-edit-input' rows='1'></textarea><div class='rist-legend-sample-style'>" : "")
           + (groupKey ? "" : "<input class='rist-legend-color-input' type='color'"
             + " title='" + (sampleCurve ? "샘플 선 색상" : "색상 선택") + "'"
             + " aria-label='" + (sampleCurve ? "샘플 선 색상" : "색상 선택") + "'>")
@@ -1610,8 +1666,11 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
               + "<option value='dashdot'>일점쇄선</option>"
               + "<option value='longdashdot'>긴 일점쇄선</option>"
               + "</select>"
+              + "<label class='rist-legend-sample-width-label'>굵기 "
+              + "<input class='rist-legend-sample-width' type='number' min='0.1' max='20' step='any'"
+              + " title='샘플 선 굵기 (0.1~20 px)' aria-label='샘플 선 굵기'> px</label>"
             : "")
-          + "<textarea class='rist-legend-edit-input' rows='1'></textarea>"
+          + (sampleCurve ? "</div>" : "<textarea class='rist-legend-edit-input' rows='1'></textarea>")
           + (peakCurve && groupKey
             ? "<button type='button' class='rist-legend-group-remove' title='그룹에서 제외'>−</button>"
             : "")
@@ -1620,12 +1679,14 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
             : "");
         var colorInput = row.querySelector(".rist-legend-color-input");
         var dashInput = row.querySelector(".rist-legend-sample-dash");
+        var widthInput = row.querySelector(".rist-legend-sample-width");
         var nameInput = row.querySelector(".rist-legend-edit-input");
         var kindBadge = row.querySelector(".rist-legend-row-kind");
         var removeButton = row.querySelector(".rist-legend-group-remove");
         var deleteButton = row.querySelector(".rist-legend-peak-delete");
         if (colorInput) colorInput.value = traceColor(curve);
         if (dashInput) dashInput.value = traceDash(curve);
+        if (widthInput) widthInput.value = String(traceLineWidth(curve));
         nameInput.value = legendDisplayToEdit(editableTraceName(curve));
         if (peakCurve && kindBadge) {{
           kindBadge.draggable = true;
@@ -1751,6 +1812,16 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
     }}
 
     function saveAllRows() {{
+      var invalidWidth = null;
+      panel.querySelectorAll(".rist-legend-sample-width").forEach(function(input) {{
+        var invalid = sampleLineWidth(input.value) === null;
+        input.setAttribute("aria-invalid", invalid ? "true" : "false");
+        if (invalid && !invalidWidth) invalidWidth = input;
+      }});
+      var widthError = panel.querySelector(".rist-legend-edit-error");
+      widthError.textContent = invalidWidth ? "선 굵기는 0.1~20 px 사이의 숫자로 입력하세요." : "";
+      widthError.style.display = invalidWidth ? "block" : "none";
+      if (invalidWidth) {{ invalidWidth.focus(); return; }}
       var deleteCurves = [];
       var groupRemovals = {{}};
       if (panel.getAttribute("data-delete-all-peaks") === "true") {{
@@ -1763,6 +1834,7 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
         var nameInput = row.querySelector(".rist-legend-edit-input");
         var colorInput = row.querySelector(".rist-legend-color-input");
         var dashInput = row.querySelector(".rist-legend-sample-dash");
+        var widthInput = row.querySelector(".rist-legend-sample-width");
         if (!Number.isFinite(curve) || !nameInput) return;
         if (row.getAttribute("data-delete") === "true") {{
           deleteCurves = deleteCurves.concat(peakCurvesForLegendItem(curve));
@@ -1784,8 +1856,10 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
         if (nextName && nextName !== currentName) updateName(curve, nextName);
         if (isSampleCurve(curve) && colorInput && dashInput
             && (normalizeColor(colorInput.value) !== traceColor(curve)
-              || normalizeDash(dashInput.value) !== traceDash(curve))) {{
-          updateSampleLineStyle(curve, colorInput.value, dashInput.value);
+              || normalizeDash(dashInput.value) !== traceDash(curve)
+              || (widthInput && sampleLineWidth(widthInput.value) !== traceLineWidth(curve)))) {{
+          updateSampleLineStyle(curve, colorInput.value, dashInput.value,
+            widthInput ? widthInput.value : traceLineWidth(curve));
         }} else if (colorInput && normalizeColor(colorInput.value) !== traceColor(curve)) {{
           updateColor(curve, colorInput.value);
         }}
@@ -5520,6 +5594,20 @@ def _trace_highlight_js(div_id: str, pickable=None, groups=None) -> str:
     mode = "none";
     emitState(null);
   }}
+
+  gd.addEventListener("rist-sample-line-style-change", function(ev) {{
+    var detail = ev.detail || {{}};
+    if (!gd._origLW || !Number.isFinite(detail.width)) return;
+    (detail.curves || []).forEach(function(curve) {{ gd._origLW[curve] = detail.width; }});
+  }});
+  ["rist-history-restored", "rist-plot-data-replaced", "rist-plot-structure-changed"].forEach(function(name) {{
+    gd.addEventListener(name, function() {{
+      gd._origLW = null;
+      hiCurve = -1;
+      mode = "none";
+      emitState(null);
+    }});
+  }});
 
   gd.addEventListener("mousemove", function(e) {{
     gd._lastPtr = {{ x: e.clientX, y: e.clientY, modifier: e.shiftKey || e.altKey }};

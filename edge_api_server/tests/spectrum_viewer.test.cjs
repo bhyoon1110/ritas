@@ -85,6 +85,7 @@ test('overlay/stack shift only Y display and attached peaks/ratios, restore is e
   assert.equal(h.gd.layout.annotations[0].y,4);assert.equal(h.gd.layout.annotations[1].y,5);
   assert.equal(h.gd.layout.annotations[1].text,'Ratio: 2.5');assert.equal(h.gd.layout.shapes[0].y0,3);
   await h.change('stack');
+  assert.deepEqual(clone(h.gd.data[0].line),{width:3.5,dash:'dash',color:'#123456'});
   const delta=h.gd.data[0].y[1]-13;
   assert.equal(h.gd.data[1].y[0],13+delta);assert.equal(h.gd.layout.annotations[0].y,14+delta);
   assert.deepEqual(clone(h.gd.data[0].x),[4000,1700,400]);

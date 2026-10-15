@@ -301,6 +301,9 @@ def test_shared_plotly_module_applies_legend_text(tmp_path) -> None:
     assert 'ev.key === "Enter" && (ev.ctrlKey || ev.metaKey)' in html
     assert "rist-legend-color-input" in html
     assert "rist-legend-sample-dash" in html
+    assert "rist-legend-sample-width" in html
+    assert "샘플 선 굵기" in html
+    assert '"line.width": width' in html
     assert "샘플 선 색상" in html
     assert "샘플 선 종류" in html
     assert "<option value='solid'>실선</option>" in html

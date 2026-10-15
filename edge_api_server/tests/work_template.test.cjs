@@ -131,9 +131,11 @@ for(const mode of ['native','chrome49']) for(const experiment of ['ftir','raman'
     for(const word of ['OLD SAMPLE','OLD-REQUEST','old box','NEW RAW','customdata','transmittance_y','conditionDetail'])assert(!text.includes(word),word);
     assert(!value.settings.axes.xaxis.range);
     assert.deepEqual(clone(value.settings.sampleStyles),[{color:'#123456',width:1,dash:'solid'},{color:'#123456',width:1,dash:'solid'}]);
+    h.gd.data[0].line.width=3.5;h.gd.data[1].line.width=0.5;
     h.gd.layout.title.text='';h.d.querySelector('[data-template-title]').checked=true;h.d.querySelector('[data-template-ranges]').checked=true;
     h.d.querySelector('[data-template-save]').click();const next=JSON.parse(await h.read(h.downloads[1]));
     assert.equal(next.settings.title,'');assert.deepEqual(next.settings.axes.xaxis.range,[700,300]);
+    assert.deepEqual(next.settings.sampleStyles.map(s=>s.width),[3.5,0.5]);
   });
   test(label+': load before RAW, then recompute with chosen sensitivity/libraries and new-scale stack',async t=>{
     const h=setup(t,experiment,mode);await tick();
@@ -141,6 +143,7 @@ for(const mode of ['native','chrome49']) for(const experiment of ['ftir','raman'
     assert.equal(h.requests.length,0);assert(h.template().state());
     await h.addRaw();assert.deepEqual(h.requests[0],{sensitivity:'0',libraries:['custom']});
     assert.equal(h.gd.data[0].name,'NEW RAW 0');assert.equal(h.gd.data[0].line.color,'#e11d48');
+    assert.equal(h.gd.data[0].line.width,3);assert.equal(h.gd.data[0].line.dash,'dash');
     assert.equal(h.gd.data[1].line.color,'#123456','extra sample keeps original style');
     assert.deepEqual(clone(h.gd.data[0].customdata),[-3,30,5]);
     assert.deepEqual(clone(h.gd.data[1].y),[-2,31,6].map(y=>y+33*1.8));
