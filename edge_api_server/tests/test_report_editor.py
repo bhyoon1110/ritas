@@ -176,6 +176,8 @@ def test_editor_owner_project_and_sso(prepared):
         projects=frozenset({h.kind.upper()}),roles=frozenset(),sso_identity=None)
     h.app.state.actor=context
     assert h.client.get(h.url+'/editor-data').status_code==403
+    assert h.client.get(h.url+'/edit-layout').status_code==403
+    assert h.client.get(h.url+'/edit-slides/0').status_code==403
     h.app.state.actor=replace(context,user_id='owner',projects=frozenset())
     assert h.client.get(h.url+'/editor-data').status_code==403
     h.app.state.actor=replace(context,user_id='owner',sso_identity={'employee_id':'sso-operator'})
@@ -250,3 +252,71 @@ def test_initial_lims_code_does_not_replace_project_or_posco_template(tmp_path, 
     with zipfile.ZipFile(path) as ppt:
         assert 'ppt/media/posco-tem-banner.jpeg' in ppt.namelist()
         assert 'TST-123' in ppt_text(ppt)
+
+
+def test_named_fields_survive_reopen_and_update_linked_outputs_only(prepared):
+    h = prepared
+    edits = edit_request(h.client.get(h.url + '/editor-data').json()['document'])
+    edits['completionDate'] = '2026-10-14'
+    edits['variables'] = [{'name':'측정온도','value':'23','unit':'°C'}]
+    edits['transfer']['requestNumber'] = 'REQ-LINK'
+    edits['title'] = '{{의뢰번호}} 분석'
+    summary = next(s for s in edits['sections'] if s['sectionId'] == 'summary')
+    summary['paragraphs'] = ['{{측정온도}}에서 분석했습니다. 완료일: {{완료일}}', '23 °C 고정 문구']
+    condition = next(s for s in edits['sections'] if s['sectionId'] == 'experiment_conditions')
+    condition['rows'][0][2] = '{{측정온도}}'
+    condition['rows'][1][2] = '23 °C'
+    edits['auxiliary']['email_body'] = '조건: {{측정온도}}'
+    original_id = h.job.job_id
+    for expected in ('23', '27'):
+        edits['variables'][0]['value'] = expected
+        response = h.client.post(h.prefix+'/'+original_id+'/revisions',json=edits,headers={'X-Requested-With':'RIST-Report-Editor'})
+        assert response.status_code == 202, response.text
+        job = wait_revision(h, response.json()['jobId'])
+        assert job['status'] == 'completed', job
+        saved = h.client.get(h.prefix+'/'+job['jobId']+'/editor-data').json()['document']
+        assert saved['title'] == '{{의뢰번호}} 분석' and saved['completionDate'] == '2026-10-14'
+        assert saved['variables'] == edits['variables']
+        assert next(s for s in saved['sections'] if s['sectionId']=='summary')['paragraphs'][0] == summary['paragraphs'][0]
+        with zipfile.ZipFile(BytesIO(h.client.get(job['downloadUrl']).content)) as archive:
+            assert 'editor-state.json' not in archive.namelist()
+            md = archive.read('report.md').decode()
+            assert '{{' not in md
+            assert expected + ' °C에서 분석했습니다.' in md
+            assert '23 °C 고정 문구' in md
+            assert '2026-10-14' in md
+            assert expected+' °C' in archive.read('email_body.md').decode()
+            assert 'RistDirectEditor' not in archive.read('report.html').decode()
+            with zipfile.ZipFile(BytesIO(archive.read('report.pptx'))) as ppt:
+                text = ppt_text(ppt)
+                assert expected + ' °C' in text and '{{' not in text
+        layout = h.client.get(h.prefix+'/'+job['jobId']+'/edit-layout')
+        assert layout.status_code == 200, layout.text
+        assert any('title' in r['refs'] for r in layout.json()['pages'][0]['regions'])
+        image = h.client.get(h.prefix+'/'+job['jobId']+'/edit-slides/0')
+        assert image.status_code == 200 and image.content.startswith(b'\xff\xd8')
+        assert image.headers['cache-control'] == 'no-store'
+        assert h.client.get(h.prefix+'/'+job['jobId']+'/edit-slides/-1').status_code == 404
+        assert h.client.get(h.prefix+'/'+job['jobId']+'/edit-slides/200').status_code == 404
+        original_id = job['jobId']
+        edits = edit_request(saved)
+
+
+def test_invalid_variables_do_not_create_revisions(prepared):
+    h = prepared
+    original = edit_request(h.client.get(h.url+'/editor-data').json()['document'])
+    cases = [
+        {'variables':[{'name':'의뢰번호','value':'collision'}]},
+        {'variables':[{'name':'a','value':'{{b}}'},{'name':'b','value':'{{a}}'}]},
+        {'variables':[{'name':'a','value':'x'},{'name':' a ','value':'y'}]},
+        {'title':'{{없음}}'},
+        {'completionDate':'2026-02-31'},
+        {'completionDate':'20261015'},
+        {'variables':[{'name':'a','value':'X'*1000}], 'title':'{{a}}'},
+    ]
+    count = len(h.store._jobs)
+    for mutation in cases:
+        value = deepcopy(original); value.update(mutation)
+        response = h.client.post(h.url+'/revisions',json=value,headers={'X-Requested-With':'RIST-Report-Editor'})
+        assert response.status_code == 422, response.text
+        assert len(h.store._jobs) == count

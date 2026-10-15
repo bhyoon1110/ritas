@@ -8,7 +8,7 @@ from threading import BoundedSemaphore, Thread
 from urllib.parse import urlsplit
 
 from fastapi import Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from .errors import ApiException
@@ -16,6 +16,8 @@ from . import preview_report as reports
 from .report.editable import (TRANSFER_FIELDS, apply_edits, document_from_dict, editor_document)
 from .report.edited_analysis import analysis_preview
 from .report.spectrum_viewer import build_spectrum_viewer
+from .report.direct_edit import edit_pages, slide_image
+from .report.editor_variables import resolve_changes
 from .report_queue import register_generated_report_package
 from .storage import atomic_write_json
 
@@ -32,12 +34,21 @@ class SectionEdit(BaseModel):
     rows: list[list[str]] | None = Field(default=None, max_length=2000)
 
 
+class CommonVariable(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(min_length=1, max_length=60)
+    value: str = Field(max_length=1000)
+    unit: str = Field(default="", max_length=40)
+
+
 class ReportEdit(BaseModel):
     model_config = ConfigDict(extra="forbid")
     title: str = Field(max_length=200)
     transfer: dict[str, str]
     sections: list[SectionEdit] = Field(max_length=100)
     auxiliary: dict[str, str]
+    completionDate: str | None = Field(default=None, max_length=10)
+    variables: list[CommonVariable] = Field(default_factory=list, max_length=32)
 
 
 def job_response(job, prefix):
@@ -72,6 +83,8 @@ def _load_document(job):
 
 def _validate_changes(changes, document):
     values = changes.model_dump()
+    if values["completionDate"] is None:
+        values["completionDate"] = document.completion_date or ""
     if set(values["transfer"]) != set(TRANSFER_FIELDS):
         raise ValueError("전송 정보 항목이 올바르지 않습니다.")
     for key, value in values["transfer"].items():
@@ -98,6 +111,9 @@ def _validate_changes(changes, document):
         raise ValueError("메일 문안이 올바르지 않습니다.")
     if len(json.dumps(values, ensure_ascii=False)) > 120000:
         raise ValueError("보고서 수정 내용이 너무 많습니다.")
+    expanded = resolve_changes(values)
+    if len(json.dumps(expanded, ensure_ascii=False)) > 120000:
+        raise ValueError("공통 항목을 반영한 보고서 수정 내용이 너무 많습니다.")
     return values
 
 
@@ -118,10 +134,12 @@ def _write_revision(store, new_job, old_job, changes, project, settings, databas
         shutil.copyfile(source / "processed/analysis-result.json", processed_dir / "analysis-result.json")
         document = _load_document(old_job)
         document.job_id = new_job.job_id
-        document.generated_at = reports._kst_now_iso()
+        document.generated_at = changes.get("completionDate", document.completion_date) or ""
         for figure in document.figures:
             figure.path = str(report_dir / "current_graph.png")
-        apply_edits(document, changes, project)
+        apply_edits(document, resolve_changes(changes), project)
+        # Authoring sources are never shipped in recipient packages (.json excluded).
+        atomic_write_json(report_dir / "editor-state.json", changes)
         atomic_write_json(report_dir / "report.json", document.to_dict())
         (report_dir / "report.md").write_text(document.to_markdown(), encoding="utf-8")
         reports._write_email_body(document, report_dir)
@@ -153,7 +171,8 @@ def _write_revision(store, new_job, old_job, changes, project, settings, databas
 def editor_page(prefix, job_id):
     config = json.dumps({"prefix": prefix, "jobId": job_id}, ensure_ascii=False).replace("<", "\\u003c")
     template = Path(__file__).with_name("report_editor.html").read_text(encoding="utf-8")
-    script = Path(__file__).with_name("report_editor.js").read_text(encoding="utf-8")
+    script = "\n".join(Path(__file__).with_name(name).read_text(encoding="utf-8")
+                       for name in ("report_direct_editor.js", "report_editor.js"))
     return template.replace("__CONFIG__", config).replace("__SCRIPT__", script)
 
 
@@ -166,17 +185,52 @@ def install_report_editor(router, kind):
         _authorized_job(request, job_id, kind)
         return HTMLResponse(editor_page(prefix, job_id), headers={"Cache-Control": "no-store",
             "X-Content-Type-Options": "nosniff", "X-Frame-Options": "SAMEORIGIN",
-            "Content-Security-Policy": "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; frame-src 'self'; frame-ancestors 'self'; base-uri 'none'; form-action 'none'"})
+            "Content-Security-Policy": "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self'; connect-src 'self'; frame-src 'self'; frame-ancestors 'self'; base-uri 'none'; form-action 'none'"})
 
     @router.get(prefix + "/{job_id}/editor-data", tags=[kind])
     def data(request: Request, job_id: str):
         job = _authorized_job(request, job_id, kind)
-        result = {"document": editor_document(_load_document(job)), "job": job_response(job, prefix)}
+        document = _load_document(job)
+        model = editor_document(document)
+        model.update(completionDate=document.completion_date or "", variables=[])
+        state_path = job.tmp_root / "job/report/editor-state.json"
+        if state_path.is_file():
+            source = json.loads(state_path.read_text(encoding="utf-8"))
+            model.update({key: source[key] for key in ("title", "auxiliary", "completionDate", "variables") if key in source})
+            by_id = {s["sectionId"]: s for s in source["sections"]}
+            for section in model["sections"]:
+                saved = by_id.get(section["sectionId"])
+                if saved:
+                    section.update({key: saved[key] for key in ("heading", "paragraphs", "bullets", "rows")})
+        result = {"document": model, "job": job_response(job, prefix)}
         context = getattr(request.state, "auth_context", None)
         identity = getattr(context, "sso_identity", None) or {}
         result["authenticatedOperatorId"] = str(identity.get("employee_id") or identity.get("subject") or
             (getattr(context, "login_id", "") if identity else ""))[:100]
         return JSONResponse(result, headers={"Cache-Control": "no-store"})
+
+    @router.get(prefix + "/{job_id}/edit-layout", tags=[kind])
+    def layout(request: Request, job_id: str):
+        job = _authorized_job(request, job_id, kind)
+        try:
+            value = edit_pages(_load_document(job), job.tmp_root / "job/report/report.pptx")
+        except ValueError as exc:
+            raise ApiException(409, "REPORT_LAYOUT_CHANGED", str(exc)) from exc
+        return JSONResponse(value, headers={"Cache-Control": "no-store"})
+
+    @router.get(prefix + "/{job_id}/edit-slides/{page}", tags=[kind])
+    def slide(request: Request, job_id: str, page: int):
+        job = _authorized_job(request, job_id, kind)
+        pdf = job.tmp_root / "job/report/report-from-pptx.pdf"
+        if not pdf.is_file():
+            raise ApiException(410, "REPORT_EDIT_EXPIRED", "PPT 미리보기가 만료되었습니다.")
+        try:
+            if page < 0 or page >= 200:
+                raise IndexError(page)
+            content = slide_image(str(pdf), pdf.stat().st_mtime_ns, page)
+        except IndexError as exc:
+            raise ApiException(404, "REPORT_PAGE_NOT_FOUND", "보고서 페이지를 찾을 수 없습니다.") from exc
+        return Response(content, media_type="image/jpeg", headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"})
 
     @router.post(prefix + "/{job_id}/revisions", status_code=202, tags=[kind])
     async def revise(request: Request, job_id: str):
@@ -193,8 +247,10 @@ def install_report_editor(router, kind):
         try:
             changes = ReportEdit.model_validate_json(content)
             values = _validate_changes(changes, _load_document(job))
-        except (ValidationError, ValueError) as exc:
+        except ValidationError as exc:
             raise ApiException(422, "REPORT_EDIT_INVALID", "보고서 입력값 또는 표 구조를 확인하세요.") from exc
+        except ValueError as exc:
+            raise ApiException(422, "REPORT_EDIT_INVALID", str(exc)) from exc
         if not _REVISION_SLOT.acquire(blocking=False):
             raise ApiException(429, "REPORT_EDIT_BUSY", "다른 수정본을 생성 중입니다. 완료 후 다시 저장하세요.")
         store = reports.preview_report_job_store(request.app)

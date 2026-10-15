@@ -6,11 +6,11 @@ const {JSDOM}=require('jsdom');
 const acorn=require('acorn');
 const {execFileSync}=require('node:child_process');
 const clone=x=>JSON.parse(JSON.stringify(x));
-const script=fs.readFileSync(path.join(__dirname,'../app/report_editor.js'),'utf8');
+const script=['report_direct_editor.js','report_editor.js'].map(name=>fs.readFileSync(path.join(__dirname,'../app',name),'utf8')).join('\n');
 const template=fs.readFileSync(path.join(__dirname,'../app/report_editor.html'),'utf8');
 function setup(t,kind='ftir',identity='') {
   const prefix='/api/v1/'+kind+'/report/jobs',posts=[],gets=[],timers=new Map(); let timerId=0;
-  let doc={title:'Report',transfer:{requestNumber:'',limsExperimentCode:'',equipmentCode:'',operatorId:''},
+  let doc={title:'Report',completionDate:'2026-10-15',variables:[],transfer:{requestNumber:'',limsExperimentCode:'',equipmentCode:'',operatorId:''},
     sections:[{sectionId:'summary',heading:'분석 결과 요약',paragraphs:['AI 초안'],bullets:[],columns:null,rows:null,source:'llm'},
       {sectionId:'experiment_conditions',heading:'실험조건 및 실험환경',paragraphs:[],bullets:[],columns:['대상','항목','값'],rows:[['공통','온도','']],source:'rule'}],auxiliary:{}};
   const dom=new JSDOM(template.replace('__CONFIG__',JSON.stringify({prefix,jobId:'original'})).replace('__SCRIPT__',''),
@@ -26,6 +26,10 @@ function setup(t,kind='ftir',identity='') {
       if(this.method==='GET') gets.push({url:this.url,headers:this.headers});
       let result;
       if(this.url.endsWith('/editor-data')) result={document:doc,job:{jobId:this.url.includes('/revision/')?'revision':'original',status:'completed',parentJobId:'original'},authenticatedOperatorId:identity};
+      else if(this.url.endsWith('/edit-layout')) result={ratio:16/9,pages:[
+        {title:'표지',regions:[{refs:['title'],x:.1,y:.2,w:.8,h:.2},{refs:['transfer/operatorId'],x:.1,y:.5,w:.3,h:.2}]},
+        {title:'요약',regions:[{refs:['section/summary/paragraphs/0'],x:.1,y:.3,w:.7,h:.4}]},
+        {title:'조건',regions:[{refs:['section/experiment_conditions/rows/0/2'],x:.5,y:.3,w:.3,h:.2,empty:true}]}]};
       else if(this.url.endsWith('/revisions')) {
         revisions++;
         doc=clone(body);doc.sections.forEach(s=>{s.source='user';s.columns=s.rows?['대상','항목','값']:null;});
@@ -49,7 +53,8 @@ test('analyst editor is ES5 and renders text without HTML interpretation',t=>{
   acorn.parse(script,{ecmaVersion:5});const h=setup(t);
   assert.equal(h.field('실험조건 및 실험환경 1행 값').value,'');
   assert.equal(h.field('분석 결과 요약 · 문단 1').value,'AI 초안');
-  assert.equal(h.q('preview').getAttribute('sandbox'),'allow-scripts allow-downloads');
+  assert.equal(h.q('slide-image').getAttribute('src'),h.prefix+'/original/edit-slides/0');
+  assert(h.field('분석 결과 요약 · 문단 1').closest('details').hidden);
 });
 for(const kind of ['ftir','raman']) test(kind+' saves blank fields and edited AI prose into new revision',t=>{
   const h=setup(t,kind);
@@ -61,7 +66,8 @@ for(const kind of ['ftir','raman']) test(kind+' saves blank fields and edited AI
   const body=h.posts[0].body;
   assert.equal(body.transfer.requestNumber,'REQ-1');assert.equal(body.sections[1].rows[0][2],'23°C');
   assert.equal(body.sections[0].paragraphs[0],'분석자 수정 <script>bad()</script>');
-  assert.equal(h.q('preview').getAttribute('src'),h.prefix+'/revision/preview#view=slides&page=0');
+  assert.equal(h.q('slide-image').getAttribute('src'),h.prefix+'/revision/edit-slides/0');
+  assert(h.q('recipient-preview').href.endsWith('/revision/preview'));
   assert(h.q('download').href.endsWith('/revision/download'));
   assert.equal(h.w.location.pathname,h.prefix+'/revision/edit');
   assert.equal(JSON.parse(h.w.localStorage.getItem('rist-report-revision')).previousJobId,'original');
@@ -133,13 +139,56 @@ test('request pagination, local filtering, equipment selection and lookup failur
   h.lookup([],true);h.q('request-load').click();assert.match(h.d.body.textContent,/조회 실패/);
   assert.equal(h.field('의뢰번호').value,'REQ-199');assert(!h.field('의뢰번호').disabled);
 });
-test('preview page/tab state is bounded and only accepted from the sandboxed viewer',t=>{
-  const h=setup(t),state={type:'rist-report-view-state',view:'slides',page:3};
-  h.w.dispatchEvent(new h.w.MessageEvent('message',{source:h.w,data:{...state,page:9}}));
-  h.w.dispatchEvent(new h.w.MessageEvent('message',{source:h.q('preview').contentWindow,data:state}));
-  h.w.dispatchEvent(new h.w.MessageEvent('message',{source:h.q('preview').contentWindow,data:{...state,page:999}}));
-  h.w.dispatchEvent(new h.w.MessageEvent('message',{source:h.q('preview').contentWindow,data:{...state,page:NaN}}));
-  h.input('보고서 제목','새 제목');h.tick();assert(h.q('preview').src.endsWith('#view=slides&page=3'));
+test('direct preview preserves selected page when autosave completes',t=>{
+  const h=setup(t);h.q('edit-next').click();h.q('edit-next').click();assert(h.q('edit-next').disabled);
+  h.input('보고서 제목','새 제목');h.tick();assert(h.q('slide-image').src.endsWith('/revision/edit-slides/2'));
+  assert.equal(h.q('edit-page').value,'2');
+});
+function loaded(h){h.q('slide-image').dispatchEvent(new h.w.Event('load'));}
+test('actual slide regions edit their source, insert named fields and retain typing across refresh',t=>{
+  const h=setup(t);h.input('새 공통 항목 이름','레이저');h.q('variable-add').click();
+  h.input('레이저 · 값','532');h.input('레이저 · 단위','nm');
+  h.q('edit-next').click();loaded(h);h.field('PPT 편집 · 분석 결과 요약 · 문단 1').click();
+  h.input('PPT 수정 · 분석 결과 요약 · 문단 1','측정 조건: ');
+  const input=h.field('PPT 수정 · 분석 결과 요약 · 문단 1');input.focus();input.setSelectionRange(input.value.length,input.value.length);
+  h.q('insert-variable').value='레이저';h.q('insert-variable-button').click();
+  assert.equal(input.value,'측정 조건: {{레이저}}');assert.equal(h.field('분석 결과 요약 · 문단 1').value,input.value);
+  h.delay();h.tick();h.input('PPT 수정 · 분석 결과 요약 · 문단 1',input.value+' 추가');h.finish();
+  assert.equal(h.d.activeElement,input);assert(!h.q('inline-editor').hidden);assert.match(input.value,/추가$/);
+  h.tick();assert.deepEqual(h.posts[1].body.variables,[{name:'레이저',value:'532',unit:'nm'}]);
+  assert.match(h.posts[1].body.sections[0].paragraphs[0],/\{\{레이저\}\} 추가$/);
+  h.q('inline-close').click();assert(h.q('inline-editor').hidden);
+});
+test('blank cells and shared fields are editable, SSO identifier stays read-only',t=>{
+  const h=setup(t,'raman','SSO');loaded(h);h.field('PPT 편집 · 실험자').click();
+  assert(h.field('PPT 수정 · 실험자').readOnly);
+  h.q('edit-next').click();h.q('edit-next').click();loaded(h);
+  h.field('PPT 편집 · 실험조건 및 실험환경 1행 값').click();
+  assert.match(h.q('inline-note').textContent,/공통 정보/);
+  h.input('PPT 수정 · 실험조건 및 실험환경 1행 값','25°C');
+  assert.equal(h.field('실험조건 및 실험환경 1행 값').value,'25°C');h.tick();
+  assert.equal(h.posts[0].body.sections[1].rows[0][2],'25°C');
+});
+test('regions wait for page image, errors hide them, and duplicate variable names are refused',t=>{
+  const h=setup(t);assert(h.q('edit-regions').hidden);loaded(h);assert(!h.q('edit-regions').hidden);
+  h.q('slide-image').dispatchEvent(new h.w.Event('error'));assert(h.q('edit-regions').hidden);
+  h.input('새 공통 항목 이름','의뢰번호');h.q('variable-add').click();assert.equal(h.posts.length,0);
+  assert.match(h.q('status').textContent,/중복/);
+  h.input('새 공통 항목 이름','<b>항목</b>');h.q('variable-add').click();assert.equal(h.d.querySelectorAll('b').length,0);
+});
+test('renamed common condition labels and variable choices stay synchronized',t=>{
+  const h=setup(t);h.q('edit-next').click();loaded(h);h.field('PPT 편집 · 분석 결과 요약 · 문단 1').click();
+  h.input('실험조건 및 실험환경 1행 항목','측정 온도');
+  assert.equal(h.field('실험조건 및 실험환경 1행 값').parentNode.firstChild.nodeValue,'측정 온도');
+  assert([...h.q('insert-variable').options].some(o=>o.value==='공통.측정 온도'));
+  assert(![...h.q('insert-variable').options].some(o=>o.value==='공통.온도'));
+});
+test('removing a variable used by another variable cannot break its links',t=>{
+  const h=setup(t);
+  for(const name of ['A','B']) {h.input('새 공통 항목 이름',name);h.q('variable-add').click();}
+  h.input('A · 값','23');h.input('B · 값','{{ A }}');
+  h.field('A · 값').closest('.variable-row').querySelector('button').click();
+  assert(h.field('A · 값'));assert.match(h.q('status').textContent,/사용 중/);
 });
 test('empty transfer fields allow report review but not sending',t=>{
   const h=setup(t);h.q('send').click();assert.equal(h.posts.length,0);

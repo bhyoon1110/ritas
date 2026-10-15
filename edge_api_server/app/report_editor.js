@@ -6,7 +6,13 @@
   var save = document.getElementById("save"), send = document.getElementById("send"), download = document.getElementById("download");
   var inputs = {}, sections = [], auxiliary = {};
   var saved = "", timer = null, composing = false, sending = false, activeRevision = null, retries = 0;
-  var preview = document.getElementById("preview"), previewState = {view:"slides",page:0};
+  var refs = {}, variables = [], layoutSequence = 0;
+  var labels = {requestNumber:"의뢰번호",limsExperimentCode:"실험코드",equipmentCode:"실험장비",operatorId:"실험자"};
+  var direct = new window.RistDirectEditor({
+    field:function (ref) { return refs[ref]; }, variables:variableOptions,
+    shared:function (ref) { return !!(refs[ref] && refs[ref].getAttribute("data-common")); },
+    canInsert:function (input) { return input !== inputs.completionDate && !Object.keys(labels).some(function (key) { return input === inputs[key]; }); }
+  });
   var lookup = null;
   function message(text, error) { status.textContent = text; status.className = error ? "error" : ""; }
   function url(id, tail) { return config.prefix + "/" + encodeURIComponent(id) + (tail || ""); }
@@ -31,12 +37,19 @@
     download.setAttribute("aria-disabled", String(busy || dirty || !!activeRevision || !model));
     Array.prototype.forEach.call(editor.querySelectorAll("input,textarea"),function (input) { input.disabled = sending; });
     if (lookup) lookup.availability();
+    direct.lock(sending);
   }
   function schedule(delay) {
     window.clearTimeout(timer);
     if (dirty && !composing && !busy) timer = window.setTimeout(saveChanges, delay || 1200);
   }
   function changed() {
+    sections.forEach(function (section) {
+      (section.conditionLabels || []).forEach(function (item) {
+        item.label.firstChild.nodeValue = (item.row[0].value === "공통" ? "" : item.row[0].value + " · ") + item.row[1].value;
+      });
+    });
+    direct.sync();
     dirty = JSON.stringify(collect()) !== saved; retries = 0;
     message(busy ? "PPT 생성 중입니다. 추가 입력도 이어서 자동 반영합니다." : dirty ? "입력이 멈추면 자동 저장하고 PPT 미리보기에 반영합니다." : "모든 변경 내용이 반영되었습니다.");
     availability(); schedule();
@@ -53,6 +66,52 @@
     input.value = value || ""; input.maxLength = limit || 4000; input.setAttribute("aria-label", label);
     input.placeholder = "미입력 · 빈칸으로 유지하거나 내용을 입력하세요";
     watch(input); return input;
+  }
+  function bind(ref, input) { refs[ref] = input; return input; }
+  function variableOptions() {
+    var result = Object.keys(labels).map(function (key) { return {name:labels[key],value:inputs[key] ? inputs[key].value : ""}; });
+    result.push({name:"완료일",value:inputs.completionDate ? inputs.completionDate.value : ""});
+    sections.forEach(function (section) {
+      if (section.sectionId !== "experiment_conditions") return;
+      (section.rows || []).forEach(function (row) {
+        if (row[0].value === "공통" && row[1].value.trim()) result.push({name:"공통." + row[1].value.trim(),value:row[2].value});
+      });
+    });
+    variables.forEach(function (item) { result.push({name:item.name,value:item.value.value + (item.value.value && item.unit.value ? " " + item.unit.value : "")}); });
+    return result;
+  }
+  function commonVariables(parent) {
+    var box = element("section", parent); element("h2", box, "추가 공통 항목");
+    element("p",box,"이름·값·단위를 등록한 뒤 PPT 문구에서 ‘공통 정보 삽입’을 사용하세요. 연결한 곳만 함께 바뀝니다.").className = "muted";
+    var list = element("div",box), name = element("input",box); name.placeholder = "새 항목 이름 (예: 레이저 파장)";
+    name.maxLength = 60; name.setAttribute("aria-label","새 공통 항목 이름");
+    var add = element("button",box,"항목 추가"); add.id = "variable-add";
+    function row(item) {
+      var block = element("div",list); block.className = "variable-row";
+      element("strong",block,item.name);
+      var entry = {name:item.name,value:field(block,item.name + " · 값",item.value,false,1000),unit:field(block,item.name + " · 단위",item.unit,false,40)};
+      variables.push(entry);
+      var remove = element("button",block,"항목 삭제");
+      remove.onclick = function () {
+        if (sending) return;
+        function references(text) {
+          var found = false; text.replace(/\{\{\s*([^{}\n]+?)\s*\}\}/g,function (_,token) { if (token.trim() === entry.name) found = true; }); return found;
+        }
+        var used = Object.keys(refs).some(function (key) { return references(refs[key].value); }) ||
+          variables.some(function (v) { return v !== entry && (references(v.value.value) || references(v.unit.value)); });
+        if (used) { message("사용 중인 공통 항목입니다. 문구의 연결을 먼저 제거하세요.",true); return; }
+        variables.splice(variables.indexOf(entry),1); block.parentNode.removeChild(block); changed();
+      };
+    }
+    (model.variables || []).forEach(row);
+    add.onclick = function () {
+      if (sending) return;
+      var value = name.value.trim();
+      if (!value || /[{}\r\n]/.test(value) || value.indexOf("공통.") === 0 || variables.length >= 32 || variableOptions().some(function (v) { return v.name === value; })) {
+        message("중복되지 않는 항목 이름을 입력하세요. 최대 32개까지 등록할 수 있습니다.",true); return;
+      }
+      row({name:value,value:"",unit:""}); name.value = ""; changed();
+    };
   }
   function requestLookup(parent) {
     var box = element("div", parent), actions = element("div", box); actions.className = "actions";
@@ -117,23 +176,26 @@
     render(); controls(); return {availability:controls};
   }
   function show(data) {
-    model = data.document; editor.textContent = ""; sections = []; auxiliary = {}; inputs = {};
-    var top = element("section", editor); element("h2", top, "보고서 전송 정보");
-    inputs.title = field(top, "보고서 제목", model.title, false, 200);
+    model = data.document; editor.textContent = ""; sections = []; auxiliary = {}; inputs = {}; refs = {}; variables = [];
+    var top = element("section", editor); element("h2", top, "공통 정보 / 의뢰 조회");
+    inputs.title = bind("title",field(top, "보고서 제목", model.title, false, 200));
+    inputs.completionDate = bind("completionDate",field(top,"완료일",model.completionDate,false,10)); inputs.completionDate.type = "date";
     var grid = element("div", top); grid.className = "grid";
-    var labels = {requestNumber:"의뢰번호",limsExperimentCode:"실험코드",equipmentCode:"실험장비",operatorId:"실험자"};
-    Object.keys(labels).forEach(function (key) { inputs[key] = field(grid, labels[key], model.transfer[key], false, key === "limsExperimentCode" ? 50 : 100); });
+    Object.keys(labels).forEach(function (key) { inputs[key] = bind("transfer/" + key,field(grid, labels[key], model.transfer[key], false, key === "limsExperimentCode" ? 50 : 100)); });
     lookup = requestLookup(top);
     (model.sections || []).forEach(function (section) {
       var block = element("details", editor);
-      block.open = ["experiment_conditions","summary","key_findings","interpretation","qc_notes"].indexOf(section.sectionId) >= 0;
+      block.hidden = section.sectionId !== "experiment_conditions";
+      block.open = section.sectionId === "experiment_conditions";
       var summary = element("summary", block, section.heading);
       var source = element("span", summary, " · " + (section.source === "user" ? "사용자 수정" : section.source === "llm" ? "로컬 AI 초안" : "보고서 내용")); source.className = "source";
       var entry = {sectionId:section.sectionId, heading:field(block,"항목 제목 · " + section.heading,section.heading,false,200), paragraphs:[], bullets:[], rows:null};
+      var base = "section/" + section.sectionId + "/";
+      bind(base + "heading",entry.heading); entry.heading.parentNode.hidden = true;
       (section.paragraphs.length ? section.paragraphs : (section.columns || section.bullets.length ? [] : [""])).forEach(function (text, i) {
-        entry.paragraphs.push(field(block,section.heading + " · 문단 " + (i+1),text,true));
+        entry.paragraphs.push(bind(base + "paragraphs/" + i,field(block,section.heading + " · 문단 " + (i+1),text,true)));
       });
-      section.bullets.forEach(function (text, i) { entry.bullets.push(field(block,section.heading + " · 항목 " + (i+1),text,true)); });
+      section.bullets.forEach(function (text, i) { entry.bullets.push(bind(base + "bullets/" + i,field(block,section.heading + " · 항목 " + (i+1),text,true))); });
       if (section.columns) {
         var wrapper = element("div", block); wrapper.className = "table-wrap";
         var table = element("table", wrapper), head = element("tr", element("thead", table));
@@ -144,13 +206,30 @@
           row.forEach(function (value, c) {
             var cell = element("textarea", element("td", tr)); cell.value = value; cell.maxLength = 4000;
             cell.setAttribute("aria-label",section.heading + " " + (r+1) + "행 " + section.columns[c]);
-            cell.placeholder = "미입력"; watch(cell); cells.push(cell);
+            cell.placeholder = "미입력"; watch(cell); cells.push(bind(base + "rows/" + r + "/" + c,cell));
           }); entry.rows.push(cells);
         });
+        if (section.sectionId === "experiment_conditions") {
+          entry.conditionLabels = [];
+          wrapper.hidden = true;
+          element("p",block,"공통 조건은 ‘공통.항목명’으로 문구에 연결할 수 있습니다. 샘플별 조건은 해당 샘플에만 적용됩니다.").className = "muted";
+          var sample = element("details",block); element("summary",sample,"샘플별 조건");
+          entry.rows.forEach(function (row) {
+            if (row.length !== 3) return;
+            var common = row[0].value === "공통";
+            var label = element("label",common ? block : sample,(common ? "" : row[0].value + " · ") + row[1].value);
+            // Keep even a blank label's text node so later direct edits update it.
+            if (!label.firstChild) label.appendChild(document.createTextNode(""));
+            entry.conditionLabels.push({label:label,row:row});
+            label.appendChild(row[2]); if (common) row[2].setAttribute("data-common","true");
+          });
+          sample.hidden = !sample.querySelector("textarea");
+        }
       } sections.push(entry);
     });
+    commonVariables(editor);
     var mail = element("details", editor); element("summary", mail, "보고서 안내 메일 문안");
-    ["email_subject","email_body"].forEach(function (key) { auxiliary[key] = field(mail,key === "email_subject" ? "메일 제목" : "메일 본문",model.auxiliary[key] || "",key === "email_body"); });
+    ["email_subject","email_body"].forEach(function (key) { auxiliary[key] = bind("auxiliary/" + key,field(mail,key === "email_subject" ? "메일 제목" : "메일 본문",model.auxiliary[key] || "",key === "email_body")); });
     saved = JSON.stringify(collect()); dirty = false;
     if (data.authenticatedOperatorId) {
       inputs.operatorId.readOnly = true;
@@ -163,7 +242,8 @@
     availability(); schedule();
   }
   function collect() {
-    var result = {title:inputs.title.value,transfer:{},sections:[],auxiliary:{}};
+    var result = {title:inputs.title.value,transfer:{},sections:[],auxiliary:{},completionDate:inputs.completionDate.value,
+      variables:variables.map(function (v) { return {name:v.name,value:v.value.value,unit:v.unit.value}; })};
     ["requestNumber","limsExperimentCode","equipmentCode","operatorId"].forEach(function (key) { result.transfer[key] = inputs[key].value.trim(); });
     sections.forEach(function (section) {
       result.sections.push({sectionId:section.sectionId,heading:section.heading.value,
@@ -173,15 +253,15 @@
     Object.keys(auxiliary).forEach(function (key) { result.auxiliary[key] = auxiliary[key].value; }); return result;
   }
   function refreshPreview() {
-    preview.src = url(currentId, "/preview") + "#view=" + previewState.view + "&page=" + previewState.page;
+    var seq = ++layoutSequence, id = currentId; direct.loading();
+    document.getElementById("recipient-preview").href = url(id,"/preview");
+    request(url(id,"/edit-layout"),"GET",null,function (error,value) {
+      if (seq !== layoutSequence || id !== currentId) return;
+      if (error) { direct.error(error.message); return; }
+      direct.setLayout(value,url(id,"/edit-slides"));
+    });
   }
-  window.addEventListener("message", function (event) {
-    var data = event.data;
-    // The read-only iframe has an opaque origin. Trust only its window and a bounded display-state schema.
-    if (event.source !== preview.contentWindow || !data || data.type !== "rist-report-view-state") return;
-    if (["slides","analysis","graph"].indexOf(data.view) < 0 || typeof data.page !== "number" || data.page % 1 !== 0 || data.page < 0 || data.page >= 200) return;
-    previewState = {view:data.view,page:data.page};
-  });
+  document.getElementById("reload-preview").onclick = refreshPreview;
   function load(id) {
     request(url(id,"/editor-data"),"GET",null,function (error,data) {
       busy = false;
@@ -229,7 +309,7 @@
       activeRevision = {id:job.jobId,previous:previous,snapshot:snapshot}; poll(job.jobId,previous,snapshot,0);
     });
   }
-  save.onclick = function () { retries = 0; saveChanges(); };
+  save.onclick = function () { retries = 0; if (!busy && model && !activeRevision) dirty = true; saveChanges(); };
   send.onclick = function () {
     if (busy || dirty || activeRevision || !model) return;
     var transfer = collect().transfer;

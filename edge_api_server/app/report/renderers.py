@@ -1246,9 +1246,9 @@ def _pptx_slide_payloads(document: ReportDocument) -> list[dict[str, object]]:
                 lines = [part for line in _section_lines(section) for part in textwrap.wrap(
                     _report_readable_text(line), width=40, break_on_hyphens=False)]
                 for start in range(0, max(1, len(lines)), 8):
-                    slides.append(_pptx_text_payload(document, section.heading, lines[start:start + 8]))
+                    slides.append(_pptx_text_payload(document, section.heading, lines[start:start + 8], section_id=section.section_id))
             else:
-                slides.append(_pptx_text_payload(document, section.heading, _section_lines(section)[:10]))
+                slides.append(_pptx_text_payload(document, section.heading, _section_lines(section)[:10], section_id=section.section_id))
     return slides
 
 
@@ -1259,23 +1259,27 @@ def _pptx_complete_table_payloads(document, section):
         return
     table = section.table
     is_common = section is _raman_common_conditions(document)
+    column_map = list(range(len(table.columns)))
     if is_common and table.columns == ["대상", "항목", "값"] and all(row[0] == "공통" for row in table.rows):
         # The heading establishes the common scope; use the space for readable labels.
         table = replace(table, columns=["항목", "값"], rows=[row[1:] for row in table.rows],
                         merge_columns=[], alignments=["left", "left"], column_widths=[0.45, 0.55])
+        column_map = [1, 2]
     page_size = 10 if is_common else 9
     widths = _table_column_widths(table, 68)
-    rows = []
-    for row in _normalized_table_rows(table):
+    rows, row_map = [], []
+    for source_row, row in enumerate(_normalized_table_rows(table)):
         cells = [[part for line in str(cell).splitlines() for part in textwrap.wrap(
             _report_readable_text(line), width=max(6, int(widths[i])), break_on_hyphens=False)] or [""]
             for i, cell in enumerate(row)]
         rows.extend([[cell[n] if n < len(cell) else "" for cell in cells]
                      for n in range(max(map(len, cells)))])
+        row_map.extend([source_row] * max(map(len, cells)))
     for start in range(0, max(1, len(rows)), page_size):
         page = replace(table, rows=rows[start:start + page_size], merge_columns=[])
         heading = section.heading + (f" · {start // page_size + 1}" if len(rows) > page_size else "")
-        yield _pptx_table_payload(document, replace(section, heading=heading, table=page))
+        yield _pptx_table_payload(document, replace(section, heading=heading, table=page),
+                                  row_map=row_map[start:start + page_size], column_map=column_map)
 
 
 def _raman_table_row_height(row):
@@ -1287,28 +1291,29 @@ def _pptx_raman_table_payloads(document, section):
     table = section.table
     widths = _table_column_widths(table, 68)
     rows = []
-    for row in _normalized_table_rows(table):
+    for source_row, row in enumerate(_normalized_table_rows(table)):
         cells = [[part for line in str(cell).splitlines() for part in textwrap.wrap(
             _report_readable_text(line), width=max(6, int(widths[i])), break_on_hyphens=False)] or [""]
             for i, cell in enumerate(row)]
         # Very long analyst edits continue without losing the shorter identifying cells.
         for start in range(0, max(map(len, cells)), 6):
-            rows.append(["\n".join(cell[start:start + 6] if len(cell) > start else cell[:6])
-                         for cell in cells])
+            rows.append((source_row, ["\n".join(cell[start:start + 6] if len(cell) > start else cell[:6])
+                         for cell in cells]))
     pages, page, used = [], [], 548640
-    for row in rows:
+    for source_row, row in rows:
         height = _raman_table_row_height(row)
         if page and (used + height > 4663440 or len(page) == 9):
             pages.append(page)
             page, used = [], 548640
-        page.append(row)
+        page.append((source_row, row))
         used += height
     if page or not pages:
         pages.append(page)
     for index, page in enumerate(pages):
         heading = section.heading + (f" · {index + 1}" if len(pages) > 1 else "")
         yield _pptx_table_payload(document, replace(section, heading=heading,
-                                  table=replace(table, rows=page, merge_columns=[])))
+                                  table=replace(table, rows=[row for _, row in page], merge_columns=[])),
+                                  row_map=[source_row for source_row, _ in page])
 
 
 def _pptx_llm_detail_payloads(document: ReportDocument) -> list[dict[str, object]]:
@@ -1333,32 +1338,37 @@ def _pptx_llm_detail_payloads(document: ReportDocument) -> list[dict[str, object
             _report_readable_text(line), width=40, break_on_hyphens=False)]
         for start in range(0, len(lines), 8):
             suffix = f" · {start // 8 + 1}" if len(lines) > 8 else ""
-            slides.append(_pptx_text_payload(document, section.heading + " · 전문" + suffix, lines[start:start + 8]))
+            slides.append(_pptx_text_payload(document, section.heading + " · 전문" + suffix, lines[start:start + 8], section_id=section_id))
     return slides
 
 
 def _pptx_title_payload(document: ReportDocument) -> dict[str, object]:
-    return {"xml": _pptx_title_slide(document), "rels": _pptx_slide_rels(), "media": []}
+    return {"xml": _pptx_title_slide(document), "rels": _pptx_slide_rels(), "media": [], "editing": {"kind": "title"}}
 
 
 def _pptx_overview_payload(document: ReportDocument) -> dict[str, object]:
-    return {"xml": _pptx_overview_slide(document), "rels": _pptx_slide_rels(), "media": []}
+    return {"xml": _pptx_overview_slide(document), "rels": _pptx_slide_rels(), "media": [], "editing": {"kind": "overview"}}
 
 
 def _pptx_insights_payload(document: ReportDocument) -> dict[str, object]:
-    return {"xml": _pptx_insights_slide(document), "rels": _pptx_slide_rels(), "media": []}
+    return {"xml": _pptx_insights_slide(document), "rels": _pptx_slide_rels(), "media": [], "editing": {"kind": "insights"}}
 
 
 def _pptx_text_payload(
     document: ReportDocument,
     title: str,
     lines: list[str],
+    *, section_id: str | None = None,
 ) -> dict[str, object]:
-    return {"xml": _pptx_text_slide(document, title, lines), "rels": _pptx_slide_rels(), "media": []}
+    return {"xml": _pptx_text_slide(document, title, lines), "rels": _pptx_slide_rels(), "media": [],
+            "editing": {"kind": "text", "sectionId": section_id}}
 
 
-def _pptx_table_payload(document: ReportDocument, section: ReportSection) -> dict[str, object]:
-    return {"xml": _pptx_table_slide(document, section), "rels": _pptx_slide_rels(), "media": []}
+def _pptx_table_payload(document: ReportDocument, section: ReportSection, *, row_map=None, column_map=None) -> dict[str, object]:
+    return {"xml": _pptx_table_slide(document, section), "rels": _pptx_slide_rels(), "media": [],
+            "editing": {"kind": "table", "sectionId": section.section_id,
+                        "rows": row_map if row_map is not None else list(range(len(section.table.rows))) if section.table else [],
+                        "columns": column_map if column_map is not None else list(range(len(section.table.columns))) if section.table else []}}
 
 
 def _pptx_image_payload(
@@ -1373,6 +1383,7 @@ def _pptx_image_payload(
         "xml": _pptx_image_slide(document, figure.title, media_name, lines),
         "rels": _pptx_slide_rels(media_name),
         "media": [(media_name, media_path)],
+        "editing": {"kind": "image", "sectionId": figure.caption_slot},
     }
 
 
@@ -1894,7 +1905,7 @@ def _pptx_overview_slide(document: ReportDocument) -> str:
                 cy=3261360,
                 fill=PPTX_CARD,
                 line=PPTX_LINE,
-                text=["고객 보고서용 요약"],
+                text=[document.section("summary").heading if document.section("summary") else "고객 보고서용 요약"],
                 font_size=1900,
                 color=PPTX_NAVY,
                 bold=True,
@@ -1923,7 +1934,7 @@ def _pptx_overview_slide(document: ReportDocument) -> str:
                 cy=3261360,
                 fill=PPTX_CARD,
                 line=PPTX_LINE,
-                text=["핵심 관찰사항"],
+                text=[document.section("key_findings").heading if document.section("key_findings") else "핵심 관찰사항"],
                 font_size=1900,
                 color=PPTX_NAVY,
                 bold=True,
@@ -2004,6 +2015,7 @@ def _pptx_insights_slide(document: ReportDocument) -> str:
         section = document.section(section_id)
         if section is None:
             continue
+        heading = section.heading
         y = PPTX_CONTENT_Y + idx * (card_h + card_gap)
         lines = _short_pptx_lines(
             _section_text_lines(section, max_items=3),
