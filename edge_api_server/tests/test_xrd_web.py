@@ -245,15 +245,19 @@ def test_xrd_server_pdf_css_injection_sets_orientation() -> None:
     )
 
     assert "@page { size: A4 portrait;" in landscape
-    assert "@page:first { size: A4 landscape;" in landscape
+    assert "@page:first" not in landscape
     assert "@page xrd-graph-landscape { size: A4 landscape;" in landscape
     assert "body.xrd-report-graph-landscape #xrd-graph-section" in landscape
     assert "body.xrd-report-graph-landscape #xrd-image-info" in landscape
     assert "body.xrd-report-graph-landscape #xrd-llm-comment" in landscape
-    assert "page: auto" in landscape
+    assert "page: xrd-report-portrait !important" in landscape
+    assert "width: 190mm !important" in landscape
+    assert "width: 277mm !important" in landscape
+    assert "page: xrd-graph-landscape !important" in landscape
     assert "@page { size: A4 portrait;" in portrait
     assert "@page:first" not in portrait
     assert "@page xrd-graph-landscape" not in portrait
+    assert "width: 277mm" not in portrait
     assert "data-xrd-server-pdf" in landscape
 
 

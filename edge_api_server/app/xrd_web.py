@@ -31,6 +31,7 @@ from lim.xrd_plot import (
     IMAGE_EXTENSIONS,
     TABLE_EXTENSIONS,
     build_xrd_html,
+    xrd_print_page_css,
 )
 
 from .errors import ApiException
@@ -179,24 +180,10 @@ def _find_xrd_pdf_chrome() -> str | None:
 
 
 def _inject_xrd_print_page_css(html_text: str, *, landscape: bool) -> str:
-    graph_page_css = (
-        "@page:first { size: A4 landscape; margin: 9mm 10mm; }"
-        "@page xrd-graph-landscape { size: A4 landscape; margin: 9mm 10mm; }"
-        "body.xrd-report-graph-landscape #xrd-graph-section,"
-        "body.xrd-report-graph-landscape #xrd-image-info { page: xrd-graph-landscape; }"
-        "body.xrd-report-graph-landscape #xrd-llm-comment,"
-        "body.xrd-report-graph-landscape #xrd-peak-info,"
-        "body.xrd-report-graph-landscape #xrd-phase-info { page: auto; }"
-        "body.xrd-report-graph-landscape #xrd-image-info,"
-        "body.xrd-report-graph-landscape #xrd-llm-comment { break-before: page; page-break-before: always; }"
-        if landscape
-        else ""
-    )
     style = (
         '<style data-xrd-server-pdf="true">'
+        + xrd_print_page_css(landscape=landscape) +
         "@media print {"
-        "@page { size: A4 portrait; margin: 9mm 10mm; }"
-        f"{graph_page_css}"
         "html, body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }"
         "}"
         "</style>"

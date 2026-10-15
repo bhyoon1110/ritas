@@ -3185,6 +3185,47 @@ def build_xrd_print_legend_html(fig) -> str:
     )
 
 
+def xrd_print_page_css(*, landscape: bool) -> str:
+    """Keep portrait text layout independent of the first/graph page width."""
+    graph_page = "xrd-graph-landscape" if landscape else "xrd-report-portrait"
+    graph_width = "277mm" if landscape else "190mm"
+    landscape_page = "@page xrd-graph-landscape { size: A4 landscape; margin: 9mm 10mm; }" if landscape else ""
+    return """
+@media print {
+  @page { size: A4 portrait; margin: 9mm 10mm; }
+  @page xrd-report-portrait { size: A4 portrait; margin: 9mm 10mm; }
+  __LANDSCAPE_PAGE__
+  html, body { margin: 0 !important; padding: 0 !important; }
+  .xrd-report-page {
+    width: 190mm !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+  }
+  .xrd-report-page > .xrd-report-section {
+    page: xrd-report-portrait !important;
+    width: 190mm !important;
+    max-width: none !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    box-sizing: border-box;
+  }
+  body.xrd-report-graph-landscape #xrd-graph-section,
+  body.xrd-report-graph-landscape #xrd-image-info {
+    page: __GRAPH_PAGE__ !important;
+    width: __GRAPH_WIDTH__ !important;
+    break-after: page;
+    page-break-after: always;
+  }
+  body.xrd-report-graph-landscape #xrd-llm-comment {
+    break-before: page;
+    page-break-before: always;
+  }
+}
+""".replace("__LANDSCAPE_PAGE__", landscape_page).replace("__GRAPH_PAGE__", graph_page).replace("__GRAPH_WIDTH__", graph_width)
+
+
 def xrd_report_css() -> str:
     return """
 <style>
@@ -3243,6 +3284,7 @@ def xrd_report_css() -> str:
   .xrd-numbered-peak-block { margin: 0 0 16px; }
   .xrd-numbered-peak-block > h3 { font-size: 14px; margin: 0 0 8px; }
   .xrd-numbered-peak-graph { height: 340px; border: 1px solid #cbd5e1; border-radius: 8px; overflow: hidden; background: #fff; }
+  .xrd-numbered-print-image { display: none; }
   #xrd-numbered-peak-plot { width: 100% !important; height: 340px !important; }
   .xrd-file-table { margin: 10px 0 14px; }
   .xrd-file-table h3 { font-size: 13px; margin: 0 0 6px; color: #374151; }
@@ -3470,6 +3512,17 @@ def xrd_report_css() -> str:
       height: 92mm !important;
       max-height: 92mm !important;
     }
+    .xrd-numbered-peak-graph.has-print-numbered-plot {
+      height: auto !important;
+    }
+    .has-print-numbered-plot #xrd-numbered-peak-plot { display: none !important; }
+    .has-print-numbered-plot .xrd-numbered-print-image {
+      display: block !important;
+      width: 100%;
+      height: auto;
+      max-height: 92mm;
+      object-fit: contain;
+    }
     #xrd-plot .modebar,
     #xrd-plot .rist-plot-control-row,
     #xrd-plot .xrd-tool-toggle,
@@ -3604,7 +3657,7 @@ def xrd_report_css() -> str:
     }
   }
 </style>
-"""
+""" + '<style data-xrd-print-layout="true">' + xrd_print_page_css(landscape=True) + '</style>'
 
 
 def build_report_html(
@@ -3741,6 +3794,7 @@ def build_report_html(
     var originalLegendLayout = null;
     var printLegend = null;
     var printPlotImage = null;
+    var numberedPrintImage = null;
     var printPageStyle = null;
     var PRINT_PLOT_HEIGHT = 350;
     var PRINT_PLOT_WIDTH = 620;
@@ -3900,9 +3954,6 @@ def build_report_html(
       }}
       return narrow || coarse || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || "");
     }}
-    function isMobileBrowserPrintClient() {{
-      return shouldUseBrowserPrint() && isMobileClient();
-    }}
     function syncLandscapeOptionAvailability() {{
       if (!landscapeOption) return;
       var label = landscapeOption.closest ? landscapeOption.closest(".xrd-report-pdf-option") : null;
@@ -3944,15 +3995,11 @@ def build_report_html(
     }}
     function applyPrintPageStyle() {{
       removePrintPageStyle();
-      if (!graphPageLandscapeEnabled()) return;
-      var mobileBrowserPrint = isMobileBrowserPrintClient();
       printPageStyle = document.createElement("style");
       printPageStyle.setAttribute("data-xrd-print-page-style", "true");
-      if (mobileBrowserPrint) {{
-        printPageStyle.textContent = "@media print {{ @page {{ size: A4 portrait; margin: 9mm 10mm; }} body.xrd-report-graph-landscape #xrd-graph-section, body.xrd-report-graph-landscape #xrd-image-info, body.xrd-report-graph-landscape #xrd-llm-comment, body.xrd-report-graph-landscape #xrd-peak-info, body.xrd-report-graph-landscape #xrd-phase-info {{ page: auto; }} body.xrd-report-graph-landscape .xrd-graph-frame {{ width: 98% !important; max-width: 188mm !important; }} body.xrd-report-graph-landscape .xrd-graph-frame.has-print-plot .xrd-print-plot-image {{ max-height: 118mm; }} body.xrd-report-graph-landscape .xrd-print-legend-grid {{ column-count: 2; }} body.xrd-report-graph-landscape #xrd-image-info, body.xrd-report-graph-landscape #xrd-llm-comment {{ break-before: page; page-break-before: always; }} }}";
-      }} else {{
-        printPageStyle.textContent = "@media print {{ @page {{ size: A4 portrait; margin: 9mm 10mm; }} @page:first {{ size: A4 landscape; margin: 9mm 10mm; }} @page xrd-graph-landscape {{ size: A4 landscape; margin: 9mm 10mm; }} body.xrd-report-graph-landscape #xrd-graph-section, body.xrd-report-graph-landscape #xrd-image-info {{ page: xrd-graph-landscape; }} body.xrd-report-graph-landscape #xrd-llm-comment, body.xrd-report-graph-landscape #xrd-peak-info, body.xrd-report-graph-landscape #xrd-phase-info {{ page: auto; }} body.xrd-report-graph-landscape #xrd-image-info, body.xrd-report-graph-landscape #xrd-llm-comment {{ break-before: page; page-break-before: always; }} }}";
-      }}
+      printPageStyle.textContent = graphPageLandscapeEnabled()
+        ? {json.dumps(xrd_print_page_css(landscape=True))}
+        : {json.dumps(xrd_print_page_css(landscape=False))};
       document.head.appendChild(printPageStyle);
     }}
     function currentXAxisRange() {{
@@ -4138,6 +4185,24 @@ def build_report_html(
         if (holder.parentNode) holder.parentNode.removeChild(holder);
       }});
     }}
+    function createPrintNumberedPlotImage() {{
+      var numbered = document.getElementById("xrd-numbered-peak-plot");
+      var frame = numbered && numbered.parentNode;
+      if (!numbered || !frame || !window.Plotly || !window.Plotly.toImage) return Promise.resolve();
+      if (!numberedPrintImage) {{
+        numberedPrintImage = document.createElement("img");
+        numberedPrintImage.className = "xrd-numbered-print-image";
+        numberedPrintImage.alt = "XRD numbered peaks print image";
+        frame.appendChild(numberedPrintImage);
+      }}
+      // Server snapshots contain no scripts to resize a screen-width SVG.
+      // Capture the full numbered graph at portrait proportions before cloning.
+      return window.Plotly.toImage(numbered, {{format: "png", width: 980, height: 450, scale: 2}})
+        .then(function(src) {{
+          numberedPrintImage.src = src;
+          frame.classList.add("has-print-numbered-plot");
+        }});
+    }}
     function preparePrintLegend() {{
       if (!window.Plotly || !gd) return;
       applyGraphPageMode();
@@ -4145,7 +4210,7 @@ def build_report_html(
       normalizeLegendHandleLabel();
       refreshPrintLegend();
       if (!originalLegendLayout) originalLegendLayout = currentLegendLayout();
-      return createPrintPlotImage();
+      return createPrintPlotImage().then(createPrintNumberedPlotImage);
     }}
     function restorePrintLegend() {{
       if (!window.Plotly || !gd || !originalLegendLayout) return;
@@ -4153,6 +4218,10 @@ def build_report_html(
     }}
     function restoreScreenPlotLayout() {{
       if (!window.Plotly || !gd) return;
+      if (numberedPrintImage) {{
+        numberedPrintImage.parentNode.classList.remove("has-print-numbered-plot");
+        numberedPrintImage.removeAttribute("src");
+      }}
       var frame = graphFrame();
       if (frame) frame.classList.remove("has-print-plot");
       if (printPlotImage) printPlotImage.removeAttribute("src");
@@ -4331,7 +4400,7 @@ def build_report_html(
     }}, 600);
     window.setTimeout(function() {{
       if (!window.Plotly || !gd) return;
-      createPrintPlotImage().catch(function(error) {{
+      createPrintPlotImage().then(createPrintNumberedPlotImage).catch(function(error) {{
         console.warn("XRD print graph snapshot failed.", error);
       }});
     }}, 1000);

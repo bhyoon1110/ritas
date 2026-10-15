@@ -459,15 +459,15 @@ def test_build_report_html_contains_xrd_template_sections(tmp_path) -> None:
     assert "return !isMobileClient() && (!landscapeOption || landscapeOption.checked);" in html
     assert 'landscapeOption.disabled = true;' in html
     assert 'if (label) label.classList.add("is-hidden");' in html
-    assert "isMobileBrowserPrintClient" in html
-    assert "var mobileBrowserPrint = isMobileBrowserPrintClient();" in html
     assert "max-width: 178mm !important" in html
-    assert "max-width: 188mm !important" in html
     assert "max-width: 268mm !important" in html
-    assert "@page:first { size: A4 landscape;" in html
+    assert "@page:first" not in html
+    assert "width: 190mm !important" in html
+    assert "width: 277mm !important" in html
+    assert "page: xrd-report-portrait !important" in html
     assert "@page { size: landscape;" not in html
-    assert "body.xrd-report-graph-landscape #xrd-image-info," in html
-    assert "body.xrd-report-graph-landscape #xrd-llm-comment { break-before: page;" in html
+    assert "body.xrd-report-graph-landscape #xrd-image-info {" in html
+    assert "body.xrd-report-graph-landscape #xrd-llm-comment {" in html
     assert "restoreScreenPlotLayout" in html
     assert "window.Plotly.Plots.resize(gd)" in html
     assert "serverRenderPdf" in html
@@ -528,7 +528,7 @@ def test_build_report_html_contains_xrd_template_sections(tmp_path) -> None:
     assert '"legend.font.size": 10' in html
     assert "#xrd-plot .legend {" in html
     assert ".xrd-report-header { display: none !important; }" in html
-    assert "@page:first { size: A4 landscape;" in html
+    assert "@page:first" not in html
     assert "@page xrd-graph-landscape { size: A4 landscape;" in html
     assert "body.xrd-report-graph-landscape #xrd-graph-section" in html
     assert "body.xrd-report-graph-landscape #xrd-image-info" in html
