@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any
 
 # LLM이 채울 수 있는 자유서술 슬롯 섹션 ID.
@@ -100,6 +101,26 @@ class ReportDocument:
                 return section
         return None
 
+    @property
+    def completion_date(self) -> str | None:
+        """Spectrum reports show a date only; other reports retain their timestamp.
+
+        Section IDs preserve the project identity after a LIMS experiment code
+        replaces FTIR/RAMAN, including reports restored from saved JSON.
+        """
+        is_spectrum = (
+            self.experiment_code.strip().upper() in {"FTIR", "FT-IR", "IR", "RAMAN", "RIN", "RIN-RAMAN"}
+            or self.section("raman_samples") is not None
+            or (self.section("functional_groups") is not None and self.section("current_peaks") is not None)
+        )
+        if not is_spectrum:
+            return None
+        try:
+            parsed = datetime.fromisoformat(str(self.generated_at or "").strip().replace("Z", "+00:00"))
+        except ValueError:
+            return ""
+        return parsed.date().isoformat()
+
     def apply_llm_slots(self, slots: dict[str, str]) -> None:
         """LLM이 반환한 슬롯 텍스트를 해당 섹션에 채운다."""
         for section_id, text in slots.items():
@@ -136,11 +157,13 @@ class ReportDocument:
     def to_markdown(self) -> str:
         lines: list[str] = [f"# {self.title}", ""]
         display_code = self.pk.get("experimentCode", "") if self.section("report_transfer") else self.experiment_code
+        completion_date = self.completion_date
+        date_line = f"완료일: {completion_date}" if completion_date is not None else f"생성시각: {self.generated_at}"
         meta = (
             f"- 의뢰번호: {self.pk.get('requestNumber', '')}\n"
             f"- 실험코드: {display_code}  장비: {self.pk.get('equipmentCode', '')}"
             f"  실험자: {self.pk.get('operatorId', '')}\n"
-            f"- 생성시각: {self.generated_at}"
+            f"- {date_line}"
         )
         lines.append(meta)
         lines.append("")

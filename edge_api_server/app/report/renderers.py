@@ -270,6 +270,14 @@ def _short_report_datetime(value: object) -> str:
     return parsed.strftime("%Y-%m-%d %H:%M")
 
 
+def _document_date_metadata(document: ReportDocument, *, short: bool = True) -> tuple[str, str]:
+    completion_date = document.completion_date
+    if completion_date is not None:
+        return "완료일", completion_date
+    value = _short_report_datetime(document.generated_at) if short else _clean_report_meta_value(document.generated_at)
+    return "생성시각", value
+
+
 def _document_metadata(
     document: ReportDocument,
     *,
@@ -279,7 +287,7 @@ def _document_metadata(
     if document.section("report_transfer") is not None:
         rows = [(label, str(value)) for label, value in document.section("report_transfer").table.rows]
         if include_generated:
-            rows.append(("생성시각", _short_report_datetime(document.generated_at)))
+            rows.append(_document_date_metadata(document))
         return rows
     request_number = _clean_report_meta_value(document.pk.get("requestNumber"))
     equipment = _clean_report_meta_value(document.pk.get("equipmentCode"))
@@ -294,9 +302,9 @@ def _document_metadata(
         rows.append(("실험자", operator))
     elif include_pending:
         rows.append(("실험자", "회원/SSO 연동 예정"))
-    generated_at = _short_report_datetime(document.generated_at)
-    if include_generated and generated_at:
-        rows.append(("생성시각", generated_at))
+    date_label, date_value = _document_date_metadata(document)
+    if include_generated and date_value:
+        rows.append((date_label, date_value))
     return [(label, value) for label, value in rows if value]
 
 
@@ -330,6 +338,7 @@ def render_html(document: ReportDocument, path: Path) -> None:
         f"{_html_text(label)}: {_html_text(value)}"
         for label, value in _document_metadata(document, include_generated=False)
     )
+    date_label, date_value = _document_date_metadata(document, short=False)
     path.write_text(
         "<!doctype html><html lang=\"ko\"><head><meta charset=\"utf-8\">"
         f"<title>{_html_text(document.title)}</title><style>"
@@ -338,7 +347,7 @@ def render_html(document: ReportDocument, path: Path) -> None:
         "th,td{border:1px solid #bbb;padding:7px;text-align:left}th{background:#f0f4f8}"
         "</style></head><body>"
         f"<h1>{_html_text(document.title)}</h1><p>{metadata}</p>"
-        f"<p>생성시각: {_html_text(_clean_report_meta_value(document.generated_at))}</p>{''.join(sections)}"
+        f"<p>{date_label}: {_html_text(date_value)}</p>{''.join(sections)}"
         "</body></html>",
         encoding="utf-8",
     )
@@ -1124,10 +1133,13 @@ def render_pdf(
     )
     styles = _pdf_styles(font_name)
     available_width = A4[0] - pdf_doc.leftMargin - pdf_doc.rightMargin
+    subtitle_date = document.completion_date
+    if subtitle_date is None:
+        subtitle_date = document.generated_at
     story: list[object] = [
         Paragraph(_pdf_text(document.title), styles["title"]),
         Paragraph(
-            _pdf_text(f"{document.experiment_code} · {document.generated_at}"),
+            _pdf_text(f"{document.experiment_code} · {subtitle_date}"),
             styles["subtitle"],
         ),
         _pdf_meta_table(document, styles, available_width),
@@ -1591,7 +1603,7 @@ def _pptx_footer_shape(document: ReportDocument, shape_id: int) -> str:
         for item in [
             "RIST Edge Report",
             request_number,
-            _short_report_datetime(document.generated_at),
+            _document_date_metadata(document)[1],
         ]
         if item
     )

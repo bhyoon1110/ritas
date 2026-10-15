@@ -836,7 +836,10 @@ def test_pptx_renderer_creates_openxml_package(tmp_path) -> None:
     assert "분석 요약" in slide_text
     assert "고객 보고서용 요약" in slide_text
     assert "해석 및 검토사항" in slide_text
-    assert "2026-06-18 10:00" in slide_text
+    assert "완료일" in slide_text
+    assert "2026-06-18" in slide_text
+    assert "2026-06-18 10:00" not in slide_text
+    assert "생성시각" not in slide_text
     assert "2026-06-18T10:00:00+09:00" not in slide_text
     assert 'sz="1900"' in slide_text
     assert 'sz="1400"' in slide_text
