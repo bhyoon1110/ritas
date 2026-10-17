@@ -105,6 +105,18 @@ catch (_) { manifest.plotly = emit(compile(plotly), '.js'); }
 manifest.plotlySourceSha256 = digest(plotly);
 manifest.css = emit(fs.readFileSync(path.join(__dirname,'fallback.css'),'utf8'), '.css');
 fs.writeFileSync(path.join(root,'manifest.json'), JSON.stringify(manifest,null,2)+'\n');
+// The XRD workbench uses native ES modules on Supermium 144. Chrome 49 gets
+// separately bundled ES5 entry points; never force that path from an XP UA.
+const xrdWeb = path.resolve(__dirname, '../app/xrd_workbench/web');
+for (const name of ['shared/shell','viewer/viewer','analysis/analysis','report/report']) {
+  const bundled = esbuild.buildSync({entryPoints:[path.join(xrdWeb, name+'.mjs')],
+    bundle:true, platform:'browser', format:'iife', write:false, target:'es2015', logLevel:'warning'}).outputFiles[0].text;
+  fs.writeFileSync(path.join(xrdWeb,name+'.legacy.js'), compile(bundled));
+}
+for (const name of ['shared/shell','shared/platform','viewer/style','analysis/analysis','report/report']) {
+  const source = fs.readFileSync(path.join(xrdWeb, name+'.css'), 'utf8');
+  fs.writeFileSync(path.join(xrdWeb,name+'.legacy.css'), cssFallback(source).replace(/dvh\b/g,'vh').replace(/dvw\b/g,'vw'));
+}
 const notices = ['Runtime third-party notices (bundled for offline Chrome 49 support).'];
 notices.push('\n--- Plotly.js (bundled with plotly.py) ---\n'+plotly.slice(0,plotly.indexOf('*/')+2));
 notices.push(fs.readFileSync(path.join(__dirname,'licenses/plotly.js.txt'),'utf8'));

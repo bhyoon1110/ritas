@@ -2565,8 +2565,14 @@ def xrd_plotly_asset() -> FileResponse:
 
 
 @router.get("/xrd", response_class=HTMLResponse, include_in_schema=False)
-def xrd_page() -> HTMLResponse:
-    return HTMLResponse(build_xrd_page(), headers=XRD_NO_STORE_HEADERS)
+def xrd_page(request: Request):
+    # Preserve the historical ICDD/Excel UI as a read/compatibility entry. New
+    # work uses the isolated TXT + phase/WPPF PDF workbench.
+    if request.query_params.get("legacy") == "1" or not getattr(request.app.state, 'xrd_workbench_enabled', False):
+        return HTMLResponse(build_xrd_page(), headers=XRD_NO_STORE_HEADERS)
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse("/api/v1/xrd/workbench/", status_code=303,
+                            headers=XRD_NO_STORE_HEADERS)
 
 
 def _build_xrd_html_from_inputs(

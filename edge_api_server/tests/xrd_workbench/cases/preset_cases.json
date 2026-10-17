@@ -1,0 +1,210 @@
+[
+  {
+    "name": "extract drops groups and labels and reads the rule percent",
+    "document": {
+      "figure": {
+        "include": true,
+        "order_mode": "report",
+        "spacing": 3,
+        "x_range": null,
+        "normalize": false,
+        "show_markers": true,
+        "show_reference": true,
+        "caption": "c",
+        "groups": [
+          {
+            "title": "g",
+            "samples": ["s1"]
+          }
+        ]
+      },
+      "quantity_table": {
+        "include": false
+      },
+      "phase_classes": {
+        "criteria_text": "기준",
+        "rule": {
+          "trace_max_percent": 4
+        },
+        "labels": [
+          {
+            "sample_id": "s1",
+            "phase": {
+              "name": "PhaseA",
+              "card": "c1",
+              "db": "DB"
+            },
+            "class": "major",
+            "origin": "manual"
+          }
+        ],
+        "retained": []
+      }
+    },
+    "settings": {
+      "figure": {
+        "include": true,
+        "order_mode": "report",
+        "spacing": 3,
+        "x_range": null,
+        "normalize": false,
+        "show_markers": true,
+        "show_reference": true,
+        "caption": "c"
+      },
+      "quantity_table": {
+        "include": false
+      },
+      "phase_classes": {
+        "criteria_text": "기준",
+        "trace_percent": 4
+      }
+    }
+  },
+  {
+    "name": "extract without a rule has no percent",
+    "document": {
+      "figure": {
+        "include": true,
+        "order_mode": "report",
+        "spacing": null,
+        "x_range": null,
+        "normalize": false,
+        "show_markers": true,
+        "show_reference": true,
+        "caption": "",
+        "groups": []
+      },
+      "quantity_table": {
+        "include": true
+      },
+      "phase_classes": {
+        "criteria_text": "",
+        "rule": null,
+        "labels": [],
+        "retained": []
+      }
+    },
+    "settings": {
+      "figure": {
+        "include": true,
+        "order_mode": "report",
+        "spacing": null,
+        "x_range": null,
+        "normalize": false,
+        "show_markers": true,
+        "show_reference": true,
+        "caption": ""
+      },
+      "quantity_table": {
+        "include": true
+      },
+      "phase_classes": {
+        "criteria_text": "",
+        "trace_percent": null
+      }
+    }
+  },
+  {
+    "name": "apply replaces settings and keeps groups, labels and the applied rule",
+    "target": {
+      "figure": {
+        "include": true,
+        "order_mode": "report",
+        "spacing": 1,
+        "x_range": null,
+        "normalize": false,
+        "show_markers": true,
+        "show_reference": true,
+        "caption": "",
+        "groups": [
+          {
+            "title": "g",
+            "samples": ["s1"]
+          }
+        ]
+      },
+      "quantity_table": {
+        "include": true
+      },
+      "phase_classes": {
+        "criteria_text": "이전",
+        "rule": {
+          "trace_max_percent": 7
+        },
+        "labels": [
+          {
+            "sample_id": "s1",
+            "phase": {
+              "name": "PhaseA",
+              "card": "c1",
+              "db": "DB"
+            },
+            "class": "major",
+            "origin": "manual"
+          }
+        ],
+        "retained": []
+      }
+    },
+    "apply": {
+      "figure": {
+        "include": true,
+        "order_mode": "similarity",
+        "spacing": 12.5,
+        "x_range": [10, 80],
+        "normalize": false,
+        "show_markers": true,
+        "show_reference": true,
+        "caption": ""
+      },
+      "quantity_table": {
+        "include": false
+      },
+      "phase_classes": {
+        "criteria_text": "새 기준",
+        "trace_percent": 2
+      }
+    },
+    "expected": {
+      "figure": {
+        "include": true,
+        "order_mode": "similarity",
+        "spacing": 12.5,
+        "x_range": [10, 80],
+        "normalize": false,
+        "show_markers": true,
+        "show_reference": true,
+        "caption": "",
+        "groups": [
+          {
+            "title": "g",
+            "samples": ["s1"]
+          }
+        ]
+      },
+      "quantity_table": {
+        "include": false
+      },
+      "phase_classes": {
+        "criteria_text": "새 기준",
+        "rule": {
+          "trace_max_percent": 7
+        },
+        "labels": [
+          {
+            "sample_id": "s1",
+            "phase": {
+              "name": "PhaseA",
+              "card": "c1",
+              "db": "DB"
+            },
+            "class": "major",
+            "origin": "manual"
+          }
+        ],
+        "retained": []
+      }
+    }
+  }
+]

@@ -1,0 +1,701 @@
+import {
+  createState,
+  restoreState,
+  buildFigure,
+  exportFigure,
+  maxValue,
+  minValue,
+  viewWarnings,
+  viewerStorageKey,
+  legendHTML,
+  spacingLimit,
+  phaseGroups,
+  phaseStyles,
+  groupCaption,
+  groupHidden,
+  setGroupHidden,
+  setGroupColor,
+  setGroupSymbol,
+  SYMBOL_CHOICES,
+  SYMBOL_GLYPHS,
+  phaseMatches,
+  phaseRef,
+  sourceHref,
+} from './model.mjs';
+import { apiUrl, request } from '../shared/api.mjs';
+import { $, escapeHTML } from '../shared/dom.mjs';
+
+const offline = !!window.XRD_EMBEDDED;
+let project,
+  state,
+  figure,
+  pendingFiles = [],
+  renderVersion = 0,
+  picking = false, // Single Profile: the sample picker is open
+  viewRevision = 0; // bumped when a double-click resets the ranges
+const config = {
+  responsive: true,
+  scrollZoom: true,
+  displayModeBar: false,
+  // Every double-click autoranges, so it always returns to the original range (see relayout).
+  doubleClick: 'autosize',
+  displaylogo: false,
+  showSendToCloud: false,
+  modeBarButtonsToRemove: ['sendDataToCloud', 'sendChartToCloud', 'select2d', 'lasso2d'],
+  toImageButtonOptions: { format: 'png', filename: 'XRD-Multi-Profile', scale: 2 },
+};
+const storageKey = () => viewerStorageKey(project, offline ? window.XRD_EMBEDDED.snapshotId : null);
+function message(text, error = false) {
+  $('status').textContent = text;
+  $('status').classList.toggle('error', error);
+}
+function persist() {
+  try {
+    localStorage.setItem(storageKey(), JSON.stringify(state));
+  } catch {
+    /* File URLs/private browsing may disallow storage. */
+  }
+}
+function updateControls() {
+  const single = state.viewMode === 'single';
+  $('viewMulti').classList.toggle('active', !single);
+  $('viewSingle').classList.toggle('active', single);
+  for (const key of ['markers', 'peakbar', 'unknownMarkers']) $(key).checked = !!state[key];
+  $('unknownColor').value = state.unknownColor;
+  $('markerSize').value = String(state.markerSize);
+  $('markerSizeValue').textContent = String(state.markerSize);
+  const offset = state.offsets.raw,
+    limit = spacingLimit(project, state);
+  // Spacing between samples makes no sense for one sample: the control is hidden.
+  $('offsetSection').hidden = single;
+  // One sample needs no colour/order/offset list (its colour is in the legend row).
+  $('samplesSection').hidden = single;
+  $('spacing').min = String(-limit);
+  $('spacing').max = String(limit);
+  $('spacing').value = String(offset.spacing);
+  $('activeSampleRow').hidden = !single;
+  const range = state.xRange || figure.fullX;
+  $('xMin').value = Number(range[0].toFixed(6));
+  $('xMax').value = Number(range[1].toFixed(6));
+  const lit = state.highlight;
+  $('highlightStatus').hidden = $('highlightClear').hidden = !lit;
+  if (lit)
+    $('highlightStatus').textContent =
+      `강조: ${lit.name}${lit.card !== null ? ' · Card ' + lit.card : ''}`;
+  const spacing = offset.spacing;
+  $('modeStatus').textContent = single
+    ? '시료 하나씩 보기'
+    : `여러 시료 비교 · ${spacing === 0 ? '겹쳐 보기' : spacing > 0 ? '첫 시료 위' : '반대 순서'}`;
+  $('legend').innerHTML = legendHTML(project, state);
+  renderPicker();
+}
+// Single Profile starts by choosing the data: the picker lists every registered sample.
+function renderPicker() {
+  $('singlePicker').hidden = !(picking && state.viewMode === 'single');
+  $('singlePickerList').innerHTML = project.samples
+    .map(
+      (s) =>
+        `<button data-pick="${escapeHTML(s.id)}" class="${s.id === state.active ? 'active' : ''}">${escapeHTML(s.name)}</button>`,
+    )
+    .join('');
+}
+
+function renderPanels() {
+  $('sampleList').innerHTML = state.order
+    .map((id, index) => {
+      const s = project.samples.find((s) => s.id === id),
+        offset = state.offsets.raw.individual[id] || 0;
+      return `<div class="sampleRow"><div class="sampleTop"><input type="checkbox" data-visible="${id}" ${state.visible.includes(id) ? 'checked' : ''} aria-label="${escapeHTML(s.name)} 표시"><input class="colorInput" type="color" data-color="${id}" value="${state.colors[id]}" aria-label="${escapeHTML(s.name)} 색상"><label>${escapeHTML(s.name)}</label><button data-move="${id}" data-direction="-1" ${index === 0 ? 'disabled' : ''} title="아래 순서로">↓</button><button data-move="${id}" data-direction="1" ${index === state.order.length - 1 ? 'disabled' : ''} title="위 순서로">↑</button></div>${state.viewMode === 'single' ? '' : `<label class="sampleOffset">개별 조절 <input type="number" step="any" data-offset="${id}" value="${offset}" aria-label="${escapeHTML(s.name)} 개별 조절"></label>`}</div>`;
+    })
+    .join('');
+  const visible = project.samples.filter((s) => state.visible.includes(s.id));
+  if (state.viewMode === 'single') {
+    $('activeSample').innerHTML = project.samples
+      .map((s) => `<option value="${s.id}">${escapeHTML(s.name)}</option>`)
+      .join('');
+    if (!project.samples.some((s) => s.id === state.active)) state.active = project.samples[0]?.id;
+  } else {
+    if (!visible.some((s) => s.id === state.active)) state.active = visible[0]?.id || null;
+    $('activeSample').innerHTML = visible
+      .map((s) => `<option value="${s.id}">${escapeHTML(s.name)}</option>`)
+      .join('');
+  }
+  $('activeSample').value = state.active || '';
+  // Crystal phases: one row per phase group (the same compound across samples is one row).
+  const styles = phaseStyles(project, state);
+  $('phaseList').innerHTML =
+    phaseGroups(project, state)
+      .map((g, i) => {
+        const style = styles.get(g.ids[0]),
+          lit = state.highlight && phaseMatches(state.highlight, g.members[0].phase);
+        return `<div class="phaseRow"><div class="phaseTop"><span class="phaseSymbol" style="color:${style.color}">${SYMBOL_GLYPHS[style.symbol] || '●'}</span><button class="phaseName linkLike ${lit ? 'lit' : ''}" data-highlight="${i}" title="이 상을 모든 시료에서 강조">${escapeHTML(groupCaption(g))}</button><input class="colorInput" type="color" data-phase-color="${i}" value="${style.color}" aria-label="${escapeHTML(g.name)} 색상"><select class="symbolSelect" data-phase-symbol="${i}" aria-label="${escapeHTML(g.name)} 마커 모양">${SYMBOL_CHOICES.map((v) => `<option value="${v}" ${v === style.symbol ? 'selected' : ''}>${SYMBOL_GLYPHS[v]}</option>`).join('')}</select></div>${g.members.length > 1 ? `<div class="phaseMeta">${g.members.length}개 시료에 공통</div>` : ''}</div>`;
+      })
+      .join('') ||
+    '<div class="empty">상 목록이 없습니다. 상매칭 Report를 연결하세요.<br>PDF에 없는 상·피크는 생성하지 않습니다.</div>';
+  const warnings = viewWarnings(project, figure.warnings);
+  $('warningSection').hidden = !warnings.length;
+  $('warningList').innerHTML = warnings
+    .map((w) => `<div class="sourceWarning">${escapeHTML(w)}</div>`)
+    .join('');
+}
+
+async function draw(refreshPanel = true) {
+  if (!project) return;
+  const version = ++renderVersion;
+  const height = $('plotViewport').clientHeight;
+  figure = buildFigure(project, state, { height });
+  // A new view revision makes Plotly apply the ranges given here again (it would otherwise keep
+  // the axis state of a double-click: the raw data extent instead of whole degrees).
+  figure.layout.uirevision = `${project.id}-${viewRevision}`;
+  const overflow = figure.layout.height > height + 2;
+  $('plot').style.height = figure.layout.height ? `${figure.layout.height}px` : '100%';
+  if (figure.active) state.active = figure.active;
+  persist();
+  dropStaleSourceCard();
+  await Plotly.react($('plot'), figure.data, figure.layout, { ...config, scrollZoom: !overflow });
+  if (version !== renderVersion) return;
+  updateControls();
+  if (refreshPanel) renderPanels();
+  const count = figure.data.filter((t) => t.meta?.role === 'measurement').length;
+  const points = figure.data
+    .filter((t) => t.meta?.role === 'measurement')
+    .reduce((sum, t) => sum + t.x.length, 0);
+  message(
+    `${project.samples.length} 시료 중 ${count} 표시 · ${points.toLocaleString()} 측정점 · 원자료 유지${overflow ? ' · 기준 피크 ' + figure.barRows + '행: 휠로 스크롤' : ''}`,
+  );
+  const warnings = viewWarnings(project, figure.warnings);
+  // The saved viewer HTML does not show the 확인 사항 list (the author checks them in the app).
+  $('warnings').hidden = !warnings.length;
+  $('warnings').textContent = `확인 사항 ${warnings.length}`;
+}
+
+function loadProject(value, saved) {
+  project = value;
+  try {
+    const local = JSON.parse(localStorage.getItem(storageKey()) || 'null');
+    if (local?.projectId === project.id) saved = local;
+  } catch {
+    /* ignore invalid local state */
+  }
+  state = restoreState(project, saved);
+  if (!offline) {
+    $('emptyState').hidden = true;
+    $('nextStep').hidden = !project.storage_id;
+    window.dispatchEvent(new CustomEvent('xrd-shell', { detail: { project: project.storage_id } }));
+  }
+  hideSourceCard();
+  return draw().then(applyUrlHighlight);
+}
+
+function download(blob, name) {
+  const url = URL.createObjectURL(blob),
+    a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+async function openExample() {
+  message('예제 자료를 읽는 중…');
+  try {
+    await loadProject(await (await request('/api/example')).json());
+  } catch {
+    // No example folder configured: start with the data upload step.
+    $('emptyState').hidden = false;
+    message('등록된 자료가 없습니다. 데이터 업로드로 시작하세요.');
+    openUpload();
+  }
+}
+// Step ① 데이터 업로드 lives on this page as the registration dialog.
+function openUpload() {
+  if (!$('uploadDialog').open) $('uploadDialog').show();
+  window.dispatchEvent(new CustomEvent('xrd-shell', { detail: { step: 'upload' } }));
+}
+$('uploadDialog').addEventListener('close', () => {
+  window.dispatchEvent(new CustomEvent('xrd-shell', { detail: { step: 'viewer' } }));
+  if (project?.storage_id)
+    history.replaceState(null, '', apiUrl(`/?project=${encodeURIComponent(project.storage_id)}`));
+});
+if (!offline)
+  window.xrdLocalStep = (step) => {
+    if (step === 'upload') {
+      openUpload();
+      return true;
+    }
+    if (step === 'viewer' && project) {
+      if ($('uploadDialog').open) $('uploadDialog').close();
+      return true;
+    }
+    return false;
+  };
+
+function classify(name) {
+  const ext = name.split('.').at(-1).toLowerCase(),
+    stem = name.slice(0, -ext.length - 1);
+  const rules = [
+    [/_정량\(WPPF\)_Report$/i, 'wppf_report'],
+    [/_상매칭_Report$/i, 'phase_report'],
+    [/_상매칭$/i, 'phase_image'],
+    [/_정량$/i, 'quantity_image'],
+  ];
+  for (const [pattern, role] of rules)
+    if (pattern.test(stem)) return { sample: stem.replace(pattern, ''), role };
+  return { sample: stem, role: ext === 'txt' ? 'measurement' : 'ignore' };
+}
+function mappingRows() {
+  const roles = {
+    measurement: 'TXT 측정',
+    phase_report: '상매칭 Report',
+    wppf_report: '정량(WPPF) Report',
+    phase_image: '상매칭 이미지',
+    quantity_image: '정량 이미지',
+    ignore: '제외 (파일 보존)',
+  };
+  $('mappingTable').innerHTML =
+    '<table><thead><tr><th>원본 파일</th><th>시료명</th><th>역할</th><th>TXT 축 / 단위</th></tr></thead><tbody>' +
+    pendingFiles
+      .map((file, i) => {
+        const guess = classify(file.name);
+        return `<tr data-file="${i}"><td class="fileName">${escapeHTML(file.name)}</td><td><input class="sampleMapping" value="${escapeHTML(guess.sample)}" aria-label="${escapeHTML(file.name)} 시료명"></td><td><select class="roleMapping" aria-label="${escapeHTML(file.name)} 역할">${Object.entries(
+          roles,
+        )
+          .map(
+            ([role, label]) =>
+              `<option value="${role}" ${role === guess.role ? 'selected' : ''}>${label}</option>`,
+          )
+          .join(
+            '',
+          )}</select></td><td>${guess.role === 'measurement' ? '<select class="axisMapping" aria-label="TXT 좌표 종류"><option value="">PDF/미확인</option><option value="two_theta">2θ (deg)</option></select> <input class="unitMapping" placeholder="TXT/PDF" aria-label="TXT 강도 단위">' : '—'}</td></tr>`;
+      })
+      .join('') +
+    '</tbody></table>';
+}
+
+for (const [id, mode] of [
+  ['viewMulti', 'multi'],
+  ['viewSingle', 'single'],
+])
+  $(id).onclick = () => {
+    if (!state) return;
+    state.viewMode = mode;
+    state.yRange = null;
+    // Single Profile: choose the sample first (a project with one sample needs no choice).
+    picking = mode === 'single' && project.samples.length > 1;
+    draw();
+  };
+function setToggle(key, value) {
+  if (!state) return;
+  state[key] = value;
+  draw();
+}
+for (const key of ['markers', 'peakbar', 'unknownMarkers'])
+  $(key).onchange = () => setToggle(key, $(key).checked);
+$('unknownColor').onchange = () => {
+  state.unknownColor = $('unknownColor').value;
+  draw(false);
+};
+$('markerSize').oninput = () => {
+  if (!state) return;
+  state.markerSize = Number($('markerSize').value);
+  $('markerSizeValue').textContent = String(state.markerSize);
+  draw(false);
+};
+$('singlePickerList').onclick = (event) => {
+  const b = event.target.closest('[data-pick]');
+  if (!b) return;
+  state.active = b.dataset.pick;
+  picking = false;
+  state.yRange = null;
+  draw();
+};
+// The legend over the plot: a checkbox per sample and per phase group, plus the display toggles.
+$('legend').onchange = (event) => {
+  const d = event.target.dataset;
+  if (!state) return;
+  if (d.legendSample) {
+    state.visible = event.target.checked
+      ? [...new Set([...state.visible, d.legendSample])]
+      : state.visible.filter((id) => id !== d.legendSample);
+    state.yRange = null;
+    draw();
+  } else if (d.legendGroup !== undefined) {
+    setGroupHidden(
+      state,
+      phaseGroups(project, state)[Number(d.legendGroup)],
+      !event.target.checked,
+    );
+    draw();
+  } else if (d.legendToggle) setToggle(d.legendToggle, event.target.checked);
+};
+$('activeSample').onchange = () => {
+  state.active = $('activeSample').value;
+  state.yRange = null;
+  draw();
+};
+$('warnings').onclick = () => $('warningSection').scrollIntoView({ block: 'nearest' });
+$('sidePanel').onchange = (event) => {
+  const e = event.target,
+    d = e.dataset;
+  if (!state) return;
+  if (d.visible) {
+    state.visible = e.checked
+      ? [...new Set([...state.visible, d.visible])]
+      : state.visible.filter((id) => id !== d.visible);
+    state.yRange = null;
+  }
+  if (d.color) state.colors[d.color] = e.value;
+  if (d.offset) {
+    if (e.value.trim() === '' || !Number.isFinite(e.valueAsNumber)) {
+      message('개별 조절은 유효한 숫자를 입력하세요.', true);
+      return;
+    }
+    state.offsets.raw.individual[d.offset] = e.valueAsNumber;
+    state.yRange = null;
+  }
+  // Colour and symbol belong to the phase group: every member gets the choice.
+  const group = (index) => phaseGroups(project, state)[Number(index)];
+  if (d.phaseColor) setGroupColor(state, group(d.phaseColor), e.value);
+  if (d.phaseSymbol) setGroupSymbol(state, group(d.phaseSymbol), e.value);
+  if (Object.keys(d).length) draw();
+};
+$('sampleList').onclick = (event) => {
+  const b = event.target.closest('[data-move]');
+  if (!b) return;
+  const i = state.order.indexOf(b.dataset.move),
+    j = i + Number(b.dataset.direction);
+  if (j < 0 || j >= state.order.length) return;
+  [state.order[i], state.order[j]] = [state.order[j], state.order[i]];
+  state.yRange = null;
+  draw();
+};
+let sliderFrame = null;
+function spacingChange(value) {
+  if (!state || !Number.isFinite(value)) {
+    message('수평 조절 값은 숫자여야 합니다. 0은 겹쳐 보기입니다.', true);
+    return;
+  }
+  state.offsets.raw.spacing = value;
+  state.yRange = null;
+  persist();
+  if (sliderFrame) cancelAnimationFrame(sliderFrame);
+  sliderFrame = requestAnimationFrame(() => {
+    draw(false);
+  });
+}
+$('spacing').oninput = () => spacingChange(Number($('spacing').value));
+$('offsetReset').onclick = () => {
+  if (!state) return;
+  state.offsets.raw = createState(project).offsets.raw;
+  state.yRange = null;
+  draw();
+};
+$('offsetOverlay').onclick = () => spacingChange(0);
+$('applyRange').onclick = () => {
+  if (!state) return;
+  const a = $('xMin').valueAsNumber,
+    b = $('xMax').valueAsNumber;
+  if (!Number.isFinite(a) || !Number.isFinite(b) || a >= b) {
+    message('가로축 시작값은 끝값보다 작아야 합니다.', true);
+    return;
+  }
+  state.xRange = [a, b];
+  draw(false);
+};
+// Right-button drag moves the view (left drag still zooms into a box).
+let panning = null;
+$('plot').addEventListener('contextmenu', (event) => event.preventDefault());
+$('plot').addEventListener(
+  'mousedown',
+  (event) => {
+    if (event.button !== 2 || !state) return;
+    const layout = $('plot')._fullLayout;
+    if (!layout?.xaxis) return;
+    // Capture phase: keep Plotly's own drag (box zoom) from also handling the right button.
+    event.preventDefault();
+    event.stopPropagation();
+    panning = {
+      x: event.clientX,
+      y: event.clientY,
+      xr: [...layout.xaxis.range],
+      yr: [...layout.yaxis.range],
+      xl: layout.xaxis._length,
+      yl: layout.yaxis._length,
+    };
+  },
+  true,
+);
+window.addEventListener('mousemove', (event) => {
+  if (!panning) return;
+  const dx = ((event.clientX - panning.x) * (panning.xr[1] - panning.xr[0])) / panning.xl,
+    dy = ((event.clientY - panning.y) * (panning.yr[1] - panning.yr[0])) / panning.yl;
+  state.xRange = [panning.xr[0] - dx, panning.xr[1] - dx];
+  state.yRange = [panning.yr[0] + dy, panning.yr[1] + dy];
+  Plotly.relayout($('plot'), {
+    'xaxis.range': state.xRange,
+    'yaxis.range': state.yRange,
+  });
+});
+window.addEventListener('mouseup', () => {
+  if (!panning) return;
+  panning = null;
+  persist();
+  updateControls();
+});
+$('emptyUpload').onclick = openUpload;
+$('nextStep').onclick = () => {
+  if (project)
+    location.href = apiUrl(`/analysis.html?project=${encodeURIComponent(project.storage_id)}`);
+};
+$('uploadClose').onclick = () => {
+  $('uploadDialog').close();
+};
+$('fileInput').onchange = () => {
+  pendingFiles = Array.from($('fileInput').files);
+  mappingRows();
+  $('uploadError').textContent = '';
+};
+$('uploadSubmit').onclick = async () => {
+  if (!pendingFiles.length) {
+    $('uploadError').textContent = '등록할 파일을 선택하세요.';
+    return;
+  }
+  const mappings = {},
+    form = new FormData();
+  document.querySelectorAll('[data-file]').forEach((row) => {
+    const file = pendingFiles[Number(row.dataset.file)];
+    mappings[file.name] = {
+      sample: row.querySelector('.sampleMapping').value,
+      role: row.querySelector('.roleMapping').value,
+      axis_kind: row.querySelector('.axisMapping')?.value || '',
+      intensity_unit: row.querySelector('.unitMapping')?.value || '',
+    };
+  });
+  for (const file of pendingFiles) form.append('files', file);
+  form.append('mappings', JSON.stringify(mappings));
+  $('uploadSubmit').disabled = true;
+  $('uploadError').textContent = 'TXT와 PDF를 읽는 중…';
+  try {
+    const response = await request('/api/upload', { method: 'POST', body: form });
+    await loadProject(await response.json());
+    $('uploadDialog').close();
+  } catch (error) {
+    $('uploadError').textContent = error.message;
+  } finally {
+    $('uploadSubmit').disabled = false;
+  }
+};
+$('htmlExport').onclick = async () => {
+  if (!project) return;
+  $('htmlExport').disabled = true;
+  try {
+    const response = await request('/api/export/html', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        project: {
+          id: project.id,
+          storage_id: project.storage_id,
+          analysis_revision: project.analysis_revision || 0,
+        },
+        state,
+      }),
+    });
+    download(await response.blob(), 'XRD-그래프-뷰어.html');
+    message('현재 데이터·보기 상태를 포함한 독립 HTML을 저장했습니다.');
+  } catch (error) {
+    message(error.message, true);
+  } finally {
+    $('htmlExport').disabled = false;
+  }
+};
+// 현재 이미지 내보내기: the current view with its legend; Origin style when ticked.
+$('imageExport').onclick = async () => {
+  if (!project) return;
+  try {
+    const exported = exportFigure(project, state, { origin: $('originStyle').checked });
+    const format = $('imageFormat').value;
+    const url = await Plotly.toImage(
+      { data: exported.data, layout: exported.layout },
+      { format, width: 1200, height: exported.layout.height || 900, scale: 2 },
+    );
+    const blob = await (await fetch(url)).blob();
+    download(
+      blob,
+      `XRD-그래프${$('originStyle').checked ? '-Origin' : ''}.${format === 'jpeg' ? 'jpg' : 'png'}`,
+    );
+    message('범례를 포함한 현재 이미지를 저장했습니다.');
+  } catch (error) {
+    message(error.message, true);
+  }
+};
+
+// ---- phase highlight, source card, named views
+function sameRef(a, b) {
+  return (
+    !!a &&
+    !!b &&
+    a.name === b.name &&
+    (a.card ?? null) === (b.card ?? null) &&
+    (a.db ?? null) === (b.db ?? null)
+  );
+}
+function toggleHighlight(ref) {
+  state.highlight = sameRef(state.highlight, ref) ? null : ref;
+  hideSourceCard();
+  draw();
+}
+$('highlightClear').onclick = () => {
+  if (!state) return;
+  state.highlight = null;
+  draw();
+};
+$('sidePanel').onclick = (event) => {
+  const button = event.target.closest('[data-highlight]');
+  if (!button || !state) return;
+  const group = phaseGroups(project, state)[Number(button.dataset.highlight)];
+  if (group) toggleHighlight(phaseRef(group.members[0].phase));
+};
+// The card describes one drawn phase: close it when that phase is no longer shown.
+function dropStaleSourceCard() {
+  if ($('sourceCard').hidden) return;
+  const id = $('sourceCard').dataset.phase;
+  const owner = project.samples.find((s) => s.phases.some((p) => p.id === id));
+  const shown =
+    owner &&
+    !state.hiddenPhases.includes(id) &&
+    state.visible.includes(owner.id) &&
+    (state.phaseTarget === 'all' || owner.id === state.active);
+  if (!shown) hideSourceCard();
+}
+function hideSourceCard() {
+  $('sourceCard').hidden = true;
+}
+function showSourceCard(trace, point) {
+  const sample = project.samples.find((s) => s.id === trace.meta.sampleId),
+    phase = sample?.phases.find((p) => p.id === trace.meta.phaseId);
+  if (!sample || !phase) return;
+  const link = (label, role, page) => {
+    const href = sourceHref(project, sample, role, page, offline, apiUrl(''));
+    return href
+      ? `<a href="${escapeHTML(href)}" target="_blank" rel="noopener">${escapeHTML(label)} p.${page} ↗</a>`
+      : `<span class="muted">${escapeHTML(label)}${Number.isInteger(page) ? ' p.' + page : ''}</span>`;
+  };
+  const data = point.customdata || [];
+  const body =
+    trace.meta.role === 'marker'
+      ? `관측 피크 #${escapeHTML(String(data[0]))}<br>${link('상매칭 배정', 'phase_report', data[1])}<br>${link('Peak List', 'phase_report', data[2])}`
+      : `기준 피크 · hkl ${escapeHTML(String(data[1] ?? ''))}<br>${link('d-I List', 'phase_report', data[0])}`;
+  $('sourceCard').innerHTML =
+    `<button class="cardClose" aria-label="근거 카드 닫기">×</button><b>${escapeHTML(sample.name)} / ${escapeHTML(phase.name)}</b><div class="muted">Card ${escapeHTML(phase.card || '')}</div><div>${body}</div><button class="cardHighlight">이 상 강조</button>`;
+  $('sourceCard').hidden = false;
+  $('sourceCard').dataset.phase = phase.id;
+}
+$('sourceCard').onclick = (event) => {
+  if (event.target.closest('.cardClose')) hideSourceCard();
+  else if (event.target.closest('.cardHighlight')) {
+    const phase = project.samples
+      .flatMap((s) => s.phases)
+      .find((p) => p.id === $('sourceCard').dataset.phase);
+    if (phase) toggleHighlight(phaseRef(phase));
+  }
+};
+let urlHighlightDone = false;
+function applyUrlHighlight() {
+  // The address only seeds the first view; later loads (analysis updates, uploads) keep the user's choice.
+  if (urlHighlightDone) return;
+  urlHighlightDone = true;
+  const name = new URLSearchParams(location.search).get('phase');
+  if (!name || !state) return;
+  const ref = { name, card: null, db: null };
+  if (project.samples.some((s) => s.phases.some((p) => phaseMatches(ref, p)))) {
+    state.highlight = ref;
+    draw();
+  } else message(`주소의 상 "${name}"을 이 프로젝트에서 찾지 못했습니다.`, true);
+}
+async function start() {
+  // Initialise once before event bindings. Subsequent rendering uses react.
+  await Plotly.newPlot(
+    $('plot'),
+    [],
+    {
+      paper_bgcolor: '#fff',
+      plot_bgcolor: '#fff',
+      xaxis: { visible: false },
+      yaxis: { visible: false },
+      margin: { l: 70, r: 18, t: 14, b: 48 },
+    },
+    config,
+  );
+  $('plot').on('plotly_relayout', (event) => {
+    if (!state) return;
+    for (const axis of ['xaxis', 'xaxis2']) {
+      if (event[axis + '.autorange']) state.xRange = null;
+      if (Number.isFinite(event[axis + '.range[0]']) && Number.isFinite(event[axis + '.range[1]']))
+        state.xRange = [event[axis + '.range[0]'], event[axis + '.range[1]']];
+    }
+    if (event['yaxis.autorange']) state.yRange = null;
+    // A double-click on the graph makes Plotly autorange: go back to the original 2θ range (the
+    // data range in whole degrees) and the automatic height instead of the raw data extent.
+    if (event['xaxis.autorange'] || event['xaxis2.autorange']) {
+      state.xRange = state.yRange = null;
+      viewRevision += 1;
+      setTimeout(() => draw(false), 0);
+      return;
+    }
+    if (Number.isFinite(event['yaxis.range[0]']) && Number.isFinite(event['yaxis.range[1]']))
+      state.yRange = [event['yaxis.range[0]'], event['yaxis.range[1]']];
+    updateControls();
+    persist();
+  });
+  // Plotly legend interaction follows the same state as the sample list.
+  $('plot').on('plotly_legendclick', (event) => {
+    const trace = figure.data[event.curveNumber];
+    if (trace?.meta?.role === 'measurement') {
+      state.visible = state.visible.filter((id) => id !== trace.meta.sampleId);
+      state.yRange = null;
+      draw();
+    }
+    return false;
+  });
+  $('plot').on('plotly_click', (event) => {
+    const point = event.points?.[0],
+      trace = point && figure?.data[point.curveNumber];
+    if (trace?.meta?.role === 'marker' || trace?.meta?.role === 'peakbar')
+      showSourceCard(trace, point);
+  });
+  if (offline) {
+    $('htmlExport').parentElement.hidden = true;
+    await loadProject(window.XRD_EMBEDDED.project, window.XRD_EMBEDDED.state);
+  } else {
+    const id = new URLSearchParams(location.search).get('project');
+    if (id) {
+      let value;
+      try {
+        value = await (await request(`/api/projects/${encodeURIComponent(id)}`)).json();
+      } catch {
+        throw new Error('등록 프로젝트를 열지 못했습니다.');
+      }
+      await loadProject(value);
+    } else await openExample();
+    if (new URLSearchParams(location.search).get('step') === 'upload') openUpload();
+  }
+}
+window.addEventListener('storage', async (e) => {
+  if (offline || !project || e.key !== `xrd-analysis-updated-${project.storage_id}`) return;
+  const id = project.storage_id;
+  try {
+    let value;
+    try {
+      value = await (await request(`/api/projects/${id}`)).json();
+    } catch {
+      throw new Error('분석 검토값 갱신 실패');
+    }
+    if (project.storage_id === id) await loadProject(value, state);
+  } catch (error) {
+    message(error.message, true);
+  }
+});
+window.addEventListener('resize', () => {
+  if (project) draw(false);
+});
+start().catch((error) => message(error.message, true));

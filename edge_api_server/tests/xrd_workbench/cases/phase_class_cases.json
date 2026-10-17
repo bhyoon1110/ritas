@@ -1,0 +1,372 @@
+[
+  {
+    "name": "trace fills only trace phases",
+    "labels": [],
+    "evaluation": [
+      {
+        "sample_id": "s1",
+        "phases": [
+          {
+            "phase": {
+              "name": "PhaseA",
+              "card": "c1",
+              "db": "DB"
+            },
+            "status": "trace"
+          },
+          {
+            "phase": {
+              "name": "PhaseB",
+              "card": "c1",
+              "db": "DB"
+            },
+            "status": "not_trace"
+          }
+        ]
+      },
+      {
+        "sample_id": "s2",
+        "phases": [
+          {
+            "phase": {
+              "name": "PhaseA",
+              "card": "c1",
+              "db": "DB"
+            },
+            "status": "undecided"
+          }
+        ]
+      }
+    ],
+    "percent": 2,
+    "expected": {
+      "labels": [
+        {
+          "sample_id": "s1",
+          "phase": {
+            "name": "PhaseA",
+            "card": "c1",
+            "db": "DB"
+          },
+          "class": "trace",
+          "origin": "rule",
+          "percent": 2
+        }
+      ],
+      "rule": {
+        "trace_max_percent": 2
+      }
+    }
+  },
+  {
+    "name": "direct choice is kept even when the rule says trace",
+    "labels": [
+      {
+        "sample_id": "s1",
+        "phase": {
+          "name": "PhaseA",
+          "card": "c1",
+          "db": "DB"
+        },
+        "class": "major",
+        "origin": "manual"
+      }
+    ],
+    "evaluation": [
+      {
+        "sample_id": "s1",
+        "phases": [
+          {
+            "phase": {
+              "name": "PhaseA",
+              "card": "c1",
+              "db": "DB"
+            },
+            "status": "trace"
+          }
+        ]
+      }
+    ],
+    "percent": 2,
+    "expected": {
+      "labels": [
+        {
+          "sample_id": "s1",
+          "phase": {
+            "name": "PhaseA",
+            "card": "c1",
+            "db": "DB"
+          },
+          "class": "major",
+          "origin": "manual"
+        }
+      ],
+      "rule": {
+        "trace_max_percent": 2
+      }
+    }
+  },
+  {
+    "name": "earlier rule label is removed when it no longer qualifies",
+    "labels": [
+      {
+        "sample_id": "s1",
+        "phase": {
+          "name": "PhaseA",
+          "card": "c1",
+          "db": "DB"
+        },
+        "class": "trace",
+        "origin": "rule",
+        "percent": 5
+      }
+    ],
+    "evaluation": [
+      {
+        "sample_id": "s1",
+        "phases": [
+          {
+            "phase": {
+              "name": "PhaseA",
+              "card": "c1",
+              "db": "DB"
+            },
+            "status": "not_trace"
+          }
+        ]
+      }
+    ],
+    "percent": 1,
+    "expected": {
+      "labels": [],
+      "rule": {
+        "trace_max_percent": 1
+      }
+    }
+  },
+  {
+    "name": "earlier rule label is removed when the phase became undecided",
+    "labels": [
+      {
+        "sample_id": "s1",
+        "phase": {
+          "name": "PhaseA",
+          "card": "c1",
+          "db": "DB"
+        },
+        "class": "trace",
+        "origin": "rule",
+        "percent": 5
+      }
+    ],
+    "evaluation": [
+      {
+        "sample_id": "s1",
+        "phases": [
+          {
+            "phase": {
+              "name": "PhaseA",
+              "card": "c1",
+              "db": "DB"
+            },
+            "status": "undecided"
+          }
+        ]
+      }
+    ],
+    "percent": 1,
+    "expected": {
+      "labels": [],
+      "rule": {
+        "trace_max_percent": 1
+      }
+    }
+  },
+  {
+    "name": "same name with another card is another phase",
+    "labels": [
+      {
+        "sample_id": "s1",
+        "phase": {
+          "name": "PhaseA",
+          "card": "c1",
+          "db": "DB"
+        },
+        "class": "major",
+        "origin": "manual"
+      }
+    ],
+    "evaluation": [
+      {
+        "sample_id": "s1",
+        "phases": [
+          {
+            "phase": {
+              "name": "PhaseA",
+              "card": "c2",
+              "db": "DB"
+            },
+            "status": "trace"
+          }
+        ]
+      }
+    ],
+    "percent": 3,
+    "expected": {
+      "labels": [
+        {
+          "sample_id": "s1",
+          "phase": {
+            "name": "PhaseA",
+            "card": "c1",
+            "db": "DB"
+          },
+          "class": "major",
+          "origin": "manual"
+        },
+        {
+          "sample_id": "s1",
+          "phase": {
+            "name": "PhaseA",
+            "card": "c2",
+            "db": "DB"
+          },
+          "class": "trace",
+          "origin": "rule",
+          "percent": 3
+        }
+      ],
+      "rule": {
+        "trace_max_percent": 3
+      }
+    }
+  },
+  {
+    "name": "samples that are not evaluated keep their labels",
+    "labels": [
+      {
+        "sample_id": "s9",
+        "phase": {
+          "name": "PhaseA",
+          "card": "c1",
+          "db": "DB"
+        },
+        "class": "trace",
+        "origin": "rule",
+        "percent": 5
+      }
+    ],
+    "evaluation": [
+      {
+        "sample_id": "s1",
+        "phases": [
+          {
+            "phase": {
+              "name": "PhaseA",
+              "card": "c1",
+              "db": "DB"
+            },
+            "status": "trace"
+          }
+        ]
+      }
+    ],
+    "percent": 2,
+    "expected": {
+      "labels": [
+        {
+          "sample_id": "s9",
+          "phase": {
+            "name": "PhaseA",
+            "card": "c1",
+            "db": "DB"
+          },
+          "class": "trace",
+          "origin": "rule",
+          "percent": 5
+        },
+        {
+          "sample_id": "s1",
+          "phase": {
+            "name": "PhaseA",
+            "card": "c1",
+            "db": "DB"
+          },
+          "class": "trace",
+          "origin": "rule",
+          "percent": 2
+        }
+      ],
+      "rule": {
+        "trace_max_percent": 2
+      }
+    }
+  },
+  {
+    "name": "presumed direct label is kept and rule label is added next to it",
+    "labels": [
+      {
+        "sample_id": "s1",
+        "phase": {
+          "name": "PhaseB",
+          "card": "c1",
+          "db": "DB"
+        },
+        "class": "presumed",
+        "origin": "manual"
+      }
+    ],
+    "evaluation": [
+      {
+        "sample_id": "s1",
+        "phases": [
+          {
+            "phase": {
+              "name": "PhaseA",
+              "card": "c1",
+              "db": "DB"
+            },
+            "status": "trace"
+          },
+          {
+            "phase": {
+              "name": "PhaseB",
+              "card": "c1",
+              "db": "DB"
+            },
+            "status": "trace"
+          }
+        ]
+      }
+    ],
+    "percent": 2,
+    "expected": {
+      "labels": [
+        {
+          "sample_id": "s1",
+          "phase": {
+            "name": "PhaseB",
+            "card": "c1",
+            "db": "DB"
+          },
+          "class": "presumed",
+          "origin": "manual"
+        },
+        {
+          "sample_id": "s1",
+          "phase": {
+            "name": "PhaseA",
+            "card": "c1",
+            "db": "DB"
+          },
+          "class": "trace",
+          "origin": "rule",
+          "percent": 2
+        }
+      ],
+      "rule": {
+        "trace_max_percent": 2
+      }
+    }
+  }
+]

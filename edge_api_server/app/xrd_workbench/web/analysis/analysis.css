@@ -1,0 +1,389 @@
+:root {
+  font-family: Arial, 'Malgun Gothic', sans-serif;
+  color: #26394e;
+  background: #f4f6f9;
+  font-size: 13px;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+}
+header {
+  height: 64px;
+  background: white;
+  border-bottom: 1px solid #dce2e9;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+}
+.brand {
+  text-decoration: none;
+  font-size: 19px;
+  font-weight: bold;
+  color: #213d5c;
+}
+.brand span {
+  font-size: 14px;
+  color: #7a8799;
+  margin-left: 12px;
+}
+nav {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+a {
+  color: #315e88;
+  cursor: pointer;
+}
+button,
+select,
+input,
+textarea {
+  font: inherit;
+  border: 1px solid #cfd8e3;
+  border-radius: 5px;
+  background: white;
+  color: inherit;
+  padding: 7px;
+}
+button {
+  cursor: pointer;
+}
+button:hover {
+  background: #edf3fa;
+}
+button.primary {
+  background: #285b89;
+  color: white;
+  border-color: #285b89;
+}
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+label {
+  display: block;
+  margin-bottom: 12px;
+  font-weight: bold;
+}
+label > select,
+label > input {
+  width: 100%;
+  margin-top: 6px;
+}
+.notice {
+  padding: 13px 24px;
+  color: #526881;
+  background: #edf3fa;
+  border-bottom: 1px solid #d7e3ef;
+}
+main {
+  display: grid;
+  grid-template-columns: 230px minmax(450px, 1fr) minmax(350px, 38%);
+  height: calc(100vh - 150px);
+  min-height: 550px;
+}
+aside {
+  padding: 18px;
+  overflow: auto;
+  border-right: 1px solid #dce2e9;
+  background: #fff;
+}
+.dataPane {
+  overflow: auto;
+  padding: 20px;
+}
+.originalPane {
+  border-left: 1px solid #dce2e9;
+  background: #e9edf3;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 16px;
+}
+fieldset {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+.paneTitle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+h1 {
+  font-size: 17px;
+  margin: 0 0 14px;
+}
+.paneTitle h1 {
+  margin: 0;
+}
+.hint {
+  line-height: 1.7;
+  color: #778597;
+  font-size: 12px;
+}
+.tableButton {
+  width: 100%;
+  text-align: left;
+  margin-bottom: 6px;
+  line-height: 1.5;
+}
+.tableButton.active {
+  border-color: #2a608e;
+  background: #edf4fa;
+}
+.tableButton small {
+  display: block;
+  color: #7b899a;
+}
+.grid {
+  max-height: 53vh;
+  overflow: auto;
+  border: 1px solid #d4dce5;
+  background: white;
+}
+table {
+  border-collapse: collapse;
+  font-size: 12px;
+  min-width: 100%;
+}
+td,
+th {
+  border: 1px solid #dce3ea;
+  padding: 6px;
+  vertical-align: top;
+}
+th {
+  background: #eef3f8;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+td[data-cell] {
+  cursor: pointer;
+  min-width: 85px;
+  max-width: 200px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+td.changed {
+  background: #fff3cf;
+}
+td.selected {
+  outline: 2px solid #3474a7;
+  outline-offset: -2px;
+}
+tr.excluded {
+  opacity: 0.45;
+  text-decoration: line-through;
+}
+#cellEditor {
+  background: #fff;
+  padding: 16px;
+  margin-top: 14px;
+  border: 1px solid #d6dfe9;
+  border-radius: 7px;
+}
+#cellEditor textarea {
+  width: 100%;
+  min-height: 60px;
+  margin: 6px 0 12px;
+}
+.originalValue {
+  white-space: pre-wrap;
+  background: #f2f5f8;
+  padding: 10px;
+  margin: 6px 0 12px;
+  overflow-wrap: anywhere;
+}
+.cellActions {
+  display: flex;
+  gap: 8px;
+}
+.pageTools {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.pageTools input {
+  width: 58px;
+}
+#originalScroll {
+  flex: 1;
+  overflow: auto;
+  min-height: 0;
+}
+#pageFrame {
+  position: relative;
+  width: 100%;
+  background: #fff;
+}
+#originalImage {
+  display: block;
+  width: 100%;
+}
+#bbox {
+  position: absolute;
+  border: 2px solid #df9730;
+  background: #ffe6a629;
+  pointer-events: none;
+}
+details {
+  margin-top: 16px;
+}
+pre {
+  white-space: pre-wrap;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.manualRow {
+  background: white;
+  border: 1px solid #d5deea;
+  border-radius: 7px;
+  padding: 15px;
+  margin: 12px 0;
+}
+.manualGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.manualGrid label {
+  margin: 0;
+  font-size: 12px;
+}
+.wide {
+  grid-column: 1/-1;
+}
+.manualRow textarea {
+  width: 100%;
+  margin-top: 6px;
+}
+.manualActions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-top: 12px;
+}
+.manualActions label {
+  margin: 0;
+}
+.manualActions input {
+  width: auto;
+}
+.quantityPreview {
+  margin-top: 12px;
+  width: 100%;
+  max-height: 200px;
+  object-fit: contain;
+}
+#effective,
+#pdfQuantities {
+  font-size: 12px;
+  line-height: 1.7;
+  margin-top: 20px;
+  padding: 12px;
+  background: #f0f4f8;
+  border-radius: 6px;
+  overflow-wrap: anywhere;
+}
+footer {
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+  border-top: 1px solid #d7e0e8;
+  background: #fff;
+}
+.error {
+  color: #ac3e34;
+}
+#revision {
+  color: #8290a1;
+}
+@media (max-width: 1150px) {
+  main {
+    grid-template-columns: 190px minmax(350px, 1fr) 35%;
+  }
+  header {
+    padding: 0 14px;
+  }
+  nav {
+    gap: 6px;
+  }
+}
+@media (max-width: 850px) {
+  main {
+    display: block;
+    height: auto;
+  }
+  aside {
+    border: 0;
+  }
+  #tables {
+    max-height: 180px;
+    overflow: auto;
+  }
+  .originalPane {
+    height: 650px;
+  }
+  .dataPane {
+    padding: 16px;
+  }
+  header {
+    height: auto;
+    padding: 14px;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  footer {
+    position: sticky;
+    bottom: 0;
+  }
+  .grid {
+    max-height: 500px;
+  }
+}
+.modeToggle {
+  display: flex;
+  margin: 6px 0 10px;
+}
+.modeToggle button {
+  flex: 1;
+}
+.modeToggle button.active {
+  background: #eaf1fb;
+  color: #306db7;
+}
+#sectionPane {
+  padding: 4px 0;
+}
+.sectionGrid table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 12px;
+}
+.sectionGrid th,
+.sectionGrid td {
+  border: 1px solid #e1e6ed;
+  padding: 4px 6px;
+  text-align: left;
+}
+.sectionGrid tr[data-source-page]:hover {
+  background: #f2f6fc;
+  cursor: pointer;
+}
+.pageCell {
+  color: #8c98a8;
+  white-space: nowrap;
+}

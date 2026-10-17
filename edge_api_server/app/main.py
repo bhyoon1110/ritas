@@ -51,6 +51,7 @@ from .raman_web import router as raman_router
 from .report_delivery import router as report_delivery_router
 from .service import EdgeService
 from .xrd_web import router as xrd_router
+from .xrd_workbench.integration import router as xrd_workbench_router
 from .usage_archive import set_usage_context
 from .voc import router as voc_router
 
@@ -164,6 +165,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings = resolved_settings
     app.state.database = database
     app.state.service = service
+    app.state.xrd_workbench_enabled = True
     app.state.ftir_assignment_library_dir = (
         resolved_settings.ftir_assignment_library_dir
     )
@@ -183,6 +185,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(ftir_router)
     app.include_router(raman_router)
     app.include_router(xrd_router)
+    app.include_router(xrd_workbench_router)
     app.include_router(ahn_router)
 
     @app.get("/", response_class=HTMLResponse, include_in_schema=False)

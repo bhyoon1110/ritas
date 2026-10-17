@@ -114,10 +114,10 @@ Edge 서버는 작업 등록 시 서버 시간을 기준으로 작업 폴더를 
 
 | 프로젝트 | 파일 전송 주체 | Edge 수신 API | 보고서 생성/전달 |
 |---|---|---|---|
-| XRD | C# 전송 프로그램 | 본 문서의 `/api/v1/jobs`, `/files`, `/uploads/complete`, `/report` | 기존 XRD 분석기로 HTML ZIP 생성 → 웹 검토/SSO 승인 → DB 전송 큐 등록 |
+| XRD | C# 전송 프로그램 | 본 문서의 `/api/v1/jobs`, `/files`, `/uploads/complete`, `/report` | 신규 상매칭/WPPF는 HTML/PDF/PPTX ZIP, 기존 ICDD는 HTML ZIP → 웹 검토/SSO 승인 → DB 전송 큐 등록 |
 | TEM | C# 전송 프로그램 | 본 문서의 `/api/v1/jobs`, `/files`, `/uploads/complete`, `/report` | 기존 TEM 분석기로 PPTX ZIP 생성 → 웹 검토/SSO 승인 → DB 전송 큐 등록 |
 
-XRD/TEM의 현재 웹 화면 API(`/api/v1/xrd/analyze`, `/api/v1/tem/analyze`)는
+XRD/TEM의 웹 화면 API(신규 `/api/v1/xrd/workbench/`, 기존 `/api/v1/xrd/analyze`, `/api/v1/tem/analyze`)는
 브라우저 기반 미리보기/보고서 생성용이다. C# 연동 계약은 위 공통 작업 API를
 기준으로 한다.
 
@@ -135,8 +135,9 @@ XRD/TEM의 현재 웹 화면 API(`/api/v1/xrd/analyze`, `/api/v1/tem/analyze`)�
    응답의 `files`가 1개 이상일 때만 그 목록으로
    `POST /api/v1/jobs/{jobId}/uploads/complete`를 호출한다.
 6. 사용자가 C# 프로그램의 보고서 생성 버튼을 누르면 C# 프로그램이
-   `POST /api/v1/jobs/{jobId}/report`로 보고서 생성을 요청한다. XRD는
-   `reportFormats: ["HTML"]`, TEM은 `reportFormats: ["PPTX"]`를 보낸다.
+   `POST /api/v1/jobs/{jobId}/report`로 보고서 생성을 요청한다. 신규 XRD는
+   `reportFormats: ["HTML", "PDF", "PPTX"]`, 기존 ICDD XRD는 `["HTML"]`,
+   TEM은 `["PPTX"]`를 보낸다.
 7. C# 프로그램은 `GET /api/v1/jobs/{jobId}`로 `COMPLETED` 또는 `FAILED` 상태를
    확인한다. `COMPLETED` 응답의 `reviewUrl`을 사용자의 기본 브라우저로 연다.
 8. 사용자는 웹 검토 화면에서 ZIP을 내려받아 확인하고 SSO 인증 후 LIMS 전송을
@@ -148,11 +149,14 @@ C# 프로그램은 SSO ID/PW를 받거나 `/send` API를 직접 호출하지 않
 
 | 프로젝트 | 보고서 생성 요청 `reportFormats` | 공유 저장소 최종 ZIP의 핵심 산출물 |
 |---|---|---|
-| XRD | `["HTML"]` | `report.html`, `report.md`, 선택 `email_body.md` |
+| XRD 신규 상매칭/WPPF | `["HTML", "PDF", "PPTX"]` (하위 조합도 허용) | `보고서.html`, `보고서.pdf`, `보고서.pptx`, `뷰어.html`, `자료목록.json` |
+| XRD 기존 ICDD/Excel | `["HTML"]` | `report.html`, `report.md`, 선택 `email_body.md` |
 | TEM | `["PPTX"]` | `report.pptx`, `report.md`, 선택 `email_body.md` |
 
-`includeRawFiles=true`를 보내면 위 산출물 외에 원본 bundle이 ZIP의 `raw/`
-경로에 포함된다. 기본값은 `false`이다.
+`includeRawFiles=true`를 보내면 위 산출물 외에 원본이 ZIP에 포함된다.
+기존 XRD/TEM은 `raw/`, 신규 XRD는 생성기의 원본 자료 경로를 사용한다.
+기본값은 `false`이다. 신규 XRD는 요청 형식 조합과 무관하게 위 4종 보고서/뷰어를
+함께 묶으며, 원본 제외 시에도 그래프 표시용 측정 좌표는 뷰어에 포함된다.
 
 `pk.experimentCode`에는 의뢰 조회에서 받은 LIMS 시험코드(`A23141`, `B54123` 등)를
 그대로 보낸다. C# 요청 스키마에는 별도 `analysisType` 필드를 추가하지 않는다.
@@ -222,14 +226,32 @@ C# 프로그램은 bundle 내부 파일을 풀어서 각 파일의 `relativePath
 안정적이면 ZIP 전송도 가능하다.
 
 Edge 공통 업로드 API는 파일의 경로, 크기, SHA-256을 검증한다. 실제 보고서
-생성 가능 여부는 내장 분석기가 bundle을 해석할 때 최종 확인한다. XRD는 웹
-화면과 같은 `lim.xrd_plot` 기반 HTML 생성기를, TEM은 같은 `ahn.processor`와
+생성 가능 여부는 내장 분석기가 bundle을 해석할 때 최종 확인한다. XRD는 신규
+상매칭/WPPF Report 파일명이 있으면 `xrd_workbench`, 없으면 기존 `lim.xrd_plot`
+HTML 생성기를 사용한다. TEM은 같은 `ahn.processor`와
 PPT 템플릿 생성기를 사용한다. C# 프로그램이 `processed/*.json`을 만들거나 별도
 processor 명령을 설정할 필요가 없다. 필수 파일이 부족하거나 손상된 경우 상태
 조회에서 `MISSING_XRD_INPUT`, `MISSING_XRD_PDF`, `TEM_UPLOAD_INTEGRITY_FAILED`,
 `TEM_NO_REPORT_DATA` 등의 구체적인 오류를 반환한다.
 
-#### XRD bundle
+#### 신규 XRD 상매칭/WPPF bundle
+
+```text
+bundle-root/
+  시료A.txt
+  시료A_상매칭_Report.pdf
+  시료A_정량(WPPF)_Report.pdf
+  시료A_상매칭.png                 # 선택
+```
+
+공통 파일 전송 API는 그대로이며 위 신규 PDF 파일명으로 생성기를 선택한다.
+실측 스펙트럼에는 TXT가 필요하다. 상매칭 PDF와 WPPF PDF는 해당 분석 결과가
+있는 경우 첨부하고, 여러 시료는 같은 시료명 접두어로 연결한다. 신규 경로에는
+기존 ICDD Card/Excel을 섞지 않는다. 비표준 파일명은 규칙에 맞추거나 웹에서
+역할을 지정한다. 파일당 80MiB, 전체 1,200MiB/100개 제한을 적용한다.
+상세 제한·설치·원값 보존 정책은 [신규 XRD 이식 안내](XRD_WORKBENCH_MIGRATION.md)를 참고한다.
+
+#### 기존 XRD ICDD/Excel bundle (호환 유지)
 
 XRD는 HTML 보고서를 만들기 위해 raw XRD 패턴 파일과 ICDD Card PDF가 필요하다.
 피크 표와 보조 이미지는 선택 입력이다.
@@ -642,12 +664,13 @@ Idempotency-Key: {jobId}:generate-report
 - 두 형식을 모두 생략한 경우 기본값: `PPTX`
 - `includeRawFiles`를 생략한 경우 기본값: `false`
 - `includeRawFiles=true`이면 Edge가 공유 저장소에 게시하는 최종 ZIP에 원본
-  bundle을 `raw/` 경로로 함께 넣는다. `false`여도 원본은 Edge `input/`에
+  bundle을 함께 넣는다(기존 XRD/TEM은 `raw/`, 신규 XRD는 원본 자료 경로). `false`여도 원본은 Edge `input/`에
   보관하며 ZIP에만 포함하지 않는다.
 
 XRD/TEM C# 프로그램은 다음 형식을 사용한다.
 
-XRD HTML 보고서:
+신규 XRD는 아래 예의 `reportFormats`를 `["HTML", "PDF", "PPTX"]`로 요청할 수 있다.
+기존 ICDD XRD HTML 보고서:
 
 ```json
 {

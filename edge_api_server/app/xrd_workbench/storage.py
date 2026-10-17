@@ -1,0 +1,400 @@
+"""File-system storage: uploaded sources, the read-only example project, analysis reviews and
+report documents. This is the module to replace for a database or internal storage service.
+
+The routes use exactly the surface described by `StorageBackend` below:
+- `lock`: one re-entrant lock (threading.RLock or equivalent) shared by `reviews` and `reports`;
+  routes hold it across multi-step checks and then call save(), which acquires it again;
+- `files`: example(), load_source(id), read_source(id, file_id) -> bytes,
+  source_file(id, file_id) -> (filesystem Path, original filename) | None (served by FileResponse),
+  create(inputs, mappings) -> project, list() -> [{storage_id, label}];
+- `reviews` / `reports`: lock, load(id) -> dict | None, save(id, project, value, expected_revision);
+- `presets`: lock, list() -> [preset] sorted by name, load(id) -> dict | None,
+  save(clean, overwrite=False) -> preset (RevisionConflict when the name exists and not overwriting),
+  delete(id) -> bool; `clean` is the validated {name, settings} from .core.presets;
+- `load_project(id)`: the source project with the saved analysis review applied.
+
+Contract every implementation must keep:
+- source bytes are immutable and verified against their recorded SHA256 on every read;
+- saves are atomic and raise RevisionConflict unless expected_revision equals the stored one;
+- a saved document is never replaced by one that belongs to another project;
+- domain validation is delegated to xrd.core (validate_for_save, carry_review_flags).
+"""
+
+import hashlib
+import json
+import os
+import re
+import shutil
+import tempfile
+import threading
+import uuid
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Protocol, runtime_checkable
+
+from .core.errors import RevisionConflict
+from .core.project import build_project
+from .core.report import carry_review_flags
+from .core.report import validate_for_save as validate_document_for_save
+from .core.review import apply_review
+from .core.review import validate_for_save as validate_review_for_save
+
+EXAMPLE_ID = 'example'
+EXAMPLE_EXTENSIONS = ('.txt', '.pdf', '.png', '.jpg', '.jpeg')
+_UPLOAD_ID = re.compile('[0-9a-f]{32}')
+_PRESET_ID = re.compile('[0-9a-f]{32}')
+
+
+def _is_upload_id(storage_id: str) -> bool:
+    return bool(_UPLOAD_ID.fullmatch(storage_id))
+
+
+def _checked_id(storage_id: str) -> str:
+    if storage_id != EXAMPLE_ID and not _is_upload_id(storage_id):
+        raise ValueError('잘못된 프로젝트 저장 ID입니다.')
+    return storage_id
+
+
+def _write_json_atomic(path: Path, value: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode='w', encoding='utf-8', dir=path.parent, suffix='.json', delete=False
+        ) as stream:
+            temporary = Path(stream.name)
+            json.dump(value, stream, ensure_ascii=False, allow_nan=False, indent=2)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+    finally:
+        if temporary and temporary.exists():
+            temporary.unlink()
+
+
+def load_mapping(directory: Path, mapping_path: Path | None) -> dict:
+    """Return {filename: {sample, role}} from the explicit path or <directory>/fixtures.json."""
+    path = mapping_path or directory / 'fixtures.json'
+    if not path.is_file():
+        if mapping_path is not None:
+            raise ValueError(f'예제 파일 연결 설정을 찾지 못했습니다: {path}')
+        return {}
+    try:
+        value = json.loads(path.read_text(encoding='utf-8-sig'))
+    except UnicodeDecodeError as exc:
+        raise ValueError(f'예제 파일 연결 설정은 UTF-8로 저장하세요: {path}') from exc
+    except json.JSONDecodeError as exc:
+        raise ValueError(f'예제 파일 연결 설정의 JSON 형식이 잘못되었습니다: {path}') from exc
+    if not isinstance(value, dict) or not all(isinstance(v, dict) for v in value.values()):
+        raise ValueError(f'예제 파일 연결 설정은 파일명별 객체여야 합니다: {path}')
+    return value
+
+
+def build_example(
+    directory: Path | None, mapping_path: Path | None = None
+) -> tuple[dict, dict[str, Path]]:
+    """Build the example project and map each source id to its original file path."""
+    if directory is None or not directory.is_dir():
+        raise ValueError(
+            '예제 데이터 폴더가 설정되지 않았거나 없습니다. XRD_EXAMPLE_DIR을 지정하거나 자료를 업로드하세요.'
+        )
+    files = sorted(
+        p for p in directory.iterdir() if p.is_file() and p.suffix.lower() in EXAMPLE_EXTENSIONS
+    )
+    project = build_project(
+        [(p.name, p.read_bytes()) for p in files], load_mapping(directory, mapping_path)
+    )
+    project['storage_id'] = EXAMPLE_ID
+    return project, {record['id']: directory / record['filename'] for record in project['sources']}
+
+
+class SourceFiles(Protocol):
+    def example(self) -> dict: ...
+    def load_source(self, storage_id: str) -> dict: ...
+    def read_source(self, storage_id: str, file_id: str) -> bytes: ...
+    def source_file(self, storage_id: str, file_id: str) -> tuple[Path, str] | None: ...
+    def create(self, inputs: list[tuple[str, bytes]], mappings: dict) -> dict: ...
+    def list(self) -> list[dict]: ...
+
+
+class RevisionedDocuments(Protocol):
+    lock: object
+
+    def load(self, storage_id: str) -> dict | None: ...
+    def save(self, storage_id: str, project: dict, value: dict, expected_revision: int) -> dict: ...
+
+
+class PresetDocuments(Protocol):
+    lock: object
+
+    def list(self) -> list[dict]: ...
+    def load(self, preset_id: str) -> dict | None: ...
+    def save(self, clean: dict, overwrite: bool = False) -> dict: ...
+    def delete(self, preset_id: str) -> bool: ...
+
+
+@runtime_checkable
+class StorageBackend(Protocol):
+    """What create_app and the routes need from a storage backend (see module docstring)."""
+
+    lock: object
+    files: SourceFiles
+    reviews: RevisionedDocuments
+    reports: RevisionedDocuments
+    presets: PresetDocuments
+
+    def load_project(self, storage_id: str) -> dict: ...
+
+
+class ProjectFiles:
+    """Uploaded source files (<data>/uploads/<id>/) and the configured example folder."""
+
+    def __init__(
+        self,
+        uploads: Path,
+        example_dir: Path | None = None,
+        example_mapping: Path | None = None,
+    ):
+        self.uploads = Path(uploads)
+        self.example_dir = example_dir
+        self.example_mapping = example_mapping
+        self._example: tuple[dict, dict[str, Path]] | None = None
+
+    def example(self) -> dict:
+        """The read-only example project (built once per instance)."""
+        if self._example is None:
+            self._example = build_example(self.example_dir, self.example_mapping)
+        return self._example[0]
+
+    def load_source(self, storage_id: str) -> dict:
+        """The registered project exactly as parsed at upload time (no review applied)."""
+        if _checked_id(storage_id) == EXAMPLE_ID:
+            return self.example()
+        path = self.uploads / storage_id / 'project.json'
+        if not path.is_file():
+            raise ValueError('저장 프로젝트를 찾지 못했습니다.')
+        return json.loads(path.read_text(encoding='utf-8'))
+
+    def _path(self, storage_id: str, file_id: str) -> Path:
+        if storage_id == EXAMPLE_ID:
+            self.example()
+            return self._example[1][file_id]
+        return self.uploads / storage_id / file_id
+
+    def read_source(self, storage_id: str, file_id: str) -> bytes:
+        """Original bytes of a registered source, refused if they changed since registration."""
+        project = self.load_source(storage_id)
+        record = next((r for r in project['sources'] if r['id'] == file_id), None)
+        if not record:
+            raise ValueError('등록된 원본 파일이 아닙니다.')
+        content = self._path(storage_id, file_id).read_bytes()
+        if hashlib.sha256(content).hexdigest() != record['sha256']:
+            raise ValueError('등록 후 원본 파일 내용이 변경되었습니다. 자료를 다시 확인하세요.')
+        return content
+
+    def source_file(self, storage_id: str, file_id: str) -> tuple[Path, str] | None:
+        """Path and original filename for download, or None when it does not exist."""
+        if storage_id == EXAMPLE_ID:
+            try:
+                self.example()
+            except ValueError:
+                return None
+            path = self._example[1].get(file_id)
+            return (path, path.name) if path and path.is_file() else None
+        if not _is_upload_id(storage_id):
+            return None
+        manifest = self.uploads / storage_id / 'project.json'
+        if not manifest.is_file():
+            return None
+        records = json.loads(manifest.read_text(encoding='utf-8'))['sources']
+        record = next((r for r in records if r['id'] == file_id), None)
+        if not record:
+            return None
+        path = self.uploads / storage_id / file_id
+        if not path.is_file():
+            return None
+        with path.open('rb') as stream:
+            digest = hashlib.file_digest(stream, 'sha256').hexdigest()
+        if digest != record['sha256']:
+            raise ValueError('등록 후 원본 파일 내용이 변경되었습니다. 자료를 다시 확인하세요.')
+        return path, record['filename']
+
+    def create(self, inputs: list[tuple[str, bytes]], mappings: dict) -> dict:
+        """Parse and register uploaded files under a new opaque storage id."""
+        project = build_project(inputs, mappings)
+        storage_id = uuid.uuid4().hex
+        directory = self.uploads / storage_id
+        directory.mkdir(parents=True, exist_ok=True)
+        for record, (_, content) in zip(project['sources'], inputs):
+            # Stored by opaque content id, never by a caller-provided path.
+            if isinstance(content, Path):
+                shutil.copyfile(content, directory / record['id'])
+            else:
+                (directory / record['id']).write_bytes(content)
+        project['storage_id'] = storage_id
+        _write_json_atomic(directory / 'project.json', project)
+        return project
+
+    def list(self) -> list[dict]:
+        """Example (when configured) and uploaded projects, newest first."""
+        result = [dict(storage_id=EXAMPLE_ID, label='예제 프로젝트')] if self.example_dir else []
+        if self.uploads.is_dir():
+            paths = sorted(
+                self.uploads.glob('*/project.json'), key=lambda p: p.stat().st_mtime, reverse=True
+            )
+            for path in paths:
+                try:
+                    value = json.loads(path.read_text(encoding='utf-8'))
+                    label = ', '.join(s['name'] for s in value['samples'])
+                    result.append(dict(storage_id=value['storage_id'], label=label))
+                except (ValueError, KeyError):
+                    continue
+        return result
+
+
+class _RevisionedStore:
+    filename = ''
+
+    def __init__(self, root: Path, lock=None):
+        self.root = Path(root)
+        self.lock = lock or threading.RLock()
+
+    def path(self, storage_id: str) -> Path:
+        return self.root / _checked_id(storage_id) / self.filename
+
+    def load(self, storage_id: str) -> dict | None:
+        path = self.path(storage_id)
+        return json.loads(path.read_text(encoding='utf-8')) if path.is_file() else None
+
+    def _current(self, storage_id, project, expected_revision, stale_message, foreign_message):
+        current = self.load(storage_id)
+        actual = current['revision'] if current else 0
+        if type(expected_revision) is not int or expected_revision != actual:
+            raise RevisionConflict(stale_message)
+        if current and current['project_id'] != project['id']:
+            raise RevisionConflict(foreign_message)
+        return current, actual
+
+
+class AnalysisStore(_RevisionedStore):
+    """Analysis review documents (<data>/analysis/<id>/review.json)."""
+
+    filename = 'review.json'
+
+    def save(self, storage_id, project, review, expected_revision):
+        clean = validate_review_for_save(project, review)
+        with self.lock:
+            _, actual = self._current(
+                storage_id,
+                project,
+                expected_revision,
+                '다른 분석 검토 버전이 있습니다. 저장본을 다시 열어 확인하세요.',
+                '원본 프로젝트가 변경되었습니다.',
+            )
+            clean['revision'] = actual + 1
+            _write_json_atomic(self.path(storage_id), clean)
+            return clean
+
+
+class ReportStore(_RevisionedStore):
+    """Report documents (<data>/reports/<id>/document.json)."""
+
+    filename = 'document.json'
+
+    def save(self, storage_id, project, document, expected_revision):
+        clean = validate_document_for_save(project, document)
+        with self.lock:
+            current, actual = self._current(
+                storage_id,
+                project,
+                expected_revision,
+                '다른 저장 버전이 있습니다. 저장본을 다시 열어 확인하세요.',
+                '원자료가 변경되었습니다. 기존 문서를 덮어쓰지 않습니다.',
+            )
+            carry_review_flags(current, clean)
+            clean['revision'] = actual + 1
+            _write_json_atomic(self.path(storage_id), clean)
+            return clean
+
+
+class PresetStore:
+    """Settings presets (<data>/presets/<id>.json): named bundles of report settings. Not
+    revisioned; a name is unique and saving an existing name needs `overwrite`."""
+
+    def __init__(self, root: Path, lock=None):
+        self.root = Path(root)
+        self.lock = lock or threading.RLock()
+
+    def _path(self, preset_id: str) -> Path:
+        if not isinstance(preset_id, str) or not _PRESET_ID.fullmatch(preset_id):
+            raise ValueError('잘못된 프리셋 ID입니다.')
+        return self.root / f'{preset_id}.json'
+
+    def load(self, preset_id: str) -> dict | None:
+        path = self._path(preset_id)
+        return json.loads(path.read_text(encoding='utf-8')) if path.is_file() else None
+
+    def list(self) -> list[dict]:
+        found = []
+        if self.root.is_dir():
+            for path in self.root.glob('*.json'):
+                if not _PRESET_ID.fullmatch(path.stem):
+                    continue
+                try:
+                    value = json.loads(path.read_text(encoding='utf-8'))
+                except (OSError, ValueError):
+                    continue
+                if isinstance(value, dict) and {'id', 'name', 'settings'} <= set(value):
+                    found.append(value)
+        return sorted(found, key=lambda p: p['name'])
+
+    def save(self, clean: dict, overwrite: bool = False) -> dict:
+        with self.lock:
+            existing = next((p for p in self.list() if p['name'] == clean['name']), None)
+            if existing and not overwrite:
+                raise RevisionConflict('같은 이름의 프리셋이 있습니다. 덮어쓰려면 확인하세요.')
+            record = {
+                'schema_version': 1,
+                'id': existing['id'] if existing else uuid.uuid4().hex,
+                'name': clean['name'],
+                'created': existing['created']
+                if existing
+                else datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
+                'settings': clean['settings'],
+            }
+            _write_json_atomic(self._path(record['id']), record)
+            return record
+
+    def delete(self, preset_id: str) -> bool:
+        with self.lock:
+            path = self._path(preset_id)
+            if not path.is_file():
+                return False
+            path.unlink()
+            return True
+
+
+class Storage:
+    """Everything the routes persist, sharing one lock so multi-step checks are consistent."""
+
+    def __init__(
+        self,
+        data_dir: Path,
+        example_dir: Path | None = None,
+        example_mapping: Path | None = None,
+    ):
+        from .locking import ProcessLock
+        self.lock = ProcessLock(Path(data_dir) / '.documents.lock')
+        self.files = ProjectFiles(Path(data_dir) / 'uploads', example_dir, example_mapping)
+        self.reviews = AnalysisStore(Path(data_dir) / 'analysis', self.lock)
+        self.reports = ReportStore(Path(data_dir) / 'reports', self.lock)
+        self.presets = PresetStore(Path(data_dir) / 'presets', self.lock)
+
+    @classmethod
+    def from_settings(cls, settings) -> 'Storage':
+        return cls(settings.data_dir, settings.example_dir, settings.example_mapping)
+
+    def load_project(self, storage_id: str) -> dict:
+        """The effective project: immutable sources with the saved analysis review applied."""
+        with self.lock:
+            return apply_review(self.files.load_source(storage_id), self.reviews.load(storage_id))
