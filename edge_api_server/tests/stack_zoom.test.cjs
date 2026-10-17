@@ -103,6 +103,21 @@ function assertStackAxis(axis) {
   assert.equal(axis.showgrid,false); assert.equal(axis.minor.showgrid,false); assert.equal(axis.zeroline,false);
 }
 
+// Virtualize only the guidance timeout; keep Plotly/control scheduling intact.
+function guidanceClock(h) {
+  const timers = new Map(); let now = 0, id = 0;
+  const schedule = h.w.setTimeout.bind(h.w), cancel = h.w.clearTimeout.bind(h.w);
+  h.w.setTimeout = (fn, ms, ...args) => {
+    if (ms !== 2000) return schedule(fn, ms, ...args);
+    timers.set(--id, {at:now+ms, fn}); return id;
+  };
+  h.w.clearTimeout = key => {if (!timers.delete(key)) cancel(key);};
+  return {count:()=>timers.size, advance(ms) {
+    now += ms;
+    for (const [key, timer] of timers) if (timer.at <= now) {timers.delete(key); timer.fn();}
+  }};
+}
+
 for (const mode of ['native','chrome49']) for (const kind of ['ftir','raman']) {
   const label = kind+'/'+mode;
   test(label+': stack hides major/minor Y scale, then restores it without losing new tick intervals', async t => {
@@ -273,8 +288,9 @@ for (const mode of ['native','chrome49']) for (const kind of ['ftir','raman']) {
     }
     assert.deepEqual(clone(h.gd.layout),before); assert.equal(h.captures(),0);
   });
-  test(label+': shortcut guidance stays below the graph, outside export/toolbar and without popup or key latch', t => {
+  test(label+': hidden guidance reserves its layout below the graph, outside export/toolbar', t => {
     const h = setup(t,kind,mode), hint = h.q('.rist-axis-wheel-help');
+    const clock = guidanceClock(h);
     assert.equal(h.gd.nextElementSibling,hint);
     assert.equal(h.gd.contains(hint),false);
     assert.equal(h.w.getComputedStyle(hint).display,'flex');
@@ -285,9 +301,104 @@ for (const mode of ['native','chrome49']) for (const kind of ['ftir','raman']) {
     assert.match(hint.textContent,/스택: Y축 바닥 고정/);
     assert(hint.textContent.includes('기본: '+(kind === 'ftir' ? 'X·Y축' : 'Y축')));
     assert(h.gd.getAttribute('aria-describedby').includes(hint.id));
+    assert.equal(hint.getAttribute('aria-hidden'),'true');
+    assert.equal(h.w.getComputedStyle(hint).visibility,'hidden');
+    assert.equal(h.w.getComputedStyle(hint).pointerEvents,'none');
+    const geometry = () => [hint,...hint.children].map(node => {
+      const style = h.w.getComputedStyle(node);
+      return ['display','position','width','height','margin','padding','fontSize','fontWeight','lineHeight','whiteSpace']
+        .map(key=>style[key]);
+    });
+    const initial = geometry();
+    for (const stacked of [true,false]) for (const options of [{},{shiftKey:true},{ctrlKey:true}]) {
+      h.gd.layout.meta[h.key].enabled = stacked; h.sync();
+      h.wheel(-120,300,h.gd,options);
+      assert.equal(h.w.getComputedStyle(hint).visibility,'visible');
+      assert.deepEqual(geometry(),initial);
+      clock.advance(2000);
+      assert.equal(h.w.getComputedStyle(hint).visibility,'hidden');
+      assert.deepEqual(geometry(),initial);
+    }
+    assert.match(h.q('.rist-axis-control-panel').textContent,/Shift \+ 휠은 X축만, Ctrl \+ 휠은 Y축만/);
     h.run('var axisLocksEnabled');
     assert.equal(h.d.querySelectorAll('.rist-axis-wheel-help').length,1);
     assert.equal(h.wheel(-120,300,hint,{ctrlKey:true}).defaultPrevented,false);
+  });
+  test(label+': guidance expires two seconds after the LAST wheel event, including modifier changes', t => {
+    const h = setup(t,kind,mode), clock = guidanceClock(h), hint = h.q('.rist-axis-wheel-help');
+    h.wheel(-120,300,h.gd,{shiftKey:true});
+    assert.equal(hint.getAttribute('aria-hidden'),'false'); assert.equal(clock.count(),1);
+    clock.advance(1900); assert(hint.classList.contains('is-visible'));
+    h.wheel(-120,300,h.gd,{ctrlKey:true}); assert.equal(clock.count(),1);
+    clock.advance(100); assert(hint.classList.contains('is-visible')); // First timer was cancelled.
+    clock.advance(1899); assert(hint.classList.contains('is-visible'));
+    clock.advance(1); assert(!hint.classList.contains('is-visible'));
+    assert.equal(hint.getAttribute('aria-hidden'),'true'); assert.equal(clock.count(),0);
+    assert.notEqual(h.w.getComputedStyle(h.q('[data-wheel-stack]')).visibility,'visible');
+    h.wheel(-120); assert(hint.classList.contains('is-visible')); assert.equal(clock.count(),1);
+  });
+  test(label+': guidance highlights the actual active axes and shows bottom fixing only in stack mode', t => {
+    const h = setup(t,kind,mode), clock = guidanceClock(h), hint = h.q('.rist-axis-wheel-help');
+    const active = () => [...hint.querySelectorAll('.is-active')].map(n=>n.getAttribute('data-wheel-axis'));
+    for (const stacked of [true,false]) {
+      h.gd.layout.meta[h.key].enabled = stacked; h.sync();
+      for (const [options, expected] of [[{shiftKey:true},['x']],[{ctrlKey:true},['y']],
+        [{shiftKey:true,ctrlKey:true},['y']],[{},kind === 'ftir' ? ['x','y'] : ['y']]]) {
+        h.wheel(-120,300,h.gd,options);
+        assert.deepEqual(active(),expected);
+        assert.equal(hint.classList.contains('is-stack'),stacked);
+        assert.equal(h.w.getComputedStyle(h.q('[data-wheel-stack]')).visibility,stacked ? 'inherit' : 'hidden');
+        assert.equal(clock.count(),1);
+      }
+    }
+    h.gd.layout.meta[h.key].enabled = true; h.gd.layout.xaxis.fixedrange = true; h.sync();
+    h.wheel(-120); assert.deepEqual(active(),['y']);
+  });
+  test(label+': page/editor scrolling, zero deltas and blocked operations never show or prolong guidance', t => {
+    const h = setup(t,kind,mode), clock = guidanceClock(h), hint = h.q('.rist-axis-wheel-help');
+    function ignoredWheels() {
+      h.wheel(-120,50); h.wheel(-120,300,h.d.body);
+      h.wheel(-120,300,h.q('.rist-axis-control-button'));
+      for (const className of ['legend','rist-legend-edit-panel','rist-shape-editor-panel']) {
+        const node = h.d.createElement('div'); node.className = className; h.gd.appendChild(node);
+        h.wheel(-120,300,node); node.remove();
+      }
+      const input = h.d.createElement('input'); h.gd.appendChild(input); h.wheel(-120,300,input); input.remove();
+      h.wheel(0); h.wheel(-120,300,h.gd,{altKey:true}); h.wheel(-120,300,h.gd,{metaKey:true});
+      for (const flag of ['_ristAxisCropActive','_ristAxisScaleActive','_ristShapeDrawMode','_ristInlineTextEditing']) {
+        h.gd[flag] = true; h.wheel(-120); h.gd[flag] = false;
+      }
+      h.gd.layout.yaxis.fixedrange = true; h.wheel(-120,300,h.gd,{ctrlKey:true});
+      h.gd.layout.yaxis.fixedrange = false;
+    }
+    ignoredWheels(); assert.equal(clock.count(),0); assert(!hint.classList.contains('is-visible'));
+    h.wheel(-120); clock.advance(1900); ignoredWheels(); clock.advance(100);
+    assert.equal(clock.count(),0); assert(!hint.classList.contains('is-visible'));
+    if (kind === 'ftir') {
+      h.gd.layout.meta[h.key].enabled = false; h.gd._context.scrollZoom = false; h.sync();
+      assert.equal(h.wheel(-120).defaultPrevented,false); assert.equal(clock.count(),0);
+      h.gd._context.scrollZoom = true;
+      const updates = h.updates.length, captures = h.captures();
+      assert.equal(h.wheel(-120).defaultPrevented,false); // Native Plotly still owns normal FTIR zoom.
+      assert.equal(h.updates.length,updates); assert.equal(h.captures(),captures);
+      assert(hint.classList.contains('is-visible'));
+    }
+  });
+  test(label+': focus/page exit and plot replacement clear guidance without leaving delayed UI work', t => {
+    const h = setup(t,kind,mode), clock = guidanceClock(h), hint = h.q('.rist-axis-wheel-help');
+    for (const clear of [
+      ()=>h.w.dispatchEvent(new h.w.Event('blur')),
+      ()=>h.w.dispatchEvent(new h.w.Event('pagehide')),
+      ()=>h.dispatch('rist-plot-data-replaced'),
+      ()=>h.dispatch('rist-plot-structure-changed'),
+      ()=>h.gd.dispatchEvent(new h.w.CustomEvent('rist-exclusive-interaction-start',{detail:{mode:'axis-settings'}})),
+      ()=>{Object.defineProperty(h.d,'hidden',{value:true,configurable:true}); h.d.dispatchEvent(new h.w.Event('visibilitychange'));}
+    ]) {
+      h.wheel(-120); assert.equal(clock.count(),1);
+      clear(); assert.equal(clock.count(),0); assert(!hint.classList.contains('is-visible'));
+      assert.equal(hint.getAttribute('aria-hidden'),'true');
+      clock.advance(3000); assert(!hint.classList.contains('is-visible'));
+    }
   });
   test(label+': Plotly +/- buttons use the same anchor, including anchor/button markup', async t => {
     const h = setup(t,kind,mode);

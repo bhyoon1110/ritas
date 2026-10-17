@@ -8536,9 +8536,26 @@ def _axis_controls_js(div_id: str, *, axis_locks: bool = False, scroll_zoom_y_on
   padding: 5px 8px;
   color: #526273;
   font: 12px/1.5 Arial, "Noto Sans KR", sans-serif;
+  visibility: hidden;
+  pointer-events: none;
 }
 #__PLOT_ID_CSS__-wheel-help > span {
   white-space: nowrap;
+}
+#__PLOT_ID_CSS__-wheel-help.is-visible {
+  visibility: visible;
+}
+#__PLOT_ID_CSS__-wheel-help .is-active {
+  color: #075985;
+  background: #e0f2fe;
+  border-radius: 3px;
+  box-shadow: inset 0 -2px #0284c7;
+}
+#__PLOT_ID_CSS__-wheel-help [data-wheel-stack] {
+  visibility: hidden;
+}
+#__PLOT_ID_CSS__-wheel-help.is-stack [data-wheel-stack] {
+  visibility: inherit;
 }
 @media print {
   #__PLOT_ID_CSS__-wheel-help { display: none; }
@@ -8698,18 +8715,38 @@ def _axis_controls_js(div_id: str, *, axis_locks: bool = False, scroll_zoom_y_on
   var scrollZoomYOnly = __SCROLL_ZOOM_Y_ONLY__;
   if (getComputedStyle(gd).position === "static") gd.style.position = "relative";
 
-  // A normal-flow sibling never covers the plot, shifts toolbar buttons or
-  // enters Plotly image exports. No popup, timer or keyboard mode to dismiss.
+  // Keep all text in normal flow even while hidden. Visibility and color-only
+  // emphasis reserve identical space in narrow layouts and stay out of exports.
   var wheelHelp = document.createElement("div");
   wheelHelp.id = gd.id + "-wheel-help";
   wheelHelp.className = "rist-axis-wheel-help";
+  wheelHelp.setAttribute("aria-hidden", "true");
   wheelHelp.innerHTML = "<span>그래프 안에서 휠 확대·축소</span>"
     + "<span>기본: " + (scrollZoomYOnly ? "Y축" : "X·Y축") + "</span>"
-    + "<span><b>Shift + 휠</b>: X축만</span>"
-    + "<span><b>Ctrl + 휠</b>: Y축만</span>"
-    + "<span>스택: Y축 바닥 고정</span>";
+    + "<span data-wheel-axis='x'><b>Shift + 휠</b>: X축만</span>"
+    + "<span data-wheel-axis='y'><b>Ctrl + 휠</b>: Y축만</span>"
+    + "<span data-wheel-stack>스택: Y축 바닥 고정</span>";
   gd.insertAdjacentElement("afterend", wheelHelp);
   gd.setAttribute("aria-describedby", ((gd.getAttribute("aria-describedby") || "") + " " + wheelHelp.id).trim());
+  var wheelHelpTimer = 0;
+  var wheelHelpX = wheelHelp.querySelector("[data-wheel-axis='x']");
+  var wheelHelpY = wheelHelp.querySelector("[data-wheel-axis='y']");
+  function hideWheelHelp() {
+    window.clearTimeout(wheelHelpTimer);
+    wheelHelpTimer = 0;
+    wheelHelp.classList.remove("is-visible");
+    wheelHelp.setAttribute("aria-hidden", "true");
+  }
+  function showWheelHelp(axes) {
+    wheelHelpX.classList.toggle("is-active", axes.indexOf("x") !== -1);
+    wheelHelpY.classList.toggle("is-active", axes.indexOf("y") !== -1);
+    wheelHelp.classList.toggle("is-stack", stackZoomEnabled());
+    wheelHelp.classList.add("is-visible");
+    wheelHelp.setAttribute("aria-hidden", "false");
+    window.clearTimeout(wheelHelpTimer);
+    wheelHelpTimer = window.setTimeout(hideWheelHelp, 2000);
+  }
+  window.addEventListener("pagehide", hideWheelHelp);
 
   var toolbar = gd.querySelector(".rist-plot-control-row");
   if (!toolbar) {
@@ -9607,8 +9644,9 @@ def _axis_controls_js(div_id: str, *, axis_locks: bool = False, scroll_zoom_y_on
   gd.addEventListener("wheel", function(ev) {
     if (ev.altKey || ev.metaKey) return;
     var selectedAxis = ev.ctrlKey ? "y" : ev.shiftKey ? "x" : null;
-    if (!selectedAxis && !scrollZoomYOnly && (!stackZoomEnabled()
-        || !gd._context || !gd._context.scrollZoom)) return;
+    var nativeWheel = !selectedAxis && !scrollZoomYOnly && !stackZoomEnabled();
+    if (!selectedAxis && !scrollZoomYOnly
+        && (!gd._context || !gd._context.scrollZoom)) return;
     if (ev.target.closest(".modebar,.legend,.rist-plot-control-row,.rist-legend-edit-panel,.rist-shape-editor-panel,input,textarea,select,button,[role='dialog'],[contenteditable],[role='textbox']")) return;
     var rect = gd.getBoundingClientRect();
     var box = plotBox();
@@ -9616,8 +9654,10 @@ def _axis_controls_js(div_id: str, *, axis_locks: bool = False, scroll_zoom_y_on
     var y = ev.clientY - rect.top;
     if (!box.height || x < box.left || x > box.left + box.width
         || y < box.top || y > box.top + box.height) return;
-    ev.preventDefault();
-    ev.stopImmediatePropagation();
+    if (!nativeWheel) {
+      ev.preventDefault();
+      ev.stopImmediatePropagation();
+    }
     if (gd._ristAxisCropActive || gd._ristAxisScaleActive
         || gd._ristShapeDrawMode || gd._ristInlineTextEditing) return;
     // Chromium may translate Shift+vertical-wheel into horizontal deltaX.
@@ -9625,6 +9665,14 @@ def _axis_controls_js(div_id: str, *, axis_locks: bool = False, scroll_zoom_y_on
     if (selectedAxis === "x" && wheelDelta === 0) wheelDelta = Number(ev.deltaX);
     var delta = wheelDelta * (ev.deltaMode === 1 ? 16 : ev.deltaMode === 2 ? box.height : 1);
     if (!Number.isFinite(delta) || delta === 0) return;
+    if (nativeWheel) {
+      // Observe normal FTIR zoom without intercepting Plotly's wheel behavior.
+      var nativeAxes = ["x", "y"].filter(function(axis) {
+        return currentRange(axis + "axis") && !axisLocked(axis + "axis");
+      });
+      if (nativeAxes.length) showWheelHelp(nativeAxes);
+      return;
+    }
     var factor = Math.exp(Math.max(-0.5, Math.min(0.5, delta * 0.002)));
     var updates = {};
     (selectedAxis ? [selectedAxis] : scrollZoomYOnly ? ["y"] : ["x", "y"]).forEach(function(axis) {
@@ -9639,6 +9687,9 @@ def _axis_controls_js(div_id: str, *, axis_locks: bool = False, scroll_zoom_y_on
       updates[name + ".autorange"] = false;
     });
     if (!Object.keys(updates).length) return;
+    showWheelHelp(["x", "y"].filter(function(axis) {
+      return !!updates[axis + "axis.range"];
+    }));
     var now = Date.now();
     if (now - lastWheelAt > 350 && gd._ristHistory) gd._ristHistory.capture();
     lastWheelAt = now;
@@ -9810,6 +9861,7 @@ def _axis_controls_js(div_id: str, *, axis_locks: bool = False, scroll_zoom_y_on
   gd.addEventListener("rist-exclusive-interaction-start", function(ev) {
     var activeMode = String(ev.detail && ev.detail.mode || "");
     if (!activeMode) return;
+    hideWheelHelp();
     if (activeMode !== "axis-scale") finishScale(null, true);
     if (activeMode !== "axis-scale" && activeMode !== "axis-settings") {
       lastAxisTap = null;
@@ -9836,9 +9888,13 @@ def _axis_controls_js(div_id: str, *, axis_locks: bool = False, scroll_zoom_y_on
   }, true);
   window.addEventListener("blur", function() {
     finishScale(null, true);
+    hideWheelHelp();
   });
   document.addEventListener("visibilitychange", function() {
-    if (document.hidden) finishScale(null, true);
+    if (document.hidden) {
+      finishScale(null, true);
+      hideWheelHelp();
+    }
   });
   gd.addEventListener("dblclick", function(ev) {
     var axis = axisFromPointer(ev);
@@ -9852,6 +9908,7 @@ def _axis_controls_js(div_id: str, *, axis_locks: bool = False, scroll_zoom_y_on
   });
   gd.addEventListener("rist-plot-data-replaced", function() {
     finishScale(null, true);
+    hideWheelHelp();
     if (cropSession || cropPending) cancelCrop();
     cropRanges.xaxis = null;
     cropRanges.yaxis = null;
@@ -9867,6 +9924,7 @@ def _axis_controls_js(div_id: str, *, axis_locks: bool = False, scroll_zoom_y_on
   });
   gd.addEventListener("rist-plot-structure-changed", function() {
     finishScale(null, true);
+    hideWheelHelp();
   });
   gd.addEventListener("rist-history-restored", function() {
     cropRanges = cropRangesFromLayout();
