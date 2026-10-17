@@ -94,7 +94,7 @@
     settings.signalMode = choice(input.signalMode, experiment === "FTIR"
       ? ["absorbance", "transmittance"] : ["intensity"]);
     var stack = object(input.stack), size = object(input.plotSize);
-    settings.stack = {enabled: boolean(stack.enabled), gap: number(stack.gap, 0.6, 2.2)};
+    settings.stack = {enabled: boolean(stack.enabled), gap: number(stack.gap, 0, 6)};
     settings.plotSize = {width: size.width === null ? null : number(size.width, 320, 2400),
       ratio: choice(size.ratio, ["auto", "4:3", "16:9", "1:1"])};
     settings.axes = {xaxis: axis(object(input.axes).xaxis), yaxis: axis(input.axes.yaxis)};

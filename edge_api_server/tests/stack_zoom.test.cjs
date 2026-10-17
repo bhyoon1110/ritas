@@ -120,6 +120,33 @@ function guidanceClock(h) {
 
 for (const mode of ['native','chrome49']) for (const kind of ['ftir','raman']) {
   const label = kind+'/'+mode;
+  test(label+': gap ranges from zero overlap to 6x without changing RAW or accumulating offsets', async t => {
+    const h = await displayFixture(t,kind,mode), raw = clone(h.gd.data.map(trace=>trace.y));
+    const slider = h.q('.rist-'+kind+'-stack-gap'), value = h.q('.rist-'+kind+'-stack-value');
+    assert.equal(slider.min,'0'); assert.equal(slider.max,'600'); assert.equal(slider.step,'5');
+    assert.equal(slider.value,'120'); assert.equal(value.textContent,'1.20');
+    assert.match(slider.title,/0: 추가 간격 없이 겹쳐 보기/);
+    h.toggle(); await tick();
+    for (const gap of [0,0.05,1.2,2.2,6,0,6]) {
+      slider.value=String(gap*100); slider.dispatchEvent(new h.w.Event('input',{bubbles:true})); await tick();
+      assert.equal(h.gd.layout.meta[h.key].gap,gap);
+      assert.equal(value.textContent,gap.toFixed(2));
+      assert.deepEqual(clone(h.gd.data[0].y),raw[0]);
+      assert.deepEqual(clone(h.gd.data[1].y),raw[1].map(y=>y+gap*3));
+      assert.deepEqual(clone(h.gd.data[1].x),[100,200,300]);
+      assertStackAxis(h.gd.layout.yaxis);
+    }
+    h.dispatch('rist-plot-structure-changed'); await h.gd._ristStackReady;
+    assert.equal(slider.value,'600');
+    assert.deepEqual(clone(h.gd.data[1].y),raw[1].map(y=>y+18));
+    h.toggle(); await tick();
+    assert.deepEqual(clone(h.gd.data.map(trace=>trace.y)),raw);
+    // Preparing a different gap while unstacked must not move the data.
+    slider.value='0'; slider.dispatchEvent(new h.w.Event('input',{bubbles:true})); await tick();
+    assert.deepEqual(clone(h.gd.data.map(trace=>trace.y)),raw);
+    h.toggle(); await tick();
+    assert.deepEqual(clone(h.gd.data.map(trace=>trace.y)),raw);
+  });
   test(label+': stack hides major/minor Y scale, then restores it without losing new tick intervals', async t => {
     const h = await displayFixture(t,kind,mode), x = clone(h.gd.layout.xaxis);
     h.toggle(); await tick(); assertStackAxis(h.gd.layout.yaxis);

@@ -107,6 +107,30 @@ function setup(t,experiment,mode) {
 
 for(const mode of ['native','chrome49']) for(const experiment of ['ftir','raman']) {
   const label=experiment+'/'+mode;
+  test(label+': zero and expanded stack gaps survive template save/load and fresh RAW',async t=>{
+    const h=setup(t,experiment,mode);await tick();await h.addRaw();
+    const key=experiment==='ftir'?'ristFtirStack':'ristRamanStack';
+    for(const gap of [0,0.05,2.2,6,0]) {
+      const value=sampleTemplate(experiment);value.settings.stack.gap=gap;
+      await h.template().load(value);await tick();
+      assert.equal(h.gd.layout.meta[key].gap,gap);
+      assert.equal(h.d.querySelector('.rist-'+experiment+'-stack-gap').value,String(Math.round(gap*100)));
+      assert.deepEqual(clone(h.gd.data[1].y),[-2,31,6].map(y=>y+33*gap));
+      h.d.querySelector('[data-template-save]').click();
+      const saved=JSON.parse(await h.read(h.downloads.at(-1)));
+      assert.equal(saved.settings.stack.gap,gap);
+      await h.uploadTemplate(JSON.stringify(saved));await h.addRaw();
+      assert.equal(h.gd.layout.meta[key].gap,gap);
+      assert.deepEqual(clone(h.gd.data[1].y),[-2,31,6].map(y=>y+33*gap));
+      assert.deepEqual(clone(h.gd.data[1].customdata),[-2,31,6]);
+    }
+    const previous=clone(h.template().state());
+    for(const gap of [-0.05,6.05,null,'0']) {
+      const invalid=sampleTemplate(experiment);invalid.settings.stack.gap=gap;
+      assert.throws(()=>h.template().load(invalid),/숫자 설정/);
+      assert.deepEqual(clone(h.template().state()),previous);
+    }
+  });
   test(label+': template controls use the shared band styles without changing ready/busy states',async t=>{
     const h=setup(t,experiment,mode);await tick();
     const band=h.d.querySelector('.rist-work-template-band');

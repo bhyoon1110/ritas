@@ -2333,11 +2333,16 @@ _RAMAN_STACK_SCRIPT = """
     }) || null;
   }
 
+  function stackGap(value) {
+    var gap = Number(value);
+    return Number.isFinite(gap) ? Math.max(0, Math.min(6, gap)) : 1.2;
+  }
+
   function initState() {
     var meta = stackMeta();
     state.enabled = !!meta.enabled;
     state.yAxisDisplay = savedYAxisDisplay(meta.yAxisDisplay);
-    state.gap = Number.isFinite(Number(meta.gap)) ? Number(meta.gap) : 1.2;
+    state.gap = stackGap(meta.gap);
     state.unit = Number(meta.unit) > 0 && Number.isFinite(Number(meta.unit)) ? Number(meta.unit) : 1;
     state.order = Array.isArray(meta.sampleOrder) && meta.sampleOrder.length
       ? meta.sampleOrder.map(String)
@@ -2624,7 +2629,7 @@ _RAMAN_STACK_SCRIPT = """
     dragButton.disabled = !hasSamples;
     gapSlider.disabled = !hasSamples;
     gapSlider.value = String(Math.round(state.gap * 100));
-    gapValue.textContent = state.gap.toFixed(1);
+    gapValue.textContent = state.gap.toFixed(2);
   }
 
   function setDragMode(enabled, announce) {
@@ -2657,8 +2662,8 @@ _RAMAN_STACK_SCRIPT = """
   control.className = "rist-raman-stack-control";
   control.innerHTML =
     "<button type='button' class='rist-raman-stack-button' title='샘플을 위아래로 벌려서 보기'>스택</button>"
-    + "<input class='rist-raman-stack-gap' type='range' min='60' max='220' step='5' value='120' title='스택 간격' aria-label='스택 간격'>"
-    + "<span class='rist-raman-stack-value'>1.2</span>"
+    + "<input class='rist-raman-stack-gap' type='range' min='0' max='600' step='5' value='120' title='스택 간격 0~6배 (0: 추가 간격 없이 겹쳐 보기)' aria-label='스택 간격'>"
+    + "<span class='rist-raman-stack-value'>1.20</span>"
     + "<button type='button' class='rist-raman-stack-button' title='샘플 곡선을 위아래로 드래그'>Y 이동</button>";
   toolbar.appendChild(control);
   var stackButton = control.querySelectorAll(".rist-raman-stack-button")[0];
@@ -2681,7 +2686,7 @@ _RAMAN_STACK_SCRIPT = """
     gd.dispatchEvent(new CustomEvent("rist-exclusive-interaction-start", {
       detail: {mode: "raman-stack-layout"}
     }));
-    state.gap = Math.max(0.6, Math.min(2.2, Number(gapSlider.value) / 100));
+    state.gap = stackGap(Number(gapSlider.value) / 100);
     if (state.enabled) resetStackOffsets();
     applyOffsets();
   });
@@ -2804,7 +2809,7 @@ _RAMAN_STACK_SCRIPT = """
       if (!state.initialized) initState();
       setDragMode(false, false);
       state.enabled = settings.enabled;
-      state.gap = settings.gap;
+      state.gap = stackGap(settings.gap);
       resetStackOffsets();
       return applyOffsets();
     });

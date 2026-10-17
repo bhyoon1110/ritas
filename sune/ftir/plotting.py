@@ -401,11 +401,16 @@ def ftir_stack_js(div_id: str) -> str:
     return Number(state.positions[group] || 0) * Number(state.units[signalMode] || 1);
   }
 
+  function stackGap(value) {
+    var gap = Number(value);
+    return Number.isFinite(gap) ? Math.max(0, Math.min(6, gap)) : 1.2;
+  }
+
   function initState() {
     var meta = stackMeta();
     state.enabled = !!meta.enabled;
     state.yAxisDisplay = savedYAxisDisplay(meta.yAxisDisplay);
-    state.gap = Number.isFinite(Number(meta.gap)) ? Number(meta.gap) : 1.2;
+    state.gap = stackGap(meta.gap);
     state.units = Object.assign(
       {absorbance: 1, transmittance: 100},
       meta.modeUnits || {}
@@ -687,7 +692,7 @@ def ftir_stack_js(div_id: str) -> str:
     dragButton.disabled = !hasMultipleSamples;
     gapSlider.disabled = !hasMultipleSamples;
     gapSlider.value = String(Math.round(state.gap * 100));
-    gapValue.textContent = state.gap.toFixed(1);
+    gapValue.textContent = state.gap.toFixed(2);
   }
 
   function setDragMode(enabled, announce) {
@@ -720,8 +725,8 @@ def ftir_stack_js(div_id: str) -> str:
   control.className = "rist-ftir-stack-control";
   control.innerHTML =
     "<button type='button' class='rist-ftir-stack-button' title='시료를 위아래로 벌려서 보기'>스택</button>"
-    + "<input class='rist-ftir-stack-gap' type='range' min='60' max='220' step='5' value='120' title='스택 간격' aria-label='스택 간격'>"
-    + "<span class='rist-ftir-stack-value'>1.2</span>"
+    + "<input class='rist-ftir-stack-gap' type='range' min='0' max='600' step='5' value='120' title='스택 간격 0~6배 (0: 추가 간격 없이 겹쳐 보기)' aria-label='스택 간격'>"
+    + "<span class='rist-ftir-stack-value'>1.20</span>"
     + "<button type='button' class='rist-ftir-stack-button' title='시료 곡선을 위아래로 드래그'>Y 이동</button>";
   toolbar.appendChild(control);
   var buttons = control.querySelectorAll(".rist-ftir-stack-button");
@@ -745,7 +750,7 @@ def ftir_stack_js(div_id: str) -> str:
     gd.dispatchEvent(new CustomEvent("rist-exclusive-interaction-start", {
       detail: {mode: "ftir-stack-layout"}
     }));
-    state.gap = Math.max(0.6, Math.min(2.2, Number(gapSlider.value) / 100));
+    state.gap = stackGap(Number(gapSlider.value) / 100);
     if (state.enabled) resetPositions();
     applyOffsets();
   });
@@ -869,7 +874,7 @@ def ftir_stack_js(div_id: str) -> str:
       if (!state.initialized) initState();
       setDragMode(false, false);
       state.enabled = settings.enabled;
-      state.gap = settings.gap;
+      state.gap = stackGap(settings.gap);
       resetPositions();
       return applyOffsets();
     });
