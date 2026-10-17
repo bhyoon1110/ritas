@@ -24,7 +24,7 @@ import {
 } from './model.mjs';
 import { apiUrl, request, chunkBytes, waitJob } from '../shared/api.mjs';
 import { $, escapeHTML } from '../shared/dom.mjs';
-import { summarizeUpload, uploadSummaryHTML } from './upload_summary.mjs';
+import { classifyUploadFilename, summarizeUpload, uploadSummaryHTML } from './upload_summary.mjs';
 import { transferUpload } from '../shared/resumable_upload.mjs';
 import { diagnosticsHTML } from './raw_diagnostics.mjs';
 
@@ -281,19 +281,6 @@ if (!offline)
     return false;
   };
 
-function classify(name) {
-  const ext = name.split('.').at(-1).toLowerCase(),
-    stem = name.slice(0, -ext.length - 1);
-  const rules = [
-    [/_정량\(WPPF\)_Report$/i, 'wppf_report'],
-    [/_상매칭_Report$/i, 'phase_report'],
-    [/_상매칭$/i, 'phase_image'],
-    [/_정량$/i, 'quantity_image'],
-  ];
-  for (const [pattern, role] of rules)
-    if (pattern.test(stem)) return { sample: stem.replace(pattern, ''), role };
-  return { sample: stem, role: ext === 'txt' ? 'measurement' : 'ignore' };
-}
 function mappingRows() {
   const roles = {
     measurement: 'TXT 측정',
@@ -307,7 +294,7 @@ function mappingRows() {
     '<table><thead><tr><th>원본 파일</th><th>시료명</th><th>역할</th><th>TXT 축 / 단위</th></tr></thead><tbody>' +
     pendingFiles
       .map((file, i) => {
-        const guess = classify(file.name);
+        const guess = classifyUploadFilename(file.name);
         return `<tr data-file="${i}"><td class="fileName">${escapeHTML(file.name)}</td><td><input class="sampleMapping" value="${escapeHTML(guess.sample)}" aria-label="${escapeHTML(file.name)} 시료명"></td><td><select class="roleMapping" aria-label="${escapeHTML(file.name)} 역할">${Object.entries(
           roles,
         )

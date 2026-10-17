@@ -545,6 +545,15 @@ def draft_preview(sid: str, payload: dict):
             if len(content.encode('utf-8')) > 32 * 1024 * 1024:
                 raise HTTPException(413, '미리보기가 32MB를 초과했습니다. 시료를 나누어 확인하세요.')
             return HTMLResponse(content, headers=NO_STORE)
+    except ImportError as exc:
+        raise ApiException(503, 'XRD_PREVIEW_DEPENDENCY_MISSING',
+            'XRD 미리보기에 필요한 서버 라이브러리를 불러오지 못했습니다. 관리자가 배포 환경의 의존성 설치와 서버 재시작 여부를 확인해야 합니다.') from exc
+    except MemoryError as exc:
+        raise ApiException(503, 'XRD_PREVIEW_MEMORY_ERROR',
+            '미리보기를 생성할 서버 메모리가 부족합니다. 포함 시료·이미지를 줄이거나 관리자에게 서버 자원 확인을 요청하세요.', retryable=True) from exc
+    except OSError as exc:
+        raise ApiException(503, 'XRD_PREVIEW_STORAGE_ERROR',
+            '미리보기 생성에 필요한 서버 파일을 읽거나 쓸 수 없습니다. 관리자가 원자료·글꼴·임시 폴더의 존재 여부, 권한과 여유 공간을 확인해야 합니다.') from exc
     except (ValueError, TypeError, KeyError) as exc:
         raise HTTPException(422, str(exc)) from exc
     finally:

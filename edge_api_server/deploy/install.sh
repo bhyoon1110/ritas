@@ -83,6 +83,7 @@ sudo -u "${SERVICE_USER}" "${PYTHON_BIN}" -m venv "${VENV_DIR}"
 sudo -u "${SERVICE_USER}" "${VENV_DIR}/bin/pip" install --upgrade pip
 pushd "${EDGE_DIR}" >/dev/null
 sudo -u "${SERVICE_USER}" "${VENV_DIR}/bin/pip" install -r requirements.txt
+sudo -u "${SERVICE_USER}" "${VENV_DIR}/bin/python" -m app.xrd_workbench.preflight
 popd >/dev/null
 
 echo "==> 5. 데이터 디렉터리 준비"

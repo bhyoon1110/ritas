@@ -39,3 +39,20 @@ test('escapeHTML escapes markup and quotes and treats null as empty', () => {
   assert.equal(escapeHTML('<a href="x">\'&'), '&lt;a href=&quot;x&quot;&gt;&#39;&amp;');
   assert.equal(escapeHTML(null), '');
 });
+
+test('server archive number is shown without leaking traceback details', async () => {
+  const id='20261017-120000-abcdef1234';
+  respond(500,{message:'서버 내부 오류가 발생했습니다.',errorEventId:id,details:{traceback:'private server path'}});
+  await assert.rejects(request('/a'), error => {
+    assert.equal(error.errorEventId,id);
+    assert.equal(error.status,500);
+    assert.match(error.message,new RegExp(id));
+    assert.match(error.message,/오류 기록/);
+    assert.doesNotMatch(error.message,/private server path/);
+    return true;
+  });
+  globalThis.fetch=async()=>new Response('Internal Server Error',{status:500,headers:{'X-Error-Event-Id':id}});
+  await assert.rejects(request('/a'),error=>error.errorEventId===id);
+  respond(500,{message:'server error',errorEventId:'<script>private</script>'});
+  await assert.rejects(request('/a'),{message:'server error',errorEventId:undefined});
+});

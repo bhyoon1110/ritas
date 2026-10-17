@@ -8,18 +8,23 @@ export async function request(path, options = {}) {
   if (path === '/api/upload' && options.body instanceof FormData) return uploadFiles(options.body);
   const response = await fetch(apiUrl(path), options);
   if (response.ok) return response;
-  let detail;
+  let detail, eventId;
   try {
     const payload = await response.json();
     detail = payload.detail || payload.error?.message || payload.message;
+    eventId = payload.errorEventId || payload.error?.errorEventId;
   } catch {}
+  eventId = response.headers?.get('X-Error-Event-Id') || eventId;
+  // Only show the public archive identifier, never raw exception details or a server path.
+  eventId = typeof eventId === 'string' && /^[0-9A-Za-z_-]{8,80}$/.test(eventId) ? eventId : undefined;
   const message =
     typeof detail === 'string'
       ? detail
       : detail != null
         ? JSON.stringify(detail)
         : `요청 실패 (${response.status})`;
-  throw Object.assign(new Error(message), { status: response.status });
+  const hint = eventId ? ` (오류번호: ${eventId} · 관리자 운영 관리의 오류 기록에서 확인)` : '';
+  throw Object.assign(new Error(message + hint), { status: response.status, errorEventId: eventId });
 }
 
 export async function waitJob(job, onProgress = () => {}) {

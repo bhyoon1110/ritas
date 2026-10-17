@@ -29,6 +29,7 @@ def classify_filename(filename: str) -> dict:
     stem, ext = path.stem, path.suffix.lower()
     suffixes = [
         ('_정량(WPPF)_Report', 'wppf_report'),
+        ('_정량_Report', 'wppf_report'),
         ('_상매칭_Report', 'phase_report'),
         ('_상매칭', 'phase_image'),
         ('_정량', 'quantity_image'),

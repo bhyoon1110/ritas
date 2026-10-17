@@ -27,7 +27,7 @@ Multi Profile 그래프, 분석 자료 검토, 보고서 편집 및 PDF/PPTX/HTM
 | --- | --- |
 | `시료명.txt` | 실측 x/y 두 열과 `#` 헤더 |
 | `시료명_상매칭_Report.pdf` | 상 목록, 관측 피크, 상별 기준 피크(d-I) |
-| `시료명_정량(WPPF)_Report.pdf` | 정량 결과와 원문 수치·괄호 표기 |
+| `시료명_정량(WPPF)_Report.pdf` 또는 `시료명_정량_Report.pdf` | 정량 결과와 원문 수치·괄호 표기 |
 | `시료명_상매칭.png`, `시료명_정량.png` | 선택 첨부 원본 그림 (JPG/JPEG도 지원) |
 
 웹 자료 등록에서 파일별 시료명·역할을 조정할 수 있습니다. PDF만으로는 실측
@@ -121,6 +121,41 @@ Mac Chrome에서 390/820/1024px 화면 및 합성 2시료 그래프·보고서 �
 파일 URL 접근 권한 제한으로 미완료이며, XP/Windows 7/10/11의 Supermium 144 실기 확인은 별도입니다.
 
 ## 저장·업로드·동시 작업
+
+### 실제 첨부 데이터 및 미리보기 오류 점검 (2026-10-17)
+
+- `_정량_Report.pdf`가 자동 연결에서 제외되던 문제를 수정했습니다. 브라우저 연결표와
+  서버 파서 모두 기존 `_정량(WPPF)_Report.pdf`와 같은 정량 역할로 처리합니다.
+  같은 시료에 두 이름의 파일이 함께 있으면 기존 중복 검증으로 선택을 요구하며,
+  사용자가 명시한 제외/수동 연결을 덮어쓰지 않습니다.
+- 이미 생성된 프로젝트의 연결·분석값·보고서는 자동 변경하지 않습니다. 정량 PDF가
+  제외된 기존 프로젝트는 원본 전체를 새 작업으로 등록하고 연결표에서 WPPF를 확인하세요.
+- 미리보기에서 서버 라이브러리 누락, 파일 접근/저장 오류, 메모리 부족은 원인별 안내와
+  503 코드를 반환합니다. 예외 원문은 기존 관리자 오류 기록에 보존하며, 알 수 없는 예외는
+  기존 500 처리를 유지합니다. 웹 오류 안내에는 공개 오류번호를 함께 표시합니다.
+  오류 응답 자체에 스택 트레이스나 서버 경로를 추가하지 않습니다.
+- 관리자 `운영 관리 → 오류 기록`에서 동일 시각·`/draft-preview` 경로를 열고
+  오류번호·예외 메시지·스택 트레이스를 확인하세요. `업무 실행` 기록의 HTTP 500과
+  처리시간만으로는 원인을 판별할 수 없습니다. 기록이 없으면 서버 로그도 확인해야 합니다.
+- 제공된 실제 예제 16개 파일(4시료)을 격리 저장소와 테스트 DB에서 검증했습니다.
+  파일 자동 연결/분할 전송, Raw 진단, 첫 미리보기, 17가지 초안 조건, 저장 및
+  HTML/PDF/PPTX/ZIP 생성이 성공했습니다. 실제 Chrome에서도 16개 파일 선택부터
+  분석 완료, 보고서 편집창 첫 진입, 제목 편집 자동 갱신/수동 갱신을 확인했습니다.
+  전체 Edge 앱과 격리 MariaDB를 사용한 초기/수정/캐시 미리보기와 내보내기도 성공했습니다.
+- 원본 16개 파일의 다운로드 바이트·SHA-256, 4시료 각각 3,751개 TXT 좌표/강도,
+  ZIP 내 원본 TXT/PDF 10개를 대조했습니다. 시료 1·2에서 정량값을 각 3개 추출하며
+  정량 자료가 없는 3·4는 값을 생성하지 않습니다. PPT 14페이지와 PDF 8페이지를
+  렌더링하여 확인했습니다. 사용자 데이터는 테스트 fixture나 Git 커밋에 넣지 않았습니다.
+- 검증: Edge Python **1,385 passed**, JavaScript **676 passed**, 추가 실험 회귀
+  **191 passed**, 브라우저 호환 런타임 **7 passed**. 호환 번들을 다시 만들고 ES5 문법 검사를 통과했습니다.
+  PowerPoint 실제 실행 및 XP/Windows의 Supermium 144 실기 검증은 포함하지 않았습니다.
+- 현장의 `보고서 편집창을 열자마자 500`은 제공된 서버 스택 트레이스에서
+  **`ModuleNotFoundError: No module named 'matplotlib'`**로 원인을 확인했습니다.
+  `/home/rist/ritas/.venv`에서 `render/figure.py`의 최초 import가 실패한 것이며,
+  정량 파일 연결 누락과는 별개입니다. 라이브러리를 갖춘 로컬에서는 재현되지 않았고,
+  새 Python 프로세스에서 matplotlib import를 차단하여 같은 실패 경로와 오류 안내,
+  의존성 복구 후 성공 및 원자료/보고서 보존을 회귀 검증했습니다.
+  실제 서버 패키지 설치·재시작·현장 재검증은 아직 수행하지 않았습니다.
 
 ### 초기화와 POSCO PPT 양식 (2026-10-17)
 
@@ -217,6 +252,55 @@ Windows는 클라이언트 대상입니다. Python 3.11 이상이 필요합니�
 프런트 번들과 글꼴은 저장소에 포함되어 서버에서 npm 설치나 외부 CDN 접근은 필요 없습니다.
 브라우저 소스를 수정하면 `edge_api_server/browser_compat`의 `npm ci`, `npm run build`로
 호환 자산을 다시 생성해야 합니다. 검증은 `RIST_BUILD_PYTHON`으로 프로젝트 Python을 지정했습니다.
+
+### matplotlib 누락 복구 및 재배포 점검
+
+`git pull`/USB bundle은 소스만 옮깁니다. 서비스의 Python 가상환경에 패키지를 따로
+설치해야 합니다. 아래는 `/home/rist/ritas/.venv`를 사용하는 기본 배포 기준입니다.
+다른 서비스 구성이라면 먼저 `systemctl cat rist-edge-api.service`의 `ExecStart`를 확인하고
+그 인터프리터를 사용하세요. 사용자 설정/DB/저장소를 다시 만들 필요는 없습니다.
+
+인터넷 또는 승인된 사내 Python 패키지 저장소에 접근 가능한 Edge 서버에서는:
+
+```bash
+cd /home/rist/ritas/edge_api_server
+../.venv/bin/python -m pip install matplotlib==3.11.2
+../.venv/bin/python -m pip check
+../.venv/bin/python -m app.xrd_workbench.preflight
+```
+
+폐쇄망이라면 **같은 Linux CPU 아키텍처 및 Python 3.12 환경**의 인터넷 가능한
+준비 PC/컨테이너에서 다음과 같이 의존 wheel도 함께 받습니다. 실제 서버 Python이
+다르면 그 버전에 맞춥니다. Mac/Windows의 기본 wheel을 그대로 복사하면 안 됩니다.
+
+```bash
+python3.12 -m pip download --only-binary=:all: --dest /tmp/rist-xrd-wheels matplotlib==3.11.2
+```
+
+승인된 절차로 폴더를 USB에 복사한 후 Edge에서 실행합니다. 아래 `/media/usb/rist-xrd-wheels`는
+예시이므로 실제 USB 경로로 바꿉니다. 설치 실패/누락 wheel은 원인을 확인하고 준비 PC에서
+보완하며, `--no-deps`나 인증서 검증 해제로 우회하지 않습니다.
+
+```bash
+cd /home/rist/ritas/edge_api_server
+../.venv/bin/python -m pip install --no-index --find-links=/media/usb/rist-xrd-wheels matplotlib==3.11.2
+../.venv/bin/python -m pip check
+../.venv/bin/python -m app.xrd_workbench.preflight
+```
+
+점검 성공 후 진행 중인 분석/전송이 없는 유지보수 시간에 기본 API/worker 서비스를 재시작하고,
+같은 프로젝트에서 보고서 편집/미리보기/내보내기를 다시 확인합니다. 서비스 이름을 바꾼 서버는
+실제 이름을 사용합니다. Spring/DB/LLM 재시작이나 데이터 삭제는 필요하지 않습니다.
+
+```bash
+sudo systemctl restart rist-edge-api.service rist-edge-worker.service
+systemctl status rist-edge-api.service rist-edge-worker.service --no-pager
+```
+
+신규 `python -m app.xrd_workbench.preflight` 명령은 현재 인터프리터의 XRD 그래프/PDF/PPT
+라이브러리 로딩만 검사하며 설치/서비스 변경/DB 접근을 하지 않습니다. 신규 설치 스크립트에도
+패키지 설치 직후 이 검사를 넣었습니다. 실제 시료, 글꼴 배치, 저장 권한 및 외부 연계까지
+검증하는 명령은 아니므로 미리보기/내보내기 현장 확인을 생략하지 마세요.
 
 기존 사용자 지정 PPTX 경로는 편집 가능한 Noto 글꼴 텍스트를 사용하며 글꼴 자체를 PPTX에 삽입하지 않습니다.
 기본 POSCO PPTX는 위의 맑은 고딕 양식을 사용합니다. PDF에는 글꼴이

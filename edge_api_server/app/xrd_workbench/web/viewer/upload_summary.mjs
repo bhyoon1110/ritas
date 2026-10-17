@@ -1,6 +1,23 @@
 import {escapeHTML} from '../shared/dom.mjs';
 
 const extensions = {measurement:['txt'],phase_report:['pdf'],wppf_report:['pdf'],phase_image:['png','jpg','jpeg'],quantity_image:['png','jpg','jpeg']};
+
+export function classifyUploadFilename(name) {
+  const filename = String(name).replace(/\\/g, '/').split('/').pop().trim().normalize('NFC');
+  const ext = filename.split('.').pop().toLowerCase(), stem = filename.slice(0, -ext.length - 1);
+  const rules = [
+    [/_정량(?:\(WPPF\))?_Report$/i, 'wppf_report'],
+    [/_상매칭_Report$/i, 'phase_report'],
+    [/_상매칭$/i, 'phase_image'],
+    [/_정량$/i, 'quantity_image'],
+  ];
+  for (const [pattern, role] of rules) {
+    if (extensions[role].includes(ext) && pattern.test(stem))
+      return {sample:stem.replace(pattern, '').trim(), role};
+  }
+  return {sample:stem, role:ext === 'txt' ? 'measurement' : 'ignore'};
+}
+
 export function summarizeUpload(files, mappings) {
   const groups = new Map(), names = new Set(), errors = []; let ignored = 0;
   files.forEach(file => {
