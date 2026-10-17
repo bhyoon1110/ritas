@@ -154,17 +154,14 @@ def build_report_router(project_loader, source_loader, store):
 
     @router.get('/api/reports/{storage_id}/preview')
     def preview(storage_id: str, revision: int):
-        from ..render.html import render_html
-        from ..render.layout import build_pages
+        from ..render.posco_preview import render_posco_preview
 
         project, document = saved_context(storage_id, revision)
         try:
             return HTMLResponse(
-                render_html(
-                    build_pages(project, document, lambda fid: source_loader(storage_id, fid)),
-                    document,
-                    'app',
-                    storage_id,
+                render_posco_preview(
+                    project, document, lambda fid: source_loader(storage_id, fid),
+                    storage_id=storage_id,
                 )
             )
         except ValueError as exc:

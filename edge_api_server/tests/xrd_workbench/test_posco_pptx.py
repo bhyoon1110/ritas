@@ -54,7 +54,7 @@ def test_reference_background_dimensions_and_sanitized_example_data():
     assert all(value in text for value in ('REQ-123','시험 의뢰자','XRD-01','QA-OP','검토 문장'))
     assert before==(project,document)
     assert len(slides[2].findall('.//a:tbl',NS))==2  # phase-only samples share the reference layout
-    assert len(slides[3].findall('.//a:tbl',NS))==1  # WPPF sample has its own page
+    assert len(slides[1].findall('.//a:tbl',NS))==1  # summary -> WPPF -> phase-only pair
     assert '[주요상] Phase0' in text and '[미량상] Phase1' in text and '[추정상] Phase2' in text
     assert '[미분류] Phase0' in text  # no implicit scientific classification
 

@@ -88,18 +88,19 @@ def render_panel_png(panel: dict, width_mm: float, height_mm: float, row_mm: flo
         ceiling, floor = 0.0, None
         for curve, offset in zip(curves, offsets):
             y = [v + offset for v in curve['base']]
-            top.plot(curve['x'], y, color=curve['color'], linewidth=0.7)
+            top.plot(curve['x'], y, color=curve['color'], linewidth=0.7, label=curve['name'])
             label = curve['name'] + (f"  ({curve['note']})" if curve['note'] else '')
-            top.text(
-                lo,
-                offset + min(curve['base']),
-                label,
-                color=curve['color'],
-                fontsize=6,
-                va='bottom',
-                ha='left',
-                fontfamily=families,
-            )
+            if not panel.get('sample_legend'):
+                top.text(
+                    lo,
+                    offset + min(curve['base']),
+                    label,
+                    color=curve['color'],
+                    fontsize=6,
+                    va='bottom',
+                    ha='left',
+                    fontfamily=families,
+                )
             ceiling = max(ceiling, max(y))
             floor = min(y) if floor is None else min(floor, min(y))
             if panel['show_markers']:
@@ -112,6 +113,9 @@ def render_panel_png(panel: dict, width_mm: float, height_mm: float, row_mm: flo
                     if pts:
                         top.plot([p[0] for p in pts], [p[1] for p in pts], **_marker_style(row))
                         ceiling = max(ceiling, *(p[1] for p in pts))
+        if panel.get('sample_legend'):
+            top.legend(loc='upper right',frameon=False,
+                       prop=font_manager.FontProperties(family=families,size=6))
         if panel['show_markers'] and rows and not show_ref:
             # Without reference rows the symbols still need a key naming each phase.
             handles = [

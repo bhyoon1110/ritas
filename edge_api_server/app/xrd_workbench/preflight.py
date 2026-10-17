@@ -23,7 +23,7 @@ def check_runtime():
             failures.append(f'{package} ({module}): {type(exc).__name__}: {exc}')
     if not failures:
         try:
-            for name in ('layout', 'html', 'pdf', 'posco_pptx', 'package'):
+            for name in ('layout', 'html', 'pdf', 'posco_pptx', 'posco_preview', 'package'):
                 importlib.import_module(f'app.xrd_workbench.render.{name}')
         except (ImportError, OSError) as exc:
             failures.append(f'XRD renderer: {type(exc).__name__}: {exc}')

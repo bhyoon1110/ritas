@@ -476,7 +476,6 @@ def export_report(sid: str, payload: dict):
             raise HTTPException(409, '보고서 전송정보를 저장한 후 다시 생성하세요.')
     def work(directory):
         from .render.layout import build_pages
-        from .render.html import render_html
         from .render.pdf import render_pdf
         from .render.posco_pptx import render_report_pptx
         from .render.package import build_package
@@ -497,13 +496,14 @@ def export_report(sid: str, payload: dict):
                 report_options={'analysisType': 'XRD', 'workbenchVersion': 1,
                                 'documentRevision': document['revision']})
         else:
-            pages = build_pages(project, document, source)
             if kind == 'preview':
-                content = render_html(pages, document, 'app', sid)
+                from .render.posco_preview import render_posco_preview
+                content = render_posco_preview(project, document, source, storage_id=sid)
                 if len(content.encode('utf-8')) > 32 * 1024 * 1024:
                     raise ValueError('미리보기가 32MB를 초과했습니다. 시료를 나누거나 PDF/PPTX로 다운로드하세요.')
                 output.write_text(content, encoding='utf-8')
             else:
+                pages = build_pages(project, document, source)
                 base = state.settings.edge_public_base_url.rstrip('/') + BASE + '/'
                 data = (render_pdf(pages, document, link_base=base, storage_id=sid) if kind == 'pdf'
                         else render_report_pptx(project, document, source, pages=pages,
@@ -541,13 +541,12 @@ def draft_preview(sid: str, payload: dict):
                 if draft.get('analysis_revision', 0) != project.get('analysis_revision', 0):
                     raise HTTPException(409, '분석 검토값이 변경되었습니다. 분석값 갱신 후 확인하세요.')
                 document = validate_document(project, draft)
-            from .render.layout import build_pages
-            from .render.html import render_html
+            from .render.posco_preview import render_posco_preview
             from .render.figure import render_panel_png
             from .render.draft_cache import draft_images
-            pages = build_pages(project, document, lambda fid: state.storage.files.read_source(sid, fid),
+            content = render_posco_preview(project, document,
+                lambda fid: state.storage.files.read_source(sid, fid), storage_id=sid, edit_links=True,
                 image_renderer=lambda *args: draft_images.render((state.home, sid), render_panel_png, *args))
-            content = render_html(pages, document, 'app', sid, edit_links=True)
             if len(content.encode('utf-8')) > 32 * 1024 * 1024:
                 raise HTTPException(413, '미리보기가 32MB를 초과했습니다. 시료를 나누어 확인하세요.')
             return HTMLResponse(content, headers=NO_STORE)

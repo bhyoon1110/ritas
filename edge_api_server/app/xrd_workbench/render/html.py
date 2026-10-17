@@ -1,4 +1,5 @@
 import base64
+import hashlib
 import json
 from html import escape
 
@@ -42,13 +43,28 @@ def edit_attrs(target):
 def render_html(pages, document, link_mode='package', storage_id=None, *, edit_links=False):
     # Editor links are opt-in and NEVER included in delivered HTML/PDF/PPTX.
     edit_links = edit_links and link_mode == 'app'
+    width = pages[0].get('width', PAGE_W) if pages else PAGE_W
+    height = pages[0].get('height', PAGE_H) if pages else PAGE_H
+    style = STYLE.replace(str(PAGE_W)+'mm',str(width)+'mm').replace(str(PAGE_H)+'mm',str(height)+'mm')
     output = [
         '<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>'
         + escape(document['metadata']['title'])
         + '</title><style>'
-        + STYLE
+        + style
         + '</style></head><body>'
     ]
+    # Repeated master artwork is embedded ONCE, not repeated for every preview slide.
+    # Keep the file self-contained and avoid inflating the response on low-resource PCs.
+    artwork = {}
+    for page in pages:
+        for item in page['items']:
+            if item.get('role') == 'template-artwork':
+                key = hashlib.sha256(item['data']).hexdigest()
+                if key not in artwork:
+                    cls = 'artwork-' + str(len(artwork))
+                    artwork[key] = cls
+                    uri = 'data:' + item['mime'] + ';base64,' + base64.b64encode(item['data']).decode()
+                    output.append('<style>.'+cls+'{background:url("'+uri+'") center/100% 100% no-repeat}</style>')
     if edit_links:
         output.append('<style>.editorNav{position:sticky;top:0;z-index:5;background:#fff;padding:10px;border-bottom:1px solid #ccd7e4;font:13px Arial,sans-serif}.editorNav select{max-width:60%;padding:5px}.editPageTools{padding:8px 15px;font:13px Arial,sans-serif}.editPageTools button{padding:6px 10px;margin-right:8px;border:1px solid #ccd7e4;background:white;border-radius:4px;color:#163e62}[data-edit]{cursor:pointer}[data-edit]:hover,[data-edit]:focus,.linked{outline:2px solid #1768a0;outline-offset:2px}@media print{.editorNav,.editPageTools{display:none}}</style>')
         output.append('<nav class="editorNav"><b>초안 · 저장 전 확인</b> <select id="previewPages" aria-label="미리보기 페이지">' + ''.join(
@@ -81,13 +97,14 @@ def render_html(pages, document, link_mode='package', storage_id=None, *, edit_l
             pos = f"left:{item['x']}mm;top:{item['y']}mm;width:{item['w']}mm;height:{item['h']}mm;"
             if item['type'] == 'rect':
                 output.append(
-                    '<div class="item" style="' + pos + f"background:{item['fill']};" + '"></div>'
+                    '<div class="item" style="' + pos + f"background:{item['fill']};"
+                    + (f"border:{item.get('stroke_width',.2)}mm solid {item['stroke']};border-radius:{item.get('radius',0)}mm;" if item.get('stroke') else '') + '"></div>'
                 )
             elif item['type'] == 'text':
                 style = (
                     pos
                     + f"font-size:{item['size']}pt;color:{item['color']};font-weight:{'700' if item['bold'] else '400'};line-height:{item['leading']}mm;"
-                    + ('text-align:right;' if item.get('align') == 'right' else '')
+                    + ('text-align:'+item['align']+';' if item.get('align') in ('right','center') else '')
                 )
                 output.append(
                     '<div class="item"' + attrs + ' style="'
@@ -99,6 +116,10 @@ def render_html(pages, document, link_mode='package', storage_id=None, *, edit_l
                     + '</div>'
                 )
             elif item['type'] == 'image':
+                if item.get('role') == 'template-artwork':
+                    cls = artwork[hashlib.sha256(item['data']).hexdigest()]
+                    output.append('<div class="item '+cls+'" aria-hidden="true" style="'+pos+'"></div>')
+                    continue
                 uri = 'data:' + item['mime'] + ';base64,' + base64.b64encode(item['data']).decode()
                 output.append(
                     '<img class="item image"' + attrs + ' style="'
@@ -112,7 +133,7 @@ def render_html(pages, document, link_mode='package', storage_id=None, *, edit_l
             elif item['type'] == 'link':
                 href = (
                     item['href']
-                    if link_mode == 'package'
+                    if link_mode == 'package' or item.get('source_id') is None
                     else f"/api/v1/xrd/workbench/api/files/{storage_id}/{item['source_id']}"
                 )
                 output.append(
@@ -123,13 +144,13 @@ def render_html(pages, document, link_mode='package', storage_id=None, *, edit_l
                     + escape(href, quote=True)
                     + '">'
                     + escape(item['label'])
-                    + ' ↗</a>'
+                    + (' ↗' if item['label'] else '') + '</a>'
                 )
         output.append('</section>')
     if link_mode == 'app':
         output.append(
             '<script>function fit(){var z=Math.min(1,(innerWidth-30)/'
-            + str(round(PAGE_W * PX_PER_MM))
+            + str(round(width * PX_PER_MM))
             + ');var pages=document.querySelectorAll(".page");for(var i=0;i<pages.length;i++){pages[i].style.zoom=z;}}addEventListener("resize",fit);fit();</script>'
         )
     if edit_links:

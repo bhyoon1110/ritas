@@ -3,7 +3,7 @@ from fastapi.testclient import TestClient
 
 from app.error_archive import install_error_management
 from app.xrd_workbench import integration as api
-from app.xrd_workbench.render import layout
+from app.xrd_workbench.render import posco_pptx
 from .test_integration import make_app, upload
 
 
@@ -23,9 +23,9 @@ def test_preview_environment_failure_keeps_trace_and_sources_and_releases_lock(t
     def fail(*args, **kwargs):
         raise exception('private-server-path-and-details')
     with monkeypatch.context() as patch:
-        patch.setattr(layout, 'build_pages', fail)
+        patch.setattr(posco_pptx, 'build_pages', fail)
         response = client.post(endpoint, json={'document': doc})
-    assert response.status_code == status, response.text
+    assert response.status_code == status, response.text[:300]
     assert response.json()['code'] == code
     event_id = response.json()['errorEventId']
     assert response.headers['X-Error-Event-Id'] == event_id

@@ -93,4 +93,6 @@ def test_saved_pptx_export_requires_the_saved_revision(tmp_path):
         == 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
     )
     with zipfile.ZipFile(io.BytesIO(response.content)) as z:
-        assert 'PPTX 저장 검토본' in z.read('ppt/slides/slide1.xml').decode('utf-8')
+        assert '분석 결과 요약' in z.read('ppt/slides/slide1.xml').decode('utf-8')
+        assert any('PPTX 저장 검토본' in z.read(name).decode('utf-8')
+                   for name in z.namelist() if name.startswith('ppt/slides/slide') and name.endswith('.xml'))

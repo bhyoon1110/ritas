@@ -1,7 +1,7 @@
 """XRD's supplied POSCO A4 slide designs, filled with reviewed report data.
 
 Clone the actual OOXML artwork/layouts rather than drawing a look-alike background.
-Only this renderer uses the template; the shared HTML/PDF layout remains independent.
+The live PPT preview reads this same filled deck, including its original master artwork.
 All request-specific parts live in a fresh archive, including native text and tables.
 """
 from copy import deepcopy
@@ -24,7 +24,7 @@ from .figure import render_panel_png
 from .fonts import wrap_lines
 from .items import link_target
 from .layout import build_pages, source_links
-from .sample_page import remarks, quantity_status
+from .sample_page import remarks, remark_targets, quantity_status
 
 TEMPLATE = Path(__file__).with_name('assets') / 'posco_xrd_a4.pptx'
 NS = {'p': 'http://schemas.openxmlformats.org/presentationml/2006/main',
@@ -35,6 +35,7 @@ REL = 'http://schemas.openxmlformats.org/package/2006/relationships'
 CT = 'http://schemas.openxmlformats.org/package/2006/content-types'
 MM = 36000
 CLASS_NAMES = {'major': '주요상', 'trace': '미량상', 'presumed': '추정상', None: '미분류'}
+PIE_COLORS = ('4472C4', 'ED7D31', '70AD47', 'A5A5A5', 'FFC000', '5B9BD5', '8064A2', '264478')
 
 
 def q(tag):
@@ -93,7 +94,7 @@ def set_text(shape, text, *, size=10, color='102A35', bold=False, dimensions=Non
             body.remove(child)
     props = body.find('a:bodyPr', NS)
     props.set('wrap', 'none')
-    props.set('anchor', 't')
+    # Keep the template's vertical alignment (notably its centred title band).
     for attr in ('lIns', 'rIns', 'tIns', 'bIns'): props.set(attr, '0')
     for child in list(props):
         if E.QName(child).localname.endswith('Autofit'): props.remove(child)
@@ -123,8 +124,10 @@ class Deck:
         self.images = {}
         self.charts = []
         self.long_titles = []
+        self.edits = {}
+        self.page_info = {}
 
-    def slide(self, index=0, blank=False):
+    def slide(self, index=0, blank=False, *, kind='summary', sample_id=None):
         root = deepcopy(self.templates[index])
         if blank:
             for s in list(root.find('p:cSld/p:spTree', NS)):
@@ -133,7 +136,14 @@ class Deck:
         rels = E.Element('Relationships', nsmap={None: REL})
         E.SubElement(rels, 'Relationship', Id='rId1', Type=NS['r'] + '/slideLayout', Target='../slideLayouts/slideLayout6.xml')
         self.pages.append((root, rels))
+        self.page_info[root] = dict(kind=kind, sample_id=sample_id,
+                                   edit=dict(tab=sample_id or 'overview'))
         return root
+
+    def mark(self, shape, target):
+        if target:
+            self.edits[shape] = target
+        return shape
 
     def rel(self, slide, kind, target, external=False):
         rels = next(r for s, r in self.pages if s is slide)
@@ -151,19 +161,21 @@ class Deck:
         tree.append(shape)
         return shape
 
-    def text(self, slide, value, bounds, *, size=10, bold=False, color='102A35', name='Report text', href=None):
+    def text(self, slide, value, bounds, *, size=10, bold=False, color='102A35', name='Report text', href=None, edit=None):
         shape = deepcopy(self.text_shape)
         place(shape, bounds)
         if not set_text(shape, value, size=size, bold=bold, color=color, minimum=min(size, 8)):
             raise ValueError('PPT 텍스트가 지정 영역을 넘습니다. 내용을 나누어 주세요.')
+        shape.find('p:txBody/a:bodyPr', NS).set('anchor', 't')
         self.append(slide, shape, name)
+        self.mark(shape, edit)
         if href:
             rid = self.rel(slide, 'hyperlink', href, True)
             for prop in shape.findall('.//a:rPr', NS):
                 E.SubElement(prop, q('a:hlinkClick'), {q('r:id'): rid})
         return shape
 
-    def picture(self, slide, data, bounds, label):
+    def picture(self, slide, data, bounds, label, *, edit=None):
         with Image.open(io.BytesIO(data)) as image:
             width, height = image.size
             ext = 'jpg' if image.format == 'JPEG' else 'png'
@@ -186,6 +198,7 @@ class Deck:
         E.SubElement(xf, q('a:ext'), cx=str(round(px*MM)), cy=str(round(py*MM)))
         E.SubElement(E.SubElement(sp, q('a:prstGeom'), prst='rect'), q('a:avLst'))
         self.append(slide, shape, label)
+        self.mark(shape, edit)
 
     def title(self, slide, title):
         shape = named(slide, 'Title')[0]
@@ -195,7 +208,7 @@ class Deck:
             while shortened and not set_text(shape, shortened + '…', size=18, bold=True, minimum=14):
                 shortened = shortened[:-1]
 
-    def pie(self, slide, quantities, bounds):
+    def pie(self, slide, quantities, bounds, *, edit=None):
         """Native chart + embedded workbook: original numerical values, never inferred zeros."""
         from openpyxl import Workbook
         values = [v.get('value') for v in quantities]
@@ -215,6 +228,11 @@ class Deck:
         pie=E.SubElement(plot,q('c:pieChart'));E.SubElement(pie,q('c:varyColors'),val='1')
         series=E.SubElement(pie,q('c:ser'))
         E.SubElement(series,q('c:idx'),val='0');E.SubElement(series,q('c:order'),val='0')
+        for index in range(len(values)):
+            point = E.SubElement(series, q('c:dPt'))
+            E.SubElement(point, q('c:idx'), val=str(index))
+            fill = E.SubElement(E.SubElement(point, q('c:spPr')), q('a:solidFill'))
+            E.SubElement(fill, q('a:srgbClr'), val=PIE_COLORS[index])
         for tag,column,kind,items in (('cat','A','str',[v['phase'] for v in quantities]),('val','B','num',values)):
             ref=E.SubElement(E.SubElement(series,q('c:'+tag)),q('c:'+kind+'Ref'))
             E.SubElement(ref,q('c:f')).text=f"'Data'!${column}$2:${column}${len(values)+1}"
@@ -251,9 +269,17 @@ class Deck:
         graphic=E.SubElement(frame,q('a:graphic'));data=E.SubElement(graphic,q('a:graphicData'),uri=NS['c'])
         E.SubElement(data,q('c:chart'),{q('r:id'):self.rel(slide,'chart',f'../charts/chart{number}.xml')})
         self.append(slide,frame,'WPPF 정량 차트')
+        self.mark(frame,edit)
         return True
 
+    def number_pages(self):
+        for number, (slide, _) in enumerate(self.pages, 1):
+            shape = named(slide, 'Page number')[0]
+            set_text(shape, str(number), size=10, color='6B7F88')
+            shape.find('p:txBody/a:p/a:pPr', NS).set('algn', 'r')
+
     def finish(self, document):
+        self.number_pages()
         files = {n: v for n, v in self.files.items() if not n.startswith('ppt/slides/')}
         presentation = E.fromstring(files['ppt/presentation.xml'])
         ids = presentation.find('p:sldIdLst', NS)
@@ -266,7 +292,6 @@ class Deck:
         for t in list(types):
             if t.get('PartName', '').startswith('/ppt/slides/'): types.remove(t)
         for number, (slide, relationships) in enumerate(self.pages, 1):
-            set_text(named(slide, 'Page number')[0], str(number), size=10, color='6B7F88')
             rid = f'rId{next_id + number}'
             E.SubElement(ids, q('p:sldId'), {'id': str(255+number), q('r:id'): rid})
             E.SubElement(rels, '{'+REL+'}Relationship', Id=rid, Type=NS['r']+'/slide', Target=f'slides/slide{number}.xml')
@@ -315,6 +340,17 @@ def render_report_pptx(project, document, resolve_source, *, pages=None, link_ba
     if load_settings().pptx_template:
         from .pptx import render_pptx
         return render_pptx(pages, document, link_base=link_base, storage_id=storage_id)
+    return build_posco_deck(project, document, resolve_source, pages=pages, link_base=link_base,
+                            storage_id=storage_id, include_sources=include_sources).finish(document)
+
+
+def build_posco_deck(project, document, resolve_source, *, pages=None, link_base=None,
+                     storage_id=None, include_sources=True, image_renderer=None):
+    """One filled OOXML scene for PPTX and its browser preview; no Office installation needed."""
+    document = validate_document(project, document)
+    image_renderer = image_renderer or render_panel_png
+    pages = pages if pages is not None else build_pages(project, document, resolve_source,
+                                                        image_renderer=image_renderer)
     deck = Deck()
     entries = [e for e in document['samples'] if e['included']]
     samples = {s['id']: s for s in project['samples']}
@@ -325,13 +361,14 @@ def render_report_pptx(project, document, resolve_source, *, pages=None, link_ba
     def classification(sample, phase):
         return next((v['class'] for v in labels if v['sample_id'] == sample['id'] and v['phase'] == phase_ref(phase)), None)
 
-    def overflow(title, content):
-        appendix.append((title, content))
+    def overflow(title, content, edit=None):
+        appendix.append((title, content, edit))
 
-    def put(slide, name, content, size=10):
+    def put(slide, name, content, size=10, edit=None):
         target = named(slide, name)[0]
+        deck.mark(target, edit)
         if not set_text(target, content, size=size):
-            overflow('상세 내용', str(content))
+            overflow('상세 내용', str(content), edit)
             set_text(target, '내용이 길어 뒤쪽 상세 내용에 수록했습니다.', size=8)
 
     def image(sample, role, entry):
@@ -348,7 +385,8 @@ def render_report_pptx(project, document, resolve_source, *, pages=None, link_ba
 
     # Keep request/transfer metadata and all existing figure/table pages in the branded format.
     def shared_page(page):
-        slide = deck.slide(blank=True)
+        slide = deck.slide(blank=True, kind=page['kind'], sample_id=page.get('sample_id'))
+        deck.page_info[slide]['edit'] = page.get('edit', dict(tab='overview'))
         deck.title(slide, '보고서 정보' if page['kind'] == 'cover' else page['title'])
         items = [i for i in page['items'] if not i.get('role')]
         if not items: return
@@ -357,24 +395,24 @@ def render_report_pptx(project, document, resolve_source, *, pages=None, link_ba
         scale = min(249.5 / 298.667, 136 / max(1, bottom-top))
         for i in items:
             bounds = (12.7+(i['x']-20)*scale, 29+(i['y']-top)*scale, i['w']*scale, i['h']*scale)
-            if i['type'] == 'image': deck.picture(slide, i['data'], bounds, i['filename'])
+            if i['type'] == 'image': deck.picture(slide, i['data'], bounds, i['filename'], edit=i.get('edit') or dict(tab='figure'))
             elif i['type'] in ('text','link'):
                 text = '\n'.join(i['lines']) if i['type']=='text' else i['label']
                 href = link_target(i,link_base,storage_id) if i['type']=='link' and include_sources else None
-                deck.text(slide,text,bounds,size=i['size']*scale*.92,bold=i.get('bold',False),href=href)
-
-    for page in pages:
-        if page['kind']=='cover': shared_page(page)
+                deck.text(slide,text,bounds,size=i['size']*scale*.92,bold=i.get('bold',False),href=href,edit=i.get('edit'))
     figures = [i for p in pages if p['kind']=='figure' for i in p['items'] if i['type']=='image']
     if figures:
         panel=next((p for p in build_plan(project,document)['panels'] if p['curves']),None)
-        summary_image=render_panel_png(panel,128,91) if panel else figures[0]['data']
+        # The reference's overview is a clean sample comparison, not a second phase panel.
+        # Only display annotations change; original coordinates/intensities/offsets stay intact.
+        summary_panel=dict(panel,show_reference=False,show_markers=False,sample_legend=True) if panel else None
+        summary_image=image_renderer(summary_panel,128,91) if panel else figures[0]['data']
     selected = [e for e in entries if e['summary_included']]
     for start in range(0, max(1,len(selected)),3):
         slide = deck.slide(0)
         deck.title(slide,'분석 결과 요약' + (' (계속)' if start else ''))
         if figures:
-            deck.picture(slide,summary_image,(15.7,32.7,128,91),'시료 비교 그래프')
+            deck.picture(slide,summary_image,(15.7,32.7,128,91),'시료 비교 그래프',edit=dict(tab='figure'))
         else: deck.text(slide,'비교 그래프를 보고서에 포함하지 않았습니다.',(18,70,124,16),size=10)
         group = selected[start:start+3]
         for index in range(3):
@@ -383,16 +421,19 @@ def render_report_pptx(project, document, resolve_source, *, pages=None, link_ba
                 for offset in range(4): put(slide,f'Text {slot+offset}','')
                 continue
             entry=group[index]; sample=samples[entry['sample_id']]
-            put(slide,f'Text {slot}','샘플명: '+entry['display_name'],11.5)
+            put(slide,f'Text {slot}','샘플명: '+entry['display_name'],11.5,dict(tab=entry['sample_id'],field='display_name'))
             for offset, cls in enumerate(('major','trace','presumed'),1):
                 names=[p['name'] for p in sample['phases'] if classification(sample,p)==cls]
                 value='; '.join(names) or '—'
                 if cls=='major' and any(classification(sample,p) is None for p in sample['phases']):
                     value += ' (미분류는 상세표 참조)'
-                put(slide,f'Text {slot+offset}',CLASS_NAMES[cls]+': '+value,10)
+                put(slide,f'Text {slot+offset}',CLASS_NAMES[cls]+': '+value,10,dict(tab='classes'))
         note = document['summary'].strip() or '\n'.join(
             entry['display_name']+': '+text for entry in group for text,_ in remarks(entry)) or '—'
-        if document['summary'].strip(): put(slide,'Text 27',note,11)
+        # Use the whole remarks frame, not the original single-line placeholder.
+        place(named(slide,'Text 27')[0],(160.02,143.51,97.36,24))
+        deck.mark(named(slide,'Text 27')[0],dict(tab='overview',field='summary'))
+        if document['summary'].strip(): put(slide,'Text 27',note,11,dict(tab='overview',field='summary'))
         elif not set_text(named(slide,'Text 27')[0],note,size=11):
             set_text(named(slide,'Text 27')[0],'시료별 특이사항은 뒤쪽 페이지에 수록했습니다.',size=10)
     # Detailed pages: WPPF alongside its matching sample, or two phase-only samples per page.
@@ -405,19 +446,33 @@ def render_report_pptx(project, document, resolve_source, *, pages=None, link_ba
                    ' '.join(str(v) for v in (p.get('db'),p.get('card')) if v) or '—') for p in sample['phases']]
             row_sets.append(rows or [('상 목록 미제공','—','—')])
         for start in range(0,max(len(rows) for rows in row_sets),3):
-            slide=deck.slide(1 if quantitative else 2)
+            slide=deck.slide(1 if quantitative else 2, kind='sample', sample_id=batch[0]['sample_id'])
             deck.title(slide,('상 동정 & WPPF 정량 결과' if quantitative else '상 동정 (Phase Identification) 결과')+(' (계속)' if start else ''))
             frames=named(slide,'Match frame'); tables=named(slide,'Phase table')
-            # Remove reference link pills. Real source links are rebuilt for each sample.
-            for shape in list(slide.find('p:cSld/p:spTree',NS)):
-                names=shape.xpath('.//p:cNvPr/@name',namespaces=NS)
-                if names and (names[0]=='Source link frame' or names[0] in (('Text 9','Text 11','Text 13') if quantitative else ('Text 12','Text 14','Text 16','Text 18','Text 20','Text 22'))): remove(shape)
+            # Fill the original horizontal link pills; never retain reference URLs.
+            link_frames=named(slide,'Source link frame')
+            link_names=('Text 9','Text 11','Text 13') if quantitative else ('Text 12','Text 14','Text 16','Text 18','Text 20','Text 22')
+            for index in range(1 if quantitative else 2):
+                entry=batch[index] if index<len(batch) else None
+                links=source_links(samples[entry['sample_id']]) if entry and include_sources else []
+                by_label={link['label']:link for link in links}
+                for j,label in enumerate(('상매칭 Report','정량(WPPF) Report','Measured Data (TXT)')):
+                    k=index*3+j;shape=named(slide,link_names[k])[0]
+                    if label not in by_label:
+                        remove(shape);remove(link_frames[k]);continue
+                    link=by_label[label]
+                    caption='WPPF Report' if label=='정량(WPPF) Report' else label
+                    set_text(shape,caption+' ↗',size=8,color='0A7489',minimum=6)
+                    shape.find('p:txBody/a:p/a:pPr',NS).set('algn','ctr')
+                    rid=deck.rel(slide,'hyperlink',link_target(link,link_base,storage_id),True)
+                    for prop in shape.findall('.//a:rPr',NS):
+                        E.SubElement(prop,q('a:hlinkClick'),{q('r:id'):rid})
             for index, entry in enumerate(batch):
                 sample=samples[entry['sample_id']]
-                put(slide,'Text 5' if index==0 else 'Text 8',entry['display_name']+' - 상 동정 결과',12)
+                put(slide,'Text 5' if index==0 else 'Text 8',entry['display_name']+' - 상 동정 결과',12,dict(tab=entry['sample_id'],field='display_name'))
                 frame=frames[index]; x,y,w,h=box(frame)
                 source=image(sample,'phase_image',entry)
-                if source: deck.picture(slide,source,(x+2,y+2,w-4,h-4),entry['display_name']+' 상매칭')
+                if source: deck.picture(slide,source,(x+2,y+2,w-4,h-4),entry['display_name']+' 상매칭',edit=dict(tab=entry['sample_id'],field='phase_caption'))
                 else:
                     # Same physical RAW values and reference rows as the viewer's rendering path.
                     key=(entry['sample_id'],w,h)
@@ -427,9 +482,10 @@ def render_report_pptx(project, document, resolve_source, *, pages=None, link_ba
                         single['figure']['include']=True; single['figure']['groups']=[]
                         panels=build_plan(project,single)['panels']
                         panel=next((p for p in panels if p['curves']),None)
-                        raw_images[key]=render_panel_png(panel,w-4,h-4) if panel else None
-                    if raw_images[key]: deck.picture(slide,raw_images[key],(x+2,y+2,w-4,h-4),entry['display_name']+' RAW')
+                        raw_images[key]=image_renderer(panel,w-4,h-4) if panel else None
+                    if raw_images[key]: deck.picture(slide,raw_images[key],(x+2,y+2,w-4,h-4),entry['display_name']+' RAW',edit=dict(tab=entry['sample_id'],field='phase_caption'))
                 shape=tables[index]; table=shape.find('.//a:tbl',NS)
+                deck.mark(shape,dict(tab='classes'))
                 original=table.findall('a:tr',NS); prototype=deepcopy(original[1])
                 for row in original[1:]: table.remove(row)
                 widths=[int(c.get('w'))/MM for c in table.find('a:tblGrid',NS)]
@@ -444,16 +500,13 @@ def render_report_pptx(project, document, resolve_source, *, pages=None, link_ba
                     table.append(row)
                 x0,y0,w0,h0=box(shape)
                 place(shape,(x0,y0,w0,sum(int(row.get('h')) for row in table.findall('a:tr',NS))/MM))
-                if include_sources:
-                    for j,link in enumerate(source_links(sample)):
-                        deck.text(slide,link['label']+' ↗',(x,164+j*4,w,4),size=8,color='0A7489',href=link_target(link,link_base,storage_id),name='Source link')
                 if quantitative:
-                    put(slide,'Text 14',entry['display_name']+' - WPPF 정량 결과',12)
+                    put(slide,'Text 14',entry['display_name']+' - WPPF 정량 결과',12,dict(tab=entry['sample_id'],field='display_name'))
                     bx,by,bw,bh=box(named(slide,'Pie frame')[0])
                     quant_image=image(sample,'quantity_image',entry)
                     pie_drawn=False
-                    if quant_image: deck.picture(slide,quant_image,(bx+2,by+2,bw-4,bh-4),entry['display_name']+' 정량 원본')
-                    else: pie_drawn=deck.pie(slide,sample.get('quantities',[]),(bx+3,by+5,bw-6,bh-20))
+                    if quant_image: deck.picture(slide,quant_image,(bx+2,by+2,bw-4,bh-4),entry['display_name']+' 정량 원본',edit=dict(tab=entry['sample_id'],field='quantity_caption'))
+                    else: pie_drawn=deck.pie(slide,sample.get('quantities',[]),(bx+3,by+5,bw-6,bh-20),edit=dict(tab=entry['sample_id'],field='quantity_caption'))
                     if not quant_image and not pie_drawn:
                         text='\n'.join(f"{v['phase']}: {v['raw']} {v['unit']}" for v in sample.get('quantities',[])) or quantity_status(sample)
                         lines=wrap_lines(text,bw-8,11)
@@ -473,30 +526,51 @@ def render_report_pptx(project, document, resolve_source, *, pages=None, link_ba
                     try:
                         if box(shape)[0]>140: remove(shape)
                     except (TypeError,IndexError,AttributeError): pass
+    # Match the supplied sequence: summary, phase+WPPF, then paired phase-only samples.
+    quantitative_entries=[]
     for entry in entries:
         sample=samples[entry['sample_id']]
         has_quantity=bool(sample.get('quantities') or sample.get('reports',{}).get('wppf_report') or entry.get('include_quantity_image'))
         if has_quantity:
-            if plain: details(plain,False);plain=[]
-            details([entry],True)
+            quantitative_entries.append(entry)
         else:
             plain.append(entry)
-            if len(plain)==2: details(plain,False);plain=[]
-    if plain: details(plain,False)
+    for entry in quantitative_entries: details([entry],True)
+    for start in range(0,len(plain),2): details(plain[start:start+2],False)
+    # Keep request/transfer fields and explicitly included extras, AFTER the reference pages.
     for page in pages:
-        if page['kind'] in ('figure','table'): shared_page(page)
+        if page['kind'] in ('cover','figure','table'): shared_page(page)
     for entry in entries:
-        lines=[text+('\n'+evidence if evidence else '') for text,evidence in remarks(entry)]
-        if lines: overflow(entry['display_name']+' 특이사항','\n'.join(lines))
+        for (text,evidence),target in zip(remarks(entry),remark_targets(entry)):
+            overflow(entry['display_name']+' 특이사항',text+('\n'+evidence if evidence else ''),target)
+        for role in ('phase','quantity'):
+            if entry[role+'_caption'].strip():
+                caption=entry[role+'_caption']
+                if caption not in ('원본 상 동정 결과','원본 정량 결과'):
+                    overflow(entry['display_name']+' 특이사항',
+                             ('상 동정 설명: ' if role=='phase' else '정량 설명: ')+caption,
+                             dict(tab=entry['sample_id'],field=role+'_caption'))
     if document['phase_classes']['criteria_text']:
-        overflow('결정상 분류 기준',document['phase_classes']['criteria_text'])
-    for title,text in appendix:
+        overflow('결정상 분류 기준',document['phase_classes']['criteria_text'],dict(tab='classes'))
+    previous_title=None
+    slide=None
+    y=30
+    for title,text,target in appendix:
         lines=wrap_lines(text,245,11)
-        for start in range(0,len(lines),24):
-            slide=deck.slide(blank=True);deck.title(slide,title+(' (계속)' if start else ''))
-            deck.text(slide,'\n'.join(lines[start:start+24]),(15,30,245,136),size=11)
+        continuing=False
+        while lines:
+            if title!=previous_title or y+5>166 or slide is None:
+                slide=deck.slide(blank=True,kind='appendix');deck.title(slide,title+(' (계속)' if continuing else ''))
+                if target: deck.page_info[slide]['edit']=target
+                previous_title=title;y=30
+            count=max(1,int((166-y)/5))
+            part,lines=lines[:count],lines[count:]
+            deck.text(slide,'\n'.join(part),(15,y,245,len(part)*5),size=11,edit=target)
+            y+=len(part)*5+3
+            continuing=True
     for title in dict.fromkeys(deck.long_titles):
         slide=deck.slide(blank=True)
         deck.title(slide,'긴 제목 전체')
         deck.text(slide,title,(15,30,245,136),size=11)
-    return deck.finish(document)
+    deck.number_pages()
+    return deck
