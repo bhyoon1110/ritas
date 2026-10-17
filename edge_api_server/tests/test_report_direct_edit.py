@@ -52,7 +52,8 @@ def test_actual_ppt_regions_keep_source_indices_across_wrapping_and_pages(tmp_pa
         assert counts['section/experiment_conditions/rows/0/0'] == 0  # Common target column omitted in PPT.
         assert counts['section/experiment_conditions/rows/0/2'] >= 1
     with ZipFile(path) as archive:
-        assert 'ppt/media/posco-tem-banner.jpeg' in archive.namelist()
+        assert 'ppt/media/posco-banner.jpeg' in archive.namelist()
+        assert 'ppt/media/rist-logo.png' in archive.namelist()
 
 
 def test_named_fields_are_literal_bounded_and_keep_sample_specific_values():

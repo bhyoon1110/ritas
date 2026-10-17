@@ -80,7 +80,8 @@ python -m ahn.processor \
 ```
 
 PPT 보고서는 `ahn/resources/templates/ahn_tem_template.pptx`를 템플릿으로
-사용한다. TEM/STEM/EDS/코팅층 슬라이드는 템플릿 장표의 배경, 상단
+사용한다. 배경과 좌측 하단 RIST 로고는 XRD 원본 양식의 자산으로 통일하며,
+TEM/STEM/EDS/코팅층 슬라이드는 템플릿 장표의 상단
 `TEM 분석 결과` 영역, 파란 라인, 기본 서식을 복사하고 제목, 이미지, 배율,
 표 데이터만 보고서 생성 시 교체한다.
 STEM EDS 보고서는 Word 1페이지의 기준 이미지를 왼쪽에 크게 배치하고,

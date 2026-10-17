@@ -17,6 +17,7 @@ import tempfile
 import textwrap
 import unicodedata
 import zipfile
+from io import BytesIO
 from datetime import datetime
 from dataclasses import replace
 from pathlib import Path
@@ -38,7 +39,8 @@ from reportlab.platypus import (
 )
 
 from .model import ReportDocument, ReportFigure, ReportSection, ReportTable
-from .posco_template import MEDIA_NAME, load_posco_layout, posco_layout_rels, uses_posco_template
+from .posco_template import html_branding, load_posco_layout, posco_layout_rels, uses_posco_template
+from ahn.report_branding import BANNER_NAME, LOGO_NAME, BANNER_HEIGHT, BANNER_CROP_BOTTOM, brand_assets
 
 PPTX_SLIDE_W = 12192000
 PPTX_SLIDE_H = 6858000
@@ -322,6 +324,7 @@ def _plain_lines(document: ReportDocument) -> list[str]:
 def render_html(document: ReportDocument, path: Path) -> None:
     """외부 자산 없이 열 수 있는 사용자용 HTML 보고서를 만든다."""
     path.parent.mkdir(parents=True, exist_ok=True)
+    brand_header, brand_footer = html_branding() if uses_posco_template(document.experiment_code) else ("", "")
     sections: list[str] = []
     for section in document.sections:
         body = "".join(
@@ -345,10 +348,11 @@ def render_html(document: ReportDocument, path: Path) -> None:
         "body{font-family:Arial,sans-serif;line-height:1.6;margin:40px;max-width:920px}"
         "h1{margin-bottom:4px}h2{margin-top:32px}table{border-collapse:collapse;width:100%}"
         "th,td{border:1px solid #bbb;padding:7px;text-align:left}th{background:#f0f4f8}"
-        "</style></head><body>"
+        ".report-brand-banner svg{display:block}footer{margin-top:32px}"
+        "</style></head><body>" + brand_header +
         f"<h1>{_html_text(document.title)}</h1><p>{metadata}</p>"
         f"<p>{date_label}: {_html_text(date_value)}</p>{''.join(sections)}"
-        "</body></html>",
+        f"{brand_footer}</body></html>",
         encoding="utf-8",
     )
 
@@ -1102,8 +1106,25 @@ def _pdf_figure_story(
 
 
 def _pdf_footer(document: ReportDocument, font_name: str):
+    artwork = brand_assets() if uses_posco_template(document.experiment_code) else None
+
     def draw_footer(pdf_canvas, doc) -> None:
         pdf_canvas.saveState()
+        if artwork:
+            # Match the PPT's original crop without rasterising or changing the
+            # source artwork. Clip the unused lower part of the original JPEG.
+            page_width, page_height = doc.pagesize
+            banner_height = BANNER_HEIGHT / 12700
+            full_height = banner_height / (1 - BANNER_CROP_BOTTOM / 100000)
+            pdf_canvas.saveState()
+            clip = pdf_canvas.beginPath()
+            clip.rect(0, page_height - banner_height, page_width, banner_height)
+            pdf_canvas.clipPath(clip, stroke=0, fill=0)
+            pdf_canvas.drawImage(ImageReader(BytesIO(artwork[BANNER_NAME])), 0,
+                                 page_height - full_height, page_width, full_height)
+            pdf_canvas.restoreState()
+            pdf_canvas.drawImage(ImageReader(BytesIO(artwork[LOGO_NAME])), 68429 / 12700,
+                                 79457 / 12700, 489993 / 12700, 147717 / 12700, mask="auto")
         pdf_canvas.setFont(font_name, 8)
         pdf_canvas.setFillColor(_pdf_color(PPTX_MUTED))
         pdf_canvas.drawString(doc.leftMargin, 12 * mm, "RIST Edge Report")
@@ -1127,7 +1148,7 @@ def render_pdf(
         pagesize=A4,
         rightMargin=18 * mm,
         leftMargin=18 * mm,
-        topMargin=18 * mm,
+        topMargin=(28 if uses_posco_template(document.experiment_code) else 18) * mm,
         bottomMargin=18 * mm,
         title=document.title,
     )
@@ -1175,7 +1196,7 @@ def render_pdf(
 def render_pptx(document: ReportDocument, path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     slides = _pptx_slide_payloads(document)
-    posco_layout = load_posco_layout(PPTX_SLIDE_W) if uses_posco_template(document.experiment_code) else None
+    posco_layout = load_posco_layout(PPTX_SLIDE_W, PPTX_SLIDE_H) if uses_posco_template(document.experiment_code) else None
     with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as archive:
         archive.writestr("[Content_Types].xml", _pptx_content_types(len(slides)))
         archive.writestr("_rels/.rels", _pptx_root_rels())
@@ -1189,7 +1210,8 @@ def render_pptx(document: ReportDocument, path: Path) -> None:
         archive.writestr("ppt/slideLayouts/slideLayout1.xml", posco_layout[0] if posco_layout else _pptx_empty_layout())
         archive.writestr("ppt/slideLayouts/_rels/slideLayout1.xml.rels", posco_layout_rels() if posco_layout else _pptx_layout_rels())
         if posco_layout:
-            archive.writestr(f"ppt/media/{MEDIA_NAME}", posco_layout[1])
+            for name, data in posco_layout[1].items():
+                archive.writestr(f"ppt/media/{name}", data)
         for idx, slide in enumerate(slides, start=1):
             archive.writestr(f"ppt/slides/slide{idx}.xml", slide["xml"])
             archive.writestr(f"ppt/slides/_rels/slide{idx}.xml.rels", slide["rels"])
@@ -1639,7 +1661,7 @@ def _pptx_posco_banner_title(document: ReportDocument) -> str:
     return _pptx_text_shape(
         2, "Experiment banner title", x=254000, y=160020,
         cx=8500000, cy=400050, lines=[f"{experiment} 분석 결과"],
-        font_size=2000, color="FFFFFF", bold=True, inset=0,
+        font_size=2000, color=PPTX_NAVY, bold=True, inset=0,
     )
 
 

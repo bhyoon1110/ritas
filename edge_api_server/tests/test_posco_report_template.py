@@ -9,6 +9,7 @@ import pytest
 
 from app.report import posco_template, renderers
 from app.report.model import ReportDocument, ReportFigure, ReportSection, ReportTable
+from ahn import report_branding
 
 
 NS = posco_template.NS
@@ -36,23 +37,28 @@ def sample_document(code: str, image: Path) -> ReportDocument:
 
 
 @pytest.mark.parametrize("code", ["FTIR", "FT-IR", "IR", "RAMAN", "RIN", "RIN-RAMAN"])
-def test_spectrum_ppt_reuses_tem_background_without_sample_payload(tmp_path, code):
+def test_spectrum_ppt_reuses_original_artwork_without_sample_payload(tmp_path, code):
     image = tmp_path / "graph.jpeg"
     image.write_bytes(b"report graph fixture")
     output = tmp_path / "report.pptx"
     renderers.render_pptx(sample_document(code, image), output)
-    with ZipFile(posco_template.TEMPLATE_PATH) as source, ZipFile(output) as report:
+    source_path = Path(__file__).parents[1] / "app/xrd_workbench/render/assets/posco_xrd_a4.pptx"
+    with ZipFile(source_path) as source, ZipFile(output) as report:
         # Byte-for-byte reuse, once per report, under a non-conflicting name.
         assert report.read(f"ppt/media/{posco_template.MEDIA_NAME}") == source.read("ppt/media/image1.jpeg")
+        assert report.read(f"ppt/media/{report_branding.LOGO_NAME}") == source.read("ppt/media/image2.png")
         assert report.read("ppt/media/image1.jpg") == image.read_bytes()
-        assert len([n for n in report.namelist() if n.startswith("ppt/media/")]) == 2
+        assert len([n for n in report.namelist() if n.startswith("ppt/media/")]) == 3
         assert not any("notesSlides/" in n or n.endswith(".tiff") for n in report.namelist())
         layout = ET.fromstring(report.read("ppt/slideLayouts/slideLayout1.xml"))
         assert not layout.findall(".//a:t", NS)  # No TEM sample text or / 22 footer.
         picture = layout.find("p:cSld/p:spTree/p:pic", NS)
-        assert picture.find("p:blipFill/a:srcRect", NS).get("b") == "88292"
-        assert picture.find("p:spPr/a:xfrm", NS).get("flipH") == "1"
+        assert picture.find("p:blipFill/a:srcRect", NS).get("b") == "88460"
+        assert picture.find("p:spPr/a:xfrm", NS).get("flipH") is None
         assert picture.find("p:spPr/a:xfrm/a:ext", NS).get("cx") == str(renderers.PPTX_SLIDE_W)
+        logo = layout.findall("p:cSld/p:spTree/p:pic", NS)[1]
+        assert logo.find("p:nvPicPr/p:cNvPr", NS).get("name") == "RIST logo"
+        assert logo.find("p:spPr/a:xfrm/a:ext", NS).attrib == {"cx": "489993", "cy": "147717"}
         slide_names = [n for n in report.namelist() if n.startswith("ppt/slides/slide") and n.endswith(".xml")]
         assert len(slide_names) >= 8
         all_text = []
@@ -104,10 +110,42 @@ def test_other_report_types_keep_their_original_style(tmp_path, monkeypatch, cod
         assert b'Left accent' in report.read("ppt/slides/slide1.xml")
 
 
-def test_missing_template_fails_before_writing_report(tmp_path, monkeypatch):
+def test_missing_artwork_fails_before_writing_report(tmp_path, monkeypatch):
     posco_template.load_posco_layout.cache_clear()
-    monkeypatch.setattr(posco_template, "TEMPLATE_PATH", tmp_path / "missing.pptx")
+    report_branding.brand_assets.cache_clear()
+    monkeypatch.setattr(report_branding, "ASSET_DIR", tmp_path / "missing")
     output = tmp_path / "report.pptx"
     with pytest.raises(FileNotFoundError):
         renderers.render_pptx(sample_document("FTIR", tmp_path / "absent.png"), output)
     assert not output.exists()
+
+
+@pytest.mark.parametrize("code", ["FTIR", "RAMAN"])
+def test_standalone_pdf_has_artwork_on_every_page(tmp_path, code):
+    import pdfplumber
+
+    document = sample_document(code, tmp_path / "absent.png")
+    document.figures = []
+    document.sections.append(ReportSection("long", "추가 내용", paragraphs=["분석 검토 " * 500]))
+    output = tmp_path / "report.pdf"
+    renderers.render_pdf(document, output)
+    with pdfplumber.open(output) as pdf:
+        assert len(pdf.pages) > 1
+        for page in pdf.pages:
+            # PDF includes both original images, even on continuation pages.
+            assert len(page.images) == 2
+            assert all(char["top"] >= 18.3 * 72 / 25.4 for char in page.chars)
+
+
+@pytest.mark.parametrize("code", ["FTIR", "RAMAN"])
+def test_non_slide_html_export_embeds_artwork_offline(tmp_path, code):
+    from base64 import b64encode
+
+    document = sample_document(code, tmp_path / "absent.png")
+    path = tmp_path / "report.html"
+    renderers.render_html(document, path)
+    content = path.read_text()
+    for name, data in report_branding.brand_assets().items():
+        assert content.count(b64encode(data).decode("ascii")) == 1
+    assert 'alt="RIST"' in content and 'viewBox="0 0 2000 173.1"' in content
+    assert "REQ-POSCO-001" in content and "편집한 문안을 유지합니다." in content

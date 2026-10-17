@@ -171,6 +171,35 @@ def _base_project(root: Path) -> dict:
     }
 
 
+@pytest.mark.parametrize("template_available", [True, False])
+def test_report_branding_keeps_content_and_original_logo(tmp_path, monkeypatch, template_available):
+    from ahn import ppt_report, report_branding
+
+    if not template_available:
+        monkeypatch.setattr(ppt_report, "TEMPLATE_PATH", tmp_path / "missing.pptx")
+    project = _project_with_sections(tmp_path, {"tem", "stem", "coating"})
+    output = build_pptx(project, tmp_path / "branded.pptx")
+    prs = Presentation(output)
+    assert len(prs.slides) == 3
+    for slide in prs.slides:
+        pictures = {shape.name: shape for shape in slide.slide_layout.shapes if shape.shape_type == 13}
+        assert set(pictures) == {"POSCO background", "RIST logo"}
+        assert pictures["POSCO background"].image.blob == report_branding.brand_assets()[report_branding.BANNER_NAME]
+        logo = pictures["RIST logo"]
+        assert logo.image.blob == report_branding.brand_assets()[report_branding.LOGO_NAME]
+        assert (logo.width, logo.height) == (489993, 147717)
+        assert logo.top + logo.height < prs.slide_height
+        # Branding is inherited, not inserted into the image/table content list.
+        assert not any(shape.name == "RIST logo" for shape in slide.shapes)
+        for shape in slide.shapes:
+            if getattr(shape, "has_text_frame", False) and 0 <= shape.top < Inches(0.7):
+                for paragraph in shape.text_frame.paragraphs:
+                    assert all(run.font.color.rgb == ppt_report.NAVY for run in paragraph.runs)
+    # Reapplying the layout must not duplicate logos or backgrounds.
+    ppt_report._apply_report_branding(prs)
+    assert len([s for s in prs.slide_layouts[0].shapes if s.shape_type == 13]) == 2
+
+
 def _project_with_sections(root: Path, sections: set[str]) -> dict:
     image_path = root / "image.png"
     _write_image(image_path)

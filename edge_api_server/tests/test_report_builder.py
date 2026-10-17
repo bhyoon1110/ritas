@@ -830,7 +830,9 @@ def test_pptx_renderer_creates_openxml_package(tmp_path) -> None:
                 ET.fromstring(archive.read(name))
     assert 'type="screen16x9"' in presentation
     assert "<p:clrMap " in master
-    assert "<p:clrMapOvr>" in layout
+    assert ET.fromstring(layout).find(
+        "{http://schemas.openxmlformats.org/presentationml/2006/main}clrMapOvr"
+    ) is not None
     assert theme.count("<a:effectStyle>") >= 3
     assert 'anchor="mid"' not in package_xml
     assert "분석 요약" in slide_text

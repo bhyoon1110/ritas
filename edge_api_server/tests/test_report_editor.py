@@ -136,7 +136,8 @@ def test_blank_fields_edit_revision_and_recipient_integrity(prepared, monkeypatc
             texts = ppt_text(ppt)
             assert 'REQ-REVIEW' in texts and 'LIMS-001' in texts
             assert '분석자가확인한피크' in ''.join(texts.split())
-            assert 'ppt/media/posco-tem-banner.jpeg' in ppt.namelist()
+            assert 'ppt/media/posco-banner.jpeg' in ppt.namelist()
+            assert 'ppt/media/rist-logo.png' in ppt.namelist()
             assert 'Experiment banner title' in ppt.read('ppt/slides/slide1.xml').decode()
     revision_document = report_editor._load_document(h.store.get(revised['jobId']))
     assert revision_document.experiment_code == ('FT-IR' if h.kind == 'ftir' else 'RAMAN')
@@ -252,7 +253,8 @@ def test_initial_lims_code_does_not_replace_project_or_posco_template(tmp_path, 
     path = tmp_path / 'initial.pptx'
     render_pptx(document, path)
     with zipfile.ZipFile(path) as ppt:
-        assert 'ppt/media/posco-tem-banner.jpeg' in ppt.namelist()
+        assert 'ppt/media/posco-banner.jpeg' in ppt.namelist()
+        assert 'ppt/media/rist-logo.png' in ppt.namelist()
         assert 'TST-123' in ppt_text(ppt)
 
 

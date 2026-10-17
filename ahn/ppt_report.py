@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+from io import BytesIO
 import re
 import tempfile
 import xml.etree.ElementTree as ET
@@ -15,6 +16,7 @@ from zipfile import ZipFile
 from PIL import Image, ImageChops, ImageDraw, ImageFont, ImageOps, ImageStat
 
 from .docx_extract import extract_docx
+from .report_branding import brand_assets, brand_pictures
 
 
 def _require_pptx():
@@ -167,6 +169,7 @@ class AhnTemplate:
         self.source = Presentation(path)
         self.output = Presentation(path)
         _strip_layout_footer(self.output)
+        _apply_report_branding(self.output)
         _clear_slides(self.output)
 
     def source_slide(self, key: str):
@@ -211,6 +214,13 @@ class AhnTemplate:
 
         _strip_template_payload(slide, key)
         _replace_template_title(slide, title)
+        # The new source banner is light on the left. The old TEM template
+        # used white title text, which would disappear against this artwork.
+        for shape in slide.shapes:
+            if getattr(shape, "has_text_frame", False) and 0 <= shape.top < Inches(0.7):
+                for paragraph in shape.text_frame.paragraphs:
+                    for run in paragraph.runs:
+                        run.font.color.rgb = NAVY
         return slide
 
 
@@ -220,6 +230,27 @@ def _strip_layout_footer(prs) -> None:
             text = _shape_text(shape)
             if "‹#›" in text or "<#>" in text or ("/ 22" in text and shape.top > Inches(6.5)):
                 _remove_shape(shape)
+
+
+def _apply_report_branding(prs) -> None:
+    """Replace only layout decorations; leave all TEM content slots unchanged."""
+    from pptx.oxml import parse_xml
+
+    assets = brand_assets()
+    for layout in prs.slide_layouts:
+        for shape in list(layout.shapes):
+            # The bundled TEM layout contains one cropped banner and no body
+            # images. Never remove arbitrary pictures belonging to a user slide.
+            if shape.name in {"POSCO background", "RIST logo"} or (
+                shape.shape_type == PICTURE_SHAPE_TYPE and shape.top <= 0
+                and shape.width >= prs.slide_width and shape.height <= Inches(0.8)
+            ):
+                _remove_shape(shape)
+        next_id = max((int(node.get("id")) for node in layout.element.xpath(".//p:cNvPr")), default=1) + 1
+        for picture in brand_pictures(prs.slide_width, prs.slide_height):
+            _, rid = layout.part.get_or_add_image_part(BytesIO(assets[picture.media]))
+            layout.shapes._spTree.insert_element_before(parse_xml(picture.xml(next_id, rid)), "p:extLst")
+            next_id += 1
 
 
 def _strip_template_payload(slide, key: str) -> None:
@@ -295,7 +326,7 @@ def _add_header(slide, section_title: str) -> None:
     _add_text(
         slide,
         "TEM 분석 결과",
-        Inches(10.35),
+        Inches(0.25),
         Inches(0.18),
         Inches(2.5),
         Inches(0.35),
@@ -307,14 +338,14 @@ def _add_header(slide, section_title: str) -> None:
         slide,
         f"■ {section_title}",
         Inches(0.35),
-        Inches(0.42),
+        Inches(0.80),
         Inches(9.6),
-        Inches(0.48),
-        size=20,
+        Inches(0.42),
+        size=16,
         bold=True,
         color=NAVY,
     )
-    line = slide.shapes.add_shape(1, Inches(0.35), Inches(1.02), Inches(12.55), Inches(0.02))
+    line = slide.shapes.add_shape(1, Inches(0.35), Inches(1.24), Inches(12.55), Inches(0.02))
     line.fill.solid()
     line.fill.fore_color.rgb = BLUE
     line.line.color.rgb = BLUE
@@ -1939,6 +1970,7 @@ def build_pptx(project: Any, output_path: str | Path) -> Path:
         prs = Presentation()
         prs.slide_width = SLIDE_W
         prs.slide_height = SLIDE_H
+        _apply_report_branding(prs)
 
     with tempfile.TemporaryDirectory(prefix="ahn-pptx-") as tmp:
         tmp_dir = Path(tmp)
