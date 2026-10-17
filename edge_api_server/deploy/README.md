@@ -36,6 +36,14 @@ worker 를 start 하면 vLLM compose 스택도 함께 올라온다(선택 의존
 실패한다. 가상환경은 저장소 루트(`/home/rist/ritas/.venv`)에 하나만 두고
 `common` 과 `edge_api_server` 가 공유한다.
 
+### XRD 미리보기 오류의 폐쇄망 복구
+
+`No module named 'matplotlib'` 복구용 Linux ARM64 / Python 3.12 wheel 11개와
+오프라인 설치기를 저장소에 포함했다. Git 코드 업데이트만으로는 가상환경에 설치되지 않는다.
+[OFFLINE_XRD.md](OFFLINE_XRD.md)의 USB 배포·서비스 중지·검증·복원 순서를 따른다.
+설치기는 환경/해시/의존성을 검사하고 가상환경을 백업하며, 실패 시 원래 경로로 복원한다.
+전체 서버/OCR/GPU/모델 신규 설치 패키지가 아니며 기존 데이터/DB/인증 설정을 변경하지 않는다.
+
 ### 보고서 전송 큐 DB 생성
 
 최초 설치처럼 기존 큐 데이터를 보존하면서 없는 테이블만 생성할 때는 일반 DDL을

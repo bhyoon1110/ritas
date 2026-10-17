@@ -244,7 +244,8 @@ Windows는 클라이언트 대상입니다. Python 3.11 이상이 필요합니�
 3. 서버 가상환경에서 `edge_api_server/requirements.txt`를 반영합니다.
    신규 추가 의존성은 검증 버전 `matplotlib==3.11.2`입니다.
    폐쇄망이면 서버의 OS/CPU/Python 버전에 맞는 wheel과 전이 의존성을 USB로 가져와 설치합니다.
-   Git bundle에는 pip 패키지가 들어가지 않습니다.
+   이제 오류 복구용 wheel 11개를 저장소에 포함했으므로 최신 main 전체 bundle에도 포함됩니다.
+   다만 Git 업데이트만으로 가상환경에 설치되지는 않으므로 아래 오프라인 설치 단계를 실행합니다.
 4. 기존 API 서버와 C# 보고서 worker를 재시작합니다. DB 계정·SSO·공유 저장소 설정은 그대로 사용합니다.
 5. XRD 권한 계정으로 `/xrd`를 열고 합성/비민감 시료로 업로드, 단계 이동, 저장, 다운로드를 확인합니다.
 6. 실제 의뢰 조회·SSO 인증 후 테스트 의뢰 ZIP 한 건이 큐와 Spring에서 처리되는지 확인합니다.
@@ -255,7 +256,7 @@ Windows는 클라이언트 대상입니다. Python 3.11 이상이 필요합니�
 
 ### matplotlib 누락 복구 및 재배포 점검
 
-`git pull`/USB bundle은 소스만 옮깁니다. 서비스의 Python 가상환경에 패키지를 따로
+`git pull`/USB bundle은 추적 파일을 옮기며 Python 가상환경을 설치하지는 않습니다. 서비스의 Python 가상환경에 패키지를 따로
 설치해야 합니다. 아래는 `/home/rist/ritas/.venv`를 사용하는 기본 배포 기준입니다.
 다른 서비스 구성이라면 먼저 `systemctl cat rist-edge-api.service`의 `ExecStart`를 확인하고
 그 인터프리터를 사용하세요. 사용자 설정/DB/저장소를 다시 만들 필요는 없습니다.
@@ -269,24 +270,25 @@ cd /home/rist/ritas/edge_api_server
 ../.venv/bin/python -m app.xrd_workbench.preflight
 ```
 
-폐쇄망이라면 **같은 Linux CPU 아키텍처 및 Python 3.12 환경**의 인터넷 가능한
-준비 PC/컨테이너에서 다음과 같이 의존 wheel도 함께 받습니다. 실제 서버 Python이
-다르면 그 버전에 맞춥니다. Mac/Windows의 기본 wheel을 그대로 복사하면 안 됩니다.
+폐쇄망 EdgeXpert GB10 / DGX Spark의 **Linux ARM64 · CPython 3.12**는 저장소에 포함한
+`edge_api_server/deploy/offline/xrd-cp312-linux-aarch64/`의 wheel 11개를 사용합니다.
+준비/실제 서버 환경이 다르면 설치기는 중단합니다. OS/Python을 억지로 바꾸거나
+Mac/Windows wheel을 복사하지 마세요.
+
+전체 USB 배포 명령과 백업·복원 안내는
+[오프라인 복구 안내](edge_api_server/deploy/OFFLINE_XRD.md)를 따릅니다.
+최신 코드를 적용하고 API/worker를 중지한 후 저장소 루트에서 실행합니다.
 
 ```bash
-python3.12 -m pip download --only-binary=:all: --dest /tmp/rist-xrd-wheels matplotlib==3.11.2
+cd /home/rist/ritas
+bash edge_api_server/deploy/install_offline_xrd.sh check
+bash edge_api_server/deploy/install_offline_xrd.sh install --confirm-services-stopped
+bash edge_api_server/deploy/install_offline_xrd.sh verify
 ```
 
-승인된 절차로 폴더를 USB에 복사한 후 Edge에서 실행합니다. 아래 `/media/usb/rist-xrd-wheels`는
-예시이므로 실제 USB 경로로 바꿉니다. 설치 실패/누락 wheel은 원인을 확인하고 준비 PC에서
-보완하며, `--no-deps`나 인증서 검증 해제로 우회하지 않습니다.
-
-```bash
-cd /home/rist/ritas/edge_api_server
-../.venv/bin/python -m pip install --no-index --find-links=/media/usb/rist-xrd-wheels matplotlib==3.11.2
-../.venv/bin/python -m pip check
-../.venv/bin/python -m app.xrd_workbench.preflight
-```
+기존 버전 변경이 있으면 기본 중단합니다. 계획을 검토한 뒤에만 `--allow-version-changes`를
+추가합니다. 설치 실패 시 가상환경을 복원하고 실패 환경도 보존합니다. 서비스/DB/데이터를
+자동 변경하지 않습니다. 전체 서버 신규 설치용 wheel 세트는 아닙니다.
 
 점검 성공 후 진행 중인 분석/전송이 없는 유지보수 시간에 기본 API/worker 서비스를 재시작하고,
 같은 프로젝트에서 보고서 편집/미리보기/내보내기를 다시 확인합니다. 서비스 이름을 바꾼 서버는

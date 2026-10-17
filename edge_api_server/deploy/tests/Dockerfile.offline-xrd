@@ -1,0 +1,5 @@
+# Preparation only: the subsequent test container runs with --network none.
+FROM ubuntu:24.04
+ENV DEBIAN_FRONTEND=noninteractive PYTHONDONTWRITEBYTECODE=1
+RUN apt-get update && apt-get install -y --no-install-recommends python3.12 python3.12-venv ca-certificates
+RUN python3.12 -m venv /opt/baseline && /opt/baseline/bin/python -m pip install --index-url https://pypi.org/simple reportlab==4.4.9 pdfplumber==0.11.8 python-pptx==1.0.2 plotly==5.24.1 pytest==8.3.5 pillow==13.0.0 packaging==26.3
