@@ -58,6 +58,15 @@ export function projectOptionsHTML(list, currentId) {
   );
 }
 
+// Start a fresh screen, never delete projects, drafts, uploads or source files.
+export async function resetWorkspace(host = window, navigate = (url) => { location.href = url; }) {
+  if (host.xrdCanReset && !(await host.xrdCanReset())) return false;
+  if (!host.confirm('새 작업을 시작하도록 화면을 초기화할까요? 저장된 프로젝트·보고서·원본 파일은 삭제하지 않습니다.')) return false;
+  if (host.xrdBeforeLeave && !(await host.xrdBeforeLeave())) return false;
+  navigate(apiUrl('/?step=upload&fresh=1'));
+  return true;
+}
+
 // ---- DOM (browser only)
 const state = { step: '', project: '', list: [], status: {} };
 let projectListRequest = 0;
@@ -136,7 +145,7 @@ export async function mountShell() {
   nav.innerHTML =
     '<div class="shellTop"><div class="shellBrand">XRD 분석·보고서</div>' +
     '<label class="shellLabel">프로젝트<select id="shellProject" aria-label="프로젝트"></select></label>' +
-    '<span id="shellState" class="shellState"></span><button id="shellSettings" class="shellSettings">설정</button>' +
+    '<span id="shellState" class="shellState"></span><button id="shellReset" type="button" title="저장된 자료를 보존하고 새 작업 시작">초기화</button><button id="shellSettings" class="shellSettings">설정</button>' +
     '<button id="shellAccountToggle" aria-controls="shellAccount" aria-expanded="false">회원·지원</button></div>' +
     '<div id="shellSteps" class="shellSteps"></div>';
   body.append(nav, main);
@@ -161,6 +170,12 @@ export async function mountShell() {
     } catch (error) { window.alert(error.message); }
   };
   body.classList.add('withShell');
+  $('shellReset').onclick = async () => {
+    $('shellReset').disabled = true;
+    try { await resetWorkspace(); }
+    catch (error) { window.alert('초기화하지 못했습니다: ' + error.message); }
+    finally { $('shellReset').disabled = false; }
+  };
   render();
   $('shellSteps').onclick = (event) => {
     const link = event.target.closest('[data-step]');

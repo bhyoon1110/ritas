@@ -193,14 +193,12 @@ def build_report_router(project_loader, source_loader, store):
 
     @router.get('/api/reports/{storage_id}/pptx')
     def pptx(storage_id: str, revision: int, request: Request):
-        from ..render.layout import build_pages
-        from ..render.pptx import render_pptx
+        from ..render.posco_pptx import render_report_pptx
 
         project, document = saved_context(storage_id, revision)
         try:
-            data = render_pptx(
-                build_pages(project, document, lambda fid: source_loader(storage_id, fid)),
-                document,
+            data = render_report_pptx(
+                project, document, lambda fid: source_loader(storage_id, fid),
                 link_base=str(request.base_url),
                 storage_id=storage_id,
             )

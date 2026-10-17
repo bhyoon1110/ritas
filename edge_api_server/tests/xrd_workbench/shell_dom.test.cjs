@@ -44,6 +44,20 @@ function setup(t, mode, handler, project='') {
 }
 
 for (const mode of Object.keys(programs)) {
+  test(`${mode}: reset is visible and cancellation never changes current data`, async t => {
+    const ui=setup(t,mode,url=>response(url==='/api/projects'?[{storage_id:'saved',label:'Saved'}]:{document:{revision:0}}),'saved');
+    await flush();
+    ui.w.localStorage.setItem('keep-report','draft');
+    ui.w.confirm=()=>false;
+    const button=ui.d.getElementById('shellReset');
+    assert.equal(button.textContent,'초기화');
+    button.click();await flush();
+    assert.equal(ui.select.value,'saved');
+    assert.equal(ui.w.localStorage.getItem('keep-report'),'draft');
+    assert.equal(button.disabled,false);
+    assert.ok(ui.calls.every(c=>!c.options?.method||c.options.method==='GET'));
+    assert.deepEqual(ui.errors,[]);
+  });
   test(`${mode}: newly imported project is selected without reload`, async t => {
     let projects=[];
     const ui=setup(t, mode, async url => response(url==='/api/projects' ? projects : {document:{revision:0}}));

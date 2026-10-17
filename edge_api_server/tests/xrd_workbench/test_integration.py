@@ -116,6 +116,12 @@ def test_chunk_import_review_and_all_exports(tmp_path):
                 assert b'<script src="/' not in z.read('뷰어.html')
                 assert b'<script nomodule>' in z.read('뷰어.html')
                 assert b'<script type="module">' in z.read('뷰어.html')
+                with zipfile.ZipFile(io.BytesIO(z.read('보고서.pptx'))) as ppt:
+                    assert b'cx="9906000"' in ppt.read('ppt/presentation.xml')
+        elif kind == 'pptx':
+            with zipfile.ZipFile(io.BytesIO(result.content)) as ppt:
+                assert b'cx="9906000"' in ppt.read('ppt/presentation.xml')
+                assert b'cy="6858000"' in ppt.read('ppt/presentation.xml')
 
 
 def test_access_is_scoped_for_projects_files_sessions_jobs_and_presets(tmp_path):

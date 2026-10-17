@@ -7,7 +7,7 @@ from copy import deepcopy
 from ..render.html import render_html
 from ..render.layout import archive_path, build_pages
 from ..render.pdf import render_pdf
-from ..render.pptx import render_pptx
+from ..render.posco_pptx import render_report_pptx
 from ..render.viewer_export import export_html
 from ..render.viewer_state import prepare_state, prepare_views
 
@@ -31,7 +31,8 @@ def build_package(project, document, resolve_source, viewer_state=None, views=No
     manifest = []
     with zipfile.ZipFile(output, 'w', zipfile.ZIP_DEFLATED, compresslevel=6) as archive:
         archive.writestr('보고서.pdf', render_pdf(pages, document))
-        archive.writestr('보고서.pptx', render_pptx(pages, document))
+        archive.writestr('보고서.pptx', render_report_pptx(project, document, resolve_source,
+                                                    pages=pages, include_sources=include_sources))
         archive.writestr('보고서.html', render_html(pages, document, 'package'))
         archive.writestr('뷰어.html', export_html(filtered, display, display_views))
         # Explicit directory entries even when a selected sample has no PDF.

@@ -69,6 +69,11 @@ $('cancelUpload').onclick=async()=>{
 $('uploadPause').onclick=()=>{uploadPaused=true;$('uploadPause').disabled=true;$('uploadError').textContent='현재 조각 전송/진단이 끝난 뒤 멈춥니다. 이어서 전송할 수 있습니다.';};
 $('uploadDialog').addEventListener('cancel',e=>{if(uploadBusy)e.preventDefault();});
 window.addEventListener('beforeunload',e=>{if(uploadBusy){e.preventDefault();e.returnValue='';}});
+window.xrdCanReset = () => {
+  if (!uploadBusy) return true;
+  window.alert('파일 전송·진단 중입니다. 업로드 일시정지 후 초기화하세요. 중단된 전송은 이어서 진행할 수 있습니다.');
+  return false;
+};
 $('rawExample').onclick=()=>download(new Blob(['#Intensity_unit=cps\n10.00 125\n10.02 138\n10.04 142\n'],{type:'text/plain;charset=utf-8'}),'XRD-Raw-example.txt');
 let project,
   state,
@@ -777,6 +782,9 @@ async function start() {
         throw new Error('등록 프로젝트를 열지 못했습니다.');
       }
       await loadProject(value);
+    } else if (new URLSearchParams(location.search).get('fresh') === '1') {
+      $('emptyState').hidden = false;
+      message('새 작업입니다. 파일을 선택하여 시작하세요. 저장된 프로젝트는 상단 목록에서 다시 열 수 있습니다.');
     } else await openExample();
     if (new URLSearchParams(location.search).get('step') === 'upload') openUpload();
   }

@@ -556,6 +556,11 @@ $('fit').onclick = () => {
   $('pageFrame').style.width = '100%';
 };
 // Leaving this step (sidebar, project switch, next button) with an unsaved review asks first.
+window.xrdCanReset = () => {
+  if (!busy) return true;
+  window.alert('분석 자료 저장·처리 중입니다. 완료된 뒤 초기화하세요.');
+  return false;
+};
 window.xrdBeforeLeave = async () =>
   !dirty || confirm('저장하지 않은 검토가 있습니다. 저장하지 않고 이동할까요?');
 $('nextStep').onclick = async () => {

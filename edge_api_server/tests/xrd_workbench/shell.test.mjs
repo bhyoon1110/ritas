@@ -1,6 +1,24 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { STEPS, projectOptionsHTML, stepHref, stepsHTML } from '../../app/xrd_workbench/web/shared/shell.mjs';
+import { STEPS, projectOptionsHTML, stepHref, stepsHTML, resetWorkspace } from '../../app/xrd_workbench/web/shared/shell.mjs';
+
+test('reset starts a fresh upload without deleting any project or draft', async () => {
+  const destinations=[], prompts=[];
+  const host={confirm:msg=>{prompts.push(msg);return true;},xrdBeforeLeave:async()=>true};
+  assert.equal(await resetWorkspace(host,url=>destinations.push(url)),true);
+  assert.deepEqual(destinations,['/?step=upload&fresh=1']);
+  assert.match(prompts[0],/삭제하지 않습니다/);
+});
+
+test('reset respects busy state, confirmation cancellation and unsaved-change guard', async () => {
+  for (const veto of ['busy','confirm','dirty']) {
+    let navigated=false, confirmed=false;
+    const host={xrdCanReset:()=>veto!=='busy',confirm:()=>{confirmed=true;return veto!=='confirm';},xrdBeforeLeave:async()=>veto!=='dirty'};
+    assert.equal(await resetWorkspace(host,()=>{navigated=true;}),false);
+    assert.equal(navigated,false);
+    if(veto==='busy')assert.equal(confirmed,false);
+  }
+});
 
 test('the five steps are in order and point at their pages with the project', () => {
   assert.deepEqual(

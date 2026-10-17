@@ -476,7 +476,7 @@ def export_report(sid: str, payload: dict):
         from .render.layout import build_pages
         from .render.html import render_html
         from .render.pdf import render_pdf
-        from .render.pptx import render_pptx
+        from .render.posco_pptx import render_report_pptx
         from .render.package import build_package
         source = lambda fid: state.storage.files.read_source(sid, fid)
         output = directory / ('report.html' if kind == 'preview' else 'report.' + kind)
@@ -502,9 +502,11 @@ def export_report(sid: str, payload: dict):
                     raise ValueError('미리보기가 32MB를 초과했습니다. 시료를 나누거나 PDF/PPTX로 다운로드하세요.')
                 output.write_text(content, encoding='utf-8')
             else:
-                render = render_pdf if kind == 'pdf' else render_pptx
                 base = state.settings.edge_public_base_url.rstrip('/') + BASE + '/'
-                output.write_bytes(render(pages, document, link_base=base, storage_id=sid))
+                data = (render_pdf(pages, document, link_base=base, storage_id=sid) if kind == 'pdf'
+                        else render_report_pptx(project, document, source, pages=pages,
+                                                link_base=base, storage_id=sid))
+                output.write_bytes(data)
         return dict(storage_id=sid, revision=document['revision'],
                     analysis_revision=project.get('analysis_revision', 0), filename=output.name,
                     transfer=transfer)

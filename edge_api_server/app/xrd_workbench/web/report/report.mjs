@@ -944,6 +944,11 @@ window.xrdLocalStep = (value) => {
   setStep(value);
   return true;
 };
+window.xrdCanReset = () => {
+  if (!busy) return true;
+  window.alert('저장·보고서 처리 중입니다. 완료된 뒤 초기화하세요.');
+  return false;
+};
 window.xrdBeforeLeave = async () => {
   if (!dirty) return true;
   if (confirm('저장하지 않은 변경이 있습니다. 저장하고 이동할까요?')) {
