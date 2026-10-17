@@ -716,6 +716,11 @@ footer {
 }
 
 /* Editing and the same-layout report preview stay together, not in separate steps. */
+.draftRecovery { display:flex; flex-wrap:wrap; align-items:center; flex:none; padding:6px 14px; background:#fff9e9; color:#594c30; font-size:13px; }
+.draftRecovery > * {
+  margin-bottom: 8px;
+  margin-right: 8px;
+}
 body.withShell[data-step=report] main { display:flex; grid-template-columns:minmax(0, .9fr) minmax(0, 1.1fr); grid-template-rows:auto minmax(0,1fr); min-height:0; overflow:hidden; flex-wrap: wrap; }
 body.withShell[data-step=report] main > * {
   flex: 0 1 calc(50% - 12px);

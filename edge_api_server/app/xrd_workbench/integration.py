@@ -22,7 +22,7 @@ from urllib.parse import urlsplit
 import uuid
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.routing import APIRoute
 from starlette.concurrency import run_in_threadpool
 
@@ -41,6 +41,7 @@ from .routes.analysis import build_analysis_router
 from .routes.presets import build_preset_router
 from .routes.projects import build_project_router
 from .routes.reports import build_report_router
+from .routes.drafts import build_draft_router
 
 BASE = '/api/v1/xrd/workbench'
 WEB = Path(__file__).parent / 'web'
@@ -150,6 +151,7 @@ reports.routes = [r for r in reports.routes if not r.path.endswith(('/pdf', '/pp
 router.include_router(projects)
 router.include_router(build_analysis_router(proxy.files.load_source, proxy.files.read_source, proxy.reviews))
 router.include_router(reports)
+router.include_router(build_draft_router(current.get))
 router.include_router(build_preset_router(proxy.presets))
 
 
@@ -169,6 +171,8 @@ def read_session(state, sid):
         value = json.loads((directory / 'session.json').read_text())
     except FileNotFoundError:
         raise HTTPException(404, '업로드가 만료되었거나 본인의 작업이 아닙니다.')
+    if value.get('canceled'):
+        raise HTTPException(410, '취소한 업로드입니다. 새 작업으로 등록하세요.')
     if time.time() - value['updated_at'] > 7200 and not value.get('job_id'):
         raise HTTPException(410, '업로드 시간이 만료되었습니다. 다시 등록하세요.')
     files = {}
@@ -184,7 +188,9 @@ def read_session(state, sid):
 
 
 def save_session(session, job_id=None):
-    value = dict(created_at=session.created_at, updated_at=time.time(), job_id=job_id, files={})
+    path = session.work_dir / 'session.json'
+    value = json.loads(path.read_text()) if path.is_file() else {}
+    value.update(created_at=session.created_at, updated_at=time.time(), job_id=job_id, files={})
     for name, item in session.files.items():
         value['files'][name] = dict(stored_name=str(item.stored_path),
             total_size=item.total_size, uploaded_bytes=item.uploaded_bytes, completed=item.completed)
@@ -202,11 +208,122 @@ def create_upload():
     return dict(upload_id=sid)
 
 
+@router.get('/api/upload-sessions')
+def pending_uploads():
+    state = current.get()
+    results = []
+    for path in sorted((state.home / 'sessions').glob('*/session.json'), key=lambda p:p.stat().st_mtime, reverse=True):
+        value = json.loads(path.read_text())
+        if value.get('canceled') or time.time()-value['updated_at'] > 7200:
+            continue
+        if value.get('job_id') and read_job(state, value['job_id'])['status'] == 'completed':
+            continue
+        results.append(dict(upload_id=path.parent.name, updated_at=value['updated_at'],
+                            filenames=list(value['files'])))
+        if len(results) == 20:
+            break
+    return JSONResponse(results, headers=NO_STORE)
+
+
+def session_progress(session):
+    """Recover an acknowledged offset from disk; hash only the stored prefix in bounded blocks."""
+    result = []
+    for name, item in session.files.items():
+        destination, partial = session.input_root / item.stored_path, session.input_root / item.temp_path
+        path = destination if destination.is_file() else partial
+        size = path.stat().st_size if path.is_file() else 0
+        if size > item.total_size or (path == destination and size != item.total_size):
+            raise HTTPException(409, name + ': 서버 파일 크기가 다릅니다. 새 업로드로 등록하세요.')
+        if path == partial and size == item.total_size:
+            # A server interruption can occur after the last byte, before rename.
+            partial.replace(destination)
+            path = destination
+        item.uploaded_bytes, item.completed = size, path == destination and size == item.total_size
+        digest = hashlib.sha256()
+        if size:
+            with path.open('rb') as stream:
+                while block := stream.read(256 * 1024):
+                    digest.update(block)
+        result.append(dict(name=name, size=item.total_size, uploaded_bytes=size,
+                           completed=item.completed, prefix_sha256=digest.hexdigest()))
+    return result
+
+
+@router.get('/api/upload-sessions/{sid}')
+def upload_progress(sid: str):
+    state = current.get()
+    with ProcessLock(session_path(state, sid) / '.lock'):
+        session, value = read_session(state, sid)
+        files = session_progress(session)
+        save_session(session, value.get('job_id'))
+        return JSONResponse(dict(upload_id=sid, files=files, mappings=value.get('mappings', {}),
+                    job=read_job(state,value['job_id']) if value.get('job_id') else None), headers=NO_STORE)
+
+
+@router.put('/api/upload-sessions/{sid}/mappings')
+def upload_mappings(sid: str, payload: dict):
+    state = current.get()
+    if len(payload)>100 or any(not isinstance(v,dict) for v in payload.values()):
+        raise HTTPException(422, '파일 연결은 최대 100개입니다.')
+    with ProcessLock(session_path(state, sid) / '.lock'):
+        session, value = read_session(state, sid)
+        if value.get('job_id'):
+            raise HTTPException(409, '이미 분석을 시작한 업로드입니다.')
+        value['mappings'] = payload
+        _write_json_atomic(session.work_dir / 'session.json', value)
+    return dict(ok=True)
+
+
+@router.post('/api/upload-sessions/{sid}/cancel')
+def cancel_upload(sid: str):
+    state = current.get()
+    with ProcessLock(session_path(state, sid) / '.lock'):
+        session, value = read_session(state, sid)
+        if value.get('job_id'):
+            raise HTTPException(409, '서버 분석이 시작되어 취소할 수 없습니다. 작업 상태를 확인하세요.')
+        value.update(canceled=True, updated_at=time.time())
+        _write_json_atomic(session.work_dir / 'session.json', value)
+    return dict(canceled=True)  # Preserve partial files for investigation, never delete source data.
+
+
+@router.post('/api/upload-sessions/{sid}/preflight')
+def raw_preflight(sid: str):
+    from .core.parsing.txt import parse_txt
+    state = current.get()
+    with ProcessLock(session_path(state, sid) / '.lock'):
+        session, value = read_session(state, sid)
+        if not session.files or any(not f.completed for f in session.files.values()):
+            raise HTTPException(409, '파일 전송을 완료한 뒤 Raw 진단을 실행하세요.')
+        results, count = [], 0
+        for name, item in session.files.items():
+            mapping = value.get('mappings', {}).get(name, {})
+            if not name.lower().endswith('.txt') or mapping.get('role') == 'ignore':
+                continue
+            try:
+                parsed = parse_txt((session.input_root/item.stored_path).read_bytes(), name)
+                count += len(parsed['x'])
+                results.append(dict(name=name, ok=True, points=len(parsed['x']),
+                    x_range=[parsed['x'][0],parsed['x'][-1]], y_range=[min(parsed['y']),max(parsed['y'])],
+                    unit=parsed['intensity_unit'] or mapping.get('intensity_unit') or '미확인',
+                    axis='2θ (deg)' if mapping.get('axis_kind')=='two_theta' else 'PDF/사용자 확인 필요',
+                    preview=[dict(line=n,x=x,y=y) for n,x,y in zip(parsed['line_numbers'][:6],parsed['x'][:6],parsed['y'][:6])]))
+            except (ValueError, UnicodeError) as exc:
+                results.append(dict(name=name,ok=False,error=str(exc),hint='장비 내보내기 설정의 두 숫자 열·구분자·각도 증가 순서와 해당 행을 확인하세요. 원본은 자동 수정하지 않습니다.'))
+        errors = []
+        if not results:
+            errors.append('분석할 측정 TXT가 없습니다.')
+        if count > 250000:
+            errors.append('총 측정점 250,000개를 초과했습니다. 원본을 유지한 별도 작업으로 나누세요.')
+        return dict(files=results,total_points=count,errors=errors,ok=bool(results) and all(r['ok'] for r in results) and not errors)
+
+
 @router.post('/api/upload-sessions/{sid}/chunks')
 async def upload_chunk(sid: str, relative_path: str = Form(...), offset: int = Form(...),
                        total_size: int = Form(...), chunk_index: int = Form(...),
                        chunk_count: int = Form(...), file: UploadFile = File(...)):
     state = current.get()
+    if offset < 0 or offset > total_size or chunk_index < 0 or chunk_count <= 0 or chunk_index >= chunk_count:
+        raise HTTPException(400, '업로드 조각 위치/번호가 올바르지 않습니다.')
     if file.size is not None and file.size > 4 * 1024 * 1024:
         raise HTTPException(413, '분할 조각은 4MB 이하로 전송하세요.')
     def write():
@@ -217,6 +334,17 @@ async def upload_chunk(sid: str, relative_path: str = Form(...), offset: int = F
             if relative_path not in session.files and len(session.files) >= 100:
                 raise HTTPException(422, '한 작업에는 최대 100개 파일을 등록하세요.')
             store = upload_store()
+            existing = session.files.get(relative_path)
+            if existing and offset < existing.uploaded_bytes:
+                # Idempotent retries must never truncate a later acknowledged chunk.
+                path = session.input_root / (existing.stored_path if existing.completed else existing.temp_path)
+                data = asyncio.run(file.read())
+                asyncio.run(file.close())
+                with path.open('rb') as stream:
+                    stream.seek(offset)
+                    if not data or total_size != existing.total_size or offset+len(data)>existing.uploaded_bytes or stream.read(len(data)) != data:
+                        raise HTTPException(409, '이미 전송된 파일 내용과 다릅니다. 원본 파일을 다시 선택하거나 새 업로드로 등록하세요.')
+                return dict(uploaded_bytes=existing.uploaded_bytes,completed=existing.completed)
             item = asyncio.run(store.write_chunk(session, relative_path=relative_path, offset=offset,
                 total_size=total_size, chunk_index=chunk_index, chunk_count=chunk_count, upload=file))
             save_session(session)
@@ -407,7 +535,10 @@ def draft_preview(sid: str, payload: dict):
                 document = validate_document(project, draft)
             from .render.layout import build_pages
             from .render.html import render_html
-            pages = build_pages(project, document, lambda fid: state.storage.files.read_source(sid, fid))
+            from .render.figure import render_panel_png
+            from .render.draft_cache import draft_images
+            pages = build_pages(project, document, lambda fid: state.storage.files.read_source(sid, fid),
+                image_renderer=lambda *args: draft_images.render((state.home, sid), render_panel_png, *args))
             content = render_html(pages, document, 'app', sid, edit_links=True)
             if len(content.encode('utf-8')) > 32 * 1024 * 1024:
                 raise HTTPException(413, '미리보기가 32MB를 초과했습니다. 시료를 나누어 확인하세요.')

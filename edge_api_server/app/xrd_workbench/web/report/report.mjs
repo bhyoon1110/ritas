@@ -4,6 +4,7 @@ import { $, escapeHTML } from '../shared/dom.mjs';
 import { restoreState, viewerStorageKey } from '../viewer/model.mjs';
 import { mergeDraftChanges } from './report_merge.mjs';
 import { createLivePreview } from './live_preview.mjs';
+import { createDraftAutosave } from './draft_autosave.mjs';
 import { figureHTML } from './figure_view.mjs';
 import { phaseClassesHTML } from './phase_classes_view.mjs';
 import { ensureQuantityTable, quantityTableHTML } from './quantity_table_view.mjs';
@@ -49,8 +50,38 @@ let storageId = new URLSearchParams(location.search).get('project') || 'example'
   pcNotice = '',
   pcSeq = 0,
   pcPercent = '';
-let composing = false, previewPage = 0, linkedTimer = 0;
+let composing = false, previewPosition = {index:0,offset:0}, linkedTimer = 0;
 const previewFrame = $('reportPreview'), reportMain = document.querySelector('main');
+let recoveryDraft=null;
+const recoveryBar=document.createElement('div');recoveryBar.className='draftRecovery';
+recoveryBar.innerHTML='<span id="draftStatus" role="status">초안 확인 중…</span><button id="restoreDraft" hidden>초안 복구</button><button id="discardDraft" hidden>복구 초안 버리기</button>';
+reportMain.parentNode.insertBefore(recoveryBar,reportMain);
+const draftSaver=createDraftAutosave({
+  snapshot:()=>doc&&dirty&&!composing?{document:structuredClone(doc),baseline:structuredClone(baseline)}:null,
+  write:async(value,revision)=>(await api(`/api/reports/${storageId}/draft`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({...value,expected_revision:revision})})).json(),
+  clear:async revision=>(await api(`/api/reports/${storageId}/draft/clear`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({expected_revision:revision})})).json(),
+  status:text=>{$('draftStatus').textContent=text;}
+});
+async function loadRecovery(){
+  try{const value=await(await api(`/api/reports/${storageId}/draft`)).json();
+    recoveryDraft=value.document?value:null;draftSaver.initialize(value.revision||0,!recoveryDraft);
+    $('restoreDraft').hidden=$('discardDraft').hidden=!recoveryDraft;
+    $('draftStatus').textContent=recoveryDraft?'복구 가능한 초안이 있습니다. 복구 또는 버리기를 선택하세요.':'입력 후 초안을 자동 임시저장합니다. 최종 저장·전송과 별도입니다.';
+  }catch(e){$('draftStatus').textContent='초안 확인 실패: '+e.message;}
+}
+$('restoreDraft').onclick=()=>{
+  if(!recoveryDraft||busy)return;
+  if((dirty||doc.revision!==recoveryDraft.baseline.revision||doc.analysis_revision!==recoveryDraft.baseline.analysis_revision)&&!confirm('현재 보고서와 초안의 기준이 다릅니다. 초안에서 수정한 항목을 우선 복구하며 같은 항목의 최신 내용과 충돌할 수 있습니다. 복구 후 반드시 검토하세요. 계속할까요?'))return;
+  doc=mergeDraftChanges(doc,recoveryDraft.document,recoveryDraft.baseline);
+  draftSaver.initialize(recoveryDraft.revision);recoveryDraft=null;
+  $('restoreDraft').hidden=$('discardDraft').hidden=true;render();markDirty();
+  status('초안을 복구했습니다. 미저장 변경을 검토한 뒤 최종 저장하세요.');
+};
+$('discardDraft').onclick=async()=>{
+  if(busy||!confirm('복구 초안만 버릴까요? 최종 저장된 보고서와 원자료는 유지합니다.'))return;
+  try{await draftSaver.clear();recoveryDraft=null;$('restoreDraft').hidden=$('discardDraft').hidden=true;if(dirty)draftSaver.schedule();}
+  catch(e){status(e.message,true);}
+};
 // Isolate draft scripts while allowing explicit source-PDF links to open normally.
 previewFrame.setAttribute('sandbox','allow-scripts allow-popups allow-popups-to-escape-sandbox');
 const livePreview = createLivePreview({
@@ -105,13 +136,19 @@ function linkedField(target) {
 window.addEventListener('message', e => {
   if (e.source !== previewFrame.contentWindow || !e.data) return;
   if (e.data.type === 'xrd-preview-edit') linkedField(e.data.target);
-  if (e.data.type === 'xrd-preview-page' && Number.isInteger(e.data.page)) previewPage=e.data.page;
-  if (e.data.type === 'xrd-preview-ready') previewFrame.contentWindow.postMessage({type:'xrd-preview-page',page:previewPage},'*');
+  if (e.data.type === 'xrd-preview-position') {
+    const p=e.data.position;
+    if(p && Number.isInteger(p.index) && p.index>=0 && Number.isFinite(p.offset) && p.offset>=0 && p.offset<=1)
+      previewPosition={index:p.index,offset:p.offset,key:typeof p.key==='string'?p.key.slice(0,200):''};
+  }
+  if (e.data.type === 'xrd-preview-ready') previewFrame.contentWindow.postMessage({type:'xrd-preview-restore',position:previewPosition},'*');
 });
 window.addEventListener('pagehide',()=>{livePreview.invalidate();clearTimeout(linkedTimer);});
 window.addEventListener('pageshow',e=>{if(e.persisted && doc && !busy)livePreview.schedule(true);});
-$('editorFields').addEventListener('compositionstart',()=>{composing=true;livePreview.invalidate();});
-$('editorFields').addEventListener('compositionend',()=>{composing=false;if(doc&&!busy)livePreview.schedule();});
+$('editorFields').addEventListener('compositionstart',()=>{composing=true;livePreview.invalidate();draftSaver.pause();});
+$('editorFields').addEventListener('compositionend',()=>{composing=false;if(doc&&!busy){livePreview.schedule();if(dirty)draftSaver.schedule();}});
+document.addEventListener('visibilitychange',()=>{if(document.hidden&&!composing)draftSaver.flush();});
+window.addEventListener('pagehide',()=>{if(!composing)draftSaver.flush();});
 $('editorFields').addEventListener('focusin',e=>{
   const d=e.target.dataset, field=d.meta || d.field || (d.noteText?'note':d.retainedText?'retained_note':e.target.id==='summary'?'summary':null);
   if (field) previewFrame.contentWindow.postMessage({type:'xrd-preview-locate',target:{tab,field,id:d.noteText||d.retainedText}},'*');
@@ -122,6 +159,7 @@ function status(text, error = false) {
 }
 function markDirty() {
   dirty = true;
+  if(!composing)draftSaver.schedule();
   renderPrecheck();
   syncShell();
   $('revision').textContent = `버전 ${doc.revision} · 미저장 변경`;
@@ -279,6 +317,7 @@ async function openProject(id) {
     doc = value.document;
     baseline = structuredClone(doc);
     dirty = value.analysis_update_required;
+    await loadRecovery();
     tab = 'overview';
     qtData = null;
     qtNotice = '';
@@ -305,6 +344,8 @@ async function openProject(id) {
 }
 async function save() {
   if (!doc) throw new Error('프로젝트가 열리지 않았습니다.');
+  if(recoveryDraft)throw new Error('복구 가능한 초안이 있습니다. 먼저 복구 또는 버리기를 선택하세요.');
+  await draftSaver.flush();
   syncTransfer();
   const result = await (
     await api(`/api/reports/${storageId}`, {
@@ -316,6 +357,7 @@ async function save() {
   doc = result;
   baseline = structuredClone(doc);
   dirty = false;
+  try{await draftSaver.clear();}catch{/* Do not misreport a successful final save as failed. */}
   render();
   loadChecklist();
   status(`보고서 버전 ${doc.revision}을 저장했습니다.`);

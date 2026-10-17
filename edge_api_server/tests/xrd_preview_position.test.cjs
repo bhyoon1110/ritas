@@ -1,0 +1,20 @@
+const {test}=require('node:test');
+const assert=require('node:assert/strict');
+const {execFileSync}=require('node:child_process');
+const {JSDOM}=require('jsdom');
+const acorn=require('acorn');
+const script=execFileSync(process.env.RIST_TEST_PYTHON||'python3',['-c','from app.xrd_workbench.render.html import EDITOR_SCRIPT; print(EDITOR_SCRIPT)'],{encoding:'utf8'}).replace(/<\/?script>/g,'');
+test('preview tracks ordinary scroll and restores page-relative offset after size changes',async t=>{
+  acorn.parse(script,{ecmaVersion:5});
+  const dom=new JSDOM('<nav class="editorNav"><select id="previewPages"><option value="0">A</option><option value="1">B</option></select></nav><section data-preview-page="0" data-preview-key="cover:0"></section><section data-preview-page="1" data-preview-key="sample:a:0"></section>',{runScripts:'outside-only'});
+  t.after(()=>dom.window.close());const w=dom.window,d=w.document,messages=[];let scroll=0,height=400;
+  w.postMessage=data=>messages.push(data);Object.defineProperty(w,'pageYOffset',{get:()=>scroll});
+  w.scrollTo=(x,y)=>{scroll=y;};d.querySelector('nav').getBoundingClientRect=()=>({height:40});
+  d.querySelectorAll('section').forEach((p,i)=>{p.getBoundingClientRect=()=>({top:100+i*(height+20)-scroll,bottom:100+i*(height+20)-scroll+height,height});});
+  w.eval(script);scroll=600;w.dispatchEvent(new w.Event('scroll'));await new Promise(r=>setTimeout(r,160));
+  const position=messages.at(-1).position;assert.equal(position.key,'sample:a:0');assert.equal(position.offset,.3);
+  height=600;w.dispatchEvent(new w.MessageEvent('message',{source:w,data:{type:'xrd-preview-restore',position}}));
+  assert.equal(scroll,860);assert.equal(d.getElementById('previewPages').value,'1');
+  w.dispatchEvent(new w.MessageEvent('message',{source:w,data:{type:'xrd-preview-restore',position:{key:'removed',index:99,offset:.2}}}));
+  assert.equal(messages.at(-1).position.index,1);
+});

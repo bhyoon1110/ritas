@@ -637,6 +637,7 @@ footer {
 }
 
 /* Editing and the same-layout report preview stay together, not in separate steps. */
+.draftRecovery { display:flex; flex-wrap:wrap; align-items:center; gap:8px; flex:none; padding:6px 14px; background:#fff9e9; color:#594c30; font-size:13px; }
 body.withShell[data-step=report] main { display:grid; grid-template-columns:minmax(0, .9fr) minmax(0, 1.1fr); grid-template-rows:auto minmax(0,1fr); min-height:0; overflow:hidden; }
 body.withShell #reportNav { grid-column:1 / -1; grid-row:1; display:flex; flex-wrap:nowrap; align-items:center; gap:6px; padding:8px 14px; width:auto; min-width:0; overflow-x:auto; border-right:0; border-bottom:1px solid #d6e0ea; }
 #sampleNav { display:flex; flex:none; gap:6px; }

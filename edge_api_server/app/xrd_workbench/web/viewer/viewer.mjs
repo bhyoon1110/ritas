@@ -22,11 +22,54 @@ import {
   phaseRef,
   sourceHref,
 } from './model.mjs';
-import { apiUrl, request } from '../shared/api.mjs';
+import { apiUrl, request, chunkBytes, waitJob } from '../shared/api.mjs';
 import { $, escapeHTML } from '../shared/dom.mjs';
 import { summarizeUpload, uploadSummaryHTML } from './upload_summary.mjs';
+import { transferUpload } from '../shared/resumable_upload.mjs';
+import { diagnosticsHTML } from './raw_diagnostics.mjs';
 
 const offline = !!window.XRD_EMBEDDED;
+let activeUpload=null,uploadBusy=false,uploadPaused=false,uploadReady=false,resumeMappings={},resumeJob=null;
+function invalidateRawCheck(){uploadReady=false;$('uploadComplete').disabled=true;$('rawDiagnostics').textContent='';}
+function lockUpload(busy){
+  uploadBusy=busy;
+  for(const id of ['uploadSubmit','uploadClose','fileInput','resumeUpload','refreshUploads','newUpload','cancelUpload'])$(id).disabled=busy;
+  $('cancelUpload').disabled=busy||!activeUpload||!!resumeJob;
+  $('uploadPause').disabled=!busy||!!resumeJob;
+  $('uploadComplete').disabled=busy||!uploadReady;
+  $('mappingTable').querySelectorAll('input,select').forEach(e=>{e.disabled=busy;});
+}
+async function refreshUploads(){
+  if(offline)return;
+  try{const list=await(await request('/api/upload-sessions')).json();
+    $('resumeUpload').innerHTML='<option value="">새 업로드</option>'+list.map(s=>`<option value="${escapeHTML(s.upload_id)}">${escapeHTML(s.filenames.join(', ')||'파일 선택 대기')} · ${new Date(s.updated_at*1000).toLocaleString()}</option>`).join('');
+    if(activeUpload)$('resumeUpload').value=activeUpload;
+  }catch(e){$('resumeNotice').textContent='이어서 전송 목록 확인 실패: '+e.message;}
+}
+function applyResumeMappings(){
+  $('mappingTable').querySelectorAll('[data-file]').forEach(row=>{const m=resumeMappings[pendingFiles[Number(row.dataset.file)].name];if(!m)return;
+    for(const [selector,key] of [['.sampleMapping','sample'],['.roleMapping','role'],['.axisMapping','axis_kind'],['.unitMapping','intensity_unit']]){const e=row.querySelector(selector);if(e)e.value=m[key]||'';}
+  });refreshUploadSummary();
+}
+$('refreshUploads').onclick=refreshUploads;
+$('resumeUpload').onchange=async()=>{
+  activeUpload=$('resumeUpload').value||null;resumeMappings={};resumeJob=null;invalidateRawCheck();
+  if(!activeUpload){$('resumeNotice').textContent='새 업로드를 시작합니다.';lockUpload(false);return;}
+  lockUpload(true);
+  try{const value=await(await request(`/api/upload-sessions/${activeUpload}`)).json();resumeMappings=value.mappings||{};resumeJob=value.job;
+    $('resumeNotice').textContent=resumeJob?'서버 분석 작업이 있습니다. 업로드·Raw 진단 버튼으로 처리 상태를 확인하세요.':`같은 원본 파일 전체를 다시 선택하세요: ${value.files.map(f=>f.name).join(', ')}. 전송된 내용 대조 후 이어갑니다.`;
+    applyResumeMappings();
+  }catch(e){$('resumeNotice').textContent=e.message;}finally{lockUpload(false);}
+};
+$('newUpload').onclick=()=>{activeUpload=null;resumeMappings={};resumeJob=null;invalidateRawCheck();$('resumeUpload').value='';$('resumeNotice').textContent='새 업로드입니다. 기존 중단 작업의 파일은 보존됩니다.';lockUpload(false);};
+$('cancelUpload').onclick=async()=>{
+  if(!activeUpload||uploadBusy||!confirm('이 업로드 작업을 취소할까요? 원자료와 이미 생성된 보고서는 삭제하지 않습니다.'))return;
+  try{await request(`/api/upload-sessions/${activeUpload}/cancel`,{method:'POST'});$('newUpload').click();await refreshUploads();$('resumeNotice').textContent='작업을 취소했습니다. 전송된 임시 파일은 서버에 보존됩니다.';}catch(e){$('uploadError').textContent=e.message;}
+};
+$('uploadPause').onclick=()=>{uploadPaused=true;$('uploadPause').disabled=true;$('uploadError').textContent='현재 조각 전송/진단이 끝난 뒤 멈춥니다. 이어서 전송할 수 있습니다.';};
+$('uploadDialog').addEventListener('cancel',e=>{if(uploadBusy)e.preventDefault();});
+window.addEventListener('beforeunload',e=>{if(uploadBusy){e.preventDefault();e.returnValue='';}});
+$('rawExample').onclick=()=>download(new Blob(['#Intensity_unit=cps\n10.00 125\n10.02 138\n10.04 142\n'],{type:'text/plain;charset=utf-8'}),'XRD-Raw-example.txt');
 let project,
   state,
   figure,
@@ -211,6 +254,7 @@ async function openExample() {
 }
 // Step ① 데이터 업로드 lives on this page as the registration dialog.
 function openUpload() {
+  refreshUploads();
   if (!$('uploadDialog').open) $('uploadDialog').show();
   window.dispatchEvent(new CustomEvent('xrd-shell', { detail: { step: 'upload' } }));
 }
@@ -292,6 +336,8 @@ function refreshUploadSummary() {
 }
 $('mappingTable').addEventListener('input', refreshUploadSummary);
 $('mappingTable').addEventListener('change', refreshUploadSummary);
+$('mappingTable').addEventListener('input',invalidateRawCheck);
+$('mappingTable').addEventListener('change',invalidateRawCheck);
 function setOptions(open) {
   $('sidePanel').hidden = !open;
   $('toggleOptions').setAttribute('aria-expanded', String(open));
@@ -499,9 +545,12 @@ $('uploadClose').onclick = () => {
 $('fileInput').onchange = () => {
   pendingFiles = Array.from($('fileInput').files);
   mappingRows();
+  applyResumeMappings();invalidateRawCheck();
   $('uploadError').textContent = '';
 };
 $('uploadSubmit').onclick = async () => {
+  if(uploadBusy)return;
+  if(resumeJob){lockUpload(true);try{await finishUpload(resumeJob);}catch(e){$('uploadError').textContent=e.message;}finally{lockUpload(false);}return;}
   if (!pendingFiles.length) {
     $('uploadError').textContent = '등록할 파일을 선택하세요.';
     return;
@@ -509,24 +558,32 @@ $('uploadSubmit').onclick = async () => {
   if (refreshUploadSummary().errors.length) {
     $('uploadError').textContent = '시료별 파일 연결의 오류를 먼저 확인하세요.'; return;
   }
-  const mappings = readMappings(), form = new FormData();
-  for (const file of pendingFiles) form.append('files', file);
-  form.append('mappings', JSON.stringify(mappings));
-  $('uploadSubmit').disabled = true;
-  $('fileInput').disabled = true;
-  $('mappingTable').querySelectorAll('input,select').forEach(e=>{e.disabled=true;});
+  const mappings = readMappings();
+  uploadPaused=false;invalidateRawCheck();lockUpload(true);
   $('uploadError').textContent = 'TXT와 PDF를 읽는 중…';
   try {
-    const response = await request('/api/upload', { method: 'POST', body: form });
-    await loadProject(await response.json());
-    $('uploadDialog').close();
+    const result=await transferUpload(pendingFiles,mappings,{request,chunkSize:chunkBytes(),uploadId:activeUpload,
+      onSession:id=>{activeUpload=id;},notice:text=>{$('uploadError').textContent=text;},canceled:()=>uploadPaused});
+    if(result.job){resumeJob=result.job;await finishUpload(result.job);return;}
+    $('rawDiagnostics').innerHTML=diagnosticsHTML(result.diagnostics);uploadReady=result.diagnostics.ok;
+    $('uploadError').textContent=uploadReady?'Raw 진단 완료. 결과 확인 후 아래 「진단 확인·분석 시작」을 누르세요.':'Raw 진단에 확인할 항목이 있습니다. 파일 내용이 달라지면 「새 작업」으로 등록하세요.';
   } catch (error) {
     $('uploadError').textContent = error.message;
   } finally {
-    $('uploadSubmit').disabled = false;
-    $('fileInput').disabled = false;
-    $('mappingTable').querySelectorAll('input,select').forEach(e=>{e.disabled=false;});
+    lockUpload(false);refreshUploads();
   }
+};
+async function finishUpload(job){
+  resumeJob=job;$('uploadPause').disabled=true;
+  const done=await waitJob(job,text=>{$('uploadError').textContent=text;});
+  await loadProject(await(await request(`/api/projects/${done.storage_id}`)).json());
+  activeUpload=null;resumeJob=null;invalidateRawCheck();$('uploadDialog').close();
+}
+$('uploadComplete').onclick=async()=>{
+  if(!activeUpload||!uploadReady||uploadBusy)return;
+  lockUpload(true);$('uploadPause').disabled=true;
+  try{const job=await(await request(`/api/upload-sessions/${activeUpload}/complete`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(readMappings())})).json();await finishUpload(job);}
+  catch(e){$('uploadError').textContent=e.message;}finally{lockUpload(false);refreshUploads();}
 };
 $('htmlExport').onclick = async () => {
   if (!project) return;

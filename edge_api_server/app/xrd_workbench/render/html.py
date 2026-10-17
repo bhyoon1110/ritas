@@ -11,14 +11,20 @@ STYLE = """*{box-sizing:border-box}body{margin:0;background:#edf0f4;font-family:
 
 EDITOR_SCRIPT = """<script>
 (function(){
-var choice=document.getElementById('previewPages');
-function go(index){var page=document.querySelector('[data-preview-page="'+index+'"]');if(page){page.scrollIntoView();choice.value=String(index);parent.postMessage({type:'xrd-preview-page',page:Number(index)},'*');}}
+var choice=document.getElementById('previewPages'), scrollTimer=0;
+function pages(){return document.querySelectorAll('[data-preview-page]');}
+function navHeight(){return document.querySelector('.editorNav').getBoundingClientRect().height;}
+function position(){var list=pages(),top=navHeight(),index=0;for(var i=0;i<list.length;i++){if(list[i].getBoundingClientRect().bottom>top){index=i;break;}index=i;}if(!list.length)return;var r=list[index].getBoundingClientRect();choice.value=String(index);parent.postMessage({type:'xrd-preview-position',position:{key:list[index].getAttribute('data-preview-key'),index:index,offset:Math.max(0,Math.min(1,(top-r.top)/Math.max(1,r.height)))}},'*');}
+function restore(value){var list=pages();if(!list.length)return;var index=Math.max(0,Math.min(list.length-1,Number(value.index)||0));for(var i=0;i<list.length;i++)if(value.key&&list[i].getAttribute('data-preview-key')===value.key){index=i;break;}var r=list[index].getBoundingClientRect();window.scrollTo(0,window.pageYOffset+r.top-navHeight()+Math.max(0,Math.min(1,Number(value.offset)||0))*r.height);position();}
+function go(index){restore({index:Number(index),offset:0});}
 choice.onchange=function(){go(choice.value);};
+addEventListener('scroll',function(){clearTimeout(scrollTimer);scrollTimer=setTimeout(position,120);});
 function edit(event){var node=event.target.closest('[data-edit]');if(!node)return;if(event.type==='keydown'&&event.key!=='Enter'&&event.key!==' ')return;event.preventDefault();parent.postMessage({type:'xrd-preview-edit',target:JSON.parse(node.getAttribute('data-edit'))},'*');}
 document.addEventListener('click',edit);document.addEventListener('keydown',edit);
 addEventListener('message',function(event){
  if(event.source!==parent||!event.data)return;
  if(event.data.type==='xrd-preview-page'&&Number.isInteger(event.data.page))go(event.data.page);
+ if(event.data.type==='xrd-preview-restore'&&event.data.position)restore(event.data.position);
  if(event.data.type==='xrd-preview-locate'){
   var target=event.data.target||{},nodes=document.querySelectorAll('[data-edit]');
   for(var i=0;i<nodes.length;i++)nodes[i].classList.remove('linked');
@@ -58,10 +64,15 @@ def render_html(pages, document, link_mode='package', storage_id=None, *, edit_l
             + escape('뷰어.html')
             + '">Multi Profile Viewer</a><span>압축을 풀고 열어주세요. 원본 PDF: Report · TXT: Measured Data</span></nav>'
         )
+    page_keys = {}
     for index, page in enumerate(pages):
+        group = page['kind'] + ':' + (page.get('sample_id') or '')
+        ordinal = page_keys.get(group, 0)
+        page_keys[group] = ordinal + 1
+        page_key = escape(group + ':' + str(ordinal), quote=True)
         if edit_links:
             output.append('<div class="editPageTools"><button' + edit_attrs(page.get('edit', dict(tab='overview'))) + '>이 페이지 입력 항목</button><button' + edit_attrs(dict(tab='classes')) + '>상 분류 수정</button><span>테두리가 표시되는 내용을 클릭해 수정 위치로 이동하세요.</span></div>')
-        output.append(f'<section class="page" data-preview-page="{index}">')
+        output.append(f'<section class="page" data-preview-page="{index}" data-preview-key="{page_key}">')
         for item in page['items']:
             target = item.get('edit')
             if not target and page['kind'] == 'figure' and item['type'] == 'image':

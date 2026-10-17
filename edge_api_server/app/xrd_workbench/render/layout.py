@@ -54,8 +54,9 @@ def source_links(sample):
     ]
 
 
-def build_pages(project, document, resolve_source):
+def build_pages(project, document, resolve_source, *, image_renderer=None):
     document = validate_document(project, document)
+    image_renderer = image_renderer or render_panel_png
     sources = {s['id']: s for s in project['samples']}
     entries = [s for s in document['samples'] if s['included']]
     pages = []
@@ -398,7 +399,7 @@ def build_pages(project, document, resolve_source):
                 page = new_page('figure', c['title'])
                 top = page['content_top']
                 height = AXIS_MM + c['n'] * curve_mm + rows * c['row_mm']
-                data = render_panel_png(
+                data = image_renderer(
                     panel_slice(panel, c['start'], c['start'] + c['n']), WIDTH, height, c['row_mm']
                 )
                 page['items'].append(
