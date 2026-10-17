@@ -781,6 +781,8 @@ body.withShell .nextStep {
 /* Graph-first workspace; settings never force the plot off the screen. */
 .graphActions { display:flex; flex-wrap:wrap; align-items:center; gap:8px; padding:9px 16px; border-bottom:1px solid #d6e0ea; background:#f7f9fc; flex:none; }
 .graphActions strong { color:#163e62; margin-right:auto; }
+.graphActions .originView { display:flex; align-items:center; gap:6px; margin:0; padding:6px 4px; white-space:nowrap; cursor:pointer; }
+.graphActions .originView input { margin:0; width:16px; height:16px; }
 #workspace { min-height:0; margin:0; }
 #sidePanel { width:300px; max-width:85vw; }
 .advancedOptions > summary { cursor:pointer; padding:14px; color:#163e62; font-weight:bold; }

@@ -147,6 +147,7 @@ def test_new_viewer_settings_are_accepted_and_validated():
         state(
             viewMode='single',
             markerSize=11,
+            originStyle=True,
             unknownMarkers=True,
             phaseLabels=True,
             phaseSymbols={phase_id: 'star'},
@@ -154,6 +155,7 @@ def test_new_viewer_settings_are_accepted_and_validated():
         ),
     )
     assert ok['viewMode'] == 'single' and ok['markerSize'] == 11
+    assert ok['originStyle'] is True
     assert ok['unknownMarkers'] is True and ok['phaseLabels'] is True
     assert ok['phaseSymbols'] == {phase_id: 'star'}
     assert ok['offsets']['raw']['spacing'] == -250
@@ -161,6 +163,8 @@ def test_new_viewer_settings_are_accepted_and_validated():
         {'viewMode': 'grid'},
         {'markerSize': 0},
         {'markerSize': 'x'},
+        {'originStyle': 'true'},
+        {'originStyle': 1},
         {'unknownMarkers': 'yes'},
         {'phaseSymbols': {phase_id: 'skull'}},
         {'phaseSymbols': {'nope': 'star'}},

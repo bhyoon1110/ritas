@@ -10,7 +10,7 @@
 <body data-step="viewer">
  <header><div class="brand">XRD 그래프 뷰어</div><nav>
  </nav></header>
- <div class="graphActions" aria-label="그래프 주요 도구"><strong>측정 그래프</strong><button id="quickOverlay">겹쳐 보기</button><button id="quickStack">스택 보기</button><button id="resetView">전체 범위</button><button id="quickImageExport">이미지 저장</button><button id="toggleOptions" aria-controls="sidePanel" aria-expanded="true">보기 옵션 접기</button></div>
+ <div class="graphActions" aria-label="그래프 주요 도구"><strong>측정 그래프</strong><button id="quickOverlay">겹쳐 보기</button><button id="quickStack">스택 보기</button><button id="resetView">전체 범위</button><label class="originView"><input id="originStyle" type="checkbox"> Origin 스타일로 보기</label><button id="quickImageExport">이미지 저장</button><button id="toggleOptions" aria-controls="sidePanel" aria-expanded="true">보기 옵션 접기</button></div>
  <main id="workspace"><div id="plotViewport" tabindex="0" aria-label="측정 그래프와 기준 피크 스크롤 영역"><div id="plot" aria-label="XRD 측정 그래프"></div><div id="legend" aria-label="범례"></div><div id="singlePicker" hidden><b>먼저 볼 시료를 선택하세요</b><div id="singlePickerList"></div></div><div id="sourceCard" hidden></div></div>
   <aside id="sidePanel" aria-label="보기 옵션">
    <details id="quickHelp" class="panelSection quickHelp"><summary>처음이신가요? 사용 방법</summary>
@@ -29,7 +29,8 @@
    <div class="panelSection"><div class="sectionTitle">표시</div>
     <label class="optionRow"><input id="markers" type="checkbox"> 결정상 마커</label>
     <label class="optionRow"><input id="peakbar" type="checkbox" checked> 기준 피크 막대</label>
-    <label class="optionRow">마커 크기 <input id="markerSize" type="range" min="3" max="20" step="1" value="8" aria-label="마커 크기"><span id="markerSizeValue">8</span></label>
+    <label class="optionRow">마커 크기 <input id="markerSize" type="range" min="3" max="20" step="1" value="8" aria-label="마커 크기" aria-describedby="markerSizeHint"><span id="markerSizeValue">8</span></label>
+    <p id="markerSizeHint" class="panelHint">결정상·기준 피크 마커와 Unknown Peak에 함께 적용됩니다.</p>
    </div>
    <div id="offsetSection" class="panelSection"><div class="sectionTitle">시료 간 세로 간격</div>
     <input id="spacing" type="range" min="-35000" max="35000" value="2500" step="1" aria-label="시료 간 세로 간격">
@@ -41,9 +42,8 @@
     <p class="panelHint">휠: 확대 · 왼쪽 드래그: 영역 확대 · 오른쪽 드래그: 이동 · 더블클릭: 처음 범위</p>
    </div>
    <div class="panelSection"><div class="sectionTitle">이미지 내보내기</div>
-    <label class="optionRow"><input id="originStyle" type="checkbox"> Origin 스타일로 저장</label>
     <div class="exportRow"><select id="imageFormat" aria-label="이미지 형식"><option value="png">PNG</option><option value="jpeg">JPG</option></select><button id="imageExport">현재 이미지 내보내기</button></div>
-    <p class="panelHint">범례가 함께 저장됩니다. 결정상 마커를 켠 경우 범례 아래에 마커와 결정상도 표시됩니다.</p>
+    <p class="panelHint">현재 화면의 Origin 보기·마커 크기를 그대로 사용하고 범례를 함께 저장합니다. 결정상 마커를 켠 경우 범례 아래에 마커와 결정상도 표시됩니다.</p>
     <div class="exportRow"><button id="htmlExport">뷰어 HTML 저장</button></div>
    </div>
    <div id="samplesSection" class="panelSection"><div class="sectionTitle">시료 <span>색 · 순서 · 개별 조절</span></div><div id="sampleList"></div></div>

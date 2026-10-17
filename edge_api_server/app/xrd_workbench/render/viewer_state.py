@@ -116,7 +116,7 @@ def prepare_state(project, state=None, target=None):
         if not isinstance(color, str) or not re.fullmatch('#[0-9a-fA-F]{6}', color):
             raise ValueError('알 수 없는 피크 마커 색은 #RRGGBB 값이어야 합니다.')
         result['unknownColor'] = color
-    for key in ('unknownMarkers', 'phaseLabels'):
+    for key in ('unknownMarkers', 'phaseLabels', 'originStyle'):
         if key in state:
             if type(state[key]) is not bool:
                 raise ValueError('뷰어 표시 옵션은 boolean이어야 합니다.')

@@ -64,6 +64,7 @@ export function createState(project) {
     phaseTarget: 'active',
     viewMode: 'multi',
     markerSize: 8,
+    originStyle: false,
     unknownMarkers: false,
     unknownSymbol: 'x',
     unknownColor: '#000000',
@@ -93,7 +94,7 @@ export function restoreState(project, saved) {
     }[key];
     if (allowed.includes(saved[key])) state[key] = saved[key];
   }
-  for (const key of ['unknownMarkers', 'phaseLabels'])
+  for (const key of ['unknownMarkers', 'phaseLabels', 'originStyle'])
     if (typeof saved[key] === 'boolean') state[key] = saved[key];
   if (UNKNOWN_SYMBOLS.includes(saved.unknownSymbol)) state.unknownSymbol = saved.unknownSymbol;
   if (/^#[\da-f]{6}$/i.test(saved.unknownColor || '')) state.unknownColor = saved.unknownColor;
@@ -585,7 +586,7 @@ export function buildFigure(project, state, viewport = {}) {
       marker: {
         color: style.color,
         symbol: style.symbol,
-        size: 5,
+        size: n(state.markerSize) || 8,
         ...(state.highlight ? { opacity: dim ? DIM : 1 } : {}),
       },
       meta: { role: 'peakbar-tip', phaseId: phase.id, sampleId: s.id },
@@ -696,6 +697,7 @@ export function buildFigure(project, state, viewport = {}) {
       fixedrange: true,
     };
   }
+  if (state.originStyle) applyOriginStyle(data, layout);
   if (Number.isFinite(viewport.height) && viewport.height >= 220) {
     layout.height = viewport.height;
     if (hasBars) {
@@ -725,11 +727,12 @@ export function buildFigure(project, state, viewport = {}) {
 }
 
 // The figure for "현재 이미지 내보내기": the current view with a legend (the samples, then the
-// phases drawn as markers while Phase marker is on). `origin` redraws it the way Origin prints
-// XRD patterns: boxed black axes with inward ticks, bold titles, black reference bars.
-export function exportFigure(project, state, { origin = false, height = 900 } = {}) {
+// phases drawn as markers while Phase marker is on). All styling comes from the same state as
+// the live graph; there is deliberately no independent export-only Origin option.
+export function exportFigure(project, state, { height = 900 } = {}) {
   const figure = buildFigure(project, state, { height });
   const { data, layout } = figure;
+  const origin = !!state.originStyle;
   const black = '#000000';
   for (const t of data) if (t.meta?.role === 'measurement') t.showlegend = true;
   if (state.markers) {
@@ -746,7 +749,7 @@ export function exportFigure(project, state, { origin = false, height = 900 } = 
         name: escapeHTML(exportCaption(g)),
         showlegend: true,
         hoverinfo: 'skip',
-        marker: { color: style.color, symbol: style.symbol, size: 9 },
+        marker: { color: style.color, symbol: style.symbol, size: n(state.markerSize) || 8 },
         meta: { role: 'legend-phase' },
       });
     }
@@ -777,7 +780,13 @@ export function exportFigure(project, state, { origin = false, height = 900 } = 
     tracegroupgap: 2,
     itemsizing: 'constant',
   };
-  if (!origin) return figure;
+  return figure;
+}
+
+// Shared by the live viewer and image export. Only presentation changes, never raw points,
+// offsets, marker sizes or the current zoom. Stacked intensity ticks remain hidden.
+function applyOriginStyle(data, layout) {
+  const black = '#000000';
   const bold = { size: 18, color: black, family: 'Arial', weight: 'bold' };
   const axis = {
     showline: true,
@@ -797,8 +806,7 @@ export function exportFigure(project, state, { origin = false, height = 900 } = 
   Object.assign(layout.xaxis, axis);
   Object.assign(layout.yaxis, axis, {
     title: { ...layout.yaxis.title, font: bold, standoff: 14 },
-    showticklabels: false,
-    ticks: '',
+    ticks: layout.yaxis.showticklabels ? 'inside' : '',
   });
   if (layout.xaxis2) Object.assign(layout.xaxis2, axis);
   if (layout.yaxis2) Object.assign(layout.yaxis2, axis, { ticks: '' });
@@ -808,9 +816,8 @@ export function exportFigure(project, state, { origin = false, height = 900 } = 
   for (const t of data) {
     if (t.meta?.role === 'measurement') t.line = { ...t.line, width: 1.5 };
     if (t.meta?.role === 'peakbar') t.line = { color: black, width: 1.2 };
-    if (t.meta?.role === 'peakbar-tip') t.marker = { ...t.marker, color: black, size: 6 };
+    if (t.meta?.role === 'peakbar-tip') t.marker = { ...t.marker, color: black };
   }
   for (const a of layout.annotations) a.font = { size: 12, color: black, family: 'Arial' };
   for (const shape of layout.shapes) shape.line = { color: black, width: 1.2 };
-  return figure;
 }

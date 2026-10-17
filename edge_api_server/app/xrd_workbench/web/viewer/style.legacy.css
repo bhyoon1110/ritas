@@ -870,6 +870,12 @@ body.withShell .nextStep {
   margin-right: 8px;
 }
 .graphActions strong { color:#163e62; margin-right:auto; }
+.graphActions .originView { display:flex; align-items:center; margin:0; padding:6px 4px; white-space:nowrap; cursor:pointer; }
+.graphActions .originView > * {
+  margin-bottom: 6px;
+  margin-right: 6px;
+}
+.graphActions .originView input { margin:0; width:16px; height:16px; }
 #workspace { min-height:0; margin:0; }
 #sidePanel { width:300px; max-width:85vw; }
 .advancedOptions > summary { cursor:pointer; padding:14px; color:#163e62; font-weight:bold; }

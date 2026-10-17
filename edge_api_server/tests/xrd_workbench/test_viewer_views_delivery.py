@@ -12,6 +12,7 @@ from .figure_fixtures import make_document, make_project, make_sample
 
 from app.xrd_workbench.render.package import build_package
 from app.xrd_workbench.render.viewer_export import export_html
+from app.xrd_workbench.render.viewer_state import prepare_state
 from app.xrd_workbench.routes.reports import build_report_router
 from app.xrd_workbench.storage import ReportStore
 
@@ -73,6 +74,16 @@ def test_views_are_embedded_and_change_the_snapshot_identity():
     assert with_views['snapshotId'] != embedded(export_html(p, {}))['snapshotId']
     other = embedded(export_html(p, {}, [view('다른 이름')]))
     assert other['snapshotId'] != with_views['snapshotId']
+
+
+def test_origin_style_and_marker_size_travel_in_saved_viewer():
+    p = project()
+    state = prepare_state(p, {'version':1, 'projectId':p['id'], 'originStyle':True, 'markerSize':17})
+    html = export_html(p,state)
+    assert embedded(html)['state']['originStyle'] is True
+    assert embedded(html)['state']['markerSize'] == 17
+    assert 'Origin 스타일로 저장' not in html
+    assert 'Origin 스타일로 보기' in html
 
 
 def make_package(views, included=('a', 'b')):

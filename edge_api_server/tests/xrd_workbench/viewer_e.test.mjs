@@ -203,8 +203,10 @@ test('Origin style: boxed black axes with inward ticks, bold titles, black refer
   const state = createState(project);
   state.markers = true;
   state.phaseColors['a-p0'] = '#cc0000'; // the author's own colour shows in the viewer style only
-  const origin = exportFigure(project, state, { origin: true });
-  const plain = exportFigure(project, state, { origin: false });
+  state.originStyle = true;
+  const origin = exportFigure(project, state);
+  state.originStyle = false;
+  const plain = exportFigure(project, state);
   assert.equal(origin.layout.xaxis2?.ticks ?? origin.layout.xaxis.ticks, 'inside');
   assert.equal(origin.layout.yaxis.linecolor, '#000000');
   assert.equal(origin.layout.yaxis.title.text, 'Intensity, cps');
@@ -216,6 +218,51 @@ test('Origin style: boxed black axes with inward ticks, bold titles, black refer
     plain.data.filter((t) => t.meta?.role === 'peakbar').some((t) => t.line.color !== '#000000'),
   );
   assert.equal(origin.layout.showlegend, true);
+});
+
+test('one marker size controls measurement peaks and reference tips, including Origin exports', () => {
+  const state = createState(project);
+  state.markers = state.unknownMarkers = true;
+  for (const origin of [false, true]) for (const size of [3, 8, 20]) {
+    state.originStyle = origin;
+    state.markerSize = size;
+    for (const figure of [buildFigure(project, state), exportFigure(project, state)]) {
+      const markers = figure.data.filter(t => ['marker','peakbar-tip'].includes(t.meta?.role));
+      assert.ok(markers.length > 0);
+      assert.ok(markers.every(t => t.marker.size === size));
+      assert.ok(traces(figure,'unknown').every(t => t.textfont.size === size * 1.8));
+    }
+  }
+});
+
+test('Origin view and export share styles without modifying data, zoom or offsets', () => {
+  const before = JSON.stringify(project), state = createState(project);
+  state.xRange = [15, 60]; state.yRange = [-10, 50]; state.markers = true;
+  const plain = buildFigure(project,state,{height:700});
+  state.originStyle = true;
+  const live = buildFigure(project,state,{height:700}), output = exportFigure(project,state,{height:700});
+  for (const key of ['xaxis','yaxis','xaxis2','yaxis2','font','margin','height','annotations'])
+    assert.deepEqual(live.layout[key],output.layout[key]);
+  for (const t of live.data) {
+    const previous = plain.data.find(p=>p.uid===t.uid);
+    assert.deepEqual(t.x, previous.x); assert.deepEqual(t.y, previous.y);
+    assert.deepEqual(t.customdata, previous.customdata);
+  }
+  assert.deepEqual(live.layout.xaxis.range,[15,60]);
+  assert.deepEqual(live.layout.yaxis.range,[-10,50]);
+  assert.equal(live.layout.yaxis.showticklabels,false);
+  state.offsets.raw.spacing=0;
+  assert.equal(buildFigure(project,state).layout.yaxis.showticklabels,true);
+  assert.equal(buildFigure(project,state).layout.yaxis.ticks,'inside');
+  state.originStyle=false;
+  assert.equal(buildFigure(project,state).layout.xaxis.linecolor,plain.layout.xaxis.linecolor);
+  assert.equal(JSON.stringify(project),before);
+});
+
+test('Origin setting is persisted, defaults off and rejects non-boolean local settings', () => {
+  assert.equal(createState(project).originStyle,false);
+  assert.equal(restoreState(project,{projectId:project.id,originStyle:true}).originStyle,true);
+  assert.equal(restoreState(project,{projectId:project.id,originStyle:'true'}).originStyle,false);
 });
 
 test('in single profile the legend lists only the chosen sample', () => {

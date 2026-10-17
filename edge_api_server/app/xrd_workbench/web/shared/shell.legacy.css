@@ -161,7 +161,7 @@ body.withShell .xrdProjectManager .projectDanger { color: #9d2929; border-color:
   }
   .shellBrand { font-size: 16px; }
   .shellState { display: none; }
-  .shellLabel { flex: 1; }
+  .shellLabel { flex: 1 1 220px; white-space: nowrap; }
   .shellLabel select { width: 100%; max-width: none; }
   .shellSteps { padding: 0 8px 8px; }
   .shellStep { padding: 6px 8px; }

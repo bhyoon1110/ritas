@@ -111,10 +111,15 @@ function updateControls() {
   $('viewSingle').classList.toggle('active', single);
   $('quickOverlay').setAttribute('aria-pressed', String(!single && state.offsets.raw.spacing === 0));
   $('quickStack').setAttribute('aria-pressed', String(!single && state.offsets.raw.spacing !== 0));
-  for (const key of ['markers', 'peakbar', 'unknownMarkers']) $(key).checked = !!state[key];
+  for (const key of ['markers', 'peakbar', 'unknownMarkers', 'originStyle']) $(key).checked = !!state[key];
   $('unknownColor').value = state.unknownColor;
   $('markerSize').value = String(state.markerSize);
   $('markerSizeValue').textContent = String(state.markerSize);
+  const hasMarkers = figure.data.some(t => ['marker', 'peakbar-tip', 'unknown'].includes(t.meta?.role) && t.x.length);
+  $('markerSize').disabled = !hasMarkers;
+  $('markerSizeHint').textContent = hasMarkers
+    ? '결정상·기준 피크 마커와 Unknown Peak에 함께 적용됩니다.'
+    : '표시된 마커가 없습니다. 피크 자료와 마커 표시 옵션을 확인하세요.';
   const offset = state.offsets.raw,
     limit = spacingLimit(project, state);
   // Spacing between samples makes no sense for one sample: the control is hidden.
@@ -373,7 +378,7 @@ function setToggle(key, value) {
   state[key] = value;
   draw();
 }
-for (const key of ['markers', 'peakbar', 'unknownMarkers'])
+for (const key of ['markers', 'peakbar', 'unknownMarkers', 'originStyle'])
   $(key).onchange = () => setToggle(key, $(key).checked);
 $('unknownColor').onchange = () => {
   state.unknownColor = $('unknownColor').value;
@@ -601,11 +606,13 @@ $('htmlExport').onclick = async () => {
     $('htmlExport').disabled = false;
   }
 };
-// 현재 이미지 내보내기: the current view with its legend; Origin style when ticked.
+// Export the current view style, not a separate export checkbox.
 $('imageExport').onclick = async () => {
-  if (!project) return;
+  if (!project || $('imageExport').disabled) return;
+  $('imageExport').disabled = $('quickImageExport').disabled = true;
   try {
-    const exported = exportFigure(project, state, { origin: $('originStyle').checked });
+    const origin = state.originStyle;
+    const exported = exportFigure(project, state);
     const format = $('imageFormat').value;
     const url = await Plotly.toImage(
       { data: exported.data, layout: exported.layout },
@@ -614,11 +621,13 @@ $('imageExport').onclick = async () => {
     const blob = await (await fetch(url)).blob();
     download(
       blob,
-      `XRD-그래프${$('originStyle').checked ? '-Origin' : ''}.${format === 'jpeg' ? 'jpg' : 'png'}`,
+      `XRD-그래프${origin ? '-Origin' : ''}.${format === 'jpeg' ? 'jpg' : 'png'}`,
     );
     message('범례를 포함한 현재 이미지를 저장했습니다.');
   } catch (error) {
     message(error.message, true);
+  } finally {
+    $('imageExport').disabled = $('quickImageExport').disabled = false;
   }
 };
 
@@ -723,8 +732,10 @@ async function start() {
     if (!state) return;
     for (const axis of ['xaxis', 'xaxis2']) {
       if (event[axis + '.autorange']) state.xRange = null;
-      if (Number.isFinite(event[axis + '.range[0]']) && Number.isFinite(event[axis + '.range[1]']))
-        state.xRange = [event[axis + '.range[0]'], event[axis + '.range[1]']];
+      // Plotly emits either an array or indexed keys depending on the interaction/API.
+      const range = event[axis + '.range'] || [event[axis + '.range[0]'], event[axis + '.range[1]']];
+      if (Array.isArray(range) && range.length === 2 && range.every(Number.isFinite))
+        state.xRange = range.slice();
     }
     if (event['yaxis.autorange']) state.yRange = null;
     // A double-click on the graph makes Plotly autorange: go back to the original 2θ range (the
@@ -735,8 +746,9 @@ async function start() {
       setTimeout(() => draw(false), 0);
       return;
     }
-    if (Number.isFinite(event['yaxis.range[0]']) && Number.isFinite(event['yaxis.range[1]']))
-      state.yRange = [event['yaxis.range[0]'], event['yaxis.range[1]']];
+    const yRange = event['yaxis.range'] || [event['yaxis.range[0]'], event['yaxis.range[1]']];
+    if (Array.isArray(yRange) && yRange.length === 2 && yRange.every(Number.isFinite))
+      state.yRange = yRange.slice();
     updateControls();
     persist();
   });
