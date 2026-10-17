@@ -406,6 +406,33 @@ export function nearestIndex(xs, x) {
   return lo > 0 && Math.abs(xs[lo - 1] - x) < Math.abs(xs[lo] - x) ? lo - 1 : lo;
 }
 
+export function phaseMarkerHint(project, state, figure) {
+  const description = '측정 그래프의 관측 피크 위에 결정상 기호를 표시합니다. 하단 기준 피크 막대와는 별도입니다.';
+  if (!state.markers) return description;
+  const { samples } = selectedSamples(project, state);
+  if (!samples.length) return '표시할 측정 그래프가 없습니다. 시료 선택과 축·강도 단위를 확인하세요.';
+  const traces = figure.data.filter(t => t.meta?.role === 'marker');
+  const inRange = (value, range) => !range || (value >= Math.min(...range) && value <= Math.max(...range));
+  const total = traces.reduce((sum, t) => sum + t.x.length, 0);
+  const visible = traces.reduce((sum, t) => sum + t.x.filter((x, i) =>
+    inRange(x, state.xRange) && inRange(t.y[i], state.yRange)).length, 0);
+  const reasons = [];
+  for (const sample of samples) {
+    if (traces.some(t => t.meta.sampleId === sample.id && t.x.length)) continue;
+    let reason;
+    if (!(sample.phases || []).length) reason = '결정상 목록이 없습니다. 상매칭 Report 연결과 분석 검토를 확인하세요.';
+    else if (sample.phases.every(p => state.hiddenPhases.includes(p.id))) reason = '결정상이 모두 숨김 상태입니다. 범례에서 결정상을 체크하세요.';
+    else if (!(sample.observed_peaks || []).length) reason = '관측 피크표를 읽지 못했거나 검토에서 제외했습니다. 상매칭 Report 원문과 분석 자료 검토를 확인하세요.';
+    else if (!(sample.assignments || []).some(a => a.matches?.length)) reason = '관측 피크의 결정상 배정 정보가 없습니다. 상매칭 Report의 Phase Name 열을 확인하세요.';
+    else reason = '상 배정의 이름·피크 번호·위치가 관측 피크 또는 RAW 범위와 연결되지 않습니다. 원문과 분석 검토를 확인하세요.';
+    reasons.push(`${sample.name}: ${reason}`);
+  }
+  const summary = total
+    ? (visible ? `현재 범위에 결정상 마커 ${visible}개 표시 (전체 ${total}개).` : `결정상 마커 ${total}개가 현재 확대 범위 밖에 있습니다. 「전체 범위」를 누르세요.`)
+    : '표시할 결정상 마커가 없습니다.';
+  return [summary, ...reasons.slice(0, 3), ...(reasons.length > 3 ? [`외 ${reasons.length - 3}개 시료도 피크 연결을 확인하세요.`] : [])].join(' ');
+}
+
 export function buildFigure(project, state, viewport = {}) {
   const { samples, warnings } = selectedSamples(project, state),
     data = [],

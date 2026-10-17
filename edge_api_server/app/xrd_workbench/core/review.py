@@ -6,7 +6,7 @@ import hashlib
 import json
 from copy import deepcopy
 
-from ..core.parsing.pdf_report import derive_report, header_type
+from ..core.parsing.pdf_report import derive_report, header_key, header_type, supported_peak_sections
 from ..core.parsing.values import central, normal
 
 
@@ -70,7 +70,7 @@ def numeric_cell(table, row, col):
         return central(rows[row][col]) is not None or (
             len(rows[row]) > 2 and 'Weight' in normal(rows[row][2])
         )
-    return label.lower() in ('2θ, °', 'd, å', 'norm. i.', 'height, cps', 'fom')
+    return header_key(label) in ('2θ,°', 'd,å', 'norm.i.', 'height,cps', 'fom')
 
 
 def validate_review(project, review):
@@ -214,8 +214,8 @@ def validate_review(project, review):
 
 
 def rebuild(report, entries, aliases=None):
-    """Re-derive a report from its frozen logical tables with reviewed cells and excluded
-    rows/tables applied. Table recognition never changes."""
+    """Apply reviewed cells/exclusions to original sections, recovering supported peak
+    headers missed by older parsers. Recognition never depends on edited cells."""
     work = deepcopy(report)
     work['logical_tables'] = []
     work['effective_tables'] = []
@@ -229,10 +229,10 @@ def rebuild(report, entries, aliases=None):
             for cell in entry.get('cells', []):
                 table['rows'][cell['row']][cell['col']] = cell['value']
         work['effective_tables'].append(table)
-    # Recognition is frozen at initial extraction. Unknown tables stay unknown.
+    # Only original peak headers may be recovered; edited unknown tables stay unknown.
     group = None
     reference_group = None
-    for original in report['logical_tables']:
+    for original in supported_peak_sections(report):
         ti = table_indices[(original['page'], tuple(original['bbox']))]
         table = work['effective_tables'][ti]
         entry = entries.get(str(ti), {})

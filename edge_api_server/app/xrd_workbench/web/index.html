@@ -27,7 +27,8 @@
     <label id="activeSampleRow" class="activeSample" hidden>시료 <select id="activeSample"></select></label>
    </div>
    <div class="panelSection"><div class="sectionTitle">표시</div>
-    <label class="optionRow"><input id="markers" type="checkbox"> 결정상 마커</label>
+    <label class="optionRow"><input id="markers" type="checkbox" aria-describedby="phaseMarkerHint"> 결정상 마커</label>
+    <p id="phaseMarkerHint" class="panelHint" role="status" aria-live="polite">측정 그래프의 관측 피크 위에 결정상 기호를 표시합니다. 하단 기준 피크 막대와는 별도입니다.</p>
     <label class="optionRow"><input id="peakbar" type="checkbox" checked> 기준 피크 막대</label>
     <label class="optionRow">마커 크기 <input id="markerSize" type="range" min="3" max="20" step="1" value="8" aria-label="마커 크기" aria-describedby="markerSizeHint"><span id="markerSizeValue">8</span></label>
     <p id="markerSizeHint" class="panelHint">결정상·기준 피크 마커와 Unknown Peak에 함께 적용됩니다.</p>

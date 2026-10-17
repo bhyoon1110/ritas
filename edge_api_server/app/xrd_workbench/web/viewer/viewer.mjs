@@ -2,6 +2,7 @@ import {
   createState,
   restoreState,
   buildFigure,
+  phaseMarkerHint,
   exportFigure,
   maxValue,
   minValue,
@@ -112,6 +113,7 @@ function updateControls() {
   $('quickOverlay').setAttribute('aria-pressed', String(!single && state.offsets.raw.spacing === 0));
   $('quickStack').setAttribute('aria-pressed', String(!single && state.offsets.raw.spacing !== 0));
   for (const key of ['markers', 'peakbar', 'unknownMarkers', 'originStyle']) $(key).checked = !!state[key];
+  $('phaseMarkerHint').textContent = phaseMarkerHint(project, state, figure);
   $('unknownColor').value = state.unknownColor;
   $('markerSize').value = String(state.markerSize);
   $('markerSizeValue').textContent = String(state.markerSize);

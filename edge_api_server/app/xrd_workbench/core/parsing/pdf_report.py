@@ -11,24 +11,29 @@ import re
 
 import pdfplumber
 
-from ...core.parsing.values import central, normal
+from ...core.parsing.values import central, normal, pdf_number
+
+
+def header_key(value):
+    """Match column labels even when a PDF wraps in the middle of a word."""
+    key = re.sub(r'\s+', '', normal(value).lower())
+    return 'no.' if key == 'no' else key
 
 
 def header_type(row):
     """Classify a table row as a supported header kind ('phases', 'observed',
     'assignments', 'reference', 'wppf') or None."""
-    cells = [normal(cell).lower() for cell in row]
-    joined = ' '.join(cells)
-    if 'phase name' in cells and 'fom' in cells:
+    cells = [header_key(cell) for cell in row]
+    if 'phasename' in cells and 'fom' in cells:
         return 'phases'
     if cells and cells[0] in ('no.', 'no'):
-        if 'height, cps' in cells:
+        if 'height,cps' in cells:
             return 'observed'
-        if 'phase name' in cells:
+        if 'phasename' in cells:
             return 'assignments'
-        if 'h k l' in cells and 'norm. i.' in cells:
+        if 'hkl' in cells and 'norm.i.' in cells:
             return 'reference'
-    if 'phase / dataset' in joined:
+    if 'phase/dataset' in cells:
         return 'wppf'
     return None
 
@@ -49,12 +54,32 @@ def logical_sections(rows):
 
 def get_cell(row, headers, name):
     """Cell of a row under the named header column, or None when the column is absent."""
-    names = [normal(cell).lower() for cell in headers]
+    names = [header_key(cell) for cell in headers]
     try:
-        index = names.index(name.lower())
+        index = names.index(header_key(name))
         return row[index] if index < len(row) else None
     except ValueError:
         return None
+
+
+def supported_peak_sections(report):
+    """Recover known peak tables missed by old parsers, using ORIGINAL cells only.
+
+    Keep frozen sections and provenance. Never turn a user-edited unknown table
+    into a new schema, nor reclassify phase, reference or WPPF tables.
+    """
+    sections = list(report['logical_tables'])
+    for ti, table in enumerate(report['raw_tables']):
+        existing = [s for s in sections if s['page'] == table['page'] and s['bbox'] == table['bbox']]
+        covered = {i for s in existing for i in s['row_indices']}
+        for section in logical_sections(table['rows']):
+            if section['kind'] not in ('observed', 'assignments') or not section['rows']:
+                continue
+            if covered.intersection(section['row_indices']):
+                continue
+            sections.append(dict(**section, page=table['page'], bbox=table['bbox'],
+                                 prefix='', table_index=ti))
+    return sections
 
 
 def parse_report(data: bytes, filename: str) -> dict:
@@ -165,10 +190,10 @@ def derive_report(report, aliases=None):
                     f"{result['filename']} p.{pageno}: d-I 상 이름을 연결하지 못했습니다."
                 )
             for row in section['rows']:
-                no = central(get_cell(row, headers, 'No.'))
+                no = pdf_number(get_cell(row, headers, 'No.'))
                 xraw = get_cell(row, headers, '2θ, °')
-                x = central(xraw)
-                if no is None or x is None:
+                x = pdf_number(xraw)
+                if no is None or not no.is_integer() or x is None:
                     continue
                 result['reference_peaks'].append(
                     dict(
@@ -179,15 +204,20 @@ def derive_report(report, aliases=None):
                         d_raw=get_cell(row, headers, 'd, Å'),
                         hkl_raw=get_cell(row, headers, 'h k l'),
                         intensity_raw=get_cell(row, headers, 'Norm. I.'),
-                        intensity=central(get_cell(row, headers, 'Norm. I.')),
+                        intensity=pdf_number(get_cell(row, headers, 'Norm. I.')),
                         page=pageno,
                     )
                 )
         elif kind in ('observed', 'assignments'):
+            # Some instruments print observation and assignment columns together.
+            has_height = header_key('Height, cps') in [header_key(h) for h in headers]
+            has_assignment = header_key('Phase Name') in [header_key(h) for h in headers]
             for row in section['rows']:
-                no, xraw = central(get_cell(row, headers, 'No.')), get_cell(row, headers, '2θ, °')
-                x = central(xraw)
-                if no is None or x is None:
+                no, xraw = pdf_number(get_cell(row, headers, 'No.')), get_cell(row, headers, '2θ, °')
+                x = pdf_number(xraw)
+                if no is None or not no.is_integer() or x is None:
+                    if any(normal(cell) for cell in row):
+                        result['warnings'].append(f"{result['filename']} p.{pageno}: 피크 번호 또는 2θ를 읽지 못한 행이 있습니다. 원문 표를 확인하세요.")
                     continue
                 record = dict(
                     no=int(no),
@@ -196,20 +226,29 @@ def derive_report(report, aliases=None):
                     page=pageno,
                     fields={normal(k): v for k, v in zip(headers, row) if normal(k)},
                 )
-                if kind == 'observed':
-                    record['height_raw'] = get_cell(row, headers, 'Height, cps')
-                    result['observed_peaks'].append(record)
-                else:
+                if has_height:
+                    result['observed_peaks'].append(dict(record, height_raw=get_cell(row, headers, 'Height, cps')))
+                if has_assignment:
                     raw = get_cell(row, headers, 'Phase Name') or ''
                     record.update(
                         phase_raw=raw, card_raw=get_cell(row, headers, 'Card No'), matches=[]
                     )
                     # Parse only explicitly written "Phase: h k l" entries.
-                    for name, hkl in re.findall(
-                        r'(?:^|,)\s*([^:]+):\s*([^,]+)', normal(raw.replace('-\n', '-'))
+                    for raw_name, hkl in re.findall(
+                        r'(?:^|,)\s*([^:]+):\s*([^,]+)', raw.replace('-\n', '-')
                     ):
+                        name = normal(raw_name)
+                        known = {p['name'] for p in result['phases']} | set(aliases)
+                        # A wrapped word (Corund\num) is linked only to one exact
+                        # whitespace-insensitive name already printed in the phase table.
+                        # No spelling correction, nearest-peak or chemical inference.
+                        if name not in known and ('\n' in raw_name or '\r' in raw_name):
+                            compact = re.sub(r'\s+', '', name)
+                            candidates = [p for p in known if re.sub(r'\s+', '', p) == compact]
+                            if len(candidates) == 1:
+                                name = candidates[0]
                         record['matches'].append(
-                            dict(phase=aliases.get(normal(name), normal(name)), hkl=normal(hkl))
+                            dict(phase=aliases.get(name, name), hkl=normal(hkl))
                         )
                     result['assignments'].append(record)
         elif kind == 'wppf':
@@ -240,6 +279,15 @@ def derive_report(report, aliases=None):
                             page=pageno,
                         )
                     )
+    unmatched = sorted({m['phase'] for a in result['assignments'] for m in a['matches']}
+                       - {p['name'] for p in result['phases']})
+    if unmatched:
+        result['warnings'].append('상 배정 이름을 결정상 목록과 연결하지 못했습니다: ' + ', '.join(unmatched) + '. 원문과 분석 검토를 확인하세요.')
+    result['warnings'] = list(dict.fromkeys(result['warnings']))
+    if result['phases'] and not result['observed_peaks']:
+        result['warnings'].append('관측 피크표를 읽지 못했거나 검토에서 제외했습니다. 결정상 마커는 상매칭 Report의 관측 피크와 상 배정 정보가 필요합니다.')
+    elif result['observed_peaks'] and not any(a['matches'] for a in result['assignments']):
+        result['warnings'].append('관측 피크의 결정상 배정 정보가 없습니다. 상매칭 Report의 Phase Name 열과 분석 검토 내용을 확인하세요.')
     if not any((result['phases'], result['quantities'], result['observed_peaks'])):
         result['warnings'].append(
             '지원되는 분석 표를 찾지 못했습니다. 이미지 PDF/OCR 및 다른 보고서 형식은 검토가 필요합니다.'

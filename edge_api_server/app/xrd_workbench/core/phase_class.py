@@ -8,7 +8,7 @@ between a reference peak and an observed peak is the report's own assignment of 
 from decimal import Decimal
 
 from ..core.figure import phase_key
-from ..core.parsing.values import central
+from ..core.parsing.values import pdf_number
 
 
 def _hkl(text) -> str:
@@ -80,7 +80,7 @@ def trace_check(sample: dict, phase: dict, percent) -> dict:
     """Verdict for one phase: `trace` (both representative peaks are at most `percent` of the
     sample's strongest observed peak), `not_trace`, or `undecided` with the reason."""
     limit = check_percent(percent)
-    heights = [central(p.get('height_raw')) for p in sample.get('observed_peaks', [])]
+    heights = [pdf_number(p.get('height_raw')) for p in sample.get('observed_peaks', [])]
     top = max((h for h in heights if h is not None), default=0)
     first, second, reason = _representatives(sample, phase)
     if reason:
@@ -89,7 +89,7 @@ def trace_check(sample: dict, phase: dict, percent) -> dict:
     within = True
     for role, row in (('first', first), ('second', second)):
         observed, why = _observed(sample, phase, row)
-        height = central(observed.get('height_raw')) if observed else None
+        height = pdf_number(observed.get('height_raw')) if observed else None
         if observed is not None and height is None:
             why = 'Height 읽지 못함'
         if why:

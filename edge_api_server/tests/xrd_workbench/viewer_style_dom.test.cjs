@@ -17,11 +17,11 @@ const fixture = {
     observed_peaks:[{no:1,x:20,x_raw:'20',height_raw:'9',page:1}],
     reference_peaks:[{phase:'Phase A',x:20,intensity:100,intensity_raw:'100',hkl_raw:'100',page:1}],sources:[]}],sources:[],warnings:[],
 };
-function setup(t, program, saved={}) {
+function setup(t, program, saved={}, project=fixture) {
   const dom=new JSDOM(fs.readFileSync(path.join(root,'index.html'),'utf8'),{url:'http://rist.test/viewer.html',runScripts:'outside-only',pretendToBeVisual:true});
   t.after(()=>dom.window.close());
   const w=dom.window,d=w.document, renders=[],exports=[],downloads=[],events={};
-  w.XRD_EMBEDDED={project:fixture,state:{projectId:fixture.id,...saved},snapshotId:'qa'};
+  w.XRD_EMBEDDED={project,state:{projectId:project.id,...saved},snapshotId:'qa'};
   w.Plotly={newPlot:async node=>{node.on=(key,callback)=>{events[key]=callback;};},react:async(node,data,layout)=>{renders.push(JSON.parse(JSON.stringify({data,layout})));},
     toImage:async figure=>{exports.push(JSON.parse(JSON.stringify(figure)));return 'data:image/png;base64,QA';}};
   w.fetch=async()=>({blob:async()=>new w.Blob(['QA'])});
@@ -31,6 +31,30 @@ function setup(t, program, saved={}) {
   return {w,d,renders,exports,downloads,events,setSize:async size=>{d.getElementById('markerSize').value=String(size);d.getElementById('markerSize').dispatchEvent(new w.Event('input'));await flush();}};
 }
 for(const [mode, program] of Object.entries({native,chrome49:legacy})) {
+  test(`${mode}: phase toggle changes upper markers only and explains missing data, hiding and zoom`,async t=>{
+    const ui=setup(t,program);await flush();
+    const hint=()=>ui.d.getElementById('phaseMarkerHint').textContent;
+    const phaseCount=()=>ui.renders.at(-1).data.filter(t=>t.meta.role==='marker').reduce((n,t)=>n+t.x.length,0);
+    const bars=()=>JSON.stringify(ui.renders.at(-1).data.filter(t=>['peakbar','peakbar-tip'].includes(t.meta.role)));
+    const reference=bars();assert.match(hint(),/하단 기준 피크 막대와는 별도/);
+    for(const origin of [false,true]){
+      if(origin){ui.d.getElementById('originStyle').click();await flush();}
+      ui.d.getElementById('markers').click();await flush();
+      assert.equal(phaseCount(),1);assert.match(hint(),/마커 1개 표시/);assert.equal(bars(),reference);
+      ui.events.plotly_relayout({'xaxis.range':[21,29]});await flush();
+      assert.match(hint(),/확대 범위 밖/);
+      ui.events.plotly_relayout({'xaxis.range':[10,30]});await flush();
+      assert.match(hint(),/마커 1개 표시/);
+      ui.d.getElementById('markers').click();await flush();
+      assert.equal(phaseCount(),0);assert.equal(bars(),reference);
+    }
+    const missing=JSON.parse(JSON.stringify(fixture));missing.samples[0].observed_peaks=[];
+    const absent=setup(t,program,{markers:true},missing);await flush();
+    assert.match(absent.d.getElementById('phaseMarkerHint').textContent,/관측 피크표를 읽지 못했거나/);
+    assert.equal(absent.d.getElementById('markers').disabled,false);
+    const hidden=setup(t,program,{markers:true,hiddenPhases:['p1']});await flush();
+    assert.match(hidden.d.getElementById('phaseMarkerHint').textContent,/모두 숨김/);
+  });
   test(`${mode}: default reference tips visibly receive size changes even with phase markers off`,async t=>{
     const ui=setup(t,program);await flush();
     assert.equal(ui.d.getElementById('markers').checked,false);

@@ -19,3 +19,12 @@ def central(raw):
         return None
     number = float(value.split('(')[0])
     return number if math.isfinite(number) else None
+
+
+def pdf_number(raw):
+    """Read a single PDF numeric cell with soft line wraps; keep ordinary spaces strict.
+
+    Raw tokens stay untouched in the report. This is deliberately not used by the
+    TXT reader or manual-value validation, where joining tokens could change data.
+    """
+    return central(re.sub(r'[ \t]*[\r\n]+[ \t]*', '', raw or ''))
