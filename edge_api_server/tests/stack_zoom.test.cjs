@@ -63,8 +63,8 @@ function setup(t, kind, mode) {
   run('var axisLocksEnabled');
   const q = selector => d.querySelector(selector);
   const action = name => q('[data-axis-action="'+name+'"]').click();
-  function wheel(delta, y=200, target=gd) {
-    const event = new w.WheelEvent('wheel', {bubbles:true,cancelable:true,clientX:300,clientY:y,deltaY:delta});
+  function wheel(delta, y=200, target=gd, options={}) {
+    const event = new w.WheelEvent('wheel', {bubbles:true,cancelable:true,clientX:300,clientY:y,deltaY:delta,...options});
     target.dispatchEvent(event); return event;
   }
   function modebar(value, tag='button') {
@@ -184,6 +184,110 @@ for (const mode of ['native','chrome49']) for (const kind of ['ftir','raman']) {
     else assert.notDeepEqual(clone(h.gd.layout.xaxis.range),x);
     assert.equal(h.wheel(-120,50).defaultPrevented,false); // Page can still scroll.
     assert.equal(h.wheel(-120,300,h.q('.rist-axis-control-button')).defaultPrevented,false);
+  });
+  test(label+': modifier wheel selects only one axis in stack/normal views and never changes measured data', t => {
+    const h = setup(t,kind,mode), raw = clone(h.gd.data);
+    for (const stacked of [true,false]) {
+      h.gd.layout.meta[h.key].enabled = stacked;
+      for (const options of [{shiftKey:true},{ctrlKey:true},{ctrlKey:true,shiftKey:true}]) {
+        h.gd.layout.xaxis.range = kind === 'ftir' ? [4000,400] : [100,3000];
+        h.gd.layout.yaxis.range = [-20,100]; h.sync();
+        const x = clone(h.gd.layout.xaxis.range), y = clone(h.gd.layout.yaxis.range);
+        assert(h.wheel(-120,300,h.gd,options).defaultPrevented);
+        if (options.ctrlKey) {
+          assert.deepEqual(clone(h.gd.layout.xaxis.range),x);
+          assert.notDeepEqual(clone(h.gd.layout.yaxis.range),y);
+          assert.equal(h.gd.layout.yaxis.range[0] === y[0],stacked);
+        } else {
+          assert.deepEqual(clone(h.gd.layout.yaxis.range),y);
+          const fraction = (300-60)/800, anchor = x[0]+(x[1]-x[0])*fraction;
+          const next = x.map(v=>anchor+(v-anchor)*Math.exp(-.24));
+          assert.deepEqual(clone(h.gd.layout.xaxis.range),next);
+        }
+        h.wheel(120,300,h.gd,options);
+        h.gd.layout.xaxis.range.forEach((v,i)=>assert(Math.abs(v-x[i])<1e-9));
+        h.gd.layout.yaxis.range.forEach((v,i)=>assert(Math.abs(v-y[i])<1e-9));
+      }
+    }
+    assert.deepEqual(clone(h.gd.data),raw);
+  });
+  test(label+': releasing modifiers restores default policy; Shift horizontal deltas and edit-mode shortcuts work', t => {
+    const h = setup(t,kind,mode);
+    assert(h.wheel(0,300,h.gd,{shiftKey:true,deltaX:-120}).defaultPrevented);
+    assert.deepEqual(clone(h.gd.layout.yaxis.range),[-20,100]);
+    const x = clone(h.gd.layout.xaxis.range);
+    h.wheel(-120); // No sticky modifier after release or focus loss.
+    assert(h.gd.layout.yaxis.range[1] < 100);
+    if (kind === 'raman') assert.deepEqual(clone(h.gd.layout.xaxis.range),x);
+    else assert.notDeepEqual(clone(h.gd.layout.xaxis.range),x);
+    h.gd._context.scrollZoom = false; h.gd._ristEditMode = true;
+    const y = clone(h.gd.layout.yaxis.range);
+    h.wheel(-3,300,h.gd,{shiftKey:true,deltaMode:1});
+    assert.deepEqual(clone(h.gd.layout.yaxis.range),y);
+    h.wheel(-1,300,h.gd,{ctrlKey:true,deltaMode:2});
+    assert.equal(h.gd.layout.yaxis.range[0],y[0]);
+    assert(h.gd.layout.yaxis.range[1] < y[1]);
+  });
+  test(label+': shortcuts honor locked axes, Crop bounds and active drawing/text operations', async t => {
+    const h = setup(t,kind,mode);
+    for (const [axis,options] of [['xaxis',{shiftKey:true}],['yaxis',{ctrlKey:true}]]) {
+      h.gd.layout[axis].fixedrange = true;
+      const before = clone(h.gd.layout);
+      assert(h.wheel(-120,300,h.gd,options).defaultPrevented);
+      assert.deepEqual(clone(h.gd.layout),before);
+      h.gd.layout[axis].fixedrange = false;
+    }
+    for (const flag of ['_ristAxisCropActive','_ristAxisScaleActive','_ristShapeDrawMode','_ristInlineTextEditing']) {
+      h.gd[flag] = true;
+      const before = clone(h.gd.layout);
+      h.wheel(-120,300,h.gd,{ctrlKey:true}); h.wheel(-120,300,h.gd,{shiftKey:true});
+      assert.deepEqual(clone(h.gd.layout),before); h.gd[flag] = false;
+    }
+    h.action('crop'); await tick(); h.emit('plotly_selected',{range:{x:[500,2000],y:[0,100]}}); await tick();
+    await h.w.Plotly.relayout(h.gd,{'yaxis.range':[20,90]});
+    const x = clone(h.gd.layout.xaxis.range);
+    h.wheel(400,300,h.gd,{ctrlKey:true}); await tick();
+    assert.deepEqual(clone(h.gd.layout.yaxis.range),[20,100]);
+    assert.deepEqual(clone(h.gd.layout.xaxis.range),x);
+    h.wheel(400,300,h.gd,{shiftKey:true}); await tick();
+    assert.deepEqual(clone(h.gd.layout.xaxis.range),x);
+    assert.deepEqual(clone(h.gd.layout.yaxis.range),[20,100]);
+  });
+  test(label+': browser/page/legend/editor scrolling is not captured outside the plotting area', t => {
+    const h = setup(t,kind,mode), before = clone(h.gd.layout);
+    for (const options of [{shiftKey:true},{ctrlKey:true}]) {
+      assert.equal(h.wheel(-120,50,h.gd,options).defaultPrevented,false);
+      assert.equal(h.wheel(-120,300,h.d.body,options).defaultPrevented,false);
+      for (const tag of ['input','textarea','select','button','div']) {
+        const node = h.d.createElement(tag);
+        if (tag === 'div') node.setAttribute('contenteditable','true');
+        h.gd.appendChild(node);
+        assert.equal(h.wheel(-120,300,node,options).defaultPrevented,false);
+      }
+      for (const className of ['legend','rist-legend-edit-panel','rist-shape-editor-panel']) {
+        const node = h.d.createElement('div'); node.className = className; h.gd.appendChild(node);
+        assert.equal(h.wheel(-120,300,node,options).defaultPrevented,false);
+      }
+      assert.equal(h.wheel(-120,300,h.gd,{...options,altKey:true}).defaultPrevented,false);
+      assert.equal(h.wheel(-120,300,h.gd,{...options,metaKey:true}).defaultPrevented,false);
+    }
+    assert.deepEqual(clone(h.gd.layout),before); assert.equal(h.captures(),0);
+  });
+  test(label+': shortcut guidance stays below the graph, outside export/toolbar and without popup or key latch', t => {
+    const h = setup(t,kind,mode), hint = h.q('.rist-axis-wheel-help');
+    assert.equal(h.gd.nextElementSibling,hint);
+    assert.equal(h.gd.contains(hint),false);
+    assert.equal(h.w.getComputedStyle(hint).display,'flex');
+    assert.equal(h.w.getComputedStyle(hint).flexWrap,'wrap');
+    assert(!['absolute','fixed'].includes(h.w.getComputedStyle(hint).position));
+    assert.match(hint.textContent,/Shift \+ 휠: X축만/);
+    assert.match(hint.textContent,/Ctrl \+ 휠: Y축만/);
+    assert.match(hint.textContent,/스택: Y축 바닥 고정/);
+    assert(hint.textContent.includes('기본: '+(kind === 'ftir' ? 'X·Y축' : 'Y축')));
+    assert(h.gd.getAttribute('aria-describedby').includes(hint.id));
+    h.run('var axisLocksEnabled');
+    assert.equal(h.d.querySelectorAll('.rist-axis-wheel-help').length,1);
+    assert.equal(h.wheel(-120,300,hint,{ctrlKey:true}).defaultPrevented,false);
   });
   test(label+': Plotly +/- buttons use the same anchor, including anchor/button markup', async t => {
     const h = setup(t,kind,mode);

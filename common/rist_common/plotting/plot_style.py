@@ -8525,6 +8525,24 @@ def _axis_controls_js(div_id: str, *, axis_locks: bool = False, scroll_zoom_y_on
   font-size: 11px;
   line-height: 1.45;
 }
+#__PLOT_ID_CSS__-wheel-help {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 14px;
+  width: 100%;
+  box-sizing: border-box;
+  margin: 6px 0 0;
+  padding: 5px 8px;
+  color: #526273;
+  font: 12px/1.5 Arial, "Noto Sans KR", sans-serif;
+}
+#__PLOT_ID_CSS__-wheel-help > span {
+  white-space: nowrap;
+}
+@media print {
+  #__PLOT_ID_CSS__-wheel-help { display: none; }
+}
 #__PLOT_ID_CSS__ .rist-axis-control-status {
   min-height: 16px;
   margin: 0;
@@ -8680,6 +8698,19 @@ def _axis_controls_js(div_id: str, *, axis_locks: bool = False, scroll_zoom_y_on
   var scrollZoomYOnly = __SCROLL_ZOOM_Y_ONLY__;
   if (getComputedStyle(gd).position === "static") gd.style.position = "relative";
 
+  // A normal-flow sibling never covers the plot, shifts toolbar buttons or
+  // enters Plotly image exports. No popup, timer or keyboard mode to dismiss.
+  var wheelHelp = document.createElement("div");
+  wheelHelp.id = gd.id + "-wheel-help";
+  wheelHelp.className = "rist-axis-wheel-help";
+  wheelHelp.innerHTML = "<span>그래프 안에서 휠 확대·축소</span>"
+    + "<span>기본: " + (scrollZoomYOnly ? "Y축" : "X·Y축") + "</span>"
+    + "<span><b>Shift + 휠</b>: X축만</span>"
+    + "<span><b>Ctrl + 휠</b>: Y축만</span>"
+    + "<span>스택: Y축 바닥 고정</span>";
+  gd.insertAdjacentElement("afterend", wheelHelp);
+  gd.setAttribute("aria-describedby", ((gd.getAttribute("aria-describedby") || "") + " " + wheelHelp.id).trim());
+
   var toolbar = gd.querySelector(".rist-plot-control-row");
   if (!toolbar) {
     toolbar = document.createElement("div");
@@ -8707,6 +8738,7 @@ def _axis_controls_js(div_id: str, *, axis_locks: bool = False, scroll_zoom_y_on
     + axisFields("x", "X축") + axisFields("y", "Y축")
     + "<p class='rist-axis-control-help'>숫자 표시 간격은 라벨이 있는 큰 눈금, 보조 눈금 간격은 그 사이의 작은 눈금을 조절합니다. 자동 간격을 사용하면 확대 범위에 맞춰 함께 조절됩니다."
     + (axisLocksEnabled ? " 축 고정은 마우스 확대·이동·Crop을 막습니다. 숫자를 직접 입력해 범위를 바꾸는 것은 가능합니다." : "") + "</p>"
+    + "<p class='rist-axis-control-help'>그래프 안에서 Shift + 휠은 X축만, Ctrl + 휠은 Y축만 확대·축소합니다. 키를 놓으면 기본 동작으로 돌아갑니다. 스택 모드의 Y축 바닥과 고정한 축은 유지됩니다.</p>"
     + "<p class='rist-axis-control-status' aria-live='polite'></p>"
     + "<div class='rist-axis-control-footer'><div class='rist-axis-control-view-actions' aria-label='그래프 보기 도구'>"
     + "<button type='button' data-axis-action='zoom-in' title='확대' aria-label='확대'><svg class='lucide lucide-zoom-in' aria-hidden='true' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='11' cy='11' r='8'/><path d='m21 21-4.3-4.3'/><path d='M11 8v6'/><path d='M8 11h6'/></svg></button>"
@@ -9568,13 +9600,16 @@ def _axis_controls_js(div_id: str, *, axis_locks: bool = False, scroll_zoom_y_on
     };
   }
 
-  // Raman keeps Y-only wheel zoom (including shape editing). FTIR intercepts
-  // only stacked wheel zoom, retaining cursor-centered X and normal-mode Plotly.
+  // Unmodified wheel retains Raman Y-only and FTIR's existing Plotly policy.
+  // Explicit modifiers work in both normal/stack views, without latched key
+  // state. Ctrl takes precedence if both are held. Preserve other OS shortcuts.
   var lastWheelAt = 0;
   gd.addEventListener("wheel", function(ev) {
-    if (!scrollZoomYOnly && (!stackZoomEnabled()
+    if (ev.altKey || ev.metaKey) return;
+    var selectedAxis = ev.ctrlKey ? "y" : ev.shiftKey ? "x" : null;
+    if (!selectedAxis && !scrollZoomYOnly && (!stackZoomEnabled()
         || !gd._context || !gd._context.scrollZoom)) return;
-    if (ev.target.closest(".modebar,.legend,.rist-plot-control-row,input,textarea,select,button,[role='dialog']")) return;
+    if (ev.target.closest(".modebar,.legend,.rist-plot-control-row,.rist-legend-edit-panel,.rist-shape-editor-panel,input,textarea,select,button,[role='dialog'],[contenteditable],[role='textbox']")) return;
     var rect = gd.getBoundingClientRect();
     var box = plotBox();
     var x = ev.clientX - rect.left;
@@ -9585,11 +9620,14 @@ def _axis_controls_js(div_id: str, *, axis_locks: bool = False, scroll_zoom_y_on
     ev.stopImmediatePropagation();
     if (gd._ristAxisCropActive || gd._ristAxisScaleActive
         || gd._ristShapeDrawMode || gd._ristInlineTextEditing) return;
-    var delta = Number(ev.deltaY) * (ev.deltaMode === 1 ? 16 : ev.deltaMode === 2 ? box.height : 1);
+    // Chromium may translate Shift+vertical-wheel into horizontal deltaX.
+    var wheelDelta = Number(ev.deltaY);
+    if (selectedAxis === "x" && wheelDelta === 0) wheelDelta = Number(ev.deltaX);
+    var delta = wheelDelta * (ev.deltaMode === 1 ? 16 : ev.deltaMode === 2 ? box.height : 1);
     if (!Number.isFinite(delta) || delta === 0) return;
     var factor = Math.exp(Math.max(-0.5, Math.min(0.5, delta * 0.002)));
     var updates = {};
-    (scrollZoomYOnly ? ["y"] : ["x", "y"]).forEach(function(axis) {
+    (selectedAxis ? [selectedAxis] : scrollZoomYOnly ? ["y"] : ["x", "y"]).forEach(function(axis) {
       var name = axis + "axis";
       var range = currentRange(name);
       if (!range || axisLocked(name)) return;
