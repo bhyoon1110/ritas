@@ -758,6 +758,7 @@ class EdgeService:
             validate_specialized_report_request(
                 specialized_type,
                 [str(item) for item in (request.options.report_formats or [])],
+                input_dir=self.settings.storage_root / str(job["root_relative_path"]) / "input",
             )
 
         accepted_at = isoformat_kst()

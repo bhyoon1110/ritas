@@ -55,6 +55,8 @@ test('the project list is escaped, marks the current one and names the example',
 
 test('a project that is not in the list is not shown as if another one were selected', () => {
   const html = projectOptionsHTML([{ storage_id: 'a', label: 'A' }], 'gone');
-  assert.ok(html.startsWith('<option value="">프로젝트 선택…</option>'));
-  assert.ok(!html.includes('selected'));
+  assert.ok(html.startsWith('<option value="gone" selected>현재 프로젝트 (목록 갱신 중)</option>'));
+  assert.ok(!html.includes('<option value="a" selected>'));
+  assert.ok(projectOptionsHTML([], 'new').includes('value="new" selected'));
+  assert.ok(projectOptionsHTML([], '"><script>').includes('&quot;&gt;&lt;script&gt;'));
 });

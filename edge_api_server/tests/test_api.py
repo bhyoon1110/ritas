@@ -9,6 +9,7 @@ import zipfile
 
 import httpx
 import pymysql
+import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
 
@@ -1194,9 +1195,11 @@ def test_csharp_xrd_raw_bundle_generates_reviewable_report_then_queues_on_send(
     assert queued.json()["status"] == "PENDING"
 
 
+@pytest.mark.parametrize("formats", [["PPTX"], ["PDF"], ["HTML", "PPTX"], ["HTML", "PDF"]])
 def test_csharp_xrd_rejects_wrong_report_format_before_queueing(
     tmp_path: Path,
     mariadb: dict,
+    formats: list[str],
 ) -> None:
     client = create_client(
         tmp_path,
@@ -1217,7 +1220,7 @@ def test_csharp_xrd_rejects_wrong_report_format_before_queueing(
 
     rejected = client.post(
         f"/api/v1/jobs/{job_id}/report",
-        json={"options": {"reportFormats": ["PPTX"]}},
+        json={"options": {"reportFormats": formats}},
         headers=headers(f"{job_id}:wrong-format"),
     )
 
@@ -1225,6 +1228,10 @@ def test_csharp_xrd_rejects_wrong_report_format_before_queueing(
     assert rejected.json()["code"] == "XRD_REPORT_FORMAT_REQUIRED"
     status = client.get(f"/api/v1/jobs/{job_id}", headers=headers()).json()
     assert status["status"] == "FILES_VERIFIED"
+    job = client.app.state.database.fetch_job(job_id)
+    root = client.app.state.settings.storage_root / job["root_relative_path"]
+    assert not (root / "queue" / "report-request.json").exists()
+    assert (root / "input" / "raw" / "sample.txt").read_bytes() == b"10 1\n20 2\n"
 
     accepted = client.post(
         f"/api/v1/jobs/{job_id}/report",
@@ -1232,6 +1239,47 @@ def test_csharp_xrd_rejects_wrong_report_format_before_queueing(
         headers=headers(f"{job_id}:correct-format"),
     )
     assert accepted.status_code == 202
+
+
+@pytest.mark.parametrize("formats", [["PPTX"], ["PDF"], ["HTML", "PDF", "PPTX"]])
+@pytest.mark.parametrize("zipped", [False, True])
+def test_csharp_new_xrd_accepts_supported_formats_before_queueing(tmp_path, mariadb, formats, zipped):
+    from xrd_workbench.synthetic import sample_files
+
+    client = create_client(tmp_path, mariadb, analysis_type_map=(("A23141", "XRD"),))
+    payload = job_payload()
+    payload["pk"]["experimentCode"] = "A23141"
+    job_id = client.post("/api/v1/jobs", json=payload, headers=headers(str(uuid4()))).json()["jobId"]
+    files = sample_files("SampleA")
+    if zipped:
+        output = BytesIO()
+        with zipfile.ZipFile(output, "w") as archive:
+            for name, content in files.items():
+                archive.writestr("dataset/" + name, content)
+        files = {"new-inputs.zip": output.getvalue()}
+    upload_bundle(client, job_id, files)
+    request_headers = headers(f"{job_id}:report")
+    response = client.post(f"/api/v1/jobs/{job_id}/report",
+                           json={"options": {"reportFormats": formats}}, headers=request_headers)
+    assert response.status_code == 202, response.text
+    repeat = client.post(f"/api/v1/jobs/{job_id}/report",
+                         json={"options": {"reportFormats": formats}}, headers=request_headers)
+    assert repeat.status_code == 202 and repeat.json() == response.json()
+    assert client.get(f"/api/v1/jobs/{job_id}", headers=headers()).json()["status"] == "QUEUED"
+
+
+def test_csharp_custom_xrd_json_preserves_generic_report_formats(tmp_path, mariadb):
+    client = create_client(tmp_path, mariadb, analysis_type_map=(("A23141", "XRD"),))
+    payload = job_payload()
+    payload["pk"]["experimentCode"] = "A23141"
+    job_id = client.post("/api/v1/jobs", json=payload, headers=headers(str(uuid4()))).json()["jobId"]
+    upload_bundle(client, job_id, {"raw/sample.txt": b"10 1\n20 2\n"})
+    job = client.app.state.database.fetch_job(job_id)
+    root = client.app.state.settings.storage_root / job["root_relative_path"]
+    (root / "processed" / "analysis-result.json").write_text('{"sample":"custom"}', encoding="utf-8")
+    response = client.post(f"/api/v1/jobs/{job_id}/report",
+                           json={"options": {"reportFormats": ["PPTX"]}}, headers=headers(str(uuid4())))
+    assert response.status_code == 202, response.text
 
 
 def test_csharp_tem_raw_bundle_generates_reviewable_pptx(

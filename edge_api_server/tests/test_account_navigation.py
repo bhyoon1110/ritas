@@ -54,12 +54,24 @@ def accounts(tmp_path, mariadb):
 def test_all_workspaces_link_to_the_authenticated_account(accounts, role):
     client = getattr(accounts, role)
     for path, prefix in [("/", "workspace"), ("/ftir", "ftir"), ("/raman", "raman"),
-                         ("/xrd", "xrd"), ("/tem", "ahn")]:
+                         ("/xrd?legacy=1", "xrd"), ("/tem", "ahn")]:
         response = client.get(path)
         assert response.status_code == 200, path
         assert 'href="/account"' in response.text
         assert "회원정보 관리" in response.text
         assert f'id="{prefix}-logout"' in response.text
+    # The default XRD entry now redirects to the isolated workbench. Its account,
+    # VOC and logout controls are mounted by shell.mjs (DOM-tested separately).
+    entry = client.get("/xrd")
+    assert entry.status_code == 303
+    assert entry.headers["location"] == "/api/v1/xrd/workbench/"
+    workbench = client.get(entry.headers["location"])
+    assert workbench.status_code == 200
+    assert workbench.headers["cache-control"] == "private, no-store"
+    assert 'data-step="viewer"' in workbench.text
+    assert "shared/shell.mjs" in workbench.text
+    for asset in ("shared/shell.mjs", "shared/shell.legacy.js"):
+        assert client.get(entry.headers["location"] + asset).status_code == 200
     account = client.get("/account")
     assert account.status_code == 200
     assert 'id="profile-form"' in account.text

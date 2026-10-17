@@ -302,6 +302,15 @@ def test_experiment_entry_points_and_responsive_board(board):
     admin = board.clients["admin"]
     for project, page in PROJECT_PAGES.items():
         response = admin.get(page)
+        if project == "XRD":
+            assert response.status_code == 303
+            assert response.headers["location"] == "/api/v1/xrd/workbench/"
+            workbench = admin.get(response.headers["location"])
+            assert workbench.status_code == 200
+            assert "shared/shell.mjs" in workbench.text
+            # The workbench's same-tab VOC link is exercised by shell_dom.test.cjs.
+            # Retain coverage of the supported legacy page's separate-tab link.
+            response = admin.get(page + "?legacy=1")
         assert response.status_code == 200, response.text[:1000]
         assert any(link.get("href") == "/voc?project=" + project and link.get("target") == "_blank"
                    and link.get("rel") == "noopener" for link in Links(response.text).items)

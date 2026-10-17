@@ -38,6 +38,8 @@ def requested_report_options(job: dict[str, Any]) -> tuple[list[str], bool]:
 def validate_specialized_report_request(
     analysis_type: str | None,
     formats: list[str],
+    *,
+    input_dir: Path,
 ) -> None:
     selected = set(formats)
     if analysis_type == "XRD" and (not selected or not selected <= {"HTML", "PDF", "PPTX"}):
@@ -46,6 +48,14 @@ def validate_specialized_report_request(
             "XRD_REPORT_FORMAT_REQUIRED",
             "XRD C# 작업은 HTML, PDF, PPTX 형식을 지원합니다. 기존 ICDD 방식은 HTML만 지원합니다.",
         )
+    if analysis_type == "XRD" and selected != {"HTML"}:
+        from .xrd_workbench.job_adapter import uses_workbench
+
+        if not uses_workbench(input_dir):
+            raise ApiException(
+                422, "XRD_REPORT_FORMAT_REQUIRED",
+                "신규 상매칭/WPPF PDF가 없는 기존 XRD 작업은 HTML로 요청하세요.",
+            )
     if analysis_type == "TEM" and selected != {"PPTX"}:
         raise ApiException(
             422,
@@ -78,16 +88,13 @@ def generate_specialized_report(
     if analysis_type is None:
         return None
     formats, include_raw_files = requested_report_options(job)
-    validate_specialized_report_request(analysis_type, formats)
+    input_dir = settings.storage_root / str(job['root_relative_path']) / 'input'
+    validate_specialized_report_request(analysis_type, formats, input_dir=input_dir)
     if analysis_type == "XRD":
         from .xrd_workbench.job_adapter import uses_workbench, generate_job_package
-        input_dir = settings.storage_root / str(job['root_relative_path']) / 'input'
         if uses_workbench(input_dir):
             package, primary = generate_job_package(settings, job, include_raw_files=include_raw_files)
             return SpecializedReportResult('XRD', package, primary)
-        if set(formats) != {'HTML'}:
-            raise ApiException(422, 'XRD_REPORT_FORMAT_REQUIRED',
-                               '신규 상매칭/WPPF PDF가 없는 기존 XRD 작업은 HTML로 요청하세요.')
         return _generate_xrd_report(settings, job, include_raw_files=include_raw_files)
     if analysis_type == "TEM":
         return _generate_tem_report(settings, job, include_raw_files=include_raw_files)

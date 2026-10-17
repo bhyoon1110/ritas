@@ -42,9 +42,11 @@ export function stepsHTML(current, projectId, status) {
 }
 
 export function projectOptionsHTML(list, currentId) {
-  if (!list.length) return '<option value="">등록된 프로젝트 없음</option>';
+  if (!list.length && !currentId) return '<option value="">등록된 프로젝트 없음</option>';
   const known = list.some((p) => p.storage_id === currentId);
-  const head = known ? '' : '<option value="">프로젝트 선택…</option>';
+  const head = known ? '' : currentId
+    ? `<option value="${escapeHTML(currentId)}" selected>현재 프로젝트 (목록 갱신 중)</option>`
+    : '<option value="">프로젝트 선택…</option>';
   return (
     head +
     list
@@ -58,6 +60,21 @@ export function projectOptionsHTML(list, currentId) {
 
 // ---- DOM (browser only)
 const state = { step: '', project: '', list: [], status: {} };
+let projectListRequest = 0;
+
+async function refreshProjects() {
+  const version = ++projectListRequest;
+  try {
+    const list = await (await request('/api/projects')).json();
+    // A slow initial request must not overwrite the post-import list.
+    if (version !== projectListRequest) return;
+    state.list = list;
+  } catch {
+    // Keep previously loaded choices and the active project during network failures.
+    if (version !== projectListRequest) return;
+  }
+  render();
+}
 
 function render() {
   $('shellSteps').innerHTML = stepsHTML(state.step, state.project, state.status);
@@ -76,18 +93,21 @@ async function go(step) {
 }
 
 async function loadIssues() {
-  if (!state.project) return;
+  const project = state.project;
+  if (!project) return;
   try {
-    const value = await (await request(`/api/reports/${encodeURIComponent(state.project)}`)).json();
+    const value = await (await request(`/api/reports/${encodeURIComponent(project)}`)).json();
+    if (state.project !== project) return;
     const revision = value.document.revision;
     if (!revision) return;
     const summary = (
       await (
         await request(
-          `/api/reports/${encodeURIComponent(state.project)}/checklist?revision=${revision}`,
+          `/api/reports/${encodeURIComponent(project)}/checklist?revision=${revision}`,
         )
       ).json()
     ).summary;
+    if (state.project !== project) return;
     state.status = {
       ...state.status,
       issues: summary.blockers + summary.warnings,
@@ -158,6 +178,10 @@ export async function mountShell() {
     }
     location.href = apiUrl(stepHref(state.step, next));
   };
+  // Retry a failed refresh when the user opens the list; no background polling.
+  $('shellProject').onfocus = () => {
+    if (state.project && !state.list.some(p => p.storage_id === state.project)) refreshProjects();
+  };
   $('shellSettings').onclick = () => {
     if (state.step === 'report' || state.step === 'save')
       window.dispatchEvent(new Event('xrd-settings'));
@@ -169,7 +193,9 @@ export async function mountShell() {
     const d = event.detail || {};
     if (d.project !== undefined && d.project !== state.project) {
       state.project = d.project;
+      state.status = {};
       history.replaceState(null, '', apiUrl(stepHref(d.step || state.step, d.project)));
+      refreshProjects();
       loadIssues();
     }
     if (d.step) state.step = d.step;
@@ -177,12 +203,7 @@ export async function mountShell() {
       if (d[key] !== undefined) state.status[key] = d[key];
     render();
   });
-  try {
-    state.list = await (await request('/api/projects')).json();
-  } catch {
-    state.list = [];
-  }
-  render();
+  await refreshProjects();
   loadIssues();
 }
 
