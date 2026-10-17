@@ -10,7 +10,10 @@ from openpyxl import load_workbook
 
 from app.xrd_workbench.core.report import new_document
 from app.xrd_workbench.core.phase_class import phase_ref
-from app.xrd_workbench.render.posco_pptx import TEMPLATE, NS, Deck, render_report_pptx
+from app.xrd_workbench.render.posco_pptx import (
+    TEMPLATE, NS, Deck, render_report_pptx, named,
+    SUMMARY_TITLE, QUANTITY_TITLE, PHASE_TITLE,
+)
 from .figure_fixtures import make_project
 from .test_sample_slide import sample, IMAGE
 
@@ -51,7 +54,12 @@ def test_reference_background_dimensions_and_sanitized_example_data():
     size=E.fromstring(z.read('ppt/presentation.xml')).find('p:sldSz',NS)
     assert (size.get('cx'),size.get('cy'))==('9906000','6858000')
     assert 'Zinc Manganese' not in text and '00-062-0414' not in text and '{Sample' not in text
-    assert all(value in text for value in ('REQ-123','시험 의뢰자','XRD-01','QA-OP','검토 문장'))
+    assert len(slides)==3
+    assert [''.join(named(s,'Title')[0].xpath('.//a:t/text()',namespaces=NS)) for s in slides]==[
+        SUMMARY_TITLE, QUANTITY_TITLE, PHASE_TITLE,
+    ]
+    assert '검토 문장' in text
+    assert all(value not in text for value in ('보고서 정보','정량 수치','결정상 분류 기준','긴 제목 전체'))
     assert before==(project,document)
     assert len(slides[2].findall('.//a:tbl',NS))==2  # phase-only samples share the reference layout
     assert len(slides[1].findall('.//a:tbl',NS))==1  # summary -> WPPF -> phase-only pair
@@ -80,23 +88,22 @@ def test_native_chart_workbook_and_cache_preserve_quantities_and_raw_precision()
             assert target in z.namelist(),(name,target)
 
 
-def test_long_rows_notes_more_samples_and_odd_pair_are_not_lost():
+def test_more_samples_keep_only_reference_layouts_and_do_not_mutate_full_notes():
     project,document=fixture()
     project['samples']= [sample(str(i),n_phases=8,quantities=0) for i in range(5)]
     document=new_document(project)
     document['figure']['include']=False;document['quantity_table']['include']=False
     for i,e in enumerate(document['samples']):e['summary_included']=i<4
     document['samples'][0]['manual_note']='QA-START '+('긴 검토문장입니다. '*180)+' QA-END'
+    before=deepcopy((project,document))
     z,slides,text=deck(render_report_pptx(project,document,lambda _:IMAGE,include_sources=False))
-    assert 'QA-START' in text and 'QA-END' in text
-    # Join body text across continuation pages without inserting headings/page numbers
-    # into a sentence that happens to cross the page boundary.
-    bodies=''.join(''.join(shape.itertext()) for slide in slides
-                   for shape in slide.findall('.//p:sp',NS)
-                   if shape.xpath('.//p:cNvPr/@name',namespaces=NS)==['Report text'])
-    assert ''.join(bodies.split()).count('긴검토문장입니다.')==180
+    assert before==(project,document)
+    assert '…' in text and '뒤쪽' not in text
+    assert any('QA-END' in description for s in slides for description in s.xpath('.//p:cNvPr/@descr',namespaces=NS))
     assert all('시료 '+str(i) in text for i in range(5))
     assert 'Phase7' in text and '계속' in text
+    titles=[''.join(named(s,'Title')[0].xpath('.//a:t/text()',namespaces=NS)) for s in slides]
+    assert all(t.removesuffix(' (계속)') in (SUMMARY_TITLE,PHASE_TITLE) for t in titles)
     for n in z.namelist():
         if n.endswith('.rels'):assert b'TargetMode="External"' not in z.read(n)
     for slide in slides:
@@ -109,7 +116,8 @@ def test_concurrent_templates_do_not_leak_titles_or_data():
     project,document=fixture()
     def output(title):
         value=deepcopy(document);value['metadata']['title']=title
-        return deck(render_report_pptx(project,value,lambda _:IMAGE))[2]
+        z,_,_=deck(render_report_pptx(project,value,lambda _:IMAGE))
+        return z.read('docProps/core.xml').decode()
     titles=['동시 검증 AAA','동시 검증 BBB']
     with ThreadPoolExecutor(2) as pool:values=list(pool.map(output,titles))
     for i,value in enumerate(values):assert titles[i] in value and titles[1-i] not in value
@@ -136,13 +144,30 @@ def test_missing_inconsistent_or_mixed_unit_quantities_are_not_silently_graphed(
         assert '10.0(1)' in text
 
 
-def test_valid_long_sample_names_do_not_break_export_and_remain_complete():
+def test_long_sample_names_do_not_add_unrequested_pages():
     project,document=fixture()
     name='긴샘플이름'*30
     document['samples'][0]['display_name']=name
-    _,_,text=deck(render_report_pptx(project,document,lambda _:IMAGE))
-    assert name in ''.join(text.split())
-    assert '긴 제목 전체' in text
+    _,slides,text=deck(render_report_pptx(project,document,lambda _:IMAGE))
+    assert len(slides)==3 and '긴 제목 전체' not in text
+    assert any(name in description for s in slides for description in s.xpath('.//p:cNvPr/@descr',namespaces=NS))
+    assert document['samples'][0]['display_name']==name
+
+
+def test_legacy_options_and_prebuilt_pages_do_not_append_extra_slides(monkeypatch):
+    project,document=fixture()
+    document['figure']['include']=True
+    document['quantity_table']['include']=True
+    document['phase_classes']['criteria_text']='보존할 분류 기준'
+    before=deepcopy((project,document))
+    from app.xrd_workbench.render import posco_pptx
+    monkeypatch.setattr(posco_pptx,'build_pages',lambda *a,**k: (_ for _ in ()).throw(AssertionError('legacy layout called')))
+    old_pages=[dict(kind=k,items=[]) for k in ('cover','figure','table','appendix')]
+    for pages in (None,old_pages):
+        _,slides,text=deck(render_report_pptx(project,document,lambda _:IMAGE,pages=pages))
+        assert len(slides)==3
+        assert '보존할 분류 기준' not in text
+    assert before==(project,document)
 
 
 def test_phase_names_in_embedded_workbook_are_literal_strings_not_formulas():

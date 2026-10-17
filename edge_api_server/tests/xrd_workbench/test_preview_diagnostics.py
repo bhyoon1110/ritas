@@ -23,7 +23,7 @@ def test_preview_environment_failure_keeps_trace_and_sources_and_releases_lock(t
     def fail(*args, **kwargs):
         raise exception('private-server-path-and-details')
     with monkeypatch.context() as patch:
-        patch.setattr(posco_pptx, 'build_pages', fail)
+        patch.setattr(posco_pptx, 'build_plan', fail)
         response = client.post(endpoint, json={'document': doc})
     assert response.status_code == status, response.text[:300]
     assert response.json()['code'] == code

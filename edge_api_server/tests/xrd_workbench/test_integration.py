@@ -107,7 +107,9 @@ def test_chunk_import_review_and_all_exports(tmp_path):
             assert result.content.startswith(b'%PDF')
         elif kind == 'preview':
             assert 'contenteditable' not in result.text
-            assert '작성자:' in result.text and '완료일:' in result.text
+            assert '분석 결과 요약' in result.text and 'Phase Fraction' in result.text
+            assert '보고서 정보' not in result.text
+            assert result.text.count('<section class="page"') == 2  # one quantitative sample
             assert api.BASE+'/api/files/' in result.text
         elif kind == 'zip':
             with zipfile.ZipFile(io.BytesIO(result.content)) as z:

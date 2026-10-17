@@ -5,7 +5,6 @@ from lxml import etree as E
 
 from app.xrd_workbench.render.posco_pptx import build_posco_deck, named, NS, box
 from app.xrd_workbench.render.posco_preview import deck_pages, render_posco_preview
-from app.xrd_workbench.render.sample_page import remark_targets
 from .test_posco_pptx import fixture, IMAGE, deck as read_deck
 
 
@@ -16,7 +15,8 @@ def test_preview_exact_page_sequence_size_text_and_original_master_artwork():
     pages=deck_pages(filled)
     _,slides,_=read_deck(filled.finish(doc))
     assert len(pages)==len(slides)
-    assert [p['kind'] for p in pages[:4]]==['summary','sample','sample','cover']
+    assert len(pages)==3
+    assert [p['kind'] for p in pages]==['summary','sample','sample']
     assert 'WPPF' in pages[1]['title'] and 'Phase Identification' in pages[2]['title']
     for page,slide in zip(pages,slides):
         assert page['width']==9906000/36000 and page['height']==190.5
@@ -58,10 +58,10 @@ def test_edit_targets_safe_text_and_source_links_survive_posco_projection():
     targets=[i['edit'] for p in deck_pages(filled) for i in p['items'] if i.get('edit')]
     for entry in doc['samples']:
         assert dict(tab=entry['sample_id'],field='display_name') in targets
-        assert all(t in targets for t in remark_targets(entry))
-    for field in ('phase_caption','quantity_caption'):
-        assert dict(tab=doc['samples'][0]['sample_id'],field=field) in targets
-    assert dict(tab='overview',field='report_number') in targets
+    assert dict(tab=doc['samples'][0]['sample_id'],field='phase_caption') in targets
+    assert dict(tab=doc['samples'][2]['sample_id'],field='quantity_caption') in targets
+    assert dict(tab='overview',field='summary') in targets
+    assert dict(tab='overview',field='report_number') not in targets  # no legacy cover page
     html=render_posco_preview(project,doc,lambda _:IMAGE,storage_id='qa',edit_links=True)
     assert '<script>bad()</script>' not in html and '&lt;script&gt;' in html
     assert 'data-edit=' in html and '/api/v1/xrd/workbench/api/files/qa/' in html
@@ -75,10 +75,11 @@ def test_preview_graphs_use_scoped_renderer_and_do_not_modify_inputs():
     calls=[]
     def image(*args): calls.append(args);return IMAGE
     filled=build_posco_deck(project,doc,lambda _:IMAGE,image_renderer=image)
-    assert len(calls)>=5  # comparison page, summary, every raw fallback
+    assert len(calls)==4  # summary and each RAW fallback; no unused legacy figure rendering
     overview=next(args[0] for args in calls if args[0].get('sample_legend'))
     assert not overview['show_markers'] and not overview['show_reference']
-    comparison=calls[0][0]
+    from app.xrd_workbench.core.figure import build_plan
+    comparison=build_plan(project,doc)['panels'][0]
     assert overview['curves']==comparison['curves']
     assert overview['spacing']==comparison['spacing']
     assert filled.pages
