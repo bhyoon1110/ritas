@@ -3,6 +3,7 @@ import { startExport, downloadJob, mountReportPlatform, transferValues } from '.
 import { $, escapeHTML } from '../shared/dom.mjs';
 import { restoreState, viewerStorageKey } from '../viewer/model.mjs';
 import { mergeDraftChanges } from './report_merge.mjs';
+import { createLivePreview } from './live_preview.mjs';
 import { figureHTML } from './figure_view.mjs';
 import { phaseClassesHTML } from './phase_classes_view.mjs';
 import { ensureQuantityTable, quantityTableHTML } from './quantity_table_view.mjs';
@@ -48,6 +49,73 @@ let storageId = new URLSearchParams(location.search).get('project') || 'example'
   pcNotice = '',
   pcSeq = 0,
   pcPercent = '';
+let composing = false, previewPage = 0, linkedTimer = 0;
+const previewFrame = $('reportPreview'), reportMain = document.querySelector('main');
+// Isolate draft scripts while allowing explicit source-PDF links to open normally.
+previewFrame.setAttribute('sandbox','allow-scripts allow-popups allow-popups-to-escape-sandbox');
+const livePreview = createLivePreview({
+  delay: Number(navigator.deviceMemory || 0) <= 4 ? 1200 : 900,
+  render: async () => {
+    if (!doc) throw new Error('프로젝트가 열리지 않았습니다.');
+    return (await api(`/api/reports/${storageId}/draft-preview`, {method:'POST',
+      headers:{'Content-Type':'application/json'}, body:JSON.stringify({document:doc})})).text();
+  },
+  ready: html => {
+    previewFrame.srcdoc = html;
+    $('previewStatus').textContent = dirty ? '미저장 초안 반영 · 저장은 별도' : `저장 버전 ${doc.revision} 기준`;
+  },
+  status: text => { $('previewStatus').textContent = text; }
+});
+const reportTools = document.createElement('div');
+reportTools.className = 'workTabs';
+reportTools.innerHTML = '<button data-work-view="both">입력·미리보기</button><button data-work-view="editor">입력 화면</button><button data-work-view="preview">미리보기 화면</button><button id="draftRefresh">미리보기 다시 생성</button><span>입력을 멈추면 자동 반영 · 미리보기 클릭 시 입력 항목으로 이동</span>';
+reportMain.parentNode.insertBefore(reportTools,reportMain);
+function setWorkView(view) {
+  reportMain.dataset.workView = view;
+  reportTools.querySelectorAll('[data-work-view]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.workView===view)));
+}
+reportTools.onclick = e => {
+  const b = e.target.closest('button');
+  if (b?.dataset.workView) setWorkView(b.dataset.workView);
+  else if (b?.id === 'draftRefresh' && !busy) updatePreview();
+};
+setWorkView(window.innerWidth < 900 ? 'editor' : 'both');
+function linkedField(target) {
+  if (!doc || busy || !target || typeof target.tab !== 'string') return;
+  if (!['overview','figure','classes'].includes(target.tab) && !doc.samples.some(s=>s.sample_id===target.tab)) return;
+  if (target.field === 'transfer') {setStep('save');}
+  else {setStep('report'); showTab(target.tab);}
+  if (reportMain.dataset.workView === 'preview') setWorkView('editor');
+  let element;
+  const overviewIds={title:'title',client:'client',requester:'requester',received_date:'receivedDate',analysis_period:'analysisPeriod',report_number:'reportNumber',author:'author',date:'reportDate',summary:'summary',transfer:'ristEquipment'};
+  if (target.tab === 'overview' && overviewIds[target.field]) element=$(overviewIds[target.field]);
+  else if (target.tab === 'figure') element=$('figureForm').querySelector('input,select,textarea');
+  else if (target.tab === 'classes') element=$('classForm').querySelector('input,select,textarea');
+  else if (target.field === 'note' || target.field === 'retained_note') {
+    const key = target.field === 'note' ? 'noteText' : 'retainedText';
+    element=[...$('sampleForm').querySelectorAll('textarea')].find(e=>e.dataset[key]===target.id);
+  }
+  else element=[...$('sampleForm').querySelectorAll('[data-field]')].find(e=>e.dataset.field===target.field)
+    || $('sampleForm').querySelector(target.field==='notes' ? '[data-note-text], [data-field="manual_note"]' : 'input');
+  if (!element) element=$('title');
+  document.querySelectorAll('.fieldLinked').forEach(e=>e.classList.remove('fieldLinked'));
+  element.classList.add('fieldLinked'); element.focus(); element.scrollIntoView({block:'center'});
+  clearTimeout(linkedTimer); linkedTimer=setTimeout(()=>element.classList.remove('fieldLinked'),2000);
+}
+window.addEventListener('message', e => {
+  if (e.source !== previewFrame.contentWindow || !e.data) return;
+  if (e.data.type === 'xrd-preview-edit') linkedField(e.data.target);
+  if (e.data.type === 'xrd-preview-page' && Number.isInteger(e.data.page)) previewPage=e.data.page;
+  if (e.data.type === 'xrd-preview-ready') previewFrame.contentWindow.postMessage({type:'xrd-preview-page',page:previewPage},'*');
+});
+window.addEventListener('pagehide',()=>{livePreview.invalidate();clearTimeout(linkedTimer);});
+window.addEventListener('pageshow',e=>{if(e.persisted && doc && !busy)livePreview.schedule(true);});
+$('editorFields').addEventListener('compositionstart',()=>{composing=true;livePreview.invalidate();});
+$('editorFields').addEventListener('compositionend',()=>{composing=false;if(doc&&!busy)livePreview.schedule();});
+$('editorFields').addEventListener('focusin',e=>{
+  const d=e.target.dataset, field=d.meta || d.field || (d.noteText?'note':d.retainedText?'retained_note':e.target.id==='summary'?'summary':null);
+  if (field) previewFrame.contentWindow.postMessage({type:'xrd-preview-locate',target:{tab,field,id:d.noteText||d.retainedText}},'*');
+});
 function status(text, error = false) {
   $('status').textContent = text;
   $('status').classList.toggle('error', error);
@@ -57,13 +125,17 @@ function markDirty() {
   renderPrecheck();
   syncShell();
   $('revision').textContent = `버전 ${doc.revision} · 미저장 변경`;
-  $('previewStatus').textContent = '이전 저장본 · 미리보기 버튼으로 갱신';
+  if (!composing && !busy) livePreview.schedule();
+  else livePreview.invalidate();
 }
 function lock(value) {
   busy = value;
+  if (value) livePreview.invalidate();
+  else if (doc) livePreview.schedule();
   $('editorFields').disabled = value;
   for (const id of [
     'save',
+    'draftRefresh',
     'preview',
     'pdfExport',
     'pptxExport',
@@ -249,36 +321,17 @@ async function save() {
   status(`보고서 버전 ${doc.revision}을 저장했습니다.`);
   return doc;
 }
-async function updatePreview() {
-  if (doc.samples.some((s) => s.included && s.analysis_review_required)) {
-    status('분석값이 바뀐 시료의 자료·문장 검토 완료를 선택하고 저장하세요.', true);
-    $('reportPreview').removeAttribute('srcdoc');
-    $('reportPreview').src = 'about:blank';
-    return;
-  }
-  const revision = doc.revision;
-  $('previewStatus').textContent = '미리보기 생성 중…';
-  try {
-    const job = await startExport(storageId, revision, 'preview');
-    const html = await (await api(`/api/jobs/${job.job_id}/file`)).text();
-    if (doc.revision !== revision || dirty) return;
-    // Inline the bounded preview document. ZIP/PDF/PPTX still download directly
-    // to disk, without a client-side Blob or dependency on a PDF browser plugin.
-    $('reportPreview').srcdoc = html;
-    $('previewStatus').textContent = `저장 버전 ${revision}`;
-  } catch (error) { $('previewStatus').textContent = error.message; }
+function updatePreview() {
+  if (doc) livePreview.schedule(true);
 }
 async function action(kind) {
   if (busy || !doc) return;
+  if (kind === 'preview') { updatePreview(); return; }
   lock(true);
   try {
     syncTransfer();
     if (dirty || !doc.revision) await save();
     if (kind === 'save') return;
-    if (kind === 'preview') {
-      updatePreview();
-      return;
-    }
     const sending = kind === 'send';
     if (sending) kind = 'zip';
     const label = { pdf: 'PDF', pptx: 'PPTX', zip: '전달 ZIP' }[kind];
@@ -829,7 +882,8 @@ function setStep(value) {
   step = value;
   const saving = value === 'save';
   $('reportNav').hidden = $('editor').hidden = saving;
-  $('savePane').hidden = $('previewPane').hidden = !saving;
+  $('savePane').hidden = !saving;
+  $('previewPane').hidden = false;
   $('nextStep').hidden = saving;
   history.replaceState(
     null,
@@ -841,13 +895,6 @@ function setStep(value) {
     renderChecklist();
     loadChecklist();
     renderViewerSummary();
-    if (
-      doc?.revision &&
-      !dirty &&
-      !doc.samples.some((s) => s.included && s.analysis_review_required)
-    )
-      updatePreview();
-    else { $('reportPreview').removeAttribute('srcdoc'); $('reportPreview').src = 'about:blank'; }
   }
 }
 window.xrdLocalStep = (value) => {
@@ -985,6 +1032,7 @@ $('refreshAnalysis').onclick = async () => {
 };
 window.addEventListener('storage', (e) => {
   if (e.key === `xrd-analysis-updated-${storageId}`) {
+    livePreview.invalidate();
     $('analysisBanner').hidden = false;
     $('analysisBanner').textContent =
       '분석 검토값이 변경되었습니다. 분석값 갱신을 누르면 미저장 작성 내용도 보존합니다.';

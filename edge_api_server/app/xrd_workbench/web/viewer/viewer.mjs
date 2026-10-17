@@ -24,6 +24,7 @@ import {
 } from './model.mjs';
 import { apiUrl, request } from '../shared/api.mjs';
 import { $, escapeHTML } from '../shared/dom.mjs';
+import { summarizeUpload, uploadSummaryHTML } from './upload_summary.mjs';
 
 const offline = !!window.XRD_EMBEDDED;
 let project,
@@ -60,6 +61,8 @@ function updateControls() {
   const single = state.viewMode === 'single';
   $('viewMulti').classList.toggle('active', !single);
   $('viewSingle').classList.toggle('active', single);
+  $('quickOverlay').setAttribute('aria-pressed', String(!single && state.offsets.raw.spacing === 0));
+  $('quickStack').setAttribute('aria-pressed', String(!single && state.offsets.raw.spacing !== 0));
   for (const key of ['markers', 'peakbar', 'unknownMarkers']) $(key).checked = !!state[key];
   $('unknownColor').value = state.unknownColor;
   $('markerSize').value = String(state.markerSize);
@@ -269,7 +272,51 @@ function mappingRows() {
       })
       .join('') +
     '</tbody></table>';
+  refreshUploadSummary();
 }
+
+function readMappings() {
+  const mappings = Object.create(null);
+  document.querySelectorAll('[data-file]').forEach(row => {
+    const file = pendingFiles[Number(row.dataset.file)];
+    mappings[file.name] = {sample:row.querySelector('.sampleMapping').value,
+      role:row.querySelector('.roleMapping').value, axis_kind:row.querySelector('.axisMapping')?.value || '',
+      intensity_unit:row.querySelector('.unitMapping')?.value || ''};
+  });
+  return mappings;
+}
+function refreshUploadSummary() {
+  const result = summarizeUpload(pendingFiles, readMappings());
+  $('uploadSummary').innerHTML = uploadSummaryHTML(result);
+  return result;
+}
+$('mappingTable').addEventListener('input', refreshUploadSummary);
+$('mappingTable').addEventListener('change', refreshUploadSummary);
+function setOptions(open) {
+  $('sidePanel').hidden = !open;
+  $('toggleOptions').setAttribute('aria-expanded', String(open));
+  $('toggleOptions').textContent = open ? '보기 옵션 접기' : '보기 옵션 열기';
+  if (project) draw(false);
+}
+$('toggleOptions').onclick = () => setOptions($('sidePanel').hidden);
+if (window.innerWidth < 1100) setOptions(false);
+$('quickImageExport').onclick = () => $('imageExport').click();
+$('resetView').onclick = () => {
+  if (!state) return;
+  state.xRange = state.yRange = null; viewRevision++; draw(false);
+};
+for (const [id, stack] of [['quickOverlay',false],['quickStack',true]]) $(id).onclick = () => {
+  if (!state) return;
+  state.viewMode = 'multi'; picking = false; state.yRange = null;
+  state.offsets.raw.spacing = stack ? (createState(project).offsets.raw.spacing || 1) : 0;
+  state.offsets.raw.individual = {};
+  draw();
+};
+// Advanced phase styling remains available without crowding the common tools.
+const phaseSection = $('phaseList').parentElement, advanced = document.createElement('details');
+advanced.className = 'advancedOptions';
+advanced.innerHTML = '<summary>결정상 마커 상세 설정</summary>';
+phaseSection.parentNode.insertBefore(advanced,phaseSection); advanced.appendChild(phaseSection);
 
 for (const [id, mode] of [
   ['viewMulti', 'multi'],
@@ -332,7 +379,7 @@ $('activeSample').onchange = () => {
   state.yRange = null;
   draw();
 };
-$('warnings').onclick = () => $('warningSection').scrollIntoView({ block: 'nearest' });
+$('warnings').onclick = () => { setOptions(true); $('warningSection').scrollIntoView({ block: 'nearest' }); };
 $('sidePanel').onchange = (event) => {
   const e = event.target,
     d = e.dataset;
@@ -371,7 +418,7 @@ $('sampleList').onclick = (event) => {
 let sliderFrame = null;
 function spacingChange(value) {
   if (!state || !Number.isFinite(value)) {
-    message('수평 조절 값은 숫자여야 합니다. 0은 겹쳐 보기입니다.', true);
+    message('시료 간 세로 간격은 숫자여야 합니다. 0은 겹쳐 보기입니다.', true);
     return;
   }
   state.offsets.raw.spacing = value;
@@ -459,20 +506,15 @@ $('uploadSubmit').onclick = async () => {
     $('uploadError').textContent = '등록할 파일을 선택하세요.';
     return;
   }
-  const mappings = {},
-    form = new FormData();
-  document.querySelectorAll('[data-file]').forEach((row) => {
-    const file = pendingFiles[Number(row.dataset.file)];
-    mappings[file.name] = {
-      sample: row.querySelector('.sampleMapping').value,
-      role: row.querySelector('.roleMapping').value,
-      axis_kind: row.querySelector('.axisMapping')?.value || '',
-      intensity_unit: row.querySelector('.unitMapping')?.value || '',
-    };
-  });
+  if (refreshUploadSummary().errors.length) {
+    $('uploadError').textContent = '시료별 파일 연결의 오류를 먼저 확인하세요.'; return;
+  }
+  const mappings = readMappings(), form = new FormData();
   for (const file of pendingFiles) form.append('files', file);
   form.append('mappings', JSON.stringify(mappings));
   $('uploadSubmit').disabled = true;
+  $('fileInput').disabled = true;
+  $('mappingTable').querySelectorAll('input,select').forEach(e=>{e.disabled=true;});
   $('uploadError').textContent = 'TXT와 PDF를 읽는 중…';
   try {
     const response = await request('/api/upload', { method: 'POST', body: form });
@@ -482,6 +524,8 @@ $('uploadSubmit').onclick = async () => {
     $('uploadError').textContent = error.message;
   } finally {
     $('uploadSubmit').disabled = false;
+    $('fileInput').disabled = false;
+    $('mappingTable').querySelectorAll('input,select').forEach(e=>{e.disabled=false;});
   }
 };
 $('htmlExport').onclick = async () => {

@@ -153,12 +153,25 @@ def remarks(entry):
     return out
 
 
-def remark_items(rows, x, y, w, scale, heading_size):
+def remark_targets(entry):
+    """Match remarks() order without changing report wording or layout."""
+    targets = []
+    for key, field in (('notes', 'note'), ('retained_notes', 'retained_note')):
+        targets.extend(dict(tab=entry['sample_id'], field=field, id=n['id'])
+                       for n in entry.get(key, []) if n['selected'] and n['text'].strip())
+    if entry['manual_note'].strip():
+        targets.append(dict(tab=entry['sample_id'], field='manual_note'))
+    return targets
+
+
+def remark_items(rows, x, y, w, scale, heading_size, targets=None):
     """Items of a '특이사항' block from `y`; returns (items, bottom)."""
     items = [text_item('특이사항', x, y, w, heading_size, True, theme.NAVY)]
     y += items[0]['h'] + 1.5 * scale
-    for text, evidence in rows:
+    for index, (text, evidence) in enumerate(rows):
         item = text_item(text, x, y, w, 9 * scale)
+        if targets:
+            item['edit'] = targets[index]
         items.append(item)
         y += item['h'] + 0.8 * scale
         if evidence:
@@ -225,6 +238,8 @@ def layout_slide(top, sample, labels, classes, images, scale, limit):
             )
             y += image_h + 1
             caption = text_item(image['caption'], x, y, col_w, 8 * s, color=theme.CAPTION)
+            if image.get('edit'):
+                caption['edit'] = image['edit']
             items.append(caption)
             y += caption['h'] + 2 * s
         for line in lines:

@@ -430,3 +430,58 @@ footer {
   color: #8c98a8;
   white-space: nowrap;
 }
+
+body.withShell[data-step=analysis] main { display:flex; grid-template-columns:220px minmax(0,1fr) minmax(0,1fr); flex:1; height:auto; min-height:0; overflow:hidden; flex-wrap: wrap; }
+
+body.withShell[data-step=analysis] main > * {
+  flex: 0 1 calc(33.333333333333336% - 12px);
+  min-width: 0;
+  max-width: calc(33.333333333333336% - 12px);
+}
+body.withShell[data-step=analysis] main > * { min-width:0; min-height:0; }
+body.withShell[data-step=analysis] main > aside { padding:12px; }
+body.withShell[data-step=analysis] .dataPane { padding:16px; }
+body.withShell[data-step=analysis] .originalPane { padding:12px; height:auto; }
+body.withShell[data-step=analysis] main.reviewNavClosed { grid-template-columns:minmax(0,1fr) minmax(0,1fr); }
+body.withShell[data-step=analysis] main.reviewNavClosed > * {
+  flex: 0 1 calc(50% - 12px);
+  min-width: 0;
+  max-width: calc(50% - 12px);
+}
+body.withShell[data-step=analysis] main.reviewNavClosed > aside { display:none; }
+body.withShell[data-step=analysis] main[data-compare=data], body.withShell[data-step=analysis] main[data-compare=source] { grid-template-columns:220px minmax(0,1fr); }
+body.withShell[data-step=analysis] main[data-compare=data] > *,body.withShell[data-step=analysis] main[data-compare=source] > * {
+  flex: 0 1 calc(50% - 12px);
+  min-width: 0;
+  max-width: calc(50% - 12px);
+}
+body.withShell[data-step=analysis] main.reviewNavClosed[data-compare=data], body.withShell[data-step=analysis] main.reviewNavClosed[data-compare=source] { grid-template-columns:minmax(0,1fr); }
+body.withShell[data-step=analysis] main.reviewNavClosed[data-compare=data] > *,body.withShell[data-step=analysis] main.reviewNavClosed[data-compare=source] > * {
+  flex: 0 1 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+main[data-compare=data] .originalPane, main[data-compare=source] .dataPane { display:none; }
+.notice { padding:8px 16px; font-size:13px; flex:none; }
+.modeToggle { flex-wrap:wrap; }
+.modeToggle > * {
+  margin-bottom: 4px;
+  margin-right: 4px;
+}
+.modeToggle button { flex:1 0 auto; }
+.paneTitle, .pageTools, .cellActions, .manualActions { flex-wrap:wrap; }
+#originalTitle { overflow-wrap:break-word; word-break:break-all; }
+.sectionGrid { overflow:auto; }
+.selectedSource { background:#e4f1ff; outline:2px solid #2a6da0; outline-offset:-2px; }
+.compareLabel { align-self:center; font-weight:bold; color:#163e62; }
+#compareContext { flex:1 1 250px; min-width:0; align-self:center; font-size:13px; color:#52677c; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+.tableButton > span { display:block; overflow:hidden; text-overflow:ellipsis; }
+.tableButton small[data-review-status=reviewed] { color:#226343; }
+.tableButton small[data-review-status=unreviewed] { color:#9b4b16; }
+.tableButton small[data-review-status=excluded] { color:#6a7480; }
+@media (max-width:800px) {
+  body.withShell[data-step=analysis] main, body.withShell[data-step=analysis] main.reviewNavClosed { display:block; overflow:visible; }
+  body.withShell[data-step=analysis] main > aside { max-height:40vh; overflow:auto; }
+  body.withShell[data-step=analysis] .originalPane { height:70vh; min-height:400px; }
+  .grid { max-height:55vh; }
+}

@@ -18,6 +18,7 @@ from ..render.sample_page import (
     quantity_label,
     quantity_status,
     remark_items,
+    remark_targets,
     remarks,
 )
 from ..render.theme import BOTTOM, LEFT, TOP, WIDTH
@@ -113,23 +114,27 @@ def build_pages(project, document, resolve_source):
             if part
         )
         lines = [
-            f'작성자: {meta["author"]}',
-            f'완료일: {meta["date"]}',
-            f'접수일: {meta["received_date"]}' if meta['received_date'] else '',
-            f'분석 기간: {meta["analysis_period"]}' if meta['analysis_period'] else '',
-            f'의뢰번호: {meta["report_number"]}' if meta['report_number'] else '',
-            f'실험코드: {meta.get("experiment_code", "")}  |  장비코드: {meta.get("equipment_code", "")}',
-            f'실험자 ID: {meta.get("operator_id", "")}',
-            f'{person} 님' if meta['requester'] else person,
+            (f'작성자: {meta["author"]}', 'author'),
+            (f'완료일: {meta["date"]}', 'date'),
+            (f'접수일: {meta["received_date"]}' if meta['received_date'] else '', 'received_date'),
+            (f'분석 기간: {meta["analysis_period"]}' if meta['analysis_period'] else '', 'analysis_period'),
+            (f'의뢰번호: {meta["report_number"]}' if meta['report_number'] else '', 'report_number'),
+            (f'실험코드: {meta.get("experiment_code", "")}  |  장비코드: {meta.get("equipment_code", "")}', 'transfer'),
+            (f'실험자 ID: {meta.get("operator_id", "")}', 'transfer'),
+            (f'{person} 님' if meta['requester'] else person, 'requester' if meta['requester'] else 'client'),
         ]
         # The largest title and line sizes that fit the page (long titles and fields shrink).
         for title_y in (theme.COVER_TITLE_Y, 40, TOP):
             for title_size, line_size in ((32, 14), (28, 14), (24, 13), (20, 12), (16, 11), (14, 10), (12, 9)):
                 title = text_item(meta['title'], LEFT, title_y, WIDTH, title_size, True, theme.NAVY)
+                title['edit'] = dict(tab='overview', field='title')
                 y = title['y'] + title['h'] + theme.COVER_GAP_Y
                 items = [title]
-                for line in filter(None, lines):
+                for line, field in lines:
+                    if not line:
+                        continue
                     item = text_item(line, LEFT, y, WIDTH, line_size, color=theme.TEXT)
+                    item['edit'] = dict(tab='overview', field=field)
                     items.append(item)
                     y += item['h'] + 3
                 if y - 3 <= BOTTOM:
@@ -153,6 +158,7 @@ def build_pages(project, document, resolve_source):
     y += counts['h'] + 9
     if document['summary'].strip():
         item = text_item(document['summary'], LEFT, y, WIDTH, 11)
+        item['edit'] = dict(tab='overview', field='summary')
         summary_page['items'].append(item)
         y += item['h'] + 8
     column_w = (WIDTH - theme.COVER_GAP) / 2
@@ -180,6 +186,7 @@ def build_pages(project, document, resolve_source):
         if len(quantities) > 4:
             quant += f'; 외 {len(quantities)-4}개 값 (원본 Report 참조)'
         heading = text_item(entry['display_name'], x, top, column_w, 12 * s, True, theme.NAVY)
+        heading['edit'] = dict(tab=entry['sample_id'], field='display_name')
         body = text_item(
             '상매칭 Report: ' + phases + chr(10) + quantity_label(sample) + ': ' + quant,
             x,
@@ -190,7 +197,8 @@ def build_pages(project, document, resolve_source):
         items, bottom = [heading, body], body['y'] + body['h']
         rows = remarks(entry)
         if rows and with_remarks:
-            block, bottom = remark_items(rows, x, bottom + 3 * s, column_w, s, 10 * s)
+            block, bottom = remark_items(rows, x, bottom + 3 * s, column_w, s, 10 * s,
+                                         remark_targets(entry))
             items += block
         elif rows:
             moved = text_item(
@@ -254,7 +262,7 @@ def build_pages(project, document, resolve_source):
         )
         summary_page['items'].append(item)
 
-    def place_text(page, y, text, size, color, title, kind='figure'):
+    def place_text(page, y, text, size, color, title, kind='figure', edit=None):
         """Wrapped text from `y` on `page`, continuing on new figure pages instead of running
         past the bottom edge."""
         lines = wrap_lines(text, WIDTH, size)
@@ -281,6 +289,8 @@ def build_pages(project, document, resolve_source):
                     leading=leading,
                 )
             )
+            if edit:
+                page['items'][-1]['edit'] = edit
             y += len(part) * leading + 2
         return page, y
 
@@ -507,14 +517,15 @@ def build_pages(project, document, resolve_source):
                 page = new_page('remarks', title)
                 y = page['content_top']
             heading = text_item(entry['display_name'], LEFT, y, WIDTH, 12, True, theme.NAVY)
+            heading['edit'] = dict(tab=entry['sample_id'], field='display_name')
             # Keep the sample name with at least its first line.
             if y + heading['h'] + 2 + text_item(rows[0][0], LEFT, 0, WIDTH, 10)['leading'] > BOTTOM:
                 page = new_page('remarks', title + ' (계속)')
                 y = heading['y'] = page['content_top']
             page['items'].append(heading)
             y += heading['h'] + 2
-            for text, evidence in rows:
-                page, y = place_text(page, y, text, 10, theme.TEXT, title, 'remarks')
+            for (text, evidence), target in zip(rows, remark_targets(entry)):
+                page, y = place_text(page, y, text, 10, theme.TEXT, title, 'remarks', target)
                 if evidence:
                     page, y = place_text(page, y - 1, evidence, 8.3, theme.NOTE, title, 'remarks')
                 y += 2
@@ -556,6 +567,7 @@ def build_pages(project, document, resolve_source):
                 size=size,
                 record=record,
                 caption=entry[caption_key] or record['filename'],
+                edit=dict(tab=sid, field=caption_key),
             )
         page = new_page('sample', entry['display_name'], sid)
         labels = [x for x in classes['labels'] if x['sample_id'] == sid]
@@ -565,6 +577,13 @@ def build_pages(project, document, resolve_source):
     pages.sort(key=lambda page: order[page['kind']])
     for number, page in enumerate(pages, 1):
         page['number'] = number
+        page['edit'] = dict(tab={'cover':'overview', 'summary':'overview', 'figure':'figure',
+                                'table':'figure', 'remarks':'overview'}.get(page['kind'], page.get('sample_id') or 'overview'))
+        if page['kind'] == 'sample':
+            entry = next(e for e in entries if e['sample_id'] == page['sample_id'])
+            for item in page['items']:
+                if item.get('role') == 'header' and item['type'] == 'text':
+                    item['edit'] = dict(tab=entry['sample_id'], field='display_name')
     footer_lines = wrap_lines(
         document['metadata'].get('report_number') or 'XRD 분석 결과',
         theme.FOOTER_TEXT_W,

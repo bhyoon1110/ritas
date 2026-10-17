@@ -1,157 +1,65 @@
-/* App shell (temporary design). Colours live here as variables so the in-house template can
-   replace them in one place. */
+/* Shared XRD workbench: compact workflow, readable controls, no left-side rail. */
 :root {
-  --navy: #1b3555;
-  --text: #394758;
-  --muted: #7c8796;
-  --line: #dde3ea;
-  --warn: #b0561f;
-  --accent: #3f78bc;
-  --shell-bg: #f5f7fa;
+  --navy: #163e62;
+  --text: #293e52;
+  --muted: #52677c;
+  --line: #d6e0ea;
+  --warn: #9b4b16;
+  --accent: #1768a0;
+  --shell-bg: #f3f6fa;
 }
 body.withShell {
-  display: flex !important;
-  flex-direction: row !important;
-  height: 100vh;
-  margin: 0;
-  overflow: hidden;
+  display: flex !important; flex-direction: column !important;
+  height: 100vh; margin: 0; overflow: hidden; color: var(--text);
+  font: 14px/1.5 Arial, 'Malgun Gothic', sans-serif;
 }
-.shellMain {
-  flex: 1;
-  min-width: 0;
-  height: 100vh;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-#appShell {
-  width: 210px;
-  flex: none;
-  height: 100vh;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 16px 14px;
-  background: var(--shell-bg);
-  border-right: 1px solid var(--line);
-  font:
-    13px Arial,
-    'Malgun Gothic',
-    sans-serif;
-  color: var(--text);
-  box-sizing: border-box;
-}
-.shellBrand {
-  font-weight: 700;
-  color: var(--navy);
-  font-size: 15px;
-}
-.shellLabel {
-  display: grid;
-  gap: 4px;
-  font-size: 11px;
-  color: var(--muted);
-}
-.shellLabel select,
-.shellUpload,
-.shellSettings {
-  font: inherit;
-  width: 100%;
-  padding: 6px 8px;
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  background: #fff;
-  color: var(--text);
-  cursor: pointer;
-  text-align: left;
-}
-.shellSteps {
-  display: flex;
-  flex-direction: column;
-  margin-top: 6px;
-  position: relative;
-}
-.shellStep {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 6px;
-  color: var(--text);
-  text-decoration: none;
-  border-radius: 4px;
-}
-.shellStep:not(:last-child)::after {
-  content: '';
-  position: absolute;
-  left: 17px;
-  top: 34px;
-  height: 18px;
-  border-left: 2px solid var(--line);
-}
-.shellNumber {
-  width: 24px;
-  height: 24px;
-  flex: none;
-  display: grid;
-  place-items: center;
-  border-radius: 50%;
-  border: 2px solid var(--line);
-  background: #fff;
-  font-size: 13px;
-}
-.shellStep.current {
-  background: #e8eff8;
-  font-weight: 700;
-  color: var(--navy);
-}
-.shellStep.current .shellNumber {
-  border-color: var(--navy);
-  background: var(--navy);
-  color: #fff;
-}
-.shellStep:hover:not(.current):not(.disabled) {
-  background: #eef2f7;
-}
-.shellStep.disabled {
-  color: #b5bec9;
-  cursor: default;
-}
-.shellDirty {
-  color: var(--accent);
-  font-size: 18px;
-  line-height: 1;
-}
-.shellBadge {
-  margin-left: auto;
-  min-width: 20px;
-  padding: 1px 6px;
-  border-radius: 10px;
-  background: #e1e7ee;
-  font-size: 11px;
-  text-align: center;
-}
-.shellBadge.blocked {
-  background: var(--warn);
-  color: #fff;
-}
-.shellSettings {
-  margin-top: auto;
-}
-.nextStep {
-  position: fixed;
-  right: 20px;
-  bottom: 18px;
-  z-index: 20;
-  padding: 8px 14px;
-  border: none;
-  border-radius: 4px;
-  background: var(--navy);
-  color: #fff;
-  font:
-    13px Arial,
-    'Malgun Gothic',
-    sans-serif;
-  cursor: pointer;
-  box-shadow: 0 2px 8px #20334d33;
+[hidden] { display: none !important; }
+.shellMain { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+#appShell { display:block; flex: none; width: 100%; box-sizing: border-box; background: #fff; border-bottom: 1px solid var(--line); color: var(--text); }
+.shellTop { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding: 10px 18px; }
+.shellBrand { font-weight: 700; color: var(--navy); font-size: 18px; white-space: nowrap; }
+.shellLabel { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 13px; color: var(--muted); min-width: 0; }
+.shellLabel select { width: 230px; max-width: 40vw; margin: 0; }
+.shellState { margin-left: auto; color: var(--muted); font-size: 13px; }
+.shellSteps { display: flex; overflow-x: auto; padding: 0 16px 8px; gap: 8px; }
+.shellStep { flex: 0 0 auto; display: flex; align-items: center; gap: 7px; padding: 7px 12px; border-radius: 6px; color: var(--muted); text-decoration: none; white-space: nowrap; }
+.shellNumber { font-size: 16px; }
+.shellStep.current { color: var(--navy); background: #e9f2fa; font-weight: 700; box-shadow: inset 0 -2px #1768a0; }
+.shellStep:hover:not(.current):not(.disabled) { background: #f0f4f8; }
+.shellStep.disabled { opacity: .55; cursor: default; }
+.shellDirty { color: #9b4b16; font-size: 18px; line-height: 1; }
+.shellBadge { padding: 1px 6px; border-radius: 10px; background: #e1e7ee; font-size: 12px; }
+.shellBadge.blocked { background: #9b4b16; color: #fff; }
+body.withShell button, body.withShell select, body.withShell input, body.withShell textarea { font-family: inherit; font-size: 13px; box-sizing: border-box; }
+body.withShell button { min-height: 32px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 5px; color: var(--navy); background: #fff; white-space: nowrap; flex-shrink: 0; cursor: pointer; }
+body.withShell button.primary { color: #fff; background: var(--navy); border-color: var(--navy); }
+body.withShell button:hover:not(:disabled) { background: #e9f2fa; color: var(--navy); }
+body.withShell button:disabled { cursor: default; opacity: .5; }
+body.withShell :focus-visible { outline: 2px solid #1768a0; outline-offset: 2px; }
+body.withShell input:not([type=checkbox]):not([type=range]):not([type=color]), body.withShell select { min-height: 32px; min-width: 0; max-width: 100%; }
+body.withShell .hint, body.withShell .intro, body.withShell .panelHint, body.withShell .noteEvidence,
+body.withShell .generationLine, body.withShell .phaseMeta, body.withShell .sectionTitle, body.withShell .sourceWarning,
+body.withShell label, body.withShell .asideTitle, body.withShell .navGroup { font-size: 13px; color: var(--muted); line-height: 1.6; letter-spacing: 0; }
+body.withShell .sectionTitle, body.withShell .asideTitle { color: var(--navy); font-weight: 700; }
+body.withShell .sourceWarning { color: var(--warn); }
+body.withShell h1 { font-size: 20px; color: var(--navy); font-weight: 700; }
+body.withShell table { font-size: 13px; }
+body.withShell footer, body.withShell .statusbar { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; height: auto; min-height: 44px; padding: 6px 16px; background: #fff; border-top: 1px solid var(--line); }
+body.withShell #status { flex: 1 1 260px; min-width: 0; max-width: none; white-space: normal; overflow-wrap: break-word; }
+body.withShell .nextStep { position: static; margin-left: auto; background: var(--navy); color: white; }
+.ristAccount { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 8px 18px; background: var(--shell-bg); }
+.ristAccount a { color: var(--accent); white-space: nowrap; }
+.workTabs { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 14px; background: var(--shell-bg); border-bottom: 1px solid var(--line); }
+body.withShell button[aria-pressed=true] { background: #e9f2fa; border-color: #8cb4d3; color: var(--navy); }
+.fieldLinked { outline: 3px solid #1768a0 !important; outline-offset: 3px; background: #f0f7fc !important; }
+@media (max-width: 800px) {
+  body.withShell { height: auto; min-height: 100vh; overflow: auto; }
+  .shellMain { overflow: visible; flex: none; }
+  .shellTop { padding: 8px 12px; gap: 6px 10px; }
+  .shellBrand { font-size: 16px; }
+  .shellState { display: none; }
+  .shellLabel { flex: 1; }
+  .shellLabel select { width: 100%; max-width: none; }
+  .shellSteps { padding: 0 8px 8px; }
+  .shellStep { padding: 6px 8px; }
 }

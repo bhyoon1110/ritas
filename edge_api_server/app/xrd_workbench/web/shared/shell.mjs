@@ -1,4 +1,4 @@
-// The app shell: one left sidebar shared by every screen (project, file registration, the four
+// The app shell: one compact top workflow shared by every screen (project, file registration, the four
 // steps in order, their status and settings). A page opts in with <body data-step="...">; pages
 // talk to it with events so the page modules do not depend on it:
 //   window.dispatchEvent(new CustomEvent('xrd-shell', { detail: { project, dirty, issues, blocked } }))
@@ -62,6 +62,7 @@ const state = { step: '', project: '', list: [], status: {} };
 function render() {
   $('shellSteps').innerHTML = stepsHTML(state.step, state.project, state.status);
   $('shellProject').innerHTML = projectOptionsHTML(state.list, state.project);
+  $('shellState').textContent = state.status.dirty ? '미저장 변경 있음' : state.status.blocked ? '출력 전 검토 필요' : '원자료 보존 · 단계별 작업';
 }
 
 async function go(step) {
@@ -113,15 +114,25 @@ export async function mountShell() {
   nav.id = 'appShell';
   nav.setAttribute('aria-label', '작업 단계');
   nav.innerHTML =
-    '<div class="shellBrand">XRD 보고서</div>' +
+    '<div class="shellTop"><div class="shellBrand">XRD 분석·보고서</div>' +
     '<label class="shellLabel">프로젝트<select id="shellProject" aria-label="프로젝트"></select></label>' +
-    '<div id="shellSteps" class="shellSteps"></div>' +
-    '<button id="shellSettings" class="shellSettings">⚙ 설정</button>';
+    '<span id="shellState" class="shellState"></span><button id="shellSettings" class="shellSettings">설정</button>' +
+    '<button id="shellAccountToggle" aria-controls="shellAccount" aria-expanded="false">회원·지원</button></div>' +
+    '<div id="shellSteps" class="shellSteps"></div>';
   body.append(nav, main);
   const account = document.createElement('div');
   account.className = 'ristAccount';
+  account.id = 'shellAccount';
+  account.hidden = true;
   account.innerHTML = '<a href="/">실험 선택</a><a href="/account">회원정보·SSO 인증</a><a href="/voc?project=XRD">VOC 게시판</a><button type="button" id="ristLogout">로그아웃</button>';
   nav.appendChild(account);
+  $('shellAccountToggle').onclick = () => {
+    account.hidden = !account.hidden;
+    $('shellAccountToggle').setAttribute('aria-expanded', String(!account.hidden));
+    window.dispatchEvent(new Event('resize'));
+  };
+  const footer = main.querySelector('footer, .statusbar'), next = $('nextStep');
+  if (footer && next) footer.appendChild(next);
   $('ristLogout').onclick = async () => {
     try {
       const response = await fetch('/api/v1/auth/logout', {method:'POST', credentials:'same-origin', headers:{'X-Requested-With':'RIST-XRD'}});

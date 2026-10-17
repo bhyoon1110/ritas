@@ -768,3 +768,30 @@ body.withShell .nextStep {
 .panelSection[hidden] {
   display: none;
 }
+
+/* Graph-first workspace; settings never force the plot off the screen. */
+.graphActions { display:flex; flex-wrap:wrap; align-items:center; gap:8px; padding:9px 16px; border-bottom:1px solid #d6e0ea; background:#f7f9fc; flex:none; }
+.graphActions strong { color:#163e62; margin-right:auto; }
+#workspace { min-height:0; margin:0; }
+#sidePanel { width:300px; max-width:85vw; }
+.advancedOptions > summary { cursor:pointer; padding:14px; color:#163e62; font-weight:bold; }
+body.withShell #uploadDialog[open] { top:6%; left:4%; right:4%; width:auto; max-height:88vh; overflow:auto; }
+#mappingTable { overflow:auto; max-height:40vh; }
+#mappingTable input { min-width:100px; }
+.uploadSample { border:1px solid #d6e0ea; border-radius:6px; padding:10px; margin:8px 0; background:#f7f9fc; overflow-wrap:break-word; }
+.uploadSample > div { display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; }
+.uploadSample small { display:block; color:#9b4b16; margin-top:4px; }
+.uploadBadge { font-size:12px; border-radius:4px; padding:3px 7px; background:#e9edf2; color:#52677c; }
+.uploadBadge.ready { background:#e3f3ea; color:#226343; }
+.uploadBadge.missing { background:#fff0db; color:#8e4715; }
+#uploadSummary p { font-size:13px; color:#52677c; }
+@media (max-width:1100px) {
+  #sidePanel { position:absolute; top:0; bottom:0; right:0; z-index:6; box-shadow:-3px 0 12px #20334d22; }
+}
+@media (max-width:800px) {
+  body { min-width:0; }
+  #workspace { flex:none; height:65vh; min-height:380px; }
+  .graphActions { padding:8px; gap:6px; }
+  .graphActions strong { flex-basis:100%; }
+  .dialogActions { flex-wrap:wrap; gap:8px; }
+}

@@ -3,6 +3,26 @@ import { $, escapeHTML } from '../shared/dom.mjs';
 import { buildSections, sectionHTML } from './sections.mjs';
 const esc = escapeHTML,
   copy = (v) => structuredClone(v);
+const reviewMain = document.querySelector('main'), reviewTools = document.createElement('div');
+reviewTools.className = 'workTabs';
+reviewTools.innerHTML = '<button id="reviewNavToggle" aria-expanded="true">시료·표 목록 접기</button><span class="compareLabel">원문 대조</span><button data-compare="both">나란히</button><button data-compare="data">분석 표</button><button data-compare="source">원문</button><span id="compareContext" role="status">표·행을 선택하면 원문 위치를 연결합니다.</span>';
+reviewMain.parentNode.insertBefore(reviewTools,reviewMain);
+function setCompare(view) {
+  reviewMain.dataset.compare = view;
+  reviewTools.querySelectorAll('[data-compare]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.compare === view)));
+}
+function setReviewNav(open) {
+  reviewMain.classList.toggle('reviewNavClosed',!open);
+  $('reviewNavToggle').textContent = open ? '시료·표 목록 접기' : '시료·표 목록 열기';
+  $('reviewNavToggle').setAttribute('aria-expanded',String(open));
+}
+reviewTools.onclick = e => {
+  const b = e.target.closest('button');
+  if (b?.dataset.compare) setCompare(b.dataset.compare);
+  else if (b?.id === 'reviewNavToggle') setReviewNav(reviewMain.classList.contains('reviewNavClosed'));
+};
+setCompare(window.innerWidth < 900 ? 'data' : 'both');
+setReviewNav(window.innerWidth >= 1100);
 let mode = 'sections',
   sectionId = null;
 let storageId = new URLSearchParams(location.search).get('project') || 'example',
@@ -40,6 +60,7 @@ function status(text, error = false) {
 function changed() {
   dirty = true;
   $('revision').textContent = `검토 버전 ${review.revision} · 미저장 변경`;
+  $('save').textContent = '변경 검토 저장';
 }
 function lock(value) {
   busy = value;
@@ -98,7 +119,7 @@ function renderTables() {
       )
       .map(
         ({ t, i, label }) =>
-          `<button class="tableButton ${tableIndex === i ? 'active' : ''}" data-table="${i}">${esc(label)}<small>${t.rows.length}행 · ${esc({ reviewed: '검토 완료', excluded: '제외', unreviewed: '미검토' }[review.tables[sourceId]?.[i]?.status || 'unreviewed'])}</small></button>`,
+          `<button class="tableButton ${tableIndex === i ? 'active' : ''}" data-table="${i}" title="${esc(label)}"><span>${esc(label)}</span><small data-review-status="${review.tables[sourceId]?.[i]?.status || 'unreviewed'}">${t.rows.length}행 · ${esc({ reviewed: '검토 완료', excluded: '제외', unreviewed: '미검토' }[review.tables[sourceId]?.[i]?.status || 'unreviewed'])} · 수정 ${review.tables[sourceId]?.[i]?.cells?.length || 0}셀</small></button>`,
       )
       .join('') || '<p class="hint">표가 없습니다. 원문 페이지 텍스트를 확인하세요.</p>';
 }
@@ -168,15 +189,18 @@ $('sectionList').onclick = (e) => {
   sectionId = b.dataset.section;
   renderSections();
 };
-$('sectionGrid').onclick = (e) => {
+function selectSourceRow(e) {
   const row = e.target.closest('[data-source-page]');
-  if (row && Number(row.dataset.sourcePage))
+  if (row && Number(row.dataset.sourcePage)) {
+    $('sectionGrid').querySelectorAll('[data-source-page]').forEach(r=>r.classList.toggle('selectedSource',r===row));
+    if (window.innerWidth < 900) setCompare('source');
     showPage(record(), Number(row.dataset.sourcePage), false);
-};
+  }
+}
+$('sectionGrid').onclick = selectSourceRow;
 $('sectionGrid').onkeydown = (e) => {
   const row = e.target.closest('[data-source-page]');
-  if (row && e.key === 'Enter' && Number(row.dataset.sourcePage))
-    showPage(record(), Number(row.dataset.sourcePage), false);
+  if (row && e.key === 'Enter') selectSourceRow(e);
 };
 function renderTable() {
   selected = null;
@@ -260,6 +284,15 @@ async function showPage(source = record(), number = page, highlight = true) {
   if (!source) {
     $('originalImage').removeAttribute('src');
     $('bbox').hidden = true;
+    $('originalTitle').textContent = '연결된 원문 없음';
+    $('originalTitle').title = '';
+    $('originalLink').removeAttribute('href');
+    $('pageText').textContent = '';
+    $('pageNumber').value = '';
+    $('pageCount').textContent = '/ 0';
+    for (const id of ['pageNumber', 'prevPage', 'nextPage']) $(id).disabled = true;
+    if (imageUrl) { URL.revokeObjectURL(imageUrl); imageUrl = null; }
+    $('compareContext').textContent = '이 시료에는 연결된 원문 PDF가 없습니다.';
     return;
   }
   const pdf = ['phase_report', 'wppf_report'].includes(source.role);
@@ -269,6 +302,8 @@ async function showPage(source = record(), number = page, highlight = true) {
   $('pageCount').textContent = `/ ${count}`;
   for (const id of ['pageNumber', 'prevPage', 'nextPage']) $(id).disabled = !pdf;
   $('originalTitle').textContent = source.filename;
+  $('originalTitle').title = source.filename;
+  $('compareContext').textContent = `${sample().name} · ${source.filename} · p.${page}${highlight ? ' · 선택 표 강조' : ''}`;
   $('originalLink').href = apiUrl(
     `/api/files/${storageId}/${source.id}${pdf ? '#page=' + page : ''}`,
   );
@@ -351,6 +386,7 @@ async function openProject(id) {
     storageId = id;
     ({ project, review, effective_samples: effective, header_rows: headers } = value);
     dirty = false;
+    $('save').textContent = '검토 저장';
     $('sampleSelect').innerHTML = project.samples
       .map((s) => `<option value="${s.id}">${esc(s.name)}</option>`)
       .join('');
@@ -381,6 +417,7 @@ $('save').onclick = async () => {
     review = value.review;
     effective = value.effective_samples;
     dirty = false;
+    $('save').textContent = '검토 저장';
     $('revision').textContent = `검토 버전 ${review.revision}`;
     renderEffective();
     renderTables();

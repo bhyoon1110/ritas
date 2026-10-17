@@ -714,3 +714,77 @@ footer {
 [hidden] {
   display: none !important;
 }
+
+/* Editing and the same-layout report preview stay together, not in separate steps. */
+body.withShell[data-step=report] main { display:flex; grid-template-columns:minmax(0, .9fr) minmax(0, 1.1fr); grid-template-rows:auto minmax(0,1fr); min-height:0; overflow:hidden; flex-wrap: wrap; }
+body.withShell[data-step=report] main > * {
+  flex: 0 1 calc(50% - 12px);
+  min-width: 0;
+  max-width: calc(50% - 12px);
+}
+body.withShell #reportNav { flex-basis:100%; max-width:100%; grid-column:1 / -1; grid-row:1; display:flex; flex-wrap:nowrap; align-items:center; padding:8px 14px; width:auto; min-width:0; overflow-x:auto; border-right:0; border-bottom:1px solid #d6e0ea; }
+body.withShell #reportNav > * {
+  margin-bottom: 6px;
+  margin-right: 6px;
+}
+#sampleNav { display:flex; flex:none; }
+#sampleNav > * {
+  margin-bottom: 6px;
+  margin-right: 6px;
+}
+body.withShell #reportNav .sectionNav { width:auto; margin:0; font-size:13px; max-width:240px; overflow:hidden; text-overflow:ellipsis; }
+body.withShell #reportNav .asideTitle, #reportNav .navGroup { display:none; }
+body.withShell #editor, body.withShell #savePane { grid-column:1; grid-row:2; width:auto; min-width:0; padding:18px; overflow:auto; }
+body.withShell #previewPane { grid-column:2; grid-row:2; display:flex; flex-direction:column; min-width:0; width:auto; min-height:0; border-left:1px solid #d6e0ea; background:#edf1f6; }
+body.withShell #reportPreview { flex:1; min-height:0; width:100%; border:0; background:#edf1f6; }
+.previewHeading { display:flex; flex-wrap:wrap; align-items:center; padding:10px 14px; flex:none; background:#fff; font-size:13px; }
+.previewHeading > * {
+  margin-bottom: 6px;
+  margin-right: 6px;
+}
+#previewStatus { color:#52677c; font-size:13px; }
+.editorBar { position:relative; top:-18px; z-index:2; background:#fff; padding:8px 0; display:flex; flex-wrap:wrap; align-items:center; }
+.editorBar > * {
+  margin-bottom: 8px;
+  margin-right: 8px;
+}
+.formGrid { }
+.formGrid > * {
+  margin-bottom: 12px;
+  margin-right: 12px;
+}
+.formGrid > *, .formPane, .presetBar > *, .sampleName { min-width:0; }
+.formPane input, .formPane textarea, .formPane select { max-width:100%; }
+.sampleOverviewRow, .generationActions, .noteHeader, .presetBar, .exportButtons, .figureActions { flex-wrap:wrap; }
+.sampleName { overflow-wrap:break-word; }
+.noteItem textarea { font-size:14px; }
+body.withShell[data-step=report] main[data-work-view=editor], body.withShell[data-step=report] main[data-work-view=preview] { grid-template-columns:minmax(0,1fr); }
+body.withShell[data-step=report] main[data-work-view=editor] > *,body.withShell[data-step=report] main[data-work-view=preview] > * {
+  flex: 0 1 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+body.withShell[data-step=report] main[data-work-view=editor] #previewPane { display:none; }
+body.withShell[data-step=report] main[data-work-view=preview] #editor, body.withShell[data-step=report] main[data-work-view=preview] #savePane, body.withShell[data-step=report] main[data-work-view=preview] #reportNav { display:none; }
+body.withShell[data-step=report] main[data-work-view=preview] #previewPane { grid-column:1; grid-row:2; }
+@media (max-width:900px) {
+  body.withShell[data-step=report] { height:auto; min-height:100vh; overflow:auto; }
+  body.withShell[data-step=report] main { grid-template-columns:minmax(0,1fr); grid-template-rows:auto auto auto; overflow:visible; }
+  body.withShell[data-step=report] main > * {
+    flex: 0 1 100%;
+    min-width: 0;
+    max-width: 100%;
+  }
+  body.withShell #previewPane { grid-column:1; grid-row:3; min-height:70vh; }
+  body.withShell #reportPreview { min-height:65vh; }
+  body.withShell #editor, body.withShell #savePane { padding:14px; }
+}
+@media (max-width:480px) {
+  .formGrid { grid-template-columns:minmax(0,1fr); }
+  .formGrid > * {
+    flex: 0 1 100%;
+    min-width: 0;
+    max-width: 100%;
+  }
+  .formGrid .wide { grid-column:auto; }
+}

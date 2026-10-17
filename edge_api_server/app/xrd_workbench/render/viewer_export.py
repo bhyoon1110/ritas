@@ -10,7 +10,7 @@ from ..config import ROOT
 
 WEB = ROOT / 'web'
 # Inlined in this order into the offline viewer; each module's imports must come earlier.
-VIEWER_BUNDLE = ('shared/dom.mjs', 'shared/api.mjs', 'viewer/model.mjs', 'viewer/viewer.mjs')
+VIEWER_BUNDLE = ('shared/dom.mjs', 'shared/api.mjs', 'viewer/model.mjs', 'viewer/upload_summary.mjs', 'viewer/viewer.mjs')
 
 
 def safe_inline(source):

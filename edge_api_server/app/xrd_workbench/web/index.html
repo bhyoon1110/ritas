@@ -10,12 +10,13 @@
 <body data-step="viewer">
  <header><div class="brand">XRD 그래프 뷰어</div><nav>
  </nav></header>
+ <div class="graphActions" aria-label="그래프 주요 도구"><strong>측정 그래프</strong><button id="quickOverlay">겹쳐 보기</button><button id="quickStack">스택 보기</button><button id="resetView">전체 범위</button><button id="quickImageExport">이미지 저장</button><button id="toggleOptions" aria-controls="sidePanel" aria-expanded="true">보기 옵션 접기</button></div>
  <main id="workspace"><div id="plotViewport" tabindex="0" aria-label="측정 그래프와 기준 피크 스크롤 영역"><div id="plot" aria-label="XRD 측정 그래프"></div><div id="legend" aria-label="범례"></div><div id="singlePicker" hidden><b>먼저 볼 시료를 선택하세요</b><div id="singlePickerList"></div></div><div id="sourceCard" hidden></div></div>
   <aside id="sidePanel" aria-label="보기 옵션">
    <details id="quickHelp" class="panelSection quickHelp"><summary>처음이신가요? 사용 방법</summary>
     <ol>
      <li>왼쪽 위 <b>범례</b>의 체크로 시료와 결정상을 켜고 끕니다.</li>
-     <li><b>수평 조절</b> 슬라이드바로 그래프를 겹치거나 위아래로 벌립니다 (가운데가 겹쳐 보기).</li>
+     <li><b>시료 간 세로 간격</b>으로 그래프를 겹치거나 위아래로 벌립니다 (0은 겹쳐 보기).</li>
      <li>마우스 휠은 확대, 왼쪽 드래그는 영역 확대, 오른쪽 드래그는 이동, 더블클릭은 처음 범위로 돌아갑니다.</li>
      <li>한 시료만 자세히 보려면 <b>시료 하나씩 보기</b>를 누르고 시료를 고르세요.</li>
      <li>그림은 <b>현재 이미지 내보내기</b>로 저장합니다.</li>
@@ -30,10 +31,10 @@
     <label class="optionRow"><input id="peakbar" type="checkbox" checked> 기준 피크 막대</label>
     <label class="optionRow">마커 크기 <input id="markerSize" type="range" min="3" max="20" step="1" value="8" aria-label="마커 크기"><span id="markerSizeValue">8</span></label>
    </div>
-   <div id="offsetSection" class="panelSection"><div class="sectionTitle">수평 조절</div>
-    <input id="spacing" type="range" min="-35000" max="35000" value="2500" step="1" aria-label="수평 조절 슬라이드바">
-    <div class="sliderScale"><span>반대 순서</span><span>겹쳐 보기</span><span>첫 시료 위</span></div>
-    <div class="optionRow"><button id="offsetOverlay">겹쳐 보기</button><button id="offsetReset" title="간격과 개별 조절 초기화" aria-label="수평 조절 초기화">↺ 처음으로</button></div>
+   <div id="offsetSection" class="panelSection"><div class="sectionTitle">시료 간 세로 간격</div>
+    <input id="spacing" type="range" min="-35000" max="35000" value="2500" step="1" aria-label="시료 간 세로 간격">
+    <div class="sliderScale"><span>스택 순서 반전</span><span>겹쳐 보기</span><span>첫 시료 위</span></div>
+    <div class="optionRow"><button id="offsetOverlay">겹쳐 보기</button><button id="offsetReset" title="간격과 개별 조절 초기화" aria-label="세로 간격 초기화">↺ 처음으로</button></div>
    </div>
    <div class="panelSection"><div class="sectionTitle">2θ 범위</div>
     <div class="rangeControls"><input id="xMin" type="number" step="any" aria-label="가로축 시작"><span>–</span><input id="xMax" type="number" step="any" aria-label="가로축 끝"><button id="applyRange">적용</button></div>
@@ -55,6 +56,7 @@
   <div class="dialogHeading"><h2>데이터 업로드 · 시료 연결</h2><button id="uploadClose" aria-label="파일 등록 닫기">×</button></div>
   <p>파일을 한 번에 선택한 뒤 시료명과 역할을 확인하세요. 오타는 연결표에서 수정할 수 있습니다.</p>
   <input id="fileInput" type="file" multiple accept=".txt,.pdf,.png,.jpg,.jpeg">
+  <div id="uploadSummary" aria-live="polite"></div>
   <div id="mappingTable"></div><p id="uploadError" class="error" role="alert"></p>
   <div class="dialogActions"><span>원본 파일명과 자료는 유지됩니다.</span><button id="uploadSubmit" class="primary">연결 확인 · 뷰어 열기</button></div>
  </dialog>

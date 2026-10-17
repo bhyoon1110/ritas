@@ -1,4 +1,4 @@
-.ristAccount {display:flex;flex-direction:column;gap:8px;margin-top:18px;font-size:13px}
+.ristAccount {display:flex;flex-direction:row;flex-wrap:wrap;gap:12px;margin-top:0;font-size:13px}
 .ristAccount a {color:#285e8f;text-decoration:none}
 .ristAccount button {white-space:nowrap;padding:8px}
 .ristTransfer {padding:16px;background:#fff;border:1px solid #cdd7e4;border-radius:8px;margin-bottom:16px}

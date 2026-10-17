@@ -16,6 +16,7 @@ import os
 from pathlib import Path
 import re
 import time
+import threading
 from types import SimpleNamespace
 from urllib.parse import urlsplit
 import uuid
@@ -48,6 +49,9 @@ NO_STORE = {'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nos
 current: ContextVar = ContextVar('rist_xrd_request')
 executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix='rist-xrd-workbench')
 logger = logging.getLogger(__name__)
+# Drafts are ephemeral. At most one preview per worker waits for the shared
+# native-render lock; do not fill the durable export queue on every keystroke.
+draft_preview_slot = threading.BoundedSemaphore(1)
 
 
 def checked_id(value):
@@ -377,6 +381,41 @@ def export_report(sid: str, payload: dict):
                     analysis_revision=project.get('analysis_revision', 0), filename=output.name,
                     transfer=transfer)
     return start_job(state, kind, work)
+
+
+@router.post('/api/reports/{sid}/draft-preview')
+def draft_preview(sid: str, payload: dict):
+    state = current.get()
+    checked_id(sid)
+    if not draft_preview_slot.acquire(blocking=False):
+        raise HTTPException(429, '다른 미리보기를 처리 중입니다. 잠시 후 다시 갱신하세요.')
+    try:
+        with ProcessLock(state.root / '.render.lock'):
+            with state.storage.lock:
+                try:
+                    project = state.storage.load_project(sid)
+                except (FileNotFoundError, ValueError) as exc:
+                    raise HTTPException(404, '본인의 프로젝트를 찾을 수 없습니다.') from exc
+                saved = state.storage.reports.load(sid)
+                draft = payload.get('document')
+                if not isinstance(draft, dict):
+                    raise HTTPException(422, '보고서 초안 형식을 확인하세요.')
+                if draft.get('revision') != (saved['revision'] if saved else 0):
+                    raise HTTPException(409, '다른 창에서 보고서가 변경되었습니다. 분석값 갱신으로 병합 후 확인하세요.')
+                if draft.get('analysis_revision', 0) != project.get('analysis_revision', 0):
+                    raise HTTPException(409, '분석 검토값이 변경되었습니다. 분석값 갱신 후 확인하세요.')
+                document = validate_document(project, draft)
+            from .render.layout import build_pages
+            from .render.html import render_html
+            pages = build_pages(project, document, lambda fid: state.storage.files.read_source(sid, fid))
+            content = render_html(pages, document, 'app', sid, edit_links=True)
+            if len(content.encode('utf-8')) > 32 * 1024 * 1024:
+                raise HTTPException(413, '미리보기가 32MB를 초과했습니다. 시료를 나누어 확인하세요.')
+            return HTMLResponse(content, headers=NO_STORE)
+    except (ValueError, TypeError, KeyError) as exc:
+        raise HTTPException(422, str(exc)) from exc
+    finally:
+        draft_preview_slot.release()
 
 
 @router.get('/api/jobs/{jid}/file')

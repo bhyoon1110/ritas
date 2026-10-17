@@ -1,4 +1,5 @@
 import base64
+import json
 from html import escape
 
 from ..render.theme import PAGE_H, PAGE_W, PX_PER_MM
@@ -8,7 +9,33 @@ STYLE = """*{box-sizing:border-box}body{margin:0;background:#edf0f4;font-family:
 ).replace('{PAGE_H}', str(PAGE_H))
 
 
-def render_html(pages, document, link_mode='package', storage_id=None):
+EDITOR_SCRIPT = """<script>
+(function(){
+var choice=document.getElementById('previewPages');
+function go(index){var page=document.querySelector('[data-preview-page="'+index+'"]');if(page){page.scrollIntoView();choice.value=String(index);parent.postMessage({type:'xrd-preview-page',page:Number(index)},'*');}}
+choice.onchange=function(){go(choice.value);};
+function edit(event){var node=event.target.closest('[data-edit]');if(!node)return;if(event.type==='keydown'&&event.key!=='Enter'&&event.key!==' ')return;event.preventDefault();parent.postMessage({type:'xrd-preview-edit',target:JSON.parse(node.getAttribute('data-edit'))},'*');}
+document.addEventListener('click',edit);document.addEventListener('keydown',edit);
+addEventListener('message',function(event){
+ if(event.source!==parent||!event.data)return;
+ if(event.data.type==='xrd-preview-page'&&Number.isInteger(event.data.page))go(event.data.page);
+ if(event.data.type==='xrd-preview-locate'){
+  var target=event.data.target||{},nodes=document.querySelectorAll('[data-edit]');
+  for(var i=0;i<nodes.length;i++)nodes[i].classList.remove('linked');
+  for(var i=0;i<nodes.length;i++){var value=JSON.parse(nodes[i].getAttribute('data-edit'));if(value.tab===target.tab&&(!target.field||value.field===target.field)&&(!target.id||value.id===target.id)){nodes[i].classList.add('linked');nodes[i].scrollIntoView({block:'center'});break;}}
+ }
+});
+parent.postMessage({type:'xrd-preview-ready'},'*');
+})();</script>"""
+
+
+def edit_attrs(target):
+    return ' data-edit="' + escape(json.dumps(target, ensure_ascii=False), quote=True) + '" tabindex="0" role="button" title="클릭하면 해당 입력 항목으로 이동"'
+
+
+def render_html(pages, document, link_mode='package', storage_id=None, *, edit_links=False):
+    # Editor links are opt-in and NEVER included in delivered HTML/PDF/PPTX.
+    edit_links = edit_links and link_mode == 'app'
     output = [
         '<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>'
         + escape(document['metadata']['title'])
@@ -16,6 +43,11 @@ def render_html(pages, document, link_mode='package', storage_id=None):
         + STYLE
         + '</style></head><body>'
     ]
+    if edit_links:
+        output.append('<style>.editorNav{position:sticky;top:0;z-index:5;background:#fff;padding:10px;border-bottom:1px solid #ccd7e4;font:13px Arial,sans-serif}.editorNav select{max-width:60%;padding:5px}.editPageTools{padding:8px 15px;font:13px Arial,sans-serif}.editPageTools button{padding:6px 10px;margin-right:8px;border:1px solid #ccd7e4;background:white;border-radius:4px;color:#163e62}[data-edit]{cursor:pointer}[data-edit]:hover,[data-edit]:focus,.linked{outline:2px solid #1768a0;outline-offset:2px}@media print{.editorNav,.editPageTools{display:none}}</style>')
+        output.append('<nav class="editorNav"><b>초안 · 저장 전 확인</b> <select id="previewPages" aria-label="미리보기 페이지">' + ''.join(
+            f'<option value="{i}">{i + 1}. {escape(p["title"])}</option>' for i, p in enumerate(pages)
+        ) + '</select></nav>')
     if link_mode == 'package':
         output.append(
             '<nav class="reportNav"><a href="'
@@ -26,9 +58,15 @@ def render_html(pages, document, link_mode='package', storage_id=None):
             + escape('뷰어.html')
             + '">Multi Profile Viewer</a><span>압축을 풀고 열어주세요. 원본 PDF: Report · TXT: Measured Data</span></nav>'
         )
-    for page in pages:
-        output.append('<section class="page">')
+    for index, page in enumerate(pages):
+        if edit_links:
+            output.append('<div class="editPageTools"><button' + edit_attrs(page.get('edit', dict(tab='overview'))) + '>이 페이지 입력 항목</button><button' + edit_attrs(dict(tab='classes')) + '>상 분류 수정</button><span>테두리가 표시되는 내용을 클릭해 수정 위치로 이동하세요.</span></div>')
+        output.append(f'<section class="page" data-preview-page="{index}">')
         for item in page['items']:
+            target = item.get('edit')
+            if not target and page['kind'] == 'figure' and item['type'] == 'image':
+                target = dict(tab='figure')
+            attrs = edit_attrs(target) if edit_links and target else ''
             pos = f"left:{item['x']}mm;top:{item['y']}mm;width:{item['w']}mm;height:{item['h']}mm;"
             if item['type'] == 'rect':
                 output.append(
@@ -41,7 +79,7 @@ def render_html(pages, document, link_mode='package', storage_id=None):
                     + ('text-align:right;' if item.get('align') == 'right' else '')
                 )
                 output.append(
-                    '<div class="item" style="'
+                    '<div class="item"' + attrs + ' style="'
                     + style
                     + '">'
                     + ''.join(
@@ -52,7 +90,7 @@ def render_html(pages, document, link_mode='package', storage_id=None):
             elif item['type'] == 'image':
                 uri = 'data:' + item['mime'] + ';base64,' + base64.b64encode(item['data']).decode()
                 output.append(
-                    '<img class="item image" style="'
+                    '<img class="item image"' + attrs + ' style="'
                     + pos
                     + '" src="'
                     + uri
@@ -83,5 +121,7 @@ def render_html(pages, document, link_mode='package', storage_id=None):
             + str(round(PAGE_W * PX_PER_MM))
             + ');var pages=document.querySelectorAll(".page");for(var i=0;i<pages.length;i++){pages[i].style.zoom=z;}}addEventListener("resize",fit);fit();</script>'
         )
+    if edit_links:
+        output.append(EDITOR_SCRIPT)
     output.append('</body></html>')
     return ''.join(output)
