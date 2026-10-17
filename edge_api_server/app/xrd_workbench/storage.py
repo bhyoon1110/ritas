@@ -193,6 +193,28 @@ class ProjectFiles:
                     sample_count=len(project['samples']), file_count=len(project['sources']),
                     total_bytes=sum(s.get('size', 0) for s in project['sources']))
 
+    def _catalog_entry(self, path):
+        """Do not reparse thousands of raw coordinate arrays on every list/search."""
+        info = path.stat()
+        signature = [info.st_mtime_ns, info.st_size]
+        cache = path.with_name('summary.json')
+        if cache.is_file() and not cache.is_symlink():
+            try:
+                value = json.loads(cache.read_text(encoding='utf-8'))
+                if value.get('source_signature') == signature and value['item']['storage_id'] == path.parent.name:
+                    return value['item']
+            except (ValueError, KeyError, TypeError):
+                pass
+        project = json.loads(path.read_text(encoding='utf-8'))
+        if project['storage_id'] != path.parent.name:
+            raise ValueError('프로젝트 식별 정보가 다릅니다.')
+        item = self._summary(project, path, {'revision': 0})
+        try:
+            _write_json_atomic(cache, dict(source_signature=signature, item=item))
+        except OSError:
+            pass  # A cache failure must not hide otherwise readable user projects.
+        return item
+
     def manage(self, storage_id, expected_revision, *, label=None, archived=None):
         """Rename or soft-delete/restore only metadata; never move/unlink source/report bytes."""
         if _checked_id(storage_id) == EXAMPLE_ID:
@@ -282,23 +304,27 @@ class ProjectFiles:
         return project
 
     def list(self, archived: bool = False) -> list[dict]:
+        with self.lock:
+            return self._list(archived)
+
+    def _list(self, archived: bool = False) -> 'list[dict]':
         """Example (when configured) and uploaded projects, newest first."""
         result = [dict(storage_id=EXAMPLE_ID, label='예제 프로젝트')] if self.example_dir and not archived else []
         if self.uploads.is_dir():
-            paths = sorted(
-                self.uploads.glob('*/project.json'), key=lambda p: p.stat().st_mtime, reverse=True
-            )
+            paths = self.uploads.glob('*/project.json')
             for path in paths:
                 try:
-                    value = json.loads(path.read_text(encoding='utf-8'))
-                    if not _is_upload_id(path.parent.name) or value['storage_id'] != path.parent.name:
+                    if not _is_upload_id(path.parent.name) or path.is_symlink() or path.parent.is_symlink():
                         continue
-                    metadata = self._management(value['storage_id'])
+                    metadata = self._management(path.parent.name)
                     if bool(metadata.get('archived_at')) == archived:
-                        result.append(self._summary(value, path, metadata))
-                except (ValueError, KeyError):
+                        item = dict(self._catalog_entry(path))
+                        item.update(label=metadata.get('label') or item['label'],
+                                    managed_revision=metadata['revision'], archived_at=metadata.get('archived_at'))
+                        result.append(item)
+                except (OSError, ValueError, KeyError):
                     continue
-        return result
+        return sorted(result, key=lambda item: (item.get('created_at', ''), item['storage_id']), reverse=True)
 
 
 class _RevisionedStore:

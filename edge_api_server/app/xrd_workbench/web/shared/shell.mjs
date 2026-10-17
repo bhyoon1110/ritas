@@ -75,7 +75,7 @@ let projectListRequest = 0;
 async function refreshProjects() {
   const version = ++projectListRequest;
   try {
-    const list = await (await request('/api/projects')).json();
+    const list = await (await request('/api/projects?limit=20&current=' + encodeURIComponent(state.project))).json();
     // A slow initial request must not overwrite the post-import list.
     if (version !== projectListRequest) return;
     state.list = list;
@@ -89,6 +89,7 @@ async function refreshProjects() {
 function render() {
   $('shellSteps').innerHTML = stepsHTML(state.step, state.project, state.status);
   $('shellProject').innerHTML = projectOptionsHTML(state.list, state.project);
+  $('shellProject').title = '최근 20개와 현재 작업 · 전체 검색/정리는 프로젝트 관리';
   $('shellState').textContent = state.status.dirty ? '미저장 변경 있음' : state.status.blocked ? '출력 전 검토 필요' : '원자료 보존 · 단계별 작업';
 }
 

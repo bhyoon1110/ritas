@@ -40,6 +40,7 @@ from .storage import Storage, _write_json_atomic
 from .routes.analysis import build_analysis_router
 from .routes.presets import build_preset_router
 from .routes.projects import build_project_router
+from .project_cleanup import build_cleanup_router
 from .routes.reports import build_report_router
 from .routes.drafts import build_draft_router
 
@@ -149,6 +150,7 @@ projects.routes = [r for r in projects.routes if r.path not in ('/api/upload', '
 reports = build_report_router(proxy.load_project, proxy.files.read_source, proxy.reports)
 reports.routes = [r for r in reports.routes if not r.path.endswith(('/pdf', '/pptx', '/zip', '/preview'))]
 router.include_router(projects)
+router.include_router(build_cleanup_router(current.get, lambda *args: start_job(*args), lambda *args: read_job(*args)))
 router.include_router(build_analysis_router(proxy.files.load_source, proxy.files.read_source, proxy.reviews))
 router.include_router(reports)
 router.include_router(build_draft_router(current.get))
@@ -510,7 +512,11 @@ def export_report(sid: str, payload: dict):
         return dict(storage_id=sid, revision=document['revision'],
                     analysis_revision=project.get('analysis_revision', 0), filename=output.name,
                     transfer=transfer)
-    return start_job(state, kind, work)
+    # Share the project lock with permanent cleanup. A snapshot validated before
+    # archiving must not enter the queue after its source files have been purged.
+    with state.storage.lock:
+        saved_report(state, sid, payload.get('revision'))
+        return start_job(state, kind, work)
 
 
 @router.post('/api/reports/{sid}/draft-preview')

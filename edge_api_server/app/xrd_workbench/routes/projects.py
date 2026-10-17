@@ -2,7 +2,7 @@
 
 import json
 
-from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, Response
 from fastapi.responses import JSONResponse
 from starlette.concurrency import run_in_threadpool
@@ -65,8 +65,59 @@ def build_project_router(storage: StorageBackend) -> APIRouter:
         return FileResponse(path, filename=filename, content_disposition_type='inline')
 
     @router.get('/api/projects')
-    def list_projects(archived: bool = False):
-        return JSONResponse(storage.files.list(archived=archived), headers={'Cache-Control': 'private, no-store'})
+    def list_projects(archived: bool = False, limit: int | None = Query(None, ge=1, le=50), current: str = ''):
+        items = storage.files.list(archived=archived)
+        if limit:
+            selected = next((p for p in items if p['storage_id'] == current), None)
+            items = items[:limit]
+            if selected and selected not in items:
+                items.append(selected)
+        return JSONResponse(items, headers={'Cache-Control': 'private, no-store'})
+
+    @router.get('/api/project-catalog')
+    def project_catalog(archived: bool = False, q: str = Query('', max_length=100),
+                        sort: str = 'newest', page: int = Query(1, ge=1), per_page: int = Query(20, ge=1, le=50)):
+        if sort not in ('newest', 'oldest', 'name', 'size'):
+            raise HTTPException(422, '지원하지 않는 정렬입니다.')
+        items = storage.files.list(archived=archived)
+        total_in_tab = len(items)
+        query = q.strip().casefold()
+        items = [p for p in items if query in p['label'].casefold()]
+        def key(p):
+            if sort == 'name': return (p['label'].casefold(), p['storage_id'])
+            if sort == 'size': return (p.get('total_bytes', 0), p['storage_id'])
+            return (p.get('archived_at' if archived else 'created_at') or '', p['storage_id'])
+        items.sort(key=key, reverse=sort in ('newest', 'size'))
+        total = len(items)
+        pages = max(1, (total + per_page - 1) // per_page)
+        page = min(page, pages)
+        return JSONResponse(dict(items=items[(page-1)*per_page:page*per_page], total=total,
+                                 total_in_tab=total_in_tab, page=page, pages=pages, per_page=per_page),
+                            headers={'Cache-Control': 'private, no-store'})
+
+    @router.post('/api/projects/manage-batch')
+    def manage_batch(payload: dict):
+        action, items = payload.get('action'), payload.get('items')
+        if action not in ('archive', 'restore') or not isinstance(items, list) or not 1 <= len(items) <= 50:
+            raise HTTPException(422, '선택 작업은 한 페이지의 1~50개 프로젝트만 가능합니다.')
+        try:
+            with storage.lock:
+                ids = [p['storage_id'] for p in items]
+                if len(set(ids)) != len(ids) or 'example' in ids:
+                    raise ValueError('중복 프로젝트 또는 예제는 선택할 수 없습니다.')
+                # Validate the full selection before changing any metadata.
+                known = {p['storage_id']: p for p in storage.files.list(archived=action == 'restore')}
+                for item in items:
+                    old = known.get(item['storage_id'])
+                    revision = item.get('expected_revision')
+                    if not old or type(revision) is not int or revision != old['managed_revision']:
+                        raise RevisionConflict('선택한 프로젝트가 변경되었습니다. 목록을 새로고침하세요.')
+                results = [storage.files.manage(p['storage_id'], p['expected_revision'], archived=action == 'archive') for p in items]
+                return dict(items=results, count=len(results))
+        except RevisionConflict as exc:
+            raise HTTPException(409, str(exc)) from exc
+        except (ValueError, KeyError, TypeError) as exc:
+            raise HTTPException(422, '선택한 프로젝트 정보를 확인하세요.') from exc
 
     def manage(storage_id, payload, **changes):
         try:

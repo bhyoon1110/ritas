@@ -34,7 +34,8 @@ function setup(t, mode, handler, project='') {
   w.XRD_API_BASE='/api/v1/xrd/workbench';
   w.fetch=async (url, options) => {
     calls.push({url, options});
-    return handler(url.replace(w.XRD_API_BASE, ''), options);
+    const relative=url.replace(w.XRD_API_BASE, '');
+    return handler(relative.startsWith('/api/projects?') ? '/api/projects' : relative, options);
   };
   w.alert=message => alerts.push(message);
   acorn.parse(programs[mode], {ecmaVersion:mode==='chrome49' ? 5 : 2022});
@@ -45,14 +46,14 @@ function setup(t, mode, handler, project='') {
 
 for (const mode of Object.keys(programs)) {
   test(`${mode}: mounted project manager opens active and trash lists`, async t => {
-    const ui=setup(t,mode,url=>response(url.includes('/api/projects')?[{storage_id:'saved',label:'Saved',managed_revision:0}]:{document:{revision:0}}),'saved');
+    const ui=setup(t,mode,url=>response(url.includes('/api/project-catalog')?{items:[{storage_id:'saved',label:'Saved',managed_revision:0}],page:1,pages:1,total:1,total_in_tab:1}:url.includes('/api/projects')?[{storage_id:'saved',label:'Saved',managed_revision:0}]:{document:{revision:0}}),'saved');
     await flush();
     ui.d.getElementById('shellProjectManage').click(); await flush();
     const modal=ui.d.querySelector('.xrdProjectManager');
     assert.equal(modal.hidden,false);
     assert.equal(modal.querySelector('[data-name]').value,'Saved');
     modal.querySelector('[data-tab="trash"]').click(); await flush();
-    assert.ok(ui.calls.some(c=>c.url.endsWith('/api/projects?archived=true')));
+    assert.ok(ui.calls.some(c=>c.url.includes('/api/project-catalog?archived=true')));
     modal.querySelector('[data-close]').click();
     assert.equal(modal.hidden,true);
     assert.deepEqual(ui.errors,[]);
@@ -83,7 +84,7 @@ for (const mode of Object.keys(programs)) {
     assert.equal(ui.select.value, 'new-upload');
     assert.equal(ui.select.selectedOptions[0].textContent, 'SampleA, SampleB');
     assert.equal(ui.w.location.search, '?project=new-upload');
-    assert.equal(ui.calls.filter(c=>c.url.endsWith('/api/projects')).length, 2);
+    assert.equal(ui.calls.filter(c=>c.url.includes('/api/projects?limit=20')).length, 2);
     assert.deepEqual(ui.errors, []);
   });
 

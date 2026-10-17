@@ -74,6 +74,7 @@ def build_draft_router(get_state):
     def clear_draft(sid: str, payload: dict):
         state, _, path = context(sid)
         with state.storage.lock:
+            context(sid)  # Recheck after concurrent archive/purge before writing a tombstone.
             old = load(path)
             if type(payload.get('expected_revision')) is not int or payload['expected_revision'] != old['revision']:
                 raise HTTPException(409, '다른 창의 초안은 지우지 않았습니다. 새로 열어 확인하세요.')

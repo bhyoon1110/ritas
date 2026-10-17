@@ -81,7 +81,9 @@ body.withShell .nextStep { position: static; margin-left: auto; background: var(
 body.withShell button[aria-pressed=true] { background: #e9f2fa; border-color: #8cb4d3; color: var(--navy); }
 .fieldLinked { outline: 3px solid #1768a0 !important; outline-offset: 3px; background: #f0f7fc !important; }
 .xrdProjectManager { position: fixed; top: 0; right: 0; bottom: 0; left: 0; z-index: 10000; background: rgba(14,31,48,.48); display: flex; align-items: center; justify-content: center; padding: 16px; box-sizing: border-box; }
-.xrdProjectManager .projectPanel { width: 880px; max-width: 100%; max-height: 100%; overflow-y: auto; box-sizing: border-box; padding: 20px; background: #fff; border-radius: 10px; box-shadow: 0 12px 40px rgba(0,0,0,.24); }
+.xrdProjectManager .projectPanel { display: flex; flex-direction: column; width: 960px; max-width: 100%; height: 820px; max-height: 100%; overflow: hidden; box-sizing: border-box; padding: 20px; background: #fff; border-radius: 10px; box-shadow: 0 12px 40px rgba(0,0,0,.24); }
+.xrdProjectManager .projectPanel > * { flex-shrink: 0; }
+.xrdProjectManager .projectPanel .projectRows { flex: 1 1 180px; min-height: 60px; overflow-y: auto; overscroll-behavior: contain; }
 .xrdProjectManager .projectHeading { display: flex; align-items: center; justify-content: space-between; }
 .xrdProjectManager .projectHeading > * {
   margin-bottom: 12px;
@@ -107,13 +109,27 @@ body.withShell button[aria-pressed=true] { background: #e9f2fa; border-color: #8
 .xrdProjectManager .projectFilters input { flex: 1; width: 0; min-width: 0; }
 .xrdProjectManager input { width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 5px; color: var(--text); background: #fff; }
 .xrdProjectManager input[readonly] { background: #f3f6fa; }
-.xrdProjectManager .projectRow { display: flex; flex-wrap: wrap; align-items: center; padding: 14px 0; border-bottom: 1px solid var(--line); }
+.xrdProjectManager .projectRow { display: flex; flex-wrap: wrap; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line); }
 .xrdProjectManager .projectRow > * {
-  margin-bottom: 12px;
-  margin-right: 12px;
+  margin-bottom: 8px;
+  margin-right: 8px;
 }
-.xrdProjectManager .projectRowInfo { flex: 1 1 300px; min-width: 0; }
-.xrdProjectManager .projectRowInfo label { display: block; margin-bottom: 5px; font-weight: bold; color: var(--navy); }
+.xrdProjectManager .projectRowInfo { flex: 1 1 200px; min-width: 0; }
+.xrdProjectManager .projectNameLabel { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); }
+.xrdProjectManager input[type=checkbox] { width: 16px; height: 16px; flex: 0 0 16px; margin: 0 4px 0 0; }
+.xrdProjectManager .projectSort, .xrdProjectManager .projectBulk, .xrdProjectManager .projectPager { display: flex; align-items: center; flex-wrap: wrap; padding-top: 10px; font-size: 13px; }
+.xrdProjectManager .projectSort > *,.xrdProjectManager .projectBulk > *,.xrdProjectManager .projectPager > * {
+  margin-bottom: 8px;
+  margin-right: 8px;
+}
+.xrdProjectManager .projectBulk label, .xrdProjectManager .projectSort label { display: flex; align-items: center; margin: 0; white-space: nowrap; }
+.xrdProjectManager .projectBulk label > *,.xrdProjectManager .projectSort label > * {
+  margin-bottom: 4px;
+  margin-right: 4px;
+}
+.xrdProjectManager .projectSort select { width: auto; min-width: 60px; padding: 6px; }
+.xrdProjectManager .projectPager { justify-content: center; border-top: 1px solid var(--line); }
+.xrdProjectManager button { white-space: nowrap; }
 .xrdProjectManager .projectRowInfo p { color: var(--muted); font-size: 12px; margin: 6px 0 0; overflow-wrap: break-word; }
 .xrdProjectManager .projectRowActions { display: flex; flex-wrap: wrap; }
 .xrdProjectManager .projectRowActions > * {
@@ -128,6 +144,12 @@ body.withShell .xrdProjectManager .projectDanger { color: #9d2929; border-color:
   .xrdProjectManager { padding: 8px; }
   .xrdProjectManager .projectPanel { padding: 14px; }
   .xrdProjectManager .projectRowActions { width: 100%; justify-content: flex-end; }
+  .xrdProjectManager .projectHelp { font-size: 12px; margin: 8px 0; }
+  .xrdProjectManager .projectNotice { margin: 8px 0; }
+}
+@media (max-height: 540px) {
+  .xrdProjectManager .projectPanel { overflow-y: auto; }
+  .xrdProjectManager .projectPanel .projectRows { flex: none; max-height: 240px; }
 }
 @media (max-width: 800px) {
   body.withShell { height: auto; min-height: 100vh; overflow: auto; }
