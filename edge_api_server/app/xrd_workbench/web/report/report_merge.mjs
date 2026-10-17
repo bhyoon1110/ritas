@@ -1,4 +1,5 @@
 // Rebase only unsaved author changes; source identities/evidence come from the server.
+import { mergeEmailFields } from './email.mjs';
 export function mergeDraftChanges(latest, current, baseline) {
   const out = structuredClone(latest),
     same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
@@ -7,6 +8,7 @@ export function mergeDraftChanges(latest, current, baseline) {
       if (!same(current[group][key], baseline[group][key]))
         out[group][key] = structuredClone(current[group][key]);
   if (!same(current.summary, baseline.summary)) out.summary = current.summary;
+  if (latest.email || current.email) out.email = mergeEmailFields(latest.email, current.email, baseline.email);
   if (!same(current.figure, baseline.figure)) out.figure = structuredClone(current.figure);
   if (!same(current.quantity_table, baseline.quantity_table))
     out.quantity_table = structuredClone(current.quantity_table);

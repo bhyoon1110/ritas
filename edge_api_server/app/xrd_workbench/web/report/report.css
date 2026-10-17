@@ -178,6 +178,10 @@ textarea {
   resize: vertical;
   line-height: 1.7;
 }
+#emailForm label { font-size:14px; color:#344f70; }
+#emailSubject { min-height:44px; font-size:15px; }
+#emailBody { min-height:360px; font-size:14px; line-height:1.8; }
+#generateEmail { white-space:nowrap; }
 .subHeading {
   font-size: 12px;
   color: #4f637d;

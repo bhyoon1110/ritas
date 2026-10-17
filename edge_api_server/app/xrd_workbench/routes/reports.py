@@ -1,10 +1,12 @@
 import json
+import threading
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import HTMLResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 
 from ..core.checklist import build_checklist
 from ..core.errors import RevisionConflict
+from ..core.email import empty_email, email_evidence, evidence_fingerprint
 from ..core.figure import similarity_summary
 from ..core.phase_class import check_percent, evaluate_trace, phase_ref
 from ..core.quantity_table import build_quantity_table
@@ -16,8 +18,11 @@ from ..core.report import (
     new_document_with_defaults,
     project_phase_names,
     sync_analysis,
+    validate_document,
 )
-from ..rist_llm import select_notes
+from ..rist_llm import select_notes, generate_email
+
+email_slot = threading.BoundedSemaphore(1)
 
 
 def build_report_router(project_loader, source_loader, store):
@@ -60,7 +65,10 @@ def build_report_router(project_loader, source_loader, store):
             document.setdefault('figure', default_figure(False))
             document.setdefault('phase_classes', default_phase_classes())
             document.setdefault('quantity_table', default_quantity_table(False))
-            return dict(project=project, document=document, analysis_update_required=updated)
+            document.setdefault('email', empty_email())
+            fingerprint = document['email'].get('source_fingerprint')
+            email_stale = bool(fingerprint and fingerprint != evidence_fingerprint(email_evidence(project, document)))
+            return dict(project=project, document=document, analysis_update_required=updated, email_stale=email_stale)
 
     @router.put('/api/reports/{storage_id}')
     async def save_document(storage_id: str, request: Request):
@@ -75,6 +83,39 @@ def build_report_router(project_loader, source_loader, store):
             raise HTTPException(409, str(exc)) from exc
         except (ValueError, TypeError, KeyError) as exc:
             raise HTTPException(422, str(exc)) from exc
+
+    @router.post('/api/reports/{storage_id}/email-draft')
+    async def email_draft(storage_id: str, payload: dict):
+        import asyncio
+
+        with store.lock:
+            project, saved = context(storage_id)
+            draft = payload.get('document')
+            if not isinstance(draft, dict):
+                raise HTTPException(422, '보고서 초안이 필요합니다.')
+            if draft.get('revision') != saved['revision'] or draft.get('analysis_revision', 0) != project.get('analysis_revision', 0):
+                raise HTTPException(409, '보고서 또는 분석값이 변경되었습니다. 갱신 후 다시 작성하세요.')
+            try:
+                document = validate_document(project, draft)
+            except (ValueError, TypeError, KeyError, AttributeError) as exc:
+                raise HTTPException(422, str(exc)) from exc
+
+        def limited_generate():
+            # Held by the worker until completion, including a disconnected request.
+            if not email_slot.acquire(blocking=False):
+                raise HTTPException(429, '메일 문안 작성 중입니다. 잠시 후 다시 시도하세요.')
+            try:
+                return generate_email(project, document)
+            finally:
+                email_slot.release()
+
+        result = await asyncio.to_thread(limited_generate)
+        with store.lock:
+            latest_project, latest = context(storage_id)
+            if latest['revision'] != saved['revision'] or latest_project.get('analysis_revision', 0) != project.get('analysis_revision', 0):
+                raise HTTPException(409, '메일 작성 중 보고서 또는 분석값이 변경되었습니다. 다시 작성하세요.')
+        # Preview only: no saved revision, durable export, queue entry or actual email send.
+        return JSONResponse(result, headers={'Cache-Control': 'private, no-store'})
 
     @router.post('/api/reports/{storage_id}/notes/{sample_id}')
     async def generate(storage_id: str, sample_id: str, request: Request):

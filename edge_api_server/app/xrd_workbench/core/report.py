@@ -5,6 +5,7 @@ from copy import deepcopy
 from datetime import date
 
 from ..core.errors import RevisionConflict
+from ..core.email import empty_email, validate_email
 from ..core.figure import phase_key
 from ..core.notes import build_candidates, validate_settings, verify_note_text
 from ..core.phase_class import DEFAULT_TRACE_PERCENT, check_percent, evaluate_trace, phase_ref
@@ -71,6 +72,7 @@ def new_document(project: dict) -> dict:
             'date': date.today().isoformat(),
         },
         summary='',
+        email=empty_email(),
         samples=entries,
         llm={'provider': 'none', 'base_url': 'http://127.0.0.1:11434', 'model': ''},
         figure=default_figure(True),
@@ -347,6 +349,7 @@ def validate_document(project: dict, document: dict) -> dict:
         if result['metadata'][key]:
             date.fromisoformat(result['metadata'][key])
     result['summary'] = string(document.get('summary', ''), 1500, '전체 요약')
+    result['email'] = validate_email(document.get('email', empty_email()))
     result['llm'] = validate_settings(document.get('llm', {}))
     canonical = {s['id']: s for s in project['samples']}
     phase_names = project_phase_names(project)
