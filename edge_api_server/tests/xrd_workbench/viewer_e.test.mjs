@@ -199,10 +199,10 @@ test('image export: the legend names the samples, and the phases only while Phas
   assert.ok(figure.layout.showlegend);
 });
 
-test('Origin style: boxed black axes with inward ticks, bold titles, black reference bars', () => {
+test('Origin style: boxed black axes with inward ticks, bold titles, coloured reference bars', () => {
   const state = createState(project);
   state.markers = true;
-  state.phaseColors['a-p0'] = '#cc0000'; // the author's own colour shows in the viewer style only
+  state.phaseColors['a-p0'] = '#cc0000';
   state.originStyle = true;
   const origin = exportFigure(project, state);
   state.originStyle = false;
@@ -211,13 +211,41 @@ test('Origin style: boxed black axes with inward ticks, bold titles, black refer
   assert.equal(origin.layout.yaxis.linecolor, '#000000');
   assert.equal(origin.layout.yaxis.title.text, 'Intensity, cps');
   assert.ok(origin.layout.yaxis.title.font.size >= 16);
-  assert.ok(
-    origin.data.filter((t) => t.meta?.role === 'peakbar').every((t) => t.line.color === '#000000'),
-  );
-  assert.ok(
-    plain.data.filter((t) => t.meta?.role === 'peakbar').some((t) => t.line.color !== '#000000'),
-  );
+  assert.deepEqual(traces(origin, 'peakbar'), traces(plain, 'peakbar'));
+  assert.equal(traces(origin, 'peakbar')[0].line.color, '#cc0000');
   assert.equal(origin.layout.showlegend, true);
+});
+
+test('Origin preserves default/custom phase colours and highlight dimming in live and exported figures', () => {
+  for (const custom of [false, true]) for (const highlight of [null, { name: 'PhaseA', card: '1', db: 'DB' }]) {
+    const state = createState(project);
+    state.markers = state.unknownMarkers = true;
+    state.highlight = highlight;
+    if (custom) {
+      state.phaseColors['a-p0'] = '#12ab34';
+      state.phaseColors['a-p1'] = '#bd4c87';
+      state.colors.a = '#9753ab';
+      state.unknownColor = '#ef8901';
+    }
+    for (const render of [buildFigure, exportFigure]) {
+      state.originStyle = false;
+      const plain = render(project, state);
+      state.originStyle = true;
+      const origin = render(project, state);
+      for (const role of ['marker', 'peakbar', 'peakbar-tip', 'unknown', 'legend-phase', 'legend-unknown'])
+        assert.deepEqual(traces(origin, role), traces(plain, role), role);
+      assert.deepEqual(traces(origin, 'measurement').map(t => t.line.color),
+        traces(plain, 'measurement').map(t => t.line.color));
+      assert.deepEqual(origin.layout.annotations.map(a => a.font.color),
+        plain.layout.annotations.map(a => a.font.color));
+      assert.ok(traces(origin, 'peakbar-tip').length > 0);
+      if (highlight) {
+        assert.ok(traces(origin, 'peakbar').some(t => t.opacity < 1));
+        assert.ok(traces(origin, 'peakbar').some(t => t.opacity === 1 && t.line.width === 2.2));
+      }
+      if (custom) assert.equal(traces(origin, 'peakbar-tip')[0].marker.color, '#12ab34');
+    }
+  }
 });
 
 test('one marker size controls measurement peaks and reference tips, including Origin exports', () => {

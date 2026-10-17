@@ -784,7 +784,8 @@ export function exportFigure(project, state, { height = 900 } = {}) {
 }
 
 // Shared by the live viewer and image export. Only presentation changes, never raw points,
-// offsets, marker sizes or the current zoom. Stacked intensity ticks remain hidden.
+// offsets, phase colours/highlight dimming, marker sizes or the current zoom.
+// Stacked intensity ticks remain hidden.
 function applyOriginStyle(data, layout) {
   const black = '#000000';
   const bold = { size: 18, color: black, family: 'Arial', weight: 'bold' };
@@ -815,9 +816,7 @@ function applyOriginStyle(data, layout) {
   if (lower === 'xaxis2') layout.xaxis.showticklabels = false;
   for (const t of data) {
     if (t.meta?.role === 'measurement') t.line = { ...t.line, width: 1.5 };
-    if (t.meta?.role === 'peakbar') t.line = { color: black, width: 1.2 };
-    if (t.meta?.role === 'peakbar-tip') t.marker = { ...t.marker, color: black };
   }
-  for (const a of layout.annotations) a.font = { size: 12, color: black, family: 'Arial' };
+  for (const a of layout.annotations) a.font = { ...a.font, size: 12, family: 'Arial' };
   for (const shape of layout.shapes) shape.line = { color: black, width: 1.2 };
 }

@@ -48,7 +48,7 @@ for(const [mode, program] of Object.entries({native,chrome49:legacy})) {
     assert.equal(ui.renders.at(-1).data.find(t=>t.meta.role==='marker').marker.size,20);
   });
   test(`${mode}: live Origin toggle and both export buttons share state and persist it`,async t=>{
-    const ui=setup(t,program);await flush();
+    const ui=setup(t,program,{phaseColors:{p1:'#12ab34'}});await flush();
     assert.ok(ui.d.querySelector('.graphActions #originStyle'));
     assert.equal(ui.d.querySelectorAll('#originStyle').length,1);
     await ui.setSize(17);
@@ -60,16 +60,23 @@ for(const [mode, program] of Object.entries({native,chrome49:legacy})) {
       const output=ui.exports.at(-1);
       assert.equal(output.layout.xaxis2.ticks,figure.layout.xaxis2.ticks);
       assert.equal(output.data.find(t=>t.meta.role==='peakbar-tip').marker.size,17);
+      for(const rendered of [figure,output]){
+        assert.equal(rendered.data.find(t=>t.meta.role==='peakbar').line.color,'#12ab34');
+        assert.equal(rendered.data.find(t=>t.meta.role==='peakbar-tip').marker.color,'#12ab34');
+        assert.equal(rendered.layout.annotations[0].font.color,'#12ab34');
+      }
       assert.equal(ui.downloads.at(-1).includes('-Origin'),origin);
       const stored=JSON.parse(ui.w.localStorage.getItem(ui.w.localStorage.key(0)));
       assert.equal(stored.originStyle,origin);assert.equal(stored.markerSize,17);
     }
   });
   test(`${mode}: offline/named state restores Origin view and selected marker size`,async t=>{
-    const ui=setup(t,program,{originStyle:true,markerSize:12});await flush();
+    const ui=setup(t,program,{originStyle:true,markerSize:12,phaseColors:{p1:'#bd4c87'}});await flush();
     assert.equal(ui.d.getElementById('originStyle').checked,true);
     assert.equal(ui.d.getElementById('markerSize').value,'12');
     assert.equal(ui.renders.at(-1).layout.xaxis2.ticks,'inside');
+    assert.equal(ui.renders.at(-1).data.find(t=>t.meta.role==='peakbar-tip').marker.color,'#bd4c87');
+    assert.equal(ui.renders.at(-1).layout.annotations[0].font.color,'#bd4c87');
   });
   test(`${mode}: both Plotly range event formats survive style and size changes`,async t=>{
     const ui=setup(t,program);await flush();
