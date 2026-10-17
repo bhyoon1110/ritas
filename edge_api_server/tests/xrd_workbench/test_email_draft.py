@@ -135,6 +135,28 @@ def draft_api(tmp_path, monkeypatch, auth=False):
     return client, sid, doc
 
 
+def test_open_returns_analysis_seed_without_changing_saved_document_or_calling_model(tmp_path, monkeypatch):
+    client, sid, doc = draft_api(tmp_path, monkeypatch)
+    def no_model(*args):
+        raise AssertionError('Opening a report must not call the model')
+    monkeypatch.setattr(reports, 'generate_email', no_model)
+    url = BASE + f'/api/reports/{sid}'
+    for status in ('empty', 'manual', 'fallback'):
+        doc['email'] = dict(empty_email(), subject='  ', body='\n', status=status)
+        doc['summary'] = '현재 저장한 분석 결과'
+        saved = client.put(url, json={'document': doc, 'expected_revision': doc['revision']}).json()
+        value = client.get(url).json()
+        assert value['document'] == saved
+        assert value['email_default']['subject']
+        assert '현재 저장한 분석 결과' in value['email_default']['body']
+        assert value['email_default']['status'] == 'rules'
+        doc = saved
+    doc['email'] = dict(empty_email(), subject='직접 작성한 제목', status='manual')
+    saved = client.put(url, json={'document': doc, 'expected_revision': doc['revision']}).json()
+    value = client.get(url).json()
+    assert value['document'] == saved and value['email_default'] is None
+
+
 def test_draft_generation_is_ephemeral_editable_and_preserved_in_recovery(tmp_path, monkeypatch):
     client, sid, doc = draft_api(tmp_path, monkeypatch)
     baseline = deepcopy(doc)

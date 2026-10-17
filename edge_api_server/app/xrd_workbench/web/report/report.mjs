@@ -3,7 +3,7 @@ import { startExport, downloadJob, mountReportPlatform, transferValues } from '.
 import { $, escapeHTML } from '../shared/dom.mjs';
 import { restoreState, viewerStorageKey } from '../viewer/model.mjs';
 import { mergeDraftChanges } from './report_merge.mjs';
-import { ensureEmail, emailContextKey, mountEmailEditor } from './email.mjs';
+import { ensureEmail, emailContextKey, mountEmailEditor, initializeEmptyEmail, canAutoDraftEmail } from './email.mjs';
 import { createLivePreview } from './live_preview.mjs';
 import { createDraftAutosave } from './draft_autosave.mjs';
 import { figureHTML } from './figure_view.mjs';
@@ -55,7 +55,7 @@ let composing = false, previewPosition = {index:0,offset:0}, linkedTimer = 0;
 const previewFrame = $('reportPreview'), reportMain = document.querySelector('main');
 mountEmailEditor($('editorFields'),$('reportNav'));
 let recoveryDraft=null;
-let emailBaselineKey='', emailStale=false, emailAttempted=false;
+let emailBaselineKey='', emailStale=false, emailAttempted=false, emailDefault=null;
 const recoveryBar=document.createElement('div');recoveryBar.className='draftRecovery';
 recoveryBar.innerHTML='<span id="draftStatus" role="status">초안 확인 중…</span><button id="restoreDraft" hidden>초안 복구</button><button id="discardDraft" hidden>복구 초안 버리기</button>';
 reportMain.parentNode.insertBefore(recoveryBar,reportMain);
@@ -76,13 +76,14 @@ $('restoreDraft').onclick=()=>{
   if(!recoveryDraft||busy)return;
   if((dirty||doc.revision!==recoveryDraft.baseline.revision||doc.analysis_revision!==recoveryDraft.baseline.analysis_revision)&&!confirm('현재 보고서와 초안의 기준이 다릅니다. 초안에서 수정한 항목을 우선 복구하며 같은 항목의 최신 내용과 충돌할 수 있습니다. 복구 후 반드시 검토하세요. 계속할까요?'))return;
   doc=mergeDraftChanges(doc,recoveryDraft.document,recoveryDraft.baseline);
+  initializeEmptyEmail(doc,emailDefault);
   draftSaver.initialize(recoveryDraft.revision);recoveryDraft=null;
   $('restoreDraft').hidden=$('discardDraft').hidden=true;render();markDirty();
   status('초안을 복구했습니다. 미저장 변경을 검토한 뒤 최종 저장하세요.');
 };
 $('discardDraft').onclick=async()=>{
   if(busy||!confirm('복구 초안만 버릴까요? 최종 저장된 보고서와 원자료는 유지합니다.'))return;
-  try{await draftSaver.clear();recoveryDraft=null;$('restoreDraft').hidden=$('discardDraft').hidden=true;if(dirty)draftSaver.schedule();}
+  try{await draftSaver.clear();recoveryDraft=null;$('restoreDraft').hidden=$('discardDraft').hidden=true;if(dirty)draftSaver.schedule();renderEmail();maybeAutoEmail();}
   catch(e){status(e.message,true);}
 };
 // Isolate draft scripts while allowing explicit source-PDF links to open normally.
@@ -192,8 +193,10 @@ function lock(value) {
     'presetDelete',
   ])
     $(id).disabled = value;
+  if (!value) maybeAutoEmail();
 }
 function showTab(value) {
+  if (!doc) return;
   tab = value;
   if (!['overview', 'checks', 'figure', 'classes', 'qtable', 'llm', 'email'].includes(value))
     ckCursor = value;
@@ -206,8 +209,7 @@ function showTab(value) {
   else if (tab === 'email') {
     $('emailForm').hidden = false;
     renderEmail();
-    const email=ensureEmail(doc);
-    if (!busy && !emailAttempted && !recoveryDraft && email.status==='empty' && !email.subject && !email.body) generateEmail(false);
+    maybeAutoEmail();
   }
   else if (tab === 'classes') {
     $('classForm').hidden = false;
@@ -292,7 +294,7 @@ function renderSample() {
     )
     .join('');
   $('sampleForm').innerHTML =
-    `<h1>${escapeHTML(entry.display_name)}</h1><p class="intro">원본 이미지와 특이사항을 검토합니다. 짧은 특이사항은 결과 요약에 표시하며, 전체 문장과 근거는 뒤쪽 시료별 특이사항 페이지에 보존합니다. 등록 시료명: ${escapeHTML(sample.name)} · PDF 원문은 하단 링크에서 확인하세요.</p><label>보고서 표시 시료명<input data-field="display_name" value="${escapeHTML(entry.display_name)}" maxlength="200" aria-label="보고서 표시 시료명"></label>${imageBlock('phase_image', 'include_phase_image', 'phase_caption')}${imageBlock('quantity_image', 'include_quantity_image', 'quantity_caption')}<div class="subHeading">시료별 특이사항</div><div class="generationLine">${escapeHTML(entry.generation.message || '규칙 기반 후보입니다.')}</div><div class="generationActions"><button id="generateNotes">후보 다시 생성</button><label class="checkboxLabel"><input type="checkbox" data-field="reviewed" ${entry.reviewed ? 'checked' : ''}>자료·문장 검토 완료</label></div>${notes || '<p class="hint">근거 후보가 없습니다. 아래에 직접 작성하거나 원본 Report 연결을 확인하세요.</p>'}<label class="subHeading">추가 직접 작성 문장<textarea rows="5" data-field="manual_note" maxlength="10000" aria-label="추가 직접 작성 문장">${escapeHTML(entry.manual_note)}</textarea></label><div class="sourceLinks">${sample.sources
+    `<h1>${escapeHTML(entry.display_name)}</h1><p class="intro">원본 이미지와 특이사항을 검토합니다. 특이사항은 결과 요약에 반영하며, 긴 문장의 전체 내용과 근거는 편집 데이터에 보존합니다. 별도 특이사항·부록 페이지는 추가하지 않습니다. 등록 시료명: ${escapeHTML(sample.name)} · PDF 원문은 하단 링크에서 확인하세요.</p><label>보고서 표시 시료명<input data-field="display_name" value="${escapeHTML(entry.display_name)}" maxlength="200" aria-label="보고서 표시 시료명"></label>${imageBlock('phase_image', 'include_phase_image', 'phase_caption')}${imageBlock('quantity_image', 'include_quantity_image', 'quantity_caption')}<div class="subHeading">시료별 특이사항</div><div class="generationLine">${escapeHTML(entry.generation.message || '규칙 기반 후보입니다.')}</div><div class="generationActions"><button id="generateNotes">후보 다시 생성</button><label class="checkboxLabel"><input type="checkbox" data-field="reviewed" ${entry.reviewed ? 'checked' : ''}>자료·문장 검토 완료</label></div>${notes || '<p class="hint">근거 후보가 없습니다. 아래에 직접 작성하거나 원본 Report 연결을 확인하세요.</p>'}<label class="subHeading">추가 직접 작성 문장<textarea rows="5" data-field="manual_note" maxlength="10000" aria-label="추가 직접 작성 문장">${escapeHTML(entry.manual_note)}</textarea></label><div class="sourceLinks">${sample.sources
       .filter((r) => ['phase_report', 'wppf_report', 'measurement'].includes(r.role))
       .map(
         (r) =>
@@ -330,9 +332,12 @@ async function openProject(id) {
     emailBaselineKey=emailContextKey(doc);
     emailStale=!!value.email_stale;
     emailAttempted=false;
+    emailDefault=value.email_default || null;
     baseline = structuredClone(doc);
     dirty = value.analysis_update_required;
     await loadRecovery();
+    const emailInitialized=initializeEmptyEmail(doc,emailDefault);
+    if(emailInitialized)dirty=true;
     tab = 'overview';
     qtData = null;
     qtNotice = '';
@@ -343,10 +348,13 @@ async function openProject(id) {
     pcNotice = '';
     pcSeq++;
     render();
+    renderEmail();
+    if(emailInitialized)markDirty();
     loadChecklist();
     status(
-      dirty
+      value.analysis_update_required
         ? '분석값이 변경되어 보고서 후보를 갱신했습니다. 검토 후 저장하세요.'
+        : emailInitialized ? '분석 결과로 안내 메일 기본 문안을 채웠습니다. 검토 후 저장하세요.'
         : '원본 자료를 유지하며 보고서를 편집할 수 있습니다.',
     );
     setStep(step);
@@ -383,7 +391,7 @@ function updateEmailStatus() {
   if (!doc) return;
   const email=ensureEmail(doc);
   const stale=emailStale || (emailBaselineKey && emailContextKey(doc)!==emailBaselineKey);
-  $('emailStatus').textContent=(stale && (email.subject||email.body)
+  $('emailStatus').textContent=(recoveryDraft ? '복구 초안이 있어 LLM 자동 작성을 대기합니다. 위에서 복구 또는 버리기를 선택하세요. ' : '') + (stale && (email.subject||email.body)
     ? '분석·보고서 입력이 변경되었습니다. 현재 메일을 대조하거나 다시 작성하세요. '
     : '') + (email.status==='manual' ? '직접 수정한 문안입니다. 저장·전송 시 유지합니다.' : email.message || '분석 결과로 메일 초안을 작성할 수 있습니다.');
 }
@@ -393,14 +401,19 @@ function renderEmail() {
   $('emailBody').value=email.body;
   updateEmailStatus();
 }
+function maybeAutoEmail() {
+  if (doc && tab==='email' && canAutoDraftEmail(doc,emailDefault,{busy,recovery:!!recoveryDraft,attempted:emailAttempted})) generateEmail(false);
+}
 async function generateEmail(confirmReplace=true) {
   if (!doc || busy) return;
   const email=ensureEmail(doc);
   if (recoveryDraft) {status('먼저 복구 초안을 복구 또는 버린 뒤 메일을 작성하세요.',true);return;}
   if (confirmReplace && (email.subject||email.body) && !confirm('현재 이메일 제목·본문을 분석 결과로 다시 작성할까요? 직접 수정한 문안도 교체됩니다.')) return;
+  // Even an HTTP failure must not leave a previously empty mail blank.
+  if(initializeEmptyEmail(doc,emailDefault)){renderEmail();markDirty();}
   emailAttempted=true;
   lock(true);
-  $('emailStatus').textContent='현재 분석 결과로 로컬 LLM 메일 초안을 작성하는 중…';
+  $('emailStatus').textContent='분석 결과로 로컬 LLM이 문안을 다듬는 중… 현재 문안은 유지합니다.';
   try {
     syncTransfer();
     const result=await (await api(`/api/reports/${storageId}/email-draft`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({document:doc})})).json();

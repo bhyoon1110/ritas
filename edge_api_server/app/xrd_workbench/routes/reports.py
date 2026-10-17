@@ -6,7 +6,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, Response
 
 from ..core.checklist import build_checklist
 from ..core.errors import RevisionConflict
-from ..core.email import empty_email, email_evidence, evidence_fingerprint
+from ..core.email import empty_email, email_evidence, evidence_fingerprint, rule_email
 from ..core.figure import similarity_summary
 from ..core.phase_class import check_percent, evaluate_trace, phase_ref
 from ..core.quantity_table import build_quantity_table
@@ -66,9 +66,14 @@ def build_report_router(project_loader, source_loader, store):
             document.setdefault('phase_classes', default_phase_classes())
             document.setdefault('quantity_table', default_quantity_table(False))
             document.setdefault('email', empty_email())
+            facts = email_evidence(project, document)
             fingerprint = document['email'].get('source_fingerprint')
-            email_stale = bool(fingerprint and fingerprint != evidence_fingerprint(email_evidence(project, document)))
-            return dict(project=project, document=document, analysis_update_required=updated, email_stale=email_stale)
+            email_stale = bool(fingerprint and fingerprint != evidence_fingerprint(facts))
+            # Supply an immediate, model-independent seed separately from the saved baseline.
+            # Reading a report must not write a revision or call a slow/unavailable model.
+            blank = not any(document['email'].get(k, '').strip() for k in ('subject', 'body'))
+            return dict(project=project, document=document, analysis_update_required=updated,
+                        email_stale=email_stale, email_default=rule_email(facts) if blank else None)
 
     @router.put('/api/reports/{storage_id}')
     async def save_document(storage_id: str, request: Request):
