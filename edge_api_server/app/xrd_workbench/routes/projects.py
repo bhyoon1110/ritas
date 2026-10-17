@@ -4,9 +4,11 @@ import json
 
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, Response
+from fastapi.responses import JSONResponse
 from starlette.concurrency import run_in_threadpool
 
 from ..core.project import safe_filename
+from ..core.errors import RevisionConflict
 from ..render.viewer_export import export_html
 from ..render.viewer_state import prepare_state, prepare_views
 from ..storage import StorageBackend
@@ -63,8 +65,31 @@ def build_project_router(storage: StorageBackend) -> APIRouter:
         return FileResponse(path, filename=filename, content_disposition_type='inline')
 
     @router.get('/api/projects')
-    def list_projects():
-        return storage.files.list()
+    def list_projects(archived: bool = False):
+        return JSONResponse(storage.files.list(archived=archived), headers={'Cache-Control': 'private, no-store'})
+
+    def manage(storage_id, payload, **changes):
+        try:
+            value = storage.files.manage(storage_id, payload.get('expected_revision'), **changes)
+            return JSONResponse(value, headers={'Cache-Control': 'private, no-store'})
+        except RevisionConflict as exc:
+            raise HTTPException(409, str(exc)) from exc
+        except (ValueError, FileNotFoundError) as exc:
+            raise HTTPException(422, str(exc)) from exc
+
+    @router.patch('/api/projects/{storage_id}')
+    def rename_project(storage_id: str, payload: dict):
+        if not isinstance(payload.get('label'), str):
+            raise HTTPException(422, '프로젝트 이름이 필요합니다.')
+        return manage(storage_id, payload, label=payload['label'])
+
+    @router.delete('/api/projects/{storage_id}')
+    def archive_project(storage_id: str, payload: dict):
+        return manage(storage_id, payload, archived=True)
+
+    @router.post('/api/projects/{storage_id}/restore')
+    def restore_project(storage_id: str, payload: dict):
+        return manage(storage_id, payload, archived=False)
 
     @router.get('/api/projects/{storage_id}')
     def get_project(storage_id: str):

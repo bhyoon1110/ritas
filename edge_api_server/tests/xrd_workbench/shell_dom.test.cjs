@@ -44,6 +44,19 @@ function setup(t, mode, handler, project='') {
 }
 
 for (const mode of Object.keys(programs)) {
+  test(`${mode}: mounted project manager opens active and trash lists`, async t => {
+    const ui=setup(t,mode,url=>response(url.includes('/api/projects')?[{storage_id:'saved',label:'Saved',managed_revision:0}]:{document:{revision:0}}),'saved');
+    await flush();
+    ui.d.getElementById('shellProjectManage').click(); await flush();
+    const modal=ui.d.querySelector('.xrdProjectManager');
+    assert.equal(modal.hidden,false);
+    assert.equal(modal.querySelector('[data-name]').value,'Saved');
+    modal.querySelector('[data-tab="trash"]').click(); await flush();
+    assert.ok(ui.calls.some(c=>c.url.endsWith('/api/projects?archived=true')));
+    modal.querySelector('[data-close]').click();
+    assert.equal(modal.hidden,true);
+    assert.deepEqual(ui.errors,[]);
+  });
   test(`${mode}: reset is visible and cancellation never changes current data`, async t => {
     const ui=setup(t,mode,url=>response(url==='/api/projects'?[{storage_id:'saved',label:'Saved'}]:{document:{revision:0}}),'saved');
     await flush();

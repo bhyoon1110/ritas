@@ -6,7 +6,8 @@ The routes use exactly the surface described by `StorageBackend` below:
   routes hold it across multi-step checks and then call save(), which acquires it again;
 - `files`: example(), load_source(id), read_source(id, file_id) -> bytes,
   source_file(id, file_id) -> (filesystem Path, original filename) | None (served by FileResponse),
-  create(inputs, mappings) -> project, list() -> [{storage_id, label}];
+  create(inputs, mappings) -> project, list(archived=False) -> project summaries;
+  manage(id, expected_revision, label=..., archived=...) -> summary (metadata only);
 - `reviews` / `reports`: lock, load(id) -> dict | None, save(id, project, value, expected_revision);
 - `presets`: lock, list() -> [preset] sorted by name, load(id) -> dict | None,
   save(clean, overwrite=False) -> preset (RevisionConflict when the name exists and not overwriting),
@@ -114,7 +115,8 @@ class SourceFiles(Protocol):
     def read_source(self, storage_id: str, file_id: str) -> bytes: ...
     def source_file(self, storage_id: str, file_id: str) -> tuple[Path, str] | None: ...
     def create(self, inputs: list[tuple[str, bytes]], mappings: dict) -> dict: ...
-    def list(self) -> list[dict]: ...
+    def list(self, archived: bool = False) -> list[dict]: ...
+    def manage(self, storage_id: str, expected_revision: int, *, label=None, archived=None) -> dict: ...
 
 
 class RevisionedDocuments(Protocol):
@@ -147,18 +149,20 @@ class StorageBackend(Protocol):
 
 
 class ProjectFiles:
-    """Uploaded source files (<data>/uploads/<id>/) and the configured example folder."""
+    """Immutable uploads and optional revisioned management.json (name / soft deletion)."""
 
     def __init__(
         self,
         uploads: Path,
         example_dir: Path | None = None,
         example_mapping: Path | None = None,
+        lock=None,
     ):
         self.uploads = Path(uploads)
         self.example_dir = example_dir
         self.example_mapping = example_mapping
         self._example: tuple[dict, dict[str, Path]] | None = None
+        self.lock = lock or threading.RLock()
 
     def example(self) -> dict:
         """The read-only example project (built once per instance)."""
@@ -166,14 +170,52 @@ class ProjectFiles:
             self._example = build_example(self.example_dir, self.example_mapping)
         return self._example[0]
 
-    def load_source(self, storage_id: str) -> dict:
+    def load_source(self, storage_id: str, *, include_archived=False) -> dict:
         """The registered project exactly as parsed at upload time (no review applied)."""
         if _checked_id(storage_id) == EXAMPLE_ID:
             return self.example()
         path = self.uploads / storage_id / 'project.json'
         if not path.is_file():
             raise ValueError('저장 프로젝트를 찾지 못했습니다.')
+        if not include_archived and self._management(storage_id).get('archived_at'):
+            raise ValueError('휴지통에 있는 프로젝트입니다. 프로젝트 관리에서 복원한 뒤 여세요.')
         return json.loads(path.read_text(encoding='utf-8'))
+
+    def _management(self, storage_id):
+        path = self.uploads / _checked_id(storage_id) / 'management.json'
+        return json.loads(path.read_text(encoding='utf-8')) if path.is_file() else {'revision': 0}
+
+    def _summary(self, project, path, metadata):
+        return dict(storage_id=project['storage_id'],
+                    label=metadata.get('label') or ', '.join(s['name'] for s in project['samples']),
+                    managed_revision=metadata['revision'], archived_at=metadata.get('archived_at'),
+                    created_at=datetime.fromtimestamp(path.stat().st_mtime, timezone.utc).isoformat(),
+                    sample_count=len(project['samples']), file_count=len(project['sources']),
+                    total_bytes=sum(s.get('size', 0) for s in project['sources']))
+
+    def manage(self, storage_id, expected_revision, *, label=None, archived=None):
+        """Rename or soft-delete/restore only metadata; never move/unlink source/report bytes."""
+        if _checked_id(storage_id) == EXAMPLE_ID:
+            raise ValueError('예제 프로젝트는 변경할 수 없습니다.')
+        if label is not None:
+            if not isinstance(label, str) or not label.strip() or len(label.strip()) > 100 or any(ord(c) < 32 or ord(c) == 127 for c in label):
+                raise ValueError('프로젝트 이름은 줄바꿈 없이 1~100자로 입력하세요.')
+            label = label.strip()
+        if archived is not None and type(archived) is not bool:
+            raise ValueError('휴지통 상태가 올바르지 않습니다.')
+        with self.lock:
+            project = self.load_source(storage_id, include_archived=True)
+            value = self._management(storage_id)
+            if type(expected_revision) is not int or expected_revision != value['revision']:
+                raise RevisionConflict('다른 창에서 프로젝트 정보가 변경되었습니다. 목록을 새로고침한 뒤 다시 시도하세요.')
+            if label is not None:
+                value['label'] = label
+            if archived is not None:
+                value['archived_at'] = datetime.now(timezone.utc).isoformat() if archived else None
+            value['revision'] += 1
+            value['updated_at'] = datetime.now(timezone.utc).isoformat()
+            _write_json_atomic(self.uploads / storage_id / 'management.json', value)
+            return self._summary(project, self.uploads / storage_id / 'project.json', value)
 
     def _path(self, storage_id: str, file_id: str) -> Path:
         if storage_id == EXAMPLE_ID:
@@ -183,7 +225,9 @@ class ProjectFiles:
 
     def read_source(self, storage_id: str, file_id: str) -> bytes:
         """Original bytes of a registered source, refused if they changed since registration."""
-        project = self.load_source(storage_id)
+        # Background exports may already hold a document snapshot when it is archived.
+        # Soft deletion must not interrupt those jobs or mutate a delivery artifact.
+        project = self.load_source(storage_id, include_archived=True)
         record = next((r for r in project['sources'] if r['id'] == file_id), None)
         if not record:
             raise ValueError('등록된 원본 파일이 아닙니다.')
@@ -202,6 +246,8 @@ class ProjectFiles:
             path = self._example[1].get(file_id)
             return (path, path.name) if path and path.is_file() else None
         if not _is_upload_id(storage_id):
+            return None
+        if self._management(storage_id).get('archived_at'):
             return None
         manifest = self.uploads / storage_id / 'project.json'
         if not manifest.is_file():
@@ -235,9 +281,9 @@ class ProjectFiles:
         _write_json_atomic(directory / 'project.json', project)
         return project
 
-    def list(self) -> list[dict]:
+    def list(self, archived: bool = False) -> list[dict]:
         """Example (when configured) and uploaded projects, newest first."""
-        result = [dict(storage_id=EXAMPLE_ID, label='예제 프로젝트')] if self.example_dir else []
+        result = [dict(storage_id=EXAMPLE_ID, label='예제 프로젝트')] if self.example_dir and not archived else []
         if self.uploads.is_dir():
             paths = sorted(
                 self.uploads.glob('*/project.json'), key=lambda p: p.stat().st_mtime, reverse=True
@@ -245,8 +291,11 @@ class ProjectFiles:
             for path in paths:
                 try:
                     value = json.loads(path.read_text(encoding='utf-8'))
-                    label = ', '.join(s['name'] for s in value['samples'])
-                    result.append(dict(storage_id=value['storage_id'], label=label))
+                    if not _is_upload_id(path.parent.name) or value['storage_id'] != path.parent.name:
+                        continue
+                    metadata = self._management(value['storage_id'])
+                    if bool(metadata.get('archived_at')) == archived:
+                        result.append(self._summary(value, path, metadata))
                 except (ValueError, KeyError):
                     continue
         return result
@@ -385,7 +434,7 @@ class Storage:
     ):
         from .locking import ProcessLock
         self.lock = ProcessLock(Path(data_dir) / '.documents.lock')
-        self.files = ProjectFiles(Path(data_dir) / 'uploads', example_dir, example_mapping)
+        self.files = ProjectFiles(Path(data_dir) / 'uploads', example_dir, example_mapping, self.lock)
         self.reviews = AnalysisStore(Path(data_dir) / 'analysis', self.lock)
         self.reports = ReportStore(Path(data_dir) / 'reports', self.lock)
         self.presets = PresetStore(Path(data_dir) / 'presets', self.lock)

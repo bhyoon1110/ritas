@@ -966,6 +966,8 @@ window.xrdBeforeLeave = async () => {
   leaving = confirm('저장하지 않고 이동할까요? 변경 내용은 사라집니다.');
   return leaving;
 };
+// Project removal can fail after the leave confirmation (network/revision conflict).
+window.xrdLeaveCanceled = () => { leaving = false; };
 $('nextStep').onclick = () => setStep('save');
 function openSettings() {
   $('settingsDialog').showModal();

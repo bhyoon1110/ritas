@@ -7,6 +7,7 @@
 //   window 'xrd-settings' event                   // the page opens its settings dialog
 import { apiUrl, request } from './api.mjs';
 import { $, escapeHTML } from './dom.mjs';
+import { mountProjectManager } from './project_manager.mjs';
 
 export const STEPS = [
   { id: 'upload', number: '①', label: '데이터 업로드', page: '/', extra: 'step=upload' },
@@ -144,7 +145,7 @@ export async function mountShell() {
   nav.setAttribute('aria-label', '작업 단계');
   nav.innerHTML =
     '<div class="shellTop"><div class="shellBrand">XRD 분석·보고서</div>' +
-    '<label class="shellLabel">프로젝트<select id="shellProject" aria-label="프로젝트"></select></label>' +
+    '<label class="shellLabel">프로젝트<select id="shellProject" aria-label="프로젝트"></select></label><button id="shellProjectManage" type="button">프로젝트 관리</button>' +
     '<span id="shellState" class="shellState"></span><button id="shellReset" type="button" title="저장된 자료를 보존하고 새 작업 시작">초기화</button><button id="shellSettings" class="shellSettings">설정</button>' +
     '<button id="shellAccountToggle" aria-controls="shellAccount" aria-expanded="false">회원·지원</button></div>' +
     '<div id="shellSteps" class="shellSteps"></div>';
@@ -170,6 +171,7 @@ export async function mountShell() {
     } catch (error) { window.alert(error.message); }
   };
   body.classList.add('withShell');
+  mountProjectManager({button: $('shellProjectManage'), getCurrent: () => state.project, refreshProjects});
   $('shellReset').onclick = async () => {
     $('shellReset').disabled = true;
     try { await resetWorkspace(); }
