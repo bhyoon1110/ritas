@@ -74,6 +74,15 @@ def text_items(body, bounds, edit=None):
         item = dict(type='text', x=x, y=y+used, w=w, h=len(lines)*leading, lines=lines,
                     size=size, bold=bold, color=color(run,'a:solidFill','#102A35') if run is not None else '#102A35',
                     leading=leading, align={'r':'right','ctr':'center'}.get(align,'left'))
+        # Generated formula paragraphs already carry the PPT's exact line breaks.
+        # Preserve baseline offsets in HTML instead of flattening subscripts to plain text.
+        if props.get('wrap') == 'none' and paragraph.find('a:r/a:rPr[@baseline]', NS) is not None:
+            item['runs'] = []
+            for part in paragraph.findall('a:r', NS):
+                rp = part.find('a:rPr', NS)
+                item['runs'].append(dict(text=part.findtext('a:t','',NS),
+                    size=float(rp.get('sz','1000'))/100, baseline=int(rp.get('baseline','0'))/100000,
+                    bold=rp.get('b')=='1', color=color(rp,'a:solidFill','#102A35')))
         if edit: item['edit'] = edit
         items.append(item); used += item['h']
         used += float(after.get('val'))/100/2.83465 if after is not None else 0

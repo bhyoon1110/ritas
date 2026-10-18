@@ -176,3 +176,61 @@ def test_phase_names_in_embedded_workbook_are_literal_strings_not_formulas():
     book=load_workbook(io.BytesIO(output.charts[0][1]),data_only=False)
     assert book.active['A2'].value=='=1+1'
     assert book.active['A2'].data_type=='s'
+
+
+def test_wppf_is_once_per_sample_and_all_remaining_phases_use_phase_layout():
+    from app.xrd_workbench.render.posco_pptx import build_posco_deck
+    project = make_project([sample('A', n_phases=8), sample('B', n_phases=4),
+                            sample('C', n_phases=2, quantities=0)])
+    document = new_document(project)
+    document['figure']['include'] = False
+    before = deepcopy((project, document))
+    filled = build_posco_deck(project, document, lambda _: IMAGE, image_renderer=lambda *a: IMAGE)
+    titles = [''.join(named(s,'Title')[0].xpath('.//a:t/text()',namespaces=NS)) for s,_ in filled.pages]
+    assert titles.count(QUANTITY_TITLE) == 2
+    assert QUANTITY_TITLE+' (계속)' not in titles
+    assert all(t.removesuffix(' (계속)') in (SUMMARY_TITLE, QUANTITY_TITLE, PHASE_TITLE) for t in titles)
+    wppf_pages = [s for s,_ in filled.pages if 'WPPF' in ''.join(named(s,'Title')[0].itertext())]
+    assert [filled.page_info[s]['sample_id'] for s in wppf_pages] == ['A','B']
+    # Every phase table row appears exactly once, even with unequal phase counts.
+    cells = [text for s,_ in filled.pages for t in named(s,'Phase table')
+             for text in t.xpath('.//a:tr/a:tc[1]//a:t/text()',namespaces=NS)]
+    assert cells.count('[미분류] Phase0') == 3
+    assert cells.count('[미분류] Phase3') == 2
+    assert cells.count('[미분류] Phase7') == 1
+    assert '이전 페이지에 수록' not in cells
+    last_continuation = [s for s,_ in filled.pages if '상 목록 7–8 / 8' in ''.join(s.itertext())][0]
+    assert '시료 B' not in filled.page_info[last_continuation]['navigation_title']
+    assert len(named(last_continuation,'Phase table')) == 1
+    assert any('상 목록 4–6 / 8' in ''.join(s.itertext()) for s,_ in filled.pages)
+    assert before == (project, document)
+
+
+def test_phase_table_uses_real_common_database_and_falls_back_for_mixed_or_missing():
+    from app.xrd_workbench.render.posco_pptx import phase_table_data
+    s = sample('db')
+    for p in s['phases']: p['db'] = 'S/M:PDF-2 2025'
+    header, rows = phase_table_data(s, lambda *a: None)
+    assert header == 'S/M:PDF-2 2025'
+    assert [r[2] for r in rows] == ['c0','c1','c2']
+    s['phases'][1]['db'] = 'Other DB'
+    header, rows = phase_table_data(s, lambda *a: None)
+    assert header == 'DB / Card No.'
+    assert rows[0][2] == 'S/M:PDF-2 2025 c0' and rows[1][2] == 'Other DB c1'
+    s['phases'][1]['db'] = None
+    assert phase_table_data(s, lambda *a: None)[0] == 'DB / Card No.'
+
+
+def test_formula_subscripts_are_editable_and_preserve_raw_text_coefficients_and_charges():
+    from app.xrd_workbench.render.posco_pptx import fit_text, subscript_formula
+    slide = Deck().templates[1]
+    prototype = named(slide,'Phase table')[0].find('.//a:tr[2]/a:tc[2]',NS)
+    for formula, expected in [('Zn0.95 Mn0.05 O', ['0.95','0.05']),
+                              ('Al2(SO4)3', ['2','4','3']), ('CuSO4·5H2O', ['4','2']),
+                              ('Fe3+', []), ('13C', []), ('Li1-xNixO2', ['2'])]:
+        cell = deepcopy(prototype)
+        fit_text(cell,formula,dimensions=(80,12),size=9.5,bold=True)
+        subscript_formula(cell)
+        assert ''.join(cell.xpath('.//a:t/text()',namespaces=NS)) == formula
+        assert cell.xpath('.//a:r[a:rPr/@baseline="-25000"]/a:t/text()',namespaces=NS) == expected
+        assert all(v=='1' for v in cell.xpath('.//a:rPr/@b',namespaces=NS))

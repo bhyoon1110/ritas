@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 import hashlib
 import io
 import math
+import re
 from pathlib import Path
 from zipfile import ZipFile, ZIP_DEFLATED
 
@@ -35,7 +36,7 @@ REL = 'http://schemas.openxmlformats.org/package/2006/relationships'
 CT = 'http://schemas.openxmlformats.org/package/2006/content-types'
 MM = 36000
 CLASS_NAMES = {'major': '주요상', 'trace': '미량상', 'presumed': '추정상', None: '미분류'}
-PIE_COLORS = ('4472C4', 'ED7D31', '70AD47', 'A5A5A5', 'FFC000', '5B9BD5', '8064A2', '264478')
+PIE_COLORS = ('0000FF', 'F08080', '008000', 'A5A5A5', 'FFC000', '5B9BD5', '8064A2', '264478')
 SUMMARY_TITLE = '분석 결과 요약'
 QUANTITY_TITLE = '상 동정 (Phase Identification) & WPPF 정량 (Phase Fraction) 결과'
 PHASE_TITLE = '상 동정 (Phase Identification) 결과'
@@ -139,6 +140,50 @@ def fit_text(shape, text, **kwargs):
     set_text(shape, text[:low] + '…', **kwargs)
 
 
+def subscript_formula(cell):
+    """Style stoichiometric numbers without changing any source characters/values.
+
+    Leading coefficients (5H2O), explicit charges (Fe3+) and ambiguous notation
+    stay on the baseline. Only the formula column calls this, never phase names.
+    """
+    for paragraph in cell.findall('a:txBody/a:p', NS):
+        for run in list(paragraph.findall('a:r', NS)):
+            text = run.findtext('a:t', '', NS)
+            spans = [m.span(1) for m in re.finditer(r'(?:[A-Z][a-z]?|[)\]])\s*(\d+(?:\.\d+)?)', text)
+                     if not re.match(r'\s*[+−-]', text[m.end():])]
+            if not spans:
+                continue
+            offset, index = 0, paragraph.index(run)
+            pieces = []
+            for start, end in spans:
+                pieces.extend(((text[offset:start], False), (text[start:end], True)))
+                offset = end
+            pieces.append((text[offset:], False))
+            for value, subscript in pieces:
+                if not value:
+                    continue
+                part = deepcopy(run)
+                part.find('a:t', NS).text = value
+                if subscript:
+                    props = part.find('a:rPr', NS)
+                    props.set('baseline', '-25000')
+                    props.set('sz', str(round(int(props.get('sz', '950')) * .75)))
+                paragraph.insert(index, part)
+                index += 1
+            paragraph.remove(run)
+
+
+def phase_table_data(sample, classification):
+    """Use the actual common database as header, never the reference's example DB."""
+    phases = sample['phases']
+    databases = {str(p.get('db') or '').strip() for p in phases}
+    common = next(iter(databases)) if len(databases) == 1 and '' not in databases else None
+    rows = [(f"[{CLASS_NAMES[classification(sample, p)]}] {p['name']}", p.get('formula') or '—',
+             (str(p.get('card') or '—') if common else
+              ' '.join(str(v) for v in (p.get('db'), p.get('card')) if v) or '—')) for p in phases]
+    return common or 'DB / Card No.', rows or [('상 목록 미제공', '—', '—')]
+
+
 class Deck:
     def __init__(self):
         with ZipFile(TEMPLATE) as archive:
@@ -226,7 +271,7 @@ class Deck:
 
     def title(self, slide, title):
         shape = named(slide, 'Title')[0]
-        fit_text(shape, title, size=24, bold=True, minimum=14)
+        fit_text(shape, title, size=19 if title.startswith(QUANTITY_TITLE) else 24, bold=True, minimum=14)
 
     def pie(self, slide, quantities, bounds, *, edit=None):
         """Native chart + embedded workbook: original numerical values, never inferred zeros."""
@@ -378,10 +423,10 @@ def build_posco_deck(project, document, resolve_source, *, pages=None, link_base
     def classification(sample, phase):
         return next((v['class'] for v in labels if v['sample_id'] == sample['id'] and v['phase'] == phase_ref(phase)), None)
 
-    def put(slide, name, content, size=10, edit=None):
+    def put(slide, name, content, size=10, edit=None, *, bold=False):
         target = named(slide, name)[0]
         deck.mark(target, edit)
-        fit_text(target, content, size=size)
+        fit_text(target, content, size=size, bold=bold)
 
     def image(sample, role, entry):
         if not entry.get('include_' + role, False): return None
@@ -413,13 +458,14 @@ def build_posco_deck(project, document, resolve_source, *, pages=None, link_base
             deck.picture(slide,summary_image,(15.7,32.7,128,91),'시료 비교 그래프',edit=dict(tab='figure'))
         else: deck.text(slide,'비교 그래프를 보고서에 포함하지 않았습니다.',(18,70,124,16),size=10)
         group = selected[start:start+3]
+        deck.page_info[slide]['navigation_title'] = SUMMARY_TITLE + ' · ' + ', '.join(e['display_name'] for e in group)
         for index in range(3):
             slot = 11 + index*5
             if index >= len(group):
                 for offset in range(4): put(slide,f'Text {slot+offset}','')
                 continue
             entry=group[index]; sample=samples[entry['sample_id']]
-            put(slide,f'Text {slot}','샘플명: '+entry['display_name'],11.5,dict(tab=entry['sample_id'],field='display_name'))
+            put(slide,f'Text {slot}','샘플명: '+entry['display_name'],11.5,dict(tab=entry['sample_id'],field='display_name'),bold=True)
             for offset, cls in enumerate(('major','trace','presumed'),1):
                 names=[p['name'] for p in sample['phases'] if classification(sample,p)==cls]
                 value='; '.join(names) or '—'
@@ -434,16 +480,28 @@ def build_posco_deck(project, document, resolve_source, *, pages=None, link_base
         put(slide,'Text 27',note,11,dict(tab='overview',field='summary'))
     # Detailed pages: WPPF alongside its matching sample, or two phase-only samples per page.
     plain=[]
-    def details(batch, quantitative):
-        row_sets=[]
-        for entry in batch:
-            sample=samples[entry['sample_id']]
-            rows=[(f"[{CLASS_NAMES[classification(sample,p)]}] {p['name']}",p.get('formula') or '—',
-                   ' '.join(str(v) for v in (p.get('db'),p.get('card')) if v) or '—') for p in sample['phases']]
-            row_sets.append(rows or [('상 목록 미제공','—','—')])
-        for start in range(0,max(len(rows) for rows in row_sets),3):
+    def details(batch, quantitative, starts=None):
+        starts = starts or [0] * len(batch)
+        table_sets = [phase_table_data(samples[e['sample_id']], classification) for e in batch]
+        row_sets = [rows for _, rows in table_sets]
+        # A WPPF result is shown once per sample. Remaining phase rows use layout 3.
+        count = 1 if quantitative else max(len(rows)-offset for rows, offset in zip(row_sets, starts))
+        source_columns = list(zip(batch, starts, table_sets))
+        for step in range(0,count,3):
+            active = [(entry, offset+step, table) for entry, offset, table in source_columns
+                      if offset+step < len(table[1])]
+            batch = [entry for entry, _, _ in active]
+            page_starts = [offset for _, offset, _ in active]
+            table_sets = [table for _, _, table in active]
+            row_sets = [rows for _, rows in table_sets]
             slide=deck.slide(1 if quantitative else 2, kind='sample', sample_id=batch[0]['sample_id'])
-            deck.title(slide,(QUANTITY_TITLE if quantitative else PHASE_TITLE)+(' (계속)' if start else ''))
+            continued = not quantitative and any(page_starts)
+            deck.title(slide,(QUANTITY_TITLE if quantitative else PHASE_TITLE)+(' (계속)' if continued else ''))
+            deck.page_info[slide]['navigation_title'] = (
+                ('상 동정 & WPPF 정량' if quantitative else '상 동정') + ' · ' + ', '.join(
+                    e['display_name'] + (f' (상 {offset+1}–{min(offset+3,len(rows))}/{len(rows)})'
+                                        if len(rows)>3 else '')
+                    for e, offset, rows in zip(batch, page_starts, row_sets)))
             frames=named(slide,'Match frame'); tables=named(slide,'Phase table')
             # Fill the original horizontal link pills; never retain reference URLs.
             link_frames=named(slide,'Source link frame')
@@ -465,7 +523,8 @@ def build_posco_deck(project, document, resolve_source, *, pages=None, link_base
                         E.SubElement(prop,q('a:hlinkClick'),{q('r:id'):rid})
             for index, entry in enumerate(batch):
                 sample=samples[entry['sample_id']]
-                put(slide,'Text 5' if index==0 else 'Text 8',entry['display_name']+' - 상 동정 결과',12,dict(tab=entry['sample_id'],field='display_name'))
+                start = page_starts[index]
+                put(slide,'Text 5' if index==0 else 'Text 8',entry['display_name']+' - 상 동정 (Phase Identification) 결과',12,dict(tab=entry['sample_id'],field='display_name'),bold=True)
                 frame=frames[index]; x,y,w,h=box(frame)
                 source=image(sample,'phase_image',entry)
                 if source: deck.picture(slide,source,(x+2,y+2,w-4,h-4),entry['display_name']+' 상매칭',edit=dict(tab=entry['sample_id'],field='phase_caption'))
@@ -485,17 +544,26 @@ def build_posco_deck(project, document, resolve_source, *, pages=None, link_base
                 original=table.findall('a:tr',NS); prototype=deepcopy(original[1])
                 for row in original[1:]: table.remove(row)
                 widths=[int(c.get('w'))/MM for c in table.find('a:tblGrid',NS)]
+                header = original[0].findall('a:tc',NS)[2]
+                fit_text(header, table_sets[index][0], dimensions=(widths[2]-1,8.6), size=9.5, color='FFFFFF', bold=True)
                 rows=row_sets[index][start:start+3]
                 if not rows: rows=[('이전 페이지에 수록','—','—')]
                 for values in rows:
                     row=deepcopy(prototype);row.set('h',str(9*MM))
-                    for cell,value,cw in zip(row.findall('a:tc',NS),values,widths):
-                        fit_text(cell,value,dimensions=(cw-1,8.6),size=9.5)
+                    for column,(cell,value,cw) in enumerate(zip(row.findall('a:tc',NS),values,widths)):
+                        fit_text(cell,value,dimensions=(cw-1,8.6),size=9.5,bold=column==1)
+                        if column==1: subscript_formula(cell)
                     table.append(row)
                 x0,y0,w0,h0=box(shape)
                 place(shape,(x0,y0,w0,sum(int(row.get('h')) for row in table.findall('a:tr',NS))/MM))
+                if len(row_sets[index]) > 3 and start < len(row_sets[index]):
+                    end=min(start+3,len(row_sets[index]))
+                    caption=f'상 목록 {start+1}–{end} / {len(row_sets[index])}'
+                    if end<len(row_sets[index]): caption+=' · 나머지는 상 동정 결과에 계속'
+                    deck.text(slide,caption,(x0,y0+box(shape)[3]+1,w0,5),size=7.5,
+                              name='Phase continuation',edit=dict(tab='classes'))
                 if quantitative:
-                    put(slide,'Text 14',entry['display_name']+' - WPPF 정량 결과',12,dict(tab=entry['sample_id'],field='display_name'))
+                    put(slide,'Text 14',entry['display_name']+' - WPPF 정량 (Phase Fraction) 결과',12,dict(tab=entry['sample_id'],field='display_name'),bold=True)
                     bx,by,bw,bh=box(named(slide,'Pie frame')[0])
                     quant_image=image(sample,'quantity_image',entry)
                     pie_drawn=False
@@ -529,6 +597,10 @@ def build_posco_deck(project, document, resolve_source, *, pages=None, link_base
         else:
             plain.append(entry)
     for entry in quantitative_entries: details([entry],True)
+    continued = [e for e in quantitative_entries if len(samples[e['sample_id']]['phases'])>3]
+    for start in range(0,len(continued),2):
+        batch = continued[start:start+2]
+        details(batch,False,[3]*len(batch))
     for start in range(0,len(plain),2): details(plain[start:start+2],False)
     # Request metadata, full notes and exclusions remain in the editable document.
     # Never append legacy information/figure/table/notes pages to this template.

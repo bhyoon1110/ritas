@@ -68,7 +68,7 @@ def render_html(pages, document, link_mode='package', storage_id=None, *, edit_l
     if edit_links:
         output.append('<style>.editorNav{position:sticky;top:0;z-index:5;background:#fff;padding:10px;border-bottom:1px solid #ccd7e4;font:13px Arial,sans-serif}.editorNav select{max-width:60%;padding:5px}.editPageTools{padding:8px 15px;font:13px Arial,sans-serif}.editPageTools button{padding:6px 10px;margin-right:8px;border:1px solid #ccd7e4;background:white;border-radius:4px;color:#163e62}[data-edit]{cursor:pointer}[data-edit]:hover,[data-edit]:focus,.linked{outline:2px solid #1768a0;outline-offset:2px}@media print{.editorNav,.editPageTools{display:none}}</style>')
         output.append('<nav class="editorNav"><b>초안 · 저장 전 확인</b> <select id="previewPages" aria-label="미리보기 페이지">' + ''.join(
-            f'<option value="{i}">{i + 1}. {escape(p["title"])}</option>' for i, p in enumerate(pages)
+            f'<option value="{i}">{i + 1}. {escape(p.get("navigation_title") or p["title"])}</option>' for i, p in enumerate(pages)
         ) + '</select></nav>')
     if link_mode == 'package':
         output.append(
@@ -106,13 +106,18 @@ def render_html(pages, document, link_mode='package', storage_id=None, *, edit_l
                     + f"font-size:{item['size']}pt;color:{item['color']};font-weight:{'700' if item['bold'] else '400'};line-height:{item['leading']}mm;"
                     + ('text-align:'+item['align']+';' if item.get('align') in ('right','center') else '')
                 )
+                if item.get('runs'):
+                    content = '<div class="textLine">' + ''.join(
+                        '<span style="font-size:'+str(r['size'])+'pt;font-weight:'+('700' if r['bold'] else '400')
+                        +';color:'+r['color']+';position:relative;top:'+str(-r['baseline']*r['size'])
+                        +'pt;line-height:0">'+escape(r['text'])+'</span>' for r in item['runs'])+'</div>'
+                else:
+                    content = ''.join('<div class="textLine">' + escape(line) + '</div>' for line in item['lines'])
                 output.append(
                     '<div class="item"' + attrs + ' style="'
                     + style
                     + '">'
-                    + ''.join(
-                        '<div class="textLine">' + escape(line) + '</div>' for line in item['lines']
-                    )
+                    + content
                     + '</div>'
                 )
             elif item['type'] == 'image':
