@@ -1498,7 +1498,8 @@ def _build_eds(prs, template: AhnTemplate | None, data: dict[str, Any], input_ro
         analysis_type = str(report.get("analysis_type") or "").upper()
         title = report.get("title") or docx_path.stem
         if not images and not tables:
-            raise ValueError(f"{report['path']}: DOCX에서 보고서에 사용할 이미지 또는 표를 찾지 못했습니다. Word에서 내용을 확인한 뒤 DOCX로 다시 저장하세요.")
+            detail = "; ".join(extracted.diagnostics)
+            raise ValueError(f"{report['path']}: DOCX에서 보고서에 사용할 이미지 또는 표를 찾지 못했습니다. {detail}")
         if not images:
             for index in range(0, len(tables), 2):
                 _add_eds_tables_slide(prs, template, title, images, tables[index:index + 2], tmp_dir)

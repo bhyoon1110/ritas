@@ -103,3 +103,91 @@ def test_docx_deduplicates_drawing_vml_fallback_and_ignores_external_images(tmp_
         for name, data in members.items():
             archive.writestr(name, data)
     assert len(extract_docx(source, tmp_path / 'out').media_paths) == 1
+
+
+def rewrite_parts(source, transform):
+    with ZipFile(source) as archive:
+        members = {name: archive.read(name) for name in archive.namelist()}
+    members = transform(members)
+    with ZipFile(source, 'w') as archive:
+        for name, data in members.items():
+            archive.writestr(name, data)
+
+
+@pytest.mark.parametrize('images', [True, False])
+def test_strict_docx_images_and_tables_are_not_treated_as_empty(tmp_path, images):
+    source = tmp_path / 'strict MAP.docx'
+    write_docx(source)
+    def transform(members):
+        xml = members['word/document.xml']
+        if not images:
+            xml = xml.replace(b'<a:blip r:embed="image"/>', b'')
+        xml = xml.replace(b'</w:body>', b'<w:tbl><w:tr><w:tc><w:p><w:r><w:t>Oxygen 45%</w:t>'
+                          b'</w:r></w:p></w:tc></w:tr></w:tbl></w:body>')
+        for old, new in [
+            (b'http://schemas.openxmlformats.org/wordprocessingml/2006/main', b'http://purl.oclc.org/ooxml/wordprocessingml/main'),
+            (b'http://schemas.openxmlformats.org/drawingml/2006/main', b'http://purl.oclc.org/ooxml/drawingml/main'),
+            (b'http://schemas.openxmlformats.org/officeDocument/2006/relationships', b'http://purl.oclc.org/ooxml/officeDocument/relationships'),
+        ]:
+            xml = xml.replace(old, new)
+        members['word/document.xml'] = xml
+        return members
+    rewrite_parts(source, transform)
+    before = source.read_bytes()
+    result = extract_docx(source, tmp_path / 'out')
+    assert len(result.media_paths) == int(images)
+    assert result.tables == [[['Oxygen 45%']]]
+    assert not result.diagnostics
+    output = build_pptx(collect_project(tmp_path), tmp_path / 'report.pptx')
+    slides = Presentation(output).slides
+    assert len(slides) == 1
+    if images:
+        assert any(shape.shape_type == 13 for shape in slides[0].shapes)
+    else:
+        assert any(shape.has_table for shape in slides[0].shapes)
+    assert source.read_bytes() == before
+
+
+def test_vml_office_relid_and_encoded_media_target(tmp_path):
+    source = tmp_path / 'legacy MAP.docx'
+    write_docx(source, vml=True)
+    def transform(members):
+        members['word/document.xml'] = members['word/document.xml'].replace(
+            b'<v:imagedata r:id="image"/>',
+            b'<v:imagedata xmlns:o="urn:schemas-microsoft-com:office:office" o:relid="image"/>')
+        members['word/_rels/document.xml.rels'] = members['word/_rels/document.xml.rels'].replace(
+            b'media/image.png', b'media/EDS%20map.png')
+        members['word/media/EDS map.png'] = members.pop('word/media/image.png')
+        return members
+    rewrite_parts(source, transform)
+    result = extract_docx(source, tmp_path / 'out')
+    assert len(result.media_paths) == 1
+    assert Image.open(result.media_paths[0]).getpixel((0, 0)) == (220, 40, 40)
+
+
+@pytest.mark.parametrize('kind', ['external', 'missing', 'outside-media', 'altChunk'])
+def test_unusable_content_has_diagnostics_and_does_not_fall_back_to_orphan_images(tmp_path, kind):
+    source = tmp_path / (kind + '.docx')
+    write_docx(source)
+    def transform(members):
+        if kind == 'external':
+            members['word/_rels/document.xml.rels'] = members['word/_rels/document.xml.rels'].replace(
+                b'Target="media/image.png"', b'Target="https://example.invalid/image.png" TargetMode="External"')
+        elif kind == 'missing':
+            members.pop('word/media/image.png')
+        elif kind == 'outside-media':
+            members['word/_rels/document.xml.rels'] = members['word/_rels/document.xml.rels'].replace(
+                b'media/image.png', b'media/%2e%2e/secret.png')
+            members['word/secret.png'] = members['word/media/image.png']
+        else:
+            members['word/document.xml'] = members['word/document.xml'].replace(
+                b'<a:blip r:embed="image"/>', b'<w:altChunk r:id="html-body"/>')
+        return members
+    rewrite_parts(source, transform)
+    result = extract_docx(source, tmp_path / 'out')
+    assert not result.media_paths and not result.tables
+    assert result.diagnostics and '본문 이미지 참조' in result.diagnostics[0]
+    if kind == 'altChunk':
+        assert 'altChunk' in result.diagnostics[1]
+    with pytest.raises(ValueError, match='내장 미디어'):
+        build_pptx(collect_project(tmp_path), tmp_path / 'report.pptx')
