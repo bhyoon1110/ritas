@@ -90,7 +90,7 @@ BROWSER_SUPPORT_SCRIPT = r"""(function () {
     var title = warning.getElementsByTagName('strong')[0];
     if (title) title.textContent = (supermium ? 'Supermium' : '최신 Chromium') + (lowResource ? ' · 자원 절약 모드' : ' · 일반 성능 모드');
     reason = '최신 엔진의 그래프·화면 기능을 사용하며 ' +
-      (lowResource ? '저사양이거나 자원 정보가 부족하여 TEM 파일을 2MB씩 순차 전송합니다.' : '브라우저가 제공한 사양에 따라 TEM 파일을 4MB씩 순차 전송합니다.') +
+      'TEM 업로드는 사양·연결 상태에 따라 조각 크기를 자동 조절하며, 전송 요청은 한 번에 하나씩 처리합니다.' +
       ' 분석·보고서는 Edge 서버에서 처리합니다. XP 등 보안 지원이 종료된 OS는 격리된 실험망에서만 사용하세요.';
   }
   if (!reason) return;

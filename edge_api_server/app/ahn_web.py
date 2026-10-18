@@ -1627,6 +1627,9 @@ def build_ahn_page(resume_owner: str = "anonymous") -> str:
     .ahn-recovery { border: 1px solid #bfcee0; border-radius: 8px; padding: 12px 14px; margin: 12px 0; background: #eff6ff; color: #244565; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
     .ahn-recovery span { flex: 1 1 260px; min-width: 0; overflow-wrap: anywhere; }
     .ahn-recovery button { white-space: nowrap; flex-shrink: 0; }
+    .ahn-transfer-stats { margin: 12px 0; padding: 12px 14px; border: 1px solid #bfcee0; border-radius: 8px; background: #f8fbff; color: #244565; font-size: 13px; overflow-wrap: anywhere; }
+    .ahn-transfer-stats summary { cursor: pointer; margin-top: 6px; }
+    #ahn-transfer-detail { white-space: pre-line; line-height: 1.6; }
     @media (max-width: 900px) {
       .ahn-topbar { align-items: flex-start; padding: 18px 16px; }
       .ahn-brand { display: block; }
@@ -1664,6 +1667,10 @@ def build_ahn_page(resume_owner: str = "anonymous") -> str:
       <div class="ahn-recovery" id="ahn-recovery" role="status">
         <span id="ahn-recovery-message">업로드 중 화면이 꺼지면 복귀 후 이어받습니다. 업로드 완료 후 보고서 생성은 서버에서 계속됩니다. 서버 재시작 또는 마지막 전송 후 2시간이 지나면 새 업로드가 필요합니다.</span>
         <button type="button" id="ahn-recovery-resume" hidden>업로드 이어받기</button>
+      </div>
+      <div class="ahn-transfer-stats" id="ahn-transfer-stats" hidden>
+        <strong id="ahn-transfer-speed"></strong>
+        <details><summary>업로드 성능 측정</summary><div id="ahn-transfer-detail"></div></details>
       </div>
       <section class="ahn-panel">
         <form id="ahn-form">
@@ -1795,7 +1802,6 @@ def build_ahn_page(resume_owner: str = "anonymous") -> str:
     var bundleItems = [];
     var progressTimer = null;
     var clientProfile = window.RIST_CLIENT_PROFILE || {};
-    var TEM_UPLOAD_CHUNK_BYTES = clientProfile.uploadChunkBytes || 2 * 1024 * 1024;
     var TEM_FILE_LIST_LIMIT = clientProfile.fileListLimit || 200;
     var TEM_MAX_FILES = 5000;
     var TEM_UPLOAD_CHUNK_RETRIES = 4;
@@ -1813,6 +1819,7 @@ def build_ahn_page(resume_owner: str = "anonymous") -> str:
     var REQUEST_EXPERIMENT_TYPE = "TEM";
 
     /* TEM_RESUME_RUNTIME */
+    /* TEM_TRANSFER_RUNTIME */
 
     function configureAuthenticatedActions() {
       fetch("/api/v1/auth/me", {
@@ -2156,8 +2163,9 @@ def build_ahn_page(resume_owner: str = "anonymous") -> str:
         fragment.appendChild(more);
       }
       fileList.appendChild(fragment);
+      var transferPolicy = TemTransfer.policy(navigator);
       bundleMeta.textContent = bundleItems.length
-        ? "TEM " + counts.TEM + " · STEM " + counts.STEM + " · EDS " + counts.EDS + " · 코팅층 " + counts["코팅층"] + " · 기타 " + counts["기타"] + " · " + (clientProfile.lowResource !== false ? "자원 절약 모드: 2MB" : "일반 성능 모드: 4MB") + " 순차 전송"
+        ? "TEM " + counts.TEM + " · STEM " + counts.STEM + " · EDS " + counts.EDS + " · 코팅층 " + counts["코팅층"] + " · 기타 " + counts["기타"] + " · " + transferPolicy.label + ": " + (transferPolicy.initial / 1048576) + " MiB부터 자동 조절 (최대 " + (transferPolicy.max / 1048576) + " MiB)"
         : "선택된 파일 없음";
       syncActionState();
     }
@@ -2486,6 +2494,20 @@ def build_ahn_page(resume_owner: str = "anonymous") -> str:
     function requestUploadChunk(options) {
       return new Promise(function(resolve, reject) {
         var xhr = new XMLHttpRequest();
+        var transfer = options.transfer;
+        var started = transfer ? transfer.now() : 0;
+        var startEpoch = transfer ? transfer.epoch() : 0;
+        var uploadedAt = null, measured = false;
+        function measure(payload, successful) {
+          if (!transfer || measured) return;
+          measured = true;
+          var ended = transfer.now();
+          var sample = {elapsedMs: Math.max(0, ended - started),
+            responseWaitMs: uploadedAt === null ? null : Math.max(0, ended - uploadedAt),
+            serverMs: payload && payload.chunkProcessingMs, epoch: startEpoch, retried: Boolean(options.retryCount)};
+          if (successful) transfer.ack(options.blob.size, sample);
+          else transfer.observe(sample);
+        }
         xhr.open(
           "POST",
           "/api/v1/tem/upload-sessions/" + encodeURIComponent(options.uploadId) + "/chunks",
@@ -2493,7 +2515,7 @@ def build_ahn_page(resume_owner: str = "anonymous") -> str:
         );
         xhr.timeout = 120000;
         xhr.upload.onprogress = function(event) {
-          var loaded = event.lengthComputable ? event.loaded : 0;
+          var loaded = event.lengthComputable ? Math.min(options.blob.size, event.loaded) : 0;
           var pct = options.totalUploadBytes > 0
             ? ((options.uploadedBefore + loaded) / options.totalUploadBytes) * 100
             : 0;
@@ -2504,35 +2526,43 @@ def build_ahn_page(resume_owner: str = "anonymous") -> str:
             false
           );
         };
+        xhr.upload.onload = function() { if (transfer) uploadedAt = transfer.now(); };
         xhr.onload = function() {
           var text = xhr.responseText || "";
           if (xhr.status >= 200 && xhr.status < 300) {
             try {
-              resolve(JSON.parse(text));
+              var payload = JSON.parse(text);
+              measure(payload, true);
+              resolve(payload);
             } catch (_error) {
+              measure(null, false);
               reject(new Error("서버 응답을 해석하지 못했습니다."));
+            }
+            return;
           }
-          return;
-        }
           var error = errorFromResponse(xhr, text, "업로드 조각 전송에 실패했습니다.");
+          measure(null, false);
           var failure = {};
           try { failure = JSON.parse(text); } catch (_parseError) {}
           error.isTransientError = failure.retryable === true || xhr.status === 408 || xhr.status === 429 || xhr.status >= 500;
           reject(error);
         };
         xhr.onerror = function(error) {
+          measure(null, false);
           var wrapped = new Error(networkErrorMessage(error, "/api/v1/tem/upload-sessions"));
           wrapped.cause = error;
           wrapped.isNetworkError = true;
           reject(wrapped);
         };
         xhr.ontimeout = function(error) {
+          measure(null, false);
           var wrapped = new Error("업로드 조각 전송 시간이 초과되었습니다. 같은 조각을 다시 전송합니다.");
           wrapped.cause = error;
           wrapped.isNetworkError = true;
           reject(wrapped);
         };
         xhr.onabort = function(error) {
+          measure(null, false);
           var wrapped = new Error("업로드가 중단되었습니다. 네트워크 상태를 확인한 뒤 다시 시도하세요.");
           wrapped.cause = error;
           wrapped.isNetworkError = true;
@@ -2562,10 +2592,10 @@ def build_ahn_page(resume_owner: str = "anonymous") -> str:
       }
       return crc32Table;
     }
-    async function chunkCrc32(blob) {
+    async function chunkCrc32Main(blob) {
       var table = getCrc32Table();
       var crc = 0xFFFFFFFF;
-      // At most 256KB is read into JS at a time, even for a 4MB upload chunk.
+      // At most 256KB is read into JS at a time, even for an 8MB upload chunk.
       // Yield between blocks so slow 32-bit CPUs can paint/respond to input.
       var blockBytes = 256 * 1024;
       for (var offset = 0; offset < blob.size; offset += blockBytes) {
@@ -2586,15 +2616,20 @@ def build_ahn_page(resume_owner: str = "anonymous") -> str:
       }
       return ((crc ^ 0xFFFFFFFF) >>> 0).toString(16).padStart(8, "0");
     }
+    async function chunkCrc32(blob) {
+      return temTransfer ? temTransfer.checksum(blob, chunkCrc32Main) : chunkCrc32Main(blob);
+    }
     async function uploadChunkWithRetry(options) {
       var lastError = null;
       for (var attempt = 1; attempt <= TEM_UPLOAD_CHUNK_RETRIES; attempt += 1) {
         await waitTemVisible();
         try {
+          options.retryCount = attempt - 1;
           return await requestUploadChunk(options);
         } catch (error) {
           lastError = error;
           if (!(error.isNetworkError || error.isTransientError) || attempt >= TEM_UPLOAD_CHUNK_RETRIES) break;
+          if (options.transfer) options.transfer.retry();
           var pct = options.totalUploadBytes > 0
             ? (options.uploadedBefore / options.totalUploadBytes) * 100
             : 0;
@@ -2610,84 +2645,65 @@ def build_ahn_page(resume_owner: str = "anonymous") -> str:
       throw lastError || new Error("업로드 조각 전송에 실패했습니다.");
     }
     async function uploadBundleWithSession() {
-      var selection = uploadableBundleItems();
-      if (!selection.supported.length) {
-        throw new Error("업로드할 수 있는 TEM raw 파일이 없습니다.");
-      }
-      if (selection.skipped.length) {
-        setStatus("지원하지 않는 파일 " + selection.skipped.length + "개는 업로드에서 제외했습니다.", false);
-      }
-      var totalBytes = selection.supported.reduce(function(sum, item) {
-        return sum + Number(item.file.size || 0);
-      }, 0);
-      if (totalBytes <= 0) {
-        throw new Error("빈 파일만 선택되어 있습니다.");
-      }
-      if (totalBytes > TEM_MAX_TOTAL_BYTES) {
-        throw new Error("TEM raw bundle의 총 크기는 1.2GB 이하여야 합니다. 현재: " + formatBytes(totalBytes));
-      }
-      selection.supported.forEach(function(item) {
-        if (item.file.size > TEM_MAX_FILE_BYTES) {
-          throw new Error(item.path + " 파일이 너무 큽니다. 파일당 최대 250MB입니다.");
+      temTransfer = TemTransfer.create({render: renderTemTransfer});
+      var transfer = temTransfer, transferFinished = false;
+      try {
+        var selection = uploadableBundleItems();
+        if (!selection.supported.length) {
+          throw new Error("업로드할 수 있는 TEM raw 파일이 없습니다.");
         }
-      });
+        if (selection.skipped.length) {
+          setStatus("지원하지 않는 파일 " + selection.skipped.length + "개는 업로드에서 제외했습니다.", false);
+        }
+        var totalBytes = selection.supported.reduce(function(sum, item) {
+          return sum + Number(item.file.size || 0);
+        }, 0);
+        if (totalBytes <= 0) {
+          throw new Error("빈 파일만 선택되어 있습니다.");
+        }
+        if (totalBytes > TEM_MAX_TOTAL_BYTES) {
+          throw new Error("TEM raw bundle의 총 크기는 1.2GB 이하여야 합니다. 현재: " + formatBytes(totalBytes));
+        }
+        selection.supported.forEach(function(item) {
+          if (item.file.size > TEM_MAX_FILE_BYTES) {
+            throw new Error(item.path + " 파일이 너무 큽니다. 파일당 최대 250MB입니다.");
+          }
+        });
 
-      setUploadProgress(0, "업로드 세션을 생성하는 중입니다.", true, false);
-      var session, restoredFiles = [];
-      if (temRecovery.record && temRecovery.record.uploadId) {
-        session = await getTemResumeState(temRecovery.record.uploadId);
-        if (session.job) { rememberTemJob(session.job); return session.job; }
-        restoredFiles = await checkTemResumeSelection(selection.supported, session);
-      } else {
-        session = await requestJsonPostWithRetry(
-          "/api/v1/tem/upload-sessions", 3, "업로드 세션 생성을 다시 시도하는 중입니다.",
-          {files: temSelectionManifest(selection.supported)}
-        );
-        rememberTemUpload(session.uploadId);
-      }
-      var resumeOffsets = Object.create(null);
-      restoredFiles.forEach(function(item) { resumeOffsets[item.path] = item.uploadedBytes; });
-      var uploadedBytes = restoredFiles.reduce(function(sum, item) { return sum + item.uploadedBytes; }, 0);
-      recoveryNotice("전송 중 화면이 꺼지면 복귀 후 이어받습니다. 지원되는 HTTPS 환경에서는 자동 화면 꺼짐 방지를 요청합니다.");
-      if (selection.supported.length > (session.maxFileCount || TEM_MAX_FILES)) {
-        throw new Error("서버 파일 수 한도를 초과했습니다. 묶음을 나누어 업로드하세요.");
-      }
-      for (var fileIndex = 0; fileIndex < selection.supported.length; fileIndex += 1) {
-        var item = selection.supported[fileIndex];
-        var file = item.file;
-        var path = item.path || file.name;
-        if (!file.size) continue;
-        var chunkCount = Math.max(1, Math.ceil(file.size / TEM_UPLOAD_CHUNK_BYTES));
-        for (var offset = resumeOffsets[path] || 0; offset < file.size; offset += TEM_UPLOAD_CHUNK_BYTES) {
-          await waitTemVisible();
-          var chunkIndex = Math.floor(offset / TEM_UPLOAD_CHUNK_BYTES);
-          var end = Math.min(file.size, offset + TEM_UPLOAD_CHUNK_BYTES);
-          var blob = file.slice(offset, end);
-          var checksum = await chunkCrc32(blob);
-          await uploadChunkWithRetry({
-            uploadId: session.uploadId,
-            path: path,
-            fileName: file.name,
-            blob: blob,
-            offset: offset,
-            totalSize: file.size,
-            chunkIndex: chunkIndex,
-            chunkCount: chunkCount,
-            chunkCrc32: checksum,
-            uploadedBefore: uploadedBytes,
-            totalUploadBytes: totalBytes,
-            fileIndex: fileIndex + 1,
-            fileCount: selection.supported.length
-          });
-          uploadedBytes += blob.size;
+        setUploadProgress(0, "업로드 세션을 생성하는 중입니다.", true, false);
+        var session, restoredFiles = [];
+        if (temRecovery.record && temRecovery.record.uploadId) {
+          session = await getTemResumeState(temRecovery.record.uploadId);
+          if (session.job) { transferFinished = true; rememberTemJob(session.job); return session.job; }
+          restoredFiles = await checkTemResumeSelection(selection.supported, session);
+        } else {
+          session = await requestJsonPostWithRetry(
+            "/api/v1/tem/upload-sessions", 3, "업로드 세션 생성을 다시 시도하는 중입니다.",
+            {files: temSelectionManifest(selection.supported)}
+          );
+          rememberTemUpload(session.uploadId);
         }
+        var resumeOffsets = Object.create(null);
+        restoredFiles.forEach(function(item) { resumeOffsets[item.path] = item.uploadedBytes; });
+        var uploadedBytes = restoredFiles.reduce(function(sum, item) { return sum + item.uploadedBytes; }, 0);
+        transfer.begin(totalBytes, uploadedBytes, session.maxChunkBytes);
+        recoveryNotice("전송 중 화면이 꺼지면 복귀 후 이어받습니다. 지원되는 HTTPS 환경에서는 자동 화면 꺼짐 방지를 요청합니다.");
+        if (selection.supported.length > (session.maxFileCount || TEM_MAX_FILES)) {
+          throw new Error("서버 파일 수 한도를 초과했습니다. 묶음을 나누어 업로드하세요.");
+        }
+        await sendPreparedTemFiles(selection.supported, resumeOffsets, session, totalBytes, transfer);
+        transferFinished = true;
+        transfer.dispose('전송 완료');
+        setUploadProgress(100, "raw 파일 업로드 완료. 무결성 및 암호화 여부를 검사하는 중입니다.", true, false);
+        return await requestJsonPostWithRetry(
+          "/api/v1/tem/upload-sessions/" + encodeURIComponent(session.uploadId) + "/complete?defer_validation=true",
+          4,
+          "보고서 작업 접수 응답을 다시 확인하는 중입니다."
+        );
+      } finally {
+        transfer.dispose(transferFinished ? '전송 완료' : '전송 중단');
+        if (temTransfer === transfer) temTransfer = null;
       }
-      setUploadProgress(100, "raw 파일 업로드 완료. 무결성 및 암호화 여부를 검사하는 중입니다.", true, false);
-      return requestJsonPostWithRetry(
-        "/api/v1/tem/upload-sessions/" + encodeURIComponent(session.uploadId) + "/complete?defer_validation=true",
-        4,
-        "보고서 작업 접수 응답을 다시 확인하는 중입니다."
-      );
     }
     async function requestReport(url) {
       var options = {method: "GET"};
@@ -2835,6 +2851,7 @@ def build_ahn_page(resume_owner: str = "anonymous") -> str:
       }
     });
     clearButton.addEventListener("click", function() {
+      document.getElementById('ahn-transfer-stats').hidden = true;
       persistTemWork(null);
       temRecovery.retryOnReturn = false;
       recoveryNotice("새 작업을 시작합니다. 이전 작업의 서버 파일은 즉시 삭제하지 않으며 기존 보존 시간에 따라 정리됩니다.");
@@ -2903,6 +2920,7 @@ def build_ahn_page(resume_owner: str = "anonymous") -> str:
 </body>
 </html>"""
     page = page.replace("/* TEM_RESUME_RUNTIME */", Path(__file__).with_name("tem_resume.js").read_text(encoding="utf-8"))
+    page = page.replace("/* TEM_TRANSFER_RUNTIME */", Path(__file__).with_name("tem_transfer.js").read_text(encoding="utf-8"))
     page = page.replace("__TEM_OWNER__", escape(resume_owner, quote=True))
     return with_browser_support_notice(page)
 
@@ -2922,6 +2940,12 @@ def create_tem_upload_session(request: Request, manifest: UploadManifest | None 
     session.expected_files = expected
     logger.info("TEM 청크 업로드 세션 생성 (upload_id=%s)", session.upload_id)
     return JSONResponse(_upload_session_payload(session))
+
+
+@router.get("/api/v1/tem/upload-worker.js", include_in_schema=False)
+def tem_upload_worker() -> FileResponse:
+    return FileResponse(Path(__file__).with_name("tem_upload_worker.js"), media_type="application/javascript",
+                        headers={"Cache-Control": "no-cache", "X-Content-Type-Options": "nosniff"})
 
 
 @router.get("/api/v1/tem/upload-sessions/{upload_id}", response_class=JSONResponse, tags=["tem"])
@@ -2970,6 +2994,7 @@ async def upload_tem_chunk(
     check_upload_owner(request, session)
     request.state.error_project = "TEM"
     request.state.error_source_paths = [session.input_root]
+    started = time.perf_counter()
     file_state = await _write_upload_chunk(
         session,
         relative_path=relative_path,
@@ -2987,6 +3012,8 @@ async def upload_tem_chunk(
             "uploadedFileBytes": file_state.uploaded_bytes,
             "fileSize": file_state.total_size,
             "fileCompleted": file_state.completed,
+            # Excludes multipart receive/parsing and proxy buffering; not wire time.
+            "chunkProcessingMs": round((time.perf_counter() - started) * 1000, 3),
         }
     )
     return JSONResponse(payload)

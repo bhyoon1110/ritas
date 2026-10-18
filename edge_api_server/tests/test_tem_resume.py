@@ -160,3 +160,28 @@ def test_identity_is_in_markup_not_a_dynamic_script():
     from app.browser_compat import compatible_html
     legacy = compatible_html(html)
     assert 'data-tem-resume-owner="a&quot;&lt;script&gt;"' in legacy
+
+
+def test_worker_and_chunk_processing_measurement(workspace):
+    w = workspace
+    worker = w.client.get("/api/v1/tem/upload-worker.js")
+    assert worker.status_code == 200
+    assert "javascript" in worker.headers["content-type"]
+    assert worker.headers["cache-control"] == "no-cache"
+    assert "FileReaderSync" in worker.text
+    url = create(w)
+    r = upload(w, url)
+    assert r.status_code == 200 and r.json()["chunkProcessingMs"] >= 0
+
+
+def test_variable_chunk_sizes_can_resume_and_retry_without_gaps(workspace):
+    w = workspace
+    url = create(w)
+    assert upload(w, url, b"ab").status_code == 200
+    assert upload(w, url, b"c", 2).status_code == 200
+    assert upload(w, url, b"def", 3).status_code == 200
+    assert upload(w, url, b"ab").status_code == 200
+    state = w.client.get(url).json()["files"][0]
+    assert [c["offset"] for c in state["chunks"]] == [0, 2, 3]
+    assert state["uploadedBytes"] == 6
+    assert w.client.post(url + "/complete?defer_validation=true").status_code == 200

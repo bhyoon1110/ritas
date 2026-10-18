@@ -131,7 +131,7 @@ def test_supermium_native_profile_uses_hardware_policy(options, memory, cores, l
     assert result["profile"] == {"browser": "supermium", "lowResource": low, "uploadChunkBytes": (2 if low else 4) * 1024 * 1024, "fileListLimit": 200 if low else 500}
     assert "Supermium" in result["heading"]
     assert ("자원 절약 모드" if low else "일반 성능 모드") in result["heading"]
-    assert ("2MB" if low else "4MB") in result["reason"]
+    assert "조각 크기를 자동 조절" in result["reason"]
     assert "필수 브라우저 기능이 없습니다" not in result["reason"]
 
 

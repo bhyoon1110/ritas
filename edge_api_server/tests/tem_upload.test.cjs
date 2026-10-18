@@ -26,7 +26,7 @@ function setup(t, low=true, version=144) {
   assert.equal(w.RIST_CLIENT_PROFILE.lowResource,low);
   w.fetch = async()=>response({roles:[]});
   w.eval(script.replace('\n    renderRequestOptions([]);', `
-    window.__tem = {chunkCrc32, entryToBundleItems, addBundleItems, renderFileList, uploadBundleWithSession,
+    window.__tem = {chunkCrc32, chunkCrc32Main, TemTransfer, sendPreparedTemFiles, entryToBundleItems, addBundleItems, renderFileList, uploadBundleWithSession,
       setBusy, temRecovery, loadTemWork, persistTemWork, rememberTemUpload, rememberTemJob,
       checkTemResumeSelection, waitTemVisible, requestTemWake, releaseTemWake, temReturned,
       restoreTemWork, waitForReportJob, temRecoveryError, items:function(){return bundleItems;}};
@@ -39,6 +39,39 @@ test('TEM script syntax and known CRC32 vector with FileReader fallback',async t
   acorn.parse(script,{ecmaVersion:'latest'});
   const {w,api}=setup(t);
   assert.equal(await api.chunkCrc32(new w.Blob(['123456789'])),'cbf43926');
+});
+
+for(const low of [false,true]) test(`prepares at most one next chunk while keeping one network request (low=${low})`,async t=>{
+  const {w,d,api}=setup(t,low);
+  let network=0,peak=0,workers=0,terminated=0,overlapped=0,pendingCRC=0;
+  const offsets=[];
+  w.Worker=class{
+    constructor(){workers++;}
+    postMessage(task){
+      if(network)overlapped++;
+      assert.equal(++pendingCRC,1);
+      api.chunkCrc32Main(task.blob).then(crc=>{if(network)overlapped++;pendingCRC--;this.onmessage({data:{id:task.id,crc32:crc}});});
+    }
+    terminate(){terminated++;}
+  };
+  w.fetch=async url=>response(url.includes('/complete')?{jobId:'job',status:'queued'}:{uploadId:'session',maxChunkBytes:8*1024*1024});
+  w.XMLHttpRequest=class{
+    constructor(){this.upload={};}open(){}
+    send(form){
+      peak=Math.max(peak,++network);offsets.push(Number(form.get('offset')));
+      this.upload.onload();
+      setTimeout(()=>{network--;this.status=200;this.responseText=JSON.stringify({chunkProcessingMs:2});this.onload();},100);
+    }
+  };
+  api.addBundleItems([{path:'data.zip',file:new w.File([new Uint8Array(22*1024*1024)],'data.zip')}]);
+  await api.uploadBundleWithSession();
+  assert.equal(peak,1);assert.equal(workers,1);assert.equal(terminated,1);
+  assert.equal(overlapped>0,!low);
+  assert(offsets.every((v,i)=>i===0?v===0:v>offsets[i-1]));
+  assert.match(d.getElementById('ahn-transfer-speed').textContent,/MiB\/s.*전송 완료/);
+  assert.match(d.getElementById('ahn-transfer-detail').textContent,/서버 조각 검증·저장/);
+  // At high capacity: two 4MiB successes trigger 8MiB; one prefetched 4MiB may follow.
+  if(!low)assert(offsets.some((v,i)=>i>0&&v-offsets[i-1]===8*1024*1024));
 });
 
 test('resume skips committed bytes, validates prefix, and completes without a second session',async t=>{
@@ -306,7 +339,7 @@ for(const version of [144,150]) for(const low of [true,false]) test(`Supermium $
   assert.equal(api.items().length,3000);
   assert.equal(d.querySelectorAll('.ahn-chip').length,(low?200:500)+1);
   assert.match(d.body.textContent,/목록만 생략/);
-  assert.match(d.body.textContent,low?/자원 절약 모드: 2MB/:/일반 성능 모드: 4MB/);
+  assert.match(d.body.textContent,low?/자원 절약: 2 MiB/:/성능 여유: 4 MiB/);
   api.addBundleItems(files);
   assert.equal(api.items().length,3000);
   assert.throws(()=>api.addBundleItems(Array.from({length:3000},(_,i)=>({path:`tem/${i}.tif`,file:files[i].file}))),/5000/);
@@ -358,10 +391,10 @@ for(const version of [144,150]) for(const low of [true,false]) test(`Supermium $
   api.addBundleItems([{path:'data.zip',file:new w.File([new Uint8Array(5*1024*1024)],'data.zip')}]);
   assert.equal((await api.uploadBundleWithSession()).jobId,'job');
   assert.equal(peak,1);
-  assert.equal(chunks.length,low?4:3);
+  assert.equal(chunks.length,low?5:3);
   assert.deepEqual(chunks[0],chunks[1]);
-  assert.deepEqual(chunks.map(x=>x.size),(low?[2,2,2,1]:[4,4,1]).map(x=>x*1024*1024));
-  assert.deepEqual(chunks.map(x=>x.offset),(low?[0,0,2,4]:[0,0,4]).map(x=>x*1024*1024));
+  assert.deepEqual(chunks.map(x=>x.size),(low?[2,2,1,1,1]:[4,4,1]).map(x=>x*1024*1024));
+  assert.deepEqual(chunks.map(x=>x.offset),(low?[0,0,2,3,4]:[0,0,4]).map(x=>x*1024*1024));
   assert.ok(chunks.every(x=>/^[0-9a-f]{8}$/.test(x.crc)));
   assert.ok(urls.includes('/api/v1/tem/upload-sessions/session/complete?defer_validation=true'));
 });
