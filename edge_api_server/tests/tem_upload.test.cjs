@@ -11,6 +11,7 @@ const scripts = [...html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)].map(m
 const script = scripts.find(s=>s.includes('function chunkCrc32'));
 const profileScript = scripts.find(s=>s.includes('window.RIST_CLIENT_PROFILE ='));
 const response = data => ({ok:true,status:200,json:async()=>data,text:async()=>JSON.stringify(data)});
+const tick = () => new Promise(resolve=>setTimeout(resolve,15));
 function setup(t, low=true, version=144) {
   const dom = new JSDOM(html, {runScripts:'outside-only',url:'http://localhost/tem'});
   t.after(()=>dom.window.close());
@@ -26,7 +27,9 @@ function setup(t, low=true, version=144) {
   w.fetch = async()=>response({roles:[]});
   w.eval(script.replace('\n    renderRequestOptions([]);', `
     window.__tem = {chunkCrc32, entryToBundleItems, addBundleItems, renderFileList, uploadBundleWithSession,
-      setBusy, items:function(){return bundleItems;}};
+      setBusy, temRecovery, loadTemWork, persistTemWork, rememberTemUpload, rememberTemJob,
+      checkTemResumeSelection, waitTemVisible, requestTemWake, releaseTemWake, temReturned,
+      restoreTemWork, waitForReportJob, temRecoveryError, items:function(){return bundleItems;}};
     renderRequestOptions([]);`));
   assert.ok(w.__tem);
   return {w,d:w.document,api:w.__tem};
@@ -36,6 +39,152 @@ test('TEM script syntax and known CRC32 vector with FileReader fallback',async t
   acorn.parse(script,{ecmaVersion:'latest'});
   const {w,api}=setup(t);
   assert.equal(await api.chunkCrc32(new w.Blob(['123456789'])),'cbf43926');
+});
+
+test('resume skips committed bytes, validates prefix, and completes without a second session',async t=>{
+  const {w,api}=setup(t);
+  const id='a'.repeat(32), file=new w.File([new Uint8Array(5*1024*1024)],'data.zip',{lastModified:123});
+  const saved={path:'data.zip',size:file.size,lastModified:123,uploadedBytes:2*1024*1024,
+    chunks:[{offset:0,size:2*1024*1024,crc32:await api.chunkCrc32(file.slice(0,2*1024*1024))}]};
+  const urls=[],offsets=[];
+  api.addBundleItems([{path:'data.zip',file}]);
+  api.rememberTemUpload(id);
+  w.fetch=async url=>{urls.push(url);return response(url.endsWith(id)?{uploadId:id,resumable:true,files:[saved]}:{jobId:'b'.repeat(32),status:'queued'});};
+  w.XMLHttpRequest=class {
+    constructor(){this.upload={};}
+    open(){}
+    send(form){offsets.push(Number(form.get('offset')));this.status=200;this.responseText='{}';setTimeout(()=>this.onload(),0);}
+  };
+  await api.uploadBundleWithSession();
+  assert.deepEqual(offsets,[2,4].map(x=>x*1024*1024));
+  assert.equal(urls.filter(url=>url==='/api/v1/tem/upload-sessions').length,0);
+  assert.equal(JSON.parse(w.localStorage.getItem('rist.tem.resume.v1.anonymous')).uploadId,id);
+});
+
+test('reselected same-size and same-date but changed content cannot resume',async t=>{
+  const {w,api}=setup(t);
+  const items=[{path:'a.docx',file:new w.File(['abcdef'],'a.docx',{lastModified:12})}];
+  const state={resumable:true,files:[{path:'a.docx',size:6,lastModified:12,uploadedBytes:3,
+    chunks:[{offset:0,size:3,crc32:await api.chunkCrc32(new w.Blob(['xyz']))}]}]};
+  await assert.rejects(api.checkTemResumeSelection(items,state),/파일 내용이 다릅니다/);
+  state.files[0].lastModified=13;
+  await assert.rejects(api.checkTemResumeSelection(items,state),/수정일/);
+  await assert.rejects(api.checkTemResumeSelection([],state),/전체 파일/);
+});
+
+test('lost completion response restores the server job without resending any file',async t=>{
+  const {w,api}=setup(t);
+  const job={jobId:'b'.repeat(32),status:'queued'};
+  api.addBundleItems([{path:'a.docx',file:new w.File(['docx'],'a.docx')}]);
+  api.rememberTemUpload('a'.repeat(32));
+  w.fetch=async()=>response({job});
+  w.XMLHttpRequest=class{constructor(){assert.fail('no chunks after completion');}};
+  assert.equal((await api.uploadBundleWithSession()).jobId,job.jobId);
+  assert.equal(api.temRecovery.record.jobId,job.jobId);
+});
+
+test('job identity is saved before polling and completed state survives a reload without redirect',async t=>{
+  const {w,d,api}=setup(t);
+  const id='b'.repeat(32);
+  let requests=0;
+  w.fetch=async()=>{requests++;return response({jobId:id,status:'completed',summary:{}});};
+  const work=api.waitForReportJob({jobId:id,status:'queued'});
+  assert.equal(JSON.parse(w.localStorage.getItem('rist.tem.resume.v1.anonymous')).jobId,id);
+  await work;
+  api.temRecovery.record=null;
+  api.loadTemWork('anonymous');
+  await api.restoreTemWork();
+  assert.equal(requests,2);
+  assert.match(d.getElementById('ahn-recovery-message').textContent,/이전 보고서가 완성/);
+  assert.equal(w.location.pathname,'/tem');
+  assert.equal(d.getElementById('ahn-recovery-resume').disabled,false);
+});
+
+test('records are isolated by login and unavailable storage does not break the current upload',t=>{
+  const {w,api}=setup(t);
+  api.loadTemWork('author');api.rememberTemUpload('a'.repeat(32));
+  api.loadTemWork('other');assert.equal(api.temRecovery.record,null);
+  api.loadTemWork('author');assert.equal(api.temRecovery.record.uploadId,'a'.repeat(32));
+  Object.defineProperty(w,'localStorage',{get(){throw new Error('blocked');}});
+  api.rememberTemJob({jobId:'b'.repeat(32)});
+  assert.equal(api.temRecovery.record.jobId,'b'.repeat(32));
+});
+
+test('hidden/offline transfer waits for both visible and online without repeated continuation',async t=>{
+  const {w,d,api}=setup(t);
+  let visible=false,online=false,continued=0;
+  Object.defineProperty(d,'visibilityState',{get:()=>visible?'visible':'hidden'});
+  Object.defineProperty(w.navigator,'onLine',{get:()=>online});
+  const wait=api.waitTemVisible().then(()=>continued++);
+  await tick();assert.equal(continued,0);
+  visible=true;d.dispatchEvent(new w.Event('visibilitychange'));
+  await tick();assert.equal(continued,0);
+  online=true;w.dispatchEvent(new w.Event('online'));await wait;
+  w.dispatchEvent(new w.Event('online'));d.dispatchEvent(new w.Event('visibilitychange'));
+  assert.equal(continued,1);
+});
+
+test('a page reopened while offline restores on return, only once across repeated events',async t=>{
+  const {w,d,api}=setup(t);let online=false,requests=0,release;
+  Object.defineProperty(w.navigator,'onLine',{get:()=>online});
+  api.rememberTemUpload('a'.repeat(32));
+  w.fetch=async()=>{requests++;await new Promise(resolve=>release=resolve);return response({uploadedBytes:3});};
+  await api.restoreTemWork();assert.equal(requests,0);
+  online=true;w.dispatchEvent(new w.Event('online'));
+  w.dispatchEvent(new w.Event('pageshow'));d.dispatchEvent(new w.Event('visibilitychange'));
+  await tick();assert.equal(requests,1);release();await tick();
+  assert.match(d.getElementById('ahn-recovery-message').textContent,/같은 전체 파일/);
+});
+
+test('unsupported, denied and late wake locks never block upload or keep a background screen lock',async t=>{
+  const {w,d,api}=setup(t);
+  api.temRecovery.uploadActive=true;
+  await api.requestTemWake(); // no API / insecure context
+  Object.defineProperty(w,'isSecureContext',{value:true});
+  let requests=0,releases=0,resolveLock;
+  Object.defineProperty(w.navigator,'wakeLock',{value:{request:async()=>{requests++;throw Error('denied');}},configurable:true});
+  await api.requestTemWake();assert.equal(requests,1);assert.equal(api.temRecovery.wake,null);
+  Object.defineProperty(w.navigator,'wakeLock',{value:{request:()=>new Promise(resolve=>resolveLock=resolve)},configurable:true});
+  const pending=api.requestTemWake();
+  api.temRecovery.uploadActive=false;
+  resolveLock({release:async()=>releases++});await pending;
+  assert.equal(releases,1);
+  api.temRecovery.uploadActive=true;
+  Object.defineProperty(w.navigator,'wakeLock',{value:{request:async()=>({release:async()=>releases++,addEventListener(){}})}});
+  await api.requestTemWake();assert.ok(api.temRecovery.wake);
+  Object.defineProperty(d,'visibilityState',{value:'hidden'});
+  d.dispatchEvent(new w.Event('visibilitychange'));await tick();
+  assert.equal(releases,2);assert.equal(api.temRecovery.wake,null);
+});
+
+test('expired work clears the identifier; authorization failure preserves it for the original user',t=>{
+  const {api,d}=setup(t);
+  api.rememberTemUpload('a'.repeat(32));
+  api.temRecoveryError({status:403});assert.ok(api.temRecovery.record);
+  assert.match(d.getElementById('ahn-recovery-message').textContent,/원래 계정/);
+  api.temRecoveryError({status:404});assert.equal(api.temRecovery.record,null);
+  assert.match(d.getElementById('ahn-recovery-message').textContent,/만료/);
+});
+
+test('deployed Chrome49 compiled TEM program restores a completed job',async t=>{
+  const fs=require('node:fs'),path=require('node:path'),{createHash}=require('node:crypto');
+  const root=path.resolve(__dirname,'../app/static/chrome49');
+  const manifest=JSON.parse(fs.readFileSync(path.join(root,'manifest.json'),'utf8'));
+  const hash=createHash('sha256').update(script.trim()).digest('hex');
+  assert.ok(manifest.scripts[hash],'TEM asset must be rebuilt');
+  const dom=new JSDOM(html,{runScripts:'outside-only',url:'http://localhost/tem'});
+  t.after(()=>dom.window.close());
+  const w=dom.window,id='b'.repeat(32);
+  w.localStorage.setItem('rist.tem.resume.v1.anonymous',JSON.stringify({version:1,jobId:id}));
+  delete w.AbortController;delete w.Blob.prototype.arrayBuffer;
+  w.eval(fs.readFileSync(path.join(root,manifest.runtime),'utf8'));
+  // The compatibility runtime intentionally installs its XHR-backed fetch.
+  // Mock transport after bootstrap; its cookie/abort behavior has separate tests.
+  w.fetch=async url=>response(url.includes('/jobs/')?{jobId:id,status:'completed',summary:{temSampleCount:2}}:{roles:[]});
+  w.eval(fs.readFileSync(path.join(root,manifest.scripts[hash]),'utf8'));
+  await tick();
+  assert.match(w.document.getElementById('ahn-recovery-message').textContent,/이전 보고서가 완성/);
+  assert.equal(w.document.getElementById('ahn-recovery-resume').disabled,false);
 });
 
 async function finishCollection(d) {
