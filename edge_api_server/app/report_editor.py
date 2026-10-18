@@ -168,8 +168,9 @@ def _write_revision(store, new_job, old_job, changes, project, settings, databas
         _REVISION_SLOT.release()
 
 
-def editor_page(prefix, job_id):
-    config = json.dumps({"prefix": prefix, "jobId": job_id}, ensure_ascii=False).replace("<", "\\u003c")
+def editor_page(prefix, job_id, *, project=None):
+    project = project or ("RAMAN" if "/raman/" in prefix else "FT-IR")
+    config = json.dumps({"prefix": prefix, "jobId": job_id, "project": project}, ensure_ascii=False).replace("<", "\\u003c")
     template = Path(__file__).with_name("report_editor.html").read_text(encoding="utf-8")
     script = "\n".join(Path(__file__).with_name(name).read_text(encoding="utf-8")
                        for name in ("report_direct_editor.js", "report_editor.js"))

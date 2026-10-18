@@ -120,6 +120,11 @@ class AhnReportJob:
     error: dict[str, Any] | None = None
     error_event_id: str | None = None
     validate_upload: bool = False
+    owner_user_id: str | None = None
+    parent_job_id: str | None = None
+    transfer_metadata: dict[str, str] | None = None
+    review_error: str | None = None
+    active_revisions: int = 0
 
 
 @dataclass
@@ -804,8 +809,9 @@ def _cleanup_old_jobs() -> None:
         expired = [
             job_id
             for job_id, job in _ahn_report_jobs.items()
-            if now - job.created_at > AHN_REPORT_JOB_TTL_SECONDS
+            if now - job.updated_at > AHN_REPORT_JOB_TTL_SECONDS
             and job.status not in {"queued", "running"}
+            and not job.active_revisions
         ]
         jobs = [
             _ahn_report_jobs.pop(job_id, None)
@@ -954,6 +960,7 @@ def _create_ahn_job(
     database: Database | None = None,
     usage_archive: UsageArchive | None = None,
     usage_client_context: dict[str, str | None] | None = None,
+    *, owner_user_id: str | None = None,
 ) -> AhnReportJob:
     output_dir = work_dir / "output"
     pptx_path = output_dir / "tem-report.pptx"
@@ -976,6 +983,7 @@ def _create_ahn_job(
         usage_client_context=usage_client_context or {},
         created_at=now,
         updated_at=now,
+        owner_user_id=owner_user_id,
     )
     with _ahn_report_jobs_lock:
         _ahn_report_jobs[job_id] = job
@@ -1130,6 +1138,9 @@ def _process_ahn_job(job: AhnReportJob) -> None:
         )
         return
     try:
+        from .tem_report_editor import prepare_review
+        _set_job_state(job, progress_pct=90, message="TEM PPT 미리보기와 메일 문안을 준비하는 중입니다.")
+        prepare_review(job, manifest)
         _build_package(job.output_dir, job.package_path)
         job.package_path = register_generated_report_package(
             settings=job.settings,
@@ -1213,6 +1224,7 @@ def _submit_ahn_job(
     usage_client_context: dict[str, str | None] | None = None,
     *,
     validate_upload: bool = False,
+    owner_user_id: str | None = None,
 ) -> AhnReportJob:
     slots = _ahn_pending_slots
     if not slots.acquire(blocking=False):
@@ -1220,7 +1232,7 @@ def _submit_ahn_job(
     job = None
     try:
         job = _create_ahn_job(input_root, work_dir, error_archive, settings, database,
-                              usage_archive, usage_client_context)
+                              usage_archive, usage_client_context, owner_user_id=owner_user_id)
         job.validate_upload = validate_upload
         future = _ahn_report_executor.submit(_run_ahn_job, job)
         future.add_done_callback(lambda _future: slots.release())
@@ -1264,6 +1276,10 @@ def _job_payload(job: AhnReportJob) -> dict[str, Any]:
         }
     return {
         "jobId": job.job_id,
+        "parentJobId": job.parent_job_id,
+        "editUrl": f"/api/v1/tem/report/jobs/{job.job_id}/edit" if job.status == "completed" else None,
+        "previewUrl": f"/api/v1/tem/report/jobs/{job.job_id}/preview" if job.status == "completed" else None,
+        "transfer": job.transfer_metadata,
         "status": job.status,
         "progressPct": job.progress_pct,
         "message": job.message,
@@ -1676,13 +1692,13 @@ def build_ahn_page() -> str:
       </div>
       <section class="ahn-result" id="ahn-result" hidden>
         <div class="ahn-summary" id="ahn-summary"></div>
-        <div class="ahn-downloads">
+        <div class="ahn-downloads" hidden style="display:none">
           <a href="#" class="ahn-download" id="ahn-download-pptx" aria-disabled="true">PPTX 다운로드</a>
           <a href="#" class="ahn-download" id="ahn-download-package" aria-disabled="true">보고서 ZIP 다운로드</a>
           <a href="#" class="ahn-download" id="ahn-download-json" aria-disabled="true">분석 JSON 다운로드</a>
         </div>
       </section>
-      <section class="ahn-transfer" id="ahn-report-transfer">
+      <section class="ahn-transfer" id="ahn-report-transfer" hidden style="display:none">
         <div class="ahn-transfer-head">
           <strong>보고서 전송 정보</strong>
           <span>보고서를 확인한 뒤 공유 저장소와 LIMS 전송 대기열에 등록합니다.</span>
@@ -1977,7 +1993,7 @@ def build_ahn_page() -> str:
       if (percent < 25) return "raw 파일을 서버로 전송하는 중입니다.";
       if (percent < 48) return "TEM/STEM/EDS/코팅층 폴더를 분류하는 중입니다.";
       if (percent < 72) return "코팅층 OCR과 분석 JSON을 만드는 중입니다.";
-      return "PowerPoint 보고서를 생성하는 중입니다. 완료되면 다운로드 버튼이 활성화됩니다.";
+      return "PowerPoint 보고서를 생성하는 중입니다. 완료되면 보고서 미리보기로 이동합니다.";
     }
     function updateProgressVisibility() {
       progress.classList.toggle(
@@ -2798,6 +2814,7 @@ def build_ahn_page() -> str:
         renderSummary(payload);
         setStatus("TEM 예제 보고서가 생성되었습니다.", false);
         finishProgress("TEM 예제 보고서가 생성되었습니다.");
+        window.location.assign(payload.editUrl || ("/api/v1/tem/report/jobs/" + encodeURIComponent(payload.jobId) + "/edit"));
       } catch (error) {
         setStatus(error.message || String(error), true);
         failProgress(
@@ -2830,6 +2847,7 @@ def build_ahn_page() -> str:
         renderSummary(payload);
         setStatus("TEM 보고서가 생성되었습니다.", false);
         finishProgress("TEM 보고서가 생성되었습니다.");
+        window.location.assign(payload.editUrl || ("/api/v1/tem/report/jobs/" + encodeURIComponent(payload.jobId) + "/edit"));
       } catch (error) {
         setStatus(error.message || String(error), true);
         failProgress(
@@ -2984,6 +3002,7 @@ def _complete_tem_upload_session(request: Request, session: AhnUploadSession, *,
         app_usage_archive(request.app),
         request_usage_client_context(request),
         validate_upload=defer_validation,
+        owner_user_id=getattr(getattr(request.state, "auth_context", None), "user_id", None),
     )
     session.finalized = True
     set_usage_context(
@@ -3033,6 +3052,7 @@ async def analyze_tem(
             app_usage_archive(request.app),
             request_usage_client_context(request),
             validate_upload=defer_validation,
+            owner_user_id=getattr(getattr(request.state, "auth_context", None), "user_id", None),
         )
     except Exception:
         request.state.error_cleanup_paths = [work_dir]
@@ -3060,6 +3080,7 @@ def tem_example(request: Request) -> JSONResponse:
             getattr(request.app.state, "database", None),
             app_usage_archive(request.app),
             request_usage_client_context(request),
+            owner_user_id=getattr(getattr(request.state, "auth_context", None), "user_id", None),
         )
     except Exception:
         shutil.rmtree(work_dir, ignore_errors=True)
@@ -3070,28 +3091,16 @@ def tem_example(request: Request) -> JSONResponse:
 
 
 @router.get("/api/v1/tem/report/jobs/{job_id}", response_class=JSONResponse, tags=["tem"])
-def get_tem_report_job(job_id: str) -> JSONResponse:
-    _cleanup_old_jobs()
-    job = _ahn_report_jobs.get(job_id)
-    if job is None:
-        raise ApiException(
-            404,
-            "TEM_REPORT_NOT_FOUND",
-            "TEM 보고서 작업 정보를 찾을 수 없습니다. 보고서를 다시 생성하세요.",
-        )
+def get_tem_report_job(request: Request, job_id: str) -> JSONResponse:
+    from .tem_report_editor import authorized_job
+    job = authorized_job(request, job_id, ready=False)
     return JSONResponse(_job_payload(job))
 
 
 @router.get("/api/v1/tem/report/jobs/{job_id}/download/{kind}", tags=["tem"])
-def download_tem_report(job_id: str, kind: str) -> FileResponse:
-    _cleanup_old_jobs()
-    job = _ahn_report_jobs.get(job_id)
-    if job is None:
-        raise ApiException(
-            404,
-            "TEM_REPORT_NOT_FOUND",
-            "TEM 보고서 다운로드 정보를 찾을 수 없습니다. 보고서를 다시 생성하세요.",
-        )
+def download_tem_report(request: Request, job_id: str, kind: str) -> FileResponse:
+    from .tem_report_editor import authorized_job
+    job = authorized_job(request, job_id, ready=False)
     if job.status != "completed":
         raise ApiException(
             409,
@@ -3126,6 +3135,10 @@ def send_tem_report_job(
     job_id: str,
     payload: PreviewReportSendRequest,
 ) -> dict[str, Any]:
+    from .tem_report_editor import authorized_job
+    job = authorized_job(request, job_id)
+    if job.review_error or not (job.output_dir / "tem-report.pdf").is_file():
+        raise ApiException(409, "TEM_REVIEW_REQUIRED", "보고서 미리보기를 생성·확인한 뒤 전송하세요.")
     effective_payload = authenticated_transfer_payload(request, payload, "TEM")
     set_usage_context(
         request,
@@ -3136,15 +3149,6 @@ def send_tem_report_job(
         equipment_code=effective_payload.equipment_code,
         operator_id=effective_payload.operator_id,
     )
-    _cleanup_old_jobs()
-    with _ahn_report_jobs_lock:
-        job = _ahn_report_jobs.get(job_id)
-    if job is None:
-        raise ApiException(
-            404,
-            "TEM_REPORT_NOT_FOUND",
-            "TEM 보고서 작업 정보를 찾을 수 없습니다. 보고서를 다시 생성하세요.",
-        )
     try:
         return send_preview_report_package(
             settings=getattr(request.app.state, "settings", None),
@@ -3163,6 +3167,10 @@ def send_tem_report_job(
             str(exc),
             retryable=exc.retryable,
         ) from exc
+
+
+from .tem_report_editor import install_tem_editor
+install_tem_editor(router)
 
 
 def create_tem_preview_app() -> FastAPI:

@@ -17,6 +17,8 @@ import pytest
 import app.ahn_web as tem
 from app.errors import ApiException
 
+pytestmark = pytest.mark.usefixtures("tem_unit_runtime")
+
 
 def image_bytes(size=(80, 60)):
     buffer = BytesIO()

@@ -7,6 +7,31 @@ import pymysql
 import pytest
 
 
+@pytest.fixture
+def tem_unit_runtime(monkeypatch, tmp_path):
+    """Offline unit tests never launch Office or write into operational storage."""
+    from app import tem_report_editor
+    from reportlab.pdfgen.canvas import Canvas
+    from zipfile import ZipFile
+
+    monkeypatch.setenv("RIST_AUTH_ENABLED", "false")
+    monkeypatch.setenv("RIST_STORAGE_ROOT", str(tmp_path / "storage"))
+    monkeypatch.setenv("RIST_ERROR_ARCHIVE_ROOT", str(tmp_path / "errors"))
+    monkeypatch.setenv("RIST_USAGE_LOG_ROOT", str(tmp_path / "usage"))
+
+    def convert(source, target):
+        with ZipFile(source) as archive:
+            count = len([n for n in archive.namelist() if n.startswith("ppt/slides/slide") and n.endswith(".xml")])
+        canvas = Canvas(str(target))
+        for _ in range(count):
+            canvas.drawString(40, 40, "Unit-test preview placeholder")
+            canvas.showPage()
+        canvas.save()
+        return target
+
+    monkeypatch.setattr(tem_report_editor, "convert_pptx_to_pdf", convert)
+
+
 def _admin_params() -> dict[str, object]:
     return {
         "host": os.getenv("RIST_TEST_DB_HOST", "127.0.0.1"),

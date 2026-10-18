@@ -1,6 +1,13 @@
 (function () {
   "use strict";
   var config = JSON.parse(document.getElementById("editor-config").textContent);
+  var project = config.project || (config.prefix.indexOf("/tem/") >= 0 ? "TEM" : config.prefix.indexOf("/raman/") >= 0 ? "RAMAN" : "FT-IR");
+  var back = document.getElementById("analysis-back");
+  back.href = project === "TEM" ? "/tem" : project === "RAMAN" ? "/raman" : "/ftir";
+  if (project === "TEM") {
+    document.getElementById("recipient-preview").textContent = "읽기 전용 보고서";
+    document.getElementById("analysis-help").textContent = "전송에는 기존 SSO 인증과 전송 권한이 필요합니다. 이미지 교체·재분석은 TEM 화면에서 진행하세요. 문구·표 수정은 원본 분석 데이터와 별도로 최종 PPT에 반영됩니다. 코팅층 두께를 수정하면 전체 평균도 함께 확인·수정하세요.";
+  }
   var currentId = config.jobId, model = null, dirty = false, busy = false;
   var editor = document.getElementById("editor"), status = document.getElementById("status");
   var save = document.getElementById("save"), send = document.getElementById("send"), download = document.getElementById("download");
@@ -144,7 +151,6 @@
     function loadPage(number) {
       if (loading || sending) return;
       loading = true; controls(); info.textContent = "의뢰 목록 조회 중입니다.";
-      var project = config.prefix.indexOf("/raman/") >= 0 ? "RAMAN" : "FT-IR";
       request("/api/v1/requests?page=" + number + "&pageSize=200&experimentType=" + encodeURIComponent(project), "GET", null, function (error, result) {
         loading = false;
         if (error) info.textContent = "조회 실패: " + error.message + " 직접 입력은 계속 사용할 수 있습니다.";
@@ -180,6 +186,7 @@
     var top = element("section", editor); element("h2", top, "공통 정보 / 의뢰 조회");
     inputs.title = bind("title",field(top, "보고서 제목", model.title, false, 200));
     inputs.completionDate = bind("completionDate",field(top,"완료일",model.completionDate,false,10)); inputs.completionDate.type = "date";
+    if (project === "TEM") element("p",top,"제목은 PPT 문서 속성에, 완료일·전송 정보는 최종 ZIP의 report-review.json에 저장됩니다. 페이지에 표시된 문구는 오른쪽에서 직접 수정하세요.").className = "muted";
     var grid = element("div", top); grid.className = "grid";
     Object.keys(labels).forEach(function (key) { inputs[key] = bind("transfer/" + key,field(grid, labels[key], model.transfer[key], false, key === "limsExperimentCode" ? 50 : 100)); });
     lookup = requestLookup(top);
@@ -280,7 +287,7 @@
     request(url(id),"GET",null,function (error,job) {
       if (error || job.status === "failed") {
         busy = false; if (!error) activeRevision = null;
-        message((error ? error.message : job.error) + " 입력 내용은 유지됩니다. ‘지금 반영 / 재시도’를 눌러 주세요.",true); availability(); return;
+        message((error ? error.message : (job.error && job.error.message) || job.error || job.message) + " 입력 내용은 유지됩니다. ‘지금 반영 / 재시도’를 눌러 주세요.",true); availability(); return;
       }
       if (job.status === "completed") {
         currentId = id; saved = snapshot; activeRevision = null; busy = false; retries = 0;

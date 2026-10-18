@@ -1794,7 +1794,7 @@ _PAGE_SHELL = """
   </span>
   <div class="ftir-file-list" id="ftir-file-list"></div>
 </section>
-<section class="ftir-report-meta-band" id="ftir-report-transfer">
+<section class="ftir-report-meta-band" id="ftir-report-transfer" hidden style="display:none">
   <details class="ftir-report-meta-panel" open>
     <summary>보고서 전송 정보 <span>의뢰 조회 또는 직접 입력</span></summary>
     <div class="ftir-report-meta-toolbar">
@@ -5239,6 +5239,8 @@ _UPLOAD_SCRIPT = """
       lastReportSnapshot = reportSnapshot;
       setReportDownloadLink(job);
       status.textContent = "보고서 생성 완료";
+      await saveWorkspaceNow();
+      window.location.assign(job.editUrl || ("/api/v1/ftir/report/jobs/" + encodeURIComponent(job.jobId) + "/edit"));
     } catch (err) {
       setMessage(err.message || "보고서 생성에 실패했습니다.");
       status.textContent = "보고서 생성 실패";

@@ -1694,7 +1694,14 @@ def _add_coating_table_picture(
     tmp_dir: Path,
 ):
     table_image = _coating_table_image_path(rows, width, height, tmp_dir)
-    return slide.shapes.add_picture(str(table_image), left, top, width=width, height=height)
+    picture = slide.shapes.add_picture(str(table_image), left, top, width=width, height=height)
+    # Keep the exact raster appearance, but retain cell values for the analyst
+    # review UI. This contains only the already-visible table, not raw paths.
+    import json
+    picture.name = "TEM coating thickness table"
+    picture.element.xpath("./p:nvPicPr/p:cNvPr")[0].set(
+        "descr", "rist-coating-table:" + json.dumps(rows, ensure_ascii=False))
+    return picture
 
 
 def _remove_tables(slide) -> None:

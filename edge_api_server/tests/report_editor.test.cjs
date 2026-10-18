@@ -56,7 +56,7 @@ test('analyst editor is ES5 and renders text without HTML interpretation',t=>{
   assert.equal(h.q('slide-image').getAttribute('src'),h.prefix+'/original/edit-slides/0');
   assert(h.field('분석 결과 요약 · 문단 1').closest('details').hidden);
 });
-for(const kind of ['ftir','raman']) test(kind+' mail draft uses wide resizable fields and keeps autosaving long text',t=>{
+for(const kind of ['ftir','raman','tem']) test(kind+' mail draft uses wide resizable fields and keeps autosaving long text',t=>{
   const h=setup(t,kind),subject=h.field('메일 제목'),body=h.field('메일 본문');
   assert.equal(subject.tagName,'TEXTAREA');assert.equal(subject.rows,2);assert.equal(body.rows,12);
   assert(h.q('mail-editor').contains(subject));assert(h.q('mail-editor').contains(body));
@@ -71,7 +71,7 @@ for(const kind of ['ftir','raman']) test(kind+' mail draft uses wide resizable f
   assert.equal(h.posts[1].body.auxiliary.email_body,content+'추가 안내');
   assert.equal(h.q('download').getAttribute('aria-disabled'),'false');
 });
-for(const kind of ['ftir','raman']) test(kind+' saves blank fields and edited AI prose into new revision',t=>{
+for(const kind of ['ftir','raman','tem']) test(kind+' saves blank fields and edited AI prose into new revision',t=>{
   const h=setup(t,kind);
   h.input('의뢰번호','REQ-1');h.input('실험코드','LIMS-01');h.input('실험장비','LAB1');h.input('실험자','OP1');
   h.input('실험조건 및 실험환경 1행 값','23°C');
@@ -133,10 +133,10 @@ test('global rendering busy response retries with a bound and preserves inputs',
   assert.equal(h.posts.length,6);assert.equal(h.timers.size,0);assert(h.q('send').disabled);
   assert.equal(h.field('보고서 제목').value,'유지');
 });
-for(const kind of ['ftir','raman']) test(kind+' lookup is experiment-scoped, manual entry works, SSO stays unchanged',t=>{
+for(const kind of ['ftir','raman','tem']) test(kind+' lookup is experiment-scoped, manual entry works, SSO stays unchanged',t=>{
   const h=setup(t,kind,'SSO-001');h.lookup([{requestNumber:'REQ-9',testMethodCode:'CODE-9',sampleName:'<b>시료</b>',operatorId:'NOT-SSO'}]);
   h.input('실험장비','CURRENT-LAB');h.q('request-load').click();
-  assert(h.gets.some(g=>g.url.endsWith('experimentType='+encodeURIComponent(kind==='ftir'?'FT-IR':'RAMAN'))&&g.headers['X-Request-Id']));
+  assert(h.gets.some(g=>g.url.endsWith('experimentType='+encodeURIComponent(kind==='ftir'?'FT-IR':kind.toUpperCase()))&&g.headers['X-Request-Id']));
   assert.equal(h.q('request-select').querySelectorAll('b').length,0);
   h.q('request-select').value='0';h.q('request-select').dispatchEvent(new h.w.Event('change'));
   assert.equal(h.field('의뢰번호').value,'REQ-9');assert.equal(h.field('실험코드').value,'CODE-9');
@@ -212,6 +212,22 @@ test('empty transfer fields allow report review but not sending',t=>{
 
 const clientPrograms=JSON.parse(execFileSync(process.env.RIST_TEST_PYTHON || 'python3',['-c',
   'import json; from app import ftir_web,raman_web; print(json.dumps([ftir_web._UPLOAD_SCRIPT,raman_web._UPLOAD_SCRIPT]))'],{encoding:'utf8'}));
+for(const [index,kind] of ['ftir','raman'].entries()) test(kind+' report generation saves workspace then opens editor only after completion',async()=>{
+  const code=clientPrograms[index].replace(/<\/?script\b[^>]*>/g,''),ast=acorn.parse(code,{ecmaVersion:'latest'});
+  let target;
+  function visit(node){if(!node||typeof node!=='object')return;if(node.type==='FunctionDeclaration'&&node.id.name==='createReport')target=node;Object.values(node).forEach(v=>Array.isArray(v)?v.forEach(visit):visit(v));}
+  visit(ast);assert(target);
+  const events=[], job={jobId:'review-ready',status:'completed',editUrl:'/api/v1/'+kind+'/report/jobs/review-ready/edit'};
+  const deps={files:[{}],reportTransferFormState:()=>({}),updatePersistentReportDownload:()=>{},updateReportSendAvailability:()=>{},latestAnalysisPayload:{},
+    loading:{},status:{},setBusy:()=>{},setMessage:()=>{},setReportProgress:()=>{},gd:{},currentFigurePayload:()=>({}),reportSnapshotSignature:()=>'',
+    reportAnalysisPayload:()=>({}),compactReportFigurePayload:()=>({}),reportFilesForVisibleSamples:()=>[{}],captureReportFigureImage:async()=>'',
+    reportImageFile:()=>({}),Blob:globalThis.Blob,uploadReportFilesWithSession:async()=>({jobId:'building'}),
+    pollReportJob:async()=>{events.push('completed');return job;},setReportDownloadLink:()=>{},saveWorkspaceNow:async()=>events.push('saved'),
+    window:{location:{assign:url=>events.push(url)}}};
+  const run=()=>new Function(...Object.keys(deps),'var lastReportJob,lastReportSnapshot;'+code.slice(target.start,target.end)+';return createReport();')(...Object.values(deps));
+  await run();assert.deepEqual(events,['completed','saved',job.editUrl]);
+  events.length=0;deps.pollReportJob=async()=>{throw new Error('render failed');};await run();assert.deepEqual(events,[]);
+});
 for(const [index,kind] of ['ftir','raman'].entries()) test(kind+' original workspace switches download/send to the confirmed revision',async()=>{
   const source=clientPrograms[index].match(/window.addEventListener\("storage", function\(event\) \{[\s\S]*?\n  \}\);/)[0];
   const fields={},select={value:'old'},calls=[];let handler;

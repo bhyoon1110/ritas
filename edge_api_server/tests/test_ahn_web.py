@@ -14,6 +14,8 @@ import pytest
 import app.ahn_web as ahn_web
 from app.ahn_web import build_ahn_page, create_tem_preview_app, _find_ahn_input_root
 
+pytestmark = pytest.mark.usefixtures("tem_unit_runtime")
+
 
 def _tiny_tiff_bytes() -> bytes:
     buffer = BytesIO()
@@ -136,7 +138,7 @@ def test_ahn_workspace_contains_folder_upload_controls() -> None:
     assert "syncActionState" in page
     assert "폴더 안의 raw 파일 목록을 읽는 중입니다." in page
     assert "목록 표시가 완료된 뒤 다시 실행하세요." in page
-    assert "완료되면 다운로드 버튼이 활성화됩니다." in page
+    assert "완료되면 보고서 미리보기로 이동합니다." in page
     assert 'id="ahn-report-transfer"' in page
     assert page.index('id="ahn-status"') < page.index('id="ahn-report-transfer"')
     assert 'id="ahn-request-load"' in page
@@ -159,7 +161,9 @@ def test_tem_send_route_queues_completed_package(monkeypatch, tmp_path) -> None:
         job_id="tem-job-1",
         status="completed",
         package_path=package_path,
+        output_dir=tmp_path, review_error=None,
     )
+    (tmp_path / "tem-report.pdf").write_bytes(b"test preview")
     captured = {}
 
     def fake_send_preview_report_package(**values):
