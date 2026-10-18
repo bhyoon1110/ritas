@@ -44,6 +44,16 @@ worker 를 start 하면 vLLM compose 스택도 함께 올라온다(선택 의존
 설치기는 환경/해시/의존성을 검사하고 가상환경을 백업하며, 실패 시 원래 경로로 복원한다.
 전체 서버/OCR/GPU/모델 신규 설치 패키지가 아니며 기존 데이터/DB/인증 설정을 변경하지 않는다.
 
+### TEM/FTIR/Raman PPT 미리보기: LibreOffice·한글 글꼴 폐쇄망 설치
+
+Ubuntu 24.04 기반 DGX OS / ARM64(EdgeXpert GB10·DGX Spark)용 LibreOffice Impress,
+Noto CJK·나눔·Liberation 글꼴과 필수 의존 `.deb` **201개(약 196 MiB)**를 포함했다.
+[OFFLINE_REPORT_PREVIEW.md](OFFLINE_REPORT_PREVIEW.md)의 USB 반입·계획 확인·서비스 중지·설치·검증
+절차를 따른다. Windows 실험 PC에 설치하는 패키지가 아니다.
+기본 실행은 계획 확인이며 실제 설치에는 `sudo`와 서비스 중지 확인이 필요하다.
+네트워크 다운로드, DB/가상환경/환경설정 변경, 서비스 자동 재시작은 하지 않는다.
+OS 패키지 설치는 자동 롤백하지 않으므로 유지보수 전 서버 백업을 준비한다.
+
 ### 보고서 전송 큐 DB 생성
 
 최초 설치처럼 기존 큐 데이터를 보존하면서 없는 테이블만 생성할 때는 일반 DDL을

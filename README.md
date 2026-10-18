@@ -81,6 +81,9 @@ TEM도 실제 PPT를 페이지별로 표시하고 문구·EDS 표·코팅층 두
 최종 ZIP의 `email_body.md`와 `report-review.json`에 저장한다. TEM의 보고서 제목·완료일·전송 정보는
 문서 속성/전송 메타데이터이며 기존 슬라이드에 자동 추가하지 않는다. 슬라이드 문구는 페이지에서 수정한다.
 TEM 미리보기에는 기존 FTIR/Raman과 동일하게 서버의 LibreOffice 및 한글 글꼴이 필요하다.
+폐쇄망용 **Ubuntu 24.04 ARM64 LibreOffice·한글 글꼴 설치 패키지(의존 deb 201개 포함)**는
+[오프라인 설치 안내](edge_api_server/deploy/OFFLINE_REPORT_PREVIEW.md)를 따른다.
+Git 업데이트만으로 설치되지 않으며, 유지보수 시간에 계획 확인·설치·한글 변환 검증을 실행한다.
 변환에 실패하면 생성된 PPT와 원본은 유지하고 미리보기 재시도를 안내하며 LIMS 전송은 차단한다.
 수정본은 기존 SSO 정책과 MariaDB 전송 큐로 전달하며, 큐 등록은 LIMS 수신 완료와 구분한다.
 기존에 만든 보고서를 바꾸지는 않으므로 업데이트 후 새로 생성해야 TEM 편집을 사용할 수 있다.
