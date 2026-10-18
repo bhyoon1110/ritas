@@ -71,6 +71,8 @@ def test_spectrum_ppt_reuses_original_artwork_without_sample_payload(tmp_path, c
             assert "TEM" not in text and "AlGn5" not in text and "/ 22" not in text
             names = [node.get("name") for node in root.findall(".//p:cNvPr", NS)]
             assert "Left accent" not in names and "Top accent" not in names
+            assert "Footer" not in names
+            assert "RIST Edge Report" not in text
             ids = [node.get("id") for node in root.findall(".//p:cNvPr", NS)]
             assert len(set(ids)) == len(ids)
             for shape in root.findall("p:cSld/p:spTree/p:sp", NS):
@@ -83,7 +85,7 @@ def test_spectrum_ppt_reuses_original_artwork_without_sample_payload(tmp_path, c
                 assert int(offset.get("x")) + int(extent.get("cx")) <= renderers.PPTX_SLIDE_W
                 assert int(offset.get("y")) + int(extent.get("cy")) <= renderers.PPTX_SLIDE_H
         content = "\n".join(all_text)
-        for expected in ("REQ-POSCO-001", "측정 온도", "측정 방식", "C=O", "편집한 문안을 유지합니다."):
+        for expected in ("REQ-POSCO-001", "완료일", "2026-10-15", "측정 온도", "측정 방식", "C=O", "편집한 문안을 유지합니다."):
             assert expected in content
         # Every relationship resolves inside the generated package, including
         # all figure/layout/media links used by LibreOffice and the HTML preview.
@@ -108,6 +110,7 @@ def test_other_report_types_keep_their_original_style(tmp_path, monkeypatch, cod
     with ZipFile(output) as report:
         assert f"ppt/media/{posco_template.MEDIA_NAME}" not in report.namelist()
         assert b'Left accent' in report.read("ppt/slides/slide1.xml")
+        assert b'RIST Edge Report' in report.read("ppt/slides/slide2.xml")
 
 
 def test_missing_artwork_fails_before_writing_report(tmp_path, monkeypatch):
@@ -135,6 +138,11 @@ def test_standalone_pdf_has_artwork_on_every_page(tmp_path, code):
             # PDF includes both original images, even on continuation pages.
             assert len(page.images) == 2
             assert all(char["top"] >= 18.3 * 72 / 25.4 for char in page.chars)
+            text = page.extract_text() or ""
+            assert "RIST Edge Report" not in text
+            footer = page.crop((0, page.height - 15 * 72 / 25.4, page.width, page.height))
+            assert footer.extract_text().strip() == f"{code} · {page.page_number}"
+        assert "2026-10-15" in pdf.pages[0].extract_text()
 
 
 @pytest.mark.parametrize("code", ["FTIR", "RAMAN"])

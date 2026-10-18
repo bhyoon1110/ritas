@@ -71,7 +71,9 @@ def test_all_report_formats_and_restored_edits_show_only_completion_date(tmp_pat
     renderers.render_pptx(document, tmp_path / "report.pptx")
     slides, core = pptx_text(tmp_path / "report.pptx")
     assert "완료일" in slides[0]
-    assert all(DATE in slide for slide in slides)  # Every slide footer.
+    assert DATE in slides[0]  # Business completion date stays on the cover.
+    assert all("RIST Edge Report" not in slide for slide in slides)
+    assert any(DATE not in slide for slide in slides[1:])  # No repeated footer date.
     assert TIMESTAMP in core  # Machine-readable audit timestamp is preserved.
     renderers.render_html(document, tmp_path / "report.html")
     story = []

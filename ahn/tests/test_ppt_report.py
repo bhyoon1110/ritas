@@ -191,6 +191,10 @@ def test_report_branding_keeps_content_and_original_logo(tmp_path, monkeypatch, 
         assert logo.top + logo.height < prs.slide_height
         # Branding is inherited, not inserted into the image/table content list.
         assert not any(shape.name == "RIST logo" for shape in slide.shapes)
+        for owner in (slide, slide.slide_layout, slide.slide_layout.slide_master):
+            text = " ".join(shape.text for shape in owner.shapes if getattr(shape, "has_text_frame", False))
+            assert "RIST Edge Report" not in text
+            assert "2026-07-08" not in text  # Generation date is not a visible footer.
         for shape in slide.shapes:
             if getattr(shape, "has_text_frame", False) and 0 <= shape.top < Inches(0.7):
                 for paragraph in shape.text_frame.paragraphs:

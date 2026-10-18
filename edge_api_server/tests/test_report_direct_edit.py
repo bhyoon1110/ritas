@@ -48,6 +48,7 @@ def test_actual_ppt_regions_keep_source_indices_across_wrapping_and_pages(tmp_pa
     assert counts['section/raman_peaks/rows/1/2'] > 1
     assert counts['section/raman_peaks/rows/11/2'] >= 1
     assert counts['section/summary/paragraphs/0'] > 1
+    assert counts['completionDate'] == 1  # Cover date remains editable, without footer hotspots.
     if project == 'RAMAN':
         assert counts['section/experiment_conditions/rows/0/0'] == 0  # Common target column omitted in PPT.
         assert counts['section/experiment_conditions/rows/0/2'] >= 1

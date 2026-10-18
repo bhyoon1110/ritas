@@ -1127,7 +1127,8 @@ def _pdf_footer(document: ReportDocument, font_name: str):
                                  79457 / 12700, 489993 / 12700, 147717 / 12700, mask="auto")
         pdf_canvas.setFont(font_name, 8)
         pdf_canvas.setFillColor(_pdf_color(PPTX_MUTED))
-        pdf_canvas.drawString(doc.leftMargin, 12 * mm, "RIST Edge Report")
+        if not artwork:
+            pdf_canvas.drawString(doc.leftMargin, 12 * mm, "RIST Edge Report")
         right_text = f"{document.experiment_code} · {pdf_canvas.getPageNumber()}"
         pdf_canvas.drawRightString(A4[0] - doc.rightMargin, 12 * mm, right_text)
         pdf_canvas.restoreState()
@@ -1666,6 +1667,10 @@ def _pptx_posco_banner_title(document: ReportDocument) -> str:
 
 
 def _pptx_footer_shape(document: ReportDocument, shape_id: int) -> str:
+    # Spectrum previews use this same PPT. Keep only the template's RIST logo
+    # at the bottom; request/completion metadata already appears in the body.
+    if uses_posco_template(document.experiment_code):
+        return ""
     request_number = _clean_report_meta_value(document.pk.get("requestNumber"))
     footer = " · ".join(
         item
