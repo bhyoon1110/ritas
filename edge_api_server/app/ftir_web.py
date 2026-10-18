@@ -1755,6 +1755,7 @@ _PAGE_SHELL = """
     <span>스펙트럼 분석</span>
   </div>
   <div class="ftir-app-actions">
+    <a class="ftir-clear-button" id="ftir-home" href="/">홈</a>
     <span class="ftir-status" id="ftir-status">대기</span>
     <a class="ftir-clear-button" id="ftir-admin-link" href="/operations" hidden>운영 관리</a>
     <a class="ftir-clear-button" href="/voc?project=FTIR" target="_blank" rel="noopener">VOC · 의견 보내기</a>

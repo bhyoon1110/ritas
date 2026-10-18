@@ -3,11 +3,10 @@ from copy import deepcopy
 import json
 from pathlib import Path
 import shutil
-import tempfile
 from urllib.parse import urlsplit
 
 from fastapi import Request
-from fastapi.responses import HTMLResponse, JSONResponse, Response, FileResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 from pydantic import Field, ValidationError
 
 from .errors import ApiException
@@ -73,10 +72,11 @@ def prepare_review(job, manifest):
 
 def authorized_job(request, job_id, *, ready=True):
     ahn = _ahn()
+    ahn.tem_history.prepare(request)
     ahn._cleanup_old_jobs()
     with ahn._ahn_report_jobs_lock:
         job = ahn._ahn_report_jobs.get(job_id)
-        if job is None:
+        if job is None or getattr(job, "history_deleted_at", None):
             raise ApiException(404, "TEM_REPORT_NOT_FOUND", "TEM 보고서 작업을 찾을 수 없습니다.")
         settings = getattr(request.app.state, "settings", None)
         if settings and getattr(settings, "auth_enabled", False):
@@ -85,6 +85,7 @@ def authorized_job(request, job_id, *, ready=True):
             if not context.is_admin and ("TEM" not in context.projects or job.owner_user_id != context.user_id):
                 raise ApiException(403, "REPORT_EDIT_FORBIDDEN", "보고서 작성자 또는 관리자만 이 보고서를 확인·수정·전송할 수 있습니다.")
         job.updated_at = ahn.time.time()
+        job.history_accessed_at = ahn.time.time()
     if ready and job.status != "completed":
         raise ApiException(409, "TEM_REPORT_NOT_READY", "TEM 보고서가 아직 완성되지 않았습니다.")
     return job
@@ -92,6 +93,8 @@ def authorized_job(request, job_id, *, ready=True):
 
 def _revision(new_job, old_job, changes):
     ahn = _ahn()
+    with ahn._ahn_report_jobs_lock:
+        new_job.active_revisions += 1
     try:
         with ahn._ahn_processing_slots:
             ahn._set_job_state(new_job, status="running", progress_pct=25, message="TEM 수정본을 만드는 중입니다. 원본은 유지됩니다.")
@@ -112,10 +115,12 @@ def _revision(new_job, old_job, changes):
             convert_pptx_to_pdf(new_job.pptx_path, new_job.output_dir / "tem-report.pdf")
             ahn._build_package(new_job.output_dir, new_job.package_path)
             transfer = new_job.transfer_metadata
-            new_job.package_path = register_generated_report_package(settings=new_job.settings, database=new_job.database,
+            published_package = register_generated_report_package(settings=new_job.settings, database=new_job.database,
                 report_id=new_job.job_id, package_path=new_job.package_path, experiment_code="TEM",
                 request_number=transfer["requestNumber"], equipment_code=transfer["equipmentCode"], operator_id=transfer["operatorId"],
                 report_options={"revisionOf": old_job.job_id, "reviewed": True, "transfer": transfer})
+            if not ahn.tem_history.managed(new_job):
+                new_job.package_path = published_package
             ahn._set_job_state(new_job, status="completed", progress_pct=100, message="TEM 수정본이 저장되었습니다.", manifest=manifest)
     except Exception as exc:
         get_logger(__name__).exception("TEM report revision failed (job=%s)", new_job.job_id)
@@ -125,10 +130,14 @@ def _revision(new_job, old_job, changes):
         ahn.record_background_error(new_job.error_archive, project="TEM", code="TEM_REVISION_FAILED",
             message=new_job.message, exception=exc, job_id=new_job.job_id)
     finally:
-        with ahn._ahn_report_jobs_lock:
-            old_job.active_revisions -= 1
-            old_job.updated_at = ahn.time.time()
-        ahn._ahn_pending_slots.release()
+        try:
+            ahn.tem_history.save(new_job)
+        finally:
+            with ahn._ahn_report_jobs_lock:
+                new_job.active_revisions -= 1
+                old_job.active_revisions -= 1
+                old_job.updated_at = ahn.time.time()
+            ahn._ahn_pending_slots.release()
 
 
 def install_tem_editor(router):
@@ -146,7 +155,8 @@ def install_tem_editor(router):
         job = authorized_job(request, job_id)
         if not _state_path(job).is_file():
             raise ApiException(410, "REPORT_EDIT_EXPIRED", "이전 버전의 보고서입니다. TEM 화면에서 다시 생성하세요.")
-        result = {"document": _state(job), "job": _ahn()._job_payload(job), "previewError": job.review_error}
+        with _ahn().tem_history.lease(job):
+            result = {"document": _state(job), "job": _ahn()._job_payload(job), "previewError": job.review_error}
         context = getattr(request.state, "auth_context", None)
         identity = getattr(context, "sso_identity", None) or {}
         result["authenticatedOperatorId"] = str(identity.get("employee_id") or identity.get("subject") or
@@ -158,7 +168,8 @@ def install_tem_editor(router):
         job = authorized_job(request, job_id)
         if job.review_error:
             raise ApiException(503, "TEM_PREVIEW_UNAVAILABLE", job.review_error)
-        _, value, _ = tem_editable.inspect_pptx(job.pptx_path)
+        with _ahn().tem_history.lease(job):
+            _, value, _ = tem_editable.inspect_pptx(job.pptx_path)
         return JSONResponse(value, headers={"Cache-Control": "no-store"})
 
     @router.get(prefix + "/{job_id}/edit-slides/{page}", tags=["tem"])
@@ -170,7 +181,8 @@ def install_tem_editor(router):
         try:
             if page < 0:
                 raise IndexError(page)
-            content = slide_image(str(pdf), pdf.stat().st_mtime_ns, page)
+            with _ahn().tem_history.lease(job):
+                content = slide_image(str(pdf), pdf.stat().st_mtime_ns, page)
         except IndexError as exc:
             raise ApiException(404, "REPORT_PAGE_NOT_FOUND", "보고서 페이지를 찾을 수 없습니다.") from exc
         return Response(content, media_type="image/jpeg", headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"})
@@ -179,7 +191,8 @@ def install_tem_editor(router):
     def preview(request: Request, job_id: str):
         # Same image-based UI on old browsers, without relying on a PDF plug-in.
         job = authorized_job(request, job_id)
-        _, layout, _ = tem_editable.inspect_pptx(job.pptx_path)
+        with _ahn().tem_history.lease(job):
+            _, layout, _ = tem_editable.inspect_pptx(job.pptx_path)
         # Load one slide at a time, including Chrome 49 without loading=lazy.
         script = '''(function(){var page=0,count=__COUNT__,base=__BASE__;
 function show(){document.getElementById('status').textContent=(page+1)+' / '+count;
@@ -193,7 +206,7 @@ document.getElementById('next').onclick=function(){if(page<count-1){page++;show(
     @router.get(prefix + "/{job_id}/download", tags=["tem"])
     def download(request: Request, job_id: str):
         job = authorized_job(request, job_id)
-        return FileResponse(job.package_path, media_type="application/zip", filename="tem-report-package.zip")
+        return _ahn().tem_history.HistoryFileResponse(job, job.package_path, media_type="application/zip", filename="tem-report-package.zip")
 
     @router.post(prefix + "/{job_id}/revisions", status_code=202, tags=["tem"])
     async def revise(request: Request, job_id: str):
@@ -219,12 +232,17 @@ document.getElementById('next').onclick=function(){if(page<count-1){page++;show(
         new_job = None
         work_dir = None
         with ahn._ahn_report_jobs_lock:
+            if job.history_deleted_at:
+                ahn._ahn_pending_slots.release()
+                raise ApiException(409, "TEM_HISTORY_TRASHED", "휴지통에서 작업을 복원한 뒤 수정하세요.")
             job.active_revisions += 1
         try:
-            work_dir = Path(tempfile.mkdtemp(prefix="rist-tem-revision-"))
+            work_dir = ahn.tem_history.new_workspace(job.settings)
             new_job = ahn._create_ahn_job(work_dir / "input", work_dir, job.error_archive,
                 job.settings, job.database, job.usage_archive, job.usage_client_context, owner_user_id=job.owner_user_id)
             new_job.parent_job_id = job.job_id
+            new_job.history_title = (job.history_title + " (수정본)")[:120]
+            ahn.tem_history.save(new_job)
             ahn._ahn_report_executor.submit(_revision, new_job, job, deepcopy(values))
         except Exception:
             with ahn._ahn_report_jobs_lock:

@@ -1285,6 +1285,7 @@ def build_xrd_page() -> str:
         <span>raw upload · ICDD peak overlay · report preview</span>
       </div>
       <div class="xrd-actions">
+        <a class="xrd-download" id="xrd-home" href="/">홈</a>
         <a class="xrd-download" id="xrd-admin-link" href="/operations" hidden>운영 관리</a>
         <a class="xrd-download" href="/voc?project=XRD" target="_blank" rel="noopener">VOC · 의견 보내기</a>
         <button type="button" id="xrd-example">예제 불러오기</button>

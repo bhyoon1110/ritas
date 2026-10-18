@@ -1676,6 +1676,7 @@ _PAGE_SHELL = """
     <span>Raw upload · preprocessing · peak preview</span>
   </div>
   <div class="raman-actions">
+    <a class="raman-clear-button" id="raman-home" href="/">홈</a>
     <span class="raman-status" id="raman-status">Raman raw 파일을 업로드하세요</span>
     <a class="raman-clear-button" id="raman-admin-link" href="/operations" hidden>운영 관리</a>
     <a class="raman-clear-button" href="/voc?project=RAMAN" target="_blank" rel="noopener">VOC · 의견 보내기</a>

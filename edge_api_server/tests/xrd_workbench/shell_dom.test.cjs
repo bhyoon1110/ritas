@@ -45,6 +45,15 @@ function setup(t, mode, handler, project='') {
 }
 
 for (const mode of Object.keys(programs)) {
+  test(`${mode}: visible home link respects unsaved-work guard`, async t => {
+    const ui=setup(t,mode,()=>response([])); await flush();
+    const home=ui.d.getElementById('shellHome');
+    assert.equal(home.getAttribute('href'),'/'); assert.equal(home.textContent,'홈');
+    let checked=0; ui.w.xrdBeforeLeave=async()=>{checked++;return false;};
+    home.click(); await flush();
+    assert.equal(checked,1); assert.match(ui.w.location.pathname,/workbench/);
+    assert.deepEqual(ui.errors,[]);
+  });
   test(`${mode}: mounted project manager opens active and trash lists`, async t => {
     const ui=setup(t,mode,url=>response(url.includes('/api/project-catalog')?{items:[{storage_id:'saved',label:'Saved',managed_revision:0}],page:1,pages:1,total:1,total_in_tab:1}:url.includes('/api/projects')?[{storage_id:'saved',label:'Saved',managed_revision:0}]:{document:{revision:0}}),'saved');
     await flush();

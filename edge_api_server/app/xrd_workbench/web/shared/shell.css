@@ -18,6 +18,7 @@ body.withShell {
 #appShell { display:block; flex: none; width: 100%; box-sizing: border-box; background: #fff; border-bottom: 1px solid var(--line); color: var(--text); }
 .shellTop { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding: 10px 18px; }
 .shellBrand { font-weight: 700; color: var(--navy); font-size: 18px; white-space: nowrap; }
+.shellHome { padding: 6px 10px; border: 1px solid var(--line); border-radius: 5px; color: var(--navy); text-decoration: none; white-space: nowrap; }
 .shellLabel { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 13px; color: var(--muted); min-width: 0; }
 .shellLabel select { width: 230px; max-width: 40vw; margin: 0; }
 .shellState { margin-left: auto; color: var(--muted); font-size: 13px; }

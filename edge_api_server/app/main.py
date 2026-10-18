@@ -152,8 +152,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     service = EdgeService(resolved_settings, database)
 
     @asynccontextmanager
-    async def lifespan(_: FastAPI):
-        yield
+    async def lifespan(application: FastAPI):
+        from .tem_history import maintenance
+        async with maintenance(application):
+            yield
         database.close()
 
     app = FastAPI(

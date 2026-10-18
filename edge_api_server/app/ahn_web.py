@@ -10,7 +10,7 @@ import os
 import re
 import shutil
 import tempfile
-from threading import BoundedSemaphore, Lock
+from threading import BoundedSemaphore, Lock, RLock
 import time
 from pathlib import Path
 from typing import Any
@@ -25,6 +25,7 @@ from PIL import Image, ImageDraw, UnidentifiedImageError
 from rist_common import get_logger
 
 from .errors import ApiException
+from . import tem_history
 from .tem_resume import UploadManifest, check_upload_owner, resume_payload, validate_manifest
 from .auth import authenticated_transfer_payload
 from .browser_support import with_browser_support_notice
@@ -127,6 +128,13 @@ class AhnReportJob:
     transfer_metadata: dict[str, str] | None = None
     review_error: str | None = None
     active_revisions: int = 0
+    history_title: str = ""
+    history_pinned: bool = False
+    history_deleted_at: float | None = None
+    history_finished_at: float | None = None
+    history_bytes: int = 0
+    history_accessed_at: float = 0
+    history_saved_at: float = 0
 
 
 @dataclass
@@ -155,7 +163,7 @@ class AhnUploadSession:
 
 
 _ahn_report_jobs: dict[str, AhnReportJob] = {}
-_ahn_report_jobs_lock = Lock()
+_ahn_report_jobs_lock = RLock()
 _ahn_upload_sessions: dict[str, AhnUploadSession] = {}
 _ahn_completed_upload_jobs: dict[str, str] = {}
 _ahn_upload_sessions_lock = Lock()
@@ -762,6 +770,11 @@ async def _write_upload_chunk_locked(
     written = 0
     received_crc32 = 0
     _require_disk_space(session.work_dir, min(MAX_AHN_CHUNK_BYTES, total_size - offset) * 2)
+    if session.work_dir.parent.name == "tem-work-history":
+        # Use the workspace's actual storage root, not process-default settings.
+        from types import SimpleNamespace
+        tem_history.require_capacity(SimpleNamespace(storage_root=session.work_dir.parent.parent),
+                                     min(MAX_AHN_CHUNK_BYTES, total_size - offset) * 2)
     # Stage on disk until the CRC is verified; a corrupt retry leaves existing
     # .part bytes intact. Never accumulate an arbitrarily sized request in RAM.
     with tempfile.TemporaryFile(dir=session.work_dir) as received:
@@ -826,6 +839,7 @@ def _cleanup_old_jobs() -> None:
             job_id
             for job_id, job in _ahn_report_jobs.items()
             if now - job.updated_at > AHN_REPORT_JOB_TTL_SECONDS
+            and not tem_history.managed(job)
             and job.status not in {"queued", "running"}
             and not job.active_revisions
         ]
@@ -870,8 +884,8 @@ def _cleanup_old_upload_sessions() -> None:
             shutil.rmtree(session.work_dir, ignore_errors=True)
 
 
-def _create_upload_session() -> AhnUploadSession:
-    work_dir = Path(tempfile.mkdtemp(prefix="rist-ahn-upload-"))
+def _create_upload_session(settings: Settings | None = None) -> AhnUploadSession:
+    work_dir = tem_history.new_workspace(settings) if settings else Path(tempfile.mkdtemp(prefix="rist-ahn-upload-"))
     input_root = work_dir / "input"
     input_root.mkdir(parents=True, exist_ok=True)
     upload_id = uuid4().hex
@@ -954,6 +968,10 @@ def _set_job_state(
         if manifest is not None:
             job.manifest = manifest
         job.updated_at = time.time()
+        if status in {"completed", "failed"} and not job.history_finished_at:
+            job.history_finished_at = job.updated_at
+            job.history_bytes = tem_history.tree_bytes(job.work_dir)
+        tem_history.save(job, force=status in {"completed", "failed"})
 
 
 def _api_error_payload(exc: ApiException) -> dict[str, Any]:
@@ -1002,13 +1020,29 @@ def _create_ahn_job(
         owner_user_id=owner_user_id,
     )
     with _ahn_report_jobs_lock:
+        job.history_title = "TEM " + time.strftime("%Y-%m-%d %H:%M", time.localtime(now))
+        # Make source names searchable without sending all uploaded paths to UI.
+        if input_root.is_dir():
+            labels = []
+            for path in input_root.rglob("*"):
+                if path.is_file():
+                    labels.append(path.name)
+                    if len(labels) == 2:
+                        break
+            if labels:
+                job.history_title = ", ".join(labels)[:120]
+        tem_history.save(job)
         _ahn_report_jobs[job_id] = job
     return job
 
 
 def _run_ahn_job(job: AhnReportJob) -> None:
-    with _ahn_processing_slots:
-        _process_ahn_job(job)
+    with tem_history.lease(job):
+        try:
+            with _ahn_processing_slots:
+                _process_ahn_job(job)
+        finally:
+            tem_history.save(job)
 
 
 def _process_ahn_job(job: AhnReportJob) -> None:
@@ -1158,7 +1192,7 @@ def _process_ahn_job(job: AhnReportJob) -> None:
         _set_job_state(job, progress_pct=90, message="TEM PPT 미리보기와 메일 문안을 준비하는 중입니다.")
         prepare_review(job, manifest)
         _build_package(job.output_dir, job.package_path)
-        job.package_path = register_generated_report_package(
+        published_package = register_generated_report_package(
             settings=job.settings,
             database=job.database,
             report_id=job.job_id,
@@ -1166,6 +1200,10 @@ def _process_ahn_job(job: AhnReportJob) -> None:
             experiment_code="TEM",
             is_test=True,
         )
+        # The work-history copy has its own retention window. A shared test
+        # report can expire earlier without breaking the editable local draft.
+        if not tem_history.managed(job):
+            job.package_path = published_package
     except Exception as exc:
         logger.exception("TEM 보고서 패키지 생성 실패 (job_id=%s)", job.job_id)
         api_exc = ApiException(
@@ -1654,6 +1692,8 @@ def build_ahn_page(resume_owner: str = "anonymous") -> str:
         <span>folder upload · OCR · PowerPoint report</span>
       </div>
       <div class="ahn-actions">
+        <a class="ahn-download" id="ahn-home" href="/">홈</a>
+        <button type="button" id="ahn-history-open">작업 이력</button>
         <a class="ahn-download" id="ahn-admin-link" href="/operations" hidden>운영 관리</a>
         <a class="ahn-download" href="/voc?project=TEM" target="_blank" rel="noopener">VOC · 의견 보내기</a>
         <button type="button" id="ahn-example">예제 불러오기</button>
@@ -2917,25 +2957,31 @@ def build_ahn_page(resume_owner: str = "anonymous") -> str:
     restoreTemWork();
   })();
   </script>
+  <!-- TEM_HISTORY_UI -->
 </body>
 </html>"""
     page = page.replace("/* TEM_RESUME_RUNTIME */", Path(__file__).with_name("tem_resume.js").read_text(encoding="utf-8"))
     page = page.replace("/* TEM_TRANSFER_RUNTIME */", Path(__file__).with_name("tem_transfer.js").read_text(encoding="utf-8"))
     page = page.replace("__TEM_OWNER__", escape(resume_owner, quote=True))
+    page = page.replace("<!-- TEM_HISTORY_UI -->", tem_history_ui())
     return with_browser_support_notice(page)
 
 
 @router.get("/tem", response_class=HTMLResponse, include_in_schema=False)
 def tem_page(request: Request) -> HTMLResponse:
+    tem_history.prepare(request)
     owner = getattr(getattr(request.state, "auth_context", None), "user_id", None) or "anonymous"
     return HTMLResponse(build_ahn_page(str(owner)))
 
 
 @router.post("/api/v1/tem/upload-sessions", response_class=JSONResponse, tags=["tem"])
 def create_tem_upload_session(request: Request, manifest: UploadManifest | None = Body(default=None)) -> JSONResponse:
+    tem_history.prepare(request)
     _cleanup_old_jobs()
     expected = validate_manifest(manifest) if manifest else None
-    session = _create_upload_session()
+    settings = getattr(request.app.state, "settings", None)
+    tem_history.require_capacity(settings, sum(f["size"] for f in expected.values()) if expected else 0)
+    session = _create_upload_session(settings)
     session.owner_user_id = getattr(getattr(request.state, "auth_context", None), "user_id", None)
     session.expected_files = expected
     logger.info("TEM 청크 업로드 세션 생성 (upload_id=%s)", session.upload_id)
@@ -3132,7 +3178,8 @@ async def analyze_tem(
 ) -> JSONResponse:
     set_usage_context(request, project="TEM", experiment_code="TEM")
     _cleanup_old_jobs()
-    work_dir = Path(tempfile.mkdtemp(prefix="rist-ahn-web-"))
+    tem_history.prepare(request)
+    work_dir = tem_history.new_workspace(getattr(request.app.state, "settings", None))
     upload_root = work_dir / "input"
     request.state.error_project = "TEM"
     request.state.error_source_paths = [upload_root]
@@ -3169,7 +3216,8 @@ def tem_example(request: Request) -> JSONResponse:
     _cleanup_old_jobs()
     repo_root = Path(__file__).resolve().parents[2]
     input_root = repo_root / "ahn" / "data" / "TESTData"
-    work_dir = Path(tempfile.mkdtemp(prefix="rist-ahn-example-"))
+    tem_history.prepare(request)
+    work_dir = tem_history.new_workspace(getattr(request.app.state, "settings", None))
     try:
         if not input_root.exists():
             input_root = _write_synthetic_tem_example(work_dir / "input")
@@ -3210,19 +3258,19 @@ def download_tem_report(request: Request, job_id: str, kind: str) -> FileRespons
             details={"status": job.status, "progressPct": job.progress_pct},
         )
     if kind == "pptx":
-        return FileResponse(
+        return tem_history.HistoryFileResponse(job,
             job.pptx_path,
             media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
             filename="tem-report.pptx",
         )
     if kind == "package":
-        return FileResponse(
+        return tem_history.HistoryFileResponse(job,
             job.package_path,
             media_type="application/zip",
             filename="tem-report-package.zip",
         )
     if kind == "analysis-json":
-        return FileResponse(
+        return tem_history.HistoryFileResponse(job,
             job.analysis_path,
             media_type="application/json",
             filename="analysis-result.json",
@@ -3251,12 +3299,13 @@ def send_tem_report_job(
         operator_id=effective_payload.operator_id,
     )
     try:
-        return send_preview_report_package(
-            settings=getattr(request.app.state, "settings", None),
-            database=getattr(request.app.state, "database", None),
-            job=job,
-            payload=effective_payload,
-        )
+        with tem_history.lease(job):
+            return send_preview_report_package(
+                settings=getattr(request.app.state, "settings", None),
+                database=getattr(request.app.state, "database", None),
+                job=job,
+                payload=effective_payload,
+            )
     except FileNotFoundError as exc:
         raise ApiException(410, "TEM_REPORT_PACKAGE_EXPIRED", str(exc)) from exc
     except ValueError as exc:
@@ -3272,10 +3321,16 @@ def send_tem_report_job(
 
 from .tem_report_editor import install_tem_editor
 install_tem_editor(router)
+tem_history.install(router)
+
+
+def tem_history_ui() -> str:
+    return Path(__file__).with_name("tem_history.html").read_text(encoding="utf-8").replace(
+        "/* TEM_HISTORY_SCRIPT */", Path(__file__).with_name("tem_history.js").read_text(encoding="utf-8"))
 
 
 def create_tem_preview_app() -> FastAPI:
-    app = FastAPI(title="RIST TEM Preview")
+    app = FastAPI(title="RIST TEM Preview", lifespan=tem_history.maintenance)
     settings = Settings.from_env()
     app.state.settings = settings
     install_error_management(app, settings)

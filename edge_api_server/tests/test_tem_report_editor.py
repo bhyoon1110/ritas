@@ -37,7 +37,7 @@ def report(tmp_path, monkeypatch, tem_unit_runtime):
     async def identity(request, call_next):
         request.state.auth_context = app.state.actor
         return await call_next(request)
-    root = tmp_path / "original"
+    root = ahn_web.tem_history.new_workspace(app.state.settings)
     inputs = root / "input"
     inputs.mkdir(parents=True)
     job = ahn_web._create_ahn_job(inputs, root, None, app.state.settings, owner_user_id="author")
@@ -67,6 +67,25 @@ def wait(h, payload):
             return result
         time.sleep(.01)
     pytest.fail("revision did not finish")
+
+
+def test_completed_history_reopens_editor_and_slides_after_registry_reload(report):
+    h = report
+    history = ahn_web.tem_history
+    before = h.client.get(h.url + "/editor-data").json()["document"]
+    with ahn_web._ahn_report_jobs_lock:
+        ahn_web._ahn_report_jobs.pop(h.job.job_id)
+        history._loaded.discard(history.root(h.app.state.settings))
+    response = h.client.get(h.url + "/editor-data")
+    assert response.status_code == 200
+    assert response.json()["document"] == before
+    assert h.client.get(h.url + "/edit-layout").status_code == 200
+    assert h.client.get(h.url + "/edit-slides/0").headers["content-type"] == "image/jpeg"
+    assert h.client.get(h.url + "/download").status_code == 200
+    revised = h.client.post(h.url + "/revisions", json=editable(before),
+                            headers={"X-Requested-With": "RIST-Report-Editor"})
+    assert revised.status_code == 202
+    assert wait(h, revised.json())["status"] == "completed"
 
 
 def test_tem_revision_edits_visible_text_table_email_and_preserves_original(report, monkeypatch):
@@ -201,7 +220,7 @@ def test_tem_failed_setup_releases_pending_slot_and_source_pin(report, monkeypat
     h = report
     slots = BoundedSemaphore(1)
     monkeypatch.setattr(ahn_web, "_ahn_pending_slots", slots)
-    monkeypatch.setattr(tem_report_editor.tempfile, "mkdtemp", lambda **kw: (_ for _ in ()).throw(OSError("test disk full")))
+    monkeypatch.setattr(ahn_web.tem_history, "new_workspace", lambda *args: (_ for _ in ()).throw(OSError("test disk full")))
     value = editable(h.client.get(h.url + "/editor-data").json()["document"])
     with pytest.raises(OSError, match="test disk full"):
         h.client.post(h.url + "/revisions", json=value, headers={"X-Requested-With": "RIST-Report-Editor"})

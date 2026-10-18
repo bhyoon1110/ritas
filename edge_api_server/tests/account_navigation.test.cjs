@@ -57,6 +57,8 @@ function setup(t, name, mode, handler) {
   assert.ok(controls.account); assert.ok(controls.admin); assert.ok(controls.logout);
   assert.equal(controls.account.getAttribute('href'), '/account');
   if (name !== 'workspace') {
+    assert.equal(d.getElementById(name+'-home').getAttribute('href'), '/');
+    assert.equal(d.getElementById(name+'-home').hidden, false);
     assert.equal(controls.account.target, '_blank');
     assert.equal(controls.account.rel, 'noopener');
   }

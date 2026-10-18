@@ -22,6 +22,7 @@ body.withShell {
   margin-right: 16px;
 }
 .shellBrand { font-weight: 700; color: var(--navy); font-size: 18px; white-space: nowrap; }
+.shellHome { padding: 6px 10px; border: 1px solid var(--line); border-radius: 5px; color: var(--navy); text-decoration: none; white-space: nowrap; }
 .shellLabel { display: flex; align-items: center; margin: 0; font-size: 13px; color: var(--muted); min-width: 0; }
 .shellLabel > * {
   margin-bottom: 8px;
