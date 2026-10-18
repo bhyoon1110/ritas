@@ -62,7 +62,10 @@ def _relationship_map(zip_file: ZipFile) -> dict[str, str]:
         if rid and target and rel.attrib.get("TargetMode", "").lower() != "external":
             target = unquote(target)
             member = posixpath.normpath(target.lstrip("/") if target.startswith("/") else "word/" + target)
-            if member.startswith("word/media/"):
+            # Some instrument reports store their images at package-root
+            # /media/, referenced explicitly by the document relationships.
+            # Resolve only those references, never scan in logos/orphan media.
+            if member.startswith(("word/media/", "media/")):
                 result[rid] = member
     return result
 
@@ -112,7 +115,7 @@ def _empty_diagnostics(zip_file: ZipFile, document: ET.Element) -> list[str]:
     Unreferenced package media may be logos, deleted content or thumbnails;
     never substitute those for an instrument's missing measurement images.
     """
-    media_count = sum(name.startswith("word/media/") and not name.endswith("/") for name in zip_file.namelist())
+    media_count = sum(name.startswith(("word/media/", "media/")) and not name.endswith("/") for name in zip_file.namelist())
     image_count = sum(node.tag in {f"{{{NS['a']}}}blip", f"{{{NS['v']}}}imagedata"} for node in document.iter())
     diagnostics = [f"내장 미디어 {media_count}개, 본문 이미지 참조 {image_count}개"]
     if document.find(".//w:altChunk", NS) is not None:

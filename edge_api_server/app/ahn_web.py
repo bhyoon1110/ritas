@@ -407,7 +407,7 @@ def _validate_ooxml(
             names = set(archive.namelist())
             # Word embeds images that are later decoded by the report builder.
             for member in archive.infolist():
-                if member.filename.startswith("word/media/") and Path(member.filename).suffix.lower() in IMAGE_EXTENSIONS:
+                if member.filename.startswith(("word/media/", "media/")) and Path(member.filename).suffix.lower() in IMAGE_EXTENSIONS:
                     with archive.open(member) as stream:
                         issues = _validate_image(stream, f"{display_path}::{member.filename}")
                     if issues:

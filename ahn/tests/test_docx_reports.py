@@ -165,6 +165,51 @@ def test_vml_office_relid_and_encoded_media_target(tmp_path):
     assert Image.open(result.media_paths[0]).getpixel((0, 0)) == (220, 40, 40)
 
 
+@pytest.mark.parametrize('target', ['/media/map.png', '../media/map.png', '/media/EDS%20map.png'])
+def test_package_root_media_is_extracted_from_document_relationships(tmp_path, target):
+    """Same package layout as the instrument's LTO201 Map1 report."""
+    source = tmp_path / 'root MAP.docx'
+    write_docx(source)
+    def transform(members):
+        members['word/_rels/document.xml.rels'] = members['word/_rels/document.xml.rels'].replace(
+            b'media/image.png', target.encode())
+        name = 'EDS map.png' if '%20' in target else 'map.png'
+        members['media/' + name] = members.pop('word/media/image.png')
+        # A footer/logo at word/media with the same basename is not the raw map.
+        logo = BytesIO(); Image.new('RGB', (20, 20), (0, 0, 220)).save(logo, format='PNG')
+        members['word/media/' + name] = logo.getvalue()
+        members['media/unreferenced.png'] = logo.getvalue()
+        return members
+    rewrite_parts(source, transform)
+    result = extract_docx(source, tmp_path / 'out')
+    assert len(result.media_paths) == 1
+    assert not result.diagnostics
+    assert Image.open(result.media_paths[0]).getpixel((0, 0)) == (220, 40, 40)
+    output = build_pptx(collect_project(tmp_path), tmp_path / 'report.pptx')
+    assert len(Presentation(output).slides) == 1
+
+
+@pytest.mark.parametrize('target,external', [
+    ('/media/missing.png', False), ('/media/image.png', True),
+    ('/media/%2e%2e/secret.png', False), ('../media/../../secret.png', False),
+])
+def test_root_media_does_not_fetch_external_or_unrelated_or_missing_images(tmp_path, target, external):
+    source = tmp_path / 'unavailable.docx'
+    write_docx(source)
+    def transform(members):
+        members['word/_rels/document.xml.rels'] = members['word/_rels/document.xml.rels'].replace(
+            b'Target="media/image.png"', f'Target="{target}"'.encode() + (b' TargetMode="External"' if external else b''))
+        members['media/image.png'] = members['word/media/image.png']
+        members['secret.png'] = members['word/media/image.png']
+        return members
+    rewrite_parts(source, transform)
+    result = extract_docx(source, tmp_path / 'out')
+    assert not result.media_paths
+    assert '내장 미디어 2개' in result.diagnostics[0]
+    with pytest.raises(ValueError, match='이미지 또는 표'):
+        build_pptx(collect_project(tmp_path), tmp_path / 'report.pptx')
+
+
 @pytest.mark.parametrize('kind', ['external', 'missing', 'outside-media', 'altChunk'])
 def test_unusable_content_has_diagnostics_and_does_not_fall_back_to_orphan_images(tmp_path, kind):
     source = tmp_path / (kind + '.docx')

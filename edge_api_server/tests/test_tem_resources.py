@@ -102,15 +102,26 @@ def test_zip_count_and_office_size_limits(monkeypatch, tmp_path):
     assert '항목 수' in tem._validate_zip_archive(source, source.name)[0]['reason']
 
 
-def test_pixel_limit_checks_loose_and_word_embedded_images(monkeypatch, tmp_path):
+@pytest.mark.parametrize('media_root', ['word/media/', 'media/'])
+def test_pixel_limit_checks_loose_and_word_embedded_images(monkeypatch, tmp_path, media_root):
     monkeypatch.setattr(tem, 'MAX_AHN_IMAGE_PIXELS', 100)
     assert '해상도' in tem._validate_image(BytesIO(image_bytes()), 'big.tif')[0]['reason']
     source = tmp_path / 'report.docx'
     with zipfile.ZipFile(source, 'w') as z:
         z.writestr('[Content_Types].xml', '<Types/>')
         z.writestr('word/document.xml', '<document/>')
-        z.writestr('word/media/image.tif', image_bytes())
+        z.writestr(media_root + 'image.tif', image_bytes())
     assert '해상도' in tem._validate_ooxml(source, '.docx', source.name)[0]['reason']
+
+
+def test_corrupt_package_root_image_is_rejected_before_report_build(tmp_path):
+    source = tmp_path / 'broken.docx'
+    with zipfile.ZipFile(source, 'w') as z:
+        z.writestr('[Content_Types].xml', '<Types/>')
+        z.writestr('word/document.xml', '<document/>')
+        z.writestr('media/map.png', b'not an image')
+    issues = tem._validate_ooxml(source, '.docx', source.name)
+    assert issues and 'media/map.png' in issues[0]['path']
 
 
 def test_zip_member_verification_does_not_allocate_the_entire_member(tmp_path):
