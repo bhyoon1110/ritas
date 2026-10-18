@@ -57,6 +57,20 @@ def poll(client, job):
     return job
 
 
+@pytest.mark.parametrize('legacy', [False, True])
+def test_shared_manager_style_is_served_on_all_workbench_pages(tmp_path, legacy):
+    client = TestClient(make_app(tmp_path))
+    headers = {'user-agent': 'Mozilla/5.0 Chrome/49.0.2623.75 Safari/537.36'} if legacy else {}
+    stylesheet = '/shared/project_manager' + ('.legacy' if legacy else '') + '.css'
+    for page in ('/', '/analysis.html', '/report.html'):
+        response = client.get(api.BASE + page, headers=headers)
+        assert response.status_code == 200
+        assert api.BASE + stylesheet in response.text
+    response = client.get(api.BASE + stylesheet, headers=headers)
+    assert response.status_code == 200
+    assert '.ristWorkManager' in response.text
+
+
 def upload(client, files):
     sid = client.post(api.BASE+'/api/upload-sessions').json()['upload_id']
     for name, data in files.items():

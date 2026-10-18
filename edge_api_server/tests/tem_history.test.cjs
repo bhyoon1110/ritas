@@ -34,6 +34,24 @@ function setup(t, mode, handler) {
   return {w,d,calls,click,open:async()=>{d.getElementById('ahn-history-open').click(); await flush();}};
 }
 for(const mode of ['native','chrome49']) {
+  test(`${mode}: shared manager tabs reset pagination and keep search when switching lists`,async t=>{
+    const h=setup(t,mode,async url=>response([row(url.includes('trash=true')?{deletedAt:1}:{})],42));
+    await h.open();
+    assert.ok(h.d.getElementById('tem-history').classList.contains('ristWorkManager'));
+    assert.ok(h.d.querySelector('.projectPanel .projectFilters'));
+    h.d.getElementById('th-search').value='시료 A';
+    h.click('다음'); await flush();
+    assert.match(h.calls.at(-1).url,/page=2/);
+    h.d.getElementById('th-trash').click(); await flush();
+    assert.match(h.calls.at(-1).url,/page=1.*trash=true/);
+    assert.equal(new URL(h.calls.at(-1).url,'http://rist.test').searchParams.get('q'),'시료 A');
+    assert.equal(h.d.getElementById('th-trash').getAttribute('aria-pressed'),'true');
+    assert.equal(h.d.getElementById('th-active').getAttribute('aria-pressed'),'false');
+    assert.equal(h.d.getElementById('th-empty').hidden,false);
+    h.d.getElementById('th-active').click(); await flush();
+    assert.match(h.calls.at(-1).url,/page=1.*trash=false/);
+    assert.equal(h.d.getElementById('th-empty').hidden,true);
+  });
   test(`${mode}: lazy load, escaped titles, safe report link, scroll and focus restoration`,async t=>{
     const h=setup(t,mode,async()=>response([row({title:'<img src=x onerror=alert(1)>',message:'<script>bad()</script>'})]));
     assert.equal(h.calls.length,0);
@@ -53,13 +71,13 @@ for(const mode of ['native','chrome49']) {
     });
     await h.open(); h.d.querySelector('#th-list input').value='교정 시료'; h.click('이름 저장'); await flush();
     assert.equal(h.d.querySelector('#th-list input').value,'교정 시료');
-    const before=h.calls.length; h.w.confirm=()=>false; h.click('휴지통'); await flush(); assert.equal(h.calls.length,before);
-    h.w.confirm=()=>true; h.click('휴지통'); await flush();
+    const before=h.calls.length; h.w.confirm=()=>false; h.d.querySelector('#th-list .projectDanger').click(); await flush(); assert.equal(h.calls.length,before);
+    h.w.confirm=()=>true; h.d.querySelector('#th-list .projectDanger').click(); await flush();
     assert.ok(h.calls.some(c=>c.options.body && JSON.parse(c.options.body).action==='trash'));
   });
   test(`${mode}: busy jobs disabled and pinned rows have no delete`,async t=>{
     const h=setup(t,mode,async()=>response([row({busy:true, status:'running',editUrl:null}),row({jobId:'b'.repeat(32),pinned:true})]));
-    await h.open(); const first=h.d.querySelectorAll('.th-row')[0], second=h.d.querySelectorAll('.th-row')[1];
+    await h.open(); const first=h.d.querySelectorAll('.projectRow')[0], second=h.d.querySelectorAll('.projectRow')[1];
     assert.ok([...first.querySelectorAll('button')].every(b=>b.disabled)); assert.equal(first.querySelector('a'),null);
     assert.ok(![...second.querySelectorAll('button')].some(b=>b.textContent==='휴지통'));
   });
@@ -69,7 +87,7 @@ for(const mode of ['native','chrome49']) {
       if(o.method==='POST') {posts++; return posts===2 ? {error:true,message:'전송 중입니다.'} : {deleted:true};}
       return response(items,100);
     });
-    await h.open(); const f=h.d.getElementById('th-filter'); f.value='trash'; f.dispatchEvent(new h.w.Event('change')); await flush();
+    await h.open(); h.d.getElementById('th-trash').click(); await flush();
     h.click('이 페이지 휴지통 비우기'); await flush();
     assert.equal(posts,2); assert.match(h.d.getElementById('th-notice').textContent,/1건 처리.*전송 중/);
     assert.equal(h.d.getElementById('th-close').disabled,false);
@@ -77,7 +95,7 @@ for(const mode of ['native','chrome49']) {
   test(`${mode}: late response cannot overwrite newest filter and search`,async t=>{
     let release, count=0;
     const h=setup(t,mode,async()=>{if(++count===1) return new Promise(r=>release=r); return response([row({title:'휴지통 최신',deletedAt:1})]);});
-    await h.open(); const f=h.d.getElementById('th-filter'); f.value='trash'; f.dispatchEvent(new h.w.Event('change')); await flush();
+    await h.open(); h.d.getElementById('th-trash').click(); await flush();
     release(response([row({title:'이전 응답'})])); await flush();
     assert.equal(h.d.querySelector('#th-list input').value,'휴지통 최신');
   });

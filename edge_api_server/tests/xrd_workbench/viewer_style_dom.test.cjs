@@ -17,20 +17,28 @@ const fixture = {
     observed_peaks:[{no:1,x:20,x_raw:'20',height_raw:'9',page:1}],
     reference_peaks:[{phase:'Phase A',x:20,intensity:100,intensity_raw:'100',hkl_raw:'100',page:1}],sources:[]}],sources:[],warnings:[],
 };
-function setup(t, program, saved={}, project=fixture) {
+function setup(t, program, saved={}, project=fixture, online=false) {
   const dom=new JSDOM(fs.readFileSync(path.join(root,'index.html'),'utf8'),{url:'http://rist.test/viewer.html',runScripts:'outside-only',pretendToBeVisual:true});
   t.after(()=>dom.window.close());
-  const w=dom.window,d=w.document, renders=[],exports=[],downloads=[],events={};
-  w.XRD_EMBEDDED={project,state:{projectId:project.id,...saved},snapshotId:'qa'};
+  const w=dom.window,d=w.document, renders=[],exports=[],downloads=[],events={},requests=[];
+  if (!online) w.XRD_EMBEDDED={project,state:{projectId:project.id,...saved},snapshotId:'qa'};
   w.Plotly={newPlot:async node=>{node.on=(key,callback)=>{events[key]=callback;};},react:async(node,data,layout)=>{renders.push(JSON.parse(JSON.stringify({data,layout})));},
     toImage:async figure=>{exports.push(JSON.parse(JSON.stringify(figure)));return 'data:image/png;base64,QA';}};
-  w.fetch=async()=>({blob:async()=>new w.Blob(['QA'])});
+  w.fetch=async url=>{requests.push(url); return {blob:async()=>new w.Blob(['QA'])};};
   w.URL.createObjectURL=()=> 'blob:qa';w.URL.revokeObjectURL=()=>{};
   w.HTMLAnchorElement.prototype.click=function(){downloads.push(this.download);};
   w.eval(program);
-  return {w,d,renders,exports,downloads,events,setSize:async size=>{d.getElementById('markerSize').value=String(size);d.getElementById('markerSize').dispatchEvent(new w.Event('input'));await flush();}};
+  return {w,d,renders,exports,downloads,events,requests,setSize:async size=>{d.getElementById('markerSize').value=String(size);d.getElementById('markerSize').dispatchEvent(new w.Event('input'));await flush();}};
 }
 for(const [mode, program] of Object.entries({native,chrome49:legacy})) {
+  test(`${mode}: a new workspace starts empty without loading demo data`,async t=>{
+    const ui=setup(t,program,{},fixture,true); await flush();
+    assert.equal(ui.d.getElementById('emptyState').hidden,false);
+    assert.match(ui.d.getElementById('status').textContent,/새 작업/);
+    assert.equal(ui.d.getElementById('rawExample'),null);
+    assert.ok(!ui.requests.some(url=>url.includes('example')));
+    assert.equal(ui.renders.length,0);
+  });
   test(`${mode}: phase toggle changes upper markers only and explains missing data, hiding and zoom`,async t=>{
     const ui=setup(t,program);await flush();
     const hint=()=>ui.d.getElementById('phaseMarkerHint').textContent;

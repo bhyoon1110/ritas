@@ -1,0 +1,56 @@
+/* Shared TEM work history / XRD project manager. Keep controls self-contained. */
+.ristWorkManager[hidden], .ristWorkManager [hidden] { display: none !important; }
+.ristWorkManager { position: fixed; top: 0; right: 0; bottom: 0; left: 0; z-index: 10000; background: rgba(14,31,48,.48); display: flex; align-items: center; justify-content: center; padding: 16px; box-sizing: border-box; font: 14px/1.5 Arial, 'Malgun Gothic', sans-serif; color: #293e52; }
+.ristWorkManager .projectPanel { display: flex; flex-direction: column; width: 960px; max-width: 100%; height: 820px; max-height: 100%; overflow: hidden; box-sizing: border-box; padding: 20px; background: #fff; border-radius: 10px; box-shadow: 0 12px 40px rgba(0,0,0,.24); }
+.ristWorkManager .projectPanel > * { flex-shrink: 0; }
+.ristWorkManager .projectPanel .projectRows { flex: 1 1 180px; min-height: 60px; overflow-y: auto; overscroll-behavior: contain; }
+.ristWorkManager .projectHeading { display: flex; align-items: center; justify-content: space-between; }
+.ristWorkManager .projectHeading > * { margin-bottom: 12px; margin-right: 12px; }
+.ristWorkManager .projectHeading h2 { font-size: 20px; font-weight: 700; line-height: 1.5; margin: 0; color: #163e62; }
+.ristWorkManager .projectHelp { color: #52677c; font-size: 13px; line-height: 1.6; margin: 12px 0; overflow-wrap: break-word; }
+.ristWorkManager .projectPolicy { padding: 10px 12px; background: #f3f6fa; border: 1px solid #d6e0ea; border-radius: 5px; }
+.ristWorkManager .projectFilters { display: flex; flex-wrap: wrap; align-items: center; padding: 12px 0; border-bottom: 1px solid #d6e0ea; }
+.ristWorkManager .projectFilters > * { margin-bottom: 10px; margin-right: 10px; }
+.ristWorkManager .projectFilters > div { display: flex; }
+.ristWorkManager .projectFilters > div > * { margin-bottom: 6px; margin-right: 6px; }
+.ristWorkManager label { font: 13px/1.6 Arial, 'Malgun Gothic', sans-serif; color: #52677c; }
+.ristWorkManager .projectFilters label { flex: 1 1 200px; min-width: 0; display: flex; align-items: center; margin: 0; white-space: nowrap; }
+.ristWorkManager .projectFilters label > * { margin-bottom: 8px; margin-right: 8px; }
+.ristWorkManager .projectFilters input { flex: 1; width: 0; min-width: 0; }
+.ristWorkManager input, .ristWorkManager select { font: 13px/1.5 Arial, 'Malgun Gothic', sans-serif; box-sizing: border-box; min-height: 36px; max-width: 100%; width: 100%; padding: 8px 10px; border: 1px solid #d6e0ea; border-radius: 5px; color: #293e52; background: #fff; }
+.ristWorkManager input[readonly] { background: #f3f6fa; }
+.ristWorkManager .projectRow { display: flex; flex-wrap: wrap; align-items: center; padding: 10px 0; border-bottom: 1px solid #d6e0ea; }
+.ristWorkManager .projectRow > * { margin-bottom: 8px; margin-right: 8px; }
+.ristWorkManager .projectRowInfo { flex: 1 1 200px; min-width: 0; }
+.ristWorkManager .projectNameLabel { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); }
+.ristWorkManager input[type=checkbox] { width: 16px; height: 16px; min-height: 0; flex: 0 0 16px; margin: 0 4px 0 0; }
+.ristWorkManager .projectSort, .ristWorkManager .projectBulk, .ristWorkManager .projectPager { display: flex; align-items: center; flex-wrap: wrap; padding-top: 10px; font-size: 13px; }
+.ristWorkManager .projectSort > *,.ristWorkManager .projectBulk > *,.ristWorkManager .projectPager > * { margin-bottom: 8px; margin-right: 8px; }
+.ristWorkManager .projectBulk label, .ristWorkManager .projectSort label { display: flex; align-items: center; margin: 0; white-space: nowrap; }
+.ristWorkManager .projectBulk label > *,.ristWorkManager .projectSort label > * { margin-bottom: 4px; margin-right: 4px; }
+.ristWorkManager .projectSort select { width: auto; min-width: 60px; padding: 6px; }
+.ristWorkManager .projectPager { justify-content: center; border-top: 1px solid #d6e0ea; }
+.ristWorkManager .projectPager span { flex-shrink: 0; white-space: nowrap; }
+.ristWorkManager .projectPanel button, .ristWorkManager .projectRowActions a { display: inline-flex; align-items: center; justify-content: center; min-height: 34px; padding: 6px 10px; border: 1px solid #d6e0ea; border-radius: 5px; color: #163e62; background: #fff; font: 13px/1.5 Arial, 'Malgun Gothic', sans-serif; box-sizing: border-box; white-space: nowrap; flex-shrink: 0; cursor: pointer; text-decoration: none; box-shadow: none; }
+.ristWorkManager button:hover:not(:disabled), .ristWorkManager .projectRowActions a:hover { background: #e9f2fa; color: #163e62; }
+.ristWorkManager button:disabled { cursor: default; opacity: .5; }
+.ristWorkManager button[aria-pressed=true] { background: #e9f2fa; border-color: #8cb4d3; color: #163e62; font-weight: 700; }
+.ristWorkManager :focus { outline: 2px solid #1768a0; outline-offset: 2px; }
+.ristWorkManager .projectRowInfo p { color: #52677c; font-size: 12px; margin: 6px 0 0; overflow-wrap: break-word; }
+.ristWorkManager .projectRowActions { display: flex; flex-wrap: wrap; }
+.ristWorkManager .projectRowActions > * { margin-bottom: 6px; margin-right: 6px; }
+.ristWorkManager button.projectDanger { color: #9d2929; border-color: #e5bcbc; }
+.ristWorkManager .projectNotice { min-height: 20px; margin: 12px 0; color: #52677c; font-size: 13px; overflow-wrap: break-word; }
+.ristWorkManager .projectNotice.error { color: #9d2929; }
+.ristWorkManager .projectEmpty { padding: 28px 0; text-align: center; color: #52677c; }
+@media (max-width: 520px) {
+  .ristWorkManager { padding: 8px; }
+  .ristWorkManager .projectPanel { padding: 14px; }
+  .ristWorkManager .projectRowActions { width: 100%; justify-content: flex-end; }
+  .ristWorkManager .projectHelp { font-size: 12px; margin: 8px 0; }
+  .ristWorkManager .projectNotice { margin: 8px 0; }
+}
+@media (max-height: 540px) {
+  .ristWorkManager .projectPanel { overflow-y: auto; }
+  .ristWorkManager .projectPanel .projectRows { flex: none; max-height: 240px; }
+}

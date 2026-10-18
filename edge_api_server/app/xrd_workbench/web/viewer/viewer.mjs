@@ -75,7 +75,6 @@ window.xrdCanReset = () => {
   window.alert('파일 전송·진단 중입니다. 업로드 일시정지 후 초기화하세요. 중단된 전송은 이어서 진행할 수 있습니다.');
   return false;
 };
-$('rawExample').onclick=()=>download(new Blob(['#Intensity_unit=cps\n10.00 125\n10.02 138\n10.04 142\n'],{type:'text/plain;charset=utf-8'}),'XRD-Raw-example.txt');
 let project,
   state,
   figure,
@@ -252,17 +251,6 @@ function download(blob, name) {
   a.download = name;
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 2000);
-}
-async function openExample() {
-  message('예제 자료를 읽는 중…');
-  try {
-    await loadProject(await (await request('/api/example')).json());
-  } catch {
-    // No example folder configured: start with the data upload step.
-    $('emptyState').hidden = false;
-    message('등록된 자료가 없습니다. 데이터 업로드로 시작하세요.');
-    openUpload();
-  }
 }
 // Step ① 데이터 업로드 lives on this page as the registration dialog.
 function openUpload() {
@@ -783,10 +771,10 @@ async function start() {
         throw new Error('등록 프로젝트를 열지 못했습니다.');
       }
       await loadProject(value);
-    } else if (new URLSearchParams(location.search).get('fresh') === '1') {
+    } else {
       $('emptyState').hidden = false;
       message('새 작업입니다. 파일을 선택하여 시작하세요. 저장된 프로젝트는 상단 목록에서 다시 열 수 있습니다.');
-    } else await openExample();
+    }
     if (new URLSearchParams(location.search).get('step') === 'upload') openUpload();
   }
 }

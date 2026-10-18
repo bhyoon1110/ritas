@@ -468,6 +468,10 @@ GET  /api/v1/tem/report/jobs/{jobId}/download/analysis-json
 
 ### TEM 작업 이력·보관 정책
 
+- TEM 작업 이력과 XRD 프로젝트 관리의 공통 스타일은
+  `app/xrd_workbench/web/shared/project_manager.css`에서 관리한다. TEM은 HTML에 포함하고,
+  XRD 세 화면은 같은 파일을 읽는다. 변경 후 `browser_compat` 자산을 재빌드해야 한다.
+  예제 불러오기/다운로드 UI와 XRD 자동 예제 로딩은 제거했다(개발용 예제 API·테스트 자료는 유지).
 - `/tem` 상단 **작업 이력**: 작성자 본인/관리자 조회, 작업명·의뢰번호·ID 검색, 20건 페이지 처리,
   이름 변경, 보존/해제, 보고서 새 창 열기, 휴지통, 복원, 개별 또는 현재 페이지 휴지통 비우기.
 - 저장 위치: `RIST_STORAGE_ROOT/tem-work-history/work-<uuid>/`. 원본·결과·편집 모델과

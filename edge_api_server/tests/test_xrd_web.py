@@ -65,7 +65,7 @@ def test_xrd_workspace_contains_upload_controls() -> None:
     assert "entryToBundleItems" in page
     assert "droppedBundleItems" in page
     assert 'id="xrd-origin" name="origin" value="true" checked' in page
-    assert 'id="xrd-example"' in page
+    assert 'id="xrd-example"' not in page
     assert 'id="xrd-run" disabled' in page
     assert "runButton.disabled = operationBusy || collectingFiles || !bundleItems.length" in page
     assert "function setCollectingFiles(value, message)" in page
@@ -121,13 +121,13 @@ def test_xrd_workspace_contains_upload_controls() -> None:
     assert '"<!doctype html>\n" + clone.outerHTML' not in page
     assert 'downloadLink.addEventListener("click"' in page
     assert "다운로드 준비 중..." in page
-    assert 'exampleButton.addEventListener("click"' in page
+    assert 'exampleButton' not in page
     assert "Bundle 안에 ICDD PDF 파일이 필요합니다." in page
     assert "raw와 ICDD Card 데이터를 분석하는 중입니다." in page
     assert "/api/v1/xrd/upload-sessions" in page
     assert "uploadBundleWithSession" in page
     assert "XRD_UPLOAD_CHUNK_RETRIES" in page
-    assert "/api/v1/xrd/example" in page
+    assert "/api/v1/xrd/example" not in page
     assert 'id="xrd-report-transfer"' in page
     assert 'id="xrd-request-load"' in page
     assert 'id="xrd-request-select"' in page

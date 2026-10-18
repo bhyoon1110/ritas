@@ -30,7 +30,7 @@ import {
   renameGroup,
   setGroupMembers,
 } from './figure.mjs';
-let storageId = new URLSearchParams(location.search).get('project') || 'example',
+let storageId = new URLSearchParams(location.search).get('project'),
   project,
   doc,
   baseline,
@@ -1097,6 +1097,10 @@ window.addEventListener('beforeunload', (event) => {
   }
 });
 async function start() {
+  if (!storageId) {
+    location.replace(apiUrl('/?step=upload&fresh=1'));
+    return;
+  }
   try {
     await openProject(storageId);
     await loadPresets();

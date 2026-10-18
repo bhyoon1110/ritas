@@ -105,7 +105,10 @@ def test_ahn_workspace_contains_folder_upload_controls() -> None:
     assert ".zip" in page
     assert "파일 추가" in page
     assert "폴더 추가" in page
-    assert 'id="ahn-example"' in page
+    assert 'id="ahn-example"' not in page
+    assert 'class="ristWorkManager"' in page
+    assert '/* WORK_MANAGER_STYLE */' not in page
+    assert '.ristWorkManager .projectPanel' in page
     assert 'id="ahn-run" disabled' in page
     assert 'id="ahn-download-pptx"' in page
     assert 'id="ahn-download-package"' in page
@@ -116,7 +119,7 @@ def test_ahn_workspace_contains_folder_upload_controls() -> None:
     assert "xlsm" in page
     assert "xlsb" in page
     assert "/api/v1/tem/upload-sessions" in page
-    assert "/api/v1/tem/example" in page
+    assert "/api/v1/tem/example" not in page
     assert "/api/v1/tem/report/jobs/" in page
     assert "waitForReportJob" in page
     assert "uploadBundleWithSession" in page

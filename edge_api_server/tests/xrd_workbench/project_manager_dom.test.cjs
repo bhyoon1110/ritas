@@ -65,6 +65,15 @@ function setup(t,program,{current='a',initial=[row('a','Alpha'),row('b','Beta')]
 }
 
 for(const [mode,program] of Object.entries({native,chrome49:legacy})) {
+  test(`${mode}: common manager layout locks background scroll and restores it on close`,async t=>{
+    const ui=setup(t,program); ui.d.body.style.overflow='auto'; await ui.open();
+    assert.ok(ui.overlay.classList.contains('ristWorkManager'));
+    assert.equal(ui.q('h2').textContent,'XRD 프로젝트 관리');
+    assert.equal(ui.d.body.style.overflow,'hidden');
+    ui.q('[data-close]').click();
+    assert.equal(ui.d.body.style.overflow,'auto');
+    assert.equal(ui.d.activeElement.id,'manage');
+  });
   test(`${mode}: project name editing refreshes choices without navigating`,async t=>{
     const ui=setup(t,program);await ui.open();
     ui.q('[data-project-id="a"] [data-name]').value='Renamed <sample>';

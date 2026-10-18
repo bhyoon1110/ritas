@@ -1696,7 +1696,6 @@ def build_ahn_page(resume_owner: str = "anonymous") -> str:
         <button type="button" id="ahn-history-open">작업 이력</button>
         <a class="ahn-download" id="ahn-admin-link" href="/operations" hidden>운영 관리</a>
         <a class="ahn-download" href="/voc?project=TEM" target="_blank" rel="noopener">VOC · 의견 보내기</a>
-        <button type="button" id="ahn-example">예제 불러오기</button>
         <button type="submit" form="ahn-form" class="primary" id="ahn-run" disabled>보고서 생성</button>
         <button type="button" id="ahn-clear">초기화</button>
         <a class="ahn-download" id="ahn-account-link" href="/account" target="_blank" rel="noopener" hidden>회원정보 관리</a>
@@ -1806,7 +1805,6 @@ def build_ahn_page(resume_owner: str = "anonymous") -> str:
     var addFolderButton = document.getElementById("ahn-add-folder");
     var runButton = document.getElementById("ahn-run");
     var clearButton = document.getElementById("ahn-clear");
-    var exampleButton = document.getElementById("ahn-example");
     var adminLink = document.getElementById("ahn-admin-link");
     var status = document.getElementById("ahn-status");
     var busy = document.getElementById("ahn-busy");
@@ -1901,7 +1899,6 @@ def build_ahn_page(resume_owner: str = "anonymous") -> str:
 
     function syncActionState() {
       runButton.disabled = operationBusy || collectingFiles || temRecovery.restoring || !bundleItems.length;
-      exampleButton.disabled = operationBusy || collectingFiles || temRecovery.restoring;
       addFilesButton.disabled = operationBusy || collectingFiles || temRecovery.restoring;
       addFolderButton.disabled = operationBusy || collectingFiles || temRecovery.restoring;
       clearButton.disabled = operationBusy || collectingFiles || temRecovery.restoring;
@@ -2910,26 +2907,6 @@ def build_ahn_page(resume_owner: str = "anonymous") -> str:
       setStatus("TEM raw 폴더를 선택하면 보고서를 생성할 수 있습니다.", false);
       updateReportSendAvailability();
     });
-    exampleButton.addEventListener("click", async function() {
-      if (temRecovery.record && !window.confirm("이 화면의 이어받기 연결을 지우고 예제를 시작할까요? 서버의 기존 작업은 취소하지 않습니다.")) return;
-      persistTemWork(null);
-      lastReportJob = null;
-      updateReportSendAvailability();
-      setBusy(true);
-      startProgress("TEM 예제 보고서를 생성하는 중입니다.");
-      try {
-        await finishTemReport(await requestReport("/api/v1/tem/example", null));
-      } catch (error) {
-        temRecoveryError(error);
-        setStatus(error.message || String(error), true);
-        failProgress(
-          error.message || "예제 보고서 생성에 실패했습니다.",
-          error.errorFeedbackUrl || ""
-        );
-      } finally {
-        setBusy(false);
-      }
-    });
     form.addEventListener("submit", async function(event) {
       event.preventDefault();
       if (collectingFiles) {
@@ -3326,6 +3303,7 @@ tem_history.install(router)
 
 def tem_history_ui() -> str:
     return Path(__file__).with_name("tem_history.html").read_text(encoding="utf-8").replace(
+        "/* WORK_MANAGER_STYLE */", (Path(__file__).parent / "xrd_workbench/web/shared/project_manager.css").read_text(encoding="utf-8")).replace(
         "/* TEM_HISTORY_SCRIPT */", Path(__file__).with_name("tem_history.js").read_text(encoding="utf-8"))
 
 

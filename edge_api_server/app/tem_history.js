@@ -4,13 +4,14 @@
   var opener = document.getElementById("ahn-history-open");
   if (!modal || !opener) return;
   var list = document.getElementById("th-list"), search = document.getElementById("th-search");
-  var filter = document.getElementById("th-filter"), notice = document.getElementById("th-notice");
+  var activeTab = document.getElementById("th-active"), trashTab = document.getElementById("th-trash");
+  var notice = document.getElementById("th-notice"), archived = false;
   var prev = document.getElementById("th-prev"), next = document.getElementById("th-next");
   var empty = document.getElementById("th-empty"), close = document.getElementById("th-close");
   var page = 1, serial = 0, pending = false, rows = [], debounce, oldOverflow;
   function bytes(n) { n = Number(n || 0); return n >= 1024 * 1024 * 1024 ? (n / 1024 / 1024 / 1024).toFixed(1) + " GiB" : (n / 1024 / 1024).toFixed(1) + " MiB"; }
   function date(n) { return n ? new Date(n * 1000).toLocaleString() : "-"; }
-  function info(message, error) { notice.textContent = message; notice.className = error ? "th-error" : ""; }
+  function info(message, error) { notice.textContent = message; notice.className = "projectNotice" + (error ? " error" : ""); }
   function api(url, options) {
     options = options || {}; options.credentials = "same-origin";
     return fetch(url, options).then(function (r) {
@@ -23,15 +24,15 @@
   function button(parent, text, action, row, title) {
     var b = document.createElement("button"); b.type = "button"; b.textContent = text;
     b.disabled = row.busy || pending;
-    if (action === "purge" || action === "trash") b.className = "th-danger";
+    if (action === "purge" || action === "trash") b.className = "projectDanger";
     b.onclick = function () { change([row], action, title ? title.value : ""); };
     parent.appendChild(b);
   }
   function render() {
     list.textContent = "";
     rows.forEach(function (row) {
-      var item = document.createElement("div"); item.className = "th-row";
-      var details = document.createElement("div"); details.className = "th-info";
+      var item = document.createElement("div"); item.className = "projectRow";
+      var details = document.createElement("div"); details.className = "projectRowInfo";
       var name = document.createElement("input"); name.value = row.title; name.maxLength = 120;
       name.setAttribute("aria-label", "작업 이름: " + row.title); name.readOnly = !!row.deletedAt || row.busy || pending;
       var meta = document.createElement("p");
@@ -40,7 +41,7 @@
       var message = document.createElement("p");
       message.textContent = row.deletedAt ? "휴지통 이동: " + date(row.deletedAt) : row.message;
       details.appendChild(name); details.appendChild(meta); details.appendChild(message); item.appendChild(details);
-      var actions = document.createElement("div"); actions.className = "th-actions";
+      var actions = document.createElement("div"); actions.className = "projectRowActions";
       if (row.deletedAt) {
         button(actions, "복원", "restore", row);
         button(actions, "영구 삭제", "purge", row);
@@ -55,14 +56,17 @@
       }
       item.appendChild(actions); list.appendChild(item);
     });
-    if (!rows.length) list.textContent = "해당하는 작업이 없습니다.";
-    empty.hidden = filter.value !== "trash" || !rows.length;
+    if (!rows.length) {
+      var noRows = document.createElement("p"); noRows.className = "projectEmpty";
+      noRows.textContent = "해당하는 작업이 없습니다."; list.appendChild(noRows);
+    }
+    empty.hidden = !archived || !rows.length;
     empty.disabled = pending;
   }
   function load() {
     var current = ++serial;
     info("작업 이력을 불러오는 중입니다.");
-    return api("/api/v1/tem/history?page=" + page + "&limit=20&trash=" + (filter.value === "trash") + "&q=" + encodeURIComponent(search.value)).then(function (data) {
+    return api("/api/v1/tem/history?page=" + page + "&limit=20&trash=" + archived + "&q=" + encodeURIComponent(search.value)).then(function (data) {
       if (current !== serial || modal.hidden) return;
       var pages = Math.max(1, Math.ceil(data.total / 20));
       if (page > pages) { page = pages; return load(); }
@@ -80,7 +84,7 @@
     if (action === "trash" && !window.confirm("작업을 휴지통으로 이동할까요? 보관 기간 내 복원할 수 있습니다. LIMS 전송 보고서는 유지됩니다.")) return;
     if (action === "purge" && !window.confirm("표시된 작업 중 " + selected.length + "건의 원본·미리보기·수정 이력을 영구 삭제할까요? 복구할 수 없습니다. LIMS 전송 보고서는 유지됩니다.")) return;
     pending = true; ++serial; render();
-    prev.disabled = next.disabled = true; search.disabled = filter.disabled = close.disabled = true;
+    prev.disabled = next.disabled = true; search.disabled = activeTab.disabled = trashTab.disabled = close.disabled = true;
     var chain = Promise.resolve(), done = 0;
     selected.forEach(function (row) {
       chain = chain.then(function () {
@@ -91,7 +95,7 @@
     });
     var failure = "";
     chain.catch(function (error) { failure = error.message; }).then(function () {
-      pending = false; search.disabled = filter.disabled = close.disabled = false;
+      pending = false; search.disabled = activeTab.disabled = trashTab.disabled = close.disabled = false;
       return load();
     }).then(function () { info(done + "건 처리했습니다." + (failure ? " " + failure : ""), !!failure); });
   }
@@ -112,7 +116,14 @@
     if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
   });
   search.oninput = function () { clearTimeout(debounce); debounce = setTimeout(function () { page = 1; load(); }, 250); };
-  filter.onchange = function () { page = 1; load(); };
+  function setTab(trash) {
+    if (pending || archived === trash) return;
+    clearTimeout(debounce); archived = trash; page = 1;
+    activeTab.setAttribute("aria-pressed", String(!trash)); trashTab.setAttribute("aria-pressed", String(trash));
+    rows = []; render(); prev.disabled = next.disabled = true; load();
+  }
+  activeTab.onclick = function () { setTab(false); };
+  trashTab.onclick = function () { setTab(true); };
   document.getElementById("th-refresh").onclick = function () { if (!pending) load(); };
   prev.onclick = function () { if (page > 1 && !pending) { page -= 1; load(); } };
   next.onclick = function () { if (!pending) { page += 1; load(); } };

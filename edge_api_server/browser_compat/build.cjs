@@ -113,7 +113,7 @@ for (const name of ['shared/shell','viewer/viewer','analysis/analysis','report/r
     bundle:true, platform:'browser', format:'iife', write:false, target:'es2015', logLevel:'warning'}).outputFiles[0].text;
   fs.writeFileSync(path.join(xrdWeb,name+'.legacy.js'), compile(bundled));
 }
-for (const name of ['shared/shell','shared/platform','viewer/style','analysis/analysis','report/report']) {
+for (const name of ['shared/shell','shared/project_manager','shared/platform','viewer/style','analysis/analysis','report/report']) {
   const source = fs.readFileSync(path.join(xrdWeb, name+'.css'), 'utf8');
   fs.writeFileSync(path.join(xrdWeb,name+'.legacy.css'), cssFallback(source).replace(/dvh\b/g,'vh').replace(/dvw\b/g,'vw'));
 }

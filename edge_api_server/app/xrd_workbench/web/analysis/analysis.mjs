@@ -25,7 +25,7 @@ setCompare(window.innerWidth < 900 ? 'data' : 'both');
 setReviewNav(window.innerWidth >= 1100);
 let mode = 'sections',
   sectionId = null;
-let storageId = new URLSearchParams(location.search).get('project') || 'example',
+let storageId = new URLSearchParams(location.search).get('project'),
   project,
   review,
   effective,
@@ -574,6 +574,10 @@ window.addEventListener('beforeunload', (e) => {
   }
 });
 async function start() {
+  if (!storageId) {
+    location.replace(apiUrl('/?step=upload&fresh=1'));
+    return;
+  }
   try {
     await openProject(storageId);
   } catch (e) {

@@ -63,6 +63,7 @@ def test_without_views_the_exported_viewer_is_exactly_what_it_was():
     p = project()
     plain = export_html(p, {})
     assert 'views' not in embedded(plain)
+    assert '/shared/project_manager' not in plain
     assert export_html(p, {}, None) == plain and export_html(p, {}, []) == plain
 
 

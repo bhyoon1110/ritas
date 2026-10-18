@@ -21,10 +21,10 @@ export function projectRowsHTML(rows, archived, current) {
 export function mountProjectManager({ button, getCurrent, refreshProjects,
   host = window, navigate = url => { location.href = url; } }) {
   const overlay = document.createElement('div');
-  overlay.className = 'xrdProjectManager';
+  overlay.className = 'xrdProjectManager ristWorkManager';
   overlay.hidden = true;
   overlay.innerHTML = `<section class="projectPanel" role="dialog" aria-modal="true" aria-labelledby="projectManagerTitle">
-    <div class="projectHeading"><h2 id="projectManagerTitle">프로젝트 관리</h2><button type="button" data-close>닫기</button></div>
+    <div class="projectHeading"><h2 id="projectManagerTitle">XRD 프로젝트 관리</h2><button type="button" data-close>닫기</button></div>
     <p class="projectHelp">본인 XRD 프로젝트만 표시합니다. 목록 이름을 바꿔도 시료명·보고서 제목은 유지됩니다.</p>
     <div class="projectFilters"><div><button type="button" data-tab="active" aria-pressed="true">사용 중</button><button type="button" data-tab="trash" aria-pressed="false">휴지통</button></div>
     <label>검색<input type="search" data-search maxlength="100" placeholder="전체 프로젝트 이름 검색" aria-label="프로젝트 이름 검색"></label><button type="button" data-refresh>새로고침</button></div>
@@ -40,7 +40,7 @@ export function mountProjectManager({ button, getCurrent, refreshProjects,
   document.body.appendChild(overlay);
   const el = selector => overlay.querySelector(selector);
   let rows = [], archived = false, busy = false, loading = false, page = 1, pages = 1, totalInTab = 0;
-  let version = 0, timer, returnFocus = null;
+  let version = 0, timer, returnFocus = null, oldOverflow = '';
   const message = (text, error = false) => {
     el('[data-notice]').textContent = text;
     el('[data-notice]').classList.toggle('error', error);
@@ -148,14 +148,17 @@ export function mountProjectManager({ button, getCurrent, refreshProjects,
   button.onclick = async () => {
     if (!overlay.hidden) return;
     returnFocus = document.activeElement;
+    oldOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
     overlay.hidden = false;
     await load();
-    el('[data-search]').focus();
+    if (!overlay.hidden) el('[data-search]').focus();
   };
   function close() {
     if (busy) return;
     clearTimeout(timer);
     overlay.hidden = true;
+    document.body.style.overflow = oldOverflow;
     (returnFocus || button).focus();
   }
   el('[data-close]').onclick = close;

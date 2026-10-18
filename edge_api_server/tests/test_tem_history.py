@@ -258,17 +258,20 @@ def test_capacity_guard_and_invalid_config(workspace, monkeypatch):
 
 def test_abandoned_upload_cleanup_does_not_touch_live_or_unknown_folders(workspace):
     w = workspace
-    abandoned = history.new_workspace(w.settings)
-    old = time.time() - 3 * 3600
-    os.utime(abandoned / "upload-marker.json", (old, old))
-    unknown = history.root(w.settings) / "user-data"; unknown.mkdir(); (unknown / "keep").write_text("keep")
-    active = ahn._create_upload_session(w.settings)
-    os.utime(active.work_dir / "upload-marker.json", (old, old))
-    try:
-        history.cleanup(w.settings, force=True)
-        assert not abandoned.exists() and active.work_dir.exists() and (unknown / "keep").exists()
-    finally:
-        ahn._ahn_upload_sessions.pop(active.upload_id)
+    # Do not let the lifespan sweep snapshot sessions before this fixture is
+    # registered, then discover a marker that this test artificially ages.
+    with ahn._ahn_report_jobs_lock:
+        abandoned = history.new_workspace(w.settings)
+        old = time.time() - 3 * 3600
+        os.utime(abandoned / "upload-marker.json", (old, old))
+        unknown = history.root(w.settings) / "user-data"; unknown.mkdir(); (unknown / "keep").write_text("keep")
+        active = ahn._create_upload_session(w.settings)
+        os.utime(active.work_dir / "upload-marker.json", (old, old))
+        try:
+            history.cleanup(w.settings, force=True)
+            assert not abandoned.exists() and active.work_dir.exists() and (unknown / "keep").exists()
+        finally:
+            ahn._ahn_upload_sessions.pop(active.upload_id)
 
 
 def test_invalid_metadata_cannot_restore_external_paths(workspace, tmp_path):

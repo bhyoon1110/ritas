@@ -67,6 +67,7 @@ def export_html(project: dict, state: dict, views: list | None = None) -> str:
     # The offline viewer is a delivered file, not a step of the app: drop the app shell.
     for shell_part in (
         '<link rel="stylesheet" href="/shared/shell.css">',
+        '<link rel="stylesheet" href="/shared/project_manager.css">',
         '<script type="module" src="/shared/shell.mjs"></script>',
         ' data-step="viewer"',
     ):

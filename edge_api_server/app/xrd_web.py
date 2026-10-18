@@ -1288,7 +1288,6 @@ def build_xrd_page() -> str:
         <a class="xrd-download" id="xrd-home" href="/">홈</a>
         <a class="xrd-download" id="xrd-admin-link" href="/operations" hidden>운영 관리</a>
         <a class="xrd-download" href="/voc?project=XRD" target="_blank" rel="noopener">VOC · 의견 보내기</a>
-        <button type="button" id="xrd-example">예제 불러오기</button>
         <button type="submit" form="xrd-form" class="primary" id="xrd-run" disabled>보고서 생성</button>
         <button type="button" id="xrd-clear">초기화</button>
         <a href="#" class="xrd-download" id="xrd-download" aria-disabled="true">보고서 다운로드</a>
@@ -1375,7 +1374,6 @@ def build_xrd_page() -> str:
     var addFolderButton = document.getElementById("xrd-add-folder");
     var runButton = document.getElementById("xrd-run");
     var clearButton = document.getElementById("xrd-clear");
-    var exampleButton = document.getElementById("xrd-example");
     var adminLink = document.getElementById("xrd-admin-link");
     var logoutButton = document.getElementById("xrd-logout");
     var accountLink = document.getElementById("xrd-account-link");
@@ -1493,7 +1491,6 @@ def build_xrd_page() -> str:
     }
     function syncActionState() {
       runButton.disabled = operationBusy || collectingFiles || !bundleItems.length;
-      exampleButton.disabled = operationBusy || collectingFiles;
       addFilesButton.disabled = operationBusy || collectingFiles;
       addFolderButton.disabled = operationBusy || collectingFiles;
       clearButton.disabled = operationBusy || collectingFiles;
@@ -2469,29 +2466,6 @@ def build_xrd_page() -> str:
       setUploadProgress(0, "bundle 업로드 대기", false, false);
       setReportProgress(0, "보고서 생성 대기", false, false);
       updateReportSendAvailability();
-    });
-    exampleButton.addEventListener("click", async function() {
-      lastReportJob = null;
-      updateReportSendAvailability();
-      setBusy(true);
-      startReportProgress("예제 보고서를 불러오는 중입니다.");
-      try {
-        var response = await fetch("/api/v1/xrd/example");
-        var text = await response.text();
-        if (!response.ok) throw errorFromResponse(response, text, "예제 보고서를 불러오지 못했습니다.");
-        setReportProgress(94, "예제 보고서 화면을 준비하는 중입니다.", true, false);
-        showHtml(text);
-        setStatus("예제 보고서를 불러왔습니다.", false);
-        finishReportProgress("예제 보고서가 준비되었습니다.");
-      } catch (error) {
-        setStatus(error.message || String(error), true);
-        failReportProgress(
-          error.message || "예제 보고서를 불러오지 못했습니다.",
-          error.errorFeedbackUrl || ""
-        );
-      } finally {
-        setBusy(false);
-      }
     });
     form.addEventListener("submit", async function(event) {
       event.preventDefault();
