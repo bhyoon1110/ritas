@@ -21,7 +21,6 @@ CODES = (
     'undecided_trace_phases',
     'no_notes',
 )
-SUMMARY_LIMIT_TEXT = '첫 장 요약 시료는 최대 4개입니다. 나머지는 상세에 모두 포함됩니다.'
 
 
 def _item(level: str, code: str, text: str) -> dict:
@@ -113,7 +112,7 @@ def build_checklist(project: dict, document: dict) -> dict:
                     )
                 )
         if not _has_notes(entry):
-            items.append(_item('info', 'no_notes', '보고서에 들어갈 특이사항이 없습니다.'))
+            items.append(_item('info', 'no_notes', '저장된 검토 문장이 없습니다. 특이사항은 상 분류에서 자동 생성됩니다.'))
         samples.append(
             {
                 'sample_id': sample['id'],
@@ -127,8 +126,6 @@ def build_checklist(project: dict, document: dict) -> dict:
         report.append(
             _item('blocker', 'no_included_samples', '보고서에 포함할 시료를 하나 이상 선택하세요.')
         )
-    if sum(1 for e in entries if e['summary_included']) > 4:
-        report.append(_item('blocker', 'too_many_summary_samples', SUMMARY_LIMIT_TEXT))
     if figure_empty:
         report.append(
             _item(

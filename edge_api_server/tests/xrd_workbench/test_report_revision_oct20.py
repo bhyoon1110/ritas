@@ -1,0 +1,151 @@
+"""October template: cover, adaptive summary, rules-only notice and native WPPF table."""
+from copy import deepcopy
+import io
+
+from pypdf import PdfReader
+
+from app.xrd_workbench.core.report import new_document, validate_document
+from app.xrd_workbench.core.phase_class import phase_ref
+from app.xrd_workbench.core.checklist import build_checklist
+from app.xrd_workbench.render.posco_pptx import build_posco_deck, named, NS, box
+from app.xrd_workbench.render.posco_preview import deck_pages
+from app.xrd_workbench.render.pdf import render_pdf
+from app.xrd_workbench.render.html import render_html
+from app.xrd_workbench.render.summary_layout import classifier, notice, NOTICE
+from .test_posco_pptx import fixture
+from .test_sample_slide import sample, IMAGE
+from .figure_fixtures import make_project
+
+
+def text(slide):
+    return ''.join(slide.xpath('.//a:t/text()',namespaces=NS))
+
+
+def test_rules_use_reviewed_classes_only_and_empty_means_really_empty():
+    project,doc=fixture();samples={s['id']:s for s in project['samples']}
+    entries=doc['samples']
+    statement,disclaimer=notice(entries,samples,classifier(doc))
+    assert statement=='[시료 A] 샘플에서 미량상 및 추정상이 존재합니다.'
+    assert disclaimer==NOTICE
+    doc['phase_classes']['labels']=[v for v in doc['phase_classes']['labels'] if v['class']=='trace']
+    statement,_=notice(entries,samples,classifier(doc))
+    assert statement=='[시료 A] 샘플에서 미량상이 존재합니다.' and '추정상' not in statement
+    doc['phase_classes']['labels']=[]
+    doc['summary']='LLM이 작성했지만 사용하면 안 되는 문장'
+    assert notice(entries,samples,classifier(doc))==('','')
+    filled=build_posco_deck(project,doc,lambda _:IMAGE)
+    summary=next(s for s,_ in filled.pages if filled.page_info[s]['kind']=='summary')
+    assert 'LLM이' not in text(summary) and NOTICE not in text(summary)
+    assert '미량상' not in text(summary) and '추정상' not in text(summary)
+
+
+def test_all_twelve_samples_paginate_without_omission_or_a_four_sample_blocker():
+    project=make_project([sample(str(i),n_phases=(i%4)+2,quantities=0) for i in range(12)])
+    doc=new_document(project);doc['figure']['include']=False
+    assert all(e['summary_included'] for e in doc['samples'])
+    validate_document(project,doc)
+    assert not any(i['code']=='too_many_summary_samples' for i in build_checklist(project,doc)['report'])
+    before=deepcopy((project,doc))
+    filled=build_posco_deck(project,doc,lambda _:IMAGE,image_renderer=lambda *a:IMAGE)
+    summaries=[s for s,_ in filled.pages if filled.page_info[s]['kind']=='summary']
+    assert len(summaries)>1
+    all_titles=[text(shape) for slide in summaries for shape in slide.find('p:cSld/p:spTree',NS)
+                if filled.edits.get(shape,{}).get('field')=='display_name']
+    assert sorted(all_titles)==sorted('샘플명: '+e['display_name'] for e in doc['samples'])
+    for slide in summaries:
+        frames=named(slide,'Sample frame')
+        assert {round(box(s)[0]) for s in frames} <= {143,207}
+        assert all(box(s)[1]+box(s)[3]<=175 for s in frames)
+    assert before==(project,doc)
+
+
+def test_huge_phase_lists_continue_without_ellipsis_or_losing_last_phase():
+    project=make_project([sample('Long',n_phases=90,quantities=0)])
+    doc=new_document(project);doc['figure']['include']=False
+    filled=build_posco_deck(project,doc,lambda _:IMAGE,image_renderer=lambda *a:IMAGE)
+    summaries=[s for s,_ in filled.pages if filled.page_info[s]['kind']=='summary']
+    assert len(summaries)>1
+    body=''.join(text(s) for s in summaries)
+    for i in range(90): assert f'Phase{i}' in body
+    assert '…' not in body
+
+
+def test_wppf_table_and_links_match_reference_and_keep_unit_precision():
+    project,doc=fixture()
+    for phase in project['samples'][2]['phases']:
+        doc['phase_classes']['labels'].append(dict(sample_id='Mix',phase=phase_ref(phase),origin='manual',**{'class':'major'}))
+    filled=build_posco_deck(project,doc,lambda _:IMAGE)
+    slide=next(s for s,_ in filled.pages if 'WPPF' in text(named(s,'Title')[0]))
+    assert 'Phase0 [주요상]' in text(slide) and '# ICDD CARD ID' in text(slide)
+    table=named(slide,'Quantity table')[0]
+    rows=table.findall('.//a:tr',NS)
+    assert len(rows)==4 and all(len(r.findall('a:tc',NS))==2 for r in rows)
+    assert all(v['raw']+' wt%' in text(table) for v in project['samples'][2]['quantities'])
+    assert box(table)[1]>box(named(slide,'Pie frame')[0])[1]
+    for s,_ in filled.pages:
+        if filled.page_info[s]['kind']=='sample':
+            assert 'Measured Data (TXT)' not in text(s)
+            assert '상매칭 Report 열기' in text(s)
+            assert '측정 데이터(TXT) 열기' in text(s)
+
+
+def test_pdf_html_and_ppt_scene_share_cover_geometry_values_and_portable_viewer_link():
+    project,doc=fixture()
+    filled=build_posco_deck(project,doc,lambda _:IMAGE)
+    pages=deck_pages(filled)
+    pdf=PdfReader(io.BytesIO(render_pdf(pages,doc)))
+    assert len(pdf.pages)==len(filled.pages)
+    for page in pdf.pages:
+        assert abs(float(page.mediabox.width)-275.1666667*72/25.4)<.01
+        assert abs(float(page.mediabox.height)-190.5*72/25.4)<.01
+    assert all(len(named(slide,'RIST logo'))==1 for slide,_ in filled.pages)
+    filled.number_pages()
+    assert all(len(named(slide,'RIST logo'))==1 for slide,_ in filled.pages)
+    full=''.join(p.extract_text() for p in pdf.pages)
+    assert 'REQ-123' in full and 'XRD-01' in full and 'QA-OP' in full
+    assert '10.0(1) wt%' in full
+    uris=[str(a.get_object().get('/A',{}).get('/URI','')) for p in pdf.pages for a in p.get('/Annots',[])]
+    assert '뷰어.html' in uris
+    html=render_html(pages,doc,'package')
+    assert html.count('<section class="page"')==len(pdf.pages)
+    assert 'href="뷰어.html"' in html and 'contenteditable' not in html
+
+
+def test_many_quantity_rows_continue_without_repeating_pie_or_losing_values():
+    project=make_project([sample('Q',n_phases=3,quantities=32)])
+    doc=new_document(project);doc['figure']['include']=False
+    before=deepcopy((project,doc))
+    filled=build_posco_deck(project,doc,lambda _:IMAGE,image_renderer=lambda *a:IMAGE)
+    tables=[table for slide,_ in filled.pages for table in named(slide,'Quantity table')]
+    assert len(tables)>1
+    all_text=''.join(text(t) for t in tables)
+    for q in project['samples'][0]['quantities']:assert q['raw']+' wt%' in all_text
+    assert sum('WPPF' in text(named(s,'Title')[0]) for s,_ in filled.pages)==1
+    assert before==(project,doc)
+
+
+def test_maximum_length_sample_names_expand_notice_without_clipping_or_failure():
+    project=make_project([sample(str(i),n_phases=1,quantities=0) for i in range(6)])
+    doc=new_document(project);doc['figure']['include']=False
+    for i,(s,e) in enumerate(zip(project['samples'],doc['samples'])):
+        e['display_name']=str(i)+'긴시료명'*49
+        doc['phase_classes']['labels'].append(dict(sample_id=s['id'],phase=phase_ref(s['phases'][0]),origin='manual',**{'class':'trace'}))
+    filled=build_posco_deck(project,doc,lambda _:IMAGE,image_renderer=lambda *a:IMAGE)
+    pages=[s for s,_ in filled.pages if filled.page_info[s]['kind']=='summary']
+    assert len(pages)>1
+    for s in pages:
+        assert ''.join(NOTICE.split()) in ''.join(text(s).split())
+        assert box(named(s,'Remarks box')[0])[3]>27
+        assert box(named(s,'Overlay frame')[0])[3]>30
+        assert all(box(f)[1]+box(f)[3]<=175 for f in named(s,'Sample frame'))
+
+
+def test_long_quantity_names_move_to_wider_continuation_without_losing_tokens():
+    project,doc=fixture()
+    value='긴 정량 결정상 이름 '+('Oxide '*90)
+    project['samples'][2]['quantities'][0]['phase']=value
+    doc=new_document(project);doc['figure']['include']=False
+    filled=build_posco_deck(project,doc,lambda _:IMAGE)
+    tables=[t for s,_ in filled.pages for t in named(s,'Quantity table')]
+    assert any(box(t)[2]>200 for t in tables)
+    assert ''.join(value.split()) in ''.join(''.join(text(t) for t in tables).split())

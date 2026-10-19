@@ -475,7 +475,7 @@ def export_report(sid: str, payload: dict):
         if transfer.get(field) and document['metadata'].get(key) != transfer[field]:
             raise HTTPException(409, '보고서 전송정보를 저장한 후 다시 생성하세요.')
     def work(directory):
-        from .render.layout import build_pages
+        from .render.posco_preview import report_pages
         from .render.pdf import render_pdf
         from .render.posco_pptx import render_report_pptx
         from .render.package import build_package
@@ -503,8 +503,8 @@ def export_report(sid: str, payload: dict):
                     raise ValueError('미리보기가 32MB를 초과했습니다. 시료를 나누거나 PDF/PPTX로 다운로드하세요.')
                 output.write_text(content, encoding='utf-8')
             else:
-                pages = build_pages(project, document, source)
                 base = state.settings.edge_public_base_url.rstrip('/') + BASE + '/'
+                pages = report_pages(project, document, source, storage_id=sid, link_base=base) if kind == 'pdf' else None
                 data = (render_pdf(pages, document, link_base=base, storage_id=sid) if kind == 'pdf'
                         else render_report_pptx(project, document, source, pages=pages,
                                                 link_base=base, storage_id=sid))

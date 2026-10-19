@@ -24,8 +24,8 @@ def test_draft_preview_is_ephemeral_exact_and_not_a_report_send(tmp_path):
     assert response.status_code == 200, response.text
     assert 'private, no-store' in response.headers['cache-control']
     assert 'data-edit=' in response.text and 'xrd-preview-edit' in response.text
-    assert '검토 중 요약' in response.text
-    assert 'QA-DRAFT' not in response.text  # removed legacy request-information slide
+    assert '검토 중 요약' not in response.text  # only phase classifications determine the notice
+    assert 'QA-DRAFT' in response.text  # request metadata now appears on the POSCO cover
     assert doc['metadata']['report_number'] == 'QA-DRAFT'
     assert '<script>alert(1)</script>' not in response.text
     assert 'contenteditable' not in response.text

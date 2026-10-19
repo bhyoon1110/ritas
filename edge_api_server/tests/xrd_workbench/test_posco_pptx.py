@@ -54,15 +54,15 @@ def test_reference_background_dimensions_and_sanitized_example_data():
     size=E.fromstring(z.read('ppt/presentation.xml')).find('p:sldSz',NS)
     assert (size.get('cx'),size.get('cy'))==('9906000','6858000')
     assert 'Zinc Manganese' not in text and '00-062-0414' not in text and '{Sample' not in text
-    assert len(slides)==3
+    assert len(slides)==4
     assert [''.join(named(s,'Title')[0].xpath('.//a:t/text()',namespaces=NS)) for s in slides]==[
-        SUMMARY_TITLE, QUANTITY_TITLE, PHASE_TITLE,
+        'XRD 분석 보고서', SUMMARY_TITLE, QUANTITY_TITLE, PHASE_TITLE,
     ]
-    assert '검토 문장' in text
+    assert '검토 문장' not in text  # prose/LLM is preserved in the document, not the rules-only summary
     assert all(value not in text for value in ('보고서 정보','정량 수치','결정상 분류 기준','긴 제목 전체'))
     assert before==(project,document)
-    assert len(slides[2].findall('.//a:tbl',NS))==2  # phase-only samples share the reference layout
-    assert len(slides[1].findall('.//a:tbl',NS))==1  # summary -> WPPF -> phase-only pair
+    assert len(slides[3].findall('.//a:tbl',NS))==2  # phase-only samples share the reference layout
+    assert len(slides[2].findall('.//a:tbl',NS))==2  # WPPF includes a native quantity table
     assert '[주요상] Phase0' in text and '[미량상] Phase1' in text and '[추정상] Phase2' in text
     assert '[미분류] Phase0' in text  # no implicit scientific classification
 
@@ -98,12 +98,12 @@ def test_more_samples_keep_only_reference_layouts_and_do_not_mutate_full_notes()
     before=deepcopy((project,document))
     z,slides,text=deck(render_report_pptx(project,document,lambda _:IMAGE,include_sources=False))
     assert before==(project,document)
-    assert '…' in text and '뒤쪽' not in text
-    assert any('QA-END' in description for s in slides for description in s.xpath('.//p:cNvPr/@descr',namespaces=NS))
+    assert 'QA-START' not in text and '뒤쪽' not in text
+    assert document['samples'][0]['manual_note'].endswith('QA-END')
     assert all('시료 '+str(i) in text for i in range(5))
     assert 'Phase7' in text and '계속' in text
     titles=[''.join(named(s,'Title')[0].xpath('.//a:t/text()',namespaces=NS)) for s in slides]
-    assert all(t.removesuffix(' (계속)') in (SUMMARY_TITLE,PHASE_TITLE) for t in titles)
+    assert all(t.removesuffix(' (계속)') in ('XRD 분석 보고서',SUMMARY_TITLE,PHASE_TITLE) for t in titles)
     for n in z.namelist():
         if n.endswith('.rels'):assert b'TargetMode="External"' not in z.read(n)
     for slide in slides:
@@ -149,7 +149,7 @@ def test_long_sample_names_do_not_add_unrequested_pages():
     name='긴샘플이름'*30
     document['samples'][0]['display_name']=name
     _,slides,text=deck(render_report_pptx(project,document,lambda _:IMAGE))
-    assert len(slides)==3 and '긴 제목 전체' not in text
+    assert len(slides)==4 and '긴 제목 전체' not in text
     assert any(name in description for s in slides for description in s.xpath('.//p:cNvPr/@descr',namespaces=NS))
     assert document['samples'][0]['display_name']==name
 
@@ -165,7 +165,7 @@ def test_legacy_options_and_prebuilt_pages_do_not_append_extra_slides(monkeypatc
     old_pages=[dict(kind=k,items=[]) for k in ('cover','figure','table','appendix')]
     for pages in (None,old_pages):
         _,slides,text=deck(render_report_pptx(project,document,lambda _:IMAGE,pages=pages))
-        assert len(slides)==3
+        assert len(slides)==4
         assert '보존할 분류 기준' not in text
     assert before==(project,document)
 
@@ -189,13 +189,14 @@ def test_wppf_is_once_per_sample_and_all_remaining_phases_use_phase_layout():
     titles = [''.join(named(s,'Title')[0].xpath('.//a:t/text()',namespaces=NS)) for s,_ in filled.pages]
     assert titles.count(QUANTITY_TITLE) == 2
     assert QUANTITY_TITLE+' (계속)' not in titles
-    assert all(t.removesuffix(' (계속)') in (SUMMARY_TITLE, QUANTITY_TITLE, PHASE_TITLE) for t in titles)
+    assert all(t.removesuffix(' (계속)') in ('XRD 분석 보고서',SUMMARY_TITLE, QUANTITY_TITLE, PHASE_TITLE) for t in titles)
     wppf_pages = [s for s,_ in filled.pages if 'WPPF' in ''.join(named(s,'Title')[0].itertext())]
     assert [filled.page_info[s]['sample_id'] for s in wppf_pages] == ['A','B']
     # Every phase table row appears exactly once, even with unequal phase counts.
     cells = [text for s,_ in filled.pages for t in named(s,'Phase table')
              for text in t.xpath('.//a:tr/a:tc[1]//a:t/text()',namespaces=NS)]
-    assert cells.count('[미분류] Phase0') == 3
+    assert cells.count('[미분류] Phase0') == 1
+    assert cells.count('Phase0 [미분류]') == 2  # WPPF wording only; layout-only phase pages retain their labels
     assert cells.count('[미분류] Phase3') == 2
     assert cells.count('[미분류] Phase7') == 1
     assert '이전 페이지에 수록' not in cells

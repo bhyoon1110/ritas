@@ -6,7 +6,8 @@ from copy import deepcopy
 from ..core.email import email_markdown
 
 from ..render.html import render_html
-from ..render.layout import archive_path, build_pages
+from ..render.layout import archive_path
+from ..render.posco_preview import report_pages
 from ..render.pdf import render_pdf
 from ..render.posco_pptx import render_report_pptx
 from ..render.viewer_export import export_html
@@ -14,7 +15,7 @@ from ..render.viewer_state import prepare_state, prepare_views
 
 
 def build_package(project, document, resolve_source, viewer_state=None, views=None, *, output_path=None, include_sources=True):
-    pages = build_pages(project, document, resolve_source)
+    pages = report_pages(project, document, resolve_source, include_sources=include_sources)
     if not include_sources:
         for page in pages:
             page['items'] = [item for item in page['items'] if item['type'] != 'link']

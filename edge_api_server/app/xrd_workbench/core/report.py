@@ -21,9 +21,9 @@ def new_document_with_defaults(project: dict) -> dict:
 
 def new_document(project: dict) -> dict:
     """Default editable report for a project: every sample included, rule-based note
-    candidates selected, the first four samples on the summary page."""
+    candidates selected, all samples in the paginated summary."""
     entries = []
-    for i, sample in enumerate(project['samples']):
+    for sample in project['samples']:
         roles = {r['role'] for r in sample['sources']}
         notes = [
             dict(**candidate, selected=True, edited=False, selection_edited=False, origin='rules')
@@ -34,7 +34,7 @@ def new_document(project: dict) -> dict:
                 sample_id=sample['id'],
                 display_name=sample['name'],
                 included=True,
-                summary_included=i < 4,
+                summary_included=True,
                 include_phase_image='phase_image' in roles,
                 include_quantity_image='quantity_image' in roles,
                 phase_caption='원본 상매칭 결과',
@@ -481,8 +481,6 @@ def validate_document(project: dict, document: dict) -> dict:
     included = [s for s in result['samples'] if s['included']]
     if not included:
         raise ValueError('보고서에 포함할 시료를 하나 이상 선택하세요.')
-    if sum(s['summary_included'] for s in included) > 4:
-        raise ValueError('첫 장 요약 시료는 최대 4개입니다. 나머지는 상세에 모두 포함됩니다.')
     return result
 
 

@@ -215,13 +215,14 @@ def build_report_router(project_loader, source_loader, store):
 
     @router.get('/api/reports/{storage_id}/pdf')
     def pdf(storage_id: str, revision: int, request: Request):
-        from ..render.layout import build_pages
+        from ..render.posco_preview import report_pages
         from ..render.pdf import render_pdf
 
         project, document = saved_context(storage_id, revision)
         try:
             data = render_pdf(
-                build_pages(project, document, lambda fid: source_loader(storage_id, fid)),
+                report_pages(project, document, lambda fid: source_loader(storage_id, fid),
+                             storage_id=storage_id, link_base=str(request.base_url)),
                 document,
                 link_base=str(request.base_url),
                 storage_id=storage_id,

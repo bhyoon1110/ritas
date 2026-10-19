@@ -150,8 +150,7 @@ def test_report_level_items_cover_no_samples_too_many_summary_samples_and_an_emp
     for entry in document['samples']:
         entry['summary_included'] = True
     report = build_checklist(project, document)['report']
-    assert [i['code'] for i in report] == ['too_many_summary_samples']
-    assert report[0]['level'] == 'blocker'
+    assert report == []  # summaries continue onto further pages
     for entry in document['samples']:
         entry['included'] = False
     assert [i['code'] for i in build_checklist(project, document)['report']] == [

@@ -15,9 +15,9 @@ def test_preview_exact_page_sequence_size_text_and_original_master_artwork():
     pages=deck_pages(filled)
     _,slides,_=read_deck(filled.finish(doc))
     assert len(pages)==len(slides)
-    assert len(pages)==3
-    assert [p['kind'] for p in pages]==['summary','sample','sample']
-    assert 'WPPF' in pages[1]['title'] and 'Phase Identification' in pages[2]['title']
+    assert len(pages)==4
+    assert [p['kind'] for p in pages]==['cover','summary','sample','sample']
+    assert 'WPPF' in pages[2]['title'] and 'Phase Identification' in pages[3]['title']
     for page,slide in zip(pages,slides):
         assert page['width']==9906000/36000 and page['height']==190.5
         assert page['title']==''.join(named(slide,'Title')[0].xpath('.//a:t/text()',namespaces=NS))
@@ -35,11 +35,11 @@ def test_template_table_positions_and_native_chart_are_shared_with_preview():
     project,doc=fixture()
     filled=build_posco_deck(project,doc,lambda _:IMAGE)
     pages=deck_pages(filled)
-    for index in (1,2):
+    for index in (2,3):
         for table in named(filled.pages[index][0],'Phase table'):
             x,y,w,h=box(table)
             assert any(i['type']=='rect' and i['x']==x and i['y']==y for i in pages[index]['items'])
-    chart=next(i for i in pages[1]['items'] if i.get('filename')=='WPPF 정량 차트')
+    chart=next(i for i in pages[2]['items'] if i.get('filename')=='WPPF 정량 차트')
     assert b'10' in chart['data'] and b'11.1' in chart['data'] and b'12.2' in chart['data']
     native=E.fromstring(filled.charts[0][0])
     assert '#'+native.find('.//c:dPt/c:spPr/a:solidFill/a:srgbClr',NS).get('val') in chart['data'].decode()
@@ -54,14 +54,15 @@ def test_edit_targets_safe_text_and_source_links_survive_posco_projection():
     doc['samples'][0]['phase_caption']='수정한 상 설명'
     doc['samples'][0]['quantity_caption']='수정한 정량 설명'
     doc['summary']='<script>bad()</script> & 요약'
+    doc['metadata']['requester']='<script>bad()</script> & 의뢰자'
     filled=build_posco_deck(project,doc,lambda _:IMAGE,storage_id='qa',link_base='/api/v1/xrd/workbench')
     targets=[i['edit'] for p in deck_pages(filled) for i in p['items'] if i.get('edit')]
     for entry in doc['samples']:
         assert dict(tab=entry['sample_id'],field='display_name') in targets
     assert dict(tab=doc['samples'][0]['sample_id'],field='phase_caption') in targets
     assert dict(tab=doc['samples'][2]['sample_id'],field='quantity_caption') in targets
-    assert dict(tab='overview',field='summary') in targets
-    assert dict(tab='overview',field='report_number') not in targets  # no legacy cover page
+    assert dict(tab='overview',field='summary') not in targets  # rules-only summary
+    assert dict(tab='overview',field='report_number') in targets
     html=render_posco_preview(project,doc,lambda _:IMAGE,storage_id='qa',edit_links=True)
     assert '<script>bad()</script>' not in html and '&lt;script&gt;' in html
     assert 'data-edit=' in html and '/api/v1/xrd/workbench/api/files/qa/' in html

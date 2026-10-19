@@ -237,18 +237,23 @@ def build_pages(project, document, resolve_source, *, image_renderer=None):
     # When the remarks cannot fit the first page even at the smallest size, they move to the
     # remark pages (and the block says so) instead of refusing the report.
     attempts = [(s, True) for s in COVER_SCALES] + [(s, False) for s in COVER_SCALES]
-    placed, remarks_on_cover = None, True
-    for scale, with_remarks in attempts:
-        placed = summary_rows(scale, with_remarks)
-        if placed is not None:
-            remarks_on_cover = with_remarks
-            break
-    if placed is None:
-        raise ValueError(
-            '첫 장 요약이 페이지를 넘습니다. 요약 문장이나 특이사항을 줄이거나 첫 장 포함 시료를 줄이세요.'
-        )
-    summary_page['items'] += placed[0]
-    y = placed[1]
+    all_selected = selected
+    covered_remarks = set()
+    for offset in range(0,max(1,len(all_selected)),4):
+        selected = all_selected[offset:offset+4]
+        if offset:
+            summary_page = new_page('summary','분석 결과 요약 (계속)')
+            y = summary_page['content_top']
+        placed = None
+        for scale, with_remarks in attempts:
+            placed = summary_rows(scale, with_remarks)
+            if placed is not None:
+                if with_remarks: covered_remarks.update(e['sample_id'] for e in selected)
+                break
+        if placed is None:
+            raise ValueError('첫 장 요약이 페이지를 넘습니다. 요약 문장이나 특이사항을 줄여 주세요.')
+        summary_page['items'] += placed[0]
+        y = placed[1]
     if y > BOTTOM:
         raise ValueError('첫 장 내용이 페이지를 넘습니다. 제목/요약을 줄여주세요.')
     y = max(y, BOTTOM - 16)
@@ -509,7 +514,7 @@ def build_pages(project, document, resolve_source, *, image_renderer=None):
         title = '시료별 특이사항'
         page = y = None
         for entry in entries:
-            if entry['summary_included'] and remarks_on_cover:
+            if entry['sample_id'] in covered_remarks:
                 continue
             rows = remarks(entry)
             if not rows:

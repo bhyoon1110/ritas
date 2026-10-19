@@ -18,14 +18,14 @@ from PIL import Image
 
 from ..config import load_settings
 from ..core.figure import build_plan
-from ..core.phase_class import phase_ref
 from ..core.parsing.values import central
 from ..core.report import validate_document
 from .figure import render_panel_png
 from .fonts import wrap_lines
 from .items import link_target
 from .layout import build_pages, source_links
-from .sample_page import remarks, quantity_status
+from .sample_page import quantity_status
+from .summary_layout import classifier, notice, summary_pages
 
 TEMPLATE = Path(__file__).with_name('assets') / 'posco_xrd_a4.pptx'
 NS = {'p': 'http://schemas.openxmlformats.org/presentationml/2006/main',
@@ -173,15 +173,16 @@ def subscript_formula(cell):
             paragraph.remove(run)
 
 
-def phase_table_data(sample, classification):
+def phase_table_data(sample, classification, *, revised=False):
     """Use the actual common database as header, never the reference's example DB."""
     phases = sample['phases']
     databases = {str(p.get('db') or '').strip() for p in phases}
     common = next(iter(databases)) if len(databases) == 1 and '' not in databases else None
-    rows = [(f"[{CLASS_NAMES[classification(sample, p)]}] {p['name']}", p.get('formula') or '—',
+    rows = [((f"{p['name']} [{CLASS_NAMES[classification(sample, p)]}]" if revised else
+              f"[{CLASS_NAMES[classification(sample, p)]}] {p['name']}"), p.get('formula') or '—',
              (str(p.get('card') or '—') if common else
               ' '.join(str(v) for v in (p.get('db'), p.get('card')) if v) or '—')) for p in phases]
-    return common or 'DB / Card No.', rows or [('상 목록 미제공', '—', '—')]
+    return ('# ICDD CARD ID' if revised else common or 'DB / Card No.'), rows or [('상 목록 미제공', '—', '—')]
 
 
 class Deck:
@@ -269,6 +270,42 @@ class Deck:
         self.append(slide, shape, label)
         self.mark(shape, edit)
 
+    def frame(self, slide, bounds, *, name='Sample frame'):
+        shape = deepcopy(named(self.templates[0], 'Sample frame')[0])
+        place(shape, bounds)
+        return self.append(slide, shape, name)
+
+    def table(self, slide, headers, rows, bounds, *, name='Quantity table', edit=None, size=9, allow_empty=False):
+        """Use the native template table, preserving every original value token."""
+        x,y,w,max_h = bounds
+        shape = deepcopy(named(self.templates[1], 'Phase table')[0])
+        table = shape.find('.//a:tbl', NS)
+        proto = deepcopy(table.findall('a:tr', NS)[1])
+        head = deepcopy(table.findall('a:tr', NS)[0])
+        for row in list(table.findall('a:tr', NS)): table.remove(row)
+        widths = [w*.63,w*.37] if len(headers)==2 else [w/len(headers)]*len(headers)
+        grid = table.find('a:tblGrid', NS); grid.clear()
+        for width in widths: E.SubElement(grid,q('a:gridCol'),w=str(round(width*MM)))
+        used, count = 0, 0
+        for index, values in enumerate([headers]+rows):
+            row = deepcopy(head if index==0 else proto)
+            for cell in row.findall('a:tc',NS)[len(widths):]: row.remove(cell)
+            lines = [wrap_lines(str(value),width-6.2,size,index==0) for value,width in zip(values,widths)]
+            height = max(8,max(len(v) for v in lines)*size*1.25/2.83465+3.3)
+            if used+height > max_h: break
+            row.set('h',str(round(height*MM)))
+            for cell,value,width in zip(row.findall('a:tc',NS),values,widths):
+                if not set_text(cell,value,dimensions=(width-5,height-3),size=size,minimum=size,
+                                bold=index==0,color='FFFFFF' if index==0 else '102A35'):
+                    raise ValueError('정량 표 내용을 표시할 공간이 부족합니다.')
+            table.append(row);used+=height
+            if index: count+=1
+        if rows and not count:
+            if allow_empty: return 0  # the wider continuation page retains the entire row
+            raise ValueError('정량 표의 상 이름이 너무 깁니다. 원본을 확인하고 표시명을 줄여 주세요.')
+        place(shape,(x,y,w,used)); self.append(slide,shape,name);self.mark(shape,edit)
+        return count
+
     def title(self, slide, title):
         shape = named(slide, 'Title')[0]
         fit_text(shape, title, size=19 if title.startswith(QUANTITY_TITLE) else 24, bold=True, minimum=14)
@@ -283,6 +320,10 @@ class Deck:
             return False
         if any(central(qty['raw']) is None or not math.isclose(value, central(qty['raw']), rel_tol=1e-9, abs_tol=1e-9)
                for qty, value in zip(quantities, values)):
+            return False
+        # Long names remain complete in the table; do not squeeze a pie under an
+        # unreadable legend or let its labels cover adjacent report sections.
+        if sum(len(wrap_lines(v['phase'],bounds[2]-6,9)) for v in quantities)*4 > bounds[3]-25:
             return False
         number = len(self.charts) + 1
         chart = E.Element(q('c:chartSpace'), nsmap={k:NS[k] for k in ('c','a','r')})
@@ -342,6 +383,16 @@ class Deck:
             shape = named(slide, 'Page number')[0]
             set_text(shape, str(number), size=10, color='6B7F88')
             shape.find('p:txBody/a:p/a:pPr', NS).set('algn', 'r')
+            # Keep the source artwork visible even in viewers that suppress inherited
+            # master pictures on populated slides. Do not redraw or replace the logo.
+            if not named(slide, 'RIST logo'):
+                master = E.fromstring(self.files['ppt/slideMasters/slideMaster1.xml'])
+                logo = named(master, 'Picture 14')[0]
+                blip = logo.find('p:blipFill/a:blip', NS)
+                rels = E.fromstring(self.files['ppt/slideMasters/_rels/slideMaster1.xml.rels'])
+                target = next(r.get('Target') for r in rels if r.get('Id') == blip.get(q('r:embed')))
+                self.picture(slide,self.files['ppt/'+target.removeprefix('../')],box(logo),'RIST logo')
+                place(named(slide,'RIST logo')[0],box(logo))
 
     def finish(self, document):
         self.number_pages()
@@ -417,11 +468,8 @@ def build_posco_deck(project, document, resolve_source, *, pages=None, link_base
     deck = Deck()
     entries = [e for e in document['samples'] if e['included']]
     samples = {s['id']: s for s in project['samples']}
-    labels = document['phase_classes']['labels']
     source_images, raw_images = {}, {}
-
-    def classification(sample, phase):
-        return next((v['class'] for v in labels if v['sample_id'] == sample['id'] and v['phase'] == phase_ref(phase)), None)
+    classification = classifier(document)
 
     def put(slide, name, content, size=10, edit=None, *, bold=False):
         target = named(slide, name)[0]
@@ -440,8 +488,28 @@ def build_posco_deck(project, document, resolve_source, *, pages=None, link_base
         source_images[key] = data
         return data
 
-    # Only the three supplied page layouts belong in the default PPT/preview.
-    # Do not render the legacy cover/figure/table/appendix pages just to discard them.
+    # The same original POSCO master/logo on the cover and every body page.
+    cover = deck.slide(blank=True, kind='cover')
+    deck.title(cover, 'XRD 분석 보고서')
+    meta = document['metadata']
+    title_shape=deck.text(cover, '', (22,42,231,30), size=24, bold=True,
+                          edit=dict(tab='overview',field='title'))
+    if not set_text(title_shape,meta['title'],size=24,bold=True,minimum=12):
+        raise ValueError('표지 제목을 표시할 공간이 부족합니다.')
+    fields = [('report_number','의뢰번호'),('client','의뢰기관'),('requester','의뢰자'),
+              ('received_date','접수일'),('analysis_period','분석 기간'),('author','작성자'),('date','완료일')]
+    for i,(key,label) in enumerate(fields):
+        deck.text(cover,label,(24,85+i*11,37,9),size=11,bold=True)
+        shape=deck.text(cover,'',(65,85+i*11,185,10),size=11,
+                       edit=dict(tab='overview',field=key))
+        if not set_text(shape,meta.get(key,''),size=11,minimum=8):
+            raise ValueError('표지 '+label+' 항목을 표시할 공간이 부족합니다.')
+    for i,(key,label) in enumerate((('experiment_code','실험코드'),('equipment_code','장비코드'),('operator_id','실험자 ID'))):
+        shape=deck.text(cover,'',(24+i*80,167,76,8),size=8,
+                       edit=dict(tab='overview',field='transfer'))
+        fit_text(shape,label+': '+meta.get(key,''),size=8)
+
+    # Adaptive summary: two columns of reviewed phase information, never 3/4 fixed samples.
     summary_image = None
     if document['figure']['include']:
         panel=next((p for p in build_plan(project,document)['panels'] if p['curves']),None)
@@ -451,38 +519,49 @@ def build_posco_deck(project, document, resolve_source, *, pages=None, link_base
             summary_panel=dict(panel,show_reference=False,show_markers=False,sample_legend=True)
             summary_image=image_renderer(summary_panel,128,91)
     selected = [e for e in entries if e['summary_included']]
-    for start in range(0, max(1,len(selected)),3):
-        slide = deck.slide(0)
-        deck.title(slide,SUMMARY_TITLE + (' (계속)' if start else ''))
+    for page_index, cards in enumerate(summary_pages(selected,samples,classification)):
+        slide = deck.slide(0,blank=True)
+        deck.title(slide,SUMMARY_TITLE + (' (계속)' if page_index else ''))
+        group = list({c['entry']['sample_id']:c['entry'] for c in cards}.values())
+        statement, disclaimer = notice(group,samples,classification)
+        note = statement+'\n\n'+disclaimer if statement else ''
+        note_h = max(27, len(wrap_lines(note,120.8,8.5))*8.5*1.25/2.83465+5)
+        extra_h = note_h-27
+        deck.text(slide,'측정 결과',(8,25,128,7),size=12,bold=True,color='0A7489',edit=dict(tab='figure'))
+        deck.text(slide,'샘플별 결정상 (Phase) 정보',(143,25,125,7),size=12,bold=True,color='0A7489',edit=dict(tab='classes'))
+        deck.frame(slide,(8,34,128,94-extra_h),name='Overlay frame')
         if summary_image:
-            deck.picture(slide,summary_image,(15.7,32.7,128,91),'시료 비교 그래프',edit=dict(tab='figure'))
-        else: deck.text(slide,'비교 그래프를 보고서에 포함하지 않았습니다.',(18,70,124,16),size=10)
-        group = selected[start:start+3]
+            deck.picture(slide,summary_image,(10,36,124,90-extra_h),'시료 비교 그래프',edit=dict(tab='figure'))
+        else: deck.text(slide,'비교 그래프를 보고서에 포함하지 않았습니다.',(12,70,120,16),size=10)
+        viewer_href = (f'{link_base.rstrip("/")}/?project={storage_id}&step=viewer'
+                       if link_base and storage_id else '뷰어.html')
+        # include_sources=False is also used for detached, non-linked report output.
+        if include_sources:
+            deck.frame(slide,(47,130-extra_h,53,8),name='Viewer link frame')
+            link_shape=deck.text(slide,'데이터 확인하기 ↗',(49,131-extra_h,49,6),size=9,color='0A7489',href=viewer_href)
+            link_shape.find('p:txBody/a:p/a:pPr',NS).set('algn','ctr')
         deck.page_info[slide]['navigation_title'] = SUMMARY_TITLE + ' · ' + ', '.join(e['display_name'] for e in group)
-        for index in range(3):
-            slot = 11 + index*5
-            if index >= len(group):
-                for offset in range(4): put(slide,f'Text {slot+offset}','')
-                continue
-            entry=group[index]; sample=samples[entry['sample_id']]
-            put(slide,f'Text {slot}','샘플명: '+entry['display_name'],11.5,dict(tab=entry['sample_id'],field='display_name'),bold=True)
-            for offset, cls in enumerate(('major','trace','presumed'),1):
-                names=[p['name'] for p in sample['phases'] if classification(sample,p)==cls]
-                value='; '.join(names) or '—'
-                if cls=='major' and any(classification(sample,p) is None for p in sample['phases']):
-                    value += ' (미분류는 상 동정 결과 참조)'
-                put(slide,f'Text {slot+offset}',CLASS_NAMES[cls]+': '+value,10,dict(tab='classes'))
-        note = document['summary'].strip() or '\n'.join(
-            entry['display_name']+': '+text for entry in group for text,_ in remarks(entry)) or '—'
-        # Use the whole remarks frame, not the original single-line placeholder.
-        place(named(slide,'Text 27')[0],(160.02,143.51,97.36,24))
-        deck.mark(named(slide,'Text 27')[0],dict(tab='overview',field='summary'))
-        put(slide,'Text 27',note,11,dict(tab='overview',field='summary'))
+        for card in cards:
+            entry=card['entry'];x=143+64*card['column'];y=34+card['top']
+            deck.frame(slide,(x,y,61,card['height']))
+            title='\n'.join(card['title'])
+            deck.text(slide,title,(x+2,y+2,57,len(card['title'])*4.5+.5),size=10,bold=True,
+                      edit=dict(tab=entry['sample_id'],field='display_name'))
+            ty=y+4+len(card['title'])*4.5
+            if card['continued']:
+                deck.text(slide,'(계속)',(x+2,ty,57,4),size=8);ty+=4
+            for line,bold in card['lines']:
+                deck.text(slide,line,(x+2,ty,57,4),size=8.5,bold=bold,edit=dict(tab='classes'));ty+=4
+        deck.text(slide,'특이사항',(8,140-extra_h,128,7),size=12,bold=True,color='0A7489',edit=dict(tab='classes'))
+        deck.frame(slide,(8,148-extra_h,128,note_h),name='Remarks box')
+        if statement:
+            deck.text(slide,note,(11,150-extra_h,122,note_h-4),size=8.5,edit=dict(tab='classes'))
     # Detailed pages: WPPF alongside its matching sample, or two phase-only samples per page.
     plain=[]
+    quantity_overflow=[]
     def details(batch, quantitative, starts=None):
         starts = starts or [0] * len(batch)
-        table_sets = [phase_table_data(samples[e['sample_id']], classification) for e in batch]
+        table_sets = [phase_table_data(samples[e['sample_id']], classification, revised=quantitative) for e in batch]
         row_sets = [rows for _, rows in table_sets]
         # A WPPF result is shown once per sample. Remaining phase rows use layout 3.
         count = 1 if quantitative else max(len(rows)-offset for rows, offset in zip(row_sets, starts))
@@ -515,7 +594,14 @@ def build_posco_deck(project, document, resolve_source, *, pages=None, link_base
                     if label not in by_label:
                         remove(shape);remove(link_frames[k]);continue
                     link=by_label[label]
-                    caption='WPPF Report' if label=='정량(WPPF) Report' else label
+                    caption={'상매칭 Report':'상매칭 Report 열기','정량(WPPF) Report':'WPPF Report 열기',
+                             'Measured Data (TXT)':'측정 데이터(TXT) 열기'}[label]
+                    if quantitative:
+                        bounds=((23,168,51,8),(189,168,53,8),(83,168,61,8))[j]
+                    else:
+                        left=12.7+129.5*index
+                        bounds=((left,162.4,55,8),(left+45,173,48,7),(left+62,162.4,58,8))[j]
+                    place(shape,bounds);place(link_frames[k],bounds)
                     set_text(shape,caption+' ↗',size=8,color='0A7489',minimum=6)
                     shape.find('p:txBody/a:p/a:pPr',NS).set('algn','ctr')
                     rid=deck.rel(slide,'hyperlink',link_target(link,link_base,storage_id),True)
@@ -564,23 +650,34 @@ def build_posco_deck(project, document, resolve_source, *, pages=None, link_base
                               name='Phase continuation',edit=dict(tab='classes'))
                 if quantitative:
                     put(slide,'Text 14',entry['display_name']+' - WPPF 정량 (Phase Fraction) 결과',12,dict(tab=entry['sample_id'],field='display_name'),bold=True)
+                    place(named(slide,'Pie frame')[0],(167.6,39.6,94.8,74.9))
                     bx,by,bw,bh=box(named(slide,'Pie frame')[0])
                     quant_image=image(sample,'quantity_image',entry)
                     pie_drawn=False
-                    if quant_image: deck.picture(slide,quant_image,(bx+2,by+2,bw-4,bh-(22 if sample.get('quantities') else 4)),entry['display_name']+' 정량 원본',edit=dict(tab=entry['sample_id'],field='quantity_caption'))
-                    else: pie_drawn=deck.pie(slide,sample.get('quantities',[]),(bx+3,by+5,bw-6,bh-20),edit=dict(tab=entry['sample_id'],field='quantity_caption'))
+                    if quant_image: deck.picture(slide,quant_image,(bx+2,by+2,bw-4,bh-4),entry['display_name']+' 정량 원본',edit=dict(tab=entry['sample_id'],field='quantity_caption'))
+                    else: pie_drawn=deck.pie(slide,sample.get('quantities',[]),(bx+3,by+3,bw-6,bh-6),edit=dict(tab=entry['sample_id'],field='quantity_caption'))
                     if not quant_image and not pie_drawn:
-                        text='\n'.join(f"{v['phase']}: {v['raw']} {v['unit']}" for v in sample.get('quantities',[])) or quantity_status(sample)
+                        text='정량값은 아래 표에서 확인하세요.' if sample.get('quantities') else quantity_status(sample)
                         shape=deck.text(slide,'',(bx+4,by+4,bw-8,bh-8),size=11)
                         fit_text(shape,text,size=11)
-                    if (pie_drawn or quant_image) and sample.get('quantities'):
-                        caption=''
+                    deck.text(slide,'결정상분율 (Phase Fraction)',(bx,117.3,bw,7),size=12,bold=True,color='0A7489')
+                    rows=[(v['phase'],f"{v.get('raw') or '확인 필요'} {v.get('unit') or ''}".strip())
+                          for v in sample.get('quantities',[])]
+                    if rows:
+                        units={v.get('unit') for v in sample['quantities']}
+                        header='결정상분율 (wt%)' if units=={'wt%'} else '결정상분율 (원문 단위)'
+                        used=deck.table(slide,['상 (Phase)',header],rows,(bx,126.5,bw,35),size=8.5,
+                                        edit=dict(tab=entry['sample_id']),allow_empty=True)
+                        if not used:
+                            deck.text(slide,'긴 정량 표는 뒤쪽 상 동정 결과의 계속 페이지에 수록합니다.',
+                                      (bx,128,bw,25),size=9)
+                        if used<len(rows): quantity_overflow.append((entry,header,rows[used:]))
                         if pie_drawn:
                             total=sum(v['value'] for v in sample['quantities'])
-                            caption=f"제공된 정량값의 상대 비율 (합계 {total:g} {sample['quantities'][0]['unit']})\n"
-                        caption+='; '.join(f"{v['phase']}: {v['raw']} {v['unit']}" for v in sample['quantities'])
-                        shape=deck.text(slide,'',(bx+3,by+bh-17,bw-6,15),size=8)
-                        fit_text(shape,caption,size=8)
+                            deck.text(slide,f'원그래프: 제공값의 상대 비율 · 합계 {total:g} {next(iter(units))}',
+                                      (bx,162,bw,4.5),size=7)
+                    else:
+                        deck.text(slide,quantity_status(sample),(bx,128,bw,25),size=9)
             if not quantitative and len(batch)==1:
                 for shape in list(slide.find('p:cSld/p:spTree',NS)):
                     if shape in named(slide,'Text 2') or shape in named(slide,'Page number'): continue
@@ -602,7 +699,13 @@ def build_posco_deck(project, document, resolve_source, *, pages=None, link_base
         batch = continued[start:start+2]
         details(batch,False,[3]*len(batch))
     for start in range(0,len(plain),2): details(plain[start:start+2],False)
-    # Request metadata, full notes and exclusions remain in the editable document.
-    # Never append legacy information/figure/table/notes pages to this template.
+    for entry,header,rows in quantity_overflow:
+        while rows:
+            slide=deck.slide(2,blank=True,kind='sample',sample_id=entry['sample_id'])
+            deck.title(slide,PHASE_TITLE+' (계속)')
+            deck.text(slide,entry['display_name']+' · 결정상분율 표 (계속)',(14,29,245,12),size=12,bold=True)
+            used=deck.table(slide,['상 (Phase)',header],rows,(14,45,245,122),size=10,
+                            edit=dict(tab=entry['sample_id']))
+            rows=rows[used:]
     deck.number_pages()
     return deck

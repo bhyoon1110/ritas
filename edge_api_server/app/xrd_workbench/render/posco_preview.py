@@ -46,7 +46,10 @@ def image_item(data, bounds, label, crop=None):
         svg = (f'<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="{width*left} {height*top} '
                f'{width*(1-left-right)} {height*(1-top-bottom)}" preserveAspectRatio="none">'
                f'<image width="{width}" height="{height}" xlink:href="{uri}"/></svg>')
-        return svg_image(svg, bounds, label)
+        item = svg_image(svg, bounds, label)
+        item['raster_source'] = data
+        item['crop'] = (left, top, right, bottom)
+        return item
     return dict(type='image', data=data, mime=mime, filename=label, x=x, y=y, w=w, h=h)
 
 
@@ -97,7 +100,11 @@ def pie_image(chart, bounds):
     names = chart.xpath('.//c:strCache/c:pt/c:v/text()', namespaces=NS)
     values = [float(v) for v in chart.xpath('.//c:numCache/c:pt/c:v/text()', namespaces=NS)]
     w,h = bounds[2:]
-    legend_h = len(names)*5
+    legend, legend_h = [], 0
+    for name in names:
+        lines = wrap_lines(name,w-6,9)
+        legend.append(dict(lines=lines,top=legend_h))
+        legend_h += max(5,len(lines)*4)
     radius = max(1,min(w/2-4,(h-legend_h)/2-3))
     cx,cy = w/2,legend_h+(h-legend_h)/2
     out = [f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {w} {h}" '
@@ -105,8 +112,10 @@ def pie_image(chart, bounds):
     angle, total = -math.pi/2, sum(values)
     for index,(name,value) in enumerate(zip(names,values)):
         fill = '#' + PIE_COLORS[index]
-        out.append(f'<rect x="1" y="{index*5+1}" width="3" height="3" fill="{fill}"/>')
-        out.append(f'<text x="5" y="{index*5+3.8}">{escape(name)}</text>')
+        row=legend[index]
+        out.append(f'<rect x="1" y="{row["top"]+1}" width="3" height="3" fill="{fill}"/>')
+        for line_index,line in enumerate(row['lines']):
+            out.append(f'<text x="5" y="{row["top"]+3.8+line_index*4}">{escape(line)}</text>')
         end = angle + value/total*2*math.pi
         if value == total:
             out.append(f'<circle cx="{cx}" cy="{cy}" r="{radius}" fill="{fill}"/>')
@@ -119,7 +128,9 @@ def pie_image(chart, bounds):
         out.append(f'<text x="{cx+radius*.66*math.cos(middle)}" y="{cy+radius*.66*math.sin(middle)}" '
                    f'text-anchor="middle" fill="#102A35">{value:g}</text>')
         angle = end
-    return svg_image(''.join(out)+'</svg>', bounds, 'WPPF 정량 차트')
+    item = svg_image(''.join(out)+'</svg>', bounds, 'WPPF 정량 차트')
+    item['pie_data'] = dict(names=names, values=values, radius=radius, cx=cx, cy=cy,legend=legend)
+    return item
 
 
 def deck_pages(deck):
@@ -221,15 +232,21 @@ def deck_pages(deck):
     return pages
 
 
-def render_posco_preview(project, document, resolve_source, *, storage_id=None,
-                         image_renderer=None, edit_links=False):
+def report_pages(project, document, resolve_source, *, storage_id=None, link_base=None,
+                 image_renderer=None, include_sources=True):
+    """All standard report formats use the same filled POSCO scene."""
     from ..config import load_settings
     from .layout import build_pages
-    from .html import render_html
     if load_settings().pptx_template:
-        # Site-specific template behaviour remains separate from the bundled POSCO design.
-        return render_html(build_pages(project,document,resolve_source,image_renderer=image_renderer),
-                           document,'app',storage_id,edit_links=edit_links)
+        return build_pages(project,document,resolve_source,image_renderer=image_renderer)
     deck=build_posco_deck(project,document,resolve_source,storage_id=storage_id,
-                          link_base='/api/v1/xrd/workbench',image_renderer=image_renderer)
-    return render_html(deck_pages(deck),document,'app',storage_id,edit_links=edit_links)
+                          link_base=link_base,image_renderer=image_renderer,include_sources=include_sources)
+    return deck_pages(deck)
+
+
+def render_posco_preview(project, document, resolve_source, *, storage_id=None,
+                         image_renderer=None, edit_links=False):
+    from .html import render_html
+    pages=report_pages(project,document,resolve_source,storage_id=storage_id,
+                       link_base='/api/v1/xrd/workbench',image_renderer=image_renderer)
+    return render_html(pages,document,'app',storage_id,edit_links=edit_links)
