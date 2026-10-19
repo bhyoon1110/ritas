@@ -28,6 +28,12 @@ SHA-256을 검증했으며 `provenance/`에 서명된 InRelease를 보존했다.
 
 ## USB 반입 및 설치
 
+XRD 복구 ZIP도 함께 적용하려면 [두 패키지 통합 설치 절차](OFFLINE_XRD.md#두-패키지-통합-설치)의
+[전체 Bash 스크립트](install_offline_reports.sh)를 사용한다. 기본 실행은 검사만 하며,
+`--install`과 확인 문구를 입력한 경우에만 서비스 중지·설치·검증·재개를 수행한다.
+스크립트 파일은 기존 ZIP/TAR에 없으므로 두 압축파일과 별도로 USB에 복사한다.
+아래는 LibreOffice 패키지만 개별 적용하는 절차다.
+
 ### 1. 패키지 옮기기와 계획 확인 (아직 설치하지 않음)
 
 단독 USB 배포 파일은 `rist-report-preview-offline-ubuntu24.04-arm64.tar.gz`와 `.sha256`이다.

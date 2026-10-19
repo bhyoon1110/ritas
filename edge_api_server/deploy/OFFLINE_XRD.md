@@ -23,6 +23,40 @@ NumPy는 기존 FTIR/Raman 프로젝트의 2.2.6 고정 버전을 유지한다.
 
 ## USB 배포 순서
 
+### 두 패키지 통합 설치
+
+`rist-xrd-offline-41d3c3d.zip`과
+`rist-report-preview-offline-ubuntu24.04-arm64.tar.gz`를 함께 적용하려면
+[전체 Bash 스크립트](install_offline_reports.sh)를 두 압축파일과 같은 `/home/rist` 폴더에 복사한다.
+스크립트는 별도 파일이며 기존 압축파일 안에는 포함되어 있지 않다.
+**Ubuntu 24.04 ARM64 / Python 3.12 / 기존 Edge 서비스** 기준으로, 서비스 계정에서 실행한다.
+
+```bash
+# 1) 기본은 검사만 수행한다. sudo를 붙이지 않는다.
+bash /home/rist/install_offline_reports.sh /home/rist
+
+# 2) 설치 계획 검토, 진행 작업 완료 및 서버 백업 확보 후 실행한다.
+# 확인 질문에 INSTALL을 입력한다. 필요한 단계에서만 sudo 인증을 요청한다.
+bash /home/rist/install_offline_reports.sh /home/rist --install
+```
+
+두 압축파일의 고정 SHA-256 → 환경·서비스·Git 이력 → 설치 계획을 확인하고,
+명시적인 설치 실행에서만 API/worker 중지 → 필요한 코드 fast-forward →
+XRD wheel → LibreOffice·한글 글꼴 → 최종 검증 → 원래 실행 중이던 서비스 재개 순으로 처리한다.
+더 최신인 코드는 유지하며, 분기 이력·미커밋 파일·다른 서비스 실행 경로는 자동 수정하지 않는다.
+ZIP의 코드는 **41d3c3d까지만** 들어 있으므로 최신 기능 배포를 대신하지 않는다.
+현재 저장소 경로가 다르면 `--project-root /실제/저장소`를 추가한다.
+
+기존 패키지 버전 변경은 기본 차단한다. 계획에서 변경 목록을 검토하고 승인한 경우에만
+`--allow-python-version-changes` 또는 `--allow-os-version-changes`를 필요한 쪽에 추가한다.
+OS 핵심 패키지 변경 차단은 승인 옵션으로도 우회할 수 없다.
+실패하면 자동으로 서비스를 재개하지 않으며, 로그와 해제 파일은 출력된 임시 폴더에 남는다.
+Python 설치기의 가상환경 백업은 유지하지만 **코드·OS 전체 자동 롤백은 하지 않는다**.
+재시작 단계가 실패한 경우 일부 서비스가 이미 실행 중일 수 있으므로 상태를 확인한다.
+설치 후 실제 XRD/TEM 미리보기와 FTIR/Raman 표본 보고서도 확인한다.
+
+### XRD 패키지만 수동 적용
+
 아래는 사용자 `rist`, 저장소 `/home/rist/ritas`, 가상환경 `.venv` 기준이다.
 서비스의 `ExecStart`가 다르면 실제 경로/서비스 이름으로 변경한다.
 **`pip`/설치 스크립트에는 sudo를 사용하지 말고 가상환경 소유자로 실행한다.**
