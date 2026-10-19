@@ -91,6 +91,36 @@ const output=fs.mkdtempSync(path.join(os.tmpdir(),'rist-ratio-browser-'));
     assert.equal(await page.locator('.rist-ratio-marker.denominator').isVisible(),true);
     await page.mouse.move(10,10); await page.waitForTimeout(100);
     assert.equal(await page.locator('.rist-ratio-marker.numerator').isVisible(),false);
+    // Full native pointer path: two X bands, independent Raw maxima, explicit
+    // confirmation, retained manual ratio, no sensitivity dependency or raw edits.
+    const rawBefore=await page.evaluate(()=>JSON.stringify(document.getElementById('raman-plot').data));
+    await page.locator('.rist-raman-tools-toggle').click();
+    await page.locator('[data-ratio-batch]').click();
+    async function dragRange(a,b) {
+      const points=await page.evaluate(([a,b])=>{
+        const gd=document.getElementById('raman-plot'),r=gd.querySelector('.nsewdrag').getBoundingClientRect();
+        return {a:r.left+gd._fullLayout.xaxis.d2p(a),b:r.left+gd._fullLayout.xaxis.d2p(b),y:r.bottom-25};
+      },[a,b]);
+      await page.mouse.move(points.a,points.y);await page.mouse.down();await page.mouse.move(points.b,points.y,{steps:8});await page.mouse.up();
+    }
+    await dragRange(5,200);await dragRange(250,495);
+    await page.locator('[data-batch-review]:not([hidden])').waitFor();
+    assert.equal(await page.locator('[data-batch-row]').count(),2);
+    assert.match(await page.locator('.rist-ratio-batch tbody').innerText(),/120/);
+    await page.locator('.rist-ratio-batch tbody tr').first().hover();await page.waitForTimeout(100);
+    await page.locator('#raman-plot').screenshot({path:path.join(output,'batch-desktop.png')});
+    assert.deepEqual(await page.locator('.rist-ratio-batch button').evaluateAll(nodes=>nodes.filter(n=>n.scrollWidth>n.clientWidth+2).map(n=>n.textContent)),[]);
+    await page.locator('[data-batch-apply]').click();await page.waitForTimeout(250);
+    assert.equal(await page.evaluate(()=>JSON.stringify(document.getElementById('raman-plot').data)),rawBefore);
+    const batch=await page.evaluate(()=>document.getElementById('raman-plot').layout.meta.ristRamanRatios);
+    assert.equal(batch.length,3);assert.equal(batch.filter(r=>r.method==='raw-range-max').length,2);
+    assert.equal(batch[1].numeratorPoint.intensity,120);assert.equal(batch[1].denominatorPoint.intensity,240);
+    // Real shared history must undo the entire batch and redo both samples.
+    await page.evaluate(()=>document.getElementById('raman-plot')._ristHistory.undo());await page.waitForTimeout(250);
+    assert.equal(await page.evaluate(()=>document.getElementById('raman-plot').layout.meta.ristRamanRatios.length),1);
+    await page.evaluate(()=>document.getElementById('raman-plot')._ristHistory.redo());await page.waitForTimeout(250);
+    assert.equal(await page.evaluate(()=>document.getElementById('raman-plot').layout.meta.ristRamanRatios.length),3);
+    console.log('Batch pointer ranges, original intensities, manual preservation and undo/redo passed');
     await page.setViewportSize({width:390,height:844});
     await page.waitForTimeout(150);
     await page.locator('.rist-raman-tools-toggle').click();
@@ -105,10 +135,22 @@ const output=fs.mkdtempSync(path.join(os.tmpdir(),'rist-ratio-browser-'));
     await page.locator('[data-selection-collapse]').click();
     assert.equal(await page.locator('[data-selection-body]').isVisible(),false);
     await page.locator('#raman-plot').screenshot({path:path.join(output,'mobile.png')});
+    await page.locator('[data-selection-close]').click();
+    await page.locator('.rist-raman-tools-toggle').click();await page.locator('[data-ratio-batch]').click();
+    for(const [role,a,b] of [['numerator','5','200'],['denominator','250','495']]) {
+      const inputs=page.locator('[data-batch-pick="'+role+'"]').locator('..').locator('input');
+      await inputs.nth(0).fill(a);await inputs.nth(1).fill(b);await inputs.nth(1).press('Tab');
+    }
+    await page.locator('[data-batch-review]:not([hidden])').waitFor();
+    const box=await page.locator('.rist-ratio-batch').boundingBox();assert.ok(box.x>=0&&box.x+box.width<=390);
+    await page.locator('#raman-plot').screenshot({path:path.join(output,'batch-mobile.png')});
+    await page.locator('[data-batch-close]').click();
+    assert.equal(await page.locator('.rist-ratio-range-surface').isVisible(),false);
     assert.deepEqual(errors,[]);
     console.log(JSON.stringify({browser:await browser.version(),passed:true,output,
       checks:['full-page overlap click','same-sample lock','true intensity','trace dimming','PNG export identical','completed label hover',
-        'hover preview','persistent marker geometry','swap','button overflow','390px layout','collapse','no JS errors']}));
+        'hover preview','persistent marker geometry','swap','button overflow','390px layout','collapse',
+        'batch pointer drag','batch original intensities','batch undo/redo','batch mobile layout','no JS errors']}));
   } catch(error) {
     const page=browser.contexts()[0]?.pages()[0];
     if(page) {

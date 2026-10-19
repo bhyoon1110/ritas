@@ -75,3 +75,45 @@
   #raman-plot .rist-ratio-selection, #raman-plot .rist-ratio-candidates, #raman-plot .rist-ratio-overlay { display:none !important; }
   #raman-plot.rist-ratio-focus .rist-ratio-muted { opacity:1 !important; }
 }
+#raman-plot .rist-ratio-batch {
+  position:absolute; z-index:54; top:90px; right:12px; width:355px; max-width:calc(100% - 24px);
+  max-height:calc(100% - 105px); overflow:auto; box-sizing:border-box; padding:12px;
+  background:#fff; color:#102a43; border:1px solid #9fb3c8; border-radius:8px;
+  box-shadow:0 4px 18px rgba(15,23,42,.18); font:12px/1.5 Arial,sans-serif; text-align:left;
+}
+#raman-plot .rist-ratio-batch.reviewing { width:760px; }
+#raman-plot .rist-ratio-batch.collapsed { width:280px; }
+#raman-plot .rist-ratio-batch.collapsed > :not(header) { display:none !important; }
+#raman-plot .rist-ratio-batch header { display:flex; align-items:center; justify-content:space-between; }
+#raman-plot .rist-ratio-batch p { margin:8px 0; }
+#raman-plot .rist-ratio-batch button {
+  white-space:nowrap; padding:5px 8px; border:1px solid #b8c5d1; border-radius:4px;
+  background:#f8fafc; color:#102a43; font:inherit; cursor:pointer;
+}
+#raman-plot .rist-ratio-batch button[aria-pressed='true'] { background:#e0f2fe; border-color:#2563eb; }
+#raman-plot .rist-ratio-batch button:disabled { opacity:.5; cursor:default; }
+#raman-plot .rist-ratio-range-input { display:flex; align-items:center; margin:6px 0; gap:4px; flex-wrap:wrap; }
+#raman-plot .rist-ratio-range-input input { width:70px; min-width:0; padding:4px; box-sizing:border-box; font:inherit; }
+#raman-plot .rist-ratio-batch-table { overflow:auto; max-height:240px; margin-bottom:10px; }
+#raman-plot .rist-ratio-batch table { width:100%; border-collapse:collapse; font:inherit; }
+#raman-plot .rist-ratio-batch td, #raman-plot .rist-ratio-batch th { padding:6px; border-bottom:1px solid #d8e2eb; text-align:left; min-width:65px; }
+#raman-plot .rist-ratio-batch td:first-child, #raman-plot .rist-ratio-batch th:first-child { min-width:25px; }
+#raman-plot .rist-ratio-batch tr:hover, #raman-plot .rist-ratio-batch tr:focus { background:#eff6ff; }
+#raman-plot .rist-ratio-range-surface { position:absolute; z-index:46; pointer-events:none; overflow:hidden; }
+#raman-plot .rist-ratio-range-surface.picking { pointer-events:auto; cursor:crosshair; touch-action:none; }
+#raman-plot .rist-ratio-range-band { position:absolute; top:0; height:100%; box-sizing:border-box; background:rgba(37,99,235,.1); border:1px solid #2563eb; color:#1d4ed8; font:bold 12px Arial,sans-serif; white-space:nowrap; pointer-events:none; }
+#raman-plot .rist-ratio-range-band.denominator { border-color:#c65d00; background:rgba(232,117,0,.1); color:#a84e00; }
+#raman-plot .rist-ratio-batch [hidden], #raman-plot .rist-ratio-batch[hidden],
+#raman-plot .rist-ratio-range-surface[hidden], #raman-plot .rist-ratio-range-band[hidden] { display:none !important; }
+@media (max-width:600px) {
+  #raman-plot .rist-ratio-batch { top:80px; right:8px; max-height:55%; padding:8px; }
+  #raman-plot .rist-ratio-batch table, #raman-plot .rist-ratio-batch tbody,
+  #raman-plot .rist-ratio-batch tr, #raman-plot .rist-ratio-batch td { display:block; width:auto; }
+  #raman-plot .rist-ratio-batch thead { display:none; }
+  #raman-plot .rist-ratio-batch tr { border:1px solid #d8e2eb; border-radius:4px; margin-bottom:6px; padding:4px 0; }
+  #raman-plot .rist-ratio-batch td { border:0; min-width:0; padding:3px 6px; overflow-wrap:break-word; }
+  #raman-plot .rist-ratio-batch td:before { content:attr(data-label) " · "; font-weight:bold; }
+}
+@media print {
+  #raman-plot .rist-ratio-batch, #raman-plot .rist-ratio-range-surface { display:none !important; }
+}

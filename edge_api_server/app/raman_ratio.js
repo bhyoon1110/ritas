@@ -23,6 +23,16 @@
   var curveIndex = {};
   var pixelPeaks = null;
   var paintedGroup = null;
+  var batchMode = false;
+  var rangeApi = window.RistRamanRanges;
+
+  function rangeRatio(item) { return item && item.method === "raw-range-max"; }
+  function ratioGroup(item) { return rangeRatio(item) ? item.sampleGroup : sampleGroup(item.numeratorCurve); }
+  function ratioPoint(item, role) {
+    if (rangeRatio(item)) return rangeApi && rangeApi.point(gd.data || [], item, role);
+    var curve = item[role + "Curve"];
+    return {x:peakX(curve), intensity:peakValue(curve), y:plottedPeakY(curve)};
+  }
 
   function peakKey(curve) {
     return JSON.stringify([sampleGroup(curve), peakX(curve)]);
@@ -34,6 +44,7 @@
       if (peakMeta(curve)) curves[peakKey(curve)] = curve;
     });
     ratios = ratios.filter(function(item) {
+      if (rangeRatio(item)) return !!(ratioPoint(item, "numerator") && ratioPoint(item, "denominator"));
       item.numeratorCurve = curves[item.numeratorKey];
       item.denominatorCurve = curves[item.denominatorKey];
       return item.numeratorCurve != null && item.denominatorCurve != null;
@@ -137,14 +148,15 @@
   }
 
   function ratioText(item) {
-    var numerator = peakValue(item.numeratorCurve);
-    var denominator = peakValue(item.denominatorCurve);
+    var n = ratioPoint(item, "numerator"), d = ratioPoint(item, "denominator");
+    var numerator = n ? n.intensity : NaN;
+    var denominator = d ? d.intensity : NaN;
     if (!Number.isFinite(numerator) || !Number.isFinite(denominator)
         || Math.abs(denominator) < 1e-12) {
       return "I(num)/I(den) = n/a";
     }
-    return "I(" + labelFor(item.numeratorCurve) + ")/I("
-      + labelFor(item.denominatorCurve) + ") = "
+    return "I(" + n.x.toFixed(0) + ")/I("
+      + d.x.toFixed(0) + ") = "
       + (numerator / denominator).toFixed(3);
   }
 
@@ -153,10 +165,9 @@
     var shapes = withoutRatioItems(gd.layout.shapes);
     resolveRatios();
     ratios.forEach(function(item) {
-      var x0 = peakX(item.numeratorCurve);
-      var x1 = peakX(item.denominatorCurve);
-      var y0 = plottedPeakY(item.numeratorCurve);
-      var y1 = plottedPeakY(item.denominatorCurve);
+      var n = ratioPoint(item, "numerator"), d = ratioPoint(item, "denominator");
+      if (!n || !d) return;
+      var x0 = n.x, x1 = d.x, y0 = n.y, y1 = d.y;
       if (![x0, x1, y0, y1].every(Number.isFinite)) return;
       var y = Math.max(y0, y1) + 0.14;
       var name = ratioPrefix() + item.id;
@@ -191,7 +202,7 @@
   }
 
   function syncControls() {
-    gd._ristRamanRatioMode = ratioMode;
+    gd._ristRamanRatioMode = ratioMode || batchMode;
     ratioButton.classList.toggle("is-active", ratioMode);
     ratioButton.textContent = ratioMode ? "비율 선택 중" : "비율";
     ratioButton.setAttribute("aria-pressed", String(ratioMode));
@@ -205,7 +216,7 @@
       setStatus("분자 선택");
     }
     gd.dispatchEvent(new CustomEvent("rist-peak-actions-disabled", {
-      detail: {disabled: ratioMode}
+      detail: {disabled: ratioMode || batchMode}
     }));
     syncSelectionPanel();
     scheduleSelectionDraw();
@@ -512,12 +523,12 @@
     hoverKey = null;
     scheduleSelectionDraw();
   }
-  function relativePoint(curve) {
+  function relativePoint(curve, measured) {
     var fl = gd._fullLayout, drag = gd.querySelector(".nsewdrag");
-    if (!fl || !fl.xaxis || !fl.yaxis || !drag || curve == null) return null;
+    if (!fl || !fl.xaxis || !fl.yaxis || !drag || (curve == null && !measured)) return null;
     var r = drag.getBoundingClientRect(), frame = gd.getBoundingClientRect();
-    var x = fl.xaxis.d2p(peakX(curve)) * r.width / fl.xaxis._length;
-    var y = fl.yaxis.d2p(plottedPeakY(curve)) * r.height / fl.yaxis._length;
+    var x = fl.xaxis.d2p(measured ? measured.x : peakX(curve)) * r.width / fl.xaxis._length;
+    var y = fl.yaxis.d2p(measured ? measured.y : plottedPeakY(curve)) * r.height / fl.yaxis._length;
     if (![x, y].every(Number.isFinite) || x < 0 || y < 0 || x > r.width || y > r.height) return null;
     return {x: x + r.left - frame.left, y: y + r.top - frame.top,
       clientX: x + r.left, clientY: y + r.top};
@@ -584,8 +595,9 @@
     if (redrawFrame != null) return;
     redrawFrame = window.requestAnimationFrame(function() { redrawFrame = null; drawSelection(); });
   }
-  function markAt(role, key) {
-    var curve = curveForKey(key), point = peakSelectable(curve) ? relativePoint(curve) : null;
+  function markAt(role, key, item) {
+    var measured = rangeRatio(item) && ratioSampleVisible(item) ? ratioPoint(item, role) : null;
+    var curve = curveForKey(key), point = measured ? relativePoint(null, measured) : peakSelectable(curve) ? relativePoint(curve) : null;
     var marker = marks[role];
     marker.hidden = !point;
     if (!point) return;
@@ -599,8 +611,8 @@
     if (!overlay) return;
     var inspect = !ratioMode && inspectedRatio;
     var shown = ratioMode ? draft : inspect ? {numerator: inspect.numeratorKey, denominator: inspect.denominatorKey} : {};
-    markAt("numerator", shown.numerator);
-    markAt("denominator", shown.denominator);
+    markAt("numerator", shown.numerator, inspect);
+    markAt("denominator", shown.denominator, inspect);
     markAt("hover", ratioMode ? hoverKey : null);
     var hoverCurve = curveForKey(hoverKey);
     var point = ratioMode && hoverCurve != null ? relativePoint(hoverCurve) : null;
@@ -612,7 +624,7 @@
       hoverTip.style.top = Math.max(6, Math.min(point.y + 20, gd.clientHeight - 115)) + "px";
     }
     var group = ratioMode ? lockedSample() || (hoverCurve != null ? sampleGroup(hoverCurve) : "")
-      : inspect ? sampleGroup(inspect.numeratorCurve) : "";
+      : inspect ? ratioGroup(inspect) : "";
     // CSS classes only: Plotly.data/layout, inline SVG styles, history and exports
     // retain their original values. This also avoids replotting on every mouse move.
     if (paintedGroup === group) return;
@@ -765,7 +777,7 @@
   }
 
   function sampleName(item) {
-    var group = sampleGroup(item.numeratorCurve);
+    var group = ratioGroup(item);
     var trace = (gd.data || []).filter(function(t) {
       return t.meta && t.meta.rist_sample_parent && t.meta.rist_sample_group === group;
     })[0];
@@ -773,7 +785,7 @@
   }
 
   function ratioSampleVisible(item) {
-    var group = sampleGroup(item.numeratorCurve);
+    var group = ratioGroup(item);
     return !(gd.data || []).some(function(trace) {
       return trace.meta && trace.meta.rist_sample_parent && trace.meta.rist_sample_group === group
         && (trace.visible === false || trace.visible === "legendonly");
@@ -818,9 +830,18 @@
     editor.querySelector("[data-ratio-sample]").textContent = sampleName(item);
     editor.querySelector("[data-ratio-title]").value = item.title || "";
     editor.querySelector("[data-ratio-error]").textContent = "";
+    if (rangeRatio(item)) editor.querySelector("[data-ratio-error]").textContent =
+      "Raw 구간 최고값입니다. 구간 변경은 ID/IG 일괄 계산에서 다시 적용하세요. " + (item.warnings || []).join(" · ");
     ["numerator", "denominator"].forEach(function(role) {
       var select = editor.querySelector("[data-ratio-" + role + "]");
       select.textContent = "";
+      select.disabled = rangeRatio(item);
+      if (rangeRatio(item)) {
+        var p = ratioPoint(item, role), opt = document.createElement("option");
+        opt.textContent = p.x.toFixed(2) + " cm⁻¹ · I = " + Number(p.intensity.toPrecision(7));
+        select.appendChild(opt);
+        return;
+      }
       (gd.data || []).forEach(function(trace, curve) {
         if (!peakMeta(curve) || sampleGroup(curve) !== sampleGroup(item.numeratorCurve)) return;
         var option = document.createElement("option");
@@ -841,6 +862,11 @@
     ev.preventDefault();
     var item = selectedRatio();
     if (!item) return;
+    if (rangeRatio(item)) {
+      captureRatioHistory();
+      item.title = editor.querySelector("[data-ratio-title]").value.trim();
+      renderRatios().then(syncControls); closeRatioEditor(); return;
+    }
     var numerator = Number(editor.querySelector("[data-ratio-numerator]").value);
     var denominator = Number(editor.querySelector("[data-ratio-denominator]").value);
     if (!peakMeta(numerator) || !peakMeta(denominator)
@@ -910,8 +936,10 @@
     ratios.forEach(function(item) {
       var annotation = (gd.layout.annotations || []).filter(function(a) { return a.name === ratioPrefix() + item.id; })[0];
       if (!annotation) return;
-      item.dx = Number(annotation.x) - (peakX(item.numeratorCurve) + peakX(item.denominatorCurve)) / 2;
-      item.dy = Number(annotation.y) - Math.max(plottedPeakY(item.numeratorCurve), plottedPeakY(item.denominatorCurve)) - 0.185;
+      var n = ratioPoint(item, "numerator"), d = ratioPoint(item, "denominator");
+      if (!n || !d) return;
+      item.dx = Number(annotation.x) - (n.x + d.x) / 2;
+      item.dy = Number(annotation.y) - Math.max(n.y, d.y) - 0.185;
     });
     window.Plotly.relayout(gd, {meta: ratioMeta()});
   });
@@ -967,4 +995,29 @@
     else setRatioMode(false, false);
   });
   restoreRatios();
+  if (rangeApi) rangeApi.install(gd, {
+    mode:function(enabled) { batchMode = enabled; syncControls(); },
+    preview:function(item) { inspectedRatio = item; scheduleSelectionDraw(); },
+    apply:function(rows) {
+      if (commitBusy) return Promise.reject(new Error("ratio update busy"));
+      captureRatioHistory(); commitBusy = true;
+      var previous = ratios.slice(), previousId = nextRatioId;
+      rows.forEach(function(row) {
+        // Re-running ID/IG updates that sample's batch result, never a manual pair.
+        var old = ratios.filter(function(r) { return rangeRatio(r) && r.sampleGroup === row.sampleGroup; })[0];
+        ratios = ratios.filter(function(r) { return !rangeRatio(r) || r.sampleGroup !== row.sampleGroup; });
+        ratios.push({id:old ? old.id : nextRatioId++, title:old ? old.title : "ID/IG",
+          method:"raw-range-max", sampleGroup:row.sampleGroup,
+          rawRanges:JSON.parse(JSON.stringify(row.rawRanges)),
+          numeratorPoint:Object.assign({}, row.numeratorPoint), denominatorPoint:Object.assign({}, row.denominatorPoint),
+          numeratorKey:JSON.stringify([row.sampleGroup, row.numeratorPoint.x]),
+          denominatorKey:JSON.stringify([row.sampleGroup, row.denominatorPoint.x]),
+          warnings:row.warnings.slice(), dx:old ? old.dx : 0, dy:old ? old.dy : 0});
+      });
+      return renderRatios().then(function() { commitBusy = false; syncControls(); }, function(error) {
+        ratios = previous; nextRatioId = previousId; commitBusy = false;
+        return renderRatios().then(function() { syncControls(); throw error; });
+      });
+    }
+  });
 })();

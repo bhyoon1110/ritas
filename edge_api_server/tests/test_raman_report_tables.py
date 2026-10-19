@@ -185,3 +185,81 @@ def test_very_long_edited_cells_continue_without_exceeding_page_height():
             off, ext = transform.find("a:off", ns), transform.find("a:ext", ns)
             assert int(off.get("y")) + int(ext.get("cy")) <= 6858000
         assert "1350.125" in page["xml"] or "1580.25" in page["xml"]
+
+
+def range_payload():
+    xs, ys = [1200, 1300, 1350, 1400, 1450, 1500, 1580, 1650, 1700], [1, 3, 8, 3, 1, 2, 4, 2, 1]
+    ratio = dict(id=1, title="ID/IG", method="raw-range-max", sampleGroup="raw-a",
+                 rawRanges=dict(numerator=[1300, 1450], denominator=[1500, 1700]),
+                 numeratorPoint=dict(x=1350, intensity=8, index=2), denominatorPoint=dict(x=1580, intensity=4, index=6),
+                 numeratorKey=json.dumps(["raw-a", 1350]), denominatorKey=json.dumps(["raw-a", 1580]),
+                 warnings=["D 최고점이 구간 경계 · 범위 확인"])
+    parent = dict(name="Raw A", x=xs, y=[y+20 for y in ys], customdata=ys,
+                  meta=dict(rist_sample_parent=True, rist_sample_group="raw-a", rist_view_offset=20))
+    return dict(viewerFigure=dict(data=[parent], layout=dict(meta=dict(ristRamanRatios=[ratio]),
+                annotations=[dict(name="rist_raman_ratio:1", text="ID/IG = 2.000")])) )
+
+
+def test_range_ratios_publish_original_positions_intensities_ranges_and_llm_evidence_without_peaks(tmp_path):
+    payload = range_payload()
+    original = deepcopy(payload)
+    document = build(payload)
+    row = document.section("raman_ratios").table.rows[0]
+    assert row[0] == "Raw A" and row[-1] == "2.000"
+    assert "1350 cm⁻¹" in row[2] and "I = 8" in row[2] and "1300–1450" in row[2]
+    assert "1580 cm⁻¹" in row[3] and "I = 4" in row[3]
+    assert "검토 필요" in row[1]
+    readonly = spectrum_viewer.readonly_figure(payload["viewerFigure"])
+    assert readonly["layout"]["meta"]["ratioGroups"]["rist_raman_ratio:1"] == "raw-a"
+    from app.report.edited_analysis import edited_graph_spec
+    prepared = prepare_edited_report(payload)
+    spec = edited_graph_spec(RamanReportBuilder().llm_slots(JOB, [{"data": prepared}]), prepared, "RAMAN")
+    for spec in [spec]:
+        facts = spec.facts
+        ratio = facts["graph_notes"]["ratio_measurements"][0]
+        assert facts["visible_peak_count"] == 0
+        assert ratio["numerator"]["intensity"] == 8
+        assert ratio["denominator"]["range_cm-1"] == [1500, 1700]
+        assert ratio["value"] == 2 and ratio["warnings"]
+        assert "raw-range-max" in ratio["method"]
+    renderers.render_html(document, tmp_path / "batch.html")
+    assert "I = 8" in (tmp_path / "batch.html").read_text()
+    renderers.render_pptx(document, tmp_path / "batch.pptx")
+    with ZipFile(tmp_path / "batch.pptx") as archive:
+        slides = "".join(archive.read(n).decode() for n in archive.namelist() if n.startswith("ppt/slides/slide") and n.endswith(".xml"))
+        assert "1350 cm⁻¹" in slides and "I = 8" in slides and "2.000" in slides
+    assert payload == original
+
+
+@pytest.mark.parametrize("invalid", ["missing", "hidden", "stale", "out_of_range", "overlap", "cross_sample", "nonfinite"])
+def test_range_ratio_rejects_stale_invalid_or_deleted_sample(invalid):
+    from app.report.builders import _raman_ratio_facts
+    payload = range_payload()
+    figure = payload["viewerFigure"]
+    ratio = figure["layout"]["meta"]["ristRamanRatios"][0]
+    if invalid == "missing":
+        figure["data"] = []
+    elif invalid == "hidden":
+        figure["data"][0]["visible"] = False
+    elif invalid == "stale":
+        figure["data"][0]["customdata"][2] = 100
+    elif invalid == "out_of_range":
+        ratio["rawRanges"]["numerator"] = [100, 200]
+    elif invalid == "overlap":
+        ratio["rawRanges"]["numerator"] = [1300, 1700]
+    elif invalid == "cross_sample":
+        ratio["denominatorKey"] = json.dumps(["other", 1580])
+    else:
+        ratio["numeratorPoint"]["intensity"] = float("nan")
+    assert _raman_ratio_facts(prepare_edited_report(payload)) == []
+
+
+def test_compact_range_ratio_snapshot_and_stack_fallback_agree():
+    from app.report.builders import _raman_ratio_facts
+    payload = range_payload()
+    figure = payload["viewerFigure"]
+    del figure["data"][0]["customdata"]
+    assert _raman_ratio_facts(prepare_edited_report(payload))[0]["value"] == 2
+    for field in ("x", "y"):
+        del figure["data"][0][field]
+    assert _raman_ratio_facts(dict(figure=figure))[0]["value"] == 2

@@ -656,6 +656,56 @@ def _raman_table_peaks(payload: dict[str, Any]) -> list[dict[str, Any]]:
     return _figure_peak_facts(payload, x_label="cm-1", max_items=max(1, len(_figure_data(payload))))
 
 
+def _raman_range_peak(figure, ratio, role):
+    """Raw-range endpoints are measurements, not edits to the detected peak list."""
+    group = ratio.get("sampleGroup")
+    parent = next((t for t in _as_list(figure.get("data")) if isinstance(t, dict)
+                   and (t.get("meta") or {}).get("rist_sample_parent")
+                   and (t.get("meta") or {}).get("rist_sample_group") == group), None)
+    point = ratio.get(role + "Point")
+    ranges = ratio.get("rawRanges") or {}
+    if parent is None or not _trace_is_visible(parent) or not isinstance(point, dict):
+        return None
+    try:
+        low, high = map(float, ranges[role])
+        x, intensity = float(point["x"]), float(point["intensity"])
+        if not all(map(math.isfinite, (low, high, x, intensity))) or not low < high or not low <= x <= high:
+            return None
+        if json.loads(ratio[role + "Key"]) != [group, x]:
+            return None
+        # Full viewer snapshots contain Raw arrays. Recompute maxima on the server
+        # so an outdated point/stack offset can never become report evidence.
+        if "x" in parent and "y" in parent:
+            xs, ys = parent["x"], parent["y"]
+            custom = parent.get("customdata")
+            original = isinstance(custom, list) and len(custom) == len(xs)
+            offset = float((parent.get("meta") or {}).get("rist_view_offset",
+                           (parent.get("meta") or {}).get("rist_raman_stack_offset", 0)) or 0)
+            best, count = None, 0
+            for i, px in enumerate(xs):
+                source = custom if original else ys
+                if i >= len(source) or px is None or source[i] is None:
+                    continue
+                try:
+                    px, py = float(px), float(source[i]) - (0 if original else offset)
+                except (ValueError, TypeError):
+                    continue
+                if not math.isfinite(px) or not math.isfinite(py) or not low <= px <= high:
+                    continue
+                count += 1
+                if best is None or py > best[1] or (py == best[1] and px < best[0]):
+                    best = (px, py)
+            if count < 2 or best is None or best[0] != x or not math.isclose(best[1], intensity, rel_tol=1e-10, abs_tol=1e-12):
+                return None
+            intensity = best[1]
+    except (KeyError, ValueError, TypeError, OverflowError):
+        return None
+    return {"id": f"range-{ratio.get('id')}-{role}", "sample_group": group,
+            "sample": _clean_report_text(parent.get("name")) or str(group),
+            "label": ("D" if role == "numerator" else "G") + " 구간 최고점",
+            "position": x, "base_intensity": intensity, "range": [low, high]}
+
+
 def _raman_ratio_facts(payload: dict[str, Any], peaks=None) -> list[dict[str, Any]]:
     """Resolve final ratio pairs once for both report tables and LLM evidence."""
     figure = payload.get("figure") or {}
@@ -684,7 +734,13 @@ def _raman_ratio_facts(payload: dict[str, Any], peaks=None) -> list[dict[str, An
         annotation = annotations.get(name)
         if annotation is not None and not _trace_is_visible(annotation):
             continue
-        numerator, denominator = resolve(ratio.get("numeratorKey")), resolve(ratio.get("denominatorKey"))
+        is_range = ratio.get("method") == "raw-range-max"
+        if is_range:
+            numerator, denominator = (_raman_range_peak(figure, ratio, role) for role in ("numerator", "denominator"))
+            if numerator and denominator and max(numerator["range"][0], denominator["range"][0]) <= min(numerator["range"][1], denominator["range"][1]):
+                continue
+        else:
+            numerator, denominator = resolve(ratio.get("numeratorKey")), resolve(ratio.get("denominatorKey"))
         if not numerator or not denominator or numerator["sample_group"] != denominator["sample_group"]:
             continue  # Hidden/deleted peaks and cross-sample pairs are not published.
         n, d = numerator["base_intensity"], denominator["base_intensity"]
@@ -695,6 +751,8 @@ def _raman_ratio_facts(payload: dict[str, Any], peaks=None) -> list[dict[str, An
                       "numerator": numerator, "denominator": denominator,
                       "value": value if value is not None and math.isfinite(value) else None,
                       "value_text": value_text})
+        if is_range:
+            facts[-1].update(method="raw-range-max", warnings=[_clean_report_text(w) for w in _as_list(ratio.get("warnings"))][:4])
     # Old reports only saved the displayed annotation. Preserve it without inventing
     # sample identities or intensities from rounded label text.
     for name, annotation in annotations.items():
@@ -714,7 +772,14 @@ def _raman_ratio_rows(payload: dict[str, Any]) -> list[list[str]]:
             continue
         cells = [f"{peak['label']} ({_raman_table_number(peak['position'])} cm⁻¹)"
                  for peak in (ratio["numerator"], ratio["denominator"])]
-        rows.append([ratio["sample"], ratio["title"], *cells, ratio["value_text"]])
+        title = ratio["title"]
+        if ratio.get("method") == "raw-range-max":
+            cells = [f"{cell}\nI = {_raman_table_number(peak['base_intensity'])}\n"
+                     f"구간 {_raman_table_number(peak['range'][0])}–{_raman_table_number(peak['range'][1])} cm⁻¹"
+                     for cell, peak in zip(cells, (ratio["numerator"], ratio["denominator"]))]
+            if ratio.get("warnings"):
+                title += " · 검토 필요: " + "; ".join(ratio["warnings"])
+        rows.append([ratio["sample"], title, *cells, ratio["value_text"]])
     return rows
 
 

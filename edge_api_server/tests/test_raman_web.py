@@ -404,7 +404,9 @@ def test_raman_workspace_contains_upload_controls() -> None:
     assert "!Number.isFinite(pendingRatioNativeClick.x)" in page
     assert "suppressRatioPlotlyClickUntil = handledAt + 1200" in page
     assert 'new CustomEvent("rist-peak-actions-disabled"' in page
-    assert "detail: {disabled: ratioMode}" in page
+    assert "detail: {disabled: ratioMode || batchMode}" in page
+    assert "ID/IG 일괄 계산" in page
+    assert "window.RistRamanRanges" in page
     assert "annotationPosition" in page
     assert "annotationTail" in page
     assert "raman-file-remove" in page

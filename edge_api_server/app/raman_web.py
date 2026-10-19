@@ -2848,7 +2848,8 @@ _RAMAN_STACK_SCRIPT = """
 
 _RAMAN_RATIO_SCRIPT = (
     "<style>" + Path(__file__).with_name("raman_ratio.css").read_text(encoding="utf-8")
-    + "</style><script>" + Path(__file__).with_name("raman_ratio.js").read_text(encoding="utf-8")
+    + "</style><script>" + Path(__file__).with_name("raman_ratio_ranges.js").read_text(encoding="utf-8")
+    + "</script><script>" + Path(__file__).with_name("raman_ratio.js").read_text(encoding="utf-8")
     + "</script>"
 )
 
