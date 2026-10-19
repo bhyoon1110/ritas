@@ -394,7 +394,11 @@ def test_raman_workspace_contains_upload_controls() -> None:
     assert "gd._context" in page
     assert "rist-raman-stack-change" in page
     assert "function handleRatioPeakPointer" in page
-    assert "gd._ristNearestPeakCurveFromEvent(ev)" in page
+    assert "var candidates = candidatesAt(ev)" in page
+    assert "if (candidates.length > 1) openCandidates(candidates, ev)" in page
+    assert "data-selection-sample" in page
+    assert "data-selection-swap" in page
+    assert "실제 강도 I = " in page
     assert 'gd.addEventListener("mousedown", handleRatioPeakPointer, true)' in page
     assert 'ev.type === "click" && matchesPendingRatioNativeClick(ev)' in page
     assert "!Number.isFinite(pendingRatioNativeClick.x)" in page

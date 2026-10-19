@@ -1,0 +1,77 @@
+#raman-plot .rist-raman-ratio-editor header { display:flex; align-items:center; justify-content:space-between; }
+#raman-plot .rist-raman-ratio-editor label { display:block; margin:10px 0; }
+#raman-plot .rist-raman-ratio-editor select,
+#raman-plot .rist-raman-ratio-editor input { display:block; width:100%; min-width:0; box-sizing:border-box; margin-top:4px; padding:5px; border:1px solid #b8c5d1; border-radius:4px; font:inherit; }
+#raman-plot .rist-raman-ratio-editor button { padding:5px 8px; border:1px solid #b8c5d1; border-radius:4px; background:#f8fafc; color:#102a43; font:inherit; cursor:pointer; }
+#raman-plot .rist-raman-ratio-editor [aria-pressed='true'] { border-color:#2563eb; background:#eff6ff; }
+#raman-plot .rist-raman-ratio-editor [data-ratio-delete],
+#raman-plot .rist-raman-ratio-editor [data-ratio-error] { color:#b42318; }
+#raman-plot .rist-raman-ratio-control > button:first-child { min-width:84px; }
+#raman-plot .rist-ratio-selection,
+#raman-plot .rist-ratio-candidates {
+  position:absolute; z-index:54; box-sizing:border-box; padding:12px;
+  background:#fff; border:1px solid #9fb3c8; border-radius:8px;
+  box-shadow:0 4px 18px rgba(15,23,42,.18); color:#102a43; font:12px/1.5 Arial,sans-serif;
+  text-align:left;
+}
+#raman-plot .rist-ratio-selection { top:90px; right:12px; width:282px; max-width:calc(100% - 24px); max-height:calc(100% - 110px); overflow:auto; }
+#raman-plot .rist-ratio-selection header,
+#raman-plot .rist-ratio-candidates header { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
+#raman-plot .rist-ratio-selection header span { display:flex; }
+#raman-plot .rist-ratio-selection button,
+#raman-plot .rist-ratio-candidates button {
+  border:1px solid #b8c5d1; border-radius:4px; padding:5px 8px; margin:0 3px 0 0;
+  background:#f8fafc; color:#102a43; font:inherit; line-height:1.5; white-space:nowrap; cursor:pointer;
+}
+#raman-plot .rist-ratio-selection button:hover,
+#raman-plot .rist-ratio-selection button[aria-pressed="true"],
+#raman-plot .rist-ratio-candidates button:hover,
+#raman-plot .rist-ratio-candidates button:focus { border-color:#2563eb; background:#eff6ff; }
+#raman-plot .rist-ratio-selection button:focus-visible { outline:2px solid #2563eb; outline-offset:2px; }
+#raman-plot .rist-ratio-selection button:disabled { opacity:.5; cursor:default; }
+#raman-plot .rist-ratio-selection select {
+  display:block; width:100%; margin:4px 0 8px; padding:6px; box-sizing:border-box;
+  border:1px solid #b8c5d1; border-radius:4px; font:inherit; background:#fff; color:inherit;
+}
+#raman-plot .rist-ratio-card { border:1px solid #cbd5e1; border-left:4px solid #2563eb; border-radius:5px; margin:8px 0; padding:8px; }
+#raman-plot .rist-ratio-card.denominator { border-left-color:#c65d00; }
+#raman-plot .rist-ratio-card.numerator > strong { color:#1d4ed8; }
+#raman-plot .rist-ratio-card.denominator > strong { color:#a84e00; }
+#raman-plot .rist-ratio-card > div { white-space:pre-line; word-wrap:break-word; overflow-wrap:anywhere; margin:4px 0 6px; }
+#raman-plot .rist-ratio-selection-actions { display:flex; flex-wrap:wrap; }
+#raman-plot [data-selection-result] { font-weight:bold; margin-top:8px; }
+#raman-plot [data-selection-status] { margin:8px 0 0; color:#486581; word-wrap:break-word; }
+#raman-plot .rist-ratio-candidates { z-index:60; width:290px; max-width:calc(100% - 16px); max-height:65%; overflow:auto; }
+#raman-plot .rist-ratio-candidates [data-candidates-list] button {
+  display:block; width:100%; text-align:left; white-space:pre-line; word-wrap:break-word; overflow-wrap:anywhere;
+  margin:5px 0; padding:8px;
+}
+#raman-plot .rist-ratio-overlay { position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; z-index:48; }
+#raman-plot .rist-ratio-marker {
+  position:absolute; width:22px; height:22px; box-sizing:border-box; transform:translate(-50%,-50%);
+  border:3px solid #2563eb; border-radius:50%; box-shadow:0 0 0 2px #fff; background:transparent;
+}
+#raman-plot .rist-ratio-marker.denominator { width:28px; height:28px; border-color:#e87500; border-radius:3px; }
+#raman-plot .rist-ratio-marker.hover { width:34px; height:34px; border:2px dashed #334e68; }
+#raman-plot .rist-ratio-marker > span {
+  position:absolute; left:19px; bottom:20px; white-space:nowrap; border:1px solid #2563eb;
+  background:#fff; color:#1d4ed8; border-radius:4px; padding:2px 5px; font:bold 12px/1.5 Arial,sans-serif;
+}
+#raman-plot .rist-ratio-marker.denominator > span { top:26px; bottom:auto; border-color:#c65d00; color:#a84e00; }
+#raman-plot .rist-ratio-marker.edge-right > span { left:auto; right:20px; }
+#raman-plot .rist-ratio-marker.numerator.edge-top > span { bottom:auto; top:22px; }
+#raman-plot .rist-ratio-marker.hover > span { display:none; }
+#raman-plot .rist-ratio-hover-tip { position:absolute; width:250px; max-width:calc(100% - 12px); box-sizing:border-box; padding:8px 10px; white-space:pre-line; word-wrap:break-word; background:#fff; border:1px solid #627d98; border-radius:5px; box-shadow:0 2px 8px #0002; font:12px/1.5 Arial,sans-serif; color:#102a43; }
+#raman-plot.rist-ratio-focus .rist-ratio-muted { opacity:.18 !important; }
+#raman-plot.rist-ratio-picking .hoverlayer { visibility:hidden; }
+#raman-plot .rist-ratio-selection[hidden],
+#raman-plot .rist-ratio-selection [hidden],
+#raman-plot .rist-ratio-candidates[hidden],
+#raman-plot .rist-ratio-overlay [hidden] { display:none !important; }
+@media (max-width:600px) {
+  #raman-plot .rist-ratio-selection { top:80px; right:8px; width:250px; max-height:55%; padding:8px; }
+}
+@media print {
+  #raman-plot .rist-ratio-selection, #raman-plot .rist-ratio-candidates, #raman-plot .rist-ratio-overlay { display:none !important; }
+  #raman-plot.rist-ratio-focus .rist-ratio-muted { opacity:1 !important; }
+}

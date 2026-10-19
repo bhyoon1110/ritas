@@ -210,12 +210,13 @@ function ratioFixture(t, history=false) {
     {name:`Sample ${group}`,meta:{rist_sample_parent:true,rist_sample_group:group}},
     ...[100,200,300].map((x,j)=>({name:`Peak ${x}`,x:[x],y:[j+1+i*4],meta:{rist_sample_group:group,rist_raman_stack_offset:i*4,rist_peak:{x,base_y:j+1,sample_group:group}}}))
   ]);
+  // Existing-report fixture. Pointer selection/overlap/lock behavior is tested
+  // with pixel geometry in browser_compat/tests/raman_ratio.test.cjs.
+  gd.layout.meta.ristRamanRatios=['A','B'].map((group,i)=>({
+    id:i+1, numeratorKey:JSON.stringify([group,100]), denominatorKey:JSON.stringify([group,200])
+  }));
   if(history) {gd._ristHistory=null;run('var undoStack');}
   run('var ratioMetaKey');
-  const ratioButton=d.querySelector('.rist-raman-ratio-button');
-  ratioButton.click();
-  for(const curveNumber of [1,2,5,6]) emit('plotly_click',{points:[{curveNumber}]});
-  ratioButton.click();
   return api;
 }
 
