@@ -17,6 +17,7 @@ from PIL import Image, ImageChops, ImageDraw, ImageFont, ImageOps, ImageStat
 
 from .docx_extract import extract_docx
 from .report_branding import brand_assets, brand_pictures
+from .report_cover import COVER_NAME, TEM_FIELDS, cover_shapes, shape_xml
 
 
 def _require_pptx():
@@ -1964,6 +1965,28 @@ def _build_coating(prs, template: AhnTemplate | None, data: dict[str, Any], inpu
                 )
 
 
+def _add_report_cover(prs, data):
+    from datetime import date
+    from pptx.oxml import parse_xml
+
+    # The supplied TEM deck has fewer layouts than the default Office deck.
+    slide = prs.slides.add_slide(prs.slide_layouts[0])
+    for shape in list(slide.shapes):
+        _remove_shape(shape)
+    slide.element.cSld.set("name", COVER_NAME)
+    slide.background.fill.solid()
+    slide.background.fill.fore_color.rgb = RGBColor(255, 255, 255)
+    metadata = data.get("report_metadata") or {}
+    completion = metadata.get("completionDate") or str(data.get("generated_at") or date.today())[:10]
+    values = dict(metadata, completionDate=completion)
+    values.setdefault("equipmentCode", "TEM-EDGE-01")
+    for spec in cover_shapes("TEM", metadata.get("title") or "TEM/STEM/EDS 분석 보고서",
+            "TEM · STEM · EDS · 코팅층 분석 결과를 통합 정리",
+            [(label, values.get(key, "")) for key, label in TEM_FIELDS],
+            prs.slide_width, prs.slide_height):
+        slide.shapes._spTree.insert_element_before(parse_xml(shape_xml(spec)), "p:extLst")
+
+
 def build_pptx(project: Any, output_path: str | Path) -> Path:
     """Build an AHN PowerPoint report from collected project data."""
     data = project.to_dict() if hasattr(project, "to_dict") else dict(project)
@@ -1980,13 +2003,14 @@ def build_pptx(project: Any, output_path: str | Path) -> Path:
         prs.slide_height = SLIDE_H
         _apply_report_branding(prs)
 
+    _add_report_cover(prs, data)
     with tempfile.TemporaryDirectory(prefix="ahn-pptx-") as tmp:
         tmp_dir = Path(tmp)
         _build_tem(prs, template, data, input_root, tmp_dir)
         _build_stem(prs, template, data, input_root, tmp_dir)
         _build_eds(prs, template, data, input_root, tmp_dir)
         _build_coating(prs, template, data, input_root, tmp_dir)
-        if not prs.slides:
+        if len(prs.slides) == 1:
             if template:
                 slide = template.new_slide("tem", "AHN 분석결과")
             else:

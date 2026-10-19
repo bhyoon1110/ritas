@@ -21,6 +21,13 @@ from ahn.ppt_report import (
 )
 
 
+def _body_slides(prs):
+    """Keep the existing image/table assertions on the unchanged body pages."""
+    from ahn.report_cover import COVER_NAME
+    assert prs.slides[0].element.cSld.get("name") == COVER_NAME
+    return list(prs.slides)[1:]
+
+
 def _write_image(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     Image.new("RGB", (120, 90), (220, 224, 230)).save(path)
@@ -93,7 +100,7 @@ def _write_minimal_xlsx(path: Path, rows: list[list[str]]) -> None:
 def _pptx_table_text(path: Path) -> str:
     prs = Presentation(path)
     values: list[str] = []
-    for slide in prs.slides:
+    for slide in _body_slides(prs):
         for shape in slide.shapes:
             if getattr(shape, "has_table", False):
                 for row in shape.table.rows:
@@ -103,7 +110,7 @@ def _pptx_table_text(path: Path) -> str:
 
 def _pptx_picture_counts(path: Path) -> list[int]:
     prs = Presentation(path)
-    return [sum(1 for shape in slide.shapes if shape.shape_type == 13) for slide in prs.slides]
+    return [sum(1 for shape in slide.shapes if shape.shape_type == 13) for slide in _body_slides(prs)]
 
 
 def _black_grid_rule_count(slide) -> int:
@@ -180,8 +187,8 @@ def test_report_branding_keeps_content_and_original_logo(tmp_path, monkeypatch, 
     project = _project_with_sections(tmp_path, {"tem", "stem", "coating"})
     output = build_pptx(project, tmp_path / "branded.pptx")
     prs = Presentation(output)
-    assert len(prs.slides) == 3
-    for slide in prs.slides:
+    assert len(_body_slides(prs)) == 3
+    for slide in _body_slides(prs):
         pictures = {shape.name: shape for shape in slide.slide_layout.shapes if shape.shape_type == 13}
         assert set(pictures) == {"POSCO background", "RIST logo"}
         assert pictures["POSCO background"].image.blob == report_branding.brand_assets()[report_branding.BANNER_NAME]
@@ -279,9 +286,9 @@ def test_build_pptx_includes_only_available_sections(tmp_path, monkeypatch, sect
     build_pptx(project, output)
 
     prs = Presentation(output)
-    slide_texts = [" ".join(shape.text for shape in slide.shapes if getattr(shape, "has_text_frame", False)) for slide in prs.slides]
+    slide_texts = [" ".join(shape.text for shape in slide.shapes if getattr(shape, "has_text_frame", False)) for slide in _body_slides(prs)]
     all_text = "\n".join(slide_texts)
-    assert len(prs.slides) == len(expected_titles)
+    assert len(_body_slides(prs)) == len(expected_titles)
     for title in expected_titles:
         assert title in all_text
     absent_titles = {
@@ -398,7 +405,7 @@ def test_line_eds_continuation_pages_use_full_width_graph_grid(tmp_path, monkeyp
 
     assert _pptx_picture_counts(output) == [3, 6, 1]
     prs = Presentation(output)
-    first_slide_pictures = _pictures(prs.slides[0])
+    first_slide_pictures = _pictures(_body_slides(prs)[0])
     anchor = first_slide_pictures[0]
     assert anchor.left <= Inches(0.3)
     assert anchor.width >= Inches(4.5)
@@ -406,7 +413,7 @@ def test_line_eds_continuation_pages_use_full_width_graph_grid(tmp_path, monkeyp
     assert len(right_pictures) == 2
     assert all(shape.width >= Inches(5.6) for shape in right_pictures)
     assert all(shape.left + shape.width <= Inches(10.7) for shape in right_pictures)
-    continuation_pictures = _pictures(prs.slides[1])
+    continuation_pictures = _pictures(_body_slides(prs)[1])
     assert len(continuation_pictures) == 6
     left_groups = {round(shape.left / Inches(1), 1) for shape in continuation_pictures}
     top_groups = {round(shape.top / Inches(1), 1) for shape in continuation_pictures}
@@ -446,14 +453,14 @@ def test_line_eds_repeats_overview_and_graph_grid_per_data_block(tmp_path, monke
 
     assert _pptx_picture_counts(output) == [3, 6, 3, 6]
     prs = Presentation(output)
-    titles = [" ".join(shape.text.split()) for slide in prs.slides for shape in slide.shapes if getattr(shape, "has_text_frame", False)]
+    titles = [" ".join(shape.text.split()) for slide in _body_slides(prs) for shape in slide.shapes if getattr(shape, "has_text_frame", False)]
     assert any("0817 line scan_Data1" in title for title in titles)
     assert any("0817 line scan_Data2" in title for title in titles)
     assert not any("Data1_Data" in title or "Data2_Data" in title for title in titles)
-    assert len(_pictures(prs.slides[1])) == 6
-    assert all(shape.left >= Inches(0.1) for shape in _pictures(prs.slides[1]))
-    assert len(_pictures(prs.slides[3])) == 6
-    assert all(shape.left >= Inches(0.1) for shape in _pictures(prs.slides[3]))
+    assert len(_pictures(_body_slides(prs)[1])) == 6
+    assert all(shape.left >= Inches(0.1) for shape in _pictures(_body_slides(prs)[1]))
+    assert len(_pictures(_body_slides(prs)[3])) == 6
+    assert all(shape.left >= Inches(0.1) for shape in _pictures(_body_slides(prs)[3]))
 
 
 def test_map_eds_pages_reuse_first_image_as_left_anchor(tmp_path, monkeypatch) -> None:
@@ -486,13 +493,13 @@ def test_map_eds_pages_reuse_first_image_as_left_anchor(tmp_path, monkeypatch) -
 
     assert _pptx_picture_counts(output) == [7, 2]
     prs = Presentation(output)
-    for slide in prs.slides:
+    for slide in _body_slides(prs):
         pictures = _pictures(slide)
         anchor = pictures[0]
         assert anchor.left <= Inches(0.3)
         assert anchor.width >= Inches(4.5)
-    assert len([shape for shape in _pictures(prs.slides[0]) if shape.left >= Inches(4.0)]) == 6
-    first_page_right = [shape for shape in _pictures(prs.slides[0]) if shape.left >= Inches(4.0)]
+    assert len([shape for shape in _pictures(_body_slides(prs)[0]) if shape.left >= Inches(4.0)]) == 6
+    first_page_right = [shape for shape in _pictures(_body_slides(prs)[0]) if shape.left >= Inches(4.0)]
     assert len({round(shape.left / Inches(1), 2) for shape in first_page_right}) == 2
     assert len({round(shape.top / Inches(1), 2) for shape in first_page_right}) == 3
     first_row = sorted(
@@ -502,7 +509,7 @@ def test_map_eds_pages_reuse_first_image_as_left_anchor(tmp_path, monkeypatch) -
     assert first_row[1].left - (first_row[0].left + first_row[0].width) < Inches(0.9)
     assert max(shape.left + shape.width for shape in first_page_right) >= Inches(10.1)
 
-    single_right_picture = [shape for shape in _pictures(prs.slides[1]) if shape.left >= Inches(4.0)]
+    single_right_picture = [shape for shape in _pictures(_body_slides(prs)[1]) if shape.left >= Inches(4.0)]
     assert len(single_right_picture) == 1
     assert single_right_picture[0].left == min(shape.left for shape in first_page_right)
     assert single_right_picture[0].top == min(shape.top for shape in first_page_right)
@@ -540,7 +547,7 @@ def test_map_eds_anchor_trims_internal_white_side_margins(tmp_path, monkeypatch)
 
     build_pptx(project, output)
 
-    anchor = _pictures(Presentation(output).slides[0])[0]
+    anchor = _pictures(_body_slides(Presentation(output))[0])[0]
     assert anchor.left <= Inches(0.3)
     assert anchor.width >= Inches(4.5)
     assert anchor.height >= Inches(4.5)
@@ -592,8 +599,8 @@ def test_map_eds_partial_page_keeps_fixed_two_by_three_slots(tmp_path, monkeypat
     build_pptx(project, output)
 
     prs = Presentation(output)
-    full_page = [shape for shape in _pictures(prs.slides[0]) if shape.left >= Inches(4.0)]
-    partial_page = [shape for shape in _pictures(prs.slides[1]) if shape.left >= Inches(4.0)]
+    full_page = [shape for shape in _pictures(_body_slides(prs)[0]) if shape.left >= Inches(4.0)]
+    partial_page = [shape for shape in _pictures(_body_slides(prs)[1]) if shape.left >= Inches(4.0)]
     assert len(partial_page) == 2
     assert partial_page[0].top == partial_page[1].top == min(shape.top for shape in full_page)
     assert [shape.left for shape in partial_page] == sorted({shape.left for shape in full_page})
@@ -634,17 +641,17 @@ def test_point_eds_detail_pages_keep_first_image_on_left(tmp_path, monkeypatch) 
 
     assert _pptx_picture_counts(output) == [1, 4]
     prs = Presentation(output)
-    anchor = _pictures(prs.slides[0])[0]
+    anchor = _pictures(_body_slides(prs)[0])[0]
     assert anchor.left <= Inches(0.3)
     assert anchor.width >= Inches(4.3)
     table_lefts = [
         shape.left
-        for shape in prs.slides[0].shapes
+        for shape in _body_slides(prs)[0].shapes
         if getattr(shape, "has_table", False)
     ]
     assert table_lefts
     assert min(table_lefts) - (anchor.left + anchor.width) <= Inches(0.12)
-    for shape in prs.slides[0].shapes:
+    for shape in _body_slides(prs)[0].shapes:
         if not getattr(shape, "has_table", False):
             continue
         for row in shape.table.rows:
@@ -693,18 +700,18 @@ def test_point_eds_spectrum_tables_create_row_detail_slides(tmp_path, monkeypatc
     build_pptx(project, output)
 
     prs = Presentation(output)
-    assert len(prs.slides) == 4
+    assert len(_body_slides(prs)) == 4
     assert _pptx_picture_counts(output) == [1, 1, 2, 2]
     table_counts = [
         sum(1 for shape in slide.shapes if getattr(shape, "has_table", False))
-        for slide in prs.slides
+        for slide in _body_slides(prs)
     ]
     assert table_counts == [1, 1, 2, 2]
     summary_units = []
     summary_title_row_heights = []
     summary_table_heights = []
     summary_table_tops = []
-    for slide in list(prs.slides)[:2]:
+    for slide in list(_body_slides(prs))[:2]:
         table_shapes = [shape for shape in slide.shapes if getattr(shape, "has_table", False)]
         assert len(table_shapes) == 1
         table = table_shapes[0].table
@@ -723,7 +730,7 @@ def test_point_eds_spectrum_tables_create_row_detail_slides(tmp_path, monkeypatc
     assert summary_table_heights == [Inches(1.92), Inches(1.92)]
     assert summary_table_tops == [Inches(1.37), Inches(1.37)]
     summary_table_fonts = []
-    for slide in list(prs.slides)[:2]:
+    for slide in list(_body_slides(prs))[:2]:
         for shape in slide.shapes:
             if not getattr(shape, "has_table", False):
                 continue
@@ -739,8 +746,8 @@ def test_point_eds_spectrum_tables_create_row_detail_slides(tmp_path, monkeypatc
     assert min(summary_table_fonts) >= Pt(10)
     detail_table_fonts = []
     detail_title_row_heights = []
-    detail_anchor = _pictures(prs.slides[2])[0]
-    detail_graph = _pictures(prs.slides[2])[1]
+    detail_anchor = _pictures(_body_slides(prs)[2])[0]
+    detail_graph = _pictures(_body_slides(prs)[2])[1]
     assert detail_anchor.width == Inches(4.0)
     assert detail_anchor.height == Inches(4.0)
     assert detail_anchor.crop_left > 0
@@ -751,7 +758,7 @@ def test_point_eds_spectrum_tables_create_row_detail_slides(tmp_path, monkeypatc
     assert detail_graph.top + detail_graph.height <= Inches(3.20) + Inches(4.05)
     assert detail_graph.height <= Inches(4.05)
     detail_table_tops = []
-    for shape in prs.slides[2].shapes:
+    for shape in _body_slides(prs)[2].shapes:
         if not getattr(shape, "has_table", False):
             continue
         detail_table_tops.append(shape.top)
@@ -774,7 +781,7 @@ def test_point_eds_spectrum_tables_create_row_detail_slides(tmp_path, monkeypatc
     assert "Total" not in table_text
     titles = [
         " ".join(shape.text.split())
-        for slide in prs.slides
+        for slide in _body_slides(prs)
         for shape in slide.shapes
         if getattr(shape, "has_text_frame", False)
     ]
@@ -817,12 +824,12 @@ def test_large_coating_sample_uses_image_pages_then_summary_table(tmp_path) -> N
     build_pptx(project, output)
 
     prs = Presentation(output)
-    assert len(prs.slides) == 2
-    table_counts = [sum(1 for shape in slide.shapes if getattr(shape, "has_table", False)) for slide in prs.slides]
+    assert len(_body_slides(prs)) == 2
+    table_counts = [sum(1 for shape in slide.shapes if getattr(shape, "has_table", False)) for slide in _body_slides(prs)]
     assert table_counts[0] == 0
     assert table_counts[1] == 0
     assert _pptx_picture_counts(output) == [12, 3]
-    pictures = _pictures(prs.slides[1])
+    pictures = _pictures(_body_slides(prs)[1])
     table_picture = pictures[-1]
     assert table_picture.width <= Inches(3.0)
     assert table_picture.left >= Inches(7.6)
@@ -831,7 +838,7 @@ def test_large_coating_sample_uses_image_pages_then_summary_table(tmp_path) -> N
     assert final_images[0].top == final_images[1].top
     assert final_images[0].width == final_images[1].width
     assert final_images[0].width < Inches(2.3)
-    assert _black_grid_rule_count(prs.slides[1]) == 0
+    assert _black_grid_rule_count(_body_slides(prs)[1]) == 0
 
 
 def test_coating_summary_page_keeps_three_by_three_slots_for_three_images(tmp_path) -> None:
@@ -856,7 +863,7 @@ def test_coating_summary_page_keeps_three_by_three_slots_for_three_images(tmp_pa
     build_pptx(project, output)
 
     prs = Presentation(output)
-    pictures = _pictures(prs.slides[1])
+    pictures = _pictures(_body_slides(prs)[1])
     final_images = pictures[:-1]
     assert len(final_images) == 3
     assert len({shape.top for shape in final_images}) == 1
@@ -898,7 +905,7 @@ def test_grid_slides_place_remainder_images_from_upper_left_and_sort_by_magnific
     build_pptx(project, output)
 
     prs = Presentation(output)
-    assert _caption_texts(prs.slides[0])[:3] == ["[x20k]", "[x100k]", "[x300k]"]
-    remainder_picture = _pictures(prs.slides[1])[0]
+    assert _caption_texts(_body_slides(prs)[0])[:3] == ["[x20k]", "[x100k]", "[x300k]"]
+    remainder_picture = _pictures(_body_slides(prs)[1])[0]
     assert remainder_picture.left <= Inches(0.5)
     assert remainder_picture.top <= Inches(1.7)

@@ -96,7 +96,7 @@ def test_tem_revision_edits_visible_text_table_email_and_preserves_original(repo
     data = h.client.get(h.url + "/editor-data").json()["document"]
     assert "TEM 1건" in data["auxiliary"]["email_body"]
     layout = h.client.get(h.url + "/edit-layout").json()
-    assert len(layout["pages"]) == 2
+    assert len(layout["pages"]) == 3  # New cover + the two original body pages.
     assert h.client.get(h.url + "/edit-slides/0").headers["content-type"] == "image/jpeg"
     assert h.client.get(h.url + "/edit-slides/-1").status_code == 404
     assert h.client.get(h.url + "/edit-slides/999").status_code == 404
@@ -127,6 +127,9 @@ def test_tem_revision_edits_visible_text_table_email_and_preserves_original(repo
         assert json.loads(archive.read("analysis-result.json")) == json.loads(h.job.analysis_path.read_text())
         assert json.loads(archive.read("report-review.json"))["transfer"] == changes["transfer"]
         with ZipFile(BytesIO(archive.read("tem-report.pptx"))) as revised:
+            cover = revised.read("ppt/slides/slide1.xml").decode()
+            for value in changes["transfer"].values():
+                assert value in cover
             for name in original.namelist():
                 if name.startswith(("ppt/media/", "ppt/slideLayouts/", "ppt/slideMasters/")):
                     assert revised.read(name) == original.read(name), name

@@ -15,6 +15,7 @@ from zipfile import ZipFile, ZIP_DEFLATED
 
 from lxml import etree as E
 from PIL import Image
+from ahn.report_cover import cover_shapes, shape_xml
 
 from ..config import load_settings
 from ..core.figure import build_plan
@@ -380,9 +381,10 @@ class Deck:
 
     def number_pages(self):
         for number, (slide, _) in enumerate(self.pages, 1):
-            shape = named(slide, 'Page number')[0]
-            set_text(shape, str(number), size=10, color='6B7F88')
-            shape.find('p:txBody/a:p/a:pPr', NS).set('algn', 'r')
+            if self.page_info[slide]['kind'] != 'cover':
+                shape = named(slide, 'Page number')[0]
+                set_text(shape, str(number), size=10, color='6B7F88')
+                shape.find('p:txBody/a:p/a:pPr', NS).set('algn', 'r')
             # Keep the source artwork visible even in viewers that suppress inherited
             # master pictures on populated slides. Do not redraw or replace the logo.
             if not named(slide, 'RIST logo'):
@@ -488,26 +490,48 @@ def build_posco_deck(project, document, resolve_source, *, pages=None, link_base
         source_images[key] = data
         return data
 
-    # The same original POSCO master/logo on the cover and every body page.
+    # Only the cover follows FTIR/Raman; the supplied XRD body layouts stay intact.
     cover = deck.slide(blank=True, kind='cover')
-    deck.title(cover, 'XRD 분석 보고서')
+    for shape in list(cover.find('p:cSld/p:spTree', NS)):
+        if E.QName(shape).localname not in ('nvGrpSpPr', 'grpSpPr'):
+            remove(shape)
     meta = document['metadata']
-    title_shape=deck.text(cover, '', (22,42,231,30), size=24, bold=True,
-                          edit=dict(tab='overview',field='title'))
-    if not set_text(title_shape,meta['title'],size=24,bold=True,minimum=12):
-        raise ValueError('표지 제목을 표시할 공간이 부족합니다.')
-    fields = [('report_number','의뢰번호'),('client','의뢰기관'),('requester','의뢰자'),
-              ('received_date','접수일'),('analysis_period','분석 기간'),('author','작성자'),('date','완료일')]
-    for i,(key,label) in enumerate(fields):
-        deck.text(cover,label,(24,85+i*11,37,9),size=11,bold=True)
-        shape=deck.text(cover,'',(65,85+i*11,185,10),size=11,
-                       edit=dict(tab='overview',field=key))
-        if not set_text(shape,meta.get(key,''),size=11,minimum=8):
-            raise ValueError('표지 '+label+' 항목을 표시할 공간이 부족합니다.')
-    for i,(key,label) in enumerate((('experiment_code','실험코드'),('equipment_code','장비코드'),('operator_id','실험자 ID'))):
-        shape=deck.text(cover,'',(24+i*80,167,76,8),size=8,
-                       edit=dict(tab='overview',field='transfer'))
-        fit_text(shape,label+': '+meta.get(key,''),size=8)
+    fields = [('report_number','의뢰번호'),('experiment_code','실험코드'),
+              ('equipment_code','실험장비'),('operator_id','실험자'),('date','완료일'),
+              ('client','의뢰기관'),('requester','의뢰자'),('received_date','접수일'),
+              ('analysis_period','분석 기간'),('author','작성자')]
+    size = E.fromstring(deck.files['ppt/presentation.xml']).find('p:sldSz', NS)
+    prepared = []
+    for columns in (4, 2):
+        prepared = []
+        for spec in cover_shapes('XRD', meta['title'],
+            '상 동정 · WPPF 정량 · 측정 데이터를 통합 정리',
+            [(label,meta.get(key,'')) for key,label in fields], int(size.get('cx')),int(size.get('cy')), columns=columns):
+            shape = E.fromstring(shape_xml(spec))
+            # Resolve wrapping in the scene; expand to two columns for long values
+            # instead of truncating a request number or rejecting valid metadata.
+            inset = spec['inset']
+            point_size = spec['font_size'] / 100 * .9
+            if not set_text(shape, '\n'.join(spec['text']), size=point_size,
+                    minimum=min(point_size, 7), bold=spec.get('bold',False), color=spec['color'],
+                    dimensions=((spec['cx']-2*inset)/MM,(spec['cy']-2*inset)/MM)):
+                break
+            props = shape.find('p:txBody/a:bodyPr',NS)
+            for attr in ('lIns','rIns','tIns','bIns'): props.set(attr,str(inset))
+            prepared.append((spec,shape))
+        else:
+            break
+    if len(prepared) != 4 + len(fields):
+        raise ValueError('표지 항목을 표시할 공간이 부족합니다. 내용을 줄여 주세요.')
+    for spec,shape in prepared:
+        name = 'Title' if spec['name']=='Experiment banner title' else spec['name']
+        deck.append(cover,shape,name)
+        if name=='Report title':
+            deck.mark(shape,dict(tab='overview',field='title'))
+        elif name.startswith('Meta card '):
+            key = fields[int(name.rsplit(' ',1)[1])][0]
+            deck.mark(shape,dict(tab='overview',field='transfer' if key in
+                {'experiment_code','equipment_code','operator_id'} else key))
 
     # Adaptive summary: two columns of reviewed phase information, never 3/4 fixed samples.
     summary_image = None

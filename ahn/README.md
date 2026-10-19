@@ -64,6 +64,12 @@ export RIST_PROCESSOR_COMMAND_AHN='python -m ahn.processor --input "{input_dir}"
 
 ## 산출물
 
+새 TEM PPT에는 FTIR/Raman과 같은 POSCO 배경·RIST 로고·제목·정보 카드 형식의
+표지를 첫 장에 추가합니다. 기존 TEM/STEM/EDS/코팅층 본문은 그대로 이어집니다.
+Edge 보고서 미리보기에서 표지를 클릭하여 제목, 의뢰번호, 실험코드, 실험장비,
+실험자, 완료일을 수정할 수 있으며, 저장한 PPT/PDF/전송 ZIP에도 반영됩니다.
+표지가 없는 과거 보고서는 그대로 열리고, 표지 추가는 새 보고서 생성부터 적용됩니다.
+
 ```text
 {jobRoot}/processed/analysis-result.json
 {jobRoot}/processed/manifest.json

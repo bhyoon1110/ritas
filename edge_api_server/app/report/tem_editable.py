@@ -10,6 +10,7 @@ from zipfile import ZipFile
 
 from .editable import TRANSFER_FIELDS
 from .editor_variables import resolve_changes
+from ahn.report_cover import COVER_NAME, TEM_FIELDS
 
 NS = {"p": "http://schemas.openxmlformats.org/presentationml/2006/main",
       "a": "http://schemas.openxmlformats.org/drawingml/2006/main",
@@ -37,6 +38,7 @@ def inspect_pptx(path):
         width, height = int(size.get("cx")), int(size.get("cy"))
         for index, name in enumerate(_slides(archive)):
             root = ET.fromstring(archive.read(name))
+            is_cover = root.find("p:cSld", NS).get("name") == COVER_NAME
             regions = []
             title = f"TEM {index + 1}페이지"
             for shape in root.findall("p:cSld/p:spTree/*", NS):
@@ -65,6 +67,16 @@ def inspect_pptx(path):
                     continue
                 off, ext = transform.find("a:off", NS), transform.find("a:ext", NS)
                 x, y, w, h = (int(off.get("x")), int(off.get("y")), int(ext.get("cx")), int(ext.get("cy")))
+                shape_name = identity.get("name", "")
+                if is_cover and body is not None:
+                    ref = _cover_ref(shape_name)
+                    if ref:
+                        regions.append(_region(x, y, w, h, width, height, [ref], False))
+                        if ref == "title":
+                            title = _text(body)
+                        continue
+                    if shape_name in {"Experiment banner title", "Report eyebrow"}:
+                        continue
                 sid = f"slide-{index + 1}-shape-{identity.get('id')}"
                 section = dict(sectionId=sid, heading=f"{index + 1}페이지 · {identity.get('name', '내용')}",
                                paragraphs=[], bullets=[], columns=None, rows=None, source="user")
@@ -121,13 +133,40 @@ def _region(x, y, w, h, width, height, refs, empty):
                 h=max(0, min(height, y+h)-top) / height, refs=refs, empty=empty)
 
 
+def _cover_ref(name):
+    if name == "Report title":
+        return "title"
+    if name.startswith("Meta card "):
+        index = int(name.rsplit(" ", 1)[1])
+        if 0 <= index < len(TEM_FIELDS):
+            key = TEM_FIELDS[index][0]
+            return key if key == "completionDate" else "transfer/" + key
+    return None
+
+
+def _cover_values(path):
+    values = {}
+    with ZipFile(path) as archive:
+        root = ET.fromstring(archive.read(_slides(archive)[0]))
+        if root.find("p:cSld", NS).get("name") != COVER_NAME:
+            return values  # Existing reports without a cover remain editable unchanged.
+        for shape in root.findall("p:cSld/p:spTree/p:sp", NS):
+            ref = _cover_ref(shape.find("p:nvSpPr/p:cNvPr", NS).get("name", ""))
+            if ref:
+                text = _text(shape.find("p:txBody", NS))
+                values[ref] = text if ref == "title" else text.partition("\n")[2]
+    return values
+
+
 def initial_model(path, summary):
     sections, _, _ = inspect_pptx(path)
+    cover = _cover_values(path)
     counts = [("TEM", "temSampleCount"), ("STEM", "stemSampleCount"),
               ("EDS", "edsReportCount"), ("코팅층", "coatingSampleCount")]
     details = ", ".join(f"{label} {summary.get(key, 0)}건" for label, key in counts if summary.get(key))
-    return dict(title="TEM/STEM/EDS 분석 보고서", completionDate=date.today().isoformat(), variables=[],
-        transfer={key: ("TEM-EDGE-01" if key == "equipmentCode" else "") for key in TRANSFER_FIELDS},
+    return dict(title=cover.get("title", "TEM/STEM/EDS 분석 보고서"),
+        completionDate=cover.get("completionDate", date.today().isoformat()), variables=[],
+        transfer={key: cover.get("transfer/" + key, "TEM-EDGE-01" if key == "equipmentCode" else "") for key in TRANSFER_FIELDS},
         sections=sections, auxiliary={"email_subject": "TEM/STEM/EDS 분석 결과 보고서 안내",
         "email_body": "안녕하세요.\n\n요청하신 TEM/STEM/EDS 분석 보고서를 보내드립니다.\n"
             + (f"첨부 보고서는 {details}의 분석 결과를 포함합니다.\n" if details else "")
@@ -234,6 +273,25 @@ def revise_pptx(source, target, changes):
                     for row, texts in zip(table.findall("a:tr", NS), item["rows"]):
                         for cell, text in zip(row.findall("a:tc", NS), texts):
                             _replace_text(cell.find("a:txBody", NS), text)
+        # Cover fields share the editor's authoritative title/transfer/date values.
+        # Revisions update the existing cover; they never insert another page.
+        first_slide = _slides(archive)[0]
+        root = replacements.get(first_slide)
+        if root is None:
+            root = ET.fromstring(archive.read(first_slide))
+        if root.find("p:cSld", NS).get("name") == COVER_NAME:
+            for shape in root.findall("p:cSld/p:spTree/p:sp", NS):
+                name = shape.find("p:nvSpPr/p:cNvPr", NS).get("name", "")
+                ref = _cover_ref(name)
+                if ref == "title":
+                    text = values["title"]
+                elif ref:
+                    key, label = TEM_FIELDS[int(name.rsplit(" ", 1)[1])]
+                    text = label + "\n" + (values.get(key, "") if key == "completionDate" else values["transfer"][key])
+                else:
+                    continue
+                _replace_text(shape.find("p:txBody", NS), text)
+            replacements[first_slide] = root
         with ZipFile(target, "w") as output:
             for info in archive.infolist():
                 if info.filename in images:

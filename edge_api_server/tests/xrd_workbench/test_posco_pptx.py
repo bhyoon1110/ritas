@@ -56,7 +56,7 @@ def test_reference_background_dimensions_and_sanitized_example_data():
     assert 'Zinc Manganese' not in text and '00-062-0414' not in text and '{Sample' not in text
     assert len(slides)==4
     assert [''.join(named(s,'Title')[0].xpath('.//a:t/text()',namespaces=NS)) for s in slides]==[
-        'XRD 분석 보고서', SUMMARY_TITLE, QUANTITY_TITLE, PHASE_TITLE,
+        'XRD 분석 결과', SUMMARY_TITLE, QUANTITY_TITLE, PHASE_TITLE,
     ]
     assert '검토 문장' not in text  # prose/LLM is preserved in the document, not the rules-only summary
     assert all(value not in text for value in ('보고서 정보','정량 수치','결정상 분류 기준','긴 제목 전체'))
@@ -103,7 +103,7 @@ def test_more_samples_keep_only_reference_layouts_and_do_not_mutate_full_notes()
     assert all('시료 '+str(i) in text for i in range(5))
     assert 'Phase7' in text and '계속' in text
     titles=[''.join(named(s,'Title')[0].xpath('.//a:t/text()',namespaces=NS)) for s in slides]
-    assert all(t.removesuffix(' (계속)') in ('XRD 분석 보고서',SUMMARY_TITLE,PHASE_TITLE) for t in titles)
+    assert all(t.removesuffix(' (계속)') in ('XRD 분석 결과',SUMMARY_TITLE,PHASE_TITLE) for t in titles)
     for n in z.namelist():
         if n.endswith('.rels'):assert b'TargetMode="External"' not in z.read(n)
     for slide in slides:
@@ -189,7 +189,7 @@ def test_wppf_is_once_per_sample_and_all_remaining_phases_use_phase_layout():
     titles = [''.join(named(s,'Title')[0].xpath('.//a:t/text()',namespaces=NS)) for s,_ in filled.pages]
     assert titles.count(QUANTITY_TITLE) == 2
     assert QUANTITY_TITLE+' (계속)' not in titles
-    assert all(t.removesuffix(' (계속)') in ('XRD 분석 보고서',SUMMARY_TITLE, QUANTITY_TITLE, PHASE_TITLE) for t in titles)
+    assert all(t.removesuffix(' (계속)') in ('XRD 분석 결과',SUMMARY_TITLE, QUANTITY_TITLE, PHASE_TITLE) for t in titles)
     wppf_pages = [s for s,_ in filled.pages if 'WPPF' in ''.join(named(s,'Title')[0].itertext())]
     assert [filled.page_info[s]['sample_id'] for s in wppf_pages] == ['A','B']
     # Every phase table row appears exactly once, even with unequal phase counts.

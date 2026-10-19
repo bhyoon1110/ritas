@@ -9,6 +9,7 @@ from pptx import Presentation
 from ahn.analysis import collect_project
 from ahn.docx_extract import extract_docx
 from ahn.ppt_report import build_pptx
+from ahn.tests.test_ppt_report import _body_slides
 
 
 def write_docx(path: Path, color=(220, 40, 40), *, vml=False, absolute=False):
@@ -53,7 +54,7 @@ def test_same_named_documents_have_distinct_slides_and_image_cache(tmp_path):
     write_docx(tmp_path / 'report/sampleB/MAP.docx', (40, 40, 220))
     project = collect_project(tmp_path)
     output = build_pptx(project, tmp_path / 'report.pptx')
-    slides = Presentation(output).slides
+    slides = _body_slides(Presentation(output))
     assert len(slides) == 2
     pixels = []
     for slide in slides:
@@ -82,7 +83,7 @@ def test_table_only_docx_keeps_all_tables_on_continuation_slides(tmp_path):
             '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
             '<w:body>' + tables + '</w:body></w:document>')
     output = build_pptx(collect_project(tmp_path), tmp_path / 'report.pptx')
-    slides = Presentation(output).slides
+    slides = _body_slides(Presentation(output))
     assert len(slides) == 2
     values = [cell.text for slide in slides for shape in slide.shapes if shape.has_table
               for row in shape.table.rows for cell in row.cells]
@@ -139,7 +140,7 @@ def test_strict_docx_images_and_tables_are_not_treated_as_empty(tmp_path, images
     assert result.tables == [[['Oxygen 45%']]]
     assert not result.diagnostics
     output = build_pptx(collect_project(tmp_path), tmp_path / 'report.pptx')
-    slides = Presentation(output).slides
+    slides = _body_slides(Presentation(output))
     assert len(slides) == 1
     if images:
         assert any(shape.shape_type == 13 for shape in slides[0].shapes)
@@ -186,7 +187,7 @@ def test_package_root_media_is_extracted_from_document_relationships(tmp_path, t
     assert not result.diagnostics
     assert Image.open(result.media_paths[0]).getpixel((0, 0)) == (220, 40, 40)
     output = build_pptx(collect_project(tmp_path), tmp_path / 'report.pptx')
-    assert len(Presentation(output).slides) == 1
+    assert len(_body_slides(Presentation(output))) == 1
 
 
 @pytest.mark.parametrize('target,external', [
