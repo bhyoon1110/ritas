@@ -18,10 +18,12 @@ body.withShell {
 #appShell { display:block; flex: none; width: 100%; box-sizing: border-box; background: #fff; border-bottom: 1px solid var(--line); color: var(--text); }
 .shellTop { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding: 10px 18px; }
 .shellBrand { font-weight: 700; color: var(--navy); font-size: 18px; white-space: nowrap; }
-.shellHome { padding: 6px 10px; border: 1px solid var(--line); border-radius: 5px; color: var(--navy); text-decoration: none; white-space: nowrap; }
+.shellActions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; margin-left: auto; min-width: 0; max-width: 100%; }
+.shellHome { display: inline-flex; align-items: center; box-sizing: border-box; min-height: 32px; flex-shrink: 0; padding: 6px 10px; border: 1px solid var(--line); border-radius: 5px; color: var(--navy); background: #fff; font-size: 13px; text-decoration: none; white-space: nowrap; }
+.shellHome:hover { background: #e9f2fa; }
 .shellLabel { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 13px; color: var(--muted); min-width: 0; }
 .shellLabel select { width: 230px; max-width: 40vw; margin: 0; }
-.shellState { margin-left: auto; color: var(--muted); font-size: 13px; }
+.shellState { color: var(--muted); font-size: 13px; }
 .shellSteps { display: flex; overflow-x: auto; padding: 0 16px 8px; gap: 8px; }
 .shellStep { flex: 0 0 auto; display: flex; align-items: center; gap: 7px; padding: 7px 12px; border-radius: 6px; color: var(--muted); text-decoration: none; white-space: nowrap; }
 .shellNumber { font-size: 16px; }
@@ -58,6 +60,7 @@ body.withShell button[aria-pressed=true] { background: #e9f2fa; border-color: #8
   .shellMain { overflow: visible; flex: none; }
   .shellTop { padding: 8px 12px; gap: 6px 10px; }
   .shellBrand { font-size: 16px; }
+  .shellActions { flex: 1 1 100%; }
   .shellState { display: none; }
   .shellLabel { flex: 1 1 220px; white-space: nowrap; }
   .shellLabel select { width: 100%; max-width: none; }

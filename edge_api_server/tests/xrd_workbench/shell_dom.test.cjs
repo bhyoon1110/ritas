@@ -49,6 +49,11 @@ for (const mode of Object.keys(programs)) {
     const ui=setup(t,mode,()=>response([])); await flush();
     const home=ui.d.getElementById('shellHome');
     assert.equal(home.getAttribute('href'),'/'); assert.equal(home.textContent,'홈');
+    assert.equal(ui.d.querySelector('.shellTop').firstElementChild.className,'shellBrand');
+    assert.equal(home.parentElement.className,'shellActions');
+    assert.equal(home.parentElement.firstElementChild,home);
+    assert.deepEqual(Array.from(home.parentElement.children,e=>e.id),
+      ['shellHome','shellState','shellReset','shellSettings','shellAccountToggle']);
     let checked=0; ui.w.xrdBeforeLeave=async()=>{checked++;return false;};
     home.click(); await flush();
     assert.equal(checked,1); assert.match(ui.w.location.pathname,/workbench/);

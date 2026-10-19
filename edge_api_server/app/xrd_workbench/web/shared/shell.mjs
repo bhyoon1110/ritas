@@ -145,10 +145,11 @@ export async function mountShell() {
   nav.id = 'appShell';
   nav.setAttribute('aria-label', '작업 단계');
   nav.innerHTML =
-    '<div class="shellTop"><a id="shellHome" class="shellHome" href="/">홈</a><div class="shellBrand">XRD 분석·보고서</div>' +
+    '<div class="shellTop"><div class="shellBrand">XRD 분석·보고서</div>' +
     '<label class="shellLabel">프로젝트<select id="shellProject" aria-label="프로젝트"></select></label><button id="shellProjectManage" type="button">프로젝트 관리</button>' +
+    '<div class="shellActions"><a id="shellHome" class="shellHome" href="/">홈</a>' +
     '<span id="shellState" class="shellState"></span><button id="shellReset" type="button" title="저장된 자료를 보존하고 새 작업 시작">초기화</button><button id="shellSettings" class="shellSettings">설정</button>' +
-    '<button id="shellAccountToggle" aria-controls="shellAccount" aria-expanded="false">회원·지원</button></div>' +
+    '<button id="shellAccountToggle" aria-controls="shellAccount" aria-expanded="false">회원·지원</button></div></div>' +
     '<div id="shellSteps" class="shellSteps"></div>';
   body.append(nav, main);
   $('shellHome').onclick = async (event) => {
