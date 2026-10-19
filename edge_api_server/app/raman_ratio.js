@@ -224,6 +224,7 @@
 
   function setRatioMode(enabled, announce) {
     var nextEnabled = !!enabled;
+    var wasEnabled = ratioMode;
     if (nextEnabled && !ratioMode && announce !== false) {
       gd.dispatchEvent(new CustomEvent("rist-exclusive-interaction-start", {
         detail: {mode: "raman-ratio"}
@@ -241,6 +242,7 @@
     resolveRatios();
     refreshSampleOptions();
     syncControls();
+    if (wasEnabled && !nextEnabled && gd._ristRestoreNavigation) gd._ristRestoreNavigation();
     // The floating tools panel can cover this dialog on narrow screens. Leave
     // only the active picker visible; reopening tools still works normally.
     if (ratioMode && gd.classList.contains("rist-raman-tools-open")) {
@@ -996,7 +998,11 @@
   });
   restoreRatios();
   if (rangeApi) rangeApi.install(gd, {
-    mode:function(enabled) { batchMode = enabled; syncControls(); },
+    mode:function(enabled) {
+      var wasEnabled = batchMode;
+      batchMode = enabled; syncControls();
+      if (wasEnabled && !enabled && gd._ristRestoreNavigation) gd._ristRestoreNavigation();
+    },
     preview:function(item) { inspectedRatio = item; scheduleSelectionDraw(); },
     apply:function(rows) {
       if (commitBusy) return Promise.reject(new Error("ratio update busy"));

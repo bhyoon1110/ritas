@@ -143,8 +143,9 @@ test('long user-defined ratio and option labels stay single-line with full-text 
     const source=fs.readFileSync(path.resolve(__dirname,'../app/'+kind+'_web.py'),'utf8');
     assert.match(source,/item\.textContent = value;\s*item\.title = value;/);
     if(kind==='raman') {
-      assert.match(source,/edit\.style\.cssText = "[^"\n]*white-space:nowrap[^"\n]*text-overflow:ellipsis/);
-      assert.match(source,/edit\.title = edit\.textContent;/);
+      const ratioSource=fs.readFileSync(path.resolve(__dirname,'../app/raman_ratio.js'),'utf8');
+      assert.match(ratioSource,/edit\.style\.cssText = "[^"\n]*white-space:nowrap[^"\n]*text-overflow:ellipsis/);
+      assert.match(ratioSource,/edit\.title = edit\.textContent;/);
     }
   }
 });

@@ -2083,6 +2083,7 @@ _RAMAN_TOOL_PANEL_SCRIPT = """
       ev.preventDefault();
       ev.stopPropagation();
       setOpen(false);
+      gd.dispatchEvent(new CustomEvent("rist-close-edit-tool"));
     });
   }
   if (opacity) {
@@ -2635,6 +2636,7 @@ _RAMAN_STACK_SCRIPT = """
 
   function setDragMode(enabled, announce) {
     var nextEnabled = !!enabled;
+    var wasEnabled = state.dragMode;
     if (nextEnabled && typeof gd._ristSetEditMode === "function") {
       gd._ristSetEditMode(false, false);
     }
@@ -2646,6 +2648,7 @@ _RAMAN_STACK_SCRIPT = """
     state.dragMode = nextEnabled;
     if (!nextEnabled) finishStackDrag();
     syncControls();
+    if (wasEnabled && !nextEnabled && gd._ristRestoreNavigation) gd._ristRestoreNavigation();
   }
 
   gd._ristSetYDragMode = function(enabled) {
@@ -6130,6 +6133,7 @@ def build_raman_page() -> str:
         peak_editor=True,
         shape_editor=True,
         axis_controls=True,
+        default_dragmode="pan",
         axis_locks=True,
         scroll_zoom_y_only=True,
         title_edit=True,
@@ -6145,7 +6149,7 @@ def build_raman_page() -> str:
             + work_template_script()
             + _UPLOAD_SCRIPT
         ),
-        config={"scrollZoom": True},
+        config={"scrollZoom": True, "modeBarButtonsToRemove": ["select2d"]},
     )
     page = page.replace("</head>", _PAGE_STYLE + "</head>", 1)
     return with_browser_support_notice(page.replace("<body>", "<body>" + _PAGE_SHELL, 1))

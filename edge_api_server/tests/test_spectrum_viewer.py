@@ -50,6 +50,7 @@ def test_readonly_snapshot_preserves_issued_values_and_no_edit_programs(monkeypa
     assert result["data"][1]["showlegend"] is False
     assert result["layout"]["xaxis"]["range"] == [4000, 400]
     assert result["layout"]["xaxis"]["fixedrange"] is False
+    assert result["layout"]["dragmode"] == "pan"
     assert result["layout"]["meta"]["ratioGroups"] == {"rist_raman_ratio:r1": "sample:0"}
     monkeypatch.setattr(viewer, "get_plotlyjs", lambda: "")
     html = viewer.viewer_html(title="</script><script>bad()</script>", figure=original, slides=["data:image/jpeg;base64,test"])

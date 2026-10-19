@@ -714,7 +714,7 @@ def test_shared_peak_editor_adds_peak_controls(tmp_path) -> None:
     assert "function syncModebarState" in html
     assert "function isNavigationModeButton" in html
     assert "function blockNavigationModeButton" in html
-    assert 'gd.querySelectorAll("a.modebar-btn.active")' in html
+    assert 'gd.querySelectorAll(".modebar-btn.active")' in html
     assert "rist-edit-mode-disabled" in html
     assert "/zoom|pan|box select|lasso select/i.test(title)" in html
     assert "if (item !== button) item.classList.remove(\"active\")" in html

@@ -595,6 +595,7 @@ def _title_edit_js(div_id: str) -> str:
         window.Plotly.relayout(gd, {{ "title.text": nextTitle }});
       }}
       if (inp.parentNode) inp.parentNode.removeChild(inp);
+      if (gd._ristRestoreNavigation) gd._ristRestoreNavigation();
     }}
     activeFinish = finish;
     inp.addEventListener("keydown", function(ev) {{
@@ -1627,6 +1628,7 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
       finishPanelDrag();
       panel.style.display = "none";
       gd._ristLegendEditOpen = false;
+      if (gd._ristRestoreNavigation) gd._ristRestoreNavigation();
     }}
 
     var panelHead = panel.querySelector(".rist-legend-edit-head");
@@ -4919,6 +4921,7 @@ def peak_editor_js(div_id: str) -> str:
     addBtn.classList.toggle("is-active", mode === "add");
     delBtn.classList.toggle("is-active", mode === "delete");
     selectBtn.classList.toggle("is-active", mode === "select");
+    if (prev !== "none" && mode === "none" && gd._ristRestoreNavigation) gd._ristRestoreNavigation();
   }}
 
   var addBtn = document.createElement("button");
@@ -5750,7 +5753,7 @@ def _image_download_js(div_id: str, formats, filename: str, scale: float) -> str
     )
 
 
-def _edit_mode_toggle_js(div_id: str) -> str:
+def _edit_mode_toggle_js(div_id: str, *, default_dragmode: str | None = None) -> str:
     """Plotly modebar에 탐색/편집 모드 전환 버튼을 추가한다."""
     return f"""
 <style>
@@ -5776,6 +5779,17 @@ def _edit_mode_toggle_js(div_id: str) -> str:
   var button = null;
   var previousDragmode = null;
   var previousScrollZoom = null;
+  gd._ristDefaultDragmode = {json.dumps(default_dragmode)};
+  // Opt-in navigation policy: ordinary Zoom remains available until editing
+  // finishes. Never override an active Crop or another custom drag interaction.
+  gd._ristRestoreNavigation = function() {{
+    if (!gd._ristDefaultDragmode || !window.Plotly || !gd.layout
+        || gd._ristEditMode || gd._ristAxisCropActive || gd._ristShapeDrawMode
+        || gd._ristFtirYDragMode || gd._ristRamanYDragMode || gd._ristRamanRatioMode
+        || (gd._ristPeakEditMode && gd._ristPeakEditMode !== "none")) return Promise.resolve();
+    if (gd.layout.dragmode === gd._ristDefaultDragmode) return Promise.resolve();
+    return window.Plotly.relayout(gd, {{dragmode: gd._ristDefaultDragmode}});
+  }};
 
   function isNavigationModeButton(item) {{
     var title = String(item && item.getAttribute("data-title") || "");
@@ -5783,16 +5797,16 @@ def _edit_mode_toggle_js(div_id: str) -> str:
   }}
 
   function syncModebarState() {{
-    gd.querySelectorAll("a.modebar-btn").forEach(function(item) {{
+    gd.querySelectorAll(".modebar-btn").forEach(function(item) {{
       var disabled = !!gd._ristEditMode && isNavigationModeButton(item);
       item.classList.toggle("rist-edit-mode-disabled", disabled);
       item.setAttribute("aria-disabled", disabled ? "true" : "false");
     }});
     if (!gd._ristEditMode) return;
-    gd.querySelectorAll("a.modebar-btn.active").forEach(function(item) {{
+    gd.querySelectorAll(".modebar-btn.active").forEach(function(item) {{
       if (item !== button) item.classList.remove("active");
     }});
-    gd.querySelectorAll("a.modebar-btn.is-active").forEach(function(item) {{
+    gd.querySelectorAll(".modebar-btn.is-active").forEach(function(item) {{
       if (item !== button) item.classList.remove("is-active");
     }});
     if (button) {{
@@ -5834,7 +5848,7 @@ def _edit_mode_toggle_js(div_id: str) -> str:
           gd._context.scrollZoom = previousScrollZoom;
         }}
         modePromise = window.Plotly.relayout(gd, {{
-          dragmode: previousDragmode == null ? "zoom" : previousDragmode
+          dragmode: gd._ristDefaultDragmode || (previousDragmode == null ? "zoom" : previousDragmode)
         }}).then(syncModebarState);
       }}
     }}
@@ -5862,7 +5876,7 @@ def _edit_mode_toggle_js(div_id: str) -> str:
 
   function navigationModeButton(ev) {{
     var item = ev.target && ev.target.closest
-      ? ev.target.closest("a.modebar-btn")
+      ? ev.target.closest(".modebar-btn")
       : null;
     return item && item !== button && isNavigationModeButton(item) ? item : null;
   }}
@@ -5922,7 +5936,13 @@ def _edit_mode_toggle_js(div_id: str) -> str:
     applyMode(true);
   }});
   gd.addEventListener("rist-close-edit-tool", function() {{
-    applyMode(false);
+    applyMode(false).then(gd._ristRestoreNavigation);
+  }});
+  ["rist-plot-data-replaced", "rist-history-restored"].forEach(function(name) {{
+    gd.addEventListener(name, function() {{
+      if (!gd._ristDefaultDragmode) return;
+      applyMode(false, false).then(gd._ristRestoreNavigation);
+    }});
   }});
   gd.on("plotly_afterplot", function() {{
     installButton();
@@ -6852,10 +6872,14 @@ def shape_editor_js(div_id: str) -> str:
   }}
 
   function closePanel() {{
+    var wasOpen = panel.style.display === "block";
     panel.style.display = "none";
     setDrawMode(false, false);
     cancelShapePointerInteraction();
     syncShapeEditingState();
+    if (wasOpen && gd._ristDefaultDragmode && gd._ristSetEditMode) {{
+      gd._ristSetEditMode(false, false).then(gd._ristRestoreNavigation);
+    }}
   }}
 
   function updateSelectionButtons() {{
@@ -9482,6 +9506,7 @@ def _axis_controls_js(div_id: str, *, axis_locks: bool = False, scroll_zoom_y_on
   }
 
   function restoredDragmode(session) {
+    if (gd._ristDefaultDragmode) return gd._ristDefaultDragmode;
     var dragmode = session && session.previousDragmode;
     if (!dragmode || dragmode === "select" || dragmode === "lasso") return "zoom";
     return dragmode;
@@ -9964,6 +9989,7 @@ def fig_to_responsive_html(
     axis_controls: bool = False,
     axis_locks: bool = False,
     scroll_zoom_y_only: bool = False,
+    default_dragmode: str | None = None,
     image_format: str = "svg",
     image_filename: str = "plot",
     image_scale: float = 2,
@@ -9989,6 +10015,7 @@ def fig_to_responsive_html(
     - peak_editor=True 면 피크 marker/라벨/보조선을 HTML에서 추가·삭제할 수 있다.
     - shape_editor=True 면 사각형과 텍스트 박스를 그래프에 추가·편집할 수 있다.
     - axis_controls=True 면 축 범위·눈금 설정과 축 드래그 확대/축소를 추가한다.
+    - default_dragmode 지정 시 초기 화면과 편집 종료 후 해당 탐색 모드로 복귀한다.
     - image_format 은 모드바 카메라(Download plot) 버튼의 기본 저장 형식(svg/png/jpeg/webp).
     - image_filename / image_scale 은 저장 파일명·배율.
     - image_format_selector=True 면 그래프 우상단에 형식 선택 드롭다운 + 저장 버튼을 띄운다.
@@ -10004,6 +10031,9 @@ def fig_to_responsive_html(
 
     if crosshair:
         apply_crosshair_spikes(fig)
+
+    if default_dragmode is not None:
+        fig.update_layout(dragmode=default_dragmode)
 
     default_img_opts = {
         "format": image_format,
@@ -10080,7 +10110,7 @@ def fig_to_responsive_html(
 
     if title_edit or legend_text_edit or peak_editor or shape_editor:
         html = html.replace("</body>", _plot_edit_history_js(div_id) + "</body>", 1)
-        html = html.replace("</body>", _edit_mode_toggle_js(div_id) + "</body>", 1)
+        html = html.replace("</body>", _edit_mode_toggle_js(div_id, default_dragmode=default_dragmode) + "</body>", 1)
 
     if axis_controls:
         html = html.replace("</body>", _axis_controls_js(
@@ -10129,6 +10159,7 @@ def write_responsive_html(
     axis_controls: bool = False,
     axis_locks: bool = False,
     scroll_zoom_y_only: bool = False,
+    default_dragmode: str | None = None,
     image_format: str = "svg",
     image_filename: str = "plot",
     image_scale: float = 2,
@@ -10159,6 +10190,7 @@ def write_responsive_html(
         axis_controls=axis_controls,
         axis_locks=axis_locks,
         scroll_zoom_y_only=scroll_zoom_y_only,
+        default_dragmode=default_dragmode,
         image_format=image_format,
         image_filename=image_filename,
         image_scale=image_scale,

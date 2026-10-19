@@ -148,7 +148,7 @@ def readonly_figure(source: dict) -> dict:
                       "size": meta.get("ristPlotSize") or {},
                       "stacked": bool(stack.get("enabled", any(t["meta"]["offset"] for t in data))),
                       "yAxisDisplay": axis_display}
-    layout.update(template=None, dragmode="zoom")
+    layout.update(template=None, dragmode="pan")
     for name in ("xaxis", "yaxis"):
         layout.setdefault(name, {})["fixedrange"] = False
     layout.setdefault("legend", {}).update(groupclick="togglegroup", itemclick="toggle",

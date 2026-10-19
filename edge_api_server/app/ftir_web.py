@@ -2099,6 +2099,7 @@ _FTIR_TOOL_PANEL_SCRIPT = """
       ev.preventDefault();
       ev.stopPropagation();
       setOpen(false);
+      gd.dispatchEvent(new CustomEvent("rist-close-edit-tool"));
     });
   }
   if (opacity) {
@@ -5485,10 +5486,11 @@ def build_ftir_page() -> str:
         peak_editor=True,
         shape_editor=True,
         axis_controls=True,
+        default_dragmode="pan",
         image_filename="ftir_peak_analysis",
         image_format_selector=True,
         post_body_html=extra_scripts,
-        config={"scrollZoom": True},
+        config={"scrollZoom": True, "modeBarButtonsToRemove": ["select2d"]},
     )
     page = page.replace("</head>", _PAGE_STYLE + "</head>", 1)
     return with_browser_support_notice(page.replace("<body>", "<body>" + _PAGE_SHELL, 1))

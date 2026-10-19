@@ -697,6 +697,7 @@ def ftir_stack_js(div_id: str) -> str:
 
   function setDragMode(enabled, announce) {
     var nextEnabled = !!enabled;
+    var wasEnabled = state.dragMode;
     if (nextEnabled && typeof gd._ristSetEditMode === "function") {
       gd._ristSetEditMode(false, false);
     }
@@ -708,6 +709,7 @@ def ftir_stack_js(div_id: str) -> str:
     state.dragMode = nextEnabled;
     if (!nextEnabled) finishStackDrag();
     syncControls();
+    if (wasEnabled && !nextEnabled && gd._ristRestoreNavigation) gd._ristRestoreNavigation();
   }
 
   gd._ristSetYDragMode = function(enabled) {
