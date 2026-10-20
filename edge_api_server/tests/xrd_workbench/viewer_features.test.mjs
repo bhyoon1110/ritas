@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   buildFigure,
   createState,
+  exportFigure,
   phaseMatches,
   restoreState,
   sourceHref,
@@ -50,11 +51,67 @@ const project = {
 };
 const bars = (f) => f.data.filter((t) => t.meta?.role === 'peakbar');
 const marks = (f) => f.data.filter((t) => t.meta?.role === 'marker');
+const tips = (f) => f.data.filter((t) => t.meta?.role === 'peakbar-tip');
 const withAll = () => {
   const state = createState(project);
   state.markers = true;
   return state;
 };
+
+test('phase toggle controls upper and reference-tip markers without changing reference lines or measurements', () => {
+  const before = JSON.stringify(project);
+  for (const viewMode of ['multi', 'single']) {
+    for (const originStyle of [false, true]) {
+      for (const render of [buildFigure, exportFigure]) {
+        const state = createState(project);
+        Object.assign(state, { viewMode, originStyle, markerSize: 17, phaseColors: { 's1-p': '#12ab34' } });
+        const off = render(project, state);
+        assert.equal(marks(off).length, 0);
+        assert.equal(tips(off).length, 0);
+        assert.ok(bars(off).length > 0);
+        state.markers = true;
+        const on = render(project, state);
+        assert.ok(marks(on).length > 0);
+        assert.equal(tips(on).length, bars(on).length);
+        assert.deepEqual(bars(on), bars(off));
+        assert.deepEqual(
+          on.data.filter(t => t.meta?.role === 'measurement'),
+          off.data.filter(t => t.meta?.role === 'measurement'),
+        );
+        for (const tip of tips(on)) {
+          const bar = bars(on).find(t => t.meta.phaseId === tip.meta.phaseId);
+          assert.equal(tip.marker.color, bar.line.color);
+          assert.equal(tip.marker.size, 17);
+        }
+        state.peakbar = false;
+        const noBars = render(project, state);
+        assert.ok(marks(noBars).length > 0);
+        assert.equal(bars(noBars).length, 0);
+        assert.equal(tips(noBars).length, 0);
+        state.markers = false;
+        state.peakbar = true;
+        assert.deepEqual(bars(render(project, state)), bars(off));
+        assert.equal(tips(render(project, state)).length, 0);
+      }
+    }
+  }
+  assert.equal(JSON.stringify(project), before);
+});
+
+test('restored marker toggle also controls reference tips when observed assignments are unavailable', () => {
+  const p = structuredClone(project);
+  for (const s of p.samples) {
+    s.observed_peaks = [];
+    s.assignments = [];
+  }
+  for (const markers of [false, true]) {
+    const state = restoreState(p, { projectId: p.id, markers, peakbar: true });
+    const figure = buildFigure(p, state);
+    assert.equal(marks(figure).length, 0);
+    assert.ok(bars(figure).length > 0);
+    assert.equal(tips(figure).length, markers ? bars(figure).length : 0);
+  }
+});
 
 test('a new state has no highlight and a figure without highlight carries no opacity changes', () => {
   const state = withAll();

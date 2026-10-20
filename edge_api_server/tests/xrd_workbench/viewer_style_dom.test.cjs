@@ -5,10 +5,9 @@ const fs = require('node:fs');
 const path = require('node:path');
 const {JSDOM} = require('jsdom');
 const esbuild = require('esbuild');
-const babel = require('@babel/core');
 const root = path.resolve(__dirname,'../../app/xrd_workbench/web');
 const native = esbuild.buildSync({entryPoints:[path.join(root,'viewer/viewer.mjs')],bundle:true,write:false,format:'iife',logLevel:'silent'}).outputFiles[0].text;
-const legacy = babel.transformSync(native,{configFile:false,babelrc:false,presets:[[require('@babel/preset-env'),{targets:{chrome:'49'},forceAllTransforms:true,modules:false}]]}).code;
+const legacy = fs.readFileSync(path.join(root,'viewer/viewer.legacy.js'),'utf8');
 const flush = async()=>{for(let i=0;i<8;i++)await new Promise(setImmediate);};
 const fixture = {
   id:'style-test',samples:[{id:'a',name:'QA sample',measurement:{x:[10,20,30],y:[1,9,2],axis_kind:'two_theta',axis_unit:'deg',intensity_unit:'cps'},
@@ -39,48 +38,59 @@ for(const [mode, program] of Object.entries({native,chrome49:legacy})) {
     assert.ok(!ui.requests.some(url=>url.includes('example')));
     assert.equal(ui.renders.length,0);
   });
-  test(`${mode}: phase toggle changes upper markers only and explains missing data, hiding and zoom`,async t=>{
+  test(`${mode}: phase toggle changes upper and lower markers together but preserves reference lines`,async t=>{
     const ui=setup(t,program);await flush();
     const hint=()=>ui.d.getElementById('phaseMarkerHint').textContent;
     const phaseCount=()=>ui.renders.at(-1).data.filter(t=>t.meta.role==='marker').reduce((n,t)=>n+t.x.length,0);
-    const bars=()=>JSON.stringify(ui.renders.at(-1).data.filter(t=>['peakbar','peakbar-tip'].includes(t.meta.role)));
-    const reference=bars();assert.match(hint(),/하단 기준 피크 막대와는 별도/);
+    const bars=()=>JSON.stringify(ui.renders.at(-1).data.filter(t=>t.meta.role==='peakbar'));
+    const tipCount=()=>ui.renders.at(-1).data.filter(t=>t.meta.role==='peakbar-tip').reduce((n,t)=>n+t.x.length,0);
+    const reference=bars();assert.match(hint(),/함께 켜고 끕니다.*선만 남습니다/);
+    assert.equal(tipCount(),0);
     for(const origin of [false,true]){
       if(origin){ui.d.getElementById('originStyle').click();await flush();}
       ui.d.getElementById('markers').click();await flush();
-      assert.equal(phaseCount(),1);assert.match(hint(),/마커 1개 표시/);assert.equal(bars(),reference);
+      assert.equal(phaseCount(),1);assert.equal(tipCount(),1);
+      assert.match(hint(),/하단 막대 끝 마커 1개 표시/);assert.equal(bars(),reference);
       ui.events.plotly_relayout({'xaxis.range':[21,29]});await flush();
       assert.match(hint(),/확대 범위 밖/);
       ui.events.plotly_relayout({'xaxis.range':[10,30]});await flush();
       assert.match(hint(),/마커 1개 표시/);
       ui.d.getElementById('markers').click();await flush();
-      assert.equal(phaseCount(),0);assert.equal(bars(),reference);
+      assert.equal(phaseCount(),0);assert.equal(tipCount(),0);assert.equal(bars(),reference);
     }
     const missing=JSON.parse(JSON.stringify(fixture));missing.samples[0].observed_peaks=[];
     const absent=setup(t,program,{markers:true},missing);await flush();
     assert.match(absent.d.getElementById('phaseMarkerHint').textContent,/관측 피크표를 읽지 못했거나/);
+    assert.match(absent.d.getElementById('phaseMarkerHint').textContent,/하단 막대 끝 마커 1개 표시/);
     assert.equal(absent.d.getElementById('markers').disabled,false);
     const hidden=setup(t,program,{markers:true,hiddenPhases:['p1']});await flush();
     assert.match(hidden.d.getElementById('phaseMarkerHint').textContent,/모두 숨김/);
   });
-  test(`${mode}: default reference tips visibly receive size changes even with phase markers off`,async t=>{
+  test(`${mode}: marker size is disabled with only reference lines and controls both marker layers when enabled`,async t=>{
     const ui=setup(t,program);await flush();
     assert.equal(ui.d.getElementById('markers').checked,false);
+    assert.equal(ui.d.getElementById('markerSize').disabled,true);
+    assert.ok(!ui.renders.at(-1).data.some(t=>t.meta.role==='peakbar-tip'));
+    assert.ok(ui.renders.at(-1).data.some(t=>t.meta.role==='peakbar'));
+    ui.d.getElementById('markers').click();await flush();
     assert.equal(ui.d.getElementById('markerSize').disabled,false);
     for(const size of [3,20]){
       await ui.setSize(size);
       assert.equal(ui.renders.at(-1).data.find(t=>t.meta.role==='peakbar-tip').marker.size,size);
+      assert.equal(ui.renders.at(-1).data.find(t=>t.meta.role==='marker').marker.size,size);
       assert.equal(ui.d.getElementById('markerSizeValue').textContent,String(size));
     }
-    ui.d.getElementById('peakbar').click();await flush();
+    ui.d.getElementById('markers').click();await flush();
     assert.equal(ui.d.getElementById('markerSize').disabled,true);
     assert.match(ui.d.getElementById('markerSizeHint').textContent,/표시된 마커가 없습니다/);
+    ui.d.getElementById('peakbar').click();await flush();
     ui.d.getElementById('markers').click();await flush();
     assert.equal(ui.d.getElementById('markerSize').disabled,false);
     assert.equal(ui.renders.at(-1).data.find(t=>t.meta.role==='marker').marker.size,20);
+    assert.ok(!ui.renders.at(-1).data.some(t=>t.meta.role==='peakbar-tip'));
   });
   test(`${mode}: live Origin toggle and both export buttons share state and persist it`,async t=>{
-    const ui=setup(t,program,{phaseColors:{p1:'#12ab34'}});await flush();
+    const ui=setup(t,program,{markers:true,phaseColors:{p1:'#12ab34'}});await flush();
     assert.ok(ui.d.querySelector('.graphActions #originStyle'));
     assert.equal(ui.d.querySelectorAll('#originStyle').length,1);
     await ui.setSize(17);
@@ -101,9 +111,14 @@ for(const [mode, program] of Object.entries({native,chrome49:legacy})) {
       const stored=JSON.parse(ui.w.localStorage.getItem(ui.w.localStorage.key(0)));
       assert.equal(stored.originStyle,origin);assert.equal(stored.markerSize,17);
     }
+    ui.d.getElementById('markers').click();await flush();
+    ui.d.getElementById('imageExport').click();await flush();
+    assert.ok(!ui.exports.at(-1).data.some(t=>['marker','peakbar-tip'].includes(t.meta.role)));
+    assert.equal(ui.exports.at(-1).data.find(t=>t.meta.role==='peakbar').line.color,'#12ab34');
+    assert.equal(JSON.parse(ui.w.localStorage.getItem(ui.w.localStorage.key(0))).markers,false);
   });
   test(`${mode}: offline/named state restores Origin view and selected marker size`,async t=>{
-    const ui=setup(t,program,{originStyle:true,markerSize:12,phaseColors:{p1:'#bd4c87'}});await flush();
+    const ui=setup(t,program,{markers:true,originStyle:true,markerSize:12,phaseColors:{p1:'#bd4c87'}});await flush();
     assert.equal(ui.d.getElementById('originStyle').checked,true);
     assert.equal(ui.d.getElementById('markerSize').value,'12');
     assert.equal(ui.renders.at(-1).layout.xaxis2.ticks,'inside');
@@ -111,7 +126,7 @@ for(const [mode, program] of Object.entries({native,chrome49:legacy})) {
     assert.equal(ui.renders.at(-1).layout.annotations[0].font.color,'#bd4c87');
   });
   test(`${mode}: both Plotly range event formats survive style and size changes`,async t=>{
-    const ui=setup(t,program);await flush();
+    const ui=setup(t,program,{markers:true});await flush();
     for(const event of [{'xaxis.range':[12,25],'yaxis.range':[-1,12]},
       {'xaxis2.range[0]':12,'xaxis2.range[1]':25,'yaxis.range[0]':-1,'yaxis.range[1]':12}]){
       ui.events.plotly_relayout(event);

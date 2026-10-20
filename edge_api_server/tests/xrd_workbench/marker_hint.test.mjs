@@ -21,3 +21,16 @@ test('notice accounts for reversed zoom, Y cropping and partially missing sample
   const message=phaseMarkerHint(p,s,buildFigure(p,s));
   assert.match(message,/마커 1개 표시/);assert.match(message,/B: 관측 피크표/);
 });
+test('notice explains linked reference tips even without observed peak assignments',()=>{
+  const p=structuredClone(source),s=createState(p);
+  p.samples[0].reference_peaks=[{phase:'Phase A',x:20,intensity:100}];
+  p.samples[0].observed_peaks=[];
+  assert.match(phaseMarkerHint(p,s,buildFigure(p,s)),/함께 켜고 끕니다.*선만 남습니다/);
+  s.markers=true;
+  const message=phaseMarkerHint(p,s,buildFigure(p,s));
+  assert.match(message,/측정 그래프에 표시할 결정상 마커가 없습니다/);
+  assert.match(message,/하단 막대 끝 마커 1개 표시/);
+  assert.match(message,/관측 피크표/);
+  s.peakbar=false;
+  assert.doesNotMatch(phaseMarkerHint(p,s,buildFigure(p,s)),/하단 막대 끝 마커/);
+});

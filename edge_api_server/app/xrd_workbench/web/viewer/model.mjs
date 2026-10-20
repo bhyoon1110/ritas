@@ -407,7 +407,7 @@ export function nearestIndex(xs, x) {
 }
 
 export function phaseMarkerHint(project, state, figure) {
-  const description = '측정 그래프의 관측 피크 위에 결정상 기호를 표시합니다. 하단 기준 피크 막대와는 별도입니다.';
+  const description = '측정 그래프와 하단 기준 피크 막대 끝의 결정상 기호를 함께 켜고 끕니다. 끄면 기준 피크 막대는 선만 남습니다.';
   if (!state.markers) return description;
   const { samples } = selectedSamples(project, state);
   if (!samples.length) return '표시할 측정 그래프가 없습니다. 시료 선택과 축·강도 단위를 확인하세요.';
@@ -429,8 +429,11 @@ export function phaseMarkerHint(project, state, figure) {
   }
   const summary = total
     ? (visible ? `현재 범위에 결정상 마커 ${visible}개 표시 (전체 ${total}개).` : `결정상 마커 ${total}개가 현재 확대 범위 밖에 있습니다. 「전체 범위」를 누르세요.`)
-    : '표시할 결정상 마커가 없습니다.';
-  return [summary, ...reasons.slice(0, 3), ...(reasons.length > 3 ? [`외 ${reasons.length - 3}개 시료도 피크 연결을 확인하세요.`] : [])].join(' ');
+    : '측정 그래프에 표시할 결정상 마커가 없습니다.';
+  const tipCount = figure.data.filter(t => t.meta?.role === 'peakbar-tip')
+    .reduce((sum, t) => sum + t.x.length, 0);
+  return [summary, ...(tipCount ? [`하단 막대 끝 마커 ${tipCount}개 표시.`] : []),
+    ...reasons.slice(0, 3), ...(reasons.length > 3 ? [`외 ${reasons.length - 3}개 시료도 피크 연결을 확인하세요.`] : [])].join(' ');
 }
 
 export function buildFigure(project, state, viewport = {}) {
@@ -599,26 +602,29 @@ export function buildFigure(project, state, viewport = {}) {
       meta: { role: 'peakbar', phaseId: phase.id, sampleId: s.id },
       uid: phase.id + '-bar',
     });
-    // A small marker on top of each reference line, in the phase's own symbol.
-    const tips = peaks.filter((p) => Number.isFinite(p.intensity));
-    data.push({
-      type: 'scatter',
-      mode: 'markers',
-      x: tips.map((p) => p.x),
-      y: tips.map((p) => row + (0.75 * p.intensity) / 100),
-      xaxis: 'x2',
-      yaxis: 'y2',
-      hoverinfo: 'skip',
-      showlegend: false,
-      marker: {
-        color: style.color,
-        symbol: style.symbol,
-        size: n(state.markerSize) || 8,
-        ...(state.highlight ? { opacity: dim ? DIM : 1 } : {}),
-      },
-      meta: { role: 'peakbar-tip', phaseId: phase.id, sampleId: s.id },
-      uid: phase.id + '-tip',
-    });
+    // One phase-marker switch controls both observed markers and reference tips.
+    // Reference lines remain independently controlled by the peakbar switch.
+    if (state.markers) {
+      const tips = peaks.filter((p) => Number.isFinite(p.intensity));
+      data.push({
+        type: 'scatter',
+        mode: 'markers',
+        x: tips.map((p) => p.x),
+        y: tips.map((p) => row + (0.75 * p.intensity) / 100),
+        xaxis: 'x2',
+        yaxis: 'y2',
+        hoverinfo: 'skip',
+        showlegend: false,
+        marker: {
+          color: style.color,
+          symbol: style.symbol,
+          size: n(state.markerSize) || 8,
+          ...(state.highlight ? { opacity: dim ? DIM : 1 } : {}),
+        },
+        meta: { role: 'peakbar-tip', phaseId: phase.id, sampleId: s.id },
+        uid: phase.id + '-tip',
+      });
+    }
     const name = barCaption(group);
     const short = name.length > 60 ? name.slice(0, 58) + '…' : name;
     annotations.push({

@@ -162,8 +162,9 @@ test('unknown peaks are the observed peaks the report assigns to no phase', () =
   assert.equal(unknown[0].textfont.color, '#000000');
 });
 
-test('Peak Bar rows have a small marker on top of each line and black lines between phases', () => {
+test('Peak Bar rows show tip symbols when phase markers are on and keep black phase separators', () => {
   const state = createState(project);
+  state.markers = true;
   const figure = buildFigure(project, state);
   const tips = figure.data.filter((t) => t.meta?.role === 'peakbar-tip');
   assert.equal(tips.length, 3);
