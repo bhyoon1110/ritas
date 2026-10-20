@@ -1,13 +1,14 @@
 import { escapeHTML } from '../shared/dom.mjs';
 import { CLASS_NAMES, distinctPhases, labelOf, visibleClassSamples } from './phase_classes.mjs';
 
-// '' is the default (주요상); 주요상 can also be fixed by hand so the rule never moves it.
-const classOptions = (value) =>
+// Bulk selection starts at 주요상; existing rows pass their saved value explicitly.
+// '' still means unclassified. Choosing an option alone does not apply a bulk change.
+const classOptions = (value = 'major') =>
   [
     ['', '미분류 (검토 필요)'],
     ['trace', CLASS_NAMES.trace],
     ['presumed', CLASS_NAMES.presumed],
-    ['major', '주요상 (고정)'],
+    ['major', CLASS_NAMES.major],
   ]
     .map(([k, v]) => `<option value="${k}" ${k === value ? 'selected' : ''}>${v}</option>`)
     .join('');
@@ -63,7 +64,7 @@ export function phaseClassesHTML({ pc, samples, data, percent, notice = '' }) {
     `<label>분류 기준 문구 (작성자가 직접 작성)<textarea rows="3" maxlength="1500" data-pc="criteria_text">${escapeHTML(pc.criteria_text)}</textarea></label>` +
     `<div class="subHeading">미량상 규칙 (선택 적용)</div><p class="hint">상의 d-I List 최강·차강 피크에 연결된 관측 Height를 시료 최대 Height와 비교합니다. WPPF 중량분율(wt%) 기준이 아닙니다. 적용 버튼을 눌러야 분류하며 판정 불가한 상은 미분류로 보존합니다. 직접 지정한 분류는 덮어쓰지 않습니다.</p>` +
     `<div class="figureActions"><label>기준 비율 (%)<input id="pcPercent" type="number" min="0" max="100" step="any" placeholder="예: 2" value="${escapeHTML(percent)}"></label><button id="pcApply">미량상 규칙 적용</button></div>${rule}` +
-    `<div class="subHeading">같은 상을 모든 시료에 일괄 지정</div><div class="figureActions"><select id="pcRowPhase" aria-label="일괄 지정할 상">${distinct.map((p, k) => `<option value="${k}">${escapeHTML(p.name)}${p.card ? ' · ' + escapeHTML(p.card) : ''}</option>`).join('')}</select><select id="pcRowClass" aria-label="일괄 분류">${classOptions('')}</select><button id="pcRowApply">모든 시료에 적용</button></div>` +
+    `<div class="subHeading">같은 상을 모든 시료에 일괄 지정</div><div class="figureActions"><select id="pcRowPhase" aria-label="일괄 지정할 상">${distinct.map((p, k) => `<option value="${k}">${escapeHTML(p.name)}${p.card ? ' · ' + escapeHTML(p.card) : ''}</option>`).join('')}</select><select id="pcRowClass" aria-label="일괄 분류">${classOptions()}</select><button id="pcRowApply">모든 시료에 적용</button></div>` +
     empty +
     sections +
     retained

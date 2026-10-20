@@ -142,6 +142,20 @@ test('without evaluation data the tab still renders the criteria box and thresho
   assert.ok(html.includes('data-pc="criteria_text"') && html.includes('id="pcApply"'));
 });
 
+test('bulk selector defaults to 주요상 with no fixed suffix, without mutating stored classifications', () => {
+  const pc = defaultPhaseClasses();
+  setLabel(pc, 's1', B, 'presumed');
+  const before = structuredClone(pc);
+  for (const evaluated of [null, data]) {
+    const html = phaseClassesHTML({pc, samples, data: evaluated, percent: ''});
+    const bulk = html.match(/<select id="pcRowClass"[^>]*>([\s\S]*?)<\/select>/)[1];
+    assert.ok(bulk.includes('<option value="major" selected>주요상</option>'));
+    assert.ok(!html.includes('(고정)'));
+    assert.ok(!bulk.includes('<option value="" selected>'));
+    assert.deepEqual(pc, before);
+  }
+});
+
 test('unsaved classification edits survive an analysis refresh', () => {
   const sample = { sample_id: 's1', notes: [], retained_notes: [] };
   const baseline = {
