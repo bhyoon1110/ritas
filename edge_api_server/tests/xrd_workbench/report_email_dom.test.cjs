@@ -62,6 +62,8 @@ for(const mode of Object.keys(programs)) {
   });
   test(`${mode}: seed is filled before opening mail, survives slow/failed requests and saves`,async t=>{
     const wait=deferred();const ui=setup(t,{mode,model:()=>wait.promise});await flush();
+    assert.ok(ui.d.getElementById('emailForm').textContent.includes('전달 ZIP에는 별도 메일 파일을 넣지 않습니다'));
+    assert.ok(!ui.d.getElementById('emailForm').textContent.includes('email_body.md'));
     assert.deepEqual(ui.email(),{subject:fixture.email_default.subject,body:fixture.email_default.body});
     assert.equal(ui.mailCalls().length,0);
     ui.openMail();await flush();assert.equal(ui.mailCalls().length,1);

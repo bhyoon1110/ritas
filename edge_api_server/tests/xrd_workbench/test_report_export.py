@@ -75,12 +75,10 @@ def test_zip_has_requested_folders_exact_bytes_and_selected_samples_only():
     data = build_package(project, doc, sources(project))
     with zipfile.ZipFile(io.BytesIO(data)) as z:
         names = z.namelist()
-        assert (
-            '보고서.pdf' in names
-            and '보고서.pptx' in names
-            and '보고서.html' in names
-            and '뷰어.html' in names
-        )
+        assert {name.split('/')[0] for name in names} == {
+            'Measured Data', 'Report', '보고서.pdf', '보고서.pptx', '보고서.html', '뷰어.html',
+        }
+        assert 'Report/' in names and 'Measured Data/' in names
         with zipfile.ZipFile(io.BytesIO(z.read('보고서.pptx'))) as pptx:
             from xml.etree import ElementTree as ET
 
@@ -103,6 +101,17 @@ def test_zip_has_requested_folders_exact_bytes_and_selected_samples_only():
                 entry = next(n for n in names if n.endswith('-' + record['filename']))
                 assert z.read(entry) == sources(project)(record['id'])
         assert '127.0.0.1' not in z.read('보고서.html').decode('utf-8')
+
+
+def test_package_still_rejects_changed_raw_bytes_without_a_manifest_file():
+    project = example_project()
+    read_source = sources(project)
+    raw = next(r for r in project['sources'] if r['role'] == 'measurement')
+    with pytest.raises(ValueError, match='원본 파일 내용이 등록 후 변경'):
+        build_package(
+            project, new_document(project),
+            lambda fid: b'altered raw data' if fid == raw['id'] else read_source(fid),
+        )
 
 
 def test_long_sample_header_and_report_number_are_complete_and_clear_of_content():

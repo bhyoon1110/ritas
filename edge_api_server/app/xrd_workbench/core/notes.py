@@ -164,7 +164,7 @@ def build_candidates(sample: dict) -> list[dict]:
             )
         if len(changes) > 10:
             descriptions.append(
-                f'총 {len(changes)}건의 검토 변경이 있습니다. 전체 기록은 전달 ZIP의 분석검토.json을 확인하세요.'
+                f'총 {len(changes)}건의 검토 변경이 있습니다. 전체 기록은 분석 담당자가 서버의 분석 자료 검토 화면에서 확인할 수 있습니다.'
             )
         add(
             'analysis_changes',

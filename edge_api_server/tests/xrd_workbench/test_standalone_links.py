@@ -2,6 +2,7 @@
 the running app. Inside the delivery ZIP they stay relative and every one names a packed file."""
 
 import io
+from html.parser import HTMLParser
 import zipfile
 from urllib.parse import unquote, urlsplit
 from xml.etree import ElementTree as ET
@@ -78,5 +79,17 @@ def test_every_link_in_the_zip_names_a_file_in_the_zip():
             links += [r.get('Target') for r in root if r.get('TargetMode') == 'External']
     uris = pdf_uris(archive.read('보고서.pdf'))
     assert links and uris
-    for target in links + uris:
+    class Hrefs(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.links = []
+
+        def handle_starttag(self, tag, attrs):
+            if tag == 'a' and dict(attrs).get('href'):
+                self.links.append(dict(attrs)['href'])
+
+    html = Hrefs()
+    html.feed(archive.read('보고서.html').decode())
+    assert html.links
+    for target in links + uris + html.links:
         assert unquote(urlsplit(target).path) in names, target

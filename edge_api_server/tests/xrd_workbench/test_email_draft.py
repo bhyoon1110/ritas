@@ -209,7 +209,7 @@ def test_concurrent_save_and_saturated_model_do_not_overwrite(tmp_path, monkeypa
     assert client.get(BASE + f'/api/reports/{sid}').json()['document']['email']['body'] == '다른 창의 문안'
 
 
-def test_package_contains_exact_edited_email_but_ppt_does_not(tmp_path):
+def test_package_excludes_email_sidecar_without_deleting_the_saved_document_email(tmp_path):
     from app.xrd_workbench.render.package import build_package
     from .fixture_data import example_project, resolve_source
     from app.xrd_workbench.core.report import new_document
@@ -217,7 +217,9 @@ def test_package_contains_exact_edited_email_but_ppt_does_not(tmp_path):
     doc['email'] = dict(empty_email(), subject='메일 전용 제목', body='직접 수정한 메일\n본문 <plain text>', status='manual')
     before = deepcopy(doc)
     with ZipFile(io.BytesIO(build_package(project, doc, lambda fid: resolve_source('example', fid)))) as archive:
-        assert archive.read('email_body.md').decode() == '# 메일 전용 제목\n\n직접 수정한 메일\n본문 <plain text>\n'
+        assert {name.split('/')[0] for name in archive.namelist()} == {
+            'Measured Data', 'Report', '보고서.pdf', '보고서.pptx', '보고서.html', '뷰어.html',
+        }
         with ZipFile(io.BytesIO(archive.read('보고서.pptx'))) as ppt:
             assert not any('메일 전용 제목' in ppt.read(n).decode() for n in ppt.namelist() if n.startswith('ppt/slides/') and n.endswith('.xml'))
     assert doc == before

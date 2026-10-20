@@ -7,7 +7,7 @@ export function mountEmailEditor(fields, navigation) {
     '<p id="emailStatus" class="generationLine" role="status" aria-live="polite"></p>'+
     '<label>이메일 제목<input id="emailSubject" data-email="subject" maxlength="180" autocomplete="off"></label>'+
     '<label>이메일 본문<textarea id="emailBody" data-email="body" rows="16" maxlength="4000"></textarea></label>'+
-    '<p class="hint">저장 및 복구 초안에 문안을 보존하고, 전달 ZIP의 email_body.md에 포함합니다. 이 화면에서 실제 이메일을 발송하지 않습니다. 사내 SSO와 보고서 전송 큐 정책은 그대로 적용됩니다.</p>';
+    '<p class="hint">문안은 서버의 보고서 및 복구 초안에 보존하며, 전달 ZIP에는 별도 메일 파일을 넣지 않습니다. 이 화면에서 실제 이메일을 발송하지 않습니다. 사내 SSO와 보고서 전송 큐 정책은 그대로 적용됩니다.</p>';
   fields.insertBefore(pane,fields.querySelector('#sampleForm'));
   const button=document.createElement('button');
   button.className='sectionNav';button.dataset.tab='email';button.textContent='안내 메일';

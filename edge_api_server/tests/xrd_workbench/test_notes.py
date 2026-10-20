@@ -110,3 +110,9 @@ def test_analysis_correction_note_keeps_original_and_reviewed_tokens():
     note = next(n for n in build_candidates(sample) if n['kind'] == 'analysis_changes')
     assert '12.34(5)' in note['text'] and '12.84(5)' in note['text']
     assert note['mandatory'] and note['evidence'][0]['filename'] == 's_Report.pdf'
+    sample['analysis_review']['changes'] *= 11
+    before = deepcopy(sample)
+    note = next(n for n in build_candidates(sample) if n['kind'] == 'analysis_changes')
+    assert '총 11건' in note['text'] and '서버의 분석 자료 검토 화면' in note['text']
+    assert '분석검토.json' not in note['text']
+    assert sample == before
