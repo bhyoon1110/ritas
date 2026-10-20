@@ -786,6 +786,9 @@ body.withShell .nextStep {
 #workspace { min-height:0; margin:0; }
 #sidePanel { width:300px; max-width:85vw; }
 .advancedOptions > summary { cursor:pointer; padding:14px; color:#163e62; font-weight:bold; }
+#phaseMarkerDetails { margin:4px 0 8px; border:1px solid #d6e0ea; border-radius:6px; }
+#phaseMarkerDetails > summary { padding:9px 10px; font-size:12px; }
+#phaseMarkerDetails > .panelSection { padding:10px; border-bottom:0; }
 body.withShell #uploadDialog[open] { top:6%; left:4%; right:4%; width:auto; max-height:88vh; overflow:auto; }
 #mappingTable { overflow:auto; max-height:40vh; }
 #mappingTable input { min-width:100px; }

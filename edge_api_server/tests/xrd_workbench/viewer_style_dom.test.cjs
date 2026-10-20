@@ -31,6 +31,41 @@ function setup(t, program, saved={}, project=fixture, online=false, options={}) 
   return {w,d,renders,exports,downloads,events,requests,setSize:async size=>{d.getElementById('markerSize').value=String(size);d.getElementById('markerSize').dispatchEvent(new w.Event('input'));await flush();}};
 }
 for(const [mode, program] of Object.entries({native,chrome49:legacy})) {
+  test(`${mode}: phase detail controls sit immediately below the phase switch and peak lines toggle independently`,async t=>{
+    for(const online of [false,true]){
+      const ui=setup(t,program,{phaseColors:{p1:'#12ab34'}},fixture,online,{
+        url:'http://rist.test/?project=store',local:{phaseColors:{p1:'#12ab34'}}});
+      await flush();
+      const marker=ui.d.getElementById('markers'),lines=ui.d.getElementById('peakLines');
+      const details=ui.d.getElementById('phaseMarkerDetails');
+      assert.equal(marker.closest('label').nextElementSibling,details);
+      assert.ok(details.contains(ui.d.getElementById('phaseList')));
+      assert.ok(details.contains(ui.d.getElementById('unknownMarkers')));
+      assert.equal(ui.d.querySelectorAll('#phaseMarkerDetails').length,1);
+      details.open=true;
+      const original=JSON.stringify(ui.renders.at(-1).data);
+      lines.click();await flush();
+      const data=ui.renders.at(-1).data;
+      assert.deepEqual(data.find(t=>t.meta.role==='peak-line').y,[0,9,null]);
+      assert.equal(data.find(t=>t.meta.role==='peak-line').line.color,'#12ab34');
+      assert.equal(marker.checked,false);
+      assert.equal(ui.d.getElementById('markerSize').disabled,true);
+      assert.match(ui.d.getElementById('peakLineHint').textContent,/피크 선 1개/);
+      assert.equal(details.open,true);
+      assert.equal(JSON.parse(ui.w.localStorage.getItem(ui.w.localStorage.key(0))).peakLines,true);
+      ui.d.getElementById('imageExport').click();await flush();
+      assert.equal(ui.exports.at(-1).data.find(t=>t.meta.role==='legend-phase').mode,'lines');
+      lines.click();await flush();
+      assert.equal(JSON.stringify(ui.renders.at(-1).data),original);
+    }
+    const restored=setup(t,program,{peakLines:true,markers:false,peakbar:false});await flush();
+    assert.equal(restored.d.getElementById('peakLines').checked,true);
+    assert.equal(restored.renders.at(-1).data.filter(t=>t.meta.role==='peak-line').length,1);
+    const missing=JSON.parse(JSON.stringify(fixture));missing.samples[0].assignments=[];
+    const absent=setup(t,program,{peakLines:true},missing);await flush();
+    assert.match(absent.d.getElementById('peakLineHint').textContent,/표시할 피크 선이 없습니다/);
+    assert.ok(!absent.renders.at(-1).data.some(t=>t.meta.role==='peak-line'));
+  });
   test(`${mode}: delivered HTML hides review warnings after redraw while authoring retains them`,async t=>{
     const project=JSON.parse(JSON.stringify(fixture));
     project.warnings=['2_상매칭_Report.pdf: 연결된 시료명을 확인하세요.'];

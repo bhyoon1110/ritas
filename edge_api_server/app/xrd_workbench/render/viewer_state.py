@@ -121,7 +121,7 @@ def prepare_state(project, state=None, target=None):
             if type(state[key]) is not bool:
                 raise ValueError('뷰어 표시 옵션은 boolean이어야 합니다.')
             result[key] = state[key]
-    for key in ('markers', 'peakbar'):
+    for key in ('markers', 'peakLines', 'peakbar'):
         if key in state:
             if type(state[key]) is not bool:
                 raise ValueError('Phase 표시 옵션은 boolean이어야 합니다.')

@@ -60,6 +60,7 @@ export function createState(project) {
       normalized: { spacing: 15, individual: {} },
     },
     markers: false,
+    peakLines: false,
     peakbar: true,
     phaseTarget: 'active',
     viewMode: 'multi',
@@ -104,7 +105,7 @@ export function restoreState(project, saved) {
   if (Array.isArray(saved.order))
     state.order = [...new Set([...saved.order.filter((id) => ids.has(id)), ...state.order])];
   if (ids.has(saved.active)) state.active = saved.active;
-  for (const key of ['markers', 'peakbar'])
+  for (const key of ['markers', 'peakLines', 'peakbar'])
     if (typeof saved[key] === 'boolean') state[key] = saved[key];
   state.hiddenPhases = (saved.hiddenPhases || []).filter((id) => phaseIds.has(id));
   // Phases are hidden as groups now: a state that hid one member of a shared group hides it all.
@@ -487,13 +488,16 @@ export function buildFigure(project, state, viewport = {}) {
       customdata: m.y.map((raw, i) => [raw, offset, m.line_numbers?.[i] ?? '']),
       hovertemplate: `<b>${escapeHTML(s.name)}</b><br>2θ: %{x:.6f}°<br>강도: %{customdata[0]:.6g} ${escapeHTML(m.intensity_unit)}<extra></extra>`,
     });
-    if (state.markers) {
+    if (state.markers || state.peakLines) {
+      const gap = Math.max(1, maxValue(base) - minValue(base)) * 0.018;
       for (const phase of s.phases) {
         if (state.hiddenPhases.includes(phase.id)) continue;
         const style = styles.get(phase.id),
           dim = state.highlight && !phaseMatches(state.highlight, phase),
           xs = [],
           ys = [],
+          lineXs = [],
+          lineYs = [],
           texts = [],
           cds = [];
         for (const assignment of s.assignments || []) {
@@ -506,8 +510,14 @@ export function buildFigure(project, state, viewport = {}) {
           const nearest = nearestIndex(m.x, assignment.x);
           // Vertical location only: anchor to the nearest real TXT point; keep
           // x at the PDF's observed position. This does not create a measurement.
-          const gap = Math.max(1, maxValue(base) - minValue(base)) * 0.018;
           const matchIndex = assignment.matches.findIndex((a) => a.phase === phase.name);
+          if (state.peakLines) {
+            // A guide, not a reconstructed spectrum: use the observed PDF position and
+            // nearest raw TXT intensity, from this sample's zero baseline + stack offset.
+            // Never substitute reference Norm. I. or fitted PDF Height for measured intensity.
+            lineXs.push(assignment.x, assignment.x, null);
+            lineYs.push(offset, y[nearest], null);
+          }
           xs.push(assignment.x);
           ys.push(y[nearest] + gap * (matchIndex + 1));
           cds.push([assignment.no, assignment.page, observed.page]);
@@ -515,7 +525,21 @@ export function buildFigure(project, state, viewport = {}) {
             `<b>${escapeHTML(s.name)} / ${escapeHTML(phase.name)}</b><br>관측 피크 #${assignment.no}<br>2θ: ${escapeHTML(assignment.x_raw)}°<br>hkl: ${matches.map((a) => escapeHTML(a.hkl)).join(' / ')}<br>Height: ${escapeHTML(observed.height_raw)}`,
           );
         }
-        if (xs.length)
+        if (lineXs.length)
+          data.push({
+            type: 'scatter',
+            mode: 'lines',
+            x: lineXs,
+            y: lineYs,
+            line: { color: style.color, width: 1.1, simplify: false },
+            connectgaps: false,
+            hoverinfo: 'skip',
+            showlegend: false,
+            ...(state.highlight ? { opacity: dim ? DIM : 1 } : {}),
+            meta: { role: 'peak-line', phaseId: phase.id, sampleId: s.id },
+            uid: phase.id + '-peak-line',
+          });
+        if (state.markers && xs.length)
           data.push({
             type: 'scatter',
             mode: 'markers',
@@ -779,7 +803,7 @@ export function buildFigure(project, state, viewport = {}) {
 }
 
 // The figure for "현재 이미지 내보내기": the current view with a legend (the samples, then the
-// phases drawn as markers while Phase marker is on). All styling comes from the same state as
+// phases drawn as markers and/or peak lines when enabled). All styling comes from the same state as
 // the live graph; there is deliberately no independent export-only Origin option.
 export function exportFigure(project, state, { height = 900 } = {}) {
   const figure = buildFigure(project, state, { height });
@@ -787,21 +811,24 @@ export function exportFigure(project, state, { height = 900 } = {}) {
   const origin = !!state.originStyle;
   const black = '#000000';
   for (const t of data) if (t.meta?.role === 'measurement') t.showlegend = true;
-  if (state.markers) {
-    const drawn = new Set(data.filter((t) => t.meta?.role === 'marker').map((t) => t.meta.phaseId));
+  if (state.markers || state.peakLines) {
+    const drawn = new Set(
+      data.filter((t) => ['marker', 'peak-line'].includes(t.meta?.role)).map((t) => t.meta.phaseId),
+    );
     const styles = phaseStyles(project, state);
     for (const g of phaseGroups(project, state)) {
       if (groupHidden(state, g) || !g.ids.some((id) => drawn.has(id))) continue;
       const style = styles.get(g.ids[0]);
       data.push({
         type: 'scatter',
-        mode: 'markers',
+        mode: state.markers ? (state.peakLines ? 'lines+markers' : 'markers') : 'lines',
         x: [null],
         y: [null],
         name: escapeHTML(exportCaption(g)),
         showlegend: true,
         hoverinfo: 'skip',
         marker: { color: style.color, symbol: style.symbol, size: n(state.markerSize) || 8 },
+        line: { color: style.color, width: 1.1 },
         meta: { role: 'legend-phase' },
       });
     }

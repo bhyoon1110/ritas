@@ -87,6 +87,26 @@ def test_origin_style_and_marker_size_travel_in_saved_viewer():
     assert 'Origin 스타일로 보기' in html
 
 
+def test_peak_lines_travel_in_direct_html_and_packaged_viewer_without_changing_data():
+    p = project()
+    state = prepare_state(p, {'version': 1, 'projectId': p['id'],
+                             'peakLines': True, 'markers': False, 'peakbar': False})
+    direct = embedded(export_html(p, state))
+    assert direct['state']['peakLines'] is True
+    assert direct['project'] == p
+    document = make_document(p, include=False)
+    data = build_package(p, document, lambda fid: b'', state,
+                         [view('피크 선만', peakLines=True)])
+    with zipfile.ZipFile(io.BytesIO(data)) as z:
+        delivered = embedded(z.read('뷰어.html').decode('utf-8'))
+    assert delivered['state']['peakLines'] is True
+    assert delivered['state']['markers'] is False
+    assert delivered['state']['peakbar'] is False
+    assert delivered['views'][0]['state']['peakLines'] is True
+    for actual, expected in zip(delivered['project']['samples'], p['samples']):
+        assert actual['measurement'] == expected['measurement']
+
+
 def make_package(views, included=('a', 'b')):
     p = project()
     document = make_document(p, include=False)

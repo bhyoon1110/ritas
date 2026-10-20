@@ -180,3 +180,23 @@ def test_unknown_peak_marker_symbol_and_colour_are_validated_and_kept():
     for bad in ({'unknownSymbol': 'sparkle'}, {'unknownColor': 'red'}, {'unknownColor': 5}):
         with pytest.raises(ValueError):
             prepare_state(project(), state(**bad))
+
+
+@pytest.mark.parametrize('enabled', [True, False])
+def test_peak_lines_survive_state_and_named_view_filtering(enabled):
+    p = project()
+    target = make_project([p['samples'][0]])
+    source = state(peakLines=enabled, markers=False, peakbar=False, visible=['a', 'b'])
+    before = copy.deepcopy(source)
+    clean = prepare_state(p, source, target)
+    assert clean['peakLines'] is enabled
+    assert clean['markers'] is False and clean['peakbar'] is False
+    assert clean['visible'] == ['a']
+    assert prepare_views(p, [{'name': '피크 선', 'state': source}], target)[0]['state'] == clean
+    assert source == before
+
+
+@pytest.mark.parametrize('bad', ['true', 1, None, []])
+def test_peak_lines_require_a_boolean(bad):
+    with pytest.raises(ValueError, match='boolean'):
+        prepare_state(project(), state(peakLines=bad))

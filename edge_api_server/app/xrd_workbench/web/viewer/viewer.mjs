@@ -112,8 +112,15 @@ function updateControls() {
   $('viewSingle').classList.toggle('active', single);
   $('quickOverlay').setAttribute('aria-pressed', String(!single && state.offsets.raw.spacing === 0));
   $('quickStack').setAttribute('aria-pressed', String(!single && state.offsets.raw.spacing !== 0));
-  for (const key of ['markers', 'peakbar', 'unknownMarkers', 'originStyle']) $(key).checked = !!state[key];
+  for (const key of ['markers', 'peakLines', 'peakbar', 'unknownMarkers', 'originStyle']) $(key).checked = !!state[key];
   $('phaseMarkerHint').textContent = phaseMarkerHint(project, state, figure);
+  const lineCount = figure.data.filter(t => t.meta?.role === 'peak-line')
+    .reduce((count, t) => count + t.x.length / 3, 0);
+  $('peakLineHint').textContent = !state.peakLines
+    ? '상단 그래프에 결정상 색상의 세로선을 표시합니다. 마커·하단 막대와 별도로 켜고 끕니다.'
+    : lineCount
+      ? `결정상 피크 선 ${lineCount}개 표시 · 시료 기준선에서 실제 측정 높이까지 표시합니다.`
+      : '표시할 피크 선이 없습니다. 관측 피크·상 배정 자료와 시료·결정상 표시 선택을 확인하세요.';
   $('unknownColor').value = state.unknownColor;
   $('markerSize').value = String(state.markerSize);
   $('markerSizeValue').textContent = String(state.markerSize);
@@ -371,8 +378,11 @@ for (const [id, stack] of [['quickOverlay',false],['quickStack',true]]) $(id).on
 // Advanced phase styling remains available without crowding the common tools.
 const phaseSection = $('phaseList').parentElement, advanced = document.createElement('details');
 advanced.className = 'advancedOptions';
+advanced.id = 'phaseMarkerDetails';
 advanced.innerHTML = '<summary>결정상 마커 상세 설정</summary>';
-phaseSection.parentNode.insertBefore(advanced,phaseSection); advanced.appendChild(phaseSection);
+const markerOption = $('markers').closest('label');
+markerOption.parentNode.insertBefore(advanced, markerOption.nextSibling);
+advanced.appendChild(phaseSection);
 
 for (const [id, mode] of [
   ['viewMulti', 'multi'],
@@ -391,7 +401,7 @@ function setToggle(key, value) {
   state[key] = value;
   draw();
 }
-for (const key of ['markers', 'peakbar', 'unknownMarkers', 'originStyle'])
+for (const key of ['markers', 'peakLines', 'peakbar', 'unknownMarkers', 'originStyle'])
   $(key).onchange = () => setToggle(key, $(key).checked);
 $('unknownColor').onchange = () => {
   state.unknownColor = $('unknownColor').value;
