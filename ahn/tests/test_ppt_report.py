@@ -24,8 +24,10 @@ from ahn.ppt_report import (
 def _body_slides(prs):
     """Keep the existing image/table assertions on the unchanged body pages."""
     from ahn.report_cover import COVER_NAME
+    from ahn.report_traceability import TRACE_NAME
     assert prs.slides[0].element.cSld.get("name") == COVER_NAME
-    return list(prs.slides)[1:]
+    assert prs.slides[1].element.cSld.get("name") == TRACE_NAME
+    return list(prs.slides)[2:]
 
 
 def _write_image(path: Path) -> None:

@@ -15,9 +15,9 @@ def test_preview_exact_page_sequence_size_text_and_original_master_artwork():
     pages=deck_pages(filled)
     _,slides,_=read_deck(filled.finish(doc))
     assert len(pages)==len(slides)
-    assert len(pages)==4
-    assert [p['kind'] for p in pages]==['cover','summary','sample','sample']
-    assert 'WPPF' in pages[2]['title'] and 'Phase Identification' in pages[3]['title']
+    assert len(pages)==5
+    assert [p['kind'] for p in pages]==['cover','traceability','summary','sample','sample']
+    assert 'WPPF' in pages[3]['title'] and 'Phase Identification' in pages[4]['title']
     for page,slide in zip(pages,slides):
         assert page['width']==9906000/36000 and page['height']==190.5
         assert page['title']==''.join(named(slide,'Title')[0].xpath('.//a:t/text()',namespaces=NS))
@@ -35,11 +35,11 @@ def test_template_table_positions_and_native_chart_are_shared_with_preview():
     project,doc=fixture()
     filled=build_posco_deck(project,doc,lambda _:IMAGE)
     pages=deck_pages(filled)
-    for index in (2,3):
+    for index in (3,4):
         for table in named(filled.pages[index][0],'Phase table'):
             x,y,w,h=box(table)
             assert any(i['type']=='rect' and i['x']==x and i['y']==y for i in pages[index]['items'])
-    chart=next(i for i in pages[2]['items'] if i.get('filename')=='WPPF 정량 차트')
+    chart=next(i for i in pages[3]['items'] if i.get('filename')=='WPPF 정량 차트')
     assert b'10' in chart['data'] and b'11.1' in chart['data'] and b'12.2' in chart['data']
     native=E.fromstring(filled.charts[0][0])
     assert '#'+native.find('.//c:dPt/c:spPr/a:solidFill/a:srgbClr',NS).get('val') in chart['data'].decode()

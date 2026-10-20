@@ -958,7 +958,7 @@ def test_pptx_overview_summarizes_long_text_without_ellipsis(tmp_path) -> None:
     rendered = render_requested_report(document, tmp_path, "PPTX")
 
     with zipfile.ZipFile(rendered) as archive:
-        overview_slide = archive.read("ppt/slides/slide2.xml").decode("utf-8")
+        overview_slide = archive.read("ppt/slides/slide3.xml").decode("utf-8")
     assert "분석 요약" in overview_slide
     assert "…" not in overview_slide
     assert "관찰되었습니다" in overview_slide
@@ -1291,9 +1291,9 @@ def test_raman_builder_maps_web_analysis_payload(tmp_path) -> None:
 
     rendered = render_requested_report(document, tmp_path, "PPTX")
     with zipfile.ZipFile(rendered) as archive:
-        conditions_slide = archive.read("ppt/slides/slide2.xml").decode("utf-8")
+        conditions_slide = archive.read("ppt/slides/slide3.xml").decode("utf-8")
         assert "공통 실험환경/조건" in conditions_slide
-        overview_slide = archive.read("ppt/slides/slide3.xml").decode("utf-8")
+        overview_slide = archive.read("ppt/slides/slide4.xml").decode("utf-8")
     assert "분석 요약" in overview_slide
     assert "RAMAN" in overview_slide
     assert 'name="Summary text"' in overview_slide

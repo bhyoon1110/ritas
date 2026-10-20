@@ -1969,25 +1969,26 @@ def _add_report_cover(prs, data):
     from datetime import date
     from pptx.oxml import parse_xml
 
-    # The supplied TEM deck has fewer layouts than the default Office deck.
-    slide = prs.slides.add_slide(prs.slide_layouts[0])
-    for shape in list(slide.shapes):
-        _remove_shape(shape)
-    slide.element.cSld.set("name", COVER_NAME)
-    slide.background.fill.solid()
-    slide.background.fill.fore_color.rgb = RGBColor(255, 255, 255)
     metadata = data.get("report_metadata") or {}
     completion = metadata.get("completionDate") or str(data.get("generated_at") or date.today())[:10]
     values = dict(metadata, completionDate=completion)
-    from .report_traceability import brief, cover_shapes as trace_cover
+    from .report_traceability import brief, cover_shapes, traceability_shapes, TRACE_NAME
     samples = [item.get("sample_name", "") for section in
         ("tem_samples","stem_samples","eds_reports","coating_samples") for item in data.get(section,[])]
     values.update(sampleNames=brief(samples), experimentCode=metadata.get("limsExperimentCode", ""),
         sourceSummary="analysis-result.json · 원자료 경로 및 이미지·EDS 대응 목록",
         revision="최초 생성본")
-    for spec in trace_cover("TEM", metadata.get("title") or "TEM/STEM/EDS 분석 보고서",
-            values, prs.slide_width, prs.slide_height):
-        slide.shapes._spTree.insert_element_before(parse_xml(shape_xml(spec)), "p:extLst")
+    for name, layout in ((COVER_NAME,cover_shapes),(TRACE_NAME,traceability_shapes)):
+        # The supplied TEM deck has fewer layouts than the default Office deck.
+        slide = prs.slides.add_slide(prs.slide_layouts[0])
+        for shape in list(slide.shapes):
+            _remove_shape(shape)
+        slide.element.cSld.set("name",name)
+        slide.background.fill.solid()
+        slide.background.fill.fore_color.rgb = RGBColor(255,255,255)
+        for spec in layout("TEM", metadata.get("title") or "TEM/STEM/EDS 분석 보고서",
+                values, prs.slide_width, prs.slide_height):
+            slide.shapes._spTree.insert_element_before(parse_xml(shape_xml(spec)), "p:extLst")
 
 
 def build_pptx(project: Any, output_path: str | Path) -> Path:
@@ -2013,7 +2014,7 @@ def build_pptx(project: Any, output_path: str | Path) -> Path:
         _build_stem(prs, template, data, input_root, tmp_dir)
         _build_eds(prs, template, data, input_root, tmp_dir)
         _build_coating(prs, template, data, input_root, tmp_dir)
-        if len(prs.slides) == 1:
+        if len(prs.slides) == 2:
             if template:
                 slide = template.new_slide("tem", "AHN 분석결과")
             else:

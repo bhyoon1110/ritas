@@ -1,6 +1,8 @@
-"""Shared, factual report-cover vocabulary. Never infer measurement/review facts."""
+"""Shared cover and traceability pages. Never infer measurement/review facts."""
 import unicodedata
 import math
+
+TRACE_NAME = "RIST report traceability"
 
 FIELDS = (
     ("client", "의뢰기관"), ("requester", "의뢰자"), ("receivedDate", "접수일"),
@@ -35,6 +37,28 @@ def brief(values, limit=130):
 
 
 def cover_shapes(experiment, title, values, width=12192000, height=6858000):
+    """A quiet title page. Detailed facts belong on the following traceability page."""
+    specs = []
+    def add(name, x, y, w, h, text, size, color="172B4D", bold=False):
+        specs.append(dict(shape_id=len(specs)+2, name=name, x=x, y=y, cx=w, cy=h,
+            text=[text], font_size=size, color=color, bold=bold, fill=None, line=None,
+            inset=0, line_spacing_pct=108000, space_after_pts=0))
+    add("Experiment banner title",254000,160020,8500000,400050,experiment+" 분석 보고서",2000,bold=True)
+    add("Report eyebrow",850000,1600000,10500000,350000,"분석 결과 보고서",1700,"137B8D",True)
+    add("Report title",850000,2150000,10500000,1450000,title,4600,bold=True)
+    add("Cover sampleNames",850000,3800000,10500000,650000,
+        "시료: "+(factual(values.get("sampleNames")) or "미기재"),1900,"486581")
+    # Flat metadata, without the grid/panels reserved for the next page.
+    for key,label,y in (("requestNumber","의뢰번호",5050000),("client","의뢰기관",5610000)):
+        add("Cover "+key,850000,y,6100000,480000,
+            label+": "+(factual(values.get(key)) or "미기재"),1550)
+    for key,label,y in (("completionDate","완료일",5050000),("analyst","작성자",5610000)):
+        add("Cover "+key,7400000,y,3950000,480000,
+            label+": "+(factual(values.get(key)) or "미기재"),1550)
+    return _scaled(specs,width,height)
+
+
+def traceability_shapes(experiment, title, values, width=12192000, height=6858000):
     """Six native text panels; stable names also identify preview edit targets.
 
     Source and condition lists are summaries, not substitutions for the full body.
@@ -45,8 +69,8 @@ def cover_shapes(experiment, title, values, width=12192000, height=6858000):
         specs.append(dict(shape_id=len(specs)+2, name=name, x=x, y=y, cx=w, cy=h,
             text=[text], font_size=size, color=color, bold=bold, fill=fill, line=line,
             inset=0, line_spacing_pct=108000, space_after_pts=0))
-    add("Experiment banner title",254000,160020,8500000,400050,experiment+" 분석 결과",2000,"172B4D",True)
-    add("Report eyebrow",600000,780000,10500000,240000,"분석 이력 요약  |  의뢰 → 시료 → 측정 → 분석·검토 → 완료",1150,"137B8D",True)
+    add("Experiment banner title",254000,160020,8500000,400050,"분석 이력 요약",2000,"172B4D",True)
+    add("Report eyebrow",600000,780000,10500000,240000,experiment+"  |  의뢰 → 시료 → 측정 → 분석·검토 → 완료",1150,"137B8D",True)
     add("Report title",600000,1080000,10900000,610000,title,2700,"172B4D",True)
     groups = (
         ("01  의뢰 정보", ("requestNumber", "client", "requester", "receivedDate", "purpose")),
@@ -73,6 +97,10 @@ def cover_shapes(experiment, title, values, width=12192000, height=6858000):
             top += row_h
     add("Trace notice",600000,6200000,10900000,260000,
         "미기재 항목은 확인 후 입력하세요. 검토자 기재는 전자서명을 의미하지 않습니다. 상세 조건·원자료는 본문과 작업 기록을 참조하세요.",850,"627D98")
+    return _scaled(specs,width,height)
+
+
+def _scaled(specs,width,height):
     scale = min(width/12192000,height/6858000)
     for spec in specs:
         for k in ("x", "cx"): spec[k] = round(spec[k]*width/12192000)

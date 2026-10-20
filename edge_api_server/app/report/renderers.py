@@ -1228,6 +1228,9 @@ def _raman_common_conditions(document: ReportDocument) -> ReportSection | None:
 
 def _pptx_slide_payloads(document: ReportDocument) -> list[dict[str, object]]:
     slides: list[dict[str, object]] = [_pptx_title_payload(document)]
+    if uses_posco_template(document.experiment_code):
+        slides.append({"xml": _pptx_traceability_slide(document), "rels": _pptx_slide_rels(),
+                       "media": [], "editing": {"kind": "traceability"}})
     common_conditions = _raman_common_conditions(document)
     if common_conditions is not None and common_conditions.table is not None:
         slides.extend(_pptx_complete_table_payloads(document, common_conditions))
@@ -1693,6 +1696,14 @@ def _pptx_footer_shape(document: ReportDocument, shape_id: int) -> str:
         color=PPTX_MUTED,
         inset=0,
     )
+
+
+def _pptx_traceability_slide(document: ReportDocument) -> str:
+    from ahn.report_traceability import traceability_shapes
+    from .traceability import values_and_refs
+    experiment = "Raman" if document.experiment_code.strip().upper() in {"RAMAN", "RIN", "RIN-RAMAN"} else "FT-IR"
+    return _pptx_frame([_pptx_shape(**spec) for spec in traceability_shapes(
+        experiment, document.title, values_and_refs(document)[0])], document=document)
 
 
 def _pptx_title_slide(document: ReportDocument) -> str:

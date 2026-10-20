@@ -123,7 +123,7 @@ def test_chunk_import_review_and_all_exports(tmp_path):
             assert 'contenteditable' not in result.text
             assert '분석 결과 요약' in result.text and 'Phase Fraction' in result.text
             assert '보고서 정보' not in result.text
-            assert result.text.count('<section class="page"') == 3  # cover, summary, one quantitative sample
+            assert result.text.count('<section class="page"') == 4  # cover, traceability, summary, one quantitative sample
             assert api.BASE+'/api/files/' in result.text
         elif kind == 'zip':
             with zipfile.ZipFile(io.BytesIO(result.content)) as z:

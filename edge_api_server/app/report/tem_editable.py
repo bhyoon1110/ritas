@@ -11,7 +11,9 @@ from zipfile import ZipFile
 from .editable import TRANSFER_FIELDS
 from .editor_variables import resolve_changes
 from ahn.report_cover import COVER_NAME, TEM_FIELDS
-from ahn.report_traceability import LABELS, factual, fitted_size
+from ahn.report_traceability import LABELS, TRACE_NAME, factual, fitted_size
+
+FRONT_PAGES = {COVER_NAME, TRACE_NAME}
 
 READONLY_TRACE = {"sampleNames", "sourceSummary", "recordId", "revision", "experimentCode"}
 
@@ -33,15 +35,35 @@ def _slides(archive):
                    and name.endswith(".xml")), key=lambda name: int(Path(name).stem[5:]))
 
 
+def _trace_fields(archive, replacements=None):
+    """Canonical editable facts on the detail page, also used by cover aliases.
+
+    Legacy one-page covers keep their existing section IDs and value source.
+    """
+    fields = {}
+    for index,name in enumerate(_slides(archive)):
+        root = (replacements or {}).get(name)
+        if root is None: root = ET.fromstring(archive.read(name))
+        if root.find("p:cSld",NS).get("name") not in FRONT_PAGES: continue
+        for shape in root.findall("p:cSld/p:spTree/p:sp",NS):
+            identity = shape.find("p:nvSpPr/p:cNvPr",NS)
+            key = identity.get("name", "").removeprefix("Trace ")
+            if key in LABELS:
+                ref = f"section/slide-{index+1}-shape-{identity.get('id')}/paragraphs/0"
+                fields[key] = (ref,factual(_text(shape.find("p:txBody",NS)).partition(": ")[2]))
+    return fields
+
+
 def inspect_pptx(path):
     """Only expose server-owned generated text frames and table cells, never paths."""
     sections, pages, bindings = [], [], {}
     with ZipFile(path) as archive:
+        trace_fields = _trace_fields(archive)
         size = ET.fromstring(archive.read("ppt/presentation.xml")).find("p:sldSz", NS)
         width, height = int(size.get("cx")), int(size.get("cy"))
         for index, name in enumerate(_slides(archive)):
             root = ET.fromstring(archive.read(name))
-            is_cover = root.find("p:cSld", NS).get("name") == COVER_NAME
+            is_cover = root.find("p:cSld", NS).get("name") in FRONT_PAGES
             regions = []
             title = f"TEM {index + 1}페이지"
             for shape in root.findall("p:cSld/p:spTree/*", NS):
@@ -73,12 +95,16 @@ def inspect_pptx(path):
                 shape_name = identity.get("name", "")
                 if is_cover and body is not None:
                     ref = _cover_ref(shape_name)
+                    if not ref and shape_name.startswith("Cover "):
+                        # The cover and detail page edit the same canonical value.
+                        field = trace_fields.get(shape_name[6:])
+                        if field and shape_name[6:] not in READONLY_TRACE: ref = field[0]
                     if ref:
                         regions.append(_region(x, y, w, h, width, height, [ref], False))
                         if ref == "title":
                             title = _text(body)
                         continue
-                    if shape_name in {"Experiment banner title", "Report eyebrow", "Trace notice"} or shape_name.startswith(("Trace panel ", "Trace heading ")) or shape_name.removeprefix("Trace ") in READONLY_TRACE:
+                    if shape_name in {"Experiment banner title", "Report eyebrow", "Trace notice"} or shape_name.startswith(("Trace panel ", "Trace heading ", "Cover ")) or shape_name.removeprefix("Trace ") in READONLY_TRACE:
                         continue
                 sid = f"slide-{index + 1}-shape-{identity.get('id')}"
                 section = dict(sectionId=sid, heading=f"{index + 1}페이지 · {identity.get('name', '내용')}",
@@ -130,6 +156,7 @@ def inspect_pptx(path):
                     regions.append(_region(x, y, w, h, width, height, refs, not section["paragraphs"][0].strip()))
                 sections.append(section)
                 bindings[sid] = (name, identity.get("id"), "coating" if coating_rows is not None else "text" if body is not None else "table")
+            if root.find("p:cSld",NS).get("name") == TRACE_NAME: title = "분석 이력 요약"
             pages.append({"title": title, "regions": [r for r in regions if r["w"] > 0 and r["h"] > 0]})
     return sections, {"ratio": width / height, "pages": pages}, bindings
 
@@ -143,7 +170,7 @@ def _region(x, y, w, h, width, height, refs, empty):
 def _cover_ref(name):
     if name == "Report title":
         return "title"
-    if name.startswith("Trace "):
+    if name.startswith(("Trace ","Cover ")):
         key = name[6:]
         if key == "experimentCode": return "transfer/limsExperimentCode"
         if key == "completionDate": return key
@@ -159,15 +186,15 @@ def _cover_ref(name):
 def _cover_values(path):
     values = {}
     with ZipFile(path) as archive:
-        root = ET.fromstring(archive.read(_slides(archive)[0]))
-        if root.find("p:cSld", NS).get("name") != COVER_NAME:
-            return values  # Existing reports without a cover remain editable unchanged.
-        for shape in root.findall("p:cSld/p:spTree/p:sp", NS):
-            ref = _cover_ref(shape.find("p:nvSpPr/p:cNvPr", NS).get("name", ""))
-            if ref:
-                text = _text(shape.find("p:txBody", NS))
-                name = shape.find("p:nvSpPr/p:cNvPr", NS).get("name", "")
-                values[ref] = text if ref == "title" else factual(text.partition(": " if name.startswith("Trace ") else "\n")[2])
+        for page in _slides(archive):
+            root = ET.fromstring(archive.read(page))
+            if root.find("p:cSld", NS).get("name") not in FRONT_PAGES: continue
+            for shape in root.findall("p:cSld/p:spTree/p:sp", NS):
+                ref = _cover_ref(shape.find("p:nvSpPr/p:cNvPr", NS).get("name", ""))
+                if ref:
+                    text = _text(shape.find("p:txBody", NS))
+                    name = shape.find("p:nvSpPr/p:cNvPr", NS).get("name", "")
+                    values[ref] = text if ref == "title" else factual(text.partition(": " if name.startswith(("Trace ","Cover ")) else "\n")[2])
     return values
 
 
@@ -287,7 +314,7 @@ def revise_pptx(source, target, changes):
                 elif kind == "text":
                     text = item["paragraphs"][0]
                     name = identity.get("name", "")
-                    if root.find("p:cSld",NS).get("name") == COVER_NAME and name.startswith("Trace "):
+                    if root.find("p:cSld",NS).get("name") in FRONT_PAGES and name.startswith("Trace "):
                         text = LABELS[name[6:]]+": "+(factual(text) or "미기재")
                     _replace_text(shape.find("p:txBody", NS), text)
                     if name.startswith("Trace "): _fit_trace(shape)
@@ -298,29 +325,33 @@ def revise_pptx(source, target, changes):
                             _replace_text(cell.find("a:txBody", NS), text)
         # Cover fields share the editor's authoritative title/transfer/date values.
         # Revisions update the existing cover; they never insert another page.
-        first_slide = _slides(archive)[0]
-        root = replacements.get(first_slide)
-        if root is None:
-            root = ET.fromstring(archive.read(first_slide))
-        if root.find("p:cSld", NS).get("name") == COVER_NAME:
+        trace_fields = _trace_fields(archive,replacements)
+        for page in _slides(archive):
+            root = replacements.get(page)
+            if root is None: root = ET.fromstring(archive.read(page))
+            if root.find("p:cSld", NS).get("name") not in FRONT_PAGES: continue
             for shape in root.findall("p:cSld/p:spTree/p:sp", NS):
                 name = shape.find("p:nvSpPr/p:cNvPr", NS).get("name", "")
                 ref = _cover_ref(name)
                 if ref == "title":
                     text = values["title"]
                 elif ref:
-                    if name.startswith("Trace "):
+                    if name.startswith(("Trace ","Cover ")):
                         key, label, separator = name[6:], LABELS[name[6:]], ": "
                     else:
                         key, label = TEM_FIELDS[int(name.rsplit(" ", 1)[1])]
                         separator = "\n"
                     value = values.get(key, "") if key == "completionDate" else values["transfer"]["limsExperimentCode" if key == "experimentCode" else key]
-                    text = label + separator + (value or ("미기재" if name.startswith("Trace ") else ""))
+                    text = label + separator + (value or ("미기재" if name.startswith(("Trace ","Cover ")) else ""))
+                elif name.startswith("Cover ") and name[6:] in trace_fields:
+                    key = name[6:]
+                    label = "작성자" if key=="analyst" else LABELS[key]
+                    text = label+": "+(trace_fields[key][1] or "미기재")
                 else:
                     continue
                 _replace_text(shape.find("p:txBody", NS), text)
                 if name.startswith("Trace "): _fit_trace(shape)
-            replacements[first_slide] = root
+            replacements[page] = root
             size = ET.fromstring(archive.read("ppt/presentation.xml")).find("p:sldSz",NS)
             _reflow_cover(root,int(size.get("cx")),int(size.get("cy")))
         with ZipFile(target, "w") as output:
@@ -351,14 +382,16 @@ def _fit_trace(shape):
 
 
 def _reflow_cover(root,width,height):
-    from ahn.report_traceability import cover_shapes
+    from ahn.report_traceability import cover_shapes, traceability_shapes
     shapes = {s.find("p:nvSpPr/p:cNvPr",NS).get("name", ""): s
         for s in root.findall("p:cSld/p:spTree/p:sp",NS)}
-    if "Trace requestNumber" not in shapes: return
+    prefix = "Cover " if "Cover requestNumber" in shapes else "Trace "
+    if prefix+"requestNumber" not in shapes: return
     values = {name[6:]: factual(_text(s.find("p:txBody",NS)).partition(": ")[2])
-        for name,s in shapes.items() if name.startswith("Trace ") and name[6:] in LABELS}
+        for name,s in shapes.items() if name.startswith(prefix) and name[6:] in LABELS}
     title = _text(shapes["Report title"].find("p:txBody",NS))
-    for spec in cover_shapes("TEM",title,values,width,height):
+    layout = cover_shapes if prefix=="Cover " else traceability_shapes
+    for spec in layout("TEM",title,values,width,height):
         shape = shapes.get(spec["name"])
         if shape is None: continue
         xfrm = shape.find("p:spPr/a:xfrm",NS)
@@ -372,11 +405,11 @@ def stamp_record(path, report_id, parent_id=None):
     with tempfile.TemporaryDirectory(prefix="rist-tem-record-") as temp:
         target = Path(temp)/"report.pptx"
         with ZipFile(path) as source, ZipFile(target,"w") as output:
-            first = _slides(source)[0]
+            slides = set(_slides(source))
             for info in source.infolist():
-                if info.filename == first:
+                if info.filename in slides:
                     root = ET.fromstring(source.read(info))
-                    if root.find("p:cSld",NS).get("name") == COVER_NAME:
+                    if root.find("p:cSld",NS).get("name") in FRONT_PAGES:
                         for shape in root.findall("p:cSld/p:spTree/p:sp",NS):
                             name = shape.find("p:nvSpPr/p:cNvPr",NS).get("name", "")
                             values = {"recordId": report_id, "revision": "수정본 · 이전 작업 "+parent_id if parent_id else "최초 생성본"}
@@ -386,8 +419,8 @@ def stamp_record(path, report_id, parent_id=None):
                                 _fit_trace(shape)
                         size = ET.fromstring(source.read("ppt/presentation.xml")).find("p:sldSz",NS)
                         _reflow_cover(root,int(size.get("cx")),int(size.get("cy")))
-                    output.writestr(info,ET.tostring(root,encoding="utf-8",xml_declaration=True))
-                else:
-                    with source.open(info) as src, output.open(info,"w") as dst:
-                        shutil.copyfileobj(src,dst,1024*1024)
+                        output.writestr(info,ET.tostring(root,encoding="utf-8",xml_declaration=True))
+                        continue
+                with source.open(info) as src, output.open(info,"w") as dst:
+                    shutil.copyfileobj(src,dst,1024*1024)
         shutil.copyfile(target,path)

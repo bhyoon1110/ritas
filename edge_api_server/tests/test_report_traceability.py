@@ -4,7 +4,7 @@ from zipfile import ZipFile
 from xml.etree import ElementTree as ET
 
 import pytest
-from ahn.report_traceability import FIELDS, cover_shapes
+from ahn.report_traceability import FIELDS, traceability_shapes
 from ahn.tests.test_ppt_report import _project_with_sections
 from ahn.ppt_report import build_pptx
 from app.report import editable, renderers, tem_editable
@@ -34,7 +34,7 @@ def test_cover_fields_roundtrip_without_inferred_measurement_or_review(tmp_path,
     assert values['operatorId']=='measurer'
     assert values['completionDate']=='2026-10-15'
     path=tmp_path/'report.pptx'; renderers.render_pptx(restored,path)
-    regions=edit_pages(restored,path)['pages'][0]['regions']
+    regions=edit_pages(restored,path)['pages'][1]['regions']
     all_refs={ref for region in regions for ref in region['refs']}
     assert set(refs['measuredDate']) <= all_refs
     assert 'transfer/equipmentCode' in all_refs
@@ -58,9 +58,9 @@ def test_tem_fact_edit_and_server_record_do_not_touch_body(tmp_path):
     assert next(s for s in reopened['sections'] if s['sectionId']==measured['sectionId'])['paragraphs']==['2026-10-18']
     assert not any(s['heading'].endswith('작업 / 프로젝트 ID') for s in reopened['sections'])
     with ZipFile(path) as before,ZipFile(target) as after:
-        assert b'job-2' in after.read('ppt/slides/slide1.xml')
-        assert b'job-1' in after.read('ppt/slides/slide1.xml')
-        assert ET.tostring(ET.fromstring(before.read('ppt/slides/slide2.xml')))==ET.tostring(ET.fromstring(after.read('ppt/slides/slide2.xml')))
+        assert b'job-2' in after.read('ppt/slides/slide2.xml')
+        assert b'job-1' in after.read('ppt/slides/slide2.xml')
+        assert ET.tostring(ET.fromstring(before.read('ppt/slides/slide3.xml')))==ET.tostring(ET.fromstring(after.read('ppt/slides/slide3.xml')))
 
 
 def test_xrd_history_preserves_previous_facts_and_uses_server_actor(tmp_path):
@@ -89,7 +89,7 @@ def test_xrd_history_preserves_previous_facts_and_uses_server_actor(tmp_path):
 
 def test_shared_cover_fields_keep_brand_area_clear_and_no_overlap():
     for width in (9906000,12192000):
-        specs=cover_shapes('XRD','검증 보고서',{'requestNumber':'R'*80,'client':'긴'*120},width)
+        specs=traceability_shapes('XRD','검증 보고서',{'requestNumber':'R'*80,'client':'긴'*120},width)
         fields=[s for s in specs if s['name'].startswith('Trace ') and s['name'][6:] in
                 {'requestNumber','client','requester','receivedDate','purpose'}]
         for a,b in zip(fields,fields[1:]): assert a['y']+a['cy']<=b['y']

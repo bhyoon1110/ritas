@@ -16,7 +16,7 @@ from zipfile import ZipFile, ZIP_DEFLATED
 from lxml import etree as E
 from PIL import Image
 from ahn.report_cover import shape_xml
-from ahn.report_traceability import cover_shapes, brief
+from ahn.report_traceability import cover_shapes, traceability_shapes, brief
 
 from ..config import load_settings
 from ..core.figure import build_plan
@@ -382,7 +382,7 @@ class Deck:
 
     def number_pages(self):
         for number, (slide, _) in enumerate(self.pages, 1):
-            if self.page_info[slide]['kind'] != 'cover':
+            if self.page_info[slide]['kind'] not in {'cover','traceability'}:
                 shape = named(slide, 'Page number')[0]
                 set_text(shape, str(number), size=10, color='6B7F88')
                 shape.find('p:txBody/a:p/a:pPr', NS).set('algn', 'r')
@@ -491,11 +491,7 @@ def build_posco_deck(project, document, resolve_source, *, pages=None, link_base
         source_images[key] = data
         return data
 
-    # Common traceability cover; all supplied XRD body layouts stay intact.
-    cover = deck.slide(blank=True, kind='cover')
-    for shape in list(cover.find('p:cSld/p:spTree', NS)):
-        if E.QName(shape).localname not in ('nvGrpSpPr', 'grpSpPr'):
-            remove(shape)
+    # Common title + traceability pages; all supplied XRD body layouts stay intact.
     meta = document['metadata']
     fields = dict(requestNumber='report_number',experimentCode='experiment_code',
         equipmentCode='equipment_code',operatorId='operator_id',completionDate='date',
@@ -509,20 +505,25 @@ def build_posco_deck(project, document, resolve_source, *, pages=None, link_base
         recordId=project.get('storage_id') or project['id'],
         revision=f"보고서 v{document['revision']} · 분석 검토 v{document.get('analysis_revision',0)}")
     size = E.fromstring(deck.files['ppt/presentation.xml']).find('p:sldSz', NS)
-    for spec in cover_shapes('XRD',meta['title'],values,int(size.get('cx')),int(size.get('cy'))):
-        shape = E.fromstring(shape_xml(spec))
-        point_size = math.ceil(spec['font_size']/50)*.5
-        if not set_text(shape,'\n'.join(spec['text']),size=point_size,minimum=5,
-                bold=spec.get('bold',False),color=spec['color'],dimensions=(spec['cx']/MM,spec['cy']/MM)):
-            raise ValueError(f'표지 항목({spec["name"]})이 너무 깁니다. 내용을 줄이고 상세 내용은 본문에 작성하세요.')
-        name = 'Title' if spec['name']=='Experiment banner title' else spec['name']
-        deck.append(cover,shape,name)
-        if name=='Report title':
-            deck.mark(shape,dict(tab='overview',field='title'))
-        elif name.startswith('Trace ') and name[6:] in fields:
-            key = fields[name[6:]]
-            deck.mark(shape,dict(tab='overview',field='transfer' if key in
-                {'experiment_code','equipment_code','operator_id'} else key))
+    for kind,layout in (('cover',cover_shapes),('traceability',traceability_shapes)):
+        page = deck.slide(blank=True,kind=kind)
+        deck.page_info[page]['navigation_title'] = '표지' if kind=='cover' else '분석 이력 요약'
+        for shape in list(page.find('p:cSld/p:spTree',NS)):
+            if E.QName(shape).localname not in ('nvGrpSpPr','grpSpPr'): remove(shape)
+        for spec in layout('XRD',meta['title'],values,int(size.get('cx')),int(size.get('cy'))):
+            shape = E.fromstring(shape_xml(spec))
+            point_size = math.ceil(spec['font_size']/50)*.5
+            if not set_text(shape,'\n'.join(spec['text']),size=point_size,minimum=5,
+                    bold=spec.get('bold',False),color=spec['color'],dimensions=(spec['cx']/MM,spec['cy']/MM)):
+                raise ValueError(f'표지·이력 항목({spec["name"]})이 너무 깁니다. 내용을 줄이고 상세 내용은 본문에 작성하세요.')
+            name = 'Title' if spec['name']=='Experiment banner title' else spec['name']
+            deck.append(page,shape,name)
+            if name=='Report title':
+                deck.mark(shape,dict(tab='overview',field='title'))
+            elif name.startswith(('Trace ','Cover ')) and name[6:] in fields:
+                key = fields[name[6:]]
+                deck.mark(shape,dict(tab='overview',field='transfer' if key in
+                    {'experiment_code','equipment_code','operator_id'} else key))
 
     # Adaptive summary: two columns of reviewed phase information, never 3/4 fixed samples.
     summary_image = None

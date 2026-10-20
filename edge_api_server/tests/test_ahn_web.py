@@ -68,9 +68,10 @@ def test_tem_multiple_docx_upload_generates_each_document_slide(paths):
         assert payload["summary"]["edsReportCount"] == 2
         pptx = client.get(payload["downloads"]["pptx"])
         slides = Presentation(BytesIO(pptx.content)).slides
-        assert len(slides) == 3  # Cover plus both DOCX result pages.
+        assert len(slides) == 4  # Cover, traceability, then both DOCX result pages.
         assert slides[0].element.cSld.get("name") == "RIST report cover"
-        for slide, path in zip(list(slides)[1:], paths):
+        assert slides[1].element.cSld.get("name") == "RIST report traceability"
+        for slide, path in zip(list(slides)[2:], paths):
             assert Path(path).stem in " ".join(shape.text for shape in slide.shapes if shape.has_text_frame)
             assert sum(shape.shape_type == 13 for shape in slide.shapes) == 1
 

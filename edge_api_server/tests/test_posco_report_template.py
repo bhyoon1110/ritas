@@ -67,7 +67,10 @@ def test_spectrum_ppt_reuses_original_artwork_without_sample_payload(tmp_path, c
             assert root.find("p:cSld/p:bg/p:bgPr/a:solidFill/a:srgbClr", NS).get("val") == "FFFFFF"
             text = " ".join(node.text or "" for node in root.findall(".//a:t", NS))
             all_text.append(text)
-            assert ("Raman" if code in {"RAMAN", "RIN", "RIN-RAMAN"} else "FT-IR") + " 분석 결과" in text
+            experiment = "Raman" if code in {"RAMAN", "RIN", "RIN-RAMAN"} else "FT-IR"
+            if name == 'ppt/slides/slide1.xml': assert experiment+' 분석 보고서' in text
+            elif name == 'ppt/slides/slide2.xml': assert '분석 이력 요약' in text and experiment in text
+            else: assert experiment+' 분석 결과' in text
             assert "TEM" not in text and "AlGn5" not in text and "/ 22" not in text
             names = [node.get("name") for node in root.findall(".//p:cNvPr", NS)]
             assert "Left accent" not in names and "Top accent" not in names

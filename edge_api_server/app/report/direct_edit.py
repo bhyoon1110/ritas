@@ -42,10 +42,11 @@ def edit_pages(document, pptx_path):
             meta = payload.get("editing", {})
             kind, sid = meta.get("kind"), meta.get("sectionId")
             bindings = {"Footer": ["transfer/requestNumber", "completionDate"]}
-            if kind == "title":
+            if kind in {"title", "traceability"}:
                 bindings["Report title"] = ["title"]
                 from .traceability import values_and_refs
                 bindings.update({"Trace " + key: refs for key,refs in values_and_refs(document)[1].items()})
+                bindings.update({"Cover " + key: refs for key,refs in values_and_refs(document)[1].items()})
                 labels = {label: "transfer/" + key for key, label in TRANSFER_FIELDS.items()}
                 labels["완료일"] = "completionDate"
                 for n, (label, _) in enumerate(renderers._document_metadata(document)):
@@ -93,6 +94,7 @@ def edit_pages(document, pptx_path):
                                 "empty": not any((node.text or "").strip() for node in shape.findall(".//a:t", NS))})
             title = next((" ".join(t.text or "" for t in s.findall(".//a:t", NS)) for s in root.findall("p:cSld/p:spTree/p:sp", NS)
                           if s.find("p:nvSpPr/p:cNvPr", NS).get("name") in {"Report title", "Slide title"}), "PPT")
+            if kind == "traceability": title = "분석 이력 요약"
             pages.append({"title": title, "regions": regions})
     return {"pages": pages, "ratio": width / height}
 
