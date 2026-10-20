@@ -212,18 +212,22 @@ for (const mode of ['native','chrome49']) for (const kind of ['ftir','raman']) {
       assert.equal(h.gd.layout.yaxis.range[1],range[0]+(range[1]-range[0])*0.8);
     }
   });
-  test(label+': wheel is bottom-anchored at any pointer height and preserves each experiment X policy', async t => {
+  test(label+': ordinary stacked wheel zooms both axes with the Y bottom fixed at any pointer height', async t => {
     const h = setup(t,kind,mode), x = clone(h.gd.layout.xaxis.range);
+    const raw = clone(h.gd.data), stack = clone(h.gd.layout.meta[h.key]);
     for (const y of [110,300,490]) {
       h.gd.layout.yaxis.range = [-20,100]; h.sync();
       assert(h.wheel(-120,y).defaultPrevented);
       assert.equal(h.gd.layout.yaxis.range[0],-20);
       assert(Math.abs(h.gd.layout.yaxis.range[1]-(-20+120*Math.exp(-0.24))) < 1e-9);
+      assert.notDeepEqual(clone(h.gd.layout.xaxis.range),x);
       h.wheel(120,y); assert(Math.abs(h.gd.layout.yaxis.range[1]-100) < 1e-9);
+      h.gd.layout.xaxis.range.forEach((v,i)=>assert(Math.abs(v-x[i])<1e-9));
     }
     h.wheel(-120);
-    if (kind === 'raman') assert.deepEqual(clone(h.gd.layout.xaxis.range),x);
-    else assert.notDeepEqual(clone(h.gd.layout.xaxis.range),x);
+    assert.notDeepEqual(clone(h.gd.layout.xaxis.range),x);
+    assert.deepEqual(clone(h.gd.data),raw);
+    assert.deepEqual(clone(h.gd.layout.meta[h.key]),stack);
     assert.equal(h.wheel(-120,50).defaultPrevented,false); // Page can still scroll.
     assert.equal(h.wheel(-120,300,h.q('.rist-axis-control-button')).defaultPrevented,false);
   });
@@ -260,8 +264,7 @@ for (const mode of ['native','chrome49']) for (const kind of ['ftir','raman']) {
     const x = clone(h.gd.layout.xaxis.range);
     h.wheel(-120); // No sticky modifier after release or focus loss.
     assert(h.gd.layout.yaxis.range[1] < 100);
-    if (kind === 'raman') assert.deepEqual(clone(h.gd.layout.xaxis.range),x);
-    else assert.notDeepEqual(clone(h.gd.layout.xaxis.range),x);
+    assert.notDeepEqual(clone(h.gd.layout.xaxis.range),x);
     h.gd._context.scrollZoom = false; h.gd._ristEditMode = true;
     const y = clone(h.gd.layout.yaxis.range);
     h.wheel(-3,300,h.gd,{shiftKey:true,deltaMode:1});
@@ -269,6 +272,29 @@ for (const mode of ['native','chrome49']) for (const kind of ['ftir','raman']) {
     h.wheel(-1,300,h.gd,{ctrlKey:true,deltaMode:2});
     assert.equal(h.gd.layout.yaxis.range[0],y[0]);
     assert(h.gd.layout.yaxis.range[1] < y[1]);
+  });
+  test(label+': default stacked wheel respects each axis lock and both locks together', t => {
+    const h = setup(t,kind,mode);
+    for (const [lockX,lockY] of [[true,false],[false,true],[true,true]]) {
+      h.gd.layout.xaxis.fixedrange = lockX; h.gd.layout.yaxis.fixedrange = lockY;
+      const x = clone(h.gd.layout.xaxis.range), y = clone(h.gd.layout.yaxis.range);
+      h.wheel(-120);
+      assert.equal(JSON.stringify(h.gd.layout.xaxis.range) === JSON.stringify(x),lockX);
+      assert.equal(JSON.stringify(h.gd.layout.yaxis.range) === JSON.stringify(y),lockY);
+      assert.equal(h.gd.layout.yaxis.range[0],y[0]);
+    }
+  });
+  if (kind === 'raman') test(label+': toggling stack off immediately restores ordinary Y-only wheel', t => {
+    const h = setup(t,kind,mode);
+    for (const stacked of [false,true,false,true]) {
+      h.gd.layout.meta[h.key].enabled = stacked; h.sync();
+      const x = clone(h.gd.layout.xaxis.range), y = clone(h.gd.layout.yaxis.range);
+      assert(h.wheel(-120).defaultPrevented);
+      assert.equal(JSON.stringify(h.gd.layout.xaxis.range) !== JSON.stringify(x),stacked);
+      assert.notDeepEqual(clone(h.gd.layout.yaxis.range),y);
+      assert.equal(h.gd.layout.yaxis.range[0] === y[0],stacked);
+      assert.equal(h.q('[data-wheel-default]').textContent,'기본: '+(stacked ? 'X·Y축' : 'Y축'));
+    }
   });
   test(label+': shortcuts honor locked axes, Crop bounds and active drawing/text operations', async t => {
     const h = setup(t,kind,mode);
@@ -326,7 +352,8 @@ for (const mode of ['native','chrome49']) for (const kind of ['ftir','raman']) {
     assert.match(hint.textContent,/Shift \+ 휠: X축만/);
     assert.match(hint.textContent,/Ctrl \+ 휠: Y축만/);
     assert.match(hint.textContent,/스택: Y축 바닥 고정/);
-    assert(hint.textContent.includes('기본: '+(kind === 'ftir' ? 'X·Y축' : 'Y축')));
+    assert(hint.textContent.includes('기본: X·Y축'));
+    assert.equal(h.w.getComputedStyle(h.q('[data-wheel-default]')).flex,'0 0 7em');
     assert(h.gd.getAttribute('aria-describedby').includes(hint.id));
     assert.equal(hint.getAttribute('aria-hidden'),'true');
     assert.equal(h.w.getComputedStyle(hint).visibility,'hidden');
@@ -370,9 +397,10 @@ for (const mode of ['native','chrome49']) for (const kind of ['ftir','raman']) {
     for (const stacked of [true,false]) {
       h.gd.layout.meta[h.key].enabled = stacked; h.sync();
       for (const [options, expected] of [[{shiftKey:true},['x']],[{ctrlKey:true},['y']],
-        [{shiftKey:true,ctrlKey:true},['y']],[{},kind === 'ftir' ? ['x','y'] : ['y']]]) {
+        [{shiftKey:true,ctrlKey:true},['y']],[{},stacked || kind === 'ftir' ? ['x','y'] : ['y']]]) {
         h.wheel(-120,300,h.gd,options);
         assert.deepEqual(active(),expected);
+        assert.equal(h.q('[data-wheel-default]').textContent,'기본: '+(stacked || kind === 'ftir' ? 'X·Y축' : 'Y축'));
         assert.equal(hint.classList.contains('is-stack'),stacked);
         assert.equal(h.w.getComputedStyle(h.q('[data-wheel-stack]')).visibility,stacked ? 'inherit' : 'hidden');
         assert.equal(clock.count(),1);

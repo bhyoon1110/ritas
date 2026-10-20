@@ -8566,6 +8566,9 @@ def _axis_controls_js(div_id: str, *, axis_locks: bool = False, scroll_zoom_y_on
 #__PLOT_ID_CSS__-wheel-help > span {
   white-space: nowrap;
 }
+#__PLOT_ID_CSS__-wheel-help [data-wheel-default] {
+  flex: 0 0 7em;
+}
 #__PLOT_ID_CSS__-wheel-help.is-visible {
   visibility: visible;
 }
@@ -8746,7 +8749,7 @@ def _axis_controls_js(div_id: str, *, axis_locks: bool = False, scroll_zoom_y_on
   wheelHelp.className = "rist-axis-wheel-help";
   wheelHelp.setAttribute("aria-hidden", "true");
   wheelHelp.innerHTML = "<span>그래프 안에서 휠 확대·축소</span>"
-    + "<span>기본: " + (scrollZoomYOnly ? "Y축" : "X·Y축") + "</span>"
+    + "<span data-wheel-default>기본: " + (defaultWheelYOnly() ? "Y축" : "X·Y축") + "</span>"
     + "<span data-wheel-axis='x'><b>Shift + 휠</b>: X축만</span>"
     + "<span data-wheel-axis='y'><b>Ctrl + 휠</b>: Y축만</span>"
     + "<span data-wheel-stack>스택: Y축 바닥 고정</span>";
@@ -8755,6 +8758,7 @@ def _axis_controls_js(div_id: str, *, axis_locks: bool = False, scroll_zoom_y_on
   var wheelHelpTimer = 0;
   var wheelHelpX = wheelHelp.querySelector("[data-wheel-axis='x']");
   var wheelHelpY = wheelHelp.querySelector("[data-wheel-axis='y']");
+  var wheelHelpDefault = wheelHelp.querySelector("[data-wheel-default]");
   function hideWheelHelp() {
     window.clearTimeout(wheelHelpTimer);
     wheelHelpTimer = 0;
@@ -8762,6 +8766,7 @@ def _axis_controls_js(div_id: str, *, axis_locks: bool = False, scroll_zoom_y_on
     wheelHelp.setAttribute("aria-hidden", "true");
   }
   function showWheelHelp(axes) {
+    wheelHelpDefault.textContent = "기본: " + (defaultWheelYOnly() ? "Y축" : "X·Y축");
     wheelHelpX.classList.toggle("is-active", axes.indexOf("x") !== -1);
     wheelHelpY.classList.toggle("is-active", axes.indexOf("y") !== -1);
     wheelHelp.classList.toggle("is-stack", stackZoomEnabled());
@@ -8799,7 +8804,9 @@ def _axis_controls_js(div_id: str, *, axis_locks: bool = False, scroll_zoom_y_on
     + axisFields("x", "X축") + axisFields("y", "Y축")
     + "<p class='rist-axis-control-help'>숫자 표시 간격은 라벨이 있는 큰 눈금, 보조 눈금 간격은 그 사이의 작은 눈금을 조절합니다. 자동 간격을 사용하면 확대 범위에 맞춰 함께 조절됩니다."
     + (axisLocksEnabled ? " 축 고정은 마우스 확대·이동·Crop을 막습니다. 숫자를 직접 입력해 범위를 바꾸는 것은 가능합니다." : "") + "</p>"
-    + "<p class='rist-axis-control-help'>그래프 안에서 Shift + 휠은 X축만, Ctrl + 휠은 Y축만 확대·축소합니다. 키를 놓으면 기본 동작으로 돌아갑니다. 스택 모드의 Y축 바닥과 고정한 축은 유지됩니다.</p>"
+    + "<p class='rist-axis-control-help'>그래프 안에서 Shift + 휠은 X축만, Ctrl + 휠은 Y축만 확대·축소합니다. 키를 놓으면 "
+    + (scrollZoomYOnly ? "스택 모드에서는 X·Y축을 함께, 일반 모드에서는 Y축만" : "X·Y축을 함께")
+    + " 확대·축소합니다. 스택 모드의 Y축 바닥과 고정한 축은 유지됩니다.</p>"
     + "<p class='rist-axis-control-status' aria-live='polite'></p>"
     + "<div class='rist-axis-control-footer'><div class='rist-axis-control-view-actions' aria-label='그래프 보기 도구'>"
     + "<button type='button' data-axis-action='zoom-in' title='확대' aria-label='확대'><svg class='lucide lucide-zoom-in' aria-hidden='true' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='11' cy='11' r='8'/><path d='m21 21-4.3-4.3'/><path d='M11 8v6'/><path d='M8 11h6'/></svg></button>"
@@ -8889,6 +8896,12 @@ def _axis_controls_js(div_id: str, *, axis_locks: bool = False, scroll_zoom_y_on
     var meta = gd.layout && gd.layout.meta || {};
     return !!((meta.ristFtirStack && meta.ristFtirStack.enabled)
       || (meta.ristRamanStack && meta.ristRamanStack.enabled));
+  }
+
+  function defaultWheelYOnly() {
+    // Raman keeps its normal-view Y-only policy, but stacked views zoom both
+    // axes unless explicitly narrowed with Shift/Ctrl or an axis lock.
+    return scrollZoomYOnly && !stackZoomEnabled();
   }
 
   function scaledAxisRange(axisName, range, factor, anchor) {
@@ -9662,7 +9675,8 @@ def _axis_controls_js(div_id: str, *, axis_locks: bool = False, scroll_zoom_y_on
     };
   }
 
-  // Unmodified wheel retains Raman Y-only and FTIR's existing Plotly policy.
+  // Unmodified wheel zooms both axes in stack mode; normal Raman stays Y-only.
+  // FTIR retains its existing Plotly policy outside stack mode.
   // Explicit modifiers work in both normal/stack views, without latched key
   // state. Ctrl takes precedence if both are held. Preserve other OS shortcuts.
   var lastWheelAt = 0;
@@ -9700,7 +9714,7 @@ def _axis_controls_js(div_id: str, *, axis_locks: bool = False, scroll_zoom_y_on
     }
     var factor = Math.exp(Math.max(-0.5, Math.min(0.5, delta * 0.002)));
     var updates = {};
-    (selectedAxis ? [selectedAxis] : scrollZoomYOnly ? ["y"] : ["x", "y"]).forEach(function(axis) {
+    (selectedAxis ? [selectedAxis] : defaultWheelYOnly() ? ["y"] : ["x", "y"]).forEach(function(axis) {
       var name = axis + "axis";
       var range = currentRange(name);
       if (!range || axisLocked(name)) return;
