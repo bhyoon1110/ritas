@@ -1,4 +1,4 @@
-"""The spectrum cover is the reference; TEM adds a cover, not a replacement body."""
+"""Four factual traceability covers, with original bodies and edit routes retained."""
 from copy import deepcopy
 from zipfile import ZipFile
 from xml.etree import ElementTree as ET
@@ -24,19 +24,16 @@ def shape_map(root):
 
 
 @pytest.mark.parametrize('code', ['FTIR', 'RAMAN'])
-def test_reference_spectrum_cover_keeps_geometry_typography_and_direct_edit_names(tmp_path, code):
+def test_spectrum_cover_uses_six_traceability_panels(tmp_path, code):
     document = sample_document(code, tmp_path / 'absent.png')
     root = ET.fromstring(renderers._pptx_title_slide(document))
     shapes = shape_map(root)
-    for name, bounds, size in (
-            ('Report title', (762000,1219200,9753600,1219200),5000),
-            ('Report eyebrow', (762000,777240,7620000,365760),1700),
-            ('Report subtitle', (762000,2438400,9601200,609600),2000),
-            ('Meta card 0', (762000,3962400,2057400,822960),1250)):
-        xf = shapes[name].find('p:spPr/a:xfrm',NS)
-        assert tuple(int(xf.find(tag,NS).get(key)) for tag,key in
-                     [('a:off','x'),('a:off','y'),('a:ext','cx'),('a:ext','cy')]) == bounds
-        assert int(shapes[name].find('.//a:rPr',NS).get('sz')) == size
+    assert len([name for name in shapes if name.startswith('Trace panel ')])==6
+    for key in ('requestNumber','equipmentCode','measuredDate','reviewer','completionDate','recordId'):
+        assert 'Trace '+key in shapes
+    assert '미기재' in ''.join(shapes['Trace measuredDate'].itertext())
+    assert '미기재' in ''.join(shapes['Trace reviewer'].itertext())
+    assert '2026-10-15' in ''.join(shapes['Trace completionDate'].itertext())
 
 
 @pytest.mark.parametrize('template_available', [True,False])
@@ -87,10 +84,10 @@ def test_xrd_cover_uses_reference_cards_preserves_all_metadata_and_edit_targets(
     before=deepcopy((project,doc))
     deck=build_posco_deck(project,doc,lambda _:IMAGE)
     cover=deck.pages[0][0]
-    for name in ('Report title','Report eyebrow','Report subtitle'):
+    for name in ('Report title','Report eyebrow','Trace notice'):
         assert len(named(cover,name))==1
     assert len([s for s in cover.findall('p:cSld/p:spTree/p:sp',NS)
-                if s.find('p:nvSpPr/p:cNvPr',NS).get('name','').startswith('Meta card ')])==10
+                if s.find('p:nvSpPr/p:cNvPr',NS).get('name','').startswith('Trace panel ')])==6
     text=''.join(cover.itertext())
     for value in ('REQ-123','XRD-01','QA-OP','검증 의뢰기관','작성자','2026-10-01 ~ 2026-10-20'):
         assert value in text

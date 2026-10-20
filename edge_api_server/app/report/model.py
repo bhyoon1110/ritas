@@ -94,6 +94,7 @@ class ReportDocument:
     auxiliary_texts: dict[str, str] = field(default_factory=dict)
     llm_used: bool = False
     llm_error: str | None = None
+    traceability: dict[str, Any] = field(default_factory=dict)
 
     def section(self, section_id: str) -> ReportSection | None:
         for section in self.sections:
@@ -148,6 +149,7 @@ class ReportDocument:
             "experimentCode": self.experiment_code,
             "pk": dict(self.pk),
             "generatedAt": self.generated_at,
+            "traceability": dict(self.traceability),
             "llm": {"used": self.llm_used, "error": self.llm_error},
             "figures": [figure.to_dict() for figure in self.figures],
             "auxiliary": dict(self.auxiliary_texts),

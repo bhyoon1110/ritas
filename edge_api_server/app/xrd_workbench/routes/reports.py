@@ -78,6 +78,8 @@ def build_report_router(project_loader, source_loader, store):
     @router.put('/api/reports/{storage_id}')
     async def save_document(storage_id: str, request: Request):
         payload = await request.json()
+        from ..storage import report_actor
+        token = report_actor.set(getattr(getattr(request.state, 'auth_context', None), 'user_id', None))
         try:
             with store.lock:
                 project, _ = context(storage_id)
@@ -88,6 +90,8 @@ def build_report_router(project_loader, source_loader, store):
             raise HTTPException(409, str(exc)) from exc
         except (ValueError, TypeError, KeyError) as exc:
             raise HTTPException(422, str(exc)) from exc
+        finally:
+            report_actor.reset(token)
 
     @router.post('/api/reports/{storage_id}/email-draft')
     async def email_draft(storage_id: str, payload: dict):

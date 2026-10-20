@@ -138,6 +138,10 @@ def test_tem_revision_edits_visible_text_table_email_and_preserves_original(repo
             assert any(n.startswith("ppt/media/tem-review-") for n in revised.namelist())
     assert h.job.package_path.read_bytes() == before
     assert h.job.active_revisions == 0
+    with ZipFile(BytesIO(package)) as final:
+        audit = json.loads(final.read('report-review.json'))
+    assert audit['revisionOf'] == h.job.job_id
+    assert audit['savedBy'] is None and audit['savedAt']
     captured = {}
     def queue(**kwargs):
         captured.update(kwargs)

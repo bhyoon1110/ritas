@@ -17,7 +17,7 @@ from PIL import Image, ImageChops, ImageDraw, ImageFont, ImageOps, ImageStat
 
 from .docx_extract import extract_docx
 from .report_branding import brand_assets, brand_pictures
-from .report_cover import COVER_NAME, TEM_FIELDS, cover_shapes, shape_xml
+from .report_cover import COVER_NAME, shape_xml
 
 
 def _require_pptx():
@@ -1979,11 +1979,14 @@ def _add_report_cover(prs, data):
     metadata = data.get("report_metadata") or {}
     completion = metadata.get("completionDate") or str(data.get("generated_at") or date.today())[:10]
     values = dict(metadata, completionDate=completion)
-    values.setdefault("equipmentCode", "TEM-EDGE-01")
-    for spec in cover_shapes("TEM", metadata.get("title") or "TEM/STEM/EDS 분석 보고서",
-            "TEM · STEM · EDS · 코팅층 분석 결과를 통합 정리",
-            [(label, values.get(key, "")) for key, label in TEM_FIELDS],
-            prs.slide_width, prs.slide_height):
+    from .report_traceability import brief, cover_shapes as trace_cover
+    samples = [item.get("sample_name", "") for section in
+        ("tem_samples","stem_samples","eds_reports","coating_samples") for item in data.get(section,[])]
+    values.update(sampleNames=brief(samples), experimentCode=metadata.get("limsExperimentCode", ""),
+        sourceSummary="analysis-result.json · 원자료 경로 및 이미지·EDS 대응 목록",
+        revision="최초 생성본")
+    for spec in trace_cover("TEM", metadata.get("title") or "TEM/STEM/EDS 분석 보고서",
+            values, prs.slide_width, prs.slide_height):
         slide.shapes._spTree.insert_element_before(parse_xml(shape_xml(spec)), "p:extLst")
 
 

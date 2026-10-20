@@ -107,17 +107,22 @@ def _validate_changes(changes, document):
             raise ValueError("원본에 없는 표를 추가할 수 없습니다.")
         if any(len(text) > 4000 for text in texts):
             raise ValueError("문단 또는 표 셀은 4,000자 이하로 입력하세요.")
+        if item["sectionId"] == "report_traceability" and any(len(text) > 200 for text in texts):
+            raise ValueError("표지의 이력 정보는 항목당 200자 이하로 입력하세요. 상세 내용은 본문에 작성하세요.")
     if set(values["auxiliary"]) - {"email_subject", "email_body"} or any(len(v) > 4000 for v in values["auxiliary"].values()):
         raise ValueError("메일 문안이 올바르지 않습니다.")
     if len(json.dumps(values, ensure_ascii=False)) > 120000:
         raise ValueError("보고서 수정 내용이 너무 많습니다.")
     expanded = resolve_changes(values)
+    for section in expanded["sections"]:
+        if section["sectionId"] == "report_traceability" and any(len(cell) > 200 for row in section["rows"] for cell in row):
+            raise ValueError("공통 항목을 반영한 표지 정보는 항목당 200자 이하여야 합니다.")
     if len(json.dumps(expanded, ensure_ascii=False)) > 120000:
         raise ValueError("공통 항목을 반영한 보고서 수정 내용이 너무 많습니다.")
     return values
 
 
-def _write_revision(store, new_job, old_job, changes, project, settings, database):
+def _write_revision(store, new_job, old_job, changes, project, settings, database, actor_id=None):
     tmp_root = None
     try:
         tmp_root = Path(tempfile.mkdtemp(prefix="rist-preview-report-edit-"))
@@ -134,6 +139,8 @@ def _write_revision(store, new_job, old_job, changes, project, settings, databas
         shutil.copyfile(source / "processed/analysis-result.json", processed_dir / "analysis-result.json")
         document = _load_document(old_job)
         document.job_id = new_job.job_id
+        document.traceability = dict(document.traceability, revisionOf=old_job.job_id,
+            savedAt=new_job.created_at.isoformat(), savedBy=actor_id)
         document.generated_at = changes.get("completionDate", document.completion_date) or ""
         for figure in document.figures:
             figure.path = str(report_dir / "current_graph.png")
@@ -260,7 +267,8 @@ def install_report_editor(router, kind):
             store.update(job.job_id, message="수정본을 생성 중입니다. 원본은 유지됩니다.")
             new_job = store.create(filename=job.filename, owner_user_id=job.owner_user_id, parent_job_id=job.job_id)
             Thread(target=_write_revision, args=(store, new_job, job, deepcopy(values), project,
-                getattr(request.app.state, "settings", None), getattr(request.app.state, "database", None)), daemon=True).start()
+                getattr(request.app.state, "settings", None), getattr(request.app.state, "database", None),
+                getattr(getattr(request.state, "auth_context", None), "user_id", None)), daemon=True).start()
         except Exception:
             _REVISION_SLOT.release()
             if new_job is not None:

@@ -11,6 +11,10 @@ from ..core.notes import build_candidates, validate_settings, verify_note_text
 from ..core.phase_class import DEFAULT_TRACE_PERCENT, check_percent, evaluate_trace, phase_ref
 from ..core.review import BASE_FINGERPRINT
 
+TRACE_FIELDS = (('purpose', '분석 목적'), ('equipment_name', '장비명 / 모델'),
+    ('measured_date', '측정일 / 기간'), ('conditions', '핵심 측정 조건'),
+    ('preparation', '시료 전처리'), ('environment', '측정 환경'), ('reviewer', '검토자'))
+
 
 def new_document_with_defaults(project: dict) -> dict:
     """Start unclassified; only the analyst may apply a phase classification rule."""
@@ -59,6 +63,7 @@ def new_document(project: dict) -> dict:
         revision=0,
         analysis_revision=project.get('analysis_revision', 0),
         metadata={
+            **{key: '' for key,_ in TRACE_FIELDS},
             'title': 'XRD 분석 결과',
             'client': '',
             'requester': '',
@@ -341,6 +346,7 @@ def validate_document(project: dict, document: dict) -> dict:
         ('operator_id', 100),
         ('author', 80),
         ('date', 10),
+        *((key, 200) for key,_ in TRACE_FIELDS),
     ]:
         result['metadata'][key] = string(metadata.get(key, ''), limit, key)
     if not result['metadata']['title'].strip():

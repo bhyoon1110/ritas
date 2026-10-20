@@ -11,6 +11,9 @@ from zipfile import ZipFile
 from .editable import TRANSFER_FIELDS
 from .editor_variables import resolve_changes
 from ahn.report_cover import COVER_NAME, TEM_FIELDS
+from ahn.report_traceability import LABELS, factual, fitted_size
+
+READONLY_TRACE = {"sampleNames", "sourceSummary", "recordId", "revision", "experimentCode"}
 
 NS = {"p": "http://schemas.openxmlformats.org/presentationml/2006/main",
       "a": "http://schemas.openxmlformats.org/drawingml/2006/main",
@@ -75,7 +78,7 @@ def inspect_pptx(path):
                         if ref == "title":
                             title = _text(body)
                         continue
-                    if shape_name in {"Experiment banner title", "Report eyebrow"}:
+                    if shape_name in {"Experiment banner title", "Report eyebrow", "Trace notice"} or shape_name.startswith(("Trace panel ", "Trace heading ")) or shape_name.removeprefix("Trace ") in READONLY_TRACE:
                         continue
                 sid = f"slide-{index + 1}-shape-{identity.get('id')}"
                 section = dict(sectionId=sid, heading=f"{index + 1}페이지 · {identity.get('name', '내용')}",
@@ -94,6 +97,10 @@ def inspect_pptx(path):
                             left += widths[c]
                 elif body is not None:
                     value = _text(body)
+                    if is_cover and shape_name.startswith("Trace "):
+                        key = shape_name[6:]
+                        value = factual(value.partition(": ")[2])
+                        section["heading"] = "표지 · " + LABELS.get(key,key)
                     section["paragraphs"] = [value]
                     refs = [f"section/{sid}/paragraphs/0"]
                     if value.strip() and y < height * .2:
@@ -136,6 +143,11 @@ def _region(x, y, w, h, width, height, refs, empty):
 def _cover_ref(name):
     if name == "Report title":
         return "title"
+    if name.startswith("Trace "):
+        key = name[6:]
+        if key == "experimentCode": return "transfer/limsExperimentCode"
+        if key == "completionDate": return key
+        if key in {"requestNumber", "equipmentCode", "operatorId"}: return "transfer/"+key
     if name.startswith("Meta card "):
         index = int(name.rsplit(" ", 1)[1])
         if 0 <= index < len(TEM_FIELDS):
@@ -154,7 +166,8 @@ def _cover_values(path):
             ref = _cover_ref(shape.find("p:nvSpPr/p:cNvPr", NS).get("name", ""))
             if ref:
                 text = _text(shape.find("p:txBody", NS))
-                values[ref] = text if ref == "title" else text.partition("\n")[2]
+                name = shape.find("p:nvSpPr/p:cNvPr", NS).get("name", "")
+                values[ref] = text if ref == "title" else factual(text.partition(": " if name.startswith("Trace ") else "\n")[2])
     return values
 
 
@@ -196,11 +209,16 @@ def validate_changes(value, source):
                 len(a) != len(b) for a, b in zip(item["rows"], old["rows"])):
             raise ValueError("표의 행과 열은 유지하고 셀 내용만 수정하세요.")
         texts = item["paragraphs"] + [t for row in item["rows"] or [] for t in row]
+        if old["heading"].startswith("표지 · ") and any(len(t) > 200 for t in texts):
+            raise ValueError("표지의 이력 정보는 항목당 200자 이하로 입력하세요. 상세 내용은 본문에 작성하세요.")
         if any(len(t) > 4000 for t in texts):
             raise ValueError("문구와 표 셀은 4,000자 이하로 입력하세요.")
     if set(value["auxiliary"]) - {"email_subject", "email_body"} or any(len(t) > 4000 for t in value["auxiliary"].values()):
         raise ValueError("메일 문안은 항목당 4,000자 이하로 입력하세요.")
-    resolve_changes(value)  # Validate dates and variable references before queuing.
+    expanded = resolve_changes(value)  # Validate dates and variable references before queuing.
+    for item in expanded["sections"]:
+        if expected[item["sectionId"]]["heading"].startswith("표지 · ") and any(len(t)>200 for t in item["paragraphs"]):
+            raise ValueError("공통 항목을 반영한 표지 정보는 항목당 200자 이하여야 합니다.")
     return value
 
 
@@ -267,7 +285,12 @@ def revise_pptx(source, target, changes):
                     shape.find("p:blipFill/a:blip", NS).set(f"{{{NS['r']}}}embed", rid)
                     identity.set("descr", COATING_TAG + json.dumps(item["rows"], ensure_ascii=False))
                 elif kind == "text":
-                    _replace_text(shape.find("p:txBody", NS), item["paragraphs"][0])
+                    text = item["paragraphs"][0]
+                    name = identity.get("name", "")
+                    if root.find("p:cSld",NS).get("name") == COVER_NAME and name.startswith("Trace "):
+                        text = LABELS[name[6:]]+": "+(factual(text) or "미기재")
+                    _replace_text(shape.find("p:txBody", NS), text)
+                    if name.startswith("Trace "): _fit_trace(shape)
                 else:
                     table = shape.find("a:graphic/a:graphicData/a:tbl", NS)
                     for row, texts in zip(table.findall("a:tr", NS), item["rows"]):
@@ -286,12 +309,20 @@ def revise_pptx(source, target, changes):
                 if ref == "title":
                     text = values["title"]
                 elif ref:
-                    key, label = TEM_FIELDS[int(name.rsplit(" ", 1)[1])]
-                    text = label + "\n" + (values.get(key, "") if key == "completionDate" else values["transfer"][key])
+                    if name.startswith("Trace "):
+                        key, label, separator = name[6:], LABELS[name[6:]], ": "
+                    else:
+                        key, label = TEM_FIELDS[int(name.rsplit(" ", 1)[1])]
+                        separator = "\n"
+                    value = values.get(key, "") if key == "completionDate" else values["transfer"]["limsExperimentCode" if key == "experimentCode" else key]
+                    text = label + separator + (value or ("미기재" if name.startswith("Trace ") else ""))
                 else:
                     continue
                 _replace_text(shape.find("p:txBody", NS), text)
+                if name.startswith("Trace "): _fit_trace(shape)
             replacements[first_slide] = root
+            size = ET.fromstring(archive.read("ppt/presentation.xml")).find("p:sldSz",NS)
+            _reflow_cover(root,int(size.get("cx")),int(size.get("cy")))
         with ZipFile(target, "w") as output:
             for info in archive.infolist():
                 if info.filename in images:
@@ -310,3 +341,53 @@ def revise_pptx(source, target, changes):
                         shutil.copyfileobj(src, dst, 1024 * 1024)
             for name, path in images.items():
                 output.write(path, name)
+
+
+def _fit_trace(shape):
+    extent = shape.find("p:spPr/a:xfrm/a:ext",NS)
+    body = shape.find("p:txBody",NS)
+    size = fitted_size(_text(body),int(extent.get("cx")),int(extent.get("cy")),1100)
+    for run in body.findall(".//a:rPr",NS): run.set("sz",str(size))
+
+
+def _reflow_cover(root,width,height):
+    from ahn.report_traceability import cover_shapes
+    shapes = {s.find("p:nvSpPr/p:cNvPr",NS).get("name", ""): s
+        for s in root.findall("p:cSld/p:spTree/p:sp",NS)}
+    if "Trace requestNumber" not in shapes: return
+    values = {name[6:]: factual(_text(s.find("p:txBody",NS)).partition(": ")[2])
+        for name,s in shapes.items() if name.startswith("Trace ") and name[6:] in LABELS}
+    title = _text(shapes["Report title"].find("p:txBody",NS))
+    for spec in cover_shapes("TEM",title,values,width,height):
+        shape = shapes.get(spec["name"])
+        if shape is None: continue
+        xfrm = shape.find("p:spPr/a:xfrm",NS)
+        xfrm.find("a:off",NS).attrib.update(x=str(spec["x"]),y=str(spec["y"]))
+        xfrm.find("a:ext",NS).attrib.update(cx=str(spec["cx"]),cy=str(spec["cy"]))
+        for run in shape.findall(".//a:rPr",NS): run.set("sz",str(spec["font_size"]))
+
+
+def stamp_record(path, report_id, parent_id=None):
+    """Server-owned identifiers cannot be edited through the cover editor."""
+    with tempfile.TemporaryDirectory(prefix="rist-tem-record-") as temp:
+        target = Path(temp)/"report.pptx"
+        with ZipFile(path) as source, ZipFile(target,"w") as output:
+            first = _slides(source)[0]
+            for info in source.infolist():
+                if info.filename == first:
+                    root = ET.fromstring(source.read(info))
+                    if root.find("p:cSld",NS).get("name") == COVER_NAME:
+                        for shape in root.findall("p:cSld/p:spTree/p:sp",NS):
+                            name = shape.find("p:nvSpPr/p:cNvPr",NS).get("name", "")
+                            values = {"recordId": report_id, "revision": "수정본 · 이전 작업 "+parent_id if parent_id else "최초 생성본"}
+                            key = name.removeprefix("Trace ")
+                            if key in values:
+                                _replace_text(shape.find("p:txBody",NS), LABELS[key]+": "+values[key])
+                                _fit_trace(shape)
+                        size = ET.fromstring(source.read("ppt/presentation.xml")).find("p:sldSz",NS)
+                        _reflow_cover(root,int(size.get("cx")),int(size.get("cy")))
+                    output.writestr(info,ET.tostring(root,encoding="utf-8",xml_declaration=True))
+                else:
+                    with source.open(info) as src, output.open(info,"w") as dst:
+                        shutil.copyfileobj(src,dst,1024*1024)
+        shutil.copyfile(target,path)

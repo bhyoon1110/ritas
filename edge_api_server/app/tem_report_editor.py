@@ -1,5 +1,6 @@
 """Author-owned TEM review, immutable PPT revisions and final-package delivery."""
 from copy import deepcopy
+from datetime import datetime, timezone
 import json
 from pathlib import Path
 import shutil
@@ -37,7 +38,7 @@ def _state(job):
     return json.loads(_state_path(job).read_text(encoding="utf-8"))
 
 
-def _write_metadata(job, model):
+def _write_metadata(job, model, actor_id=None):
     model = deepcopy(model)
     actual, _, _ = tem_editable.inspect_pptx(job.pptx_path)
     by_id = {s["sectionId"]: s for s in actual}
@@ -48,6 +49,7 @@ def _write_metadata(job, model):
     atomic_write_json(_state_path(job), model)
     atomic_write_json(job.output_dir / "report-review.json", {
         "reportId": job.job_id, "revisionOf": job.parent_job_id, "title": value["title"],
+        "savedAt": datetime.now(timezone.utc).isoformat(), "savedBy": actor_id,
         "completionDate": value["completionDate"], "transfer": value["transfer"],
         "email": value["auxiliary"], "sections": value["sections"],
         "note": "분석자가 검토한 보고서 표시값입니다. 원본 분석 데이터는 analysis-result.json에 보존됩니다.",
@@ -59,8 +61,9 @@ def _write_metadata(job, model):
 
 
 def prepare_review(job, manifest):
+    tem_editable.stamp_record(job.pptx_path,job.job_id,job.parent_job_id)
     model = tem_editable.initial_model(job.pptx_path, manifest.get("summary") or {})
-    _write_metadata(job, model)
+    _write_metadata(job, model, job.owner_user_id)
     try:
         convert_pptx_to_pdf(job.pptx_path, job.output_dir / "tem-report.pdf")
     except Exception:
@@ -91,7 +94,7 @@ def authorized_job(request, job_id, *, ready=True):
     return job
 
 
-def _revision(new_job, old_job, changes):
+def _revision(new_job, old_job, changes, actor_id=None):
     ahn = _ahn()
     with ahn._ahn_report_jobs_lock:
         new_job.active_revisions += 1
@@ -107,7 +110,8 @@ def _revision(new_job, old_job, changes):
                 target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(source, target)
             tem_editable.revise_pptx(old_job.pptx_path, new_job.pptx_path, changes)
-            _write_metadata(new_job, changes)
+            tem_editable.stamp_record(new_job.pptx_path,new_job.job_id,old_job.job_id)
+            _write_metadata(new_job, changes, actor_id)
             manifest = deepcopy(old_job.manifest or {})
             manifest.update(pptx="tem-report.pptx", revisionOf=old_job.job_id)
             atomic_write_json(new_job.manifest_path, manifest)
@@ -243,7 +247,8 @@ document.getElementById('next').onclick=function(){if(page<count-1){page++;show(
             new_job.parent_job_id = job.job_id
             new_job.history_title = (job.history_title + " (수정본)")[:120]
             ahn.tem_history.save(new_job)
-            ahn._ahn_report_executor.submit(_revision, new_job, job, deepcopy(values))
+            ahn._ahn_report_executor.submit(_revision, new_job, job, deepcopy(values),
+                getattr(getattr(request.state, "auth_context", None), "user_id", None))
         except Exception:
             with ahn._ahn_report_jobs_lock:
                 job.active_revisions -= 1

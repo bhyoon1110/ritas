@@ -43,6 +43,8 @@ def apply_transfer(document, transfer, project):
 
 def ensure_editable_fields(document, payload, project, transfer):
     apply_transfer(document, transfer, project)
+    from .traceability import ensure_fields
+    ensure_fields(document, payload)
     section = document.section("experiment_conditions")
     rows = deepcopy(section.table.rows) if section and section.table else []
     is_raman = project in {"RAMAN", "RIN", "RIN-RAMAN"}
@@ -50,7 +52,8 @@ def ensure_editable_fields(document, payload, project, transfer):
         rows = _raman_experiment_condition_rows(payload)
     # Explicit form values win over raw metadata for the same target/label.
     ordered = {}
-    for target, label, value in rows:
+    for row in rows:
+        target, label, value = (["공통", *row] if len(row) == 2 else row)
         ordered[(target, label)] = value
     explicit = payload.get("reportConditionFields")
     if isinstance(explicit, list) and not is_raman:
@@ -60,7 +63,7 @@ def ensure_editable_fields(document, payload, project, transfer):
                 if target == "공통":
                     ordered = {key: value for key, value in ordered.items() if key[1] != label}
                 ordered[(target, label)] = str(row.get("value") or "")
-    labels = list(_FTIR_CONDITION_ORDER if project == "FT-IR" else _RAMAN_CONDITION_ORDER) + ["실험환경/비고"]
+    labels = list(_FTIR_CONDITION_ORDER if project in {"FT-IR", "FTIR", "IR"} else _RAMAN_CONDITION_ORDER) + ["실험환경/비고"]
     for label in labels:
         if not any(key[1] == label for key in ordered):
             ordered[("공통", label)] = ""
@@ -91,7 +94,7 @@ def document_from_dict(value, *, image_path):
                           figures=[ReportFigure(f["figureId"], f["title"], str(image_path), f.get("captionSlot", "caption"))
                                    for f in value.get("figures", [])],
                           auxiliary_texts=value.get("auxiliary", {}), llm_used=value.get("llm", {}).get("used", False),
-                          llm_error=value.get("llm", {}).get("error"))
+                          llm_error=value.get("llm", {}).get("error"), traceability=value.get("traceability", {}))
 
 
 def editor_document(document):

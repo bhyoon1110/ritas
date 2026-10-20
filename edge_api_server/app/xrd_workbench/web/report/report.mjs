@@ -122,7 +122,7 @@ function linkedField(target) {
   else {setStep('report'); showTab(target.tab);}
   if (reportMain.dataset.workView === 'preview') setWorkView('editor');
   let element;
-  const overviewIds={title:'title',client:'client',requester:'requester',received_date:'receivedDate',analysis_period:'analysisPeriod',report_number:'reportNumber',author:'author',date:'reportDate',summary:'summary',transfer:'ristEquipment'};
+  const overviewIds={title:'title',client:'client',requester:'requester',received_date:'receivedDate',analysis_period:'analysisPeriod',report_number:'reportNumber',author:'author',date:'reportDate',summary:'summary',transfer:'ristEquipment',purpose:'trace-purpose',equipment_name:'trace-equipment_name',measured_date:'trace-measured_date',conditions:'trace-conditions',preparation:'trace-preparation',environment:'trace-environment',reviewer:'trace-reviewer'};
   if (target.tab === 'overview' && overviewIds[target.field]) element=$(overviewIds[target.field]);
   else if (target.tab === 'figure') element=$('figureForm').querySelector('input,select,textarea');
   else if (target.tab === 'classes') element=$('classForm').querySelector('input,select,textarea');
@@ -257,6 +257,10 @@ function render() {
     ['reportDate', 'date'],
   ])
     $(id).value = doc.metadata[key] ?? '';
+  for (const key of ['purpose','equipment_name','measured_date','conditions','preparation','environment','reviewer']) {
+    const input = $('trace-' + key);
+    if (input) input.value = doc.metadata[key] || '';
+  }
   $('summary').value = doc.summary;
   $('provider').value = doc.llm.provider;
   $('baseUrl').value = doc.llm.base_url;

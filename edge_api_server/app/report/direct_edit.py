@@ -44,6 +44,8 @@ def edit_pages(document, pptx_path):
             bindings = {"Footer": ["transfer/requestNumber", "completionDate"]}
             if kind == "title":
                 bindings["Report title"] = ["title"]
+                from .traceability import values_and_refs
+                bindings.update({"Trace " + key: refs for key,refs in values_and_refs(document)[1].items()})
                 labels = {label: "transfer/" + key for key, label in TRANSFER_FIELDS.items()}
                 labels["완료일"] = "completionDate"
                 for n, (label, _) in enumerate(renderers._document_metadata(document)):

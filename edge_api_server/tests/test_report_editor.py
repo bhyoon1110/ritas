@@ -117,6 +117,10 @@ def test_blank_fields_edit_revision_and_recipient_integrity(prepared, monkeypatc
     assert registered[0]['request_number'] == 'REQ-REVIEW'
     assert registered[0]['report_options']['revisionOf'] == h.job.job_id
     assert h.job.package_path.read_bytes() == before
+    trace = json.loads((h.store.get(revised['jobId']).tmp_root / 'job/report/report.json').read_text())['traceability']
+    assert trace['revisionOf'] == h.job.job_id
+    assert trace['savedBy'] is None  # Auth disabled: never substitute owner as the actual editor.
+    assert trace['savedAt']
     saved = h.client.get(h.prefix + '/' + revised['jobId'] + '/editor-data').json()['document']
     assert saved['transfer'] == edits['transfer'] and saved['title'] == edits['title']
     assert saved['auxiliary'] == edits['auxiliary']  # Never regenerate or shorten an edited AI draft.

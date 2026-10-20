@@ -29,6 +29,7 @@ import shutil
 import tempfile
 import threading
 import uuid
+from contextvars import ContextVar
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Protocol, runtime_checkable
@@ -44,6 +45,7 @@ EXAMPLE_ID = 'example'
 EXAMPLE_EXTENSIONS = ('.txt', '.pdf', '.png', '.jpg', '.jpeg')
 _UPLOAD_ID = re.compile('[0-9a-f]{32}')
 _PRESET_ID = re.compile('[0-9a-f]{32}')
+report_actor = ContextVar('xrd_report_actor', default=None)
 
 
 def _is_upload_id(storage_id: str) -> bool:
@@ -388,6 +390,16 @@ class ReportStore(_RevisionedStore):
             )
             carry_review_flags(current, clean)
             clean['revision'] = actual + 1
+            audit = {'saved_at': datetime.now(timezone.utc).isoformat(),
+                     'saved_by': report_actor.get(), 'previous_revision': actual}
+            history_dir = self.path(storage_id).parent / 'history'
+            if current:
+                history = history_dir / f'revision-{actual}.json'
+                if not history.exists():
+                    _write_json_atomic(history, current)
+            # Keep server identity separate from client-editable/draft documents.
+            # Only a revision present in document.json is a committed save.
+            _write_json_atomic(history_dir / f'revision-{actual+1}.audit.json', audit)
             _write_json_atomic(self.path(storage_id), clean)
             return clean
 

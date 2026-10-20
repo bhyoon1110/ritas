@@ -1255,7 +1255,7 @@ def _pptx_slide_payloads(document: ReportDocument) -> list[dict[str, object]]:
     # separately when those cards omit anything, including review caveats.
     slides.extend(_pptx_llm_detail_payloads(document))
 
-    summarized_sections = {"summary", "key_findings", "caption", *_INSIGHT_SECTION_IDS}
+    summarized_sections = {"summary", "key_findings", "caption", "report_traceability", *_INSIGHT_SECTION_IDS}
     for section in document.sections:
         if section.section_id in summarized_sections or (section is common_conditions and section.table is not None):
             continue
@@ -1698,10 +1698,11 @@ def _pptx_footer_shape(document: ReportDocument, shape_id: int) -> str:
 def _pptx_title_slide(document: ReportDocument) -> str:
     meta = _document_metadata(document)
     if uses_posco_template(document.experiment_code):
-        from ahn.report_cover import cover_shapes
+        from ahn.report_traceability import cover_shapes
+        from .traceability import values_and_refs
         experiment = "Raman" if document.experiment_code.strip().upper() in {"RAMAN", "RIN", "RIN-RAMAN"} else "FT-IR"
         shapes = [_pptx_shape(**spec) for spec in cover_shapes(
-            experiment, document.title, "피크 분석 · 그래프 화면 · raw 데이터를 통합 정리", meta)]
+            experiment, document.title, values_and_refs(document)[0])]
         return _pptx_frame(shapes, document=document)
     shapes = [
         _pptx_shape(2, "Left accent", x=0, y=0, cx=365760, cy=PPTX_SLIDE_H, fill=PPTX_BLUE, line=None),

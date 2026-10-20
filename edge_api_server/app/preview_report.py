@@ -400,6 +400,7 @@ def build_preview_report_package(
     settings: Any | None = None,
     database: Database | None = None,
     progress: Callable[[str, int, str], None] | None = None,
+    report_id: str | None = None,
 ) -> tuple[Path, Path]:
     tmp_root = Path(tempfile.mkdtemp(prefix="rist-preview-report-"))
     try:
@@ -423,7 +424,7 @@ def build_preview_report_package(
         (report_dir / "current_graph.png").write_bytes(figure_image)
 
         job = {
-            "job_id": "web-preview-report",
+            "job_id": report_id or "web-preview-report",
             "request_number": "" if _is_preview_placeholder(request_number) else request_number,
             "experiment_code": experiment_code,
             "equipment_code": _preview_equipment_code(
@@ -444,6 +445,12 @@ def build_preview_report_package(
         from .report.editable import ensure_editable_fields, transfer_values
         transfer = transfer_values(analysis_payload, request_number, equipment_code, operator_id)
         ensure_editable_fields(document, analysis_payload, experiment_code, transfer)
+        document.traceability = {
+            "samples": [series.label for series in raw_series],
+            "sourceSummary": "raw_data.xlsx · 보고서에 사용한 스펙트럼 (원본 파일과 구분)",
+            "analysisSnapshot": "processed/analysis-result.json",
+            "createdAt": job["_generated_at"],
+        }
         spec = builder.llm_slots(
             job,
             [{"relativePath": analysis_path.name, "data": analysis_payload}],
@@ -593,6 +600,7 @@ def run_preview_report_job(
             operator_id=operator_id,
             settings=settings,
             progress=progress,
+            report_id=job_id,
         )
         package = register_generated_report_package(
             settings=settings,

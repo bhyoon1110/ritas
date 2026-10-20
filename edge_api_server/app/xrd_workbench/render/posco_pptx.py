@@ -15,7 +15,8 @@ from zipfile import ZipFile, ZIP_DEFLATED
 
 from lxml import etree as E
 from PIL import Image
-from ahn.report_cover import cover_shapes, shape_xml
+from ahn.report_cover import shape_xml
+from ahn.report_traceability import cover_shapes, brief
 
 from ..config import load_settings
 from ..core.figure import build_plan
@@ -490,46 +491,36 @@ def build_posco_deck(project, document, resolve_source, *, pages=None, link_base
         source_images[key] = data
         return data
 
-    # Only the cover follows FTIR/Raman; the supplied XRD body layouts stay intact.
+    # Common traceability cover; all supplied XRD body layouts stay intact.
     cover = deck.slide(blank=True, kind='cover')
     for shape in list(cover.find('p:cSld/p:spTree', NS)):
         if E.QName(shape).localname not in ('nvGrpSpPr', 'grpSpPr'):
             remove(shape)
     meta = document['metadata']
-    fields = [('report_number','의뢰번호'),('experiment_code','실험코드'),
-              ('equipment_code','실험장비'),('operator_id','실험자'),('date','완료일'),
-              ('client','의뢰기관'),('requester','의뢰자'),('received_date','접수일'),
-              ('analysis_period','분석 기간'),('author','작성자')]
+    fields = dict(requestNumber='report_number',experimentCode='experiment_code',
+        equipmentCode='equipment_code',operatorId='operator_id',completionDate='date',
+        client='client',requester='requester',receivedDate='received_date',analysisPeriod='analysis_period',
+        analyst='author',reviewer='reviewer',purpose='purpose',equipmentName='equipment_name',
+        measuredDate='measured_date',conditions='conditions',preparation='preparation',environment='environment')
+    values = {key:meta.get(field,'') for key,field in fields.items()}
+    included = [entry for entry in document['samples'] if entry['included']]
+    values.update(sampleNames=brief(e['display_name'] for e in included),
+        sourceSummary=brief(r['filename'] for e in included for r in samples[e['sample_id']]['sources']),
+        recordId=project.get('storage_id') or project['id'],
+        revision=f"보고서 v{document['revision']} · 분석 검토 v{document.get('analysis_revision',0)}")
     size = E.fromstring(deck.files['ppt/presentation.xml']).find('p:sldSz', NS)
-    prepared = []
-    for columns in (4, 2):
-        prepared = []
-        for spec in cover_shapes('XRD', meta['title'],
-            '상 동정 · WPPF 정량 · 측정 데이터를 통합 정리',
-            [(label,meta.get(key,'')) for key,label in fields], int(size.get('cx')),int(size.get('cy')), columns=columns):
-            shape = E.fromstring(shape_xml(spec))
-            # Resolve wrapping in the scene; expand to two columns for long values
-            # instead of truncating a request number or rejecting valid metadata.
-            inset = spec['inset']
-            point_size = spec['font_size'] / 100 * .9
-            if not set_text(shape, '\n'.join(spec['text']), size=point_size,
-                    minimum=min(point_size, 7), bold=spec.get('bold',False), color=spec['color'],
-                    dimensions=((spec['cx']-2*inset)/MM,(spec['cy']-2*inset)/MM)):
-                break
-            props = shape.find('p:txBody/a:bodyPr',NS)
-            for attr in ('lIns','rIns','tIns','bIns'): props.set(attr,str(inset))
-            prepared.append((spec,shape))
-        else:
-            break
-    if len(prepared) != 4 + len(fields):
-        raise ValueError('표지 항목을 표시할 공간이 부족합니다. 내용을 줄여 주세요.')
-    for spec,shape in prepared:
+    for spec in cover_shapes('XRD',meta['title'],values,int(size.get('cx')),int(size.get('cy'))):
+        shape = E.fromstring(shape_xml(spec))
+        point_size = math.ceil(spec['font_size']/50)*.5
+        if not set_text(shape,'\n'.join(spec['text']),size=point_size,minimum=5,
+                bold=spec.get('bold',False),color=spec['color'],dimensions=(spec['cx']/MM,spec['cy']/MM)):
+            raise ValueError(f'표지 항목({spec["name"]})이 너무 깁니다. 내용을 줄이고 상세 내용은 본문에 작성하세요.')
         name = 'Title' if spec['name']=='Experiment banner title' else spec['name']
         deck.append(cover,shape,name)
         if name=='Report title':
             deck.mark(shape,dict(tab='overview',field='title'))
-        elif name.startswith('Meta card '):
-            key = fields[int(name.rsplit(' ',1)[1])][0]
+        elif name.startswith('Trace ') and name[6:] in fields:
+            key = fields[name[6:]]
             deck.mark(shape,dict(tab='overview',field='transfer' if key in
                 {'experiment_code','equipment_code','operator_id'} else key))
 
