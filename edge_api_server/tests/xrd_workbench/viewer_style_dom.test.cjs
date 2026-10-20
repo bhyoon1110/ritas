@@ -31,6 +31,41 @@ function setup(t, program, saved={}, project=fixture, online=false, options={}) 
   return {w,d,renders,exports,downloads,events,requests,setSize:async size=>{d.getElementById('markerSize').value=String(size);d.getElementById('markerSize').dispatchEvent(new w.Event('input'));await flush();}};
 }
 for(const [mode, program] of Object.entries({native,chrome49:legacy})) {
+  test(`${mode}: delivered HTML hides review warnings after redraw while authoring retains them`,async t=>{
+    const project=JSON.parse(JSON.stringify(fixture));
+    project.warnings=['2_상매칭_Report.pdf: 연결된 시료명을 확인하세요.'];
+    project.samples[0].warnings=['2_상매칭_Report.pdf: 관측 피크표 확인 필요'];
+    const invalid={...JSON.parse(JSON.stringify(project.samples[0])),id:'invalid',name:'단위 미확인'};
+    invalid.measurement.intensity_unit=null;
+    project.samples.push(invalid);
+    const before=JSON.stringify(project), plots=[];
+    for(const online of [false,true]){
+      const ui=setup(t,program,{},project,online,{url:'http://rist.test/?project=store'});
+      await flush();
+      const check=()=>{
+        assert.equal(ui.d.getElementById('warningSection').hidden,!online);
+        assert.equal(ui.d.getElementById('warnings').hidden,!online);
+        if(online){
+          assert.match(ui.d.getElementById('warningList').textContent,/2_상매칭_Report\.pdf/);
+          assert.match(ui.d.getElementById('warningList').textContent,/강도 단위 미확인/);
+          assert.match(ui.d.getElementById('warnings').textContent,/확인 사항 3/);
+        }else{
+          assert.equal(ui.d.getElementById('warningList').textContent,'');
+          assert.equal(ui.d.getElementById('warnings').textContent,'');
+        }
+        // Display policy must not change scientific exclusion rules or the underlying warnings.
+        assert.deepEqual(ui.renders.at(-1).data.filter(t=>t.meta.role==='measurement').map(t=>t.meta.sampleId),['a']);
+      };
+      check();
+      ui.d.getElementById('originStyle').click();await flush();check();
+      ui.events.plotly_relayout({'xaxis.range':[12,25]});await flush();check();
+      ui.d.getElementById('markers').click();await flush();check();
+      await ui.setSize(14);check(); // draw(false) must not resurrect the footer button
+      plots.push(ui.renders.at(-1).data);
+    }
+    assert.deepEqual(plots[0],plots[1]);
+    assert.equal(JSON.stringify(project),before);
+  });
   test(`${mode}: report links select exact sample or all samples before first render, including saved views`,async t=>{
     const project=JSON.parse(JSON.stringify(fixture));
     project.samples.push({...JSON.parse(JSON.stringify(project.samples[0])),id:'b'});

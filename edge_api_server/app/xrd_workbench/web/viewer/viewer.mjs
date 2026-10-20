@@ -190,7 +190,9 @@ function renderPanels() {
       })
       .join('') ||
     '<div class="empty">상 목록이 없습니다. 상매칭 Report를 연결하세요.<br>PDF에 없는 상·피크는 생성하지 않습니다.</div>';
-  const warnings = viewWarnings(project, figure.warnings);
+  // Review notes belong to the authoring app, not the delivered HTML viewer.
+  // Keep the project facts and the model's measurement exclusion rules unchanged.
+  const warnings = offline ? [] : viewWarnings(project, figure.warnings);
   $('warningSection').hidden = !warnings.length;
   $('warningList').innerHTML = warnings
     .map((w) => `<div class="sourceWarning">${escapeHTML(w)}</div>`)
@@ -221,10 +223,9 @@ async function draw(refreshPanel = true) {
   message(
     `${project.samples.length} 시료 중 ${count} 표시 · ${points.toLocaleString()} 측정점 · 원자료 유지${overflow ? ' · 기준 피크 ' + figure.barRows + '행: 휠로 스크롤' : ''}`,
   );
-  const warnings = viewWarnings(project, figure.warnings);
-  // The saved viewer HTML does not show the 확인 사항 list (the author checks them in the app).
+  const warnings = offline ? [] : viewWarnings(project, figure.warnings);
   $('warnings').hidden = !warnings.length;
-  $('warnings').textContent = `확인 사항 ${warnings.length}`;
+  $('warnings').textContent = warnings.length ? `확인 사항 ${warnings.length}` : '';
 }
 
 let viewerLinkDone = false;
