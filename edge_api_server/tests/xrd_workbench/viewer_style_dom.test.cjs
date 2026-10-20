@@ -16,20 +16,56 @@ const fixture = {
     observed_peaks:[{no:1,x:20,x_raw:'20',height_raw:'9',page:1}],
     reference_peaks:[{phase:'Phase A',x:20,intensity:100,intensity_raw:'100',hkl_raw:'100',page:1}],sources:[]}],sources:[],warnings:[],
 };
-function setup(t, program, saved={}, project=fixture, online=false) {
-  const dom=new JSDOM(fs.readFileSync(path.join(root,'index.html'),'utf8'),{url:'http://rist.test/viewer.html',runScripts:'outside-only',pretendToBeVisual:true});
+function setup(t, program, saved={}, project=fixture, online=false, options={}) {
+  const dom=new JSDOM(fs.readFileSync(path.join(root,'index.html'),'utf8'),{url:options.url || 'http://rist.test/viewer.html',runScripts:'outside-only',pretendToBeVisual:true});
   t.after(()=>dom.window.close());
   const w=dom.window,d=w.document, renders=[],exports=[],downloads=[],events={},requests=[];
   if (!online) w.XRD_EMBEDDED={project,state:{projectId:project.id,...saved},snapshotId:'qa'};
   w.Plotly={newPlot:async node=>{node.on=(key,callback)=>{events[key]=callback;};},react:async(node,data,layout)=>{renders.push(JSON.parse(JSON.stringify({data,layout})));},
     toImage:async figure=>{exports.push(JSON.parse(JSON.stringify(figure)));return 'data:image/png;base64,QA';}};
-  w.fetch=async url=>{requests.push(url); return {blob:async()=>new w.Blob(['QA'])};};
+  w.fetch=async url=>{requests.push(url); return {ok:true,headers:{get:()=>null},json:async()=>project,blob:async()=>new w.Blob(['QA'])};};
+  if(options.local)w.localStorage.setItem(`xrd-viewer-v1-${project.id}-analysis-0${online?'':'-snapshot-qa'}`,JSON.stringify({projectId:project.id,...options.local}));
   w.URL.createObjectURL=()=> 'blob:qa';w.URL.revokeObjectURL=()=>{};
   w.HTMLAnchorElement.prototype.click=function(){downloads.push(this.download);};
   w.eval(program);
   return {w,d,renders,exports,downloads,events,requests,setSize:async size=>{d.getElementById('markerSize').value=String(size);d.getElementById('markerSize').dispatchEvent(new w.Event('input'));await flush();}};
 }
 for(const [mode, program] of Object.entries({native,chrome49:legacy})) {
+  test(`${mode}: report links select exact sample or all samples before first render, including saved views`,async t=>{
+    const project=JSON.parse(JSON.stringify(fixture));
+    project.samples.push({...JSON.parse(JSON.stringify(project.samples[0])),id:'b'});
+    const saved={viewMode:'single',active:'a',visible:['a'],xRange:[10,11]};
+    for(const online of [false,true]){
+      const ui=setup(t,program,{},project,online,{
+        url:'http://rist.test/?project=store&step=viewer#view=single&sample=b',local:saved});
+      await flush();
+      const changeHash=async value=>{
+        const event=new Promise(resolve=>ui.w.addEventListener('hashchange',resolve,{once:true}));
+        ui.w.location.hash=value;await event;await flush();
+      };
+      const samples=()=>ui.renders.at(-1).data.filter(t=>t.meta.role==='measurement').map(t=>t.meta.sampleId);
+      assert.deepEqual(ui.renders[0].data.filter(t=>t.meta.role==='measurement').map(t=>t.meta.sampleId),['b']);
+      assert.equal(ui.d.getElementById('singlePicker').hidden,true);
+      assert.equal(ui.d.getElementById('viewSingle').classList.contains('active'),true);
+      assert.notDeepEqual(ui.renders[0].layout.xaxis.range,[10,11]);
+      await changeHash('view=multi');
+      assert.deepEqual(samples(),['a','b']);
+      ui.d.getElementById('viewSingle').click();await flush();
+      ui.d.querySelector('[data-pick="a"]').click();await flush();
+      ui.d.getElementById('originStyle').click();await flush();
+      assert.deepEqual(samples(),['a']); // normal interactions aren't forced back to the URL
+      await changeHash('view=single&sample=b');
+      assert.deepEqual(samples(),['b']);
+      await changeHash('view=single&sample=removed');
+      assert.match(ui.d.getElementById('status').textContent,/링크의 시료를 찾을 수 없습니다/);
+      assert.deepEqual(samples(),['b']);
+    }
+    const multi=setup(t,program,{},project,false,{url:'http://rist.test/#view=multi',local:saved});
+    await flush();
+    assert.deepEqual(multi.renders[0].data.filter(t=>t.meta.role==='measurement').map(t=>t.meta.sampleId),['a','b']);
+    const old=setup(t,program,{},project,false,{local:saved});await flush();
+    assert.deepEqual(old.renders[0].data.filter(t=>t.meta.role==='measurement').map(t=>t.meta.sampleId),['a']);
+  });
   test(`${mode}: a new workspace starts empty without loading demo data`,async t=>{
     const ui=setup(t,program,{},fixture,true); await flush();
     assert.equal(ui.d.getElementById('emptyState').hidden,false);

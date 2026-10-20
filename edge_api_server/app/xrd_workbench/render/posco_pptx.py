@@ -24,7 +24,7 @@ from ..core.parsing.values import central
 from ..core.report import validate_document
 from .figure import render_panel_png
 from .fonts import wrap_lines
-from .items import link_target
+from .items import link_target, viewer_target
 from .layout import build_pages, source_links
 from .sample_page import quantity_status
 from .summary_layout import classifier, notice, summary_pages
@@ -549,8 +549,7 @@ def build_posco_deck(project, document, resolve_source, *, pages=None, link_base
         if summary_image:
             deck.picture(slide,summary_image,(10,36,124,90-extra_h),'시료 비교 그래프',edit=dict(tab='figure'))
         else: deck.text(slide,'비교 그래프를 보고서에 포함하지 않았습니다.',(12,70,120,16),size=10)
-        viewer_href = (f'{link_base.rstrip("/")}/?project={storage_id}&step=viewer'
-                       if link_base and storage_id else '뷰어.html')
+        viewer_href = viewer_target(link_base=link_base, storage_id=storage_id)
         # include_sources=False is also used for detached, non-linked report output.
         if include_sources:
             deck.frame(slide,(47,130-extra_h,53,8),name='Viewer link frame')
@@ -605,6 +604,16 @@ def build_posco_deck(project, document, resolve_source, *, pages=None, link_base
                 entry=batch[index] if index<len(batch) else None
                 links=source_links(samples[entry['sample_id']]) if entry and include_sources else []
                 by_label={link['label']:link for link in links}
+                left=12.7+129.5*index
+                if entry and include_sources:
+                    bounds=(10.5,168,52,8) if quantitative else (left,162.4,48,8)
+                    frame=deck.append(slide,deepcopy(link_frames[index*3]),'Sample viewer link frame')
+                    place(frame,bounds)
+                    shape=deck.text(slide,'그래프(확대, 축소) 확인하기 ↗',bounds,size=8,color='0A7489',
+                                    name='Sample viewer link',
+                                    href=viewer_target(entry['sample_id'],link_base,storage_id))
+                    shape.find('p:txBody/a:bodyPr',NS).set('anchor','ctr')
+                    shape.find('p:txBody/a:p/a:pPr',NS).set('algn','ctr')
                 for j,label in enumerate(('상매칭 Report','정량(WPPF) Report','Measured Data (TXT)')):
                     k=index*3+j;shape=named(slide,link_names[k])[0]
                     if label not in by_label:
@@ -613,10 +622,9 @@ def build_posco_deck(project, document, resolve_source, *, pages=None, link_base
                     caption={'상매칭 Report':'상매칭 Report 열기','정량(WPPF) Report':'WPPF Report 열기',
                              'Measured Data (TXT)':'측정 데이터(TXT) 열기'}[label]
                     if quantitative:
-                        bounds=((23,168,51,8),(189,168,53,8),(83,168,61,8))[j]
+                        bounds=((65,168,43,8),(189,168,53,8),(111,168,48,8))[j]
                     else:
-                        left=12.7+129.5*index
-                        bounds=((left,162.4,55,8),(left+45,173,48,7),(left+62,162.4,58,8))[j]
+                        bounds=((left+50.5,162.4,31,8),(left+45,173,48,7),(left+84,162.4,36,8))[j]
                     place(shape,bounds);place(link_frames[k],bounds)
                     set_text(shape,caption+' ↗',size=8,color='0A7489',minimum=6)
                     shape.find('p:txBody/a:p/a:pPr',NS).set('algn','ctr')

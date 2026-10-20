@@ -3,7 +3,7 @@ the running app. Inside the delivery ZIP they stay relative and every one names 
 
 import io
 import zipfile
-from urllib.parse import unquote
+from urllib.parse import unquote, urlsplit
 from xml.etree import ElementTree as ET
 
 from pptx import Presentation
@@ -79,4 +79,4 @@ def test_every_link_in_the_zip_names_a_file_in_the_zip():
     uris = pdf_uris(archive.read('보고서.pdf'))
     assert links and uris
     for target in links + uris:
-        assert unquote(target) in names, target
+        assert unquote(urlsplit(target).path) in names, target

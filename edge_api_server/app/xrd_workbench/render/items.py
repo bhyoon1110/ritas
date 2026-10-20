@@ -1,6 +1,6 @@
 """Page items shared by the layout modules. All dimensions in mm."""
 
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 
 from ..render import theme
 from ..render.fonts import wrap_lines
@@ -18,6 +18,19 @@ def link_target(item, link_base=None, storage_id=None):
     if link_base and storage_id and item.get('source_id'):
         return f"{link_base.rstrip('/')}/api/files/{quote(storage_id, safe='')}/{quote(item['source_id'], safe='')}"
     return item['href']
+
+
+def viewer_target(sample_id=None, link_base=None, storage_id=None):
+    """Report intent travels in the fragment so the same link also works on file://.
+
+    Use stable sample IDs, not editable/possibly duplicate display names. The viewer
+    validates the ID before applying it and never alters the measurement data.
+    """
+    target = '뷰어.html'
+    if link_base and storage_id:
+        target = f"{link_base.rstrip('/')}/?{urlencode({'project': storage_id, 'step': 'viewer'})}"
+    selection = {'view': 'multi'} if sample_id is None else {'view': 'single', 'sample': sample_id}
+    return target + '#' + urlencode(selection)
 
 
 def text_item(text, x, y, w, size=10, bold=False, color=theme.TEXT, leading=None, align='left'):

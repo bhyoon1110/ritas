@@ -154,6 +154,25 @@ export function restoreState(project, saved) {
   return state;
 }
 
+export function applyViewerLink(project, state, hash) {
+  const params = new URLSearchParams(String(hash || '').replace(/^#/, ''));
+  const mode = params.get('view');
+  if (!['multi', 'single'].includes(mode)) return { applied: false };
+  const id = params.get('sample');
+  if (mode === 'single' && !project.samples.some((s) => s.id === id))
+    return { applied: false, error: '보고서 링크의 시료를 찾을 수 없습니다. 최신 보고서를 다시 생성하거나 시료 목록을 확인하세요.' };
+  // Explicit report links override the last saved view, but preserve colours, spacing,
+  // phase choices and all source data. Subsequent user interactions remain unrestricted.
+  state.viewMode = mode;
+  if (mode === 'multi') state.visible = state.order.slice();
+  else {
+    state.active = id;
+    if (!state.visible.includes(id)) state.visible.push(id);
+  }
+  state.xRange = state.yRange = null;
+  return { applied: true };
+}
+
 // A highlight picks a phase by name and, when given, card and database. A highlight made from a
 // link (card and db null) therefore marks every phase with that name.
 export function phaseMatches(highlight, phase) {

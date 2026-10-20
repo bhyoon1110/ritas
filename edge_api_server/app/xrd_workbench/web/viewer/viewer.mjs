@@ -1,6 +1,7 @@
 import {
   createState,
   restoreState,
+  applyViewerLink,
   buildFigure,
   phaseMarkerHint,
   exportFigure,
@@ -226,6 +227,22 @@ async function draw(refreshPanel = true) {
   $('warnings').textContent = `확인 사항 ${warnings.length}`;
 }
 
+let viewerLinkDone = false;
+function seedViewerLink() {
+  const result = applyViewerLink(project, state, location.hash);
+  if (result.applied) {
+    picking = false;
+    hideSourceCard();
+    viewRevision += 1;
+  }
+  return result;
+}
+window.addEventListener('hashchange', () => {
+  if (!project || !state) return;
+  const result = seedViewerLink();
+  if (result.applied) draw().catch(e => message(e.message, true));
+  else if (result.error) message(result.error, true);
+});
 function loadProject(value, saved) {
   project = value;
   try {
@@ -235,13 +252,18 @@ function loadProject(value, saved) {
     /* ignore invalid local state */
   }
   state = restoreState(project, saved);
+  const selection = viewerLinkDone ? {} : seedViewerLink();
+  viewerLinkDone = true;
   if (!offline) {
     $('emptyState').hidden = true;
     $('nextStep').hidden = !project.storage_id;
     window.dispatchEvent(new CustomEvent('xrd-shell', { detail: { project: project.storage_id } }));
   }
   hideSourceCard();
-  return draw().then(applyUrlHighlight);
+  return draw().then(() => {
+    applyUrlHighlight();
+    if (selection.error) message(selection.error, true);
+  });
 }
 
 function download(blob, name) {

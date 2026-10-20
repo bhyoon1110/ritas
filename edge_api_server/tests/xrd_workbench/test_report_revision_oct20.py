@@ -105,10 +105,10 @@ def test_pdf_html_and_ppt_scene_share_cover_geometry_values_and_portable_viewer_
     assert 'REQ-123' in full and 'XRD-01' in full and 'QA-OP' in full
     assert '10.0(1) wt%' in full
     uris=[str(a.get_object().get('/A',{}).get('/URI','')) for p in pdf.pages for a in p.get('/Annots',[])]
-    assert '뷰어.html' in uris
+    assert '뷰어.html#view=multi' in uris
     html=render_html(pages,doc,'package')
     assert html.count('<section class="page"')==len(pdf.pages)
-    assert 'href="뷰어.html"' in html and 'contenteditable' not in html
+    assert 'href="뷰어.html#view=multi"' in html and 'contenteditable' not in html
 
 
 def test_many_quantity_rows_continue_without_repeating_pie_or_losing_values():
