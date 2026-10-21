@@ -79,6 +79,7 @@ class Settings:
     auth_bootstrap_admin_ids: tuple[str, ...] = ()
     sso_provider_name: str = "RIST SSO"
     sso_mode: str = "posco"
+    sso_allow_http: bool = False
     sso_validation_url: str = ""
     sso_sid: str = ""
     sso_ca_bundle: Path | None = None
@@ -301,6 +302,8 @@ class Settings:
                 or "RIST SSO"
             ),
             sso_mode=configured_sso_mode,
+            sso_allow_http=os.getenv("RIST_SSO_ALLOW_HTTP", "false").strip().lower()
+            in {"1", "true", "yes", "on"},
             sso_validation_url=os.getenv(
                 "RIST_SSO_VALIDATION_URL", ""
             ).strip(),

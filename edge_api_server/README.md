@@ -670,13 +670,14 @@ cd edge_api_server
 | `RIST_AUTH_ENABLED` | `true` | 웹 회원 로그인과 프로젝트별 접근 제어 사용 여부 |
 | `RIST_AUTH_SESSION_HOURS` | `12` | 로컬 로그인 세션 유지 시간 |
 | `RIST_AUTH_RECENT_SSO_MINUTES` | `30` | 보고서 전송에 인정할 최근 SSO 인증 시간 |
-| `RIST_AUTH_COOKIE_SECURE` | production `true` | HTTPS에서만 세션 쿠키를 보내는 보안 설정. HTTP 개발 서버는 `false` |
+| `RIST_AUTH_COOKIE_SECURE` | production `true` | HTTPS에서만 세션 쿠키를 전송. HTTP/HTTPS 혼용 시 명시적으로 `false` |
 | `RIST_AUTH_BOOTSTRAP_ADMIN_IDS` | 빈 값 | 쉼표로 구분한 최초 관리자 로그인 ID. 빈 초기 설치는 첫 가입자가 관리자 |
 | `RIST_SSO_MODE` | `posco` | `posco` 서버측 ID/PW 검증 또는 선택적 `oidc` 방식 |
+| `RIST_SSO_ALLOW_HTTP` | `false` | `true`이면 PC → Edge의 POSCO SSO 요청에 HTTP도 허용. Edge → SSO의 HTTPS·인증서 검증에는 영향 없음 |
 | `RIST_SSO_PROVIDER_NAME` | `RIST SSO` | 화면과 DB에 표시할 SSO 공급자 이름 |
 | `RIST_SSO_VALIDATION_URL` | 없음 | POSCO SSO HTTPS 검증 URL. 개발계와 운영계를 명시적으로 구분 |
 | `RIST_SSO_SID` | 없음 | SSO 담당자가 발급한 시스템 SID. 저장소에 커밋하지 않음 |
-| `RIST_SSO_CA_BUNDLE` | 없음 | OS가 사내 CA를 신뢰하지 않을 때 사용할 PEM CA bundle 경로 |
+| `RIST_SSO_CA_BUNDLE` | 없음 | 기본 신뢰 저장소로 SSO 인증서를 검증하지 못할 때 실제 인증서 체인에 맞춰 지정할 PEM CA bundle 경로 |
 | `RIST_SSO_CONNECT_TIMEOUT_SECONDS` | `2` | POSCO SSO TCP/TLS 연결 제한시간 |
 | `RIST_SSO_READ_TIMEOUT_SECONDS` | `4` | POSCO SSO 응답 제한시간 |
 | `RIST_SSO_ISSUER_URL` | 없음 | 선택적 OIDC 모드의 issuer URL |
@@ -701,8 +702,37 @@ cd edge_api_server
 뒤 FTIR, Raman, XRD, TEM 화면에서 보고서를 생성할 수 있다. 보고서 생성에는
 사내 SSO가 필요하지 않다. LIMS 전송에는 `REPORT_SENDER` 역할, 연결된 사내 SSO,
 최근 SSO 재인증이 모두 필요하며 전송 작업자 값은 SSO 사용자 정보로 기록한다.
-POSCO SSO 비밀번호 검증은 브라우저부터 Edge까지 HTTPS인 경우에만 활성화되며,
-`RIST_EDGE_PUBLIC_BASE_URL=https://...`와 `RIST_AUTH_COOKIE_SECURE=true`가 필요하다.
+POSCO SSO는 기본적으로 브라우저 → Edge도 HTTPS를 요구한다. 인증서 발급 전
+HTTP와 HTTPS를 함께 허용하려면 `/home/rist/ritas/edge.env`에 아래 값을 설정하고
+`sudo systemctl restart rist-edge-api.service`로 API를 재시작한다.
+
+```dotenv
+RIST_AUTH_ENABLED=true
+RIST_SSO_MODE=posco
+RIST_SSO_ALLOW_HTTP=true
+RIST_AUTH_COOKIE_SECURE=false
+RIST_EDGE_PUBLIC_BASE_URL=http://10.10.1.31:8000
+```
+
+이 설정은 SSO 입력 화면과 인증 API에서 HTTP/HTTPS를 모두 허용한다.
+HTTP 사용 중에는 비밀번호와 세션이 해당 구간에서 암호화되지 않는다.
+로그인 세션, 요청 헤더 검사, SSO 성공 여부, 보고서 전송 권한·최근 인증 검사는
+그대로 적용된다. `RIST_AUTH_COOKIE_SECURE=true`이면 HTTP 로그인은 계속 차단되므로
+혼용 시 두 설정을 함께 적용해야 한다. 예제 `edge.env.example`은 혼용 설정을 사용한다.
+
+Edge → SSO는 항상 HTTPS POST로 `username`, `password`, `sid`를 전송한다.
+`RIST_SSO_VALIDATION_URL`은 운영계
+`https://swpsso.posco.net/idms/U61/jsp/userValidSSOM.jsp` 또는 개발계
+`https://uswpsso.posco.net/idms/U61/jsp/userValidSSOM.jsp`를 사용하고,
+`RIST_SSO_SID`에는 해당 환경에서 발급받은 SID를 설정한다. 기본 CA로 검증되면
+`RIST_SSO_CA_BUNDLE`은 비워 둔다. SID·출발지 IP 등록과 DNS/TCP 443 통신 허용도 필요하다.
+
+HTTP 허용 설정이 HTTPS 리스너나 인증서를 생성하지는 않는다. HTTPS 접속에는
+Nginx의 TLS 설정이 별도로 필요하다. 기존 `setup_https.sh apply`는 443 TLS 리스너를
+만들고 Python을 `127.0.0.1:8000`으로 제한하며 보안 쿠키를 켜므로, 실행 후에는
+기존 PC → Edge `http://10.10.1.31:8000` 접속이 종료된다. HTTPS 전용 전환 시에는
+`RIST_SSO_ALLOW_HTTP=false`, `RIST_AUTH_COOKIE_SECURE=true`,
+`RIST_EDGE_PUBLIC_BASE_URL=https://10.10.1.31`로 맞춘다.
 
 관리자는 운영 관리의 `회원 관리` 탭(`/admin/users`)에서 가입 승인 상태,
 프로젝트별 접근권한, `ADMIN`·`REPORT_SENDER` 역할과 SSO 연결·최근 인증 상태를

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from app.config import Settings
 from rist_common.config import load_environment
 
@@ -192,6 +194,7 @@ def test_posco_sso_settings_are_loaded_from_runtime_env(
     monkeypatch.setenv("RIST_CONFIG_DIR", str(tmp_path))
     monkeypatch.setenv("RIST_ENV", "development")
     monkeypatch.setenv("RIST_SSO_MODE", "POSCO")
+    monkeypatch.setenv("RIST_SSO_ALLOW_HTTP", "true")
     monkeypatch.setenv(
         "RIST_SSO_VALIDATION_URL",
         "https://uswpsso.posco.net/idms/U61/jsp/userValidSSOM.jsp",
@@ -204,11 +207,29 @@ def test_posco_sso_settings_are_loaded_from_runtime_env(
     settings = Settings.from_env()
 
     assert settings.sso_mode == "posco"
+    assert settings.sso_allow_http is True
     assert settings.sso_validation_url.startswith("https://uswpsso.posco.net/")
     assert settings.sso_sid == "issued-sid"
     assert settings.sso_ca_bundle == ca_bundle
     assert settings.sso_connect_timeout_seconds == 2.5
     assert settings.sso_read_timeout_seconds == 4.5
+
+
+@pytest.mark.parametrize("value,expected", [(None, False), ("false", False), (" YES ", True), ("invalid", False)])
+def test_sso_http_permission_is_explicit_and_does_not_change_cookie_policy(monkeypatch, tmp_path, value, expected):
+    write_profile(tmp_path / "production.env", "10.10.1.31", "production")
+    monkeypatch.setenv("RIST_CONFIG_DIR", str(tmp_path))
+    monkeypatch.setenv("RIST_ENV", "production")
+    monkeypatch.delenv("RIST_AUTH_COOKIE_SECURE", raising=False)
+    if value is None:
+        monkeypatch.delenv("RIST_SSO_ALLOW_HTTP", raising=False)
+    else:
+        monkeypatch.setenv("RIST_SSO_ALLOW_HTTP", value)
+
+    settings = Settings.from_env()
+
+    assert settings.sso_allow_http is expected
+    assert settings.auth_cookie_secure is True
 
 
 def test_existing_oidc_settings_select_oidc_when_mode_is_not_explicit(

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import ssl
 from urllib.parse import parse_qs
 
 import httpx
@@ -15,6 +16,28 @@ from app.posco_sso import (
 
 
 VALIDATION_URL = "https://uswpsso.posco.net/idms/U61/jsp/userValidSSOM.jsp"
+
+
+def test_posco_sso_always_verifies_certificate_and_hostname(monkeypatch) -> None:
+    observed = {}
+    original_client = httpx.Client
+
+    def capture_client(**kwargs):
+        observed.update(kwargs)
+        return original_client(**kwargs)
+
+    monkeypatch.setattr(httpx, "Client", capture_client)
+    client = PoscoSsoClient(
+        validation_url=VALIDATION_URL,
+        sid="test-issued-sid",
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, text="T")),
+    )
+    assert client.validate("employee", "test-password") is True
+    assert isinstance(observed["verify"], ssl.SSLContext)
+    assert observed["verify"].check_hostname is True
+    assert observed["verify"].verify_mode == ssl.CERT_REQUIRED
+    assert observed["follow_redirects"] is False
+    assert observed["trust_env"] is False
 
 
 def test_posco_sso_posts_encoded_credentials_and_accepts_t() -> None:

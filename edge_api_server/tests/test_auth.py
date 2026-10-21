@@ -1,14 +1,20 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import datetime, timedelta
 import json
+from unittest.mock import Mock
+from urllib.parse import parse_qs
 
+import httpx
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from starlette.requests import Request
 
 from app.auth import (
+    AUTH_FORM_COOKIE,
+    SESSION_COOKIE,
     AuthService,
     AuthContext,
     LoginRequest,
@@ -27,7 +33,8 @@ from app.auth import (
     verify_password,
 )
 from app.config import Settings
-from app.errors import ApiException, redact_validation_errors
+from app.errors import ApiException, api_exception_handler, redact_validation_errors
+from app.posco_sso import PoscoSsoClient
 from app.preview_report import PreviewReportSendRequest
 
 
@@ -202,6 +209,22 @@ def test_account_page_blocks_posco_password_form_until_https(tmp_path) -> None:
 
     assert 'id="sso-form"' not in html
     assert "Edge HTTPS 적용 후 인증할 수 있습니다" in html
+
+
+@pytest.mark.parametrize("scheme", ["http", "https"])
+def test_account_page_allows_both_transports_when_http_is_enabled(tmp_path, scheme) -> None:
+    html = _account_page(
+        _context(),
+        Settings(
+            storage_root=tmp_path,
+            sso_allow_http=True,
+            edge_public_base_url=f"{scheme}://edge.example.com",
+        ),
+    )
+
+    assert 'id="sso-form"' in html
+    assert "/api/v1/auth/sso/verify" in html
+    assert "Edge HTTPS 적용 후 인증할 수 있습니다" not in html
 
 
 def test_account_page_keeps_oidc_redirect_mode(tmp_path) -> None:
@@ -439,6 +462,170 @@ def test_posco_sso_api_rejects_http_before_authentication_or_body_use(tmp_path) 
     assert response.status_code == 426
     assert response.json()["code"] == "SSO_HTTPS_REQUIRED"
     assert secret not in response.text
+    assert database.connection.statements == []
+
+
+@pytest.fixture(params=["http", "https"])
+def mixed_sso_browser(tmp_path, request):
+    """Exercise actual SSO routes/client, with local login and network isolated."""
+    app = FastAPI()
+    database = _FakeDatabase()
+    context = _context()
+    origin = f"{request.param}://testserver"
+    settings = Settings(
+        storage_root=tmp_path,
+        auth_enabled=True,
+        auth_cookie_secure=False,
+        edge_public_base_url=origin,
+        sso_allow_http=True,
+        sso_sid="test-issued-sid",
+        sso_validation_url="https://uswpsso.posco.net/idms/U61/jsp/userValidSSOM.jsp",
+    )
+    install_auth(app, settings, database)
+    app.add_exception_handler(ApiException, api_exception_handler)
+    service = app.state.auth_service
+    service.login = Mock(return_value=(context, "test-session-token"))
+    service.context_from_token = Mock(
+        side_effect=lambda token: context if token == "test-session-token" else None
+    )
+    upstream = {"result": "T", "requests": []}
+
+    def handle_sso(request):
+        upstream["requests"].append(request)
+        return httpx.Response(200, text=upstream["result"])
+
+    service.posco_sso_client = PoscoSsoClient(
+        settings.sso_validation_url,
+        settings.sso_sid,
+        transport=httpx.MockTransport(handle_sso),
+    )
+    with TestClient(app, base_url=origin, follow_redirects=False) as client:
+        yield client, service, database, upstream, context
+
+
+def _login_mixed_sso_browser(client):
+    assert client.get("/login").status_code == 200
+    response = client.post(
+        "/login",
+        headers={"Origin": str(client.base_url).rstrip("/")},
+        data={
+            "loginId": "user01",
+            "password": "local-test-password",
+            "csrfToken": client.cookies[AUTH_FORM_COOKIE],
+            "returnTo": "/account",
+        },
+    )
+    assert response.status_code == 303
+    assert client.cookies[SESSION_COOKIE] == "test-session-token"
+    assert "HttpOnly" in response.headers["set-cookie"]
+    assert "SameSite=lax" in response.headers["set-cookie"]
+    assert "Secure" not in response.headers["set-cookie"]
+
+
+def test_http_and_https_login_to_sso_flow(mixed_sso_browser):
+    client, _, database, upstream, context = mixed_sso_browser
+    _login_mixed_sso_browser(client)
+    account = client.get("/account")
+    assert account.status_code == 200
+    assert 'id="sso-form"' in account.text
+    secret = "SSO-&+=한글-password"
+
+    response = client.post(
+        "/api/v1/auth/sso/verify",
+        headers={"X-Requested-With": "RIST-Account"},
+        json={"username": "EMPLOYEE01", "password": secret, "returnTo": "/ftir"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["authenticated"] is True
+    assert response.json()["employeeId"] == "EMPLOYEE01"
+    assert response.json()["returnTo"] == "/ftir"
+    assert len(upstream["requests"]) == 1
+    sent = upstream["requests"][0]
+    assert sent.method == "POST"
+    assert str(sent.url) == "https://uswpsso.posco.net/idms/U61/jsp/userValidSSOM.jsp"
+    assert sent.headers["content-type"] == "application/x-www-form-urlencoded"
+    assert parse_qs(sent.content.decode()) == {
+        "username": ["EMPLOYEE01"], "password": [secret], "sid": ["test-issued-sid"],
+    }
+    statements = database.connection.statements
+    assert any("INSERT INTO sso_identities" in sql for sql, _ in statements)
+    assert any(
+        "UPDATE auth_sessions SET sso_authenticated_at" in sql
+        and context.session_id in params
+        for sql, params in statements
+    )
+    assert secret not in repr(statements) + response.text + str(response.headers)
+
+
+@pytest.mark.parametrize("logged_in", [False, True])
+def test_mixed_sso_still_requires_session_and_request_header(mixed_sso_browser, logged_in):
+    client, _, database, upstream, _ = mixed_sso_browser
+    if logged_in:
+        _login_mixed_sso_browser(client)
+    response = client.post(
+        "/api/v1/auth/sso/verify",
+        headers={} if logged_in else {"X-Requested-With": "RIST-Account"},
+        json={"username": "employee01", "password": "test-password"},
+    )
+
+    assert response.status_code == (403 if logged_in else 401)
+    assert upstream["requests"] == []
+    assert database.connection.statements == []
+
+
+def test_mixed_sso_f_result_does_not_authorize_user(mixed_sso_browser):
+    client, _, database, upstream, _ = mixed_sso_browser
+    _login_mixed_sso_browser(client)
+    upstream["result"] = "F"
+    response = client.post(
+        "/api/v1/auth/sso/verify",
+        headers={"X-Requested-With": "RIST-Account"},
+        json={"username": "employee01", "password": "wrong-password"},
+    )
+
+    assert response.status_code == 401
+    assert response.json()["code"] == "SSO_VALIDATION_REJECTED"
+    assert not any(
+        "INSERT INTO sso_identities" in sql or "UPDATE auth_sessions" in sql
+        for sql, _ in database.connection.statements
+    )
+
+
+def test_mixed_sso_still_rejects_http_upstream(mixed_sso_browser):
+    client, service, _, upstream, _ = mixed_sso_browser
+    _login_mixed_sso_browser(client)
+    service.posco_sso_client = replace(
+        service.posco_sso_client,
+        validation_url="http://uswpsso.posco.net/validate",
+    )
+    response = client.post(
+        "/api/v1/auth/sso/verify",
+        headers={"X-Requested-With": "RIST-Account"},
+        json={"username": "employee01", "password": "test-password"},
+    )
+
+    assert response.status_code == 503
+    assert response.json()["code"] == "SSO_NOT_CONFIGURED"
+    assert upstream["requests"] == []
+
+
+def test_allow_http_does_not_enable_anonymous_sso_when_auth_is_disabled(tmp_path):
+    app = FastAPI()
+    database = _FakeDatabase()
+    install_auth(
+        app,
+        Settings(storage_root=tmp_path, sso_allow_http=True, auth_enabled=False),
+        database,
+    )
+    app.add_exception_handler(ApiException, api_exception_handler)
+    response = TestClient(app).post(
+        "/api/v1/auth/sso/verify",
+        headers={"X-Requested-With": "RIST-Account"},
+        json={"username": "employee01", "password": "test-password"},
+    )
+
+    assert response.status_code == 401
     assert database.connection.statements == []
 
 

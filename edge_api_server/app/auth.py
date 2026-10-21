@@ -1259,7 +1259,7 @@ def _account_page(context: AuthContext, settings: Settings) -> str:
     ) or '<span class="muted">아직 승인된 프로젝트가 없습니다.</span>'
     sso_text = "연결됨" if data["ssoLinked"] else "연결 안 됨"
     mode = _sso_mode(settings)
-    if mode == "posco" and _edge_public_https(settings):
+    if mode == "posco" and (settings.sso_allow_http or _edge_public_https(settings)):
         current_employee_id = str(
             (context.sso_identity or {}).get("employee_id") or context.login_id
         )
@@ -1391,6 +1391,7 @@ def install_auth(app: FastAPI, settings: Settings, database: Database) -> None:
     async def authentication_middleware(request: Request, call_next: Any) -> Response:
         if (
             request.url.path == "/api/v1/auth/sso/verify"
+            and not settings.sso_allow_http
             and not _request_is_https(request)
         ):
             return error_response(
@@ -1583,7 +1584,7 @@ def install_auth(app: FastAPI, settings: Settings, database: Database) -> None:
         payload: PoscoSsoVerifyRequest,
         request: Request,
     ) -> dict[str, Any]:
-        if not _request_is_https(request):
+        if not settings.sso_allow_http and not _request_is_https(request):
             raise ApiException(
                 426,
                 "SSO_HTTPS_REQUIRED",
