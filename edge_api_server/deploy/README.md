@@ -84,19 +84,45 @@ mysql --default-character-set=utf8mb4 \
 운영 DB에서는 재생성 DDL을 실행하지 말고 별도 `ALTER TABLE` migration을 적용한다.
 재생성 전에 필요한 큐 이력을 반드시 백업한다.
 
-### 폐쇄망 HTTPS 자동 설정
+### 폐쇄망 Nginx HTTP/HTTPS 자동 설정
 
-기존 Edge 설치 후 [`setup_https.sh`](setup_https.sh)로 Nginx HTTPS 앞단을 추가할 수
-있다. 기본 주소는 `https://10.10.1.31`, Python은 `127.0.0.1:8000`에만 바인딩한다.
+기존 Edge 설치 후 [`setup_https.sh`](setup_https.sh)로 Nginx 앞단을 추가할 수 있다.
+실험실 PC는 Nginx의 80/443에 접속하고 Python은 모든 모드에서
+`127.0.0.1:8000`에만 바인딩한다. `--mode` 생략 시 기존 HTTPS 전용 동작을 유지한다.
+
+| 모드 | PC 접속 주소 | 인증서 | HTTP SSO / Secure 쿠키 |
+|---|---|---|---|
+| `http` | `http://10.10.1.31` (80) | 불필요 | `true` / `false` |
+| `both` | HTTP 80 + HTTPS 443 | 필요 | `true` / `false` |
+| `https` (기본) | `https://10.10.1.31` (443) | 필요 | `false` / `true` |
+
 **API 재시작과 실험 PC/C# 접속 주소 변경이 필요하므로 진행 중인 업로드가 없는
 유지보수 시간에 적용한다.** worker, Spring, DB, LLM은 재시작하지 않는다.
 
 스크립트는 인터넷 접속, 패키지 다운로드, 방화벽 변경을 하지 않는다. Ubuntu에
-`nginx`, `openssl` 1.1.1 이상, `curl`, `iproute2`(`ss`), `util-linux`(`flock`),
-systemd가 있어야 한다. 없으면 동일 Ubuntu 버전/CPU 아키텍처의 의존 패키지를
-사내 패키지 서버 또는 USB로 먼저 설치한다. 443이 다른 Spring/Nginx 서비스에
-이미 사용되면 기존 서비스를 변경하지 않고 중단한다. 필요한 경우
-`--https-port 8443`을 지정하고 클라이언트 주소·방화벽도 그 포트로 맞춘다.
+`nginx`, `curl`, `iproute2`(`ss`), `util-linux`(`flock`), systemd가 있어야 한다.
+HTTPS 사용 시에는 `openssl` 1.1.1 이상도 필요하다. 없으면 동일 Ubuntu 버전/CPU
+아키텍처의 의존 패키지를 사내 패키지 서버 또는 USB로 먼저 설치한다. 선택한 80/443이
+다른 Spring/Nginx 설정(예: 기본 사이트)에 이미 사용되면 기존 서비스를 변경하지 않고
+중단한다. 기존 사이트 설정을 확인하거나 `--http-port 8080`, `--https-port 8443`을
+지정하고 클라이언트 주소·방화벽도 실제 포트로 맞춘다.
+
+#### 인증서 발급 전: Nginx HTTP 80 적용
+
+```bash
+cd /home/rist/ritas
+bash edge_api_server/deploy/setup_https.sh plan --mode http
+sudo bash edge_api_server/deploy/setup_https.sh apply --mode http --host 10.10.1.31
+sudo bash edge_api_server/deploy/setup_https.sh check --mode http --host 10.10.1.31
+```
+
+수정된 API 코드를 먼저 배포해야 한다. 스크립트가 `edge.env`의
+`RIST_SSO_ALLOW_HTTP=true`, `RIST_AUTH_COOKIE_SECURE=false`, 공개 주소
+`http://10.10.1.31`, 내부 바인드 `127.0.0.1:8000`, 프록시 신뢰 주소를 함께 설정한다.
+실험실 PC/C# 주소는 `http://10.10.1.31`로 바꾼다. 외부 8000 접속은 종료된다.
+서버 인증서 없이 실행할 수 있으며, 준비한 `edge.key`·`edge.csr` 등 기존 TLS 파일은
+변경하지 않는다. HTTP 구간의 ID/PW·세션은 암호화되지 않는다. Edge → SSO는 별도
+HTTPS 연결로 인증서를 계속 검증하며 SSO URL/SID/CA 설정은 보존한다.
 
 #### A. 사내 인증서 사용 (권장)
 
@@ -126,6 +152,20 @@ sudo bash edge_api_server/deploy/setup_https.sh apply \
 # 설치된 HTTPS/프록시를 다시 검사한다.
 sudo bash edge_api_server/deploy/setup_https.sh check --host 10.10.1.31
 ```
+
+인증서 발급 후에도 HTTP와 HTTPS를 함께 사용하려면 위 `apply`에 `--mode both`를
+추가한다. 동일 관리 파일을 갱신하므로 HTTP 설정 파일을 따로 만들 필요가 없다.
+
+```bash
+sudo bash edge_api_server/deploy/setup_https.sh apply --mode both \
+  --host 10.10.1.31 --cert /media/usb/edge-chain.pem --ca-cert /media/usb/root-ca.crt
+sudo bash edge_api_server/deploy/setup_https.sh check --mode both --host 10.10.1.31
+```
+
+80 요청을 443으로 자동 리다이렉트하지 않으며 두 경로 모두 Nginx를 통해 전달한다.
+공개 기본 주소는 HTTPS로 설정한다. HTTPS 전용으로 바꾸려면 같은 인증서로
+`apply --mode https`를 실행한다. 이때 80 리스너를 제거하고 HTTP SSO 허용을 끄며
+Secure 쿠키를 켠다. `check`에도 실제 적용한 모드와 사용자 지정 포트를 동일하게 지정한다.
 
 기존 키를 이용한다면 `csr`를 실행하지 않고 `apply --key /절대경로/edge.key`를
 지정한다. 갱신 시에는 새 디렉터리에서 CSR을 만들고 새 키/체인으로 `apply`한다.
@@ -159,9 +199,10 @@ sudo bash setup_https.sh sign \
 
 #### 자동 처리와 복원
 
-- 인증서 만료까지 30일 이상, SAN 주소, 서버 인증 용도, CA 체인, 키 일치를 검사한다.
-- `edge.env`를 실행하지 않고 HTTPS/보안 쿠키/로그인/바인드 주소/포트/프록시 신뢰
-  6개 키만 갱신한다. 기존 DB 비밀번호, SSO URL/SID/CA, 저장소, LLM 값과 파일
+- HTTPS/both 모드는 인증서 만료까지 30일 이상, SAN 주소, 서버 인증 용도, CA 체인,
+  키 일치를 검사한다. HTTP 모드에는 인증서 파일이나 TLS 검증을 요구하지 않는다.
+- `edge.env`를 실행하지 않고 공개 주소/보안 쿠키/HTTP SSO 허용/로그인/바인드 주소/포트/프록시 신뢰
+  7개 키만 갱신한다. 기존 DB 비밀번호, SSO URL/SID/CA, 저장소, LLM 값과 파일
   소유자·권한은 보존한다. 백업 내용을 로그에 출력하지 않는다.
 - Nginx 설정은 별도 관리 파일에만 기록한다. 기본 업로드 요청 한도 2100MiB,
   본문/프록시 대기 900초, 요청 버퍼링 해제로 기존 청크 전송을 유지한다.
@@ -170,12 +211,13 @@ sudo bash setup_https.sh sign \
   덮어쓴다. 공개 프록시의 보고서 재생성 제어 API는 403으로 차단하며 같은 호스트의
   Spring은 내부 `127.0.0.1:8000`을 사용한다. 이 차단은 앱 자체의 M2M 인증 구현을
   대신하지 않는다.
-- 설정 문법뿐 아니라 실제 HTTPS `/health`, 내부 API의 loopback 바인드,
-  인증정보 없는 SSO 요청의 HTTPS 인식(401/403/422, **426은 실패**)을 검사한다.
+- 설정 문법뿐 아니라 선택한 모든 HTTP/HTTPS `/health`, 내부 API의 loopback 바인드,
+  인증정보 없는 SSO 요청의 프록시 전달(401/403/422, **426은 실패**)을 검사한다.
   실패하면 이전 파일과 Nginx 실행·활성화 상태를 자동 복원한다.
 - `/var/backups/rist-https/backup.*`에는 **DB 비밀번호·서버 키**도 포함된다.
   root 소유/권한 700으로 보관하며 공개 인증서 배포 폴더에 복사하지 않는다.
   명시적 rollback 직전 상태도 추가 백업하므로 복원 작업 자체도 되돌릴 수 있다.
+  기존 V1 HTTPS 백업과 새 V2 모드/포트 포함 백업을 모두 복원할 수 있다.
 
 ```bash
 # apply 출력에 표시된 정확한 백업 디렉터리로 복원한다.
@@ -192,16 +234,16 @@ TLS/CA/백업 디렉터리가 이미 있으면 실행 사용자 소유·권한 7
 
 #### 별도로 필요한 현장 작업
 
-1. 실험 PC에서 Edge의 TCP 443(또는 지정 포트)으로 통신을 허용한다. 스크립트는
+1. 실험 PC에서 Edge의 선택한 TCP 80/443(또는 지정 포트)으로 통신을 허용한다. 스크립트는
    UFW/망 방화벽 규칙을 변경하지 않는다.
-2. `/etc/rist/tls/client-ca.cer` **공개 루트 인증서만** 실험실 PC로 배포한다.
+2. HTTPS 사용 시 `/etc/rist/tls/client-ca.cer` **공개 루트 인증서만** 실험실 PC로 배포한다.
    발급기관/Edge 출력의 SHA-256 지문을 대조한 뒤 Windows의 신뢰할 수 있는 루트
    인증기관 저장소에 등록한다. 중간 CA가 필요하면 중간 인증기관 저장소에 등록한다.
    서버 개인키·CA 개인키·`edge.env`·백업은 배포하지 않는다.
-3. Supermium 북마크와 C# API Base URL을 `https://10.10.1.31`로 바꾼다.
+3. Supermium 북마크와 C# API Base URL을 `http://10.10.1.31` 또는 `https://10.10.1.31`로 바꾼다.
    8000의 외부 접속은 더 이상 허용되지 않는다. C#의 TLS/인증서 신뢰도 별도 확인한다.
-4. 실제 XP/Supermium에서 경고 없는 TLS 접속, 로그인/가입, 실제 SSO, 네 실험의
-   업로드/보고서/다운로드를 검증한다. OS/PC 시간도 확인한다. 인증서 검증을 끄거나
+4. 실제 XP/Supermium에서 적용한 프로토콜의 접속, 로그인/가입, 실제 SSO, 네 실험의
+   업로드/보고서/다운로드를 검증한다. HTTPS는 경고 없는 TLS 접속과 OS/PC 시간도 확인한다. 인증서 검증을 끄거나
    TLS 1.0/1.1로 낮추지 않는다.
 5. Edge→SSO TCP 443, Edge→LIMS 지정 포트, SID/출발지 IP 등록과 실제 LIMS 전송은
    별도 작업이다. 스크립트 성공은 실제 SSO/LIMS 연동 성공을 의미하지 않는다.

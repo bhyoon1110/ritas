@@ -703,15 +703,24 @@ cd edge_api_server
 사내 SSO가 필요하지 않다. LIMS 전송에는 `REPORT_SENDER` 역할, 연결된 사내 SSO,
 최근 SSO 재인증이 모두 필요하며 전송 작업자 값은 SSO 사용자 정보로 기록한다.
 POSCO SSO는 기본적으로 브라우저 → Edge도 HTTPS를 요구한다. 인증서 발급 전
-HTTP와 HTTPS를 함께 허용하려면 `/home/rist/ritas/edge.env`에 아래 값을 설정하고
-`sudo systemctl restart rist-edge-api.service`로 API를 재시작한다.
+HTTP를 사용하려면 Nginx 80포트를 앞단에 두고 Python은 서버 내부에서만 접근하도록
+설정한다. 수정된 코드를 배포한 뒤 Edge에서 다음을 실행한다.
+
+```bash
+cd /home/rist/ritas
+sudo bash edge_api_server/deploy/setup_https.sh apply --mode http --host 10.10.1.31
+```
+
+이 명령은 서버 인증서 없이 Nginx를 설정하고 API를 재시작하며, `edge.env`의
+아래 값과 내부 API 포트 `8000`, 프록시 신뢰 주소 `127.0.0.1`을 함께 적용한다.
+실험실 PC의 주소는 **`http://10.10.1.31`(80)** 이며 외부에서 8000으로 접속하지 않는다.
 
 ```dotenv
 RIST_AUTH_ENABLED=true
-RIST_SSO_MODE=posco
 RIST_SSO_ALLOW_HTTP=true
 RIST_AUTH_COOKIE_SECURE=false
-RIST_EDGE_PUBLIC_BASE_URL=http://10.10.1.31:8000
+RIST_EDGE_PUBLIC_BASE_URL=http://10.10.1.31
+RIST_EDGE_BIND_HOST=127.0.0.1
 ```
 
 이 설정은 SSO 입력 화면과 인증 API에서 HTTP/HTTPS를 모두 허용한다.
@@ -721,18 +730,28 @@ HTTP 사용 중에는 비밀번호와 세션이 해당 구간에서 암호화되
 혼용 시 두 설정을 함께 적용해야 한다. 예제 `edge.env.example`은 혼용 설정을 사용한다.
 
 Edge → SSO는 항상 HTTPS POST로 `username`, `password`, `sid`를 전송한다.
+POSCO 연동에는 `RIST_SSO_MODE=posco`를 별도로 설정한다. Nginx 적용 스크립트는
+기존 SSO 모드·URL·SID·CA 설정을 변경하지 않는다.
 `RIST_SSO_VALIDATION_URL`은 운영계
 `https://swpsso.posco.net/idms/U61/jsp/userValidSSOM.jsp` 또는 개발계
 `https://uswpsso.posco.net/idms/U61/jsp/userValidSSOM.jsp`를 사용하고,
 `RIST_SSO_SID`에는 해당 환경에서 발급받은 SID를 설정한다. 기본 CA로 검증되면
 `RIST_SSO_CA_BUNDLE`은 비워 둔다. SID·출발지 IP 등록과 DNS/TCP 443 통신 허용도 필요하다.
 
-HTTP 허용 설정이 HTTPS 리스너나 인증서를 생성하지는 않는다. HTTPS 접속에는
-Nginx의 TLS 설정이 별도로 필요하다. 기존 `setup_https.sh apply`는 443 TLS 리스너를
-만들고 Python을 `127.0.0.1:8000`으로 제한하며 보안 쿠키를 켜므로, 실행 후에는
-기존 PC → Edge `http://10.10.1.31:8000` 접속이 종료된다. HTTPS 전용 전환 시에는
-`RIST_SSO_ALLOW_HTTP=false`, `RIST_AUTH_COOKIE_SECURE=true`,
-`RIST_EDGE_PUBLIC_BASE_URL=https://10.10.1.31`로 맞춘다.
+인증서 발급 후에는 아래 명령으로 Nginx 80·443을 함께 사용한다. 파일명은 실제
+발급받은 서버 인증서 체인과 루트 CA 경로로 바꾼다. 기존 `/etc/rist/tls/edge.key`와
+일치하는 인증서가 필요하다.
+
+```bash
+sudo bash edge_api_server/deploy/setup_https.sh apply --mode both \
+  --host 10.10.1.31 --cert /media/usb/edge-chain.pem --ca-cert /media/usb/root-ca.crt
+```
+
+PC는 `http://10.10.1.31` 또는 `https://10.10.1.31`을 사용하고, 두 경로 모두
+Nginx가 `127.0.0.1:8000`으로 전달한다. 자동 HTTPS 리다이렉트는 하지 않는다.
+HTTPS 전용 전환 시 `--mode https`로 다시 적용하면 80 리스너를 제거하고
+`RIST_SSO_ALLOW_HTTP=false`, `RIST_AUTH_COOKIE_SECURE=true`로 변경한다.
+`--mode`를 생략하면 기존과 같이 `https` 모드다. [배포 절차](deploy/README.md)를 참고한다.
 
 관리자는 운영 관리의 `회원 관리` 탭(`/admin/users`)에서 가입 승인 상태,
 프로젝트별 접근권한, `ADMIN`·`REPORT_SENDER` 역할과 SSO 연결·최근 인증 상태를

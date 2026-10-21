@@ -92,7 +92,8 @@ import os, pathlib, sys
 config = pathlib.Path(os.environ["FAKE_NGINX_CONFIG"])
 if "-T" in sys.argv:
     if os.environ.get("FAKE_CONFLICT"):
-        print("# configuration file /etc/nginx/conf.d/another.conf:\nserver {\n listen 443 ssl;\n}")
+        port = os.environ.get("FAKE_CONFLICT_PORT", "443")
+        print("# configuration file /etc/nginx/conf.d/another.conf:\nserver {\n listen " + port + ";\n}")
     if config.exists() and not os.environ.get("FAKE_OMIT_INCLUDE"):
         print("# configuration file " + str(config) + ":")
         print(config.read_text())
@@ -106,7 +107,9 @@ elif "-t" in sys.argv and config.exists() and os.environ.get("FAKE_NGINX_FAIL"):
 SS = r'''#!/usr/bin/python3
 import os, sys
 if "-ltnp" in sys.argv:
-    print(os.environ.get("FAKE_TLS_LISTENER", ""))
+    selected = " ".join(sys.argv[1:])
+    port = os.environ.get("FAKE_LISTENER_PORT", "443")
+    print(os.environ.get("FAKE_TLS_LISTENER", "") if selected.endswith(":" + port) else "")
 else:
     address = "0.0.0.0" if os.environ.get("FAKE_PUBLIC_API") else "127.0.0.1"
     print("LISTEN 0 128 " + address + ":" + os.environ.get("FAKE_API_PORT", "8000") + " 0.0.0.0:*")
@@ -169,6 +172,10 @@ def apply(layout, *extra):
     return run("apply", *layout["args"], *layout["apply_args"], *extra, env=layout["env"])
 
 
+def apply_http(layout, *extra):
+    return run("apply", *layout["args"], "--mode", "http", *extra, env=layout["env"])
+
+
 def backups(layout):
     return sorted(layout["backup"].glob("backup.*"))
 
@@ -206,6 +213,11 @@ def test_accepts_hosts(host):
 @pytest.mark.parametrize("args", [["--tls-dir", "/"], ["--tls-dir", "/etc"],
                                   ["--tls-dir", "/tmp/../etc/ssl"], ["--https-port", "0"],
                                   ["--https-port", "8000"], ["--https-port", "65536"],
+                                  ["--http-port", "0"], ["--http-port", "65536"],
+                                  ["--mode", "http", "--http-port", "8000"],
+                                  ["--mode", "both", "--http-port", "443"],
+                                  ["--mode", "both", "--https-port", "80"],
+                                  ["--mode", "unknown"],
                                   ["--host"], ["--invalid"]])
 def test_rejects_unsafe_options(args):
     assert run("plan", *args).returncode != 0
@@ -284,6 +296,7 @@ def test_success_preserves_secrets_and_permissions(layout, certs):
     for line in layout["original"].decode().splitlines()[:5]:
         assert line in text
     assert text.count("RIST_AUTH_COOKIE_SECURE=true") == 1
+    assert text.count("RIST_SSO_ALLOW_HTTP=false") == 1
     assert "RIST_EDGE_PUBLIC_BASE_URL=https://10.10.1.31" in text
     assert "RIST_EDGE_BIND_HOST=127.0.0.1" in text
     assert layout["env_file"].stat().st_mode & 0o777 == 0o640
@@ -315,6 +328,142 @@ def test_repeat_apply_reuses_certificates_and_ca(layout):
     assert {p.name: p.read_bytes() for p in layout["tls"].iterdir() if p.is_file()} == first
     assert layout["env_file"].read_bytes() == env
     assert len(backups(layout)) == 2
+
+
+@pytest.mark.parametrize("mode,urls", [
+    ("http", ["http://10.10.1.31"]),
+    ("https", ["https://10.10.1.31"]),
+    ("both", ["http://10.10.1.31", "https://10.10.1.31"]),
+])
+def test_plan_describes_selected_listeners_without_mutation(layout, mode, urls):
+    result = ok(run("plan", *layout["args"], "--mode", mode, env=layout["env"]))
+    for url in urls:
+        assert url in result.stdout
+    assert_unchanged(layout)
+    assert not layout["backup"].exists()
+    assert layout["log"].read_text() == ""
+
+
+def test_http_apply_needs_no_certificate_and_checks_http_without_ca(layout):
+    ok(apply_http(layout))
+    config = layout["config"].read_text()
+    text = layout["env_file"].read_text()
+    assert "listen 80;" in config
+    assert "ssl_certificate" not in config
+    assert "listen 443" not in config
+    assert "return 301" not in config and "return 308" not in config
+    assert "proxy_pass http://127.0.0.1:8000;" in config
+    assert "proxy_set_header X-Forwarded-Proto $scheme;" in config
+    assert "regenerate/?$ { return 403; }" in config
+    for setting in ("RIST_EDGE_PUBLIC_BASE_URL=http://10.10.1.31",
+                    "RIST_SSO_ALLOW_HTTP=true", "RIST_AUTH_COOKIE_SECURE=false",
+                    "RIST_AUTH_ENABLED=true", "RIST_EDGE_BIND_HOST=127.0.0.1",
+                    "FORWARDED_ALLOW_IPS=127.0.0.1"):
+        assert text.count(setting) == 1
+    for line in layout["original"].decode().splitlines()[:5]:
+        assert line in text
+    assert not layout["tls"].exists()
+    assert "--cacert" not in layout["log"].read_text()
+    ok(run("check", *layout["args"], "--mode", "http", env=layout["env"]))
+    ok(run("rollback", "--backup", backups(layout)[0], env=layout["env"]))
+    assert_unchanged(layout)
+
+
+def test_http_custom_port_is_used_by_proxy_public_url_and_check(layout):
+    ok(apply_http(layout, "--http-port", "8080"))
+    assert "listen 8080;" in layout["config"].read_text()
+    assert "RIST_EDGE_PUBLIC_BASE_URL=http://10.10.1.31:8080" in layout["env_file"].read_text()
+    assert "http://10.10.1.31:8080/health" in layout["log"].read_text()
+    ok(run("check", *layout["args"], "--mode", "http", "--http-port", "8080", env=layout["env"]))
+
+
+def test_both_mode_enables_both_listeners_and_checks_each(layout):
+    ok(apply(layout, "--mode", "both"))
+    config = layout["config"].read_text()
+    text = layout["env_file"].read_text()
+    assert "listen 80;" in config and "listen 443 ssl;" in config
+    assert "return 301" not in config and "return 308" not in config
+    assert "RIST_SSO_ALLOW_HTTP=true" in text
+    assert "RIST_AUTH_COOKIE_SECURE=false" in text
+    calls = layout["log"].read_text()
+    assert "http://10.10.1.31/health" in calls
+    assert "https://10.10.1.31/health" in calls
+    assert "--cacert" in calls
+
+
+def test_http_keeps_existing_tls_material_on_apply_and_rollback(layout):
+    layout["tls"].mkdir(mode=0o700)
+    original = {name: ("existing material " + name).encode() for name in
+                ("edge.key", "edge-chain.pem", "ca.pem", "client-ca.cer", "edge.csr")}
+    for name, content in original.items():
+        target = layout["tls"] / name
+        target.write_bytes(content)
+        target.chmod(0o600)
+    ok(apply_http(layout))
+    assert {p.name: p.read_bytes() for p in layout["tls"].iterdir()} == original
+    ok(run("rollback", "--backup", backups(layout)[0], env=layout["env"]))
+    assert {p.name: p.read_bytes() for p in layout["tls"].iterdir()} == original
+    assert layout["env_file"].read_bytes() == layout["original"]
+    assert not layout["config"].exists()
+
+
+def test_http_rejected_by_application_rolls_back(layout):
+    layout["env"]["FAKE_SSO_CODE"] = "426"
+    result = apply_http(layout)
+    assert result.returncode != 0
+    assert "이전 파일/서비스 상태 복원 완료" in result.stderr
+    assert_unchanged(layout)
+    assert not layout["tls"].exists()
+
+
+def test_http_to_both_to_https_and_rollback_preserves_previous_mode(layout):
+    ok(apply_http(layout))
+    ok(apply(layout, "--mode", "both"))
+    both_env = layout["env_file"].read_bytes()
+    both_config = layout["config"].read_bytes()
+    both_tls = {p.name: p.read_bytes() for p in layout["tls"].iterdir()}
+    before = set(backups(layout))
+    ok(apply(layout))
+    assert "listen 80;" not in layout["config"].read_text()
+    text = layout["env_file"].read_text()
+    assert "RIST_SSO_ALLOW_HTTP=false" in text
+    assert "RIST_AUTH_COOKIE_SECURE=true" in text
+    last_backup, = set(backups(layout)) - before
+    ok(run("rollback", "--backup", last_backup, env=layout["env"]))
+    assert layout["env_file"].read_bytes() == both_env
+    assert layout["config"].read_bytes() == both_config
+    assert {p.name: p.read_bytes() for p in layout["tls"].iterdir()} == both_tls
+
+
+@pytest.mark.parametrize("mode,port", [("http", "80"), ("both", "80"), ("both", "443")])
+@pytest.mark.parametrize("kind", ["nginx", "process"])
+def test_each_selected_port_is_checked_before_mutation(layout, mode, port, kind):
+    if kind == "nginx":
+        layout["env"].update(FAKE_CONFLICT="1", FAKE_CONFLICT_PORT=port)
+    else:
+        layout["env"].update(FAKE_LISTENER_PORT=port,
+                             FAKE_TLS_LISTENER=f'LISTEN 0 128 0.0.0.0:{port} *:* users:(("java",pid=1,fd=1))')
+    result = apply_http(layout) if mode == "http" else apply(layout, "--mode", mode)
+    assert result.returncode != 0
+    assert_unchanged(layout)
+    assert not backups(layout)
+
+
+@pytest.mark.parametrize("mode,unselected_port", [("http", "443"), ("https", "80")])
+def test_unselected_nginx_port_does_not_block_apply(layout, mode, unselected_port):
+    layout["env"].update(FAKE_CONFLICT="1", FAKE_CONFLICT_PORT=unselected_port)
+    ok(apply_http(layout) if mode == "http" else apply(layout))
+
+
+def test_v1_backup_remains_restorable(layout):
+    ok(apply(layout))
+    backup = backups(layout)[0]
+    metadata = (backup / "metadata").read_text().splitlines()
+    assert metadata[0] == "RIST_HTTPS_BACKUP_V2" and len(metadata) == 9
+    metadata[0] = "RIST_HTTPS_BACKUP_V1"
+    (backup / "metadata").write_text("\n".join(metadata[:7]) + "\n")
+    ok(run("rollback", "--backup", backup, env=layout["env"]))
+    assert_unchanged(layout)
 
 
 def test_wrong_certificate_host_does_not_modify_settings(layout):
@@ -454,7 +603,8 @@ def test_apply_requires_root():
     assert "sudo/root" in result.stderr
 
 
-def test_real_nginx_tls_proxy_and_control_api_block(layout, certs, tmp_path):
+@pytest.mark.parametrize("mode", ["http", "https", "both"])
+def test_real_nginx_proxy_and_control_api_block(layout, certs, tmp_path, mode):
     binary = shutil.which("nginx", path="/usr/sbin:/usr/bin:/sbin:/bin")
     if not binary:
         pytest.skip("Install nginx for the real TLS integration test")
@@ -463,10 +613,20 @@ def test_real_nginx_tls_proxy_and_control_api_block(layout, certs, tmp_path):
         def do_GET(self):
             self.send_response(200)
             self.end_headers()
-            self.wfile.write(b'{"status":"ok"}')
+            if self.path == "/headers":
+                self.wfile.write(json.dumps({
+                    "scheme": self.headers.get("X-Forwarded-Proto"),
+                    "forwarded_for": self.headers.get("X-Forwarded-For"),
+                    "real_ip": self.headers.get("X-Real-IP"),
+                    "authorization": self.headers.get("Authorization"),
+                }).encode())
+            else:
+                self.wfile.write(b'{"status":"ok"}')
 
         def do_POST(self):
-            self.send_response(401 if self.headers.get("X-Forwarded-Proto") == "https" else 426)
+            scheme = self.headers.get("X-Forwarded-Proto")
+            allowed = scheme == "https" or (scheme == "http" and mode in ("http", "both"))
+            self.send_response(401 if allowed else 426)
             self.end_headers()
 
         def log_message(self, *_):
@@ -475,9 +635,11 @@ def test_real_nginx_tls_proxy_and_control_api_block(layout, certs, tmp_path):
     backend = HTTPServer(("127.0.0.1", 0), Handler)
     thread = threading.Thread(target=backend.serve_forever, daemon=True)
     thread.start()
-    with socket.socket() as probe:
-        probe.bind(("127.0.0.1", 0))
-        https_port = probe.getsockname()[1]
+    with socket.socket() as probe_http, socket.socket() as probe_https:
+        probe_http.bind(("127.0.0.1", 0))
+        probe_https.bind(("127.0.0.1", 0))
+        http_port = probe_http.getsockname()[1]
+        https_port = probe_https.getsockname()[1]
     api_port = backend.server_address[1]
     main_config = tmp_path / "nginx-main.conf"
     pid_file = tmp_path / "nginx.pid"
@@ -490,20 +652,45 @@ def test_real_nginx_tls_proxy_and_control_api_block(layout, certs, tmp_path):
     executable(layout["bin_dir"] / "nginx", f'#!/bin/sh\nexec {binary} -c "{main_config}" "$@"\n')
     layout["env"]["REAL_NGINX"] = "1"
     try:
-        result = ok(apply(layout, "--https-port", str(https_port), "--api-port", str(api_port)))
-        assert "HTTPS 설정/검사 완료" in result.stdout
-        options = ["--https-port", str(https_port), "--api-port", str(api_port)]
+        options = ["--mode", mode, "--http-port", str(http_port),
+                   "--https-port", str(https_port), "--api-port", str(api_port)]
+        certificate_args = [] if mode == "http" else layout["apply_args"]
+        result = ok(run("apply", *layout["args"], *certificate_args, *options, env=layout["env"]))
+        assert f"Nginx {mode} 설정/검사 완료" in result.stdout
         ok(run("check", *layout["args"], *options, env=layout["env"]))
-        request = subprocess.run(
-            ["curl", "--silent", "--show-error", "--noproxy", "*",
-             "--cacert", str(certs["ca"] / "root-ca.crt"),
-             "--resolve", f"10.10.1.31:{https_port}:127.0.0.1", "-o", "/dev/null",
-             "-w", "%{http_code}", "--data", "{}",
-             f"https://10.10.1.31:{https_port}/api/v1/reports/synthetic/regenerate"],
-            capture_output=True, text=True, timeout=10, env=layout["env"],
-        )
-        assert request.returncode == 0, request.stderr
-        assert request.stdout == "403"
+        frontends = []
+        if mode in ("http", "both"):
+            frontends.append(("http", http_port))
+        if mode in ("https", "both"):
+            frontends.append(("https", https_port))
+        for scheme, port in frontends:
+            command = ["curl", "--silent", "--show-error", "--noproxy", "*",
+                       "--resolve", f"10.10.1.31:{port}:127.0.0.1"]
+            if scheme == "https":
+                command += ["--cacert", str(certs["ca"] / "root-ca.crt")]
+            base_url = f"{scheme}://10.10.1.31:{port}"
+
+            def request(*args):
+                result = subprocess.run([*command, *args], capture_output=True, text=True,
+                                        timeout=10, env=layout["env"])
+                assert result.returncode == 0, result.stderr
+                return result.stdout
+
+            # A client cannot forge the trusted proxy's scheme/source address.
+            spoofed_scheme = "https" if scheme == "http" else "http"
+            observed = json.loads(request(
+                "-H", f"X-Forwarded-Proto: {spoofed_scheme}",
+                "-H", "X-Forwarded-For: 203.0.113.99",
+                "-H", "X-Real-IP: 203.0.113.99",
+                "-H", "Authorization: Bearer synthetic-proxy-test", base_url + "/headers",
+            ))
+            assert observed == {"scheme": scheme, "forwarded_for": "127.0.0.1",
+                                "real_ip": "127.0.0.1",
+                                "authorization": "Bearer synthetic-proxy-test"}
+            assert request("-o", "/dev/null", "-w", "%{http_code}", "--data", "{}",
+                           base_url + "/api/v1/auth/sso/verify") == "401"
+            assert request("-o", "/dev/null", "-w", "%{http_code}", "--data", "{}",
+                           base_url + "/api/v1/reports/synthetic/regenerate") == "403"
         ok(run("rollback", "--backup", backups(layout)[0], env=layout["env"]))
         assert_unchanged(layout)
     finally:

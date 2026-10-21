@@ -1,19 +1,21 @@
 #!/usr/bin/env bash
-# Offline HTTPS provisioning for an existing Ubuntu/systemd RIST Edge.
+# Offline Nginx HTTP/HTTPS provisioning for an existing Ubuntu/systemd RIST Edge.
 # No package download, firewall mutation, SSO call, or client trust installation.
 set -Eeuo pipefail
 umask 077
 
 usage() {
     cat <<'USAGE'
-RIST Edge HTTPS 설정 (Ubuntu, OpenSSL 1.1.1 이상)
+RIST Edge Nginx HTTP/HTTPS 설정 (Ubuntu, TLS 사용 시 OpenSSL 1.1.1 이상)
 
   bash setup_https.sh plan [옵션]             읽기 전용 계획 (기본 동작)
   sudo bash setup_https.sh csr [옵션]         Edge 개인키 + CSR 생성
   bash setup_https.sh init-ca --ca-dir DIR    별도 관리 PC에서 암호화된 내부 CA 생성
   bash setup_https.sh sign --ca-dir DIR --csr FILE --out FILE [옵션]
   sudo bash setup_https.sh apply --cert FILE --ca-cert FILE [옵션]
-  sudo bash setup_https.sh check [옵션]       설치된 HTTPS/프록시 검사
+  sudo bash setup_https.sh apply --mode http [옵션]  인증서 없이 Nginx HTTP 적용
+  sudo bash setup_https.sh apply --mode both --cert FILE --ca-cert FILE [옵션]
+  sudo bash setup_https.sh check [옵션]       지정 모드의 Nginx/프록시 검사
   sudo bash setup_https.sh rollback --backup DIR
 
 공통 옵션:
@@ -23,6 +25,8 @@ RIST Edge HTTPS 설정 (Ubuntu, OpenSSL 1.1.1 이상)
   --nginx-config FILE     http 블록에서 include되는 파일
                          (기본 /etc/nginx/conf.d/rist-edge-https.conf)
   --backup-root DIR       비밀값 포함 백업 (기본 /var/backups/rist-https)
+  --mode MODE             http, https, both (기본 https)
+  --http-port PORT        Nginx 외부 HTTP 포트 (기본 80)
   --https-port PORT       기본 443
   --api-port PORT         서버 내부 HTTP 포트 (기본 8000)
   --key FILE             apply에서 가져올 비암호화 서버 키 (기본 TLS_DIR/edge.key)
@@ -48,6 +52,7 @@ reset_options() {
     R_ACTION=plan R_HOST=10.10.1.31 R_PROJECT=/home/rist/ritas
     R_TLS=/etc/rist/tls R_NGINX=/etc/nginx/conf.d/rist-edge-https.conf
     R_BACKUPS=/var/backups/rist-https R_HTTPS_PORT=443 R_API_PORT=8000
+    R_MODE=https R_HTTP_PORT=80
     R_KEY='' R_CERT='' R_CA_CERT='' R_CA_DIR='' R_PASS_FILE=''
     R_CSR='' R_OUT='' R_DAYS=365 R_BACKUP='' R_TRANSACTION=0
 }
@@ -57,12 +62,13 @@ parse_options() {
     while [[ $# -gt 0 ]]; do
         case $1 in
             --help) usage; exit 0 ;;
-            --host|--project-root|--tls-dir|--nginx-config|--backup-root|--https-port|--api-port|--key|--cert|--ca-cert|--ca-dir|--ca-pass-file|--csr|--out|--cert-days|--backup)
+            --host|--project-root|--tls-dir|--nginx-config|--backup-root|--mode|--http-port|--https-port|--api-port|--key|--cert|--ca-cert|--ca-dir|--ca-pass-file|--csr|--out|--cert-days|--backup)
                 [[ $# -ge 2 && -n $2 && $2 != --* ]] || die "$1 값이 필요합니다."
                 case $1 in
                     --host) R_HOST=$2 ;; --project-root) R_PROJECT=$2 ;;
                     --tls-dir) R_TLS=$2 ;; --nginx-config) R_NGINX=$2 ;;
                     --backup-root) R_BACKUPS=$2 ;; --https-port) R_HTTPS_PORT=$2 ;;
+                    --mode) R_MODE=$2 ;; --http-port) R_HTTP_PORT=$2 ;;
                     --api-port) R_API_PORT=$2 ;; --key) R_KEY=$2 ;;
                     --cert) R_CERT=$2 ;; --ca-cert) R_CA_CERT=$2 ;;
                     --ca-dir) R_CA_DIR=$2 ;; --ca-pass-file) R_PASS_FILE=$2 ;;
@@ -99,6 +105,7 @@ outside_git() {
 
 validate_options() {
     local octet label port target
+    case $R_MODE in http|https|both) ;; *) die '--mode는 http, https, both 중 하나여야 합니다.' ;; esac
     [[ $R_HOST =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] && R_HOST_KIND=ip || R_HOST_KIND=dns
     if [[ $R_HOST_KIND == ip ]]; then
         local IFS=.
@@ -113,10 +120,12 @@ validate_options() {
             [[ ${#label} -le 63 && $label =~ ^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?$ ]] || die 'DNS 이름을 확인하세요.'
         done
     fi
-    for port in "$R_HTTPS_PORT" "$R_API_PORT"; do
+    for port in "$R_HTTP_PORT" "$R_HTTPS_PORT" "$R_API_PORT"; do
         if [[ ! $port =~ ^[1-9][0-9]{0,4}$ ]] || (( port > 65535 )); then die '포트는 1~65535입니다.'; fi
     done
-    [[ $R_API_PORT != "$R_HTTPS_PORT" ]] || die 'HTTPS와 내부 HTTP 포트는 달라야 합니다.'
+    [[ $R_MODE == http || $R_API_PORT != "$R_HTTPS_PORT" ]] || die 'HTTPS와 내부 HTTP 포트는 달라야 합니다.'
+    [[ $R_MODE == https || $R_API_PORT != "$R_HTTP_PORT" ]] || die '외부 HTTP와 내부 API 포트는 달라야 합니다.'
+    [[ $R_MODE != both || $R_HTTP_PORT != "$R_HTTPS_PORT" ]] || die 'HTTP와 HTTPS 포트는 달라야 합니다.'
     if [[ ! $R_DAYS =~ ^[1-9][0-9]{1,2}$ ]] || (( R_DAYS < 31 || R_DAYS > 825 )); then die '인증서 유효기간은 31~825일입니다.'; fi
     for target in "$R_PROJECT" "$R_TLS" "$R_NGINX" "$R_BACKUPS"; do safe_path "$target"; done
     for target in "$R_KEY" "$R_CERT" "$R_CA_CERT" "$R_CA_DIR" "$R_PASS_FILE" "$R_CSR" "$R_OUT" "$R_BACKUP"; do
@@ -126,6 +135,9 @@ validate_options() {
     [[ -n $R_KEY ]] || R_KEY=$R_TLS/edge.key
     R_URL=https://$R_HOST
     [[ $R_HTTPS_PORT == 443 ]] || R_URL+=:$R_HTTPS_PORT
+    R_HTTP_URL=http://$R_HOST
+    [[ $R_HTTP_PORT == 80 ]] || R_HTTP_URL+=:$R_HTTP_PORT
+    [[ $R_MODE != http ]] || R_URL=$R_HTTP_URL
     R_SAN=DNS:$R_HOST
     [[ $R_HOST_KIND != ip ]] || R_SAN=IP:$R_HOST
 }
@@ -264,8 +276,8 @@ managed_targets() {
 server_prerequisites() {
     require_root
     local command
-    for command in openssl nginx curl systemctl ss flock awk install stat mktemp cmp; do need "$command"; done
-    crypto_prerequisites
+    for command in nginx curl systemctl ss flock awk install stat mktemp cmp; do need "$command"; done
+    if [[ $R_MODE != http ]]; then crypto_prerequisites; fi
     [[ -f $R_ENV ]] || die "기존 환경 파일이 없습니다: $R_ENV (먼저 Edge를 설치하세요)"
     outside_git "$R_TLS"; outside_git "$R_BACKUPS"
     private_directory_ok "$R_TLS"; private_directory_ok "$R_BACKUPS"
@@ -277,27 +289,32 @@ server_prerequisites() {
 }
 
 check_port_conflicts() {
-    local listeners dump
-    listeners=$(ss -H -ltnp "sport = :$R_HTTPS_PORT")
+    local listeners dump port
+    local -a ports=()
+    [[ $R_MODE == https ]] || ports+=("$R_HTTP_PORT")
+    [[ $R_MODE == http ]] || ports+=("$R_HTTPS_PORT")
     local listener
-    while IFS= read -r listener; do
-        [[ -z $listener || $listener == *'"nginx"'* ]] || die "HTTPS 포트 $R_HTTPS_PORT 를 다른 프로세스가 사용 중입니다."
-    done <<<"$listeners"
     dump=$(nginx -T 2>/dev/null) || die '기존 Nginx 설정 검사 실패. 기존 설정을 먼저 확인하세요.'
-    if printf '%s\n' "$dump" | awk -v ours="$R_NGINX:" -v port="$R_HTTPS_PORT" '
-        /^# configuration file / { file=$4 }
-        $1 == "listen" { address=$2; sub(/;$/, "", address)
-            if (file != ours && (address == port || address ~ (":" port "$"))) bad=1
-        }
-        END { exit !bad }
-    '; then die "다른 Nginx 설정이 포트 $R_HTTPS_PORT 를 사용합니다. 자동으로 덮어쓰지 않습니다."; fi
+    for port in "${ports[@]}"; do
+        listeners=$(ss -H -ltnp "sport = :$port")
+        while IFS= read -r listener; do
+            [[ -z $listener || $listener == *'"nginx"'* ]] || die "외부 포트 $port 를 다른 프로세스가 사용 중입니다."
+        done <<<"$listeners"
+        if printf '%s\n' "$dump" | awk -v ours="$R_NGINX:" -v port="$port" '
+            /^# configuration file / { file=$4 }
+            $1 == "listen" { address=$2; sub(/;$/, "", address)
+                if (file != ours && (address == port || address ~ (":" port "$"))) bad=1
+            }
+            END { exit !bad }
+        '; then die "다른 Nginx 설정이 포트 $port 를 사용합니다. 자동으로 덮어쓰지 않습니다."; fi
+    done
 }
 
 snapshot() {
     new_directory "$R_BACKUPS"
     R_BACKUP=$(mktemp -d "$R_BACKUPS/backup.XXXXXXXX")
-    printf '%s\n' 'RIST_HTTPS_BACKUP_V1' "$R_PROJECT" "$R_TLS" "$R_NGINX" \
-        "$R_HTTPS_PORT" "$R_API_PORT" "$R_HOST" >"$R_BACKUP/metadata"
+    printf '%s\n' 'RIST_HTTPS_BACKUP_V2' "$R_PROJECT" "$R_TLS" "$R_NGINX" \
+        "$R_HTTPS_PORT" "$R_API_PORT" "$R_HOST" "$R_MODE" "$R_HTTP_PORT" >"$R_BACKUP/metadata"
     if systemctl is-active --quiet nginx; then printf '1\n'; else printf '0\n'; fi >"$R_BACKUP/nginx-active"
     if systemctl is-enabled --quiet nginx; then printf '1\n'; else printf '0\n'; fi >"$R_BACKUP/nginx-enabled"
     local i
@@ -324,10 +341,13 @@ atomic_install() {
 
 write_env() {
     # Do NOT source an operator-owned EnvironmentFile or expose its contents.
-    awk -v url="$R_URL" -v port="$R_API_PORT" '
+    local secure=true allow_http=false
+    if [[ $R_MODE != https ]]; then secure=false; allow_http=true; fi
+    awk -v url="$R_URL" -v port="$R_API_PORT" -v secure="$secure" -v allow_http="$allow_http" '
         BEGIN {
             value["RIST_EDGE_PUBLIC_BASE_URL"]=url
-            value["RIST_AUTH_COOKIE_SECURE"]="true"
+            value["RIST_AUTH_COOKIE_SECURE"]=secure
+            value["RIST_SSO_ALLOW_HTTP"]=allow_http
             value["RIST_AUTH_ENABLED"]="true"
             value["RIST_EDGE_BIND_HOST"]="127.0.0.1"
             value["RIST_EDGE_API_PORT"]=port
@@ -346,11 +366,20 @@ write_nginx() {
     cat >"$R_BACKUP/nginx.new" <<NGINX
 # Managed by RIST deploy/setup_https.sh. Other sites are never overwritten.
 server {
+NGINX
+    if [[ $R_MODE != https ]]; then
+        printf '    listen %s;\n' "$R_HTTP_PORT" >>"$R_BACKUP/nginx.new"
+    fi
+    if [[ $R_MODE != http ]]; then
+        cat >>"$R_BACKUP/nginx.new" <<NGINX
     listen $R_HTTPS_PORT ssl;
-    server_name $R_HOST;
     ssl_certificate "$R_TLS/edge-chain.pem";
     ssl_certificate_key "$R_TLS/edge.key";
     ssl_protocols TLSv1.2 TLSv1.3;
+NGINX
+    fi
+    cat >>"$R_BACKUP/nginx.new" <<NGINX
+    server_name $R_HOST;
     client_max_body_size 2100m;
     client_body_timeout 900s;
 
@@ -406,31 +435,39 @@ on_exit() {
     exit "$result"
 }
 
-verify_live() {
-    local ca=$1 _attempt ready=0 listeners code
+verify_frontend() {
+    local url=$1 port=$2 ca=$3 _attempt ready=0 code
+    local -a options=(--resolve "$R_HOST:$port:127.0.0.1")
+    [[ $url != https://* ]] || options+=(--cacert "$ca")
     for _attempt in {1..15}; do
         if curl --fail --silent --show-error --noproxy '*' --connect-timeout 2 --max-time 5 \
-            --cacert "$ca" --resolve "$R_HOST:$R_HTTPS_PORT:127.0.0.1" "$R_URL/health" >/dev/null 2>&1; then
+            "${options[@]}" "$url/health" >/dev/null 2>&1; then
             ready=1; break
         fi
         sleep 1
     done
-    [[ $ready == 1 ]] || die '실제 HTTPS/CA/서버 주소/health 검사에 실패했습니다.'
+    [[ $ready == 1 ]] || die "실제 Nginx/서버 주소/health 검사에 실패했습니다: $url"
+    # Invalid, unauthenticated payload cannot trigger a real SSO call. 426 means
+    # proxy scheme or HTTP permission is wrong; do not accept health alone.
+    code=$(curl --silent --show-error --noproxy '*' --connect-timeout 2 --max-time 10 \
+        "${options[@]}" \
+        -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' \
+        --data '{}' "$url/api/v1/auth/sso/verify")
+    case $code in 401|403|422) ;; *) die "SSO 프록시 전달 검사 실패: $url (HTTP $code)." ;; esac
+}
+
+verify_live() {
+    local ca=$1 listeners
+    if [[ $R_MODE != https ]]; then verify_frontend "$R_HTTP_URL" "$R_HTTP_PORT" "$ca"; fi
+    if [[ $R_MODE != http ]]; then verify_frontend "$R_URL" "$R_HTTPS_PORT" "$ca"; fi
     listeners=$(ss -H -ltn "sport = :$R_API_PORT")
     printf '%s\n' "$listeners" | awk -v address="127.0.0.1:$R_API_PORT" '
         NF { count++; if ($4 != address) bad=1 } END { exit !(count && !bad) }
     ' || die 'Python HTTP 포트가 127.0.0.1에만 바인딩되지 않았습니다.'
-    # Invalid, unauthenticated payload cannot trigger a real SSO call. 426 means
-    # the trusted proxy failed to convey HTTPS; do not accept health alone.
-    code=$(curl --silent --show-error --noproxy '*' --connect-timeout 2 --max-time 10 \
-        --cacert "$ca" --resolve "$R_HOST:$R_HTTPS_PORT:127.0.0.1" \
-        -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' \
-        --data '{}' "$R_URL/api/v1/auth/sso/verify")
-    case $code in 401|403|422) ;; *) die "SSO HTTPS 전달 검사 실패 (HTTP $code)." ;; esac
 }
 
 apply_https() {
-    [[ -n $R_CERT && -n $R_CA_CERT ]] || die 'apply에는 --cert와 --ca-cert가 필요합니다.'
+    [[ $R_MODE == http || ( -n $R_CERT && -n $R_CA_CERT ) ]] || die 'HTTPS/both apply에는 --cert와 --ca-cert가 필요합니다.'
     server_prerequisites
     systemctl is-active --quiet rist-edge-api.service || die '기존 Edge API가 실행 중이어야 합니다.'
     new_directory "$R_BACKUPS"
@@ -442,25 +479,29 @@ apply_https() {
     fi
     check_port_conflicts
     local validation
-    validation=$(mktemp -d "$R_BACKUPS/validate.XXXXXXXX")
-    validate_certificate "$R_CERT" "$R_KEY" "$R_CA_CERT" "$validation"
+    if [[ $R_MODE != http ]]; then
+        validation=$(mktemp -d "$R_BACKUPS/validate.XXXXXXXX")
+        validate_certificate "$R_CERT" "$R_KEY" "$R_CA_CERT" "$validation"
+    fi
     snapshot
     log "백업: $R_BACKUP (DB 비밀번호 등 비밀값 포함, 외부에 공유하지 마세요)"
     R_TRANSACTION=1
     trap on_exit EXIT
     trap 'exit 130' INT
     trap 'exit 143' TERM
-    new_directory "$R_TLS"
-    # Stage sources first: --key/--cert may already name managed destination files.
-    install -m 600 "$R_KEY" "$R_BACKUP/key.new"
-    install -m 644 "$R_CERT" "$R_BACKUP/chain.new"
-    install -m 644 "$R_CA_CERT" "$R_BACKUP/ca.new"
-    openssl x509 -in "$R_BACKUP/ca.new" -outform DER -out "$R_BACKUP/client-ca.cer.new"
+    if [[ $R_MODE != http ]]; then
+        new_directory "$R_TLS"
+        # Stage sources first: --key/--cert may already name managed destination files.
+        install -m 600 "$R_KEY" "$R_BACKUP/key.new"
+        install -m 644 "$R_CERT" "$R_BACKUP/chain.new"
+        install -m 644 "$R_CA_CERT" "$R_BACKUP/ca.new"
+        openssl x509 -in "$R_BACKUP/ca.new" -outform DER -out "$R_BACKUP/client-ca.cer.new"
+        atomic_install "$R_BACKUP/key.new" "$R_TLS/edge.key" 600
+        atomic_install "$R_BACKUP/chain.new" "$R_TLS/edge-chain.pem" 644
+        atomic_install "$R_BACKUP/ca.new" "$R_TLS/ca.pem" 644
+        atomic_install "$R_BACKUP/client-ca.cer.new" "$R_TLS/client-ca.cer" 644
+    fi
     write_env; write_nginx
-    atomic_install "$R_BACKUP/key.new" "$R_TLS/edge.key" 600
-    atomic_install "$R_BACKUP/chain.new" "$R_TLS/edge-chain.pem" 644
-    atomic_install "$R_BACKUP/ca.new" "$R_TLS/ca.pem" 644
-    atomic_install "$R_BACKUP/client-ca.cer.new" "$R_TLS/client-ca.cer" 644
     atomic_install "$R_BACKUP/edge.env.new" "$R_ENV" 640
     atomic_install "$R_BACKUP/nginx.new" "$R_NGINX" 644
     nginx -t
@@ -474,11 +515,14 @@ apply_https() {
     systemctl enable nginx
     R_TRANSACTION=0
     trap - EXIT INT TERM
-    log "HTTPS 설정/검사 완료: $R_URL/ftir"
-    log "PC 배포용 공개 CA: $R_TLS/client-ca.cer (개인키/edge.env/백업은 배포 금지)"
-    openssl x509 -in "$R_TLS/ca.pem" -noout -fingerprint -sha256
+    log "Nginx $R_MODE 설정/검사 완료: $R_URL/ftir"
+    if [[ $R_MODE == both ]]; then log "HTTP 접속도 허용: $R_HTTP_URL/ftir"; fi
+    if [[ $R_MODE != http ]]; then
+        log "PC 배포용 공개 CA: $R_TLS/client-ca.cer (개인키/edge.env/백업은 배포 금지)"
+        openssl x509 -in "$R_TLS/ca.pem" -noout -fingerprint -sha256
+    fi
     printf '복원: sudo bash %q rollback --backup %q\n' "${BASH_SOURCE[0]}" "$R_BACKUP"
-    log "별도 확인: 실험 PC→Edge TCP $R_HTTPS_PORT 허용, PC CA 신뢰 등록, 실제 SSO/LIMS 및 대용량 업로드."
+    log '별도 확인: 선택한 Nginx 외부 포트 허용, HTTPS 사용 시 PC CA 신뢰 등록, 실제 SSO/LIMS 및 대용량 업로드.'
     log '실제 SSO/LIMS 접속·인증과 실험 PC 브라우저 동작은 이 스크립트에서 검증하지 않았습니다.'
 }
 
@@ -487,7 +531,11 @@ load_backup() {
     [[ $(stat -c '%u:%a' "$R_BACKUP") == '0:700' ]] || die 'root 소유·권한 700인 백업만 복원합니다.'
     local -a meta=()
     mapfile -t meta <"$R_BACKUP/metadata"
-    [[ ${#meta[@]} == 7 && ${meta[0]} == RIST_HTTPS_BACKUP_V1 ]] || die '지원하는 백업 형식이 아닙니다.'
+    if [[ ${#meta[@]} == 7 && ${meta[0]} == RIST_HTTPS_BACKUP_V1 ]]; then
+        R_MODE=https R_HTTP_PORT=80
+    elif [[ ${#meta[@]} == 9 && ${meta[0]} == RIST_HTTPS_BACKUP_V2 ]]; then
+        R_MODE=${meta[7]} R_HTTP_PORT=${meta[8]}
+    else die '지원하는 백업 형식이 아닙니다.'; fi
     R_PROJECT=${meta[1]} R_TLS=${meta[2]} R_NGINX=${meta[3]}
     R_HTTPS_PORT=${meta[4]} R_API_PORT=${meta[5]} R_HOST=${meta[6]}
     validate_options
@@ -525,10 +573,17 @@ main() {
     validate_options
     if [[ $R_ACTION == plan ]]; then
         log "계획만 출력합니다. 파일/서비스 변경 없음. 접속: $R_URL"
+        log "Nginx 모드: $R_MODE (http=$R_HTTP_PORT, https=$R_HTTPS_PORT)"
+        if [[ $R_MODE == both ]]; then log "HTTP 접속도 허용: $R_HTTP_URL"; fi
         log "기존 환경: $R_ENV / 내부 API: 127.0.0.1:$R_API_PORT"
         log "Nginx: $R_NGINX / 인증서: $R_TLS / 백업: $R_BACKUPS"
-        log '사전 준비: Ubuntu, 실행 중인 rist-edge-api.service, nginx/curl/openssl/ss/flock, 서버 인증서+키+CA.'
-        log '사내 CA가 없으면 별도 관리 PC에서 init-ca → Edge에서 csr → 관리 PC에서 sign → Edge에서 apply.'
+        log '사전 준비: Ubuntu, 실행 중인 rist-edge-api.service, nginx/curl/ss/flock.'
+        if [[ $R_MODE == http ]]; then
+            log 'HTTP 모드에는 서버 인증서가 필요하지 않습니다. PC는 Nginx HTTP 주소를 사용합니다.'
+        else
+            log 'HTTPS 사용 시 OpenSSL, 서버 인증서+키+CA가 필요합니다.'
+            log '사내 CA가 없으면 별도 관리 PC에서 init-ca → Edge에서 csr → 관리 PC에서 sign → Edge에서 apply.'
+        fi
         return
     fi
     [[ $(uname -s) == Linux && ${BASH_VERSINFO[0]} -ge 4 ]] || die 'Linux의 Bash 4 이상에서 실행하세요.'
@@ -539,7 +594,7 @@ main() {
             server_prerequisites
             nginx -t
             verify_live "$R_TLS/ca.pem"
-            log "HTTPS/프록시 검사 통과: $R_URL (실제 SSO/LIMS 인증은 별도)" ;;
+            log "Nginx $R_MODE/프록시 검사 통과: $R_URL (실제 SSO/LIMS 인증은 별도)" ;;
         rollback) rollback_https ;;
     esac
 }
