@@ -558,11 +558,13 @@ def test_shared_peak_editor_adds_peak_controls(tmp_path) -> None:
     assert "RIST peak group update failed" in html
     assert "name: groupName" not in html
     assert "Plotly.addTraces" in html
-    assert "Plotly.deleteTraces" in html
+    assert "Plotly.react(gd, nextData, nextLayout, gd._context)" in html
     assert 'gd.addEventListener("rist-peak-delete"' in html
     assert "function deletePeakTraces(curves, skipHistory, deferStructureEvent, deletedGroups)" in html
     assert ".sort(function(a, b) { return a - b; })" in html
-    assert "window.Plotly.deleteTraces(gd, peakCurves)" in html
+    assert "window.Plotly.deleteTraces(gd, peakCurves)" not in html
+    assert "originalAnnotationIndexMap" in html
+    assert "originalShapeIndexMap" in html
     assert "return deletePeakTraces([curve], skipHistory, deferStructureEvent)" in html
     assert "deletePeakTraces(curves, false, true)" in html
     assert "filterIndexedValues" in html

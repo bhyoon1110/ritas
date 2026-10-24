@@ -4747,6 +4747,10 @@ def peak_editor_js(div_id: str) -> str:
     var data = gd.data || [];
     var sourceAnnotations = gd.layout.annotations || [];
     var sourceShapes = gd.layout.shapes || [];
+    // FTIR hides these arrays in transmittance mode but keeps the absorbance
+    // originals. Label indices still address those originals while hidden.
+    var annotationCount = Math.max(sourceAnnotations.length, (gd._ristFtirUnitOriginalAnnotations || []).length);
+    var shapeCount = Math.max(sourceShapes.length, (gd._ristFtirUnitOriginalShapes || []).length);
     var labels = meta();
     function validIndex(value, limit) {{
       if (value == null || value === "") return null;
@@ -4787,8 +4791,8 @@ def peak_editor_js(div_id: str) -> str:
     labels.forEach(function(label) {{
       label = label || {{}};
       var traceIndex = validIndex(label.traceIndex, data.length);
-      var annotationIndex = validIndex(label.annotationIndex, sourceAnnotations.length);
-      var shapeIndex = validIndex(label.shapeIndex, sourceShapes.length);
+      var annotationIndex = validIndex(label.annotationIndex, annotationCount);
+      var shapeIndex = validIndex(label.shapeIndex, shapeCount);
       var annotationTarget = deletedTraces[traceIndex]
         ? removedAnnotationIndexes : retainedAnnotationIndexes;
       var shapeTarget = deletedTraces[traceIndex]
@@ -4825,14 +4829,16 @@ def peak_editor_js(div_id: str) -> str:
     var shapes = filterIndexedValues(
       sourceShapes, removedShapeIndexes, shapeIndexMap
     );
+    var originalAnnotationIndexMap = {{}};
+    var originalShapeIndexMap = {{}};
     if (gd._ristFtirUnitOriginalAnnotations) {{
       gd._ristFtirUnitOriginalAnnotations = filterIndexedValues(
-        gd._ristFtirUnitOriginalAnnotations, removedAnnotationIndexes, {{}}
+        gd._ristFtirUnitOriginalAnnotations, removedAnnotationIndexes, originalAnnotationIndexMap
       );
     }}
     if (gd._ristFtirUnitOriginalShapes) {{
       gd._ristFtirUnitOriginalShapes = filterIndexedValues(
-        gd._ristFtirUnitOriginalShapes, removedShapeIndexes, {{}}
+        gd._ristFtirUnitOriginalShapes, removedShapeIndexes, originalShapeIndexMap
       );
     }}
 
@@ -4846,15 +4852,21 @@ def peak_editor_js(div_id: str) -> str:
           && Object.prototype.hasOwnProperty.call(traceIndexMap, traceIndex)) {{
         nextLabel.traceIndex = traceIndexMap[traceIndex];
       }}
-      var annotationIndex = validIndex(label.annotationIndex, sourceAnnotations.length);
+      var annotationIndex = validIndex(label.annotationIndex, annotationCount);
       if (annotationIndex != null
           && Object.prototype.hasOwnProperty.call(annotationIndexMap, annotationIndex)) {{
         nextLabel.annotationIndex = annotationIndexMap[annotationIndex];
+      }} else if (annotationIndex != null
+          && Object.prototype.hasOwnProperty.call(originalAnnotationIndexMap, annotationIndex)) {{
+        nextLabel.annotationIndex = originalAnnotationIndexMap[annotationIndex];
       }}
-      var shapeIndex = validIndex(label.shapeIndex, sourceShapes.length);
+      var shapeIndex = validIndex(label.shapeIndex, shapeCount);
       if (shapeIndex != null
           && Object.prototype.hasOwnProperty.call(shapeIndexMap, shapeIndex)) {{
         nextLabel.shapeIndex = shapeIndexMap[shapeIndex];
+      }} else if (shapeIndex != null
+          && Object.prototype.hasOwnProperty.call(originalShapeIndexMap, shapeIndex)) {{
+        nextLabel.shapeIndex = originalShapeIndexMap[shapeIndex];
       }}
       nextLabels.push(nextLabel);
     }});
@@ -4866,25 +4878,26 @@ def peak_editor_js(div_id: str) -> str:
         return Number.isInteger(curve) && values.indexOf(curve) === index;
       }});
 
-    return window.Plotly.deleteTraces(gd, peakCurves).then(function() {{
+    // Publish traces and their indexed annotations together. deleteTraces()
+    // followed by an async relayout exposed shifted trace indices with old
+    // labels; another delete could then restore an obsolete annotation array.
+    var nextData = data.filter(function(trace, index) {{ return !deletedTraces[index]; }});
+    var nextMeta = Object.assign({{}}, gd.layout.meta || {{}}, {{ristPeakLabels: nextLabels}});
+    if (deletedGroups) {{
+      nextMeta.ristDeletedSampleGroups = (nextMeta.ristDeletedSampleGroups || [])
+        .concat(deletedGroups).filter(function(group, index, all) {{ return all.indexOf(group) === index; }});
+    }}
+    var nextLayout = Object.assign({{}}, gd.layout, {{
+      meta: nextMeta, annotations: annotations, shapes: shapes
+    }});
+    return window.Plotly.react(gd, nextData, nextLayout, gd._context).then(function() {{
       updateSelectButton();
-      var patch = {{
-        "meta.ristPeakLabels": nextLabels,
-        annotations: annotations,
-        shapes: shapes
-      }};
-      if (deletedGroups) {{
-        patch["meta.ristDeletedSampleGroups"] = ((gd.layout.meta || {{}}).ristDeletedSampleGroups || [])
-          .concat(deletedGroups).filter(function(group, index, all) {{ return all.indexOf(group) === index; }});
+      if (!deferStructureEvent) {{
+        gd.dispatchEvent(new CustomEvent("rist-plot-structure-changed", {{
+          detail: {{reason: deletedGroups ? "sample-deleted" : "peak-deleted"}}
+        }}));
       }}
-      return window.Plotly.relayout(gd, patch).then(function() {{
-        if (!deferStructureEvent) {{
-          gd.dispatchEvent(new CustomEvent("rist-plot-structure-changed", {{
-            detail: {{reason: deletedGroups ? "sample-deleted" : "peak-deleted"}}
-          }}));
-        }}
-        return peakCurves;
-      }});
+      return peakCurves;
     }});
   }}
 

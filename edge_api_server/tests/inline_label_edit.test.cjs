@@ -326,6 +326,52 @@ for (const kind of ['ftir','raman']) for (const mode of ['native','chrome49']) {
     h.gd._ristHistory.undo();await tick();
     assert.equal(h.q('.rist-legend-raw-count').textContent,'피크 1개');assert.equal(h.q('.rist-legend-raw-empty'),null);
   });
+  test(label+': rapid deletes atomically publish traces, labels and connectors, preserving user notes',async t=>{
+    const h=setup(t,kind,mode);shapeFixture(h);await tick();
+    const raw=clone(h.gd.data[0]),peak=clone(h.gd.data[1]);
+    const note=clone(h.gd.layout.annotations[1]),box=clone(h.gd.layout.shapes[1]);
+    const ann=clone(h.gd.layout.annotations[0]),line=clone(h.gd.layout.shapes[0]);
+    h.gd.data=[h.gd.data[0]];h.gd.layout.annotations=[];h.gd.layout.shapes=[];h.gd.layout.meta.ristPeakLabels=[];
+    for(let i=0;i<3;i++){
+      const p=clone(peak);p.name='Peak '+i;p.x=[200+i*10];p.meta.rist_legend_edit_group=p.meta.rist_peak.label_key='peak:'+i;
+      h.gd.data.push(p);h.gd.layout.annotations.push({...ann,text:'Label '+i});h.gd.layout.shapes.push({...line,x0:200+i*10,x1:200+i*10});
+      h.gd.layout.meta.ristPeakLabels.push({traceIndex:i+1,annotationIndex:i,shapeIndex:i,labelKey:'peak:'+i});
+    }
+    h.gd.layout.annotations.push(note);h.gd.layout.shapes.push(box);
+    h.gd._ristFtirUnitOriginalAnnotations=clone(h.gd.layout.annotations);h.gd._ristFtirUnitOriginalShapes=clone(h.gd.layout.shapes);
+    h.dispatch('rist-plot-data-replaced');await tick();
+    const pending=[];
+    for(const name of ['react','deleteTraces']){
+      const original=h.w.Plotly[name];
+      h.w.Plotly[name]=(...args)=>{original(...args);return new Promise(resolve=>pending.push(resolve));};
+    }
+    const remove=()=>h.gd.dispatchEvent(new h.w.CustomEvent('rist-peak-delete',{detail:{curves:[1]}}));
+    remove();remove();assert.equal(pending.length,2);
+    pending.splice(0).forEach(resolve=>resolve());await tick();
+    assert.deepEqual(clone(h.gd.data[0]),raw);assert.equal(h.gd.data.length,2);
+    assert.equal(h.gd.data[1].name,'Peak 2');
+    assert.deepEqual([...h.gd.layout.annotations].map(a=>a.text),['Label 2',note.text]);
+    assert.equal(h.gd.layout.shapes.length,2);assert.deepEqual(clone(h.gd.layout.shapes[1]),box);
+    assert.equal(h.gd.layout.meta.ristPeakLabels.length,1);
+    assert.equal(h.gd.layout.meta.ristPeakLabels[0].traceIndex,1);
+    assert.equal(h.gd.layout.meta.ristPeakLabels[0].annotationIndex,0);
+    assert.equal(h.gd.layout.meta.ristPeakLabels[0].shapeIndex,0);
+    assert.deepEqual(clone(h.gd._ristFtirUnitOriginalAnnotations),clone(h.gd.layout.annotations));
+  });
+  if(kind==='ftir')test(label+': transmittance deletion removes cached absorbance labels and undo restores them',async t=>{
+    const h=setup(t,kind,mode);shapeFixture(h);await tick();
+    const annotations=clone(h.gd._ristFtirUnitOriginalAnnotations),shapes=clone(h.gd._ristFtirUnitOriginalShapes);
+    h.gd._ristFtirSignalMode='transmittance';h.gd.layout.annotations=[];h.gd.layout.shapes=[];
+    h.gd.dispatchEvent(new h.w.CustomEvent('rist-peak-delete',{detail:{curves:[1]}}));await tick();
+    assert.equal(h.gd.data.length,1);assert.equal(h.gd.layout.meta.ristPeakLabels.length,0);
+    assert.deepEqual(clone(h.gd._ristFtirUnitOriginalAnnotations),[annotations[1]]);
+    assert.deepEqual(clone(h.gd._ristFtirUnitOriginalShapes),[shapes[1]]);
+    assert.equal(h.gd.layout.annotations.length,0);assert.equal(h.gd.layout.shapes.length,0);
+    h.gd._ristHistory.undo();await tick();assert.equal(h.gd.data.length,2);
+    assert.deepEqual(clone(h.gd._ristFtirUnitOriginalAnnotations),annotations);
+    h.gd._ristHistory.redo();await tick();assert.equal(h.gd.data.length,1);
+    assert.deepEqual(clone(h.gd._ristFtirUnitOriginalAnnotations),[annotations[1]]);
+  });
   test(label+': shared group edits, selected additions, removals and clear keep Raw ownership intact',async t=>{
     const h=setup(t,kind,mode);await tick();
     const parent=clone(h.gd.data[0]);parent.name='Other';parent.meta.rist_sample_group=parent.legendgroup='sample:1';
