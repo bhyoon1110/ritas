@@ -135,13 +135,16 @@ for(const mode of ['native','chrome49']) for(const experiment of ['ftir','raman'
       await h.template().load(value);await tick();
       assert.equal(h.gd.layout.meta[key].gap,gap);
       assert.equal(h.d.querySelector('.rist-'+experiment+'-stack-gap').value,String(Math.round(gap*100)));
-      assert.deepEqual(clone(h.gd.data[1].y),[-2,31,6].map(y=>y+33*gap));
+      assert.deepEqual(clone(h.gd.layout.meta[key].legendOrder),['sample:0','sample:1']);
+      assert.deepEqual(clone(h.gd.data[0].y),[-3,30,5].map(y=>y+33*gap));
+      assert.deepEqual(clone(h.gd.data[1].y),[-2,31,6]);
       h.d.querySelector('[data-template-save]').click();
       const saved=JSON.parse(await h.read(h.downloads.at(-1)));
       assert.equal(saved.settings.stack.gap,gap);
       await h.uploadTemplate(JSON.stringify(saved));await h.addRaw();
       assert.equal(h.gd.layout.meta[key].gap,gap);
-      assert.deepEqual(clone(h.gd.data[1].y),[-2,31,6].map(y=>y+33*gap));
+      assert.deepEqual(clone(h.gd.data[0].y),[-3,30,5].map(y=>y+33*gap));
+      assert.deepEqual(clone(h.gd.data[1].y),[-2,31,6]);
       assert.deepEqual(clone(h.gd.data[1].customdata),[-2,31,6]);
     }
     const previous=clone(h.template().state());
@@ -213,7 +216,8 @@ for(const mode of ['native','chrome49']) for(const experiment of ['ftir','raman'
     assert.equal(h.gd.data[0].line.width,3);assert.equal(h.gd.data[0].line.dash,'dash');
     assert.equal(h.gd.data[1].line.color,'#123456','extra sample keeps original style');
     assert.deepEqual(clone(h.gd.data[0].customdata),[-3,30,5]);
-    assert.deepEqual(clone(h.gd.data[1].y),[-2,31,6].map(y=>y+33*1.8));
+    assert.deepEqual(clone(h.gd.data[0].y),[-3,30,5].map(y=>y+33*1.8));
+    assert.deepEqual(clone(h.gd.data[1].y),[-2,31,6]);
     assert.equal(h.gd.layout.xaxis.fixedrange,true);
     assert.equal(h.gd.layout.meta.ristPlotSize.ratio,'4:3');assert.equal(h.gd.layout.width,1000);
     assert.equal(h.gd.layout.legend.x,0.02);
@@ -307,7 +311,8 @@ for(const mode of ['native','chrome49']) for(const experiment of ['ftir','raman'
     const value=sampleTemplate(experiment);value.settings.signalMode='transmittance';
     await h.template().load(value);await tick();
     assert.equal(h.gd._ristFtirSignalMode,'transmittance');
-    assert.deepEqual(clone(h.gd.data[1].y),[41,51,61].map(y=>y+180));
+    assert.deepEqual(clone(h.gd.data[0].y),[40,50,60].map(y=>y+180));
+    assert.deepEqual(clone(h.gd.data[1].y),[41,51,61]);
     value.settings.stack.enabled=false;value.settings.signalMode='absorbance';
     await h.template().load(value);await tick();
     assert.deepEqual(clone(h.gd.data[1].y),[-2,31,6]);assert.equal(h.gd._ristFtirSignalMode,'absorbance');

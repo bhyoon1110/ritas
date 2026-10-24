@@ -2440,16 +2440,25 @@ _RAMAN_STACK_SCRIPT = """
     });
     var groups = state.order.slice();
     if (!state.enabled) return groups;
-    return groups.sort(function(left, right) {
+    // Hidden samples keep their slots; their zeroed offsets are not a new order.
+    var visible = groups.filter(sampleVisible).sort(function(left, right) {
       var delta = Number(state.offsets[right] || 0)
         - Number(state.offsets[left] || 0);
       if (Math.abs(delta) > 0.0001) return delta;
       return originalIndexes[left] - originalIndexes[right];
     });
+    var index = 0;
+    return groups.map(function(group) { return sampleVisible(group) ? visible[index++] : group; });
+  }
+
+  function rememberVisualOrder() {
+    state.order = visualLegendOrder();
+    stackMeta().orderTopDown = true;
   }
 
   function syncLegendRanks(data) {
-    var groups = visualLegendOrder();
+    rememberVisualOrder();
+    var groups = state.order.slice();
     var groupRanks = {};
     var itemRanks = {};
     groups.forEach(function(group, index) {
@@ -2683,6 +2692,7 @@ _RAMAN_STACK_SCRIPT = """
     gd.dispatchEvent(new CustomEvent("rist-exclusive-interaction-start", {
       detail: {mode: "raman-stack-layout"}
     }));
+    rememberVisualOrder();
     state.enabled = !state.enabled;
     resetStackOffsets();
     applyOffsets();
@@ -2691,10 +2701,11 @@ _RAMAN_STACK_SCRIPT = """
     setDragMode(!state.dragMode, true);
   });
   gapSlider.addEventListener("input", function() {
+    var nextGap = stackGap(Number(gapSlider.value) / 100);
     gd.dispatchEvent(new CustomEvent("rist-exclusive-interaction-start", {
       detail: {mode: "raman-stack-layout"}
     }));
-    state.gap = stackGap(Number(gapSlider.value) / 100);
+    state.gap = nextGap;
     if (state.enabled) resetStackOffsets();
     applyOffsets();
   });
@@ -2739,6 +2750,7 @@ _RAMAN_STACK_SCRIPT = """
     if (ev.stopImmediatePropagation) ev.stopImmediatePropagation();
     var startPixelY = ev.clientY - nearest.point.rect.top;
     var nextY = nearest.point.yaxis.p2d(startPixelY + 1);
+    if (gd._ristHistory) gd._ristHistory.captureState(gd._ristHistory.snapshot());
     state.dragging = {
       group: nearest.group,
       pointerId: ev.pointerId,
@@ -2761,6 +2773,7 @@ _RAMAN_STACK_SCRIPT = """
     state.enabled = state.order.some(function(group) {
       return Math.abs(Number(state.offsets[group] || 0)) > 0.001;
     });
+    rememberVisualOrder();
     requestApply();
   }
 
@@ -2816,6 +2829,7 @@ _RAMAN_STACK_SCRIPT = """
     return Promise.resolve(gd._ristStackReady).then(function() {
       if (!state.initialized) initState();
       setDragMode(false, false);
+      rememberVisualOrder();
       state.enabled = settings.enabled;
       state.gap = stackGap(settings.gap);
       resetStackOffsets();
@@ -2825,7 +2839,6 @@ _RAMAN_STACK_SCRIPT = """
 
   gd._ristReorderSamples = function(topDown) {
     var requested = topDown.slice();
-    setDragMode(false, false);
     var operation = Promise.resolve(gd._ristStackReady).then(function() {
       return new Promise(function(resolve) {
         function idle() {
@@ -2836,20 +2849,16 @@ _RAMAN_STACK_SCRIPT = """
       });
     }).then(function() {
       if (!state.initialized) initState();
+      if (state.enabled) throw new Error("스택 ON에서는 ‘Y 이동’으로 그래프 순서를 변경하세요.");
+      setDragMode(false, false);
       var actual = discoverOrder();
       if (requested.length !== actual.length || requested.some(function(group, index) {
         return actual.indexOf(group) < 0 || requested.indexOf(group) !== index;
       })) throw new Error("Raw 목록이 변경되었습니다. 다시 순서를 지정하세요.");
       if (JSON.stringify(visualLegendOrder()) === JSON.stringify(requested)) return;
       if (gd._ristHistory) gd._ristHistory.captureState(gd._ristHistory.snapshot());
-      var slots = actual.map(function(group) { return Number(state.offsets[group] || 0); })
-        .sort(function(a, b) { return b - a; });
       state.order = requested;
       stackMeta().orderTopDown = true;
-      if (state.enabled) {
-        requested.forEach(function(group, index) { state.offsets[group] = slots[index]; });
-        state.autoLayout = false;
-      }
       return applyOffsets({preserveView: true});
     });
     gd._ristStackReady = operation.catch(function() {});

@@ -94,8 +94,10 @@ test('raw Raman stack uses the measurement scale, fits negatives and restores ex
   const stack=d.querySelector('.rist-raman-stack-button');
   assert.deepEqual(clone(gd.data.map(t=>t.y)),original);
   stack.click();await tick();
-  assert.equal(gd.data[1].meta.rist_raman_stack_offset,14880);
-  assert.deepEqual(clone(gd.data[1].y),original[1].map(y=>y+14880));
+  assert.deepEqual(clone(gd.layout.meta.ristRamanStack.legendOrder),['sample:0','sample:1']);
+  assert.equal(gd.data[0].meta.rist_raman_stack_offset,14880);
+  assert.deepEqual(clone(gd.data[0].y),original[0].map(y=>y+14880));
+  assert.deepEqual(clone(gd.data[1].y),original[1]);
   assert.deepEqual(clone(gd.data[1].customdata),original[1]);
   assert(gd.layout.yaxis.range[0]<-400);assert(gd.layout.yaxis.range[1]>20880);
   stack.click();await tick();
@@ -103,7 +105,7 @@ test('raw Raman stack uses the measurement scale, fits negatives and restores ex
   assert(gd.layout.yaxis.range[0]<-400);assert(gd.layout.yaxis.range[1]>12000);
   // Structure refresh/undo metadata must keep the raw-scale stack unit.
   dispatch('rist-plot-structure-changed');await tick();stack.click();await tick();
-  assert.equal(gd.data[1].meta.rist_raman_stack_offset,14880);
+  assert.equal(gd.data[0].meta.rist_raman_stack_offset,14880);
 });
 
 test('manual Raman peak retains raw intensity even when added to a vertically shifted curve',async t=>{
@@ -139,7 +141,8 @@ test('FTIR stack round-trip preserves raw values and the initial raw Y range',as
     samplePositions:{'sample:0':0,'sample:1':0},sampleOrder:['sample:0','sample:1']}};
   w.eval(program);await tick();
   const stack=d.querySelector('.rist-ftir-stack-button');
-  stack.click();await tick();assert(gd.data[1].y[1]>1.3);
+  stack.click();await tick();assert(gd.data[0].y[1]>1.3);
+  assert.deepEqual(clone(gd.data[1].y),original[1]);
   stack.click();await tick();
   assert.deepEqual(clone(gd.data.map(t=>t.y)),original);
   assert.deepEqual(clone(gd.layout.yaxis.range),initialRange);

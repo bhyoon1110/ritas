@@ -34,6 +34,7 @@ const server=http.createServer((req,res)=>{
             modeUnits:{absorbance:10,transmittance:100},sampleOrder:['sample:0','sample:1','sample:2'],
             samplePositions:{'sample:0':0,'sample:1':1.2,'sample:2':2.4},sampleOffsets:{'sample:0':0,'sample:1':12,'sample:2':24}}}}),g._context);
         g.dispatchEvent(new CustomEvent('rist-plot-data-replaced'));await g._ristStackReady;
+        await g._ristApplyStackSettings({enabled:false,gap:1.2});
       },{id,key});
       await page.locator('.rist-'+kind+'-tools-toggle').click();
       await page.locator('.rist-legend-edit-button').click();
@@ -121,7 +122,50 @@ const server=http.createServer((req,res)=>{
       assert.equal(await editedRow.locator('textarea').inputValue(),'Saved legend name');
       await page.locator('.rist-legend-edit-save-all').click();
       await page.locator('.rist-legend-edit-panel').waitFor({state:'hidden'});
-      assert.deepEqual(errors,[]);console.log(kind+': actual drag, keyboard ordering, unchanged RAW/identities and draft text passed');
+      // Stacked mode only accepts Y movement, not either legend drag surface.
+      const openTools=async()=>{if(!await page.locator('.rist-legend-edit-button').isVisible())await page.locator('.rist-'+kind+'-tools-toggle').click();};
+      await openTools();await page.locator('.rist-'+kind+'-stack-button').nth(0).click();
+      await page.waitForFunction(({id,key})=>document.getElementById(id).layout.meta[key].enabled,{id,key});
+      await openTools();await page.locator('.rist-legend-edit-button').click();
+      assert.equal(await page.locator('.rist-raw-order-handle:disabled').count(),3);
+      await page.locator('.rist-legend-edit-panel').screenshot({path:path.join(output,kind+'-stack-order-disabled.png')});
+      await page.locator('.rist-legend-edit-close').click();
+      const blockedFrom=await legendRows.nth(2).boundingBox(),blockedTo=await legendRows.nth(0).boundingBox();
+      await page.mouse.move(blockedFrom.x+25,blockedFrom.y+blockedFrom.height/2);await page.mouse.down();
+      await page.mouse.move(blockedTo.x+25,blockedTo.y+2,{steps:10});await page.mouse.up();await page.waitForTimeout(700);
+      assert.equal(await page.evaluate(({id,key})=>document.getElementById(id).layout.meta[key].legendOrder.join(','),{id,key}),'sample:0,sample:2,sample:1');
+      assert.equal(await page.evaluate(id=>document.getElementById(id).data.every(t=>t.visible!==false&&t.visible!=='legendonly'),id),true);
+      await openTools();await page.locator('.rist-'+kind+'-stack-button').nth(1).click();
+      const dragPoints=await page.evaluate(id=>{
+        const g=document.getElementById(id),r=g.querySelector('.nsewdrag').getBoundingClientRect(),axis=g._fullLayout;
+        return {x:r.left+axis.xaxis.d2p(g.data[1].x[0]),y:r.top+axis.yaxis.d2p(g.data[1].y[0]),top:r.top+10};
+      },id);
+      await page.mouse.move(dragPoints.x,dragPoints.y);await page.mouse.down();
+      await page.mouse.move(dragPoints.x,dragPoints.top,{steps:15});await page.mouse.up();
+      const expected='sample:1,sample:0,sample:2';
+      await page.waitForFunction(({id,key,expected})=>document.getElementById(id).layout.meta[key].sampleOrder.join(',')===expected,{id,key,expected}).catch(async error=>{
+        console.log({kind,dragPoints,state:await page.evaluate(({id,key})=>{const g=document.getElementById(id);return {meta:g.layout.meta[key],y:g.data.map(t=>t.y),yMode:g._ristFtirYDragMode||g._ristRamanYDragMode,edit:g._ristEditMode,peak:g._ristPeakEditMode,inline:g._ristInlineTextEditing};},{id,key})});
+        await page.locator('#'+id).screenshot({path:path.join(output,kind+'-y-failure.png')});console.log(output);throw error;
+      });
+      await page.locator('#'+id).screenshot({path:path.join(output,kind+'-y-moved-order.png')});
+      for(const gap of ['0','600']){
+        await openTools();
+        const sliderBox=await page.locator('.rist-'+kind+'-stack-gap').boundingBox();
+        await page.mouse.click(gap==='0'?sliderBox.x+2:sliderBox.x+sliderBox.width-2,sliderBox.y+sliderBox.height/2);
+        await page.waitForFunction(({id,key,gap,expected})=>{const m=document.getElementById(id).layout.meta[key];return m.gap===Number(gap)/100&&m.legendOrder.join(',')===expected;},{id,key,gap,expected}).catch(async error=>{
+          console.log(JSON.stringify({kind,gap,meta:await page.evaluate(({id,key})=>document.getElementById(id).layout.meta[key],{id,key}),slider:await page.locator('.rist-'+kind+'-stack-gap').inputValue()}));throw error;
+        });
+      }
+      for(let i=0;i<2;i++){
+        await openTools();await page.locator('.rist-'+kind+'-stack-button').nth(0).click();
+        await page.waitForFunction(({id,key,i,expected})=>{const m=document.getElementById(id).layout.meta[key];return m.enabled===!!i&&m.legendOrder.join(',')===expected;},{id,key,i,expected});
+      }
+      await openTools();await page.locator('.rist-legend-edit-button').click();
+      assert.deepEqual(await rows.evaluateAll(rows=>rows.map(r=>r.getAttribute('data-curve'))),['1','0','2']);
+      await page.locator('.rist-legend-edit-close').click();
+      if(await page.locator('.rist-legend-edit-button').isVisible())await page.locator('.rist-'+kind+'-tools-toggle').click();
+      await page.locator('#'+id).screenshot({path:path.join(output,kind+'-final-stack-order.png')});
+      assert.deepEqual(errors,[]);console.log(kind+': unstacked legend drags, stacked Y movement, disabled handles, zero gap/toggle persistence and Save All passed');
       await page.close();
     }
     console.log(JSON.stringify({browser:browser.version(),output}));

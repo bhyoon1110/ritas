@@ -875,6 +875,7 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
   color: #174a68; cursor: grab; touch-action: none; user-select: none;
   font: bold 16px/18px Arial, sans-serif;
 }}
+#{div_id} .rist-raw-order-handle:disabled {{ opacity: 0.45; cursor: not-allowed; touch-action: auto; }}
 #{div_id} .rist-legend-edit-row.is-order-before {{ box-shadow: 0 -3px #2563eb; }}
 #{div_id} .rist-legend-edit-row.is-order-after {{ box-shadow: 0 3px #2563eb; }}
 #{div_id} .rist-raw-order-help {{ font: 11px/1.4 Arial, sans-serif; color: #52606d; margin: 4px 0; }}
@@ -1600,6 +1601,11 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
       .then(refreshLegendVisibilityButtons);
   }}
 
+  function rawOrderStacked() {{
+    var meta = gd.layout && gd.layout.meta || {{}};
+    return !!((meta.ristFtirStack || meta.ristRamanStack || {{}}).enabled);
+  }}
+
   function installPanel() {{
     if (gd._ristLegendEditInstalled) return;
     gd._ristLegendEditInstalled = true;
@@ -1657,6 +1663,18 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
       return Array.prototype.slice.call(panel.querySelectorAll(".rist-legend-edit-row.is-sample"));
     }}
     function rawGroup(row) {{ return sampleGroupForCurve(Number(row.getAttribute("data-curve"))); }}
+    function syncRawOrderControls() {{
+      var stacked = rawOrderStacked();
+      if (stacked) clearRawDrag();
+      var help = panel.querySelector(".rist-raw-order-help");
+      if (help) help.textContent = stacked
+        ? "스택 ON: ‘Y 이동’으로 그래프 순서를 변경하세요. 범례는 자동으로 따라갑니다."
+        : "스택 OFF: ↕ 손잡이를 위아래로 끌어 Raw 순서를 변경하세요. 키보드: 손잡이 선택 후 ↑/↓";
+      panel.querySelectorAll(".rist-raw-order-handle").forEach(function(handle) {{
+        handle.disabled = stacked || reorderingRaw;
+        handle.title = stacked ? "스택 ON에서는 ‘Y 이동’으로 순서 변경" : "Raw 순서 변경: 위아래 드래그 또는 ↑/↓";
+      }});
+    }}
     function syncRawRowOrder() {{
       if (panel.style.display !== "block") return;
       var focused = document.activeElement;
@@ -1678,7 +1696,7 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
       if (focused && panel.contains(focused)) focused.focus();
     }}
     function applyRawOrder(order) {{
-      if (reorderingRaw || !gd._ristReorderSamples) return Promise.resolve(false);
+      if (rawOrderStacked() || reorderingRaw || !gd._ristReorderSamples) return Promise.resolve(false);
       var focused = document.activeElement;
       reorderingRaw = true;
       panel.querySelectorAll(".rist-raw-order-handle").forEach(function(handle) {{ handle.disabled = true; }});
@@ -1688,7 +1706,7 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
         return false;
       }}).then(function(changed) {{
         reorderingRaw = false;
-        panel.querySelectorAll(".rist-raw-order-handle").forEach(function(handle) {{ handle.disabled = false; }});
+        syncRawOrderControls();
         if (focused && panel.contains(focused) && (document.activeElement === document.body || document.activeElement === focused)) focused.focus();
         return changed;
       }});
@@ -1701,7 +1719,7 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
     function rawPoint(event) {{ return event.touches && event.touches[0] || event.changedTouches && event.changedTouches[0] || event; }}
     function startRawDrag(ev) {{
       var handle = ev.target.closest && ev.target.closest(".rist-raw-order-handle");
-      if (!handle || rawDrag || reorderingRaw || !gd._ristReorderSamples || rawRows().length < 2
+      if (!handle || rawOrderStacked() || rawDrag || reorderingRaw || !gd._ristReorderSamples || rawRows().length < 2
           || (ev.button != null && ev.button !== 0)) return;
       var point = rawPoint(ev);
       rawDrag = {{row: handle.parentNode, pointerId: ev.pointerId, y: point.clientY, target: null, after: false}};
@@ -1923,7 +1941,6 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
         refreshLegendVisibilityButtons();
         var orderHelp = document.createElement("p");
         orderHelp.className = "rist-raw-order-help";
-        orderHelp.textContent = "↕ 손잡이를 위아래로 끌어 Raw 순서를 변경하세요. 스택 위치도 즉시 반영됩니다. 키보드: 손잡이 선택 후 ↑/↓";
         body.appendChild(orderHelp);
       }}
       var peakDetails = document.createElement("details");
@@ -2093,6 +2110,7 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
           var orderHandle = document.createElement("button");
           orderHandle.type = "button"; orderHandle.className = "rist-raw-order-handle";
           orderHandle.textContent = "↕";
+          orderHandle.disabled = rawOrderStacked() || reorderingRaw;
           orderHandle.title = "Raw 순서 변경: 위아래 드래그 또는 ↑/↓";
           orderHandle.setAttribute("aria-label", "Raw 순서 변경: " + legendDisplayToEdit(traceName(curve)));
           row.replaceChild(orderHandle, kindBadge);
@@ -2260,6 +2278,7 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
         refreshRawTreeNames();
       }}
       syncDeleteAllPeaksButton();
+      syncRawOrderControls();
     }}
 
     function saveAllRows() {{
@@ -2441,10 +2460,10 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
       if (panel.style.display === "block") renderRows();
     }});
     gd.addEventListener("rist-ftir-stack-change", function() {{
-      if (!reorderingRaw && panel.style.display === "block") renderRows();
+      syncRawOrderControls(); syncRawRowOrder();
     }});
     gd.addEventListener("rist-raman-stack-change", function() {{
-      if (!reorderingRaw && panel.style.display === "block") renderRows();
+      syncRawOrderControls(); syncRawRowOrder();
     }});
   }}
 
@@ -2826,11 +2845,17 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
       if (!held.moved && Math.max(Math.abs(point.clientX - held.x), Math.abs(point.clientY - held.y)) < 6) return;
       if (!held.moved) {{
         cancelSampleLegendClick(); legendPointerState = null;
-        gd.dispatchEvent(new CustomEvent("rist-exclusive-interaction-start", {{detail: {{mode: "legend-raw-order"}}}}));
-        if (legendRawDrag !== held) return;
-        held.moved = true; gd._ristLegendDragging = true; held.node.style.opacity = "0.45";
+        if (rawOrderStacked()) {{
+          held.moved = true;
+          showOrderStatus("스택 ON: ‘Y 이동’으로 그래프 순서를 변경하세요.", held.node.getBoundingClientRect(), false);
+        }} else {{
+          gd.dispatchEvent(new CustomEvent("rist-exclusive-interaction-start", {{detail: {{mode: "legend-raw-order"}}}}));
+          if (legendRawDrag !== held) return;
+          held.moved = true; gd._ristLegendDragging = true; held.node.style.opacity = "0.45";
+        }}
       }}
       if (ev.cancelable) ev.preventDefault(); ev.stopImmediatePropagation();
+      if (rawOrderStacked()) return;
       var legend = gd.querySelector("g.legend");
       if (!legend) {{ clearLegendRawDrag(); return; }}
       var bounds = (legend.querySelector(".bg") || legend).getBoundingClientRect();
@@ -2871,7 +2896,7 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
         gd._ristHandleEditableLegendClick({{curveNumber: held.curve, ristLegendTap: true}});
         return;
       }}
-      if (!held.target || held.target.group === held.group) return;
+      if (rawOrderStacked() || !held.target || held.target.group === held.group) return;
       var order = [], seen = {{}};
       visibleLegendTraceIndexes(true).forEach(function(curve) {{
         var group = sampleGroupForCurve(curve);

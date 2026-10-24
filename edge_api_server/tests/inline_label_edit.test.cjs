@@ -87,7 +87,7 @@ function shapeFixture(h) {
   h.run('function beginShapeSelection');
 }
 
-async function reorderFixture(t,kind,mode,pointer=false) {
+async function reorderFixture(t,kind,mode,pointer=false,stacked=false) {
   const h=setup(t,kind,mode,pointer), key=kind==='ftir'?'ristFtirStack':'ristRamanStack';
   const trace=(i,peak=false)=>({name:peak?'Peak '+i:'Raw '+i,x:peak?[200]:[100,200,300],y:peak?[3]:[1,3,2],
     legendgroup:'sample:'+i,mode:peak?'markers':'lines',line:{color:'#123456',width:2},
@@ -104,6 +104,7 @@ async function reorderFixture(t,kind,mode,pointer=false) {
   h.gd.layout.shapes=[0,1,2].map(i=>({type:'line',x0:200,x1:200,y0:0,y1:3}));
   h.dispatch('rist-plot-data-replaced');
   h.run(kind==='ftir'?'gd._ristFtirStackInstalled':'gd._ristRamanStackInstalled');await tick();
+  if(!stacked) await h.gd._ristApplyStackSettings({enabled:false,gap:1.2});
   h.q('.rist-legend-edit-button').click();
   const rows=()=>[...h.gd.querySelectorAll('.rist-legend-edit-row.is-sample')];
   h.q('.rist-legend-edit-panel').getBoundingClientRect=()=>({left:0,top:0,right:400,bottom:360,width:400,height:360});
@@ -132,6 +133,86 @@ function installDirectLegendFixture(h) {
 }
 
 for(const kind of ['ftir','raman']) for(const mode of ['native','chrome49']) {
+  test(kind+'/'+mode+': stacked legends block drag/keyboard/API reordering but retain taps and Y mode',async t=>{
+    const h=await reorderFixture(t,kind,mode,true,true),items=installDirectLegendFixture(h),before=h.order();
+    assert(h.rows().every(row=>row.querySelector('.rist-raw-order-handle').disabled));
+    assert.match(h.q('.rist-raw-order-help').textContent,/스택 ON.*Y 이동/);
+    h.rows()[0].querySelector('textarea').value='미저장 스택 이름';
+    h.mouse(h.rows()[2].querySelector('.rist-raw-order-handle'),'pointerdown',20,200);
+    h.mouse(h.d,'pointermove',20,5);h.mouse(h.d,'pointerup',20,5);
+    h.key(h.rows()[0].querySelector('.rist-raw-order-handle'),'ArrowDown');
+    h.gd._ristSetYDragMode(true);
+    await assert.rejects(h.gd._ristReorderSamples(before.slice().reverse()),/Y 이동/);
+    h.mouse(items()[2],'pointerdown',450,155);h.mouse(h.d,'pointermove',450,62);
+    assert.notEqual(h.q('.rist-legend-order-line').style.display,'block');
+    assert.match(h.q('.rist-legend-order-status').textContent,/Y 이동/);
+    h.mouse(h.d,'pointerup',450,62);await tick();
+    assert.deepEqual(h.order(),before);assert.equal(h.gd[kind==='ftir'?'_ristFtirYDragMode':'_ristRamanYDragMode'],true);
+    assert(h.gd.data.every(t=>t.visible!==false&&t.visible!=='legendonly'));
+    assert.equal(h.rows()[0].querySelector('textarea').value,'미저장 스택 이름');
+    const tap=()=>{h.mouse(items()[0],'pointerdown',450,72);h.mouse(h.d,'pointerup',450,72);};
+    tap();tap();assert.ok(h.editor());h.key(h.editor(),'Escape');
+    await h.gd._ristApplyStackSettings({enabled:false,gap:1.2});
+    assert(h.rows().every(row=>!row.querySelector('.rist-raw-order-handle').disabled));
+    assert.equal(h.rows()[0].querySelector('textarea').value,'미저장 스택 이름');
+  });
+  test(kind+'/'+mode+': Y movement persists visual order through gap, zero, toggles, reload and history',async t=>{
+    const h=await reorderFixture(t,kind,mode,true,true);
+    h.q('.rist-legend-edit-close').click();h.gd._ristSetYDragMode(true);
+    h.gd._fullLayout.yaxis.p2d=y=>40-y/10;h.gd._fullLayout.yaxis.d2p=y=>(40-y)*10;
+    h.mouse(h.q('.nsewdrag'),'pointerdown',200,370);
+    h.mouse(h.d,'pointermove',200,20);h.mouse(h.d,'pointerup',200,20);await tick();await tick();
+    const expected=['sample:0','sample:2','sample:1'],meta=()=>h.gd.layout.meta[h.stackKey];
+    assert.deepEqual(clone(meta().sampleOrder),expected);assert.deepEqual(clone(meta().legendOrder),expected);
+    for(const y of [h.gd.data[0].y[1],h.gd.data[3].y[0],h.gd.layout.annotations[0].y,h.gd.layout.shapes[0].y1])assert(Math.abs(y-38)<1e-8);
+    h.gd._ristHistory.undo();await tick();await h.gd._ristStackReady;
+    assert.deepEqual(clone(meta().sampleOrder),['sample:2','sample:1','sample:0']);
+    h.gd._ristHistory.redo();await tick();await h.gd._ristStackReady;
+    assert.deepEqual(clone(meta().sampleOrder),expected);
+    const slider=h.q('.rist-'+kind+'-stack-gap'),toggle=h.q('.rist-'+kind+'-stack-button');
+    for(const gap of ['600','0','200']){
+      h.gd._ristSetYDragMode(true);
+      slider.value=gap;slider.dispatchEvent(new h.w.Event('input',{bubbles:true}));await tick();
+      assert.equal(meta().gap,Number(gap)/100);assert.equal(slider.value,gap);
+      assert.equal(h.gd[kind==='ftir'?'_ristFtirYDragMode':'_ristRamanYDragMode'],false);
+      assert.deepEqual(clone(meta().sampleOrder),expected);assert.deepEqual(clone(meta().legendOrder),expected);
+    }
+    for(let i=0;i<2;i++){toggle.click();await tick();assert.deepEqual(clone(meta().sampleOrder),expected);}
+    assert.equal(meta().enabled,true);
+    if(kind==='ftir'){
+      h.gd._ristFtirSignalMode='transmittance';h.dispatch('rist-ftir-signal-mode-change');await h.gd._ristStackReady;
+      assert.deepEqual(clone(meta().legendOrder),expected);
+      h.gd._ristFtirSignalMode='absorbance';h.dispatch('rist-ftir-signal-mode-change');await h.gd._ristStackReady;
+    }
+    h.gd.data=clone(h.gd.data);h.gd.layout=clone(h.gd.layout);
+    h.dispatch('rist-plot-data-replaced');await h.gd._ristStackReady;
+    assert.deepEqual(clone(meta().sampleOrder),expected);assert.deepEqual(clone(meta().legendOrder),expected);
+    h.q('.rist-legend-edit-button').click();assert.deepEqual(h.order(),expected);
+    for(let i=0;i<3;i++){
+      const tr=h.gd.data[i],off=kind==='ftir'?tr.meta.rist_ftir_stack_offset_absorbance:tr.meta.rist_raman_stack_offset;
+      assert.deepEqual(Array.from(tr.y,y=>y-off),[1,3,2]);assert.equal(h.gd.data[i+3].y[0]-off,3);
+    }
+  });
+  test(kind+'/'+mode+': Y move then immediate stack OFF before the render frame retains the new order',async t=>{
+    const h=await reorderFixture(t,kind,mode,true,true);
+    h.q('.rist-legend-edit-close').click();h.gd._ristSetYDragMode(true);
+    h.gd._fullLayout.yaxis.p2d=y=>40-y/10;h.gd._fullLayout.yaxis.d2p=y=>(40-y)*10;
+    h.mouse(h.q('.nsewdrag'),'pointerdown',200,370);h.mouse(h.d,'pointermove',200,20);
+    h.q('.rist-'+kind+'-stack-button').click();await tick();await tick();
+    assert.equal(h.gd.layout.meta[h.stackKey].enabled,false);
+    assert.deepEqual(clone(h.gd.layout.meta[h.stackKey].sampleOrder),['sample:0','sample:2','sample:1']);
+    h.q('.rist-'+kind+'-stack-button').click();await tick();
+    assert.deepEqual(clone(h.gd.layout.meta[h.stackKey].legendOrder),['sample:0','sample:2','sample:1']);
+  });
+  test(kind+'/'+mode+': hidden samples retain their order when compaction collapses offsets',async t=>{
+    const h=await reorderFixture(t,kind,mode),expected=['sample:0','sample:2','sample:1'];
+    await h.gd._ristReorderSamples(expected);await h.gd._ristApplyStackSettings({enabled:true,gap:2});
+    for(const visible of ['legendonly',true]){
+      await h.w.Plotly.restyle(h.gd,{visible},[0]);await tick();await tick();
+      assert.deepEqual(clone(h.gd.layout.meta[h.stackKey].sampleOrder),expected);
+      assert.deepEqual(clone(h.gd.layout.meta[h.stackKey].legendOrder),expected);
+    }
+  });
   test(kind+'/'+mode+': graph legend row drag reorders without visibility/edit side effects; clicks still work',async t=>{
     const h=await reorderFixture(t,kind,mode,true),items=installDirectLegendFixture(h);
     h.rows()[2].querySelector('textarea').value='미저장 이름';
@@ -174,7 +255,7 @@ for(const kind of ['ftir','raman']) for(const mode of ['native','chrome49']) {
     assert.deepEqual(h.order(),['sample:0','sample:2','sample:1']);assert.equal(h.gd.data[1].visible,'legendonly');
     assert.ok(h.gd.data.slice(0,3).every(t=>t.y.every((y,i)=>Math.abs(y-(kind==='ftir'?t.meta.rist_ftir_stack_offset_absorbance:t.meta.rist_raman_stack_offset)-[1,3,2][i])<1e-8)));
   });
-  test(kind+'/'+mode+': Raw drag reorders stack slots, keeps unsaved row edits, peak identities and true intensity',async t=>{
+  test(kind+'/'+mode+': unstacked Raw drag keeps unsaved row edits, peak identities and true intensity',async t=>{
     const h=await reorderFixture(t,kind,mode), originals=h.gd.data.slice(), before=clone(h.gd.layout.meta[h.stackKey]);
     assert.deepEqual(h.order(),['sample:2','sample:1','sample:0']);
     h.rows()[2].querySelector('textarea').value='저장 전 이름';

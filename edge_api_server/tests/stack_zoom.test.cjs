@@ -131,14 +131,15 @@ for (const mode of ['native','chrome49']) for (const kind of ['ftir','raman']) {
       slider.value=String(gap*100); slider.dispatchEvent(new h.w.Event('input',{bubbles:true})); await tick();
       assert.equal(h.gd.layout.meta[h.key].gap,gap);
       assert.equal(value.textContent,gap.toFixed(2));
-      assert.deepEqual(clone(h.gd.data[0].y),raw[0]);
-      assert.deepEqual(clone(h.gd.data[1].y),raw[1].map(y=>y+gap*3));
+      assert.deepEqual(clone(h.gd.layout.meta[h.key].legendOrder),['sample:0','sample:1']);
+      assert.deepEqual(clone(h.gd.data[0].y),raw[0].map(y=>y+gap*3));
+      assert.deepEqual(clone(h.gd.data[1].y),raw[1]);
       assert.deepEqual(clone(h.gd.data[1].x),[100,200,300]);
       assertStackAxis(h.gd.layout.yaxis);
     }
     h.dispatch('rist-plot-structure-changed'); await h.gd._ristStackReady;
     assert.equal(slider.value,'600');
-    assert.deepEqual(clone(h.gd.data[1].y),raw[1].map(y=>y+18));
+    assert.deepEqual(clone(h.gd.data[0].y),raw[0].map(y=>y+18));
     h.toggle(); await tick();
     assert.deepEqual(clone(h.gd.data.map(trace=>trace.y)),raw);
     // Preparing a different gap while unstacked must not move the data.
