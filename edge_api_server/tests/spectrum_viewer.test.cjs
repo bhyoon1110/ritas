@@ -33,6 +33,16 @@ test('viewer program is ES5, has no editor or network API',()=>{
   acorn.parse(program,{ecmaVersion:5});
   assert(!/fetch\(|XMLHttpRequest|contenteditable|_ristPeakEditor/.test(program));
 });
+test('standalone graph HTML opens directly without slides, broken image or server calls',async t=>{
+  const standalone=html.replace(/("slides":)\[[^\]]*\]/,'$1[]').replace('"graphOnly":false','"graphOnly":true');
+  const h=setup(t,false,standalone);await tick();
+  assert.equal(h.q('slides-panel').hidden,true);assert.equal(h.q('graph-panel').hidden,false);
+  assert.equal(h.calls(),1);assert.equal(h.q('slide-image').getAttribute('src'),null);
+  assert.equal(h.config().editable,false);assert.equal(h.config().scrollZoom,true);
+  await h.change('stack');assert.equal(h.gd.layout.yaxis.showticklabels,false);
+  h.q('reset-view').click();await tick();
+  assert.deepEqual(clone(h.gd.data).map(t=>t.y),h.published.data.map(t=>t.y));
+});
 for (const [index,kind] of ['ftir','raman'].entries()) test(kind+' client snapshot keeps displayed coordinates, text and current signal offset',()=>{
   const source=clientPrograms[index].match(/function compactReportFigurePayload\(figure, forViewer\) \{[\s\S]*?\n  \}/)[0];
   const fn=new Function('gd',source+';return compactReportFigurePayload;')({_ristFtirSignalMode:'transmittance'});

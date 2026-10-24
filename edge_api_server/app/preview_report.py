@@ -400,6 +400,7 @@ def build_preview_report_package(
     analysis_payload: dict[str, Any],
     raw_series: list[RawSeries],
     figure_image: bytes,
+    source_raw_series: list[RawSeries] | None = None,
     request_number: str = "",
     equipment_code: str = "",
     operator_id: str = "",
@@ -411,6 +412,7 @@ def build_preview_report_package(
     tmp_root = Path(tempfile.mkdtemp(prefix="rist-preview-report-"))
     try:
         from .report.saved_graphs import collection_document, graph_raw_series, write_graph_images
+        all_raw_series = raw_series if source_raw_series is None else source_raw_series
         graphs = analysis_payload.get("reportGraphs") or []
         analysis_payload = prepare_edited_report(analysis_payload)
         raw_series = _filter_raw_series_for_payload(
@@ -545,6 +547,13 @@ def build_preview_report_package(
             analysis=analysis_preview(document),
             graphs=graphs,
         )
+        if _is_ftir_experiment(experiment_code):
+            from .report.spectrum_viewer import build_ftir_graph_exports
+            build_ftir_graph_exports(
+                report_dir, raw_series=all_raw_series,
+                figure=analysis_payload.get("viewerFigure") or analysis_payload.get("figure") or {},
+                graphs=graphs,
+            )
         _emit_progress(progress, "package", 95, "최종 ZIP을 패키징하는 중입니다.")
         package = build_report_package(
             report_dir,
@@ -592,9 +601,9 @@ def run_preview_report_job(
             progress_pct=10,
             message="raw 데이터를 읽는 중입니다.",
         )
-        raw_series = raw_series_factory()
+        source_raw_series = raw_series_factory()
         raw_series = _filter_raw_series_for_payload(
-            raw_series,
+            source_raw_series,
             analysis_payload,
             filter_axis_range=_is_ftir_experiment(experiment_code),
         )
@@ -612,6 +621,7 @@ def run_preview_report_job(
             experiment_code=experiment_code,
             analysis_payload=analysis_payload,
             raw_series=raw_series,
+            source_raw_series=source_raw_series,
             figure_image=figure_image,
             request_number=request_number,
             equipment_code=equipment_code,

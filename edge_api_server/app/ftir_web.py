@@ -62,6 +62,7 @@ from .usage_archive import (
 
 PLOT_DIV_ID = "peak-plot"
 MAX_FTIR_PREVIEW_FILES = 10
+MAX_FTIR_REPORT_FILES = 60  # Up to six saved graphs, each with ten source files.
 MAX_FTIR_PREVIEW_FILE_BYTES = 20 * 1024 * 1024
 MAX_FTIR_PREVIEW_TOTAL_BYTES = 50 * 1024 * 1024
 FTIR_REPORT_UPLOAD_CHUNK_BYTES = 4 * 1024 * 1024
@@ -148,14 +149,14 @@ def raise_assignment_library_api(exc: AssignmentLibraryError) -> None:
     raise ApiException(status_code, exc.code, exc.message) from exc
 
 
-def _uploaded_dpt_files(files: list[UploadFile]) -> list[tuple[str, bytes]]:
+def _uploaded_dpt_files(files: list[UploadFile], *, max_files: int = MAX_FTIR_PREVIEW_FILES) -> list[tuple[str, bytes]]:
     if not files:
         raise ApiException(400, "DPT_FILES_REQUIRED", "DPT 파일이 필요합니다.")
-    if len(files) > MAX_FTIR_PREVIEW_FILES:
+    if len(files) > max_files:
         raise ApiException(
             400,
             "TOO_MANY_DPT_FILES",
-            f"한 번에 최대 {MAX_FTIR_PREVIEW_FILES}개 파일을 분석할 수 있습니다.",
+            f"한 번에 최대 {max_files}개 파일을 처리할 수 있습니다.",
         )
 
     uploaded: list[tuple[str, bytes]] = []
@@ -2674,6 +2675,43 @@ _UPLOAD_SCRIPT = """
       record.name,
       {type: record.type || "application/octet-stream", lastModified: record.lastModified}
     );
+  }
+
+  async function allRawReportFiles(selection) {
+    // Blob identity can change after IndexedDB restores. Compare same-name/size
+    // candidates by bytes in bounded blocks, not filename/date alone or full-file copies.
+    function block(file, offset) {
+      return new Promise(function(resolve, reject) {
+        var reader = new FileReader();
+        reader.onload = function() { resolve(new Uint8Array(reader.result)); };
+        reader.onerror = reader.onabort = function() { reject(new Error("RAW 파일을 읽지 못했습니다: " + file.name)); };
+        reader.readAsArrayBuffer(file.slice(offset, offset + 256 * 1024));
+      });
+    }
+    async function same(left, right) {
+      if (left.name !== right.name || left.size !== right.size) return false;
+      if (left === right) return true;
+      for (var offset = 0; offset < left.size; offset += 256 * 1024) {
+        var a = await block(left, offset), b = await block(right, offset);
+        for (var j = 0; j < a.length; j += 1) if (a[j] !== b[j]) return false;
+      }
+      return true;
+    }
+    var result = [], bytes = 0;
+    for (var g = 0; g < selection.length; g += 1) {
+      var sources = selection[g].state.files || [];
+      for (var i = 0; i < sources.length; i += 1) {
+        var file = recordFile(sources[i]), duplicate = false;
+        for (var k = 0; k < result.length; k += 1) {
+          if (await same(file, result[k])) { duplicate = true; break; }
+        }
+        if (duplicate) continue;
+        bytes += file.size;
+        if (result.length >= 60 || bytes > MAX_TOTAL_BYTES) throw new Error("선택한 그래프의 RAW 전체는 60개·50MB 이하여야 합니다. 보고서에 포함할 그래프 수를 줄여 주세요.");
+        result.push(file);
+      }
+    }
+    return result;
   }
 
   function freshEmptyData() {
@@ -5283,7 +5321,7 @@ _UPLOAD_SCRIPT = """
       var reportAnalysis = reportAnalysisPayload();
       var compactFigure = compactReportFigurePayload(reportFigure);
       var viewerFigure = compactReportFigurePayload(reportFigure, true);
-      var reportFiles = reportFilesForVisibleSamples();
+      var reportFiles = files.slice(); // Full RAW export includes hidden/deleted samples.
       if (selection) {
         var first = selection[0];
         reportAnalysis = first.report.analysis;
@@ -5292,7 +5330,7 @@ _UPLOAD_SCRIPT = """
         viewerFigure.reportGraphs = selection.map(function(entry) {
           return Object.assign({id:entry.id, title:entry.title}, entry.report);
         });
-        reportFiles = first.state.files.map(recordFile);
+        reportFiles = await allRawReportFiles(selection);
         if (JSON.stringify(viewerFigure).length > 45 * 1024 * 1024) throw new Error("선택한 그래프 데이터가 너무 큽니다. 보고서에 포함할 그래프 수를 줄여 주세요.");
       }
       if (!reportFiles.length) {
@@ -5799,7 +5837,7 @@ def create_ftir_preview_report(
         equipment_code=equipment_code,
         operator_id=operator_id,
     )
-    uploaded = _uploaded_dpt_files(files)
+    uploaded = _uploaded_dpt_files(files, max_files=MAX_FTIR_REPORT_FILES)
     request.state.error_project = "FT-IR"
     request.state.error_file_blobs = uploaded
     try:
@@ -5977,11 +6015,11 @@ def complete_ftir_report_upload_session(
     uploaded = read_completed_upload_files(session)
     if not uploaded:
         raise ApiException(400, "DPT_FILES_REQUIRED", "DPT 파일이 필요합니다.")
-    if len(uploaded) > MAX_FTIR_PREVIEW_FILES:
+    if len(uploaded) > MAX_FTIR_REPORT_FILES:
         raise ApiException(
             400,
             "TOO_MANY_DPT_FILES",
-            f"한 번에 최대 {MAX_FTIR_PREVIEW_FILES}개 파일을 분석할 수 있습니다.",
+            f"보고서에는 최대 {MAX_FTIR_REPORT_FILES}개 RAW 파일을 포함할 수 있습니다.",
         )
     job = _create_ftir_report_job_from_uploaded(
         request,
@@ -6013,7 +6051,7 @@ def create_ftir_preview_report_job(
     equipment_code: str = Form(default="", alias="equipmentCode"),
     operator_id: str = Form(default="", alias="operatorId"),
 ) -> dict:
-    uploaded = _uploaded_dpt_files(files)
+    uploaded = _uploaded_dpt_files(files, max_files=MAX_FTIR_REPORT_FILES)
     job = _create_ftir_report_job_from_uploaded(
         request,
         uploaded=uploaded,

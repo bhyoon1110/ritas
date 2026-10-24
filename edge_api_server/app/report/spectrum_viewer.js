@@ -35,6 +35,7 @@
     if (window.parent !== window) window.parent.postMessage({type:"rist-report-view-state",view:activeView,page:page}, "*");
   }
   function showPage(index) {
+    if (!payload.slides.length) return;
     page = Math.max(0, Math.min(payload.slides.length - 1, index));
     document.getElementById("slide-image").src = payload.slides[page];
     document.getElementById("slide-image").alt = "PPT " + (page + 1) + "페이지";
@@ -242,7 +243,7 @@
   document.getElementById("graph-tab").onclick = function () { tab("graph"); };
   var analysisTab = document.getElementById("analysis-tab");
   if (analysisTab) analysisTab.onclick = function () { tab("analysis"); };
-  tab(initialView && document.getElementById(initialView[1] + "-panel") ? initialView[1] : "slides");
+  tab(payload.graphOnly ? "graph" : (initialView && document.getElementById(initialView[1] + "-panel") ? initialView[1] : "slides"));
   mode.onchange = draw;
   document.getElementById("reset-view").onclick = function () { mode.value = "original"; hidden = {}; draw(); };
   var resizeTimer;

@@ -101,7 +101,8 @@ def test_multi_graph_packages_and_immutable_revision_keep_distinct_images(experi
     monkeypatch.setattr(spectrum_viewer, "get_plotlyjs", lambda: "")
     payload = parsed_payload()
     root, package = preview_report.build_preview_report_package(experiment_code=experiment, analysis_payload=payload,
-        raw_series=[], figure_image=base64.b64decode(graph_inputs()[0]["image"].split(",")[1]))
+        raw_series=[preview_report.RawSeries("full RAW", [4000, 1700, 400], [1, 3, 1])],
+        figure_image=base64.b64decode(graph_inputs()[0]["image"].split(",")[1]))
     store = preview_report.PreviewReportJobStore()
     old = store.create(filename="ftir-report-package.zip" if experiment == "FT-IR" else "raman-report-package.zip")
     store.complete(old.job_id, tmp_root=root, package_path=package)
@@ -123,6 +124,18 @@ def test_multi_graph_packages_and_immutable_revision_keep_distinct_images(experi
         assert new.status == "completed", new.error
         assert package.read_bytes() == original
         with zipfile.ZipFile(new.package_path) as archive:
+            if experiment == "FT-IR":
+                from edge_api_server.tests.test_ftir_graph_exports import html_payload
+                with zipfile.ZipFile(BytesIO(original)) as old_archive:
+                    for name in spectrum_viewer.FTIR_GRAPH_EXPORTS:
+                        assert archive.read(name) == old_archive.read(name)
+                raw = html_payload(archive.read("ftir-raw-all.html").decode())
+                assert raw["figure"]["data"][0]["x"] == [4000, 1700, 400]
+                exported = html_payload(archive.read("ftir-edited.html").decode())
+                assert [g["title"] for g in exported["graphs"]] == ["비교 그래프 1", "비교 그래프 2"]
+                assert exported["graphs"][1]["figure"]["layout"]["annotations"][0]["text"] == "편집 피크 1"
+            else:
+                assert not set(spectrum_viewer.FTIR_GRAPH_EXPORTS) & set(archive.namelist())
             images = [archive.read(f"saved-graph-{i}.png") for i in (1, 2)]
             assert images[0] != images[1]
             html = archive.read("report.html").decode()

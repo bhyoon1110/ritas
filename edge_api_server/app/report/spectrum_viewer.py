@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import base64
+from collections import Counter
 from copy import deepcopy
 from functools import lru_cache
 from html import escape
@@ -23,6 +24,7 @@ from ..errors import ApiException
 MAX_VIEWER_BYTES = 80 * 1024 * 1024
 MAX_SNAPSHOT_BYTES = 50 * 1024 * 1024
 VIEWER_MARKER = '<meta name="rist-report-viewer" content="1">'
+FTIR_GRAPH_EXPORTS = ("ftir-raw-all.html", "ftir-edited.html")
 _PDF_RENDER_LOCK = Lock()  # PDFium is not thread-safe; report jobs run in threads.
 
 
@@ -191,9 +193,10 @@ def _analysis_html(analysis: dict | None) -> str:
             + "".join(sections) + "</section>")
 
 
-def viewer_html(*, title: str, figure: dict, slides: list[str], fallback_image: str = "", analysis: dict | None = None, graphs: list | None = None) -> str:
+def viewer_html(*, title: str, figure: dict, slides: list[str], fallback_image: str = "", analysis: dict | None = None, graphs: list | None = None,
+                graph_only: bool = False, description: str = "") -> str:
     payload = json.dumps({"figure": readonly_figure(figure), "slides": slides,
-                          "fallback": fallback_image,
+                          "fallback": fallback_image, "graphOnly": graph_only,
                           "graphs": [{"title": g["title"], "figure": readonly_figure(g["viewerFigure"]),
                                       "fallback": g.get("image", "")} for g in graphs or []]}, cls=PlotlyJSONEncoder,
                          ensure_ascii=False, separators=(",", ":")).replace("<", "\\u003c")
@@ -201,13 +204,13 @@ def viewer_html(*, title: str, figure: dict, slides: list[str], fallback_image: 
             + "<meta name='viewport' content='width=device-width,initial-scale=1'>"
             + "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; connect-src 'none'\">"
             + "<title>" + escape(title) + "</title><style>" + _STYLE + "</style></head><body>"
-            + "<header><h1>" + escape(title) + "</h1><p>확정된 분석 보고서 · 열람 전용</p>"
-            + "<nav aria-label='보고서 보기'>"
+            + "<header><h1>" + escape(title) + "</h1><p>" + escape(description or "확정된 분석 보고서 · 열람 전용") + "</p>"
+            + "<nav aria-label='보고서 보기'" + (" hidden" if graph_only else "") + ">"
             + "<button id='slides-tab' aria-pressed='true'>PPT 페이지</button>"
             + ("<button id='analysis-tab' aria-pressed='false'>분석 결과</button>" if analysis else "")
             + "<button id='graph-tab' aria-pressed='false'>인터랙티브 그래프</button></nav></header>"
             + "<main>" + _analysis_html(analysis)
-            + "<section id='slides-panel'><div class='controls'><button id='previous'>이전</button>"
+            + "<section id='slides-panel'" + (" hidden" if graph_only else "") + "><div class='controls'><button id='previous'>이전</button>"
             + "<label>페이지 <select id='page-select' aria-label='PPT 페이지 선택'></select></label>"
             + "<span id='page-count' aria-live='polite'></span><button id='next'>다음</button></div>"
             + "<img id='slide-image' alt='PPT 페이지'></section>"
@@ -232,6 +235,37 @@ def build_spectrum_viewer(report_dir: Path, *, title: str, figure: dict, analysi
         summary.rename(report_dir / "report-summary.html")
     summary.write_text(content, encoding="utf-8")
     return summary
+
+
+def build_ftir_graph_exports(report_dir: Path, *, raw_series: list, figure: dict, graphs: list | None = None) -> None:
+    """Publish independent offline views; RAW must come from unfiltered source files."""
+    counts = Counter(series.label for series in raw_series)
+    raw_figure = {
+        "data": [{"type": "scatter", "mode": "lines",
+                  "name": escape(series.label) + (f" [RAW {index + 1}]" if counts[series.label] > 1 else ""),
+                  "x": series.axis, "y": series.values,
+                  "meta": {"rist_sample_parent": True, "rist_sample_group": f"raw:{index}", "rist_view_offset": 0}}
+                 for index, series in enumerate(raw_series)],
+        "layout": {"title": {"text": "FTIR 전체 RAW 스펙트럼"}, "showlegend": True,
+                   "xaxis": {"title": {"text": "Wavenumber (cm⁻¹)"}, "autorange": "reversed"},
+                   "yaxis": {"title": {"text": "RAW signal (원본 값)"}, "autorange": True},
+                   "paper_bgcolor": "white", "plot_bgcolor": "white", "meta": {}},
+    }
+    entries = (
+        (FTIR_GRAPH_EXPORTS[0], "FTIR · 전체 RAW 인터랙티브 그래프", raw_figure, None,
+         "보고서에 선택한 저장 그래프들의 업로드 RAW 전체입니다. 숨김·삭제·Crop 이전의 전체 범위와 원본 수치를 표시하며 정규화·신호 변환을 적용하지 않습니다."),
+        (FTIR_GRAPH_EXPORTS[1], "FTIR · 편집한 그래프", figure, graphs,
+         "보고서에 포함한 편집본입니다. 피크·라벨·메모·표시 범위와 스타일을 유지하며, 여러 저장 그래프는 목록에서 선택할 수 있습니다."),
+    )
+    image_path = report_dir / "current_graph.png"
+    fallback = "data:image/png;base64," + base64.b64encode(image_path.read_bytes()).decode("ascii") if image_path.is_file() else ""
+    for filename, title, source, collection, description in entries:
+        content = viewer_html(title=title, figure=source, slides=[], graphs=collection,
+                              graph_only=True, description=description,
+                              fallback_image=fallback if filename == FTIR_GRAPH_EXPORTS[1] else "")
+        if len(content.encode("utf-8")) > MAX_VIEWER_BYTES:
+            raise ValueError("열람용 HTML 크기가 80MB를 초과했습니다.")
+        (report_dir / filename).write_text(content, encoding="utf-8")
 
 
 def spectrum_preview_response(package: Path) -> HTMLResponse:

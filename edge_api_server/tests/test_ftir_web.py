@@ -345,7 +345,8 @@ def test_ftir_workspace_contains_upload_and_editor_controls() -> None:
     assert "function reportFilesForVisibleSamples" in page
     assert "async function captureReportFigureImage" in page
     assert "var reportFigure = currentFigurePayload()" in page
-    assert "var reportFiles = reportFilesForVisibleSamples()" in page
+    assert "var reportFiles = files.slice()" in page
+    assert "reportFiles = await allRawReportFiles(selection)" in page
     assert "window.Plotly.newPlot(" in page
     assert "function freshEmptyData" in page
     assert "function freshEmptyLayout" in page

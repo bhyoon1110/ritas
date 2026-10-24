@@ -136,6 +136,13 @@ def _write_revision(store, new_job, old_job, changes, project, settings, databas
         # Copy only our generated artifacts, not paths supplied by the browser.
         for name in ("current_graph.png", "raw_data.xlsx"):
             shutil.copyfile(source / "report" / name, report_dir / name)
+        if reports._is_ftir_experiment(project):
+            from .report.spectrum_viewer import FTIR_GRAPH_EXPORTS
+            for name in FTIR_GRAPH_EXPORTS:
+                # Text revisions do not change the issued graphs. Older reports
+                # may lack the original RAW, so never fabricate it from the edits.
+                if (source / "report" / name).is_file():
+                    shutil.copyfile(source / "report" / name, report_dir / name)
         shutil.copyfile(source / "processed/analysis-result.json", processed_dir / "analysis-result.json")
         document = _load_document(old_job)
         document.job_id = new_job.job_id

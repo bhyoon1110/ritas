@@ -18,6 +18,37 @@ function context(extra={}) {
   return ctx;
 }
 
+test('collection RAW export includes every graph source and deduplicates by bytes, never filename/date alone',async()=>{
+  const sizes=[];
+  class Reader {
+    readAsArrayBuffer(blob) { sizes.push(blob.size);blob.arrayBuffer().then(value=>{this.result=value;this.onload();},()=>this.onerror()); }
+  }
+  const ctx=vm.createContext({File,Blob,FileReader:Reader,Uint8Array,MAX_TOTAL_BYTES:50*1024*1024});
+  vm.runInContext(extract('recordFile')+extract('allRawReportFiles'),ctx);
+  const record=(name,text)=>({name,lastModified:1,blob:new Blob([text])});
+  const a=record('same.dpt','1234'),same=record('same.dpt','1234'),different=record('same.dpt','5678');
+  const large='x'.repeat(600000);
+  const result=await ctx.allRawReportFiles([
+    {state:{files:[a,record('hidden.dpt','abcd'),record('large.dpt',large)]}},
+    {state:{files:[same,different,record('other.dpt','1234'),record('large.dpt',large)]}}
+  ]);
+  assert.deepEqual(Array.from(result,f=>f.name),['same.dpt','hidden.dpt','large.dpt','same.dpt','other.dpt']);
+  assert.equal(await result[0].text(),'1234');assert.equal(await result[3].text(),'5678');
+  assert(Math.max(...sizes)<=256*1024);
+  ctx.MAX_TOTAL_BYTES=1;
+  await assert.rejects(ctx.allRawReportFiles([{state:{files:[a]}}]),/50MB/);
+  ctx.MAX_TOTAL_BYTES=50*1024*1024;
+  await assert.rejects(ctx.allRawReportFiles([{state:{files:Array.from({length:61},(_,i)=>record(i+'.dpt','1'))}}]),/60개/);
+});
+
+test('full RAW collection fails visibly when a source cannot be read',async()=>{
+  class BrokenReader { readAsArrayBuffer(){this.onerror();} }
+  const ctx=vm.createContext({File,Blob,FileReader:BrokenReader,Uint8Array,MAX_TOTAL_BYTES:50*1024*1024});
+  vm.runInContext(extract('recordFile')+extract('allRawReportFiles'),ctx);
+  const entry=()=>({state:{files:[{name:'x.dpt',blob:new Blob(['1'])}]}});
+  await assert.rejects(ctx.allRawReportFiles([entry(),entry()]),/RAW 파일을 읽지 못했습니다/);
+});
+
 test('large captured PNG is a binary multipart file, with bounded base64 decode blocks',async()=>{
   let largestBlock=0, calls=0, posted;
   const bytes=Buffer.alloc(1200001,123); // Deliberately above Starlette text field limit.

@@ -2,7 +2,8 @@
 // Chromium engine QA is not a claim of Windows XP / Supermium hardware testing.
 const assert = require('node:assert/strict');
 const fs = require('node:fs'), os = require('node:os'), path = require('node:path');
-const {spawn} = require('node:child_process');
+const {spawn, execFileSync} = require('node:child_process');
+const {pathToFileURL} = require('node:url');
 const {chromium} = require('playwright');
 const output = fs.mkdtempSync(path.join(os.tmpdir(), 'rist-spectrum-workflow-'));
 const server = spawn(process.env.RIST_TEST_PYTHON || 'python3', ['-u', path.join(__dirname, 'spectrum_workflow_fixture.py'), output], {env:process.env});
@@ -30,18 +31,26 @@ const raw = Buffer.from(Array.from({length:241}, (_, i) => {
         await page.goto(origin + '/' + kind);
         await page.waitForFunction(() => { const e=document.getElementById('sw-step-2'); return e && !e.disabled; });
         assert.equal(await page.locator('#spectrum-workflow').getAttribute('data-step'),'1');
-        await page.locator('#'+kind+'-file-input').setInputFiles({name:'workflow.'+(kind==='ftir'?'dpt':'txt'),mimeType:'text/plain',buffer:raw});
+        const sourceFiles=[{name:'workflow.'+(kind==='ftir'?'dpt':'txt'),mimeType:'text/plain',buffer:raw}];
+        if(kind==='ftir')sourceFiles.push({name:'hidden.dpt',mimeType:'text/plain',buffer:raw});
+        await page.locator('#'+kind+'-file-input').setInputFiles(sourceFiles);
         await page.waitForFunction(() => document.getElementById('spectrum-workflow').dataset.step==='2' && !document.getElementById('sw-save-graph').disabled);
+        if(kind==='ftir')await page.evaluate(async id=>{
+          const p=document.getElementById(id);await p._ristStackReady;
+          const curve=p.data.findIndex(t=>t.meta&&t.meta.rist_sample_parent&&t.meta.rist_sample_group==='sample:1');
+          await p._ristDeleteSample(curve);await p._ristStackReady;
+          await Plotly.relayout(p,{'xaxis.range':[2200,1100],'xaxis.autorange':false});
+        },gd);
         await page.evaluate(async id => {
           const p=document.getElementById(id);
-          await Plotly.relayout(p, {'title.text':'첫 번째 그래프', annotations:[{text:'첫 번째 메모',x:1700,y:1.2,showarrow:false}]});
+          await Plotly.relayout(p, {'title.text':'첫 번째 그래프', annotations:(p.layout.annotations||[]).concat([{name:'workflow-note',text:'첫 번째 메모',x:1700,y:1.2,showarrow:false}])});
         },gd);
         await page.locator('#sw-graph-name').fill('비교 그래프 1'); await page.locator('#sw-save-graph').click();
         await page.waitForFunction(() => document.querySelectorAll('.sw-card').length===1 && !document.getElementById('sw-save-graph').disabled);
         await page.locator('#sw-step-1').click(); await page.locator('#'+kind+'-clear').click();
         await page.locator('#'+kind+'-file-input').setInputFiles({name:'second.'+(kind==='ftir'?'dpt':'txt'),mimeType:'text/plain',buffer:raw});
         await page.waitForFunction(() => document.getElementById('spectrum-workflow').dataset.step==='2' && !document.getElementById('sw-save-graph').disabled);
-        await page.evaluate(async id => { const p=document.getElementById(id); await Plotly.relayout(p, {'title.text':'두 번째 그래프',annotations:[{text:'두 번째 메모',x:1700,y:1.2,showarrow:false}]}); await Plotly.restyle(p, {'line.color':'#e74c3c'}, [0]); },gd);
+        await page.evaluate(async id => { const p=document.getElementById(id); await Plotly.relayout(p, {'title.text':'두 번째 그래프',annotations:(p.layout.annotations||[]).concat([{name:'workflow-note',text:'두 번째 메모',x:1700,y:1.2,showarrow:false}])}); await Plotly.restyle(p, {'line.color':'#e74c3c'}, [0]); },gd);
         await page.locator('#sw-graph-name').fill('비교 그래프 2'); await page.locator('#sw-save-graph').click();
         await page.waitForFunction(() => document.querySelectorAll('.sw-card').length===2 && !document.getElementById('sw-save-graph').disabled);
         await page.locator('.sw-card').first().getByRole('button',{name:'미리보기',exact:true}).click();
@@ -50,8 +59,8 @@ const raw = Buffer.from(Array.from({length:241}, (_, i) => {
         await page.locator('#sw-step-2').click();
         await page.locator('.sw-card').first().getByRole('button',{name:'다시 편집',exact:true}).click();
         await page.waitForFunction(id => document.getElementById(id).layout.title.text==='첫 번째 그래프' && !document.getElementById('sw-save-graph').disabled,gd);
-        assert.equal(await page.evaluate(id=>document.getElementById(id).layout.annotations[0].text,gd),'첫 번째 메모');
-        await page.evaluate(async id => { await Plotly.relayout(document.getElementById(id),{'annotations[0].text':'다시 편집한 메모'}); },gd);
+        assert.equal(await page.evaluate(id=>document.getElementById(id).layout.annotations.find(a=>a.name==='workflow-note').text,gd),'첫 번째 메모');
+        await page.evaluate(async id => { const p=document.getElementById(id),index=p.layout.annotations.findIndex(a=>a.name==='workflow-note');await Plotly.relayout(p,{['annotations['+index+'].text']:'다시 편집한 메모'}); },gd);
         await page.locator('#sw-save-graph').click();
         await page.waitForFunction(()=>!document.getElementById('sw-save-graph').disabled);
         assert.equal(await page.locator('.sw-card').count(),2);
@@ -83,6 +92,46 @@ const raw = Buffer.from(Array.from({length:241}, (_, i) => {
         const download=await editor.locator('#download').getAttribute('href');
         const response=await page.request.get(origin+download); assert.equal(response.status(),200);
         fs.writeFileSync(path.join(output,kind+'-reviewed.zip'),await response.body());
+        if(kind==='ftir'){
+          execFileSync(process.env.RIST_TEST_PYTHON||'python3',['-c',
+            'import sys,zipfile; z=zipfile.ZipFile(sys.argv[1]); [z.extract(n,sys.argv[2]) for n in ("ftir-raw-all.html","ftir-edited.html")]',
+            path.join(output,kind+'-reviewed.zip'),output]);
+          const offline=await browser.newContext({viewport:{width:1440,height:1050},offline:true});
+          try{
+            const rawView=await offline.newPage(),requests=[],offlineErrors=[];
+            rawView.on('request',r=>{if(/^https?:/.test(r.url()))requests.push(r.url());});
+            rawView.on('pageerror',e=>offlineErrors.push(e.message));
+            await rawView.goto(pathToFileURL(path.join(output,'ftir-raw-all.html')).href);
+            await rawView.waitForFunction(()=>document.getElementById('report-graph').data?.length===3);
+            const original=await rawView.evaluate(()=>document.getElementById('report-graph').data.map(t=>({name:t.name,x:t.x,y:t.y})));
+            assert.deepEqual(original.map(t=>t.name),['second','workflow','hidden']);
+            const expected=new Map(raw.toString().split('\n').map(line=>line.split(',').map(Number)));
+            for(const trace of original){
+              assert.equal(trace.x.length,241);assert.equal(Math.min(...trace.x),400);assert.equal(Math.max(...trace.x),4000);
+              trace.x.forEach((x,i)=>assert(Math.abs(trace.y[i]-expected.get(x))<1e-12));
+            }
+            assert.equal(await rawView.locator('#slides-panel').isVisible(),false);
+            await rawView.locator('#view-mode').selectOption('stack');
+            await rawView.waitForFunction(()=>document.getElementById('report-graph').layout.yaxis.showticklabels===false);
+            await rawView.locator('#reset-view').click();
+            await rawView.waitForFunction(()=>document.getElementById('report-graph').layout.yaxis.showticklabels===true);
+            await rawView.screenshot({path:path.join(output,'ftir-raw-offline.png'),fullPage:true});
+            await rawView.goto(pathToFileURL(path.join(output,'ftir-edited.html')).href);
+            await rawView.waitForFunction(()=>document.getElementById('report-graph').data?.length>0);
+            assert.equal(await rawView.locator('#graph-choice option').count(),2);
+            await rawView.locator('#graph-choice').selectOption('1');
+            await rawView.waitForFunction(()=>document.getElementById('report-graph').layout.title.text==='첫 번째 그래프');
+            const edited=await rawView.evaluate(()=>{const g=document.getElementById('report-graph');return {names:g.data.map(t=>t.name),range:g.layout.xaxis.range,notes:(g.layout.annotations||[]).map(a=>a.text)};});
+            assert(!edited.names.some(n=>n.includes('hidden')));assert.deepEqual(edited.range,[2200,1100]);
+            assert(edited.notes.includes('다시 편집한 메모'));
+            const bounds=await rawView.locator('#report-graph .nsewdrag').boundingBox();
+            await rawView.mouse.move(bounds.x+bounds.width*.5,bounds.y+bounds.height*.5);await rawView.mouse.wheel(0,-120);
+            await rawView.waitForFunction(()=>document.getElementById('report-graph').layout.xaxis.range[0]!==2200);
+            await rawView.screenshot({path:path.join(output,'ftir-edited-offline.png'),fullPage:true});
+            assert.deepEqual(requests,[]);assert.deepEqual(offlineErrors,[]);
+            console.log('FTIR ZIP: full unedited source union, removed sample, full range, edited graph choices/notes/crop, offline stack and wheel zoom passed');
+          }finally{await offline.close();}
+        }
         const viewer=await browser.newPage(); await viewer.goto(origin+download.replace('/download','/preview'));
         await viewer.locator('#graph-tab').click();
         assert.equal(await viewer.locator('#graph-choice option').count(),2);
