@@ -37,7 +37,7 @@ async function setup(t, prefix, mode) {
   w.fetch=async(url,options={})=>{
     if(url.startsWith('/api/v1/requests?')) return response({items,message:'lookup unavailable'},lookupStatus);
     if(url.endsWith('/send')){const body=JSON.parse(options.body);sent.push(body);return response(body);}
-    return response(url.includes('assignment-libraries')?{libraries:[]}:{roles:[]});
+    return response(url.includes('assignment-libraries')?{libraries:[]}:{userId:'request-test',roles:[]});
   };
   let script=[...pages[prefix].matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)]
     .map(m=>m[1]).find(s=>s.includes('function selectedRequestItem()'));
@@ -54,6 +54,11 @@ async function setup(t, prefix, mode) {
     if(mode==='chrome49') dependency=fs.readFileSync(path.join(assetRoot,
       manifest.scripts[createHash('sha256').update(dependency.trim()).digest('hex')]),'utf8');
     w.eval(dependency);
+    let workflow=[...pages[prefix].matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)]
+      .map(m=>m[1]).find(s=>s.includes('window.RistSpectrumWorkflow ='));
+    if(mode==='chrome49') workflow=fs.readFileSync(path.join(assetRoot,
+      manifest.scripts[createHash('sha256').update(workflow.trim()).digest('hex')]),'utf8');
+    w.eval(workflow);
   }
   assert(hook.test(script));
   w.eval(script.replace(hook, `

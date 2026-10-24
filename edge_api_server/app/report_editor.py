@@ -143,7 +143,11 @@ def _write_revision(store, new_job, old_job, changes, project, settings, databas
             savedAt=new_job.created_at.isoformat(), savedBy=actor_id)
         document.generated_at = changes.get("completionDate", document.completion_date) or ""
         for figure in document.figures:
-            figure.path = str(report_dir / "current_graph.png")
+            from .report.saved_graphs import figure_filename
+            name = figure_filename(figure.figure_id)
+            if name != "current_graph.png":
+                shutil.copyfile(source / "report" / name, report_dir / name)
+            figure.path = str(report_dir / name)
         apply_edits(document, resolve_changes(changes), project)
         # Authoring sources are never shipped in recipient packages (.json excluded).
         atomic_write_json(report_dir / "editor-state.json", changes)
@@ -156,7 +160,7 @@ def _write_revision(store, new_job, old_job, changes, project, settings, databas
         analysis = json.loads((processed_dir / "analysis-result.json").read_text(encoding="utf-8"))
         build_spectrum_viewer(report_dir, title=document.title,
                               figure=analysis.get("viewerFigure") or analysis.get("figure") or {},
-                              analysis=analysis_preview(document))
+                              analysis=analysis_preview(document), graphs=analysis.get("reportGraphs") or [])
         package = reports.build_report_package(report_dir, tmp_root / "job/input", include_raw_files=False)
         transfer = changes["transfer"]
         package = register_generated_report_package(settings=settings, database=database,

@@ -191,9 +191,11 @@ def _analysis_html(analysis: dict | None) -> str:
             + "".join(sections) + "</section>")
 
 
-def viewer_html(*, title: str, figure: dict, slides: list[str], fallback_image: str = "", analysis: dict | None = None) -> str:
+def viewer_html(*, title: str, figure: dict, slides: list[str], fallback_image: str = "", analysis: dict | None = None, graphs: list | None = None) -> str:
     payload = json.dumps({"figure": readonly_figure(figure), "slides": slides,
-                          "fallback": fallback_image}, cls=PlotlyJSONEncoder,
+                          "fallback": fallback_image,
+                          "graphs": [{"title": g["title"], "figure": readonly_figure(g["viewerFigure"]),
+                                      "fallback": g.get("image", "")} for g in graphs or []]}, cls=PlotlyJSONEncoder,
                          ensure_ascii=False, separators=(",", ":")).replace("<", "\\u003c")
     return ("<!doctype html><html lang='ko'><head><meta charset='utf-8'>" + VIEWER_MARKER
             + "<meta name='viewport' content='width=device-width,initial-scale=1'>"
@@ -209,7 +211,7 @@ def viewer_html(*, title: str, figure: dict, slides: list[str], fallback_image: 
             + "<label>페이지 <select id='page-select' aria-label='PPT 페이지 선택'></select></label>"
             + "<span id='page-count' aria-live='polite'></span><button id='next'>다음</button></div>"
             + "<img id='slide-image' alt='PPT 페이지'></section>"
-            + "<section id='graph-panel' hidden><div class='controls'><label>그래프 보기 <select id='view-mode'>"
+            + "<section id='graph-panel' hidden><div class='controls'><label id='graph-choice-label' hidden>저장 그래프 <select id='graph-choice'></select></label><label>그래프 보기 <select id='view-mode'>"
             + "<option value='original'>발행본 보기</option><option value='overlay'>중첩 보기</option>"
             + "<option value='stack'>스택 보기</option></select></label><button id='reset-view'>발행본으로 복원</button></div>"
             + "<p class='notice'>확대·축소, 이동, 시료 표시와 스택은 보기만 바꿉니다. 피크·라벨·해석·보고서 내용은 편집하거나 저장할 수 없습니다.</p>"
@@ -219,10 +221,10 @@ def viewer_html(*, title: str, figure: dict, slides: list[str], fallback_image: 
             + "<script>" + get_plotlyjs() + "</script><script>" + viewer_script() + "</script></body></html>")
 
 
-def build_spectrum_viewer(report_dir: Path, *, title: str, figure: dict, analysis: dict | None = None) -> Path:
+def build_spectrum_viewer(report_dir: Path, *, title: str, figure: dict, analysis: dict | None = None, graphs: list | None = None) -> Path:
     slides = render_slide_images(report_dir / "report-from-pptx.pdf")
     fallback = "data:image/png;base64," + base64.b64encode((report_dir / "current_graph.png").read_bytes()).decode("ascii")
-    content = viewer_html(title=title, figure=figure, slides=slides, fallback_image=fallback, analysis=analysis)
+    content = viewer_html(title=title, figure=figure, slides=slides, fallback_image=fallback, analysis=analysis, graphs=graphs)
     if len(content.encode("utf-8")) > MAX_VIEWER_BYTES:
         raise ValueError("열람용 HTML 크기가 80MB를 초과했습니다.")
     summary = report_dir / "report.html"

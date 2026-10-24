@@ -223,7 +223,7 @@ for(const [index,kind] of ['ftir','raman'].entries()) test(kind+' report generat
     reportAnalysisPayload:()=>({}),compactReportFigurePayload:()=>({}),reportFilesForVisibleSamples:()=>[{}],captureReportFigureImage:async()=>'',
     reportImageFile:()=>({}),Blob:globalThis.Blob,uploadReportFilesWithSession:async()=>({jobId:'building'}),
     pollReportJob:async()=>{events.push('completed');return job;},setReportDownloadLink:()=>{},saveWorkspaceNow:async()=>events.push('saved'),
-    window:{location:{assign:url=>events.push(url)}}};
+    window:{location:{assign:url=>events.push(url)},RistSpectrumWorkflow:{imageFile:()=>({})}}};
   const run=()=>new Function(...Object.keys(deps),'var lastReportJob,lastReportSnapshot;'+code.slice(target.start,target.end)+';return createReport();')(...Object.values(deps));
   await run();assert.deepEqual(events,['completed','saved',job.editUrl]);
   events.length=0;deps.pollReportJob=async()=>{throw new Error('render failed');};await run();assert.deepEqual(events,[]);

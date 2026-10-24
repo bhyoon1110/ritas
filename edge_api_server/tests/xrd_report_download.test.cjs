@@ -39,8 +39,11 @@ async function setup(t, mode) {
     assert(manifest.scripts[key],'Rebuild Chrome 49 assets');
     script=fs.readFileSync(path.join(assetRoot,manifest.scripts[key]),'utf8');
   }
-  w.eval(script);
-  d.getElementById('xrd-example').click();await tick();
+  // The example button was removed. Seed the real completed-report renderer,
+  // then exercise the unchanged download handler instead of a nonexistent UI.
+  assert(/function showHtml\(/.test(script));
+  w.eval(script.replace(/function showHtml\(/, 'window.__showCompletedReport=showHtml;function showHtml('));
+  w.__showCompletedReport(report);await tick();
   assert.equal(d.getElementById('xrd-download').getAttribute('aria-disabled'),'false');
   const frame=d.querySelector('#xrd-preview iframe');
   // jsdom does not implement iframe.srcdoc; populate it as the browser does.

@@ -25,6 +25,8 @@ const output=fs.mkdtempSync(path.join(os.tmpdir(),'rist-ratio-browser-'));
     page.setDefaultTimeout(20000);
     const errors=[]; page.on('pageerror',e=>{errors.push(e.message); console.error('Browser error:',e.message);});
     await page.goto('http://127.0.0.1:'+server.address().port+'/raman');
+    await page.waitForFunction(()=>document.getElementById('sw-step-2')&&!document.getElementById('sw-step-2').disabled);
+    await page.locator('#sw-step-2').click();
     await page.waitForFunction(()=>document.getElementById('raman-plot')._ristRamanRatioInstalled);
     console.log('Loaded full Raman page');
     await page.evaluate(async()=>{

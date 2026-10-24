@@ -1280,7 +1280,7 @@ def _pptx_slide_payloads(document: ReportDocument) -> list[dict[str, object]]:
 
 def _pptx_complete_table_payloads(document, section):
     """Paginate analyst content instead of truncating rows or cell endings."""
-    if section.section_id in {"raman_peaks", "raman_ratios"}:
+    if section.section_id in {"raman_peaks", "raman_ratios"} or section.section_id.endswith(("-raman_peaks", "-raman_ratios")):
         yield from _pptx_raman_table_payloads(document, section)
         return
     table = section.table

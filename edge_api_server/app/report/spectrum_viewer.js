@@ -15,6 +15,20 @@
   var busy = false;
   var pending = false;
   var hidden = {};
+  var choices = payload.graphs || [], graphChoice = document.getElementById("graph-choice");
+  if (graphChoice && choices.length) {
+    document.getElementById("graph-choice-label").hidden = false;
+    choices.forEach(function (entry, index) {
+      var option = document.createElement("option"); option.value = String(index); option.textContent = entry.title; graphChoice.appendChild(option);
+    });
+    original = choices[0].figure; payload.fallback = choices[0].fallback;
+    graphChoice.onchange = function () {
+      var entry = choices[Number(graphChoice.value)]; if (!entry) return;
+      original = entry.figure; payload.fallback = entry.fallback; hidden = {}; mode.value = "original";
+      graph.hidden = false; document.getElementById("graph-fallback").hidden = true;
+      mode.disabled = false; document.getElementById("reset-view").disabled = false; draw();
+    };
+  }
   function clone(value) { return JSON.parse(JSON.stringify(value)); }
   function notifyView() {
     // Presentation state only; never accept edits or expose report content across frames.

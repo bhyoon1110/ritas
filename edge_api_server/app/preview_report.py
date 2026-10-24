@@ -334,12 +334,18 @@ def parse_analysis_payload(analysis_json: str, figure_json: str | None = None, v
     payload = json.loads(analysis_json)
     if not isinstance(payload, dict):
         raise ValueError("analysis_json은 JSON 객체여야 합니다.")
+    # Collections are accepted only through the bounded file upload, never an
+    # unvalidated multipart text field or a client-selected filesystem path.
+    payload.pop("reportGraphs", None)
     if figure_json:
         figure = json.loads(figure_json)
         if isinstance(figure, dict):
             payload["figure"] = figure
     snapshot = read_viewer_snapshot(viewer_figure)
     if snapshot is not None:
+        from .report.saved_graphs import read_graphs
+        if "reportGraphs" in snapshot:
+            payload["reportGraphs"] = read_graphs(snapshot.pop("reportGraphs"))
         payload["viewerFigure"] = snapshot
     return payload
 
@@ -404,12 +410,16 @@ def build_preview_report_package(
 ) -> tuple[Path, Path]:
     tmp_root = Path(tempfile.mkdtemp(prefix="rist-preview-report-"))
     try:
+        from .report.saved_graphs import collection_document, graph_raw_series, write_graph_images
+        graphs = analysis_payload.get("reportGraphs") or []
         analysis_payload = prepare_edited_report(analysis_payload)
         raw_series = _filter_raw_series_for_payload(
             raw_series,
             analysis_payload,
             filter_axis_range=_is_ftir_experiment(experiment_code),
         )
+        if graphs:
+            raw_series = graph_raw_series(graphs)
         job_root = tmp_root / "job"
         report_dir = job_root / "report"
         processed_dir = job_root / "processed"
@@ -422,6 +432,8 @@ def build_preview_report_package(
         image_path = processed_dir / "current_graph.png"
         image_path.write_bytes(figure_image)
         (report_dir / "current_graph.png").write_bytes(figure_image)
+        if graphs:
+            write_graph_images(graphs, report_dir, processed_dir)
 
         job = {
             "job_id": report_id or "web-preview-report",
@@ -457,6 +469,10 @@ def build_preview_report_package(
         )
         if spec is not None:
             spec = edited_graph_spec(spec, analysis_payload, experiment_code)
+        if graphs:
+            traceability = document.traceability
+            document, spec = collection_document(builder, job, graphs, transfer, processed_dir)
+            document.traceability = dict(traceability, graphTitles=[g["title"] for g in graphs])
         if spec is not None:
             document.ensure_auxiliary_texts(spec.fallback)
         if spec is not None and settings is not None:
@@ -485,13 +501,14 @@ def build_preview_report_package(
                 llm_client.close()
         else:
             _emit_progress(progress, "llm", 58, "규칙 기반 문안을 적용하는 중입니다.")
-        document.figures = [
-            ReportFigure(
-                figure_id="current-graph",
-                title="현재 그래프 화면",
-                path=str(image_path),
-            )
-        ]
+        if not graphs:
+            document.figures = [
+                ReportFigure(
+                    figure_id="current-graph",
+                    title="현재 그래프 화면",
+                    path=str(image_path),
+                )
+            ]
 
         _emit_progress(progress, "raw", 72, "raw 데이터를 엑셀로 정리하는 중입니다.")
         atomic_write_json(report_dir / "report.json", document.to_dict())
@@ -526,6 +543,7 @@ def build_preview_report_package(
             title=f"{experiment_code} 분석 보고서 · {request_number or '결과 미리보기'}",
             figure=analysis_payload.get("viewerFigure") or analysis_payload.get("figure") or {},
             analysis=analysis_preview(document),
+            graphs=graphs,
         )
         _emit_progress(progress, "package", 95, "최종 ZIP을 패키징하는 중입니다.")
         package = build_report_package(

@@ -80,6 +80,8 @@ def ensure_editable_fields(document, payload, project, transfer):
 
 def document_from_dict(value, *, image_path):
     """Deserialize only server-owned report JSON, with a fixed local figure path."""
+    from pathlib import Path
+    from .saved_graphs import figure_filename
     sections = []
     for item in value["sections"]:
         table = item.get("table")
@@ -91,7 +93,7 @@ def document_from_dict(value, *, image_path):
                                       item.get("bullets", []), table, item.get("source", "rule")))
     return ReportDocument(job_id=value["jobId"], title=value["title"], experiment_code=value["experimentCode"],
                           pk=value["pk"], generated_at=value["generatedAt"], sections=sections,
-                          figures=[ReportFigure(f["figureId"], f["title"], str(image_path), f.get("captionSlot", "caption"))
+                          figures=[ReportFigure(f["figureId"], f["title"], str(Path(image_path).parent / figure_filename(f["figureId"])), f.get("captionSlot", "caption"))
                                    for f in value.get("figures", [])],
                           auxiliary_texts=value.get("auxiliary", {}), llm_used=value.get("llm", {}).get("used", False),
                           llm_error=value.get("llm", {}).get("error"), traceability=value.get("traceability", {}))

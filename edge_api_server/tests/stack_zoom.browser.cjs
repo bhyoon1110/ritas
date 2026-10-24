@@ -32,6 +32,8 @@ const server = http.createServer((req,res) => {
       page.setDefaultTimeout(10000);
       try {
         await page.goto('http://127.0.0.1:'+server.address().port+'/'+kind);
+        await page.waitForFunction(()=>document.getElementById('sw-step-2')&&!document.getElementById('sw-step-2').disabled);
+        await page.locator('#sw-step-2').click();
         await page.waitForFunction(id => document.getElementById(id)._ristAxisControlsInstalled,id);
         await page.evaluate(async ({id,key,kind}) => {
           const gd = document.getElementById(id);

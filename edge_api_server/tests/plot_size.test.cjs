@@ -22,6 +22,8 @@ function setup(t, experiment, mode) {
   const dom=new JSDOM(html,{runScripts:'outside-only',pretendToBeVisual:true,url:'http://rist.test/'+experiment});
   t.after(()=>{dom.window.dispatchEvent(new dom.window.Event('pagehide'));dom.window.close();});
   const w=dom.window,d=w.document,gd=d.getElementById(experiment==='ftir'?'peak-plot':'raman-plot');
+  // JSDOM has no layout; model a visible graph unless the test hides it.
+  gd.getClientRects=()=>gd.hidden ? [] : [{width:1600,height:720}];
   let available=1600,captures=0;
   Object.defineProperty(gd.parentElement,'clientWidth',{get:()=>available});
   Object.defineProperty(gd,'clientWidth',{get:()=>parseFloat(gd.style.width)||available});
@@ -73,6 +75,15 @@ function setup(t, experiment, mode) {
 
 for(const mode of ['native','chrome49'])for(const experiment of ['ftir','raman']) {
   const prefix=`${experiment}/${mode}`;
+  test(`${prefix}: hidden workflow stages skip relayout until the graph is visible again`,async t=>{
+    const h=setup(t,experiment,mode);
+    h.gd.hidden=true;
+    await h.gd._ristApplyResponsiveLayout();
+    assert.equal(h.updates.length,0);
+    h.gd.hidden=false;
+    await h.gd._ristApplyResponsiveLayout();
+    assert(h.updates.length>0);
+  });
   test(`${prefix}: 4:3,16:9,1:1 size only the canvas, preserving raw data/axis locks/ranges`,async t=>{
     const h=setup(t,experiment,mode),raw=clone(h.gd.data),x=clone(h.gd.layout.xaxis),y=clone(h.gd.layout.yaxis);
     for(const [ratio,height] of [['4:3',900],['16:9',675],['1:1',1200]]) {

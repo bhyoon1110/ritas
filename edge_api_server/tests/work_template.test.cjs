@@ -48,6 +48,7 @@ function setup(t,experiment,mode) {
   Object.defineProperty(gd,'clientWidth',{get:()=>parseFloat(gd.style.width)||1500});
   Object.defineProperty(gd,'clientHeight',{value:720});
   const initial=figure(experiment,0); gd.data=initial.data; gd.layout=initial.layout; gd._context={};
+  gd.getClientRects=()=>[{width:1000,height:600}]; // JSDOM has no visual layout.
   const handlers={},downloads=[],requests=[]; let fail=false, sampleCount=2, controller, savedEnvironment, rawMetadata=[];
   const emit=(name,payload)=>{for(const fn of handlers[name]||[])fn(payload);};
   gd.on=(name,fn)=>{(handlers[name] ||= []).push(fn);return gd;};
@@ -59,13 +60,14 @@ function setup(t,experiment,mode) {
     relayout:async(_,patch)=>{for(const [key,value] of Object.entries(patch))set(gd.layout,key,clone(value));full();emit('plotly_relayout',patch);emit('plotly_afterplot');},
     restyle:async(_,patch,indexes)=>{for(const [pos,index] of indexes.entries())for(const [key,value] of Object.entries(patch))set(gd.data[index],key,clone(Array.isArray(value)?value[pos]:value));full();},
     update:async(_,data,layout,indexes)=>{await w.Plotly.restyle(gd,data,indexes);await w.Plotly.relayout(gd,layout);},
-    Plots:{resize:()=>{}}
+    Plots:{resize:async()=>{}}
   };
   w.URL.createObjectURL=blob=>{downloads.push(blob);return 'blob:test';}; w.URL.revokeObjectURL=()=>{};
   d.addEventListener('click',ev=>{if(ev.target.tagName==='A'&&ev.target.download)ev.preventDefault();});
   w.confirm=()=>true;
   if(mode==='chrome49') w.eval(fs.readFileSync(path.join(root,manifest.runtime),'utf8'));
   w.fetch=async(url,options={})=>{
+    if(url==='/api/v1/auth/me')return {ok:true,json:async()=>({userId:'template-test',roles:[]})};
     if(url.endsWith('/assignment-libraries'))return {ok:true,json:async()=>({libraries:[
       {id:'default',name:'Default',valid:true,defaultSelected:true,assignmentCount:1},
       {id:'custom',name:'Custom',valid:true,assignmentCount:2}],deleteEnabled:false})};
@@ -92,6 +94,7 @@ function setup(t,experiment,mode) {
   run(experiment==='ftir'?'gd._ristFtirStackInstalled':'gd._ristRamanStackInstalled');
   run('gd._ristPeakSensitivityInstalled');
   run('rist-spectrum-work-template');
+  run('window.RistSpectrumWorkflow =');
   const install=w.RistWorkTemplate.install;
   w.RistWorkTemplate.install=options=>{savedEnvironment=options;controller=install(options);return controller;};
   run('function currentWorkspaceState');
@@ -134,7 +137,7 @@ for(const mode of ['native','chrome49']) for(const experiment of ['ftir','raman'
   test(label+': template controls use the shared band styles without changing ready/busy states',async t=>{
     const h=setup(t,experiment,mode);await tick();
     const band=h.d.querySelector('.rist-work-template-band');
-    assert.equal(band.previousElementSibling.className,experiment+'-library-band');
+    assert(band.previousElementSibling.classList.contains(experiment+'-library-band'));
     assert.equal(band.getAttribute('aria-label'),'작업 템플릿');
     assert(!band.hasAttribute('style'));assert.equal(band.querySelectorAll('[style]').length,0);
     assert.equal(band.querySelectorAll('.rist-work-template-button').length,3);

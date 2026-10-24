@@ -2,6 +2,7 @@
 const {test} = require('node:test');
 const assert = require('node:assert/strict');
 const vm = require('node:vm');
+const fs = require('node:fs'), path = require('node:path');
 const {execFileSync} = require('node:child_process');
 const acorn = require('acorn');
 const clone = value => JSON.parse(JSON.stringify(value));
@@ -64,8 +65,9 @@ for (const [index,kind] of ['ftir','raman'].entries()) {
       uploadReportFilesWithSession:async(files,body)=>{posted=body;return {jobId:'frozen'};},
       pollReportJob:async()=>({jobId:'frozen',status:'completed'}),Blob,atob,
       reportPreviewLink:{getAttribute:()=> 'false',addEventListener:(_,fn)=>handler=fn},
-      window:{confirm:message=>{ctx.warning=message;return false;}}});
+      window:{atob,confirm:message=>{ctx.warning=message;return false;}}});
     ctx.figure=fixture();
+    vm.runInContext(fs.readFileSync(path.join(__dirname,'../app/spectrum_workflow.js'),'utf8'),ctx);
     vm.runInContext(helpers+(kind==='ftir'?extract(source,'reportImageFile'):'')+extract(source,'createReport'),ctx);
     const request=ctx.createReport();
     assert.equal(imageFigure,undefined); // Wait for outstanding stack coordinates.
@@ -76,10 +78,8 @@ for (const [index,kind] of ['ftir','raman'].entries()) {
     assert.equal(JSON.parse(posted.analysis_json).samples[0].label,'before');
     assert.equal(JSON.parse(posted.figure_json).data[1].name,'Edited peak');
     assert.equal(JSON.parse(await posted.viewer_figure.text()).data[1].name,'Edited peak');
-    if (kind==='ftir') {
-      assert.equal(posted.figure_image,undefined);
-      assert.equal(await posted.figure_image_file.text(),'image');
-    }
+    assert.equal(posted.figure_image,undefined);
+    assert.equal(await posted.figure_image_file.text(),'image');
     assert.equal(imageFigure.data[1].name,'Edited peak');
     assert.equal(ctx.lastReportJob.jobId,'frozen');
     vm.runInContext(source.match(/if \(reportPreviewLink\) reportPreviewLink.addEventListener\("click", function\(event\) \{[\s\S]*?\n  \}\);/)[0],ctx);

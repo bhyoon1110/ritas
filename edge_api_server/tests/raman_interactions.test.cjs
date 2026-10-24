@@ -327,9 +327,10 @@ test('TXT selected in library chooser uses raw analyze path, JSON/CSV remain ass
   const {w,gd,run,d}=setup(t),requests=[];
   w.fetch=async(url,options)=>{
     requests.push({url,options});
-    return {ok:true,json:async()=>url.includes('/analyze')?{figure:{data:[],layout:gd.layout},samples:[]}:{libraries:[],roles:[]}};
+    return {ok:true,json:async()=>url.includes('/analyze')?{figure:{data:[],layout:gd.layout},samples:[]}:{libraries:[],roles:[],userId:'interaction-test'}};
   };
   run('rist-spectrum-work-template');
+  run('window.RistSpectrumWorkflow =');
   run('async function analyze()');await tick();requests.length=0;
   const input=d.getElementById('raman-library-input');
   Object.defineProperty(input,'files',{configurable:true,value:[new w.File(['100 1\n200 2\n'],'spectrum.TXT')]});

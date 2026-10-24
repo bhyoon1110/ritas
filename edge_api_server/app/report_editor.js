@@ -2,8 +2,18 @@
   "use strict";
   var config = JSON.parse(document.getElementById("editor-config").textContent);
   var project = config.project || (config.prefix.indexOf("/tem/") >= 0 ? "TEM" : config.prefix.indexOf("/raman/") >= 0 ? "RAMAN" : "FT-IR");
+  var workflow = window.parent !== window && project !== "TEM" && /(?:^|[?&])workflow=1(?:&|$)/.test(window.location.search);
+  if (workflow) document.body.classList.add("workflow-embedded", "workflow-edit");
   var back = document.getElementById("analysis-back");
   back.href = project === "TEM" ? "/tem" : project === "RAMAN" ? "/raman" : "/ftir";
+  if (workflow) back.onclick = function (event) {
+    event.preventDefault(); window.parent.postMessage({type:"rist-workflow-back"}, window.location.origin);
+  };
+  window.addEventListener("message", function (event) {
+    if (!workflow || event.source !== window.parent || event.origin !== window.location.origin || !event.data || event.data.type !== "rist-workflow-stage") return;
+    document.body.classList.toggle("workflow-edit", event.data.step !== 4);
+    document.querySelector("h1").textContent = event.data.step === 4 ? "최종 보고서 저장·전송" : "보고서 미리보기·편집";
+  });
   if (project === "TEM") {
     document.getElementById("recipient-preview").textContent = "읽기 전용 보고서";
     document.getElementById("analysis-help").textContent = "전송에는 기존 SSO 인증과 전송 권한이 필요합니다. 이미지 교체·재분석은 TEM 화면에서 진행하세요. 문구·표 수정은 원본 분석 데이터와 별도로 최종 PPT에 반영됩니다. 코팅층 두께를 수정하면 전체 평균도 함께 확인·수정하세요.";
@@ -45,6 +55,8 @@
     Array.prototype.forEach.call(document.querySelectorAll("#editor input,#editor textarea,#mail-editor textarea"),function (input) { input.disabled = sending; });
     if (lookup) lookup.availability();
     direct.lock(sending);
+    if (workflow) window.parent.postMessage({type:"rist-workflow-editor-state", jobId:currentId,
+      ready:!!model, busy:busy || dirty || !!activeRevision}, window.location.origin);
   }
   function schedule(delay) {
     window.clearTimeout(timer);

@@ -35,6 +35,7 @@ from . import assignment_suggestions
 from .auth import authenticated_transfer_payload
 from .browser_support import with_browser_support_notice
 from .work_template import work_template_script
+from .spectrum_workflow import spectrum_workflow_script
 from .assignment_suggestions import AssignmentSuggestionRequest
 from .config import Settings
 from .errors import ApiException
@@ -47,6 +48,7 @@ from .preview_report import (
     build_preview_report_package,
     cleanup_preview_report,
     decode_figure_image,
+    read_figure_image,
     parse_analysis_payload,
     preview_report_job_store,
     send_preview_report_package,
@@ -3056,6 +3058,7 @@ _UPLOAD_SCRIPT = """
   var restoreInProgress = false;
   var saveTimer = 0;
   var workTemplate = null;
+  var workflow = null;
 
   function cloneReportOptions(source) {
     var result = {};
@@ -3457,14 +3460,14 @@ _UPLOAD_SCRIPT = """
     }).catch(function() {});
   }
 
-  function restoreWorkspace() {
-    return workspaceStore("readonly").then(function(store) {
+  function restoreWorkspace(savedState) {
+    return (savedState ? Promise.resolve(savedState) : workspaceStore("readonly").then(function(store) {
       return new Promise(function(resolve, reject) {
         var request = store.get(SESSION_KEY);
         request.onsuccess = function() { resolve(request.result || null); };
         request.onerror = function() { reject(request.error); };
       });
-    }).then(function(state) {
+    })).then(function(state) {
       if (!state || state.version !== 1) return null;
       restoreInProgress = true;
       files = (state.files || []).map(recordFile);
@@ -3487,7 +3490,7 @@ _UPLOAD_SCRIPT = """
           gd._context
         ).then(function() {
           dispatchDataReplaced(currentPeakSensitivity());
-          window.Plotly.Plots.resize(gd);
+          if (gd.getClientRects().length) window.Plotly.Plots.resize(gd).catch(function() {});
           return state;
         }).finally(function() {
           restoreInProgress = false;
@@ -3495,9 +3498,67 @@ _UPLOAD_SCRIPT = """
       }
       restoreInProgress = false;
       return state;
-    }).catch(function() {
+    }).catch(function(error) {
       restoreInProgress = false;
+      if (savedState) throw error;
       return null;
+    });
+  }
+
+  function installSpectrumWorkflow() {
+    var collectionIdentity = fetch("/api/v1/auth/me", {credentials:"same-origin"}).then(function(response) {
+      if (response.status === 404) return {userId:"local-preview"};
+      if (!response.ok) throw new Error("로그인 상태를 확인한 뒤 저장 목록을 다시 여세요.");
+      return response.json();
+    }).then(function(user) {
+      if (!user || !user.userId) throw new Error("저장 목록의 사용자 정보를 확인할 수 없습니다.");
+      return "graph-collection-v1:" + user.userId;
+    });
+    function collectionStore(value, write) {
+      return collectionIdentity.then(function(key) {
+        return workspaceStore(write ? "readwrite" : "readonly").then(function(store) {
+          return new Promise(function(resolve, reject) {
+            var request = write ? store.put(value, key) : store.get(key);
+            var result;
+            request.onsuccess = function() { result = request.result; };
+            request.onerror = function() { reject(request.error); };
+            store.transaction.oncomplete = function() { resolve(result || null); };
+            store.transaction.onabort = store.transaction.onerror = function() { reject(store.transaction.error || new Error("브라우저 저장 실패")); };
+          });
+        });
+      });
+    }
+    return window.RistSpectrumWorkflow.install({
+      kind: "raman", gd: gd, busy: function() { return workTemplate && workTemplate.isBusy(); },
+      hasGraph: function() { return !!latestAnalysisPayload && files.length > 0 && (gd.data || []).some(function(t) { return t.meta && t.meta.rist_sample_parent; }); },
+      read: function() { return collectionStore(null, false); },
+      write: function(value) { return collectionStore(value, true); },
+      capture: async function() {
+        setBusy(true);
+        try {
+          await Promise.resolve(gd._ristStackReady);
+          var state = currentWorkspaceState();
+          state.analysisPayload = JSON.parse(JSON.stringify(state.analysisPayload));
+          var figure = currentFigurePayload();
+          var report = {analysis:reportAnalysisPayload(), figure:compactReportFigurePayload(figure),
+            viewerFigure:compactReportFigurePayload(figure, true)};
+          report.image = await captureReportFigureImage(figure);
+          return {state:state, report:report};
+        } finally { setBusy(false); }
+      },
+      restore: function(state) {
+        // IndexedDB snapshots carry File/Blob objects; clone only mutable plot/analysis data.
+        var restored = Object.assign({}, state, {
+          plotData:JSON.parse(JSON.stringify(state.plotData)), plotLayout:JSON.parse(JSON.stringify(state.plotLayout)),
+          analysisPayload:JSON.parse(JSON.stringify(state.analysisPayload))
+        });
+        setBusy(true);
+        return restoreWorkspace(restored).then(function() {
+          workTemplate.restore(state.workTemplate); renderLibraries();
+          return Promise.resolve(gd._ristStackReady);
+        }).finally(function() { setBusy(false); });
+      },
+      saveWorkspace:scheduleWorkspaceSave, resize:applyResponsiveLayout, build:createReport
     });
   }
 
@@ -3532,6 +3593,7 @@ _UPLOAD_SCRIPT = """
   }
 
   function applyResponsiveLayout() {
+    if (!gd.getClientRects().length) return Promise.resolve();
     var sizing = gd._ristPlotSize;
     var compact = (sizing ? sizing.viewportWidth() : window.innerWidth) <= 760;
     var updates = compact ? {
@@ -4574,6 +4636,7 @@ _UPLOAD_SCRIPT = """
 
   function setBusy(busy) {
     if (workTemplate) workTemplate.setBusy(busy);
+    if (workflow) workflow.setBusy(busy);
     loading.classList.toggle("is-visible", busy);
     input.disabled = busy;
     reportButton.disabled = busy;
@@ -5484,7 +5547,7 @@ _UPLOAD_SCRIPT = """
         dispatchDataReplaced(25);
         return applyResponsiveLayout();
       }).then(function() {
-        window.Plotly.Plots.resize(gd);
+        if (gd.getClientRects().length) window.Plotly.Plots.resize(gd).catch(function() {});
         scheduleWorkspaceSave();
       });
     }
@@ -5530,7 +5593,7 @@ _UPLOAD_SCRIPT = """
       dispatchDataReplaced(gd._ristPeakSensitivityValue);
       await applyResponsiveLayout();
       if (workTemplate) await workTemplate.apply();
-      window.Plotly.Plots.resize(gd);
+      if (gd.getClientRects().length) window.Plotly.Plots.resize(gd).catch(function() {});
       var libraryCount = selectedLibraryIds.length;
       status.textContent = payload.samples.map(function(item) {
         return item.label + " 피크 " + item.peakCount + "개";
@@ -5836,8 +5899,9 @@ _UPLOAD_SCRIPT = """
     return JSON.stringify(compact);
   }
 
-  async function createReport() {
-    if (!files.length) {
+  async function createReport(selection) {
+    selection = Array.isArray(selection) ? selection : null;
+    if (!selection && !files.length) {
       setMessage("보고서를 생성하려면 Raman raw 파일을 먼저 업로드하세요.");
       return;
     }
@@ -5845,7 +5909,7 @@ _UPLOAD_SCRIPT = """
     lastReportJob = null;
     updatePersistentReportDownload(null);
     updateReportSendAvailability();
-    if (!latestAnalysisPayload) {
+    if (!selection && !latestAnalysisPayload) {
       await analyze();
       if (!latestAnalysisPayload) return;
     }
@@ -5867,15 +5931,26 @@ _UPLOAD_SCRIPT = """
       var compactFigure = compactReportFigurePayload(reportFigure);
       var viewerFigure = compactReportFigurePayload(reportFigure, true);
       var reportFiles = reportFilesForVisibleSamples();
+      if (selection) {
+        var first = selection[0];
+        reportAnalysis = first.report.analysis;
+        compactFigure = first.report.figure;
+        viewerFigure = JSON.parse(JSON.stringify(first.report.viewerFigure));
+        viewerFigure.reportGraphs = selection.map(function(entry) {
+          return Object.assign({id:entry.id, title:entry.title}, entry.report);
+        });
+        reportFiles = first.state.files.map(recordFile);
+        if (JSON.stringify(viewerFigure).length > 45 * 1024 * 1024) throw new Error("선택한 그래프 데이터가 너무 큽니다. 보고서에 포함할 그래프 수를 줄여 주세요.");
+      }
       if (!reportFiles.length) {
         throw new Error("보고서에 표시할 raw 파일이 없습니다.");
       }
-      var figureImage = await captureReportFigureImage(reportFigure);
+      var figureImage = selection ? selection[0].report.image : await captureReportFigureImage(reportFigure);
       var job = await uploadReportFilesWithSession(reportFiles, {
         analysis_json: JSON.stringify(reportAnalysis),
         figure_json: JSON.stringify(compactFigure),
         viewer_figure: new Blob([JSON.stringify(viewerFigure)], {type: "application/json"}),
-        figure_image: figureImage,
+        figure_image_file: window.RistSpectrumWorkflow.imageFile(figureImage),
         requestNumber: transfer.requestNumber,
         equipmentCode: transfer.equipmentCode,
         operatorId: transfer.operatorId
@@ -5888,7 +5963,8 @@ _UPLOAD_SCRIPT = """
       setReportDownloadLink(job);
       status.textContent = "보고서 생성 완료";
       await saveWorkspaceNow();
-      window.location.assign(job.editUrl || ("/api/v1/raman/report/jobs/" + encodeURIComponent(job.jobId) + "/edit"));
+      if (!selection) window.location.assign(job.editUrl || ("/api/v1/raman/report/jobs/" + encodeURIComponent(job.jobId) + "/edit"));
+      return job;
     } catch (err) {
       setMessage(err.message || "보고서 생성에 실패했습니다.");
       status.textContent = "보고서 생성 실패";
@@ -5936,7 +6012,7 @@ _UPLOAD_SCRIPT = """
     });
     files = next;
     renderFiles();
-    if (files.length) analyze();
+    if (files.length) analyze().then(function(ok) { if (ok && workflow) workflow.dataLoaded(); });
     else scheduleWorkspaceSave();
   }
 
@@ -6111,6 +6187,8 @@ _UPLOAD_SCRIPT = """
     return loadLibraries(restored && restored.selectedLibraryIds).then(function() {
       if (restored) workTemplate.restore(restored.workTemplate);
       workTemplate.setReady();
+      workflow = installSpectrumWorkflow();
+      workflow.start();
       if (restored) return applyResponsiveLayout();
       renderFiles();
       return applyResponsiveLayout();
@@ -6147,6 +6225,7 @@ def build_raman_page() -> str:
             + _RAMAN_STACK_SCRIPT
             + _RAMAN_RATIO_SCRIPT
             + work_template_script()
+            + spectrum_workflow_script()
             + _UPLOAD_SCRIPT
         ),
         config={"scrollZoom": True, "modeBarButtonsToRemove": ["select2d"]},
@@ -6329,7 +6408,8 @@ def create_raman_preview_report(
     analysis_json: str = Form(...),
     figure_json: str = Form(default=""),
     viewer_figure: UploadFile | None = File(default=None),
-    figure_image: str = Form(...),
+    figure_image: str = Form(default=""),
+    figure_image_file: UploadFile | None = File(default=None),
     request_number: str = Form(default="", alias="requestNumber"),
     equipment_code: str = Form(default="", alias="equipmentCode"),
     operator_id: str = Form(default="", alias="operatorId"),
@@ -6347,7 +6427,7 @@ def create_raman_preview_report(
     request.state.error_file_blobs = uploaded
     try:
         analysis_payload = parse_analysis_payload(analysis_json, figure_json, viewer_figure)
-        image_bytes = decode_figure_image(figure_image)
+        image_bytes = read_figure_image(figure_image, figure_image_file)
         raw_series = _build_raman_raw_series(uploaded)
         tmp_root, package = build_preview_report_package(
             experiment_code="RAMAN",
@@ -6388,12 +6468,13 @@ def _create_raman_report_job_from_uploaded(
     equipment_code: str,
     operator_id: str,
     viewer_figure: UploadFile | None = None,
+    figure_image_file: UploadFile | None = None,
 ) -> PreviewReportJob:
     request.state.error_project = "RAMAN"
     request.state.error_file_blobs = uploaded
     try:
         analysis_payload = parse_analysis_payload(analysis_json, figure_json, viewer_figure)
-        image_bytes = decode_figure_image(figure_image)
+        image_bytes = read_figure_image(figure_image, figure_image_file)
     except ValueError as exc:
         raise ApiException(400, "RAMAN_REPORT_INVALID_PAYLOAD", str(exc)) from exc
 
@@ -6482,7 +6563,8 @@ def complete_raman_report_upload_session(
     analysis_json: str = Form(...),
     figure_json: str = Form(default=""),
     viewer_figure: UploadFile | None = File(default=None),
-    figure_image: str = Form(...),
+    figure_image: str = Form(default=""),
+    figure_image_file: UploadFile | None = File(default=None),
     request_number: str = Form(default="", alias="requestNumber"),
     equipment_code: str = Form(default="", alias="equipmentCode"),
     operator_id: str = Form(default="", alias="operatorId"),
@@ -6530,6 +6612,7 @@ def complete_raman_report_upload_session(
         analysis_json=analysis_json,
         figure_json=figure_json,
         viewer_figure=viewer_figure,
+        figure_image_file=figure_image_file,
         figure_image=figure_image,
         request_number=request_number,
         equipment_code=equipment_code,
@@ -6547,7 +6630,8 @@ def create_raman_preview_report_job(
     analysis_json: str = Form(...),
     figure_json: str = Form(default=""),
     viewer_figure: UploadFile | None = File(default=None),
-    figure_image: str = Form(...),
+    figure_image: str = Form(default=""),
+    figure_image_file: UploadFile | None = File(default=None),
     request_number: str = Form(default="", alias="requestNumber"),
     equipment_code: str = Form(default="", alias="equipmentCode"),
     operator_id: str = Form(default="", alias="operatorId"),
@@ -6559,6 +6643,7 @@ def create_raman_preview_report_job(
         analysis_json=analysis_json,
         figure_json=figure_json,
         viewer_figure=viewer_figure,
+        figure_image_file=figure_image_file,
         figure_image=figure_image,
         request_number=request_number,
         equipment_code=equipment_code,

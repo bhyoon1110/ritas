@@ -21,6 +21,8 @@ const server=http.createServer((req,res)=>{
       const id=kind==='ftir'?'peak-plot':'raman-plot';
       try {
         await page.goto('http://127.0.0.1:'+server.address().port+'/'+kind);
+        await page.waitForFunction(()=>document.getElementById('sw-step-2')&&!document.getElementById('sw-step-2').disabled);
+        await page.locator('#sw-step-2').click();
         await page.waitForFunction(id=>document.getElementById(id)._ristEditModeToggleInstalled,id);
         const mode=()=>page.evaluate(id=>document.getElementById(id).layout.dragmode,id);
         assert.equal(await mode(),'pan');
