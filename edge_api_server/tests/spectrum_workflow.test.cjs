@@ -1,11 +1,11 @@
 const {test}=require('node:test'), assert=require('node:assert/strict'), fs=require('node:fs'),path=require('node:path');
 const {JSDOM}=require('jsdom'),acorn=require('acorn');
 const source=fs.readFileSync(path.join(__dirname,'../app/spectrum_workflow.js'),'utf8');
-function setup(t) {
-  const dom=new JSDOM('<header class="ftir-app-bar"><button id="ftir-clear"></button><button id="ftir-report"></button><label><input id="ftir-file-input"></label><label><input id="ftir-origin"></label></header><section class="ftir-library-band"></section><section id="ftir-drop-zone"></section><section id="ftir-report-meta"></section><div id="plot"></div>',{url:'http://localhost/ftir',runScripts:'outside-only'});
+function setup(t,kind='ftir') {
+  const dom=new JSDOM('<header class="ftir-app-bar"><button id="ftir-clear"></button><button id="ftir-report"></button><label><input id="ftir-file-input"></label><label><input id="ftir-origin"></label></header><section class="ftir-library-band"></section><section id="ftir-drop-zone"></section><section id="ftir-report-meta"></section><div id="plot"></div>'.replace(/ftir/g,kind),{url:'http://localhost/'+kind,runScripts:'outside-only'});
   t.after(()=>dom.window.close()); const w=dom.window,d=w.document; w.confirm=()=>true;w.requestAnimationFrame=fn=>fn();
   let stored=null,fail=false,captured=0,restored=null;
-  const api={kind:'ftir',gd:d.getElementById('plot'),busy:()=>false,hasGraph:()=>true,read:async()=>stored,
+  const api={kind,gd:d.getElementById('plot'),busy:()=>false,hasGraph:()=>true,read:async()=>stored,
     write:async state=>{if(fail)throw Error('quota');stored=structuredClone(state);},
     capture:async()=>({state:{plotData:[{name:'raw'+(++captured)}],files:[]},report:{image:'data:image/png;base64,AA==',analysis:{}}}),
     restore:async value=>{restored=value;},saveWorkspace:()=>{},resize:()=>{},build:async()=>({jobId:'original'})};
@@ -13,6 +13,19 @@ function setup(t) {
   return {w,d,workflow,api,get stored(){return stored;},get restored(){return restored;},fail(value){fail=value;}};
 }
 const tick=()=>new Promise(resolve=>setTimeout(resolve,0));
+for(const kind of ['ftir','raman'])test(kind+': preview uses shared action buttons and preserves close/re-edit behavior',async t=>{
+  const h=setup(t,kind);await h.workflow.start();h.workflow.go(2);await h.workflow.save(false);
+  const open=()=>h.d.querySelector('.sw-card .sw-controls button').click();open();
+  const dialog=h.d.querySelector('.sw-preview'),actions=dialog.querySelector('.sw-controls.sw-preview-actions');
+  assert.equal(dialog.parentNode,h.d.body);
+  assert.deepEqual(Array.from(actions.children,b=>b.textContent),['닫기','그래프 다시 편집']);
+  assert.equal(actions.lastChild.className,'sw-primary');assert.equal(h.d.activeElement,actions.firstChild);
+  actions.firstChild.click();assert.equal(h.d.querySelector('.sw-preview'),null);assert.equal(h.restored,null);
+  assert.equal(h.d.querySelectorAll('.sw-card').length,1);
+  open();h.d.querySelector('.sw-preview .sw-primary').click();await tick();await tick();
+  assert.equal(h.d.querySelector('.sw-preview'),null);assert.equal(h.restored.plotData[0].name,'raw1');
+  assert.equal(h.d.getElementById('spectrum-workflow').dataset.step,'2');assert.equal(h.stored.graphs.length,1);
+});
 test('shared workflow is ES5',()=>acorn.parse(source,{ecmaVersion:5}));
 test('Raman PNG upload decodes bounded blocks and rejects empty or oversized images',async t=>{
   const h=setup(t),sizes=[],decode=h.w.atob.bind(h.w);

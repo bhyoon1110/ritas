@@ -1,9 +1,10 @@
-.spectrum-workflow{margin:12px 18px;color:#243d50;font:14px Arial,sans-serif}
+.spectrum-workflow{margin:12px 18px}
+.spectrum-workflow,.sw-preview{color:#243d50;font:14px Arial,sans-serif}
 .sw-steps{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
-.spectrum-workflow button,.spectrum-workflow input{font:inherit}
-.spectrum-workflow button{border:1px solid #b9cbd6;border-radius:6px;background:#fff;color:#244b65;min-height:36px;padding:7px 12px;white-space:nowrap;word-break:normal;cursor:pointer}
-.spectrum-workflow button:disabled{opacity:.5;cursor:default}
-.sw-steps button[aria-current=step],.spectrum-workflow .sw-primary{background:#185d80;color:#fff;border-color:#185d80}
+.spectrum-workflow button,.spectrum-workflow input,.sw-preview button{font:inherit}
+.spectrum-workflow button,.sw-preview button{border:1px solid #b9cbd6;border-radius:6px;background:#fff;color:#244b65;min-height:36px;padding:7px 12px;white-space:nowrap;word-break:normal;cursor:pointer}
+.spectrum-workflow button:disabled,.sw-preview button:disabled{opacity:.5;cursor:default}
+.sw-steps button[aria-current=step],.spectrum-workflow .sw-primary,.sw-preview .sw-primary{background:#185d80;color:#fff;border-color:#185d80}
 .sw-help{line-height:1.7;margin:8px 0;color:#4e6575}
 .sw-status{min-height:24px;line-height:1.6;color:#185d80;overflow-wrap:break-word}
 .sw-status.sw-error{color:#a12727}
@@ -17,9 +18,10 @@
 .sw-card .sw-controls{gap:5px;margin-bottom:0}.sw-card button{font-size:12px;padding:5px 8px;min-height:32px}
 .sw-empty{padding:18px;background:#f3f7fa;border:1px dashed #bbccd7;border-radius:8px}
 .sw-report-frame{width:100%;height:calc(100vh - 240px);min-height:650px;border:1px solid #c8d6df;background:#f3f6fa}
-.sw-preview{position:fixed;inset:0;background:rgba(20,40,55,.7);z-index:50000;display:flex;align-items:center;justify-content:center;padding:20px}
-.sw-preview>div{background:#fff;border-radius:8px;padding:15px;max-width:95vw;max-height:92vh;overflow:auto}
-.sw-preview img{display:block;max-width:90vw;max-height:75vh;object-fit:contain}
+.sw-preview{position:fixed;inset:0;background:rgba(20,40,55,.7);z-index:50000;display:flex;align-items:center;justify-content:center;padding:20px;box-sizing:border-box}
+.sw-preview>div{background:#fff;border-radius:8px;padding:15px;min-width:0;max-width:100%;max-height:92vh;overflow:auto;box-sizing:border-box}
+.sw-preview img{display:block;max-width:100%;max-height:75vh;object-fit:contain}
+.sw-preview-actions{justify-content:flex-end;margin:14px 0 0}
 .sw-stage-hidden{display:none!important}
 .spectrum-workflow [hidden]{display:none!important}
 body.sw-report-stage{overflow:auto!important}

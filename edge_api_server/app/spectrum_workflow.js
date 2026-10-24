@@ -127,8 +127,9 @@
       var modal = node("div", document.body); modal.className = "sw-preview"; modal.setAttribute("role", "dialog"); modal.setAttribute("aria-label", "저장한 그래프 미리보기");
       var box = node("div", modal); node("h3", box, g.title);
       var image = node("img", box); image.src = g.report.image; image.alt = g.title;
-      var close = button(box, "닫기", function () { modal.remove(); }); close.focus();
-      button(box, "그래프 다시 편집", function () { modal.remove(); edit(g); });
+      var actions = node("div", box); actions.className = "sw-controls sw-preview-actions";
+      var close = button(actions, "닫기", function () { modal.remove(); }); close.focus();
+      button(actions, "그래프 다시 편집", function () { modal.remove(); edit(g); }).className = "sw-primary";
     }
     function edit(g) {
       if (unavailable()) return;
