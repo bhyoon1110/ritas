@@ -868,6 +868,15 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
 #{div_id} .rist-legend-edit-row.is-dragging {{
   opacity: 0.55;
 }}
+#{div_id} .rist-raw-order-handle {{
+  flex: 0 0 34px; min-width: 34px; padding: 5px 0; margin: 0;
+  border: 1px solid #9fb3c8; border-radius: 4px; background: #fff;
+  color: #174a68; cursor: grab; touch-action: none; user-select: none;
+  font: bold 16px/18px Arial, sans-serif;
+}}
+#{div_id} .rist-legend-edit-row.is-order-before {{ box-shadow: 0 -3px #2563eb; }}
+#{div_id} .rist-legend-edit-row.is-order-after {{ box-shadow: 0 3px #2563eb; }}
+#{div_id} .rist-raw-order-help {{ font: 11px/1.4 Arial, sans-serif; color: #52606d; margin: 4px 0; }}
 #{div_id} .rist-legend-edit-row.is-pending-group-add {{
   background: #edf7f1;
 }}
@@ -1623,9 +1632,123 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
     gd._ristLegendEditOpen = false;
     var panelDrag = null;
     var panelDragPointerId = null;
+    var rawDrag = null;
+    var reorderingRaw = false;
+
+    function rawRows() {{
+      return Array.prototype.slice.call(panel.querySelectorAll(".rist-legend-edit-row.is-sample"));
+    }}
+    function rawGroup(row) {{ return sampleGroupForCurve(Number(row.getAttribute("data-curve"))); }}
+    function syncRawRowOrder() {{
+      var focused = document.activeElement;
+      var body = panel.querySelector(".rist-legend-edit-body");
+      var rows = rawRows().sort(function(a, b) {{
+        return Number(gd.data[Number(a.getAttribute("data-curve"))].legendrank || 0)
+          - Number(gd.data[Number(b.getAttribute("data-curve"))].legendrank || 0);
+      }});
+      var details = body.querySelector(".rist-legend-peak-details");
+      rows.forEach(function(row) {{ body.insertBefore(row, details); }});
+      var trees = panel.querySelectorAll(".rist-legend-raw-tree");
+      rows.forEach(function(row) {{
+        Array.prototype.forEach.call(trees, function(tree) {{
+          if (tree.getAttribute("data-sample-group") === rawGroup(row)) {{
+            tree.parentNode.insertBefore(tree, tree.parentNode.querySelector(".rist-legend-manual-groups"));
+          }}
+        }});
+      }});
+      if (focused && panel.contains(focused)) focused.focus();
+    }}
+    function applyRawOrder(order) {{
+      if (reorderingRaw || !gd._ristReorderSamples) return;
+      var focused = document.activeElement;
+      reorderingRaw = true;
+      panel.querySelectorAll(".rist-raw-order-handle").forEach(function(handle) {{ handle.disabled = true; }});
+      gd._ristReorderSamples(order).then(syncRawRowOrder).catch(function(err) {{
+        var error = panel.querySelector(".rist-legend-edit-error");
+        error.textContent = "Raw 순서 변경 실패: " + err.message; error.style.display = "block";
+      }}).then(function() {{
+        reorderingRaw = false;
+        panel.querySelectorAll(".rist-raw-order-handle").forEach(function(handle) {{ handle.disabled = false; }});
+        if (focused && panel.contains(focused) && (document.activeElement === document.body || document.activeElement === focused)) focused.focus();
+      }});
+    }}
+    function clearRawDrag() {{
+      rawDrag = null;
+      rawRows().forEach(function(row) {{ row.classList.remove("is-dragging", "is-order-before", "is-order-after"); }});
+    }}
+    function rawPoint(event) {{ return event.touches && event.touches[0] || event.changedTouches && event.changedTouches[0] || event; }}
+    function startRawDrag(ev) {{
+      var handle = ev.target.closest && ev.target.closest(".rist-raw-order-handle");
+      if (!handle || rawDrag || reorderingRaw || !gd._ristReorderSamples || rawRows().length < 2
+          || (ev.button != null && ev.button !== 0)) return;
+      var point = rawPoint(ev);
+      rawDrag = {{row: handle.parentNode, pointerId: ev.pointerId, y: point.clientY, target: null, after: false}};
+      handle.focus();
+      if (ev.cancelable) ev.preventDefault();
+      ev.stopPropagation();
+    }}
+    function moveRawDrag(ev) {{
+      if (!rawDrag || (ev.pointerId != null && ev.pointerId !== rawDrag.pointerId)) return;
+      if (ev.cancelable) ev.preventDefault();
+      var point = rawPoint(ev);
+      if (Math.abs(point.clientY - rawDrag.y) < 4) return;
+      rawRows().forEach(function(row) {{ row.classList.remove("is-order-before", "is-order-after"); }});
+      rawDrag.row.classList.add("is-dragging");
+      var rows = rawRows(), target = null;
+      rows.forEach(function(row) {{
+        var rect = row.getBoundingClientRect();
+        if (!target && point.clientY < rect.bottom) target = row;
+      }});
+      target = target || rows[rows.length - 1];
+      var bounds = panel.getBoundingClientRect();
+      if (point.clientX < bounds.left || point.clientX > bounds.right) target = null;
+      rawDrag.target = target;
+      if (target && target !== rawDrag.row) {{
+        var rect = target.getBoundingClientRect();
+        rawDrag.after = point.clientY > (rect.top + rect.bottom) / 2;
+        target.classList.add(rawDrag.after ? "is-order-after" : "is-order-before");
+      }}
+      if (point.clientY < bounds.top + 35) panel.scrollTop -= 18;
+      else if (point.clientY > bounds.bottom - 35) panel.scrollTop += 18;
+    }}
+    function endRawDrag(ev) {{
+      if (!rawDrag || (ev.pointerId != null && ev.pointerId !== rawDrag.pointerId)) return;
+      var held = rawDrag, rows = rawRows(); clearRawDrag();
+      if (!held.target || held.target === held.row) return;
+      var point = rawPoint(ev), bounds = panel.getBoundingClientRect();
+      if (point.clientX < bounds.left || point.clientX > bounds.right || point.clientY < bounds.top || point.clientY > bounds.bottom) return;
+      rows.splice(rows.indexOf(held.row), 1);
+      rows.splice(rows.indexOf(held.target) + (held.after ? 1 : 0), 0, held.row);
+      applyRawOrder(rows.map(rawGroup));
+    }}
+    if (window.PointerEvent) {{
+      panel.addEventListener("pointerdown", startRawDrag);
+      document.addEventListener("pointermove", moveRawDrag, {{passive:false}});
+      document.addEventListener("pointerup", endRawDrag);
+      document.addEventListener("pointercancel", clearRawDrag);
+    }} else {{
+      panel.addEventListener("mousedown", startRawDrag);
+      document.addEventListener("mousemove", moveRawDrag);
+      document.addEventListener("mouseup", endRawDrag);
+      panel.addEventListener("touchstart", startRawDrag, false);
+      document.addEventListener("touchmove", moveRawDrag, false);
+      document.addEventListener("touchend", endRawDrag);
+      document.addEventListener("touchcancel", clearRawDrag);
+    }}
+    window.addEventListener("blur", clearRawDrag);
+    document.addEventListener("visibilitychange", function() {{ if (document.hidden) clearRawDrag(); }});
+    panel.addEventListener("keydown", function(ev) {{
+      if (ev.key === "Escape") {{ clearRawDrag(); return; }}
+      if (!ev.target.classList.contains("rist-raw-order-handle") || (ev.key !== "ArrowUp" && ev.key !== "ArrowDown")) return;
+      ev.preventDefault(); ev.stopPropagation();
+      var rows = rawRows(), index = rows.indexOf(ev.target.parentNode), next = index + (ev.key === "ArrowUp" ? -1 : 1);
+      if (next < 0 || next >= rows.length) return;
+      var row = rows.splice(index, 1)[0]; rows.splice(next, 0, row); applyRawOrder(rows.map(rawGroup));
+    }});
 
     function closePanel() {{
       finishPanelDrag();
+      clearRawDrag();
       panel.style.display = "none";
       gd._ristLegendEditOpen = false;
       if (gd._ristRestoreNavigation) gd._ristRestoreNavigation();
@@ -1757,6 +1880,7 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
     }}
 
     function renderRows() {{
+      clearRawDrag();
       var body = panel.querySelector(".rist-legend-edit-body");
       var previousDetails = body.querySelector(".rist-legend-peak-details");
       var detailsOpen = !!(previousDetails && previousDetails.open);
@@ -1775,6 +1899,10 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
         panel.querySelector(".rist-legend-font-size").value = String(font.size || 16);
         panel.querySelector(".rist-legend-font-bold").checked = font.weight !== 400;
         refreshLegendVisibilityButtons();
+        var orderHelp = document.createElement("p");
+        orderHelp.className = "rist-raw-order-help";
+        orderHelp.textContent = "↕ 손잡이를 위아래로 끌어 Raw 순서를 변경하세요. 스택 위치도 즉시 반영됩니다. 키보드: 손잡이 선택 후 ↑/↓";
+        body.appendChild(orderHelp);
       }}
       var peakDetails = document.createElement("details");
       peakDetails.open = detailsOpen;
@@ -1939,6 +2067,14 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
         var removeButton = row.querySelector(".rist-legend-group-remove");
         var deleteButton = row.querySelector(".rist-legend-peak-delete");
         var sampleDeleteButton = row.querySelector(".rist-legend-sample-delete");
+        if (sampleCurve && directAnnotationEdit) {{
+          var orderHandle = document.createElement("button");
+          orderHandle.type = "button"; orderHandle.className = "rist-raw-order-handle";
+          orderHandle.textContent = "↕";
+          orderHandle.title = "Raw 순서 변경: 위아래 드래그 또는 ↑/↓";
+          orderHandle.setAttribute("aria-label", "Raw 순서 변경: " + legendDisplayToEdit(traceName(curve)));
+          row.replaceChild(orderHandle, kindBadge);
+        }}
         if (sampleDeleteButton) sampleDeleteButton.addEventListener("click", function() {{
           if (!gd._ristDeleteSample) return;
           if (!window.confirm("이 샘플과 연결된 피크·비율을 현재 그래프에서 삭제할까요? 저장하지 않은 창의 편집 내용은 취소됩니다. 원본 파일은 유지되며 실행취소로 복원할 수 있습니다.")) return;
@@ -2283,10 +2419,10 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
       if (panel.style.display === "block") renderRows();
     }});
     gd.addEventListener("rist-ftir-stack-change", function() {{
-      if (panel.style.display === "block") renderRows();
+      if (!reorderingRaw && panel.style.display === "block") renderRows();
     }});
     gd.addEventListener("rist-raman-stack-change", function() {{
-      if (panel.style.display === "block") renderRows();
+      if (!reorderingRaw && panel.style.display === "block") renderRows();
     }});
   }}
 

@@ -87,6 +87,79 @@ function shapeFixture(h) {
   h.run('function beginShapeSelection');
 }
 
+async function reorderFixture(t,kind,mode,pointer=false) {
+  const h=setup(t,kind,mode,pointer), key=kind==='ftir'?'ristFtirStack':'ristRamanStack';
+  const trace=(i,peak=false)=>({name:peak?'Peak '+i:'Raw '+i,x:peak?[200]:[100,200,300],y:peak?[3]:[1,3,2],
+    legendgroup:'sample:'+i,mode:peak?'markers':'lines',line:{color:'#123456',width:2},
+    meta:{rist_sample_parent:!peak,rist_sample_group:'sample:'+i,rist_legend_edit_group:peak?'peak:'+i:'sample:'+i,
+      rist_raman_stack_offset:0,rist_ftir_stack_offset_absorbance:0,rist_ftir_stack_offset_transmittance:0,
+      ftir_signal_toggle:{absorbance_y:peak?[3]:[1,3,2],transmittance_y:peak?[20]:[30,20,10]},
+      ...(peak?{rist_peak:{sample_group:'sample:'+i,label_key:'peak:'+i,label:'Peak '+i,x:200}}:{})}});
+  h.gd.data=[0,1,2].map(i=>trace(i)).concat([0,1,2].map(i=>trace(i,true)));
+  h.gd.layout.meta={ristPeakLabels:[0,1,2].map(i=>({traceIndex:i+3,annotationIndex:i,shapeIndex:i,
+    legendgroup:'sample:'+i,labelKey:'peak:'+i,annotationBaseY:3,shapeBaseY0:0,shapeBaseY1:3})),
+    [key]:{enabled:true,gap:1.2,unit:10,modeUnits:{absorbance:10,transmittance:100},sampleOrder:['sample:0','sample:1','sample:2'],
+      sampleOffsets:{'sample:0':0,'sample:1':12,'sample:2':24},samplePositions:{'sample:0':0,'sample:1':1.2,'sample:2':2.4}}};
+  h.gd.layout.annotations=[0,1,2].map(i=>({text:'Peak '+i,x:200,y:3}));
+  h.gd.layout.shapes=[0,1,2].map(i=>({type:'line',x0:200,x1:200,y0:0,y1:3}));
+  h.dispatch('rist-plot-data-replaced');
+  h.run(kind==='ftir'?'gd._ristFtirStackInstalled':'gd._ristRamanStackInstalled');await tick();
+  h.q('.rist-legend-edit-button').click();
+  const rows=()=>[...h.gd.querySelectorAll('.rist-legend-edit-row.is-sample')];
+  h.q('.rist-legend-edit-panel').getBoundingClientRect=()=>({left:0,top:0,right:400,bottom:360,width:400,height:360});
+  rows().forEach((row,i)=>{row.getBoundingClientRect=()=>({left:0,top:i*90,right:400,bottom:i*90+80});});
+  const order=()=>rows().map(row=>h.gd.data[Number(row.dataset.curve)].meta.rist_sample_group);
+  return {...h,stackKey:key,rows,order};
+}
+
+for(const kind of ['ftir','raman']) for(const mode of ['native','chrome49']) {
+  test(kind+'/'+mode+': Raw drag reorders stack slots, keeps unsaved row edits, peak identities and true intensity',async t=>{
+    const h=await reorderFixture(t,kind,mode), originals=h.gd.data.slice(), before=clone(h.gd.layout.meta[h.stackKey]);
+    assert.deepEqual(h.order(),['sample:2','sample:1','sample:0']);
+    h.rows()[2].querySelector('textarea').value='저장 전 이름';
+    h.mouse(h.rows()[2].querySelector('.rist-raw-order-handle'),'mousedown',20,200);
+    h.mouse(h.d,'mousemove',20,5);h.mouse(h.d,'mouseup',20,5);await tick();await h.gd._ristStackReady;
+    assert.deepEqual(h.order(),['sample:0','sample:2','sample:1']);
+    assert.equal(h.rows()[0].querySelector('textarea').value,'저장 전 이름');assert.equal(h.gd.data[0].name,'Raw 0');
+    assert.deepEqual(h.gd.data.map(t=>t.name),originals.map(t=>t.name));
+    assert.deepEqual([...h.gd.querySelectorAll('.rist-legend-raw-tree')].map(t=>t.dataset.sampleGroup),h.order());
+    for(let i=0;i<3;i++){
+      const tr=h.gd.data[i], offset=kind==='ftir'?tr.meta.rist_ftir_stack_offset_absorbance:tr.meta.rist_raman_stack_offset;
+      assert.deepEqual(Array.from(tr.y,y=>y-offset),[1,3,2]);
+      assert.equal(h.gd.data[i+3].y[0]-offset,3);assert.equal(h.gd.layout.annotations[i].y-offset,3);
+      assert.equal(h.gd.layout.shapes[i].y0-offset,0);
+      if(kind==='ftir')assert.deepEqual(Array.from(tr.meta.ftir_signal_toggle.transmittance_y,y=>y-tr.meta.rist_ftir_stack_offset_transmittance),[30,20,10]);
+    }
+    h.gd._ristHistory.undo();await tick();await h.gd._ristStackReady;
+    assert.deepEqual(h.order(),['sample:2','sample:1','sample:0']);
+    assert.equal(h.gd.layout.meta[h.stackKey].orderTopDown,before.orderTopDown);
+    h.gd._ristHistory.redo();await tick();await h.gd._ristStackReady;
+    assert.deepEqual(h.order(),['sample:0','sample:2','sample:1']);
+  });
+  test(kind+'/'+mode+': Raw order persists across stack toggle, gap, reload; cancel and keyboard are safe',async t=>{
+    const h=await reorderFixture(t,kind,mode,true), initial=h.order();
+    h.mouse(h.rows()[0].querySelector('.rist-raw-order-handle'),'pointerdown',20,20);
+    h.mouse(h.d,'pointermove',20,280);h.w.dispatchEvent(new h.w.Event('blur'));h.mouse(h.d,'pointerup',20,280);await tick();
+    assert.deepEqual(h.order(),initial);
+    h.key(h.rows()[0].querySelector('.rist-raw-order-handle'),'ArrowDown');await tick();await h.gd._ristStackReady;
+    const expected=['sample:1','sample:2','sample:0'];assert.deepEqual(h.order(),expected);
+    for(const enabled of [false,true]){await h.gd._ristApplyStackSettings({enabled,gap:2});assert.deepEqual(h.order(),expected);}
+    h.dispatch('rist-plot-data-replaced');await h.gd._ristStackReady;assert.deepEqual(h.order(),expected);
+    await assert.rejects(h.gd._ristReorderSamples(['sample:0','sample:0','sample:2']));
+    assert.deepEqual(h.order(),expected);
+    // Fresh uploads must not inherit the previous dataset's manual order.
+    delete h.gd.layout.meta[h.stackKey].orderTopDown;h.gd.layout.meta[h.stackKey].sampleOrder=['sample:0','sample:1','sample:2'];
+    h.gd.layout.meta[h.stackKey].enabled=false;
+    h.dispatch('rist-plot-data-replaced');await h.gd._ristStackReady;
+    assert.deepEqual(h.order(),['sample:0','sample:1','sample:2']);
+    const unstacked=clone(h.gd.data.map(trace=>trace.y));
+    await h.gd._ristReorderSamples(expected);
+    assert.deepEqual(h.order(),expected);
+    assert.deepEqual(clone(h.gd.data.map(trace=>trace.y)),unstacked);
+    await h.gd._ristApplyStackSettings({enabled:true,gap:2});assert.deepEqual(h.order(),expected);
+  });
+}
+
 for (const kind of ['ftir','raman']) for (const mode of ['native','chrome49']) {
   const label=kind+'/'+mode;
   test(label+': peak display hides only points/labels/connectors and restores exact styling/evidence',async t=>{

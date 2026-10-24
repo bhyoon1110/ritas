@@ -2535,7 +2535,9 @@ _RAMAN_STACK_SCRIPT = """
     options = options || {};
     if (options.auto !== false) state.autoLayout = true;
     var visibleIndex = 0;
-    state.order.forEach(function(group) {
+    var order = state.order.slice();
+    if (stackMeta().orderTopDown) order.reverse();
+    order.forEach(function(group) {
       if (state.enabled && sampleVisible(group)) {
         state.offsets[group] = visibleIndex * state.gap * state.unit;
         visibleIndex += 1;
@@ -2821,6 +2823,39 @@ _RAMAN_STACK_SCRIPT = """
     });
   };
 
+  gd._ristReorderSamples = function(topDown) {
+    var requested = topDown.slice();
+    setDragMode(false, false);
+    var operation = Promise.resolve(gd._ristStackReady).then(function() {
+      return new Promise(function(resolve) {
+        function idle() {
+          if (state.applyInFlight || state.raf) { setTimeout(idle, 10); return; }
+          resolve();
+        }
+        idle();
+      });
+    }).then(function() {
+      if (!state.initialized) initState();
+      var actual = discoverOrder();
+      if (requested.length !== actual.length || requested.some(function(group, index) {
+        return actual.indexOf(group) < 0 || requested.indexOf(group) !== index;
+      })) throw new Error("Raw 목록이 변경되었습니다. 다시 순서를 지정하세요.");
+      if (JSON.stringify(visualLegendOrder()) === JSON.stringify(requested)) return;
+      if (gd._ristHistory) gd._ristHistory.captureState(gd._ristHistory.snapshot());
+      var slots = actual.map(function(group) { return Number(state.offsets[group] || 0); })
+        .sort(function(a, b) { return b - a; });
+      state.order = requested;
+      stackMeta().orderTopDown = true;
+      if (state.enabled) {
+        requested.forEach(function(group, index) { state.offsets[group] = slots[index]; });
+        state.autoLayout = false;
+      }
+      return applyOffsets({preserveView: true});
+    });
+    gd._ristStackReady = operation.catch(function() {});
+    return operation;
+  };
+
   document.addEventListener("pointerup", finishStackDrag);
   document.addEventListener("pointercancel", finishStackDrag);
   gd.addEventListener("lostpointercapture", finishStackDrag, true);
@@ -2840,6 +2875,7 @@ _RAMAN_STACK_SCRIPT = """
     rebuildStackReferences();
   });
   gd.addEventListener("rist-plot-structure-changed", rebuildStackReferences);
+  gd.addEventListener("rist-history-restored", rebuildStackReferences);
   gd.on("plotly_restyle", function() {
     scheduleStackCompaction();
   });

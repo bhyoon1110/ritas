@@ -617,7 +617,9 @@ def ftir_stack_js(div_id: str) -> str:
 
   function resetPositions() {
     var visibleIndex = 0;
-    state.order.forEach(function(group) {
+    var order = state.order.slice();
+    if (stackMeta().orderTopDown) order.reverse();
+    order.forEach(function(group) {
       if (state.enabled && sampleVisible(group)) {
         state.positions[group] = visibleIndex * state.gap;
         visibleIndex += 1;
@@ -882,6 +884,41 @@ def ftir_stack_js(div_id: str) -> str:
     });
   };
 
+  // Change display slots, never trace indexes or measured values. Labels and
+  // peak traces travel with their sample through the existing offset renderer.
+  gd._ristReorderSamples = function(topDown) {
+    var requested = topDown.slice();
+    setDragMode(false, false);
+    var operation = Promise.resolve(gd._ristStackReady).then(function() {
+      return new Promise(function(resolve) {
+        function idle() {
+          if (state.applyInFlight || state.raf) { setTimeout(idle, 10); return; }
+          resolve();
+        }
+        idle();
+      });
+    }).then(function() {
+      if (!state.initialized) initState();
+      var actual = discoverOrder();
+      if (requested.length !== actual.length || requested.some(function(group, index) {
+        return actual.indexOf(group) < 0 || requested.indexOf(group) !== index;
+      })) throw new Error("Raw 목록이 변경되었습니다. 다시 순서를 지정하세요.");
+      if (JSON.stringify(visualLegendOrder()) === JSON.stringify(requested)) return;
+      if (gd._ristHistory) gd._ristHistory.captureState(gd._ristHistory.snapshot());
+      var slots = actual.map(function(group) { return Number(state.positions[group] || 0); })
+        .sort(function(a, b) { return b - a; });
+      state.order = requested;
+      stackMeta().orderTopDown = true;
+      if (state.enabled) {
+        requested.forEach(function(group, index) { state.positions[group] = slots[index]; });
+        state.autoLayout = false;
+      }
+      return applyOffsets({preserveView: true});
+    });
+    gd._ristStackReady = operation.catch(function() {});
+    return operation;
+  };
+
   document.addEventListener("pointerup", finishStackDrag);
   document.addEventListener("pointercancel", finishStackDrag);
   gd.addEventListener("lostpointercapture", finishStackDrag, true);
@@ -901,6 +938,7 @@ def ftir_stack_js(div_id: str) -> str:
     rebuildStackReferences();
   });
   gd.addEventListener("rist-plot-structure-changed", rebuildStackReferences);
+  gd.addEventListener("rist-history-restored", rebuildStackReferences);
   gd.addEventListener("rist-ftir-signal-mode-change", function() {
     if (!state.initialized) initState();
     gd._ristStackReady = applyOffsets();
