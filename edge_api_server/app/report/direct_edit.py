@@ -68,6 +68,9 @@ def edit_pages(document, pptx_path):
                 bindings["Table explanation"] = body_refs(document, sid)
             if kind == "image":
                 bindings["Caption card"] = body_refs(document, sid)
+            if kind == "added":
+                bindings["Slide title"] = ["page/" + meta["pageId"] + "/title"]
+                bindings["Content text"] = ["page/" + meta["pageId"] + "/body"]
             regions = []
             for shape in root.findall("p:cSld/p:spTree/p:sp", NS):
                 name = shape.find("p:nvSpPr/p:cNvPr", NS).get("name")
@@ -95,8 +98,9 @@ def edit_pages(document, pptx_path):
             title = next((" ".join(t.text or "" for t in s.findall(".//a:t", NS)) for s in root.findall("p:cSld/p:spTree/p:sp", NS)
                           if s.find("p:nvSpPr/p:cNvPr", NS).get("name") in {"Report title", "Slide title"}), "PPT")
             if kind == "traceability": title = "분석 이력 요약"
-            pages.append({"title": title, "regions": regions})
-    return {"pages": pages, "ratio": width / height}
+            if kind == "added" and not title.strip(): title = "제목 없는 페이지"
+            pages.append({"id": payload["pageId"], "title": title, "regions": regions})
+    return {"pages": pages, "ratio": width / height, "pageEditing": True}
 
 
 @lru_cache(maxsize=8)

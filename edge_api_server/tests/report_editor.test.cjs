@@ -26,10 +26,16 @@ function setup(t,kind='ftir',identity='') {
       if(this.method==='GET') gets.push({url:this.url,headers:this.headers});
       let result;
       if(this.url.endsWith('/editor-data')) result={document:doc,job:{jobId:this.url.includes('/revision/')?'revision':'original',status:'completed',parentJobId:'original'},authenticatedOperatorId:identity};
-      else if(this.url.endsWith('/edit-layout')) result={ratio:16/9,pages:[
-        {title:'표지',regions:[{refs:['title'],x:.1,y:.2,w:.8,h:.2},{refs:['transfer/operatorId'],x:.1,y:.5,w:.3,h:.2}]},
-        {title:'요약',regions:[{refs:['section/summary/paragraphs/0'],x:.1,y:.3,w:.7,h:.4}]},
-        {title:'조건',regions:[{refs:['section/experiment_conditions/rows/0/2'],x:.5,y:.3,w:.3,h:.2,empty:true}]}]};
+      else if(this.url.endsWith('/edit-layout')) {
+        let pages=[
+          {id:'cover',title:'표지',regions:[{refs:['title'],x:.1,y:.2,w:.8,h:.2},{refs:['transfer/operatorId'],x:.1,y:.5,w:.3,h:.2}]},
+          {id:'summary',title:'요약',regions:[{refs:['section/summary/paragraphs/0'],x:.1,y:.3,w:.7,h:.4}]},
+          {id:'conditions',title:'조건',regions:[{refs:['section/experiment_conditions/rows/0/2'],x:.5,y:.3,w:.3,h:.2,empty:true}]}];
+        const edits=doc.pageEdits||{added:[],hidden:[]};
+        for(const item of edits.added) pages.splice(pages.findIndex(p=>p.id===item.after)+1,0,{id:item.id,title:item.title,
+          regions:[{refs:['page/'+item.id+'/title'],x:.1,y:.1,w:.8,h:.1},{refs:['page/'+item.id+'/body'],x:.1,y:.3,w:.8,h:.5}]});
+        result={ratio:16/9,pageEditing:kind!=='tem',pages:pages.filter(p=>!edits.hidden.includes(p.id))};
+      }
       else if(this.url.endsWith('/revisions')) {
         revisions++;
         doc=clone(body);doc.sections.forEach(s=>{s.source='user';s.columns=s.rows?['대상','항목','값']:null;});
@@ -160,6 +166,38 @@ test('direct preview preserves selected page when autosave completes',t=>{
   assert.equal(h.q('edit-page').value,'2');
 });
 function loaded(h){h.q('slide-image').dispatchEvent(new h.w.Event('load'));}
+for(const kind of ['ftir','raman']) test(kind+' adds, edits, deletes and restores PPT pages without losing source fields',t=>{
+  const h=setup(t,kind);assert(!h.q('page-actions').hidden);assert(!h.q('page-add').disabled);
+  h.q('edit-next').click();h.q('page-add').click();
+  assert(h.q('page-add').disabled);assert(h.q('page-delete').disabled);assert(h.q('send').disabled);
+  h.q('reload-preview').click();assert(h.q('page-add').disabled,'stale layout must not unlock structural edits');
+  h.input('추가 페이지 제목','<b>검토 의견</b>');h.input('추가 페이지 본문','추가 해석과 실험 조건');h.tick();
+  const added=h.posts[0].body.pageEdits.added[0];assert.equal(added.after,'summary');
+  assert.equal(h.q('edit-page').options.length,4);assert.equal(h.q('edit-page').value,'2');
+  assert.equal(h.q('edit-page').selectedOptions[0].textContent,'3. <b>검토 의견</b>');
+  loaded(h);h.field('PPT 편집 · 추가 페이지 본문').click();h.input('PPT 수정 · 추가 페이지 본문','PPT에서 직접 수정');h.tick();
+  assert.equal(h.posts[1].body.pageEdits.added[0].body,'PPT에서 직접 수정');
+  h.w.confirm=()=>false;h.q('page-delete').click();assert.equal(h.timers.size,0);
+  h.w.confirm=()=>true;h.q('page-delete').click();assert(h.field('추가 페이지 제목').closest('details').hidden);
+  assert(!h.q('page-restore').disabled);h.tick();
+  assert.deepEqual(h.posts[2].body.pageEdits.hidden,[added.id]);assert.equal(h.q('edit-page').options.length,3);
+  h.q('page-restore').click();h.tick();assert.equal(h.q('edit-page').options.length,4);
+  assert.equal(h.q('edit-page').value,'2');assert.equal(h.field('추가 페이지 본문').value,'PPT에서 직접 수정');
+  assert.equal(h.field('분석 결과 요약 · 문단 1').value,'AI 초안');
+  h.q('edit-previous').click();h.q('page-delete').click();h.tick();
+  assert.equal(h.posts[4].body.pageEdits.hidden[0],'summary');
+  assert.equal(h.q('edit-page').value,'1');assert.match(h.q('edit-page').selectedOptions[0].textContent,/검토 의견/);
+});
+test('last page cannot be deleted; unsaved deletion can be undone without rendering',t=>{
+  const h=setup(t);h.w.confirm=()=>true;
+  h.q('page-delete').click();h.q('page-restore').click();assert.equal(h.timers.size,0);assert(!h.q('page-delete').disabled);
+  h.q('page-delete').click();h.tick();h.q('page-delete').click();h.tick();
+  assert.equal(h.q('edit-page').options.length,1);assert(h.q('page-delete').disabled);assert(!h.q('page-add').disabled);
+});
+test('TEM shared editor does not expose unsupported page operations',t=>{
+  const h=setup(t,'tem');assert(h.q('page-actions').hidden);assert(h.q('page-add').disabled);
+  h.input('보고서 제목','TEM 수정');h.tick();assert.equal(h.posts[0].body.pageEdits,undefined);
+});
 test('actual slide regions edit their source, insert named fields and retain typing across refresh',t=>{
   const h=setup(t);h.input('새 공통 항목 이름','레이저');h.q('variable-add').click();
   h.input('레이저 · 값','532');h.input('레이저 · 단위','nm');

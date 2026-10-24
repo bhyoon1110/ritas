@@ -95,6 +95,7 @@ class ReportDocument:
     llm_used: bool = False
     llm_error: str | None = None
     traceability: dict[str, Any] = field(default_factory=dict)
+    page_edits: dict[str, Any] = field(default_factory=dict)
 
     def section(self, section_id: str) -> ReportSection | None:
         for section in self.sections:
@@ -150,6 +151,7 @@ class ReportDocument:
             "pk": dict(self.pk),
             "generatedAt": self.generated_at,
             "traceability": dict(self.traceability),
+            "pageEdits": self.page_edits,
             "llm": {"used": self.llm_used, "error": self.llm_error},
             "figures": [figure.to_dict() for figure in self.figures],
             "auxiliary": dict(self.auxiliary_texts),

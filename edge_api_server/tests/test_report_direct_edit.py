@@ -71,3 +71,56 @@ def test_named_fields_are_literal_bounded_and_keep_sample_specific_values():
     value['variables'] = [{'name':'a','value':'x'*1000,'unit':''},{'name':'b','value':'{{a}}'*5,'unit':''}]
     with pytest.raises(ValueError,match='4,000'):
         resolve_changes(value)
+
+
+def test_page_identity_survives_title_edits_and_earlier_pagination_growth(tmp_path):
+    from copy import deepcopy
+    from app.report import pages, renderers
+    doc = ReportDocument('pages', '페이지 검증', 'FT-IR', {}, '2026-10-24')
+    doc.sections = [ReportSection('first', '앞쪽 설명', paragraphs=['짧은 문장']),
+                    ReportSection('later', '뒤쪽 설명', paragraphs=['유지할 내용'])]
+    ensure_editable_fields(doc, {}, 'FT-IR', transfer_values({}))
+    base = pages.identify(renderers._pptx_base_slide_payloads(doc))
+    later = next(p for p in base if p.get('editing', {}).get('sectionId') == 'later')['pageId']
+    doc.page_edits = {'hidden': [later], 'added': [{'id': 'added-note', 'after': later, 'title': '', 'body': '남아야 할 검토 의견'}]}
+    previous = deepcopy(doc)
+    doc.title = '변경한 제목'
+    doc.section('first').paragraphs = ['앞쪽 설명을 추가합니다. ' * 100]
+    expanded = pages.identify(renderers._pptx_base_slide_payloads(doc))
+    assert len(expanded) > len(base)
+    assert next(p for p in expanded if p.get('editing', {}).get('sectionId') == 'later')['pageId'] == later
+    pages.validate(doc, previous)
+    target = tmp_path / 'report.pptx'
+    render_pptx(doc, target)
+    layout = edit_pages(doc, target)
+    assert later not in [p['id'] for p in layout['pages']]
+    added = next(p for p in layout['pages'] if p['id'] == 'added-note')
+    assert added['title'] == '제목 없는 페이지'
+    assert any('page/added-note/title' in r['refs'] for r in added['regions'])
+    # Overflowing drafts can be deleted without forcing the user to shorten them.
+    doc.page_edits['added'][0]['body'] = '\n' * 30
+    doc.page_edits['hidden'].append('added-note')
+    pages.validate(doc, previous)
+    doc.page_edits['hidden'].remove('added-note')
+    with pytest.raises(ValueError, match='한 장'):
+        pages.validate(doc, previous)
+
+
+def test_added_page_fit_counts_blank_lines_and_never_truncates():
+    from app.report.pages import text_layout
+    for count in (1, 10, 11, 12, 13):
+        body = '\n'.join(['한글 ABC 123 검토'] * count)
+        lines, font = text_layout(body)
+        assert '\n'.join(lines) == body
+        assert count * (font / 100 * 1.25 + 5) < 4053840 / 12700
+    with pytest.raises(ValueError):
+        text_layout('줄\n' * 14)
+
+
+def test_page_editing_does_not_limit_unedited_batch_reports(monkeypatch):
+    from app.report import pages, renderers
+    doc = ReportDocument('batch', '기존 대형 보고서', 'FT-IR', {}, '2026-10-24')
+    monkeypatch.setattr(renderers, '_pptx_base_slide_payloads', lambda _: [{'editing': {'kind': 'text'}} for _ in range(201)])
+    assert len(renderers._pptx_slide_payloads(doc)) == 201
+    with pytest.raises(ValueError, match='200'):
+        pages.validate(doc, doc)  # The interactive editor retains its bounded workload.

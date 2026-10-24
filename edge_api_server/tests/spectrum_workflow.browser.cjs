@@ -106,6 +106,33 @@ const raw = Buffer.from(Array.from({length:241}, (_, i) => {
         await page.screenshot({path:path.join(output,kind+'-report-edit.png'),fullPage:true});
         await editor.getByLabel('보고서 제목',{exact:true}).fill('검토 완료 '+kind.toUpperCase());
         await page.waitForFunction(()=>{const f=document.getElementById('sw-report-editor');return f.contentDocument.getElementById('status').textContent.includes('자동 저장 완료');},null,{timeout:180000});
+        async function pagesSaved() {
+          await page.waitForFunction(()=>{const d=document.getElementById('sw-report-editor').contentDocument;
+            return d.getElementById('status').textContent.includes('자동 저장 완료')&&!d.getElementById('page-add').disabled;},null,{timeout:180000});
+        }
+        await pagesSaved();
+        const originalPageCount=await editor.locator('#edit-page option').count();
+        await editor.locator('#edit-page').selectOption('1'); // Analysis trace, not either saved graph.
+        const removedTitle=await editor.locator('#edit-page option:checked').textContent();
+        await editor.locator('#page-add').click();
+        await editor.getByLabel('추가 페이지 제목',{exact:true}).fill('검토 의견 '+kind.toUpperCase());
+        await editor.getByLabel('추가 페이지 본문',{exact:true}).fill('측정 조건과 피크 정보를 확인했습니다.\n추가 실험 결과와 검토 의견을 기재하는 페이지입니다.');
+        await pagesSaved();
+        assert.equal(await editor.locator('#edit-page option').count(),originalPageCount+1);
+        assert.equal(await editor.locator('#edit-page').inputValue(),'2');
+        await editor.getByLabel('PPT 편집 · 추가 페이지 본문',{exact:true}).click();
+        await editor.getByLabel('PPT 수정 · 추가 페이지 본문',{exact:true}).fill('PPT에서 직접 수정한 검토 의견입니다.\n실험 조건과 분석 결과를 함께 확인하세요.');
+        await pagesSaved();await editor.locator('#inline-close').click();
+        await editor.locator('#edit-toggle').click();
+        await editor.locator('#slide-image').screenshot({path:path.join(output,kind+'-added-page.png')});
+        await editor.locator('#edit-toggle').click();
+        await editor.locator('#edit-previous').click();await editor.locator('#page-delete').click();await pagesSaved();
+        assert.equal(await editor.locator('#edit-page option').count(),originalPageCount);
+        assert(!(await editor.locator('#edit-page').textContent()).includes(removedTitle.split('. ').slice(1).join('. ')));
+        await editor.locator('#page-restore').click();await pagesSaved();
+        assert.equal(await editor.locator('#edit-page option').count(),originalPageCount+1);
+        await editor.locator('#page-delete').click();await pagesSaved();
+        const finalPageCount=await editor.locator('#edit-page option').count();
         const revisedUrl=await page.locator('#sw-report-editor').evaluate(f=>f.contentWindow.location.pathname);
         assert.notEqual(revisedUrl,originalUrl.split('?')[0]);
         await page.locator('#sw-step-2').click();
@@ -119,6 +146,7 @@ const raw = Buffer.from(Array.from({length:241}, (_, i) => {
         console.log(execFileSync(process.env.RIST_TEST_PYTHON||'python3',['-c',
           `import io,sys,zipfile,xml.etree.ElementTree as E
 from PIL import Image
+import pdfplumber
 z=zipfile.ZipFile(sys.argv[1]); ppt=zipfile.ZipFile(io.BytesIO(z.read('report.pptx')))
 ns={'p':'http://schemas.openxmlformats.org/presentationml/2006/main','a':'http://schemas.openxmlformats.org/drawingml/2006/main'}
 sizes={}; found=[]
@@ -135,9 +163,15 @@ for name in ppt.namelist():
    assert abs(int(ext.get('cx'))/int(ext.get('cy'))-w/h)<1e-6
    found.append(image)
 assert len(found)==2, found
+assert z.read('report.pdf')==z.read('report-from-pptx.pdf')
+with pdfplumber.open(io.BytesIO(z.read('report.pdf'))) as pdf:
+ assert len(pdf.pages)==int(sys.argv[3])
+ texts=[p.extract_text() or '' for p in pdf.pages]
+ assert any('직접 수정한 검토' in text for text in texts), texts
+assert len([n for n in ppt.namelist() if n.startswith('ppt/slides/slide') and n.endswith('.xml')])==int(sys.argv[3])
 z.extract('report.pdf',sys.argv[2])
-print('Actual report: two saved PNG dimensions and aspect-preserving PPT placements verified')`,
-          path.join(output,kind+'-reviewed.zip'),path.join(output,kind)],{encoding:'utf8'}).trim());
+print('Actual report: graph sizes, page add/delete/restore, direct text editing, matching PPT/PDF page count verified')`,
+          path.join(output,kind+'-reviewed.zip'),path.join(output,kind),String(finalPageCount)],{encoding:'utf8'}).trim());
         if(kind==='ftir'){
           execFileSync(process.env.RIST_TEST_PYTHON||'python3',['-c',
             'import sys,zipfile; z=zipfile.ZipFile(sys.argv[1]); [z.extract(n,sys.argv[2]) for n in ("ftir-raw-all.html","ftir-edited.html")]',

@@ -67,4 +67,10 @@ def resolve_changes(value):
         if section["rows"] is not None:
             section["rows"] = [[expand(cell) for cell in row] for row in section["rows"]]
     result["auxiliary"] = {key: expand(text) for key, text in result["auxiliary"].items()}
+    for page in (result.get("pageEdits") or {}).get("added", []):
+        if page["id"] in result["pageEdits"].get("hidden", []):
+            continue  # Hidden drafts may be incomplete; validate again on restore.
+        page["title"], page["body"] = expand(page["title"]), expand(page["body"])
+        if len(page["title"]) > 100 or len(page["body"]) > 2000:
+            raise ValueError("공통 항목 반영 후 추가 페이지의 제목은 100자, 본문은 2,000자 이하여야 합니다.")
     return result

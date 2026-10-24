@@ -24,11 +24,18 @@
   var inputs = {}, sections = [], auxiliary = {};
   var saved = "", timer = null, composing = false, sending = false, activeRevision = null, retries = 0;
   var refs = {}, variables = [], layoutSequence = 0;
+  var pageEdits = {hidden:[],added:[]}, pageFields = [], pageBox = null, pageEditing = false, structureDirty = false, layoutReady = false, layoutStructure = "";
   var labels = {requestNumber:"의뢰번호",limsExperimentCode:"실험코드",equipmentCode:"실험장비",operatorId:"실험자"};
   var direct = new window.RistDirectEditor({
     field:function (ref) { return refs[ref]; }, variables:variableOptions,
     shared:function (ref) { return !!(refs[ref] && refs[ref].getAttribute("data-common")); },
-    canInsert:function (input) { return input !== inputs.completionDate && !Object.keys(labels).some(function (key) { return input === inputs[key]; }); }
+    canInsert:function (input) { return input !== inputs.completionDate && !Object.keys(labels).some(function (key) { return input === inputs[key]; }); },
+    onPage:pageAvailability,
+    onLayout:function (value) {
+      pageEditing = value.pageEditing === true && project !== "TEM";
+      document.getElementById("page-actions").hidden = !pageEditing;
+      pageAvailability();
+    }
   });
   var lookup = null;
   function message(text, error) { status.textContent = text; status.className = error ? "error" : ""; }
@@ -55,6 +62,7 @@
     Array.prototype.forEach.call(document.querySelectorAll("#editor input,#editor textarea,#mail-editor textarea"),function (input) { input.disabled = sending; });
     if (lookup) lookup.availability();
     direct.lock(sending);
+    pageAvailability();
     if (workflow) window.parent.postMessage({type:"rist-workflow-editor-state", jobId:currentId,
       ready:!!model, busy:busy || dirty || !!activeRevision}, window.location.origin);
   }
@@ -63,6 +71,7 @@
     if (dirty && !composing && !busy) timer = window.setTimeout(saveChanges, delay || 1200);
   }
   function changed() {
+    structureDirty = structure(collect().pageEdits) !== layoutStructure;
     sections.forEach(function (section) {
       (section.conditionLabels || []).forEach(function (item) {
         item.label.firstChild.nodeValue = (item.row[0].value === "공통" ? "" : item.row[0].value + " · ") + item.row[1].value;
@@ -87,6 +96,48 @@
     watch(input); return input;
   }
   function bind(ref, input) { refs[ref] = input; return input; }
+  function structure(value) {
+    value = value || {hidden:[],added:[]};
+    return JSON.stringify({hidden:value.hidden,added:value.added.map(function (item) { return {id:item.id,after:item.after}; })});
+  }
+  function pageAvailability() {
+    var blocked = !pageEditing || !layoutReady || busy || sending || !!activeRevision || structureDirty || !direct || !direct.current();
+    document.getElementById("page-add").disabled = blocked || pageFields.length >= 50 || direct.count() >= 200;
+    document.getElementById("page-delete").disabled = blocked || direct.count() <= 1;
+    document.getElementById("page-restore").disabled = !pageEditing || busy || sending || !!activeRevision || !pageEdits.hidden.length;
+  }
+  function pageRow(item, open) {
+    var block = element("details",pageBox); block.open = !!open;
+    var summary = element("summary",block,item.title || "추가 페이지");
+    var title = bind("page/" + item.id + "/title",field(block,"추가 페이지 제목",item.title,false,100));
+    var body = bind("page/" + item.id + "/body",field(block,"추가 페이지 본문",item.body,true,2000));
+    element("p",block,"내용이 많으면 페이지를 나누어 추가하세요. 페이지 안의 글자 크기는 내용 길이에 맞춰 조절합니다.").className = "muted";
+    title.addEventListener("input",function () { summary.textContent = title.value || "추가 페이지"; });
+    pageFields.push({id:item.id,after:item.after,title:title,body:body,block:block});
+    block.hidden = pageEdits.hidden.indexOf(item.id) >= 0;
+    return title;
+  }
+  function pageChanged() {
+    structureDirty = true;
+    pageFields.forEach(function (item) { item.block.hidden = pageEdits.hidden.indexOf(item.id) >= 0; });
+    changed();
+  }
+  document.getElementById("page-add").onclick = function () {
+    if (this.disabled) return;
+    var id = "added-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2,10);
+    var title = pageRow({id:id,after:direct.current().id,title:"추가 페이지",body:""},true);
+    direct.selectOnNext(id); pageChanged(); title.focus();
+  };
+  document.getElementById("page-delete").onclick = function () {
+    if (this.disabled) return;
+    var page = direct.current();
+    if (!window.confirm("‘" + page.title + "’ 페이지를 수정본에서 삭제할까요? 원본과 분석 데이터는 보존됩니다.")) return;
+    pageEdits.hidden.push(page.id); direct.selectOnNext(page.id); pageChanged();
+  };
+  document.getElementById("page-restore").onclick = function () {
+    if (this.disabled) return;
+    direct.selectOnNext(pageEdits.hidden.pop()); pageChanged();
+  };
   function variableOptions() {
     var result = Object.keys(labels).map(function (key) { return {name:labels[key],value:inputs[key] ? inputs[key].value : ""}; });
     result.push({name:"완료일",value:inputs.completionDate ? inputs.completionDate.value : ""});
@@ -195,6 +246,7 @@
   }
   function show(data) {
     model = data.document; editor.textContent = ""; sections = []; auxiliary = {}; inputs = {}; refs = {}; variables = [];
+    pageEdits = model.pageEdits || {hidden:[],added:[]}; pageFields = []; structureDirty = false;
     var top = element("section", editor); element("h2", top, "공통 정보 / 의뢰 조회");
     inputs.title = bind("title",field(top, "보고서 제목", model.title, false, 200));
     inputs.completionDate = bind("completionDate",field(top,"완료일",model.completionDate,false,10)); inputs.completionDate.type = "date";
@@ -247,6 +299,8 @@
       } sections.push(entry);
     });
     commonVariables(editor);
+    pageBox = element("div",editor);
+    (pageEdits.added || []).forEach(function (item) { pageRow(item,false); });
     var mailPane = document.getElementById("mail-editor"); mailPane.textContent = "";
     var mail = element("details", mailPane); mail.open = true; element("summary", mail, "보고서 안내 메일 문안");
     element("p",mail,"보고서와 함께 제공되는 안내 문안입니다. 입력 내용은 자동 저장되며, 입력칸의 아래쪽 모서리를 드래그해 높이를 더 늘릴 수 있습니다.").className = "muted";
@@ -276,15 +330,22 @@
         paragraphs:section.paragraphs.map(function (e) { return e.value; }),bullets:section.bullets.map(function (e) { return e.value; }),
         rows:section.rows && section.rows.map(function (row) { return row.map(function (e) { return e.value; }); })});
     });
-    Object.keys(auxiliary).forEach(function (key) { result.auxiliary[key] = auxiliary[key].value; }); return result;
+    Object.keys(auxiliary).forEach(function (key) { result.auxiliary[key] = auxiliary[key].value; });
+    if (project !== "TEM") result.pageEdits = {hidden:pageEdits.hidden.slice(),added:pageFields.map(function (item) {
+      return {id:item.id,after:item.after,title:item.title.value,body:item.body.value};
+    })};
+    return result;
   }
   function refreshPreview() {
-    var seq = ++layoutSequence, id = currentId; direct.loading();
+    var seq = ++layoutSequence, id = currentId, savedStructure = structure(JSON.parse(saved).pageEdits);
+    layoutReady = false; pageAvailability(); direct.loading();
     document.getElementById("recipient-preview").href = url(id,"/preview");
     request(url(id,"/edit-layout"),"GET",null,function (error,value) {
       if (seq !== layoutSequence || id !== currentId) return;
       if (error) { direct.error(error.message); return; }
-      direct.setLayout(value,url(id,"/edit-slides"));
+      layoutReady = true; layoutStructure = savedStructure;
+      structureDirty = structure(collect().pageEdits) !== layoutStructure;
+      direct.setLayout(value,url(id,"/edit-slides"),structureDirty);
     });
   }
   document.getElementById("reload-preview").onclick = refreshPreview;

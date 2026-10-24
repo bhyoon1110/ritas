@@ -7,7 +7,7 @@
     var fields = document.getElementById("inline-fields"), note = document.getElementById("inline-note");
     var select = document.getElementById("edit-page"), previous = document.getElementById("edit-previous"), next = document.getElementById("edit-next");
     var state = document.getElementById("page-status"), toggle = document.getElementById("edit-toggle");
-    var pages = [], page = 0, imageBase = "", ready = false, shown = true, locked = false, copies = [], active = null;
+    var pages = [], page = 0, imageBase = "", ready = false, shown = true, locked = false, copies = [], active = null, nextPageId = null;
     function node(tag, parent, text) { var e = document.createElement(tag); if (text != null) e.textContent = text; parent.appendChild(e); return e; }
     function close() { panel.hidden = true; copies = []; active = null; }
     document.getElementById("inline-close").onclick = close;
@@ -87,6 +87,7 @@
       ready = false; layer.hidden = true;
       image.alt = "PPT " + (page + 1) + "페이지";
       image.src = imageBase + "/" + page;
+      if (options.onPage) options.onPage();
     }
     image.onload = function () { ready = true; regions(); };
     image.onerror = function () { ready = false; layer.hidden = true; state.textContent = "PPT 페이지를 불러오지 못했습니다. ‘미리보기 다시 불러오기’를 눌러 주세요."; };
@@ -95,12 +96,23 @@
     toggle.onclick = function () { shown = !shown; toggle.setAttribute("aria-pressed", String(shown)); regions(); };
     panel.addEventListener("keydown",function (event) { if (event.keyCode === 27) { close(); event.stopPropagation(); } });
     return {
-      setLayout:function (value, base) {
+      setLayout:function (value, base, preservePending) {
+        var previousId = (pages[page] || {}).id;
+        var selectedId = (!preservePending && nextPageId) || previousId;
         pages = value.pages || []; imageBase = base; select.textContent = "";
         pages.forEach(function (item,index) { var option = node("option",select,(index + 1) + ". " + item.title); option.value = String(index); });
         stage.style.paddingTop = (100 / (value.ratio || 16/9)) + "%";
+        var found = -1;
+        pages.forEach(function (item,index) { if (item.id && item.id === selectedId) found = index; });
+        if (found >= 0) page = found;
+        if ((!preservePending && nextPageId) || (selectedId && found < 0)) close();
+        if (!preservePending) nextPageId = null;
         show(page, true);
+        if (options.onLayout) options.onLayout(value);
       },
+      current:function () { return pages[page] || null; },
+      count:function () { return pages.length; },
+      selectOnNext:function (id) { nextPageId = id; close(); },
       loading:function () { layer.hidden = true; state.textContent = "PPT 편집 영역을 불러오는 중입니다."; },
       error:function (message) { layer.hidden = true; state.textContent = message; },
       sync:function () {

@@ -1227,6 +1227,16 @@ def _raman_common_conditions(document: ReportDocument) -> ReportSection | None:
 
 
 def _pptx_slide_payloads(document: ReportDocument) -> list[dict[str, object]]:
+    from .pages import compose, identify
+    base = _pptx_base_slide_payloads(document)
+    # Do not impose the interactive editor's page limit on existing batch
+    # report generation when no slide inclusion changes were requested.
+    if not any(document.page_edits.get(key) for key in ("hidden", "added")):
+        return identify(base)
+    return compose(document, base)
+
+
+def _pptx_base_slide_payloads(document: ReportDocument) -> list[dict[str, object]]:
     slides: list[dict[str, object]] = [_pptx_title_payload(document)]
     if uses_posco_template(document.experiment_code):
         slides.append({"xml": _pptx_traceability_slide(document), "rels": _pptx_slide_rels(),
@@ -1410,7 +1420,7 @@ def _pptx_image_payload(
                                  image_size=ImageReader(str(media_path)).getSize()),
         "rels": _pptx_slide_rels(media_name),
         "media": [(media_name, media_path)],
-        "editing": {"kind": "image", "sectionId": figure.caption_slot},
+        "editing": {"kind": "image", "sectionId": figure.caption_slot, "figureId": figure.figure_id},
     }
 
 
@@ -2291,6 +2301,23 @@ def _pptx_table_slide(document: ReportDocument, section: ReportSection) -> str:
             font_size=1000, color=PPTX_MUTED, inset=0,
         ))
     shapes.append(_pptx_footer_shape(document, shape_id + 1))
+    return _pptx_frame(shapes, document=document)
+
+
+def _pptx_added_slide(document, title, lines, font):
+    shapes = _pptx_header_shapes(document, title)
+    title_lines = textwrap.wrap(title, width=42 if len(title) <= 42 else 52, break_on_hyphens=False) or [""]
+    shapes = [shape for shape in shapes if 'name="Slide title"' not in shape]
+    shapes.append(_pptx_text_shape(3, "Slide title", x=PPTX_MARGIN_X, y=720000,
+                                   cx=10972800, cy=620000, lines=title_lines,
+                                   font_size=2000 if len(title) <= 42 else 1600,
+                                   color=PPTX_NAVY, bold=True, inset=0))
+    shapes.append(_pptx_shape(10, "Content card", x=PPTX_MARGIN_X, y=1463040,
+                              cx=10972800, cy=4389120, fill=PPTX_CARD, line=PPTX_LINE))
+    shapes.append(_pptx_text_shape(11, "Content text", x=914400, y=1645920,
+                                   cx=10363200, cy=4053840, lines=lines, font_size=font,
+                                   color=PPTX_TEXT, inset=0))
+    shapes.append(_pptx_footer_shape(document, 20))
     return _pptx_frame(shapes, document=document)
 
 

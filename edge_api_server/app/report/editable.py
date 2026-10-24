@@ -96,7 +96,8 @@ def document_from_dict(value, *, image_path):
                           figures=[ReportFigure(f["figureId"], f["title"], str(Path(image_path).parent / figure_filename(f["figureId"])), f.get("captionSlot", "caption"))
                                    for f in value.get("figures", [])],
                           auxiliary_texts=value.get("auxiliary", {}), llm_used=value.get("llm", {}).get("used", False),
-                          llm_error=value.get("llm", {}).get("error"), traceability=value.get("traceability", {}))
+                          llm_error=value.get("llm", {}).get("error"), traceability=value.get("traceability", {}),
+                          page_edits=deepcopy(value.get("pageEdits") or {}))
 
 
 def editor_document(document):
@@ -106,7 +107,8 @@ def editor_document(document):
                           "bullets": s.bullets, "columns": s.table.columns if s.table else None,
                           "rows": s.table.rows if s.table else None, "source": s.source}
                          for s in document.sections if s.section_id != "report_transfer"],
-            "auxiliary": dict(document.auxiliary_texts)}
+            "auxiliary": dict(document.auxiliary_texts),
+            "pageEdits": deepcopy(document.page_edits or {"hidden": [], "added": []})}
 
 
 def apply_edits(document, changes, project):
@@ -123,3 +125,5 @@ def apply_edits(document, changes, project):
         if section.table:
             section.table.rows = item["rows"]
     document.auxiliary_texts = changes["auxiliary"]
+    if changes.get("pageEdits") is not None:
+        document.page_edits = deepcopy(changes["pageEdits"])

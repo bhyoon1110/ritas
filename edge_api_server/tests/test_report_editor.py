@@ -81,6 +81,79 @@ def wait_revision(h, job_id):
     pytest.fail('revision timed out')
 
 
+def test_page_add_delete_restore_revision_package_and_original_integrity(prepared, monkeypatch):
+    h = prepared
+    original = h.job.package_path.read_bytes()
+    layout = h.client.get(h.url + '/edit-layout').json()
+    assert layout['pageEditing'] is True
+    pages = layout['pages']
+    assert len({p['id'] for p in pages}) == len(pages)
+    removed = pages[1]['id']
+    edits = edit_request(h.client.get(h.url + '/editor-data').json()['document'])
+    edits['variables'] = [{'name': '검토자', 'value': '분석 담당자', 'unit': ''}]
+    edits['pageEdits'] = {'hidden': [removed], 'added': [
+        {'id': 'added-review', 'after': removed, 'title': '{{검토자}} 의견',
+         'body': '수정본 검토 내용\n<script>문자가 그대로 표시됩니다.</script>'}]}
+    registered = []
+    monkeypatch.setattr(report_editor, 'register_generated_report_package', lambda **kw: registered.append(kw) or kw['package_path'])
+    response = h.client.post(h.url + '/revisions', json=edits, headers={'X-Requested-With': 'RIST-Report-Editor'})
+    assert response.status_code == 202, response.text
+    result = wait_revision(h, response.json()['jobId'])
+    assert result['status'] == 'completed', result
+    url = h.prefix + '/' + result['jobId']
+    updated = h.client.get(url + '/edit-layout').json()['pages']
+    assert len(updated) == len(pages)
+    assert updated[1]['id'] == 'added-review' and updated[1]['title'] == '분석 담당자 의견'
+    assert removed not in [p['id'] for p in updated]
+    assert any('page/added-review/body' in r['refs'] for r in updated[1]['regions'])
+    saved = h.client.get(url + '/editor-data').json()['document']
+    assert saved['pageEdits'] == edits['pageEdits']  # Preserve variable bindings, not expanded prose.
+    assert registered[0]['report_id'] == result['jobId']
+    assert h.job.package_path.read_bytes() == original
+    with zipfile.ZipFile(BytesIO(h.client.get(result['downloadUrl']).content)) as package:
+        assert package.read('report.pdf') == package.read('report-from-pptx.pdf')
+        with zipfile.ZipFile(BytesIO(package.read('report.pptx'))) as ppt:
+            assert len([n for n in ppt.namelist() if n.startswith('ppt/slides/slide') and n.endswith('.xml')]) == len(updated)
+            assert '분석 담당자 의견' in ppt_text(ppt)
+            assert '&lt;script&gt;' in ppt.read('ppt/slides/slide2.xml').decode()
+        assert package.read('raw_data.xlsx') == zipfile.ZipFile(BytesIO(original)).read('raw_data.xlsx')
+    # Older clients omitting the new field must retain the author's page list.
+    omitted = edit_request(saved)
+    omitted.pop('pageEdits')
+    values = report_editor._validate_changes(report_editor.ReportEdit(**omitted), report_editor._load_document(h.store.get(result['jobId'])))
+    assert values['pageEdits']['hidden'] == [removed]
+    restored = edit_request(saved)
+    restored['pageEdits']['hidden'] = []
+    response = h.client.post(url + '/revisions', json=restored, headers={'X-Requested-With': 'RIST-Report-Editor'})
+    assert response.status_code == 202, response.text
+    result = wait_revision(h, response.json()['jobId'])
+    assert result['status'] == 'completed', result
+    final = h.client.get(h.prefix + '/' + result['jobId'] + '/edit-layout').json()['pages']
+    assert len(final) == len(pages) + 1 and final[1]['id'] == removed and final[2]['id'] == 'added-review'
+
+
+def test_page_validation_prevents_empty_deck_unknown_ids_cycles_and_overflow(prepared):
+    h = prepared
+    document = report_editor._load_document(h.job)
+    edits = edit_request(h.client.get(h.url + '/editor-data').json()['document'])
+    pages = h.client.get(h.url + '/edit-layout').json()['pages']
+    added = {'id': 'added-test', 'after': pages[0]['id'], 'title': '제목', 'body': '본문'}
+    for invalid in [
+        {'hidden': [p['id'] for p in pages], 'added': []},
+        {'hidden': ['unknown'], 'added': []},
+        {'hidden': [pages[0]['id']] * 2, 'added': []},
+        {'hidden': [], 'added': [dict(added, after='added-test')]},
+        {'hidden': [], 'added': [added, added]},
+        {'hidden': [], 'added': [dict(added, body='\n' * 30)]},
+    ]:
+        edits['pageEdits'] = invalid
+        with pytest.raises(ValueError):
+            report_editor._validate_changes(report_editor.ReportEdit(**edits), document)
+    edits['pageEdits'] = {'hidden': [p['id'] for p in pages], 'added': [added]}
+    values = report_editor._validate_changes(report_editor.ReportEdit(**edits), document)
+    assert values['pageEdits']['added'] == [added]  # A text-only one-page report is valid.
+
+
 def test_blank_fields_edit_revision_and_recipient_integrity(prepared, monkeypatch):
     h = prepared
     before = h.job.package_path.read_bytes()

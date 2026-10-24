@@ -41,6 +41,20 @@ class CommonVariable(BaseModel):
     unit: str = Field(default="", max_length=40)
 
 
+class AddedPage(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    id: str = Field(pattern=r"^added-[A-Za-z0-9-]{1,64}$")
+    after: str = Field(min_length=1, max_length=100)
+    title: str = Field(max_length=100)
+    body: str = Field(max_length=2000)
+
+
+class PageEdits(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    hidden: list[str] = Field(default_factory=list, max_length=400)
+    added: list[AddedPage] = Field(default_factory=list, max_length=50)
+
+
 class ReportEdit(BaseModel):
     model_config = ConfigDict(extra="forbid")
     title: str = Field(max_length=200)
@@ -49,6 +63,7 @@ class ReportEdit(BaseModel):
     auxiliary: dict[str, str]
     completionDate: str | None = Field(default=None, max_length=10)
     variables: list[CommonVariable] = Field(default_factory=list, max_length=32)
+    pageEdits: PageEdits | None = None
 
 
 def job_response(job, prefix):
@@ -83,6 +98,8 @@ def _load_document(job):
 
 def _validate_changes(changes, document):
     values = changes.model_dump()
+    if values["pageEdits"] is None:
+        values["pageEdits"] = deepcopy(document.page_edits or {"hidden": [], "added": []})
     if values["completionDate"] is None:
         values["completionDate"] = document.completion_date or ""
     if set(values["transfer"]) != set(TRANSFER_FIELDS):
@@ -119,6 +136,10 @@ def _validate_changes(changes, document):
             raise ValueError("공통 항목을 반영한 표지 정보는 항목당 200자 이하여야 합니다.")
     if len(json.dumps(expanded, ensure_ascii=False)) > 120000:
         raise ValueError("공통 항목을 반영한 보고서 수정 내용이 너무 많습니다.")
+    from .report.pages import validate
+    candidate = deepcopy(document)
+    apply_edits(candidate, expanded, document.experiment_code)
+    validate(candidate, document)
     return values
 
 
@@ -164,6 +185,10 @@ def _write_revision(store, new_job, old_job, changes, project, settings, databas
         reports.render_report_formats(document, report_dir, ["PPTX", "PDF", "HTML"],
                                       pdf_font_path=reports._preview_pdf_font_path(settings))
         reports.convert_pptx_to_pdf(report_dir / "report.pptx", report_dir / "report-from-pptx.pdf")
+        if any(document.page_edits.get(key) for key in ("hidden", "added")):
+            # Once the analyst edits the deck, both downloadable PDFs must use
+            # that exact page list rather than the automatic prose summary.
+            shutil.copyfile(report_dir / "report-from-pptx.pdf", report_dir / "report.pdf")
         analysis = json.loads((processed_dir / "analysis-result.json").read_text(encoding="utf-8"))
         build_spectrum_viewer(report_dir, title=document.title,
                               figure=analysis.get("viewerFigure") or analysis.get("figure") or {},
@@ -215,7 +240,7 @@ def install_report_editor(router, kind):
         state_path = job.tmp_root / "job/report/editor-state.json"
         if state_path.is_file():
             source = json.loads(state_path.read_text(encoding="utf-8"))
-            model.update({key: source[key] for key in ("title", "auxiliary", "completionDate", "variables") if key in source})
+            model.update({key: source[key] for key in ("title", "auxiliary", "completionDate", "variables", "pageEdits") if key in source and source[key] is not None})
             by_id = {s["sectionId"]: s for s in source["sections"]}
             for section in model["sections"]:
                 saved = by_id.get(section["sectionId"])
