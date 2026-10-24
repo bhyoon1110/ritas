@@ -307,6 +307,7 @@ for (const kind of ['ftir','raman']) for (const mode of ['native','chrome49']) {
     h.gd._ristHistory.redo();await tick();assert.equal(h.gd.data[0].line.width,3.5);
     h.q('.rist-legend-edit-button').click();assert.equal(h.q('.rist-legend-sample-width').value,'3.5');
     h.q('.rist-legend-edit-save-all').click();await tick();assert.equal(events.length,1,'unchanged save is a no-op');
+    assert.equal(h.q('.rist-legend-edit-panel').style.display,'none','unchanged save also closes');
   });
   test(label+': sample-only legend starts hidden, toggles without hiding peaks, and survives history',async t=>{
     const h=setup(t,kind,mode);await tick();
@@ -325,21 +326,25 @@ for (const kind of ['ftir','raman']) for (const mode of ['native','chrome49']) {
     assert.equal(h.q('.rist-legend-peak-details .is-peak').getAttribute('data-curve'),'1');
     assert.equal(h.q('.rist-legend-edit-body > .is-sample').getAttribute('data-curve'),'0');
   });
-  test(label+': legend editor only closes with Close, preserving pending edits across outside/Escape/mode/save',async t=>{
+  test(label+': legend editor preserves pending edits across outside/Escape/mode and closes after Save All',async t=>{
     const h=setup(t,kind,mode);await tick();h.q('.rist-legend-edit-button').click();
     const panel=h.q('.rist-legend-edit-panel'),input=h.q('.is-sample textarea');input.value='Edited Sample';
     h.d.body.click();h.key(h.d.body,'Escape');h.q('.rist-legend-edit-button').click();
     h.gd.dispatchEvent(new h.w.CustomEvent('rist-exclusive-interaction-start',{detail:{mode:'shape-edit'}}));
     assert.equal(panel.style.display,'block');assert.equal(h.gd._ristLegendEditOpen,true);assert.equal(input.value,'Edited Sample');
+    let restored=0;h.gd._ristRestoreNavigation=()=>{restored++;};
     h.q('.rist-legend-edit-save-all').click();await tick();
-    assert.equal(h.gd.data[0].name,'Edited Sample');assert.equal(panel.style.display,'block');
+    assert.equal(h.gd.data[0].name,'Edited Sample');assert.equal(panel.style.display,'none');
+    assert.equal(h.gd._ristLegendEditOpen,false);assert.equal(restored,1);
+    h.q('.rist-legend-edit-button').click();assert.equal(h.q('.is-sample textarea').value,'Edited Sample');
     h.q('.rist-legend-edit-close').click();assert.equal(panel.style.display,'none');assert.equal(h.gd._ristLegendEditOpen,false);
   });
   test(label+': legend font/color sync and export styling never rewrite live names/RAW',async t=>{
     const h=setup(t,kind,mode);await tick();h.run('function buildImageExportPayload');
     h.q('.rist-legend-edit-button').click();
     const size=h.q('.rist-legend-font-size');
-    for(const bad of ['9','33','12.5','']) {size.value=bad;h.q('.rist-legend-edit-save-all').click();assert.equal(h.gd.layout.legend.font.size,16);}
+    for(const bad of ['9','33','12.5','']) {size.value=bad;h.q('.rist-legend-edit-save-all').click();assert.equal(h.gd.layout.legend.font.size,16);
+      assert.equal(h.q('.rist-legend-edit-panel').style.display,'block');assert.equal(size.value,bad);}
     size.value='22';h.q('.rist-legend-font-bold').checked=false;
     h.q('.is-sample .rist-legend-color-input').value='#e11d48';
     h.q('.rist-legend-edit-save-all').click();await tick();
@@ -414,6 +419,7 @@ for (const kind of ['ftir','raman']) for (const mode of ['native','chrome49']) {
     assert.equal(h.q('.is-peak textarea'),pending);assert.equal(pending.value,'아직 저장하지 않은 피크');
     assert(h.q('.rist-legend-peak-details').open);
     h.q('.is-sample textarea').value='Saved sample';h.q('.rist-legend-edit-save-all').click();await tick();
+    h.q('.rist-legend-edit-button').click();
     assert.equal(sources()[0],'Saved sample');
     h.gd.data[0].name='<img src=x onerror=alert(1)>Safe raw';h.dispatch('rist-legend-name-change');
     assert.equal(sources()[0],'Safe raw');assert.equal(h.q('.rist-legend-raw-name img'),null);
@@ -455,6 +461,7 @@ for (const kind of ['ftir','raman']) for (const mode of ['native','chrome49']) {
     const h=setup(t,kind,mode);await tick();h.q('.rist-legend-edit-button').click();
     h.q('.is-peak .rist-legend-peak-delete').click();h.q('.rist-legend-raw-tree').open=false;
     h.q('.rist-legend-edit-save-all').click();await tick();
+    assert.equal(h.q('.rist-legend-edit-panel').style.display,'none');h.q('.rist-legend-edit-button').click();
     assert.equal(h.gd.data.length,1);assert.equal(h.q('.rist-legend-raw-count').textContent,'피크 0개');
     assert(h.q('.rist-legend-raw-empty'));assert(!h.q('.rist-legend-raw-tree').open);
     h.gd._ristHistory.undo();await tick();
@@ -517,13 +524,16 @@ for (const kind of ['ftir','raman']) for (const mode of ['native','chrome49']) {
     h.dispatch('rist-plot-data-replaced');h.q('.rist-legend-edit-button').click();
     h.q('.rist-legend-group-add').click();h.q('.rist-legend-group-title').value='Renamed';
     h.q('.rist-legend-group-color').value='#00aa55';h.q('.rist-legend-edit-save-all').click();await tick();
+    h.q('.rist-legend-edit-button').click();
     for(const i of [1,3,4]) {assert.equal(h.gd.data[i].meta.rist_peak.group_name,'Renamed');assert.equal(h.gd.data[i].marker.color,'#00aa55');}
     assert.equal(h.gd.querySelectorAll('.rist-legend-group-row').length,1);
     assert.equal(h.gd.querySelectorAll('.rist-legend-raw-tree[data-sample-group="sample:0"] .is-peak').length,2);
     assert.equal(h.gd.querySelectorAll('.rist-legend-raw-tree[data-sample-group="sample:1"] .is-peak').length,1);
     h.q('.is-peak[data-curve="3"] .rist-legend-group-remove').click();h.q('.rist-legend-edit-save-all').click();await tick();
+    h.q('.rist-legend-edit-button').click();
     assert(!h.gd.data[3].meta.rist_peak.manual_group_key);assert.equal(h.gd.data[1].meta.rist_peak.group_name,'Renamed');
     h.q('.rist-legend-group-clear').click();h.q('.rist-legend-edit-save-all').click();await tick();
+    h.q('.rist-legend-edit-button').click();
     assert.equal(h.gd.querySelectorAll('.rist-legend-group-row').length,0);assert.equal(h.gd.querySelectorAll('.rist-legend-raw-tree .is-peak').length,3);
     for(const i of [1,3,4]) assert(!h.gd.data[i].meta.rist_peak.manual_group_key);
   });

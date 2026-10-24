@@ -103,6 +103,24 @@ const server=http.createServer((req,res)=>{
       await page.waitForFunction(id=>document.getElementById(id).data[0].name==='Renamed Raw 1',id);
       await page.waitForTimeout(700);
       assert.equal(await page.evaluate(id=>document.getElementById(id).data[0].visible,id),true);
+      if(!await page.locator('.rist-legend-edit-button').isVisible()) await page.locator('.rist-'+kind+'-tools-toggle').click();
+      await page.locator('.rist-legend-edit-button').click();
+      const editedRow=page.locator('.rist-legend-edit-row.is-sample[data-curve="0"]');
+      await editedRow.locator('textarea').fill('Saved legend name');
+      await editedRow.locator('.rist-legend-sample-width').fill('21');
+      await page.locator('.rist-legend-edit-save-all').click();
+      await page.locator('.rist-legend-edit-error').waitFor({state:'visible'});
+      assert.equal(await editedRow.locator('textarea').inputValue(),'Saved legend name');
+      assert.equal(await page.locator('.rist-legend-edit-panel').isVisible(),true);
+      await editedRow.locator('.rist-legend-sample-width').fill('3.5');
+      await page.locator('.rist-legend-edit-save-all').click();
+      await page.locator('.rist-legend-edit-panel').waitFor({state:'hidden'});
+      await page.waitForFunction(id=>{const g=document.getElementById(id);return g.data[0].name==='Saved legend name'&&g.data[0].line.width===3.5&&!g._ristLegendEditOpen;},id);
+      if(!await page.locator('.rist-legend-edit-button').isVisible()) await page.locator('.rist-'+kind+'-tools-toggle').click();
+      await page.locator('.rist-legend-edit-button').click();
+      assert.equal(await editedRow.locator('textarea').inputValue(),'Saved legend name');
+      await page.locator('.rist-legend-edit-save-all').click();
+      await page.locator('.rist-legend-edit-panel').waitFor({state:'hidden'});
       assert.deepEqual(errors,[]);console.log(kind+': actual drag, keyboard ordering, unchanged RAW/identities and draft text passed');
       await page.close();
     }

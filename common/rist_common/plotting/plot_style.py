@@ -2376,7 +2376,7 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
         );
       }});
       dispatchPeakDelete(deleteCurves);
-      if (!directAnnotationEdit) closePanel();
+      closePanel();
     }}
 
     btn.addEventListener("click", function(ev) {{
