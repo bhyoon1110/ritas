@@ -112,7 +112,68 @@ async function reorderFixture(t,kind,mode,pointer=false) {
   return {...h,stackKey:key,rows,order};
 }
 
+function installDirectLegendFixture(h) {
+  const legend=h.q('g.legend');
+  const box=(top,bottom)=>({left:420,right:660,top,bottom,width:240,height:bottom-top});
+  function draw() {
+    legend.innerHTML='<rect class="bg"/>';
+    legend.querySelector('.bg').getBoundingClientRect=()=>box(50,190);
+    h.gd.data.map((t,i)=>({t,i})).filter(({t})=>t.meta.rist_sample_parent)
+      .sort((a,b)=>a.t.legendrank-b.t.legendrank).forEach(({t,i},pos)=>{
+        const row=h.d.createElementNS('http://www.w3.org/2000/svg','g');row.setAttribute('class','traces');
+        row.innerHTML='<text class="legendtext"/><rect class="legendtoggle"/>';
+        row.querySelector('text').textContent=t.name;row.__data__=[{trace:{index:i}}];
+        row.querySelector('.legendtoggle').getBoundingClientRect=()=>box(60+40*pos,95+40*pos);
+        legend.appendChild(row);
+      });
+  }
+  h.gd.on('plotly_afterplot',draw);draw();
+  return ()=>[...legend.querySelectorAll('.legendtoggle')];
+}
+
 for(const kind of ['ftir','raman']) for(const mode of ['native','chrome49']) {
+  test(kind+'/'+mode+': graph legend row drag reorders without visibility/edit side effects; clicks still work',async t=>{
+    const h=await reorderFixture(t,kind,mode,true),items=installDirectLegendFixture(h);
+    h.rows()[2].querySelector('textarea').value='미저장 이름';
+    h.mouse(items()[2],'pointerdown',450,155);h.mouse(h.d,'pointermove',450,62);
+    assert.equal(h.q('.rist-legend-order-line').style.display,'block');
+    h.mouse(h.d,'pointerup',450,62);await tick();await h.gd._ristStackReady;
+    assert.deepEqual(h.order(),['sample:0','sample:2','sample:1']);
+    assert.equal(h.rows()[0].querySelector('textarea').value,'미저장 이름');
+    // A synthetic compatibility click/dblclick after the drag must do nothing.
+    h.mouse(items()[0],'click',450,62);h.mouse(items()[0],'dblclick',450,62);
+    assert.equal(h.emit('plotly_legendclick',{curveNumber:0}).at(-1),false);
+    await new Promise(r=>setTimeout(r,400));
+    assert.ok(h.gd.data.every(t=>t.visible!==false&&t.visible!=='legendonly'));assert.equal(h.editor(),null);
+    assert.equal(h.gd._ristLegendDragging,false);
+    h.gd._ristHistory.undo();await tick();await h.gd._ristStackReady;
+    assert.deepEqual(h.order(),['sample:2','sample:1','sample:0']);
+    const tap=()=>{h.mouse(items()[0],'pointerdown',450,72);h.mouse(h.d,'pointerup',450,72);};
+    tap();await new Promise(r=>setTimeout(r,400));assert.equal(h.gd.data[2].visible,'legendonly');
+    tap();tap();assert.ok(h.editor());assert.equal(h.editor().value,'Raw 2');
+    h.key(h.editor(),'Escape');await new Promise(r=>setTimeout(r,400));
+    assert.equal(h.gd.data[2].visible,'legendonly');
+  });
+  test(kind+'/'+mode+': graph legend drag cancellation/outside drop/refresh cannot commit an order',async t=>{
+    const h=await reorderFixture(t,kind,mode,true),items=installDirectLegendFixture(h),before=h.order();
+    for(const cancel of [()=>h.key(h.d.body,'Escape'),()=>h.w.dispatchEvent(new h.w.Event('blur')),
+      ()=>h.d.dispatchEvent(new h.w.Event('pointercancel')),()=>h.emit('plotly_afterplot')]) {
+      h.mouse(items()[2],'pointerdown',450,155);h.mouse(h.d,'pointermove',450,62);cancel();
+      h.mouse(h.d,'pointerup',450,62);await tick();assert.deepEqual(h.order(),before);
+      assert.equal(h.gd._ristLegendDragging,false);
+    }
+    h.mouse(items()[2],'pointerdown',450,155);h.mouse(h.d,'pointermove',450,62);
+    h.mouse(h.d,'pointerup',900,62);await tick();assert.deepEqual(h.order(),before);
+    assert.equal(h.editor(),null);
+  });
+  test(kind+'/'+mode+': graph legend supports fallback mouse events without changing hidden samples',async t=>{
+    const h=await reorderFixture(t,kind,mode),items=installDirectLegendFixture(h);
+    h.gd.data[1].visible='legendonly';
+    h.mouse(items()[2],'mousedown',450,155);h.mouse(h.d,'mousemove',450,62);h.mouse(h.d,'mouseup',450,62);
+    await tick();await h.gd._ristStackReady;
+    assert.deepEqual(h.order(),['sample:0','sample:2','sample:1']);assert.equal(h.gd.data[1].visible,'legendonly');
+    assert.ok(h.gd.data.slice(0,3).every(t=>t.y.every((y,i)=>Math.abs(y-(kind==='ftir'?t.meta.rist_ftir_stack_offset_absorbance:t.meta.rist_raman_stack_offset)-[1,3,2][i])<1e-8)));
+  });
   test(kind+'/'+mode+': Raw drag reorders stack slots, keeps unsaved row edits, peak identities and true intensity',async t=>{
     const h=await reorderFixture(t,kind,mode), originals=h.gd.data.slice(), before=clone(h.gd.layout.meta[h.stackKey]);
     assert.deepEqual(h.order(),['sample:2','sample:1','sample:0']);

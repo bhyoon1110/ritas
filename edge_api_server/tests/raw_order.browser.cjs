@@ -61,6 +61,48 @@ const server=http.createServer((req,res)=>{
       await page.waitForFunction(({id,key})=>document.getElementById(id).layout.meta[key].legendOrder[0]==='sample:0',{id,key});
       await page.waitForFunction(()=>!document.querySelector('.rist-raw-order-handle').disabled);
       await page.locator('.rist-legend-edit-panel').screenshot({path:path.join(output,kind+'-raw-order.png')});
+      await page.locator('.rist-legend-edit-close').click();
+      await page.evaluate(async id=>{await Plotly.relayout(document.getElementById(id),{'meta.ristLegendVisible':true,
+        'legend.x':0.1,'legend.y':0.9,'legend.xanchor':'left','legend.yanchor':'top'});},id);
+      const legendRows=page.locator('g.legend g.traces .legendtoggle');
+      await legendRows.nth(2).waitFor({state:'visible'});
+      const directFrom=await legendRows.nth(2).boundingBox(),directTo=await legendRows.nth(0).boundingBox();
+      const coords=()=>page.evaluate(id=>{const g=document.getElementById(id);return [g.layout.legend.x,g.layout.legend.y];},id);
+      const beforeCoords=await coords();
+      await page.mouse.move(directFrom.x+25,directFrom.y+directFrom.height/2);await page.mouse.down();
+      await page.mouse.move(directTo.x+25,directTo.y+2,{steps:12});
+      await page.locator('.rist-legend-order-line').waitFor({state:'visible'});
+      await page.locator('#'+id).screenshot({path:path.join(output,kind+'-legend-drag.png')});
+      await page.mouse.up();
+      await page.waitForFunction(({id,key})=>document.getElementById(id).layout.meta[key].legendOrder.join(',')==='sample:1,sample:0,sample:2',{id,key});
+      await page.waitForTimeout(700);
+      assert.deepEqual(await coords(),beforeCoords,'row drag must not move the legend box');
+      assert.equal(await page.locator('[aria-label="범례 이름 수정"]').count(),0);
+      assert.equal(await page.evaluate(id=>document.getElementById(id).data.every(t=>t.visible!==false&&t.visible!=='legendonly'),id),true);
+      await page.evaluate(async id=>{const g=document.getElementById(id);g._ristHistory.undo();},id);
+      await page.waitForFunction(({id,key})=>document.getElementById(id).layout.meta[key].legendOrder.join(',')==='sample:0,sample:2,sample:1',{id,key});
+      // The dedicated bar still moves the entire box, without reordering rows.
+      const bar=await page.locator('.rist-legend-drag-handle').boundingBox();
+      await page.mouse.move(bar.x+20,bar.y+8);await page.mouse.down();
+      await page.mouse.move(bar.x+70,bar.y+28,{steps:8});await page.mouse.up();
+      await page.waitForFunction(({id,x})=>document.getElementById(id).layout.legend.x!==x,{id,x:beforeCoords[0]});
+      assert.equal(await page.evaluate(({id,key})=>document.getElementById(id).layout.meta[key].legendOrder.join(','),{id,key}),'sample:0,sample:2,sample:1');
+      // Stationary clicks and double-click editing must remain independent.
+      await legendRows.nth(0).click();
+      await page.waitForFunction(id=>document.getElementById(id).data[0].visible==='legendonly',id);
+      await legendRows.nth(0).dblclick({delay:60});
+      await page.locator('[aria-label="범례 이름 수정"]').waitFor({state:'visible'});
+      await page.locator('[aria-label="범례 이름 수정"]').press('Escape');
+      await page.waitForTimeout(700);
+      assert.equal(await page.evaluate(id=>document.getElementById(id).data[0].visible,id),'legendonly');
+      await legendRows.nth(0).click();
+      await page.waitForFunction(id=>document.getElementById(id).data[0].visible===true,id);
+      await legendRows.nth(0).dblclick({delay:80});
+      const nameEditor=page.locator('[aria-label="범례 이름 수정"]');await nameEditor.waitFor({state:'visible'});
+      assert.equal(await nameEditor.inputValue(),'Raw 1');await nameEditor.fill('Renamed Raw 1');await nameEditor.press('Enter');
+      await page.waitForFunction(id=>document.getElementById(id).data[0].name==='Renamed Raw 1',id);
+      await page.waitForTimeout(700);
+      assert.equal(await page.evaluate(id=>document.getElementById(id).data[0].visible,id),true);
       assert.deepEqual(errors,[]);console.log(kind+': actual drag, keyboard ordering, unchanged RAW/identities and draft text passed');
       await page.close();
     }

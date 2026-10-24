@@ -399,6 +399,7 @@ def _crosshair_js(div_id: str) -> str:
   }}
   gd.addEventListener("mousemove", function(e) {{
     gd._lastPtr = {{ x: e.clientX, y: e.clientY }};   // 마지막 포인터(더블클릭 하이라이트용)
+    if (gd._ristLegendDragging || (e.target.closest && e.target.closest(".legend,.rist-legend-drag-handle"))) {{ hide(); return; }}
     var fl = gd._fullLayout;
     if (!fl || !fl.xaxis || !fl.yaxis) {{ hide(); return; }}
     var drag = gd.querySelector(".nsewdrag");
@@ -877,6 +878,15 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
 #{div_id} .rist-legend-edit-row.is-order-before {{ box-shadow: 0 -3px #2563eb; }}
 #{div_id} .rist-legend-edit-row.is-order-after {{ box-shadow: 0 3px #2563eb; }}
 #{div_id} .rist-raw-order-help {{ font: 11px/1.4 Arial, sans-serif; color: #52606d; margin: 4px 0; }}
+#{div_id} .rist-legend-order-line {{
+  position: absolute; display: none; height: 3px; background: #2563eb;
+  pointer-events: none; z-index: 25;
+}}
+#{div_id} .rist-legend-order-status {{
+  position: absolute; display: none; max-width: 280px; padding: 4px 8px;
+  border: 1px solid #9fb3c8; border-radius: 4px; background: #fff; color: #174a68;
+  font: 12px/1.4 Arial, sans-serif; pointer-events: none; z-index: 25;
+}}
 #{div_id} .rist-legend-edit-row.is-pending-group-add {{
   background: #edf7f1;
 }}
@@ -1178,11 +1188,19 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
       if (!picked || !isSampleCurve(picked.curve)) return;
       var color = traceColor(picked.curve);
       picked.text.style.fill = color;
+      item.style.cursor = "grab";
+      var tip = item.querySelector("title.rist-legend-order-tip");
+      if (!tip) {{
+        tip = document.createElementNS("http://www.w3.org/2000/svg", "title");
+        tip.setAttribute("class", "rist-legend-order-tip"); item.appendChild(tip);
+      }}
+      tip.textContent = "드래그: Raw 순서 변경 / 클릭: 표시·숨김 / 더블클릭: 이름 수정";
       picked.text.querySelectorAll("tspan").forEach(function(span) {{ span.style.fill = color; }});
     }});
   }}
 
   var normalizingSpectrumLegend = false;
+  var applyLegendRawOrder = null;
   function syncSpectrumLegend() {{
     if (!directAnnotationEdit || !window.Plotly || normalizingSpectrumLegend) return;
     var layout = gd.layout || {{}};
@@ -1640,6 +1658,7 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
     }}
     function rawGroup(row) {{ return sampleGroupForCurve(Number(row.getAttribute("data-curve"))); }}
     function syncRawRowOrder() {{
+      if (panel.style.display !== "block") return;
       var focused = document.activeElement;
       var body = panel.querySelector(".rist-legend-edit-body");
       var rows = rawRows().sort(function(a, b) {{
@@ -1659,19 +1678,22 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
       if (focused && panel.contains(focused)) focused.focus();
     }}
     function applyRawOrder(order) {{
-      if (reorderingRaw || !gd._ristReorderSamples) return;
+      if (reorderingRaw || !gd._ristReorderSamples) return Promise.resolve(false);
       var focused = document.activeElement;
       reorderingRaw = true;
       panel.querySelectorAll(".rist-raw-order-handle").forEach(function(handle) {{ handle.disabled = true; }});
-      gd._ristReorderSamples(order).then(syncRawRowOrder).catch(function(err) {{
+      return gd._ristReorderSamples(order).then(function() {{ syncRawRowOrder(); return true; }}).catch(function(err) {{
         var error = panel.querySelector(".rist-legend-edit-error");
         error.textContent = "Raw 순서 변경 실패: " + err.message; error.style.display = "block";
-      }}).then(function() {{
+        return false;
+      }}).then(function(changed) {{
         reorderingRaw = false;
         panel.querySelectorAll(".rist-raw-order-handle").forEach(function(handle) {{ handle.disabled = false; }});
         if (focused && panel.contains(focused) && (document.activeElement === document.body || document.activeElement === focused)) focused.focus();
+        return changed;
       }});
     }}
+    applyLegendRawOrder = applyRawOrder;
     function clearRawDrag() {{
       rawDrag = null;
       rawRows().forEach(function(row) {{ row.classList.remove("is-dragging", "is-order-before", "is-order-after"); }});
@@ -2694,12 +2716,15 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
   }}
 
   var legendPointerState = null;
+  var legendRawDrag = null, legendRawClickBlockedUntil = 0;
+  gd._ristLegendClickBlocked = function() {{ return !!legendRawDrag || !!legendOrderBusy || Date.now() < legendRawClickBlockedUntil; }};
   var pendingSampleLegendClick = null;
   function cancelSampleLegendClick() {{
     if (pendingSampleLegendClick) clearTimeout(pendingSampleLegendClick.timer);
     pendingSampleLegendClick = null;
   }}
   gd._ristHandleEditableLegendClick = function(ev) {{
+    if (!ev.ristLegendTap && gd._ristLegendClickBlocked()) return false;
     var trace = (gd.data || [])[ev.curveNumber];
     if (trace && trace.meta && trace.meta.rist_peak) return false;
     if (!trace || !trace.meta || !trace.meta.rist_sample_parent) return;
@@ -2738,6 +2763,161 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
   }}
   gd.addEventListener("pointerdown", rememberLegendVisibility, true);
   gd.addEventListener("mousedown", rememberLegendVisibility, true);
+
+  // Claim sample-row gestures before Plotly so a drag cannot also toggle or
+  // isolate a trace. Stationary taps still use the existing delayed-click path.
+  if (directAnnotationEdit) {{
+    var orderLine = document.createElement("div"), orderStatus = document.createElement("div");
+    orderLine.className = "rist-legend-order-line";
+    orderStatus.className = "rist-legend-order-status";
+    orderStatus.setAttribute("role", "status"); orderStatus.setAttribute("aria-live", "polite");
+    gd.appendChild(orderLine); gd.appendChild(orderStatus);
+    var orderStatusTimer = null, legendOrderBusy = false;
+    function legendOrderRows() {{
+      var rows = [];
+      gd.querySelectorAll("g.legend g.traces").forEach(function(node) {{
+        var picked = legendItemFor(node);
+        if (picked && isSampleCurve(picked.curve)) rows.push({{node: node, curve: picked.curve,
+          group: sampleGroupForCurve(picked.curve),
+          rect: (node.querySelector(".legendtoggle") || node).getBoundingClientRect()}});
+      }});
+      return rows;
+    }}
+    function legendOrderPoint(ev) {{ return ev.touches && ev.touches[0] || ev.changedTouches && ev.changedTouches[0] || ev; }}
+    function showOrderStatus(message, rect, temporary) {{
+      if (orderStatusTimer) clearTimeout(orderStatusTimer);
+      var gr = gd.getBoundingClientRect();
+      orderStatus.textContent = message;
+      orderStatus.style.left = Math.max(4, Math.min(rect.left - gr.left, gr.width - 290)) + "px";
+      orderStatus.style.top = Math.max(4, Math.min(rect.bottom - gr.top + 4, gr.height - 48)) + "px";
+      orderStatus.style.display = "block";
+      if (temporary) orderStatusTimer = setTimeout(function() {{ orderStatus.style.display = "none"; }}, 2000);
+    }}
+    function clearLegendRawDrag() {{
+      if (!legendRawDrag) return;
+      var held = legendRawDrag; legendRawDrag = null;
+      held.node.style.opacity = held.opacity;
+      if (held.moved) gd._ristLegendDragging = false;
+      legendRawClickBlockedUntil = Date.now() + 600;
+      orderLine.style.display = orderStatus.style.display = "none";
+    }}
+    function startLegendRawDrag(ev) {{
+      var picked = legendItemFor(ev.target);
+      if (!picked || !isSampleCurve(picked.curve) || !gd._ristReorderSamples
+          || editing || gd._ristInlineTextEditing || legendRawDrag
+          || (ev.button != null && ev.button !== 0)) return;
+      if (ev.cancelable) ev.preventDefault(); ev.stopImmediatePropagation();
+      if (legendOrderBusy) return;
+      window.__ristActiveHistoryPlot = gd;
+      // These gestures never let Plotly toggle first. Use the current visibility
+      // even if a preceding single click was already committed moments ago.
+      legendPointerState = {{curve: picked.curve, at: Date.now(), visible: (gd.data || []).map(function(trace) {{
+        return trace.visible == null ? true : trace.visible;
+      }})}};
+      var point = legendOrderPoint(ev), node = ev.target.closest("g.traces");
+      legendRawDrag = {{node: node, curve: picked.curve, group: sampleGroupForCurve(picked.curve),
+        x: point.clientX, y: point.clientY, pointerId: ev.pointerId, opacity: node.style.opacity,
+        moved: false, target: null, after: false}};
+    }}
+    function moveLegendRawDrag(ev) {{
+      var held = legendRawDrag;
+      if (!held || (ev.pointerId != null && ev.pointerId !== held.pointerId)) return;
+      var point = legendOrderPoint(ev);
+      if (!held.moved && Math.max(Math.abs(point.clientX - held.x), Math.abs(point.clientY - held.y)) < 6) return;
+      if (!held.moved) {{
+        cancelSampleLegendClick(); legendPointerState = null;
+        gd.dispatchEvent(new CustomEvent("rist-exclusive-interaction-start", {{detail: {{mode: "legend-raw-order"}}}}));
+        if (legendRawDrag !== held) return;
+        held.moved = true; gd._ristLegendDragging = true; held.node.style.opacity = "0.45";
+      }}
+      if (ev.cancelable) ev.preventDefault(); ev.stopImmediatePropagation();
+      var legend = gd.querySelector("g.legend");
+      if (!legend) {{ clearLegendRawDrag(); return; }}
+      var bounds = (legend.querySelector(".bg") || legend).getBoundingClientRect();
+      var target = null, distance = Infinity;
+      if (point.clientX >= bounds.left && point.clientX <= bounds.right
+          && point.clientY >= bounds.top && point.clientY <= bounds.bottom) {{
+        legendOrderRows().forEach(function(row) {{
+          var dy = Math.max(row.rect.top - point.clientY, point.clientY - row.rect.bottom, 0);
+          var dx = Math.max(row.rect.left - point.clientX, point.clientX - row.rect.right, 0);
+          if (dy * dy + dx * dx < distance) {{ target = row; distance = dy * dy + dx * dx; }}
+        }});
+      }}
+      held.target = target; orderLine.style.display = "none";
+      if (target && target.group !== held.group) {{
+        var rect = target.rect, gr = gd.getBoundingClientRect();
+        held.after = point.clientY > (rect.top + rect.bottom) / 2;
+        orderLine.style.left = (rect.left - gr.left) + "px";
+        orderLine.style.top = ((held.after ? rect.bottom : rect.top) - gr.top) + "px";
+        orderLine.style.width = Math.max(20, rect.width) + "px";
+        orderLine.style.display = "block";
+        showOrderStatus(legendDisplayToEdit(traceName(target.curve)) + (held.after ? " 아래로 이동" : " 위로 이동"), bounds, false);
+      }} else orderStatus.style.display = "none";
+    }}
+    function endLegendRawDrag(ev) {{
+      var held = legendRawDrag;
+      if (!held || (ev.pointerId != null && ev.pointerId !== held.pointerId)) return;
+      if (ev.cancelable) ev.preventDefault(); ev.stopImmediatePropagation();
+      if (held.moved) moveLegendRawDrag(ev);
+      if (legendRawDrag !== held) return;
+      var legend = gd.querySelector("g.legend");
+      var bounds = legend && (legend.querySelector(".bg") || legend).getBoundingClientRect();
+      var point = legendOrderPoint(ev);
+      clearLegendRawDrag();
+      if (!bounds || point.clientX < bounds.left || point.clientX > bounds.right
+          || point.clientY < bounds.top || point.clientY > bounds.bottom) return;
+      if (!held.moved) {{
+        if (gd._ristHistory) gd._ristHistory.capture();
+        gd._ristHandleEditableLegendClick({{curveNumber: held.curve, ristLegendTap: true}});
+        return;
+      }}
+      if (!held.target || held.target.group === held.group) return;
+      var order = [], seen = {{}};
+      visibleLegendTraceIndexes(true).forEach(function(curve) {{
+        var group = sampleGroupForCurve(curve);
+        if (isSampleCurve(curve) && !seen[group]) {{ order.push(group); seen[group] = true; }}
+      }});
+      if (order.indexOf(held.group) < 0 || order.indexOf(held.target.group) < 0) return;
+      order.splice(order.indexOf(held.group), 1);
+      order.splice(order.indexOf(held.target.group) + (held.after ? 1 : 0), 0, held.group);
+      legendOrderBusy = true;
+      applyLegendRawOrder(order).then(function(ok) {{
+        legendOrderBusy = false;
+        showOrderStatus(ok ? "Raw 순서를 변경했습니다." : "순서 변경에 실패했습니다. 다시 시도하세요.", bounds, true);
+      }});
+    }}
+    if (window.PointerEvent) {{
+      gd.addEventListener("pointerdown", startLegendRawDrag, true);
+      document.addEventListener("pointermove", moveLegendRawDrag, {{capture: true, passive: false}});
+      document.addEventListener("pointerup", endLegendRawDrag, true);
+      document.addEventListener("pointercancel", clearLegendRawDrag, true);
+    }} else {{
+      gd.addEventListener("mousedown", startLegendRawDrag, true);
+      document.addEventListener("mousemove", moveLegendRawDrag, true);
+      document.addEventListener("mouseup", endLegendRawDrag, true);
+      gd.addEventListener("touchstart", startLegendRawDrag, true);
+      document.addEventListener("touchmove", moveLegendRawDrag, {{capture: true, passive: false}});
+      document.addEventListener("touchend", endLegendRawDrag, true);
+      document.addEventListener("touchcancel", clearLegendRawDrag, true);
+    }}
+    ["mousedown", "click", "dblclick"].forEach(function(name) {{
+      gd.addEventListener(name, function(ev) {{
+        if ((legendRawDrag || Date.now() < legendRawClickBlockedUntil) && legendItemFor(ev.target)) {{
+          if (ev.cancelable) ev.preventDefault(); ev.stopImmediatePropagation();
+        }}
+      }}, true);
+    }});
+    window.addEventListener("blur", clearLegendRawDrag);
+    document.addEventListener("visibilitychange", function() {{ if (document.hidden) clearLegendRawDrag(); }});
+    document.addEventListener("keydown", function(ev) {{ if (ev.key === "Escape") clearLegendRawDrag(); }}, true);
+    gd.on("plotly_afterplot", clearLegendRawDrag);
+    ["rist-plot-data-replaced", "rist-plot-structure-changed", "rist-history-restored"].forEach(function(name) {{
+      gd.addEventListener(name, clearLegendRawDrag);
+    }});
+    gd.addEventListener("rist-exclusive-interaction-start", function(ev) {{
+      if (!ev.detail || ev.detail.mode !== "legend-raw-order") clearLegendRawDrag();
+    }});
+  }}
 
   function annotationItem(index, node) {{
     if (!directAnnotationEdit || index == null || !Number.isInteger(Number(index))) return null;
@@ -2954,6 +3134,7 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
   // Plotly's drag handler can consume the native dblclick. Its own legend
   // event also lets us cancel the default 'isolate this trace' operation.
   gd._ristHandleEditableLegendDoubleClick = function(ev) {{
+    if (gd._ristLegendClickBlocked()) return false;
     var items = gd.querySelectorAll("g.legend g.traces");
     for (var i = 0; i < items.length; i++) {{
       var picked = legendItemFor(items[i]);
@@ -8164,6 +8345,7 @@ def _plot_edit_history_js(div_id: str) -> str:
   // Route editing through this final listener instead of losing an earlier
   // handler's false when history/peak handlers are installed afterwards.
   gd.on("plotly_legendclick", function(ev) {{
+    if (gd._ristLegendClickBlocked && gd._ristLegendClickBlocked()) return false;
     capture();
     if (gd._ristHandleEditableLegendClick) return gd._ristHandleEditableLegendClick(ev);
   }});
