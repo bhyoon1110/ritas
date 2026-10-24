@@ -8,6 +8,7 @@
     var select = document.getElementById("edit-page"), previous = document.getElementById("edit-previous"), next = document.getElementById("edit-next");
     var state = document.getElementById("page-status"), toggle = document.getElementById("edit-toggle");
     var pages = [], page = 0, imageBase = "", ready = false, shown = true, locked = false, copies = [], active = null, nextPageId = null, canvasMode = false;
+    var sidebar = new window.RistPageSidebar({select:function(index){show(index);},move:function(id,target,after){if(options.onReorder)options.onReorder(id,target,after);}});
     function node(tag, parent, text) { var e = document.createElement(tag); if (text != null) e.textContent = text; parent.appendChild(e); return e; }
     function close() { panel.hidden = true; copies = []; active = null; }
     document.getElementById("inline-close").onclick = close;
@@ -87,6 +88,7 @@
       ready = false; layer.hidden = true;
       image.alt = "PPT " + (page + 1) + "페이지";
       image.src = imageBase + "/" + page;
+      sidebar.select(page);
       if (options.onPage) options.onPage();
     }
     image.onload = function () { ready = true; regions(); };
@@ -107,14 +109,17 @@
         if (found >= 0) page = found;
         if ((!preservePending && nextPageId) || (selectedId && found < 0)) close();
         if (!preservePending) nextPageId = null;
+        sidebar.layout(value,base);
         show(page, true);
         if (options.onLayout) options.onLayout(value);
       },
       current:function () { return pages[page] || null; },
       canvasMode:function (value) { canvasMode=value;if(value)close();regions(); },
       count:function () { return pages.length; },
+      pageIds:function () { return pages.map(function(item){return item.id;}); },
+      sidebarLock:function (blocked,sending) { sidebar.lock(blocked,sending); },
       selectOnNext:function (id) { nextPageId = id; close(); },
-      loading:function () { layer.hidden = true; state.textContent = "PPT 편집 영역을 불러오는 중입니다."; },
+      loading:function () { sidebar.loading();layer.hidden = true; state.textContent = "PPT 편집 영역을 불러오는 중입니다."; },
       error:function (message) { layer.hidden = true; state.textContent = message; },
       sync:function () {
         copies.forEach(function (copy) { if (document.activeElement !== copy.input) copy.input.value = copy.source.value; });

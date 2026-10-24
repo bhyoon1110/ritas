@@ -1,13 +1,13 @@
 const {test}=require('node:test'), assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
 const {JSDOM}=require('jsdom'),acorn=require('acorn');
-const script=fs.readFileSync(path.join(__dirname,'../app/report_canvas_editor.js'),'utf8');
+const script=['report_editor_icons.js','report_canvas_editor.js'].map(name=>fs.readFileSync(path.join(__dirname,'../app',name),'utf8')).join('\n');
 function setup(t){
   const dom=new JSDOM('<div id="canvas-tools"></div><div><div id="slide-stage"><div id="canvas-layer"></div></div></div>',{runScripts:'outside-only'});
   t.after(()=>dom.window.close());const w=dom.window,d=w.document;w.eval(script);let changes=0,modes=[];
   const api=new w.RistCanvasEditor({changed(){changes++;},message(){},mode(v){modes.push(v);},upload(f,done){done(null,{asset:'a'.repeat(64),width:120,height:60});}});
   const item={id:'shape-'+'a'.repeat(20),kind:'text',name:'원래 본문',text:'기존 분석 내용',x:.1,y:.2,w:.5,h:.2,fontSize:18,color:'#123456',fill:'none',stroke:'none',lineWidth:1,bold:false,align:'left',dash:'solid'};
   api.load({});api.layout({canvasEditing:true,ratio:16/9});api.page({id:'page1',objects:[item]});
-  const button=text=>[...d.querySelectorAll('button')].find(b=>b.textContent===text),field=label=>d.querySelector('[aria-label="개체 '+label+'"]');
+  const button=text=>[...d.querySelectorAll('button')].find(b=>b.getAttribute('aria-label')===text),field=label=>d.querySelector('[aria-label="개체 '+label+'"]');
   const set=(label,value)=>{const e=field(label);e.value=value;e.dispatchEvent(new w.Event(e.tagName==='TEXTAREA'?'input':'change',{bubbles:true}));};
   button('자유 편집 켜기').click();return {w,d,api,button,field,set,item,changes:()=>changes,modes};
 }
@@ -23,6 +23,12 @@ test('ES5 canvas inserts text/shapes/lines, edits numeric geometry and styles, u
   h.button('선 삽입').click();h.set('선 종류','dashDot');h.set('선 굵기 (pt)','3');
   value=h.api.value().page1[1];assert.equal(value.kind,'line');assert.equal(value.dash,'dashDot');assert.equal(value.lineWidth,3);
   h.button('맨 뒤로').click();assert.equal(h.api.value().page1[1].layer,'back');
+});
+test('every free-edit command is an accessible local SVG icon with a tooltip',t=>{
+  const h=setup(t),buttons=[...h.d.querySelectorAll('#canvas-tools button')];
+  assert.equal(buttons.length,12);
+  for(const b of buttons){assert(b.querySelector('svg[aria-hidden="true"]'));assert(b.title);assert.equal(b.getAttribute('aria-label'),b.title);assert.equal(b.textContent,'');}
+  assert.equal(h.d.querySelectorAll('.canvas-tool-group').length,3);
 });
 test('existing text moves/resizes only on release, blur cancels and input history stays local',t=>{
   const h=setup(t),stage=h.d.getElementById('slide-stage');stage.getBoundingClientRect=()=>({width:1000,height:500});

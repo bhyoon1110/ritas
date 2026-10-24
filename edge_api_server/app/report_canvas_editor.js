@@ -11,7 +11,7 @@
     } catch (_) {}
     function copy(value) { return JSON.parse(JSON.stringify(value)); }
     function el(tag,parent,text) { var node=document.createElement(tag);if(text!=null)node.textContent=text;if(parent)parent.appendChild(node);return node; }
-    function button(parent,text,fn) { var b=el("button",parent,text);b.type="button";b.onclick=fn;controls.push(b);return b; }
+    function button(parent,text,fn,icon) { var b=el("button",parent);b.type="button";b.onclick=fn;controls.push(b);return window.RistReportIcons(b,icon||"edit",text); }
     function begin() { snapshot=copy(state); }
     function finish() {
       if (JSON.stringify(snapshot)===JSON.stringify(state)) return;
@@ -110,13 +110,15 @@
     function history(from,to) {if(locked||loading||!from.length)return;to.push(copy(state));state=from.pop();selected=null;options.changed();draw();}
     var bar=el("div",host);bar.className="actions";
     modeButton=button(bar,"자유 편집 켜기",function(){
-      enabled=!enabled;modeButton.textContent=enabled?"자유 편집 끄기":"자유 편집 켜기";
+      enabled=!enabled;window.RistReportIcons(modeButton,"edit",enabled?"자유 편집 끄기":"자유 편집 켜기");
       modeButton.setAttribute("aria-pressed",String(enabled));options.mode(enabled);draw();
     });modeButton.id="canvas-toggle";modeButton.setAttribute("aria-pressed","false");
     var body=el("div",host);body.id="canvas-controls";body.hidden=true;
-    var actions=el("div",body);actions.className="actions";
-    [["text","글자 삽입"],["rect","사각형 삽입"],["ellipse","타원 삽입"],["line","선 삽입"]].forEach(function(v){button(actions,v[1],function(){add(v[0]);});});
-    button(actions,"이미지 삽입 / 교체",function(){document.getElementById("canvas-file").click();});
+    var actions=el("div",body);actions.className="actions";actions.setAttribute("role","group");actions.setAttribute("aria-label","PPT 자유편집 도구");
+    function group(label){var g=el("div",actions);g.className="canvas-tool-group";g.setAttribute("role","group");g.setAttribute("aria-label",label);return g;}
+    var insertTools=group("글자·도형·이미지 삽입"),historyTools=group("실행 취소·다시 실행"),objectTools=group("개체 관리");
+    [["text","글자 삽입"],["rect","사각형 삽입"],["ellipse","타원 삽입"],["line","선 삽입"]].forEach(function(v){button(insertTools,v[1],function(){add(v[0]);},v[0]);});
+    button(insertTools,"이미지 삽입 / 교체",function(){document.getElementById("canvas-file").click();},"image");
     var file=el("input",body);file.id="canvas-file";file.type="file";file.accept="image/png,image/jpeg,image/webp";file.hidden=true;
     file.onchange=function(){
       var chosen=file.files&&file.files[0], target=current(),pageId=page&&page.id;file.value="";
@@ -134,12 +136,12 @@
         patch({asset:result.asset});finish();draw();
       });
     };
-    undoButton=button(actions,"개체 실행 취소",function(){history(undo,redo);});
-    redoButton=button(actions,"개체 다시 실행",function(){history(redo,undo);});
-    button(actions,"개체 삭제",remove);
-    button(actions,"맨 앞으로",function(){if(current()){begin();patch({layer:"front"});finish();draw();}});
-    button(actions,"맨 뒤로",function(){if(current()){begin();patch({layer:"back"});finish();draw();}});
-    button(actions,"이 페이지 개체 편집 초기화",function(){if(page&&window.confirm("이 페이지의 개체 편집만 초기화할까요? 추가한 개체도 제거됩니다.")){begin();delete state[page.id];selected=null;finish();draw();}});
+    undoButton=button(historyTools,"개체 실행 취소",function(){history(undo,redo);},"undo");
+    redoButton=button(historyTools,"개체 다시 실행",function(){history(redo,undo);},"redo");
+    button(objectTools,"개체 삭제",remove,"trash");
+    button(objectTools,"맨 앞으로",function(){if(current()){begin();patch({layer:"front"});finish();draw();}},"front");
+    button(objectTools,"맨 뒤로",function(){if(current()){begin();patch({layer:"back"});finish();draw();}},"back");
+    button(objectTools,"이 페이지 개체 편집 초기화",function(){if(page&&window.confirm("이 페이지의 개체 편집만 초기화할까요? 추가한 개체도 제거됩니다.")){begin();delete state[page.id];selected=null;finish();draw();}},"reset");
     el("p",body,"개체를 끌어 이동하고 오른쪽 아래 ↘로 크기를 조절하세요. 드래그 중에는 테두리로 표시하며 놓은 뒤 PPT를 갱신합니다. 자유 편집의 글자 수정은 이 페이지에만 적용되며 공통 정보·분석값은 바꾸지 않습니다. 배경·로고는 고정됩니다.").className="muted";
     list=el("select",body);list.setAttribute("aria-label","페이지 개체 선택");list.onchange=function(){select(list.value);};
     props=el("div",stage.parentNode);props.className="canvas-properties";props.hidden=true;

@@ -43,6 +43,21 @@ def compose(document, base):
                            editing={"kind": "added", "pageId": item["id"]})
         anchor = next((i for i, page in enumerate(slides) if page["pageId"] == item["after"]), len(slides) - 1)
         slides.insert(anchor + 1, payload)
+    order = edits.get("order") or []
+    if order:
+        by_id = {slide["pageId"]: slide for slide in slides}
+        arranged = [by_id[page_id] for page_id in order if page_id in by_id]
+        placed = {slide["pageId"] for slide in arranged}
+        # New pagination follows its natural predecessor without resetting the
+        # order of known pages. Missing/hidden stable IDs can later reappear.
+        predecessor = None
+        for slide in slides:
+            if slide["pageId"] not in placed:
+                index = next((i + 1 for i, p in enumerate(arranged) if p["pageId"] == predecessor), 0)
+                arranged.insert(index, slide)
+                placed.add(slide["pageId"])
+            predecessor = slide["pageId"]
+        slides = arranged
     # Keep hidden anchor pages until after insertion so additions retain their
     # position even when their predecessor is subsequently removed.
     slides = [slide for slide in slides if slide["pageId"] not in hidden]
@@ -72,4 +87,8 @@ def validate(document, previous):
     allowed.update((previous.page_edits or {}).get("hidden", []))
     if len(set(hidden)) != len(hidden) or set(hidden) - allowed:
         raise ValueError("삭제할 페이지가 현재 보고서에 없습니다. 미리보기를 다시 불러오세요.")
+    order = edits.get("order") or []
+    allowed.update((previous.page_edits or {}).get("order", []))
+    if len(set(order)) != len(order) or set(order) - allowed:
+        raise ValueError("페이지 순서에 중복되거나 알 수 없는 페이지가 있습니다. 미리보기를 다시 불러오세요.")
     compose(document, base)

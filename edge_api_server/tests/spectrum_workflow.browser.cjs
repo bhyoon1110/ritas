@@ -135,6 +135,8 @@ const raw = Buffer.from(Array.from({length:241}, (_, i) => {
         await editor.locator('#page-delete').click();await pagesSaved();
         await editor.locator('#canvas-toggle').click();
         console.log(kind+': free object editor enabled');
+        assert.equal(await editor.locator('#canvas-tools button svg').count(),12);
+        assert.equal(await editor.locator('#canvas-tools button').evaluateAll(buttons=>buttons.every(b=>!b.textContent.trim()&&b.title&&b.getAttribute('aria-label')===b.title)),true);
         await editor.getByRole('button',{name:'글자 삽입',exact:true}).click();
         await editor.getByLabel('개체 내용',{exact:true}).fill('자유 편집으로 추가한 검토 의견');
         await editor.getByLabel('개체 글자 크기 (pt)',{exact:true}).fill('24');
@@ -176,6 +178,24 @@ const raw = Buffer.from(Array.from({length:241}, (_, i) => {
         await editor.locator('.preview-pane').screenshot({path:path.join(output,kind+'-canvas-controls.png')});
         await editor.locator('#canvas-toggle').click();
         await editor.locator('#slide-image').screenshot({path:path.join(output,kind+'-canvas.png')});
+        // Real HTML drag-and-drop changes the saved page order, not just thumbnails.
+        const added=editor.locator('.page-thumb[data-page-id^="added-"]').first();
+        const addedId=await added.getAttribute('data-page-id');
+        await added.scrollIntoViewIfNeeded();
+        await added.dragTo(editor.locator('.page-thumb').first(),{targetPosition:{x:35,y:8}});
+        await pagesSaved();
+        assert.equal(await editor.locator('.page-thumb').first().getAttribute('data-page-id'),addedId);
+        assert.equal(await editor.locator('.page-thumb[aria-current="page"]').getAttribute('data-page-id'),addedId);
+        await editor.locator('#page-down').click();await pagesSaved();
+        await editor.locator('.page-thumb[aria-current="page"]').focus();
+        await page.keyboard.press('Alt+ArrowUp');await pagesSaved();
+        const orderedIds=await editor.locator('.page-thumb').evaluateAll(buttons=>buttons.map(b=>b.dataset.pageId));
+        assert.equal(orderedIds[0],addedId);
+        const editorDataUrl=origin+(await page.locator('#sw-report-editor').evaluate(f=>f.contentWindow.location.pathname)).replace(/\/edit$/,'/editor-data');
+        const orderedDocument=(await (await page.request.get(editorDataUrl)).json()).document;
+        assert.deepEqual(orderedDocument.pageEdits.order.filter(id=>orderedIds.includes(id)),orderedIds);
+        await editor.locator('#slide-image').evaluate(img=>new Promise(resolve=>{if(img.complete&&img.naturalWidth)resolve();else img.addEventListener('load',resolve,{once:true});}));
+        await editor.locator('.preview-pane').screenshot({path:path.join(output,kind+'-page-sidebar.png')});
         const finalPageCount=await editor.locator('#edit-page option').count();
         const revisedUrl=await page.locator('#sw-report-editor').evaluate(f=>f.contentWindow.location.pathname);
         assert.notEqual(revisedUrl,originalUrl.split('?')[0]);
@@ -214,6 +234,8 @@ with pdfplumber.open(io.BytesIO(z.read('report.pdf'))) as pdf:
  assert len(pdf.pages)==int(sys.argv[3])
  texts=[p.extract_text() or '' for p in pdf.pages]
  assert any('직접 수정한 검토' in text for text in texts), texts
+ assert '직접 수정한 검토' in texts[0], texts[0]
+assert '직접 수정한 검토' in ''.join(E.fromstring(ppt.read('ppt/slides/slide1.xml')).itertext())
 assert len([n for n in ppt.namelist() if n.startswith('ppt/slides/slide') and n.endswith('.xml')])==int(sys.argv[3])
 z.extract('report.pdf',sys.argv[2])
 print('Actual report: graph sizes, page add/delete/restore, direct text editing, matching PPT/PDF page count verified')`,
@@ -269,6 +291,21 @@ print('Actual report: graph sizes, page add/delete/restore, direct text editing,
         await page.reload();
         await page.waitForFunction(()=>document.getElementById('spectrum-workflow')?.dataset.step==='4'&&!document.getElementById('sw-step-2').disabled);
         assert.equal(await page.locator('#sw-report-editor').getAttribute('src'),revisedUrl+'?workflow=1');
+        await editor.locator('.page-thumb').first().waitFor();
+        assert.deepEqual(await editor.locator('.page-thumb').evaluateAll(buttons=>buttons.map(b=>b.dataset.pageId)),orderedIds);
+        for(const width of [390,320]){
+          await page.setViewportSize({width,height:844});
+          // Reload the iframe so a narrow device starts with the drawer closed.
+          await page.locator('#sw-report-editor').evaluate(f=>f.contentWindow.location.reload());
+          await editor.locator('#page-sidebar-toggle').waitFor();
+          assert.equal(await editor.locator('#page-sidebar').isVisible(),false);
+          await editor.locator('#page-sidebar-toggle').click();
+          assert.equal(await editor.locator('#page-sidebar').isVisible(),true);
+          await page.screenshot({path:path.join(output,kind+'-page-sidebar-'+width+'.png')});
+          await editor.locator('#page-sidebar-close').click();
+          assert.equal(await editor.locator('#page-sidebar').isVisible(),false);
+          assert.equal(await page.locator('#sw-report-editor').evaluate(f=>f.contentDocument.documentElement.scrollWidth<=f.contentWindow.innerWidth+1),true);
+        }
         await page.locator('#sw-step-2').click(); assert.equal(await page.locator('.sw-card').count(),2);
         await page.setViewportSize({width:390,height:844});
         await page.waitForTimeout(500);

@@ -6,7 +6,7 @@ const {JSDOM}=require('jsdom');
 const acorn=require('acorn');
 const {execFileSync}=require('node:child_process');
 const clone=x=>JSON.parse(JSON.stringify(x));
-const script=['report_direct_editor.js','report_canvas_editor.js','report_editor.js'].map(name=>fs.readFileSync(path.join(__dirname,'../app',name),'utf8')).join('\n');
+const script=['report_editor_icons.js','report_page_sidebar.js','report_direct_editor.js','report_canvas_editor.js','report_editor.js'].map(name=>fs.readFileSync(path.join(__dirname,'../app',name),'utf8')).join('\n');
 const template=fs.readFileSync(path.join(__dirname,'../app/report_editor.html'),'utf8');
 function setup(t,kind='ftir',identity='') {
   const prefix='/api/v1/'+kind+'/report/jobs',posts=[],gets=[],timers=new Map(); let timerId=0;
@@ -34,6 +34,7 @@ function setup(t,kind='ftir',identity='') {
         const edits=doc.pageEdits||{added:[],hidden:[]};
         for(const item of edits.added) pages.splice(pages.findIndex(p=>p.id===item.after)+1,0,{id:item.id,title:item.title,
           regions:[{refs:['page/'+item.id+'/title'],x:.1,y:.1,w:.8,h:.1},{refs:['page/'+item.id+'/body'],x:.1,y:.3,w:.8,h:.5}]});
+        if(edits.order&&edits.order.length)pages.sort((a,b)=>edits.order.indexOf(a.id)-edits.order.indexOf(b.id));
         result={ratio:16/9,pageEditing:kind!=='tem',pages:pages.filter(p=>!edits.hidden.includes(p.id))};
       }
       else if(this.url.endsWith('/revisions')) {
@@ -193,6 +194,30 @@ test('last page cannot be deleted; unsaved deletion can be undone without render
   h.q('page-delete').click();h.q('page-restore').click();assert.equal(h.timers.size,0);assert(!h.q('page-delete').disabled);
   h.q('page-delete').click();h.tick();h.q('page-delete').click();h.tick();
   assert.equal(h.q('edit-page').options.length,1);assert(h.q('page-delete').disabled);assert(!h.q('page-add').disabled);
+});
+for(const kind of ['ftir','raman'])test(kind+' sidebar moves by controls and keyboard, preserves IDs, edits and restore order',t=>{
+  const h=setup(t,kind),ids=()=>[...h.d.querySelectorAll('.page-thumb')].map(b=>b.dataset.pageId);
+  assert.deepEqual(ids(),['cover','summary','conditions']);assert(!h.q('page-sidebar').hidden);assert(h.q('page-up').disabled);
+  h.q('page-down').click();assert(h.q('page-down').disabled);assert(h.q('send').disabled);h.tick();
+  assert.deepEqual(ids(),['summary','cover','conditions']);assert.equal(h.q('edit-page').value,'1');
+  assert.deepEqual(h.posts[0].body.pageEdits.order,ids());
+  h.d.querySelector('.page-thumb[data-page-id="cover"]').dispatchEvent(new h.w.KeyboardEvent('keydown',{keyCode:40,altKey:true,bubbles:true}));h.tick();
+  assert.deepEqual(ids(),['summary','conditions','cover']);assert.equal(h.q('edit-page').value,'2');
+  h.q('page-add').click();h.input('추가 페이지 제목','마지막 검토');h.tick();
+  const added=ids()[3];assert(added.startsWith('added-'));assert.equal(h.q('edit-page').value,'3');
+  h.q('page-up').click();h.tick();assert.deepEqual(ids(),['summary','conditions',added,'cover']);
+  h.w.confirm=()=>true;h.q('page-delete').click();h.tick();assert.deepEqual(ids(),['summary','conditions','cover']);
+  h.q('page-restore').click();h.tick();assert.deepEqual(ids(),['summary','conditions',added,'cover']);
+  assert.equal(h.q('edit-page').value,'2');assert.equal(h.field('추가 페이지 제목').value,'마지막 검토');
+  h.input('보고서 제목','순서 유지');h.tick();assert.deepEqual(ids(),['summary','conditions',added,'cover']);
+  assert.equal(h.field('분석 결과 요약 · 문단 1').value,'AI 초안');
+  h.q('page-sidebar-close').click();assert(h.q('page-sidebar').hidden);h.q('page-sidebar-toggle').click();assert(!h.q('page-sidebar').hidden);
+});
+test('sidebar failure retains pending order and reload cannot unlock stale structural controls',t=>{
+  const h=setup(t);h.fail();h.q('page-down').click();h.tick();
+  assert(h.q('page-up').disabled);assert(h.q('page-down').disabled);assert(h.q('send').disabled);
+  assert.deepEqual(h.posts[0].body.pageEdits.order,['summary','cover','conditions']);
+  h.q('reload-preview').click();assert(h.q('page-down').disabled);
 });
 test('TEM shared editor does not expose unsupported page operations',t=>{
   const h=setup(t,'tem');assert(h.q('page-actions').hidden);assert(h.q('page-add').disabled);

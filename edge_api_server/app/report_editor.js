@@ -31,6 +31,7 @@
     shared:function (ref) { return !!(refs[ref] && refs[ref].getAttribute("data-common")); },
     canInsert:function (input) { return input !== inputs.completionDate && !Object.keys(labels).some(function (key) { return input === inputs[key]; }); },
     onPage:function () { pageAvailability();if(canvas)canvas.page(direct.current()); },
+    onReorder:reorderPages,
     onLayout:function (value) {
       pageEditing = value.pageEditing === true && project !== "TEM";
       document.getElementById("page-actions").hidden = !pageEditing;
@@ -113,14 +114,39 @@
   function bind(ref, input) { refs[ref] = input; return input; }
   function structure(value) {
     value = value || {hidden:[],added:[]};
-    return JSON.stringify({hidden:value.hidden,added:value.added.map(function (item) { return {id:item.id,after:item.after}; })});
+    return JSON.stringify({hidden:value.hidden,order:value.order||[],added:value.added.map(function (item) { return {id:item.id,after:item.after}; })});
   }
   function pageAvailability() {
     var blocked = !pageEditing || !layoutReady || busy || sending || !!activeRevision || structureDirty || !direct || !direct.current();
     document.getElementById("page-add").disabled = blocked || pageFields.length >= 50 || direct.count() >= 200;
     document.getElementById("page-delete").disabled = blocked || direct.count() <= 1;
     document.getElementById("page-restore").disabled = !pageEditing || busy || sending || !!activeRevision || !pageEdits.hidden.length;
+    var index=direct&&direct.current()?direct.pageIds().indexOf(direct.current().id):-1;
+    document.getElementById("page-up").disabled=blocked||index<=0;
+    document.getElementById("page-down").disabled=blocked||index<0||index>=direct.count()-1;
+    if(direct)direct.sidebarLock(blocked,sending);
   }
+  [["page-add","add","페이지 추가"],["page-delete","trash","현재 페이지 삭제"],["page-restore","undo","최근 삭제 취소"],["page-up","up","페이지 위로"],["page-down","down","페이지 아래로"]].forEach(function(item){window.RistReportIcons(document.getElementById(item[0]),item[1],item[2]);});
+  function ensurePageOrder() {
+    var order=(pageEdits.order||[]).slice(),previous=null;
+    direct.pageIds().forEach(function(id){
+      if(order.indexOf(id)<0)order.splice(previous?order.indexOf(previous)+1:0,0,id);
+      previous=id;
+    });
+    pageEdits.order=order;return order;
+  }
+  function reorderPages(id,target,after) {
+    if(!pageEditing||!layoutReady||busy||sending||activeRevision||structureDirty||id===target)return;
+    var visible=direct.pageIds();if(visible.indexOf(id)<0||visible.indexOf(target)<0)return;
+    var prior=pageEdits.order,order=ensurePageOrder(),before=order.join("|");order.splice(order.indexOf(id),1);
+    order.splice(order.indexOf(target)+(after?1:0),0,id);
+    if(before===order.join("|")){pageEdits.order=prior;return;}
+    direct.selectOnNext(id);pageChanged();
+  }
+  ["page-up","page-down"].forEach(function(id,index){document.getElementById(id).onclick=function(){
+    if(this.disabled)return;var ids=direct.pageIds(),at=ids.indexOf(direct.current().id),delta=index?1:-1;
+    reorderPages(ids[at],ids[at+delta],delta>0);
+  };});
   function pageRow(item, open) {
     var block = element("details",pageBox); block.open = !!open;
     var summary = element("summary",block,item.title || "추가 페이지");
@@ -140,6 +166,7 @@
   document.getElementById("page-add").onclick = function () {
     if (this.disabled) return;
     var id = "added-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2,10);
+    var order=ensurePageOrder();order.splice(order.indexOf(direct.current().id)+1,0,id);
     var title = pageRow({id:id,after:direct.current().id,title:"추가 페이지",body:""},true);
     direct.selectOnNext(id); pageChanged(); title.focus();
   };
@@ -147,6 +174,7 @@
     if (this.disabled) return;
     var page = direct.current();
     if (!window.confirm("‘" + page.title + "’ 페이지를 수정본에서 삭제할까요? 원본과 분석 데이터는 보존됩니다.")) return;
+    if(pageEdits.order&&pageEdits.order.length)ensurePageOrder();
     pageEdits.hidden.push(page.id); direct.selectOnNext(page.id); pageChanged();
   };
   document.getElementById("page-restore").onclick = function () {
@@ -347,7 +375,7 @@
         rows:section.rows && section.rows.map(function (row) { return row.map(function (e) { return e.value; }); })});
     });
     Object.keys(auxiliary).forEach(function (key) { result.auxiliary[key] = auxiliary[key].value; });
-    if (project !== "TEM") result.pageEdits = {hidden:pageEdits.hidden.slice(),added:pageFields.map(function (item) {
+    if (project !== "TEM") result.pageEdits = {hidden:pageEdits.hidden.slice(),order:(pageEdits.order||[]).slice(),added:pageFields.map(function (item) {
       return {id:item.id,after:item.after,title:item.title.value,body:item.body.value};
     })};
     if(canvas)result.canvasEdits=canvas.value();

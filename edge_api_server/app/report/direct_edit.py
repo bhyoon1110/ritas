@@ -106,16 +106,16 @@ def edit_pages(document, pptx_path):
 
 
 @lru_cache(maxsize=8)
-def slide_image(pdf_path: str, mtime: int, page: int) -> bytes:
+def slide_image(pdf_path: str, mtime: int, page: int, thumbnail: bool = False) -> bytes:
     """Decode only the requested page; at most eight JPEGs cached across jobs."""
     with _PDF_RENDER_LOCK, pdfplumber.open(Path(pdf_path)) as pdf:
         if page < 0 or page >= len(pdf.pages):
             raise IndexError(page)
-        rendered = pdf.pages[page].to_image(width=1280, antialias=True)
+        rendered = pdf.pages[page].to_image(width=240 if thumbnail else 1280, antialias=True)
         image = rendered.original.convert("RGB")
         try:
             output = BytesIO()
-            image.save(output, format="JPEG", quality=86)
+            image.save(output, format="JPEG", quality=72 if thumbnail else 86)
             return output.getvalue()
         finally:
             image.close()

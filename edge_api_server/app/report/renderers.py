@@ -1232,7 +1232,7 @@ def _pptx_slide_payloads(document: ReportDocument) -> list[dict[str, object]]:
     base = _pptx_base_slide_payloads(document)
     # Do not impose the interactive editor's page limit on existing batch
     # report generation when no slide inclusion changes were requested.
-    if not any(document.page_edits.get(key) for key in ("hidden", "added")):
+    if not any(document.page_edits.get(key) for key in ("hidden", "added", "order")):
         return apply(document, identify(base))
     return apply(document, compose(document, base))
 

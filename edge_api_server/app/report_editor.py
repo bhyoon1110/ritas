@@ -54,6 +54,7 @@ class PageEdits(BaseModel):
     model_config = ConfigDict(extra="forbid")
     hidden: list[str] = Field(default_factory=list, max_length=400)
     added: list[AddedPage] = Field(default_factory=list, max_length=50)
+    order: list[str] | None = Field(default=None, max_length=400)
 
 
 class ReportEdit(BaseModel):
@@ -107,6 +108,11 @@ def _validate_changes(changes, document):
                                  for key,items in values["canvasEdits"].items()}
     if values["pageEdits"] is None:
         values["pageEdits"] = deepcopy(document.page_edits or {"hidden": [], "added": []})
+    elif values["pageEdits"]["order"] is None:
+        # Older clients know only inclusion/additions; never discard an author's order.
+        values["pageEdits"].pop("order")
+        if "order" in document.page_edits:
+            values["pageEdits"]["order"] = deepcopy(document.page_edits["order"])
     if values["completionDate"] is None:
         values["completionDate"] = document.completion_date or ""
     if set(values["transfer"]) != set(TRANSFER_FIELDS):
@@ -200,7 +206,7 @@ def _write_revision(store, new_job, old_job, changes, project, settings, databas
         reports.render_report_formats(document, report_dir, ["PPTX", "PDF", "HTML"],
                                       pdf_font_path=reports._preview_pdf_font_path(settings))
         reports.convert_pptx_to_pdf(report_dir / "report.pptx", report_dir / "report-from-pptx.pdf")
-        if document.canvas_edits or any(document.page_edits.get(key) for key in ("hidden", "added")):
+        if document.canvas_edits or any(document.page_edits.get(key) for key in ("hidden", "added", "order")):
             # Once the analyst edits the deck, both downloadable PDFs must use
             # that exact page list rather than the automatic prose summary.
             shutil.copyfile(report_dir / "report-from-pptx.pdf", report_dir / "report.pdf")
@@ -231,7 +237,7 @@ def editor_page(prefix, job_id, *, project=None):
     config = json.dumps({"prefix": prefix, "jobId": job_id, "project": project}, ensure_ascii=False).replace("<", "\\u003c")
     template = Path(__file__).with_name("report_editor.html").read_text(encoding="utf-8")
     script = "\n".join(Path(__file__).with_name(name).read_text(encoding="utf-8")
-                       for name in ("report_direct_editor.js", "report_canvas_editor.js", "report_editor.js"))
+                       for name in ("report_editor_icons.js", "report_page_sidebar.js", "report_direct_editor.js", "report_canvas_editor.js", "report_editor.js"))
     return template.replace("__CONFIG__", config).replace("__SCRIPT__", script)
 
 
@@ -278,7 +284,7 @@ def install_report_editor(router, kind):
         return JSONResponse(value, headers={"Cache-Control": "no-store"})
 
     @router.get(prefix + "/{job_id}/edit-slides/{page}", tags=[kind])
-    def slide(request: Request, job_id: str, page: int):
+    def slide(request: Request, job_id: str, page: int, thumbnail: bool = False):
         job = _authorized_job(request, job_id, kind)
         pdf = job.tmp_root / "job/report/report-from-pptx.pdf"
         if not pdf.is_file():
@@ -286,7 +292,7 @@ def install_report_editor(router, kind):
         try:
             if page < 0 or page >= 200:
                 raise IndexError(page)
-            content = slide_image(str(pdf), pdf.stat().st_mtime_ns, page)
+            content = slide_image(str(pdf), pdf.stat().st_mtime_ns, page, thumbnail=thumbnail)
         except IndexError as exc:
             raise ApiException(404, "REPORT_PAGE_NOT_FOUND", "보고서 페이지를 찾을 수 없습니다.") from exc
         return Response(content, media_type="image/jpeg", headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"})
