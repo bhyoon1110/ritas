@@ -18,6 +18,8 @@ def build_report_package(
     archived_names: set[str] = set()
     with zipfile.ZipFile(package_path, "w", zipfile.ZIP_DEFLATED) as archive:
         for path in sorted(report_dir.rglob("*")):
+            if "editor-assets" in path.relative_to(report_dir).parts:
+                continue  # Author uploads (including unused images) are not recipient attachments.
             if not path.is_file() or path == package_path:
                 continue
             if path.suffix.lower() in _INTERNAL_REPORT_SUFFIXES:

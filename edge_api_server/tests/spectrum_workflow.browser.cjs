@@ -100,7 +100,7 @@ const raw = Buffer.from(Array.from({length:241}, (_, i) => {
         await page.waitForFunction(()=>{const f=document.getElementById('sw-report-editor');return f.src.includes('/edit?workflow=1')&&!f.hidden;},null,{timeout:180000});
         let editor=page.frameLocator('#sw-report-editor');
         await editor.locator('#edit-page option').first().waitFor({state:'attached',timeout:120000});
-        await editor.locator('#slide-image').evaluate(img => new Promise((resolve,reject)=>{if(img.complete&&img.naturalWidth)resolve();else{img.onload=resolve;img.onerror=reject;}}));
+        await editor.locator('#slide-image').evaluate(img => new Promise((resolve,reject)=>{if(img.complete&&img.naturalWidth)resolve();else{img.addEventListener('load',resolve,{once:true});img.addEventListener('error',reject,{once:true});}}));
         const originalUrl=await page.locator('#sw-report-editor').getAttribute('src');
         assert.equal(await editor.locator('#send').isVisible(),false);
         await page.screenshot({path:path.join(output,kind+'-report-edit.png'),fullPage:true});
@@ -108,7 +108,8 @@ const raw = Buffer.from(Array.from({length:241}, (_, i) => {
         await page.waitForFunction(()=>{const f=document.getElementById('sw-report-editor');return f.contentDocument.getElementById('status').textContent.includes('자동 저장 완료');},null,{timeout:180000});
         async function pagesSaved() {
           await page.waitForFunction(()=>{const d=document.getElementById('sw-report-editor').contentDocument;
-            return d.getElementById('status').textContent.includes('자동 저장 완료')&&!d.getElementById('page-add').disabled;},null,{timeout:180000});
+            return d.getElementById('status').classList.contains('error')||d.getElementById('status').textContent.includes('자동 저장 완료')&&!d.getElementById('page-add').disabled;},null,{timeout:180000});
+          assert(!(await editor.locator('#status').getAttribute('class')).includes('error'),await editor.locator('#status').textContent());
         }
         await pagesSaved();
         const originalPageCount=await editor.locator('#edit-page option').count();
@@ -132,6 +133,49 @@ const raw = Buffer.from(Array.from({length:241}, (_, i) => {
         await editor.locator('#page-restore').click();await pagesSaved();
         assert.equal(await editor.locator('#edit-page option').count(),originalPageCount+1);
         await editor.locator('#page-delete').click();await pagesSaved();
+        await editor.locator('#canvas-toggle').click();
+        console.log(kind+': free object editor enabled');
+        await editor.getByRole('button',{name:'글자 삽입',exact:true}).click();
+        await editor.getByLabel('개체 내용',{exact:true}).fill('자유 편집으로 추가한 검토 의견');
+        await editor.getByLabel('개체 글자 크기 (pt)',{exact:true}).fill('24');
+        await editor.getByLabel('개체 글자 크기 (pt)',{exact:true}).dispatchEvent('change');
+        await pagesSaved();
+        // Drag an existing native object, then resize by its handle.
+        let object=editor.locator('.canvas-object.selected');await object.scrollIntoViewIfNeeded();
+        let rect=await object.boundingBox();await page.mouse.move(rect.x+20,rect.y+20);await page.mouse.down();await page.mouse.move(rect.x+55,rect.y+45,{steps:5});await page.mouse.up();await pagesSaved();
+        const priorWidth=Number(await editor.getByLabel('개체 너비 (%)',{exact:true}).inputValue());
+        await editor.locator('.canvas-resize').scrollIntoViewIfNeeded();
+        let canvasHandle=await editor.locator('.canvas-resize').boundingBox();
+        await page.mouse.move(canvasHandle.x+10,canvasHandle.y+10);await page.mouse.down();await page.mouse.move(canvasHandle.x+70,canvasHandle.y+30,{steps:5});await page.mouse.up();await pagesSaved();
+        assert(Number(await editor.getByLabel('개체 너비 (%)',{exact:true}).inputValue())>priorWidth);
+        async function geometry(x,y,w,h){
+          for(const [label,value] of [['너비 (%)',w],['높이 (%)',h],['왼쪽 (%)',x],['위 (%)',y]]){
+            const input=editor.getByLabel('개체 '+label,{exact:true});await input.fill(String(value));await input.dispatchEvent('change');
+          }
+        }
+        await geometry(10,55,70,12);await pagesSaved();
+        await editor.getByRole('button',{name:'사각형 삽입',exact:true}).click();
+        await editor.getByLabel('개체 채우기 색 (none: 없음)',{exact:true}).fill('#DAEAFE');
+        await editor.getByLabel('개체 채우기 색 (none: 없음)',{exact:true}).dispatchEvent('change');
+        await geometry(8,50,84,22);
+        await editor.getByRole('button',{name:'맨 뒤로',exact:true}).click();
+        await pagesSaved();
+        await editor.getByRole('button',{name:'선 삽입',exact:true}).click();
+        await editor.getByLabel('개체 선 종류',{exact:true}).selectOption('dashDot');
+        await editor.getByLabel('개체 선 굵기 (pt)',{exact:true}).fill('3');await editor.getByLabel('개체 선 굵기 (pt)',{exact:true}).dispatchEvent('change');
+        await geometry(8,77,84,.2);
+        await pagesSaved();
+        await editor.locator('#canvas-file').setInputFiles({name:'test.png',mimeType:'image/png',buffer:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAHgAAAA8CAIAAAAiz+n/AAAAnElEQVR4nO3SQQ0AMAwDsbb8OW8s/DoTiHTKvolwZCWFVno0Umik0EihkUIjhUYKjRQaKTRSaKTQSKGRQiOFRgqNFBopNFJopNBIoZFCI4VGCo0UGik0Umik0EihkUIjhUYKjRQaKTRSaKTQSKGRQiOFRgqNFBopNFJopNBIoZFCI4VGCo0UGik0Umik0EihkUIjhUYKjRQaKfQYH3WpAXcqY4kYAAAAAElFTkSuQmCC','base64')});
+        await pagesSaved();
+        await editor.getByRole('button',{name:'개체 실행 취소',exact:true}).click();await pagesSaved();
+        await editor.getByRole('button',{name:'개체 다시 실행',exact:true}).click();await pagesSaved();
+        await editor.getByLabel('페이지 개체 선택',{exact:true}).selectOption({label:await editor.getByLabel('페이지 개체 선택',{exact:true}).locator('option').last().textContent()});
+        await geometry(70,20,20,17.8);await pagesSaved();
+        const freeState=await page.request.get(origin+(await page.locator('#sw-report-editor').evaluate(f=>f.contentWindow.location.pathname)).replace(/\/edit$/,'/editor-data'));
+        assert(Object.values((await freeState.json()).document.canvasEdits).flat().some(v=>v.kind==='image'));
+        await editor.locator('.preview-pane').screenshot({path:path.join(output,kind+'-canvas-controls.png')});
+        await editor.locator('#canvas-toggle').click();
+        await editor.locator('#slide-image').screenshot({path:path.join(output,kind+'-canvas.png')});
         const finalPageCount=await editor.locator('#edit-page option').count();
         const revisedUrl=await page.locator('#sw-report-editor').evaluate(f=>f.contentWindow.location.pathname);
         assert.notEqual(revisedUrl,originalUrl.split('?')[0]);
@@ -163,6 +207,8 @@ for name in ppt.namelist():
    assert abs(int(ext.get('cx'))/int(ext.get('cy'))-w/h)<1e-6
    found.append(image)
 assert len(found)==2, found
+assert any(n.startswith('ppt/media/canvas-') for n in ppt.namelist())
+assert any(b'prst="line"' in ppt.read(n) and b'val="dashDot"' in ppt.read(n) for n in ppt.namelist() if n.startswith('ppt/slides/slide') and n.endswith('.xml'))
 assert z.read('report.pdf')==z.read('report-from-pptx.pdf')
 with pdfplumber.open(io.BytesIO(z.read('report.pdf'))) as pdf:
  assert len(pdf.pages)==int(sys.argv[3])

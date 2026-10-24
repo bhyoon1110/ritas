@@ -23,18 +23,32 @@
   var save = document.getElementById("save"), send = document.getElementById("send"), download = document.getElementById("download");
   var inputs = {}, sections = [], auxiliary = {};
   var saved = "", timer = null, composing = false, sending = false, activeRevision = null, retries = 0;
-  var refs = {}, variables = [], layoutSequence = 0;
+  var refs = {}, variables = [], layoutSequence = 0, canvas = null;
   var pageEdits = {hidden:[],added:[]}, pageFields = [], pageBox = null, pageEditing = false, structureDirty = false, layoutReady = false, layoutStructure = "";
   var labels = {requestNumber:"의뢰번호",limsExperimentCode:"실험코드",equipmentCode:"실험장비",operatorId:"실험자"};
   var direct = new window.RistDirectEditor({
     field:function (ref) { return refs[ref]; }, variables:variableOptions,
     shared:function (ref) { return !!(refs[ref] && refs[ref].getAttribute("data-common")); },
     canInsert:function (input) { return input !== inputs.completionDate && !Object.keys(labels).some(function (key) { return input === inputs[key]; }); },
-    onPage:pageAvailability,
+    onPage:function () { pageAvailability();if(canvas)canvas.page(direct.current()); },
     onLayout:function (value) {
       pageEditing = value.pageEditing === true && project !== "TEM";
       document.getElementById("page-actions").hidden = !pageEditing;
-      pageAvailability();
+      if(canvas){canvas.layout(value);canvas.page(direct.current());}
+      availability();
+    }
+  });
+  if(window.RistCanvasEditor && project!=="TEM") canvas=new window.RistCanvasEditor({
+    changed:changed,message:message,mode:function(value){direct.canvasMode(value);},
+    upload:function(file,done){
+      if(busy||activeRevision){done(new Error("보고서 저장이 끝난 뒤 이미지를 첨부하세요."));return;}
+      busy=true;window.clearTimeout(timer);availability();message("이미지를 확인하고 업로드하는 중입니다.");
+      var xhr=new XMLHttpRequest();xhr.open("POST",url(currentId,"/editor-images"),true);xhr.timeout=60000;
+      xhr.setRequestHeader("X-Requested-With","RIST-Report-Editor");xhr.setRequestHeader("Content-Type",file.type||"application/octet-stream");
+      function complete(error,value){busy=false;availability();done(error,value);schedule();}
+      xhr.onload=function(){var value;try{value=JSON.parse(xhr.responseText);}catch(_){complete(new Error("이미지 업로드 응답을 확인하세요."));return;}
+        complete(xhr.status>=200&&xhr.status<300?null:new Error((value.error&&value.error.message)||value.message||"이미지 업로드 실패"),value);};
+      xhr.onerror=xhr.ontimeout=function(){complete(new Error("이미지 업로드 연결이 끊겼습니다. 다시 첨부하세요."));};xhr.send(file);
     }
   });
   var lookup = null;
@@ -62,6 +76,7 @@
     Array.prototype.forEach.call(document.querySelectorAll("#editor input,#editor textarea,#mail-editor textarea"),function (input) { input.disabled = sending; });
     if (lookup) lookup.availability();
     direct.lock(sending);
+    if(canvas)canvas.lock(busy||sending||!!activeRevision||structureDirty);
     pageAvailability();
     if (workflow) window.parent.postMessage({type:"rist-workflow-editor-state", jobId:currentId,
       ready:!!model, busy:busy || dirty || !!activeRevision}, window.location.origin);
@@ -247,6 +262,7 @@
   function show(data) {
     model = data.document; editor.textContent = ""; sections = []; auxiliary = {}; inputs = {}; refs = {}; variables = [];
     pageEdits = model.pageEdits || {hidden:[],added:[]}; pageFields = []; structureDirty = false;
+    if(canvas)canvas.load(model.canvasEdits||{});
     var top = element("section", editor); element("h2", top, "공통 정보 / 의뢰 조회");
     inputs.title = bind("title",field(top, "보고서 제목", model.title, false, 200));
     inputs.completionDate = bind("completionDate",field(top,"완료일",model.completionDate,false,10)); inputs.completionDate.type = "date";
@@ -334,11 +350,13 @@
     if (project !== "TEM") result.pageEdits = {hidden:pageEdits.hidden.slice(),added:pageFields.map(function (item) {
       return {id:item.id,after:item.after,title:item.title.value,body:item.body.value};
     })};
+    if(canvas)result.canvasEdits=canvas.value();
     return result;
   }
   function refreshPreview() {
     var seq = ++layoutSequence, id = currentId, savedStructure = structure(JSON.parse(saved).pageEdits);
     layoutReady = false; pageAvailability(); direct.loading();
+    if(canvas)canvas.loading();
     document.getElementById("recipient-preview").href = url(id,"/preview");
     request(url(id,"/edit-layout"),"GET",null,function (error,value) {
       if (seq !== layoutSequence || id !== currentId) return;

@@ -99,8 +99,10 @@ def edit_pages(document, pptx_path):
                           if s.find("p:nvSpPr/p:cNvPr", NS).get("name") in {"Report title", "Slide title"}), "PPT")
             if kind == "traceability": title = "분석 이력 요약"
             if kind == "added" and not title.strip(): title = "제목 없는 페이지"
-            pages.append({"id": payload["pageId"], "title": title, "regions": regions})
-    return {"pages": pages, "ratio": width / height, "pageEditing": True}
+            from .canvas import objects
+            pages.append({"id": payload["pageId"], "title": title, "regions": regions,
+                          "objects": [item for _, item in objects(payload)[1]]})
+    return {"pages": pages, "ratio": width / height, "pageEditing": True, "canvasEditing": True}
 
 
 @lru_cache(maxsize=8)

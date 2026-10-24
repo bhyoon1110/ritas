@@ -258,8 +258,10 @@ def test_editor_owner_project_and_sso(prepared):
     assert h.client.get(h.url+'/editor-data').status_code==403
     assert h.client.get(h.url+'/edit-layout').status_code==403
     assert h.client.get(h.url+'/edit-slides/0').status_code==403
+    assert h.client.post(h.url+'/editor-images',content=b'private',headers={'X-Requested-With':'RIST-Report-Editor'}).status_code==403
     h.app.state.actor=replace(context,user_id='owner',projects=frozenset())
     assert h.client.get(h.url+'/editor-data').status_code==403
+    assert h.client.post(h.url+'/editor-images',content=b'private',headers={'X-Requested-With':'RIST-Report-Editor'}).status_code==403
     h.app.state.actor=replace(context,user_id='owner',sso_identity={'employee_id':'sso-operator'})
     response=h.client.get(h.url+'/editor-data')
     assert response.status_code==200 and response.json()['authenticatedOperatorId']=='sso-operator'

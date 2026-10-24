@@ -96,6 +96,8 @@ class ReportDocument:
     llm_error: str | None = None
     traceability: dict[str, Any] = field(default_factory=dict)
     page_edits: dict[str, Any] = field(default_factory=dict)
+    canvas_edits: dict[str, Any] = field(default_factory=dict)
+    canvas_asset_root: str | None = None  # Server-owned runtime path; never a client field.
 
     def section(self, section_id: str) -> ReportSection | None:
         for section in self.sections:
@@ -152,6 +154,7 @@ class ReportDocument:
             "generatedAt": self.generated_at,
             "traceability": dict(self.traceability),
             "pageEdits": self.page_edits,
+            "canvasEdits": self.canvas_edits,
             "llm": {"used": self.llm_used, "error": self.llm_error},
             "figures": [figure.to_dict() for figure in self.figures],
             "auxiliary": dict(self.auxiliary_texts),

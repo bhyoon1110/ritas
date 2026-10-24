@@ -18,6 +18,7 @@ from .report.edited_analysis import analysis_preview
 from .report.spectrum_viewer import build_spectrum_viewer
 from .report.direct_edit import edit_pages, slide_image
 from .report.editor_variables import resolve_changes
+from .report.canvas import ObjectEdit
 from .report_queue import register_generated_report_package
 from .storage import atomic_write_json
 
@@ -64,6 +65,7 @@ class ReportEdit(BaseModel):
     completionDate: str | None = Field(default=None, max_length=10)
     variables: list[CommonVariable] = Field(default_factory=list, max_length=32)
     pageEdits: PageEdits | None = None
+    canvasEdits: dict[str, list[ObjectEdit]] | None = None
 
 
 def job_response(job, prefix):
@@ -98,6 +100,11 @@ def _load_document(job):
 
 def _validate_changes(changes, document):
     values = changes.model_dump()
+    if values["canvasEdits"] is None:
+        values["canvasEdits"] = deepcopy(document.canvas_edits)
+    else:
+        values["canvasEdits"] = {key: [{k:v for k,v in obj.items() if v is not None} for obj in items]
+                                 for key,items in values["canvasEdits"].items()}
     if values["pageEdits"] is None:
         values["pageEdits"] = deepcopy(document.page_edits or {"hidden": [], "added": []})
     if values["completionDate"] is None:
@@ -140,6 +147,11 @@ def _validate_changes(changes, document):
     candidate = deepcopy(document)
     apply_edits(candidate, expanded, document.experiment_code)
     validate(candidate, document)
+    from .report.canvas import apply
+    from .report.pages import compose
+    from .report.renderers import _pptx_base_slide_payloads
+    apply(candidate, compose(candidate, _pptx_base_slide_payloads(candidate)), validate_only=True,
+          previous_edits=document.canvas_edits)
     return values
 
 
@@ -166,6 +178,9 @@ def _write_revision(store, new_job, old_job, changes, project, settings, databas
                     shutil.copyfile(source / "report" / name, report_dir / name)
         shutil.copyfile(source / "processed/analysis-result.json", processed_dir / "analysis-result.json")
         document = _load_document(old_job)
+        if (source / "report/editor-assets").is_dir():
+            shutil.copytree(source / "report/editor-assets", report_dir / "editor-assets")
+        document.canvas_asset_root = str(report_dir / "editor-assets")
         document.job_id = new_job.job_id
         document.traceability = dict(document.traceability, revisionOf=old_job.job_id,
             savedAt=new_job.created_at.isoformat(), savedBy=actor_id)
@@ -185,7 +200,7 @@ def _write_revision(store, new_job, old_job, changes, project, settings, databas
         reports.render_report_formats(document, report_dir, ["PPTX", "PDF", "HTML"],
                                       pdf_font_path=reports._preview_pdf_font_path(settings))
         reports.convert_pptx_to_pdf(report_dir / "report.pptx", report_dir / "report-from-pptx.pdf")
-        if any(document.page_edits.get(key) for key in ("hidden", "added")):
+        if document.canvas_edits or any(document.page_edits.get(key) for key in ("hidden", "added")):
             # Once the analyst edits the deck, both downloadable PDFs must use
             # that exact page list rather than the automatic prose summary.
             shutil.copyfile(report_dir / "report-from-pptx.pdf", report_dir / "report.pdf")
@@ -216,7 +231,7 @@ def editor_page(prefix, job_id, *, project=None):
     config = json.dumps({"prefix": prefix, "jobId": job_id, "project": project}, ensure_ascii=False).replace("<", "\\u003c")
     template = Path(__file__).with_name("report_editor.html").read_text(encoding="utf-8")
     script = "\n".join(Path(__file__).with_name(name).read_text(encoding="utf-8")
-                       for name in ("report_direct_editor.js", "report_editor.js"))
+                       for name in ("report_direct_editor.js", "report_canvas_editor.js", "report_editor.js"))
     return template.replace("__CONFIG__", config).replace("__SCRIPT__", script)
 
 
@@ -240,7 +255,7 @@ def install_report_editor(router, kind):
         state_path = job.tmp_root / "job/report/editor-state.json"
         if state_path.is_file():
             source = json.loads(state_path.read_text(encoding="utf-8"))
-            model.update({key: source[key] for key in ("title", "auxiliary", "completionDate", "variables", "pageEdits") if key in source and source[key] is not None})
+            model.update({key: source[key] for key in ("title", "auxiliary", "completionDate", "variables", "pageEdits", "canvasEdits") if key in source and source[key] is not None})
             by_id = {s["sectionId"]: s for s in source["sections"]}
             for section in model["sections"]:
                 saved = by_id.get(section["sectionId"])
@@ -275,6 +290,25 @@ def install_report_editor(router, kind):
         except IndexError as exc:
             raise ApiException(404, "REPORT_PAGE_NOT_FOUND", "보고서 페이지를 찾을 수 없습니다.") from exc
         return Response(content, media_type="image/jpeg", headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"})
+
+    @router.post(prefix + "/{job_id}/editor-images", tags=[kind])
+    async def upload_image(request: Request, job_id: str):
+        job = _authorized_job(request, job_id, kind)
+        origin = request.headers.get("origin")
+        if request.headers.get("x-requested-with") != "RIST-Report-Editor" or (origin and
+                (urlsplit(origin).scheme, urlsplit(origin).netloc) != (request.url.scheme, request.url.netloc)):
+            raise ApiException(403, "REPORT_EDIT_ORIGIN_INVALID", "같은 사이트에서 이미지를 첨부하세요.")
+        content = bytearray()
+        async for chunk in request.stream():
+            if len(content)+len(chunk)>2*1024*1024:
+                raise ApiException(413, "REPORT_IMAGE_TOO_LARGE", "이미지는 2MB 이하로 첨부하세요.")
+            content.extend(chunk)
+        from .report.canvas import store_image
+        from starlette.concurrency import run_in_threadpool
+        try:
+            return await run_in_threadpool(store_image, job.tmp_root / "job/report/editor-assets", bytes(content))
+        except ValueError as exc:
+            raise ApiException(422, "REPORT_IMAGE_INVALID", str(exc)) from exc
 
     @router.post(prefix + "/{job_id}/revisions", status_code=202, tags=[kind])
     async def revise(request: Request, job_id: str):

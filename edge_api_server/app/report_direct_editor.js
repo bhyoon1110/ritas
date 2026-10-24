@@ -7,7 +7,7 @@
     var fields = document.getElementById("inline-fields"), note = document.getElementById("inline-note");
     var select = document.getElementById("edit-page"), previous = document.getElementById("edit-previous"), next = document.getElementById("edit-next");
     var state = document.getElementById("page-status"), toggle = document.getElementById("edit-toggle");
-    var pages = [], page = 0, imageBase = "", ready = false, shown = true, locked = false, copies = [], active = null, nextPageId = null;
+    var pages = [], page = 0, imageBase = "", ready = false, shown = true, locked = false, copies = [], active = null, nextPageId = null, canvasMode = false;
     function node(tag, parent, text) { var e = document.createElement(tag); if (text != null) e.textContent = text; parent.appendChild(e); return e; }
     function close() { panel.hidden = true; copies = []; active = null; }
     document.getElementById("inline-close").onclick = close;
@@ -64,7 +64,7 @@
       active.focus(); active.setSelectionRange(start + token.length,start + token.length);
     };
     function regions() {
-      layer.textContent = ""; layer.hidden = !ready || !shown;
+      layer.textContent = ""; layer.hidden = !ready || !shown || canvasMode;
       if (!pages[page]) return;
       pages[page].regions.forEach(function (region) {
         var valid = region.refs.filter(function (ref) { return options.field(ref); });
@@ -111,6 +111,7 @@
         if (options.onLayout) options.onLayout(value);
       },
       current:function () { return pages[page] || null; },
+      canvasMode:function (value) { canvasMode=value;if(value)close();regions(); },
       count:function () { return pages.length; },
       selectOnNext:function (id) { nextPageId = id; close(); },
       loading:function () { layer.hidden = true; state.textContent = "PPT 편집 영역을 불러오는 중입니다."; },

@@ -97,7 +97,9 @@ def document_from_dict(value, *, image_path):
                                    for f in value.get("figures", [])],
                           auxiliary_texts=value.get("auxiliary", {}), llm_used=value.get("llm", {}).get("used", False),
                           llm_error=value.get("llm", {}).get("error"), traceability=value.get("traceability", {}),
-                          page_edits=deepcopy(value.get("pageEdits") or {}))
+                          page_edits=deepcopy(value.get("pageEdits") or {}),
+                          canvas_edits=deepcopy(value.get("canvasEdits") or {}),
+                          canvas_asset_root=str(Path(image_path).parent / "editor-assets"))
 
 
 def editor_document(document):
@@ -108,7 +110,8 @@ def editor_document(document):
                           "rows": s.table.rows if s.table else None, "source": s.source}
                          for s in document.sections if s.section_id != "report_transfer"],
             "auxiliary": dict(document.auxiliary_texts),
-            "pageEdits": deepcopy(document.page_edits or {"hidden": [], "added": []})}
+            "pageEdits": deepcopy(document.page_edits or {"hidden": [], "added": []}),
+            "canvasEdits": deepcopy(document.canvas_edits)}
 
 
 def apply_edits(document, changes, project):
@@ -127,3 +130,5 @@ def apply_edits(document, changes, project):
     document.auxiliary_texts = changes["auxiliary"]
     if changes.get("pageEdits") is not None:
         document.page_edits = deepcopy(changes["pageEdits"])
+    if changes.get("canvasEdits") is not None:
+        document.canvas_edits = deepcopy(changes["canvasEdits"])
