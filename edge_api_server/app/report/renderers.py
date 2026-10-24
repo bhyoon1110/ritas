@@ -1406,7 +1406,8 @@ def _pptx_image_payload(
 ) -> dict[str, object]:
     lines = [caption] if caption else []
     return {
-        "xml": _pptx_image_slide(document, figure.title, media_name, lines),
+        "xml": _pptx_image_slide(document, figure.title, media_name, lines,
+                                 image_size=ImageReader(str(media_path)).getSize()),
         "rels": _pptx_slide_rels(media_name),
         "media": [(media_name, media_path)],
         "editing": {"kind": "image", "sectionId": figure.caption_slot},
@@ -2298,6 +2299,7 @@ def _pptx_image_slide(
     title: str,
     media_name: str,
     lines: list[str],
+    *, image_size: tuple[int, int] | None = None,
 ) -> str:
     shapes = _pptx_header_shapes(document, title)
     shapes.append(
@@ -2312,10 +2314,19 @@ def _pptx_image_slide(
             line=PPTX_LINE,
         )
     )
+    # Contain the complete canvas, including axes/legend, without stretching it
+    # to the fixed slide frame. PDF uses the same aspect-preserving placement.
+    image_x, image_y, image_cx, image_cy = 701040, 1127760, 10789920, 4389120
+    if image_size and image_size[0] > 0 and image_size[1] > 0:
+        scale = min(image_cx / image_size[0], image_cy / image_size[1])
+        fitted_cx, fitted_cy = round(image_size[0] * scale), round(image_size[1] * scale)
+        image_x += (image_cx - fitted_cx) // 2
+        image_y += (image_cy - fitted_cy) // 2
+        image_cx, image_cy = fitted_cx, fitted_cy
     image = f"""
-    <p:pic><p:nvPicPr><p:cNvPr id="11" name="{html.escape(media_name)}"/><p:cNvPicPr/><p:nvPr/></p:nvPicPr>
+    <p:pic><p:nvPicPr><p:cNvPr id="11" name="{html.escape(media_name)}"/><p:cNvPicPr><a:picLocks noChangeAspect="1"/></p:cNvPicPr><p:nvPr/></p:nvPicPr>
       <p:blipFill><a:blip r:embed="rId2"/><a:stretch><a:fillRect/></a:stretch></p:blipFill>
-      <p:spPr><a:xfrm><a:off x="701040" y="1127760"/><a:ext cx="10789920" cy="4389120"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom>{_pptx_line(PPTX_LINE)}</p:spPr>
+      <p:spPr><a:xfrm><a:off x="{image_x}" y="{image_y}"/><a:ext cx="{image_cx}" cy="{image_cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom>{_pptx_line(PPTX_LINE)}</p:spPr>
     </p:pic>"""
     shapes.append(image)
     if lines:

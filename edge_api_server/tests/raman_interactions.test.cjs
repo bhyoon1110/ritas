@@ -72,6 +72,14 @@ test('plot size applies and restores through the real undo/redo controller',asyn
   gd._ristHistory.redo();await new Promise(r=>setTimeout(r,120));
   assert.equal(gd.layout.width,1000);assert.equal(gd.style.height,'750px');
   assert.equal(d.querySelector('[data-plot-width]').value,'1000');
+  const height=d.querySelector('[data-plot-height]');height.value='1300';height.dispatchEvent(new w.Event('input'));
+  d.querySelector('[data-plot-size-apply]').click();await new Promise(r=>setTimeout(r,120));
+  assert.equal(gd.style.height,'1300px');
+  gd._ristHistory.undo();await new Promise(r=>setTimeout(r,120));
+  assert.equal(gd.style.height,'750px');assert.equal(d.querySelector('[data-plot-ratio]').value,'4:3');
+  gd._ristHistory.redo();await new Promise(r=>setTimeout(r,120));
+  assert.equal(gd.style.height,'1300px');assert.equal(d.querySelector('[data-plot-height]').value,'1300');
+  assert.deepEqual(clone(gd._ristPlotSize.exportDimensions({})),{width:1000,height:1300});
   w.dispatchEvent(new w.Event('pagehide'));
 });
 

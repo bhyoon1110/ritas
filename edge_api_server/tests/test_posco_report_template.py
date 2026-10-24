@@ -39,7 +39,8 @@ def sample_document(code: str, image: Path) -> ReportDocument:
 @pytest.mark.parametrize("code", ["FTIR", "FT-IR", "IR", "RAMAN", "RIN", "RIN-RAMAN"])
 def test_spectrum_ppt_reuses_original_artwork_without_sample_payload(tmp_path, code):
     image = tmp_path / "graph.jpeg"
-    image.write_bytes(b"report graph fixture")
+    from PIL import Image
+    Image.new("RGB", (1200, 900), "white").save(image)
     output = tmp_path / "report.pptx"
     renderers.render_pptx(sample_document(code, image), output)
     source_path = Path(__file__).parents[1] / "app/xrd_workbench/render/assets/posco_xrd_a4.pptx"

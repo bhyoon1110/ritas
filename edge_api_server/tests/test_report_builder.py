@@ -797,7 +797,8 @@ def test_pptx_renderer_creates_openxml_package(tmp_path) -> None:
     analysis = [{"relativePath": "verdict.json", "data": _verdict()}]
     document = FtirReportBuilder().build(_job(), analysis)
     image = tmp_path / "spectrum.png"
-    image.write_bytes(b"\x89PNG\r\n\x1a\n")
+    from PIL import Image
+    Image.new("RGB", (1200, 900), "white").save(image)
     document.figures.append(ReportFigure("figure-1", "Spectrum", str(image)))
 
     rendered = render_requested_report(document, tmp_path, "PPTX")
@@ -1149,7 +1150,8 @@ def test_generate_report_writes_email_body_and_image_slide(tmp_path) -> None:
         json.dumps(_verdict(), ensure_ascii=False),
         encoding="utf-8",
     )
-    (processed / "spectrum.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+    from PIL import Image
+    Image.new("RGB", (1200, 900), "white").save(processed / "spectrum.png")
 
     document = generate_report(
         settings,

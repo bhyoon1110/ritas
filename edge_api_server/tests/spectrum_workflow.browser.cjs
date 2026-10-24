@@ -27,6 +27,17 @@ const raw = Buffer.from(Array.from({length:241}, (_, i) => {
       page.on('pageerror', error => errors.push(error.message)); page.on('dialog', dialog => dialog.accept());
       page.setDefaultTimeout(20000);
       const gd = kind === 'ftir' ? 'peak-plot' : 'raman-plot';
+      async function sizeGraph(width,height) {
+        if(!await page.locator('.rist-axis-control-button').isVisible()) await page.locator('.rist-'+kind+'-tools-toggle').click();
+        await page.locator('.rist-axis-control-button').click();
+        await page.locator('[data-plot-width]').fill(String(width));
+        await page.locator('[data-plot-height]').fill(String(height));
+        await page.locator('[data-plot-size-apply]').click();
+        await page.waitForFunction(({gd,width,height})=>{const g=document.getElementById(gd);return g.layout.width===width&&g.layout.height===height;},{gd,width,height});
+        await page.locator('.rist-plot-size-controls').screenshot({path:path.join(output,kind+'-size-controls.png')});
+        await page.locator('.rist-axis-control-close').click();
+        if(await page.locator('.rist-'+kind+'-tools-close').isVisible())await page.locator('.rist-'+kind+'-tools-close').click();
+      }
       try {
         await page.goto(origin + '/' + kind);
         await page.waitForFunction(() => { const e=document.getElementById('sw-step-2'); return e && !e.disabled; });
@@ -45,12 +56,24 @@ const raw = Buffer.from(Array.from({length:241}, (_, i) => {
           const p=document.getElementById(id);
           await Plotly.relayout(p, {'title.text':'첫 번째 그래프', annotations:(p.layout.annotations||[]).concat([{name:'workflow-note',text:'첫 번째 메모',x:1700,y:1.2,showarrow:false}])});
         },gd);
+        await sizeGraph(1000,700);
+        const beforeSize=await page.evaluate(id=>{const g=document.getElementById(id);return {x:g.layout.xaxis.range,y:g.layout.yaxis.range,raw:g.data[0].y};},gd);
+        const handle=page.locator('.rist-plot-resize-handle');await handle.scrollIntoViewIfNeeded();
+        const handleBox=await handle.boundingBox();
+        await page.mouse.move(handleBox.x+handleBox.width/2,handleBox.y+handleBox.height/2);await page.mouse.down();
+        await page.mouse.move(handleBox.x+handleBox.width/2+100,handleBox.y+handleBox.height/2+120,{steps:10});
+        assert.equal(await page.locator('.rist-plot-resize-preview span').textContent(),'1100 × 820 px');
+        await page.mouse.up();
+        await page.waitForFunction(id=>document.getElementById(id).layout.width===1100&&document.getElementById(id).layout.height===820,gd);
+        assert.equal(await page.locator('.rist-plot-resize-preview').count(),0);
+        assert.deepEqual(await page.evaluate(id=>{const g=document.getElementById(id);return {x:g.layout.xaxis.range,y:g.layout.yaxis.range,raw:g.data[0].y};},gd),beforeSize);
         await page.locator('#sw-graph-name').fill('비교 그래프 1'); await page.locator('#sw-save-graph').click();
         await page.waitForFunction(() => document.querySelectorAll('.sw-card').length===1 && !document.getElementById('sw-save-graph').disabled);
         await page.locator('#sw-step-1').click(); await page.locator('#'+kind+'-clear').click();
         await page.locator('#'+kind+'-file-input').setInputFiles({name:'second.'+(kind==='ftir'?'dpt':'txt'),mimeType:'text/plain',buffer:raw});
         await page.waitForFunction(() => document.getElementById('spectrum-workflow').dataset.step==='2' && !document.getElementById('sw-save-graph').disabled);
         await page.evaluate(async id => { const p=document.getElementById(id); await Plotly.relayout(p, {'title.text':'두 번째 그래프',annotations:(p.layout.annotations||[]).concat([{name:'workflow-note',text:'두 번째 메모',x:1700,y:1.2,showarrow:false}])}); await Plotly.restyle(p, {'line.color':'#e74c3c'}, [0]); },gd);
+        await sizeGraph(900,1200);
         await page.locator('#sw-graph-name').fill('비교 그래프 2'); await page.locator('#sw-save-graph').click();
         await page.waitForFunction(() => document.querySelectorAll('.sw-card').length===2 && !document.getElementById('sw-save-graph').disabled);
         await page.locator('.sw-card').first().getByRole('button',{name:'미리보기',exact:true}).click();
@@ -60,6 +83,7 @@ const raw = Buffer.from(Array.from({length:241}, (_, i) => {
         await page.locator('.sw-card').first().getByRole('button',{name:'다시 편집',exact:true}).click();
         await page.waitForFunction(id => document.getElementById(id).layout.title.text==='첫 번째 그래프' && !document.getElementById('sw-save-graph').disabled,gd);
         assert.equal(await page.evaluate(id=>document.getElementById(id).layout.annotations.find(a=>a.name==='workflow-note').text,gd),'첫 번째 메모');
+        await page.waitForFunction(id=>document.getElementById(id).layout.width===1100&&document.getElementById(id).layout.height===820,gd);
         await page.evaluate(async id => { const p=document.getElementById(id),index=p.layout.annotations.findIndex(a=>a.name==='workflow-note');await Plotly.relayout(p,{['annotations['+index+'].text']:'다시 편집한 메모'}); },gd);
         await page.locator('#sw-save-graph').click();
         await page.waitForFunction(()=>!document.getElementById('sw-save-graph').disabled);
@@ -92,6 +116,28 @@ const raw = Buffer.from(Array.from({length:241}, (_, i) => {
         const download=await editor.locator('#download').getAttribute('href');
         const response=await page.request.get(origin+download); assert.equal(response.status(),200);
         fs.writeFileSync(path.join(output,kind+'-reviewed.zip'),await response.body());
+        console.log(execFileSync(process.env.RIST_TEST_PYTHON||'python3',['-c',
+          `import io,sys,zipfile,xml.etree.ElementTree as E
+from PIL import Image
+z=zipfile.ZipFile(sys.argv[1]); ppt=zipfile.ZipFile(io.BytesIO(z.read('report.pptx')))
+ns={'p':'http://schemas.openxmlformats.org/presentationml/2006/main','a':'http://schemas.openxmlformats.org/drawingml/2006/main'}
+sizes={}; found=[]
+for name in ppt.namelist():
+ if name.startswith('ppt/media/image'):
+  sizes[name.split('/')[-1]]=Image.open(io.BytesIO(ppt.read(name))).size
+assert sorted(sizes.values())==[(1800,2400),(2200,1640)], sizes
+for name in ppt.namelist():
+ if name.startswith('ppt/slides/slide') and name.endswith('.xml'):
+  for pic in E.fromstring(ppt.read(name)).findall('.//p:pic',ns):
+   image=pic.find('p:nvPicPr/p:cNvPr',ns).get('name')
+   if image not in sizes: continue
+   ext=pic.find('p:spPr/a:xfrm/a:ext',ns); w,h=sizes[image]
+   assert abs(int(ext.get('cx'))/int(ext.get('cy'))-w/h)<1e-6
+   found.append(image)
+assert len(found)==2, found
+z.extract('report.pdf',sys.argv[2])
+print('Actual report: two saved PNG dimensions and aspect-preserving PPT placements verified')`,
+          path.join(output,kind+'-reviewed.zip'),path.join(output,kind)],{encoding:'utf8'}).trim());
         if(kind==='ftir'){
           execFileSync(process.env.RIST_TEST_PYTHON||'python3',['-c',
             'import sys,zipfile; z=zipfile.ZipFile(sys.argv[1]); [z.extract(n,sys.argv[2]) for n in ("ftir-raw-all.html","ftir-edited.html")]',
@@ -122,6 +168,7 @@ const raw = Buffer.from(Array.from({length:241}, (_, i) => {
             await rawView.locator('#graph-choice').selectOption('1');
             await rawView.waitForFunction(()=>document.getElementById('report-graph').layout.title.text==='첫 번째 그래프');
             const edited=await rawView.evaluate(()=>{const g=document.getElementById('report-graph');return {names:g.data.map(t=>t.name),range:g.layout.xaxis.range,notes:(g.layout.annotations||[]).map(a=>a.text)};});
+            assert.equal(await rawView.evaluate(()=>document.getElementById('report-graph').layout.width/document.getElementById('report-graph').layout.height),1100/820);
             assert(!edited.names.some(n=>n.includes('hidden')));assert.deepEqual(edited.range,[2200,1100]);
             assert(edited.notes.includes('다시 편집한 메모'));
             const bounds=await rawView.locator('#report-graph .nsewdrag').boundingBox();
@@ -137,6 +184,7 @@ const raw = Buffer.from(Array.from({length:241}, (_, i) => {
         assert.equal(await viewer.locator('#graph-choice option').count(),2);
         await viewer.locator('#graph-choice').selectOption('1');
         await viewer.waitForFunction(()=>document.getElementById('report-graph').data&&document.getElementById('report-graph').layout.title.text==='첫 번째 그래프');
+        assert.equal(await viewer.evaluate(()=>document.getElementById('report-graph').layout.width/document.getElementById('report-graph').layout.height),1100/820);
         await viewer.screenshot({path:path.join(output,kind+'-recipient.png'),fullPage:true}); await viewer.close();
         await page.reload();
         await page.waitForFunction(()=>document.getElementById('spectrum-workflow')?.dataset.step==='4'&&!document.getElementById('sw-step-2').disabled);

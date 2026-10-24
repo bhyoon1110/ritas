@@ -33,6 +33,18 @@ test('viewer program is ES5, has no editor or network API',()=>{
   acorn.parse(program,{ecmaVersion:5});
   assert(!/fetch\(|XMLHttpRequest|contenteditable|_ristPeakEditor/.test(program));
 });
+test('recipient HTML uses custom and additional preset ratios, not a narrow editor canvas ratio',async t=>{
+  for(const [size,expected] of [[{width:1100,height:820,ratio:'custom'},820], [{width:900,ratio:'3:4'},1200], [{width:1200,ratio:'21:9'},1200*9/21]]) {
+    const doc=new JSDOM(html).window.document;
+    const payload=JSON.parse(doc.getElementById('report-data').textContent);
+    payload.figure.layout.meta.size=size;
+    payload.figure.layout.width=340;payload.figure.layout.height=420;
+    doc.getElementById('report-data').textContent=JSON.stringify(payload);
+    const h=setup(t,false,doc.documentElement.outerHTML);await h.open();
+    assert.equal(h.gd.layout.width,size.width);assert(Math.abs(h.gd.layout.height-expected)<1e-6);
+    await h.change('stack');assert(Math.abs(h.gd.layout.height-expected)<1e-6);
+  }
+});
 test('standalone graph HTML opens directly without slides, broken image or server calls',async t=>{
   const standalone=html.replace(/("slides":)\[[^\]]*\]/,'$1[]').replace('"graphOnly":false','"graphOnly":true');
   const h=setup(t,false,standalone);await tick();

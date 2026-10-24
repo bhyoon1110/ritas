@@ -96,7 +96,11 @@
     var stack = object(input.stack), size = object(input.plotSize);
     settings.stack = {enabled: boolean(stack.enabled), gap: number(stack.gap, 0, 6)};
     settings.plotSize = {width: size.width === null ? null : number(size.width, 320, 2400),
-      ratio: choice(size.ratio, ["auto", "4:3", "16:9", "1:1"])};
+      ratio: choice(size.ratio, ["auto", "4:3", "16:9", "1:1", "3:2", "5:4", "16:10", "2:1", "21:9", "3:4", "2:3", "9:16", "custom"])};
+    if (settings.plotSize.ratio === "custom") {
+      if (settings.plotSize.width === null) invalid();
+      settings.plotSize.height = number(size.height, 240, 2400);
+    }
     settings.axes = {xaxis: axis(object(input.axes).xaxis), yaxis: axis(input.axes.yaxis)};
     settings.legend = legend(input.legend);
     settings.peakLabelsVisible = boolean(input.peakLabelsVisible);

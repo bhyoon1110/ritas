@@ -110,6 +110,23 @@ function setup(t,experiment,mode) {
 
 for(const mode of ['native','chrome49']) for(const experiment of ['ftir','raman']) {
   const label=experiment+'/'+mode;
+  test(label+': custom width/height and new portrait ratios round-trip through templates and fresh RAW',async t=>{
+    const h=setup(t,experiment,mode);await tick();await h.addRaw();
+    for(const size of [{width:1100,height:820,ratio:'custom'},{width:900,ratio:'3:4'},{width:1200,ratio:'21:9'}]) {
+      const template=sampleTemplate(experiment);template.settings.plotSize=size;
+      await h.template().load(template);await tick();
+      assert.deepEqual(clone(h.gd.layout.meta.ristPlotSize),size);
+      h.d.querySelector('[data-template-save]').click();
+      const saved=JSON.parse(await h.read(h.downloads.at(-1)));
+      assert.deepEqual(saved.settings.plotSize,size);
+      await h.uploadTemplate(JSON.stringify(saved));await h.addRaw();
+      assert.deepEqual(clone(h.gd.layout.meta.ristPlotSize),size);
+    }
+    for(const size of [{width:1100,ratio:'custom'}, {width:null,height:820,ratio:'custom'}, {width:1100,height:2401,ratio:'custom'}]) {
+      const template=sampleTemplate(experiment);template.settings.plotSize=size;
+      assert.throws(()=>h.template().load(template));
+    }
+  });
   test(label+': zero and expanded stack gaps survive template save/load and fresh RAW',async t=>{
     const h=setup(t,experiment,mode);await tick();await h.addRaw();
     const key=experiment==='ftir'?'ristFtirStack':'ristRamanStack';

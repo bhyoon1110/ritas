@@ -61,14 +61,16 @@
     var requested = Number(size.width || original.layout.width) || 1200;
     var width = Math.min(graph.parentNode.clientWidth || requested, requested);
     var ratio = (Number(original.layout.width) || 1200) / (Number(original.layout.height) || 720);
-    if (size.ratio === "4:3") { ratio = 4 / 3; }
-    if (size.ratio === "16:9") { ratio = 16 / 9; }
-    if (size.ratio === "1:1") { ratio = 1; }
+    var presets = {"4:3":4/3, "16:9":16/9, "1:1":1, "3:2":3/2, "5:4":5/4,
+      "16:10":16/10, "2:1":2, "21:9":21/9, "3:4":3/4, "2:3":2/3, "9:16":9/16};
+    if (Object.prototype.hasOwnProperty.call(presets, size.ratio)) ratio = presets[size.ratio];
+    if (size.ratio === "custom" && Number(size.width) >= 320 && Number(size.width) <= 2400
+        && Number(size.height) >= 240 && Number(size.height) <= 2400) ratio = Number(size.width) / Number(size.height);
     graph.style.maxWidth = requested + "px";
     graph.style.margin = "36px auto 0";
-    graph.style.height = Math.max(360, width / ratio) + "px";
+    graph.style.height = Math.max(240, width / ratio) + "px";
     layout.width = width;
-    layout.height = Math.max(360, width / ratio);
+    layout.height = Math.max(240, width / ratio);
     layout.autosize = false;
     if (width < 600) {
       layout.margin = {l:50, r:20, t:110, b:140};

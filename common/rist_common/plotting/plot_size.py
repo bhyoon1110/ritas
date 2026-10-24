@@ -18,6 +18,11 @@ _HTML = r"""
 .rist-plot-size-fields > label { flex: 1 1 120px; margin: 0 4px 8px; }
 .rist-plot-size-controls .rist-axis-control-actions { margin-top: 8px; }
 .rist-plot-size-status { margin: 6px 0 0; font-size: 11px; color: #475569; }
+.rist-plot-size-lock { display: flex; align-items: center; font-size: 12px; gap: 4px; }
+.rist-plot-size-lock input { width: auto; }
+.rist-plot-resize-handle { position: absolute; right: 3px; bottom: 3px; z-index: 57; cursor: nwse-resize; touch-action: none; user-select: none; border: 1px solid #9fb3c8; border-radius: 4px; background: #fff; color: #243b53; font: 12px Arial,sans-serif; padding: 4px 7px; white-space: nowrap; }
+.rist-plot-resize-preview { position: fixed; pointer-events: none; z-index: 10000; border: 2px dashed #2563eb; box-sizing: border-box; background: rgba(37,99,235,.04); }
+.rist-plot-resize-preview span { position: absolute; right: 0; bottom: 0; padding: 4px 8px; background: #1e40af; color: white; font: 12px Arial,sans-serif; white-space: nowrap; }
 .rist-axis-control-panel.is-axis-specific .rist-plot-size-controls { display: none; }
 .rist-axis-control-panel { max-height: calc(100vh - 120px); overflow-y: auto; }
 #__PLOT_CSS__.rist-size-compact .rist-ftir-tools-toggle,
@@ -58,17 +63,23 @@ _HTML = r"""
   controls.innerHTML = "<legend>그래프 크기</legend>"
     + "<div class='rist-plot-size-fields'>"
     + "<label class='rist-axis-control-field'><span>최대 폭 (px)</span><input type='number' min='320' max='2400' step='1' placeholder='자동 (화면 너비)' aria-label='그래프 최대 폭' data-plot-width></label>"
+    + "<label class='rist-axis-control-field'><span>높이 (px)</span><input type='number' min='240' max='2400' step='1' placeholder='자동' aria-label='그래프 높이' data-plot-height></label>"
     + "<label class='rist-axis-control-field'><span>전체 그래프 비율</span><select aria-label='그래프 비율' data-plot-ratio>"
-    + "<option value='auto'>자동</option><option value='4:3'>4:3</option><option value='16:9'>16:9</option><option value='1:1'>1:1</option></select></label></div>"
-    + "<p class='rist-axis-control-help'>폭은 320~2400px, 빈칸은 화면 너비입니다. 비율은 축·범례를 포함한 전체 이미지 기준이며 데이터와 축 범위는 바뀌지 않습니다. 좁은 화면에서는 읽기 쉬운 높이를 확보하고, 저장 이미지는 선택한 비율을 유지합니다.</p>"
+    + "<option value='auto'>자동</option><option value='4:3'>4:3</option><option value='16:9'>16:9</option><option value='1:1'>1:1</option><option value='3:2'>3:2</option><option value='5:4'>5:4</option><option value='16:10'>16:10</option><option value='2:1'>2:1</option><option value='21:9'>21:9</option><option value='3:4'>3:4 (세로)</option><option value='2:3'>2:3 (세로)</option><option value='9:16'>9:16 (세로)</option><option value='custom'>직접 입력</option></select></label></div>"
+    + "<label class='rist-plot-size-lock'><input type='checkbox' data-plot-size-lock>드래그할 때 비율 유지</label>"
+    + "<p class='rist-axis-control-help'>폭 320~2400px, 높이 240~2400px. 높이를 입력하면 직접 입력 비율로 전환됩니다. 오른쪽 아래 ↘ 크기를 드래그하거나 방향키로 조절할 수 있습니다. 비율은 축·범례를 포함한 전체 이미지 기준입니다. 좁은 화면에서는 가독성을 위한 최소 높이를 적용하며, 저장 이미지와 보고서는 설정 비율을 유지합니다. 긴 변은 최대 2400px입니다.</p>"
     + "<div class='rist-axis-control-actions'><button type='button' data-plot-size-reset>자동 크기</button><button type='button' data-plot-size-apply>크기 적용</button></div>"
     + "<p class='rist-plot-size-status' role='status' aria-live='polite'></p>";
   var body = panel.querySelector(".rist-axis-control-body");
   body.insertBefore(controls, body.querySelector(".rist-axis-control-footer"));
   var widthInput = controls.querySelector("[data-plot-width]");
+  var heightInput = controls.querySelector("[data-plot-height]");
+  var lockInput = controls.querySelector("[data-plot-size-lock]");
   var ratioInput = controls.querySelector("[data-plot-ratio]");
   var status = controls.querySelector(".rist-plot-size-status");
-  var ratios = {"4:3": 4 / 3, "16:9": 16 / 9, "1:1": 1};
+  var ratios = {"4:3": 4 / 3, "16:9": 16 / 9, "1:1": 1, "3:2": 3 / 2,
+    "5:4": 5 / 4, "16:10": 16 / 10, "2:1": 2, "21:9": 21 / 9,
+    "3:4": 3 / 4, "2:3": 2 / 3, "9:16": 9 / 16};
   var styleKeys = ["width", "height", "min-height", "max-width", "margin-left", "margin-right"];
   var originalStyles = {};
   styleKeys.forEach(function(key) {
@@ -82,9 +93,16 @@ _HTML = r"""
   function settings() {
     var stored = gd.layout && gd.layout.meta && gd.layout.meta.ristPlotSize || {};
     var width = Number(stored.width);
-    return {width: isFinite(width) && width >= 320 && width <= 2400 ? Math.round(width) : null,
+    var value = {width: isFinite(width) && width >= 320 && width <= 2400 ? Math.round(width) : null,
       ratio: Object.prototype.hasOwnProperty.call(ratios, stored.ratio) ? stored.ratio : "auto"};
+    var height = Number(stored.height);
+    if (stored.ratio === "custom" && value.width !== null && isFinite(height) && height >= 240 && height <= 2400) {
+      value.ratio = "custom";
+      value.height = Math.round(height);
+    }
+    return value;
   }
+  function aspect(value) { return value.ratio === "custom" ? value.width / value.height : ratios[value.ratio]; }
   function active(value) { return value.width !== null || value.ratio !== "auto"; }
   function availableWidth() {
     var parent = gd.parentElement;
@@ -99,7 +117,7 @@ _HTML = r"""
   }
   function signature() {
     var value = settings();
-    return [value.width, value.ratio, availableWidth()].join("|");
+    return [value.width, value.height, value.ratio, availableWidth()].join("|");
   }
   function restoreStyles() {
     styleKeys.forEach(function(key) {
@@ -131,8 +149,8 @@ _HTML = r"""
     gd.style.setProperty("max-width", "100%", "important");
     gd.style.setProperty("margin-left", "auto");
     gd.style.setProperty("margin-right", "auto");
-    var ratio = ratios[value.ratio];
-    var height = ratio ? Math.max(420, Math.round(width / ratio))
+    var ratio = aspect(value);
+    var height = ratio ? Math.max(width < 600 ? 420 : 240, Math.round(width / ratio))
       : Math.max(420, Math.round(parseFloat(getComputedStyle(gd).height) || updates.height || 720));
     gd.style.setProperty("height", height + "px", "important");
     gd.style.setProperty("min-height", "0", "important");
@@ -147,7 +165,8 @@ _HTML = r"""
     if (!active(value)) return fallback;
     // Keep export resolution independent of a narrow/mobile viewport.
     var width = value.width || Math.max(900, Math.min(2400, viewportWidth()));
-    var ratio = ratios[value.ratio];
+    var ratio = aspect(value);
+    if (ratio && width / ratio > 2400) width = Math.round(2400 * ratio);
     return {width: width, height: ratio ? Math.round(width / ratio)
       : Math.max(420, Math.round((gd._fullLayout || {}).height || gd.clientHeight || 720))};
   }
@@ -162,6 +181,13 @@ _HTML = r"""
     var value = settings();
     widthInput.value = value.width == null ? "" : String(value.width);
     ratioInput.value = value.ratio;
+    refreshHeight();
+  }
+  function refreshHeight() {
+    var ratio = ratios[ratioInput.value];
+    if (ratio) heightInput.value = String(Math.round(Math.min(2400, (Number(widthInput.value) || availableWidth()) / ratio)));
+    else if (ratioInput.value === "auto") heightInput.value = "";
+    else heightInput.value = String(settings().height || heightInput.value || Math.round(gd.clientHeight) || 720);
   }
   function apply() {
     if (busy) { schedule(); return Promise.resolve(); }
@@ -194,32 +220,142 @@ _HTML = r"""
       return;
     }
     widthInput.removeAttribute("aria-invalid");
+    var value = {width: width, ratio: ratioInput.value};
+    if (!reset && value.ratio === "custom") {
+      var height = Number(heightInput.value);
+      if (!heightInput.value.trim() || (heightInput.validity && heightInput.validity.badInput)
+          || !isFinite(height) || height < 240 || height > 2400 || height !== Math.round(height)) {
+        status.textContent = "높이는 240~2400 사이의 정수를 입력해 주세요.";
+        heightInput.setAttribute("aria-invalid", "true");
+        return;
+      }
+      value.width = width || Math.max(320, Math.min(2400, availableWidth()));
+      value.height = height;
+    }
+    if (ratios[value.ratio] && width && width / ratios[value.ratio] > 2400) value.width = Math.round(2400 * ratios[value.ratio]);
+    heightInput.removeAttribute("aria-invalid");
+    return save(reset ? {width: null, ratio: "auto"} : value, reset);
+  }
+  function save(value, reset) {
     if (gd._ristHistory) gd._ristHistory.capture();
     var meta = Object.assign({}, gd.layout.meta || {});
-    meta.ristPlotSize = reset ? {width: null, ratio: "auto"} : {width: width, ratio: ratioInput.value};
-    window.Plotly.relayout(gd, {meta: meta}).then(function() {
+    meta.ristPlotSize = value;
+    return window.Plotly.relayout(gd, {meta: meta}).then(function() {
       refreshInputs();
       return apply();
     }).then(function() {
       status.textContent = reset ? "자동 크기로 복원했습니다." : "그래프 크기를 적용했습니다.";
       gd.dispatchEvent(new CustomEvent("rist-plot-size-change"));
-    });
+    }).catch(function(err) { status.textContent = "그래프 크기를 저장하지 못했습니다. 다시 시도해 주세요."; console.error(err); });
   }
   controls.querySelector("[data-plot-size-apply]").addEventListener("click", function() { commit(false); });
   controls.querySelector("[data-plot-size-reset]").addEventListener("click", function() { commit(true); });
-  widthInput.addEventListener("keydown", function(ev) {
-    if (ev.key === "Enter") { ev.preventDefault(); ev.stopPropagation(); commit(false); }
+  [widthInput, heightInput].forEach(function(input) {
+    input.addEventListener("keydown", function(ev) {
+      if (ev.key === "Enter") { ev.preventDefault(); ev.stopPropagation(); commit(false); }
+    });
   });
+  heightInput.addEventListener("input", function() { ratioInput.value = "custom"; });
+  widthInput.addEventListener("input", function() { if (ratioInput.value !== "custom") refreshHeight(); });
+  ratioInput.addEventListener("change", refreshHeight);
+
+  // Preview only during dragging: avoid repeatedly rendering large RAW traces.
+  var handle = document.createElement("button");
+  handle.type = "button";
+  handle.className = "rist-plot-resize-handle";
+  handle.textContent = "↘ 크기";
+  handle.title = "드래그로 그래프 크기 조절 · 방향키 10px / Shift+방향키 1px · Esc 취소";
+  handle.setAttribute("aria-label", "그래프 크기 조절");
+  handle.setAttribute("touch-action", "none"); // PEP/Chrome49 also needs the attribute.
+  gd.appendChild(handle);
+  var drag = null;
+  function bounded(width, height, ratio) {
+    if (ratio) {
+      width = Math.max(Math.max(320, 240 * ratio), Math.min(Math.min(2400, 2400 * ratio), width));
+      height = width / ratio;
+    }
+    return {width: Math.round(Math.max(320, Math.min(2400, width))),
+      height: Math.round(Math.max(240, Math.min(2400, height))), ratio: "custom"};
+  }
+  function point(ev) { return ev.touches ? ev.touches[0] : ev; }
+  function startDrag(ev) {
+    if (drag || (ev.button != null && ev.button !== 0)) return;
+    ev.preventDefault(); ev.stopPropagation();
+    var rect = gd.getBoundingClientRect(), p = point(ev);
+    var dimensions = exportDimensions({width: rect.width || gd.clientWidth, height: rect.height || gd.clientHeight});
+    var preview = document.createElement("div");
+    preview.className = "rist-plot-resize-preview";
+    preview.innerHTML = "<span></span>";
+    document.body.appendChild(preview);
+    drag = {x: p.clientX, y: p.clientY, rect: rect, width: dimensions.width, height: dimensions.height,
+      ratio: lockInput.checked ? dimensions.width / dimensions.height : null, preview: preview, value: null, id: ev.pointerId};
+    if (handle.setPointerCapture && ev.pointerId != null) handle.setPointerCapture(ev.pointerId);
+    handle.focus();
+    moveDrag(ev);
+  }
+  function moveDrag(ev) {
+    if (!drag || (ev.pointerId != null && ev.pointerId !== drag.id)) return;
+    if (ev.cancelable) ev.preventDefault();
+    ev.stopPropagation();
+    var p = point(ev);
+    if (!p) return;
+    var dx = p.clientX - drag.x, dy = p.clientY - drag.y;
+    var width = drag.width + dx;
+    if (drag.ratio && Math.abs(dy * drag.ratio) > Math.abs(dx)) width = drag.width + dy * drag.ratio;
+    drag.value = bounded(width, drag.height + dy, drag.ratio);
+    var shownWidth = Math.min(availableWidth(), drag.value.width);
+    var shownHeight = Math.max(shownWidth < 600 ? 420 : 240, shownWidth * drag.value.height / drag.value.width);
+    var css = drag.preview.style;
+    css.left = (drag.rect.left + ((drag.rect.width || gd.clientWidth) - shownWidth) / 2) + "px";
+    css.top = drag.rect.top + "px"; css.width = shownWidth + "px"; css.height = shownHeight + "px";
+    drag.preview.firstChild.textContent = drag.value.width + " × " + drag.value.height + " px";
+  }
+  function endDrag(ev, cancel) {
+    if (!drag || (ev && ev.pointerId != null && ev.pointerId !== drag.id)) return;
+    if (ev) { ev.stopPropagation(); if (ev.cancelable) ev.preventDefault(); }
+    var finished = drag; drag = null;
+    finished.preview.remove();
+    if (handle.releasePointerCapture && finished.id != null && handle.hasPointerCapture(finished.id)) handle.releasePointerCapture(finished.id);
+    if (!cancel && finished.value && (finished.value.width !== finished.width || finished.value.height !== finished.height)) save(finished.value, false);
+  }
+  if (window.PointerEvent) {
+    handle.addEventListener("pointerdown", startDrag);
+    window.addEventListener("pointermove", moveDrag, {passive: false});
+    window.addEventListener("pointerup", function(ev) { endDrag(ev, false); });
+    window.addEventListener("pointercancel", function(ev) { endDrag(ev, true); });
+    handle.addEventListener("lostpointercapture", function(ev) { endDrag(ev, true); });
+  } else {
+    handle.addEventListener("mousedown", startDrag);
+    handle.addEventListener("touchstart", startDrag, {passive: false});
+    window.addEventListener("mousemove", moveDrag);
+    window.addEventListener("touchmove", moveDrag, {passive: false});
+    window.addEventListener("mouseup", function(ev) { endDrag(ev, false); });
+    window.addEventListener("touchend", function(ev) { endDrag(ev, false); });
+    window.addEventListener("touchcancel", function(ev) { endDrag(ev, true); });
+  }
+  handle.addEventListener("click", function(ev) { ev.stopPropagation(); });
+  handle.addEventListener("dblclick", function(ev) { ev.stopPropagation(); });
+  handle.addEventListener("keydown", function(ev) {
+    if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].indexOf(ev.key) < 0 || drag) return;
+    ev.preventDefault(); ev.stopPropagation();
+    var size = exportDimensions({width: gd.clientWidth, height: gd.clientHeight}), step = ev.shiftKey ? 1 : 10;
+    var dx = ev.key === "ArrowLeft" ? -step : ev.key === "ArrowRight" ? step : 0;
+    var dy = ev.key === "ArrowUp" ? -step : ev.key === "ArrowDown" ? step : 0;
+    var ratio = lockInput.checked ? size.width / size.height : null;
+    save(bounded(size.width + dx + (ratio ? dy * ratio : 0), size.height + dy, ratio), false);
+  });
+  window.addEventListener("keydown", function(ev) { if (drag && ev.key === "Escape") endDrag(ev, true); }, true);
+  window.addEventListener("blur", function() { endDrag(null, true); });
   gd._ristPlotSize = {applyLayout: applyLayout, viewportWidth: viewportWidth,
     exportDimensions: exportDimensions, preserve: preserve};
   gd.on("plotly_afterplot", function() {
     if (!busy && signature() !== appliedSignature) schedule();
   });
   ["rist-history-restored", "rist-plot-data-replaced"].forEach(function(name) {
-    gd.addEventListener(name, function() { refreshInputs(); schedule(); });
+    gd.addEventListener(name, function() { endDrag(null, true); refreshInputs(); schedule(); });
   });
   window.addEventListener("resize", schedule);
-  window.addEventListener("pagehide", function() { window.clearTimeout(timer); timer = 0; });
+  window.addEventListener("pagehide", function() { endDrag(null, true); window.clearTimeout(timer); timer = 0; });
   refreshInputs();
   schedule();
 })();

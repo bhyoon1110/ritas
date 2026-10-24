@@ -163,4 +163,66 @@ for(const mode of ['native','chrome49'])for(const experiment of ['ftir','raman']
     for(const output of h.exports) assert.deepEqual(output.data[0].line,{width:3.5,dash:'dash',color:'#123456'});
     assert.deepEqual(clone(h.gd.layout),snapshot);
   });
+  test(`${prefix}: extra landscape/portrait presets, bounded exports and numeric height persist`,async t=>{
+    const h=setup(t,experiment,mode);
+    for(const [ratio,height] of [['3:2',800],['5:4',960],['16:10',750],['2:1',600],['21:9',514],['3:4',1600],['2:3',1800],['9:16',2133]]) {
+      await h.set('1200',ratio);
+      assert.equal(h.gd.layout.height,height);
+      assert.deepEqual(clone(h.gd._ristPlotSize.exportDimensions({})),{width:1200,height});
+    }
+    await h.set('2400','9:16');
+    assert.deepEqual(clone(h.gd._ristPlotSize.exportDimensions({})),{width:1350,height:2400});
+    h.q('[data-plot-height]').value='820';h.q('[data-plot-height]').dispatchEvent(new h.w.Event('input'));
+    assert.equal(h.q('[data-plot-ratio]').value,'custom');
+    await h.set('1100','custom');
+    const value={width:1100,height:820,ratio:'custom'};
+    assert.deepEqual(clone(h.gd.layout.meta.ristPlotSize),value);
+    const next={};h.gd._ristPlotSize.preserve(next);assert.deepEqual(clone(next.meta.ristPlotSize),value);
+    await h.resize(340);assert.equal(h.gd.layout.height,420);
+    assert.deepEqual(clone(h.gd._ristPlotSize.exportDimensions({})),{width:1100,height:820});
+    await h.gd.testCapture({data:h.gd.data,layout:h.gd.layout});
+    assert.equal(h.exports[0].layout.width,1100);assert.equal(h.exports[0].layout.height,820);
+    await h.resize(1600);assert.equal(h.gd.layout.height,820);
+    const captures=h.captures();
+    for(const height of ['', '239','2401','820.5']) {
+      h.q('[data-plot-height]').value=height;await h.set('1100','custom');
+      assert.equal(h.q('[data-plot-height]').getAttribute('aria-invalid'),'true');
+    }
+    assert.equal(h.captures(),captures);
+  });
+  test(`${prefix}: resize preview commits once, preserves data/ranges, cancels and supports aspect lock/keyboard/touch`,async t=>{
+    const h=setup(t,experiment,mode);await h.set('1000','4:3');
+    const raw=clone(h.gd.data), axes=clone([h.gd.layout.xaxis,h.gd.layout.yaxis]);
+    const handle=h.q('.rist-plot-resize-handle');
+    const mouse=(target,type,x,y)=>target.dispatchEvent(new h.w.MouseEvent(type,{bubbles:true,cancelable:true,clientX:x,clientY:y,button:0}));
+    mouse(handle,'mousedown',1000,750);mouse(h.w,'mousemove',1200,850);
+    assert.equal(h.q('.rist-plot-resize-preview span').textContent,'1200 × 850 px');
+    assert.equal(h.captures(),1);assert.equal(h.gd.layout.width,1000);
+    mouse(h.w,'mouseup',1200,850);await tick();
+    assert.equal(h.q('.rist-plot-resize-preview'),null);assert.equal(h.captures(),2);
+    assert.deepEqual(clone(h.gd.layout.meta.ristPlotSize),{width:1200,height:850,ratio:'custom'});
+    for(const cancel of ['escape','blur','pagehide']) {
+      mouse(handle,'mousedown',1200,850);mouse(h.w,'mousemove',1100,700);
+      if(cancel==='escape')h.w.dispatchEvent(new h.w.KeyboardEvent('keydown',{key:'Escape',cancelable:true}));
+      else h.w.dispatchEvent(new h.w.Event(cancel));
+      mouse(h.w,'mouseup',1100,700);await tick();assert.equal(h.captures(),2);assert.equal(h.q('.rist-plot-resize-preview'),null);
+    }
+    h.q('[data-plot-size-lock]').checked=true;
+    mouse(handle,'mousedown',1200,850);mouse(h.w,'mousemove',1440,800);mouse(h.w,'mouseup',1440,800);await tick();
+    assert.equal(h.gd.layout.width,1440);assert.equal(h.gd.layout.height,1020);
+    h.q('[data-plot-size-lock]').checked=false;
+    handle.dispatchEvent(new h.w.KeyboardEvent('keydown',{key:'ArrowDown',shiftKey:true,cancelable:true,bubbles:true}));await tick();
+    assert.equal(h.gd.layout.height,1021);
+    function touch(target,type,x,y) {
+      const e=h.w.PointerEvent ? new h.w.PointerEvent(({touchstart:'pointerdown',touchmove:'pointermove',touchend:'pointerup'})[type],
+        {bubbles:true,cancelable:true,clientX:x,clientY:y,pointerType:'touch',pointerId:7,button:0}) : new h.w.Event(type,{bubbles:true,cancelable:true});
+      e.touches=[{clientX:x,clientY:y}];target.dispatchEvent(e);return e;
+    }
+    assert.equal(handle.getAttribute('touch-action'),'none');
+    assert(touch(handle,'touchstart',1440,1021).defaultPrevented);
+    touch(h.w,'touchmove',1400,900);touch(h.w,'touchend',1400,900);await tick();
+    assert.equal(h.gd.layout.height,900);assert.equal(h.gd.layout.width,1400);
+    const e=touch(h.w,'touchmove',1400,850);assert.equal(e.defaultPrevented,false,'normal page scrolling after drag');
+    assert.deepEqual(clone(h.gd.data),raw);assert.deepEqual(clone([h.gd.layout.xaxis,h.gd.layout.yaxis]),axes);
+  });
 }
