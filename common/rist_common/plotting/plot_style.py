@@ -683,6 +683,10 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
   padding: 10px;
   box-sizing: border-box;
 }}
+/* Also hide the always-visible wide-screen toolbar while its editor is open. */
+#{div_id}.rist-legend-editor-open .rist-plot-control-row {{ display: none !important; }}
+/* Keep dragged editor actions above the graph's corner resize handle (z-index 57). */
+#{div_id}.rist-legend-editor-open .rist-legend-edit-panel {{ z-index: 58; }}
 #{div_id} .rist-legend-edit-head {{
   position: sticky;
   top: -10px;
@@ -1629,6 +1633,9 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
 
     var panel = document.createElement("div");
     panel.className = "rist-legend-edit-panel";
+    panel.setAttribute("tabindex", "-1");
+    panel.setAttribute("role", "region");
+    panel.setAttribute("aria-label", btn.textContent);
     panel.innerHTML = "<div class='rist-legend-edit-head'>"
       + "<span>" + btn.textContent + "</span>"
       + "<label class='rist-legend-opacity-control' title='창 투명도'>"
@@ -1787,11 +1794,14 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
     }});
 
     function closePanel() {{
+      var wasOpen = gd._ristLegendEditOpen;
       finishPanelDrag();
       clearRawDrag();
       panel.style.display = "none";
       gd._ristLegendEditOpen = false;
+      gd.classList.remove("rist-legend-editor-open");
       if (gd._ristRestoreNavigation) gd._ristRestoreNavigation();
+      if (directAnnotationEdit && wasOpen) gd.dispatchEvent(new CustomEvent("rist-legend-editor-toggle", {{detail: {{open: false}}}}));
     }}
 
     var panelHead = panel.querySelector(".rist-legend-edit-head");
@@ -1839,6 +1849,17 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
         top: Math.max(0, Math.min(top, gdRect.height - panelRect.height))
       }};
     }}
+
+    function focusPanel() {{
+      if (panel.style.display !== "block") return;
+      var gdRect = gd.getBoundingClientRect(), rect = panel.getBoundingClientRect();
+      var position = constrainPanelPosition(rect.left - gdRect.left, rect.top - gdRect.top);
+      panel.style.left = position.left + "px";
+      panel.style.top = position.top + "px";
+      panel.style.right = "auto";
+      panel.focus();
+    }}
+    gd.addEventListener("rist-legend-editor-focus", focusPanel);
 
     panelHead.addEventListener("pointerdown", function(ev) {{
       if (ev.button !== 0 || panelDrag
@@ -2409,6 +2430,11 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
         gd._ristLegendEditOpen = true;
         renderRows();
         panel.style.display = "block";
+        if (directAnnotationEdit) {{
+          gd.classList.add("rist-legend-editor-open");
+          gd.dispatchEvent(new CustomEvent("rist-legend-editor-toggle", {{detail: {{open: true}}}}));
+          focusPanel();
+        }}
       }} else if (!directAnnotationEdit) {{
         closePanel();
       }}

@@ -2028,6 +2028,7 @@ _RAMAN_TOOL_PANEL_SCRIPT = """
   var opacity = toolbar.querySelector(".rist-raman-tools-opacity");
   var closeButton = toolbar.querySelector(".rist-raman-tools-close");
   var opacityPointerId = null;
+  var returnToToolsAfterLegend = false;
 
   function clamp(value, min, max) {
     return Math.max(min, Math.min(max, value));
@@ -2062,18 +2063,36 @@ _RAMAN_TOOL_PANEL_SCRIPT = """
     toolbar.style.removeProperty("top");
   }
 
-  function setOpen(open) {
+  function setOpen(open, activateEdit) {
+    if (open && gd._ristLegendEditOpen) {
+      gd.dispatchEvent(new CustomEvent("rist-legend-editor-focus"));
+      return;
+    }
     if (!open) cancelToolPointerInteractions();
     if (open) resetToolPanelPosition();
     gd.classList.toggle("rist-raman-tools-open", open);
     button.setAttribute("aria-expanded", open ? "true" : "false");
-    button.title = open ? "그래프 도구 닫기" : "그래프 도구 열기";
+    button.title = gd._ristLegendEditOpen ? "범례·스타일 편집 중 · 닫기/전체 저장 후 도구로 복귀" : (open ? "그래프 도구 닫기" : "그래프 도구 열기");
     button.setAttribute("aria-label", button.title);
-    if (open) gd.dispatchEvent(new CustomEvent("rist-open-edit-tool"));
+    if (open && activateEdit !== false) gd.dispatchEvent(new CustomEvent("rist-open-edit-tool"));
     gd.dispatchEvent(new CustomEvent("rist-raman-tools-toggle", {
       detail: {open: open}
     }));
   }
+
+  gd.addEventListener("rist-legend-editor-toggle", function(ev) {
+    if (ev.detail && ev.detail.open) {
+      returnToToolsAfterLegend = gd.classList.contains("rist-raman-tools-open");
+      setOpen(false);
+    } else {
+      var reopen = returnToToolsAfterLegend;
+      returnToToolsAfterLegend = false;
+      setOpen(reopen, false);
+      var legendButton = toolbar.querySelector(".rist-legend-edit-button");
+      if (legendButton && legendButton.getClientRects().length) legendButton.focus();
+      else button.focus();
+    }
+  });
 
   button.addEventListener("click", function(ev) {
     ev.preventDefault();
@@ -2142,6 +2161,7 @@ _RAMAN_TOOL_PANEL_SCRIPT = """
     setOpen(false);
   });
   gd.addEventListener("rist-plot-data-replaced", function() {
+    returnToToolsAfterLegend = false;
     setOpen(false);
     resetToolPanelPosition();
   });

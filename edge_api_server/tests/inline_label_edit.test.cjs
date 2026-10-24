@@ -304,6 +304,39 @@ for(const kind of ['ftir','raman']) for(const mode of ['native','chrome49']) {
 
 for (const kind of ['ftir','raman']) for (const mode of ['native','chrome49']) {
   const label=kind+'/'+mode;
+  test(label+': legend editor temporarily replaces tools without losing drafts or reactivating graph edit mode',async t=>{
+    const h=setup(t,kind,mode);await tick();
+    h.run(kind==='ftir'?'gd._ristFtirToolPanelInstalled':'gd._ristRamanToolPanelInstalled');
+    const toggle=h.q('.rist-'+kind+'-tools-toggle'),openClass='rist-'+kind+'-tools-open';
+    let editActivations=0;h.gd.addEventListener('rist-open-edit-tool',()=>editActivations++);
+    toggle.click();assert(h.gd.classList.contains(openClass));assert.equal(editActivations,1);
+    h.q('.rist-legend-edit-button').click();
+    const panel=h.q('.rist-legend-edit-panel'),input=h.q('.is-sample textarea');input.value='임시 이름';
+    assert.equal(panel.style.display,'block');assert(h.gd.classList.contains('rist-legend-editor-open'));
+    assert(!h.gd.classList.contains(openClass));assert.equal(toggle.getAttribute('aria-expanded'),'false');
+    toggle.click();assert.equal(h.d.activeElement,panel);assert.equal(input.value,'임시 이름');
+    assert(!h.gd.classList.contains(openClass));assert.equal(editActivations,1);
+    h.mouse(h.d.body,'pointerdown');h.d.body.click();h.key(h.d.body,'Escape');
+    assert.equal(panel.style.display,'block');assert(h.gd._ristLegendEditOpen);
+    h.q('.rist-legend-font-size').value='99';h.q('.rist-legend-edit-save-all').click();
+    assert.equal(panel.style.display,'block');assert(!h.gd.classList.contains(openClass));assert.equal(input.value,'임시 이름');
+    h.q('.rist-legend-font-size').value='16';h.q('.rist-legend-edit-save-all').click();await tick();
+    assert.equal(panel.style.display,'none');assert(!h.gd.classList.contains('rist-legend-editor-open'));
+    assert(h.gd.classList.contains(openClass));assert.equal(h.gd.data[0].name,'임시 이름');
+    assert.equal(editActivations,1,'returning to tools must not re-enable graph editing');
+    h.q('.rist-legend-edit-button').click();h.q('.is-sample textarea').value='저장하지 않음';
+    h.q('.rist-legend-edit-close').click();assert(h.gd.classList.contains(openClass));
+    assert.equal(h.gd.data[0].name,'임시 이름');assert.equal(editActivations,1);
+  });
+  test(label+': replacing data while legend editor is open clears the pending tool return',async t=>{
+    const h=setup(t,kind,mode);await tick();
+    h.run(kind==='ftir'?'gd._ristFtirToolPanelInstalled':'gd._ristRamanToolPanelInstalled');
+    h.q('.rist-'+kind+'-tools-toggle').click();h.q('.rist-legend-edit-button').click();
+    h.dispatch('rist-plot-data-replaced');h.q('.rist-legend-edit-close').click();
+    assert(!h.gd.classList.contains('rist-'+kind+'-tools-open'));
+    assert(!h.gd.classList.contains('rist-legend-editor-open'));
+    assert.equal(h.q('.rist-'+kind+'-tools-toggle').getAttribute('aria-label'),'그래프 도구 열기');
+  });
   test(label+': peak display hides only points/labels/connectors and restores exact styling/evidence',async t=>{
     const h=setup(t,kind,mode);shapeFixture(h);await tick();
     const peak=h.gd.data[1];peak.mode='markers';peak.hoverinfo='x+y';peak.hovertemplate='%{x}: %{y}';

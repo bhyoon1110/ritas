@@ -67,6 +67,9 @@ const server=http.createServer((req,res)=>{
         'legend.x':0.1,'legend.y':0.9,'legend.xanchor':'left','legend.yanchor':'top'});},id);
       const legendRows=page.locator('g.legend g.traces .legendtoggle');
       await legendRows.nth(2).waitFor({state:'visible'});
+      // Returning focus to tools can scroll the page. Frame the graph before
+      // measuring drag coordinates so the mid-drag screenshot cannot scroll it.
+      await page.locator('#'+id).scrollIntoViewIfNeeded();
       const directFrom=await legendRows.nth(2).boundingBox(),directTo=await legendRows.nth(0).boundingBox();
       const coords=()=>page.evaluate(id=>{const g=document.getElementById(id);return [g.layout.legend.x,g.layout.legend.y];},id);
       const beforeCoords=await coords();
@@ -74,6 +77,7 @@ const server=http.createServer((req,res)=>{
       await page.mouse.move(directTo.x+25,directTo.y+2,{steps:12});
       await page.locator('.rist-legend-order-line').waitFor({state:'visible'});
       await page.locator('#'+id).screenshot({path:path.join(output,kind+'-legend-drag.png')});
+      assert.ok(Math.abs((await legendRows.nth(0).boundingBox()).y-directTo.y)<1,'capturing the drag must not scroll the graph');
       await page.mouse.up();
       await page.waitForFunction(({id,key})=>document.getElementById(id).layout.meta[key].legendOrder.join(',')==='sample:1,sample:0,sample:2',{id,key});
       await page.waitForTimeout(700);
