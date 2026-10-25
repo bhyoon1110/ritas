@@ -144,7 +144,8 @@ const raw = Buffer.from(Array.from({length:241}, (_, i) => {
         await editor.locator('#page-delete').click();await pagesSaved();
         await editor.locator('#canvas-toggle').click();
         console.log(kind+': free object editor enabled');
-        assert.equal(await editor.locator('#canvas-tools button svg').count(),12);
+        assert.equal(await editor.locator('#canvas-tools button svg').count(),11);
+        assert.equal(await editor.locator('#preview-panel-toggles #canvas-toggle svg').count(),1);
         assert.equal(await editor.locator('#canvas-tools button').evaluateAll(buttons=>buttons.every(b=>!b.textContent.trim()&&b.title&&b.getAttribute('aria-label')===b.title)),true);
         await editor.getByRole('button',{name:'글자 삽입',exact:true}).click();
         await editor.getByLabel('개체 내용',{exact:true}).fill('자유 편집으로 추가한 검토 의견');

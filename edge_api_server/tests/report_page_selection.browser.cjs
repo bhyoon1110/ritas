@@ -42,6 +42,15 @@ const port=new Promise((resolve,reject)=>{let text='';server.stdout.on('data',ch
         };
         await ready();
         await page.waitForFunction(kind=>!document.getElementById(kind+'-report-progress').classList.contains('is-visible'),kind);
+        const toggle=frame.locator('#canvas-toggle'),panelToggle=frame.locator('#page-sidebar-toggle'),tools=frame.locator('#canvas-controls');
+        assert(await toggle.evaluate(el=>el.previousElementSibling.id==='page-sidebar-toggle'&&!document.getElementById('canvas-tools').contains(el)));
+        const adjacent=async()=>{const a=await panelToggle.boundingBox(),b=await toggle.boundingBox();assert(a&&b&&Math.abs(a.y-b.y)<2&&b.x>=a.x+a.width&&b.x-a.x-a.width<=12);};
+        await adjacent();await toggle.click();assert(await tools.isVisible());
+        assert.equal(await frame.locator('#canvas-tools button').count(),11);
+        await panelToggle.click();assert(!await frame.locator('#page-sidebar').isVisible());assert(await tools.isVisible());
+        await toggle.click();assert(!await tools.isVisible());assert(await toggle.isVisible());
+        await panelToggle.click();assert(await frame.locator('#page-sidebar').isVisible());
+        await frame.locator('#preview-panel-toggles').screenshot({path:path.join(output,kind+'-toggles.png')});
         const original=await ids();assert(original.length>=3);let revisions=0;
         page.on('request',request=>{if(request.method()==='POST'&&request.url().endsWith('/revisions'))revisions++;});
         // On macOS, native Control+click is a context menu; use Cmd for native clicks.
@@ -75,6 +84,7 @@ const port=new Promise((resolve,reject)=>{let text='';server.stdout.on('data',ch
         assert(await inline.evaluate(el=>el.selectionStart===0&&el.selectionEnd===el.value.length));assert.deepEqual(await selected(),[original[0]]);
         await frame.locator('#inline-close').click();
         await page.setViewportSize({width:390,height:844});
+        await adjacent();
         if(!await frame.locator('#page-sidebar').isVisible())await frame.locator('#page-sidebar-toggle').click();
         await thumb(original[1]).click({modifiers:['Meta']});assert.deepEqual(await selected(),original.slice(0,2));
         assert(await frame.locator('#page-sidebar').evaluate(el=>el.scrollWidth<=el.clientWidth+2));

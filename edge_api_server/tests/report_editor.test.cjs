@@ -35,7 +35,7 @@ function setup(t,kind='ftir',identity='') {
         for(const item of edits.added) pages.splice(pages.findIndex(p=>p.id===item.after)+1,0,{id:item.id,title:item.title,
           regions:[{refs:['page/'+item.id+'/title'],x:.1,y:.1,w:.8,h:.1},{refs:['page/'+item.id+'/body'],x:.1,y:.3,w:.8,h:.5}]});
         if(edits.order&&edits.order.length)pages.sort((a,b)=>edits.order.indexOf(a.id)-edits.order.indexOf(b.id));
-        result={ratio:16/9,pageEditing:kind!=='tem',pages:pages.filter(p=>!edits.hidden.includes(p.id))};
+        result={ratio:16/9,pageEditing:kind!=='tem',canvasEditing:kind!=='tem',pages:pages.filter(p=>!edits.hidden.includes(p.id))};
       }
       else if(this.url.endsWith('/revisions')) {
         revisions++;
@@ -62,6 +62,19 @@ test('analyst editor is ES5 and renders text without HTML interpretation',t=>{
   assert.equal(h.field('분석 결과 요약 · 문단 1').value,'AI 초안');
   assert.equal(h.q('slide-image').getAttribute('src'),h.prefix+'/original/edit-slides/0');
   assert(h.field('분석 결과 요약 · 문단 1').closest('details').hidden);
+});
+for(const kind of ['ftir','raman']) test(kind+' page and tool visibility toggles are adjacent and independent',t=>{
+  const h=setup(t,kind),toggle=h.q('canvas-toggle'),sidebar=h.q('page-sidebar-toggle'),tools=h.q('canvas-controls');
+  assert.equal(sidebar.nextElementSibling,toggle);assert.equal(toggle.parentNode,h.q('preview-panel-toggles'));
+  assert.equal(tools.parentNode,h.q('canvas-tools'));assert(!h.q('canvas-tools').contains(toggle));assert(!toggle.hidden);
+  assert(tools.hidden);assert(!h.q('page-sidebar').hidden);
+  toggle.click();assert(!tools.hidden);assert(!h.q('page-sidebar').hidden);assert.equal(toggle.getAttribute('aria-expanded'),'true');
+  sidebar.click();assert(h.q('page-sidebar').hidden);assert(!tools.hidden);assert(!toggle.hidden);
+  toggle.click();assert(tools.hidden);assert(h.q('page-sidebar').hidden);assert.equal(toggle.getAttribute('aria-expanded'),'false');
+  sidebar.click();assert(!h.q('page-sidebar').hidden);assert(tools.hidden);assert.equal(h.posts.length,0);
+});
+test('TEM without canvas editing does not gain a stray free-edit toggle',t=>{
+  const h=setup(t,'tem');assert.equal(h.q('canvas-toggle'),null);assert(h.q('canvas-tools').hidden);
 });
 for(const kind of ['ftir','raman','tem']) test(kind+' mail draft uses wide resizable fields and keeps autosaving long text',t=>{
   const h=setup(t,kind),subject=h.field('메일 제목'),body=h.field('메일 본문');

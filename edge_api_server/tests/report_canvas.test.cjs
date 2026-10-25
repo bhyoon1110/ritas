@@ -2,7 +2,7 @@ const {test}=require('node:test'), assert=require('node:assert/strict'),fs=requi
 const {JSDOM}=require('jsdom'),acorn=require('acorn');
 const script=['report_editor_icons.js','report_canvas_editor.js'].map(name=>fs.readFileSync(path.join(__dirname,'../app',name),'utf8')).join('\n');
 function setup(t, upload){
-  const dom=new JSDOM('<div id="canvas-tools"></div><div><div id="slide-stage"><div id="canvas-layer"></div></div></div>',{runScripts:'outside-only'});
+  const dom=new JSDOM('<div id="preview-panel-toggles"><button id="page-sidebar-toggle"></button></div><div id="canvas-tools"></div><div><div id="slide-stage"><div id="canvas-layer"></div></div></div>',{runScripts:'outside-only'});
   t.after(()=>dom.window.close());const w=dom.window,d=w.document;w.eval(script);let changes=0,modes=[];
   const api=new w.RistCanvasEditor({changed(){changes++;},message(){},mode(v){modes.push(v);},upload:upload||function(f,done){done(null,{asset:'a'.repeat(64),width:120,height:60});}});
   const item={id:'shape-'+'a'.repeat(20),kind:'text',name:'원래 본문',text:'기존 분석 내용',x:.1,y:.2,w:.5,h:.2,fontSize:18,color:'#123456',fill:'none',stroke:'none',lineWidth:1,bold:false,align:'left',dash:'solid'};
@@ -25,10 +25,23 @@ test('ES5 canvas inserts text/shapes/lines, edits numeric geometry and styles, u
   h.button('맨 뒤로').click();assert.equal(h.api.value().page1[1].layer,'back');
 });
 test('every free-edit command is an accessible local SVG icon with a tooltip',t=>{
-  const h=setup(t),buttons=[...h.d.querySelectorAll('#canvas-tools button')];
+  const h=setup(t),buttons=[...h.d.querySelectorAll('#canvas-toggle,#canvas-tools button')];
   assert.equal(buttons.length,12);
   for(const b of buttons){assert(b.querySelector('svg[aria-hidden="true"]'));assert(b.title);assert.equal(b.getAttribute('aria-label'),b.title);assert.equal(b.textContent,'');}
   assert.equal(h.d.querySelectorAll('.canvas-tool-group').length,3);
+});
+test('only the mode toggle moves beside page visibility; tools stay in their existing container',t=>{
+  const h=setup(t),toggle=h.d.getElementById('canvas-toggle'),host=h.d.getElementById('canvas-tools'),body=h.d.getElementById('canvas-controls');
+  assert.equal(toggle.previousElementSibling.id,'page-sidebar-toggle');assert(!host.contains(toggle));
+  assert.equal(body.parentNode,host);assert.equal(host.querySelectorAll('button').length,11);
+  assert.equal(toggle.getAttribute('aria-controls'),body.id);assert.equal(toggle.getAttribute('aria-expanded'),'true');
+  const controls=[...host.querySelectorAll('button')],before=JSON.stringify(h.api.value());
+  toggle.click();assert(body.hidden);assert.equal(toggle.getAttribute('aria-expanded'),'false');
+  assert(!toggle.hidden);assert.equal(JSON.stringify(h.api.value()),before);assert.equal(h.changes(),0);
+  toggle.click();assert(!body.hidden);assert.equal(toggle.getAttribute('aria-expanded'),'true');assert.deepEqual([...host.querySelectorAll('button')],controls);
+  h.api.layout({canvasEditing:false});assert(toggle.hidden);assert(host.hidden);assert.equal(toggle.getAttribute('aria-expanded'),'false');
+  h.api.layout({canvasEditing:true});assert(!toggle.hidden);assert(!host.hidden);assert.equal(toggle.getAttribute('aria-expanded'),'true');
+  h.api.lock(true);assert(toggle.disabled);toggle.click();assert(h.api.active());
 });
 test('existing text moves/resizes only on release, blur cancels and input history stays local',t=>{
   const h=setup(t),stage=h.d.getElementById('slide-stage');stage.getBoundingClientRect=()=>({width:1000,height:500});

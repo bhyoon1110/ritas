@@ -61,6 +61,7 @@
       availability();
     }
     function draw() {
+      modeButton.setAttribute("aria-expanded",String(enabled&&capable));
       body.hidden=!enabled;layer.textContent="";layer.hidden=!enabled||!capable||!page||loading;
       list.textContent="";el("option",list,"개체 선택 (겹친 개체는 목록 사용)").value="";
       merged().forEach(function(item,index){
@@ -128,11 +129,12 @@
         finish();draw();done(null);
       },true);
     }
-    var bar=el("div",host);bar.className="actions";
+    var bar=document.getElementById("preview-panel-toggles");
     modeButton=button(bar,"자유 편집 켜기",function(){
       enabled=!enabled;window.RistReportIcons(modeButton,"edit",enabled?"자유 편집 끄기":"자유 편집 켜기");
       modeButton.setAttribute("aria-pressed",String(enabled));options.mode(enabled);draw();
-    });modeButton.id="canvas-toggle";modeButton.setAttribute("aria-pressed","false");
+    });modeButton.id="canvas-toggle";modeButton.hidden=true;modeButton.setAttribute("aria-pressed","false");
+    modeButton.setAttribute("aria-controls","canvas-controls");modeButton.setAttribute("aria-expanded","false");
     var body=el("div",host);body.id="canvas-controls";body.hidden=true;
     var actions=el("div",body);actions.className="actions";actions.setAttribute("role","group");actions.setAttribute("aria-label","PPT 자유편집 도구");
     function group(label){var g=el("div",actions);g.className="canvas-tool-group";g.setAttribute("role","group");g.setAttribute("aria-label",label);return g;}
@@ -216,7 +218,7 @@
     return {
       load:function(value){state=copy(value||{});undo=[];redo=[];selected=null;},
       value:function(){return copy(state);},
-      layout:function(value){capable=value.canvasEditing===true;pages=value.pages||[];ratio=value.ratio||16/9;host.hidden=!capable;loading=false;},
+      layout:function(value){capable=value.canvasEditing===true;pages=value.pages||[];ratio=value.ratio||16/9;host.hidden=!capable;modeButton.hidden=!capable;modeButton.setAttribute("aria-expanded",String(enabled&&capable));loading=false;},
       page:function(value){abort();if(!page||!value||page.id!==value.id)selected=null;page=value;body.hidden=!enabled;draw();},
       lock:function(value){locked=value;if(value)abort();availability();},
       loading:function(){loading=true;abort();layer.hidden=true;availability();},
