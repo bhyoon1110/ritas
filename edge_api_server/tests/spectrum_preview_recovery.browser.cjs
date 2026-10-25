@@ -65,9 +65,56 @@ const raw=Buffer.from(Array.from({length:241},(_,i)=>{const x=400+i*15;return x+
         await page.unroute('**/editor-status');await page.locator('#sw-retry-editor').click();await waitEditor();
         assert.equal(await page.locator('#sw-report-editor').getAttribute('src'),regenerated);
         assert.equal(creations,2);
+        // The embedded editor must align both columns, including a short tablet
+        // viewport. On narrow screens the form stays independently scrollable
+        // above the preview instead of inheriting the desktop column height.
+        for(const viewport of [{width:1440,height:1050},{width:1280,height:800},{width:1100,height:700},{width:390,height:844},{width:320,height:640}]){
+          await page.setViewportSize(viewport);
+          const frame=page.frameLocator('#sw-report-editor');
+          const geometry=await frame.locator('.layout').evaluate(layout=>{
+            const form=document.querySelector('.form-pane'),editor=document.getElementById('editor'),preview=document.querySelector('.preview-pane');
+            const a=form.getBoundingClientRect(),b=preview.getBoundingClientRect(),c=editor.getBoundingClientRect();
+            editor.scrollTop=editor.scrollHeight;
+            const bottom=editor.scrollTop>0&&Math.abs(editor.scrollHeight-editor.clientHeight-editor.scrollTop)<=1;
+            editor.scrollTop=0;
+            return {columns:getComputedStyle(layout).display==='flex',leftTop:a.top,rightTop:b.top,leftBottom:c.bottom,rightBottom:b.bottom,
+              leftHeight:c.height,scrollable:bottom,mailTop:document.getElementById('mail-editor').getBoundingClientRect().top,
+              pageWidth:document.documentElement.scrollWidth,viewport:innerWidth};
+          });
+          assert(geometry.scrollable,JSON.stringify(geometry));
+          assert(geometry.pageWidth<=geometry.viewport+1,JSON.stringify(geometry));
+          assert(geometry.mailTop>=geometry.rightBottom-1,JSON.stringify(geometry));
+          if(geometry.columns){
+            assert(Math.abs(geometry.leftTop-geometry.rightTop)<=1,JSON.stringify(geometry));
+            assert(Math.abs(geometry.leftBottom-geometry.rightBottom)<=1,JSON.stringify(geometry));
+          }else{
+            assert(geometry.leftHeight<=350,JSON.stringify(geometry));
+            assert(geometry.leftBottom<=geometry.rightTop,JSON.stringify(geometry));
+          }
+          if(viewport.width===1280){
+            // Reflow after collapsing the thumbnail rail and expanding object
+            // properties must not leave the form at an old/fixed height.
+            await frame.locator('#page-sidebar-toggle').click();
+            await frame.locator('#canvas-toggle').click();
+            await frame.locator('[aria-label="페이지 개체 선택"]').selectOption({index:1});
+            assert(await frame.locator('.canvas-properties').isVisible());
+            const expanded=await frame.locator('.layout').evaluate(()=>{
+              const a=document.getElementById('editor').getBoundingClientRect(),b=document.querySelector('.preview-pane').getBoundingClientRect();
+              return {left:a.bottom,right:b.bottom};
+            });
+            assert(Math.abs(expanded.left-expanded.right)<=1,JSON.stringify(expanded));
+            await frame.locator('#canvas-toggle').click();
+            await frame.locator('#page-sidebar-toggle').click();
+            await page.waitForFunction(kind=>!document.getElementById(kind+'-report-progress').classList.contains('is-visible'),kind);
+            await page.locator('#sw-report-editor').scrollIntoViewIfNeeded();
+            await frame.locator('.layout').evaluate(el=>window.scrollTo(0,el.offsetTop+el.offsetHeight-innerHeight+30));
+            await page.screenshot({path:path.join(output,kind+'-'+version+'-tablet-layout.png')});
+          }
+        }
+        await page.setViewportSize({width:1440,height:1050});
         await page.screenshot({path:path.join(output,kind+'-'+version+'-preview.png'),fullPage:true});
         assert.deepEqual(errors,[]);
-        console.log(kind+'/'+version+': step transition auto-generation, unchanged reuse, expired job, preserved graph, real regeneration, transient retry passed');
+        console.log(kind+'/'+version+': step transition auto-generation, unchanged reuse, expired job, preserved graph, real regeneration, transient retry, aligned/responsive editor layout passed');
       }catch(error){await page.screenshot({path:path.join(output,kind+'-'+version+'-failure.png'),fullPage:true});throw error;}
       finally{await context.close();}
     }
