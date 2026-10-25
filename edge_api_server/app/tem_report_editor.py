@@ -208,9 +208,10 @@ document.getElementById('next').onclick=function(){if(page<count-1){page++;show(
         return HTMLResponse('<!doctype html><html lang="ko"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>TEM 보고서</title><style>body{margin:20px;background:#eef2f6;font:16px Arial}img{max-width:100%;display:block}button{padding:10px;margin:8px;white-space:nowrap}</style><button id="previous">이전</button><button id="next">다음</button><span id="status"></span><img id="image" alt="TEM 보고서 페이지"><script>' + script + '</script></html>', headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "Content-Security-Policy": "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self'; frame-ancestors 'self'; base-uri 'none'; form-action 'none'"})
 
     @router.get(prefix + "/{job_id}/download", tags=["tem"])
-    def download(request: Request, job_id: str):
+    def download(request: Request, job_id: str, filename: str | None = None):
+        from .download_names import report_download_name
         job = authorized_job(request, job_id)
-        return _ahn().tem_history.HistoryFileResponse(job, job.package_path, media_type="application/zip", filename="tem-report-package.zip")
+        return _ahn().tem_history.HistoryFileResponse(job, job.package_path, media_type="application/zip", filename=report_download_name(filename,"tem-report-package.zip"))
 
     @router.post(prefix + "/{job_id}/revisions", status_code=202, tags=["tem"])
     async def revise(request: Request, job_id: str):

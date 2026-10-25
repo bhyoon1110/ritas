@@ -6,7 +6,7 @@ const {JSDOM}=require('jsdom');
 const acorn=require('acorn');
 const {execFileSync}=require('node:child_process');
 const clone=x=>JSON.parse(JSON.stringify(x));
-const script=['report_editor_icons.js','report_page_sidebar.js','report_direct_editor.js','report_canvas_editor.js','report_saved_graphs.js','report_editor.js'].map(name=>fs.readFileSync(path.join(__dirname,'../app',name),'utf8')).join('\n');
+const script=['file_save.js','report_editor_icons.js','report_page_sidebar.js','report_direct_editor.js','report_canvas_editor.js','report_saved_graphs.js','report_editor.js'].map(name=>fs.readFileSync(path.join(__dirname,'../app',name),'utf8')).join('\n');
 const template=fs.readFileSync(path.join(__dirname,'../app/report_editor.html'),'utf8');
 function setup(t,kind='ftir',identity='') {
   const prefix='/api/v1/'+kind+'/report/jobs',posts=[],gets=[],timers=new Map(); let timerId=0;
@@ -103,6 +103,13 @@ test('SSO identity requires save before sending and is locked',t=>{
   const h=setup(t,'ftir','SSO-001');assert.equal(h.field('실험자').value,'SSO-001');
   assert(h.field('실험자').readOnly);assert(h.q('send').disabled);
   assert.equal(h.q('download').getAttribute('aria-disabled'),'true');
+});
+for(const kind of ['ftir','raman','tem'])test(kind+' package save chooses a name and only the finalized current revision',t=>{
+  const h=setup(t,kind);let options,calls=0;
+  h.w.RistFileSave.open=value=>{options=value;calls++;return Promise.resolve({status:'cancelled'});};
+  h.q('download').click();assert.equal(calls,1);assert.equal(options.extension,'.zip');assert(options.url.endsWith('/original/download'));assert(options.ready());
+  const old=options;h.input('보고서 제목','새 보고서');assert(!old.ready());h.q('download').click();assert.equal(calls,1);
+  h.tick();h.q('download').click();assert.equal(calls,2);assert(options.url.endsWith('/revision/download'));assert.match(options.name,/새 보고서/);assert(!old.ready());
 });
 test('failed save retains unsaved edits and blocks stale download/send',t=>{
   const h=setup(t);h.input('분석 결과 요약 · 문단 1','보존할 문장');h.fail();h.q('save').click();

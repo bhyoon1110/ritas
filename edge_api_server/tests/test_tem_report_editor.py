@@ -69,6 +69,17 @@ def wait(h, payload):
     pytest.fail("revision did not finish")
 
 
+def test_custom_package_name_does_not_change_tem_storage_or_contents(report):
+    from urllib.parse import unquote
+    h = report
+    original = h.job.package_path.read_bytes()
+    result = h.client.get(h.url+'/download', params={'filename':'TEM 최종본.zip'})
+    assert result.status_code == 200 and result.content == original
+    assert 'TEM 최종본.zip' in unquote(result.headers['content-disposition'])
+    assert h.client.get(h.url+'/download',params={'filename':'../outside.zip'}).status_code == 400
+    assert h.job.package_path.read_bytes() == original
+
+
 def test_completed_history_reopens_editor_and_slides_after_registry_reload(report):
     h = report
     history = ahn_web.tem_history

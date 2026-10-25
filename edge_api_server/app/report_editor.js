@@ -466,7 +466,17 @@
       sending = false; busy = false; availability(); message(error ? error.message : "현재 수정본을 LIMS 전송 대기열에 등록했습니다.",!!error);
     });
   };
-  download.onclick = function (event) { if (busy || dirty || activeRevision || !model) event.preventDefault(); };
+  download.onclick = function (event) {
+    event.preventDefault();
+    if (busy || dirty || activeRevision || !model) return;
+    var id=currentId;
+    window.RistFileSave.open({name:(inputs.requestNumber.value||project)+"-"+inputs.title.value,
+      extension:".zip",mime:"application/zip",url:url(id,"/download"),
+      ready:function(){return currentId===id&&!busy&&!dirty&&!activeRevision;}
+    }).then(function(result){
+      if(result.status!=="cancelled")message(result.status==="saved"?"선택한 위치에 보고서 패키지를 저장했습니다.":"보고서 패키지 다운로드를 시작했습니다. 저장 위치는 브라우저 설정을 따릅니다.");
+    });
+  };
   window.addEventListener("beforeunload",function (event) { if (dirty || busy || activeRevision) { event.preventDefault(); event.returnValue = "저장하지 않은 변경 또는 생성 중인 수정본이 있습니다."; } });
   load(currentId);
 }());

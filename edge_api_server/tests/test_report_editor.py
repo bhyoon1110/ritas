@@ -458,6 +458,20 @@ def test_slide_cache_revalidates_permissions_expiry_and_representation(prepared)
     assert h.client.get(url, headers={'If-None-Match': etag}).status_code == 410
 
 
+def test_package_filename_is_download_only_and_never_a_storage_path(prepared):
+    from urllib.parse import unquote
+    h = prepared
+    original = h.job.package_path.read_bytes()
+    response = h.client.get(h.url+'/download', params={'filename':'시험 보고서'})
+    assert response.status_code == 200 and response.content == original
+    assert '시험 보고서.zip' in unquote(response.headers['content-disposition'])
+    assert h.job.filename == h.kind+'-report-package.zip'
+    assert h.job.package_path.read_bytes() == original
+    for name in ('../other.zip', 'C:\\report.zip', 'invalid\r\nHeader.zip', 'NUL.zip', '.zip', 'x'*151):
+        assert h.client.get(h.url+'/download', params={'filename':name}).status_code == 400
+    assert h.client.get(h.url+'/download').headers['content-disposition'].endswith('"'+h.kind+'-report-package.zip"')
+
+
 def test_invalid_variables_do_not_create_revisions(prepared):
     h = prepared
     original = edit_request(h.client.get(h.url+'/editor-data').json()['document'])

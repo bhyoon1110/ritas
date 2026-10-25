@@ -6770,7 +6770,9 @@ def preview_raman_report_job(request: Request, job_id: str) -> HTMLResponse:
 def download_raman_preview_report_job(
     request: Request,
     job_id: str,
+    filename: str | None = None,
 ) -> FileResponse:
+    from .download_names import report_download_name
     store = preview_report_job_store(request.app)
     job = store.get(job_id)
     if job is None:
@@ -6783,7 +6785,7 @@ def download_raman_preview_report_job(
     return FileResponse(
         job.package_path,
         media_type="application/zip",
-        filename=job.filename,
+        filename=report_download_name(filename, job.filename),
     )
 
 

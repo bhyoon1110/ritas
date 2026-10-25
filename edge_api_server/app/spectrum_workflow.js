@@ -362,12 +362,12 @@
     function chooseGraphFile() { if (!unavailable() && graphs.length < 6) importInput.click(); }
     function exportGraph(g) {
       if (unavailable()) return Promise.resolve();
-      busy = true; operation = "편집 그래프와 원본 RAW를 파일로 준비하는 중입니다."; render(); tell(operation);
-      return window.RistSpectrumGraphFile.write(g,kind,function (message) { tell(message); }).then(function (blob) {
-        var url = URL.createObjectURL(blob), link = node("a",document.body);
-        link.href = url; link.download = kind + "-" + g.title.replace(/[\\/:*?"<>|\x00-\x1f]/g,"_").slice(0,80) + ".ristgraph";
-        link.click(); link.remove(); window.setTimeout(function () { URL.revokeObjectURL(url); },30000);
-        tell("그래프 파일 다운로드를 시작했습니다. 원본 RAW와 저장 시점의 편집 상태가 포함됩니다. 현재 화면의 미저장 수정은 먼저 그래프를 덮어쓴 뒤 내보내세요.");
+      busy = true; operation = "저장할 파일 이름과 위치를 선택하세요."; render(); tell(operation);
+      return window.RistFileSave.open({name:kind + "-" + g.title,extension:".ristgraph",mime:"application/octet-stream",
+        blob:function(){return window.RistSpectrumGraphFile.write(g,kind,function(message){tell(message);});}
+      }).then(function (result) {
+        if(result.status === "cancelled"){tell("그래프 파일 저장을 취소했습니다. 저장한 그래프는 그대로 유지됩니다.");return;}
+        tell((result.status === "saved" ? "선택한 위치에 그래프 파일을 저장했습니다. " : "그래프 파일 다운로드를 시작했습니다. ") + "원본 RAW와 저장 시점의 편집 상태가 포함됩니다. 현재 화면의 미저장 수정은 먼저 그래프를 덮어쓴 뒤 내보내세요.");
       }).catch(function (error) { tell(error.message || "그래프 파일을 내보내지 못했습니다.",true); })
         .then(function () { busy = false; operation = ""; render(); });
     }
