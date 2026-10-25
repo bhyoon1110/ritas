@@ -148,7 +148,7 @@ _HTML = r"""
   overlay.addEventListener('keydown', function(ev) {
     if (ev.key === 'Escape') {ev.preventDefault(); ev.stopPropagation(); close();}
     if (ev.key === 'Tab') {
-      var nodes = [sample,input,closeButton,submit].filter(function(node) {return !node.disabled;});
+      var nodes = Array.prototype.slice.call(overlay.querySelectorAll('button,input,select,textarea')).filter(function(node) {return !node.disabled;});
       var first = nodes[0], last = nodes[nodes.length-1];
       if (ev.shiftKey && document.activeElement === first) {ev.preventDefault(); last.focus();}
       else if (!ev.shiftKey && document.activeElement === last) {ev.preventDefault(); first.focus();}

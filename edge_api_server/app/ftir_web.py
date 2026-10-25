@@ -28,6 +28,7 @@ from rist_common.plotting import (
     origin_style_toggle_js,
     peak_sensitivity_js,
 )
+from rist_common.plotting.floating_panels import floating_panels_html
 
 from .errors import ApiException
 from .error_archive import install_error_management
@@ -5630,6 +5631,7 @@ def build_ftir_page() -> str:
         + work_template_script()
         + spectrum_workflow_script()
         + _UPLOAD_SCRIPT
+        + floating_panels_html()
     )
     page = fig_to_responsive_html(
         _blank_figure(),

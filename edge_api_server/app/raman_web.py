@@ -30,6 +30,7 @@ from rist_common.plotting import (
     origin_style_toggle_js,
     peak_sensitivity_js,
 )
+from rist_common.plotting.floating_panels import floating_panels_html
 
 from . import assignment_suggestions
 from .auth import authenticated_transfer_payload
@@ -6308,6 +6309,7 @@ def build_raman_page() -> str:
             + work_template_script()
             + spectrum_workflow_script()
             + _UPLOAD_SCRIPT
+            + floating_panels_html()
         ),
         config={"scrollZoom": True, "modeBarButtonsToRemove": ["select2d"]},
     )

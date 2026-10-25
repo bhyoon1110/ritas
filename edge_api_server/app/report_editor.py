@@ -21,6 +21,7 @@ from .report.editor_variables import resolve_changes
 from .report.canvas import ObjectEdit
 from .report_queue import register_generated_report_package
 from .storage import atomic_write_json
+from rist_common.plotting.floating_panels import floating_panels_html
 
 _REVISION_SLOT = BoundedSemaphore(1)
 _MAX_EDIT_BYTES = 2 * 1024 * 1024
@@ -238,7 +239,9 @@ def editor_page(prefix, job_id, *, project=None):
     template = Path(__file__).with_name("report_editor.html").read_text(encoding="utf-8")
     script = "\n".join(Path(__file__).with_name(name).read_text(encoding="utf-8")
                        for name in ("report_editor_icons.js", "report_page_sidebar.js", "report_direct_editor.js", "report_canvas_editor.js", "report_saved_graphs.js", "report_editor.js"))
-    return template.replace("__CONFIG__", config).replace("__SCRIPT__", script)
+    return template.replace("__CONFIG__", config).replace("__SCRIPT__", script).replace(
+        "</body>", floating_panels_html() + "</body>", 1
+    )
 
 
 def install_report_editor(router, kind):
