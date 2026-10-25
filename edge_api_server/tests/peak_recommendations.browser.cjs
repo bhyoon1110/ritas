@@ -51,9 +51,13 @@ const raw=Buffer.from(Array.from({length:481},(_,i)=>{const x=400+i*7.5;return x
         if(kind==='ftir')assert.equal(await page.evaluate(id=>document.getElementById(id)._ristFtirSignalMode,id),'transmittance','Reviewing does not switch display units');
         await dialog.getByLabel('추천 피크 1 이름').fill('사용자 수정 피크');
         await dialog.getByLabel('추천 피크 2 이름').fill('');
-        await dialog.getByLabel('추천 피크 1 선택').uncheck();await dialog.getByLabel('추천 피크 2 선택').uncheck();
+        await dialog.getByRole('button',{name:'전체 해제',exact:true}).click();
         assert.equal(await dialog.getByRole('button',{name:'선택한 피크 추가',exact:true}).isDisabled(),true);
-        await dialog.getByLabel('추천 피크 1 선택').check();
+        assert.match(await dialog.locator('.rist-peak-recommend-summary').textContent(),/선택 0개/);
+        await dialog.getByRole('button',{name:'전체 선택',exact:true}).click();
+        assert.equal(await dialog.getByLabel('추천 피크 1 선택').isChecked(),true);assert.equal(await dialog.getByLabel('추천 피크 2 선택').isChecked(),true);
+        assert.equal(await dialog.getByLabel('추천 피크 1 이름').inputValue(),'사용자 수정 피크');assert.equal(await recommendationCount(),0);
+        await dialog.getByLabel('추천 피크 2 선택').uncheck();
         assert.equal(await dialog.evaluate(el=>{
           const dialog=el.getBoundingClientRect(),head=el.querySelector('h3').getBoundingClientRect(),actions=el.querySelector('.rist-peak-recommend-actions').getBoundingClientRect();
           return head.top>=dialog.top && actions.bottom<=dialog.bottom && actions.bottom<=innerHeight
@@ -62,7 +66,9 @@ const raw=Buffer.from(Array.from({length:481},(_,i)=>{const x=400+i*7.5;return x
         await dialog.screenshot({path:path.join(output,label+'-review.png')});
         await apply();assert.equal(await recommendationCount(),1,'Unchecked peaks are not added');
         assert.equal(await page.evaluate(id=>document.getElementById(id).data.find(t=>t.meta?.rist_peak?.recommendation).meta.rist_peak.label,id),'사용자 수정 피크');
-        await dialog.getByLabel('추천 피크 2 선택').check();await apply();assert.equal(await recommendationCount(),2);
+        await dialog.getByRole('button',{name:'전체 선택',exact:true}).click();
+        assert.equal(await dialog.getByLabel('추천 피크 1 선택').isChecked(),false,'Already added peaks stay excluded');
+        await apply();assert.equal(await recommendationCount(),2);
         const after=await page.evaluate(id=>{const g=document.getElementById(id);return {raw:g.data.filter(t=>t.meta?.rist_sample_parent),labels:g.layout.meta.ristPeakLabels.length,peaks:g.data.filter(t=>t.meta?.rist_peak?.recommendation)};},id);
         const rawValues=traces=>traces.map(t=>({x:t.x,y:t.meta.ftir_signal_toggle?.absorbance_y || t.y}));
         assert.deepEqual(rawValues(after.raw),rawValues(before.raw));assert(after.peaks.every(t=>t.meta.rist_peak.sample_group===before.group));
@@ -73,6 +79,8 @@ const raw=Buffer.from(Array.from({length:481},(_,i)=>{const x=400+i*7.5;return x
         await dialog.screenshot({path:path.join(output,label+'-recommend.png')});
         await submit();await recommended();assert.equal(await recommendationCount(),2);assert.match(await dialog.locator('.rist-peak-recommend-summary').textContent(),/기존 중복 2개/);
         assert.equal(await dialog.getByRole('button',{name:'선택한 피크 추가',exact:true}).isDisabled(),true);
+        assert.equal(await dialog.getByRole('button',{name:'전체 선택',exact:true}).isDisabled(),true);
+        assert.equal(await dialog.getByRole('button',{name:'전체 해제',exact:true}).isDisabled(),true);
         await dialog.getByRole('button',{name:'닫기 (Esc)'}).click();
         await sensitivity(100);
         assert.equal(await page.evaluate(id=>{const g=document.getElementById(id);return g.data.filter(t=>t.meta?.rist_peak?.recommendation).every(t=>g.data.filter(other=>

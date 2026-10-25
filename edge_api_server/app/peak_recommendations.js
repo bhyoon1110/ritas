@@ -76,13 +76,16 @@
       + '<div class="rist-peak-recommend-request"><button type="submit">피크 추천받기</button></div>'
       + '<p role="status" aria-live="polite"></p><section class="rist-peak-recommend-review" hidden>'
       + '<h4>추천 피크 목록</h4><p>추가할 피크를 체크하고 이름을 수정하세요. 이름을 비우면 위치만 표시합니다. 위치·강도는 실측값으로 고정되며 중복 피크는 기존 이름을 유지합니다.</p>'
-      + '<p class="rist-peak-recommend-summary" aria-live="polite"></p><ul class="rist-peak-recommend-results"></ul></section></div>'
+      + '<div class="rist-peak-recommend-selection-tools"><p class="rist-peak-recommend-summary" aria-live="polite"></p>'
+      + '<div class="rist-peak-recommend-bulk" role="group" aria-label="추천 피크 일괄 선택"><button type="button" class="rist-peak-recommend-select-all" disabled>전체 선택</button><button type="button" class="rist-peak-recommend-clear-all" disabled>전체 해제</button></div></div>'
+      + '<ul class="rist-peak-recommend-results"></ul></section></div>'
       + '<div class="rist-peak-recommend-actions"><button type="button" class="rist-peak-recommend-close">닫기 (Esc)</button><button type="button" class="rist-peak-recommend-apply" disabled>선택한 피크 추가</button></div></form>';
     document.body.appendChild(overlay);
     var form=overlay.querySelector('form'), sample=overlay.querySelector('select'), hint=overlay.querySelector('textarea');
     var status=overlay.querySelector('[role=status]'), results=overlay.querySelector('ul'), closeButton=overlay.querySelector('.rist-peak-recommend-close');
     var review=overlay.querySelector('.rist-peak-recommend-review'), summary=overlay.querySelector('.rist-peak-recommend-summary');
     var applyButton=overlay.querySelector('.rist-peak-recommend-apply'), draft=null;
+    var selectAllButton=overlay.querySelector('.rist-peak-recommend-select-all'), clearAllButton=overlay.querySelector('.rist-peak-recommend-clear-all');
     var submit=overlay.querySelector('button[type=submit]'), xhr=null, sequence=0, generation=0, busy=false, applying=false, previous=null;
     function currentParent() {
       var t=sample.value==='' ? null : (gd.data || [])[Number(sample.value)];
@@ -93,10 +96,11 @@
     function update() {
       submit.disabled=busy || button.disabled || !hint.value.trim() || !currentParent();
       sample.disabled=hint.disabled=busy;closeButton.disabled=applying;
-      var selected=0, duplicates=0;
+      var selected=0, duplicates=0, available=0;
       if(draft) draft.items.forEach(function(item) {
         item.duplicate=duplicate(gd.data,draft.trace,item.candidate,Number(gd._ristPeakSensitivityValue));
         if(item.applied || item.duplicate) item.selected=false;
+        else available++;
         if(item.duplicate && !item.applied) duplicates++;
         if(item.selected) selected++;
         if(item.checkbox) {
@@ -107,7 +111,10 @@
         }
       });
       summary.textContent=draft ? '추천 '+draft.items.length+'개 · 선택 '+selected+'개 · 기존 중복 '+duplicates+'개' : '';
-      applyButton.disabled=busy || button.disabled || !validDraft() || !selected;
+      var unavailable=busy || button.disabled || !validDraft();
+      applyButton.disabled=unavailable || !selected;
+      selectAllButton.disabled=unavailable || !available || selected===available;
+      clearAllButton.disabled=unavailable || !selected;
     }
     function clearDraft() { draft=null;results.textContent='';review.hidden=true;summary.textContent=''; }
     function renderReview() {
@@ -160,6 +167,14 @@
     }
     hint.addEventListener('input',contextChanged);sample.addEventListener('change',contextChanged);
     closeButton.addEventListener('click',function(){close();});
+    function selectAll(selected) {
+      if(busy || !gd._ristPeakRecommendationOpen) return;
+      update();if(button.disabled || !validDraft()) return;
+      draft.items.forEach(function(item){item.selected=selected && !item.applied && !item.duplicate;});
+      update();
+    }
+    selectAllButton.addEventListener('click',function(){selectAll(true);});
+    clearAllButton.addEventListener('click',function(){selectAll(false);});
     form.addEventListener('submit',function(ev) {
       ev.preventDefault();if(submit.disabled || !gd._ristPeakRecommendationOpen) return;
       var trace=currentParent(), curve=Number(sample.value), pool=candidates(trace), material=hint.value.trim();

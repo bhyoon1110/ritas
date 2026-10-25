@@ -59,6 +59,32 @@ function setup(t,kind,mode) {
   return {w,g,q,change,open,request,respond,recommend,requests,batches,dispatch,emit:type=>(events[type]||[]).forEach(fn=>fn()),unitChanges:()=>unitChanges};
 }
 for(const kind of ['ftir','raman'])for(const mode of ['native','chrome49']){
+  test(kind+'/'+mode+': bulk selection changes only checks, preserves edited names and skips applied rows',async t=>{
+    const h=setup(t,kind,mode);h.open();
+    const all=h.q('.rist-peak-recommend-select-all'),none=h.q('.rist-peak-recommend-clear-all'),add=h.q('.rist-peak-recommend-apply');
+    assert.equal(all.disabled,true);assert.equal(none.disabled,true);
+    h.recommend();assert.equal(all.disabled,true);assert.equal(none.disabled,false);
+    h.change(h.q('[aria-label="추천 피크 1 이름"]'),'수정한 이름');h.change(h.q('[aria-label="추천 피크 2 이름"]'),'');
+    none.click();assert.equal(add.disabled,true);assert.equal(none.disabled,true);assert.equal(all.disabled,false);
+    assert.match(h.q('.rist-peak-recommend-summary').textContent,/선택 0개/);
+    all.click();assert.match(h.q('.rist-peak-recommend-summary').textContent,/선택 2개/);
+    assert.equal(h.q('[aria-label="추천 피크 1 이름"]').value,'수정한 이름');assert.equal(h.q('[aria-label="추천 피크 2 이름"]').value,'');
+    assert.equal(h.batches.length,0);assert.equal(h.unitChanges(),0);assert.equal(h.requests.length,1);
+    h.q('[aria-label="추천 피크 2 선택"]').click();add.click();
+    assert.equal(all.disabled,true);assert.equal(none.disabled,true);await tick();
+    all.click();assert.equal(h.q('[aria-label="추천 피크 1 선택"]').checked,false);assert.equal(h.q('[aria-label="추천 피크 2 선택"]').checked,true);
+    add.click();await tick();assert.equal(h.batches.length,2);assert.equal(h.batches[1].length,1);
+    assert.equal(h.batches[1][0].recommendation.name,'');assert.equal(all.disabled,true);assert.equal(none.disabled,true);
+  });
+  test(kind+'/'+mode+': bulk selection excludes existing duplicates and is disabled during requests',async t=>{
+    const h=setup(t,kind,mode);h.g.data.push({name:'기존 피크',meta:{rist_peak:{source:'user',sample_group:'a',x:10}}});h.open();h.recommend();
+    const all=h.q('.rist-peak-recommend-select-all'),none=h.q('.rist-peak-recommend-clear-all');
+    none.click();all.click();
+    assert.equal(h.q('[aria-label="추천 피크 1 선택"]').checked,false);assert.equal(h.q('[aria-label="추천 피크 1 선택"]').disabled,true);
+    assert.equal(h.q('[aria-label="추천 피크 2 선택"]').checked,true);assert.match(h.q('.rist-peak-recommend-summary').textContent,/선택 1개 · 기존 중복 1개/);
+    h.request();assert.equal(all.disabled,true);assert.equal(none.disabled,true);all.click();none.click();assert.equal(h.batches.length,0);
+    h.respond({peaks:[]});assert.equal(all.disabled,true);assert.equal(none.disabled,true);
+  });
   test(kind+'/'+mode+': recommendations are drafts; selection and name edits apply only on explicit Add',async t=>{
     const h=setup(t,kind,mode);h.open();h.recommend();
     assert.equal(h.batches.length,0);assert.equal(h.unitChanges(),0);

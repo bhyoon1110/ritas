@@ -19,9 +19,11 @@
 .rist-peak-recommend-position,.rist-peak-recommend-reason { margin: 8px 0 0; font-size: 12px; }
 .rist-peak-recommend-dialog .rist-peak-recommend-name { margin: 8px 0; }
 .rist-peak-recommend-dialog input:disabled { color: #52606d; background: #edf2f7; }
-.rist-peak-recommend-summary { font-weight: bold; }
+.rist-peak-recommend-selection-tools { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+.rist-peak-recommend-summary { margin: 0; font-weight: bold; }
+.rist-peak-recommend-bulk { display: flex; gap: 8px; }
 .rist-peak-recommend-actions { flex-shrink: 0; display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; padding-top: 12px; border-top: 1px solid #e2e8f0; }
-.rist-peak-recommend-actions button,.rist-peak-recommend-request button { padding: 8px 12px; border: 1px solid #9fb3c8; border-radius: 4px; background: #f5f7fa; color: #243b53; cursor: pointer; font: inherit; white-space: nowrap; }
+.rist-peak-recommend-actions button,.rist-peak-recommend-request button,.rist-peak-recommend-bulk button { padding: 8px 12px; border: 1px solid #9fb3c8; border-radius: 4px; background: #f5f7fa; color: #243b53; cursor: pointer; font: inherit; white-space: nowrap; }
 .rist-peak-recommend-actions .rist-peak-recommend-apply { background: #24577b; color: #fff; }
 .rist-peak-recommend-dialog button:disabled { opacity: .5; cursor: default; }
 @media (max-width: 440px) { .rist-peak-recommend-dialog { padding: 14px; } .rist-peak-recommend-actions button { padding: 8px; font-size: 12px; } }
