@@ -9,18 +9,22 @@ def interaction_modes_html(div_id: str) -> str:
 
 _HTML = r"""
 <style>
-.rist-interaction-status { display: flex; align-items: center; box-sizing: border-box;
-  height: 62px; width: 100%; padding: 6px 10px; margin: 6px 0; border: 1px solid #cbd5e1;
-  border-radius: 6px; background: #f8fafc; color: #334155; font: 12px Arial, "Noto Sans KR", sans-serif; }
-.rist-interaction-status.is-active { border-color: #7ba6cd; background: #eef6ff; }
+.rist-interaction-status { position: fixed; z-index: 12000; display: flex; align-items: center;
+  box-sizing: border-box; height: 60px; width: 440px; max-width: calc(100% - 24px);
+  padding: 6px 10px; margin: 0; border: 1px solid #cbd5e1; pointer-events: none;
+  border-radius: 8px; box-shadow: 0 2px 10px rgba(15,23,42,.14);
+  background: rgba(248,250,252,.94); color: #334155; font: 12px Arial, "Noto Sans KR", sans-serif; }
+.rist-interaction-status.is-active { border-color: #7ba6cd; background: rgba(238,246,255,.94); }
 .rist-interaction-copy { flex: 1; min-width: 0; }
 .rist-interaction-name { display: block; font-size: 13px; line-height: 20px; }
 .rist-interaction-help { display: block; line-height: 16px; }
 .rist-interaction-status button.rist-interaction-exit { flex: 0 0 auto; margin-left: 10px;
   border: 1px solid #9fb3c8; border-radius: 4px; padding: 7px 10px; background: #fff;
-  color: #243b53; font: 12px Arial, "Noto Sans KR", sans-serif; white-space: nowrap; cursor: pointer; }
-.rist-interaction-status button:disabled { opacity: .45; cursor: default; }
-@media(max-width: 560px) { .rist-interaction-status { height: 82px; padding: 6px 8px; } }
+  color: #243b53; font: 12px Arial, "Noto Sans KR", sans-serif; white-space: nowrap; cursor: pointer;
+  pointer-events: auto; min-height: 36px; }
+.rist-interaction-status button:disabled { opacity: .45; cursor: default; pointer-events: none; }
+@media(max-width: 560px) { .rist-interaction-status { height: 76px; padding: 6px 8px; } }
+@media print { .rist-interaction-status { display: none !important; } }
 </style>
 <script>
 (function() {
@@ -31,11 +35,72 @@ _HTML = r"""
   bar.innerHTML = "<div class='rist-interaction-copy' role='status' aria-live='polite' aria-atomic='true'>"
     + "<strong class='rist-interaction-name'></strong><span class='rist-interaction-help'></span></div>"
     + "<button type='button' class='rist-interaction-exit' title='현재 모드 종료 · 완료한 편집은 유지'>종료 (Esc)</button>";
-  // Outside the Plotly canvas: never changes export dimensions or covers data.
-  // Fixed height keeps mode switches from moving the plot or its controls.
-  gd.insertAdjacentElement("beforebegin", bar);
+  // A viewport portal avoids overflow/transform clipping in the plot's parents.
+  // It never changes plot sizing, saved figures or exported images.
+  bar.style.visibility = "hidden";
+  document.body.appendChild(bar);
   var name = bar.querySelector(".rist-interaction-name"), help = bar.querySelector(".rist-interaction-help");
-  var exitButton = bar.querySelector("button"), frame = 0, signature = "";
+  var exitButton = bar.querySelector("button"), frame = 0, signature = "", disposed = false;
+  var listeners = [], observer;
+  var obstacles = ".rist-plot-control-row,.rist-legend-edit-panel,.rist-axis-control-panel,"
+    + ".rist-shape-editor-panel,.rist-peak-coordinate-dialog,#rist-color-palette,"
+    + ".rist-ratio-selection,.rist-ratio-candidates,.rist-raman-ratio-editor,.rist-ratio-batch,"
+    + ".ftir-library-dialog,.raman-library-dialog,.sw-preview > div,.modebar,.legend,"
+    + ".rist-ftir-tools-toggle,.rist-raman-tools-toggle,.rist-plot-resize-handle,.rist-axis-wheel-help.is-visible";
+  function listen(node, type, handler, capture) {
+    node.addEventListener(type, handler, !!capture); listeners.push([node,type,handler,!!capture]);
+  }
+  function setStyle(key, value) { if (bar.style[key] !== value) bar.style[key] = value; }
+  function visibleRect(node) {
+    if (!node || !node.getClientRects().length) return null;
+    var style = window.getComputedStyle(node);
+    if (style.visibility === "hidden" || style.display === "none") return null;
+    return node.getBoundingClientRect();
+  }
+  function viewRect() {
+    // visualViewport is optional: Supermium/modern mobile keyboards and zoom;
+    // Chrome 49 retains the ordinary layout viewport path.
+    var view = window.visualViewport;
+    var left = view ? view.offsetLeft : 0, top = view ? view.offsetTop : 0;
+    return {left:left,top:top,right:left+(view ? view.width : window.innerWidth),
+      bottom:top+(view ? view.height : window.innerHeight)};
+  }
+  function area(a, b) {
+    return Math.max(0,Math.min(a.right,b.right)-Math.max(a.left,b.left))
+      * Math.max(0,Math.min(a.bottom,b.bottom)-Math.max(a.top,b.top));
+  }
+  function canvasRect(plot) { return visibleRect(plot.querySelector(".svg-container") || plot); }
+  function place() {
+    var view = viewRect(), graph = canvasRect(gd), active = window.__ristActiveHistoryPlot;
+    var other = active && active !== gd && document.documentElement.contains(active) ? canvasRect(active) : null;
+    if (!graph || !area(graph,view) || (other && area(other,view))) {
+      setStyle("visibility","hidden"); return;
+    }
+    var width = Math.min(440,view.right-view.left-24), height = bar.offsetHeight;
+    if (width < 160 || view.bottom-view.top < height+24) {setStyle("visibility","hidden");return;}
+    setStyle("width",width+"px");
+    function x(value) {return Math.max(view.left+12,Math.min(value,view.right-width-12));}
+    function y(value) {return Math.max(view.top+12,Math.min(value,view.bottom-height-12));}
+    var center = x((Math.max(graph.left,view.left)+Math.min(graph.right,view.right)-width)/2);
+    // Prefer just below the canvas, otherwise the visible viewport's lower edge.
+    var bottom = y(graph.bottom+10), top = y(graph.top-height-10);
+    var xs = [center,x(graph.left+12),x(graph.right-width-12)];
+    var ys = [bottom,top,y(view.top+12)], avoid = [];
+    Array.prototype.forEach.call(document.querySelectorAll(obstacles),function(node) {
+      var rect = visibleRect(node); if (rect && area(rect,view)) avoid.push(rect);
+    });
+    var data = visibleRect(gd.querySelector(".nsewdrag")) || graph, best = null;
+    ys.forEach(function(v) {xs.forEach(function(h) {
+      var rect = {left:h,top:v,right:h+width,bottom:v+height};
+      // Tool/legend overlap has priority over keeping the preferred position.
+      var score = area(rect,data)*.02 + Math.abs(h-center) + Math.abs(v-bottom)*2;
+      avoid.forEach(function(item) {score += area(rect,{left:item.left-6,top:item.top-6,
+        right:item.right+6,bottom:item.bottom+6})*100;});
+      if (!best || score < best.score) best = {left:h,top:v,score:score};
+    });});
+    setStyle("left",Math.round(best.left)+"px"); setStyle("top",Math.round(best.top)+"px");
+    setStyle("visibility","visible");
+  }
   function state() {
     if (gd._ristLegendEditOpen) return ["legend", "범례·스타일 편집", "전체 저장으로 반영 · 닫기로 취소", false];
     if (gd._ristInlineTextEditing) return ["text", "글자 편집", "Enter로 반영 · Esc로 입력 취소", false];
@@ -62,16 +127,25 @@ _HTML = r"""
   }
   function refresh() {
     frame = 0;
+    if (disposed) return;
+    if (!document.documentElement.contains(gd)) {destroy();return;}
     var next = state(), key = next.join("|");
-    if (key === signature) return;
-    signature = key;
-    bar.setAttribute("data-mode", next[0]);
-    bar.classList.toggle("is-active", next[3]);
-    name.textContent = "현재 모드: " + next[1]; help.textContent = next[2];
-    exitButton.disabled = !next[3];
+    if (key !== signature) {
+      signature = key;
+      bar.setAttribute("data-mode", next[0]);
+      bar.classList.toggle("is-active", next[3]);
+      name.textContent = "현재 모드: " + next[1]; help.textContent = next[2];
+      exitButton.disabled = !next[3];
+    }
+    place();
   }
-  function schedule() { if (!frame) frame = window.requestAnimationFrame(refresh); }
-  function activate() { window.__ristActiveHistoryPlot = gd; }
+  function schedule() {
+    if (!disposed && !frame && window.document && document.documentElement) frame = window.requestAnimationFrame(refresh);
+  }
+  function activate() {
+    window.__ristActiveHistoryPlot = gd;
+    document.dispatchEvent(new CustomEvent("rist-active-mode-plot"));
+  }
   function ownsEscape(ev) {
     if (ev.defaultPrevented || ev.isComposing || ev.keyCode === 229) return false;
     var target = ev.target;
@@ -91,23 +165,48 @@ _HTML = r"""
       if (gd._ristRestoreNavigation) return gd._ristRestoreNavigation();
     }).then(refresh, function() { schedule(); });
   }
+  function destroy() {
+    disposed = true;
+    if (frame) window.cancelAnimationFrame(frame);
+    if (observer) observer.disconnect();
+    listeners.forEach(function(item) {item[0].removeEventListener(item[1],item[2],item[3]);});
+    if (gd.removeListener) {gd.removeListener("plotly_afterplot",schedule);gd.removeListener("plotly_relayout",schedule);}
+    bar.remove(); delete gd._ristInteractionModes;
+  }
   gd._ristInteractionModes = {refresh: schedule, exit: exitMode};
-  exitButton.addEventListener("click", function() { activate(); exitMode(); });
+  listen(exitButton, "click", function() { activate(); exitMode(); });
   ["pointerdown", "mousedown", "focusin"].forEach(function(type) {
-    gd.addEventListener(type, activate, true); bar.addEventListener(type, activate, true);
+    listen(gd, type, activate, true); listen(bar, type, activate, true);
   });
-  gd.addEventListener("rist-exclusive-interaction-start", function() { activate(); schedule(); });
+  listen(gd, "rist-exclusive-interaction-start", function() { activate(); schedule(); });
   ["rist-interaction-mode-change", "rist-edit-mode-change", "rist-axis-settings-change",
     "rist-history-restored", "rist-plot-data-replaced", "focusout"].forEach(function(type) {
-    gd.addEventListener(type, schedule);
+    listen(gd, type, schedule);
   });
   // Capture schedules after the current click even when tool handlers stop propagation.
-  gd.addEventListener("click", schedule, true);
+  listen(gd, "click", schedule, true);
   gd.on("plotly_afterplot", schedule); gd.on("plotly_relayout", schedule);
-  document.addEventListener("keydown", function(ev) {
+  listen(document, "keydown", function(ev) {
     if (ev.key !== "Escape" || !ownsEscape(ev) || !state()[3]) return;
     ev.preventDefault(); exitMode();
   });
+  listen(document, "rist-active-mode-plot", schedule);
+  listen(window, "scroll", schedule, true); listen(window, "resize", schedule);
+  if (window.visualViewport) {
+    listen(window.visualViewport,"scroll",schedule); listen(window.visualViewport,"resize",schedule);
+  }
+  // No polling or pointer-move work: batch layout changes once per animation frame.
+  // Ignore our own portal and SVG hover mutations to avoid feedback/render loops.
+  observer = new MutationObserver(function(records) {
+    if (records.some(function(record) {
+      var target = record.target;
+      return target.nodeType === 1 && target.namespaceURI !== "http://www.w3.org/2000/svg"
+        && !target.closest(".rist-interaction-status");
+    })) schedule();
+  });
+  observer.observe(document.body,{childList:true,subtree:true,attributes:true,attributeFilter:["style","class","hidden"]});
+  listen(window,"pagehide",function(ev) {if (!ev.persisted) destroy();});
+  listen(window,"pageshow",schedule);
   refresh();
 })();
 </script>
