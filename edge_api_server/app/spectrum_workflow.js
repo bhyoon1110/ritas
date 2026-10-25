@@ -12,6 +12,10 @@
     if (id) el.id = id;
     el.onclick = action; return el;
   }
+  function iconButton(parent, icon, text, action) {
+    var el = window.RistReportIcons(button(parent, "", action), icon, text);
+    el.setAttribute("data-action", icon); return el;
+  }
   function install(api) {
     if (window.RistPeakRecommendations) window.RistPeakRecommendations.install(api);
     var kind = api.kind, gd = api.gd, graphs = [], active = null, step = 1, job = null;
@@ -267,7 +271,7 @@
         var card = node("article", list); card.className = "sw-card" + (g.id === active ? " sw-active" : ""); card.dataset.graphId = g.id;
         var label = node("label", card), check = node("input", label); check.type = "checkbox"; check.checked = g.included;
         check.disabled = unavailable(); check.setAttribute("aria-label", g.title + " 보고서 포함");
-        node("span", label, (index + 1) + ". " + g.title);
+        node("span", label, (index + 1) + ". " + g.title).title = g.title;
         check.onchange = function () { g.included = check.checked; changed(); };
         var image = node("img", card);
         image.onload = function () { makeThumbnail(g, image); };
@@ -279,23 +283,25 @@
           event.dataTransfer.setData("application/x-rist-saved-graph", JSON.stringify({id:g.id,jobId:job.jobId}));
           event.dataTransfer.effectAllowed = "copy";
         };
-        var row = node("div", card); row.className = "sw-controls";
-        if (step === 3) button(row, "현재 페이지에 추가", function () {
+        var row = node("div", card); row.className = "sw-controls sw-card-actions";
+        row.setAttribute("role", "group"); row.setAttribute("aria-label", g.title + " 저장 그래프 작업");
+        if (step === 3) iconButton(row, "add", "현재 페이지에 추가", function () {
           if (!job || unavailable()) return;
           frame.contentWindow.postMessage({type:"rist-insert-saved-graph",jobId:job.jobId,id:g.id},window.location.origin);
-        });
-        button(row, "미리보기", function () { preview(g); });
-        button(row, "다시 편집", function () { edit(g); });
-        button(row, "파일 내보내기", function () { exportGraph(g); }).title = "저장 시점의 편집 상태와 원본 RAW를 .ristgraph 파일로 저장";
+        }).classList.add("sw-card-add");
+        iconButton(row, "preview", "미리보기", function () { preview(g); });
+        iconButton(row, "edit", "다시 편집", function () { edit(g); });
+        iconButton(row, "download", "파일 내보내기", function () { exportGraph(g); }).title = "파일 내보내기 · 저장 시점의 편집 상태와 원본 RAW를 .ristgraph 파일로 저장";
         var management = node("div", row); management.className = "sw-card-management";
-        button(management, "↑", function () { move(index, -1); }).setAttribute("aria-label", g.title + " 앞 순서로");
-        button(management, "↓", function () { move(index, 1); }).setAttribute("aria-label", g.title + " 뒤 순서로");
-        button(management, "삭제", function () {
+        var up = iconButton(management, "up", g.title + " 앞 순서로", function () { move(index, -1); });
+        var down = iconButton(management, "down", g.title + " 뒤 순서로", function () { move(index, 1); });
+        iconButton(management, "trash", "삭제", function () {
           if (unavailable() || !window.confirm("‘" + g.title + "’ 저장본을 목록에서 삭제할까요? 원본 파일과 이미 생성한 보고서는 삭제하지 않습니다.")) return;
           graphs = graphs.filter(function (entry) { return entry !== g; }); if (active === g.id) active = null;
           changed();
         });
         Array.prototype.forEach.call(row.querySelectorAll("button"), function (b) { b.disabled = unavailable(); });
+        up.disabled = unavailable() || index === 0; down.disabled = unavailable() || index === graphs.length - 1;
       });
       editorStage();
     }

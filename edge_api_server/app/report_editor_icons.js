@@ -3,6 +3,8 @@
   "use strict";
   var paths = {
     edit:'<path d="m16 3 5 5-12 12-6 1 1-6Z M14 5l5 5"/>',
+    preview:'<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/>',
+    download:'<path d="M12 3v12 m-5-5 5 5 5-5 M4 15v6h16v-6"/>',
     text:'<path d="M4 5h16 M12 5v15 M8 20h8 M4 5v3 M20 5v3"/>',
     rect:'<rect x="4" y="5" width="16" height="14" rx="1"/>',
     ellipse:'<ellipse cx="12" cy="12" rx="9" ry="7"/>',

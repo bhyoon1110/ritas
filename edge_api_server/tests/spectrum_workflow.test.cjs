@@ -1,7 +1,8 @@
 const {test}=require('node:test'), assert=require('node:assert/strict'), fs=require('node:fs'),path=require('node:path');
 const {JSDOM}=require('jsdom'),acorn=require('acorn');
-const source=['file_save.js','spectrum_workflow.js'].map(name=>fs.readFileSync(path.join(__dirname,'../app',name),'utf8')).join('\n');
-function setup(t,kind='ftir') {
+const programs=['file_save.js','report_editor_icons.js','spectrum_workflow.js'].map(name=>fs.readFileSync(path.join(__dirname,'../app',name),'utf8'));
+const source=programs.join('\n');
+function setup(t,kind='ftir',mode='native') {
   const dom=new JSDOM('<header class="ftir-app-bar"><button id="ftir-clear"></button><button id="ftir-report"></button><label><input id="ftir-file-input"></label><label><input id="ftir-origin"></label></header><section class="ftir-library-band"></section><section id="ftir-drop-zone"></section><section id="ftir-report-meta"></section><div id="plot"></div>'.replace(/ftir/g,kind),{url:'http://localhost/'+kind,runScripts:'outside-only'});
   t.after(()=>dom.window.close()); const w=dom.window,d=w.document; w.confirm=()=>true;w.requestAnimationFrame=fn=>fn();
   let stored=null,fail=false,captured=0,restored=null,resets=0;
@@ -19,10 +20,37 @@ function setup(t,kind='ftir') {
     reset:async(empty,didClear,pending)=>{await pending.catch(()=>{});if(fail)throw Error('blocked');stored=structuredClone(empty);resets++;didClear();},
     capture:async()=>({state:{plotData:[{name:'raw'+(++captured)}],files:[]},report:{image:'data:image/png;base64,AA==',analysis:{}}}),
     restore:async value=>{restored=value;},saveWorkspace:()=>{},resize:()=>{},build:async()=>({jobId:'original'})};
-  w.eval(source); const workflow=w.RistSpectrumWorkflow.install(api);
+  if(mode==='chrome49'){
+    const root=path.join(__dirname,'../app/static/chrome49'),manifest=JSON.parse(fs.readFileSync(path.join(root,'manifest.json')));
+    w.eval(fs.readFileSync(path.join(root,manifest.runtime),'utf8'));
+    for(const script of programs){const file=manifest.scripts[require('node:crypto').createHash('sha256').update(script.trim()).digest('hex')];assert(file,'rebuild workflow assets');w.eval(fs.readFileSync(path.join(root,file),'utf8'));}
+  }else w.eval(source);
+  const workflow=w.RistSpectrumWorkflow.install(api);
   return {w,d,workflow,api,requests,get stored(){return stored;},get restored(){return restored;},get resets(){return resets;},fail(value){fail=value;}};
 }
 const tick=()=>new Promise(resolve=>setTimeout(resolve,0));
+for(const kind of ['ftir','raman'])for(const mode of ['native','chrome49'])test(kind+'/'+mode+': saved graph icons preserve actions, ordering, boundaries and busy guards',async t=>{
+  const h=setup(t,kind,mode);await h.workflow.start();h.workflow.go(2);
+  h.d.getElementById('sw-graph-name').value='First';await h.workflow.save(false);
+  h.d.getElementById('sw-graph-name').value='Second';await h.workflow.save(true);
+  const cards=()=>h.d.querySelectorAll('.sw-card'),action=(index,name)=>cards()[index].querySelector('[data-action="'+name+'"]');
+  assert.deepEqual([...cards()[0].querySelectorAll('button')].map(b=>b.dataset.action),['preview','edit','download','up','down','trash']);
+  for(const button of h.d.querySelectorAll('.sw-card button')){
+    assert(button.querySelector('svg[aria-hidden="true"]'));assert(button.title);assert(button.getAttribute('aria-label'));assert.equal(button.textContent,'');
+  }
+  assert(action(0,'up').disabled);assert(action(1,'down').disabled);
+  action(1,'up').click();await tick();assert.deepEqual(h.stored.graphs.map(g=>g.title),['Second','First']);
+  action(0,'down').click();await tick();assert.deepEqual(h.stored.graphs.map(g=>g.title),['First','Second']);
+  action(0,'preview').click();assert(h.d.querySelector('.sw-preview'));h.d.querySelector('.sw-preview button').click();
+  action(0,'edit').click();await tick();assert.equal(h.restored.plotData[0].name,'raw1');
+  await h.workflow.go(3);const frame=h.d.getElementById('sw-report-editor'),sent=[];frame.contentWindow.postMessage=data=>sent.push(data);
+  assert.deepEqual([...cards()[0].querySelectorAll('button')].map(b=>b.dataset.action),['add','preview','edit','download','up','down','trash']);
+  const before=JSON.stringify(h.stored);action(0,'add').click();assert.equal(sent[0].type,'rist-insert-saved-graph');assert.equal(sent[0].id,h.stored.graphs[0].id);assert.equal(JSON.stringify(h.stored),before);
+  h.workflow.setBusy(true);assert([...h.d.querySelectorAll('.sw-card button')].every(b=>b.disabled));action(0,'trash').click();assert.equal(JSON.stringify(h.stored),before);
+  h.workflow.setBusy(false);h.w.confirm=()=>false;action(0,'trash').click();assert.equal(h.stored.graphs.length,2);
+  h.w.confirm=()=>true;action(0,'trash').click();await tick();assert.equal(h.stored.graphs.length,1);assert.equal(h.stored.job.jobId,'original');
+  assert(action(0,'up').disabled);assert(action(0,'down').disabled);
+});
 for(const kind of ['ftir','raman'])test(kind+': saved graph drag uses IDs, transfers only requested PNG to the bound editor and leaves report selection unchanged',async t=>{
   const h=setup(t,kind);await h.workflow.start();h.workflow.go(2);await h.workflow.save(false);await h.workflow.go(3);
   const frame=h.d.getElementById('sw-report-editor'),sent=[];frame.contentWindow.postMessage=(data,origin)=>sent.push({data,origin});
@@ -77,7 +105,7 @@ test('report thumbnails are downsampled once per saved image, reused and revoked
 for(const kind of ['ftir','raman'])for(const trigger of ['sw-step-3','sw-next'])test(kind+': '+trigger+' automatically generates once, reuses unchanged report and protects existing edits',async t=>{
   const h=setup(t,kind);await h.workflow.start();h.workflow.go(2);await h.workflow.save(false);await h.workflow.save(true);
   // Chosen graph order, not the current display, determines report content.
-  h.d.querySelectorAll('.sw-card')[1].querySelector('button[aria-label]').click();
+  h.d.querySelectorAll('.sw-card')[1].querySelector('[data-action="up"]').click();
   let calls=0,finish,selection;h.api.build=items=>{calls++;selection=items.map(g=>g.state.plotData[0].name);return new Promise(resolve=>finish=resolve);};
   h.w.confirm=()=>{throw Error('first report must not need a confirmation');};
   h.d.getElementById(trigger).click();h.d.getElementById('sw-step-3').click();h.d.getElementById('sw-next').click();h.d.getElementById('sw-build-report').click();
@@ -305,7 +333,7 @@ test('export downloads the saved snapshot, never recaptures unsaved current edit
   h.w.RistSpectrumGraphFile={write:async(g,kind)=>{exported=structuredClone(g);assert.equal(kind,'ftir');return new h.w.Blob(['file']);}};
   h.w.URL.createObjectURL=()=> 'blob:test';h.w.URL.revokeObjectURL=()=>{};
   h.w.HTMLAnchorElement.prototype.click=function(){download=this.download;};
-  Array.from(h.d.querySelectorAll('.sw-card button')).find(b=>b.textContent==='파일 내보내기').click();await tick();await tick();
+  h.d.querySelector('.sw-card [data-action="download"]').click();await tick();await tick();
   assert.equal(exported,undefined);
   h.d.querySelector('[aria-label="저장 파일 이름"]').value='내 편집 그래프';
   Array.from(h.d.querySelectorAll('.rist-file-save button')).find(b=>b.textContent==='다운로드').click();await tick();await tick();
@@ -315,7 +343,7 @@ test('export downloads the saved snapshot, never recaptures unsaved current edit
 test('cancelling graph export performs no RAW serialization and restores controls',async t=>{
   const h=setup(t);await h.workflow.start();h.workflow.go(2);await h.workflow.save(false);
   h.w.RistSpectrumGraphFile={write:()=>{throw Error('cancel must not serialize');}};
-  Array.from(h.d.querySelectorAll('.sw-card button')).find(b=>b.textContent==='파일 내보내기').click();
+  h.d.querySelector('.sw-card [data-action="download"]').click();
   Array.from(h.d.querySelectorAll('.rist-file-save button')).find(b=>b.textContent==='취소').click();await tick();
   assert(!h.d.getElementById('sw-save-graph').disabled);assert.equal(h.stored.graphs.length,1);
 });
