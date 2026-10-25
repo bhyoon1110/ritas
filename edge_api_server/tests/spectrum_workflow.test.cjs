@@ -5,15 +5,83 @@ function setup(t,kind='ftir') {
   const dom=new JSDOM('<header class="ftir-app-bar"><button id="ftir-clear"></button><button id="ftir-report"></button><label><input id="ftir-file-input"></label><label><input id="ftir-origin"></label></header><section class="ftir-library-band"></section><section id="ftir-drop-zone"></section><section id="ftir-report-meta"></section><div id="plot"></div>'.replace(/ftir/g,kind),{url:'http://localhost/'+kind,runScripts:'outside-only'});
   t.after(()=>dom.window.close()); const w=dom.window,d=w.document; w.confirm=()=>true;w.requestAnimationFrame=fn=>fn();
   let stored=null,fail=false,captured=0,restored=null,resets=0;
+  const requests=[];
+  w.XMLHttpRequest=function(){
+    this.setRequestHeader=()=>{};
+    this.open=(method,url)=>{this.url=url;};
+    this.send=()=>{requests.push(this);queueMicrotask(()=>{
+      if(this.held)return;
+      this.status=200;this.responseText=JSON.stringify({jobId:this.url.split('/').slice(-2)[0],status:'completed'});this.onload();
+    });};
+  };
   const api={kind,gd:d.getElementById('plot'),busy:()=>false,hasGraph:()=>true,read:async()=>stored,
     write:async state=>{if(fail)throw Error('quota');stored=structuredClone(state);},
     reset:async(empty,didClear,pending)=>{await pending.catch(()=>{});if(fail)throw Error('blocked');stored=structuredClone(empty);resets++;didClear();},
     capture:async()=>({state:{plotData:[{name:'raw'+(++captured)}],files:[]},report:{image:'data:image/png;base64,AA==',analysis:{}}}),
     restore:async value=>{restored=value;},saveWorkspace:()=>{},resize:()=>{},build:async()=>({jobId:'original'})};
   w.eval(source); const workflow=w.RistSpectrumWorkflow.install(api);
-  return {w,d,workflow,api,get stored(){return stored;},get restored(){return restored;},get resets(){return resets;},fail(value){fail=value;}};
+  return {w,d,workflow,api,requests,get stored(){return stored;},get restored(){return restored;},get resets(){return resets;},fail(value){fail=value;}};
 }
 const tick=()=>new Promise(resolve=>setTimeout(resolve,0));
+function respond(request,status,code,message='서버 확인 실패') {
+  request.held=true;request.status=status;request.responseText=JSON.stringify({status,code,message});request.onload();
+}
+for(const kind of ['ftir','raman'])test(kind+': stale saved preview never navigates to a missing job and keeps graph/source data for regeneration',async t=>{
+  const h=setup(t,kind);await h.workflow.start();h.workflow.go(2);await h.workflow.save(false);
+  const state=structuredClone(h.stored);state.step=4;state.job={jobId:'expired'};
+  h.api.read=async()=>state;
+  const starting=h.workflow.start();await Promise.resolve();
+  const request=h.requests.at(-1);respond(request,404,'REPORT_JOB_NOT_FOUND');await starting;await tick();
+  assert.equal(h.d.getElementById('sw-report-editor').getAttribute('src'),null);
+  assert.equal(h.stored.job,null);assert.equal(h.stored.step,3);
+  assert.deepEqual(h.stored.graphs,state.graphs);assert.equal(h.stored.active,state.active);
+  assert.match(h.d.getElementById('sw-guide-detail').textContent,/RAW와 저장한 그래프는 유지/);
+  assert(!h.d.getElementById('sw-build-report').disabled);assert(h.d.getElementById('sw-step-4').disabled);
+  h.d.getElementById('sw-build-report').click();await tick();await tick();
+  assert.match(h.d.getElementById('sw-report-editor').src,/original\/edit\?workflow=1$/);
+  assert(!h.d.getElementById('sw-step-4').disabled);
+});
+test('saved job in graph editing is checked only when entering preview',async t=>{
+  const h=setup(t);h.api.read=async()=>({version:1,graphs:[],step:2,job:{jobId:'expired'}});await h.workflow.start();
+  assert.equal(h.requests.length,0);h.workflow.go(3);
+  assert(h.d.getElementById('sw-step-4').disabled);
+  respond(h.requests.at(-1),410,'REPORT_EDIT_EXPIRED');await tick();
+  assert.equal(h.stored.job,null);assert.equal(h.d.getElementById('sw-report-editor').getAttribute('src'),null);
+});
+for(const response of [401,403,404,500,'network','timeout'])test('preview '+response+' preserves job and supports retry without rebuilding',async t=>{
+  const h=setup(t);h.api.read=async()=>({version:1,graphs:[],step:3,job:{jobId:'retained'}});
+  const starting=h.workflow.start();await Promise.resolve();const request=h.requests.at(-1);request.held=true;
+  if(response==='network')request.onerror();else if(response==='timeout')request.ontimeout();else respond(request,response,'OTHER_ERROR');
+  await starting;await tick();
+  assert(h.d.getElementById('sw-report-editor').hidden);assert(h.d.getElementById('sw-step-4').disabled);
+  const retry=h.d.getElementById('sw-retry-editor');assert(!retry.hidden);assert(!retry.disabled);
+  h.workflow.go(4);assert.equal(h.d.getElementById('spectrum-workflow').dataset.step,'3');
+  retry.click();await tick();assert.match(h.d.getElementById('sw-report-editor').src,/retained\/edit/);
+  assert(!h.d.getElementById('sw-step-4').disabled);assert(retry.hidden);
+});
+test('missing job after successful preflight is recovered from iframe JSON without losing graph snapshots',async t=>{
+  const h=setup(t);await h.workflow.start();h.workflow.go(2);await h.workflow.save(false);
+  h.d.getElementById('sw-build-report').click();await tick();await tick();
+  const frame=h.d.getElementById('sw-report-editor');
+  frame.contentDocument.write('<html><body></body></html>');
+  frame.contentDocument.body.textContent=JSON.stringify({status:404,code:'REPORT_JOB_NOT_FOUND',message:'보고서 작업을 찾을 수 없습니다.'});frame.onload();await tick();
+  assert(frame.hidden);assert.equal(frame.getAttribute('src'),null);assert.equal(h.stored.job,null);assert.equal(h.stored.graphs.length,1);
+});
+test('invalid generation ID never opens undefined preview URL',async t=>{
+  const h=setup(t);await h.workflow.start();h.workflow.go(2);await h.workflow.save(false);
+  h.api.build=async()=>({});h.d.getElementById('sw-build-report').click();await tick();await tick();
+  assert.equal(h.requests.length,0);assert.equal(h.d.getElementById('sw-report-editor').getAttribute('src'),null);
+  assert.match(h.d.querySelector('.sw-status').textContent,/작업 번호/);
+});
+test('initial editor data failure reports back, but unrelated frames and old job errors cannot clear the job',async t=>{
+  const h=setup(t);await h.workflow.start();h.workflow.go(2);await h.workflow.save(false);
+  h.d.getElementById('sw-build-report').click();await tick();await tick();
+  const frame=h.d.getElementById('sw-report-editor');
+  const notify=(jobId,source)=>h.w.dispatchEvent(new h.w.MessageEvent('message',{origin:h.w.location.origin,source,
+    data:{type:'rist-workflow-editor-error',jobId,status:404,code:'REPORT_JOB_NOT_FOUND'}}));
+  notify('original',h.w);notify('older',frame.contentWindow);await tick();assert.equal(h.stored.job.jobId,'original');
+  notify('original',frame.contentWindow);await tick();assert.equal(h.stored.job,null);assert.equal(h.stored.graphs.length,1);
+});
 for(const kind of ['ftir','raman'])test(kind+': next action follows save/selection/report state, with direct generation in step 2',async t=>{
   const h=setup(t,kind);await h.workflow.start();h.workflow.go(2);
   const build=h.d.getElementById('sw-build-report'),next=h.d.getElementById('sw-next'),save=h.d.getElementById('sw-save-graph');
@@ -141,7 +209,7 @@ test('report refresh retains frame on back navigation and changed selection bloc
   const h=setup(t);await h.workflow.start();h.workflow.go(2);await h.workflow.save(false);h.workflow.go(3);
   h.d.getElementById('sw-build-report').click();await tick();await tick();
   const frame=h.d.getElementById('sw-report-editor'),src=frame.src;
-  h.workflow.go(2);assert.equal(frame.src,src);h.workflow.go(4);assert.equal(h.d.getElementById('spectrum-workflow').dataset.step,'4');
+  h.workflow.go(2);assert.equal(frame.src,src);h.workflow.go(4);await tick();assert.equal(h.d.getElementById('spectrum-workflow').dataset.step,'4');
   h.workflow.go(3);const checkbox=h.d.querySelector('.sw-card input');checkbox.checked=false;checkbox.onchange();h.workflow.go(4);
   assert.equal(h.d.getElementById('spectrum-workflow').dataset.step,'3');
   assert.match(h.d.querySelector('.sw-status').textContent,/다시 생성/);

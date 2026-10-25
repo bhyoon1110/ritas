@@ -31,6 +31,14 @@ def requests():
     return {"items": []}
 
 
+@app.post("/__test__/expire-preview/{job_id}")
+def expire_preview(job_id: str):
+    # Isolated loopback fixture only: model the in-memory job loss on restart.
+    from app.preview_report import preview_report_job_store
+    preview_report_job_store(app).remove(job_id)
+    return {"expired": job_id}
+
+
 sock = socket.socket()
 sock.bind(("127.0.0.1", 0))
 print(json.dumps({"port": sock.getsockname()[1]}), flush=True)

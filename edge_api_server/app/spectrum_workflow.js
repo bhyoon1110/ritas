@@ -16,6 +16,7 @@
     var kind = api.kind, gd = api.gd, graphs = [], active = null, step = 1, job = null;
     var busy = false, ready = false, stale = false, childBusy = false;
     var writing = Promise.resolve(), externalBusy = false, resetting = false, operation = "";
+    var editorChecking = false, editorProblem = "", editorCheckSequence = 0;
     var root = node("section"); root.className = "spectrum-workflow"; root.id = "spectrum-workflow";
     var header = document.querySelector("." + kind + "-app-bar");
     header.parentNode.insertBefore(root, header.nextSibling);
@@ -55,6 +56,7 @@
     var returnEdit = button(actions, "그래프 편집·저장으로 →", function () { go(2); }, "sw-return-edit");
     var build = button(actions, "선택한 그래프로 보고서 생성", generate, "sw-build-report");
     var next = button(actions, "다음 단계", function () { go(step + 1); }, "sw-next");
+    var retryEditor = button(actions, "미리보기 다시 확인", function () { openEditor(); }, "sw-retry-editor");
     var library = node("section", root); library.id = "sw-library";
     var title = node("h3", library, "저장한 그래프 · 보고서 포함 순서");
     title.style.margin = "10px 0 0";
@@ -66,7 +68,7 @@
     clear.title = "현재 그래프와 저장 그래프를 모두 비우고 데이터 업로드부터 시작";
     document.getElementById(kind + "-report").style.display = "none";
     function tell(text, error) { stateLine.textContent = text; stateLine.className = "sw-status" + (error ? " sw-error" : ""); }
-    function unavailable() { return busy || externalBusy || !ready || api.busy(); }
+    function unavailable() { return busy || externalBusy || editorChecking || !ready || api.busy(); }
     function snapshot() { return {version:1, graphs:graphs, active:active, step:step, job:job, stale:stale}; }
     function persist() {
       var state = snapshot();
@@ -82,14 +84,61 @@
     function editorStage() {
       if (frame.contentWindow && job) frame.contentWindow.postMessage({type:"rist-workflow-stage", step:step}, window.location.origin);
     }
+    function editorFailure(error, id) {
+      if (!job || job.jobId !== id || resetting) return;
+      var missing = (error.status === 404 && error.code === "REPORT_JOB_NOT_FOUND")
+        || (error.status === 410 && error.code === "REPORT_EDIT_EXPIRED");
+      editorProblem = missing
+        ? "이전 보고서의 편집 작업이 서버에 없거나 만료되었습니다. RAW와 저장한 그래프는 유지됩니다. ‘선택한 그래프로 보고서 생성’을 눌러 미리보기를 다시 만드세요. 이전 보고서의 문구 수정은 자동 복구되지 않습니다."
+        : (error.message || "미리보기를 확인하지 못했습니다.") + " 저장한 그래프와 보고서 연결은 유지됩니다. 로그인·연결 상태를 확인한 뒤 ‘미리보기 다시 확인’을 누르세요.";
+      childBusy = false; frame.removeAttribute("src");
+      if (missing) { job = null; stale = false; if (step === 4) step = 3; persistSoon(); }
+      render(); tell(editorProblem, true);
+    }
+    function openEditor() {
+      if (!job || resetting) return Promise.resolve();
+      var id = job.jobId, sequence = ++editorCheckSequence;
+      editorChecking = true; editorProblem = ""; render();
+      return new Promise(function (resolve) {
+        var xhr = new XMLHttpRequest();
+        xhr.open("GET", "/api/v1/" + kind + "/report/jobs/" + encodeURIComponent(id) + "/editor-status", true);
+        xhr.setRequestHeader("Cache-Control", "no-cache");
+        xhr.timeout = 30000;
+        function finish(error) {
+          if (sequence !== editorCheckSequence || !job || job.jobId !== id || resetting) { resolve(); return; }
+          editorChecking = false;
+          if (error) editorFailure(error, id);
+          else {
+            var target = "/api/v1/" + kind + "/report/jobs/" + encodeURIComponent(id) + "/edit?workflow=1";
+            if (frame.getAttribute("src") !== target) frame.src = target;
+            render(); tell("보고서 미리보기를 확인하고 수정한 최종본을 저장·전송하세요.");
+          }
+          resolve();
+        }
+        xhr.onload = function () {
+          var value;
+          try { value = JSON.parse(xhr.responseText); } catch (_) { finish(new Error("서버 응답을 확인할 수 없습니다.")); return; }
+          if (!value || typeof value !== "object") { finish(new Error("서버 응답을 확인할 수 없습니다.")); return; }
+          if (xhr.status < 200 || xhr.status >= 300) {
+            var error = new Error(value.message || "미리보기 확인에 실패했습니다.");
+            error.status = xhr.status; error.code = value.code; finish(error); return;
+          }
+          if (value.jobId !== id || value.status !== "completed") { finish(new Error("보고서가 아직 준비되지 않았습니다.")); return; }
+          finish();
+        };
+        xhr.onerror = xhr.ontimeout = function () { finish(new Error("서버 연결을 확인하지 못했습니다.")); };
+        xhr.send();
+      });
+    }
     // Update action feedback without rebuilding graph cards or stealing checkbox focus.
     function refreshActions() {
       var locked = unavailable(), count = chosen().length, hasGraph = api.hasGraph();
-      var waiting = !ready ? "이전 작업을 불러오는 중입니다. 잠시 기다려 주세요."
+      var waiting = editorChecking ? "보고서 미리보기 작업을 서버에서 확인하는 중입니다."
+        : !ready ? "이전 작업을 불러오는 중입니다. 잠시 기다려 주세요."
         : locked ? (resetting ? "작업을 초기화하는 중입니다." : operation || "RAW 분석 또는 편집 설정을 적용하는 중입니다. 완료 후 버튼이 활성화됩니다.")
         : childBusy ? "보고서 변경 내용을 자동 저장 중입니다. 완료 후 생성·전송 버튼이 활성화됩니다. 계속 대기하면 아래 미리보기의 오류 안내를 확인하세요." : "";
       var buildReason = waiting || (!count ? (graphs.length ? "아래 저장 목록에서 보고서에 넣을 그래프를 체크하세요." : "현재 그래프를 먼저 저장하세요. 저장하면 보고서 포함 대상으로 자동 선택됩니다.") : "");
-      var deliveryReason = waiting || (!job ? "먼저 선택한 그래프로 보고서를 생성하세요." : stale ? "그래프 선택·순서가 바뀌었습니다. 보고서를 다시 생성한 뒤 저장·전송하세요." : "");
+      var deliveryReason = waiting || editorProblem || (!job ? "먼저 선택한 그래프로 보고서를 생성하세요." : stale ? "그래프 선택·순서가 바뀌었습니다. 보고서를 다시 생성한 뒤 저장·전송하세요." : "");
       function availability(el, reason) {
         el.disabled = !!reason; el.title = reason;
         el.setAttribute("aria-describedby", "sw-guide-detail");
@@ -104,6 +153,7 @@
       build.hidden = step !== 2 && step !== 3; availability(build, buildReason);
       build.textContent = job ? "선택한 그래프로 보고서 다시 생성" : "선택한 그래프로 보고서 생성 →";
       returnEdit.hidden = step !== 3 || graphs.length > 0; returnEdit.disabled = locked;
+      retryEditor.hidden = step < 3 || !editorProblem || !job; retryEditor.disabled = locked;
       availability(navButtons[3], deliveryReason);
       clear.disabled = locked || childBusy;
       selectionCount.hidden = step === 1 || step === 4;
@@ -111,6 +161,7 @@
       guide.setAttribute("data-state", waiting ? "waiting" : "ready");
       var title, detail, primary = null;
       if (waiting) { title = "처리 중 · 잠시 기다려 주세요"; detail = waiting; }
+      else if (step >= 3 && editorProblem) { title = job ? "미리보기 연결 확인 필요" : "다음: 저장한 그래프로 보고서 다시 생성"; detail = editorProblem; primary = job ? retryEditor : count ? build : returnEdit; }
       else if (step === 1) {
         title = "다음: RAW 파일 업로드"; detail = "파일을 선택하거나 업로드 영역에 끌어 놓으세요. 분석이 끝나면 그래프 편집 단계로 이동합니다.";
         if (hasGraph) { title = "다음: 그래프 편집"; detail = "업로드한 그래프를 편집하거나 RAW 파일을 추가할 수 있습니다."; primary = next; }
@@ -133,7 +184,7 @@
         detail = "아래 화면에서 최종본을 다운로드하거나 의뢰정보·이메일을 확인한 뒤 LIMS로 전송하세요. 전송에는 SSO 인증과 권한이 필요합니다.";
       }
       guideTitle.textContent = title; guideDetail.textContent = detail;
-      [previous, save, build, next, returnEdit].forEach(function (el) { el.classList.toggle("sw-primary", el === primary); });
+      [previous, save, build, next, returnEdit, retryEditor].forEach(function (el) { el.classList.toggle("sw-primary", el === primary); });
     }
     function render() {
       navButtons.forEach(function (b, i) { b.setAttribute("aria-current", i + 1 === step ? "step" : "false"); b.disabled = unavailable(); });
@@ -155,7 +206,7 @@
       chooser.setAttribute("aria-disabled", String(unavailable()));
       controls.hidden = step !== 2; library.hidden = step === 1 || step === 4;
       refreshActions();
-      frame.hidden = step < 3 || !job;
+      frame.hidden = step < 3 || !job || editorChecking || !!editorProblem;
       if (step >= 3 && stale) tell("그래프 목록이 변경되었습니다. 현재 미리보기는 이전 보고서입니다. 반영하려면 보고서를 다시 생성하세요.");
       list.textContent = "";
       if (!graphs.length) node("p", list, "저장한 그래프가 없습니다. 그래프 편집 후 ‘그래프 저장’을 눌러 주세요.").className = "sw-empty";
@@ -186,7 +237,10 @@
       if (value === 4 && !job) { tell("먼저 그래프를 저장·선택하고 보고서를 생성하세요.", true); return; }
       if (value === 4 && stale) { tell("변경한 그래프 목록으로 보고서를 다시 생성한 뒤 전송하세요. 이전 보고서는 별도로 보존됩니다.", true); return; }
       if (value === 4 && childBusy) { tell("보고서 자동 저장이 끝난 뒤 저장·전송 단계로 이동하세요.", true); return; }
+      if (value === 4 && editorProblem) { tell(editorProblem, true); return; }
+      var enteringEditor = value >= 3 && step < 3 && job && !childBusy;
       step = value; render(); persistSoon();
+      if (enteringEditor) openEditor();
       if (step === 1) chooser.focus();
       if (step === 2) window.requestAnimationFrame(function () { api.resize(); });
     }
@@ -237,16 +291,29 @@
       if (job && !window.confirm("선택한 그래프로 새 보고서를 생성할까요? 현재 보고서의 문구 수정은 새 보고서에 자동 복사되지 않습니다. 기존 수정본은 보존됩니다.")) return;
       busy = true; operation = "선택한 그래프 " + chosen().length + "개로 보고서를 생성하는 중입니다. 완료되면 미리보기가 열립니다."; render(); tell(operation);
       api.build(chosen()).then(function (result) {
-        if (!result) throw new Error("보고서를 생성하지 못했습니다. 오류 안내를 확인해 주세요.");
+        if (!result || typeof result.jobId !== "string" || !/^[a-zA-Z0-9-]{1,100}$/.test(result.jobId)) throw new Error("보고서 작업 번호를 확인하지 못했습니다. 저장한 그래프를 유지한 채 다시 생성해 주세요.");
         job = {jobId:result.jobId}; stale = false; step = 3;
-        frame.src = "/api/v1/" + kind + "/report/jobs/" + encodeURIComponent(job.jobId) + "/edit?workflow=1";
+        editorProblem = "";
         persistSoon(); tell("보고서가 생성되었습니다. 미리보기에서 수정한 최종본을 다음 단계에서 저장·전송하세요.");
+        return openEditor();
       }).catch(function (error) { tell(error.message, true); })
         .then(function () { busy = false; operation = ""; render(); });
     }
-    frame.onload = editorStage;
+    frame.onload = function () {
+      // The job can expire/restart between preflight and navigation. Never leave
+      // a raw API error in the iframe; keep recovery in the parent workflow.
+      try {
+        var doc = frame.contentDocument;
+        if (job && doc && doc.body && !doc.getElementById("editor-config")
+            && doc.location.pathname === "/api/v1/" + kind + "/report/jobs/" + encodeURIComponent(job.jobId) + "/edit") {
+          var value = JSON.parse((doc.querySelector("pre") || doc.body).textContent);
+          if (value && value.status >= 400) { editorFailure(value, job.jobId); return; }
+        }
+      } catch (_) {} // Blank iframe, normal HTML or a cross-origin login redirect.
+      editorStage();
+    };
     window.addEventListener("message", function (event) {
-      if (resetting || !job || event.origin !== window.location.origin || event.source !== frame.contentWindow) return;
+      if (resetting || editorChecking || editorProblem || !job || event.origin !== window.location.origin || event.source !== frame.contentWindow) return;
       var data = event.data || {};
       if (data.type === "rist-workflow-editor-state") {
         childBusy = !!data.busy;
@@ -255,7 +322,8 @@
         }
         refreshActions();
         editorStage();
-      } else if (data.type === "rist-workflow-back") go(2);
+      } else if (data.type === "rist-workflow-editor-error" && data.jobId === job.jobId) editorFailure(data, job.jobId);
+      else if (data.type === "rist-workflow-back") go(2);
     });
     function reset() {
       if (unavailable() || childBusy) return Promise.resolve();
@@ -264,6 +332,7 @@
       var committed = false, errorMessage = "", empty = {version:1,graphs:[],active:null,step:1,job:null,stale:false};
       return api.reset(empty, function () {
         committed = true; graphs = []; active = job = null; stale = childBusy = false; step = 1; name.value = "";
+        editorCheckSequence += 1; editorChecking = false; editorProblem = "";
         frame.removeAttribute("src");
         Array.prototype.forEach.call(document.querySelectorAll(".sw-preview"),function (modal) { modal.remove(); });
         render();
@@ -286,8 +355,8 @@
             graphs = state.graphs; active = state.active; step = Number(state.step) || 1; job = state.job; stale = !!state.stale;
             var selected = graphs.filter(function (g) { return g.id === active; })[0];
             if (selected) name.value = selected.title;
-            if (job) frame.src = "/api/v1/" + kind + "/report/jobs/" + encodeURIComponent(job.jobId) + "/edit?workflow=1";
             if (step >= 3 && !job) step = 3;
+            if (job && step >= 3) return openEditor();
           }
         }).catch(function () { tell("저장 목록을 읽지 못했습니다. 브라우저의 사이트 저장 권한을 확인하세요.", true); })
           .then(function () { ready = true; render(); if (step === 2) api.resize(); });

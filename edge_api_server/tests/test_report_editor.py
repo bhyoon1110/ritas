@@ -255,18 +255,48 @@ def test_editor_owner_project_and_sso(prepared):
         session_id='session',session_expires_at=datetime.now(timezone.utc),sso_authenticated_at=None,
         projects=frozenset({h.kind.upper()}),roles=frozenset(),sso_identity=None)
     h.app.state.actor=context
+    assert h.client.get(h.url+'/editor-status').status_code==403
     assert h.client.get(h.url+'/editor-data').status_code==403
     assert h.client.get(h.url+'/edit-layout').status_code==403
     assert h.client.get(h.url+'/edit-slides/0').status_code==403
     assert h.client.post(h.url+'/editor-images',content=b'private',headers={'X-Requested-With':'RIST-Report-Editor'}).status_code==403
     h.app.state.actor=replace(context,user_id='owner',projects=frozenset())
+    assert h.client.get(h.url+'/editor-status').status_code==403
     assert h.client.get(h.url+'/editor-data').status_code==403
     assert h.client.post(h.url+'/editor-images',content=b'private',headers={'X-Requested-With':'RIST-Report-Editor'}).status_code==403
     h.app.state.actor=replace(context,user_id='owner',sso_identity={'employee_id':'sso-operator'})
+    assert h.client.get(h.url+'/editor-status').status_code==200
     response=h.client.get(h.url+'/editor-data')
     assert response.status_code==200 and response.json()['authenticatedOperatorId']=='sso-operator'
     h.app.state.actor=replace(context,user_id='admin',projects=frozenset(),roles=frozenset({'ADMIN'}))
     assert h.client.get(h.url+'/edit').status_code==200
+
+
+def test_editor_preflight_rejects_stale_wrong_kind_pending_and_expired_jobs(prepared):
+    h = prepared
+    response = h.client.get(h.url + '/editor-status')
+    assert response.status_code == 200
+    assert response.headers['cache-control'] == 'no-store'
+    assert response.json()['jobId'] == h.job.job_id
+    assert response.json()['editUrl'] == h.url + '/edit'
+    other_kind = 'raman' if h.kind == 'ftir' else 'ftir'
+    h.job.filename = other_kind + '-report-package.zip'
+    response = h.client.get(h.url + '/editor-status')
+    assert response.status_code == 404 and response.json()['code'] == 'REPORT_JOB_NOT_FOUND'
+    h.job.filename = h.kind + '-report-package.zip'
+    h.job.status = 'running'
+    response = h.client.get(h.url + '/editor-status')
+    assert response.status_code == 409 and response.json()['code'] == 'REPORT_NOT_READY'
+    h.job.status = 'completed'
+    root = h.job.tmp_root
+    h.job.tmp_root = None
+    response = h.client.get(h.url + '/editor-status')
+    assert response.status_code == 410 and response.json()['code'] == 'REPORT_EDIT_EXPIRED'
+    h.job.tmp_root = root
+    h.store.remove(h.job.job_id)
+    for suffix in ('/editor-status', '/edit'):
+        response = h.client.get(h.url + suffix)
+        assert response.status_code == 404 and response.json()['code'] == 'REPORT_JOB_NOT_FOUND'
 
 
 def test_failed_revision_keeps_original_and_releases_capacity(prepared, monkeypatch):

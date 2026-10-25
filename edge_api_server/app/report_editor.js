@@ -64,7 +64,7 @@
       var result; try { result = JSON.parse(xhr.responseText); } catch (_) { done(new Error("서버 응답을 확인할 수 없습니다. 로그인 상태를 확인하세요.")); return; }
       if (xhr.status < 200 || xhr.status >= 300) {
         var error = new Error((result.error && result.error.message) || result.message || (typeof result.detail === "string" && result.detail) || "요청에 실패했습니다.");
-        error.status = xhr.status; done(error); return;
+        error.status = xhr.status; error.code = result.code; done(error); return;
       } done(null, result);
     };
     xhr.onerror = xhr.ontimeout = function () { done(new Error("연결이 끊겼습니다. 원본은 유지됩니다. 다시 시도하세요.")); };
@@ -398,7 +398,12 @@
   function load(id) {
     request(url(id,"/editor-data"),"GET",null,function (error,data) {
       busy = false;
-      if (error) { message(error.message,true); availability(); return; }
+      if (error) {
+        message(error.message,true); availability();
+        if (workflow) window.parent.postMessage({type:"rist-workflow-editor-error", jobId:id,
+          status:error.status, code:error.code, message:error.message},window.location.origin);
+        return;
+      }
       currentId = id; show(data);
     });
   }

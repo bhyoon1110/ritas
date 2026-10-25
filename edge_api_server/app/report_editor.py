@@ -245,6 +245,13 @@ def install_report_editor(router, kind):
     prefix = f"/api/v1/{kind}/report/jobs"
     project = "FT-IR" if kind == "ftir" else "RAMAN"
 
+    @router.get(prefix + "/{job_id}/editor-status", tags=[kind])
+    def editor_status(request: Request, job_id: str):
+        # Check the same ownership, readiness and source files as the editor
+        # before navigating an iframe (where API errors otherwise show as JSON).
+        job = _authorized_job(request, job_id, kind)
+        return JSONResponse(job_response(job, prefix), headers={"Cache-Control": "no-store"})
+
     @router.get(prefix + "/{job_id}/edit", response_class=HTMLResponse, tags=[kind])
     def page(request: Request, job_id: str):
         _authorized_job(request, job_id, kind)
