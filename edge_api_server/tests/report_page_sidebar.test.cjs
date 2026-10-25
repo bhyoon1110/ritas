@@ -7,7 +7,7 @@ function setup(t,mode='native'){
   if(mode==='chrome49'){
     const root=path.join(__dirname,'../app/static/chrome49'),manifest=JSON.parse(fs.readFileSync(path.join(root,'manifest.json')));
     w.eval(fs.readFileSync(path.join(root,manifest.runtime),'utf8'));
-    const original=['file_save.js','report_editor_icons.js','report_page_sidebar.js','report_direct_editor.js','report_canvas_editor.js','report_saved_graphs.js','report_editor.js']
+    const original=['file_save.js','report_editor_icons.js','report_page_sidebar.js','report_direct_editor.js','report_canvas_editor.js','report_saved_graphs.js','report_condition_options.js','report_editor.js']
       .map(file=>fs.readFileSync(path.join(__dirname,'../app',file),'utf8')).join('\n').trim();
     const asset=manifest.scripts[require('node:crypto').createHash('sha256').update(original).digest('hex')];assert(asset,'rebuild compatibility assets');
     const compiled=fs.readFileSync(path.join(root,asset),'utf8');

@@ -38,6 +38,7 @@ from .auth import authenticated_transfer_payload
 from .browser_support import with_browser_support_notice
 from .work_template import work_template_script
 from .spectrum_workflow import spectrum_workflow_script
+from .report_condition_options import inject_condition_options
 from .assignment_suggestions import AssignmentSuggestionRequest
 from .peak_recommendations import PeakRecommendationRequest, recommend_peaks
 from .config import Settings
@@ -2335,64 +2336,7 @@ _UPLOAD_SCRIPT = """
   var SESSION_STORE = "workspace";
   var SESSION_KEY = "current";
   var REPORT_OPTION_STORAGE_KEY = "rist-ftir-report-condition-options-v1";
-  var REPORT_OPTION_FIELDS = [
-    {
-      field: "equipmentModel",
-      label: "장비모델",
-      datalistId: "ftir-report-equipment-model-options",
-      defaults: []
-    },
-    {
-      field: "analysisType",
-      label: "Type",
-      datalistId: "ftir-report-type-options",
-      defaults: [
-        "ATR method",
-        "Transmission",
-        "Reflection",
-        "Diffuse reflectance",
-        "Specular reflectance",
-        "Micro ATR",
-        "KBr pellet"
-      ]
-    },
-    {
-      field: "detector",
-      label: "Detector",
-      datalistId: "ftir-report-detector-options",
-      defaults: ["DTGS", "MCT", "TGS", "InGaAs", "Photoacoustic detector"]
-    },
-    {
-      field: "crystal",
-      label: "Crystal",
-      datalistId: "ftir-report-crystal-options",
-      defaults: ["diamond", "ZnSe", "Ge", "KRS-5", "Si", "AMTIR"]
-    },
-    {
-      field: "resolution",
-      label: "Resolution",
-      datalistId: "ftir-report-resolution-options",
-      defaults: ["4 cm-1", "2 cm-1", "8 cm-1", "1 cm-1", "16 cm-1"]
-    },
-    {
-      field: "scanTime",
-      label: "Scan time",
-      datalistId: "ftir-report-scan-options",
-      defaults: ["64 scans", "32 scans", "128 scans", "16 scans", "256 scans"]
-    },
-    {
-      field: "range",
-      label: "Range",
-      datalistId: "ftir-report-range-options",
-      defaults: [
-        "4000 ~ 400 cm-1",
-        "4000 ~ 650 cm-1",
-        "7800 ~ 350 cm-1",
-        "6000 ~ 400 cm-1",
-        "4000 ~ 700 cm-1"
-      ]
-    }
-  ];
+  var REPORT_OPTION_FIELDS = __REPORT_OPTION_FIELDS__;
   var reportOptionValues = loadReportOptionValues();
   var reportOptionDraft = null;
   var reportPickerMenu = null;
@@ -2653,6 +2597,7 @@ _UPLOAD_SCRIPT = """
   }
 
   function openReportOptionsEditor() {
+    reportOptionValues = loadReportOptionValues();
     reportOptionDraft = cloneReportOptions(reportOptionValues);
     renderReportOptionsEditor();
     reportOptionsModal.classList.add("is-visible");
@@ -3300,6 +3245,11 @@ _UPLOAD_SCRIPT = """
   }
 
   window.addEventListener("storage", function(event) {
+    if (event.key === REPORT_OPTION_STORAGE_KEY || event.key === null) {
+      reportOptionValues = loadReportOptionValues();
+      renderReportDatalists(); closeReportOptionPicker();
+      return;
+    }
     if (event.key !== "rist-report-revision" || !event.newValue || !lastReportJob) return;
     var change;
     try { change = JSON.parse(event.newValue); } catch (_) { return; }
@@ -5629,6 +5579,9 @@ _UPLOAD_SCRIPT = """
 })();
 </script>
 """
+
+
+_UPLOAD_SCRIPT = inject_condition_options(_UPLOAD_SCRIPT, "FT-IR")
 
 
 @lru_cache(maxsize=1)

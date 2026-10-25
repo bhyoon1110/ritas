@@ -58,6 +58,7 @@
     canvas:canvas,job:function(){return currentId;},message:message
   });
   var lookup = null;
+  var conditions = window.RistReportConditionOptions ? new window.RistReportConditionOptions(config.conditionOptions || {}) : null;
   function message(text, error) { status.textContent = text; status.className = error ? "error" : ""; }
   function url(id, tail) { return config.prefix + "/" + encodeURIComponent(id) + (tail || ""); }
   function request(path, method, body, done) {
@@ -81,6 +82,7 @@
     download.setAttribute("aria-disabled", String(busy || dirty || !!activeRevision || !model));
     Array.prototype.forEach.call(document.querySelectorAll("#editor input,#editor textarea,#mail-editor textarea"),function (input) { input.disabled = sending; });
     if (lookup) lookup.availability();
+    if (conditions) conditions.lock(sending);
     direct.lock(sending);
     if(canvas)canvas.lock(busy||sending||!!activeRevision||structureDirty);
     pageAvailability();
@@ -95,11 +97,15 @@
     // Collect tables and canvas patches only once per keystroke on low-end PCs.
     var value = collect();
     structureDirty = structure(value.pageEdits) !== layoutStructure;
+    var conditionLabelsChanged = false;
     sections.forEach(function (section) {
       (section.conditionLabels || []).forEach(function (item) {
-        item.label.firstChild.nodeValue = (item.row[0].value === "공통" ? "" : item.row[0].value + " · ") + item.row[1].value;
+        var label = (item.row[0].value === "공통" ? "" : item.row[0].value + " · ") + item.row[1].value;
+        if (item.label.firstChild.nodeValue !== label) conditionLabelsChanged = true;
+        item.label.firstChild.nodeValue = label;
       });
     });
+    if (conditions && conditionLabelsChanged) conditions.refresh();
     direct.sync();
     dirty = JSON.stringify(value) !== saved; retries = 0;
     message(busy ? "PPT 생성 중입니다. 추가 입력도 이어서 자동 반영합니다." : dirty ? "입력이 멈추면 자동 저장하고 PPT 미리보기에 반영합니다." : "모든 변경 내용이 반영되었습니다.");
@@ -314,6 +320,7 @@
     render(); controls(); return {availability:controls};
   }
   function show(data) {
+    if (conditions) conditions.reset();
     model = data.document; editor.textContent = ""; sections = []; auxiliary = {}; inputs = {}; refs = {}; variables = [];
     pageEdits = model.pageEdits || {hidden:[],added:[]}; pageFields = [];deletedPageGroups=[];structureDirty = false;
     if(canvas)canvas.load(model.canvasEdits||{});
@@ -353,7 +360,9 @@
         if (section.sectionId === "experiment_conditions") {
           entry.conditionLabels = [];
           wrapper.hidden = true;
+          if (conditions) conditions.mount(block);
           element("p",block,"공통 조건은 ‘공통.항목명’으로 문구에 연결할 수 있습니다. 샘플별 조건은 해당 샘플에만 적용됩니다.").className = "muted";
+          if (config.conditionOptions && config.conditionOptions.fields.length) element("p",block,"선택지에서 고르거나 직접 입력하세요. 선택한 값은 PPT에 자동 반영됩니다.").className = "muted";
           var sample = element("details",block); element("summary",sample,"샘플별 조건");
           entry.rows.forEach(function (row) {
             if (row.length !== 3) return;
@@ -363,12 +372,14 @@
             if (!label.firstChild) label.appendChild(document.createTextNode(""));
             entry.conditionLabels.push({label:label,row:row});
             label.appendChild(row[2]); if (common) row[2].setAttribute("data-common","true");
+            if (conditions) conditions.attach(label,row[2],function () { return row[1].value; });
           });
           sample.hidden = !sample.querySelector("textarea");
         }
       } sections.push(entry);
     });
     commonVariables(editor);
+    if (conditions) conditions.refresh();
     pageBox = element("div",editor);
     (pageEdits.added || []).forEach(function (item) { pageRow(item,false); });
     var mailPane = document.getElementById("mail-editor"); mailPane.textContent = "";

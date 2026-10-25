@@ -239,11 +239,14 @@ def _write_revision(store, new_job, old_job, changes, project, settings, databas
 
 
 def editor_page(prefix, job_id, *, project=None):
+    from .report_condition_options import condition_options
+
     project = project or ("RAMAN" if "/raman/" in prefix else "FT-IR")
-    config = json.dumps({"prefix": prefix, "jobId": job_id, "project": project}, ensure_ascii=False).replace("<", "\\u003c")
+    config = json.dumps({"prefix": prefix, "jobId": job_id, "project": project,
+                         "conditionOptions": condition_options(project)}, ensure_ascii=False).replace("<", "\\u003c")
     template = Path(__file__).with_name("report_editor.html").read_text(encoding="utf-8")
     script = "\n".join(Path(__file__).with_name(name).read_text(encoding="utf-8")
-                       for name in ("file_save.js", "report_editor_icons.js", "report_page_sidebar.js", "report_direct_editor.js", "report_canvas_editor.js", "report_saved_graphs.js", "report_editor.js"))
+                       for name in ("file_save.js", "report_editor_icons.js", "report_page_sidebar.js", "report_direct_editor.js", "report_canvas_editor.js", "report_saved_graphs.js", "report_condition_options.js", "report_editor.js"))
     return template.replace("__CONFIG__", config).replace("__SCRIPT__", script).replace(
         "</body>", floating_panels_html() + "</body>", 1
     )

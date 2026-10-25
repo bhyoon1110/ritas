@@ -32,6 +32,7 @@ from rist_common.plotting import (
 )
 from rist_common.plotting.floating_panels import floating_panels_html
 from rist_common.plotting.grid_style import GRID_STYLE_JS
+from .report_condition_options import inject_condition_options
 
 from . import assignment_suggestions
 from .auth import authenticated_transfer_payload
@@ -3080,56 +3081,7 @@ _UPLOAD_SCRIPT = """
   var SESSION_STORE = "workspace";
   var SESSION_KEY = "current";
   var REPORT_OPTION_STORAGE_KEY = "rist-raman-report-condition-options-v2";
-  var REPORT_OPTION_FIELDS = [
-    {
-      field: "excitationWavelength",
-      label: "Excitation Wavelength",
-      datalistId: "raman-report-excitation-wavelength-options",
-      defaults: ["532 nm", "633 nm", "785 nm", "1064 nm", "514 nm", "488 nm", "780 nm"]
-    },
-    {
-      field: "laserCurrent",
-      label: "Laser current",
-      datalistId: "raman-report-laser-current-options",
-      defaults: ["1 mA", "5 mA", "10 mA", "20 mA", "50 mA"]
-    },
-    {
-      field: "excitationPower",
-      label: "Excitation Power",
-      datalistId: "raman-report-excitation-power-options",
-      defaults: ["0.1 mW", "0.5 mW", "1 mW", "5 mW", "10 mW"]
-    },
-    {
-      field: "excitationPowerDensity",
-      label: "Excitation Power density",
-      datalistId: "raman-report-power-density-options",
-      defaults: ["0.01 mW/um2", "0.05 mW/um2", "0.1 mW/um2", "0.5 mW/um2"]
-    },
-    {
-      field: "ndFilter",
-      label: "ND filter",
-      datalistId: "raman-report-nd-filter-options",
-      defaults: ["None", "ND 0.5", "ND 1.0", "ND 2.0", "ND 3.0"]
-    },
-    {
-      field: "spectrographCenterWavelength",
-      label: "Spectrograph Center wavelength",
-      datalistId: "raman-report-center-wavelength-options",
-      defaults: ["500 nm", "650 nm", "750 nm", "1000 nm"]
-    },
-    {
-      field: "grating",
-      label: "Grating",
-      datalistId: "raman-report-grating-options",
-      defaults: ["300 g/mm", "600 g/mm", "1200 g/mm", "1800 g/mm", "2400 g/mm"]
-    },
-    {
-      field: "slitWidth",
-      label: "Slit width",
-      datalistId: "raman-report-slit-width-options",
-      defaults: ["25 um", "50 um", "100 um", "200 um"]
-    }
-  ];
+  var REPORT_OPTION_FIELDS = __REPORT_OPTION_FIELDS__;
   var reportOptionValues = loadReportOptionValues();
   var reportOptionDraft = null;
   var reportPickerMenu = null;
@@ -3393,6 +3345,7 @@ _UPLOAD_SCRIPT = """
   }
 
   function openReportOptionsEditor() {
+    reportOptionValues = loadReportOptionValues();
     reportOptionDraft = cloneReportOptions(reportOptionValues);
     renderReportOptionsEditor();
     reportOptionsModal.classList.add("is-visible");
@@ -4281,6 +4234,11 @@ _UPLOAD_SCRIPT = """
   }
 
   window.addEventListener("storage", function(event) {
+    if (event.key === REPORT_OPTION_STORAGE_KEY || event.key === null) {
+      reportOptionValues = loadReportOptionValues();
+      renderReportDatalists(); closeReportOptionPicker();
+      return;
+    }
     if (event.key !== "rist-report-revision" || !event.newValue || !lastReportJob) return;
     var change;
     try { change = JSON.parse(event.newValue); } catch (_) { return; }
@@ -6290,6 +6248,9 @@ _UPLOAD_SCRIPT = """
 })();
 </script>
 """
+
+
+_UPLOAD_SCRIPT = inject_condition_options(_UPLOAD_SCRIPT, "RAMAN")
 
 
 def build_raman_page() -> str:

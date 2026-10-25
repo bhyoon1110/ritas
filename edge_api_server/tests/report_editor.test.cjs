@@ -6,14 +6,15 @@ const {JSDOM}=require('jsdom');
 const acorn=require('acorn');
 const {execFileSync}=require('node:child_process');
 const clone=x=>JSON.parse(JSON.stringify(x));
-const script=['file_save.js','report_editor_icons.js','report_page_sidebar.js','report_direct_editor.js','report_canvas_editor.js','report_saved_graphs.js','report_editor.js'].map(name=>fs.readFileSync(path.join(__dirname,'../app',name),'utf8')).join('\n');
+const script=['file_save.js','report_editor_icons.js','report_page_sidebar.js','report_direct_editor.js','report_canvas_editor.js','report_saved_graphs.js','report_condition_options.js','report_editor.js'].map(name=>fs.readFileSync(path.join(__dirname,'../app',name),'utf8')).join('\n');
 const template=fs.readFileSync(path.join(__dirname,'../app/report_editor.html'),'utf8');
-function setup(t,kind='ftir',identity='') {
+function setup(t,kind='ftir',identity='',conditionScenario=null) {
   const prefix='/api/v1/'+kind+'/report/jobs',posts=[],gets=[],timers=new Map(); let timerId=0;
   let doc={title:'Report',completionDate:'2026-10-15',variables:[],transfer:{requestNumber:'',limsExperimentCode:'',equipmentCode:'',operatorId:''},
     sections:[{sectionId:'summary',heading:'분석 결과 요약',paragraphs:['AI 초안'],bullets:[],columns:null,rows:null,source:'llm'},
       {sectionId:'experiment_conditions',heading:'실험조건 및 실험환경',paragraphs:[],bullets:[],columns:['대상','항목','값'],rows:[['공통','온도','']],source:'rule'}],auxiliary:{}};
-  const dom=new JSDOM(template.replace('__CONFIG__',JSON.stringify({prefix,jobId:'original'})).replace('__SCRIPT__',''),
+  if(conditionScenario)doc.sections[1].rows=conditionScenario.rows;
+  const dom=new JSDOM(template.replace('__CONFIG__',JSON.stringify({prefix,jobId:'original',conditionOptions:conditionScenario&&conditionScenario.config})).replace('__SCRIPT__',''),
     {url:'http://localhost'+prefix+'/original/edit',runScripts:'outside-only'});
   t.after(()=>dom.window.close());const w=dom.window,d=w.document,q=id=>d.getElementById(id);
   let pending=null,delay=false,fail=false,revisions=0,items=[],lookupError=false,pollError=false,rateLimit=false,running=false;
@@ -62,6 +63,26 @@ test('analyst editor is ES5 and renders text without HTML interpretation',t=>{
   assert.equal(h.field('분석 결과 요약 · 문단 1').value,'AI 초안');
   assert.equal(h.q('slide-image').getAttribute('src'),h.prefix+'/original/edit-slides/0');
   assert(h.field('분석 결과 요약 · 문단 1').closest('details').hidden);
+});
+for(const kind of ['ftir','raman']) test(kind+' condition choices autosave only the selected row and keep source/PPT bindings',t=>{
+  const label=kind==='ftir'?'Type':'Excitation Wavelength',value=kind==='ftir'?'ATR method':'532 nm';
+  const h=setup(t,kind,'',{config:{storageKey:'options-'+kind,fields:[{field:'choice',label,defaults:[value]}]},
+    rows:[['공통',label,'직접 입력'],['sample A',label,'RAW 값'],['공통','온도','25°C']]});
+  const picks=[1,2,3].map(i=>h.field('실험조건 및 실험환경 '+i+'행 값').parentNode.querySelector('.report-condition-picker'));
+  assert(!picks[0].hidden);assert(!picks[1].hidden);assert(picks[2].hidden);assert.equal(h.posts.length,0);
+  const manage=h.d.querySelector('.report-condition-options>button');manage.click();
+  const preference=h.field(label+' 선택지 1');preference.value='새 선택지';preference.dispatchEvent(new h.w.Event('input',{bubbles:true}));
+  assert.equal(h.posts.length,0);assert.equal(h.timers.size,0);
+  [...h.q('report-condition-manager').querySelectorAll('button')].find(b=>b.textContent==='선택지 저장').click();
+  assert.equal(h.field('실험조건 및 실험환경 1행 값').value,'직접 입력');assert.equal(h.posts.length,0);
+  picks[0].value='0';picks[0].dispatchEvent(new h.w.Event('change'));assert.equal(h.timers.size,1);h.tick();
+  assert.deepEqual(h.posts[0].body.sections[1].rows,[['공통',label,'새 선택지'],['sample A',label,'RAW 값'],['공통','온도','25°C']]);
+  assert(h.q('slide-image').getAttribute('src').includes('/revision/'));
+  h.q('edit-page').value='2';h.q('edit-page').dispatchEvent(new h.w.Event('change'));
+  h.q('slide-image').dispatchEvent(new h.w.Event('load'));
+  h.d.querySelector('.edit-region').click();
+  assert.equal(h.q('inline-fields').querySelector('textarea').value,'새 선택지');
+  h.input('실험조건 및 실험환경 1행 항목','자유 조건');assert(picks[0].hidden);assert.equal(h.field('실험조건 및 실험환경 1행 값').value,'새 선택지');
 });
 for(const kind of ['ftir','raman']) test(kind+' page and tool visibility toggles are adjacent and independent',t=>{
   const h=setup(t,kind),toggle=h.q('canvas-toggle'),sidebar=h.q('page-sidebar-toggle'),tools=h.q('canvas-controls');
@@ -369,7 +390,7 @@ for(const [index,kind] of ['ftir','raman'].entries()) test(kind+' original works
   const fields={},select={value:'old'},calls=[];let handler;
   const job={jobId:'new',parentJobId:'old',status:'completed',transfer:{requestNumber:'UPDATED',operatorId:'SSO'}};
   const state=new Function('window','fetchJson','requestSelect','setReportTransferValue','updatePersistentReportDownload','updateReportSendAvailability','scheduleWorkspaceSave','setSuccessMessage','setMessage',
-    'var lastReportJob={jobId:"old"};'+source+';return ()=>lastReportJob;')(
+    'var lastReportJob={jobId:"old"},REPORT_OPTION_STORAGE_KEY="conditions";'+source+';return ()=>lastReportJob;')(
       {addEventListener:(name,fn)=>handler=fn},async url=>{calls.push(url);return job;},select,
       (key,value)=>fields[key]=value,j=>calls.push(j.jobId),()=>{},()=>{},()=>{},message=>{throw Error(message);});
   handler({key:'rist-report-revision',newValue:JSON.stringify({previousJobId:'unrelated',job})});
