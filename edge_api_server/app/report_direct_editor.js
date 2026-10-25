@@ -8,7 +8,9 @@
     var select = document.getElementById("edit-page"), previous = document.getElementById("edit-previous"), next = document.getElementById("edit-next");
     var state = document.getElementById("page-status"), toggle = document.getElementById("edit-toggle");
     var pages = [], page = 0, imageBase = "", ready = false, shown = true, locked = false, copies = [], active = null, nextPageId = null, canvasMode = false;
-    var sidebar = new window.RistPageSidebar({select:function(index){show(index);},move:function(id,target,after){if(options.onReorder)options.onReorder(id,target,after);}});
+    var nextSelection=null;
+    var sidebar = new window.RistPageSidebar({select:function(index){show(index,false,true);},move:function(id,target,after){if(options.onReorder)options.onReorder(id,target,after);},
+      changed:function(){if(options.onSelection)options.onSelection();},step:function(delta){if(options.onMoveSelection)options.onMoveSelection(delta);}});
     function node(tag, parent, text) { var e = document.createElement(tag); if (text != null) e.textContent = text; parent.appendChild(e); return e; }
     function close() { panel.hidden = true; copies = []; active = null; }
     document.getElementById("inline-close").onclick = close;
@@ -79,7 +81,7 @@
         button.disabled = locked; button.onclick = function () { edit(region); };
       });
     }
-    function show(index, keepEditor) {
+    function show(index, keepEditor, keepSelection) {
       if (!pages.length) return;
       page = Math.max(0, Math.min(pages.length - 1, index));
       select.value = String(page); previous.disabled = page === 0; next.disabled = page === pages.length - 1;
@@ -88,7 +90,7 @@
       ready = false; layer.hidden = true;
       image.alt = "PPT " + (page + 1) + "페이지";
       image.src = imageBase + "/" + page;
-      sidebar.select(page);
+      sidebar.select(page,keepSelection);
       if (options.onPage) options.onPage();
     }
     image.onload = function () { ready = true; regions(); };
@@ -100,6 +102,8 @@
     return {
       setLayout:function (value, base, preservePending) {
         var previousId = (pages[page] || {}).id;
+        var previousSelection=sidebar.selectedIds();
+        var pendingSelection=!preservePending&&nextPageId;
         var selectedId = (!preservePending && nextPageId) || previousId;
         pages = value.pages || []; imageBase = base; select.textContent = "";
         pages.forEach(function (item,index) { var option = node("option",select,(index + 1) + ". " + item.title); option.value = String(index); });
@@ -108,17 +112,20 @@
         pages.forEach(function (item,index) { if (item.id && item.id === selectedId) found = index; });
         if (found >= 0) page = found;
         if ((!preservePending && nextPageId) || (selectedId && found < 0)) close();
-        if (!preservePending) nextPageId = null;
         sidebar.layout(value,base);
-        show(page, true);
+        if(pendingSelection&&nextSelection)sidebar.setSelected(nextSelection);
+        var keepSelection=(!pendingSelection&&!!previousId&&(!previousSelection.length||sidebar.selectedIds().length>0))||!!(pendingSelection&&nextSelection);
+        if (!preservePending) {nextPageId = null;nextSelection=null;}
+        show(page, true,keepSelection);
         if (options.onLayout) options.onLayout(value);
       },
       current:function () { return pages[page] || null; },
       canvasMode:function (value) { canvasMode=value;if(value)close();regions(); },
       count:function () { return pages.length; },
       pageIds:function () { return pages.map(function(item){return item.id;}); },
+      selectedPageIds:function () { return sidebar.selectedIds(); },
       sidebarLock:function (blocked,sending) { sidebar.lock(blocked,sending); },
-      selectOnNext:function (id) { nextPageId = id; close(); },
+      selectOnNext:function (id,ids) { nextPageId = id;nextSelection=ids?ids.slice():null;close(); },
       loading:function () { sidebar.loading();layer.hidden = true; state.textContent = "PPT 편집 영역을 불러오는 중입니다."; },
       error:function (message) { layer.hidden = true; state.textContent = message; },
       sync:function () {

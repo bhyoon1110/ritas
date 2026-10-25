@@ -239,6 +239,46 @@ test('sidebar failure retains pending order and reload cannot unlock stale struc
   assert.deepEqual(h.posts[0].body.pageEdits.order,['summary','cover','conditions']);
   h.q('reload-preview').click();assert(h.q('page-down').disabled);
 });
+for(const kind of ['ftir','raman']){
+  test(kind+' multi-page selection survives autosave, moves as one group and deletes/restores together',t=>{
+    const h=setup(t,kind),ids=()=>[...h.d.querySelectorAll('.page-thumb')].map(b=>b.dataset.pageId);
+    const selected=()=>[...h.d.querySelectorAll('.page-thumb[aria-pressed="true"]')].map(b=>b.dataset.pageId);
+    const click=(id,keys={})=>h.d.querySelector('[data-page-id="'+id+'"]').dispatchEvent(new h.w.MouseEvent('click',{bubbles:true,...keys}));
+    click('cover');click('summary',{shiftKey:true});assert.deepEqual(selected(),['cover','summary']);assert.equal(h.posts.length,0);
+    h.input('보고서 제목','여러 페이지 유지');h.tick();assert.deepEqual(selected(),['cover','summary']);
+    h.q('page-down').click();h.tick();assert.deepEqual(ids(),['conditions','cover','summary']);assert.deepEqual(selected(),['cover','summary']);
+    assert.deepEqual(h.posts[1].body.pageEdits.order,ids());
+    h.d.querySelector('[data-page-id="summary"]').dispatchEvent(new h.w.KeyboardEvent('keydown',{keyCode:38,altKey:true,bubbles:true}));h.tick();
+    assert.deepEqual(ids(),['cover','summary','conditions']);assert.deepEqual(selected(),['cover','summary']);
+    h.w.confirm=()=>false;h.q('page-delete').click();assert.equal(h.timers.size,0);
+    let confirmations=0;h.w.confirm=message=>{confirmations++;assert.match(message,/2개 페이지/);return true;};
+    h.q('page-delete').click();assert(h.q('page-delete').disabled);h.tick();assert.equal(confirmations,1);
+    assert.deepEqual(ids(),['conditions']);assert.deepEqual(h.posts[3].body.pageEdits.hidden,['cover','summary']);assert(h.q('page-delete').disabled);
+    h.q('page-restore').click();h.tick();assert.deepEqual(ids(),['cover','summary','conditions']);assert.deepEqual(selected(),['cover','summary']);
+    assert.deepEqual(h.posts[4].body.pageEdits.hidden,[]);assert.equal(h.field('분석 결과 요약 · 문단 1').value,'AI 초안');
+  });
+  test(kind+' Ctrl+A only affects thumbnails; all-page deletion is guarded and Ctrl toggle may select none',t=>{
+    const h=setup(t,kind),key=target=>{const e=new h.w.KeyboardEvent('keydown',{key:'a',keyCode:65,ctrlKey:true,bubbles:true,cancelable:true});target.dispatchEvent(e);return e;};
+    const thumb=()=>h.d.querySelector('.page-thumb');
+    assert.equal(key(thumb()).defaultPrevented,true);assert.equal(h.d.querySelectorAll('[aria-pressed="true"].page-thumb').length,3);
+    assert(h.q('page-delete').disabled);assert(h.q('page-up').disabled);assert(h.q('page-down').disabled);assert.equal(h.posts.length,0);
+    const input=h.field('보고서 제목');input.focus();assert.equal(key(input).defaultPrevented,false);
+    loaded(h);h.field('PPT 편집 · 보고서 제목').click();assert.equal(key(h.field('PPT 수정 · 보고서 제목')).defaultPrevented,false);
+    thumb().click();thumb().dispatchEvent(new h.w.MouseEvent('click',{ctrlKey:true,bubbles:true}));
+    assert.equal(h.d.querySelectorAll('[aria-pressed="true"].page-thumb').length,0);assert(h.q('page-delete').disabled);
+    h.input('보고서 제목','빈 선택 유지');h.tick();assert.equal(h.d.querySelectorAll('[aria-pressed="true"].page-thumb').length,0);
+  });
+  test(kind+' noncontiguous selected pages drag together in original order and undo before saving restores them',t=>{
+    const h=setup(t,kind),thumb=id=>h.d.querySelector('[data-page-id="'+id+'"]');
+    thumb('conditions').dispatchEvent(new h.w.MouseEvent('click',{ctrlKey:true,bubbles:true}));
+    thumb('cover').dispatchEvent(new h.w.MouseEvent('dragstart',{bubbles:true,cancelable:true}));
+    thumb('summary').getBoundingClientRect=()=>({top:100,bottom:200});
+    thumb('summary').dispatchEvent(new h.w.MouseEvent('drop',{bubbles:true,cancelable:true,clientY:190}));h.tick();
+    assert.deepEqual(h.posts[0].body.pageEdits.order,['summary','cover','conditions']);
+    assert.deepEqual([...h.d.querySelectorAll('.page-thumb[aria-pressed="true"]')].map(b=>b.dataset.pageId),['cover','conditions']);
+    h.w.confirm=()=>true;h.q('page-delete').click();h.q('page-restore').click();assert.equal(h.timers.size,0);assert.equal(h.posts.length,1);
+  });
+}
 test('TEM shared editor does not expose unsupported page operations',t=>{
   const h=setup(t,'tem');assert(h.q('page-actions').hidden);assert(h.q('page-add').disabled);
   h.input('보고서 제목','TEM 수정');h.tick();assert.equal(h.posts[0].body.pageEdits,undefined);

@@ -25,6 +25,7 @@
   var saved = "", timer = null, composing = false, sending = false, activeRevision = null, retries = 0;
   var refs = {}, variables = [], layoutSequence = 0, canvas = null;
   var pageEdits = {hidden:[],added:[]}, pageFields = [], pageBox = null, pageEditing = false, structureDirty = false, layoutReady = false, layoutStructure = "";
+  var deletedPageGroups=[];
   var labels = {requestNumber:"의뢰번호",limsExperimentCode:"실험코드",equipmentCode:"실험장비",operatorId:"실험자"};
   var direct = new window.RistDirectEditor({
     field:function (ref) { return refs[ref]; }, variables:variableOptions,
@@ -32,6 +33,7 @@
     canInsert:function (input) { return input !== inputs.completionDate && !Object.keys(labels).some(function (key) { return input === inputs[key]; }); },
     onPage:function () { pageAvailability();if(canvas)canvas.page(direct.current()); },
     onReorder:reorderPages,
+    onSelection:pageAvailability,onMoveSelection:moveSelectedPages,
     onLayout:function (value) {
       pageEditing = value.pageEditing === true && project !== "TEM";
       document.getElementById("page-actions").hidden = !pageEditing;
@@ -124,14 +126,17 @@
   function pageAvailability() {
     var blocked = !pageEditing || !layoutReady || busy || sending || !!activeRevision || structureDirty || !direct || !direct.current();
     document.getElementById("page-add").disabled = blocked || pageFields.length >= 50 || direct.count() >= 200;
-    document.getElementById("page-delete").disabled = blocked || direct.count() <= 1;
+    var ids=direct?direct.pageIds():[],selected=direct?direct.selectedPageIds():[];
+    var remove=document.getElementById("page-delete");
+    remove.disabled = blocked || !selected.length || selected.length >= direct.count();
+    var removeLabel=selected.length>1?"선택한 "+selected.length+"개 페이지 삭제":"선택한 페이지 삭제";
+    remove.setAttribute("aria-label",removeLabel);remove.title=selected.length>=direct.count()?"최소 1개 페이지는 남겨야 합니다.":removeLabel;
     document.getElementById("page-restore").disabled = !pageEditing || busy || sending || !!activeRevision || !pageEdits.hidden.length;
-    var index=direct&&direct.current()?direct.pageIds().indexOf(direct.current().id):-1;
-    document.getElementById("page-up").disabled=blocked||index<=0;
-    document.getElementById("page-down").disabled=blocked||index<0||index>=direct.count()-1;
+    document.getElementById("page-up").disabled=blocked||!selected.length||ids.indexOf(selected[0])<=0;
+    document.getElementById("page-down").disabled=blocked||!selected.length||ids.indexOf(selected[selected.length-1])>=ids.length-1;
     if(direct)direct.sidebarLock(blocked,sending);
   }
-  [["page-add","add","페이지 추가"],["page-delete","trash","현재 페이지 삭제"],["page-restore","undo","최근 삭제 취소"],["page-up","up","페이지 위로"],["page-down","down","페이지 아래로"]].forEach(function(item){window.RistReportIcons(document.getElementById(item[0]),item[1],item[2]);});
+  [["page-add","add","페이지 추가"],["page-delete","trash","선택한 페이지 삭제"],["page-restore","undo","최근 삭제 취소"],["page-up","up","선택한 페이지 위로"],["page-down","down","선택한 페이지 아래로"]].forEach(function(item){window.RistReportIcons(document.getElementById(item[0]),item[1],item[2]);});
   function ensurePageOrder() {
     var order=(pageEdits.order||[]).slice(),previous=null;
     direct.pageIds().forEach(function(id){
@@ -143,14 +148,24 @@
   function reorderPages(id,target,after) {
     if(!pageEditing||!layoutReady||busy||sending||activeRevision||structureDirty||id===target)return;
     var visible=direct.pageIds();if(visible.indexOf(id)<0||visible.indexOf(target)<0)return;
-    var prior=pageEdits.order,order=ensurePageOrder(),before=order.join("|");order.splice(order.indexOf(id),1);
-    order.splice(order.indexOf(target)+(after?1:0),0,id);
+    var selected=direct.selectedPageIds();if(selected.indexOf(id)<0)selected=[id];
+    if(selected.indexOf(target)>=0)return;
+    var prior=pageEdits.order,order=ensurePageOrder(),before=order.join("|");
+    order=order.filter(function(value){return selected.indexOf(value)<0;});
+    var at=order.indexOf(target)+(after?1:0);
+    order=order.slice(0,at).concat(selected,order.slice(at));pageEdits.order=order;
     if(before===order.join("|")){pageEdits.order=prior;return;}
-    direct.selectOnNext(id);pageChanged();
+    direct.selectOnNext(id,selected);pageChanged();
+  }
+  function moveSelectedPages(delta) {
+    var control=document.getElementById(delta<0?"page-up":"page-down");if(control.disabled)return;
+    var ids=direct.pageIds(),selected=direct.selectedPageIds();if(!selected.length)return;
+    var at=ids.indexOf(delta<0?selected[0]:selected[selected.length-1]);
+    var active=direct.current().id;
+    reorderPages(selected.indexOf(active)>=0?active:selected[0],ids[at+delta],delta>0);
   }
   ["page-up","page-down"].forEach(function(id,index){document.getElementById(id).onclick=function(){
-    if(this.disabled)return;var ids=direct.pageIds(),at=ids.indexOf(direct.current().id),delta=index?1:-1;
-    reorderPages(ids[at],ids[at+delta],delta>0);
+    moveSelectedPages(index?1:-1);
   };});
   function pageRow(item, open) {
     var block = element("details",pageBox); block.open = !!open;
@@ -178,13 +193,19 @@
   document.getElementById("page-delete").onclick = function () {
     if (this.disabled) return;
     var page = direct.current();
-    if (!window.confirm("‘" + page.title + "’ 페이지를 수정본에서 삭제할까요? 원본과 분석 데이터는 보존됩니다.")) return;
+    var selected=direct.selectedPageIds();if(!selected.length||selected.length>=direct.count())return;
+    var label="선택한 "+selected.length+"개 페이지";
+    if (!window.confirm(label+"를 수정본에서 삭제할까요? 원본과 분석 데이터는 보존됩니다.")) return;
     if(pageEdits.order&&pageEdits.order.length)ensurePageOrder();
-    pageEdits.hidden.push(page.id); direct.selectOnNext(page.id); pageChanged();
+    pageEdits.hidden=pageEdits.hidden.concat(selected);deletedPageGroups.push(selected.slice());
+    direct.selectOnNext(page.id);pageChanged();
   };
   document.getElementById("page-restore").onclick = function () {
     if (this.disabled) return;
-    direct.selectOnNext(pageEdits.hidden.pop()); pageChanged();
+    var group=deletedPageGroups.pop()||[pageEdits.hidden[pageEdits.hidden.length-1]];
+    group=group.filter(function(id){return pageEdits.hidden.indexOf(id)>=0;});if(!group.length)return;
+    pageEdits.hidden=pageEdits.hidden.filter(function(id){return group.indexOf(id)<0;});
+    direct.selectOnNext(group[0],group);pageChanged();
   };
   function variableOptions() {
     var result = Object.keys(labels).map(function (key) { return {name:labels[key],value:inputs[key] ? inputs[key].value : ""}; });
@@ -294,7 +315,7 @@
   }
   function show(data) {
     model = data.document; editor.textContent = ""; sections = []; auxiliary = {}; inputs = {}; refs = {}; variables = [];
-    pageEdits = model.pageEdits || {hidden:[],added:[]}; pageFields = []; structureDirty = false;
+    pageEdits = model.pageEdits || {hidden:[],added:[]}; pageFields = [];deletedPageGroups=[];structureDirty = false;
     if(canvas)canvas.load(model.canvasEdits||{});
     var top = element("section", editor); element("h2", top, "공통 정보 / 의뢰 조회");
     inputs.title = bind("title",field(top, "보고서 제목", model.title, false, 200));

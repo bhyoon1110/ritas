@@ -49,9 +49,13 @@ def test_order_validation_and_authenticated_small_thumbnails(prepared):
     for suffix, width in [('?thumbnail=true', 240), ('', 1280)]:
         response = h.client.get(h.url + '/edit-slides/0' + suffix)
         assert response.status_code == 200
-        assert response.headers['cache-control'] == 'no-store'
+        assert response.headers['cache-control'] == 'private, no-cache'
         with Image.open(BytesIO(response.content)) as image:
             assert image.width == width
+        cached = h.client.get(h.url + '/edit-slides/0' + suffix,
+                              headers={'If-None-Match': response.headers['etag']})
+        assert cached.status_code == 304 and cached.content == b''
+        assert cached.headers['cache-control'] == 'private, no-cache'
     assert h.client.get(h.url + '/edit-slides/200?thumbnail=true').status_code == 404
     assert h.client.get(h.prefix + '/missing/edit-slides/0?thumbnail=true').status_code == 404
 
