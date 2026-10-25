@@ -106,6 +106,9 @@
     settings.peakLabelsVisible = boolean(input.peakLabelsVisible);
     settings.legendVisible = own(input, "legendVisible") ? boolean(input.legendVisible) : false;
     settings.peaksVisible = own(input, "peaksVisible") ? boolean(input.peaksVisible) : true;
+    settings.peakMarkersVisible = own(input, "peakMarkersVisible") ? boolean(input.peakMarkersVisible) : true;
+    settings.peakMarkerSize = input.peakMarkerSize == null ? null : number(input.peakMarkerSize, 3, 24);
+    if (settings.peakMarkerSize != null && Math.round(settings.peakMarkerSize) !== settings.peakMarkerSize) invalid();
     settings.peakLegendEntriesVisible = boolean(input.peakLegendEntriesVisible);
     if (!Array.isArray(input.sampleStyles) || input.sampleStyles.length > 100) invalid();
     settings.sampleStyles = input.sampleStyles.map(function(style) {
@@ -154,6 +157,8 @@
       peakLabelsVisible: meta.ristPeakLabelsVisible !== false,
       legendVisible: meta.ristLegendVisible === true,
       peaksVisible: meta.ristPeaksVisible !== false,
+      peakMarkersVisible: meta.ristPeakMarkersVisible !== false,
+      peakMarkerSize: meta.ristPeakMarkerSize == null ? null : meta.ristPeakMarkerSize,
       peakLegendEntriesVisible: meta.ristPeakLegendEntriesVisible !== false,
       sampleStyles: (gd.data || []).filter(function(trace) {
         return trace.meta && trace.meta.rist_sample_parent;
@@ -176,6 +181,8 @@
     layout.showlegend = s.legendVisible;
     layout.legend = Object.assign({}, layout.legend || {}, {font: Object.assign({size:16, weight:700}, s.legend.font || {})});
     meta.ristPeaksVisible = s.peaksVisible;
+    meta.ristPeakMarkersVisible = s.peakMarkersVisible;
+    meta.ristPeakMarkerSize = s.peakMarkerSize;
     meta.ristPeakLegendEntriesVisible = s.peakLegendEntriesVisible;
     // Map appearance by RAW sample order, never by an old name/id; extra samples keep their own style.
     var index = 0;

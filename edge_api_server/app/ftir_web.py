@@ -2937,6 +2937,7 @@ _UPLOAD_SCRIPT = """
         setBusy(true);
         try {
           await Promise.resolve(gd._ristStackReady);
+          await Promise.resolve(gd._ristPeakDisplayReady);
           var state = currentWorkspaceState();
           state.analysisPayload = JSON.parse(JSON.stringify(state.analysisPayload));
           var figure = currentFigurePayload();
@@ -5374,6 +5375,7 @@ _UPLOAD_SCRIPT = """
     status.textContent = "보고서 생성 중";
     try {
       await Promise.resolve(gd._ristStackReady);
+      await Promise.resolve(gd._ristPeakDisplayReady);
       var reportFigure = currentFigurePayload();
       var reportSnapshot = reportSnapshotSignature(reportFigure);
       var reportAnalysis = reportAnalysisPayload();

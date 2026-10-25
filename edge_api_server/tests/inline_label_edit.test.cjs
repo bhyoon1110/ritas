@@ -594,6 +594,62 @@ for (const kind of ['ftir','raman']) for (const mode of ['native','chrome49']) {
     touch('touchstart',[[300,150]],null,control);touch('touchend',[],[[300,150]],control);
     h.mouse(control,'click',300,150);await tick();assert.equal(h.gd.data.length,3);
   });
+  test(label+': labels-only hides dots and both connector types without moving text or changing evidence',async t=>{
+    const h=setup(t,kind,mode);shapeFixture(h);await tick();h.run('function buildImageExportPayload');
+    const peak=h.gd.data[1];peak.mode='markers';peak.hovertemplate='%{x}: %{y}';
+    h.gd.layout.annotations[0].arrowcolor='#ff0000';h.gd.layout.annotations[0].showarrow=true;
+    const raw=clone(h.gd.data[0]),evidence=clone(peak.meta.rist_peak),labelBefore=clone(h.gd.layout.annotations[0]);
+    const toggle=h.q('.rist-peak-marker-toggle');toggle.click();await tick();
+    assert.equal(toggle.getAttribute('aria-pressed'),'false');assert.equal(peak.mode,'none');assert.equal(peak.hoverinfo,'skip');
+    assert.equal(h.gd.layout.annotations[0].visible,true);assert.equal(h.gd.layout.annotations[0].arrowcolor,'rgba(0,0,0,0)');
+    assert.equal(h.gd.layout.annotations[0].ay,labelBefore.ay);assert.equal(h.gd.layout.shapes[0].visible,false);
+    assert.equal(h.gd._ristNearestPeakCurveFromEvent({clientX:200,clientY:100,target:h.gd}),null);
+    const exported=h.gd._ristBuildImageExportPayload(h.gd.data,h.gd.layout,1000,700);
+    assert.equal(exported.data.find(t=>t.meta&&t.meta.rist_peak).mode,'none');
+    assert.equal(exported.layout.annotations[0].visible,true);assert.equal(exported.layout.shapes[0].visible,false);
+    h.q('.rist-peak-display-toggle').click();await tick();assert.equal(h.gd.layout.annotations[0].visible,false);
+    h.q('.rist-peak-display-toggle').click();await tick();assert.equal(h.gd.layout.annotations[0].visible,true);assert.equal(peak.mode,'none');
+    toggle.click();await tick();assert.equal(peak.mode,'markers');assert.equal(peak.hovertemplate,'%{x}: %{y}');
+    assert.deepEqual(clone(h.gd.layout.annotations[0]),labelBefore);assert.equal(h.gd.layout.shapes[0].visible,true);
+    assert.deepEqual(clone(h.gd.data[0]),raw);assert.deepEqual(clone(peak.meta.rist_peak),evidence);
+    toggle.click();await tick();
+    h.gd.dispatchEvent(new h.w.CustomEvent('rist-legend-color-change',{detail:{curves:[1],color:'#123456'}}));await tick();
+    assert.equal(h.gd.layout.annotations[0].font.color,'#123456');assert.equal(h.gd.layout.annotations[0].arrowcolor,'rgba(0,0,0,0)');
+    // Plotly normalizes RGBA whitespace while rendering.
+    h.gd.layout.annotations[0].arrowcolor='rgba(0, 0, 0, 0)';h.dispatch('rist-peak-label-visibility-change');await tick();
+    toggle.click();await tick();assert.equal(h.gd.layout.annotations[0].arrowcolor,'#123456');
+  });
+  test(label+': global marker size validates, survives selection, new peaks, undo/redo and workspace restore',async t=>{
+    const h=setup(t,kind,mode);shapeFixture(h);await tick();h.gd.data[1].marker.size=8;
+    const field=h.q('.rist-peak-marker-size');
+    const change=value=>{field.value=String(value);field.dispatchEvent(new h.w.Event('change',{bubbles:true}));};
+    for(const value of ['',0,2,25,12.5]){change(value);await tick();assert.equal(h.gd.data[1].marker.size,8);}
+    change(16);await tick();assert.equal(h.gd.layout.meta.ristPeakMarkerSize,16);assert.equal(h.gd.data[1].marker.size,16);
+    h.gd._ristHistory.undo();await tick();assert.equal(h.gd.data[1].marker.size,8);
+    h.gd._ristHistory.redo();await tick();assert.equal(h.gd.data[1].marker.size,16);
+    h.q('.rist-peak-select-button').click();h.emit('plotly_click',{points:[{curveNumber:1}]});await tick();assert.equal(h.gd.data[1].marker.size,19);
+    h.emit('plotly_click',{points:[{curveNumber:1}]});await tick();assert.equal(h.gd.data[1].marker.size,16);
+    const fresh=clone(h.gd.data[1]);fresh.marker.size=9;fresh.meta.rist_peak.label_key='new';h.gd.data.push(fresh);
+    h.dispatch('rist-plot-data-replaced');await tick();assert.equal(fresh.marker.size,16);
+    h.q('.rist-peak-marker-toggle').click();await tick();
+    const saved=clone({data:h.gd.data,layout:h.gd.layout});h.gd.data=saved.data;h.gd.layout=saved.layout;
+    h.dispatch('rist-plot-data-replaced');await tick();assert.equal(field.value,'16');assert.equal(h.gd.data[1].mode,'none');assert.equal(h.gd.layout.annotations[0].visible,true);
+    h.run('function buildImageExportPayload');const exported=h.gd._ristBuildImageExportPayload(h.gd.data,h.gd.layout,1000,700);
+    assert.equal(exported.data.find(t=>t.meta&&t.meta.rist_peak).marker.size,16);
+  });
+  test(label+': labels-only survives sensitivity changes and labels remain deletable',async t=>{
+    const h=setup(t,kind,mode);shapeFixture(h);await tick();h.gd.data[1].meta.rist_peak.sensitivity_min=20;
+    h.run('gd._ristPeakSensitivityInstalled');h.q('.rist-peak-marker-toggle').click();await tick();
+    for(const value of [0,100,0,100]){
+      const field=h.q('.rist-peak-sensitivity-number');field.value=String(value);field.dispatchEvent(new h.w.Event('input'));await tick();
+      assert.equal(h.gd.data[1].mode,'none');assert.equal(h.gd.layout.annotations[0].visible,value>0);
+      assert.equal(h.gd.layout.annotations[0].arrowcolor,'rgba(0,0,0,0)');assert.equal(h.gd.layout.shapes[0].visible,false);
+    }
+    h.q('.rist-peak-delete-button').click();
+    const target=h.q('.annotation[data-index="0"] .annotation-text');h.mouse(target,'mousedown');h.mouse(target,'mouseup');h.mouse(target,'click');await tick();
+    assert.equal(h.gd.data.filter(t=>t.meta&&t.meta.rist_peak).length,0);
+    assert.equal(h.gd.layout.annotations.some(a=>(a.text||'').includes('cm⁻¹')),false);
+  });
   test(label+': peak display hides only points/labels/connectors and restores exact styling/evidence',async t=>{
     const h=setup(t,kind,mode);shapeFixture(h);await tick();
     const peak=h.gd.data[1];peak.mode='markers';peak.hoverinfo='x+y';peak.hovertemplate='%{x}: %{y}';

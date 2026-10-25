@@ -91,6 +91,12 @@ def readonly_figure(source: dict) -> dict:
             raise ValueError("열람용 그래프 X/Y 데이터 길이가 일치하지 않습니다.")
         item = {k: deepcopy(v) for k, v in trace.items() if k in trace_keys}
         source_meta = trace.get("meta") or {}
+        if source_meta.get("rist_peak"):
+            if meta.get("ristPeakMarkersVisible") is False:
+                item.update(mode="none", hoverinfo="skip", hovertemplate=None)
+            marker_size = meta.get("ristPeakMarkerSize")
+            if isinstance(marker_size, (int, float)) and 3 <= marker_size <= 24:
+                item["marker"] = dict(item.get("marker") or {}, size=marker_size)
         group = str(source_meta.get("rist_sample_group") or trace.get("legendgroup") or f"trace:{index}")
         offset = source_meta.get("rist_view_offset", source_meta.get("rist_raman_stack_offset"))
         if offset is None:
@@ -113,6 +119,15 @@ def readonly_figure(source: dict) -> dict:
             item = deepcopy(label)
             item["traceIndex"] = indices[label["traceIndex"]]
             labels.append(item)
+            if meta.get("ristPeakMarkersVisible") is False:
+                for key, index_key in (("annotations", "annotationIndex"), ("shapes", "shapeIndex")):
+                    position = label.get(index_key)
+                    objects = layout.get(key) or []
+                    if isinstance(position, int) and 0 <= position < len(objects):
+                        if key == "annotations":
+                            objects[position]["arrowcolor"] = "rgba(0,0,0,0)"
+                        else:
+                            objects[position]["visible"] = False
         else:
             excluded_annotations.add(label.get("annotationIndex"))
             excluded_shapes.add(label.get("shapeIndex"))

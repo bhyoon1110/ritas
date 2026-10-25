@@ -94,6 +94,25 @@ def test_peak_display_switch_omits_peak_graphics_but_keeps_sample_and_other_note
     assert result["layout"].get("shapes", []) == []
 
 
+@pytest.mark.parametrize("markers", [False, True])
+def test_peak_labels_only_and_marker_size_survive_readonly_snapshot(markers):
+    source = sample_figure()
+    source["layout"]["meta"].update(ristPeakMarkersVisible=markers, ristPeakMarkerSize=18)
+    before = deepcopy(source)
+    result = viewer.readonly_figure(source)
+    assert source == before
+    assert len(result["data"]) == 3
+    peak = result["data"][1]
+    assert peak["marker"]["size"] == 18
+    assert peak["mode"] == ("markers" if markers else "none")
+    assert result["layout"]["annotations"][0]["text"] == "C=O"
+    assert result["layout"]["annotations"][0].get("visible") is not False
+    if not markers:
+        assert peak["hoverinfo"] == "skip"
+        assert result["layout"]["annotations"][0]["arrowcolor"] == "rgba(0,0,0,0)"
+        assert result["layout"]["shapes"][0]["visible"] is False
+
+
 @pytest.mark.parametrize("visible", [False, True])
 def test_sample_legend_visibility_font_and_exported_colors_survive_readonly_snapshot(visible):
     source = sample_figure()

@@ -1134,6 +1134,15 @@ def _legend_text_edit_js(
   opacity: 0.42;
   cursor: default;
 }}
+#{div_id} .rist-peak-marker-size-control {{
+  display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;
+  height: 28px; padding: 0 6px; border: 1px solid #9fb3c8; border-radius: 4px;
+  background: #f5f7fa; color: #1f2933; font: 12px Arial, sans-serif; box-sizing: border-box;
+}}
+#{div_id} .rist-peak-marker-size {{
+  width: 48px; min-width: 0; height: 22px; padding: 1px 3px; box-sizing: border-box;
+  border: 1px solid #c7d0dd; border-radius: 3px; font: 12px Arial, sans-serif;
+}}
 #{div_id} .rist-legend-edit-input {{
   flex: 1 1 auto;
   min-width: 0;
@@ -2791,6 +2800,18 @@ def _legend_text_edit_js(
       );
     }});
     updatePeakLabelButton(bulk.querySelector(".rist-peak-label-toggle"));
+    var markerButton = bulk.querySelector(".rist-peak-marker-toggle");
+    if (markerButton) {{
+      var markers = !(gd.layout.meta && gd.layout.meta.ristPeakMarkersVisible === false);
+      markerButton.classList.toggle("is-active", markers);
+      markerButton.setAttribute("aria-pressed", markers ? "true" : "false");
+      markerButton.title = markers ? "피크 점·연결선 숨김 — 피크 라벨은 유지" : "피크 점·연결선 표시";
+    }}
+    var markerSize = bulk.querySelector(".rist-peak-marker-size");
+    if (markerSize && document.activeElement !== markerSize) {{
+      var configured = gd.layout.meta && gd.layout.meta.ristPeakMarkerSize;
+      markerSize.value = configured == null ? "" : String(configured);
+    }}
     var displayButton = bulk.querySelector(".rist-peak-display-toggle");
     if (displayButton) {{
       var displayed = peaksDisplayed();
@@ -2829,6 +2850,10 @@ def _legend_text_edit_js(
       bulk.insertBefore(legendToggle, bulk.firstChild);
       bulk.innerHTML += "<button type='button' class='rist-legend-bulk-button rist-peak-display-toggle'"
         + " data-peak-control aria-pressed='true'>피크 표시</button>";
+      bulk.innerHTML += "<button type='button' class='rist-legend-bulk-button rist-peak-marker-toggle'"
+        + " data-peak-control aria-pressed='true'>피크 점</button>"
+        + "<label class='rist-peak-marker-size-control' title='전체 피크 점 크기 (3~24 px). 빈칸은 기존 기본 크기입니다.'>점 크기"
+        + "<input class='rist-peak-marker-size' data-peak-control type='number' min='3' max='24' step='1' placeholder='기본' aria-label='피크 점 크기 (px)' /></label>";
     }}
     toolbar.appendChild(bulk);
     refreshPeakBulkControls(bulk);
@@ -2847,6 +2872,13 @@ def _legend_text_edit_js(
           detail: {{mode: "peak-display"}}
         }}));
         setPeakDisplayVisibility(!peaksDisplayed());
+        return;
+      }}
+      if (b.classList.contains("rist-peak-marker-toggle")) {{
+        gd.dispatchEvent(new CustomEvent("rist-exclusive-interaction-start", {{detail: {{mode: "peak-display"}}}}));
+        if (gd._ristHistory) gd._ristHistory.capture();
+        window.Plotly.relayout(gd, {{"meta.ristPeakMarkersVisible": !!(gd.layout.meta && gd.layout.meta.ristPeakMarkersVisible === false)}})
+          .then(function() {{gd.dispatchEvent(new CustomEvent("rist-peak-display-change"));}});
         return;
       }}
       if (b.classList.contains("rist-peak-label-toggle")) {{
@@ -2871,6 +2903,20 @@ def _legend_text_edit_js(
       setAllLegendVisibility(
         b.getAttribute("data-visible") === "true" ? true : "legendonly"
       );
+    }});
+
+    var markerSizeInput = bulk.querySelector(".rist-peak-marker-size");
+    if (markerSizeInput) markerSizeInput.addEventListener("change", function() {{
+      var size = Number(markerSizeInput.value);
+      if (!markerSizeInput.value || !Number.isFinite(size) || size < 3 || size > 24 || Math.round(size) !== size) {{
+        markerSizeInput.value = gd.layout.meta && gd.layout.meta.ristPeakMarkerSize != null ? String(gd.layout.meta.ristPeakMarkerSize) : "";
+        return;
+      }}
+      if (gd.layout.meta && gd.layout.meta.ristPeakMarkerSize === size) return;
+      if (gd._ristHistory) gd._ristHistory.capture();
+      window.Plotly.relayout(gd, {{"meta.ristPeakMarkerSize": size}}).then(function() {{
+        gd.dispatchEvent(new CustomEvent("rist-peak-display-change"));
+      }});
     }});
 
     gd.addEventListener("rist-history-restored", function() {{
@@ -3580,14 +3626,15 @@ def peak_sensitivity_js(div_id: str, initial: str = "medium") -> str:
       if (!Object.prototype.hasOwnProperty.call(visibleByCurve, label.traceIndex)) return;
       var on = visibleByCurve[label.traceIndex] && peakLabelsVisible();
       if (annotations[label.annotationIndex]) annotations[label.annotationIndex].visible = on;
-      if (shapes[label.shapeIndex]) shapes[label.shapeIndex].visible = on;
+      var connectorOn = on && !(gd.layout.meta && gd.layout.meta.ristPeakMarkersVisible === false);
+      if (shapes[label.shapeIndex]) shapes[label.shapeIndex].visible = connectorOn;
       if (gd._ristFtirUnitOriginalAnnotations
           && gd._ristFtirUnitOriginalAnnotations[label.annotationIndex]) {{
         gd._ristFtirUnitOriginalAnnotations[label.annotationIndex].visible = on;
       }}
       if (gd._ristFtirUnitOriginalShapes
           && gd._ristFtirUnitOriginalShapes[label.shapeIndex]) {{
-        gd._ristFtirUnitOriginalShapes[label.shapeIndex].visible = on;
+        gd._ristFtirUnitOriginalShapes[label.shapeIndex].visible = connectorOn;
       }}
     }});
 
@@ -3919,13 +3966,17 @@ def peak_editor_js(div_id: str) -> str:
   var syncingPeakDisplay = false;
   function syncPeakDisplay() {{
     if (!window.Plotly || syncingPeakDisplay) return;
-    var displayed = peaksDisplayed();
-    var curves = [], modes = [], hoverinfos = [], templates = [], metadata = [];
+    var displayed = peaksDisplayed() && !(gd.layout.meta && gd.layout.meta.ristPeakMarkersVisible === false);
+    var configuredSize = gd.layout.meta && gd.layout.meta.ristPeakMarkerSize;
+    var hasSize = configuredSize != null && Number.isFinite(Number(configuredSize)) && Number(configuredSize) >= 3 && Number(configuredSize) <= 24;
+    var curves = [], modes = [], hoverinfos = [], templates = [], metadata = [], sizes = [];
     (gd.data || []).forEach(function(trace, curve) {{
       if (!isPeakCurve(curve)) return;
       var saved = trace.meta && trace.meta.rist_peak_display;
-      if (displayed ? !saved : !!saved && trace.mode === "none"
-          && trace.hoverinfo === "skip" && trace.hovertemplate == null) return;
+      var size = hasSize ? Number(configuredSize) + (trace.meta.rist_peak.selected ? 3 : 0) : (trace.marker || {{}}).size;
+      var renderUnchanged = displayed ? !saved : !!saved && trace.mode === "none"
+          && trace.hoverinfo === "skip" && trace.hovertemplate == null;
+      if (renderUnchanged && (!hasSize || (trace.marker || {{}}).size === size)) return;
       var nextMeta = Object.assign({{}}, trace.meta || {{}});
       if (!saved) saved = {{
         mode: trace.mode == null ? "markers" : trace.mode,
@@ -3939,12 +3990,13 @@ def peak_editor_js(div_id: str) -> str:
       hoverinfos.push(displayed ? saved.hoverinfo : "skip");
       templates.push(displayed ? saved.hovertemplate : null);
       metadata.push(nextMeta);
+      sizes.push(size == null ? null : size);
     }});
     if (!curves.length) return;
     syncingPeakDisplay = true;
-    gd._ristPeakDisplayReady = window.Plotly.restyle(gd, {{
-      mode: modes, hoverinfo: hoverinfos, hovertemplate: templates, meta: metadata
-    }}, curves).then(function() {{
+    var renderPatch = {{mode: modes, hoverinfo: hoverinfos, hovertemplate: templates, meta: metadata}};
+    if (hasSize) renderPatch["marker.size"] = sizes;
+    gd._ristPeakDisplayReady = window.Plotly.restyle(gd, renderPatch, curves).then(function() {{
       syncVisibility();
       syncingPeakDisplay = false;
       // A new dataset or another toggle may arrive during the Plotly update.
@@ -4423,7 +4475,8 @@ def peak_editor_js(div_id: str) -> str:
     var nextMeta = Object.assign({{}}, tr.meta || {{}});
     var peakMeta = Object.assign({{}}, nextMeta.rist_peak || {{}});
     var lineWidth = selected ? 3 : 1.5;
-    var size = selected ? 12 : 9;
+    var size = Number(gd.layout.meta && gd.layout.meta.ristPeakMarkerSize) || 9;
+    if (selected) size += 3;
     peakMeta.selected = selected;
     nextMeta.rist_peak = peakMeta;
     if (gd.data && gd.data[curve]) gd.data[curve].meta = nextMeta;
@@ -4461,7 +4514,7 @@ def peak_editor_js(div_id: str) -> str:
     updateSelectButton();
     if (!window.Plotly || !curves.length) return Promise.resolve();
     return window.Plotly.restyle(gd, {{
-      "marker.size": 9,
+      "marker.size": Number(gd.layout.meta && gd.layout.meta.ristPeakMarkerSize) || 9,
       "marker.line.color": "white",
       "marker.line.width": 1.5,
       meta: curves.map(function(curve) {{ return (gd.data || [])[curve].meta; }})
@@ -4497,7 +4550,10 @@ def peak_editor_js(div_id: str) -> str:
       var ann = annotations[label.annotationIndex];
       var shape = shapes[label.shapeIndex];
       if (ann) {{
-        ann.arrowcolor = color;
+        if (gd.layout.meta && gd.layout.meta.ristPeakMarkersVisible === false) {{
+          label.markerHiddenArrowColor = color;
+          ann.arrowcolor = "rgba(0,0,0,0)";
+        }} else ann.arrowcolor = color;
         ann.bordercolor = color;
         ann.font = Object.assign({{}}, ann.font || {{}}, {{ color: color }});
       }}
@@ -4788,7 +4844,7 @@ def peak_editor_js(div_id: str) -> str:
   }}
 
   function nearestPeakCurveFromEvent(ev) {{
-    if (!peaksDisplayed()) return null;
+    if (!peaksDisplayed() || (gd.layout.meta && gd.layout.meta.ristPeakMarkersVisible === false)) return null;
     if (ev.target && ev.target.closest
         && ev.target.closest(".legend,.modebar,.rist-plot-control-row,.rist-legend-edit-panel,.rist-legend-drag-handle")) {{
       return null;
@@ -4853,15 +4909,31 @@ def peak_editor_js(div_id: str) -> str:
         && sampleParentVisible(sampleGroup(label.traceIndex));
       var ann = annotations[label.annotationIndex];
       var shape = shapes[label.shapeIndex];
+      var markers = !(gd.layout.meta && gd.layout.meta.ristPeakMarkersVisible === false);
       if (ann) ann.visible = on;
-      if (shape) shape.visible = on;
+      if (shape) shape.visible = on && markers;
+      var originalAnn = gd._ristFtirUnitOriginalAnnotations && gd._ristFtirUnitOriginalAnnotations[label.annotationIndex];
+      // Transparent arrows retain ax/ay label offsets; showarrow:false would
+      // move the label back onto the spectrum point.
+      if (!markers && ann) {{
+        if (String(ann.arrowcolor || "").replace(/\\s+/g, "") !== "rgba(0,0,0,0)") label.markerHiddenArrowColor = ann.arrowcolor == null ? null : ann.arrowcolor;
+        ann.arrowcolor = "rgba(0,0,0,0)";
+        if (originalAnn) originalAnn.arrowcolor = "rgba(0,0,0,0)";
+      }} else if (Object.prototype.hasOwnProperty.call(label, "markerHiddenArrowColor")) {{
+        [ann, originalAnn].forEach(function(item) {{
+          if (!item) return;
+          if (label.markerHiddenArrowColor == null) delete item.arrowcolor;
+          else item.arrowcolor = label.markerHiddenArrowColor;
+        }});
+        delete label.markerHiddenArrowColor;
+      }}
       if (gd._ristFtirUnitOriginalAnnotations
           && gd._ristFtirUnitOriginalAnnotations[label.annotationIndex]) {{
         gd._ristFtirUnitOriginalAnnotations[label.annotationIndex].visible = on;
       }}
       if (gd._ristFtirUnitOriginalShapes
           && gd._ristFtirUnitOriginalShapes[label.shapeIndex]) {{
-        gd._ristFtirUnitOriginalShapes[label.shapeIndex].visible = on;
+        gd._ristFtirUnitOriginalShapes[label.shapeIndex].visible = on && markers;
       }}
     }});
     window.Plotly.relayout(gd, {{ annotations: annotations, shapes: shapes }});
@@ -6177,6 +6249,14 @@ def _image_download_js(div_id: str, formats, filename: str, scale: float) -> str
     var data = cloneValue(sourceData, []);
     var layout = cloneValue(sourceLayout, {});
     var peaksHidden = layout.meta && layout.meta.ristPeaksVisible === false;
+    var markersHidden = layout.meta && layout.meta.ristPeakMarkersVisible === false;
+    var markerSize = Number(layout.meta && layout.meta.ristPeakMarkerSize);
+    if (markersHidden) (layout.meta.ristPeakLabels || []).forEach(function(label) {
+      var annotation = (layout.annotations || [])[label.annotationIndex];
+      var shape = (layout.shapes || [])[label.shapeIndex];
+      if (annotation) annotation.arrowcolor = "rgba(0,0,0,0)";
+      if (shape) shape.visible = false;
+    });
     if (peaksHidden) (layout.meta.ristPeakLabels || []).forEach(function(label) {
       var annotation = (layout.annotations || [])[label.annotationIndex];
       var shape = (layout.shapes || [])[label.shapeIndex];
@@ -6188,6 +6268,12 @@ def _image_download_js(div_id: str, formats, filename: str, scale: float) -> str
     data.forEach(function(trace) {
       if (!traceIsVisible(trace)) return;
       if (peaksHidden && isPeakTrace(trace)) return;
+      if (isPeakTrace(trace)) {
+        if (markersHidden) { trace.mode = "none"; trace.hoverinfo = "skip"; trace.hovertemplate = null; }
+        if (Number.isFinite(markerSize) && markerSize >= 3 && markerSize <= 24) {
+          trace.marker = Object.assign({}, trace.marker || {}, {size: markerSize});
+        }
+      }
       trace.visible = true;
       trace.showlegend = hasSampleMetadata
         ? isSampleTrace(trace)

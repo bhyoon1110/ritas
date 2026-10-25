@@ -190,6 +190,7 @@ for(const mode of ['native','chrome49']) for(const experiment of ['ftir','raman'
     const h=setup(t,experiment,mode);await tick();await h.addRaw();
     h.gd.layout.title.text='OLD SAMPLE SECRET';
     h.gd.layout.meta.ristPeaksVisible=false;
+    h.gd.layout.meta.ristPeakMarkersVisible=false;h.gd.layout.meta.ristPeakMarkerSize=14;
     h.gd.layout.meta.ristLegendVisible=true;h.gd.layout.legend.font={size:22,weight:400};
     h.gd.layout.shapes=[{name:'old box',x0:10,x1:20}];
     if(experiment==='raman')h.d.querySelector('[data-report-field="conditionDetail"]').value='OLD SAMPLE HEADER '.repeat(500);
@@ -204,6 +205,7 @@ for(const mode of ['native','chrome49']) for(const experiment of ['ftir','raman'
     h.d.querySelector('[data-template-save]').click();const next=JSON.parse(await h.read(h.downloads[1]));
     assert.equal(next.settings.title,'');assert.deepEqual(next.settings.axes.xaxis.range,[700,300]);
     assert.equal(next.settings.peaksVisible,false);
+    assert.equal(next.settings.peakMarkersVisible,false);assert.equal(next.settings.peakMarkerSize,14);
     assert.equal(next.settings.legendVisible,true);assert.deepEqual(next.settings.legend.font,{size:22,weight:400});
     assert.deepEqual(next.settings.sampleStyles.map(s=>s.width),[3.5,0.5]);
   });
@@ -223,6 +225,7 @@ for(const mode of ['native','chrome49']) for(const experiment of ['ftir','raman'
     assert.equal(h.gd.layout.legend.x,0.02);
     assert.equal(h.gd.layout.meta.ristPeakLabelsVisible,false);
     assert.equal(h.gd.layout.meta.ristPeaksVisible,true,'old templates default to visible');
+    assert.equal(h.gd.layout.meta.ristPeakMarkersVisible,true);assert.equal(h.gd.layout.meta.ristPeakMarkerSize,null);
     assert.equal(h.gd.layout.showlegend,false,'old templates default to hidden sample legend');
     assert.equal(h.d.querySelector('.rist-peak-sensitivity-number').value,'0');
     assert(h.gd.layout.yaxis.range[1]>90,'new RAW Y range, not previous dataset range');
@@ -236,6 +239,9 @@ for(const mode of ['native','chrome49']) for(const experiment of ['ftir','raman'
     const good=sampleTemplate(experiment),before=clone(h.options().environment());
     const invalid=['{',JSON.stringify({...good,version:2}),JSON.stringify({...good,experiment:'XRD'}),
       JSON.stringify({...good,settings:{...good.settings,sensitivity:101}}),
+      JSON.stringify({...good,settings:{...good.settings,peakMarkerSize:25}}),
+      JSON.stringify({...good,settings:{...good.settings,peakMarkerSize:4.5}}),
+      JSON.stringify({...good,settings:{...good.settings,peakMarkersVisible:'false'}}),
       JSON.stringify({...good,settings:{...good.settings,libraryIds:['missing']}}),
       '{"__proto__":{"polluted":true}}',' '.repeat(256*1024+1)];
     for(const raw of invalid) {
@@ -263,12 +269,14 @@ for(const mode of ['native','chrome49']) for(const experiment of ['ftir','raman'
     const request=h.d.querySelector('[data-transfer-field="requestNumber"]');request.value='KEEP-REQUEST';
     const value=sampleTemplate(experiment);value.settings.axes.xaxis.range=[650,450];value.settings.axes.yaxis.range=[-20,200];
     value.settings.peaksVisible=false;
+    value.settings.peakMarkersVisible=false;value.settings.peakMarkerSize=18;
     value.settings.legendVisible=true;value.settings.legend.font={size:20,weight:400};
     h.gd.layout.meta.ristPlotSize={width:1200,ratio:'16:9'};
     value.settings.title='';h.setCount(3);
     assert.equal(await h.template().load(value),true);await tick();
     assert.equal(request.value,'KEEP-REQUEST');assert.equal(h.gd.data.length,3);
     assert.equal(h.gd.layout.meta.ristPeaksVisible,false);
+    assert.equal(h.gd.layout.meta.ristPeakMarkersVisible,false);assert.equal(h.gd.layout.meta.ristPeakMarkerSize,18);
     assert.equal(h.gd.layout.showlegend,true);assert.deepEqual(clone(h.gd.layout.legend.font),{size:20,weight:400});
     assert.equal(h.gd.data[0].name,'NEW RAW 0');assert.equal(h.gd.layout.shapes.length,0);
     assert.equal(h.gd.layout.title.text,'');assert.deepEqual(clone(h.gd.layout.xaxis.range),[650,450]);
@@ -289,6 +297,7 @@ for(const mode of ['native','chrome49']) for(const experiment of ['ftir','raman'
     const value=sampleTemplate(experiment);
     value.settings.peaksVisible=true;
     value.settings.legendVisible=false;
+    value.settings.peakMarkersVisible=true;value.settings.peakMarkerSize=null;
     h.template().restore(value);assert.deepEqual(clone(h.template().state()),value);
     assert.equal(h.d.querySelector('[data-template-name]').value,value.name);
     h.template().restore({...value,settings:{...value.settings,libraryIds:['removed-library']}});
