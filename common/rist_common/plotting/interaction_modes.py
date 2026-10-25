@@ -39,6 +39,7 @@ _HTML = r"""
   function state() {
     if (gd._ristLegendEditOpen) return ["legend", "범례·스타일 편집", "전체 저장으로 반영 · 닫기로 취소", false];
     if (gd._ristInlineTextEditing) return ["text", "글자 편집", "Enter로 반영 · Esc로 입력 취소", false];
+    if (gd._ristPeakCoordinateOpen) return ["peak-coordinate", "X좌표 피크 추가", "시료·X좌표 입력 후 추가 · Esc로 종료", true];
     var peak = gd._ristPeakEditMode;
     if (peak === "delete") return ["peak-delete", "피크 삭제", "피크 점 또는 라벨을 클릭 · Esc로 종료", true];
     if (peak === "add") return ["peak-add", "피크 추가", "스펙트럼을 클릭하여 추가 · Esc로 종료", true];

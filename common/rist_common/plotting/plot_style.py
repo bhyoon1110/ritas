@@ -34,6 +34,7 @@ from collections.abc import Mapping
 from .color_palette import color_palette_html
 from .plot_size import plot_size_controls_html
 from .interaction_modes import interaction_modes_html
+from .peak_coordinates import peak_coordinates_html
 
 # 범례 위치 전환 기준 화면 너비(px). 이 값 이상이면 그래프 안쪽(세로),
 # 미만이면 그래프 아래(가로)로 범례를 배치한다.
@@ -5136,11 +5137,11 @@ def peak_editor_js(div_id: str) -> str:
   function addPeakAt(pt) {{
     if (!window.Plotly || !pt) return;
     if (gd._ristHistory) gd._ristHistory.capture();
-    var xText = isFinite(Number(pt.x)) ? Number(pt.x).toFixed(0) : String(pt.x);
+    var xText = pt.coordinateInput ? String(Number(pt.x)) : (isFinite(Number(pt.x)) ? Number(pt.x).toFixed(0) : String(pt.x));
     var assignment = assignmentForMaximumSensitivityPeak(
       pt.maximumSensitivityPeakCurve
-    );
-    var name = assignment ? assignment.name : peakName(pt.x);
+    ) || (pt.coordinateInput ? manualPeakAssignmentAt(pt.x) : null);
+    var name = assignment ? assignment.name : (pt.coordinateInput ? xText + " peak" : peakName(pt.x));
     var group = "user-peak-" + Date.now() + "-" + Math.floor(Math.random() * 10000);
     var parentSampleGroup = pt.curve == null ? "" : sampleGroup(pt.curve);
     var parentTrace = (gd.data || [])[pt.curve] || {{}};
@@ -5192,6 +5193,17 @@ def peak_editor_js(div_id: str) -> str:
     if (Object.prototype.hasOwnProperty.call(parentMeta, "rist_raman_stack_offset")) {{
       tr.meta.rist_raman_stack_offset = ramanOffset;
     }}
+    if (pt.coordinateInput) {{
+      tr.meta.rist_peak.position_method = "exact-x";
+      tr.meta.rist_peak.intensity_method = pt.interpolated ? "linear-interpolation" : "measured";
+      tr.meta.rist_sample_group = parentSampleGroup;
+      if (pt.ftirSignal) {{
+        tr.meta.ftir_signal_toggle = pt.ftirSignal;
+        tr.meta.rist_ftir_stack_offset_absorbance = Number(parentMeta.rist_ftir_stack_offset_absorbance || 0);
+        tr.meta.rist_ftir_stack_offset_transmittance = Number(parentMeta.rist_ftir_stack_offset_transmittance || 0);
+        tr.meta.rist_peak.base_y = pt.ftirSignal.absorbance_y[0] - tr.meta.rist_ftir_stack_offset_absorbance;
+      }}
+    }}
     var ann = {{
       x: pt.x,
       y: pt.y,
@@ -5220,7 +5232,7 @@ def peak_editor_js(div_id: str) -> str:
       visible: peakLabelsVisible(),
       line: {{ color: color, width: 0.8, dash: "dot" }}
     }};
-    window.Plotly.addTraces(gd, tr).then(function() {{
+    return window.Plotly.addTraces(gd, tr).then(function() {{
       var labels = meta();
       labels.push({{
         annotationIndex: annotationIndex,
@@ -5255,6 +5267,8 @@ def peak_editor_js(div_id: str) -> str:
       }});
     }});
   }}
+
+  gd._ristAddPeakAt = addPeakAt;
 
   function deletePeakTraces(curves, skipHistory, deferStructureEvent, deletedGroups) {{
     if (!window.Plotly) return Promise.resolve([]);
@@ -5818,7 +5832,7 @@ def peak_editor_js(div_id: str) -> str:
   updateHiddenSamplePeakLegendLocks();
 }})();
 </script>
-"""
+""" + peak_coordinates_html(div_id)
 
 
 def _image_download_js(div_id: str, formats, filename: str, scale: float) -> str:

@@ -344,6 +344,62 @@ for (const kind of ['ftir','raman']) for (const mode of ['native','chrome49']) {
     assert.equal(exported.data[0].name.replace(/<[^>]*>/g,''),'');
     assert.equal(h.gd.data[0].name,'');
   });
+  test(label+': coordinate entry adds exact fractional X, reports interpolated Y, preserves data and supports undo',async t=>{
+    const h=setup(t,kind,mode);await tick();
+    const meta=h.gd.data[0].meta;
+    if(kind==='ftir'){
+      meta.ftir_signal_toggle={absorbance_y:[11,13,12],transmittance_y:[80,60,70]};
+      meta.rist_ftir_stack_offset_absorbance=10;meta.rist_ftir_stack_offset_transmittance=50;
+    }else meta.rist_raman_stack_offset=10;
+    h.gd.data[0].y=[11,13,12];const original=clone(h.gd.data[0]);
+    h.run('gd._ristPeakCoordinates =');
+    h.q('.rist-peak-coordinate-button').click();assert.equal(h.gd._ristPeakCoordinateOpen,true);
+    const overlay=h.d.querySelector('.rist-peak-coordinate-overlay'),x=overlay.querySelector('input');
+    const submit=overlay.querySelector('button[type=submit]');
+    assert.equal(submit.disabled,true);x.value='150.25';x.dispatchEvent(new h.w.Event('input'));
+    assert.equal(submit.disabled,false);assert.match(overlay.textContent,/Y: 2.005.*선형 보간값/);
+    submit.click();submit.click();await tick();
+    assert.equal(h.gd.data.length,3,'double submit must not duplicate the peak');
+    const peak=h.gd.data[2];assert.deepEqual(clone(peak.x),[150.25]);assert(Math.abs(peak.y[0]-12.005)<1e-10);
+    assert.equal(peak.meta.rist_peak.position_method,'exact-x');
+    assert.equal(peak.meta.rist_peak.intensity_method,'linear-interpolation');
+    assert(Math.abs(peak.meta.rist_peak.base_y-2.005)<1e-10);
+    assert.match(h.gd.layout.annotations.at(-1).text,/150\.25/);
+    if(kind==='ftir'){
+      assert(Math.abs(peak.meta.ftir_signal_toggle.absorbance_y[0]-12.005)<1e-10);
+      assert(Math.abs(peak.meta.ftir_signal_toggle.transmittance_y[0]-69.95)<1e-10);
+    }
+    assert.deepEqual(clone(h.gd.data[0]),original);
+    x.dispatchEvent(new h.w.Event('input'));assert.equal(submit.disabled,true);assert.match(overlay.textContent,/이미 수동 피크/);
+    h.key(x,'Escape');assert.equal(h.gd._ristPeakCoordinateOpen,false);
+    h.gd._ristHistory.undo();await tick();assert.equal(h.gd.data.length,2);
+    h.gd._ristHistory.redo();await tick();assert.equal(h.gd.data[2].x[0],150.25);
+    assert.deepEqual(clone(h.gd.data[0]),original);
+  });
+  test(label+': exact-X rejects extrapolation/gaps, handles descending data and ties assignment to chosen sample',async t=>{
+    const h=setup(t,kind,mode);await tick();h.run('gd._ristPeakCoordinates =');
+    const at=(x)=>h.gd._ristPeakCoordinates.pointAt(0,x);
+    assert.equal(at(99),null);assert.equal(at(301),null);assert.equal(at(NaN),null);
+    h.gd.data[0].x=[300,200,100];h.gd.data[0].y=[2,3,1];
+    assert.equal(at(150).y,2);assert.equal(at(300).interpolated,false);
+    h.gd.data[0].y[1]=null;assert.equal(at(150),null);assert.equal(at(250),null);
+    h.gd.data[0].y=[2,3,1];
+    h.gd.data.push({name:'',x:[100,200,300],y:[10,30,20],meta:{rist_sample_parent:true,rist_sample_group:'sample:2'}});
+    h.gd.data.push({name:'hidden',visible:'legendonly',x:[100,200],y:[1,2],meta:{rist_sample_parent:true,rist_sample_group:'sample:3'}});
+    h.gd.layout.meta.ristManualPeakAssignments={items:[{name:'Library A',centerWavenumber:150,tolerance:2,libraryId:'test',color:'#123456'}]};
+    h.q('.rist-peak-add-button').click();assert.equal(h.gd._ristPeakEditMode,'add');
+    h.q('.rist-peak-coordinate-button').click();assert.equal(h.gd._ristPeakEditMode,'none');
+    const overlay=h.d.querySelector('.rist-peak-coordinate-overlay'),select=overlay.querySelector('select'),x=overlay.querySelector('input');
+    assert.equal(select.options.length,2);assert.match(select.options[1].textContent,/이름 없음/);
+    select.value='2';x.value='150';x.dispatchEvent(new h.w.Event('input'));
+    overlay.querySelector('button[type=submit]').click();await tick();
+    const peak=h.gd.data.at(-1);assert.equal(peak.y[0],20);assert.equal(peak.name,'Library A');
+    assert.equal(peak.meta.rist_peak.sample_group,'sample:2');assert.equal(peak.marker.color,'#123456');
+    h.gd.dispatchEvent(new h.w.CustomEvent('rist-exclusive-interaction-start',{detail:{mode:'crop'}}));
+    assert.equal(h.gd._ristPeakCoordinateOpen,false);
+    h.gd.dispatchEvent(new h.w.CustomEvent('rist-peak-actions-disabled',{detail:{disabled:true}}));
+    assert.equal(h.q('.rist-peak-coordinate-button').disabled,true);
+  });
   test(label+': double-click can clear and re-enter sample and peak names',async t=>{
     const h=setup(t,kind,mode);await tick();
     for(const curve of [0,1]){
