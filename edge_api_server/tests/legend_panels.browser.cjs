@@ -127,6 +127,31 @@ const server=http.createServer((req,res)=>{
         if(mobile)await status.locator('button').tap();else await page.keyboard.press('Escape');
         await page.waitForFunction(()=>document.querySelector('.rist-interaction-status').dataset.mode==='pan');
         assert.deepEqual(await page.evaluate(id=>document.getElementById(id).data.filter(t=>t.meta&&t.meta.rist_sample_parent).map(t=>({x:t.x,y:t.y})),id),rawBefore);
+        if(!await editButton.isVisible())await click(toggle);
+        await click(editButton);await name.fill('');
+        await page.waitForFunction(id=>document.getElementById(id).data[0].name==='',id);
+        await click(editor.locator('.rist-legend-edit-save-all'));await editor.waitFor({state:'hidden'});
+        assert.equal(await page.evaluate(id=>document.getElementById(id)._fullData[0].name,id),'','Plotly accepts empty text without a trace-name fallback');
+        if(await toggle.isVisible()&&await toolbar.isVisible())await click(toggle);
+        if(kind==='ftir'&&!mobile){
+          const items=page.locator('#'+id+' g.legend g.traces');
+          const index=await items.evaluateAll(nodes=>nodes.findIndex(n=>n.__data__[0].trace.index===0));
+          assert(index>=0,'empty legend retains its editable line symbol');
+          await items.nth(index).locator('.legendtoggle').dblclick();
+          const inline=page.locator('[aria-label="범례 이름 수정"]');
+          await inline.waitFor({state:'visible'});assert.equal(await inline.inputValue(),'');
+          await inline.press('Escape');await inline.waitFor({state:'hidden'});
+        }
+        await page.locator('#'+id).screenshot({path:path.join(output,label+'-blank-legend.png')});
+        await page.waitForTimeout(650);assert.equal((await readWorkspace()).plotData[0].name,'');
+        await page.reload();
+        await page.waitForFunction(id=>{const gd=document.getElementById(id);return gd.data.length===6&&gd.data[0].name==='';},id);
+        await page.locator('#sw-step-2').click();
+        if(!await editButton.isVisible())await click(toggle);
+        await click(editButton);assert.equal(await name.inputValue(),'');
+        await name.fill('다시 입력한 이름');await click(editor.locator('.rist-legend-edit-save-all'));
+        await editor.waitFor({state:'hidden'});
+        assert.equal(await page.evaluate(id=>document.getElementById(id).data[0].name,id),'다시 입력한 이름');
         assert.deepEqual(errors,[]);console.log(label+': live preview, autosave, rollback, panel coordination, Add Peak auto-fold and real graph click passed');
       }catch(error){await page.screenshot({path:path.join(output,label+'-failure.png'),fullPage:true});throw error;}
       finally{await page.close();}

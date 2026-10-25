@@ -317,6 +317,45 @@ for (const kind of ['ftir','raman']) for (const mode of ['native','chrome49']) {
     const el=h.q(selector);if(el.type==='checkbox')el.checked=value;else el.value=value;
     el.dispatchEvent(new h.w.Event(type,{bubbles:true}));return el;
   }
+  test(label+': blank sample/peak names preview, cancel, save, undo and restore without deleting data',async t=>{
+    const h=setup(t,kind,mode);await tick();const before=clone(h.gd.data);
+    h.q('.rist-legend-edit-button').click();
+    input(h,'.is-sample textarea','');input(h,'.is-peak textarea','  \n  ');await previewTick();
+    assert.deepEqual(clone(h.gd.data.map(t=>t.name)),['','']);
+    assert.equal(h.gd.layout.annotations[0].text,'<b>200 cm⁻¹</b>');
+    assert.equal(h.q('.rist-legend-raw-name').textContent,'이름 없음');
+    assert.equal(h.gd._ristLegendPreview.data[0].name,'Sample');
+    h.q('.rist-legend-edit-close').click();await tick();assert.deepEqual(clone(h.gd.data),before);
+    h.q('.rist-legend-edit-button').click();
+    input(h,'.is-sample textarea','');input(h,'.is-peak textarea','');
+    h.q('.rist-legend-edit-save-all').click();await tick();
+    assert.deepEqual(clone(h.gd.data.map(t=>t.name)),['','']);
+    assert.deepEqual(clone(h.gd.data.map(({name,...data})=>data)),before.map(({name,...data})=>data));
+    assert.equal(h.gd._ristFtirUnitOriginalAnnotations[0].text,'<b>200 cm⁻¹</b>');
+    h.gd._ristHistory.undo();await tick();assert.deepEqual(clone(h.gd.data),before);
+    h.gd._ristHistory.redo();await tick();assert.deepEqual(clone(h.gd.data.map(t=>t.name)),['','']);
+    // Snapshot save/load and downstream recoloring must not replace empty names.
+    h.gd.data=clone(h.gd.data);h.gd.layout=clone(h.gd.layout);h.dispatch('rist-plot-data-replaced');await tick();
+    h.q('.rist-legend-edit-button').click();assert.equal(h.q('.is-sample textarea').value,'');
+    assert.equal(h.q('.is-peak textarea').value,'');
+    input(h,'.is-sample .rist-legend-color-input','#123456');h.q('.rist-legend-edit-save-all').click();await tick();
+    assert.deepEqual(clone(h.gd.data.map(t=>t.name)),['','']);
+    const exported=h.gd._ristPrepareLegendFigure({data:h.gd.data,layout:h.gd.layout});
+    assert.equal(exported.data[0].name.replace(/<[^>]*>/g,''),'');
+    assert.equal(h.gd.data[0].name,'');
+  });
+  test(label+': double-click can clear and re-enter sample and peak names',async t=>{
+    const h=setup(t,kind,mode);await tick();
+    for(const curve of [0,1]){
+      const target=curve===0?h.q('g.legend .legendtoggle'):h.q('.annotation[data-index="0"] .annotation-text');
+      h.mouse(target,'dblclick');let editor=h.editor();assert.ok(editor);
+      editor.value='';h.key(editor,'Enter');await tick();assert.equal(h.gd.data[curve].name,'');
+      h.mouse(target,'dblclick');editor=h.editor();assert.ok(editor);assert.equal(editor.value,'');
+      editor.value='새 이름';h.key(editor,'Escape');assert.equal(h.gd.data[curve].name,'');
+      h.mouse(target,'dblclick');editor=h.editor();editor.value='새 이름';h.key(editor,'Enter');await tick();
+      assert.equal(h.gd.data[curve].name,'새 이름');
+    }
+  });
   test(label+': live styles preview names, lines, peak labels and fonts; Close restores all without history',async t=>{
     const h=setup(t,kind,mode);shapeFixture(h);await tick();
     const original=clone({data:h.gd.data,layout:h.gd.layout,annotations:h.gd._ristFtirUnitOriginalAnnotations,shapes:h.gd._ristFtirUnitOriginalShapes});

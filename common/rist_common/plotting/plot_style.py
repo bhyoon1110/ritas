@@ -1511,7 +1511,9 @@ def _legend_text_edit_js(
 
   function updateName(curve, value) {{
     value = String(value || "").trim();
-    if (value === "" || value === traceName(curve) || !window.Plotly) return;
+    // Spectrum display names may deliberately be blank; stable sample/peak
+    // metadata remains the identity. Keep other callers' naming policy intact.
+    if ((!directAnnotationEdit && value === "") || value === traceName(curve) || !window.Plotly) return;
     if (gd._ristHistory) gd._ristHistory.capture();
     var data = gd.data || [];
     var base = data[curve] || {{}};
@@ -2029,7 +2031,8 @@ def _legend_text_edit_js(
         }}
       }});
       panel.querySelectorAll(".rist-legend-raw-tree").forEach(function(tree) {{
-        var name = names[tree.getAttribute("data-sample-group")] || "소속 샘플 확인 불가";
+        var name = names[tree.getAttribute("data-sample-group")];
+        name = name == null ? "소속 샘플 확인 불가" : (name || "이름 없음");
         var label = tree.querySelector(".rist-legend-raw-name");
         label.textContent = name;
         label.title = name;
@@ -2255,6 +2258,7 @@ def _legend_text_edit_js(
         if (dashInput) dashInput.value = traceDash(curve);
         if (widthInput) widthInput.value = String(traceLineWidth(curve));
         nameInput.value = legendDisplayToEdit(editableTraceName(curve));
+        if (directAnnotationEdit) nameInput.placeholder = "이름 없음 (빈칸 허용)";
         var peakInfo = row.querySelector(".rist-legend-peak-info");
         if (peakInfo) {{
           var peak = traceMeta(curve).rist_peak;
@@ -2478,7 +2482,7 @@ def _legend_text_edit_js(
         var currentName = legendEditToDisplay(
           legendDisplayToEdit(editableTraceName(curve))
         );
-        if (nextName && nextName !== currentName) actions.push(function() {{ return updateName(curve, nextName); }});
+        if ((directAnnotationEdit || nextName) && nextName !== currentName) actions.push(function() {{ return updateName(curve, nextName); }});
         if (isSampleCurve(curve) && colorInput && dashInput
             && (normalizeColor(colorInput.value) !== traceColor(curve)
               || normalizeDash(dashInput.value) !== traceDash(curve)
@@ -3221,6 +3225,7 @@ def _legend_text_edit_js(
       : legendDisplayToEdit(editableTraceName(picked.curve));
 
     var inp = document.createElement(directAnnotationEdit ? "textarea" : "input");
+    if (directAnnotationEdit) inp.placeholder = "이름 없음 (빈칸 허용)";
     if (!directAnnotationEdit) inp.type = "text";
     else inp.rows = Math.min(6, Math.max(2, current.split("\\n").length));
     inp.setAttribute("aria-label", picked.kind === "text" ? "텍스트 박스 내용 수정"
@@ -3963,6 +3968,7 @@ def peak_editor_js(div_id: str) -> str:
   }}
 
   function labelText(xText, name) {{
+    if (String(name == null ? "" : name).trim() === "") return "<b>" + esc(xText) + "</b>";
     return "<b>" + esc(xText) + "</b><br><span style='font-size:10px'>"
       + safeLegendNameHtml(name) + "</span>";
   }}

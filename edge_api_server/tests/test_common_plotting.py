@@ -387,7 +387,7 @@ def test_shared_plotly_module_applies_legend_text(tmp_path) -> None:
     # Live preview compares against the row's opening snapshot, not the already
     # previewed graph title (the latter would incorrectly skip saving changes).
     assert 'nextTitle === row.getAttribute("data-original-title")' in html
-    assert "nextName && nextName !== currentName" in html
+    assert "(directAnnotationEdit || nextName) && nextName !== currentName" in html
     assert "is-pending-clear" in html
     assert "manualPeakGroupKey" in html
     assert "manualPeakGroupName" in html
