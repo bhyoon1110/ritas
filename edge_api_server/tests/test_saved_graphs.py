@@ -16,6 +16,7 @@ from app.report.saved_graphs import collection_document, figure_filename, graph_
 from app.report.spectrum_viewer import viewer_html
 from edge_api_server.tests.test_edited_report_analysis import edited_payload
 from edge_api_server.tests.test_ftir_web import use_fake_pptx_pdf_converter
+from edge_api_server.tests.test_ftir_raw_xlsx import xlsx_rows
 
 
 def graph_inputs():
@@ -124,7 +125,15 @@ def test_multi_graph_packages_and_immutable_revision_keep_distinct_images(experi
         assert new.status == "completed", new.error
         assert package.read_bytes() == original
         with zipfile.ZipFile(new.package_path) as archive:
+            with zipfile.ZipFile(BytesIO(original)) as old_archive:
+                assert archive.read("raw_data.xlsx") == old_archive.read("raw_data.xlsx")
+            rows = xlsx_rows(archive.read("raw_data.xlsx"))
             if experiment == "FT-IR":
+                assert rows == [
+                    {"A": "wavenumber(cm-1)/샘플명", "B": "full RAW"},
+                    {"A": 400, "B": 1}, {"A": 1700, "B": 3}, {"A": 4000, "B": 1},
+                ]
+                assert "DPT 원본 측정값" in saved["traceability"]["sourceSummary"]
                 from edge_api_server.tests.test_ftir_graph_exports import html_payload
                 with zipfile.ZipFile(BytesIO(original)) as old_archive:
                     for name in spectrum_viewer.FTIR_GRAPH_EXPORTS:
@@ -135,6 +144,7 @@ def test_multi_graph_packages_and_immutable_revision_keep_distinct_images(experi
                 assert [g["title"] for g in exported["graphs"]] == ["비교 그래프 1", "비교 그래프 2"]
                 assert exported["graphs"][1]["figure"]["layout"]["annotations"][0]["text"] == "편집 피크 1"
             else:
+                assert list(rows[0].values()) == ["Axis", *[s.label for s in graph_raw_series(payload["reportGraphs"])]]
                 assert not set(spectrum_viewer.FTIR_GRAPH_EXPORTS) & set(archive.namelist())
             images = [archive.read(f"saved-graph-{i}.png") for i in (1, 2)]
             assert images[0] != images[1]

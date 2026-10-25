@@ -461,7 +461,11 @@ def build_preview_report_package(
         ensure_editable_fields(document, analysis_payload, experiment_code, transfer)
         document.traceability = {
             "samples": [series.label for series in raw_series],
-            "sourceSummary": "raw_data.xlsx · 보고서에 사용한 스펙트럼 (원본 파일과 구분)",
+            "sourceSummary": (
+                "raw_data.xlsx · 업로드한 DPT 원본 측정값 병합 (전체 측정 범위)"
+                if _is_ftir_experiment(experiment_code)
+                else "raw_data.xlsx · 보고서에 사용한 스펙트럼 (원본 파일과 구분)"
+            ),
             "analysisSnapshot": "processed/analysis-result.json",
             "createdAt": job["_generated_at"],
         }
@@ -516,15 +520,12 @@ def build_preview_report_package(
         atomic_write_json(report_dir / "report.json", document.to_dict())
         (report_dir / "report.md").write_text(document.to_markdown(), encoding="utf-8")
         _write_email_body(document, report_dir)
-        write_raw_data_xlsx(
-            report_dir / "raw_data.xlsx",
-            raw_series,
-            axis_header=(
-                "wavenumber(cm-1)/샘플명"
-                if _is_ftir_experiment(experiment_code)
-                else "Axis"
-            ),
-        )
+        if _is_ftir_experiment(experiment_code):
+            # Only server-parsed DPT uploads are authoritative RAW. The edited
+            # figure/graph collection may be cropped, renamed or transformed.
+            write_ftir_raw_data_xlsx(report_dir / "raw_data.xlsx", all_raw_series)
+        else:
+            write_raw_data_xlsx(report_dir / "raw_data.xlsx", raw_series)
         _emit_progress(progress, "render", 86, "PPT/PDF/HTML 보고서를 렌더링하는 중입니다.")
         render_report_formats(
             document,
@@ -866,14 +867,48 @@ def write_raw_data_xlsx(
     _write_xlsx(path, rows)
 
 
-def _write_xlsx(path: Path, rows: list[list[Any]]) -> None:
+def write_ftir_raw_data_xlsx(path: Path, series: list[RawSeries]) -> None:
+    """Align original DPT measurements without rounding, interpolation or loss.
+
+    Each uploaded file gets one column. Repeated wavenumbers retain their
+    occurrence order in separate rows; absent measurements stay blank.
+    """
+    keys: set[tuple[float, int]] = set()
+    lookups: list[dict[tuple[float, int], float]] = []
+    labels: list[str] = []
+    used_labels: set[str] = set()
+    for item in series:
+        label = item.label
+        suffix = 2
+        while label.casefold() in used_labels:
+            label = f"{item.label} ({suffix})"
+            suffix += 1
+        labels.append(label)
+        used_labels.add(label.casefold())
+        occurrences: dict[float, int] = {}
+        lookup: dict[tuple[float, int], float] = {}
+        for x, y in zip(item.axis, item.values):
+            x = float(x)
+            occurrence = occurrences.get(x, 0)
+            key = (x, occurrence)
+            occurrences[x] = occurrence + 1
+            lookup[key] = y
+            keys.add(key)
+        lookups.append(lookup)
+    rows: list[list[Any]] = [["wavenumber(cm-1)/샘플명", *labels]]
+    for key in sorted(keys):
+        rows.append([key[0], *[lookup.get(key, "") for lookup in lookups]])
+    _write_xlsx(path, rows, preserve_precision=True)
+
+
+def _write_xlsx(path: Path, rows: list[list[Any]], *, preserve_precision: bool = False) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as archive:
         archive.writestr("[Content_Types].xml", _xlsx_content_types())
         archive.writestr("_rels/.rels", _xlsx_root_rels())
         archive.writestr("xl/workbook.xml", _xlsx_workbook())
         archive.writestr("xl/_rels/workbook.xml.rels", _xlsx_workbook_rels())
-        archive.writestr("xl/worksheets/sheet1.xml", _xlsx_sheet(rows))
+        archive.writestr("xl/worksheets/sheet1.xml", _xlsx_sheet(rows, preserve_precision=preserve_precision))
 
 
 def _xlsx_content_types() -> str:
@@ -907,14 +942,14 @@ def _xlsx_workbook_rels() -> str:
 </Relationships>"""
 
 
-def _xlsx_sheet(rows: list[list[Any]]) -> str:
+def _xlsx_sheet(rows: list[list[Any]], *, preserve_precision: bool = False) -> str:
     body = []
     for row_index, row in enumerate(rows, start=1):
         cells = []
         for col_index, value in enumerate(row, start=1):
             if value == "":
                 continue
-            cells.append(_xlsx_cell(row_index, col_index, value))
+            cells.append(_xlsx_cell(row_index, col_index, value, preserve_precision=preserve_precision))
         body.append(f'<row r="{row_index}">{"".join(cells)}</row>')
     return (
         '<?xml version="1.0" encoding="UTF-8"?>'
@@ -924,10 +959,11 @@ def _xlsx_sheet(rows: list[list[Any]]) -> str:
     )
 
 
-def _xlsx_cell(row_index: int, col_index: int, value: Any) -> str:
+def _xlsx_cell(row_index: int, col_index: int, value: Any, *, preserve_precision: bool = False) -> str:
     ref = f"{_xlsx_col(col_index)}{row_index}"
     if isinstance(value, (int, float)):
-        return f'<c r="{ref}"><v>{float(value):.12g}</v></c>'
+        number = repr(float(value)) if preserve_precision else f"{float(value):.12g}"
+        return f'<c r="{ref}"><v>{number}</v></c>'
     text = html.escape(str(value), quote=False)
     return f'<c r="{ref}" t="inlineStr"><is><t>{text}</t></is></c>'
 
