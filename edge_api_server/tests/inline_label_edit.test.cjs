@@ -921,15 +921,31 @@ for (const kind of ['ftir','raman']) for (const mode of ['native','chrome49']) {
     h.gd.dispatchEvent(new h.w.CustomEvent('rist-exclusive-interaction-start',{detail:{mode:'axis-crop'}}));
     assert.equal(h.editor(),null);assert.equal(h.gd.data[1].name,'C–O');
   });
-  test(label+': first click on a label cannot add/delete/select its peak before the double-click',async t=>{
+  test(label+': add/select preserve single-click labels and double-click switches to name editing',async t=>{
     const h=setup(t,kind,mode);
-    for (const button of ['.rist-peak-add-button','.rist-peak-delete-button','.rist-peak-select-button']) {
+    for (const button of ['.rist-peak-add-button','.rist-peak-select-button']) {
       h.q(button).click();const target=h.q('.annotation[data-index="0"] .annotation-text');
       h.mouse(target,'mousedown');h.mouse(target,'mouseup');h.mouse(target,'click');
       await tick();assert.equal(h.gd.data.length,2);assert.equal(h.editor(),null);
       h.mouse(target,'dblclick');assert.ok(h.editor());assert.equal(h.gd._ristPeakEditMode,'none');
       h.key(h.editor(),'Escape');
     }
+  });
+  test(label+': delete mode removes the clicked label and its peak once, never opens rename',async t=>{
+    const h=setup(t,kind,mode),raw=clone(h.gd.data[0]);
+    h.run('gd._ristDefaultDragmode =');h.run('var bar = document.createElement');
+    h.q('.rist-peak-delete-button').click();const target=h.q('.annotation[data-index="0"] .annotation-text');
+    h.mouse(target,'mousedown');await tick();h.mouse(target,'mouseup');h.mouse(target,'click');
+    h.emit('plotly_clickannotation',{index:0});h.emit('plotly_click',{points:[{curveNumber:1}]});
+    h.mouse(target,'dblclick');await tick();
+    assert.equal(h.gd.data.length,1);assert.deepEqual(clone(h.gd.data[0]),raw);
+    assert.equal(h.gd.layout.meta.ristPeakLabels.length,0);
+    assert.equal(h.gd.layout.annotations.length,1);assert.equal(h.gd.layout.annotations[0].name,'rist_text_box_text:1');
+    assert.equal(h.editor(),null);assert.equal(h.gd._ristPeakEditMode,'delete');
+    h.key(h.d,'Escape');await tick();assert.equal(h.gd._ristPeakEditMode,'none');assert.equal(h.gd.layout.dragmode,'pan');
+    assert.equal(h.gd.data.length,1);
+    h.gd._ristHistory.undo();await tick();assert.equal(h.gd.data.length,2);assert.ok(h.open());
+    h.key(h.editor(),'Escape');
   });
   test(label+': pointer double-tap works through shape overlay; native + Plotly single click is not double-counted',async t=>{
     const h=setup(t,kind,mode,true),overlay=h.d.createElement('div');overlay.className='rist-shape-interaction-layer';h.gd.appendChild(overlay);

@@ -384,7 +384,9 @@ def test_shared_plotly_module_applies_legend_text(tmp_path) -> None:
     assert "removeCurves: removeCurves || []" in html
     assert "data-clear" in html
     assert "data-first-curve" in html
-    assert "nextTitle === manualPeakGroupName(firstCurve)" in html
+    # Live preview compares against the row's opening snapshot, not the already
+    # previewed graph title (the latter would incorrectly skip saving changes).
+    assert 'nextTitle === row.getAttribute("data-original-title")' in html
     assert "nextName && nextName !== currentName" in html
     assert "is-pending-clear" in html
     assert "manualPeakGroupKey" in html

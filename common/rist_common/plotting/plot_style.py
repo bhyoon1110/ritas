@@ -33,6 +33,7 @@ from collections.abc import Mapping
 
 from .color_palette import color_palette_html
 from .plot_size import plot_size_controls_html
+from .interaction_modes import interaction_modes_html
 
 # 범례 위치 전환 기준 화면 너비(px). 이 값 이상이면 그래프 안쪽(세로),
 # 미만이면 그래프 아래(가로)로 범례를 배치한다.
@@ -3267,6 +3268,9 @@ def _legend_text_edit_js(
     }}, 250);
   }}
   gd.addEventListener("dblclick", function(e) {{
+    if (gd._ristPeakEditMode === "delete") {{
+      e.preventDefault(); e.stopImmediatePropagation(); return;
+    }}
     var picked = legendItemFor(e.target) || annotationItemAt(e);
     if (!picked) return;
     e.preventDefault();
@@ -3284,6 +3288,7 @@ def _legend_text_edit_js(
     var moveEvent = pointerEvents ? "pointermove" : "mousemove";
     gd.addEventListener(downEvent, function(ev) {{
       if (ev.button !== 0 || editing) return;
+      if (gd._ristPeakEditMode === "delete") {{ cancelAnnotationTap(); return; }}
       var picked = annotationItemAt(ev);
       if (!picked) {{ annotationTap = null; return; }}
       lastNativeAnnotation = Date.now();
@@ -3310,6 +3315,7 @@ def _legend_text_edit_js(
     gd.addEventListener("pointercancel", cancelAnnotationTap);
     gd.on("plotly_clickannotation", function(ev) {{
       if (editing || Date.now() - lastNativeAnnotation < 800) return;
+      if (gd._ristPeakEditMode === "delete") {{ cancelAnnotationTap(); return; }}
       var picked = annotationItem(ev && ev.index,
         gd.querySelector('.annotation[data-index="' + (ev && ev.index) + '"] .annotation-text'));
       if (!picked) return;
@@ -5437,6 +5443,7 @@ def peak_editor_js(div_id: str) -> str:
     addBtn.classList.toggle("is-active", mode === "add");
     delBtn.classList.toggle("is-active", mode === "delete");
     selectBtn.classList.toggle("is-active", mode === "select");
+    gd.dispatchEvent(new CustomEvent("rist-interaction-mode-change"));
     if (prev !== "none" && mode === "none" && gd._ristRestoreNavigation) gd._ristRestoreNavigation();
   }}
 
@@ -5590,8 +5597,8 @@ def peak_editor_js(div_id: str) -> str:
 
   function handlePeakSelectPointer(ev) {{
     if (mode !== "delete" && mode !== "select") return;
+    if (ev.button != null && ev.button !== 0) return;
     if (blockedByOtherInteraction()) return;
-    if (gd._ristEditableAnnotationAt && gd._ristEditableAnnotationAt(ev)) return;
     if (ev.target.closest(
       ".legend,.modebar,.rist-plot-control-row,.rist-legend-edit-panel,.rist-legend-drag-handle"
     )) return;
@@ -5603,7 +5610,12 @@ def peak_editor_js(div_id: str) -> str:
       stopPeakSelectEvent(ev);
       return;
     }}
-    var curve = nearestPeakCurveFromEvent(ev);
+    // Resolve the owning trace from label metadata, not the closest marker:
+    // labels can be moved far from their peaks or overlap another sample.
+    var label = gd._ristEditableAnnotationAt && gd._ristEditableAnnotationAt(ev);
+    if (label && (mode !== "delete" || label.kind !== "peak")) return;
+    if (!label && ev.target.closest(".annotation")) return;
+    var curve = label ? label.curve : nearestPeakCurveFromEvent(ev);
     if (curve == null) return;
     stopPeakSelectEvent(ev);
     var handledAt = Date.now();
@@ -5630,7 +5642,6 @@ def peak_editor_js(div_id: str) -> str:
     if (blockedByOtherInteraction()) return;
     if (gd._ristEditableAnnotationAt && ev && gd._ristEditableAnnotationAt(ev.event)) return;
     if (Date.now() <= suppressPeakPlotlyClickUntil) {{
-      suppressPeakPlotlyClickUntil = 0;
       return;
     }}
     var point = ev && ev.points && ev.points[0];
@@ -5641,6 +5652,18 @@ def peak_editor_js(div_id: str) -> str:
       if (curve == null && ev.event) curve = nearestPeakCurveFromEvent(ev.event);
       if (curve != null) togglePeakSelection(curve);
     }}
+  }});
+
+  gd.on("plotly_clickannotation", function(ev) {{
+    if (mode !== "delete" || !peaksDisplayed() || blockedByOtherInteraction()
+        || Date.now() <= suppressPeakPlotlyClickUntil) return;
+    if (ev && ev.event && ev.event.button != null && ev.event.button !== 0) return;
+    var label = meta().find(function(item) {{ return item.annotationIndex === (ev && ev.index); }});
+    if (!label || !isPeakCurve(label.traceIndex)) return;
+    var trace = gd.data[label.traceIndex], annotation = gd.layout.annotations[label.annotationIndex];
+    if (!annotation || annotation.visible === false || trace.visible === false || trace.visible === "legendonly") return;
+    suppressPeakPlotlyClickUntil = Date.now() + 1200;
+    deletePeakTrace(label.traceIndex);
   }});
 
   gd.addEventListener("rist-peak-delete", function(ev) {{
@@ -7416,6 +7439,8 @@ def shape_editor_js(div_id: str) -> str:
       drawMode || !!selectedId || panel.style.display === "block"
     );
     requestAnimationFrame(updateInteractionLayer);
+    gd._ristShapeDrawKind = drawKind;
+    gd.dispatchEvent(new CustomEvent("rist-interaction-mode-change"));
   }}
 
   function setDrawKind(kind) {{
@@ -9878,6 +9903,7 @@ def _axis_controls_js(div_id: str, *, axis_locks: bool = False, scroll_zoom_y_on
       }));
     }
     gd._ristAxisSettingsOpen = nextOpen;
+    gd.dispatchEvent(new CustomEvent("rist-interaction-mode-change"));
     panel.hidden = !nextOpen;
     button.setAttribute("aria-expanded", nextOpen ? "true" : "false");
     if (nextOpen) {
@@ -10171,6 +10197,7 @@ def _axis_controls_js(div_id: str, *, axis_locks: bool = False, scroll_zoom_y_on
     var activeMode = String(ev.detail && ev.detail.mode || "");
     if (!activeMode || activeMode === "crop") return;
     cancelCrop();
+    if (activeMode === "interaction-exit") setOpen(false);
   });
 
   gd.on("plotly_selected", function(eventData) {
@@ -10216,6 +10243,7 @@ def _axis_controls_js(div_id: str, *, axis_locks: bool = False, scroll_zoom_y_on
     setOpen(false);
   });
   document.addEventListener("keydown", function(ev) {
+    if (gd._ristInteractionModes) return; // Shared, active-plot-scoped Escape handler.
     if (ev.key !== "Escape") return;
     if (cropSession || cropPending) cancelCrop();
     if (!panel.hidden) setOpen(false);
@@ -10383,6 +10411,7 @@ def _axis_controls_js(div_id: str, *, axis_locks: bool = False, scroll_zoom_y_on
       || (gd._ristPeakEditMode && gd._ristPeakEditMode !== "none")
     ) return;
     gd._ristAxisScaleActive = true;
+    gd.dispatchEvent(new CustomEvent("rist-interaction-mode-change"));
     drag = {
       axis: axis,
       pointerId: ev.pointerId,
@@ -10417,6 +10446,7 @@ def _axis_controls_js(div_id: str, *, axis_locks: bool = False, scroll_zoom_y_on
     var completedDrag = drag;
     drag = null;
     gd._ristAxisScaleActive = false;
+    gd.dispatchEvent(new CustomEvent("rist-interaction-mode-change"));
     if (pendingFrame) {
       cancelAnimationFrame(pendingFrame);
       pendingFrame = 0;
@@ -10714,6 +10744,9 @@ def fig_to_responsive_html(
 
     if post_body_html:
         html = html.replace("</body>", post_body_html + "</body>", 1)
+
+    if peak_editor:
+        html = html.replace("</body>", interaction_modes_html(div_id) + "</body>", 1)
 
     return html
 

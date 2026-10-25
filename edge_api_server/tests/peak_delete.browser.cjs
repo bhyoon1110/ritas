@@ -80,7 +80,42 @@ const raw=Buffer.from(Array.from({length:481},(_,i)=>{
           assert.equal(toggled.annotations.length,before.annotations.length-1,'switching back cannot resurrect deleted labels');
         }
         await restore();
+        // A moved label must delete its own peak, not the nearest raw/marker.
+        const annotationIndex=await page.evaluate(async id=>{
+          const gd=document.getElementById(id),label=gd.layout.meta.ristPeakLabels.find(l=>gd.layout.annotations[l.annotationIndex].visible!==false);
+          window.labelDeleteName=gd.data[label.traceIndex].name;
+          await Plotly.relayout(gd,{['annotations['+label.annotationIndex+'].x']:2200,
+            ['annotations['+label.annotationIndex+'].y']:.8});
+          return label.annotationIndex;
+        },id);
         await page.locator('.rist-'+kind+'-tools-toggle').click();
+        await page.locator('.rist-peak-delete-button').click();
+        const status=page.locator('.rist-interaction-status');
+        await page.waitForFunction(()=>document.querySelector('.rist-interaction-status').dataset.mode==='peak-delete');
+        const canvasBefore=await page.locator('#'+id).boundingBox(),statusBefore=await status.boundingBox();
+        const annotation=page.locator('#'+id+' .annotation[data-index="'+annotationIndex+'"] .annotation-text');
+        await annotation.click();await page.waitForTimeout(400);
+        const labelDeleted=await count();
+        assert.equal(labelDeleted.peaks,before.peaks-1,'label click deletes exactly one owning peak');
+        assert.equal(labelDeleted.annotations.length,before.annotations.length-1);
+        assert.equal(await page.evaluate(id=>document.getElementById(id).data.some(t=>t.name===window.labelDeleteName),id),false);
+        assert.equal(await page.evaluate(id=>!!document.getElementById(id)._ristInlineTextEditing,id),false);
+        await page.keyboard.press('Escape');
+        await page.waitForFunction(id=>document.getElementById(id)._ristPeakEditMode==='none'&&document.getElementById(id).layout.dragmode==='pan',id);
+        assert.equal((await count()).peaks,labelDeleted.peaks,'Escape keeps the completed deletion');
+        assert.equal((await status.boundingBox()).height,statusBefore.height,'mode switching does not shift the plot');
+        assert.equal((await page.locator('#'+id).boundingBox()).height,canvasBefore.height);
+        await page.evaluate(id=>document.getElementById(id)._ristHistory.undo(),id);await page.waitForTimeout(400);
+        assert.equal((await count()).peaks,before.peaks,'label deletion can be undone');
+        await status.screenshot({path:path.join(output,kind+'-mode-pan.png')});
+        if(!await page.locator('.rist-peak-add-button').isVisible())await page.locator('.rist-'+kind+'-tools-toggle').click();
+        await page.locator('.rist-peak-add-button').click();
+        await page.waitForFunction(()=>document.querySelector('.rist-interaction-status').dataset.mode==='peak-add');
+        await status.screenshot({path:path.join(output,kind+'-mode-add.png')});
+        await page.locator('.rist-interaction-exit').click();
+        await page.waitForFunction(id=>document.getElementById(id)._ristPeakEditMode==='none',id);
+        await restore();
+        if(!await page.locator('.rist-peak-delete-button').isVisible())await page.locator('.rist-'+kind+'-tools-toggle').click();
         await page.locator('.rist-peak-delete-button').click();
         await page.locator('#'+id).scrollIntoViewIfNeeded();
         const point=await page.evaluate(id=>{const gd=document.getElementById(id),tr=gd.data.find(t=>t.meta&&t.meta.rist_peak&&t.visible!==false&&t.visible!=='legendonly');

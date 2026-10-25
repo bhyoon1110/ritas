@@ -203,6 +203,8 @@
 
   function syncControls() {
     gd._ristRamanRatioMode = ratioMode || batchMode;
+    gd._ristRamanRatioStage = batchMode ? "range" : (pickRole || "complete");
+    gd.dispatchEvent(new CustomEvent("rist-interaction-mode-change"));
     ratioButton.classList.toggle("is-active", ratioMode);
     ratioButton.textContent = ratioMode ? "비율 선택 중" : "비율";
     ratioButton.setAttribute("aria-pressed", String(ratioMode));
@@ -992,6 +994,7 @@
   gd.addEventListener("rist-plot-data-replaced", restoreRatios);
   gd.addEventListener("rist-history-restored", restoreRatios);
   document.addEventListener("keydown", function(ev) {
+    if (gd._ristInteractionModes) return;
     if (ev.key !== "Escape" || !ratioMode || ev.defaultPrevented) return;
     if (!candidatesBox.hidden) { closeCandidates(); syncControls(); }
     else setRatioMode(false, false);

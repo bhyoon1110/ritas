@@ -694,6 +694,7 @@ def ftir_stack_js(div_id: str) -> str:
 
   function syncControls() {
     gd._ristFtirYDragMode = !!state.dragMode;
+    gd.dispatchEvent(new CustomEvent("rist-interaction-mode-change"));
     gd.classList.toggle("rist-ftir-y-drag-active", !!state.dragMode);
     if (!stackButton || !dragButton || !gapSlider || !gapValue) return;
     var hasMultipleSamples = state.order.length > 1;

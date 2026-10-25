@@ -233,6 +233,125 @@ function ratioFixture(t, history=false) {
   return api;
 }
 
+function modesFixture(t) {
+  const api=setup(t),{gd,run}=api;
+  run('function addPeakAt');run('gd._ristDefaultDragmode =');
+  run('var bar = document.createElement');
+  return api;
+}
+
+test('peak modes expose a persistent status; Escape returns to Pan without undoing data',async t=>{
+  const {gd,d,w}=modesFixture(t);
+  for(const mode of ['add','delete','select']){
+    d.querySelector('.rist-peak-'+mode+'-button').click();await tick();
+    assert.equal(d.querySelector('.rist-interaction-status').dataset.mode,'peak-'+mode);
+    assert.match(d.querySelector('.rist-interaction-help').textContent,/Esc/);
+    const data=JSON.stringify(gd.data);
+    d.dispatchEvent(new w.KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));await tick();
+    assert.equal(gd._ristPeakEditMode,'none');assert.equal(gd.layout.dragmode,'pan');
+    assert.equal(d.querySelector('.rist-interaction-status').dataset.mode,'pan');
+    assert.equal(JSON.stringify(gd.data),data);
+  }
+  d.querySelector('.rist-peak-add-button').click();await tick();
+  d.querySelector('.rist-interaction-exit').click();await tick();
+  assert.equal(gd._ristPeakEditMode,'none','touch-accessible Exit works without a keyboard');
+});
+
+test('Escape respects text input, IME, prevented keys and another active graph',async t=>{
+  const {gd,d,w}=modesFixture(t);
+  d.querySelector('.rist-peak-delete-button').click();await tick();
+  const input=d.createElement('textarea');gd.appendChild(input);input.focus();
+  input.dispatchEvent(new w.KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));
+  d.dispatchEvent(new w.KeyboardEvent('keydown',{key:'Escape',isComposing:true,bubbles:true}));
+  const handled=new w.KeyboardEvent('keydown',{key:'Escape',cancelable:true});handled.preventDefault();d.dispatchEvent(handled);
+  assert.equal(gd._ristPeakEditMode,'delete');
+  const other=d.createElement('div');d.body.appendChild(other);w.__ristActiveHistoryPlot=other;
+  d.dispatchEvent(new w.KeyboardEvent('keydown',{key:'Escape'}));assert.equal(gd._ristPeakEditMode,'delete');
+  w.__ristActiveHistoryPlot=gd;
+  d.dispatchEvent(new w.KeyboardEvent('keydown',{key:'Escape',cancelable:true}));await tick();
+  assert.equal(gd._ristPeakEditMode,'none');
+});
+
+test('label deletion uses its own trace and consumes native/Plotly duplicate events',async t=>{
+  const {gd,d,w,run,emit}=setup(t);
+  gd.data=[{name:'Raw',x:[1,2],y:[1,2],meta:{rist_sample_parent:true}},
+    ...[1,2].map(x=>({name:'peak'+x,x:[x],y:[x],meta:{rist_peak:{x,base_y:x}}}))];
+  gd.layout.annotations=[{text:'moved peak1'},{text:'peak2'},{text:'memo',name:'rist_text_box_text:memo'}];
+  gd.layout.shapes=[{name:'connector1'},{name:'connector2'},{name:'memo'}];
+  gd.layout.meta.ristPeakLabels=[{traceIndex:1,annotationIndex:0,shapeIndex:0},{traceIndex:2,annotationIndex:1,shapeIndex:1}];
+  gd.insertAdjacentHTML('beforeend','<svg><g class="annotation" data-index="0"><text class="annotation-text">moved peak1</text></g><g class="annotation" data-index="2"><text class="annotation-text">memo</text></g></svg>');
+  run('function legendItemFor');run('function addPeakAt');
+  d.querySelector('.rist-peak-delete-button').click();
+  const label=gd.querySelector('.annotation-text');
+  label.dispatchEvent(new w.MouseEvent('mousedown',{bubbles:true,cancelable:true,clientX:700,clientY:20}));
+  await tick();
+  label.dispatchEvent(new w.MouseEvent('click',{bubbles:true,cancelable:true,clientX:700,clientY:20}));
+  emit('plotly_clickannotation',{index:0});emit('plotly_click',{points:[{curveNumber:1}]});
+  label.dispatchEvent(new w.MouseEvent('dblclick',{bubbles:true,cancelable:true}));await tick();
+  assert.deepEqual(clone(gd.data.map(t=>t.name)),['Raw','peak2']);
+  assert.deepEqual(clone(gd.layout.annotations.map(a=>a.text)),['peak2','memo']);
+  assert.deepEqual(clone(gd.layout.shapes.map(a=>a.name)),['connector2','memo']);
+  assert.equal(gd._ristPeakEditMode,'delete');assert.ok(!gd._ristInlineTextEditing);
+  assert.equal(gd.layout.meta.ristPeakLabels[0].traceIndex,1);
+});
+
+test('Crop, shape edit, Y move and zoom share mode indication and Escape cleanup',async t=>{
+  const {gd,d,w,run}=modesFixture(t);
+  run('var axisLocksEnabled');run('gd._ristRamanStackInstalled');
+  const escape=async()=>{d.dispatchEvent(new w.KeyboardEvent('keydown',{key:'Escape',cancelable:true}));await tick();assert.equal(gd.layout.dragmode,'pan');};
+  await gd._ristSetEditMode(true);await tick();
+  assert.equal(d.querySelector('.rist-interaction-status').dataset.mode,'shape-edit');
+  await escape();assert.equal(gd._ristEditMode,false);assert.equal(gd._context.scrollZoom,true);
+  gd._ristSetYDragMode(true);await tick();
+  assert.equal(d.querySelector('.rist-interaction-status').dataset.mode,'y-drag');
+  await escape();assert.equal(gd._ristRamanYDragMode,false);
+  d.querySelector('[data-axis-action="crop"]').click();await tick();
+  assert.equal(gd._ristAxisCropActive,true);assert.equal(d.querySelector('.rist-interaction-status').dataset.mode,'crop');
+  await escape();assert.equal(gd._ristAxisCropActive,false);
+  assert.equal(gd.classList.contains('rist-axis-crop-mode'),false);
+  await w.Plotly.relayout(gd,{dragmode:'zoom'});await tick();
+  assert.equal(d.querySelector('.rist-interaction-status').dataset.mode,'zoom');await escape();
+});
+
+test('Raman ratio Escape leaves existing calculated ratios untouched',async t=>{
+  const {gd,d,w,run}=ratioFixture(t);await tick();
+  run('gd._ristDefaultDragmode =');run('var bar = document.createElement');
+  const before=clone(gd.layout.meta.ristRamanRatios);
+  d.querySelector('.rist-raman-ratio-button').click();await tick();
+  assert.equal(gd._ristRamanRatioMode,true);assert.equal(d.querySelector('.rist-interaction-status').dataset.mode,'ratio');
+  d.dispatchEvent(new w.KeyboardEvent('keydown',{key:'Escape',cancelable:true}));await tick();
+  assert.equal(gd._ristRamanRatioMode,false);assert.equal(gd.layout.dragmode,'pan');
+  assert.deepEqual(clone(gd.layout.meta.ristRamanRatios),before);
+});
+
+test('batch ratio Escape closes its capture surface without applying a draft',async t=>{
+  const {gd,d,w,run}=setup(t);
+  run('window.RistRamanRanges = {maximum');run('var ratioMetaKey');
+  run('gd._ristDefaultDragmode =');run('var bar = document.createElement');
+  d.querySelector('[data-ratio-batch]').click();await tick();
+  assert.equal(gd._ristRamanRatioMode,true);assert.equal(gd._ristRamanRatioStage,'range');
+  assert.equal(d.querySelector('.rist-ratio-range-surface').hidden,false);
+  d.dispatchEvent(new w.KeyboardEvent('keydown',{key:'Escape',cancelable:true}));await tick();
+  assert.equal(gd._ristRamanRatioMode,false);assert.equal(gd.layout.dragmode,'pan');
+  assert.equal(d.querySelector('.rist-ratio-range-surface').hidden,true);
+  assert.equal(d.querySelector('.rist-ratio-batch').hidden,true);
+  assert.equal((gd.layout.meta.ristRamanRatios||[]).length,0);
+});
+
+test('shape drawing Escape clears the overlay and keeps existing shapes',async t=>{
+  const {gd,d,w,run}=modesFixture(t);
+  gd.layout.shapes=[{name:'existing',type:'rect',x0:10,x1:20,y0:1,y1:2}];
+  run('function beginShapeSelection');
+  d.querySelector('.rist-shape-tool-button').click();await tick();
+  assert.equal(gd._ristShapeDrawMode,true);
+  assert.equal(d.querySelector('.rist-interaction-status').dataset.mode,'shape-draw');
+  d.dispatchEvent(new w.KeyboardEvent('keydown',{key:'Escape',cancelable:true}));await tick();
+  assert.equal(gd._ristShapeDrawMode,false);assert.equal(!!gd._ristEditMode,false);
+  assert.equal(gd.classList.contains('rist-shape-editing'),false);
+  assert.equal(d.querySelector('.rist-shape-editor-panel').style.display,'none');
+  assert.equal(gd.layout.shapes[0].name,'existing');assert.equal(gd.layout.dragmode,'pan');
+});
+
 test('ratios have no connector and edit/delete only the selected sample ratio',async t=>{
   const {gd,d}=ratioFixture(t);await tick();
   assert.equal(gd.layout.annotations.length,2);assert.equal(gd.layout.shapes.length,0);

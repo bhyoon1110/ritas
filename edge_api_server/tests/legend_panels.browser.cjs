@@ -104,10 +104,29 @@ const server=http.createServer((req,res)=>{
         assert.equal(await page.evaluate(id=>document.getElementById(id)._ristPeakEditMode,id),'add');
         assert.deepEqual(await page.evaluate(id=>document.getElementById(id).data.filter(t=>t.meta&&t.meta.rist_sample_parent).map(t=>({x:t.x,y:t.y})),id),rawBefore);
         await page.locator('#'+id).screenshot({path:path.join(output,label+'-peak-tools-folded.png')});
+        const status=page.locator('.rist-interaction-status');
+        await page.waitForFunction(()=>document.querySelector('.rist-interaction-status').dataset.mode==='peak-add');
+        assert.equal(await status.evaluate(el=>el.scrollWidth<=el.clientWidth),true,'status fits narrow screens');
+        const statusHeight=(await status.boundingBox()).height;
+        await status.screenshot({path:path.join(output,label+'-mode-add.png')});
+        if(mobile)await status.locator('button').tap();else await page.keyboard.press('Escape');
+        await page.waitForFunction(id=>document.getElementById(id)._ristPeakEditMode==='none',id);
+        assert.equal((await status.boundingBox()).height,statusHeight);
+        assert.equal(await page.evaluate(id=>document.getElementById(id).layout.dragmode,id),'pan');
         if(floating){
           assert.equal(await toolbar.isVisible(),false);
           await click(toggle);assert.equal(await toolbar.isVisible(),true,label+': tools can reopen after adding');
         }
+        if(!await page.locator('.rist-peak-delete-button').isVisible())await click(toggle);
+        await click(page.locator('.rist-peak-delete-button'));
+        if(floating&&await toolbar.isVisible())await click(toggle);
+        assert.equal(await page.evaluate(id=>document.getElementById(id)._ristPeakEditMode,id),'delete');
+        await click(page.locator('#'+id+' .annotation .annotation-text').first());
+        await page.waitForFunction(id=>!document.getElementById(id).data.some(t=>t.meta&&t.meta.rist_peak),id);
+        assert.equal(await page.evaluate(id=>!!document.getElementById(id)._ristInlineTextEditing,id),false);
+        if(mobile)await status.locator('button').tap();else await page.keyboard.press('Escape');
+        await page.waitForFunction(()=>document.querySelector('.rist-interaction-status').dataset.mode==='pan');
+        assert.deepEqual(await page.evaluate(id=>document.getElementById(id).data.filter(t=>t.meta&&t.meta.rist_sample_parent).map(t=>({x:t.x,y:t.y})),id),rawBefore);
         assert.deepEqual(errors,[]);console.log(label+': live preview, autosave, rollback, panel coordination, Add Peak auto-fold and real graph click passed');
       }catch(error){await page.screenshot({path:path.join(output,label+'-failure.png'),fullPage:true});throw error;}
       finally{await page.close();}

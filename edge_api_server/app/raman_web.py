@@ -2664,6 +2664,7 @@ _RAMAN_STACK_SCRIPT = """
 
   function syncControls() {
     gd._ristRamanYDragMode = !!state.dragMode;
+    gd.dispatchEvent(new CustomEvent("rist-interaction-mode-change"));
     gd.classList.toggle("rist-raman-y-drag-active", !!state.dragMode);
     if (!stackButton || !dragButton || !gapSlider || !gapValue) return;
     var hasSamples = state.order.length > 0;

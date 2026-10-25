@@ -240,7 +240,7 @@
     window.addEventListener("resize", updateGeometry);
     window.addEventListener("blur", function() { release(); updateGeometry(); });
     document.addEventListener("visibilitychange", function() { if (document.hidden) { release(); updateGeometry(); } });
-    document.addEventListener("keydown", function(ev) { if (active && ev.key === "Escape") { stop(ev); close(); } });
+    document.addEventListener("keydown", function(ev) { if (!gd._ristInteractionModes && active && ev.key === "Escape") { stop(ev); close(); } });
     gd.addEventListener("rist-exclusive-interaction-start", function(ev) { if (active && ev.detail.mode !== "raman-ratio-range") close(); });
     ["rist-plot-data-replaced", "rist-history-restored", "rist-plot-structure-changed"].forEach(function(name) { gd.addEventListener(name, function() { if (active) close(); }); });
   }
