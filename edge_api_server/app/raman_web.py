@@ -3486,8 +3486,8 @@ _UPLOAD_SCRIPT = """
       sensitivity: currentPeakSensitivity(),
       statusText: status.textContent || "",
       analysisPayload: latestAnalysisPayload,
-      plotData: JSON.parse(JSON.stringify(gd.data || [])),
-      plotLayout: JSON.parse(JSON.stringify(gd.layout || {}))
+      plotData: JSON.parse(JSON.stringify((gd._ristLegendPreview || gd).data || [])),
+      plotLayout: JSON.parse(JSON.stringify((gd._ristLegendPreview || gd).layout || {}))
     };
   }
 
@@ -3512,6 +3512,7 @@ _UPLOAD_SCRIPT = """
   }
 
   function restoreWorkspace(savedState) {
+    if (gd._ristLegendPreview && gd._ristEndLegendPreview) return gd._ristEndLegendPreview().then(function() { return restoreWorkspace(savedState); });
     return (savedState ? Promise.resolve(savedState) : workspaceStore("readonly").then(function(store) {
       return new Promise(function(resolve, reject) {
         var request = store.get(SESSION_KEY);
@@ -3646,6 +3647,7 @@ _UPLOAD_SCRIPT = """
     gd.on("plotly_restyle", scheduleWorkspaceSave);
     [
       "rist-legend-name-change",
+      "rist-legend-edit-finished",
       "rist-legend-color-change",
       "rist-sample-line-style-change",
       "rist-legend-visibility-change",
@@ -5614,6 +5616,7 @@ _UPLOAD_SCRIPT = """
   }
 
   function resetPlot() {
+    if (gd._ristLegendPreview && gd._ristEndLegendPreview) return gd._ristEndLegendPreview().then(resetPlot);
     files = [];
     latestAnalysisPayload = null;
     renderReportSampleConditionSets([]);
@@ -5633,6 +5636,7 @@ _UPLOAD_SCRIPT = """
   }
 
   async function analyze() {
+    if (gd._ristLegendPreview && gd._ristEndLegendPreview) await gd._ristEndLegendPreview();
     if (!files.length) {
       resetPlot();
       return;
@@ -5862,6 +5866,7 @@ _UPLOAD_SCRIPT = """
   }
 
   function currentFigurePayload() {
+    if (gd._ristLegendPreview) throw new Error("범례·스타일 창에서 전체 저장하거나 닫아 취소한 뒤 그래프를 저장하세요.");
     return filteredReportFigurePayload();
   }
 

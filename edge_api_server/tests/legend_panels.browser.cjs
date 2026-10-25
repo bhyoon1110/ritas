@@ -42,6 +42,20 @@ const server=http.createServer((req,res)=>{
         await click(editButton);await editor.waitFor({state:'visible'});
         assert.equal(await toolbar.isVisible(),false,label+': only one panel may be visible');
         const name=editor.locator('.is-sample textarea').first();await name.fill('저장 전 Sample');
+        await page.waitForFunction(id=>document.getElementById(id).data[0].name==='저장 전 Sample',id);
+        await editor.locator('.rist-legend-sample-width').first().fill('5');
+        await editor.locator('.rist-legend-sample-dash').first().selectOption('dash');
+        await page.waitForFunction(id=>{const line=document.getElementById(id).data[0].line;return line&&line.width===5&&line.dash==='dash';},id);
+        // Autosave must continue storing the opening state, not the preview.
+        await page.waitForTimeout(650);
+        const readWorkspace=()=>page.evaluate(kind=>new Promise((resolve,reject)=>{
+          const request=indexedDB.open('rist-'+kind+'-workspace-v1',1);
+          request.onerror=()=>reject(request.error);request.onsuccess=()=>{
+            const db=request.result,read=db.transaction('workspace').objectStore('workspace').get('current');
+            read.onsuccess=()=>{resolve(read.result);db.close();};read.onerror=()=>{reject(read.error);db.close();};
+          };
+        }),kind);
+        assert.equal((await readWorkspace()).plotData[0].name,'Sample 0',label+': preview must not leak to autosave');
         if(await toggle.isVisible()){
           await click(toggle);assert.equal(await toolbar.isVisible(),false);
           assert.equal(await name.inputValue(),'저장 전 Sample');
@@ -58,16 +72,21 @@ const server=http.createServer((req,res)=>{
         assert(box.x>=plot.x-1&&box.x+box.width<=plot.x+plot.width+1,label+': editor fits graph width');
         await editor.screenshot({path:path.join(output,label+'-editor.png')});
         await editor.locator('.rist-legend-font-size').fill('99');await click(editor.locator('.rist-legend-edit-save-all'));
+        await page.waitForFunction(()=>document.querySelector('.rist-legend-edit-panel').getAttribute('aria-busy')!=='true');
         assert.equal(await toolbar.isVisible(),false);assert.equal(await name.inputValue(),'저장 전 Sample');
         await editor.locator('.rist-legend-font-size').fill('16');await click(editor.locator('.rist-legend-edit-save-all'));
         await editor.waitFor({state:'hidden'});assert.equal(await toolbar.isVisible(),true);
         await page.waitForFunction(id=>document.getElementById(id).data[0].name==='저장 전 Sample',id);
         assert.equal(await page.evaluate(id=>document.getElementById(id).layout.dragmode,id),'pan');
         assert.equal(await page.evaluate(id=>document.getElementById(id)._ristEditMode,id),false);
-        await click(editButton);await name.fill('저장하지 않은 이름');await click(editor.locator('.rist-legend-edit-close'));
+        await page.waitForTimeout(650);assert.equal((await readWorkspace()).plotData[0].name,'저장 전 Sample');
+        await click(editButton);await name.fill('저장하지 않은 이름');
+        await page.waitForFunction(id=>document.getElementById(id).data[0].name==='저장하지 않은 이름',id);
+        await click(editor.locator('.rist-legend-edit-close'));await editor.waitFor({state:'hidden'});
         assert.equal(await toolbar.isVisible(),true);
         assert.equal(await page.evaluate(id=>document.getElementById(id).data[0].name,id),'저장 전 Sample');
-        assert.deepEqual(errors,[]);console.log(label+': no overlap, draft/focus protection, validation, Save All/Close return and Pan passed');
+        await page.waitForTimeout(650);assert.equal((await readWorkspace()).plotData[0].name,'저장 전 Sample');
+        assert.deepEqual(errors,[]);console.log(label+': live preview, autosave isolation, rollback, no overlap, validation, Save All/Close and Pan passed');
       }catch(error){await page.screenshot({path:path.join(output,label+'-failure.png'),fullPage:true});throw error;}
       finally{await page.close();}
     }

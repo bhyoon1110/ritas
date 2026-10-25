@@ -141,6 +141,7 @@
     return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   }
   function capture(options, name, ranges, title) {
+    if (options.gd._ristLegendPreview) throw new Error("범례·스타일 창에서 전체 저장하거나 닫아 취소한 뒤 템플릿을 저장하세요.");
     var gd = options.gd, layout = gd.layout || {}, meta = layout.meta || {};
     var stack = meta[options.experiment === "FTIR" ? "ristFtirStack" : "ristRamanStack"] || {};
     var environment = options.environment(), settings = {
@@ -275,6 +276,7 @@
         + ". 같은 라이브러리를 먼저 등록한 후 다시 불러오세요.");
     }
     function load(template) {
+      if (options.gd._ristLegendPreview) return Promise.reject(new Error("범례·스타일 창에서 전체 저장하거나 닫아 취소한 뒤 템플릿을 불러오세요."));
       if (busy()) return Promise.reject(new Error("현재 처리가 끝난 후 다시 시도하세요."));
       template = normalize(template, options.experiment);
       validateLibraries(template);

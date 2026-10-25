@@ -158,7 +158,9 @@ test('palette selection preserves legend editor and its explicit save/undo contr
   input.getClientRects=()=>[{}];input.getBoundingClientRect=()=>({left:10,top:10,bottom:40});
   input.click();assert.equal(d.querySelector('#rist-color-palette').style.display,'block');
   d.querySelector('[data-palette-color="#e41a1c"]').click();
-  assert.equal(input.value,'#e41a1c');assert.equal(gd.data[0].line.color,'#377eb8');
+  await new Promise(resolve=>setTimeout(resolve,180));
+  assert.equal(input.value,'#e41a1c');assert.equal(gd.data[0].line.color,'#e41a1c');
+  assert.equal(d.querySelector('.rist-history-undo').disabled,true,'preview is not history');
   assert.equal(d.querySelector('.rist-legend-edit-panel').style.display,'block');
   d.querySelector('.rist-legend-edit-save-all').click();await tick();
   assert.equal(gd.data[0].line.color,'#e41a1c');

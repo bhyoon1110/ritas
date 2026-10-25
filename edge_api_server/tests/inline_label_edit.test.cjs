@@ -158,7 +158,7 @@ for(const kind of ['ftir','raman']) for(const mode of ['native','chrome49']) {
   });
   test(kind+'/'+mode+': Y movement persists visual order through gap, zero, toggles, reload and history',async t=>{
     const h=await reorderFixture(t,kind,mode,true,true);
-    h.q('.rist-legend-edit-close').click();h.gd._ristSetYDragMode(true);
+    h.q('.rist-legend-edit-close').click();await tick();await h.gd._ristStackReady;h.gd._ristSetYDragMode(true);
     h.gd._fullLayout.yaxis.p2d=y=>40-y/10;h.gd._fullLayout.yaxis.d2p=y=>(40-y)*10;
     h.mouse(h.q('.nsewdrag'),'pointerdown',200,370);
     h.mouse(h.d,'pointermove',200,20);h.mouse(h.d,'pointerup',200,20);await tick();await tick();
@@ -195,7 +195,7 @@ for(const kind of ['ftir','raman']) for(const mode of ['native','chrome49']) {
   });
   test(kind+'/'+mode+': Y move then immediate stack OFF before the render frame retains the new order',async t=>{
     const h=await reorderFixture(t,kind,mode,true,true);
-    h.q('.rist-legend-edit-close').click();h.gd._ristSetYDragMode(true);
+    h.q('.rist-legend-edit-close').click();await tick();await h.gd._ristStackReady;h.gd._ristSetYDragMode(true);
     h.gd._fullLayout.yaxis.p2d=y=>40-y/10;h.gd._fullLayout.yaxis.d2p=y=>(40-y)*10;
     h.mouse(h.q('.nsewdrag'),'pointerdown',200,370);h.mouse(h.d,'pointermove',200,20);
     h.q('.rist-'+kind+'-stack-button').click();await tick();await tick();
@@ -227,7 +227,9 @@ for(const kind of ['ftir','raman']) for(const mode of ['native','chrome49']) {
     await new Promise(r=>setTimeout(r,400));
     assert.ok(h.gd.data.every(t=>t.visible!==false&&t.visible!=='legendonly'));assert.equal(h.editor(),null);
     assert.equal(h.gd._ristLegendDragging,false);
+    h.q('.rist-legend-edit-save-all').click();await tick();
     h.gd._ristHistory.undo();await tick();await h.gd._ristStackReady;
+    h.q('.rist-legend-edit-button').click();
     assert.deepEqual(h.order(),['sample:2','sample:1','sample:0']);
     const tap=()=>{h.mouse(items()[0],'pointerdown',450,72);h.mouse(h.d,'pointerup',450,72);};
     tap();await new Promise(r=>setTimeout(r,400));assert.equal(h.gd.data[2].visible,'legendonly');
@@ -272,10 +274,14 @@ for(const kind of ['ftir','raman']) for(const mode of ['native','chrome49']) {
       assert.equal(h.gd.layout.shapes[i].y0-offset,0);
       if(kind==='ftir')assert.deepEqual(Array.from(tr.meta.ftir_signal_toggle.transmittance_y,y=>y-tr.meta.rist_ftir_stack_offset_transmittance),[30,20,10]);
     }
+    h.q('.rist-legend-edit-save-all').click();await tick();
     h.gd._ristHistory.undo();await tick();await h.gd._ristStackReady;
+    h.q('.rist-legend-edit-button').click();
     assert.deepEqual(h.order(),['sample:2','sample:1','sample:0']);
     assert.equal(h.gd.layout.meta[h.stackKey].orderTopDown,before.orderTopDown);
+    h.q('.rist-legend-edit-close').click();await tick();
     h.gd._ristHistory.redo();await tick();await h.gd._ristStackReady;
+    h.q('.rist-legend-edit-button').click();
     assert.deepEqual(h.order(),['sample:0','sample:2','sample:1']);
   });
   test(kind+'/'+mode+': Raw order persists across stack toggle, gap, reload; cancel and keyboard are safe',async t=>{
@@ -286,13 +292,15 @@ for(const kind of ['ftir','raman']) for(const mode of ['native','chrome49']) {
     h.key(h.rows()[0].querySelector('.rist-raw-order-handle'),'ArrowDown');await tick();await h.gd._ristStackReady;
     const expected=['sample:1','sample:2','sample:0'];assert.deepEqual(h.order(),expected);
     for(const enabled of [false,true]){await h.gd._ristApplyStackSettings({enabled,gap:2});assert.deepEqual(h.order(),expected);}
-    h.dispatch('rist-plot-data-replaced');await h.gd._ristStackReady;assert.deepEqual(h.order(),expected);
+    h.q('.rist-legend-edit-save-all').click();await tick();
+    h.dispatch('rist-plot-data-replaced');await h.gd._ristStackReady;h.q('.rist-legend-edit-button').click();assert.deepEqual(h.order(),expected);
     await assert.rejects(h.gd._ristReorderSamples(['sample:0','sample:0','sample:2']));
     assert.deepEqual(h.order(),expected);
     // Fresh uploads must not inherit the previous dataset's manual order.
     delete h.gd.layout.meta[h.stackKey].orderTopDown;h.gd.layout.meta[h.stackKey].sampleOrder=['sample:0','sample:1','sample:2'];
     h.gd.layout.meta[h.stackKey].enabled=false;
     h.dispatch('rist-plot-data-replaced');await h.gd._ristStackReady;
+    h.q('.rist-legend-edit-button').click();
     assert.deepEqual(h.order(),['sample:0','sample:1','sample:2']);
     const unstacked=clone(h.gd.data.map(trace=>trace.y));
     await h.gd._ristReorderSamples(expected);
@@ -304,6 +312,105 @@ for(const kind of ['ftir','raman']) for(const mode of ['native','chrome49']) {
 
 for (const kind of ['ftir','raman']) for (const mode of ['native','chrome49']) {
   const label=kind+'/'+mode;
+  const previewTick=()=>new Promise(resolve=>setTimeout(resolve,180));
+  function input(h,selector,value,type='input') {
+    const el=h.q(selector);if(el.type==='checkbox')el.checked=value;else el.value=value;
+    el.dispatchEvent(new h.w.Event(type,{bubbles:true}));return el;
+  }
+  test(label+': live styles preview names, lines, peak labels and fonts; Close restores all without history',async t=>{
+    const h=setup(t,kind,mode);shapeFixture(h);await tick();
+    const original=clone({data:h.gd.data,layout:h.gd.layout,annotations:h.gd._ristFtirUnitOriginalAnnotations,shapes:h.gd._ristFtirUnitOriginalShapes});
+    h.q('.rist-legend-edit-button').click();
+    input(h,'.is-sample textarea','실시간 시료');input(h,'.is-sample .rist-legend-color-input','#00aa55');
+    input(h,'.rist-legend-sample-width','4.5');input(h,'.rist-legend-sample-dash','dash','change');
+    input(h,'.is-peak textarea','실시간 피크');input(h,'.is-peak .rist-legend-color-input','#123abc');
+    input(h,'.rist-legend-font-size','22');input(h,'.rist-legend-font-bold',false,'change');
+    await previewTick();
+    assert.equal(h.gd.data[0].name,'실시간 시료');assert.equal(h.gd.data[0].line.color,'#00aa55');
+    assert.equal(h.gd.data[0].line.width,4.5);assert.equal(h.gd.data[0].line.dash,'dash');
+    assert.equal(h.gd.layout.legend.font.size,22);assert.equal(h.gd.layout.legend.font.weight,400);
+    assert.match(h.gd.layout.annotations[0].text,/실시간 피크/);assert.equal(h.gd.layout.annotations[0].font.color,'#123abc');
+    assert.equal(h.gd.layout.shapes[0].line.color,'#123abc');
+    assert.equal(h.q('.rist-history-undo').disabled,true);
+    assert.equal(h.gd._ristLegendPreview.data[0].name,original.data[0].name,'autosave sees the baseline');
+    h.q('.rist-legend-appearance .rist-legend-visible-toggle').click();await tick();
+    h.q('.rist-legend-edit-close').click();await tick();
+    assert.deepEqual(clone(h.gd.data),original.data);assert.deepEqual(clone(h.gd.layout.annotations),original.layout.annotations);
+    const visibleShapes=items=>clone(items).map(shape=>({...shape,visible:shape.visible!==false}));
+    assert.deepEqual(visibleShapes(h.gd.layout.shapes),visibleShapes(original.layout.shapes));
+    assert.deepEqual(clone(h.gd.layout.legend.font),original.layout.legend.font);
+    assert.equal(h.gd.layout.showlegend,original.layout.showlegend);
+    assert.deepEqual(clone(h.gd._ristFtirUnitOriginalAnnotations),original.annotations);
+    assert.deepEqual(visibleShapes(h.gd._ristFtirUnitOriginalShapes),visibleShapes(original.shapes));
+    assert.equal(h.gd._ristLegendPreview,null);assert.equal(h.q('.rist-history-undo').disabled,true);
+  });
+  test(label+': Save All flushes final input, creates one undo step and preserves redo across canceled previews',async t=>{
+    const h=setup(t,kind,mode);await tick();h.q('.rist-legend-edit-button').click();
+    input(h,'.is-sample textarea','First');await previewTick();
+    input(h,'.is-sample textarea','Final');input(h,'.rist-legend-sample-width','7');
+    h.q('.rist-legend-edit-save-all').click();await tick();
+    assert.equal(h.gd.data[0].name,'Final');assert.equal(h.gd.data[0].line.width,7);assert.equal(h.gd._ristLegendPreview,null);
+    h.gd._ristHistory.undo();await tick();assert.equal(h.gd.data[0].name,'Sample');
+    assert.equal(h.q('.rist-history-undo').disabled,true,'one whole edit is one undo');
+    h.q('.rist-legend-edit-button').click();input(h,'.is-sample textarea','Canceled');await previewTick();
+    h.q('.rist-legend-edit-close').click();await tick();h.gd._ristHistory.redo();await tick();
+    assert.equal(h.gd.data[0].name,'Final');assert.equal(h.gd.data[0].line.width,7);
+  });
+  test(label+': pending preview is canceled and an in-flight annotation render finishes before rollback',async t=>{
+    const h=setup(t,kind,mode);await tick();
+    h.q('.rist-legend-edit-button').click();input(h,'.is-sample textarea','Never rendered');
+    h.q('.rist-legend-edit-close').click();await previewTick();assert.equal(h.gd.data[0].name,'Sample');
+    h.q('.rist-legend-edit-button').click();
+    const relayout=h.w.Plotly.relayout;let release,delayed=false;
+    h.w.Plotly.relayout=async(g,patch)=>{if(patch.annotations&&!delayed){delayed=true;await new Promise(resolve=>{release=resolve;});}return relayout(g,patch);};
+    input(h,'.is-peak textarea','Slow peak');await previewTick();assert.equal(typeof release,'function');
+    h.q('.rist-legend-edit-close').click();assert.equal(h.q('.rist-legend-edit-panel').style.display,'block');
+    h.w.Plotly.relayout=relayout;release();await tick();await tick();
+    assert.equal(h.gd.data[1].name,'C–O');assert.match(h.gd.layout.annotations[0].text,/C–O/);
+    assert.equal(h.q('.rist-legend-edit-panel').style.display,'none');
+  });
+  test(label+': invalid input and render failure keep editor recoverable without committing',async t=>{
+    const h=setup(t,kind,mode);await tick();h.q('.rist-legend-edit-button').click();
+    input(h,'.is-sample textarea','Preview');await previewTick();
+    input(h,'.rist-legend-sample-width','0');h.q('.rist-legend-edit-save-all').click();await tick();
+    assert.equal(h.q('.rist-legend-edit-panel').style.display,'block');assert(h.gd._ristLegendPreview);
+    const restyle=h.w.Plotly.restyle;
+    h.w.Plotly.restyle=async()=>{throw new Error('test renderer failure');};
+    input(h,'.rist-legend-sample-width','5');h.q('.rist-legend-edit-save-all').click();await tick();
+    assert.match(h.q('.rist-legend-edit-error').textContent,/test renderer failure/);
+    h.w.Plotly.restyle=restyle;h.q('.rist-legend-edit-close').click();await tick();
+    assert.equal(h.gd.data[0].name,'Sample');assert.equal(h.q('.rist-history-undo').disabled,true);
+  });
+  test(label+': Raw removal preview rolls back its peaks, labels and deletion metadata',async t=>{
+    const h=setup(t,kind,mode);shapeFixture(h);await tick();const original=clone(h.gd.data);
+    h.q('.rist-legend-edit-button').click();h.w.confirm=()=>true;
+    input(h,'.is-sample textarea','Removed sample');h.q('.rist-legend-sample-delete').click();await tick();
+    assert.equal(h.gd.data.length,0);h.q('.rist-legend-edit-close').click();await tick();
+    assert.deepEqual(clone(h.gd.data),original);assert.equal(h.gd.layout.meta.ristDeletedSampleGroups,undefined);
+    assert.equal(h.gd.layout.meta.ristPeakLabels.length,1);assert.match(h.gd.layout.annotations[0].text,/C–O/);
+  });
+  test(label+': group color/name preview cancels completely and Save All commits its metadata',async t=>{
+    const h=setup(t,kind,mode);await tick();
+    Object.assign(h.gd.data[1].meta.rist_peak,{manual_group_key:'manual-peak-group:Old',group_name:'Old',group_color:'#ff0000'});
+    h.gd.data[1].legendgroup='manual-peak-group:Old';h.gd.data[1].legendgrouptitle={text:'Old'};
+    h.q('.rist-legend-edit-button').click();
+    input(h,'.rist-legend-group-title','New');input(h,'.rist-legend-group-color','#aabbcc');await previewTick();
+    assert.equal(h.gd.data[1].legendgrouptitle.text,'New');assert.equal(h.gd.layout.annotations[0].font.color,'#aabbcc');
+    h.q('.rist-legend-edit-close').click();await tick();
+    assert.equal(h.gd.data[1].legendgrouptitle.text,'Old');assert.equal(h.gd.data[1].marker.color,'#ff0000');
+    h.q('.rist-legend-edit-button').click();input(h,'.rist-legend-group-title','New');input(h,'.rist-legend-group-color','#aabbcc');await previewTick();
+    h.q('.rist-legend-edit-save-all').click();await tick();
+    assert.equal(h.gd.data[1].meta.rist_peak.group_name,'New');assert.equal(h.gd.data[1].meta.rist_peak.group_color,'#aabbcc');
+    h.gd._ristHistory.undo();await tick();assert.equal(h.gd.data[1].meta.rist_peak.group_name,'Old');
+  });
+  test(label+': Raw order preview restores the opening order on Close',async t=>{
+    const h=await reorderFixture(t,kind,mode,true);const before=clone(h.gd.layout.meta[h.stackKey]);
+    h.key(h.rows()[0].querySelector('.rist-raw-order-handle'),'ArrowDown');await tick();await h.gd._ristStackReady;
+    assert.notDeepEqual(clone(h.gd.layout.meta[h.stackKey].legendOrder),before.legendOrder);
+    h.q('.rist-legend-edit-close').click();await tick();await h.gd._ristStackReady;
+    assert.deepEqual(clone(h.gd.layout.meta[h.stackKey].legendOrder),before.legendOrder);
+    assert.deepEqual(clone(h.gd.layout.meta[h.stackKey].sampleOrder),before.sampleOrder);
+  });
   test(label+': legend editor temporarily replaces tools without losing drafts or reactivating graph edit mode',async t=>{
     const h=setup(t,kind,mode);await tick();
     h.run(kind==='ftir'?'gd._ristFtirToolPanelInstalled':'gd._ristRamanToolPanelInstalled');
@@ -318,14 +425,14 @@ for (const kind of ['ftir','raman']) for (const mode of ['native','chrome49']) {
     assert(!h.gd.classList.contains(openClass));assert.equal(editActivations,1);
     h.mouse(h.d.body,'pointerdown');h.d.body.click();h.key(h.d.body,'Escape');
     assert.equal(panel.style.display,'block');assert(h.gd._ristLegendEditOpen);
-    h.q('.rist-legend-font-size').value='99';h.q('.rist-legend-edit-save-all').click();
+    h.q('.rist-legend-font-size').value='99';h.q('.rist-legend-edit-save-all').click();await tick();
     assert.equal(panel.style.display,'block');assert(!h.gd.classList.contains(openClass));assert.equal(input.value,'임시 이름');
     h.q('.rist-legend-font-size').value='16';h.q('.rist-legend-edit-save-all').click();await tick();
     assert.equal(panel.style.display,'none');assert(!h.gd.classList.contains('rist-legend-editor-open'));
     assert(h.gd.classList.contains(openClass));assert.equal(h.gd.data[0].name,'임시 이름');
     assert.equal(editActivations,1,'returning to tools must not re-enable graph editing');
     h.q('.rist-legend-edit-button').click();h.q('.is-sample textarea').value='저장하지 않음';
-    h.q('.rist-legend-edit-close').click();assert(h.gd.classList.contains(openClass));
+    h.q('.rist-legend-edit-close').click();await tick();assert(h.gd.classList.contains(openClass));
     assert.equal(h.gd.data[0].name,'임시 이름');assert.equal(editActivations,1);
   });
   test(label+': replacing data while legend editor is open clears the pending tool return',async t=>{
@@ -456,14 +563,14 @@ for (const kind of ['ftir','raman']) for (const mode of ['native','chrome49']) {
     assert.equal(h.gd.data[0].name,'Edited Sample');assert.equal(panel.style.display,'none');
     assert.equal(h.gd._ristLegendEditOpen,false);assert.equal(restored,1);
     h.q('.rist-legend-edit-button').click();assert.equal(h.q('.is-sample textarea').value,'Edited Sample');
-    h.q('.rist-legend-edit-close').click();assert.equal(panel.style.display,'none');assert.equal(h.gd._ristLegendEditOpen,false);
+    h.q('.rist-legend-edit-close').click();await tick();assert.equal(panel.style.display,'none');assert.equal(h.gd._ristLegendEditOpen,false);
   });
   test(label+': legend font/color sync and export styling never rewrite live names/RAW',async t=>{
     const h=setup(t,kind,mode);await tick();h.run('function buildImageExportPayload');
     if(h.gd.layout.showlegend){h.q('.rist-legend-bulk-controls .rist-legend-visible-toggle').click();await tick();}
     h.q('.rist-legend-edit-button').click();
     const size=h.q('.rist-legend-font-size');
-    for(const bad of ['9','33','12.5','']) {size.value=bad;h.q('.rist-legend-edit-save-all').click();assert.equal(h.gd.layout.legend.font.size,16);
+    for(const bad of ['9','33','12.5','']) {size.value=bad;h.q('.rist-legend-edit-save-all').click();await tick();assert.equal(h.gd.layout.legend.font.size,16);
       assert.equal(h.q('.rist-legend-edit-panel').style.display,'block');assert.equal(size.value,bad);}
     size.value='22';h.q('.rist-legend-font-bold').checked=false;
     h.q('.is-sample .rist-legend-color-input').value='#e11d48';
@@ -503,6 +610,7 @@ for (const kind of ['ftir','raman']) for (const mode of ['native','chrome49']) {
     assert.equal(h.gd.layout.meta.ristPeakLabels[0].annotationIndex,1);assert.equal(h.gd.layout.annotations[0].name,'rist_text_box_text:1');
     assert.equal(h.gd.layout.shapes.length,1);assert.equal(h.gd.layout.shapes[0].name,'rist_text_box:1');
     assert.equal(h.q('.rist-legend-edit-panel').style.display,'block');assert.deepEqual(clone(h.gd.layout.meta.ristDeletedSampleGroups),['sample:0']);
+    h.q('.rist-legend-edit-save-all').click();await tick();
     h.gd._ristHistory.undo();await tick();assert.deepEqual(clone(h.gd.data),before.data);assert.equal(h.gd.layout.meta.ristPeakLabels.length,2);
     h.gd._ristHistory.redo();await tick();assert.equal(h.gd.data.length,2);
     await h.gd._ristDeleteSample(0);await tick();assert.equal(h.gd.data.length,0);assert.equal(h.gd.layout.meta.ristDeletedSampleGroups.length,2);
@@ -574,9 +682,10 @@ for (const kind of ['ftir','raman']) for (const mode of ['native','chrome49']) {
     assert(!tree('sample:0').open);assert.equal(tree('sample:0').querySelector('.rist-legend-raw-count').textContent,'피크 2개');
     h.gd.data[2].legendrank=0;h.gd.data[0].legendrank=10;h.dispatch('rist-'+kind+'-stack-change');
     assert.equal(h.q('.rist-legend-raw-tree').getAttribute('data-sample-group'),'sample:1');assert(!tree('sample:0').open);
-    h.q('.rist-legend-edit-close').click();h.q('.rist-legend-edit-button').click();assert(!tree('sample:0').open);
+    h.q('.rist-legend-edit-close').click();await tick();h.q('.rist-legend-edit-button').click();assert(!tree('sample:0').open);
     await h.gd._ristDeleteSample(0);await tick();assert.equal(tree('sample:0'),null);assert(tree('sample:1'));
-    h.gd._ristHistory.undo();await tick();assert(tree('sample:0'));assert(!tree('sample:0').open);
+    h.q('.rist-legend-edit-save-all').click();await tick();
+    h.gd._ristHistory.undo();await tick();h.q('.rist-legend-edit-button').click();assert(tree('sample:0'));assert(!tree('sample:0').open);
   });
   test(label+': deleting the last peak leaves an empty Raw branch and undo restores its count',async t=>{
     const h=setup(t,kind,mode);await tick();h.q('.rist-legend-edit-button').click();
@@ -585,7 +694,8 @@ for (const kind of ['ftir','raman']) for (const mode of ['native','chrome49']) {
     assert.equal(h.q('.rist-legend-edit-panel').style.display,'none');h.q('.rist-legend-edit-button').click();
     assert.equal(h.gd.data.length,1);assert.equal(h.q('.rist-legend-raw-count').textContent,'피크 0개');
     assert(h.q('.rist-legend-raw-empty'));assert(!h.q('.rist-legend-raw-tree').open);
-    h.gd._ristHistory.undo();await tick();
+    h.q('.rist-legend-edit-close').click();await tick();
+    h.gd._ristHistory.undo();await tick();h.q('.rist-legend-edit-button').click();
     assert.equal(h.q('.rist-legend-raw-count').textContent,'피크 1개');assert.equal(h.q('.rist-legend-raw-empty'),null);
   });
   test(label+': rapid deletes atomically publish traces, labels and connectors, preserving user notes',async t=>{

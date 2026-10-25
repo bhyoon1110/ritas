@@ -2780,8 +2780,8 @@ _UPLOAD_SCRIPT = """
       sensitivity: currentPeakSensitivity(),
       statusText: status.textContent || "",
       analysisPayload: latestAnalysisPayload,
-      plotData: JSON.parse(JSON.stringify(gd.data || [])),
-      plotLayout: JSON.parse(JSON.stringify(gd.layout || {}))
+      plotData: JSON.parse(JSON.stringify((gd._ristLegendPreview || gd).data || [])),
+      plotLayout: JSON.parse(JSON.stringify((gd._ristLegendPreview || gd).layout || {}))
     };
   }
 
@@ -2806,6 +2806,7 @@ _UPLOAD_SCRIPT = """
   }
 
   function restoreWorkspace(savedState) {
+    if (gd._ristLegendPreview && gd._ristEndLegendPreview) return gd._ristEndLegendPreview().then(function() { return restoreWorkspace(savedState); });
     return (savedState ? Promise.resolve(savedState) : workspaceStore("readonly").then(function(store) {
       return new Promise(function(resolve, reject) {
         var request = store.get(SESSION_KEY);
@@ -2948,6 +2949,7 @@ _UPLOAD_SCRIPT = """
     gd.on("plotly_restyle", scheduleWorkspaceSave);
     [
       "rist-legend-name-change",
+      "rist-legend-edit-finished",
       "rist-legend-color-change",
       "rist-sample-line-style-change",
       "rist-legend-visibility-change",
@@ -4951,6 +4953,7 @@ _UPLOAD_SCRIPT = """
   gd._ristApplyResponsiveLayout = applyResponsiveLayout;
 
   function resetGraph() {
+    if (gd._ristLegendPreview && gd._ristEndLegendPreview) return gd._ristEndLegendPreview().then(resetGraph);
     if (controller) controller.abort();
     controller = null;
     if (!restoreInProgress) setBusy(false);
@@ -4967,6 +4970,7 @@ _UPLOAD_SCRIPT = """
   }
 
   function analyze() {
+    if (gd._ristLegendPreview && gd._ristEndLegendPreview) return gd._ristEndLegendPreview().then(analyze);
     if (!files.length) return Promise.resolve();
     if (controller) controller.abort();
     controller = new AbortController();
@@ -5184,6 +5188,7 @@ _UPLOAD_SCRIPT = """
   }
 
   function currentFigurePayload() {
+    if (gd._ristLegendPreview) throw new Error("범례·스타일 창에서 전체 저장하거나 닫아 취소한 뒤 그래프를 저장하세요.");
     return filteredReportFigurePayload();
   }
 

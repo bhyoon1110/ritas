@@ -339,7 +339,10 @@ def test_ftir_workspace_contains_upload_and_editor_controls() -> None:
     assert "installWorkspaceAutosave()" in page
     assert "if (clearCurrent) store.delete(SESSION_KEY)" in page
     assert "await collectionStore(empty, true, true)" in page
-    assert "plotData: JSON.parse(JSON.stringify(gd.data || []))" in page
+    assert "plotData: JSON.parse(JSON.stringify((gd._ristLegendPreview || gd).data || []))" in page
+    assert "plotLayout: JSON.parse(JSON.stringify((gd._ristLegendPreview || gd).layout || {}))" in page
+    assert '"rist-legend-edit-finished"' in page
+    assert "gd._ristEndLegendPreview().then(resetGraph)" in page
     assert "files = (state.files || []).map(recordFile)" in page
     assert "function filterReportAnalysisPayload" in page
     assert "function filteredReportFigurePayload" in page

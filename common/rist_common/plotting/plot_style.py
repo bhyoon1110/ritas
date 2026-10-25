@@ -668,6 +668,9 @@ def _legend_text_edit_js(
   padding: 5px 9px;
   box-shadow: 0 1px 4px rgba(0,0,0,0.08);
 }}
+#{div_id} .rist-legend-preview-help {{
+  flex-basis: 100%; font-size: 11px; color: #526477; line-height: 1.4;
+}}
 #{div_id} .rist-legend-edit-panel {{
   position: absolute;
   top: 94px;
@@ -1467,35 +1470,32 @@ def _legend_text_edit_js(
       : key;
   }}
 
+  // Event consumers can register their Plotly work so previews never race a
+  // later input, Save All, or rollback (especially peak annotation relayouts).
+  function dispatchLegendEdit(name, detail) {{
+    var pending = [];
+    detail.waitUntil = function(work) {{ pending.push(Promise.resolve(work)); }};
+    gd.dispatchEvent(new CustomEvent(name, {{detail: detail}}));
+    return Promise.all(pending);
+  }}
+
   function dispatchPeakGroupClear(groupKey) {{
-    try {{
-      gd.dispatchEvent(new CustomEvent("rist-peak-group-clear", {{
-        detail: {{ groupKey: groupKey }}
-      }}));
-    }} catch (e) {{}}
+    return dispatchLegendEdit("rist-peak-group-clear", {{groupKey: groupKey}});
   }}
 
   function dispatchPeakGroupUpdate(groupKey, name, color, addCurves, removeCurves) {{
-    try {{
-      gd.dispatchEvent(new CustomEvent("rist-peak-group-update", {{
-        detail: {{
+    return dispatchLegendEdit("rist-peak-group-update", {{
           groupKey: groupKey,
           name: name,
           color: color,
           addCurves: addCurves || [],
           removeCurves: removeCurves || []
-        }}
-      }}));
-    }} catch (e) {{}}
+    }});
   }}
 
   function dispatchPeakDelete(curves) {{
     if (!curves.length) return;
-    try {{
-      gd.dispatchEvent(new CustomEvent("rist-peak-delete", {{
-        detail: {{ curves: curves }}
-      }}));
-    }} catch (e) {{}}
+    return dispatchLegendEdit("rist-peak-delete", {{curves: curves}});
   }}
 
   function dispatchVisibilityChange(curves, visible, userVisible) {{
@@ -1525,28 +1525,20 @@ def _legend_text_edit_js(
     }}
     if (!curves.length) curves = [curve];
     var update = {{ "name": value }};
-    window.Plotly.restyle(gd, update, curves).then(function() {{
-      try {{
-        gd.dispatchEvent(new CustomEvent("rist-legend-name-change", {{
-          detail: {{
+    return window.Plotly.restyle(gd, update, curves).then(function() {{
+      return dispatchLegendEdit("rist-legend-name-change", {{
             curve: curve,
             curves: curves,
             oldName: oldName,
             name: value,
             legendgroup: legendgroup,
             editGroup: editGroup
-          }}
-        }}));
-      }} catch (e) {{}}
+      }});
     }});
   }}
 
   function dispatchColorChange(curves, color) {{
-    try {{
-      gd.dispatchEvent(new CustomEvent("rist-legend-color-change", {{
-        detail: {{ curves: curves, color: color }}
-      }}));
-    }} catch (e) {{}}
+    return dispatchLegendEdit("rist-legend-color-change", {{curves: curves, color: color}});
   }}
 
   function updateColor(curve, value) {{
@@ -1564,11 +1556,11 @@ def _legend_text_edit_js(
       }}
     }}
     if (!curves.length) curves = [curve];
-    window.Plotly.restyle(gd, {{
+    return window.Plotly.restyle(gd, {{
       "line.color": color,
       "marker.color": color
     }}, curves).then(function() {{
-      dispatchColorChange(curves, color);
+      return dispatchColorChange(curves, color);
     }});
   }}
 
@@ -1579,18 +1571,18 @@ def _legend_text_edit_js(
     if (!window.Plotly || width === null) return;
     if (gd._ristHistory) gd._ristHistory.capture();
     var curves = sampleCurvesForLegendItem(curve);
-    window.Plotly.restyle(gd, {{
+    return window.Plotly.restyle(gd, {{
       "line.color": color,
       "line.dash": dash,
       "line.width": width,
       "marker.color": color
     }}, curves).then(function() {{
-      dispatchColorChange(curves, color);
       try {{
         gd.dispatchEvent(new CustomEvent("rist-sample-line-style-change", {{
           detail: {{ curves: curves, color: color, dash: dash, width: width }}
         }}));
       }} catch (e) {{}}
+      return dispatchColorChange(curves, color);
     }});
   }}
 
@@ -1606,7 +1598,7 @@ def _legend_text_edit_js(
   function toggleSpectrumLegend() {{
     if (gd._ristHistory) gd._ristHistory.capture();
     var visible = !spectrumLegendVisible();
-    window.Plotly.relayout(gd, {{showlegend: visible, "meta.ristLegendVisible": visible}})
+    return window.Plotly.relayout(gd, {{showlegend: visible, "meta.ristLegendVisible": visible}})
       .then(refreshLegendVisibilityButtons);
   }}
 
@@ -1663,13 +1655,106 @@ def _legend_text_edit_js(
         + "<label>글자 크기 <input type='number' class='rist-legend-font-size' min='10' max='32' step='1' aria-label='범례 글자 크기'> px</label>"
         + "<label><input type='checkbox' class='rist-legend-font-bold' aria-label='범례 굵게'>굵게</label>";
       panel.insertBefore(appearance, panel.querySelector(".rist-legend-edit-body"));
-      appearance.querySelector(".rist-legend-visible-toggle").addEventListener("click", toggleSpectrumLegend);
+      appearance.querySelector(".rist-legend-visible-toggle").addEventListener("click", function() {{
+        enqueueEdit(toggleSpectrumLegend).catch(function() {{}});
+      }});
+      var previewHelp = document.createElement("div");
+      previewHelp.className = "rist-legend-preview-help";
+      previewHelp.textContent = "스타일 실시간 미리보기 · 전체 저장으로 확정 · 닫으면 변경 취소";
+      appearance.appendChild(previewHelp);
     }}
     gd._ristLegendEditOpen = false;
     var panelDrag = null;
     var panelDragPointerId = null;
     var rawDrag = null;
     var reorderingRaw = false;
+    var previewState = null;
+    var previewTimer = null;
+    var editQueue = Promise.resolve();
+    var finishingEdit = false;
+    var finishWork = null;
+    var applyingRows = false;
+
+    function copyEditState(value) {{ return JSON.parse(JSON.stringify(value)); }}
+    function beginPreview() {{
+      if (!directAnnotationEdit) return;
+      previewState = {{
+        data: copyEditState(gd.data || []), layout: copyEditState(gd.layout || {{}}),
+        originalAnnotations: copyEditState(gd._ristFtirUnitOriginalAnnotations || null),
+        originalShapes: copyEditState(gd._ristFtirUnitOriginalShapes || null)
+      }};
+      gd._ristLegendPreview = previewState;
+    }}
+    function showEditError(err) {{
+      var error = panel.querySelector(".rist-legend-edit-error");
+      error.textContent = "범례 변경 처리 실패: " + (err.message || err) + ". 다시 시도하거나 닫아 취소하세요.";
+      error.style.display = "block";
+    }}
+    function enqueueEdit(action) {{
+      var session = previewState;
+      var work = editQueue.then(function() {{
+        if (session && session !== previewState) return false;
+        return action();
+      }});
+      editQueue = work.catch(showEditError);
+      return work;
+    }}
+    function schedulePreview(ev) {{
+      if (!previewState || finishingEdit || (ev && ev.isComposing)) return;
+      if (ev && ev.target === opacitySlider) return;
+      clearTimeout(previewTimer);
+      previewTimer = setTimeout(function() {{
+        previewTimer = null;
+        enqueueEdit(function() {{ return applyRows(true); }}).catch(function() {{}});
+      }}, 120);
+    }}
+    panel.addEventListener("input", schedulePreview);
+    panel.addEventListener("change", schedulePreview);
+    panel.addEventListener("compositionend", schedulePreview);
+    // Lock new input only while final Save/Close is draining the render queue.
+    ["click", "input", "change", "keydown", "pointerdown"].forEach(function(type) {{
+      panel.addEventListener(type, function(ev) {{
+        if (!finishingEdit) return;
+        ev.preventDefault(); ev.stopImmediatePropagation();
+      }}, true);
+    }});
+
+    function finishPreview(save) {{
+      if (finishingEdit) return finishWork;
+      finishingEdit = true;
+      clearTimeout(previewTimer); previewTimer = null;
+      panel.setAttribute("aria-busy", "true");
+      finishWork = enqueueEdit(function() {{
+        if (save) return applyRows(false);
+        return window.Plotly.react(gd, copyEditState(previewState.data),
+          copyEditState(previewState.layout), gd._context).then(function() {{
+          gd._ristFtirUnitOriginalAnnotations = copyEditState(previewState.originalAnnotations);
+          gd._ristFtirUnitOriginalShapes = copyEditState(previewState.originalShapes);
+          gd.dispatchEvent(new CustomEvent("rist-history-restored"));
+          return Promise.resolve(gd._ristStackReady).then(function() {{ return true; }});
+        }});
+      }}).then(function(valid) {{
+        return Promise.resolve(gd._ristStackReady).then(function() {{ return valid; }});
+      }}).then(function(valid) {{
+        if (valid === false || !previewState) return;
+        var original = previewState;
+        previewState = null; gd._ristLegendPreview = null;
+        if (save && gd._ristHistory && gd._ristHistory.captureState
+            && (JSON.stringify(original.data) !== JSON.stringify(gd.data)
+              || JSON.stringify(original.layout) !== JSON.stringify(gd.layout))) gd._ristHistory.captureState(original);
+        hidePanel();
+        gd.dispatchEvent(new CustomEvent("rist-legend-edit-finished", {{detail: {{saved: save}}}}));
+      }}).catch(function() {{}}).then(function() {{
+        finishingEdit = false; panel.removeAttribute("aria-busy");
+      }});
+      return finishWork;
+    }}
+    gd._ristEndLegendPreview = function() {{
+      if (!previewState) return Promise.resolve();
+      return finishPreview(false).then(function() {{
+        if (previewState) throw new Error("범례 변경을 복원하지 못했습니다. 다시 닫은 뒤 시도하세요.");
+      }});
+    }};
 
     function rawRows() {{
       return Array.prototype.slice.call(panel.querySelectorAll(".rist-legend-edit-row.is-sample"));
@@ -1712,7 +1797,7 @@ def _legend_text_edit_js(
       var focused = document.activeElement;
       reorderingRaw = true;
       panel.querySelectorAll(".rist-raw-order-handle").forEach(function(handle) {{ handle.disabled = true; }});
-      return gd._ristReorderSamples(order).then(function() {{ syncRawRowOrder(); return true; }}).catch(function(err) {{
+      return enqueueEdit(function() {{ return gd._ristReorderSamples(order); }}).then(function() {{ syncRawRowOrder(); return true; }}).catch(function(err) {{
         var error = panel.querySelector(".rist-legend-edit-error");
         error.textContent = "Raw 순서 변경 실패: " + err.message; error.style.display = "block";
         return false;
@@ -1799,6 +1884,11 @@ def _legend_text_edit_js(
     }});
 
     function closePanel() {{
+      if (previewState) {{ finishPreview(false); return; }}
+      hidePanel();
+    }}
+
+    function hidePanel() {{
       var wasOpen = gd._ristLegendEditOpen;
       finishPanelDrag();
       clearRawDrag();
@@ -2143,9 +2233,18 @@ def _legend_text_edit_js(
         }}
         if (sampleDeleteButton) sampleDeleteButton.addEventListener("click", function() {{
           if (!gd._ristDeleteSample) return;
-          if (!window.confirm("이 샘플과 연결된 피크·비율을 현재 그래프에서 삭제할까요? 저장하지 않은 창의 편집 내용은 취소됩니다. 원본 파일은 유지되며 실행취소로 복원할 수 있습니다.")) return;
+          if (!window.confirm("이 샘플과 연결된 피크·비율을 현재 그래프에서 삭제할까요? 전체 저장으로 확정하며, 닫으면 복원됩니다. 원본 파일은 유지됩니다.")) return;
           sampleDeleteButton.disabled = true;
-          gd._ristDeleteSample(curve).catch(function(err) {{
+          var deletedGroup = sampleGroupForCurve(curve);
+          enqueueEdit(function() {{
+            return applyRows(false).then(function(valid) {{
+              if (valid === false) {{ sampleDeleteButton.disabled = false; return; }}
+              var current = (gd.data || []).findIndex(function(trace, index) {{
+                return isSampleCurve(index) && sampleGroupForCurve(index) === deletedGroup;
+              }});
+              return gd._ristDeleteSample(current);
+            }});
+          }}).catch(function(err) {{
             error.textContent = "Raw 그래프 삭제에 실패했습니다: " + err.message;
             error.style.display = "block";
             sampleDeleteButton.disabled = false;
@@ -2246,6 +2345,8 @@ def _legend_text_edit_js(
         var clear = groupRow.querySelector(".rist-legend-group-clear");
         title.value = legendDisplayToEdit(manualPeakGroupName(firstCurve));
         groupColor.value = traceColor(firstCurve);
+        groupRow.setAttribute("data-original-title", legendEditToDisplay(title.value));
+        groupRow.setAttribute("data-original-color", groupColor.value);
         add.addEventListener("click", function(ev) {{
           ev.preventDefault();
           ev.stopPropagation();
@@ -2308,6 +2409,12 @@ def _legend_text_edit_js(
     }}
 
     function saveAllRows() {{
+      if (previewState) {{ finishPreview(true); return; }}
+      applyRows(false).then(function(valid) {{ if (valid !== false) hidePanel(); }}).catch(showEditError);
+    }}
+
+    function applyRows(preview) {{
+      var actions = [];
       if (directAnnotationEdit) {{
         var fontInput = panel.querySelector(".rist-legend-font-size");
         var fontSize = Number(fontInput.value);
@@ -2315,8 +2422,8 @@ def _legend_text_edit_js(
           var fontError = panel.querySelector(".rist-legend-edit-error");
           fontError.textContent = "범례 글자 크기는 10~32 px 정수로 입력하세요.";
           fontError.style.display = "block";
-          fontInput.focus();
-          return;
+          if (!preview) fontInput.focus();
+          return Promise.resolve(false);
         }}
       }}
       var invalidWidth = null;
@@ -2328,13 +2435,15 @@ def _legend_text_edit_js(
       var widthError = panel.querySelector(".rist-legend-edit-error");
       widthError.textContent = invalidWidth ? "선 굵기는 0.1~20 px 사이의 숫자로 입력하세요." : "";
       widthError.style.display = invalidWidth ? "block" : "none";
-      if (invalidWidth) {{ invalidWidth.focus(); return; }}
+      if (invalidWidth) {{ if (!preview) invalidWidth.focus(); return Promise.resolve(false); }}
       if (directAnnotationEdit) {{
         var weight = panel.querySelector(".rist-legend-font-bold").checked ? 700 : 400;
         var currentFont = gd.layout.legend && gd.layout.legend.font || {{}};
         if (currentFont.size !== fontSize || currentFont.weight !== weight) {{
-          if (gd._ristHistory) gd._ristHistory.capture();
-          window.Plotly.relayout(gd, {{"legend.font.size": fontSize, "legend.font.weight": weight}});
+          actions.push(function() {{
+            if (gd._ristHistory) gd._ristHistory.capture();
+            return window.Plotly.relayout(gd, {{"legend.font.size": fontSize, "legend.font.weight": weight}});
+          }});
         }}
       }}
       var deleteCurves = [];
@@ -2368,15 +2477,17 @@ def _legend_text_edit_js(
         var currentName = legendEditToDisplay(
           legendDisplayToEdit(editableTraceName(curve))
         );
-        if (nextName && nextName !== currentName) updateName(curve, nextName);
+        if (nextName && nextName !== currentName) actions.push(function() {{ return updateName(curve, nextName); }});
         if (isSampleCurve(curve) && colorInput && dashInput
             && (normalizeColor(colorInput.value) !== traceColor(curve)
               || normalizeDash(dashInput.value) !== traceDash(curve)
               || (widthInput && sampleLineWidth(widthInput.value) !== traceLineWidth(curve)))) {{
-          updateSampleLineStyle(curve, colorInput.value, dashInput.value,
-            widthInput ? widthInput.value : traceLineWidth(curve));
+          var nextColor = colorInput.value, nextDash = dashInput.value;
+          var nextWidth = widthInput ? widthInput.value : traceLineWidth(curve);
+          actions.push(function() {{ return updateSampleLineStyle(curve, nextColor, nextDash, nextWidth); }});
         }} else if (colorInput && normalizeColor(colorInput.value) !== traceColor(curve)) {{
-          updateColor(curve, colorInput.value);
+          var peakColor = colorInput.value;
+          actions.push(function() {{ return updateColor(curve, peakColor); }});
         }}
       }});
       deleteCurves = deleteCurves.filter(function(curve, index, values) {{
@@ -2388,7 +2499,7 @@ def _legend_text_edit_js(
         var colorInput = row.querySelector(".rist-legend-group-color");
         if (!groupKey) return;
         if (row.getAttribute("data-clear") === "true") {{
-          dispatchPeakGroupClear(groupKey);
+          if (!preview) actions.push(function() {{ return dispatchPeakGroupClear(groupKey); }});
           return;
         }}
         var addCurves = [];
@@ -2405,23 +2516,38 @@ def _legend_text_edit_js(
         var firstCurve = parseInt(row.getAttribute("data-first-curve"), 10);
         var nextTitle = titleInput ? legendEditToDisplay(titleInput.value) : "";
         var nextColor = colorInput ? colorInput.value : "";
+        if (preview) {{
+          var groupCurves = (gd.data || []).map(function(trace, index) {{ return index; }})
+            .filter(function(index) {{ return manualPeakGroupKey(index) === groupKey; }});
+          if (groupCurves.length && (normalizeColor(nextColor) !== traceColor(firstCurve)
+              || ((gd.data[firstCurve] || {{}}).legendgrouptitle || {{}}).text !== nextTitle)) {{
+            actions.push(function() {{
+              return window.Plotly.restyle(gd, {{"legendgrouptitle.text": nextTitle,
+                "line.color": nextColor, "marker.color": nextColor}}, groupCurves)
+                .then(function() {{ return dispatchColorChange(groupCurves, nextColor); }});
+            }});
+          }}
+          return;
+        }}
         if (Number.isFinite(firstCurve)
-            && nextTitle === manualPeakGroupName(firstCurve)
-            && normalizeColor(nextColor) === traceColor(firstCurve)
+            && nextTitle === row.getAttribute("data-original-title")
+            && normalizeColor(nextColor) === row.getAttribute("data-original-color")
             && !addCurves.length
             && !removeCurves.length) {{
           return;
         }}
-        dispatchPeakGroupUpdate(
+        actions.push(function() {{ return dispatchPeakGroupUpdate(
           groupKey,
           nextTitle,
           nextColor,
           addCurves,
           removeCurves
-        );
+        ); }});
       }});
-      dispatchPeakDelete(deleteCurves);
-      closePanel();
+      if (!preview) actions.push(function() {{ return dispatchPeakDelete(deleteCurves); }});
+      applyingRows = true;
+      return actions.reduce(function(work, action) {{ return work.then(action); }}, Promise.resolve())
+        .then(function() {{ applyingRows = false; return true; }}, function(err) {{ applyingRows = false; throw err; }});
     }}
 
     btn.addEventListener("click", function(ev) {{
@@ -2433,6 +2559,7 @@ def _legend_text_edit_js(
           detail: {{mode: "legend-edit"}}
         }}));
         gd._ristLegendEditOpen = true;
+        beginPreview();
         renderRows();
         panel.style.display = "block";
         if (directAnnotationEdit) {{
@@ -2473,22 +2600,26 @@ def _legend_text_edit_js(
       if (panel.style.display === "block") closePanel();
     }});
     gd.addEventListener("rist-peak-group-change", function() {{
-      if (panel.style.display === "block") renderRows();
+      if (!applyingRows && !finishingEdit && panel.style.display === "block") renderRows();
     }});
     gd.addEventListener("rist-legend-name-change", function() {{
       if (panel.style.display === "block") refreshRawTreeNames();
     }});
     gd.addEventListener("rist-history-restored", function() {{
-      if (panel.style.display === "block") renderRows();
+      if (!finishingEdit && panel.style.display === "block") renderRows();
     }});
     gd.addEventListener("rist-peak-sensitivity-change", function() {{
       if (panel.style.display === "block") renderRows();
     }});
     gd.addEventListener("rist-plot-data-replaced", function() {{
-      if (panel.style.display === "block") renderRows();
+      // A new upload/reset supersedes the old edit session; never restore the
+      // previous dataset over it when Close is clicked later.
+      clearTimeout(previewTimer); previewTimer = null;
+      previewState = null; gd._ristLegendPreview = null;
+      if (panel.style.display === "block") hidePanel();
     }});
     gd.addEventListener("rist-plot-structure-changed", function() {{
-      if (panel.style.display === "block") renderRows();
+      if (!applyingRows && !finishingEdit && panel.style.display === "block") renderRows();
     }});
     gd.addEventListener("rist-ftir-stack-change", function() {{
       syncRawOrderControls(); syncRawRowOrder();
@@ -4486,7 +4617,7 @@ def peak_editor_js(div_id: str) -> str:
         );
       }}
     }});
-    window.Plotly.restyle(gd, {{
+    return window.Plotly.restyle(gd, {{
       legendgroup: legendgroups,
       "legendgrouptitle.text": legendTitles,
       "marker.color": colors,
@@ -4515,7 +4646,7 @@ def peak_editor_js(div_id: str) -> str:
       var key = peakMeta.manual_group_key || meta.rist_color_group || "";
       if (key === groupKey) curves.push(i);
     }}
-    clearPeakGroupForCurves(curves);
+    return clearPeakGroupForCurves(curves);
   }}
 
   function updatePeakGroupByKey(
@@ -4616,7 +4747,7 @@ def peak_editor_js(div_id: str) -> str:
         );
       }}
     }});
-    window.Plotly.restyle(gd, {{
+    return window.Plotly.restyle(gd, {{
       legendgroup: legendgroups,
       "legendgrouptitle.text": legendTitles,
       "marker.color": colors,
@@ -4640,8 +4771,6 @@ def peak_editor_js(div_id: str) -> str:
         }}));
         gd.dispatchEvent(new CustomEvent("rist-peak-group-change"));
       }} catch (e) {{}}
-    }}).catch(function(err) {{
-      console.error("RIST peak group update failed", err);
     }});
   }}
 
@@ -5475,14 +5604,14 @@ def peak_editor_js(div_id: str) -> str:
   gd.addEventListener("rist-peak-delete", function(ev) {{
     var detail = ev.detail || {{}};
     var curves = Array.isArray(detail.curves) ? detail.curves.slice() : [];
-    deletePeakTraces(curves, false, true).then(function(deletedCurves) {{
+    var work = deletePeakTraces(curves, false, true).then(function(deletedCurves) {{
       if (!deletedCurves.length) return;
       gd.dispatchEvent(new CustomEvent("rist-plot-structure-changed", {{
         detail: {{reason: "peaks-deleted"}}
       }}));
-    }}).catch(function(err) {{
-      console.error("RIST peak batch delete failed", err);
     }});
+    if (detail.waitUntil) detail.waitUntil(work);
+    else work.catch(function(err) {{ console.error("RIST peak batch delete failed", err); }});
   }});
 
   gd.addEventListener("rist-peak-actions-disabled", function(ev) {{
@@ -5512,7 +5641,8 @@ def peak_editor_js(div_id: str) -> str:
         detail.name
       );
     }}
-    window.Plotly.relayout(gd, {{ annotations: annotations }});
+    var work = window.Plotly.relayout(gd, {{ annotations: annotations }});
+    if (detail.waitUntil) detail.waitUntil(work);
   }});
   gd.addEventListener("rist-legend-color-change", function(ev) {{
     if (!window.Plotly) return;
@@ -5535,23 +5665,28 @@ def peak_editor_js(div_id: str) -> str:
         detail.color
       );
     }}
-    window.Plotly.relayout(gd, {{ annotations: annotations, shapes: shapes }});
+    var work = window.Plotly.relayout(gd, {{ annotations: annotations, shapes: shapes }});
+    if (detail.waitUntil) detail.waitUntil(work);
   }});
   gd.addEventListener("rist-peak-group-clear", function(ev) {{
     var detail = ev.detail || {{}};
     if (!detail.groupKey) return;
-    clearPeakGroupByKey(String(detail.groupKey));
+    var work = Promise.resolve(clearPeakGroupByKey(String(detail.groupKey)));
+    if (detail.waitUntil) detail.waitUntil(work);
+    else work.catch(function(err) {{ console.error("RIST peak group clear failed", err); }});
   }});
   gd.addEventListener("rist-peak-group-update", function(ev) {{
     var detail = ev.detail || {{}};
     if (!detail.groupKey) return;
-    updatePeakGroupByKey(
+    var work = Promise.resolve(updatePeakGroupByKey(
       String(detail.groupKey),
       detail.name,
       detail.color,
       detail.addCurves,
       detail.removeCurves
-    );
+    ));
+    if (detail.waitUntil) detail.waitUntil(work);
+    else work.catch(function(err) {{ console.error("RIST peak group update failed", err); }});
   }});
   gd.addEventListener("rist-history-restored", function() {{
     normalizeSampleLegendEntries();
@@ -8314,7 +8449,7 @@ def _plot_edit_history_js(div_id: str) -> str:
   }}
 
   function capture() {{
-    if (restoring) return;
+    if (restoring || gd._ristLegendPreview) return;
     var now = Date.now();
     if (now - lastCaptureAt < 50) return;
     lastCaptureAt = now;
@@ -8322,7 +8457,7 @@ def _plot_edit_history_js(div_id: str) -> str:
   }}
 
   function captureState(state) {{
-    if (restoring || !state) return;
+    if (restoring || gd._ristLegendPreview || !state) return;
     try {{
       undoStack.push(clone(state));
       if (undoStack.length > MAX_HISTORY) undoStack.shift();
@@ -8355,7 +8490,7 @@ def _plot_edit_history_js(div_id: str) -> str:
   }}
 
   function undo() {{
-    if (!undoStack.length || restoring) return;
+    if (!undoStack.length || restoring || gd._ristLegendPreview) return;
     gd.dispatchEvent(new CustomEvent("rist-exclusive-interaction-start", {{
       detail: {{mode: "history-undo"}}
     }}));
@@ -8365,7 +8500,7 @@ def _plot_edit_history_js(div_id: str) -> str:
   }}
 
   function redo() {{
-    if (!redoStack.length || restoring) return;
+    if (!redoStack.length || restoring || gd._ristLegendPreview) return;
     gd.dispatchEvent(new CustomEvent("rist-exclusive-interaction-start", {{
       detail: {{mode: "history-redo"}}
     }}));

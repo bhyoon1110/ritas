@@ -48,11 +48,12 @@ const server=http.createServer((req,res)=>{
       await page.waitForFunction(({id,key})=>document.getElementById(id).layout.meta[key].legendOrder.join(',')==='sample:0,sample:2,sample:1',{id,key});
       await page.waitForFunction(()=>!document.querySelector('.rist-raw-order-handle').disabled);
       assert.equal(await rows.nth(0).locator('textarea').inputValue(),'저장 전 Raw 이름');
+      await page.waitForFunction(id=>document.getElementById(id).data[0].name==='저장 전 Raw 이름',id);
       const state=await page.evaluate(({id,key})=>{
         const g=document.getElementById(id);return {meta:g.layout.meta[key],names:g.data.map(t=>t.name),
           y:g.data.map(t=>t.y),offsets:g.data.map(t=>t.meta.rist_raman_stack_offset||t.meta.rist_ftir_stack_offset_absorbance||0)};
       },{id,key});
-      assert.deepEqual(state.names,['Raw 1','Raw 2','Raw 3']);
+      assert.deepEqual(state.names,['저장 전 Raw 이름','Raw 2','Raw 3']);
       state.y.forEach((y,i)=>assert.deepEqual(y.map(v=>v-state.offsets[i]),[1,3,2]));
       await rows.nth(0).locator('.rist-raw-order-handle').press('ArrowDown');
       await page.waitForFunction(({id,key})=>document.getElementById(id).layout.meta[key].legendOrder[0]==='sample:2',{id,key});
@@ -62,7 +63,8 @@ const server=http.createServer((req,res)=>{
       await page.waitForFunction(({id,key})=>document.getElementById(id).layout.meta[key].legendOrder[0]==='sample:0',{id,key});
       await page.waitForFunction(()=>!document.querySelector('.rist-raw-order-handle').disabled);
       await page.locator('.rist-legend-edit-panel').screenshot({path:path.join(output,kind+'-raw-order.png')});
-      await page.locator('.rist-legend-edit-close').click();
+      await page.locator('.rist-legend-edit-save-all').click();
+      await page.locator('.rist-legend-edit-panel').waitFor({state:'hidden'});
       await page.evaluate(async id=>{await Plotly.relayout(document.getElementById(id),{'meta.ristLegendVisible':true,
         'legend.x':0.1,'legend.y':0.9,'legend.xanchor':'left','legend.yanchor':'top'});},id);
       const legendRows=page.locator('g.legend g.traces .legendtoggle');
@@ -104,7 +106,7 @@ const server=http.createServer((req,res)=>{
       await page.waitForFunction(id=>document.getElementById(id).data[0].visible===true,id);
       await legendRows.nth(0).dblclick({delay:80});
       const nameEditor=page.locator('[aria-label="범례 이름 수정"]');await nameEditor.waitFor({state:'visible'});
-      assert.equal(await nameEditor.inputValue(),'Raw 1');await nameEditor.fill('Renamed Raw 1');await nameEditor.press('Enter');
+      assert.equal(await nameEditor.inputValue(),'저장 전 Raw 이름');await nameEditor.fill('Renamed Raw 1');await nameEditor.press('Enter');
       await page.waitForFunction(id=>document.getElementById(id).data[0].name==='Renamed Raw 1',id);
       await page.waitForTimeout(700);
       assert.equal(await page.evaluate(id=>document.getElementById(id).data[0].visible,id),true);
