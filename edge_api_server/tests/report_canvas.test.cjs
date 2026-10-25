@@ -58,6 +58,15 @@ test('existing table cells do not consume new edit quota; palette follows select
   assert(!h.d.querySelector('[aria-label="페이지 개체 선택"]').textContent.includes('object-'));
   h.api.lock(true);assert(palette.disabled);
 });
+test('control availability traverses a large page once instead of once per input',t=>{
+  const h=setup(t),objects=Array.from({length:200},(_,i)=>({...h.item,id:'shape-'+i.toString(16).padStart(20,'0')}));
+  h.api.page({id:'page1',objects});h.d.querySelector('.canvas-object').click();
+  const stringify=h.w.JSON.stringify;let copies=0;
+  h.w.JSON.stringify=function(value){copies++;return stringify(value);};
+  h.api.lock(false);assert.equal(copies,objects.length);
+  assert(!h.field('내용').disabled);
+  copies=0;h.api.lock(true);assert.equal(copies,0);assert(h.field('내용').disabled);
+});
 test('saved graphs add without replacing selected objects, fit inside page, preserve aspect and undo',t=>{
   const h=setup(t);h.button('글자 삽입').click();h.set('내용','보존할 문구');
   const original=h.api.value().page1[0];let error;

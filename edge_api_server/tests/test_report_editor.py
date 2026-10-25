@@ -95,11 +95,18 @@ def test_page_add_delete_restore_revision_package_and_original_integrity(prepare
         {'id': 'added-review', 'after': removed, 'title': '{{검토자}} 의견',
          'body': '수정본 검토 내용\n<script>문자가 그대로 표시됩니다.</script>'}]}
     registered = []
+    formats = []
+    original_render = preview_report.render_report_formats
+    def render(document, directory, requested, **kwargs):
+        formats.append(requested)
+        return original_render(document, directory, requested, **kwargs)
+    monkeypatch.setattr(preview_report, 'render_report_formats', render)
     monkeypatch.setattr(report_editor, 'register_generated_report_package', lambda **kw: registered.append(kw) or kw['package_path'])
     response = h.client.post(h.url + '/revisions', json=edits, headers={'X-Requested-With': 'RIST-Report-Editor'})
     assert response.status_code == 202, response.text
     result = wait_revision(h, response.json()['jobId'])
     assert result['status'] == 'completed', result
+    assert formats == [['PPTX', 'HTML']]  # The prose PDF would immediately be overwritten.
     url = h.prefix + '/' + result['jobId']
     updated = h.client.get(url + '/edit-layout').json()['pages']
     assert len(updated) == len(pages)
@@ -414,11 +421,41 @@ def test_named_fields_survive_reopen_and_update_linked_outputs_only(prepared):
         assert any('title' in r['refs'] for r in layout.json()['pages'][0]['regions'])
         image = h.client.get(h.prefix+'/'+job['jobId']+'/edit-slides/0')
         assert image.status_code == 200 and image.content.startswith(b'\xff\xd8')
-        assert image.headers['cache-control'] == 'no-store'
+        assert image.headers['cache-control'] == 'private, no-cache'
         assert h.client.get(h.prefix+'/'+job['jobId']+'/edit-slides/-1').status_code == 404
         assert h.client.get(h.prefix+'/'+job['jobId']+'/edit-slides/200').status_code == 404
         original_id = job['jobId']
         edits = edit_request(saved)
+
+
+def test_slide_cache_revalidates_permissions_expiry_and_representation(prepared):
+    h = prepared
+    url = h.url + '/edit-slides/0'
+    response = h.client.get(url)
+    assert response.status_code == 200
+    etag = response.headers['etag']
+    assert response.headers['cache-control'] == 'private, no-cache'
+    assert response.headers['vary'] == 'Cookie'
+    for validator in (etag, 'W/' + etag, '"outdated", ' + etag):
+        cached = h.client.get(url, headers={'If-None-Match': validator})
+        assert cached.status_code == 304 and cached.content == b''
+        assert cached.headers['etag'] == etag
+    fresh = h.client.get(url, headers={'If-None-Match': '"outdated"'})
+    assert fresh.status_code == 200 and fresh.content == response.content
+    thumbnail = h.client.get(url + '?thumbnail=true', headers={'If-None-Match': etag})
+    assert thumbnail.status_code == 200 and thumbnail.headers['etag'] != etag
+    assert h.client.get(h.url+'/edit-slides/199', headers={'If-None-Match': etag}).status_code == 404
+    # A previous viewer cannot bypass ownership checks by presenting a cached ETag.
+    h.app.state.settings = SimpleNamespace(auth_enabled=True)
+    h.app.state.actor = AuthContext(user_id='other', login_id='other', email=None, display_name='Other',
+        status='ACTIVE', session_id='session', session_expires_at=datetime.now(timezone.utc),
+        sso_authenticated_at=None, projects=frozenset({h.kind.upper()}), roles=frozenset(), sso_identity=None)
+    assert h.client.get(url, headers={'If-None-Match': etag}).status_code == 403
+    h.app.state.actor = replace(h.app.state.actor, user_id='owner', projects=frozenset())
+    assert h.client.get(url, headers={'If-None-Match': etag}).status_code == 403
+    h.app.state.actor = replace(h.app.state.actor, projects=frozenset({h.kind.upper()}))
+    (h.job.tmp_root/'job/report/report-from-pptx.pdf').unlink()
+    assert h.client.get(url, headers={'If-None-Match': etag}).status_code == 410
 
 
 def test_invalid_variables_do_not_create_revisions(prepared):

@@ -1,5 +1,6 @@
 """Authenticated analyst review pages and immutable report revisions."""
 from copy import deepcopy
+from hashlib import sha256
 import json
 from pathlib import Path
 import shutil
@@ -204,10 +205,14 @@ def _write_revision(store, new_job, old_job, changes, project, settings, databas
         atomic_write_json(report_dir / "report.json", document.to_dict())
         (report_dir / "report.md").write_text(document.to_markdown(), encoding="utf-8")
         reports._write_email_body(document, report_dir)
-        reports.render_report_formats(document, report_dir, ["PPTX", "PDF", "HTML"],
+        deck_pdf = bool(document.canvas_edits or any(document.page_edits.get(key) for key in ("hidden", "added", "order")))
+        # Free/page-edited reports use the actual deck PDF. Do not render a
+        # second prose PDF only to discard it immediately after conversion.
+        formats = ["PPTX", "HTML"] if deck_pdf else ["PPTX", "PDF", "HTML"]
+        reports.render_report_formats(document, report_dir, formats,
                                       pdf_font_path=reports._preview_pdf_font_path(settings))
         reports.convert_pptx_to_pdf(report_dir / "report.pptx", report_dir / "report-from-pptx.pdf")
-        if document.canvas_edits or any(document.page_edits.get(key) for key in ("hidden", "added", "order")):
+        if deck_pdf:
             # Once the analyst edits the deck, both downloadable PDFs must use
             # that exact page list rather than the automatic prose summary.
             shutil.copyfile(report_dir / "report-from-pptx.pdf", report_dir / "report.pdf")
@@ -305,7 +310,16 @@ def install_report_editor(router, kind):
             content = slide_image(str(pdf), pdf.stat().st_mtime_ns, page, thumbnail=thumbnail)
         except IndexError as exc:
             raise ApiException(404, "REPORT_PAGE_NOT_FOUND", "보고서 페이지를 찾을 수 없습니다.") from exc
-        return Response(content, media_type="image/jpeg", headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"})
+        # Always authorize and validate the page before revalidation, even for
+        # cached images. Private/no-cache requires a server check on every use;
+        # a revision has its own URL and thumbnails have their own validator.
+        etag = '"' + sha256(content).hexdigest() + '"'
+        headers = {"Cache-Control": "private, no-cache", "ETag": etag,
+                   "Vary": "Cookie", "X-Content-Type-Options": "nosniff"}
+        validators = [value.strip().removeprefix("W/") for value in request.headers.get("if-none-match", "").split(",")]
+        if etag in validators or "*" in validators:
+            return Response(status_code=304, headers=headers)
+        return Response(content, media_type="image/jpeg", headers=headers)
 
     @router.post(prefix + "/{job_id}/editor-graphs", tags=[kind])
     @router.post(prefix + "/{job_id}/editor-images", tags=[kind])

@@ -87,17 +87,19 @@
   }
   function schedule(delay) {
     window.clearTimeout(timer);
-    if (dirty && !composing && !busy) timer = window.setTimeout(saveChanges, delay || 1200);
+    if (dirty && !composing && !busy) timer = window.setTimeout(saveChanges, delay || 650);
   }
   function changed() {
-    structureDirty = structure(collect().pageEdits) !== layoutStructure;
+    // Collect tables and canvas patches only once per keystroke on low-end PCs.
+    var value = collect();
+    structureDirty = structure(value.pageEdits) !== layoutStructure;
     sections.forEach(function (section) {
       (section.conditionLabels || []).forEach(function (item) {
         item.label.firstChild.nodeValue = (item.row[0].value === "공통" ? "" : item.row[0].value + " · ") + item.row[1].value;
       });
     });
     direct.sync();
-    dirty = JSON.stringify(collect()) !== saved; retries = 0;
+    dirty = JSON.stringify(value) !== saved; retries = 0;
     message(busy ? "PPT 생성 중입니다. 추가 입력도 이어서 자동 반영합니다." : dirty ? "입력이 멈추면 자동 저장하고 PPT 미리보기에 반영합니다." : "모든 변경 내용이 반영되었습니다.");
     availability(); schedule();
   }
@@ -427,7 +429,9 @@
       }
       if (attempts >= 300) { busy = false; message("생성이 계속 진행 중입니다. ‘지금 반영 / 재시도’로 진행 상태를 다시 확인하세요. 입력 내용은 유지됩니다.",true); availability(); return; }
       message((job.message || "수정 내용을 PPT에 반영 중입니다.") + " 추가 입력도 계속할 수 있습니다.");
-      window.setTimeout(function () { poll(id,previous,snapshot,attempts+1); },1500);
+      // Small reports often finish in a few seconds. Detect that promptly,
+      // but retain the low-frequency polling for long jobs or background tabs.
+      window.setTimeout(function () { poll(id,previous,snapshot,attempts+1); },attempts < 6 && !document.hidden ? 500 : 1500);
     });
   }
   function saveChanges() {

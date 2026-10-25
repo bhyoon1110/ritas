@@ -16,7 +16,7 @@ function setup(t,kind='ftir',identity='') {
   const dom=new JSDOM(template.replace('__CONFIG__',JSON.stringify({prefix,jobId:'original'})).replace('__SCRIPT__',''),
     {url:'http://localhost'+prefix+'/original/edit',runScripts:'outside-only'});
   t.after(()=>dom.window.close());const w=dom.window,d=w.document,q=id=>d.getElementById(id);
-  let pending=null,delay=false,fail=false,revisions=0,items=[],lookupError=false,pollError=false,rateLimit=false;
+  let pending=null,delay=false,fail=false,revisions=0,items=[],lookupError=false,pollError=false,rateLimit=false,running=false;
   w.setTimeout=(fn,ms)=>{timers.set(++timerId,{fn,ms});return timerId;};w.clearTimeout=id=>timers.delete(id);
   w.XMLHttpRequest=class {
     open(method,url){this.method=method;this.url=url;this.headers={};}
@@ -43,7 +43,7 @@ function setup(t,kind='ftir',identity='') {
         result={jobId:revisions===1?'revision':'revision'+revisions,status:'queued'};
       } else if(this.url.endsWith('/send')) result={queued:true};
       else if(this.url.startsWith('/api/v1/requests?')) result={items};
-      else result={jobId:this.url.split('/').pop(),status:'completed',transfer:doc.transfer,parentJobId:revisions===1?'original':'revision'};
+      else result={jobId:this.url.split('/').pop(),status:running?'running':'completed',transfer:doc.transfer,parentJobId:revisions===1?'original':'revision'};
       const finish=()=>{this.status=fail?403:lookupError&&this.url.startsWith('/api/v1/requests?')?503:pollError&&/\/revision\d*$/.test(this.url)?503:rateLimit&&this.url.endsWith('/revisions')?429:200;
         this.responseText=JSON.stringify(this.status>=400?{message:'SSO 인증이 필요합니다.'}:result);this.onload();};
       if(delay&&this.url.endsWith('/revisions')) pending=finish;else finish();
@@ -52,7 +52,7 @@ function setup(t,kind='ftir',identity='') {
   w.eval(script);
   return {w,d,q,posts,gets,prefix,timers,field:label=>d.querySelector('[aria-label="'+label+'"]'),
     tick(){const entry=timers.entries().next().value;assert(entry,'expected a scheduled operation');timers.delete(entry[0]);entry[1].fn();},
-    lookup(value,error=false){items=value;lookupError=error;},pollError(value){pollError=value;},rateLimit(value){rateLimit=value;},
+    lookup(value,error=false){items=value;lookupError=error;},pollError(value){pollError=value;},rateLimit(value){rateLimit=value;},running(value){running=value;},
     input(label,value){const e=this.field(label);e.value=value;e.dispatchEvent(new w.Event('input',{bubbles:true}));},
     delay(){delay=true;},finish(){delay=false;pending();},fail(){fail=true;}};
 }
@@ -113,6 +113,7 @@ test('failed save retains unsaved edits and blocks stale download/send',t=>{
 for(const kind of ['ftir','raman']) test(kind+' debounces edits and autosaves without clicking; keeps focus and newer edits',t=>{
   const h=setup(t,kind);h.input('보고서 제목','첫 입력');h.input('보고서 제목','저장할 제목');
   assert.equal(h.posts.length,0);assert.equal(h.timers.size,1);
+  assert.equal([...h.timers.values()][0].ms,650);
   const field=h.field('보고서 제목');field.focus();h.delay();h.tick();
   h.input('보고서 제목','생성 중 추가 수정');assert.equal(h.posts.length,1);assert.equal(h.timers.size,0);
   h.finish();assert.equal(h.field('보고서 제목'),field);assert.equal(h.d.activeElement,field);
@@ -128,6 +129,18 @@ test('IME composition and reverting unsaved changes do not create revisions',t=>
   field.dispatchEvent(new h.w.Event('compositionend'));assert.equal(h.timers.size,1);
   h.input('보고서 제목','Report');assert.equal(h.timers.size,0);assert.equal(h.posts.length,0);
   assert(!h.q('send').disabled);
+});
+test('quick completion polling backs off for long jobs and hidden tabs without duplicate revisions',t=>{
+  const h=setup(t);Object.defineProperty(h.d,'hidden',{configurable:true,value:false});
+  h.running(true);h.input('보고서 제목','완료 기다리기');h.tick();
+  for(let i=0;i<6;i++){assert.equal([...h.timers.values()][0].ms,500);h.tick();}
+  assert.equal([...h.timers.values()][0].ms,1500);
+  assert.equal(h.posts.length,1);assert(h.q('send').disabled);
+  h.running(false);h.tick();assert.equal(h.timers.size,0);assert(!h.q('send').disabled);
+  Object.defineProperty(h.d,'hidden',{configurable:true,value:true});
+  h.running(true);h.input('보고서 제목','숨긴 창');h.tick();
+  assert.equal([...h.timers.values()][0].ms,1500);
+  h.running(false);h.tick();assert.equal(h.posts.length,2);
 });
 test('poll retry resumes the same revision instead of creating duplicate work',t=>{
   const h=setup(t);h.input('보고서 제목','수정');h.pollError(true);h.tick();

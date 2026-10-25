@@ -38,11 +38,11 @@
     }
     function box(node,item) { node.style.left=item.x*100+"%";node.style.top=item.y*100+"%";node.style.width=item.w*100+"%";node.style.height=item.h*100+"%"; }
     function availability() {
-      var blocked=locked||loading||!capable||!page;
+      var blocked=locked||loading||!capable||!page, hasSelection=!blocked&&!!current();
       controls.forEach(function(b){b.disabled=blocked;});
       modeButton.disabled=!capable||!page||locked;
-      Object.keys(fields).forEach(function(k){fields[k].disabled=blocked||!current();});
-      Object.keys(palettes).forEach(function(k){palettes[k].disabled=blocked||!current();});
+      Object.keys(fields).forEach(function(k){fields[k].disabled=!hasSelection;});
+      Object.keys(palettes).forEach(function(k){palettes[k].disabled=!hasSelection;});
       undoButton.disabled=blocked||!undo.length;redoButton.disabled=blocked||!redo.length;
       document.getElementById("canvas-file").disabled=blocked;
     }
