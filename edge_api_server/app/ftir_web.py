@@ -1852,7 +1852,8 @@ _PAGE_SHELL = """
     <div class="ftir-report-meta-grid">
       <label class="ftir-report-meta-field">
         <span>장비모델</span>
-        <input type="text" placeholder="예: Nicolet iS50"
+        <input type="text" list="ftir-report-equipment-model-options"
+               placeholder="선택 또는 입력 (예: Nicolet iS50)"
                data-report-field="equipmentModel"
                data-report-label="장비모델">
       </label>
@@ -1899,6 +1900,7 @@ _PAGE_SHELL = """
                data-report-label="Range">
       </label>
     </div>
+    <datalist id="ftir-report-equipment-model-options"></datalist>
     <datalist id="ftir-report-type-options">
       <option value="ATR method">
       <option value="Transmission">
@@ -1988,7 +1990,7 @@ _PAGE_SHELL = """
     <header class="ftir-library-dialog-header">
       <div class="ftir-library-dialog-heading">
         <strong id="ftir-report-options-title">보고서 선택지 관리</strong>
-        <span>Type, Detector 등 입력 후보를 추가하거나 삭제합니다.</span>
+        <span>장비모델, Type, Detector 등 입력 후보를 추가·수정·삭제합니다. 현재 브라우저에 저장됩니다.</span>
       </div>
       <button type="button" class="ftir-library-dialog-close"
               id="ftir-report-options-close" aria-label="닫기">×</button>
@@ -2332,6 +2334,12 @@ _UPLOAD_SCRIPT = """
   var SESSION_KEY = "current";
   var REPORT_OPTION_STORAGE_KEY = "rist-ftir-report-condition-options-v1";
   var REPORT_OPTION_FIELDS = [
+    {
+      field: "equipmentModel",
+      label: "장비모델",
+      datalistId: "ftir-report-equipment-model-options",
+      defaults: []
+    },
     {
       field: "analysisType",
       label: "Type",

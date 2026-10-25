@@ -184,6 +184,11 @@ def test_ftir_workspace_contains_upload_and_editor_controls() -> None:
     assert "min-height: 0" in page
     assert 'data-report-field="equipmentModel"' in page
     assert 'data-report-label="장비모델"' in page
+    assert 'list="ftir-report-equipment-model-options"' in page
+    assert '<datalist id="ftir-report-equipment-model-options"></datalist>' in page
+    assert 'field: "equipmentModel"' in page
+    assert 'datalistId: "ftir-report-equipment-model-options"' in page
+    assert '장비모델, Type, Detector 등 입력 후보를 추가·수정·삭제' in page
     assert 'data-report-field="analysisType"' in page
     assert 'list="ftir-report-type-options"' in page
     assert '<input type="text" value="ATR method"' not in page
