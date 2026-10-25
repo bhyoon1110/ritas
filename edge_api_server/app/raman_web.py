@@ -5915,7 +5915,8 @@ _UPLOAD_SCRIPT = """
       await window.Plotly.newPlot(
         temp,
         figure.data || [],
-        Object.assign({}, figure.layout || {}, {width: width, height: height, autosize: false}),
+        Object.assign({}, gd._ristPlotSize ? gd._ristPlotSize.prepareExportLayout(figure.layout || {})
+          : figure.layout || {}, {width: width, height: height, autosize: false}),
         Object.assign({}, gd._context || {}, {responsive: false})
       );
       return await window.Plotly.toImage(temp, {

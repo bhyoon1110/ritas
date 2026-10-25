@@ -42,8 +42,31 @@ test('recipient HTML uses custom and additional preset ratios, not a narrow edit
     doc.getElementById('report-data').textContent=JSON.stringify(payload);
     const h=setup(t,false,doc.documentElement.outerHTML);await h.open();
     assert.equal(h.gd.layout.width,size.width);assert(Math.abs(h.gd.layout.height-expected)<1e-6);
+    assert.equal(h.gd.layout.margin.autoexpand,false);assert.equal(h.gd.layout.margin.r,24);
+    assert.equal(h.gd.layout.margin.b,70);
     await h.change('stack');assert(Math.abs(h.gd.layout.height-expected)<1e-6);
   }
+});
+test('sized HTML keeps legend inside without changing graph size, across resize and view modes',async t=>{
+  const source=new JSDOM(html),node=source.window.document.getElementById('report-data');
+  const payload=JSON.parse(node.textContent);
+  payload.figure.layout.meta.size={width:1000,ratio:'4:3'};
+  payload.figure.layout.legend={x:1.02,y:1,font:{size:28},orientation:'v'};
+  payload.figure.layout.margin={l:60,r:260,t:80,b:150,autoexpand:true};
+  node.textContent=JSON.stringify(payload);
+  const h=setup(t,false,source.serialize());source.window.close();
+  let width=374;Object.defineProperty(h.gd.parentNode,'clientWidth',{get:()=>width});
+  await h.open();
+  for(const viewport of [374,1300]) for(const mode of ['original','overlay','stack']) {
+    width=viewport;await h.change(mode);
+    assert.equal(h.gd.layout.margin.r,24);assert.equal(h.gd.layout.margin.b,70);
+    assert.equal(h.gd.layout.margin.autoexpand,false);assert.equal(h.gd.layout.legend.orientation,'v');
+    assert.equal(h.gd.layout.legend.font.size,28);
+    assert.equal(h.gd.layout.legend.x,0.02);assert.equal(h.gd.layout.legend.y,0.98);
+    assert.equal(h.gd.layout.width,viewport===374?374:1000);
+    assert.equal(h.gd.layout.height,viewport===374?420:750);
+  }
+  assert.deepEqual(h.published,payload.figure,'published snapshot remains untouched');
 });
 test('standalone graph HTML opens directly without slides, broken image or server calls',async t=>{
   const standalone=html.replace(/("slides":)\[[^\]]*\]/,'$1[]').replace('"graphOnly":false','"graphOnly":true');
@@ -141,8 +164,11 @@ test('legacy compact requests explicitly show a static fallback, no fabricated c
   const h=setup(t,true);await h.open();assert.equal(h.calls(),0);assert.equal(h.q('view-mode').disabled,true);
   assert.equal(h.q('graph-fallback').hidden,false);assert(h.q('graph-message').textContent.includes('이전 요청'));
 });
-test('mobile layout keeps a usable plot and places legend below it',async t=>{
-  const h=setup(t);
+test('automatic mobile layout keeps the existing legend-below placement',async t=>{
+  const source=new JSDOM(html),node=source.window.document.getElementById('report-data');
+  const payload=JSON.parse(node.textContent);payload.figure.layout.meta.size={width:null,ratio:'auto'};
+  node.textContent=JSON.stringify(payload);
+  const h=setup(t,false,source.serialize());source.window.close();
   Object.defineProperty(h.gd.parentNode,'clientWidth',{get:()=>374});
   await h.open();
   assert.equal(h.gd.layout.width,374);assert(h.gd.layout.height>=600);

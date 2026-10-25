@@ -66,6 +66,8 @@
     if (Object.prototype.hasOwnProperty.call(presets, size.ratio)) ratio = presets[size.ratio];
     if (size.ratio === "custom" && Number(size.width) >= 320 && Number(size.width) <= 2400
         && Number(size.height) >= 240 && Number(size.height) <= 2400) ratio = Number(size.width) / Number(size.height);
+    var sized = (Number(size.width) >= 320 && Number(size.width) <= 2400)
+      || Object.prototype.hasOwnProperty.call(presets, size.ratio);
     graph.style.maxWidth = requested + "px";
     graph.style.margin = "36px auto 0";
     graph.style.height = Math.max(240, width / ratio) + "px";
@@ -86,8 +88,22 @@
       layout.title.x = 0.02;
       layout.title.xanchor = "left";
       if (layout.title.text) layout.title.text = layout.title.text.replace(/, /g, ",<br>");
-      layout.height = Math.max(600, layout.height);
+      layout.height = Math.max(sized ? 420 : 600, layout.height);
       graph.style.height = layout.height + "px";
+    }
+    // Match the editor/export canvas: a sized graph must not lose space to
+    // desktop or mobile legend gutters, including older saved snapshots.
+    if (sized) {
+      layout.margin = layout.margin || {};
+      layout.margin.r = 24; layout.margin.b = 70; layout.margin.autoexpand = false;
+      layout.legend = clone(original.layout.legend || {});
+      layout.legend.orientation = "v";
+      layout.legend.xref = "paper"; layout.legend.yref = "paper";
+      var x = layout.legend.x, y = layout.legend.y;
+      if (!(typeof x === "number" && x >= 0 && x <= 1 && typeof y === "number" && y >= 0 && y <= 1)) {
+        layout.legend.x = 0.02; layout.legend.y = 0.98;
+        layout.legend.xanchor = "left"; layout.legend.yanchor = "top";
+      }
     }
   }
   function viewFigure() {

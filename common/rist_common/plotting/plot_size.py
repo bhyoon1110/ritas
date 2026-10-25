@@ -64,10 +64,10 @@ _HTML = r"""
     + "<div class='rist-plot-size-fields'>"
     + "<label class='rist-axis-control-field'><span>최대 폭 (px)</span><input type='number' min='320' max='2400' step='1' placeholder='자동 (화면 너비)' aria-label='그래프 최대 폭' data-plot-width></label>"
     + "<label class='rist-axis-control-field'><span>높이 (px)</span><input type='number' min='240' max='2400' step='1' placeholder='자동' aria-label='그래프 높이' data-plot-height></label>"
-    + "<label class='rist-axis-control-field'><span>전체 그래프 비율</span><select aria-label='그래프 비율' data-plot-ratio>"
+    + "<label class='rist-axis-control-field'><span>그래프 비율 (범례 제외)</span><select aria-label='그래프 비율' data-plot-ratio>"
     + "<option value='auto'>자동</option><option value='4:3'>4:3</option><option value='16:9'>16:9</option><option value='1:1'>1:1</option><option value='3:2'>3:2</option><option value='5:4'>5:4</option><option value='16:10'>16:10</option><option value='2:1'>2:1</option><option value='21:9'>21:9</option><option value='3:4'>3:4 (세로)</option><option value='2:3'>2:3 (세로)</option><option value='9:16'>9:16 (세로)</option><option value='custom'>직접 입력</option></select></label></div>"
     + "<label class='rist-plot-size-lock'><input type='checkbox' data-plot-size-lock>드래그할 때 비율 유지</label>"
-    + "<p class='rist-axis-control-help'>폭 320~2400px, 높이 240~2400px. 높이를 입력하면 직접 입력 비율로 전환됩니다. 오른쪽 아래 ↘ 크기를 드래그하거나 방향키로 조절할 수 있습니다. 비율은 축·범례를 포함한 전체 이미지 기준입니다. 좁은 화면에서는 가독성을 위한 최소 높이를 적용하며, 저장 이미지와 보고서는 설정 비율을 유지합니다. 긴 변은 최대 2400px입니다.</p>"
+    + "<p class='rist-axis-control-help'>폭 320~2400px, 높이 240~2400px. 높이를 입력하면 직접 입력 비율로 전환됩니다. 오른쪽 아래 ↘ 크기를 드래그하거나 방향키로 조절할 수 있습니다. 크기·비율은 범례 여백을 제외하고 축을 포함한 그래프 이미지 기준입니다. 범례는 그래프 안에 겹쳐 표시되며 위치를 옮길 수 있습니다. 범례 길이·글자 크기·표시 여부는 그래프 크기에 영향을 주지 않습니다. 좁은 화면에서는 가독성을 위한 최소 높이를 적용하며, 저장 이미지와 보고서는 설정 비율을 유지합니다. 긴 변은 최대 2400px입니다.</p>"
     + "<div class='rist-axis-control-actions'><button type='button' data-plot-size-reset>자동 크기</button><button type='button' data-plot-size-apply>크기 적용</button></div>"
     + "<p class='rist-plot-size-status' role='status' aria-live='polite'></p>";
   var body = panel.querySelector(".rist-axis-control-body");
@@ -90,8 +90,9 @@ _HTML = r"""
   var timer = 0;
   var busy = false;
 
-  function settings() {
-    var stored = gd.layout && gd.layout.meta && gd.layout.meta.ristPlotSize || {};
+  function settings(layout) {
+    layout = layout || gd.layout;
+    var stored = layout && layout.meta && layout.meta.ristPlotSize || {};
     var width = Number(stored.width);
     var value = {width: isFinite(width) && width >= 320 && width <= 2400 ? Math.round(width) : null,
       ratio: Object.prototype.hasOwnProperty.call(ratios, stored.ratio) ? stored.ratio : "auto"};
@@ -126,6 +127,45 @@ _HTML = r"""
       else gd.style.removeProperty(key);
     });
   }
+  // Size the graph canvas independently of the external legend gutter and
+  // Plotly's legend auto-margins. Keep labels/axes; float the legend inside the
+  // paper instead of allowing its text or row count to shrink the spectrum.
+  function legendIndependentLayout(updates, layout) {
+    var legend = layout.legend || {};
+    updates["margin.r"] = 24;
+    updates["margin.b"] = 70;
+    updates["margin.autoexpand"] = false;
+    updates["legend.orientation"] = "v";
+    updates["legend.xref"] = "paper";
+    updates["legend.yref"] = "paper";
+    function inside(value) { return typeof value === "number" && isFinite(value) && value >= 0 && value <= 1; }
+    var useProposed = inside(updates["legend.x"]) && inside(updates["legend.y"]);
+    var useCurrent = inside(legend.x) && inside(legend.y);
+    ["x", "y"].forEach(function(axis) {
+      var value = legend[axis], anchor = legend[axis + "anchor"];
+      // Responsive layout suggests outside positions; preserve a user's
+      // inside position unless a work template supplies another inside pair.
+      if (useProposed) {
+        value = updates["legend." + axis]; anchor = updates["legend." + axis + "anchor"];
+      } else if (!useCurrent) {
+        value = axis === "x" ? 0.02 : 0.98;
+        anchor = axis === "x" ? "left" : "top";
+      }
+      updates["legend." + axis] = value;
+      updates["legend." + axis + "anchor"] = anchor || (axis === "x" ? "left" : "top");
+    });
+    return updates;
+  }
+  function prepareExportLayout(layout) {
+    if (!active(settings(layout))) return layout;
+    var result = Object.assign({}, layout, {margin: Object.assign({}, layout.margin || {}),
+      legend: Object.assign({}, layout.legend || {})});
+    var patch = legendIndependentLayout({}, layout);
+    Object.keys(patch).forEach(function(key) {
+      var parts = key.split("."); result[parts[0]][parts[1]] = patch[key];
+    });
+    return result;
+  }
   function applyLayout(updates) {
     var value = settings();
     appliedSignature = signature();
@@ -135,6 +175,7 @@ _HTML = r"""
       // without an explicit size preference. Recompute it for this viewport.
       updates.width = null;
       updates.autosize = true;
+      updates["margin.autoexpand"] = true;
       if (applied) {
         restoreStyles();
         if (updates.height == null) updates.height = null;
@@ -157,6 +198,7 @@ _HTML = r"""
     updates.width = width;
     updates.height = height;
     updates.autosize = false;
+    legendIndependentLayout(updates, gd.layout || {});
     applied = true;
     return updates;
   }
@@ -347,7 +389,7 @@ _HTML = r"""
   window.addEventListener("keydown", function(ev) { if (drag && ev.key === "Escape") endDrag(ev, true); }, true);
   window.addEventListener("blur", function() { endDrag(null, true); });
   gd._ristPlotSize = {applyLayout: applyLayout, viewportWidth: viewportWidth,
-    exportDimensions: exportDimensions, preserve: preserve};
+    exportDimensions: exportDimensions, prepareExportLayout: prepareExportLayout, preserve: preserve};
   gd.on("plotly_afterplot", function() {
     if (!busy && signature() !== appliedSignature) schedule();
   });

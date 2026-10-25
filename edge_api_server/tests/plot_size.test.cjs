@@ -58,6 +58,12 @@ function setup(t, experiment, mode) {
   }
   w.eval(program('var axisLocksEnabled'));
   w.eval(program('var ratios ='));
+  // Synthetic DOM events have no browser-managed active pointer. Model its
+  // capture lifecycle explicitly, including the Chrome49 pointer polyfill.
+  const handle=gd.querySelector('.rist-plot-resize-handle'),captured=new Set();
+  handle.setPointerCapture=id=>captured.add(id);
+  handle.hasPointerCapture=id=>captured.has(id);
+  handle.releasePointerCapture=id=>captured.delete(id);
   // Real page-specific responsive layout and report capture, not a test reimplementation.
   const upload=scripts.find(s=>s.includes('function applyResponsiveLayout()'));
   const responsive=upload.match(/function applyResponsiveLayout\(\) \{[\s\S]*?gd\._ristApplyResponsiveLayout = applyResponsiveLayout;/)[0];
@@ -93,6 +99,9 @@ for(const mode of ['native','chrome49'])for(const experiment of ['ftir','raman']
       assert.equal(h.gd.style.minHeight,'0');assert(h.gd.classList.contains('rist-size-compact'));
       assert.deepEqual(clone(h.gd.data),raw);assert.deepEqual(clone(h.gd.layout.xaxis),x);assert.deepEqual(clone(h.gd.layout.yaxis),y);
       assert.equal(h.gd.layout.meta.unrelated,'keep');
+      assert.equal(h.gd.layout.margin.r,24);assert.equal(h.gd.layout.margin.b,70);
+      assert.equal(h.gd.layout.margin.autoexpand,false);
+      assert.equal(h.gd.layout.legend.x,0.02);assert.equal(h.gd.layout.legend.y,0.98);
       assert.deepEqual(clone(h.gd._ristPlotSize.exportDimensions({})),{width:1200,height});
     }
     assert.equal(h.captures(),3);
@@ -101,7 +110,8 @@ for(const mode of ['native','chrome49'])for(const experiment of ['ftir','raman']
     const h=setup(t,experiment,mode);await h.set('1200','16:9');
     await h.resize(340);
     assert.equal(h.gd.layout.width,340);assert.equal(h.gd.layout.height,420);
-    assert.equal(h.gd.layout.legend.orientation,'h');
+    assert.equal(h.gd.layout.legend.orientation,'v');
+    assert.equal(h.gd.layout.margin.b,70);assert.equal(h.gd.layout.margin.autoexpand,false);
     assert.deepEqual(clone(h.gd._ristPlotSize.exportDimensions({})),{width:1200,height:675});
     await h.resize(1800);assert.equal(h.gd.layout.width,1200);assert.equal(h.gd.layout.height,675);
     assert.equal(h.gd.layout.legend.orientation,'v');
@@ -113,6 +123,7 @@ for(const mode of ['native','chrome49'])for(const experiment of ['ftir','raman']
     await h.set('800','auto');assert.equal(h.gd.layout.width,800);assert(h.gd.layout.height>=420);
     h.q('[data-plot-size-reset]').click();await tick();
     assert.equal(h.gd.style.cssText,original);assert.equal(h.gd.layout.width,null);assert.equal(h.gd.layout.autosize,true);
+    assert.equal(h.gd.layout.margin.r,260);assert.equal(h.gd.layout.margin.autoexpand,true);
     assert(!h.gd.classList.contains('rist-size-compact'));
     const fallback={width:900,height:640};assert.equal(h.gd._ristPlotSize.exportDimensions(fallback),fallback);
   });
@@ -162,6 +173,38 @@ for(const mode of ['native','chrome49'])for(const experiment of ['ftir','raman']
     assert.equal(h.exports.length,2);assert.equal(h.exports[1].options.width,1200);assert.equal(h.exports[1].layout.height,675);
     for(const output of h.exports) assert.deepEqual(output.data[0].line,{width:3.5,dash:'dash',color:'#123456'});
     assert.deepEqual(clone(h.gd.layout),snapshot);
+  });
+  test(`${prefix}: legend text, font, visibility and inside position do not reserve canvas space`,async t=>{
+    const h=setup(t,experiment,mode);await h.set('960','4:3');
+    await h.w.Plotly.relayout(h.gd,{'legend.x':0.18,'legend.y':0.72,'legend.font.size':32});
+    h.gd.data[0].name='아주 긴 시료 이름 '.repeat(10);
+    for(const showlegend of [false,true]) {
+      await h.w.Plotly.relayout(h.gd,{showlegend});
+      for(const available of [340,1600]) {
+        await h.resize(available);
+        assert.equal(h.gd.layout.margin.r,24);assert.equal(h.gd.layout.margin.b,70);
+        assert.equal(h.gd.layout.margin.autoexpand,false);
+        assert.equal(h.gd.layout.legend.x,0.18);assert.equal(h.gd.layout.legend.y,0.72);
+        assert.deepEqual(clone(h.gd._ristPlotSize.exportDimensions({})),{width:960,height:720});
+      }
+    }
+    const patch=h.gd._ristPlotSize.applyLayout({'legend.x':0.85,'legend.y':0.65,'legend.xanchor':'right'});
+    assert.equal(patch['legend.x'],0.85);assert.equal(patch['legend.y'],0.65,'inside work-template pair survives');
+  });
+  test(`${prefix}: older sized report snapshots lose external legend gutters without mutation`,async t=>{
+    const h=setup(t,experiment,mode);await h.set('1200','16:9');
+    const layout=clone(h.gd.layout);
+    Object.assign(layout.margin,{r:260,b:150,autoexpand:true});
+    Object.assign(layout.legend,{x:1.02,y:1,xanchor:'left',yanchor:'top'});
+    const before=clone(layout);
+    await h.gd.testCapture({data:h.gd.data,layout});
+    const output=h.exports[0].layout;
+    assert.equal(output.width,1200);assert.equal(output.height,675);
+    assert.equal(output.margin.r,24);assert.equal(output.margin.b,70);assert.equal(output.margin.autoexpand,false);
+    assert.equal(output.legend.x,0.02);assert.equal(output.legend.y,0.98);
+    assert.deepEqual(layout,before);assert.deepEqual(output.xaxis,before.xaxis);assert.deepEqual(output.yaxis,before.yaxis);
+    const automatic={meta:{ristPlotSize:{ratio:'auto',width:null}},margin:{r:260}};
+    assert.equal(h.gd._ristPlotSize.prepareExportLayout(automatic),automatic);
   });
   test(`${prefix}: extra landscape/portrait presets, bounded exports and numeric height persist`,async t=>{
     const h=setup(t,experiment,mode);
