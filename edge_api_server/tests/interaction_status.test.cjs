@@ -27,6 +27,23 @@ function setup(t,mode){
   return {w,d,g,bar,graph,mock,refresh,rect,removed:()=>removed,code};
 }
 for(const mode of ['native','chrome49']){
+  test(mode+': status and Escape are restricted to graph editing even with a visible/stale canvas',async t=>{
+    const h=setup(t,mode);let exits=0;h.g._ristPeakEditMode='add';h.w.__ristActiveHistoryPlot=h.g;
+    h.g.addEventListener('rist-exclusive-interaction-start',()=>exits++);
+    for(const step of ['1','3','4']){
+      h.d.body.setAttribute('data-rist-spectrum-step',step);
+      assert.equal(h.w.getComputedStyle(h.bar).display,'none','CSS hides the portal synchronously');
+      await tick();assert.equal(h.bar.style.visibility,'hidden');
+      const escape=new h.w.KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true});h.d.dispatchEvent(escape);
+      assert(!escape.defaultPrevented);assert.equal(exits,0);assert.equal(h.g._ristPeakEditMode,'add');
+      h.w.dispatchEvent(new h.w.Event('resize'));h.w.dispatchEvent(new h.w.Event('scroll'));await h.refresh();
+      assert.equal(h.bar.style.visibility,'hidden','late Plotly/layout events must not revive status');
+    }
+    h.d.body.setAttribute('data-rist-spectrum-step','2');await tick();
+    assert.equal(h.w.getComputedStyle(h.bar).display,'flex');assert.equal(h.bar.style.visibility,'visible');
+    assert.equal(h.bar.dataset.mode,'peak-add');h.d.dispatchEvent(new h.w.KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));
+    assert.equal(exits,1);
+  });
   test(mode+': body portal is fixed, click-through and outside saved/exported graph DOM',async t=>{
     const h=setup(t,mode);await h.refresh();
     assert.equal(h.bar.parentElement,h.d.body);assert.equal(h.g.querySelector('.rist-interaction-status'),null);

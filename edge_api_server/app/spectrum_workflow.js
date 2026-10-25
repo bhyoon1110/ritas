@@ -210,6 +210,8 @@
       navButtons.forEach(function (b, i) { b.setAttribute("aria-current", i + 1 === step ? "step" : "false"); b.disabled = unavailable(); });
       document.body.classList.toggle("sw-report-stage", step >= 3);
       root.setAttribute("data-step", String(step));
+      // Body-level plot portals must not survive navigation into report editing.
+      document.body.setAttribute("data-rist-spectrum-step", String(step));
       help.textContent = step === 1 ? "RAW 파일과 실험조건을 입력하세요. 이전 단계로 돌아가도 저장한 그래프와 보고서는 유지됩니다."
         : step === 2 ? "피크·주석·축을 편집한 뒤 그래프를 저장하세요. 보고서에 넣을 저장본을 체크하고 ③ 단계로 이동하면 보고서가 자동 생성됩니다. 변경이 없으면 기존 보고서를 엽니다."
         : step === 3 ? "저장한 그래프를 PPT 페이지로 끌어 놓거나 ‘현재 페이지에 추가’를 누르세요. 기존 문구를 유지하며 이미지로 추가됩니다. 체크·순서 변경은 보고서 다시 생성 시 적용됩니다."

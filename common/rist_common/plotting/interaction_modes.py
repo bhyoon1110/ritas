@@ -23,6 +23,7 @@ _HTML = r"""
   color: #243b53; font: 12px Arial, "Noto Sans KR", sans-serif; white-space: nowrap; cursor: pointer;
   pointer-events: auto; min-height: 36px; }
 .rist-interaction-status button:disabled { opacity: .45; cursor: default; pointer-events: none; }
+body[data-rist-spectrum-step]:not([data-rist-spectrum-step="2"]) > .rist-interaction-status { display: none !important; }
 @media(max-width: 560px) { .rist-interaction-status { height: 76px; padding: 6px 8px; } }
 @media print { .rist-interaction-status { display: none !important; } }
 </style>
@@ -70,7 +71,14 @@ _HTML = r"""
       * Math.max(0,Math.min(a.bottom,b.bottom)-Math.max(a.top,b.top));
   }
   function canvasRect(plot) { return visibleRect(plot.querySelector(".svg-container") || plot); }
+  function editingStage() {
+    // The status is a body portal, not a descendant of the hidden editor.
+    // Standalone plot editors have no workflow attribute and retain their status.
+    var step = document.body.getAttribute("data-rist-spectrum-step");
+    return step === null || step === "2";
+  }
   function place() {
+    if (!editingStage() || !visibleRect(gd)) {setStyle("visibility","hidden");return;}
     var view = viewRect(), graph = canvasRect(gd), active = window.__ristActiveHistoryPlot;
     var other = active && active !== gd && document.documentElement.contains(active) ? canvasRect(active) : null;
     if (!graph || !area(graph,view) || (other && area(other,view))) {
@@ -147,6 +155,7 @@ _HTML = r"""
     document.dispatchEvent(new CustomEvent("rist-active-mode-plot"));
   }
   function ownsEscape(ev) {
+    if (!editingStage()) return false;
     if (ev.defaultPrevented || ev.isComposing || ev.keyCode === 229) return false;
     var target = ev.target;
     if (target && (target.isContentEditable || (target.closest && target.closest(
@@ -204,7 +213,7 @@ _HTML = r"""
         && !target.closest(".rist-interaction-status");
     })) schedule();
   });
-  observer.observe(document.body,{childList:true,subtree:true,attributes:true,attributeFilter:["style","class","hidden"]});
+  observer.observe(document.body,{childList:true,subtree:true,attributes:true,attributeFilter:["style","class","hidden","data-rist-spectrum-step"]});
   listen(window,"pagehide",function(ev) {if (!ev.persisted) destroy();});
   listen(window,"pageshow",schedule);
   refresh();

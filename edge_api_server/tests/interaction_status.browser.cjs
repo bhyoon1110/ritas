@@ -81,6 +81,12 @@ const overlaps=(a,b)=>Math.max(0,Math.min(a.x+a.width,b.x+b.width)-Math.max(a.x,
         const svg=await page.evaluate(async id=>decodeURIComponent(await Plotly.toImage(document.getElementById(id),{format:'svg',width:800,height:600})),id);
         assert(!svg.includes('현재 모드')&&!svg.includes('rist-interaction-status'),'badge excluded from image');
         await page.locator('#sw-step-1').click();await status.waitFor({state:'hidden'});
+        // Step 1 -> 3 opens an empty report-edit state without generating a job.
+        // Exercise the real workflow, not only hiding the plot's ancestor.
+        await page.locator('#sw-step-3').click();await status.waitFor({state:'hidden'});
+        assert.equal(await page.locator('body').getAttribute('data-rist-spectrum-step'),'3');
+        await page.evaluate(id=>{const g=document.getElementById(id);g._ristPeakEditMode='add';g._ristInteractionModes.refresh();window.dispatchEvent(new Event('resize'));window.dispatchEvent(new Event('scroll'));},id);
+        await page.waitForTimeout(150);assert(!await status.isVisible());
         await page.locator('#sw-step-2').click();await scrollGraph();await status.waitFor({state:'visible'});
         await page.evaluate(id=>{const spacer=document.createElement('div');spacer.style.height='2000px';document.body.appendChild(spacer);window.scrollTo(0,document.body.scrollHeight);},id);
         await status.waitFor({state:'hidden'});

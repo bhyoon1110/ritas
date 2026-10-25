@@ -222,6 +222,13 @@ for(const kind of ['ftir','raman'])test(kind+': preview uses shared action butto
   assert.equal(h.d.getElementById('spectrum-workflow').dataset.step,'2');assert.equal(h.stored.graphs.length,1);
 });
 test('shared workflow is ES5',()=>acorn.parse(source,{ecmaVersion:5}));
+for(const kind of ['ftir','raman'])test(kind+': body portals follow every workflow stage and reset',async t=>{
+  const h=setup(t,kind);await h.workflow.start();
+  const stage=()=>h.d.body.getAttribute('data-rist-spectrum-step');assert.equal(stage(),'1');
+  h.workflow.go(2);assert.equal(stage(),'2');await h.workflow.save(false);
+  await h.workflow.go(3);assert.equal(stage(),'3');h.workflow.go(4);assert.equal(stage(),'4');
+  h.workflow.go(2);assert.equal(stage(),'2');await h.workflow.reset();assert.equal(stage(),'1');
+});
 for(const kind of ['ftir','raman'])test(kind+': portable import appends, confirms replacement and leaves the existing collection intact',async t=>{
   const h=setup(t,kind);await h.workflow.start();h.workflow.go(2);await h.workflow.save(false);
   const first=structuredClone(h.stored.graphs[0]);

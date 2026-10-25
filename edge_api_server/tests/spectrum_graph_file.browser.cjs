@@ -96,7 +96,9 @@ async function collection(page,kind){return page.evaluate(kind=>new Promise((res
       await target.locator('#sw-next').click();
       await target.waitForFunction(()=>{const f=document.getElementById('sw-report-editor');return f.src.includes('/edit?workflow=1')&&!f.hidden;},null,{timeout:180000});
       const editor=target.frameLocator('#sw-report-editor');await editor.locator('#edit-page option').first().waitFor({state:'attached',timeout:120000});
+      assert(!await target.locator('.rist-interaction-status').isVisible(),'report editing must never show graph mode');
       await target.locator('#sw-step-4').click();await editor.locator('#download').waitFor({state:'visible'});
+      assert(!await target.locator('.rist-interaction-status').isVisible(),'report delivery must never show graph mode');
       const href=await editor.locator('#download').getAttribute('href'),response=await target.request.get(origin+href);
       assert.equal(response.status(),200);const zip=path.join(output,kind+'-imported-report.zip');fs.writeFileSync(zip,await response.body());
       const expectedRaw=path.join(output,kind+'-expected.'+ext);fs.writeFileSync(expectedRaw,raw);
