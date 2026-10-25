@@ -3641,6 +3641,7 @@ _UPLOAD_SCRIPT = """
           return {state:state, report:report};
         } finally { setBusy(false); }
       },
+      checkpoint: currentWorkspaceState,
       restore: function(state) {
         // IndexedDB snapshots carry File/Blob objects; clone only mutable plot/analysis data.
         var restored = Object.assign({}, state, {
@@ -3649,7 +3650,9 @@ _UPLOAD_SCRIPT = """
         });
         setBusy(true);
         return restoreWorkspace(restored).then(function() {
-          workTemplate.restore(state.workTemplate); renderLibraries();
+          if (state.portableImport) clearReportTransferForm();
+          if (state.workTemplate) workTemplate.restore(state.workTemplate); else workTemplate.clear();
+          renderLibraries();
           return Promise.resolve(gd._ristStackReady);
         }).finally(function() { setBusy(false); });
       },
@@ -6084,6 +6087,7 @@ _UPLOAD_SCRIPT = """
   }
 
   function addFiles(list) {
+    if (workflow && Array.prototype.some.call(list || [], function(file) { return /[.]ristgraph$/i.test(file.name || ""); })) return workflow.importFiles(list);
     if (workTemplate && workTemplate.isBusy()) { setMessage("현재 처리가 끝난 후 RAW를 추가하세요."); return; }
     var next = files.slice();
     var seen = {};

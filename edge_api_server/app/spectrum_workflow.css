@@ -23,6 +23,7 @@
 .sw-card img{display:block;width:100%;height:110px;object-fit:contain;background:#f7fafc;margin:8px 0}
 .sw-card img[draggable=true]{cursor:grab;outline:1px dashed #8eaebf;outline-offset:2px}
 .sw-card .sw-controls{gap:5px;margin-bottom:0}.sw-card button{font-size:12px;padding:5px 8px;min-height:32px}
+.sw-card-management{display:flex;flex-wrap:nowrap;gap:5px;flex-basis:100%}
 .sw-empty{padding:18px;background:#f3f7fa;border:1px dashed #bbccd7;border-radius:8px}
 .sw-report-frame{width:100%;height:calc(100vh - 240px);min-height:650px;border:1px solid #c8d6df;background:#f3f6fa}
 .sw-preview{position:fixed;inset:0;background:rgba(20,40,55,.7);z-index:50000;display:flex;align-items:center;justify-content:center;padding:20px;box-sizing:border-box}

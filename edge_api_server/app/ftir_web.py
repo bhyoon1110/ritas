@@ -2795,6 +2795,10 @@ _UPLOAD_SCRIPT = """
       reportTransfer: reportTransferFormState(),
       originStyle: originStyleEnabled(),
       signalMode: gd._ristFtirSignalMode || "absorbance",
+      signalOriginals: gd._ristFtirSignalMode === "transmittance" ? JSON.parse(JSON.stringify({
+        annotations: gd._ristLegendPreview ? gd._ristLegendPreview.originalAnnotations : (gd._ristFtirUnitOriginalAnnotations || []),
+        shapes: gd._ristLegendPreview ? gd._ristLegendPreview.originalShapes : (gd._ristFtirUnitOriginalShapes || [])
+      })) : null,
       sensitivity: currentPeakSensitivity(),
       statusText: status.textContent || "",
       analysisPayload: latestAnalysisPayload,
@@ -2847,10 +2851,17 @@ _UPLOAD_SCRIPT = """
       renderFiles();
       status.textContent = state.statusText || status.textContent;
       if (state.plotData && state.plotLayout) {
+        // Transmittance hides annotations/shapes. Seed the absorbance originals
+        // before data-replaced rebuilds stack/peak references, then hide via the unit toggle.
+        var restoredLayout = Object.assign({}, state.plotLayout);
+        if (state.signalMode === "transmittance" && state.signalOriginals) {
+          restoredLayout.annotations = JSON.parse(JSON.stringify(state.signalOriginals.annotations || []));
+          restoredLayout.shapes = JSON.parse(JSON.stringify(state.signalOriginals.shapes || []));
+        }
         return window.Plotly.react(
           gd,
           state.plotData,
-          withOriginStyle(state.plotLayout),
+          withOriginStyle(restoredLayout),
           gd._context
         ).then(function() {
           dispatchDataReplaced(currentPeakSensitivity());
@@ -2947,6 +2958,7 @@ _UPLOAD_SCRIPT = """
           return {state:state, report:report};
         } finally { setBusy(false); }
       },
+      checkpoint: currentWorkspaceState,
       restore: function(state) {
         // IndexedDB snapshots carry File/Blob objects; clone only mutable plot/analysis data.
         var restored = Object.assign({}, state, {
@@ -2955,7 +2967,9 @@ _UPLOAD_SCRIPT = """
         });
         setBusy(true);
         return restoreWorkspace(restored).then(function() {
-          workTemplate.restore(state.workTemplate); renderLibraries();
+          if (state.portableImport) clearReportTransferForm();
+          if (state.workTemplate) workTemplate.restore(state.workTemplate); else workTemplate.clear();
+          renderLibraries();
           return Promise.resolve(gd._ristStackReady);
         }).finally(function() { setBusy(false); });
       },
@@ -4899,6 +4913,7 @@ _UPLOAD_SCRIPT = """
   }
 
   function addFiles(incoming) {
+    if (workflow && Array.prototype.some.call(incoming || [], function(file) { return /[.]ristgraph$/i.test(file.name || ""); })) return workflow.importFiles(incoming);
     if (workTemplate && workTemplate.isBusy()) { setMessage("현재 처리가 끝난 후 RAW를 추가하세요."); return; }
     setMessage("");
     var previousFiles = files.slice();

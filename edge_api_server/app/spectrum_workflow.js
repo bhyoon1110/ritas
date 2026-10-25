@@ -38,6 +38,12 @@
     chooser.onkeydown = function (event) {
       if (event.keyCode === 13 || event.keyCode === 32) { event.preventDefault(); if (!unavailable()) input.click(); }
     };
+    var importInput = node("input", root); importInput.type = "file"; importInput.accept = ".ristgraph";
+    importInput.id = "sw-graph-file-input"; importInput.hidden = true;
+    var importRow = node("div", upload); importRow.className = "sw-controls sw-import";
+    var importUpload = button(importRow, "편집 그래프 불러오기 (RAW 포함)", chooseGraphFile, "sw-import-graph");
+    node("p", upload, ".ristgraph 파일은 원본 RAW와 피크·라벨·축·스타일 편집을 함께 복원합니다. 표시 설정만 옮기는 작업 템플릿과는 다릅니다.").className = "sw-help";
+    importInput.onchange = function () { var selected = this.files; importFiles(selected); this.value = ""; };
     var controls = node("div", root); controls.className = "sw-controls";
     var name = node("input", controls); name.type = "text"; name.maxLength = 100;
     name.id = "sw-graph-name"; name.placeholder = "저장할 그래프 이름"; name.setAttribute("aria-label", "그래프 이름");
@@ -60,6 +66,9 @@
     var library = node("section", root); library.id = "sw-library";
     var title = node("h3", library, "저장한 그래프 · 보고서 포함 순서");
     title.style.margin = "10px 0 0";
+    var libraryControls = node("div", library); libraryControls.className = "sw-controls";
+    var importLibrary = button(libraryControls, "그래프 파일 불러오기", chooseGraphFile, "sw-import-graph-library");
+    node("span", libraryControls, "파일 내보내기: 저장 시점의 편집 상태 + 원본 RAW").className = "sw-help";
     var list = node("div", library); list.className = "sw-list"; list.id = "sw-graph-list";
     var frame = node("iframe", root); frame.className = "sw-report-frame"; frame.id = "sw-report-editor";
     frame.title = "보고서 미리보기·편집 및 저장·전송"; frame.hidden = true;
@@ -162,6 +171,8 @@
       retryEditor.hidden = step < 3 || !editorProblem || !job; retryEditor.disabled = locked;
       availability(navButtons[3], deliveryReason);
       clear.disabled = locked || childBusy;
+      importUpload.disabled = importLibrary.disabled = importInput.disabled = locked || graphs.length >= 6;
+      importUpload.title = importLibrary.title = graphs.length >= 6 ? "저장 그래프는 6개까지입니다. 불필요한 저장본을 먼저 정리하세요." : "원본 RAW가 포함된 .ristgraph 파일을 저장 목록에 추가합니다.";
       selectionCount.hidden = step === 1 || step === 4;
       selectionCount.textContent = "보고서 포함 " + count + "개 / 저장 " + graphs.length + "개";
       guide.setAttribute("data-state", waiting ? "waiting" : "ready");
@@ -240,14 +251,16 @@
         });
         button(row, "미리보기", function () { preview(g); });
         button(row, "다시 편집", function () { edit(g); });
-        button(row, "↑", function () { move(index, -1); }).setAttribute("aria-label", g.title + " 앞 순서로");
-        button(row, "↓", function () { move(index, 1); }).setAttribute("aria-label", g.title + " 뒤 순서로");
-        button(row, "삭제", function () {
+        button(row, "파일 내보내기", function () { exportGraph(g); }).title = "저장 시점의 편집 상태와 원본 RAW를 .ristgraph 파일로 저장";
+        var management = node("div", row); management.className = "sw-card-management";
+        button(management, "↑", function () { move(index, -1); }).setAttribute("aria-label", g.title + " 앞 순서로");
+        button(management, "↓", function () { move(index, 1); }).setAttribute("aria-label", g.title + " 뒤 순서로");
+        button(management, "삭제", function () {
           if (unavailable() || !window.confirm("‘" + g.title + "’ 저장본을 목록에서 삭제할까요? 원본 파일과 이미 생성한 보고서는 삭제하지 않습니다.")) return;
           graphs = graphs.filter(function (entry) { return entry !== g; }); if (active === g.id) active = null;
           changed();
         });
-        Array.prototype.forEach.call(row.children, function (b) { b.disabled = unavailable(); });
+        Array.prototype.forEach.call(row.querySelectorAll("button"), function (b) { b.disabled = unavailable(); });
       });
       editorStage();
     }
@@ -292,14 +305,59 @@
       var actions = node("div", box); actions.className = "sw-controls sw-preview-actions";
       var close = button(actions, "닫기", function () { modal.remove(); }); close.focus();
       button(actions, "그래프 다시 편집", function () { modal.remove(); edit(g); }).className = "sw-primary";
+      button(actions, "파일 내보내기", function () { exportGraph(g); });
+    }
+    function chooseGraphFile() { if (!unavailable() && graphs.length < 6) importInput.click(); }
+    function exportGraph(g) {
+      if (unavailable()) return Promise.resolve();
+      busy = true; operation = "편집 그래프와 원본 RAW를 파일로 준비하는 중입니다."; render(); tell(operation);
+      return window.RistSpectrumGraphFile.write(g,kind,function (message) { tell(message); }).then(function (blob) {
+        var url = URL.createObjectURL(blob), link = node("a",document.body);
+        link.href = url; link.download = kind + "-" + g.title.replace(/[\\/:*?"<>|\x00-\x1f]/g,"_").slice(0,80) + ".ristgraph";
+        link.click(); link.remove(); window.setTimeout(function () { URL.revokeObjectURL(url); },30000);
+        tell("그래프 파일 다운로드를 시작했습니다. 원본 RAW와 저장 시점의 편집 상태가 포함됩니다. 현재 화면의 미저장 수정은 먼저 그래프를 덮어쓴 뒤 내보내세요.");
+      }).catch(function (error) { tell(error.message || "그래프 파일을 내보내지 못했습니다.",true); })
+        .then(function () { busy = false; operation = ""; render(); });
+    }
+    function importFiles(incoming) {
+      if (unavailable()) return Promise.resolve();
+      if (!incoming || incoming.length !== 1 || !/\.ristgraph$/i.test(incoming[0].name || "")) {
+        tell(".ristgraph 파일을 한 개씩 불러오세요. RAW 파일과 섞어서 업로드할 수 없습니다.",true); return Promise.resolve();
+      }
+      if (graphs.length >= 6) { tell("저장 그래프는 6개까지입니다. 불필요한 저장본을 먼저 정리하세요.",true); return Promise.resolve(); }
+      var loaded = null;
+      busy = true; operation = "그래프 파일과 원본 RAW를 검사하는 중입니다."; render(); tell(operation);
+      return window.RistSpectrumGraphFile.load(incoming[0],kind,function (message) { tell(message); }).then(function (value) {
+        var entry = {id:"g-"+Date.now()+"-"+Math.random().toString(36).slice(2,8),title:value.title,included:true,state:value.state,report:value.report};
+        var previousGraphs = graphs, previousStale = stale;
+        graphs = graphs.concat([entry]); stale = !!job;
+        return persist().then(function () {
+          loaded = entry; step = 2;
+          tell("그래프 파일을 저장 목록에 추가했습니다. 원본 RAW도 복원되었습니다. 라이브러리 자동 적용·의뢰/전송 연결은 새로 확인하세요.");
+        },function () {
+          graphs = previousGraphs; stale = previousStale;
+          throw new Error("브라우저 저장 공간 부족 또는 저장 차단으로 불러오지 못했습니다. 기존 작업은 유지됩니다.");
+        });
+      }).catch(function (error) { tell(error.message || "그래프 파일을 불러오지 못했습니다.",true); })
+        .then(function () {
+          busy = false; operation = ""; render();
+          if (loaded) { persistSoon(); api.resize(); return edit(loaded); }
+        });
     }
     function edit(g) {
       if (unavailable()) return;
       if (api.hasGraph() && !window.confirm("현재 편집 화면을 ‘" + g.title + "’ 저장본으로 바꿀까요? 저장하지 않은 현재 그래프 수정은 되돌릴 수 없습니다.")) return;
+      var previousState = api.checkpoint ? api.checkpoint() : null;
       busy = true; operation = "저장한 그래프 편집 상태를 불러오는 중입니다."; render(); tell(operation);
-      api.restore(g.state).then(function () {
-        active = g.id; name.value = g.title; step = 2; api.saveWorkspace(); persistSoon(); tell("저장본을 불러왔습니다. 추가 편집 후 덮어쓰거나 새 그래프로 저장하세요.");
-      }).catch(function (error) { tell(error.message || "그래프를 복원하지 못했습니다.", true); })
+      return api.restore(g.state).then(function () {
+        active = g.id; name.value = g.title; step = 2; api.saveWorkspace(); persistSoon();
+        tell("저장본을 불러왔습니다. 추가 편집 후 덮어쓰거나 새 그래프로 저장하세요." + (g.state.portableImport ? " 의뢰/전송 정보와 사용할 피크 라이브러리는 다시 선택하세요. 기존 피크 배정 이름은 유지됩니다." : ""));
+      }).catch(function (error) {
+        if (!previousState) { tell(error.message || "그래프를 복원하지 못했습니다.",true); return; }
+        return api.restore(previousState).then(function () {
+          api.saveWorkspace(); tell((error.message || "그래프를 복원하지 못했습니다.") + " 이전 편집 화면을 복구했습니다.",true);
+        },function () { tell("그래프 복원에 실패했습니다. 저장 목록과 원본은 유지됩니다. 새로고침 후 다시 시도하세요.",true); });
+      })
         .then(function () { busy = false; operation = ""; render(); api.resize(); });
     }
     function saveGraph(asCopy) {
@@ -409,7 +467,7 @@
       },
       setBusy:function (value) { externalBusy = !!value; if (ready) render(); },
       dataLoaded:function () { active = null; name.value = ""; if (ready) { step = 2; render(); persistSoon(); api.resize(); } },
-      go:go, save:saveGraph, reset:reset
+      go:go, save:saveGraph, reset:reset, importFiles:importFiles
     };
   }
   window.RistSpectrumWorkflow = {install:install, imageFile:function (url) {

@@ -213,8 +213,8 @@ for(const kind of ['ftir','raman'])test(kind+': preview uses shared action butto
   const open=()=>h.d.querySelector('.sw-card .sw-controls button').click();open();
   const dialog=h.d.querySelector('.sw-preview'),actions=dialog.querySelector('.sw-controls.sw-preview-actions');
   assert.equal(dialog.parentNode,h.d.body);
-  assert.deepEqual(Array.from(actions.children,b=>b.textContent),['닫기','그래프 다시 편집']);
-  assert.equal(actions.lastChild.className,'sw-primary');assert.equal(h.d.activeElement,actions.firstChild);
+  assert.deepEqual(Array.from(actions.children,b=>b.textContent),['닫기','그래프 다시 편집','파일 내보내기']);
+  assert.equal(actions.children[1].className,'sw-primary');assert.equal(h.d.activeElement,actions.firstChild);
   actions.firstChild.click();assert.equal(h.d.querySelector('.sw-preview'),null);assert.equal(h.restored,null);
   assert.equal(h.d.querySelectorAll('.sw-card').length,1);
   open();h.d.querySelector('.sw-preview .sw-primary').click();await tick();await tick();
@@ -222,6 +222,51 @@ for(const kind of ['ftir','raman'])test(kind+': preview uses shared action butto
   assert.equal(h.d.getElementById('spectrum-workflow').dataset.step,'2');assert.equal(h.stored.graphs.length,1);
 });
 test('shared workflow is ES5',()=>acorn.parse(source,{ecmaVersion:5}));
+for(const kind of ['ftir','raman'])test(kind+': portable import appends, confirms replacement and leaves the existing collection intact',async t=>{
+  const h=setup(t,kind);await h.workflow.start();h.workflow.go(2);await h.workflow.save(false);
+  const first=structuredClone(h.stored.graphs[0]);
+  h.w.RistSpectrumGraphFile={load:async()=>({title:'Imported',state:{plotData:[{name:'imported'}],portableImport:true},report:{image:'data:image/png;base64,AA=='}})};
+  h.w.confirm=()=>false;await h.workflow.importFiles([{name:'copy.ristgraph'}]);await tick();
+  assert.equal(h.stored.graphs.length,2);assert.deepEqual(h.stored.graphs[0],first);assert.equal(h.restored,null);
+  h.w.confirm=()=>true;await h.workflow.importFiles([{name:'copy.ristgraph'}]);await tick();
+  assert.equal(h.stored.graphs.length,3);assert.equal(h.restored.plotData[0].name,'imported');
+  assert.equal(new Set(h.stored.graphs.map(g=>g.id)).size,3);assert.equal(h.stored.active,h.stored.graphs[2].id);
+  assert.match(h.d.querySelector('.sw-status').textContent,/라이브러리.*다시 선택/);
+});
+test('portable import validates before mutation, rolls back quota failure, limits count and blocks concurrent operations',async t=>{
+  const h=setup(t);await h.workflow.start();h.workflow.go(2);await h.workflow.save(false);
+  const initial=structuredClone(h.stored);let loads=0,release;
+  h.w.RistSpectrumGraphFile={load:()=>{loads++;return new Promise(resolve=>release=resolve);}};
+  await h.workflow.importFiles([{name:'a.dpt'},{name:'a.ristgraph'}]);assert.equal(loads,0);
+  const importing=h.workflow.importFiles([{name:'a.ristgraph'}]);
+  await h.workflow.importFiles([{name:'a.ristgraph'}]);await h.workflow.save(true);assert.equal(loads,1);
+  h.fail(true);release({title:'x',state:{},report:{}});await importing;
+  assert.deepEqual(h.stored,initial);assert.equal(h.restored,null);assert.match(h.d.querySelector('.sw-status').textContent,/저장 공간/);
+  h.fail(false);h.w.RistSpectrumGraphFile.load=async()=>{throw Error('wrong experiment');};
+  await h.workflow.importFiles([{name:'a.ristgraph'}]);assert.deepEqual(h.stored,initial);assert.equal(h.restored,null);
+  for(let i=0;i<5;i++)await h.workflow.save(true);
+  assert(h.d.getElementById('sw-import-graph-library').disabled);
+  await h.workflow.importFiles([{name:'a.ristgraph'}]);assert.match(h.d.querySelector('.sw-status').textContent,/6개/);
+});
+test('failed imported Plotly restore recovers previous editing state without losing saved entries',async t=>{
+  const h=setup(t);await h.workflow.start();h.workflow.go(2);await h.workflow.save(false);
+  const previous={plotData:[{name:'unsaved original'}]},calls=[];
+  h.api.checkpoint=()=>previous;h.api.restore=async state=>{calls.push(state);if(state.portableImport)throw Error('render failed');};
+  h.w.RistSpectrumGraphFile={load:async()=>({title:'New',state:{portableImport:true},report:{image:'data:image/png;base64,AA=='}})};
+  await h.workflow.importFiles([{name:'a.ristgraph'}]);await tick();
+  assert.equal(calls.length,2);assert.equal(calls[1],previous);assert.equal(h.stored.graphs.length,2);
+  assert.equal(h.stored.active,h.stored.graphs[0].id);assert.match(h.d.querySelector('.sw-status').textContent,/이전 편집 화면을 복구/);
+});
+test('export downloads the saved snapshot, never recaptures unsaved current edits',async t=>{
+  const h=setup(t);await h.workflow.start();h.workflow.go(2);await h.workflow.save(false);
+  let exported,download;h.api.capture=()=>{throw Error('must not capture');};
+  h.w.RistSpectrumGraphFile={write:async(g,kind)=>{exported=structuredClone(g);assert.equal(kind,'ftir');return new h.w.Blob(['file']);}};
+  h.w.URL.createObjectURL=()=> 'blob:test';h.w.URL.revokeObjectURL=()=>{};
+  h.w.HTMLAnchorElement.prototype.click=function(){download=this.download;};
+  Array.from(h.d.querySelectorAll('.sw-card button')).find(b=>b.textContent==='파일 내보내기').click();await tick();await tick();
+  assert.deepEqual(exported,h.stored.graphs[0]);assert.match(download,/^ftir-.*\.ristgraph$/);
+  assert.match(h.d.querySelector('.sw-status').textContent,/미저장 수정/);assert(!h.d.getElementById('sw-save-graph').disabled);
+});
 test('Raman PNG upload decodes bounded blocks and rejects empty or oversized images',async t=>{
   const h=setup(t),sizes=[],decode=h.w.atob.bind(h.w);
   h.w.atob=value=>{sizes.push(value.length);return decode(value);};
