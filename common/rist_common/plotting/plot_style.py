@@ -5218,7 +5218,7 @@ def peak_editor_js(div_id: str) -> str:
     ) || (pt.coordinateInput ? manualPeakAssignmentAt(pt.x) : null);
     var name = assignment ? assignment.name : (pt.coordinateInput ? xText + " peak" : peakName(pt.x));
     if (pt.recommendation) {{
-      name = String(pt.recommendation.name || "추천 피크");
+      name = String(pt.recommendation.name == null ? "추천 피크" : pt.recommendation.name);
       assignment = null;
     }}
     var group = "user-peak-" + Date.now() + "-" + Math.floor(Math.random() * 10000)
@@ -5277,7 +5277,9 @@ def peak_editor_js(div_id: str) -> str:
     if (pt.recommendation) {{
       tr.meta.rist_peak.recommendation = {{
         source: "local-llm", material: pt.recommendation.material,
-        reason: pt.recommendation.reason, review_required: true
+        reason: pt.recommendation.reason, review_required: true,
+        suggested_name: pt.recommendation.originalName == null ? name : String(pt.recommendation.originalName),
+        label_edited: pt.recommendation.originalName != null && String(pt.recommendation.originalName) !== name
       }};
       tr.hovertemplate = "<b>%{{x:.2f}}</b><br>" + esc(name)
         + "<br>LLM 추천 · 검토 필요<br>" + esc(pt.recommendation.reason)

@@ -49,6 +49,17 @@
       return (manual || detected) && Math.abs(Number(p.x)-candidate.x)<=tolerance(trace,candidate.id);
     });
   }
+  function reviewItems(pool, peaks) {
+    var seen={};
+    return peaks.slice(0,12).map(function(p) {
+      if(!p || typeof p.name!=='string') return null;
+      var candidate=pool.filter(function(c){return c.id===p.id;})[0];
+      if(!candidate || seen[p.id]) return null;
+      seen[p.id]=true;
+      return {candidate:candidate,name:p.name.slice(0,120),originalName:p.name.slice(0,120),
+        reason:String(p.reason || '').slice(0,500),selected:true,applied:false};
+    }).filter(Boolean);
+  }
   function install(api) {
     var gd=api.gd, kind=api.kind, row=gd.querySelector('.rist-plot-control-row');
     if (!row || gd._ristPeakRecommendationsInstalled || !gd._ristPeakCoordinates) return;
@@ -57,25 +68,71 @@
     button.textContent='LLM 피크 추천';button.title='물질 힌트로 실제 측정 피크를 추천받아 추가';row.appendChild(button);
     var overlay=document.createElement('div');overlay.className='rist-peak-recommend-overlay';
     overlay.innerHTML='<form class="rist-peak-recommend-dialog" role="dialog" aria-modal="true" aria-label="LLM 피크 추천">'
-      + '<h3>LLM 피크 추천</h3><label>Raw 시료<select aria-label="추천 대상 시료"></select></label>'
+      + '<h3>LLM 피크 추천</h3><div class="rist-peak-recommend-body"><label>Raw 시료<select aria-label="추천 대상 시료"></select></label>'
       + '<label>물질·조성 힌트<textarea aria-label="물질 힌트" maxlength="1000" rows="3" placeholder="예: 탄소 코팅 LFP, D/G 밴드 확인 또는 PVDF 바인더의 주요 결합"></textarea></label>'
-      + '<p>현재 피크 민감도와 무관하게 실제 스펙트럼의 주요 극대점(FTIR: 흡광도)을 검토합니다. 추천 피크만 추가하며 기존 피크·이름은 유지합니다. 같은 시료의 중복 위치는 건너뜁니다.</p>'
-      + '<p>한 번에 최대 12개를 추가하며, 민감도를 0으로 내려도 유지됩니다. 실행취소로 이번 추천 전체를 되돌릴 수 있습니다. FTIR 투과도 화면은 추천 적용 시 흡광도로 전환됩니다.</p>'
+      + '<p>① 추천받기 → ② 목록에서 체크·이름 수정 → ③ 선택한 피크 추가. 추가 버튼을 누르기 전에는 그래프가 바뀌지 않습니다.</p>'
+      + '<p>최대 12개의 실측 피크를 추천합니다. 추가한 피크는 민감도 0에서도 유지하며 실행취소로 되돌릴 수 있습니다. FTIR 투과도 화면은 추가할 때 흡광도로 전환됩니다.</p>'
       + '<p class="rist-peak-recommend-warning">LLM 추천은 검토용 후보이며 물질 확정 결과가 아닙니다. 표준 스펙트럼·문헌과 대조하세요.</p>'
-      + '<p role="status" aria-live="polite"></p><ul class="rist-peak-recommend-results"></ul>'
-      + '<div class="rist-peak-recommend-actions"><button type="button">닫기 (Esc)</button><button type="submit">추천받아 추가</button></div></form>';
+      + '<div class="rist-peak-recommend-request"><button type="submit">피크 추천받기</button></div>'
+      + '<p role="status" aria-live="polite"></p><section class="rist-peak-recommend-review" hidden>'
+      + '<h4>추천 피크 목록</h4><p>추가할 피크를 체크하고 이름을 수정하세요. 이름을 비우면 위치만 표시합니다. 위치·강도는 실측값으로 고정되며 중복 피크는 기존 이름을 유지합니다.</p>'
+      + '<p class="rist-peak-recommend-summary" aria-live="polite"></p><ul class="rist-peak-recommend-results"></ul></section></div>'
+      + '<div class="rist-peak-recommend-actions"><button type="button" class="rist-peak-recommend-close">닫기 (Esc)</button><button type="button" class="rist-peak-recommend-apply" disabled>선택한 피크 추가</button></div></form>';
     document.body.appendChild(overlay);
     var form=overlay.querySelector('form'), sample=overlay.querySelector('select'), hint=overlay.querySelector('textarea');
-    var status=overlay.querySelector('[role=status]'), results=overlay.querySelector('ul'), closeButton=overlay.querySelector('button[type=button]');
+    var status=overlay.querySelector('[role=status]'), results=overlay.querySelector('ul'), closeButton=overlay.querySelector('.rist-peak-recommend-close');
+    var review=overlay.querySelector('.rist-peak-recommend-review'), summary=overlay.querySelector('.rist-peak-recommend-summary');
+    var applyButton=overlay.querySelector('.rist-peak-recommend-apply'), draft=null;
     var submit=overlay.querySelector('button[type=submit]'), xhr=null, sequence=0, generation=0, busy=false, applying=false, previous=null;
     function currentParent() {
       var t=sample.value==='' ? null : (gd.data || [])[Number(sample.value)];
       return t && t.meta && t.meta.rist_sample_parent && t.visible!==false && t.visible!=='legendonly' ? t : null;
     }
-    function update() { submit.disabled=busy || button.disabled || !hint.value.trim() || !currentParent(); sample.disabled=hint.disabled=busy; closeButton.disabled=applying; }
+    function validDraft() { return draft && draft.revision===generation && currentParent()===draft.trace && draft.material===hint.value.trim()
+      && document.body.getAttribute('data-rist-spectrum-step')==='2'; }
+    function update() {
+      submit.disabled=busy || button.disabled || !hint.value.trim() || !currentParent();
+      sample.disabled=hint.disabled=busy;closeButton.disabled=applying;
+      var selected=0, duplicates=0;
+      if(draft) draft.items.forEach(function(item) {
+        item.duplicate=duplicate(gd.data,draft.trace,item.candidate,Number(gd._ristPeakSensitivityValue));
+        if(item.applied || item.duplicate) item.selected=false;
+        if(item.duplicate && !item.applied) duplicates++;
+        if(item.selected) selected++;
+        if(item.checkbox) {
+          item.checkbox.checked=item.selected;
+          item.checkbox.disabled=busy || item.applied || item.duplicate;
+          item.input.disabled=busy || item.applied || item.duplicate;
+          item.state.textContent=item.applied ? '추가 완료' : item.duplicate ? '기존 피크 유지' : '추가 가능';
+        }
+      });
+      summary.textContent=draft ? '추천 '+draft.items.length+'개 · 선택 '+selected+'개 · 기존 중복 '+duplicates+'개' : '';
+      applyButton.disabled=busy || button.disabled || !validDraft() || !selected;
+    }
+    function clearDraft() { draft=null;results.textContent='';review.hidden=true;summary.textContent=''; }
+    function renderReview() {
+      results.textContent='';review.hidden=!draft || !draft.items.length;
+      if(draft) draft.items.forEach(function(item,index) {
+        var li=document.createElement('li'), choice=document.createElement('label');choice.className='rist-peak-recommend-choice';
+        var check=document.createElement('input');check.type='checkbox';check.setAttribute('aria-label','추천 피크 '+(index+1)+' 선택');
+        choice.appendChild(check);choice.appendChild(document.createTextNode('추천 피크 '+(index+1)));li.appendChild(choice);
+        var state=document.createElement('span');state.className='rist-peak-recommend-state';li.appendChild(state);
+        var position=document.createElement('p');position.className='rist-peak-recommend-position';
+        position.textContent='위치: '+item.candidate.x+' cm⁻¹ · 강도: '+Number(item.candidate.intensity.toPrecision(7))+' (스택 이동 제외)';li.appendChild(position);
+        var label=document.createElement('label');label.className='rist-peak-recommend-name';label.appendChild(document.createTextNode('피크명'));
+        var input=document.createElement('input');input.type='text';input.maxLength=120;input.value=item.name;
+        input.setAttribute('aria-label','추천 피크 '+(index+1)+' 이름');label.appendChild(input);li.appendChild(label);
+        var reason=document.createElement('p');reason.className='rist-peak-recommend-reason';reason.textContent='LLM 근거: '+(item.reason || '별도 근거 없음 · 검토 필요');li.appendChild(reason);
+        item.checkbox=check;item.input=input;item.state=state;
+        check.addEventListener('change',function(){item.selected=check.checked;update();});
+        input.addEventListener('input',function(){item.name=input.value.slice(0,120);update();});
+        results.appendChild(li);
+      });
+      update();
+    }
     function stop(message) {
       if (applying) return;
-      sequence++;var pending=xhr;xhr=null;if(pending) pending.abort();busy=false;update();
+      sequence++;var pending=xhr;xhr=null;if(pending) pending.abort();busy=false;clearDraft();update();
       if(message) status.textContent=message;
     }
     function close(restore) {
@@ -88,7 +145,7 @@
       ev.preventDefault();ev.stopPropagation();if(button.disabled || busy) return;
       previous=document.activeElement;
       gd.dispatchEvent(new CustomEvent('rist-exclusive-interaction-start',{detail:{mode:'peak-recommend'}}));
-      sample.innerHTML='';results.textContent='';status.textContent='';
+      sample.innerHTML='';clearDraft();status.textContent='';
       (gd.data || []).forEach(function(t,index) {
         if(!t.meta || !t.meta.rist_sample_parent || t.visible===false || t.visible==='legendonly') return;
         var option=document.createElement('option');option.value=String(index);option.textContent=plain(t.name) || 'Raw '+(sample.options.length+1);sample.appendChild(option);
@@ -97,12 +154,16 @@
       if(!sample.options.length) status.textContent='표시 중인 Raw 시료가 없습니다. 먼저 업로드하세요.';
       gd.dispatchEvent(new CustomEvent('rist-interaction-mode-change'));hint.focus();
     });
-    hint.addEventListener('input',update);sample.addEventListener('change',update);
+    function contextChanged() {
+      if(draft) {clearDraft();status.textContent='시료 또는 힌트가 바뀌었습니다. 피크 추천을 다시 받아 주세요.';}
+      update();
+    }
+    hint.addEventListener('input',contextChanged);sample.addEventListener('change',contextChanged);
     closeButton.addEventListener('click',function(){close();});
     form.addEventListener('submit',function(ev) {
       ev.preventDefault();if(submit.disabled || !gd._ristPeakRecommendationOpen) return;
       var trace=currentParent(), curve=Number(sample.value), pool=candidates(trace), material=hint.value.trim();
-      results.textContent='';
+      clearDraft();update();
       if(!pool.length) { status.textContent='실제 스펙트럼에서 추천할 극대점을 찾지 못했습니다. X좌표 추가로 직접 지정할 수 있습니다.';return; }
       busy=true;update();var token=++sequence, revision=generation;
       status.textContent='실제 측정 피크 '+pool.length+'개를 로컬 LLM으로 검토 중입니다… (최대 약 90초)';
@@ -118,43 +179,54 @@
         var response;
         try {response=JSON.parse(request.responseText);} catch(ignore) {fail('추천 응답을 읽지 못했습니다. 그래프는 변경하지 않았습니다.');return;}
         if(request.status!==200 || !response || !Array.isArray(response.peaks)) {fail(response && response.message || '피크 추천 요청에 실패했습니다. 그래프는 변경하지 않았습니다.');return;}
-        var points=[], skipped=0, seen={}, valid=0;
-        applying=true;update();
-        Promise.resolve().then(function() {
-          // FTIR deliberately hides absorbance annotations in transmittance view.
-          // Restore those originals BEFORE appending new labels and batch indices.
-          if(kind==='ftir' && gd._ristFtirSignalMode==='transmittance' && response.peaks.length) return gd._ristSetSignalMode('absorbance');
-        }).then(function(){return gd._ristStackReady;}).then(function() {
-          if(revision!==generation || !currentParent() || group(currentParent())!==group(trace)
-              || document.body.getAttribute('data-rist-spectrum-step')!=='2') {
-            throw new Error('stale-recommendation');
-          }
-          response.peaks.slice(0,12).forEach(function(p) {
-            var candidate=pool.filter(function(c){return c.id===p.id;})[0];
-            if(!candidate || seen[p.id] || typeof p.name!=='string') return;
-            seen[p.id]=true;valid++;
-            var isDuplicate=duplicate(gd.data,trace,candidate,Number(gd._ristPeakSensitivityValue));
-            var item=document.createElement('li');item.textContent=(isDuplicate?'기존 유지 · ':'추가 · ')+candidate.x+' cm⁻¹ · '+p.name.slice(0,120)+(p.reason?' — '+String(p.reason).slice(0,500):'');results.appendChild(item);
-            if(isDuplicate) {skipped++;return;}
-            var point=gd._ristPeakCoordinates.pointAt(curve,candidate.x);
-            if(!point) return;
-            point.recommendation={name:p.name.slice(0,120),reason:String(p.reason || '').slice(0,500),material:material};
-            // Override sensitivity-hidden detections at exactly the same measured position.
-            var maximum=gd._ristMaximumSensitivityPeakForSample(group(trace),candidate.x);
-            if(maximum && maximum.distance<=tolerance(trace,candidate.id)) point.maximumSensitivityPeakCurve=maximum.curve;
-            points.push(point);
-          });
-          return gd._ristAddRecommendedPeaks(points);
-        }).then(function(){return gd._ristStackReady;}).then(function(){return gd._ristPeakDisplayReady;}).then(function(){
-          applying=false;busy=false;update();
-          status.textContent=valid ? points.length+'개 추가 · 중복 '+skipped+'개 유지. 추천 이름과 근거를 검토하세요.' : '힌트에 적합한 측정 피크를 추천하지 못했습니다. 기존 그래프는 유지됩니다.';
-        }).catch(function(error){applying=false;fail(error.message==='stale-recommendation'
-          ? '시료 또는 작업 단계가 변경되어 추천 피크를 적용하지 않았습니다. 다시 요청하세요.'
-          : '추천 표시 중 오류가 발생했습니다. 그래프를 확인하고 필요하면 실행취소하세요.');});
+        if(revision!==generation) {fail('시료가 변경되었습니다. 다시 추천을 요청하세요.');return;}
+        draft={trace:trace,curve:curve,material:material,revision:revision,items:reviewItems(pool,response.peaks)};
+        busy=false;renderReview();
+        status.textContent=draft.items.length ? '추천 목록을 받았습니다. 아직 그래프에는 추가하지 않았습니다. 검토 후 선택한 피크 추가를 누르세요.' : '힌트에 적합한 측정 피크를 추천하지 못했습니다. 기존 그래프는 유지됩니다.';
+        if(draft.items.length) {
+          var body=overlay.querySelector('.rist-peak-recommend-body');
+          body.scrollTop+=status.getBoundingClientRect().top-body.getBoundingClientRect().top;
+        }
       };
       request.send(JSON.stringify({material:material,sample:plain(trace.name).slice(0,200),candidates:pool}));
     });
+    applyButton.addEventListener('click',function() {
+      if(busy || !gd._ristPeakRecommendationOpen) return;
+      update();if(applyButton.disabled) return;
+      var reviewed=draft, chosen=draft.items.filter(function(item){return item.selected && !item.duplicate && !item.applied;});
+      var points=[], added=[], skipped=0;
+      busy=applying=true;update();status.textContent='선택한 피크를 추가하는 중입니다…';
+      Promise.resolve().then(function() {
+        // Only explicit Add may change the graph, including FTIR's display unit.
+        if(kind==='ftir' && gd._ristFtirSignalMode==='transmittance') return gd._ristSetSignalMode('absorbance');
+      }).then(function(){return gd._ristStackReady;}).then(function() {
+        if(reviewed.revision!==generation || !currentParent() || group(currentParent())!==group(reviewed.trace)
+            || document.body.getAttribute('data-rist-spectrum-step')!=='2') throw new Error('stale-recommendation');
+        chosen.forEach(function(item) {
+          if(duplicate(gd.data,reviewed.trace,item.candidate,Number(gd._ristPeakSensitivityValue))) {skipped++;return;}
+          var point=gd._ristPeakCoordinates.pointAt(reviewed.curve,item.candidate.x);
+          if(!point) throw new Error('stale-recommendation');
+          point.recommendation={name:item.name.trim(),originalName:item.originalName,reason:item.reason,material:reviewed.material};
+          var maximum=gd._ristMaximumSensitivityPeakForSample(group(reviewed.trace),item.candidate.x);
+          if(maximum && maximum.distance<=tolerance(reviewed.trace,item.candidate.id)) point.maximumSensitivityPeakCurve=maximum.curve;
+          points.push(point);added.push(item);
+        });
+        return gd._ristAddRecommendedPeaks(points);
+      }).then(function(){return gd._ristStackReady;}).then(function(){return gd._ristPeakDisplayReady;}).then(function() {
+        added.forEach(function(item){item.applied=true;});
+        reviewed.trace=currentParent();busy=applying=false;update();
+        status.textContent=points.length+'개 추가 · 중복 '+skipped+'개 건너뜀. 체크하지 않은 피크는 추가하지 않았습니다.';
+      }).catch(function(error) {
+        busy=applying=false;
+        if(error.message==='stale-recommendation') clearDraft();
+        update();status.textContent=error.message==='stale-recommendation'
+          ? '시료 또는 작업 단계가 변경되어 추천 피크를 적용하지 않았습니다. 다시 요청하세요.'
+          : '피크 추가 중 오류가 발생했습니다. 그래프를 확인하고 필요하면 실행취소하세요.';
+      });
+    });
     overlay.addEventListener('keydown',function(ev) {
+      // Enter in a name field must not submit the form and discard the reviewed list.
+      if(ev.key==='Enter' && !ev.isComposing && ev.keyCode!==229 && ev.target.closest('.rist-peak-recommend-results')) {ev.preventDefault();return;}
       if(ev.key==='Escape') {ev.preventDefault();ev.stopPropagation();close();}
       if(ev.key==='Tab') {
         var nodes=Array.prototype.slice.call(overlay.querySelectorAll('button,input,select,textarea')).filter(function(n){return !n.disabled;});
@@ -165,12 +237,12 @@
     });
     ['rist-plot-data-replaced','rist-history-restored'].forEach(function(type){gd.addEventListener(type,function(){generation++;if(!applying)close(false);});});
     gd.addEventListener('rist-plot-structure-changed',function(){if(!applying)close(false);});
-    gd.on('plotly_restyle',function(){if(busy && !applying) stop('그래프 표시가 변경되어 추천 적용을 취소했습니다. 다시 요청하세요.');});
+    gd.on('plotly_restyle',function(){if((busy || draft) && !applying) stop('그래프 표시가 변경되어 추천 목록을 비웠습니다. 다시 요청하세요.');});
     gd.addEventListener('rist-exclusive-interaction-start',function(ev){if(!ev.detail || ev.detail.mode!=='peak-recommend')close(false);});
     gd.addEventListener('rist-peak-actions-disabled',function(ev){button.disabled=!!(ev.detail && ev.detail.disabled);if(button.disabled)close(false);});
     new MutationObserver(function(){if(document.body.getAttribute('data-rist-spectrum-step')!=='2') close(false);}).observe(document.body,{attributes:true,attributeFilter:['data-rist-spectrum-step']});
     button.disabled=!!gd.querySelector('.rist-peak-add-button').disabled;
     gd._ristPeakRecommendations={candidates:candidates};
   }
-  return {candidates:candidates,duplicate:duplicate,tolerance:tolerance,install:install};
+  return {candidates:candidates,duplicate:duplicate,tolerance:tolerance,reviewItems:reviewItems,install:install};
 });
