@@ -444,6 +444,61 @@ for (const kind of ['ftir','raman']) for (const mode of ['native','chrome49']) {
     assert(!h.gd.classList.contains('rist-legend-editor-open'));
     assert.equal(h.q('.rist-'+kind+'-tools-toggle').getAttribute('aria-label'),'그래프 도구 열기');
   });
+  test(label+': choosing Add Peak folds tools without cancelling selection; graph clicks still add peaks',async t=>{
+    const h=setup(t,kind,mode);await tick();
+    h.run(kind==='ftir'?'gd._ristFtirToolPanelInstalled':'gd._ristRamanToolPanelInstalled');
+    const toggle=h.q('.rist-'+kind+'-tools-toggle'),openClass='rist-'+kind+'-tools-open';
+    toggle.getClientRects=()=>[{width:30,height:30}];
+    let closedEdits=0;h.gd.addEventListener('rist-close-edit-tool',()=>closedEdits++);
+    h.w.Plotly.addTraces=async(_,trace)=>{h.gd.data.push(trace);};
+    toggle.click();assert(h.gd.classList.contains(openClass));
+    h.q('.rist-peak-add-button').click();
+    assert(!h.gd.classList.contains(openClass));assert.equal(toggle.getAttribute('aria-expanded'),'false');
+    assert.equal(h.d.activeElement,toggle);assert.equal(closedEdits,0);
+    assert.equal(h.gd._ristPeakEditMode,'add');assert(h.q('.rist-peak-add-button').classList.contains('is-active'));
+    h.mouse(h.q('.nsewdrag'),'click',200,100);await tick();
+    assert.equal(h.gd.data.length,3);assert.equal(h.gd.data[2].meta.rist_peak.user,true);
+    assert.equal(h.gd.data[2].meta.rist_peak.sample_group,'sample:0');
+    assert(!h.gd.classList.contains(openClass));assert.equal(h.gd._ristPeakEditMode,'add');
+    toggle.click();assert(h.gd.classList.contains(openClass));
+    // Switching Add off must not fold the panel, nor should controls that
+    // require several inputs (e.g. peak selection/grouping).
+    h.q('.rist-peak-add-button').click();assert.equal(h.gd._ristPeakEditMode,'none');
+    assert(h.gd.classList.contains(openClass));
+    h.q('.rist-peak-select-button').click();assert.equal(h.gd._ristPeakEditMode,'select');
+    assert(h.gd.classList.contains(openClass));
+    h.dispatch('rist-plot-data-replaced');assert(!h.gd.classList.contains(openClass));
+  });
+  test(label+': mobile Add Peak recovers zero-coordinate clicks once, ignoring drags, controls and cancelled taps',async t=>{
+    const h=setup(t,kind,mode);await tick();
+    h.w.Plotly.addTraces=async(_,trace)=>{h.gd.data.push(trace);};
+    const drag=h.q('.nsewdrag');
+    drag.getBoundingClientRect=()=>({left:100,top:100,width:800,height:400,right:900,bottom:500});
+    h.q('.rist-peak-add-button').click();
+    function touch(type,points,changed,target=drag) {
+      const e=new h.w.Event(type,{bubbles:true,cancelable:true});
+      e.touches=points.map(p=>({clientX:p[0],clientY:p[1]}));
+      e.changedTouches=(changed||points).map(p=>({clientX:p[0],clientY:p[1]}));
+      target.dispatchEvent(e);assert.equal(e.defaultPrevented,false,'preserve native scrolling');
+    }
+    touch('touchstart',[[300,150]]);touch('touchend',[],[[300,150]]);
+    h.mouse(drag,'click',0,0);await tick();
+    assert.equal(h.gd.data.length,3);assert.equal(h.gd.data[2].meta.rist_peak.x,200);
+    h.mouse(drag,'click',300,150);await tick();assert.equal(h.gd.data.length,3,'no delayed click duplicate');
+    for(const cancel of ['drag','multitouch','cancel','blur','mode']) {
+      touch('touchstart',[[300,150]]);
+      if(cancel==='drag')touch('touchmove',[[300,190]]);
+      if(cancel==='multitouch')touch('touchstart',[[300,150],[320,160]]);
+      if(cancel==='cancel')touch('touchcancel',[],[[300,150]]);
+      if(cancel==='blur')h.w.dispatchEvent(new h.w.Event('blur'));
+      if(cancel==='mode'){h.q('.rist-peak-add-button').click();h.q('.rist-peak-add-button').click();}
+      touch('touchend',[],[[300,150]]);h.mouse(drag,'click',0,0);await tick();
+      assert.equal(h.gd.data.length,3,cancel+' cannot add a peak');
+    }
+    const control=h.d.createElement('button');h.gd.appendChild(control);
+    touch('touchstart',[[300,150]],null,control);touch('touchend',[],[[300,150]],control);
+    h.mouse(control,'click',300,150);await tick();assert.equal(h.gd.data.length,3);
+  });
   test(label+': peak display hides only points/labels/connectors and restores exact styling/evidence',async t=>{
     const h=setup(t,kind,mode);shapeFixture(h);await tick();
     const peak=h.gd.data[1];peak.mode='markers';peak.hoverinfo='x+y';peak.hovertemplate='%{x}: %{y}';

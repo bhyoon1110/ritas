@@ -2094,6 +2094,15 @@ _RAMAN_TOOL_PANEL_SCRIPT = """
     }
   });
 
+  gd.addEventListener("rist-exclusive-interaction-start", function(ev) {
+    if (!ev.detail || ev.detail.mode !== "peak-add"
+        || !gd.classList.contains("rist-raman-tools-open")) return;
+    // Clear the floating panel without sending rist-close-edit-tool: that
+    // would cancel the peak mode the user has just selected.
+    setOpen(false);
+    if (button.getClientRects().length) button.focus();
+  });
+
   button.addEventListener("click", function(ev) {
     ev.preventDefault();
     ev.stopPropagation();

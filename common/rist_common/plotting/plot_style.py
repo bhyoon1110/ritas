@@ -5422,6 +5422,7 @@ def peak_editor_js(div_id: str) -> str:
     if (peakActionButtonsDisabled
         && (next === "add" || next === "delete" || next === "select")) return;
     var nextMode = mode === next ? "none" : next;
+    clearAddTouch();
     if (nextMode !== "none" && announce !== false) {{
       gd.dispatchEvent(new CustomEvent("rist-exclusive-interaction-start", {{
         detail: {{mode: "peak-" + nextMode}}
@@ -5511,15 +5512,56 @@ def peak_editor_js(div_id: str) -> str:
   row.appendChild(groupColorInput);
   row.appendChild(groupApplyBtn);
 
+  var addTouchStart = null;
+  var addTouchTap = null;
+  function clearAddTouch() {{ addTouchStart = null; addTouchTap = null; }}
+  function peakAddControl(target) {{
+    return target && target.closest && target.closest(
+      "button,input,select,textarea,.legend,.modebar,.rist-plot-control-row,.rist-legend-edit-panel,.rist-legend-drag-handle"
+    );
+  }}
+  // Plotly may synthesize a (0,0) click after a touch. Remember only a short,
+  // stationary single-finger tap, without blocking scrolling or pinch gestures.
+  gd.addEventListener("touchstart", function(ev) {{
+    clearAddTouch();
+    if (mode !== "add" || blockedByOtherInteraction() || peakAddControl(ev.target)
+        || ev.touches.length !== 1) return;
+    var point = ev.touches[0];
+    addTouchStart = {{x: point.clientX, y: point.clientY, target: ev.target, at: Date.now()}};
+  }}, {{capture: true, passive: true}});
+  gd.addEventListener("touchmove", function(ev) {{
+    if (!addTouchStart) return;
+    var point = ev.touches[0];
+    if (ev.touches.length !== 1 || Math.abs(point.clientX - addTouchStart.x) > 8
+        || Math.abs(point.clientY - addTouchStart.y) > 8) clearAddTouch();
+  }}, {{capture: true, passive: true}});
+  gd.addEventListener("touchend", function(ev) {{
+    var start = addTouchStart;
+    addTouchStart = null;
+    if (!start || mode !== "add" || ev.touches.length || ev.changedTouches.length !== 1) return;
+    var point = ev.changedTouches[0];
+    if (Date.now() - start.at > 800 || Math.abs(point.clientX - start.x) > 8
+        || Math.abs(point.clientY - start.y) > 8) return;
+    addTouchTap = {{clientX: point.clientX, clientY: point.clientY, target: start.target,
+      until: Date.now() + 700, handled: false}};
+  }}, {{capture: true, passive: true}});
+  gd.addEventListener("touchcancel", clearAddTouch, true);
+  window.addEventListener("blur", clearAddTouch);
+
   gd.addEventListener("click", function(ev) {{
     if (mode !== "add") return;
-    if (blockedByOtherInteraction()) return;
-    if (gd._ristEditableAnnotationAt && gd._ristEditableAnnotationAt(ev)) return;
-    if (ev.target.closest(
-      ".legend,.modebar,.rist-plot-control-row,.rist-legend-edit-panel,.rist-legend-drag-handle"
-    )) return;
-    var pt = dataPointFromEvent(ev);
+    if (blockedByOtherInteraction() || peakAddControl(ev.target)) return;
+    var pointEvent = ev;
+    var tap = addTouchTap && addTouchTap.target === ev.target && Date.now() <= addTouchTap.until
+      && ((ev.clientX === 0 && ev.clientY === 0)
+        || (Math.abs(ev.clientX - addTouchTap.clientX) <= 8 && Math.abs(ev.clientY - addTouchTap.clientY) <= 8))
+      ? addTouchTap : null;
+    if (tap && tap.handled) {{ ev.preventDefault(); ev.stopPropagation(); return; }}
+    if (tap) pointEvent = tap;
+    if (gd._ristEditableAnnotationAt && gd._ristEditableAnnotationAt(pointEvent)) return;
+    var pt = dataPointFromEvent(pointEvent);
     if (!pt) return;
+    if (tap) tap.handled = true;
     ev.preventDefault();
     ev.stopPropagation();
     addPeakAt(pt);

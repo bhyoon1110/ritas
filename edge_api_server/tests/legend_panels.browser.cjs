@@ -86,7 +86,29 @@ const server=http.createServer((req,res)=>{
         assert.equal(await toolbar.isVisible(),true);
         assert.equal(await page.evaluate(id=>document.getElementById(id).data[0].name,id),'저장 전 Sample');
         await page.waitForTimeout(650);assert.equal((await readWorkspace()).plotData[0].name,'저장 전 Sample');
-        assert.deepEqual(errors,[]);console.log(label+': live preview, autosave isolation, rollback, no overlap, validation, Save All/Close and Pan passed');
+        const floating=await toggle.isVisible();
+        if(floating && !await toolbar.isVisible())await click(toggle);
+        await click(page.locator('.rist-peak-add-button'));
+        await page.waitForFunction(id=>document.getElementById(id)._ristPeakEditMode==='add',id);
+        if(floating){
+          assert.equal(await toolbar.isVisible(),false,label+': Add Peak folds floating tools');
+          assert.equal(await toggle.getAttribute('aria-expanded'),'false');
+        }
+        const rawBefore=await page.evaluate(id=>document.getElementById(id).data.filter(t=>t.meta&&t.meta.rist_sample_parent).map(t=>({x:t.x,y:t.y})),id);
+        const drag=page.locator('#'+id+' .nsewdrag');await drag.scrollIntoViewIfNeeded();
+        const plotArea=await drag.boundingBox(),point={x:plotArea.width/2,y:Math.min(60,plotArea.height/3)};
+        if(mobile)await drag.tap({position:point});else await drag.click({position:point});
+        await page.waitForFunction(id=>document.getElementById(id).data.some(t=>t.meta&&t.meta.rist_peak&&t.meta.rist_peak.user),id);
+        await page.waitForTimeout(750);
+        assert.equal(await page.evaluate(id=>document.getElementById(id).data.filter(t=>t.meta&&t.meta.rist_peak&&t.meta.rist_peak.user).length,id),1,'one tap/click adds exactly one peak');
+        assert.equal(await page.evaluate(id=>document.getElementById(id)._ristPeakEditMode,id),'add');
+        assert.deepEqual(await page.evaluate(id=>document.getElementById(id).data.filter(t=>t.meta&&t.meta.rist_sample_parent).map(t=>({x:t.x,y:t.y})),id),rawBefore);
+        await page.locator('#'+id).screenshot({path:path.join(output,label+'-peak-tools-folded.png')});
+        if(floating){
+          assert.equal(await toolbar.isVisible(),false);
+          await click(toggle);assert.equal(await toolbar.isVisible(),true,label+': tools can reopen after adding');
+        }
+        assert.deepEqual(errors,[]);console.log(label+': live preview, autosave, rollback, panel coordination, Add Peak auto-fold and real graph click passed');
       }catch(error){await page.screenshot({path:path.join(output,label+'-failure.png'),fullPage:true});throw error;}
       finally{await page.close();}
     }
