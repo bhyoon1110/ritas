@@ -35,6 +35,7 @@ from .color_palette import color_palette_html
 from .plot_size import plot_size_controls_html
 from .interaction_modes import interaction_modes_html
 from .peak_coordinates import peak_coordinates_html
+from .grid_style import GRID_STYLE_JS
 
 # 범례 위치 전환 기준 화면 너비(px). 이 값 이상이면 그래프 안쪽(세로),
 # 미만이면 그래프 아래(가로)로 범례를 배치한다.
@@ -104,6 +105,7 @@ def origin_style_toggle_js(
   var gd = document.getElementById(__DIV_ID__);
   var toggle = document.getElementById(__TOGGLE_ID__);
   if (!gd || !toggle || gd._ristOriginStyle) return;
+  __GRID_STYLE_JS__
 
   var originAxis = {
     showline: true,
@@ -202,7 +204,7 @@ def origin_style_toggle_js(
       family: "Arial, Noto Sans KR, sans-serif",
       color: "#2a3f5f"
     });
-    return next;
+    return applyGridPreferences(next);
   }
 
   var api = {
@@ -244,6 +246,7 @@ def origin_style_toggle_js(
         template.replace("__DIV_ID__", json.dumps(div_id))
         .replace("__TOGGLE_ID__", json.dumps(toggle_id))
         .replace("__INITIAL_ENABLED__", "true" if enabled else "false")
+        .replace("__GRID_STYLE_JS__", GRID_STYLE_JS)
     )
 
 
@@ -9239,6 +9242,16 @@ def _axis_controls_js(div_id: str, *, axis_locks: bool = False, scroll_zoom_y_on
   justify-content: flex-end;
   white-space: nowrap;
 }
+#__PLOT_ID_CSS__ .rist-axis-grid-checks {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+}
+#__PLOT_ID_CSS__ .rist-axis-grid-checks small {
+  align-self: center;
+  color: #64748b;
+}
 #__PLOT_ID_CSS__ .rist-axis-control-help {
   margin: 0;
   color: #64748b;
@@ -9436,6 +9449,7 @@ def _axis_controls_js(div_id: str, *, axis_locks: bool = False, scroll_zoom_y_on
   gd._ristAxisControlsInstalled = true;
   var axisLocksEnabled = __AXIS_LOCKS__;
   var scrollZoomYOnly = __SCROLL_ZOOM_Y_ONLY__;
+  var gridControlsEnabled = __GRID_CONTROLS__;
   if (getComputedStyle(gd).position === "static") gd.style.position = "relative";
 
   // Keep all text in normal flow even while hidden. Visibility and color-only
@@ -9530,7 +9544,12 @@ def _axis_controls_js(div_id: str, *, axis_locks: bool = False, scroll_zoom_y_on
       + decimalField(axis)
       + "<div class='rist-axis-control-checks'><label class='rist-axis-control-auto'><input type='checkbox' data-axis-auto='" + axis + "' checked>자동 간격</label>"
       + (axisLocksEnabled ? "<label class='rist-axis-control-auto'><input type='checkbox' data-axis-lock='" + axis + "'>" + label + " 고정</label>" : "")
-      + "</div></div>";
+      + "</div>"
+      + (gridControlsEnabled ? "<div class='rist-axis-grid-checks'>"
+        + "<label class='rist-axis-control-auto'><input type='checkbox' data-axis-grid='" + axis + "' data-grid-kind='major'>격자선</label>"
+        + "<label class='rist-axis-control-auto'><input type='checkbox' data-axis-grid='" + axis + "' data-grid-kind='minor'>보조 격자선</label>"
+        + "<small>" + (axis === "x" ? "세로선" : "가로선 · 스택 중에는 숨김") + "</small></div>" : "")
+      + "</div>";
   }
 
   function numberField(axis, field, label) {
@@ -9882,11 +9901,59 @@ def _axis_controls_js(div_id: str, *, axis_locks: bool = False, scroll_zoom_y_on
     return panel.querySelector("[data-axis-auto='" + axis + "']");
   }
 
+  function gridField(axis, kind) {
+    return panel.querySelector("[data-axis-grid='" + axis + "'][data-grid-kind='" + kind + "']");
+  }
+
+  function gridSelection(axis) {
+    var meta = gd.layout.meta || {}, selected = (meta.ristGrid || {})[axis];
+    if (selected) return selected;
+    var state = currentAxis(axis + "axis");
+    var stack = meta.ristFtirStack || meta.ristRamanStack || {};
+    var saved = axis === "y" && stack.enabled ? stack.yAxisDisplay || {} : {};
+    return {
+      major: saved.showgrid && saved.showgrid.exists ? saved.showgrid.value === true
+        : (state.layout.showgrid == null ? state.full.showgrid === true : state.layout.showgrid === true),
+      minor: saved.minorShowgrid && saved.minorShowgrid.exists ? saved.minorShowgrid.value === true
+        : nestedAxisValue(state, "minor", "showgrid") === true
+    };
+  }
+
+  function gridUpdates(axis, selected, updates) {
+    if (!selected) return;
+    var stacked = axis === "y" && stackZoomEnabled();
+    updates["meta.ristGrid." + axis] = {major: selected.major, minor: selected.minor};
+    updates[axis + "axis.showgrid"] = selected.major && !stacked;
+    updates[axis + "axis.minor.showgrid"] = selected.minor && !stacked;
+    if (stacked) {
+      var key = gd.layout.meta.ristFtirStack ? "ristFtirStack" : "ristRamanStack";
+      updates["meta." + key + ".yAxisDisplay.showgrid"] = {exists: true, value: selected.major};
+      updates["meta." + key + ".yAxisDisplay.minorShowgrid"] = {exists: true, value: selected.minor};
+    }
+  }
+
+  if (gridControlsEnabled) gd._ristGridStyle = {
+    updates: gridUpdates,
+    preserve: function(layout) {
+      var preferences = gd.layout && gd.layout.meta && gd.layout.meta.ristGrid;
+      if (preferences) {
+        if (!layout.meta) layout.meta = {};
+        if (!layout.meta.ristGrid) layout.meta.ristGrid = JSON.parse(JSON.stringify(preferences));
+      }
+      return layout;
+    }
+  };
+
   function syncAxis(axis) {
     var axisName = axis + "axis";
     var state = currentAxis(axisName);
     var lock = panel.querySelector("[data-axis-lock='" + axis + "']");
     if (lock) lock.checked = axisLocked(axisName);
+    if (gridControlsEnabled) {
+      var selectedGrid = gridSelection(axis);
+      gridField(axis, "major").checked = selectedGrid.major;
+      gridField(axis, "minor").checked = selectedGrid.minor;
+    }
     var range = currentRange(axisName);
     if (range) {
       field(axis, "from").value = cleanNumber(range[0]);
@@ -10076,6 +10143,10 @@ def _axis_controls_js(div_id: str, *, axis_locks: bool = False, scroll_zoom_y_on
 
   function updatesForAxis(axis, value, updates) {
     var name = axis + "axis";
+    if (gridControlsEnabled) gridUpdates(axis, {
+      major: gridField(axis, "major").checked,
+      minor: gridField(axis, "minor").checked
+    }, updates);
     updates[name + ".range"] = clampRangeToCrop(name, [value.from, value.to]);
     updates[name + ".autorange"] = false;
     updates[name + ".fixedrange"] = value.locked;
@@ -10679,6 +10750,7 @@ def _axis_controls_js(div_id: str, *, axis_locks: bool = False, scroll_zoom_y_on
         .replace("__PLOT_ID_JSON__", json.dumps(div_id))
         .replace("__AXIS_LOCKS__", json.dumps(axis_locks))
         .replace("__SCROLL_ZOOM_Y_ONLY__", json.dumps(scroll_zoom_y_only))
+        .replace("__GRID_CONTROLS__", json.dumps(div_id in {"peak-plot", "raman-plot"}))
     )
 
 

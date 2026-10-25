@@ -82,6 +82,25 @@ def test_readonly_snapshot_keeps_only_stack_axis_display_fields(key):
     assert source["layout"]["meta"][key]["yAxisDisplay"] == saved
 
 
+@pytest.mark.parametrize("stacked", [False, True])
+def test_readonly_snapshot_keeps_selected_grids_and_unstack_preferences(stacked):
+    source = sample_figure()
+    source["layout"]["xaxis"].update(showgrid=False, minor={"showgrid": True})
+    source["layout"]["yaxis"].update(showgrid=not stacked, minor={"showgrid": False})
+    source["layout"]["meta"]["ristFtirStack"] = {
+        "enabled": stacked, "yAxisDisplay": {
+            "showgrid": {"exists": True, "value": True},
+            "minorShowgrid": {"exists": True, "value": False},
+        },
+    }
+    result = viewer.readonly_figure(source)
+    assert result["layout"]["xaxis"]["showgrid"] is False
+    assert result["layout"]["xaxis"]["minor"]["showgrid"] is True
+    assert result["layout"]["yaxis"]["showgrid"] is not stacked
+    assert result["layout"]["yaxis"]["minor"]["showgrid"] is False
+    assert result["layout"]["meta"]["yAxisDisplay"]["showgrid"]["value"] is True
+
+
 def test_peak_display_switch_omits_peak_graphics_but_keeps_sample_and_other_notes():
     source = sample_figure()
     source["layout"]["meta"]["ristPeaksVisible"] = False

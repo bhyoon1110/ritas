@@ -5019,6 +5019,7 @@ _UPLOAD_SCRIPT = """
     }).then(function(payload) {
       if (controller !== activeController) return;
       if (workTemplate) workTemplate.prepare(payload.figure);
+      if (gd._ristGridStyle) gd._ristGridStyle.preserve(payload.figure.layout);
       latestAnalysisPayload = JSON.parse(JSON.stringify(payload));
       populateReportMetadataFromPayload(payload);
       return window.Plotly.react(

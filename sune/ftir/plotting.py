@@ -14,6 +14,7 @@ from plotly.subplots import make_subplots
 from scipy.signal import find_peaks
 from rist_common.plotting import peak_editor_js
 from rist_common.plotting.raw_spectrum import peaks_on_raw_points
+from rist_common.plotting.grid_style import GRID_STYLE_JS
 
 from .findings import assign_group_candidates
 from .peaks import build_interactive_peak_candidates
@@ -247,6 +248,7 @@ def ftir_stack_js(div_id: str) -> str:
   var gd = document.getElementById(__DIV_ID__);
   if (!gd || !window.Plotly || gd._ristFtirStackInstalled) return;
   gd._ristFtirStackInstalled = true;
+  __GRID_STYLE_JS__
   var state = {
     initialized: false,
     enabled: false,
@@ -594,6 +596,7 @@ def ftir_stack_js(div_id: str) -> str:
     }
     if (!layout.yaxis) layout.yaxis = {};
     syncStackYAxis(layout);
+    applyGridPreferences(layout, state.enabled, state.yAxisDisplay);
     if (!options.preserveView) {
       var range = fitRange(signalMode);
       if (range) layout.yaxis.range = range;
@@ -961,7 +964,7 @@ def ftir_stack_js(div_id: str) -> str:
 })();
 </script>
 """
-    return template.replace("__DIV_ID__", json.dumps(div_id))
+    return template.replace("__DIV_ID__", json.dumps(div_id)).replace("__GRID_STYLE_JS__", GRID_STYLE_JS)
 
 
 def build_preprocess_fig(raw, sample_vec, grid, sample_label, wn_min, wn_max):

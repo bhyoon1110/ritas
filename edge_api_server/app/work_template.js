@@ -61,6 +61,7 @@
     if (input.tickfont) out.tickfont = font(input.tickfont);
     if (input.minor) {
       out.minor = {};
+      if (own(input.minor, "showgrid")) out.minor.showgrid = boolean(input.minor.showgrid);
       if (input.minor.dtick != null) out.minor.dtick = number(input.minor.dtick, 1e-12, 1e15);
       if (input.minor.tickmode) out.minor.tickmode = choice(input.minor.tickmode, ["auto", "linear"]);
     }
@@ -102,6 +103,16 @@
       settings.plotSize.height = number(size.height, 240, 2400);
     }
     settings.axes = {xaxis: axis(object(input.axes).xaxis), yaxis: axis(input.axes.yaxis)};
+    settings.grid = {};
+    if (own(input, "grid")) {
+      var grid = object(input.grid);
+      ["x", "y"].forEach(function(key) {
+        if (own(grid, key)) {
+          var selected = object(grid[key]);
+          settings.grid[key] = {major: boolean(selected.major), minor: boolean(selected.minor)};
+        }
+      });
+    }
     settings.legend = legend(input.legend);
     settings.peakLabelsVisible = boolean(input.peakLabelsVisible);
     settings.legendVisible = own(input, "legendVisible") ? boolean(input.legendVisible) : false;
@@ -153,7 +164,7 @@
       signalMode: options.experiment === "FTIR" ? gd._ristFtirSignalMode || "absorbance" : "intensity",
       stack: {enabled: !!stack.enabled, gap: stack.gap == null ? 1.2 : stack.gap},
       plotSize: meta.ristPlotSize || {width: null, ratio: "auto"},
-      axes: {}, legend: layout.legend || {},
+      axes: {}, grid: meta.ristGrid || {}, legend: layout.legend || {},
       peakLabelsVisible: meta.ristPeakLabelsVisible !== false,
       legendVisible: meta.ristLegendVisible === true,
       peaksVisible: meta.ristPeaksVisible !== false,
@@ -175,6 +186,7 @@
   function prepareFigure(figure, template) {
     var s = template.settings, layout = figure.layout, meta = layout.meta || (layout.meta = {});
     meta.ristPlotSize = clone(s.plotSize);
+    meta.ristGrid = clone(s.grid || {});
     meta.ristPeakLabelsVisible = s.peakLabelsVisible;
     meta.ristSampleLegendOnly = true;
     meta.ristLegendVisible = s.legendVisible;
@@ -207,6 +219,9 @@
       ["xaxis", "yaxis"].forEach(function(key) {
         Object.keys(s.axes[key]).forEach(function(prop) { patch[key + "." + prop] = clone(s.axes[key][prop]); });
         if (s.axes[key].range) patch[key + ".autorange"] = false;
+      });
+      if (gd._ristGridStyle) ["x", "y"].forEach(function(key) {
+        gd._ristGridStyle.updates(key, (s.grid || {})[key], patch);
       });
       var compact = (gd._ristPlotSize ? gd._ristPlotSize.viewportWidth() : window.innerWidth) <= 760;
       legendPatch(patch, s.legend, compact);

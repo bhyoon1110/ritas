@@ -54,6 +54,46 @@ const server = http.createServer((req,res) => {
           await gd._ristStackReady;
         },{id,key,kind});
         await page.locator('#'+id).scrollIntoViewIfNeeded();
+        // Grid controls must change actual SVG gridlines, not only saved metadata.
+        async function chooseGrid(major,minor) {
+          if (!await page.locator('.rist-axis-control-button').isVisible()) await page.locator('.rist-'+kind+'-tools-toggle').click();
+          await page.locator('.rist-axis-control-button').click();
+          for (const axis of ['x','y']) {
+            await page.locator('[data-axis-grid="'+axis+'"][data-grid-kind="major"]').setChecked(major);
+            await page.locator('[data-axis-grid="'+axis+'"][data-grid-kind="minor"]').setChecked(minor);
+          }
+          await page.locator('[data-axis-action="apply"]').click();
+          if(await page.locator('.rist-'+kind+'-tools-close').isVisible())await page.locator('.rist-'+kind+'-tools-close').click();
+        }
+        const gridCount = () => page.locator('#'+id+' .gridlayer path, #'+id+' .minor-gridlayer path').count();
+        await chooseGrid(false,false);
+        assert.equal(await gridCount(),0);
+        await chooseGrid(true,true);
+        assert((await gridCount())>0);
+        const gridBefore = await gridCount();
+        await page.locator('#'+kind+'-origin').uncheck();
+        await page.locator('#'+kind+'-origin').check();
+        await page.waitForFunction(id=>document.getElementById(id).layout.xaxis.showgrid===true,id);
+        assert((await gridCount())>0);
+        for(const width of [1400,420]) {
+          await page.setViewportSize({width,height:1000});
+          await page.locator('.rist-'+kind+'-tools-toggle').click();
+          await page.locator('.rist-axis-control-button').click();
+          await page.locator('.rist-axis-control-panel').screenshot({path:path.join(output,kind+'-grid-controls-'+width+'.png')});
+          assert(await page.locator('.rist-axis-grid-checks').evaluateAll(rows=>rows.every(row=>row.scrollWidth<=row.clientWidth+1)));
+          await page.locator('.rist-axis-control-close').click();
+          if(await page.locator('.rist-'+kind+'-tools-close').isVisible())await page.locator('.rist-'+kind+'-tools-close').click();
+        }
+        await page.setViewportSize({width:1400,height:1000});
+        const exported=await page.evaluate(async id=>{
+          const g=document.getElementById(id), payload=g._ristBuildImageExportPayload(g.data,g.layout,1000,700);
+          const png=await Plotly.toImage({data:payload.data,layout:payload.layout},{format:'png',width:1000,height:700});
+          return {png,x:payload.layout.xaxis.showgrid,xMinor:payload.layout.xaxis.minor.showgrid,
+            y:payload.layout.yaxis.showgrid,yMinor:payload.layout.yaxis.minor.showgrid};
+        },id);
+        assert(exported.x&&exported.xMinor&&exported.y&&exported.yMinor);
+        fs.writeFileSync(path.join(output,kind+'-grid-export.png'),Buffer.from(exported.png.split(',')[1],'base64'));
+        console.log(kind+': major/minor grids rendered, Origin retained, desktop/mobile controls fit, PNG exported ('+gridBefore+' SVG lines)');
         await page.locator('.rist-'+kind+'-tools-toggle').click();
         await page.getByRole('button',{name:'스택',exact:true}).click();
         await page.waitForFunction(({id,key}) => document.getElementById(id).layout.meta[key].enabled,{id,key});

@@ -120,6 +120,61 @@ function guidanceClock(h) {
 
 for (const mode of ['native','chrome49']) for (const kind of ['ftir','raman']) {
   const label = kind+'/'+mode;
+  test(label+': chosen major/minor grids survive style, stack, saved-layout restoration and image export', async t => {
+    const h = await displayFixture(t,kind,mode), raw = clone(h.gd.data);
+    h.run('var originAxis =');
+    const choose = async (xMajor,xMinor,yMajor,yMinor) => {
+      h.q('.rist-axis-control-button').click();
+      for (const [axis,major,minor] of [['x',xMajor,xMinor],['y',yMajor,yMinor]]) {
+        h.q('[data-axis-grid="'+axis+'"][data-grid-kind="major"]').checked = major;
+        h.q('[data-axis-grid="'+axis+'"][data-grid-kind="minor"]').checked = minor;
+      }
+      h.action('apply'); await tick();
+    };
+    await choose(false,false,true,true);
+    assert.equal(h.gd.layout.xaxis.showgrid,false); assert.equal(h.gd.layout.xaxis.minor.showgrid,false);
+    for (const origin of [false,true]) {
+      await h.gd._ristOriginStyle.setEnabled(origin,true,false); await h.gd._ristStackReady;
+      assert.equal(h.gd.layout.xaxis.showgrid,false); assert.equal(h.gd.layout.xaxis.minor.showgrid,false);
+      assert.equal(h.gd.layout.yaxis.showgrid,true); assert.equal(h.gd.layout.yaxis.minor.showgrid,true);
+    }
+    assert.deepEqual(clone(h.gd.data),raw);
+    h.toggle(); await tick(); assertStackAxis(h.gd.layout.yaxis);
+    await choose(true,true,false,false); assertStackAxis(h.gd.layout.yaxis);
+    h.toggle(); await tick();
+    assert.equal(h.gd.layout.yaxis.showgrid,false); assert.equal(h.gd.layout.yaxis.minor.showgrid,false);
+    h.toggle(); await tick();
+    await choose(false,true,true,false); assertStackAxis(h.gd.layout.yaxis);
+    const saved = clone(h.gd.layout);
+    await h.w.Plotly.react(h.gd,h.gd.data,clone(saved));
+    h.dispatch('rist-plot-data-replaced'); await h.gd._ristStackReady;
+    assertStackAxis(h.gd.layout.yaxis);
+    h.toggle(); await tick();
+    assert.equal(h.gd.layout.yaxis.showgrid,true); assert.equal(h.gd.layout.yaxis.minor.showgrid,false);
+    assert.equal(h.gd.layout.xaxis.showgrid,false); assert.equal(h.gd.layout.xaxis.minor.showgrid,true);
+    h.run('function buildImageExportPayload');
+    const exported=h.gd._ristBuildImageExportPayload(h.gd.data,h.gd.layout,1200,720);
+    assert.equal(exported.layout.xaxis.showgrid,false); assert.equal(exported.layout.xaxis.minor.showgrid,true);
+    assert.equal(exported.layout.yaxis.showgrid,true); assert.equal(exported.layout.yaxis.minor.showgrid,false);
+  });
+  test(label+': cancelling grid choices changes nothing; initial range reset retains saved choices', async t => {
+    const h = await displayFixture(t,kind,mode), before = clone(h.gd.layout);
+    h.q('.rist-axis-control-button').click();
+    h.q('[data-axis-grid="y"][data-grid-kind="major"]').checked = false;
+    h.q('.rist-axis-control-close').click();
+    assert.deepEqual(clone(h.gd.layout),before);
+    h.q('.rist-axis-control-button').click();
+    assert.equal(h.q('[data-axis-grid="y"][data-grid-kind="major"]').checked,true);
+    h.action('apply'); await tick();
+    const selected = clone(h.gd.layout.meta.ristGrid);
+    h.action('reset'); await tick();
+    assert.deepEqual(clone(h.gd.layout.meta.ristGrid),selected);
+    const fresh = {meta:{},xaxis:{},yaxis:{}};
+    h.gd._ristGridStyle.preserve(fresh);
+    assert.deepEqual(clone(fresh.meta.ristGrid),selected);
+    fresh.meta.ristGrid.y.major = false;
+    assert.equal(h.gd.layout.meta.ristGrid.y.major,true);
+  });
   test(label+': gap ranges from zero overlap to 6x without changing RAW or accumulating offsets', async t => {
     const h = await displayFixture(t,kind,mode), raw = clone(h.gd.data.map(trace=>trace.y));
     const slider = h.q('.rist-'+kind+'-stack-gap'), value = h.q('.rist-'+kind+'-stack-value');

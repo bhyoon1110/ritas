@@ -31,6 +31,7 @@ from rist_common.plotting import (
     peak_sensitivity_js,
 )
 from rist_common.plotting.floating_panels import floating_panels_html
+from rist_common.plotting.grid_style import GRID_STYLE_JS
 
 from . import assignment_suggestions
 from .auth import authenticated_transfer_payload
@@ -2186,6 +2187,7 @@ _RAMAN_STACK_SCRIPT = """
   var gd = document.getElementById("raman-plot");
   if (!gd || !window.Plotly || gd._ristRamanStackInstalled) return;
   gd._ristRamanStackInstalled = true;
+  __GRID_STYLE_JS__
   var state = {
     initialized: false,
     enabled: false,
@@ -2543,6 +2545,7 @@ _RAMAN_STACK_SCRIPT = """
     });
     if (!layout.yaxis) layout.yaxis = {};
     syncStackYAxis(layout);
+    applyGridPreferences(layout, state.enabled, state.yAxisDisplay);
     if (!options.preserveView && !layout.yaxis.fixedrange) layout.yaxis.range = fitRange();
     updateMeta();
     syncControls();
@@ -5671,6 +5674,7 @@ _UPLOAD_SCRIPT = """
       });
       var payload = await apiPayload(response, "Raman 분석에 실패했습니다.");
       if (workTemplate) workTemplate.prepare(payload.figure);
+      if (gd._ristGridStyle) gd._ristGridStyle.preserve(payload.figure.layout);
       latestAnalysisPayload = JSON.parse(JSON.stringify(payload));
       syncReportSampleConditionSets();
       populateReportMetadataFromPayload(payload);
@@ -6306,7 +6310,7 @@ def build_raman_page() -> str:
             origin_style_toggle_js(PLOT_DIV_ID, "raman-origin", enabled=True)
             + peak_sensitivity_js(PLOT_DIV_ID, initial="25")
             + _RAMAN_TOOL_PANEL_SCRIPT
-            + _RAMAN_STACK_SCRIPT
+            + _RAMAN_STACK_SCRIPT.replace("__GRID_STYLE_JS__", GRID_STYLE_JS)
             + _RAMAN_RATIO_SCRIPT
             + work_template_script()
             + spectrum_workflow_script()

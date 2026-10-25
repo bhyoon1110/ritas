@@ -110,6 +110,25 @@ function setup(t,experiment,mode) {
 
 for(const mode of ['native','chrome49']) for(const experiment of ['ftir','raman']) {
   const label=experiment+'/'+mode;
+  test(label+': grids round-trip through templates, fresh RAW and stacked/unstacked restoration',async t=>{
+    const h=setup(t,experiment,mode);await tick();await h.addRaw();
+    const template=sampleTemplate(experiment);
+    template.settings.grid={x:{major:false,minor:false},y:{major:true,minor:true}};
+    await h.uploadTemplate(JSON.stringify(template));
+    assert.deepEqual(clone(h.gd.layout.meta.ristGrid),template.settings.grid);
+    assert.equal(h.gd.layout.xaxis.showgrid,false);assert.equal(h.gd.layout.xaxis.minor.showgrid,false);
+    assert.equal(h.gd.layout.yaxis.showgrid,false);assert.equal(h.gd.layout.yaxis.minor.showgrid,false);
+    h.d.querySelector('[data-template-save]').click();
+    const saved=JSON.parse(await h.read(h.downloads[0]));
+    assert.deepEqual(saved.settings.grid,template.settings.grid);
+    assert.equal(saved.settings.axes.xaxis.minor.showgrid,false);
+    await h.addRaw();
+    await h.gd._ristApplyStackSettings({enabled:false,gap:1.8});
+    assert.equal(h.gd.layout.yaxis.showgrid,true);assert.equal(h.gd.layout.yaxis.minor.showgrid,true);
+    assert.equal(h.gd.layout.xaxis.showgrid,false);
+    template.settings.grid.y.major='true';
+    assert.throws(()=>h.w.RistWorkTemplate.parse(JSON.stringify(template),experiment.toUpperCase()));
+  });
   test(label+': custom width/height and new portrait ratios round-trip through templates and fresh RAW',async t=>{
     const h=setup(t,experiment,mode);await tick();await h.addRaw();
     for(const size of [{width:1100,height:820,ratio:'custom'},{width:900,ratio:'3:4'},{width:1200,ratio:'21:9'}]) {
@@ -298,6 +317,7 @@ for(const mode of ['native','chrome49']) for(const experiment of ['ftir','raman'
     value.settings.peaksVisible=true;
     value.settings.legendVisible=false;
     value.settings.peakMarkersVisible=true;value.settings.peakMarkerSize=null;
+    value.settings.grid={};
     h.template().restore(value);assert.deepEqual(clone(h.template().state()),value);
     assert.equal(h.d.querySelector('[data-template-name]').value,value.name);
     h.template().restore({...value,settings:{...value.settings,libraryIds:['removed-library']}});
