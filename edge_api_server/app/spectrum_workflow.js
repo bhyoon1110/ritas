@@ -138,6 +138,7 @@
         : locked ? (resetting ? "작업을 초기화하는 중입니다." : operation || "RAW 분석 또는 편집 설정을 적용하는 중입니다. 완료 후 버튼이 활성화됩니다.")
         : childBusy ? "보고서 변경 내용을 자동 저장 중입니다. 완료 후 생성·전송 버튼이 활성화됩니다. 계속 대기하면 아래 미리보기의 오류 안내를 확인하세요." : "";
       var buildReason = waiting || (!count ? (graphs.length ? "아래 저장 목록에서 보고서에 넣을 그래프를 체크하세요." : "현재 그래프를 먼저 저장하세요. 저장하면 보고서 포함 대상으로 자동 선택됩니다.") : "");
+      var previewReason = waiting || ((!job || stale) && !count ? buildReason : "");
       var deliveryReason = waiting || editorProblem || (!job ? "먼저 선택한 그래프로 보고서를 생성하세요." : stale ? "그래프 선택·순서가 바뀌었습니다. 보고서를 다시 생성한 뒤 저장·전송하세요." : "");
       function availability(el, reason) {
         el.disabled = !!reason; el.title = reason;
@@ -145,8 +146,8 @@
       }
       previous.hidden = step === 1; previous.disabled = locked;
       next.hidden = step === 4 || (step === 1 && !hasGraph) || (step === 2 && !graphs.length) || (step === 3 && !job);
-      next.textContent = step === 1 ? "그래프 편집으로 →" : step === 2 ? "보고서 구성 확인 →" : "최종 저장·전송으로 →";
-      availability(next, step === 3 ? deliveryReason : locked ? waiting : "");
+      next.textContent = step === 1 ? "그래프 편집으로 →" : step === 2 ? (job && !stale ? "보고서 미리보기로 →" : "보고서 생성·미리보기로 →") : "최종 저장·전송으로 →";
+      availability(next, step === 3 ? deliveryReason : step === 2 ? previewReason : locked ? waiting : "");
       availability(save, locked ? waiting : !hasGraph ? "RAW 파일을 업로드하고 그래프를 만든 후 저장하세요." : "");
       availability(duplicate, save.title); duplicate.hidden = !active;
       save.textContent = active ? "선택 그래프 덮어쓰기" : "그래프 저장";
@@ -174,8 +175,11 @@
         title = graphs.length ? "다음: 보고서에 넣을 그래프 선택" : "다음: 그래프 편집·저장";
         detail = buildReason; if (!graphs.length && step === 3) primary = returnEdit;
       } else if (step === 2 || (step === 3 && (!job || stale))) {
-        title = stale ? "다음: 변경한 그래프로 보고서 다시 생성" : "다음: 선택한 그래프로 보고서 생성";
-        detail = "선택한 " + count + "개가 목록 순서대로 보고서에 들어갑니다. 생성이 끝나면 미리보기가 열립니다. 추가 편집했다면 먼저 그래프를 덮어쓰기 하세요."; primary = build;
+        title = step === 2 && job && !stale ? "다음: 보고서 미리보기" : stale ? "다음: 변경한 그래프로 보고서 다시 생성" : "다음: 선택한 그래프로 보고서 생성";
+        detail = step === 2 && job && !stale
+          ? "③ 단계로 이동하면 기존 보고서를 그대로 엽니다. 보고서에서 수정한 내용도 유지됩니다. 그래프를 추가 편집했다면 먼저 덮어쓰기 하세요."
+          : "선택한 " + count + "개가 목록 순서대로 보고서에 들어갑니다. " + (step === 2 ? "③ 단계로 이동하면 자동 생성 후 미리보기가 열립니다. " : "생성이 끝나면 미리보기가 열립니다. ") + "추가 편집했다면 먼저 그래프를 덮어쓰기 하세요.";
+        primary = step === 2 ? next : build;
       } else if (step === 3) {
         title = "다음: 미리보기 확인 후 최종 저장·전송";
         detail = "아래 PPT 미리보기에서 내용과 페이지를 확인·수정하세요. 자동 저장이 끝나면 ‘최종 저장·전송으로’를 누르세요."; primary = next;
@@ -191,7 +195,7 @@
       document.body.classList.toggle("sw-report-stage", step >= 3);
       root.setAttribute("data-step", String(step));
       help.textContent = step === 1 ? "RAW 파일과 실험조건을 입력하세요. 이전 단계로 돌아가도 저장한 그래프와 보고서는 유지됩니다."
-        : step === 2 ? "피크·주석·축을 편집한 뒤 그래프를 저장하세요. 목록의 ‘다시 편집’으로 원본 연결과 편집 상태를 불러옵니다."
+        : step === 2 ? "피크·주석·축을 편집한 뒤 그래프를 저장하세요. 보고서에 넣을 저장본을 체크하고 ③ 단계로 이동하면 보고서가 자동 생성됩니다. 변경이 없으면 기존 보고서를 엽니다."
         : step === 3 ? "체크한 그래프가 목록 순서대로 보고서에 들어갑니다. 그래프를 바꾼 뒤에는 보고서를 다시 생성하세요. PPT에서 문구·표를 바로 수정할 수 있습니다."
         : "자동 저장이 끝난 최종본을 다운로드하거나 SSO 인증 후 LIMS로 전송하세요. 이전 단계에서 계속 수정할 수 있습니다.";
       toggle(gd, step === 2);
@@ -234,13 +238,30 @@
     function go(value) {
       if (unavailable()) return;
       value = Math.max(1, Math.min(4, value));
+      var autoPreview = step === 2 && value === 3;
+      if (autoPreview && childBusy) {
+        // Let users return to a dirty/failed-autosave editor to finish or retry;
+        // never replace it with a new report while those edits are pending.
+        if (job) { step = 3; render(); persistSoon(); }
+        tell("기존 미리보기에서 보고서 자동 저장 상태를 확인해 주세요. 저장되지 않은 수정 내용이 있어 새 보고서는 생성하지 않습니다.", true); return;
+      }
+      if (autoPreview && (!job || stale)) {
+        if (!chosen().length) { tell(graphs.length ? "보고서에 넣을 저장 그래프를 체크하세요." : "현재 그래프를 먼저 ‘그래프 저장’한 뒤 미리보기로 이동하세요.", true); return; }
+        return generate();
+      }
       if (value === 4 && !job) { tell("먼저 그래프를 저장·선택하고 보고서를 생성하세요.", true); return; }
       if (value === 4 && stale) { tell("변경한 그래프 목록으로 보고서를 다시 생성한 뒤 전송하세요. 이전 보고서는 별도로 보존됩니다.", true); return; }
       if (value === 4 && childBusy) { tell("보고서 자동 저장이 끝난 뒤 저장·전송 단계로 이동하세요.", true); return; }
       if (value === 4 && editorProblem) { tell(editorProblem, true); return; }
       var enteringEditor = value >= 3 && step < 3 && job && !childBusy;
       step = value; render(); persistSoon();
-      if (enteringEditor) openEditor();
+      if (enteringEditor) {
+        return openEditor().then(function () {
+          // Only an explicit 2→3 transition may regenerate an expired job.
+          // Authentication/network errors retain job; a failed build never loops.
+          if (autoPreview && step === 3 && !job && chosen().length) return generate();
+        });
+      }
       if (step === 1) chooser.focus();
       if (step === 2) window.requestAnimationFrame(function () { api.resize(); });
     }
@@ -290,7 +311,7 @@
       if (unavailable() || childBusy || !chosen().length) return;
       if (job && !window.confirm("선택한 그래프로 새 보고서를 생성할까요? 현재 보고서의 문구 수정은 새 보고서에 자동 복사되지 않습니다. 기존 수정본은 보존됩니다.")) return;
       busy = true; operation = "선택한 그래프 " + chosen().length + "개로 보고서를 생성하는 중입니다. 완료되면 미리보기가 열립니다."; render(); tell(operation);
-      api.build(chosen()).then(function (result) {
+      return api.build(chosen()).then(function (result) {
         if (!result || typeof result.jobId !== "string" || !/^[a-zA-Z0-9-]{1,100}$/.test(result.jobId)) throw new Error("보고서 작업 번호를 확인하지 못했습니다. 저장한 그래프를 유지한 채 다시 생성해 주세요.");
         job = {jobId:result.jobId}; stale = false; step = 3;
         editorProblem = "";

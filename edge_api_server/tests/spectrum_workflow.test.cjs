@@ -26,6 +26,46 @@ const tick=()=>new Promise(resolve=>setTimeout(resolve,0));
 function respond(request,status,code,message='서버 확인 실패') {
   request.held=true;request.status=status;request.responseText=JSON.stringify({status,code,message});request.onload();
 }
+for(const kind of ['ftir','raman'])for(const trigger of ['sw-step-3','sw-next'])test(kind+': '+trigger+' automatically generates once, reuses unchanged report and protects existing edits',async t=>{
+  const h=setup(t,kind);await h.workflow.start();h.workflow.go(2);await h.workflow.save(false);await h.workflow.save(true);
+  // Chosen graph order, not the current display, determines report content.
+  h.d.querySelectorAll('.sw-card')[1].querySelector('button[aria-label]').click();
+  let calls=0,finish,selection;h.api.build=items=>{calls++;selection=items.map(g=>g.state.plotData[0].name);return new Promise(resolve=>finish=resolve);};
+  h.w.confirm=()=>{throw Error('first report must not need a confirmation');};
+  h.d.getElementById(trigger).click();h.d.getElementById('sw-step-3').click();h.d.getElementById('sw-next').click();h.d.getElementById('sw-build-report').click();
+  assert.equal(calls,1);assert.deepEqual(Array.from(selection),['raw2','raw1']);assert.match(h.d.querySelector('.sw-status').textContent,/생성하는 중/);
+  finish({jobId:'first'});await tick();await tick();
+  assert.equal(h.stored.step,3);assert.match(h.d.getElementById('sw-report-editor').src,/first\/edit/);
+  h.workflow.go(2);await h.workflow.go(3);assert.equal(calls,1);assert.equal(h.stored.job.jobId,'first');
+  h.workflow.go(2);await h.workflow.save(false);h.w.confirm=()=>false;h.d.getElementById(trigger).click();
+  assert.equal(calls,1);assert.equal(h.d.getElementById('spectrum-workflow').dataset.step,'2');assert.equal(h.stored.job.jobId,'first');
+  h.w.confirm=()=>true;h.d.getElementById(trigger).click();assert.equal(calls,2);
+  finish({jobId:'second'});await tick();await tick();assert.equal(h.stored.job.jobId,'second');assert.equal(h.stored.step,3);
+});
+test('automatic preview requires saved selection and returns to pending edits without replacing them',async t=>{
+  const h=setup(t);let calls=0;h.api.build=async()=>{calls++;return {jobId:'first'};};await h.workflow.start();h.workflow.go(2);h.workflow.go(3);
+  assert.equal(calls,0);assert.equal(h.d.getElementById('spectrum-workflow').dataset.step,'2');assert.match(h.d.querySelector('.sw-status').textContent,/그래프 저장/);
+  await h.workflow.save(false);h.d.querySelector('.sw-card input').click();h.workflow.go(3);
+  assert.equal(calls,0);assert.match(h.d.querySelector('.sw-status').textContent,/체크/);assert(h.d.getElementById('sw-next').disabled);
+  h.d.querySelector('.sw-card input').click();await h.workflow.go(3);assert.equal(calls,1);h.workflow.go(2);
+  const frame=h.d.getElementById('sw-report-editor');h.w.dispatchEvent(new h.w.MessageEvent('message',{origin:h.w.location.origin,source:frame.contentWindow,data:{type:'rist-workflow-editor-state',jobId:'first',busy:true}}));
+  h.workflow.go(3);assert.equal(h.d.getElementById('spectrum-workflow').dataset.step,'3');assert.equal(calls,1);assert.match(h.d.querySelector('.sw-status').textContent,/저장되지 않은 수정/);assert(!frame.hidden);
+});
+test('failed automatic creation retains graph selection and does not retry in a loop',async t=>{
+  const h=setup(t);await h.workflow.start();h.workflow.go(2);await h.workflow.save(false);const graphs=structuredClone(h.stored.graphs);
+  let calls=0;h.api.build=async()=>{calls++;throw Error('render failed');};await h.workflow.go(3);await tick();
+  assert.equal(calls,1);assert.equal(h.d.getElementById('spectrum-workflow').dataset.step,'2');assert.deepEqual(h.stored.graphs,graphs);
+  assert(!h.d.getElementById('sw-next').disabled);assert.match(h.d.querySelector('.sw-status').textContent,/render failed/);
+});
+test('explicit transition regenerates an expired report once; failure of the new job does not loop',async t=>{
+  const h=setup(t);await h.workflow.start();h.workflow.go(2);await h.workflow.save(false);await h.workflow.go(3);h.workflow.go(2);
+  let calls=0;h.api.build=async()=>{calls++;return {jobId:'new-job'};};
+  const transition=h.workflow.go(3);respond(h.requests.at(-1),404,'REPORT_JOB_NOT_FOUND');
+  await Promise.resolve();await Promise.resolve();
+  assert.equal(calls,1);assert.match(h.requests.at(-1).url,/new-job\/editor-status$/);
+  respond(h.requests.at(-1),404,'REPORT_JOB_NOT_FOUND');await transition;await tick();
+  assert.equal(calls,1);assert.equal(h.stored.job,null);assert.equal(h.stored.graphs.length,1);
+});
 for(const kind of ['ftir','raman'])test(kind+': stale saved preview never navigates to a missing job and keeps graph/source data for regeneration',async t=>{
   const h=setup(t,kind);await h.workflow.start();h.workflow.go(2);await h.workflow.save(false);
   const state=structuredClone(h.stored);state.step=4;state.job={jobId:'expired'};
@@ -89,7 +129,8 @@ for(const kind of ['ftir','raman'])test(kind+': next action follows save/selecti
   assert(!build.hidden);assert(build.disabled);assert(save.classList.contains('sw-primary'));
   assert.match(detail(),/그래프 저장/);assert(next.hidden);
   await h.workflow.save(false);
-  assert(!build.disabled);assert(build.classList.contains('sw-primary'));assert(!save.classList.contains('sw-primary'));
+  assert(!build.disabled);assert(next.classList.contains('sw-primary'));assert(!save.classList.contains('sw-primary'));
+  assert.match(next.textContent,/생성·미리보기/);assert.match(detail(),/자동 생성/);
   assert.match(h.d.querySelector('.sw-selection-count').textContent,/포함 1개 \/ 저장 1개/);
   const check=h.d.querySelector('.sw-card input');check.checked=false;check.onchange();
   assert(build.disabled);assert.match(detail(),/체크/);assert.match(build.title,/체크/);
@@ -119,7 +160,7 @@ test('action guide explains unavailable states and failed generation remains ret
   h.workflow.setBusy(true);assert(build.disabled);assert.match(detail(),/RAW 분석/);
   h.workflow.setBusy(false);assert(!build.disabled);
   h.api.build=async()=>{throw Error('test build failure');};build.click();await tick();await tick();
-  assert(!build.disabled);assert(build.classList.contains('sw-primary'));
+  assert(!build.disabled);assert(h.d.getElementById('sw-next').classList.contains('sw-primary'));
   assert.match(h.d.querySelector('.sw-status').textContent,/test build failure/);
   assert(h.d.getElementById('sw-step-4').disabled);
 });

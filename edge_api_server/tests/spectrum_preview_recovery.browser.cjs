@@ -20,6 +20,8 @@ const raw=Buffer.from(Array.from({length:241},(_,i)=>{const x=400+i*15;return x+
     for(const version of [144,49])for(const kind of ['ftir','raman']){
       const context=await browser.newContext({viewport:{width:1440,height:1050},userAgent:'Mozilla/5.0 (Windows NT 5.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/'+version+'.0.0.0 Safari/537.36'+(version===144?' Supermium/144.0':'')});
       const page=await context.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));page.on('dialog',d=>d.accept());
+      let creations=0;
+      page.on('request',r=>{if(r.method()==='POST'&&/\/report\/upload-sessions\/[^/]+\/complete$/.test(r.url()))creations++;});
       page.setDefaultTimeout(30000);
       async function waitEditor(){
         await page.waitForFunction(()=>{const f=document.getElementById('sw-report-editor');return f&&!f.hidden&&f.contentDocument&&f.contentDocument.querySelector('#edit-page option');},null,{timeout:180000});
@@ -37,8 +39,11 @@ const raw=Buffer.from(Array.from({length:241},(_,i)=>{const x=400+i*15;return x+
         await page.locator('#sw-graph-name').fill('보존할 편집 그래프');await page.locator('#sw-save-graph').click();
         await page.waitForFunction(()=>document.querySelectorAll('.sw-card').length===1&&!document.getElementById('sw-build-report').disabled);
         const image=await page.locator('.sw-card img').getAttribute('src');
-        await page.locator('#sw-build-report').click();await waitEditor();
+        // Both the top step button and the lower next action must auto-create.
+        await page.locator(version===144?'#sw-step-3':'#sw-next').click();await waitEditor();assert.equal(creations,1);
         const first=await page.locator('#sw-report-editor').getAttribute('src'),id=first.split('/').slice(-2)[0];
+        await page.locator('#sw-step-2').click();await page.locator('#sw-step-3').click();await waitEditor();
+        assert.equal(creations,1);assert.equal(await page.locator('#sw-report-editor').getAttribute('src'),first);
         await page.locator('#sw-step-4').click();
         assert.equal((await page.request.post(origin+'/__test__/expire-preview/'+id)).status(),200);
         // IndexedDB still has the old job: no /edit navigation may reach the dead job.
@@ -50,7 +55,7 @@ const raw=Buffer.from(Array.from({length:241},(_,i)=>{const x=400+i*15;return x+
         assert.equal(await page.locator('.sw-card img').getAttribute('src'),image);
         assert(await page.locator('#sw-step-4').isDisabled());
         await page.screenshot({path:path.join(output,kind+'-'+version+'-recovery.png'),fullPage:true});
-        await page.locator('#sw-build-report').click();await waitEditor();
+        await page.locator('#sw-step-2').click();await page.locator('#sw-next').click();await waitEditor();assert.equal(creations,2);
         const regenerated=await page.locator('#sw-report-editor').getAttribute('src');assert.notEqual(regenerated,first);
         // A valid job survives a temporary lookup failure and retries without generating.
         await page.locator('#sw-step-2').click();
@@ -59,9 +64,10 @@ const raw=Buffer.from(Array.from({length:241},(_,i)=>{const x=400+i*15;return x+
         assert(await page.locator('#sw-step-4').isDisabled());
         await page.unroute('**/editor-status');await page.locator('#sw-retry-editor').click();await waitEditor();
         assert.equal(await page.locator('#sw-report-editor').getAttribute('src'),regenerated);
+        assert.equal(creations,2);
         await page.screenshot({path:path.join(output,kind+'-'+version+'-preview.png'),fullPage:true});
         assert.deepEqual(errors,[]);
-        console.log(kind+'/'+version+': initial preview, expired job, preserved graph, real regeneration, transient retry passed');
+        console.log(kind+'/'+version+': step transition auto-generation, unchanged reuse, expired job, preserved graph, real regeneration, transient retry passed');
       }catch(error){await page.screenshot({path:path.join(output,kind+'-'+version+'-failure.png'),fullPage:true});throw error;}
       finally{await context.close();}
     }

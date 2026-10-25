@@ -93,18 +93,16 @@ const raw = Buffer.from(Array.from({length:241}, (_, i) => {
         await page.waitForFunction(()=>!document.getElementById('sw-save-graph').disabled);
         assert.equal(await page.locator('.sw-card').count(),2);
         await page.locator('#'+gd).screenshot({path:path.join(output,kind+'-edit.png')});
-        await page.locator('#sw-step-3').click();
         assert.equal(await page.locator('#'+kind+'-home').isVisible(),true);
         assert.equal(await page.locator('#'+kind+'-account-link').isVisible(),true);
         const second=page.locator('.sw-card').nth(1);
         await second.getByRole('button',{name:'비교 그래프 2 앞 순서로',exact:true}).click();
         await page.locator('.sw-card').first().getByRole('checkbox').uncheck();
         await page.locator('.sw-card').first().getByRole('checkbox').check();
-        // Saved selections can generate directly from editing; step 3 is not a hidden prerequisite.
-        await page.locator('#sw-step-2').click();
-        assert(await page.locator('#sw-build-report').isEnabled());
-        assert((await page.locator('#sw-build-report').getAttribute('class')).includes('sw-primary'));
-        await page.locator('#sw-build-report').click();
+        // The next step generates automatically, without a separate build click.
+        assert(await page.locator('#sw-next').isEnabled());
+        assert((await page.locator('#sw-next').getAttribute('class')).includes('sw-primary'));
+        await page.locator('#sw-next').click();
         assert.match(await page.locator('#sw-guide-detail').textContent(),/보고서를 생성하는 중/);
         await page.waitForFunction(()=>{const f=document.getElementById('sw-report-editor');return f.src.includes('/edit?workflow=1')&&!f.hidden;},null,{timeout:180000});
         let editor=page.frameLocator('#sw-report-editor');
