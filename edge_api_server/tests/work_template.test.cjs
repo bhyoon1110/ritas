@@ -274,7 +274,15 @@ for(const mode of ['native','chrome49']) for(const experiment of ['ftir','raman'
     assert.equal(h.gd.layout.title.text,'');assert.deepEqual(clone(h.gd.layout.xaxis.range),[650,450]);
     assert.equal(h.gd.layout.meta.ristPlotSize.width,1000,'loaded template wins over previously selected plot size');
     assert.deepEqual(clone(h.gd.layout.yaxis.range),[-20,200]);
-    h.d.getElementById(experiment+'-clear').click();await tick();assert.equal(h.template().state(),null);
+    assert.equal(h.d.getElementById('sw-save-graph').disabled,false,'template completion unlocks workflow');
+    assert.equal(h.d.getElementById(experiment+'-clear').disabled,false);
+    // JSDOM intentionally has no IndexedDB. Full reset must preserve the template
+    // when persisted graph/current state cannot be cleared (real DB covered in browser QA).
+    const beforeReset=clone(h.template().state());
+    h.d.getElementById(experiment+'-clear').click();await tick();
+    assert.deepEqual(clone(h.template().state()),beforeReset);
+    assert.match(h.d.querySelector('.sw-status').textContent,/초기화하지 못했습니다/);
+    h.d.querySelector('[data-template-clear]').click();assert.equal(h.template().state(),null);
   });
   test(label+': active selection restores, rejects missing libraries, and mismatched file cannot change analysis',async t=>{
     const h=setup(t,experiment,mode);await tick();

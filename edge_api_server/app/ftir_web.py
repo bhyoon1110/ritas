@@ -1766,7 +1766,7 @@ _PAGE_SHELL = """
       <span>Origin 스타일</span>
     </label>
     <button type="button" class="ftir-clear-button" id="ftir-report">보고서 생성</button>
-    <button type="button" class="ftir-clear-button" id="ftir-clear">초기화</button>
+    <button type="button" class="ftir-clear-button" id="ftir-clear" disabled>초기화</button>
     <label class="ftir-file-button">
       DPT 파일 선택
       <input id="ftir-file-input" class="ftir-file-input" type="file"
@@ -2805,20 +2805,6 @@ _UPLOAD_SCRIPT = """
     }, 350);
   }
 
-  function clearWorkspaceState() {
-    if (saveTimer) {
-      clearTimeout(saveTimer);
-      saveTimer = 0;
-    }
-    return workspaceStore("readwrite").then(function(store) {
-      return new Promise(function(resolve, reject) {
-        var request = store.delete(SESSION_KEY);
-        request.onsuccess = function() { resolve(); };
-        request.onerror = function() { reject(request.error); };
-      });
-    }).catch(function() {});
-  }
-
   function restoreWorkspace(savedState) {
     return (savedState ? Promise.resolve(savedState) : workspaceStore("readonly").then(function(store) {
       return new Promise(function(resolve, reject) {
@@ -2881,11 +2867,18 @@ _UPLOAD_SCRIPT = """
       if (!user || !user.userId) throw new Error("저장 목록의 사용자 정보를 확인할 수 없습니다.");
       return "graph-collection-v1:" + user.userId;
     });
-    function collectionStore(value, write) {
+    function collectionStore(value, write, clearCurrent) {
       return collectionIdentity.then(function(key) {
         return workspaceStore(write ? "readwrite" : "readonly").then(function(store) {
           return new Promise(function(resolve, reject) {
-            var request = write ? store.put(value, key) : store.get(key);
+            // Commit the empty collection and current-workspace deletion atomically.
+            var request;
+            try {
+              if (clearCurrent) store.delete(SESSION_KEY);
+              request = write ? store.put(value, key) : store.get(key);
+            } catch (error) {
+              store.transaction.abort(); reject(error); return;
+            }
             var result;
             request.onsuccess = function() { result = request.result; };
             request.onerror = function() { reject(request.error); };
@@ -2900,6 +2893,27 @@ _UPLOAD_SCRIPT = """
       hasGraph: function() { return !!latestAnalysisPayload && files.length > 0 && (gd.data || []).some(function(t) { return t.meta && t.meta.rist_sample_parent; }); },
       read: function() { return collectionStore(null, false); },
       write: function(value) { return collectionStore(value, true); },
+      reset: async function(empty, didClear, pendingWrites) {
+        restoreInProgress = true;
+        if (saveTimer) { clearTimeout(saveTimer); saveTimer = 0; }
+        setBusy(true);
+        try {
+          await pendingWrites.catch(function() {});
+          await collectionStore(empty, true, true);
+          if (workTemplate) workTemplate.clear();
+          files = []; input.value = ""; latestAnalysisPayload = null;
+          setReportProgress(null); setMessage("");
+          clearReportMetadataForm(); clearReportTransferForm();
+          lastReportJob = null;
+          updatePersistentReportDownload(null); updateReportSendAvailability();
+          closeLibraryEditor(); closeReportOptionsEditor();
+          renderFiles(); didClear();
+          await resetGraph();
+          await Promise.resolve(gd._ristStackReady);
+        } finally {
+          restoreInProgress = false; setBusy(false);
+        }
+      },
       capture: async function() {
         setBusy(true);
         try {
@@ -3486,7 +3500,6 @@ _UPLOAD_SCRIPT = """
 
   function setBusy(busy) {
     if (workTemplate) workTemplate.setBusy(busy);
-    if (workflow) workflow.setBusy(busy);
     loading.classList.toggle("is-visible", busy);
     input.disabled = busy;
     reportButton.disabled = busy;
@@ -3511,6 +3524,7 @@ _UPLOAD_SCRIPT = """
     libraryList.querySelectorAll("input, button").forEach(function(control) {
       control.disabled = busy;
     });
+    if (workflow) workflow.setBusy(busy);
   }
 
   function setReportProgress(job) {
@@ -4939,11 +4953,11 @@ _UPLOAD_SCRIPT = """
   function resetGraph() {
     if (controller) controller.abort();
     controller = null;
-    setBusy(false);
+    if (!restoreInProgress) setBusy(false);
     setMessage("");
     updateIdleStatus();
     setOriginStyleEnabled(true, false);
-    window.Plotly.react(gd, freshEmptyData(), freshEmptyLayout(), gd._context).then(function() {
+    return window.Plotly.react(gd, freshEmptyData(), freshEmptyLayout(), gd._context).then(function() {
       dispatchDataReplaced(25);
       return applyResponsiveLayout();
     }).then(function() {
@@ -5488,22 +5502,6 @@ _UPLOAD_SCRIPT = """
     }
   });
   reportButton.addEventListener("click", createReport);
-  clearButton.addEventListener("click", function() {
-    if (workTemplate && workTemplate.isBusy()) return;
-    if (workTemplate) workTemplate.clear();
-    files = [];
-    latestAnalysisPayload = null;
-    setReportProgress(null);
-    setMessage("");
-    clearReportMetadataForm();
-    clearReportTransferForm();
-    lastReportJob = null;
-    updatePersistentReportDownload(null);
-    updateReportSendAvailability();
-    renderFiles();
-    clearWorkspaceState();
-    resetGraph();
-  });
   ["dragenter", "dragover"].forEach(function(name) {
     dropZone.addEventListener(name, function(ev) {
       ev.preventDefault();

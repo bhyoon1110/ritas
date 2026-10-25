@@ -4,15 +4,47 @@ const source=fs.readFileSync(path.join(__dirname,'../app/spectrum_workflow.js'),
 function setup(t,kind='ftir') {
   const dom=new JSDOM('<header class="ftir-app-bar"><button id="ftir-clear"></button><button id="ftir-report"></button><label><input id="ftir-file-input"></label><label><input id="ftir-origin"></label></header><section class="ftir-library-band"></section><section id="ftir-drop-zone"></section><section id="ftir-report-meta"></section><div id="plot"></div>'.replace(/ftir/g,kind),{url:'http://localhost/'+kind,runScripts:'outside-only'});
   t.after(()=>dom.window.close()); const w=dom.window,d=w.document; w.confirm=()=>true;w.requestAnimationFrame=fn=>fn();
-  let stored=null,fail=false,captured=0,restored=null;
+  let stored=null,fail=false,captured=0,restored=null,resets=0;
   const api={kind,gd:d.getElementById('plot'),busy:()=>false,hasGraph:()=>true,read:async()=>stored,
     write:async state=>{if(fail)throw Error('quota');stored=structuredClone(state);},
+    reset:async(empty,didClear,pending)=>{await pending.catch(()=>{});if(fail)throw Error('blocked');stored=structuredClone(empty);resets++;didClear();},
     capture:async()=>({state:{plotData:[{name:'raw'+(++captured)}],files:[]},report:{image:'data:image/png;base64,AA==',analysis:{}}}),
     restore:async value=>{restored=value;},saveWorkspace:()=>{},resize:()=>{},build:async()=>({jobId:'original'})};
   w.eval(source); const workflow=w.RistSpectrumWorkflow.install(api);
-  return {w,d,workflow,api,get stored(){return stored;},get restored(){return restored;},fail(value){fail=value;}};
+  return {w,d,workflow,api,get stored(){return stored;},get restored(){return restored;},get resets(){return resets;},fail(value){fail=value;}};
 }
 const tick=()=>new Promise(resolve=>setTimeout(resolve,0));
+for(const kind of ['ftir','raman'])test(kind+': full reset clears graph collection/report, returns to open RAW upload, and ignores stale editor messages',async t=>{
+  const h=setup(t,kind);await h.workflow.start();
+  const upload=h.d.getElementById('sw-upload'),clear=h.d.getElementById(kind+'-clear');
+  assert(!upload.hidden);assert(upload.contains(h.d.getElementById(kind+'-file-input')));
+  h.workflow.go(2);await h.workflow.save(false);await h.workflow.save(true);h.workflow.go(3);
+  h.d.getElementById('sw-build-report').click();await tick();await tick();h.workflow.go(4);
+  assert(!clear.classList.contains('sw-stage-hidden'));assert(!clear.disabled);
+  h.w.confirm=()=>false;await h.workflow.reset();assert.equal(h.stored.graphs.length,2);assert.equal(h.resets,0);
+  h.w.confirm=()=>true;await h.workflow.reset();
+  assert.equal(h.resets,1);assert.equal(h.stored.graphs.length,0);assert.equal(h.stored.job,null);assert.equal(h.stored.active,null);
+  assert.equal(h.stored.step,1);assert(!upload.hidden);assert.equal(h.d.querySelectorAll('.sw-card').length,0);
+  const frame=h.d.getElementById('sw-report-editor');assert(frame.hidden);assert.equal(frame.getAttribute('src'),null);
+  assert.equal(h.d.getElementById('sw-graph-name').value,'');
+  h.w.dispatchEvent(new h.w.MessageEvent('message',{origin:h.w.location.origin,source:frame.contentWindow,data:{type:'rist-workflow-editor-state',jobId:'old',busy:true}}));
+  assert(!clear.disabled);assert.equal(h.stored.job,null);
+  await h.workflow.start();assert(!upload.hidden);assert.equal(h.d.querySelectorAll('.sw-card').length,0);
+});
+test('reset waits for earlier writes; busy, child editing and failed storage cannot partially clear the UI',async t=>{
+  const h=setup(t);await h.workflow.start();h.workflow.go(2);await h.workflow.save(false);
+  h.workflow.setBusy(true);await h.workflow.reset();assert.equal(h.resets,0);h.workflow.setBusy(false);
+  h.workflow.go(3);h.d.getElementById('sw-build-report').click();await tick();await tick();
+  const frame=h.d.getElementById('sw-report-editor');
+  function child(busy){h.w.dispatchEvent(new h.w.MessageEvent('message',{origin:h.w.location.origin,source:frame.contentWindow,data:{type:'rist-workflow-editor-state',jobId:'original',busy}}));}
+  child(true);await h.workflow.reset();assert.equal(h.resets,0);child(false);
+  h.fail(true);await h.workflow.reset();assert.equal(h.d.querySelectorAll('.sw-card').length,1);assert.equal(h.stored.job.jobId,'original');
+  assert.match(h.d.querySelector('.sw-status').textContent,/기존 작업은 유지/);h.fail(false);
+  let release;const write=h.api.write;h.api.write=state=>new Promise(resolve=>{release=()=>write(state).then(resolve);});
+  h.workflow.go(1);await tick();const resetting=h.workflow.reset();await tick();
+  assert.equal(h.resets,0);assert(h.d.getElementById('ftir-clear').disabled);
+  await release();await resetting;assert.equal(h.stored.graphs.length,0);assert.equal(h.stored.job,null);
+});
 for(const kind of ['ftir','raman'])test(kind+': preview uses shared action buttons and preserves close/re-edit behavior',async t=>{
   const h=setup(t,kind);await h.workflow.start();h.workflow.go(2);await h.workflow.save(false);
   const open=()=>h.d.querySelector('.sw-card .sw-controls button').click();open();

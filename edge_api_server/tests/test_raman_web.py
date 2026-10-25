@@ -228,7 +228,7 @@ def test_raman_workspace_contains_upload_controls() -> None:
     assert 'id="raman-file-list"' in page
     assert 'id="raman-drop-zone"' in page
     assert 'id="raman-drop-prompt"' in page
-    assert '<button class="raman-clear-button" id="raman-clear" type="button">초기화</button>' in page
+    assert '<button class="raman-clear-button" id="raman-clear" type="button" disabled>초기화</button>' in page
     assert "clearButton.hidden = false" in page
     assert 'id="raman-library-list"' in page
     assert 'id="raman-library-filter"' in page
@@ -378,7 +378,8 @@ def test_raman_workspace_contains_upload_controls() -> None:
     assert "installWorkspaceAutosave()" in page
     assert 'gd.addEventListener("rist-raman-tools-toggle"' in page
     assert "if (restored) return applyResponsiveLayout()" in page
-    assert "clearWorkspaceState()" in page
+    assert "if (clearCurrent) store.delete(SESSION_KEY)" in page
+    assert "await collectionStore(empty, true, true)" in page
     assert "plotData: JSON.parse(JSON.stringify(gd.data || []))" in page
     assert "files = (state.files || []).map(recordFile)" in page
     assert "function filterReportAnalysisPayload" in page

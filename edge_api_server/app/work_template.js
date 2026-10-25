@@ -256,6 +256,7 @@
     function refresh() {
       band.querySelectorAll("button, input").forEach(function(control) { control.disabled = busy(); });
       q("[data-template-clear]").disabled = busy() || !active;
+      options.gd.dispatchEvent(new CustomEvent("rist-work-template-state-change"));
     }
     function message(value) { q("[data-template-status]").textContent = value; }
     function activeMessage() {

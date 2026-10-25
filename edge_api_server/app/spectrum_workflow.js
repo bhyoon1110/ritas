@@ -15,7 +15,7 @@
   function install(api) {
     var kind = api.kind, gd = api.gd, graphs = [], active = null, step = 1, job = null;
     var busy = false, ready = false, stale = false, childBusy = false;
-    var writing = Promise.resolve(), externalBusy = false;
+    var writing = Promise.resolve(), externalBusy = false, resetting = false;
     var root = node("section"); root.className = "spectrum-workflow"; root.id = "spectrum-workflow";
     var header = document.querySelector("." + kind + "-app-bar");
     header.parentNode.insertBefore(root, header.nextSibling);
@@ -26,6 +26,17 @@
     });
     var help = node("p", root); help.className = "sw-help";
     var stateLine = node("p", root); stateLine.className = "sw-status"; stateLine.setAttribute("role", "status");
+    var upload = node("section", root); upload.className = "sw-upload"; upload.id = "sw-upload";
+    node("h3", upload, "RAW 데이터 업로드");
+    node("p", upload, kind === "ftir" ? "DPT 원본 파일을 선택하거나 아래 영역에 끌어 놓으세요." : "TXT·CSV·TSV·Excel 원본 파일을 선택하거나 아래 영역에 끌어 놓으세요.").className = "sw-help";
+    var input = document.getElementById(kind + "-file-input"), chooser = document.querySelector("." + kind + "-file-button") || input.closest("label");
+    upload.appendChild(chooser);
+    if (!chooser.contains(input)) upload.appendChild(input);
+    upload.appendChild(document.getElementById(kind + "-drop-zone"));
+    chooser.tabIndex = 0; chooser.setAttribute("role", "button");
+    chooser.onkeydown = function (event) {
+      if (event.keyCode === 13 || event.keyCode === 32) { event.preventDefault(); if (!unavailable()) input.click(); }
+    };
     var controls = node("div", root); controls.className = "sw-controls";
     var name = node("input", controls); name.type = "text"; name.maxLength = 100;
     name.id = "sw-graph-name"; name.placeholder = "저장할 그래프 이름"; name.setAttribute("aria-label", "그래프 이름");
@@ -43,7 +54,8 @@
     var frame = node("iframe", root); frame.className = "sw-report-frame"; frame.id = "sw-report-editor";
     frame.title = "보고서 미리보기·편집 및 저장·전송"; frame.hidden = true;
     var clear = document.getElementById(kind + "-clear");
-    clear.textContent = "현재 그래프 초기화";
+    clear.textContent = "초기화";
+    clear.title = "현재 그래프와 저장 그래프를 모두 비우고 데이터 업로드부터 시작";
     document.getElementById(kind + "-report").style.display = "none";
     function tell(text, error) { stateLine.textContent = text; stateLine.className = "sw-status" + (error ? " sw-error" : ""); }
     function unavailable() { return busy || externalBusy || !ready || api.busy(); }
@@ -77,7 +89,9 @@
       toggle(document.getElementById(kind + "-report-meta"), step === 1);
       toggle(document.querySelector("." + kind + "-file-button") || document.getElementById(kind + "-file-input").closest("label"), step === 1);
       toggle(document.getElementById(kind + "-origin").parentNode, step === 2);
-      toggle(clear, step <= 2);
+      toggle(clear, true); clear.disabled = unavailable() || childBusy;
+      upload.hidden = step !== 1;
+      chooser.setAttribute("aria-disabled", String(unavailable()));
       controls.hidden = step !== 2; library.hidden = step === 1 || step === 4;
       previous.hidden = step === 1; next.hidden = step === 4;
       next.textContent = step === 1 ? "그래프 편집으로 →" : step === 2 ? "보고서 구성으로 →" : "저장·전송으로 →";
@@ -117,6 +131,7 @@
       if (value === 4 && !job) { tell("먼저 ③ 단계에서 그래프를 선택하고 보고서를 생성하세요.", true); return; }
       if (value === 4 && stale) { tell("변경한 그래프 목록으로 보고서를 다시 생성한 뒤 전송하세요. 이전 보고서는 별도로 보존됩니다.", true); return; }
       step = value; render(); persistSoon();
+      if (step === 1) chooser.focus();
       if (step === 2) window.requestAnimationFrame(function () { api.resize(); });
     }
     function move(index, delta) {
@@ -175,7 +190,7 @@
     }
     frame.onload = editorStage;
     window.addEventListener("message", function (event) {
-      if (event.origin !== window.location.origin || event.source !== frame.contentWindow) return;
+      if (resetting || !job || event.origin !== window.location.origin || event.source !== frame.contentWindow) return;
       var data = event.data || {};
       if (data.type === "rist-workflow-editor-state") {
         childBusy = !!data.busy;
@@ -183,10 +198,29 @@
           job = {jobId:data.jobId}; persistSoon();
         }
         build.disabled = unavailable() || !chosen().length || childBusy;
+        clear.disabled = unavailable() || childBusy;
         editorStage();
       } else if (data.type === "rist-workflow-back") go(2);
     });
-    clear.addEventListener("click", function () { active = null; name.value = ""; persistSoon(); render(); });
+    function reset() {
+      if (unavailable() || childBusy) return Promise.resolve();
+      if (!window.confirm("현재 그래프와 저장된 그래프 " + graphs.length + "개를 모두 초기화하고 데이터 업로드부터 시작할까요? 저장하지 않은 편집 내용도 지워집니다. 원본 파일·피크 라이브러리·이미 생성하거나 전송한 서버 보고서는 보존됩니다.")) return Promise.resolve();
+      busy = resetting = true; render(); tell("현재 작업과 저장 그래프를 초기화하는 중입니다.");
+      var committed = false, errorMessage = "", empty = {version:1,graphs:[],active:null,step:1,job:null,stale:false};
+      return api.reset(empty, function () {
+        committed = true; graphs = []; active = job = null; stale = childBusy = false; step = 1; name.value = "";
+        frame.removeAttribute("src");
+        Array.prototype.forEach.call(document.querySelectorAll(".sw-preview"),function (modal) { modal.remove(); });
+        render();
+      }, writing).then(function () {
+        tell("초기화했습니다. RAW 파일을 업로드하여 새 작업을 시작하세요. 서버에 생성·전송된 보고서는 보존됩니다.");
+      }).catch(function () {
+        errorMessage = committed ? "저장된 작업은 초기화했지만 그래프 화면을 비우지 못했습니다. 새로고침해 주세요."
+          : "브라우저 저장 데이터를 초기화하지 못했습니다. 기존 작업은 유지됩니다. 저장 권한을 확인하고 다시 시도하세요.";
+      }).then(function () { busy = resetting = false; render(); if (errorMessage) tell(errorMessage, true); if (committed) chooser.focus(); });
+    }
+    clear.addEventListener("click", reset);
+    gd.addEventListener("rist-work-template-state-change", function () { if (ready) render(); });
     window.addEventListener("beforeunload", function (event) {
       if (busy || childBusy) { event.preventDefault(); event.returnValue = ""; }
     });
@@ -205,7 +239,7 @@
       },
       setBusy:function (value) { externalBusy = !!value; if (ready) render(); },
       dataLoaded:function () { active = null; name.value = ""; if (ready) { step = 2; render(); persistSoon(); api.resize(); } },
-      go:go, save:saveGraph
+      go:go, save:saveGraph, reset:reset
     };
   }
   window.RistSpectrumWorkflow = {install:install, imageFile:function (url) {

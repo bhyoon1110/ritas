@@ -69,7 +69,9 @@ const raw = Buffer.from(Array.from({length:241}, (_, i) => {
         assert.deepEqual(await page.evaluate(id=>{const g=document.getElementById(id);return {x:g.layout.xaxis.range,y:g.layout.yaxis.range,raw:g.data[0].y};},gd),beforeSize);
         await page.locator('#sw-graph-name').fill('비교 그래프 1'); await page.locator('#sw-save-graph').click();
         await page.waitForFunction(() => document.querySelectorAll('.sw-card').length===1 && !document.getElementById('sw-save-graph').disabled);
-        await page.locator('#sw-step-1').click(); await page.locator('#'+kind+'-clear').click();
+        await page.locator('#sw-step-1').click();
+        while(await page.locator('#'+kind+'-file-list button').count())await page.locator('#'+kind+'-file-list button').last().click();
+        await page.waitForFunction(id=>!document.getElementById(id).data.some(t=>t.meta&&t.meta.rist_sample_parent),gd);
         await page.locator('#'+kind+'-file-input').setInputFiles({name:'second.'+(kind==='ftir'?'dpt':'txt'),mimeType:'text/plain',buffer:raw});
         await page.waitForFunction(() => document.getElementById('spectrum-workflow').dataset.step==='2' && !document.getElementById('sw-save-graph').disabled);
         await page.evaluate(async id => { const p=document.getElementById(id); await Plotly.relayout(p, {'title.text':'두 번째 그래프',annotations:(p.layout.annotations||[]).concat([{name:'workflow-note',text:'두 번째 메모',x:1700,y:1.2,showarrow:false}])}); await Plotly.restyle(p, {'line.color':'#e74c3c'}, [0]); },gd);
@@ -78,7 +80,9 @@ const raw = Buffer.from(Array.from({length:241}, (_, i) => {
         await page.waitForFunction(() => document.querySelectorAll('.sw-card').length===2 && !document.getElementById('sw-save-graph').disabled);
         await page.locator('.sw-card').first().getByRole('button',{name:'미리보기',exact:true}).click();
         assert.equal(await page.locator('.sw-preview img').count(),1); await page.locator('.sw-preview').getByRole('button',{name:'닫기',exact:true}).click();
-        await page.locator('#sw-step-1').click(); await page.locator('#'+kind+'-clear').click();
+        await page.locator('#sw-step-1').click();
+        while(await page.locator('#'+kind+'-file-list button').count())await page.locator('#'+kind+'-file-list button').last().click();
+        await page.waitForFunction(id=>!document.getElementById(id).data.some(t=>t.meta&&t.meta.rist_sample_parent),gd);
         await page.locator('#sw-step-2').click();
         await page.locator('.sw-card').first().getByRole('button',{name:'다시 편집',exact:true}).click();
         await page.waitForFunction(id => document.getElementById(id).layout.title.text==='첫 번째 그래프' && !document.getElementById('sw-save-graph').disabled,gd);
@@ -296,7 +300,10 @@ print('Actual report: graph sizes, page add/delete/restore, direct text editing,
         for(const width of [390,320]){
           await page.setViewportSize({width,height:844});
           // Reload the iframe so a narrow device starts with the drawer closed.
-          await page.locator('#sw-report-editor').evaluate(f=>f.contentWindow.location.reload());
+          await page.waitForFunction(width=>document.getElementById('sw-report-editor').contentWindow.innerWidth<=width,width);
+          await page.locator('#sw-report-editor').evaluate(f=>new Promise(resolve=>{
+            f.addEventListener('load',()=>resolve(),{once:true});f.contentWindow.location.reload();
+          }));
           await editor.locator('#page-sidebar-toggle').waitFor();
           assert.equal(await editor.locator('#page-sidebar').isVisible(),false);
           await editor.locator('#page-sidebar-toggle').click();
@@ -312,6 +319,17 @@ print('Actual report: graph sizes, page add/delete/restore, direct text editing,
         await page.evaluate(()=>window.scrollTo(0,0));
         await page.screenshot({path:path.join(output,kind+'-mobile.png')});
         assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth <= window.innerWidth+1),true);
+        await page.locator('#sw-step-4').click();
+        assert(await page.locator('#'+kind+'-clear').isVisible());
+        await page.locator('#'+kind+'-clear').click();
+        await page.waitForFunction(()=>document.getElementById('spectrum-workflow')?.dataset.step==='1'&&!document.getElementById('sw-step-2').disabled);
+        assert.equal(await page.locator('.sw-card').count(),0);
+        assert.equal(await page.locator('#sw-report-editor').getAttribute('src'),null);
+        assert.equal((await page.request.get(origin+download)).status(),200); // Published report is not deleted.
+        await page.reload();
+        await page.waitForFunction(()=>document.getElementById('spectrum-workflow')?.dataset.step==='1'&&!document.getElementById('sw-step-2').disabled);
+        assert.equal(await page.locator('.sw-card').count(),0);
+        assert(await page.locator('#sw-upload').isVisible());
         assert.deepEqual(errors,[]);
         console.log(kind+': upload, two graphs, preview, restore/re-edit, selection/order, real PPT/PDF, revision, back navigation, recipient graph switching, reload, mobile passed');
       } catch(error) { await page.screenshot({path:path.join(output,kind+'-failure.png'),fullPage:true}); console.error(logs.slice(-8000)); throw error; }

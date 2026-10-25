@@ -105,7 +105,7 @@ def test_ftir_workspace_contains_upload_and_editor_controls() -> None:
     assert "rist-ftir-signal-mode-change" in page
     assert "lucide-sliders-horizontal" in page
     assert 'button.textContent = open ? "닫기" : "도구"' not in page
-    assert '<button type="button" class="ftir-clear-button" id="ftir-clear">초기화</button>' in page
+    assert '<button type="button" class="ftir-clear-button" id="ftir-clear" disabled>초기화</button>' in page
     assert 'id="ftir-report"' in page
     assert page.index('id="ftir-report"') < page.index('id="ftir-clear"')
     assert page.index('id="ftir-clear"') < page.index('id="ftir-file-input"')
@@ -337,7 +337,8 @@ def test_ftir_workspace_contains_upload_and_editor_controls() -> None:
     assert "function currentPeakSensitivity()" in page
     assert "_ristPeakSensitivityValue || 25" not in page
     assert "installWorkspaceAutosave()" in page
-    assert "clearWorkspaceState()" in page
+    assert "if (clearCurrent) store.delete(SESSION_KEY)" in page
+    assert "await collectionStore(empty, true, true)" in page
     assert "plotData: JSON.parse(JSON.stringify(gd.data || []))" in page
     assert "files = (state.files || []).map(recordFile)" in page
     assert "function filterReportAnalysisPayload" in page
