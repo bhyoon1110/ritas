@@ -38,6 +38,9 @@ const raw=Buffer.from(Array.from({length:241},(_,i)=>{const x=400+i*15;return x+
         const chooseFile=page.waitForEvent('filechooser');await chooser.click();
         await (await chooseFile).setFiles({name:'reset.'+(kind==='ftir'?'dpt':'txt'),mimeType:'text/plain',buffer:raw});
         await page.waitForFunction(()=>document.getElementById('spectrum-workflow').dataset.step==='2'&&!document.getElementById('sw-save-graph').disabled);
+        await page.waitForFunction(({gd,kind})=>document.getElementById(gd).layout.showlegend===(kind==='ftir'),{gd,kind});
+        assert.equal(await page.locator('#'+gd+' g.legend text.legendtext').count(),kind==='ftir'?1:0,'initial legend contains only the RAW sample');
+        await page.locator('#'+gd).screenshot({path:path.join(output,kind+'-'+profile+'-initial-legend.png')});
         assert(await page.locator('#sw-build-report').isVisible());assert(await page.locator('#sw-build-report').isDisabled());
         assert.match(await page.locator('#sw-guide-title').textContent(),/현재 그래프 저장/);
         const templateDownload=page.waitForEvent('download');await page.locator('[data-template-save]').click();
@@ -98,6 +101,8 @@ const raw=Buffer.from(Array.from({length:241},(_,i)=>{const x=400+i*15;return x+
         await (await newChooser).setFiles({name:'reset.'+(kind==='ftir'?'dpt':'txt'),mimeType:'text/plain',buffer:raw});
         await page.waitForFunction(()=>document.getElementById('spectrum-workflow').dataset.step==='2'&&!document.getElementById('sw-save-graph').disabled);
         assert.equal(await page.locator('.sw-card').count(),0);assert.equal(await page.locator('#'+kind+'-file-list button').count(),1);
+        await page.waitForFunction(({gd,kind})=>document.getElementById(gd).layout.showlegend===(kind==='ftir'),{gd,kind});
+        assert.equal(await page.locator('#'+gd+' g.legend text.legendtext').count(),kind==='ftir'?1:0,'reset and RAW re-upload restore experiment legend default');
         assert.deepEqual(errors,[]);console.log(kind+'/'+profile+': chooser, cancel, atomic failure, full reset, user isolation, reload, mobile and same-file re-upload passed');
       }catch(error){await page.screenshot({path:path.join(output,kind+'-'+profile+'-failure.png'),fullPage:true});throw error;}
       finally{await context.close();}

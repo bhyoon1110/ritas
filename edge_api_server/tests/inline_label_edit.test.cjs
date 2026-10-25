@@ -423,22 +423,27 @@ for (const kind of ['ftir','raman']) for (const mode of ['native','chrome49']) {
     h.q('.rist-legend-edit-save-all').click();await tick();assert.equal(events.length,1,'unchanged save is a no-op');
     assert.equal(h.q('.rist-legend-edit-panel').style.display,'none','unchanged save also closes');
   });
-  test(label+': sample-only legend starts hidden, toggles without hiding peaks, and survives history',async t=>{
+  test(label+': sample-only legend uses experiment default, toggles without hiding peaks, and survives history',async t=>{
     const h=setup(t,kind,mode);await tick();
-    assert.equal(h.gd.layout.showlegend,false);assert.equal(h.gd.layout.legend.font.size,16);assert.equal(h.gd.layout.legend.font.weight,700);
+    const initial=kind==='ftir';
+    assert.equal(h.gd.layout.showlegend,initial);assert.equal(h.gd.layout.legend.font.size,16);assert.equal(h.gd.layout.legend.font.weight,700);
     assert.equal(h.gd.data[0].showlegend,true);assert.equal(h.gd.data[1].showlegend,false);
     assert.equal(h.q('[data-peak-legend-visible]'),null);
     const button=h.q('.rist-legend-bulk-controls .rist-legend-visible-toggle');button.click();await tick();
-    assert.equal(h.gd.layout.showlegend,true);assert.equal(button.textContent,'범례 숨김');
+    assert.equal(h.gd.layout.showlegend,!initial);assert.equal(button.textContent,initial?'범례 표시':'범례 숨김');
     assert.notEqual(h.gd.data[1].visible,false);assert.equal(h.gd.layout.annotations[0].visible,true);
-    h.gd._ristHistory.undo();await tick();assert.equal(h.gd.layout.showlegend,false);
-    h.gd._ristHistory.redo();await tick();assert.equal(h.gd.layout.showlegend,true);
+    h.gd._ristHistory.undo();await tick();assert.equal(h.gd.layout.showlegend,initial);
+    h.gd._ristHistory.redo();await tick();assert.equal(h.gd.layout.showlegend,!initial);
     h.gd.data[1].showlegend=true;h.dispatch('rist-plot-data-replaced');await tick();
-    assert.equal(h.gd.layout.showlegend,true);assert.equal(h.gd.data[1].showlegend,false);
+    assert.equal(h.gd.layout.showlegend,!initial);assert.equal(h.gd.data[1].showlegend,false);
     h.q('.rist-legend-edit-button').click();
     assert.equal(h.q('.rist-legend-peak-details').open,false);
     assert.equal(h.q('.rist-legend-peak-details .is-peak').getAttribute('data-curve'),'1');
     assert.equal(h.q('.rist-legend-edit-body > .is-sample').getAttribute('data-curve'),'0');
+    h.gd.layout.meta.ristLegendVisible=false;h.dispatch('rist-plot-data-replaced');await tick();
+    assert.equal(h.gd.layout.showlegend,false,'saved explicit hidden setting is preserved');
+    delete h.gd.layout.meta.ristLegendVisible;h.dispatch('rist-plot-data-replaced');await tick();
+    assert.equal(h.gd.layout.showlegend,initial,'new/reset graph uses the experiment default');
   });
   test(label+': legend editor preserves pending edits across outside/Escape/mode and closes after Save All',async t=>{
     const h=setup(t,kind,mode);await tick();h.q('.rist-legend-edit-button').click();
@@ -455,6 +460,7 @@ for (const kind of ['ftir','raman']) for (const mode of ['native','chrome49']) {
   });
   test(label+': legend font/color sync and export styling never rewrite live names/RAW',async t=>{
     const h=setup(t,kind,mode);await tick();h.run('function buildImageExportPayload');
+    if(h.gd.layout.showlegend){h.q('.rist-legend-bulk-controls .rist-legend-visible-toggle').click();await tick();}
     h.q('.rist-legend-edit-button').click();
     const size=h.q('.rist-legend-font-size');
     for(const bad of ['9','33','12.5','']) {size.value=bad;h.q('.rist-legend-edit-save-all').click();assert.equal(h.gd.layout.legend.font.size,16);
@@ -510,8 +516,9 @@ for (const kind of ['ftir','raman']) for (const mode of ['native','chrome49']) {
     assert(remove.closest('.rist-legend-sample-style'));
     assert.equal(remove.previousElementSibling.className,'rist-legend-sample-width-label');
     assert.equal(remove.parentNode.className,'rist-legend-sample-width-actions');
-    toggle.click();await tick();assert.equal(toggle.textContent,'범례 숨김');assert(toggle.classList.contains('is-active'));
-    toggle.click();await tick();assert.equal(toggle.textContent,'범례 표시');assert(!toggle.classList.contains('is-active'));
+    const initial=kind==='ftir';
+    toggle.click();await tick();assert.equal(toggle.textContent,initial?'범례 표시':'범례 숨김');assert.equal(toggle.classList.contains('is-active'),!initial);
+    toggle.click();await tick();assert.equal(toggle.textContent,initial?'범례 숨김':'범례 표시');assert.equal(toggle.classList.contains('is-active'),initial);
   });
   test(label+': Raw trees keep mixed-sample groups separate; renaming preserves pending edits',async t=>{
     const h=setup(t,kind,mode);await tick();

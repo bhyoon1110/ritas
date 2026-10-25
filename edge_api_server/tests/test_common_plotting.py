@@ -44,6 +44,24 @@ def test_shared_plotly_module_accepts_local_plotly_asset(tmp_path) -> None:
     assert 'src="/assets/plotly.min.js"' in output.read_text(encoding="utf-8")
 
 
+def test_sample_legend_default_is_opt_in_and_preserves_saved_setting(tmp_path) -> None:
+    from app.ftir_web import build_ftir_page
+    from app.raman_web import build_raman_page
+
+    output = tmp_path / "legend.html"
+    for visible in (False, True):
+        write_responsive_html(
+            go.Figure(data=[go.Scatter(x=[1, 2], y=[3, 4])]),
+            str(output), legend_text_edit=True, peak_editor=True,
+            sample_legend_default_visible=visible,
+        )
+        html = output.read_text(encoding="utf-8")
+        assert f"var sampleLegendDefaultVisible = {str(visible).lower()};" in html
+        assert "saved == null ? sampleLegendDefaultVisible : saved === true" in html
+    assert "var sampleLegendDefaultVisible = true;" in build_ftir_page()
+    assert "var sampleLegendDefaultVisible = false;" in build_raman_page()
+
+
 def test_title_editor_can_clear_and_reopen_an_empty_title(tmp_path) -> None:
     figure = go.Figure(data=[go.Scatter(x=[1, 2], y=[3, 4])])
     figure.update_layout(

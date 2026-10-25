@@ -5617,6 +5617,7 @@ def build_ftir_page() -> str:
         crosshair=True,
         title_edit=True,
         legend_text_edit=True,
+        sample_legend_default_visible=True,
         peak_editor=True,
         shape_editor=True,
         axis_controls=True,

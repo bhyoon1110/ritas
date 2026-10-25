@@ -624,7 +624,10 @@ def _title_edit_js(div_id: str) -> str:
 """
 
 
-def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -> str:
+def _legend_text_edit_js(
+    div_id: str, *, direct_annotation_edit: bool = False,
+    sample_legend_default_visible: bool = False,
+) -> str:
     """HTML 화면에서 범례 항목을 수정하는 JS 스니펫.
 
     - 범례 텍스트 더블클릭: 해당 항목을 바로 인라인 편집
@@ -1180,10 +1183,12 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
   var editing = false;
   var activeFinish = null;
   var directAnnotationEdit = {str(direct_annotation_edit).lower()};
+  var sampleLegendDefaultVisible = {str(sample_legend_default_visible).lower()};
   gd._ristSampleLegendOnly = directAnnotationEdit;
 
   function spectrumLegendVisible() {{
-    return !!(gd.layout && gd.layout.meta && gd.layout.meta.ristLegendVisible === true);
+    var saved = gd.layout && gd.layout.meta && gd.layout.meta.ristLegendVisible;
+    return saved == null ? sampleLegendDefaultVisible : saved === true;
   }}
 
   function paintSampleLegendLabels() {{
@@ -1216,7 +1221,7 @@ def _legend_text_edit_js(div_id: str, *, direct_annotation_edit: bool = False) -
       patch["legend.font.size"] = 16;
       patch["legend.font.weight"] = 700;
     }}
-    if (saved.ristLegendVisible == null) patch["meta.ristLegendVisible"] = false;
+    if (saved.ristLegendVisible == null) patch["meta.ristLegendVisible"] = sampleLegendDefaultVisible;
     if (layout.showlegend !== spectrumLegendVisible()) patch.showlegend = spectrumLegendVisible();
     if (saved.ristPeakLegendEntriesVisible !== false) patch["meta.ristPeakLegendEntriesVisible"] = false;
     var curves = [], values = [];
@@ -10380,6 +10385,7 @@ def fig_to_responsive_html(
     legend_text: Mapping[int | str, str] | None = None,
     legend_group_text: Mapping[str, str] | None = None,
     legend_text_edit: bool = False,
+    sample_legend_default_visible: bool = False,
     peak_editor: bool = False,
     shape_editor: bool = False,
     axis_controls: bool = False,
@@ -10408,6 +10414,8 @@ def fig_to_responsive_html(
     - legend_text 는 저장 전 범례 항목명을 trace index/name 기준으로 변경한다.
     - legend_group_text 는 저장 전 범례 그룹 제목을 legendgroup/title 기준으로 변경한다.
     - legend_text_edit=True 면 생성된 HTML에서 범례 항목을 더블클릭해 수정할 수 있다.
+    - sample_legend_default_visible 는 피크 편집 화면의 새 샘플 범례 기본 표시값이다.
+      저장된 표시/숨김 설정이 있으면 해당 설정을 우선한다.
     - peak_editor=True 면 피크 marker/라벨/보조선을 HTML에서 추가·삭제할 수 있다.
     - shape_editor=True 면 사각형과 텍스트 박스를 그래프에 추가·편집할 수 있다.
     - axis_controls=True 면 축 범위·눈금 설정과 축 드래그 확대/축소를 추가한다.
@@ -10495,7 +10503,8 @@ def fig_to_responsive_html(
 
     if legend_text_edit:
         html = html.replace("</body>", _legend_text_edit_js(
-            div_id, direct_annotation_edit=peak_editor
+            div_id, direct_annotation_edit=peak_editor,
+            sample_legend_default_visible=sample_legend_default_visible
         ) + "</body>", 1)
 
     if peak_editor:
@@ -10550,6 +10559,7 @@ def write_responsive_html(
     legend_text: Mapping[int | str, str] | None = None,
     legend_group_text: Mapping[str, str] | None = None,
     legend_text_edit: bool = False,
+    sample_legend_default_visible: bool = False,
     peak_editor: bool = False,
     shape_editor: bool = False,
     axis_controls: bool = False,
@@ -10581,6 +10591,7 @@ def write_responsive_html(
         legend_text=legend_text,
         legend_group_text=legend_group_text,
         legend_text_edit=legend_text_edit,
+        sample_legend_default_visible=sample_legend_default_visible,
         peak_editor=peak_editor,
         shape_editor=shape_editor,
         axis_controls=axis_controls,
