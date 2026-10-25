@@ -8,11 +8,12 @@ from urllib.parse import urlsplit
 
 from fastapi import Request
 from fastapi.responses import HTMLResponse, JSONResponse, Response
+from starlette.concurrency import run_in_threadpool
 from pydantic import Field, ValidationError
 
 from .errors import ApiException
 from .report_editor import ReportEdit, SectionEdit, editor_page
-from .report import tem_editable
+from .report import tem_editable, tem_canvas, canvas
 from .report.direct_edit import slide_image
 from .report.editor_variables import resolve_changes
 from .report.renderers import convert_pptx_to_pdf
@@ -40,7 +41,7 @@ def _state(job):
 
 def _write_metadata(job, model, actor_id=None):
     model = deepcopy(model)
-    actual, _, _ = tem_editable.inspect_pptx(job.pptx_path)
+    actual, _, _ = tem_editable.inspect_pptx(tem_canvas.base_path(job))
     by_id = {s["sectionId"]: s for s in actual}
     for section in model["sections"]:
         section["columns"] = by_id[section["sectionId"]]["columns"]
@@ -52,6 +53,7 @@ def _write_metadata(job, model, actor_id=None):
         "savedAt": datetime.now(timezone.utc).isoformat(), "savedBy": actor_id,
         "completionDate": value["completionDate"], "transfer": value["transfer"],
         "email": value["auxiliary"], "sections": value["sections"],
+        "pageEdits": value.get("pageEdits"), "canvasEdits": value.get("canvasEdits"),
         "note": "분석자가 검토한 보고서 표시값입니다. 원본 분석 데이터는 analysis-result.json에 보존됩니다.",
     })
     auxiliary = value["auxiliary"]
@@ -62,7 +64,9 @@ def _write_metadata(job, model, actor_id=None):
 
 def prepare_review(job, manifest):
     tem_editable.stamp_record(job.pptx_path,job.job_id,job.parent_job_id)
+    tem_canvas.preserve_base(job)
     model = tem_editable.initial_model(job.pptx_path, manifest.get("summary") or {})
+    tem_canvas.normalize(model, {})
     _write_metadata(job, model, job.owner_user_id)
     try:
         convert_pptx_to_pdf(job.pptx_path, job.output_dir / "tem-report.pdf")
@@ -109,8 +113,8 @@ def _revision(new_job, old_job, changes, actor_id=None):
                 target = new_job.output_dir / source.relative_to(old_job.output_dir)
                 target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(source, target)
-            tem_editable.revise_pptx(old_job.pptx_path, new_job.pptx_path, changes)
-            tem_editable.stamp_record(new_job.pptx_path,new_job.job_id,old_job.job_id)
+            tem_canvas.preserve_base(new_job, old_job)
+            tem_canvas.render(new_job, changes)
             _write_metadata(new_job, changes, actor_id)
             manifest = deepcopy(old_job.manifest or {})
             manifest.update(pptx="tem-report.pptx", revisionOf=old_job.job_id)
@@ -173,11 +177,11 @@ def install_tem_editor(router):
         if job.review_error:
             raise ApiException(503, "TEM_PREVIEW_UNAVAILABLE", job.review_error)
         with _ahn().tem_history.lease(job):
-            _, value, _ = tem_editable.inspect_pptx(job.pptx_path)
+            value = tem_canvas.layout(job, _state(job))
         return JSONResponse(value, headers={"Cache-Control": "no-store"})
 
     @router.get(prefix + "/{job_id}/edit-slides/{page}", tags=["tem"])
-    def slide(request: Request, job_id: str, page: int):
+    def slide(request: Request, job_id: str, page: int, thumbnail: bool = False):
         job = authorized_job(request, job_id)
         pdf = job.output_dir / "tem-report.pdf"
         if not pdf.is_file():
@@ -186,7 +190,7 @@ def install_tem_editor(router):
             if page < 0:
                 raise IndexError(page)
             with _ahn().tem_history.lease(job):
-                content = slide_image(str(pdf), pdf.stat().st_mtime_ns, page)
+                content = slide_image(str(pdf), pdf.stat().st_mtime_ns, page, thumbnail)
         except IndexError as exc:
             raise ApiException(404, "REPORT_PAGE_NOT_FOUND", "보고서 페이지를 찾을 수 없습니다.") from exc
         return Response(content, media_type="image/jpeg", headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"})
@@ -228,7 +232,11 @@ document.getElementById('next').onclick=function(){if(page<count-1){page++;show(
         try:
             model = TemReportEdit.model_validate_json(content)
             values = model.model_dump()
-            values = tem_editable.validate_changes(values, _state(job))
+            with _ahn().tem_history.lease(job):
+                previous = _state(job)
+                values = tem_editable.validate_changes(values, previous)
+                tem_canvas.normalize(values, previous)
+                await run_in_threadpool(tem_canvas.validate, job, values)
         except (ValidationError, ValueError) as exc:
             raise ApiException(422, "REPORT_EDIT_INVALID", "보고서 문구·표 구조·공통 항목을 확인하세요. " + (str(exc) if not isinstance(exc, ValidationError) else "")) from exc
         ahn = _ahn()
@@ -260,3 +268,21 @@ document.getElementById('next').onclick=function(){if(page<count-1){page++;show(
                 shutil.rmtree(work_dir, ignore_errors=True)
             raise
         return ahn._job_payload(new_job)
+
+    @router.post(prefix + "/{job_id}/editor-images", tags=["tem"])
+    async def image(request: Request, job_id: str):
+        job = authorized_job(request, job_id)
+        origin = request.headers.get("origin")
+        if request.headers.get("x-requested-with") != "RIST-Report-Editor" or (origin and
+                (urlsplit(origin).scheme, urlsplit(origin).netloc) != (request.url.scheme, request.url.netloc)):
+            raise ApiException(403, "REPORT_EDIT_ORIGIN_INVALID", "같은 사이트의 보고서 미리보기에서 첨부하세요.")
+        with _ahn().tem_history.lease(job):
+            content = bytearray()
+            async for chunk in request.stream():
+                content.extend(chunk)
+                if len(content) > 2*1024*1024:
+                    raise ApiException(413, "REPORT_IMAGE_TOO_LARGE", "이미지는 2MB 이하로 첨부하세요.")
+            try:
+                return await run_in_threadpool(canvas.store_image, tem_canvas.asset_root(job), bytes(content))
+            except ValueError as exc:
+                raise ApiException(422, "REPORT_IMAGE_INVALID", str(exc)) from exc

@@ -36,7 +36,7 @@ function setup(t,kind='ftir',identity='',conditionScenario=null) {
         for(const item of edits.added) pages.splice(pages.findIndex(p=>p.id===item.after)+1,0,{id:item.id,title:item.title,
           regions:[{refs:['page/'+item.id+'/title'],x:.1,y:.1,w:.8,h:.1},{refs:['page/'+item.id+'/body'],x:.1,y:.3,w:.8,h:.5}]});
         if(edits.order&&edits.order.length)pages.sort((a,b)=>edits.order.indexOf(a.id)-edits.order.indexOf(b.id));
-        result={ratio:16/9,pageEditing:kind!=='tem',canvasEditing:kind!=='tem',pages:pages.filter(p=>!edits.hidden.includes(p.id))};
+        result={ratio:16/9,pageEditing:true,canvasEditing:true,pages:pages.filter(p=>!edits.hidden.includes(p.id))};
       }
       else if(this.url.endsWith('/revisions')) {
         revisions++;
@@ -84,7 +84,7 @@ for(const kind of ['ftir','raman']) test(kind+' condition choices autosave only 
   assert.equal(h.q('inline-fields').querySelector('textarea').value,'새 선택지');
   h.input('실험조건 및 실험환경 1행 항목','자유 조건');assert(picks[0].hidden);assert.equal(h.field('실험조건 및 실험환경 1행 값').value,'새 선택지');
 });
-for(const kind of ['ftir','raman']) test(kind+' page and tool visibility toggles are adjacent and independent',t=>{
+for(const kind of ['ftir','raman','tem']) test(kind+' page and tool visibility toggles are adjacent and independent',t=>{
   const h=setup(t,kind),toggle=h.q('canvas-toggle'),sidebar=h.q('page-sidebar-toggle'),tools=h.q('canvas-controls');
   assert.equal(sidebar.nextElementSibling,toggle);assert.equal(toggle.parentNode,h.q('preview-panel-toggles'));
   assert.equal(tools.parentNode,h.q('canvas-tools'));assert(!h.q('canvas-tools').contains(toggle));assert(!toggle.hidden);
@@ -94,8 +94,11 @@ for(const kind of ['ftir','raman']) test(kind+' page and tool visibility toggles
   toggle.click();assert(tools.hidden);assert(h.q('page-sidebar').hidden);assert.equal(toggle.getAttribute('aria-expanded'),'false');
   sidebar.click();assert(!h.q('page-sidebar').hidden);assert(tools.hidden);assert.equal(h.posts.length,0);
 });
-test('TEM without canvas editing does not gain a stray free-edit toggle',t=>{
-  const h=setup(t,'tem');assert.equal(h.q('canvas-toggle'),null);assert(h.q('canvas-tools').hidden);
+test('TEM shares the icon canvas tools and autosaves inserted objects',t=>{
+  const h=setup(t,'tem');loaded(h);h.q('canvas-toggle').click();
+  h.field('글자 삽입').click();h.tick();
+  assert.equal(h.posts[0].body.canvasEdits.cover[0].kind,'text');
+  assert.match(h.q('analysis-help').textContent,/원본 분석 데이터는 유지/);
 });
 for(const kind of ['ftir','raman','tem']) test(kind+' mail draft uses wide resizable fields and keeps autosaving long text',t=>{
   const h=setup(t,kind),subject=h.field('메일 제목'),body=h.field('메일 본문');
@@ -221,7 +224,7 @@ test('direct preview preserves selected page when autosave completes',t=>{
   assert.equal(h.q('edit-page').value,'2');
 });
 function loaded(h){h.q('slide-image').dispatchEvent(new h.w.Event('load'));}
-for(const kind of ['ftir','raman']) test(kind+' adds, edits, deletes and restores PPT pages without losing source fields',t=>{
+for(const kind of ['ftir','raman','tem']) test(kind+' adds, edits, deletes and restores PPT pages without losing source fields',t=>{
   const h=setup(t,kind);assert(!h.q('page-actions').hidden);assert(!h.q('page-add').disabled);
   h.q('edit-next').click();h.q('page-add').click();
   assert(h.q('page-add').disabled);assert(h.q('page-delete').disabled);assert(h.q('send').disabled);
@@ -249,7 +252,7 @@ test('last page cannot be deleted; unsaved deletion can be undone without render
   h.q('page-delete').click();h.tick();h.q('page-delete').click();h.tick();
   assert.equal(h.q('edit-page').options.length,1);assert(h.q('page-delete').disabled);assert(!h.q('page-add').disabled);
 });
-for(const kind of ['ftir','raman'])test(kind+' sidebar moves by controls and keyboard, preserves IDs, edits and restore order',t=>{
+for(const kind of ['ftir','raman','tem'])test(kind+' sidebar moves by controls and keyboard, preserves IDs, edits and restore order',t=>{
   const h=setup(t,kind),ids=()=>[...h.d.querySelectorAll('.page-thumb')].map(b=>b.dataset.pageId);
   assert.deepEqual(ids(),['cover','summary','conditions']);assert(!h.q('page-sidebar').hidden);assert(h.q('page-up').disabled);
   h.q('page-down').click();assert(h.q('page-down').disabled);assert(h.q('send').disabled);h.tick();
@@ -273,7 +276,7 @@ test('sidebar failure retains pending order and reload cannot unlock stale struc
   assert.deepEqual(h.posts[0].body.pageEdits.order,['summary','cover','conditions']);
   h.q('reload-preview').click();assert(h.q('page-down').disabled);
 });
-for(const kind of ['ftir','raman']){
+for(const kind of ['ftir','raman','tem']){
   test(kind+' multi-page selection survives autosave, moves as one group and deletes/restores together',t=>{
     const h=setup(t,kind),ids=()=>[...h.d.querySelectorAll('.page-thumb')].map(b=>b.dataset.pageId);
     const selected=()=>[...h.d.querySelectorAll('.page-thumb[aria-pressed="true"]')].map(b=>b.dataset.pageId);
@@ -313,9 +316,9 @@ for(const kind of ['ftir','raman']){
     h.w.confirm=()=>true;h.q('page-delete').click();h.q('page-restore').click();assert.equal(h.timers.size,0);assert.equal(h.posts.length,1);
   });
 }
-test('TEM shared editor does not expose unsupported page operations',t=>{
-  const h=setup(t,'tem');assert(h.q('page-actions').hidden);assert(h.q('page-add').disabled);
-  h.input('보고서 제목','TEM 수정');h.tick();assert.equal(h.posts[0].body.pageEdits,undefined);
+test('TEM sends the same bounded page schema as spectrum editors',t=>{
+  const h=setup(t,'tem');assert(!h.q('page-actions').hidden);assert(!h.q('page-add').disabled);
+  h.input('보고서 제목','TEM 수정');h.tick();assert.deepEqual(h.posts[0].body.pageEdits,{hidden:[],order:[],added:[]});
 });
 test('actual slide regions edit their source, insert named fields and retain typing across refresh',t=>{
   const h=setup(t);h.input('새 공통 항목 이름','레이저');h.q('variable-add').click();

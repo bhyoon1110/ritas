@@ -68,6 +68,8 @@ def _node(tag, attrs=None):
 
 def objects(payload):
     from .renderers import PPTX_SLIDE_W, PPTX_SLIDE_H
+    # Imported TEM decks retain their native page size (often A4/4:3).
+    PPTX_SLIDE_W, PPTX_SLIDE_H = payload.get("size", (PPTX_SLIDE_W, PPTX_SLIDE_H))
     tree = ET.fromstring(payload["xml"])
     found, counts = [], {}
     for shape in tree.findall("p:cSld/p:spTree/*", NS):
@@ -84,6 +86,8 @@ def objects(payload):
             continue
         count = counts.get(name, 0); counts[name] = count + 1
         oid = name if name.startswith('object-') else 'shape-' + hashlib.sha256((name+':'+str(count)).encode()).hexdigest()[:20]
+        if info.get('id') in payload.get('lockedShapeIds', ()):
+            continue
         off, ext = xfrm.find('a:off', NS), xfrm.find('a:ext', NS)
         if off is None or ext is None:
             continue
@@ -197,6 +201,7 @@ def _cell_properties(cell):
 def _edit_cell(cell, patch):
     if 'text' in patch or patch.get('hidden'):
         pptx_tables.set_text(cell, '' if patch.get('hidden') else patch['text'])
+    _ensure_text_style(cell, patch)
     for run in cell.findall('.//a:rPr',NS):
         if 'fontSize' in patch: run.set('sz',str(round(patch['fontSize']*100)))
         if 'bold' in patch: run.set('b','1' if patch['bold'] else '0')
@@ -205,6 +210,8 @@ def _edit_cell(cell, patch):
         for prop in cell.findall('a:txBody/a:p/a:pPr',NS):
             prop.set('algn',{'left':'l','center':'ctr','right':'r'}[patch['align']])
     props=cell.find('a:tcPr',NS)
+    if props is None:
+        props=_node('a:tcPr');cell.append(props)
     if 'fill' in patch: _fill(props,patch['fill'])
     style=_cell_properties(cell)
     if any(key in patch for key in ('stroke','lineWidth','dash')):
@@ -218,6 +225,19 @@ def _edit_cell(cell, patch):
                 dash=line.find('a:prstDash',NS)
                 if dash is not None: line.remove(dash)
                 line.append(_node('a:prstDash',{'val':{'dot':'sysDot'}.get(patch['dash'],patch['dash'])}))
+
+
+def _ensure_text_style(container, patch):
+    # Imported PPTs can inherit all typography without explicit run/p props.
+    # Create those nodes only when overriding style, preserving theme defaults.
+    if any(key in patch for key in ('fontSize','bold','color')):
+        for run in container.findall('.//a:r', NS):
+            if run.find('a:rPr',NS) is None:
+                run.insert(0,_node('a:rPr'))
+    if 'align' in patch:
+        for paragraph in container.findall('.//a:p', NS):
+            if paragraph.find('a:pPr',NS) is None:
+                paragraph.insert(0,_node('a:pPr'))
 
 
 def _legacy_cells(entries):
@@ -243,6 +263,7 @@ def apply(document, payloads, *, validate_only=False, previous_edits=None):
     if validate_only and set(edits)-known-set(previous_edits):
         raise ValueError('편집할 페이지가 없습니다. 미리보기를 다시 불러오세요.')
     for payload in payloads:
+        width, height = payload.get('size', (r.PPTX_SLIDE_W, r.PPTX_SLIDE_H))
         patches=edits.get(payload['pageId'],[])
         if not patches: continue
         if len(patches)>100 or len({v['id'] for v in patches})!=len(patches):
@@ -288,10 +309,10 @@ def apply(document, payloads, *, validate_only=False, previous_edits=None):
                 shape.find('p:spPr/a:prstGeom',NS).set('prst', 'rect' if item['kind']=='text' else item['kind'])
                 parent.append(shape);next_id+=1
             xfrm=shape.find('p:xfrm' if item['kind']=='table' else 'p:spPr/a:xfrm',NS)
-            xfrm.find('a:off',NS).attrib.update(x=str(round(item['x']*r.PPTX_SLIDE_W)),y=str(round(item['y']*r.PPTX_SLIDE_H)))
-            xfrm.find('a:ext',NS).attrib.update(cx=str(round(item['w']*r.PPTX_SLIDE_W)),cy=str(round(item['h']*r.PPTX_SLIDE_H)))
+            xfrm.find('a:off',NS).attrib.update(x=str(round(item['x']*width)),y=str(round(item['y']*height)))
+            xfrm.find('a:ext',NS).attrib.update(cx=str(round(item['w']*width)),cy=str(round(item['h']*height)))
             if item['kind']=='table':
-                pptx_tables.resize(shape,round(item['w']*r.PPTX_SLIDE_W),round(item['h']*r.PPTX_SLIDE_H))
+                pptx_tables.resize(shape,round(item['w']*width),round(item['h']*height))
                 cell_map={(ri,ci):cell for ri,ci,cell,_ in pptx_tables.cells(shape)}
                 cell_patches=patch.get('tableCells',[])
                 if len({(v['row'],v['col']) for v in cell_patches})!=len(cell_patches):
@@ -313,6 +334,8 @@ def apply(document, payloads, *, validate_only=False, previous_edits=None):
                 path=asset_path(document,item.get('asset'))
                 name='canvas-'+hashlib.sha256((payload['pageId']+oid).encode()).hexdigest()[:20]+'.png'
                 rid='rIdCanvas'+str(next_id);next_id+=1
+                while any(rel.get('Id') == rid for rel in rels):
+                    rid='rIdCanvas'+str(next_id);next_id+=1
                 ET.SubElement(rels,'{'+REL+'}Relationship',{'Id':rid,'Type':NS['r']+'/image','Target':'../media/'+name})
                 shape.find('p:blipFill/a:blip',NS).set('{'+NS['r']+'}embed',rid);media.append((name,path))
             sp=shape.find('p:spPr',NS)
@@ -329,6 +352,7 @@ def apply(document, payloads, *, validate_only=False, previous_edits=None):
                         if p.tag=='{'+NS['a']+'}p': body.remove(p)
                     wrapper=ET.fromstring('<root xmlns:a="'+NS['a']+'">'+r._pptx_paragraphs(item['text'].split('\n'),font_size=round(item['fontSize']*100),color=item['color'].lstrip('#'),bold=item['bold'],align=item['align'])+'</root>')
                     body.extend(list(wrapper))
+                _ensure_text_style(body, patch)
                 for run in body.findall('.//a:rPr',NS):
                     if 'fontSize' in patch: run.set('sz',str(round(item['fontSize']*100)))
                     if 'bold' in patch: run.set('b','1' if item['bold'] else '0')

@@ -3,6 +3,7 @@ from copy import deepcopy
 from datetime import date
 from pathlib import Path
 import json
+import posixpath
 import shutil
 import tempfile
 from xml.etree import ElementTree as ET
@@ -31,8 +32,13 @@ def _text(body):
 
 
 def _slides(archive):
-    return sorted((name for name in archive.namelist() if name.startswith("ppt/slides/slide")
-                   and name.endswith(".xml")), key=lambda name: int(Path(name).stem[5:]))
+    """Presentation order, not part filenames; hidden/deleted slides stay private."""
+    rels = ET.fromstring(archive.read("ppt/_rels/presentation.xml.rels"))
+    targets = {r.get("Id"): posixpath.normpath("ppt/" + r.get("Target", ""))
+               if not r.get("Target", "").startswith("/") else r.get("Target").lstrip("/")
+               for r in rels if r.get("Type", "").endswith("/slide")}
+    root = ET.fromstring(archive.read("ppt/presentation.xml"))
+    return [targets[n.get("{" + NS["r"] + "}id")] for n in root.findall("p:sldIdLst/p:sldId", NS)]
 
 
 def _trace_fields(archive, replacements=None):
@@ -49,16 +55,16 @@ def _trace_fields(archive, replacements=None):
             identity = shape.find("p:nvSpPr/p:cNvPr",NS)
             key = identity.get("name", "").removeprefix("Trace ")
             if key in LABELS:
-                ref = f"section/slide-{index+1}-shape-{identity.get('id')}/paragraphs/0"
+                ref = f"section/slide-{int(Path(name).stem[5:])}-shape-{identity.get('id')}/paragraphs/0"
                 fields[key] = (ref,factual(_text(shape.find("p:txBody",NS)).partition(": ")[2]))
     return fields
 
 
-def inspect_pptx(path):
+def inspect_pptx(path, *, trace_fields=None):
     """Only expose server-owned generated text frames and table cells, never paths."""
     sections, pages, bindings = [], [], {}
     with ZipFile(path) as archive:
-        trace_fields = _trace_fields(archive)
+        trace_fields = trace_fields if trace_fields is not None else _trace_fields(archive)
         size = ET.fromstring(archive.read("ppt/presentation.xml")).find("p:sldSz", NS)
         width, height = int(size.get("cx")), int(size.get("cy"))
         for index, name in enumerate(_slides(archive)):
@@ -106,7 +112,7 @@ def inspect_pptx(path):
                         continue
                     if shape_name in {"Experiment banner title", "Report eyebrow", "Trace notice"} or shape_name.startswith(("Trace panel ", "Trace heading ", "Cover ")) or shape_name.removeprefix("Trace ") in READONLY_TRACE:
                         continue
-                sid = f"slide-{index + 1}-shape-{identity.get('id')}"
+                sid = f"slide-{int(Path(name).stem[5:])}-shape-{identity.get('id')}"
                 section = dict(sectionId=sid, heading=f"{index + 1}페이지 · {identity.get('name', '내용')}",
                                paragraphs=[], bullets=[], columns=None, rows=None, source="user")
                 refs = []

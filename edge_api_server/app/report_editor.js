@@ -16,7 +16,7 @@
   });
   if (project === "TEM") {
     document.getElementById("recipient-preview").textContent = "읽기 전용 보고서";
-    document.getElementById("analysis-help").textContent = "전송에는 기존 SSO 인증과 전송 권한이 필요합니다. 이미지 교체·재분석은 TEM 화면에서 진행하세요. 문구·표 수정은 원본 분석 데이터와 별도로 최종 PPT에 반영됩니다. 코팅층 두께를 수정하면 전체 평균도 함께 확인·수정하세요.";
+    document.getElementById("analysis-help").textContent = "페이지 관리와 자유편집 도구로 글자·이미지·표·도형을 수정할 수 있습니다. 수정본 PPT·PDF가 최종 ZIP에 포함되며 원본 분석 데이터는 유지됩니다. 재분석은 TEM 화면에서 진행하세요. 코팅층 두께를 수정하면 전체 평균도 함께 확인·수정하세요. 전송에는 기존 SSO 인증과 전송 권한이 필요합니다.";
   }
   var currentId = config.jobId, model = null, dirty = false, busy = false;
   var editor = document.getElementById("editor"), status = document.getElementById("status");
@@ -35,13 +35,13 @@
     onReorder:reorderPages,
     onSelection:pageAvailability,onMoveSelection:moveSelectedPages,
     onLayout:function (value) {
-      pageEditing = value.pageEditing === true && project !== "TEM";
+      pageEditing = value.pageEditing === true;
       document.getElementById("page-actions").hidden = !pageEditing;
       if(canvas){canvas.layout(value);canvas.page(direct.current());}
       availability();
     }
   });
-  if(window.RistCanvasEditor && project!=="TEM") canvas=new window.RistCanvasEditor({
+  if(window.RistCanvasEditor) canvas=new window.RistCanvasEditor({
     changed:changed,message:message,mode:function(value){direct.canvasMode(value);},
     upload:function(file,done,savedGraph){
       if(busy||activeRevision){done(new Error("보고서 저장이 끝난 뒤 이미지를 첨부하세요."));return;}
@@ -327,7 +327,7 @@
     var top = element("section", editor); element("h2", top, "공통 정보 / 의뢰 조회");
     inputs.title = bind("title",field(top, "보고서 제목", model.title, false, 200));
     inputs.completionDate = bind("completionDate",field(top,"완료일",model.completionDate,false,10)); inputs.completionDate.type = "date";
-    if (project === "TEM") element("p",top,"제목은 PPT 문서 속성에, 완료일·전송 정보는 최종 ZIP의 report-review.json에 저장됩니다. 페이지에 표시된 문구는 오른쪽에서 직접 수정하세요.").className = "muted";
+    if (project === "TEM") element("p",top,"공통 정보는 표지·분석 이력과 최종 전송 정보에 함께 반영됩니다. 오른쪽에서 페이지를 관리하고 자유편집 도구로 본문을 편집하세요. 원본은 별도로 보존됩니다.").className = "muted";
     var grid = element("div", top); grid.className = "grid";
     Object.keys(labels).forEach(function (key) { inputs[key] = bind("transfer/" + key,field(grid, labels[key], model.transfer[key], false, key === "limsExperimentCode" ? 50 : 100)); });
     lookup = requestLookup(top);
@@ -412,7 +412,7 @@
         rows:section.rows && section.rows.map(function (row) { return row.map(function (e) { return e.value; }); })});
     });
     Object.keys(auxiliary).forEach(function (key) { result.auxiliary[key] = auxiliary[key].value; });
-    if (project !== "TEM") result.pageEdits = {hidden:pageEdits.hidden.slice(),order:(pageEdits.order||[]).slice(),added:pageFields.map(function (item) {
+    result.pageEdits = {hidden:pageEdits.hidden.slice(),order:(pageEdits.order||[]).slice(),added:pageFields.map(function (item) {
       return {id:item.id,after:item.after,title:item.title.value,body:item.body.value};
     })};
     if(canvas)result.canvasEdits=canvas.value();
