@@ -9,6 +9,11 @@
 .sw-upload{padding:20px;background:#fff;border:1px solid #c8d6df;border-radius:8px;margin:12px 0}.sw-upload h3{margin:0 0 8px;font-size:18px}.sw-upload>.sw-help{margin-bottom:16px}.sw-upload>label{display:inline-flex;min-height:40px;padding:8px 16px;font-size:14px;background:#185d80;color:#fff;border-color:#185d80}.sw-upload>label:focus{outline:2px solid #247aa2;outline-offset:3px}.sw-upload .ftir-drop-band,.sw-upload .raman-drop-zone{margin:16px 0 0}
 .sw-status{min-height:24px;line-height:1.6;color:#185d80;overflow-wrap:break-word}
 .sw-status.sw-error{color:#a12727}
+.sw-guide{border:1px solid #b8cfdc;border-left:4px solid #247aa2;border-radius:8px;background:#f0f7fb;padding:14px 16px;margin:12px 0;box-sizing:border-box}
+.sw-guide-heading{display:flex;flex-wrap:wrap;align-items:center;gap:8px;justify-content:space-between}.sw-guide-heading strong{font-size:15px;line-height:1.5}
+.sw-selection-count{font-size:12px;font-weight:bold;color:#185d80;background:#fff;border:1px solid #cadde8;border-radius:12px;padding:3px 9px;white-space:nowrap}
+.sw-guide p{margin:7px 0;line-height:1.65;color:#425e70;overflow-wrap:break-word}.sw-guide .sw-actions{margin:10px 0 0}
+.spectrum-workflow button:focus-visible{outline:2px solid #247aa2;outline-offset:3px}.spectrum-workflow .sw-primary:not(:disabled){font-weight:bold;box-shadow:0 2px 4px rgba(24,93,128,.16)}
 .sw-controls{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:10px 0}
 .sw-controls input[type=text]{min-width:140px;max-width:360px;flex:1;padding:9px;border:1px solid #b9cbd6;border-radius:6px}
 .sw-list{display:flex;flex-wrap:nowrap;gap:10px;padding:10px 0;overflow-x:auto;max-width:100%}
@@ -26,4 +31,4 @@
 .sw-stage-hidden{display:none!important}
 .spectrum-workflow [hidden]{display:none!important}
 body.sw-report-stage{overflow:auto!important}
-@media(max-width:650px){.spectrum-workflow{margin:10px 8px}.sw-steps{gap:5px}.sw-steps button{font-size:12px;padding:8px;flex:1 1 42%}.sw-card{width:100%}.sw-card img{height:140px}.sw-report-frame{min-height:800px}.sw-controls{gap:6px}}
+@media(max-width:650px){.spectrum-workflow{margin:10px 8px}.sw-steps{gap:5px}.sw-steps button{font-size:12px;padding:8px;flex:1 1 42%}.sw-card{width:100%}.sw-card img{height:140px}.sw-report-frame{min-height:800px}.sw-controls{gap:6px}.sw-guide{padding:12px 10px}.sw-guide-heading strong{font-size:14px}.sw-actions button{font-size:12px;padding:8px;max-width:100%}.sw-actions .sw-primary{width:100%;min-height:40px}}

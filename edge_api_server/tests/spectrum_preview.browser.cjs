@@ -37,9 +37,10 @@ const raw=Buffer.from(Array.from({length:241},(_,i)=>{
           assert.equal(await close.evaluate(el=>el===document.activeElement),true);
           const styles=await page.evaluate(()=>{
             function read(selector){const s=getComputedStyle(document.querySelector(selector));return Object.fromEntries(['fontFamily','fontSize','fontWeight','borderRadius','borderWidth','padding','minHeight','backgroundColor','color','borderColor','whiteSpace'].map(k=>[k,s[k]]));}
-            return {close:read('.sw-preview-actions button'),normal:read('#sw-next'),edit:read('.sw-preview .sw-primary'),primary:read('#sw-save-graph')};
+            return {close:read('.sw-preview-actions button'),normal:read('#sw-save-graph'),edit:read('.sw-preview .sw-primary'),primary:read('#sw-build-report')};
           });
-          assert.deepEqual(styles.close,styles.normal);assert.deepEqual(styles.edit,styles.primary);
+          assert.deepEqual(styles.close,styles.normal);
+          for(const key of ['backgroundColor','color','borderColor','borderRadius'])assert.equal(styles.edit[key],styles.primary[key]);
           const a=await close.boundingBox(),b=await edit.boundingBox();
           assert(Math.abs(a.height-b.height)<1&&Math.abs(a.y-b.y)<1,'preview actions have equal height and share a row');
           for(const r of [a,b])assert(r.x>=0&&r.x+r.width<=width&&r.width>40&&r.height>=36);

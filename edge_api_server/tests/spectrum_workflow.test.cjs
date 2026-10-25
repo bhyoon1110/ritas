@@ -14,6 +14,47 @@ function setup(t,kind='ftir') {
   return {w,d,workflow,api,get stored(){return stored;},get restored(){return restored;},get resets(){return resets;},fail(value){fail=value;}};
 }
 const tick=()=>new Promise(resolve=>setTimeout(resolve,0));
+for(const kind of ['ftir','raman'])test(kind+': next action follows save/selection/report state, with direct generation in step 2',async t=>{
+  const h=setup(t,kind);await h.workflow.start();h.workflow.go(2);
+  const build=h.d.getElementById('sw-build-report'),next=h.d.getElementById('sw-next'),save=h.d.getElementById('sw-save-graph');
+  const detail=()=>h.d.getElementById('sw-guide-detail').textContent;
+  assert(!build.hidden);assert(build.disabled);assert(save.classList.contains('sw-primary'));
+  assert.match(detail(),/그래프 저장/);assert(next.hidden);
+  await h.workflow.save(false);
+  assert(!build.disabled);assert(build.classList.contains('sw-primary'));assert(!save.classList.contains('sw-primary'));
+  assert.match(h.d.querySelector('.sw-selection-count').textContent,/포함 1개 \/ 저장 1개/);
+  const check=h.d.querySelector('.sw-card input');check.checked=false;check.onchange();
+  assert(build.disabled);assert.match(detail(),/체크/);assert.match(build.title,/체크/);
+  h.d.querySelector('.sw-card input').click();assert(!build.disabled);
+  let finish,calls=0;h.api.build=()=>{calls++;return new Promise(resolve=>finish=resolve);};
+  build.click();assert(build.disabled);assert.match(detail(),/보고서를 생성하는 중/);
+  build.click();assert.equal(calls,1);
+  finish({jobId:'created'});await tick();await tick();
+  assert.equal(h.d.getElementById('spectrum-workflow').dataset.step,'3');
+  assert(next.classList.contains('sw-primary'));assert(!next.hidden);assert(!next.disabled);
+  assert(!build.classList.contains('sw-primary'));assert.match(detail(),/미리보기/);
+  const frame=h.d.getElementById('sw-report-editor');
+  const child=busy=>h.w.dispatchEvent(new h.w.MessageEvent('message',{origin:h.w.location.origin,source:frame.contentWindow,data:{type:'rist-workflow-editor-state',busy,jobId:'created'}}));
+  const focused=h.d.querySelector('.sw-card input');focused.focus();child(true);
+  assert.equal(h.d.activeElement,focused,'editor status must not rebuild cards');
+  assert(next.disabled);assert(build.disabled);assert(h.d.getElementById('sw-step-4').disabled);assert.match(detail(),/자동 저장/);
+  h.workflow.go(4);assert.equal(h.d.getElementById('spectrum-workflow').dataset.step,'3');
+  child(false);assert(!next.disabled);assert(!h.d.getElementById('sw-step-4').disabled);
+  focused.click();assert(next.disabled);assert.match(next.title,/다시 생성/);
+  h.d.querySelector('.sw-card input').click();assert(!build.disabled);assert(build.classList.contains('sw-primary'));
+});
+test('action guide explains unavailable states and failed generation remains retryable',async t=>{
+  const h=setup(t);await h.workflow.start();h.workflow.go(3);
+  assert(!h.d.getElementById('sw-return-edit').hidden);assert(h.d.getElementById('sw-next').hidden);
+  h.d.getElementById('sw-return-edit').click();await h.workflow.save(false);
+  const build=h.d.getElementById('sw-build-report'),detail=()=>h.d.getElementById('sw-guide-detail').textContent;
+  h.workflow.setBusy(true);assert(build.disabled);assert.match(detail(),/RAW 분석/);
+  h.workflow.setBusy(false);assert(!build.disabled);
+  h.api.build=async()=>{throw Error('test build failure');};build.click();await tick();await tick();
+  assert(!build.disabled);assert(build.classList.contains('sw-primary'));
+  assert.match(h.d.querySelector('.sw-status').textContent,/test build failure/);
+  assert(h.d.getElementById('sw-step-4').disabled);
+});
 for(const kind of ['ftir','raman'])test(kind+': full reset clears graph collection/report, returns to open RAW upload, and ignores stale editor messages',async t=>{
   const h=setup(t,kind);await h.workflow.start();
   const upload=h.d.getElementById('sw-upload'),clear=h.d.getElementById(kind+'-clear');

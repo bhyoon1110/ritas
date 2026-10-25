@@ -100,7 +100,12 @@ const raw = Buffer.from(Array.from({length:241}, (_, i) => {
         await second.getByRole('button',{name:'비교 그래프 2 앞 순서로',exact:true}).click();
         await page.locator('.sw-card').first().getByRole('checkbox').uncheck();
         await page.locator('.sw-card').first().getByRole('checkbox').check();
+        // Saved selections can generate directly from editing; step 3 is not a hidden prerequisite.
+        await page.locator('#sw-step-2').click();
+        assert(await page.locator('#sw-build-report').isEnabled());
+        assert((await page.locator('#sw-build-report').getAttribute('class')).includes('sw-primary'));
         await page.locator('#sw-build-report').click();
+        assert.match(await page.locator('#sw-guide-detail').textContent(),/보고서를 생성하는 중/);
         await page.waitForFunction(()=>{const f=document.getElementById('sw-report-editor');return f.src.includes('/edit?workflow=1')&&!f.hidden;},null,{timeout:180000});
         let editor=page.frameLocator('#sw-report-editor');
         await editor.locator('#edit-page option').first().waitFor({state:'attached',timeout:120000});
@@ -109,7 +114,9 @@ const raw = Buffer.from(Array.from({length:241}, (_, i) => {
         assert.equal(await editor.locator('#send').isVisible(),false);
         await page.screenshot({path:path.join(output,kind+'-report-edit.png'),fullPage:true});
         await editor.getByLabel('보고서 제목',{exact:true}).fill('검토 완료 '+kind.toUpperCase());
+        await page.waitForFunction(()=>document.getElementById('sw-next').disabled&&document.getElementById('sw-guide-detail').textContent.includes('자동 저장 중'));
         await page.waitForFunction(()=>{const f=document.getElementById('sw-report-editor');return f.contentDocument.getElementById('status').textContent.includes('자동 저장 완료');},null,{timeout:180000});
+        await page.waitForFunction(()=>!document.getElementById('sw-next').disabled&&document.getElementById('sw-next').classList.contains('sw-primary'));
         async function pagesSaved() {
           await page.waitForFunction(()=>{const d=document.getElementById('sw-report-editor').contentDocument;
             return d.getElementById('status').classList.contains('error')||d.getElementById('status').textContent.includes('자동 저장 완료')&&!d.getElementById('page-add').disabled;},null,{timeout:180000});

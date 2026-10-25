@@ -38,6 +38,8 @@ const raw=Buffer.from(Array.from({length:241},(_,i)=>{const x=400+i*15;return x+
         const chooseFile=page.waitForEvent('filechooser');await chooser.click();
         await (await chooseFile).setFiles({name:'reset.'+(kind==='ftir'?'dpt':'txt'),mimeType:'text/plain',buffer:raw});
         await page.waitForFunction(()=>document.getElementById('spectrum-workflow').dataset.step==='2'&&!document.getElementById('sw-save-graph').disabled);
+        assert(await page.locator('#sw-build-report').isVisible());assert(await page.locator('#sw-build-report').isDisabled());
+        assert.match(await page.locator('#sw-guide-title').textContent(),/현재 그래프 저장/);
         const templateDownload=page.waitForEvent('download');await page.locator('[data-template-save]').click();
         const template=await templateDownload;
         await page.locator('[data-template-file]').setInputFiles({name:'reset-template.json',mimeType:'application/json',buffer:fs.readFileSync(await template.path())});
@@ -45,6 +47,20 @@ const raw=Buffer.from(Array.from({length:241},(_,i)=>{const x=400+i*15;return x+
         await page.locator('#sw-graph-name').fill('저장 A');await page.locator('#sw-save-graph').click();
         await page.waitForFunction(()=>document.querySelectorAll('.sw-card').length===1&&!document.getElementById('sw-save-graph').disabled);
         await page.locator('#sw-graph-name').fill('저장 B');await page.locator('#sw-save-copy').click();await saved();
+        assert(await page.locator('#sw-build-report').isEnabled());
+        assert((await page.locator('#sw-build-report').getAttribute('class')).includes('sw-primary'));
+        assert.match(await page.locator('.sw-selection-count').textContent(),/포함 2개/);
+        for(const checkbox of await page.locator('.sw-card input').all())await checkbox.uncheck();
+        assert(await page.locator('#sw-build-report').isDisabled());assert.match(await page.locator('#sw-guide-detail').textContent(),/체크/);
+        for(const checkbox of await page.locator('.sw-card input').all())await checkbox.check();
+        for(const width of [1366,390,320]){
+          await page.setViewportSize({width,height:900});await page.waitForTimeout(300);
+          await page.locator('#sw-guide').scrollIntoViewIfNeeded();
+          assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
+          assert(await page.locator('#sw-build-report').evaluate(el=>el.scrollWidth<=el.clientWidth+1));
+          await page.locator('#sw-guide').screenshot({path:path.join(output,kind+'-'+profile+'-'+width+'-guide.png')});
+        }
+        await page.setViewportSize({width:1366,height:900});
         await storage('seed');await page.waitForTimeout(600);
         confirmReset=false;await page.locator('#'+kind+'-clear').click();
         assert.equal(await page.locator('.sw-card').count(),2);assert.equal(await page.locator('#'+kind+'-file-list button').count(),1);
