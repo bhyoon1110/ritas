@@ -41,16 +41,19 @@
   });
   if(window.RistCanvasEditor && project!=="TEM") canvas=new window.RistCanvasEditor({
     changed:changed,message:message,mode:function(value){direct.canvasMode(value);},
-    upload:function(file,done){
+    upload:function(file,done,savedGraph){
       if(busy||activeRevision){done(new Error("보고서 저장이 끝난 뒤 이미지를 첨부하세요."));return;}
       busy=true;window.clearTimeout(timer);availability();message("이미지를 확인하고 업로드하는 중입니다.");
-      var xhr=new XMLHttpRequest();xhr.open("POST",url(currentId,"/editor-images"),true);xhr.timeout=60000;
+      var xhr=new XMLHttpRequest();xhr.open("POST",url(currentId,savedGraph?"/editor-graphs":"/editor-images"),true);xhr.timeout=60000;
       xhr.setRequestHeader("X-Requested-With","RIST-Report-Editor");xhr.setRequestHeader("Content-Type",file.type||"application/octet-stream");
       function complete(error,value){busy=false;availability();done(error,value);schedule();}
       xhr.onload=function(){var value;try{value=JSON.parse(xhr.responseText);}catch(_){complete(new Error("이미지 업로드 응답을 확인하세요."));return;}
         complete(xhr.status>=200&&xhr.status<300?null:new Error((value.error&&value.error.message)||value.message||"이미지 업로드 실패"),value);};
       xhr.onerror=xhr.ontimeout=function(){complete(new Error("이미지 업로드 연결이 끊겼습니다. 다시 첨부하세요."));};xhr.send(file);
     }
+  });
+  if(workflow && canvas && window.RistSavedGraphs) new window.RistSavedGraphs({
+    canvas:canvas,job:function(){return currentId;},message:message
   });
   var lookup = null;
   function message(text, error) { status.textContent = text; status.className = error ? "error" : ""; }

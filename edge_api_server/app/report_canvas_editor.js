@@ -108,6 +108,26 @@
     }
     function remove() {if(!current()||locked||loading)return;begin();patch({hidden:true});selected=null;finish();draw();}
     function history(from,to) {if(locked||loading||!from.length)return;to.push(copy(state));state=from.pop();selected=null;options.changed();draw();}
+    function canInsertGraph() { return capable && !!page && !locked && !loading && patches().length < 100; }
+    function insertGraph(file, position, done) {
+      if (!canInsertGraph()) { done(new Error("페이지를 선택하고 저장·미리보기 갱신이 끝난 뒤 추가하세요. 페이지당 개체는 100개까지 가능합니다.")); return; }
+      if (!file || file.type !== "image/png" || !file.size || file.size > 16*1024*1024) {
+        done(new Error("저장 그래프는 16MB 이하 PNG여야 합니다.")); return;
+      }
+      var pageId=page.id;
+      options.upload(file,function(error,result){
+        if(error){done(error);return;}
+        if(!page||page.id!==pageId||loading){done(new Error("페이지가 변경되었습니다. 원하는 페이지에서 다시 추가하세요."));return;}
+        var w=.65,h=w*ratio*result.height/result.width;
+        if(h>.7){h=.7;w=h/ratio*result.width/result.height;}
+        var x=position ? position.x-w/2 : (1-w)/2, y=position ? position.y-h/2 : .18;
+        begin();selected="object-"+Date.now().toString(36)+"-"+Math.random().toString(36).slice(2,9);
+        // Always add, never replace the currently selected graph/image.
+        patch({kind:"image",asset:result.asset,x:Math.max(0,Math.min(1-w,x)),y:Math.max(0,Math.min(1-h,y)),w:w,h:h,stroke:"none"});
+        enabled=true;window.RistReportIcons(modeButton,"edit","자유 편집 끄기");modeButton.setAttribute("aria-pressed","true");options.mode(true);
+        finish();draw();done(null);
+      },true);
+    }
     var bar=el("div",host);bar.className="actions";
     modeButton=button(bar,"자유 편집 켜기",function(){
       enabled=!enabled;window.RistReportIcons(modeButton,"edit",enabled?"자유 편집 끄기":"자유 편집 켜기");
@@ -200,7 +220,8 @@
       page:function(value){abort();if(!page||!value||page.id!==value.id)selected=null;page=value;body.hidden=!enabled;draw();},
       lock:function(value){locked=value;if(value)abort();availability();},
       loading:function(){loading=true;abort();layer.hidden=true;availability();},
-      active:function(){return enabled;}
+      active:function(){return enabled;},
+      canInsertGraph:canInsertGraph,insertGraph:insertGraph,pageId:function(){return page&&page.id;}
     };
   };
 }());

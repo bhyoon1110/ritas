@@ -100,11 +100,14 @@ def asset_path(document, asset):
     return path
 
 
-def store_image(root, data):
-    if len(data)>2*1024*1024:
-        raise ValueError('이미지는 2MB 이하로 첨부하세요.')
+def store_image(root, data, *, saved_graph=False):
+    max_mb = 16 if saved_graph else 2
+    if len(data)>max_mb*1024*1024:
+        raise ValueError(f'이미지는 {max_mb}MB 이하로 첨부하세요.')
     try:
         with Image.open(BytesIO(data)) as src:
+            if saved_graph and src.format != 'PNG':
+                raise ValueError('저장 그래프는 PNG 이미지만 추가할 수 있습니다.')
             if src.format not in {'PNG','JPEG','WEBP'} or src.width*src.height>12_000_000:
                 raise ValueError('PNG/JPEG/WebP, 1,200만 화소 이하 이미지를 사용하세요.')
             src.load()

@@ -99,14 +99,15 @@ def test_dormant_saved_edits_survive_pagination_but_unknown_new_objects_fail():
     with pytest.raises(ValueError):canvas.apply(doc,payloads,validate_only=True)
 
 
-def test_upload_and_revision_preserve_images_and_final_pdf(prepared):
+@pytest.mark.parametrize('endpoint', ['editor-images', 'editor-graphs'])
+def test_upload_and_revision_preserve_images_and_final_pdf(prepared, endpoint):
     h=prepared;header={'X-Requested-With':'RIST-Report-Editor'}
     before=h.job.package_path.read_bytes()
     assert h.client.post(h.url+'/editor-images',content=image_bytes()).status_code==403
     assert h.client.post(h.url+'/editor-images',content=image_bytes(),headers=dict(header,Origin='https://outside.example')).status_code==403
     assert h.client.post(h.url+'/editor-images',content=b'<svg/>',headers=header).status_code==422
     assert h.client.post(h.url+'/editor-images',content=b'x'*(2*1024*1024+1),headers=header).status_code==413
-    response=h.client.post(h.url+'/editor-images',content=image_bytes(),headers=header)
+    response=h.client.post(h.url+'/'+endpoint,content=image_bytes(),headers=header)
     assert response.status_code==200,response.text
     asset=response.json()['asset']
     page=h.client.get(h.url+'/edit-layout').json()['pages'][0]['id']
@@ -128,3 +129,21 @@ def test_upload_and_revision_preserve_images_and_final_pdf(prepared):
     old=edit_request(model);old.pop('canvasEdits')
     from app.report_editor import _load_document
     assert _validate_changes(ReportEdit(**old),_load_document(job))['canvasEdits']==edits['canvasEdits']
+
+
+def test_saved_graph_larger_than_2mb_has_bounded_png_only_upload(prepared):
+    h=prepared;header={'X-Requested-With':'RIST-Report-Editor'}
+    # Low-compression PNG to model the large graph PNGs already accepted by report generation.
+    stream=BytesIO()
+    with Image.new('RGB',(1200,800),'blue') as image: image.save(stream,format='PNG',compress_level=0)
+    data=stream.getvalue();assert len(data)>2*1024*1024
+    assert h.client.post(h.url+'/editor-graphs',content=data).status_code==403
+    assert h.client.post(h.url+'/editor-graphs',content=data,headers=dict(header,Origin='https://outside.example')).status_code==403
+    assert h.client.post(h.url+'/editor-images',content=data,headers=header).status_code==413
+    response=h.client.post(h.url+'/editor-graphs',content=data,headers=header)
+    assert response.status_code==200,response.text
+    assert (response.json()['width'],response.json()['height'])==(1200,800)
+    assert h.client.post(h.url+'/editor-graphs',content=b'x'*(16*1024*1024+1),headers=header).status_code==413
+    stream=BytesIO()
+    with Image.new('RGB',(100,100),'blue') as image: image.save(stream,format='JPEG')
+    assert h.client.post(h.url+'/editor-graphs',content=stream.getvalue(),headers=header).status_code==422

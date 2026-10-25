@@ -23,6 +23,19 @@ function setup(t,kind='ftir') {
   return {w,d,workflow,api,requests,get stored(){return stored;},get restored(){return restored;},get resets(){return resets;},fail(value){fail=value;}};
 }
 const tick=()=>new Promise(resolve=>setTimeout(resolve,0));
+for(const kind of ['ftir','raman'])test(kind+': saved graph drag uses IDs, transfers only requested PNG to the bound editor and leaves report selection unchanged',async t=>{
+  const h=setup(t,kind);await h.workflow.start();h.workflow.go(2);await h.workflow.save(false);await h.workflow.go(3);
+  const frame=h.d.getElementById('sw-report-editor'),sent=[];frame.contentWindow.postMessage=(data,origin)=>sent.push({data,origin});
+  const graph=h.stored.graphs[0],image=h.d.querySelector('.sw-card img'),data={};
+  assert(image.draggable);image.ondragstart({dataTransfer:{setData:(k,v)=>data[k]=v}});
+  assert.deepEqual(JSON.parse(data['application/x-rist-saved-graph']),{id:graph.id,jobId:'original'});
+  const request={type:'rist-saved-graph-request',id:graph.id,jobId:'original',requestId:'graph-request'};
+  const send=(value,origin=h.w.location.origin,source=frame.contentWindow)=>h.w.dispatchEvent(new h.w.MessageEvent('message',{data:value,origin,source}));
+  send(request,'https://evil.example');send(request,h.w.location.origin,h.w);send({...request,jobId:'old'});assert.equal(sent.length,0);
+  send(request);assert.equal(sent.length,1);assert.equal(sent[0].data.image.type,'image/png');assert.equal(sent[0].data.image.size,1);
+  assert.equal(h.stored.graphs[0].included,true);assert.equal(h.stored.stale,false);
+  send({...request,id:'missing'});assert(sent[1].data.error);
+});
 function respond(request,status,code,message='서버 확인 실패') {
   request.held=true;request.status=status;request.responseText=JSON.stringify({status,code,message});request.onload();
 }

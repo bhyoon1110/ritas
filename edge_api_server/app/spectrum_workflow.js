@@ -82,7 +82,12 @@
     function chosen() { return graphs.filter(function (g) { return g.included; }); }
     function toggle(el, visible) { if (el) el.classList.toggle("sw-stage-hidden", !visible); }
     function editorStage() {
-      if (frame.contentWindow && job) frame.contentWindow.postMessage({type:"rist-workflow-stage", step:step}, window.location.origin);
+      if (frame.contentWindow && job) {
+        frame.contentWindow.postMessage({type:"rist-workflow-stage", step:step}, window.location.origin);
+        // Send identifiers only; RAW arrays and full PNGs stay in the workspace.
+        frame.contentWindow.postMessage({type:"rist-saved-graphs", jobId:job.jobId,
+          graphs:graphs.map(function (g) { return {id:g.id,title:g.title}; })}, window.location.origin);
+      }
     }
     function editorFailure(error, id) {
       if (!job || job.jobId !== id || resetting) return;
@@ -196,7 +201,7 @@
       root.setAttribute("data-step", String(step));
       help.textContent = step === 1 ? "RAW 파일과 실험조건을 입력하세요. 이전 단계로 돌아가도 저장한 그래프와 보고서는 유지됩니다."
         : step === 2 ? "피크·주석·축을 편집한 뒤 그래프를 저장하세요. 보고서에 넣을 저장본을 체크하고 ③ 단계로 이동하면 보고서가 자동 생성됩니다. 변경이 없으면 기존 보고서를 엽니다."
-        : step === 3 ? "체크한 그래프가 목록 순서대로 보고서에 들어갑니다. 그래프를 바꾼 뒤에는 보고서를 다시 생성하세요. PPT에서 문구·표를 바로 수정할 수 있습니다."
+        : step === 3 ? "저장한 그래프를 PPT 페이지로 끌어 놓거나 ‘현재 페이지에 추가’를 누르세요. 기존 문구를 유지하며 이미지로 추가됩니다. 체크·순서 변경은 보고서 다시 생성 시 적용됩니다."
         : "자동 저장이 끝난 최종본을 다운로드하거나 SSO 인증 후 LIMS로 전송하세요. 이전 단계에서 계속 수정할 수 있습니다.";
       toggle(gd, step === 2);
       toggle(document.querySelector("." + kind + "-library-band"), step === 2);
@@ -221,7 +226,18 @@
         node("span", label, (index + 1) + ". " + g.title);
         check.onchange = function () { g.included = check.checked; changed(); };
         var image = node("img", card); image.src = g.report.image; image.alt = g.title + " 저장본";
+        image.draggable = step === 3 && !!job && !unavailable();
+        image.title = step === 3 ? "PPT 미리보기 페이지로 끌어 놓아 추가" : g.title;
+        image.ondragstart = function (event) {
+          if (step !== 3 || !job || unavailable() || !event.dataTransfer) { event.preventDefault(); return; }
+          event.dataTransfer.setData("application/x-rist-saved-graph", JSON.stringify({id:g.id,jobId:job.jobId}));
+          event.dataTransfer.effectAllowed = "copy";
+        };
         var row = node("div", card); row.className = "sw-controls";
+        if (step === 3) button(row, "현재 페이지에 추가", function () {
+          if (!job || unavailable()) return;
+          frame.contentWindow.postMessage({type:"rist-insert-saved-graph",jobId:job.jobId,id:g.id},window.location.origin);
+        });
         button(row, "미리보기", function () { preview(g); });
         button(row, "다시 편집", function () { edit(g); });
         button(row, "↑", function () { move(index, -1); }).setAttribute("aria-label", g.title + " 앞 순서로");
@@ -336,7 +352,16 @@
     window.addEventListener("message", function (event) {
       if (resetting || editorChecking || editorProblem || !job || event.origin !== window.location.origin || event.source !== frame.contentWindow) return;
       var data = event.data || {};
-      if (data.type === "rist-workflow-editor-state") {
+      if (data.type === "rist-saved-graph-request" && data.jobId === job.jobId && step === 3) {
+        if (typeof data.requestId !== "string" || data.requestId.length > 100) return;
+        var graph = graphs.filter(function (g) { return g.id === data.id; })[0];
+        var reply = {type:"rist-saved-graph-data",jobId:job.jobId,requestId:data.requestId,id:data.id};
+        try {
+          if (unavailable() || !graph) throw new Error("저장 그래프를 사용할 수 없습니다. 목록과 작업 상태를 확인하세요.");
+          reply.image = window.RistSpectrumWorkflow.imageFile(graph.report.image);
+        } catch (error) { reply.error = error.message; }
+        frame.contentWindow.postMessage(reply,window.location.origin);
+      } else if (data.type === "rist-workflow-editor-state") {
         childBusy = !!data.busy;
         if (job && typeof data.jobId === "string" && /^[a-zA-Z0-9-]{1,100}$/.test(data.jobId) && job.jobId !== data.jobId) {
           job = {jobId:data.jobId}; persistSoon();

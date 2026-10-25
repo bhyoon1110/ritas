@@ -21,6 +21,7 @@
 .sw-card.sw-active{border:2px solid #247aa2;padding:11px}
 .sw-card label{display:flex;gap:8px;align-items:center;font-weight:bold;overflow-wrap:anywhere}.sw-card label span{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .sw-card img{display:block;width:100%;height:110px;object-fit:contain;background:#f7fafc;margin:8px 0}
+.sw-card img[draggable=true]{cursor:grab;outline:1px dashed #8eaebf;outline-offset:2px}
 .sw-card .sw-controls{gap:5px;margin-bottom:0}.sw-card button{font-size:12px;padding:5px 8px;min-height:32px}
 .sw-empty{padding:18px;background:#f3f7fa;border:1px dashed #bbccd7;border-radius:8px}
 .sw-report-frame{width:100%;height:calc(100vh - 240px);min-height:650px;border:1px solid #c8d6df;background:#f3f6fa}

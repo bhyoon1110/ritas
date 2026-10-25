@@ -1,10 +1,10 @@
 const {test}=require('node:test'), assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
 const {JSDOM}=require('jsdom'),acorn=require('acorn');
 const script=['report_editor_icons.js','report_canvas_editor.js'].map(name=>fs.readFileSync(path.join(__dirname,'../app',name),'utf8')).join('\n');
-function setup(t){
+function setup(t, upload){
   const dom=new JSDOM('<div id="canvas-tools"></div><div><div id="slide-stage"><div id="canvas-layer"></div></div></div>',{runScripts:'outside-only'});
   t.after(()=>dom.window.close());const w=dom.window,d=w.document;w.eval(script);let changes=0,modes=[];
-  const api=new w.RistCanvasEditor({changed(){changes++;},message(){},mode(v){modes.push(v);},upload(f,done){done(null,{asset:'a'.repeat(64),width:120,height:60});}});
+  const api=new w.RistCanvasEditor({changed(){changes++;},message(){},mode(v){modes.push(v);},upload:upload||function(f,done){done(null,{asset:'a'.repeat(64),width:120,height:60});}});
   const item={id:'shape-'+'a'.repeat(20),kind:'text',name:'원래 본문',text:'기존 분석 내용',x:.1,y:.2,w:.5,h:.2,fontSize:18,color:'#123456',fill:'none',stroke:'none',lineWidth:1,bold:false,align:'left',dash:'solid'};
   api.load({});api.layout({canvasEditing:true,ratio:16/9});api.page({id:'page1',objects:[item]});
   const button=text=>[...d.querySelectorAll('button')].find(b=>b.getAttribute('aria-label')===text),field=label=>d.querySelector('[aria-label="개체 '+label+'"]');
@@ -57,4 +57,24 @@ test('existing table cells do not consume new edit quota; palette follows select
   const palette=h.d.querySelector('[aria-label="채우기 팔레트"]');assert.equal(palette.value,'#aabbcc');
   assert(!h.d.querySelector('[aria-label="페이지 개체 선택"]').textContent.includes('object-'));
   h.api.lock(true);assert(palette.disabled);
+});
+test('saved graphs add without replacing selected objects, fit inside page, preserve aspect and undo',t=>{
+  const h=setup(t);h.button('글자 삽입').click();h.set('내용','보존할 문구');
+  const original=h.api.value().page1[0];let error;
+  h.api.insertGraph(new h.w.Blob(['png'],{type:'image/png'}),{x:.98,y:.99},e=>error=e);
+  assert.equal(error,null);const items=h.api.value().page1;assert.equal(items.length,2);
+  assert.deepEqual(items[0],original);const image=items[1];assert.equal(image.kind,'image');assert.equal(image.asset,'a'.repeat(64));
+  assert(Math.abs((image.w/image.h)*(16/9)-2)<1e-9);assert(image.x+image.w<=1);assert(image.y+image.h<=1);
+  h.button('개체 실행 취소').click();assert.equal(h.api.value().page1.length,1);
+  h.button('개체 다시 실행').click();assert.equal(h.api.value().page1.length,2);
+});
+test('saved graph upload cannot insert into changed/locked/loading pages and rejects oversize inputs',t=>{
+  let callback,calls=0,flag;
+  const h=setup(t,(f,done,saved)=>{calls++;callback=done;flag=saved;});let error;
+  h.api.insertGraph(new h.w.Blob(['png'],{type:'image/png'}),null,e=>error=e);assert.equal(flag,true);
+  h.api.page({id:'other',objects:[]});callback(null,{asset:'a'.repeat(64),width:100,height:200});
+  assert.match(error.message,/페이지가 변경/);assert.equal(Object.keys(h.api.value()).length,0);
+  h.api.lock(true);assert(!h.api.canInsertGraph());h.api.insertGraph({type:'image/png',size:3},null,e=>error=e);assert.equal(calls,1);
+  h.api.lock(false);h.api.insertGraph({type:'image/png',size:17*1024*1024},null,e=>error=e);assert.match(error.message,/16MB/);assert.equal(calls,1);
+  h.api.loading();assert(!h.api.canInsertGraph());
 });

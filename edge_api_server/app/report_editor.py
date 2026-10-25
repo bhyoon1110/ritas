@@ -237,7 +237,7 @@ def editor_page(prefix, job_id, *, project=None):
     config = json.dumps({"prefix": prefix, "jobId": job_id, "project": project}, ensure_ascii=False).replace("<", "\\u003c")
     template = Path(__file__).with_name("report_editor.html").read_text(encoding="utf-8")
     script = "\n".join(Path(__file__).with_name(name).read_text(encoding="utf-8")
-                       for name in ("report_editor_icons.js", "report_page_sidebar.js", "report_direct_editor.js", "report_canvas_editor.js", "report_editor.js"))
+                       for name in ("report_editor_icons.js", "report_page_sidebar.js", "report_direct_editor.js", "report_canvas_editor.js", "report_saved_graphs.js", "report_editor.js"))
     return template.replace("__CONFIG__", config).replace("__SCRIPT__", script)
 
 
@@ -304,6 +304,7 @@ def install_report_editor(router, kind):
             raise ApiException(404, "REPORT_PAGE_NOT_FOUND", "보고서 페이지를 찾을 수 없습니다.") from exc
         return Response(content, media_type="image/jpeg", headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"})
 
+    @router.post(prefix + "/{job_id}/editor-graphs", tags=[kind])
     @router.post(prefix + "/{job_id}/editor-images", tags=[kind])
     async def upload_image(request: Request, job_id: str):
         job = _authorized_job(request, job_id, kind)
@@ -311,15 +312,17 @@ def install_report_editor(router, kind):
         if request.headers.get("x-requested-with") != "RIST-Report-Editor" or (origin and
                 (urlsplit(origin).scheme, urlsplit(origin).netloc) != (request.url.scheme, request.url.netloc)):
             raise ApiException(403, "REPORT_EDIT_ORIGIN_INVALID", "같은 사이트에서 이미지를 첨부하세요.")
+        saved_graph = request.url.path.endswith("/editor-graphs")
+        max_bytes = (16 if saved_graph else 2) * 1024 * 1024
         content = bytearray()
         async for chunk in request.stream():
-            if len(content)+len(chunk)>2*1024*1024:
-                raise ApiException(413, "REPORT_IMAGE_TOO_LARGE", "이미지는 2MB 이하로 첨부하세요.")
+            if len(content)+len(chunk)>max_bytes:
+                raise ApiException(413, "REPORT_IMAGE_TOO_LARGE", f"이미지는 {max_bytes // (1024 * 1024)}MB 이하로 첨부하세요.")
             content.extend(chunk)
         from .report.canvas import store_image
         from starlette.concurrency import run_in_threadpool
         try:
-            return await run_in_threadpool(store_image, job.tmp_root / "job/report/editor-assets", bytes(content))
+            return await run_in_threadpool(store_image, job.tmp_root / "job/report/editor-assets", bytes(content), saved_graph=saved_graph)
         except ValueError as exc:
             raise ApiException(422, "REPORT_IMAGE_INVALID", str(exc)) from exc
 
