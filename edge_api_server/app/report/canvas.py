@@ -12,6 +12,8 @@ from xml.etree import ElementTree as ET
 from PIL import Image, ImageOps, UnidentifiedImageError
 from pydantic import BaseModel, ConfigDict, Field
 
+from . import pptx_tables
+
 NS = {"p":"http://schemas.openxmlformats.org/presentationml/2006/main",
       "a":"http://schemas.openxmlformats.org/drawingml/2006/main",
       "r":"http://schemas.openxmlformats.org/officeDocument/2006/relationships"}
@@ -21,10 +23,26 @@ COLOR = r"^(#[A-Fa-f0-9]{6}|none)$"
 _ASSET_LOCK = Lock()
 
 
+class CellEdit(BaseModel):
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
+    row: int = Field(ge=0, le=199)
+    col: int = Field(ge=0, le=99)
+    text: str | None = Field(default=None, max_length=4000)
+    fontSize: float | None = Field(default=None, ge=8, le=72)
+    bold: bool | None = None
+    color: str | None = Field(default=None, pattern=r"^#[A-Fa-f0-9]{6}$")
+    fill: str | None = Field(default=None, pattern=COLOR)
+    stroke: str | None = Field(default=None, pattern=COLOR)
+    lineWidth: float | None = Field(default=None, ge=.25, le=12)
+    dash: Literal["solid", "dash", "dot", "dashDot"] | None = None
+    align: Literal["left", "center", "right"] | None = None
+
+
 class ObjectEdit(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
     id: str = Field(pattern=r"^(shape-[a-f0-9]{20}|object-[A-Za-z0-9-]{1,64})$")
-    kind: Literal["text", "image", "rect", "ellipse", "line"] | None = None
+    kind: Literal["text", "image", "rect", "ellipse", "line", "table"] | None = None
+    tableCells: list[CellEdit] | None = Field(default=None, max_length=200)
     x: float | None = Field(default=None, ge=0, le=1)
     y: float | None = Field(default=None, ge=0, le=1)
     w: float | None = Field(default=None, ge=.002, le=1)
@@ -53,20 +71,28 @@ def objects(payload):
     tree = ET.fromstring(payload["xml"])
     found, counts = [], {}
     for shape in tree.findall("p:cSld/p:spTree/*", NS):
-        if shape.tag not in {"{"+NS['p']+"}sp", "{"+NS['p']+"}pic"}:
+        is_table = shape.find(pptx_tables.TABLE_PATH, NS) is not None
+        if not is_table and shape.tag not in {"{"+NS['p']+"}sp", "{"+NS['p']+"}pic"}:
             continue
         info = shape.find(".//p:cNvPr", NS)
         name = info.get("name", "") if info is not None else ""
         # Branding lives in the master; its per-slide caption is locked too.
         if name in {"Experiment banner title", "Footer", "Experiment label"}:
             continue
-        xfrm = shape.find("p:spPr/a:xfrm", NS)
+        xfrm = shape.find("p:xfrm" if is_table else "p:spPr/a:xfrm", NS)
         if xfrm is None:
             continue
         count = counts.get(name, 0); counts[name] = count + 1
         oid = name if name.startswith('object-') else 'shape-' + hashlib.sha256((name+':'+str(count)).encode()).hexdigest()[:20]
         off, ext = xfrm.find('a:off', NS), xfrm.find('a:ext', NS)
         if off is None or ext is None:
+            continue
+        if is_table:
+            found.append((shape, dict(id=oid, kind="table", name="표", text="",
+                x=int(off.get('x'))/PPTX_SLIDE_W, y=int(off.get('y'))/PPTX_SLIDE_H,
+                w=int(ext.get('cx'))/PPTX_SLIDE_W, h=int(ext.get('cy'))/PPTX_SLIDE_H,
+                cells=[dict(row=ri, col=ci, **_cell_properties(cell))
+                       for ri, ci, cell, _ in pptx_tables.cells(shape)])))
             continue
         text = '\n'.join(''.join(t.text or '' for t in p.findall('.//a:t', NS)) for p in shape.findall('p:txBody/a:p', NS))
         geom = shape.find('p:spPr/a:prstGeom', NS)
@@ -145,7 +171,65 @@ def _fill(parent, color):
             if child.tag in {'{'+NS['a']+'}xfrm','{'+NS['a']+'}prstGeom','{'+NS['a']+'}custGeom'}: index=i+1
     elif parent.tag=='{'+NS['a']+'}rPr' and len(parent) and parent[0].tag=='{'+NS['a']+'}ln':
         index=1
+    elif parent.tag=='{'+NS['a']+'}tcPr':
+        # Table cell outlines precede the fill in CT_TableCellProperties.
+        for i, child in enumerate(parent):
+            if child.tag.rsplit('}', 1)[-1] in {'lnL','lnR','lnT','lnB','lnTlToBr','lnBlToTr','cell3D'}: index=i+1
     parent.insert(index,fill)
+
+
+def _cell_properties(cell):
+    run=cell.find('.//a:rPr',NS)
+    props=cell.find('a:txBody/a:p/a:pPr',NS)
+    line=cell.find('a:tcPr/a:lnL',NS)
+    dash=cell.find('a:tcPr/a:lnL/a:prstDash',NS)
+    def color(path, fallback):
+        value=cell.find(path+'/a:solidFill/a:srgbClr',NS)
+        return '#'+value.get('val') if value is not None else fallback
+    return dict(text=pptx_tables.text(cell), fontSize=float(run.get('sz',1250))/100 if run is not None else 12.5,
+                bold=run is not None and run.get('b')=='1',color=color('.//a:rPr','#172B4D'),
+                fill=color('a:tcPr','none'),stroke=color('a:tcPr/a:lnL','none'),
+                lineWidth=float(line.get('w',9525))/12700 if line is not None else .75,
+                dash={'sysDot':'dot'}.get(dash.get('val'),dash.get('val')) if dash is not None else 'solid',
+                align={'ctr':'center','r':'right'}.get(props.get('algn'),'left') if props is not None else 'left')
+
+
+def _edit_cell(cell, patch):
+    if 'text' in patch or patch.get('hidden'):
+        pptx_tables.set_text(cell, '' if patch.get('hidden') else patch['text'])
+    for run in cell.findall('.//a:rPr',NS):
+        if 'fontSize' in patch: run.set('sz',str(round(patch['fontSize']*100)))
+        if 'bold' in patch: run.set('b','1' if patch['bold'] else '0')
+        if 'color' in patch: _fill(run,patch['color'])
+    if 'align' in patch:
+        for prop in cell.findall('a:txBody/a:p/a:pPr',NS):
+            prop.set('algn',{'left':'l','center':'ctr','right':'r'}[patch['align']])
+    props=cell.find('a:tcPr',NS)
+    if 'fill' in patch: _fill(props,patch['fill'])
+    style=_cell_properties(cell)
+    if any(key in patch for key in ('stroke','lineWidth','dash')):
+        for index, side in enumerate(('L','R','T','B')):
+            line=props.find('a:ln'+side,NS)
+            if line is None:
+                line=_node('a:ln'+side);props.insert(index,line)
+            line.set('w',str(round(patch.get('lineWidth',style['lineWidth'])*12700)))
+            if 'stroke' in patch: _fill(line,patch['stroke'])
+            if 'dash' in patch:
+                dash=line.find('a:prstDash',NS)
+                if dash is not None: line.remove(dash)
+                line.append(_node('a:prstDash',{'val':{'dot':'sysDot'}.get(patch['dash'],patch['dash'])}))
+
+
+def _legacy_cells(entries):
+    """Old per-cell IDs still carry text/style into the new connected grid."""
+    found={}
+    for frame,item in entries:
+        if item['kind']!='table': continue
+        for row,col,cell,_ in pptx_tables.cells(frame):
+            name=f'Header {col}' if row==0 else f'Cell {row-1}-{col}'
+            oid='shape-'+hashlib.sha256((name+':0').encode()).hexdigest()[:20]
+            found[oid]=cell
+    return found
 
 
 def apply(document, payloads, *, validate_only=False, previous_edits=None):
@@ -164,12 +248,20 @@ def apply(document, payloads, *, validate_only=False, previous_edits=None):
         if len(patches)>100 or len({v['id'] for v in patches})!=len(patches):
             raise ValueError('페이지당 개체는 100개 이하이며 식별자가 중복될 수 없습니다.')
         tree, entries=objects(payload); by_id={item['id']:(shape,item) for shape,item in entries}
+        legacy_cells=_legacy_cells(entries)
         parent=tree.find('p:cSld/p:spTree',NS)
         rels=ET.fromstring(payload['rels']); media=list(payload.get('media',[]))
         next_id=max(int(n.get('id','0')) for n in tree.findall('.//p:cNvPr',NS))+1
-        for patch in patches:
+        for patch in sorted(patches, key=lambda v: v['id'] not in legacy_cells):
             patch={k:v for k,v in patch.items() if v is not None}
             oid=patch['id']; original=by_id.get(oid)
+            if not original and oid in legacy_cells:
+                _edit_cell(legacy_cells[oid],patch)
+                # A grid cannot retain independent overlapping cell positions.
+                # Keep original patches for recovery; tell the editor about reflow.
+                if any(k in patch for k in ('x','y','w','h','hidden','layer')):
+                    payload['legacyTableLayout']=True
+                continue
             if not original and not oid.startswith('object-'):
                 old_ids={v['id'] for v in previous_edits.get(payload['pageId'],[])}
                 if validate_only and oid not in old_ids:
@@ -179,7 +271,9 @@ def apply(document, payloads, *, validate_only=False, previous_edits=None):
                 color='#172B4D',fill='none',stroke='#172B4D',lineWidth=1,dash='solid',bold=False,align='left')
             if original and patch.get('kind',item['kind'])!=item['kind']: raise ValueError('개체 종류를 변경할 수 없습니다.')
             item.update(patch)
-            if item['kind'] not in {'text','image','rect','ellipse','line'}: raise ValueError('개체 종류가 올바르지 않습니다.')
+            if item['kind'] not in {'text','image','rect','ellipse','line','table'}: raise ValueError('개체 종류가 올바르지 않습니다.')
+            if item['kind']=='table' and not original: raise ValueError('기존 보고서 표를 선택하세요.')
+            if item['kind']!='table' and 'tableCells' in patch: raise ValueError('표에만 셀 편집을 적용할 수 있습니다.')
             if item['x']+item['w']>1.001 or item['y']+item['h']>1.001: raise ValueError('개체를 페이지 안에 배치하세요.')
             if patch.get('hidden'):
                 if original: parent.remove(original[0])
@@ -193,9 +287,28 @@ def apply(document, payloads, *, validate_only=False, previous_edits=None):
                 if item['kind']!='text': shape.remove(shape.find('p:txBody',NS))
                 shape.find('p:spPr/a:prstGeom',NS).set('prst', 'rect' if item['kind']=='text' else item['kind'])
                 parent.append(shape);next_id+=1
-            xfrm=shape.find('p:spPr/a:xfrm',NS)
+            xfrm=shape.find('p:xfrm' if item['kind']=='table' else 'p:spPr/a:xfrm',NS)
             xfrm.find('a:off',NS).attrib.update(x=str(round(item['x']*r.PPTX_SLIDE_W)),y=str(round(item['y']*r.PPTX_SLIDE_H)))
             xfrm.find('a:ext',NS).attrib.update(cx=str(round(item['w']*r.PPTX_SLIDE_W)),cy=str(round(item['h']*r.PPTX_SLIDE_H)))
+            if item['kind']=='table':
+                pptx_tables.resize(shape,round(item['w']*r.PPTX_SLIDE_W),round(item['h']*r.PPTX_SLIDE_H))
+                cell_map={(ri,ci):cell for ri,ci,cell,_ in pptx_tables.cells(shape)}
+                cell_patches=patch.get('tableCells',[])
+                if len({(v['row'],v['col']) for v in cell_patches})!=len(cell_patches):
+                    raise ValueError('같은 표 셀을 중복해서 편집할 수 없습니다.')
+                previous={(v['row'],v['col']) for obj in previous_edits.get(payload['pageId'],[])
+                          if obj['id']==oid for v in (obj.get('tableCells') or [])}
+                for cell_patch in cell_patches:
+                    key=(cell_patch['row'],cell_patch['col'])
+                    if key not in cell_map:
+                        if validate_only and key not in previous: raise ValueError('편집할 표 셀이 없습니다.')
+                        continue
+                    _edit_cell(cell_map[key],{k:v for k,v in cell_patch.items() if v is not None})
+                if patch.get('layer'):
+                    parent.remove(shape)
+                    if patch['layer']=='front': parent.append(shape)
+                    else: parent.insert(2,shape)
+                continue
             if item['kind']=='image' and (not original or patch.get('asset')):
                 path=asset_path(document,item.get('asset'))
                 name='canvas-'+hashlib.sha256((payload['pageId']+oid).encode()).hexdigest()[:20]+'.png'

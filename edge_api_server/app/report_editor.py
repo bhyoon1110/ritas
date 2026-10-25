@@ -106,8 +106,8 @@ def _validate_changes(changes, document):
     if values["canvasEdits"] is None:
         values["canvasEdits"] = deepcopy(document.canvas_edits)
     else:
-        values["canvasEdits"] = {key: [{k:v for k,v in obj.items() if v is not None} for obj in items]
-                                 for key,items in values["canvasEdits"].items()}
+        values["canvasEdits"] = {key: [obj.model_dump(exclude_none=True) for obj in items]
+                                 for key,items in changes.canvasEdits.items()}
     if values["pageEdits"] is None:
         values["pageEdits"] = deepcopy(document.page_edits or {"hidden": [], "added": []})
     elif values["pageEdits"]["order"] is None:

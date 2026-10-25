@@ -2191,7 +2191,7 @@ def _pptx_table_cell_text(value: object, *, column_index: int, column_count: int
 
 def _pptx_table_slide(document: ReportDocument, section: ReportSection) -> str:
     table = section.table
-    if table is None:
+    if table is None or not table.columns:
         return _pptx_text_slide(document, section.heading, _section_lines(section)[:10])
     max_rows = 10 if section.section_id == "experiment_conditions" and _raman_common_conditions(document) is not None else 9
     all_rows = _normalized_table_rows(table)
@@ -2217,21 +2217,13 @@ def _pptx_table_slide(document: ReportDocument, section: ReportSection) -> str:
     col_count = max(1, len(table.columns))
     col_widths = [int(value) for value in _table_column_widths(table, w)]
     col_widths[-1] += w - sum(col_widths)
-    col_offsets: list[int] = []
-    running_x = x
-    for width in col_widths:
-        col_offsets.append(running_x)
-        running_x += width
-    shape_id = 10
+    # A single native DrawingML table, not independently positioned cell shapes.
+    # Keep the same pagination, column proportions, fonts and source bindings.
+    from .pptx_tables import table_cell, table_frame
+    header_cells = []
     for col_idx, column in enumerate(table.columns):
-        shapes.append(
-            _pptx_shape(
-                shape_id,
-                f"Header {col_idx}",
-                x=col_offsets[col_idx],
-                y=y,
-                cx=col_widths[col_idx],
-                cy=row_h,
+        header_cells.append(
+            table_cell(
                 fill=PPTX_NAVY,
                 line="FFFFFF",
                 text=[str(column)],
@@ -2243,12 +2235,12 @@ def _pptx_table_slide(document: ReportDocument, section: ReportSection) -> str:
                 align="center",
             )
         )
-        shape_id += 1
+    table_rows = [(row_h, header_cells)]
     for row_idx, row in enumerate(rows):
         fill = "FFFFFF" if row_idx % 2 == 0 else "F8FAFC"
+        cells = []
         for col_idx in range(col_count):
-            if (row_idx, col_idx) in merge_covered:
-                continue
+            covered = (row_idx, col_idx) in merge_covered
             value = row[col_idx] if col_idx < len(row) else ""
             span = merge_spans.get((row_idx, col_idx), 1)
             display_value = _pptx_table_cell_text(
@@ -2258,17 +2250,11 @@ def _pptx_table_slide(document: ReportDocument, section: ReportSection) -> str:
             )
             if document.section("report_transfer") is not None or section.section_id in {"raman_peaks", "raman_ratios"}:
                 display_value = _report_readable_text(value)
-            shapes.append(
-                _pptx_shape(
-                    shape_id,
-                    f"Cell {row_idx}-{col_idx}",
-                    x=col_offsets[col_idx],
-                    y=y + row_h + sum(body_heights[:row_idx]),
-                    cx=col_widths[col_idx],
-                    cy=sum(body_heights[row_idx:row_idx + span]),
+            cells.append(
+                table_cell(
                     fill=fill,
                     line=PPTX_LINE,
-                    text=display_value.splitlines() if is_raman_table else [display_value],
+                    text=[""] if covered else display_value.splitlines() or [""],
                     font_size=1250,
                     color=PPTX_TEXT,
                     inset=68580,
@@ -2276,9 +2262,13 @@ def _pptx_table_slide(document: ReportDocument, section: ReportSection) -> str:
                     align=_pptx_horizontal_align(alignments[col_idx]),
                     line_spacing_pct=108000,
                     space_after_pts=100,
+                    row_span=span,
+                    covered=covered,
                 )
             )
-            shape_id += 1
+        table_rows.append((body_heights[row_idx], cells))
+    shapes.append(table_frame(10, "Report table", x, y, col_widths, table_rows))
+    shape_id = 11
     if omitted:
         shapes.append(
             _pptx_text_shape(

@@ -155,21 +155,18 @@ def test_ppt_table_wraps_long_names_inside_the_same_row_and_stays_in_bounds(tmp_
             text = " ".join(slide.itertext())
             if "Raman 피크 분석표" not in text and "Raman 분석 비율표" not in text:
                 continue
-            cells = {shape.find("p:nvSpPr/p:cNvPr", ns).get("name"): shape
-                     for shape in slide.findall(".//p:sp", ns)}
-            first = cells["Cell 0-0"]
-            assert " ".join(first.find("p:txBody", ns).itertext()) == sample
+            from app.report import pptx_tables
+            frame = slide.find('p:cSld/p:spTree/p:graphicFrame', ns)
+            cells = [(r,c,cell,rect) for r,c,cell,rect in pptx_tables.cells(frame) if r > 0]
+            first = cells[0][2]
+            assert " ".join(first.find("a:txBody", ns).itertext()) == sample
             # Wrapped names do not create empty data rows or detach their numeric values.
             if "Raman 피크 분석표" in text:
-                assert len([key for key in cells if key.startswith("Cell ")]) == 8
+                assert len(cells) == 8
             else:
-                assert len([key for key in cells if key.startswith("Cell ")]) == 5
-            for key, cell in cells.items():
-                if not key.startswith("Cell "):
-                    continue
-                off = cell.find("p:spPr/a:xfrm/a:off", ns)
-                ext = cell.find("p:spPr/a:xfrm/a:ext", ns)
-                assert int(off.get("y")) + int(ext.get("cy")) <= 5852160
+                assert len(cells) == 5
+            for _, _, _, (_, y, _, height) in cells:
+                assert y + height <= 5852160
 
 
 def test_very_long_edited_cells_continue_without_exceeding_page_height():
@@ -178,10 +175,11 @@ def test_very_long_edited_cells_continue_without_exceeding_page_height():
     section.table.rows[0][:2] = ["시료명 " * 60, "분석자 설명 " * 180]
     pages = list(renderers._pptx_raman_table_payloads(document, section))
     assert len(pages) > 1
-    ns = {"a": "http://schemas.openxmlformats.org/drawingml/2006/main"}
+    ns = {"a": "http://schemas.openxmlformats.org/drawingml/2006/main",
+          "p": "http://schemas.openxmlformats.org/presentationml/2006/main"}
     for page in pages:
         slide = ET.fromstring(page["xml"])
-        for transform in slide.findall(".//a:xfrm", ns):
+        for transform in slide.findall(".//a:xfrm", ns) + slide.findall(".//p:graphicFrame/p:xfrm", ns):
             off, ext = transform.find("a:off", ns), transform.find("a:ext", ns)
             assert int(off.get("y")) + int(ext.get("cy")) <= 6858000
         assert "1350.125" in page["xml"] or "1580.25" in page["xml"]

@@ -71,6 +71,32 @@ test('existing table cells do not consume new edit quota; palette follows select
   assert(!h.d.querySelector('[aria-label="페이지 개체 선택"]').textContent.includes('object-'));
   h.api.lock(true);assert(palette.disabled);
 });
+
+test('native table is one movable object with cell-specific text/styles, undo and persisted selection',t=>{
+  const h=setup(t),table={id:h.item.id,kind:'table',name:'표',x:.05,y:.2,w:.9,h:.4,
+    cells:[{row:0,col:0,text:'머리글',fontSize:15,bold:true,color:'#ffffff',fill:'#123456',stroke:'#ffffff',lineWidth:.75,dash:'solid',align:'center'},
+      {row:1,col:0,text:'시료 A',fontSize:12.5,bold:false,color:'#172b4d',fill:'#ffffff',stroke:'#cccccc',lineWidth:.75,dash:'solid',align:'left'}]};
+  h.api.page({id:'page1',objects:[table],legacyTableLayout:true});
+  assert.equal(h.d.querySelectorAll('.canvas-object').length,1);
+  h.d.querySelector('.canvas-object').click();
+  const choice=h.d.querySelector('[aria-label="편집할 표 셀"]');assert.equal(choice.options.length,2);
+  choice.value='1:0';choice.dispatchEvent(new h.w.Event('change'));
+  assert.equal(h.field('내용').value,'시료 A');assert(!h.field('내용').parentNode.hidden);
+  h.set('내용','셀만 수정 <b>문자</b>');h.set('글자색','#abcdef');h.set('채우기 색 (none: 없음)','#eeeeee');
+  h.set('왼쪽 (%)','8');h.set('너비 (%)','80');
+  let patch=h.api.value().page1[0];assert.equal(patch.x,.08);assert.equal(patch.w,.8);assert.equal(patch.text,undefined);
+  assert.equal(patch.tableCells.length,1);assert.equal(patch.tableCells[0].text,'셀만 수정 <b>문자</b>');
+  assert.equal(patch.tableCells[0].color,'#abcdef');assert.equal(patch.tableCells[0].fill,'#eeeeee');
+  assert.equal(table.cells[1].text,'시료 A');assert.equal(h.d.querySelectorAll('b').length,0);
+  assert.equal(choice.value,'1:0');assert(!h.d.querySelector('[aria-label="테두리 팔레트"]').disabled);
+  h.button('개체 실행 취소').click();assert.equal(h.api.value().page1[0].w,undefined);
+  h.button('개체 다시 실행').click();assert.equal(h.api.value().page1[0].w,.8);
+  const saved=h.api.value();saved.page1[0].tableCells[0].fontSize=null;saved.page1[0].tableCells[0].align=null;
+  h.api.load(saved);h.api.page({id:'page1',objects:[table]});h.d.querySelector('.canvas-object').click();
+  choice.value='1:0';choice.dispatchEvent(new h.w.Event('change'));assert.equal(h.field('내용').value,'셀만 수정 <b>문자</b>');
+  assert.equal(h.field('글자 크기 (pt)').value,'12.5');assert.equal(h.field('정렬').value,'left');
+  h.api.lock(true);assert(choice.disabled);assert(h.field('내용').disabled);
+});
 test('control availability traverses a large page once instead of once per input',t=>{
   const h=setup(t),objects=Array.from({length:200},(_,i)=>({...h.item,id:'shape-'+i.toString(16).padStart(20,'0')}));
   h.api.page({id:'page1',objects});h.d.querySelector('.canvas-object').click();

@@ -8,6 +8,7 @@ from zipfile import ZipFile
 import pdfplumber
 
 from . import renderers
+from . import pptx_tables
 from .editable import TRANSFER_FIELDS
 from .spectrum_viewer import _PDF_RENDER_LOCK
 
@@ -72,17 +73,31 @@ def edit_pages(document, pptx_path):
                 bindings["Slide title"] = ["page/" + meta["pageId"] + "/title"]
                 bindings["Content text"] = ["page/" + meta["pageId"] + "/body"]
             regions = []
+            def cell_refs(row, col):
+                rows, cols = meta.get("rows", []), meta.get("columns", [])
+                if row >= len(rows) or col >= len(cols):
+                    return []
+                if sid == "report_transfer":
+                    return ["transfer/" + list(TRANSFER_FIELDS)[rows[row]]] if cols[col] == 1 else []
+                return [section_ref(sid, "rows", rows[row], cols[col])]
+
+            if kind == "table":
+                for frame in root.findall("p:cSld/p:spTree/p:graphicFrame", NS):
+                    for row, col, cell, (x, y, w, h) in pptx_tables.cells(frame):
+                        if row == 0:
+                            continue  # Column headings are edited in free-edit mode.
+                        refs = list(dict.fromkeys(ref for ri in range(row - 1, row - 1 + int(cell.get("rowSpan", 1)))
+                                                  for ref in cell_refs(ri, col)))
+                        if refs:
+                            regions.append({"refs": refs, "x": x / width, "y": y / height,
+                                            "w": w / width, "h": h / height,
+                                            "empty": not pptx_tables.text(cell).strip()})
             for shape in root.findall("p:cSld/p:spTree/p:sp", NS):
                 name = shape.find("p:nvSpPr/p:cNvPr", NS).get("name")
                 refs = bindings.get(name, [])
                 if kind == "table" and name.startswith("Cell "):
                     row, col = map(int, name[5:].split("-"))
-                    rows, cols = meta["rows"], meta["columns"]
-                    if row < len(rows) and col < len(cols):
-                        if sid == "report_transfer":
-                            refs = ["transfer/" + list(TRANSFER_FIELDS)[rows[row]]] if cols[col] == 1 else []
-                        else:
-                            refs = [section_ref(sid, "rows", rows[row], cols[col])]
+                    refs = cell_refs(row, col)
                 if not refs:
                     continue
                 xfrm = shape.find("p:spPr/a:xfrm", NS)
@@ -101,7 +116,9 @@ def edit_pages(document, pptx_path):
             if kind == "added" and not title.strip(): title = "제목 없는 페이지"
             from .canvas import objects
             pages.append({"id": payload["pageId"], "title": title, "regions": regions,
-                          "objects": [item for _, item in objects(payload)[1]]})
+                          "legacyTableLayout": bool(payload.get("legacyTableLayout")),
+                          # Use the actual archive, including older shape-based reports.
+                          "objects": [item for _, item in objects({"xml": ET.tostring(root, encoding="unicode")})[1]]})
     return {"pages": pages, "ratio": width / height, "pageEditing": True, "canvasEditing": True}
 
 
