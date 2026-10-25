@@ -5,7 +5,7 @@
     var mime="application/x-rist-saved-graph", graphs=[], pending=null, sequence=0, stage=document.getElementById("slide-stage");
     var host=document.createElement("section"), list=document.createElement("div"), hint=document.createElement("p");
     host.id="report-saved-graphs";host.hidden=true;host.setAttribute("aria-label","저장 그래프 삽입");
-    hint.textContent="저장 그래프를 아래 PPT 페이지에 끌어 놓으세요. 클릭하면 현재 페이지에 추가합니다. 추가 후 이동·크기 조절·삭제할 수 있습니다.";
+    hint.textContent="저장 그래프의 그림·이름을 아래 PPT 페이지에 끌어 놓거나 클릭하면 추가합니다. ‘확대 보기’는 확인만 하며, 닫기·Esc로 돌아올 수 있습니다. 추가한 그래프는 이동·크기 조절·삭제할 수 있습니다.";
     list.className="report-graph-list";host.appendChild(hint);host.appendChild(list);
     var tools=document.getElementById("canvas-tools");tools.parentNode.insertBefore(host,tools);
     function known(id){return graphs.some(function(g){return g.id===id;});}
@@ -19,16 +19,33 @@
       window.parent.postMessage({type:"rist-saved-graph-request",id:id,jobId:pending.jobId,requestId:pending.requestId},window.location.origin);
     }
     function render(){
+      var focused=document.activeElement,focusId=focused&&focused.dataset.graphId,focusClass=focused&&focused.className,scroll=list.scrollLeft;
+      var restore=host.contains(focused);
       list.textContent="";host.hidden=!graphs.length;
       graphs.forEach(function(g){
-        var b=document.createElement("button");b.type="button";b.textContent=g.title;b.draggable=true;b.dataset.graphId=g.id;
-        b.title=g.title+" · 끌어서 배치 / 클릭하여 현재 페이지에 추가";b.setAttribute("aria-label",g.title+" 현재 페이지에 추가");list.appendChild(b);
+        var card=document.createElement("div");card.className="report-graph-card";list.appendChild(card);
+        var b=document.createElement("button");b.type="button";b.className="report-graph-insert";b.draggable=true;b.dataset.graphId=g.id;
+        b.title=g.title+" · 끌어서 배치 / 클릭하여 현재 페이지에 추가";b.setAttribute("aria-label",g.title+" 현재 페이지에 추가");card.appendChild(b);
+        var thumb=document.createElement("span");thumb.className="report-graph-thumbnail";b.appendChild(thumb);
+        var fallback=document.createElement("span");fallback.textContent="확대 보기로 확인";thumb.appendChild(fallback);
+        if(g.thumbnail){
+          var image=document.createElement("img");image.alt="";image.draggable=false;
+          image.onload=function(){fallback.hidden=true;};
+          image.onerror=function(){image.hidden=true;fallback.hidden=false;fallback.textContent="확대 보기로 확인";};
+          image.src=g.thumbnail;thumb.appendChild(image);
+        }
+        var title=document.createElement("span");title.className="report-graph-title";title.textContent=g.title;b.appendChild(title);
+        var zoom=document.createElement("button");zoom.type="button";zoom.className="report-graph-preview";zoom.textContent="확대 보기";zoom.dataset.graphId=g.id;
+        zoom.setAttribute("aria-label",g.title+" 확대 보기");zoom.setAttribute("aria-haspopup","dialog");card.appendChild(zoom);
+        zoom.onclick=function(){window.parent.postMessage({type:"rist-preview-saved-graph",id:g.id,jobId:options.job()},window.location.origin);};
         b.onclick=function(){insert(g.id);};
         b.ondragstart=function(event){
           if(pending||!options.canvas.canInsertGraph()||!event.dataTransfer){event.preventDefault();return;}
           event.dataTransfer.setData(mime,JSON.stringify({id:g.id,jobId:options.job()}));event.dataTransfer.effectAllowed="copy";
         };
+        if(restore&&focusId===g.id)(focusClass==="report-graph-preview"?zoom:b).focus();
       });
+      list.scrollLeft=scroll;
     }
     function hasGraph(event){return event.dataTransfer&&Array.prototype.indexOf.call(event.dataTransfer.types||[],mime)>=0;}
     stage.addEventListener("dragover",function(event){
@@ -52,7 +69,8 @@
       if(data.type==="rist-saved-graphs"){
         if(!Array.isArray(data.graphs))return;
         var next=data.graphs.slice(0,6).filter(function(g){return g&&typeof g.id==="string"&&g.id.length<=100&&typeof g.title==="string";})
-          .map(function(g){return {id:g.id,title:g.title.slice(0,100)};});
+          .map(function(g){return {id:g.id,title:g.title.slice(0,100),thumbnail:
+            typeof g.thumbnail==="string"&&g.thumbnail.length<256&&g.thumbnail.indexOf("blob:"+window.location.origin+"/")===0?g.thumbnail:""};});
         if(JSON.stringify(next)!==JSON.stringify(graphs)){graphs=next;render();}
       }else if(data.type==="rist-insert-saved-graph")insert(data.id);
       else if(data.type==="rist-saved-graph-data"&&pending&&data.requestId===pending.requestId&&data.id===pending.id){

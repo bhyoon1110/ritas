@@ -17,11 +17,35 @@ function setup(t){
   return {w,d,send,catalog,messages,inserts,errors,drop,page:id=>pageId=id,job:id=>job=id,available:v=>available=v};
 }
 test('saved graph bridge is ES5, uses text labels and native drop position or accessible button',t=>{
-  acorn.parse(source,{ecmaVersion:5});const h=setup(t);assert.equal(h.d.querySelectorAll('#report-saved-graphs button').length,2);assert(!h.d.querySelector('b'));
+  acorn.parse(source,{ecmaVersion:5});const h=setup(t);assert.equal(h.d.querySelectorAll('.report-graph-insert').length,2);assert(!h.d.querySelector('b'));
   h.drop({id:'g1',jobId:'job1'});const request=h.messages[0].data;assert.equal(request.id,'g1');assert.equal(request.jobId,'job1');
   h.send({type:'rist-saved-graph-data',jobId:'job1',id:'g1',requestId:request.requestId,image:'blob'});
   assert.equal(h.inserts.length,1);assert.deepEqual(JSON.parse(JSON.stringify(h.inserts[0][1])),{x:.5,y:.5});h.inserts[0][2](null);
-  h.d.querySelectorAll('#report-saved-graphs button')[1].click();assert.equal(h.messages[1].data.id,'g2');
+  h.d.querySelectorAll('.report-graph-insert')[1].click();assert.equal(h.messages[1].data.id,'g2');
+});
+test('small thumbnails are source-restricted, non-draggable and enlargement never inserts or uploads',t=>{
+  const h=setup(t);
+  h.send({...h.catalog,graphs:[{id:'g1',title:'그래프 <b>1</b>',thumbnail:'blob:http://localhost/small'},
+    {id:'g2',title:'그래프 2',thumbnail:'https://external.example/tracking.png'}]});
+  const images=h.d.querySelectorAll('.report-graph-thumbnail img');assert.equal(images.length,1);
+  assert.equal(images[0].src,'blob:http://localhost/small');assert.equal(images[0].draggable,false);
+  assert.equal(h.d.querySelector('.report-graph-title').textContent,'그래프 <b>1</b>');assert(!h.d.querySelector('b'));
+  images[0].onload();assert(images[0].previousSibling.hidden);images[0].onerror();assert(images[0].hidden);assert(!images[0].previousSibling.hidden);
+  h.available(false);h.d.querySelector('.report-graph-preview').click(); // May inspect while a report save is in progress.
+  assert.equal(h.messages.length,1);assert.equal(h.messages[0].data.type,'rist-preview-saved-graph');
+  assert.equal(h.messages[0].data.id,'g1');assert.equal(h.messages[0].data.jobId,'job1');assert.equal(h.messages[0].origin,h.w.location.origin);
+  assert.equal(h.inserts.length,0);assert.equal(h.errors.length,0);
+});
+test('thumbnail refresh retains keyboard focus and horizontal scroll; invalid URLs and stale catalogs cannot load images',t=>{
+  const h=setup(t),list=h.d.querySelector('.report-graph-list');
+  h.d.querySelectorAll('.report-graph-preview')[1].focus();list.scrollLeft=120;
+  h.send({...h.catalog,graphs:h.catalog.graphs.map(g=>({...g,thumbnail:'blob:http://localhost/'+g.id}))});
+  assert.equal(h.d.activeElement.dataset.graphId,'g2');assert.equal(h.d.activeElement.className,'report-graph-preview');assert.equal(list.scrollLeft,120);
+  const before=list.innerHTML;h.send({...h.catalog,jobId:'old'});assert.equal(list.innerHTML,before);
+  for(const thumbnail of ['blob:https://external.example/img','data:image/svg+xml,<svg/>','javascript:alert(1)','blob:http://localhost.evil/a']){
+    h.send({...h.catalog,graphs:[{id:'g1',title:'safe',thumbnail}]});assert.equal(list.querySelectorAll('img').length,0);
+  }
+  h.send({...h.catalog,graphs:[]});assert(h.d.getElementById('report-saved-graphs').hidden);
 });
 test('graph drop never handles page reordering or foreign/unknown IDs, forged messages or old jobs',t=>{
   const h=setup(t);h.drop({id:'g1',jobId:'job1'},'application/x-rist-page');h.drop({id:'unknown',jobId:'job1'});h.drop({id:'g1',jobId:'old'});

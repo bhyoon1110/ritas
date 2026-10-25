@@ -160,6 +160,10 @@ def test_blank_fields_edit_revision_and_recipient_integrity(prepared, monkeypatc
     page = h.client.get(h.url + '/edit')
     assert page.status_code == 200 and page.headers['cache-control'] == 'no-store'
     assert '자동 저장' in page.text and "frame-ancestors 'self'" in page.headers['content-security-policy']
+    policy = page.headers['content-security-policy']
+    assert "img-src 'self' blob:;" in policy  # Local saved-graph thumbnails, not arbitrary external URLs.
+    assert "default-src 'none';" in policy and "connect-src 'self';" in policy
+    assert "script-src 'unsafe-inline';" in policy and "base-uri 'none';" in policy
     response = h.client.get(h.url + '/editor-data')
     assert response.headers['cache-control'] == 'no-store'
     model = response.json()['document']

@@ -17,6 +17,7 @@
     var busy = false, ready = false, stale = false, childBusy = false;
     var writing = Promise.resolve(), externalBusy = false, resetting = false, operation = "";
     var editorChecking = false, editorProblem = "", editorCheckSequence = 0;
+    var thumbnails = [];
     var root = node("section"); root.className = "spectrum-workflow"; root.id = "spectrum-workflow";
     var header = document.querySelector("." + kind + "-app-bar");
     header.parentNode.insertBefore(root, header.nextSibling);
@@ -90,12 +91,40 @@
     function changed() { stale = !!job; persistSoon(); render(); }
     function chosen() { return graphs.filter(function (g) { return g.included; }); }
     function toggle(el, visible) { if (el) el.classList.toggle("sw-stage-hidden", !visible); }
+    function thumbnailFor(g) {
+      return thumbnails.filter(function (item) { return item.id === g.id && item.source === g.report.image; })[0];
+    }
+    function pruneThumbnails() {
+      thumbnails = thumbnails.filter(function (item) {
+        var keep = graphs.some(function (g) { return g.id === item.id && g.report.image === item.source; });
+        if (!keep && item.url) URL.revokeObjectURL(item.url);
+        return keep;
+      });
+    }
+    function makeThumbnail(g, image) {
+      if (thumbnailFor(g) || !image.naturalWidth || !image.naturalHeight
+          || !graphs.some(function (entry) { return entry === g; })) return;
+      // Reuse the already decoded workspace image; keep only a small PNG per saved graph.
+      var item = {id:g.id,source:g.report.image,url:""}; thumbnails.push(item);
+      try {
+        var scale = Math.min(1, 320 / image.naturalWidth, 180 / image.naturalHeight);
+        var canvas = document.createElement("canvas");
+        canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+        canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+        canvas.getContext("2d").drawImage(image, 0, 0, canvas.width, canvas.height);
+        item.url = URL.createObjectURL(window.RistSpectrumWorkflow.imageFile(canvas.toDataURL("image/png")));
+      } catch (_) {} // Image insertion/enlargement still works if thumbnail rendering is unavailable.
+      if (step === 3) editorStage();
+    }
     function editorStage() {
       if (frame.contentWindow && job) {
         frame.contentWindow.postMessage({type:"rist-workflow-stage", step:step}, window.location.origin);
-        // Send identifiers only; RAW arrays and full PNGs stay in the workspace.
+        // Only IDs and small cached thumbnail URLs; RAW/full PNGs stay in the workspace.
         frame.contentWindow.postMessage({type:"rist-saved-graphs", jobId:job.jobId,
-          graphs:graphs.map(function (g) { return {id:g.id,title:g.title}; })}, window.location.origin);
+          graphs:graphs.map(function (g) {
+            var thumb = thumbnailFor(g);
+            return {id:g.id,title:g.title,thumbnail:thumb ? thumb.url : ""};
+          })}, window.location.origin);
       }
     }
     function editorFailure(error, id) {
@@ -207,6 +236,7 @@
       [previous, save, build, next, returnEdit, retryEditor].forEach(function (el) { el.classList.toggle("sw-primary", el === primary); });
     }
     function render() {
+      pruneThumbnails();
       navButtons.forEach(function (b, i) { b.setAttribute("aria-current", i + 1 === step ? "step" : "false"); b.disabled = unavailable(); });
       document.body.classList.toggle("sw-report-stage", step >= 3);
       root.setAttribute("data-step", String(step));
@@ -238,7 +268,9 @@
         check.disabled = unavailable(); check.setAttribute("aria-label", g.title + " 보고서 포함");
         node("span", label, (index + 1) + ". " + g.title);
         check.onchange = function () { g.included = check.checked; changed(); };
-        var image = node("img", card); image.src = g.report.image; image.alt = g.title + " 저장본";
+        var image = node("img", card);
+        image.onload = function () { makeThumbnail(g, image); };
+        image.src = g.report.image; image.alt = g.title + " 저장본";
         image.draggable = step === 3 && !!job && !unavailable();
         image.title = step === 3 ? "PPT 미리보기 페이지로 끌어 놓아 추가" : g.title;
         image.ondragstart = function (event) {
@@ -300,14 +332,32 @@
       if (unavailable() || index + delta < 0 || index + delta >= graphs.length) return;
       var entry = graphs.splice(index, 1)[0]; graphs.splice(index + delta, 0, entry); changed();
     }
-    function preview(g) {
+    function preview(g, previewOnly) {
+      if (document.querySelector(".sw-preview")) return;
+      var focus = document.activeElement;
+      if (focus === frame) { try { focus = frame.contentDocument.activeElement || frame; } catch (_) {} }
       var modal = node("div", document.body); modal.className = "sw-preview"; modal.setAttribute("role", "dialog"); modal.setAttribute("aria-label", "저장한 그래프 미리보기");
+      modal.setAttribute("aria-modal", "true");
       var box = node("div", modal); node("h3", box, g.title);
       var image = node("img", box); image.src = g.report.image; image.alt = g.title;
       var actions = node("div", box); actions.className = "sw-controls sw-preview-actions";
-      var close = button(actions, "닫기", function () { modal.remove(); }); close.focus();
-      button(actions, "그래프 다시 편집", function () { modal.remove(); edit(g); }).className = "sw-primary";
-      button(actions, "파일 내보내기", function () { exportGraph(g); });
+      function dismiss() { modal.remove(); if (focus && focus.ownerDocument.documentElement.contains(focus)) focus.focus(); }
+      var close = button(actions, "닫기", dismiss); close.focus();
+      if (!previewOnly) {
+        button(actions, "그래프 다시 편집", function () { dismiss(); edit(g); }).className = "sw-primary";
+        button(actions, "파일 내보내기", function () { exportGraph(g); });
+      }
+      modal.onclick = function (event) { if (event.target === modal) dismiss(); };
+      modal.onkeydown = function (event) {
+        if (event.keyCode === 27) { event.preventDefault(); event.stopPropagation(); dismiss(); }
+        else if (event.keyCode === 9) {
+          // Shared floating-window controls may add opacity/reset inputs to the header.
+          var buttons = modal.querySelectorAll("button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),[href],[tabindex='0']");
+          var first = buttons[0], last = buttons[buttons.length - 1];
+          if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+          else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+        }
+      };
     }
     function chooseGraphFile() { if (!unavailable() && graphs.length < 6) importInput.click(); }
     function exportGraph(g) {
@@ -421,6 +471,9 @@
           reply.image = window.RistSpectrumWorkflow.imageFile(graph.report.image);
         } catch (error) { reply.error = error.message; }
         frame.contentWindow.postMessage(reply,window.location.origin);
+      } else if (data.type === "rist-preview-saved-graph" && data.jobId === job.jobId && step === 3) {
+        var selected = graphs.filter(function (g) { return g.id === data.id; })[0];
+        if (selected) preview(selected, true); // Read-only: never upload, insert or alter report content.
       } else if (data.type === "rist-workflow-editor-state") {
         childBusy = !!data.busy;
         if (job && typeof data.jobId === "string" && /^[a-zA-Z0-9-]{1,100}$/.test(data.jobId) && job.jobId !== data.jobId) {

@@ -39,6 +39,41 @@ for(const kind of ['ftir','raman'])test(kind+': saved graph drag uses IDs, trans
 function respond(request,status,code,message='서버 확인 실패') {
   request.held=true;request.status=status;request.responseText=JSON.stringify({status,code,message});request.onload();
 }
+for(const kind of ['ftir','raman'])test(kind+': report picker enlargement is read-only, bound to the editor, dismissible and returns focus',async t=>{
+  const h=setup(t,kind);await h.workflow.start();h.workflow.go(2);await h.workflow.save(false);await h.workflow.go(3);
+  const frame=h.d.getElementById('sw-report-editor'),graph=h.stored.graphs[0];
+  frame.contentDocument.write('<!doctype html><body></body>');
+  const trigger=frame.contentDocument.createElement('button');frame.contentDocument.body.appendChild(trigger);trigger.focus();
+  const request={type:'rist-preview-saved-graph',id:graph.id,jobId:'original'};
+  const send=(data=request,origin=h.w.location.origin,source=frame.contentWindow)=>h.w.dispatchEvent(new h.w.MessageEvent('message',{data,origin,source}));
+  send(request,'https://evil.example');send(request,h.w.location.origin,h.w);send({...request,jobId:'old'});send({...request,id:'missing'});
+  assert(!h.d.querySelector('.sw-preview'));
+  const before=JSON.stringify(h.stored);send();send();const modal=h.d.querySelector('.sw-preview');
+  assert.equal(h.d.querySelectorAll('.sw-preview').length,1);assert.equal(modal.getAttribute('aria-modal'),'true');
+  assert.equal(modal.querySelector('img').src,graph.report.image);assert.equal(modal.querySelectorAll('button').length,1);
+  const close=modal.querySelector('button');assert.equal(h.d.activeElement,close);
+  const tab=new h.w.KeyboardEvent('keydown',{keyCode:9,bubbles:true,cancelable:true});close.dispatchEvent(tab);assert(tab.defaultPrevented);
+  close.dispatchEvent(new h.w.KeyboardEvent('keydown',{keyCode:27,bubbles:true,cancelable:true}));
+  assert(!h.d.querySelector('.sw-preview'));assert.equal(frame.contentDocument.activeElement,trigger);assert.equal(JSON.stringify(h.stored),before);
+  send();h.d.querySelector('.sw-preview').click();assert(!h.d.querySelector('.sw-preview'));
+  h.workflow.go(4);send();assert(!h.d.querySelector('.sw-preview'));
+});
+test('report thumbnails are downsampled once per saved image, reused and revoked on overwrite/reset',async t=>{
+  const h=setup(t);let draws=0;const sizes=[],revoked=[];
+  h.w.HTMLCanvasElement.prototype.getContext=function(){sizes.push([this.width,this.height]);return {drawImage(){draws++;}};};
+  h.w.HTMLCanvasElement.prototype.toDataURL=()=> 'data:image/png;base64,AA==';
+  h.w.URL.createObjectURL=()=> 'blob:http://localhost/thumb-'+draws;
+  h.w.URL.revokeObjectURL=url=>revoked.push(url);
+  await h.workflow.start();h.workflow.go(2);await h.workflow.save(false);await h.workflow.go(3);
+  const sent=[],frame=h.d.getElementById('sw-report-editor');frame.contentWindow.postMessage=data=>sent.push(data);
+  function load(){const image=h.d.querySelector('.sw-card img');Object.defineProperties(image,{naturalWidth:{value:1600},naturalHeight:{value:900}});image.onload();}
+  load();assert.deepEqual(sizes,[[320,180]]);assert.equal(draws,1);
+  const entry=sent.at(-1).graphs[0];assert.equal(entry.thumbnail,'blob:http://localhost/thumb-1');assert(!entry.image);assert(!entry.state);
+  h.workflow.go(2);load();assert.equal(draws,1);assert.equal(revoked.length,0);
+  h.api.capture=async()=>({state:{},report:{image:'data:image/png;base64,AQ=='}});await h.workflow.save(false);
+  assert.deepEqual(revoked,['blob:http://localhost/thumb-1']);load();assert.equal(draws,2);
+  await h.workflow.reset();assert.deepEqual(revoked,['blob:http://localhost/thumb-1','blob:http://localhost/thumb-2']);
+});
 for(const kind of ['ftir','raman'])for(const trigger of ['sw-step-3','sw-next'])test(kind+': '+trigger+' automatically generates once, reuses unchanged report and protects existing edits',async t=>{
   const h=setup(t,kind);await h.workflow.start();h.workflow.go(2);await h.workflow.save(false);await h.workflow.save(true);
   // Chosen graph order, not the current display, determines report content.
