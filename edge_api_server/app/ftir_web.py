@@ -39,6 +39,7 @@ from .browser_support import with_browser_support_notice
 from .work_template import work_template_script
 from .spectrum_workflow import spectrum_workflow_script
 from .assignment_suggestions import AssignmentSuggestionRequest
+from .peak_recommendations import PeakRecommendationRequest, recommend_peaks
 from .config import Settings
 from .preview_report import (
     PreviewReportJob,
@@ -5776,6 +5777,11 @@ def suggest_assignment_library(
         )
     except AssignmentLibraryError as exc:
         raise_assignment_library_api(exc)
+
+
+@router.post("/api/v1/ftir/peaks/recommend", tags=["ftir"])
+def recommend_graph_peaks(request: Request, payload: PeakRecommendationRequest) -> dict:
+    return recommend_peaks(llm_settings(request), "FT-IR", payload)
 
 
 @router.get(

@@ -13,6 +13,7 @@
     el.onclick = action; return el;
   }
   function install(api) {
+    if (window.RistPeakRecommendations) window.RistPeakRecommendations.install(api);
     var kind = api.kind, gd = api.gd, graphs = [], active = null, step = 1, job = null;
     var busy = false, ready = false, stale = false, childBusy = false;
     var writing = Promise.resolve(), externalBusy = false, resetting = false, operation = "";

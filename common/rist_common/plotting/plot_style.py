@@ -5209,23 +5209,29 @@ def peak_editor_js(div_id: str) -> str:
     return best;
   }}
 
-  function addPeakAt(pt) {{
+  function addPeakAt(pt, batch) {{
     if (!window.Plotly || !pt) return;
-    if (gd._ristHistory) gd._ristHistory.capture();
+    if (!batch && gd._ristHistory) gd._ristHistory.capture();
     var xText = pt.coordinateInput ? String(Number(pt.x)) : (isFinite(Number(pt.x)) ? Number(pt.x).toFixed(0) : String(pt.x));
     var assignment = assignmentForMaximumSensitivityPeak(
       pt.maximumSensitivityPeakCurve
     ) || (pt.coordinateInput ? manualPeakAssignmentAt(pt.x) : null);
     var name = assignment ? assignment.name : (pt.coordinateInput ? xText + " peak" : peakName(pt.x));
-    var group = "user-peak-" + Date.now() + "-" + Math.floor(Math.random() * 10000);
+    if (pt.recommendation) {{
+      name = String(pt.recommendation.name || "추천 피크");
+      assignment = null;
+    }}
+    var group = "user-peak-" + Date.now() + "-" + Math.floor(Math.random() * 10000)
+      + (batch ? "-" + batch.traces.length : "");
     var parentSampleGroup = pt.curve == null ? "" : sampleGroup(pt.curve);
     var parentTrace = (gd.data || [])[pt.curve] || {{}};
     var parentMeta = parentTrace.meta || {{}};
     var ramanOffset = Number(parentMeta.rist_raman_stack_offset || 0);
     var legendGroup = parentSampleGroup || group;
-    var traceIndex = (gd.data || []).length;
-    var annotationIndex = (gd.layout.annotations || []).length;
-    var shapeIndex = (gd.layout.shapes || []).length;
+    var pendingCount = batch ? batch.traces.length : 0;
+    var traceIndex = (gd.data || []).length + pendingCount;
+    var annotationIndex = (gd.layout.annotations || []).length + pendingCount;
+    var shapeIndex = (gd.layout.shapes || []).length + pendingCount;
     var color = assignment ? assignment.color : "#ef4444";
     var hoverDetails = assignment
       ? "<br>" + assignment.nameHtml
@@ -5236,7 +5242,7 @@ def peak_editor_js(div_id: str) -> str:
       mode: "markers",
       x: [pt.x],
       y: [pt.y],
-      name: name,
+      name: pt.recommendation ? esc(name) : name,
       legendgroup: legendGroup,
       showlegend: !gd._ristSampleLegendOnly,
       marker: {{
@@ -5268,6 +5274,15 @@ def peak_editor_js(div_id: str) -> str:
     if (Object.prototype.hasOwnProperty.call(parentMeta, "rist_raman_stack_offset")) {{
       tr.meta.rist_raman_stack_offset = ramanOffset;
     }}
+    if (pt.recommendation) {{
+      tr.meta.rist_peak.recommendation = {{
+        source: "local-llm", material: pt.recommendation.material,
+        reason: pt.recommendation.reason, review_required: true
+      }};
+      tr.hovertemplate = "<b>%{{x:.2f}}</b><br>" + esc(name)
+        + "<br>LLM 추천 · 검토 필요<br>" + esc(pt.recommendation.reason)
+        + "<br>%{{y:.4f}}<extra></extra>";
+    }}
     if (pt.coordinateInput) {{
       tr.meta.rist_peak.position_method = "exact-x";
       tr.meta.rist_peak.intensity_method = pt.interpolated ? "linear-interpolation" : "measured";
@@ -5282,7 +5297,7 @@ def peak_editor_js(div_id: str) -> str:
     var ann = {{
       x: pt.x,
       y: pt.y,
-      text: labelText(xText, name),
+      text: labelText(xText, pt.recommendation ? esc(name) : name),
       showarrow: true,
       captureevents: true,
       arrowhead: 0,
@@ -5307,20 +5322,26 @@ def peak_editor_js(div_id: str) -> str:
       visible: peakLabelsVisible(),
       line: {{ color: color, width: 0.8, dash: "dot" }}
     }};
-    return window.Plotly.addTraces(gd, tr).then(function() {{
-      var labels = meta();
-      labels.push({{
+    var label = {{
         annotationIndex: annotationIndex,
         shapeIndex: shapeIndex,
         traceIndex: traceIndex,
         legendgroup: legendGroup,
         labelKey: group,
         wnText: xText
-      }});
-      var annotations = (gd.layout.annotations || []).slice();
-      var shapes = (gd.layout.shapes || []).slice();
-      annotations.push(ann);
-      shapes.push(shape);
+    }};
+    if (batch) {{
+      batch.traces.push(tr); batch.annotations.push(ann); batch.shapes.push(shape); batch.labels.push(label);
+      return;
+    }}
+    return applyPeakBatch({{traces: [tr], annotations: [ann], shapes: [shape], labels: [label]}});
+  }}
+
+  function applyPeakBatch(batch) {{
+    return window.Plotly.addTraces(gd, batch.traces.length === 1 ? batch.traces[0] : batch.traces).then(function() {{
+      var labels = meta().concat(batch.labels);
+      var annotations = (gd.layout.annotations || []).concat(batch.annotations);
+      var shapes = (gd.layout.shapes || []).concat(batch.shapes);
       if (gd._ristFtirUnitOriginalAnnotations) {{
         gd._ristFtirUnitOriginalAnnotations = annotations.map(function(a) {{
           return Object.assign({{}}, a);
@@ -5344,6 +5365,13 @@ def peak_editor_js(div_id: str) -> str:
   }}
 
   gd._ristAddPeakAt = addPeakAt;
+  gd._ristAddRecommendedPeaks = function(points) {{
+    if (!points.length) return Promise.resolve();
+    if (gd._ristHistory) gd._ristHistory.capture();
+    var batch = {{traces: [], annotations: [], shapes: [], labels: []}};
+    points.forEach(function(point) {{ addPeakAt(point, batch); }});
+    return applyPeakBatch(batch);
+  }};
 
   function deletePeakTraces(curves, skipHistory, deferStructureEvent, deletedGroups) {{
     if (!window.Plotly) return Promise.resolve([]);

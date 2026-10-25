@@ -35,6 +35,7 @@ _HTML = r"""
     ['.rist-axis-control-panel', '.rist-axis-control-head', '축 범위 및 눈금'],
     ['.rist-shape-editor-panel', '.rist-shape-editor-head', '도형·텍스트 설정'],
     ['.rist-peak-coordinate-dialog', 'h3', 'X좌표로 피크 추가'],
+    ['.rist-peak-recommend-dialog', 'h3', 'LLM 피크 추천'],
     ['#rist-color-palette', '.rist-palette-head', '색상 팔레트'],
     ['.rist-ratio-selection,.rist-ratio-candidates,.rist-raman-ratio-editor,.rist-ratio-batch', 'header', '비율 설정'],
     ['.ftir-library-dialog,.raman-library-dialog', 'header', '라이브러리·선택지 관리'],
@@ -126,7 +127,7 @@ _HTML = r"""
     if(!slider.getAttribute('aria-label'))slider.setAttribute('aria-label',rule[2]+' 창 투명도');
     var home=document.createElement('button');home.type='button';home.className='rist-floating-reset';home.textContent='원위치';
     home.title='창을 기본 위치로 되돌리기';home.setAttribute('aria-label',rule[2]+' 창 원위치');controls.appendChild(home);head.appendChild(controls);
-    var layer=node.closest('.ftir-library-modal,.raman-library-modal,.sw-preview,.rist-peak-coordinate-overlay');
+    var layer=node.closest('.ftir-library-modal,.raman-library-modal,.sw-preview,.rist-peak-coordinate-overlay,.rist-peak-recommend-overlay');
     var state={node:node,head:head,layer:layer,position:null,saved:null,z:++z,visible:visible(node)};node._ristFloatingPanel=state;states.push(state);
     slider.addEventListener('input',function(){node.style.opacity=String(Math.max(55,Math.min(100,Number(slider.value)||100))/100);});
     // Native range dragging, not the old tool-specific pointer math/capture.

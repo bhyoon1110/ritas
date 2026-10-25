@@ -44,7 +44,7 @@ body[data-rist-spectrum-step]:not([data-rist-spectrum-step="2"]) > .rist-interac
   var exitButton = bar.querySelector("button"), frame = 0, signature = "", disposed = false;
   var listeners = [], observer;
   var obstacles = ".rist-plot-control-row,.rist-legend-edit-panel,.rist-axis-control-panel,"
-    + ".rist-shape-editor-panel,.rist-peak-coordinate-dialog,#rist-color-palette,"
+    + ".rist-shape-editor-panel,.rist-peak-coordinate-dialog,.rist-peak-recommend-dialog,#rist-color-palette,"
     + ".rist-ratio-selection,.rist-ratio-candidates,.rist-raman-ratio-editor,.rist-ratio-batch,"
     + ".ftir-library-dialog,.raman-library-dialog,.sw-preview > div,.modebar,.legend,"
     + ".rist-ftir-tools-toggle,.rist-raman-tools-toggle,.rist-plot-resize-handle,.rist-axis-wheel-help.is-visible";
@@ -113,6 +113,7 @@ body[data-rist-spectrum-step]:not([data-rist-spectrum-step="2"]) > .rist-interac
     if (gd._ristLegendEditOpen) return ["legend", "범례·스타일 편집", "전체 저장으로 반영 · 닫기로 취소", false];
     if (gd._ristInlineTextEditing) return ["text", "글자 편집", "Enter로 반영 · Esc로 입력 취소", false];
     if (gd._ristPeakCoordinateOpen) return ["peak-coordinate", "X좌표 피크 추가", "시료·X좌표 입력 후 추가 · Esc로 종료", true];
+    if (gd._ristPeakRecommendationOpen) return ["peak-recommend", "LLM 피크 추천", "물질 힌트로 추천 · 검토 필요 · Esc로 종료", true];
     var peak = gd._ristPeakEditMode;
     if (peak === "delete") return ["peak-delete", "피크 삭제", "피크 점 또는 라벨을 클릭 · Esc로 종료", true];
     if (peak === "add") return ["peak-add", "피크 추가", "스펙트럼을 클릭하여 추가 · Esc로 종료", true];
