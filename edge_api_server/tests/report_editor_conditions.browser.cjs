@@ -42,8 +42,11 @@ const raw=Buffer.from(Array.from({length:241},(_,i)=>{const x=400+i*15;return x+
           if(await frame.locator('#page-sidebar-close').isVisible())await frame.locator('#page-sidebar-close').click();
         }
         const target=frame.locator('[aria-label="'+conditionSection.heading+' '+(index+1)+'행 값"]');
-        const picker=target.locator('..').locator('.report-condition-picker');
-        assert.deepEqual(await picker.locator('option').allTextContents(),['저장된 선택지에서 선택',value]);
+        const choices=()=>target.evaluate(e=>Array.from(e.list.options).map(o=>o.value));
+        assert.equal(await target.evaluate(e=>e.tagName),'INPUT');
+        assert.deepEqual(await choices(),[value]);
+        assert.equal(await target.locator('..').locator('input,textarea,select').count(),1);
+        assert.equal(await frame.locator('.report-condition-picker').count(),0);
         await frame.getByRole('button',{name:'선택지 관리',exact:true}).click();
         await frame.getByRole('combobox',{name:'관리할 실험조건·환경 항목',exact:true}).selectOption(field);
         await frame.locator('.report-condition-option-row input').first().fill('cancelled');
@@ -61,7 +64,10 @@ const raw=Buffer.from(Array.from({length:241},(_,i)=>{const x=400+i*15;return x+
         // A storage event from the editor iframe must update the still-open analysis form too.
         const listId=kind==='ftir'?'ftir-report-equipment-model-options':'raman-report-excitation-wavelength-options';
         await page.waitForFunction(({listId,chosen})=>document.getElementById(listId).options[0].value===chosen,{listId,chosen});
-        await picker.selectOption('0');
+        // Headless Chrome does not expose the native datalist popup. Verify its exact
+        // choices, then exercise the same input event path with the chosen value.
+        assert.deepEqual(await choices(),[chosen]);await target.fill(chosen);
+        assert.equal(await target.inputValue(),chosen);
         await page.waitForFunction(old=>{const f=document.getElementById('sw-report-editor'),d=f.contentDocument;
           return d.getElementById('status').classList.contains('error')||(f.contentWindow.location.pathname.replace(/\/edit$/,'')!==old&&d.getElementById('status').textContent.includes('자동 저장 완료'));
         },old,{timeout:180000});
@@ -72,8 +78,8 @@ const raw=Buffer.from(Array.from({length:241},(_,i)=>{const x=400+i*15;return x+
         const slide=layout.pages.findIndex(p=>p.regions.some(r=>r.refs.includes(ref)));assert(slide>=0);
         await frame.locator('#edit-page').selectOption(String(slide));await ready();
         await frame.locator('#slide-stage').screenshot({path:path.join(output,name+'-ppt.png')});
-        await picker.scrollIntoViewIfNeeded();await frame.locator('.form-pane').screenshot({path:path.join(output,name+'-conditions.png')});
-        assert(await picker.evaluate(e=>e.getBoundingClientRect().right<=window.innerWidth));
+        await target.scrollIntoViewIfNeeded();await frame.locator('.form-pane').screenshot({path:path.join(output,name+'-conditions.png')});
+        assert(await target.evaluate(e=>e.getBoundingClientRect().right<=window.innerWidth));
         assert(await frame.locator('body').evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1));
         const r=await page.request.get(origin+await base()+'/download');assert.equal(r.status(),200);
         const zip=path.join(output,name+'.zip');fs.writeFileSync(zip,await r.body());
@@ -87,7 +93,16 @@ assert sys.argv[2] in ''.join(p.extract_text() for p in PdfReader(io.BytesIO(z.r
 print('Final PPT/PDF contain selected condition: '+sys.argv[2])`,zip,chosen],{encoding:'utf8'}).trim());
         // Back/reload keeps both saved option lists and revised report values.
         await page.reload();await frame.locator('#edit-page').waitFor({timeout:180000});await ready();
-        assert.equal(await target.inputValue(),chosen);assert.equal(await picker.locator('option').nth(1).textContent(),chosen);
+        assert.equal(await target.inputValue(),chosen);assert.deepEqual(await choices(),[chosen]);
+        // A value absent from the catalog and an intentional blank use the very same field.
+        for(const manual of ['Manual custom condition','']){
+          const before=await base();await target.fill(manual);
+          await page.waitForFunction(before=>{const f=document.getElementById('sw-report-editor'),d=f.contentDocument;
+            return f.contentWindow.location.pathname.replace(/\/edit$/,'')!==before&&d.getElementById('status').textContent.includes('자동 저장 완료');
+          },before,{timeout:180000});
+          assert.equal((await get('/editor-data')).document.sections.find(s=>s.sectionId==='experiment_conditions').rows[index][2],manual);
+          assert.deepEqual(await choices(),[chosen]);
+        }
         assert.deepEqual(errors,[]);console.log(name+': choice management, analysis synchronization, autosave, actual PPT/PDF and reload passed');
       }catch(e){await page.screenshot({path:path.join(output,name+'-failure.png'),fullPage:true});throw e;}
       finally{await context.close();}

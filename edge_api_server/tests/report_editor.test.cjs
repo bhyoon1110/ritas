@@ -68,21 +68,39 @@ for(const kind of ['ftir','raman']) test(kind+' condition choices autosave only 
   const label=kind==='ftir'?'Type':'Excitation Wavelength',value=kind==='ftir'?'ATR method':'532 nm';
   const h=setup(t,kind,'',{config:{storageKey:'options-'+kind,fields:[{field:'choice',label,defaults:[value]}]},
     rows:[['공통',label,'직접 입력'],['sample A',label,'RAW 값'],['공통','온도','25°C']]});
-  const picks=[1,2,3].map(i=>h.field('실험조건 및 실험환경 '+i+'행 값').parentNode.querySelector('.report-condition-picker'));
-  assert(!picks[0].hidden);assert(!picks[1].hidden);assert(picks[2].hidden);assert.equal(h.posts.length,0);
+  const picks=[1,2,3].map(i=>h.field('실험조건 및 실험환경 '+i+'행 값'));
+  assert(picks[0].list);assert(picks[1].list);assert(!picks[2].list);assert.equal(h.posts.length,0);
+  assert.equal(picks[0].tagName,'INPUT');assert.equal(picks[1].tagName,'INPUT');assert.equal(picks[2].tagName,'TEXTAREA');
+  assert.equal(picks[0].parentNode.querySelectorAll('input,textarea,select').length,1);
+  assert.equal(h.d.querySelectorAll('.report-condition-picker').length,0);assert(!picks[1].closest('details').hidden);
   const manage=h.d.querySelector('.report-condition-options>button');manage.click();
   const preference=h.field(label+' 선택지 1');preference.value='새 선택지';preference.dispatchEvent(new h.w.Event('input',{bubbles:true}));
   assert.equal(h.posts.length,0);assert.equal(h.timers.size,0);
   [...h.q('report-condition-manager').querySelectorAll('button')].find(b=>b.textContent==='선택지 저장').click();
   assert.equal(h.field('실험조건 및 실험환경 1행 값').value,'직접 입력');assert.equal(h.posts.length,0);
-  picks[0].value='0';picks[0].dispatchEvent(new h.w.Event('change'));assert.equal(h.timers.size,1);h.tick();
+  assert.deepEqual([...picks[0].list.options].map(o=>o.value),['새 선택지']);
+  picks[0].value='새 선택지';picks[0].dispatchEvent(new h.w.Event('input',{bubbles:true}));assert.equal(h.timers.size,1);h.tick();
   assert.deepEqual(h.posts[0].body.sections[1].rows,[['공통',label,'새 선택지'],['sample A',label,'RAW 값'],['공통','온도','25°C']]);
   assert(h.q('slide-image').getAttribute('src').includes('/revision/'));
   h.q('edit-page').value='2';h.q('edit-page').dispatchEvent(new h.w.Event('change'));
   h.q('slide-image').dispatchEvent(new h.w.Event('load'));
   h.d.querySelector('.edit-region').click();
-  assert.equal(h.q('inline-fields').querySelector('textarea').value,'새 선택지');
-  h.input('실험조건 및 실험환경 1행 항목','자유 조건');assert(picks[0].hidden);assert.equal(h.field('실험조건 및 실험환경 1행 값').value,'새 선택지');
+  const inline=h.q('inline-fields').querySelector('input');
+  assert.equal(inline.value,'새 선택지');assert.equal(inline.list,picks[0].list);
+  h.input('실험조건 및 실험환경 1행 항목','자유 조건');assert(!picks[0].list);assert.equal(h.field('실험조건 및 실험환경 1행 값').value,'새 선택지');
+  assert(!inline.list);
+  h.input('실험조건 및 실험환경 1행 항목',label);assert(picks[0].list);
+  assert.equal(inline.list,picks[0].list);
+  h.input('실험조건 및 실험환경 1행 값','목록에 없는 직접 입력');h.tick();
+  assert.equal(h.posts[h.posts.length-1].body.sections[1].rows[0][2],'목록에 없는 직접 입력');
+  h.input('실험조건 및 실험환경 1행 값','');h.tick();
+  assert.equal(h.posts[h.posts.length-1].body.sections[1].rows[0][2],'');
+});
+test('multiline imported conditions and notes remain lossless textareas',t=>{
+  const h=setup(t,'ftir','',{config:{storageKey:'choices',fields:[{field:'model',label:'장비모델',defaults:[]}]},
+    rows:[['공통','장비모델','Model A\nModel B'],['공통','실험환경/비고','온도 25°C\n습도 50%']]});
+  const model=h.field('실험조건 및 실험환경 1행 값');assert.equal(model.tagName,'TEXTAREA');assert.equal(model.value,'Model A\nModel B');
+  h.input('보고서 제목','Revised');h.tick();assert.deepEqual(h.posts[0].body.sections[1].rows,[['공통','장비모델','Model A\nModel B'],['공통','실험환경/비고','온도 25°C\n습도 50%']]);
 });
 for(const kind of ['ftir','raman','tem']) test(kind+' page and tool visibility toggles are adjacent and independent',t=>{
   const h=setup(t,kind),toggle=h.q('canvas-toggle'),sidebar=h.q('page-sidebar-toggle'),tools=h.q('canvas-controls');

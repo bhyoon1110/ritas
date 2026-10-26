@@ -40,19 +40,11 @@
     function refresh() {
       var current = load();
       bindings.forEach(function (binding) {
-        var field = match(binding.label()), select = binding.select;
-        select.hidden = !field; select.disabled = locked; select.textContent = "";
-        if (!field) return;
-        select.setAttribute("aria-label", binding.label() + " 선택지");
-        var choices = current[field.field];
-        element("option", select, choices.length ? "저장된 선택지에서 선택" : "등록된 선택지 없음 · 직접 입력 가능").value = "";
-        choices.forEach(function (value, index) { element("option", select, value).value = String(index); });
-        select.onchange = function () {
-          if (locked || binding.input.disabled || select.value === "") return;
-          binding.input.value = choices[Number(select.value)]; select.value = "";
-          var event = document.createEvent("Event"); event.initEvent("input", true, false);
-          binding.input.dispatchEvent(event); binding.input.focus();
-        };
+        var field = match(binding.label()), choices = binding.choices;
+        choices.textContent = "";
+        if (!field) { binding.input.removeAttribute("list"); return; }
+        binding.input.setAttribute("list", choices.id);
+        current[field.field].forEach(function (value) { element("option", choices).value = value; });
       });
     }
     function tell(text, error) { note.textContent = text; note.className = error ? "error" : "muted"; }
@@ -127,7 +119,7 @@
       locked = !!value;
       if (toggle) toggle.disabled = locked;
       if (manager) Array.prototype.forEach.call(manager.querySelectorAll("input,select,button"), function (node) { node.disabled = locked; });
-      bindings.forEach(function (binding) { binding.select.disabled = locked; });
+      bindings.forEach(function (binding) { binding.input.disabled = locked; });
     }
     window.addEventListener("storage", function (event) {
       if (event.key !== key && event.key !== null) return;
@@ -136,11 +128,16 @@
     });
     return {
       mount:mount, lock:lock, refresh:refresh,
+      // Text inputs cannot preserve line breaks. Keep imported multiline values as textareas.
+      supports:function (label, value) { return !!match(label) && !/[\r\n]/.test(String(value == null ? "" : value)); },
       reset:function () { bindings = []; draft = null; baseline = null; manager = toggle = null; },
       attach:function (parent, input, label) {
-        if (!fields.length) return;
-        var select = element("select", parent); select.className = "report-condition-picker";
-        bindings.push({select:select,input:input,label:label});
+        if (!fields.length || input.tagName !== "INPUT") return;
+        var choices = element("datalist", parent);
+        choices.id = "report-condition-choices-" + bindings.length;
+        input.classList.add("report-condition-input");
+        input.placeholder = "선택 또는 직접 입력";
+        bindings.push({choices:choices,input:input,label:label});
       }
     };
   };

@@ -352,7 +352,10 @@
         section.rows.forEach(function (row, r) {
           var tr = element("tr", body), cells = [];
           row.forEach(function (value, c) {
-            var cell = element("textarea", element("td", tr)); cell.value = value; cell.maxLength = 4000;
+            var choice = section.sectionId === "experiment_conditions" && c === 2 && conditions && conditions.supports(row[1],value);
+            var cell = element(choice ? "input" : "textarea", element("td", tr));
+            if (choice) cell.type = "text";
+            cell.value = value; cell.maxLength = 4000;
             cell.setAttribute("aria-label",section.heading + " " + (r+1) + "행 " + section.columns[c]);
             cell.placeholder = "미입력"; watch(cell); cells.push(bind(base + "rows/" + r + "/" + c,cell));
           }); entry.rows.push(cells);
@@ -374,7 +377,7 @@
             label.appendChild(row[2]); if (common) row[2].setAttribute("data-common","true");
             if (conditions) conditions.attach(label,row[2],function () { return row[1].value; });
           });
-          sample.hidden = !sample.querySelector("textarea");
+          sample.hidden = !sample.querySelector("input,textarea");
         }
       } sections.push(entry);
     });

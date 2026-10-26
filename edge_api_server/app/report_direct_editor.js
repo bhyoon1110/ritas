@@ -30,13 +30,18 @@
       region.refs.forEach(function (ref) {
         var source = options.field(ref); if (!source) return;
         var label = node("label", fields, source.getAttribute("aria-label") || "보고서 내용");
-        var input = node(source.type === "date" ? "input" : "textarea", label);
+        var condition = source.classList.contains("report-condition-input");
+        var input = node(source.type === "date" || condition ? "input" : "textarea", label);
         if (source.type === "date") input.type = "date";
+        if (condition) {
+          input.type = "text"; input.placeholder = "선택 또는 직접 입력";
+          if (source.hasAttribute("list")) input.setAttribute("list",source.getAttribute("list"));
+        }
         input.setAttribute("aria-label", "PPT 수정 · " + (source.getAttribute("aria-label") || ref));
         input.value = source.value; input.maxLength = source.maxLength > 0 ? source.maxLength : 4000;
         input.readOnly = source.readOnly;
         shared = shared || ref.indexOf("transfer/") === 0 || ref === "completionDate" || options.shared(ref);
-        copies.push({source:source,input:input});
+        copies.push({source:source,input:input,condition:condition});
         input.onfocus = function () { active = input; };
         ["input", "compositionstart", "compositionend"].forEach(function (name) {
           input.addEventListener(name, function () {
@@ -129,7 +134,13 @@
       loading:function () { sidebar.loading();layer.hidden = true; state.textContent = "PPT 편집 영역을 불러오는 중입니다."; },
       error:function (message) { layer.hidden = true; state.textContent = message; },
       sync:function () {
-        copies.forEach(function (copy) { if (document.activeElement !== copy.input) copy.input.value = copy.source.value; });
+        copies.forEach(function (copy) {
+          if (document.activeElement !== copy.input) copy.input.value = copy.source.value;
+          if (copy.condition) {
+            if (copy.source.hasAttribute("list")) copy.input.setAttribute("list",copy.source.getAttribute("list"));
+            else copy.input.removeAttribute("list");
+          }
+        });
         if (!panel.hidden) optionsList(document.getElementById("insert-variable"));
       },
       lock:function (value) {
