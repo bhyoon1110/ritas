@@ -9,6 +9,10 @@
     var styles={};(child.getAttribute("style")||"").split(";").forEach(function(part){var pair=part.split(":");if(pair.length===2)styles[pair[0].trim().toLowerCase()]=pair[1].trim().toLowerCase();});
     var align=styles["text-align"]||child.getAttribute("align"),vertical=styles["vertical-align"]||child.getAttribute("valign"),width=styles.width||child.getAttribute("width"),height=styles.height||child.getAttribute("height");
     if(/^(p|div|li|td|th)$/.test(tag)&&/^(left|center|right|justify)$/.test(align||"")){next.style.textAlign=align;next.setAttribute("align",align);}
+    if(tag==="table"){
+      width=/^\d+(\.\d{1,6})?%$/.test(width||"")&&parseFloat(width)>=20&&parseFloat(width)<=100?width:"100%";
+      next.style.width=width;next.setAttribute("width",width);
+    }
     if(tag==="td"||tag==="th"){
       vertical=/^(top|middle|bottom)$/.test(vertical||"")?vertical:"top";next.style.verticalAlign=vertical;next.setAttribute("valign",vertical);
       if(/^\d+(\.\d{1,6})?%$/.test(width||"")&&parseFloat(width)>=5&&parseFloat(width)<=100){next.style.width=width;next.setAttribute("width",width);}

@@ -81,12 +81,23 @@ const port=new Promise((resolve,reject)=>{let s='';server.stdout.on('data',chunk
         await page.getByLabel('메일 행 높이',{exact:true}).fill('72');await page.getByLabel('메일 행 높이',{exact:true}).press('Tab');
         await page.getByLabel('메일 셀 배경색',{exact:true}).fill('#e8f2fa');
         assert(await rich.locator('td').evaluateAll(list=>list.every(c=>c.style.textAlign==='center'&&c.style.verticalAlign==='middle')));
+        await page.getByLabel('메일 표 전체 너비',{exact:true}).fill('70');await page.getByLabel('메일 표 전체 너비',{exact:true}).press('Tab');
+        await page.getByLabel('메일 표 전체 높이',{exact:true}).fill('240');await page.getByLabel('메일 표 전체 높이',{exact:true}).press('Tab');
+        assert.equal(await rich.locator('table').evaluate(t=>t.style.width),'70%');assert(Math.abs((await rich.locator('table').boundingBox()).height-240)<3);
+        await page.getByLabel('메일 표 전체 높이',{exact:true}).fill('48');await page.getByLabel('메일 표 전체 높이',{exact:true}).press('Tab');
+        assert((await rich.locator('table').boundingBox()).height>48,'Cell text must retain its natural minimum height');
+        await page.getByLabel('메일 표 전체 높이',{exact:true}).fill('240');await page.getByLabel('메일 표 전체 높이',{exact:true}).press('Tab');
         await rich.locator('td').first().click();await page.getByLabel('메일 열 너비',{exact:true}).fill('60');await page.getByLabel('메일 열 너비',{exact:true}).press('Tab');
         const colHandle=page.getByRole('button',{name:'선택 열 너비 드래그 조절',exact:true}),rowHandle=page.getByRole('button',{name:'선택 행 높이 드래그 조절',exact:true});
         async function drag(handle,dx,dy,cancel=false){await handle.scrollIntoViewIfNeeded();const box=await handle.boundingBox();assert(box);await page.mouse.move(box.x+box.width/2,box.y+box.height/2);await page.mouse.down();await page.mouse.move(box.x+box.width/2+dx,box.y+box.height/2+dy,{steps:4});if(cancel)await page.keyboard.press('Escape');await page.mouse.up();}
         await drag(colHandle,40,0);const savedWidth=await rich.locator('td').first().evaluate(c=>parseFloat(c.style.width));assert(savedWidth>60);
         await drag(colHandle,-30,0,true);assert.equal(await rich.locator('td').first().evaluate(c=>parseFloat(c.style.width)),savedWidth);
         await drag(rowHandle,0,30);assert(await rich.locator('tr').first().evaluate(r=>parseFloat(r.style.height)>72));
+        const tableHandle=page.getByRole('button',{name:'표 전체 크기 드래그 조절',exact:true});
+        await drag(tableHandle,-70,25);
+        const wholeSize=await rich.locator('table').evaluate(t=>({width:t.style.width,heights:Array.from(t.rows,r=>r.style.height)}));
+        assert(parseFloat(wholeSize.width)<70);assert.equal(await rich.locator('td').first().evaluate(c=>parseFloat(c.style.width)),savedWidth);
+        await drag(tableHandle,40,30,true);assert.deepEqual(await rich.locator('table').evaluate(t=>({width:t.style.width,heights:Array.from(t.rows,r=>r.style.height)})),wholeSize);
         await rich.locator('td').first().click();await page.keyboard.press('Tab');assert.equal(await rich.locator('td').nth(1).getAttribute('data-mail-selected'),'');
         await page.keyboard.press('Escape');assert.equal(await rich.locator('[data-mail-selected]').count(),0);
         await rich.click();await rich.press('ControlOrMeta+End');
@@ -97,6 +108,7 @@ const port=new Promise((resolve,reject)=>{let s='';server.stdout.on('data',chunk
         assert.equal(await rich.locator('img').getAttribute('width'),'320');await save();
         if(kind==='xrd')assert.equal(await page.getByLabel('메일 이미지 표시 폭',{exact:true}).isVisible(),false,'Reload must clear selection of replaced image nodes');
         await open();assert.equal(await rich.locator('table').count(),1);assert.equal(await rich.locator('img').count(),1);assert.equal(await rich.locator('img').getAttribute('width'),'320');
+        assert.deepEqual(await rich.locator('table').evaluate(t=>({width:t.style.width,heights:Array.from(t.rows,r=>r.style.height)})),wholeSize);
         assert(await rich.locator('td').evaluateAll(list=>list.every(c=>c.style.textAlign==='center'&&c.style.verticalAlign==='middle')));assert.equal(await rich.locator('td').first().evaluate(c=>parseFloat(c.style.width)),savedWidth);assert.match(await rich.locator('table').textContent(),/Sample A/);
         await page.getByLabel('메일 이미지 파일',{exact:true}).setInputFiles({name:'large.png',mimeType:'image/png',buffer:Buffer.alloc(5*1024*1024+1)});
         await page.getByText('원본 이미지는 5MB 이하로 선택하세요.',{exact:true}).waitFor();assert.equal(await rich.locator('img').count(),1);
@@ -109,6 +121,7 @@ const port=new Promise((resolve,reject)=>{let s='';server.stdout.on('data',chunk
           assert(await page.locator('.mail-toolbar').first().evaluate(e=>e.scrollWidth<=e.clientWidth+2));
           assert(await page.locator('.mail-table-panel').evaluate(e=>e.scrollWidth<=e.clientWidth+2));
           await page.locator('.mail-compose').screenshot({path:path.join(output,name+'-'+width+'.png')});
+          if(width===1440){await page.locator('.mail-table-panel').screenshot({path:path.join(output,name+'-table-controls.png')});await page.locator('.mail-rich-wrap').screenshot({path:path.join(output,name+'-table.png')});}
         }
         await rich.locator('img').click();await page.getByRole('button',{name:'선택한 메일 이미지 삭제',exact:true}).click();assert.equal(await rich.locator('img').count(),0);
         await rich.locator('td').first().click();await page.getByRole('button',{name:'선택한 메일 표 삭제',exact:true}).click();assert.equal(await rich.locator('table').count(),0);

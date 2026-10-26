@@ -37,6 +37,11 @@ def _formatting(tag, attrs, base=''):
     align = value('text-align', 'align')
     if tag in {'p', 'div', 'li', 'td', 'th'} and align in {'left', 'center', 'right', 'justify'}:
         styles['text-align'] = extra['align'] = align
+    if tag == 'table':
+        width = value('width', 'width')
+        if not (re.fullmatch(r'\d+(?:\.\d{1,6})?%', width) and 20 <= float(width[:-1]) <= 100):
+            width = '100%'
+        styles['width'] = extra['width'] = width
     if tag in {'td', 'th'}:
         vertical, width = value('vertical-align', 'valign'), value('width', 'width')
         styles['vertical-align'] = extra['valign'] = vertical if vertical in {'top', 'middle', 'bottom'} else 'top'
@@ -88,7 +93,8 @@ class _MailHTML(HTMLParser):
                 if 'table' in self.stack or self.tables > MAX_TABLES:
                     raise ValueError('중첩 표는 지원하지 않으며 메일에는 표를 최대 3개 넣을 수 있습니다.')
                 self.rows = self.cols = 0
-                extra = ' border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse;width:100%;table-layout:fixed"'
+                extra = ' border="1" cellpadding="6" cellspacing="0"' + _formatting(
+                    tag, attrs, 'border-collapse:collapse;width:100%;table-layout:fixed')
             elif tag == 'tr':
                 if 'table' not in self.stack:
                     raise ValueError('메일 표 구조를 확인하세요.')

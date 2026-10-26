@@ -37,14 +37,47 @@ for(const mode of Object.keys(programs)){
     u.find('선택한 메일 표 삭제').click();assert.equal(u.rich.querySelectorAll('table').length,0);
   });
   test(mode+': restricted CSS round-trips alignment, background and geometry, not tracking CSS',t=>{
-    const u=setup(t,mode),value='<p style="text-align:right;position:fixed">본문</p><table><tr style="height:80px"><td width="65%" style="text-align:center;vertical-align:middle;background-color:rgb(232,242,250);background-image:url(https://invalid);padding:999px" onclick="evil()">A</td><td style="width:35%">B</td></tr></table>';
-    const html=u.w.RistMailEditor.clean(value);assert(!/invalid|onclick|999|fixed;/.test(html));
+    const u=setup(t,mode),value='<p style="text-align:right;position:fixed">본문</p><table style="width:60%"><tr style="height:80px"><td width="65%" style="text-align:center;vertical-align:middle;background-color:rgb(232,242,250);background-image:url(https://invalid);padding:999px" onclick="evil()">A</td><td style="width:35%">B</td></tr></table>';
+    const html=u.w.RistMailEditor.clean(value);assert(!/invalid|onclick|999|position\s*:\s*fixed/.test(html));
     const simple=u.w.RistMailEditor.clean('<table><tr><td>default</td></tr></table>');assert.equal(u.w.RistMailEditor.clean(simple),simple);
     const out=u.d.createElement('div');out.innerHTML=html;const cell=out.querySelector('td');assert.equal(cell.style.width,'65%');assert.equal(cell.style.textAlign,'center');assert.equal(cell.style.verticalAlign,'middle');assert.equal(cell.getAttribute('bgcolor'),'#e8f2fa');assert.equal(out.querySelector('tr').style.height,'80px');
+    assert.equal(out.querySelector('table').style.width,'60%');assert.equal(out.querySelector('table').getAttribute('width'),'60%');assert.equal(u.w.RistMailEditor.clean(html),html);
+    for(const width of ['20%','33.333%','100%']){out.innerHTML=u.w.RistMailEditor.clean('<table width="'+width+'"><tr><td>A</td></tr></table>');assert.equal(out.querySelector('table').style.width,width);}
+    for(const width of ['19%','101%','9000px','expression(x)','calc(50% + 1px)']){out.innerHTML=u.w.RistMailEditor.clean('<table style="width:'+width+';height:9999px"><tr><td>A</td></tr></table>');assert.equal(out.querySelector('table').style.width,'100%');assert.equal(out.querySelector('table').style.height,'');}
     const bad=u.w.RistMailEditor.clean('<table><tr style="height:9999px"><td style="width:1%;text-align:expression(x);vertical-align:expression(x);background-color:red">A</td></tr></table>');assert(!/9999|expression|width: 1%|color: red/.test(bad));
   });
   test(mode+': locked editor cannot change table, reset removes stale selection',t=>{
     const u=setup(t,mode);u.click(u.rich.querySelector('td'));u.lock();const before=u.rich.innerHTML;u.find('메일 글자 오른쪽 정렬').click();u.find('아래 행 추가').click();assert.equal(u.rich.innerHTML,before);assert.equal(u.count(),0);u.tables.reset();assert.equal(u.rich.querySelectorAll('[data-mail-selected]').length,0);
+  });
+  test(mode+': whole-table numeric sizing, limits, row proportions, reset and keyboard',t=>{
+    const u=setup(t,mode),table=u.rich.querySelector('table'),rows=table.rows;
+    rows[0].style.height='40px';rows[1].style.height='80px';u.click(rows[0].cells[0]);
+    const width=u.find('메일 표 전체 너비'),height=u.find('메일 표 전체 높이');
+    width.value=60;width.onchange();assert.equal(table.style.width,'60%');assert.equal(table.getAttribute('width'),'60%');
+    height.value=240;height.onchange();assert.equal(rows[0].style.height,'80px');assert.equal(rows[1].style.height,'160px');
+    height.value=700;height.onchange();assert.equal(rows[0].style.height,'300px');assert.equal(rows[1].style.height,'400px');
+    rows[0].getBoundingClientRect=()=>({height:10});rows[1].getBoundingClientRect=()=>({height:1000});height.value=500;height.onchange();assert.equal(rows[0].style.height,'100px');assert.equal(rows[1].style.height,'400px');
+    for(const value of [0,19,101]){width.value=value;width.onchange();assert.equal(table.style.width,'60%');}
+    height.value=801;height.onchange();assert.equal(rows[1].style.height,'400px');
+    u.find('표 전체 크기 드래그 조절').dispatchEvent(new u.w.KeyboardEvent('keydown',{key:'ArrowLeft',bubbles:true}));assert.equal(table.style.width,'59%');
+    u.find('메일 표 전체 너비 초기화').click();u.find('메일 표 전체 높이 자동').click();assert.equal(table.style.width,'100%');
+    for(const r of rows){assert.equal(r.style.height,'');assert.equal(r.getAttribute('height'),null);}
+    u.lock();width.value=40;width.onchange();height.value=100;height.onchange();assert.equal(table.style.width,'100%');assert.equal(rows[0].style.height,'');
+  });
+  test(mode+': whole-table corner scales both axes, preserves columns, rolls back all attributes',t=>{
+    const u=setup(t,mode),table=u.rich.querySelector('table'),rect=(width,height)=>({left:0,top:0,right:width,bottom:height,width,height});
+    table.getBoundingClientRect=()=>rect(200,100);u.rich.getBoundingClientRect=()=>rect(400,300);
+    for(const r of table.rows){r.getBoundingClientRect=()=>rect(200,50);r.cells[0].getBoundingClientRect=()=>rect(119.999,50);r.cells[1].getBoundingClientRect=()=>rect(80.001,50);r.cells[0].style.width='60%';r.cells[1].style.width='40%';}
+    u.click(table.rows[0].cells[0]);const handle=u.find('표 전체 크기 드래그 조절');
+    const mouse=(target,name,x,y)=>target.dispatchEvent(new u.w.MouseEvent(name,{bubbles:true,cancelable:true,button:0,clientX:x,clientY:y}));
+    mouse(handle,'mousedown',200,100);mouse(u.d,'mousemove',240,140);mouse(u.d,'mouseup',240,140);
+    assert.equal(table.style.width,'60%');assert.equal(table.rows[0].style.height,'70px');assert.equal(table.rows[1].style.height,'70px');assert.equal(table.rows[0].cells[0].style.width,'60%');assert.equal(u.count(),1);
+    const before=table.outerHTML;
+    for(const cancel of ['Escape','blur','lock']){
+      mouse(handle,'mousedown',200,100);mouse(u.d,'mousemove',1000,10000);assert.equal(table.style.width,'100%');assert.equal(table.rows[0].style.height,'400px');
+      if(cancel==='Escape')u.d.dispatchEvent(new u.w.KeyboardEvent('keydown',{key:cancel,bubbles:true}));else if(cancel==='blur')u.w.dispatchEvent(new u.w.Event('blur'));else u.lock();
+      assert.equal(table.outerHTML,before);assert.equal(u.count(),1);
+    }
   });
   test(mode+': mouse fallback drag commits once; Escape, blur and locking roll back',t=>{
     const u=setup(t,mode),table=u.rich.querySelector('table'),first=table.querySelector('td');

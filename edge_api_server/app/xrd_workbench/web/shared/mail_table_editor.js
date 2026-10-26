@@ -20,7 +20,8 @@
     }
     function show(inserting){o.onShow();panel.hidden=false;insertPane.hidden=!inserting;editPane.hidden=inserting;}
     function table(){return active&&rich.contains(active)?active.closest("table"):null;}
-    function clearSelection(){cells.forEach(function(c){c.removeAttribute("data-mail-selected");});cells=[];active=anchor=null;colHandle.hidden=rowHandle.hidden=true;}
+    style.textContent+=".mail-resize-table{width:18px!important;height:18px!important;cursor:nwse-resize;color:white!important;font:14px/16px Arial!important}.mail-table-group strong{margin:3px 6px 3px 0;font-size:13px}";
+    function clearSelection(){cells.forEach(function(c){c.removeAttribute("data-mail-selected");});cells=[];active=anchor=null;colHandle.hidden=rowHandle.hidden=tableHandle.hidden=true;window.removeEventListener("resize",positionHandles);}
     function reset(){if(drag)endDrag(false);clearSelection();panel.hidden=true;multi=false;multiButton.setAttribute("aria-pressed","false");}
     function coordinates(c){return [c.parentNode.rowIndex,c.cellIndex];}
     function select(c,extend){
@@ -30,13 +31,16 @@
       var a=coordinates(first),b=coordinates(c);
       for(var r=Math.min(a[0],b[0]);r<=Math.max(a[0],b[0]);r++)
         for(var col=Math.min(a[1],b[1]);col<=Math.max(a[1],b[1]);col++)if(t.rows[r].cells[col])cells.push(t.rows[r].cells[col]);
-      cells.forEach(function(x){x.setAttribute("data-mail-selected","");});show(false);refresh();
+      cells.forEach(function(x){x.setAttribute("data-mail-selected","");});window.addEventListener("resize",positionHandles);show(false);refresh();
     }
     function refresh(){
       var t=table();if(!t){reset();return;}
       status.textContent=cells.length+"개 셀 선택 · Shift+클릭으로 범위 선택 · 모바일은 ‘여러 셀’ 사용";
       rowHeight.value=parseInt(active.parentNode.style.height,10)||Math.round(active.parentNode.getBoundingClientRect().height)||36;
       colWidth.value=Math.round(widths(t)[active.cellIndex]*100)/100;
+      tableWidth.value=parseFloat(t.style.width||t.getAttribute("width"))||100;
+      tableHeight.min=t.rows.length*24;tableHeight.max=t.rows.length*400;
+      tableHeight.value=Math.round(t.getBoundingClientRect().height)||rowHeights(t).reduce(function(a,b){return a+b;},0);
       hButtons.forEach(function(item){var same=cells.every(function(c){var align=c.style.textAlign||window.getComputedStyle(c).textAlign||"left";if(align==="start")align="left";if(align==="end")align="right";return align===item.value;});item.button.setAttribute("aria-pressed",String(same));});
       vButtons.forEach(function(item){var same=cells.every(function(c){return (c.style.verticalAlign||"top")===item.value;});item.button.setAttribute("aria-pressed",String(same));});
       positionHandles();
@@ -135,23 +139,43 @@
     rowHeight.onchange=function(){var v=Number(rowHeight.value);if(!allowed()||!table())return;if(!isFinite(v)||v<24||v>400){o.note("행 높이는 24~400px입니다.");refresh();return;}cells.forEach(function(c){c.parentNode.style.height=Math.round(v)+"px";});change();};
     button(geometry,"열 균등","메일 열 너비 같게",function(){var t=table();if(!allowed()||!t)return;equalWidths(t);change();});
     button(geometry,"높이 자동","메일 행 높이 자동",function(){if(!allowed()||!table())return;cells.forEach(function(c){c.parentNode.style.removeProperty("height");c.parentNode.removeAttribute("height");});change();});
-    node("p",editPane,"선택 셀의 파란 경계를 끌어 열 폭·행 높이 조절 · Tab/Shift+Tab으로 셀 이동 · Esc로 선택 해제").className="mail-note";
+    var whole=group(editPane);node("strong",whole,"표 전체 크기");
+    var tableWidth=field(whole,"너비(%)","메일 표 전체 너비",20,100,100),tableHeight=field(whole,"높이(px)","메일 표 전체 높이",24,8000,72);
+    function rowHeights(t){return Array.prototype.map.call(t.rows,function(r){return r.getBoundingClientRect().height||parseInt(r.style.height,10)||36;});}
+    function bodyWidth(){var s=window.getComputedStyle(rich);return Math.max(1,(rich.clientWidth||rich.getBoundingClientRect().width)-(parseFloat(s.paddingLeft)||0)-(parseFloat(s.paddingRight)||0));}
+    function resizeWidth(t,value){var width=(Math.round(Math.max(20,Math.min(100,value))*1000)/1000)+"%";t.style.width=width;t.setAttribute("width",width);}
+    function resizeHeight(t,heights,value){
+      // Scale rows together, redistributing at the per-row bounds. Content may grow a row further.
+      var target=Math.round(Math.max(24*heights.length,Math.min(400*heights.length,value))),low=0,high=400/Math.min.apply(Math,heights);
+      for(var iteration=0;iteration<40;iteration++){var scale=(low+high)/2,sum=heights.reduce(function(a,h){return a+Math.max(24,Math.min(400,h*scale));},0);if(sum<target)low=scale;else high=scale;}
+      var result=heights.map(function(h){return Math.floor(Math.max(24,Math.min(400,h*low)));}),remaining=target-result.reduce(function(a,b){return a+b;},0);
+      result.forEach(function(h,i){if(remaining>0&&h<400){result[i]++;remaining--;}});
+      Array.prototype.forEach.call(t.rows,function(r,i){r.style.height=result[i]+"px";r.setAttribute("height",String(result[i]));});
+    }
+    tableWidth.onchange=function(){var t=table(),v=Number(tableWidth.value);if(!allowed()||!t)return;if(!isFinite(v)||v<20||v>100){o.note("표 전체 너비는 본문 폭의 20~100%입니다.");refresh();return;}resizeWidth(t,v);change();};
+    tableHeight.onchange=function(){var t=table(),v=Number(tableHeight.value);if(!allowed()||!t)return;if(!isFinite(v)||v<t.rows.length*24||v>t.rows.length*400){o.note("표 전체 높이는 "+t.rows.length*24+"~"+t.rows.length*400+"px입니다. 내용에 필요한 최소 높이는 유지됩니다.");refresh();return;}resizeHeight(t,rowHeights(t),v);change();};
+    button(whole,"본문 폭 맞춤","메일 표 전체 너비 초기화",function(){var t=table();if(!allowed()||!t)return;resizeWidth(t,100);change();});
+    button(whole,"높이 자동","메일 표 전체 높이 자동",function(){var t=table();if(!allowed()||!t)return;Array.prototype.forEach.call(t.rows,function(r){r.style.removeProperty("height");r.removeAttribute("height");});change();});
+    node("p",editPane,"표 우측 하단 ↘: 전체 크기 · 셀 경계: 열 폭·행 높이 · 글자 크기는 유지되며 내용보다 작게 줄어들지 않습니다. Tab: 셀 이동 · Esc: 선택 해제/드래그 취소").className="mail-note";
 
-    var colHandle=button(wrap,"","선택 열 너비 드래그 조절",function(){}),rowHandle=button(wrap,"","선택 행 높이 드래그 조절",function(){});
+    var colHandle=button(wrap,"","선택 열 너비 드래그 조절",function(){}),rowHandle=button(wrap,"","선택 행 높이 드래그 조절",function(){}),tableHandle=button(wrap,"↘","표 전체 크기 드래그 조절",function(){});
     colHandle.className="mail-resize-handle mail-resize-col";rowHandle.className="mail-resize-handle mail-resize-row";
-    colHandle.hidden=rowHandle.hidden=true;
+    tableHandle.className="mail-resize-handle mail-resize-table";
+    colHandle.hidden=rowHandle.hidden=tableHandle.hidden=true;
     function positionHandles(){
-      var t=table();if(!t||!o.enabled()){colHandle.hidden=rowHandle.hidden=true;return;}
-      var c=active.getBoundingClientRect(),w=wrap.getBoundingClientRect(),v=rich.getBoundingClientRect();
+      var t=table();if(!t||!o.enabled()){colHandle.hidden=rowHandle.hidden=tableHandle.hidden=true;return;}
+      var c=active.getBoundingClientRect(),w=wrap.getBoundingClientRect(),v=rich.getBoundingClientRect(),b=t.getBoundingClientRect();
       var y=Math.min(c.bottom-14,Math.max(c.top+14,(v.top+v.bottom)/2));
       colHandle.hidden=active.cellIndex>=active.parentNode.cells.length-1||c.right<v.left+6||c.right>v.right-6||y<v.top+14||y>v.bottom-14;
       colHandle.style.left=(c.right-w.left-5)+"px";colHandle.style.top=(y-w.top-14)+"px";
       rowHandle.hidden=c.bottom<v.top+6||c.bottom>v.bottom-6;
       rowHandle.style.left=((c.left+c.right)/2-w.left-14)+"px";rowHandle.style.top=(c.bottom-w.top-5)+"px";
+      tableHandle.hidden=b.right<v.left+18||b.right>v.right-2||b.bottom<v.top+18||b.bottom>v.bottom-2;
+      tableHandle.style.left=(b.right-w.left-16)+"px";tableHandle.style.top=(b.bottom-w.top-16)+"px";
     }
     function endDrag(commit){
       if(!drag)return;var d=drag;drag=null;
-      if(!commit){d.styles.forEach(function(item){if(item[1]===null)item[0].removeAttribute("style");else item[0].setAttribute("style",item[1]);if(item[2]===null)item[0].removeAttribute("width");else item[0].setAttribute("width",item[2]);});}
+      if(!commit){d.styles.forEach(function(item){["style","width","height"].forEach(function(attr,i){if(item[i+1]===null)item[0].removeAttribute(attr);else item[0].setAttribute(attr,item[i+1]);});});}
       document.removeEventListener(d.move,moveDrag);document.removeEventListener(d.up,finishDrag);document.removeEventListener("pointercancel",cancelDrag);document.removeEventListener("keydown",dragKey);window.removeEventListener("blur",cancelDrag);
       if(d.id!=null&&d.handle.releasePointerCapture){try{d.handle.releasePointerCapture(d.id);}catch(_){}}
       rich.style.userSelect="";if(commit)o.changed();refresh();
@@ -162,20 +186,22 @@
     function moveDrag(e){
       if(!drag||(drag.id!=null&&e.pointerId!==drag.id))return;if(!o.enabled())return endDrag(false);e.preventDefault();var d=drag;
       if(d.kind==="col"){var values=d.widths.slice(),delta=(e.clientX-d.x)/d.tableWidth*100,total=values[d.index]+values[d.index+1];values[d.index]=Math.max(5,Math.min(total-5,values[d.index]+delta));values[d.index+1]=total-values[d.index];applyWidths(d.table,values);}
+      else if(d.kind==="table"){resizeWidth(d.table,(d.tableWidth+e.clientX-d.x)/d.bodyWidth*100);d.heightTouched=d.heightTouched||e.clientY!==d.y;if(d.heightTouched)resizeHeight(d.table,d.heights,d.tableHeight+e.clientY-d.y);}
       else d.row.style.height=Math.round(Math.max(24,Math.min(400,d.height+e.clientY-d.y)))+"px";
       positionHandles();
     }
     function beginDrag(e,kind,handle){
       var t=table();if(!allowed()||!t||(e.button!=null&&e.button!==0))return;e.preventDefault();
       var pointer=e.type==="pointerdown";
-      drag={kind:kind,handle:handle,id:pointer?e.pointerId:null,table:t,row:active.parentNode,index:active.cellIndex,x:e.clientX,y:e.clientY,widths:widths(t),tableWidth:t.getBoundingClientRect().width,height:active.parentNode.getBoundingClientRect().height,
-        styles:Array.prototype.map.call(t.querySelectorAll("tr,td,th"),function(c){return [c,c.getAttribute("style"),c.getAttribute("width")];}),move:pointer?"pointermove":"mousemove",up:pointer?"pointerup":"mouseup"};
+      drag={kind:kind,handle:handle,id:pointer?e.pointerId:null,table:t,row:active.parentNode,index:active.cellIndex,x:e.clientX,y:e.clientY,widths:widths(t),tableWidth:t.getBoundingClientRect().width,height:active.parentNode.getBoundingClientRect().height,bodyWidth:bodyWidth(),tableHeight:t.getBoundingClientRect().height,heights:rowHeights(t),
+        styles:[t].concat(Array.prototype.slice.call(t.querySelectorAll("tr,td,th"))).map(function(c){return [c,c.getAttribute("style"),c.getAttribute("width"),c.getAttribute("height")];}),move:pointer?"pointermove":"mousemove",up:pointer?"pointerup":"mouseup"};
       rich.style.userSelect="none";if(pointer&&handle.setPointerCapture){try{handle.setPointerCapture(e.pointerId);}catch(_){}}
       document.addEventListener(drag.move,moveDrag);document.addEventListener(drag.up,finishDrag);document.addEventListener("pointercancel",cancelDrag);document.addEventListener("keydown",dragKey);window.addEventListener("blur",cancelDrag);
     }
-    [colHandle,rowHandle].forEach(function(h,i){h.addEventListener(window.PointerEvent?"pointerdown":"mousedown",function(e){beginDrag(e,i===0?"col":"row",h);});
-      h.onkeydown=function(e){var delta=(e.key==="ArrowRight"||e.key==="ArrowDown")?1:(e.key==="ArrowLeft"||e.key==="ArrowUp")?-1:0;if(!delta||!allowed())return;e.preventDefault();if(i===0){colWidth.value=Number(colWidth.value)+delta;colWidth.onchange();}else{rowHeight.value=Number(rowHeight.value)+delta*4;rowHeight.onchange();}};});
+    [colHandle,rowHandle,tableHandle].forEach(function(h,i){h.addEventListener(window.PointerEvent?"pointerdown":"mousedown",function(e){beginDrag(e,["col","row","table"][i],h);});
+      h.onkeydown=function(e){var delta=(e.key==="ArrowRight"||e.key==="ArrowDown")?1:(e.key==="ArrowLeft"||e.key==="ArrowUp")?-1:0;if(!delta||!allowed())return;e.preventDefault();if(i===2){var f=e.key==="ArrowRight"||e.key==="ArrowLeft"?tableWidth:tableHeight;f.value=Number(f.value)+delta*(f===tableWidth?1:4);f.onchange();}else if(i===0){colWidth.value=Number(colWidth.value)+delta;colWidth.onchange();}else{rowHeight.value=Number(rowHeight.value)+delta*4;rowHeight.onchange();}};});
     rich.addEventListener("scroll",positionHandles);
+    rich.addEventListener("input",positionHandles);
     // Range-select cells without leaving a native text range that could erase their contents on typing.
     rich.addEventListener("mousedown",function(e){if(o.enabled()&&(e.shiftKey||multi)&&e.target.closest("td,th"))e.preventDefault();});
     rich.addEventListener("click",function(e){var c=e.target.closest("td,th");if(c)select(c,e.shiftKey||multi);else reset();});
