@@ -262,64 +262,129 @@
     var box = element("div", parent), actions = element("div", box); actions.className = "actions";
     var loadButton = element("button", actions, "의뢰 조회"), previous = element("button", actions, "이전 목록"), next = element("button", actions, "다음 목록");
     loadButton.id = "request-load"; previous.id = "request-previous"; next.id = "request-next";
-    var label = element("label", box, "현재 조회 목록 검색 (의뢰번호·시료·시험명)"), filter = element("input", label);
-    filter.type = "search"; filter.maxLength = 100; filter.setAttribute("aria-label", "현재 의뢰 목록 검색");
-    label = element("label", box, "조회된 의뢰 선택"); var select = element("select", label); select.id = "request-select";
-    select.setAttribute("aria-label", "조회된 의뢰 선택");
-    var info = element("p", box, "의뢰를 조회하여 선택하거나 아래에 직접 입력하세요. 목록은 200개씩 조회합니다.");
-    info.className = "muted"; info.setAttribute("role", "status");
-    var items = [], page = 0, loading = false, selected = null;
+    var label = element("label", box, "의뢰 검색·선택"), combo = element("div", box); combo.className = "request-combo";
+    var filter = element("input", combo), toggle = element("button", combo, "▾");
+    filter.id = "request-search"; label.htmlFor = filter.id;
+    filter.type = "text"; filter.maxLength = 1000; filter.autocomplete = "off";
+    filter.placeholder = "의뢰번호·시료·시험명으로 검색 후 선택";
+    filter.setAttribute("aria-label", "의뢰 검색·선택"); filter.setAttribute("role", "combobox");
+    filter.setAttribute("aria-autocomplete", "list"); filter.setAttribute("aria-expanded", "false");
+    filter.setAttribute("aria-controls", "request-results"); filter.setAttribute("aria-describedby", "request-info");
+    toggle.id = "request-toggle"; toggle.type = "button"; toggle.className = "request-toggle";
+    toggle.setAttribute("aria-label", "의뢰 목록 열기"); toggle.setAttribute("aria-controls", "request-results"); toggle.setAttribute("aria-expanded", "false");
+    var results = element("div", box); results.id = "request-results"; results.className = "request-results";
+    results.setAttribute("role", "listbox"); results.setAttribute("aria-label", "조회된 의뢰 목록"); results.hidden = true;
+    var info = element("p", box, "의뢰 조회 후 한 칸에서 검색·선택하세요. 목록은 200개씩 조회하며, 의뢰번호 직접 입력도 가능합니다.");
+    info.id = "request-info"; info.className = "muted"; info.setAttribute("role", "status");
+    var items = [], matches = [], page = 0, loading = false, selected = null, selectedText = "", active = -1, typing = false, lookupError = "";
+    function close() {
+      results.hidden = true; active = -1; filter.removeAttribute("aria-activedescendant");
+      filter.setAttribute("aria-expanded", "false"); toggle.setAttribute("aria-expanded", "false");
+    }
+    function position() {
+      if (results.hidden) return;
+      var rect = combo.getBoundingClientRect(), width = Math.min(rect.width, window.innerWidth - 16);
+      var below = window.innerHeight - rect.bottom - 12, above = rect.top - 12, up = below < 180 && above > below;
+      var height = Math.max(40,Math.min(260,up ? above : below));
+      results.style.width = Math.max(0,width) + "px"; results.style.maxHeight = height + "px";
+      results.style.left = Math.max(8,Math.min(rect.left,window.innerWidth - width - 8)) + "px";
+      results.style.top = (up ? Math.max(8,rect.top - Math.min(height,results.scrollHeight) - 4) : rect.bottom + 4) + "px";
+    }
+    function open() {
+      if (sending || loading) return;
+      results.hidden = false; filter.setAttribute("aria-expanded", "true"); toggle.setAttribute("aria-expanded", "true"); position();
+    }
     function controls() {
       loadButton.disabled = sending || loading;
       previous.disabled = sending || loading || page <= 1;
       next.disabled = sending || loading || items.length < 200;
-      select.disabled = sending || loading || !items.length;
+      filter.disabled = toggle.disabled = sending || loading;
+      if (sending || loading) close();
+    }
+    function text(item) {
+      return [item.requestNumber, item.experimentCode || item.testMethodCode, item.experimentName || item.testMethodName,
+        item.sampleName, item.requestDate, item.customerRequestName, item.requestStateName].filter(Boolean).join(" · ");
+    }
+    function choose(index) {
+      if (sending || loading || !items[index]) return;
+      selected = items[index]; selectedText = text(selected); filter.value = selectedText; close();
+      inputs.requestNumber.value = selected.requestNumber || "";
+      inputs.limsExperimentCode.value = selected.experimentCode || selected.testMethodCode || "";
+      var equipment = selected.equipmentCode || selected.deviceCode || selected.instrumentCode;
+      if (equipment) inputs.equipmentCode.value = equipment;
+      changed(); filter.focus(); close();
+      info.textContent = "선택한 의뢰를 자동 반영합니다. " + (equipment ? "" : "조회 결과에 장비 코드가 없어 기존 값을 유지합니다. 장비를 확인하세요. ") + "실험자는 SSO 계정을 유지합니다.";
     }
     function render() {
-      select.textContent = ""; var option = element("option", select, "의뢰를 선택하세요"); option.value = "";
-      var query = filter.value.trim().toLowerCase(), count = 0;
+      results.textContent = ""; matches = []; active = -1; filter.removeAttribute("aria-activedescendant");
+      var query = selected && filter.value === selectedText ? "" : filter.value.trim().toLowerCase();
       items.forEach(function (item, index) {
-        var text = [item.requestNumber, item.experimentCode || item.testMethodCode, item.experimentName || item.testMethodName,
-          item.sampleName, item.requestDate, item.customerRequestName, item.requestStateName].filter(Boolean).join(" · ");
-        if (query && text.toLowerCase().indexOf(query) < 0) return;
-        option = element("option", select, text); option.value = String(index); count += 1;
+        var description = text(item); if (query && description.toLowerCase().indexOf(query) < 0) return;
+        var option = element("button", results, description); option.type = "button"; option.tabIndex = -1;
+        option.id = "request-result-" + index; option.setAttribute("role", "option");
+        option.setAttribute("aria-selected", String(item === selected)); option.title = description;
+        option.onmousedown = function (event) { event.preventDefault(); };
+        option.onclick = function () { choose(index); }; matches.push(option);
       });
-      if (page) info.textContent = page + "페이지 · " + items.length + "건 중 " + count + "건 표시. 다른 의뢰는 다음 목록에서 확인하세요.";
+      if (!matches.length) element("p",results,page ? "일치하는 의뢰가 없습니다. 검색어 또는 이전·다음 목록을 확인하세요." : "먼저 ‘의뢰 조회’를 눌러 목록을 불러오세요.").className = "muted";
+      if (page) info.textContent = lookupError + page + "페이지 · " + items.length + "건 중 " + matches.length + "건 표시. 검색만으로 전송 정보가 바뀌지 않습니다.";
+      position();
+    }
+    function highlight(index) {
+      active = index; matches.forEach(function (item, i) { item.classList.toggle("is-active",i === index); });
+      var option = matches[index]; if (!option) return;
+      filter.setAttribute("aria-activedescendant",option.id);
+      if (option.offsetTop < results.scrollTop) results.scrollTop = option.offsetTop;
+      else if (option.offsetTop + option.offsetHeight > results.scrollTop + results.clientHeight) results.scrollTop = option.offsetTop + option.offsetHeight - results.clientHeight;
     }
     function loadPage(number) {
       if (loading || sending) return;
-      loading = true; controls(); info.textContent = "의뢰 목록 조회 중입니다.";
+      loading = true; lookupError = ""; controls(); info.textContent = "의뢰 목록 조회 중입니다.";
       request("/api/v1/requests?page=" + number + "&pageSize=200&experimentType=" + encodeURIComponent(project), "GET", null, function (error, result) {
         loading = false;
-        if (error) info.textContent = "조회 실패: " + error.message + " 직접 입력은 계속 사용할 수 있습니다.";
+        if (error) { lookupError = "조회 실패: " + error.message + " 직접 입력은 계속 사용할 수 있습니다. "; info.textContent = lookupError; }
         else { page = number; items = Array.isArray(result.items) ? result.items : []; render(); }
         controls();
+        if (!error && !sending) { filter.focus(); open(); }
       });
     }
     loadButton.onclick = function () { loadPage(1); };
     previous.onclick = function () { loadPage(page - 1); };
     next.onclick = function () { loadPage(page + 1); };
-    filter.oninput = render;
-    select.onchange = function () {
-      if (select.value === "" || sending || loading) return;
-      selected = items[Number(select.value)]; if (!selected) return;
-      inputs.requestNumber.value = selected.requestNumber || "";
-      inputs.limsExperimentCode.value = selected.experimentCode || selected.testMethodCode || "";
-      var equipment = selected.equipmentCode || selected.deviceCode || selected.instrumentCode;
-      if (equipment) inputs.equipmentCode.value = equipment;
-      info.textContent = "선택한 의뢰를 자동 반영합니다. " + (equipment ? "" : "조회 결과에 장비 코드가 없어 기존 값을 유지합니다. 장비를 확인하세요. ") + "실험자는 SSO 계정을 유지합니다.";
-      changed();
+    filter.oninput = function () { if (!sending && !loading) { render(); open(); } };
+    filter.onfocus = function () { render(); open(); };
+    filter.oncompositionstart = function () { typing = true; };
+    filter.oncompositionend = function () { typing = false; render(); open(); };
+    filter.onkeydown = function (event) {
+      if (sending || loading || typing || event.isComposing || event.keyCode === 229) return;
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault(); if (results.hidden) { render(); open(); }
+        if (matches.length) highlight(active < 0 ? (event.key === "ArrowDown" ? 0 : matches.length - 1) : Math.max(0,Math.min(matches.length - 1,active + (event.key === "ArrowDown" ? 1 : -1))));
+      } else if (event.key === "Enter" && !results.hidden) {
+        event.preventDefault(); if (active >= 0) matches[active].click();
+      } else if (event.key === "Escape") { if (!results.hidden) { event.preventDefault(); event.stopPropagation(); } close(); }
+      else if (event.key === "Tab") close();
     };
+    toggle.onmousedown = function (event) { event.preventDefault(); };
+    toggle.onclick = function () { if (results.hidden) { filter.focus(); render(); open(); } else close(); };
+    function outside(event) { if (!combo.contains(event.target) && !results.contains(event.target)) close(); }
+    function scrolled(event) { if (!event.target.nodeType || !results.contains(event.target)) close(); }
+    document.addEventListener("mousedown",outside); document.addEventListener("touchstart",outside);
+    document.addEventListener("focusin",outside); window.addEventListener("scroll",scrolled,true); window.addEventListener("resize",close);
     inputs.requestNumber.addEventListener("input", function () {
       if (selected && inputs.requestNumber.value.trim() !== String(selected.requestNumber || "").trim()) {
         if (inputs.limsExperimentCode.value === String(selected.experimentCode || selected.testMethodCode || "")) inputs.limsExperimentCode.value = "";
-        select.value = ""; selected = null;
+        filter.value = ""; selected = null; selectedText = ""; close(); render();
         info.textContent = "의뢰번호를 직접 변경했습니다. 해당 LIMS 실험코드도 확인해 입력하세요."; changed();
       }
     });
-    render(); controls(); return {availability:controls};
+    render(); controls(); return {availability:controls,destroy:function () {
+      document.removeEventListener("mousedown",outside); document.removeEventListener("touchstart",outside);
+      document.removeEventListener("focusin",outside); window.removeEventListener("scroll",scrolled,true); window.removeEventListener("resize",close);
+    }};
   }
   function show(data) {
+    if (lookup) lookup.destroy();
     if (conditions) conditions.reset();
     model = data.document; editor.textContent = ""; sections = []; auxiliary = {}; inputs = {}; refs = {}; variables = [];
     pageEdits = model.pageEdits || {hidden:[],added:[]}; pageFields = [];deletedPageGroups=[];structureDirty = false;

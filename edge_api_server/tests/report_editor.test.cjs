@@ -17,7 +17,7 @@ function setup(t,kind='ftir',identity='',conditionScenario=null) {
   const dom=new JSDOM(template.replace('__CONFIG__',JSON.stringify({prefix,jobId:'original',conditionOptions:conditionScenario&&conditionScenario.config})).replace('__SCRIPT__',''),
     {url:'http://localhost'+prefix+'/original/edit',runScripts:'outside-only'});
   t.after(()=>dom.window.close());const w=dom.window,d=w.document,q=id=>d.getElementById(id);
-  let pending=null,delay=false,fail=false,revisions=0,items=[],lookupError=false,pollError=false,rateLimit=false,running=false;
+  let pending=null,delay=false,fail=false,revisions=0,items=[],lookupError=false,pollError=false,rateLimit=false,running=false,heldPath='',heldFinish=null;
   w.setTimeout=(fn,ms)=>{timers.set(++timerId,{fn,ms});return timerId;};w.clearTimeout=id=>timers.delete(id);
   w.XMLHttpRequest=class {
     open(method,url){this.method=method;this.url=url;this.headers={};}
@@ -47,13 +47,15 @@ function setup(t,kind='ftir',identity='',conditionScenario=null) {
       else result={jobId:this.url.split('/').pop(),status:running?'running':'completed',transfer:doc.transfer,parentJobId:revisions===1?'original':'revision'};
       const finish=()=>{this.status=fail?403:lookupError&&this.url.startsWith('/api/v1/requests?')?503:pollError&&/\/revision\d*$/.test(this.url)?503:rateLimit&&this.url.endsWith('/revisions')?429:200;
         this.responseText=JSON.stringify(this.status>=400?{message:'SSO 인증이 필요합니다.'}:result);this.onload();};
-      if(delay&&this.url.endsWith('/revisions')) pending=finish;else finish();
+      if(heldPath&&this.url.includes(heldPath))heldFinish=finish;
+      else if(delay&&this.url.endsWith('/revisions')) pending=finish;else finish();
     }
   };
   w.eval(script);
   return {w,d,q,posts,gets,prefix,timers,field:label=>d.querySelector('[aria-label="'+label+'"]'),
     tick(){const entry=timers.entries().next().value;assert(entry,'expected a scheduled operation');timers.delete(entry[0]);entry[1].fn();},
     lookup(value,error=false){items=value;lookupError=error;},pollError(value){pollError=value;},rateLimit(value){rateLimit=value;},running(value){running=value;},
+    hold(path){heldPath=path;},release(){heldPath='';heldFinish();},
     input(label,value){const e=this.field(label);e.value=value;e.dispatchEvent(new w.Event('input',{bubbles:true}));},
     delay(){delay=true;},finish(){delay=false;pending();},fail(){fail=true;}};
 }
@@ -219,22 +221,54 @@ for(const kind of ['ftir','raman','tem']) test(kind+' lookup is experiment-scope
   const h=setup(t,kind,'SSO-001');h.lookup([{requestNumber:'REQ-9',testMethodCode:'CODE-9',sampleName:'<b>시료</b>',operatorId:'NOT-SSO'}]);
   h.input('실험장비','CURRENT-LAB');h.q('request-load').click();
   assert(h.gets.some(g=>g.url.endsWith('experimentType='+encodeURIComponent(kind==='ftir'?'FT-IR':kind.toUpperCase()))&&g.headers['X-Request-Id']));
-  assert.equal(h.q('request-select').querySelectorAll('b').length,0);
-  h.q('request-select').value='0';h.q('request-select').dispatchEvent(new h.w.Event('change'));
+  assert.equal(h.q('request-results').querySelectorAll('b').length,0);assert.equal(h.q('request-select'),null);
+  assert.equal(h.q('request-search').getAttribute('role'),'combobox');h.q('request-result-0').click();
   assert.equal(h.field('의뢰번호').value,'REQ-9');assert.equal(h.field('실험코드').value,'CODE-9');
   assert.equal(h.field('실험장비').value,'CURRENT-LAB');assert.equal(h.field('실험자').value,'SSO-001');
   assert.equal(h.timers.size,1);h.tick();assert.equal(h.posts[0].body.transfer.requestNumber,'REQ-9');
-  h.input('의뢰번호','MANUAL-1');assert.equal(h.q('request-select').value,'');assert.equal(h.field('실험코드').value,'');
+  h.input('의뢰번호','MANUAL-1');assert.equal(h.q('request-search').value,'');assert.equal(h.field('실험코드').value,'');
 });
 test('request pagination, local filtering, equipment selection and lookup failures',t=>{
   const h=setup(t);h.lookup(Array.from({length:200},(_,i)=>({requestNumber:'REQ-'+i,experimentCode:'CODE',equipmentCode:'LAB'})));
   h.q('request-load').click();assert(!h.q('request-next').disabled);assert(h.q('request-previous').disabled);
-  h.input('현재 의뢰 목록 검색','REQ-199');assert.equal(h.q('request-select').options.length,2);assert.equal(h.posts.length,0);
-  h.q('request-select').value='199';h.q('request-select').dispatchEvent(new h.w.Event('change'));
+  h.input('의뢰 검색·선택','REQ-199');assert.equal(h.q('request-results').querySelectorAll('[role=option]').length,1);assert.equal(h.posts.length,0);
+  h.q('request-result-199').click();
   assert.equal(h.field('실험장비').value,'LAB');h.lookup([]);h.q('request-next').click();
   assert(h.gets.some(g=>g.url.includes('page=2&')));assert(h.q('request-next').disabled);assert(!h.q('request-previous').disabled);
   h.lookup([],true);h.q('request-load').click();assert.match(h.d.body.textContent,/조회 실패/);
   assert.equal(h.field('의뢰번호').value,'REQ-199');assert(!h.field('의뢰번호').disabled);
+});
+test('request combobox filters locally without changing delivery; arrows/Enter explicitly choose exact duplicate-number rows',t=>{
+  const h=setup(t);h.lookup([{requestNumber:'SAME',experimentCode:'FIRST',sampleName:'같은 시료'},
+    {requestNumber:'SAME',experimentCode:'SECOND',sampleName:'같은 시료',equipmentCode:'LAB2'}]);h.q('request-load').click();
+  const search=h.q('request-search'),list=h.q('request-results'),keys=key=>search.dispatchEvent(new h.w.KeyboardEvent('keydown',{key,bubbles:true,cancelable:true}));
+  const before=h.gets.length;h.input('의뢰 검색·선택','같은 시료');assert.equal(h.gets.length,before);assert.equal(h.posts.length,0);assert.equal(h.field('의뢰번호').value,'');
+  keys('Enter');assert.equal(h.field('의뢰번호').value,'');
+  keys('ArrowDown');assert.equal(search.getAttribute('aria-activedescendant'),'request-result-0');keys('ArrowDown');keys('Enter');
+  assert.equal(h.field('의뢰번호').value,'SAME');assert.equal(h.field('실험코드').value,'SECOND');assert.equal(h.field('실험장비').value,'LAB2');assert(list.hidden);
+  h.tick();const posts=h.posts.length;h.input('의뢰 검색·선택','no match');assert.match(list.textContent,/일치하는 의뢰가 없습니다/);
+  keys('ArrowDown');keys('Enter');keys('Escape');assert(list.hidden);assert.equal(h.posts.length,posts);assert.equal(h.field('실험코드').value,'SECOND');
+  h.input('의뢰 검색·선택','');keys('ArrowUp');assert.equal(search.getAttribute('aria-activedescendant'),'request-result-1');keys('Tab');assert(list.hidden);
+});
+test('request combobox guards Korean composition, closes on outside/scroll, and retains manually changed routing codes',t=>{
+  const h=setup(t);h.lookup([{requestNumber:'REQ-1',testMethodCode:'CODE'}]);h.q('request-load').click();const search=h.q('request-search'),list=h.q('request-results');
+  search.dispatchEvent(new h.w.Event('compositionstart'));h.input('의뢰 검색·선택','REQ');
+  search.dispatchEvent(new h.w.KeyboardEvent('keydown',{key:'ArrowDown'}));search.dispatchEvent(new h.w.KeyboardEvent('keydown',{key:'Enter',isComposing:true}));assert.equal(h.field('의뢰번호').value,'');
+  search.dispatchEvent(new h.w.Event('compositionend'));h.d.body.dispatchEvent(new h.w.MouseEvent('mousedown',{bubbles:true}));assert(list.hidden);
+  h.q('request-toggle').click();assert(!list.hidden);list.dispatchEvent(new h.w.Event('scroll'));assert(!list.hidden);
+  h.w.dispatchEvent(new h.w.Event('scroll'));assert(list.hidden);h.q('request-toggle').click();h.q('request-result-0').click();
+  h.input('실험코드','MANUAL-CODE');h.input('의뢰번호','MANUAL-REQ');assert.equal(h.field('실험코드').value,'MANUAL-CODE');
+  assert.equal(search.value,'');assert(list.hidden);
+});
+test('request fetch and delivery lock picker and stale options, but lookup failure permits direct entry',t=>{
+  const h=setup(t,'ftir','SSO');h.lookup([{requestNumber:'REQ',experimentCode:'CODE',equipmentCode:'LAB'}]);h.q('request-load').click();
+  const old=h.q('request-result-0');h.hold('/api/v1/requests?');h.q('request-load').click();
+  assert(h.q('request-search').disabled);assert(h.q('request-toggle').disabled);assert(h.q('request-results').hidden);old.click();assert.equal(h.field('의뢰번호').value,'');
+  h.release();assert(!h.q('request-search').disabled);h.q('request-result-0').click();h.tick();h.hold('/send');h.q('send').click();
+  assert(h.q('request-search').disabled);assert(h.q('request-results').hidden);assert(h.q('request-toggle').disabled);h.release();
+  assert(!h.q('request-search').disabled);h.lookup([],true);h.q('request-load').click();assert.match(h.q('request-info').textContent,/조회 실패/);
+  h.input('의뢰 검색·선택','REQ');assert.match(h.q('request-info').textContent,/조회 실패/);assert.equal(h.field('의뢰번호').value,'REQ');
+  h.input('의뢰번호','MANUAL');assert.equal(h.field('의뢰번호').value,'MANUAL');assert(!h.field('의뢰번호').disabled);
 });
 test('direct preview preserves selected page when autosave completes',t=>{
   const h=setup(t);h.q('edit-next').click();h.q('edit-next').click();assert(h.q('edit-next').disabled);

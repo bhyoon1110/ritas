@@ -14,6 +14,7 @@ from app.path_bootstrap import add_project_package_paths
 add_project_package_paths()
 from app.ftir_web import create_ftir_preview_app
 from app.raman_web import router as raman_router
+from fastapi import Request
 import uvicorn
 
 app = create_ftir_preview_app()
@@ -29,6 +30,20 @@ def me():
 @app.get("/api/v1/requests")
 def requests():
     return {"items": []}
+
+
+@app.get("/__test__/request-editor/{kind}")
+def request_editor(kind: str, request: Request):
+    """UI-only fixture; browser tests mock job/lookup responses, never real LIMS."""
+    from fastapi.responses import HTMLResponse
+    from app.report_editor import editor_page
+    from app.browser_compat import browser_profile, compatible_html
+    assert kind in {"ftir", "raman", "tem"}
+    prefix = f"/api/v1/{kind}/report/jobs" if kind != "tem" else "/api/v1/tem/jobs"
+    html = editor_page(prefix, "lookup-test", project="FT-IR" if kind == "ftir" else kind.upper())
+    if browser_profile(request.headers.get("user-agent", "")) == "chrome49":
+        html = compatible_html(html)
+    return HTMLResponse(html)
 
 
 @app.post("/__test__/expire-preview/{job_id}")
