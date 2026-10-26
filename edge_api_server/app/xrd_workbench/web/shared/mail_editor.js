@@ -70,6 +70,7 @@
     var css=node("style",document.head);css.id="rist-mail-styles";
     css.textContent=".mail-addresses{display:flex;flex-wrap:wrap;margin:0}.mail-addresses label{flex:1 1 240px;min-width:0;padding:0 6px;box-sizing:border-box}.mail-addresses input{width:100%;box-sizing:border-box}.mail-toolbar{display:flex;flex-wrap:wrap;align-items:center;margin:6px 0}.mail-toolbar button{min-height:34px;min-width:34px;margin:3px;padding:5px 9px;font-size:13px;white-space:nowrap}.mail-rich{display:block;box-sizing:border-box;min-height:260px;max-height:650px;overflow:auto;resize:vertical;padding:12px;border:1px solid #94a3b8;border-radius:5px;background:white;color:#172b4d;font:16px/1.65 Arial,sans-serif;white-space:pre-wrap;overflow-wrap:break-word;word-break:break-word}.mail-rich:focus{outline:2px solid #2563eb}.mail-rich p{margin:0 0 8px}.mail-rich[contenteditable=false]{background:#f1f5f9}.mail-signature{margin-top:12px}.mail-signature textarea{width:100%;min-height:100px;font:inherit;box-sizing:border-box}.mail-note{font-size:12px;color:#526277;margin:6px 0}.mail-compose [hidden]{display:none!important}.mail-compose input,.mail-compose textarea{max-width:100%}";
     css.textContent+=".mail-rich table{width:100%;min-width:0;table-layout:fixed;border-collapse:collapse;margin:8px 0}.mail-rich td,.mail-rich th{border:1px solid #94a3b8;padding:6px;vertical-align:top;word-break:break-word}.mail-rich img{max-width:100%;height:auto;cursor:pointer}.mail-media-options{display:flex;flex-wrap:wrap;align-items:center;max-width:100%}.mail-media-options label{display:inline-flex;align-items:center;margin:3px}.mail-media-options input{margin:0 4px}.mail-toolbar[hidden]{display:none}";
+    css.textContent+=".mail-toolbar .mail-icon-button{display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;flex:0 0 36px;width:36px;height:36px;min-width:36px;min-height:36px;padding:6px;line-height:1;vertical-align:middle}.mail-icon-button svg{display:block;flex:none;width:22px;height:22px;pointer-events:none}.mail-toolbar .mail-icon-button:focus{outline:2px solid #23759f;outline-offset:1px}.mail-toolbar .mail-icon-danger{color:#b42318}.mail-toolbar .mail-icon-danger:hover{background:#fff1f2}.mail-toolbar .mail-icon-button:disabled{opacity:.45;cursor:default}.mail-tool-hint{height:20px;line-height:20px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin:0 3px 5px;font-size:12px;color:#526277}@media(pointer:coarse),(max-width:600px){.mail-toolbar .mail-icon-button{flex-basis:44px;width:44px;height:44px;min-width:44px;min-height:44px}}";
   }
   window.RistMailEditor=function(options){
     styles();var host=options.host,body=options.body,fields={},state={},locked=false,range=null,sourceMode=false,mediaBusy=false,selectedImage=null;
@@ -84,10 +85,15 @@
     var toolbar=node("div"),rich=node("div");toolbar.className="mail-toolbar";toolbar.setAttribute("role","toolbar");toolbar.setAttribute("aria-label","메일 본문 편집 도구");
     rich.className="mail-rich";rich.contentEditable="true";rich.setAttribute("role","textbox");rich.setAttribute("aria-label","메일 본문 서식 편집");rich.setAttribute("aria-multiline","true");
     body.parentNode.insertBefore(toolbar,body);body.parentNode.insertBefore(rich,body);body.hidden=true;
+    var toolHint=node("p");toolHint.className="mail-tool-hint";toolHint.setAttribute("role","status");toolHint.textContent="아이콘에 마우스를 올리거나 선택하면 기능을 확인할 수 있습니다.";rich.parentNode.insertBefore(toolHint,rich);
     var mediaNote=node("p");mediaNote.className="mail-note";mediaNote.setAttribute("role","status");rich.parentNode.insertBefore(mediaNote,rich.nextSibling);
     mediaNote.textContent="이미지 4장 · 장당 256KB/합계 1MB · 긴 변 1,280px 자동 축소. 표 3개 · 각 20행×8열. 이미지나 표를 클릭하면 편집 도구가 나타납니다.";
     function notify(){if(options.changed)options.changed();}
-    function button(parent,text,label,handler){var b=node("button",parent,text);b.type="button";b.title=label;b.setAttribute("aria-label",label);b.onclick=handler;return b;}
+    function button(parent,text,label,handler,icon){
+      var b=node("button",parent,text);b.type="button";b.title=label;b.setAttribute("aria-label",label);b.onclick=handler;
+      if(icon){window.RistMailIcons(b,icon,label);var explain=function(){toolHint.textContent=toolHint.title=b.getAttribute("aria-label");};b.addEventListener("mouseover",explain);b.addEventListener("focus",explain);b.addEventListener("click",explain);}
+      return b;
+    }
     function remember(){var s=window.getSelection();if(s.rangeCount&&rich.contains(s.anchorNode))range=s.getRangeAt(0).cloneRange();}
     rich.addEventListener("mouseup",remember);rich.addEventListener("keyup",remember);rich.addEventListener("blur",remember);
     function sync(){
@@ -103,12 +109,12 @@
       else{range=document.createRange();range.selectNodeContents(rich);range.collapse(false);s.removeAllRanges();s.addRange(range);}
       document.execCommand("insertHTML",false,html);remember();sync();
     }
-    [["B","굵게","bold"],["I","기울임","italic"],["U","밑줄","underline"],["•","글머리 기호","insertUnorderedList"],["1.","번호 목록","insertOrderedList"],["Tx","서식 지우기","removeFormat"]].forEach(function(info){
-      var b=button(toolbar,info[0],info[1],function(){if(locked||sourceMode)return;rich.focus();if(range){var s=window.getSelection();s.removeAllRanges();s.addRange(range);}if(document.execCommand)document.execCommand(info[2],false,null);remember();sync();});
+    [["B","굵게","bold","bold"],["I","기울임","italic","italic"],["U","밑줄","underline","underline"],["•","글머리 기호","insertUnorderedList","bullets"],["1.","번호 목록","insertOrderedList","numbered"],["Tx","서식 지우기","removeFormat","clear"]].forEach(function(info){
+      var b=button(toolbar,info[0],info[1],function(){if(locked||sourceMode)return;rich.focus();if(range){var s=window.getSelection();s.removeAllRanges();s.addRange(range);}if(document.execCommand)document.execCommand(info[2],false,null);remember();sync();},info[3]);
       b.onmousedown=function(e){e.preventDefault();};
     });
     var file=node("input",host);file.type="file";file.accept="image/png,image/jpeg";file.hidden=true;file.setAttribute("aria-label","메일 이미지 파일");
-    var imageButton=button(toolbar,"이미지","메일 이미지 삽입",function(){if(locked||sourceMode||mediaBusy)return;remember();file.click();});
+    var imageButton=button(toolbar,"이미지","메일 이미지 삽입",function(){if(locked||sourceMode||mediaBusy)return;remember();file.click();},"image");
     function dimensions(buffer){
       var v=new DataView(buffer),i=2,m,n;
       if(v.byteLength>=24&&v.getUint32(0)===0x89504e47&&v.getUint32(4)===0x0d0a1a0a)return [v.getUint32(16),v.getUint32(20)];
@@ -153,7 +159,7 @@
     var imageTools=node("div",mediaTools),widthLabel=node("label",imageTools,"이미지 폭(px) "),imageWidth=node("input",widthLabel);
     imageWidth.type="number";imageWidth.min=40;imageWidth.max=1280;imageWidth.style.width="85px";imageWidth.setAttribute("aria-label","메일 이미지 표시 폭");
     imageWidth.onchange=function(){if(locked||sourceMode||!selectedImage)return;var value=Number(imageWidth.value);if(!isFinite(value)||value<40||value>1280){mediaNote.textContent="이미지 표시 폭은 40~1,280px입니다.";return;}selectedImage.setAttribute("width",String(Math.round(value)));sync();};
-    button(imageTools,"이미지 삭제","선택한 메일 이미지 삭제",function(){if(!locked&&selectedImage){selectedImage.parentNode.removeChild(selectedImage);selectedImage=null;mediaTools.hidden=true;sync();}});
+    button(imageTools,"이미지 삭제","선택한 메일 이미지 삭제",function(){if(!locked&&selectedImage){selectedImage.parentNode.removeChild(selectedImage);selectedImage=null;mediaTools.hidden=true;sync();}},"trash");
     imageTools.className="mail-media-options";
     var tables=new window.RistMailTables({rich:rich,toolbar:toolbar,node:node,button:button,enabled:function(){return !locked&&!sourceMode;},
       changed:sync,remember:remember,note:function(text){mediaNote.textContent=text;},insert:function(html){insert(clean(html));},
@@ -163,8 +169,9 @@
     });
     rich.addEventListener("click",function(e){selectedImage=e.target.tagName==="IMG"?e.target:null;mediaTools.hidden=!selectedImage;imageTools.hidden=!selectedImage;if(selectedImage)imageWidth.value=selectedImage.getAttribute("width")||640;});
     var toggle=button(toolbar,"일반 텍스트","메일 본문 일반 텍스트 전환",function(){
-      if(mediaBusy)return;if(!sourceMode&&rich.querySelector("img,table")&&!window.confirm("일반 텍스트에서 내용을 수정하면 이미지·표·서식이 사라집니다. 전환할까요?"))return;
-      tables.reset();sourceMode=!sourceMode;mediaTools.hidden=true;body.hidden=!sourceMode;rich.hidden=sourceMode;toggle.textContent=sourceMode?"서식 편집":"일반 텍스트";toggle.setAttribute("aria-pressed",String(sourceMode));if(!sourceMode){rich.innerHTML=state.bodyHtml||plain(body.value);rich.focus();}else body.focus();});
+      if(locked||mediaBusy)return;if(!sourceMode&&rich.querySelector("img,table")&&!window.confirm("일반 텍스트에서 내용을 수정하면 이미지·표·서식이 사라집니다. 전환할까요?"))return;
+      tables.reset();sourceMode=!sourceMode;mediaTools.hidden=true;body.hidden=!sourceMode;rich.hidden=sourceMode;window.RistMailIcons(toggle,sourceMode?"rich-text":"plain-text",sourceMode?"메일 본문 서식 편집 전환":"메일 본문 일반 텍스트 전환");toggle.setAttribute("aria-pressed",String(sourceMode));if(!sourceMode){rich.innerHTML=state.bodyHtml||plain(body.value);rich.focus();}else body.focus();},"plain-text");
+    toggle.setAttribute("aria-pressed","false");
     rich.addEventListener("input",sync);
     rich.addEventListener("paste",function(e){
       e.preventDefault();if(locked)return;var data=e.clipboardData||window.clipboardData,text=data&&data.getData("text/plain");
@@ -182,8 +189,8 @@
       xhr.onload=function(){var value;try{value=JSON.parse(xhr.responseText);}catch(_){value={};}if(xhr.status>=200&&xhr.status<300)done(value);else feedback.textContent=value.message||"기본 서명은 로그인한 회원만 저장·불러올 수 있습니다.";};
       xhr.onerror=xhr.ontimeout=function(){feedback.textContent="서명 연결 실패. 현재 입력한 서명은 유지됩니다.";};xhr.send(method==="PUT"?JSON.stringify({signature:signature.value}):null);
     }
-    button(actions,"기본 서명 저장","내 기본 서명 저장",function(){if(locked)return;preference("PUT",function(){feedback.textContent="내 기본 서명을 저장했습니다. 4개 실험에서 같은 계정으로 불러올 수 있습니다.";});});
-    button(actions,"기본 서명 불러오기","내 기본 서명 불러오기",function(){if(locked)return;if(signature.value&&!window.confirm("현재 보고서의 서명을 기본 서명으로 바꿀까요?"))return;preference("GET",function(value){if(locked)return;signature.value=state.signature=value.signature||"";notify();feedback.textContent="기본 서명을 현재 보고서에 적용했습니다.";});});
+    button(actions,"기본 서명 저장","내 기본 서명 저장",function(){if(locked)return;preference("PUT",function(){feedback.textContent="내 기본 서명을 저장했습니다. 4개 실험에서 같은 계정으로 불러올 수 있습니다.";});},"save");
+    button(actions,"기본 서명 불러오기","내 기본 서명 불러오기",function(){if(locked)return;if(signature.value&&!window.confirm("현재 보고서의 서명을 기본 서명으로 바꿀까요?"))return;preference("GET",function(value){if(locked)return;signature.value=state.signature=value.signature||"";notify();feedback.textContent="기본 서명을 현재 보고서에 적용했습니다.";});},"folder");
     node("p",signatureBox,"서명은 본문과 분리해 저장하여 중복 삽입을 방지합니다. 기존 보고서는 자동으로 덮어쓰지 않습니다.").className="mail-note";
     function load(value){tables.reset();state={};keys.forEach(function(k){state[k]=String((value||{})[k]||"");if(fields[k])fields[k].value=state[k];});state.bodyHtml=clean(state.bodyHtml);rich.innerHTML=state.bodyHtml||plain(body.value);range=null;selectedImage=null;mediaTools.hidden=true;}
     load(options.value);

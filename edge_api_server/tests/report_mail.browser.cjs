@@ -57,6 +57,11 @@ const port=new Promise((resolve,reject)=>{let s='';server.stdout.on('data',chunk
       async function save(){if(kind==='xrd'){await page.locator('#save').click();await page.waitForFunction(()=>/저장했습니다/.test(document.getElementById('status').textContent));}else await page.waitForFunction(()=>/자동 저장 완료/.test(document.getElementById('status').textContent));}
       try{
         await open();
+        assert(await page.locator('.mail-compose .mail-toolbar button').evaluateAll(list=>list.filter(b=>!b.closest('.mail-table-grid')).every(b=>b.classList.contains('mail-icon-button')&&b.textContent===''&&b.title===b.getAttribute('aria-label')&&b.querySelector('svg[aria-hidden="true"]'))));
+        await page.getByRole('button',{name:'메일 이미지 삽입',exact:true}).hover();assert.equal(await page.locator('.mail-tool-hint').textContent(),'메일 이미지 삽입');
+        await page.getByRole('button',{name:'내 기본 서명 저장',exact:true}).focus();assert.equal(await page.locator('.mail-tool-hint').textContent(),'내 기본 서명 저장');
+        await page.getByRole('button',{name:'메일 본문 일반 텍스트 전환',exact:true}).click();
+        const richToggle=page.getByRole('button',{name:'메일 본문 서식 편집 전환',exact:true});assert.equal(await richToggle.getAttribute('data-mail-icon'),'rich-text');await richToggle.click();
         await page.getByLabel('수신자 이름',{exact:true}).fill('의뢰 담당자');await page.getByLabel('수신자 이메일 주소',{exact:true}).fill('to@example.com');await page.getByLabel('참조 (CC)',{exact:true}).fill('cc@example.com');await page.getByLabel('비밀참조 (BCC)',{exact:true}).fill('secret@example.com');
         await page.getByLabel('메일 서명',{exact:true}).fill('윤병훈\nRIST');await page.getByRole('button',{name:'내 기본 서명 저장',exact:true}).click();await page.getByText('내 기본 서명을 저장했습니다.',{exact:false}).waitFor();assert.equal(signature,'윤병훈\nRIST');
         const rich=page.getByRole('textbox',{name:'메일 본문 서식 편집',exact:true});await rich.fill('수정한 분석 결과입니다.');await rich.press('Meta+a');await page.getByRole('button',{name:'굵게',exact:true}).click();assert(await rich.locator('b,strong').count()>0);
@@ -120,6 +125,8 @@ const port=new Promise((resolve,reject)=>{let s='';server.stdout.on('data',chunk
           assert(await page.locator('.mail-compose').evaluate(e=>e.scrollWidth<=e.clientWidth+2));
           assert(await page.locator('.mail-toolbar').first().evaluate(e=>e.scrollWidth<=e.clientWidth+2));
           assert(await page.locator('.mail-table-panel').evaluate(e=>e.scrollWidth<=e.clientWidth+2));
+          const sizes=await page.locator('.mail-icon-button:visible').evaluateAll(list=>list.map(b=>{const r=b.getBoundingClientRect();return {w:r.width,h:r.height,svg:b.querySelector('svg').getBoundingClientRect().width};}));
+          assert(sizes.length>10);assert(sizes.every(s=>s.w===s.h&&s.w>=(width===390?44:36)&&s.svg===22));
           await page.locator('.mail-compose').screenshot({path:path.join(output,name+'-'+width+'.png')});
           if(width===1440){await page.locator('.mail-table-panel').screenshot({path:path.join(output,name+'-table-controls.png')});await page.locator('.mail-rich-wrap').screenshot({path:path.join(output,name+'-table.png')});}
         }

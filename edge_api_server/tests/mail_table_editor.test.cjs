@@ -3,19 +3,41 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs'),path=require('node:path');
 const {JSDOM}=require('jsdom');
 const babel=require('@babel/core');
-const source=['mail_table_editor.js','mail_editor.js'].map(n=>fs.readFileSync(path.join(__dirname,'../app/xrd_workbench/web/shared',n),'utf8')).join('\n');
+const source=['mail_editor_icons.js','mail_table_editor.js','mail_editor.js'].map(n=>fs.readFileSync(path.join(__dirname,'../app/xrd_workbench/web/shared',n),'utf8')).join('\n');
 const programs={native:source,fallback:babel.transformSync(source,{configFile:false,babelrc:false,presets:[[require('@babel/preset-env'),{targets:{chrome:'49'},forceAllTransforms:true,modules:false}]]}).code};
 function setup(t,mode){
   const dom=new JSDOM('<div id="toolbar"></div><div id="rich" contenteditable="true"><table><tbody><tr><td><p>A</p></td><td>B</td></tr><tr><td>C</td><td>D</td></tr></tbody></table></div>',{runScripts:'outside-only',pretendToBeVisual:true});
   t.after(()=>dom.window.close());const w=dom.window,d=w.document;w.eval(programs[mode]);let count=0,enabled=true,inserted='',note='';
   const node=(tag,parent,text)=>{const e=d.createElement(tag);if(text!=null)e.textContent=text;if(parent)parent.appendChild(e);return e;};
-  const button=(parent,text,label,fn)=>{const b=node('button',parent,text);b.type='button';b.setAttribute('aria-label',label);b.onclick=fn;return b;};
+  const button=(parent,text,label,fn,icon)=>{const b=node('button',parent,text);b.type='button';b.title=label;b.setAttribute('aria-label',label);b.onclick=fn;if(icon)w.RistMailIcons(b,icon,label);return b;};
   const rich=d.querySelector('#rich'),tables=new w.RistMailTables({rich,toolbar:d.querySelector('#toolbar'),node,button,enabled:()=>enabled,changed:()=>count++,onShow(){},remember(){},restore(){},outsideTable(){},insert:html=>inserted=html,note:text=>note=text});
   const find=label=>d.querySelector('[aria-label="'+label+'"]');
   const click=(cell,shift=false)=>cell.dispatchEvent(new w.MouseEvent('click',{bubbles:true,shiftKey:shift}));
   return {w,d,rich,tables,find,click,count:()=>count,inserted:()=>inserted,note:()=>note,lock(){enabled=false;tables.lock();}};
 }
 for(const mode of Object.keys(programs)){
+  test(mode+': every mail action uses a named decorative icon, preserving grid and resize handles',t=>{
+    const u=setup(t,mode),host=u.d.createElement('div');u.d.body.appendChild(host);host.innerHTML='<label><textarea>본문</textarea></label>';
+    let changed=0;const editor=new u.w.RistMailEditor({host,body:host.querySelector('textarea'),changed:()=>changed++,value:{bodyHtml:'<p>본문</p><table><tr><td>A</td></tr></table>'}});
+    const buttons=[...host.querySelectorAll('.mail-toolbar button')].filter(b=>!b.closest('.mail-table-grid'));
+    assert(buttons.length>=30);
+    for(const b of buttons){assert(b.classList.contains('mail-icon-button'),b.title);assert.equal(b.textContent,'');assert.equal(b.title,b.getAttribute('aria-label'));assert.equal(b.querySelector('svg').getAttribute('aria-hidden'),'true');assert.equal(b.querySelector('svg').getAttribute('focusable'),'false');}
+    assert.equal(host.querySelectorAll('.mail-table-grid button').length,48);assert.equal(host.querySelectorAll('.mail-table-grid .mail-icon-button').length,0);
+    assert.equal(host.querySelectorAll('.mail-resize-handle').length,3);assert.equal(host.querySelectorAll('.mail-resize-handle.mail-icon-button').length,0);
+    const remove=host.querySelector('[aria-label="선택한 메일 표 삭제"]');assert(remove.classList.contains('mail-icon-danger'));
+    const save=host.querySelector('[aria-label="내 기본 서명 저장"]');save.focus();assert.equal(host.querySelector('.mail-tool-hint').textContent,save.title);
+    const image=host.querySelector('[aria-label="메일 이미지 삽입"]');image.dispatchEvent(new u.w.MouseEvent('mouseover',{bubbles:true}));assert.equal(host.querySelector('.mail-tool-hint').textContent,image.title);assert.equal(changed,0);
+    editor.lock(true);assert(buttons.every(b=>b.disabled));editor.lock(false);assert(buttons.every(b=>!b.disabled));assert(!editor.value().bodyHtml.includes('<svg'));
+  });
+  test(mode+': text mode icon, tooltip and accessible name follow state without losing rich content',t=>{
+    const u=setup(t,mode),host=u.d.createElement('div');u.d.body.appendChild(host);host.innerHTML='<label><textarea>본문</textarea></label>';
+    const body=host.querySelector('textarea');let changed=0;u.w.confirm=()=>true;
+    const editor=new u.w.RistMailEditor({host,body,changed:()=>changed++,value:{bodyHtml:'<p><b>본문</b></p><table><tr><td>A</td></tr></table>'}});
+    const toggle=host.querySelector('[aria-label="메일 본문 일반 텍스트 전환"]'),rich=host.querySelector('.mail-rich'),before=editor.value().bodyHtml;
+    toggle.click();assert.equal(toggle.dataset.mailIcon,'rich-text');assert.equal(toggle.title,'메일 본문 서식 편집 전환');assert.equal(toggle.getAttribute('aria-label'),toggle.title);assert.equal(toggle.getAttribute('aria-pressed'),'true');assert(rich.hidden);assert(!body.hidden);assert(toggle.querySelector('svg'));
+    toggle.click();assert.equal(toggle.dataset.mailIcon,'plain-text');assert.equal(toggle.title,'메일 본문 일반 텍스트 전환');assert.equal(toggle.getAttribute('aria-pressed'),'false');assert(!rich.hidden);assert(body.hidden);assert.equal(editor.value().bodyHtml,before);assert.equal(changed,0);
+    editor.lock(true);toggle.click();assert(!rich.hidden);assert.equal(toggle.dataset.mailIcon,'plain-text');
+  });
   test(mode+': grid and numeric insert are bounded; keyboard grid navigation works',t=>{
     const u=setup(t,mode);u.find('메일 표 삽입 설정').click();const first=u.find('1행 1열 표 삽입');first.focus();first.dispatchEvent(new u.w.KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true}));
     assert.equal(u.d.activeElement.getAttribute('aria-label'),'1행 2열 표 삽입');u.find('3행 4열 표 삽입').click();assert.equal((u.inserted().match(/<tr>/g)||[]).length,3);assert.equal((u.inserted().match(/<td>/g)||[]).length,12);

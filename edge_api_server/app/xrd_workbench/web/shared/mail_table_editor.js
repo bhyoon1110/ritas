@@ -35,7 +35,7 @@
     }
     function refresh(){
       var t=table();if(!t){reset();return;}
-      status.textContent=cells.length+"개 셀 선택 · Shift+클릭으로 범위 선택 · 모바일은 ‘여러 셀’ 사용";
+      status.textContent=cells.length+"개 셀 선택 · Shift+클릭: 범위 선택 · 모바일: 겹친 셀 아이콘";
       rowHeight.value=parseInt(active.parentNode.style.height,10)||Math.round(active.parentNode.getBoundingClientRect().height)||36;
       colWidth.value=Math.round(widths(t)[active.cellIndex]*100)/100;
       tableWidth.value=parseFloat(t.style.width||t.getAttribute("width"))||100;
@@ -56,10 +56,10 @@
         if(!allowed())return;
         if(table()&&cells.length){setCellAlignment(info[1]);change();}
         else{o.restore();document.execCommand(info[2],false,null);o.remember();o.changed();hButtons.forEach(function(item){item.button.setAttribute("aria-pressed",String(item.value===info[1]));});}
-      });b.onmousedown=function(e){e.preventDefault();};hButtons.push({button:b,value:info[1]});
+      },"align-"+info[1]);b.onmousedown=function(e){e.preventDefault();};hButtons.push({button:b,value:info[1]});
     });
 
-    button(o.toolbar,"표","메일 표 삽입 설정",function(){if(!allowed())return;o.remember();clearSelection();show(true);});
+    button(o.toolbar,"표","메일 표 삽입 설정",function(){if(!allowed())return;o.remember();clearSelection();show(true);},"table");
     var gridCaption=node("p",insertPane,"격자를 골라 클릭하거나 행·열 수를 입력하세요.");gridCaption.className="mail-note";
     var grid=node("div",insertPane);grid.className="mail-table-grid";grid.setAttribute("role","group");grid.setAttribute("aria-label","표 크기 격자 선택");
     var gridButtons=[];
@@ -84,21 +84,21 @@
       var html='<table><tbody>';for(var a=0;a<r;a++){html+='<tr>';for(var b=0;b<c;b++)html+='<td><br></td>';html+='</tr>';}
       o.insert(html+'</tbody></table><p><br></p>');panel.hidden=true;
     }
-    button(sizes,"표 삽입","메일 표 삽입",function(){insertTable(Number(rows.value),Number(cols.value));});
-    button(sizes,"닫기","표 삽입 닫기",reset);
+    button(sizes,"표 삽입","메일 표 삽입",function(){insertTable(Number(rows.value),Number(cols.value));},"insert-table");
+    button(sizes,"닫기","표 삽입 닫기",reset,"close");
 
     var selection=group(editPane);
-    var multiButton=button(selection,"여러 셀","여러 셀 범위 선택",function(){if(!allowed())return;multi=!multi;multiButton.setAttribute("aria-pressed",String(multi));});multiButton.setAttribute("aria-pressed","false");
-    button(selection,"표 전체","메일 표 전체 선택",function(){var t=table();if(!allowed()||!t)return;anchor=t.rows[0].cells[0];var last=t.rows[t.rows.length-1];select(last.cells[last.cells.length-1],true);});
-    button(selection,"선택 해제","메일 표 선택 해제",reset);
+    var multiButton=button(selection,"여러 셀","여러 셀 범위 선택",function(){if(!allowed())return;multi=!multi;multiButton.setAttribute("aria-pressed",String(multi));},"select-range");multiButton.setAttribute("aria-pressed","false");
+    button(selection,"표 전체","메일 표 전체 선택",function(){var t=table();if(!allowed()||!t)return;anchor=t.rows[0].cells[0];var last=t.rows[t.rows.length-1];select(last.cells[last.cells.length-1],true);},"select-all");
+    button(selection,"선택 해제","메일 표 선택 해제",reset,"deselect");
     var vertical=group(editPane);node("span",vertical,"셀 세로 정렬 ");
     [["위","top"],["가운데","middle"],["아래","bottom"]].forEach(function(v){
-      var b=button(vertical,v[0],"메일 셀 "+v[0]+" 정렬",function(){if(!allowed()||!table())return;cells.forEach(function(c){c.style.verticalAlign=v[1];c.setAttribute("valign",v[1]);});change();});
+      var b=button(vertical,v[0],"메일 셀 "+v[0]+" 정렬",function(){if(!allowed()||!table())return;cells.forEach(function(c){c.style.verticalAlign=v[1];c.setAttribute("valign",v[1]);});change();},"align-"+v[1]);
       vButtons.push({button:b,value:v[1]});b.setAttribute("aria-pressed",String(v[1]==="top"));
     });
     var colorLabel=node("label",vertical,"셀 배경 "),color=node("input",colorLabel);color.type="color";color.value="#e8f2fa";color.setAttribute("aria-label","메일 셀 배경색");
     color.oninput=function(){if(!allowed()||!table())return;cells.forEach(function(c){c.style.backgroundColor=color.value;});change();};
-    button(vertical,"배경 지우기","메일 셀 배경색 지우기",function(){if(!allowed()||!table())return;cells.forEach(function(c){c.style.removeProperty("background-color");c.removeAttribute("bgcolor");});change();});
+    button(vertical,"배경 지우기","메일 셀 배경색 지우기",function(){if(!allowed()||!table())return;cells.forEach(function(c){c.style.removeProperty("background-color");c.removeAttribute("bgcolor");});change();},"clear");
 
     function equalWidths(t){Array.prototype.forEach.call(t.rows,function(r){Array.prototype.forEach.call(r.cells,function(c){c.style.width=(100/r.cells.length)+"%";c.removeAttribute("width");});});}
     function edit(action){
@@ -123,7 +123,7 @@
       change();
     }
     var structure=group(editPane);
-    [["↑ 행+","위 행 추가","rowBefore"],["↓ 행+","아래 행 추가","row+"],["← 열+","왼쪽 열 추가","colBefore"],["→ 열+","오른쪽 열 추가","col+"],["행−","선택 행 삭제","row-"],["열−","선택 열 삭제","col-"],["표 삭제","선택한 메일 표 삭제","delete"]].forEach(function(v){button(structure,v[0],v[1],function(){edit(v[2]);});});
+    [["↑ 행+","위 행 추가","rowBefore","row-before"],["↓ 행+","아래 행 추가","row+","row-after"],["← 열+","왼쪽 열 추가","colBefore","column-before"],["→ 열+","오른쪽 열 추가","col+","column-after"],["행−","선택 행 삭제","row-","delete-row"],["열−","선택 열 삭제","col-","delete-column"],["표 삭제","선택한 메일 표 삭제","delete","trash"]].forEach(function(v){button(structure,v[0],v[1],function(){edit(v[2]);},v[3]);});
     var geometry=group(editPane),colWidth=field(geometry,"열 폭(%)","메일 열 너비",5,100,50),rowHeight=field(geometry,"행 높이(px)","메일 행 높이",24,400,36);
     function widths(t){var values=Array.prototype.map.call(t.rows[0].cells,function(c){return c.getBoundingClientRect().width;}),sum=values.reduce(function(a,b){return a+b;},0);return values.map(function(w){return sum?w/sum*100:100/values.length;});}
     function applyWidths(t,values){Array.prototype.forEach.call(t.rows,function(r){Array.prototype.forEach.call(r.cells,function(c,i){c.style.width=values[i].toFixed(3)+"%";c.removeAttribute("width");});});}
@@ -137,8 +137,8 @@
       applyWidths(t,next);change();
     };
     rowHeight.onchange=function(){var v=Number(rowHeight.value);if(!allowed()||!table())return;if(!isFinite(v)||v<24||v>400){o.note("행 높이는 24~400px입니다.");refresh();return;}cells.forEach(function(c){c.parentNode.style.height=Math.round(v)+"px";});change();};
-    button(geometry,"열 균등","메일 열 너비 같게",function(){var t=table();if(!allowed()||!t)return;equalWidths(t);change();});
-    button(geometry,"높이 자동","메일 행 높이 자동",function(){if(!allowed()||!table())return;cells.forEach(function(c){c.parentNode.style.removeProperty("height");c.parentNode.removeAttribute("height");});change();});
+    button(geometry,"열 균등","메일 열 너비 같게",function(){var t=table();if(!allowed()||!t)return;equalWidths(t);change();},"equal-columns");
+    button(geometry,"높이 자동","메일 행 높이 자동",function(){if(!allowed()||!table())return;cells.forEach(function(c){c.parentNode.style.removeProperty("height");c.parentNode.removeAttribute("height");});change();},"auto-height");
     var whole=group(editPane);node("strong",whole,"표 전체 크기");
     var tableWidth=field(whole,"너비(%)","메일 표 전체 너비",20,100,100),tableHeight=field(whole,"높이(px)","메일 표 전체 높이",24,8000,72);
     function rowHeights(t){return Array.prototype.map.call(t.rows,function(r){return r.getBoundingClientRect().height||parseInt(r.style.height,10)||36;});}
@@ -154,8 +154,8 @@
     }
     tableWidth.onchange=function(){var t=table(),v=Number(tableWidth.value);if(!allowed()||!t)return;if(!isFinite(v)||v<20||v>100){o.note("표 전체 너비는 본문 폭의 20~100%입니다.");refresh();return;}resizeWidth(t,v);change();};
     tableHeight.onchange=function(){var t=table(),v=Number(tableHeight.value);if(!allowed()||!t)return;if(!isFinite(v)||v<t.rows.length*24||v>t.rows.length*400){o.note("표 전체 높이는 "+t.rows.length*24+"~"+t.rows.length*400+"px입니다. 내용에 필요한 최소 높이는 유지됩니다.");refresh();return;}resizeHeight(t,rowHeights(t),v);change();};
-    button(whole,"본문 폭 맞춤","메일 표 전체 너비 초기화",function(){var t=table();if(!allowed()||!t)return;resizeWidth(t,100);change();});
-    button(whole,"높이 자동","메일 표 전체 높이 자동",function(){var t=table();if(!allowed()||!t)return;Array.prototype.forEach.call(t.rows,function(r){r.style.removeProperty("height");r.removeAttribute("height");});change();});
+    button(whole,"본문 폭 맞춤","메일 표 전체 너비 초기화",function(){var t=table();if(!allowed()||!t)return;resizeWidth(t,100);change();},"fit-width");
+    button(whole,"높이 자동","메일 표 전체 높이 자동",function(){var t=table();if(!allowed()||!t)return;Array.prototype.forEach.call(t.rows,function(r){r.style.removeProperty("height");r.removeAttribute("height");});change();},"auto-height");
     node("p",editPane,"표 우측 하단 ↘: 전체 크기 · 셀 경계: 열 폭·행 높이 · 글자 크기는 유지되며 내용보다 작게 줄어들지 않습니다. Tab: 셀 이동 · Esc: 선택 해제/드래그 취소").className="mail-note";
 
     var colHandle=button(wrap,"","선택 열 너비 드래그 조절",function(){}),rowHandle=button(wrap,"","선택 행 높이 드래그 조절",function(){}),tableHandle=button(wrap,"↘","표 전체 크기 드래그 조절",function(){});
