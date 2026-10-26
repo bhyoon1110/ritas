@@ -1,0 +1,62 @@
+const {test}=require('node:test');
+const assert=require('node:assert/strict');
+const fs=require('node:fs'),path=require('node:path');
+const {JSDOM}=require('jsdom');
+const babel=require('@babel/core');
+const source=['mail_table_editor.js','mail_editor.js'].map(n=>fs.readFileSync(path.join(__dirname,'../app/xrd_workbench/web/shared',n),'utf8')).join('\n');
+const programs={native:source,fallback:babel.transformSync(source,{configFile:false,babelrc:false,presets:[[require('@babel/preset-env'),{targets:{chrome:'49'},forceAllTransforms:true,modules:false}]]}).code};
+function setup(t,mode){
+  const dom=new JSDOM('<div id="toolbar"></div><div id="rich" contenteditable="true"><table><tbody><tr><td><p>A</p></td><td>B</td></tr><tr><td>C</td><td>D</td></tr></tbody></table></div>',{runScripts:'outside-only',pretendToBeVisual:true});
+  t.after(()=>dom.window.close());const w=dom.window,d=w.document;w.eval(programs[mode]);let count=0,enabled=true,inserted='',note='';
+  const node=(tag,parent,text)=>{const e=d.createElement(tag);if(text!=null)e.textContent=text;if(parent)parent.appendChild(e);return e;};
+  const button=(parent,text,label,fn)=>{const b=node('button',parent,text);b.type='button';b.setAttribute('aria-label',label);b.onclick=fn;return b;};
+  const rich=d.querySelector('#rich'),tables=new w.RistMailTables({rich,toolbar:d.querySelector('#toolbar'),node,button,enabled:()=>enabled,changed:()=>count++,onShow(){},remember(){},restore(){},outsideTable(){},insert:html=>inserted=html,note:text=>note=text});
+  const find=label=>d.querySelector('[aria-label="'+label+'"]');
+  const click=(cell,shift=false)=>cell.dispatchEvent(new w.MouseEvent('click',{bubbles:true,shiftKey:shift}));
+  return {w,d,rich,tables,find,click,count:()=>count,inserted:()=>inserted,note:()=>note,lock(){enabled=false;tables.lock();}};
+}
+for(const mode of Object.keys(programs)){
+  test(mode+': grid and numeric insert are bounded; keyboard grid navigation works',t=>{
+    const u=setup(t,mode);u.find('메일 표 삽입 설정').click();const first=u.find('1행 1열 표 삽입');first.focus();first.dispatchEvent(new u.w.KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true}));
+    assert.equal(u.d.activeElement.getAttribute('aria-label'),'1행 2열 표 삽입');u.find('3행 4열 표 삽입').click();assert.equal((u.inserted().match(/<tr>/g)||[]).length,3);assert.equal((u.inserted().match(/<td>/g)||[]).length,12);
+    u.find('메일 표 삽입 설정').click();u.find('메일 표 행 수').value=21;u.find('메일 표 삽입').click();assert.match(u.note(),/20행/);
+  });
+  test(mode+': shift and touch-style range selection apply both alignments to all cells',t=>{
+    const u=setup(t,mode),cells=u.rich.querySelectorAll('td');u.click(cells[0]);u.click(cells[3],true);assert.equal(u.rich.querySelectorAll('[data-mail-selected]').length,4);
+    u.find('메일 글자 가운데 정렬').click();u.find('메일 셀 가운데 정렬').click();
+    for(const c of cells){assert.equal(c.style.textAlign,'center');assert.equal(c.style.verticalAlign,'middle');}
+    assert.equal(cells[0].querySelector('p').style.textAlign,'center');
+    u.tables.reset();u.click(cells[0]);u.find('여러 셀 범위 선택').click();u.click(cells[2]);assert.equal(u.rich.querySelectorAll('[data-mail-selected]').length,2);
+    const stored=u.w.RistMailEditor.clean(u.rich.innerHTML);assert(!stored.includes('data-mail-selected'));assert.match(stored,/vertical-align: middle/);
+  });
+  test(mode+': selected rows/columns edit as a group and whole-table delete stays scoped',t=>{
+    const u=setup(t,mode);u.click(u.rich.querySelector('td'));u.find('위 행 추가').click();assert.equal(u.rich.querySelectorAll('tr').length,3);
+    u.find('왼쪽 열 추가').click();assert.equal(u.rich.querySelectorAll('tr')[0].cells.length,3);
+    let rows=u.rich.querySelectorAll('tr');u.click(rows[0].cells[0]);u.click(rows[1].cells[1],true);u.find('선택 행 삭제').click();assert.equal(u.rich.querySelectorAll('tr').length,1);
+    rows=u.rich.querySelectorAll('tr');u.click(rows[0].cells[0]);u.click(rows[0].cells[1],true);u.find('선택 열 삭제').click();assert.equal(u.rich.querySelectorAll('td').length,1);
+    u.find('선택한 메일 표 삭제').click();assert.equal(u.rich.querySelectorAll('table').length,0);
+  });
+  test(mode+': restricted CSS round-trips alignment, background and geometry, not tracking CSS',t=>{
+    const u=setup(t,mode),value='<p style="text-align:right;position:fixed">본문</p><table><tr style="height:80px"><td width="65%" style="text-align:center;vertical-align:middle;background-color:rgb(232,242,250);background-image:url(https://invalid);padding:999px" onclick="evil()">A</td><td style="width:35%">B</td></tr></table>';
+    const html=u.w.RistMailEditor.clean(value);assert(!/invalid|onclick|999|fixed;/.test(html));
+    const simple=u.w.RistMailEditor.clean('<table><tr><td>default</td></tr></table>');assert.equal(u.w.RistMailEditor.clean(simple),simple);
+    const out=u.d.createElement('div');out.innerHTML=html;const cell=out.querySelector('td');assert.equal(cell.style.width,'65%');assert.equal(cell.style.textAlign,'center');assert.equal(cell.style.verticalAlign,'middle');assert.equal(cell.getAttribute('bgcolor'),'#e8f2fa');assert.equal(out.querySelector('tr').style.height,'80px');
+    const bad=u.w.RistMailEditor.clean('<table><tr style="height:9999px"><td style="width:1%;text-align:expression(x);vertical-align:expression(x);background-color:red">A</td></tr></table>');assert(!/9999|expression|width: 1%|color: red/.test(bad));
+  });
+  test(mode+': locked editor cannot change table, reset removes stale selection',t=>{
+    const u=setup(t,mode);u.click(u.rich.querySelector('td'));u.lock();const before=u.rich.innerHTML;u.find('메일 글자 오른쪽 정렬').click();u.find('아래 행 추가').click();assert.equal(u.rich.innerHTML,before);assert.equal(u.count(),0);u.tables.reset();assert.equal(u.rich.querySelectorAll('[data-mail-selected]').length,0);
+  });
+  test(mode+': mouse fallback drag commits once; Escape, blur and locking roll back',t=>{
+    const u=setup(t,mode),table=u.rich.querySelector('table'),first=table.querySelector('td');
+    const rect=(width,height=40)=>({left:0,top:0,right:width,bottom:height,width,height});
+    table.getBoundingClientRect=()=>rect(200);u.rich.getBoundingClientRect=()=>rect(220,300);
+    for(const c of table.querySelectorAll('td'))c.getBoundingClientRect=()=>rect(100);
+    for(const r of table.rows)r.getBoundingClientRect=()=>rect(200);
+    u.click(first);const handle=u.find('선택 열 너비 드래그 조절');
+    const mouse=(target,name,x)=>target.dispatchEvent(new u.w.MouseEvent(name,{bubbles:true,cancelable:true,button:0,clientX:x,clientY:20}));
+    mouse(handle,'mousedown',100);mouse(u.d,'mousemove',120);assert.equal(u.count(),0);mouse(u.d,'mouseup',120);assert.equal(u.count(),1);assert.equal(first.style.width,'60%');
+    mouse(handle,'mousedown',100);mouse(u.d,'mousemove',110);u.d.dispatchEvent(new u.w.KeyboardEvent('keydown',{key:'Escape',bubbles:true}));assert.equal(first.style.width,'60%');assert.equal(u.count(),1);
+    mouse(handle,'mousedown',100);mouse(u.d,'mousemove',110);u.w.dispatchEvent(new u.w.Event('blur'));assert.equal(first.style.width,'60%');
+    mouse(handle,'mousedown',100);mouse(u.d,'mousemove',110);u.lock();assert.equal(first.style.width,'60%');assert.equal(u.count(),1);
+  });
+}

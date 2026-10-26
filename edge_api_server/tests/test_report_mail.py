@@ -76,6 +76,25 @@ def test_table_bounds_and_injected_attributes_are_sanitized():
         with pytest.raises(ValueError): clean_html(html)
 
 
+def test_mail_alignment_and_table_geometry_survive_storage_and_delivery(tmp_path):
+    default, _ = clean_html('<table><tr><td>기본</td></tr></table>')
+    assert clean_html(default)[0] == default
+    source = ('<p style="text-align:right;position:fixed">결과</p><table><tr style="height:80px">'
+              '<td style="text-align:center;vertical-align:middle;width:65%;background-color:rgb(232,242,250);background-image:url(https://invalid)">시료</td>'
+              '<td style="width:35%;vertical-align:bottom">A</td></tr></table>')
+    html, body = clean_html(source)
+    assert 'text-align:right' in html and 'vertical-align:middle' in html and 'vertical-align:bottom' in html
+    assert 'width:65%' in html and 'height:80px' in html and 'bgcolor="#e8f2fa"' in html
+    assert 'position' not in html and 'invalid' not in html
+    assert clean_html(html)[0] == html
+    payload = mail_payload('결과', body, {'bodyHtml':html}, sending=True)
+    assert validate_envelope(payload)['bodyHtml'] == html
+    write_mail_files(tmp_path, '결과', body, {'bodyHtml':html})
+    assert html in (tmp_path/'email_body.html').read_text()
+    bad, _ = clean_html('<table><tr style="height:9999px"><td style="width:1%;text-align:expression(x);vertical-align:expression(x);background-color:red">x</td></tr></table>')
+    assert '9999' not in bad and 'expression' not in bad and 'width:1%' not in bad and 'background-color' not in bad
+
+
 def test_inline_contract_can_build_one_mime_message_without_external_files():
     from email.message import EmailMessage
     from email import policy

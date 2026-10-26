@@ -22,6 +22,41 @@ TAGS = {"p", "div", "br", "strong", "b", "em", "i", "u", "ul", "ol", "li",
 BLOCKED = {"script", "style", "iframe", "object", "svg", "math", "form", "textarea"}
 
 
+def _formatting(tag, attrs, base=''):
+    """Retain only bounded mail-layout values, never arbitrary author CSS."""
+    attributes = dict(attrs)
+    source = {}
+    for part in (attributes.get('style') or '').lower().split(';'):
+        pair = part.split(':')
+        if len(pair) == 2:
+            source[pair[0].strip()] = pair[1].strip()
+    styles = dict(part.split(':', 1) for part in base.split(';') if part)
+    extra = {}
+    def value(prop, attr):
+        return source.get(prop, (attributes.get(attr) or '').lower())
+    align = value('text-align', 'align')
+    if tag in {'p', 'div', 'li', 'td', 'th'} and align in {'left', 'center', 'right', 'justify'}:
+        styles['text-align'] = extra['align'] = align
+    if tag in {'td', 'th'}:
+        vertical, width = value('vertical-align', 'valign'), value('width', 'width')
+        styles['vertical-align'] = extra['valign'] = vertical if vertical in {'top', 'middle', 'bottom'} else 'top'
+        if re.fullmatch(r'\d+(?:\.\d{1,6})?%', width) and 5 <= float(width[:-1]) <= 100:
+            styles['width'] = extra['width'] = width
+        color = value('background-color', 'bgcolor')
+        rgb = re.fullmatch(r'rgb\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*\)', color)
+        if rgb and all(int(c) <= 255 for c in rgb.groups()):
+            color = '#' + ''.join(f'{int(c):02x}' for c in rgb.groups())
+        if re.fullmatch(r'#[0-9a-f]{6}', color):
+            styles['background-color'] = extra['bgcolor'] = color
+    height = value('height', 'height')
+    if tag == 'tr' and re.fullmatch(r'\d+(?:px)?', height) and 24 <= int(height.removesuffix('px')) <= 400:
+        extra['height'] = height.removesuffix('px')
+        styles['height'] = extra['height'] + 'px'
+    if styles:
+        extra['style'] = ';'.join(key + ':' + value for key, value in styles.items())
+    return ''.join(' ' + key + '="' + escape(value, quote=True) + '"' for key, value in extra.items())
+
+
 class _MailHTML(HTMLParser):
     def __init__(self, images):
         super().__init__(convert_charrefs=True)
@@ -34,7 +69,7 @@ class _MailHTML(HTMLParser):
         if self.skip:
             return
         if tag in TAGS:
-            extra = ''
+            extra = _formatting(tag, attrs)
             if tag == 'img':
                 attributes = dict(attrs)
                 source = attributes.get('src') or ''
@@ -67,7 +102,7 @@ class _MailHTML(HTMLParser):
                 self.cols += 1
                 if self.cols > MAX_COLS:
                     raise ValueError('표는 최대 8열입니다.')
-                extra = ' style="border:1px solid #94a3b8;padding:6px;vertical-align:top;word-break:break-word"'
+                extra = _formatting(tag, attrs, 'border:1px solid #94a3b8;padding:6px;vertical-align:top;word-break:break-word')
             self.html.append('<' + tag + extra + '>')
             if tag not in {'br', 'img'}:
                 self.stack.append(tag)
