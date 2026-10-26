@@ -30,7 +30,7 @@ for(const mode of Object.keys(programs)){
   });
   test(mode+': titles are text, links reject scripts and admin counts are role-gated',async t=>{
     const p=payload();p.recent[0].title='<img src=x onerror=alert(1)>';p.recent[0].href='javascript:alert(1)';p.admin={pendingUsers:4,reports:12,failedTransfers:1,diskFreeBytes:1073741824,diskTotalBytes:2147483648};
-    const h=setup(t,mode,p);await flush();assert.equal(h.d.querySelectorAll('img').length,0);assert.equal(h.d.querySelector('.recent-row a').pathname,'/');assert(h.d.getElementById('workspace-admin').hidden);
+    const h=setup(t,mode,p);await flush();assert.equal(h.d.querySelectorAll('#workspace-recent img').length,0);assert.equal(h.d.querySelectorAll('.brand-logo').length,1);assert.equal(h.d.querySelector('.recent-row a').pathname,'/');assert(h.d.getElementById('workspace-admin').hidden);
     p.user.roles=['ADMIN'];h.d.getElementById('workspace-refresh').click();await flush();assert(!h.d.getElementById('workspace-admin').hidden);assert.match(h.d.getElementById('workspace-admin-metrics').textContent,/1.0 GB/);
   });
   test(mode+': failed refresh clears private details and never presents failure as zero',async t=>{

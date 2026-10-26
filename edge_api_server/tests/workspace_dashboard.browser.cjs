@@ -17,6 +17,7 @@ const startup=new Promise((resolve,reject)=>{let text='';server.stdout.on('data'
         const response=await page.goto(origin);assert.equal(response.status(),200);
         await page.waitForFunction(()=>document.getElementById('workspace-updated').textContent.indexOf('조회 ')===0);
         assert.equal(await page.title(),'RIST 분석 포털');assert.equal(await page.locator('[data-project]:visible').count(),mode==='none'?0:mode==='limited'?1:4);
+        assert(await page.locator('.brand-logo').evaluate(img=>img.complete&&img.naturalWidth===106&&img.naturalHeight===34&&img.src.startsWith('data:image/png;base64,')),'original logo must load offline');
         assert.equal(await page.locator('#workspace-admin').isVisible(),mode==='admin');
         if(mode==='chrome49')assert(await page.locator('script[src*="/assets/browser-compat/"]').count()>0);
         if(mode==='supermium144'){
@@ -34,6 +35,7 @@ const startup=new Promise((resolve,reject)=>{let text='';server.stdout.on('data'
         for(const width of [1024,390,320]){
           await page.setViewportSize({width,height:900});
           assert(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1),'horizontal overflow at '+mode+' '+width);
+          assert(await page.locator('.brand-logo').evaluate(img=>{const r=img.getBoundingClientRect();return r.left>=0&&r.right<=innerWidth&&Math.abs(r.width/r.height-106/34)<0.01;}),'logo must retain proportions');
           assert(await page.locator('.workspace-actions button,#workspace-refresh,#workspace-filter-clear').evaluateAll(nodes=>nodes.filter(n=>n.offsetWidth).every(n=>n.scrollWidth<=n.clientWidth+2)),'button clipping');
           if(width===390){
             await page.locator('#workspace-search').blur();

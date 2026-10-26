@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import os
 from pathlib import Path
 
@@ -17,6 +18,7 @@ from .ftir_web import (
 from .raman_web import router as raman_router
 from .xrd_web import router as xrd_router
 from .workspace_dashboard import router as dashboard_router
+from ahn.report_branding import ASSET_DIR, LOGO_NAME
 
 
 def _bool_env(name: str, default: str = "false") -> bool:
@@ -26,6 +28,9 @@ def _bool_env(name: str, default: str = "false") -> bool:
 def build_workspace_index() -> str:
     directory = Path(__file__).parent
     page = (directory / "workspace_dashboard.html").read_text(encoding="utf-8")
+    # Reuse the report's original logo without an external request in isolated labs.
+    logo = base64.b64encode((ASSET_DIR / LOGO_NAME).read_bytes()).decode("ascii")
+    page = page.replace("__RIST_LOGO__", "data:image/png;base64," + logo)
     for key, suffix in (("CSS", "css"), ("JS", "js")):
         page = page.replace("__DASHBOARD_" + key + "__",
                             (directory / ("workspace_dashboard." + suffix)).read_text(encoding="utf-8"))

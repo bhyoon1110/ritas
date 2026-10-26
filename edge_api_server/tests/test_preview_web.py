@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import base64
+import re
 from unittest.mock import Mock, patch
+
+from ahn.report_branding import ASSET_DIR, LOGO_NAME
 
 from fastapi.testclient import TestClient
 
@@ -20,6 +24,13 @@ def test_workspace_index_exposes_authenticated_account_actions() -> None:
     assert 'fetch(\'/api/v1/workspace/dashboard\'' in page
     assert 'fetch(\'/api/v1/auth/logout\'' in page
     assert "if(!response.ok)throw new Error('logout failed')" in page
+
+
+def test_workspace_embeds_original_rist_logo_without_external_fetch() -> None:
+    page = build_workspace_index()
+    match = re.search(r'<img class="brand-logo" src="data:image/png;base64,([^\"]+)" width="106" height="34" alt="RIST">', page)
+    assert match and "__RIST_LOGO__" not in page
+    assert base64.b64decode(match[1]) == (ASSET_DIR / LOGO_NAME).read_bytes()
 
 
 def test_combined_preview_app_serves_all_preview_pages() -> None:
