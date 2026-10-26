@@ -12,6 +12,7 @@ from .time_utils import isoformat_kst
 
 
 _SENSITIVE_FIELD_NAMES = {
+    "bcc",
     "authorization",
     "clientsecret",
     "confirmpassword",

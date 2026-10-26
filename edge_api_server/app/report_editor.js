@@ -24,6 +24,7 @@
   var inputs = {}, sections = [], auxiliary = {};
   var saved = "", timer = null, composing = false, sending = false, activeRevision = null, retries = 0;
   var refs = {}, variables = [], layoutSequence = 0, canvas = null;
+  var mailEditor = null;
   var pageEdits = {hidden:[],added:[]}, pageFields = [], pageBox = null, pageEditing = false, structureDirty = false, layoutReady = false, layoutStructure = "";
   var deletedPageGroups=[];
   var labels = {requestNumber:"의뢰번호",limsExperimentCode:"실험코드",equipmentCode:"실험장비",operatorId:"실험자"};
@@ -84,6 +85,7 @@
     Array.prototype.forEach.call(document.querySelectorAll("#editor input,#editor textarea,#mail-editor textarea"),function (input) { input.disabled = sending; });
     if (lookup) lookup.availability();
     if (conditions) conditions.lock(sending);
+    if (mailEditor) mailEditor.lock(sending);
     direct.lock(sending);
     if(canvas)canvas.lock(busy||sending||!!activeRevision||structureDirty);
     pageAvailability();
@@ -455,13 +457,17 @@
     (pageEdits.added || []).forEach(function (item) { pageRow(item,false); });
     var mailPane = document.getElementById("mail-editor"); mailPane.textContent = "";
     var mail = element("details", mailPane); mail.open = true; element("summary", mail, "보고서 안내 메일 문안");
-    element("p",mail,"보고서와 함께 제공되는 안내 문안입니다. 입력 내용은 자동 저장되며, 입력칸의 아래쪽 모서리를 드래그해 높이를 더 늘릴 수 있습니다.").className = "muted";
+    element("p",mail,"입력 내용은 자동 저장됩니다. 실제 메일 발송은 보고서 전송 후 Spring/LIMS 연계에서 처리합니다.").className = "muted";
     ["email_subject","email_body"].forEach(function (key) {
       var isBody = key === "email_body";
       var input = bind("auxiliary/" + key,field(mail,isBody ? "메일 본문" : "메일 제목",model.auxiliary[key] || "",true));
       input.className = isBody ? "mail-body" : "mail-subject"; input.rows = isBody ? 12 : 2;
       auxiliary[key] = input;
     });
+    mailEditor = new window.RistMailEditor({host:mail,body:auxiliary.email_body,before:auxiliary.email_subject.parentNode,
+      value:model.deliveryEmail,changed:changed});
+    mail.addEventListener("compositionstart", function () { composing = true; window.clearTimeout(timer); });
+    mail.addEventListener("compositionend", function () { composing = false; changed(); });
     saved = JSON.stringify(collect()); dirty = false;
     if (data.authenticatedOperatorId) {
       inputs.operatorId.readOnly = true;
@@ -483,6 +489,7 @@
         rows:section.rows && section.rows.map(function (row) { return row.map(function (e) { return e.value; }); })});
     });
     Object.keys(auxiliary).forEach(function (key) { result.auxiliary[key] = auxiliary[key].value; });
+    if(mailEditor) result.deliveryEmail = mailEditor.value();
     result.pageEdits = {hidden:pageEdits.hidden.slice(),order:(pageEdits.order||[]).slice(),added:pageFields.map(function (item) {
       return {id:item.id,after:item.after,title:item.title.value,body:item.body.value};
     })};
@@ -544,6 +551,7 @@
       busy = true; availability(); poll(activeRevision.id,activeRevision.previous,activeRevision.snapshot,0); return;
     }
     if (!dirty) return;
+    if(mailEditor && mailEditor.validate()){message(mailEditor.validate(),true);return;}
     busy = true; availability(); message("수정 내용을 저장하는 중입니다.");
     var previous = currentId, value = collect(), snapshot = JSON.stringify(value);
     request(url(currentId,"/revisions"),"POST",value,function (error,job) {

@@ -92,6 +92,7 @@ class ReportDocument:
     sections: list[ReportSection] = field(default_factory=list)
     figures: list[ReportFigure] = field(default_factory=list)
     auxiliary_texts: dict[str, str] = field(default_factory=dict)
+    delivery_email: dict[str, str] = field(default_factory=dict)
     llm_used: bool = False
     llm_error: str | None = None
     traceability: dict[str, Any] = field(default_factory=dict)
@@ -158,6 +159,7 @@ class ReportDocument:
             "llm": {"used": self.llm_used, "error": self.llm_error},
             "figures": [figure.to_dict() for figure in self.figures],
             "auxiliary": dict(self.auxiliary_texts),
+            "deliveryEmail": dict(self.delivery_email),
             "sections": [section.to_dict() for section in self.sections],
         }
 

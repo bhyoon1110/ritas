@@ -248,6 +248,8 @@ def validate_changes(value, source):
             raise ValueError("문구와 표 셀은 4,000자 이하로 입력하세요.")
     if set(value["auxiliary"]) - {"email_subject", "email_body"} or any(len(t) > 4000 for t in value["auxiliary"].values()):
         raise ValueError("메일 문안은 항목당 4,000자 이하로 입력하세요.")
+    from ..report_mail import normalize_delivery
+    value['deliveryEmail'] = normalize_delivery(value.get('deliveryEmail') if value.get('deliveryEmail') is not None else source.get('deliveryEmail'))
     expanded = resolve_changes(value)  # Validate dates and variable references before queuing.
     for item in expanded["sections"]:
         if expected[item["sectionId"]]["heading"].startswith("표지 · ") and any(len(t)>200 for t in item["paragraphs"]):

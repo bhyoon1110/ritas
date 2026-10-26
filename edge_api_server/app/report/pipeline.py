@@ -95,16 +95,9 @@ def _collect_figures(processed_dir: Path) -> list[ReportFigure]:
 
 
 def _write_email_body(document: ReportDocument, report_dir: Path) -> None:
-    subject = document.auxiliary_texts.get("email_subject", "").strip()
-    body = document.auxiliary_texts.get("email_body", "").strip()
-    if not subject and not body:
-        return
-    lines = []
-    if subject:
-        lines.extend([f"# {subject}", ""])
-    if body:
-        lines.append(body)
-    (report_dir / "email_body.md").write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+    from ..report_mail import write_mail_files
+    write_mail_files(report_dir, document.auxiliary_texts.get('email_subject', ''),
+                     document.auxiliary_texts.get('email_body', ''), document.delivery_email)
 
 
 def generate_report(

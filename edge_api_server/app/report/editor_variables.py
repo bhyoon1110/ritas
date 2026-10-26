@@ -67,6 +67,8 @@ def resolve_changes(value):
         if section["rows"] is not None:
             section["rows"] = [[expand(cell) for cell in row] for row in section["rows"]]
     result["auxiliary"] = {key: expand(text) for key, text in result["auxiliary"].items()}
+    if result.get('deliveryEmail'):
+        result['deliveryEmail']['signature'] = expand(result['deliveryEmail'].get('signature', ''))
     for page in (result.get("pageEdits") or {}).get("added", []):
         if page["id"] in result["pageEdits"].get("hidden", []):
             continue  # Hidden drafts may be incomplete; validate again on restore.

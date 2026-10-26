@@ -191,6 +191,36 @@ Spring Boot는 다음 항목을 모두 확인해야 한다.
 
 ## 7. DB 구성
 
+### 보고서 안내 메일 (FT-IR·Raman·TEM·XRD 공통)
+
+작성자가 저장한 메일은 `report_runs.report_options_json.email`에 보존하고,
+전송 요청 시 동일한 수정본의 내용을 검증해 큐에 전달한다. 테이블 추가는 없다.
+**Python은 SMTP 메일을 직접 발송하지 않는다. Spring/LIMS 수신 구현도 아래 필드에 맞춰 적용해야 실제 메일에 반영된다.**
+
+```json
+{
+  "email": {
+    "schemaVersion": 1,
+    "recipientPolicy": "explicit",
+    "recipientName": "의뢰 담당자",
+    "to": ["recipient@example.com"],
+    "cc": ["reviewer@example.com"],
+    "bcc": ["archive@example.com"],
+    "subject": "[RIST] 분석 결과 보고서 안내",
+    "bodyText": "분석 결과 안내\n\n등록한 서명",
+    "bodyHtml": "<p><strong>분석 결과 안내</strong></p><br><br>등록한 서명"
+  }
+}
+```
+
+- 편집 화면의 주소는 쉼표/세미콜론 구분 문자열이다. 유효한 주소는 보고서 등록 시 `to/cc/bcc` 배열로 검증·중복 제거하며 전송 요청 시 다시 검증한다. 입력 중인 불완전한 주소는 초안에 보존하되 전송을 차단한다. 주소와 수신자 이름이 모두 비어 있으면 `recipientPolicy: "lims"`이며 기존 의뢰 수신자 조회 정책을 유지한다.
+- `report_transfers`는 메일 컬럼을 추가하지 않는다. Spring은 해당 `report_id`의 `report_runs.report_options_json.email`을 읽는다. 재전송도 이 저장된 수정본을 사용한다.
+- BCC는 **SMTP envelope 전용**이다. 메일 헤더·수신자 화면·보고서·ZIP·일반 로그에 출력하지 않는다. `email` 전체를 무분별하게 로깅하지 않는다.
+- HTML은 굵게·기울임·밑줄·목록·문단만 허용한다. 외부 이미지·스크립트·CSS·링크는 제거된다. Spring도 HTML 렌더링 전 동일한 허용 정책을 적용하고 HTML/일반 텍스트 대체 본문을 함께 구성한다.
+- 서명은 본문 끝에 이미 합쳐져 전달된다. Spring에서 다시 붙이지 않는다. 기본 서명은 인증 사용자별로 공유 저장소의 `user-mail-preferences/`에 비공개 저장하며 네 실험에서 불러올 수 있다. 기존 보고서의 서명은 기본 서명 변경으로 덮어쓰지 않는다.
+- 기본 서명 API: `GET/PUT /api/v1/report-mail/signature`, 본문은 `{"signature":"서명 내용"}`이다. 활성 회원 인증이 필요하며 PUT은 동일 출처와 `X-Requested-With: RIST-Mail-Editor`를 검증한다. 사용자 ID는 인증 세션에서 결정하고 클라이언트가 지정하지 않는다. 서명은 2,000자 이내이고 백업 시 해당 비공개 저장 폴더도 포함한다.
+- 배포 확인: 새 필드로 저장→재열기→SSO 전송→DB 메일 확인→Spring/LIMS 테스트 메일 수신 순서로 검증한다. 실제 발송 테스트 전 수신자를 확인한다.
+
 LIMS 전송 흐름은 기존 `jobs`와 보고서 큐 테이블로 구성한다. 보고서 재생성
 신호와 프롬프트는 전송 큐와 분리해 `report_regeneration_requests`에 보존한다.
 

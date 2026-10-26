@@ -4,6 +4,7 @@ import json
 import re
 
 from .phase_class import phase_ref
+from ...report_mail import normalize_delivery
 
 CLASSES = {'major': '주요상', 'trace': '미량상', 'presumed': '추정상'}
 
@@ -31,6 +32,8 @@ def validate_email(value):
     if status not in ('empty', 'manual', 'rules', 'llm', 'fallback'):
         raise ValueError('이메일 생성 상태가 올바르지 않습니다.')
     result['status'] = status
+    if 'delivery' in value:
+        result['delivery'] = normalize_delivery(value['delivery'])
     return result
 
 

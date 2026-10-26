@@ -37,6 +37,15 @@ def enqueue_report_package(
     register_report_run: bool = True,
 ) -> dict[str, Any]:
     """Register a completed shared-storage ZIP for downstream LIMS delivery."""
+    if report_options:
+        from .report_mail import validate_envelope
+        options = json.loads(report_options) if isinstance(report_options, str) else dict(report_options)
+        if options.get('email'):
+            try:
+                options['email'] = validate_envelope(options['email'])
+            except ValueError as exc:
+                raise ReportQueueError('REPORT_MAIL_INVALID', str(exc), retryable=False) from exc
+        report_options = options
     if database is None:
         raise ReportQueueError(
             "REPORT_QUEUE_DATABASE_UNAVAILABLE",

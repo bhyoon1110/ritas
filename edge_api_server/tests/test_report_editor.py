@@ -185,6 +185,7 @@ def test_blank_fields_edit_revision_and_recipient_integrity(prepared, monkeypatc
     summary['paragraphs'] = ['분석자가 확인한 피크입니다. <script>alert(1)</script> 물질 확정은 추가 검증이 필요합니다.']
     next(s for s in edits['sections'] if s['sectionId'] == 'experiment_conditions')['rows'][0][-1] = '온도 23°C · 습도 45%'
     edits['auxiliary']['email_subject'] = '[RIST] 분석자가 검토한 보고서 안내'
+    edits['deliveryEmail'] = dict(recipientName='의뢰 담당자',to='to@example.com',cc='cc@example.com',bcc='secret@example.com',signature='윤병훈 · RIST',bodyHtml='')
     edits['auxiliary']['email_body'] = '검토 완료된 보고서를 첨부합니다.\n\n' + '피크의 후보 해석과 확인 사항을 검토해 주세요.\n' * 25
     registered = []
     def register(**kwargs):
@@ -200,6 +201,8 @@ def test_blank_fields_edit_revision_and_recipient_integrity(prepared, monkeypatc
     assert registered[0]['report_id'] == revised['jobId']
     assert registered[0]['request_number'] == 'REQ-REVIEW'
     assert registered[0]['report_options']['revisionOf'] == h.job.job_id
+    assert registered[0]['report_options']['email']['bcc'] == ['secret@example.com']
+    assert registered[0]['report_options']['email']['bodyText'].endswith('윤병훈 · RIST')
     assert h.job.package_path.read_bytes() == before
     trace = json.loads((h.store.get(revised['jobId']).tmp_root / 'job/report/report.json').read_text())['traceability']
     assert trace['revisionOf'] == h.job.job_id
@@ -208,9 +211,12 @@ def test_blank_fields_edit_revision_and_recipient_integrity(prepared, monkeypatc
     saved = h.client.get(h.prefix + '/' + revised['jobId'] + '/editor-data').json()['document']
     assert saved['transfer'] == edits['transfer'] and saved['title'] == edits['title']
     assert saved['auxiliary'] == edits['auxiliary']  # Never regenerate or shorten an edited AI draft.
+    assert saved['deliveryEmail'] == edits['deliveryEmail']
     assert next(s for s in saved['sections'] if s['sectionId']=='summary')['source']=='user'
     original = zipfile.ZipFile(BytesIO(before))
     with zipfile.ZipFile(BytesIO(h.client.get(revised['downloadUrl']).content)) as archive:
+        assert all(b'secret@example.com' not in archive.read(name) for name in archive.namelist())
+        assert '윤병훈 · RIST' in archive.read('email_body.html').decode()
         for name in ['current_graph.png','raw_data.xlsx']:
             assert archive.read(name) == original.read(name)
         html = archive.read('report.html').decode()

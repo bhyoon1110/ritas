@@ -168,7 +168,10 @@ def test_draft_generation_is_ephemeral_editable_and_preserved_in_recovery(tmp_pa
     assert '미저장 최종 분석 결과' in response.json()['body']
     assert list(tmp_path.rglob('job.json')) == before
     assert client.get(BASE + f'/api/reports/{sid}').json()['document'] == baseline
-    doc['email'] = dict(response.json(), subject='사용자 제목', body='사용자 본문', status='manual')
+    from app.report_mail import normalize_delivery
+    doc['email'] = dict(response.json(), subject='사용자 제목', body='사용자 본문', status='manual',
+                        delivery=normalize_delivery(dict(to='to@example.com', bcc='secret@example.com',
+                            bodyHtml='<strong>사용자 본문</strong>', signature='담당자 서명')))
     recovered = client.put(BASE + f'/api/reports/{sid}/draft', json=dict(document=doc, baseline=baseline, expected_revision=0))
     assert recovered.status_code == 200, recovered.text
     assert client.get(BASE + f'/api/reports/{sid}/draft').json()['document']['email'] == doc['email']
@@ -215,11 +218,14 @@ def test_package_excludes_email_sidecar_without_deleting_the_saved_document_emai
     from app.xrd_workbench.core.report import new_document
     project = example_project(); doc = new_document(project)
     doc['email'] = dict(empty_email(), subject='메일 전용 제목', body='직접 수정한 메일\n본문 <plain text>', status='manual')
+    doc['email']['delivery'] = dict(to='to@example.com', bcc='secret@example.com', signature='담당자 서명')
     before = deepcopy(doc)
     with ZipFile(io.BytesIO(build_package(project, doc, lambda fid: resolve_source('example', fid)))) as archive:
         assert {name.split('/')[0] for name in archive.namelist()} == {
             'Measured Data', 'Report', '보고서.pdf', '보고서.pptx', '보고서.html', '뷰어.html',
         }
+        for name in archive.namelist():
+            assert b'secret@example.com' not in archive.read(name)
         with ZipFile(io.BytesIO(archive.read('보고서.pptx'))) as ppt:
             assert not any('메일 전용 제목' in ppt.read(n).decode() for n in ppt.namelist() if n.startswith('ppt/slides/') and n.endswith('.xml'))
     assert doc == before

@@ -6,7 +6,7 @@ const {JSDOM}=require('jsdom');
 const acorn=require('acorn');
 const {execFileSync}=require('node:child_process');
 const clone=x=>JSON.parse(JSON.stringify(x));
-const script=['file_save.js','report_editor_icons.js','report_page_sidebar.js','report_direct_editor.js','report_canvas_editor.js','report_saved_graphs.js','report_condition_options.js','report_editor.js'].map(name=>fs.readFileSync(path.join(__dirname,'../app',name),'utf8')).join('\n');
+const script=['file_save.js','report_editor_icons.js','report_page_sidebar.js','report_direct_editor.js','report_canvas_editor.js','report_saved_graphs.js','report_condition_options.js','xrd_workbench/web/shared/mail_editor.js','report_editor.js'].map(name=>fs.readFileSync(path.join(__dirname,'../app',name),'utf8')).join('\n');
 const template=fs.readFileSync(path.join(__dirname,'../app/report_editor.html'),'utf8');
 function setup(t,kind='ftir',identity='',conditionScenario=null) {
   const prefix='/api/v1/'+kind+'/report/jobs',posts=[],gets=[],timers=new Map(); let timerId=0;
@@ -119,6 +119,26 @@ test('TEM shares the icon canvas tools and autosaves inserted objects',t=>{
   h.field('글자 삽입').click();h.tick();
   assert.equal(h.posts[0].body.canvasEdits.cover[0].kind,'text');
   assert.match(h.q('analysis-help').textContent,/원본 분석 데이터는 유지/);
+});
+for(const kind of ['ftir','raman','tem'])test(kind+' mail IME waits until Korean composition finishes',t=>{
+  const h=setup(t,kind),rich=h.d.querySelector('.mail-rich');
+  rich.dispatchEvent(new h.w.Event('compositionstart',{bubbles:true}));
+  rich.textContent='분석';rich.dispatchEvent(new h.w.Event('input',{bubbles:true}));
+  assert.equal(h.timers.size,0);
+  rich.dispatchEvent(new h.w.Event('compositionend',{bubbles:true}));
+  assert.equal(h.timers.size,1);
+});
+for(const kind of ['ftir','raman','tem'])test(kind+' mail recipients, rich body and signature autosave without losing the original prose',t=>{
+  const h=setup(t,kind);
+  h.input('수신자 이름','의뢰자');h.input('수신자 이메일 주소','to@example.com');h.input('참조 (CC)','cc@example.com');h.input('비밀참조 (BCC)','hidden@example.com');h.input('메일 서명','윤병훈\nRIST');
+  const rich=h.field('메일 본문 서식 편집');rich.innerHTML='<strong>분석 결과</strong>';
+  rich.dispatchEvent(new h.w.Event('input',{bubbles:true}));h.tick();
+  const saved=h.posts[0].body;
+  assert.equal(saved.auxiliary.email_body,'분석 결과');assert.equal(saved.deliveryEmail.bodyHtml,'<strong>분석 결과</strong>');
+  assert.equal(saved.deliveryEmail.bcc,'hidden@example.com');assert.equal(saved.deliveryEmail.signature,'윤병훈\nRIST');
+  assert.equal(h.field('메일 서명').value,'윤병훈\nRIST');
+  assert.equal(h.w.RistMailEditor.clean('<img src=x onerror=x()><script>x()</script><b style="color:red">ok</b>'),'<b>ok</b>');
+  h.input('메일 본문','새 본문');h.tick();assert.equal(h.posts[1].body.deliveryEmail.bodyHtml,'');
 });
 for(const kind of ['ftir','raman','tem']) test(kind+' page selection help is collapsed below the slide, outside the thumbnails',t=>{
   const h=setup(t,kind),help=h.q('page-selection-help'),sidebar=h.q('page-sidebar');

@@ -1188,7 +1188,7 @@ def _process_ahn_job(job: AhnReportJob) -> None:
         )
         return
     try:
-        from .tem_report_editor import prepare_review
+        from .tem_report_editor import prepare_review, delivery_mail
         _set_job_state(job, progress_pct=90, message="TEM PPT 미리보기와 메일 문안을 준비하는 중입니다.")
         prepare_review(job, manifest)
         _build_package(job.output_dir, job.package_path)
@@ -1199,6 +1199,7 @@ def _process_ahn_job(job: AhnReportJob) -> None:
             package_path=job.package_path,
             experiment_code="TEM",
             is_test=True,
+            report_options={'email': delivery_mail(job)},
         )
         # The work-history copy has its own retention window. A shared test
         # report can expire earlier without breaking the editable local draft.

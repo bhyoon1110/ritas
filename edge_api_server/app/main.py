@@ -49,6 +49,7 @@ from .models import (
 from .preview_web import build_workspace_index
 from .raman_web import router as raman_router
 from .report_delivery import router as report_delivery_router
+from .report_mail import router as report_mail_router
 from .service import EdgeService
 from .xrd_web import router as xrd_router
 from .xrd_workbench.integration import router as xrd_workbench_router
@@ -184,6 +185,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     install_auth(app, resolved_settings, database)
     app.include_router(voc_router)
     app.include_router(report_delivery_router)
+    app.include_router(report_mail_router)
     app.include_router(ftir_router)
     app.include_router(raman_router)
     app.include_router(xrd_router)

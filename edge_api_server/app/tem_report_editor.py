@@ -19,6 +19,7 @@ from .report.editor_variables import resolve_changes
 from .report.renderers import convert_pptx_to_pdf
 from .report_queue import register_generated_report_package
 from .storage import atomic_write_json
+from .report_mail import mail_payload, write_mail_files
 from rist_common import get_logger
 
 
@@ -39,6 +40,12 @@ def _state(job):
     return json.loads(_state_path(job).read_text(encoding="utf-8"))
 
 
+def delivery_mail(job):
+    value = resolve_changes(_state(job))
+    return mail_payload(value['auxiliary'].get('email_subject', ''),
+                        value['auxiliary'].get('email_body', ''), value.get('deliveryEmail'))
+
+
 def _write_metadata(job, model, actor_id=None):
     model = deepcopy(model)
     actual, _, _ = tem_editable.inspect_pptx(tem_canvas.base_path(job))
@@ -57,8 +64,7 @@ def _write_metadata(job, model, actor_id=None):
         "note": "분석자가 검토한 보고서 표시값입니다. 원본 분석 데이터는 analysis-result.json에 보존됩니다.",
     })
     auxiliary = value["auxiliary"]
-    (job.output_dir / "email_body.md").write_text(
-        "# " + auxiliary.get("email_subject", "") + "\n\n" + auxiliary.get("email_body", "") + "\n", encoding="utf-8")
+    write_mail_files(job.output_dir, auxiliary.get('email_subject', ''), auxiliary.get('email_body', ''), value.get('deliveryEmail'))
     job.transfer_metadata = dict(value["transfer"])
 
 
@@ -108,7 +114,7 @@ def _revision(new_job, old_job, changes, actor_id=None):
             new_job.output_dir.mkdir(parents=True)
             # Copy generated output only, never multi-GB raw inputs or an old ZIP.
             for source in old_job.output_dir.rglob("*"):
-                if not source.is_file() or source.name in {"tem-report.pptx", "tem-report.pdf", "tem-report-package.zip", "report-review.json", "email_body.md"}:
+                if not source.is_file() or source.name in {"tem-report.pptx", "tem-report.pdf", "tem-report-package.zip", "report-review.json", "email_body.md", "email_body.html"}:
                     continue
                 target = new_job.output_dir / source.relative_to(old_job.output_dir)
                 target.parent.mkdir(parents=True, exist_ok=True)
@@ -126,7 +132,8 @@ def _revision(new_job, old_job, changes, actor_id=None):
             published_package = register_generated_report_package(settings=new_job.settings, database=new_job.database,
                 report_id=new_job.job_id, package_path=new_job.package_path, experiment_code="TEM",
                 request_number=transfer["requestNumber"], equipment_code=transfer["equipmentCode"], operator_id=transfer["operatorId"],
-                report_options={"revisionOf": old_job.job_id, "reviewed": True, "transfer": transfer})
+                report_options={"revisionOf": old_job.job_id, "reviewed": True, "transfer": transfer,
+                    "email": delivery_mail(new_job)})
             if not ahn.tem_history.managed(new_job):
                 new_job.package_path = published_package
             ahn._set_job_state(new_job, status="completed", progress_pct=100, message="TEM 수정본이 저장되었습니다.", manifest=manifest)

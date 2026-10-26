@@ -63,7 +63,11 @@ def wait(h, payload):
         result = h.client.get("/api/v1/tem/report/jobs/" + payload["jobId"])
         assert result.status_code == 200
         result = result.json()
-        if result["status"] in {"completed", "failed"}:
+        # Terminal status is published before the worker's finally block releases
+        # revision leases. Wait for that cleanup too before asserting/tearing down.
+        with ahn_web._ahn_report_jobs_lock:
+            settled = h.job.active_revisions == 0
+        if result["status"] in {"completed", "failed"} and settled:
             return result
         time.sleep(.01)
     pytest.fail("revision did not finish")
@@ -114,6 +118,7 @@ def test_tem_revision_edits_visible_text_table_email_and_preserves_original(repo
     changes = editable(data)
     changes["transfer"] = dict(requestNumber="REQ-NEW", limsExperimentCode="LIMS-TEM", equipmentCode="EQ-1", operatorId="OP-1")
     changes["auxiliary"] = {"email_subject": "{{의뢰번호}} 분석 결과", "email_body": "검토 완료한 TEM 보고서입니다."}
+    changes['deliveryEmail'] = dict(recipientName='TEM 의뢰자',to='to@example.com',cc='',bcc='hidden@example.com',signature='서명 {{의뢰번호}}',bodyHtml='<b>검토 완료한 TEM 보고서입니다.</b>')
     text = next(s for s in changes["sections"] if s["paragraphs"] and "TEM-A" in s["paragraphs"][0])
     text["paragraphs"][0] = "교정한 시료명 <literal>"
     table = next(s for s in changes["sections"] if s["rows"])
@@ -131,8 +136,12 @@ def test_tem_revision_edits_visible_text_table_email_and_preserves_original(repo
     reopened = h.client.get(base + "/editor-data").json()["document"]
     assert next(s for s in reopened["sections"] if s["sectionId"] == table["sectionId"])["columns"]
     assert reopened["auxiliary"]["email_subject"] == "{{의뢰번호}} 분석 결과"
+    assert reopened['deliveryEmail'] == changes['deliveryEmail']
     package = h.client.get(base + "/download").content
     with ZipFile(BytesIO(package)) as archive, ZipFile(h.job.pptx_path) as original:
+        assert all(b'hidden@example.com' not in archive.read(name) for name in archive.namelist())
+        assert '<b>검토 완료한 TEM 보고서입니다.</b>' in archive.read('email_body.html').decode()
+        assert '서명 REQ-NEW' in archive.read('email_body.md').decode()
         assert "review/editor-state.json" not in archive.namelist()
         assert "REQ-NEW 분석 결과" in archive.read("email_body.md").decode()
         assert json.loads(archive.read("analysis-result.json")) == json.loads(h.job.analysis_path.read_text())

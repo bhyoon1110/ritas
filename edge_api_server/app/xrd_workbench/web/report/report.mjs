@@ -53,7 +53,11 @@ let storageId = new URLSearchParams(location.search).get('project'),
   pcPercent = '';
 let composing = false, previewPosition = {index:0,offset:0}, linkedTimer = 0;
 const previewFrame = $('reportPreview'), reportMain = document.querySelector('main');
-mountEmailEditor($('editorFields'),$('reportNav'));
+const mailEditor=mountEmailEditor($('editorFields'),$('reportNav'),()=>{
+  if(!doc||busy)return;
+  const email=ensureEmail(doc);email.delivery=mailEditor.value();email.body=$('emailBody').value;
+  email.status='manual';updateEmailStatus();markDirty();
+});
 let recoveryDraft=null;
 let emailBaselineKey='', emailStale=false, emailAttempted=false, emailDefault=null;
 const recoveryBar=document.createElement('div');recoveryBar.className='draftRecovery';
@@ -172,6 +176,7 @@ function markDirty() {
   else livePreview.invalidate();
 }
 function lock(value) {
+  mailEditor.lock(value);
   busy = value;
   if (value) livePreview.invalidate();
   else if (doc) livePreview.schedule();
@@ -403,6 +408,7 @@ function renderEmail() {
   const email=ensureEmail(doc);
   $('emailSubject').value=email.subject;
   $('emailBody').value=email.body;
+  mailEditor.load(email.delivery);
   updateEmailStatus();
 }
 function maybeAutoEmail() {
@@ -421,7 +427,7 @@ async function generateEmail(confirmReplace=true) {
   try {
     syncTransfer();
     const result=await (await api(`/api/reports/${storageId}/email-draft`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({document:doc})})).json();
-    doc.email=result;
+    doc.email={...result,delivery:{...(email.delivery||{}),bodyHtml:''}};
     emailBaselineKey=emailContextKey(doc);
     emailStale=false;
     renderEmail();

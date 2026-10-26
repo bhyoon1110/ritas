@@ -300,6 +300,9 @@ def send_preview_report_package(
             retryable=True,
         )
     resolved_settings = settings or Settings.from_env()
+    # Preserve the immutable authored mail envelope when publishing/queueing again.
+    registered = database.fetch_report_run(job.job_id) if hasattr(database, 'fetch_report_run') else None
+    report_options = registered.get('report_options_json') if registered else None
     shared_package = persist_preview_report_package(
         settings=resolved_settings,
         report_id=job.job_id,
@@ -316,6 +319,7 @@ def send_preview_report_package(
         experiment_code=payload.experiment_code,
         equipment_code=payload.equipment_code,
         operator_id=payload.operator_id,
+        report_options=report_options,
     )
     return {
         **result,
@@ -631,6 +635,13 @@ def run_preview_report_job(
             progress=progress,
             report_id=job_id,
         )
+        report_options = dict(analysis_payload.get('reportOptions') or {})
+        document_path = tmp_root / 'job/report/report.json'
+        if document_path.is_file():
+            from .report_mail import mail_payload
+            saved_document = json.loads(document_path.read_text(encoding='utf-8'))
+            auxiliary = saved_document.get('auxiliary', {})
+            report_options['email'] = mail_payload(auxiliary.get('email_subject', ''), auxiliary.get('email_body', ''), saved_document.get('deliveryEmail'))
         package = register_generated_report_package(
             settings=settings,
             database=database,
@@ -641,7 +652,7 @@ def run_preview_report_job(
             experiment_code=experiment_code,
             equipment_code=equipment_code,
             operator_id=operator_id,
-            report_options=analysis_payload.get("reportOptions"),
+            report_options=report_options,
         )
         from .report.editable import transfer_values
         current_job = store.get(job_id)
@@ -825,19 +836,9 @@ def _emit_progress(
 
 
 def _write_email_body(document: Any, report_dir: Path) -> None:
-    subject = document.auxiliary_texts.get("email_subject", "").strip()
-    body = document.auxiliary_texts.get("email_body", "").strip()
-    if not subject and not body:
-        return
-    lines: list[str] = []
-    if subject:
-        lines.extend([f"# {subject}", ""])
-    if body:
-        lines.append(body)
-    (report_dir / "email_body.md").write_text(
-        "\n".join(lines).rstrip() + "\n",
-        encoding="utf-8",
-    )
+    from .report_mail import write_mail_files
+    write_mail_files(report_dir, document.auxiliary_texts.get('email_subject', ''),
+                     document.auxiliary_texts.get('email_body', ''), getattr(document, 'delivery_email', None))
 
 
 def write_raw_data_xlsx(

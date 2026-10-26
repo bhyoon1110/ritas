@@ -32,6 +32,7 @@ from ..errors import ApiException
 from ..error_archive import error_archive, record_background_error
 from ..preview_report import PreviewReportSendRequest, send_preview_report_package
 from ..report_queue import ReportQueueError, register_generated_report_package
+from ..report_mail import mail_payload
 from ..upload_sessions import ChunkUploadStore, UploadSession, UploadFileState
 from ..usage_archive import set_usage_context, usage_archive, record_background_usage
 from .core.report import validate_document
@@ -494,7 +495,9 @@ def export_report(sid: str, payload: dict):
                 equipment_code=transfer.get('equipmentCode', ''),
                 operator_id=transfer.get('operatorId', ''),
                 report_options={'analysisType': 'XRD', 'workbenchVersion': 1,
-                                'documentRevision': document['revision']})
+                                'documentRevision': document['revision'],
+                                'email': mail_payload(document.get('email', {}).get('subject', ''),
+                                    document.get('email', {}).get('body', ''), document.get('email', {}).get('delivery'))})
         else:
             if kind == 'preview':
                 from .render.posco_preview import render_posco_preview

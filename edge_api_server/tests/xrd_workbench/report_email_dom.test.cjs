@@ -54,6 +54,18 @@ function setup(t,{mode,recovery=null,model,save,load}={}) {
 }
 
 for(const mode of Object.keys(programs)) {
+  test(`${mode}: mail addresses and rich body survive regeneration, autosave and reload`,async t=>{
+    const ui=setup(t,{mode,model:async()=>response({...fixture.email_default,subject:'새 제목',body:'새 본문',status:'llm'})});await flush();ui.openMail();await flush();
+    const input=(label,value)=>{const e=ui.d.querySelector('[aria-label="'+label+'"]');e.value=value;e.dispatchEvent(new ui.w.Event('input',{bubbles:true}));};
+    input('수신자 이메일 주소','to@example.com');input('비밀참조 (BCC)','hidden@example.com');input('메일 서명','RIST 서명');
+    const rich=ui.d.querySelector('.mail-rich');rich.innerHTML='<strong>분석 결과</strong>';rich.dispatchEvent(new ui.w.Event('input',{bubbles:true}));
+    ui.d.getElementById('save').click();await flush();
+    const saved=JSON.parse(ui.calls.filter(c=>c.url==='/api/reports/sample'&&c.options.method==='PUT').pop().options.body).document;
+    assert.equal(saved.email.delivery.bcc,'hidden@example.com');assert.equal(saved.email.delivery.bodyHtml,'<strong>분석 결과</strong>');assert.equal(saved.email.body,'분석 결과');
+    ui.d.getElementById('generateEmail').click();await flush();
+    assert.equal(ui.d.querySelector('[aria-label="비밀참조 (BCC)"]').value,'hidden@example.com');assert.equal(ui.d.querySelector('[aria-label="메일 서명"]').value,'RIST 서명');assert.equal(rich.textContent,'새 본문');
+    assert.deepEqual(ui.errors,[]);
+  });
   test(`${mode}: clicking mail before the initial report arrives does not break the editor`,async t=>{
     const wait=deferred();const ui=setup(t,{mode,load:()=>wait.promise});
     ui.openMail();assert.deepEqual(ui.errors,[]);

@@ -22,6 +22,7 @@ from .report.editor_variables import resolve_changes
 from .report.canvas import ObjectEdit
 from .report_queue import register_generated_report_package
 from .storage import atomic_write_json
+from .report_mail import mail_payload
 from rist_common.plotting.floating_panels import floating_panels_html
 
 _REVISION_SLOT = BoundedSemaphore(1)
@@ -65,6 +66,7 @@ class ReportEdit(BaseModel):
     transfer: dict[str, str]
     sections: list[SectionEdit] = Field(max_length=100)
     auxiliary: dict[str, str]
+    deliveryEmail: dict[str, str] | None = None
     completionDate: str | None = Field(default=None, max_length=10)
     variables: list[CommonVariable] = Field(default_factory=list, max_length=32)
     pageEdits: PageEdits | None = None
@@ -103,6 +105,8 @@ def _load_document(job):
 
 def _validate_changes(changes, document):
     values = changes.model_dump()
+    from .report_mail import normalize_delivery
+    values['deliveryEmail'] = normalize_delivery(values.get('deliveryEmail') if values.get('deliveryEmail') is not None else document.delivery_email)
     if values["canvasEdits"] is None:
         values["canvasEdits"] = deepcopy(document.canvas_edits)
     else:
@@ -225,7 +229,9 @@ def _write_revision(store, new_job, old_job, changes, project, settings, databas
         package = register_generated_report_package(settings=settings, database=database,
             report_id=new_job.job_id, package_path=package, experiment_code=project,
             request_number=transfer["requestNumber"], equipment_code=transfer["equipmentCode"], operator_id=transfer["operatorId"],
-            report_options={"revisionOf": old_job.job_id, "reviewed": True, "transfer": transfer})
+            report_options={"revisionOf": old_job.job_id, "reviewed": True, "transfer": transfer,
+                            "email": mail_payload(
+                                document.auxiliary_texts.get('email_subject', ''), document.auxiliary_texts.get('email_body', ''), document.delivery_email)})
         new_job.transfer_metadata = dict(transfer)
         store.complete(new_job.job_id, tmp_root=tmp_root, package_path=package)
     except Exception:
@@ -245,8 +251,8 @@ def editor_page(prefix, job_id, *, project=None):
     config = json.dumps({"prefix": prefix, "jobId": job_id, "project": project,
                          "conditionOptions": condition_options(project)}, ensure_ascii=False).replace("<", "\\u003c")
     template = Path(__file__).with_name("report_editor.html").read_text(encoding="utf-8")
-    script = "\n".join(Path(__file__).with_name(name).read_text(encoding="utf-8")
-                       for name in ("file_save.js", "report_editor_icons.js", "report_page_sidebar.js", "report_direct_editor.js", "report_canvas_editor.js", "report_saved_graphs.js", "report_condition_options.js", "report_editor.js"))
+    script = "\n".join((Path(__file__).parent / name).read_text(encoding="utf-8")
+                       for name in ("file_save.js", "report_editor_icons.js", "report_page_sidebar.js", "report_direct_editor.js", "report_canvas_editor.js", "report_saved_graphs.js", "report_condition_options.js", "xrd_workbench/web/shared/mail_editor.js", "report_editor.js"))
     return template.replace("__CONFIG__", config).replace("__SCRIPT__", script).replace(
         "</body>", floating_panels_html() + "</body>", 1
     )
