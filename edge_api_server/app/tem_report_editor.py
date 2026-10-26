@@ -163,7 +163,7 @@ def install_tem_editor(router):
         authorized_job(request, job_id)
         return HTMLResponse(editor_page(prefix, job_id, project="TEM"), headers={"Cache-Control": "no-store",
             "X-Content-Type-Options": "nosniff", "X-Frame-Options": "SAMEORIGIN",
-            "Content-Security-Policy": "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self'; connect-src 'self'; frame-src 'self'; frame-ancestors 'self'; base-uri 'none'; form-action 'none'"})
+            "Content-Security-Policy": "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' blob: data:; connect-src 'self'; frame-src 'self'; frame-ancestors 'self'; base-uri 'none'; form-action 'none'"})
 
     @router.get(prefix + "/{job_id}/editor-data", tags=["tem"])
     def data(request: Request, job_id: str):

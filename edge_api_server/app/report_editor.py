@@ -22,7 +22,7 @@ from .report.editor_variables import resolve_changes
 from .report.canvas import ObjectEdit
 from .report_queue import register_generated_report_package
 from .storage import atomic_write_json
-from .report_mail import mail_payload
+from .report_mail import mail_payload, edit_text_size
 from rist_common.plotting.floating_panels import floating_panels_html
 
 _REVISION_SLOT = BoundedSemaphore(1)
@@ -147,13 +147,13 @@ def _validate_changes(changes, document):
             raise ValueError("표지의 이력 정보는 항목당 200자 이하로 입력하세요. 상세 내용은 본문에 작성하세요.")
     if set(values["auxiliary"]) - {"email_subject", "email_body"} or any(len(v) > 4000 for v in values["auxiliary"].values()):
         raise ValueError("메일 문안이 올바르지 않습니다.")
-    if len(json.dumps(values, ensure_ascii=False)) > 120000:
+    if edit_text_size(values) > 120000:
         raise ValueError("보고서 수정 내용이 너무 많습니다.")
     expanded = resolve_changes(values)
     for section in expanded["sections"]:
         if section["sectionId"] == "report_traceability" and any(len(cell) > 200 for row in section["rows"] for cell in row):
             raise ValueError("공통 항목을 반영한 표지 정보는 항목당 200자 이하여야 합니다.")
-    if len(json.dumps(expanded, ensure_ascii=False)) > 120000:
+    if edit_text_size(expanded) > 120000:
         raise ValueError("공통 항목을 반영한 보고서 수정 내용이 너무 많습니다.")
     from .report.pages import validate
     candidate = deepcopy(document)
@@ -274,7 +274,7 @@ def install_report_editor(router, kind):
         _authorized_job(request, job_id, kind)
         return HTMLResponse(editor_page(prefix, job_id), headers={"Cache-Control": "no-store",
             "X-Content-Type-Options": "nosniff", "X-Frame-Options": "SAMEORIGIN",
-            "Content-Security-Policy": "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' blob:; connect-src 'self'; frame-src 'self'; frame-ancestors 'self'; base-uri 'none'; form-action 'none'"})
+            "Content-Security-Policy": "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' blob: data:; connect-src 'self'; frame-src 'self'; frame-ancestors 'self'; base-uri 'none'; form-action 'none'"})
 
     @router.get(prefix + "/{job_id}/editor-data", tags=[kind])
     def data(request: Request, job_id: str):
@@ -285,7 +285,7 @@ def install_report_editor(router, kind):
         state_path = job.tmp_root / "job/report/editor-state.json"
         if state_path.is_file():
             source = json.loads(state_path.read_text(encoding="utf-8"))
-            model.update({key: source[key] for key in ("title", "auxiliary", "completionDate", "variables", "pageEdits", "canvasEdits") if key in source and source[key] is not None})
+            model.update({key: source[key] for key in ("title", "auxiliary", "deliveryEmail", "completionDate", "variables", "pageEdits", "canvasEdits") if key in source and source[key] is not None})
             by_id = {s["sectionId"]: s for s in source["sections"]}
             for section in model["sections"]:
                 saved = by_id.get(section["sectionId"])

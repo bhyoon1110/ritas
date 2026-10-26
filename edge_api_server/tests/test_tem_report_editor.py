@@ -119,6 +119,11 @@ def test_tem_revision_edits_visible_text_table_email_and_preserves_original(repo
     changes["transfer"] = dict(requestNumber="REQ-NEW", limsExperimentCode="LIMS-TEM", equipmentCode="EQ-1", operatorId="OP-1")
     changes["auxiliary"] = {"email_subject": "{{의뢰번호}} 분석 결과", "email_body": "검토 완료한 TEM 보고서입니다."}
     changes['deliveryEmail'] = dict(recipientName='TEM 의뢰자',to='to@example.com',cc='',bcc='hidden@example.com',signature='서명 {{의뢰번호}}',bodyHtml='<b>검토 완료한 TEM 보고서입니다.</b>')
+    from app.report_mail import clean_html
+    from tests.test_report_mail import embedded_image
+    rich, plain = clean_html(changes['deliveryEmail']['bodyHtml'] + '<table><tr><td>{{의뢰번호}}</td><td>3.2</td></tr></table><img src="' + embedded_image() + '">')
+    changes['deliveryEmail']['bodyHtml'] = rich
+    changes['auxiliary']['email_body'] = plain
     text = next(s for s in changes["sections"] if s["paragraphs"] and "TEM-A" in s["paragraphs"][0])
     text["paragraphs"][0] = "교정한 시료명 <literal>"
     table = next(s for s in changes["sections"] if s["rows"])
@@ -141,6 +146,8 @@ def test_tem_revision_edits_visible_text_table_email_and_preserves_original(repo
     with ZipFile(BytesIO(package)) as archive, ZipFile(h.job.pptx_path) as original:
         assert all(b'hidden@example.com' not in archive.read(name) for name in archive.namelist())
         assert '<b>검토 완료한 TEM 보고서입니다.</b>' in archive.read('email_body.html').decode()
+        assert 'data:image/png;base64,' in archive.read('email_body.html').decode()
+        assert '<table' in archive.read('email_body.html').decode() and 'REQ-NEW' in archive.read('email_body.html').decode()
         assert '서명 REQ-NEW' in archive.read('email_body.md').decode()
         assert "review/editor-state.json" not in archive.namelist()
         assert "REQ-NEW 분석 결과" in archive.read("email_body.md").decode()

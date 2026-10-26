@@ -69,6 +69,9 @@ def resolve_changes(value):
     result["auxiliary"] = {key: expand(text) for key, text in result["auxiliary"].items()}
     if result.get('deliveryEmail'):
         result['deliveryEmail']['signature'] = expand(result['deliveryEmail'].get('signature', ''))
+        if result['deliveryEmail'].get('bodyHtml'):
+            from ..report_mail import expand_rich_text
+            result['deliveryEmail']['bodyHtml'] = expand_rich_text(result['deliveryEmail']['bodyHtml'], expand)
     for page in (result.get("pageEdits") or {}).get("added", []):
         if page["id"] in result["pageEdits"].get("hidden", []):
             continue  # Hidden drafts may be incomplete; validate again on restore.

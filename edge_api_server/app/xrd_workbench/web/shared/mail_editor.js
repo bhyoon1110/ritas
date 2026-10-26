@@ -2,30 +2,59 @@
 (function () {
   "use strict";
   var keys = ["recipientName", "to", "cc", "bcc", "bodyHtml", "signature"];
+  var maxImage=256*1024,maxHtml=1500*1024;
   function node(tag, parent, text) { var e=document.createElement(tag);if(text!=null)e.textContent=text;if(parent)parent.appendChild(e);return e; }
   function plain(text) { var d=node("div");d.textContent=text;return d.innerHTML.replace(/\n/g,"<br>"); }
   function clean(source) {
-    // Parse off-document. Never accept URLs, images, CSS or event attributes.
+    // Parse off-document. Only bounded embedded raster images and fixed table styles.
+    if(String(source).length>maxHtml)throw Error("메일 본문 용량 제한을 초과했습니다.");
     var template=node("template"),target=node("div");template.innerHTML=String(source);
+    var images=0,total=0,tables=0;
     function copy(from,to,depth) {
       if(depth>40)return;
       Array.prototype.forEach.call(from.childNodes,function(child){
         if(child.nodeType===3){to.appendChild(document.createTextNode(child.nodeValue));return;}
         if(child.nodeType!==1)return;var tag=child.tagName.toLowerCase();
-        if(/^(script|style|iframe|object|svg|math|form|textarea|img|video|audio|link|meta)$/.test(tag))return;
-        var next=/^(p|div|br|strong|b|em|i|u|ul|ol|li)$/.test(tag)?node(tag,to):to;
+        if(/^(script|style|iframe|object|svg|math|form|textarea|video|audio|link|meta)$/.test(tag))return;
+        if(tag==="img"){
+          var src=child.getAttribute("src")||"",m=/^data:image\/(png|jpeg);base64,([A-Za-z0-9+/]*={0,2})$/.exec(src);
+          if(!m)return;
+          var size=m[2].length*3/4-(m[2].slice(-2)==="=="?2:m[2].slice(-1)==="="?1:0);
+          images++;total+=size;
+          if(size>maxImage||images>4||total>1024*1024)throw Error("이미지는 최대 4장, 장당 256KB·합계 1MB 이하입니다.");
+          var img=node("img",to),width=Number(child.getAttribute("width"))||640;
+          img.setAttribute("src",src);img.setAttribute("width",String(Math.max(1,Math.min(1280,Math.round(width)))));
+          img.setAttribute("alt",(child.getAttribute("alt")||"메일 본문 이미지").slice(0,200));img.setAttribute("style","max-width:100%;height:auto");return;
+        }
+        var next=/^(p|div|br|strong|b|em|i|u|ul|ol|li|table|thead|tbody|tfoot|tr|th|td)$/.test(tag)?node(tag,to):to;
+        if(tag==="table"){
+          tables++;if(tables>3||child.querySelector("table")||child.rows.length>20)throw Error("표는 최대 3개, 각 20행×8열이며 중첩 표는 지원하지 않습니다.");
+          Array.prototype.forEach.call(child.rows,function(row){if(row.cells.length>8)throw Error("표는 최대 8열입니다.");});
+          next.setAttribute("border","1");next.setAttribute("cellpadding","6");next.setAttribute("cellspacing","0");next.setAttribute("style","border-collapse:collapse;width:100%;table-layout:fixed");
+        }
+        if(tag==="td"||tag==="th")next.setAttribute("style","border:1px solid #94a3b8;padding:6px;vertical-align:top;word-break:break-word");
         copy(child,next,depth+1);
       });
     }
     copy(template.content,target,0);return target.innerHTML;
   }
+  function plainHtml(source){
+    var t=node("template");t.innerHTML=source;var out=[];
+    function walk(parent){Array.prototype.forEach.call(parent.childNodes,function(n){
+      if(n.nodeType===3){out.push(n.nodeValue);return;}if(n.nodeType!==1)return;
+      var tag=n.tagName.toLowerCase();if(tag==="img"){out.push("\n[이미지]\n");return;}
+      if(/^(p|div|li|br)$/.test(tag))out.push("\n");walk(n);
+      if(/^(p|div|li|tr|table)$/.test(tag))out.push("\n");if(tag==="td"||tag==="th")out.push("\t");
+    });}walk(t.content);return out.join("").replace(/\u00a0/g," ").trim();
+  }
   function styles() {
     if(document.getElementById("rist-mail-styles"))return;
     var css=node("style",document.head);css.id="rist-mail-styles";
     css.textContent=".mail-addresses{display:flex;flex-wrap:wrap;margin:0}.mail-addresses label{flex:1 1 240px;min-width:0;padding:0 6px;box-sizing:border-box}.mail-addresses input{width:100%;box-sizing:border-box}.mail-toolbar{display:flex;flex-wrap:wrap;align-items:center;margin:6px 0}.mail-toolbar button{min-height:34px;min-width:34px;margin:3px;padding:5px 9px;font-size:13px;white-space:nowrap}.mail-rich{display:block;box-sizing:border-box;min-height:260px;max-height:650px;overflow:auto;resize:vertical;padding:12px;border:1px solid #94a3b8;border-radius:5px;background:white;color:#172b4d;font:16px/1.65 Arial,sans-serif;white-space:pre-wrap;overflow-wrap:break-word;word-break:break-word}.mail-rich:focus{outline:2px solid #2563eb}.mail-rich p{margin:0 0 8px}.mail-rich[contenteditable=false]{background:#f1f5f9}.mail-signature{margin-top:12px}.mail-signature textarea{width:100%;min-height:100px;font:inherit;box-sizing:border-box}.mail-note{font-size:12px;color:#526277;margin:6px 0}.mail-compose [hidden]{display:none!important}.mail-compose input,.mail-compose textarea{max-width:100%}";
+    css.textContent+=".mail-rich table{width:100%;min-width:0;table-layout:fixed;border-collapse:collapse;margin:8px 0}.mail-rich td,.mail-rich th{border:1px solid #94a3b8;padding:6px;vertical-align:top;word-break:break-word}.mail-rich img{max-width:100%;height:auto;cursor:pointer}.mail-media-options{display:flex;flex-wrap:wrap;align-items:center;max-width:100%}.mail-media-options label{display:inline-flex;align-items:center;margin:3px}.mail-media-options input{margin:0 4px}.mail-toolbar[hidden]{display:none}";
   }
   window.RistMailEditor=function(options){
-    styles();var host=options.host,body=options.body,fields={},state={},locked=false,range=null,sourceMode=false;
+    styles();var host=options.host,body=options.body,fields={},state={},locked=false,range=null,sourceMode=false,mediaBusy=false,selectedImage=null,selectedCell=null;
     host.classList.add("mail-compose");
     var addresses=node("div");addresses.className="mail-addresses";host.insertBefore(addresses,options.before||body.parentNode);
     [["recipientName","수신자 이름",200],["to","수신자 이메일 주소",2000],["cc","참조 (CC)",2000],["bcc","비밀참조 (BCC)",2000]].forEach(function(info){
@@ -37,24 +66,108 @@
     var toolbar=node("div"),rich=node("div");toolbar.className="mail-toolbar";toolbar.setAttribute("role","toolbar");toolbar.setAttribute("aria-label","메일 본문 편집 도구");
     rich.className="mail-rich";rich.contentEditable="true";rich.setAttribute("role","textbox");rich.setAttribute("aria-label","메일 본문 서식 편집");rich.setAttribute("aria-multiline","true");
     body.parentNode.insertBefore(toolbar,body);body.parentNode.insertBefore(rich,body);body.hidden=true;
+    var mediaNote=node("p");mediaNote.className="mail-note";mediaNote.setAttribute("role","status");rich.parentNode.insertBefore(mediaNote,rich.nextSibling);
+    mediaNote.textContent="이미지 4장 · 장당 256KB/합계 1MB · 긴 변 1,280px 자동 축소. 표 3개 · 각 20행×8열. 이미지나 표를 클릭하면 편집 도구가 나타납니다.";
     function notify(){if(options.changed)options.changed();}
     function button(parent,text,label,handler){var b=node("button",parent,text);b.type="button";b.title=label;b.setAttribute("aria-label",label);b.onclick=handler;return b;}
     function remember(){var s=window.getSelection();if(s.rangeCount&&rich.contains(s.anchorNode))range=s.getRangeAt(0).cloneRange();}
     rich.addEventListener("mouseup",remember);rich.addEventListener("keyup",remember);rich.addEventListener("blur",remember);
     function sync(){
       if(locked)return;
-      state.bodyHtml=clean(rich.innerHTML);
-      body.value=(typeof rich.innerText==="string"?rich.innerText:rich.textContent).replace(/\u00a0/g," ");
+      try{state.bodyHtml=clean(rich.innerHTML);}catch(error){mediaNote.textContent=error.message;return;}
+      body.value=plainHtml(state.bodyHtml);
       notify();
+    }
+    function insert(html){
+      if(locked||sourceMode)return;rich.focus();
+      var s=window.getSelection();
+      if(range&&rich.contains(range.startContainer)){s.removeAllRanges();s.addRange(range);}
+      else{range=document.createRange();range.selectNodeContents(rich);range.collapse(false);s.removeAllRanges();s.addRange(range);}
+      document.execCommand("insertHTML",false,html);remember();sync();
     }
     [["B","굵게","bold"],["I","기울임","italic"],["U","밑줄","underline"],["•","글머리 기호","insertUnorderedList"],["1.","번호 목록","insertOrderedList"],["Tx","서식 지우기","removeFormat"]].forEach(function(info){
       var b=button(toolbar,info[0],info[1],function(){if(locked||sourceMode)return;rich.focus();if(range){var s=window.getSelection();s.removeAllRanges();s.addRange(range);}if(document.execCommand)document.execCommand(info[2],false,null);remember();sync();});
       b.onmousedown=function(e){e.preventDefault();};
     });
-    var toggle=button(toolbar,"일반 텍스트","메일 본문 일반 텍스트 전환",function(){sourceMode=!sourceMode;body.hidden=!sourceMode;rich.hidden=sourceMode;toggle.textContent=sourceMode?"서식 편집":"일반 텍스트";toggle.setAttribute("aria-pressed",String(sourceMode));if(!sourceMode){rich.innerHTML=state.bodyHtml||plain(body.value);rich.focus();}else body.focus();});
+    var file=node("input",host);file.type="file";file.accept="image/png,image/jpeg";file.hidden=true;file.setAttribute("aria-label","메일 이미지 파일");
+    var imageButton=button(toolbar,"이미지","메일 이미지 삽입",function(){if(locked||sourceMode||mediaBusy)return;remember();file.click();});
+    function dimensions(buffer){
+      var v=new DataView(buffer),i=2,m,n;
+      if(v.byteLength>=24&&v.getUint32(0)===0x89504e47&&v.getUint32(4)===0x0d0a1a0a)return [v.getUint32(16),v.getUint32(20)];
+      if(v.byteLength<4||v.getUint16(0)!==0xffd8)throw Error("PNG 또는 JPEG 파일만 넣을 수 있습니다.");
+      while(i+8<v.byteLength){if(v.getUint8(i++)!==255)break;while(v.getUint8(i)===255)i++;m=v.getUint8(i++);if(m===0xda||m===0xd9)break;n=v.getUint16(i);
+        if([0xc0,0xc1,0xc2,0xc3,0xc5,0xc6,0xc7,0xc9,0xca,0xcb,0xcd,0xce,0xcf].indexOf(m)>=0)return [v.getUint16(i+5),v.getUint16(i+3)];if(n<2)break;i+=n;}
+      throw Error("이미지 크기를 확인하지 못했습니다. PNG/JPEG로 다시 저장하세요.");
+    }
+    function finishImage(message){mediaBusy=false;imageButton.disabled=locked;mediaNote.textContent=message;file.value="";}
+    function uploadImage(f){
+      if(!f||locked||sourceMode||mediaBusy)return;
+      if(f.size>5*1024*1024){mediaNote.textContent="원본 이미지는 5MB 이하로 선택하세요.";return;}
+      if(rich.querySelectorAll("img").length>=4){mediaNote.textContent="이미지는 최대 4장입니다. 기존 이미지를 삭제한 후 추가하세요.";return;}
+      mediaBusy=true;imageButton.disabled=true;mediaNote.textContent="이미지 크기와 용량을 확인하는 중입니다…";
+      var reader=new FileReader();reader.onerror=function(){finishImage("이미지 파일을 읽지 못했습니다.");};
+      reader.onload=function(){
+        try{var size=dimensions(reader.result);if(!size[0]||!size[1]||size[0]*size[1]>12000000||Math.max(size[0],size[1])>12000)throw Error("원본 이미지는 1,200만 화소 이하로 축소해 주세요.");}
+        catch(error){finishImage(error.message);return;}
+        var image=new Image(),objectURL=URL.createObjectURL(f);
+        image.onerror=function(){URL.revokeObjectURL(objectURL);finishImage("이미지를 열지 못했습니다.");};
+        image.onload=function(){
+          URL.revokeObjectURL(objectURL);
+          try{
+            var w=image.naturalWidth,h=image.naturalHeight;if(w*h>12000000||!w||!h)throw Error("원본 이미지 크기 제한을 초과했습니다.");
+            var scale=Math.min(1,1280/Math.max(w,h)),canvas=node("canvas"),encoded="",attempt;
+            for(attempt=0;attempt<6;attempt++){
+              canvas.width=Math.max(1,Math.round(w*scale));canvas.height=Math.max(1,Math.round(h*scale));var ctx=canvas.getContext("2d");
+              ctx.fillStyle="white";ctx.fillRect(0,0,canvas.width,canvas.height);ctx.drawImage(image,0,0,canvas.width,canvas.height);
+              encoded=canvas.toDataURL("image/jpeg",attempt===0 ? 0.9 : 0.8);
+              if((encoded.length-23)*3/4<=maxImage)break;scale*=.8;
+            }
+            if((encoded.length-23)*3/4>maxImage)throw Error("이미지를 256KB 이하로 줄이지 못했습니다.");
+            if(locked||sourceMode)throw Error("편집 상태가 바뀌어 이미지 삽입을 취소했습니다.");
+            insert('<p><img src="'+encoded+'" width="'+Math.min(canvas.width,640)+'" alt="메일 본문 이미지" style="max-width:100%;height:auto"></p><p><br></p>');
+            canvas.width=canvas.height=1;finishImage("이미지를 본문에 포함했습니다. 클릭하여 표시 폭을 변경하거나 삭제할 수 있습니다.");
+          }catch(error){finishImage(error.message);}
+        };image.src=objectURL;
+      };reader.readAsArrayBuffer(f.slice(0,256*1024));
+    }
+    file.onchange=function(){uploadImage(file.files[0]);};
+    var mediaTools=node("div");mediaTools.className="mail-toolbar";mediaTools.hidden=true;rich.parentNode.insertBefore(mediaTools,rich);
+    var imageTools=node("div",mediaTools),widthLabel=node("label",imageTools,"이미지 폭(px) "),imageWidth=node("input",widthLabel);
+    imageWidth.type="number";imageWidth.min=40;imageWidth.max=1280;imageWidth.style.width="85px";imageWidth.setAttribute("aria-label","메일 이미지 표시 폭");
+    imageWidth.onchange=function(){if(locked||sourceMode||!selectedImage)return;var value=Number(imageWidth.value);if(!isFinite(value)||value<40||value>1280){mediaNote.textContent="이미지 표시 폭은 40~1,280px입니다.";return;}selectedImage.setAttribute("width",String(Math.round(value)));sync();};
+    button(imageTools,"이미지 삭제","선택한 메일 이미지 삭제",function(){if(!locked&&selectedImage){selectedImage.parentNode.removeChild(selectedImage);selectedImage=null;mediaTools.hidden=true;sync();}});
+    var tableInsert=node("div",mediaTools),rowLabel=node("label",tableInsert,"행 "),rows=node("input",rowLabel),colLabel=node("label",tableInsert,"열 "),cols=node("input",colLabel);
+    [[rows,"메일 표 행 수",20],[cols,"메일 표 열 수",8]].forEach(function(v){v[0].type="number";v[0].min=1;v[0].max=v[2];v[0].value=3;v[0].style.width="60px";v[0].setAttribute("aria-label",v[1]);});
+    button(toolbar,"표","메일 표 삽입 설정",function(){if(locked||sourceMode)return;remember();mediaTools.hidden=false;imageTools.hidden=true;tableInsert.hidden=false;tableTools.hidden=true;});
+    button(tableInsert,"표 삽입","메일 표 삽입",function(){
+      if(locked||sourceMode)return;var r=Number(rows.value),c=Number(cols.value);
+      if(r<1||r>20||c<1||c>8||r%1||c%1||rich.querySelectorAll("table").length>=3){mediaNote.textContent="표는 최대 3개, 각 1~20행·1~8열입니다.";return;}
+      // A table inserted within another table creates invalid nested mail markup.
+      if(range){var owner=range.startContainer.nodeType===1?range.startContainer:range.startContainer.parentNode;if(owner.closest&&owner.closest("table"))range=null;}
+      var html='<table><tbody>';for(var a=0;a<r;a++){html+='<tr>';for(var b=0;b<c;b++)html+='<td><br></td>';html+='</tr>';}html+='</tbody></table><p><br></p>';
+      insert(clean(html));mediaTools.hidden=true;
+    });
+    var tableTools=node("div",mediaTools);
+    imageTools.className=tableInsert.className=tableTools.className="mail-media-options";
+    function tableEdit(action){
+      if(locked||sourceMode||!selectedCell||!rich.contains(selectedCell))return;
+      var table=selectedCell.closest("table"),row=selectedCell.parentNode,index=selectedCell.cellIndex;
+      if(action==="delete"){table.parentNode.removeChild(table);selectedCell=null;mediaTools.hidden=true;sync();return;}
+      if(action==="row+"){if(table.rows.length>=20){mediaNote.textContent="표는 최대 20행입니다.";return;}var added=table.insertRow(row.rowIndex+1);for(var i=0;i<row.cells.length;i++)added.insertCell().innerHTML="<br>";}
+      if(action==="col+"){if(row.cells.length>=8){mediaNote.textContent="표는 최대 8열입니다.";return;}Array.prototype.forEach.call(table.rows,function(r){r.insertCell(Math.min(index+1,r.cells.length)).innerHTML="<br>";});}
+      if(action==="row-"){if(table.rows.length===1)return tableEdit("delete");table.deleteRow(row.rowIndex);selectedCell=null;mediaTools.hidden=true;}
+      if(action==="col-"){if(row.cells.length===1)return tableEdit("delete");Array.prototype.forEach.call(table.rows,function(r){if(r.cells[index])r.deleteCell(index);});selectedCell=null;mediaTools.hidden=true;}
+      sync();
+    }
+    [["행 +","아래 행 추가","row+"],["행 −","선택 행 삭제","row-"],["열 +","오른쪽 열 추가","col+"],["열 −","선택 열 삭제","col-"],["표 삭제","선택한 메일 표 삭제","delete"]].forEach(function(v){button(tableTools,v[0],v[1],function(){tableEdit(v[2]);});});
+    rich.addEventListener("click",function(e){selectedImage=e.target.tagName==="IMG"?e.target:null;selectedCell=e.target.closest("td,th");mediaTools.hidden=!(selectedImage||selectedCell);imageTools.hidden=!selectedImage;tableTools.hidden=!selectedCell;tableInsert.hidden=true;if(selectedImage)imageWidth.value=selectedImage.getAttribute("width")||640;});
+    var toggle=button(toolbar,"일반 텍스트","메일 본문 일반 텍스트 전환",function(){
+      if(mediaBusy)return;if(!sourceMode&&rich.querySelector("img,table")&&!window.confirm("일반 텍스트에서 내용을 수정하면 이미지·표·서식이 사라집니다. 전환할까요?"))return;
+      sourceMode=!sourceMode;mediaTools.hidden=true;body.hidden=!sourceMode;rich.hidden=sourceMode;toggle.textContent=sourceMode?"서식 편집":"일반 텍스트";toggle.setAttribute("aria-pressed",String(sourceMode));if(!sourceMode){rich.innerHTML=state.bodyHtml||plain(body.value);rich.focus();}else body.focus();});
     rich.addEventListener("input",sync);
     rich.addEventListener("paste",function(e){
       e.preventDefault();if(locked)return;var data=e.clipboardData||window.clipboardData,text=data&&data.getData("text/plain");
+      if(data&&data.items){for(var i=0;i<data.items.length;i++)if(data.items[i].kind==="file"){uploadImage(data.items[i].getAsFile());return;}}
       if(text&&document.execCommand){document.execCommand("insertText",false,text);sync();}
     });
     rich.addEventListener("drop",function(e){e.preventDefault();});
@@ -71,11 +184,11 @@
     button(actions,"기본 서명 저장","내 기본 서명 저장",function(){if(locked)return;preference("PUT",function(){feedback.textContent="내 기본 서명을 저장했습니다. 4개 실험에서 같은 계정으로 불러올 수 있습니다.";});});
     button(actions,"기본 서명 불러오기","내 기본 서명 불러오기",function(){if(locked)return;if(signature.value&&!window.confirm("현재 보고서의 서명을 기본 서명으로 바꿀까요?"))return;preference("GET",function(value){if(locked)return;signature.value=state.signature=value.signature||"";notify();feedback.textContent="기본 서명을 현재 보고서에 적용했습니다.";});});
     node("p",signatureBox,"서명은 본문과 분리해 저장하여 중복 삽입을 방지합니다. 기존 보고서는 자동으로 덮어쓰지 않습니다.").className="mail-note";
-    function load(value){state={};keys.forEach(function(k){state[k]=String((value||{})[k]||"");if(fields[k])fields[k].value=state[k];});state.bodyHtml=clean(state.bodyHtml);rich.innerHTML=state.bodyHtml||plain(body.value);range=null;}
+    function load(value){state={};keys.forEach(function(k){state[k]=String((value||{})[k]||"");if(fields[k])fields[k].value=state[k];});state.bodyHtml=clean(state.bodyHtml);rich.innerHTML=state.bodyHtml||plain(body.value);range=null;selectedImage=selectedCell=null;mediaTools.hidden=true;}
     load(options.value);
     return {value:function(){var result={};keys.forEach(function(k){result[k]=fields[k]?fields[k].value:state[k]||"";});return result;},load:load,
-      lock:function(value){locked=!!value;rich.contentEditable=String(!locked);Array.prototype.forEach.call(host.querySelectorAll(".mail-addresses input,.mail-toolbar button,.mail-signature textarea"),function(e){e.disabled=locked;});},
-      validate:function(){if(body.value.length>4000){return "메일 본문은 4,000자 이하로 입력하세요.";}return "";}};
+      lock:function(value){locked=!!value;rich.contentEditable=String(!locked);Array.prototype.forEach.call(host.querySelectorAll(".mail-addresses input,.mail-toolbar button,.mail-toolbar input,.mail-signature textarea"),function(e){e.disabled=locked;});imageButton.disabled=locked||mediaBusy;},
+      validate:function(){if(mediaBusy)return "이미지 처리가 끝난 후 저장하세요.";if(body.value.length>4000)return "메일 본문은 4,000자 이하로 입력하세요.";try{clean(rich.innerHTML);}catch(error){return error.message;}return "";}};
   };
   window.RistMailEditor.clean=clean;
 }());

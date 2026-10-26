@@ -172,6 +172,11 @@ def test_draft_generation_is_ephemeral_editable_and_preserved_in_recovery(tmp_pa
     doc['email'] = dict(response.json(), subject='사용자 제목', body='사용자 본문', status='manual',
                         delivery=normalize_delivery(dict(to='to@example.com', bcc='secret@example.com',
                             bodyHtml='<strong>사용자 본문</strong>', signature='담당자 서명')))
+    from app.report_mail import clean_html
+    from tests.test_report_mail import embedded_image
+    rich, plain = clean_html('<strong>사용자 본문</strong><table><tr><td>값</td></tr></table><img src="' + embedded_image() + '">')
+    doc['email']['delivery']['bodyHtml'] = rich
+    doc['email']['body'] = plain
     recovered = client.put(BASE + f'/api/reports/{sid}/draft', json=dict(document=doc, baseline=baseline, expected_revision=0))
     assert recovered.status_code == 200, recovered.text
     assert client.get(BASE + f'/api/reports/{sid}/draft').json()['document']['email'] == doc['email']

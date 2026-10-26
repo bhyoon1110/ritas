@@ -200,7 +200,7 @@ Spring Boot는 다음 항목을 모두 확인해야 한다.
 ```json
 {
   "email": {
-    "schemaVersion": 1,
+    "schemaVersion": 2,
     "recipientPolicy": "explicit",
     "recipientName": "의뢰 담당자",
     "to": ["recipient@example.com"],
@@ -208,7 +208,8 @@ Spring Boot는 다음 항목을 모두 확인해야 한다.
     "bcc": ["archive@example.com"],
     "subject": "[RIST] 분석 결과 보고서 안내",
     "bodyText": "분석 결과 안내\n\n등록한 서명",
-    "bodyHtml": "<p><strong>분석 결과 안내</strong></p><br><br>등록한 서명"
+    "bodyHtml": "<p><strong>분석 결과 안내</strong></p><br><br>등록한 서명",
+    "inlineImages": []
   }
 }
 ```
@@ -216,10 +217,37 @@ Spring Boot는 다음 항목을 모두 확인해야 한다.
 - 편집 화면의 주소는 쉼표/세미콜론 구분 문자열이다. 유효한 주소는 보고서 등록 시 `to/cc/bcc` 배열로 검증·중복 제거하며 전송 요청 시 다시 검증한다. 입력 중인 불완전한 주소는 초안에 보존하되 전송을 차단한다. 주소와 수신자 이름이 모두 비어 있으면 `recipientPolicy: "lims"`이며 기존 의뢰 수신자 조회 정책을 유지한다.
 - `report_transfers`는 메일 컬럼을 추가하지 않는다. Spring은 해당 `report_id`의 `report_runs.report_options_json.email`을 읽는다. 재전송도 이 저장된 수정본을 사용한다.
 - BCC는 **SMTP envelope 전용**이다. 메일 헤더·수신자 화면·보고서·ZIP·일반 로그에 출력하지 않는다. `email` 전체를 무분별하게 로깅하지 않는다.
-- HTML은 굵게·기울임·밑줄·목록·문단만 허용한다. 외부 이미지·스크립트·CSS·링크는 제거된다. Spring도 HTML 렌더링 전 동일한 허용 정책을 적용하고 HTML/일반 텍스트 대체 본문을 함께 구성한다.
+- HTML은 굵게·기울임·밑줄·목록·문단·표와 검증된 PNG/JPEG 이미지만 허용한다. 표/이미지 배치를 위한 고정 스타일 외에 사용자 CSS·스크립트·외부 이미지·링크는 제거된다. Spring도 같은 허용 정책을 적용하고 HTML/일반 텍스트 대체 본문을 함께 구성한다.
 - 서명은 본문 끝에 이미 합쳐져 전달된다. Spring에서 다시 붙이지 않는다. 기본 서명은 인증 사용자별로 공유 저장소의 `user-mail-preferences/`에 비공개 저장하며 네 실험에서 불러올 수 있다. 기존 보고서의 서명은 기본 서명 변경으로 덮어쓰지 않는다.
 - 기본 서명 API: `GET/PUT /api/v1/report-mail/signature`, 본문은 `{"signature":"서명 내용"}`이다. 활성 회원 인증이 필요하며 PUT은 동일 출처와 `X-Requested-With: RIST-Mail-Editor`를 검증한다. 사용자 ID는 인증 세션에서 결정하고 클라이언트가 지정하지 않는다. 서명은 2,000자 이내이고 백업 시 해당 비공개 저장 폴더도 포함한다.
 - 배포 확인: 새 필드로 저장→재열기→SSO 전송→DB 메일 확인→Spring/LIMS 테스트 메일 수신 순서로 검증한다. 실제 발송 테스트 전 수신자를 확인한다.
+
+#### 이미지·표 및 메일 MIME 계약 (schemaVersion 2)
+
+- 편집 초안의 `deliveryEmail.bodyHtml`(XRD: `email.delivery.bodyHtml`)과 다운로드용 `email_body.html`은 `data:image/...;base64,...`를 포함하는 독립 HTML이다. 추가 이미지 파일이나 외부 URL 없이 열 수 있다. XRD 패키지는 기존 최소 구성대로 별도 메일 파일을 넣지 않는다.
+- `email_body.md`는 텍스트 보관용이다. Markdown 파일 또는 HTML 문자열을 `text/plain` 본문으로 보내면 소스로 보일 수 있으므로 **발송 본문으로 그대로 복사하지 않는다.** 메일은 `bodyHtml`을 `text/html; charset=UTF-8`로, `bodyText`를 텍스트 대체 본문으로 보낸다.
+- 전송 메타데이터에서는 `bodyHtml`의 이미지를 `src="cid:rist-<hash>@report"`로 변환한다. 대응하는 `inlineImages` 원소는 `contentId`, `contentType`(`image/png` 또는 `image/jpeg`), `dataBase64`, `sizeBytes`, `width`, `height`를 포함한다. DB 안에 이미지 바이트도 함께 들어가므로 별도 디스크 파일/다운로드 URL은 필요 없다.
+- Spring/LIMS 발송기는 `dataBase64`를 디코딩해 `Content-ID`가 일치하는 **MIME 인라인 이미지**로 넣는다. 단순 첨부(`attachment`)로 보내거나 HTML 안의 Base64 data URL을 그대로 보내는 것은 피한다. MIME은 전송 중 Base64 인코딩할 수 있으나 이는 HTML data URL과 다르다. 수신 프로그램 설정에 따라 이미지 차단이나 첨부 목록 표시가 있을 수 있으므로 실제 사내 메일에서 검증해야 한다.
+- 원본 선택: PNG/JPEG, 파일 5MiB 이하, 1,200만 화소 이하. 브라우저에서 긴 변 1,280px 이하로 축소하고 JPEG로 압축한다(투명 영역은 흰색). 삽입 결과: 장당 256KiB, 최대 4장, 합계 1MiB. 서버도 실제 형식·디코딩·화소·용량을 재검증한다. Base64 크기는 원본 바이트보다 대략 33% 커진다. 서식 본문 전체는 1,500KiB 이내이며 기존 보고서 요청 전체 용량 제한도 함께 적용된다.
+- 표: 최대 3개, 각 20행×8열. 중첩 표·병합 셀은 지원하지 않는다. 본문 글자는 기존 4,000자 제한을 유지한다.
+- 서명은 이미 합쳐져 있다. `schemaVersion: 1` 기존 문서는 인라인 이미지 없이 계속 지원하며, 없는 `inlineImages` 필드는 빈 목록으로 처리한다. v2의 이미지 참조가 없거나 크기·식별자가 맞지 않으면 발송 실패로 기록하고 조용히 누락하지 않는다. `inlineImages` 원문은 로그에 출력하지 않는다.
+
+Spring의 `MimeMessageHelper` 구성 예시(메일 DTO 접근자는 실제 구현에 맞춰 매핑):
+
+```java
+MimeMessageHelper helper = new MimeMessageHelper(message,
+    MimeMessageHelper.MULTIPART_MODE_MIXED_RELATED, "UTF-8");
+// 기존 From/To/CC/BCC/Subject·SSO/전송 정책을 적용한 뒤:
+helper.setText(mail.getBodyText(), mail.getBodyHtml()); // HTML을 escape하거나 MD로 보내지 않음
+for (InlineImage image : mail.getInlineImages()) {
+    byte[] bytes = Base64.getDecoder().decode(image.getDataBase64());
+    // 위 형식·장수·용량·CID 검증 후, setText 다음에 추가
+    helper.addInline(image.getContentId(), new ByteArrayResource(bytes), image.getContentType());
+}
+// 기존 승인된 발송 경로에서 전송. 이 문서/Edge Python이 실제 메일을 발송하지는 않음.
+```
+
+공식 참고: [Spring HTML·인라인 이미지 메일](https://docs.spring.io/spring-framework/reference/integration/email.html), [Content-ID 표준 RFC 2392](https://www.rfc-editor.org/info/rfc2392/).
 
 LIMS 전송 흐름은 기존 `jobs`와 보고서 큐 테이블로 구성한다. 보고서 재생성
 신호와 프롬프트는 전송 큐와 분리해 `report_regeneration_requests`에 보존한다.

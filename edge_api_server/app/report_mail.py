@@ -13,17 +13,20 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
 from .errors import ApiException
+from .report_mail_media import MailImages, MAX_HTML, MAX_TABLES, MAX_ROWS, MAX_COLS
 
 FIELDS = {"recipientName": 200, "to": 2000, "cc": 2000, "bcc": 2000,
-          "bodyHtml": 32000, "signature": 2000}
-TAGS = {"p", "div", "br", "strong", "b", "em", "i", "u", "ul", "ol", "li"}
+          "bodyHtml": MAX_HTML, "signature": 2000}
+TAGS = {"p", "div", "br", "strong", "b", "em", "i", "u", "ul", "ol", "li",
+        "table", "thead", "tbody", "tfoot", "tr", "th", "td", "img"}
 BLOCKED = {"script", "style", "iframe", "object", "svg", "math", "form", "textarea"}
 
 
 class _MailHTML(HTMLParser):
-    def __init__(self):
+    def __init__(self, images):
         super().__init__(convert_charrefs=True)
         self.html, self.text, self.stack, self.skip = [], [], [], 0
+        self.images, self.tables, self.rows, self.cols = images, 0, 0, 0
 
     def handle_starttag(self, tag, attrs):
         if tag in BLOCKED:
@@ -31,15 +34,49 @@ class _MailHTML(HTMLParser):
         if self.skip:
             return
         if tag in TAGS:
-            self.html.append('<' + tag + '>')
-            if tag != 'br':
+            extra = ''
+            if tag == 'img':
+                attributes = dict(attrs)
+                source = attributes.get('src') or ''
+                # Reject invalid embedded data, but drop external tracking images.
+                if not source.startswith(('data:', 'cid:')):
+                    return
+                source, item = self.images.source(source)
+                width = attributes.get('width') or str(min(item['width'], 640))
+                if not width.isdigit() or not 1 <= int(width) <= 1280:
+                    raise ValueError('메일 이미지 표시 폭은 1~1,280px입니다.')
+                alt = (attributes.get('alt') or '메일 본문 이미지')[:200]
+                extra = ' src="' + escape(source, quote=True) + '" width="' + width + '" alt="' + escape(alt, quote=True) + '" style="max-width:100%;height:auto"'
+                self.text.append('\n[이미지]\n')
+            elif tag == 'table':
+                self.tables += 1
+                if 'table' in self.stack or self.tables > MAX_TABLES:
+                    raise ValueError('중첩 표는 지원하지 않으며 메일에는 표를 최대 3개 넣을 수 있습니다.')
+                self.rows = self.cols = 0
+                extra = ' border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse;width:100%;table-layout:fixed"'
+            elif tag == 'tr':
+                if 'table' not in self.stack:
+                    raise ValueError('메일 표 구조를 확인하세요.')
+                self.rows += 1
+                self.cols = 0
+                if self.rows > MAX_ROWS:
+                    raise ValueError('표는 최대 20행입니다.')
+            elif tag in {'td', 'th'}:
+                if 'tr' not in self.stack:
+                    raise ValueError('메일 표 구조를 확인하세요.')
+                self.cols += 1
+                if self.cols > MAX_COLS:
+                    raise ValueError('표는 최대 8열입니다.')
+                extra = ' style="border:1px solid #94a3b8;padding:6px;vertical-align:top;word-break:break-word"'
+            self.html.append('<' + tag + extra + '>')
+            if tag not in {'br', 'img'}:
                 self.stack.append(tag)
             if tag in {'p', 'div', 'li', 'br'}:
                 self.text.append('\n')
 
     def handle_startendtag(self, tag, attrs):
         self.handle_starttag(tag, attrs)
-        if tag != 'br':
+        if tag not in {'br', 'img'}:
             self.handle_endtag(tag)
 
     def handle_endtag(self, tag):
@@ -53,8 +90,10 @@ class _MailHTML(HTMLParser):
                 self.html.append('</' + current + '>')
                 if current == tag:
                     break
-        if tag in {'p', 'div', 'li'}:
+        if tag in {'p', 'div', 'li', 'tr', 'table'}:
             self.text.append('\n')
+        elif tag in {'td', 'th'}:
+            self.text.append('\t')
 
     def handle_data(self, data):
         if not self.skip:
@@ -62,14 +101,36 @@ class _MailHTML(HTMLParser):
             self.text.append(data)
 
 
-def clean_html(value):
-    if not isinstance(value, str) or len(value) > 48000:
+def clean_html(value, *, images=None):
+    if not isinstance(value, str) or len(value) > MAX_HTML:
         raise ValueError('메일 서식 본문과 서명이 너무 깁니다.')
-    parser = _MailHTML()
+    images = images if images is not None else MailImages()
+    parser = _MailHTML(images)
     parser.feed(value)
     parser.close()
     parser.html.extend('</' + tag + '>' for tag in reversed(parser.stack))
-    return ''.join(parser.html), ''.join(parser.text).strip()
+    html, text = ''.join(parser.html), ''.join(parser.text).strip()
+    if len(html) > MAX_HTML or len(text) > 8000:
+        raise ValueError('메일 서식 본문이 너무 깁니다.')
+    images.finish()
+    return html, text
+
+
+def expand_rich_text(value, expand):
+    """Expand report variables in text only, never inside image data/attributes."""
+    safe, _ = clean_html(value)
+    parts = []
+    class Expander(HTMLParser):
+        def handle_starttag(self, tag, attrs):
+            parts.append(self.get_starttag_text())
+        def handle_endtag(self, tag):
+            parts.append('</' + tag + '>')
+        def handle_data(self, data):
+            parts.append(escape(expand(data)).replace('\n', '<br>'))
+    parser = Expander(convert_charrefs=True)
+    parser.feed(safe)
+    parser.close()
+    return clean_html(''.join(parts))[0]
 
 
 def normalize_delivery(value=None):
@@ -83,6 +144,17 @@ def normalize_delivery(value=None):
             raise ValueError('메일 ' + key + ': 입력 길이·형식을 확인하세요.')
         result[key] = clean_html(text)[0] if key == 'bodyHtml' else text
     return result
+
+
+def edit_text_size(value):
+    """Keep the original document-text budget; raster bytes have their own budget."""
+    content = dict(value)
+    if content.get('deliveryEmail'):
+        content['deliveryEmail'] = dict(content['deliveryEmail'])
+        content['deliveryEmail']['bodyHtml'] = re.sub(
+            r'data:image/(?:png|jpeg);base64,[A-Za-z0-9+/=]+', '[embedded-image]',
+            content['deliveryEmail'].get('bodyHtml', ''))
+    return len(json.dumps(content, ensure_ascii=False))
 
 
 def addresses(value):
@@ -115,7 +187,7 @@ def mail_payload(subject, body, delivery=None, *, sending=False):
     if d['signature'].strip():
         body += '\n\n' + d['signature'].strip()
         html += '<br><br>' + escape(d['signature'].strip()).replace('\n', '<br>')
-    result = dict(schemaVersion=1, recipientName=d['recipientName'], subject=subject,
+    result = dict(schemaVersion=2, recipientName=d['recipientName'], subject=subject,
                   bodyText=body, bodyHtml=html, **{k: d[k] for k in ('to', 'cc', 'bcc')})
     try:
         return validate_envelope(result)
@@ -142,20 +214,24 @@ def validate_envelope(value):
         raise ValueError('수신자 이메일 주소를 입력하세요.')
     # No To means the existing LIMS recipient lookup policy remains in charge.
     result['recipientPolicy'] = 'explicit' if result['to'] else 'lims'
-    result['bodyHtml'] = clean_html(result.get('bodyHtml', ''))[0]
+    images = MailImages(result.get('inlineImages'), cid=True)
+    result['bodyHtml'] = clean_html(result.get('bodyHtml', ''), images=images)[0]
+    result['inlineImages'] = images.finish()
+    result['schemaVersion'] = 2
     return result
 
 
 def write_mail_files(directory, subject, body, delivery=None):
     """Public body only: never write To/Cc/Bcc to the downloadable report package."""
     mail = mail_payload(subject, body, delivery)
-    if not mail['subject'] and not mail['bodyText']:
+    if not mail['subject'] and not mail['bodyText'] and not mail['bodyHtml']:
         # These two generated sidecars belong to this writer; never keep stale drafts.
         for filename in ('email_body.md', 'email_body.html'):
             Path(directory, filename).unlink(missing_ok=True)
         return
     Path(directory, 'email_body.md').write_text('# ' + subject + '\n\n' + mail['bodyText'] + '\n', encoding='utf-8')
-    Path(directory, 'email_body.html').write_text('<!doctype html><html lang="ko"><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src \'none\'"><title>' + escape(subject) + '</title><body>' + mail['bodyHtml'] + '</body></html>', encoding='utf-8')
+    embedded = clean_html(mail['bodyHtml'], images=MailImages(mail.get('inlineImages')))[0]
+    Path(directory, 'email_body.html').write_text('<!doctype html><html lang="ko"><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src \'none\'; img-src data:; style-src \'unsafe-inline\'"><title>' + escape(subject) + '</title><body>' + embedded + '</body></html>', encoding='utf-8')
 
 
 router = APIRouter()

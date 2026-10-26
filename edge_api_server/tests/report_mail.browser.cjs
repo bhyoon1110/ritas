@@ -4,6 +4,7 @@ const {spawn,execFileSync}=require('node:child_process'),{chromium}=require('pla
 const output=fs.mkdtempSync(path.join(os.tmpdir(),'rist-mail-browser-')),web=path.resolve(__dirname,'../app/xrd_workbench/web');
 const python=process.env.RIST_TEST_PYTHON||'python3';
 const fixture=JSON.parse(execFileSync(python,['-c','import json; from tests.xrd_workbench.test_posco_pptx import fixture; p,d=fixture(); print(json.dumps(dict(project=p,document=d)))'],{env:process.env,encoding:'utf8'}));
+const imageBytes=Buffer.from(execFileSync(python,['-c','from tests.test_report_mail import embedded_image; print(embedded_image((2400,1800)).split(",")[1])'],{env:process.env,encoding:'utf8'}).trim(),'base64');
 const server=spawn(python,['-u',path.join(__dirname,'spectrum_workflow_fixture.py'),output],{env:process.env});
 let logs='';server.stderr.on('data',s=>logs+=s);
 const port=new Promise((resolve,reject)=>{let s='';server.stdout.on('data',chunk=>{s+=chunk;if(s.includes('\n'))resolve(JSON.parse(s.split('\n')[0]).port);});server.on('exit',code=>reject(Error('fixture exit '+code)));});
@@ -61,14 +62,37 @@ const port=new Promise((resolve,reject)=>{let s='';server.stdout.on('data',chunk
         const rich=page.getByRole('textbox',{name:'메일 본문 서식 편집',exact:true});await rich.fill('수정한 분석 결과입니다.');await rich.press('Meta+a');await page.getByRole('button',{name:'굵게',exact:true}).click();assert(await rich.locator('b,strong').count()>0);await save();
         const delivery=kind==='xrd'?doc.email.delivery:doc.deliveryEmail;assert.equal(delivery.bcc,'secret@example.com');assert.match(delivery.bodyHtml,/<(b|strong)>/);assert.equal(delivery.signature,'윤병훈\nRIST');
         await open();assert.equal(await page.getByLabel('비밀참조 (BCC)',{exact:true}).inputValue(),'secret@example.com');assert(await rich.locator('b,strong').count()>0);
+        await rich.click();await rich.press('ControlOrMeta+End');
+        await page.getByRole('button',{name:'메일 표 삽입 설정',exact:true}).click();
+        await page.getByLabel('메일 표 행 수',{exact:true}).fill('2');await page.getByLabel('메일 표 열 수',{exact:true}).fill('2');
+        await page.getByRole('button',{name:'메일 표 삽입',exact:true}).click();
+        assert.equal(await rich.locator('table tr').count(),2);
+        await rich.locator('td').first().click();await page.keyboard.type('Sample A');
+        await page.getByRole('button',{name:'아래 행 추가',exact:true}).click();assert.equal(await rich.locator('tr').count(),3);
+        await rich.locator('td').first().click();await page.getByRole('button',{name:'오른쪽 열 추가',exact:true}).click();assert.equal(await rich.locator('tr').first().locator('td').count(),3);
+        await rich.locator('td').first().click();await page.getByRole('button',{name:'선택 열 삭제',exact:true}).click();assert.equal(await rich.locator('tr').first().locator('td').count(),2);
+        await rich.locator('td').first().click();await page.getByRole('button',{name:'선택 행 삭제',exact:true}).click();assert.equal(await rich.locator('tr').count(),2);
+        await rich.click();await rich.press('ControlOrMeta+End');
+        await page.getByLabel('메일 이미지 파일',{exact:true}).setInputFiles({name:'graph.png',mimeType:'image/png',buffer:imageBytes});
+        await rich.locator('img').waitFor();assert(await rich.locator('img').evaluate(e=>e.complete&&e.naturalWidth<=1280));
+        assert(await rich.locator('img').evaluate(e=>e.src.length<350000));
+        await rich.locator('img').click();await page.getByLabel('메일 이미지 표시 폭',{exact:true}).fill('320');await page.getByLabel('메일 이미지 표시 폭',{exact:true}).press('Tab');
+        assert.equal(await rich.locator('img').getAttribute('width'),'320');await save();
+        if(kind==='xrd')assert.equal(await page.getByLabel('메일 이미지 표시 폭',{exact:true}).isVisible(),false,'Reload must clear selection of replaced image nodes');
+        await open();assert.equal(await rich.locator('table').count(),1);assert.equal(await rich.locator('img').count(),1);assert.equal(await rich.locator('img').getAttribute('width'),'320');
+        await page.getByLabel('메일 이미지 파일',{exact:true}).setInputFiles({name:'large.png',mimeType:'image/png',buffer:Buffer.alloc(5*1024*1024+1)});
+        await page.getByText('원본 이미지는 5MB 이하로 선택하세요.',{exact:true}).waitFor();assert.equal(await rich.locator('img').count(),1);
         await page.getByLabel('메일 서명',{exact:true}).fill('');await page.getByRole('button',{name:'내 기본 서명 불러오기',exact:true}).click();await page.getByText('기본 서명을 현재 보고서에 적용했습니다.',{exact:true}).waitFor();assert.equal(await page.getByLabel('메일 서명',{exact:true}).inputValue(),'윤병훈\nRIST');
         for(const width of [1440,390]){
           await page.setViewportSize({width,height:1000});await rich.scrollIntoViewIfNeeded();
+          if(width===390&&kind!=='xrd'&&await page.locator('#page-sidebar-close').isVisible())await page.locator('#page-sidebar-close').click();
           assert(await page.locator('.mail-compose').evaluate(e=>e.scrollWidth<=e.clientWidth+2));
           assert(await page.locator('.mail-toolbar').first().evaluate(e=>e.scrollWidth<=e.clientWidth+2));
           await page.locator('.mail-compose').screenshot({path:path.join(output,name+'-'+width+'.png')});
         }
-        assert.deepEqual(errors,[]);console.log(name+': recipients/BCC, formatting, save/reopen, per-account signature and responsive layout passed');
+        await rich.locator('img').click();await page.getByRole('button',{name:'선택한 메일 이미지 삭제',exact:true}).click();assert.equal(await rich.locator('img').count(),0);
+        await rich.locator('td').first().click();await page.getByRole('button',{name:'선택한 메일 표 삭제',exact:true}).click();assert.equal(await rich.locator('table').count(),0);
+        assert.deepEqual(errors,[]);console.log(name+': mail fields, image/table insert/edit/delete, compression/limits, save/reopen and responsive layout passed');
       }catch(error){await page.screenshot({path:path.join(output,name+'-failure.png'),fullPage:true});throw error;}
       finally{await context.close();}
     }

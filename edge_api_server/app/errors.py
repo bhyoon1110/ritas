@@ -13,6 +13,8 @@ from .time_utils import isoformat_kst
 
 _SENSITIVE_FIELD_NAMES = {
     "bcc",
+    "bodyhtml",
+    "database64",
     "authorization",
     "clientsecret",
     "confirmpassword",

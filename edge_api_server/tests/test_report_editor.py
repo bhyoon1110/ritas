@@ -168,7 +168,7 @@ def test_blank_fields_edit_revision_and_recipient_integrity(prepared, monkeypatc
     assert page.status_code == 200 and page.headers['cache-control'] == 'no-store'
     assert '자동 저장' in page.text and "frame-ancestors 'self'" in page.headers['content-security-policy']
     policy = page.headers['content-security-policy']
-    assert "img-src 'self' blob:;" in policy  # Local saved-graph thumbnails, not arbitrary external URLs.
+    assert "img-src 'self' blob: data:;" in policy  # Local thumbnails/embedded raster mail images, no external URLs.
     assert "default-src 'none';" in policy and "connect-src 'self';" in policy
     assert "script-src 'unsafe-inline';" in policy and "base-uri 'none';" in policy
     response = h.client.get(h.url + '/editor-data')
@@ -187,6 +187,14 @@ def test_blank_fields_edit_revision_and_recipient_integrity(prepared, monkeypatc
     edits['auxiliary']['email_subject'] = '[RIST] 분석자가 검토한 보고서 안내'
     edits['deliveryEmail'] = dict(recipientName='의뢰 담당자',to='to@example.com',cc='cc@example.com',bcc='secret@example.com',signature='윤병훈 · RIST',bodyHtml='')
     edits['auxiliary']['email_body'] = '검토 완료된 보고서를 첨부합니다.\n\n' + '피크의 후보 해석과 확인 사항을 검토해 주세요.\n' * 25
+    from html import escape
+    from app.report_mail import clean_html
+    from tests.test_report_mail import embedded_image
+    large_image = embedded_image((600,600), kind='JPEG', noise=True)
+    assert len(large_image) > 120000  # Image bytes must not consume the old text-only budget.
+    rich, plain = clean_html('<p>' + escape(edits['auxiliary']['email_body']) + '</p><table><tr><td>시료 A</td><td>3.2</td></tr></table><img src="' + large_image + '">')
+    edits['deliveryEmail']['bodyHtml'] = rich
+    edits['auxiliary']['email_body'] = plain
     registered = []
     def register(**kwargs):
         registered.append(kwargs)
@@ -203,6 +211,8 @@ def test_blank_fields_edit_revision_and_recipient_integrity(prepared, monkeypatc
     assert registered[0]['report_options']['revisionOf'] == h.job.job_id
     assert registered[0]['report_options']['email']['bcc'] == ['secret@example.com']
     assert registered[0]['report_options']['email']['bodyText'].endswith('윤병훈 · RIST')
+    assert len(registered[0]['report_options']['email']['inlineImages']) == 1
+    assert 'cid:' in registered[0]['report_options']['email']['bodyHtml']
     assert h.job.package_path.read_bytes() == before
     trace = json.loads((h.store.get(revised['jobId']).tmp_root / 'job/report/report.json').read_text())['traceability']
     assert trace['revisionOf'] == h.job.job_id
@@ -217,6 +227,8 @@ def test_blank_fields_edit_revision_and_recipient_integrity(prepared, monkeypatc
     with zipfile.ZipFile(BytesIO(h.client.get(revised['downloadUrl']).content)) as archive:
         assert all(b'secret@example.com' not in archive.read(name) for name in archive.namelist())
         assert '윤병훈 · RIST' in archive.read('email_body.html').decode()
+        assert 'data:image/jpeg;base64,' in archive.read('email_body.html').decode()
+        assert '<table' in archive.read('email_body.html').decode()
         for name in ['current_graph.png','raw_data.xlsx']:
             assert archive.read(name) == original.read(name)
         html = archive.read('report.html').decode()
