@@ -1718,7 +1718,7 @@ _PAGE_SHELL = """
   <span class="raman-drop-prompt" id="raman-drop-prompt">
     Raman raw 파일을 선택하거나 여기에 놓으세요
   </span>
-  <div class="raman-file-list" id="raman-file-list"></div>
+  <div class="raman-file-list" id="raman-file-list" role="list" aria-label="첨부한 RAW 파일"></div>
 </section>
 <section class="raman-report-meta-band" id="raman-report-transfer" hidden style="display:none">
   <details class="raman-report-meta-panel" open>
@@ -5570,9 +5570,11 @@ _UPLOAD_SCRIPT = """
     files.forEach(function(file, index) {
       var chip = document.createElement("span");
       chip.className = "raman-file-chip";
+      chip.setAttribute("role", "listitem");
       var name = document.createElement("span");
       name.className = "raman-file-name";
       name.textContent = file.name;
+      name.title = file.name;
       var remove = document.createElement("button");
       remove.type = "button";
       remove.className = "raman-file-remove";

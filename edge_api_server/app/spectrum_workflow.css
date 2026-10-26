@@ -7,6 +7,14 @@
 .sw-steps button[aria-current=step],.spectrum-workflow .sw-primary,.sw-preview .sw-primary{background:#185d80;color:#fff;border-color:#185d80}
 .sw-help{line-height:1.7;margin:8px 0;color:#4e6575}
 .sw-upload{padding:20px;background:#fff;border:1px solid #c8d6df;border-radius:8px;margin:12px 0}.sw-upload h3{margin:0 0 8px;font-size:18px}.sw-upload>.sw-help{margin-bottom:16px}.sw-upload>label{display:inline-flex;min-height:40px;padding:8px 16px;font-size:14px;background:#185d80;color:#fff;border-color:#185d80}.sw-upload>label:focus{outline:2px solid #247aa2;outline-offset:3px}.sw-upload .ftir-drop-band,.sw-upload .raman-drop-zone{margin:16px 0 0}
+/* RAW chips grow with filenames; workflow button defaults must not clip removal controls. */
+.sw-upload .ftir-drop-band,.sw-upload .raman-drop-zone{width:100%;min-width:0;padding:8px 0;flex-direction:column;align-items:stretch}
+.sw-upload .ftir-drop-prompt,.sw-upload .raman-drop-prompt{white-space:normal;overflow-wrap:break-word}
+.sw-upload .ftir-file-list,.sw-upload .raman-file-list{display:flex;flex-wrap:wrap;align-items:flex-start;width:100%;max-width:100%;min-width:0;box-sizing:border-box;gap:0;overflow:visible}
+.sw-upload .ftir-file-item,.sw-upload .raman-file-chip{flex:0 1 auto;min-width:0;max-width:100%;height:auto;min-height:36px;box-sizing:border-box;padding:0 0 0 9px;margin:0 6px 6px 0;overflow:visible;white-space:normal;font-size:12px;line-height:1.5}
+.sw-upload .ftir-file-name,.sw-upload .raman-file-name{flex:0 1 auto;min-width:0;white-space:normal;word-break:break-word;overflow-wrap:break-word;overflow:visible;text-overflow:clip;padding:6px 0}
+.sw-upload button.ftir-file-remove,.sw-upload button.raman-file-remove{flex:0 0 32px;width:32px;min-width:32px;max-width:32px;height:32px;min-height:32px;margin:0 0 0 4px;padding:0;font:18px/1 Arial,sans-serif;border:0;background:transparent;color:#64748b;align-self:center;box-sizing:border-box}
+.sw-upload button.ftir-file-remove:hover,.sw-upload button.raman-file-remove:hover{background:#fee2e2;color:#b91c1c}
 .sw-status{min-height:24px;line-height:1.6;color:#185d80;overflow-wrap:break-word}
 .sw-status.sw-error{color:#a12727}
 .sw-guide{border:1px solid #b8cfdc;border-left:4px solid #247aa2;border-radius:8px;background:#f0f7fb;padding:14px 16px;margin:12px 0;box-sizing:border-box}

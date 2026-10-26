@@ -1798,7 +1798,7 @@ _PAGE_SHELL = """
   <span class="ftir-drop-prompt" id="ftir-drop-prompt">
     DPT 파일을 선택하거나 여기에 놓으세요
   </span>
-  <div class="ftir-file-list" id="ftir-file-list"></div>
+  <div class="ftir-file-list" id="ftir-file-list" role="list" aria-label="첨부한 RAW 파일"></div>
 </section>
 <section class="ftir-report-meta-band" id="ftir-report-transfer" hidden style="display:none">
   <details class="ftir-report-meta-panel" open>
@@ -4829,7 +4829,11 @@ _UPLOAD_SCRIPT = """
     files.forEach(function(file, index) {
       var item = document.createElement("span");
       item.className = "ftir-file-item";
-      item.textContent = file.name;
+      item.setAttribute("role", "listitem");
+      var name = document.createElement("span");
+      name.className = "ftir-file-name";
+      name.textContent = file.name;
+      name.title = file.name;
       var remove = document.createElement("button");
       remove.type = "button";
       remove.className = "ftir-file-remove";
@@ -4842,6 +4846,7 @@ _UPLOAD_SCRIPT = """
         if (files.length) analyze();
         else resetGraph();
       });
+      item.appendChild(name);
       item.appendChild(remove);
       fileList.appendChild(item);
     });
