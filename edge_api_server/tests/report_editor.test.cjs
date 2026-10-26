@@ -120,6 +120,16 @@ test('TEM shares the icon canvas tools and autosaves inserted objects',t=>{
   assert.equal(h.posts[0].body.canvasEdits.cover[0].kind,'text');
   assert.match(h.q('analysis-help').textContent,/원본 분석 데이터는 유지/);
 });
+for(const kind of ['ftir','raman','tem']) test(kind+' page selection help is collapsed below the slide, outside the thumbnails',t=>{
+  const h=setup(t,kind),help=h.q('page-selection-help'),sidebar=h.q('page-sidebar');
+  assert.equal(help.tagName,'DETAILS');assert(!help.hidden);assert(!help.open);
+  assert.equal(h.q('slide-stage').nextElementSibling,help);assert(!sidebar.contains(help));
+  assert(!sidebar.textContent.includes('Shift+클릭'));assert.equal(h.q('page-actions').querySelectorAll('button').length,5);
+  assert.equal(help.querySelector('summary').textContent,'페이지 선택·순서 안내');
+  assert.deepEqual([...help.querySelectorAll('li')].map(li=>li.textContent),['Shift+클릭: 범위 선택','Ctrl/Cmd+클릭: 개별 선택·해제','목록에서 Ctrl/Cmd+A: 전체 선택','끌어서 순서 변경 · Alt+↑/↓']);
+  help.open=true;h.q('page-sidebar-toggle').click();assert(sidebar.hidden);assert(!help.hidden);assert(help.open);
+  h.q('page-sidebar-toggle').click();assert(!sidebar.hidden);assert(help.open);assert.equal(h.posts.length,0);
+});
 for(const kind of ['ftir','raman','tem']) test(kind+' mail draft uses wide resizable fields and keeps autosaving long text',t=>{
   const h=setup(t,kind),subject=h.field('메일 제목'),body=h.field('메일 본문');
   assert.equal(subject.tagName,'TEXTAREA');assert.equal(subject.rows,2);assert.equal(body.rows,12);

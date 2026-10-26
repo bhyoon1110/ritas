@@ -37,6 +37,7 @@
     onLayout:function (value) {
       pageEditing = value.pageEditing === true;
       document.getElementById("page-actions").hidden = !pageEditing;
+      document.getElementById("page-selection-help").hidden = !pageEditing;
       if(canvas){canvas.layout(value);canvas.page(direct.current());}
       availability();
     }
