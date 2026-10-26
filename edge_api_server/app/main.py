@@ -23,6 +23,7 @@ from rist_common import get_logger
 
 from .ahn_web import router as ahn_router
 from .auth import install_auth
+from .workspace_dashboard import router as dashboard_router
 from .config import Settings
 from .database import Database
 from .errors import (
@@ -184,6 +185,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     install_error_management(app, resolved_settings)
     install_auth(app, resolved_settings, database)
     app.include_router(voc_router)
+    app.include_router(dashboard_router)
     app.include_router(report_delivery_router)
     app.include_router(report_mail_router)
     app.include_router(ftir_router)

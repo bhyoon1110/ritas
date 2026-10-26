@@ -16,6 +16,7 @@ from .ftir_web import (
 )
 from .raman_web import router as raman_router
 from .xrd_web import router as xrd_router
+from .workspace_dashboard import router as dashboard_router
 
 
 def _bool_env(name: str, default: str = "false") -> bool:
@@ -23,118 +24,25 @@ def _bool_env(name: str, default: str = "false") -> bool:
 
 
 def build_workspace_index() -> str:
-    page = """<!doctype html>
-<html lang="ko">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>RIST Preview</title>
-  <style>
-    body {
-      margin: 0;
-      min-height: 100vh;
-      display: grid;
-      place-items: center;
-      font-family: Arial, "Noto Sans KR", sans-serif;
-      color: #172a46;
-      background: #f8fafc;
+    directory = Path(__file__).parent
+    page = (directory / "workspace_dashboard.html").read_text(encoding="utf-8")
+    for key, suffix in (("CSS", "css"), ("JS", "js")):
+        page = page.replace("__DASHBOARD_" + key + "__",
+                            (directory / ("workspace_dashboard." + suffix)).read_text(encoding="utf-8"))
+    paths = {
+        "FTIR": '<path d="M3 23h26M5 4v19m1-6 4-1 3 3 4-13 3 14 4-8 3 4"/>',
+        "RAMAN": '<path d="M3 25h26M5 4v21m1-3h5l3-9 3 9 4-17 3 17h4"/>',
+        "XRD": '<path d="m16 3 11 7v13l-11 7-11-7V10Zm0 0v13m11-6-11 6-11-6m11 6v14"/>',
+        "TEM": '<circle cx="16" cy="16" r="12"/><circle cx="12" cy="12" r="3"/><circle cx="21" cy="17" r="4"/><path d="m8 23 4-4m6 9 1-4"/>',
     }
-    main {
-      width: min(720px, calc(100vw - 32px));
-      box-sizing: border-box;
-      background: #fff;
-      border: 1px solid #cbd5e1;
-      border-radius: 10px;
-      padding: 28px;
-    }
-    h1 { margin: 0 0 8px; font-size: 30px; }
-    .workspace-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 8px; }
-    .workspace-header h1 { margin: 0; }
-    .workspace-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
-    .workspace-actions a, .workspace-actions button { border: 1px solid #9fb6d6; border-radius: 6px; padding: 8px 12px; color: #172a46; background: #fff; font: inherit; font-size: 14px; font-weight: 700; text-decoration: none; cursor: pointer; }
-    .workspace-actions button:disabled { opacity: .55; cursor: wait; }
-    .workspace-actions[hidden], #workspace-admin-link[hidden] { display: none; }
-    p { margin: 0 0 22px; color: #64748b; }
-    .workspace-projects { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
-    a {
-      display: block;
-      border: 1px solid #9fb6d6;
-      border-radius: 8px;
-      padding: 18px 14px;
-      text-align: center;
-      color: #172a46;
-      font-size: 18px;
-      font-weight: 700;
-      text-decoration: none;
-      background: #fff;
-    }
-    a:hover { border-color: #2563eb; background: #f1f7ff; }
-    @media (max-width: 640px) { .workspace-projects { grid-template-columns: 1fr; } }
-  </style>
-</head>
-<body>
-  <main>
-    <header class="workspace-header">
-      <h1>RIST Preview</h1>
-      <nav class="workspace-actions" id="workspace-account-actions" aria-label="회원 메뉴" hidden>
-        <a href="/account">회원정보 관리</a>
-        <button type="button" id="workspace-logout">로그아웃</button>
-      </nav>
-    </header>
-    <p>FT-IR, Raman, XRD, TEM 화면을 같은 포트에서 확인합니다.</p>
-    <nav class="workspace-projects" aria-label="실험 메뉴">
-      <a href="/ftir">FT-IR</a>
-      <a href="/raman">Raman</a>
-      <a href="/xrd">XRD</a>
-      <a href="/tem">TEM</a>
-      <a id="workspace-admin-link" href="/operations" hidden>운영 관리</a>
-      <a href="/voc">VOC 게시판</a>
-    </nav>
-  </main>
-  <script>
-  (function() {
-    var actions = document.getElementById("workspace-account-actions");
-    var adminLink = document.getElementById("workspace-admin-link");
-    var logoutButton = document.getElementById("workspace-logout");
-    fetch("/api/v1/auth/me", {
-      credentials: "same-origin",
-      headers: {"Accept": "application/json"}
-    }).then(function(response) {
-      if (!response.ok) throw new Error("auth lookup failed");
-      return response.json();
-    }).then(function(payload) {
-      var roles = payload && Array.isArray(payload.roles) ? payload.roles : [];
-      actions.hidden = false;
-      adminLink.hidden = roles.indexOf("ADMIN") === -1;
-    }).catch(function() {
-      actions.hidden = true;
-      adminLink.hidden = true;
-    });
-    logoutButton.addEventListener("click", function() {
-      if (logoutButton.disabled) return;
-      logoutButton.disabled = true;
-      fetch("/api/v1/auth/logout", {
-        method: "POST",
-        credentials: "same-origin",
-        headers: {"X-Requested-With": "RIST-Project"}
-      }).then(function(response) {
-        if (!response.ok) throw new Error("logout failed");
-        window.location.href = "/login";
-      }).catch(function() {
-        logoutButton.disabled = false;
-        window.alert("로그아웃하지 못했습니다. 다시 시도하세요.");
-      });
-    });
-  })();
-  </script>
-</body>
-</html>"""
+    for key, shape in paths.items():
+        page = page.replace("__ICON_" + key + "__",
+                            '<svg viewBox="0 0 32 32" fill="none" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">' + shape + '</svg>')
     return with_browser_support_notice(page)
-
 
 def create_preview_app() -> FastAPI:
     """Create a DB-free combined preview app for project web screens."""
-    app = FastAPI(title="RIST Combined Preview")
+    app = FastAPI(title="RIST 분석 포털")
     app.state.ftir_assignment_library_dir = Path(
         os.getenv(
             "RIST_FTIR_ASSIGNMENT_LIBRARY_DIR",
@@ -151,6 +59,7 @@ def create_preview_app() -> FastAPI:
     app.include_router(raman_router)
     app.include_router(xrd_router)
     app.include_router(ahn_router)
+    app.include_router(dashboard_router)
 
     @app.get("/", response_class=HTMLResponse, include_in_schema=False)
     def index() -> HTMLResponse:
