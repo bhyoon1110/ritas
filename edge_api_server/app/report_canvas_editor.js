@@ -91,7 +91,7 @@
         var b=el("button",layer);b.type="button";b.className="canvas-object"+(item.id===selected?" selected":"");
         b.setAttribute("aria-label",label);b.title=label;box(b,item);b.dataset.objectId=item.id;
         b.onclick=function(){select(item.id);};b.ondblclick=function(){select(item.id);if(item.kind==="text")fields.text.focus();else if(item.kind==="table")cellChoice.focus();};
-        if(item.id===selected){var handle=el("span",b,"↘");handle.className="canvas-resize";handle.setAttribute("aria-label","크기 조절");}
+        if(item.id===selected){var handle=el("span",b,"↘");handle.className="canvas-resize";handle.setAttribute("aria-label","크기 조절");handle.title="드래그: 자유 크기 조절 · Shift+드래그: 현재 가로세로 비율 유지";}
       });
       list.value=selected||"";showProps();
     }
@@ -190,7 +190,7 @@
     button(objectTools,"맨 앞으로",function(){if(current()){begin();patch({layer:"front"});finish();draw();}},"front");
     button(objectTools,"맨 뒤로",function(){if(current()){begin();patch({layer:"back"});finish();draw();}},"back");
     button(objectTools,"이 페이지 개체 편집 초기화",function(){if(page&&window.confirm("이 페이지의 개체 편집만 초기화할까요? 추가한 개체도 제거됩니다.")){begin();delete state[page.id];selected=null;finish();draw();}},"reset");
-    el("p",body,"개체를 끌어 이동하고 오른쪽 아래 ↘로 크기를 조절하세요. 드래그 중에는 테두리로 표시하며 놓은 뒤 PPT를 갱신합니다. 자유 편집의 글자 수정은 이 페이지에만 적용되며 공통 정보·분석값은 바꾸지 않습니다. 배경·로고는 고정됩니다.").className="muted";
+    el("p",body,"개체를 끌어 이동하고 오른쪽 아래 ↘로 크기를 조절하세요. 기본 드래그는 가로·세로 자유 조절, Shift+드래그는 현재 비율 유지입니다. 드래그 중 Shift를 누르거나 떼면 즉시 전환되며 Esc로 취소합니다. 모바일은 자유 조절입니다. 드래그 중에는 테두리로 표시하며 놓은 뒤 PPT를 갱신합니다. 자유 편집의 글자 수정은 이 페이지에만 적용되며 공통 정보·분석값은 바꾸지 않습니다. 배경·로고는 고정됩니다.").className="muted";
     legacyNote=el("p",body,"기존 셀별 글자·서식은 유지했습니다. 따로 이동·숨김 처리했던 셀은 실제 표의 행·열에 맞춰 정렬됩니다. 이전 보고서 파일은 변경되지 않습니다.");legacyNote.className="muted";legacyNote.hidden=true;
     list=el("select",body);list.setAttribute("aria-label","페이지 개체 선택");list.onchange=function(){select(list.value);};
     props=el("div",stage.parentNode);props.className="canvas-properties";props.hidden=true;
@@ -213,18 +213,32 @@
     function stop(event,cancel){
       if(!drag)return;var held=drag;drag=null;document.removeEventListener("mousemove",move);document.removeEventListener("mouseup",stop);
       document.removeEventListener("touchmove",move,touchOptions);document.removeEventListener("touchend",stop);document.removeEventListener("touchcancel",abort);
+      document.removeEventListener("keydown",dragKey);document.removeEventListener("keyup",dragKey);
       if(cancel){snapshot=null;draw();return;}
       if(held.changed){patch(held.values);finish();}else snapshot=null;
       draw();
     }
     function abort(){stop(null,true);}
+    function dragKey(event){
+      if(!drag)return;
+      if(event.key==="Escape"||event.keyCode===27){event.preventDefault();event.stopPropagation();abort();return;}
+      if(drag.resize&&(event.key==="Shift"||event.keyCode===16))move({clientX:drag.lastX,clientY:drag.lastY,shiftKey:event.type==="keydown"});
+    }
     function move(event){
       if(!drag)return;if(event.cancelable)event.preventDefault();var p=point(event),dx=(p.clientX-drag.x)/drag.rect.width,dy=(p.clientY-drag.y)/drag.rect.height;
+      drag.lastX=p.clientX;drag.lastY=p.clientY;
       var v=copy(drag.item);
-      if(drag.resize){v.w=Math.max(.01,Math.min(1-v.x,v.w+dx));v.h=Math.max(.01,Math.min(1-v.y,v.h+dy));
-        if(v.kind==="image"||event.shiftKey){var aspect=drag.item.w/drag.item.h;v.h=v.w/aspect;if(v.y+v.h>1){v.h=1-v.y;v.w=v.h*aspect;}}}
+      if(drag.resize){
+        if(event.shiftKey&&v.w>0&&v.h>0){
+          // Use the larger relative gesture so vertical-only dragging scales too.
+          var sx=dx/v.w,sy=dy/v.h,scale=1+(Math.abs(sx)>=Math.abs(sy)?sx:sy);
+          scale=Math.min(Math.min((1-v.x)/v.w,(1-v.y)/v.h),Math.max(Math.max(.002/v.w,.002/v.h),scale));
+          v.w*=scale;v.h*=scale;
+        }else{v.w=Math.min(1-v.x,Math.max(.002,v.w+dx));v.h=Math.min(1-v.y,Math.max(.002,v.h+dy));}
+      }
       else {v.x=Math.max(0,Math.min(1-v.w,v.x+dx));v.y=Math.max(0,Math.min(1-v.h,v.y+dy));}
-      drag.changed=Math.abs(dx)+Math.abs(dy)>.001;drag.values={x:v.x,y:v.y,w:v.w,h:v.h};box(drag.node,v);
+      drag.changed=Math.abs(v.x-drag.item.x)+Math.abs(v.y-drag.item.y)+Math.abs(v.w-drag.item.w)+Math.abs(v.h-drag.item.h)>.000001;
+      drag.values={x:v.x,y:v.y,w:v.w,h:v.h};box(drag.node,v);
     }
     function start(event){
       if(!enabled||locked||loading||drag||(event.type==="mousedown"&&event.button!==0))return;
@@ -232,14 +246,15 @@
       if(!target.dataset.objectId)return;
       if(event.cancelable)event.preventDefault();var id=target.dataset.objectId;select(id);
       var p=point(event);begin();drag={x:p.clientX,y:p.clientY,rect:stage.getBoundingClientRect(),item:copy(current()),resize:resize,
-        node:layer.querySelector('[data-object-id="'+id+'"]'),changed:false};
+        node:layer.querySelector('[data-object-id="'+id+'"]'),changed:false,lastX:p.clientX,lastY:p.clientY};
       document.addEventListener("mousemove",move);document.addEventListener("mouseup",stop);
       document.addEventListener("touchmove",move,touchOptions);document.addEventListener("touchend",stop);document.addEventListener("touchcancel",abort);
+      document.addEventListener("keydown",dragKey);document.addEventListener("keyup",dragKey);
     }
     layer.addEventListener("mousedown",start);layer.addEventListener("touchstart",start,touchOptions);window.addEventListener("blur",abort);
     document.addEventListener("visibilitychange",function(){if(document.hidden)abort();});
     layer.addEventListener("keydown",function(e){
-      if(!current()||locked||loading)return;
+      if(!current()||locked||loading||drag)return;
       if(e.keyCode===46||e.keyCode===8){e.preventDefault();remove();return;}
       if(e.keyCode>=37&&e.keyCode<=40){e.preventDefault();var item=current(),step=e.shiftKey ? .01 : .002,values={};
         if(e.keyCode===37||e.keyCode===39)values.x=Math.max(0,Math.min(1-item.w,item.x+(e.keyCode===37?-step:step)));

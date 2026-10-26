@@ -1,15 +1,58 @@
 const {test}=require('node:test'), assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
 const {JSDOM}=require('jsdom'),acorn=require('acorn');
 const script=['report_editor_icons.js','report_canvas_editor.js'].map(name=>fs.readFileSync(path.join(__dirname,'../app',name),'utf8')).join('\n');
-function setup(t, upload){
+const babel=require('@babel/core');
+const programs={native:script,fallback:babel.transformSync(script,{configFile:false,babelrc:false,presets:[[require('@babel/preset-env'),{targets:{chrome:'49'},forceAllTransforms:true,modules:false}]]}).code};
+function setup(t, upload, mode='native'){
   const dom=new JSDOM('<div id="preview-panel-toggles"><button id="page-sidebar-toggle"></button></div><div id="canvas-tools"></div><div><div id="slide-stage"><div id="canvas-layer"></div></div></div>',{runScripts:'outside-only'});
-  t.after(()=>dom.window.close());const w=dom.window,d=w.document;w.eval(script);let changes=0,modes=[];
+  t.after(()=>dom.window.close());const w=dom.window,d=w.document;w.eval(programs[mode]);let changes=0,modes=[];
   const api=new w.RistCanvasEditor({changed(){changes++;},message(){},mode(v){modes.push(v);},upload:upload||function(f,done){done(null,{asset:'a'.repeat(64),width:120,height:60});}});
   const item={id:'shape-'+'a'.repeat(20),kind:'text',name:'원래 본문',text:'기존 분석 내용',x:.1,y:.2,w:.5,h:.2,fontSize:18,color:'#123456',fill:'none',stroke:'none',lineWidth:1,bold:false,align:'left',dash:'solid'};
   api.load({});api.layout({canvasEditing:true,ratio:16/9});api.page({id:'page1',objects:[item]});
   const button=text=>[...d.querySelectorAll('button')].find(b=>b.getAttribute('aria-label')===text),field=label=>d.querySelector('[aria-label="개체 '+label+'"]');
   const set=(label,value)=>{const e=field(label);e.value=value;e.dispatchEvent(new w.Event(e.tagName==='TEXTAREA'?'input':'change',{bubbles:true}));};
   button('자유 편집 켜기').click();return {w,d,api,button,field,set,item,changes:()=>changes,modes};
+}
+for(const mode of Object.keys(programs)){
+  function imageSetup(t){
+    const h=setup(t,null,mode);h.item={...h.item,kind:'image',x:.1,y:.2,w:.4,h:.2};h.api.page({id:'page1',objects:[h.item]});
+    h.d.getElementById('slide-stage').getBoundingClientRect=()=>({width:1000,height:500});h.d.querySelector('.canvas-object').click();
+    h.mouse=(target,type,x=100,y=100,shiftKey=false)=>target.dispatchEvent(new h.w.MouseEvent(type,{bubbles:true,cancelable:true,button:0,clientX:x,clientY:y,shiftKey}));
+    h.start=()=>h.mouse(h.d.querySelector('.canvas-resize'),'mousedown');
+    h.move=(dx,dy,shift=false)=>h.mouse(h.d,'mousemove',100+dx,100+dy,shift);
+    h.stop=()=>h.mouse(h.d,'mouseup');
+    h.outline=()=>{const n=h.d.querySelector('.canvas-object.selected');return {w:parseFloat(n.style.width)/100,h:parseFloat(n.style.height)/100};};
+    return h;
+  }
+  test(mode+': image drag is free by default, changes only on release, undo/redo and reload retain geometry',t=>{
+    const h=imageSetup(t);h.start();h.move(100,0);assert.equal(h.changes(),0);assert.deepEqual(h.outline(),{w:.5,h:.2});h.stop();
+    assert.equal(h.changes(),1);let saved=h.api.value();assert.equal(saved.page1[0].w,.5);assert.equal(saved.page1[0].h,.2);
+    h.start();h.move(0,50);h.stop();saved=h.api.value();assert.equal(saved.page1[0].w,.5);assert(Math.abs(saved.page1[0].h-.3)<1e-9);
+    h.button('개체 실행 취소').click();assert.equal(h.api.value().page1[0].h,.2);h.button('개체 다시 실행').click();assert.deepEqual(h.api.value(),saved);
+    h.api.load(saved);h.api.page({id:'page1',objects:[h.item]});h.d.querySelector('.canvas-object').click();assert(Math.abs(h.outline().w/h.outline().h-5/3)<1e-9);
+  });
+  test(mode+': Shift resize follows horizontal or vertical gestures and clamps both axes without changing ratio',t=>{
+    const h=imageSetup(t);
+    for(const [dx,dy] of [[100,0],[0,50],[-100,0],[0,-25],[10000,10000],[-10000,-10000]]){
+      h.api.load({});h.api.page({id:'page1',objects:[h.item]});h.d.querySelector('.canvas-object').click();h.start();h.move(dx,dy,true);
+      const v=h.outline();assert(Math.abs(v.w/v.h-2)<1e-9);assert(v.w>=.002&&v.h>=.002);assert(h.item.x+v.w<=1+1e-9&&h.item.y+v.h<=1+1e-9);
+      if(dx===0&&dy>0)assert(v.h>h.item.h);if(dx===0&&dy<0)assert(v.h<h.item.h);h.stop();
+      const patch=h.api.value().page1[0];assert(Math.abs(patch.w/patch.h-2)<1e-9);
+    }
+  });
+  test(mode+': Shift key switches mid-drag immediately; Escape, blur and locking discard the preview',t=>{
+    const h=imageSetup(t);h.start();h.move(100,10);const free=h.outline();assert(Math.abs(free.w/free.h-2)>.1);
+    h.d.dispatchEvent(new h.w.KeyboardEvent('keydown',{key:'Shift',keyCode:16,bubbles:true}));assert(Math.abs(h.outline().w/h.outline().h-2)<1e-9);
+    h.d.dispatchEvent(new h.w.KeyboardEvent('keyup',{key:'Shift',keyCode:16,bubbles:true}));assert.deepEqual(h.outline(),free);assert.equal(h.changes(),0);
+    h.d.dispatchEvent(new h.w.KeyboardEvent('keydown',{key:'Escape',keyCode:27,bubbles:true}));h.stop();assert.equal(h.changes(),0);assert.deepEqual(h.outline(),{w:.4,h:.2});
+    h.start();h.move(100,50);h.w.dispatchEvent(new h.w.Event('blur'));assert.equal(h.changes(),0);assert.deepEqual(h.outline(),{w:.4,h:.2});
+    h.start();h.move(100,50);h.api.lock(true);h.stop();assert.equal(h.changes(),0);assert.deepEqual(h.outline(),{w:.4,h:.2});
+  });
+  test(mode+': touch image resize stays free and touchcancel restores dimensions',t=>{
+    const h=imageSetup(t),touch=(target,type,x,y)=>{const e=new h.w.Event(type,{bubbles:true,cancelable:true});Object.defineProperty(e,'touches',{value:type==='touchend'?[]:[{clientX:x,clientY:y}]});target.dispatchEvent(e);};
+    touch(h.d.querySelector('.canvas-resize'),'touchstart',100,100);touch(h.d,'touchmove',200,100);assert.deepEqual(h.outline(),{w:.5,h:.2});touch(h.d,'touchcancel',200,100);assert.equal(h.changes(),0);
+    touch(h.d.querySelector('.canvas-resize'),'touchstart',100,100);touch(h.d,'touchmove',100,150);touch(h.d,'touchend',100,150);assert.equal(h.changes(),1);assert.equal(h.api.value().page1[0].w,.4);assert(Math.abs(h.api.value().page1[0].h-.3)<1e-9);
+  });
 }
 test('ES5 canvas inserts text/shapes/lines, edits numeric geometry and styles, undo redo',t=>{
   acorn.parse(script,{ecmaVersion:5});const h=setup(t);

@@ -1,6 +1,7 @@
 // Real local RAW/report/revision pipeline and native DnD; not Windows/Supermium hardware certification.
 const assert=require('node:assert/strict'),fs=require('node:fs'),os=require('node:os'),path=require('node:path');
 const {spawn,execFileSync}=require('node:child_process'),{chromium}=require('playwright');
+const resizeImage=require('./canvas_resize_steps.cjs');
 const output=fs.mkdtempSync(path.join(os.tmpdir(),'rist-report-graphs-'));
 const python=process.env.RIST_TEST_PYTHON||'python3';
 const server=spawn(python,['-u',path.join(__dirname,'spectrum_workflow_fixture.py'),output],{env:process.env});
@@ -58,6 +59,8 @@ const raw=Buffer.from(Array.from({length:241},(_,i)=>{const x=400+i*15;return x+
         await frame.locator('.report-graph-insert').first().dragTo(frame.locator('#slide-stage'),{targetPosition:{x:180,y:130}});
         await saved();let model=await data();assert.equal(model.canvasEdits[pageId].length,1);
         assert.equal(model.canvasEdits[pageId][0].kind,'image');assert.deepEqual(model.sections,original.sections);
+        const resizedId=model.canvasEdits[pageId][0].id;
+        await resizeImage({page,editor:frame,objectId:resizedId,read:async()=>(await data()).canvasEdits[pageId].find(o=>o.id===resizedId),commit:async action=>{await action();await saved();}});
         await frame.locator('#slide-stage').screenshot({path:path.join(output,kind+'-dragged.png')});
         // Native cross-frame drag from the existing saved thumbnail in the parent.
         // Bring both source and slide into view before holding the mouse.
@@ -94,22 +97,28 @@ from PIL import Image
 from pypdf import PdfReader
 z=zipfile.ZipFile(sys.argv[1]);p=zipfile.ZipFile(io.BytesIO(z.read('report.pptx')))
 ns={'p':'http://schemas.openxmlformats.org/presentationml/2006/main','a':'http://schemas.openxmlformats.org/drawingml/2006/main','r':'http://schemas.openxmlformats.org/officeDocument/2006/relationships'}
+expected=__import__('json').loads(sys.argv[2]);size=E.fromstring(p.read('ppt/presentation.xml')).find('p:sldSz',ns)
 found=0
 for name in p.namelist():
  if not(name.startswith('ppt/slides/slide') and name.endswith('.xml')):continue
  rels=E.fromstring(p.read(name.replace('slides/','slides/_rels/')+'.rels'))
  targets={r.get('Id'):r.get('Target') for r in rels}
  for pic in E.fromstring(p.read(name)).findall('.//p:pic',ns):
-  if not pic.find('p:nvPicPr/p:cNvPr',ns).get('name','').startswith('object-'):continue
+  oid=pic.find('p:nvPicPr/p:cNvPr',ns).get('name','')
+  if not oid.startswith('object-'):continue
   target=targets[pic.find('p:blipFill/a:blip',ns).get('{'+ns['r']+'}embed')]
   image=Image.open(io.BytesIO(p.read('ppt/'+target.removeprefix('../'))));w,h=image.size
   ext=pic.find('p:spPr/a:xfrm/a:ext',ns)
-  assert abs(int(ext.get('cx'))/int(ext.get('cy'))-w/h)<1e-5
+  geometry=expected[oid]
+  assert abs(int(ext.get('cx'))-round(geometry['w']*int(size.get('cx'))))<=1
+  assert abs(int(ext.get('cy'))-round(geometry['h']*int(size.get('cy'))))<=1
+  if oid!=sys.argv[3]:assert abs(int(ext.get('cx'))/int(ext.get('cy'))-w/h)<1e-5
+  else:assert abs(int(ext.get('cx'))/int(ext.get('cy'))-w/h)>.01
   found+=1
 assert found==3,found
 assert z.read('report.pdf')==z.read('report-from-pptx.pdf')
 assert len(PdfReader(io.BytesIO(z.read('report.pdf'))).pages)>1
-print('PPT: 3 inserted graphs, preserved aspect ratio, matching rendered PDF verified')`,zip],{encoding:'utf8'}).trim());
+print('PPT: free-resized graph geometry, two original aspect ratios and matching PDF verified')`,zip,JSON.stringify(Object.fromEntries(model.canvasEdits[pageId].map(o=>[o.id,o]))),resizedId],{encoding:'utf8'}).trim());
         assert.deepEqual(errors,[]);console.log(kind+': native drag, cross-frame drag, mobile add, undo/redo, reload, final export passed');
       }catch(e){
         console.error('Browser errors:',errors);

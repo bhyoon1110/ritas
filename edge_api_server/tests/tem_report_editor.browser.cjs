@@ -1,6 +1,7 @@
 // Real LibreOffice/PPT/PDF test on Mac Chrome, NOT Windows/Supermium certification.
 const assert=require('node:assert/strict'),fs=require('node:fs'),os=require('node:os'),path=require('node:path');
 const {spawn,execFileSync}=require('node:child_process'),{chromium}=require('playwright');
+const resizeImage=require('./canvas_resize_steps.cjs');
 const output=fs.mkdtempSync(path.join(os.tmpdir(),'rist-tem-editor-')),python=process.env.RIST_TEST_PYTHON||'python3';
 const server=spawn(python,['-u',path.join(__dirname,'tem_editor_fixture.py'),output],{env:process.env});
 let logs='';server.stderr.on('data',data=>logs+=data);
@@ -43,6 +44,8 @@ const startup=new Promise((resolve,reject)=>{let data='';server.stdout.on('data'
         await page.getByLabel('개체 '+label+' (%)',{exact:true}).fill(value);await page.getByLabel('개체 '+label+' (%)',{exact:true}).blur();
       }
       await saved(old);
+      const imageId=(await get('/editor-data')).document.canvasEdits[added].find(o=>o.kind==='image').id;
+      const imageGeometry=await resizeImage({page,editor:page,objectId:imageId,read:async()=>(await get('/editor-data')).document.canvasEdits[added].find(o=>o.id===imageId),commit:async action=>{const before=await base();await action();await saved(before);}});
       // Native tables inherit styles in TEM: edit a cell, then move/resize the whole table.
       let layout=await get('/edit-layout'),tableIndex=layout.pages.findIndex(p=>p.objects.some(o=>o.kind==='table'));
       const target=layout.pages[tableIndex],table=target.objects.find(o=>o.kind==='table');
@@ -75,13 +78,16 @@ from pypdf import PdfReader
 z=zipfile.ZipFile(sys.argv[1]);p=Presentation(io.BytesIO(z.read('tem-report.pptx')))
 pdf=PdfReader(io.BytesIO(z.read('tem-report.pdf')))
 assert len(p.slides)==len(pdf.pages)==6
+geometry=__import__('json').loads(sys.argv[2]);image=next(s for slide in p.slides for s in slide.shapes if s.name==geometry['id'])
+assert abs(image.width-round(geometry['w']*p.slide_width))<=1
+assert abs(image.height-round(geometry['h']*p.slide_height))<=1
 text=''.join(s.text for slide in p.slides for s in slide.shapes if s.has_text_frame)
 assert 'TEM 검토 완료' in text and 'TEM 추가 검토' in text
 assert any(c.text=='TEM 표 검토 후' for slide in p.slides for s in slide.shapes if s.has_table for row in s.table.rows for c in row.cells)
 pdftext=''.join(page.extract_text() for page in pdf.pages)
 assert all(t in pdftext for t in ['TEM 추가 검토','TEM 검토 완료','TEM 표 검토 후'])
 assert not any('base.pptx' in n or 'editor-assets' in n for n in z.namelist())
-print('Final TEM PPT/PDF: six pages, native table, edited text, original private base excluded')`,zip],{encoding:'utf8'}).trim());
+print('Final TEM PPT/PDF: six pages, resized image, native table, edited text, private base excluded')`,zip,JSON.stringify(imageGeometry)],{encoding:'utf8'}).trim());
       await page.setViewportSize({width:390,height:844});
       if(await page.locator('#page-sidebar-close').isVisible())await page.locator('#page-sidebar-close').click();
       await page.locator('#canvas-toggle').click();
