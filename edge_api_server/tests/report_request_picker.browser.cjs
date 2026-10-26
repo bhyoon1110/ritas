@@ -61,6 +61,20 @@ const port=new Promise((resolve,reject)=>{let data='';server.stdout.on('data',ch
         await page.waitForFunction(()=>document.getElementById('request-info').textContent.includes('조회 실패'));
         await page.getByLabel('의뢰번호',{exact:true}).fill('MANUAL-REQ');await saved();
         assert.equal(doc.transfer.requestNumber,'MANUAL-REQ');assert.equal(doc.transfer.limsExperimentCode,'');assert.equal(await search.inputValue(),'');
+        // Adjacent shared common-item controls remain one row even on narrow screens.
+        const add=page.getByRole('button',{name:'공통 항목 추가',exact:true}),itemName=page.getByLabel('새 공통 항목 이름',{exact:true});
+        for(const width of [320,390,768,1440]){
+          await page.setViewportSize({width,height:1000});await itemName.scrollIntoViewIfNeeded();
+          const geometry=await page.locator('.variable-add-row').evaluate(row=>{
+            const input=row.querySelector('input').getBoundingClientRect(),button=row.querySelector('button').getBoundingClientRect(),r=row.getBoundingClientRect();
+            return {top:input.top,buttonTop:button.top,bottom:input.bottom,buttonBottom:button.bottom,inputRight:input.right,buttonLeft:button.left,buttonRight:button.right,right:r.right,buttonWidth:button.width,overflow:document.documentElement.scrollWidth>innerWidth+1};
+          });
+          assert(Math.abs(geometry.top-geometry.buttonTop)<1&&Math.abs(geometry.bottom-geometry.buttonBottom)<1,JSON.stringify(geometry));
+          assert(geometry.inputRight<geometry.buttonLeft&&geometry.buttonRight<=geometry.right+1&&geometry.buttonWidth>=40&&!geometry.overflow,JSON.stringify(geometry));
+          if(width===390)await page.locator('.variable-add-row').screenshot({path:path.join(output,name+'-common-add.png')});
+        }
+        await itemName.fill('실험실 온도');await add.click();await saved();
+        assert.deepEqual(doc.variables,[{name:'실험실 온도',value:'',unit:''}]);assert.equal(await itemName.inputValue(),'');
         assert.deepEqual(errors,[]);console.log(name+': one field, local filter, exact selection, keyboard/click, bounds, autosave, pagination and failure passed');
       }catch(e){await page.screenshot({path:path.join(output,name+'-failure.png'),fullPage:true});throw e;}
       finally{await context.close();}

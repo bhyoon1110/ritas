@@ -270,6 +270,16 @@ test('request fetch and delivery lock picker and stale options, but lookup failu
   h.input('의뢰 검색·선택','REQ');assert.match(h.q('request-info').textContent,/조회 실패/);assert.equal(h.field('의뢰번호').value,'REQ');
   h.input('의뢰번호','MANUAL');assert.equal(h.field('의뢰번호').value,'MANUAL');assert(!h.field('의뢰번호').disabled);
 });
+for(const kind of ['ftir','raman','tem'])test(kind+' common item creation uses a single input row with an accessible plus icon',t=>{
+  const h=setup(t,kind),input=h.field('새 공통 항목 이름'),add=h.q('variable-add');
+  assert(input.parentNode.classList.contains('variable-add-row'));assert.equal(input.nextElementSibling,add);
+  assert.equal(add.type,'button');assert.equal(add.getAttribute('aria-label'),'공통 항목 추가');assert.equal(add.title,'공통 항목 추가');
+  assert.equal(add.textContent,'');assert.equal(add.querySelector('svg').getAttribute('aria-hidden'),'true');
+  assert.equal(add.querySelector('path').getAttribute('d'),'M12 5v14 M5 12h14');
+  h.input('새 공통 항목 이름','실험실 온도');add.click();assert.equal(input.value,'');assert(h.field('실험실 온도 · 값'));
+  h.tick();assert.deepEqual(h.posts[0].body.variables,[{name:'실험실 온도',value:'',unit:''}]);
+  h.input('새 공통 항목 이름','실험실 온도');add.click();assert.match(h.q('status').textContent,/중복/);assert.equal(h.timers.size,0);
+});
 test('direct preview preserves selected page when autosave completes',t=>{
   const h=setup(t);h.q('edit-next').click();h.q('edit-next').click();assert(h.q('edit-next').disabled);
   h.input('보고서 제목','새 제목');h.tick();assert(h.q('slide-image').src.endsWith('/revision/edit-slides/2'));

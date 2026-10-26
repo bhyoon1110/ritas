@@ -228,9 +228,11 @@
   function commonVariables(parent) {
     var box = element("section", parent); element("h2", box, "추가 공통 항목");
     element("p",box,"이름·값·단위를 등록한 뒤 PPT 문구에서 ‘공통 정보 삽입’을 사용하세요. 연결한 곳만 함께 바뀝니다.").className = "muted";
-    var list = element("div",box), name = element("input",box); name.placeholder = "새 항목 이름 (예: 레이저 파장)";
+    var list = element("div",box), addRow = element("div",box); addRow.className = "variable-add-row";
+    var name = element("input",addRow); name.placeholder = "새 항목 이름 (예: 레이저 파장)";
     name.maxLength = 60; name.setAttribute("aria-label","새 공통 항목 이름");
-    var add = element("button",box,"항목 추가"); add.id = "variable-add";
+    var add = element("button",addRow); add.id = "variable-add"; add.type = "button";
+    window.RistReportIcons(add,"plus","공통 항목 추가");
     function row(item) {
       var block = element("div",list); block.className = "variable-row";
       element("strong",block,item.name);

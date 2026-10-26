@@ -17,6 +17,7 @@
     back:'<rect x="9" y="9" width="12" height="12" rx="1"/><path d="M6 15H3V3h12v3 M13 15h4"/>',
     reset:'<path d="M3 4v6h6 M3 10a9 9 0 1 1 1 8"/>',
     add:'<path d="M13 3H4v18h16V10 M15 3v6h6 M8 15h8 M12 11v8"/>',
+    plus:'<path d="M12 5v14 M5 12h14"/>',
     up:'<path d="m6 14 6-6 6 6"/>',
     down:'<path d="m6 10 6 6 6-6"/>',
     pages:'<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18 M5 7h2 M5 12h2 M5 17h2"/>'
