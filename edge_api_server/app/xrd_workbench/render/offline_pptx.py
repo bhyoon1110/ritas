@@ -131,7 +131,6 @@ def make_offline(content, project, document, resolve_source, *, viewer_state=Non
         for index, preview in enumerate(record['previews']):
             slide = appendix.slide(blank=True)
             appendix.title(slide, '첨부 자료 · ' + record['name'])
-            appendix.text(slide, 'PPT에 포함된 자료  ·  서버 연결 없이 확인', (8, 25, 260, 8), size=11, color='0A7489')
             if isinstance(preview, bytes):
                 appendix.picture(slide, preview, (8, 35, 260, 112), record['name'])
             else:
