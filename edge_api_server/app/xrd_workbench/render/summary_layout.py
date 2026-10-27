@@ -67,7 +67,8 @@ def summary_pages(entries, samples, classification, *, width=55.8, height=139):
         if page and y + row_h > height:
             pages.append(page); page=[]; y=0
         for column, card in enumerate(row):
-            page.append(dict(card, column=column, top=y))
+            # Match neighboring frames to the tallest content in this row.
+            page.append(dict(card, column=column, top=y, height=row_h))
         y += row_h + 3
     if page or not pages:
         pages.append(page)

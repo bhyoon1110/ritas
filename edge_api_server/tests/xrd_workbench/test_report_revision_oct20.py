@@ -2,6 +2,7 @@
 from copy import deepcopy
 import io
 
+import pytest
 from pypdf import PdfReader
 
 from app.xrd_workbench.core.report import new_document, validate_document
@@ -11,7 +12,7 @@ from app.xrd_workbench.render.posco_pptx import build_posco_deck, named, NS, box
 from app.xrd_workbench.render.posco_preview import deck_pages
 from app.xrd_workbench.render.pdf import render_pdf
 from app.xrd_workbench.render.html import render_html
-from app.xrd_workbench.render.summary_layout import classifier, notice, NOTICE
+from app.xrd_workbench.render.summary_layout import classifier, notice, summary_pages, NOTICE
 from .test_posco_pptx import fixture
 from .test_sample_slide import sample, IMAGE
 from .figure_fixtures import make_project
@@ -68,6 +69,50 @@ def test_huge_phase_lists_continue_without_ellipsis_or_losing_last_phase():
     body=''.join(text(s) for s in summaries)
     for i in range(90): assert f'Phase{i}' in body
     assert '…' not in body
+
+
+@pytest.mark.parametrize('counts', [(1, 6, 2, 4, 1), (1, 24, 2), (2, 1)])
+def test_summary_neighbors_match_tallest_box_in_ppt_and_preview(counts):
+    project = make_project([sample(str(i), n_phases=count, quantities=0)
+                            for i, count in enumerate(counts)])
+    doc = new_document(project)
+    doc['figure']['include'] = False
+    doc['samples'][1]['display_name'] = '긴 시료명: 결정상 분석 결과를 확인하는 두 번째 샘플'
+    samples = {s['id']: s for s in project['samples']}
+    classify = classifier(doc)
+    before = deepcopy((project, doc))
+    # The row must grow to its longest neighbor, not shrink or clip that content.
+    natural = [card for entry in doc['samples']
+               for page in summary_pages([entry], samples, classify) for card in page]
+    plan = summary_pages(doc['samples'], samples, classify)
+    fitted = [card for page in plan for card in page]
+    assert [c['lines'] for c in fitted] == [c['lines'] for c in natural]
+    for start in range(0, len(fitted), 2):
+        expected = max(c['height'] for c in natural[start:start+2])
+        assert all(c['height'] == expected for c in fitted[start:start+2])
+
+    deck = build_posco_deck(project, doc, lambda _: IMAGE, image_renderer=lambda *a: IMAGE)
+    summaries = [slide for slide, _ in deck.pages if deck.page_info[slide]['kind'] == 'summary']
+    previews = [page for page in deck_pages(deck) if page['kind'] == 'summary']
+    assert len(summaries) == len(plan) == len(previews)
+    for slide, page, cards in zip(summaries, previews, plan):
+        frames = named(slide, 'Sample frame')
+        assert len(frames) == len(cards)
+        previous_bottom = None
+        for top in sorted({c['top'] for c in cards}):
+            row = [box(frame) for frame, card in zip(frames, cards) if card['top'] == top]
+            assert len({(y, h) for _, y, _, h in row}) == 1
+            _, y, _, h = row[0]
+            if previous_bottom is not None:
+                assert y == pytest.approx(previous_bottom + 3)
+            previous_bottom = y + h
+            assert previous_bottom <= 173
+        for frame in frames:
+            bounds = box(frame)
+            assert any(item['type'] == 'rect' and
+                       tuple(item[k] for k in ('x', 'y', 'w', 'h')) == bounds
+                       for item in page['items'])
+    assert before == (project, doc)
 
 
 def test_wppf_table_and_links_match_reference_and_keep_unit_precision():
