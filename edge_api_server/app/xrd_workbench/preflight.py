@@ -9,6 +9,7 @@ DEPENDENCIES = (
     ('matplotlib.backends.backend_agg', 'matplotlib'),
     ('reportlab.pdfgen.canvas', 'reportlab'),
     ('pdfplumber', 'pdfplumber'),
+    ('pypdfium2', 'pypdfium2 (pdfplumber 의존성)'),
     ('pptx', 'python-pptx'),
     ('PIL.Image', 'Pillow'),
 )

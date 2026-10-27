@@ -93,10 +93,16 @@ def test_saved_pptx_export_requires_the_saved_revision(tmp_path):
         == 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
     )
     with zipfile.ZipFile(io.BytesIO(response.content)) as z:
-        assert 'XRD 분석 보고서' in z.read('ppt/slides/slide1.xml').decode('utf-8')
-        assert '분석 이력 요약' in z.read('ppt/slides/slide2.xml').decode('utf-8')
-        assert 'PPTX 저장 검토본' in z.read('ppt/slides/slide1.xml').decode('utf-8')
-        assert '분석 결과 요약' in z.read('ppt/slides/slide3.xml').decode('utf-8')
+        from app.xrd_workbench.render.posco_preview import report_pages
+        from app.xrd_workbench.render.pdf import render_pdf
+        from app.xrd_workbench.render.pdf_raster import page_images
+        saved_doc = client.get('/api/reports/example').json()['document']
+        pages = report_pages(project, saved_doc, lambda fid: resolve_source('example', fid),
+                             storage_id='example', link_base='http://testserver/')
+        expected = list(page_images(render_pdf(pages, saved_doc), max_edge=2600))
+        for number, image in enumerate(expected, 1):
+            assert z.read(f'ppt/media/xrd-delivery-{number}.png') == image
+            assert '<a:t>' not in z.read(f'ppt/slides/slide{number}.xml').decode()
         assert 'PPTX 저장 검토본' in z.read('docProps/core.xml').decode('utf-8')
         assert not any('보고서 정보' in z.read(name).decode('utf-8')
                        for name in z.namelist() if name.startswith('ppt/slides/slide') and name.endswith('.xml'))

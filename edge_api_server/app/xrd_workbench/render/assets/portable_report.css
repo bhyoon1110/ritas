@@ -1,0 +1,15 @@
+#portable-dialog[hidden],#portable-dialog [hidden]{display:none!important}
+#portable-dialog{position:fixed;inset:0;top:0;right:0;bottom:0;left:0;z-index:1000;background:#f1f5f8;display:flex;flex-direction:column;font:14px Arial,"Malgun Gothic",sans-serif}
+.portable-bar{display:flex;align-items:center;padding:10px;background:white;border-bottom:1px solid #ccd7e4;flex-shrink:0}
+.portable-bar strong{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-right:8px}
+#portable-dialog button{background:#fff;color:#173d56;border:1px solid #b7cbd8;border-radius:5px;padding:9px 12px;margin:0 3px;white-space:nowrap;cursor:pointer;min-height:40px}
+#portable-dialog button:disabled{opacity:.45;cursor:default}
+#portable-notice{padding:0 12px;white-space:pre-wrap;flex-shrink:0}#portable-notice:not(:empty){padding:9px 12px;background:#fff6d9}
+.portable-pager{display:flex;justify-content:center;align-items:center;padding:6px;flex-shrink:0}
+#portable-page{padding:0 12px}
+#portable-body{flex:1;min-height:0;overflow:auto;-webkit-overflow-scrolling:touch;text-align:center}
+#portable-body iframe{width:100%;height:100%;border:0;background:white;display:block}
+#portable-body img{display:block;max-width:100%;height:auto;margin:0 auto;background:white}
+#portable-body pre{text-align:left;white-space:pre-wrap;overflow-wrap:break-word;word-wrap:break-word;margin:12px;background:white;padding:16px;font:13px monospace}
+@media(max-width:600px){.reportNav{padding:10px;line-height:1.8}.reportNav span{display:block}.portable-bar{padding:6px}.portable-bar button{padding:8px}.portable-bar strong{font-size:13px}}
+@media print{#portable-dialog{display:none!important}}

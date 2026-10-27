@@ -241,7 +241,12 @@ async function draw(refreshPanel = true) {
 
 let viewerLinkDone = false;
 function seedViewerLink() {
-  const result = applyViewerLink(project, state, location.hash, location.search);
+  // A self-contained report opens this trusted viewer in srcdoc without sibling-file access.
+  const initial = offline && window.XRD_OFFLINE_SELECTION;
+  const hash = initial ? '#view=' + encodeURIComponent(initial.view) +
+    (initial.sample ? '&sample=' + encodeURIComponent(initial.sample) : '') : location.hash;
+  if (initial) delete window.XRD_OFFLINE_SELECTION;
+  const result = applyViewerLink(project, state, hash, initial ? '' : location.search);
   if (result.applied) {
     picking = false;
     hideSourceCard();

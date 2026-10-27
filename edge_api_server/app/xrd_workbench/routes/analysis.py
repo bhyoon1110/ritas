@@ -2,7 +2,6 @@
 
 import io
 import json
-import threading
 
 import pdfplumber
 from fastapi import APIRouter, HTTPException, Request
@@ -12,7 +11,7 @@ from ..core.errors import RevisionConflict
 from ..core.parsing.pdf_report import header_type
 from ..core.review import apply_review, new_review, report_sources
 
-_render_lock = threading.Lock()
+from ..render.pdf_raster import PDF_RENDER_LOCK as _render_lock
 
 
 def render_page(data, page_number):

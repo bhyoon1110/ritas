@@ -249,6 +249,7 @@ def build_report_router(project_loader, source_loader, store):
                 project, document, lambda fid: source_loader(storage_id, fid),
                 link_base=str(request.base_url),
                 storage_id=storage_id,
+                delivery=True,
             )
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from exc

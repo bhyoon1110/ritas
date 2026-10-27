@@ -1,6 +1,7 @@
 import io
 import json
 import zipfile
+from html.parser import HTMLParser
 
 import pytest
 
@@ -37,7 +38,15 @@ def test_new_csharp_inputs_build_report_without_changing_sources(tmp_path, zippe
         assert any(name.endswith('.txt') and name.startswith('Measured Data/') for name in archive.namelist()) == include_raw
         html = archive.read('보고서.html').decode()
         assert 'R-123' in html and 'XRD-1' in html and 'O-1' in html
-        assert 'contenteditable' not in html
+        # The embedded Plotly source contains the word contenteditable. Check actual
+        # report elements, not inert JSON/JavaScript bundled for the interactive viewer.
+        class ReportElements(HTMLParser):
+            editable = False
+            def handle_starttag(self, tag, attrs):
+                if 'contenteditable' in dict(attrs): self.editable = True
+        elements = ReportElements()
+        elements.feed(html)
+        assert not elements.editable
         if not include_raw:
             assert 'class="item sourceLink"' not in html
 

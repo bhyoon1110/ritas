@@ -47,7 +47,7 @@ def render_html(pages, document, link_mode='package', storage_id=None, *, edit_l
     height = pages[0].get('height', PAGE_H) if pages else PAGE_H
     style = STYLE.replace(str(PAGE_W)+'mm',str(width)+'mm').replace(str(PAGE_H)+'mm',str(height)+'mm')
     output = [
-        '<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>'
+        '<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>'
         + escape(document['metadata']['title'])
         + '</title><style>'
         + style
@@ -76,9 +76,9 @@ def render_html(pages, document, link_mode='package', storage_id=None, *, edit_l
             + escape('보고서.pdf')
             + '">보고서 PDF</a><a href="'
             + escape('보고서.pptx')
-            + '">편집 가능한 PPTX</a><a href="'
+            + '">열람용 PPTX</a><a href="'
             + escape('뷰어.html')
-            + '">Multi Profile Viewer</a><span>압축을 풀고 열어주세요. 원본 PDF: Report · TXT: Measured Data</span></nav>'
+            + '">전체 그래프</a><span>그래프·원본 자료는 이 HTML 안에서 열립니다. PPT의 파일 링크는 ZIP 전체 압축 해제가 필요합니다.</span></nav>'
         )
     page_keys = {}
     for index, page in enumerate(pages):
@@ -152,11 +152,11 @@ def render_html(pages, document, link_mode='package', storage_id=None, *, edit_l
                     + (' ↗' if item['label'] else '') + '</a>'
                 )
         output.append('</section>')
-    if link_mode == 'app':
+    if link_mode in ('app', 'package'):
         output.append(
             '<script>function fit(){var z=Math.min(1,(innerWidth-30)/'
             + str(round(width * PX_PER_MM))
-            + ');var pages=document.querySelectorAll(".page");for(var i=0;i<pages.length;i++){pages[i].style.zoom=z;}}addEventListener("resize",fit);fit();</script>'
+            + ');var pages=document.querySelectorAll(".page");for(var i=0;i<pages.length;i++){pages[i].style.zoom=z;}}addEventListener("resize",fit);addEventListener("beforeprint",function(){var p=document.querySelectorAll(".page");for(var i=0;i<p.length;i++)p[i].style.zoom=1;});addEventListener("afterprint",fit);fit();</script>'
         )
     if edit_links:
         output.append(EDITOR_SCRIPT)

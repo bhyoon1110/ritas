@@ -522,7 +522,7 @@ class Deck:
         return out.getvalue()
 
 
-def render_report_pptx(project, document, resolve_source, *, pages=None, link_base=None, storage_id=None, include_sources=True):
+def render_report_pptx(project, document, resolve_source, *, pages=None, link_base=None, storage_id=None, include_sources=True, delivery=False):
     """Production entry point. Explicit site templates keep their existing override behaviour."""
     document = validate_document(project, document)
     custom_template = bool(load_settings().pptx_template)
@@ -556,6 +556,13 @@ def render_report_pptx(project, document, resolve_source, *, pages=None, link_ba
         expected_pages = {f'ppt/slides/slide{index}.xml': deck.required_links.get(slide, set())
                           for index, (slide, _) in enumerate(deck.pages, 1)}
     check_ppt_links(content, expected, expected_pages)
+    if delivery:
+        from .delivery_pptx import flatten_pptx, custom_template_pdf
+        from .posco_preview import deck_pages
+        from .pdf import render_pdf
+        pdf = custom_template_pdf(content) if custom_template else render_pdf(deck_pages(deck), document)
+        content = flatten_pptx(content, pdf)
+        check_ppt_links(content, expected, expected_pages)
     return content
 
 
