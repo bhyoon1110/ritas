@@ -98,6 +98,28 @@ def test_delivery_keeps_exact_per_page_links_without_native_analysis_objects(rep
         assert b'<a:tbl>' in b''.join(archive.read(n) for n in archive.namelist() if n.startswith('ppt/slides/slide'))
 
 
+def test_password_protected_ppt_is_native_and_identical_in_html_and_zip(report):
+    from copy import deepcopy
+    from app.report.pptx_protection import create_protection
+    from tests.test_pptx_password import verifier, matches
+    project, doc, source = report
+    doc = deepcopy(doc)
+    doc['pptxProtection'] = create_protection('XRD-검토!')
+    native = render_report_pptx(project, doc, source)
+    assert not verifier(native)
+    delivered = render_report_pptx(project, doc, source, delivery=True)
+    assert matches('XRD-검토!', verifier(delivered))
+    assert ppt_click_targets_by_slide(delivered) == ppt_click_targets_by_slide(native)
+    with ZipFile(io.BytesIO(delivered)) as archive:
+        assert b'<a:tbl>' in b''.join(archive.read(n) for n in archive.namelist() if n.startswith('ppt/slides/slide'))
+    with ZipFile(io.BytesIO(build_package(project, doc, source))) as archive:
+        ppt = archive.read('보고서.pptx')
+        assert matches('XRD-검토!', verifier(ppt))
+        payload = json.loads(Payload(archive.read('보고서.html').decode()).text)
+        assert base64.b64decode(payload['files']['보고서.pptx']['data']) == ppt
+        assert 'XRD-검토!' not in archive.read('보고서.html').decode()
+
+
 def test_flattening_refuses_page_loss(report):
     project, doc, source = report
     native = render_report_pptx(*report)

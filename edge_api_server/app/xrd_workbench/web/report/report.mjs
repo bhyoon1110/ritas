@@ -1,4 +1,5 @@
 import { apiUrl, request as api } from '../shared/api.mjs';
+import '../shared/pptx_password.js';
 import { startExport, downloadJob, mountReportPlatform, transferValues } from '../shared/platform.mjs';
 import { $, escapeHTML } from '../shared/dom.mjs';
 import { restoreState, viewerStorageKey } from '../viewer/model.mjs';
@@ -53,6 +54,16 @@ let storageId = new URLSearchParams(location.search).get('project'),
   pcPercent = '';
 let composing = false, previewPosition = {index:0,offset:0}, linkedTimer = 0;
 const previewFrame = $('reportPreview'), reportMain = document.querySelector('main');
+const pptxPassword = new window.RistPptxPassword({host:document.querySelector('#savePane .saveActions'),
+  changed:()=>{if(doc){doc.pptxProtection=pptxPassword.value();markDirty();status('PPT 수정 비밀번호 설정을 변경했습니다. 저장·내보내기 시 적용됩니다.');}},
+  request:(password,done)=>{
+    lock(true);
+    api(`/api/reports/${storageId}/pptx-password`,{method:'POST',
+      headers:{'Content-Type':'application/json','X-Requested-With':'RIST-Report-Editor'},
+      body:JSON.stringify({password})}).then(r=>r.json()).then(value=>{
+        lock(false);done(null,value);
+      },error=>{lock(false);done(error);});
+  }});
 const mailEditor=mountEmailEditor($('editorFields'),$('reportNav'),()=>{
   if(!doc||busy)return;
   const email=ensureEmail(doc);email.delivery=mailEditor.value();email.body=$('emailBody').value;
@@ -177,6 +188,7 @@ function markDirty() {
 }
 function lock(value) {
   mailEditor.lock(value);
+  pptxPassword.lock(value);
   busy = value;
   if (value) livePreview.invalidate();
   else if (doc) livePreview.schedule();
@@ -235,6 +247,7 @@ function showTab(value) {
 }
 function render() {
   ensureEmail(doc);
+  pptxPassword.set(doc.pptxProtection);
   for (const [id, key] of [['ristExperiment','experiment_code'], ['ristEquipment','equipment_code']]) {
     if ($(id)) $(id).value = doc.metadata[key] || (key === 'experiment_code' ? 'XRD' : '');
   }

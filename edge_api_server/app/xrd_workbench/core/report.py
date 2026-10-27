@@ -331,6 +331,8 @@ def validate_document(project: dict, document: dict) -> dict:
     if type(revision) is not int or revision < 0:
         raise ValueError('잘못된 문서 revision입니다.')
     result['revision'] = revision
+    from ...report.pptx_protection import validate_protection
+    result['pptxProtection'] = validate_protection(document.get('pptxProtection'))
     if document.get('analysis_revision', 0) != project.get('analysis_revision', 0):
         raise ValueError('분석 검토값이 변경되었습니다. 보고서를 다시 열어 확인하세요.')
     metadata = document.get('metadata', {})

@@ -8,6 +8,8 @@ export function mergeDraftChanges(latest, current, baseline) {
       if (!same(current[group][key], baseline[group][key]))
         out[group][key] = structuredClone(current[group][key]);
   if (!same(current.summary, baseline.summary)) out.summary = current.summary;
+  if (!same(current.pptxProtection || {}, baseline.pptxProtection || {}))
+    out.pptxProtection = structuredClone(current.pptxProtection || {});
   if (latest.email || current.email) out.email = mergeEmailFields(latest.email, current.email, baseline.email);
   if (!same(current.figure, baseline.figure)) out.figure = structuredClone(current.figure);
   if (!same(current.quantity_table, baseline.quantity_table))

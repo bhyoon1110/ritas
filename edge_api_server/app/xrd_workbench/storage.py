@@ -29,6 +29,7 @@ import shutil
 import tempfile
 import threading
 import uuid
+from copy import deepcopy
 from contextvars import ContextVar
 from datetime import datetime, timezone
 from pathlib import Path
@@ -389,6 +390,9 @@ class ReportStore(_RevisionedStore):
                 '원자료가 변경되었습니다. 기존 문서를 덮어쓰지 않습니다.',
             )
             carry_review_flags(current, clean)
+            # Older clients must not silently clear an existing modify password.
+            if 'pptxProtection' not in document and current:
+                clean['pptxProtection'] = deepcopy(current.get('pptxProtection') or {})
             clean['revision'] = actual + 1
             audit = {'saved_at': datetime.now(timezone.utc).isoformat(),
                      'saved_by': report_actor.get(), 'previous_revision': actual}

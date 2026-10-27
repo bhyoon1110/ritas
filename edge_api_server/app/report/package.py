@@ -12,6 +12,7 @@ def build_report_package(
     input_dir: Path,
     *,
     include_raw_files: bool,
+    pptx_protection=None,
 ) -> Path:
     """공유 저장소에 게시할 최종 결과 ZIP을 만들고 내부 JSON은 제외한다."""
     package_path = report_dir / "report-package.zip"
@@ -25,7 +26,11 @@ def build_report_package(
             if path.suffix.lower() in _INTERNAL_REPORT_SUFFIXES:
                 continue
             archive_name = path.relative_to(report_dir).as_posix()
-            archive.write(path, archive_name)
+            if pptx_protection and path.suffix.lower() == ".pptx":
+                from .pptx_protection import protect_pptx
+                archive.writestr(archive_name, protect_pptx(path.read_bytes(), pptx_protection))
+            else:
+                archive.write(path, archive_name)
             archived_names.add(archive_name)
         if include_raw_files and input_dir.exists():
             for path in sorted(input_dir.rglob("*")):

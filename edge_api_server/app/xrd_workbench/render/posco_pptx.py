@@ -556,7 +556,13 @@ def render_report_pptx(project, document, resolve_source, *, pages=None, link_ba
         expected_pages = {f'ppt/slides/slide{index}.xml': deck.required_links.get(slide, set())
                           for index, (slide, _) in enumerate(deck.pages, 1)}
     check_ppt_links(content, expected, expected_pages)
-    if delivery:
+    from ...report.pptx_protection import validate_protection, protect_pptx
+    protection = validate_protection(document.get('pptxProtection'))
+    if delivery and protection:
+        # Keep native objects so the correct modify password really enables editing.
+        content = protect_pptx(content, protection)
+        check_ppt_links(content, expected, expected_pages)
+    elif delivery:
         from .delivery_pptx import flatten_pptx, custom_template_pdf
         from .posco_preview import deck_pages
         from .pdf import render_pdf

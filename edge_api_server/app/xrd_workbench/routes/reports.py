@@ -56,6 +56,12 @@ def build_report_router(project_loader, source_loader, store):
             )
         return project, document
 
+    @router.post('/api/reports/{storage_id}/pptx-password')
+    async def pptx_password(storage_id: str, request: Request):
+        context(storage_id)
+        from ...report.pptx_protection import password_verifier_response
+        return await password_verifier_response(request)
+
     @router.get('/api/reports/{storage_id}')
     def get_document(storage_id: str):
         with store.lock:

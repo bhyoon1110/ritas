@@ -25,6 +25,7 @@
   var saved = "", timer = null, composing = false, cellEditing = false, sending = false, activeRevision = null, retries = 0;
   var refs = {}, variables = [], layoutSequence = 0, canvas = null;
   var mailEditor = null;
+  var pptxPassword = null;
   var pageEdits = {hidden:[],added:[]}, pageFields = [], pageBox = null, pageEditing = false, structureDirty = false, layoutReady = false, layoutStructure = "";
   var deletedPageGroups=[];
   var labels = {requestNumber:"의뢰번호",limsExperimentCode:"실험코드",equipmentCode:"실험장비",operatorId:"실험자"};
@@ -88,6 +89,7 @@
     if (lookup) lookup.availability();
     if (conditions) conditions.lock(sending);
     if (mailEditor) mailEditor.lock(sending);
+    if (pptxPassword) pptxPassword.lock(busy || sending || !!activeRevision);
     direct.lock(sending);
     if(canvas)canvas.lock(busy||sending||!!activeRevision||structureDirty);
     pageAvailability();
@@ -459,6 +461,13 @@
     pageBox = element("div",editor);
     (pageEdits.added || []).forEach(function (item) { pageRow(item,false); });
     var mailPane = document.getElementById("mail-editor"); mailPane.textContent = "";
+    pptxPassword = new window.RistPptxPassword({host:mailPane,value:model.pptxProtection,
+      changed:changed,request:function(secret,done){
+        busy=true;window.clearTimeout(timer);availability();
+        request(url(currentId,"/pptx-password"),"POST",{password:secret},function(error,value){
+          busy=false;done(error,value);availability();schedule();
+        });
+      }});
     var mail = element("details", mailPane); mail.open = true; element("summary", mail, "보고서 안내 메일 문안");
     element("p",mail,"입력 내용은 자동 저장됩니다. 실제 메일 발송은 보고서 전송 후 Spring/LIMS 연계에서 처리합니다.").className = "muted";
     ["email_subject","email_body"].forEach(function (key) {
@@ -493,6 +502,7 @@
     });
     Object.keys(auxiliary).forEach(function (key) { result.auxiliary[key] = auxiliary[key].value; });
     if(mailEditor) result.deliveryEmail = mailEditor.value();
+    if(pptxPassword) result.pptxProtection = pptxPassword.value();
     result.pageEdits = {hidden:pageEdits.hidden.slice(),order:(pageEdits.order||[]).slice(),added:pageFields.map(function (item) {
       return {id:item.id,after:item.after,title:item.title.value,body:item.body.value};
     })};

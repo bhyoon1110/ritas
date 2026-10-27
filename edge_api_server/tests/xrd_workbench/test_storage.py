@@ -12,6 +12,23 @@ from app.xrd_workbench.storage import ProjectFiles, Storage
 TXT = b'#Intensity_unit=cps\n10 1\n11 2\n'
 
 
+def test_ppt_password_survives_old_client_save_and_can_be_explicitly_removed(tmp_path):
+    from app.report.pptx_protection import create_protection
+    storage = Storage(tmp_path)
+    project = storage.files.create([('S1.txt', TXT)], {})
+    sid = project['storage_id']
+    doc = new_document(project)
+    settings = create_protection('revision secret')
+    doc['pptxProtection'] = settings
+    doc = storage.reports.save(sid, project, doc, 0)
+    assert storage.reports.load(sid)['pptxProtection'] == settings
+    doc.pop('pptxProtection')
+    doc = storage.reports.save(sid, project, doc, 1)
+    assert doc['pptxProtection'] == settings
+    doc['pptxProtection'] = {}
+    assert storage.reports.save(sid, project, doc, 2)['pptxProtection'] == {}
+
+
 def test_created_project_is_listed_loaded_and_its_sources_verified(tmp_path):
     files = ProjectFiles(tmp_path / 'uploads')
     project = files.create([('S1.txt', TXT)], {})

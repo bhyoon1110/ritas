@@ -98,6 +98,7 @@ class ReportDocument:
     traceability: dict[str, Any] = field(default_factory=dict)
     page_edits: dict[str, Any] = field(default_factory=dict)
     canvas_edits: dict[str, Any] = field(default_factory=dict)
+    pptx_protection: dict[str, str] = field(default_factory=dict)
     canvas_asset_root: str | None = None  # Server-owned runtime path; never a client field.
 
     def section(self, section_id: str) -> ReportSection | None:
@@ -156,6 +157,7 @@ class ReportDocument:
             "traceability": dict(self.traceability),
             "pageEdits": self.page_edits,
             "canvasEdits": self.canvas_edits,
+            "pptxProtection": self.pptx_protection,
             "llm": {"used": self.llm_used, "error": self.llm_error},
             "figures": [figure.to_dict() for figure in self.figures],
             "auxiliary": dict(self.auxiliary_texts),

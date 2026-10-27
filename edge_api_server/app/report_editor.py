@@ -67,6 +67,7 @@ class ReportEdit(BaseModel):
     sections: list[SectionEdit] = Field(max_length=100)
     auxiliary: dict[str, str]
     deliveryEmail: dict[str, str] | None = None
+    pptxProtection: dict[str, str] | None = None
     completionDate: str | None = Field(default=None, max_length=10)
     variables: list[CommonVariable] = Field(default_factory=list, max_length=32)
     pageEdits: PageEdits | None = None
@@ -105,6 +106,8 @@ def _load_document(job):
 
 def _validate_changes(changes, document):
     values = changes.model_dump()
+    from .report.pptx_protection import validate_protection
+    values['pptxProtection'] = validate_protection(values['pptxProtection'] if values['pptxProtection'] is not None else document.pptx_protection)
     from .report_mail import normalize_delivery
     values['deliveryEmail'] = normalize_delivery(values.get('deliveryEmail') if values.get('deliveryEmail') is not None else document.delivery_email)
     if values["canvasEdits"] is None:
@@ -224,7 +227,8 @@ def _write_revision(store, new_job, old_job, changes, project, settings, databas
         build_spectrum_viewer(report_dir, title=document.title,
                               figure=analysis.get("viewerFigure") or analysis.get("figure") or {},
                               analysis=analysis_preview(document), graphs=analysis.get("reportGraphs") or [])
-        package = reports.build_report_package(report_dir, tmp_root / "job/input", include_raw_files=False)
+        package = reports.build_report_package(report_dir, tmp_root / "job/input", include_raw_files=False,
+                                               pptx_protection=document.pptx_protection)
         transfer = changes["transfer"]
         package = register_generated_report_package(settings=settings, database=database,
             report_id=new_job.job_id, package_path=package, experiment_code=project,
@@ -251,7 +255,8 @@ def editor_page(prefix, job_id, *, project=None):
     config = json.dumps({"prefix": prefix, "jobId": job_id, "project": project,
                          "conditionOptions": condition_options(project)}, ensure_ascii=False).replace("<", "\\u003c")
     template = Path(__file__).with_name("report_editor.html").read_text(encoding="utf-8")
-    script = "\n".join((Path(__file__).parent / name).read_text(encoding="utf-8")
+    script = (Path(__file__).parent / "xrd_workbench/web/shared/pptx_password.js").read_text(encoding="utf-8") + "\n"
+    script += "\n".join((Path(__file__).parent / name).read_text(encoding="utf-8")
                        for name in ("file_save.js", "report_editor_icons.js", "report_page_sidebar.js", "report_cell_editor.js", "report_direct_editor.js", "report_canvas_editor.js", "report_saved_graphs.js", "report_condition_options.js", "xrd_workbench/web/shared/mail_editor_icons.js", "xrd_workbench/web/shared/mail_table_editor.js", "xrd_workbench/web/shared/mail_editor.js", "report_editor.js"))
     return template.replace("__CONFIG__", config).replace("__SCRIPT__", script).replace(
         "</body>", floating_panels_html() + "</body>", 1
@@ -261,6 +266,12 @@ def editor_page(prefix, job_id, *, project=None):
 def install_report_editor(router, kind):
     prefix = f"/api/v1/{kind}/report/jobs"
     project = "FT-IR" if kind == "ftir" else "RAMAN"
+
+    @router.post(prefix + "/{job_id}/pptx-password", tags=[kind])
+    async def pptx_password(request: Request, job_id: str):
+        _authorized_job(request, job_id, kind)
+        from .report.pptx_protection import password_verifier_response
+        return await password_verifier_response(request)
 
     @router.get(prefix + "/{job_id}/editor-status", tags=[kind])
     def editor_status(request: Request, job_id: str):

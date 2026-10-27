@@ -127,7 +127,11 @@ def _revision(new_job, old_job, changes, actor_id=None):
             atomic_write_json(new_job.manifest_path, manifest)
             ahn._set_job_state(new_job, progress_pct=65, message="수정된 PPT 미리보기와 전송 ZIP을 만드는 중입니다.")
             convert_pptx_to_pdf(new_job.pptx_path, new_job.output_dir / "tem-report.pdf")
-            ahn._build_package(new_job.output_dir, new_job.package_path)
+            if changes.get('pptxProtection'):
+                from .report.pptx_protection import protect_pptx
+                (_state_path(new_job).parent / 'delivery.pptx').write_bytes(
+                    protect_pptx(new_job.pptx_path.read_bytes(), changes['pptxProtection']))
+            ahn._build_package(new_job.output_dir, new_job.package_path, pptx_protection=changes.get('pptxProtection'))
             transfer = new_job.transfer_metadata
             published_package = register_generated_report_package(settings=new_job.settings, database=new_job.database,
                 report_id=new_job.job_id, package_path=new_job.package_path, experiment_code="TEM",
@@ -157,6 +161,12 @@ def _revision(new_job, old_job, changes, actor_id=None):
 
 def install_tem_editor(router):
     prefix = "/api/v1/tem/report/jobs"
+
+    @router.post(prefix + "/{job_id}/pptx-password", tags=["tem"])
+    async def pptx_password(request: Request, job_id: str):
+        authorized_job(request, job_id)
+        from .report.pptx_protection import password_verifier_response
+        return await password_verifier_response(request)
 
     @router.get(prefix + "/{job_id}/edit", response_class=HTMLResponse, tags=["tem"])
     def page(request: Request, job_id: str):

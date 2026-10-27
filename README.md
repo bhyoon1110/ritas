@@ -12,7 +12,32 @@ FTIR/Raman은 서버에 남아 있는 보고서 편집 작업, TEM/XRD는 보관
 브라우저에만 저장한 그래프, 만료·삭제된 작업은 포함하지 않으며 완료일은 한국 시간 기준이다.
 기존 DB 테이블을 사용하므로 이번 대시보드를 위한 별도 스키마 변경은 필요 없다.
 
-## 구성
+## PPT 수정 비밀번호
+
+네 실험 모두 보고서별로 수정 비밀번호를 설정·변경·해제할 수 있습니다.
+FTIR/Raman/TEM은 **보고서 미리보기·편집 → 안내 메일 위의 ‘PPT 수정 비밀번호’**,
+XRD는 **보고서 저장 → ‘PPT 수정 비밀번호’**에서 입력합니다.
+비밀번호와 확인 값을 입력하고 ‘설정 / 변경’을 누른 뒤 저장 완료를 확인하세요.
+FTIR/Raman/TEM은 새 수정본이 자동 생성되며, XRD는 저장 또는 내보내기 시 반영됩니다.
+이후 다운로드·LIMS 전송에 사용하는 새 PPT/ZIP에 적용되고 이미 받은 파일은 변경되지 않습니다.
+
+비밀번호 없이 열람할 수 있으며, 수정 비밀번호를 지원하는 PowerPoint에서 편집하려면
+비밀번호가 필요합니다. 문서 암호화/DRM은 아니며 일부 모바일·타사 뷰어는 이를 강제하지
+않을 수 있습니다. 서버 미리보기와 분석자의 편집 기능은 계속 사용할 수 있습니다.
+XRD는 비밀번호 미설정 시 기존 이미지 기반 열람용 PPT를 유지하고,
+설정 시 비밀번호로 편집을 허용할 수 있도록 원래의 텍스트·표와 링크가 있는 PPT를 제공합니다.
+해제 후에는 XRD가 다시 이미지 기반 열람용으로 생성됩니다.
+
+서버와 초안에는 임의 salt와 SHA-512/100,000회 OOXML 수정 검증값만 저장하며
+비밀번호 원문은 저장·메일 포함하지 않습니다. 비밀번호를 잊으면 작성자/관리자가 새로 설정한
+수정본을 내려받으세요. 기존 파일의 비밀번호를 복구하는 기능은 아닙니다.
+새 DB 테이블이나 서버 패키지 설치는 필요 없습니다. 코드 갱신 후 API/worker를 재시작하고
+브라우저를 새로고침하세요.
+
+구현 기준: [Microsoft p:modifyVerifier](https://learn.microsoft.com/en-us/dotnet/api/documentformat.openxml.presentation.modificationverifier)
+및 [Apache POI write-protection hash](https://github.com/apache/poi/blob/trunk/poi/src/main/java/org/apache/poi/poifs/crypt/CryptoFunctions.java).
+
+## 프로젝트 구성
 
 | 경로 | 설명 |
 |---|---|

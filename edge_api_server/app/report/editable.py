@@ -100,6 +100,7 @@ def document_from_dict(value, *, image_path):
                           llm_error=value.get("llm", {}).get("error"), traceability=value.get("traceability", {}),
                           page_edits=deepcopy(value.get("pageEdits") or {}),
                           canvas_edits=deepcopy(value.get("canvasEdits") or {}),
+                          pptx_protection=deepcopy(value.get("pptxProtection") or {}),
                           canvas_asset_root=str(Path(image_path).parent / "editor-assets"))
 
 
@@ -112,6 +113,7 @@ def editor_document(document):
                          for s in document.sections if s.section_id != "report_transfer"],
             "auxiliary": dict(document.auxiliary_texts),
             "deliveryEmail": dict(document.delivery_email),
+            "pptxProtection": dict(document.pptx_protection),
             "pageEdits": deepcopy(document.page_edits or {"hidden": [], "added": []}),
             "canvasEdits": deepcopy(document.canvas_edits)}
 
@@ -131,6 +133,7 @@ def apply_edits(document, changes, project):
             section.table.rows = item["rows"]
     document.auxiliary_texts = changes["auxiliary"]
     document.delivery_email = deepcopy(changes.get("deliveryEmail", document.delivery_email))
+    document.pptx_protection = deepcopy(changes.get("pptxProtection", document.pptx_protection))
     if changes.get("pageEdits") is not None:
         document.page_edits = deepcopy(changes["pageEdits"])
     if changes.get("canvasEdits") is not None:

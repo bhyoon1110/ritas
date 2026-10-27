@@ -858,12 +858,17 @@ def _cleanup_old_jobs() -> None:
                     _ahn_completed_upload_jobs.pop(upload_id, None)
 
 
-def _build_package(output_dir: Path, package_path: Path) -> Path:
+def _build_package(output_dir: Path, package_path: Path, *, pptx_protection=None) -> Path:
     with zipfile.ZipFile(package_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         for path in sorted(output_dir.rglob("*")):
             if not path.is_file() or path == package_path:
                 continue
-            archive.write(path, path.relative_to(output_dir).as_posix())
+            name = path.relative_to(output_dir).as_posix()
+            if pptx_protection and path.suffix.lower() == ".pptx":
+                from .report.pptx_protection import protect_pptx
+                archive.writestr(name, protect_pptx(path.read_bytes(), pptx_protection))
+            else:
+                archive.write(path, name)
     return package_path
 
 
@@ -3236,8 +3241,14 @@ def download_tem_report(request: Request, job_id: str, kind: str) -> FileRespons
             details={"status": job.status, "progressPct": job.progress_pct},
         )
     if kind == "pptx":
+        from .tem_report_editor import _state, _state_path
+        delivery = job.pptx_path
+        if _state_path(job).is_file() and _state(job).get('pptxProtection'):
+            delivery = _state_path(job).parent / 'delivery.pptx'
+            if not delivery.is_file():
+                raise ApiException(409, "TEM_PROTECTED_PPT_NOT_READY", "수정 비밀번호가 적용된 PPT를 다시 생성하세요.")
         return tem_history.HistoryFileResponse(job,
-            job.pptx_path,
+            delivery,
             media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
             filename="tem-report.pptx",
         )

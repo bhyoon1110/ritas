@@ -221,6 +221,8 @@ def initial_model(path, summary):
 
 
 def validate_changes(value, source):
+    from .pptx_protection import validate_protection
+    value['pptxProtection'] = validate_protection(value.get('pptxProtection') if value.get('pptxProtection') is not None else source.get('pptxProtection'))
     if set(value["transfer"]) != set(TRANSFER_FIELDS):
         raise ValueError("전송 정보 항목이 올바르지 않습니다.")
     for key, text in value["transfer"].items():

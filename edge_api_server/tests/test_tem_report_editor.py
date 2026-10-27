@@ -216,6 +216,8 @@ def test_tem_author_admin_and_project_access(report):
     for user, projects, roles, status in [("author", {"TEM"}, set(), 200), ("other", {"TEM"}, set(), 403),
             ("author", {"FTIR"}, set(), 403), ("admin", set(), {"ADMIN"}, 200)]:
         h.app.state.actor = replace(actor, user_id=user, projects=frozenset(projects), roles=frozenset(roles))
+        assert h.client.post(h.url+'/pptx-password',json={'password':'private'},
+                             headers={'X-Requested-With':'RIST-Report-Editor'}).status_code == status
         for suffix in ("", "/edit", "/editor-data", "/edit-layout", "/edit-slides/0", "/download", "/download/pptx", "/preview"):
             assert h.client.get(h.url+suffix).status_code == status, (user, suffix)
     h.app.state.actor = actor

@@ -1,6 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mergeDraftChanges } from '../../app/xrd_workbench/web/report/report_merge.mjs';
+test('password verifier follows unsaved changes but never overwrites a newer setting when untouched', () => {
+  const base={metadata:{},llm:{},samples:[],summary:'',pptxProtection:{hashData:'old'}};
+  const latest=structuredClone(base);latest.pptxProtection={hashData:'new'};
+  assert.deepEqual(mergeDraftChanges(latest,structuredClone(base),base).pptxProtection,{hashData:'new'});
+  const changed=structuredClone(base);changed.pptxProtection={};
+  assert.deepEqual(mergeDraftChanges(latest,changed,base).pptxProtection,{});
+});
 test('unsaved prose survives analysis refresh while latest identities and re-review stay authoritative', () => {
   const base = {
     metadata: { title: 'saved', client: 'old client' },

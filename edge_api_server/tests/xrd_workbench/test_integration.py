@@ -149,6 +149,8 @@ def test_access_is_scoped_for_projects_files_sessions_jobs_and_presets(tmp_path)
     session = client.post(api.BASE+'/api/upload-sessions').json()['upload_id']
     preset = client.post(api.BASE+'/api/presets', json={'name':'Private', 'settings':{}}).json()
     client.headers['test-user'] = 'two'
+    assert client.post(api.BASE+f'/api/reports/{sid}/pptx-password', json={'password':'private'},
+                       headers={'X-Requested-With':'RIST-Report-Editor'}).status_code == 404
     assert client.get(api.BASE+'/api/projects').json() == []
     assert client.get(api.BASE+f'/api/projects/{sid}').status_code == 404
     assert client.get(api.BASE+f'/api/reports/{sid}').status_code == 404

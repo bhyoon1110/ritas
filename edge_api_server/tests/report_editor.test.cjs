@@ -6,7 +6,7 @@ const {JSDOM}=require('jsdom');
 const acorn=require('acorn');
 const {execFileSync}=require('node:child_process');
 const clone=x=>JSON.parse(JSON.stringify(x));
-const script=['file_save.js','report_editor_icons.js','report_page_sidebar.js','report_cell_editor.js','report_direct_editor.js','report_canvas_editor.js','report_saved_graphs.js','report_condition_options.js','xrd_workbench/web/shared/mail_editor_icons.js','xrd_workbench/web/shared/mail_table_editor.js','xrd_workbench/web/shared/mail_editor.js','report_editor.js'].map(name=>fs.readFileSync(path.join(__dirname,'../app',name),'utf8')).join('\n');
+const script=['xrd_workbench/web/shared/pptx_password.js','file_save.js','report_editor_icons.js','report_page_sidebar.js','report_cell_editor.js','report_direct_editor.js','report_canvas_editor.js','report_saved_graphs.js','report_condition_options.js','xrd_workbench/web/shared/mail_editor_icons.js','xrd_workbench/web/shared/mail_table_editor.js','xrd_workbench/web/shared/mail_editor.js','report_editor.js'].map(name=>fs.readFileSync(path.join(__dirname,'../app',name),'utf8')).join('\n');
 const template=fs.readFileSync(path.join(__dirname,'../app/report_editor.html'),'utf8');
 function setup(t,kind='ftir',identity='',conditionScenario=null) {
   const prefix='/api/v1/'+kind+'/report/jobs',posts=[],gets=[],timers=new Map(); let timerId=0;
@@ -39,6 +39,7 @@ function setup(t,kind='ftir',identity='',conditionScenario=null) {
         if(edits.order&&edits.order.length)pages.sort((a,b)=>edits.order.indexOf(a.id)-edits.order.indexOf(b.id));
         result={ratio:16/9,pageEditing:true,canvasEditing:true,pages:pages.filter(p=>!edits.hidden.includes(p.id))};
       }
+      else if(this.url.endsWith('/pptx-password')) result={protection:{hashData:'verifier-only',saltData:'salt'}};
       else if(this.url.endsWith('/revisions')) {
         revisions++;
         doc=clone(body);doc.sections.forEach(s=>{s.source='user';s.columns=s.rows?['대상','항목','값']:null;});
@@ -66,6 +67,21 @@ test('analyst editor is ES5 and renders text without HTML interpretation',t=>{
   assert.equal(h.field('분석 결과 요약 · 문단 1').value,'AI 초안');
   assert.equal(h.q('slide-image').getAttribute('src'),h.prefix+'/original/edit-slides/0');
   assert(h.field('분석 결과 요약 · 문단 1').closest('details').hidden);
+});
+for(const kind of ['ftir','raman','tem']) test(kind+' password is submitted explicitly and only verifier enters saved revisions',t=>{
+  const h=setup(t,kind),panel=h.d.querySelector('.pptx-password-panel');
+  const apply=[...panel.querySelectorAll('button')].find(b=>b.textContent==='설정 / 변경');
+  const clear=[...panel.querySelectorAll('button')].find(b=>b.textContent==='해제');
+  h.input('새 수정 비밀번호','private-secret');h.input('비밀번호 확인','mismatch');
+  assert.equal(h.posts.length,0);apply.click();assert.equal(h.posts.length,0);
+  h.input('비밀번호 확인','private-secret');apply.click();
+  assert.equal(h.posts.length,1);assert(h.posts[0].url.endsWith('/pptx-password'));
+  assert.equal(h.field('새 수정 비밀번호').value,'');assert.equal(h.field('비밀번호 확인').value,'');
+  h.tick();const revision=h.posts.find(p=>p.url.endsWith('/revisions'));
+  assert.equal(revision.body.pptxProtection.hashData,'verifier-only');
+  assert(!JSON.stringify(revision.body).includes('private-secret'));
+  assert(!JSON.stringify({...h.w.localStorage}).includes('private-secret'));
+  clear.click();h.tick();assert.deepEqual(h.posts[h.posts.length-1].body.pptxProtection,{});
 });
 for(const kind of ['ftir','raman']) test(kind+' condition choices autosave only the selected row and keep source/PPT bindings',t=>{
   const label=kind==='ftir'?'Type':'Excitation Wavelength',value=kind==='ftir'?'ATR method':'532 nm';
