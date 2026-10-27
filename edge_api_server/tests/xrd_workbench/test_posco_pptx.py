@@ -101,8 +101,10 @@ def test_more_samples_keep_only_reference_layouts_and_do_not_mutate_full_notes()
     assert 'QA-START' not in text and '뒤쪽' not in text
     assert document['samples'][0]['manual_note'].endswith('QA-END')
     assert all('시료 '+str(i) in text for i in range(5))
-    assert 'Phase7' in text and '계속' in text
+    assert 'Phase7' in text and '상 목록 1–3' not in text
     titles=[''.join(named(s,'Title')[0].xpath('.//a:t/text()',namespaces=NS)) for s in slides]
+    assert titles.count(PHASE_TITLE) == 3  # five whole sample tables, paired per slide
+    assert PHASE_TITLE+' (계속)' not in titles
     assert all(t.removesuffix(' (계속)') in ('XRD 분석 보고서','분석 이력 요약',SUMMARY_TITLE,PHASE_TITLE) for t in titles)
     for n in z.namelist():
         if n.endswith('.rels'):assert b'TargetMode="External"' not in z.read(n)
@@ -178,7 +180,7 @@ def test_phase_names_in_embedded_workbook_are_literal_strings_not_formulas():
     assert book.active['A2'].data_type=='s'
 
 
-def test_wppf_is_once_per_sample_and_all_remaining_phases_use_phase_layout():
+def test_wppf_is_once_per_sample_and_its_entire_phase_table_stays_with_the_graph():
     from app.xrd_workbench.render.posco_pptx import build_posco_deck
     project = make_project([sample('A', n_phases=8), sample('B', n_phases=4),
                             sample('C', n_phases=2, quantities=0)])
@@ -197,13 +199,11 @@ def test_wppf_is_once_per_sample_and_all_remaining_phases_use_phase_layout():
              for text in t.xpath('.//a:tr/a:tc[1]//a:t/text()',namespaces=NS)]
     assert cells.count('[미분류] Phase0') == 1
     assert cells.count('Phase0 [미분류]') == 2  # WPPF wording only; layout-only phase pages retain their labels
-    assert cells.count('[미분류] Phase3') == 2
-    assert cells.count('[미분류] Phase7') == 1
+    assert cells.count('Phase3 [미분류]') == 2
+    assert cells.count('Phase7 [미분류]') == 1
     assert '이전 페이지에 수록' not in cells
-    last_continuation = [s for s,_ in filled.pages if '상 목록 7–8 / 8' in ''.join(s.itertext())][0]
-    assert '시료 B' not in filled.page_info[last_continuation]['navigation_title']
-    assert len(named(last_continuation,'Phase table')) == 1
-    assert any('상 목록 4–6 / 8' in ''.join(s.itertext()) for s,_ in filled.pages)
+    assert [len(named(s,'Phase table')[0].findall('.//a:tr',NS))-1 for s in wppf_pages] == [8,4]
+    assert not any(named(s,'Phase continuation') for s,_ in filled.pages)
     assert before == (project, document)
 
 

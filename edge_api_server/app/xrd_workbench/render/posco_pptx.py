@@ -81,7 +81,7 @@ def place(shape, bounds):
             node.set(key, str(round(value * MM)))
 
 
-def set_text(shape, text, *, size=10, color='102A35', bold=False, dimensions=None, minimum=8):
+def set_text(shape, text, *, size=10, color='102A35', bold=False, dimensions=None, minimum=8, leading=1.25):
     """Fit complete editable text. Return False instead of silently clipping a long value."""
     body = shape.find('p:txBody', NS)
     if body is None:
@@ -90,7 +90,7 @@ def set_text(shape, text, *, size=10, color='102A35', bold=False, dimensions=Non
     chosen, lines = size, []
     while chosen >= minimum:
         lines = wrap_lines(str(text), max(1, width - 1.2), chosen, bold)
-        if len(lines) * chosen * 1.25 / 2.83465 <= height - .2:
+        if len(lines) * chosen * leading / 2.83465 <= height - .2:
             break
         chosen -= .5
     else:
@@ -109,7 +109,7 @@ def set_text(shape, text, *, size=10, color='102A35', bold=False, dimensions=Non
         paragraph = E.SubElement(body, q('a:p'))
         pp = E.SubElement(paragraph, q('a:pPr'), marL='0', indent='0')
         spacing = E.SubElement(pp, q('a:lnSpc'))
-        E.SubElement(spacing, q('a:spcPts'), val=str(round(chosen * 125)))
+        E.SubElement(spacing, q('a:spcPts'), val=str(round(chosen * leading * 100)))
         E.SubElement(pp, q('a:buNone'))
         run = E.SubElement(paragraph, q('a:r'))
         rp = E.SubElement(run, q('a:rPr'), sz=str(round(chosen * 100)), b='1' if bold else '0')
@@ -185,6 +185,74 @@ def phase_table_data(sample, classification, *, revised=False):
              (str(p.get('card') or '—') if common else
               ' '.join(str(v) for v in (p.get('db'), p.get('card')) if v) or '—')) for p in phases]
     return ('# ICDD CARD ID' if revised else common or 'DB / Card No.'), rows or [('상 목록 미제공', '—', '—')]
+
+
+def fit_phase_table(shape, database, rows, frame, heading, bottom):
+    """Keep every phase on its graph's slide as an editable, fitted native table.
+
+    Use cell spacing first. If 8pt text still needs more room, borrow height
+    from the graph (preserving its aspect ratio when placed), then reduce type.
+    Never abbreviate scientific names/formulas/cards or split off phase pages.
+    """
+    table = shape.find('.//a:tbl', NS)
+    original = table.findall('a:tr', NS)
+    header, prototype = deepcopy(original[0]), deepcopy(original[1])
+    widths = [int(c.get('w')) / MM for c in table.find('a:tblGrid', NS)]
+    headers = [''.join(c.xpath('.//a:t/text()', namespaces=NS)) for c in header.findall('a:tc', NS)]
+    headers[2] = database
+    values = [headers] + rows
+    x, y, w, _ = box(shape)
+    available = bottom - y
+
+    def metrics(size):
+        # Explicit margins match both PowerPoint and the shared HTML/PDF scene.
+        pad = size * .025
+        heights = []
+        for index, cells in enumerate(values):
+            font = max(7, size) if index == 0 else size
+            lines = max(len(wrap_lines(str(value), width - 3.2, font, index == 0 or col == 1))
+                        for col, (value, width) in enumerate(zip(cells, widths)))
+            minimum = (7.5 if index == 0 else 9) if len(rows) <= 3 else 0
+            heights.append(max(minimum, lines * font * 1.15 / 2.83465 + 2 * pad + .22))
+        return pad, heights
+
+    # Retain the template graph at ordinary row counts; expand only for dense tables.
+    needed = sum(metrics(8)[1])
+    gx, gy, gw, gh = box(frame)
+    extra = min(max(0, gh - 44), max(0, needed - available))
+    if extra:
+        place(frame, (gx, gy, gw, gh - extra))
+        hx, hy, hw, hh = box(heading)
+        place(heading, (hx, hy - extra, hw, hh))
+        y -= extra
+        available += extra
+    for quarter in range(38, 3, -1):
+        size = quarter / 4
+        pad, heights = metrics(size)
+        if sum(heights) <= available:
+            break
+    else:
+        raise ValueError('결정상 표의 내용이 한 페이지에 표시할 수 있는 양을 초과합니다. 상 이름과 항목을 확인하세요.')
+    for row in original:
+        table.remove(row)
+    for index, (cells, height) in enumerate(zip(values, heights)):
+        row = deepcopy(header if index == 0 else prototype)
+        row.set('h', str(round(height * MM)))
+        font = max(7, size) if index == 0 else size
+        for col, (cell, value, width) in enumerate(zip(row.findall('a:tc', NS), cells, widths)):
+            props = cell.find('a:tcPr', NS)
+            for key, margin in (('marL', 1), ('marR', 1), ('marT', pad), ('marB', pad)):
+                props.set(key, str(round(margin * MM)))
+            props.set('anchor', 'ctr')
+            if not set_text(cell, value, dimensions=(width - 2, height - 2 * pad),
+                            size=font, minimum=font, bold=index == 0 or col == 1,
+                            leading=1.15,
+                            color='FFFFFF' if index == 0 else '102A35'):
+                raise ValueError('결정상 표의 셀에 전체 내용을 배치하지 못했습니다.')
+            if index and col == 1:
+                subscript_formula(cell)
+        table.append(row)
+    place(shape, (x, y, w, sum(int(row.get('h')) for row in table.findall('a:tr', NS)) / MM))
 
 
 class Deck:
@@ -574,140 +642,108 @@ def build_posco_deck(project, document, resolve_source, *, pages=None, link_base
     # Detailed pages: WPPF alongside its matching sample, or two phase-only samples per page.
     plain=[]
     quantity_overflow=[]
-    def details(batch, quantitative, starts=None):
-        starts = starts or [0] * len(batch)
+    def details(batch, quantitative):
         table_sets = [phase_table_data(samples[e['sample_id']], classification, revised=quantitative) for e in batch]
         row_sets = [rows for _, rows in table_sets]
-        # A WPPF result is shown once per sample. Remaining phase rows use layout 3.
-        count = 1 if quantitative else max(len(rows)-offset for rows, offset in zip(row_sets, starts))
-        source_columns = list(zip(batch, starts, table_sets))
-        for step in range(0,count,3):
-            active = [(entry, offset+step, table) for entry, offset, table in source_columns
-                      if offset+step < len(table[1])]
-            batch = [entry for entry, _, _ in active]
-            page_starts = [offset for _, offset, _ in active]
-            table_sets = [table for _, _, table in active]
-            row_sets = [rows for _, rows in table_sets]
-            slide=deck.slide(1 if quantitative else 2, kind='sample', sample_id=batch[0]['sample_id'])
-            continued = not quantitative and any(page_starts)
-            deck.title(slide,(QUANTITY_TITLE if quantitative else PHASE_TITLE)+(' (계속)' if continued else ''))
-            deck.page_info[slide]['navigation_title'] = (
-                ('상 동정 & WPPF 정량' if quantitative else '상 동정') + ' · ' + ', '.join(
-                    e['display_name'] + (f' (상 {offset+1}–{min(offset+3,len(rows))}/{len(rows)})'
-                                        if len(rows)>3 else '')
-                    for e, offset, rows in zip(batch, page_starts, row_sets)))
-            frames=named(slide,'Match frame'); tables=named(slide,'Phase table')
-            # Fill the original horizontal link pills; never retain reference URLs.
-            link_frames=named(slide,'Source link frame')
-            link_names=('Text 9','Text 11','Text 13') if quantitative else ('Text 12','Text 14','Text 16','Text 18','Text 20','Text 22')
-            for index in range(1 if quantitative else 2):
-                entry=batch[index] if index<len(batch) else None
-                links=source_links(samples[entry['sample_id']]) if entry and include_sources else []
-                by_label={link['label']:link for link in links}
-                left=12.7+129.5*index
-                if entry and include_sources:
-                    bounds=(10.5,168,52,8) if quantitative else (left,162.4,48,8)
-                    frame=deck.append(slide,deepcopy(link_frames[index*3]),'Sample viewer link frame')
-                    place(frame,bounds)
-                    shape=deck.text(slide,'그래프(확대, 축소) 확인하기 ↗',bounds,size=8,color='0A7489',
-                                    name='Sample viewer link',
-                                    href=viewer_target(entry['sample_id'],link_base,storage_id))
-                    shape.find('p:txBody/a:bodyPr',NS).set('anchor','ctr')
-                    shape.find('p:txBody/a:p/a:pPr',NS).set('algn','ctr')
-                for j,label in enumerate(('상매칭 Report','정량(WPPF) Report','Measured Data (TXT)')):
-                    k=index*3+j;shape=named(slide,link_names[k])[0]
-                    if label not in by_label:
-                        remove(shape);remove(link_frames[k]);continue
-                    link=by_label[label]
-                    caption={'상매칭 Report':'상매칭 Report 열기','정량(WPPF) Report':'WPPF Report 열기',
-                             'Measured Data (TXT)':'측정 데이터(TXT) 열기'}[label]
-                    if quantitative:
-                        bounds=((65,168,43,8),(189,168,53,8),(111,168,48,8))[j]
-                    else:
-                        bounds=((left+50.5,162.4,31,8),(left+45,173,48,7),(left+84,162.4,36,8))[j]
-                    place(shape,bounds);place(link_frames[k],bounds)
-                    set_text(shape,caption+' ↗',size=8,color='0A7489',minimum=6)
-                    shape.find('p:txBody/a:p/a:pPr',NS).set('algn','ctr')
-                    rid=deck.rel(slide,'hyperlink',link_target(link,link_base,storage_id),True)
-                    for prop in shape.findall('.//a:rPr',NS):
-                        E.SubElement(prop,q('a:hlinkClick'),{q('r:id'):rid})
-            for index, entry in enumerate(batch):
-                sample=samples[entry['sample_id']]
-                start = page_starts[index]
-                put(slide,'Text 5' if index==0 else 'Text 8',entry['display_name']+' - 상 동정 (Phase Identification) 결과',12,dict(tab=entry['sample_id'],field='display_name'),bold=True)
-                frame=frames[index]; x,y,w,h=box(frame)
-                source=image(sample,'phase_image',entry)
-                if source: deck.picture(slide,source,(x+2,y+2,w-4,h-4),entry['display_name']+' 상매칭',edit=dict(tab=entry['sample_id'],field='phase_caption'))
-                else:
-                    # Same physical RAW values and reference rows as the viewer's rendering path.
-                    key=(entry['sample_id'],w,h)
-                    if key not in raw_images:
-                        single=deepcopy(document)
-                        for e in single['samples']: e['included']=e['sample_id']==entry['sample_id']
-                        single['figure']['include']=True; single['figure']['groups']=[]
-                        panels=build_plan(project,single)['panels']
-                        panel=next((p for p in panels if p['curves']),None)
-                        raw_images[key]=image_renderer(panel,w-4,h-4) if panel else None
-                    if raw_images[key]: deck.picture(slide,raw_images[key],(x+2,y+2,w-4,h-4),entry['display_name']+' RAW',edit=dict(tab=entry['sample_id'],field='phase_caption'))
-                shape=tables[index]; table=shape.find('.//a:tbl',NS)
-                deck.mark(shape,dict(tab='classes'))
-                original=table.findall('a:tr',NS); prototype=deepcopy(original[1])
-                for row in original[1:]: table.remove(row)
-                widths=[int(c.get('w'))/MM for c in table.find('a:tblGrid',NS)]
-                header = original[0].findall('a:tc',NS)[2]
-                fit_text(header, table_sets[index][0], dimensions=(widths[2]-1,8.6), size=9.5, color='FFFFFF', bold=True)
-                rows=row_sets[index][start:start+3]
-                if not rows: rows=[('이전 페이지에 수록','—','—')]
-                for values in rows:
-                    row=deepcopy(prototype);row.set('h',str(9*MM))
-                    for column,(cell,value,cw) in enumerate(zip(row.findall('a:tc',NS),values,widths)):
-                        fit_text(cell,value,dimensions=(cw-1,8.6),size=9.5,bold=column==1)
-                        if column==1: subscript_formula(cell)
-                    table.append(row)
-                x0,y0,w0,h0=box(shape)
-                place(shape,(x0,y0,w0,sum(int(row.get('h')) for row in table.findall('a:tr',NS))/MM))
-                if len(row_sets[index]) > 3 and start < len(row_sets[index]):
-                    end=min(start+3,len(row_sets[index]))
-                    caption=f'상 목록 {start+1}–{end} / {len(row_sets[index])}'
-                    if end<len(row_sets[index]): caption+=' · 나머지는 상 동정 결과에 계속'
-                    deck.text(slide,caption,(x0,y0+box(shape)[3]+1,w0,5),size=7.5,
-                              name='Phase continuation',edit=dict(tab='classes'))
+        slide=deck.slide(1 if quantitative else 2, kind='sample', sample_id=batch[0]['sample_id'])
+        deck.title(slide, QUANTITY_TITLE if quantitative else PHASE_TITLE)
+        deck.page_info[slide]['navigation_title'] = (
+            ('상 동정 & WPPF 정량' if quantitative else '상 동정') + ' · ' + ', '.join(
+                e['display_name'] + (f' (결정상 {len(rows)}개)' if len(rows)>3 else '')
+                for e, rows in zip(batch, row_sets)))
+        frames=named(slide,'Match frame'); tables=named(slide,'Phase table')
+        # Fill the original horizontal link pills; never retain reference URLs.
+        link_frames=named(slide,'Source link frame')
+        link_names=('Text 9','Text 11','Text 13') if quantitative else ('Text 12','Text 14','Text 16','Text 18','Text 20','Text 22')
+        for index in range(1 if quantitative else 2):
+            entry=batch[index] if index<len(batch) else None
+            links=source_links(samples[entry['sample_id']]) if entry and include_sources else []
+            by_label={link['label']:link for link in links}
+            left=12.7+129.5*index
+            if entry and include_sources:
+                bounds=(10.5,168,52,8) if quantitative else (left,162.4,48,8)
+                frame=deck.append(slide,deepcopy(link_frames[index*3]),'Sample viewer link frame')
+                place(frame,bounds)
+                shape=deck.text(slide,'그래프(확대, 축소) 확인하기 ↗',bounds,size=8,color='0A7489',
+                                name='Sample viewer link',
+                                href=viewer_target(entry['sample_id'],link_base,storage_id))
+                shape.find('p:txBody/a:bodyPr',NS).set('anchor','ctr')
+                shape.find('p:txBody/a:p/a:pPr',NS).set('algn','ctr')
+            for j,label in enumerate(('상매칭 Report','정량(WPPF) Report','Measured Data (TXT)')):
+                k=index*3+j;shape=named(slide,link_names[k])[0]
+                if label not in by_label:
+                    remove(shape);remove(link_frames[k]);continue
+                link=by_label[label]
+                caption={'상매칭 Report':'상매칭 Report 열기','정량(WPPF) Report':'WPPF Report 열기',
+                         'Measured Data (TXT)':'측정 데이터(TXT) 열기'}[label]
                 if quantitative:
-                    put(slide,'Text 14',entry['display_name']+' - WPPF 정량 (Phase Fraction) 결과',12,dict(tab=entry['sample_id'],field='display_name'),bold=True)
-                    place(named(slide,'Pie frame')[0],(167.6,39.6,94.8,74.9))
-                    bx,by,bw,bh=box(named(slide,'Pie frame')[0])
-                    quant_image=image(sample,'quantity_image',entry)
-                    pie_drawn=False
-                    if quant_image: deck.picture(slide,quant_image,(bx+2,by+2,bw-4,bh-4),entry['display_name']+' 정량 원본',edit=dict(tab=entry['sample_id'],field='quantity_caption'))
-                    else: pie_drawn=deck.pie(slide,sample.get('quantities',[]),(bx+3,by+3,bw-6,bh-6),edit=dict(tab=entry['sample_id'],field='quantity_caption'))
-                    if not quant_image and not pie_drawn:
-                        text='정량값은 아래 표에서 확인하세요.' if sample.get('quantities') else quantity_status(sample)
-                        shape=deck.text(slide,'',(bx+4,by+4,bw-8,bh-8),size=11)
-                        fit_text(shape,text,size=11)
-                    deck.text(slide,'결정상분율 (Phase Fraction)',(bx,117.3,bw,7),size=12,bold=True,color='0A7489')
-                    rows=[(v['phase'],f"{v.get('raw') or '확인 필요'} {v.get('unit') or ''}".strip())
-                          for v in sample.get('quantities',[])]
-                    if rows:
-                        units={v.get('unit') for v in sample['quantities']}
-                        header='결정상분율 (wt%)' if units=={'wt%'} else '결정상분율 (원문 단위)'
-                        used=deck.table(slide,['상 (Phase)',header],rows,(bx,126.5,bw,35),size=8.5,
-                                        edit=dict(tab=entry['sample_id']),allow_empty=True)
-                        if not used:
-                            deck.text(slide,'긴 정량 표는 뒤쪽 상 동정 결과의 계속 페이지에 수록합니다.',
-                                      (bx,128,bw,25),size=9)
-                        if used<len(rows): quantity_overflow.append((entry,header,rows[used:]))
-                        if pie_drawn:
-                            total=sum(v['value'] for v in sample['quantities'])
-                            deck.text(slide,f'원그래프: 제공값의 상대 비율 · 합계 {total:g} {next(iter(units))}',
-                                      (bx,162,bw,4.5),size=7)
-                    else:
-                        deck.text(slide,quantity_status(sample),(bx,128,bw,25),size=9)
-            if not quantitative and len(batch)==1:
-                for shape in list(slide.find('p:cSld/p:spTree',NS)):
-                    if shape in named(slide,'Text 2') or shape in named(slide,'Page number'): continue
-                    try:
-                        if box(shape)[0]>140: remove(shape)
-                    except (TypeError,IndexError,AttributeError): pass
+                    bounds=((65,168,43,8),(189,168,53,8),(111,168,48,8))[j]
+                else:
+                    bounds=((left+50.5,162.4,31,8),(left+45,173,48,7),(left+84,162.4,36,8))[j]
+                place(shape,bounds);place(link_frames[k],bounds)
+                set_text(shape,caption+' ↗',size=8,color='0A7489',minimum=6)
+                shape.find('p:txBody/a:p/a:pPr',NS).set('algn','ctr')
+                rid=deck.rel(slide,'hyperlink',link_target(link,link_base,storage_id),True)
+                for prop in shape.findall('.//a:rPr',NS):
+                    E.SubElement(prop,q('a:hlinkClick'),{q('r:id'):rid})
+        for index, entry in enumerate(batch):
+            sample=samples[entry['sample_id']]
+            put(slide,'Text 5' if index==0 else 'Text 8',entry['display_name']+' - 상 동정 (Phase Identification) 결과',12,dict(tab=entry['sample_id'],field='display_name'),bold=True)
+            frame=frames[index]
+            shape=tables[index]
+            deck.mark(shape,dict(tab='classes'))
+            fit_phase_table(shape, table_sets[index][0], row_sets[index], frame,
+                            named(slide,'Section label')[index], 166 if quantitative else 160.4)
+            x,y,w,h=box(frame)
+            source=image(sample,'phase_image',entry)
+            if source: deck.picture(slide,source,(x+2,y+2,w-4,h-4),entry['display_name']+' 상매칭',edit=dict(tab=entry['sample_id'],field='phase_caption'))
+            else:
+                # Same physical RAW values and reference rows as the viewer's rendering path.
+                key=(entry['sample_id'],w,h)
+                if key not in raw_images:
+                    single=deepcopy(document)
+                    for e in single['samples']: e['included']=e['sample_id']==entry['sample_id']
+                    single['figure']['include']=True; single['figure']['groups']=[]
+                    panels=build_plan(project,single)['panels']
+                    panel=next((p for p in panels if p['curves']),None)
+                    raw_images[key]=image_renderer(panel,w-4,h-4) if panel else None
+                if raw_images[key]: deck.picture(slide,raw_images[key],(x+2,y+2,w-4,h-4),entry['display_name']+' RAW',edit=dict(tab=entry['sample_id'],field='phase_caption'))
+            if quantitative:
+                put(slide,'Text 14',entry['display_name']+' - WPPF 정량 (Phase Fraction) 결과',12,dict(tab=entry['sample_id'],field='display_name'),bold=True)
+                place(named(slide,'Pie frame')[0],(167.6,39.6,94.8,74.9))
+                bx,by,bw,bh=box(named(slide,'Pie frame')[0])
+                quant_image=image(sample,'quantity_image',entry)
+                pie_drawn=False
+                if quant_image: deck.picture(slide,quant_image,(bx+2,by+2,bw-4,bh-4),entry['display_name']+' 정량 원본',edit=dict(tab=entry['sample_id'],field='quantity_caption'))
+                else: pie_drawn=deck.pie(slide,sample.get('quantities',[]),(bx+3,by+3,bw-6,bh-6),edit=dict(tab=entry['sample_id'],field='quantity_caption'))
+                if not quant_image and not pie_drawn:
+                    text='정량값은 아래 표에서 확인하세요.' if sample.get('quantities') else quantity_status(sample)
+                    shape=deck.text(slide,'',(bx+4,by+4,bw-8,bh-8),size=11)
+                    fit_text(shape,text,size=11)
+                deck.text(slide,'결정상분율 (Phase Fraction)',(bx,117.3,bw,7),size=12,bold=True,color='0A7489')
+                rows=[(v['phase'],f"{v.get('raw') or '확인 필요'} {v.get('unit') or ''}".strip())
+                      for v in sample.get('quantities',[])]
+                if rows:
+                    units={v.get('unit') for v in sample['quantities']}
+                    header='결정상분율 (wt%)' if units=={'wt%'} else '결정상분율 (원문 단위)'
+                    used=deck.table(slide,['상 (Phase)',header],rows,(bx,126.5,bw,35),size=8.5,
+                                    edit=dict(tab=entry['sample_id']),allow_empty=True)
+                    if not used:
+                        deck.text(slide,'긴 정량 표는 뒤쪽 상 동정 결과의 계속 페이지에 수록합니다.',
+                                  (bx,128,bw,25),size=9)
+                    if used<len(rows): quantity_overflow.append((entry,header,rows[used:]))
+                    if pie_drawn:
+                        total=sum(v['value'] for v in sample['quantities'])
+                        deck.text(slide,f'원그래프: 제공값의 상대 비율 · 합계 {total:g} {next(iter(units))}',
+                                  (bx,162,bw,4.5),size=7)
+                else:
+                    deck.text(slide,quantity_status(sample),(bx,128,bw,25),size=9)
+        if not quantitative and len(batch)==1:
+            for shape in list(slide.find('p:cSld/p:spTree',NS)):
+                if shape in named(slide,'Text 2') or shape in named(slide,'Page number'): continue
+                try:
+                    if box(shape)[0]>140: remove(shape)
+                except (TypeError,IndexError,AttributeError): pass
     # Match the supplied sequence: summary, phase+WPPF, then paired phase-only samples.
     quantitative_entries=[]
     for entry in entries:
@@ -718,10 +754,6 @@ def build_posco_deck(project, document, resolve_source, *, pages=None, link_base
         else:
             plain.append(entry)
     for entry in quantitative_entries: details([entry],True)
-    continued = [e for e in quantitative_entries if len(samples[e['sample_id']]['phases'])>3]
-    for start in range(0,len(continued),2):
-        batch = continued[start:start+2]
-        details(batch,False,[3]*len(batch))
     for start in range(0,len(plain),2): details(plain[start:start+2],False)
     for entry,header,rows in quantity_overflow:
         while rows:

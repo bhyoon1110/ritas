@@ -104,7 +104,7 @@ def test_summary_and_each_result_column_share_native_ppt_pdf_and_preview_targets
     assert before == (project, doc)
 
 
-def test_links_on_continuations_use_the_correct_sample_and_do_not_require_source_files():
+def test_dense_phase_tables_keep_links_with_their_sample_on_the_same_slide():
     project = make_project([sample('long', n_phases=10, quantities=0), sample('short', quantities=0)])
     for s in project['samples']:
         s['sources'] = []
@@ -112,10 +112,8 @@ def test_links_on_continuations_use_the_correct_sample_and_do_not_require_source
     doc['figure']['include'] = False
     deck = build_posco_deck(project, doc, lambda _: IMAGE, image_renderer=lambda *a: IMAGE)
     details = [slide for slide, _ in deck.pages if deck.page_info[slide]['kind'] == 'sample']
-    assert len(details) == 4
+    assert len(details) == 1
     assert [selection(u, ['long', 'short'])['sample'][0] for u in links(deck, details[0])] == ['long', 'short']
-    for slide in details[1:]:
-        assert links(deck, slide) == [viewer_target('long')]
     detached = build_posco_deck(project, doc, lambda _: IMAGE, include_sources=False,
                                image_renderer=lambda *a: IMAGE)
     assert not any(links(detached, slide) for slide, _ in detached.pages)

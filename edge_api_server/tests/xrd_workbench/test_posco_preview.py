@@ -104,10 +104,10 @@ def test_formula_baselines_and_sample_navigation_match_ppt_and_are_html_safe():
     assert '<script>sample A</script>' not in html
     assert '&lt;script&gt;sample A&lt;/script&gt;' in html
     assert '상 동정 &amp; WPPF 정량 · 시료 B' in html
-    assert '상 4–4/4' in html
+    assert '결정상 4개' in html
     rich=[i for p in pages for i in p['items'] if i.get('runs')]
     assert rich and all(''.join(r['text'] for r in i['runs']) == ''.join(i['lines']) for i in rich)
     for item in rich:
         assert [r['text'] for r in item['runs'] if r['baseline']<0] == ['2','4','3']
     assert 'position:relative;top:1.78' in html
-    assert 'S/M:PDF-2 2025' in html
+    assert '# ICDD CARD ID' in html  # all rows stay in WPPF's own table/header
