@@ -78,12 +78,15 @@ def test_delivery_names_bytes_ppt_pdf_and_embedded_html_all_agree(collision_proj
         ppt_links = ppt_click_targets(archive.read('보고서.pptx'))
         pdf = PdfReader(io.BytesIO(archive.read('보고서.pdf')))
         pdf_links = [str(a.get_object().get('/A', {}).get('/URI', '')) for p in pdf.pages for a in p.get('/Annots', [])]
-        assert set(pdf_links) == set(ppt_links)
-        check_package_links(ppt_links, archive)
+        assert not ppt_links  # PPT originals live inside the PPT itself.
+        check_package_links(pdf_links, archive)
+        from .test_offline_pptx import embedded_files
+        embedded = embedded_files(archive.read('보고서.pptx'))
         payload = json.loads(Payload(archive.read('보고서.html').decode()).text)
         for record in project['sources']:
             target = paths['sources'][record['id']]
             assert archive.read(target) == data[record['id']]
+            assert embedded[target.rsplit('/',1)[-1]] == data[record['id']]
             assert base64.b64decode(payload['files'][target]['data']) == data[record['id']]
             assert payload['files'][target]['name'] == target.rsplit('/',1)[-1]
         for sample in project['samples']:
@@ -92,7 +95,8 @@ def test_delivery_names_bytes_ppt_pdf_and_embedded_html_all_agree(collision_proj
             destination = json.loads(re.search(r'location\.replace\((".*")\);', entry)[1])
             assert parse_qs(urlsplit(destination).fragment)['sample'] == [sample['id']]
             assert payload['samples'][target]['id'] == sample['id']
-            assert any(unquote(urlsplit(link).path) == target for link in ppt_links)
+            assert any(unquote(urlsplit(link).path) == target for link in pdf_links)
+            assert target.rsplit('/',1)[-1] in embedded
     assert before == (project, document)
 
 

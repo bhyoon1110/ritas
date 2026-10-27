@@ -78,7 +78,9 @@ def test_every_link_in_the_zip_names_a_file_in_the_zip():
             root = ET.fromstring(inside.read(name))
             links += [r.get('Target') for r in root if r.get('TargetMode') == 'External']
     uris = pdf_uris(archive.read('보고서.pdf'))
-    assert links and uris
+    assert not links and uris  # recipient PPT uses embedded originals and internal jumps
+    from .test_offline_pptx import embedded_files
+    assert embedded_files(archive.read('보고서.pptx'))
     class Hrefs(HTMLParser):
         def __init__(self):
             super().__init__()

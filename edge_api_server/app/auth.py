@@ -1037,6 +1037,38 @@ def _is_api(path: str) -> bool:
     return path.startswith("/api/")
 
 
+def _xrd_browser_document(request: Request) -> bool:
+    """Legacy PPT links open private HTML/files in a browser, not an API client.
+
+    Keep JSON 401s for fetch/XHR and all writes. Only these read-only document
+    destinations may enter the normal login/return flow; authorization still
+    runs before the requested document or original source is served.
+    """
+    if request.method not in {"GET", "HEAD"} or request.headers.get("x-requested-with"):
+        return False
+    base = "/api/v1/xrd/workbench"
+    path = request.url.path
+    if path not in {base, base + "/", base + "/index.html", base + "/report.html", base + "/analysis.html"} and not re.fullmatch(
+        re.escape(base) + r"/api/files/[^/]+/[^/]+", path
+    ):
+        return False
+    mode = request.headers.get("sec-fetch-mode")
+    if mode:
+        return mode == "navigate" and request.headers.get("sec-fetch-dest", "document") in {"document", "iframe", "frame"}
+    # Fetch Metadata is absent on old browsers and non-secure intranet HTTP.
+    for accepted in request.headers.get("accept", "").lower().split(","):
+        parts = [part.strip() for part in accepted.split(";")]
+        if parts[0] not in {"text/html", "application/xhtml+xml"}:
+            continue
+        try:
+            quality = next((float(part[2:]) for part in parts[1:] if part.startswith("q=")), 1)
+        except ValueError:
+            continue
+        if quality > 0:
+            return True
+    return False
+
+
 def _admin_path(path: str) -> bool:
     return path in {"/operations", "/errors", "/report-management", "/admin/users"} or path.startswith(
         ("/api/v1/usage-events", "/api/v1/report-management")
@@ -1408,29 +1440,32 @@ def install_auth(app: FastAPI, settings: Settings, database: Database) -> None:
         request.state.auth_context = context
         if _public_path(request):
             return await call_next(request)
+        api_response = _is_api(request.url.path) and not _xrd_browser_document(request)
         if context is None or context.status != "ACTIVE":
-            if _is_api(request.url.path):
+            if api_response:
                 return error_response(request, ApiException(401, "AUTHENTICATION_REQUIRED", "로그인이 필요합니다."))
             return RedirectResponse(
                 "/login?" + urlencode({"returnTo": safe_return_to(
                     request.url.path + ("?" + request.url.query if request.url.query else "")
                 )}),
                 status_code=303,
+                headers=AUTH_FORM_HEADERS,
             )
         if _admin_path(request.url.path) and not context.is_admin:
-            if _is_api(request.url.path):
+            if api_response:
                 return error_response(request, ApiException(403, "ADMIN_REQUIRED", "관리자 권한이 필요합니다."))
             return HTMLResponse(_page("접근 거부", '<section class="panel"><h1>접근 권한이 없습니다.</h1><a class="button" href="/account">내 계정</a></section>'), status_code=403)
         project = project_for_path(request.url.path)
         if project and not context.is_admin and project not in context.projects:
-            if _is_api(request.url.path):
+            if api_response:
                 return error_response(request, ApiException(403, "PROJECT_ACCESS_DENIED", "관리자에게 프로젝트 접근 권한을 요청하세요."))
             return HTMLResponse(_page("승인 필요", '<section class="panel"><h1>프로젝트 승인이 필요합니다.</h1><p>관리자에게 접근 권한을 요청하세요.</p><a class="button" href="/account">내 계정</a></section>'), status_code=403)
         return await call_next(request)
 
     @router.get("/login", response_class=HTMLResponse, include_in_schema=False)
     def login_page(request: Request, returnTo: str = "/", registered: str = "") -> Response:
-        if getattr(request.state, "auth_context", None):
+        context = getattr(request.state, "auth_context", None)
+        if context and context.status == "ACTIVE":
             return RedirectResponse(safe_return_to(returnTo), status_code=303, headers=AUTH_FORM_HEADERS)
         message = {
             "PENDING": "가입 신청이 완료되었습니다. 관리자 승인을 기다려 주세요.",

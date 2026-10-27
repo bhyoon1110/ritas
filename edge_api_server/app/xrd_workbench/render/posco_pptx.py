@@ -523,9 +523,13 @@ class Deck:
         return out.getvalue()
 
 
-def render_report_pptx(project, document, resolve_source, *, pages=None, link_base=None, storage_id=None, include_sources=True, delivery=False, asset_root=None):
+def render_report_pptx(project, document, resolve_source, *, pages=None, link_base=None, storage_id=None, include_sources=True, delivery=False, asset_root=None, viewer_state=None, views=None):
     """Production entry point. Explicit site templates keep their existing override behaviour."""
     document = validate_document(project, document)
+    if delivery:
+        # Recipient PPTs must work when detached from the server and the ZIP.
+        # Canonical local targets are converted to internal slides + OLE files below.
+        link_base = storage_id = None
     paths = package_paths(project)
     custom_template = bool(load_settings().pptx_template)
     expected = {}
@@ -565,17 +569,21 @@ def render_report_pptx(project, document, resolve_source, *, pages=None, link_ba
     check_ppt_links(content, expected, expected_pages)
     from ...report.pptx_protection import validate_protection, protect_pptx
     protection = validate_protection(document.get('pptxProtection'))
-    if delivery and protection:
-        # Keep native objects so the correct modify password really enables editing.
-        content = protect_pptx(content, protection)
-        check_ppt_links(content, expected, expected_pages)
-    elif delivery:
+    if delivery and not protection:
         from .delivery_pptx import flatten_pptx, custom_template_pdf
         from .posco_preview import deck_pages
         from .pdf import render_pdf
         pdf = custom_template_pdf(content) if custom_template else render_pdf(deck_pages(deck), document)
         content = flatten_pptx(content, pdf)
         check_ppt_links(content, expected, expected_pages)
+    if delivery and include_sources:
+        from .offline_pptx import make_offline
+        content = make_offline(content, project, document, resolve_source,
+                               viewer_state=viewer_state, views=views)
+    if delivery and protection:
+        # Apply after embedding; keep native report objects so a correct modify
+        # password enables editing without requiring a password to read the PPT.
+        content = protect_pptx(content, protection)
     return content
 
 

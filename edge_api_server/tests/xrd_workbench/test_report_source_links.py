@@ -63,7 +63,7 @@ def report(tmp_path):
     client.close()
 
 
-@pytest.mark.parametrize('kind', ['pptx', 'pdf'])
+@pytest.mark.parametrize('kind', ['pdf'])
 def test_standalone_report_links_keep_workbench_prefix_and_open_exact_originals(report, kind):
     client, sid, project, files = report
     response = client.post(api.BASE+f'/api/reports/{sid}/exports',json={'kind':kind,'revision':1})
@@ -99,7 +99,11 @@ def test_zip_ppt_click_targets_resolve_to_nonempty_exact_files_after_extraction(
     response = client.get(api.BASE+f'/api/jobs/{job["job_id"]}/file')
     assert response.status_code == 200, response.text[:100] if response.status_code != 200 else ''
     with ZipFile(io.BytesIO(response.content)) as archive:
-        targets = set(ppt_links(archive.read('보고서.pptx')))
+        from .test_offline_pptx import embedded_files
+        from app.xrd_workbench.render.link_audit import ppt_click_targets
+        assert not ppt_click_targets(archive.read('보고서.pptx'))
+        embedded = embedded_files(archive.read('보고서.pptx'))
+        targets = set(pdf_links(archive.read('보고서.pdf')))
         # Only generated paths from our fixture; never extract an untrusted user archive here.
         archive.extractall(tmp_path / 'delivered')
         opened = set()
@@ -114,11 +118,28 @@ def test_zip_ppt_click_targets_resolve_to_nonempty_exact_files_after_extraction(
                 record = next(r for r in project['sources'] if filename.endswith('/'+r['filename']))
                 opened.add(record['id'])
                 assert content == files[record['filename']]
+                assert embedded[record['filename']] == content
                 if record['role'] != 'measurement':
                     reader = PdfReader(io.BytesIO(content))
                     assert reader.pages and any(p.extract_text().strip() for p in reader.pages)
         assert opened == {r['id'] for r in project['sources']
                           if r['role'] in ('measurement','phase_report','wppf_report')}
+
+
+def test_standalone_downloaded_ppt_is_self_contained_without_server_urls(report):
+    from .test_offline_pptx import embedded_files
+    from app.xrd_workbench.render.link_audit import ppt_click_targets
+    client, sid, project, files = report
+    created = client.post(api.BASE+f'/api/reports/{sid}/exports',json={'kind':'pptx','revision':1})
+    assert created.status_code == 202, created.text
+    job = poll(client, created.json())
+    result = client.get(api.BASE+f'/api/jobs/{job["job_id"]}/file')
+    assert result.status_code == 200
+    assert not ppt_click_targets(result.content)
+    embedded = embedded_files(result.content)
+    for record in project['sources']:
+        if record['role'] in ('measurement','phase_report','wppf_report'):
+            assert embedded[record['filename']] == files[record['filename']]
 
 
 @pytest.mark.parametrize('kind', ['pptx', 'zip'])

@@ -511,7 +511,8 @@ def export_report(sid: str, payload: dict):
                 pages = report_pages(project, document, source, storage_id=sid, link_base=base, asset_root=asset_root) if kind == 'pdf' else None
                 data = (render_pdf(pages, document, link_base=base, storage_id=sid) if kind == 'pdf'
                         else render_report_pptx(project, document, source, pages=pages,
-                                                link_base=base, storage_id=sid, delivery=True, asset_root=asset_root))
+                                                link_base=base, storage_id=sid, delivery=True, asset_root=asset_root,
+                                                viewer_state=payload.get('viewer_state')))
                 output.write_bytes(data)
         return dict(storage_id=sid, revision=document['revision'],
                     analysis_revision=project.get('analysis_revision', 0), filename=output.name,

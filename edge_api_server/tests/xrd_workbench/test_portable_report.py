@@ -59,13 +59,17 @@ def assert_flat(content):
     presentation = Presentation(io.BytesIO(content))
     assert len(presentation.slides) > 0
     with ZipFile(io.BytesIO(content)) as archive:
-        assert not any(n.startswith(('ppt/charts/', 'ppt/embeddings/', 'ppt/notesSlides/')) for n in archive.namelist())
+        assert not any(n.startswith(('ppt/charts/', 'ppt/notesSlides/')) or n.endswith('.xlsx') for n in archive.namelist())
         for name in archive.namelist():
             if name.startswith('ppt/slides/slide') and name.endswith('.xml'):
                 slide = E.fromstring(archive.read(name))
-                assert not slide.findall('.//a:t', NS)
                 assert not slide.findall('.//a:tbl', NS)
-                assert len(slide.findall('.//p:pic', NS)) == 1
+                if slide.get('show') == '0':
+                    assert slide.find('.//p:oleObj', NS) is not None
+                    assert all('자료' in text or '보고서' in text for text in slide.xpath('.//a:t/text()', namespaces=NS))
+                else:
+                    assert not slide.findall('.//a:t', NS)
+                    assert len(slide.findall('.//p:pic', NS)) == 1
     return presentation
 
 
@@ -92,7 +96,8 @@ def test_delivery_keeps_exact_per_page_links_without_native_analysis_objects(rep
     native = render_report_pptx(*report)
     delivered = render_report_pptx(*report, delivery=True)
     assert_flat(delivered)
-    assert ppt_click_targets_by_slide(delivered) == ppt_click_targets_by_slide(native)
+    assert not any(ppt_click_targets_by_slide(delivered).values())
+    assert any(ppt_click_targets_by_slide(native).values())
     # The editor continues to use the native scene.
     with ZipFile(io.BytesIO(native)) as archive:
         assert b'<a:tbl>' in b''.join(archive.read(n) for n in archive.namelist() if n.startswith('ppt/slides/slide'))
@@ -109,7 +114,8 @@ def test_password_protected_ppt_is_native_and_identical_in_html_and_zip(report):
     assert not verifier(native)
     delivered = render_report_pptx(project, doc, source, delivery=True)
     assert matches('XRD-검토!', verifier(delivered))
-    assert ppt_click_targets_by_slide(delivered) == ppt_click_targets_by_slide(native)
+    assert not any(ppt_click_targets_by_slide(delivered).values())
+    assert any(ppt_click_targets_by_slide(native).values())
     with ZipFile(io.BytesIO(delivered)) as archive:
         assert b'<a:tbl>' in b''.join(archive.read(n) for n in archive.namelist() if n.startswith('ppt/slides/slide'))
     with ZipFile(io.BytesIO(build_package(project, doc, source))) as archive:

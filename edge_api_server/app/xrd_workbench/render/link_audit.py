@@ -58,8 +58,33 @@ def ppt_click_targets_by_slide(content):
             if rel_path not in archive.namelist():
                 raise ValueError('PPT 링크 연결 정보가 누락되었습니다. 보고서를 다시 생성하세요.')
             rels = {r.get('Id'): r for r in E.fromstring(archive.read(rel_path))}
+            # Office OLE activation uses an empty r:id on the click action;
+            # the actual internal file relationship belongs to p:oleObj.
+            ole_actions = set()
+            p = '{http://schemas.openxmlformats.org/presentationml/2006/main}'
+            for frame in slide.iter(p + 'graphicFrame'):
+                obj = frame.find('.//' + p + 'oleObj')
+                if obj is None:
+                    continue
+                link = rels.get(obj.get('{' + RELATIONSHIP + '}id'))
+                target = posixpath.normpath(posixpath.join(posixpath.dirname(name), link.get('Target', ''))) if link is not None else ''
+                if (link is None or link.get('Type') != RELATIONSHIP + '/oleObject'
+                        or link.get('TargetMode') == 'External' or target not in archive.namelist()
+                        or not archive.getinfo(target).file_size):
+                    raise ValueError('PPT 내부 첨부 파일이 누락되었습니다.')
+                ole_actions.update(frame.findall('.//{' + DRAWING + '}hlinkClick'))
             for click in clicks:
+                if (click in ole_actions and not click.get('{' + RELATIONSHIP + '}id')
+                        and click.get('action') == 'ppaction://ole?verb=0'):
+                    continue
                 rel = rels.get(click.get('{' + RELATIONSHIP + '}id'))
+                if (rel is not None and rel.get('Type') == RELATIONSHIP + '/slide'
+                        and rel.get('TargetMode') != 'External'
+                        and click.get('action') == 'ppaction://hlinksldjump'):
+                    target = posixpath.normpath(posixpath.join(posixpath.dirname(name), rel.get('Target', '')))
+                    if target not in parts:
+                        raise ValueError('PPT 내부 자료 페이지가 누락되었습니다.')
+                    continue
                 if (rel is None or rel.get('Type') != RELATIONSHIP + '/hyperlink'
                         or rel.get('TargetMode') != 'External' or not rel.get('Target')):
                     raise ValueError('PPT 클릭 링크의 대상이 누락되었거나 올바르지 않습니다. 보고서를 다시 생성하세요.')
