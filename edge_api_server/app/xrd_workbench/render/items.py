@@ -1,10 +1,10 @@
 """Page items shared by the layout modules. All dimensions in mm."""
 
-import hashlib
 from urllib.parse import quote, urlencode
 
 from ..render import theme
 from ..render.fonts import wrap_lines
+from .package_names import portable_filename
 
 
 def leading_of(size):
@@ -21,13 +21,14 @@ def link_target(item, link_base=None, storage_id=None):
     return item['href']
 
 
-def sample_viewer_path(sample_id):
-    """Portable package entry filename; display names never identify or name files."""
-    key = hashlib.sha256(sample_id.encode('utf-8')).hexdigest()[:24]
-    return f'Viewer/sample-{key}.html'
+def sample_viewer_path(sample_id, paths=None):
+    """Use the project allocation in exports; standalone callers may pass a label."""
+    if paths is not None:
+        return paths['viewers'][sample_id]
+    return 'Viewer/' + portable_filename(sample_id + '.html')
 
 
-def viewer_target(sample_id=None, link_base=None, storage_id=None):
+def viewer_target(sample_id=None, link_base=None, storage_id=None, *, paths=None):
     """Open the exact sample from a report, including local PowerPoint hyperlinks.
 
     Local sample links name a small entry file so Office need not preserve a URL
@@ -39,7 +40,7 @@ def viewer_target(sample_id=None, link_base=None, storage_id=None):
         params = {'project': storage_id, 'step': 'viewer', **selection}
         target = f"{link_base.rstrip('/')}/?{urlencode(params)}"
     elif sample_id is not None:
-        return sample_viewer_path(sample_id)
+        return quote(sample_viewer_path(sample_id, paths), safe='/')
     else:
         target = '뷰어.html'
     return target + '#' + urlencode(selection)

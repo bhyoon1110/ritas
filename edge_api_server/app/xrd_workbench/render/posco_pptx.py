@@ -25,6 +25,7 @@ from ..core.report import validate_document
 from .figure import render_panel_png
 from .fonts import wrap_lines
 from .items import link_target, viewer_target
+from .package_names import package_paths
 from .link_audit import check_ppt_links, read_linked_source, report_sources
 from .layout import build_pages, source_links
 from .sample_page import quantity_status
@@ -525,6 +526,7 @@ class Deck:
 def render_report_pptx(project, document, resolve_source, *, pages=None, link_base=None, storage_id=None, include_sources=True, delivery=False):
     """Production entry point. Explicit site templates keep their existing override behaviour."""
     document = validate_document(project, document)
+    paths = package_paths(project)
     custom_template = bool(load_settings().pptx_template)
     expected = {}
     expected_pages = None
@@ -532,10 +534,10 @@ def render_report_pptx(project, document, resolve_source, *, pages=None, link_ba
     if include_sources:
         for sample in project['samples']:
             if sample['id'] in included:
-                for link in source_links(sample):
+                for link in source_links(sample, paths):
                     expected[link_target(link, link_base, storage_id)] = link['filename']
                 if not custom_template:
-                    expected[viewer_target(sample['id'], link_base, storage_id)] = sample['name'] + ' 그래프'
+                    expected[viewer_target(sample['id'], link_base, storage_id, paths=paths)] = sample['name'] + ' 그래프'
         if not custom_template:
             expected[viewer_target(link_base=link_base, storage_id=storage_id)] = '전체 비교 그래프'
         # A standalone PPT links to the server, so verify its originals before delivery.
@@ -576,6 +578,7 @@ def build_posco_deck(project, document, resolve_source, *, pages=None, link_base
                      storage_id=None, include_sources=True, image_renderer=None):
     """One filled OOXML scene for PPTX and its browser preview; no Office installation needed."""
     document = validate_document(project, document)
+    paths = package_paths(project)
     image_renderer = image_renderer or render_panel_png
     deck = Deck()
     entries = [e for e in document['samples'] if e['included']]
@@ -691,8 +694,8 @@ def build_posco_deck(project, document, resolve_source, *, pages=None, link_base
         # Record every required destination independently of the visible link shapes.
         deck.required_links[slide] = {
             target for entry in batch for target in
-            [viewer_target(entry['sample_id'], link_base, storage_id)] +
-            [link_target(link, link_base, storage_id) for link in source_links(samples[entry['sample_id']])]
+            [viewer_target(entry['sample_id'], link_base, storage_id, paths=paths)] +
+            [link_target(link, link_base, storage_id) for link in source_links(samples[entry['sample_id']], paths)]
         } if include_sources else set()
         deck.title(slide, QUANTITY_TITLE if quantitative else PHASE_TITLE)
         deck.page_info[slide]['navigation_title'] = (
@@ -705,7 +708,7 @@ def build_posco_deck(project, document, resolve_source, *, pages=None, link_base
         link_names=('Text 9','Text 11','Text 13') if quantitative else ('Text 12','Text 14','Text 16','Text 18','Text 20','Text 22')
         for index in range(1 if quantitative else 2):
             entry=batch[index] if index<len(batch) else None
-            links=source_links(samples[entry['sample_id']]) if entry and include_sources else []
+            links=source_links(samples[entry['sample_id']], paths) if entry and include_sources else []
             by_label={link['label']:link for link in links}
             left=12.7+129.5*index
             if entry and include_sources:
@@ -714,7 +717,7 @@ def build_posco_deck(project, document, resolve_source, *, pages=None, link_base
                 place(frame,bounds)
                 shape=deck.text(slide,'그래프(확대, 축소) 확인하기 ↗',bounds,size=8,color='0A7489',
                                 name='Sample viewer link',
-                                href=viewer_target(entry['sample_id'],link_base,storage_id))
+                                href=viewer_target(entry['sample_id'],link_base,storage_id,paths=paths))
                 shape.find('p:txBody/a:bodyPr',NS).set('anchor','ctr')
                 shape.find('p:txBody/a:p/a:pPr',NS).set('algn','ctr')
             for j,label in enumerate(('상매칭 Report','정량(WPPF) Report','Measured Data (TXT)')):

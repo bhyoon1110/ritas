@@ -6,6 +6,7 @@ from html.parser import HTMLParser
 from urllib.parse import unquote, urlsplit
 
 from .items import sample_viewer_path
+from .package_names import package_paths
 from .pdf_raster import page_images
 
 ASSETS = Path(__file__).with_name('assets')
@@ -49,8 +50,9 @@ def embedded_file(name, data, mime, *, preview=False):
     return result
 
 
-def make_portable(html, viewer, samples, files):
-    payload = dict(viewer=viewer, samples={sample_viewer_path(s['id']):dict(id=s['id'],name=s['name']) for s in samples}, files=files)
+def make_portable(html, viewer, samples, files, *, paths=None):
+    paths = paths if paths is not None else package_paths({'samples': samples})
+    payload = dict(viewer=viewer, samples={sample_viewer_path(s['id'], paths):dict(id=s['id'],name=s['name']) for s in samples}, files=files)
     class LinkCheck(HTMLParser):
         def handle_starttag(self, tag, attrs):
             href = dict(attrs).get('href') if tag == 'a' else None

@@ -13,6 +13,7 @@ from ..render import theme
 from ..render.figure import render_panel_png
 from ..render.fonts import wrap_lines
 from ..render.items import text_item
+from .package_names import package_paths, portable_filename
 from ..render.sample_page import (
     place_sample,
     quantity_label,
@@ -31,12 +32,14 @@ FIGURE_FILENAME = 'sample-comparison.png'
 COVER_SCALES = (1, 0.9, 0.8, 0.7, 0.6)  # the first page shrinks its sample blocks to fit
 
 
-def archive_path(record):
+def archive_path(record, paths=None):
+    if paths is not None:
+        return paths['sources'][record['id']]
     folder = 'Measured Data' if record['role'] == 'measurement' else 'Report'
-    return f"{folder}/{record['id'][:8]}-{record['filename']}"
+    return f"{folder}/{portable_filename(record['filename'])}"
 
 
-def source_links(sample):
+def source_links(sample, paths=None):
     labels = {
         'phase_report': '상매칭 Report',
         'wppf_report': '정량(WPPF) Report',
@@ -47,7 +50,7 @@ def source_links(sample):
             label=labels[r['role']],
             source_id=r['id'],
             filename=r['filename'],
-            href=quote(archive_path(r), safe='/'),
+            href=quote(archive_path(r, paths), safe='/'),
         )
         for r in sample['sources']
         if r['role'] in labels
@@ -56,6 +59,7 @@ def source_links(sample):
 
 def build_pages(project, document, resolve_source, *, image_renderer=None):
     document = validate_document(project, document)
+    paths = package_paths(project)
     image_renderer = image_renderer or render_panel_png
     sources = {s['id']: s for s in project['samples']}
     entries = [s for s in document['samples'] if s['included']]
@@ -577,7 +581,7 @@ def build_pages(project, document, resolve_source, *, image_renderer=None):
             )
         page = new_page('sample', entry['display_name'], sid)
         labels = [x for x in classes['labels'] if x['sample_id'] == sid]
-        place_sample(page, entry, sample, labels, classes, images, source_links(sample))
+        place_sample(page, entry, sample, labels, classes, images, source_links(sample, paths))
     # Order of the deck: cover, the Multi Profile figure, the summary, remarks, tables, samples.
     order = {'cover': 0, 'figure': 1, 'summary': 2, 'remarks': 3, 'table': 4, 'sample': 5}
     pages.sort(key=lambda page: order[page['kind']])

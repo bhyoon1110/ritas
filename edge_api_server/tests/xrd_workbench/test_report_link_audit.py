@@ -11,6 +11,7 @@ import pytest
 from app.xrd_workbench.core.report import new_document
 from app.xrd_workbench.render import package, posco_pptx
 from app.xrd_workbench.render.items import viewer_target
+from app.xrd_workbench.render.package_names import package_paths
 from app.xrd_workbench.render.layout import source_links
 from app.xrd_workbench.render.link_audit import (
     DRAWING, RELATIONSHIP, check_package_links, check_ppt_links,
@@ -41,7 +42,7 @@ def ppt(inputs, monkeypatch):
     monkeypatch.setattr(posco_pptx, 'render_panel_png', lambda *a: IMAGE)
     result = posco_pptx.render_report_pptx(project, doc, data.__getitem__)
     expected = {link['href']: link['filename'] for s in project['samples'] for link in source_links(s)}
-    expected.update({viewer_target(s['id']): s['name'] for s in project['samples']})
+    expected.update({viewer_target(s['id'], paths=package_paths(project)): s['name'] for s in project['samples']})
     expected[viewer_target()] = '전체 그래프'
     return result, expected
 
@@ -99,7 +100,7 @@ def test_invalid_serialized_relationship_is_refused(ppt, fault):
 def test_swapping_source_links_between_sample_slides_is_refused(ppt):
     data, expected = ppt
     required = ppt_click_targets_by_slide(data)
-    phase_targets = [link for link in expected if link.startswith('Report/') and 'wppf' not in link]
+    phase_targets = [link for link in expected if link.startswith('Report/') and unquote(link).endswith('_상매칭_Report.pdf')]
     left, right = phase_targets[:2]
     def swap(name, root):
         if not name.endswith('.rels'): return
@@ -148,7 +149,7 @@ def test_package_checks_final_ppt_against_actual_written_files(inputs, monkeypat
         for target in targets:
             assert archive.read(unquote(urlsplit(target).path))
     # Simulate a packaging regression that writes a viewer under the wrong name.
-    monkeypatch.setattr(package, 'sample_viewer_path', lambda sid: 'Viewer/wrong-' + sid + '.html')
+    monkeypatch.setattr(package, 'sample_viewer_path', lambda sid, paths=None: 'Viewer/wrong-' + sid + '.html')
     with pytest.raises(ValueError, match='대상 파일'):
         package.build_package(project, doc, data.__getitem__)
 

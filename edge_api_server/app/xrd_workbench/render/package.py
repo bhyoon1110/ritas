@@ -6,6 +6,7 @@ from copy import deepcopy
 from ..render.html import render_html
 from ..render.layout import archive_path
 from ..render.items import sample_viewer_path
+from .package_names import package_paths
 from ..render.link_audit import check_package_links, ppt_click_targets, read_linked_source, report_sources
 from ..render.posco_preview import report_pages
 from ..render.pdf import render_pdf
@@ -16,6 +17,7 @@ from ..render.portable_html import embedded_file, make_portable
 
 
 def build_package(project, document, resolve_source, viewer_state=None, views=None, *, output_path=None, include_sources=True):
+    paths = package_paths(project)
     pages = report_pages(project, document, resolve_source, include_sources=include_sources)
     if not include_sources:
         for page in pages:
@@ -44,22 +46,22 @@ def build_package(project, document, resolve_source, viewer_state=None, views=No
                     '보고서.pptx':embedded_file('보고서.pptx',pptx,'application/vnd.openxmlformats-officedocument.presentationml.presentation')}
         if include_sources:
             for sample in filtered['samples']:
-                archive.writestr(sample_viewer_path(sample['id']),
+                archive.writestr(sample_viewer_path(sample['id'], paths),
                                  sample_entry_html(sample['id'], sample['name']))
         # Explicit directory entries even when a selected sample has no PDF.
         archive.writestr('Report/', '')
         archive.writestr('Measured Data/', '')
         seen = set()
         for record in report_sources(project, document) if include_sources else []:
-            target = archive_path(record)
+            target = archive_path(record, paths)
             if target in seen:
                 raise ValueError(f'보고서 패키지에 파일명이 중복되었습니다: {target}')
             seen.add(target)
             data = read_linked_source(record, resolve_source)
             archive.writestr(target, data)
             mime = 'text/plain' if record['role'] == 'measurement' else 'application/pdf'
-            embedded[target] = embedded_file(record['filename'], data, mime, preview=True)
+            embedded[target] = embedded_file(target.rsplit('/', 1)[-1], data, mime, preview=True)
         archive.writestr('보고서.html', make_portable(render_html(pages, document, 'package'),
-                                                   viewer, filtered['samples'], embedded))
+                                                   viewer, filtered['samples'], embedded, paths=paths))
         check_package_links(ppt_click_targets(pptx), archive)
     return output_path if output_path is not None else output.getvalue()

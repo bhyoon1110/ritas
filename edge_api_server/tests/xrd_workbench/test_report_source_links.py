@@ -111,7 +111,7 @@ def test_zip_ppt_click_targets_resolve_to_nonempty_exact_files_after_extraction(
             content = (tmp_path / 'delivered' / filename).read_bytes()
             assert content
             if filename.startswith(('Report/','Measured Data/')):
-                record = next(r for r in project['sources'] if filename.endswith('-'+r['filename']))
+                record = next(r for r in project['sources'] if filename.endswith('/'+r['filename']))
                 opened.add(record['id'])
                 assert content == files[record['filename']]
                 if record['role'] != 'measurement':

@@ -103,7 +103,7 @@ def test_zip_has_requested_folders_exact_bytes_and_selected_samples_only():
         assert not any(left_out in n for n in names)
         for record in project['samples'][0]['sources']:
             if record['role'] in ('phase_report', 'wppf_report', 'measurement'):
-                entry = next(n for n in names if n.endswith('-' + record['filename']))
+                entry = next(n for n in names if n.endswith('/' + record['filename']))
                 assert z.read(entry) == sources(project)(record['id'])
         assert '127.0.0.1' not in z.read('보고서.html').decode('utf-8')
 
