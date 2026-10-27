@@ -1,7 +1,7 @@
 // Pure display calculations. Never modifies source measurements or reports.
 import { escapeHTML } from '../shared/dom.mjs';
 import { estimateBackground } from './background.mjs';
-export const sampleColors = ['#ff3535', '#3535ff', '#15966b', '#9d51c9', '#d98515', '#00a1ad'];
+import { sampleColor, automaticSampleColors } from './sample_colors.mjs';
 // Phase markers are filled; each phase gets its own colour and a shape in the order square,
 // triangle, star, diamond, circle, … (the author may change colour and shape per phase).
 export const phaseColors = ['#8261c9', '#df9b29', '#199c78', '#c44d76', '#4178bf', '#777777'];
@@ -53,7 +53,7 @@ export function createState(project) {
     visible: [...ids],
     order: [...ids],
     active: ids[0],
-    colors: Object.fromEntries(ids.map((id, i) => [id, sampleColors[i % sampleColors.length]])),
+    colors: automaticSampleColors(project),
     intensity: 'raw',
     arrangement: 'stacked',
     offsets: {
@@ -237,8 +237,8 @@ export function legendHTML(project, state) {
     .map((id) => project.samples.find((s) => s.id === id))
     .filter(Boolean)
     .map(
-      (s, i) =>
-        `<label class="legendRow"><input type="checkbox" data-legend-sample="${escapeHTML(s.id)}" ${state.visible.includes(s.id) ? 'checked' : ''}><span class="legendSwatch" style="background:${escapeHTML(state.colors[s.id] || sampleColors[i % sampleColors.length])}"></span>${escapeHTML(s.name)}</label>`,
+      (s) =>
+        `<label class="legendRow"><input type="checkbox" data-legend-sample="${escapeHTML(s.id)}" ${state.visible.includes(s.id) ? 'checked' : ''}><span class="legendSwatch" style="background:${escapeHTML(state.colors[s.id] || sampleColor(project.samples.indexOf(s)))}"></span>${escapeHTML(s.name)}</label>`,
     )
     .join('');
   const styles = phaseStyles(project, state);
@@ -475,7 +475,7 @@ export function buildFigure(project, state, viewport = {}) {
         ? 0
         : offsetFor(index, samples.length, n(offsets.spacing)) + n(offsets.individual[s.id]);
     const y = base.map((v) => v + offset);
-    const color = state.colors[s.id] || sampleColors[index % sampleColors.length];
+    const color = state.colors[s.id] || sampleColor(project.samples.indexOf(s));
     sourceRanges.push([m.x[0], m.x.at(-1)]);
     data.push({
       type: 'scatter',

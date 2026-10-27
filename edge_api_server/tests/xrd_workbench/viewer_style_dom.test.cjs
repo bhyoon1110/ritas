@@ -31,6 +31,23 @@ function setup(t, program, saved={}, project=fixture, online=false, options={}) 
   return {w,d,renders,exports,downloads,events,requests,setSize:async size=>{d.getElementById('markerSize').value=String(size);d.getElementById('markerSize').dispatchEvent(new w.Event('input'));await flush();}};
 }
 for(const [mode, program] of Object.entries({native,chrome49:legacy})) {
+  test(`${mode}: automatic sample colours update all 24 curves, controls, saved state and image export`,async t=>{
+    const project=JSON.parse(JSON.stringify(fixture));
+    project.samples=Array.from({length:24},(_,i)=>({...JSON.parse(JSON.stringify(fixture.samples[0])),id:'s'+i,name:'시료 '+(i+1),phases:[],assignments:[],observed_peaks:[],reference_peaks:[]}));
+    const colors=Object.fromEntries(project.samples.map(s=>[s.id,'#123456']));
+    const ui=setup(t,program,{colors},project);await flush();
+    const curves=()=>ui.renders.at(-1).data.filter(t=>t.meta.role==='measurement');
+    assert.equal(new Set(curves().map(t=>t.line.color)).size,1,'saved colours are preserved until explicitly reassigned');
+    ui.d.getElementById('autoSampleColors').click();await flush();
+    assert.equal(curves().length,24);assert.equal(new Set(curves().map(t=>t.line.color)).size,24);
+    const saved=JSON.parse(ui.w.localStorage.getItem(ui.w.localStorage.key(0)));
+    for(const curve of curves()){
+      assert.equal(ui.d.querySelector(`[data-color="${curve.meta.sampleId}"]`).value,curve.line.color);
+      assert.equal(saved.colors[curve.meta.sampleId],curve.line.color);
+    }
+    ui.d.getElementById('imageExport').click();await flush();
+    assert.deepEqual(ui.exports.at(-1).data.filter(t=>t.meta.role==='measurement').map(t=>t.line.color),curves().map(t=>t.line.color));
+  });
   test(`${mode}: phase detail controls sit immediately below the phase switch and peak lines toggle independently`,async t=>{
     for(const online of [false,true]){
       const ui=setup(t,program,{phaseColors:{p1:'#12ab34'}},fixture,online,{

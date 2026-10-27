@@ -50,7 +50,7 @@
     <p class="panelHint">현재 화면의 Origin 보기·마커·피크 선을 그대로 저장합니다. 결정상 마커나 피크 선을 켜면 해당 결정상 범례도 포함됩니다.</p>
     <div class="exportRow"><button id="htmlExport">뷰어 HTML 저장</button></div>
    </div>
-   <div id="samplesSection" class="panelSection"><div class="sectionTitle">시료 <span>색 · 순서 · 개별 조절</span></div><div id="sampleList"></div></div>
+   <div id="samplesSection" class="panelSection"><div class="sectionTitle">시료 <span>색 · 순서 · 개별 조절</span></div><button id="autoSampleColors" title="현재 시료 색상을 서로 다른 기본 색상으로 다시 배정합니다">색상 자동 배정</button><div id="sampleList"></div></div>
    <div class="panelSection"><div class="sectionTitle">결정상별 마커 설정 <span>모양 · 색상</span></div><div class="phaseRow unknownRow"><div class="phaseTop"><label class="unknownCheck"><input id="unknownMarkers" type="checkbox" aria-label="Unknown Peak 마커 표시"> Unknown Peak</label><input id="unknownColor" class="colorInput" type="color" value="#000000" aria-label="Unknown Peak 마커 색"></div><div class="phaseMeta">상 배정이 없는 관측 피크 위에 ? 로 표시 (색 변경 가능)</div></div><div id="phaseList"></div></div>
    <div id="warningSection" class="panelSection" hidden><div class="sectionTitle">확인 사항</div><div id="warningList"></div></div>
   </aside>

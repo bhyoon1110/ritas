@@ -3,6 +3,8 @@
 import math
 import re
 
+from ..core.sample_colors import sample_color
+
 
 def _highlight(value, project):
     """A phase highlight: None, or {name, card, db} with card/db a string or None, naming a phase
@@ -66,7 +68,7 @@ def prepare_views(project, views, target=None):
 
 def prepare_state(project, state=None, target=None):
     if state is None or state == {}:
-        return {}
+        state = {'version': 1, 'projectId': project['id']}
     if (
         not isinstance(state, dict)
         or state.get('projectId') != project['id']
@@ -78,7 +80,10 @@ def prepare_state(project, state=None, target=None):
     target_ids = [s['id'] for s in target['samples']]
     phases = [p['id'] for s in project['samples'] for p in s['phases']]
     target_phases = [p['id'] for s in target['samples'] for p in s['phases']]
-    result = {'version': 1, 'projectId': target['id']}
+    # Resolve defaults before filtering/reordering a delivery project. A report
+    # containing only sample 8 must retain sample 8's colour in its offline viewer.
+    result = {'version': 1, 'projectId': target['id'],
+              'colors': {sid: sample_color(i) for i, sid in enumerate(ids) if sid in target_ids}}
     for key, allowed in {
         'intensity': ('raw', 'normalized'),
         'arrangement': ('stacked', 'overlay'),
@@ -180,7 +185,7 @@ def prepare_state(project, state=None, target=None):
             for k, v in colors.items()
         ):
             raise ValueError('뷰어 색상은 등록된 시료·상의 #RRGGBB 값이어야 합니다.')
-        result[key] = {k: v for k, v in colors.items() if k in included}
+        result.setdefault(key, {}).update({k: v for k, v in colors.items() if k in included})
 
     def number(v):
         try:

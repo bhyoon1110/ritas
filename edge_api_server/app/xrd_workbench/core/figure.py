@@ -8,7 +8,7 @@ import json
 import re
 from bisect import bisect_left
 
-SAMPLE_COLORS = ['#ff3535', '#3535ff', '#15966b', '#9d51c9', '#d98515', '#00a1ad']
+from .sample_colors import sample_color
 # Filled markers, the same as the viewer's: a colour per phase and shapes in the order square,
 # triangle, star, diamond, circle, plus, ... (names the renderer maps).
 PHASE_COLORS = ['#8261c9', '#df9b29', '#199c78', '#c44d76', '#4178bf', '#777777']
@@ -228,6 +228,7 @@ def _phase_rows(ready: list[dict], styles: dict):
 
 
 def _panel(title, ids, project_samples, names, figure, styles):
+    colors = {sid: sample_color(i) for i, sid in enumerate(project_samples)}
     normalized = figure['normalize']
     ready, skipped = ready_samples([project_samples[i] for i in ids], normalized)
     keysets = {s['id']: phase_key_set(s) for s in ready}
@@ -278,7 +279,7 @@ def _panel(title, ids, project_samples, names, figure, styles):
                 name=names[sample['id']],
                 x=list(m['x']),
                 base=base,
-                color=SAMPLE_COLORS[index % len(SAMPLE_COLORS)],
+                color=colors[sample['id']],
                 note=composition_note(previous, current),
                 markers=markers,
             )

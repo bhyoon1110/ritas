@@ -29,6 +29,7 @@ import { $, escapeHTML } from '../shared/dom.mjs';
 import { classifyUploadFilename, summarizeUpload, uploadSummaryHTML } from './upload_summary.mjs';
 import { transferUpload } from '../shared/resumable_upload.mjs';
 import { diagnosticsHTML } from './raw_diagnostics.mjs';
+import { automaticSampleColors } from './sample_colors.mjs';
 
 const offline = !!window.XRD_EMBEDDED;
 let activeUpload=null,uploadBusy=false,uploadPaused=false,uploadReady=false,resumeMappings={},resumeJob=null;
@@ -446,6 +447,12 @@ $('activeSample').onchange = () => {
   draw();
 };
 $('warnings').onclick = () => { setOptions(true); $('warningSection').scrollIntoView({ block: 'nearest' }); };
+$('autoSampleColors').onclick = () => {
+  if (!project || !state) return;
+  state.colors = automaticSampleColors(project);
+  draw();
+  message('시료별 색상을 자동 배정했습니다. 각 시료의 색상 버튼으로 다시 변경할 수 있습니다.');
+};
 $('sidePanel').onchange = (event) => {
   const e = event.target,
     d = e.dataset;
