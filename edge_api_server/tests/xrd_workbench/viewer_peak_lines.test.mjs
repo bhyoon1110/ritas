@@ -64,17 +64,48 @@ test('lines use observed positions and raw heights, including stack reversal, ze
       const measured = role(f, 'measurement').find(t => t.meta.sampleId === line.meta.sampleId);
       const offset = measured.y[1] - 4;
       assert.deepEqual(line.x, [11.2, 11.2, null]); // not reference x or duplicate per hkl
-      assert.deepEqual(line.y, [offset, measured.y[1], null]); // not PDF Height, or marker gap
+      assert.ok(Math.abs(line.y[0] - (2.5 + offset)) < 1e-10); // local background, not zero
+      assert.deepEqual(line.y.slice(1), [measured.y[1], null]); // not PDF Height, or marker gap
       assert.equal(line.connectgaps, false);
     }
     assert.deepEqual(f.layout.xaxis.range, s.xRange);
     assert.deepEqual(f.layout.yaxis.range, s.yRange);
     s.viewMode = 'single'; s.active = 'b';
-    assert.deepEqual(role(buildFigure(p, s), 'peak-line').map(t => t.y), [[0, 4, null]]);
+    const line = role(buildFigure(p, s), 'peak-line')[0];
+    assert.ok(Math.abs(line.y[0] - 2.5) < 1e-10);
+    assert.deepEqual(line.y.slice(1), [4, null]);
   }
   p.samples[0].measurement.y = [-3, -1, -2];
   const s = createState(p); s.peakLines = true; s.offsets.raw.spacing = 0;
-  assert.deepEqual(role(buildFigure(p, s), 'peak-line')[0].y, [0, -1, null]);
+  const line = role(buildFigure(p, s), 'peak-line')[0];
+  assert.ok(Math.abs(line.y[0] + 2.5) < 1e-10);
+  assert.deepEqual(line.y.slice(1), [-1, null]);
+});
+
+test('peak line feet follow each local sloping background, unchanged by viewport or export', () => {
+  const p = project(), s = createState(p);
+  for (const sample of p.samples) {
+    sample.measurement.x = Array.from({length: 1001}, (_, i) => 10 + i * 0.02);
+    sample.measurement.y = sample.measurement.x.map(x => 20 + x * 2
+      + Math.max(0, 1 - Math.abs(x - 15) / 0.15) * 80
+      + Math.max(0, 1 - Math.abs(x - 25) / 0.15) * 100);
+    sample.observed_peaks = [15, 25].map((x, i) => ({no: i + 1, x}));
+    sample.assignments = [15, 25].map((x, i) => ({no: i + 1, x,
+      matches: [{phase: sample.phases[0].name}]}));
+  }
+  const before = JSON.stringify(p);
+  s.peakLines = true; s.offsets.raw = {spacing: 200, individual: {a: 30}};
+  const lines = role(buildFigure(p, s), 'peak-line');
+  for (const [i, line] of lines.entries()) {
+    const offset = i === 0 ? 230 : 0;
+    assert.ok(Math.abs(line.y[0] - (50 + offset)) < 0.01);
+    assert.ok(Math.abs(line.y[3] - (70 + offset)) < 0.01);
+    assert.deepEqual([line.y[1], line.y[4]], [130 + offset, 170 + offset]);
+  }
+  s.xRange = [14.9, 15.1]; s.yRange = [40, 400]; s.originStyle = true;
+  assert.deepEqual(role(buildFigure(p, s), 'peak-line'), lines);
+  assert.deepEqual(role(exportFigure(p, s), 'peak-line'), lines);
+  assert.equal(JSON.stringify(p), before);
 });
 
 test('phase hiding, highlight and excluded samples govern lines without inventing missing peaks', () => {

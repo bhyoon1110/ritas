@@ -1,5 +1,6 @@
 // Pure display calculations. Never modifies source measurements or reports.
 import { escapeHTML } from '../shared/dom.mjs';
+import { estimateBackground } from './background.mjs';
 export const sampleColors = ['#ff3535', '#3535ff', '#15966b', '#9d51c9', '#d98515', '#00a1ad'];
 // Phase markers are filled; each phase gets its own colour and a shape in the order square,
 // triangle, star, diamond, circle, … (the author may change colour and shape per phase).
@@ -490,6 +491,8 @@ export function buildFigure(project, state, viewport = {}) {
     });
     if (state.markers || state.peakLines) {
       const gap = Math.max(1, maxValue(base) - minValue(base)) * 0.018;
+      const background = state.peakLines && (s.assignments || []).length
+        ? estimateBackground(m) : null;
       for (const phase of s.phases) {
         if (state.hiddenPhases.includes(phase.id)) continue;
         const style = styles.get(phase.id),
@@ -513,10 +516,10 @@ export function buildFigure(project, state, viewport = {}) {
           const matchIndex = assignment.matches.findIndex((a) => a.phase === phase.name);
           if (state.peakLines) {
             // A guide, not a reconstructed spectrum: use the observed PDF position and
-            // nearest raw TXT intensity, from this sample's zero baseline + stack offset.
+            // nearest raw TXT intensity, from the local estimated background + stack offset.
             // Never substitute reference Norm. I. or fitted PDF Height for measured intensity.
             lineXs.push(assignment.x, assignment.x, null);
-            lineYs.push(offset, y[nearest], null);
+            lineYs.push(background[nearest] + offset, y[nearest], null);
           }
           xs.push(assignment.x);
           ys.push(y[nearest] + gap * (matchIndex + 1));

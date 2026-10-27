@@ -117,9 +117,9 @@ function updateControls() {
   const lineCount = figure.data.filter(t => t.meta?.role === 'peak-line')
     .reduce((count, t) => count + t.x.length / 3, 0);
   $('peakLineHint').textContent = !state.peakLines
-    ? '상단 그래프에 결정상 색상의 세로선을 표시합니다. 마커·하단 막대와 별도로 켜고 끕니다.'
+    ? '추정 배경선에서 실제 RAW 피크 높이까지 세로선을 표시합니다. 원자료는 변경하지 않으며 마커·하단 막대와 별도로 켜고 끕니다.'
     : lineCount
-      ? `결정상 피크 선 ${lineCount}개 표시 · 시료 기준선에서 실제 측정 높이까지 표시합니다.`
+      ? `결정상 피크 선 ${lineCount}개 표시 · 위치별 추정 배경선에서 실제 RAW 높이까지 표시합니다. 원자료는 변경하지 않습니다.`
       : '표시할 피크 선이 없습니다. 관측 피크·상 배정 자료와 시료·결정상 표시 선택을 확인하세요.';
   $('unknownColor').value = state.unknownColor;
   $('markerSize').value = String(state.markerSize);

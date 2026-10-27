@@ -46,15 +46,19 @@ for(const [mode, program] of Object.entries({native,chrome49:legacy})) {
       const original=JSON.stringify(ui.renders.at(-1).data);
       lines.click();await flush();
       const data=ui.renders.at(-1).data;
-      assert.deepEqual(data.find(t=>t.meta.role==='peak-line').y,[0,9,null]);
+      const line = data.find(t=>t.meta.role==='peak-line');
+      assert.ok(Math.abs(line.y[0] - 1.5) < 1e-10);
+      assert.deepEqual(line.y.slice(1),[9,null]);
       assert.equal(data.find(t=>t.meta.role==='peak-line').line.color,'#12ab34');
       assert.equal(marker.checked,false);
       assert.equal(ui.d.getElementById('markerSize').disabled,true);
       assert.match(ui.d.getElementById('peakLineHint').textContent,/피크 선 1개/);
+      assert.match(ui.d.getElementById('peakLineHint').textContent,/추정 배경선.*원자료는 변경하지 않습니다/);
       assert.equal(details.open,true);
       assert.equal(JSON.parse(ui.w.localStorage.getItem(ui.w.localStorage.key(0))).peakLines,true);
       ui.d.getElementById('imageExport').click();await flush();
       assert.equal(ui.exports.at(-1).data.find(t=>t.meta.role==='legend-phase').mode,'lines');
+      assert.deepEqual(ui.exports.at(-1).data.find(t=>t.meta.role==='peak-line').y,line.y);
       lines.click();await flush();
       assert.equal(JSON.stringify(ui.renders.at(-1).data),original);
     }
