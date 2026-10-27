@@ -3,6 +3,22 @@ from collections import defaultdict
 import hashlib
 import json
 import textwrap
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class AddedPage(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    id: str = Field(pattern=r"^added-[A-Za-z0-9-]{1,64}$")
+    after: str = Field(min_length=1, max_length=100)
+    title: str = Field(max_length=100)
+    body: str = Field(max_length=2000)
+
+
+class PageEdits(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    hidden: list[str] = Field(default_factory=list, max_length=400)
+    added: list[AddedPage] = Field(default_factory=list, max_length=50)
+    order: list[str] | None = Field(default=None, max_length=400)
 
 
 def identify(payloads):

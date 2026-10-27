@@ -333,6 +333,8 @@ def validate_document(project: dict, document: dict) -> dict:
     result['revision'] = revision
     from ...report.pptx_protection import validate_protection
     result['pptxProtection'] = validate_protection(document.get('pptxProtection'))
+    from ..render.editor import clean_edits
+    result.update(clean_edits(document))
     if document.get('analysis_revision', 0) != project.get('analysis_revision', 0):
         raise ValueError('분석 검토값이 변경되었습니다. 보고서를 다시 열어 확인하세요.')
     metadata = document.get('metadata', {})

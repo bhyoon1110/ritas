@@ -47,6 +47,7 @@ function setup(t,{mode,recovery=null,model,save,load}={}) {
     }
     throw Error('Unexpected request: '+url);
   };
+  require('../ppt_tools_harness.cjs')(w);
   w.eval(programs[mode]);
   return {w,d,calls,errors,mailCalls:()=>calls.filter(c=>c.url.endsWith('/email-draft')),
     email:()=>({subject:d.getElementById('emailSubject').value,body:d.getElementById('emailBody').value}),

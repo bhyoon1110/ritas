@@ -523,7 +523,7 @@ class Deck:
         return out.getvalue()
 
 
-def render_report_pptx(project, document, resolve_source, *, pages=None, link_base=None, storage_id=None, include_sources=True, delivery=False):
+def render_report_pptx(project, document, resolve_source, *, pages=None, link_base=None, storage_id=None, include_sources=True, delivery=False, asset_root=None):
     """Production entry point. Explicit site templates keep their existing override behaviour."""
     document = validate_document(project, document)
     paths = package_paths(project)
@@ -546,6 +546,8 @@ def render_report_pptx(project, document, resolve_source, *, pages=None, link_ba
             for record in report_sources(project, document):
                 read_linked_source(record, resolve_source)
     if custom_template:
+        from .editor import check_template
+        check_template(document)
         from .pptx import render_pptx
         pages = pages if pages is not None else build_pages(project, document, resolve_source)
         if not include_sources:
@@ -553,10 +555,13 @@ def render_report_pptx(project, document, resolve_source, *, pages=None, link_ba
         content = render_pptx(pages, document, link_base=link_base, storage_id=storage_id)
     else:
         deck = build_posco_deck(project, document, resolve_source, pages=pages, link_base=link_base,
-                               storage_id=storage_id, include_sources=include_sources)
+                               storage_id=storage_id, include_sources=include_sources, asset_root=asset_root)
         content = deck.finish(document)
         expected_pages = {f'ppt/slides/slide{index}.xml': deck.required_links.get(slide, set())
                           for index, (slide, _) in enumerate(deck.pages, 1)}
+        # Pages deliberately removed by the author no longer require their links.
+        visible_links = set().union(*expected_pages.values())
+        expected = {key:value for key,value in expected.items() if key in visible_links}
     check_ppt_links(content, expected, expected_pages)
     from ...report.pptx_protection import validate_protection, protect_pptx
     protection = validate_protection(document.get('pptxProtection'))
@@ -575,7 +580,7 @@ def render_report_pptx(project, document, resolve_source, *, pages=None, link_ba
 
 
 def build_posco_deck(project, document, resolve_source, *, pages=None, link_base=None,
-                     storage_id=None, include_sources=True, image_renderer=None):
+                     storage_id=None, include_sources=True, image_renderer=None, asset_root=None):
     """One filled OOXML scene for PPTX and its browser preview; no Office installation needed."""
     document = validate_document(project, document)
     paths = package_paths(project)
@@ -691,6 +696,7 @@ def build_posco_deck(project, document, resolve_source, *, pages=None, link_base
         table_sets = [phase_table_data(samples[e['sample_id']], classification, revised=quantitative) for e in batch]
         row_sets = [rows for _, rows in table_sets]
         slide=deck.slide(1 if quantitative else 2, kind='sample', sample_id=batch[0]['sample_id'])
+        deck.page_info[slide]['editor_samples'] = [e['sample_id'] for e in batch]
         # Record every required destination independently of the visible link shapes.
         deck.required_links[slide] = {
             target for entry in batch for target in
@@ -815,4 +821,5 @@ def build_posco_deck(project, document, resolve_source, *, pages=None, link_base
                             edit=dict(tab=entry['sample_id']))
             rows=rows[used:]
     deck.number_pages()
-    return deck
+    from .editor import apply
+    return apply(deck, document, asset_root)

@@ -47,6 +47,7 @@ function setup(t,program){
     }
     throw Error('Unexpected request: '+url);
   };
+  require('../ppt_tools_harness.cjs')(w);
   w.eval(program);
   return {w,d,errors,saves};
 }

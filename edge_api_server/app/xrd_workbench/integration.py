@@ -481,12 +481,13 @@ def export_report(sid: str, payload: dict):
         from .render.posco_pptx import render_report_pptx
         from .render.package import build_package
         source = lambda fid: state.storage.files.read_source(sid, fid)
+        asset_root = state.storage.reports.path(sid).parent / 'editor-assets'
         output = directory / ('report.html' if kind == 'preview' else 'report.' + kind)
         # Snapshot the exact document/analysis versions used for this artifact.
         _write_json_atomic(directory / 'document.json', document)
         if kind == 'zip':
             build_package(project, document, source, payload.get('viewer_state'),
-                          output_path=output)
+                          output_path=output, asset_root=asset_root)
             register_generated_report_package(
                 settings=state.settings, database=state.request.app.state.database,
                 report_id=directory.name, package_path=output,
@@ -501,16 +502,16 @@ def export_report(sid: str, payload: dict):
         else:
             if kind == 'preview':
                 from .render.posco_preview import render_posco_preview
-                content = render_posco_preview(project, document, source, storage_id=sid)
+                content = render_posco_preview(project, document, source, storage_id=sid, asset_root=asset_root)
                 if len(content.encode('utf-8')) > 32 * 1024 * 1024:
                     raise ValueError('미리보기가 32MB를 초과했습니다. 시료를 나누거나 PDF/PPTX로 다운로드하세요.')
                 output.write_text(content, encoding='utf-8')
             else:
                 base = state.settings.edge_public_base_url.rstrip('/') + BASE + '/'
-                pages = report_pages(project, document, source, storage_id=sid, link_base=base) if kind == 'pdf' else None
+                pages = report_pages(project, document, source, storage_id=sid, link_base=base, asset_root=asset_root) if kind == 'pdf' else None
                 data = (render_pdf(pages, document, link_base=base, storage_id=sid) if kind == 'pdf'
                         else render_report_pptx(project, document, source, pages=pages,
-                                                link_base=base, storage_id=sid, delivery=True))
+                                                link_base=base, storage_id=sid, delivery=True, asset_root=asset_root))
                 output.write_bytes(data)
         return dict(storage_id=sid, revision=document['revision'],
                     analysis_revision=project.get('analysis_revision', 0), filename=output.name,
@@ -547,9 +548,16 @@ def draft_preview(sid: str, payload: dict):
             from .render.posco_preview import render_posco_preview
             from .render.figure import render_panel_png
             from .render.draft_cache import draft_images
+            asset_root = state.storage.reports.path(sid).parent / 'editor-assets'
+            if payload.get('format') == 'editor':
+                from .render.editor import preview
+                value = preview(project, document, lambda fid: state.storage.files.read_source(sid, fid),
+                    storage_id=sid, asset_root=asset_root,
+                    image_renderer=lambda *args: draft_images.render((state.home, sid), render_panel_png, *args))
+                return JSONResponse(value, headers=NO_STORE)
             content = render_posco_preview(project, document,
                 lambda fid: state.storage.files.read_source(sid, fid), storage_id=sid, edit_links=True,
-                image_renderer=lambda *args: draft_images.render((state.home, sid), render_panel_png, *args))
+                image_renderer=lambda *args: draft_images.render((state.home, sid), render_panel_png, *args), asset_root=asset_root)
             if len(content.encode('utf-8')) > 32 * 1024 * 1024:
                 raise HTTPException(413, '미리보기가 32MB를 초과했습니다. 시료를 나누어 확인하세요.')
             return HTMLResponse(content, headers=NO_STORE)
@@ -566,6 +574,31 @@ def draft_preview(sid: str, payload: dict):
         raise HTTPException(422, str(exc)) from exc
     finally:
         draft_preview_slot.release()
+
+
+@router.post('/api/reports/{sid}/editor-images')
+async def editor_image(sid: str, request: Request):
+    state=current.get(); checked_id(sid)
+    if request.headers.get('x-requested-with') != 'RIST-Report-Editor':
+        raise HTTPException(403, '보고서 편집 화면에서 이미지를 첨부하세요.')
+    content=bytearray()
+    async for chunk in request.stream():
+        content.extend(chunk)
+        if len(content)>2*1024*1024: raise HTTPException(413, '이미지는 2MB 이하로 첨부하세요.')
+    from ..report.canvas import store_image
+    def store():
+        with state.storage.lock:
+            try:
+                state.storage.load_project(sid)
+            except (FileNotFoundError, ValueError):
+                raise HTTPException(404, '본인의 프로젝트를 찾을 수 없습니다.') from None
+            return store_image(state.storage.reports.path(sid).parent / 'editor-assets', bytes(content))
+    try:
+        return JSONResponse(await run_in_threadpool(store),headers=NO_STORE)
+    except FileNotFoundError:
+        raise HTTPException(404,'본인의 프로젝트를 찾을 수 없습니다.') from None
+    except ValueError as exc:
+        raise HTTPException(422,str(exc)) from exc
 
 
 @router.get('/api/jobs/{jid}/file')
@@ -622,6 +655,14 @@ def bootstrap():
     return Response('window.XRD_API_BASE=' + json.dumps(BASE) + ';', media_type='application/javascript', headers=NO_STORE)
 
 
+@router.get('/ppt-tools/{name}', include_in_schema=False)
+def ppt_tools(name: str):
+    shared={'report_editor_icons.js','report_page_sidebar.js','report_cell_editor.js','report_canvas_editor.js','report_ppt_tools.css'}
+    if name=='report_ppt_tools.legacy.css': name='report_ppt_tools.css'
+    if name not in shared: raise HTTPException(404, '편집 도구를 찾을 수 없습니다.')
+    return FileResponse(Path(__file__).parents[1]/name, headers=NO_STORE)
+
+
 @router.get('/{asset_path:path}', include_in_schema=False)
 def web_asset(asset_path: str, request: Request):
     path = (WEB / (asset_path or 'index.html')).resolve()
@@ -629,6 +670,11 @@ def web_asset(asset_path: str, request: Request):
         raise HTTPException(404, '화면 파일을 찾을 수 없습니다.')
     if path.suffix == '.html':
         content = path.read_text()
+        if path.name == 'report.html':
+            content=content.replace('</head>','<link rel="stylesheet" href="/ppt-tools/report_ppt_tools.css"></head>')
+            scripts=''.join('<script src="/ppt-tools/'+name+'"></script>' for name in
+                ('report_editor_icons.js','report_page_sidebar.js','report_cell_editor.js','report_canvas_editor.js'))
+            content=content.replace('<script type="module"',scripts+'<script type="module"',1)
         content = re.sub(r'(href|src)="/', lambda m: m[1] + '="' + BASE + '/', content)
         content = content.replace('<head>', '<head><script src="' + BASE + '/bootstrap.js"></script>')
         content = content.replace('</head>', '<link rel="stylesheet" href="' + BASE + '/shared/platform.css"></head>')

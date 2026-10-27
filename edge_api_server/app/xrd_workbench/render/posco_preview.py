@@ -174,8 +174,11 @@ def deck_pages(deck):
                 if fill!='transparent' or stroke!='transparent':
                     line=sp.find('a:ln',NS)
                     geom=sp.find('a:prstGeom',NS)
-                    output.append(dict(type='rect',x=x,y=y,w=w,h=max(h,.1),fill=fill,stroke=stroke,
+                    kind=geom.get('prst') if geom is not None else 'rect'
+                    dash=sp.find('a:ln/a:prstDash',NS)
+                    output.append(dict(type=kind if kind in ('line','ellipse') else 'rect',x=x,y=y,w=w,h=max(h,.1),fill=fill,stroke=stroke,
                         stroke_width=int(line.get('w','9525'))/MM if line is not None else 0,
+                        dash=dash.get('val') if dash is not None else 'solid',
                         radius=2.5 if geom is not None and geom.get('prst')=='roundRect' else 0))
                 body=shape.find('p:txBody',NS)
                 if body is not None: output+=text_items(body,bounds,edit)
@@ -216,7 +219,8 @@ def deck_pages(deck):
     pages=[]
     for slide,rels in deck.pages:
         info=deck.page_info[slide]
-        title=''.join(named(slide,'Title')[0].xpath('.//a:t/text()',namespaces=NS))
+        titles=named(slide,'Title')
+        title=''.join(titles[0].xpath('.//a:t/text()',namespaces=NS)) if titles else deck.page_info[slide].get('navigation_title', '보고서 페이지')
         targets={r.get('Id'):posixpath.normpath(posixpath.join('ppt/slides',r.get('Target')))
                  for r in rels if r.get('TargetMode')!='External'}
         items=shapes(slide.find('p:cSld/p:spTree',NS),targets)
@@ -233,20 +237,22 @@ def deck_pages(deck):
 
 
 def report_pages(project, document, resolve_source, *, storage_id=None, link_base=None,
-                 image_renderer=None, include_sources=True):
+                 image_renderer=None, include_sources=True, asset_root=None):
     """All standard report formats use the same filled POSCO scene."""
     from ..config import load_settings
     from .layout import build_pages
     if load_settings().pptx_template:
+        from .editor import check_template
+        check_template(document)
         return build_pages(project,document,resolve_source,image_renderer=image_renderer)
     deck=build_posco_deck(project,document,resolve_source,storage_id=storage_id,
-                          link_base=link_base,image_renderer=image_renderer,include_sources=include_sources)
+                          link_base=link_base,image_renderer=image_renderer,include_sources=include_sources,asset_root=asset_root)
     return deck_pages(deck)
 
 
 def render_posco_preview(project, document, resolve_source, *, storage_id=None,
-                         image_renderer=None, edit_links=False):
+                         image_renderer=None, edit_links=False, asset_root=None):
     from .html import render_html
     pages=report_pages(project,document,resolve_source,storage_id=storage_id,
-                       link_base='/api/v1/xrd/workbench',image_renderer=image_renderer)
+                       link_base='/api/v1/xrd/workbench',image_renderer=image_renderer,asset_root=asset_root)
     return render_html(pages,document,'app',storage_id,edit_links=edit_links)

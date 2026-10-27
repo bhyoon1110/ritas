@@ -1,6 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mergeDraftChanges } from '../../app/xrd_workbench/web/report/report_merge.mjs';
+test('page and object edits survive recovery without overwriting untouched newer edits',()=>{
+  const base={metadata:{},llm:{},samples:[],summary:'',pageEdits:{hidden:[],added:[]},canvasEdits:{}};
+  const latest=structuredClone(base);latest.canvasEdits={page:[{id:'object-latest',text:'Other saved edit'}]};
+  const current=structuredClone(base);current.pageEdits.hidden=['page'];
+  const merged=mergeDraftChanges(latest,current,base);
+  assert.deepEqual(merged.canvasEdits,latest.canvasEdits);assert.deepEqual(merged.pageEdits,current.pageEdits);
+  current.canvasEdits={page:[{id:'object-author',text:'Unsaved author edit'}]};
+  assert.deepEqual(mergeDraftChanges(latest,current,base).canvasEdits,current.canvasEdits);
+});
 test('password verifier follows unsaved changes but never overwrites a newer setting when untouched', () => {
   const base={metadata:{},llm:{},samples:[],summary:'',pptxProtection:{hashData:'old'}};
   const latest=structuredClone(base);latest.pptxProtection={hashData:'new'};

@@ -95,10 +95,16 @@ def render_html(pages, document, link_mode='package', storage_id=None, *, edit_l
                 target = dict(tab='figure')
             attrs = edit_attrs(target) if edit_links and target else ''
             pos = f"left:{item['x']}mm;top:{item['y']}mm;width:{item['w']}mm;height:{item['h']}mm;"
-            if item['type'] == 'rect':
+            if item['type'] in ('ellipse','line'):
+                geom = (f'<ellipse cx="{item["w"]/2}" cy="{item["h"]/2}" rx="{item["w"]/2}" ry="{item["h"]/2}"/>'
+                        if item['type']=='ellipse' else f'<line x1="0" y1="0" x2="{item["w"]}" y2="{item["h"]}"/>')
+                dash={'dash':'1.4 1','sysDot':'.3 .7','dot':'.3 .7','dashDot':'1.4 .7 .3 .7'}.get(item.get('dash'),'none')
+                output.append(f'<svg class="item" style="{pos}overflow:visible" viewBox="0 0 {item["w"]} {item["h"]}" preserveAspectRatio="none" fill="{item["fill"]}" stroke="{item["stroke"]}" stroke-width="{item.get("stroke_width",.2)}" stroke-dasharray="{dash}">{geom}</svg>')
+            elif item['type'] == 'rect':
+                border = {'solid':'solid','dot':'dotted','sysDot':'dotted'}.get(item.get('dash','solid'),'dashed')
                 output.append(
                     '<div class="item" style="' + pos + f"background:{item['fill']};"
-                    + (f"border:{item.get('stroke_width',.2)}mm solid {item['stroke']};border-radius:{item.get('radius',0)}mm;" if item.get('stroke') else '') + '"></div>'
+                    + (f"border:{item.get('stroke_width',.2)}mm {border} {item['stroke']};border-radius:{item.get('radius',0)}mm;" if item.get('stroke') else '') + '"></div>'
                 )
             elif item['type'] == 'text':
                 style = (

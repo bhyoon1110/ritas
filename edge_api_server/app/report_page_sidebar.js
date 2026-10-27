@@ -22,7 +22,7 @@
         if(img.getAttribute("src")||rect.bottom<bounds.top-100||rect.top>bounds.bottom+100)continue;
         var token=version;pending=img;
         img.onload=img.onerror=function(){if(token!==version)return;pending=null;loadVisible();};
-        img.src=base+"/"+i+"?thumbnail=true";return;
+        img.src=pages[i].thumbnail || base+"/"+i+"?thumbnail=true";return;
       }
     }
     function selection(reveal) {

@@ -6,6 +6,7 @@ import { restoreState, viewerStorageKey } from '../viewer/model.mjs';
 import { mergeDraftChanges } from './report_merge.mjs';
 import { ensureEmail, emailContextKey, mountEmailEditor, initializeEmptyEmail, canAutoDraftEmail } from './email.mjs';
 import { createLivePreview } from './live_preview.mjs';
+import { mountPptEditor } from './ppt_editor.mjs';
 import { createDraftAutosave } from './draft_autosave.mjs';
 import { figureHTML } from './figure_view.mjs';
 import { phaseClassesHTML } from './phase_classes_view.mjs';
@@ -54,6 +55,14 @@ let storageId = new URLSearchParams(location.search).get('project'),
   pcPercent = '';
 let composing = false, previewPosition = {index:0,offset:0}, linkedTimer = 0;
 const previewFrame = $('reportPreview'), reportMain = document.querySelector('main');
+const pptHost=document.createElement('div');pptHost.className='ppt-editor';previewFrame.parentNode.insertBefore(pptHost,previewFrame);previewFrame.hidden=true;
+const pptEditor=mountPptEditor({host:pptHost,document:()=>doc,changed:markDirty,linked:linkedField,message:status,
+  editing:value=>{composing=value;if(value)livePreview.invalidate();else if(doc&&!busy)livePreview.schedule();},
+  upload:(file,done)=>{
+    lock(true);
+    api(`/api/reports/${storageId}/editor-images`,{method:'POST',headers:{'Content-Type':file.type,'X-Requested-With':'RIST-Report-Editor'},body:file})
+      .then(r=>r.json()).then(value=>{lock(false);done(null,value);},error=>{lock(false);done(error);});
+  }});
 const pptxPassword = new window.RistPptxPassword({host:document.querySelector('#savePane .saveActions'),
   changed:()=>{if(doc){doc.pptxProtection=pptxPassword.value();markDirty();status('PPT 수정 비밀번호 설정을 변경했습니다. 저장·내보내기 시 적용됩니다.');}},
   request:(password,done)=>{
@@ -107,11 +116,12 @@ const livePreview = createLivePreview({
   delay: Number(navigator.deviceMemory || 0) <= 4 ? 1200 : 900,
   render: async () => {
     if (!doc) throw new Error('프로젝트가 열리지 않았습니다.');
-    return (await api(`/api/reports/${storageId}/draft-preview`, {method:'POST',
-      headers:{'Content-Type':'application/json'}, body:JSON.stringify({document:doc})})).text();
+    try {return await (await api(`/api/reports/${storageId}/draft-preview`, {method:'POST',
+      headers:{'Content-Type':'application/json'}, body:JSON.stringify({document:doc,format:'editor'})})).json();}
+    catch(error){pptEditor.failed();throw error;}
   },
-  ready: html => {
-    previewFrame.srcdoc = html;
+  ready: value => {
+    pptEditor.accept(value);
     $('previewStatus').textContent = dirty ? '미저장 초안 반영 · 저장은 별도' : `저장 버전 ${doc.revision} 기준`;
   },
   status: text => { $('previewStatus').textContent = text; }
@@ -171,6 +181,7 @@ window.addEventListener('pagehide',()=>{if(!composing)draftSaver.flush();});
 $('editorFields').addEventListener('focusin',e=>{
   const d=e.target.dataset, field=d.meta || d.field || (d.noteText?'note':d.retainedText?'retained_note':e.target.id==='summary'?'summary':null);
   if (field) previewFrame.contentWindow.postMessage({type:'xrd-preview-locate',target:{tab,field,id:d.noteText||d.retainedText}},'*');
+  if (field) pptEditor.locate({tab,field,id:d.noteText||d.retainedText});
 });
 function status(text, error = false) {
   $('status').textContent = text;
@@ -190,6 +201,7 @@ function lock(value) {
   mailEditor.lock(value);
   pptxPassword.lock(value);
   busy = value;
+  pptEditor.lock(value);
   if (value) livePreview.invalidate();
   else if (doc) livePreview.schedule();
   $('editorFields').disabled = value;
@@ -246,6 +258,7 @@ function showTab(value) {
   }
 }
 function render() {
+  pptEditor.load();
   ensureEmail(doc);
   pptxPassword.set(doc.pptxProtection);
   for (const [id, key] of [['ristExperiment','experiment_code'], ['ristEquipment','equipment_code']]) {

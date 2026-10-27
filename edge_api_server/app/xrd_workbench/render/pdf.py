@@ -57,14 +57,20 @@ def render_pdf(pages, document, link_base=None, storage_id=None):
         page_height=page.get('height',PAGE_H)
         pdf.setPageSize((page.get('width',PAGE_W)*mm,page_height*mm))
         for item in page['items']:
-            if item['type'] == 'rect':
+            if item['type'] in ('rect','ellipse','line'):
+                pdf.saveState()
                 fill=item['fill']!='transparent'
                 stroke=bool(item.get('stroke') and item['stroke']!='transparent')
                 if fill: pdf.setFillColor(HexColor(item['fill']))
                 if stroke:
                     pdf.setStrokeColor(HexColor(item['stroke']))
                     pdf.setLineWidth(item.get('stroke_width',.2)*mm)
-                pdf.roundRect(
+                pdf.setDash({'dash':[4,3],'sysDot':[1,2],'dot':[1,2],'dashDot':[4,2,1,2]}.get(item.get('dash'),[]))
+                if item['type']=='line':
+                    if stroke: pdf.line(item['x']*mm,(page_height-item['y'])*mm,(item['x']+item['w'])*mm,(page_height-item['y']-item['h'])*mm)
+                elif item['type']=='ellipse':
+                    pdf.ellipse(item['x']*mm,(page_height-item['y']-item['h'])*mm,(item['x']+item['w'])*mm,(page_height-item['y'])*mm,stroke=int(stroke),fill=int(fill))
+                else: pdf.roundRect(
                     item['x'] * mm,
                     (page_height - item['y'] - item['h']) * mm,
                     item['w'] * mm,
@@ -73,6 +79,7 @@ def render_pdf(pages, document, link_base=None, storage_id=None):
                     stroke=int(stroke),
                     fill=int(fill),
                 )
+                pdf.restoreState()
             elif item['type'] == 'text':
                 pdf.setFillColor(HexColor(item['color']))
                 for i, line in enumerate(item['lines']):

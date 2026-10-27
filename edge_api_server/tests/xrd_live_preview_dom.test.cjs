@@ -21,12 +21,15 @@ for(const legacy of [false,true])test(`${legacy?'Chrome49 fallback':'native'} re
   const timer=w.setTimeout.bind(w);w.setTimeout=(fn,ms,...args)=>timer(fn,ms>=900?20:ms,...args);
   const mockFetch=async(url,options={})=>{
     calls.push({url,options});
-    if(url.endsWith('/draft-preview'))return {ok:true,text:async()=>'<p>'+JSON.parse(options.body).document.metadata.title+'</p>'};
+    if(url.endsWith('/draft-preview'))return {ok:true,json:async()=>({pageEditing:true,canvasEditing:true,ratio:16/9,pages:[{
+      id:'generated-'+'a'.repeat(20)+'-0',title:JSON.parse(options.body).document.metadata.title,
+      objects:[],targets:[{x:.1,y:.1,w:.3,h:.2,target:{tab:'overview',field:'client'}}],image:'data:image/png;base64,QA',thumbnail:'data:image/png;base64,QA'}]})};
     if(url.endsWith('/draft')){if(options.method==='PUT'){assert.equal(JSON.parse(options.body).expected_revision,draftRevision);draftRevision++;}return {ok:true,json:async()=>({revision:draftRevision,document:null})};}
     let value=url==='/api/reports/fixture'?data:url==='/api/platform'?{operatorId:''}:url==='/api/presets'?[]:{};
     return {ok:true,json:async()=>JSON.parse(JSON.stringify(value))};
   };
   w.fetch=mockFetch;
+  require('./ppt_tools_harness.cjs')(w);
   if(legacy){
     const compat=path.resolve(__dirname,'../app/static/chrome49');
     const manifest=JSON.parse(fs.readFileSync(path.join(compat,'manifest.json'),'utf8'));
@@ -35,11 +38,12 @@ for(const legacy of [false,true])test(`${legacy?'Chrome49 fallback':'native'} re
     w.eval(fs.readFileSync(path.join(root,'report/report.legacy.js'),'utf8'));
   }else w.eval(esbuild.buildSync({entryPoints:[path.join(root,'report/report.mjs')],bundle:true,write:false,format:'iife',logLevel:'silent'}).outputFiles[0].text);
   const frame=d.getElementById('reportPreview'),title=d.getElementById('title');
-  await until(()=>frame.srcdoc.includes('XRD 분석 결과'));
+  const preview=()=>d.getElementById('page-status').textContent;
+  await until(()=>preview().includes('XRD 분석 결과'));
   assert.equal(frame.getAttribute('sandbox'),'allow-scripts allow-popups allow-popups-to-escape-sandbox');
   const edit=value=>{title.value=value;title.dispatchEvent(new w.Event('input',{bubbles:true}));};
   title.focus();edit('새 제목');edit('최종 제목');
-  await until(()=>frame.srcdoc.includes('최종 제목'));
+  await until(()=>preview().includes('최종 제목'));
   assert.equal(d.activeElement,title);
   assert.match(d.getElementById('previewStatus').textContent,/미저장 초안/);
   assert(!calls.some(c=>(c.options.method==='PUT'&&c.url==='/api/reports/fixture')||/\/exports$|\/send$/.test(c.url)));
@@ -48,10 +52,10 @@ for(const legacy of [false,true])test(`${legacy?'Chrome49 fallback':'native'} re
   title.dispatchEvent(new w.CompositionEvent('compositionstart',{bubbles:true}));edit('한글 조합');
   await pause(50);assert.equal(calls.filter(c=>c.url.endsWith('/draft-preview')).length,n);
   title.dispatchEvent(new w.CompositionEvent('compositionend',{bubbles:true}));
-  await until(()=>frame.srcdoc.includes('한글 조합'));
+  await until(()=>preview().includes('한글 조합'));
   const send=(target,source=frame.contentWindow)=>w.dispatchEvent(new w.MessageEvent('message',{source,data:{type:'xrd-preview-edit',target}}));
   send({tab:'overview',field:'client'},w);assert.equal(d.activeElement,title); // unrelated frame ignored
-  send({tab:'overview',field:'client'});assert.equal(d.activeElement.id,'client');
+  d.querySelector('.edit-region').click();assert.equal(d.activeElement.id,'client');
   const sample=data.document.samples.find(s=>s.notes.length>1);
   assert(sample,'synthetic sample has multiple notes');
   send({tab:sample.sample_id,field:'note',id:sample.notes[1].id});
@@ -61,7 +65,7 @@ for(const legacy of [false,true])test(`${legacy?'Chrome49 fallback':'native'} re
   w.dispatchEvent(new w.PageTransitionEvent('pagehide',{persisted:true}));
   w.dispatchEvent(new w.PageTransitionEvent('pageshow',{persisted:true}));
   await until(()=>calls.length>count);
-  edit('복귀 후 편집');await until(()=>frame.srcdoc.includes('복귀 후 편집'));
+  edit('복귀 후 편집');await until(()=>preview().includes('복귀 후 편집'));
 });
 
 for(const legacy of [false,true])test(`${legacy?'Chrome49 fallback':'native'} upload: cards follow mapping edits and block orphan PDF`,async t=>{
@@ -97,6 +101,7 @@ for(const legacy of [false,true])test(`${legacy?'Chrome49 fallback':'native'} up
 function runScreen(w,screen,legacy,mockFetch){
   w.HTMLElement.prototype.scrollIntoView=function(){};
   w.structuredClone=x=>JSON.parse(JSON.stringify(x));w.fetch=mockFetch;
+  if(screen==='report')require('./ppt_tools_harness.cjs')(w);
   if(legacy){
     const compat=path.resolve(__dirname,'../app/static/chrome49');
     const manifest=JSON.parse(fs.readFileSync(path.join(compat,'manifest.json'),'utf8'));
@@ -115,7 +120,7 @@ for(const legacy of [false,true])test(`${legacy?'Chrome49 fallback':'native'} re
   const timer=w.setTimeout.bind(w);w.setTimeout=(fn,ms,...args)=>timer(fn,ms>=900?20:ms,...args);
   runScreen(w,'report',legacy,async(url,options={})=>{
     calls.push({url,options});let value={};
-    if(url.endsWith('/draft-preview'))return {ok:true,text:async()=>'<p>'+JSON.parse(options.body).document.metadata.title+'</p>'};
+    if(url.endsWith('/draft-preview'))return {ok:true,json:async()=>({pages:[],ratio:16/9})};
     if(url.endsWith('/draft')){
       if(options.method==='PUT'){
         const body=JSON.parse(options.body);assert.equal(body.expected_revision,revision);

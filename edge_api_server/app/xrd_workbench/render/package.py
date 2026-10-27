@@ -16,9 +16,9 @@ from ..render.viewer_state import prepare_state, prepare_views
 from ..render.portable_html import embedded_file, make_portable
 
 
-def build_package(project, document, resolve_source, viewer_state=None, views=None, *, output_path=None, include_sources=True):
+def build_package(project, document, resolve_source, viewer_state=None, views=None, *, output_path=None, include_sources=True, asset_root=None):
     paths = package_paths(project)
-    pages = report_pages(project, document, resolve_source, include_sources=include_sources)
+    pages = report_pages(project, document, resolve_source, include_sources=include_sources, asset_root=asset_root)
     if not include_sources:
         for page in pages:
             page['items'] = [item for item in page['items'] if item['type'] != 'link']
@@ -38,7 +38,7 @@ def build_package(project, document, resolve_source, viewer_state=None, views=No
         # Mail drafts and review history stay in server-side project/report storage.
         pdf = render_pdf(pages, document)
         archive.writestr('보고서.pdf', pdf)
-        pptx = render_report_pptx(project, document, resolve_source, pages=pages, include_sources=include_sources, delivery=True)
+        pptx = render_report_pptx(project, document, resolve_source, pages=pages, include_sources=include_sources, delivery=True, asset_root=asset_root)
         archive.writestr('보고서.pptx', pptx)
         viewer = export_html(filtered, display, display_views)
         archive.writestr('뷰어.html', viewer)

@@ -10,6 +10,8 @@ export function mergeDraftChanges(latest, current, baseline) {
   if (!same(current.summary, baseline.summary)) out.summary = current.summary;
   if (!same(current.pptxProtection || {}, baseline.pptxProtection || {}))
     out.pptxProtection = structuredClone(current.pptxProtection || {});
+  for (const key of ['pageEdits','canvasEdits'])
+    if (!same(current[key] || {}, baseline[key] || {})) out[key]=structuredClone(current[key] || {});
   if (latest.email || current.email) out.email = mergeEmailFields(latest.email, current.email, baseline.email);
   if (!same(current.figure, baseline.figure)) out.figure = structuredClone(current.figure);
   if (!same(current.quantity_table, baseline.quantity_table))

@@ -20,6 +20,7 @@ from .report.spectrum_viewer import build_spectrum_viewer
 from .report.direct_edit import edit_pages, slide_image
 from .report.editor_variables import resolve_changes
 from .report.canvas import ObjectEdit
+from .report.pages import AddedPage, PageEdits
 from .report_queue import register_generated_report_package
 from .storage import atomic_write_json
 from .report_mail import mail_payload, edit_text_size
@@ -43,21 +44,6 @@ class CommonVariable(BaseModel):
     name: str = Field(min_length=1, max_length=60)
     value: str = Field(max_length=1000)
     unit: str = Field(default="", max_length=40)
-
-
-class AddedPage(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    id: str = Field(pattern=r"^added-[A-Za-z0-9-]{1,64}$")
-    after: str = Field(min_length=1, max_length=100)
-    title: str = Field(max_length=100)
-    body: str = Field(max_length=2000)
-
-
-class PageEdits(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    hidden: list[str] = Field(default_factory=list, max_length=400)
-    added: list[AddedPage] = Field(default_factory=list, max_length=50)
-    order: list[str] | None = Field(default=None, max_length=400)
 
 
 class ReportEdit(BaseModel):

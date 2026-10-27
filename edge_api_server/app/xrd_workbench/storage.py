@@ -393,6 +393,11 @@ class ReportStore(_RevisionedStore):
             # Older clients must not silently clear an existing modify password.
             if 'pptxProtection' not in document and current:
                 clean['pptxProtection'] = deepcopy(current.get('pptxProtection') or {})
+            for key in ('pageEdits', 'canvasEdits'):
+                if key not in document and current and key in current:
+                    clean[key] = deepcopy(current[key])
+            from .render.editor import validate_assets
+            validate_assets(clean, self.path(storage_id).parent / 'editor-assets')
             clean['revision'] = actual + 1
             audit = {'saved_at': datetime.now(timezone.utc).isoformat(),
                      'saved_by': report_actor.get(), 'previous_revision': actual}
