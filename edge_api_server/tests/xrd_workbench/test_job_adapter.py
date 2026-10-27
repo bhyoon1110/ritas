@@ -31,9 +31,9 @@ def test_new_csharp_inputs_build_report_without_changing_sources(tmp_path, zippe
     assert result.primary_path.name == '보고서.html'
     assert {p.name:p.read_bytes() for p in source.iterdir()} == before
     with zipfile.ZipFile(result.package_path) as archive:
-        assert {name.split('/')[0] for name in archive.namelist()} == {
+        assert {name.split('/')[0] for name in archive.namelist()} == ({
             'Measured Data', 'Report', '보고서.pdf', '보고서.pptx', '보고서.html', '뷰어.html',
-        }
+        } | ({'Viewer'} if include_raw else set()))
         assert any(name.endswith('.txt') and name.startswith('Measured Data/') for name in archive.namelist()) == include_raw
         html = archive.read('보고서.html').decode()
         assert 'R-123' in html and 'XRD-1' in html and 'O-1' in html

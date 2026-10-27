@@ -5,10 +5,11 @@ from copy import deepcopy
 
 from ..render.html import render_html
 from ..render.layout import archive_path
+from ..render.items import sample_viewer_path
 from ..render.posco_preview import report_pages
 from ..render.pdf import render_pdf
 from ..render.posco_pptx import render_report_pptx
-from ..render.viewer_export import export_html
+from ..render.viewer_export import export_html, sample_entry_html
 from ..render.viewer_state import prepare_state, prepare_views
 
 
@@ -36,6 +37,10 @@ def build_package(project, document, resolve_source, viewer_state=None, views=No
                                                     pages=pages, include_sources=include_sources))
         archive.writestr('보고서.html', render_html(pages, document, 'package'))
         archive.writestr('뷰어.html', export_html(filtered, display, display_views))
+        if include_sources:
+            for sample in filtered['samples']:
+                archive.writestr(sample_viewer_path(sample['id']),
+                                 sample_entry_html(sample['id'], sample['name']))
         # Explicit directory entries even when a selected sample has no PDF.
         archive.writestr('Report/', '')
         archive.writestr('Measured Data/', '')

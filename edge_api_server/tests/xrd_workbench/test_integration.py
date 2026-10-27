@@ -128,7 +128,7 @@ def test_chunk_import_review_and_all_exports(tmp_path):
         elif kind == 'zip':
             with zipfile.ZipFile(io.BytesIO(result.content)) as z:
                 assert {name.split('/')[0] for name in z.namelist()} == {
-                    'Measured Data', 'Report', '보고서.pdf', '보고서.pptx', '보고서.html', '뷰어.html',
+                    'Measured Data', 'Report', '보고서.pdf', '보고서.pptx', '보고서.html', '뷰어.html', 'Viewer',
                 }
                 assert b'XRD_EMBEDDED' in z.read('뷰어.html')
                 assert b'<script src="/' not in z.read('뷰어.html')

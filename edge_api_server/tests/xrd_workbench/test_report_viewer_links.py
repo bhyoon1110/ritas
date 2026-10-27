@@ -1,6 +1,8 @@
 """Blue template annotations: summary comparison and exact per-sample viewer links."""
 from copy import deepcopy
 import io
+import json
+import re
 from urllib.parse import parse_qs, urlsplit, unquote
 from zipfile import ZipFile
 
@@ -8,7 +10,7 @@ from lxml import etree as E
 from pypdf import PdfReader
 
 from app.xrd_workbench.core.report import new_document
-from app.xrd_workbench.render.items import viewer_target
+from app.xrd_workbench.render.items import viewer_target, sample_viewer_path
 from app.xrd_workbench.render.package import build_package
 from app.xrd_workbench.render.posco_pptx import build_posco_deck, NS, box, named
 from app.xrd_workbench.render.posco_preview import deck_pages
@@ -25,25 +27,33 @@ def links(deck, slide):
     return [r.get('Target') for r in rels if r.get('TargetMode') == 'External']
 
 
-def selection(href):
-    return parse_qs(urlsplit(href).fragment)
+def selection(href, sample_ids):
+    url = urlsplit(href)
+    if url.path.startswith('Viewer/'):
+        matches = [sid for sid in sample_ids if sample_viewer_path(sid) == url.path]
+        assert len(matches) == 1
+        return {'view': ['single'], 'sample': matches}
+    return parse_qs(url.fragment)
 
 
 def test_viewer_target_encodes_ids_and_preserves_online_namespace_or_offline_path():
     sid = '시료 + &/#?'
     for base, storage in [(None, None), ('https://edge.test/api/v1/xrd/workbench/', 'store &/+')]:
         url = urlsplit(viewer_target(sid, base, storage))
-        assert parse_qs(url.fragment) == {'view': ['single'], 'sample': [sid]}
         if base:
+            assert parse_qs(url.fragment) == {'view': ['single'], 'sample': [sid]}
             assert url.path == '/api/v1/xrd/workbench/'
-            assert parse_qs(url.query) == {'project': [storage], 'step': ['viewer']}
+            assert parse_qs(url.query) == {'project': [storage], 'step': ['viewer'],
+                                         'view': ['single'], 'sample': [sid]}
         else:
-            assert url.path == '뷰어.html' and not url.query
+            assert url.path == sample_viewer_path(sid) and not url.query and not url.fragment
+            assert re.fullmatch(r'Viewer/sample-[0-9a-f]{24}\.html', url.path)
     assert viewer_target() == '뷰어.html#view=multi'
 
 
 def test_summary_and_each_result_column_share_native_ppt_pdf_and_preview_targets():
     project, doc = fixture()
+    sample_ids = [s['id'] for s in project['samples']]
     # Editable names are not identifiers: even identical names must open different samples.
     for entry in doc['samples']:
         entry['display_name'] = '같은 이름'
@@ -53,7 +63,7 @@ def test_summary_and_each_result_column_share_native_ppt_pdf_and_preview_targets
         all_links = []
         for slide, _ in deck.pages:
             kind = deck.page_info[slide]['kind']
-            targets = [u for u in links(deck, slide) if selection(u).get('view')]
+            targets = [u for u in links(deck, slide) if selection(u, sample_ids).get('view')]
             all_links += targets
             if kind == 'summary':
                 assert targets == [viewer_target(**kwargs)]
@@ -62,7 +72,7 @@ def test_summary_and_each_result_column_share_native_ppt_pdf_and_preview_targets
                     deck.edits[s]['tab'] for s in slide.findall('.//p:sp', NS)
                     if deck.edits.get(s, {}).get('field') == 'display_name'
                 ]
-                ids = [selection(u)['sample'][0] for u in targets]
+                ids = [selection(u, sample_ids)['sample'][0] for u in targets]
                 assert sorted(ids) == sorted(set(headings))
                 assert len(named(slide, 'Sample viewer link')) == len(ids)
                 # Every pill stays on one row, inside its own column and on the canvas.
@@ -75,7 +85,7 @@ def test_summary_and_each_result_column_share_native_ppt_pdf_and_preview_targets
                         assert min(x+w, a+c) <= max(x, a) or min(y+h, b+d) <= max(y, b)
             else:
                 assert not targets
-        assert {selection(u).get('sample', [''])[0] for u in all_links} == {'', 'A', 'B', 'Mix'}
+        assert {selection(u, sample_ids).get('sample', [''])[0] for u in all_links} == {'', 'A', 'B', 'Mix'}
         pages = deck_pages(deck)
         html = render_html(pages, doc, 'app' if kwargs else 'package', storage_id=kwargs.get('storage_id'))
         pdf = PdfReader(io.BytesIO(render_pdf(pages, doc, **kwargs)))
@@ -103,7 +113,7 @@ def test_links_on_continuations_use_the_correct_sample_and_do_not_require_source
     deck = build_posco_deck(project, doc, lambda _: IMAGE, image_renderer=lambda *a: IMAGE)
     details = [slide for slide, _ in deck.pages if deck.page_info[slide]['kind'] == 'sample']
     assert len(details) == 4
-    assert [selection(u)['sample'][0] for u in links(deck, details[0])] == ['long', 'short']
+    assert [selection(u, ['long', 'short'])['sample'][0] for u in links(deck, details[0])] == ['long', 'short']
     for slide in details[1:]:
         assert links(deck, slide) == [viewer_target('long')]
     detached = build_posco_deck(project, doc, lambda _: IMAGE, include_sources=False,
@@ -124,7 +134,26 @@ def test_package_sample_links_resolve_to_included_embedded_ids_only():
     single_ids = set()
     for target in targets:
         assert unquote(urlsplit(target).path) in archive.namelist()
-        params = selection(target)
+        params = selection(target, ids)
         if params.get('view') == ['single']:
             single_ids.add(params['sample'][0])
     assert single_ids == ids
+    assert {p for p in archive.namelist() if p.startswith('Viewer/')} == {sample_viewer_path(sid) for sid in ids}
+    for sid in ids:
+        entry = archive.read(sample_viewer_path(sid)).decode()
+        assert len(entry.encode()) < 1024  # no duplicate Plotly or source data per sample
+        script_target = json.loads(re.search(r'location\.replace\((".*")\);', entry)[1])
+        destination = urlsplit(script_target)
+        assert unquote(destination.path) == '../뷰어.html'
+        assert parse_qs(destination.fragment) == {'view': ['single'], 'sample': [sid]}
+
+
+def test_sample_entry_escapes_names_and_selects_ids_independent_of_identical_names():
+    from app.xrd_workbench.render.viewer_export import sample_entry_html
+    ids = ['한글 + &/#?', '../other', 'different']
+    assert len({sample_viewer_path(sid) for sid in ids}) == len(ids)
+    for sid in ids:
+        entry = sample_entry_html(sid, '<script>bad()</script> & 같은 이름')
+        assert '<script>bad()' not in entry
+        target = json.loads(re.search(r'location\.replace\((".*")\);', entry)[1])
+        assert parse_qs(urlsplit(target).fragment)['sample'] == [sid]

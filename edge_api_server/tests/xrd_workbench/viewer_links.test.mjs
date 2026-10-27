@@ -48,3 +48,15 @@ test('missing/invalid/removed sample does not silently select a different sample
     assert.equal(JSON.stringify(state), before);
   }
 });
+
+test('online query alone opens the named sample and a later explicit hash overrides it', () => {
+  const state = createState(project), id = project.samples[1].id;
+  const search = '?project=storage&step=viewer&view=single&sample='+encodeURIComponent(id);
+  assert.equal(applyViewerLink(project, state, '', search).applied, true);
+  assert.deepEqual(selectedSamples(project, state).samples.map(s=>s.id), [id]);
+  assert.equal(applyViewerLink(project, state, '#view=multi', search).applied, true);
+  assert.equal(selectedSamples(project, state).samples.length, 2);
+  const before = JSON.stringify(state);
+  assert.ok(applyViewerLink(project, state, '', '?view=single&sample=removed').error);
+  assert.equal(JSON.stringify(state), before);
+});

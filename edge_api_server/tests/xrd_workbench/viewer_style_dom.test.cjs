@@ -126,6 +126,11 @@ for(const [mode, program] of Object.entries({native,chrome49:legacy})) {
     const project=JSON.parse(JSON.stringify(fixture));
     project.samples.push({...JSON.parse(JSON.stringify(project.samples[0])),id:'b'});
     const saved={viewMode:'single',active:'a',visible:['a'],xRange:[10,11]};
+    const query=setup(t,program,{},project,true,{
+      url:'http://rist.test/?project=store&step=viewer&view=single&sample=b',local:saved});
+    await flush();
+    assert.deepEqual(query.renders[0].data.filter(t=>t.meta.role==='measurement').map(t=>t.meta.sampleId),['b']);
+    assert.equal(query.d.getElementById('singlePicker').hidden,true);
     for(const online of [false,true]){
       const ui=setup(t,program,{},project,online,{
         url:'http://rist.test/?project=store&step=viewer#view=single&sample=b',local:saved});

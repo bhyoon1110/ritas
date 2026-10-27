@@ -238,7 +238,7 @@ async function draw(refreshPanel = true) {
 
 let viewerLinkDone = false;
 function seedViewerLink() {
-  const result = applyViewerLink(project, state, location.hash);
+  const result = applyViewerLink(project, state, location.hash, location.search);
   if (result.applied) {
     picking = false;
     hideSourceCard();

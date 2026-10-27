@@ -3,6 +3,8 @@
 import hashlib
 import json
 import re
+from html import escape
+from urllib.parse import quote, urlencode
 
 from plotly.offline import get_plotlyjs
 
@@ -19,6 +21,20 @@ def safe_inline(source):
 
 _IMPORT = re.compile(r"^import\s[^;]*?\sfrom\s+['\"][^'\"]+['\"];?[ \t]*\n", re.M | re.S)
 _EXPORT = re.compile(r'^export ', re.M)
+
+
+def sample_entry_html(sample_id, sample_name):
+    """A tiny local entry opens the shared viewer with an exact sample selection.
+
+    No duplicate Plotly/data bundle, external URL, frame or dependency is needed.
+    Selection is attached by the browser, after PowerPoint has opened this file.
+    """
+    target = quote('../뷰어.html', safe='/') + '#' + urlencode({'view': 'single', 'sample': sample_id})
+    return ('<!doctype html><html lang="ko"><head><meta charset="utf-8">'
+            '<meta name="viewport" content="width=device-width, initial-scale=1">'
+            f'<title>{escape(sample_name)} · XRD 그래프</title></head><body>'
+            f'<p><a href="{escape(target, quote=True)}">{escape(sample_name)} 그래프 열기</a></p>'
+            f'<script>location.replace({json.dumps(target)});</script></body></html>')
 
 
 def strip_module_syntax(source: str) -> str:

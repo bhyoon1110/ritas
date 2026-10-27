@@ -156,8 +156,11 @@ export function restoreState(project, saved) {
   return state;
 }
 
-export function applyViewerLink(project, state, hash) {
-  const params = new URLSearchParams(String(hash || '').replace(/^#/, ''));
+export function applyViewerLink(project, state, hash, search = '') {
+  let params = new URLSearchParams(String(hash || '').replace(/^#/, ''));
+  // Online PPT links can retain their query even if an application drops the
+  // fragment. Explicit hash navigation still wins, including old report links.
+  if (!params.has('view')) params = new URLSearchParams(String(search || '').replace(/^\?/, ''));
   const mode = params.get('view');
   if (!['multi', 'single'].includes(mode)) return { applied: false };
   const id = params.get('sample');

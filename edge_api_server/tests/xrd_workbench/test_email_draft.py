@@ -227,7 +227,7 @@ def test_package_excludes_email_sidecar_without_deleting_the_saved_document_emai
     before = deepcopy(doc)
     with ZipFile(io.BytesIO(build_package(project, doc, lambda fid: resolve_source('example', fid)))) as archive:
         assert {name.split('/')[0] for name in archive.namelist()} == {
-            'Measured Data', 'Report', '보고서.pdf', '보고서.pptx', '보고서.html', '뷰어.html',
+            'Measured Data', 'Report', '보고서.pdf', '보고서.pptx', '보고서.html', '뷰어.html', 'Viewer',
         }
         for name in archive.namelist():
             assert b'secret@example.com' not in archive.read(name)

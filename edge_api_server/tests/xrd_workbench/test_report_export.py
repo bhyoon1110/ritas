@@ -76,7 +76,7 @@ def test_zip_has_requested_folders_exact_bytes_and_selected_samples_only():
     with zipfile.ZipFile(io.BytesIO(data)) as z:
         names = z.namelist()
         assert {name.split('/')[0] for name in names} == {
-            'Measured Data', 'Report', '보고서.pdf', '보고서.pptx', '보고서.html', '뷰어.html',
+            'Measured Data', 'Report', '보고서.pdf', '보고서.pptx', '보고서.html', '뷰어.html', 'Viewer',
         }
         assert 'Report/' in names and 'Measured Data/' in names
         with zipfile.ZipFile(io.BytesIO(z.read('보고서.pptx'))) as pptx:

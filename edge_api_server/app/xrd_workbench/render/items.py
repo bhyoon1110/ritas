@@ -1,5 +1,6 @@
 """Page items shared by the layout modules. All dimensions in mm."""
 
+import hashlib
 from urllib.parse import quote, urlencode
 
 from ..render import theme
@@ -20,16 +21,27 @@ def link_target(item, link_base=None, storage_id=None):
     return item['href']
 
 
-def viewer_target(sample_id=None, link_base=None, storage_id=None):
-    """Report intent travels in the fragment so the same link also works on file://.
+def sample_viewer_path(sample_id):
+    """Portable package entry filename; display names never identify or name files."""
+    key = hashlib.sha256(sample_id.encode('utf-8')).hexdigest()[:24]
+    return f'Viewer/sample-{key}.html'
 
-    Use stable sample IDs, not editable/possibly duplicate display names. The viewer
-    validates the ID before applying it and never alters the measurement data.
+
+def viewer_target(sample_id=None, link_base=None, storage_id=None):
+    """Open the exact sample from a report, including local PowerPoint hyperlinks.
+
+    Local sample links name a small entry file so Office need not preserve a URL
+    fragment. Online links also carry selection in the query. Legacy fragments
+    remain supported by the viewer, and the summary opens the full comparison.
     """
-    target = '뷰어.html'
-    if link_base and storage_id:
-        target = f"{link_base.rstrip('/')}/?{urlencode({'project': storage_id, 'step': 'viewer'})}"
     selection = {'view': 'multi'} if sample_id is None else {'view': 'single', 'sample': sample_id}
+    if link_base and storage_id:
+        params = {'project': storage_id, 'step': 'viewer', **selection}
+        target = f"{link_base.rstrip('/')}/?{urlencode(params)}"
+    elif sample_id is not None:
+        return sample_viewer_path(sample_id)
+    else:
+        target = '뷰어.html'
     return target + '#' + urlencode(selection)
 
 
