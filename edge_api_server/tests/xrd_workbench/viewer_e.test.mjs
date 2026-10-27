@@ -172,10 +172,11 @@ test('unknown peak markers are "?" glyphs whose colour and size come from the st
   );
 });
 
-test('the legend lists samples first, then the phase groups with checkboxes', () => {
+test('the legend lists each sample followed by its own phase checkboxes', () => {
   const html = legendHTML(project, createState(project));
-  assert.ok(html.indexOf('data-legend-sample="a"') < html.indexOf('data-legend-group'));
-  assert.equal((html.match(/data-legend-group=/g) || []).length, 4);
+  assert.ok(html.indexOf('data-legend-sample="a"') < html.indexOf('data-legend-phase="a-p0"'));
+  assert.ok(html.indexOf('data-legend-phase="a-p1"') < html.indexOf('data-legend-sample="b"'));
+  assert.equal((html.match(/data-legend-phase=/g) || []).length, 5);
   assert.ok(html.includes('PhaseA · Xa0.08 Yb0.01 Zc0.01 O2 Qd0.91 · #1'));
   assert.ok(!html.includes('Chemical formula'));
   assert.ok(!html.includes('S/M:ABC') && !html.includes('P42/mnm'));
@@ -185,15 +186,16 @@ test('image export: the legend names the samples, and the phases only while Phas
   const state = createState(project);
   state.visible = ['a', 'b'];
   let figure = exportFigure(project, state, { origin: false });
-  const named = (f) => f.data.filter((t) => t.showlegend).map((t) => t.name);
+  const named = (f) => f.data.filter((t) => t.showlegend).sort((a,b)=>a.legendrank-b.legendrank).map((t) => t.name);
   assert.deepEqual(named(figure), ['A', 'B']);
   state.markers = true;
   figure = exportFigure(project, state, { origin: false });
   assert.deepEqual(named(figure), [
     'A',
-    'B',
     'Xa0.08 Yb0.01 Zc0.01 O2 Qd0.91 (PhaseA)',
     'Ca C O3 (PhaseB)',
+    'B',
+    'Xa0.08 Yb0.01 Zc0.01 O2 Qd0.91 (PhaseA)',
     'Li O (PhaseC)',
   ]);
   assert.ok(figure.layout.showlegend);
@@ -359,21 +361,21 @@ test('an old state that hid one member of a shared group opens with the whole gr
   );
 });
 
-test('the legend has no display toggles; Unknown Peak is a row of its own after the phases', () => {
+test('each sample lists its own Unknown Peak after its phases', () => {
   const state = createState(project);
   state.unknownMarkers = true;
   const html = legendHTML(project, state);
   assert.ok(!html.includes('legendToggles'));
   assert.ok(!html.includes('data-legend-toggle="markers"'));
   assert.ok(!html.includes('data-legend-toggle="peakbar"'));
-  assert.ok(html.includes('data-legend-toggle="unknownMarkers" checked'));
+  assert.equal((html.match(/data-legend-unknown="[abc]" checked/g)||[]).length, 3);
   assert.ok(
-    html.indexOf('data-legend-group') < html.indexOf('data-legend-toggle="unknownMarkers"'),
+    html.indexOf('data-legend-phase="a-p1"') < html.indexOf('data-legend-unknown="a"'),
   );
   assert.ok(html.includes('Unknown Peak'));
   assert.ok(!html.includes('알 수 없는'));
   state.unknownMarkers = false;
-  assert.ok(!legendHTML(project, state).includes('data-legend-toggle="unknownMarkers" checked'));
+  assert.ok(!/data-legend-unknown="[abc]" checked/.test(legendHTML(project, state)));
 });
 
 test('markers are filled, each phase has its own colour and shape (square, triangle, star, diamond…)', () => {
@@ -421,7 +423,7 @@ test('the Unknown Peak row appears only when a shown sample has unknown peaks', 
 test('Unknown Peak is unticked by default, in the state, the legend and the page', async () => {
   const state = createState(project);
   assert.equal(state.unknownMarkers, false);
-  assert.ok(!legendHTML(project, state).includes('data-legend-toggle="unknownMarkers" checked'));
+  assert.ok(!/data-legend-unknown="[abc]" checked/.test(legendHTML(project, state)));
   const { readFile } = await import('node:fs/promises');
   const page = await readFile(new URL('../../app/xrd_workbench/web/index.html', import.meta.url), 'utf8');
   assert.match(page, /<input id="unknownMarkers" type="checkbox"(?![^>]*checked)/);

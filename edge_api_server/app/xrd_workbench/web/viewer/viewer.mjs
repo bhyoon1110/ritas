@@ -14,8 +14,8 @@ import {
   phaseGroups,
   phaseStyles,
   groupCaption,
-  groupHidden,
-  setGroupHidden,
+  setPhaseHidden,
+  setUnknownSampleVisible,
   setGroupColor,
   setGroupSymbol,
   SYMBOL_CHOICES,
@@ -32,6 +32,7 @@ import { diagnosticsHTML } from './raw_diagnostics.mjs';
 import { automaticSampleColors } from './sample_colors.mjs';
 
 const offline = !!window.XRD_EMBEDDED;
+const collapsedLegendSamples = new Set();
 let activeUpload=null,uploadBusy=false,uploadPaused=false,uploadReady=false,resumeMappings={},resumeJob=null;
 function invalidateRawCheck(){uploadReady=false;$('uploadComplete').disabled=true;$('rawDiagnostics').textContent='';}
 function lockUpload(busy){
@@ -152,7 +153,9 @@ function updateControls() {
   $('modeStatus').textContent = single
     ? '시료 하나씩 보기'
     : `여러 시료 비교 · ${spacing === 0 ? '겹쳐 보기' : spacing > 0 ? '첫 시료 위' : '반대 순서'}`;
-  $('legend').innerHTML = legendHTML(project, state);
+  const legendScroll = $('legend').scrollTop;
+  $('legend').innerHTML = legendHTML(project, state, collapsedLegendSamples);
+  $('legend').scrollTop = legendScroll;
   renderPicker();
 }
 // Single Profile starts by choosing the data: the picker lists every registered sample.
@@ -400,6 +403,7 @@ for (const [id, mode] of [
 function setToggle(key, value) {
   if (!state) return;
   state[key] = value;
+  if (key === 'unknownMarkers') state.hiddenUnknownSamples = [];
   draw();
 }
 for (const key of ['markers', 'peakLines', 'peakbar', 'unknownMarkers', 'originStyle'])
@@ -422,7 +426,20 @@ $('singlePickerList').onclick = (event) => {
   state.yRange = null;
   draw();
 };
-// The legend over the plot: a checkbox per sample and per phase group, plus the display toggles.
+// Collapse only the legend's children; never hide graph traces when folding a group.
+$('legend').onclick = (event) => {
+  const button = event.target.closest('[data-legend-collapse]');
+  if (!button || button.disabled) return;
+  const id = button.dataset.legendCollapse, expanded = button.getAttribute('aria-expanded') !== 'true';
+  if (expanded) collapsedLegendSamples.delete(id);
+  else collapsedLegendSamples.add(id);
+  $(button.getAttribute('aria-controls')).hidden = !expanded;
+  button.setAttribute('aria-expanded', String(expanded));
+  const name = project.samples.find(s => s.id === id).name;
+  button.setAttribute('aria-label', `${name} 피크 목록 ${expanded ? '접기' : '펼치기'}`);
+  button.textContent = expanded ? '▾' : '▸';
+};
+// Child checkboxes affect only the sample that owns that phase/unknown peak.
 $('legend').onchange = (event) => {
   const d = event.target.dataset;
   if (!state) return;
@@ -432,14 +449,13 @@ $('legend').onchange = (event) => {
       : state.visible.filter((id) => id !== d.legendSample);
     state.yRange = null;
     draw();
-  } else if (d.legendGroup !== undefined) {
-    setGroupHidden(
-      state,
-      phaseGroups(project, state)[Number(d.legendGroup)],
-      !event.target.checked,
-    );
+  } else if (d.legendPhase) {
+    setPhaseHidden(state, d.legendPhase, !event.target.checked);
     draw();
-  } else if (d.legendToggle) setToggle(d.legendToggle, event.target.checked);
+  } else if (d.legendUnknown) {
+    setUnknownSampleVisible(project, state, d.legendUnknown, event.target.checked);
+    draw();
+  }
 };
 $('activeSample').onchange = () => {
   state.active = $('activeSample').value;

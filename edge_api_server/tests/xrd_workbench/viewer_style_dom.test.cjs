@@ -31,6 +31,51 @@ function setup(t, program, saved={}, project=fixture, online=false, options={}) 
   return {w,d,renders,exports,downloads,events,requests,setSize:async size=>{d.getElementById('markerSize').value=String(size);d.getElementById('markerSize').dispatchEvent(new w.Event('input'));await flush();}};
 }
 for(const [mode, program] of Object.entries({native,chrome49:legacy})) {
+  test(`${mode}: sample legend groups fold and independently hide shared phases and unknown peaks`, async t=>{
+    const project=JSON.parse(JSON.stringify(fixture));
+    const a=project.samples[0];a.name='같은 시료명 <&>';
+    a.observed_peaks.push({no:2,x:30,x_raw:'30',page:1,height_raw:'2'});
+    const b=JSON.parse(JSON.stringify(a));b.id='b';b.phases[0].id='p2';project.samples.push(b);
+    const ui=setup(t,program,{markers:true},project);await flush();
+    const legend=ui.d.getElementById('legend');
+    const owner=id=>legend.querySelector(`[data-legend-owner="${id}"]`);
+    const curves=()=>ui.renders.at(-1).data.filter(t=>t.meta.role==='measurement');
+    const phaseIds=()=>ui.renders.at(-1).data.filter(t=>t.meta.role==='marker').map(t=>t.meta.phaseId);
+    assert.equal(owner('a').querySelector('.legendSampleRow').textContent,'같은 시료명 <&>');
+    assert.equal(owner('a').querySelector('[data-legend-phase]').dataset.legendPhase,'p1');
+    assert.equal(owner('b').querySelector('[data-legend-phase]').dataset.legendPhase,'p2');
+    owner('a').querySelector('[data-legend-collapse]').click();await flush();
+    assert.equal(owner('a').querySelector('.legendPhases').hidden,true);
+    assert.equal(curves().length,2);assert.deepEqual(phaseIds(),['p1','p2']);
+    owner('b').querySelector('[data-legend-phase]').click();await flush();
+    assert.deepEqual(phaseIds(),['p1']);
+    assert.equal(owner('a').querySelector('.legendPhases').hidden,true,'fold state survives redraw');
+    owner('a').querySelector('[data-legend-collapse]').click();await flush();
+    owner('a').querySelector('[data-legend-unknown]').click();await flush();
+    assert.deepEqual(ui.renders.at(-1).data.filter(t=>t.meta.role==='unknown').map(t=>t.meta.sampleId),['a']);
+    ui.d.getElementById('unknownMarkers').click();await flush(); // global off
+    ui.d.getElementById('unknownMarkers').click();await flush(); // global on: show all
+    assert.equal(ui.renders.at(-1).data.filter(t=>t.meta.role==='unknown').length,2);
+    owner('b').querySelector('[data-legend-unknown]').click();await flush();
+    const saved=JSON.parse(ui.w.localStorage.getItem(`xrd-viewer-v1-${project.id}-analysis-0-snapshot-qa`));
+    const restored=setup(t,program,saved,project);await flush();
+    assert.deepEqual(restored.renders.at(-1).data.filter(t=>t.meta.role==='marker').map(t=>t.meta.phaseId),['p1']);
+    assert.deepEqual(restored.renders.at(-1).data.filter(t=>t.meta.role==='unknown').map(t=>t.meta.sampleId),['a']);
+    ui.d.getElementById('imageExport').click();await flush();
+    const exported=ui.exports.at(-1).data.filter(t=>t.showlegend).sort((a,b)=>a.legendrank-b.legendrank);
+    assert.deepEqual(exported.map(t=>[t.meta.role,t.legendgroup]),[
+      ['measurement','a'],['legend-phase','a'],['legend-unknown','a'],['measurement','b']]);
+    owner('a').querySelector('[data-legend-sample]').click();await flush();
+    assert.equal(owner('a').querySelector('.legendPhases').hidden,true);
+    assert.equal(curves().length,1);
+    assert.equal(ui.renders.at(-1).data.filter(t=>t.meta.role==='peakbar').length,0,'hidden other sample cannot keep reference row visible');
+    owner('a').querySelector('[data-legend-sample]').click();await flush();
+    ui.d.getElementById('viewSingle').click();await flush();
+    ui.d.querySelector('[data-pick="b"]').click();await flush();
+    assert.equal(legend.querySelectorAll('[data-legend-owner]').length,1);
+    assert.equal(owner('b').querySelector('[data-legend-sample]').disabled,true);
+    assert.equal(ui.renders.at(-1).data.filter(t=>t.meta.role==='peakbar').length,0);
+  });
   test(`${mode}: automatic sample colours update all 24 curves, controls, saved state and image export`,async t=>{
     const project=JSON.parse(JSON.stringify(fixture));
     project.samples=Array.from({length:24},(_,i)=>({...JSON.parse(JSON.stringify(fixture.samples[0])),id:'s'+i,name:'시료 '+(i+1),phases:[],assignments:[],observed_peaks:[],reference_peaks:[]}));

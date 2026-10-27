@@ -72,7 +72,9 @@ export function createState(project) {
     unknownColor: '#000000',
     phaseLabels: true,
     phaseSymbols: {},
+    phaseVisibility: 'sample',
     hiddenPhases: [],
+    hiddenUnknownSamples: [],
     highlight: null,
     phaseColors: {},
     xRange: null,
@@ -109,10 +111,13 @@ export function restoreState(project, saved) {
   for (const key of ['markers', 'peakLines', 'peakbar'])
     if (typeof saved[key] === 'boolean') state[key] = saved[key];
   state.hiddenPhases = (saved.hiddenPhases || []).filter((id) => phaseIds.has(id));
-  // Phases are hidden as groups now: a state that hid one member of a shared group hides it all.
-  for (const g of groupsOf(project.samples))
-    if (g.ids.some((id) => state.hiddenPhases.includes(id)))
-      state.hiddenPhases = [...new Set([...state.hiddenPhases, ...g.ids])];
+  // Preserve the old shared-group visibility when migrating saved views. New
+  // legends control each sample's phase independently, including after reload.
+  if (saved.phaseVisibility !== 'sample')
+    for (const g of groupsOf(project.samples))
+      if (g.ids.some((id) => state.hiddenPhases.includes(id)))
+        state.hiddenPhases = [...new Set([...state.hiddenPhases, ...g.ids])];
+  state.hiddenUnknownSamples = (saved.hiddenUnknownSamples || []).filter((id) => ids.has(id));
   const wanted = saved.highlight;
   if (
     wanted &&
@@ -231,36 +236,28 @@ export function unknownPeaks(sample) {
     return !row || !row.matches.length;
   });
 }
-// HTML legend shown over the plot: a checkbox per sample, then the display toggles and the
-// crystal phases (grouped across samples) that can be ticked on and off.
-export function legendHTML(project, state) {
-  // One sample in Single Profile, so that is the only row.
+// Each sample owns a heading and its phase/unknown-peak controls. Shared phase
+// colours stay consistent, but visibility belongs to the sample named above it.
+export function legendHTML(project, state, collapsed = new Set()) {
   const listed = state.viewMode === 'single' ? [state.active || state.order[0]] : state.order;
-  const samples = listed
+  const styles = phaseStyles(project, state);
+  return listed
     .map((id) => project.samples.find((s) => s.id === id))
     .filter(Boolean)
-    .map(
-      (s) =>
-        `<label class="legendRow"><input type="checkbox" data-legend-sample="${escapeHTML(s.id)}" ${state.visible.includes(s.id) ? 'checked' : ''}><span class="legendSwatch" style="background:${escapeHTML(state.colors[s.id] || sampleColor(project.samples.indexOf(s)))}"></span>${escapeHTML(s.name)}</label>`,
-    )
-    .join('');
-  const styles = phaseStyles(project, state);
-  const rows = phaseGroups(project, state)
-    .map((g, i) => {
-      const style = styles.get(g.ids[0]);
-      return `<label class="legendRow phaseRowLegend"><input type="checkbox" data-legend-group="${i}" ${groupHidden(state, g) ? '' : 'checked'}><span class="legendSymbol" style="color:${escapeHTML(style.color)}">${SYMBOL_GLYPHS[style.symbol] || '●'}</span>${escapeHTML(groupCaption(g))}</label>`;
+    .map((s, index) => {
+      const shown = state.viewMode === 'single' || state.visible.includes(s.id);
+      const hasUnknown = unknownPeaks(s).length > 0;
+      const hasChildren = s.phases.length > 0 || hasUnknown;
+      const expanded = shown && hasChildren && !collapsed.has(s.id);
+      const name = escapeHTML(s.name), id = escapeHTML(s.id);
+      const rows = s.phases.map(p => {
+        const style = styles.get(p.id), caption = escapeHTML(groupCaption(p));
+        return `<label class="legendRow phaseRowLegend" title="${name} · ${caption}"><input type="checkbox" data-legend-phase="${escapeHTML(p.id)}" ${state.hiddenPhases.includes(p.id) ? '' : 'checked'}><span class="legendSymbol" style="color:${escapeHTML(style.color)}">${SYMBOL_GLYPHS[style.symbol] || '●'}</span><span class="legendText">${caption}</span></label>`;
+      }).join('');
+      const unknown = hasUnknown ? `<label class="legendRow phaseRowLegend" title="${name} · Unknown Peak"><input type="checkbox" data-legend-unknown="${id}" ${state.unknownMarkers && !state.hiddenUnknownSamples.includes(s.id) ? 'checked' : ''}><span class="legendSymbol" style="color:${escapeHTML(state.unknownColor)}">?</span><span class="legendText">Unknown Peak</span></label>` : '';
+      return `<div class="legendSampleGroup" data-legend-owner="${id}"><div class="legendSampleHeader"><button type="button" class="legendCollapse" data-legend-collapse="${id}" aria-controls="legend-children-${index}" aria-expanded="${expanded}" aria-label="${name} 피크 목록 ${expanded ? '접기' : '펼치기'}" ${hasChildren && shown ? '' : 'disabled'}>${expanded && hasChildren ? '▾' : '▸'}</button><label class="legendRow legendSampleRow" title="${name}"><input type="checkbox" data-legend-sample="${id}" ${shown ? 'checked' : ''} ${state.viewMode === 'single' ? 'disabled' : ''}><span class="legendSwatch" style="background:${escapeHTML(state.colors[s.id] || sampleColor(project.samples.indexOf(s)))}"></span><span class="legendText">${name}</span></label></div><div class="legendPhases" id="legend-children-${index}" ${expanded && hasChildren ? '' : 'hidden'}>${rows}${unknown}</div></div>`;
     })
     .join('');
-  // Unknown Peak is ticked like a phase: its markers sit on the observed peaks no phase explains.
-  const hasUnknown = (
-    state.viewMode === 'single'
-      ? [project.samples.find((s) => s.id === (state.active || state.order[0]))]
-      : state.order.map((id) => project.samples.find((s) => s.id === id))
-  ).some((s) => s && unknownPeaks(s).length);
-  const unknown = !hasUnknown
-    ? ''
-    : `<label class="legendRow phaseRowLegend"><input type="checkbox" data-legend-toggle="unknownMarkers" ${state.unknownMarkers ? 'checked' : ''}><span class="legendSymbol" style="color:${escapeHTML(state.unknownColor)}">?</span>Unknown Peak</label>`;
-  return samples + '<div class="legendPhases">' + rows + unknown + '</div>';
 }
 // Text glyphs for the symbols (legend rows and phase settings).
 export const SYMBOL_GLYPHS = {
@@ -312,9 +309,8 @@ export function selectedSamples(project, state) {
   return { samples: ready, warnings };
 }
 
-// Phases of different samples that are the same or nearly the same compound share one entry:
-// the key is the set of elements in the chemical formula (so Ti0.91 and Ti0.9 match), or the
-// phase name when the report gives no formula.
+// Exact phase identity shares styling and a reference-bar row across samples.
+// The overlaid legend still lists each member below its own sample.
 export function phaseGroupKey(phase) {
   return JSON.stringify([phase.name, phase.card || '', phase.db || '']);
 }
@@ -388,6 +384,20 @@ export const groupHidden = (state, group) =>
 export function setGroupHidden(state, group, hidden) {
   const rest = state.hiddenPhases.filter((id) => !group.allIds.includes(id));
   state.hiddenPhases = hidden ? [...rest, ...group.allIds] : rest;
+}
+export function setPhaseHidden(state, phaseId, hidden) {
+  state.hiddenPhases = state.hiddenPhases.filter(id => id !== phaseId);
+  if (hidden) state.hiddenPhases.push(phaseId);
+}
+export function setUnknownSampleVisible(project, state, sampleId, visible) {
+  if (!state.unknownMarkers && visible) {
+    state.hiddenUnknownSamples = project.samples.map(s => s.id);
+    state.unknownMarkers = true;
+  }
+  state.hiddenUnknownSamples = state.hiddenUnknownSamples.filter(id => id !== sampleId);
+  if (!visible) state.hiddenUnknownSamples.push(sampleId);
+  if (project.samples.filter(s => unknownPeaks(s).length).every(s => state.hiddenUnknownSamples.includes(s.id)))
+    state.unknownMarkers = false;
 }
 // Colour and symbol are one choice for the whole group, in every sample.
 export function setGroupColor(state, group, color) {
@@ -567,7 +577,7 @@ export function buildFigure(project, state, viewport = {}) {
           });
       }
     }
-    if (state.unknownMarkers) {
+    if (state.unknownMarkers && !state.hiddenUnknownSamples.includes(s.id)) {
       const gap = Math.max(1, maxValue(base) - minValue(base)) * 0.018;
       const peaks = unknownPeaks(s).filter((p) => p.x >= m.x[0] && p.x <= m.x.at(-1));
       if (peaks.length)
@@ -600,12 +610,13 @@ export function buildFigure(project, state, viewport = {}) {
   // peaks come from the first sample that lists them.
   const phaseRows = state.peakbar
     ? groupsOf(single ? (active ? [active] : []) : samples, project)
-        .filter((g) => !groupHidden(state, g))
+        .filter((g) => g.ids.some(id => !state.hiddenPhases.includes(id)))
         .map((group) => {
+          const visible = group.members.filter(m => !state.hiddenPhases.includes(m.phase.id));
           const member =
-            group.members.find((m) =>
+            visible.find((m) =>
               (m.sample.reference_peaks || []).some((r) => r.phase === m.phase.name),
-            ) || group.members[0];
+            ) || visible[0];
           return { sample: member.sample, phase: member.phase, group };
         })
     : [];
@@ -808,39 +819,41 @@ export function buildFigure(project, state, viewport = {}) {
   return { data, layout, warnings, fullX, active: active?.id, barRows: phaseRows.length };
 }
 
-// The figure for "현재 이미지 내보내기": the current view with a legend (the samples, then the
-// phases drawn as markers and/or peak lines when enabled). All styling comes from the same state as
+// The figure for "현재 이미지 내보내기": each sample followed by its drawn phases.
+// All styling comes from the same state as
 // the live graph; there is deliberately no independent export-only Origin option.
 export function exportFigure(project, state, { height = 900 } = {}) {
   const figure = buildFigure(project, state, { height });
   const { data, layout } = figure;
   const origin = !!state.originStyle;
   const black = '#000000';
-  for (const t of data) if (t.meta?.role === 'measurement') t.showlegend = true;
-  if (state.markers || state.peakLines) {
-    const drawn = new Set(
-      data.filter((t) => ['marker', 'peak-line'].includes(t.meta?.role)).map((t) => t.meta.phaseId),
-    );
-    const styles = phaseStyles(project, state);
-    for (const g of phaseGroups(project, state)) {
-      if (groupHidden(state, g) || !g.ids.some((id) => drawn.has(id))) continue;
-      const style = styles.get(g.ids[0]);
+  const drawn = new Set(data.filter(t => ['marker', 'peak-line'].includes(t.meta?.role)).map(t => t.meta.phaseId));
+  const styles = phaseStyles(project, state);
+  let rank = 0;
+  for (const sample of selectedSamples(project, state).samples) {
+    const curve = data.find(t => t.meta?.role === 'measurement' && t.meta.sampleId === sample.id);
+    Object.assign(curve, {showlegend: true, legendgroup: sample.id, legendrank: rank++});
+    for (const phase of sample.phases) {
+      const phaseRank = rank++;
+      if (!drawn.has(phase.id)) continue;
+      const style = styles.get(phase.id);
       data.push({
         type: 'scatter',
         mode: state.markers ? (state.peakLines ? 'lines+markers' : 'markers') : 'lines',
         x: [null],
         y: [null],
-        name: escapeHTML(exportCaption(g)),
+        name: escapeHTML(exportCaption(phase)),
         showlegend: true,
+        legendgroup: sample.id,
+        legendrank: phaseRank,
         hoverinfo: 'skip',
         marker: { color: style.color, symbol: style.symbol, size: n(state.markerSize) || 8 },
         line: { color: style.color, width: 1.1 },
-        meta: { role: 'legend-phase' },
+        meta: { role: 'legend-phase', sampleId: sample.id, phaseId: phase.id },
       });
     }
-  }
-  if (state.unknownMarkers && data.some((t) => t.meta?.role === 'unknown'))
-    data.push({
+    const unknownRank = rank++;
+    if (data.some(t => t.meta?.role === 'unknown' && t.meta.sampleId === sample.id)) data.push({
       type: 'scatter',
       mode: 'markers',
       x: [null],
@@ -848,10 +861,13 @@ export function exportFigure(project, state, { height = 900 } = {}) {
       // A text trace has no legend symbol: the "?" goes into the name, the marker is invisible.
       name: '? Unknown Peak',
       showlegend: true,
+      legendgroup: sample.id,
+      legendrank: unknownRank,
       hoverinfo: 'skip',
       marker: { color: state.unknownColor, size: 9, opacity: 0 },
-      meta: { role: 'legend-unknown' },
+      meta: { role: 'legend-unknown', sampleId: sample.id },
     });
+  }
   layout.showlegend = true;
   layout.legend = {
     x: 0.99,
@@ -862,7 +878,8 @@ export function exportFigure(project, state, { height = 900 } = {}) {
     bordercolor: origin ? 'rgba(0,0,0,0)' : '#d5d9df',
     borderwidth: origin ? 0 : 1,
     font: { size: origin ? 14 : 11, color: origin ? black : '#444' },
-    tracegroupgap: 2,
+    traceorder: 'grouped',
+    tracegroupgap: 8,
     itemsizing: 'constant',
   };
   return figure;

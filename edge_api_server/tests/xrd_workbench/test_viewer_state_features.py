@@ -22,6 +22,22 @@ def state(**extra):
     return {'version': 1, 'projectId': 'fig-project', **extra}
 
 
+def test_sample_scoped_visibility_survives_delivery_filtering():
+    p = project()
+    source = state(phaseVisibility='sample', hiddenPhases=['a-p0'], hiddenUnknownSamples=['a', 'b'])
+    result = prepare_state(p, source)
+    assert result['phaseVisibility'] == 'sample'
+    assert result['hiddenPhases'] == ['a-p0']
+    assert result['hiddenUnknownSamples'] == ['a', 'b']
+    target = {**p, 'id': 'filtered', 'samples': p['samples'][1:]}
+    result = prepare_state(p, source, target)
+    assert result['hiddenPhases'] == []
+    assert result['hiddenUnknownSamples'] == ['b']
+    for bad in [state(phaseVisibility='invalid'), state(hiddenUnknownSamples=['missing'])]:
+        with pytest.raises(ValueError):
+            prepare_state(p, bad)
+
+
 def test_a_highlight_by_name_or_by_name_card_and_database_is_kept():
     p = project()
     by_name = prepare_state(p, state(highlight={'name': 'PhaseA', 'card': None, 'db': None}))

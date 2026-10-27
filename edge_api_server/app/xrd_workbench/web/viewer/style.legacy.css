@@ -743,6 +743,9 @@ body.withShell #uploadDialog[open] {
   border: 1px solid #c9d0d9;
   border-radius: 3px;
   font-size: 11px;
+  box-sizing: border-box;
+  max-width: 55%;
+  max-width: 55%;
   max-height: 50%;
   overflow: auto;
 }
@@ -750,12 +753,39 @@ body.withShell #uploadDialog[open] {
   display: flex;
   align-items: center;
   margin: 2px 0;
-  white-space: nowrap;
+  min-width: 0;
 }
 .legendRow > * {
   margin-bottom: 6px;
   margin-right: 6px;
 }
+.legendText {
+  min-width: 0;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+  word-break: break-word;
+  line-height: 1.4;
+}
+.legendRow input, .legendSwatch, .legendSymbol { flex: 0 0 auto; }
+.legendSampleGroup + .legendSampleGroup {
+  border-top: 1px solid #e3e7ec;
+  margin-top: 5px;
+  padding-top: 5px;
+}
+.legendSampleHeader { display: flex; align-items: flex-start; }
+.legendSampleRow { font-size: 12px; font-weight: 700; flex: 1; }
+#legend .legendCollapse {
+  padding: 0;
+  margin: 0 4px 0 0;
+  width: 20px;
+  min-height: 24px;
+  flex: 0 0 20px;
+  border: 0;
+  background: transparent;
+  color: #40536c;
+  font-size: 15px;
+}
+#legend .legendCollapse:disabled { visibility: hidden; }
 .legendSwatch {
   width: 18px;
   height: 3px;
@@ -773,10 +803,11 @@ body.withShell .nextStep {
   right: 330px;
 }
 .legendPhases {
-  border-top: 1px solid #e3e7ec;
-  margin-top: 4px;
-  padding-top: 4px;
+  border-left: 1px solid #d5dde7;
+  margin: 2px 0 2px 32px;
+  padding-left: 8px;
 }
+.legendPhases[hidden] { display: none; }
 .legendSymbol {
   width: 18px;
   text-align: center;

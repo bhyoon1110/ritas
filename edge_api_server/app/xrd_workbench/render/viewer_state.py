@@ -89,6 +89,7 @@ def prepare_state(project, state=None, target=None):
         'arrangement': ('stacked', 'overlay'),
         'phaseTarget': ('active', 'all'),
         'dragmode': ('zoom', 'pan'),
+        'phaseVisibility': ('sample',),
     }.items():
         if key in state:
             if state[key] not in allowed:
@@ -135,6 +136,7 @@ def prepare_state(project, state=None, target=None):
         ('visible', ids, target_ids),
         ('order', ids, target_ids),
         ('hiddenPhases', phases, target_phases),
+        ('hiddenUnknownSamples', ids, target_ids),
     ]:
         if key not in state:
             continue

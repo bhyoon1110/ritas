@@ -184,7 +184,7 @@ test('the built-in legend is off and the HTML legend lists samples with checkbox
   assert.ok(
     html.includes('data-legend-sample="b" ') && !html.includes('data-legend-sample="b" checked'),
   );
-  assert.ok(html.includes('data-legend-toggle="unknownMarkers"'));
+  assert.ok(html.includes('data-legend-unknown='));
   assert.ok(!html.includes('data-legend-toggle="markers"'));
   assert.ok(!html.includes('data-legend-toggle="phaseLabels"'));
 });
