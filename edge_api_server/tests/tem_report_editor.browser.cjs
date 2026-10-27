@@ -51,8 +51,11 @@ const startup=new Promise((resolve,reject)=>{let data='';server.stdout.on('data'
       const target=layout.pages[tableIndex],table=target.objects.find(o=>o.kind==='table');
       await page.locator('#edit-page').selectOption(String(tableIndex));await ready();
       await page.getByLabel('페이지 개체 선택',{exact:true}).selectOption(table.id);
-      await page.getByLabel('편집할 표 셀',{exact:true}).selectOption('1:1');old=await base();
-      await page.getByLabel('개체 내용',{exact:true}).fill('TEM 표 검토 후');
+      await page.locator('[data-object-id="'+table.id+'"] .canvas-cell[data-row="1"][data-col="1"]').click();old=await base();
+      assert(await page.locator('.ppt-cell-input').evaluate(e=>e===document.activeElement));
+      await page.locator('.ppt-cell-input').fill('TEM 표 검토 후');
+      await page.locator('#slide-stage').screenshot({path:path.join(output,'native-table-focus.png')});
+      await page.locator('.ppt-cell-input').press('Enter');await saved(old);old=await base();
       await page.getByLabel('개체 굵게',{exact:true}).check();
       await page.getByLabel('개체 너비 (%)',{exact:true}).fill('75');await page.getByLabel('개체 너비 (%)',{exact:true}).blur();await saved(old);
       const native=(await get('/edit-layout')).pages.find(p=>p.id===target.id).objects.find(o=>o.id===table.id);

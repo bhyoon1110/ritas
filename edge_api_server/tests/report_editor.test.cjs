@@ -6,7 +6,7 @@ const {JSDOM}=require('jsdom');
 const acorn=require('acorn');
 const {execFileSync}=require('node:child_process');
 const clone=x=>JSON.parse(JSON.stringify(x));
-const script=['file_save.js','report_editor_icons.js','report_page_sidebar.js','report_direct_editor.js','report_canvas_editor.js','report_saved_graphs.js','report_condition_options.js','xrd_workbench/web/shared/mail_editor_icons.js','xrd_workbench/web/shared/mail_table_editor.js','xrd_workbench/web/shared/mail_editor.js','report_editor.js'].map(name=>fs.readFileSync(path.join(__dirname,'../app',name),'utf8')).join('\n');
+const script=['file_save.js','report_editor_icons.js','report_page_sidebar.js','report_cell_editor.js','report_direct_editor.js','report_canvas_editor.js','report_saved_graphs.js','report_condition_options.js','xrd_workbench/web/shared/mail_editor_icons.js','xrd_workbench/web/shared/mail_table_editor.js','xrd_workbench/web/shared/mail_editor.js','report_editor.js'].map(name=>fs.readFileSync(path.join(__dirname,'../app',name),'utf8')).join('\n');
 const template=fs.readFileSync(path.join(__dirname,'../app/report_editor.html'),'utf8');
 function setup(t,kind='ftir',identity='',conditionScenario=null) {
   const prefix='/api/v1/'+kind+'/report/jobs',posts=[],gets=[],timers=new Map(); let timerId=0;
@@ -32,6 +32,7 @@ function setup(t,kind='ftir',identity='',conditionScenario=null) {
           {id:'cover',title:'표지',regions:[{refs:['title'],x:.1,y:.2,w:.8,h:.2},{refs:['transfer/operatorId'],x:.1,y:.5,w:.3,h:.2}]},
           {id:'summary',title:'요약',regions:[{refs:['section/summary/paragraphs/0'],x:.1,y:.3,w:.7,h:.4}]},
           {id:'conditions',title:'조건',regions:[{refs:['section/experiment_conditions/rows/0/2'],x:.5,y:.3,w:.3,h:.2,empty:true}]}];
+        if(conditionScenario&&conditionScenario.regions)pages[2].regions=conditionScenario.regions;
         const edits=doc.pageEdits||{added:[],hidden:[]};
         for(const item of edits.added) pages.splice(pages.findIndex(p=>p.id===item.after)+1,0,{id:item.id,title:item.title,
           regions:[{refs:['page/'+item.id+'/title'],x:.1,y:.1,w:.8,h:.1},{refs:['page/'+item.id+'/body'],x:.1,y:.3,w:.8,h:.5}]});
@@ -87,12 +88,13 @@ for(const kind of ['ftir','raman']) test(kind+' condition choices autosave only 
   h.q('edit-page').value='2';h.q('edit-page').dispatchEvent(new h.w.Event('change'));
   h.q('slide-image').dispatchEvent(new h.w.Event('load'));
   h.d.querySelector('.edit-region').click();
-  const inline=h.q('inline-fields').querySelector('input');
+  const inline=h.d.querySelector('.ppt-cell-input');
   assert.equal(inline.value,'새 선택지');assert.equal(inline.list,picks[0].list);
   h.input('실험조건 및 실험환경 1행 항목','자유 조건');assert(!picks[0].list);assert.equal(h.field('실험조건 및 실험환경 1행 값').value,'새 선택지');
   assert(!inline.list);
   h.input('실험조건 및 실험환경 1행 항목',label);assert(picks[0].list);
   assert.equal(inline.list,picks[0].list);
+  inline.blur();
   h.input('실험조건 및 실험환경 1행 값','목록에 없는 직접 입력');h.tick();
   assert.equal(h.posts[h.posts.length-1].body.sections[1].rows[0][2],'목록에 없는 직접 입력');
   h.input('실험조건 및 실험환경 1행 값','');h.tick();
@@ -431,10 +433,53 @@ test('blank cells and shared fields are editable, SSO identifier stays read-only
   assert(h.field('PPT 수정 · 실험자').readOnly);
   h.q('edit-next').click();h.q('edit-next').click();loaded(h);
   h.field('PPT 편집 · 실험조건 및 실험환경 1행 값').click();
-  assert.match(h.q('inline-note').textContent,/공통 정보/);
+  assert(h.q('inline-editor').hidden);assert(h.d.activeElement.classList.contains('ppt-cell-input'));
   h.input('PPT 수정 · 실험조건 및 실험환경 1행 값','25°C');
-  assert.equal(h.field('실험조건 및 실험환경 1행 값').value,'25°C');h.tick();
+  assert.equal(h.field('실험조건 및 실험환경 1행 값').value,'25°C');assert.equal(h.timers.size,0);
+  h.d.activeElement.blur();h.tick();
   assert.equal(h.posts[0].body.sections[1].rows[0][2],'25°C');
+});
+for(const kind of ['ftir','raman','tem'])test(kind+' in-place source cells preserve focus, defer rendering, escape restores and Enter autosaves',t=>{
+  const h=setup(t,kind),label='PPT 수정 · 실험조건 및 실험환경 1행 값';
+  h.q('edit-next').click();h.q('edit-next').click();loaded(h);
+  const click=()=>h.field('PPT 편집 · 실험조건 및 실험환경 1행 값').click();
+  const key=(code,extra={})=>h.d.activeElement.dispatchEvent(new h.w.KeyboardEvent('keydown',{keyCode:code,bubbles:true,cancelable:true,...extra}));
+  click();let input=h.d.activeElement;assert.equal(input.parentNode.style.left,'50%');assert.equal(input.parentNode.style.top,'30%');
+  input.dispatchEvent(new h.w.Event('compositionstart'));h.input(label,'한글');key(13);
+  assert.equal(h.d.activeElement,input);assert.equal(h.posts.length,0);assert.equal(h.timers.size,0);
+  input.dispatchEvent(new h.w.Event('compositionend'));key(13,{shiftKey:true});assert.equal(h.d.activeElement,input);
+  h.input(label,'<script>문자 그대로</script>\n25°C');assert.equal(h.d.querySelectorAll('.ppt-cell-editor script').length,0);
+  key(27);assert.equal(h.field('실험조건 및 실험환경 1행 값').value,'');assert.equal(h.timers.size,0);
+  click();h.input(label,'25°C');key(13);h.tick();loaded(h);
+  assert.equal(h.posts[0].body.sections[1].rows[0][2],'25°C');assert.deepEqual(h.posts[0].body.canvasEdits,{});
+  click();h.input(label,'');h.d.activeElement.blur();h.tick();assert.equal(h.posts[1].body.sections[1].rows[0][2],'');
+});
+test('pending source revision cannot steal focus or drop later in-cell edits',t=>{
+  const h=setup(t);h.q('edit-next').click();h.q('edit-next').click();loaded(h);
+  h.input('보고서 제목','새 제목');h.delay();h.tick();
+  h.field('PPT 편집 · 실험조건 및 실험환경 1행 값').click();const input=h.d.activeElement;
+  h.input('PPT 수정 · 실험조건 및 실험환경 1행 값','27°C');h.finish();loaded(h);
+  assert.equal(h.d.activeElement,input);assert.equal(input.value,'27°C');assert.equal(h.timers.size,0);
+  input.blur();h.tick();assert.equal(h.posts[1].body.sections[1].rows[0][2],'27°C');
+});
+test('equal merged source cells edit together; distinct source values retain separate fields',t=>{
+  for(const values of [['Sample A','Sample A'],['Sample A','Sample B']]){
+    const refs=[0,1].map(r=>'section/experiment_conditions/rows/'+r+'/0');
+    const h=setup(t,'ftir','',{config:{fields:[]},rows:values.map(v=>[v,'온도','25°C']),regions:[{refs,cell:true,x:.1,y:.2,w:.3,h:.4}]});
+    h.q('edit-next').click();h.q('edit-next').click();loaded(h);h.d.querySelector('.edit-region').click();
+    if(values[0]===values[1]){
+      assert.equal(h.d.querySelectorAll('.ppt-cell-input').length,1);const input=h.d.activeElement;
+      input.value='변경 시료';input.dispatchEvent(new h.w.Event('input',{bubbles:true}));input.blur();h.tick();
+      assert.deepEqual(h.posts[0].body.sections[1].rows.map(r=>r[0]),['변경 시료','변경 시료']);
+    }else{assert(!h.q('inline-editor').hidden);assert.equal(h.q('inline-fields').querySelectorAll('textarea').length,2);assert.equal(h.posts.length,0);}
+  }
+});
+test('date and authenticated read-only cells retain their input policies in place',t=>{
+  const h=setup(t,'ftir','SSO',{config:{fields:[]},rows:[['공통','온도','']],regions:[
+    {refs:['completionDate'],cell:true,x:.1,y:.2,w:.3,h:.1},{refs:['transfer/operatorId'],cell:true,x:.5,y:.2,w:.3,h:.1}]});
+  h.q('edit-next').click();h.q('edit-next').click();loaded(h);
+  h.field('PPT 편집 · 완료일').click();assert.equal(h.d.activeElement.type,'date');assert.equal(h.d.activeElement.value,'2026-10-15');h.d.activeElement.blur();
+  h.field('PPT 편집 · 실험자').click();assert(h.d.activeElement.readOnly);h.d.activeElement.blur();assert.equal(h.posts.length,0);
 });
 test('regions wait for page image, errors hide them, and duplicate variable names are refused',t=>{
   const h=setup(t);assert(h.q('edit-regions').hidden);loaded(h);assert(!h.q('edit-regions').hidden);

@@ -89,7 +89,7 @@ def edit_pages(document, pptx_path):
                         refs = list(dict.fromkeys(ref for ri in range(row - 1, row - 1 + int(cell.get("rowSpan", 1)))
                                                   for ref in cell_refs(ri, col)))
                         if refs:
-                            regions.append({"refs": refs, "x": x / width, "y": y / height,
+                            regions.append({"refs": refs, "cell": True, "x": x / width, "y": y / height,
                                             "w": w / width, "h": h / height,
                                             "empty": not pptx_tables.text(cell).strip()})
             for shape in root.findall("p:cSld/p:spTree/p:sp", NS):

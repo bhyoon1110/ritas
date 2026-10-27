@@ -9,10 +9,11 @@
     var state = document.getElementById("page-status"), toggle = document.getElementById("edit-toggle");
     var pages = [], page = 0, imageBase = "", ready = false, shown = true, locked = false, copies = [], active = null, nextPageId = null, canvasMode = false;
     var nextSelection=null;
+    var cellEditor=new window.RistCellEditor({editing:options.editing});
     var sidebar = new window.RistPageSidebar({select:function(index){show(index,false,true);},move:function(id,target,after){if(options.onReorder)options.onReorder(id,target,after);},
       changed:function(){if(options.onSelection)options.onSelection();},step:function(delta){if(options.onMoveSelection)options.onMoveSelection(delta);}});
     function node(tag, parent, text) { var e = document.createElement(tag); if (text != null) e.textContent = text; parent.appendChild(e); return e; }
-    function close() { panel.hidden = true; copies = []; active = null; }
+    function close() { cellEditor.close(false);panel.hidden = true; copies = []; active = null; }
     document.getElementById("inline-close").onclick = close;
     function optionsList(control) {
       var selected = control.value;
@@ -23,8 +24,31 @@
       });
       control.value = selected;
     }
+    function cellRegion(region) {
+      if(!region.refs.length||!(region.cell||/^section\/[^/]+\/rows\/\d+\/\d+$/.test(region.refs[0])))return false;
+      var first=options.field(region.refs[0]);
+      // A merged display may represent several equal source cells. Distinct
+      // values still use the multi-field dialog to avoid overwriting them.
+      return !!first&&region.refs.every(function(ref){var field=options.field(ref);return field&&field.value===first.value&&field.type===first.type&&field.readOnly===first.readOnly;});
+    }
+    function editCell(region) {
+      close();var ref=region.refs[0],source=options.field(ref),sources=region.refs.map(options.field),original=source.value;
+      function change(value){sources.forEach(function(field){field.value=value;});var e=document.createEvent("Event");e.initEvent("input",true,false);source.dispatchEvent(e);}
+      cellEditor.open({text:source.value,label:"PPT 수정 · "+(source.getAttribute("aria-label")||ref),
+        limit:source.maxLength>0?source.maxLength:4000,readOnly:source.readOnly,
+        singleLine:source.type==="date"||source.classList.contains("report-condition-input"),inputType:source.type==="date"?"date":"text",list:source.getAttribute("list"),
+        rect:function(){return ((pages[page]||{}).regions||[]).filter(function(r){return r.refs.join("|")===region.refs.join("|");})[0];},
+        sync:function(input){if(source.hasAttribute("list"))input.setAttribute("list",source.getAttribute("list"));else input.removeAttribute("list");},
+        change:change,end:function(cancel){if(cancel&&!source.readOnly)change(original);},
+        next:function(delta){var cells=pages[page].regions.filter(cellRegion),index=cells.indexOf(region);
+          if(index<0)index=cells.map(function(r){return r.refs[0];}).indexOf(ref);
+          if(cells[index+delta])edit(cells[index+delta]);}
+      });
+    }
     function edit(region) {
       if (!ready || locked) return;
+      if(cellRegion(region)){editCell(region);return;}
+      cellEditor.close(false);
       fields.textContent = ""; copies = []; active = null;
       var shared = false;
       region.refs.forEach(function (ref) {
@@ -98,11 +122,11 @@
       sidebar.select(page,keepSelection);
       if (options.onPage) options.onPage();
     }
-    image.onload = function () { ready = true; regions(); };
+    image.onload = function () { ready = true; regions();cellEditor.position(); };
     image.onerror = function () { ready = false; layer.hidden = true; state.textContent = "PPT 페이지를 불러오지 못했습니다. ‘미리보기 다시 불러오기’를 눌러 주세요."; };
     previous.onclick = function () { show(page - 1); }; next.onclick = function () { show(page + 1); };
     select.onchange = function () { show(Number(select.value)); };
-    toggle.onclick = function () { shown = !shown; toggle.setAttribute("aria-pressed", String(shown)); regions(); };
+    toggle.onclick = function () { cellEditor.close(false);shown = !shown; toggle.setAttribute("aria-pressed", String(shown)); regions(); };
     panel.addEventListener("keydown",function (event) { if (event.keyCode === 27) { close(); event.stopPropagation(); } });
     return {
       setLayout:function (value, base, preservePending) {
@@ -134,6 +158,7 @@
       loading:function () { sidebar.loading();layer.hidden = true; state.textContent = "PPT 편집 영역을 불러오는 중입니다."; },
       error:function (message) { layer.hidden = true; state.textContent = message; },
       sync:function () {
+        cellEditor.position();
         copies.forEach(function (copy) {
           if (document.activeElement !== copy.input) copy.input.value = copy.source.value;
           if (copy.condition) {
@@ -144,6 +169,7 @@
         if (!panel.hidden) optionsList(document.getElementById("insert-variable"));
       },
       lock:function (value) {
+        cellEditor.lock(value);
         locked = value; copies.forEach(function (copy) { copy.input.disabled = value; });
         Array.prototype.forEach.call(layer.querySelectorAll("button"), function (button) { button.disabled = value; });
       }

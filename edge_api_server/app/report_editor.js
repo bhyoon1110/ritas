@@ -22,13 +22,14 @@
   var editor = document.getElementById("editor"), status = document.getElementById("status");
   var save = document.getElementById("save"), send = document.getElementById("send"), download = document.getElementById("download");
   var inputs = {}, sections = [], auxiliary = {};
-  var saved = "", timer = null, composing = false, sending = false, activeRevision = null, retries = 0;
+  var saved = "", timer = null, composing = false, cellEditing = false, sending = false, activeRevision = null, retries = 0;
   var refs = {}, variables = [], layoutSequence = 0, canvas = null;
   var mailEditor = null;
   var pageEdits = {hidden:[],added:[]}, pageFields = [], pageBox = null, pageEditing = false, structureDirty = false, layoutReady = false, layoutStructure = "";
   var deletedPageGroups=[];
   var labels = {requestNumber:"의뢰번호",limsExperimentCode:"실험코드",equipmentCode:"실험장비",operatorId:"실험자"};
   var direct = new window.RistDirectEditor({
+    editing:cellActivity,
     field:function (ref) { return refs[ref]; }, variables:variableOptions,
     shared:function (ref) { return !!(refs[ref] && refs[ref].getAttribute("data-common")); },
     canInsert:function (input) { return input !== inputs.completionDate && !Object.keys(labels).some(function (key) { return input === inputs[key]; }); },
@@ -44,6 +45,7 @@
     }
   });
   if(window.RistCanvasEditor) canvas=new window.RistCanvasEditor({
+    editing:cellActivity,
     changed:changed,message:message,mode:function(value){direct.canvasMode(value);},
     upload:function(file,done,savedGraph){
       if(busy||activeRevision){done(new Error("보고서 저장이 끝난 뒤 이미지를 첨부하세요."));return;}
@@ -94,8 +96,9 @@
   }
   function schedule(delay) {
     window.clearTimeout(timer);
-    if (dirty && !composing && !busy) timer = window.setTimeout(saveChanges, delay || 650);
+    if (dirty && !composing && !cellEditing && !busy) timer = window.setTimeout(saveChanges, delay || 650);
   }
+  function cellActivity(value) {cellEditing=value;window.clearTimeout(timer);if(!value)schedule();}
   function changed() {
     // Collect tables and canvas patches only once per keystroke on low-end PCs.
     var value = collect();
@@ -111,7 +114,7 @@
     if (conditions && conditionLabelsChanged) conditions.refresh();
     direct.sync();
     dirty = JSON.stringify(value) !== saved; retries = 0;
-    message(busy ? "PPT 생성 중입니다. 추가 입력도 이어서 자동 반영합니다." : dirty ? "입력이 멈추면 자동 저장하고 PPT 미리보기에 반영합니다." : "모든 변경 내용이 반영되었습니다.");
+    message(busy ? "PPT 생성 중입니다. 추가 입력도 이어서 자동 반영합니다." : dirty ? (cellEditing ? "셀 입력 중 · Enter 또는 다른 곳을 클릭하면 자동 저장합니다. Esc는 이번 입력 취소입니다." : "입력이 멈추면 자동 저장하고 PPT 미리보기에 반영합니다.") : "모든 변경 내용이 반영되었습니다.");
     availability(); schedule();
   }
   function watch(input) {
@@ -546,7 +549,7 @@
   }
   function saveChanges() {
     window.clearTimeout(timer);
-    if (busy || !model || composing) return;
+    if (busy || !model || composing || cellEditing) return;
     if (activeRevision) {
       busy = true; availability(); poll(activeRevision.id,activeRevision.previous,activeRevision.snapshot,0); return;
     }

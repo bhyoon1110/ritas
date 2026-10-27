@@ -60,12 +60,25 @@ def test_native_table_transform_cell_edits_regions_and_undo(tmp_path):
     table=next(i for i in page['objects'] if i['kind']=='table')
     assert (table['x'],table['y'],table['w'],table['h'])==pytest.approx((.07,.25,.8,.36))
     cell=next(c for c in table['cells'] if (c['row'],c['col'])==(1,1))
+    for entry in table['cells']:
+        assert 0 <= entry['x'] < 1 and 0 <= entry['y'] < 1
+        assert 0 < entry['w'] <= 1 and 0 < entry['h'] <= 1
+        assert entry['x']+entry['w'] <= 1.00001 and entry['y']+entry['h'] <= 1.00001
+    assert not any(c['row']==2 and c['col']==0 for c in table['cells'])
+    merged_cell=next(c for c in table['cells'] if c['row']==1 and c['col']==0)
+    assert merged_cell['w']==pytest.approx(.4) and merged_cell['h']==pytest.approx(2/3)
     assert cell['text']=='1352\n확인 <&>' and cell['color']=='#123456' and cell['align']=='center'
     assert cell['bold'] and cell['fill']=='#FFFFDD' and cell['dash']=='dash' and cell['lineWidth']==2
     merged=next(r for r in page['regions'] if 'section/sample_peaks/rows/0/0' in r['refs'])
     assert merged['refs']==['section/sample_peaks/rows/0/0','section/sample_peaks/rows/1/0']
     assert merged['x']==pytest.approx(.07) and merged['w']==pytest.approx(.32)
     assert merged['h']==pytest.approx(.24)
+    region=next(r for r in page['regions'] if r['refs']==['section/sample_peaks/rows/0/1'])
+    assert region['cell'] is True
+    assert region['x']==pytest.approx(table['x']+cell['x']*table['w'])
+    assert region['y']==pytest.approx(table['y']+cell['y']*table['h'])
+    assert region['w']==pytest.approx(cell['w']*table['w'])
+    assert region['h']==pytest.approx(cell['h']*table['h'])
     assert doc.to_dict()['sections']==original['sections']  # Free edits are presentation-only.
     ppt=Presentation(target)
     table=next(s.table for slide in ppt.slides for s in slide.shapes if s.has_table)

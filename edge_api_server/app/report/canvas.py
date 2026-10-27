@@ -92,11 +92,15 @@ def objects(payload):
         if off is None or ext is None:
             continue
         if is_table:
+            if int(ext.get('cx')) <= 0 or int(ext.get('cy')) <= 0:
+                continue
             found.append((shape, dict(id=oid, kind="table", name="표", text="",
                 x=int(off.get('x'))/PPTX_SLIDE_W, y=int(off.get('y'))/PPTX_SLIDE_H,
                 w=int(ext.get('cx'))/PPTX_SLIDE_W, h=int(ext.get('cy'))/PPTX_SLIDE_H,
-                cells=[dict(row=ri, col=ci, **_cell_properties(cell))
-                       for ri, ci, cell, _ in pptx_tables.cells(shape)])))
+                cells=[dict(row=ri, col=ci, x=(x-int(off.get('x')))/int(ext.get('cx')),
+                            y=(y-int(off.get('y')))/int(ext.get('cy')),
+                            w=w/int(ext.get('cx')), h=h/int(ext.get('cy')), **_cell_properties(cell))
+                       for ri, ci, cell, (x,y,w,h) in pptx_tables.cells(shape)])))
             continue
         text = '\n'.join(''.join(t.text or '' for t in p.findall('.//a:t', NS)) for p in shape.findall('p:txBody/a:p', NS))
         geom = shape.find('p:spPr/a:prstGeom', NS)

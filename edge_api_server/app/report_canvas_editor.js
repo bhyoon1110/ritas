@@ -6,6 +6,7 @@
     var state={}, pages=[], page=null, selected=null, enabled=false, capable=false, locked=false, loading=false, drag=null;
     var undo=[], redo=[], snapshot=null, fields={}, palettes={}, controls=[], ratio=16/9, modeButton, list, props, undoButton, redoButton;
     var cellChoice, cellKey="", tableBox, legacyNote;
+    var cellEditor=new window.RistCellEditor({editing:options.editing});
     var touchOptions=false;
     try { var probe=Object.defineProperty({},"passive",{get:function(){touchOptions={passive:false};}}),noop=function(){};
       window.addEventListener("rist-passive-probe",noop,probe);window.removeEventListener("rist-passive-probe",noop,probe);
@@ -39,6 +40,29 @@
       return values;
     }
     function chosenCell(item) { return tableCells(item).filter(function(c){return c.row+":"+c.col===cellKey;})[0]; }
+    function editableCells(item) { return tableCells(item).filter(function(c){return isFinite(c.x)&&isFinite(c.y)&&c.w>0&&c.h>0;}); }
+    function cellPatch(item,cell,key,value) {
+      var cells=copy(item.tableCells||[]),found=null;
+      cells.forEach(function(c){if(c.row===cell.row&&c.col===cell.col)found=c;});
+      if(!found){found={row:cell.row,col:cell.col};cells.push(found);}
+      found[key]=value;return {tableCells:cells};
+    }
+    function editCell(id,row,col) {
+      if(locked||loading||!enabled)return;
+      cellEditor.close(false);selected=id;cellKey=row+":"+col;draw();
+      var item=current(),cell=chosenCell(item);if(!cell)return;
+      begin();
+      cellEditor.open({text:cell.text,label:"PPT 표 셀 수정 · "+(row+1)+"행 "+(col+1)+"열",
+        rect:function(){var table=current(),c=table&&chosenCell(table);return c?{x:table.x+c.x*table.w,y:table.y+c.y*table.h,w:c.w*table.w,h:c.h*table.h}:null;},
+        change:function(value){patch(cellPatch(current(),cell,"text",value));showProps();options.changed();},
+        // Keep hit targets alive through an outside mousedown -> click so a
+        // single click on the next cell both commits this one and opens it.
+        end:function(cancel){if(cancel){state=snapshot;snapshot=null;options.changed();}else finish();showProps();},
+        next:function(delta){var cells=editableCells(current()),index=-1;
+          cells.forEach(function(c,i){if(c.row===row&&c.col===col)index=i;});
+          var next=cells[index+delta];if(next)editCell(id,next.row,next.col);}
+      });
+    }
     function patch(values) {
       if(!page||!selected)return;
       var items=state[page.id]||(state[page.id]=[]),item=items.filter(function(v){return v.id===selected;})[0];
@@ -88,9 +112,22 @@
         var name=item.text||(item.id.indexOf("object-")===0?"추가 "+kindName:item.name)||"";
         var label=(index+1)+" · "+kindName+" · "+name.slice(0,45);
         el("option",list,label).value=item.id;
-        var b=el("button",layer);b.type="button";b.className="canvas-object"+(item.id===selected?" selected":"");
+        var b=el(item.kind==="table"?"div":"button",layer);if(item.kind!=="table")b.type="button";else {b.tabIndex=0;b.setAttribute("role","group");}
+        b.className="canvas-object"+(item.id===selected?" selected":"");
         b.setAttribute("aria-label",label);b.title=label;box(b,item);b.dataset.objectId=item.id;
         b.onclick=function(){select(item.id);};b.ondblclick=function(){select(item.id);if(item.kind==="text")fields.text.focus();else if(item.kind==="table")cellChoice.focus();};
+        if(item.kind==="table") {
+          editableCells(item).forEach(function(c){
+            var hit=el("button",b);hit.type="button";hit.className="canvas-cell";box(hit,c);
+            hit.dataset.row=c.row;hit.dataset.col=c.col;
+            hit.setAttribute("aria-label",label+" · "+(c.row+1)+"행 "+(c.col+1)+"열 · "+(c.text||"빈 셀"));
+            hit.title="클릭: 셀 내용 입력";
+            hit.onclick=function(e){e.stopPropagation();editCell(item.id,c.row,c.col);};
+            hit.ondblclick=function(e){e.stopPropagation();};
+          });
+          var mover=el("span",b,"↔");mover.className="canvas-move";mover.title="드래그: 표 전체 이동";
+          mover.setAttribute("aria-label","표 전체 이동");
+        }
         if(item.id===selected){var handle=el("span",b,"↘");handle.className="canvas-resize";handle.setAttribute("aria-label","크기 조절");handle.title="드래그: 자유 크기 조절 · Shift+드래그: 현재 가로세로 비율 유지";}
       });
       list.value=selected||"";showProps();
@@ -111,10 +148,7 @@
       if((k==="fill"||k==="stroke")&&!/^(none|#[0-9a-f]{6})$/i.test(value)){options.message("색은 팔레트에서 선택하거나 #RRGGBB 또는 none으로 입력하세요.",true);return;}
       if(item.kind==="table"&&["x","y","w","h"].indexOf(k)<0) {
         var cell=chosenCell(item);if(!cell)return;
-        var cells=copy(item.tableCells||[]),found=null;
-        cells.forEach(function(c){if(c.row===cell.row&&c.col===cell.col)found=c;});
-        if(!found){found={row:cell.row,col:cell.col};cells.push(found);}
-        found[k]=value;update.tableCells=cells;
+        update=cellPatch(item,cell,k,value);
       } else update[k]=value;
       begin();patch(update);finish();draw();
     }
@@ -157,6 +191,7 @@
     }
     var bar=document.getElementById("preview-panel-toggles");
     modeButton=button(bar,"자유 편집 켜기",function(){
+      cellEditor.close(false);
       enabled=!enabled;window.RistReportIcons(modeButton,"edit",enabled?"자유 편집 끄기":"자유 편집 켜기");
       modeButton.setAttribute("aria-pressed",String(enabled));options.mode(enabled);draw();
     });modeButton.id="canvas-toggle";modeButton.hidden=true;modeButton.setAttribute("aria-pressed","false");
@@ -197,7 +232,7 @@
     tableBox=el("div",props);tableBox.style.flexBasis="100%";tableBox.style.minWidth="0";tableBox.hidden=true;
     var cellLabel=el("label",tableBox,"편집할 표 셀");cellChoice=el("select",cellLabel);cellChoice.setAttribute("aria-label","편집할 표 셀");
     cellChoice.onchange=function(){cellKey=cellChoice.value;showProps();};
-    el("p",tableBox,"위치·크기는 표 전체에, 내용·글자·색·테두리는 선택한 셀에 적용됩니다. 공통 정보·분석값까지 바꾸려면 자유 편집을 끄고 미리보기의 셀을 클릭하세요.").className="muted";
+    el("p",tableBox,"미리보기의 셀을 클릭해 바로 입력하세요. ↔는 표 전체 이동, ↘는 크기 조절입니다. 자유 편집은 이 페이지의 표만 바꿉니다. 공통 정보·분석값까지 바꾸려면 자유 편집을 끄고 셀을 클릭하세요.").className="muted";
     field("내용","text","textarea");
     [["왼쪽 (%)","x"],["위 (%)","y"],["너비 (%)","w"],["높이 (%)","h"]].forEach(function(v){var input=field(v[0],v[1],"number");input.min=0;input.max=100;input.step=.1;});
     var font=field("글자 크기 (pt)","fontSize","number");font.min=8;font.max=72;font.step=1;
@@ -243,6 +278,7 @@
     function start(event){
       if(!enabled||locked||loading||drag||(event.type==="mousedown"&&event.button!==0))return;
       var target=event.target,resize=target.classList.contains("canvas-resize");if(resize)target=target.parentNode;
+      if(target.classList.contains("canvas-move"))target=target.parentNode;
       if(!target.dataset.objectId)return;
       if(event.cancelable)event.preventDefault();var id=target.dataset.objectId;select(id);
       var p=point(event);begin();drag={x:p.clientX,y:p.clientY,rect:stage.getBoundingClientRect(),item:copy(current()),resize:resize,
@@ -254,6 +290,7 @@
     layer.addEventListener("mousedown",start);layer.addEventListener("touchstart",start,touchOptions);window.addEventListener("blur",abort);
     document.addEventListener("visibilitychange",function(){if(document.hidden)abort();});
     layer.addEventListener("keydown",function(e){
+      if(e.target.classList.contains("canvas-cell"))return;
       if(!current()||locked||loading||drag)return;
       if(e.keyCode===46||e.keyCode===8){e.preventDefault();remove();return;}
       if(e.keyCode>=37&&e.keyCode<=40){e.preventDefault();var item=current(),step=e.shiftKey ? .01 : .002,values={};
@@ -262,11 +299,11 @@
         begin();patch(values);finish();draw();var active=layer.querySelector('[data-object-id="'+selected+'"]');if(active)active.focus();}
     });
     return {
-      load:function(value){state=copy(value||{});undo=[];redo=[];selected=null;},
+      load:function(value){cellEditor.close(false);state=copy(value||{});undo=[];redo=[];selected=null;},
       value:function(){return copy(state);},
       layout:function(value){capable=value.canvasEditing===true;pages=value.pages||[];ratio=value.ratio||16/9;host.hidden=!capable;modeButton.hidden=!capable;modeButton.setAttribute("aria-expanded",String(enabled&&capable));loading=false;},
-      page:function(value){abort();if(!page||!value||page.id!==value.id)selected=null;page=value;body.hidden=!enabled;draw();},
-      lock:function(value){locked=value;if(value)abort();availability();},
+      page:function(value){abort();if(!page||!value||page.id!==value.id){cellEditor.close(false);selected=null;}page=value;body.hidden=!enabled;draw();cellEditor.position();},
+      lock:function(value){locked=value;if(value){abort();cellEditor.close(false);}availability();},
       loading:function(){loading=true;abort();layer.hidden=true;availability();},
       active:function(){return enabled;},
       canInsertGraph:canInsertGraph,insertGraph:insertGraph,pageId:function(){return page&&page.id;}

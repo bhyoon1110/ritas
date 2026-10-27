@@ -1,6 +1,6 @@
 const {test}=require('node:test'), assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
 const {JSDOM}=require('jsdom'),acorn=require('acorn');
-const script=['report_editor_icons.js','report_canvas_editor.js'].map(name=>fs.readFileSync(path.join(__dirname,'../app',name),'utf8')).join('\n');
+const script=['report_editor_icons.js','report_cell_editor.js','report_canvas_editor.js'].map(name=>fs.readFileSync(path.join(__dirname,'../app',name),'utf8')).join('\n');
 const babel=require('@babel/core');
 const programs={native:script,fallback:babel.transformSync(script,{configFile:false,babelrc:false,presets:[[require('@babel/preset-env'),{targets:{chrome:'49'},forceAllTransforms:true,modules:false}]]}).code};
 function setup(t, upload, mode='native'){
@@ -14,6 +14,50 @@ function setup(t, upload, mode='native'){
   button('자유 편집 켜기').click();return {w,d,api,button,field,set,item,changes:()=>changes,modes};
 }
 for(const mode of Object.keys(programs)){
+  function tableSetup(t){
+    const h=setup(t,null,mode);h.item={...h.item,kind:'table',cells:[
+      {row:0,col:0,x:0,y:0,w:1,h:.5,text:'병합 머리글'},
+      {row:1,col:0,x:0,y:.5,w:.5,h:.5,text:'시료'},
+      {row:1,col:1,x:.5,y:.5,w:.5,h:.5,text:'이전 값'}]};
+    h.api.page({id:'page1',objects:[h.item]});
+    h.cell=(r,c)=>h.d.querySelector('.canvas-cell[data-row="'+r+'"][data-col="'+c+'"]');
+    h.key=(code,shift=false)=>h.d.activeElement.dispatchEvent(new h.w.KeyboardEvent('keydown',{keyCode:code,shiftKey:shift,bubbles:true,cancelable:true}));
+    h.type=text=>{const input=h.d.querySelector('.ppt-cell-input');input.value=text;input.dispatchEvent(new h.w.Event('input',{bubbles:true}));};
+    return h;
+  }
+  test(mode+': native cell click focuses in place, Tab skips covered cells, Enter commits one undo unit',t=>{
+    const h=tableSetup(t);h.cell(1,0).click();let input=h.d.activeElement;
+    assert.equal(input.className,'ppt-cell-input');assert.equal(input.value,'시료');
+    assert.equal(input.parentNode.style.left,'10%');assert.equal(input.parentNode.style.width,'25%');
+    h.type('<b>한글</b>\n시료명');assert.equal(h.d.querySelectorAll('b').length,0);
+    h.key(13,true);assert.equal(h.d.activeElement,input,'Shift+Enter leaves the cell open');
+    const nextHit=h.cell(1,1);nextHit.dispatchEvent(new h.w.MouseEvent('mousedown',{bubbles:true,cancelable:true,button:0}));
+    assert(nextHit.isConnected,'commit must not detach the next click target');nextHit.click();h.key(9,true);
+    h.key(9);assert.equal(h.d.activeElement.value,'이전 값');h.type('123.45');h.key(13);
+    assert(!h.d.querySelector('.ppt-cell-input'));
+    let saved=JSON.parse(JSON.stringify(h.api.value()));
+    assert.deepEqual(saved.page1[0],{id:h.item.id,tableCells:[{row:1,col:0,text:'<b>한글</b>\n시료명'},{row:1,col:1,text:'123.45'}]});
+    h.button('개체 실행 취소').click();assert.equal(h.api.value().page1[0].tableCells.length,1);
+    h.button('개체 다시 실행').click();assert.deepEqual(JSON.parse(JSON.stringify(h.api.value())),saved);
+    h.cell(1,0).click();h.key(9,true);assert.equal(h.d.activeElement.value,'병합 머리글');
+    h.key(27);h.cell(1,1).click();h.type('취소');h.key(27);assert.deepEqual(JSON.parse(JSON.stringify(h.api.value())),saved);
+    // Deleting text is not deleting the table, and cells cannot initiate a move.
+    h.cell(1,1).dispatchEvent(new h.w.MouseEvent('mousedown',{bubbles:true,cancelable:true,button:0}));h.cell(1,1).click();
+    h.key(8);h.type('');h.key(13);assert.equal(h.api.value().page1[0].hidden,undefined);
+    assert.equal(h.api.value().page1[0].x,undefined);assert.equal(h.api.value().page1[0].tableCells[1].text,'');
+  });
+  test(mode+': IME does not commit midway; outside click saves and movement handles remain separate',t=>{
+    const h=tableSetup(t);h.cell(1,1).click();const input=h.d.activeElement;
+    input.dispatchEvent(new h.w.Event('compositionstart'));h.type('분석');h.key(13);assert.equal(h.d.activeElement,input);
+    input.dispatchEvent(new h.w.Event('compositionend'));h.type('분석 결과');
+    h.d.body.dispatchEvent(new h.w.MouseEvent('mousedown',{bubbles:true}));assert(!h.d.querySelector('.ppt-cell-input'));
+    h.d.getElementById('slide-stage').getBoundingClientRect=()=>({width:1000,height:500});
+    h.d.querySelector('.canvas-move').dispatchEvent(new h.w.MouseEvent('mousedown',{bubbles:true,cancelable:true,button:0,clientX:100,clientY:100}));
+    h.d.dispatchEvent(new h.w.MouseEvent('mousemove',{bubbles:true,clientX:200,clientY:150}));h.d.dispatchEvent(new h.w.MouseEvent('mouseup'));
+    assert.equal(h.api.value().page1[0].x,.2);assert(Math.abs(h.api.value().page1[0].y-.3)<1e-9);
+    h.cell(1,1).click();assert.equal(h.d.activeElement.parentNode.style.left,'45%');h.key(13);
+    h.api.lock(true);h.cell(0,0).click();assert(!h.d.querySelector('.ppt-cell-input'));
+  });
   function imageSetup(t){
     const h=setup(t,null,mode);h.item={...h.item,kind:'image',x:.1,y:.2,w:.4,h:.2};h.api.page({id:'page1',objects:[h.item]});
     h.d.getElementById('slide-stage').getBoundingClientRect=()=>({width:1000,height:500});h.d.querySelector('.canvas-object').click();

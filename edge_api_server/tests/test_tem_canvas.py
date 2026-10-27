@@ -102,6 +102,8 @@ def test_native_table_edits_and_actual_tem_page_dimensions(report):
     layout = h.client.get(h.url+'/edit-layout').json()
     page = layout['pages'][-1]
     obj = next(o for o in page['objects'] if o['kind']=='table')
+    last = next(c for c in obj['cells'] if c['row']==1 and c['col']==1)
+    assert [last[k] for k in ('x','y','w','h')]==pytest.approx([.5,.5,.5,.5])
     model['canvasEdits'] = {page['id']:[dict(id=obj['id'],x=.2,y=.4,w=.55,h=.2,
         tableCells=[dict(row=1,col=1,text='검토 후',bold=True,fill='#EEEEFF')])]}
     url, job = revise(h,h.url,model)
