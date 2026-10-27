@@ -25,6 +25,7 @@ from ..core.report import validate_document
 from .figure import render_panel_png
 from .fonts import wrap_lines
 from .items import link_target, viewer_target
+from .link_audit import check_ppt_links, read_linked_source, report_sources
 from .layout import build_pages, source_links
 from .sample_page import quantity_status
 from .summary_layout import classifier, notice, summary_pages
@@ -266,6 +267,7 @@ class Deck:
         self.charts = []
         self.edits = {}
         self.page_info = {}
+        self.required_links = {}
 
     def slide(self, index=0, blank=False, *, kind='summary', sample_id=None):
         root = deepcopy(self.templates[index])
@@ -523,12 +525,38 @@ class Deck:
 def render_report_pptx(project, document, resolve_source, *, pages=None, link_base=None, storage_id=None, include_sources=True):
     """Production entry point. Explicit site templates keep their existing override behaviour."""
     document = validate_document(project, document)
-    if load_settings().pptx_template:
+    custom_template = bool(load_settings().pptx_template)
+    expected = {}
+    expected_pages = None
+    included = {entry['sample_id'] for entry in document['samples'] if entry['included']}
+    if include_sources:
+        for sample in project['samples']:
+            if sample['id'] in included:
+                for link in source_links(sample):
+                    expected[link_target(link, link_base, storage_id)] = link['filename']
+                if not custom_template:
+                    expected[viewer_target(sample['id'], link_base, storage_id)] = sample['name'] + ' 그래프'
+        if not custom_template:
+            expected[viewer_target(link_base=link_base, storage_id=storage_id)] = '전체 비교 그래프'
+        # A standalone PPT links to the server, so verify its originals before delivery.
+        # ZIP export checks these bytes while packing them, avoiding a second full read.
+        if link_base and storage_id:
+            for record in report_sources(project, document):
+                read_linked_source(record, resolve_source)
+    if custom_template:
         from .pptx import render_pptx
         pages = pages if pages is not None else build_pages(project, document, resolve_source)
-        return render_pptx(pages, document, link_base=link_base, storage_id=storage_id)
-    return build_posco_deck(project, document, resolve_source, pages=pages, link_base=link_base,
-                            storage_id=storage_id, include_sources=include_sources).finish(document)
+        if not include_sources:
+            pages = [dict(page, items=[item for item in page['items'] if item['type'] != 'link']) for page in pages]
+        content = render_pptx(pages, document, link_base=link_base, storage_id=storage_id)
+    else:
+        deck = build_posco_deck(project, document, resolve_source, pages=pages, link_base=link_base,
+                               storage_id=storage_id, include_sources=include_sources)
+        content = deck.finish(document)
+        expected_pages = {f'ppt/slides/slide{index}.xml': deck.required_links.get(slide, set())
+                          for index, (slide, _) in enumerate(deck.pages, 1)}
+    check_ppt_links(content, expected, expected_pages)
+    return content
 
 
 def build_posco_deck(project, document, resolve_source, *, pages=None, link_base=None,
@@ -618,6 +646,7 @@ def build_posco_deck(project, document, resolve_source, *, pages=None, link_base
             deck.picture(slide,summary_image,(10,36,124,90-extra_h),'시료 비교 그래프',edit=dict(tab='figure'))
         else: deck.text(slide,'비교 그래프를 보고서에 포함하지 않았습니다.',(12,70,120,16),size=10)
         viewer_href = viewer_target(link_base=link_base, storage_id=storage_id)
+        deck.required_links[slide] = {viewer_href} if include_sources else set()
         # include_sources=False is also used for detached, non-linked report output.
         if include_sources:
             deck.frame(slide,(47,130-extra_h,53,8),name='Viewer link frame')
@@ -646,6 +675,12 @@ def build_posco_deck(project, document, resolve_source, *, pages=None, link_base
         table_sets = [phase_table_data(samples[e['sample_id']], classification, revised=quantitative) for e in batch]
         row_sets = [rows for _, rows in table_sets]
         slide=deck.slide(1 if quantitative else 2, kind='sample', sample_id=batch[0]['sample_id'])
+        # Record every required destination independently of the visible link shapes.
+        deck.required_links[slide] = {
+            target for entry in batch for target in
+            [viewer_target(entry['sample_id'], link_base, storage_id)] +
+            [link_target(link, link_base, storage_id) for link in source_links(samples[entry['sample_id']])]
+        } if include_sources else set()
         deck.title(slide, QUANTITY_TITLE if quantitative else PHASE_TITLE)
         deck.page_info[slide]['navigation_title'] = (
             ('상 동정 & WPPF 정량' if quantitative else '상 동정') + ' · ' + ', '.join(

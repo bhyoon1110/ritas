@@ -6,6 +6,7 @@ from copy import deepcopy
 from ..render.html import render_html
 from ..render.layout import archive_path
 from ..render.items import sample_viewer_path
+from ..render.link_audit import check_package_links, ppt_click_targets, read_linked_source, report_sources
 from ..render.posco_preview import report_pages
 from ..render.pdf import render_pdf
 from ..render.posco_pptx import render_report_pptx
@@ -33,8 +34,8 @@ def build_package(project, document, resolve_source, viewer_state=None, views=No
         # Recipient package: reports, viewer and original-data folders only.
         # Mail drafts and review history stay in server-side project/report storage.
         archive.writestr('보고서.pdf', render_pdf(pages, document))
-        archive.writestr('보고서.pptx', render_report_pptx(project, document, resolve_source,
-                                                    pages=pages, include_sources=include_sources))
+        pptx = render_report_pptx(project, document, resolve_source, pages=pages, include_sources=include_sources)
+        archive.writestr('보고서.pptx', pptx)
         archive.writestr('보고서.html', render_html(pages, document, 'package'))
         archive.writestr('뷰어.html', export_html(filtered, display, display_views))
         if include_sources:
@@ -45,17 +46,12 @@ def build_package(project, document, resolve_source, viewer_state=None, views=No
         archive.writestr('Report/', '')
         archive.writestr('Measured Data/', '')
         seen = set()
-        for record in filtered['sources']:
-            if not include_sources:
-                break
-            if record['role'] not in ('phase_report', 'wppf_report', 'measurement'):
-                continue
+        for record in report_sources(project, document) if include_sources else []:
             target = archive_path(record)
             if target in seen:
-                continue
+                raise ValueError(f'보고서 패키지에 파일명이 중복되었습니다: {target}')
             seen.add(target)
-            data = resolve_source(record['id'])
-            if hashlib.sha256(data).hexdigest() != record['sha256']:
-                raise ValueError('원본 파일 내용이 등록 후 변경되었습니다. 자료를 다시 확인하세요.')
+            data = read_linked_source(record, resolve_source)
             archive.writestr(target, data)
+        check_package_links(ppt_click_targets(pptx), archive)
     return output_path if output_path is not None else output.getvalue()

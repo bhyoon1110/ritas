@@ -2,6 +2,7 @@
 from dataclasses import replace
 import hashlib
 import io
+import time
 from urllib.parse import unquote, urlsplit
 from zipfile import ZipFile
 
@@ -118,3 +119,31 @@ def test_zip_ppt_click_targets_resolve_to_nonempty_exact_files_after_extraction(
                     assert reader.pages and any(p.extract_text().strip() for p in reader.pages)
         assert opened == {r['id'] for r in project['sources']
                           if r['role'] in ('measurement','phase_report','wppf_report')}
+
+
+@pytest.mark.parametrize('kind', ['pptx', 'zip'])
+@pytest.mark.parametrize('fault', ['missing', 'empty'])
+def test_missing_link_source_is_reported_and_never_offered_for_download_or_transfer(report, monkeypatch, kind, fault):
+    from app.xrd_workbench.storage import ProjectFiles
+    client, sid, project, _ = report
+    record = next(r for r in project['sources'] if r['role'] == 'phase_report')
+    original = ProjectFiles.read_source
+    def broken_source(store, storage_id, file_id):
+        if file_id == record['id']:
+            if fault == 'empty': return b''
+            raise FileNotFoundError('removed source')
+        return original(store, storage_id, file_id)
+    monkeypatch.setattr(ProjectFiles, 'read_source', broken_source)
+    registered = []
+    monkeypatch.setattr(api, 'register_generated_report_package', lambda **kwargs: registered.append(kwargs))
+    response = client.post(api.BASE+f'/api/reports/{sid}/exports', json={'kind':kind,'revision':1})
+    assert response.status_code == 202, response.text
+    job = response.json()
+    deadline = time.monotonic() + 20
+    while job['status'] in ('queued', 'running') and time.monotonic() < deadline:
+        time.sleep(.02)
+        job = client.get(api.BASE+'/api/jobs/'+job['job_id']).json()
+    assert job['status'] == 'failed', job
+    assert record['filename'] in job['error']
+    assert client.get(api.BASE+'/api/jobs/'+job['job_id']+'/file').status_code == 409
+    assert not registered
