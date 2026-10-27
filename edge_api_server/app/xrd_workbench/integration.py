@@ -25,6 +25,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Uplo
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.routing import APIRoute
 from starlette.concurrency import run_in_threadpool
+from rist_common.plotting.file_progress import file_progress_html
 
 from ..auth import authenticated_transfer_payload, require_context
 from ..browser_compat import browser_profile, manifest, ASSET_PREFIX
@@ -677,7 +678,7 @@ def web_asset(asset_path: str, request: Request):
                 ('report_editor_icons.js','report_page_sidebar.js','report_cell_editor.js','report_canvas_editor.js'))
             content=content.replace('<script type="module"',scripts+'<script type="module"',1)
         content = re.sub(r'(href|src)="/', lambda m: m[1] + '="' + BASE + '/', content)
-        content = content.replace('<head>', '<head><script src="' + BASE + '/bootstrap.js"></script>')
+        content = content.replace('<head>', '<head>' + file_progress_html() + '<script src="' + BASE + '/bootstrap.js"></script>')
         content = content.replace('</head>', '<link rel="stylesheet" href="' + BASE + '/shared/platform.css"></head>')
         if browser_profile(request.headers.get('user-agent', '')) == 'chrome49':
             content = re.sub(r'type="module" src="([^"]+)\.mjs"', r'src="\1.legacy.js"', content)

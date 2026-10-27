@@ -58,6 +58,7 @@ function setup(t, experiment, mode) {
   }
   w.eval(program('var axisLocksEnabled'));
   w.eval(program('var ratios ='));
+  w.eval(program('window.RistFileProgress = '));
   // Synthetic DOM events have no browser-managed active pointer. Model its
   // capture lifecycle explicitly, including the Chrome49 pointer polyfill.
   const handle=gd.querySelector('.rist-plot-resize-handle'),captured=new Set();

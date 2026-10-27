@@ -194,7 +194,10 @@ def test_notice_is_inserted_once_before_application_scripts_and_does_not_overlay
     assert html.count('id="rist-browser-warning"') == 1
     assert html.index(BROWSER_SUPPORT_SCRIPT) < html.index("app();")
     assert with_browser_support_notice(html) == html
-    assert "position:fixed" not in html
+    from rist_common.plotting.file_progress import file_progress_html
+    # Download feedback is mounted only during a save; the browser notice itself
+    # must remain in normal flow and never obscure the graph.
+    assert "position:fixed" not in html.replace(file_progress_html(), "")
     assert "position:absolute" not in html
     assert "@media print" in html
     assert "<noscript>" in html

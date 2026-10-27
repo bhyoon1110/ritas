@@ -634,9 +634,11 @@ $('uploadComplete').onclick=async()=>{
   catch(e){$('uploadError').textContent=e.message;}finally{lockUpload(false);refreshUploads();}
 };
 $('htmlExport').onclick = async () => {
-  if (!project) return;
+  if (!project || $('htmlExport').disabled) return;
   $('htmlExport').disabled = true;
+  const progress=window.RistFileProgress.begin('그래프 HTML');
   try {
+    await progress.paint();
     const response = await request('/api/export/html', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -649,10 +651,13 @@ $('htmlExport').onclick = async () => {
         state,
       }),
     });
+    progress.update('HTML 파일을 받는 중…');
     download(await response.blob(), 'XRD-그래프-뷰어.html');
+    progress.finish(window.RistFileProgress.handoff);
     message('현재 데이터·보기 상태를 포함한 독립 HTML을 저장했습니다.');
   } catch (error) {
     message(error.message, true);
+    progress.finish(error.message,true);
   } finally {
     $('htmlExport').disabled = false;
   }
@@ -661,7 +666,9 @@ $('htmlExport').onclick = async () => {
 $('imageExport').onclick = async () => {
   if (!project || $('imageExport').disabled) return;
   $('imageExport').disabled = $('quickImageExport').disabled = true;
+  const progress=window.RistFileProgress.begin('그래프 이미지');
   try {
+    await progress.paint();
     const origin = state.originStyle;
     const exported = exportFigure(project, state);
     const format = $('imageFormat').value;
@@ -675,8 +682,10 @@ $('imageExport').onclick = async () => {
       `XRD-그래프${origin ? '-Origin' : ''}.${format === 'jpeg' ? 'jpg' : 'png'}`,
     );
     message('범례를 포함한 현재 이미지를 저장했습니다.');
+    progress.finish(window.RistFileProgress.handoff);
   } catch (error) {
     message(error.message, true);
+    progress.finish(error.message,true);
   } finally {
     $('imageExport').disabled = $('quickImageExport').disabled = false;
   }

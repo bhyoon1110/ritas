@@ -36,6 +36,7 @@ from .plot_size import plot_size_controls_html
 from .interaction_modes import interaction_modes_html
 from .peak_coordinates import peak_coordinates_html
 from .grid_style import GRID_STYLE_JS
+from .file_progress import file_progress_html
 
 # 범례 위치 전환 기준 화면 너비(px). 이 값 이상이면 그래프 안쪽(세로),
 # 미만이면 그래프 아래(가로)로 범례를 배치한다.
@@ -6398,22 +6399,26 @@ def _image_download_js(div_id: str, formats, filename: str, scale: float) -> str
 
   function downloadImage(format) {
     if (!window.Plotly || gd._ristImageExportPromise) return;
-    var dimensions = exportDimensions();
-    var payload = buildImageExportPayload(
-      gd.data || [], gd.layout || {}, dimensions.width, dimensions.height
-    );
-    var temp = document.createElement("div");
-    temp.setAttribute("aria-hidden", "true");
-    temp.style.cssText = "position:fixed;left:-10000px;top:0;pointer-events:none;"
-      + "width:" + dimensions.width + "px;height:" + dimensions.height + "px;";
-    document.body.appendChild(temp);
+    var progress = window.RistFileProgress.begin(format.toUpperCase() + " 그래프 이미지");
+    var temp = null, dimensions = null;
     gd.setAttribute("data-rist-image-exporting", "true");
-    gd._ristImageExportPromise = window.Plotly.newPlot(
-      temp,
-      payload.data,
-      payload.layout,
-      {responsive: false, displayModeBar: false, staticPlot: true}
-    ).then(function() {
+    gd._ristImageExportPromise = progress.paint().then(function() {
+      dimensions = exportDimensions();
+      var payload = buildImageExportPayload(
+        gd.data || [], gd.layout || {}, dimensions.width, dimensions.height
+      );
+      temp = document.createElement("div");
+      temp.setAttribute("aria-hidden", "true");
+      temp.style.cssText = "position:fixed;left:-10000px;top:0;pointer-events:none;"
+        + "width:" + dimensions.width + "px;height:" + dimensions.height + "px;";
+      document.body.appendChild(temp);
+      return window.Plotly.newPlot(
+        temp,
+        payload.data,
+        payload.layout,
+        {responsive: false, displayModeBar: false, staticPlot: true}
+      );
+    }).then(function() {
       return window.Plotly.downloadImage(temp, {
         format: format,
         filename: __FILENAME_JSON__,
@@ -6421,18 +6426,22 @@ def _image_download_js(div_id: str, formats, filename: str, scale: float) -> str
         width: dimensions.width,
         height: dimensions.height
       });
+    }).then(function(result) {
+      progress.finish(window.RistFileProgress.handoff);
+      return result;
     }).catch(function(err) {
+      progress.finish(err.message || "이미지를 저장하지 못했습니다.", true);
       console.error("RIST image export failed", err);
       try {
         gd.dispatchEvent(new CustomEvent("rist-image-export-error", {detail: {error: err}}));
       } catch (eventError) {}
     }).then(function(result) {
-      removeExportPlot(temp);
+      if (temp) removeExportPlot(temp);
       gd._ristImageExportPromise = null;
       gd.removeAttribute("data-rist-image-exporting");
       return result;
     }, function(err) {
-      removeExportPlot(temp);
+      if (temp) removeExportPlot(temp);
       gd._ristImageExportPromise = null;
       gd.removeAttribute("data-rist-image-exporting");
       throw err;
@@ -6472,7 +6481,7 @@ def _image_download_js(div_id: str, formats, filename: str, scale: float) -> str
 </script>
 """
     return (
-        template.replace("__PLOT_ID_JSON__", json.dumps(div_id))
+        file_progress_html() + template.replace("__PLOT_ID_JSON__", json.dumps(div_id))
         .replace("__FORMAT_BUTTONS__", opts)
         .replace("__FILENAME_JSON__", json.dumps(filename))
         .replace("__IMAGE_SCALE__", str(float(scale)))

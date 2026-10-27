@@ -2317,6 +2317,8 @@ def build_ahn_page(resume_owner: str = "anonymous") -> str:
     }
     function setDownload(link, url) {
       link.href = url || "#";
+      if (url) link.setAttribute("download", "");
+      else link.removeAttribute("download");
       link.setAttribute("aria-disabled", url ? "false" : "true");
     }
     function renderSummary(payload) {

@@ -121,6 +121,9 @@ _NOTICE = """<style>
 
 def with_browser_support_notice(html: str) -> str:
     """Insert only in a UI page builder; never wrap downloads or API responses."""
+    from rist_common.plotting.file_progress import file_progress_html
+    if 'window.RistFileProgress = ' not in html:
+        html = re.sub(r"<body\b[^>]*>", lambda match: match.group(0) + file_progress_html(), html, count=1, flags=re.IGNORECASE)
     if 'id="rist-browser-warning"' in html:
         return html
     return re.sub(r"<body\b[^>]*>", lambda match: match.group(0) + _NOTICE, html, count=1, flags=re.IGNORECASE)

@@ -471,31 +471,38 @@ async function action(kind) {
   if (busy || !doc) return;
   if (kind === 'preview') { updatePreview(); return; }
   lock(true);
+  const sending = kind === 'send';
+  const label = {pdf:'PDF 보고서',pptx:'PPTX 보고서',zip:'전달 ZIP',send:'전송용 ZIP'}[kind];
+  const progress = label ? window.RistFileProgress.begin(label) : null;
+  const notice = text => { status(text); if(progress)progress.update(text); };
   try {
+    if(progress){progress.update('편집 내용 확인·저장 중…');await progress.paint();}
     syncTransfer();
     if (dirty || !doc.revision) await save();
     if (kind === 'save') return;
-    const sending = kind === 'send';
     if (sending) kind = 'zip';
-    const label = { pdf: 'PDF', pptx: 'PPTX', zip: '전달 ZIP' }[kind];
-    status(
+    notice(
       kind === 'zip'
         ? 'PDF·PPTX·뷰어·원본 PDF/TXT를 ZIP으로 묶는 중…'
-        : `${label} 보고서를 만드는 중…`,
+        : `${label}를 만드는 중…`,
     );
     const job = await startExport(storageId, doc.revision, kind, {
       viewer_state:deliveryView(), analysis_revision:project.analysis_revision || 0
-    }, text => status(text));
+    }, notice);
     if (sending) {
+      notice('생성한 보고서를 전송 큐에 등록하는 중…');
       await api(`/api/jobs/${job.job_id}/send`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(transferValues())});
       status('MariaDB 전송 큐에 등록했습니다. 실제 LIMS 전송은 Spring Boot가 처리합니다.');
+      progress.finish('전송 큐에 등록했습니다. 실제 LIMS 전송 결과는 전송 내역에서 확인하세요.');
     } else {
       downloadJob(job);
       status(`저장 버전 ${doc.revision}의 ${label} 다운로드를 시작했습니다.`);
+      progress.finish(window.RistFileProgress.handoff);
     }
     updatePreview();
   } catch (e) {
     status(e.message, true);
+    if(progress)progress.finish(e.message,true);
   } finally {
     lock(false);
   }
@@ -1100,7 +1107,9 @@ $('checksForm').onclick = (event) => {
 $('viewerExport').onclick = async () => {
   if (busy || !project) return;
   lock(true);
+  const progress=window.RistFileProgress.begin('뷰어 HTML');
   try {
+    await progress.paint();
     const response = await api('/api/export/html', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1113,6 +1122,7 @@ $('viewerExport').onclick = async () => {
         state: deliveryView(),
       }),
     });
+    progress.update('HTML 파일을 받는 중…');
     const url = URL.createObjectURL(await response.blob()),
       a = document.createElement('a');
     a.href = url;
@@ -1120,8 +1130,10 @@ $('viewerExport').onclick = async () => {
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 3000);
     status('현재 뷰어 보기를 담은 뷰어 HTML을 저장했습니다.');
+    progress.finish(window.RistFileProgress.handoff);
   } catch (e) {
     status(e.message, true);
+    progress.finish(e.message,true);
   } finally {
     lock(false);
   }

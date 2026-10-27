@@ -8,7 +8,7 @@ const esbuild = require('esbuild');
 const root = path.resolve(__dirname,'../../app/xrd_workbench/web');
 const native = esbuild.buildSync({entryPoints:[path.join(root,'viewer/viewer.mjs')],bundle:true,write:false,format:'iife',logLevel:'silent'}).outputFiles[0].text;
 const legacy = fs.readFileSync(path.join(root,'viewer/viewer.legacy.js'),'utf8');
-const flush = async()=>{for(let i=0;i<8;i++)await new Promise(setImmediate);};
+const flush = async()=>{await new Promise(r=>setTimeout(r,45));for(let i=0;i<8;i++)await new Promise(setImmediate);};
 const fixture = {
   id:'style-test',samples:[{id:'a',name:'QA sample',measurement:{x:[10,20,30],y:[1,9,2],axis_kind:'two_theta',axis_unit:'deg',intensity_unit:'cps'},
     phases:[{id:'p1',name:'Phase A',card:'1',formula:'Fe O',db:'QA'}],
@@ -27,6 +27,7 @@ function setup(t, program, saved={}, project=fixture, online=false, options={}) 
   if(options.local)w.localStorage.setItem(`xrd-viewer-v1-${project.id}-analysis-0${online?'':'-snapshot-qa'}`,JSON.stringify({projectId:project.id,...options.local}));
   w.URL.createObjectURL=()=> 'blob:qa';w.URL.revokeObjectURL=()=>{};
   w.HTMLAnchorElement.prototype.click=function(){downloads.push(this.download);};
+  w.eval(fs.readFileSync(path.join(__dirname,'../../../common/rist_common/plotting/file_progress.js'),'utf8'));
   w.eval(program);
   return {w,d,renders,exports,downloads,events,requests,setSize:async size=>{d.getElementById('markerSize').value=String(size);d.getElementById('markerSize').dispatchEvent(new w.Event('input'));await flush();}};
 }

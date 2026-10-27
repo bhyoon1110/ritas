@@ -25,6 +25,7 @@ from .report_queue import register_generated_report_package
 from .storage import atomic_write_json
 from .report_mail import mail_payload, edit_text_size
 from rist_common.plotting.floating_panels import floating_panels_html
+from rist_common.plotting.file_progress import file_progress_script
 
 _REVISION_SLOT = BoundedSemaphore(1)
 _MAX_EDIT_BYTES = 2 * 1024 * 1024
@@ -241,7 +242,7 @@ def editor_page(prefix, job_id, *, project=None):
     config = json.dumps({"prefix": prefix, "jobId": job_id, "project": project,
                          "conditionOptions": condition_options(project)}, ensure_ascii=False).replace("<", "\\u003c")
     template = Path(__file__).with_name("report_editor.html").read_text(encoding="utf-8")
-    script = (Path(__file__).parent / "xrd_workbench/web/shared/pptx_password.js").read_text(encoding="utf-8") + "\n"
+    script = file_progress_script() + '\n' + (Path(__file__).parent / "xrd_workbench/web/shared/pptx_password.js").read_text(encoding="utf-8") + "\n"
     script += "\n".join((Path(__file__).parent / name).read_text(encoding="utf-8")
                        for name in ("file_save.js", "report_editor_icons.js", "report_page_sidebar.js", "report_cell_editor.js", "report_direct_editor.js", "report_canvas_editor.js", "report_saved_graphs.js", "report_condition_options.js", "xrd_workbench/web/shared/mail_editor_icons.js", "xrd_workbench/web/shared/mail_table_editor.js", "xrd_workbench/web/shared/mail_editor.js", "report_editor.js"))
     return template.replace("__CONFIG__", config).replace("__SCRIPT__", script).replace(

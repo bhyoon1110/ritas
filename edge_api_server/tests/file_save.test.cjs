@@ -1,7 +1,7 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
 const {JSDOM}=require('jsdom'),acorn=require('acorn');
-const script=fs.readFileSync(path.join(__dirname,'../app/file_save.js'),'utf8');
-const tick=()=>new Promise(resolve=>setImmediate(resolve));
+const script=fs.readFileSync(path.join(__dirname,'../../common/rist_common/plotting/file_progress.js'),'utf8')+'\n'+fs.readFileSync(path.join(__dirname,'../app/file_save.js'),'utf8');
+const tick=()=>new Promise(resolve=>setTimeout(resolve,50));
 function setup(t,secure=false){
   const dom=new JSDOM('<button id="trigger">저장</button>',{url:'http://localhost/ftir',runScripts:'outside-only'});
   t.after(()=>dom.window.close());const w=dom.window,d=w.document,downloads=[];

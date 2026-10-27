@@ -45,7 +45,8 @@ def strip_module_syntax(source: str) -> str:
 def export_html(project: dict, state: dict, views: list | None = None) -> str:
     """The one-file viewer. `views` are already-validated named views (see prepare_views); when
     there are none the output is byte-identical to a viewer without the feature."""
-    template = (WEB / 'index.html').read_text(encoding='utf-8')
+    from rist_common.plotting.file_progress import file_progress_html
+    template = (WEB / 'index.html').read_text(encoding='utf-8').replace('<head>', '<head>' + file_progress_html())
     css = (WEB / 'viewer' / 'style.css').read_text(encoding='utf-8')
     script = '\n'.join(
         strip_module_syntax((WEB / name).read_text(encoding='utf-8')) for name in VIEWER_BUNDLE

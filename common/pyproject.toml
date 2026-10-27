@@ -19,3 +19,6 @@ llm = [
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["rist_common*"]
+
+[tool.setuptools.package-data]
+"rist_common.plotting" = ["*.js"]

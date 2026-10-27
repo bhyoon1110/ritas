@@ -20,7 +20,7 @@
     } catch (_) {}
     if (active) return Promise.resolve({status:"cancelled"});
     active = true;
-    var previous = options.focus || document.activeElement, working = false;
+    var previous = options.focus || document.activeElement, working = false, progress = null;
     var nativeSave = window.isSecureContext && typeof window.showSaveFilePicker === "function"
       && (!options.url || typeof window.fetch === "function");
     function node(tag, parent, text) { var e=document.createElement(tag);if(text!=null)e.textContent=text;if(parent)parent.appendChild(e);return e; }
@@ -59,11 +59,12 @@
           address.searchParams.set("filename",name);
           click(address.href,name);return Promise.resolve();
         }
-        return options.blob().then(function(blob){var url=URL.createObjectURL(blob);click(url,name);window.setTimeout(function(){URL.revokeObjectURL(url);},60000);});
+        return progress.paint().then(function(){return options.blob();}).then(function(blob){var url=URL.createObjectURL(blob);click(url,name);window.setTimeout(function(){URL.revokeObjectURL(url);},60000);});
       }
       function click(url,name) { var a=node("a",document.body);a.href=url;a.download=name;a.click();a.remove(); }
       function write(handle) {
-        var writable=null,reader=null;
+        var writable=null,reader=null,total=0,loaded=0;
+        progress.update("파일을 가져오는 중…");
         valid();
         // Stream remote ZIPs one chunk at a time: never buffer a TEM package in RAM.
         var source=options.url?Promise.resolve().then(function(){
@@ -72,17 +73,18 @@
           return window.fetch(address.href,{credentials:"same-origin",cache:"no-store",redirect:"error"}).then(function(response){
             if(!response.ok||!/^application\/zip(?:;|$)/i.test(response.headers.get("content-type")||""))throw new Error("보고서를 가져오지 못했습니다. 로그인·파일 만료 여부를 확인하세요.");
             if(!response.body||!response.body.getReader)throw new Error("이 브라우저에서는 ‘브라우저 다운로드’를 이용하세요.");
+            total=Number(response.headers.get('content-length'))||0;
             reader=response.body.getReader();return null;
           });
-        }):options.blob();
+        }):progress.paint().then(function(){return options.blob();});
         return source.then(function(blob){valid();return handle.createWritable().then(function(stream){
           writable=stream;
-          if(!reader)return writable.write(blob);
+          if(!reader){progress.update("파일을 저장하는 중…");return writable.write(blob).then(function(){progress.bytes(blob.size,blob.size);});}
           return new Promise(function(finish,reject){
-            function next(){reader.read().then(function(chunk){if(chunk.done){finish();return;}writable.write(chunk.value).then(next,reject);},reject);}
+            function next(){reader.read().then(function(chunk){if(chunk.done){finish();return;}writable.write(chunk.value).then(function(){loaded+=chunk.value.byteLength;progress.bytes(loaded,total);next();},reject);},reject);}
             next();
           });
-        });}).then(function(){return writable.close();}).catch(function(error){
+        });}).then(function(){progress.update("파일 저장을 마무리하는 중…");return writable.close();}).catch(function(error){
           var cleanup=[];
           if(reader)cleanup.push(Promise.resolve().then(function(){return reader.cancel();}).catch(function(){}));
           if(writable)cleanup.push(Promise.resolve().then(function(){return writable.abort();}).catch(function(){}));
@@ -96,14 +98,21 @@
         input.value=name;
         try {
           valid();lock(true);state.style.color="#245d7b";state.textContent="파일을 준비하고 있습니다. 창을 닫지 마세요.";
+          if(progress)progress.dismiss();
+          progress=window.RistFileProgress.begin(name,box);
           if(usePicker) {
             var accept={};accept[options.mime]=[options.extension];
             // Invoke synchronously in the click handler, before RAW serialization/fetch.
             operation=window.showSaveFilePicker({suggestedName:name,types:[{description:options.extension+" 파일",accept:accept}]}).then(write);
           }else operation=download(name);
         }catch(error){operation=Promise.reject(error);}
-        Promise.resolve(operation).then(function(){done({status:usePicker?"saved":"download",name:name});},function(error){
-          if(error.name==="AbortError"){done({status:"cancelled"});return;}
+        Promise.resolve(operation).then(function(){
+          if(progress)progress.dismiss();
+          done({status:usePicker?"saved":"download",name:name});
+          window.RistFileProgress.begin(name).finish(usePicker?"파일 저장을 완료했습니다.":window.RistFileProgress.handoff);
+        },function(error){
+          if(error.name==="AbortError"){if(progress)progress.dismiss();done({status:"cancelled"});return;}
+          if(progress)progress.finish(error.message||"파일 저장에 실패했습니다.",true);
           lock(false);state.style.color="#b42318";state.textContent=error.message||"파일 저장에 실패했습니다. 다시 시도하세요.";
           if(error.name==="SecurityError"||error.name==="NotAllowedError"||error.name==="NotSupportedError"){nativeSave=false;describe();}
         });

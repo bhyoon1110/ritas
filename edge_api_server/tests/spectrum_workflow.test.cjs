@@ -1,6 +1,6 @@
 const {test}=require('node:test'), assert=require('node:assert/strict'), fs=require('node:fs'),path=require('node:path');
 const {JSDOM}=require('jsdom'),acorn=require('acorn');
-const programs=['file_save.js','report_editor_icons.js','spectrum_workflow.js'].map(name=>fs.readFileSync(path.join(__dirname,'../app',name),'utf8'));
+const programs=[fs.readFileSync(path.join(__dirname,'../../common/rist_common/plotting/file_progress.js'),'utf8'),...['file_save.js','report_editor_icons.js','spectrum_workflow.js'].map(name=>fs.readFileSync(path.join(__dirname,'../app',name),'utf8'))];
 const source=programs.join('\n');
 function setup(t,kind='ftir',mode='native') {
   const dom=new JSDOM('<header class="ftir-app-bar"><button id="ftir-clear"></button><button id="ftir-report"></button><label><input id="ftir-file-input"></label><label><input id="ftir-origin"></label></header><section class="ftir-library-band"></section><section id="ftir-drop-zone"></section><section id="ftir-report-meta"></section><div id="plot"></div>'.replace(/ftir/g,kind),{url:'http://localhost/'+kind,runScripts:'outside-only'});
@@ -336,7 +336,8 @@ test('export downloads the saved snapshot, never recaptures unsaved current edit
   h.d.querySelector('.sw-card [data-action="download"]').click();await tick();await tick();
   assert.equal(exported,undefined);
   h.d.querySelector('[aria-label="저장 파일 이름"]').value='내 편집 그래프';
-  Array.from(h.d.querySelectorAll('.rist-file-save button')).find(b=>b.textContent==='다운로드').click();await tick();await tick();
+  Array.from(h.d.querySelectorAll('.rist-file-save button')).find(b=>b.textContent==='다운로드').click();
+  await new Promise(resolve=>setTimeout(resolve,60));
   assert.deepEqual(exported,h.stored.graphs[0]);assert.equal(download,'내 편집 그래프.ristgraph');
   assert.match(h.d.querySelector('.sw-status').textContent,/미저장 수정/);assert(!h.d.getElementById('sw-save-graph').disabled);
 });
