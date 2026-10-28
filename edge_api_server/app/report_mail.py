@@ -13,6 +13,7 @@ from fastapi import APIRouter, Query, Request
 from fastapi.responses import JSONResponse
 
 from .errors import ApiException
+from .mail_address_book import router as address_book_router
 from .report_mail_media import MailImages, MAX_HTML, MAX_TABLES, MAX_ROWS, MAX_COLS
 
 FIELDS = {"recipientName": 200, "to": 2000, "cc": 2000, "bcc": 2000,
@@ -279,6 +280,7 @@ def write_mail_files(directory, subject, body, delivery=None):
 
 
 router = APIRouter()
+router.include_router(address_book_router)
 
 
 @router.get('/api/v1/report-mail/recipient')

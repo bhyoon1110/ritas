@@ -110,6 +110,16 @@
     });
     var note=node("p");note.className="mail-note";note.textContent="수신자는 해당 의뢰의 의뢰자로 고정되며 직접 변경·추가할 수 없습니다. 참조·비밀참조는 RIST 이메일만 사용합니다. 비밀참조는 보고서·ZIP에 표시하지 않습니다.";addresses.parentNode.insertBefore(note,addresses.nextSibling);
     var recipientStatus=node("p");recipientStatus.className="mail-note";recipientStatus.setAttribute("role","status");note.parentNode.insertBefore(recipientStatus,note.nextSibling);
+    var addressBook=new window.RistMailAddressBook({host:host,before:note,add:function(target,emails){
+      if(locked)return "보고서 처리 후 다시 선택하세요.";
+      var invalid=copyError(fields[target].value);if(invalid)return invalid;
+      var merged=copyAddresses(fields[target].value).split(/,\s*/).filter(Boolean),seen={};
+      merged.forEach(function(email){seen[email.toLowerCase()]=true;});
+      emails.forEach(function(email){if(!seen[email.toLowerCase()]){seen[email.toLowerCase()]=true;merged.push(email);}});
+      var value=merged.join(", ");invalid=copyError(value);if(invalid)return invalid;
+      if(value.length>2000)return "참조·비밀참조 입력 길이를 초과했습니다. 선택 인원을 줄이세요.";
+      fields[target].value=copyIds(value);state[target]=value;notify();return "";
+    }});
     function refreshRecipient(){
       var number=String(typeof options.requestNumber==="function"?options.requestNumber():options.requestNumber||"").trim();
       if(number===recipientRequest)return;
@@ -246,7 +256,7 @@
     function load(value){tables.reset();state={};keys.forEach(function(k){state[k]=k==="to"||k==="recipientName"?"":String((value||{})[k]||"");if(k==="cc"||k==="bcc")fields[k].value=copyIds(state[k]);else if(fields[k]&&k!=="to"&&k!=="recipientName")fields[k].value=state[k];});state.bodyHtml=clean(state.bodyHtml);rich.innerHTML=state.bodyHtml||plain(body.value);range=null;selectedImage=null;mediaTools.hidden=true;refreshRecipient();}
     load(options.value);
     return {value:function(){var result={};keys.forEach(function(k){result[k]=k==="to"||k==="recipientName"?"":k==="cc"||k==="bcc"?copyAddresses(fields[k].value):fields[k]?fields[k].value:state[k]||"";});return result;},load:load,refreshRecipient:refreshRecipient,
-      lock:function(value){locked=!!value;tables.lock();rich.contentEditable=String(!locked);Array.prototype.forEach.call(host.querySelectorAll(".mail-addresses input,.mail-toolbar button,.mail-toolbar input,.mail-resize-handle,.mail-signature textarea"),function(e){e.disabled=locked;});imageButton.disabled=locked||mediaBusy;},
+      lock:function(value){locked=!!value;addressBook.lock(locked);tables.lock();rich.contentEditable=String(!locked);Array.prototype.forEach.call(host.querySelectorAll(".mail-addresses input,.mail-toolbar button,.mail-toolbar input,.mail-resize-handle,.mail-signature textarea"),function(e){e.disabled=locked;});imageButton.disabled=locked||mediaBusy;},
       validate:function(){if(mediaBusy)return "이미지 처리가 끝난 후 저장하세요.";if(body.value.length>4000)return "메일 본문은 4,000자 이하로 입력하세요.";var invalid=copyError(fields.cc.value)||copyError(fields.bcc.value);if(invalid)return invalid;try{clean(rich.innerHTML);}catch(error){return error.message;}return "";}};
   };
   window.RistMailEditor.clean=clean;

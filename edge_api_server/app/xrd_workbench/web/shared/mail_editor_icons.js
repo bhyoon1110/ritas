@@ -5,6 +5,11 @@
       rowBefore='<rect x="3" y="10" width="18" height="11" rx="1"/><path d="M3 15h18 M9 10v11 M12 2v6 M9 5h6"/>',
       rowDelete='<rect x="3" y="3" width="18" height="12" rx="1"/><path d="M3 9h18 M9 3v12 M8 20h8"/>';
   var paths={
+    plus:'<path d="M12 4v16 M4 12h16"/>',
+    edit:'<path d="m15 3 6 6-11 11H4v-6L15 3Z M12 6l6 6"/>',
+    refresh:'<path d="M20 8a8 8 0 1 0 0 8 M20 3v6h-6"/>',
+    previous:'<path d="m15 4-8 8 8 8"/>',
+    next:'<path d="m9 4 8 8-8 8"/>',
     bold:'<path d="M7 3h6a4.5 4.5 0 0 1 0 9H7V3Z M7 12h7a4.5 4.5 0 0 1 0 9H7v-9Z"/>',
     italic:'<path d="M10 3h10 M4 21h10 M15 3 9 21"/>',
     underline:'<path d="M6 3v9a6 6 0 0 0 12 0V3 M4 22h16"/>',

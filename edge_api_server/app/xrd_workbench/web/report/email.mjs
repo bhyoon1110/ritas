@@ -1,5 +1,6 @@
 import '../shared/mail_editor_icons.js';
 import '../shared/mail_table_editor.js';
+import '../shared/mail_address_book.js';
 import '../shared/mail_editor.js';
 // Mail is author-only draft data, never an instruction to send anything.
 export function mountEmailEditor(fields, navigation, changed, requestNumber) {

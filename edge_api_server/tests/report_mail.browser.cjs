@@ -19,6 +19,7 @@ const port=new Promise((resolve,reject)=>{let s='';server.stdout.on('data',chunk
       let signature='',revision=0,doc=kind==='xrd'?structuredClone(fixture.document):{title:'메일 편집 테스트',completionDate:'2026-10-26',transfer:{},sections:[],auxiliary:{email_subject:'분석 결과',email_body:'분석 결과를 안내합니다.'},variables:[]};
       if(kind==='xrd'){doc.metadata.report_number='REQ-1';doc.email={subject:'분석 결과',body:'분석 결과를 안내합니다.',status:'manual',source_fingerprint:'',model_used:'',message:''};}
       else doc.transfer.requestNumber='REQ-1';
+      let addressBook={revision:0,contacts:[]};
       await page.route('**/*',async route=>{
         const r=route.request(),url=new URL(r.url()),p=url.pathname;
         const json=(data,status=200)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(data)});
@@ -27,6 +28,16 @@ const port=new Promise((resolve,reject)=>{let s='';server.stdout.on('data',chunk
           return json({signature});
         }
         if(p==='/api/v1/report-mail/recipient')return json({recipientName:'의뢰 담당자',email:null,recipientPolicy:'lims'});
+        if(p.startsWith('/api/v1/report-mail/contacts')){
+          if(r.method()!=='GET'){
+            const v=r.postDataJSON();assert.equal(v.revision,addressBook.revision);
+            const id=p.split('/').pop();
+            if(r.method()==='POST')addressBook.contacts.push({...v.contact,id:'a'.repeat(32)});
+            if(r.method()==='PUT')addressBook.contacts=addressBook.contacts.map(c=>c.id===id?{...v.contact,id}:c);
+            if(r.method()==='DELETE')addressBook.contacts=addressBook.contacts.filter(c=>c.id!==id);
+            addressBook.revision++;
+          }return json(addressBook);
+        }
         if(p.endsWith('/send'))throw Error('No real sends allowed');
         if(kind==='xrd'){
           if(p==='/__test__/xrd-editor'){
@@ -66,7 +77,7 @@ const port=new Promise((resolve,reject)=>{let s='';server.stdout.on('data',chunk
       });
       const url=origin+(kind==='xrd'?'/__test__/xrd-editor?project=sample':'/__test__/request-editor/'+kind);
       async function open(){await page.goto(url);if(kind==='xrd')await page.locator('[data-tab="email"]').click();await page.getByLabel('수신자 이름',{exact:true}).waitFor();}
-      async function save(){if(kind==='xrd'){await page.locator('#save').click();await page.waitForFunction(()=>/저장했습니다/.test(document.getElementById('status').textContent));}else await page.waitForFunction(()=>/자동 저장 완료/.test(document.getElementById('status').textContent));}
+      async function save(){if(kind==='xrd'){await Promise.all([page.waitForResponse(r=>new URL(r.url()).pathname==='/api/reports/sample'&&r.request().method()==='PUT'),page.locator('#save').click()]);await page.waitForFunction(()=>/저장했습니다/.test(document.getElementById('status').textContent)&&!document.getElementById('save').disabled);}else await page.waitForFunction(()=>/자동 저장 완료/.test(document.getElementById('status').textContent));}
       try{
         await open();
         assert(await page.locator('.mail-compose .mail-toolbar button').evaluateAll(list=>list.filter(b=>!b.closest('.mail-table-grid')).every(b=>b.classList.contains('mail-icon-button')&&b.textContent===''&&b.title===b.getAttribute('aria-label')&&b.querySelector('svg[aria-hidden="true"]'))));
@@ -79,10 +90,26 @@ const port=new Promise((resolve,reject)=>{let s='';server.stdout.on('data',chunk
         assert(await page.getByLabel('수신자 이메일 주소',{exact:true}).evaluate(e=>e.readOnly));
         assert.equal(await page.getByLabel('수신자 이메일 주소',{exact:true}).inputValue(),'');
         await page.getByLabel('참조 (CC)',{exact:true}).fill('cc');await page.getByLabel('비밀참조 (BCC)',{exact:true}).fill('secret@rist.re.kr');
+        await save();
+        await page.getByRole('button',{name:'주소록',exact:true}).click();await page.getByText('주소록을 불러왔습니다.',{exact:true}).waitFor();
+        await page.getByRole('button',{name:'주소록 새 주소',exact:true}).click();
+        await page.getByLabel('주소록 이름',{exact:true}).fill('주소록 연구자');await page.getByLabel('주소록 부서',{exact:true}).fill('분석실');await page.getByLabel('주소록 이메일 아이디',{exact:true}).fill('qa.book');
+        await page.getByRole('button',{name:'주소록 저장',exact:true}).click();await page.getByText('주소록에 저장했습니다.',{exact:true}).waitFor();
+        await page.getByLabel('주소록 검색',{exact:true}).fill('분석실');
+        await page.getByRole('checkbox',{name:'주소록 연구자 · qa.book@rist.re.kr 선택',exact:true}).check();await page.getByRole('button',{name:'참조에 추가',exact:true}).click();await save();
+        assert.equal(await page.getByLabel('참조 (CC)',{exact:true}).inputValue(),'cc, qa.book');
+        for(const width of [1440,390]){
+          await page.setViewportSize({width,height:1000});
+          if(width===390&&kind!=='xrd'&&await page.locator('#page-sidebar-close').isVisible())await page.locator('#page-sidebar-close').click();
+          await page.locator('.mail-book-panel').scrollIntoViewIfNeeded();
+          assert(await page.locator('.mail-book-panel').evaluate(e=>e.scrollWidth<=e.clientWidth+2));
+          await page.locator('.mail-book-panel').screenshot({path:path.join(output,name+'-address-book-'+width+'.png')});
+        }
+        await page.setViewportSize({width:1440,height:1000});await page.getByRole('button',{name:'주소록',exact:true}).click();
         await page.getByLabel('메일 서명',{exact:true}).fill('윤병훈\nRIST');await page.getByRole('button',{name:'내 기본 서명 저장',exact:true}).click();await page.getByText('내 기본 서명을 저장했습니다.',{exact:false}).waitFor();assert.equal(signature,'윤병훈\nRIST');
         const rich=page.getByRole('textbox',{name:'메일 본문 서식 편집',exact:true});await rich.fill('수정한 분석 결과입니다.');await rich.press('Meta+a');await page.getByRole('button',{name:'굵게',exact:true}).click();assert(await rich.locator('b,strong').count()>0);
         await page.getByRole('button',{name:'메일 글자 가운데 정렬',exact:true}).click();await save();
-        const delivery=kind==='xrd'?doc.email.delivery:doc.deliveryEmail;assert.equal(delivery.bcc,'secret@rist.re.kr');assert.equal(delivery.cc,'cc@rist.re.kr');assert.equal(delivery.to,'');assert.equal(delivery.recipientName,'');assert.match(delivery.bodyHtml,/<(b|strong)>/);assert.equal(delivery.signature,'윤병훈\nRIST');
+        const delivery=kind==='xrd'?doc.email.delivery:doc.deliveryEmail;assert.equal(delivery.bcc,'secret@rist.re.kr');assert.equal(delivery.cc,'cc@rist.re.kr, qa.book@rist.re.kr');assert.equal(delivery.to,'');assert.equal(delivery.recipientName,'');assert.match(delivery.bodyHtml,/<(b|strong)>/);assert.equal(delivery.signature,'윤병훈\nRIST');
         await open();assert.equal(await page.getByLabel('비밀참조 (BCC)',{exact:true}).inputValue(),'secret');assert(await rich.locator('b,strong').count()>0);assert(await rich.locator('[align="center"]').count()>0);
         await rich.click();await rich.press('ControlOrMeta+End');
         await page.getByRole('button',{name:'메일 표 삽입 설정',exact:true}).click();

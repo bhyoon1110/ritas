@@ -225,6 +225,14 @@ Spring Boot는 다음 항목을 모두 확인해야 한다.
 - 기본 서명 API: `GET/PUT /api/v1/report-mail/signature`, 본문은 `{"signature":"서명 내용"}`이다. 활성 회원 인증이 필요하며 PUT은 동일 출처와 `X-Requested-With: RIST-Mail-Editor`를 검증한다. 사용자 ID는 인증 세션에서 결정하고 클라이언트가 지정하지 않는다. 서명은 2,000자 이내이고 백업 시 해당 비공개 저장 폴더도 포함한다.
 - 배포 확인: 새 필드로 저장→재열기→SSO 전송→DB 메일 확인→Spring/LIMS 테스트 메일 수신 순서로 검증한다. 실제 발송 테스트 전 수신자를 확인한다.
 
+#### 개인 주소록 (Edge 편집 화면 공통)
+
+- 안내 메일의 `주소록`에서 이름·부서·`@rist.re.kr` 이메일을 관리한다. 회원당 최대 500명이며 이름·부서·이메일 검색과 50개 단위 목록, 다중 선택으로 CC/BCC에 추가한다. To 변경 기능은 제공하지 않는다.
+- `GET /api/v1/report-mail/contacts` → `{"revision":0,"contacts":[]}`. 같은 경로의 `POST` 본문은 `{"revision":0,"contact":{"name":"김연구","department":"분석실","email":"research@rist.re.kr"}}`이다. 수정은 `PUT /api/v1/report-mail/contacts/{id}`로 같은 본문, 삭제는 `DELETE /api/v1/report-mail/contacts/{id}`로 `{"revision":1}`을 보낸다. 성공 응답은 갱신된 전체 주소록이며 ID는 서버가 생성한다.
+- 활성 실험 회원 인증이 필요하다. 회원 ID는 세션에서만 결정한다. 변경 요청은 동일 출처와 `X-Requested-With: RIST-Mail-Editor`를 요구한다. 다른 회원의 주소록 조회·수정은 제공하지 않는다.
+- 이메일 중복(대소문자 무관), RIST 외 도메인, 복수 주소 등록은 거부한다. 오래된 revision은 409로 반환하며 새로고침 후 다시 저장해야 한다. 서버 파일 잠금과 원자적 교체로 동시 저장 손실을 방지한다.
+- 주소록은 `RIST_STORAGE_ROOT/user-mail-address-books/`에 계정별 비공개 파일로 저장한다. DB 스키마 변경은 없다. 저장 폴더는 서버 백업에 포함하며 수신자용 보고서/ZIP에는 넣지 않는다. 주소 관리·삭제는 기존 보고서의 CC/BCC나 본문에 영향을 주지 않는다. Spring은 주소록을 직접 읽지 않고 선택 후 검증된 `email.cc/bcc`를 사용한다.
+
 #### 이미지·표 및 메일 MIME 계약 (schemaVersion 2)
 
 - 편집 초안의 `deliveryEmail.bodyHtml`(XRD: `email.delivery.bodyHtml`)과 다운로드용 `email_body.html`은 `data:image/...;base64,...`를 포함하는 독립 HTML이다. 추가 이미지 파일이나 외부 URL 없이 열 수 있다. XRD 패키지는 기존 최소 구성대로 별도 메일 파일을 넣지 않는다.

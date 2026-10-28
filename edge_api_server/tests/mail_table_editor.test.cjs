@@ -3,7 +3,7 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs'),path=require('node:path');
 const {JSDOM}=require('jsdom');
 const babel=require('@babel/core');
-const source=['mail_editor_icons.js','mail_table_editor.js','mail_editor.js'].map(n=>fs.readFileSync(path.join(__dirname,'../app/xrd_workbench/web/shared',n),'utf8')).join('\n');
+const source=['mail_editor_icons.js','mail_table_editor.js','mail_address_book.js','mail_editor.js'].map(n=>fs.readFileSync(path.join(__dirname,'../app/xrd_workbench/web/shared',n),'utf8')).join('\n');
 const programs={native:source,fallback:babel.transformSync(source,{configFile:false,babelrc:false,presets:[[require('@babel/preset-env'),{targets:{chrome:'49'},forceAllTransforms:true,modules:false}]]}).code};
 function setup(t,mode){
   const dom=new JSDOM('<div id="toolbar"></div><div id="rich" contenteditable="true"><table><tbody><tr><td><p>A</p></td><td>B</td></tr><tr><td>C</td><td>D</td></tr></tbody></table></div>',{runScripts:'outside-only',pretendToBeVisual:true});
