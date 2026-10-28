@@ -64,12 +64,11 @@ def assert_flat(content):
             if name.startswith('ppt/slides/slide') and name.endswith('.xml'):
                 slide = E.fromstring(archive.read(name))
                 assert not slide.findall('.//a:tbl', NS)
-                if slide.get('show') == '0':
-                    assert slide.find('.//p:oleObj', NS) is not None
-                    assert all('자료' in text or '보고서' in text for text in slide.xpath('.//a:t/text()', namespaces=NS))
-                else:
-                    assert not slide.findall('.//a:t', NS)
-                    assert len(slide.findall('.//p:pic', NS)) == 1
+                assert slide.get('show', '1') == '1'
+                assert not slide.findall('.//a:t', NS)
+                assert len(slide.findall('p:cSld/p:spTree/p:pic', NS)) == 1
+                # Other pictures are icons inside the in-place attachment buttons.
+                assert len(slide.findall('.//p:pic', NS)) == 1 + len(slide.findall('.//p:oleObj', NS))
     return presentation
 
 
@@ -114,6 +113,7 @@ def test_password_protected_ppt_is_native_and_identical_in_html_and_zip(report):
     assert not verifier(native)
     delivered = render_report_pptx(project, doc, source, delivery=True)
     assert matches('XRD-검토!', verifier(delivered))
+    assert len(Presentation(io.BytesIO(delivered)).slides) == len(Presentation(io.BytesIO(native)).slides)
     assert not any(ppt_click_targets_by_slide(delivered).values())
     assert any(ppt_click_targets_by_slide(native).values())
     with ZipFile(io.BytesIO(delivered)) as archive:

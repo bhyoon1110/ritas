@@ -15,7 +15,7 @@ from app.xrd_workbench.core.project import build_project
 from app.xrd_workbench.core.report import new_document
 from app.xrd_workbench.render import offline_pptx
 from app.xrd_workbench.render.ole_package import package_file
-from app.xrd_workbench.render.posco_pptx import render_report_pptx, NS, MM
+from app.xrd_workbench.render.posco_pptx import render_report_pptx, NS
 from app.xrd_workbench.render.link_audit import ppt_click_targets
 from .synthetic import sample_files
 
@@ -88,7 +88,7 @@ def test_every_linked_original_and_each_independent_viewer_are_embedded(inputs, 
     assert not ppt_click_targets(delivered)
 
 
-def test_office_object_model_recognizes_slide_jumps_and_embedded_files(delivered):
+def test_office_object_model_recognizes_direct_embedded_buttons_without_slide_jumps(delivered):
     from pptx import Presentation
     from pptx.enum.action import PP_ACTION
     from pptx.enum.shapes import MSO_SHAPE_TYPE
@@ -103,25 +103,32 @@ def test_office_object_model_recognizes_slide_jumps_and_embedded_files(delivered
                 assert shape.ole_format.prog_id == 'Package'
                 assert unpack_file(shape.ole_format.blob)[1]
                 counts['files'] += 1
-    assert counts['jumps'] > 10 and counts['files'] > 5
+    assert counts['jumps'] == 0 and counts['files'] > 5
 
 
-def test_missing_embedded_file_or_internal_slide_fails_audit(delivered):
+def test_missing_or_empty_embedded_file_fails_audit(delivered):
     with ZipFile(io.BytesIO(delivered)) as original:
-        for missing in ['ppt/embeddings/xrdAttachment1.bin', 'ppt/slides/slide7.xml']:
+        for empty in [False, True]:
+            missing = 'ppt/embeddings/xrdAttachment1.bin'
             output = io.BytesIO()
             with ZipFile(output, 'w') as changed:
                 for name in original.namelist():
                     if name != missing: changed.writestr(name, original.read(name))
+                    elif empty: changed.writestr(name, b'')
             with pytest.raises(ValueError, match='PPT 내부'):
                 ppt_click_targets(output.getvalue())
 
 
-def test_main_links_resolve_to_right_embedded_attachment_and_preview_layout_is_inside_slide(inputs, delivered):
+def test_main_buttons_open_exact_files_in_place_without_adding_any_slides(inputs, delivered):
     native = render_report_pptx(*inputs)
     from app.xrd_workbench.render.link_audit import ppt_click_targets_by_slide
     expected = ppt_click_targets_by_slide(native)
-    with ZipFile(io.BytesIO(delivered)) as z:
+    with ZipFile(io.BytesIO(delivered)) as z, ZipFile(io.BytesIO(native)) as source:
+        source_parts = {n for n in source.namelist() if re.fullmatch(r'ppt/slides/slide\d+\.xml', n)}
+        assert {n for n in z.namelist() if re.fullmatch(r'ppt/slides/slide\d+\.xml', n)} == source_parts
+        assert z.read('ppt/presentation.xml') == source.read('ppt/presentation.xml')
+        assert not any('xrd-appendix' in n for n in z.namelist())
+        assert len([n for n in z.namelist() if n.startswith('ppt/embeddings/xrdAttachment')]) == len({target for values in expected.values() for target in values})
         size = E.fromstring(z.read('ppt/presentation.xml')).find('p:sldSz', NS)
         width, height = int(size.get('cx')), int(size.get('cy'))
         for path, old in expected.items():
@@ -130,15 +137,16 @@ def test_main_links_resolve_to_right_embedded_attachment_and_preview_layout_is_i
             rels = {r.get('Id'):r for r in E.fromstring(z.read('ppt/slides/_rels/'+posixpath.basename(path)+'.rels'))}
             clicks = slide.findall('.//a:hlinkClick', NS)
             assert len(clicks) == len(old)
+            originals = E.fromstring(source.read(path)).findall('.//a:hlinkClick', NS)
             for click, target in zip(clicks, old):
-                rel = rels[click.get('{'+NS['r']+'}id')]
-                assert rel.get('Type') == NS['r']+'/slide' and rel.get('TargetMode') is None
-                part = 'ppt/slides/'+rel.get('Target')
-                preview = E.fromstring(z.read(part))
-                assert preview.get('show') == '0'
-                obj = preview.find('.//p:oleObj', NS)
-                relationships = {r.get('Id'):r for r in E.fromstring(z.read('ppt/slides/_rels/'+posixpath.basename(part)+'.rels'))}
-                attachment = relationships[obj.get('{'+NS['r']+'}id')].get('Target')
+                assert click.get('action') == 'ppaction://ole?verb=0'
+                assert click.get('{'+NS['r']+'}id') == ''
+                frame = click.getparent().getparent().getparent()
+                assert frame.tag == '{'+NS['p']+'}graphicFrame'
+                obj = frame.find('.//p:oleObj', NS)
+                rel = rels[obj.get('{'+NS['r']+'}id')]
+                assert rel.get('Type') == NS['r']+'/oleObject' and rel.get('TargetMode') is None
+                attachment = rel.get('Target')
                 name, data = unpack_file(z.read(posixpath.normpath('ppt/slides/'+attachment)))
                 from urllib.parse import unquote
                 if target.startswith(('Report/', 'Measured%20Data/')):
@@ -148,13 +156,16 @@ def test_main_links_resolve_to_right_embedded_attachment_and_preview_layout_is_i
                 else:
                     assert name == '전체 비교 그래프.html'
                 assert data
-        for path in z.namelist():
-            if not re.fullmatch(r'ppt/slides/slide\d+\.xml', path): continue
-            slide = E.fromstring(z.read(path))
-            if slide.get('show') != '0': continue
-            for xf in slide.findall('.//a:xfrm', NS) + slide.findall('.//p:xfrm', NS):
+            for click, original in zip(clicks, originals):
+                frame = click.getparent().getparent().getparent()
+                original_shape = original
+                while original_shape.getparent().tag != '{'+NS['p']+'}spTree': original_shape = original_shape.getparent()
+                old_xf = original_shape.find('p:spPr/a:xfrm', NS)
+                if old_xf is None: old_xf = original_shape.find('p:xfrm', NS)
+                xf = frame.find('p:xfrm', NS)
                 start, extent = xf.find('a:off', NS), xf.find('a:ext', NS)
-                if start is None or extent is None: continue
+                assert dict(start.attrib) == dict(old_xf.find('a:off', NS).attrib)
+                assert dict(extent.attrib) == dict(old_xf.find('a:ext', NS).attrib)
                 assert 0 <= int(start.get('x')) <= width-int(extent.get('cx'))+1
                 assert 0 <= int(start.get('y')) <= height-int(extent.get('cy'))+1
 

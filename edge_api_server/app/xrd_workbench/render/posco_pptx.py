@@ -528,7 +528,7 @@ def render_report_pptx(project, document, resolve_source, *, pages=None, link_ba
     document = validate_document(project, document)
     if delivery:
         # Recipient PPTs must work when detached from the server and the ZIP.
-        # Canonical local targets are converted to internal slides + OLE files below.
+        # Canonical local targets become embedded OLE buttons on these same pages.
         link_base = storage_id = None
     paths = package_paths(project)
     custom_template = bool(load_settings().pptx_template)
@@ -569,17 +569,18 @@ def render_report_pptx(project, document, resolve_source, *, pages=None, link_ba
     check_ppt_links(content, expected, expected_pages)
     from ...report.pptx_protection import validate_protection, protect_pptx
     protection = validate_protection(document.get('pptxProtection'))
-    if delivery and not protection:
+    if delivery and (not protection or include_sources):
         from .delivery_pptx import flatten_pptx, custom_template_pdf
         from .posco_preview import deck_pages
         from .pdf import render_pdf
         pdf = custom_template_pdf(content) if custom_template else render_pdf(deck_pages(deck), document)
-        content = flatten_pptx(content, pdf)
-        check_ppt_links(content, expected, expected_pages)
+        if not protection:
+            content = flatten_pptx(content, pdf)
+            check_ppt_links(content, expected, expected_pages)
     if delivery and include_sources:
         from .offline_pptx import make_offline
         content = make_offline(content, project, document, resolve_source,
-                               viewer_state=viewer_state, views=views)
+                               preview_pdf=pdf, viewer_state=viewer_state, views=views)
     if delivery and protection:
         # Apply after embedding; keep native report objects so a correct modify
         # password enables editing without requiring a password to read the PPT.
