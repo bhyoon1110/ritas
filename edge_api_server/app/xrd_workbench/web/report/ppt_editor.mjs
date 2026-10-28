@@ -17,9 +17,15 @@ export function mountPptEditor({host,document:documentValue,changed,linked,messa
   const sidebar=new window.RistPageSidebar({select:i=>show(i,true),move:reorder,changed:availability,step:move});
   const canvas=new window.RistCanvasEditor({changed:()=>{documentValue().canvasEdits=canvas.value();changed();},
     mode:value=>{canvasMode=value;el('edit-regions').hidden=value;},message,upload,editing});
+  let templateLayout=null,templatePending=true;
+  const templateHost=window.document.createElement('div');
+  el('canvas-tools').parentNode.insertBefore(templateHost,el('canvas-tools'));
+  const templates=new window.RistPptTemplates.Manager({host:templateHost,experiment:'XRD',
+    layout:()=>templateLayout,state:()=>canvas.value(),apply:edits=>canvas.applyStyles(edits)});
   function availability(){
     const blocked=locked||pending||!pages.length, selected=sidebar.selectedIds();
     canvas.lock(blocked);sidebar.lock(blocked,locked);
+    templates.lock(blocked||rendering||templatePending);
     el('page-add').disabled=blocked||(edits().added||[]).length>=50||pages.length>=200;
     el('page-delete').disabled=blocked||!selected.length||selected.length>=pages.length;
     el('page-restore').disabled=locked||pending||!(edits().hidden||[]).length;
@@ -92,6 +98,7 @@ export function mountPptEditor({host,document:documentValue,changed,linked,messa
   return {
     load(){canvas.load(documentValue().canvasEdits||{});},
     accept(value){
+      templateLayout=value;templatePending=false;
       const selected=sidebar.selectedIds(),current=nextId||(pages[index]||{}).id;
       pages=value.pages||[];pending=false;el('ppt-page').textContent='';
       if(!pages.length){imagePending=false;imageSequence++;progress.stop();el('slide-image').removeAttribute('src');el('page-status').textContent='표시할 PPT 페이지가 없습니다.';}
@@ -103,7 +110,8 @@ export function mountPptEditor({host,document:documentValue,changed,linked,messa
     },
     lock(value){locked=value;if(documentValue())availability();},
     locate(target){const at=pages.findIndex(p=>(p.targets||[]).some(r=>r.target.tab===target.tab&&(!target.field||r.target.field===target.field)));if(at>=0)show(at);},
-    rendering(value){rendering=value;if(value)progress.start('PPT 미리보기 생성 중…');else if(!imagePending)progress.stop();},
+    invalidateTemplates(){templatePending=true;templates.lock(true);},
+    rendering(value){rendering=value;if(value)progress.start('PPT 미리보기 생성 중…');else if(!imagePending)progress.stop();templates.lock(locked||pending||value||templatePending||!pages.length);},
     failed(message){rendering=false;pending=false;progress.stop();if(message)el('page-status').textContent=message;if(documentValue())availability();}
   };
 }

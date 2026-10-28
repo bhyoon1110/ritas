@@ -29,6 +29,7 @@ def test_pages_objects_images_and_restore_survive_repeated_revisions(report):
     source_bytes = h.job.pptx_path.read_bytes()
     model = h.client.get(h.url+'/editor-data').json()['document']
     layout = h.client.get(h.url+'/edit-layout').json()
+    assert all(len(p['templateKey'])==64 for p in layout['pages'] if not p['id'].startswith('added-'))
     assert layout['pageEditing'] and layout['canvasEditing']
     ids = [p['id'] for p in layout['pages']]
     assert len(set(ids)) == 4

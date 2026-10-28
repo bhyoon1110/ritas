@@ -27,6 +27,7 @@
   var refs = {}, variables = [], layoutSequence = 0, canvas = null;
   var mailEditor = null;
   var pptxPassword = null;
+  var pptTemplates = null, pptLayout = null;
   var pageEdits = {hidden:[],added:[]}, pageFields = [], pageBox = null, pageEditing = false, structureDirty = false, layoutReady = false, layoutStructure = "";
   var deletedPageGroups=[];
   var labels = {requestNumber:"의뢰번호",limsExperimentCode:"실험코드",equipmentCode:"실험장비",operatorId:"실험자"};
@@ -39,6 +40,7 @@
     onReorder:reorderPages,
     onSelection:pageAvailability,onMoveSelection:moveSelectedPages,
     onLayout:function (value) {
+      pptLayout = value;
       pageEditing = value.pageEditing === true;
       document.getElementById("page-actions").hidden = !pageEditing;
       document.getElementById("page-selection-help").hidden = !pageEditing;
@@ -60,6 +62,12 @@
       xhr.onerror=xhr.ontimeout=function(){complete(new Error("이미지 업로드 연결이 끊겼습니다. 다시 첨부하세요."));};xhr.send(file);
     }
   });
+  if(canvas && window.RistPptTemplates){
+    var templateHost=document.createElement("div"),canvasHost=document.getElementById("canvas-tools");
+    canvasHost.parentNode.insertBefore(templateHost,canvasHost);
+    pptTemplates=new window.RistPptTemplates.Manager({host:templateHost,experiment:project.replace("-",""),
+      layout:function(){return pptLayout;},state:function(){return canvas.value();},apply:function(edits){return canvas.applyStyles(edits);}});
+  }
   if(workflow && canvas && window.RistSavedGraphs) new window.RistSavedGraphs({
     canvas:canvas,job:function(){return currentId;},message:message
   });
@@ -94,6 +102,7 @@
     if (pptxPassword) pptxPassword.lock(busy || sending || !!activeRevision);
     direct.lock(sending);
     if(canvas)canvas.lock(busy||sending||!!activeRevision||structureDirty);
+    if(pptTemplates)pptTemplates.lock(busy||sending||dirty||!!activeRevision||structureDirty||!layoutReady);
     pageAvailability();
     if (workflow) window.parent.postMessage({type:"rist-workflow-editor-state", jobId:currentId,
       ready:!!model, busy:busy || dirty || !!activeRevision}, window.location.origin);
@@ -519,6 +528,7 @@
   function refreshPreview() {
     var seq = ++layoutSequence, id = currentId, savedStructure = structure(JSON.parse(saved).pageEdits);
     layoutReady = false; pageAvailability(); direct.loading();
+    if(pptTemplates)pptTemplates.lock(true);
     if(canvas)canvas.loading();
     document.getElementById("recipient-preview").href = url(id,"/preview");
     request(url(id,"/edit-layout"),"GET",null,function (error,value) {

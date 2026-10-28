@@ -1,6 +1,6 @@
 const {test}=require('node:test'), assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
 const {JSDOM}=require('jsdom'),acorn=require('acorn');
-const script=['report_editor_icons.js','report_cell_editor.js','report_canvas_editor.js'].map(name=>fs.readFileSync(path.join(__dirname,'../app',name),'utf8')).join('\n');
+const script=['report_editor_icons.js','report_cell_editor.js','report_canvas_editor.js','report_ppt_templates.js'].map(name=>fs.readFileSync(path.join(__dirname,'../app',name),'utf8')).join('\n');
 const babel=require('@babel/core');
 const programs={native:script,fallback:babel.transformSync(script,{configFile:false,babelrc:false,presets:[[require('@babel/preset-env'),{targets:{chrome:'49'},forceAllTransforms:true,modules:false}]]}).code};
 function setup(t, upload, mode='native'){
@@ -14,6 +14,14 @@ function setup(t, upload, mode='native'){
   button('자유 편집 켜기').click();return {w,d,api,button,field,set,item,changes:()=>changes,modes};
 }
 for(const mode of Object.keys(programs)){
+  test(mode+': template formatting is a single undoable edit and preserves current content',t=>{
+    const h=setup(t,null,mode);h.api.load({page1:[{id:h.item.id,text:'현재 보고서',color:'#112233'}]});
+    assert.equal(h.api.applyStyles({page1:[{id:h.item.id,kind:'text',fontSize:28,color:'#339955'}]}),true);
+    assert.equal(h.api.value().page1[0].text,'현재 보고서');assert.equal(h.api.value().page1[0].fontSize,28);
+    h.button('개체 실행 취소').click();assert.equal(h.api.value().page1[0].fontSize,undefined);assert.equal(h.api.value().page1[0].color,'#112233');
+    h.button('개체 다시 실행').click();assert.equal(h.api.value().page1[0].fontSize,28);
+    h.api.lock(true);assert.equal(h.api.applyStyles({page1:[{id:h.item.id,fontSize:30}]}),false);assert.equal(h.api.value().page1[0].fontSize,28);
+  });
   function tableSetup(t){
     const h=setup(t,null,mode);h.item={...h.item,kind:'table',cells:[
       {row:0,col:0,x:0,y:0,w:1,h:.5,text:'병합 머리글'},

@@ -659,7 +659,7 @@ def bootstrap():
 
 @router.get('/ppt-tools/{name}', include_in_schema=False)
 def ppt_tools(name: str):
-    shared={'report_editor_icons.js','report_page_sidebar.js','report_cell_editor.js','report_canvas_editor.js','report_ppt_tools.css'}
+    shared={'report_editor_icons.js','report_page_sidebar.js','report_cell_editor.js','report_canvas_editor.js','report_ppt_templates.js','report_ppt_tools.css'}
     if name=='report_ppt_tools.legacy.css': name='report_ppt_tools.css'
     if name not in shared: raise HTTPException(404, '편집 도구를 찾을 수 없습니다.')
     return FileResponse(Path(__file__).parents[1]/name, headers=NO_STORE)
@@ -675,7 +675,7 @@ def web_asset(asset_path: str, request: Request):
         if path.name == 'report.html':
             content=content.replace('</head>','<link rel="stylesheet" href="/ppt-tools/report_ppt_tools.css"></head>')
             scripts=''.join('<script src="/ppt-tools/'+name+'"></script>' for name in
-                ('report_editor_icons.js','report_page_sidebar.js','report_cell_editor.js','report_canvas_editor.js'))
+                ('report_editor_icons.js','report_page_sidebar.js','report_cell_editor.js','report_canvas_editor.js','report_ppt_templates.js'))
             content=content.replace('<script type="module"',scripts+'<script type="module"',1)
         content = re.sub(r'(href|src)="/', lambda m: m[1] + '="' + BASE + '/', content)
         content = content.replace('<head>', '<head>' + file_progress_html() + '<script src="' + BASE + '/bootstrap.js"></script>')

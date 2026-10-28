@@ -1,0 +1,32 @@
+const assert=require('node:assert/strict'),path=require('node:path');
+module.exports=async function({page,url,kind,save,pptState,pptPage,pptObject,doc,draft,output,name}){
+  const create=()=>page.getByRole('button',{name:'현재 PPT 서식을 새 템플릿으로 저장',exact:true});
+  const ready=()=>page.waitForFunction(()=>{const b=document.querySelector('[aria-label="현재 PPT 서식을 새 템플릿으로 저장"]');return b&&!b.disabled;});
+  const open=async()=>{await page.goto(url);await page.locator('.ppt-template-manager summary').click();await ready();};
+  const choose=async()=>{await page.getByLabel('PPT 템플릿 선택',{exact:true}).selectOption(pptState.items[0].id);await page.getByRole('button',{name:'양식 적용',exact:true}).waitFor();await page.waitForFunction(()=>document.querySelector('[aria-label="PPT 템플릿 이름"]').value==='검토 양식');};
+  await open();await page.getByLabel('PPT 템플릿 이름',{exact:true}).fill('검토 양식');await create().click();
+  await page.waitForFunction(()=>!document.querySelector('[aria-label="선택한 템플릿을 현재 PPT 서식으로 덮어쓰기"]').disabled);
+  assert.equal(pptState.items.length,1);const item=pptState.items[0];
+  assert.equal(item.content.experiment,kind.toUpperCase());assert.equal(item.content.pages[0].objects[0].fontSize,28);
+  assert(!/"(?:text|asset)":/.test(JSON.stringify(item.content)));
+  // A different report keeps its data while loading the saved formatting.
+  doc().canvasEdits={[pptPage]:[{id:pptObject,text:'새 분석 결과'}]};
+  const review=async()=>{if(kind!=='xrd')await save();await ready();};
+  const current=()=>kind==='xrd'?draft():doc();
+  await open();await choose();await page.getByRole('button',{name:'양식 적용',exact:true}).click();await review();
+  let patch=current().canvasEdits[pptPage][0];assert.equal(patch.text,'새 분석 결과');assert.equal(patch.fontSize,28);assert.equal(patch.color,'#115577');
+  await page.locator('#canvas-toggle').click();await page.getByRole('button',{name:'개체 실행 취소',exact:true}).click();await review();
+  patch=current().canvasEdits[pptPage][0];assert.equal(patch.text,'새 분석 결과');assert.equal(patch.fontSize,undefined);
+  await page.getByRole('button',{name:'개체 다시 실행',exact:true}).click();await save();await ready();
+  await page.getByLabel('PPT 템플릿 이름',{exact:true}).fill('수정한 양식');await page.getByRole('button',{name:'선택한 템플릿을 현재 PPT 서식으로 덮어쓰기',exact:true}).click();
+  await page.waitForFunction(()=>document.querySelector('[aria-label="PPT 템플릿 선택"]').selectedOptions[0].textContent==='수정한 양식');
+  await page.locator('.ppt-template-manager').screenshot({path:path.join(output,name+'-ppt-template.png')});
+  await page.setViewportSize({width:390,height:844});
+  if(kind==='xrd')await page.locator('[data-work-view="preview"]').click();
+  if(await page.locator('#page-sidebar-close').isVisible())await page.locator('#page-sidebar-close').click();
+  await page.locator('.ppt-template-manager').scrollIntoViewIfNeeded();
+  assert(await page.locator('.ppt-template-manager').evaluate(e=>e.scrollWidth<=e.clientWidth+2));
+  await page.locator('.ppt-template-manager').screenshot({path:path.join(output,name+'-ppt-template-mobile.png')});
+  await page.getByRole('button',{name:'선택한 PPT 템플릿 삭제',exact:true}).click();await page.waitForFunction(()=>document.querySelector('[aria-label="PPT 템플릿 선택"]').options.length===1);
+  assert.equal(pptState.items.length,0);assert.equal(doc().canvasEdits[pptPage][0].fontSize,28);
+};

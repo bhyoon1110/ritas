@@ -74,6 +74,7 @@ def test_editor_api_upload_draft_save_reload_export_and_owner_boundary(tmp_path)
     response=client.post(url+'/draft-preview',json={'document':doc,'format':'editor'})
     assert response.status_code==200,response.text
     value=response.json(); assert value['pageEditing'] and value['canvasEditing']
+    assert all(len(p['templateKey'])==64 for p in value['pages'])
     page=value['pages'][0];assert base64.b64decode(page['image'].split(',')[1]).startswith(b'\x89PNG')
     doc['canvasEdits']={page['id']:[dict(id='object-test',kind='image',asset=asset,x=.1,y=.3,w=.2,h=.2)]}
     response=client.put(url,json={'document':doc,'expected_revision':0});assert response.status_code==200,response.text

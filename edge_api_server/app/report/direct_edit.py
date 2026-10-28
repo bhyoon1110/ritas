@@ -119,6 +119,11 @@ def edit_pages(document, pptx_path):
                           "legacyTableLayout": bool(payload.get("legacyTableLayout")),
                           # Use the actual archive, including older shape-based reports.
                           "objects": [item for _, item in objects({"xml": ET.tostring(root, encoding="unicode")})[1]]})
+    from .template_styles import layout_key
+    for page, payload in zip(pages, payloads):
+        meta = payload.get('editing', {})
+        if meta.get('kind') != 'added':
+            page['templateKey'] = layout_key([meta.get('kind'), meta.get('sectionId')], page['objects'])
     return {"pages": pages, "ratio": width / height, "pageEditing": True, "canvasEditing": True}
 
 

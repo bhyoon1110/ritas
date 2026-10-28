@@ -301,6 +301,14 @@
     return {
       load:function(value){cellEditor.close(false);state=copy(value||{});undo=[];redo=[];selected=null;},
       value:function(){return copy(state);},
+      applyStyles:function(edits){
+        if(locked||loading||!capable)return false;
+        var next=window.RistPptTemplates.merge(state,edits),count=0,invalid=false;
+        Object.keys(next).forEach(function(id){count+=next[id].length;if(next[id].length>100)invalid=true;
+          next[id].forEach(function(o){if((o.tableCells||[]).length>200)invalid=true;});});
+        if(invalid||count>500){options.message("현재 보고서의 개체 편집 한도를 초과해 양식을 적용하지 않았습니다.",true);return false;}
+        abort();cellEditor.close(false);begin();state=next;finish();draw();return true;
+      },
       layout:function(value){capable=value.canvasEditing===true;pages=value.pages||[];ratio=value.ratio||16/9;host.hidden=!capable;modeButton.hidden=!capable;modeButton.setAttribute("aria-expanded",String(enabled&&capable));loading=false;},
       page:function(value){abort();if(!page||!value||page.id!==value.id){cellEditor.close(false);selected=null;}page=value;body.hidden=!enabled;draw();cellEditor.position();},
       lock:function(value){locked=value;if(value){abort();cellEditor.close(false);}availability();},

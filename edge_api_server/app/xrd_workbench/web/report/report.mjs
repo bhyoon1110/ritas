@@ -191,6 +191,7 @@ function status(text, error = false) {
 }
 function markDirty() {
   dirty = true;
+  pptEditor.invalidateTemplates();
   mailEditor.refreshRecipient();
   updateEmailStatus();
   if(!composing)draftSaver.schedule();

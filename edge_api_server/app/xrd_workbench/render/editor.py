@@ -156,6 +156,9 @@ def preview(project, document, resolve_source, *, storage_id, image_renderer, as
     total=0
     for page,data in zip(pages,page_images(render_pdf(pages,document),max_edge=1100)):
         item=dict(id=page['id'],title=page.get('navigation_title') or page['title'],regions=[],objects=page['objects'])
+        if editable and not page['id'].startswith('added-'):
+            from ...report.template_styles import layout_key
+            item['templateKey'] = layout_key(page.get('kind'), page['objects'])
         item['targets']=[dict(x=v['x']/page['width'],y=v['y']/page['height'],w=v['w']/page['width'],h=v['h']/page['height'],target=v['edit'])
                          for v in page['items'] if v.get('edit')]
         total+=len(data)

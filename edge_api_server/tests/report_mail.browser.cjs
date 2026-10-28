@@ -24,9 +24,27 @@ const port=new Promise((resolve,reject)=>{let s='';server.stdout.on('data',chunk
       else {doc.transfer.equipmentCode='EQ-TEST';doc.sections=[{sectionId:'summary',heading:'분석 결과',paragraphs:['검토한 분석 결과'],bullets:[],rows:null,columns:null}];}
       let addressBook={revision:0,contacts:[]},sharedBook={revision:0,contacts:[]},manageShared=true;
       let signatureBook=null,templates={revision:0,items:[]};
+      const pptTest=!!process.env.RIST_PPT_TEMPLATE_TEST,pptState={revision:0,items:[]},pptPage='generated-'+'a'.repeat(20)+'-0',pptObject='shape-'+'b'.repeat(20);
+      let pptDraft=null;
+      if(pptTest)doc.canvasEdits={[pptPage]:[{id:pptObject,fontSize:28,color:'#115577'}]};
+      const pptLayout=()=>({canvasEditing:true,pageEditing:true,ratio:16/9,pages:[{id:pptPage,templateKey:'c'.repeat(64),title:'표지',regions:[],targets:[],
+        image:'data:image/svg+xml;base64,'+Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="800" height="450"><rect width="800" height="450" fill="white"/></svg>').toString('base64'),
+        objects:[{id:pptObject,name:'Report title',kind:'text',text:doc.title||doc.metadata.report_title,x:.1,y:.2,w:.7,h:.2,fontSize:24,color:'#172B4D'}]}]});
       await page.route('**/*',async route=>{
         const r=route.request(),url=new URL(r.url()),p=url.pathname;
         const json=(data,status=200)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(data)});
+        if(p.startsWith('/api/v1/report-ppt/templates')){
+          const id=p.split('/templates/')[1],item=pptState.items.find(i=>i.id===id);let selectedId=id;
+          if(r.method()!=='GET'){
+            const v=r.postDataJSON();assert.equal(v.revision,pptState.revision);
+            if(r.method()==='POST'){selectedId='ppt-'+pptState.revision;pptState.items.push({id:selectedId,content:v.content});}
+            else if(r.method()==='PUT')item.content=v.content;
+            else pptState.items=pptState.items.filter(i=>i.id!==id);
+            pptState.revision++;
+          }
+          if(r.method()==='GET'&&id)return json({...item,revision:pptState.revision});
+          return json({revision:pptState.revision,selectedId,items:pptState.items.map(i=>({id:i.id,name:i.content.name,experiment:i.content.experiment}))});
+        }
         if(p.startsWith('/api/v1/report-mail/templates')){
           const id=p.split('/templates/')[1],item=templates.items.find(i=>i.id===id);let selectedId=id;
           if(r.method()!=='GET'){
@@ -77,7 +95,7 @@ const port=new Promise((resolve,reject)=>{let s='';server.stdout.on('data',chunk
             let html=fs.readFileSync(path.join(web,'report.html'),'utf8').replace('<script type="module" src="/shared/shell.mjs"></script>','');
             // Match the shared tools injected by integration.web_asset in the deployed app.
             html=html.replace('</head>','<link rel="stylesheet" href="/ppt-tools/report_ppt_tools.css"></head>');
-            const scripts=['report_editor_icons.js','report_page_sidebar.js','report_cell_editor.js','report_canvas_editor.js'].map(n=>'<script src="/ppt-tools/'+n+'"></script>').join('');
+            const scripts=['report_editor_icons.js','report_page_sidebar.js','report_cell_editor.js','report_canvas_editor.js','report_ppt_templates.js'].map(n=>'<script src="/ppt-tools/'+n+'"></script>').join('');
             html=html.replace('<script type="module"',scripts+'<script type="module"');
             html=html.replace('<head>','<head><script src="/ppt-tools/file_progress.js"></script>');
             if(legacy)html=html.replace('<script type="module" src="/report/report.mjs"></script>','<script src="/report/report.legacy.js"></script>').replace(/\.css"/g,'.legacy.css"');
@@ -93,7 +111,7 @@ const port=new Promise((resolve,reject)=>{let s='';server.stdout.on('data',chunk
           if(p==='/api/presets')return json([]);
           if(p.endsWith('/draft'))return json({revision:1,document:null});
           if(p.endsWith('/draft/clear'))return json({revision:2,document:null});
-          if(p.endsWith('/draft-preview'))return json({});
+          if(p.endsWith('/draft-preview')){if(pptTest)pptDraft=r.postDataJSON().document;return json(pptTest?pptLayout():{});}
           if(p.endsWith('/checklist'))return json({samples:[],summary:{blockers:0,warnings:0}});
           if(p==='/api/reports/sample'){
             if(r.method()==='PUT'){doc=r.postDataJSON().document;doc.revision++;return json(doc);}
@@ -101,7 +119,7 @@ const port=new Promise((resolve,reject)=>{let s='';server.stdout.on('data',chunk
           }
         }else if(p.startsWith('/api/v1/')){
           if(p.endsWith('/editor-data'))return json({document:doc});
-          if(p.endsWith('/edit-layout'))return json({ratio:16/9,pages:[{id:'cover',title:'표지',regions:[]}],pageEditing:true,canvasEditing:true});
+          if(p.endsWith('/edit-layout'))return json(pptTest?pptLayout():{ratio:16/9,pages:[{id:'cover',title:'표지',regions:[]}],pageEditing:true,canvasEditing:true});
           if(p.includes('/edit-slides/'))return route.fulfill({contentType:'image/svg+xml',body:'<svg xmlns="http://www.w3.org/2000/svg" width="800" height="450"><rect width="800" height="450" fill="white"/></svg>'});
           if(p.endsWith('/revisions')){doc=r.postDataJSON();return json({jobId:'revision'+(++revision),status:'completed'});}
           return json({jobId:'revision'+revision,status:'completed'});
@@ -111,6 +129,13 @@ const port=new Promise((resolve,reject)=>{let s='';server.stdout.on('data',chunk
       const url=origin+(kind==='xrd'?'/__test__/xrd-editor?project=sample':'/__test__/request-editor/'+kind);
       async function open(){await page.goto(url);if(kind==='xrd')await page.locator('[data-tab="email"]').click();await page.getByLabel('수신자 이름',{exact:true}).waitFor();}
       async function save(){if(kind==='xrd'){await Promise.all([page.waitForResponse(r=>new URL(r.url()).pathname==='/api/reports/sample'&&r.request().method()==='PUT'),page.locator('#save').click()]);await page.waitForFunction(()=>/저장했습니다/.test(document.getElementById('status').textContent)&&!document.getElementById('save').disabled);}else await page.waitForFunction(()=>/자동 저장 완료/.test(document.getElementById('status').textContent));}
+      if(pptTest){
+        try{
+          await require('./ppt_template_browser_checks.cjs')({page,url,kind,save,pptState,pptPage,pptObject,doc:()=>doc,draft:()=>pptDraft,output,name});
+          assert.deepEqual(errors,[]);console.log(name+': PPT template CRUD/apply/undo, existing data and mobile layout passed');
+        }catch(error){await page.screenshot({path:path.join(output,name+'-failure.png'),fullPage:true});throw error;}finally{await context.close();}
+        continue;
+      }
       try{
         await open();
         assert(await page.locator('.mail-compose .mail-toolbar button').evaluateAll(list=>list.filter(b=>!b.closest('.mail-table-grid')).every(b=>b.classList.contains('mail-icon-button')&&b.textContent===''&&b.title===b.getAttribute('aria-label')&&b.querySelector('svg[aria-hidden="true"]'))));

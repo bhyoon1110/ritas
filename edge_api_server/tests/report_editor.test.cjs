@@ -6,7 +6,7 @@ const {JSDOM}=require('jsdom');
 const acorn=require('acorn');
 const {execFileSync}=require('node:child_process');
 const clone=x=>JSON.parse(JSON.stringify(x));
-const script=['xrd_workbench/web/shared/pptx_password.js','file_save.js','report_editor_icons.js','report_page_sidebar.js','report_cell_editor.js','report_direct_editor.js','report_canvas_editor.js','report_saved_graphs.js','report_condition_options.js','xrd_workbench/web/shared/mail_editor_icons.js','xrd_workbench/web/shared/mail_table_editor.js','xrd_workbench/web/shared/mail_address_book.js','xrd_workbench/web/shared/mail_template_context.js','xrd_workbench/web/shared/mail_templates.js','xrd_workbench/web/shared/mail_editor.js','report_editor.js'].map(name=>fs.readFileSync(path.join(__dirname,'../app',name),'utf8')).join('\n');
+const script=['xrd_workbench/web/shared/pptx_password.js','file_save.js','report_editor_icons.js','report_page_sidebar.js','report_cell_editor.js','report_direct_editor.js','report_canvas_editor.js','report_ppt_templates.js','report_saved_graphs.js','report_condition_options.js','xrd_workbench/web/shared/mail_editor_icons.js','xrd_workbench/web/shared/mail_table_editor.js','xrd_workbench/web/shared/mail_address_book.js','xrd_workbench/web/shared/mail_template_context.js','xrd_workbench/web/shared/mail_templates.js','xrd_workbench/web/shared/mail_editor.js','report_editor.js'].map(name=>fs.readFileSync(path.join(__dirname,'../app',name),'utf8')).join('\n');
 const template=fs.readFileSync(path.join(__dirname,'../app/report_editor.html'),'utf8');
 function setup(t,kind='ftir',identity='',conditionScenario=null) {
   const prefix='/api/v1/'+kind+'/report/jobs',posts=[],gets=[],timers=new Map(); let timerId=0;

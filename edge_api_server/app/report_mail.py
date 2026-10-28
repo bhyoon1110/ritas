@@ -13,7 +13,7 @@ from starlette.concurrency import run_in_threadpool
 
 from .errors import ApiException
 from .mail_address_book import router as address_book_router, shared_router as shared_address_book_router
-from . import mail_signature_book, mail_templates
+from . import mail_signature_book, mail_templates, ppt_templates
 from .report_mail_media import MailImages, image_data, data_uri, MAX_HTML, MAX_TABLES, MAX_ROWS, MAX_COLS, MAX_IMAGE_BYTES
 
 FIELDS = {"recipientName": 200, "to": 2000, "cc": 2000, "bcc": 2000,
@@ -306,6 +306,7 @@ router.include_router(address_book_router)
 router.include_router(shared_address_book_router)
 router.include_router(mail_signature_book.router)
 router.include_router(mail_templates.router)
+router.include_router(ppt_templates.router)
 
 
 @router.get('/api/v1/report-mail/recipient')

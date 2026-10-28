@@ -251,6 +251,10 @@ def layout(job, model):
         payload['lockedShapeIds'] = locks.get(payload['pageId'], payload['lockedShapeIds'])
         _, entries = canvas.objects(payload)
         page.update(id=payload['pageId'], objects=[item for _,item in entries])
+        if not payload['pageId'].startswith('added-'):
+            from .template_styles import layout_key
+            front = ET.fromstring(payload['xml']).find('p:cSld', NS).get('name', '')
+            page['templateKey'] = layout_key(front if front in tem.FRONT_PAGES else 'tem-native', page['objects'])
         # Ignore added canvas text as canonical source sections. Its text is
         # edited through canvas patches, never duplicate hidden source fields.
         page['regions'] = [r for r in page['regions'] if all(not ref.startswith('section/') or
