@@ -25,7 +25,7 @@ test('a report without a phase_classes block opens unclassified', () => {
   assert.deepEqual(doc.phase_classes.labels, []);
 });
 
-test('setLabel makes a direct choice, changes it, and removes it for the default (주요상)', () => {
+test('setLabel makes a direct choice, changes it, and removes it for explicit 미분류', () => {
   const pc = defaultPhaseClasses();
   setLabel(pc, 's1', A, 'major');
   assert.deepEqual(pc.labels, [{ sample_id: 's1', phase: A, class: 'major', origin: 'manual' }]);
@@ -35,6 +35,18 @@ test('setLabel makes a direct choice, changes it, and removes it for the default
   setLabel(pc, 's1', A, '');
   assert.deepEqual(pc.labels, []);
   assert.throws(() => setLabel(pc, 's1', A, 'unknown'), /알 수 없는/);
+});
+
+test('trace rule can update default major without erasing other defaults or direct choices', () => {
+  const pc = defaultPhaseClasses();
+  pc.labels = [A, B, A2].map(phase => ({sample_id:'s1', phase, class:'major', origin:'default'}));
+  setLabel(pc, 's1', A2, 'major');
+  applyTrace(pc, [{sample_id:'s1', phases:[
+    {phase:A,status:'trace'}, {phase:B,status:'undecided'}, {phase:A2,status:'trace'},
+  ]}], 2);
+  assert.equal(labelOf(pc,'s1',A).class,'trace');
+  assert.equal(labelOf(pc,'s1',B).origin,'default');
+  assert.equal(labelOf(pc,'s1',A2).class,'major');
 });
 
 test('a direct choice replaces a rule label and becomes direct', () => {
@@ -152,6 +164,11 @@ test('bulk selector defaults to 주요상 with no fixed suffix, without mutating
     assert.ok(bulk.includes('<option value="major" selected>주요상</option>'));
     assert.ok(!html.includes('(고정)'));
     assert.ok(!bulk.includes('<option value="" selected>'));
+    if(evaluated) {
+      const sampleBulk=html.match(/<select data-pc-sample-all="[^"]*"[^>]*>([\s\S]*?)<\/select>/)[1];
+      assert.ok(sampleBulk.includes('<option value="major" selected>주요상</option>'));
+      assert.ok(html.includes('data-pc-sample-apply="s1"'));
+    }
     assert.deepEqual(pc, before);
   }
 });

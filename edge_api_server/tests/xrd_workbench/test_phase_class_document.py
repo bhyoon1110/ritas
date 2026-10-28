@@ -3,7 +3,9 @@ from copy import deepcopy
 import pytest
 from .figure_fixtures import make_project, make_trace_sample
 
-from app.xrd_workbench.core.report import apply_trace_rule, new_document, validate_document
+from app.xrd_workbench.core.report import (
+    apply_trace_rule, new_document, new_document_with_defaults, validate_document, with_phase_defaults,
+)
 
 PHASE = {'name': 'PhaseA', 'card': '00-001', 'db': 'DB1'}
 
@@ -26,6 +28,29 @@ def test_new_document_starts_with_nothing_classified():
         'labels': [],
         'retained': [],
     }
+
+
+def test_editor_defaults_are_major_and_remain_eligible_for_the_trace_rule():
+    p = trace_project()
+    doc = new_document_with_defaults(p)
+    assert doc['phase_classes']['defaults_initialized'] is True
+    assert doc['phase_classes']['rule'] is None
+    assert doc['phase_classes']['labels'] == [label('weak', origin='default'), label('strong', origin='default')]
+    checked = apply_trace_rule(p, validate_document(p, doc), 2)
+    assert checked['phase_classes']['labels'] == [label('weak', 'trace', 'rule'), label('strong', origin='default')]
+
+
+def test_default_migration_preserves_saved_choices_and_explicit_clear_survives_reopen():
+    p = project()
+    saved = new_document(p)
+    saved['phase_classes']['labels'] = [label('a', 'presumed')]
+    before = deepcopy(saved)
+    draft = with_phase_defaults(p, saved)
+    assert saved == before
+    assert draft['phase_classes']['labels'] == [label('a', 'presumed'), label('b', origin='default')]
+    draft['phase_classes']['labels'] = [label('a', 'presumed')]  # B explicitly set to 미분류.
+    reopened = with_phase_defaults(p, validate_document(p, draft))
+    assert reopened['phase_classes']['labels'] == [label('a', 'presumed')]
 
 
 def test_a_saved_document_without_phase_classes_opens_unclassified():

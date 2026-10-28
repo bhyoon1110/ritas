@@ -105,7 +105,8 @@ def test_chunk_import_review_and_all_exports(tmp_path):
         r = client.get(api.BASE+f'/api/files/{sid}/{record["id"]}')
         assert r.content == files[record['filename']]
     doc = client.get(api.BASE+f'/api/reports/{sid}').json()['document']
-    assert doc['phase_classes']['labels'] == []
+    assert doc['phase_classes']['labels']
+    assert all(v['class'] == 'major' and v['origin'] == 'default' for v in doc['phase_classes']['labels'])
     assert doc['phase_classes']['rule'] is None
     doc['metadata']['report_number'] = 'QA-001'
     saved = client.put(api.BASE+f'/api/reports/{sid}', json={'document':doc, 'expected_revision':0})

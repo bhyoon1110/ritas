@@ -67,7 +67,7 @@ def test_it_needs_the_saved_revision(client):
     assert client.get(url(99)).status_code == 409
 
 
-def test_a_document_saved_before_classes_opens_unclassified(client):
+def test_legacy_report_opens_with_major_defaults_without_writing_until_save(client):
     import json
 
     revision = saved_revision(client)
@@ -75,11 +75,24 @@ def test_a_document_saved_before_classes_opens_unclassified(client):
     value = json.loads(path.read_text(encoding='utf-8'))
     del value['phase_classes']
     path.write_text(json.dumps(value, ensure_ascii=False), encoding='utf-8')
-    opened = client.get('/api/reports/example').json()['document']
+    before = path.read_bytes()
+    response = client.get('/api/reports/example').json()
+    opened = response['document']
+    assert response['phase_defaults_update_required'] is True
+    assert path.read_bytes() == before
     assert opened['phase_classes'] == {
         'criteria_text': '',
         'rule': None,
-        'labels': [],
+        'labels': [dict(sample_id=sid, phase=PHASE, origin='default', **{'class': 'major'})
+                   for sid in ('weak', 'strong')],
         'retained': [],
+        'defaults_initialized': True,
     }
     assert client.get(url(revision)).status_code == 200
+    # Saving and reopening retains the same classifications; clearing is explicit and durable.
+    opened['phase_classes']['labels'].pop()
+    saved = client.put('/api/reports/example', json={'document': opened, 'expected_revision': revision})
+    assert saved.status_code == 200
+    reopened = client.get('/api/reports/example').json()
+    assert reopened['phase_defaults_update_required'] is False
+    assert reopened['document']['phase_classes'] == opened['phase_classes']

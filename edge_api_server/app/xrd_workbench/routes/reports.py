@@ -19,6 +19,7 @@ from ..core.report import (
     project_phase_names,
     sync_analysis,
     validate_document,
+    with_phase_defaults,
 )
 from ..rist_llm import select_notes, generate_email
 
@@ -70,6 +71,8 @@ def build_report_router(project_loader, source_loader, store):
             # Reports saved before figures existed open with the figure off (pages unchanged).
             document.setdefault('figure', default_figure(False))
             document.setdefault('phase_classes', default_phase_classes())
+            defaults_updated = not document['phase_classes'].get('defaults_initialized', False)
+            document = with_phase_defaults(project, document)
             document.setdefault('quantity_table', default_quantity_table(False))
             document.setdefault('email', empty_email())
             facts = email_evidence(project, document)
@@ -79,6 +82,7 @@ def build_report_router(project_loader, source_loader, store):
             # Reading a report must not write a revision or call a slow/unavailable model.
             blank = not any(document['email'].get(k, '').strip() for k in ('subject', 'body'))
             return dict(project=project, document=document, analysis_update_required=updated,
+                        phase_defaults_update_required=defaults_updated,
                         email_stale=email_stale, email_default=rule_email(facts) if blank else None)
 
     @router.put('/api/reports/{storage_id}')

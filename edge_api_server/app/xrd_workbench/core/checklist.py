@@ -100,7 +100,7 @@ def build_checklist(project: dict, document: dict) -> dict:
         for text in dict.fromkeys(sample.get('warnings', [])):
             items.append(_item('warning', 'source_warning', text))
         if rule:
-            # The trace rule says nothing about these phases; they print as 주요상 (the default).
+            # The verdict is independent of the report's default or manually chosen class.
             verdicts = evaluate_trace(sample, rule['trace_max_percent'])
             undecided = [v for v in verdicts.values() if v['status'] == 'undecided']
             if undecided:
@@ -108,7 +108,7 @@ def build_checklist(project: dict, document: dict) -> dict:
                     _item(
                         'info',
                         'undecided_trace_phases',
-                        f'미량상 규칙으로 판정하지 못한 상 {len(undecided)}개 (미분류, 검토 필요)',
+                        f'미량상 규칙으로 판정하지 못한 상 {len(undecided)}개 (분류 검토 필요)',
                     )
                 )
         if not _has_notes(entry):

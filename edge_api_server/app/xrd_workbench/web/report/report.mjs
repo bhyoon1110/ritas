@@ -372,7 +372,7 @@ async function openProject(id) {
     emailAttempted=false;
     emailDefault=value.email_default || null;
     baseline = structuredClone(doc);
-    dirty = value.analysis_update_required;
+    dirty = !!(value.analysis_update_required || value.phase_defaults_update_required);
     await loadRecovery();
     const emailInitialized=initializeEmptyEmail(doc,emailDefault);
     if(emailInitialized)dirty=true;
@@ -387,11 +387,12 @@ async function openProject(id) {
     pcSeq++;
     render();
     renderEmail();
-    if(emailInitialized)markDirty();
+    if(emailInitialized || value.phase_defaults_update_required)markDirty();
     loadChecklist();
     status(
       value.analysis_update_required
         ? '분석값이 변경되어 보고서 후보를 갱신했습니다. 검토 후 저장하세요.'
+        : value.phase_defaults_update_required ? '미지정 상을 기본 주요상으로 채웠습니다. 기존 지정값은 유지했습니다. 검토 후 저장하세요.'
         : emailInitialized ? '분석 결과로 안내 메일 기본 문안을 채웠습니다. 검토 후 저장하세요.'
         : '원본 자료를 유지하며 보고서를 편집할 수 있습니다.',
     );
@@ -687,7 +688,7 @@ async function applyTraceRule() {
     markDirty();
     renderClasses();
     status(
-      '미량상 규칙을 적용했습니다. 판정할 수 없는 상은 주요상(기본)으로 두었고 직접 지정한 분류는 유지했습니다. 확인 후 저장하세요.',
+      '미량상 규칙을 적용했습니다. 직접 지정한 분류는 유지했습니다. 기본 분류와 판정 불가 사유를 확인한 뒤 저장하세요.',
     );
   } catch (e) {
     status(e.message, true);
@@ -878,7 +879,8 @@ $('editorFields').oninput = (e) => {
     pcPercent = element.value;
     return;
   }
-  if (d.pc !== undefined || d.pcSampleId !== undefined || d.pcSampleAll !== undefined) {
+  if (d.pcSampleAll !== undefined) return; // Bulk changes require the adjacent apply button.
+  if (d.pc !== undefined || d.pcSampleId !== undefined) {
     classInput(element);
     return;
   }
@@ -965,6 +967,11 @@ $('editorFields').onclick = async (e) => {
   }
   if (button.id === 'pcRowApply') {
     applyRowClass();
+    return;
+  }
+  if (d.pcSampleApply !== undefined) {
+    const select = button.closest('.pcSample').querySelector('[data-pc-sample-all]');
+    if (select) classInput(select);
     return;
   }
   if (button.id === 'figureSort') {

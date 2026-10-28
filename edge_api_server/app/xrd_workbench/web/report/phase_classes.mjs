@@ -16,7 +16,7 @@ export function samePhase(a, b) {
 export function labelOf(pc, sampleId, phase) {
   return pc.labels.find((l) => l.sample_id === sampleId && samePhase(l.phase, phase)) || null;
 }
-// cls '' (the default, 주요상) removes the entry; any other value is a direct choice of the author.
+// cls '' explicitly clears a classification (미분류); other values are direct choices.
 export function setLabel(pc, sampleId, phase, cls) {
   if (cls && !CLASS_NAMES[cls]) throw new Error('알 수 없는 분류입니다.');
   const existing = labelOf(pc, sampleId, phase);
@@ -66,7 +66,7 @@ export function applyTrace(pc, samples, percent) {
             origin: 'rule',
             percent: limit,
           });
-      } else if (existing) pc.labels.splice(pc.labels.indexOf(existing), 1);
+      } else if (existing && existing.origin === 'rule') pc.labels.splice(pc.labels.indexOf(existing), 1);
     }
   }
   pc.rule = { trace_max_percent: limit };

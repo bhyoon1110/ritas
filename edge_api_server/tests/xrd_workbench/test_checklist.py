@@ -111,7 +111,7 @@ def test_phases_the_trace_rule_cannot_decide_are_listed_once_a_rule_is_applied()
     document['phase_classes']['rule'] = {'trace_max_percent': 5}
     items = build_checklist(project, document)['samples'][0]['items']
     item = next((i for i in items if i['code'] == 'undecided_trace_phases'), None)
-    assert item and item['level'] == 'info' and '미분류' in item['text'] and '개' in item['text']
+    assert item and item['level'] == 'info' and '분류 검토 필요' in item['text'] and '개' in item['text']
     # Having classes or criteria alone no longer reports anything as unclassified.
     document['phase_classes']['rule'] = None
     document['phase_classes']['criteria_text'] = '기준'

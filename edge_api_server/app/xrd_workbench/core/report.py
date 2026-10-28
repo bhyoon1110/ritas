@@ -17,10 +17,30 @@ TRACE_FIELDS = (('purpose', '분석 목적'), ('equipment_name', '장비명 / �
 
 
 def new_document_with_defaults(project: dict) -> dict:
-    """Start unclassified; only the analyst may apply a phase classification rule."""
-    # Importing a report is not permission to make a scientific classification.
-    # The optional trace rule must be explicitly applied by the analyst.
-    return new_document(project)
+    """Start the editor with 주요상; the optional trace rule is still opt-in."""
+    return with_phase_defaults(project, new_document(project))
+
+
+def with_phase_defaults(project: dict, document: dict) -> dict:
+    """Initialize unset editor choices once, without rewriting saved/manual classifications.
+
+    The marker preserves an explicit later choice of 미분류 (an absent label) on reopening.
+    Defaults have their own origin so applying the trace rule can still classify them.
+    """
+    result = deepcopy(document)
+    classes = result.setdefault('phase_classes', default_phase_classes())
+    if classes.get('defaults_initialized'):
+        return result
+    known = {(x['sample_id'], phase_key(x['phase'])) for x in classes['labels']}
+    for sample in project['samples']:
+        for phase in sample['phases']:
+            key = (sample['id'], phase_key(phase))
+            if key not in known:
+                classes['labels'].append(dict(sample_id=sample['id'], phase=phase_ref(phase),
+                                             origin='default', **{'class': 'major'}))
+                known.add(key)
+    classes['defaults_initialized'] = True
+    return result
 
 
 def new_document(project: dict) -> dict:
@@ -184,7 +204,7 @@ def validate_figure(raw, entries: list[dict]) -> dict:
 
 
 PHASE_CLASSES = ('major', 'trace', 'presumed')
-LABEL_ORIGINS = ('manual', 'rule')
+LABEL_ORIGINS = ('manual', 'rule', 'default')
 
 
 def default_phase_classes() -> dict:
@@ -203,6 +223,8 @@ def _class_label(raw, known_ids) -> dict:
         raise ValueError('상 분류의 상 이름이 비어 있습니다.')
     if raw.get('class') not in PHASE_CLASSES or raw.get('origin') not in LABEL_ORIGINS:
         raise ValueError('상 분류 값(주요상, 미량상, 추정상)과 출처를 확인하세요.')
+    if raw['origin'] == 'default' and raw['class'] != 'major':
+        raise ValueError('상 분류 기본값은 주요상입니다.')
     label = {
         'sample_id': raw['sample_id'],
         'phase': ref,
@@ -221,6 +243,10 @@ def validate_phase_classes(raw, project: dict) -> dict:
     if not isinstance(raw, dict):
         raise ValueError('상 분류 설정 형식을 확인하세요.')
     clean = default_phase_classes()
+    if 'defaults_initialized' in raw:
+        if type(raw['defaults_initialized']) is not bool:
+            raise ValueError('상 분류 기본값 적용 상태를 확인하세요.')
+        clean['defaults_initialized'] = raw['defaults_initialized']
     clean['criteria_text'] = string(raw.get('criteria_text', ''), 1500, '분류 기준 문구')
     rule = raw.get('rule')
     if rule is not None:
@@ -281,7 +307,7 @@ def apply_trace_verdicts(document: dict, evaluations: list, percent) -> dict:
                             'percent': limit,
                         }
                     )
-            elif existing:
+            elif existing and existing['origin'] == 'rule':
                 classes['labels'].remove(existing)
     classes['rule'] = {'trace_max_percent': limit}
     return result
