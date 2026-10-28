@@ -17,7 +17,8 @@ const port=new Promise((resolve,reject)=>{let s='';server.stdout.on('data',chunk
       const name=kind+(legacy?'-fallback':'-native'),context=await browser.newContext({viewport:{width:1440,height:1000},...(legacy?{userAgent:'Mozilla/5.0 (Windows NT 5.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/49.0.2623.75 Safari/537.36'}:{})});
       const page=await context.newPage(),errors=[];page.setDefaultTimeout(15000);page.on('pageerror',e=>errors.push(e.message));
       let signature='',revision=0,doc=kind==='xrd'?structuredClone(fixture.document):{title:'메일 편집 테스트',completionDate:'2026-10-26',transfer:{},sections:[],auxiliary:{email_subject:'분석 결과',email_body:'분석 결과를 안내합니다.'},variables:[]};
-      if(kind==='xrd')doc.email={subject:'분석 결과',body:'분석 결과를 안내합니다.',status:'manual',source_fingerprint:'',model_used:'',message:''};
+      if(kind==='xrd'){doc.metadata.report_number='REQ-1';doc.email={subject:'분석 결과',body:'분석 결과를 안내합니다.',status:'manual',source_fingerprint:'',model_used:'',message:''};}
+      else doc.transfer.requestNumber='REQ-1';
       await page.route('**/*',async route=>{
         const r=route.request(),url=new URL(r.url()),p=url.pathname;
         const json=(data,status=200)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(data)});
@@ -25,12 +26,23 @@ const port=new Promise((resolve,reject)=>{let s='';server.stdout.on('data',chunk
           if(r.method()==='PUT')signature=r.postDataJSON().signature;
           return json({signature});
         }
+        if(p==='/api/v1/report-mail/recipient')return json({recipientName:'의뢰 담당자',email:null,recipientPolicy:'lims'});
         if(p.endsWith('/send'))throw Error('No real sends allowed');
         if(kind==='xrd'){
           if(p==='/__test__/xrd-editor'){
             let html=fs.readFileSync(path.join(web,'report.html'),'utf8').replace('<script type="module" src="/shared/shell.mjs"></script>','');
+            // Match the shared tools injected by integration.web_asset in the deployed app.
+            html=html.replace('</head>','<link rel="stylesheet" href="/ppt-tools/report_ppt_tools.css"></head>');
+            const scripts=['report_editor_icons.js','report_page_sidebar.js','report_cell_editor.js','report_canvas_editor.js'].map(n=>'<script src="/ppt-tools/'+n+'"></script>').join('');
+            html=html.replace('<script type="module"',scripts+'<script type="module"');
+            html=html.replace('<head>','<head><script src="/ppt-tools/file_progress.js"></script>');
             if(legacy)html=html.replace('<script type="module" src="/report/report.mjs"></script>','<script src="/report/report.legacy.js"></script>').replace(/\.css"/g,'.legacy.css"');
             return route.fulfill({contentType:'text/html',body:html});
+          }
+          if(p.startsWith('/ppt-tools/')){
+            const asset=p.split('/').pop().replace('.legacy.css','.css');
+            const file=asset==='file_progress.js'?path.resolve(__dirname,'../../common/rist_common/plotting/file_progress.js'):path.resolve(__dirname,'../app',asset);
+            return route.fulfill({contentType:asset.endsWith('.css')?'text/css':'application/javascript',body:fs.readFileSync(file)});
           }
           if(/^\/(report|shared|viewer)\/[a-z_]+\.(mjs|js|css|legacy\.js|legacy\.css)$/.test(p))return route.fulfill({contentType:p.endsWith('.css')?'text/css':'application/javascript',body:fs.readFileSync(path.join(web,p))});
           if(p==='/api/platform')return json({operatorId:doc.metadata.operator_id});
@@ -62,12 +74,16 @@ const port=new Promise((resolve,reject)=>{let s='';server.stdout.on('data',chunk
         await page.getByRole('button',{name:'내 기본 서명 저장',exact:true}).focus();assert.equal(await page.locator('.mail-tool-hint').textContent(),'내 기본 서명 저장');
         await page.getByRole('button',{name:'메일 본문 일반 텍스트 전환',exact:true}).click();
         const richToggle=page.getByRole('button',{name:'메일 본문 서식 편집 전환',exact:true});assert.equal(await richToggle.getAttribute('data-mail-icon'),'rich-text');await richToggle.click();
-        await page.getByLabel('수신자 이름',{exact:true}).fill('의뢰 담당자');await page.getByLabel('수신자 이메일 주소',{exact:true}).fill('to@example.com');await page.getByLabel('참조 (CC)',{exact:true}).fill('cc@example.com');await page.getByLabel('비밀참조 (BCC)',{exact:true}).fill('secret@example.com');
+        await page.waitForFunction(()=>document.querySelector('[aria-label="수신자 이름"]').value==='의뢰 담당자');
+        assert(await page.getByLabel('수신자 이름',{exact:true}).evaluate(e=>e.readOnly));
+        assert(await page.getByLabel('수신자 이메일 주소',{exact:true}).evaluate(e=>e.readOnly));
+        assert.equal(await page.getByLabel('수신자 이메일 주소',{exact:true}).inputValue(),'');
+        await page.getByLabel('참조 (CC)',{exact:true}).fill('cc');await page.getByLabel('비밀참조 (BCC)',{exact:true}).fill('secret@rist.re.kr');
         await page.getByLabel('메일 서명',{exact:true}).fill('윤병훈\nRIST');await page.getByRole('button',{name:'내 기본 서명 저장',exact:true}).click();await page.getByText('내 기본 서명을 저장했습니다.',{exact:false}).waitFor();assert.equal(signature,'윤병훈\nRIST');
         const rich=page.getByRole('textbox',{name:'메일 본문 서식 편집',exact:true});await rich.fill('수정한 분석 결과입니다.');await rich.press('Meta+a');await page.getByRole('button',{name:'굵게',exact:true}).click();assert(await rich.locator('b,strong').count()>0);
         await page.getByRole('button',{name:'메일 글자 가운데 정렬',exact:true}).click();await save();
-        const delivery=kind==='xrd'?doc.email.delivery:doc.deliveryEmail;assert.equal(delivery.bcc,'secret@example.com');assert.match(delivery.bodyHtml,/<(b|strong)>/);assert.equal(delivery.signature,'윤병훈\nRIST');
-        await open();assert.equal(await page.getByLabel('비밀참조 (BCC)',{exact:true}).inputValue(),'secret@example.com');assert(await rich.locator('b,strong').count()>0);assert(await rich.locator('[align="center"]').count()>0);
+        const delivery=kind==='xrd'?doc.email.delivery:doc.deliveryEmail;assert.equal(delivery.bcc,'secret@rist.re.kr');assert.equal(delivery.cc,'cc@rist.re.kr');assert.equal(delivery.to,'');assert.equal(delivery.recipientName,'');assert.match(delivery.bodyHtml,/<(b|strong)>/);assert.equal(delivery.signature,'윤병훈\nRIST');
+        await open();assert.equal(await page.getByLabel('비밀참조 (BCC)',{exact:true}).inputValue(),'secret');assert(await rich.locator('b,strong').count()>0);assert(await rich.locator('[align="center"]').count()>0);
         await rich.click();await rich.press('ControlOrMeta+End');
         await page.getByRole('button',{name:'메일 표 삽입 설정',exact:true}).click();
         await page.getByRole('button',{name:'2행 2열 표 삽입',exact:true}).click();
@@ -123,6 +139,7 @@ const port=new Promise((resolve,reject)=>{let s='';server.stdout.on('data',chunk
           if(width===390&&kind!=='xrd'&&await page.locator('#page-sidebar-close').isVisible())await page.locator('#page-sidebar-close').click();
           await rich.locator('td').first().click();
           assert(await page.locator('.mail-compose').evaluate(e=>e.scrollWidth<=e.clientWidth+2));
+          assert(await page.locator('.mail-copy-address').evaluateAll(list=>list.every(e=>e.scrollWidth<=e.clientWidth+2&&e.querySelector('.mail-copy-domain').textContent==='@rist.re.kr')));
           assert(await page.locator('.mail-toolbar').first().evaluate(e=>e.scrollWidth<=e.clientWidth+2));
           assert(await page.locator('.mail-table-panel').evaluate(e=>e.scrollWidth<=e.clientWidth+2));
           const sizes=await page.locator('.mail-icon-button:visible').evaluateAll(list=>list.map(b=>{const r=b.getBoundingClientRect();return {w:r.width,h:r.height,svg:b.querySelector('svg').getBoundingClientRect().width};}));

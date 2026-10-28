@@ -21,12 +21,14 @@ function setup(t,kind='ftir',identity='',conditionScenario=null) {
   w.setTimeout=(fn,ms)=>{timers.set(++timerId,{fn,ms});return timerId;};w.clearTimeout=id=>timers.delete(id);
   w.XMLHttpRequest=class {
     open(method,url){this.method=method;this.url=url;this.headers={};}
+    abort(){}
     setRequestHeader(k,v){this.headers[k]=v;}
     send(raw){
       const body=raw&&JSON.parse(raw);if(body) posts.push({url:this.url,body,headers:this.headers});
       if(this.method==='GET') gets.push({url:this.url,headers:this.headers});
       let result;
-      if(this.url.endsWith('/editor-data')) result={document:doc,job:{jobId:this.url.includes('/revision/')?'revision':'original',status:'completed',parentJobId:'original'},authenticatedOperatorId:identity};
+      if(this.url.startsWith('/api/v1/report-mail/recipient?')) result={recipientName:'의뢰자',email:null,recipientPolicy:'lims'};
+      else if(this.url.endsWith('/editor-data')) result={document:doc,job:{jobId:this.url.includes('/revision/')?'revision':'original',status:'completed',parentJobId:'original'},authenticatedOperatorId:identity};
       else if(this.url.endsWith('/edit-layout')) {
         let pages=[
           {id:'cover',title:'표지',regions:[{refs:['title'],x:.1,y:.2,w:.8,h:.2},{refs:['transfer/operatorId'],x:.1,y:.5,w:.3,h:.2}]},
@@ -56,7 +58,7 @@ function setup(t,kind='ftir',identity='',conditionScenario=null) {
   w.eval(fs.readFileSync(path.join(__dirname,'../../common/rist_common/plotting/file_progress.js'),'utf8'));
   w.eval(script);
   return {w,d,q,posts,gets,prefix,timers,field:label=>d.querySelector('[aria-label="'+label+'"]'),
-    tick(){const entry=timers.entries().next().value;assert(entry,'expected a scheduled operation');timers.delete(entry[0]);entry[1].fn();},
+    tick(){for(const [id,entry] of timers)if(entry.ms===300){timers.delete(id);entry.fn();}const entry=timers.entries().next().value;assert(entry,'expected a scheduled operation');timers.delete(entry[0]);entry[1].fn();},
     lookup(value,error=false){items=value;lookupError=error;},pollError(value){pollError=value;},rateLimit(value){rateLimit=value;},running(value){running=value;},
     hold(path){heldPath=path;},release(){heldPath='';heldFinish();},
     input(label,value){const e=this.field(label);e.value=value;e.dispatchEvent(new w.Event('input',{bubbles:true}));},
@@ -161,12 +163,14 @@ for(const kind of ['ftir','raman','tem'])test(kind+' mail IME waits until Korean
 });
 for(const kind of ['ftir','raman','tem'])test(kind+' mail recipients, rich body and signature autosave without losing the original prose',t=>{
   const h=setup(t,kind);
-  h.input('수신자 이름','의뢰자');h.input('수신자 이메일 주소','to@example.com');h.input('참조 (CC)','cc@example.com');h.input('비밀참조 (BCC)','hidden@example.com');h.input('메일 서명','윤병훈\nRIST');
+  assert(h.field('수신자 이름').readOnly);assert(h.field('수신자 이메일 주소').readOnly);
+  h.input('수신자 이름','의뢰자');h.input('수신자 이메일 주소','to@example.com');h.input('참조 (CC)','cc');h.input('비밀참조 (BCC)','hidden@rist.re.kr');h.input('메일 서명','윤병훈\nRIST');
   const rich=h.field('메일 본문 서식 편집');rich.innerHTML='<strong>분석 결과</strong>';
   rich.dispatchEvent(new h.w.Event('input',{bubbles:true}));h.tick();
   const saved=h.posts[0].body;
   assert.equal(saved.auxiliary.email_body,'분석 결과');assert.equal(saved.deliveryEmail.bodyHtml,'<strong>분석 결과</strong>');
-  assert.equal(saved.deliveryEmail.bcc,'hidden@example.com');assert.equal(saved.deliveryEmail.signature,'윤병훈\nRIST');
+  assert.equal(saved.deliveryEmail.to,'');assert.equal(saved.deliveryEmail.recipientName,'');assert.equal(saved.deliveryEmail.cc,'cc@rist.re.kr');
+  assert.equal(saved.deliveryEmail.bcc,'hidden@rist.re.kr');assert.equal(saved.deliveryEmail.signature,'윤병훈\nRIST');
   assert.equal(h.field('메일 서명').value,'윤병훈\nRIST');
   assert.equal(h.w.RistMailEditor.clean('<img src=x onerror=x()><script>x()</script><b style="color:red">ok</b>'),'<b>ok</b>');
   h.input('메일 본문','새 본문');h.tick();assert.equal(h.posts[1].body.deliveryEmail.bodyHtml,'');
@@ -286,7 +290,8 @@ for(const kind of ['ftir','raman','tem']) test(kind+' lookup is experiment-scope
   assert.equal(h.q('request-search').getAttribute('role'),'combobox');h.q('request-result-0').click();
   assert.equal(h.field('의뢰번호').value,'REQ-9');assert.equal(h.field('실험코드').value,'CODE-9');
   assert.equal(h.field('실험장비').value,'CURRENT-LAB');assert.equal(h.field('실험자').value,'SSO-001');
-  assert.equal(h.timers.size,1);h.tick();assert.equal(h.posts[0].body.transfer.requestNumber,'REQ-9');
+  assert.equal(h.timers.size,2);h.tick();assert.equal(h.posts[0].body.transfer.requestNumber,'REQ-9');
+  assert.equal(h.field('수신자 이름').value,'의뢰자');
   h.input('의뢰번호','MANUAL-1');assert.equal(h.q('request-search').value,'');assert.equal(h.field('실험코드').value,'');
 });
 test('request pagination, local filtering, equipment selection and lookup failures',t=>{

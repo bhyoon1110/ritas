@@ -29,16 +29,16 @@ def test_mail_table_and_image_roundtrip_to_cid_and_self_contained_html(tmp_path)
     clean, plain = clean_html(source)
     assert '[이미지]' in plain and '시료\t값' in plain
     assert 'onerror' not in clean and 'border-collapse:collapse' in clean
-    payload = mail_payload('분석 안내', plain, dict(bodyHtml=source, to='to@example.com', bcc='hidden@example.com', signature='담당자'), sending=True)
+    payload = mail_payload('분석 안내', plain, dict(bodyHtml=source, to='to@example.com', bcc='hidden@rist.re.kr', signature='담당자'), sending=True)
     assert payload['schemaVersion'] == 2 and len(payload['inlineImages']) == 1
     image = payload['inlineImages'][0]
     assert 'cid:' + image['contentId'] in payload['bodyHtml'] and 'data:image' not in payload['bodyHtml']
     assert '<table' in payload['bodyHtml'] and payload['bodyText'].endswith('담당자')
     assert validate_envelope(payload) == payload
-    write_mail_files(tmp_path, '분석 안내', plain, dict(bodyHtml=source, bcc='hidden@example.com'))
+    write_mail_files(tmp_path, '분석 안내', plain, dict(bodyHtml=source, bcc='hidden@rist.re.kr'))
     html = (tmp_path/'email_body.html').read_text()
     assert 'data:image/png;base64,' in html and 'cid:' not in html
-    assert 'img-src data:' in html and 'hidden@example.com' not in html
+    assert 'img-src data:' in html and 'hidden@rist.re.kr' not in html
     assert 'data:image' not in (tmp_path/'email_body.md').read_text()
 
 
@@ -144,17 +144,18 @@ def test_rich_variables_preserve_tables_images_and_escape_values():
 
 def test_rich_mail_is_safe_and_signature_is_composed_once(tmp_path):
     delivery = dict(recipientName='의뢰자', to='first@example.com; first@example.com',
-        cc='review@example.com', bcc='secret@example.com', signature='윤병훈\nRIST <연구소>',
+        cc='review@rist.re.kr', bcc='secret@rist.re.kr', signature='윤병훈\nRIST <연구소>',
         bodyHtml='<p onclick="x()"><strong>분석 결과</strong><img src="https://invalid/x"><script>alert(1)</script></p>')
     saved = normalize_delivery(delivery)
     assert saved['bodyHtml'] == '<p><strong>분석 결과</strong></p>'
     value = mail_payload('결과 안내', '분석 결과', saved, sending=True)
-    assert value['to'] == ['first@example.com'] and value['bcc'] == ['secret@example.com']
+    assert value['to'] == [] and value['recipientPolicy'] == 'lims'
+    assert value['recipientName'] == '' and value['bcc'] == ['secret@rist.re.kr']
     assert value['bodyText'].count('윤병훈') == 1 and value['bodyHtml'].count('윤병훈') == 1
     assert '&lt;연구소&gt;' in value['bodyHtml'] and '<strong>' in value['bodyHtml']
     write_mail_files(tmp_path, '결과 안내', '분석 결과', saved)
     for path in tmp_path.iterdir():
-        assert 'secret@example.com' not in path.read_text() and 'first@example.com' not in path.read_text()
+        assert 'secret@rist.re.kr' not in path.read_text() and 'first@example.com' not in path.read_text()
     assert '윤병훈' in (tmp_path/'email_body.md').read_text()
     assert '<strong>' in (tmp_path/'email_body.html').read_text()
     assert mail_payload('결과', '새 본문', saved)['bodyHtml'].startswith('새 본문')
@@ -164,9 +165,9 @@ def test_rich_mail_is_safe_and_signature_is_composed_once(tmp_path):
                                    '.user@example.com', 'user..name@example.com', 'user@example..com', 'user@-example.com'])
 def test_invalid_addresses_can_be_drafts_but_not_queued(address):
     if '\x00' in address:
-        with pytest.raises(ValueError): normalize_delivery({'to': address})
+        with pytest.raises(ValueError): normalize_delivery({'cc': address})
         return
-    draft = mail_payload('제목', '본문', {'to': address})
+    draft = mail_payload('제목', '본문', {'cc': address})
     with pytest.raises(ValueError): validate_envelope(draft)
 
 
@@ -199,21 +200,77 @@ def test_all_experiments_preserve_stored_mail_when_queueing(tmp_path, kind):
     db=CapturingDatabase(); config=settings(tmp_path/'storage'); path=tmp_path/'original.zip';write_zip(path)
     html = '<p>본문</p><table><tr><td>시료</td><td>A</td></tr></table><img src="' + embedded_image() + '">'
     _, body = clean_html(html)
-    envelope=mail_payload('메일 제목',body,{'bodyHtml':html,'to':'to@example.com','bcc':'secret@example.com','signature':'서명'})
+    envelope=mail_payload('메일 제목',body,{'bodyHtml':html,'to':'to@example.com','bcc':'secret@rist.re.kr','signature':'서명'})
+    envelope.update(to=['forged@example.com'], recipientPolicy='explicit', recipientName='다른 사람')
     db.fetch_report_run=lambda report_id:{'report_options_json':json.dumps({'email':envelope,'reviewed':True})}
     job=SimpleNamespace(job_id='mail-job',status='completed',package_path=path)
     payload=PreviewReportSendRequest(requestNumber='REQ-1',experimentCode=kind,equipmentCode='LAB',operatorId='USER')
     result=send_preview_report_package(settings=config,database=db,job=job,payload=payload)
     assert result['queued'] and not result['sent']
     options=json.loads(db.values['report_options_json'])
-    assert options['reviewed'] and options['email']['bcc']==['secret@example.com']
+    assert options['reviewed'] and options['email']['bcc']==['secret@rist.re.kr']
+    assert options['email']['to']==[] and options['email']['recipientPolicy']=='lims'
+    assert options['email']['recipientName']==''
     assert options['email']['bodyText']==body+'\n\n서명'
     assert len(options['email']['inlineImages']) == 1
     assert options['email']['inlineImages'] == envelope['inlineImages']
     assert '<table' in options['email']['bodyHtml'] and 'cid:' in options['email']['bodyHtml']
-    envelope['to']='broken'
+    envelope['bcc']='foreign@example.com'
     with pytest.raises(ReportQueueError, match='이메일 주소'):
         send_preview_report_package(settings=config,database=db,job=job,payload=payload)
+
+
+@pytest.mark.parametrize('field', ['cc', 'bcc'])
+@pytest.mark.parametrize('address', ['a@example.com','a@sub.rist.re.kr','a@rist.re.kr.evil.com',
+                                   'a@rist-re.kr','a@rist.re.kr.', 'a@rist.re.kr;outside@example.com'])
+def test_copy_recipients_only_allow_exact_rist_domain(field, address):
+    with pytest.raises(ValueError):
+        mail_payload('제목', '본문', {field: address}, sending=True)
+
+
+def test_rist_copy_addresses_do_not_require_an_editable_to_address():
+    envelope = mail_payload('제목', '본문', {'cc':'a@RIST.RE.KR; a@rist.re.kr', 'bcc':'b@rist.re.kr'}, sending=True)
+    assert envelope['to'] == [] and envelope['recipientPolicy'] == 'lims'
+    assert len(envelope['cc']) == 1 and envelope['bcc'] == ['b@rist.re.kr']
+    assert normalize_delivery({'to':'injected@example.com', 'recipientName':'injected'})['to'] == ''
+
+
+def test_requester_display_is_authenticated_exact_and_never_guesses_email():
+    app=FastAPI(); app.include_router(router)
+    looked_up=[]
+    rows=[{'req_user_no':7,'req_user_name':'김의뢰'}]
+    def fetch(number):
+        looked_up.append(number)
+        return rows
+    app.state.database=SimpleNamespace(fetch_request_recipient=fetch)
+    @app.exception_handler(ApiException)
+    async def errors(request,exc):
+        from fastapi.responses import JSONResponse
+        return JSONResponse({'message':exc.message},status_code=exc.status_code)
+    @app.middleware('http')
+    async def identity(request,call_next):
+        user=request.headers.get('x-test-user')
+        if user:
+            request.state.auth_context=AuthContext(user,user,None,user,'ACTIVE','session',datetime.now(timezone.utc),None,
+                frozenset({'FTIR'}) if user=='allowed' else frozenset(),frozenset(),None)
+        return await call_next(request)
+    with TestClient(app) as client:
+        url='/api/v1/report-mail/recipient'
+        headers={'x-test-user':'allowed'}
+        assert client.get(url,params={'requestNumber':'REQ-1'}).status_code==401
+        assert client.get(url,params={'requestNumber':'REQ-1'},headers={'x-test-user':'no-project'}).status_code==403
+        assert not looked_up
+        response=client.get(url,params={'requestNumber':'REQ-1'},headers=headers)
+        assert response.json()==dict(requestNumber='REQ-1',recipientName='김의뢰',email=None,recipientPolicy='lims')
+        assert response.headers['cache-control']=='no-store'
+        assert looked_up==['REQ-1']
+        rows.clear()
+        assert client.get(url,params={'requestNumber':'REQ-2'},headers=headers).status_code==404
+        rows.extend([{'req_user_no':1},{'req_user_no':2}])
+        assert client.get(url,params={'requestNumber':'REQ-3'},headers=headers).status_code==409
+        assert client.get(url,params={'requestNumber':'\n'},headers=headers).status_code==422
+        app.state.database=None
+        assert client.get(url,params={'requestNumber':'REQ-1'},headers=headers).status_code==503
 
 
 def test_signature_is_authenticated_private_and_shared_across_experiments(tmp_path):

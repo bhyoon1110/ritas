@@ -942,6 +942,15 @@ class Database:
                 (*values.values(), job_id, relative_path),
             )
 
+    def fetch_request_recipient(self, request_number: str) -> list[dict[str, Any]]:
+        """Exact requester identity for display only; LIMS resolves the delivery mailbox."""
+        with self._connect() as connection:
+            return connection.execute(
+                """SELECT DISTINCT req_user_no, req_user_name
+                   FROM lims_req_ax_search WHERE req_number = ? LIMIT 2""",
+                (request_number,),
+            ).fetchall()
+
     def fetch_request_summaries(
         self,
         limit: int,
@@ -1174,6 +1183,13 @@ class Database:
                         report_options_json,
                         generated_at,
                     ),
+                )
+            if not register_report_run and report_options_json is not None:
+                # The queue validator may remove an old explicit To address. Spring reads
+                # report_runs, so persist that normalized envelope in this same transaction.
+                connection.execute(
+                    "UPDATE report_runs SET report_options_json = ?, updated_at = CURRENT_TIMESTAMP(6) WHERE report_id = ?",
+                    (report_options_json, report_id),
                 )
             connection.execute(
                 """

@@ -185,7 +185,7 @@ def test_blank_fields_edit_revision_and_recipient_integrity(prepared, monkeypatc
     summary['paragraphs'] = ['분석자가 확인한 피크입니다. <script>alert(1)</script> 물질 확정은 추가 검증이 필요합니다.']
     next(s for s in edits['sections'] if s['sectionId'] == 'experiment_conditions')['rows'][0][-1] = '온도 23°C · 습도 45%'
     edits['auxiliary']['email_subject'] = '[RIST] 분석자가 검토한 보고서 안내'
-    edits['deliveryEmail'] = dict(recipientName='의뢰 담당자',to='to@example.com',cc='cc@example.com',bcc='secret@example.com',signature='윤병훈 · RIST',bodyHtml='')
+    edits['deliveryEmail'] = dict(recipientName='의뢰 담당자',to='to@example.com',cc='cc@rist.re.kr',bcc='secret@rist.re.kr',signature='윤병훈 · RIST',bodyHtml='')
     edits['auxiliary']['email_body'] = '검토 완료된 보고서를 첨부합니다.\n\n' + '피크의 후보 해석과 확인 사항을 검토해 주세요.\n' * 25
     from html import escape
     from app.report_mail import clean_html
@@ -209,7 +209,9 @@ def test_blank_fields_edit_revision_and_recipient_integrity(prepared, monkeypatc
     assert registered[0]['report_id'] == revised['jobId']
     assert registered[0]['request_number'] == 'REQ-REVIEW'
     assert registered[0]['report_options']['revisionOf'] == h.job.job_id
-    assert registered[0]['report_options']['email']['bcc'] == ['secret@example.com']
+    assert registered[0]['report_options']['email']['bcc'] == ['secret@rist.re.kr']
+    assert registered[0]['report_options']['email']['to'] == []
+    assert registered[0]['report_options']['email']['recipientPolicy'] == 'lims'
     assert registered[0]['report_options']['email']['bodyText'].endswith('윤병훈 · RIST')
     assert len(registered[0]['report_options']['email']['inlineImages']) == 1
     assert 'cid:' in registered[0]['report_options']['email']['bodyHtml']
@@ -221,11 +223,11 @@ def test_blank_fields_edit_revision_and_recipient_integrity(prepared, monkeypatc
     saved = h.client.get(h.prefix + '/' + revised['jobId'] + '/editor-data').json()['document']
     assert saved['transfer'] == edits['transfer'] and saved['title'] == edits['title']
     assert saved['auxiliary'] == edits['auxiliary']  # Never regenerate or shorten an edited AI draft.
-    assert saved['deliveryEmail'] == edits['deliveryEmail']
+    assert saved['deliveryEmail'] == dict(edits['deliveryEmail'], to='', recipientName='')
     assert next(s for s in saved['sections'] if s['sectionId']=='summary')['source']=='user'
     original = zipfile.ZipFile(BytesIO(before))
     with zipfile.ZipFile(BytesIO(h.client.get(revised['downloadUrl']).content)) as archive:
-        assert all(b'secret@example.com' not in archive.read(name) for name in archive.namelist())
+        assert all(b'secret@rist.re.kr' not in archive.read(name) for name in archive.namelist())
         assert '윤병훈 · RIST' in archive.read('email_body.html').decode()
         assert 'data:image/jpeg;base64,' in archive.read('email_body.html').decode()
         assert '<table' in archive.read('email_body.html').decode()

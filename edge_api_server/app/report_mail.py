@@ -9,7 +9,7 @@ import re
 import tempfile
 from urllib.parse import urlsplit
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Query, Request
 from fastapi.responses import JSONResponse
 
 from .errors import ApiException
@@ -17,6 +17,7 @@ from .report_mail_media import MailImages, MAX_HTML, MAX_TABLES, MAX_ROWS, MAX_C
 
 FIELDS = {"recipientName": 200, "to": 2000, "cc": 2000, "bcc": 2000,
           "bodyHtml": MAX_HTML, "signature": 2000}
+COPY_DOMAIN = 'rist.re.kr'
 TAGS = {"p", "div", "br", "strong", "b", "em", "i", "u", "ul", "ol", "li",
         "table", "thead", "tbody", "tfoot", "tr", "th", "td", "img"}
 BLOCKED = {"script", "style", "iframe", "object", "svg", "math", "form", "textarea"}
@@ -184,6 +185,8 @@ def normalize_delivery(value=None):
         if not isinstance(text, str) or len(text) > limit or '\x00' in text:
             raise ValueError('메일 ' + key + ': 입력 길이·형식을 확인하세요.')
         result[key] = clean_html(text)[0] if key == 'bodyHtml' else text
+    # These UI fields are display-only. Even a forged/old draft cannot redirect delivery.
+    result['to'] = result['recipientName'] = ''
     return result
 
 
@@ -228,7 +231,7 @@ def mail_payload(subject, body, delivery=None, *, sending=False):
     if d['signature'].strip():
         body += '\n\n' + d['signature'].strip()
         html += '<br><br>' + escape(d['signature'].strip()).replace('\n', '<br>')
-    result = dict(schemaVersion=2, recipientName=d['recipientName'], subject=subject,
+    result = dict(schemaVersion=2, recipientPolicy='lims', recipientName='', subject=subject,
                   bodyText=body, bodyHtml=html, **{k: d[k] for k in ('to', 'cc', 'bcc')})
     try:
         return validate_envelope(result)
@@ -243,18 +246,18 @@ def validate_envelope(value):
     if not isinstance(value, dict):
         raise ValueError('메일 전송 정보 형식을 확인하세요.')
     result = dict(value)
-    for field in ('recipientName', 'subject'):
-        if not isinstance(result.get(field), str) or re.search(r'[\r\n\x00-\x1f\x7f]', result[field]):
-            raise ValueError('수신자 이름과 메일 제목은 한 줄로 입력하세요.')
-    for field in ('to', 'cc', 'bcc'):
+    if not isinstance(result.get('subject'), str) or re.search(r'[\r\n\x00-\x1f\x7f]', result['subject']):
+        raise ValueError('메일 제목은 한 줄로 입력하세요.')
+    for field in ('cc', 'bcc'):
         raw = result.get(field, '')
         if isinstance(raw, list) and not all(isinstance(item, str) for item in raw):
             raise ValueError('이메일 주소 형식을 확인하세요.')
         result[field] = addresses(','.join(raw) if isinstance(raw, list) else raw)
-    if (result['cc'] or result['bcc'] or result['recipientName'].strip()) and not result['to']:
-        raise ValueError('수신자 이메일 주소를 입력하세요.')
-    # No To means the existing LIMS recipient lookup policy remains in charge.
-    result['recipientPolicy'] = 'explicit' if result['to'] else 'lims'
+        if any(item.rsplit('@', 1)[1].lower() != COPY_DOMAIN for item in result[field]):
+            raise ValueError('참조·비밀참조는 @rist.re.kr 이메일 주소만 사용할 수 있습니다.')
+    # Resolve the sole To recipient from the request in LIMS, never from the saved/browser
+    # envelope. This also neutralizes explicit recipients in previously generated reports.
+    result['recipientName'], result['to'], result['recipientPolicy'] = '', [], 'lims'
     images = MailImages(result.get('inlineImages'), cid=True)
     result['bodyHtml'] = clean_html(result.get('bodyHtml', ''), images=images)[0]
     result['inlineImages'] = images.finish()
@@ -276,6 +279,31 @@ def write_mail_files(directory, subject, body, delivery=None):
 
 
 router = APIRouter()
+
+
+@router.get('/api/v1/report-mail/recipient')
+def get_recipient(request: Request, request_number: str = Query(alias='requestNumber', min_length=1, max_length=100)):
+    from .auth import require_context
+    context = require_context(request)
+    if context.status != 'ACTIVE' or not (context.is_admin or context.projects):
+        raise ApiException(403, 'MAIL_RECIPIENT_FORBIDDEN', '실험 이용 권한이 있는 회원만 의뢰자를 조회할 수 있습니다.')
+    number = request_number.strip()
+    if not number or re.search(r'[\x00-\x1f\x7f]', number):
+        raise ApiException(422, 'MAIL_RECIPIENT_REQUEST_INVALID', '의뢰번호를 확인하세요.')
+    database = getattr(request.app.state, 'database', None)
+    if database is None:
+        raise ApiException(503, 'MAIL_RECIPIENT_UNAVAILABLE', '의뢰자 조회에 필요한 데이터베이스가 연결되지 않았습니다.')
+    try:
+        rows = database.fetch_request_recipient(number)
+    except Exception as exc:
+        raise ApiException(503, 'MAIL_RECIPIENT_UNAVAILABLE', '의뢰자 정보를 조회하지 못했습니다. 잠시 후 다시 확인하세요.') from exc
+    if len(rows) != 1:
+        raise ApiException(409 if rows else 404, 'MAIL_RECIPIENT_NOT_RESOLVED',
+                           '의뢰자를 한 명으로 확인할 수 없습니다. 의뢰번호와 LIMS 의뢰자 정보를 확인하세요.')
+    # The synchronized table currently has requester identity, but no email column.
+    # Do not infer an address from a name/id. Spring resolves the actual mailbox in LIMS.
+    return JSONResponse(dict(requestNumber=number, recipientName=rows[0].get('req_user_name') or '',
+                             email=None, recipientPolicy='lims'), headers={'Cache-Control': 'no-store'})
 
 
 def _preferences_path(request):

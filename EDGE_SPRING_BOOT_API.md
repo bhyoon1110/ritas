@@ -201,11 +201,11 @@ Spring Boot는 다음 항목을 모두 확인해야 한다.
 {
   "email": {
     "schemaVersion": 2,
-    "recipientPolicy": "explicit",
-    "recipientName": "의뢰 담당자",
-    "to": ["recipient@example.com"],
-    "cc": ["reviewer@example.com"],
-    "bcc": ["archive@example.com"],
+    "recipientPolicy": "lims",
+    "recipientName": "",
+    "to": [],
+    "cc": ["reviewer@rist.re.kr"],
+    "bcc": ["archive@rist.re.kr"],
     "subject": "[RIST] 분석 결과 보고서 안내",
     "bodyText": "분석 결과 안내\n\n등록한 서명",
     "bodyHtml": "<p><strong>분석 결과 안내</strong></p><br><br>등록한 서명",
@@ -214,8 +214,11 @@ Spring Boot는 다음 항목을 모두 확인해야 한다.
 }
 ```
 
-- 편집 화면의 주소는 쉼표/세미콜론 구분 문자열이다. 유효한 주소는 보고서 등록 시 `to/cc/bcc` 배열로 검증·중복 제거하며 전송 요청 시 다시 검증한다. 입력 중인 불완전한 주소는 초안에 보존하되 전송을 차단한다. 주소와 수신자 이름이 모두 비어 있으면 `recipientPolicy: "lims"`이며 기존 의뢰 수신자 조회 정책을 유지한다.
-- `report_transfers`는 메일 컬럼을 추가하지 않는다. Spring은 해당 `report_id`의 `report_runs.report_options_json.email`을 읽는다. 재전송도 이 저장된 수정본을 사용한다.
+- **To는 해당 의뢰의 의뢰자 1명으로 고정**한다. `recipientPolicy`는 항상 `lims`이며 `to`는 빈 배열이다. Spring/LIMS가 큐의 의뢰번호를 기준으로 의뢰자와 이메일을 권위 있는 LIMS 데이터에서 조회해 발송 직전에 결정한다. 빈 `to`는 수신자 없음이 아니라 의뢰자 조회 지시다. 의뢰자를 한 명으로 확정할 수 없거나 유효한 이메일이 없으면 발송하지 않고 실패 사유를 남긴다. 사용자 입력·예전 `explicit` 주소·기본 배포 목록으로 대체하거나 수신자를 추가하지 않는다.
+- 참조·비밀참조는 **도메인이 정확히 `rist.re.kr`인 주소만** 허용한다(도메인 대소문자 무관). 외부 도메인, 하위 도메인, 유사 도메인, 외부 주소가 섞인 목록은 전체 발송을 거부한다. 다른 도메인을 자동 치환하지 않는다. 편집 화면은 고정된 `@rist.re.kr` 옆에 아이디를 입력하며, 여러 명은 쉼표/세미콜론으로 구분한다. 완전한 RIST 주소를 붙여넣어도 된다. 서버는 `cc/bcc` 배열을 검증·중복 제거하고 큐 등록 때 다시 검사한다. API로 저장한 불완전한 초안이나 기존 외부 참조 주소가 남은 보고서도 전송은 차단한다.
+- 수신자 이름·주소 입력란은 읽기 전용이다. `GET /api/v1/report-mail/recipient?requestNumber=...`는 실험 권한이 있는 활성 회원에게 정확한 의뢰번호의 의뢰자 이름을 반환한다. 현재 `lims_req_ax_search`에는 `req_user_no/req_user_name`만 있고 이메일 컬럼은 없어 `email: null`을 반환하며, 화면에는 발송 시 LIMS 조회 안내를 표시한다. 이메일을 이름·아이디에서 추정하지 않는다. 실제 주소 표시가 필요하면 공식 LIMS 이메일 조회 연계를 추가해야 한다.
+- **Spring/LIMS의 최종 발송기에서도 위 수신 정책을 반드시 검증한다.** Python은 이번 정책을 큐 등록 때 적용하며, 기존 보고서 재전송에서도 예전 `explicit` 주소를 제거한다. 이미 대기·처리 중인 큐는 Python을 다시 거치지 않으므로 최종 발송기에서 기존 저장 주소를 무시하고 의뢰자만 조회해야 한다. Java 발송기 코드는 이 저장소 밖에서 관리한다.
+- `report_transfers`는 메일 컬럼을 추가하지 않는다. Spring은 해당 `report_id`의 `report_runs.report_options_json.email`을 읽는다. 재전송도 이 저장된 수정본을 사용하며, Python은 정규화한 메일 옵션을 큐 등록과 같은 트랜잭션에서 보존한다.
 - BCC는 **SMTP envelope 전용**이다. 메일 헤더·수신자 화면·보고서·ZIP·일반 로그에 출력하지 않는다. `email` 전체를 무분별하게 로깅하지 않는다.
 - HTML은 굵게·기울임·밑줄·목록·문단·표와 검증된 PNG/JPEG 이미지만 허용한다. 표/이미지 배치를 위한 고정 스타일 외에 사용자 CSS·스크립트·외부 이미지·링크는 제거된다. Spring도 같은 허용 정책을 적용하고 HTML/일반 텍스트 대체 본문을 함께 구성한다.
 - 서명은 본문 끝에 이미 합쳐져 전달된다. Spring에서 다시 붙이지 않는다. 기본 서명은 인증 사용자별로 공유 저장소의 `user-mail-preferences/`에 비공개 저장하며 네 실험에서 불러올 수 있다. 기존 보고서의 서명은 기본 서명 변경으로 덮어쓰지 않는다.
@@ -238,7 +241,9 @@ Spring의 `MimeMessageHelper` 구성 예시(메일 DTO 접근자는 실제 구�
 ```java
 MimeMessageHelper helper = new MimeMessageHelper(message,
     MimeMessageHelper.MULTIPART_MODE_MIXED_RELATED, "UTF-8");
-// 기존 From/To/CC/BCC/Subject·SSO/전송 정책을 적용한 뒤:
+// SSO 확인 및 위 정책에 따른 의뢰자 1명 조회·CC/BCC 도메인 검증을 먼저 수행한다.
+// To는 mail.getTo()가 아니라 LIMS에서 확정한 의뢰자 주소를 사용한다.
+// 기존 From/Subject 설정과 검증된 To/CC/BCC 적용 뒤:
 helper.setText(mail.getBodyText(), mail.getBodyHtml()); // HTML을 escape하거나 MD로 보내지 않음
 for (InlineImage image : mail.getInlineImages()) {
     byte[] bytes = Base64.getDecoder().decode(image.getDataBase64());

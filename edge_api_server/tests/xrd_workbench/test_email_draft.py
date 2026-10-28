@@ -170,7 +170,7 @@ def test_draft_generation_is_ephemeral_editable_and_preserved_in_recovery(tmp_pa
     assert client.get(BASE + f'/api/reports/{sid}').json()['document'] == baseline
     from app.report_mail import normalize_delivery
     doc['email'] = dict(response.json(), subject='사용자 제목', body='사용자 본문', status='manual',
-                        delivery=normalize_delivery(dict(to='to@example.com', bcc='secret@example.com',
+                        delivery=normalize_delivery(dict(to='to@example.com', bcc='secret@rist.re.kr',
                             bodyHtml='<strong>사용자 본문</strong>', signature='담당자 서명')))
     from app.report_mail import clean_html
     from tests.test_report_mail import embedded_image

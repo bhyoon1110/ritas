@@ -101,6 +101,45 @@ class _CaptureConnection:
         return None
 
 
+def test_mail_requester_lookup_uses_exact_parameterized_identity(monkeypatch):
+    database = Database.__new__(Database)
+    connection = _CaptureConnection()
+    monkeypatch.setattr(database, '_connect', lambda: connection)
+    number = "REQ-1' OR 1=1 --"
+    assert database.fetch_request_recipient(number) == []
+    assert 'req_number = ?' in connection.sql and 'LIMIT 2' in connection.sql
+    assert number not in connection.sql and connection.params == (number,)
+
+
+def test_registered_queue_persists_normalized_mail_in_same_transaction():
+    from contextlib import contextmanager
+    import json
+    database = Database.__new__(Database)
+    statements = []
+    class Connection:
+        def execute(self, sql, params):
+            statements.append((' '.join(sql.split()), params))
+            return self
+        def fetchone(self):
+            return {'version_no': 2, 'transfer_id': 'transfer', 'status': 'PENDING'}
+    @contextmanager
+    def transaction():
+        yield Connection()
+    database.transaction = transaction
+    options = json.dumps({'email': {'to': [], 'recipientPolicy':'lims', 'cc':['review@rist.re.kr']}})
+    database.enqueue_report_transfer(report_id='report',transfer_id='transfer',source_job_id=None,
+        request_number='REQ-1',experiment_code='XRD',equipment_code='AX',operator_id='SSO',
+        storage_key='reports',package_relative_path='report.zip',package_file_name='report.zip',
+        package_size_bytes=10,package_sha256='0'*64,report_options_json=options,
+        generated_at='2026-10-28',max_attempts=5,register_report_run=False)
+    updates=[(i,sql,params) for i,(sql,params) in enumerate(statements) if sql.startswith('UPDATE report_runs')]
+    assert len(updates)==1
+    i,sql,params=updates[0]
+    assert params==(options,'report') and 'report_options_json = ?' in sql
+    assert 'request_number =' not in sql and 'version_no =' not in sql
+    assert i < next(i for i,(sql,_) in enumerate(statements) if sql.startswith('INSERT INTO report_transfers'))
+
+
 def test_request_summary_completion_filter_is_parameterized(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

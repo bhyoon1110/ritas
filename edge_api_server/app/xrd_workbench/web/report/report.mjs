@@ -78,7 +78,7 @@ const mailEditor=mountEmailEditor($('editorFields'),$('reportNav'),()=>{
   if(!doc||busy)return;
   const email=ensureEmail(doc);email.delivery=mailEditor.value();email.body=$('emailBody').value;
   email.status='manual';updateEmailStatus();markDirty();
-});
+},()=>doc?.metadata?.report_number || '');
 let recoveryDraft=null;
 let emailBaselineKey='', emailStale=false, emailAttempted=false, emailDefault=null;
 const recoveryBar=document.createElement('div');recoveryBar.className='draftRecovery';
@@ -191,6 +191,7 @@ function status(text, error = false) {
 }
 function markDirty() {
   dirty = true;
+  mailEditor.refreshRecipient();
   updateEmailStatus();
   if(!composing)draftSaver.schedule();
   renderPrecheck();
@@ -406,6 +407,8 @@ async function openProject(id) {
 }
 async function save() {
   if (!doc) throw new Error('프로젝트가 열리지 않았습니다.');
+  const mailError = mailEditor.validate();
+  if (mailError) throw new Error(mailError);
   if(recoveryDraft)throw new Error('복구 가능한 초안이 있습니다. 먼저 복구 또는 버리기를 선택하세요.');
   await draftSaver.flush();
   syncTransfer();

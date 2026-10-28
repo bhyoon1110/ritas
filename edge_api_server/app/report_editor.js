@@ -104,6 +104,7 @@
   }
   function cellActivity(value) {cellEditing=value;window.clearTimeout(timer);if(!value)schedule();}
   function changed() {
+    if (mailEditor) mailEditor.refreshRecipient();
     // Collect tables and canvas patches only once per keystroke on low-end PCs.
     var value = collect();
     structureDirty = structure(value.pageEdits) !== layoutStructure;
@@ -481,7 +482,7 @@
       auxiliary[key] = input;
     });
     mailEditor = new window.RistMailEditor({host:mail,body:auxiliary.email_body,before:auxiliary.email_subject.parentNode,
-      value:model.deliveryEmail,changed:changed});
+      value:model.deliveryEmail,changed:changed,requestNumber:function(){return inputs.requestNumber.value;}});
     mail.addEventListener("compositionstart", function () { composing = true; window.clearTimeout(timer); });
     mail.addEventListener("compositionend", function () { composing = false; changed(); });
     saved = JSON.stringify(collect()); dirty = false;
