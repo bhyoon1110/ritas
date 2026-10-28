@@ -20,11 +20,25 @@ const port=new Promise((resolve,reject)=>{let s='';server.stdout.on('data',chunk
       let signature={signature:''},revision=0,doc=kind==='xrd'?structuredClone(fixture.document):{title:'메일 편집 테스트',completionDate:'2026-10-26',transfer:{},sections:[],auxiliary:{email_subject:'분석 결과',email_body:'분석 결과를 안내합니다.'},variables:[]};
       if(kind==='xrd'){doc.metadata.report_number='REQ-1';doc.email={subject:'분석 결과',body:'분석 결과를 안내합니다.',status:'manual',source_fingerprint:'',model_used:'',message:''};}
       else doc.transfer.requestNumber='REQ-1';
+      if(kind==='xrd'){doc.metadata.equipment_code='EQ-TEST';doc.summary='검토한 분석 결과';}
+      else {doc.transfer.equipmentCode='EQ-TEST';doc.sections=[{sectionId:'summary',heading:'분석 결과',paragraphs:['검토한 분석 결과'],bullets:[],rows:null,columns:null}];}
       let addressBook={revision:0,contacts:[]},sharedBook={revision:0,contacts:[]},manageShared=true;
-      let signatureBook=null;
+      let signatureBook=null,templates={revision:0,items:[]};
       await page.route('**/*',async route=>{
         const r=route.request(),url=new URL(r.url()),p=url.pathname;
         const json=(data,status=200)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(data)});
+        if(p.startsWith('/api/v1/report-mail/templates')){
+          const id=p.split('/templates/')[1],item=templates.items.find(i=>i.id===id);let selectedId=id;
+          if(r.method()!=='GET'){
+            const v=r.postDataJSON();assert.equal(v.revision,templates.revision);
+            if(r.method()==='POST'){selectedId='template-'+templates.revision;templates.items.push({id:selectedId,content:v.content});}
+            else if(r.method()==='PUT')item.content=v.content;
+            else templates.items=templates.items.filter(i=>i.id!==id);
+            templates.revision++;
+          }
+          if(r.method()==='GET'&&id)return json({...item,revision:templates.revision});
+          return json({revision:templates.revision,selectedId,items:templates.items.map(i=>({id:i.id,name:i.content.name,experiment:i.content.experiment}))});
+        }
         if(p==='/api/v1/report-mail/signature'){
           if(r.method()==='PUT'){signature=r.postDataJSON();if(signatureBook){const item=signatureBook.items.find(i=>i.id===signatureBook.defaultId);if(item)item.content=structuredClone(signature);signatureBook.revision++;}}
           return json(signature);
@@ -174,6 +188,21 @@ const port=new Promise((resolve,reject)=>{let s='';server.stdout.on('data',chunk
         await page.getByRole('button',{name:'내 기본 서명 저장',exact:true}).click();await page.getByText('내 기본 서명을 저장했습니다.',{exact:false}).waitFor();
         assert.equal(signature.signature,'윤병훈\nRIST');assert.equal(signature.signatureImageWidth,'240');assert(signature.signatureImage.startsWith('data:image/jpeg;base64,'));
         await page.getByRole('button',{name:'서명 목록 관리',exact:true}).click();await page.getByText('서명 목록을 불러왔습니다.',{exact:true}).waitFor();
+        await page.getByRole('button',{name:'메일 템플릿',exact:true}).click();await page.getByText('메일 템플릿 목록을 불러왔습니다.',{exact:false}).waitFor();
+        await page.getByRole('button',{name:'현재 메일을 템플릿으로 가져오기',exact:true}).click();
+        await page.getByLabel('메일 템플릿 이름',{exact:true}).fill('분석 안내');
+        await page.getByLabel('템플릿 메일 제목',{exact:true}).fill('{{실험종류}} · ');
+        await page.getByLabel('템플릿 공통항목',{exact:true}).selectOption('의뢰번호');await page.getByRole('button',{name:'선택한 공통항목 삽입',exact:true}).click();
+        assert.equal(await page.getByLabel('템플릿 메일 제목',{exact:true}).inputValue(),'{{실험종류}} · {{의뢰번호}}');
+        await page.getByLabel('템플릿 메일 본문',{exact:true}).evaluate(e=>{const p=document.createElement('p');p.textContent='{{실험장비}}: {{분석결과}}';e.appendChild(p);e.dispatchEvent(new Event('input',{bubbles:true}));});
+        await page.getByRole('button',{name:'메일 템플릿 새 이름으로 저장',exact:true}).click();await page.getByText('메일 템플릿을 저장했습니다.',{exact:true}).waitFor();
+        await page.getByLabel('메일 템플릿 이름',{exact:true}).fill('분석 안내 수정');await page.getByRole('button',{name:'선택한 메일 템플릿 수정 저장',exact:true}).click();await page.getByText('메일 템플릿을 수정했습니다.',{exact:true}).waitFor();
+        assert.equal(templates.items[0].content.name,'분석 안내 수정');
+        await page.getByRole('button',{name:'공통항목 반영 미리보기',exact:true}).click();assert.match(await page.locator('.mail-template-preview').textContent(),/EQ-TEST: 검토한 분석 결과/);
+        await page.getByRole('button',{name:'미리본 템플릿을 현재 메일에 적용',exact:true}).click();await save();
+        assert.match(kind==='xrd'?doc.email.body:doc.auxiliary.email_body,/EQ-TEST: 검토한 분석 결과/);
+        assert.equal(kind==='xrd'?doc.email.subject:doc.auxiliary.email_subject,(kind==='ftir'?'FT-IR':kind.toUpperCase())+' · REQ-1');
+        assert.equal((kind==='xrd'?doc.email.delivery:doc.deliveryEmail).bcc,'secret@rist.re.kr');
         await page.getByLabel('서명 이름',{exact:true}).fill('실험실 명함');await page.getByRole('button',{name:'현재 서명을 새 항목으로 추가',exact:true}).click();await page.getByText('새 서명을 추가했습니다.',{exact:true}).waitFor();
         assert.equal(signatureBook.items.length,2);
         await page.getByLabel('서명 이름',{exact:true}).fill('실험실 명함 수정');await page.getByRole('button',{name:'선택한 서명 수정 저장',exact:true}).click();await page.getByText('선택한 서명을 수정했습니다.',{exact:true}).waitFor();
@@ -240,6 +269,13 @@ const port=new Promise((resolve,reject)=>{let s='';server.stdout.on('data',chunk
         await page.getByRole('button',{name:'내 기본 서명 불러오기',exact:true}).click();await page.getByText('기본 서명을 현재 보고서에 적용했습니다.',{exact:true}).waitFor();assert.equal(await page.getByLabel('메일 서명',{exact:true}).inputValue(),'윤병훈\nRIST');
         assert.equal(await signatureImage.getAttribute('src'),signature.signatureImage);assert.equal(await signatureImage.getAttribute('width'),'240');
         await page.getByRole('button',{name:'서명 목록 관리',exact:true}).click();await page.getByText('서명 목록을 불러왔습니다.',{exact:true}).waitFor();
+        await page.getByRole('button',{name:'메일 템플릿',exact:true}).click();await page.getByText('메일 템플릿 목록을 불러왔습니다.',{exact:false}).waitFor();
+        await page.getByLabel('저장된 메일 템플릿',{exact:true}).selectOption(templates.items[0].id);await page.getByRole('button',{name:'선택한 메일 템플릿 불러오기',exact:true}).click();await page.getByText('템플릿을 불러왔습니다.',{exact:false}).waitFor();
+        assert.equal(await page.getByLabel('메일 템플릿 이름',{exact:true}).inputValue(),'분석 안내 수정');
+        await page.getByRole('button',{name:'현재 메일을 템플릿으로 가져오기',exact:true}).click();
+        assert.equal(await page.locator('.mail-template-body table').count(),1);assert.equal(await page.locator('.mail-template-body img').count(),1);
+        await page.getByRole('button',{name:'선택한 메일 템플릿 수정 저장',exact:true}).click();await page.getByText('메일 템플릿을 수정했습니다.',{exact:true}).waitFor();
+        assert.match(templates.items[0].content.bodyHtml,/<table/);assert.match(templates.items[0].content.bodyHtml,/<img/);
         for(const width of [1440,390]){
           await page.setViewportSize({width,height:1000});await rich.scrollIntoViewIfNeeded();
           if(width===390&&kind!=='xrd'&&await page.locator('#page-sidebar-close').isVisible())await page.locator('#page-sidebar-close').click();
@@ -253,10 +289,13 @@ const port=new Promise((resolve,reject)=>{let s='';server.stdout.on('data',chunk
           await page.locator('.mail-compose').screenshot({path:path.join(output,name+'-'+width+'.png')});
           assert(await page.locator('.mail-signature').evaluate(e=>e.scrollWidth<=e.clientWidth+2));
           await page.locator('.mail-signature').screenshot({path:path.join(output,name+'-signature-'+width+'.png')});
+          assert(await page.locator('.mail-template-panel').evaluate(e=>e.scrollWidth<=e.clientWidth+2));
+          await page.locator('.mail-template-panel').screenshot({path:path.join(output,name+'-templates-'+width+'.png')});
           if(width===1440){await page.locator('.mail-table-panel').screenshot({path:path.join(output,name+'-table-controls.png')});await page.locator('.mail-rich-wrap').screenshot({path:path.join(output,name+'-table.png')});}
         }
         await rich.locator('img').click();await page.getByRole('button',{name:'선택한 메일 이미지 삭제',exact:true}).click();assert.equal(await rich.locator('img').count(),0);
         await rich.locator('td').first().click();await page.getByRole('button',{name:'선택한 메일 표 삭제',exact:true}).click();assert.equal(await rich.locator('table').count(),0);
+        await page.getByRole('button',{name:'선택한 메일 템플릿 삭제',exact:true}).click();await page.getByText('템플릿을 삭제했습니다.',{exact:false}).waitFor();assert.equal(templates.items.length,0);
         assert.deepEqual(errors,[]);console.log(name+': mail fields, image/table insert/edit/delete, compression/limits, save/reopen and responsive layout passed');
       }catch(error){await page.screenshot({path:path.join(output,name+'-failure.png'),fullPage:true});throw error;}
       finally{await context.close();}

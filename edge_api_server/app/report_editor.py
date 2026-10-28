@@ -244,7 +244,7 @@ def editor_page(prefix, job_id, *, project=None):
     template = Path(__file__).with_name("report_editor.html").read_text(encoding="utf-8")
     script = file_progress_script() + '\n' + (Path(__file__).parent / "xrd_workbench/web/shared/pptx_password.js").read_text(encoding="utf-8") + "\n"
     script += "\n".join((Path(__file__).parent / name).read_text(encoding="utf-8")
-                       for name in ("file_save.js", "report_editor_icons.js", "report_page_sidebar.js", "report_cell_editor.js", "report_direct_editor.js", "report_canvas_editor.js", "report_saved_graphs.js", "report_condition_options.js", "xrd_workbench/web/shared/mail_editor_icons.js", "xrd_workbench/web/shared/mail_table_editor.js", "xrd_workbench/web/shared/mail_address_book.js", "xrd_workbench/web/shared/mail_editor.js", "report_editor.js"))
+                       for name in ("file_save.js", "report_editor_icons.js", "report_page_sidebar.js", "report_cell_editor.js", "report_direct_editor.js", "report_canvas_editor.js", "report_saved_graphs.js", "report_condition_options.js", "xrd_workbench/web/shared/mail_editor_icons.js", "xrd_workbench/web/shared/mail_table_editor.js", "xrd_workbench/web/shared/mail_address_book.js", "xrd_workbench/web/shared/mail_template_context.js", "xrd_workbench/web/shared/mail_templates.js", "xrd_workbench/web/shared/mail_editor.js", "report_editor.js"))
     return template.replace("__CONFIG__", config).replace("__SCRIPT__", script).replace(
         "</body>", floating_panels_html() + "</body>", 1
     )

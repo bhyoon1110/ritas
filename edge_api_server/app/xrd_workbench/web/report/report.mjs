@@ -76,9 +76,9 @@ const pptxPassword = new window.RistPptxPassword({host:document.querySelector('#
   }});
 const mailEditor=mountEmailEditor($('editorFields'),$('reportNav'),()=>{
   if(!doc||busy)return;
-  const email=ensureEmail(doc);email.delivery=mailEditor.value();email.body=$('emailBody').value;
+  const email=ensureEmail(doc);email.delivery=mailEditor.value();email.body=$('emailBody').value;email.subject=$('emailSubject').value;
   email.status='manual';updateEmailStatus();markDirty();
-},()=>doc?.metadata?.report_number || '');
+},()=>doc?.metadata?.report_number || '',()=>window.RistMailTemplateContext.xrd(doc,project));
 let recoveryDraft=null;
 let emailBaselineKey='', emailStale=false, emailAttempted=false, emailDefault=null;
 const recoveryBar=document.createElement('div');recoveryBar.className='draftRecovery';

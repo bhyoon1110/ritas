@@ -315,7 +315,7 @@
       if(state.signatureImage){if(signaturePicture.getAttribute("src")!==state.signatureImage)signaturePicture.src=state.signatureImage;signaturePicture.width=Number(state.signatureImageWidth)||320;}else signaturePicture.removeAttribute("src");
       signatureWidth.value=signatureSlider.value=state.signatureImageWidth||"320";signatureControls();
     }
-    function signatureControls(){Array.prototype.forEach.call(signatureBox.querySelectorAll("button,input,textarea,select"),function(e){if(e!==signatureHandle)e.disabled=locked||mediaBusy||preferenceBusy||!!signatureDrag;});removeSignatureImage.disabled=locked||mediaBusy||preferenceBusy||!!signatureDrag||!state.signatureImage;signatureHandle.disabled=locked||mediaBusy||preferenceBusy||!state.signatureImage;if(library)libraryControls();}
+    function signatureControls(){Array.prototype.forEach.call(signatureBox.querySelectorAll("button,input,textarea,select"),function(e){if(e!==signatureHandle)e.disabled=locked||mediaBusy||preferenceBusy||!!signatureDrag;});removeSignatureImage.disabled=locked||mediaBusy||preferenceBusy||!!signatureDrag||!state.signatureImage;signatureHandle.disabled=locked||mediaBusy||preferenceBusy||!state.signatureImage;if(library)libraryControls();if(templates)templates.lock(locked||mediaBusy||preferenceBusy||!!signatureDrag);}
     function preference(method,done){
       if(locked||mediaBusy||preferenceBusy||signatureDrag)return;
       var payload={signature:signature.value,signatureImage:state.signatureImage||"",signatureImageWidth:state.signatureImageWidth||"320"},version=loadVersion;
@@ -369,10 +369,18 @@
     var libraryDelete=button(libraryActions,"삭제","선택한 저장 서명 삭제",function(){var id=librarySelect.value;if(!id||!window.confirm("선택한 서명을 목록에서 삭제할까요? 현재 보고서의 서명은 유지됩니다."))return;libraryRequest("DELETE","/"+encodeURIComponent(id),{revision:signatureBook.revision},function(value){signatureBook=value;renderLibrary();feedback.textContent="서명을 목록에서 삭제했습니다.";});},"trash");
     button(libraryActions,"새로고침","서명 목록 새로고침",loadSignatures,"refresh");
     function load(value){endSignatureDrag(false);loadVersion++;tables.reset();state={};keys.forEach(function(k){state[k]=k==="to"||k==="recipientName"?"":String((value||{})[k]||(k==="signatureImageWidth"?"320":""));if(k==="cc"||k==="bcc")fields[k].value=copyIds(state[k]);else if(fields[k]&&k!=="to"&&k!=="recipientName")fields[k].value=state[k];});state.bodyHtml=clean(state.bodyHtml);clean(signatureMarkup(state));rich.innerHTML=state.bodyHtml||plain(body.value);range=null;selectedImage=null;mediaTools.hidden=true;renderSignature();refreshRecipient();}
+    var templates=options.subject&&window.RistMailTemplates?new window.RistMailTemplates({host:host,before:options.subject.parentNode,
+      experiment:options.experiment,context:options.context||function(){return {};},clean:clean,
+      current:function(){return {subject:options.subject.value,bodyHtml:sourceMode?plain(body.value):rich.innerHTML};},
+      validate:function(v){if(locked||mediaBusy||preferenceBusy||signatureDrag)throw Error("현재 처리가 끝난 뒤 다시 적용하세요.");clean(v.bodyHtml+signatureMarkup(state));},
+      apply:function(v){options.subject.value=v.subject;body.value=v.body;state.bodyHtml=v.bodyHtml;rich.innerHTML=v.bodyHtml;
+        sourceMode=false;body.hidden=true;rich.hidden=false;window.RistMailIcons(toggle,"plain-text","메일 본문 일반 텍스트 전환");toggle.setAttribute("aria-pressed","false");tables.reset();selectedImage=null;range=null;mediaTools.hidden=true;notify();}
+    }):null;
     load(options.value);
     return {value:function(){var result={};keys.forEach(function(k){result[k]=k==="to"||k==="recipientName"?"":k==="cc"||k==="bcc"?copyAddresses(fields[k].value):fields[k]?fields[k].value:state[k]||"";});return result;},load:load,refreshRecipient:refreshRecipient,
       lock:function(value){if(value)endSignatureDrag(false);locked=!!value;addressBook.lock(locked);tables.lock();rich.contentEditable=String(!locked);Array.prototype.forEach.call(host.querySelectorAll(".mail-addresses input,.mail-toolbar button,.mail-toolbar input,.mail-resize-handle,.mail-signature textarea"),function(e){e.disabled=locked;});imageButton.disabled=locked||mediaBusy;signatureControls();},
       validate:function(){if(signatureDrag)return "이미지 크기 조절을 마친 후 저장하세요.";if(mediaBusy)return "이미지 처리가 끝난 후 저장하세요.";if(body.value.length>4000)return "메일 본문은 4,000자 이하로 입력하세요.";if(signature.value.length>2000)return "서명은 2,000자 이하로 입력하세요.";var invalid=copyError(fields.cc.value)||copyError(fields.bcc.value);if(invalid)return invalid;try{clean((sourceMode?plain(body.value):rich.innerHTML)+signatureMarkup(state));}catch(error){return error.message;}return "";}};
   };
   window.RistMailEditor.clean=clean;
+  window.RistMailEditor.plainText=plainHtml;
 }());

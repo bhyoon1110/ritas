@@ -482,7 +482,9 @@
       auxiliary[key] = input;
     });
     mailEditor = new window.RistMailEditor({host:mail,body:auxiliary.email_body,before:auxiliary.email_subject.parentNode,
-      value:model.deliveryEmail,changed:changed,requestNumber:function(){return inputs.requestNumber.value;}});
+      value:model.deliveryEmail,changed:changed,requestNumber:function(){return inputs.requestNumber.value;},
+      subject:auxiliary.email_subject,experiment:project.replace("-",""),
+      context:function(){return window.RistMailTemplateContext.report(collect(),project,variableOptions());}});
     mail.addEventListener("compositionstart", function () { composing = true; window.clearTimeout(timer); });
     mail.addEventListener("compositionend", function () { composing = false; changed(); });
     saved = JSON.stringify(collect()); dirty = false;

@@ -231,6 +231,15 @@ Spring Boot는 다음 항목을 모두 확인해야 한다.
 - 브라우저의 서명 입력란·미리보기에서 paste 이벤트로 PNG/JPEG를 받고 기존 파일 업로드와 같은 크기·형식 검사 및 압축을 거친다. 자동 클립보드 읽기 권한이나 외부 이미지 다운로드는 사용하지 않는다. 이미지 모서리 드래그는 비율 유지, 포인터·마우스·터치 및 키보드를 지원한다. Esc·포커스 이탈·포인터 취소·보고서 잠금/교체 시 진행 중 크기 변경을 원복하고 포인터 캡처를 해제한다.
 - 배포 확인: 새 필드로 저장→재열기→SSO 전송→DB 메일 확인→Spring/LIMS 테스트 메일 수신 순서로 검증한다. 실제 발송 테스트 전 수신자를 확인한다.
 
+#### 개인 메일 템플릿 (네 실험 공통)
+
+- `GET /api/v1/report-mail/templates`: `{revision,items:[{id,name,experiment}]}` 목록. 본문·이미지는 제외하고 `GET /templates/{id}`에서 `{revision,id,content}`로 조회한다.
+- `POST /templates`: `{revision,content}`로 추가, `PUT /templates/{id}`로 수정, `DELETE /templates/{id}`에 `{revision}`로 삭제한다. 위 경로의 접두사는 `/api/v1/report-mail`이다. 변경 결과는 최신 목록과 `selectedId`를 반환한다.
+- content는 `{name,experiment,subject,body,bodyHtml}`만 허용한다. 이름 80자, 제목 180자(한 줄), 본문 4,000자, 실험은 `ALL/FTIR/RAMAN/TEM/XRD`, 계정당 20개다. 기존 메일 HTML·이미지·표 검증과 용량 한도를 적용하며 원시 본문은 정제된 HTML로 동기화한다.
+- 활성 회원 본인 파일만 접근하며 변경 요청은 동일 출처 및 `X-Requested-With: RIST-Mail-Editor`를 검증한다. 파일 잠금·원자 저장과 revision 409 충돌 검사를 사용한다. 저장된 수신자·서명은 없다. 백업 경로: `RIST_STORAGE_ROOT/user-mail-templates/`.
+- `{{항목명}}`은 브라우저에서 현재 편집 중인 보고서 정보로 미리보기·적용할 때 해석한다. HTML 텍스트에만 안전하게 삽입하고 주소·속성·이미지 데이터는 치환하지 않는다. 등록되지 않은 이름·순환 참조·길이 초과는 적용 불가, 빈 값은 안내 후 빈칸으로 적용한다.
+- 적용 결과는 기존 `auxiliary`/`deliveryEmail`(XRD `email`/`email.delivery`) 초안으로 저장된다. 수신자 강제 조회·RIST 참조 도메인·SSO·MariaDB 큐·Spring MIME 계약은 그대로이며 새로운 DB 테이블이나 발송 API는 없다.
+
 #### 개인 주소록 (Edge 편집 화면 공통)
 
 - 안내 메일의 `주소록`에서 이름·부서·`@rist.re.kr` 이메일을 관리한다. 회원당 최대 500명이며 이름·부서·이메일 검색과 50개 단위 목록, 다중 선택으로 CC/BCC에 추가한다. To 변경 기능은 제공하지 않는다.
