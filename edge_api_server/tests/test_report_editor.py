@@ -194,6 +194,7 @@ def test_blank_fields_edit_revision_and_recipient_integrity(prepared, monkeypatc
     assert len(large_image) > 120000  # Image bytes must not consume the old text-only budget.
     rich, plain = clean_html('<p>' + escape(edits['auxiliary']['email_body']) + '</p><table><tr><td>시료 A</td><td>3.2</td></tr></table><img src="' + large_image + '">')
     edits['deliveryEmail']['bodyHtml'] = rich
+    edits['deliveryEmail'].update(signatureImage=embedded_image((160,80)),signatureImageWidth='270')
     edits['auxiliary']['email_body'] = plain
     registered = []
     def register(**kwargs):
@@ -212,8 +213,9 @@ def test_blank_fields_edit_revision_and_recipient_integrity(prepared, monkeypatc
     assert registered[0]['report_options']['email']['bcc'] == ['secret@rist.re.kr']
     assert registered[0]['report_options']['email']['to'] == []
     assert registered[0]['report_options']['email']['recipientPolicy'] == 'lims'
-    assert registered[0]['report_options']['email']['bodyText'].endswith('윤병훈 · RIST')
-    assert len(registered[0]['report_options']['email']['inlineImages']) == 1
+    assert registered[0]['report_options']['email']['bodyText'].endswith('윤병훈 · RIST\n\n[서명 이미지]')
+    assert len(registered[0]['report_options']['email']['inlineImages']) == 2
+    assert 'width="270"' in registered[0]['report_options']['email']['bodyHtml']
     assert 'cid:' in registered[0]['report_options']['email']['bodyHtml']
     assert h.job.package_path.read_bytes() == before
     trace = json.loads((h.store.get(revised['jobId']).tmp_root / 'job/report/report.json').read_text())['traceability']

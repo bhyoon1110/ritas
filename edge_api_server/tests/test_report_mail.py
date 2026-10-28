@@ -293,5 +293,42 @@ def test_signature_is_authenticated_private_and_shared_across_experiments(tmp_pa
         assert client.get(url,headers=headers).json()=={'signature':'윤병훈\nRIST'}
         assert client.get(url,headers={'x-test-user':'two'}).json()=={'signature':''}
         assert client.put(url,json={'signature':'x'*2001},headers=headers).status_code==422
+        picture = dict(signature='윤병훈\nRIST', signatureImage=embedded_image(), signatureImageWidth='280')
+        saved = client.put(url,json=picture,headers=headers)
+        assert saved.status_code == 200 and saved.json() == picture
+        assert client.get(url,headers=headers).json() == picture
+        assert client.get(url,headers={'x-test-user':'two'}).json() == {'signature':''}
+        for invalid in [dict(picture,signatureImage='https://external.invalid/card.png'),
+                        dict(picture,signatureImage='data:image/svg+xml;base64,PHN2Zz4='),
+                        dict(picture,signatureImage='data:image/png;base64,YmFk'),
+                        dict(picture,signatureImageWidth='1281'), dict(picture,signatureImageWidth='0'),
+                        dict(picture,signatureImageWidth=320), dict(picture,cc='wrong@rist.re.kr')]:
+            assert client.put(url,json=invalid,headers=headers).status_code==422
+            assert client.get(url,headers=headers).json()==picture
+        assert client.put(url,content=b'x'*(400*1024+1),headers=headers).status_code==413
+        assert client.get(url,headers=headers).json()==picture
         assert client.put(url,json={'signature':''},headers=headers).status_code==200
+        assert client.get(url,headers=headers).json()=={'signature':''}
         assert all((p.stat().st_mode & 0o077)==0 for p in (tmp_path/'user-mail-preferences').iterdir())
+
+
+def test_signature_picture_composes_once_and_survives_queue_and_offline_html(tmp_path):
+    from app.report_mail import edit_text_size
+    source=embedded_image((600,600),kind='JPEG',noise=True)
+    delivery=dict(signature='담당자 <RIST>',signatureImage=source,signatureImageWidth='275')
+    assert edit_text_size({'deliveryEmail':delivery})<300
+    mail=mail_payload('결과','검토 완료',delivery,sending=True)
+    assert len(mail['inlineImages'])==1 and mail['bodyHtml'].count('<img ')==1
+    assert 'width="275"' in mail['bodyHtml'] and 'cid:' in mail['bodyHtml']
+    assert mail['bodyText']=='검토 완료\n\n담당자 <RIST>\n\n[서명 이미지]'
+    assert '&lt;RIST&gt;' in mail['bodyHtml']
+    assert validate_envelope(mail)==mail
+    write_mail_files(tmp_path,'결과','검토 완료',delivery)
+    html=(tmp_path/'email_body.html').read_text()
+    assert source in html and html.count('<img ')==1 and 'width="275"' in html and 'cid:' not in html
+    # Signature-only drafts work; removing the image must remove its payload too.
+    assert len(mail_payload('결과','',delivery,sending=True)['inlineImages'])==1
+    assert mail_payload('결과','본문',dict(delivery,signatureImage=''),sending=True)['inlineImages']==[]
+    full=''.join('<img src="'+embedded_image()+'">' for _ in range(4))
+    with pytest.raises(ValueError,match='4장'):
+        normalize_delivery(dict(delivery,bodyHtml=full))

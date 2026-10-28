@@ -123,6 +123,7 @@ def test_tem_revision_edits_visible_text_table_email_and_preserves_original(repo
     from tests.test_report_mail import embedded_image
     rich, plain = clean_html(changes['deliveryEmail']['bodyHtml'] + '<table><tr><td>{{의뢰번호}}</td><td>3.2</td></tr></table><img src="' + embedded_image() + '">')
     changes['deliveryEmail']['bodyHtml'] = rich
+    changes['deliveryEmail'].update(signatureImage=embedded_image((160,80)),signatureImageWidth='270')
     changes['auxiliary']['email_body'] = plain
     text = next(s for s in changes["sections"] if s["paragraphs"] and "TEM-A" in s["paragraphs"][0])
     text["paragraphs"][0] = "교정한 시료명 <literal>"
@@ -147,6 +148,8 @@ def test_tem_revision_edits_visible_text_table_email_and_preserves_original(repo
         assert all(b'hidden@rist.re.kr' not in archive.read(name) for name in archive.namelist())
         assert '<b>검토 완료한 TEM 보고서입니다.</b>' in archive.read('email_body.html').decode()
         assert 'data:image/png;base64,' in archive.read('email_body.html').decode()
+        assert archive.read('email_body.html').decode().count('<img ')==2
+        assert 'width="270"' in archive.read('email_body.html').decode()
         assert '<table' in archive.read('email_body.html').decode() and 'REQ-NEW' in archive.read('email_body.html').decode()
         assert '서명 REQ-NEW' in archive.read('email_body.md').decode()
         assert "review/editor-state.json" not in archive.namelist()

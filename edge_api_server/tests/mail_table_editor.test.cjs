@@ -27,7 +27,8 @@ for(const mode of Object.keys(programs)){
     const remove=host.querySelector('[aria-label="선택한 메일 표 삭제"]');assert(remove.classList.contains('mail-icon-danger'));
     const save=host.querySelector('[aria-label="내 기본 서명 저장"]');save.focus();assert.equal(host.querySelector('.mail-tool-hint').textContent,save.title);
     const image=host.querySelector('[aria-label="메일 이미지 삽입"]');image.dispatchEvent(new u.w.MouseEvent('mouseover',{bubbles:true}));assert.equal(host.querySelector('.mail-tool-hint').textContent,image.title);assert.equal(changed,0);
-    editor.lock(true);assert(buttons.every(b=>b.disabled));editor.lock(false);assert(buttons.every(b=>!b.disabled));assert(!editor.value().bodyHtml.includes('<svg'));
+    const disabledBefore=buttons.map(b=>b.disabled);
+    editor.lock(true);assert(buttons.every(b=>b.disabled));editor.lock(false);assert.deepEqual(buttons.map(b=>b.disabled),disabledBefore);assert(!editor.value().bodyHtml.includes('<svg'));
   });
   test(mode+': text mode icon, tooltip and accessible name follow state without losing rich content',t=>{
     const u=setup(t,mode),host=u.d.createElement('div');u.d.body.appendChild(host);host.innerHTML='<label><textarea>본문</textarea></label>';

@@ -176,6 +176,7 @@ def test_draft_generation_is_ephemeral_editable_and_preserved_in_recovery(tmp_pa
     from tests.test_report_mail import embedded_image
     rich, plain = clean_html('<strong>사용자 본문</strong><table><tr><td>값</td></tr></table><img src="' + embedded_image() + '">')
     doc['email']['delivery']['bodyHtml'] = rich
+    doc['email']['delivery'].update(signatureImage=embedded_image((160,80)),signatureImageWidth='270')
     doc['email']['body'] = plain
     recovered = client.put(BASE + f'/api/reports/{sid}/draft', json=dict(document=doc, baseline=baseline, expected_revision=0))
     assert recovered.status_code == 200, recovered.text

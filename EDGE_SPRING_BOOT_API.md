@@ -222,7 +222,9 @@ Spring Boot는 다음 항목을 모두 확인해야 한다.
 - BCC는 **SMTP envelope 전용**이다. 메일 헤더·수신자 화면·보고서·ZIP·일반 로그에 출력하지 않는다. `email` 전체를 무분별하게 로깅하지 않는다.
 - HTML은 굵게·기울임·밑줄·목록·문단·표와 검증된 PNG/JPEG 이미지만 허용한다. 표/이미지 배치를 위한 고정 스타일 외에 사용자 CSS·스크립트·외부 이미지·링크는 제거된다. Spring도 같은 허용 정책을 적용하고 HTML/일반 텍스트 대체 본문을 함께 구성한다.
 - 서명은 본문 끝에 이미 합쳐져 전달된다. Spring에서 다시 붙이지 않는다. 기본 서명은 인증 사용자별로 공유 저장소의 `user-mail-preferences/`에 비공개 저장하며 네 실험에서 불러올 수 있다. 기존 보고서의 서명은 기본 서명 변경으로 덮어쓰지 않는다.
-- 기본 서명 API: `GET/PUT /api/v1/report-mail/signature`, 본문은 `{"signature":"서명 내용"}`이다. 활성 회원 인증이 필요하며 PUT은 동일 출처와 `X-Requested-With: RIST-Mail-Editor`를 검증한다. 사용자 ID는 인증 세션에서 결정하고 클라이언트가 지정하지 않는다. 서명은 2,000자 이내이고 백업 시 해당 비공개 저장 폴더도 포함한다.
+- 기본 서명 API: `GET/PUT /api/v1/report-mail/signature`. 기존 `{"signature":"서명 내용"}`과 이미지 포함 `{"signature":"서명 내용","signatureImage":"data:image/jpeg;base64,...","signatureImageWidth":"320"}`를 지원한다. 폭은 문자열 숫자 40~1,280px이며 높이는 원본 비율로 표시한다. 이미지가 없으면 빈 문자열로 저장한다. 기본 서명 저장은 텍스트·이미지·표시 폭을 함께 교체하며 보고서에 이미 적용한 서명은 변경하지 않는다.
+- 활성 회원 인증이 필요하며 PUT은 동일 출처와 `X-Requested-With: RIST-Mail-Editor`를 검증한다. 사용자 ID는 인증 세션에서 결정하고 클라이언트가 지정하지 않는다. 텍스트 2,000자와 PNG/JPEG 이미지 1장(압축 후 256KiB, 긴 변 1,280px)까지 허용한다. 외부 이미지 URL·SVG·손상 이미지는 거부하며 API 요청은 400KiB 이하다. 백업 시 `user-mail-preferences/`도 포함한다. DB 변경이나 새 패키지는 필요 없다.
+- 초안의 `deliveryEmail`(XRD: `email.delivery`)에 동일한 `signatureImage`, `signatureImageWidth` 문자열 필드를 보관한다. 전송·다운로드 HTML 생성 시 서명 텍스트 다음에 이미지를 한 번만 합치고 기존 CID/`inlineImages` 계약으로 변환한다. Spring은 서명 이미지를 별도로 다시 붙이지 않는다. 본문과 서명을 합쳐 기존 이미지 제한(4장/1MiB)을 적용하며, 텍스트 예산에서는 검증된 이미지 데이터를 제외한다.
 - 배포 확인: 새 필드로 저장→재열기→SSO 전송→DB 메일 확인→Spring/LIMS 테스트 메일 수신 순서로 검증한다. 실제 발송 테스트 전 수신자를 확인한다.
 
 #### 개인 주소록 (Edge 편집 화면 공통)

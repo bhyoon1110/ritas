@@ -1,7 +1,7 @@
 /* Shared offline mail composer: Supermium 144 native and ES5 fallback. */
 (function () {
   "use strict";
-  var keys = ["recipientName", "to", "cc", "bcc", "bodyHtml", "signature"];
+  var keys = ["recipientName", "to", "cc", "bcc", "bodyHtml", "signature", "signatureImage", "signatureImageWidth"];
   var copyDomain = "rist.re.kr";
   function copyAddresses(value) {
     return String(value || "").split(/[,;]/).map(function(part){
@@ -93,11 +93,12 @@
     css.textContent=".mail-addresses{display:flex;flex-wrap:wrap;margin:0}.mail-addresses label{flex:1 1 240px;min-width:0;padding:0 6px;box-sizing:border-box}.mail-addresses input{width:100%;box-sizing:border-box}.mail-toolbar{display:flex;flex-wrap:wrap;align-items:center;margin:6px 0}.mail-toolbar button{min-height:34px;min-width:34px;margin:3px;padding:5px 9px;font-size:13px;white-space:nowrap}.mail-rich{display:block;box-sizing:border-box;min-height:260px;max-height:650px;overflow:auto;resize:vertical;padding:12px;border:1px solid #94a3b8;border-radius:5px;background:white;color:#172b4d;font:16px/1.65 Arial,sans-serif;white-space:pre-wrap;overflow-wrap:break-word;word-break:break-word}.mail-rich:focus{outline:2px solid #2563eb}.mail-rich p{margin:0 0 8px}.mail-rich[contenteditable=false]{background:#f1f5f9}.mail-signature{margin-top:12px}.mail-signature textarea{width:100%;min-height:100px;font:inherit;box-sizing:border-box}.mail-note{font-size:12px;color:#526277;margin:6px 0}.mail-compose [hidden]{display:none!important}.mail-compose input,.mail-compose textarea{max-width:100%}";
     css.textContent+=".mail-rich table{width:100%;min-width:0;table-layout:fixed;border-collapse:collapse;margin:8px 0}.mail-rich td,.mail-rich th{border:1px solid #94a3b8;padding:6px;vertical-align:top;word-break:break-word}.mail-rich img{max-width:100%;height:auto;cursor:pointer}.mail-media-options{display:flex;flex-wrap:wrap;align-items:center;max-width:100%}.mail-media-options label{display:inline-flex;align-items:center;margin:3px}.mail-media-options input{margin:0 4px}.mail-toolbar[hidden]{display:none}";
     css.textContent+=".mail-copy-address{display:flex;align-items:center;min-width:0}.mail-copy-address input{flex:1;min-width:0}.mail-copy-domain{flex:none;padding:0 6px;white-space:nowrap;font-size:13px}.mail-addresses input[readonly]{background:#f1f5f9;color:#526277}";
+    css.textContent+=".mail-signature-preview{padding:12px;margin:8px 0;border:1px solid #cbd5e1;border-radius:5px;background:white;max-width:100%;overflow-wrap:break-word}.mail-signature-preview p{white-space:pre-wrap;margin:0 0 12px}.mail-signature-preview img{display:block;max-width:100%;height:auto}.mail-signature-size{display:flex;flex-wrap:wrap;align-items:center;margin:8px 0}.mail-signature-size label{display:flex;align-items:center;margin:4px}.mail-signature-size input[type=number]{width:90px;margin-left:6px;padding:6px;min-height:36px;box-sizing:border-box}.mail-signature-size input[type=range]{width:180px;max-width:100%;min-height:36px}.mail-signature-size span{font-size:12px;color:#526277;margin:4px}";
     css.textContent+=".mail-toolbar .mail-icon-button{display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;flex:0 0 36px;width:36px;height:36px;min-width:36px;min-height:36px;padding:6px;line-height:1;vertical-align:middle}.mail-icon-button svg{display:block;flex:none;width:22px;height:22px;pointer-events:none}.mail-toolbar .mail-icon-button:focus{outline:2px solid #23759f;outline-offset:1px}.mail-toolbar .mail-icon-danger{color:#b42318}.mail-toolbar .mail-icon-danger:hover{background:#fff1f2}.mail-toolbar .mail-icon-button:disabled{opacity:.45;cursor:default}.mail-tool-hint{height:20px;line-height:20px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin:0 3px 5px;font-size:12px;color:#526277}@media(pointer:coarse),(max-width:600px){.mail-toolbar .mail-icon-button{flex-basis:44px;width:44px;height:44px;min-width:44px;min-height:44px}}";
   }
   window.RistMailEditor=function(options){
     styles();var host=options.host,body=options.body,fields={},state={},locked=false,range=null,sourceMode=false,mediaBusy=false,selectedImage=null;
-    var recipientRequest=null,recipientSequence=0,recipientTimer=null,recipientXhr=null;
+    var recipientRequest=null,recipientSequence=0,recipientTimer=null,recipientXhr=null,mediaTarget=false,preferenceBusy=false,loadVersion=0;
     host.classList.add("mail-compose");
     var addresses=node("div");addresses.className="mail-addresses";host.insertBefore(addresses,options.before||body.parentNode);
     [["recipientName","수신자 이름",200],["to","수신자 이메일 주소",2000],["cc","참조 (CC)",2000],["bcc","비밀참조 (BCC)",2000]].forEach(function(info){
@@ -148,7 +149,7 @@
     body.parentNode.insertBefore(toolbar,body);body.parentNode.insertBefore(rich,body);body.hidden=true;
     var toolHint=node("p");toolHint.className="mail-tool-hint";toolHint.setAttribute("role","status");toolHint.textContent="아이콘에 마우스를 올리거나 선택하면 기능을 확인할 수 있습니다.";rich.parentNode.insertBefore(toolHint,rich);
     var mediaNote=node("p");mediaNote.className="mail-note";mediaNote.setAttribute("role","status");rich.parentNode.insertBefore(mediaNote,rich.nextSibling);
-    mediaNote.textContent="이미지 4장 · 장당 256KB/합계 1MB · 긴 변 1,280px 자동 축소. 표 3개 · 각 20행×8열. 이미지나 표를 클릭하면 편집 도구가 나타납니다.";
+    mediaNote.textContent="본문·서명 이미지 합계 4장 · 장당 256KB/합계 1MB · 긴 변 1,280px 자동 축소. 표 3개 · 각 20행×8열. 이미지나 표를 클릭하면 편집 도구가 나타납니다.";
     function notify(){if(options.changed)options.changed();}
     function button(parent,text,label,handler,icon){
       var b=node("button",parent,text);b.type="button";b.title=label;b.setAttribute("aria-label",label);b.onclick=handler;
@@ -184,12 +185,13 @@
         if([0xc0,0xc1,0xc2,0xc3,0xc5,0xc6,0xc7,0xc9,0xca,0xcb,0xcd,0xce,0xcf].indexOf(m)>=0)return [v.getUint16(i+5),v.getUint16(i+3)];if(n<2)break;i+=n;}
       throw Error("이미지 크기를 확인하지 못했습니다. PNG/JPEG로 다시 저장하세요.");
     }
-    function finishImage(message){mediaBusy=false;imageButton.disabled=locked;mediaNote.textContent=message;file.value="";}
-    function uploadImage(f){
-      if(!f||locked||sourceMode||mediaBusy)return;
-      if(f.size>5*1024*1024){mediaNote.textContent="원본 이미지는 5MB 이하로 선택하세요.";return;}
-      if(rich.querySelectorAll("img").length>=4){mediaNote.textContent="이미지는 최대 4장입니다. 기존 이미지를 삭제한 후 추가하세요.";return;}
-      mediaBusy=true;imageButton.disabled=true;mediaNote.textContent="이미지 크기와 용량을 확인하는 중입니다…";
+    function finishImage(message){mediaBusy=false;imageButton.disabled=locked;(mediaTarget?feedback:mediaNote).textContent=message;file.value="";signatureFile.value="";signatureControls();}
+    function uploadImage(f,forSignature){
+      if(!f||locked||(!forSignature&&sourceMode)||mediaBusy||preferenceBusy)return;
+      var target=forSignature?feedback:mediaNote,version=loadVersion;
+      if(f.size>5*1024*1024){target.textContent="원본 이미지는 5MB 이하로 선택하세요.";return;}
+      if(rich.querySelectorAll("img").length+(forSignature?0:state.signatureImage?1:0)>=4){target.textContent="본문·서명 이미지는 합계 4장입니다. 기존 이미지를 삭제한 후 추가하세요.";return;}
+      mediaTarget=!!forSignature;mediaBusy=true;imageButton.disabled=true;signatureControls();target.textContent="이미지 크기와 용량을 확인하는 중입니다…";
       var reader=new FileReader();reader.onerror=function(){finishImage("이미지 파일을 읽지 못했습니다.");};
       reader.onload=function(){
         try{var size=dimensions(reader.result);if(!size[0]||!size[1]||size[0]*size[1]>12000000||Math.max(size[0],size[1])>12000)throw Error("원본 이미지는 1,200만 화소 이하로 축소해 주세요.");}
@@ -208,9 +210,17 @@
               if((encoded.length-23)*3/4<=maxImage)break;scale*=.8;
             }
             if((encoded.length-23)*3/4>maxImage)throw Error("이미지를 256KB 이하로 줄이지 못했습니다.");
-            if(locked||sourceMode)throw Error("편집 상태가 바뀌어 이미지 삽입을 취소했습니다.");
-            insert('<p><img src="'+encoded+'" width="'+Math.min(canvas.width,640)+'" alt="메일 본문 이미지" style="max-width:100%;height:auto"></p><p><br></p>');
-            canvas.width=canvas.height=1;finishImage("이미지를 본문에 포함했습니다. 클릭하여 표시 폭을 변경하거나 삭제할 수 있습니다.");
+            if(locked||version!==loadVersion||(!forSignature&&sourceMode))throw Error("편집 상태가 바뀌어 이미지 삽입을 취소했습니다.");
+            if(forSignature){
+              var candidate={signatureImage:encoded,signatureImageWidth:String(Math.max(40,Math.min(canvas.width,320)))};
+              clean((sourceMode?plain(body.value):rich.innerHTML)+signatureMarkup(candidate));
+              state.signatureImage=candidate.signatureImage;state.signatureImageWidth=candidate.signatureImageWidth;renderSignature();
+            }else{
+              clean(rich.innerHTML+'<img src="'+encoded+'">'+signatureMarkup(state));
+              insert('<p><img src="'+encoded+'" width="'+Math.min(canvas.width,640)+'" alt="메일 본문 이미지" style="max-width:100%;height:auto"></p><p><br></p>');
+            }
+            canvas.width=canvas.height=1;finishImage(forSignature?"서명 이미지를 추가했습니다. 폭을 조절한 후 기본 서명으로 저장할 수 있습니다.":"이미지를 본문에 포함했습니다. 클릭하여 표시 폭을 변경하거나 삭제할 수 있습니다.");
+            if(forSignature)notify();
           }catch(error){finishImage(error.message);}
         };image.src=objectURL;
       };reader.readAsArrayBuffer(f.slice(0,256*1024));
@@ -243,21 +253,51 @@
     body.addEventListener("input",function(){state.bodyHtml="";rich.innerHTML=plain(body.value);notify();});
     var signatureBox=node("div",host);signatureBox.className="mail-signature";
     var signatureLabel=node("label",signatureBox,"서명 (본문 끝에 별도 포함)"),signature=node("textarea",signatureLabel);signature.rows=4;signature.maxLength=2000;signature.setAttribute("aria-label","메일 서명");fields.signature=signature;
-    signature.oninput=function(){state.signature=signature.value;notify();};
+    signature.oninput=function(){state.signature=signature.value;renderSignature();notify();};
     var actions=node("div",signatureBox);actions.className="mail-toolbar";
     var feedback=node("p",signatureBox);feedback.className="mail-note";feedback.setAttribute("role","status");
-    function preference(method,done){var xhr=new XMLHttpRequest();xhr.open(method,"/api/v1/report-mail/signature",true);xhr.timeout=15000;xhr.setRequestHeader("X-Requested-With","RIST-Mail-Editor");if(method==="PUT")xhr.setRequestHeader("Content-Type","application/json");
-      xhr.onload=function(){var value;try{value=JSON.parse(xhr.responseText);}catch(_){value={};}if(xhr.status>=200&&xhr.status<300)done(value);else feedback.textContent=value.message||"기본 서명은 로그인한 회원만 저장·불러올 수 있습니다.";};
-      xhr.onerror=xhr.ontimeout=function(){feedback.textContent="서명 연결 실패. 현재 입력한 서명은 유지됩니다.";};xhr.send(method==="PUT"?JSON.stringify({signature:signature.value}):null);
+    var signatureFile=node("input",signatureBox);signatureFile.type="file";signatureFile.accept="image/png,image/jpeg";signatureFile.hidden=true;signatureFile.setAttribute("aria-label","서명 이미지 파일");
+    signatureFile.onchange=function(){uploadImage(signatureFile.files[0],true);};
+    button(actions,"이미지","서명 이미지 추가·교체",function(){if(!locked&&!mediaBusy&&!preferenceBusy)signatureFile.click();},"image");
+    var removeSignatureImage=button(actions,"삭제","서명 이미지 삭제",function(){if(locked||mediaBusy||preferenceBusy)return;state.signatureImage="";renderSignature();notify();},"trash");
+    var signatureSize=node("div",signatureBox);signatureSize.className="mail-signature-size";
+    var signatureWidthLabel=node("label",signatureSize,"이미지 폭(px)"),signatureWidth=node("input",signatureWidthLabel);signatureWidth.type="number";signatureWidth.min=40;signatureWidth.max=1280;signatureWidth.setAttribute("aria-label","서명 이미지 표시 폭");
+    var signatureSlider=node("input",signatureSize);signatureSlider.type="range";signatureSlider.min=40;signatureSlider.max=1280;signatureSlider.step=1;signatureSlider.setAttribute("aria-label","서명 이미지 크기 조절");
+    node("span",signatureSize,"가로세로 비율 유지");
+    function resizeSignature(input){if(locked||mediaBusy||preferenceBusy)return;var width=Number(input.value);if(!isFinite(width)||width<40||width>1280){feedback.textContent="서명 이미지 표시 폭은 40~1,280px입니다.";return;}state.signatureImageWidth=String(Math.round(width));renderSignature();notify();}
+    signatureWidth.onchange=function(){resizeSignature(signatureWidth);};signatureSlider.oninput=signatureSlider.onchange=function(){resizeSignature(signatureSlider);};
+    var signaturePreview=node("div",signatureBox);signaturePreview.className="mail-signature-preview";signaturePreview.setAttribute("aria-label","서명 미리보기");
+    var signatureText=node("p",signaturePreview),signaturePicture=node("img",signaturePreview);signaturePicture.alt="메일 서명 이미지";
+    function signatureMarkup(value){var src=value.signatureImage||"",width=value.signatureImageWidth||"320";if(!src)return "";if(!/^data:image\/(png|jpeg);base64,[A-Za-z0-9+/]*={0,2}$/.test(src))throw Error("서명에는 PNG/JPEG 이미지만 등록하세요.");if(!/^\d{2,4}$/.test(width)||Number(width)<40||Number(width)>1280)throw Error("서명 이미지 표시 폭은 40~1,280px입니다.");return '<img src="'+src+'" width="'+width+'" alt="메일 서명 이미지">';}
+    function renderSignature(){
+      signatureText.textContent=signature.value;signatureText.hidden=!signature.value;signaturePreview.hidden=!signature.value&&!state.signatureImage;
+      signatureSize.hidden=signaturePicture.hidden=!state.signatureImage;
+      if(state.signatureImage){if(signaturePicture.getAttribute("src")!==state.signatureImage)signaturePicture.src=state.signatureImage;signaturePicture.width=Number(state.signatureImageWidth)||320;}else signaturePicture.removeAttribute("src");
+      signatureWidth.value=signatureSlider.value=state.signatureImageWidth||"320";signatureControls();
+    }
+    function signatureControls(){Array.prototype.forEach.call(signatureBox.querySelectorAll("button,input,textarea"),function(e){e.disabled=locked||mediaBusy||preferenceBusy;});removeSignatureImage.disabled=locked||mediaBusy||preferenceBusy||!state.signatureImage;}
+    function preference(method,done){
+      if(locked||mediaBusy||preferenceBusy)return;
+      var payload={signature:signature.value,signatureImage:state.signatureImage||"",signatureImageWidth:state.signatureImageWidth||"320"},version=loadVersion;
+      try{if(payload.signature.length>2000)throw Error("서명은 2,000자 이하로 입력하세요.");clean(signatureMarkup(payload));}catch(error){feedback.textContent=error.message;return;}
+      preferenceBusy=true;signatureControls();feedback.textContent=method==="PUT"?"기본 서명을 저장하는 중입니다…":"기본 서명을 불러오는 중입니다…";
+      var xhr=new XMLHttpRequest();xhr.open(method,"/api/v1/report-mail/signature",true);xhr.timeout=15000;xhr.setRequestHeader("X-Requested-With","RIST-Mail-Editor");if(method==="PUT")xhr.setRequestHeader("Content-Type","application/json");
+      function end(){preferenceBusy=false;signatureControls();}
+      xhr.onload=function(){end();var value;try{value=JSON.parse(xhr.responseText);if(!value)throw Error();}catch(_){feedback.textContent="서명 응답을 확인할 수 없습니다. 현재 서명은 유지됩니다.";return;}if(xhr.status<200||xhr.status>=300){feedback.textContent=value.message||"기본 서명은 로그인한 회원만 저장·불러올 수 있습니다.";return;}if(typeof value.signature!=="string"){feedback.textContent="서명 응답을 확인할 수 없습니다. 현재 서명은 유지됩니다.";return;}if(method==="GET"&&(locked||version!==loadVersion)){feedback.textContent="보고서 편집 상태가 바뀌었습니다. 기본 서명을 다시 불러오세요.";return;}done(value);};
+      xhr.onerror=xhr.ontimeout=function(){end();feedback.textContent="서명 연결 실패. 현재 입력한 서명은 유지됩니다.";};xhr.send(method==="PUT"?JSON.stringify(payload):null);
     }
     button(actions,"기본 서명 저장","내 기본 서명 저장",function(){if(locked)return;preference("PUT",function(){feedback.textContent="내 기본 서명을 저장했습니다. 4개 실험에서 같은 계정으로 불러올 수 있습니다.";});},"save");
-    button(actions,"기본 서명 불러오기","내 기본 서명 불러오기",function(){if(locked)return;if(signature.value&&!window.confirm("현재 보고서의 서명을 기본 서명으로 바꿀까요?"))return;preference("GET",function(value){if(locked)return;signature.value=state.signature=value.signature||"";notify();feedback.textContent="기본 서명을 현재 보고서에 적용했습니다.";});},"folder");
-    node("p",signatureBox,"서명은 본문과 분리해 저장하여 중복 삽입을 방지합니다. 기존 보고서는 자동으로 덮어쓰지 않습니다.").className="mail-note";
-    function load(value){tables.reset();state={};keys.forEach(function(k){state[k]=k==="to"||k==="recipientName"?"":String((value||{})[k]||"");if(k==="cc"||k==="bcc")fields[k].value=copyIds(state[k]);else if(fields[k]&&k!=="to"&&k!=="recipientName")fields[k].value=state[k];});state.bodyHtml=clean(state.bodyHtml);rich.innerHTML=state.bodyHtml||plain(body.value);range=null;selectedImage=null;mediaTools.hidden=true;refreshRecipient();}
+    button(actions,"기본 서명 불러오기","내 기본 서명 불러오기",function(){if(locked||mediaBusy||preferenceBusy)return;if((signature.value||state.signatureImage)&&!window.confirm("현재 보고서의 서명을 기본 서명으로 바꿀까요?"))return;preference("GET",function(value){
+      var candidate={signatureImage:value.signatureImage||"",signatureImageWidth:value.signatureImageWidth||"320"};
+      try{clean((sourceMode?plain(body.value):rich.innerHTML)+signatureMarkup(candidate));}catch(error){feedback.textContent=error.message+" 현재 서명은 유지됩니다.";return;}
+      signature.value=state.signature=value.signature;state.signatureImage=candidate.signatureImage;state.signatureImageWidth=candidate.signatureImageWidth;renderSignature();notify();feedback.textContent="기본 서명을 현재 보고서에 적용했습니다.";
+    });},"folder");
+    node("p",signatureBox,"텍스트 2,000자와 명함 이미지 1장 · PNG/JPEG 5MB 이하 선택 후 256KB로 자동 압축. 텍스트·이미지·표시 폭을 함께 저장합니다. 기존 보고서는 자동으로 덮어쓰지 않습니다.").className="mail-note";
+    function load(value){loadVersion++;tables.reset();state={};keys.forEach(function(k){state[k]=k==="to"||k==="recipientName"?"":String((value||{})[k]||(k==="signatureImageWidth"?"320":""));if(k==="cc"||k==="bcc")fields[k].value=copyIds(state[k]);else if(fields[k]&&k!=="to"&&k!=="recipientName")fields[k].value=state[k];});state.bodyHtml=clean(state.bodyHtml);clean(signatureMarkup(state));rich.innerHTML=state.bodyHtml||plain(body.value);range=null;selectedImage=null;mediaTools.hidden=true;renderSignature();refreshRecipient();}
     load(options.value);
     return {value:function(){var result={};keys.forEach(function(k){result[k]=k==="to"||k==="recipientName"?"":k==="cc"||k==="bcc"?copyAddresses(fields[k].value):fields[k]?fields[k].value:state[k]||"";});return result;},load:load,refreshRecipient:refreshRecipient,
-      lock:function(value){locked=!!value;addressBook.lock(locked);tables.lock();rich.contentEditable=String(!locked);Array.prototype.forEach.call(host.querySelectorAll(".mail-addresses input,.mail-toolbar button,.mail-toolbar input,.mail-resize-handle,.mail-signature textarea"),function(e){e.disabled=locked;});imageButton.disabled=locked||mediaBusy;},
-      validate:function(){if(mediaBusy)return "이미지 처리가 끝난 후 저장하세요.";if(body.value.length>4000)return "메일 본문은 4,000자 이하로 입력하세요.";var invalid=copyError(fields.cc.value)||copyError(fields.bcc.value);if(invalid)return invalid;try{clean(rich.innerHTML);}catch(error){return error.message;}return "";}};
+      lock:function(value){locked=!!value;addressBook.lock(locked);tables.lock();rich.contentEditable=String(!locked);Array.prototype.forEach.call(host.querySelectorAll(".mail-addresses input,.mail-toolbar button,.mail-toolbar input,.mail-resize-handle,.mail-signature textarea"),function(e){e.disabled=locked;});imageButton.disabled=locked||mediaBusy;signatureControls();},
+      validate:function(){if(mediaBusy)return "이미지 처리가 끝난 후 저장하세요.";if(body.value.length>4000)return "메일 본문은 4,000자 이하로 입력하세요.";if(signature.value.length>2000)return "서명은 2,000자 이하로 입력하세요.";var invalid=copyError(fields.cc.value)||copyError(fields.bcc.value);if(invalid)return invalid;try{clean((sourceMode?plain(body.value):rich.innerHTML)+signatureMarkup(state));}catch(error){return error.message;}return "";}};
   };
   window.RistMailEditor.clean=clean;
 }());

@@ -14,10 +14,11 @@ from fastapi.responses import JSONResponse
 
 from .errors import ApiException
 from .mail_address_book import router as address_book_router, shared_router as shared_address_book_router
-from .report_mail_media import MailImages, MAX_HTML, MAX_TABLES, MAX_ROWS, MAX_COLS
+from .report_mail_media import MailImages, image_data, data_uri, MAX_HTML, MAX_TABLES, MAX_ROWS, MAX_COLS, MAX_IMAGE_BYTES
 
 FIELDS = {"recipientName": 200, "to": 2000, "cc": 2000, "bcc": 2000,
           "bodyHtml": MAX_HTML, "signature": 2000}
+SIGNATURE_FIELDS = {'signatureImage': (MAX_IMAGE_BYTES + 2) // 3 * 4 + 32, 'signatureImageWidth': 4}
 COPY_DOMAIN = 'rist.re.kr'
 TAGS = {"p", "div", "br", "strong", "b", "em", "i", "u", "ul", "ol", "li",
         "table", "thead", "tbody", "tfoot", "tr", "th", "td", "img"}
@@ -178,7 +179,7 @@ def expand_rich_text(value, expand):
 
 def normalize_delivery(value=None):
     value = {} if value is None else value
-    if not isinstance(value, dict) or set(value) - set(FIELDS):
+    if not isinstance(value, dict) or set(value) - (set(FIELDS) | set(SIGNATURE_FIELDS)):
         raise ValueError('메일 수신 정보 형식을 확인하세요.')
     result = {}
     for key, limit in FIELDS.items():
@@ -186,9 +187,25 @@ def normalize_delivery(value=None):
         if not isinstance(text, str) or len(text) > limit or '\x00' in text:
             raise ValueError('메일 ' + key + ': 입력 길이·형식을 확인하세요.')
         result[key] = clean_html(text)[0] if key == 'bodyHtml' else text
+    if any(key in value for key in SIGNATURE_FIELDS):
+        source, width = value.get('signatureImage', ''), value.get('signatureImageWidth', '320')
+        if not isinstance(source, str) or len(source) > SIGNATURE_FIELDS['signatureImage']:
+            raise ValueError('서명 이미지는 PNG/JPEG 한 장, 256KB 이하로 등록하세요.')
+        if not isinstance(width, str) or not re.fullmatch(r'\d{2,4}', width) or not 40 <= int(width) <= 1280:
+            raise ValueError('서명 이미지 표시 폭은 40~1,280px입니다.')
+        result.update(signatureImage=data_uri(image_data(source)) if source else '', signatureImageWidth=str(int(width)))
+        # The signature shares the existing mail image/count budget with the body.
+        clean_html(result['bodyHtml'] + _signature_image_html(result))
     # These UI fields are display-only. Even a forged/old draft cannot redirect delivery.
     result['to'] = result['recipientName'] = ''
     return result
+
+
+def _signature_image_html(value):
+    source = value.get('signatureImage', '')
+    if not source:
+        return ''
+    return '<img src="' + escape(source, quote=True) + '" width="' + value['signatureImageWidth'] + '" alt="메일 서명 이미지" style="max-width:100%;height:auto">'
 
 
 def edit_text_size(value):
@@ -199,6 +216,8 @@ def edit_text_size(value):
         content['deliveryEmail']['bodyHtml'] = re.sub(
             r'data:image/(?:png|jpeg);base64,[A-Za-z0-9+/=]+', '[embedded-image]',
             content['deliveryEmail'].get('bodyHtml', ''))
+        if content['deliveryEmail'].get('signatureImage'):
+            content['deliveryEmail']['signatureImage'] = '[embedded-signature-image]'
     return len(json.dumps(content, ensure_ascii=False))
 
 
@@ -232,6 +251,9 @@ def mail_payload(subject, body, delivery=None, *, sending=False):
     if d['signature'].strip():
         body += '\n\n' + d['signature'].strip()
         html += '<br><br>' + escape(d['signature'].strip()).replace('\n', '<br>')
+    if d.get('signatureImage'):
+        body += '\n\n[서명 이미지]'
+        html += '<br><br>' + _signature_image_html(d)
     result = dict(schemaVersion=2, recipientPolicy='lims', recipientName='', subject=subject,
                   bodyText=body, bodyHtml=html, **{k: d[k] for k in ('to', 'cc', 'bcc')})
     try:
@@ -321,8 +343,18 @@ def _preferences_path(request):
 @router.get('/api/v1/report-mail/signature')
 def get_signature(request: Request):
     path = _preferences_path(request)
-    value = json.loads(path.read_text(encoding='utf-8')) if path.is_file() else {'signature': ''}
+    try:
+        value = _signature_preferences(json.loads(path.read_text(encoding='utf-8'))) if path.is_file() else {'signature': ''}
+    except (ValueError, TypeError):
+        raise ApiException(500, 'MAIL_SIGNATURE_STORAGE_INVALID', '저장된 서명을 읽지 못했습니다. 관리자에게 확인을 요청하세요.')
     return JSONResponse(value, headers={'Cache-Control': 'no-store'})
+
+
+def _signature_preferences(value):
+    if not isinstance(value, dict) or 'signature' not in value or set(value) - ({'signature'} | set(SIGNATURE_FIELDS)):
+        raise ValueError('서명 입력 형식을 확인하세요.')
+    normalized = normalize_delivery(value)
+    return {key: normalized[key] for key in ('signature', *SIGNATURE_FIELDS) if key in normalized}
 
 
 @router.put('/api/v1/report-mail/signature')
@@ -335,23 +367,21 @@ async def save_signature(request: Request):
     content = bytearray()
     async for chunk in request.stream():
         content.extend(chunk)
-        if len(content) > 16000:
-            raise ApiException(413, 'MAIL_SIGNATURE_TOO_LARGE', '서명은 2,000자 이하로 입력하세요.')
+        if len(content) > 400 * 1024:
+            raise ApiException(413, 'MAIL_SIGNATURE_TOO_LARGE', '서명은 텍스트 2,000자와 이미지 한 장(256KB)까지 등록하세요.')
     try:
         value = json.loads(content)
-        if not isinstance(value, dict) or set(value) != {'signature'}:
-            raise ValueError()
-        signature = normalize_delivery(value)['signature']
-    except (ValueError, TypeError):
-        raise ApiException(422, 'MAIL_SIGNATURE_INVALID', '서명은 2,000자 이하의 텍스트로 입력하세요.')
+        value = _signature_preferences(value)
+    except (ValueError, TypeError) as exc:
+        raise ApiException(422, 'MAIL_SIGNATURE_INVALID', str(exc) or '서명 입력 형식을 확인하세요.')
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     # Unique temporary files make parallel saves atomic; permissions remain private.
     fd, temporary = tempfile.mkstemp(dir=path.parent, prefix='.signature-')
     try:
         with os.fdopen(fd, 'w', encoding='utf-8') as stream:
-            json.dump({'signature': signature}, stream, ensure_ascii=False)
+            json.dump(value, stream, ensure_ascii=False)
         os.replace(temporary, path)
     finally:
         if os.path.exists(temporary):
             os.unlink(temporary)
-    return JSONResponse({'signature': signature}, headers={'Cache-Control': 'no-store'})
+    return JSONResponse(value, headers={'Cache-Control': 'no-store'})
