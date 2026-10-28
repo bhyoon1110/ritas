@@ -1,4 +1,4 @@
-/* Account-scoped RIST address book. Offline assets; no external address services. */
+/* Private/shared RIST address books. Server filters public visibility on every load. */
 (function () {
   "use strict";
   function node(tag,parent,text){var e=document.createElement(tag);if(text!=null)e.textContent=text;if(parent)parent.appendChild(e);return e;}
@@ -7,18 +7,21 @@
     var s=node("style",document.head);s.id="rist-mail-book-styles";
     s.textContent=".mail-book{margin:10px 0;max-width:100%;color:#20384b}.mail-book button{white-space:nowrap;min-height:36px;cursor:pointer}.mail-book-toggle{display:inline-flex;align-items:center;padding:6px 12px}.mail-book-toggle svg{width:20px;height:20px;margin-right:6px}.mail-book-panel{border:1px solid #cbd5e1;border-radius:6px;padding:12px;margin-top:8px;background:#f8fafc}.mail-book-panel[hidden],.mail-book-form[hidden]{display:none!important}.mail-book-row{display:flex;flex-wrap:wrap;align-items:center;margin:4px 0}.mail-book-row>*{margin:3px}.mail-book-row input{min-width:0;flex:1;width:120px}.mail-book-list{max-height:280px;overflow:auto;overscroll-behavior:contain}.mail-book-item{display:flex;align-items:center;border-bottom:1px solid #e2e8f0;padding:6px 0}.mail-book-person{display:flex;align-items:center;flex:1;min-width:0;cursor:pointer;margin:0}.mail-book-person input[type=checkbox]{width:18px;height:18px;flex:none;margin:6px}.mail-book-person span{min-width:0;overflow-wrap:break-word;word-break:break-word}.mail-book-person strong,.mail-book-person small{display:block}.mail-book-person small{color:#526277}.mail-book .mail-book-icon{display:inline-flex;align-items:center;justify-content:center;flex:none;width:36px;height:36px;min-width:36px;padding:6px;margin:3px}.mail-book-icon svg{width:22px;height:22px}.mail-book-status{min-height:20px;font-size:13px;margin:6px 0;overflow-wrap:break-word}.mail-book-status.is-error{color:#b42318}.mail-book-form{border-top:1px solid #cbd5e1;margin-top:10px;padding-top:8px}.mail-book-form label{display:block;min-width:0;flex:1 1 160px;margin:4px}.mail-book-form input{display:block;width:100%;box-sizing:border-box}.mail-book-form .mail-copy-address input{display:inline-block}.mail-book-hint{font-size:12px;color:#526277;margin:6px 0}.mail-book-page{font-size:13px}.mail-book-footer{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between}.mail-book-selection{font-size:13px}.mail-book button:disabled{opacity:.45;cursor:default}@media(max-width:600px),(pointer:coarse){.mail-book button{min-height:44px}.mail-book .mail-book-icon{width:44px;height:44px;min-width:44px}}";
     s.textContent+=".mail-book input[type=search],.mail-book-form input{min-height:36px;padding:7px 9px;border:1px solid #94a3b8;border-radius:5px;background:white;color:#20384b;font:inherit;box-sizing:border-box}.mail-book .mail-icon-danger{color:#b42318}@media(max-width:600px),(pointer:coarse){.mail-book input[type=search],.mail-book-form input{min-height:44px}}";
+    s.textContent+=".mail-book-row button[aria-pressed=true]{background:#e4f1f7;border-color:#23759f;color:#174760;font-weight:bold}.mail-book-visibility{padding:8px 0}.mail-book-visibility select{display:block;width:100%;min-height:36px;margin-top:5px;padding:6px;border:1px solid #94a3b8;border-radius:5px;background:white;font:inherit}.mail-book-projects{display:flex;flex-wrap:wrap}.mail-book-projects label{display:inline-flex;align-items:center;flex:none;margin:6px 12px 6px 4px}.mail-book-projects input[type=checkbox]{display:inline-block;width:18px;height:18px;min-height:18px;margin:0 6px 0 0;padding:0}@media(max-width:600px),(pointer:coarse){.mail-book-visibility select{min-height:44px}}";
   }
   window.RistMailAddressBook=function(options){
-    styles();var root=node("div"),panel,book={revision:0,contacts:[]},loaded=false,busy=false,locked=false,selected={},page=0,editing=null,dirty=false;
+    styles();var root=node("div"),panel,book={revision:0,contacts:[]},loaded=false,busy=false,locked=false,selected={},page=0,editing=null,dirty=false,scope="private",canManage=true;
     root.className="mail-book";options.host.insertBefore(root,options.before);
     function button(parent,label,action,icon){
       var b=node("button",parent,label);b.type="button";b.title=label;b.setAttribute("aria-label",label);b.onclick=action;
       if(icon){window.RistMailIcons(b,icon,label);b.classList.remove("mail-icon-button");b.classList.add("mail-book-icon");}return b;
     }
-    var toggle=button(root,"주소록",function(){panel.hidden=!panel.hidden;toggle.setAttribute("aria-expanded",String(!panel.hidden));if(!panel.hidden&&!loaded)load();});
+    var toggle=button(root,"주소록",function(){panel.hidden=!panel.hidden;toggle.setAttribute("aria-expanded",String(!panel.hidden));if(!panel.hidden&&(!loaded||scope==="shared"))load();});
     toggle.className="mail-book-toggle";toggle.setAttribute("aria-expanded","false");
     panel=node("div",root);panel.className="mail-book-panel";panel.hidden=true;
-    node("p",panel,"내 주소록 · 같은 계정으로 FTIR·Raman·TEM·XRD에서 공통 사용합니다.").className="mail-book-hint";
+    var tabs=node("div",panel);tabs.className="mail-book-row";
+    var privateTab=button(tabs,"내 주소록",function(){switchScope("private");}),sharedTab=button(tabs,"공용 주소록",function(){switchScope("shared");});
+    var hint=node("p",panel);hint.className="mail-book-hint";
     var tools=node("div",panel);tools.className="mail-book-row";
     var search=node("input",tools);search.type="search";search.placeholder="이름·부서·이메일 검색";search.setAttribute("aria-label","주소록 검색");
     search.oninput=function(){page=0;render();};
@@ -39,6 +42,12 @@
     var name=field("이름",100),department=field("부서",120),email=field("이메일 아이디",254);
     var emailWrap=node("span");emailWrap.className="mail-copy-address";email.parentNode.insertBefore(emailWrap,email);emailWrap.appendChild(email);node("span",emailWrap,"@rist.re.kr").className="mail-copy-domain";
     email.placeholder="RIST 이메일 아이디";email.autocomplete="off";
+    var visibility=node("div",form);visibility.className="mail-book-visibility";visibility.hidden=true;
+    var visibilityLabel=node("label",visibility,"공개 범위"),visibilityMode=node("select",visibilityLabel);visibilityMode.setAttribute("aria-label","주소록 공개 범위");
+    [["admins","관리자만"],["all","전체 실험 회원"],["projects","선택한 실험 권한 보유자"]].forEach(function(item){var option=node("option",visibilityMode,item[1]);option.value=item[0];});
+    var projectBox=node("div",visibility);projectBox.className="mail-book-projects";var projects={};
+    ["FTIR","RAMAN","TEM","XRD"].forEach(function(code){var label=node("label",projectBox),check=node("input",label);check.type="checkbox";check.setAttribute("aria-label",code+" 주소록 공개");node("span",label,code);projects[code]=check;check.onchange=function(){dirty=true;};});
+    visibilityMode.onchange=function(){dirty=true;visibilityControls();};
     var formActions=node("div",form);formActions.className="mail-book-row";
     button(formActions,"주소록 저장",save,"save");button(formActions,"주소록 편집 취소",function(){edit(null,true);},"close");
     node("p",panel,"최대 500명 · 주소록에서 삭제해도 현재 메일에 이미 넣은 참조·비밀참조는 유지됩니다.").className="mail-book-hint";
@@ -46,23 +55,28 @@
     function selectionCount(){return book.contacts.filter(function(c){return !!selected[c.id];}).length;}
     function controls(){
       toggle.disabled=locked;
-      Array.prototype.forEach.call(panel.querySelectorAll("button,input"),function(e){e.disabled=busy||locked;});
+      Array.prototype.forEach.call(panel.querySelectorAll("button,input,select"),function(e){e.disabled=busy||locked;});
       previous.disabled=busy||locked||page===0;next.disabled=busy||locked||page+1>=Math.ceil(filtered().length/50);
-      cc.disabled=bcc.disabled=clear.disabled=busy||locked||!selectionCount();add.disabled=busy||locked||!loaded;search.disabled=busy||locked||!loaded;
+      cc.disabled=bcc.disabled=clear.disabled=busy||locked||!selectionCount();add.disabled=busy||locked||!loaded||!canManage;add.hidden=!canManage;search.disabled=busy||locked||!loaded;
+      privateTab.setAttribute("aria-pressed",String(scope==="private"));sharedTab.setAttribute("aria-pressed",String(scope==="shared"));
+      hint.textContent=scope==="private"?"내 주소록 · 같은 계정으로 FTIR·Raman·TEM·XRD에서 공통 사용합니다.":canManage?"공용 주소록 · 관리자만 주소와 공개 범위를 변경할 수 있습니다.":"공용 주소록 · 공개 범위에 포함된 주소만 표시됩니다. 관리는 관리자에게 요청하세요.";
       selection.textContent=selectionCount()+"명 선택";panel.setAttribute("aria-busy",String(busy));
     }
     function filtered(){var term=search.value.trim().toLowerCase();return book.contacts.filter(function(c){return (c.name+" "+c.department+" "+c.email).toLowerCase().indexOf(term)>=0;});}
     function render(){
       var items=filtered();page=Math.max(0,Math.min(page,Math.ceil(items.length/50)-1));list.textContent="";
-      if(!items.length)node("p",list,book.contacts.length?"검색 결과가 없습니다.":"등록된 주소가 없습니다. 새 주소 버튼으로 추가하세요.");
+      if(!items.length)node("p",list,book.contacts.length?"검색 결과가 없습니다.":canManage?"등록된 주소가 없습니다. 새 주소 버튼으로 추가하세요.":"공개된 주소가 없습니다.");
       items.slice(page*50,page*50+50).forEach(function(c){
         var row=node("div",list);row.className="mail-book-item";
         var label=node("label",row);label.className="mail-book-person";
         var check=node("input",label);check.type="checkbox";check.checked=!!selected[c.id];check.setAttribute("aria-label",c.name+" · "+c.email+" 선택");
         check.onchange=function(){selected[c.id]=check.checked;controls();};
         var text=node("span",label);node("strong",text,c.name);node("small",text,(c.department?c.department+" · ":"")+c.email);
-        button(row,c.name+" 주소 수정",function(){edit(c);},"edit");
-        button(row,c.name+" 주소 삭제",function(){if(!busy&&!locked&&window.confirm(c.name+" 주소를 내 주소록에서 삭제할까요?"))mutate("DELETE",c.id,null,false);},"trash");
+        if(canManage){
+          if(scope==="shared"&&c.visibility)node("small",text,"공개: "+(c.visibility.mode==="all"?"전체 실험 회원":c.visibility.mode==="admins"?"관리자만":c.visibility.projects.join(" · ")));
+          button(row,c.name+" 주소 수정",function(){edit(c);},"edit");
+          button(row,c.name+" 주소 삭제",function(){if(!busy&&!locked&&window.confirm(c.name+" 주소를 "+(scope==="shared"?"공용 주소록":"내 주소록")+"에서 삭제할까요?"))mutate("DELETE",c.id,null,false);},"trash");
+        }
       });
       pageLabel.textContent=(items.length?page+1:0)+" / "+Math.ceil(items.length/50)+" · 전체 "+book.contacts.length+"명";controls();
     }
@@ -70,7 +84,7 @@
       busy=true;controls();message(method==="GET"?"주소록을 불러오는 중입니다…":"주소록을 저장하는 중입니다…");
       var xhr=new XMLHttpRequest();xhr.open(method,url,true);xhr.timeout=15000;
       if(value){xhr.setRequestHeader("Content-Type","application/json");xhr.setRequestHeader("X-Requested-With","RIST-Mail-Editor");}
-      function end(error,data){busy=false;controls();if(error){message(error,true);return;}done(data);}
+      function end(error,data){busy=false;if(error&&method==="GET"&&scope==="shared"){book={revision:0,contacts:[]};selected={};canManage=false;loaded=false;form.hidden=true;render();}controls();if(error){message(error,true);return;}done(data);}
       xhr.onerror=xhr.ontimeout=function(){end("주소록 서버에 연결하지 못했습니다. 새로고침 후 확인하세요. 입력 내용은 유지됩니다.");};
       xhr.onload=function(){
         var data;try{data=JSON.parse(xhr.responseText);}catch(_){end("주소록 응답을 읽지 못했습니다. 새로고침하세요.");return;}
@@ -78,17 +92,24 @@
         if(!data||!Array.isArray(data.contacts)||typeof data.revision!=="number"){end("주소록 응답을 확인하세요.");return;}end(null,data);
       };xhr.send(value?JSON.stringify(value):null);
     }
-    function accept(value){book=value;loaded=true;var keep={};book.contacts.forEach(function(c){if(selected[c.id])keep[c.id]=true;});selected=keep;render();}
-    function load(){if(busy||locked)return;request("GET","/api/v1/report-mail/contacts",null,function(value){accept(value);message("주소록을 불러왔습니다."+(dirty?" 입력 중인 내용은 유지됩니다.":""));});}
+    function endpoint(){return "/api/v1/report-mail/"+(scope==="shared"?"shared-contacts":"contacts");}
+    function accept(value){book=value;loaded=true;canManage=scope==="private"||value.canManage===true;if(!canManage)form.hidden=true;var keep={};book.contacts.forEach(function(c){if(selected[c.id])keep[c.id]=true;});selected=keep;render();}
+    function load(){if(busy||locked)return;request("GET",endpoint(),null,function(value){accept(value);message("주소록을 불러왔습니다."+(dirty?" 입력 중인 내용은 유지됩니다.":""));});}
+    function switchScope(value){
+      if(busy||locked||scope===value)return;if(dirty&&!window.confirm("입력 중인 주소 변경을 취소하고 주소록을 전환할까요?"))return;
+      scope=value;book={revision:0,contacts:[]};selected={};loaded=false;canManage=scope==="private";dirty=false;editing=null;form.hidden=true;search.value="";page=0;render();load();
+    }
+    function visibilityControls(){visibility.hidden=scope!=="shared";projectBox.hidden=visibilityMode.value!=="projects";}
     function edit(c,close){
-      if(busy||locked)return;if(dirty&&!window.confirm("입력 중인 주소 변경을 취소할까요?"))return;
+      if(busy||locked||!canManage)return;if(dirty&&!window.confirm("입력 중인 주소 변경을 취소할까요?"))return;
       editing=c?c.id:null;dirty=false;name.value=c?c.name:"";department.value=c?c.department:"";email.value=c?c.email.replace(/@rist\.re\.kr$/i,""):"";
+      var access=c&&c.visibility||{mode:"admins",projects:[]};visibilityMode.value=access.mode;Object.keys(projects).forEach(function(code){projects[code].checked=access.projects.indexOf(code)>=0;});visibilityControls();
       heading.textContent=c?"주소 수정":"새 주소 등록";form.hidden=!!close;controls();if(!close)name.focus();
     }
     function mutate(method,id,item,close){
-      if(busy||locked)return;
+      if(busy||locked||!canManage)return;
       var value={revision:book.revision};if(item)value.contact=item;
-      request(method,"/api/v1/report-mail/contacts"+(id?"/"+encodeURIComponent(id):""),value,function(data){
+      request(method,endpoint()+(id?"/"+encodeURIComponent(id):""),value,function(data){
         accept(data);if(close||(method==="DELETE"&&editing===id)){dirty=false;form.hidden=true;editing=null;}
         message(method==="DELETE"?"주소록에서 삭제했습니다.":"주소록에 저장했습니다.");
       });
@@ -97,12 +118,29 @@
       var address=email.value.trim();if(address.indexOf("@")<0)address+="@rist.re.kr";
       if(!name.value.trim()){message("이름을 입력하세요.",true);name.focus();return;}
       if(!/^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@rist\.re\.kr$/i.test(address)||address.split("@")[0].length>64||/^\.|\.@|\.\./.test(address)){message("올바른 RIST 이메일 아이디를 입력하세요.",true);email.focus();return;}
-      mutate(editing?"PUT":"POST",editing,{name:name.value.trim(),department:department.value.trim(),email:address},true);
+      var item={name:name.value.trim(),department:department.value.trim(),email:address};
+      if(scope==="shared"){
+        var chosen=visibilityMode.value==="projects"?Object.keys(projects).filter(function(code){return projects[code].checked;}):[];
+        if(visibilityMode.value==="projects"&&!chosen.length){message("공개할 실험을 하나 이상 선택하세요.",true);return;}
+        item.visibility={mode:visibilityMode.value,projects:chosen};
+      }
+      mutate(editing?"PUT":"POST",editing,item,true);
     }
     function apply(target){
-      if(busy||locked)return;var emails=book.contacts.filter(function(c){return !!selected[c.id];}).map(function(c){return c.email;});
-      var error=options.add(target,emails);if(error){message(error,true);return;}
-      selected={};render();message((target==="cc"?"참조":"비밀참조")+"에 추가했습니다. 중복 주소는 한 번만 반영합니다.");
+      if(busy||locked)return;var chosen=book.contacts.filter(function(c){return !!selected[c.id];});
+      function insert(items){
+        if(locked){message("보고서 처리 후 다시 선택하세요.",true);return;}
+        var error=options.add(target,items.map(function(c){return c.email;}));if(error){message(error,true);return;}
+        selected={};render();message((target==="cc"?"참조":"비밀참조")+"에 추가했습니다. 중복 주소는 한 번만 반영합니다.");
+      }
+      if(scope!=="shared"){insert(chosen);return;}
+      request("GET",endpoint(),null,function(value){
+        accept(value);var current={};book.contacts.forEach(function(c){current[c.id]=c;});
+        if(chosen.some(function(c){return !current[c.id]||current[c.id].email!==c.email||current[c.id].name!==c.name;})){
+          selected={};render();message("주소 또는 공개 범위가 변경되었습니다. 목록에서 다시 선택하세요.",true);return;
+        }
+        insert(chosen);
+      });
     }
     render();return {lock:function(value){locked=!!value;controls();}};
   };

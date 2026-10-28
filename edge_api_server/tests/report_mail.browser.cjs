@@ -19,7 +19,7 @@ const port=new Promise((resolve,reject)=>{let s='';server.stdout.on('data',chunk
       let signature='',revision=0,doc=kind==='xrd'?structuredClone(fixture.document):{title:'메일 편집 테스트',completionDate:'2026-10-26',transfer:{},sections:[],auxiliary:{email_subject:'분석 결과',email_body:'분석 결과를 안내합니다.'},variables:[]};
       if(kind==='xrd'){doc.metadata.report_number='REQ-1';doc.email={subject:'분석 결과',body:'분석 결과를 안내합니다.',status:'manual',source_fingerprint:'',model_used:'',message:''};}
       else doc.transfer.requestNumber='REQ-1';
-      let addressBook={revision:0,contacts:[]};
+      let addressBook={revision:0,contacts:[]},sharedBook={revision:0,contacts:[]},manageShared=true;
       await page.route('**/*',async route=>{
         const r=route.request(),url=new URL(r.url()),p=url.pathname;
         const json=(data,status=200)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(data)});
@@ -28,15 +28,18 @@ const port=new Promise((resolve,reject)=>{let s='';server.stdout.on('data',chunk
           return json({signature});
         }
         if(p==='/api/v1/report-mail/recipient')return json({recipientName:'의뢰 담당자',email:null,recipientPolicy:'lims'});
-        if(p.startsWith('/api/v1/report-mail/contacts')){
+        if(p.startsWith('/api/v1/report-mail/contacts')||p.startsWith('/api/v1/report-mail/shared-contacts')){
+          const shared=p.includes('/shared-contacts'),book=shared?sharedBook:addressBook;
           if(r.method()!=='GET'){
-            const v=r.postDataJSON();assert.equal(v.revision,addressBook.revision);
+            assert(!shared||manageShared);const v=r.postDataJSON();assert.equal(v.revision,book.revision);
             const id=p.split('/').pop();
-            if(r.method()==='POST')addressBook.contacts.push({...v.contact,id:'a'.repeat(32)});
-            if(r.method()==='PUT')addressBook.contacts=addressBook.contacts.map(c=>c.id===id?{...v.contact,id}:c);
-            if(r.method()==='DELETE')addressBook.contacts=addressBook.contacts.filter(c=>c.id!==id);
-            addressBook.revision++;
-          }return json(addressBook);
+            if(r.method()==='POST')book.contacts.push({...v.contact,id:String(book.revision+1).padStart(32,'0')});
+            if(r.method()==='PUT')book.contacts=book.contacts.map(c=>c.id===id?{...v.contact,id}:c);
+            if(r.method()==='DELETE')book.contacts=book.contacts.filter(c=>c.id!==id);
+            book.revision++;
+          }
+          if(!shared)return json(book);
+          return json(manageShared?{...book,canManage:true}:{revision:0,canManage:false,contacts:book.contacts.filter(c=>c.visibility.mode==='all'||c.visibility.projects.includes(kind.toUpperCase())).map(({visibility,...c})=>c)});
         }
         if(p.endsWith('/send'))throw Error('No real sends allowed');
         if(kind==='xrd'){
@@ -98,13 +101,38 @@ const port=new Promise((resolve,reject)=>{let s='';server.stdout.on('data',chunk
         await page.getByLabel('주소록 검색',{exact:true}).fill('분석실');
         await page.getByRole('checkbox',{name:'주소록 연구자 · qa.book@rist.re.kr 선택',exact:true}).check();await page.getByRole('button',{name:'참조에 추가',exact:true}).click();await save();
         assert.equal(await page.getByLabel('참조 (CC)',{exact:true}).inputValue(),'cc, qa.book');
+        await page.getByRole('button',{name:'공용 주소록',exact:true}).click();await page.getByText('주소록을 불러왔습니다.',{exact:true}).waitFor();
+        await page.getByRole('button',{name:'주소록 새 주소',exact:true}).click();
+        assert.equal(await page.getByLabel('주소록 공개 범위',{exact:true}).inputValue(),'admins');
+        await page.getByLabel('주소록 이름',{exact:true}).fill('공용 분석 담당자');await page.getByLabel('주소록 부서',{exact:true}).fill('분석실');await page.getByLabel('주소록 이메일 아이디',{exact:true}).fill('qa.book');
+        await page.getByLabel('주소록 공개 범위',{exact:true}).selectOption('projects');
+        await page.getByRole('button',{name:'주소록 저장',exact:true}).click();await page.getByText('공개할 실험을 하나 이상 선택하세요.',{exact:true}).waitFor();
+        await page.getByLabel(kind.toUpperCase()+' 주소록 공개',{exact:true}).check();
         for(const width of [1440,390]){
           await page.setViewportSize({width,height:1000});
           if(width===390&&kind!=='xrd'&&await page.locator('#page-sidebar-close').isVisible())await page.locator('#page-sidebar-close').click();
           await page.locator('.mail-book-panel').scrollIntoViewIfNeeded();
           assert(await page.locator('.mail-book-panel').evaluate(e=>e.scrollWidth<=e.clientWidth+2));
-          await page.locator('.mail-book-panel').screenshot({path:path.join(output,name+'-address-book-'+width+'.png')});
+          assert(await page.locator('.mail-book-visibility').evaluate(e=>e.scrollWidth<=e.clientWidth+2));
+          await page.locator('.mail-book-panel').screenshot({path:path.join(output,name+'-shared-address-book-'+width+'.png')});
         }
+        await page.getByRole('button',{name:'주소록 저장',exact:true}).click();await page.getByText('주소록에 저장했습니다.',{exact:true}).waitFor();
+        assert.deepEqual(sharedBook.contacts[0].visibility,{mode:'projects',projects:[kind.toUpperCase()]});
+        manageShared=false;await page.getByRole('button',{name:'주소록 새로고침',exact:true}).click();await page.getByText('주소록을 불러왔습니다.',{exact:true}).waitFor();
+        assert.equal(await page.getByRole('button',{name:'주소록 새 주소',exact:true}).count(),0);
+        assert.equal(await page.getByRole('button',{name:'공용 분석 담당자 주소 수정',exact:true}).count(),0);
+        const bccBeforeRevocation=await page.getByLabel('비밀참조 (BCC)',{exact:true}).inputValue();
+        await page.getByRole('checkbox',{name:'공용 분석 담당자 · qa.book@rist.re.kr 선택',exact:true}).check();
+        // A visibility change between selection and insertion must discard the stale selection.
+        sharedBook.contacts[0].visibility={mode:'admins',projects:[]};
+        await page.getByRole('button',{name:'비밀참조에 추가',exact:true}).click();await page.getByText('주소 또는 공개 범위가 변경되었습니다. 목록에서 다시 선택하세요.',{exact:true}).waitFor();
+        assert.equal(await page.getByLabel('비밀참조 (BCC)',{exact:true}).inputValue(),bccBeforeRevocation);
+        sharedBook.contacts[0].visibility={mode:'all',projects:[]};await page.getByRole('button',{name:'주소록 새로고침',exact:true}).click();await page.getByText('주소록을 불러왔습니다.',{exact:true}).waitFor();
+        await page.getByRole('checkbox',{name:'공용 분석 담당자 · qa.book@rist.re.kr 선택',exact:true}).check();await page.getByRole('button',{name:'참조에 추가',exact:true}).click();
+        await page.getByText('참조에 추가했습니다. 중복 주소는 한 번만 반영합니다.',{exact:true}).waitFor();
+        assert.equal(await page.getByLabel('참조 (CC)',{exact:true}).inputValue(),'cc, qa.book');
+        await page.getByRole('button',{name:'내 주소록',exact:true}).click();await page.getByText('주소록을 불러왔습니다.',{exact:true}).waitFor();
+        assert.equal(await page.getByRole('button',{name:'주소록 연구자 주소 수정',exact:true}).count(),1);assert.equal(addressBook.contacts.length,1);
         await page.setViewportSize({width:1440,height:1000});await page.getByRole('button',{name:'주소록',exact:true}).click();
         await page.getByLabel('메일 서명',{exact:true}).fill('윤병훈\nRIST');await page.getByRole('button',{name:'내 기본 서명 저장',exact:true}).click();await page.getByText('내 기본 서명을 저장했습니다.',{exact:false}).waitFor();assert.equal(signature,'윤병훈\nRIST');
         const rich=page.getByRole('textbox',{name:'메일 본문 서식 편집',exact:true});await rich.fill('수정한 분석 결과입니다.');await rich.press('Meta+a');await page.getByRole('button',{name:'굵게',exact:true}).click();assert(await rich.locator('b,strong').count()>0);

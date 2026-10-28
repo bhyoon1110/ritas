@@ -233,6 +233,21 @@ Spring Boot는 다음 항목을 모두 확인해야 한다.
 - 이메일 중복(대소문자 무관), RIST 외 도메인, 복수 주소 등록은 거부한다. 오래된 revision은 409로 반환하며 새로고침 후 다시 저장해야 한다. 서버 파일 잠금과 원자적 교체로 동시 저장 손실을 방지한다.
 - 주소록은 `RIST_STORAGE_ROOT/user-mail-address-books/`에 계정별 비공개 파일로 저장한다. DB 스키마 변경은 없다. 저장 폴더는 서버 백업에 포함하며 수신자용 보고서/ZIP에는 넣지 않는다. 주소 관리·삭제는 기존 보고서의 CC/BCC나 본문에 영향을 주지 않는다. Spring은 주소록을 직접 읽지 않고 선택 후 검증된 `email.cc/bcc`를 사용한다.
 
+#### 관리자 공용 주소록 (Edge 편집 화면 공통)
+
+- 네 실험의 `주소록 → 공용 주소록`에서 사용한다. 활성 관리자만 등록·수정·삭제할 수 있다. 활성 실험 회원은 서버가 공개 범위로 필터링한 목록만 조회·검색하고 CC/BCC로 선택한다. 개인 주소록은 별도로 유지한다.
+- `GET /api/v1/report-mail/shared-contacts`는 `{"revision":0,"contacts":[],"canManage":false}` 형태다. 관리자에게만 실제 revision과 각 주소의 visibility를 반환한다. 일반 회원 응답에는 비공개 주소, 공개 범위, 숨겨진 항목 수 및 전체 변경 revision이 포함되지 않는다.
+- 등록: `POST /api/v1/report-mail/shared-contacts`, 수정: `PUT /api/v1/report-mail/shared-contacts/{id}`. 본문 예:
+
+  ```json
+  {"revision":0,"contact":{"name":"김연구","department":"분석실","email":"research@rist.re.kr","visibility":{"mode":"projects","projects":["FTIR","TEM"]}}}
+  ```
+
+- 공개 범위는 `admins`(관리자만, 새 주소 기본값), `all`(전체 실험 회원), `projects`(선택한 실험 권한 보유자)이다. `projects`에서는 `FTIR/RAMAN/XRD/TEM` 중 하나 이상 선택한다. 나머지 모드의 projects는 빈 배열이어야 한다. 지정된 실험 중 하나라도 권한이 있으면 현재 보고서 종류와 관계없이 조회된다. 관리자는 전체 목록을 조회한다.
+- 삭제: `DELETE /api/v1/report-mail/shared-contacts/{id}`에 `{"revision":1}`. 개인 주소록과 같은 도메인·중복·500명 제한, 동일 출처 및 `X-Requested-With` 검증, 원자적 저장 및 409 충돌 처리를 적용한다. 일반 회원의 변경 요청은 403이다.
+- 공용 목록은 열 때와 CC/BCC 추가 직전에 재조회한다. 선택한 주소가 삭제·비공개 처리되었거나 이름·이메일이 바뀌었으면 추가를 중단하고 재선택을 안내한다. 조회 실패 시 이전 목록과 선택을 비운다.
+- 저장 위치는 `RIST_STORAGE_ROOT/shared-mail-address-book/contacts.json`이며 폴더를 서버 백업에 포함한다. DB 스키마 추가, Spring 변경은 필요 없다. 주소록 공개 범위는 목록 조회 권한이며 이미 작성된 메일이나 직접 입력한 RIST 주소의 발송 권한을 제한하는 기능은 아니다. 기존 To 고정, CC/BCC `rist.re.kr` 제한 및 SSO 전송 검증은 계속 적용한다.
+
 #### 이미지·표 및 메일 MIME 계약 (schemaVersion 2)
 
 - 편집 초안의 `deliveryEmail.bodyHtml`(XRD: `email.delivery.bodyHtml`)과 다운로드용 `email_body.html`은 `data:image/...;base64,...`를 포함하는 독립 HTML이다. 추가 이미지 파일이나 외부 URL 없이 열 수 있다. XRD 패키지는 기존 최소 구성대로 별도 메일 파일을 넣지 않는다.
