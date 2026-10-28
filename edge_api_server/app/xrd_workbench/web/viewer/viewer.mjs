@@ -32,11 +32,13 @@ import { diagnosticsHTML } from './raw_diagnostics.mjs';
 import { automaticSampleColors } from './sample_colors.mjs';
 
 const offline = !!window.XRD_EMBEDDED;
+const uploadProgress=window.RistFileProgress.monitor($('uploadError'));
 const collapsedLegendSamples = new Set();
 let activeUpload=null,uploadBusy=false,uploadPaused=false,uploadReady=false,resumeMappings={},resumeJob=null;
 function invalidateRawCheck(){uploadReady=false;$('uploadComplete').disabled=true;$('rawDiagnostics').textContent='';}
 function lockUpload(busy){
   uploadBusy=busy;
+  if(busy)uploadProgress.start();else uploadProgress.stop();
   for(const id of ['uploadSubmit','uploadClose','fileInput','resumeUpload','refreshUploads','newUpload','cancelUpload'])$(id).disabled=busy;
   $('cancelUpload').disabled=busy||!activeUpload||!!resumeJob;
   $('uploadPause').disabled=!busy||!!resumeJob;

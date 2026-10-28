@@ -53,6 +53,7 @@ function setup(t,kind='ftir',identity='',conditionScenario=null) {
       else if(delay&&this.url.endsWith('/revisions')) pending=finish;else finish();
     }
   };
+  w.eval(fs.readFileSync(path.join(__dirname,'../../common/rist_common/plotting/file_progress.js'),'utf8'));
   w.eval(script);
   return {w,d,q,posts,gets,prefix,timers,field:label=>d.querySelector('[aria-label="'+label+'"]'),
     tick(){const entry=timers.entries().next().value;assert(entry,'expected a scheduled operation');timers.delete(entry[0]);entry[1].fn();},
@@ -67,6 +68,18 @@ test('analyst editor is ES5 and renders text without HTML interpretation',t=>{
   assert.equal(h.field('분석 결과 요약 · 문단 1').value,'AI 초안');
   assert.equal(h.q('slide-image').getAttribute('src'),h.prefix+'/original/edit-slides/0');
   assert(h.field('분석 결과 요약 · 문단 1').closest('details').hidden);
+});
+for(const kind of ['ftir','raman','tem'])test(kind+' preview progress waits for the page image, ignores stale loads, and recovers after failure',t=>{
+  const h=setup(t,kind),image=h.q('slide-image'),bar=()=>h.q('page-status').closest('.rist-task-progress');
+  assert(bar().classList.contains('is-running'));image.onload();assert(!bar().classList.contains('is-running'));
+  h.hold('/edit-layout');h.q('reload-preview').click();assert(bar().classList.contains('is-running'));
+  h.release();assert(bar().classList.contains('is-running'));
+  const oldLoad=image.onload;
+  h.q('edit-next').click();oldLoad();assert(bar().classList.contains('is-running'));
+  image.onerror();assert(!bar().classList.contains('is-running'));assert.match(h.q('page-status').textContent,/불러오지 못/);
+  h.q('reload-preview').click();assert(bar().classList.contains('is-running'));image.onload();assert(!bar().classList.contains('is-running'));
+  h.delay();h.input('분석 결과 요약 · 문단 1','편집 유지');h.tick();assert(bar().classList.contains('is-running'));
+  h.fail();h.finish();assert(!bar().classList.contains('is-running'));assert.equal(h.field('분석 결과 요약 · 문단 1').value,'편집 유지');
 });
 for(const kind of ['ftir','raman','tem']) test(kind+' password is submitted explicitly and only verifier enters saved revisions',t=>{
   const h=setup(t,kind),panel=h.d.querySelector('.pptx-password-panel');

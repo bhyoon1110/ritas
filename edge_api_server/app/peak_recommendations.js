@@ -83,6 +83,7 @@
     document.body.appendChild(overlay);
     var form=overlay.querySelector('form'), sample=overlay.querySelector('select'), hint=overlay.querySelector('textarea');
     var status=overlay.querySelector('[role=status]'), results=overlay.querySelector('ul'), closeButton=overlay.querySelector('.rist-peak-recommend-close');
+    var progress=window.RistFileProgress.monitor(status);
     var review=overlay.querySelector('.rist-peak-recommend-review'), summary=overlay.querySelector('.rist-peak-recommend-summary');
     var applyButton=overlay.querySelector('.rist-peak-recommend-apply'), draft=null;
     var selectAllButton=overlay.querySelector('.rist-peak-recommend-select-all'), clearAllButton=overlay.querySelector('.rist-peak-recommend-clear-all');
@@ -94,6 +95,7 @@
     function validDraft() { return draft && draft.revision===generation && currentParent()===draft.trace && draft.material===hint.value.trim()
       && document.body.getAttribute('data-rist-spectrum-step')==='2'; }
     function update() {
+      if(busy)progress.start();else progress.stop();
       submit.disabled=busy || button.disabled || !hint.value.trim() || !currentParent();
       sample.disabled=hint.disabled=busy;closeButton.disabled=applying;
       var selected=0, duplicates=0, available=0;

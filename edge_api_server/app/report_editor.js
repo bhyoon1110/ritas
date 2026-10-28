@@ -20,6 +20,7 @@
   }
   var currentId = config.jobId, model = null, dirty = false, busy = false;
   var editor = document.getElementById("editor"), status = document.getElementById("status");
+  var taskProgress = window.RistFileProgress.monitor(status);
   var save = document.getElementById("save"), send = document.getElementById("send"), download = document.getElementById("download");
   var inputs = {}, sections = [], auxiliary = {};
   var saved = "", timer = null, composing = false, cellEditing = false, sending = false, activeRevision = null, retries = 0;
@@ -82,6 +83,7 @@
     xhr.send(body ? JSON.stringify(body) : null);
   }
   function availability() {
+    if (busy || sending) taskProgress.start(); else taskProgress.stop();
     save.disabled = busy || !model;
     send.disabled = busy || dirty || !!activeRevision || !model;
     download.setAttribute("aria-disabled", String(busy || dirty || !!activeRevision || !model));
@@ -349,8 +351,10 @@
     }
     function loadPage(number) {
       if (loading || sending) return;
+      var progress=window.RistFileProgress.monitor(info);progress.start();
       loading = true; lookupError = ""; controls(); info.textContent = "의뢰 목록 조회 중입니다.";
       request("/api/v1/requests?page=" + number + "&pageSize=200&experimentType=" + encodeURIComponent(project), "GET", null, function (error, result) {
+        progress.stop();
         loading = false;
         if (error) { lookupError = "조회 실패: " + error.message + " 직접 입력은 계속 사용할 수 있습니다. "; info.textContent = lookupError; }
         else { page = number; items = Array.isArray(result.items) ? result.items : []; render(); }
@@ -524,9 +528,11 @@
   }
   document.getElementById("reload-preview").onclick = refreshPreview;
   function load(id) {
+    busy = true; availability();
     request(url(id,"/editor-data"),"GET",null,function (error,data) {
       busy = false;
       if (error) {
+        direct.error(error.message);
         message(error.message,true); availability();
         if (workflow) window.parent.postMessage({type:"rist-workflow-editor-error", jobId:id,
           status:error.status, code:error.code, message:error.message},window.location.origin);
@@ -538,10 +544,12 @@
   function poll(id, previous, snapshot, attempts) {
     request(url(id),"GET",null,function (error,job) {
       if (error || job.status === "failed") {
+        direct.stopProgress();
         busy = false; if (!error) activeRevision = null;
         message((error ? error.message : (job.error && job.error.message) || job.error || job.message) + " 입력 내용은 유지됩니다. ‘지금 반영 / 재시도’를 눌러 주세요.",true); availability(); return;
       }
       if (job.status === "completed") {
+        direct.stopProgress();
         currentId = id; saved = snapshot; activeRevision = null; busy = false; retries = 0;
         dirty = JSON.stringify(collect()) !== saved;
         refreshPreview(); download.href = url(id,"/download");
@@ -550,8 +558,9 @@
         message(dirty ? "PPT가 갱신되었습니다. 그동안 추가한 수정 내용도 이어서 반영합니다." : "자동 저장 완료 · PPT 미리보기와 다운로드·전송에 수정 내용이 반영되었습니다.");
         availability(); schedule(); return;
       }
-      if (attempts >= 300) { busy = false; message("생성이 계속 진행 중입니다. ‘지금 반영 / 재시도’로 진행 상태를 다시 확인하세요. 입력 내용은 유지됩니다.",true); availability(); return; }
+      if (attempts >= 300) { busy = false;direct.stopProgress(); message("생성이 계속 진행 중입니다. ‘지금 반영 / 재시도’로 진행 상태를 다시 확인하세요. 입력 내용은 유지됩니다.",true); availability(); return; }
       message((job.message || "수정 내용을 PPT에 반영 중입니다.") + " 추가 입력도 계속할 수 있습니다.");
+      direct.progress(job.message || "PPT 수정본을 생성하는 중입니다.");
       // Small reports often finish in a few seconds. Detect that promptly,
       // but retain the low-frequency polling for long jobs or background tabs.
       window.setTimeout(function () { poll(id,previous,snapshot,attempts+1); },attempts < 6 && !document.hidden ? 500 : 1500);
@@ -561,14 +570,17 @@
     window.clearTimeout(timer);
     if (busy || !model || composing || cellEditing) return;
     if (activeRevision) {
+      direct.progress("생성 중인 PPT 수정본을 확인하는 중입니다.");
       busy = true; availability(); poll(activeRevision.id,activeRevision.previous,activeRevision.snapshot,0); return;
     }
     if (!dirty) return;
     if(mailEditor && mailEditor.validate()){message(mailEditor.validate(),true);return;}
     busy = true; availability(); message("수정 내용을 저장하는 중입니다.");
+    direct.progress("수정 내용을 저장하고 PPT 미리보기를 생성하는 중입니다.");
     var previous = currentId, value = collect(), snapshot = JSON.stringify(value);
     request(url(currentId,"/revisions"),"POST",value,function (error,job) {
       if (error) {
+        direct.stopProgress();
         busy = false; availability();
         if (error.status === 429 && retries < 5) {
           retries += 1; message("다른 보고서를 생성 중입니다. 잠시 후 자동 반영을 다시 시도합니다."); schedule(Math.min(30000,3000 * retries));

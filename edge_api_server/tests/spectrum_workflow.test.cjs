@@ -29,6 +29,7 @@ function setup(t,kind='ftir',mode='native') {
   return {w,d,workflow,api,requests,get stored(){return stored;},get restored(){return restored;},get resets(){return resets;},fail(value){fail=value;}};
 }
 const tick=()=>new Promise(resolve=>setTimeout(resolve,0));
+async function until(fn){for(let i=0;i<100;i++){if(fn())return;await new Promise(r=>setTimeout(r,5));}assert.fail('workflow did not settle');}
 for(const kind of ['ftir','raman'])for(const mode of ['native','chrome49'])test(kind+'/'+mode+': saved graph icons preserve actions, ordering, boundaries and busy guards',async t=>{
   const h=setup(t,kind,mode);await h.workflow.start();h.workflow.go(2);
   h.d.getElementById('sw-graph-name').value='First';await h.workflow.save(false);
@@ -42,7 +43,7 @@ for(const kind of ['ftir','raman'])for(const mode of ['native','chrome49'])test(
   action(1,'up').click();await tick();assert.deepEqual(h.stored.graphs.map(g=>g.title),['Second','First']);
   action(0,'down').click();await tick();assert.deepEqual(h.stored.graphs.map(g=>g.title),['First','Second']);
   action(0,'preview').click();assert(h.d.querySelector('.sw-preview'));h.d.querySelector('.sw-preview button').click();
-  action(0,'edit').click();await tick();assert.equal(h.restored.plotData[0].name,'raw1');
+  action(0,'edit').click();await until(()=>h.restored&&!h.d.getElementById('sw-save-graph').disabled);assert.equal(h.restored.plotData[0].name,'raw1');
   await h.workflow.go(3);const frame=h.d.getElementById('sw-report-editor'),sent=[];frame.contentWindow.postMessage=data=>sent.push(data);
   assert.deepEqual([...cards()[0].querySelectorAll('button')].map(b=>b.dataset.action),['add','preview','edit','download','up','down','trash']);
   const before=JSON.stringify(h.stored);action(0,'add').click();assert.equal(sent[0].type,'rist-insert-saved-graph');assert.equal(sent[0].id,h.stored.graphs[0].id);assert.equal(JSON.stringify(h.stored),before);
@@ -280,7 +281,7 @@ for(const kind of ['ftir','raman'])test(kind+': preview uses shared action butto
   assert.equal(actions.children[1].className,'sw-primary');assert.equal(h.d.activeElement,actions.firstChild);
   actions.firstChild.click();assert.equal(h.d.querySelector('.sw-preview'),null);assert.equal(h.restored,null);
   assert.equal(h.d.querySelectorAll('.sw-card').length,1);
-  open();h.d.querySelector('.sw-preview .sw-primary').click();await tick();await tick();
+  open();h.d.querySelector('.sw-preview .sw-primary').click();await until(()=>h.restored&&!h.d.getElementById('sw-save-graph').disabled);
   assert.equal(h.d.querySelector('.sw-preview'),null);assert.equal(h.restored.plotData[0].name,'raw1');
   assert.equal(h.d.getElementById('spectrum-workflow').dataset.step,'2');assert.equal(h.stored.graphs.length,1);
 });
@@ -366,7 +367,7 @@ test('saved copies, overwrite, return to upload and restore keep independent gra
   h.d.getElementById('sw-graph-name').value='Two';await h.workflow.save(true);
   assert.equal(h.stored.graphs.length,2);assert.notDeepEqual(h.stored.graphs[0].state,h.stored.graphs[1].state);
   h.workflow.go(1);await tick();assert.equal(h.stored.graphs.length,2);
-  h.workflow.go(2);h.d.querySelector('.sw-card .sw-controls button:nth-child(2)').click();await tick();await tick();
+  h.workflow.go(2);h.d.querySelector('.sw-card .sw-controls button:nth-child(2)').click();await until(()=>h.restored&&!h.d.getElementById('sw-save-graph').disabled);
   assert.equal(h.restored.plotData[0].name,'raw1');await h.workflow.save(false);
   assert.equal(h.stored.graphs.length,2);assert.equal(h.stored.graphs[0].state.plotData[0].name,'raw3');
   assert.equal(h.stored.graphs[1].state.plotData[0].name,'raw2');

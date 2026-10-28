@@ -49,6 +49,7 @@ function setup(t,kind,mode) {
     w.eval(fs.readFileSync(path.join(root,manifest.runtime),'utf8'));
     const asset=manifest.scripts[createHash('sha256').update(source.trim()).digest('hex')];assert(asset,'rebuild compatibility assets');w.eval(fs.readFileSync(path.join(root,asset),'utf8'));
   }else w.eval(source);
+  w.eval(fs.readFileSync(path.join(__dirname,'../../common/rist_common/plotting/file_progress.js'),'utf8'));
   w.RistPeakRecommendations.install({gd:g,kind});
   const q=s=>w.document.querySelector(s),change=(node,value)=>{node.value=value;node.dispatchEvent(new w.Event(node.tagName==='SELECT'?'change':'input',{bubbles:true}));};
   const open=()=>{q('.rist-peak-recommend-button').click();change(q('[aria-label="물질 힌트"]'),'탄소 시료');};

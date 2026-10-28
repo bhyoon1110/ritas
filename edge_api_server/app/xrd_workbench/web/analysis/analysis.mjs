@@ -4,9 +4,11 @@ import { buildSections, sectionHTML } from './sections.mjs';
 const esc = escapeHTML,
   copy = (v) => structuredClone(v);
 const reviewMain = document.querySelector('main'), reviewTools = document.createElement('div');
+const taskProgress=window.RistFileProgress.monitor($('status'));
 reviewTools.className = 'workTabs';
 reviewTools.innerHTML = '<button id="reviewNavToggle" aria-expanded="true">시료·표 목록 접기</button><span class="compareLabel">원문 대조</span><button data-compare="both">나란히</button><button data-compare="data">분석 표</button><button data-compare="source">원문</button><span id="compareContext" role="status">표·행을 선택하면 원문 위치를 연결합니다.</span>';
 reviewMain.parentNode.insertBefore(reviewTools,reviewMain);
+const sourceProgress=window.RistFileProgress.monitor($('compareContext'));
 function setCompare(view) {
   reviewMain.dataset.compare = view;
   reviewTools.querySelectorAll('[data-compare]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.compare === view)));
@@ -64,6 +66,7 @@ function changed() {
 }
 function lock(value) {
   busy = value;
+  if(value)taskProgress.start();else taskProgress.stop();
   $('dataFields').disabled = value;
   for (const id of [
     'save',
@@ -282,6 +285,7 @@ async function showPage(source = record(), number = page, highlight = true) {
   displayedSource = source;
   $('originalImage').removeAttribute('src');
   if (!source) {
+    sourceProgress.stop();
     $('originalImage').removeAttribute('src');
     $('bbox').hidden = true;
     $('originalTitle').textContent = '연결된 원문 없음';
@@ -304,6 +308,7 @@ async function showPage(source = record(), number = page, highlight = true) {
   $('originalTitle').textContent = source.filename;
   $('originalTitle').title = source.filename;
   $('compareContext').textContent = `${sample().name} · ${source.filename} · p.${page}${highlight ? ' · 선택 표 강조' : ''}`;
+  sourceProgress.start();
   $('originalLink').href = apiUrl(
     `/api/files/${storageId}/${source.id}${pdf ? '#page=' + page : ''}`,
   );
@@ -325,7 +330,11 @@ async function showPage(source = record(), number = page, highlight = true) {
     const url = URL.createObjectURL(blob);
     if (imageUrl) URL.revokeObjectURL(imageUrl);
     imageUrl = url;
-    $('originalImage').src = url;
+    const image=$('originalImage');
+    image.onload=()=>{if(token===imageToken)sourceProgress.stop();};
+    image.onerror=()=>{if(token===imageToken){sourceProgress.stop();status('원문 이미지를 불러오지 못했습니다. 페이지를 다시 선택해 주세요.',true);}};
+    image.src = url;
+    if(image.complete&&image.naturalWidth)image.onload();
     const t = table();
     if (pdf && highlight && source.id === sourceId && t?.page === page) {
       const [x0, y0, x1, y1] = t.bbox,
@@ -340,7 +349,7 @@ async function showPage(source = record(), number = page, highlight = true) {
       $('bbox').hidden = false;
     }
   } catch (e) {
-    if (token === imageToken) status(e.message, true);
+    if (token === imageToken) {sourceProgress.stop();status(e.message, true);}
   }
 }
 function manualRows() {

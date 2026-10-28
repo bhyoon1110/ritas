@@ -55,6 +55,7 @@ let storageId = new URLSearchParams(location.search).get('project'),
   pcPercent = '';
 let composing = false, previewPosition = {index:0,offset:0}, linkedTimer = 0;
 const previewFrame = $('reportPreview'), reportMain = document.querySelector('main');
+const taskProgress=window.RistFileProgress.monitor($('status'));
 const pptHost=document.createElement('div');pptHost.className='ppt-editor';previewFrame.parentNode.insertBefore(pptHost,previewFrame);previewFrame.hidden=true;
 const pptEditor=mountPptEditor({host:pptHost,document:()=>doc,changed:markDirty,linked:linkedField,message:status,
   editing:value=>{composing=value;if(value)livePreview.invalidate();else if(doc&&!busy)livePreview.schedule();},
@@ -118,13 +119,14 @@ const livePreview = createLivePreview({
     if (!doc) throw new Error('프로젝트가 열리지 않았습니다.');
     try {return await (await api(`/api/reports/${storageId}/draft-preview`, {method:'POST',
       headers:{'Content-Type':'application/json'}, body:JSON.stringify({document:doc,format:'editor'})})).json();}
-    catch(error){pptEditor.failed();throw error;}
+    catch(error){pptEditor.failed('미리보기 생성 실패: '+error.message);throw error;}
   },
   ready: value => {
     pptEditor.accept(value);
     $('previewStatus').textContent = dirty ? '미저장 초안 반영 · 저장은 별도' : `저장 버전 ${doc.revision} 기준`;
   },
-  status: text => { $('previewStatus').textContent = text; }
+  status: text => { $('previewStatus').textContent = text; },
+  activity: value => pptEditor.rendering(value)
 });
 const reportTools = document.createElement('div');
 reportTools.className = 'workTabs';
@@ -201,6 +203,7 @@ function lock(value) {
   mailEditor.lock(value);
   pptxPassword.lock(value);
   busy = value;
+  if(value)taskProgress.start();else taskProgress.stop();
   pptEditor.lock(value);
   if (value) livePreview.invalidate();
   else if (doc) livePreview.schedule();
@@ -1154,6 +1157,7 @@ async function start() {
     await loadPresets();
   } catch (e) {
     status(e.message, true);
+    pptEditor.failed(e.message);
   }
 }
 start();

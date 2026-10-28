@@ -83,6 +83,7 @@
     clear.title = "현재 그래프와 저장 그래프를 모두 비우고 데이터 업로드부터 시작";
     document.getElementById(kind + "-report").style.display = "none";
     function tell(text, error) { stateLine.textContent = text; stateLine.className = "sw-status" + (error ? " sw-error" : ""); }
+    var taskProgress = window.RistFileProgress.monitor(stateLine);
     function unavailable() { return busy || externalBusy || editorChecking || !ready || api.busy(); }
     function snapshot() { return {version:1, graphs:graphs, active:active, step:step, job:job, stale:stale}; }
     function persist() {
@@ -181,6 +182,7 @@
     // Update action feedback without rebuilding graph cards or stealing checkbox focus.
     function refreshActions() {
       var locked = unavailable(), count = chosen().length, hasGraph = api.hasGraph();
+      if (locked || childBusy) taskProgress.start(); else taskProgress.stop();
       var waiting = editorChecking ? "보고서 미리보기 작업을 서버에서 확인하는 중입니다."
         : !ready ? "이전 작업을 불러오는 중입니다. 잠시 기다려 주세요."
         : locked ? (resetting ? "작업을 초기화하는 중입니다." : operation || "RAW 분석 또는 편집 설정을 적용하는 중입니다. 완료 후 버튼이 활성화됩니다.")
@@ -408,7 +410,7 @@
       if (api.hasGraph() && !window.confirm("현재 편집 화면을 ‘" + g.title + "’ 저장본으로 바꿀까요? 저장하지 않은 현재 그래프 수정은 되돌릴 수 없습니다.")) return;
       var previousState = api.checkpoint ? api.checkpoint() : null;
       busy = true; operation = "저장한 그래프 편집 상태를 불러오는 중입니다."; render(); tell(operation);
-      return api.restore(g.state).then(function () {
+      return taskProgress.paint().then(function(){return api.restore(g.state);}).then(function () {
         active = g.id; name.value = g.title; step = 2; api.saveWorkspace(); persistSoon();
         tell("저장본을 불러왔습니다. 추가 편집 후 덮어쓰거나 새 그래프로 저장하세요." + (g.state.portableImport ? " 의뢰/전송 정보와 사용할 피크 라이브러리는 다시 선택하세요. 기존 피크 배정 이름은 유지됩니다." : ""));
       }).catch(function (error) {
@@ -424,7 +426,7 @@
       if (!api.hasGraph()) { tell("RAW 파일을 업로드하고 그래프를 만든 후 저장하세요.", true); return Promise.resolve(); }
       if ((!active || asCopy) && graphs.length >= 6) { tell("한 작업에 그래프 6장까지 저장할 수 있습니다. 불필요한 저장본을 먼저 정리하세요.", true); return Promise.resolve(); }
       busy = true; operation = "그래프 이미지와 편집 상태를 저장하는 중입니다."; render(); tell(operation);
-      return api.capture().then(function (captured) {
+      return taskProgress.paint().then(function(){return api.capture();}).then(function (captured) {
         var entry = {id:asCopy || !active ? "g-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8) : active,
           title:name.value.trim() || "그래프 " + (graphs.length + 1), included:true, state:captured.state, report:captured.report};
         var old = graphs, next = graphs.slice(), index = next.findIndex(function (g) { return g.id === entry.id; });

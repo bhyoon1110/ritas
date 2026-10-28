@@ -7,6 +7,9 @@
     var fields = document.getElementById("inline-fields"), note = document.getElementById("inline-note");
     var select = document.getElementById("edit-page"), previous = document.getElementById("edit-previous"), next = document.getElementById("edit-next");
     var state = document.getElementById("page-status"), toggle = document.getElementById("edit-toggle");
+    var progress = window.RistFileProgress.monitor(state), generating = false, imagePending = false, imageSequence = 0;
+    progress.start("PPT 미리보기를 준비하는 중입니다.");
+    image.hidden = true;
     var pages = [], page = 0, imageBase = "", ready = false, shown = true, locked = false, copies = [], active = null, nextPageId = null, canvasMode = false;
     var nextSelection=null;
     var cellEditor=new window.RistCellEditor({editing:options.editing});
@@ -117,13 +120,26 @@
       state.textContent = (page + 1) + " / " + pages.length + " · " + pages[page].title;
       if (!keepEditor) close();
       ready = false; layer.hidden = true;
+      var sequence = ++imageSequence;
+      imagePending = true; progress.start();
+      image.onload = function () {
+        if (sequence !== imageSequence) return;
+        imagePending = false; if (!generating) progress.stop();
+        image.hidden = false;
+        ready = true; regions();cellEditor.position();
+      };
+      image.onerror = function () {
+        if (sequence !== imageSequence) return;
+        imagePending = false; if (!generating) progress.stop();
+        image.hidden = true;
+        ready = false; layer.hidden = true; state.textContent = "PPT 페이지를 불러오지 못했습니다. ‘미리보기 다시 불러오기’를 눌러 주세요.";
+      };
       image.alt = "PPT " + (page + 1) + "페이지";
       image.src = imageBase + "/" + page;
+      if (image.complete && image.naturalWidth) image.onload();
       sidebar.select(page,keepSelection);
       if (options.onPage) options.onPage();
     }
-    image.onload = function () { ready = true; regions();cellEditor.position(); };
-    image.onerror = function () { ready = false; layer.hidden = true; state.textContent = "PPT 페이지를 불러오지 못했습니다. ‘미리보기 다시 불러오기’를 눌러 주세요."; };
     previous.onclick = function () { show(page - 1); }; next.onclick = function () { show(page + 1); };
     select.onchange = function () { show(Number(select.value)); };
     toggle.onclick = function () { cellEditor.close(false);shown = !shown; toggle.setAttribute("aria-pressed", String(shown)); regions(); };
@@ -135,6 +151,10 @@
         var pendingSelection=!preservePending&&nextPageId;
         var selectedId = (!preservePending && nextPageId) || previousId;
         pages = value.pages || []; imageBase = base; select.textContent = "";
+        if (!pages.length) {
+          imageSequence++; imagePending = false; generating = false; progress.stop(); ready = false;
+          image.removeAttribute("src"); layer.hidden = true; state.textContent = "표시할 PPT 페이지가 없습니다.";
+        }
         pages.forEach(function (item,index) { var option = node("option",select,(index + 1) + ". " + item.title); option.value = String(index); });
         stage.style.paddingTop = (100 / (value.ratio || 16/9)) + "%";
         var found = -1;
@@ -155,8 +175,10 @@
       selectedPageIds:function () { return sidebar.selectedIds(); },
       sidebarLock:function (blocked,sending) { sidebar.lock(blocked,sending); },
       selectOnNext:function (id,ids) { nextPageId = id;nextSelection=ids?ids.slice():null;close(); },
-      loading:function () { sidebar.loading();layer.hidden = true; state.textContent = "PPT 편집 영역을 불러오는 중입니다."; },
-      error:function (message) { layer.hidden = true; state.textContent = message; },
+      loading:function () { imageSequence++; imagePending = false; generating = false;ready = false;sidebar.loading();layer.hidden = true; progress.start("PPT 편집 영역을 생성·불러오는 중입니다."); },
+      progress:function (text) { generating = true; progress.start(text); },
+      stopProgress:function () { generating = false; if (!imagePending) progress.stop(); },
+      error:function (message) { imageSequence++; imagePending = false;generating = false; progress.stop();layer.hidden = true; state.textContent = message; },
       sync:function () {
         cellEditor.position();
         copies.forEach(function (copy) {

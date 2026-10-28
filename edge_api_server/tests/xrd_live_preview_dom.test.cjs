@@ -40,10 +40,17 @@ for(const legacy of [false,true])test(`${legacy?'Chrome49 fallback':'native'} re
   const frame=d.getElementById('reportPreview'),title=d.getElementById('title');
   const preview=()=>d.getElementById('page-status').textContent;
   await until(()=>preview().includes('XRD 분석 결과'));
+  const progress=()=>d.getElementById('page-status').closest('.rist-task-progress');
+  assert(progress().classList.contains('is-running'));
+  d.getElementById('slide-image').onload();assert(!progress().classList.contains('is-running'));
   assert.equal(frame.getAttribute('sandbox'),'allow-scripts allow-popups allow-popups-to-escape-sandbox');
   const edit=value=>{title.value=value;title.dispatchEvent(new w.Event('input',{bubbles:true}));};
   title.focus();edit('새 제목');edit('최종 제목');
   await until(()=>preview().includes('최종 제목'));
+  assert(progress().classList.contains('is-running'));
+  d.getElementById('slide-image').onerror();assert(!progress().classList.contains('is-running'));assert.match(preview(),/불러오지 못/);
+  d.getElementById('draftRefresh').click();await until(()=>preview().includes('최종 제목'));
+  d.getElementById('slide-image').onload();assert(!progress().classList.contains('is-running'));
   assert.equal(d.activeElement,title);
   assert.match(d.getElementById('previewStatus').textContent,/미저장 초안/);
   assert(!calls.some(c=>(c.options.method==='PUT'&&c.url==='/api/reports/fixture')||/\/exports$|\/send$/.test(c.url)));
@@ -76,6 +83,7 @@ for(const legacy of [false,true])test(`${legacy?'Chrome49 fallback':'native'} up
   w.structuredClone=x=>JSON.parse(JSON.stringify(x));
   w.Plotly={newPlot:async el=>{el.on=()=>{};},react:async()=>{}};
   w.fetch=mockFetch;
+  w.eval(fs.readFileSync(path.join(__dirname,'../../common/rist_common/plotting/file_progress.js'),'utf8'));
   if(legacy){
     const compat=path.resolve(__dirname,'../app/static/chrome49');
     const manifest=JSON.parse(fs.readFileSync(path.join(compat,'manifest.json'),'utf8'));
@@ -101,6 +109,7 @@ for(const legacy of [false,true])test(`${legacy?'Chrome49 fallback':'native'} up
 function runScreen(w,screen,legacy,mockFetch){
   w.HTMLElement.prototype.scrollIntoView=function(){};
   w.structuredClone=x=>JSON.parse(JSON.stringify(x));w.fetch=mockFetch;
+  w.eval(fs.readFileSync(path.join(__dirname,'../../common/rist_common/plotting/file_progress.js'),'utf8'));
   if(screen==='report')require('./ppt_tools_harness.cjs')(w);
   if(legacy){
     const compat=path.resolve(__dirname,'../app/static/chrome49');

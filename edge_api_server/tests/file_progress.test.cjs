@@ -5,6 +5,18 @@ function setup(t){
   const dom=new JSDOM('<a download="원본.txt" href="data:text/plain,RAW">저장</a>',{url:'http://rist.test',runScripts:'outside-only'});
   t.after(()=>dom.window.close());const w=dom.window;w.eval(source);return {w,d:w.document,api:w.RistFileProgress};
 }
+test('inline task progress reserves its track, preserves focus, and cleans up on pagehide',t=>{
+  const {w,d,api}=setup(t),status=d.createElement('p'),input=d.createElement('input');
+  d.body.append(status,input);input.focus();
+  const p=api.monitor(status),wrapper=status.closest('.rist-task-progress'),bar=wrapper.querySelector('[role=progressbar]');
+  assert.equal(api.monitor(status),p);assert.equal(bar.getAttribute('aria-hidden'),'true');
+  p.start('PPT 생성 중');assert(wrapper.classList.contains('is-running'));
+  assert.equal(d.activeElement,input);assert.equal(bar.getAttribute('aria-hidden'),'false');
+  assert(!bar.hasAttribute('aria-valuenow'));assert.equal(wrapper.querySelector('.rist-task-elapsed').textContent,'0:00');
+  p.start('이미지 불러오는 중');assert.equal(status.textContent,'이미지 불러오는 중');
+  p.stop();assert.equal(bar.getAttribute('aria-hidden'),'true');assert.equal(status.closest('.rist-task-progress'),wrapper);
+  p.start();w.dispatchEvent(new w.Event('pagehide'));assert(!wrapper.classList.contains('is-running'));
+});
 test('ES5 loading has no invented percent, measures written bytes, and stops on error',t=>{
   acorn.parse(source,{ecmaVersion:5});const {d,api}=setup(t),p=api.begin('보고서 ZIP');
   const bar=d.querySelector('[role=progressbar]');assert(!bar.hasAttribute('aria-valuenow'));

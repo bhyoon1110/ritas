@@ -35,10 +35,12 @@ export async function mountReportPlatform(send, changed) {
     '<a href="/account">회원정보에서 사내 SSO 인증</a> <button type="button" id="ristReportSend">보고서 전송 큐에 등록</button><p id="ristTransferStatus" role="status"></p>';
   document.getElementById('savePane').prepend(block);
   const $ = id => document.getElementById(id), status = text => { $('ristTransferStatus').textContent = text; };
+  const progress=window.RistFileProgress.monitor($('ristTransferStatus'));
   for (const id of ['ristExperiment', 'ristEquipment']) $(id).addEventListener('input', changed);
   let items = [];
   $('ristRequestLookup').onclick = async () => {
     $('ristRequestLookup').disabled = true;
+    progress.start('의뢰 목록 조회 중…');
     try {
       const response = await fetch('/api/v1/requests?page=1&pageSize=200&experimentType=XRD',
         {headers:{'X-Request-Id':'xrd-workbench-' + Date.now()}});
@@ -50,7 +52,7 @@ export async function mountReportPlatform(send, changed) {
       items.forEach((item, i) => $('ristRequests').appendChild(new Option(`${item.requestNumber} · ${item.sampleName || item.requestTitle || ''}`, String(i))));
       status(`${items.length}개 의뢰를 불러왔습니다.`);
     } catch (error) { status(error.message); }
-    finally { $('ristRequestLookup').disabled = false; }
+    finally { $('ristRequestLookup').disabled = false; progress.stop(); }
   };
   $('ristRequests').onchange = () => {
     if ($('ristRequests').value === '') return;
@@ -64,6 +66,7 @@ export async function mountReportPlatform(send, changed) {
   };
   $('ristReportSend').onclick = async () => {
     $('ristReportSend').disabled = true;
+    progress.start('SSO·전송 권한 확인 중…');
     try {
       const info = await (await request('/api/platform')).json();
       $('ristOperator').value = info.operatorId;
@@ -71,7 +74,7 @@ export async function mountReportPlatform(send, changed) {
       if (Object.values(transferValues()).some(v => !v)) throw new Error('의뢰번호·실험코드·장비코드 및 SSO 인증을 확인하세요.');
       await send();
     } catch (error) { status(error.message); }
-    finally { $('ristReportSend').disabled = false; }
+    finally { $('ristReportSend').disabled = false; progress.stop(); }
   };
   try {
     const info = await (await request('/api/platform')).json();

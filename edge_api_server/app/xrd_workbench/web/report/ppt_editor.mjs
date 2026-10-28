@@ -8,6 +8,10 @@ export function mountPptEditor({host,document:documentValue,changed,linked,messa
     <div class="slide-workspace"><div id="slide-stage"><img id="slide-image" alt="PPT 미리보기"><div id="edit-regions"></div><div id="canvas-layer" hidden></div></div></div></div>
     <details class="ppt-help"><summary>페이지 선택·편집 도움말</summary>Shift+클릭: 범위 선택 · Ctrl/Cmd+클릭: 개별 선택 · 목록에서 Ctrl/Cmd+A: 전체 선택 · 끌어서 순서 변경 · Alt+↑/↓. 자유 편집에서는 글자·표·이미지·도형을 수정합니다. 기본 화면의 테두리를 클릭하면 연결된 분석 입력 항목으로 이동합니다. 변경은 초안에 반영되며 최종 저장 후 다운로드·전송하세요.</details>`;
   const el=id=>window.document.getElementById(id);
+  const progress=window.RistFileProgress.monitor(el('page-status'));
+  let rendering=true,imagePending=false,imageSequence=0;
+  progress.start();
+  el('slide-image').hidden=true;
   let pages=[],index=0,locked=false,pending=false,nextId=null,nextSelection=null,canvasMode=false,deleted=[];
   const edits=()=>{const doc=documentValue();return doc.pageEdits||(doc.pageEdits={hidden:[],added:[],order:[]});};
   const sidebar=new window.RistPageSidebar({select:i=>show(i,true),move:reorder,changed:availability,step:move});
@@ -27,8 +31,14 @@ export function mountPptEditor({host,document:documentValue,changed,linked,messa
   function show(i,keepSelection=false){
     if(!pages.length)return;
     index=Math.max(0,Math.min(pages.length-1,i));const page=pages[index];
-    el('ppt-page').value=String(index);el('slide-image').src=page.image;
+    el('ppt-page').value=String(index);
     el('page-status').textContent=`${index+1} / ${pages.length} · ${page.title}`;
+    const image=el('slide-image'),sequence=++imageSequence;
+    imagePending=true;progress.start();
+    image.onload=()=>{if(sequence!==imageSequence)return;image.hidden=false;imagePending=false;if(!rendering)progress.stop();};
+    image.onerror=()=>{if(sequence!==imageSequence)return;image.hidden=true;imagePending=false;progress.stop();el('page-status').textContent='PPT 페이지 이미지를 불러오지 못했습니다. 미리보기 다시 생성을 눌러 주세요.';};
+    image.src=page.image;
+    if(image.complete&&image.naturalWidth)image.onload();
     const layer=el('edit-regions');layer.textContent='';layer.hidden=canvasMode;
     for(const region of page.targets||[]) {
       const button=window.document.createElement('button');button.className='edit-region';button.type='button';
@@ -84,6 +94,7 @@ export function mountPptEditor({host,document:documentValue,changed,linked,messa
     accept(value){
       const selected=sidebar.selectedIds(),current=nextId||(pages[index]||{}).id;
       pages=value.pages||[];pending=false;el('ppt-page').textContent='';
+      if(!pages.length){imagePending=false;imageSequence++;progress.stop();el('slide-image').removeAttribute('src');el('page-status').textContent='표시할 PPT 페이지가 없습니다.';}
       pages.forEach((p,i)=>{const option=window.document.createElement('option');option.value=String(i);option.textContent=`${i+1}. ${p.title}`;el('ppt-page').appendChild(option);});
       el('slide-stage').style.paddingTop=(100/value.ratio)+'%';
       sidebar.layout(value,'');canvas.layout(value);
@@ -92,6 +103,7 @@ export function mountPptEditor({host,document:documentValue,changed,linked,messa
     },
     lock(value){locked=value;if(documentValue())availability();},
     locate(target){const at=pages.findIndex(p=>(p.targets||[]).some(r=>r.target.tab===target.tab&&(!target.field||r.target.field===target.field)));if(at>=0)show(at);},
-    failed(){pending=false;if(documentValue())availability();}
+    rendering(value){rendering=value;if(value)progress.start('PPT 미리보기 생성 중…');else if(!imagePending)progress.stop();},
+    failed(message){rendering=false;pending=false;progress.stop();if(message)el('page-status').textContent=message;if(documentValue())availability();}
   };
 }

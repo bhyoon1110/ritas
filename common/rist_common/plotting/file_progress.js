@@ -75,7 +75,45 @@
     };
   }
   var handoff = '다운로드를 시작했습니다. 전송 진행과 저장 완료는 브라우저 다운로드 목록에서 확인하세요.';
-  window.RistFileProgress = {begin: begin, handoff: handoff};
+  // Reserve a thin track under an existing status line. Automatic preview
+  // updates must not open dialogs, steal focus, or move the slide/buttons.
+  function monitor(status) {
+    if (status._ristProgressMonitor) return status._ristProgressMonitor;
+    if (!document.getElementById('rist-task-progress-style')) {
+      var style = node('style', document.head); style.id = 'rist-task-progress-style';
+      style.textContent = '.rist-task-progress{min-width:0;flex:1;position:relative;padding-bottom:8px;box-sizing:border-box}'
+        + '.rist-task-progress-row{display:flex;align-items:center;min-width:0;gap:8px}.rist-task-progress-row>:first-child{flex:1;min-width:0;margin:0!important}'
+        + '.rist-task-elapsed{flex:none;font:11px/1.4 Arial,sans-serif;color:#536c7d;white-space:nowrap;visibility:hidden}'
+        + '.rist-task-track{position:absolute;bottom:0;left:0;right:0;height:4px;overflow:hidden;border-radius:3px;background:#e1edf3;visibility:hidden}'
+        + '.rist-task-track>span{display:block;height:100%;width:36%;background:#28718e}'
+        + '.rist-task-progress.is-running .rist-task-elapsed,.rist-task-progress.is-running .rist-task-track{visibility:visible}'
+        + '.rist-task-progress.is-running .rist-task-track>span{animation:rist-task-shimmer 1.4s ease-in-out infinite}'
+        + '@keyframes rist-task-shimmer{0%{transform:translateX(-100%)}100%{transform:translateX(280%)}}'
+        + '@media(prefers-reduced-motion:reduce){.rist-task-progress.is-running .rist-task-track>span{animation:none}}';
+    }
+    var wrapper = node('div'); wrapper.className = 'rist-task-progress';
+    status.parentNode.insertBefore(wrapper, status);
+    var row = node('div', wrapper); row.className = 'rist-task-progress-row'; row.appendChild(status);
+    var elapsed = node('small', row); elapsed.className = 'rist-task-elapsed'; elapsed.setAttribute('aria-hidden', 'true');
+    var track = node('div', wrapper); track.className = 'rist-task-track'; track.setAttribute('role', 'progressbar');
+    track.setAttribute('aria-label', '작업 처리 중'); track.setAttribute('aria-hidden', 'true'); node('span', track);
+    var timer = null, started = 0;
+    function clock() { var seconds = Math.floor((Date.now() - started) / 1000); elapsed.textContent = Math.floor(seconds / 60) + ':' + ('0' + seconds % 60).slice(-2); }
+    function stop() { window.clearInterval(timer); timer = null; wrapper.classList.remove('is-running'); track.setAttribute('aria-hidden', 'true'); }
+    window.addEventListener('pagehide', stop);
+    status._ristProgressMonitor = {
+      start: function (text) {
+        if (text != null) status.textContent = text;
+        if (timer !== null) return;
+        started = Date.now(); clock(); timer = window.setInterval(clock, 1000);
+        wrapper.classList.add('is-running'); track.setAttribute('aria-hidden', 'false');
+      },
+      stop: stop,
+      paint: function () { return new Promise(function (resolve) { window.setTimeout(resolve, 30); }); }
+    };
+    return status._ristProgressMonitor;
+  }
+  window.RistFileProgress = {begin: begin, handoff: handoff, monitor: monitor};
   // Small existing-file/JSON downloads also receive feedback without fetching
   // them a second time or buffering a large file in memory.
   document.addEventListener('click', function (event) {

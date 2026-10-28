@@ -198,7 +198,7 @@ def test_notice_is_inserted_once_before_application_scripts_and_does_not_overlay
     # Download feedback is mounted only during a save; the browser notice itself
     # must remain in normal flow and never obscure the graph.
     assert "position:fixed" not in html.replace(file_progress_html(), "")
-    assert "position:absolute" not in html
+    assert "position:absolute" not in html.replace(file_progress_html(), "")
     assert "@media print" in html
     assert "<noscript>" in html
     assert '<main>Content</main><script>app();</script>' in html

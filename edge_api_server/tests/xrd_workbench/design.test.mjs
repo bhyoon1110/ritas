@@ -47,3 +47,12 @@ test('failed preview leaves previous result intact, explicit retry works, dispos
   const q=createLivePreview({clock,render:()=>new Promise(r=>{resolve=r;}),ready:x=>shown.push(x),status:()=>{}});
   q.schedule(true);clock.advance(0);q.dispose();resolve('late');await flush();assert.equal(shown.length,2);
 });
+test('preview activity ends on success, failure and disposal without accepting late pages',async()=>{
+  const clock=fakeClock(),activity=[],shown=[];let resolve,reject;
+  const p=createLivePreview({clock,render:()=>new Promise((r,e)=>{resolve=r;reject=e;}),ready:x=>shown.push(x),status:()=>{},activity:x=>activity.push(x)});
+  p.schedule(true);clock.advance(0);assert.equal(activity.at(-1),true);
+  resolve('page');await flush();assert.equal(activity.at(-1),false);assert.deepEqual(shown,['page']);
+  p.schedule(true);clock.advance(0);reject(Error('failed'));await flush();assert.equal(activity.at(-1),false);
+  p.schedule(true);clock.advance(0);p.dispose();assert.equal(activity.at(-1),false);
+  resolve('late');await flush();assert.deepEqual(shown,['page']);
+});
