@@ -16,16 +16,32 @@ const port=new Promise((resolve,reject)=>{let s='';server.stdout.on('data',chunk
     for(const kind of (process.env.RIST_MAIL_TEST_KINDS||'ftir,raman,tem,xrd').split(','))for(const legacy of [false,true]){
       const name=kind+(legacy?'-fallback':'-native'),context=await browser.newContext({viewport:{width:1440,height:1000},...(legacy?{userAgent:'Mozilla/5.0 (Windows NT 5.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/49.0.2623.75 Safari/537.36'}:{})});
       const page=await context.newPage(),errors=[];page.setDefaultTimeout(15000);page.on('pageerror',e=>errors.push(e.message));
+      page.on('dialog',dialog=>dialog.accept());
       let signature={signature:''},revision=0,doc=kind==='xrd'?structuredClone(fixture.document):{title:'메일 편집 테스트',completionDate:'2026-10-26',transfer:{},sections:[],auxiliary:{email_subject:'분석 결과',email_body:'분석 결과를 안내합니다.'},variables:[]};
       if(kind==='xrd'){doc.metadata.report_number='REQ-1';doc.email={subject:'분석 결과',body:'분석 결과를 안내합니다.',status:'manual',source_fingerprint:'',model_used:'',message:''};}
       else doc.transfer.requestNumber='REQ-1';
       let addressBook={revision:0,contacts:[]},sharedBook={revision:0,contacts:[]},manageShared=true;
+      let signatureBook=null;
       await page.route('**/*',async route=>{
         const r=route.request(),url=new URL(r.url()),p=url.pathname;
         const json=(data,status=200)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(data)});
         if(p==='/api/v1/report-mail/signature'){
-          if(r.method()==='PUT')signature=r.postDataJSON();
+          if(r.method()==='PUT'){signature=r.postDataJSON();if(signatureBook){const item=signatureBook.items.find(i=>i.id===signatureBook.defaultId);if(item)item.content=structuredClone(signature);signatureBook.revision++;}}
           return json(signature);
+        }
+        if(p.startsWith('/api/v1/report-mail/signatures')){
+          if(!signatureBook)signatureBook={revision:0,defaultId:'default',items:[{id:'default',name:'기본 서명',content:structuredClone(signature)}]};
+          const pieces=p.split('/signatures')[1].split('/'),id=pieces[1],item=signatureBook.items.find(i=>i.id===id);
+          if(r.method()!=='GET'){
+            const v=r.postDataJSON();assert.equal(v.revision,signatureBook.revision);
+            if(r.method()==='POST')signatureBook.items.push({id:'named-'+signatureBook.revision,name:v.name,content:v.content});
+            else if(pieces[2]==='default')signatureBook.defaultId=id;
+            else if(r.method()==='PUT')Object.assign(item,{name:v.name,content:v.content});
+            else{signatureBook.items=signatureBook.items.filter(i=>i.id!==id);if(id===signatureBook.defaultId)signatureBook.defaultId=null;}
+            signatureBook.revision++;signature=structuredClone(signatureBook.items.find(i=>i.id===signatureBook.defaultId)?.content||{signature:''});
+          }
+          if(r.method()==='GET'&&id)return json({...item,revision:signatureBook.revision});
+          return json({revision:signatureBook.revision,defaultId:signatureBook.defaultId,items:signatureBook.items.map(i=>({id:i.id,name:i.name,hasImage:!!i.content.signatureImage,isDefault:i.id===signatureBook.defaultId}))});
         }
         if(p==='/api/v1/report-mail/recipient')return json({recipientName:'의뢰 담당자',email:null,recipientPolicy:'lims'});
         if(p.startsWith('/api/v1/report-mail/contacts')||p.startsWith('/api/v1/report-mail/shared-contacts')){
@@ -139,14 +155,33 @@ const port=new Promise((resolve,reject)=>{let s='';server.stdout.on('data',chunk
         await page.getByText('서명 이미지를 추가했습니다.',{exact:false}).waitFor();
         const signatureImage=page.locator('.mail-signature-preview img');
         assert(await signatureImage.evaluate(e=>e.complete&&e.naturalWidth<=1280&&e.src.length<350000));
+        // Paste-event integration exercises clipboard image bytes without altering the user's OS clipboard.
+        const prevented=await page.getByLabel('메일 서명',{exact:true}).evaluate((el,base64)=>{
+          const raw=atob(base64),bytes=new Uint8Array(raw.length);for(let i=0;i<raw.length;i++)bytes[i]=raw.charCodeAt(i);
+          const clipboard=new DataTransfer();clipboard.items.add(new File([bytes],'clipboard.png',{type:'image/png'}));
+          const event=new ClipboardEvent('paste',{clipboardData:clipboard,bubbles:true,cancelable:true});el.dispatchEvent(event);return event.defaultPrevented;
+        },imageBytes.toString('base64'));
+        assert(prevented);await page.getByText('서명 이미지를 추가했습니다.',{exact:false}).waitFor();
         await page.getByLabel('서명 이미지 표시 폭',{exact:true}).fill('260');await page.getByLabel('서명 이미지 표시 폭',{exact:true}).press('Tab');
         assert.equal(await signatureImage.getAttribute('width'),'260');
+        async function dragSignature(cancel=false){const handle=page.getByRole('button',{name:'서명 이미지 모서리 드래그 조절',exact:true});await handle.scrollIntoViewIfNeeded();const box=await handle.boundingBox();await page.mouse.move(box.x+box.width/2,box.y+box.height/2);await page.mouse.down();await page.mouse.move(box.x+box.width/2+40,box.y+box.height/2+30,{steps:4});if(cancel)await page.keyboard.press('Escape');await page.mouse.up();}
+        await dragSignature(true);assert.equal(await signatureImage.getAttribute('width'),'260');
+        await dragSignature();assert(Number(await signatureImage.getAttribute('width'))>260);
         await page.getByLabel('서명 이미지 크기 조절',{exact:true}).evaluate(e=>{e.value='240';e.dispatchEvent(new Event('input',{bubbles:true}));});
         assert.equal(await signatureImage.getAttribute('width'),'240');
         assert(await signatureImage.evaluate(e=>{const r=e.getBoundingClientRect();return Math.abs(r.width/r.height-e.naturalWidth/e.naturalHeight)<0.01;}));
         await save();
         await page.getByRole('button',{name:'내 기본 서명 저장',exact:true}).click();await page.getByText('내 기본 서명을 저장했습니다.',{exact:false}).waitFor();
         assert.equal(signature.signature,'윤병훈\nRIST');assert.equal(signature.signatureImageWidth,'240');assert(signature.signatureImage.startsWith('data:image/jpeg;base64,'));
+        await page.getByRole('button',{name:'서명 목록 관리',exact:true}).click();await page.getByText('서명 목록을 불러왔습니다.',{exact:true}).waitFor();
+        await page.getByLabel('서명 이름',{exact:true}).fill('실험실 명함');await page.getByRole('button',{name:'현재 서명을 새 항목으로 추가',exact:true}).click();await page.getByText('새 서명을 추가했습니다.',{exact:true}).waitFor();
+        assert.equal(signatureBook.items.length,2);
+        await page.getByLabel('서명 이름',{exact:true}).fill('실험실 명함 수정');await page.getByRole('button',{name:'선택한 서명 수정 저장',exact:true}).click();await page.getByText('선택한 서명을 수정했습니다.',{exact:true}).waitFor();
+        const namedId=signatureBook.items.find(i=>i.name==='실험실 명함 수정').id;
+        await page.getByRole('button',{name:'선택한 서명 기본값 지정',exact:true}).click();await page.getByText('기본 서명을 변경했습니다.',{exact:false}).waitFor();assert.equal(signatureBook.defaultId,namedId);
+        await page.getByLabel('저장된 서명 선택',{exact:true}).selectOption('default');
+        await page.getByRole('button',{name:'선택한 서명 불러오기',exact:true}).click();await page.getByText('선택한 서명을 적용했습니다.',{exact:false}).waitFor();assert.equal(await signatureImage.getAttribute('width'),'240');
+        await page.getByRole('button',{name:'선택한 저장 서명 삭제',exact:true}).click();await page.getByText('서명을 목록에서 삭제했습니다.',{exact:true}).waitFor();assert.equal(signatureBook.items.length,1);assert.equal(await page.getByLabel('메일 서명',{exact:true}).inputValue(),'윤병훈\nRIST');
         const rich=page.getByRole('textbox',{name:'메일 본문 서식 편집',exact:true});await rich.fill('수정한 분석 결과입니다.');await rich.press('Meta+a');await page.getByRole('button',{name:'굵게',exact:true}).click();assert(await rich.locator('b,strong').count()>0);
         await page.getByRole('button',{name:'메일 글자 가운데 정렬',exact:true}).click();await save();
         const delivery=kind==='xrd'?doc.email.delivery:doc.deliveryEmail;assert.equal(delivery.bcc,'secret@rist.re.kr');assert.equal(delivery.cc,'cc@rist.re.kr, qa.book@rist.re.kr');assert.equal(delivery.to,'');assert.equal(delivery.recipientName,'');assert.match(delivery.bodyHtml,/<(b|strong)>/);assert.equal(delivery.signature,'윤병훈\nRIST');
@@ -204,6 +239,7 @@ const port=new Promise((resolve,reject)=>{let s='';server.stdout.on('data',chunk
         await page.getByLabel('메일 서명',{exact:true}).fill('');await page.getByRole('button',{name:'서명 이미지 삭제',exact:true}).click();await save();
         await page.getByRole('button',{name:'내 기본 서명 불러오기',exact:true}).click();await page.getByText('기본 서명을 현재 보고서에 적용했습니다.',{exact:true}).waitFor();assert.equal(await page.getByLabel('메일 서명',{exact:true}).inputValue(),'윤병훈\nRIST');
         assert.equal(await signatureImage.getAttribute('src'),signature.signatureImage);assert.equal(await signatureImage.getAttribute('width'),'240');
+        await page.getByRole('button',{name:'서명 목록 관리',exact:true}).click();await page.getByText('서명 목록을 불러왔습니다.',{exact:true}).waitFor();
         for(const width of [1440,390]){
           await page.setViewportSize({width,height:1000});await rich.scrollIntoViewIfNeeded();
           if(width===390&&kind!=='xrd'&&await page.locator('#page-sidebar-close').isVisible())await page.locator('#page-sidebar-close').click();

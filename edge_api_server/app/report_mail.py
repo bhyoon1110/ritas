@@ -3,17 +3,17 @@ from hashlib import sha256
 from html import escape
 from html.parser import HTMLParser
 import json
-import os
 from pathlib import Path
 import re
-import tempfile
 from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Query, Request
 from fastapi.responses import JSONResponse
+from starlette.concurrency import run_in_threadpool
 
 from .errors import ApiException
 from .mail_address_book import router as address_book_router, shared_router as shared_address_book_router
+from . import mail_signature_book
 from .report_mail_media import MailImages, image_data, data_uri, MAX_HTML, MAX_TABLES, MAX_ROWS, MAX_COLS, MAX_IMAGE_BYTES
 
 FIELDS = {"recipientName": 200, "to": 2000, "cc": 2000, "bcc": 2000,
@@ -304,6 +304,7 @@ def write_mail_files(directory, subject, body, delivery=None):
 router = APIRouter()
 router.include_router(address_book_router)
 router.include_router(shared_address_book_router)
+router.include_router(mail_signature_book.router)
 
 
 @router.get('/api/v1/report-mail/recipient')
@@ -343,10 +344,7 @@ def _preferences_path(request):
 @router.get('/api/v1/report-mail/signature')
 def get_signature(request: Request):
     path = _preferences_path(request)
-    try:
-        value = _signature_preferences(json.loads(path.read_text(encoding='utf-8'))) if path.is_file() else {'signature': ''}
-    except (ValueError, TypeError):
-        raise ApiException(500, 'MAIL_SIGNATURE_STORAGE_INVALID', '저장된 서명을 읽지 못했습니다. 관리자에게 확인을 요청하세요.')
+    value = mail_signature_book.get_default(path)
     return JSONResponse(value, headers={'Cache-Control': 'no-store'})
 
 
@@ -374,14 +372,5 @@ async def save_signature(request: Request):
         value = _signature_preferences(value)
     except (ValueError, TypeError) as exc:
         raise ApiException(422, 'MAIL_SIGNATURE_INVALID', str(exc) or '서명 입력 형식을 확인하세요.')
-    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-    # Unique temporary files make parallel saves atomic; permissions remain private.
-    fd, temporary = tempfile.mkstemp(dir=path.parent, prefix='.signature-')
-    try:
-        with os.fdopen(fd, 'w', encoding='utf-8') as stream:
-            json.dump(value, stream, ensure_ascii=False)
-        os.replace(temporary, path)
-    finally:
-        if os.path.exists(temporary):
-            os.unlink(temporary)
+    await run_in_threadpool(mail_signature_book.put_default, path, value)
     return JSONResponse(value, headers={'Cache-Control': 'no-store'})

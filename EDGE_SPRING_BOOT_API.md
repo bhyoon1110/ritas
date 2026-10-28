@@ -225,6 +225,10 @@ Spring Boot는 다음 항목을 모두 확인해야 한다.
 - 기본 서명 API: `GET/PUT /api/v1/report-mail/signature`. 기존 `{"signature":"서명 내용"}`과 이미지 포함 `{"signature":"서명 내용","signatureImage":"data:image/jpeg;base64,...","signatureImageWidth":"320"}`를 지원한다. 폭은 문자열 숫자 40~1,280px이며 높이는 원본 비율로 표시한다. 이미지가 없으면 빈 문자열로 저장한다. 기본 서명 저장은 텍스트·이미지·표시 폭을 함께 교체하며 보고서에 이미 적용한 서명은 변경하지 않는다.
 - 활성 회원 인증이 필요하며 PUT은 동일 출처와 `X-Requested-With: RIST-Mail-Editor`를 검증한다. 사용자 ID는 인증 세션에서 결정하고 클라이언트가 지정하지 않는다. 텍스트 2,000자와 PNG/JPEG 이미지 1장(압축 후 256KiB, 긴 변 1,280px)까지 허용한다. 외부 이미지 URL·SVG·손상 이미지는 거부하며 API 요청은 400KiB 이하다. 백업 시 `user-mail-preferences/`도 포함한다. DB 변경이나 새 패키지는 필요 없다.
 - 초안의 `deliveryEmail`(XRD: `email.delivery`)에 동일한 `signatureImage`, `signatureImageWidth` 문자열 필드를 보관한다. 전송·다운로드 HTML 생성 시 서명 텍스트 다음에 이미지를 한 번만 합치고 기존 CID/`inlineImages` 계약으로 변환한다. Spring은 서명 이미지를 별도로 다시 붙이지 않는다. 본문과 서명을 합쳐 기존 이미지 제한(4장/1MiB)을 적용하며, 텍스트 예산에서는 검증된 이미지 데이터를 제외한다.
+- 이름별 서명 목록: `GET /api/v1/report-mail/signatures` → `{revision,defaultId,items:[{id,name,hasImage,isDefault}]}`. 목록은 이미지 데이터를 제외하며 `GET /api/v1/report-mail/signatures/{id}`로 선택한 `{revision,id,name,content}`를 조회한다. content는 위 기본 서명의 텍스트·이미지·표시 폭 구조다. 인증 세션의 본인 목록만 접근하며 활성 회원 인증, 변경 시 동일 출처 및 `X-Requested-With` 검증을 적용한다.
+- 추가: 같은 경로의 `POST`에 `{revision,name,content}`. 수정: `PUT /{id}`에 같은 본문. 삭제: `DELETE /{id}`에 `{revision}`. 기본값 지정: `PUT /{id}/default`에 `{revision}`. 성공 시 갱신된 목록 메타데이터를 반환한다. 이름 1~80자, 이름 중복 불가, 회원당 최대 20개다. 오래된 revision은 409이며 입력을 유지하고 목록 새로고침 후 재시도한다.
+- 기존 단일 기본 서명 파일은 읽을 때 `기본 서명` 항목으로 해석하고 첫 저장 시 `{revision,defaultId,items}`로 원자적으로 전환한다. 파일 잠금으로 여러 프로세스의 동시 변경을 보호한다. 기존 `/signature` API는 지정된 기본 항목만 조회·수정하며 나머지 목록을 보존한다. 최초 추가는 기본 서명이 되고, 기본 항목 삭제 후에는 기본값이 비어 다른 항목을 자동 선택하지 않는다. 목록·기본값 변경은 기존 보고서의 서명 사본에 영향을 주지 않는다.
+- 브라우저의 서명 입력란·미리보기에서 paste 이벤트로 PNG/JPEG를 받고 기존 파일 업로드와 같은 크기·형식 검사 및 압축을 거친다. 자동 클립보드 읽기 권한이나 외부 이미지 다운로드는 사용하지 않는다. 이미지 모서리 드래그는 비율 유지, 포인터·마우스·터치 및 키보드를 지원한다. Esc·포커스 이탈·포인터 취소·보고서 잠금/교체 시 진행 중 크기 변경을 원복하고 포인터 캡처를 해제한다.
 - 배포 확인: 새 필드로 저장→재열기→SSO 전송→DB 메일 확인→Spring/LIMS 테스트 메일 수신 순서로 검증한다. 실제 발송 테스트 전 수신자를 확인한다.
 
 #### 개인 주소록 (Edge 편집 화면 공통)

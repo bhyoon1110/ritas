@@ -6,6 +6,7 @@
       rowDelete='<rect x="3" y="3" width="18" height="12" rx="1"/><path d="M3 9h18 M9 3v12 M8 20h8"/>';
   var paths={
     plus:'<path d="M12 4v16 M4 12h16"/>',
+    star:'<path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9L12 3Z"/>',
     edit:'<path d="m15 3 6 6-11 11H4v-6L15 3Z M12 6l6 6"/>',
     refresh:'<path d="M20 8a8 8 0 1 0 0 8 M20 3v6h-6"/>',
     previous:'<path d="m15 4-8 8 8 8"/>',
