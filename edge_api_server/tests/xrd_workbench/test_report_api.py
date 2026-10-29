@@ -94,15 +94,16 @@ def test_saved_pptx_export_requires_the_saved_revision(tmp_path):
     )
     with zipfile.ZipFile(io.BytesIO(response.content)) as z:
         from app.xrd_workbench.render.posco_preview import report_pages
-        from app.xrd_workbench.render.pdf import render_pdf
-        from app.xrd_workbench.render.pdf_raster import page_images
+        from pptx import Presentation
+        from tests.test_pptx_password import verifier
         saved_doc = client.get('/api/reports/example').json()['document']
         pages = report_pages(project, saved_doc, lambda fid: resolve_source('example', fid),
                              storage_id='example', link_base='http://testserver/')
-        expected = list(page_images(render_pdf(pages, saved_doc), max_edge=2600))
-        for number, image in enumerate(expected, 1):
-            assert z.read(f'ppt/media/xrd-delivery-{number}.png') == image
-            assert '<a:t>' not in z.read(f'ppt/slides/slide{number}.xml').decode()
+        presentation = Presentation(io.BytesIO(response.content))
+        assert len(presentation.slides) == len(pages)
+        assert any(shape.has_text_frame and shape.text == 'PPTX 저장 검토본'
+                   for slide in presentation.slides for shape in slide.shapes)
+        assert not verifier(response.content)
         assert 'PPTX 저장 검토본' in z.read('docProps/core.xml').decode('utf-8')
         assert not any('보고서 정보' in z.read(name).decode('utf-8')
                        for name in z.namelist() if name.startswith('ppt/slides/slide') and name.endswith('.xml'))

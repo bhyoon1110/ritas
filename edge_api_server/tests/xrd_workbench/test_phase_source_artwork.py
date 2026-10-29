@@ -160,6 +160,8 @@ def test_explicit_orphan_selection_is_used_by_both_layouts_without_mutation(temp
 
 @pytest.mark.parametrize('orphan', [False, True])
 def test_uploaded_images_survive_old_flags_through_preview_and_delivery(tmp_path, monkeypatch, orphan):
+    from pptx import Presentation
+    from pptx.enum.shapes import MSO_SHAPE_TYPE
     from app.xrd_workbench import integration as api
     from app.xrd_workbench.render import figure, posco_pptx
     from .synthetic import sample_files
@@ -170,6 +172,15 @@ def test_uploaded_images_survive_old_flags_through_preview_and_delivery(tmp_path
     originals = [data for name, data in files.items() if name.endswith('_상매칭.png')]
     if orphan:
         files = {name.replace('_상매칭.png', '_원본사진.png'):data for name,data in files.items()}
+
+    def check_ppt_images(content):
+        presentation = Presentation(io.BytesIO(content))
+        assert len(presentation.slides) == 5
+        images = [shape.image.blob for slide in presentation.slides for shape in slide.shapes
+                  if shape.shape_type == MSO_SHAPE_TYPE.PICTURE]
+        # Original artwork is still displayed; the slide itself is no longer flattened.
+        assert all(original in images for original in originals)
+
     with TestClient(make_app(tmp_path)) as client:
         sid = upload(client, files)
         url = api.BASE + f'/api/reports/{sid}'
@@ -204,14 +215,8 @@ def test_uploaded_images_survive_old_flags_through_preview_and_delivery(tmp_path
             if kind == 'pdf':
                 assert result.content.startswith(b'%PDF')
             elif kind == 'pptx':
-                with ZipFile(io.BytesIO(result.content)) as archive:
-                    # Final recipient PPT follows the same source-based page scene.
-                    assert archive.read('ppt/media/xrd-delivery-5.png').startswith(b'\x89PNG')
+                check_ppt_images(result.content)
             else:
                 with ZipFile(io.BytesIO(result.content)) as archive:
                     assert '보고서.html' not in archive.namelist()
-                    from app.xrd_workbench.render.pdf_raster import page_images
-                    with ZipFile(io.BytesIO(archive.read('보고서.pptx'))) as ppt:
-                        # Source-based preview/PDF and recipient PPT retain the same scene.
-                        for index, image in enumerate(page_images(archive.read('보고서.pdf'), max_edge=2600), 1):
-                            assert ppt.read(f'ppt/media/xrd-delivery-{index}.png') == image
+                    check_ppt_images(archive.read('보고서.pptx'))

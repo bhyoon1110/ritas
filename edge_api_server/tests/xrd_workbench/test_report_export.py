@@ -91,10 +91,9 @@ def test_zip_has_requested_folders_exact_bytes_and_selected_samples_only():
             )
             kept = project['samples'][0]['name']
             left_out = project['samples'][1]['name']
-            assert not native  # Delivered PPT has page images, never editable report text.
-            from app.xrd_workbench.render.pdf_raster import page_images
-            for number, image in enumerate(page_images(z.read('보고서.pdf'), max_edge=2600), 1):
-                assert pptx.read(f'ppt/media/xrd-delivery-{number}.png') == image
+            assert kept in native and left_out not in native
+            from pptx import Presentation
+            assert len(Presentation(io.BytesIO(z.read('보고서.pptx'))).slides) == len(PdfReader(io.BytesIO(z.read('보고서.pdf'))).pages)
             text = ' '.join(p.extract_text() or '' for p in PdfReader(io.BytesIO(z.read('보고서.pdf'))).pages)
             assert kept in text and left_out not in text
         assert '보고서.html' not in names

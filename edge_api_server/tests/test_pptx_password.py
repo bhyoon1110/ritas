@@ -95,7 +95,10 @@ def test_spectrum_setting_survives_revision_download_reopen_and_removal(prepared
         expected = {} if protection == {} else settings
         assert reopened['pptxProtection'] == expected
         with ZipFile(BytesIO(h.client.get(current+'/download').content)) as package:
-            assert verifier(package.read('report.pptx')) == expected
+            ppt = package.read('report.pptx')
+            assert verifier(ppt) == expected
+            assert any(shape.has_text_frame and shape.text
+                       for slide in Presentation(BytesIO(ppt)).slides for shape in slide.shapes)
         # Preview/editing uses an unprotected authoring copy and no raw password.
         path = job.tmp_root/'job/report'
         assert not verifier((path/'report.pptx').read_bytes())
@@ -136,6 +139,8 @@ def test_tem_direct_ppt_and_lims_package_have_same_protection(report):
             with ZipFile(BytesIO(direct)) as a, ZipFile(BytesIO(package.read('tem-report.pptx'))) as b:
                 assert {n:a.read(n) for n in a.namelist()} == {n:b.read(n) for n in b.namelist()}
         assert verifier(direct) == expected
+        assert any(shape.has_text_frame and shape.text
+                   for slide in Presentation(BytesIO(direct)).slides for shape in slide.shapes)
         job = ahn_web._ahn_report_jobs[finished['jobId']]
         assert not verifier(job.pptx_path.read_bytes())
         assert 'TEM-secret' not in (job.work_dir/'review/editor-state.json').read_text()

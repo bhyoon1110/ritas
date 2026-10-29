@@ -92,6 +92,8 @@ def test_delivered_deck_preserves_readable_layouts_and_valid_text_choices(source
     content = render_report_pptx(project,doc,resolve,delivery=True,include_sources=sources)
     deck = read_layouts(content)
     assert len(deck.slides) >= 3
+    assert any(shape.has_text_frame and shape.text for slide in deck.slides for shape in slide.shapes)
+    assert any(shape.has_table for slide in deck.slides for shape in slide.shapes)
     with ZipFile(io.BytesIO(content)) as z:
         assert z.testzip() is None
         for part in z.namelist():

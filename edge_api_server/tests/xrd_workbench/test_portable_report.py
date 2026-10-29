@@ -1,4 +1,4 @@
-"""Recipient files work without neighboring filesystem access or editable PPT content."""
+"""Recipient files retain native content and work without neighboring filesystem access."""
 import base64
 import io
 import json
@@ -54,20 +54,25 @@ def package(report):
     return build_package(*report)
 
 
-def assert_flat(content):
+def assert_editable(content):
+    from tests.test_pptx_password import verifier
     presentation = Presentation(io.BytesIO(content))
     assert len(presentation.slides) > 0
-    with ZipFile(io.BytesIO(content)) as archive:
-        assert not any(n.startswith(('ppt/charts/', 'ppt/notesSlides/')) or n.endswith('.xlsx') for n in archive.namelist())
-        for name in archive.namelist():
-            if name.startswith('ppt/slides/slide') and name.endswith('.xml'):
-                slide = E.fromstring(archive.read(name))
-                assert not slide.findall('.//a:tbl', NS)
-                assert slide.get('show', '1') == '1'
-                assert not slide.findall('.//a:t', NS)
-                assert len(slide.findall('p:cSld/p:spTree/p:pic', NS)) == 1
-                # Other pictures are icons inside the in-place attachment buttons.
-                assert len(slide.findall('.//p:pic', NS)) == 1 + len(slide.findall('.//p:oleObj', NS))
+    assert not verifier(content)
+    text = next(shape for slide in presentation.slides for shape in slide.shapes
+                if shape.has_text_frame and shape.text)
+    table = next(shape.table for slide in presentation.slides for shape in slide.shapes
+                 if shape.has_table)
+    text.text = 'Edited report title'
+    table.cell(0, 0).text = 'Edited phase table'
+    output = io.BytesIO()
+    presentation.save(output)
+    reopened = Presentation(io.BytesIO(output.getvalue()))
+    assert any(shape.has_text_frame and shape.text == 'Edited report title'
+               for slide in reopened.slides for shape in slide.shapes)
+    assert any(shape.has_table and shape.table.cell(0, 0).text == 'Edited phase table'
+               for slide in reopened.slides for shape in slide.shapes)
+    assert embedded_files(output.getvalue()) == embedded_files(content)
     return presentation
 
 
@@ -81,18 +86,24 @@ def test_package_preserves_every_original_in_zip_and_ppt_byte_for_byte(package):
                 assert embedded[name.rsplit('/', 1)[-1]] == archive.read(name)
         assert archive.read('보고서.pdf').startswith(b'%PDF')
         assert archive.read('뷰어.html')
-        assert_flat(archive.read('보고서.pptx'))
+        assert_editable(archive.read('보고서.pptx'))
 
 
-def test_delivery_keeps_exact_per_page_links_without_native_analysis_objects(report):
+def test_delivery_keeps_native_analysis_objects_and_offline_links(report):
     native = render_report_pptx(*report)
     delivered = render_report_pptx(*report, delivery=True)
-    assert_flat(delivered)
+    assert_editable(delivered)
     assert not any(ppt_click_targets_by_slide(delivered).values())
     assert any(ppt_click_targets_by_slide(native).values())
-    # The editor continues to use the native scene.
-    with ZipFile(io.BytesIO(native)) as archive:
-        assert b'<a:tbl>' in b''.join(archive.read(n) for n in archive.namelist() if n.startswith('ppt/slides/slide'))
+    # Delivery must not silently replace the authoring scene with locked bitmaps.
+    with ZipFile(io.BytesIO(native)) as original, ZipFile(io.BytesIO(delivered)) as archive:
+        for name in original.namelist():
+            if name.startswith('ppt/slides/slide') and name.endswith('.xml'):
+                before, after = E.fromstring(original.read(name)), E.fromstring(archive.read(name))
+                assert [n.text for n in after.findall('.//a:t', NS)] == [n.text for n in before.findall('.//a:t', NS)]
+                assert len(after.findall('.//a:tbl', NS)) == len(before.findall('.//a:tbl', NS))
+            elif name.startswith('ppt/charts/') or name.endswith('.xlsx'):
+                assert archive.read(name) == original.read(name)
 
 
 def test_password_protected_ppt_keeps_native_content_and_protection_in_zip(report):
@@ -119,6 +130,11 @@ def test_password_protected_ppt_keeps_native_content_and_protection_in_zip(repor
             for name in presentation.namelist():
                 if name.endswith('.xml'):
                     assert 'XRD-검토!'.encode() not in presentation.read(name)
+    # Clearing a previously configured password must restore editable delivery.
+    doc['pptxProtection'] = {}
+    assert_editable(render_report_pptx(project, doc, source, delivery=True))
+    with ZipFile(io.BytesIO(build_package(project, doc, source))) as archive:
+        assert_editable(archive.read('보고서.pptx'))
 
 
 def test_flattening_refuses_page_loss(report):
@@ -135,6 +151,7 @@ def test_source_opt_out_does_not_embed_originals_or_create_source_links(report):
         assert not any(name.startswith(('Report/', 'Measured Data/')) and not name.endswith('/')
                        for name in archive.namelist())
         assert embedded_files(archive.read('보고서.pptx')) == {}
+        assert_editable(archive.read('보고서.pptx'))
         assert archive.read('뷰어.html')
         assert all(not targets for targets in ppt_click_targets_by_slide(archive.read('보고서.pptx')).values())
 
