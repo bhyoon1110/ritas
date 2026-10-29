@@ -14,7 +14,8 @@ test('upload cards distinguish optional WPPF, absent TXT, duplicates and ignored
   const map={'A.txt':{sample:'A',role:'measurement'},'A.pdf':{sample:'A',role:'phase_report'},'B.txt':{sample:'B',role:'measurement'},'unused.pdf':{role:'ignore'}};
   const r=summarizeUpload(files,map);
   assert.equal(r.groups.length,2);assert.equal(r.ignored,1);assert.deepEqual(r.errors,[]);
-  assert.equal(r.groups[1].warnings.length,1);assert.match(uploadSummaryHTML(r),/WPPF 선택 없음/);
+  assert.equal(r.groups[1].warnings.length,2);assert.match(uploadSummaryHTML(r),/WPPF 선택 없음/);
+  assert.match(r.groups[1].warnings.join(),/상매칭 이미지 미연결/);
   map['A.pdf'].sample='Orphan';assert.match(summarizeUpload(files,map).errors.join(),/TXT 없음/);
   map['A.pdf']={sample:'A',role:'measurement'};assert.match(summarizeUpload(files,map).errors.join(),/역할.*중복/);
   assert.match(summarizeUpload([...files,files[0]],map).errors.join(),/파일명 중복/);

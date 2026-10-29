@@ -1,6 +1,7 @@
 """Sample/file association and the viewer's source-linked project model."""
 
 import hashlib
+import re
 import unicodedata
 from collections import Counter
 from pathlib import Path, PureWindowsPath
@@ -23,6 +24,21 @@ def safe_filename(name):
     return unicodedata.normalize('NFC', PureWindowsPath(name).name.strip())
 
 
+def normalize_mappings(mappings):
+    """Match the same canonical filenames used by multipart and chunk storage."""
+    if not isinstance(mappings, dict) or len(mappings) > 100:
+        raise ValueError('파일 연결은 최대 100개입니다.')
+    result = {}
+    for name, mapping in mappings.items():
+        if not isinstance(name, str) or not isinstance(mapping, dict):
+            raise ValueError('파일 연결 형식을 확인하세요.')
+        key = safe_filename(name)
+        if key in result:
+            raise ValueError(f'{key}: 같은 파일의 연결이 중복되었습니다.')
+        result[key] = mapping.copy()
+    return result
+
+
 def classify_filename(filename: str) -> dict:
     """Sample name and role from the filename convention; unknown files get role 'ignore'."""
     path = PureWindowsPath(safe_filename(filename))
@@ -37,6 +53,10 @@ def classify_filename(filename: str) -> dict:
     for suffix, role in suffixes:
         if stem.lower().endswith(suffix.lower()) and ext in ROLE_EXTENSIONS[role]:
             return dict(sample=stem[: -len(suffix)].strip(), role=role)
+    # Only explicit phase-image names; never infer a role from arbitrary photos.
+    match = re.fullmatch(r'(.+?)[_\s-]+상\s*매칭(?:[_\s-]*이미지)?', stem, re.I)
+    if match and ext in ROLE_EXTENSIONS['phase_image']:
+        return dict(sample=match[1].strip(), role='phase_image')
     if ext == '.txt':
         return dict(sample=stem.strip(), role='measurement')
     return dict(sample=stem, role='ignore')
@@ -58,7 +78,7 @@ def build_project(files: list[tuple[str, bytes | Path]], mappings: dict | None =
 
     `mappings` overrides the filename convention. Duplicate roles and role/extension
     mismatches are rejected; samples without a TXT are reported in warnings, not plotted."""
-    mappings = mappings or {}
+    mappings = normalize_mappings(mappings if mappings is not None else {})
     groups, source_records = {}, []
     names = [safe_filename(name) for name, _ in files]
     if len(names) != len(set(names)):

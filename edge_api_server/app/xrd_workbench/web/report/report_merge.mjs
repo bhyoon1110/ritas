@@ -30,6 +30,7 @@ export function mergeDraftChanges(latest, current, baseline) {
       'included',
       'summary_included',
       'include_phase_image',
+      'phase_image_source_id',
       'include_quantity_image',
       'phase_caption',
       'quantity_caption',

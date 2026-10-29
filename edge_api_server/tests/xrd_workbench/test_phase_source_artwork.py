@@ -42,8 +42,10 @@ def artwork_fixture(fmt='PNG'):
 
 @pytest.mark.parametrize('fmt', ['PNG', 'JPEG'])
 @pytest.mark.parametrize('legacy_included', [False, True])
-def test_source_is_exact_on_both_phase_layouts_in_ppt_and_preview(fmt, legacy_included):
+@pytest.mark.parametrize('template', ['legacy', '2026-10-29'])
+def test_source_is_exact_on_both_phase_layouts_in_ppt_and_preview(fmt, legacy_included, template):
     project, document, data, expected = artwork_fixture(fmt)
+    document['template_version'] = template
     document['figure']['include'] = True
     for entry in document['samples']:
         entry['include_phase_image'] = legacy_included
@@ -123,7 +125,41 @@ def test_changed_original_is_rejected_instead_of_silently_using_viewer():
         build_posco_deck(project, document, data.__getitem__, image_renderer=lambda *args: pytest.fail('RAW fallback'))
 
 
-def test_uploaded_images_survive_old_flags_through_preview_and_delivery(tmp_path, monkeypatch):
+@pytest.mark.parametrize('failure', ['missing', 'empty', 'broken'])
+def test_invalid_registered_image_never_falls_back(failure):
+    project, document, data, _ = artwork_fixture()
+    record = next(r for r in project['samples'][0]['sources'] if r['role']=='phase_image')
+    if failure == 'missing':
+        del data[record['id']]
+    else:
+        value = b'' if failure == 'empty' else b'not a png'
+        data[record['id']] = value
+        record['sha256'] = hashlib.sha256(value).hexdigest()
+    for render in (build_posco_deck, build_pages):
+        with pytest.raises(ValueError, match=record['filename']):
+            render(project,document,data.__getitem__,image_renderer=lambda *args: pytest.fail('RAW fallback'))
+
+
+@pytest.mark.parametrize('template', ['legacy', '2026-10-29'])
+def test_explicit_orphan_selection_is_used_by_both_layouts_without_mutation(template):
+    project, document, data, expected = artwork_fixture()
+    document['template_version'] = template
+    for sample,entry in zip(project['samples'],document['samples']):
+        record = next(r for r in sample['sources'] if r['role']=='phase_image')
+        sample['sources'].remove(record)
+        record['role']='ignore'
+        project['sources'].append(record)
+        entry['phase_image_source_id']=record['id']
+    before=deepcopy((project,document))
+    for render in (lambda *args,**kw:deck_pages(build_posco_deck(*args,**kw)), build_pages):
+        pages=render(project,document,data.__getitem__,image_renderer=lambda *args: pytest.fail('RAW fallback'))
+        images=[i['data'] for p in pages for i in p['items'] if i['type']=='image']
+        assert all(value in images for value in expected.values())
+    assert before==(project,document)
+
+
+@pytest.mark.parametrize('orphan', [False, True])
+def test_uploaded_images_survive_old_flags_through_preview_and_delivery(tmp_path, monkeypatch, orphan):
     from app.xrd_workbench import integration as api
     from app.xrd_workbench.render import figure, posco_pptx
     from .synthetic import sample_files
@@ -132,13 +168,19 @@ def test_uploaded_images_survive_old_flags_through_preview_and_delivery(tmp_path
     files = sample_files('SampleA')
     files.update({name: data for name, data in sample_files('SampleB').items() if '정량' not in name})
     originals = [data for name, data in files.items() if name.endswith('_상매칭.png')]
+    if orphan:
+        files = {name.replace('_상매칭.png', '_원본사진.png'):data for name,data in files.items()}
     with TestClient(make_app(tmp_path)) as client:
         sid = upload(client, files)
         url = api.BASE + f'/api/reports/{sid}'
-        document = client.get(url).json()['document']
+        value = client.get(url).json()
+        document = value['document']
         document['figure']['include'] = False
         for entry in document['samples']:
             entry['include_phase_image'] = False
+            if orphan:
+                entry['phase_image_source_id'] = next(r['id'] for r in value['project']['sources']
+                    if r['filename'] == entry['display_name']+'_원본사진.png')
 
         def unexpected_raw(*args):
             raise AssertionError('Uploaded phase artwork must not be replaced by a RAW rendering')

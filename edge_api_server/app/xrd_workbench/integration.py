@@ -267,8 +267,11 @@ def upload_progress(sid: str):
 @router.put('/api/upload-sessions/{sid}/mappings')
 def upload_mappings(sid: str, payload: dict):
     state = current.get()
-    if len(payload)>100 or any(not isinstance(v,dict) for v in payload.values()):
-        raise HTTPException(422, '파일 연결은 최대 100개입니다.')
+    from .core.project import normalize_mappings
+    try:
+        normalize_mappings(payload)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
     with ProcessLock(session_path(state, sid) / '.lock'):
         session, value = read_session(state, sid)
         if value.get('job_id'):
@@ -293,14 +296,16 @@ def cancel_upload(sid: str):
 @router.post('/api/upload-sessions/{sid}/preflight')
 def raw_preflight(sid: str):
     from .core.parsing.txt import parse_txt
+    from .core.project import normalize_mappings, safe_filename
     state = current.get()
     with ProcessLock(session_path(state, sid) / '.lock'):
         session, value = read_session(state, sid)
         if not session.files or any(not f.completed for f in session.files.values()):
             raise HTTPException(409, '파일 전송을 완료한 뒤 Raw 진단을 실행하세요.')
         results, count = [], 0
+        mappings = normalize_mappings(value.get('mappings', {}))
         for name, item in session.files.items():
-            mapping = value.get('mappings', {}).get(name, {})
+            mapping = mappings.get(safe_filename(name), {})
             if not name.lower().endswith('.txt') or mapping.get('role') == 'ignore':
                 continue
             try:
@@ -427,6 +432,12 @@ def complete_upload(sid: str, mappings: dict):
             return read_job(state, value['job_id'])
         if not session.files or any(not f.completed for f in session.files.values()):
             raise HTTPException(409, '파일 전송이 모두 완료되지 않았습니다.')
+        from .core.project import normalize_mappings
+        try:
+            # Resume callers may submit no overrides; retain the saved choices.
+            mappings = {**normalize_mappings(value.get('mappings', {})), **normalize_mappings(mappings)}
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
         inputs = [(name, session.input_root / f.stored_path) for name, f in session.files.items()]
         def work(directory):
             project = state.storage.files.create(inputs, mappings)

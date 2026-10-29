@@ -390,6 +390,14 @@ class ReportStore(_RevisionedStore):
                 '원자료가 변경되었습니다. 기존 문서를 덮어쓰지 않습니다.',
             )
             carry_review_flags(current, clean)
+            # Older clients do not know the explicit source selector.
+            if current:
+                submitted = {e['sample_id']: e for e in document['samples']}
+                previous = {e['sample_id']: e for e in current['samples']}
+                for entry in clean['samples']:
+                    sid = entry['sample_id']
+                    if 'phase_image_source_id' not in submitted[sid]:
+                        entry['phase_image_source_id'] = previous.get(sid, {}).get('phase_image_source_id', '')
             # Older clients must not silently clear an existing modify password.
             if 'pptxProtection' not in document and current:
                 clean['pptxProtection'] = deepcopy(current.get('pptxProtection') or {})

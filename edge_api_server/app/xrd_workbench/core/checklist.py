@@ -7,6 +7,7 @@ here interprets measurements or changes the document; the author decides what to
 from ..core.figure import build_plan
 from ..core.phase_class import evaluate_trace
 from ..core.quantity_table import quantity_material_registered
+from .source_images import phase_image_record, phase_image_choices
 
 LEVELS = ('blocker', 'warning', 'info')
 # Order of the items of one sample within a level.
@@ -15,6 +16,7 @@ CODES = (
     'not_reviewed',
     'figure_excluded',
     'no_phase_report',
+    'no_phase_image',
     'quantity_unreadable',
     'source_warning',
     'no_quantity_material',
@@ -87,6 +89,13 @@ def build_checklist(project: dict, document: dict) -> dict:
                     '상매칭 Report가 없어 상 목록과 상 기호가 없습니다.',
                 )
             )
+        if phase_image_record(project, sample, entry) is None:
+            choices = phase_image_choices(project, sample)
+            hint = (f" 보존된 미연결 이미지 {len(choices)}개: " + ', '.join(r['filename'] for r in choices[:3])
+                    if choices else '')
+            items.append(_item('warning', 'no_phase_image',
+                '상매칭 이미지가 연결되지 않아 상 동정 결과에 뷰어 그래프를 사용합니다. '
+                '이 시료의 원본 이미지 선택 또는 업로드 연결을 확인하세요.' + hint))
         if not quantity_material_registered(sample):
             items.append(_item('info', 'no_quantity_material', '정량 자료가 없습니다.'))
         elif not sample.get('quantities'):

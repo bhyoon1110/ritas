@@ -4,6 +4,7 @@ import { startExport, downloadJob, mountReportPlatform, transferValues } from '.
 import { $, escapeHTML } from '../shared/dom.mjs';
 import { restoreState, viewerStorageKey } from '../viewer/model.mjs';
 import { mergeDraftChanges } from './report_merge.mjs';
+import { phaseImageHTML } from './source_images.mjs';
 import { ensureEmail, emailContextKey, mountEmailEditor, initializeEmptyEmail, canAutoDraftEmail } from './email.mjs';
 import { createLivePreview } from './live_preview.mjs';
 import { mountPptEditor } from './ppt_editor.mjs';
@@ -346,14 +347,10 @@ function renderSample() {
   const sourceHref = (r) =>
     apiUrl(`/api/files/${encodeURIComponent(storageId)}/${encodeURIComponent(r.id)}`);
   const imageBlock = (role, flag, caption) => {
-    const record = sample.sources.find((r) => r.role === role),
-      label = role === 'phase_image' ? '상매칭 이미지' : '정량 이미지';
-    const inclusion = role === 'phase_image'
-      ? '<p class="hint">상 동정 결과의 상단 그래프에는 업로드한 이 원본 이미지를 사용합니다.</p>'
-      : `<label class="checkboxLabel"><input type="checkbox" data-field="${flag}" ${entry[flag] ? 'checked' : ''}>본문에 포함</label>`;
-    const missing = role === 'phase_image'
-      ? '등록된 상매칭 이미지가 없어 측정 데이터로 그린 그래프를 사용합니다. 업로드 단계에서 시료별 상매칭 이미지 연결을 확인하세요.'
-      : '해당 원본 이미지가 등록되어 있지 않습니다.';
+    if (role === 'phase_image') return phaseImageHTML(project, sample, entry, sourceHref);
+    const record = sample.sources.find((r) => r.role === role), label = '정량 이미지';
+    const inclusion = `<label class="checkboxLabel"><input type="checkbox" data-field="${flag}" ${entry[flag] ? 'checked' : ''}>본문에 포함</label>`;
+    const missing = '해당 원본 이미지가 등록되어 있지 않습니다.';
     return `<div class="subHeading">원본 ${label}</div>${record ? `${inclusion}<img class="assetPreview" src="${sourceHref(record)}" alt="${escapeHTML(label)}"><label>캡션<input data-field="${caption}" value="${escapeHTML(entry[caption])}" maxlength="300" aria-label="${label} 캡션"></label>` : `<p class="hint">${missing}</p>`}`;
   };
   const notes = entry.notes
@@ -1004,6 +1001,11 @@ $('editor').oninput = (e) => {
 };
 $('editor').onchange = (e) => {
   if (!doc || busy && !(phaseEditingWhileBusy && classFields.contains(e.target))) return;
+  if (e.target.dataset.field === 'phase_image_source_id') {
+    const entry = doc.samples.find(s=>s.sample_id===tab);
+    if (entry) {entry.phase_image_source_id=e.target.value;markDirty();renderSample();}
+    return;
+  }
   // Some native/legacy selects emit change without input. Applying twice is a no-op.
   if (e.target.dataset.pcSampleId !== undefined) {classInput(e.target);return;}
   if (e.target.id === 'provider') {

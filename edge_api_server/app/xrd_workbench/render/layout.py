@@ -1,14 +1,11 @@
 """One page geometry for preview, report HTML and PDF. All dimensions in mm."""
 
-import hashlib
-import io
 from urllib.parse import quote
-
-from PIL import Image
 
 from ..core.figure import build_plan, panel_slice
 from ..core.quantity_table import build_quantity_table
 from ..core.report import validate_document
+from ..core.source_images import phase_image_record, read_image
 from ..render import theme
 from ..render.figure import render_panel_png
 from ..render.fonts import wrap_lines
@@ -557,22 +554,11 @@ def build_pages(project, document, resolve_source, *, image_renderer=None):
             # uploaded phase-matching artwork is authoritative, including old saves.
             if role != 'phase_image' and not entry[flag]:
                 continue
-            record = next((r for r in sample['sources'] if r['role'] == role), None)
+            record = (phase_image_record(project, sample, entry) if role == 'phase_image'
+                      else next((r for r in sample['sources'] if r['role'] == role), None))
             if not record:
                 continue
-            data = resolve_source(record['id'])
-            if hashlib.sha256(data).hexdigest() != record['sha256']:
-                raise ValueError(
-                    f"{record['filename']}: 등록 후 원본 내용이 변경되었습니다. 자료를 다시 확인하세요."
-                )
-            try:
-                with Image.open(io.BytesIO(data)) as image:
-                    size = image.size
-                    fmt = image.format
-                    if fmt not in ('PNG', 'JPEG'):
-                        raise ValueError('PNG/JPG 원본 이미지만 지원합니다.')
-            except Exception as exc:
-                raise ValueError(f"{record['filename']}: 원본 이미지를 읽지 못했습니다.") from exc
+            data, size, fmt = read_image(record, resolve_source)
             images[role] = dict(
                 data=data,
                 mime='image/png' if fmt == 'PNG' else 'image/jpeg',

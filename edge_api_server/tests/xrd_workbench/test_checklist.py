@@ -37,7 +37,9 @@ def codes(result, sid):
 
 
 def clean_sample(sid='a'):
-    return sample(sid, quantities=[q('PhaseA')])
+    result = sample(sid, quantities=[q('PhaseA')])
+    result['sources'] = [dict(id=sid+'-image', role='phase_image', filename=sid+'_상매칭.png')]
+    return result
 
 
 def test_a_complete_sample_has_nothing_to_check():
@@ -84,9 +86,9 @@ def test_figure_exclusion_is_reported_with_the_reason_only_when_the_figure_is_on
 def test_missing_material_is_listed_with_the_right_level():
     s = sample('a', reports={}, quantities=[], phases=())
     _, _, result = check([s], include=False)
-    assert codes(result, 'a') == ['no_phase_report', 'no_quantity_material']
+    assert codes(result, 'a') == ['no_phase_report', 'no_phase_image', 'no_quantity_material']
     levels = {i['code']: i['level'] for i in result['samples'][0]['items']}
-    assert levels == {'no_phase_report': 'warning', 'no_quantity_material': 'info'}
+    assert levels == {'no_phase_report': 'warning', 'no_phase_image': 'warning', 'no_quantity_material': 'info'}
 
 
 def test_a_quantity_report_without_values_is_a_warning():
@@ -172,7 +174,7 @@ def test_the_summary_counts_every_level_and_skips_samples_left_out():
     assert [s['sample_id'] for s in result['samples']] == ['a']
     counts = result['summary']
     assert counts['samples'] == 1 and counts['reviewed'] == 0
-    assert counts['warnings'] == 2 and counts['infos'] == 1 and counts['blockers'] == 0
+    assert counts['warnings'] == 3 and counts['infos'] == 1 and counts['blockers'] == 0
 
 
 def test_a_document_without_the_newer_blocks_still_works_and_nothing_is_modified():

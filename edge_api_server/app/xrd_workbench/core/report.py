@@ -10,6 +10,7 @@ from ..core.figure import phase_key
 from ..core.notes import build_candidates, validate_settings, verify_note_text
 from ..core.phase_class import DEFAULT_TRACE_PERCENT, check_percent, evaluate_trace, phase_ref
 from ..core.review import BASE_FINGERPRINT
+from .source_images import phase_image_record
 
 TRACE_FIELDS = (('purpose', '분석 목적'), ('equipment_name', '장비명 / 모델'),
     ('measured_date', '측정일 / 기간'), ('conditions', '핵심 측정 조건'),
@@ -60,6 +61,7 @@ def new_document(project: dict) -> dict:
                 included=True,
                 summary_included=True,
                 include_phase_image='phase_image' in roles,
+                phase_image_source_id='',
                 include_quantity_image='quantity_image' in roles,
                 phase_caption='원본 상매칭 결과',
                 quantity_caption='원본 정량 결과',
@@ -427,6 +429,8 @@ def validate_document(project: dict, document: dict) -> dict:
         ]:
             clean[key] = string(entry.get(key, ''), limit, key)
         clean['note_order_edited'] = bool(entry.get('note_order_edited', False))
+        clean['phase_image_source_id'] = string(entry.get('phase_image_source_id', ''), 64, '상매칭 이미지')
+        phase_image_record(project, canonical[sid], clean)
         if entry.get('analysis_fingerprint', BASE_FINGERPRINT) != clean['analysis_fingerprint']:
             raise ValueError('시료 분석 검토값이 변경되었습니다. 보고서를 다시 열어 확인하세요.')
         clean['analysis_review_required'] = (

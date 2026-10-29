@@ -648,11 +648,11 @@ def build_posco_deck(project, document, resolve_source, *, pages=None, link_base
         if role != 'phase_image' and not entry.get('include_' + role, False): return None
         key = (sample['id'], role)
         if key in source_images: return source_images[key]
-        record = next((r for r in sample['sources'] if r['role'] == role), None)
+        from ..core.source_images import phase_image_record, read_image
+        record = (phase_image_record(project, sample, entry) if role == 'phase_image'
+                  else next((r for r in sample['sources'] if r['role'] == role), None))
         if record is None: return None
-        data = resolve_source(record['id'])
-        if hashlib.sha256(data).hexdigest() != record['sha256']:
-            raise ValueError('등록 후 원본 이미지가 변경되었습니다.')
+        data, _, _ = read_image(record, resolve_source)
         source_images[key] = data
         return data
 
