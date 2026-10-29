@@ -553,7 +553,9 @@ def build_pages(project, document, resolve_source, *, image_renderer=None):
             ('phase_image', 'include_phase_image', 'phase_caption'),
             ('quantity_image', 'include_quantity_image', 'quantity_caption'),
         ]:
-            if not entry[flag]:
+            # Keep site-template reports consistent with the POSCO deck: the
+            # uploaded phase-matching artwork is authoritative, including old saves.
+            if role != 'phase_image' and not entry[flag]:
                 continue
             record = next((r for r in sample['sources'] if r['role'] == role), None)
             if not record:

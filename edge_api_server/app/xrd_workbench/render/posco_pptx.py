@@ -606,7 +606,10 @@ def build_posco_deck(project, document, resolve_source, *, pages=None, link_base
         fit_text(target, content, size=size, bold=bold)
 
     def image(sample, role, entry):
-        if not entry.get('include_' + role, False): return None
+        # Phase-identification panels show the uploaded evidence whenever present.
+        # Old reports may have include_phase_image=False; that must not silently
+        # replace the source artwork with the viewer's reconstructed RAW plot.
+        if role != 'phase_image' and not entry.get('include_' + role, False): return None
         key = (sample['id'], role)
         if key in source_images: return source_images[key]
         record = next((r for r in sample['sources'] if r['role'] == role), None)

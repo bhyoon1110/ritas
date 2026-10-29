@@ -348,7 +348,13 @@ function renderSample() {
   const imageBlock = (role, flag, caption) => {
     const record = sample.sources.find((r) => r.role === role),
       label = role === 'phase_image' ? '상매칭 이미지' : '정량 이미지';
-    return `<div class="subHeading">원본 ${label}</div>${record ? `<label class="checkboxLabel"><input type="checkbox" data-field="${flag}" ${entry[flag] ? 'checked' : ''}>본문에 포함</label><img class="assetPreview" src="${sourceHref(record)}" alt="${escapeHTML(label)}"><label>캡션<input data-field="${caption}" value="${escapeHTML(entry[caption])}" maxlength="300" aria-label="${label} 캡션"></label>` : '<p class="hint">해당 원본 이미지가 등록되어 있지 않습니다.</p>'}`;
+    const inclusion = role === 'phase_image'
+      ? '<p class="hint">상 동정 결과의 상단 그래프에는 업로드한 이 원본 이미지를 사용합니다.</p>'
+      : `<label class="checkboxLabel"><input type="checkbox" data-field="${flag}" ${entry[flag] ? 'checked' : ''}>본문에 포함</label>`;
+    const missing = role === 'phase_image'
+      ? '등록된 상매칭 이미지가 없어 측정 데이터로 그린 그래프를 사용합니다. 업로드 단계에서 시료별 상매칭 이미지 연결을 확인하세요.'
+      : '해당 원본 이미지가 등록되어 있지 않습니다.';
+    return `<div class="subHeading">원본 ${label}</div>${record ? `${inclusion}<img class="assetPreview" src="${sourceHref(record)}" alt="${escapeHTML(label)}"><label>캡션<input data-field="${caption}" value="${escapeHTML(entry[caption])}" maxlength="300" aria-label="${label} 캡션"></label>` : `<p class="hint">${missing}</p>`}`;
   };
   const notes = entry.notes
     .map(
