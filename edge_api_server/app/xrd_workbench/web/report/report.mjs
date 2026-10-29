@@ -17,6 +17,7 @@ import {
   applyTrace,
   distinctPhases,
   ensurePhaseClasses,
+  labelOf,
   setLabel,
   setRowLabel,
   setSampleLabel,
@@ -38,6 +39,7 @@ let storageId = new URLSearchParams(location.search).get('project'),
   baseline,
   dirty = false,
   busy = false,
+  phaseEditingWhileBusy = false,
   tab = 'overview',
   figureHints = { identical: [], notes: {} },
   figurePick = new Set(),
@@ -52,9 +54,18 @@ let storageId = new URLSearchParams(location.search).get('project'),
   pcData = null,
   pcNotice = '',
   pcSeq = 0,
-  pcPercent = '';
+  pcPercent = '',
+  pcRenderKey = '';
 let composing = false, previewPosition = {index:0,offset:0}, linkedTimer = 0;
 const previewFrame = $('reportPreview'), reportMain = document.querySelector('main');
+// Phase choices are independent of mail generation. Keep their native controls outside
+// the fieldset used to lock the other report inputs, without bypassing final-save locks.
+const classFields = document.createElement('fieldset');classFields.id = 'classFields';classFields.hidden = true;
+$('editorFields').parentNode.insertBefore(classFields, $('editorFields').nextSibling);
+classFields.appendChild($('classForm'));
+const classBusyStatus = document.createElement('p');classBusyStatus.className = 'hint';classBusyStatus.hidden = true;
+classBusyStatus.setAttribute('role','status');classBusyStatus.id = 'classBusyStatus';
+classFields.parentNode.insertBefore(classBusyStatus,classFields);
 const taskProgress=window.RistFileProgress.monitor($('status'));
 const pptHost=document.createElement('div');pptHost.className='ppt-editor';previewFrame.parentNode.insertBefore(pptHost,previewFrame);previewFrame.hidden=true;
 const pptEditor=mountPptEditor({host:pptHost,document:()=>doc,changed:markDirty,linked:linkedField,message:status,
@@ -176,11 +187,11 @@ window.addEventListener('message', e => {
 });
 window.addEventListener('pagehide',()=>{livePreview.invalidate();clearTimeout(linkedTimer);});
 window.addEventListener('pageshow',e=>{if(e.persisted && doc && !busy)livePreview.schedule(true);});
-$('editorFields').addEventListener('compositionstart',()=>{composing=true;livePreview.invalidate();draftSaver.pause();});
-$('editorFields').addEventListener('compositionend',()=>{composing=false;if(doc&&!busy){livePreview.schedule();if(dirty)draftSaver.schedule();}});
+$('editor').addEventListener('compositionstart',()=>{composing=true;livePreview.invalidate();draftSaver.pause();});
+$('editor').addEventListener('compositionend',()=>{composing=false;if(doc){if(!busy)livePreview.schedule();if(dirty)draftSaver.schedule();}});
 document.addEventListener('visibilitychange',()=>{if(document.hidden&&!composing)draftSaver.flush();});
 window.addEventListener('pagehide',()=>{if(!composing)draftSaver.flush();});
-$('editorFields').addEventListener('focusin',e=>{
+$('editor').addEventListener('focusin',e=>{
   const d=e.target.dataset, field=d.meta || d.field || (d.noteText?'note':d.retainedText?'retained_note':e.target.id==='summary'?'summary':null);
   if (field) previewFrame.contentWindow.postMessage({type:'xrd-preview-locate',target:{tab,field,id:d.noteText||d.retainedText}},'*');
   if (field) pptEditor.locate({tab,field,id:d.noteText||d.retainedText});
@@ -201,10 +212,21 @@ function markDirty() {
   if (!composing && !busy) livePreview.schedule();
   else livePreview.invalidate();
 }
-function lock(value) {
+function classAvailability() {
+  classFields.hidden = tab !== 'classes';
+  classFields.disabled = busy && !phaseEditingWhileBusy;
+  if ($('pcApply')) $('pcApply').disabled = busy;
+  classBusyStatus.hidden = tab !== 'classes' || !busy;
+  classBusyStatus.textContent = phaseEditingWhileBusy
+    ? '메일 문안 생성 중에도 상 분류를 변경할 수 있습니다. 변경한 분석 결과는 메일과 다시 대조하세요.'
+    : '저장·보고서 처리 중에는 변경 내용 보호를 위해 잠시 잠깁니다. 처리가 끝나면 자동으로 선택할 수 있습니다.';
+}
+function lock(value, allowPhaseEditing = false) {
   mailEditor.lock(value);
   pptxPassword.lock(value);
   busy = value;
+  phaseEditingWhileBusy = value && allowPhaseEditing;
+  classAvailability();
   if(value)taskProgress.start();else taskProgress.stop();
   pptEditor.lock(value);
   if (value) livePreview.invalidate();
@@ -232,6 +254,7 @@ function lock(value) {
 function showTab(value) {
   if (!doc) return;
   tab = value;
+  classAvailability();
   if (!['overview', 'checks', 'figure', 'classes', 'qtable', 'llm', 'email'].includes(value))
     ckCursor = value;
   for (const id of ['overviewForm', 'sampleForm', 'figureForm', 'classForm', 'qtableForm', 'emailForm'])
@@ -456,14 +479,15 @@ async function generateEmail(confirmReplace=true) {
   // Even an HTTP failure must not leave a previously empty mail blank.
   if(initializeEmptyEmail(doc,emailDefault)){renderEmail();markDirty();}
   emailAttempted=true;
-  lock(true);
+  lock(true, true);
   $('emailStatus').textContent='분석 결과로 로컬 LLM이 문안을 다듬는 중… 현재 문안은 유지합니다.';
   try {
     syncTransfer();
+    const requestedContext = emailContextKey(doc);
     const result=await (await api(`/api/reports/${storageId}/email-draft`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({document:doc})})).json();
     doc.email={...result,delivery:{...(email.delivery||{}),bodyHtml:''}};
-    emailBaselineKey=emailContextKey(doc);
-    emailStale=false;
+    emailBaselineKey=requestedContext;
+    emailStale=emailContextKey(doc)!==requestedContext;
     renderEmail();
     markDirty();
     status('이메일 초안을 작성했습니다. 내용 확인 후 저장하세요. 실제 메일은 발송하지 않았습니다.');
@@ -624,8 +648,16 @@ async function fetchClassData(percent) {
 async function loadClassData() {
   const seq = ++pcSeq;
   if (!doc?.revision) {
-    pcData = null;
-    pcNotice = '저장한 보고서의 상 목록을 불러옵니다. 먼저 저장하세요.';
+    // A new report already contains the parsed source phases. Manual classification
+    // need not wait for the first final save; rule evaluation still uses the server.
+    pcData = {samples: (project?.samples || []).map(sample=>({sample_id:sample.id,
+      phases:(sample.phases || []).map(phase=>({
+        phase:{name:phase.name || '',card:phase.card || '',db:phase.db || ''},
+        quantity:phase.quantity ? `${phase.quantity.raw} ${phase.quantity.unit}` : null,
+        trace:null,
+      })),
+    }))};
+    pcNotice = '';
   } else {
     try {
       const data = await fetchClassData();
@@ -642,24 +674,44 @@ async function loadClassData() {
 }
 function renderClasses() {
   const focused = document.activeElement?.id;
-  $('classForm').innerHTML = phaseClassesHTML({
-    pc: ensurePhaseClasses(doc),
-    samples: doc.samples.filter((s) => s.included),
-    data: pcData,
-    percent: pcPercent,
-    notice: pcNotice,
+  const pc = ensurePhaseClasses(doc), samples = doc.samples.filter(s=>s.included);
+  const key = JSON.stringify([storageId,samples.map(s=>[s.sample_id,s.display_name]),pcData,pcNotice,pc.rule,pc.retained]);
+  // A delayed lookup with unchanged phases must not replace an open native select.
+  if (key !== pcRenderKey) {
+    $('classForm').innerHTML = phaseClassesHTML({pc,samples,data:pcData,percent:pcPercent,notice:pcNotice});
+    pcRenderKey = key;
+    if (focused === 'pcPercent') $('pcPercent').focus();
+  }
+  $('classForm').querySelector('[data-pc="criteria_text"]').value = pc.criteria_text;
+  syncClassChoices();
+  classAvailability();
+}
+function syncClassChoices() {
+  const pc = ensurePhaseClasses(doc), samples = visibleClassSamples(pcData, doc.samples);
+  $('classForm').querySelectorAll('[data-pc-sample-id]').forEach(select=>{
+    const sample = samples.find(s=>s.sample_id===select.dataset.pcSampleId);
+    const phase = sample?.phases[Number(select.dataset.pcPhaseIndex)]?.phase;
+    if (!phase) return;
+    const label = labelOf(pc,sample.sample_id,phase), value = label?.class || '';
+    if (select.value !== value) select.value = value;
+    select.closest('.pcRow').querySelector('.pcOrigin').textContent = !label ? ''
+      : label.origin === 'rule' ? `규칙 (${label.percent}%)` : label.origin === 'default' ? '기본' : '직접';
   });
-  if (focused === 'pcPercent') $('pcPercent').focus();
 }
 function classInput(element) {
   const pc = ensurePhaseClasses(doc),
     d = element.dataset;
   const sample = (id) => visibleClassSamples(pcData, doc.samples).find((v) => v.sample_id === id);
-  if (d.pc !== undefined) pc[d.pc] = element.value;
+  if (d.pc !== undefined) {
+    if (pc[d.pc] === element.value) return;
+    pc[d.pc] = element.value;
+  }
   else if (d.pcSampleId !== undefined) {
     const found = sample(d.pcSampleId),
       item = found?.phases[Number(d.pcPhaseIndex)];
     if (!item) return;
+    const previous = labelOf(pc,found.sample_id,item.phase);
+    if (previous?.class === element.value && previous.origin === 'manual' || !previous && !element.value) return;
     setLabel(pc, found.sample_id, item.phase, element.value);
   } else if (d.pcSampleAll !== undefined) {
     if (element.value === '__none') return;
@@ -671,9 +723,10 @@ function classInput(element) {
       found.phases.map((p) => p.phase),
       element.value,
     );
+    element.value = 'major';
   }
   markDirty();
-  if (d.pc === undefined) renderClasses();
+  if (d.pc === undefined) syncClassChoices();
 }
 async function applyTraceRule() {
   const percent = Number(pcPercent);
@@ -714,7 +767,8 @@ function applyRowClass() {
     .map((s) => s.sample_id);
   setRowLabel(ensurePhaseClasses(doc), phase, ids, $('pcRowClass').value);
   markDirty();
-  renderClasses();
+  $('pcRowClass').value = 'major';
+  syncClassChoices();
 }
 async function loadQuantityTable() {
   const seq = ++qtSeq;
@@ -870,8 +924,8 @@ $('reportNav').onclick = (e) => {
   const target = e.target.closest('[data-tab]');
   if (target) showTab(target.dataset.tab);
 };
-$('editorFields').oninput = (e) => {
-  if (!doc || busy) return;
+$('editor').oninput = (e) => {
+  if (!doc || busy && !(phaseEditingWhileBusy && classFields.contains(e.target))) return;
   const element = e.target,
     d = element.dataset;
   if (d.qt === 'include') {
@@ -942,7 +996,10 @@ $('editorFields').oninput = (e) => {
   }
   markDirty();
 };
-$('editorFields').onchange = (e) => {
+$('editor').onchange = (e) => {
+  if (!doc || busy && !(phaseEditingWhileBusy && classFields.contains(e.target))) return;
+  // Some native/legacy selects emit change without input. Applying twice is a no-op.
+  if (e.target.dataset.pcSampleId !== undefined) {classInput(e.target);return;}
   if (e.target.id === 'provider') {
     const type = e.target.value;
     doc.llm.base_url = type === 'lmstudio' ? 'http://127.0.0.1:1234/v1' : 'http://127.0.0.1:11434';
@@ -950,9 +1007,10 @@ $('editorFields').onchange = (e) => {
     markDirty();
   }
 };
-$('editorFields').onclick = async (e) => {
+$('editor').onclick = async (e) => {
   const button = e.target.closest('button');
-  if (!button || busy) return;
+  if (!button || busy && !(phaseEditingWhileBusy && classFields.contains(button) &&
+    (button.id === 'pcRowApply' || button.dataset.pcSampleApply !== undefined))) return;
   if (button.id === 'generateEmail') {await generateEmail();return;}
   const d = button.dataset;
   if (d.goto !== undefined) {
