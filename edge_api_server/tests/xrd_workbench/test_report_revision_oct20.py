@@ -52,7 +52,7 @@ def test_all_twelve_samples_paginate_without_omission_or_a_four_sample_blocker()
     assert len(summaries)>1
     all_titles=[text(shape) for slide in summaries for shape in slide.find('p:cSld/p:spTree',NS)
                 if filled.edits.get(shape,{}).get('field')=='display_name']
-    assert sorted(all_titles)==sorted('샘플명: '+e['display_name'] for e in doc['samples'])
+    assert sorted(all_titles)==sorted('시료명: '+e['display_name'] for e in doc['samples'])
     for slide in summaries:
         frames=named(slide,'Sample frame')
         assert {round(box(s)[0]) for s in frames} <= {143,207}
@@ -72,10 +72,12 @@ def test_huge_phase_lists_continue_without_ellipsis_or_losing_last_phase():
 
 
 @pytest.mark.parametrize('counts', [(1, 6, 2, 4, 1), (1, 24, 2), (2, 1)])
-def test_summary_neighbors_match_tallest_box_in_ppt_and_preview(counts):
+@pytest.mark.parametrize('version,height', [('legacy',139),('2026-10-29',112)])
+def test_summary_neighbors_match_tallest_box_in_ppt_and_preview(counts,version,height):
     project = make_project([sample(str(i), n_phases=count, quantities=0)
                             for i, count in enumerate(counts)])
     doc = new_document(project)
+    doc['template_version'] = version
     doc['figure']['include'] = False
     doc['samples'][1]['display_name'] = '긴 시료명: 결정상 분석 결과를 확인하는 두 번째 샘플'
     samples = {s['id']: s for s in project['samples']}
@@ -83,12 +85,15 @@ def test_summary_neighbors_match_tallest_box_in_ppt_and_preview(counts):
     before = deepcopy((project, doc))
     # The row must grow to its longest neighbor, not shrink or clip that content.
     natural = [card for entry in doc['samples']
-               for page in summary_pages([entry], samples, classify) for card in page]
-    plan = summary_pages(doc['samples'], samples, classify)
+               for page in summary_pages([entry], samples, classify, height=height) for card in page]
+    plan = summary_pages(doc['samples'], samples, classify, height=height)
     fitted = [card for page in plan for card in page]
     assert [c['lines'] for c in fitted] == [c['lines'] for c in natural]
     for start in range(0, len(fitted), 2):
-        expected = max(c['height'] for c in natural[start:start+2])
+        # A long sample can split into two cards which become neighbors when
+        # planned alone. Compare intrinsic content heights, not those inflated
+        # by that different row pairing.
+        expected = max(len(c['title'])*4.5+len(c['lines'])*4+10 for c in natural[start:start+2])
         assert all(c['height'] == expected for c in fitted[start:start+2])
 
     deck = build_posco_deck(project, doc, lambda _: IMAGE, image_renderer=lambda *a: IMAGE)
@@ -106,7 +111,7 @@ def test_summary_neighbors_match_tallest_box_in_ppt_and_preview(counts):
             if previous_bottom is not None:
                 assert y == pytest.approx(previous_bottom + 3)
             previous_bottom = y + h
-            assert previous_bottom <= 173
+            assert previous_bottom <= 34+height
         for frame in frames:
             bounds = box(frame)
             assert any(item['type'] == 'rect' and
@@ -143,9 +148,10 @@ def test_pdf_html_and_ppt_scene_share_cover_geometry_values_and_portable_viewer_
     for page in pdf.pages:
         assert abs(float(page.mediabox.width)-275.1666667*72/25.4)<.01
         assert abs(float(page.mediabox.height)-190.5*72/25.4)<.01
-    assert all(len(named(slide,'RIST logo'))==1 for slide,_ in filled.pages)
+    assert not named(filled.pages[0][0],'RIST logo')  # Reference cover has no footer.
+    assert all(len(named(slide,'RIST logo'))==1 for slide,_ in filled.pages[1:])
     filled.number_pages()
-    assert all(len(named(slide,'RIST logo'))==1 for slide,_ in filled.pages)
+    assert all(len(named(slide,'RIST logo'))==1 for slide,_ in filled.pages[1:])
     full=''.join(p.extract_text() for p in pdf.pages)
     assert 'REQ-123' in full and 'XRD-01' in full and 'QA-OP' in full
     assert '10.0(1) wt%' in full

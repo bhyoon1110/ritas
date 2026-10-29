@@ -99,7 +99,7 @@ def apply(deck, document, asset_root=None):
         for shape in slide.findall('p:cSld/p:spTree/*', NS):
             info=shape.find('.//p:cNvPr', NS)
             if info is None: continue
-            if info.get('name') in {'RIST logo','Page number'} or shape.find('.//a:hlinkClick',NS) is not None:
+            if info.get('name') in {'RIST logo','Page number','Template cover artwork'} or shape.find('.//a:hlinkClick',NS) is not None:
                 locked.append(info.get('id'))
             if shape in deck.edits: targets[info.get('id')]=deck.edits[shape]
         payload=dict(pageId=deck.page_info[slide]['id'], xml=E.tostring(slide), rels=E.tostring(rels),

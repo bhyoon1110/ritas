@@ -11,7 +11,7 @@ from openpyxl import load_workbook
 from app.xrd_workbench.core.report import new_document
 from app.xrd_workbench.core.phase_class import phase_ref
 from app.xrd_workbench.render.posco_pptx import (
-    TEMPLATE, NS, Deck, render_report_pptx, named,
+    DEFAULT_TEMPLATE, NS, Deck, render_report_pptx, named,
     SUMMARY_TITLE, QUANTITY_TITLE, PHASE_TITLE,
 )
 from .figure_fixtures import make_project
@@ -47,7 +47,7 @@ def test_reference_background_dimensions_and_sanitized_example_data():
     project,document=fixture()
     before=deepcopy((project,document))
     z,slides,text=deck(render_report_pptx(project,document,lambda _:IMAGE))
-    with ZipFile(TEMPLATE) as original:
+    with ZipFile(DEFAULT_TEMPLATE) as original:
         for name in original.namelist():
             if name.startswith(('ppt/slideMasters/','ppt/slideLayouts/','ppt/theme/','ppt/media/')):
                 assert z.read(name)==original.read(name),name
@@ -56,7 +56,7 @@ def test_reference_background_dimensions_and_sanitized_example_data():
     assert 'Zinc Manganese' not in text and '00-062-0414' not in text and '{Sample' not in text
     assert len(slides)==5
     assert [''.join(named(s,'Title')[0].xpath('.//a:t/text()',namespaces=NS)) for s in slides]==[
-        'XRD 분석 보고서', '분석 이력 요약', SUMMARY_TITLE, QUANTITY_TITLE, PHASE_TITLE,
+        document['metadata']['title'], '분석 이력 요약', SUMMARY_TITLE, QUANTITY_TITLE, PHASE_TITLE,
     ]
     assert '검토 문장' not in text  # prose/LLM is preserved in the document, not the rules-only summary
     assert all(value not in text for value in ('보고서 정보','정량 수치','결정상 분류 기준','긴 제목 전체'))
@@ -105,7 +105,7 @@ def test_more_samples_keep_only_reference_layouts_and_do_not_mutate_full_notes()
     titles=[''.join(named(s,'Title')[0].xpath('.//a:t/text()',namespaces=NS)) for s in slides]
     assert titles.count(PHASE_TITLE) == 3  # five whole sample tables, paired per slide
     assert PHASE_TITLE+' (계속)' not in titles
-    assert all(t.removesuffix(' (계속)') in ('XRD 분석 보고서','분석 이력 요약',SUMMARY_TITLE,PHASE_TITLE) for t in titles)
+    assert all(t.removesuffix(' (계속)') in (document['metadata']['title'],'분석 이력 요약',SUMMARY_TITLE,PHASE_TITLE) for t in titles)
     for n in z.namelist():
         if n.endswith('.rels'):assert b'TargetMode="External"' not in z.read(n)
     for slide in slides:
@@ -146,12 +146,14 @@ def test_missing_inconsistent_or_mixed_unit_quantities_are_not_silently_graphed(
         assert '10.0(1)' in text
 
 
-def test_long_sample_names_do_not_add_unrequested_pages():
+def test_long_sample_names_keep_detail_tables_on_their_pages():
     project,document=fixture()
     name='긴샘플이름'*30
     document['samples'][0]['display_name']=name
     _,slides,text=deck(render_report_pptx(project,document,lambda _:IMAGE))
-    assert len(slides)==5 and '긴 제목 전체' not in text
+    titles=[''.join(named(s,'Title')[0].xpath('.//a:t/text()',namespaces=NS)) for s in slides]
+    assert titles.count(PHASE_TITLE)==1 and titles.count(QUANTITY_TITLE)==1
+    assert '긴 제목 전체' not in text
     assert any(name in description for s in slides for description in s.xpath('.//p:cNvPr/@descr',namespaces=NS))
     assert document['samples'][0]['display_name']==name
 
@@ -191,7 +193,7 @@ def test_wppf_is_once_per_sample_and_its_entire_phase_table_stays_with_the_graph
     titles = [''.join(named(s,'Title')[0].xpath('.//a:t/text()',namespaces=NS)) for s,_ in filled.pages]
     assert titles.count(QUANTITY_TITLE) == 2
     assert QUANTITY_TITLE+' (계속)' not in titles
-    assert all(t.removesuffix(' (계속)') in ('XRD 분석 보고서','분석 이력 요약',SUMMARY_TITLE, QUANTITY_TITLE, PHASE_TITLE) for t in titles)
+    assert all(t.removesuffix(' (계속)') in (document['metadata']['title'],'분석 이력 요약',SUMMARY_TITLE, QUANTITY_TITLE, PHASE_TITLE) for t in titles)
     wppf_pages = [s for s,_ in filled.pages if 'WPPF' in ''.join(named(s,'Title')[0].itertext())]
     assert [filled.page_info[s]['sample_id'] for s in wppf_pages] == ['A','B']
     # Every phase table row appears exactly once, even with unequal phase counts.

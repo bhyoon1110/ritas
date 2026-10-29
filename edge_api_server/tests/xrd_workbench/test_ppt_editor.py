@@ -11,7 +11,7 @@ from pypdf import PdfReader
 import pytest
 
 from app.xrd_workbench import integration as api
-from app.xrd_workbench.render.posco_pptx import build_posco_deck, render_report_pptx, NS
+from app.xrd_workbench.render.posco_pptx import build_posco_deck, render_report_pptx, NS, named
 from app.xrd_workbench.render.posco_preview import deck_pages
 from app.xrd_workbench.render.package import build_package
 from app.xrd_workbench.render.link_audit import ppt_click_targets, check_package_links
@@ -124,7 +124,7 @@ def test_branding_and_source_links_cannot_be_changed_by_direct_canvas_payload(co
     from app.report.canvas import objects
     project,doc,data=collision_project
     deck=build_posco_deck(project,doc,data.__getitem__)
-    slide,rels=deck.pages[0]
+    slide,rels=next((s,r) for s,r in deck.pages if named(s,'RIST logo'))
     size=E.fromstring(deck.files['ppt/presentation.xml']).find('p:sldSz',NS)
     _,values=objects(dict(xml=E.tostring(slide),rels=E.tostring(rels),size=(int(size.get('cx')),int(size.get('cy')))))
     logo=next(value for _,value in values if value['name']=='RIST logo')

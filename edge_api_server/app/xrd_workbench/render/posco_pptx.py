@@ -32,6 +32,7 @@ from .sample_page import quantity_status
 from .summary_layout import classifier, notice, summary_pages
 
 TEMPLATE = Path(__file__).with_name('assets') / 'posco_xrd_a4.pptx'
+DEFAULT_TEMPLATE = TEMPLATE.with_name('xrd_default_20261029.pptx')
 NS = {'p': 'http://schemas.openxmlformats.org/presentationml/2006/main',
       'a': 'http://schemas.openxmlformats.org/drawingml/2006/main',
       'r': 'http://schemas.openxmlformats.org/officeDocument/2006/relationships',
@@ -258,10 +259,12 @@ def fit_phase_table(shape, database, rows, frame, heading, bottom):
 
 
 class Deck:
-    def __init__(self):
-        with ZipFile(TEMPLATE) as archive:
+    def __init__(self, template_version='legacy'):
+        self.supplied_design = template_version == '2026-10-29'
+        with ZipFile(DEFAULT_TEMPLATE if self.supplied_design else TEMPLATE) as archive:
             self.files = {n: archive.read(n) for n in archive.namelist()}
-        self.templates = [E.fromstring(self.files[f'ppt/slides/slide{i}.xml']) for i in (1, 2, 3)]
+        self.templates = [E.fromstring(self.files[f'ppt/slides/slide{i}.xml'])
+                          for i in range(1, 5 if self.supplied_design else 4)]
         self.text_shape = deepcopy(named(self.templates[0], 'Text 11')[0])
         self.pages = []
         self.images = {}
@@ -287,6 +290,37 @@ class Deck:
         if target:
             self.edits[shape] = target
         return shape
+
+    def cover(self, metadata):
+        """Fill the approved cover, keeping its actual background and centred type."""
+        slide = self.slide(3, kind='cover')
+        self.page_info[slide]['navigation_title'] = '표지'
+        size = E.fromstring(self.files['ppt/presentation.xml']).find('p:sldSz', NS)
+        bounds = (0, 0, int(size.get('cx'))/MM, int(size.get('cy'))/MM)
+        self.picture(slide, self.files['ppt/media/image3.jpg'], bounds,
+                     'Template cover artwork')
+        artwork = named(slide, 'Template cover artwork')[0]
+        # The reference deliberately stretches this background to the whole page.
+        # Scientific pictures elsewhere still use contain/preserve-aspect fitting.
+        place(artwork, bounds)
+        # Place the full-page background below the editable title/requester/date.
+        tree = slide.find('p:cSld/p:spTree', NS)
+        tree.remove(artwork); tree.insert(2, artwork)
+        requester = ' '.join(metadata.get(key, '').strip() for key in ('client','requester')).strip()
+        completed = metadata.get('date', '')
+        if completed:
+            completed = datetime.strptime(completed, '%Y-%m-%d').strftime('%y.%m.%d')
+        for name, text, field, size, color in (
+                ('Title', metadata['title'], 'title', 22.75, '376092'),
+                ('Cover requester', '의뢰자: ' + requester, 'requester', 22.75, '376092'),
+                ('Cover completionDate', completed, 'date', 13, '000000')):
+            shape = named(slide, name)[0]
+            if not set_text(shape, text, size=size, minimum=10, bold=True, color=color):
+                raise ValueError('표지 제목·의뢰자 내용이 너무 깁니다. 내용을 줄여 주세요.')
+            shape.find('p:txBody/a:bodyPr', NS).set('anchor', 'ctr')
+            for paragraph in shape.findall('p:txBody/a:p/a:pPr', NS): paragraph.set('algn', 'ctr')
+            self.mark(shape, dict(tab='overview', field=field))
+        return slide
 
     def rel(self, slide, kind, target, external=False):
         rels = next(r for s, r in self.pages if s is slide)
@@ -453,6 +487,8 @@ class Deck:
 
     def number_pages(self):
         for number, (slide, _) in enumerate(self.pages, 1):
+            if self.supplied_design and self.page_info[slide]['kind'] == 'cover':
+                continue  # The supplied title page has no footer or page number.
             if self.page_info[slide]['kind'] not in {'cover','traceability'}:
                 shape = named(slide, 'Page number')[0]
                 set_text(shape, str(number), size=10, color='6B7F88')
@@ -594,7 +630,7 @@ def build_posco_deck(project, document, resolve_source, *, pages=None, link_base
     document = validate_document(project, document)
     paths = package_paths(project)
     image_renderer = image_renderer or render_panel_png
-    deck = Deck()
+    deck = Deck(document.get('template_version', 'legacy'))
     entries = [e for e in document['samples'] if e['included']]
     samples = {s['id']: s for s in project['samples']}
     source_images, raw_images = {}, {}
@@ -635,6 +671,9 @@ def build_posco_deck(project, document, resolve_source, *, pages=None, link_base
         revision=f"보고서 v{document['revision']} · 분석 검토 v{document.get('analysis_revision',0)}")
     size = E.fromstring(deck.files['ppt/presentation.xml']).find('p:sldSz', NS)
     for kind,layout in (('cover',cover_shapes),('traceability',traceability_shapes)):
+        if kind == 'cover' and deck.supplied_design:
+            deck.cover(meta)
+            continue
         page = deck.slide(blank=True,kind=kind)
         deck.page_info[page]['navigation_title'] = '표지' if kind=='cover' else '분석 이력 요약'
         for shape in list(page.find('p:cSld/p:spTree',NS)):
@@ -664,16 +703,20 @@ def build_posco_deck(project, document, resolve_source, *, pages=None, link_base
             summary_panel=dict(panel,show_reference=False,show_markers=False,sample_legend=True)
             summary_image=image_renderer(summary_panel,128,91)
     selected = [e for e in entries if e['summary_included']]
-    for page_index, cards in enumerate(summary_pages(selected,samples,classification)):
+    for page_index, cards in enumerate(summary_pages(selected,samples,classification,
+                                                     height=112 if deck.supplied_design else 139)):
         slide = deck.slide(0,blank=True)
         deck.title(slide,SUMMARY_TITLE + (' (계속)' if page_index else ''))
         group = list({c['entry']['sample_id']:c['entry'] for c in cards}.values())
         statement, disclaimer = notice(group,samples,classification)
         note = statement+'\n\n'+disclaimer if statement else ''
-        note_h = max(27, len(wrap_lines(note,120.8,8.5))*8.5*1.25/2.83465+5)
-        extra_h = note_h-27
+        note_width = 247.65 if deck.supplied_design else 128
+        note_min = 33.26 if deck.supplied_design else 27
+        note_h = max(note_min, len(wrap_lines(note,note_width-7.2,8.5))*8.5*1.25/2.83465+5)
+        extra_h = note_h-note_min
         deck.text(slide,'측정 결과',(8,25,128,7),size=12,bold=True,color='0A7489',edit=dict(tab='figure'))
-        deck.text(slide,'샘플별 결정상 (Phase) 정보',(143,25,125,7),size=12,bold=True,color='0A7489',edit=dict(tab='classes'))
+        deck.text(slide,'시료별 결정상 (Phase) 정보' if deck.supplied_design else '샘플별 결정상 (Phase) 정보',
+                  (143,25,125,7),size=12,bold=True,color='0A7489',edit=dict(tab='classes'))
         deck.frame(slide,(8,34,128,94-extra_h),name='Overlay frame')
         if summary_image:
             deck.picture(slide,summary_image,(10,36,124,90-extra_h),'시료 비교 그래프',edit=dict(tab='figure'))
@@ -683,13 +726,15 @@ def build_posco_deck(project, document, resolve_source, *, pages=None, link_base
         # include_sources=False is also used for detached, non-linked report output.
         if include_sources:
             deck.frame(slide,(47,130-extra_h,53,8),name='Viewer link frame')
-            link_shape=deck.text(slide,'데이터 확인하기 ↗',(49,131-extra_h,49,6),size=9,color='0A7489',href=viewer_href)
+            caption='그래프 확인하기 ↗' if deck.supplied_design else '데이터 확인하기 ↗'
+            link_shape=deck.text(slide,caption,(49,131-extra_h,49,6),size=9,color='0A7489',href=viewer_href)
             link_shape.find('p:txBody/a:p/a:pPr',NS).set('algn','ctr')
         deck.page_info[slide]['navigation_title'] = SUMMARY_TITLE + ' · ' + ', '.join(e['display_name'] for e in group)
         for card in cards:
             entry=card['entry'];x=143+64*card['column'];y=34+card['top']
             deck.frame(slide,(x,y,61,card['height']))
             title='\n'.join(card['title'])
+            if deck.supplied_design: title=title.replace('샘플명: ', '시료명: ', 1)
             deck.text(slide,title,(x+2,y+2,57,len(card['title'])*4.5+.5),size=10,bold=True,
                       edit=dict(tab=entry['sample_id'],field='display_name'))
             ty=y+4+len(card['title'])*4.5
@@ -698,14 +743,16 @@ def build_posco_deck(project, document, resolve_source, *, pages=None, link_base
             for line,bold in card['lines']:
                 deck.text(slide,line,(x+2,ty,57,4),size=8.5,bold=bold,edit=dict(tab='classes'));ty+=4
         deck.text(slide,'특이사항',(8,140-extra_h,128,7),size=12,bold=True,color='0A7489',edit=dict(tab='classes'))
-        deck.frame(slide,(8,148-extra_h,128,note_h),name='Remarks box')
+        deck.frame(slide,(8,148-extra_h,note_width,note_h),name='Remarks box')
         if statement:
-            deck.text(slide,note,(11,150-extra_h,122,note_h-4),size=8.5,edit=dict(tab='classes'))
+            deck.text(slide,note,(11,150-extra_h,note_width-6,note_h-4),size=8.5,edit=dict(tab='classes'))
     # Detailed pages: WPPF alongside its matching sample, or two phase-only samples per page.
     plain=[]
     quantity_overflow=[]
     def details(batch, quantitative):
         table_sets = [phase_table_data(samples[e['sample_id']], classification, revised=quantitative) for e in batch]
+        if deck.supplied_design and not quantitative:
+            table_sets = [('# ICDD Card No.', rows) for _, rows in table_sets]
         row_sets = [rows for _, rows in table_sets]
         slide=deck.slide(1 if quantitative else 2, kind='sample', sample_id=batch[0]['sample_id'])
         deck.page_info[slide]['editor_samples'] = [e['sample_id'] for e in batch]

@@ -79,6 +79,7 @@ def new_document(project: dict) -> dict:
         )
     return dict(
         schema_version=1,
+        template_version='2026-10-29',
         project_id=project['id'],
         revision=0,
         analysis_revision=project.get('analysis_revision', 0),
@@ -353,6 +354,12 @@ def validate_document(project: dict, document: dict) -> dict:
     ):
         raise ValueError('보고서와 원본 프로젝트 버전이 맞지 않습니다.')
     result = new_document(project)
+    # Old saved canvas edits address the old shapes. Never move those edits onto
+    # a different design just because the bundled default has been updated.
+    template_version = document.get('template_version', 'legacy')
+    if template_version not in ('legacy', '2026-10-29'):
+        raise ValueError('지원하지 않는 XRD 기본 양식 버전입니다.')
+    result['template_version'] = template_version
     revision = document.get('revision', 0)
     if type(revision) is not int or revision < 0:
         raise ValueError('잘못된 문서 revision입니다.')
