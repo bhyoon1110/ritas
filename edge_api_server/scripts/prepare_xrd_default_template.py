@@ -36,6 +36,29 @@ def clear_text(root):
         node.getparent().remove(node)
 
 
+def copy_content_types(files, supplied, copied_parts):
+    """Carry each imported part's OPC type, including layouts absent in the base."""
+    types = E.fromstring(files['[Content_Types].xml'])
+    source = E.fromstring(supplied['[Content_Types].xml'])
+    overrides = {n.get('PartName'): n.get('ContentType') for n in source if n.get('PartName')}
+    defaults = {n.get('Extension'): n.get('ContentType') for n in source if n.get('Extension')}
+    for part in sorted(copied_parts):
+        if part.endswith('.rels'):
+            continue
+        part_name = '/' + part
+        content_type = overrides.get(part_name) or defaults.get(part.rsplit('.', 1)[-1])
+        if not content_type:
+            raise ValueError(f'Imported template part has no content type: {part}')
+        existing = next((n for n in types if n.get('PartName') == part_name), None)
+        if existing is not None:
+            existing.set('ContentType', content_type)
+        else:
+            # Per-part declarations do not change the types of retained base parts.
+            E.SubElement(types, '{'+types.nsmap[None]+'}Override',
+                         PartName=part_name, ContentType=content_type)
+    files['[Content_Types].xml'] = serialize(types)
+
+
 def prepare(source, output):
     if sha256(Path(source).read_bytes()).hexdigest() != SOURCE_SHA256:
         raise ValueError('Use the approved 2026-10-29 보고서_양식.pptx; other decks need a new binding review.')
@@ -47,15 +70,19 @@ def prepare(source, output):
     size = E.fromstring(supplied['ppt/presentation.xml']).find('p:sldSz', NS)
     if (size.get('cx'), size.get('cy')) != ('9906000', '6858000'):
         raise ValueError('The approved XRD reference must use its original A4 landscape size.')
+    copied_parts = set()
     for part, data in supplied.items():
         if part.startswith(('ppt/slideMasters/', 'ppt/slideLayouts/', 'ppt/theme/')):
             files[part] = data
+            copied_parts.add(part)
     # These are the header, RIST logo and cover artwork. Do not ship example plots.
     for part in list(files):
         if part.startswith('ppt/media/'):
             del files[part]
     for part in ('ppt/media/image1.jpeg', 'ppt/media/image2.png', 'ppt/media/image3.jpg'):
         files[part] = supplied[part]
+        copied_parts.add(part)
+    copy_content_types(files, supplied, copied_parts)
     summary = E.fromstring(supplied['ppt/slides/slide2.xml'])
     tree = summary.find('p:cSld/p:spTree', NS)
     keep = {'Title', 'Text 2', 'Page number', 'Sample frame', 'Overlay frame', 'Remarks box'}

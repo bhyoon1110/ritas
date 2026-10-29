@@ -106,8 +106,16 @@ def set_text(shape, text, *, size=10, color='102A35', bold=False, dimensions=Non
     # Keep the template's vertical alignment (notably its centred title band).
     for attr in ('lIns', 'rIns', 'tIns', 'bIns'): props.set(attr, '0')
     for child in list(props):
-        if E.QName(child).localname.endswith('Autofit'): props.remove(child)
-    E.SubElement(props, q('a:noAutofit'))
+        if child.tag in {q('a:noAutofit'), q('a:normAutofit'), q('a:spAutoFit')}:
+            props.remove(child)
+    # CT_TextBodyProperties allows exactly one autofit choice, before 3-D/extLst.
+    autofit = E.Element(q('a:noAutofit'))
+    after_fit = next((child for child in props if child.tag in
+                      {q('a:scene3d'), q('a:sp3d'), q('a:flatTx'), q('a:extLst')}), None)
+    if after_fit is None:
+        props.append(autofit)
+    else:
+        after_fit.addprevious(autofit)
     for line in lines or ['']:
         paragraph = E.SubElement(body, q('a:p'))
         pp = E.SubElement(paragraph, q('a:pPr'), marL='0', indent='0')
