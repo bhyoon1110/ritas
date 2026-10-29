@@ -9,6 +9,113 @@
     s.textContent+=".mail-book input[type=search],.mail-book-form input{min-height:36px;padding:7px 9px;border:1px solid #94a3b8;border-radius:5px;background:white;color:#20384b;font:inherit;box-sizing:border-box}.mail-book .mail-icon-danger{color:#b42318}@media(max-width:600px),(pointer:coarse){.mail-book input[type=search],.mail-book-form input{min-height:44px}}";
     s.textContent+=".mail-book-row button[aria-pressed=true]{background:#e4f1f7;border-color:#23759f;color:#174760;font-weight:bold}.mail-book-visibility{padding:8px 0}.mail-book-visibility select{display:block;width:100%;min-height:36px;margin-top:5px;padding:6px;border:1px solid #94a3b8;border-radius:5px;background:white;font:inherit}.mail-book-projects{display:flex;flex-wrap:wrap}.mail-book-projects label{display:inline-flex;align-items:center;flex:none;margin:6px 12px 6px 4px}.mail-book-projects input[type=checkbox]{display:inline-block;width:18px;height:18px;min-height:18px;margin:0 6px 0 0;padding:0}@media(max-width:600px),(pointer:coarse){.mail-book-visibility select{min-height:44px}}";
   }
+  var suggestionId=0;
+  // Keep suggestions local to this editor/focus session; never persist contacts in the browser.
+  window.RistMailContactSuggestions=function(options){
+    if(!document.getElementById("rist-mail-suggestion-styles")){
+      var style=node("style",document.head);style.id="rist-mail-suggestion-styles";
+      style.textContent=".mail-addresses label.mail-contact-field{position:relative}.mail-contact-popup{position:absolute;top:100%;left:6px;right:6px;z-index:30;background:white;border:1px solid #94a3b8;border-radius:6px;box-shadow:0 4px 12px #0002;color:#20384b;white-space:normal}.mail-contact-popup[hidden]{display:none!important}.mail-contact-list{max-height:240px;overflow-y:auto;overscroll-behavior:contain}.mail-contact-popup .mail-contact-option{display:block;width:100%;height:auto;min-height:44px;padding:8px 10px;border:0;border-bottom:1px solid #e2e8f0;border-radius:0;background:white;text-align:left;color:#20384b;white-space:normal;font:inherit;cursor:pointer}.mail-contact-option strong,.mail-contact-option small{display:block;overflow-wrap:break-word;word-break:break-word}.mail-contact-option small{font-size:12px;color:#526277}.mail-contact-popup .mail-contact-option:hover,.mail-contact-popup .mail-contact-option[aria-selected=true]{background:#e4f1f7}.mail-contact-status{padding:7px 10px;margin:0;font-size:12px;line-height:1.5;overflow-wrap:break-word}";
+    }
+    var active=null,locked=false,timer=null,sequence=0,pending=[],books=null,loading=false,choosing=false;
+    function token(input){
+      var value=input.value,pos=input.selectionStart==null?value.length:input.selectionStart;
+      var before=value.slice(0,pos),start=Math.max(before.lastIndexOf(","),before.lastIndexOf(";"))+1;
+      var tail=value.slice(pos).search(/[,;]/),end=tail<0?value.length:pos+tail;
+      return {value:value,start:start,end:end,term:value.slice(start,end).trim().toLowerCase()};
+    }
+    function cancel(){sequence++;window.clearTimeout(timer);pending.forEach(function(xhr){xhr.abort();});pending=[];loading=false;choosing=false;}
+    function hide(){
+      cancel();if(active){active.popup.hidden=true;active.list.textContent="";active.input.setAttribute("aria-expanded","false");active.input.removeAttribute("aria-activedescendant");active.items=[];}
+      active=null;books=null;
+    }
+    function message(text){if(active){active.popup.hidden=false;active.input.setAttribute("aria-expanded","true");active.status.textContent=text;}}
+    function request(scope,done){
+      var xhr=new XMLHttpRequest();pending.push(xhr);var version=sequence;
+      xhr.open("GET","/api/v1/report-mail/"+(scope==="shared"?"shared-contacts":"contacts"),true);xhr.timeout=15000;
+      function finish(items){pending=pending.filter(function(p){return p!==xhr;});if(version===sequence)done(items);}
+      xhr.onerror=xhr.ontimeout=function(){finish(null);};
+      xhr.onload=function(){var value;try{value=JSON.parse(xhr.responseText);}catch(_){finish(null);return;}
+        finish(xhr.status>=200&&xhr.status<300&&value&&Array.isArray(value.contacts)?value.contacts:null);
+      };xhr.send();
+    }
+    function highlight(index){
+      var b=active;if(!b||!b.items.length)return;b.index=Math.max(0,Math.min(index,b.items.length-1));
+      Array.prototype.forEach.call(b.list.children,function(row,i){row.setAttribute("aria-selected",String(i===b.index));});
+      var row=b.list.children[b.index];b.input.setAttribute("aria-activedescendant",row.id);
+      if(row.offsetTop<b.list.scrollTop)b.list.scrollTop=row.offsetTop;
+      else if(row.offsetTop+row.offsetHeight>b.list.scrollTop+b.list.clientHeight)b.list.scrollTop=row.offsetTop+row.offsetHeight-b.list.clientHeight;
+    }
+    function render(){
+      if(!active||active.composing||locked||!books||choosing)return;
+      var b=active,t=token(b.input),seen={},matches=[];b.list.textContent="";b.items=[];b.index=-1;b.input.removeAttribute("aria-activedescendant");
+      if(!t.term){hide();return;}b.snapshot=t;
+      ["private","shared"].forEach(function(scope){(books[scope]||[]).forEach(function(c){
+        if(!c||typeof c.name!=="string"||typeof c.email!=="string"||!/@rist\.re\.kr$/i.test(c.email))return;
+        if((c.name+" "+(c.department||"")+" "+c.email).toLowerCase().indexOf(t.term)<0||seen["$"+c.email.toLowerCase()])return;
+        seen["$"+c.email.toLowerCase()]=true;matches.push({contact:c,scope:scope});
+      });});
+      b.items=matches.slice(0,20);b.items.forEach(function(item,i){
+        var c=item.contact,row=node("button",b.list);row.type="button";row.className="mail-contact-option";row.tabIndex=-1;row.id=b.list.id+"-"+i;
+        row.setAttribute("role","option");row.setAttribute("aria-selected","false");
+        node("strong",row,c.name);node("small",row,(c.department?c.department+" · ":"")+c.email+" · "+(item.scope==="private"?"내 주소록":"공용 주소록"));
+        row.onmousedown=function(e){e.preventDefault();};row.onclick=function(e){e.preventDefault();e.stopPropagation();choose(i);};
+      });
+      var note=matches.length?matches.length+"명 · 이름과 이메일을 확인해 선택하세요. ↑↓ 이동 · Enter 선택":"검색 결과가 없습니다. 이름·부서·이메일 또는 RIST 아이디를 입력하세요.";
+      if(matches.length>20)note="전체 "+matches.length+"명 중 20명 표시 · 검색어를 더 입력하세요.";
+      if(!books.private||!books.shared)note+=" 일부 주소록을 불러오지 못했습니다. 입력창을 다시 선택해 재시도하세요.";
+      message(note);
+    }
+    function search(b){
+      if(locked||b.composing||document.activeElement!==b.input)return;
+      if(active!==b){hide();active=b;}var t=token(b.input);
+      if(!t.term){hide();return;}
+      if(books){render();return;}if(loading)return;
+      loading=true;message("주소록을 검색하는 중입니다…");var result={},remaining=2;
+      ["private","shared"].forEach(function(scope){request(scope,function(items){result[scope]=items;if(--remaining===0){loading=false;books=result;render();}});});
+    }
+    function schedule(b){
+      if(locked||document.activeElement!==b.input)return;
+      // Hide the previous query immediately so a fast Enter/click cannot pick a stale name.
+      if(choosing){hide();}if(active===b){b.list.textContent="";b.items=[];b.index=-1;b.input.removeAttribute("aria-activedescendant");b.popup.hidden=true;b.input.setAttribute("aria-expanded","false");}
+      window.clearTimeout(timer);timer=window.setTimeout(function(){search(b);},150);
+    }
+    function choose(index){
+      var b=active;if(!b||locked||choosing||b.composing||!b.items[index])return;
+      var picked=b.items[index],t=token(b.input),saved=b.snapshot;
+      if(t.value!==saved.value||t.start!==saved.start||t.end!==saved.end){schedule(b);return;}
+      choosing=true;message("선택한 주소를 확인하는 중입니다…");
+      request(picked.scope,function(items){
+        choosing=false;if(!active||active!==b||locked)return;
+        var current=token(b.input);if(current.value!==t.value||current.start!==t.start||current.end!==t.end){schedule(b);return;}
+        var match=(items||[]).filter(function(c){return c.id===picked.contact.id&&c.email===picked.contact.email&&c.name===picked.contact.name;})[0];
+        if(!match){books=null;b.items=[];b.list.textContent="";b.input.removeAttribute("aria-activedescendant");message(items?"주소 또는 공개 범위가 변경되었습니다. 검색어를 다시 입력하세요.":"주소를 확인하지 못했습니다. 잠시 후 다시 선택하세요.");return;}
+        var value=t.value.slice(0,t.start)+match.email+t.value.slice(t.end),error=options.replace(b.target,value);
+        if(error){message(error);return;}hide();b.input.focus();window.clearTimeout(timer);b.input.setSelectionRange(b.input.value.length,b.input.value.length);
+      });
+    }
+    Object.keys(options.fields).forEach(function(target){
+      var input=options.fields[target],label=input.parentNode.parentNode;label.classList.add("mail-contact-field");
+      var popup=node("div",label);popup.className="mail-contact-popup";popup.hidden=true;
+      var list=node("div",popup);list.className="mail-contact-list";list.id="rist-mail-contact-list-"+(++suggestionId);list.setAttribute("role","listbox");list.setAttribute("aria-label",input.getAttribute("aria-label")+" 주소록 검색 결과");
+      var status=node("p",popup);status.className="mail-contact-status";status.setAttribute("role","status");status.setAttribute("aria-live","polite");
+      var b={target:target,input:input,popup:popup,list:list,status:status,items:[],index:-1,composing:false};
+      input.setAttribute("role","combobox");input.setAttribute("aria-autocomplete","list");input.setAttribute("aria-expanded","false");input.setAttribute("aria-controls",list.id);input.setAttribute("aria-haspopup","listbox");
+      input.addEventListener("focus",function(){hide();schedule(b);});
+      input.addEventListener("input",function(){schedule(b);});input.addEventListener("click",function(){schedule(b);});
+      input.addEventListener("compositionstart",function(){b.composing=true;schedule(b);});input.addEventListener("compositionend",function(){b.composing=false;schedule(b);});
+      input.addEventListener("blur",function(){window.setTimeout(function(){if(active===b&&document.activeElement!==input&&!popup.contains(document.activeElement))hide();},0);});
+      input.addEventListener("keydown",function(e){
+        if(b.composing||e.isComposing||e.keyCode===229)return;
+        if(e.key==="Escape"&&active===b){e.preventDefault();e.stopPropagation();hide();return;}
+        if(e.key==="Tab"){if(active===b)hide();return;}
+        if(active!==b||b.popup.hidden||choosing)return;
+        if((e.key==="ArrowDown"||e.key==="ArrowUp")&&b.items.length){e.preventDefault();e.stopPropagation();highlight(b.index<0?(e.key==="ArrowDown"?0:b.items.length-1):b.index+(e.key==="ArrowDown"?1:-1));}
+        else if(e.key==="Enter"&&b.index>=0){e.preventDefault();e.stopPropagation();choose(b.index);}
+        else if(e.key==="ArrowLeft"||e.key==="ArrowRight"||e.key==="Home"||e.key==="End")schedule(b);
+      });
+    });
+    return {reset:hide,lock:function(value){locked=!!value;if(locked)hide();}};
+  };
   window.RistMailAddressBook=function(options){
     styles();var root=node("div"),panel,book={revision:0,contacts:[]},loaded=false,busy=false,locked=false,selected={},page=0,editing=null,dirty=false,scope="private",canManage=true;
     root.className="mail-book";options.host.insertBefore(root,options.before);

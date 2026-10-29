@@ -107,11 +107,19 @@
       if(copy)wrap.className="mail-copy-address";
       var input=node("input",wrap);input.type="text";input.maxLength=info[2];input.setAttribute("aria-label",info[1]);input.autocomplete="off";
       fields[info[0]]=input;
-      if(copy){node("span",wrap,"@"+copyDomain).className="mail-copy-domain";input.placeholder="RIST 아이디 (여러 명: 쉼표로 구분)";input.oninput=function(){state[info[0]]=copyAddresses(input.value);notify();};}
+      if(copy){node("span",wrap,"@"+copyDomain).className="mail-copy-domain";input.placeholder="이름 검색 또는 RIST 아이디 (쉼표로 구분)";input.oninput=function(){state[info[0]]=copyAddresses(input.value);notify();};}
       else{input.readOnly=true;input.placeholder=info[0]==="to"?"의뢰자 이메일은 LIMS에서 자동 조회":"의뢰번호 입력 후 자동 조회";}
     });
     var note=node("p");note.className="mail-note";note.textContent="수신자는 해당 의뢰의 의뢰자로 고정되며 직접 변경·추가할 수 없습니다. 참조·비밀참조는 RIST 이메일만 사용합니다. 비밀참조는 보고서·ZIP에 표시하지 않습니다.";addresses.parentNode.insertBefore(note,addresses.nextSibling);
     var recipientStatus=node("p");recipientStatus.className="mail-note";recipientStatus.setAttribute("role","status");note.parentNode.insertBefore(recipientStatus,note.nextSibling);
+    function replaceCopy(target,value){
+      if(locked)return "보고서 처리 후 다시 선택하세요.";
+      var invalid=copyError(value);if(invalid)return invalid;
+      var seen={},merged=copyAddresses(value).split(/,\s*/).filter(Boolean).filter(function(email){var key="$"+email.toLowerCase();if(seen[key])return false;seen[key]=true;return true;});
+      value=merged.join(", ");if(value.length>2000)return "참조·비밀참조 입력 길이를 초과했습니다. 선택 인원을 줄이세요.";
+      fields[target].value=copyIds(value);state[target]=value;notify();return "";
+    }
+    var contactSuggestions=new window.RistMailContactSuggestions({fields:{cc:fields.cc,bcc:fields.bcc},replace:replaceCopy});
     var addressBook=new window.RistMailAddressBook({host:host,before:note,add:function(target,emails){
       if(locked)return "보고서 처리 후 다시 선택하세요.";
       var invalid=copyError(fields[target].value);if(invalid)return invalid;
@@ -368,7 +376,7 @@
     var libraryDefault=button(libraryActions,"기본값","선택한 서명 기본값 지정",function(){var id=librarySelect.value;if(!id)return;libraryRequest("PUT","/"+encodeURIComponent(id)+"/default",{revision:signatureBook.revision},function(value){signatureBook=value;renderLibrary();feedback.textContent="기본 서명을 변경했습니다. 현재 보고서에는 불러오기로 적용하세요.";});},"star");
     var libraryDelete=button(libraryActions,"삭제","선택한 저장 서명 삭제",function(){var id=librarySelect.value;if(!id||!window.confirm("선택한 서명을 목록에서 삭제할까요? 현재 보고서의 서명은 유지됩니다."))return;libraryRequest("DELETE","/"+encodeURIComponent(id),{revision:signatureBook.revision},function(value){signatureBook=value;renderLibrary();feedback.textContent="서명을 목록에서 삭제했습니다.";});},"trash");
     button(libraryActions,"새로고침","서명 목록 새로고침",loadSignatures,"refresh");
-    function load(value){endSignatureDrag(false);loadVersion++;tables.reset();state={};keys.forEach(function(k){state[k]=k==="to"||k==="recipientName"?"":String((value||{})[k]||(k==="signatureImageWidth"?"320":""));if(k==="cc"||k==="bcc")fields[k].value=copyIds(state[k]);else if(fields[k]&&k!=="to"&&k!=="recipientName")fields[k].value=state[k];});state.bodyHtml=clean(state.bodyHtml);clean(signatureMarkup(state));rich.innerHTML=state.bodyHtml||plain(body.value);range=null;selectedImage=null;mediaTools.hidden=true;renderSignature();refreshRecipient();}
+    function load(value){endSignatureDrag(false);contactSuggestions.reset();loadVersion++;tables.reset();state={};keys.forEach(function(k){state[k]=k==="to"||k==="recipientName"?"":String((value||{})[k]||(k==="signatureImageWidth"?"320":""));if(k==="cc"||k==="bcc")fields[k].value=copyIds(state[k]);else if(fields[k]&&k!=="to"&&k!=="recipientName")fields[k].value=state[k];});state.bodyHtml=clean(state.bodyHtml);clean(signatureMarkup(state));rich.innerHTML=state.bodyHtml||plain(body.value);range=null;selectedImage=null;mediaTools.hidden=true;renderSignature();refreshRecipient();}
     var templates=options.subject&&window.RistMailTemplates?new window.RistMailTemplates({host:host,before:options.subject.parentNode,
       experiment:options.experiment,context:options.context||function(){return {};},clean:clean,
       current:function(){return {subject:options.subject.value,bodyHtml:sourceMode?plain(body.value):rich.innerHTML};},
@@ -378,7 +386,7 @@
     }):null;
     load(options.value);
     return {value:function(){var result={};keys.forEach(function(k){result[k]=k==="to"||k==="recipientName"?"":k==="cc"||k==="bcc"?copyAddresses(fields[k].value):fields[k]?fields[k].value:state[k]||"";});return result;},load:load,refreshRecipient:refreshRecipient,
-      lock:function(value){if(value)endSignatureDrag(false);locked=!!value;addressBook.lock(locked);tables.lock();rich.contentEditable=String(!locked);Array.prototype.forEach.call(host.querySelectorAll(".mail-addresses input,.mail-toolbar button,.mail-toolbar input,.mail-resize-handle,.mail-signature textarea"),function(e){e.disabled=locked;});imageButton.disabled=locked||mediaBusy;signatureControls();},
+      lock:function(value){if(value)endSignatureDrag(false);locked=!!value;contactSuggestions.lock(locked);addressBook.lock(locked);tables.lock();rich.contentEditable=String(!locked);Array.prototype.forEach.call(host.querySelectorAll(".mail-addresses input,.mail-toolbar button,.mail-toolbar input,.mail-resize-handle,.mail-signature textarea"),function(e){e.disabled=locked;});imageButton.disabled=locked||mediaBusy;signatureControls();},
       validate:function(){if(signatureDrag)return "이미지 크기 조절을 마친 후 저장하세요.";if(mediaBusy)return "이미지 처리가 끝난 후 저장하세요.";if(body.value.length>4000)return "메일 본문은 4,000자 이하로 입력하세요.";if(signature.value.length>2000)return "서명은 2,000자 이하로 입력하세요.";var invalid=copyError(fields.cc.value)||copyError(fields.bcc.value);if(invalid)return invalid;try{clean((sourceMode?plain(body.value):rich.innerHTML)+signatureMarkup(state));}catch(error){return error.message;}return "";}};
   };
   window.RistMailEditor.clean=clean;

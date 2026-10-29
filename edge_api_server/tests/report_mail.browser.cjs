@@ -148,6 +148,33 @@ const port=new Promise((resolve,reject)=>{let s='';server.stdout.on('data',chunk
       }
       try{
         await open();
+        if(process.env.RIST_MAIL_CONTACT_TEST){
+          addressBook.contacts=[{id:'personal',name:'김연구',department:'소재분석실',email:'kim@rist.re.kr'}];
+          sharedBook.contacts=[{id:'shared',name:'김분석',department:'공동연구실',email:'shared@rist.re.kr',visibility:{mode:'all',projects:[]}},
+            {id:'hidden',name:'김비공개',department:'관리자',email:'private@rist.re.kr',visibility:{mode:'admins',projects:[]}}];manageShared=false;
+          const cc=page.getByLabel('참조 (CC)',{exact:true}),bcc=page.getByLabel('비밀참조 (BCC)',{exact:true}),list=page.locator('.mail-contact-popup:visible');
+          await cc.fill('existing, 김');await list.getByRole('option').last().waitFor();assert.equal(await list.getByRole('option').count(),2);
+          assert(!(await list.textContent()).includes('김비공개'));await cc.press('ArrowDown');await cc.press('Enter');
+          await page.waitForFunction(()=>document.querySelector('[aria-label="참조 (CC)"]').value==='existing, kim');await save();
+          await bcc.fill('김');await list.getByRole('option').last().waitFor();await list.getByRole('option').filter({hasText:'김분석'}).click();
+          await page.waitForFunction(()=>document.querySelector('[aria-label="비밀참조 (BCC)"]').value==='shared');await save();
+          await open();assert.equal(await cc.inputValue(),'existing, kim');assert.equal(await bcc.inputValue(),'shared');
+          assert(await page.getByLabel('수신자 이메일 주소',{exact:true}).evaluate(e=>e.readOnly));
+          for(const width of [1440,390]){
+            await page.setViewportSize({width,height:1000});
+            if(width===390&&kind!=='xrd'&&await page.locator('#page-sidebar-close').isVisible())await page.locator('#page-sidebar-close').click();
+            await cc.fill('existing, 김');await list.getByRole('option').last().waitFor();await list.scrollIntoViewIfNeeded();
+            assert(await list.evaluate(e=>{const b=e.getBoundingClientRect();return b.left>=0&&b.right<=innerWidth+1&&e.scrollWidth<=e.clientWidth+2;}));
+            assert(await list.getByRole('option').first().evaluate(e=>{const r=e.getBoundingClientRect();return r.height>=44&&e.contains(document.elementFromPoint(r.left+r.width/2,r.top+r.height/2));}));
+            await list.screenshot({path:path.join(output,name+'-contacts-'+width+'.png')});
+            await list.getByRole('option').filter({hasText:'김연구'}).click();await page.waitForFunction(()=>document.querySelector('[aria-label="참조 (CC)"]').value==='existing, kim');
+          }
+          await bcc.fill('김');await list.getByRole('option').last().waitFor();sharedBook.contacts[0].visibility={mode:'admins',projects:[]};
+          await list.getByRole('option').filter({hasText:'김분석'}).click();await list.getByText('주소 또는 공개 범위가 변경되었습니다. 검색어를 다시 입력하세요.',{exact:true}).waitFor();
+          assert.equal(await bcc.inputValue(),'김');await bcc.press('Escape');assert.equal(await list.count(),0);
+          await bcc.fill('shared, additional');await save();assert.deepEqual(errors,[]);
+          console.log(name+': one-character CC/BCC search, keyboard/mouse choice, permissions, save/reopen and desktop/mobile layout passed');continue;
+        }
         assert(await page.locator('.mail-compose .mail-toolbar button').evaluateAll(list=>list.filter(b=>!b.closest('.mail-table-grid')).every(b=>b.classList.contains('mail-icon-button')&&b.textContent===''&&b.title===b.getAttribute('aria-label')&&b.querySelector('svg[aria-hidden="true"]'))));
         await page.getByRole('button',{name:'메일 이미지 삽입',exact:true}).hover();assert.equal(await page.locator('.mail-tool-hint').textContent(),'메일 이미지 삽입');
         await page.getByRole('button',{name:'내 기본 서명 저장',exact:true}).focus();assert.equal(await page.locator('.mail-tool-hint').textContent(),'내 기본 서명 저장');
