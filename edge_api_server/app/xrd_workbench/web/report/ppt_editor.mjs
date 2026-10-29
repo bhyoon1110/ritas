@@ -21,7 +21,8 @@ export function mountPptEditor({host,document:documentValue,changed,linked,messa
   const templateHost=window.document.createElement('div');
   el('canvas-tools').parentNode.insertBefore(templateHost,el('canvas-tools'));
   const templates=new window.RistPptTemplates.Manager({host:templateHost,experiment:'XRD',
-    layout:()=>templateLayout,state:()=>canvas.value(),apply:edits=>canvas.applyStyles(edits)});
+    layout:()=>templateLayout,state:()=>canvas.value(),apply:edits=>canvas.applyStyles(edits),
+    upload:(file,done)=>canvas.uploadTemplateBackground(file,done)});
   function availability(){
     const blocked=locked||pending||!pages.length, selected=sidebar.selectedIds();
     canvas.lock(blocked);sidebar.lock(blocked,locked);

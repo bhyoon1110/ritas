@@ -33,7 +33,17 @@ const port=new Promise((resolve,reject)=>{let s='';server.stdout.on('data',chunk
       await page.route('**/*',async route=>{
         const r=route.request(),url=new URL(r.url()),p=url.pathname;
         const json=(data,status=200)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(data)});
+        if(pptTest&&p.endsWith('/editor-images'))return json({asset:'f'.repeat(64),width:1600,height:900});
         if(p.startsWith('/api/v1/report-ppt/templates')){
+          if(p.endsWith('/import')){
+            assert.equal(Number(url.searchParams.get('revision')),pptState.revision);
+            assert(r.postDataBuffer().length>0);
+            const selectedId='ext-'+pptState.revision;
+            pptState.items.push({id:selectedId,content:{version:2,name:url.searchParams.get('name'),experiment:kind.toUpperCase(),ratio:16/9,source:'d'.repeat(64),bindings:[]},
+              sourceDocument:{ratio:16/9,pages:[{index:0,backgroundDigest:'e'.repeat(64),omitted:0,objects:[{id:'slot-0',kind:'text',label:'이전 제목 자리',style:{x:.15,y:.18,w:.7,h:.2,fontSize:31,color:'#225588'},cells:[]}]}]}});
+            pptState.revision++;return json({revision:pptState.revision,selectedId,items:pptState.items.map(i=>({id:i.id,name:i.content.name,experiment:i.content.experiment}))},201);
+          }
+          if(/\/slides\/0\/(preview|background)$/.test(p))return route.fulfill({contentType:'image/png',body:imageBytes});
           const id=p.split('/templates/')[1],item=pptState.items.find(i=>i.id===id);let selectedId=id;
           if(r.method()!=='GET'){
             const v=r.postDataJSON();assert.equal(v.revision,pptState.revision);

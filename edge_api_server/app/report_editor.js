@@ -66,7 +66,8 @@
     var templateHost=document.createElement("div"),canvasHost=document.getElementById("canvas-tools");
     canvasHost.parentNode.insertBefore(templateHost,canvasHost);
     pptTemplates=new window.RistPptTemplates.Manager({host:templateHost,experiment:project.replace("-",""),
-      layout:function(){return pptLayout;},state:function(){return canvas.value();},apply:function(edits){return canvas.applyStyles(edits);}});
+      layout:function(){return pptLayout;},state:function(){return canvas.value();},apply:function(edits){return canvas.applyStyles(edits);},
+      upload:function(file,done){canvas.uploadTemplateBackground(file,done);}});
   }
   if(workflow && canvas && window.RistSavedGraphs) new window.RistSavedGraphs({
     canvas:canvas,job:function(){return currentId;},message:message

@@ -18,6 +18,9 @@ def layout_key(role, objects):
 
 
 def content(value):
+    if isinstance(value, dict) and value.get('version') == 2:
+        from .ppt_template_import import validate_content
+        return validate_content(value)
     if not isinstance(value, dict) or set(value) != {'version', 'name', 'experiment', 'ratio', 'pages'}:
         raise ValueError('PPT 템플릿 입력 형식을 확인하세요.')
     if type(value['version']) is not int or value['version'] != 1:

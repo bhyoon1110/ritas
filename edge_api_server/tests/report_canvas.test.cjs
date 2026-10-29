@@ -14,6 +14,14 @@ function setup(t, upload, mode='native'){
   button('자유 편집 켜기').click();return {w,d,api,button,field,set,item,changes:()=>changes,modes};
 }
 for(const mode of Object.keys(programs)){
+  test(mode+': template background hit target stays behind text before autosave',t=>{
+    const h=setup(t,null,mode);
+    h.api.applyStyles({page1:[{id:'object-template-background',kind:'image',asset:'a'.repeat(64),x:0,y:0,w:1,h:1,layer:'back'}]});
+    const children=[...h.d.querySelectorAll('#canvas-layer > .canvas-object')];
+    assert.equal(children[0].dataset.objectId,'object-template-background');
+    assert.equal(children[1].dataset.objectId,h.item.id);
+    children[1].click();assert.equal(h.field('내용').value,h.item.text);
+  });
   test(mode+': template formatting is a single undoable edit and preserves current content',t=>{
     const h=setup(t,null,mode);h.api.load({page1:[{id:h.item.id,text:'현재 보고서',color:'#112233'}]});
     assert.equal(h.api.applyStyles({page1:[{id:h.item.id,kind:'text',fontSize:28,color:'#339955'}]}),true);

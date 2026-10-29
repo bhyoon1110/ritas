@@ -57,3 +57,50 @@ test('manager lists privately, saves, previews, applies and handles concurrent e
   input.value='보존할 입력';button('선택한 템플릿을 현재 PPT 서식으로 덮어쓰기').click();respond(409,{message:'다른 창에서 변경'});
   assert.equal(input.value,'보존할 입력');assert(d.body.textContent.includes('다른 창에서 변경'));
 });
+
+function external(){return {version:2,name:'외부 양식',experiment:'FTIR',ratio:16/9,source:'d'.repeat(64),bindings:[
+  {key,slide:0,background:true,objects:[{source:'slot-0',target:id},{source:'slot-1',target:table}]}]};}
+function sourceDocument(){return {ratio:16/9,pages:[{index:0,backgroundDigest:'e'.repeat(64),omitted:1,objects:[
+  {id:'slot-0',kind:'text',label:'이전 분석 문장',style:{x:.2,y:.3,w:.6,h:.2,fontSize:30},cells:[]},
+  {id:'slot-1',kind:'table',label:'표',style:{x:.1,y:.6,w:.7,h:.3},cells:[{row:0,col:0,bold:true,text:'NEVER COPY'},{row:8,col:0,bold:true}]}
+]}]};}
+test('external mapping repeats for new samples, preserves values and reports mismatches',t=>{
+  const api=setup(t).RistPptTemplates,target=layout();target.pages.push({...target.pages[0],id:'other-sample'});
+  const result=plain(api.externalPlan(external(),sourceDocument(),target,'FTIR'));
+  assert.equal(result.pages,2);assert.equal(result.backgrounds.length,2);assert.equal(result.cellsSkipped,2);
+  assert(!JSON.stringify(result.edits).includes('NEVER COPY'));
+  const state={new:[{id,text:'CURRENT ANALYSIS'},{id:table,tableCells:[{row:0,col:0,text:'CURRENT VALUE'}]}]};
+  const merged=plain(api.merge(state,result.edits));assert.equal(merged.new[0].text,'CURRENT ANALYSIS');assert.equal(merged.new[1].tableCells[0].text,'CURRENT VALUE');
+  assert(api.externalPlan(external(),sourceDocument(),{...target,ratio:4/3},'FTIR').error);
+  assert(api.externalPlan(external(),sourceDocument(),target,'TEM').error);
+});
+function externalManager(t){
+  const w=setup(t),d=w.document,requests=[],applied=[];w.confirm=()=>true;
+  w.XMLHttpRequest=function(){this.open=(method,url)=>{this.method=method;this.url=url;};this.setRequestHeader=()=>{};this.send=body=>{this.body=body;requests.push(this);};};
+  const respond=(data,status=200)=>{const r=requests.shift();r.status=status;r.responseText=JSON.stringify(data);r.onload();return r;};
+  let state={},uploaded;
+  const manager=new w.RistPptTemplates.Manager({host:d.getElementById('host'),experiment:'FTIR',layout:()=>layout(),state:()=>state,
+    apply:v=>applied.push(plain(v)),upload:(file,done)=>{uploaded=done;}});
+  manager.lock(false);d.querySelector('summary').click();respond({revision:1,items:[{id:'ext',name:'외부 양식',experiment:'FTIR'}]});
+  const select=d.querySelector('[aria-label="PPT 템플릿 선택"]');select.value='ext';select.onchange();respond({revision:1,content:external(),sourceDocument:sourceDocument()});
+  return {w,d,manager,requests,respond,applied,setState:s=>state=s,uploaded:()=>uploaded};
+}
+test('external mapping editor saves bindings without replacing them with current report data',t=>{
+  const h=externalManager(t),d=h.d;
+  assert.equal(d.querySelector('.ppt-template-links select').value,id);
+  const select=d.querySelector('.ppt-template-links select');select.value='';select.onchange();
+  const apply=[...d.querySelectorAll('button')].find(b=>b.textContent==='양식 적용');assert(apply.disabled);
+  d.querySelector('[aria-label="PPTX 양식 이름·연결 저장"]').click();
+  const body=JSON.parse(h.requests[0].body);assert.equal(body.content.version,2);assert.equal(body.content.bindings[0].objects.length,1);
+  assert(!JSON.stringify(body).includes('새 분석결과'));
+  h.respond({message:'다른 창에서 변경'},409);assert(d.body.textContent.includes('다른 창에서 변경'));
+  assert.equal(d.querySelector('.ppt-template-links select').value,'');
+});
+test('backgrounds apply as one patch and abort if report changes during upload',t=>{
+  const h=externalManager(t),apply=[...h.d.querySelectorAll('button')].find(b=>b.textContent==='양식 적용');apply.click();
+  const request=h.requests.shift();assert.equal(request.responseType,'blob');request.status=200;request.response=new h.w.Blob(['png'],{type:'image/png'});request.onload();
+  h.setState({new:[{id,text:'changed meanwhile'}]});h.uploaded()(null,{asset:'f'.repeat(64)});
+  assert.equal(h.applied.length,0);assert(h.d.body.textContent.includes('보고서가 변경'));
+  apply.click();const next=h.requests.shift();next.status=200;next.response=request.response;next.onload();h.uploaded()(null,{asset:'f'.repeat(64)});
+  assert.equal(h.applied.length,1);assert.equal(h.applied[0].new.at(-1).layer,'back');assert.equal(h.applied[0].new.at(-1).asset,'f'.repeat(64));
+});

@@ -79,7 +79,7 @@ def objects(payload):
         info = shape.find(".//p:cNvPr", NS)
         name = info.get("name", "") if info is not None else ""
         # Branding lives in the master; its per-slide caption is locked too.
-        if name in {"Experiment banner title", "Footer", "Experiment label"}:
+        if name in {"Experiment banner title", "Footer", "Experiment label", "Template POSCO background", "Template RIST logo"}:
             continue
         xfrm = shape.find("p:xfrm" if is_table else "p:spPr/a:xfrm", NS)
         if xfrm is None:
@@ -373,5 +373,20 @@ def apply(document, payloads, *, validate_only=False, previous_edits=None):
                 if patch['layer']=='front': parent.append(shape)
                 else: parent.insert(2,shape)
         if not validate_only:
+            # A full-slide template raster sits above inherited master artwork.
+            # Keep the existing institutional branding visible and non-editable.
+            names={n.get('name') for n in parent.findall('.//p:cNvPr',NS)}
+            if 'object-template-background' in names:
+                from ahn.report_branding import ASSET_DIR, brand_pictures
+                for picture in brand_pictures(width,height):
+                    label='Template '+picture.name
+                    if picture.name in names or label in names: continue
+                    rid='rIdTemplateBrand'+str(next_id)
+                    while any(rel.get('Id')==rid for rel in rels): rid+='x'
+                    shape=ET.fromstring(picture.xml(next_id,rid));next_id+=1
+                    shape.find('p:nvPicPr/p:cNvPr',NS).set('name',label)
+                    name='template-brand-'+picture.media
+                    ET.SubElement(rels,'{'+REL+'}Relationship',{'Id':rid,'Type':NS['r']+'/image','Target':'../media/'+name})
+                    parent.insert(3,shape);media.append((name,ASSET_DIR/picture.media))
             payload.update(xml=ET.tostring(tree,encoding='unicode'),rels=ET.tostring(rels,encoding='unicode'),media=media)
     return payloads

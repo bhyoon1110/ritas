@@ -113,6 +113,7 @@
         var label=(index+1)+" · "+kindName+" · "+name.slice(0,45);
         el("option",list,label).value=item.id;
         var b=el(item.kind==="table"?"div":"button",layer);if(item.kind!=="table")b.type="button";else {b.tabIndex=0;b.setAttribute("role","group");}
+        if(item.id==="object-template-background")layer.insertBefore(b,layer.firstChild);
         b.className="canvas-object"+(item.id===selected?" selected":"");
         b.setAttribute("aria-label",label);b.title=label;box(b,item);b.dataset.objectId=item.id;
         b.onclick=function(){select(item.id);};b.ondblclick=function(){select(item.id);if(item.kind==="text")fields.text.focus();else if(item.kind==="table")cellChoice.focus();};
@@ -301,6 +302,10 @@
     return {
       load:function(value){cellEditor.close(false);state=copy(value||{});undo=[];redo=[];selected=null;},
       value:function(){return copy(state);},
+      uploadTemplateBackground:function(file,done){
+        if(locked||loading||!capable){done(new Error("미리보기 반영이 끝난 뒤 양식을 적용하세요."));return;}
+        options.upload(file,done);
+      },
       applyStyles:function(edits){
         if(locked||loading||!capable)return false;
         var next=window.RistPptTemplates.merge(state,edits),count=0,invalid=false;
