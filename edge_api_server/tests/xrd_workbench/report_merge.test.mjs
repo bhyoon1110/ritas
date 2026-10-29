@@ -1,6 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mergeDraftChanges } from '../../app/xrd_workbench/web/report/report_merge.mjs';
+test('explicit native template selection survives draft recovery without changing untouched defaults',()=>{
+  const base={metadata:{},llm:{},samples:[],summary:'',canvasEdits:{page:[{id:'shape-old',fontSize:30}]}};
+  const current={...structuredClone(base),template_version:'2026-10-29',canvasEdits:{}};
+  const latest={...structuredClone(base),revision:5};
+  const merged=mergeDraftChanges(latest,current,base);
+  assert.equal(merged.template_version,'2026-10-29');assert.deepEqual(merged.canvasEdits,{});
+  assert.equal(merged.revision,5);
+  assert.equal(mergeDraftChanges({...latest,template_version:'2026-10-29'},base,base).template_version,'2026-10-29');
+});
 test('page and object edits survive recovery without overwriting untouched newer edits',()=>{
   const base={metadata:{},llm:{},samples:[],summary:'',pageEdits:{hidden:[],added:[]},canvasEdits:{}};
   const latest=structuredClone(base);latest.canvasEdits={page:[{id:'object-latest',text:'Other saved edit'}]};

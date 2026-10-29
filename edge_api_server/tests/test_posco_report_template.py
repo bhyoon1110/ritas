@@ -49,7 +49,7 @@ def test_spectrum_ppt_reuses_original_artwork_without_sample_payload(tmp_path, c
         assert report.read(f"ppt/media/{posco_template.MEDIA_NAME}") == source.read("ppt/media/image1.jpeg")
         assert report.read(f"ppt/media/{report_branding.LOGO_NAME}") == source.read("ppt/media/image2.png")
         assert report.read("ppt/media/image1.jpg") == image.read_bytes()
-        assert len([n for n in report.namelist() if n.startswith("ppt/media/")]) == 3
+        assert len([n for n in report.namelist() if n.startswith("ppt/media/")]) == 4
         assert not any("notesSlides/" in n or n.endswith(".tiff") for n in report.namelist())
         layout = ET.fromstring(report.read("ppt/slideLayouts/slideLayout1.xml"))
         assert not layout.findall(".//a:t", NS)  # No TEM sample text or / 22 footer.

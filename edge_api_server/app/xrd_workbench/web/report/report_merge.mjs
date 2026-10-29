@@ -8,6 +8,8 @@ export function mergeDraftChanges(latest, current, baseline) {
       if (!same(current[group][key], baseline[group][key]))
         out[group][key] = structuredClone(current[group][key]);
   if (!same(current.summary, baseline.summary)) out.summary = current.summary;
+  if ((current.template_version || 'legacy') !== (baseline.template_version || 'legacy'))
+    out.template_version = current.template_version || 'legacy';
   if (!same(current.pptxProtection || {}, baseline.pptxProtection || {}))
     out.pptxProtection = structuredClone(current.pptxProtection || {});
   for (const key of ['pageEdits','canvasEdits'])

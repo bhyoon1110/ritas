@@ -17,7 +17,7 @@ from PIL import Image, ImageChops, ImageDraw, ImageFont, ImageOps, ImageStat
 
 from .docx_extract import extract_docx
 from .report_branding import brand_assets, brand_pictures
-from .report_cover import COVER_NAME, shape_xml
+from .report_cover import COVER_NAME, shape_xml, supplied_cover_asset, supplied_cover_picture, supplied_cover_logo
 
 
 def _require_pptx():
@@ -1986,8 +1986,22 @@ def _add_report_cover(prs, data):
         slide.element.cSld.set("name",name)
         slide.background.fill.solid()
         slide.background.fill.fore_color.rgb = RGBColor(255,255,255)
-        for spec in layout("TEM", metadata.get("title") or "TEM/STEM/EDS 분석 보고서",
-                values, prs.slide_width, prs.slide_height):
+        specs = layout("TEM", metadata.get("title") or "TEM/STEM/EDS 분석 보고서",
+                values, prs.slide_width, prs.slide_height)
+        if name == COVER_NAME:
+            # Cover the inherited banner; retain the original logo above the
+            # full-canvas artwork without changing any existing text shape IDs.
+            picture = supplied_cover_picture(prs.slide_width, prs.slide_height)
+            _, rid = slide.part.get_or_add_image_part(BytesIO(supplied_cover_asset()))
+            artwork = parse_xml(picture.xml(1000, rid))
+            locks = artwork.xpath(".//a:picLocks")[0]
+            for key in ("noSelect", "noMove", "noResize", "noRot", "noCrop"):
+                locks.set(key, "1")
+            slide.shapes._spTree.insert_element_before(artwork, "p:extLst")
+            logo = supplied_cover_logo(prs.slide_width, prs.slide_height)
+            _, logo_rid = slide.part.get_or_add_image_part(BytesIO(brand_assets()[logo.media]))
+            slide.shapes._spTree.insert_element_before(parse_xml(logo.xml(1001, logo_rid)), "p:extLst")
+        for spec in specs:
             slide.shapes._spTree.insert_element_before(parse_xml(shape_xml(spec)), "p:extLst")
 
 

@@ -98,13 +98,43 @@
       });
     });return next;
   }
+  function nativeDefaults(state){
+    var next=copy(state);
+    // Delete overrides so the native renderer can recompute adaptive geometry,
+    // including dormant pages. Never transplant reference-slide positions.
+    Object.keys(next).forEach(function(page){
+      next[page]=next[page].filter(function(o){
+        if(o.id==="object-template-background")return false;
+        if(o.id.indexOf("shape-")!==0)return true;
+        styles.concat(["hidden","layer"]).forEach(function(k){delete o[k];});
+        if(o.tableCells){
+          o.tableCells=o.tableCells.filter(function(c){
+            cellStyles.forEach(function(k){delete c[k];});
+            return Object.keys(c).some(function(k){return k!=="row"&&k!=="col";});
+          });
+          if(!o.tableCells.length)delete o.tableCells;
+        }
+        return Object.keys(o).some(function(k){return k!=="id"&&k!=="kind";});
+      });
+      if(!next[page].length)delete next[page];
+    });return next;
+  }
+  function nativeDefaultError(state,version){
+    if(version==="2026-10-29")return "";
+    // Legacy cover/body roles can have different shape IDs in the new design.
+    // Keep those authored values intact instead of silently orphaning patches.
+    var contentEdits=Object.keys(state).some(function(page){return state[page].some(function(o){
+      return o.id.indexOf("shape-")===0&&(o.text!=null||o.asset!=null||(o.tableCells||[]).some(function(c){return c.text!=null;}));
+    });});
+    return contentEdits?"이전 기본 양식에 직접 수정한 글자·표·이미지가 있어 적용할 수 없습니다. 해당 내용을 분석 입력에 옮긴 뒤 개체 편집을 초기화하거나 기존 양식을 유지하세요.":"";
+  }
   function Manager(options){
     var host=document.createElement("details");host.className="ppt-template-manager";
     options.host.appendChild(host);
     var busy=false,locked=true,revision=0,items=[],loaded=null,loadedId="",initialized=false,sourceDocument=null,bindingDirty=false,mappingLayout="";
     function el(tag,parent,text){var n=document.createElement(tag);if(text!=null)n.textContent=text;parent.appendChild(n);return n;}
     el("summary",host,"PPT 양식 템플릿");
-    el("p",host,"내 계정의 실험별 양식입니다. 현재 서식을 저장하거나 외부 PPTX의 자리를 연결해 재사용합니다. 현재 분석값·그래프와 페이지 구성은 유지합니다.");
+    el("p",host,"기본 제공 양식과 내 계정의 실험별 양식을 선택합니다. 현재 서식을 저장하거나 외부 PPTX의 자리를 연결해 재사용합니다. 현재 분석값·그래프와 페이지 구성은 유지합니다.");
     var fields=el("div",host);fields.className="actions";
     var select=el("select",fields);select.setAttribute("aria-label","PPT 템플릿 선택");
     var name=el("input",fields);name.type="text";name.maxLength=80;name.placeholder="템플릿 이름";name.setAttribute("aria-label","PPT 템플릿 이름");
@@ -114,13 +144,17 @@
     var add=button("현재 PPT 서식을 새 템플릿으로 저장","add",function(){save(false);});
     var update=button("선택한 템플릿을 현재 PPT 서식으로 덮어쓰기","edit",function(){save(true);});
     var remove=button("선택한 PPT 템플릿 삭제","trash",function(){
-      if(busy||!select.value)return;
+      if(remove.disabled||!select.value)return;
       if(!window.confirm("선택한 템플릿을 삭제할까요? 작성 중인 보고서는 유지됩니다."))return;
       request("/"+select.value,"DELETE",{revision:revision},function(data){book(data);name.value="";message("템플릿을 삭제했습니다.");});
     });
     var apply=el("button",row,"양식 적용");apply.type="button";apply.onclick=function(){
       if(apply.disabled||!loaded)return;
       var result=currentPlan();
+      if(result.native&&!result.error){
+        if(options.applyNative(loaded.nativeTemplate)!==false)message("기본 제공 양식을 적용했습니다. 미리보기에 반영되며, 최종 저장 전 자유편집의 실행취소로 되돌릴 수 있습니다.");
+        return;
+      }
       if(result.error||!result.objects){render();return;}
       if(loaded.version===2){applyExternal(result);return;}
       if(options.apply(result.edits)!==false)message(result.pages+"개 페이지에 양식을 적용했습니다. "+(options.experiment==="XRD"?"최종 저장 전에는 ":"")+"자유편집의 실행취소로 되돌릴 수 있습니다.");
@@ -143,7 +177,11 @@
     var clear=el("button",mapping,"이 페이지 연결 해제");clear.type="button";
     var download=el("a",mapping,"원본 PPTX 다운로드");download.style.marginLeft="12px";
     function isExternal(){return !!(loaded&&loaded.version===2&&sourceDocument);}
-    function currentPlan(){return isExternal()?externalPlan(loaded,sourceDocument,options.layout(),options.experiment):plan(loaded,options.layout(),options.experiment);}
+    function isBuiltin(){return !!(loaded&&loaded.version===3);}
+    function currentPlan(){
+      if(isBuiltin())return {native:true,error:options.experiment!=="XRD"||loaded.experiment!=="XRD"||loaded.nativeTemplate!=="2026-10-29"||!options.applyNative?"현재 화면에서 지원하지 않는 기본 양식입니다.":options.nativeError?options.nativeError():""};
+      return isExternal()?externalPlan(loaded,sourceDocument,options.layout(),options.experiment):plan(loaded,options.layout(),options.experiment);
+    }
     function reportPage(){return ((options.layout()||{}).pages||[]).filter(function(p){return p.id===targetPage.value;})[0];}
     function showMapping(){
       var page=reportPage();links.textContent="";if(!page||!isExternal())return;
@@ -221,7 +259,7 @@
     function render(){
       var layout=options.layout(),ready=!locked&&layout&&layout.canvasEditing===true;
       select.disabled=busy;name.disabled=busy;refresh.disabled=busy;
-      add.disabled=busy||!ready||!initialized;update.disabled=busy||!ready||!loaded;remove.disabled=busy||!select.value;
+      add.disabled=busy||!ready||!initialized;update.disabled=busy||!ready||!loaded||isBuiltin();remove.disabled=busy||!select.value||isBuiltin();
       file.disabled=busy;importButton.disabled=busy||!initialized;
       window.RistReportIcons(update,"edit",isExternal()?"PPTX 양식 이름·연결 저장":"선택한 템플릿을 현재 PPT 서식으로 덮어쓰기");
       mapping.hidden=!isExternal();
@@ -236,9 +274,10 @@
         Array.prototype.forEach.call(mapping.querySelectorAll("select,input,button"),function(n){n.disabled=busy||!ready;});
       }
       var result=loaded&&ready?currentPlan():null;
-      apply.disabled=busy||bindingDirty||!result||!!result.error||!result.objects;
+      apply.disabled=busy||bindingDirty||!result||!!result.error||!(result.native||result.objects);
       summary.textContent=!ready?"미리보기 반영이 완료되면 저장·적용할 수 있습니다.":!result?"템플릿을 선택하면 적용 범위를 확인할 수 있습니다.":
-        result.error||(result.pages+"개 페이지 · "+result.objects+"개 개체에 적용 / 현재 보고서의 미대응 페이지 "+result.skipped+"개 / 템플릿의 미사용 페이지 "+result.unused+"개"+(result.cellsSkipped?" / 없는 표 셀 "+result.cellsSkipped+"개 제외":"")+(isExternal()?". 같은 구성의 페이지에 연결을 재사용합니다.":". 같은 구성의 페이지는 순서대로 대응합니다.")+(bindingDirty?" 변경한 연결을 저장한 뒤 적용하세요.":""));
+        result.error||(result.native?"기본 제공 · 2026-10-29 양식으로 배치·글자·표 서식을 복원하고 외부 양식 배경을 제거합니다. 현재 내용·그래프·추가 개체·페이지 구성은 유지합니다. 기본 양식은 덮어쓰기·삭제할 수 없습니다.":
+        result.pages+"개 페이지 · "+result.objects+"개 개체에 적용 / 현재 보고서의 미대응 페이지 "+result.skipped+"개 / 템플릿의 미사용 페이지 "+result.unused+"개"+(result.cellsSkipped?" / 없는 표 셀 "+result.cellsSkipped+"개 제외":"")+(isExternal()?". 같은 구성의 페이지에 연결을 재사용합니다.":". 같은 구성의 페이지는 순서대로 대응합니다.")+(bindingDirty?" 변경한 연결을 저장한 뒤 적용하세요.":""));
     }
     function request(tail,method,body,done){
       busy=true;render();message("템플릿 처리 중…");
@@ -253,10 +292,13 @@
     }
     function book(data,selected,preserveName){
       revision=data.revision;items=data.items;loaded=null;loadedId="";sourceDocument=null;bindingDirty=false;mappingLayout="";select.textContent="";el("option",select,"PPT 템플릿 선택").value="";
-      items.filter(function(i){return i.experiment===options.experiment;}).forEach(function(i){el("option",select,i.name).value=i.id;});
+      items.filter(function(i){return i.experiment===options.experiment;}).forEach(function(i){el("option",select,(i.builtin?"[기본 제공] ":"")+i.name).value=i.id;});
       select.value=selected||"";if(select.value)read(preserveName);
     }
-    function list(selected){var preserved=initialized?name.value:null;request("","GET",null,function(data){initialized=true;book(data,selected,preserved);});}
+    function list(selected){var first=!initialized,preserved=initialized?name.value:null;request("","GET",null,function(data){
+      if(first&&!selected){var defaults=data.items.filter(function(i){return i.experiment===options.experiment&&i.builtin&&i.default;});selected=defaults.length?defaults[0].id:"";}
+      initialized=true;book(data,selected,preserved);
+    });}
     function read(preserveName){loaded=null;if(!select.value){loadedId="";bindingDirty=false;sourceDocument=null;mappingLayout="";render();return;}
       request("/"+select.value,"GET",null,function(data){loaded=data.content;loadedId=select.value;sourceDocument=data.sourceDocument||null;bindingDirty=false;mappingLayout="";revision=data.revision;name.value=typeof preserveName==="string"?preserveName:loaded.name;});}
     function save(replace){
@@ -272,5 +314,5 @@
     host.querySelector("summary").onclick=function(){if(!initialized&&!busy)list();};
     render();return {lock:function(value){locked=value;render();},refresh:render};
   }
-  window.RistPptTemplates={capture:capture,plan:plan,externalPlan:externalPlan,merge:merge,Manager:Manager};
+  window.RistPptTemplates={capture:capture,plan:plan,externalPlan:externalPlan,merge:merge,nativeDefaults:nativeDefaults,nativeDefaultError:nativeDefaultError,Manager:Manager};
 }());

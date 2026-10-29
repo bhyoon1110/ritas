@@ -16,12 +16,19 @@ export function mountPptEditor({host,document:documentValue,changed,linked,messa
   const edits=()=>{const doc=documentValue();return doc.pageEdits||(doc.pageEdits={hidden:[],added:[],order:[]});};
   const sidebar=new window.RistPageSidebar({select:i=>show(i,true),move:reorder,changed:availability,step:move});
   const canvas=new window.RistCanvasEditor({changed:()=>{documentValue().canvasEdits=canvas.value();changed();},
+    historyContext:()=>documentValue().template_version||'legacy',
+    restoreHistoryContext:value=>{documentValue().template_version=value;},
     mode:value=>{canvasMode=value;el('edit-regions').hidden=value;},message,upload,editing});
   let templateLayout=null,templatePending=true;
   const templateHost=window.document.createElement('div');
   el('canvas-tools').parentNode.insertBefore(templateHost,el('canvas-tools'));
   const templates=new window.RistPptTemplates.Manager({host:templateHost,experiment:'XRD',
     layout:()=>templateLayout,state:()=>canvas.value(),apply:edits=>canvas.applyStyles(edits),
+    nativeError:()=>window.RistPptTemplates.nativeDefaultError(canvas.value(),documentValue().template_version),
+    applyNative:version=>{
+      if(window.RistPptTemplates.nativeDefaultError(canvas.value(),documentValue().template_version))return false;
+      return canvas.restoreNativeDefaults(version);
+    },
     upload:(file,done)=>canvas.uploadTemplateBackground(file,done)});
   function availability(){
     const blocked=locked||pending||!pages.length, selected=sidebar.selectedIds();

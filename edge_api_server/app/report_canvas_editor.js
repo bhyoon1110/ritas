@@ -4,7 +4,7 @@
   window.RistCanvasEditor = function (options) {
     var host=document.getElementById("canvas-tools"), layer=document.getElementById("canvas-layer"), stage=document.getElementById("slide-stage");
     var state={}, pages=[], page=null, selected=null, enabled=false, capable=false, locked=false, loading=false, drag=null;
-    var undo=[], redo=[], snapshot=null, fields={}, palettes={}, controls=[], ratio=16/9, modeButton, list, props, undoButton, redoButton;
+    var undo=[], redo=[], snapshot=null, snapshotContext=null, fields={}, palettes={}, controls=[], ratio=16/9, modeButton, list, props, undoButton, redoButton;
     var cellChoice, cellKey="", tableBox, legacyNote;
     var cellEditor=new window.RistCellEditor({editing:options.editing});
     var touchOptions=false;
@@ -14,10 +14,11 @@
     function copy(value) { return JSON.parse(JSON.stringify(value)); }
     function el(tag,parent,text) { var node=document.createElement(tag);if(text!=null)node.textContent=text;if(parent)parent.appendChild(node);return node; }
     function button(parent,text,fn,icon) { var b=el("button",parent);b.type="button";b.onclick=fn;controls.push(b);return window.RistReportIcons(b,icon||"edit",text); }
-    function begin() { snapshot=copy(state); }
+    function historyContext() { return options.historyContext?options.historyContext():null; }
+    function begin() { snapshot=copy(state);snapshotContext=historyContext(); }
     function finish() {
-      if (JSON.stringify(snapshot)===JSON.stringify(state)) return;
-      undo.push(snapshot);if(undo.length>30)undo.shift();redo=[];snapshot=null;options.changed();availability();
+      if (JSON.stringify(snapshot)===JSON.stringify(state)&&snapshotContext===historyContext()) return;
+      undo.push({state:snapshot,context:snapshotContext});if(undo.length>30)undo.shift();redo=[];snapshot=null;options.changed();availability();
     }
     function patches() { return page ? (state[page.id] || []) : []; }
     function merged() {
@@ -169,7 +170,12 @@
       finish();draw();if(kind==="text")fields.text.focus();
     }
     function remove() {if(!current()||locked||loading)return;begin();patch({hidden:true});selected=null;finish();draw();}
-    function history(from,to) {if(locked||loading||!from.length)return;to.push(copy(state));state=from.pop();selected=null;options.changed();draw();}
+    function history(from,to) {
+      if(locked||loading||!from.length)return;
+      to.push({state:copy(state),context:historyContext()});var previous=from.pop();state=previous.state;
+      if(options.restoreHistoryContext)options.restoreHistoryContext(previous.context);
+      selected=null;options.changed();draw();
+    }
     function canInsertGraph() { return capable && !!page && !locked && !loading && patches().length < 100; }
     function insertGraph(file, position, done) {
       if (!canInsertGraph()) { done(new Error("페이지를 선택하고 저장·미리보기 갱신이 끝난 뒤 추가하세요. 페이지당 개체는 100개까지 가능합니다.")); return; }
@@ -313,6 +319,12 @@
           next[id].forEach(function(o){if((o.tableCells||[]).length>200)invalid=true;});});
         if(invalid||count>500){options.message("현재 보고서의 개체 편집 한도를 초과해 양식을 적용하지 않았습니다.",true);return false;}
         abort();cellEditor.close(false);begin();state=next;finish();draw();return true;
+      },
+      restoreNativeDefaults:function(context){
+        if(locked||loading||!capable)return false;
+        abort();cellEditor.close(false);begin();state=window.RistPptTemplates.nativeDefaults(state);
+        if(options.restoreHistoryContext)options.restoreHistoryContext(context);
+        selected=null;finish();draw();return true;
       },
       layout:function(value){capable=value.canvasEditing===true;pages=value.pages||[];ratio=value.ratio||16/9;host.hidden=!capable;modeButton.hidden=!capable;modeButton.setAttribute("aria-expanded",String(enabled&&capable));loading=false;},
       page:function(value){abort();if(!page||!value||page.id!==value.id){cellEditor.close(false);selected=null;}page=value;body.hidden=!enabled;draw();cellEditor.position();},

@@ -104,3 +104,55 @@ test('backgrounds apply as one patch and abort if report changes during upload',
   apply.click();const next=h.requests.shift();next.status=200;next.response=request.response;next.onload();h.uploaded()(null,{asset:'f'.repeat(64)});
   assert.equal(h.applied.length,1);assert.equal(h.applied[0].new.at(-1).layer,'back');assert.equal(h.applied[0].new.at(-1).asset,'f'.repeat(64));
 });
+
+test('native default removes overrides and template backgrounds without copying or discarding content',t=>{
+  const api=setup(t).RistPptTemplates;
+  const state={new:[{id,text:'현재 제목',x:.4,y:.5,fontSize:45,hidden:true,layer:'front'},
+    {id:table,tableCells:[{row:0,col:0,text:'현재 표 값',bold:true},{row:1,col:0,fill:'#112233'}]},
+    {id:'shape-'+'c'.repeat(20),kind:'image',asset:'a'.repeat(64),x:.2},
+    {id:'object-template-background',kind:'image',asset:'b'.repeat(64)},
+    {id:'object-added',kind:'text',text:'내 추가 개체',x:.1,fontSize:30}],
+    dormant:[{id,color:'#123456',text:'숨겨진 페이지의 내용'}],empty:[{id,kind:'text',bold:true}]};
+  const before=plain(state),restored=plain(api.nativeDefaults(state));
+  assert.deepEqual(restored,{new:[{id,text:'현재 제목'},
+    {id:table,tableCells:[{row:0,col:0,text:'현재 표 값'}]},
+    {id:'shape-'+'c'.repeat(20),kind:'image',asset:'a'.repeat(64)},state.new[4]],
+    dormant:[{id,text:'숨겨진 페이지의 내용'}]});
+  assert.deepEqual(state,before);
+  assert.equal(api.nativeDefaultError(state,'2026-10-29'),'');
+  for(const patch of [{id,text:''},{id,asset:'a'.repeat(64)},{id,tableCells:[{row:0,col:0,text:'보존'}]}])
+    assert.match(api.nativeDefaultError({dormant:[patch]},'legacy'),/이전 기본 양식/);
+  assert.equal(api.nativeDefaultError({new:[{id,fontSize:25},state.new[4]]},'legacy'),'');
+});
+
+test('XRD manager selects read-only default visually once and uses native apply without mappings',t=>{
+  const w=setup(t),d=w.document,requests=[],applied=[];
+  w.XMLHttpRequest=function(){this.open=(method,url)=>{this.method=method;this.url=url;};this.setRequestHeader=()=>{};this.send=body=>{this.body=body;requests.push(this);};};
+  const respond=data=>{const r=requests.shift();r.status=200;r.responseText=JSON.stringify(data);r.onload();};
+  const builtin={id:'builtin-xrd-20261029',name:'XRD 기본 양식 (2026-10-29)',experiment:'XRD',builtin:true,default:true,readOnly:true};
+  const descriptor={version:3,name:builtin.name,experiment:'XRD',nativeTemplate:'2026-10-29'};
+  const custom={id:'personal',name:'내 기존 양식',experiment:'XRD'},items=[custom,builtin];
+  let version='2026-10-29',state={new:[{id,text:'현재 보고서',color:'#123456'}]};
+  const manager=new w.RistPptTemplates.Manager({host:d.getElementById('host'),experiment:'XRD',layout:()=>layout(),state:()=>state,
+    apply:()=>assert.fail('native default must not apply positional patches'),
+    nativeError:()=>w.RistPptTemplates.nativeDefaultError(state,version),applyNative:v=>applied.push(v)});
+  manager.lock(false);d.querySelector('summary').click();respond({revision:7,items});
+  assert.equal(requests[0].url,'/api/v1/report-ppt/templates/'+builtin.id);
+  respond({...builtin,content:descriptor,revision:7});
+  const select=d.querySelector('[aria-label="PPT 템플릿 선택"]');
+  assert.equal(select.value,builtin.id);assert.match(select.selectedOptions[0].textContent,/기본 제공/);
+  assert.deepEqual(applied,[]);assert.equal(state.new[0].color,'#123456');
+  for(const label of ['선택한 템플릿을 현재 PPT 서식으로 덮어쓰기','선택한 PPT 템플릿 삭제']){
+    const button=d.querySelector('[aria-label="'+label+'"]');assert(button.disabled);button.onclick();
+  }
+  assert.equal(requests.length,0);assert(d.querySelector('.ppt-template-mapping').hidden);
+  assert(!d.querySelector('.ppt-template-preview').hasAttribute('src'));
+  const apply=[...d.querySelectorAll('button')].find(b=>b.textContent==='양식 적용');
+  manager.lock(true);assert(apply.disabled);manager.lock(false);apply.click();assert.deepEqual(applied,['2026-10-29']);
+  version='legacy';manager.refresh();assert(apply.disabled);assert.match(d.body.textContent,/이전 기본 양식/);
+  apply.onclick();assert.equal(applied.length,1);version='2026-10-29';manager.refresh();
+  select.value=custom.id;select.onchange();respond({revision:7,content:{version:1,name:custom.name,experiment:'XRD',ratio:16/9,pages:[{key,objects:[{id,kind:'text',bold:true}]}]}});
+  d.querySelector('[aria-label="PPT 템플릿 목록 새로고침"]').click();respond({revision:7,items});
+  assert.equal(requests[0].url,'/api/v1/report-ppt/templates/personal');
+  assert.equal(select.value,'personal');
+});

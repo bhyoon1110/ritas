@@ -1,4 +1,4 @@
-"""Private PPT formatting templates, shared by the four authoring screens."""
+"""Private PPT formatting templates and read-only native design registry."""
 import json
 import re
 from hashlib import sha256
@@ -21,6 +21,28 @@ from .report.template_styles import content
 router = APIRouter(prefix='/api/v1/report-ppt/templates')
 MAX_TEMPLATES = 20
 _IMPORT_SLOT = BoundedSemaphore(1)
+# A native renderer selection, never an imported PPTX or a copy in a user's book.
+# Do not expose the bundled reference's sample text, previews, or source package.
+BUILTIN_XRD_ID = 'builtin-xrd-20261029'
+BUILTIN_XRD = dict(id=BUILTIN_XRD_ID, builtin=True, default=True, readOnly=True,
+                   content=dict(version=3, name='XRD 기본 양식 (2026-10-29)',
+                                experiment='XRD', nativeTemplate='2026-10-29'))
+
+
+def builtin_for(request, template_id=BUILTIN_XRD_ID):
+    from .auth import require_context
+    context = require_context(request)
+    if template_id == BUILTIN_XRD_ID and (context.is_admin or 'XRD' in context.projects):
+        return BUILTIN_XRD
+    return None
+
+
+def with_builtins(request, result):
+    item = builtin_for(request)
+    if item:
+        result['items'].append(dict(id=item['id'], name=item['content']['name'],
+                                    experiment='XRD', builtin=True, default=True, readOnly=True))
+    return result
 
 
 def origin_check(request):
@@ -98,7 +120,7 @@ def listing(book):
 def list_templates(request: Request):
     path = path_for(request)
     with locked(path):
-        return JSONResponse(listing(load(path)), headers=NO_STORE)
+        return JSONResponse(with_builtins(request, listing(load(path))), headers=NO_STORE)
 
 
 @router.get('/{template_id}')
@@ -106,7 +128,7 @@ def read_template(request: Request, template_id: str):
     path = path_for(request)
     with locked(path):
         book = load(path)
-        item = next((i for i in book['items'] if i['id'] == template_id), None)
+        item = builtin_for(request, template_id) or next((i for i in book['items'] if i['id'] == template_id), None)
         if item is None:
             raise ApiException(404, 'PPT_TEMPLATE_NOT_FOUND', '템플릿을 찾지 못했습니다. 목록을 새로고침하세요.')
         result = dict(item, revision=book['revision'])
@@ -176,7 +198,7 @@ async def upload_template(request: Request, name: str, experiment: str, revision
                 if count > MAX_BYTES: raise ApiException(413,'PPT_TEMPLATE_TOO_LARGE','PPTX는 10MB 이하로 업로드하세요.')
                 output.write(chunk)
         result = await run_in_threadpool(import_file,path,staged,name,experiment,revision)
-        return JSONResponse(result,status_code=201,headers=NO_STORE)
+        return JSONResponse(with_builtins(request, result),status_code=201,headers=NO_STORE)
     except ApiException: raise
     except Exception as exc:
         from .report.renderers import PptxPdfConversionError
@@ -220,6 +242,10 @@ def mutate(path, method, value, template_id):
 async def change_template(request: Request):
     path = path_for(request)
     origin_check(request)
+    if request.path_params.get('template_id') == BUILTIN_XRD_ID:
+        if not builtin_for(request):
+            raise ApiException(404, 'PPT_TEMPLATE_NOT_FOUND', '템플릿을 찾지 못했습니다.')
+        raise ApiException(403, 'PPT_TEMPLATE_READ_ONLY', '기본 제공 양식은 변경하거나 삭제할 수 없습니다. 현재 서식을 새 템플릿으로 저장하세요.')
     data = bytearray()
     async for chunk in request.stream():
         data.extend(chunk)
@@ -238,4 +264,4 @@ async def change_template(request: Request):
         result = await run_in_threadpool(mutate, path, request.method, value, request.path_params.get('template_id'))
     except ValueError as exc:
         raise ApiException(422, 'PPT_TEMPLATE_INVALID', str(exc)) from exc
-    return JSONResponse(result, headers=NO_STORE, status_code=201 if request.method == 'POST' else 200)
+    return JSONResponse(with_builtins(request, result), headers=NO_STORE, status_code=201 if request.method == 'POST' else 200)

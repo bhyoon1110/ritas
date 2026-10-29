@@ -29,7 +29,7 @@ def test_private_crud_concurrency_and_durable_metadata(client, tmp_path):
     item=response.json()['items'][0]; assert set(item)=={'id','name','experiment'}
     assert 'no-store' in response.headers['cache-control']
     assert client.get(URL+'/'+item['id'], headers=HEADERS).json()['content']==value()
-    assert client.get(URL, headers={**HEADERS,'x-test-user':'two'}).json()['items']==[]
+    assert all(i.get('builtin') for i in client.get(URL, headers={**HEADERS,'x-test-user':'two'}).json()['items'])
     assert client.get(URL+'/'+item['id'], headers={**HEADERS,'x-test-user':'two'}).status_code==404
     changed=value(); changed['name']='양식 수정'
     response=client.put(URL+'/'+item['id'],json=dict(revision=1,content=changed),headers=HEADERS)

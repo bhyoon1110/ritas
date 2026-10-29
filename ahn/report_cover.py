@@ -14,6 +14,26 @@ TEM_FIELDS = (("requestNumber", "의뢰번호"), ("limsExperimentCode", "실험�
               ("equipmentCode", "실험장비"), ("operatorId", "실험자"),
               ("completionDate", "완료일"))
 
+SUPPLIED_COVER_MEDIA = "posco-cover-20261029.jpg"
+SUPPLIED_COVER_NAME = "Template POSCO background"
+
+
+def supplied_cover_asset():
+    from .report_branding import ASSET_DIR
+    return (ASSET_DIR / SUPPLIED_COVER_MEDIA).read_bytes()
+
+
+def supplied_cover_picture(width=WIDTH, height=HEIGHT):
+    from .report_branding import BrandPicture
+    return BrandPicture(SUPPLIED_COVER_NAME, SUPPLIED_COVER_MEDIA, 0, 0, width, height)
+
+
+def supplied_cover_logo(width=WIDTH, height=HEIGHT):
+    from dataclasses import replace
+    from .report_branding import brand_pictures
+    # Existing protected names keep the common editor's policy unchanged.
+    return replace(brand_pictures(width, height)[1], name="Template RIST logo")
+
 
 def cover_shapes(experiment, title, subtitle, metadata, width=WIDTH, height=HEIGHT, *, columns=4):
     """Return the spectrum cover's native editable shape specifications."""

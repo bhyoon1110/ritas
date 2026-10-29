@@ -213,10 +213,12 @@ def test_spectrum_cover_and_traceability_share_edit_refs_and_values(tmp_path,cod
 
 def test_xrd_cover_and_traceability_share_edit_targets():
     project,doc=fixture()
-    doc['metadata'].update(client='동일 의뢰기관',author='동일 작성자')
+    doc['metadata'].update(client='동일 의뢰기관',requester='의뢰자',author='동일 작성자')
     deck=build_posco_deck(project,doc,lambda _:IMAGE)
     for key,field in (('client','client'),('analyst','author'),('requestNumber','report_number'),('completionDate','date')):
-        for index,prefix in ((0,'Cover '),(1,'Trace ')):
-            shape=named(deck.pages[index][0],prefix+key)[0]
-            assert doc['metadata'][field] in ''.join(shape.itertext())
-            assert deck.edits[shape]==dict(tab='overview',field=field)
+        shape=named(deck.pages[1][0],'Trace '+key)[0]
+        assert doc['metadata'][field] in ''.join(shape.itertext())
+        assert deck.edits[shape]==dict(tab='overview',field=field)
+    requester=named(deck.pages[0][0],'Cover requester')[0]
+    assert '동일 의뢰기관 의뢰자' in ''.join(requester.itertext())
+    assert deck.edits[requester]==dict(tab='overview',field='requester')

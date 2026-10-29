@@ -3,10 +3,10 @@ const {JSDOM}=require('jsdom'),acorn=require('acorn');
 const script=['report_editor_icons.js','report_cell_editor.js','report_canvas_editor.js','report_ppt_templates.js'].map(name=>fs.readFileSync(path.join(__dirname,'../app',name),'utf8')).join('\n');
 const babel=require('@babel/core');
 const programs={native:script,fallback:babel.transformSync(script,{configFile:false,babelrc:false,presets:[[require('@babel/preset-env'),{targets:{chrome:'49'},forceAllTransforms:true,modules:false}]]}).code};
-function setup(t, upload, mode='native'){
+function setup(t, upload, mode='native', options={}){
   const dom=new JSDOM('<div id="preview-panel-toggles"><button id="page-sidebar-toggle"></button></div><div id="canvas-tools"></div><div><div id="slide-stage"><div id="canvas-layer"></div></div></div>',{runScripts:'outside-only'});
   t.after(()=>dom.window.close());const w=dom.window,d=w.document;w.eval(programs[mode]);let changes=0,modes=[];
-  const api=new w.RistCanvasEditor({changed(){changes++;},message(){},mode(v){modes.push(v);},upload:upload||function(f,done){done(null,{asset:'a'.repeat(64),width:120,height:60});}});
+  const api=new w.RistCanvasEditor({changed(){changes++;},message(){},mode(v){modes.push(v);},upload:upload||function(f,done){done(null,{asset:'a'.repeat(64),width:120,height:60});},...options});
   const item={id:'shape-'+'a'.repeat(20),kind:'text',name:'원래 본문',text:'기존 분석 내용',x:.1,y:.2,w:.5,h:.2,fontSize:18,color:'#123456',fill:'none',stroke:'none',lineWidth:1,bold:false,align:'left',dash:'solid'};
   api.load({});api.layout({canvasEditing:true,ratio:16/9});api.page({id:'page1',objects:[item]});
   const button=text=>[...d.querySelectorAll('button')].find(b=>b.getAttribute('aria-label')===text),field=label=>d.querySelector('[aria-label="개체 '+label+'"]');
@@ -14,6 +14,24 @@ function setup(t, upload, mode='native'){
   button('자유 편집 켜기').click();return {w,d,api,button,field,set,item,changes:()=>changes,modes};
 }
 for(const mode of Object.keys(programs)){
+  test(mode+': native reset and renderer version undo together, preserving authored values',t=>{
+    let version='legacy';
+    const h=setup(t,null,mode,{historyContext:()=>version,restoreHistoryContext:v=>{version=v;}});
+    const before={page1:[{id:h.item.id,text:'보존할 내용',fontSize:35,color:'#112233'},
+      {id:'object-template-background',kind:'image',asset:'a'.repeat(64)},
+      {id:'object-added',kind:'text',text:'추가 내용',x:.2}]};
+    h.api.load(before);h.api.lock(true);
+    assert.equal(h.api.restoreNativeDefaults('2026-10-29'),false);assert.equal(version,'legacy');
+    h.api.lock(false);assert.equal(h.api.restoreNativeDefaults('2026-10-29'),true);
+    assert.equal(version,'2026-10-29');
+    const restored=JSON.parse(JSON.stringify(h.api.value()));
+    assert.deepEqual(restored,{page1:[{id:h.item.id,text:'보존할 내용'},before.page1[2]]});
+    h.button('개체 실행 취소').click();assert.equal(version,'legacy');assert.deepEqual(JSON.parse(JSON.stringify(h.api.value())),before);
+    h.button('개체 다시 실행').click();assert.equal(version,'2026-10-29');assert.deepEqual(JSON.parse(JSON.stringify(h.api.value())),restored);
+    // A clean legacy report still needs an undo entry for its design change.
+    h.api.load({});version='legacy';h.api.restoreNativeDefaults('2026-10-29');
+    h.button('개체 실행 취소').click();assert.equal(version,'legacy');
+  });
   test(mode+': template background hit target stays behind text before autosave',t=>{
     const h=setup(t,null,mode);
     h.api.applyStyles({page1:[{id:'object-template-background',kind:'image',asset:'a'.repeat(64),x:0,y:0,w:1,h:1,layer:'back'}]});

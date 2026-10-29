@@ -1380,6 +1380,14 @@ def _pptx_llm_detail_payloads(document: ReportDocument) -> list[dict[str, object
 
 
 def _pptx_title_payload(document: ReportDocument) -> dict[str, object]:
+    if uses_posco_template(document.experiment_code):
+        from ahn.report_branding import ASSET_DIR
+        from ahn.report_cover import SUPPLIED_COVER_MEDIA
+        rels = _pptx_slide_rels(SUPPLIED_COVER_MEDIA).replace('</Relationships>',
+            '<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" '
+            f'Target="../media/{LOGO_NAME}"/></Relationships>')
+        return {"xml": _pptx_title_slide(document), "rels": rels,
+                "media": [(SUPPLIED_COVER_MEDIA, ASSET_DIR / SUPPLIED_COVER_MEDIA)], "editing": {"kind": "title"}}
     return {"xml": _pptx_title_slide(document), "rels": _pptx_slide_rels(), "media": [], "editing": {"kind": "title"}}
 
 
@@ -1609,11 +1617,12 @@ def _pptx_text_shape(
 
 def _pptx_frame(
     shapes: list[str], *, background: str = PPTX_BG, document: ReportDocument | None = None,
+    show_master: bool = True,
 ) -> str:
     if document is not None and uses_posco_template(document.experiment_code):
         background = "FFFFFF"
     return f"""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
+<p:sld{'' if show_master else ' showMasterSp="0"'} xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
   <p:cSld><p:bg><p:bgPr>{_pptx_fill(background)}</p:bgPr></p:bg><p:spTree>
     <p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr>
     {''.join(shapes)}
@@ -1722,11 +1731,14 @@ def _pptx_title_slide(document: ReportDocument) -> str:
     meta = _document_metadata(document)
     if uses_posco_template(document.experiment_code):
         from ahn.report_traceability import cover_shapes
+        from ahn.report_cover import supplied_cover_picture, supplied_cover_logo
         from .traceability import values_and_refs
         experiment = "Raman" if document.experiment_code.strip().upper() in {"RAMAN", "RIN", "RIN-RAMAN"} else "FT-IR"
-        shapes = [_pptx_shape(**spec) for spec in cover_shapes(
+        shapes = [supplied_cover_picture().xml(1000, "rId2").decode("utf-8"),
+                  supplied_cover_logo().xml(1001, "rId3").decode("utf-8")]
+        shapes += [_pptx_shape(**spec) for spec in cover_shapes(
             experiment, document.title, values_and_refs(document)[0])]
-        return _pptx_frame(shapes, document=document)
+        return _pptx_frame(shapes, document=document, show_master=False)
     shapes = [
         _pptx_shape(2, "Left accent", x=0, y=0, cx=365760, cy=PPTX_SLIDE_H, fill=PPTX_BLUE, line=None),
         _pptx_text_shape(
