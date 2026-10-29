@@ -1,6 +1,5 @@
 """Human-readable names must still address exact source bytes and viewer identities."""
 from copy import deepcopy
-import base64
 import io
 import json
 import re
@@ -18,7 +17,6 @@ from app.xrd_workbench.render.package_names import package_paths, portable_filen
 from app.xrd_workbench.render.package import build_package
 from app.xrd_workbench.render.link_audit import check_package_links, ppt_click_targets
 from .synthetic import sample_files
-from .test_portable_report import Payload
 
 
 @pytest.mark.parametrize('original, expected', [
@@ -60,7 +58,7 @@ def collision_project():
 
 
 @pytest.mark.parametrize('password', [False, True])
-def test_delivery_names_bytes_ppt_pdf_and_embedded_html_all_agree(collision_project, password):
+def test_delivery_names_bytes_ppt_pdf_and_viewer_all_agree(collision_project, password):
     project, document, data = collision_project
     before = deepcopy((project, document))
     doc = deepcopy(document)
@@ -82,19 +80,16 @@ def test_delivery_names_bytes_ppt_pdf_and_embedded_html_all_agree(collision_proj
         check_package_links(pdf_links, archive)
         from .test_offline_pptx import embedded_files
         embedded = embedded_files(archive.read('보고서.pptx'))
-        payload = json.loads(Payload(archive.read('보고서.html').decode()).text)
+        assert '보고서.html' not in names
         for record in project['sources']:
             target = paths['sources'][record['id']]
             assert archive.read(target) == data[record['id']]
             assert embedded[target.rsplit('/',1)[-1]] == data[record['id']]
-            assert base64.b64decode(payload['files'][target]['data']) == data[record['id']]
-            assert payload['files'][target]['name'] == target.rsplit('/',1)[-1]
         for sample in project['samples']:
             target = paths['viewers'][sample['id']]
             entry = archive.read(target).decode()
             destination = json.loads(re.search(r'location\.replace\((".*")\);', entry)[1])
             assert parse_qs(urlsplit(destination).fragment)['sample'] == [sample['id']]
-            assert payload['samples'][target]['id'] == sample['id']
             assert any(unquote(urlsplit(link).path) == target for link in pdf_links)
             assert target.rsplit('/',1)[-1] in embedded
     assert before == (project, document)

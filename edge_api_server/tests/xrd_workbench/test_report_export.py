@@ -76,7 +76,7 @@ def test_zip_has_requested_folders_exact_bytes_and_selected_samples_only():
     with zipfile.ZipFile(io.BytesIO(data)) as z:
         names = z.namelist()
         assert {name.split('/')[0] for name in names} == {
-            'Measured Data', 'Report', '보고서.pdf', '보고서.pptx', '보고서.html', '뷰어.html', 'Viewer',
+            'Measured Data', 'Report', '보고서.pdf', '보고서.pptx', '뷰어.html', 'Viewer',
         }
         assert 'Report/' in names and 'Measured Data/' in names
         with zipfile.ZipFile(io.BytesIO(z.read('보고서.pptx'))) as pptx:
@@ -97,7 +97,7 @@ def test_zip_has_requested_folders_exact_bytes_and_selected_samples_only():
                 assert pptx.read(f'ppt/media/xrd-delivery-{number}.png') == image
             text = ' '.join(p.extract_text() or '' for p in PdfReader(io.BytesIO(z.read('보고서.pdf'))).pages)
             assert kept in text and left_out not in text
-        assert '보고서.pptx' in z.read('보고서.html').decode('utf-8')
+        assert '보고서.html' not in names
         assert any(n.startswith('Report/') and n.endswith('.pdf') for n in names)
         assert any(n.startswith('Measured Data/') and n.endswith('.txt') for n in names)
         assert not any(left_out in n for n in names)
@@ -105,7 +105,6 @@ def test_zip_has_requested_folders_exact_bytes_and_selected_samples_only():
             if record['role'] in ('phase_report', 'wppf_report', 'measurement'):
                 entry = next(n for n in names if n.endswith('/' + record['filename']))
                 assert z.read(entry) == sources(project)(record['id'])
-        assert '127.0.0.1' not in z.read('보고서.html').decode('utf-8')
 
 
 def test_package_still_rejects_changed_raw_bytes_without_a_manifest_file():

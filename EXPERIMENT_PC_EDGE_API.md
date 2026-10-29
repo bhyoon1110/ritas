@@ -149,14 +149,15 @@ C# 프로그램은 SSO ID/PW를 받거나 `/send` API를 직접 호출하지 않
 
 | 프로젝트 | 보고서 생성 요청 `reportFormats` | 공유 저장소 최종 ZIP의 핵심 산출물 |
 |---|---|---|
-| XRD 신규 상매칭/WPPF | `["HTML", "PDF", "PPTX"]` (하위 조합도 허용) | `보고서.html`, `보고서.pdf`, `보고서.pptx`, `뷰어.html`, `자료목록.json` |
+| XRD 신규 상매칭/WPPF | `["PDF", "PPTX"]` (기존 `HTML` 요청도 호환 수용) | `보고서.pdf`, `보고서.pptx`, `뷰어.html` |
 | XRD 기존 ICDD/Excel | `["HTML"]` | `report.html`, `report.md`, 선택 `email_body.md` |
 | TEM | `["PPTX"]` | `report.pptx`, `report.md`, 선택 `email_body.md` |
 
 `includeRawFiles=true`를 보내면 위 산출물 외에 원본이 ZIP에 포함된다.
 기존 XRD/TEM은 `raw/`, 신규 XRD는 생성기의 원본 자료 경로를 사용한다.
-기본값은 `false`이다. 신규 XRD는 요청 형식 조합과 무관하게 위 4종 보고서/뷰어를
-함께 묶으며, 원본 제외 시에도 그래프 표시용 측정 좌표는 뷰어에 포함된다.
+기본값은 `false`이다. 신규 XRD는 요청 형식 조합과 무관하게 위 3종 보고서/뷰어를
+함께 묶으며, 대표 결과는 `보고서.pdf`이다. HTML 보고서는 동봉하지 않고,
+원본 제외 시에도 그래프 표시용 측정 좌표는 뷰어에 포함된다.
 
 `pk.experimentCode`에는 의뢰 조회에서 받은 LIMS 시험코드(`A23141`, `B54123` 등)를
 그대로 보낸다. C# 요청 스키마에는 별도 `analysisType` 필드를 추가하지 않는다.

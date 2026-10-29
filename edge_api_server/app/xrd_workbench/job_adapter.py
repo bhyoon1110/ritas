@@ -112,10 +112,10 @@ def generate_job_package(settings, job, *, include_raw_files):
                     output_path=output, include_sources=include_raw_files)
                 # Generated names are ours, not archive member paths supplied by a client.
                 with zipfile.ZipFile(output) as archive:
-                    for name in ('보고서.html', '보고서.pdf', '보고서.pptx', '뷰어.html'):
+                    for name in ('보고서.pdf', '보고서.pptx', '뷰어.html'):
                         with archive.open(name) as source, (destination / name).open('wb') as target:
                             shutil.copyfileobj(source, target)
                 output.replace(destination / 'report-package.zip')
-        return destination / 'report-package.zip', destination / '보고서.html'
+        return destination / 'report-package.zip', destination / '보고서.pdf'
     except (ValueError, zipfile.BadZipFile) as exc:
         raise ApiException(422, 'XRD_WORKBENCH_INPUT_INVALID', str(exc)) from exc

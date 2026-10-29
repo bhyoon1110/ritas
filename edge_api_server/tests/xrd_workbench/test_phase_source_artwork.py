@@ -167,5 +167,9 @@ def test_uploaded_images_survive_old_flags_through_preview_and_delivery(tmp_path
                     assert archive.read('ppt/media/xrd-delivery-5.png').startswith(b'\x89PNG')
             else:
                 with ZipFile(io.BytesIO(result.content)) as archive:
-                    html = archive.read('보고서.html').decode()
-                    assert all(base64.b64encode(image).decode() in html for image in originals)
+                    assert '보고서.html' not in archive.namelist()
+                    from app.xrd_workbench.render.pdf_raster import page_images
+                    with ZipFile(io.BytesIO(archive.read('보고서.pptx'))) as ppt:
+                        # Source-based preview/PDF and recipient PPT retain the same scene.
+                        for index, image in enumerate(page_images(archive.read('보고서.pdf'), max_edge=2600), 1):
+                            assert ppt.read(f'ppt/media/xrd-delivery-{index}.png') == image

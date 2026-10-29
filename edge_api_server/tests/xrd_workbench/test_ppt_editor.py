@@ -59,7 +59,7 @@ def test_page_and_object_edits_reach_all_delivered_formats(collision_project,tmp
         pdf=PdfReader(BytesIO(package.read('보고서.pdf')))
         assert len(pdf.pages)==len(projected)
         assert 'Reviewed XRD results' in pdf.pages[0].extract_text()
-        assert 'Reviewed XRD results' in package.read('보고서.html').decode()
+        assert '보고서.html' not in package.namelist()
         check_package_links(ppt_click_targets(package.read('보고서.pptx')),package)
     assert project==original
 

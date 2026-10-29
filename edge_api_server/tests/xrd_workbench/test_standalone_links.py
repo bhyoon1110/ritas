@@ -2,7 +2,6 @@
 the running app. Inside the delivery ZIP they stay relative and every one names a packed file."""
 
 import io
-from html.parser import HTMLParser
 import zipfile
 from urllib.parse import unquote, urlsplit
 from xml.etree import ElementTree as ET
@@ -81,17 +80,6 @@ def test_every_link_in_the_zip_names_a_file_in_the_zip():
     assert not links and uris  # recipient PPT opens embedded originals directly
     from .test_offline_pptx import embedded_files
     assert embedded_files(archive.read('보고서.pptx'))
-    class Hrefs(HTMLParser):
-        def __init__(self):
-            super().__init__()
-            self.links = []
-
-        def handle_starttag(self, tag, attrs):
-            if tag == 'a' and dict(attrs).get('href'):
-                self.links.append(dict(attrs)['href'])
-
-    html = Hrefs()
-    html.feed(archive.read('보고서.html').decode())
-    assert html.links
-    for target in links + uris + html.links:
+    assert '보고서.html' not in names
+    for target in links + uris:
         assert unquote(urlsplit(target).path) in names, target

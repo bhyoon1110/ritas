@@ -1,7 +1,8 @@
 import io
 import json
 import zipfile
-from html.parser import HTMLParser
+
+from pypdf import PdfReader
 
 import pytest
 
@@ -29,26 +30,22 @@ def test_new_csharp_inputs_build_report_without_changing_sources(tmp_path, zippe
                experiment_code='XRD', equipment_code='XRD-1', operator_id='O-1',
                report_options_json=json.dumps({'reportFormats':['PPTX'], 'includeRawFiles':include_raw}))
     result = generate_specialized_report(Settings(storage_root=tmp_path), job)
-    assert result.primary_path.name == '보고서.html'
+    assert result.primary_path.name == '보고서.pdf'
+    assert result.primary_path.read_bytes().startswith(b'%PDF')
+    assert not result.primary_path.with_name('보고서.html').exists()
     assert {p.name:p.read_bytes() for p in source.iterdir()} == before
     with zipfile.ZipFile(result.package_path) as archive:
         assert {name.split('/')[0] for name in archive.namelist()} == ({
-            'Measured Data', 'Report', '보고서.pdf', '보고서.pptx', '보고서.html', '뷰어.html',
+            'Measured Data', 'Report', '보고서.pdf', '보고서.pptx', '뷰어.html',
         } | ({'Viewer'} if include_raw else set()))
         assert any(name.endswith('.txt') and name.startswith('Measured Data/') for name in archive.namelist()) == include_raw
-        html = archive.read('보고서.html').decode()
-        assert 'R-123' in html and 'XRD-1' in html and 'O-1' in html
-        # The embedded Plotly source contains the word contenteditable. Check actual
-        # report elements, not inert JSON/JavaScript bundled for the interactive viewer.
-        class ReportElements(HTMLParser):
-            editable = False
-            def handle_starttag(self, tag, attrs):
-                if 'contenteditable' in dict(attrs): self.editable = True
-        elements = ReportElements()
-        elements.feed(html)
-        assert not elements.editable
+        pdf = archive.read('보고서.pdf')
+        assert result.primary_path.read_bytes() == pdf
+        pages = PdfReader(io.BytesIO(pdf)).pages
+        text = '\n'.join(page.extract_text() for page in pages)
+        assert 'R-123' in text and 'XRD-1' in text and 'O-1' in text
         if not include_raw:
-            assert 'class="item sourceLink"' not in html
+            assert not any(page.get('/Annots') for page in pages)
 
 
 def test_new_zip_rejects_traversal(tmp_path):

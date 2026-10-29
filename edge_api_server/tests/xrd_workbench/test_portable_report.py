@@ -1,13 +1,11 @@
 """Recipient files work without neighboring filesystem access or editable PPT content."""
 import base64
-import hashlib
 import io
 import json
 from html.parser import HTMLParser
 from zipfile import ZipFile
 
 from lxml import etree as E
-from PIL import Image
 from pptx import Presentation
 import pytest
 
@@ -21,6 +19,7 @@ from app.xrd_workbench.render.delivery_pptx import flatten_pptx
 from app.xrd_workbench.render.pdf import render_pdf
 from app.xrd_workbench.render.posco_preview import report_pages
 from .synthetic import sample_files
+from .test_offline_pptx import embedded_files
 
 
 class Payload(HTMLParser):
@@ -72,22 +71,16 @@ def assert_flat(content):
     return presentation
 
 
-def test_package_embeds_every_original_and_download_byte_for_byte(package):
+def test_package_preserves_every_original_in_zip_and_ppt_byte_for_byte(package):
     with ZipFile(io.BytesIO(package)) as archive:
-        payload = json.loads(Payload(archive.read('보고서.html').decode()).text)
+        assert '보고서.html' not in archive.namelist()
+        embedded = embedded_files(archive.read('보고서.pptx'))
         for name in archive.namelist():
             if name.endswith('/'): continue
-            if name.startswith(('Report/', 'Measured Data/')) or name in ('보고서.pdf','보고서.pptx'):
-                entry = payload['files'][name]
-                assert base64.b64decode(entry['data']) == archive.read(name)
-                if name.endswith('.pdf'):
-                    assert entry['pages'] and not entry.get('notice')
-                    for image in entry['pages']:
-                        with Image.open(io.BytesIO(base64.b64decode(image))) as page:
-                            assert max(page.size) <= 1801
-                elif name.endswith('.txt'): assert entry['text']
-        assert payload['viewer'] == archive.read('뷰어.html').decode()
-        assert payload['samples']
+            if name.startswith(('Report/', 'Measured Data/')):
+                assert embedded[name.rsplit('/', 1)[-1]] == archive.read(name)
+        assert archive.read('보고서.pdf').startswith(b'%PDF')
+        assert archive.read('뷰어.html')
         assert_flat(archive.read('보고서.pptx'))
 
 
@@ -102,7 +95,7 @@ def test_delivery_keeps_exact_per_page_links_without_native_analysis_objects(rep
         assert b'<a:tbl>' in b''.join(archive.read(n) for n in archive.namelist() if n.startswith('ppt/slides/slide'))
 
 
-def test_password_protected_ppt_is_native_and_identical_in_html_and_zip(report):
+def test_password_protected_ppt_keeps_native_content_and_protection_in_zip(report):
     from copy import deepcopy
     from app.report.pptx_protection import create_protection
     from tests.test_pptx_password import verifier, matches
@@ -121,9 +114,11 @@ def test_password_protected_ppt_is_native_and_identical_in_html_and_zip(report):
     with ZipFile(io.BytesIO(build_package(project, doc, source))) as archive:
         ppt = archive.read('보고서.pptx')
         assert matches('XRD-검토!', verifier(ppt))
-        payload = json.loads(Payload(archive.read('보고서.html').decode()).text)
-        assert base64.b64decode(payload['files']['보고서.pptx']['data']) == ppt
-        assert 'XRD-검토!' not in archive.read('보고서.html').decode()
+        assert '보고서.html' not in archive.namelist()
+        with ZipFile(io.BytesIO(ppt)) as presentation:
+            for name in presentation.namelist():
+                if name.endswith('.xml'):
+                    assert 'XRD-검토!'.encode() not in presentation.read(name)
 
 
 def test_flattening_refuses_page_loss(report):
@@ -136,8 +131,11 @@ def test_flattening_refuses_page_loss(report):
 
 def test_source_opt_out_does_not_embed_originals_or_create_source_links(report):
     with ZipFile(io.BytesIO(build_package(*report, include_sources=False))) as archive:
-        payload = json.loads(Payload(archive.read('보고서.html').decode()).text)
-        assert set(payload['files']) == {'보고서.pdf', '보고서.pptx'}
+        assert '보고서.html' not in archive.namelist()
+        assert not any(name.startswith(('Report/', 'Measured Data/')) and not name.endswith('/')
+                       for name in archive.namelist())
+        assert embedded_files(archive.read('보고서.pptx')) == {}
+        assert archive.read('뷰어.html')
         assert all(not targets for targets in ppt_click_targets_by_slide(archive.read('보고서.pptx')).values())
 
 

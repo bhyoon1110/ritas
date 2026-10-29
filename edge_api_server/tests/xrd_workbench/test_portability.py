@@ -38,7 +38,8 @@ def test_all_outputs_work_with_only_bundled_fonts(monkeypatch):
         assert 'Noto Sans KR' in deck.read('ppt/slides/slide1.xml').decode('utf-8')
     package_bytes = build_package(project, document, sources.__getitem__)
     with zipfile.ZipFile(io.BytesIO(package_bytes)) as package:
-        assert {'보고서.pdf', '보고서.pptx', '보고서.html', '뷰어.html'} <= set(package.namelist())
+        assert {'보고서.pdf', '보고서.pptx', '뷰어.html'} <= set(package.namelist())
+        assert '보고서.html' not in package.namelist()
 
 
 def test_application_code_has_no_codex_runtime_or_os_specific_paths():
