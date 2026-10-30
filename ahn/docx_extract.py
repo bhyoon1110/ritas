@@ -17,6 +17,8 @@ NS = {
     "rel": "http://schemas.openxmlformats.org/package/2006/relationships",
     "v": "urn:schemas-microsoft-com:vml",
     "o": "urn:schemas-microsoft-com:office:office",
+    "wp": "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing",
+    "mc": "http://schemas.openxmlformats.org/markup-compatibility/2006",
 }
 
 # Word's Strict Open XML uses different URIs for the same document concepts.
@@ -24,7 +26,15 @@ STRICT_NS = {
     "http://purl.oclc.org/ooxml/wordprocessingml/main": NS["w"],
     "http://purl.oclc.org/ooxml/drawingml/main": NS["a"],
     "http://purl.oclc.org/ooxml/officeDocument/relationships": NS["r"],
+    "http://purl.oclc.org/ooxml/drawingml/wordprocessingDrawing": NS["wp"],
 }
+
+
+@dataclass
+class DocxImage:
+    path: Path
+    label: str = ""
+    display_size: tuple[int, int] | None = None
 
 
 @dataclass
@@ -32,6 +42,66 @@ class DocxExtract:
     media_paths: list[Path] = field(default_factory=list)
     tables: list[list[list[str]]] = field(default_factory=list)
     diagnostics: list[str] = field(default_factory=list)
+    image_items: list[DocxImage] = field(default_factory=list)
+
+
+def _electron_label(text: str) -> str:
+    match = re.search(r"\bElectron\s*Image[\s_:#-]*(\d+)\b", text, re.IGNORECASE)
+    return f"Electron Image{int(match[1])}" if match else ""
+
+
+def _image_items(document: ET.Element, relationships: dict[str, str], paths: dict[str, Path]) -> list[DocxImage]:
+    """Keep placement/caption and repeated occurrences, without duplicating Word fallbacks."""
+    items: list[DocxImage] = []
+    pending_label = ""
+
+    def target(node: ET.Element) -> str | None:
+        if node.tag == f"{{{NS['a']}}}blip":
+            rid = node.get(f"{{{NS['r']}}}embed", "")
+        elif node.tag == f"{{{NS['v']}}}imagedata":
+            rid = node.get(f"{{{NS['r']}}}id") or node.get(f"{{{NS['o']}}}relid", "")
+        else:
+            return None
+        return relationships.get(rid)
+
+    def visit(node: ET.Element, figure: ET.Element | None = None) -> None:
+        nonlocal pending_label
+        if node.tag == f"{{{NS['mc']}}}AlternateContent":
+            # Only one rendering branch is displayed by Word. Prefer the first
+            # supported branch; do not count modern and VML copies as two maps.
+            for branch in node:
+                if any(target(child) in paths for child in branch.iter()):
+                    visit(branch, figure)
+                    break
+            return
+        if node.tag == f"{{{NS['w']}}}p":
+            text = _cell_text(node)
+            if text:
+                pending_label = _electron_label(text)
+        if node.tag in {f"{{{NS['w']}}}drawing", f"{{{NS['w']}}}pict"}:
+            figure = node
+        member = target(node)
+        if member in paths:
+            label, size = pending_label, None
+            pending_label = ""
+            if figure is not None:
+                descriptions = " ".join(value for child in figure.iter() for key, value in child.attrib.items()
+                                        if key in {"name", "descr", "title", "alt"})
+                label = _electron_label(descriptions) or label
+                extent = figure.find(".//wp:extent", NS)
+                if extent is not None:
+                    try:
+                        width, height = int(extent.get("cx", "0")), int(extent.get("cy", "0"))
+                        if width > 0 and height > 0:
+                            size = (width, height)
+                    except ValueError:
+                        pass
+            items.append(DocxImage(paths[member], label, size))
+        for child in node:
+            visit(child, figure)
+
+    visit(document)
+    return items
 
 
 def _document(zip_file: ZipFile) -> ET.Element:
@@ -135,6 +205,7 @@ def extract_docx(path: str | Path, output_dir: str | Path) -> DocxExtract:
     target_dir = Path(output_dir)
     target_dir.mkdir(parents=True, exist_ok=True)
     media_paths: list[Path] = []
+    member_paths: dict[str, Path] = {}
     with ZipFile(source) as zip_file:
         document = _document(zip_file)
         for index, member in enumerate(_media_order(zip_file, document), start=1):
@@ -146,6 +217,8 @@ def extract_docx(path: str | Path, output_dir: str | Path) -> DocxExtract:
             target = target_dir / f"{source.stem}-{index:03d}{suffix}"
             target.write_bytes(data)
             media_paths.append(target)
+            member_paths[member] = target
         tables = _tables(zip_file, document)
+        image_items = _image_items(document, _relationship_map(zip_file), member_paths)
         diagnostics = _empty_diagnostics(zip_file, document) if not media_paths and not tables else []
-    return DocxExtract(media_paths=media_paths, tables=tables, diagnostics=diagnostics)
+    return DocxExtract(media_paths=media_paths, tables=tables, diagnostics=diagnostics, image_items=image_items)

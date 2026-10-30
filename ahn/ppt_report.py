@@ -15,7 +15,8 @@ from zipfile import ZipFile
 
 from PIL import Image, ImageChops, ImageDraw, ImageFont, ImageOps, ImageStat
 
-from .docx_extract import extract_docx
+from .docx_extract import DocxImage, extract_docx
+from .eds_map import MapGroup, split_map_groups
 from .report_branding import brand_assets, brand_pictures
 from .report_cover import COVER_NAME, shape_xml, supplied_cover_asset, supplied_cover_picture, supplied_cover_logo
 
@@ -1026,7 +1027,23 @@ def _add_eds_map_slide(
     if not first_image and not map_images:
         return
     slide = _add_eds_slide(prs, template, "eds_map", title)
-    _add_eds_anchor_grid(slide, first_image, map_images, tmp_dir, cols=2, rows=3)
+    title_bottom = max((shape.top + shape.height for shape in slide.shapes
+                        if shape.has_text_frame and "STEM EDS 분석결과" in shape.text), default=0)
+
+    def below_title(slot):
+        left, top, width, height = slot
+        gap = max(0, title_bottom + Inches(0.06) - top)
+        return left, top + gap, width, height - gap
+
+    # The dataset suffix can extend above the first map column. Reserve the
+    # full title height so opaque image margins cannot cover its text.
+    if first_image:
+        _add_eds_anchor_picture(slide, first_image, *below_title(_eds_anchor_slot()), tmp_dir)
+    _add_absolute_image_grid(
+        slide,
+        [{"path": str(path), "file_name": path.name, "magnification": ""} for path in map_images],
+        tmp_dir, *below_title(_eds_map_grid_slot()), 2, 3,
+    )
 
 
 def _add_eds_map_pages(
@@ -1035,17 +1052,19 @@ def _add_eds_map_pages(
     title: str,
     images: list[Path],
     tmp_dir: Path,
+    *,
+    image_items: list[DocxImage] | None = None,
 ) -> None:
-    if not images:
-        return
-    first_image = images[0]
-    map_images = images[1:]
-    if not map_images:
-        _add_eds_map_slide(prs, template, title, first_image, [], tmp_dir)
-        return
-    for page, chunk in enumerate(_chunks(map_images, 6), start=1):
-        page_title = title if page == 1 else f"{title}_Data{page}"
-        _add_eds_map_slide(prs, template, page_title, first_image, chunk, tmp_dir)
+    groups = split_map_groups(image_items) if image_items is not None else ([MapGroup("", images)] if images else [])
+    for group in groups:
+        first_image, map_images = group.images[0], group.images[1:]
+        group_title = f"{title}_{group.label}" if group.label else title
+        if not map_images:
+            _add_eds_map_slide(prs, template, group_title, first_image, [], tmp_dir)
+        for page, chunk in enumerate(_chunks(map_images, 6), start=1):
+            # Captioned datasets retain their identity on every continuation page.
+            page_title = group_title if group.label or page == 1 else f"{title}_Data{page}"
+            _add_eds_map_slide(prs, template, page_title, first_image, chunk, tmp_dir)
 
 
 def _add_absolute_image_grid(slide, image_items: list[dict[str, Any]], tmp_dir: Path, left, top, width, height, cols: int, rows: int) -> None:
@@ -1505,7 +1524,8 @@ def _build_eds(prs, template: AhnTemplate | None, data: dict[str, Any], input_ro
             for index in range(0, len(tables), 2):
                 _add_eds_tables_slide(prs, template, title, images, tables[index:index + 2], tmp_dir)
         elif analysis_type == "MAP":
-            _add_eds_map_pages(prs, template, title, images, tmp_dir)
+            _add_eds_map_pages(prs, template, title, images, tmp_dir,
+                               image_items=getattr(extracted, "image_items", None) or [DocxImage(path) for path in images])
         elif analysis_type == "LINE":
             _add_eds_line_pages(prs, template, title, images, tmp_dir)
         elif analysis_type == "POINT":
