@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+"""Legacy lab-PC companion for download_opus_from_lab_pc.py (Python 2.7)."""
 from BaseHTTPServer import HTTPServer, BaseHTTPRequestHandler
 import os
 import json

@@ -4,14 +4,15 @@
 # 실행 방법: python scripts/library/download_opus_from_lab_pc.py --host <랩PC_IP> [--port 8080]
 #            [--local-dir <이미_받은_폴더>]
 #            예) python scripts/library/download_opus_from_lab_pc.py --host 192.168.0.10
-#            (선행 작업: 랩 PC에서 lab_pc_file_server_py27.py 를 먼저 실행)
+#            (선행 작업: 같은 폴더의 lab_pc_file_server_py27.py를 랩 PC로 복사 후 실행)
 # ─────────────────────────────────────────────────────────────────────────────
 """
 랩 PC 파일 서버에서 O-ring Entry*.0 파일을 다운로드하고
 brukeropusreader로 흡광도 스펙트럼을 추출합니다.
 
 사용 방법:
-1. 랩 PC에서 lab_pc_file_server_py27.py 실행 (DATA_DIR = C:\My Documents\O-ring\Spectra)
+1. 같은 폴더의 lab_pc_file_server_py27.py를 랩 PC로 복사하고 Python 2.7로 실행
+   (DATA_DIR = C:\My Documents\O-ring\Spectra)
 2. 이 스크립트 실행: python download_opus_from_lab_pc.py --host 192.168.x.x
 """
 

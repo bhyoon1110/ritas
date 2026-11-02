@@ -78,8 +78,10 @@ XRD 전달 ZIP에는 HTML 형식 보고서(`보고서.html`)를 포함하지 않
 기존 파일은 변경되지 않으므로 배포 후 PPT/패키지를 다시 생성한다.
 용량 제한·수정 비밀번호·운영 반영은 [XRD 배포 안내](XRD_WORKBENCH_MIGRATION.md)를 참고한다.
 
-`RitasAxApp/`는 현재 실제 운영 대상이 아니며, 프로젝트 파악과 문서 기준에서는
-`sune`, `lim`, `ahn`, `rin` 네 영역을 활성 프로젝트로 본다.
+운영 구성은 `sune`, `lim`, `ahn`, `rin` 네 실험과 통합 웹 서버 `edge_api_server`다.
+사용하지 않는 Android 태블릿 앱 `RitasAxApp/`은 저장소에서 제거했으며, 필요하면
+Git 이력에서 복구할 수 있다. FTIR OPUS 다운로드에 사용하는 구형 실험실 PC용
+파일 전송 도구는 `sune/scripts/library/lab_pc_file_server_py27.py`에 유지한다.
 
 Raman raw 업로드, 축 고정, 비율 라벨 개별 편집 사용법은 [Raman 사용 안내](rin/README.md)를 참고한다.
 Raman 텍스트 raw는 UTF-8/CP949 및 BOM이 있는 UTF-16/UTF-32를 지원하며,
