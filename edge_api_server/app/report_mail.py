@@ -284,6 +284,15 @@ def validate_envelope(value):
     images = MailImages(result.get('inlineImages'), cid=True)
     result['bodyHtml'] = clean_html(result.get('bodyHtml', ''), images=images)[0]
     result['inlineImages'] = images.finish()
+    # LIMS accepts self-contained HTML with data URI images, not the internal
+    # CID/inlineImages representation. Derive this field every time so a saved
+    # or browser-provided htmlBody cannot bypass sanitization.
+    result['htmlBody'] = clean_html(
+        result['bodyHtml'], images=MailImages(result['inlineImages'])
+    )[0]
+    # A trusted LIMS recipient lookup is still required. Never infer an address
+    # from a name/user ID or trust a stored readiness flag from the browser.
+    result['recipientReady'] = False
     result['schemaVersion'] = 2
     return result
 

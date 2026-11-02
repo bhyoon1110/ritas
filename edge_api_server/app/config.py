@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from rist_common.config import load_environment
@@ -85,6 +85,10 @@ class Settings:
     sso_ca_bundle: Path | None = None
     sso_connect_timeout_seconds: float = 2.0
     sso_read_timeout_seconds: float = 4.0
+    sso_lims_url: str = ""
+    sso_lims_internal_key: str = field(default="", repr=False)
+    sso_lims_ca_bundle: Path | None = None
+    sso_lims_allow_loopback_http: bool = False
     sso_issuer_url: str = ""
     sso_client_id: str = ""
     sso_client_secret: str = ""
@@ -111,6 +115,7 @@ class Settings:
         ).expanduser()
         configured_pdf_font = os.getenv("RIST_PDF_FONT_PATH", "").strip()
         configured_sso_ca_bundle = os.getenv("RIST_SSO_CA_BUNDLE", "").strip()
+        configured_lims_sso_ca = os.getenv("RIST_SSO_LIMS_CA_BUNDLE", "").strip()
         configured_sso_mode = os.getenv("RIST_SSO_MODE", "").strip().lower()
         if not configured_sso_mode:
             oidc_values = (
@@ -321,6 +326,14 @@ class Settings:
                 0.1,
                 float(os.getenv("RIST_SSO_READ_TIMEOUT_SECONDS", "4")),
             ),
+            sso_lims_url=os.getenv("RIST_SSO_LIMS_URL", "").strip(),
+            sso_lims_internal_key=os.getenv("RIST_SSO_LIMS_INTERNAL_KEY", "").strip(),
+            sso_lims_ca_bundle=(
+                Path(configured_lims_sso_ca).expanduser() if configured_lims_sso_ca else None
+            ),
+            sso_lims_allow_loopback_http=os.getenv(
+                "RIST_SSO_LIMS_ALLOW_LOOPBACK_HTTP", "false"
+            ).strip().lower() in {"1", "true", "yes", "on"},
             sso_issuer_url=os.getenv("RIST_SSO_ISSUER_URL", "").strip().rstrip("/"),
             sso_client_id=os.getenv("RIST_SSO_CLIENT_ID", "").strip(),
             sso_client_secret=os.getenv("RIST_SSO_CLIENT_SECRET", "").strip(),

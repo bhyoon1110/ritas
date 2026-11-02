@@ -35,6 +35,7 @@ from app.auth import (
 from app.config import Settings
 from app.errors import ApiException, api_exception_handler, redact_validation_errors
 from app.posco_sso import PoscoSsoClient
+from app.lims_sso import LimsSsoClient
 from app.preview_report import PreviewReportSendRequest
 
 
@@ -421,6 +422,85 @@ def test_posco_sso_f_result_does_not_link_identity(tmp_path) -> None:
         for sql, _ in database.connection.statements
     )
     assert "wrong-password" not in repr(database.connection.statements)
+
+
+@pytest.mark.parametrize("accepted", [True, False])
+def test_lims_sso_uses_relay_and_only_links_valid_identity(tmp_path, accepted):
+    database = _FakeDatabase()
+    context = _context()
+    calls = []
+    secret = "temporary-lims-password"
+    key = "test-internal-key-32-characters-long"
+
+    def relay(request):
+        calls.append(request)
+        return httpx.Response(200, json={"result": "SUCCESS"} if accepted else {
+            "result": "FAIL", "errorCode": "ACCOUNT_LOCKED"})
+
+    client = LimsSsoClient("https://spring.test/api/lims/auth/verify", key,
+                          transport=httpx.MockTransport(relay))
+    service = AuthService(Settings(storage_root=tmp_path, sso_mode="lims"), database,
+                          lims_sso_client=client)
+    payload = PoscoSsoVerifyRequest(username="EMPLOYEE01", password=secret, returnTo="/ftir")
+    if accepted:
+        result = service.verify_posco_sso(context, payload, _request(tmp_path, context))
+        assert result["authenticated"] is True
+        assert result["employeeId"] == "EMPLOYEE01"
+    else:
+        with pytest.raises(ApiException) as captured:
+            service.verify_posco_sso(context, payload, _request(tmp_path, context))
+        assert captured.value.code == "SSO_VALIDATION_REJECTED"
+    assert len(calls) == 1
+    assert json.loads(calls[0].content) == {"userId": "EMPLOYEE01", "password": secret}
+    statements = database.connection.statements
+    assert any("INSERT INTO sso_identities" in sql for sql, _ in statements) is accepted
+    assert any("UPDATE auth_sessions SET sso_authenticated_at" in sql for sql, _ in statements) is accepted
+    assert secret not in repr(statements)
+    assert key not in repr(statements)
+
+
+def test_lims_account_form_preserves_https_requirement_and_local_return(tmp_path):
+    settings = Settings(storage_root=tmp_path, sso_mode="lims", edge_public_base_url="https://edge.test")
+    assert 'id="sso-form"' in _account_page(_context(), settings)
+    assert 'id="sso-form"' not in _account_page(_context(), replace(settings, edge_public_base_url="http://edge.test"))
+    service = AuthService(settings, _FakeDatabase())
+    assert service.start_sso(_context(), "/ftir").startswith("/account?")
+
+
+def test_lims_mode_cannot_relink_someone_elses_identity(tmp_path):
+    database = _FakeDatabase({"user_id": "someone-else"})
+    context = _context()
+    service = AuthService(Settings(storage_root=tmp_path, sso_mode="lims"), database,
+                          lims_sso_client=_FakePoscoClient(True))
+    with pytest.raises(ApiException) as captured:
+        service.verify_posco_sso(context, PoscoSsoVerifyRequest(username="EMPLOYEE01", password="secret"),
+                                 _request(tmp_path, context))
+    assert captured.value.code == "SSO_ALREADY_LINKED"
+    assert not any("INSERT INTO sso_identities" in sql for sql, _ in database.connection.statements)
+
+
+@pytest.mark.parametrize("scheme", ["https", "http"])
+def test_lims_route_keeps_browser_transport_guard_and_never_returns_shared_key(tmp_path, scheme):
+    app = FastAPI()
+    database = _FakeDatabase()
+    context = _context()
+    key = "test-internal-key-32-characters-long"
+    settings = Settings(storage_root=tmp_path, auth_enabled=True, sso_mode="lims",
+                        edge_public_base_url="https://edge.test", sso_lims_internal_key=key)
+    install_auth(app, settings, database)
+    app.add_exception_handler(ApiException, api_exception_handler)
+    service = app.state.auth_service
+    service.context_from_token = Mock(return_value=context)
+    adapter = _FakePoscoClient(True)
+    service.lims_sso_client = adapter
+    with TestClient(app, base_url=f"{scheme}://testserver") as client:
+        client.cookies.set(SESSION_COOKIE, "session-token")
+        response = client.post("/api/v1/auth/sso/verify", headers={"X-Requested-With": "RIST-Account"},
+                               json={"username": "EMPLOYEE01", "password": "route-secret"})
+    assert response.status_code == (200 if scheme == "https" else 426)
+    assert len(adapter.calls) == (1 if scheme == "https" else 0)
+    assert key not in response.text
+    assert "route-secret" not in response.text
 
 
 def test_auth_routes_include_server_side_posco_verification(tmp_path) -> None:

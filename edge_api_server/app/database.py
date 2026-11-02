@@ -336,7 +336,17 @@ _SCHEMA: tuple[str, ...] = (
         attempt_count INT NOT NULL DEFAULT 0
             COMMENT 'worker가 선점하여 시작한 누적 전송 시도 횟수',
         max_attempts INT NOT NULL DEFAULT 5
-            COMMENT '자동 재시도를 포함한 최대 전송 시도 횟수',
+            COMMENT '연속 오류의 최대 자동 재시도 횟수. 정상 상태 조회는 제외',
+        failure_count INT NOT NULL DEFAULT 0
+            COMMENT '정상 단계 처리 이후 연속 오류 횟수. 수동 재시도 시 초기화',
+        delivery_state_json LONGTEXT
+            COMMENT '문서 및 메일 단계 체크포인트 JSON. 자격증명과 메일 본문 저장 금지',
+        document_status VARCHAR(32)
+            COMMENT 'LIMS 문서 적재 상태. 접수와 영구 적재 완료를 구분',
+        mail_status VARCHAR(32)
+            COMMENT 'LIMS 메일 접수 및 발송 상태',
+        document_completed_at DATETIME(6)
+            COMMENT '해당 regenSeq의 fileNo와 영구 적재 완료를 확인한 시각',
         idempotency_key VARCHAR(128) NOT NULL
             COMMENT '중복 LIMS 전송 방지 키. 전체 큐에서 고유',
         lease_owner VARCHAR(128)
@@ -375,6 +385,14 @@ _SCHEMA: tuple[str, ...] = (
             REFERENCES report_runs(report_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
       COMMENT='Spring Boot가 선점하여 LIMS로 전달하는 보고서 전송 큐와 현재 상태'
+    """,
+    """
+    ALTER TABLE report_transfers
+        ADD COLUMN IF NOT EXISTS failure_count INT NOT NULL DEFAULT 0,
+        ADD COLUMN IF NOT EXISTS delivery_state_json LONGTEXT,
+        ADD COLUMN IF NOT EXISTS document_status VARCHAR(32),
+        ADD COLUMN IF NOT EXISTS mail_status VARCHAR(32),
+        ADD COLUMN IF NOT EXISTS document_completed_at DATETIME(6)
     """,
     """
     CREATE TABLE IF NOT EXISTS report_transfer_attempts (
@@ -1513,7 +1531,12 @@ class Database:
                     t.transfer_id,
                     t.status AS transfer_status,
                     t.attempt_count,
+                    t.failure_count,
                     t.max_attempts,
+                    t.delivery_state_json,
+                    t.document_status,
+                    t.mail_status,
+                    t.document_completed_at,
                     t.completed_at AS transfer_completed_at,
                     t.last_error_code,
                     t.last_error_message,
@@ -1540,6 +1563,26 @@ class Database:
                 LIMIT ? OFFSET ?
                 """,
                 tuple(params),
+            ).fetchall()
+
+    def list_report_cleanup_candidates(
+        self, *, after_report_id: str = "", limit: int = 1000,
+    ) -> list[dict[str, Any]]:
+        """Keyset scan: moving files to trash must not shift later pages."""
+        with self._connect() as connection:
+            return connection.execute(
+                """
+                SELECT r.*, t.transfer_id, t.status AS transfer_status,
+                    t.completed_at AS transfer_completed_at,
+                    t.document_status, t.mail_status, t.document_completed_at
+                FROM report_runs r
+                LEFT JOIN report_transfers t
+                    ON t.report_id = r.report_id AND t.destination = 'LIMS'
+                WHERE r.deleted_at IS NULL AND r.report_id > ?
+                ORDER BY r.report_id ASC
+                LIMIT ?
+                """,
+                (after_report_id, max(1, min(int(limit), 1000))),
             ).fetchall()
 
     def count_report_management(
@@ -1617,7 +1660,12 @@ class Database:
                     t.transfer_id,
                     t.status AS transfer_status,
                     t.attempt_count,
+                    t.failure_count,
                     t.max_attempts,
+                    t.delivery_state_json,
+                    t.document_status,
+                    t.mail_status,
+                    t.document_completed_at,
                     t.requested_at,
                     t.started_at AS transfer_started_at,
                     t.completed_at AS transfer_completed_at,
@@ -1755,6 +1803,7 @@ class Database:
                 """
                 UPDATE report_transfers
                 SET status = 'PENDING',
+                    failure_count = 0,
                     next_retry_at = NULL,
                     lease_owner = NULL,
                     lease_until = NULL,

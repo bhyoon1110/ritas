@@ -23,6 +23,7 @@ from .browser_support import BROWSER_POLICY_TEXT, with_browser_support_notice
 from .config import Settings
 from .database import Database
 from .errors import ApiException, error_response
+from .lims_sso import LimsSsoClient
 from .posco_sso import (
     PoscoSsoClient,
     PoscoSsoConfigurationError,
@@ -288,6 +289,7 @@ class AuthService:
         settings: Settings,
         database: Database,
         posco_sso_client: PoscoSsoClient | None = None,
+        lims_sso_client: LimsSsoClient | None = None,
     ) -> None:
         self.settings = settings
         self.database = database
@@ -295,6 +297,14 @@ class AuthService:
             validation_url=settings.sso_validation_url,
             sid=settings.sso_sid,
             ca_bundle=settings.sso_ca_bundle,
+            connect_timeout_seconds=settings.sso_connect_timeout_seconds,
+            read_timeout_seconds=settings.sso_read_timeout_seconds,
+        )
+        self.lims_sso_client = lims_sso_client or LimsSsoClient(
+            validation_url=settings.sso_lims_url,
+            internal_key=settings.sso_lims_internal_key,
+            ca_bundle=settings.sso_lims_ca_bundle,
+            allow_loopback_http=settings.sso_lims_allow_loopback_http,
             connect_timeout_seconds=settings.sso_connect_timeout_seconds,
             read_timeout_seconds=settings.sso_read_timeout_seconds,
         )
@@ -719,14 +729,16 @@ class AuthService:
         payload: PoscoSsoVerifyRequest,
         request: Request,
     ) -> dict[str, Any]:
-        if _sso_mode(self.settings) != "posco":
+        mode = _sso_mode(self.settings)
+        if mode not in {"posco", "lims"}:
             raise ApiException(
                 409,
                 "SSO_MODE_MISMATCH",
-                "현재 서버는 POSCO ID/PW 검증 방식으로 설정되어 있지 않습니다.",
+                "현재 서버는 SSO ID/PW 검증 방식으로 설정되어 있지 않습니다.",
             )
+        client = self.lims_sso_client if mode == "lims" else self.posco_sso_client
         try:
-            valid = self.posco_sso_client.validate(
+            valid = client.validate(
                 payload.username,
                 payload.password,
             )
@@ -741,7 +753,8 @@ class AuthService:
             raise ApiException(
                 503,
                 "SSO_NOT_CONFIGURED",
-                "POSCO SSO 서버 URL, SID 또는 인증서 설정을 확인해 주세요.",
+                "SSO 중계 URL, 내부 인증 키 또는 인증서 설정을 확인해 주세요."
+                if mode == "lims" else "POSCO SSO 서버 URL, SID 또는 인증서 설정을 확인해 주세요.",
             ) from exc
         except PoscoSsoUnavailableError as exc:
             self._audit(
@@ -754,7 +767,7 @@ class AuthService:
             raise ApiException(
                 503,
                 "SSO_UNAVAILABLE",
-                "POSCO SSO 서버에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.",
+                "SSO 검증 서버에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.",
                 retryable=True,
             ) from exc
         except PoscoSsoProtocolError as exc:
@@ -768,7 +781,7 @@ class AuthService:
             raise ApiException(
                 502,
                 "SSO_RESPONSE_INVALID",
-                "POSCO SSO 서버 응답이 올바르지 않습니다.",
+                "SSO 검증 서버 응답이 올바르지 않습니다.",
                 retryable=True,
             ) from exc
 
@@ -783,7 +796,8 @@ class AuthService:
             raise ApiException(
                 401,
                 "SSO_VALIDATION_REJECTED",
-                "SSO ID/PW가 올바르지 않거나 현재 Edge 서버 IP가 허용되지 않았습니다.",
+                "SSO ID/PW가 올바르지 않거나 사용이 제한된 계정입니다."
+                if mode == "lims" else "SSO ID/PW가 올바르지 않거나 현재 Edge 서버 IP가 허용되지 않았습니다.",
             )
 
         now = _utc_now()
@@ -845,7 +859,7 @@ class AuthService:
 
     def start_sso(self, context: AuthContext, return_to: str) -> str:
         mode = _sso_mode(self.settings)
-        if mode == "posco":
+        if mode in {"posco", "lims"}:
             return _posco_sso_account_url(return_to)
         if mode != "oidc":
             raise ApiException(
@@ -1291,17 +1305,17 @@ def _account_page(context: AuthContext, settings: Settings) -> str:
     ) or '<span class="muted">아직 승인된 프로젝트가 없습니다.</span>'
     sso_text = "연결됨" if data["ssoLinked"] else "연결 안 됨"
     mode = _sso_mode(settings)
-    if mode == "posco" and (settings.sso_allow_http or _edge_public_https(settings)):
+    if mode in {"posco", "lims"} and (settings.sso_allow_http or _edge_public_https(settings)):
         current_employee_id = str(
             (context.sso_identity or {}).get("employee_id") or context.login_id
         )
         sso_control = f"""<form class="settings-card" id="sso-form" method="post" action="/account" accept-charset="UTF-8">
 <h2>{escape(settings.sso_provider_name)} 연결 / 재인증</h2>
-<p class="muted">입력한 SSO 비밀번호는 Edge 서버가 POSCO SSO로 즉시 검증하며 저장하거나 감사 로그에 남기지 않습니다.</p>
+<p class="muted">입력한 SSO 비밀번호는 인증 서버로 즉시 검증하며 저장하거나 감사 로그에 남기지 않습니다.</p>
 <label for="sso-username">SSO ID</label><input id="sso-username" name="username" maxlength="100" pattern="[A-Za-z0-9._-]+" autocomplete="username" value="{escape(current_employee_id)}" required>
 <label for="sso-password">SSO 비밀번호</label><input id="sso-password" name="password" type="password" maxlength="200" autocomplete="current-password" required>
 <p id="sso-message"></p><button type="submit">SSO 인증</button></form>"""
-    elif mode == "posco":
+    elif mode in {"posco", "lims"}:
         sso_control = '<p class="error">SSO 비밀번호 보호를 위해 Edge HTTPS 적용 후 인증할 수 있습니다.</p>'
     elif mode == "oidc":
         sso_control = f'<a class="button" href="/auth/sso/start?returnTo=/account">{escape(settings.sso_provider_name)} 연결 / 재인증</a>'

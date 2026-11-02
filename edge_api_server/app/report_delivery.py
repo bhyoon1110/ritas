@@ -21,6 +21,7 @@ from .report_queue import (
     ReportQueueError,
     enqueue_registered_report_package,
 )
+from .report_transfer_state import public_delivery_state
 from .usage_archive import set_usage_context
 
 
@@ -54,7 +55,7 @@ def _database(request: Request) -> Database:
 def _report_for_request(request: Request, report_id: str) -> tuple[dict[str, Any], str]:
     settings = _settings(request)
     report = _database(request).fetch_report_run(report_id)
-    if not report or report.get("deleted_at") is not None:
+    if not report:
         raise ApiException(
             404,
             "REPORT_NOT_FOUND",
@@ -87,6 +88,8 @@ def _report_for_request(request: Request, report_id: str) -> tuple[dict[str, Any
 
 
 def _package_path(settings: Settings, report: dict[str, Any]) -> Path:
+    if report.get("deleted_at") is not None:
+        raise ApiException(410, "REPORT_PACKAGE_EXPIRED", "보존 기간이 지나 로컬 보고서 파일을 정리했습니다.")
     if str(report.get("storage_key") or "") != settings.report_storage_key:
         raise ApiException(
             409,
@@ -126,9 +129,14 @@ def _state(request: Request, report: dict[str, Any], project: str) -> dict[str, 
         "operatorId": report.get("operator_id"),
         "generationStatus": report.get("generation_status"),
         "transferStatus": transfer_status,
-        "canQueue": transfer is None,
+        **public_delivery_state(transfer),
+        "canQueue": transfer is None and report.get("deleted_at") is None,
+        "localFilesRetained": report.get("deleted_at") is None,
         "generatedAt": report.get("generated_at"),
-        "downloadUrl": f"/api/v1/reports/{quote(str(report['report_id']), safe='')}/package",
+        "downloadUrl": (
+            f"/api/v1/reports/{quote(str(report['report_id']), safe='')}/package"
+            if report.get("deleted_at") is None else None
+        ),
         "reviewUrl": f"/reports/{quote(str(report['report_id']), safe='')}",
     }
 

@@ -198,7 +198,12 @@ CREATE TABLE IF NOT EXISTS report_transfers (
     attempt_count INT NOT NULL DEFAULT 0
         COMMENT 'worker가 선점하여 시작한 누적 전송 시도 횟수',
     max_attempts INT NOT NULL DEFAULT 5
-        COMMENT '자동 재시도를 포함한 최대 전송 시도 횟수',
+        COMMENT '연속 오류의 최대 자동 재시도 횟수. 정상 상태 조회는 제외',
+    failure_count INT NOT NULL DEFAULT 0,
+    delivery_state_json LONGTEXT,
+    document_status VARCHAR(32),
+    mail_status VARCHAR(32),
+    document_completed_at DATETIME(6),
     idempotency_key VARCHAR(128) NOT NULL
         COMMENT '중복 LIMS 전송 방지 키. 전체 큐에서 고유',
     lease_owner VARCHAR(128)

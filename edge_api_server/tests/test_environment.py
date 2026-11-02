@@ -246,3 +246,22 @@ def test_existing_oidc_settings_select_oidc_when_mode_is_not_explicit(
     monkeypatch.setenv("RIST_SSO_CLIENT_SECRET", "client-secret")
 
     assert Settings.from_env().sso_mode == "oidc"
+
+
+def test_lims_sso_environment_is_explicit_and_separate_from_browser_http(monkeypatch):
+    monkeypatch.setenv("RIST_SSO_MODE", "LIMS")
+    monkeypatch.setenv("RIST_SSO_LIMS_URL", "https://spring.test/api/lims/auth/verify")
+    monkeypatch.setenv("RIST_SSO_LIMS_INTERNAL_KEY", "test-internal-key-32-characters-long")
+    monkeypatch.setenv("RIST_SSO_LIMS_CA_BUNDLE", "/tmp/spring-ca.pem")
+    monkeypatch.setenv("RIST_SSO_ALLOW_HTTP", "true")
+    monkeypatch.delenv("RIST_SSO_LIMS_ALLOW_LOOPBACK_HTTP", raising=False)
+    settings = Settings.from_env()
+    assert settings.sso_mode == "lims"
+    assert settings.sso_lims_url == "https://spring.test/api/lims/auth/verify"
+    assert settings.sso_lims_internal_key == "test-internal-key-32-characters-long"
+    assert str(settings.sso_lims_ca_bundle) == "/tmp/spring-ca.pem"
+    assert settings.sso_allow_http is True
+    assert settings.sso_lims_allow_loopback_http is False
+    assert settings.sso_lims_internal_key not in repr(settings)
+    monkeypatch.setenv("RIST_SSO_LIMS_ALLOW_LOOPBACK_HTTP", "true")
+    assert Settings.from_env().sso_lims_allow_loopback_http is True

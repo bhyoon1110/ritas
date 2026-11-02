@@ -15,6 +15,7 @@ from .database import Database
 from .browser_support import with_browser_support_notice
 from .experiment_routing import normalize_project_code, resolve_analysis_type
 from .xrd_portable_html import make_xrd_html_portable
+from .report_transfer_state import public_delivery_state
 
 
 router = APIRouter()
@@ -30,8 +31,8 @@ RETENTION_POLICY_DEFINITIONS = {
         "description": "FAILED 또는 CANCELLED 전송 보고서를 마지막 처리 시점부터 보존합니다.",
     },
     "COMPLETED": {
-        "label": "LIMS 전송 완료 보고서",
-        "description": "LIMS 전송 완료가 확인된 보고서를 완료 시점부터 보존합니다.",
+        "label": "LIMS 문서 적재 완료 보고서",
+        "description": "해당 첨부파일의 LIMS 영구 적재가 확인된 시점부터 로컬 파일을 보존합니다. 메일 상태 조회는 정리 후에도 계속합니다.",
     },
     "TRASH": {
         "label": "휴지통 파일",
@@ -204,8 +205,8 @@ def _retention_policy_response(settings: Any, database: Database) -> dict[str, A
         "policies": items,
         "fixedRules": [
             {
-                "label": "활성 전송 삭제 금지",
-                "description": "PENDING, PROCESSING, RETRY_WAIT 상태의 보고서는 삭제할 수 없습니다.",
+                "label": "LIMS 적재 확인 전 삭제 금지",
+                "description": "LIMS 전송 큐에 등록된 파일은 영구 적재 완료를 확인하기 전에는 정리할 수 없습니다.",
             },
             {
                 "label": "보존 지정 자동 정리 제외",
@@ -227,6 +228,15 @@ def _retention_deadline(
     status = str(row.get("transfer_status") or "NOT_QUEUED").upper()
     generated = _parse_datetime(row.get("generated_at") or row.get("created_at"))
     completed = _parse_datetime(row.get("transfer_completed_at") or row.get("updated_at"))
+    durable = _parse_datetime(row.get("document_completed_at"))
+    if durable is not None and row.get("document_status") == "COMPLETED":
+        policy = resolved["COMPLETED"]
+        return (
+            durable + timedelta(days=int(policy["retention_days"])),
+            "LIMS 문서 적재 완료",
+            "COMPLETED",
+            bool(policy["auto_cleanup_enabled"]),
+        )
     if bool(row.get("is_test")) and status == "NOT_QUEUED" and generated:
         policy = resolved["UNSENT_TEST"]
         return (
@@ -297,9 +307,19 @@ def _decorate_row(
     transfer_status = str(row.get("transfer_status") or "NOT_QUEUED").upper()
     pinned = bool(row.get("pinned"))
     active = transfer_status in ACTIVE_TRANSFER_STATUSES
-    eligible = bool(deadline and deadline <= now and not active and not pinned and not row.get("deleted_at"))
+    queued = transfer_status != "NOT_QUEUED"
+    durable = (
+        row.get("document_status") == "COMPLETED"
+        and _parse_datetime(row.get("document_completed_at")) is not None
+    )
+    # API2 registration success (including legacy transfer COMPLETED) is not
+    # proof that LIMS owns the file. Keep queued files until the worker confirms
+    # this document revision's fileNo. Once durable, mail polls need only IDs.
+    unconfirmed = queued and not durable
+    eligible = bool(deadline and deadline <= now and not unconfirmed and not pinned and not row.get("deleted_at"))
     output = {
         **row,
+        **public_delivery_state(row),
         "analysis_type": _analysis_type(row, settings),
         "transfer_status": transfer_status,
         "retentionDeadline": deadline.isoformat() if deadline else None,
@@ -309,9 +329,10 @@ def _decorate_row(
         "cleanupEligible": eligible,
         "autoCleanupEligible": eligible and auto_cleanup_enabled,
         "deleteBlockedReason": (
-            "활성 전송 작업" if active else "보존 지정" if pinned else "보존 기한 미도래" if deadline else "자동 정리 제외"
+            "활성 전송 작업" if active and not durable else "LIMS 문서 적재 미확인" if unconfirmed else "보존 지정" if pinned else "보존 기한 미도래" if deadline else "자동 정리 제외"
         ) if not eligible else None,
     }
+    output.pop("delivery_state_json", None)
     if include_artifacts:
         artifacts = [_artifact_state(settings, item) for item in row.get("artifacts", [])]
         output["artifacts"] = artifacts
@@ -413,33 +434,31 @@ def _trash_report(
 def cleanup_expired_reports(*, settings: Any, database: Database, actor: str = "system") -> list[dict[str, Any]]:
     results: list[dict[str, Any]] = []
     policies = _load_retention_policies(settings, database)
-    for summary in database.list_report_management(include_deleted=False, limit=1000):
-        if not _decorate_row(
-            summary,
-            settings,
-            include_artifacts=False,
-            policies=policies,
-        )["autoCleanupEligible"]:
-            continue
-        detail = database.fetch_report_management(str(summary["report_id"]))
-        if detail:
-            results.append(
-                _trash_report(
-                    settings=settings,
-                    database=database,
-                    row=detail,
-                    actor=actor,
-                    reason="자동 보존 정책 만료",
-                    policies=policies,
+    after_report_id = ""
+    while True:
+        page = database.list_report_cleanup_candidates(after_report_id=after_report_id, limit=1000)
+        if not page:
+            break
+        for summary in page:
+            if not _decorate_row(summary, settings, include_artifacts=False, policies=policies)["autoCleanupEligible"]:
+                continue
+            detail = database.fetch_report_management(str(summary["report_id"]))
+            if detail and _decorate_row(detail, settings, include_artifacts=False, policies=policies)["autoCleanupEligible"]:
+                results.append(
+                    _trash_report(
+                        settings=settings, database=database, row=detail, actor=actor,
+                        reason="자동 보존 정책 만료", policies=policies,
+                    )
                 )
-            )
-    _purge_old_trash(settings, policies=policies)
+        after_report_id = str(page[-1]["report_id"])
+    _purge_old_trash(settings, database=database, policies=policies)
     return results
 
 
 def _purge_old_trash(
     settings: Any,
     *,
+    database: Database,
     policies: dict[str, dict[str, Any]] | None = None,
 ) -> int:
     trash_policy = (policies or _default_retention_policies(settings))["TRASH"]
@@ -454,6 +473,17 @@ def _purge_old_trash(
     removed = 0
     for child in root.iterdir():
         try:
+            # Recheck legacy trash too: older versions could consider API2
+            # acceptance sufficient. Unknown/orphan folders require review.
+            report = database.fetch_report_management(child.name)
+            if report is None:
+                continue
+            queued = str(report.get("transfer_status") or "NOT_QUEUED").upper() != "NOT_QUEUED"
+            if queued and not (
+                report.get("document_status") == "COMPLETED"
+                and _parse_datetime(report.get("document_completed_at")) is not None
+            ):
+                continue
             modified = datetime.fromtimestamp(child.stat().st_mtime, timezone.utc)
             if modified < cutoff:
                 shutil.rmtree(child, ignore_errors=True)
@@ -808,5 +838,5 @@ def cleanup_reports(request: Request, payload: ReportCleanupRequest) -> dict[str
                 policies=policies,
             )
         )
-    purged = _purge_old_trash(settings, policies=policies)
+    purged = _purge_old_trash(settings, database=database, policies=policies)
     return {"items": results, "count": len(results), "purgedTrashDirectories": purged}
