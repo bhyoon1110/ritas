@@ -6,6 +6,7 @@ The Edge application uses one process (as does the TEM executor/upload store).
 """
 from contextlib import asynccontextmanager, contextmanager
 import asyncio
+import fcntl
 import json
 import os
 from pathlib import Path
@@ -26,6 +27,61 @@ DAY = 86400
 _loaded = set()
 _last_cleanup = {}
 _usage_cache = {}
+_runtime_owners = {}
+
+
+@contextmanager
+def runtime_owner(settings):
+    """Enforce the TEM single-process contract across web and cleanup workers.
+
+    The app holds this flock for its whole lifespan. A separate cleanup command
+    may inspect persisted jobs only while no web process owns those jobs.
+    Keep the lock file permanent: unlinking it would defeat flock exclusion.
+    """
+    directory = root(settings)
+    ahn = _ahn()
+    with ahn._ahn_report_jobs_lock:
+        owner = _runtime_owners.get(directory)
+        if owner is not None and owner["pid"] != os.getpid():
+            owner = None
+        if owner is None:
+            directory.mkdir(parents=True, exist_ok=True)
+            lock_path = directory / ".runtime.lock"
+            if lock_path.is_symlink():
+                raise ApiException(409, "TEM_HISTORY_PROCESS_BUSY", "TEM 작업 잠금 파일을 확인해야 합니다.")
+            stream = lock_path.open("a+b")
+            try:
+                fcntl.flock(stream.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except OSError:
+                stream.close()
+                raise ApiException(409, "TEM_HISTORY_PROCESS_BUSY", "실행 중인 TEM 서버가 작업 파일을 관리하고 있어 별도 프로세스의 정리를 보류합니다.")
+            owner = {"pid": os.getpid(), "stream": stream, "depth": 0}
+            _runtime_owners[directory] = owner
+        owner["depth"] += 1
+    try:
+        yield
+    finally:
+        with ahn._ahn_report_jobs_lock:
+            owner["depth"] -= 1
+            if not owner["depth"]:
+                fcntl.flock(owner["stream"].fileno(), fcntl.LOCK_UN)
+                owner["stream"].close()
+                _runtime_owners.pop(directory, None)
+
+
+def submit_owned(executor, job, callback, *args):
+    """Keep process ownership through queued work and graceful app shutdown."""
+    if not managed(job):
+        return executor.submit(callback, *args)
+    owner = runtime_owner(job.settings)
+    owner.__enter__()
+    try:
+        future = executor.submit(callback, *args)
+    except BaseException:
+        owner.__exit__(None, None, None)
+        raise
+    future.add_done_callback(lambda _future: owner.__exit__(None, None, None))
+    return future
 
 
 def _ahn():
@@ -193,6 +249,8 @@ class HistoryFileResponse(FileResponse):
 
     async def __call__(self, scope, receive, send):
         with lease(self.job):
+            if not Path(self.path).is_file():
+                raise ApiException(410, "TEM_REPORT_EXPIRED", "로컬 파일 보관 기간이 만료되었습니다. LIMS에 적재된 보고서를 확인하세요.")
             await super().__call__(scope, receive, send)
 
 
@@ -253,6 +311,10 @@ async def maintenance(app):
              getattr(state, "error_archive", None), getattr(state, "usage_archive", None))
         _ahn()._cleanup_old_upload_sessions()
         cleanup(state.settings)
+        database = getattr(state, "database", None)
+        if database is not None and hasattr(database, "list_report_cleanup_candidates"):
+            from .report_management import cleanup_expired_reports
+            cleanup_expired_reports(settings=state.settings, database=database)
     stop = asyncio.Event()
     async def run():
         while not stop.is_set():
@@ -261,15 +323,16 @@ async def maintenance(app):
             except Exception:
                 _ahn().logger.exception("TEM history maintenance failed; files left for retry")
             try:
-                await asyncio.wait_for(stop.wait(), timeout=600)
+                await asyncio.wait_for(stop.wait(), timeout=300)
             except asyncio.TimeoutError:
                 pass
-    task = asyncio.create_task(run())
-    try:
-        yield
-    finally:
-        stop.set()
-        await task
+    with runtime_owner(state.settings):
+        task = asyncio.create_task(run())
+        try:
+            yield
+        finally:
+            stop.set()
+            await task
 
 
 def context(request):

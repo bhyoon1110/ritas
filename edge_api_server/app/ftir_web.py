@@ -3141,17 +3141,18 @@ _UPLOAD_SCRIPT = """
 
   async function loadRequestItems() {
     requestLoad.disabled = true;
+      if (requestFilters) requestFilters.setBusy(true);
     requestLoad.textContent = "조회 중...";
     try {
       var payload = await fetchJson(
-        "/api/v1/requests?page=1&pageSize=200&experimentType="
-          + encodeURIComponent(REQUEST_EXPERIMENT_TYPE),
+        (requestFilters ? requestFilters.url() : "/api/v1/requests?page=1&pageSize=200&experimentType=" + encodeURIComponent(REQUEST_EXPERIMENT_TYPE)),
         {
         headers: {"X-Request-Id": "ftir-request-list-" + Date.now()}
         }
       );
       requestItems = Array.isArray(payload.items) ? payload.items : [];
       renderRequestOptions(requestItems);
+      if (requestFilters) requestFilters.showResult(payload);
       setSuccessMessage(requestItems.length
         ? "FT-IR 의뢰 목록을 불러왔습니다."
         : "조회된 FT-IR 의뢰가 없습니다.");
@@ -3159,6 +3160,7 @@ _UPLOAD_SCRIPT = """
       setMessage(err.message || "의뢰 목록 조회에 실패했습니다.");
     } finally {
       requestLoad.disabled = false;
+      if (requestFilters) requestFilters.setBusy(false);
       requestLoad.textContent = "의뢰 조회";
     }
   }
@@ -5413,7 +5415,8 @@ _UPLOAD_SCRIPT = """
     libraryInput.value = "";
   });
   libraryFilter.addEventListener("input", renderLibraries);
-  requestLoad.addEventListener("click", loadRequestItems);
+  var requestFilters = window.RistRequestFilters ? window.RistRequestFilters.mount(requestSelect, {experimentType: REQUEST_EXPERIMENT_TYPE, reload: loadRequestItems}) : null;
+    requestLoad.addEventListener("click", loadRequestItems);
   requestSelect.addEventListener("change", applySelectedRequest);
   reportTransferControls.forEach(function(control) {
     control.addEventListener("change", handleReportTransferInput);
@@ -5629,7 +5632,7 @@ def build_ftir_page() -> str:
         post_body_html=extra_scripts,
         config={"scrollZoom": True, "modeBarButtonsToRemove": ["select2d"]},
     )
-    page = page.replace("</head>", _PAGE_STYLE + "</head>", 1)
+    page = page.replace("</head>", _PAGE_STYLE + '<script src="/assets/request_filters.js"></script></head>', 1)
     return with_browser_support_notice(page.replace("<body>", "<body>" + _PAGE_SHELL, 1))
 
 
@@ -6059,7 +6062,11 @@ def complete_ftir_report_upload_session(
         equipment_code=equipment_code,
         operator_id=operator_id,
     )
-    ftir_report_upload_store.pop(upload_id)
+    consumed = ftir_report_upload_store.pop(upload_id)
+    if consumed is not None:
+        # The worker owns immutable byte buffers now; this upload directory is
+        # no longer in the TTL registry and must not become an orphaned RAW copy.
+        cleanup_preview_report(consumed.work_dir)
     ftir_report_upload_store.remember_completed_ref(upload_id, job.job_id)
     return _report_job_response(job, prefix="/api/v1/ftir/report/jobs")
 
@@ -6210,4 +6217,6 @@ def create_ftir_preview_app(
     )
     install_error_management(app, settings)
     app.include_router(router)
+    from .request_filters import router as request_filters_router
+    app.include_router(request_filters_router)
     return app

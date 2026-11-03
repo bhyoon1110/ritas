@@ -500,6 +500,8 @@ def export_report(sid: str, payload: dict):
         if kind == 'zip':
             build_package(project, document, source, payload.get('viewer_state'),
                           output_path=output, asset_root=asset_root)
+            from ..report_source_retention import xrd_delivery_copies
+            source_copies, source_context = xrd_delivery_copies(state, directory, project=project, document=document)
             register_generated_report_package(
                 settings=state.settings, database=state.request.app.state.database,
                 report_id=directory.name, package_path=output,
@@ -507,6 +509,8 @@ def export_report(sid: str, payload: dict):
                 request_number=transfer.get('requestNumber', ''),
                 equipment_code=transfer.get('equipmentCode', ''),
                 operator_id=transfer.get('operatorId', ''),
+                source_artifact_paths=source_copies,
+                source_retention_context=source_context,
                 report_options={'analysisType': 'XRD', 'workbenchVersion': 1,
                                 'documentRevision': document['revision'],
                                 'email': mail_payload(document.get('email', {}).get('subject', ''),
@@ -621,7 +625,10 @@ def job_file(jid: str):
     if value['status'] != 'completed' or 'filename' not in value:
         raise HTTPException(409, '보고서가 아직 완성되지 않았습니다.')
     inline = value['kind'] == 'preview'
-    return FileResponse(job_path(state, jid) / value['filename'], headers=NO_STORE,
+    output = job_path(state, jid) / value['filename']
+    if not output.is_file():
+        raise HTTPException(410, '로컬 내보내기 파일 보관 기간이 만료되었습니다. LIMS에 적재된 보고서를 확인하세요.')
+    return FileResponse(output, headers=NO_STORE,
                         filename=None if inline else 'XRD-' + value['filename'])
 
 

@@ -969,13 +969,12 @@ class Database:
                 (request_number,),
             ).fetchall()
 
-    def fetch_request_summaries(
-        self,
-        limit: int,
-        offset: int,
+    @staticmethod
+    def _request_filter_sql(
         experiment_keywords: tuple[str, ...] = (),
         include_completed: bool = False,
-    ) -> list[dict[str, Any]]:
+        request_filters: dict[str, Any] | None = None,
+    ) -> tuple[str, list[Any]]:
         filters: list[str] = []
         params: list[Any] = []
         if not include_completed:
@@ -999,7 +998,40 @@ class Database:
                 )
                 params.extend([like, like])
             filters.append("(" + " OR ".join(keyword_filters) + ")")
+        for key, column, operator in (
+            ("reqNumber", "req_number", "="),
+            ("testMtdCode", "test_mtd_code", "="),
+            ("fromDate", "req_date", ">="),
+            ("toDate", "req_date", "<="),
+        ):
+            if (request_filters or {}).get(key) is not None:
+                filters.append(f"{column} {operator} ?")
+                params.append(request_filters[key])
         where_sql = f"WHERE {' AND '.join(filters)}" if filters else ""
+        return where_sql, params
+
+    def count_request_summaries(
+        self,
+        experiment_keywords: tuple[str, ...] = (),
+        include_completed: bool = False,
+        request_filters: dict[str, Any] | None = None,
+    ) -> int:
+        where_sql, params = self._request_filter_sql(experiment_keywords, include_completed, request_filters)
+        with self._connect() as connection:
+            row = connection.execute(
+                f"SELECT COUNT(*) AS total_count FROM lims_req_ax_search {where_sql}", tuple(params)
+            ).fetchone()
+        return int(row["total_count"])
+
+    def fetch_request_summaries(
+        self,
+        limit: int,
+        offset: int,
+        experiment_keywords: tuple[str, ...] = (),
+        include_completed: bool = False,
+        request_filters: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
+        where_sql, params = self._request_filter_sql(experiment_keywords, include_completed, request_filters)
         with self._connect() as connection:
             return connection.execute(
                 f"""
@@ -1799,6 +1831,30 @@ class Database:
 
     def retry_report_transfer(self, report_id: str) -> bool:
         with self.transaction() as connection:
+            row = connection.execute(
+                "SELECT * FROM report_transfers WHERE report_id = ? FOR UPDATE",
+                (report_id,),
+            ).fetchone()
+            if row is None or row["status"] not in {"FAILED", "CANCELLED"}:
+                return False
+            row = dict(row)
+            raw_state = row.get("delivery_state_json")
+            try:
+                state = json.loads(raw_state) if raw_state else {}
+                if not isinstance(state, dict):
+                    return False
+            except (ValueError, TypeError):
+                return False
+            if (row.get("mail_status") or state.get("mailStatus")) == "FAILED" and row["status"] == "FAILED":
+                if not state.get("requestId") or not state.get("fileNo"):
+                    return False
+                generation = state.get("mailRetryGeneration", 0)
+                if isinstance(generation, bool) or not isinstance(generation, int) or not 0 <= generation < 2147483647:
+                    return False
+                state["mailRetryRequested"] = True
+                state["mailRetryGeneration"] = generation + 1
+                state["mailRetryUncertain"] = False
+                raw_state = json.dumps(state, ensure_ascii=False)
             cursor = connection.execute(
                 """
                 UPDATE report_transfers
@@ -1810,10 +1866,11 @@ class Database:
                     completed_at = NULL,
                     last_error_code = NULL,
                     last_error_message = NULL,
+                    delivery_state_json = ?,
                     updated_at = CURRENT_TIMESTAMP(6)
                 WHERE report_id = ? AND status IN ('FAILED', 'CANCELLED')
                 """,
-                (report_id,),
+                (raw_state, report_id,),
             )
             return bool(cursor.rowcount)
 

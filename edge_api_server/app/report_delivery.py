@@ -28,6 +28,15 @@ from .usage_archive import set_usage_context
 router = APIRouter()
 
 
+@router.get("/assets/report_delivery_progress.js", include_in_schema=False)
+def delivery_progress_script() -> FileResponse:
+    return FileResponse(
+        Path(__file__).with_name("report_delivery_progress.js"),
+        media_type="application/javascript",
+        headers={"Cache-Control": "no-cache", "X-Content-Type-Options": "nosniff"},
+    )
+
+
 def _settings(request: Request) -> Settings:
     settings = getattr(request.app.state, "settings", None)
     if not isinstance(settings, Settings):
@@ -119,6 +128,9 @@ def _package_path(settings: Settings, report: dict[str, Any]) -> Path:
 def _state(request: Request, report: dict[str, Any], project: str) -> dict[str, Any]:
     transfer = _database(request).fetch_report_transfer_for_report(str(report["report_id"]))
     transfer_status = str(transfer["status"]) if transfer else "READY_FOR_REVIEW"
+    settings = _settings(request)
+    single_limit = int(settings.report_mail_max_attachment_bytes or 0)
+    total_limit = int(settings.report_mail_max_total_attachment_bytes or 0)
     return {
         "reportId": report["report_id"],
         "sourceJobId": report.get("source_job_id"),
@@ -128,6 +140,13 @@ def _state(request: Request, report: dict[str, Any], project: str) -> dict[str, 
         "equipmentCode": report.get("equipment_code"),
         "operatorId": report.get("operator_id"),
         "generationStatus": report.get("generation_status"),
+        "packageSizeBytes": report.get("package_size_bytes"),
+        "mailAttachmentLimits": {
+            "singleBytes": single_limit,
+            "totalAttachmentBytes": total_limit,
+            "basis": "raw",
+            "configured": bool(single_limit or total_limit),
+        },
         "transferStatus": transfer_status,
         **public_delivery_state(transfer),
         "canQueue": transfer is None and report.get("deleted_at") is None,
@@ -225,19 +244,23 @@ def _generated_report_page(report_id: str, project: str, state: dict[str, Any]) 
     button_label = (
         "SSO 인증 후 LIMS 전송"
         if can_queue
-        else f"전송 상태: {state['transferStatus']}"
+        else "Edge 전송 요청 접수됨"
     )
     disabled = "" if can_queue else " disabled"
     preview_link = (
         f'<a class="button secondary" target="_blank" rel="noopener" href="/api/v1/reports/{encoded_id}/preview">PPT · 그래프 미리보기</a>'
         if project in {"FTIR", "RAMAN"} else ""
     )
+    download_link = (
+        f'<a class="button secondary" href="/api/v1/reports/{encoded_id}/package">ZIP 다운로드</a>'
+        if state.get("localFilesRetained", True) else '<span class="muted">로컬 파일 보관 기간이 만료되었습니다.</span>'
+    )
     html = f"""<!doctype html>
 <html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta http-equiv="Cache-Control" content="no-store"><title>{escape(project)} 보고서 검토</title>
-<style>*{{box-sizing:border-box}}body{{margin:0;background:#f4f6f8;color:#172b4d;font:15px/1.55 system-ui,-apple-system,sans-serif}}main{{max-width:880px;margin:0 auto;padding:32px 18px}}.panel{{background:#fff;border:1px solid #d8e0eb;border-radius:10px;padding:24px}}h1{{margin:0 0 6px;font-size:26px}}.muted{{color:#637083}}.grid{{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:22px 0}}.item{{background:#f7f9fc;border-radius:7px;padding:12px;overflow-wrap:anywhere}}.item b{{display:block;font-size:12px;color:#637083;margin-bottom:4px}}.actions{{display:flex;gap:9px;flex-wrap:wrap}}button,a.button{{min-height:42px;border:1px solid #1769aa;border-radius:7px;padding:9px 14px;background:#1769aa;color:#fff;text-decoration:none;font:inherit;font-weight:700;cursor:pointer}}a.secondary{{background:#fff;color:#1769aa}}button:disabled{{opacity:.5;cursor:not-allowed}}#message{{margin-top:15px;white-space:pre-wrap}}@media(max-width:620px){{main{{padding:18px 12px}}.panel{{padding:18px}}.grid{{grid-template-columns:1fr}}}}</style></head>
+<style>*{{box-sizing:border-box}}body{{margin:0;background:#f4f6f8;color:#172b4d;font:15px/1.55 system-ui,-apple-system,sans-serif}}main{{max-width:880px;margin:0 auto;padding:32px 18px}}.panel{{background:#fff;border:1px solid #d8e0eb;border-radius:10px;padding:24px}}h1{{margin:0 0 6px;font-size:26px}}.muted{{color:#637083}}.grid{{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:22px 0}}.item{{background:#f7f9fc;border-radius:7px;padding:12px;overflow-wrap:anywhere}}.item b{{display:block;font-size:12px;color:#637083;margin-bottom:4px}}.actions{{display:flex;gap:9px;flex-wrap:wrap}}button,a.button{{min-height:42px;border:1px solid #1769aa;border-radius:7px;padding:9px 14px;background:#1769aa;color:#fff;text-decoration:none;font:inherit;font-weight:700;cursor:pointer}}a.secondary{{background:#fff;color:#1769aa}}button:disabled{{opacity:.5;cursor:not-allowed}}#message{{margin-top:15px;white-space:pre-wrap}}@media(max-width:620px){{main{{padding:18px 12px}}.panel{{padding:18px}}.grid{{grid-template-columns:1fr}}}}.delivery-state{{margin-top:24px;border-top:1px solid #d8e0eb;padding-top:18px}}.delivery-steps{{display:flex;gap:24px;flex-wrap:wrap;padding-left:20px}}.delivery-steps [aria-current]{{font-weight:bold;color:#1769aa}}.delivery-identifiers{{display:grid;grid-template-columns:140px 1fr;gap:6px}}.delivery-identifiers dd{{margin:0;overflow-wrap:anywhere}}.warn{{color:#9b1c1c}}.delivery-error{{white-space:pre-wrap}}</style></head>
 <body><main><section class="panel"><h1>{escape(project)} 보고서 검토</h1><div class="muted">보고서 파일을 확인한 뒤 사내 SSO 인증으로 LIMS 전송을 승인합니다.</div>
 <div class="grid"><div class="item"><b>의뢰번호</b>{escape(str(state['requestNumber'] or '-'))}</div><div class="item"><b>분석 / 실험코드</b>{escape(project)} / {escape(str(state['experimentCode'] or '-'))}</div><div class="item"><b>장비코드</b>{escape(str(state['equipmentCode'] or '-'))}</div><div class="item"><b>전송 상태</b><span id="status">{escape(str(state['transferStatus']))}</span></div><div class="item"><b>생성 시각</b>{escape(str(state['generatedAt'] or '-'))}</div><div class="item"><b>보고서 ID</b>{escape(report_id)}</div></div>
-<div class="actions">{preview_link}<a class="button secondary" href="/api/v1/reports/{encoded_id}/package">ZIP 다운로드</a><a class="button secondary" href="{escape(sso_url)}">SSO 재인증</a><button id="send" data-send-url="/api/v1/reports/{encoded_id}/send" type="button"{disabled}>{escape(button_label)}</button></div><div id="message" class="muted"></div></section></main>
-<script>const button=document.getElementById('send'),message=document.getElementById('message'),statusNode=document.getElementById('status');if(button)button.addEventListener('click',async()=>{{button.disabled=true;message.textContent='전송 큐에 등록하는 중입니다.';try{{const response=await fetch(button.getAttribute('data-send-url'),{{method:'POST',headers:{{'X-Request-Id':'report-send-'+Date.now()}}}});const payload=await response.json();if(!response.ok){{if(payload.details&&payload.details.reauthUrl)location.href=payload.details.reauthUrl;throw new Error(payload.message||payload.detail||'전송 요청에 실패했습니다.')}}statusNode.textContent=payload.status||'PENDING';message.textContent='LIMS 전송 큐에 등록했습니다. 실제 완료 상태는 운영 화면에서 확인할 수 있습니다.';button.textContent='전송 요청됨'}}catch(error){{message.textContent=error.message||String(error);button.disabled=false}}}});</script></body></html>"""
+<div class="actions">{preview_link}{download_link}<a class="button secondary" href="{escape(sso_url)}">SSO 재인증</a><button id="send" data-send-url="/api/v1/reports/{encoded_id}/send" type="button"{disabled}>{escape(button_label)}</button><button id="refresh-delivery" type="button">상태 새로고침</button></div><div id="message" class="muted" role="status"></div><div id="delivery-progress" data-status-url="/api/v1/reports/{encoded_id}"><p>전송 상태를 확인하고 있습니다.</p></div></section></main>
+<script src="/assets/report_delivery_progress.js"></script><script>window.RistDeliveryProgress.mountReview();</script></body></html>"""
     return HTMLResponse(with_browser_support_notice(html), headers={"Cache-Control": "no-store"})

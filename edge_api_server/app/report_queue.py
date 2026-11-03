@@ -21,6 +21,24 @@ class ReportQueueError(Exception):
         self.retryable = retryable
 
 
+def validate_mail_attachment_sizes(settings: Any, sizes: list[int]) -> None:
+    """Validate raw attachment bytes; SMTP/MIME limits need LIMS confirmation."""
+    single = int(getattr(settings, "report_mail_max_attachment_bytes", 0) or 0)
+    total = int(getattr(settings, "report_mail_max_total_attachment_bytes", 0) or 0)
+    if single > 0 and any(size > single for size in sizes):
+        raise ReportQueueError(
+            "REPORT_MAIL_ATTACHMENT_TOO_LARGE",
+            f"첨부파일이 설정된 단일 파일 한도({single:,} bytes)를 초과했습니다.",
+            retryable=False,
+        )
+    if total > 0 and sum(sizes) > total:
+        raise ReportQueueError(
+            "REPORT_MAIL_ATTACHMENTS_TOO_LARGE",
+            f"첨부파일 합계가 설정된 한도({total:,} bytes)를 초과했습니다.",
+            retryable=False,
+        )
+
+
 def enqueue_report_package(
     *,
     settings: Any,
@@ -37,6 +55,17 @@ def enqueue_report_package(
     register_report_run: bool = True,
 ) -> dict[str, Any]:
     """Register a completed shared-storage ZIP for downstream LIMS delivery."""
+    # Workspace ownership is recorded by server-side generation code only.
+    # Never accept a cleanup context supplied by a browser's report options.
+    options = json.loads(report_options) if isinstance(report_options, str) else dict(report_options or {})
+    options.pop("_sourceRetention", None)
+    existing = getattr(database, "fetch_report_run", lambda _id: None)(report_id)
+    if existing:
+        saved = existing.get("report_options_json")
+        saved = json.loads(saved) if isinstance(saved, str) else (saved or {})
+        if isinstance(saved, dict) and isinstance(saved.get("_sourceRetention"), dict):
+            options["_sourceRetention"] = saved["_sourceRetention"]
+    report_options = options
     if report_options:
         from .report_mail import validate_envelope
         options = json.loads(report_options) if isinstance(report_options, str) else dict(report_options)
@@ -77,6 +106,9 @@ def enqueue_report_package(
             retryable=False,
         )
 
+    if isinstance(report_options, dict) and report_options.get("email"):
+        validate_mail_attachment_sizes(settings, [resolved_package.stat().st_size])
+
     normalized_relative_path = relative_path.as_posix()
     if normalized_relative_path.startswith("/") or ".." in relative_path.parts:
         raise ReportQueueError(
@@ -101,6 +133,9 @@ def enqueue_report_package(
             generated_at=generated_at,
             is_test=False,
         )
+
+    _register_delivery_sources(settings=settings, database=database, report_id=report_id,
+                               source_job_id=resolved_source_job_id, report_options=report_options)
 
     transfer_id = str(
         uuid5(NAMESPACE_URL, f"rist-report-transfer:{report_id}:LIMS")
@@ -238,10 +273,24 @@ def register_generated_report_package(
     source_job_id: str | None = None,
     report_options: Any = None,
     is_test: bool | None = None,
+    source_artifact_paths: tuple[Path, ...] | list[Path] = (),
+    source_retention_context: dict[str, Any] | None = None,
 ) -> Path:
     """Publish and register a generated report before a transfer is requested."""
     if settings is None or database is None:
         return package_path
+    options = json.loads(report_options) if isinstance(report_options, str) else dict(report_options or {})
+    options.pop("_sourceRetention", None)
+    if source_retention_context is not None:
+        from .report_source_retention import _safe
+        root = Path(settings.storage_root).expanduser().resolve()
+        sources = []
+        for source in source_artifact_paths:
+            relative = source.absolute().relative_to(root).as_posix()
+            path = _safe(root, relative)
+            if path.is_file():
+                sources.append({"relative_path": relative, "size_bytes": path.stat().st_size, "sha256": _sha256_file(path)})
+        options["_sourceRetention"] = {**source_retention_context, "artifacts": sources}
     published = persist_preview_report_package(
         settings=settings,
         report_id=report_id,
@@ -259,11 +308,31 @@ def register_generated_report_package(
         experiment_code=experiment_code,
         equipment_code=equipment_code,
         operator_id=operator_id,
-        report_options=report_options,
+        report_options=options,
         generated_at=None,
         is_test=_looks_like_test_report(request_number) if is_test is None else is_test,
     )
     return published
+
+
+def _register_delivery_sources(*, settings: Any, database: Database, report_id: str,
+                               source_job_id: str | None, report_options: Any) -> None:
+    """Link unchanged generation sources only when a report is actually queued.
+
+    Unsended editable drafts must not create permanent references that prevent
+    delivered report files from expiring. Modified files belong to newer work.
+    """
+    from .report_source_retention import _safe
+    context = (report_options or {}).get("_sourceRetention")
+    if not isinstance(context, dict):
+        return
+    root = Path(settings.storage_root).expanduser().resolve()
+    for record in context.get("artifacts", []):
+        path = _safe(root, record.get("relative_path"))
+        if (path.is_file() and path.stat().st_size == record.get("size_bytes")
+                and _sha256_file(path) == record.get("sha256")):
+            _register_artifact_path(settings=settings, database=database, report_id=report_id,
+                                    source_job_id=source_job_id, path=path)
 
 
 def persist_preview_report_package(

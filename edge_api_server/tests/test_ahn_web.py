@@ -166,8 +166,10 @@ def test_tem_send_route_queues_completed_package(monkeypatch, tmp_path) -> None:
         job_id="tem-job-1",
         status="completed",
         package_path=package_path,
+        pptx_path=tmp_path / "tem-report.pptx",
         output_dir=tmp_path, review_error=None,
     )
+    job.pptx_path.write_bytes(b"pptx")
     (tmp_path / "tem-report.pdf").write_bytes(b"test preview")
     captured = {}
 

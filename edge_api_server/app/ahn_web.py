@@ -1197,6 +1197,8 @@ def _process_ahn_job(job: AhnReportJob) -> None:
         _set_job_state(job, progress_pct=90, message="TEM PPT 미리보기와 메일 문안을 준비하는 중입니다.")
         prepare_review(job, manifest)
         _build_package(job.output_dir, job.package_path)
+        from .report_source_retention import tem_delivery_copies
+        source_copies, source_context = tem_delivery_copies(job)
         published_package = register_generated_report_package(
             settings=job.settings,
             database=job.database,
@@ -1205,9 +1207,11 @@ def _process_ahn_job(job: AhnReportJob) -> None:
             experiment_code="TEM",
             is_test=True,
             report_options={'email': delivery_mail(job)},
+            source_artifact_paths=source_copies,
+            source_retention_context=source_context,
         )
-        # The work-history copy has its own retention window. A shared test
-        # report can expire earlier without breaking the editable local draft.
+        # Generated output copies share confirmed-delivery retention. Reusable
+        # uploaded inputs and working drafts retain their separate lifecycle.
         if not tem_history.managed(job):
             job.package_path = published_package
     except Exception as exc:
@@ -1294,7 +1298,7 @@ def _submit_ahn_job(
         job = _create_ahn_job(input_root, work_dir, error_archive, settings, database,
                               usage_archive, usage_client_context, owner_user_id=owner_user_id)
         job.validate_upload = validate_upload
-        future = _ahn_report_executor.submit(_run_ahn_job, job)
+        future = tem_history.submit_owned(_ahn_report_executor, job, _run_ahn_job, job)
         future.add_done_callback(lambda _future: slots.release())
     except BaseException:
         slots.release()
@@ -2422,17 +2426,18 @@ def build_ahn_page(resume_owner: str = "anonymous") -> str:
     }
     async function loadRequestItems() {
       requestLoad.disabled = true;
+      if (requestFilters) requestFilters.setBusy(true);
       requestLoad.textContent = "조회 중...";
       try {
         var payload = await requestJson(
-          "/api/v1/requests?page=1&pageSize=200&experimentType="
-            + encodeURIComponent(REQUEST_EXPERIMENT_TYPE),
+          (requestFilters ? requestFilters.url() : "/api/v1/requests?page=1&pageSize=200&experimentType=" + encodeURIComponent(REQUEST_EXPERIMENT_TYPE)),
           {
             headers: {"X-Request-Id": "tem-request-list-" + Date.now()}
           }
         );
         requestItems = Array.isArray(payload.items) ? payload.items : [];
         renderRequestOptions(requestItems);
+        if (requestFilters) requestFilters.showResult(payload);
         setStatus(
           requestItems.length
             ? "TEM 의뢰 목록을 불러왔습니다."
@@ -2445,6 +2450,7 @@ def build_ahn_page(resume_owner: str = "anonymous") -> str:
         setStatus(error.message || "TEM 의뢰 조회에 실패했습니다.", true);
       } finally {
         requestLoad.textContent = "의뢰 조회";
+        if (requestFilters) requestFilters.setBusy(false);
         syncActionState();
       }
     }
@@ -2927,6 +2933,7 @@ def build_ahn_page(resume_owner: str = "anonymous") -> str:
       }
       await runTemUpload();
     });
+    var requestFilters = window.RistRequestFilters ? window.RistRequestFilters.mount(requestSelect, {experimentType: REQUEST_EXPERIMENT_TYPE, reload: loadRequestItems}) : null;
     requestLoad.addEventListener("click", loadRequestItems);
     requestSelect.addEventListener("change", applySelectedRequest);
     reportTransferControls.forEach(function(control) {
@@ -2949,7 +2956,7 @@ def build_ahn_page(resume_owner: str = "anonymous") -> str:
     page = page.replace("/* TEM_TRANSFER_RUNTIME */", Path(__file__).with_name("tem_transfer.js").read_text(encoding="utf-8"))
     page = page.replace("__TEM_OWNER__", escape(resume_owner, quote=True))
     page = page.replace("<!-- TEM_HISTORY_UI -->", tem_history_ui())
-    return with_browser_support_notice(page)
+    return with_browser_support_notice(page.replace("</head>", '<script src="/assets/request_filters.js"></script></head>', 1))
 
 
 @router.get("/tem", response_class=HTMLResponse, include_in_schema=False)
@@ -3327,6 +3334,8 @@ def create_tem_preview_app() -> FastAPI:
     app.state.settings = settings
     install_error_management(app, settings)
     app.include_router(router)
+    from .request_filters import router as request_filters_router
+    app.include_router(request_filters_router)
     return app
 
 

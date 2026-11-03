@@ -1883,17 +1883,18 @@ def build_xrd_page() -> str:
     }
     async function loadRequestItems() {
       requestLoad.disabled = true;
+      if (requestFilters) requestFilters.setBusy(true);
       requestLoad.textContent = "조회 중...";
       try {
         var payload = await requestJson(
-          "/api/v1/requests?page=1&pageSize=200&experimentType="
-            + encodeURIComponent(REQUEST_EXPERIMENT_TYPE),
+          (requestFilters ? requestFilters.url() : "/api/v1/requests?page=1&pageSize=200&experimentType=" + encodeURIComponent(REQUEST_EXPERIMENT_TYPE)),
           {
             headers: {"X-Request-Id": "xrd-request-list-" + Date.now()}
           }
         );
         requestItems = Array.isArray(payload.items) ? payload.items : [];
         renderRequestOptions(requestItems);
+        if (requestFilters) requestFilters.showResult(payload);
         setStatus(requestItems.length
           ? "XRD 의뢰 목록을 불러왔습니다."
           : "조회된 XRD 의뢰가 없습니다.", false);
@@ -1901,6 +1902,7 @@ def build_xrd_page() -> str:
         setStatus(error.message || "의뢰 목록 조회에 실패했습니다.", true);
       } finally {
         requestLoad.disabled = false;
+        if (requestFilters) requestFilters.setBusy(false);
         requestLoad.textContent = "의뢰 조회";
       }
     }
@@ -2506,6 +2508,7 @@ def build_xrd_page() -> str:
         setBusy(false);
       }
     });
+    var requestFilters = window.RistRequestFilters ? window.RistRequestFilters.mount(requestSelect, {experimentType: REQUEST_EXPERIMENT_TYPE, reload: loadRequestItems}) : null;
     requestLoad.addEventListener("click", loadRequestItems);
     requestSelect.addEventListener("change", applySelectedRequest);
     reportTransferControls.forEach(function(control) {
@@ -2520,7 +2523,7 @@ def build_xrd_page() -> str:
   </script>
 </body>
 </html>"""
-    return with_browser_support_notice(page)
+    return with_browser_support_notice(page.replace("</head>", '<script src="/assets/request_filters.js"></script></head>', 1))
 
 
 @router.get("/xrd/assets/plotly.min.js", include_in_schema=False)
@@ -3312,4 +3315,6 @@ def create_xrd_preview_app() -> FastAPI:
     app.state.settings = settings
     install_error_management(app, settings)
     app.include_router(router)
+    from .request_filters import router as request_filters_router
+    app.include_router(request_filters_router)
     return app

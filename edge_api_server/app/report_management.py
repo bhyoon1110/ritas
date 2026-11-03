@@ -5,6 +5,7 @@ import hashlib
 import mimetypes
 from pathlib import Path
 import shutil
+from threading import Lock
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, Request
@@ -39,6 +40,16 @@ RETENTION_POLICY_DEFINITIONS = {
         "description": "휴지통으로 이동한 파일을 실제로 삭제하기 전까지 보존합니다.",
     },
 }
+
+_cleanup_locks: dict[Path, Any] = {}
+_cleanup_locks_guard = Lock()
+
+
+def _cleanup_lock(settings: Any):
+    from .xrd_workbench.locking import ProcessLock
+    root = _storage_root(settings)
+    with _cleanup_locks_guard:
+        return _cleanup_locks.setdefault(root, ProcessLock(root / ".report-cleanup.lock"))
 
 
 class ReportLifecycleUpdate(BaseModel):
@@ -185,6 +196,14 @@ def _load_retention_policies(settings: Any, database: Database) -> dict[str, dic
     return policies
 
 
+def _retention_hours(settings: Any, policy_key: str, policy: dict[str, Any]) -> float:
+    override = getattr(settings, {
+        "COMPLETED": "report_completed_retention_hours",
+        "TRASH": "report_trash_retention_hours",
+    }.get(policy_key, ""), None)
+    return float(override) if override is not None else int(policy["retention_days"]) * 24
+
+
 def _retention_policy_response(settings: Any, database: Database) -> dict[str, Any]:
     policies = _load_retention_policies(settings, database)
     items: list[dict[str, Any]] = []
@@ -196,6 +215,11 @@ def _retention_policy_response(settings: Any, database: Database) -> dict[str, A
                 "label": definition["label"],
                 "description": definition["description"],
                 "retentionDays": int(policy["retention_days"]),
+                "effectiveRetentionHours": _retention_hours(settings, policy_key, policy),
+                "source": "environment" if (
+                    policy_key == "COMPLETED" and getattr(settings, "report_completed_retention_hours", None) is not None
+                    or policy_key == "TRASH" and getattr(settings, "report_trash_retention_hours", None) is not None
+                ) else "policy",
                 "autoCleanupEnabled": bool(policy["auto_cleanup_enabled"]),
                 "updatedAt": policy.get("updated_at"),
                 "updatedBy": policy.get("updated_by"),
@@ -232,7 +256,7 @@ def _retention_deadline(
     if durable is not None and row.get("document_status") == "COMPLETED":
         policy = resolved["COMPLETED"]
         return (
-            durable + timedelta(days=int(policy["retention_days"])),
+            durable + timedelta(hours=_retention_hours(settings, "COMPLETED", policy)),
             "LIMS 문서 적재 완료",
             "COMPLETED",
             bool(policy["auto_cleanup_enabled"]),
@@ -248,7 +272,7 @@ def _retention_deadline(
     if status in {"FAILED", "CANCELLED"} and completed:
         policy = resolved["FAILED_OR_CANCELLED"]
         return (
-            completed + timedelta(days=int(policy["retention_days"])),
+            completed + timedelta(hours=_retention_hours(settings, "FAILED_OR_CANCELLED", policy)),
             status,
             "FAILED_OR_CANCELLED",
             bool(policy["auto_cleanup_enabled"]),
@@ -256,7 +280,7 @@ def _retention_deadline(
     if status == "COMPLETED" and completed:
         policy = resolved["COMPLETED"]
         return (
-            completed + timedelta(days=int(policy["retention_days"])),
+            completed + timedelta(hours=_retention_hours(settings, "COMPLETED", policy)),
             "LIMS 전송 완료",
             "COMPLETED",
             bool(policy["auto_cleanup_enabled"]),
@@ -362,6 +386,23 @@ def _trash_report(
     reason: str,
     policies: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
+    from .report_source_retention import source_cleanup_guard
+    with _cleanup_lock(settings):
+        fetch = getattr(database, "fetch_report_management", None)
+        if callable(fetch):
+            current = fetch(str(row["report_id"]))
+            if current is None:
+                raise HTTPException(status_code=409, detail="보고서 정리 대상이 변경되었습니다.")
+            row = current
+        with source_cleanup_guard(settings, row):
+            return _trash_report_locked(settings=settings, database=database, row=row,
+                                        actor=actor, reason=reason, policies=policies)
+
+
+def _trash_report_locked(
+    *, settings: Any, database: Database, row: dict[str, Any], actor: str,
+    reason: str, policies: dict[str, dict[str, Any]] | None = None,
+) -> dict[str, Any]:
     decorated = _decorate_row(
         row,
         settings,
@@ -432,6 +473,11 @@ def _trash_report(
 
 
 def cleanup_expired_reports(*, settings: Any, database: Database, actor: str = "system") -> list[dict[str, Any]]:
+    with _cleanup_lock(settings):
+        return _cleanup_expired_reports_locked(settings=settings, database=database, actor=actor)
+
+
+def _cleanup_expired_reports_locked(*, settings: Any, database: Database, actor: str) -> list[dict[str, Any]]:
     results: list[dict[str, Any]] = []
     policies = _load_retention_policies(settings, database)
     after_report_id = ""
@@ -444,12 +490,16 @@ def cleanup_expired_reports(*, settings: Any, database: Database, actor: str = "
                 continue
             detail = database.fetch_report_management(str(summary["report_id"]))
             if detail and _decorate_row(detail, settings, include_artifacts=False, policies=policies)["autoCleanupEligible"]:
-                results.append(
-                    _trash_report(
+                try:
+                    results.append(_trash_report(
                         settings=settings, database=database, row=detail, actor=actor,
                         reason="자동 보존 정책 만료", policies=policies,
-                    )
-                )
+                    ))
+                except HTTPException as exc:
+                    if exc.status_code != 409:
+                        raise
+                    # A source may be pinned, edited or in use after the first
+                    # eligibility read. Keep it and continue other reports.
         after_report_id = str(page[-1]["report_id"])
     _purge_old_trash(settings, database=database, policies=policies)
     return results
@@ -461,6 +511,12 @@ def _purge_old_trash(
     database: Database,
     policies: dict[str, dict[str, Any]] | None = None,
 ) -> int:
+    with _cleanup_lock(settings):
+        return _purge_old_trash_locked(settings, database=database, policies=policies)
+
+
+def _purge_old_trash_locked(settings: Any, *, database: Database,
+                           policies: dict[str, dict[str, Any]] | None = None) -> int:
     trash_policy = (policies or _default_retention_policies(settings))["TRASH"]
     if not bool(trash_policy["auto_cleanup_enabled"]):
         return 0
@@ -468,7 +524,7 @@ def _purge_old_trash(
     if not root.is_dir():
         return 0
     cutoff = datetime.now(timezone.utc) - timedelta(
-        days=max(1, int(trash_policy["retention_days"]))
+        hours=_retention_hours(settings, "TRASH", trash_policy)
     )
     removed = 0
     for child in root.iterdir():
@@ -476,7 +532,7 @@ def _purge_old_trash(
             # Recheck legacy trash too: older versions could consider API2
             # acceptance sufficient. Unknown/orphan folders require review.
             report = database.fetch_report_management(child.name)
-            if report is None:
+            if report is None or report.get("pinned"):
                 continue
             queued = str(report.get("transfer_status") or "NOT_QUEUED").upper() != "NOT_QUEUED"
             if queued and not (
@@ -509,6 +565,11 @@ def update_retention_policies(
     request: Request,
     payload: RetentionPolicyUpdateRequest,
 ) -> dict[str, Any]:
+    with _cleanup_lock(_settings(request)):
+        return _update_retention_policies_locked(request, payload)
+
+
+def _update_retention_policies_locked(request: Request, payload: RetentionPolicyUpdateRequest) -> dict[str, Any]:
     expected = set(RETENTION_POLICY_DEFINITIONS)
     normalized = {key.upper(): value for key, value in payload.policies.items()}
     supplied = set(normalized)
@@ -737,9 +798,17 @@ def report_detail(request: Request, report_id: str) -> dict[str, Any]:
 
 @router.patch("/api/v1/report-management/{report_id}", tags=["report-management"])
 def update_report(request: Request, report_id: str, payload: ReportLifecycleUpdate) -> dict[str, Any]:
+    with _cleanup_lock(_settings(request)):
+        return _update_report_locked(request, report_id, payload)
+
+
+def _update_report_locked(request: Request, report_id: str, payload: ReportLifecycleUpdate) -> dict[str, Any]:
     database = _database(request)
-    if database.fetch_report_management(report_id) is None:
+    existing = database.fetch_report_management(report_id)
+    if existing is None:
         raise HTTPException(status_code=404, detail="보고서 생성 기록을 찾을 수 없습니다.")
+    if existing.get("deleted_at") and (payload.pinned is True or payload.update_retention):
+        raise HTTPException(status_code=409, detail="이미 정리된 파일에는 보존 지정이나 기한 연장을 적용할 수 없습니다.")
     database.update_report_lifecycle(
         report_id,
         is_test=payload.is_test,
@@ -788,6 +857,27 @@ def verify_report(request: Request, report_id: str) -> dict[str, Any]:
 
 @router.post("/api/v1/report-management/{report_id}/retry", tags=["report-management"])
 def retry_transfer(request: Request, report_id: str) -> dict[str, Any]:
+    settings = getattr(request.app.state, "settings", None)
+    if getattr(settings, "auth_enabled", False):
+        from .auth import authenticated_transfer_payload, require_context
+        from .preview_report import PreviewReportSendRequest
+        context = require_context(request)
+        if not context.is_admin:
+            raise HTTPException(status_code=403, detail="운영 관리자만 전송을 재시도할 수 있습니다.")
+        row = _database(request).fetch_report_run(report_id)
+        if row is None:
+            raise HTTPException(status_code=404, detail="보고서 생성 기록을 찾을 수 없습니다.")
+        authenticated_transfer_payload(
+            request,
+            PreviewReportSendRequest(
+                requestNumber=str(row.get("request_number") or "(미지정)"),
+                experimentCode=str(row.get("experiment_code") or "UNKNOWN"),
+                equipmentCode=str(row.get("equipment_code") or "(미지정)"),
+                operatorId=context.login_id,
+            ),
+            _analysis_type(row, settings),
+            return_to="/report-management",
+        )
     if not _database(request).retry_report_transfer(report_id):
         raise HTTPException(status_code=409, detail="FAILED 또는 CANCELLED 전송만 재시도할 수 있습니다.")
     return {"reportId": report_id, "status": "PENDING"}

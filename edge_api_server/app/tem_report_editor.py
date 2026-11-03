@@ -101,6 +101,8 @@ def authorized_job(request, job_id, *, ready=True):
         job.history_accessed_at = ahn.time.time()
     if ready and job.status != "completed":
         raise ApiException(409, "TEM_REPORT_NOT_READY", "TEM 보고서가 아직 완성되지 않았습니다.")
+    if ready and not job.pptx_path.is_file():
+        raise ApiException(410, "TEM_REPORT_EXPIRED", "로컬 보고서 보관 기간이 만료되었습니다. LIMS에 적재된 보고서를 확인하세요.")
     return job
 
 
@@ -133,11 +135,14 @@ def _revision(new_job, old_job, changes, actor_id=None):
                     protect_pptx(new_job.pptx_path.read_bytes(), changes['pptxProtection']))
             ahn._build_package(new_job.output_dir, new_job.package_path, pptx_protection=changes.get('pptxProtection'))
             transfer = new_job.transfer_metadata
+            from .report_source_retention import tem_delivery_copies
+            source_copies, source_context = tem_delivery_copies(new_job)
             published_package = register_generated_report_package(settings=new_job.settings, database=new_job.database,
                 report_id=new_job.job_id, package_path=new_job.package_path, experiment_code="TEM",
                 request_number=transfer["requestNumber"], equipment_code=transfer["equipmentCode"], operator_id=transfer["operatorId"],
                 report_options={"revisionOf": old_job.job_id, "reviewed": True, "transfer": transfer,
-                    "email": delivery_mail(new_job)})
+                    "email": delivery_mail(new_job)},
+                source_artifact_paths=source_copies, source_retention_context=source_context)
             if not ahn.tem_history.managed(new_job):
                 new_job.package_path = published_package
             ahn._set_job_state(new_job, status="completed", progress_pct=100, message="TEM 수정본이 저장되었습니다.", manifest=manifest)
@@ -273,7 +278,7 @@ document.getElementById('next').onclick=function(){if(page<count-1){page++;show(
             new_job.parent_job_id = job.job_id
             new_job.history_title = (job.history_title + " (수정본)")[:120]
             ahn.tem_history.save(new_job)
-            ahn._ahn_report_executor.submit(_revision, new_job, job, deepcopy(values),
+            ahn.tem_history.submit_owned(ahn._ahn_report_executor, new_job, _revision, new_job, job, deepcopy(values),
                 getattr(getattr(request.state, "auth_context", None), "user_id", None))
         except Exception:
             with ahn._ahn_report_jobs_lock:

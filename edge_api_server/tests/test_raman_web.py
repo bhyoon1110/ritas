@@ -832,6 +832,7 @@ def test_raman_report_job_api_tracks_progress_and_downloads_package(monkeypatch)
 
 
 def test_raman_report_chunked_upload_session_retries_and_downloads_package(monkeypatch) -> None:
+    from app.raman_web import raman_report_upload_store
     use_fake_pptx_pdf_converter(monkeypatch)
     content = MULTI_SAMPLE_TXT.read_bytes()
     first_chunk = content[:120]
@@ -849,6 +850,7 @@ def test_raman_report_chunked_upload_session_retries_and_downloads_package(monke
         session_response = client.post("/api/v1/raman/report/upload-sessions")
         assert session_response.status_code == 201
         upload_id = session_response.json()["uploadId"]
+        consumed_dir = raman_report_upload_store.get(upload_id).work_dir
 
         first_data = {
             "relative_path": f"raw/{MULTI_SAMPLE_TXT.name}",
@@ -893,6 +895,7 @@ def test_raman_report_chunked_upload_session_retries_and_downloads_package(monke
             data=complete_data,
         )
         assert complete_response.status_code == 202
+        assert not consumed_dir.exists()
         repeat_complete_response = client.post(
             f"/api/v1/raman/report/upload-sessions/{upload_id}/complete",
             data=complete_data,

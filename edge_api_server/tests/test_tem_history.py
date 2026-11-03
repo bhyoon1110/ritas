@@ -210,9 +210,12 @@ def test_maintenance_removes_expired_upload_without_a_browser_request(workspace)
     assert session.upload_id not in ahn._ahn_upload_sessions
 
 
-def test_real_process_restart_restores_records_downloads_and_marks_interrupted_failed(workspace):
-    w = workspace
-    completed = make(w); interrupted = make(w, status="running")
+def test_real_process_restart_restores_records_downloads_and_marks_interrupted_failed(tem_unit_runtime):
+    app = ahn.create_tem_preview_app()
+    with TestClient(app) as client:
+        w = SimpleNamespace(app=app, client=client, settings=app.state.settings)
+        completed = make(w); interrupted = make(w, status="running")
+    # Stop the original app before restarting: concurrent TEM owners are denied.
     # New interpreter: no in-memory registry or inherited _loaded cache.
     code = '''
 import json

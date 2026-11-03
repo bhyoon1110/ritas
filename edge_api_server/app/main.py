@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+from typing import Literal
 
 from fastapi import (
     Depends,
@@ -51,6 +52,7 @@ from .preview_web import build_workspace_index
 from .raman_web import router as raman_router
 from .report_delivery import router as report_delivery_router
 from .report_mail import router as report_mail_router
+from .request_filters import router as request_filters_router
 from .service import EdgeService
 from .xrd_web import router as xrd_router
 from .xrd_workbench.integration import router as xrd_workbench_router
@@ -188,6 +190,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(dashboard_router)
     app.include_router(report_delivery_router)
     app.include_router(report_mail_router)
+    app.include_router(request_filters_router)
     app.include_router(ftir_router)
     app.include_router(raman_router)
     app.include_router(xrd_router)
@@ -518,17 +521,32 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         tags=["requests"],
     )
     def list_requests(
+        response: Response,
         page: int = Query(default=1, ge=1),
-        page_size: int = Query(default=50, alias="pageSize", ge=1, le=200),
+        page_size: int = Query(default=50, alias="pageSize", ge=1, le=1000),
         experiment_type: str | None = Query(default=None, alias="experimentType"),
-        include_completed: bool = Query(default=False, alias="includeCompleted"),
+        include_completed: bool | None = Query(default=None, alias="includeCompleted"),
+        source: Literal["cache", "lims"] = Query(default="cache"),
+        req_number: str | None = Query(default=None, alias="reqNumber", max_length=200),
+        test_mtd_code: str | None = Query(default=None, alias="testMtdCode", max_length=200),
+        from_date: str | None = Query(default=None, alias="fromDate", max_length=10),
+        to_date: str | None = Query(default=None, alias="toDate", max_length=10),
+        test_charger_no: int | None = Query(default=None, alias="testChargerNo", ge=1, le=9223372036854775807),
+        test_charger_id: str | None = Query(default=None, alias="testChargerId", max_length=200),
         _: str = Depends(required_request_id),
     ) -> dict:
+        response.headers["Cache-Control"] = "no-store"
         return service.request_summaries(
             page,
             page_size,
             experiment_type,
             include_completed=include_completed,
+            source=source,
+            request_filters={
+                "reqNumber": req_number, "testMtdCode": test_mtd_code,
+                "fromDate": from_date, "toDate": to_date,
+                "testChargerNo": test_charger_no, "testChargerId": test_charger_id,
+            },
         )
 
     return app

@@ -69,38 +69,40 @@ class FileListResponse(ApiModel):
 
 
 class RequestSummary(ApiModel):
-    request_result_no: int = Field(alias="requestResultNo")
+    request_result_no: int | None = Field(alias="requestResultNo")
     request_number: str | None = Field(alias="requestNumber")
     request_date: str | None = Field(alias="requestDate")
-    request_state: int = Field(alias="requestState")
+    request_state: int | None = Field(alias="requestState")
     request_state_name: str | None = Field(alias="requestStateName")
-    request_type_no: int = Field(alias="requestTypeNo")
+    request_type_no: int | None = Field(alias="requestTypeNo")
     request_type_code: str | None = Field(alias="requestTypeCode")
-    request_type_name: str = Field(alias="requestTypeName")
+    request_type_name: str | None = Field(alias="requestTypeName")
     project_code: str | None = Field(alias="projectCode")
     customer_request_name: str | None = Field(alias="customerRequestName")
     customer_no: int | None = Field(alias="customerNo")
     customer_name: str | None = Field(alias="customerName")
     request_user_no: int | None = Field(alias="requestUserNo")
     request_user_name: str | None = Field(alias="requestUserName")
-    sample_result_no: int = Field(alias="sampleResultNo")
-    sample_name: str = Field(alias="sampleName")
-    sample_state: int = Field(alias="sampleState")
-    test_method_result_no: int = Field(alias="testMethodResultNo")
-    test_method_no: int = Field(alias="testMethodNo")
+    sample_result_no: int | None = Field(alias="sampleResultNo")
+    sample_name: str | None = Field(alias="sampleName")
+    sample_state: int | None = Field(alias="sampleState")
+    test_method_result_no: int | None = Field(alias="testMethodResultNo")
+    test_method_no: int | None = Field(alias="testMethodNo")
     test_method_code: str | None = Field(alias="testMethodCode")
-    test_method_name: str = Field(alias="testMethodName")
-    test_state: int = Field(alias="testState")
+    test_method_name: str | None = Field(alias="testMethodName")
+    test_state: int | None = Field(alias="testState")
     test_charger_name: str | None = Field(alias="testChargerName")
     output_order: int | None = Field(alias="outputOrder")
-    synced_at: str = Field(alias="syncedAt")
+    synced_at: str | None = Field(alias="syncedAt")
     experiment_code: str | None = Field(alias="experimentCode")
-    experiment_name: str = Field(alias="experimentName")
+    experiment_name: str | None = Field(alias="experimentName")
 
 
 class RequestListResponse(ApiModel):
     page: int
     page_size: int = Field(alias="pageSize")
+    total_count: int = Field(alias="totalCount")
+    source: str = "cache"
     experiment_type: str | None = Field(default=None, alias="experimentType")
     items: list[RequestSummary]
 

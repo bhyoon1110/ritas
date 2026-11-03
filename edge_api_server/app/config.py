@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import math
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -20,6 +21,16 @@ DEFAULT_LLM_VALIDATE_MODEL = True
 DEFAULT_LLM_INCLUDE_IMAGES = True
 DEFAULT_LLM_MAX_IMAGES = 3
 DEFAULT_LLM_MAX_IMAGE_BYTES = 2 * 1024 * 1024
+
+
+def _optional_retention_hours(name: str, default: str = "") -> float | None:
+    value = os.getenv(name, default).strip()
+    if not value:
+        return None
+    hours = float(value)
+    if not math.isfinite(hours) or not 0 <= hours <= 87600:
+        raise ValueError(f"{name} must be between 0 and 87600 hours")
+    return hours
 
 
 @dataclass(frozen=True)
@@ -72,6 +83,12 @@ class Settings:
     report_failed_retention_days: int = 30
     report_completed_retention_days: int = 90
     report_trash_retention_days: int = 7
+    # Explicit hour overrides preserve saved day policies when omitted.
+    report_completed_retention_hours: float | None = 24
+    report_trash_retention_hours: float | None = 0
+    # Raw attachment bytes. Zero means the LIMS limit is not configured.
+    report_mail_max_attachment_bytes: int = 0
+    report_mail_max_total_attachment_bytes: int = 0
     auth_enabled: bool = False
     auth_session_hours: int = 12
     auth_recent_sso_minutes: int = 30
@@ -89,6 +106,8 @@ class Settings:
     sso_lims_internal_key: str = field(default="", repr=False)
     sso_lims_ca_bundle: Path | None = None
     sso_lims_allow_loopback_http: bool = False
+    lims_requests_enabled: bool = False
+    lims_requests_url: str = ""
     sso_issuer_url: str = ""
     sso_client_id: str = ""
     sso_client_secret: str = ""
@@ -278,6 +297,10 @@ class Settings:
             report_trash_retention_days=max(
                 1, int(os.getenv("RIST_REPORT_TRASH_RETENTION_DAYS", "7"))
             ),
+            report_completed_retention_hours=_optional_retention_hours("RIST_REPORT_COMPLETED_RETENTION_HOURS", "24"),
+            report_trash_retention_hours=_optional_retention_hours("RIST_REPORT_TRASH_RETENTION_HOURS", "0"),
+            report_mail_max_attachment_bytes=max(0, int(os.getenv("RIST_REPORT_MAIL_MAX_ATTACHMENT_BYTES", "0"))),
+            report_mail_max_total_attachment_bytes=max(0, int(os.getenv("RIST_REPORT_MAIL_MAX_TOTAL_ATTACHMENT_BYTES", "0"))),
             auth_enabled=os.getenv("RIST_AUTH_ENABLED", "true").lower()
             in {"1", "true", "yes", "on"},
             auth_session_hours=max(
@@ -334,6 +357,8 @@ class Settings:
             sso_lims_allow_loopback_http=os.getenv(
                 "RIST_SSO_LIMS_ALLOW_LOOPBACK_HTTP", "false"
             ).strip().lower() in {"1", "true", "yes", "on"},
+            lims_requests_enabled=os.getenv("RIST_LIMS_REQUESTS_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"},
+            lims_requests_url=os.getenv("RIST_LIMS_REQUESTS_URL", "").strip(),
             sso_issuer_url=os.getenv("RIST_SSO_ISSUER_URL", "").strip().rstrip("/"),
             sso_client_id=os.getenv("RIST_SSO_CLIENT_ID", "").strip(),
             sso_client_secret=os.getenv("RIST_SSO_CLIENT_SECRET", "").strip(),

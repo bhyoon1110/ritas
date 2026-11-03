@@ -111,7 +111,7 @@ def test_manual_retry_keeps_history_and_document_checkpoint_but_resets_error_bud
 
     class Adapter:
         def execute(self, sql, params):
-            return connection.execute(sql.replace('CURRENT_TIMESTAMP(6)', 'CURRENT_TIMESTAMP'), params)
+            return connection.execute(sql.replace('CURRENT_TIMESTAMP(6)', 'CURRENT_TIMESTAMP').replace(' FOR UPDATE', ''), params)
 
     @contextmanager
     def transaction():

@@ -660,6 +660,7 @@ def test_ftir_report_chunked_upload_session_retries_and_downloads_package(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
+    from app.ftir_web import ftir_report_upload_store
     use_fake_pptx_pdf_converter(monkeypatch)
     dpt_bytes = synthetic_dpt()
     first_chunk = dpt_bytes[:120]
@@ -677,6 +678,7 @@ def test_ftir_report_chunked_upload_session_retries_and_downloads_package(
         session_response = client.post("/api/v1/ftir/report/upload-sessions")
         assert session_response.status_code == 201
         upload_id = session_response.json()["uploadId"]
+        consumed_dir = ftir_report_upload_store.get(upload_id).work_dir
 
         first_data = {
             "relative_path": "raw/sample-a.dpt",
@@ -721,6 +723,7 @@ def test_ftir_report_chunked_upload_session_retries_and_downloads_package(
             data=complete_data,
         )
         assert complete_response.status_code == 202
+        assert not consumed_dir.exists()
         repeat_complete_response = client.post(
             f"/api/v1/ftir/report/upload-sessions/{upload_id}/complete",
             data=complete_data,
