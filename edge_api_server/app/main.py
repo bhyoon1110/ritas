@@ -533,6 +533,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         to_date: str | None = Query(default=None, alias="toDate", max_length=10),
         test_charger_no: int | None = Query(default=None, alias="testChargerNo", ge=1, le=9223372036854775807),
         test_charger_id: str | None = Query(default=None, alias="testChargerId", max_length=200),
+        asset_number: str | None = Query(default=None, alias="assetNumber", max_length=200),
+        test_state: str | None = Query(default=None, alias="testState", max_length=200),
         _: str = Depends(required_request_id),
     ) -> dict:
         response.headers["Cache-Control"] = "no-store"
@@ -546,6 +548,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "reqNumber": req_number, "testMtdCode": test_mtd_code,
                 "fromDate": from_date, "toDate": to_date,
                 "testChargerNo": test_charger_no, "testChargerId": test_charger_id,
+                "assetNumber": asset_number, "testState": test_state,
             },
         )
 

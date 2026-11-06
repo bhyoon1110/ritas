@@ -300,6 +300,7 @@
     var info = element("p", box, "의뢰 조회 후 한 칸에서 검색·선택하세요. 목록은 200개씩 조회하며, 의뢰번호 직접 입력도 가능합니다.");
     info.id = "request-info"; info.className = "muted"; info.setAttribute("role", "status");
     var items = [], matches = [], page = 0, loading = false, selected = null, selectedText = "", active = -1, typing = false, lookupError = "";
+    var queryPanel = window.RistRequestFilters.mount(label, {experimentType:project, reload:loadPage, previous:previous, next:next});
     function close() {
       results.hidden = true; active = -1; filter.removeAttribute("aria-activedescendant");
       filter.setAttribute("aria-expanded", "false"); toggle.setAttribute("aria-expanded", "false");
@@ -319,14 +320,14 @@
     }
     function controls() {
       loadButton.disabled = sending || loading;
-      previous.disabled = sending || loading || page <= 1;
-      next.disabled = sending || loading || items.length < 200;
+      queryPanel.setBusy(sending || loading);
       filter.disabled = toggle.disabled = sending || loading;
       if (sending || loading) close();
     }
     function text(item) {
       return [item.requestNumber, item.experimentCode || item.testMethodCode, item.experimentName || item.testMethodName,
-        item.sampleName, item.requestDate, item.customerRequestName, item.requestStateName].filter(Boolean).join(" · ");
+        item.sampleName, item.requestDate, item.customerRequestName, item.requestStateName,
+        window.RistRequestFilters.testStateName(item.testState)].filter(Boolean).join(" · ");
     }
     function choose(index) {
       if (sending || loading || !items[index]) return;
@@ -360,22 +361,23 @@
       if (option.offsetTop < results.scrollTop) results.scrollTop = option.offsetTop;
       else if (option.offsetTop + option.offsetHeight > results.scrollTop + results.clientHeight) results.scrollTop = option.offsetTop + option.offsetHeight - results.clientHeight;
     }
-    function loadPage(number) {
+    function loadPage() {
       if (loading || sending) return;
+      var url;
+      try { url = queryPanel.url(); }
+      catch (error) { lookupError = error.message; info.textContent = lookupError; return; }
       var progress=window.RistFileProgress.monitor(info);progress.start();
       loading = true; lookupError = ""; controls(); info.textContent = "의뢰 목록 조회 중입니다.";
-      request("/api/v1/requests?page=" + number + "&pageSize=200&experimentType=" + encodeURIComponent(project), "GET", null, function (error, result) {
+      request(url, "GET", null, function (error, result) {
         progress.stop();
         loading = false;
         if (error) { lookupError = "조회 실패: " + error.message + " 직접 입력은 계속 사용할 수 있습니다. "; info.textContent = lookupError; }
-        else { page = number; items = Array.isArray(result.items) ? result.items : []; render(); }
+        else { queryPanel.showResult(result); page = result.page; items = Array.isArray(result.items) ? result.items : []; render(); }
         controls();
         if (!error && !sending) { filter.focus(); open(); }
       });
     }
-    loadButton.onclick = function () { loadPage(1); };
-    previous.onclick = function () { loadPage(page - 1); };
-    next.onclick = function () { loadPage(page + 1); };
+    loadButton.onclick = loadPage;
     filter.oninput = function () { if (!sending && !loading) { render(); open(); } };
     filter.onfocus = function () { render(); open(); };
     filter.oncompositionstart = function () { typing = true; };

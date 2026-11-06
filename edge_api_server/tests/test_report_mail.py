@@ -6,6 +6,7 @@ from types import SimpleNamespace
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+import httpx
 import pytest
 from PIL import Image
 
@@ -235,7 +236,7 @@ def test_rist_copy_addresses_do_not_require_an_editable_to_address():
     assert normalize_delivery({'to':'injected@example.com', 'recipientName':'injected'})['to'] == ''
 
 
-def test_requester_display_is_authenticated_exact_and_never_guesses_email():
+def test_requester_display_is_authenticated_exact_and_never_guesses_email(monkeypatch):
     app=FastAPI(); app.include_router(router)
     looked_up=[]
     rows=[{'req_user_no':7,'req_user_name':'김의뢰'}]
@@ -271,6 +272,62 @@ def test_requester_display_is_authenticated_exact_and_never_guesses_email():
         assert client.get(url,params={'requestNumber':'\n'},headers=headers).status_code==422
         app.state.database=None
         assert client.get(url,params={'requestNumber':'REQ-1'},headers=headers).status_code==503
+
+        # Live-only requests have no local row. The browser supplies only the
+        # human request number; the Spring relay owns reqResultNo selection.
+        from app.lims_requests import LimsRequestsClient
+        seen = []
+        def upstream(request):
+            seen.append(request)
+            return httpx.Response(200, json={'reqNumber':'REQ-1', 'reqResultNo':71,
+                                              'reqUserName':'김의뢰', 'email':'requester@example.com'})
+        key = 'local-relay-authorization-test-key'
+        relay = LimsRequestsClient('https://spring.example/edge/api/lims/requests/', key,
+                                   transport=httpx.MockTransport(upstream))
+        app.state.settings = SimpleNamespace(lims_requests_enabled=True)
+        monkeypatch.setattr(LimsRequestsClient, 'from_settings', classmethod(lambda cls, settings: relay))
+        params = {'requestNumber':'REQ-1', 'reqResultNo':'777', 'email':'spoof@example.com'}
+        assert client.get(url, params=params).status_code == 401
+        assert client.get(url, params=params, headers={'x-test-user':'no-project'}).status_code == 403
+        assert not seen
+        response = client.get(url, params=params, headers=headers)
+        assert response.status_code == 200 and response.headers['cache-control'] == 'no-store'
+        assert response.json() == {'requestNumber':'REQ-1', 'recipientName':'김의뢰',
+                                   'email':'requester@example.com', 'recipientPolicy':'lims'}
+        assert len(seen) == 1 and seen[0].url.path == '/edge/api/lims/requests/recipient'
+        assert dict(seen[0].url.params) == {'reqNumber':'REQ-1'}
+        assert seen[0].headers['X-RITASAX-Internal-Key'] == key and 'X-Authorization' not in seen[0].headers
+
+
+@pytest.mark.parametrize('field,value', [
+    ('reqNumber', 'OTHER'), ('reqResultNo', False), ('reqResultNo', 0),
+    ('reqUserName', ['name']), ('email', None), ('email', 'foo@'),
+    ('email', 'one@example.com,two@example.com'), ('email', ['one@example.com']),
+    ('email', 'one@example.com\r\nBcc: secret@example.com'),
+])
+def test_recipient_proxy_rejects_wrong_request_or_ambiguous_mailbox(field, value):
+    from app.lims_requests import LimsRequestsClient
+    payload = dict(reqNumber='REQ-1', reqResultNo=1, reqUserName=None, email='one@example.com')
+    payload[field] = value
+    relay = LimsRequestsClient('https://spring.example/api/lims/requests', 'k' * 32,
+                               transport=httpx.MockTransport(lambda _: httpx.Response(200, json=payload)))
+    with pytest.raises(ApiException) as error:
+        relay.fetch_recipient('REQ-1')
+    assert error.value.status_code == 502 and 'example.com' not in error.value.message
+
+
+@pytest.mark.parametrize('status,expected', [(404,404), (409,409), (302,502), (401,502), (503,503)])
+def test_recipient_lookup_propagates_safe_failure_without_address_or_redirect(status, expected):
+    from app.lims_requests import LimsRequestsClient
+    calls = []
+    def upstream(request):
+        calls.append(request)
+        return httpx.Response(status, headers={'Location':'https://other.invalid'}, text='one@example.com')
+    relay = LimsRequestsClient('https://spring.example/api/lims/requests', 'k' * 32,
+                               transport=httpx.MockTransport(upstream))
+    with pytest.raises(ApiException) as error:
+        relay.fetch_recipient('REQ-1')
+    assert len(calls) == 1 and error.value.status_code == expected and 'example.com' not in error.value.message
 
 
 def test_signature_is_authenticated_private_and_shared_across_experiments(tmp_path):

@@ -20,6 +20,7 @@ from .preview_report import PreviewReportSendRequest
 from .report_queue import (
     ReportQueueError,
     enqueue_registered_report_package,
+    registered_test_method,
 )
 from .report_transfer_state import public_delivery_state
 from .usage_archive import set_usage_context
@@ -136,7 +137,7 @@ def _state(request: Request, report: dict[str, Any], project: str) -> dict[str, 
         "sourceJobId": report.get("source_job_id"),
         "requestNumber": report.get("request_number"),
         "analysisType": project,
-        "experimentCode": report.get("experiment_code"),
+        "experimentCode": registered_test_method(report),
         "equipmentCode": report.get("equipment_code"),
         "operatorId": report.get("operator_id"),
         "generationStatus": report.get("generation_status"),
@@ -193,7 +194,7 @@ def send_generated_report(request: Request, report_id: str) -> dict[str, Any]:
     review_url = f"/reports/{quote(report_id, safe='')}"
     payload = PreviewReportSendRequest(
         requestNumber=str(report.get("request_number") or "(미지정)"),
-        experimentCode=str(report.get("experiment_code") or project),
+        experimentCode=registered_test_method(report) or project,
         equipmentCode=str(report.get("equipment_code") or "(미지정)"),
         operatorId=str(report.get("operator_id") or "(미지정)"),
     )

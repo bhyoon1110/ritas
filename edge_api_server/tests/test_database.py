@@ -155,6 +155,5 @@ def test_request_summary_completion_filter_is_parameterized(
     )
 
     assert rows == []
-    assert "%완료%" not in connection.sql
-    assert connection.params[0] == "%완료%"
-    assert connection.params[1:] == ("%ft-ir%", "%ft-ir%", 50, 0)
+    assert "test_state IN (?, ?, ?, ?)" in connection.sql
+    assert connection.params == (1, 3, 5, 7, "%ft-ir%", "%ft-ir%", 50, 0)

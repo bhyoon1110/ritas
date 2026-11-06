@@ -303,6 +303,8 @@ def send_preview_report_package(
     # Preserve the immutable authored mail envelope when publishing/queueing again.
     registered = database.fetch_report_run(job.job_id) if hasattr(database, 'fetch_report_run') else None
     report_options = registered.get('report_options_json') if registered else None
+    report_options = json.loads(report_options) if isinstance(report_options, str) else dict(report_options or {})
+    report_options['testMtdCode'] = payload.experiment_code
     shared_package = persist_preview_report_package(
         settings=resolved_settings,
         report_id=job.job_id,
@@ -635,7 +637,10 @@ def run_preview_report_job(
             progress=progress,
             report_id=job_id,
         )
+        from .report.editable import transfer_values
+        transfer = transfer_values(analysis_payload, request_number, equipment_code, operator_id)
         report_options = dict(analysis_payload.get('reportOptions') or {})
+        report_options['transfer'] = transfer
         document_path = tmp_root / 'job/report/report.json'
         if document_path.is_file():
             from .report_mail import mail_payload
@@ -648,16 +653,15 @@ def run_preview_report_job(
             report_id=job_id,
             package_path=package,
             source_job_id=None,
-            request_number=request_number,
+            request_number=transfer['requestNumber'],
             experiment_code=experiment_code,
-            equipment_code=equipment_code,
-            operator_id=operator_id,
+            equipment_code=transfer['equipmentCode'],
+            operator_id=transfer['operatorId'],
             report_options=report_options,
         )
-        from .report.editable import transfer_values
         current_job = store.get(job_id)
         if current_job:
-            current_job.transfer_metadata = transfer_values(analysis_payload, request_number, equipment_code, operator_id)
+            current_job.transfer_metadata = transfer
         store.complete(job_id, tmp_root=tmp_root, package_path=package)
         record_background_usage(
             usage_archive,

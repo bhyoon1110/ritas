@@ -40,10 +40,11 @@ for(const [mode,program] of Object.entries(programs)){
     assert.equal(u.pending.length,1);u.request('REQ-2');await delay(330);
     assert.equal(u.pending.length,2);
     assert(u.pending[0].aborted);
-    u.pending[1].resolve({recipientName:'새 의뢰자',email:null});await delay(5);
+    u.pending[1].resolve({recipientName:'새 의뢰자',email:'requester@example.com'});await delay(5);
     assert.equal(u.field('수신자 이름').value,'새 의뢰자');
     u.pending[0].resolve({recipientName:'이전 의뢰자',email:'old@example.com'});await delay(5);
-    assert.equal(u.field('수신자 이름').value,'새 의뢰자');assert.equal(u.field('수신자 이메일 주소').value,'');
+    assert.equal(u.field('수신자 이름').value,'새 의뢰자');assert.equal(u.field('수신자 이메일 주소').value,'requester@example.com');
+    assert.equal(u.editor.value().to,'');
     u.request('');assert.equal(u.field('수신자 이름').value,'');
     assert.equal(u.editor.value().to,'');
   });

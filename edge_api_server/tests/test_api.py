@@ -282,7 +282,7 @@ def seed_lims_request_search(db: dict) -> None:
                     3915,
                     'B54123',
                     '투과전자현미경 코팅층 분석',
-                    2,
+                    5,
                     '한분석',
                     1,
                     '2026-07-03 18:13:35'
@@ -339,7 +339,7 @@ def seed_lims_request_search(db: dict) -> None:
                     3913,
                     'FTIR-QUAL',
                     'FT-IR 정성분석',
-                    2,
+                    3,
                     '박분석',
                     1,
                     '2026-07-03 18:11:35'
@@ -396,7 +396,7 @@ def seed_lims_request_search(db: dict) -> None:
                     3914,
                     'RAMAN-QUAL',
                     'Raman 정성분석',
-                    2,
+                    7,
                     '최분석',
                     1,
                     '2026-07-03 18:12:35'
@@ -898,7 +898,7 @@ def test_worker_calls_local_llm_and_saves_report(
         ),
         encoding="utf-8",
     )
-    (job_root / "processed" / "spectrum.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+    Image.new("RGB", (16, 8), "white").save(job_root / "processed" / "spectrum.png")
 
     captured: dict = {}
 

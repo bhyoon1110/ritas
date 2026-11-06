@@ -20,8 +20,15 @@ const port=new Promise((resolve,reject)=>{let data='';server.stdout.on('data',ch
         const request=route.request(),url=new URL(request.url()),p=url.pathname;
         const json=(value,status=200)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(value)});
         if(p==='/api/v1/requests'){
-          queries.push(url.searchParams);assert.equal(url.searchParams.get('experimentType'),kind==='ftir'?'FT-IR':kind.toUpperCase());
-          return json(failLookup?{message:'테스트 조회 오류'}:{items:url.searchParams.get('page')==='1'?items:[]},failLookup?503:200);
+          queries.push(url.searchParams);
+          if(url.searchParams.get('source')==='lims') {
+            assert.equal(url.searchParams.get('assetNumber'),'ASSET-LIVE');assert.equal(url.searchParams.get('testState'),'1,3,5,7');
+            assert(!url.searchParams.has('experimentType'));assert(!url.searchParams.has('testMtdCode'));
+            return json({items:[{requestNumber:'REQ-LIVE',testMethodCode:'A',testState:3},{requestNumber:'REQ-LIVE',testMethodCode:'B',testState:7}],page:1,pageSize:200,totalCount:2});
+          }
+          assert.equal(url.searchParams.get('experimentType'),kind==='ftir'?'FT-IR':kind.toUpperCase());
+          const pageNo=Number(url.searchParams.get('page'));
+          return json(failLookup?{message:'테스트 조회 오류'}:{items:pageNo===1?items:[{requestNumber:'REQ-P2',experimentCode:'CODE-P2'}],page:pageNo,pageSize:200,totalCount:201},failLookup?503:200);
         }
         if(p.endsWith('/editor-data'))return json({document:doc,authenticatedOperatorId:'SSO-001'});
         if(p.endsWith('/edit-layout'))return json({ratio:16/9,pages:[{id:'cover',title:'표지',regions:[]}],pageEditing:false,canvasEditing:false});
@@ -56,11 +63,16 @@ const port=new Promise((resolve,reject)=>{let data='';server.stdout.on('data',ch
         await page.locator('#request-toggle').click();await list.getByRole('option').first().waitFor();await bounds();
         await search.press('Tab');assert(await list.isHidden());
         await page.locator('#request-next').click();await page.waitForFunction(()=>document.getElementById('request-info').textContent.includes('2페이지'));
-        assert.equal(queries[queries.length-1].get('page'),'2');assert.equal(await list.getByRole('option').count(),0);
+        assert.equal(queries[queries.length-1].get('page'),'2');assert.equal(await list.getByRole('option').count(),1);
         assert.equal(doc.transfer.requestNumber,'REQ-SAME');failLookup=true;await page.locator('#request-load').click();
         await page.waitForFunction(()=>document.getElementById('request-info').textContent.includes('조회 실패'));
         await page.getByLabel('의뢰번호',{exact:true}).fill('MANUAL-REQ');await saved();
         assert.equal(doc.transfer.requestNumber,'MANUAL-REQ');assert.equal(doc.transfer.limsExperimentCode,'');assert.equal(await search.inputValue(),'');
+        failLookup=false;await page.locator('.rist-request-filters summary').click();
+        await page.getByLabel('조회 대상',{exact:true}).selectOption('lims');
+        await page.getByLabel('장비 자산번호',{exact:true}).fill('ASSET-LIVE');await page.locator('#request-load').click();
+        const live=list.getByRole('option').nth(1);await live.waitFor();assert.match(await live.textContent(),/시험중/);await live.click();await saved();
+        assert.equal(doc.transfer.requestNumber,'REQ-LIVE');assert.equal(doc.transfer.limsExperimentCode,'B');assert.equal(doc.transfer.equipmentCode,'LAB-1');
         // Adjacent shared common-item controls remain one row even on narrow screens.
         const add=page.getByRole('button',{name:'공통 항목 추가',exact:true}),itemName=page.getByLabel('새 공통 항목 이름',{exact:true});
         for(const width of [320,390,768,1440]){

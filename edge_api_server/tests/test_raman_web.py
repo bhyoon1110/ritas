@@ -123,7 +123,7 @@ def test_raman_workspace_contains_upload_controls() -> None:
     assert "reportDownloadInfo" in page
     assert 'X-Request-Id": "raman-request-list-' in page
     assert 'X-Request-Id": "raman-request-list-all-' not in page
-    assert "조회된 Raman 의뢰가 없습니다." in page
+    assert "검색 조건에 맞는 의뢰가 없습니다." in page
     assert "validateReportTransfer" in page
     assert "sendReportJob" in page
     assert "message.appendChild(link)" not in page

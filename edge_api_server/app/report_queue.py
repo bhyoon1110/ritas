@@ -179,6 +179,31 @@ def enqueue_report_package(
     }
 
 
+def registered_test_method(report: dict[str, Any]) -> str:
+    """Read the authored LIMS method separately from the local analysis project."""
+    raw = report.get("report_options_json")
+    try:
+        options = json.loads(raw) if isinstance(raw, str) else (raw or {})
+    except ValueError:
+        return ""
+    if not isinstance(options, dict):
+        return ""
+    transfer = options.get("transfer")
+    if isinstance(transfer, dict) and ("limsExperimentCode" in transfer or "experimentCode" in transfer):
+        if transfer.get("requestNumber") and transfer["requestNumber"] != report.get("request_number"):
+            return ""
+        method = transfer.get("limsExperimentCode", transfer.get("experimentCode"))
+    elif "testMtdCode" in options or "test_mtd_code" in options:
+        method = options.get("testMtdCode") or options.get("test_mtd_code")
+    else:
+        method = report.get("experiment_code")
+        # Older web previews registered only the local renderer's name. Source
+        # jobs, in contrast, already recorded the supplied LIMS experiment code.
+        if not report.get("source_job_id") and method in {"FT-IR", "FTIR", "RAMAN", "TEM", "XRD", "UNKNOWN"}:
+            return ""
+    return method.strip() if isinstance(method, str) else ""
+
+
 def enqueue_registered_report_package(
     *,
     settings: Any,
@@ -244,6 +269,16 @@ def enqueue_registered_report_package(
             "보고서 ZIP의 크기 또는 SHA-256이 생성 시점과 일치하지 않습니다.",
             retryable=False,
         )
+    method = registered_test_method(report)
+    if not method:
+        raise ReportQueueError(
+            "REPORT_TEST_METHOD_REQUIRED",
+            "보고서 편집 화면에서 의뢰와 LIMS 시험방법코드를 확인하고 수정본을 저장하세요.",
+            retryable=False,
+        )
+    raw = report.get("report_options_json")
+    options = json.loads(raw) if isinstance(raw, str) else dict(raw or {})
+    options["testMtdCode"] = method
     return enqueue_report_package(
         settings=settings,
         database=database,
@@ -251,10 +286,10 @@ def enqueue_registered_report_package(
         package_path=package_path,
         source_job_id=report.get("source_job_id"),
         request_number=str(report.get("request_number") or ""),
-        experiment_code=str(report.get("experiment_code") or ""),
+        experiment_code=method,
         equipment_code=str(report.get("equipment_code") or ""),
         operator_id=operator_id,
-        report_options=report.get("report_options_json"),
+        report_options=options,
         generated_at=str(report.get("generated_at") or "") or None,
         register_report_run=False,
     )

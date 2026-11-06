@@ -1205,8 +1205,11 @@ def _process_ahn_job(job: AhnReportJob) -> None:
             report_id=job.job_id,
             package_path=job.package_path,
             experiment_code="TEM",
+            request_number=job.transfer_metadata['requestNumber'],
+            equipment_code=job.transfer_metadata['equipmentCode'],
+            operator_id=job.transfer_metadata['operatorId'],
             is_test=True,
-            report_options={'email': delivery_mail(job)},
+            report_options={'transfer': job.transfer_metadata, 'email': delivery_mail(job)},
             source_artifact_paths=source_copies,
             source_retention_context=source_context,
         )
@@ -2028,7 +2031,8 @@ def build_ahn_page(resume_owner: str = "anonymous") -> str:
       requestDetail.classList.remove("is-empty");
       [
         ["의뢰번호", item.requestNumber], ["의뢰일", item.requestDate],
-        ["상태", item.requestStateName], ["의뢰명", item.customerRequestName],
+        ["의뢰 상태", item.requestStateName],
+        ["시험 상태", window.RistRequestFilters ? window.RistRequestFilters.testStateName(item.testState) : item.testState], ["의뢰명", item.customerRequestName],
         ["시료", item.sampleName], ["실험코드", item.experimentCode || item.testMethodCode],
         ["시험명", item.experimentName || item.testMethodName],
         ["담당자", item.testChargerName], ["고객", item.customerName]
@@ -2440,8 +2444,8 @@ def build_ahn_page(resume_owner: str = "anonymous") -> str:
         if (requestFilters) requestFilters.showResult(payload);
         setStatus(
           requestItems.length
-            ? "TEM 의뢰 목록을 불러왔습니다."
-            : "조회된 TEM 의뢰가 없습니다.",
+            ? "의뢰 목록을 불러왔습니다."
+            : "검색 조건에 맞는 의뢰가 없습니다.",
           false
         );
       } catch (error) {

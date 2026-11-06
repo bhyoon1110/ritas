@@ -11,6 +11,7 @@ import pymysql
 from pymysql.cursors import DictCursor
 
 from rist_common import get_logger
+from .lims_requests import INCOMPLETE_TEST_STATES
 
 logger = get_logger(__name__)
 
@@ -977,13 +978,14 @@ class Database:
     ) -> tuple[str, list[Any]]:
         filters: list[str] = []
         params: list[Any] = []
-        if not include_completed:
-            filters.append(
-                """
-                LOWER(COALESCE(req_state_name, '')) NOT LIKE ?
-                """
-            )
-            params.append("%완료%")
+        state_filter = (request_filters or {}).get("testState")
+        states = () if include_completed else INCOMPLETE_TEST_STATES
+        if state_filter is not None:
+            states = state_filter.split(",")
+        if states:
+            placeholders = ", ".join("?" for _ in states)
+            filters.append(f"test_state IN ({placeholders})")
+            params.extend(int(code) for code in states)
         if experiment_keywords:
             keyword_filters: list[str] = []
             for keyword in experiment_keywords:

@@ -16,7 +16,7 @@ from rist_common import get_logger
 from .config import Settings
 from .database import Database, TERMINAL_STATUSES
 from .errors import ApiException
-from .lims_requests import LimsRequestsClient, validate_filters
+from .lims_requests import INCOMPLETE_TEST_STATES, LimsRequestsClient, validate_filters
 from .experiment_routing import analysis_type_for_job, mapped_analysis_type_for_job
 from .models import (
     CompleteUploadRequest,
@@ -565,19 +565,16 @@ class EdgeService:
         if type(page) is not int or page < 1 or type(page_size) is not int or not 1 <= page_size <= 1000:
             raise ApiException(400, "INVALID_REQUEST_FILTER", "페이지는 1 이상, 페이지 크기는 1~1000이어야 합니다.")
         filters = validate_filters(request_filters or {})
+        if include_completed is False:
+            states = filters.setdefault("testState", ",".join(INCOMPLETE_TEST_STATES))
+            if not set(states.split(",")).issubset(INCOMPLETE_TEST_STATES):
+                raise ApiException(400, "INVALID_REQUEST_FILTER", "미완료 시험 조회에는 시험취소(0)·시험완료(9)를 함께 지정할 수 없습니다.")
         if source == "lims":
-            if experiment_type or include_completed is False:
-                raise ApiException(400, "UNSUPPORTED_LIMS_FILTER", "LIMS 실시간 조회에는 시험방법코드를 사용해 주세요. 완료 상태 필터는 아직 지원하지 않습니다.")
+            if experiment_type:
+                raise ApiException(400, "UNSUPPORTED_LIMS_FILTER", "LIMS 실시간 조회에서 장비는 자산번호, 시험방법은 시험방법코드로 지정해 주세요.")
             if not getattr(self.settings, "lims_requests_enabled", False):
                 raise ApiException(503, "LIMS_REQUESTS_NOT_CONFIGURED", "LIMS 실시간 의뢰조회가 아직 준비되지 않았습니다.")
-            payload = LimsRequestsClient(
-                url=self.settings.lims_requests_url,
-                internal_key=self.settings.sso_lims_internal_key,
-                ca_bundle=self.settings.sso_lims_ca_bundle,
-                allow_loopback_http=self.settings.sso_lims_allow_loopback_http,
-                connect_timeout_seconds=self.settings.sso_connect_timeout_seconds,
-                read_timeout_seconds=self.settings.sso_read_timeout_seconds,
-            ).fetch(page, page_size, filters)
+            payload = LimsRequestsClient.from_settings(self.settings).fetch(page, page_size, filters)
             # Filtered live results are intentionally never written to the cache.
             return {
                 "page": page, "pageSize": page_size, "source": "lims",
@@ -586,8 +583,8 @@ class EdgeService:
             }
         if source != "cache":
             raise ApiException(400, "INVALID_REQUEST_FILTER", "의뢰 조회 출처가 올바르지 않습니다.")
-        if "testChargerId" in filters or "testChargerNo" in filters:
-            raise ApiException(400, "LIMS_LOOKUP_REQUIRED", "시험담당자 ID·사용자번호 조건은 LIMS 실시간 조회를 선택해 주세요.")
+        if filters.keys() & {"testChargerId", "testChargerNo", "assetNumber"}:
+            raise ApiException(400, "LIMS_LOOKUP_REQUIRED", "장비 자산번호·시험담당자 ID·사용자번호 조건은 LIMS 실시간 조회를 선택해 주세요.")
         include_completed = bool(include_completed)
         experiment_keywords = self.request_experiment_keywords(experiment_type)
         rows = self.database.fetch_request_summaries(

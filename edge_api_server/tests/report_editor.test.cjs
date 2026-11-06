@@ -6,7 +6,7 @@ const {JSDOM}=require('jsdom');
 const acorn=require('acorn');
 const {execFileSync}=require('node:child_process');
 const clone=x=>JSON.parse(JSON.stringify(x));
-const script=['xrd_workbench/web/shared/pptx_password.js','file_save.js','report_editor_icons.js','report_page_sidebar.js','report_cell_editor.js','report_direct_editor.js','report_canvas_editor.js','report_ppt_templates.js','report_saved_graphs.js','report_condition_options.js','xrd_workbench/web/shared/mail_editor_icons.js','xrd_workbench/web/shared/mail_table_editor.js','xrd_workbench/web/shared/mail_address_book.js','xrd_workbench/web/shared/mail_template_context.js','xrd_workbench/web/shared/mail_templates.js','xrd_workbench/web/shared/mail_editor.js','report_editor.js'].map(name=>fs.readFileSync(path.join(__dirname,'../app',name),'utf8')).join('\n');
+const script=['xrd_workbench/web/shared/pptx_password.js','file_save.js','request_filters.js','report_editor_icons.js','report_page_sidebar.js','report_cell_editor.js','report_direct_editor.js','report_canvas_editor.js','report_ppt_templates.js','report_saved_graphs.js','report_condition_options.js','xrd_workbench/web/shared/mail_editor_icons.js','xrd_workbench/web/shared/mail_table_editor.js','xrd_workbench/web/shared/mail_address_book.js','xrd_workbench/web/shared/mail_template_context.js','xrd_workbench/web/shared/mail_templates.js','xrd_workbench/web/shared/mail_editor.js','report_editor.js'].map(name=>fs.readFileSync(path.join(__dirname,'../app',name),'utf8')).join('\n');
 const template=fs.readFileSync(path.join(__dirname,'../app/report_editor.html'),'utf8');
 function setup(t,kind='ftir',identity='',conditionScenario=null) {
   const prefix='/api/v1/'+kind+'/report/jobs',posts=[],gets=[],timers=new Map(); let timerId=0;
@@ -17,7 +17,7 @@ function setup(t,kind='ftir',identity='',conditionScenario=null) {
   const dom=new JSDOM(template.replace('__CONFIG__',JSON.stringify({prefix,jobId:'original',conditionOptions:conditionScenario&&conditionScenario.config})).replace('__SCRIPT__',''),
     {url:'http://localhost'+prefix+'/original/edit',runScripts:'outside-only'});
   t.after(()=>dom.window.close());const w=dom.window,d=w.document,q=id=>d.getElementById(id);
-  let pending=null,delay=false,fail=false,revisions=0,items=[],lookupError=false,pollError=false,rateLimit=false,running=false,heldPath='',heldFinish=null;
+  let pending=null,delay=false,fail=false,revisions=0,items=[],lookupTotal=0,lookupError=false,pollError=false,rateLimit=false,running=false,heldPath='',heldFinish=null;
   w.setTimeout=(fn,ms)=>{timers.set(++timerId,{fn,ms});return timerId;};w.clearTimeout=id=>timers.delete(id);
   w.XMLHttpRequest=class {
     open(method,url){this.method=method;this.url=url;this.headers={};}
@@ -47,7 +47,10 @@ function setup(t,kind='ftir',identity='',conditionScenario=null) {
         doc=clone(body);doc.sections.forEach(s=>{s.source='user';s.columns=s.rows?['대상','항목','값']:null;});
         result={jobId:revisions===1?'revision':'revision'+revisions,status:'queued'};
       } else if(this.url.endsWith('/send')) result={queued:true};
-      else if(this.url.startsWith('/api/v1/requests?')) result={items};
+      else if(this.url.startsWith('/api/v1/requests?')) {
+        const params = new URL(this.url, 'http://localhost').searchParams;
+        result={items, page:Number(params.get('page')), pageSize:Number(params.get('pageSize')), totalCount:lookupTotal};
+      }
       else result={jobId:this.url.split('/').pop(),status:running?'running':'completed',transfer:doc.transfer,parentJobId:revisions===1?'original':'revision'};
       const finish=()=>{this.status=fail?403:lookupError&&this.url.startsWith('/api/v1/requests?')?503:pollError&&/\/revision\d*$/.test(this.url)?503:rateLimit&&this.url.endsWith('/revisions')?429:200;
         this.responseText=JSON.stringify(this.status>=400?{message:'SSO 인증이 필요합니다.'}:result);this.onload();};
@@ -59,7 +62,7 @@ function setup(t,kind='ftir',identity='',conditionScenario=null) {
   w.eval(script);
   return {w,d,q,posts,gets,prefix,timers,field:label=>d.querySelector('[aria-label="'+label+'"]'),
     tick(){for(const [id,entry] of timers)if(entry.ms===300){timers.delete(id);entry.fn();}const entry=timers.entries().next().value;assert(entry,'expected a scheduled operation');timers.delete(entry[0]);entry[1].fn();},
-    lookup(value,error=false){items=value;lookupError=error;},pollError(value){pollError=value;},rateLimit(value){rateLimit=value;},running(value){running=value;},
+    lookup(value,error=false,total=value.length){items=value;lookupTotal=total;lookupError=error;},pollError(value){pollError=value;},rateLimit(value){rateLimit=value;},running(value){running=value;},
     hold(path){heldPath=path;},release(){heldPath='';heldFinish();},
     input(label,value){const e=this.field(label);e.value=value;e.dispatchEvent(new w.Event('input',{bubbles:true}));},
     delay(){delay=true;},finish(){delay=false;pending();},fail(){fail=true;}};
@@ -294,12 +297,24 @@ for(const kind of ['ftir','raman','tem']) test(kind+' lookup is experiment-scope
   assert.equal(h.field('수신자 이름').value,'의뢰자');
   h.input('의뢰번호','MANUAL-1');assert.equal(h.q('request-search').value,'');assert.equal(h.field('실험코드').value,'');
 });
+for (const kind of ['ftir','raman','tem']) test(kind+' editor searches live by asset and applies the selected test row',t=>{
+  const h=setup(t,kind),source=h.field('조회 대상'),asset=h.field('장비 자산번호');
+  assert(asset.disabled);source.value='lims';source.dispatchEvent(new h.w.Event('change'));
+  assert(!asset.disabled);asset.value='ASSET-2';h.input('실험장비','EDGE-LAB');
+  h.lookup([{requestNumber:'REQ-1',testMethodCode:'METHOD-A',testState:'1'},
+    {requestNumber:'REQ-1',testMethodCode:'METHOD-B',testState:'7'}]);
+  h.q('request-load').click();const params=new URL(h.gets.find(g=>g.url.includes('/requests?')).url,'http://localhost').searchParams;
+  assert.equal(params.get('source'),'lims');assert.equal(params.get('assetNumber'),'ASSET-2');
+  assert.equal(params.get('testState'),'1,3,5,7');assert(!params.has('experimentType'));assert(!params.has('testMtdCode'));
+  const choice=h.q('request-result-1');assert.match(choice.textContent,/시험중/);choice.click();
+  assert.equal(h.field('실험코드').value,'METHOD-B');assert.equal(h.field('실험장비').value,'EDGE-LAB');
+});
 test('request pagination, local filtering, equipment selection and lookup failures',t=>{
-  const h=setup(t);h.lookup(Array.from({length:200},(_,i)=>({requestNumber:'REQ-'+i,experimentCode:'CODE',equipmentCode:'LAB'})));
+  const h=setup(t);h.lookup(Array.from({length:200},(_,i)=>({requestNumber:'REQ-'+i,experimentCode:'CODE',equipmentCode:'LAB'})),false,201);
   h.q('request-load').click();assert(!h.q('request-next').disabled);assert(h.q('request-previous').disabled);
   h.input('의뢰 검색·선택','REQ-199');assert.equal(h.q('request-results').querySelectorAll('[role=option]').length,1);assert.equal(h.posts.length,0);
   h.q('request-result-199').click();
-  assert.equal(h.field('실험장비').value,'LAB');h.lookup([]);h.q('request-next').click();
+  assert.equal(h.field('실험장비').value,'LAB');h.lookup([{requestNumber:'REQ-200',experimentCode:'CODE'}],false,201);h.q('request-next').click();
   assert(h.gets.some(g=>g.url.includes('page=2&')));assert(h.q('request-next').disabled);assert(!h.q('request-previous').disabled);
   h.lookup([],true);h.q('request-load').click();assert.match(h.d.body.textContent,/조회 실패/);
   assert.equal(h.field('의뢰번호').value,'REQ-199');assert(!h.field('의뢰번호').disabled);

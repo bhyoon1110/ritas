@@ -290,8 +290,7 @@ def validate_envelope(value):
     result['htmlBody'] = clean_html(
         result['bodyHtml'], images=MailImages(result['inlineImages'])
     )[0]
-    # A trusted LIMS recipient lookup is still required. Never infer an address
-    # from a name/user ID or trust a stored readiness flag from the browser.
+    # Spring resolves the authoritative To from the queued request number at dispatch.
     result['recipientReady'] = False
     result['schemaVersion'] = 2
     return result
@@ -327,6 +326,12 @@ def get_recipient(request: Request, request_number: str = Query(alias='requestNu
     number = request_number.strip()
     if not number or re.search(r'[\x00-\x1f\x7f]', number):
         raise ApiException(422, 'MAIL_RECIPIENT_REQUEST_INVALID', '의뢰번호를 확인하세요.')
+    settings = getattr(request.app.state, 'settings', None)
+    if getattr(settings, 'lims_requests_enabled', False):
+        from .lims_requests import LimsRequestsClient
+        recipient = LimsRequestsClient.from_settings(settings).fetch_recipient(number)
+        return JSONResponse(dict(requestNumber=number, recipientName=recipient['reqUserName'] or '',
+                                 email=recipient['email'], recipientPolicy='lims'), headers={'Cache-Control': 'no-store'})
     database = getattr(request.app.state, 'database', None)
     if database is None:
         raise ApiException(503, 'MAIL_RECIPIENT_UNAVAILABLE', '의뢰자 조회에 필요한 데이터베이스가 연결되지 않았습니다.')
@@ -337,8 +342,7 @@ def get_recipient(request: Request, request_number: str = Query(alias='requestNu
     if len(rows) != 1:
         raise ApiException(409 if rows else 404, 'MAIL_RECIPIENT_NOT_RESOLVED',
                            '의뢰자를 한 명으로 확인할 수 없습니다. 의뢰번호와 LIMS 의뢰자 정보를 확인하세요.')
-    # The synchronized table currently has requester identity, but no email column.
-    # Do not infer an address from a name/id. Spring resolves the actual mailbox in LIMS.
+    # An offline snapshot can display the name only. Never derive a mailbox from a name or ID.
     return JSONResponse(dict(requestNumber=number, recipientName=rows[0].get('req_user_name') or '',
                              email=None, recipientPolicy='lims'), headers={'Cache-Control': 'no-store'})
 

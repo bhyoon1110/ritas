@@ -3087,7 +3087,8 @@ _UPLOAD_SCRIPT = """
     return [
       ["의뢰번호", item.requestNumber],
       ["의뢰일", item.requestDate],
-      ["상태", item.requestStateName],
+      ["의뢰 상태", item.requestStateName],
+      ["시험 상태", window.RistRequestFilters ? window.RistRequestFilters.testStateName(item.testState) : item.testState],
       ["의뢰명", item.customerRequestName],
       ["시료", item.sampleName],
       ["실험코드", item.experimentCode || item.testMethodCode],
@@ -3154,8 +3155,8 @@ _UPLOAD_SCRIPT = """
       renderRequestOptions(requestItems);
       if (requestFilters) requestFilters.showResult(payload);
       setSuccessMessage(requestItems.length
-        ? "FT-IR 의뢰 목록을 불러왔습니다."
-        : "조회된 FT-IR 의뢰가 없습니다.");
+        ? "의뢰 목록을 불러왔습니다."
+        : "검색 조건에 맞는 의뢰가 없습니다.");
     } catch (err) {
       setMessage(err.message || "의뢰 목록 조회에 실패했습니다.");
     } finally {

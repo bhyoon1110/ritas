@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from pathlib import Path
 from types import SimpleNamespace
 import zipfile
@@ -198,8 +199,20 @@ def test_enqueue_registered_report_rechecks_published_package_integrity(
     assert captured.value.retryable is False
 
 
+@pytest.mark.parametrize(("experiment", "source_job", "options", "expected"), [
+    ("A23141", None, None, "A23141"),  # Historical job with the actual LIMS code.
+    ("XRD", "incoming-job", None, "XRD"),  # Explicit experimentCode from an API job.
+    ("FT-IR", None, {"transfer": {"requestNumber": "REQ-001", "limsExperimentCode": "A-FT"}}, "A-FT"),
+    ("RAMAN", None, {"transfer": {"limsExperimentCode": "A-RM"}, "testMtdCode": "stale"}, "A-RM"),
+    ("TEM", None, {"transfer": {"limsExperimentCode": "A-TEM"}}, "A-TEM"),
+    ("XRD", None, {"transfer": {"experimentCode": "A-XRD"}}, "A-XRD"),
+    ("FTIR", None, {"transfer": {}, "test_mtd_code": "A-OLD"}, "A-OLD"),
+    ("XRD", None, None, None),  # Renderer label without an authored method.
+    ("TEM", None, {"transfer": {"limsExperimentCode": ""}}, None),
+    ("FT-IR", None, {"transfer": {"requestNumber": "REQ-002", "limsExperimentCode": "OTHER"}}, None),
+])
 def test_enqueue_registered_report_preserves_existing_report_metadata(
-    tmp_path: Path,
+    tmp_path: Path, experiment: str, source_job: str | None, options: dict | None, expected: str | None,
 ) -> None:
     storage_root = tmp_path / "shared"
     package = (
@@ -213,9 +226,9 @@ def test_enqueue_registered_report_preserves_existing_report_metadata(
     database = CapturingDatabase()
     report = {
         "report_id": "report-1",
-        "source_job_id": None,
+        "source_job_id": source_job,
         "request_number": "REQ-001",
-        "experiment_code": "A23141",
+        "experiment_code": experiment,
         "equipment_code": "AX-01",
         "operator_id": "csharp-operator",
         "generation_status": "READY",
@@ -223,10 +236,18 @@ def test_enqueue_registered_report_preserves_existing_report_metadata(
         "package_relative_path": package.relative_to(storage_root).as_posix(),
         "package_size_bytes": len(package_bytes),
         "package_sha256": hashlib.sha256(package_bytes).hexdigest(),
-        "report_options_json": None,
+        "report_options_json": json.dumps(options) if options else None,
         "generated_at": "2026-08-26T10:00:00+09:00",
         "is_test": True,
     }
+
+    if expected is None:
+        with pytest.raises(ReportQueueError) as error:
+            enqueue_registered_report_package(settings=settings(storage_root), database=database,
+                                              report=report, operator_id="SSO-EMP-001")
+        assert error.value.code == "REPORT_TEST_METHOD_REQUIRED"
+        assert not database.values
+        return
 
     result = enqueue_registered_report_package(
         settings=settings(storage_root),
@@ -238,6 +259,8 @@ def test_enqueue_registered_report_preserves_existing_report_metadata(
     assert result["status"] == "PENDING"
     assert database.report_runs == []
     assert database.values["operator_id"] == "SSO-EMP-001"
+    assert database.values["experiment_code"] == expected
+    assert json.loads(database.values["report_options_json"])["testMtdCode"] == expected
     assert database.values["register_report_run"] is False
 
 

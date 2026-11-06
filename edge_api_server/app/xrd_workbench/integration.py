@@ -505,13 +505,13 @@ def export_report(sid: str, payload: dict):
             register_generated_report_package(
                 settings=state.settings, database=state.request.app.state.database,
                 report_id=directory.name, package_path=output,
-                experiment_code=transfer.get('experimentCode') or 'XRD',
+                experiment_code=transfer.get('experimentCode', ''),
                 request_number=transfer.get('requestNumber', ''),
                 equipment_code=transfer.get('equipmentCode', ''),
                 operator_id=transfer.get('operatorId', ''),
                 source_artifact_paths=source_copies,
                 source_retention_context=source_context,
-                report_options={'analysisType': 'XRD', 'workbenchVersion': 1,
+                report_options={'analysisType': 'XRD', 'workbenchVersion': 1, 'transfer': transfer,
                                 'documentRevision': document['revision'],
                                 'email': mail_payload(document.get('email', {}).get('subject', ''),
                                     document.get('email', {}).get('body', ''), document.get('email', {}).get('delivery'))})
@@ -696,6 +696,8 @@ def web_asset(asset_path: str, request: Request):
                 ('report_editor_icons.js','report_page_sidebar.js','report_cell_editor.js','report_canvas_editor.js','report_ppt_templates.js'))
             content=content.replace('<script type="module"',scripts+'<script type="module"',1)
         content = re.sub(r'(href|src)="/', lambda m: m[1] + '="' + BASE + '/', content)
+        if path.name == 'report.html':
+            content = content.replace('</head>', '<script src="/assets/request_filters.js"></script></head>', 1)
         content = content.replace('<head>', '<head>' + file_progress_html() + '<script src="' + BASE + '/bootstrap.js"></script>')
         content = content.replace('</head>', '<link rel="stylesheet" href="' + BASE + '/shared/platform.css"></head>')
         if browser_profile(request.headers.get('user-agent', '')) == 'chrome49':

@@ -1575,7 +1575,8 @@ def build_xrd_page() -> str:
       requestDetail.classList.remove("is-empty");
       [
         ["의뢰번호", item.requestNumber], ["의뢰일", item.requestDate],
-        ["상태", item.requestStateName], ["의뢰명", item.customerRequestName],
+        ["의뢰 상태", item.requestStateName],
+        ["시험 상태", window.RistRequestFilters ? window.RistRequestFilters.testStateName(item.testState) : item.testState], ["의뢰명", item.customerRequestName],
         ["시료", item.sampleName], ["실험코드", item.experimentCode || item.testMethodCode],
         ["시험명", item.experimentName || item.testMethodName],
         ["담당자", item.testChargerName], ["고객", item.customerName]
@@ -1896,8 +1897,8 @@ def build_xrd_page() -> str:
         renderRequestOptions(requestItems);
         if (requestFilters) requestFilters.showResult(payload);
         setStatus(requestItems.length
-          ? "XRD 의뢰 목록을 불러왔습니다."
-          : "조회된 XRD 의뢰가 없습니다.", false);
+          ? "의뢰 목록을 불러왔습니다."
+          : "검색 조건에 맞는 의뢰가 없습니다.", false);
       } catch (error) {
         setStatus(error.message || "의뢰 목록 조회에 실패했습니다.", true);
       } finally {

@@ -291,7 +291,7 @@ function render() {
   ensureEmail(doc);
   pptxPassword.set(doc.pptxProtection);
   for (const [id, key] of [['ristExperiment','experiment_code'], ['ristEquipment','equipment_code']]) {
-    if ($(id)) $(id).value = doc.metadata[key] || (key === 'experiment_code' ? 'XRD' : '');
+    if ($(id)) $(id).value = doc.metadata[key] || '';
   }
   ensureFigure(doc);
   ensureQuantityTable(doc);

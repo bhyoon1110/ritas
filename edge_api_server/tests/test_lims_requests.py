@@ -36,7 +36,8 @@ def test_client_keeps_internal_token_private_and_forwards_all_filters(monkeypatc
         observed["request"] = request
         return httpx.Response(200, json=response_body(page=2, size=2, count=3))
     filters = {"reqNumber": "2026R02236", "testMtdCode": "A23142", "fromDate": "2026-10-01",
-               "toDate": "2026-10-31", "testChargerNo": 7, "testChargerId": "한글+id"}
+               "toDate": "2026-10-31", "testChargerNo": 7, "testChargerId": "한글+id",
+               "assetNumber": "AX/한글+007", "testState": "1,3,5,7"}
     adapter = LimsRequestsClient(URL, KEY, transport=httpx.MockTransport(handler))
     result = adapter.fetch(2, 2, filters)
     request = observed["request"]
@@ -122,6 +123,8 @@ def test_response_size_and_network_errors_are_bounded():
     {"fromDate": "2026-11-01", "toDate": "2026-10-31"},
     {"testChargerNo": 0}, {"testChargerNo": True}, {"testChargerNo": "7"},
     {"testChargerId": "id\nvalue"}, {"testMtdCode": "x" * 201},
+    {"testState": ""}, {"testState": "7,"}, {"testState": "3,,5"}, {"testState": "4"},
+    {"testState": "1;5"}, {"testState": "07"}, {"testState": "7 OR 1=1"}, {"assetNumber": " "},
 ])
 def test_invalid_filters_fail_before_network(filters):
     with pytest.raises(ApiException) as error:
@@ -158,7 +161,8 @@ def test_service_live_lookup_never_replaces_cache_and_maps_null_fields(monkeypat
 
 @pytest.mark.parametrize("kwargs,code", [
     ({"source": "lims", "experiment_type": "XRD"}, "UNSUPPORTED_LIMS_FILTER"),
-    ({"source": "lims", "include_completed": False}, "UNSUPPORTED_LIMS_FILTER"),
+    ({"source": "lims", "include_completed": False, "request_filters": {"testState": "9"}}, "INVALID_REQUEST_FILTER"),
+    ({"source": "cache", "request_filters": {"assetNumber": "XRD-100"}}, "LIMS_LOOKUP_REQUIRED"),
     ({"source": "cache", "request_filters": {"testChargerId": "hong"}}, "LIMS_LOOKUP_REQUIRED"),
     ({"source": "cache", "request_filters": {"testChargerNo": 7}}, "LIMS_LOOKUP_REQUIRED"),
 ])
@@ -184,13 +188,15 @@ def test_local_filters_use_and_inclusive_dates_and_matching_total_count():
                "smp_result_state", "test_mtd_result_no", "test_mtd_no", "test_mtd_code", "test_mtd_name", "test_state", "test_charger_name", "output_order", "synced_at"]
     connection.execute("CREATE TABLE lims_req_ax_search (" + ",".join(columns) + ")")
     rows = [
-        ("A", "2026-10-01", "M1", "XRD", "진행"),
-        ("B", "2026-10-31", "M1", "XRD", "진행"),
-        ("C", "2026-11-01", "M1", "XRD", "진행"),
-        ("D", "2026-10-10", "M2", "XRD", "진행"),
-        ("E", "2026-10-15", "M1", "XRD", "완료"),
+        ("A", "2026-10-01", "M1", "XRD", "의뢰완료", 3),
+        ("B", "2026-10-31", "M1", "XRD", "진행", 7),
+        ("C", "2026-11-01", "M1", "XRD", "진행", 1),
+        ("D", "2026-10-10", "M2", "XRD", "진행", 5),
+        ("E", "2026-10-15", "M1", "XRD", "진행", 9),
+        ("F", "2026-10-15", "M1", "XRD", "진행", 0),
+        ("G", "2026-10-15", "M1", "XRD", "진행", None),
     ]
-    connection.executemany("INSERT INTO lims_req_ax_search(req_number,req_date,test_mtd_code,test_mtd_name,req_state_name) VALUES(?,?,?,?,?)", rows)
+    connection.executemany("INSERT INTO lims_req_ax_search(req_number,req_date,test_mtd_code,test_mtd_name,req_state_name,test_state) VALUES(?,?,?,?,?,?)", rows)
     database = Database.__new__(Database)
     @contextmanager
     def connect():
@@ -200,7 +206,10 @@ def test_local_filters_use_and_inclusive_dates_and_matching_total_count():
     assert database.count_request_summaries(("xrd",), False, filters) == 2
     assert database.fetch_request_summaries(1, 0, ("xrd",), False, filters)[0]["req_number"] == "B"
     assert database.fetch_request_summaries(1, 1, ("xrd",), False, filters)[0]["req_number"] == "A"
-    assert database.count_request_summaries(("xrd",), True, filters) == 3
+    assert database.count_request_summaries(("xrd",), True, filters) == 5
+    terminal = {**filters, "testState": "9,0"}
+    assert database.count_request_summaries(("xrd",), False, terminal) == 2
+    assert {r["req_number"] for r in database.fetch_request_summaries(10, 0, ("xrd",), False, terminal)} == {"E", "F"}
     assert database.count_request_summaries(("xrd",), False, {**filters, "reqNumber": "B"}) == 1
     assert database.count_request_summaries((), True, {"reqNumber": "A' OR 1=1 --"}) == 0
     connection.close()
@@ -223,7 +232,7 @@ def test_shared_controls_are_available_in_all_standalone_preview_apps(monkeypatc
         assert "RistRequestFilters" in response.text
 
 
-def test_http_route_preserves_v4_filters_and_rejects_unsupported_combinations(monkeypatch, tmp_path):
+def test_http_route_forwards_v5_filters_and_rejects_unsupported_combinations(monkeypatch, tmp_path):
     from fastapi.testclient import TestClient
     from app.config import Settings
     from app.main import create_app
@@ -238,18 +247,23 @@ def test_http_route_preserves_v4_filters_and_rejects_unsupported_combinations(mo
     client = TestClient(create_app(config))
     response = client.get("/api/v1/requests", params={"source": "lims", "pageSize": 1000, "reqNumber": "R1",
                           "testMtdCode": "A23142", "fromDate": "2026-10-01", "toDate": "2026-10-31",
-                          "testChargerNo": 7, "testChargerId": "hong"}, headers={"X-Request-Id": "filter-test"})
+                          "testChargerNo": 7, "testChargerId": "hong", "assetNumber": "ASSET/42",
+                          "testState": "7, 3,7"}, headers={"X-Request-Id": "filter-test"})
     assert response.status_code == 200, response.text
     assert response.headers["cache-control"] == "no-store"
     assert response.json()["totalCount"] == 1
     assert observed == [(1, 1000, {"reqNumber": "R1", "testMtdCode": "A23142", "fromDate": "2026-10-01",
-                                 "toDate": "2026-10-31", "testChargerNo": 7, "testChargerId": "hong"})]
+                                 "toDate": "2026-10-31", "testChargerNo": 7, "testChargerId": "hong",
+                                 "assetNumber": "ASSET/42", "testState": "7,3"})]
+    incomplete = client.get("/api/v1/requests?source=lims&includeCompleted=false", headers={"X-Request-Id": "filter-test-2"})
+    assert incomplete.status_code == 200 and observed[-1][2] == {"testState": "1,3,5,7"}
     for query, status in [
-        ({"source": "lims", "includeCompleted": "false"}, 400),
+        ({"source": "lims", "includeCompleted": "false", "testState": "0,5"}, 400),
+        ({"source": "cache", "assetNumber": "AX-42"}, 400),
         ({"source": "cache", "testChargerId": "hong"}, 400),
         ({"source": "lims", "fromDate": "2026-02-30"}, 400),
         ({"source": "lims", "pageSize": 1001}, 400),
     ]:
         rejected = client.get("/api/v1/requests", params=query, headers={"X-Request-Id": "invalid-filter-test"})
         assert rejected.status_code == status, rejected.text
-    assert len(observed) == 1
+    assert len(observed) == 2

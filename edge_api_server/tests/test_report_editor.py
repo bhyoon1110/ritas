@@ -209,6 +209,11 @@ def test_blank_fields_edit_revision_and_recipient_integrity(prepared, monkeypatc
     assert revised['transfer'] == edits['transfer']
     assert registered[0]['report_id'] == revised['jobId']
     assert registered[0]['request_number'] == 'REQ-REVIEW'
+    from app.report_queue import registered_test_method
+    method = registered_test_method({'experiment_code': registered[0]['experiment_code'],
+                                     'request_number': registered[0]['request_number'],
+                                     'report_options_json': registered[0]['report_options']})
+    assert method == 'LIMS-001'
     assert registered[0]['report_options']['revisionOf'] == h.job.job_id
     assert registered[0]['report_options']['email']['bcc'] == ['secret@rist.re.kr']
     assert registered[0]['report_options']['email']['to'] == []

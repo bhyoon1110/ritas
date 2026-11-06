@@ -93,7 +93,7 @@ def new_document(project: dict) -> dict:
             'received_date': '',
             'analysis_period': '',
             'report_number': '',
-            'experiment_code': 'XRD',
+            'experiment_code': '',
             'equipment_code': '',
             'operator_id': '',
             'author': '',

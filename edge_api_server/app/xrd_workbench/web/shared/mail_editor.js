@@ -142,13 +142,13 @@
         if(!document.documentElement.contains(host))return;
         var xhr=new XMLHttpRequest();recipientXhr=xhr;
         xhr.open("GET","/api/v1/report-mail/recipient?requestNumber="+encodeURIComponent(number),true);xhr.timeout=10000;
-        function failed(message){if(seq!==recipientSequence)return;recipientXhr=null;recipientStatus.textContent=message+" 수신자는 발송 시 LIMS 의뢰자 정보로 확인합니다.";}
+        function failed(message){if(seq!==recipientSequence)return;recipientXhr=null;recipientRequest=null;recipientStatus.textContent=message+" 수신자는 발송 시 LIMS 의뢰자 정보로 확인합니다.";}
         xhr.onload=function(){
           if(seq!==recipientSequence)return;
           var value;try{value=JSON.parse(xhr.responseText);}catch(_){failed("의뢰자 조회 응답을 확인할 수 없습니다.");return;}
           if(xhr.status<200||xhr.status>=300){failed(value.message||"의뢰자 조회에 실패했습니다.");return;}
           recipientXhr=null;fields.recipientName.value=value.recipientName||"";fields.to.value=value.email||"";
-          recipientStatus.textContent=value.email?"조회된 의뢰자 이메일로만 발송됩니다.":"의뢰자 이메일은 발송 시 LIMS에서 조회합니다. 직접 입력할 수 없습니다.";
+          recipientStatus.textContent=value.email?"LIMS에서 조회한 의뢰자 이메일입니다. 전송할 때 다시 확인합니다.":"의뢰자 이메일은 발송 시 LIMS에서 조회합니다. 직접 입력할 수 없습니다.";
         };
         xhr.onerror=xhr.ontimeout=function(){failed("의뢰자 조회 서버에 연결하지 못했습니다.");};xhr.send();
       },300);

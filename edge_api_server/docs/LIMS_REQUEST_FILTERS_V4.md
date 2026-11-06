@@ -1,5 +1,7 @@
 # v4 의뢰 조회
 
+이 문서는 v4 기준이다. 2026년 11월 6일 반영한 자산번호·시험상태 필터와 화면 동작은 [v5 의뢰 조회](LIMS_REQUEST_FILTERS_V5.md)를 참조한다.
+
 `GET /api/v1/requests`는 기존 저장 목록과 LIMS 실시간 조회를 구분한다. 기본값인 `source=cache`는 기존 실험별 조회 및 완료 건 제외 동작을 유지한다. `source=lims`는 Python → 내부 Spring → LIMS 조회이며 결과를 전체 동기화 테이블에 저장하거나 덮어쓰지 않는다.
 
 | 조건 | 저장된 의뢰 | LIMS 실시간 |

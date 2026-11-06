@@ -66,6 +66,10 @@ def test_shared_manager_style_is_served_on_all_workbench_pages(tmp_path, legacy)
         response = client.get(api.BASE + page, headers=headers)
         assert response.status_code == 200
         assert api.BASE + stylesheet in response.text
+        if page == '/report.html':
+            helper = '<script src="/assets/request_filters.js"></script>'
+            assert helper in response.text
+            assert response.text.index(helper) < response.text.index('src="' + api.BASE + '/report/report.')
     response = client.get(api.BASE + stylesheet, headers=headers)
     assert response.status_code == 200
     assert '.ristWorkManager' in response.text
@@ -212,6 +216,7 @@ def test_sso_guard_registration_and_existing_queue_adapter(tmp_path, monkeypatch
     client = TestClient(make_app(tmp_path, auth=True), headers={'test-user':'one'})
     sid = upload(client, {'A.txt':b'10 1\n20 8\n30 3\n'})
     doc = client.get(api.BASE+f'/api/reports/{sid}').json()['document']
+    assert doc['metadata']['experiment_code'] == ''
     doc['metadata'].update(report_number='REQ-01', experiment_code='XRD', equipment_code='XRD-01', operator_id='SSO-01')
     assert client.put(api.BASE+f'/api/reports/{sid}', json={'document':doc,'expected_revision':0}).status_code == 200
     transfer = {'requestNumber':'REQ-01','experimentCode':'XRD','equipmentCode':'XRD-01','operatorId':'SSO-01'}

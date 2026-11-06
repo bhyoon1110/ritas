@@ -2,8 +2,7 @@
 """Isolated Python/MariaDB/Spring/HTTPS-LIMS/SFTP integration verification.
 
 Uses an ephemeral Docker MariaDB, synthetic data and temporary local services.
-Never accepts operational DB/API credentials. The unresolved recipient lookup is
-represented by an explicit test-only DB fixture after Python's normal enqueue.
+Only local test services are used, including the requester's email lookup.
 """
 from __future__ import annotations
 
@@ -44,7 +43,7 @@ for item in (EDGE, EDGE.parent, EDGE.parent / "common", EDGE.parent / "sune", ED
     sys.path.insert(0, str(item))
 
 from app.config import Settings
-from app.lims_requests import NUMBER_FIELDS, TEXT_FIELDS
+from app.lims_requests import LimsRequestsClient, NUMBER_FIELDS, TEXT_FIELDS
 from app.lims_sso import LimsSsoClient
 from app.main import create_app
 from app.report_management import cleanup_expired_reports
@@ -109,6 +108,8 @@ class LimsFixture:
         self.duplicate_posts = 0
         self.auth_checks = 0
         self.request_queries = []
+        self.email_lookups = 0
+        self.recipient_email = "recipient@example.test"
         self.drop_first_accept = True
         self.package_hash = None
         self.failures = []
@@ -135,7 +136,13 @@ class LimsFixture:
                     with state.lock:
                         assert self.headers.get("X-Authorization") == "Bearer " + TOKEN
                         parsed = urlsplit(self.path)
-                        path = unquote(parsed.path).removeprefix("/RIST/api/ax")
+                        full_path = unquote(parsed.path)
+                        if full_path == "/RIST/api/alarm/reqUserEmail/550090":
+                            assert self.command == "GET" and not parsed.query
+                            state.email_lookups += 1
+                            return self.reply({"email": state.recipient_email})
+                        assert full_path.startswith("/RIST/api/ax/")
+                        path = full_path.removeprefix("/RIST/api/ax")
                         raw = self.rfile.read(int(self.headers.get("Content-Length", "0")))
                         body = json.loads(raw) if raw else None
                         if path == "/auth/verify":
@@ -149,8 +156,13 @@ class LimsFixture:
                             query = {k: v[0] for k, v in parse_qs(parsed.query).items()}
                             state.request_queries.append(query)
                             row = {k: None for k in NUMBER_FIELDS | TEXT_FIELDS}
-                            row.update(reqResultNo=1, reqNumber="2026R02236", reqDate="2026-10-06", testMtdCode="A23142", testMtdName="XRD test", testChargerName="Test User")
-                            return self.reply({"page": int(query["page"]), "size": int(query["size"]), "totalCount": 1, "items": [row]})
+                            row.update(reqResultNo=550090, reqNumber="2026R02236", reqDate="2026-10-06", reqUserName="Requester",
+                                       testMtdCode="A23142", testMtdName="XRD test", testState=7, testChargerName="Test User")
+                            matches = (query.get("reqNumber", row["reqNumber"]) == row["reqNumber"]
+                                       and query.get("assetNumber", "ASSET-17") == "ASSET-17"
+                                       and "7" in query.get("testState", "7").split(","))
+                            return self.reply({"page": int(query["page"]), "size": int(query["size"]),
+                                               "totalCount": int(matches), "items": [row] if matches and query["page"] == "1" else []})
                         if path == "/documents" and self.command == "POST":
                             assert body["registerType"] == "INITIAL"
                             assert body["reqNumber"] == "2026R02236" and body["testMtdCode"] == "A23142"
@@ -160,7 +172,7 @@ class LimsFixture:
                             key = body["idempotencyKey"]
                             duplicate = key in state.documents
                             state.documents.setdefault(key, {**body, "axDocNum": 1001, "regenSeq": 0, "fileNo": 55001})
-                            return self.reply({"axDocNum": 1001, "regenSeq": 0, "duplicate": duplicate})
+                            return self.reply({"axDocNum": 1001, "regenSeq": 0, "duplicate": duplicate}, 200 if duplicate else 201)
                         if path == "/documents/1001":
                             doc = next(iter(state.documents.values()))
                             return self.reply({"axDocNum": 1001, "status": state.document_status,
@@ -179,6 +191,8 @@ class LimsFixture:
                             state.mails[request_id] = body
                             if state.drop_first_accept:
                                 state.drop_first_accept = False
+                                # A subsequent retry must keep the original addressee.
+                                state.recipient_email = "changed@example.test"
                                 self.close_connection = True
                                 self.connection.shutdown(socket.SHUT_RDWR)
                                 return
@@ -301,12 +315,12 @@ class SftpFixture:
 
 
 def run(args):
-    work = (Path(args.work_dir) if args.work_dir else Path(tempfile.mkdtemp(prefix="ritasax-v4-integration-"))).resolve()
+    work = (Path(args.work_dir) if args.work_dir else Path(tempfile.mkdtemp(prefix="ritasax-v5-integration-"))).resolve()
     work.mkdir(parents=True, exist_ok=True)
     os.chmod(work, 0o700)
     java, jar = Path(args.java).resolve(), Path(args.spring_jar).resolve()
     assert java.is_file() and jar.is_file()
-    container = "ritasax-v4-test-" + uuid4().hex[:12]
+    container = "ritasax-v5-test-" + uuid4().hex[:12]
     password = secrets.token_hex(16)
     spring = None
     app = None
@@ -340,7 +354,7 @@ def run(args):
         spring_port, python_port = free_port(), free_port()
         spring_url = f"http://127.0.0.1:{spring_port}"
         python_url = f"http://127.0.0.1:{python_port}"
-        config = Settings(storage_root=work / "storage", db_host="127.0.0.1", db_port=db_port, db_name="ritasax_v4_test",
+        config = Settings(storage_root=work / "storage", db_host="127.0.0.1", db_port=db_port, db_name="ritasax_v5_test",
                           db_user="root", db_password=password, auth_enabled=False, lims_requests_enabled=True,
                           lims_requests_url=spring_url + "/api/lims/requests", sso_lims_internal_key=INTERNAL_KEY,
                           sso_lims_allow_loopback_http=True, report_completed_retention_hours=24, report_trash_retention_hours=0)
@@ -356,7 +370,7 @@ def run(args):
             if statement.strip():
                 sql(statement)
         sql("CREATE TABLE lims_req_ax_search (req_result_no BIGINT,req_number VARCHAR(50),req_date VARCHAR(10),req_state INT,req_state_name VARCHAR(50),req_type_no BIGINT,req_type_code VARCHAR(50),req_type_name VARCHAR(100),project_code VARCHAR(50),cust_req_name VARCHAR(100),customer_no BIGINT,customer_name VARCHAR(100),req_user_no BIGINT,req_user_name VARCHAR(100),smp_result_no BIGINT,smp_result_name VARCHAR(100),smp_result_state INT,test_mtd_result_no BIGINT,test_mtd_no BIGINT,test_mtd_code VARCHAR(50),test_mtd_name VARCHAR(100),test_state INT,test_charger_name VARCHAR(100),output_order INT,synced_at DATETIME)")
-        sql("INSERT INTO lims_req_ax_search(req_result_no,req_number,req_date,test_mtd_code,test_mtd_name,req_state_name,synced_at) VALUES(1,'CACHED-UNCHANGED','2026-10-01','A23142','XRD','진행',NOW())")
+        sql("INSERT INTO lims_req_ax_search(req_result_no,req_number,req_date,test_mtd_code,test_mtd_name,req_state_name,test_state,synced_at) VALUES(1,'CACHED-UNCHANGED','2026-10-01','A23142','XRD','진행',7,NOW())")
         env = {k: v for k, v in os.environ.items() if not (k.startswith("RITASAX_") or k.startswith("SPRING_") or k in {"JAVA_TOOL_OPTIONS", "JDK_JAVA_OPTIONS"})}
         env.update({
             "SPRING_PROFILES_ACTIVE": "prod", "SERVER_ADDRESS": "127.0.0.1", "SERVER_PORT": str(spring_port),
@@ -415,14 +429,23 @@ def run(args):
         headers = {"X-Request-Id": "integration-requests"}
         response = client.get("/api/v1/requests", params={"source": "lims", "page": 1, "pageSize": 500,
                     "reqNumber": "2026R02236", "testMtdCode": "A23142", "fromDate": "2026-10-01",
-                    "toDate": "2026-10-31", "testChargerId": "tester", "testChargerNo": 7}, headers=headers)
+                    "toDate": "2026-10-31", "testChargerId": "tester", "testChargerNo": 7,
+                    "assetNumber": "ASSET-17", "testState": "1,3,5,7"}, headers=headers)
         assert response.status_code == 200, response.text
         assert response.json()["totalCount"] == 1 and response.json()["items"][0]["requestState"] is None
         assert fixture.request_queries[-1]["testChargerId"] == "tester"
+        assert fixture.request_queries[-1]["assetNumber"] == "ASSET-17" and fixture.request_queries[-1]["testState"] == "1,3,5,7"
+        different_asset = client.get("/api/v1/requests", params={"source": "lims", "assetNumber": "ASSET-18"}, headers=headers)
+        assert different_asset.status_code == 200 and different_asset.json()["items"] == []
         assert sql("SELECT req_number FROM lims_req_ax_search", one=True)["req_number"] == "CACHED-UNCHANGED"
         cached = client.get("/api/v1/requests", params={"source": "cache", "testMtdCode": "A23142", "fromDate": "2026-10-01", "toDate": "2026-10-01"}, headers=headers)
         assert cached.status_code == 200 and cached.json()["totalCount"] == 1
         print("PASS filtered live lookup, nullable fields, cache preservation and inclusive local dates", flush=True)
+        recipient = LimsRequestsClient.from_settings(config).fetch_recipient("2026R02236")
+        assert recipient == {"reqNumber": "2026R02236", "reqResultNo": 550090,
+                             "reqUserName": "Requester", "email": fixture.recipient_email}
+        assert fixture.email_lookups == 1
+        print("PASS Python recipient preview relay resolves the LIMS request ID and email", flush=True)
         created = client.post("/api/v1/jobs", json={"pk": {"requestNumber": "2026R02236", "experimentCode": "A23142", "equipmentCode": "XRD-TEST", "operatorId": "tester"}, "sourcePc": {"hostName": "integration", "declaredIpAddress": "127.0.0.1", "clientVersion": "fixture"}}, headers={**headers, "Idempotency-Key": "job-fixture"})
         assert created.status_code == 201, created.text
         job_id = created.json()["jobId"]
@@ -446,12 +469,8 @@ def run(args):
         again = enqueue_report_package(**queue_args)
         assert queued["transferId"] == again["transferId"]
         assert sql("SELECT COUNT(*) AS n FROM report_transfers", one=True)["n"] == 1
-        # TEST FIXTURE ONLY: production recipient lookup remains unresolved by v4.
-        row = sql("SELECT report_options_json FROM report_runs WHERE report_id=%s", (report_id,), one=True)
-        options = json.loads(row["report_options_json"])
-        assert options["email"]["to"] == []
-        options["email"]["to"] = ["recipient@example.test"]
-        sql("UPDATE report_runs SET report_options_json=%s WHERE report_id=%s", (json.dumps(options), report_id))
+        # The recipient exists only in the LIMS fixture. No local recipient override.
+        assert fixture.email_lookups == 1
         assert cleanup_expired_reports(settings=config, database=database) == []
         assert package.is_file() and raw_path.is_file()
         stop_spring()
@@ -488,6 +507,7 @@ def run(args):
         record = advance(lambda row: row["state"].get("phase") == "MAIL_READY")
         assert record["document_completed_at"] is not None and record["state"]["fileNo"] == "55001"
         assert sftp.uploads == 1 and len(fixture.documents) == 1
+        assert fixture.email_lookups == 2
         print("PASS strict SFTP upload, durable document checkpoint, 10-poll backoff and FAILED recovery", flush=True)
         record = advance(lambda row: row["state"].get("phase") == "MAIL_PENDING"
                          or row["state"].get("phase") == "MAIL_SUBMITTING" and row["failure_count"] >= 1)
@@ -523,13 +543,14 @@ def run(args):
         record = advance(lambda row: row["status"] == "COMPLETED")
         assert record["mail_status"] == "SENT" and record["state"]["phase"] == "DONE"
         assert not package.exists() and fixture.retry_posts == 1 and fixture.mail_posts == 2
+        assert fixture.email_lookups == 2, "Mail retries must reuse the trusted recipient snapshot"
         assert not fixture.failures
         print("PASS restart, explicit mail-only retry after local deletion, SENT completion without re-upload", flush=True)
         report = {"result": "PASS", "ssoChecks": fixture.auth_checks, "documentRegistrations": len(fixture.documents),
                   "sftpUploads": sftp.uploads, "mailSubmitCalls": fixture.mail_posts, "uniqueMails": len(fixture.mails),
                   "duplicateResponses": fixture.duplicate_posts, "mailRetryCalls": fixture.retry_posts,
                   "scope": "isolated synthetic integration; not actual LIMS or Edge verification",
-                  "recipientFixture": "Synthetic To injected after enqueue; production recipient lookup remains pending"}
+                  "recipientLookups": fixture.email_lookups}
         (work / "result.json").write_text(json.dumps(report, ensure_ascii=False, indent=2))
         print(json.dumps(report), flush=True)
         client.close()
