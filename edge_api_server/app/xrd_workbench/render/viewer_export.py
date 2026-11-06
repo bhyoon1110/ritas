@@ -42,7 +42,7 @@ def strip_module_syntax(source: str) -> str:
     return _EXPORT.sub('', _IMPORT.sub('', source))
 
 
-def export_html(project: dict, state: dict, views: list | None = None) -> str:
+def export_html(project: dict, state: dict, views: list | None = None, *, report_viewer=False) -> str:
     """The one-file viewer. `views` are already-validated named views (see prepare_views); when
     there are none the output is byte-identical to a viewer without the feature."""
     from rist_common.plotting.file_progress import file_progress_html
@@ -56,6 +56,10 @@ def export_html(project: dict, state: dict, views: list | None = None) -> str:
         'analysis_revision': project.get('analysis_revision', 0),
         'state': state,
     }
+    if report_viewer:
+        # Separate the recipient viewer's local storage from standalone authoring exports.
+        identity_fields['report_viewer'] = True
+        template = re.sub(r'<!-- author-markers:start -->.*?<!-- author-markers:end -->', '', template, flags=re.S)
     if views:
         identity_fields['views'] = views
     identity = json.dumps(

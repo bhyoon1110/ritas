@@ -21,6 +21,7 @@ function setup(t, program, saved={}, project=fixture, online=false, options={}) 
   t.after(()=>dom.window.close());
   const w=dom.window,d=w.document, renders=[],exports=[],downloads=[],events={},requests=[];
   if (!online) w.XRD_EMBEDDED={project,state:{projectId:project.id,...saved},snapshotId:'qa'};
+  if (options.reportViewer) d.getElementById('phaseMarkerDetails').remove();
   w.Plotly={newPlot:async node=>{node.on=(key,callback)=>{events[key]=callback;};},react:async(node,data,layout)=>{renders.push(JSON.parse(JSON.stringify({data,layout})));},
     toImage:async figure=>{exports.push(JSON.parse(JSON.stringify(figure)));return 'data:image/png;base64,QA';}};
   w.fetch=async url=>{requests.push(url); return {ok:true,headers:{get:()=>null},json:async()=>project,blob:async()=>new w.Blob(['QA'])};};
@@ -32,6 +33,22 @@ function setup(t, program, saved={}, project=fixture, online=false, options={}) 
   return {w,d,renders,exports,downloads,events,requests,setSize:async size=>{d.getElementById('markerSize').value=String(size);d.getElementById('markerSize').dispatchEvent(new w.Event('input'));await flush();}};
 }
 for(const [mode, program] of Object.entries({native,chrome49:legacy})) {
+  test(`${mode}: report viewers suppress unknown peaks from saved settings and exported images`, async t=>{
+    const project=JSON.parse(JSON.stringify(fixture));
+    project.samples[0].observed_peaks.push({no:2,x:30,page:1});
+    const saved={markers:true,unknownMarkers:true};
+    const ui=setup(t,program,saved,project,false,{reportViewer:true,local:saved});
+    await flush();
+    assert.equal(ui.d.querySelector('[data-legend-unknown]'),null);
+    assert.doesNotMatch(ui.d.getElementById('markerSizeHint').textContent,/Unknown Peak/);
+    assert.ok(ui.renders.at(-1).data.some(t=>t.meta.role==='marker'));
+    assert.ok(!ui.renders.at(-1).data.some(t=>t.meta.role==='unknown'));
+    ui.d.querySelector('[data-legend-collapse]').click();
+    ui.d.getElementById('quickImageExport').click();await flush();
+    const roles=ui.exports.at(-1).data.map(t=>t.meta.role);
+    assert.ok(roles.includes('legend-phase'));
+    assert.ok(!roles.includes('unknown') && !roles.includes('legend-unknown'));
+  });
   test(`${mode}: sample legend groups fold and independently hide shared phases and unknown peaks`, async t=>{
     const project=JSON.parse(JSON.stringify(fixture));
     const a=project.samples[0];a.name='같은 시료명 <&>';

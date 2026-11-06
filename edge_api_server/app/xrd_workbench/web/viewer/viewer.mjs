@@ -34,6 +34,9 @@ import { automaticSampleColors } from './sample_colors.mjs';
 const offline = !!window.XRD_EMBEDDED;
 const uploadProgress=window.RistFileProgress.monitor($('uploadError'));
 const collapsedLegendSamples = { multi: new Set(), single: new Set() };
+const allowUnknown = !!$('unknownMarkers');
+const displayToggles = ['markers', 'peakLines', 'peakbar', 'originStyle'];
+if (allowUnknown) displayToggles.push('unknownMarkers');
 let activeUpload=null,uploadBusy=false,uploadPaused=false,uploadReady=false,resumeMappings={},resumeJob=null;
 function invalidateRawCheck(){uploadReady=false;$('uploadComplete').disabled=true;$('rawDiagnostics').textContent='';}
 function lockUpload(busy){
@@ -116,7 +119,7 @@ function updateControls() {
   $('viewSingle').classList.toggle('active', single);
   $('quickOverlay').setAttribute('aria-pressed', String(!single && state.offsets.raw.spacing === 0));
   $('quickStack').setAttribute('aria-pressed', String(!single && state.offsets.raw.spacing !== 0));
-  for (const key of ['markers', 'peakLines', 'peakbar', 'unknownMarkers', 'originStyle']) $(key).checked = !!state[key];
+  for (const key of displayToggles) $(key).checked = !!state[key];
   $('phaseMarkerHint').textContent = phaseMarkerHint(project, state, figure);
   const lineCount = figure.data.filter(t => t.meta?.role === 'peak-line')
     .reduce((count, t) => count + t.x.length / 3, 0);
@@ -125,14 +128,13 @@ function updateControls() {
     : lineCount
       ? `결정상 피크 선 ${lineCount}개 표시 · 위치별 추정 배경선에서 실제 RAW 높이까지 표시합니다. 원자료는 변경하지 않습니다.`
       : '표시할 피크 선이 없습니다. 관측 피크·상 배정 자료와 시료·결정상 표시 선택을 확인하세요.';
-  $('unknownColor').value = state.unknownColor;
+  if (allowUnknown) $('unknownColor').value = state.unknownColor;
   $('markerSize').value = String(state.markerSize);
   $('markerSizeValue').textContent = String(state.markerSize);
   const hasMarkers = figure.data.some(t => ['marker', 'peakbar-tip', 'unknown'].includes(t.meta?.role) && t.x.length);
   $('markerSize').disabled = !hasMarkers;
-  $('markerSizeHint').textContent = hasMarkers
-    ? '결정상·기준 피크 마커와 Unknown Peak에 함께 적용됩니다.'
-    : '표시된 마커가 없습니다. 피크 자료와 마커 표시 옵션을 확인하세요.';
+  const sizeHint = allowUnknown ? '결정상·기준 피크 마커와 Unknown Peak에 함께 적용됩니다.' : '결정상·기준 피크 마커에 적용됩니다.';
+  $('markerSizeHint').textContent = hasMarkers ? sizeHint : '표시된 마커가 없습니다. 피크 자료와 마커 표시 옵션을 확인하세요.';
   const offset = state.offsets.raw,
     limit = spacingLimit(project, state);
   // Spacing between samples makes no sense for one sample: the control is hidden.
@@ -156,7 +158,7 @@ function updateControls() {
     ? '시료 하나씩 보기'
     : `여러 시료 비교 · ${spacing === 0 ? '겹쳐 보기' : spacing > 0 ? '첫 시료 위' : '반대 순서'}`;
   const legendScroll = $('legend').scrollTop;
-  $('legend').innerHTML = legendHTML(project, state, collapsedLegendSamples[state.viewMode]);
+  $('legend').innerHTML = legendHTML(project, state, collapsedLegendSamples[state.viewMode], allowUnknown);
   $('legend').scrollTop = legendScroll;
   renderPicker();
 }
@@ -192,7 +194,16 @@ function renderPanels() {
       .join('');
   }
   $('activeSample').value = state.active || '';
-  // Crystal phases: one row per phase group (the same compound across samples is one row).
+  if ($('phaseList')) renderPhaseList();
+  // Review notes belong to the authoring app, not the delivered HTML viewer.
+  const warnings = offline ? [] : viewWarnings(project, figure.warnings);
+  $('warningSection').hidden = !warnings.length;
+  $('warningList').innerHTML = warnings
+    .map((w) => `<div class="sourceWarning">${escapeHTML(w)}</div>`)
+    .join('');
+}
+
+function renderPhaseList() {
   const styles = phaseStyles(project, state);
   $('phaseList').innerHTML =
     phaseGroups(project, state)
@@ -203,13 +214,6 @@ function renderPanels() {
       })
       .join('') ||
     '<div class="empty">상 목록이 없습니다. 상매칭 Report를 연결하세요.<br>PDF에 없는 상·피크는 생성하지 않습니다.</div>';
-  // Review notes belong to the authoring app, not the delivered HTML viewer.
-  // Keep the project facts and the model's measurement exclusion rules unchanged.
-  const warnings = offline ? [] : viewWarnings(project, figure.warnings);
-  $('warningSection').hidden = !warnings.length;
-  $('warningList').innerHTML = warnings
-    .map((w) => `<div class="sourceWarning">${escapeHTML(w)}</div>`)
-    .join('');
 }
 
 async function draw(refreshPanel = true) {
@@ -273,6 +277,7 @@ function loadProject(value, saved) {
     /* ignore invalid local state */
   }
   state = restoreState(project, saved);
+  if (!allowUnknown) state.unknownMarkers = false;
   const selection = viewerLinkDone ? {} : seedViewerLink();
   viewerLinkDone = true;
   if (!offline) {
@@ -390,15 +395,6 @@ for (const [id, stack] of [['quickOverlay',false],['quickStack',true]]) $(id).on
   state.offsets.raw.individual = {};
   draw();
 };
-// Advanced phase styling remains available without crowding the common tools.
-const phaseSection = $('phaseList').parentElement, advanced = document.createElement('details');
-advanced.className = 'advancedOptions';
-advanced.id = 'phaseMarkerDetails';
-advanced.innerHTML = '<summary>결정상 마커 상세 설정</summary>';
-const markerOption = $('markers').closest('label');
-markerOption.parentNode.insertBefore(advanced, markerOption.nextSibling);
-advanced.appendChild(phaseSection);
-
 for (const [id, mode] of [
   ['viewMulti', 'multi'],
   ['viewSingle', 'single'],
@@ -417,12 +413,14 @@ function setToggle(key, value) {
   if (key === 'unknownMarkers') state.hiddenUnknownSamples = [];
   draw();
 }
-for (const key of ['markers', 'peakLines', 'peakbar', 'unknownMarkers', 'originStyle'])
+for (const key of displayToggles)
   $(key).onchange = () => setToggle(key, $(key).checked);
-$('unknownColor').onchange = () => {
-  state.unknownColor = $('unknownColor').value;
-  draw(false);
-};
+if (allowUnknown) {
+  $('unknownColor').onchange = () => {
+    state.unknownColor = $('unknownColor').value;
+    draw(false);
+  };
+}
 $('markerSize').oninput = () => {
   if (!state) return;
   state.markerSize = Number($('markerSize').value);
@@ -464,7 +462,7 @@ $('legend').onchange = (event) => {
   } else if (d.legendPhase) {
     setPhaseHidden(state, d.legendPhase, !event.target.checked);
     draw();
-  } else if (d.legendUnknown) {
+  } else if (allowUnknown && d.legendUnknown) {
     setUnknownSampleVisible(project, state, d.legendUnknown, event.target.checked);
     draw();
   }

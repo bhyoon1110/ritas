@@ -238,7 +238,7 @@ export function unknownPeaks(sample) {
 }
 // Each sample owns a heading and its phase/unknown-peak controls. Shared phase
 // colours stay consistent, but visibility belongs to the sample named above it.
-export function legendHTML(project, state, collapsed = new Set()) {
+export function legendHTML(project, state, collapsed = new Set(), allowUnknown = true) {
   const listed = state.viewMode === 'single' ? [state.active || state.order[0]] : state.order;
   const styles = phaseStyles(project, state);
   return listed
@@ -246,7 +246,7 @@ export function legendHTML(project, state, collapsed = new Set()) {
     .filter(Boolean)
     .map((s, index) => {
       const shown = state.viewMode === 'single' || state.visible.includes(s.id);
-      const hasUnknown = unknownPeaks(s).length > 0;
+      const hasUnknown = allowUnknown && unknownPeaks(s).length > 0;
       const hasChildren = s.phases.length > 0 || hasUnknown;
       const expanded = shown && hasChildren && !collapsed.has(s.id);
       const name = escapeHTML(s.name), id = escapeHTML(s.id);

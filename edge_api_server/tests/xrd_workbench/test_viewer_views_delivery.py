@@ -62,6 +62,7 @@ def view(name, **extra):
 def test_without_views_the_exported_viewer_is_exactly_what_it_was():
     p = project()
     plain = export_html(p, {})
+    assert '<input id="unknownMarkers"' in plain and '<details class="advancedOptions"' in plain
     assert 'views' not in embedded(plain)
     assert '/shared/project_manager' not in plain
     assert export_html(p, {}, None) == plain and export_html(p, {}, []) == plain
@@ -98,7 +99,10 @@ def test_peak_lines_travel_in_direct_html_and_packaged_viewer_without_changing_d
     data = build_package(p, document, lambda fid: b'', state,
                          [view('피크 선만', peakLines=True)])
     with zipfile.ZipFile(io.BytesIO(data)) as z:
-        delivered = embedded(z.read('뷰어.html').decode('utf-8'))
+        html = z.read('뷰어.html').decode('utf-8')
+        assert '<details class="advancedOptions"' not in html and '<input id="unknownMarkers"' not in html
+        assert '<input id="markers"' in html
+        delivered = embedded(html)
     assert delivered['state']['peakLines'] is True
     assert delivered['state']['markers'] is False
     assert delivered['state']['peakbar'] is False

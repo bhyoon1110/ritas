@@ -85,6 +85,10 @@ def test_every_linked_original_and_each_independent_viewer_are_embedded(inputs, 
         assert payload['project']['samples'][0]['measurement'] == sample['measurement']
         assert 'location.replace' not in html
     assert '전체 비교 그래프.html' in files
+    for name, data in files.items():
+        if name.endswith('.html'):
+            assert b'<input id="markers"' in data
+            assert b'<input id="unknownMarkers"' not in data and b'<details class="advancedOptions"' not in data
     assert not ppt_click_targets(delivered)
 
 

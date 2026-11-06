@@ -57,7 +57,7 @@ def build_package(project, document, resolve_source, viewer_state=None, views=No
         archive.writestr('보고서.pdf', pdf)
         pptx = render_report_pptx(project, document, resolve_source, pages=pages, include_sources=include_sources, delivery=True, asset_root=asset_root, viewer_state=viewer_state, views=views)
         archive.writestr('보고서.pptx', pptx)
-        viewer = export_html(filtered, display, display_views)
+        viewer = export_html(filtered, display, display_views, report_viewer=True)
         archive.writestr('뷰어.html', viewer)
         if include_sources:
             _write_image_originals(archive, project, document, samples, resolve_source)

@@ -65,7 +65,7 @@ def resources(project, document, resolve_source, targets, viewer_state=None, vie
         display = prepare_state(project, viewer_state, filtered)
         display['viewMode'] = 'single' if sample else 'multi'
         display['visible'] = [s['id'] for s in chosen]
-        html = export_html(filtered, display, prepare_views(project, views, filtered)).encode('utf-8')
+        html = export_html(filtered, display, prepare_views(project, views, filtered), report_viewer=True).encode('utf-8')
         name = PurePosixPath(paths['viewers'][sample['id']]).name if sample else comparison_name
         add(target, name, html)
     if set(result) != set(targets):
