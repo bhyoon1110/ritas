@@ -337,6 +337,8 @@ test('request combobox guards Korean composition, closes on outside/scroll, and 
   search.dispatchEvent(new h.w.KeyboardEvent('keydown',{key:'ArrowDown'}));search.dispatchEvent(new h.w.KeyboardEvent('keydown',{key:'Enter',isComposing:true}));assert.equal(h.field('의뢰번호').value,'');
   search.dispatchEvent(new h.w.Event('compositionend'));h.d.body.dispatchEvent(new h.w.MouseEvent('mousedown',{bubbles:true}));assert(list.hidden);
   h.q('request-toggle').click();assert(!list.hidden);list.dispatchEvent(new h.w.Event('scroll'));assert(!list.hidden);
+  search.dispatchEvent(new h.w.Event('scroll'));assert(!list.hidden);
+  h.d.body.dispatchEvent(new h.w.Event('scroll'));assert(!list.hidden);
   h.w.dispatchEvent(new h.w.Event('scroll'));assert(list.hidden);h.q('request-toggle').click();h.q('request-result-0').click();
   h.input('실험코드','MANUAL-CODE');h.input('의뢰번호','MANUAL-REQ');assert.equal(h.field('실험코드').value,'MANUAL-CODE');
   assert.equal(search.value,'');assert(list.hidden);

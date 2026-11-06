@@ -300,6 +300,7 @@
     var info = element("p", box, "의뢰 조회 후 한 칸에서 검색·선택하세요. 목록은 200개씩 조회하며, 의뢰번호 직접 입력도 가능합니다.");
     info.id = "request-info"; info.className = "muted"; info.setAttribute("role", "status");
     var items = [], matches = [], page = 0, loading = false, selected = null, selectedText = "", active = -1, typing = false, lookupError = "";
+    var positionedAt;
     var queryPanel = window.RistRequestFilters.mount(label, {experimentType:project, reload:loadPage, previous:previous, next:next});
     function close() {
       results.hidden = true; active = -1; filter.removeAttribute("aria-activedescendant");
@@ -308,6 +309,7 @@
     function position() {
       if (results.hidden) return;
       var rect = combo.getBoundingClientRect(), width = Math.min(rect.width, window.innerWidth - 16);
+      positionedAt = rect;
       var below = window.innerHeight - rect.bottom - 12, above = rect.top - 12, up = below < 180 && above > below;
       var height = Math.max(40,Math.min(260,up ? above : below));
       results.style.width = Math.max(0,width) + "px"; results.style.maxHeight = height + "px";
@@ -395,7 +397,17 @@
     toggle.onmousedown = function (event) { event.preventDefault(); };
     toggle.onclick = function () { if (results.hidden) { filter.focus(); render(); open(); } else close(); };
     function outside(event) { if (!combo.contains(event.target) && !results.contains(event.target)) close(); }
-    function scrolled(event) { if (!event.target.nodeType || !results.contains(event.target)) close(); }
+    function scrolled(event) {
+      if (results.hidden || event.target === filter) return;
+      if (event.target.nodeType && results.contains(event.target)) return;
+      // Focus scrolls the editor into place before open() measures the input.
+      // Its delayed scroll event can arrive after the menu is already aligned.
+      if (event.target.contains && event.target.contains(combo) && positionedAt) {
+        var rect = combo.getBoundingClientRect();
+        if (rect.top === positionedAt.top && rect.left === positionedAt.left) return;
+      }
+      close();
+    }
     document.addEventListener("mousedown",outside); document.addEventListener("touchstart",outside);
     document.addEventListener("focusin",outside); window.addEventListener("scroll",scrolled,true); window.addEventListener("resize",close);
     inputs.requestNumber.addEventListener("input", function () {
