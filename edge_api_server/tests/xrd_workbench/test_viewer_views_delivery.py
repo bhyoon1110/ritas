@@ -100,7 +100,8 @@ def test_peak_lines_travel_in_direct_html_and_packaged_viewer_without_changing_d
                          [view('피크 선만', peakLines=True)])
     with zipfile.ZipFile(io.BytesIO(data)) as z:
         html = z.read('뷰어.html').decode('utf-8')
-        assert '<details class="advancedOptions"' not in html and '<input id="unknownMarkers"' not in html
+        assert 'id="phaseMarkerDetails"' in html and 'id="phaseList"' in html
+        assert '<input id="unknownMarkers"' not in html and '<input id="unknownColor"' not in html
         assert '<input id="markers"' in html
         delivered = embedded(html)
     assert delivered['state']['peakLines'] is True

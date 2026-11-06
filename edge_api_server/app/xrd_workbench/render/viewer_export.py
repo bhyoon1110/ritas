@@ -59,7 +59,7 @@ def export_html(project: dict, state: dict, views: list | None = None, *, report
     if report_viewer:
         # Separate the recipient viewer's local storage from standalone authoring exports.
         identity_fields['report_viewer'] = True
-        template = re.sub(r'<!-- author-markers:start -->.*?<!-- author-markers:end -->', '', template, flags=re.S)
+        template = re.sub(r'<!-- author-unknown:start -->.*?<!-- author-unknown:end -->', '', template, flags=re.S)
     if views:
         identity_fields['views'] = views
     identity = json.dumps(

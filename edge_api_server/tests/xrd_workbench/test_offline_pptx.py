@@ -88,7 +88,8 @@ def test_every_linked_original_and_each_independent_viewer_are_embedded(inputs, 
     for name, data in files.items():
         if name.endswith('.html'):
             assert b'<input id="markers"' in data
-            assert b'<input id="unknownMarkers"' not in data and b'<details class="advancedOptions"' not in data
+            assert b'id="phaseMarkerDetails"' in data and b'id="phaseList"' in data
+            assert b'<input id="unknownMarkers"' not in data and b'<input id="unknownColor"' not in data
     assert not ppt_click_targets(delivered)
 
 

@@ -21,7 +21,7 @@ function setup(t, program, saved={}, project=fixture, online=false, options={}) 
   t.after(()=>dom.window.close());
   const w=dom.window,d=w.document, renders=[],exports=[],downloads=[],events={},requests=[];
   if (!online) w.XRD_EMBEDDED={project,state:{projectId:project.id,...saved},snapshotId:'qa'};
-  if (options.reportViewer) d.getElementById('phaseMarkerDetails').remove();
+  if (options.reportViewer) d.querySelector('.unknownRow').remove();
   w.Plotly={newPlot:async node=>{node.on=(key,callback)=>{events[key]=callback;};},react:async(node,data,layout)=>{renders.push(JSON.parse(JSON.stringify({data,layout})));},
     toImage:async figure=>{exports.push(JSON.parse(JSON.stringify(figure)));return 'data:image/png;base64,QA';}};
   w.fetch=async url=>{requests.push(url); return {ok:true,headers:{get:()=>null},json:async()=>project,blob:async()=>new w.Blob(['QA'])};};
@@ -41,11 +41,19 @@ for(const [mode, program] of Object.entries({native,chrome49:legacy})) {
     await flush();
     assert.equal(ui.d.querySelector('[data-legend-unknown]'),null);
     assert.doesNotMatch(ui.d.getElementById('markerSizeHint').textContent,/Unknown Peak/);
-    assert.ok(ui.renders.at(-1).data.some(t=>t.meta.role==='marker'));
+    const details=ui.d.getElementById('phaseMarkerDetails');
+    details.open=true;
+    const color=details.querySelector('[data-phase-color]');
+    color.value='#186492';color.dispatchEvent(new ui.w.Event('change',{bubbles:true}));await flush();
+    const symbol=details.querySelector('[data-phase-symbol]');
+    symbol.value='star';symbol.dispatchEvent(new ui.w.Event('change',{bubbles:true}));await flush();
+    const marker=ui.renders.at(-1).data.find(t=>t.meta.role==='marker').marker;
+    assert.equal(marker.color,'#186492');assert.equal(marker.symbol,'star');
     assert.ok(!ui.renders.at(-1).data.some(t=>t.meta.role==='unknown'));
     ui.d.querySelector('[data-legend-collapse]').click();
     ui.d.getElementById('quickImageExport').click();await flush();
     const roles=ui.exports.at(-1).data.map(t=>t.meta.role);
+    assert.deepEqual(ui.exports.at(-1).data.find(t=>t.meta.role==='marker').marker,marker);
     assert.ok(roles.includes('legend-phase'));
     assert.ok(!roles.includes('unknown') && !roles.includes('legend-unknown'));
   });
