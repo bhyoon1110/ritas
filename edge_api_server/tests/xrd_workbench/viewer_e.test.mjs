@@ -182,15 +182,22 @@ test('the legend lists each sample followed by its own phase checkboxes', () => 
   assert.ok(!html.includes('S/M:ABC') && !html.includes('P42/mnm'));
 });
 
-test('image export: the legend names the samples, and the phases only while Phase marker is on', () => {
+test('multi image export lists checked phases beneath expanded samples with their marker style', () => {
   const state = createState(project);
   state.visible = ['a', 'b'];
   let figure = exportFigure(project, state, { origin: false });
   const named = (f) => f.data.filter((t) => t.showlegend).sort((a,b)=>a.legendrank-b.legendrank).map((t) => t.name);
   assert.deepEqual(named(figure), ['A', 'B']);
-  state.markers = true;
-  figure = exportFigure(project, state, { origin: false });
-  assert.deepEqual(named(figure), [
+  state.phaseColors['a-p0'] = '#aa0033';
+  state.phaseSymbols['a-p0'] = 'diamond';
+  figure = exportFigure(project, state, {collapsedSamples:new Set(['b'])});
+  assert.deepEqual(named(figure), ['A', '\u2003Xa0.08 Yb0.01 Zc0.01 O2 Qd0.91 (PhaseA)', '\u2003Ca C O3 (PhaseB)', 'B']);
+  const key = traces(figure, 'legend-phase')[0];
+  assert.equal(key.mode, 'markers');
+  assert.equal(key.marker.symbol, 'diamond');
+  assert.equal(key.marker.color, '#aa0033');
+  figure = exportFigure(project, state, {collapsedSamples:new Set()});
+  assert.deepEqual(named(figure).map(name=>name.trimStart()), [
     'A',
     'Xa0.08 Yb0.01 Zc0.01 O2 Qd0.91 (PhaseA)',
     'Ca C O3 (PhaseB)',
@@ -402,13 +409,13 @@ test('the last Peak Bar row reaches the bottom of the box', () => {
 test('the exported legend names Unknown Peak while its markers are on', () => {
   const state = createState(project);
   state.unknownMarkers = true;
-  const names = exportFigure(project, state, { origin: false })
+  const names = exportFigure(project, state, {collapsedSamples:new Set()})
     .data.filter((t) => t.showlegend)
     .map((t) => t.name);
-  assert.ok(names.includes('? Unknown Peak'));
+  assert.ok(names.includes('\u2003? Unknown Peak'));
   state.unknownMarkers = false;
   assert.ok(
-    !exportFigure(project, state, { origin: false }).data.some((t) => /Unknown Peak/.test(t.name)),
+    !exportFigure(project, state, {collapsedSamples:new Set()}).data.some((t) => /Unknown Peak/.test(t.name)),
   );
 });
 

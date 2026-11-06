@@ -33,7 +33,7 @@ import { automaticSampleColors } from './sample_colors.mjs';
 
 const offline = !!window.XRD_EMBEDDED;
 const uploadProgress=window.RistFileProgress.monitor($('uploadError'));
-const collapsedLegendSamples = new Set();
+const collapsedLegendSamples = { multi: new Set(), single: new Set() };
 let activeUpload=null,uploadBusy=false,uploadPaused=false,uploadReady=false,resumeMappings={},resumeJob=null;
 function invalidateRawCheck(){uploadReady=false;$('uploadComplete').disabled=true;$('rawDiagnostics').textContent='';}
 function lockUpload(busy){
@@ -156,7 +156,7 @@ function updateControls() {
     ? '시료 하나씩 보기'
     : `여러 시료 비교 · ${spacing === 0 ? '겹쳐 보기' : spacing > 0 ? '첫 시료 위' : '반대 순서'}`;
   const legendScroll = $('legend').scrollTop;
-  $('legend').innerHTML = legendHTML(project, state, collapsedLegendSamples);
+  $('legend').innerHTML = legendHTML(project, state, collapsedLegendSamples[state.viewMode]);
   $('legend').scrollTop = legendScroll;
   renderPicker();
 }
@@ -264,6 +264,8 @@ window.addEventListener('hashchange', () => {
 });
 function loadProject(value, saved) {
   project = value;
+  collapsedLegendSamples.multi = new Set(project.samples.map(sample => sample.id));
+  collapsedLegendSamples.single.clear();
   try {
     const local = JSON.parse(localStorage.getItem(storageKey()) || 'null');
     if (local?.projectId === project.id) saved = local;
@@ -440,8 +442,9 @@ $('legend').onclick = (event) => {
   const button = event.target.closest('[data-legend-collapse]');
   if (!button || button.disabled) return;
   const id = button.dataset.legendCollapse, expanded = button.getAttribute('aria-expanded') !== 'true';
-  if (expanded) collapsedLegendSamples.delete(id);
-  else collapsedLegendSamples.add(id);
+  const collapsed = collapsedLegendSamples[state.viewMode];
+  if (expanded) collapsed.delete(id);
+  else collapsed.add(id);
   $(button.getAttribute('aria-controls')).hidden = !expanded;
   button.setAttribute('aria-expanded', String(expanded));
   const name = project.samples.find(s => s.id === id).name;
@@ -674,7 +677,7 @@ $('imageExport').onclick = async () => {
   try {
     await progress.paint();
     const origin = state.originStyle;
-    const exported = exportFigure(project, state);
+    const exported = exportFigure(project, state, {collapsedSamples: collapsedLegendSamples[state.viewMode]});
     const format = $('imageFormat').value;
     const url = await Plotly.toImage(
       { data: exported.data, layout: exported.layout },

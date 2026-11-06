@@ -819,36 +819,37 @@ export function buildFigure(project, state, viewport = {}) {
   return { data, layout, warnings, fullX, active: active?.id, barRows: phaseRows.length };
 }
 
-// The figure for "현재 이미지 내보내기": each sample followed by its drawn phases.
+// A multi-profile export follows the expanded sample rows in the on-screen legend.
 // All styling comes from the same state as
 // the live graph; there is deliberately no independent export-only Origin option.
-export function exportFigure(project, state, { height = 900 } = {}) {
+export function exportFigure(project, state, { height = 900, collapsedSamples = new Set(project.samples.map(s => s.id)) } = {}) {
   const figure = buildFigure(project, state, { height });
   const { data, layout } = figure;
   const origin = !!state.originStyle;
   const black = '#000000';
+  const multi = state.viewMode !== 'single';
   const drawn = new Set(data.filter(t => ['marker', 'peak-line'].includes(t.meta?.role)).map(t => t.meta.phaseId));
   const styles = phaseStyles(project, state);
   let rank = 0;
   for (const sample of selectedSamples(project, state).samples) {
     const curve = data.find(t => t.meta?.role === 'measurement' && t.meta.sampleId === sample.id);
     Object.assign(curve, {showlegend: true, legendgroup: sample.id, legendrank: rank++});
+    if (multi && collapsedSamples.has(sample.id)) continue;
     for (const phase of sample.phases) {
       const phaseRank = rank++;
-      if (!drawn.has(phase.id)) continue;
+      if (multi ? state.hiddenPhases.includes(phase.id) : !drawn.has(phase.id)) continue;
       const style = styles.get(phase.id);
       data.push({
         type: 'scatter',
-        mode: state.markers ? (state.peakLines ? 'lines+markers' : 'markers') : 'lines',
+        mode: 'markers',
         x: [null],
         y: [null],
-        name: escapeHTML(exportCaption(phase)),
+        name: '\u2003' + escapeHTML(exportCaption(phase)),
         showlegend: true,
         legendgroup: sample.id,
         legendrank: phaseRank,
         hoverinfo: 'skip',
         marker: { color: style.color, symbol: style.symbol, size: n(state.markerSize) || 8 },
-        line: { color: style.color, width: 1.1 },
         meta: { role: 'legend-phase', sampleId: sample.id, phaseId: phase.id },
       });
     }
@@ -859,7 +860,7 @@ export function exportFigure(project, state, { height = 900 } = {}) {
       x: [null],
       y: [null],
       // A text trace has no legend symbol: the "?" goes into the name, the marker is invisible.
-      name: '? Unknown Peak',
+      name: '\u2003? Unknown Peak',
       showlegend: true,
       legendgroup: sample.id,
       legendrank: unknownRank,

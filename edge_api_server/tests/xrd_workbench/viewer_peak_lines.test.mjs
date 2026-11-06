@@ -36,17 +36,17 @@ test('upper lines are independent of symbols and lower sticks in normal/Origin v
         for (const originStyle of [false, true]) {
           const s = createState(p);
           Object.assign(s, {markers, peakbar, originStyle, phaseColors: {'a-p': '#12ab34'}});
-          const off = render(p, s);
+          const off = render(p, s, {collapsedSamples:new Set()});
           s.peakLines = true;
-          const on = render(p, s);
+          const on = render(p, s, {collapsedSamples:new Set()});
           assert.equal(role(off, 'peak-line').length, 0);
           assert.equal(role(on, 'peak-line').length, 2);
           for (const unchanged of ['measurement', 'marker', 'peakbar', 'peakbar-tip'])
             assert.deepEqual(role(on, unchanged), role(off, unchanged));
           assert.equal(role(on, 'peak-line')[0].line.color, '#12ab34');
           if (render === exportFigure) {
-            assert.equal(role(on, 'legend-phase')[0].mode, markers ? 'lines+markers' : 'lines');
-            assert.equal(role(on, 'legend-phase')[0].line.color, '#12ab34');
+            assert.equal(role(on, 'legend-phase')[0].mode, 'markers');
+            assert.equal(role(on, 'legend-phase')[0].marker.color, '#12ab34');
           }
         }
   assert.equal(JSON.stringify(p), before);

@@ -45,8 +45,12 @@ for(const [mode, program] of Object.entries({native,chrome49:legacy})) {
     assert.equal(owner('a').querySelector('.legendSampleRow').textContent,'같은 시료명 <&>');
     assert.equal(owner('a').querySelector('[data-legend-phase]').dataset.legendPhase,'p1');
     assert.equal(owner('b').querySelector('[data-legend-phase]').dataset.legendPhase,'p2');
-    owner('a').querySelector('[data-legend-collapse]').click();await flush();
     assert.equal(owner('a').querySelector('.legendPhases').hidden,true);
+    assert.equal(owner('b').querySelector('.legendPhases').hidden,true);
+    owner('b').querySelector('[data-legend-collapse]').click();
+    ui.d.getElementById('quickImageExport').click();await flush();
+    const keys = () => ui.exports.at(-1).data.filter(t=>t.meta.role==='legend-phase');
+    assert.deepEqual(keys().map(t=>[t.meta.phaseId, t.mode, t.name]),[['p2','markers','\u2003Fe O (Phase A)']]);
     assert.equal(curves().length,2);assert.deepEqual(phaseIds(),['p1','p2']);
     owner('b').querySelector('[data-legend-phase]').click();await flush();
     assert.deepEqual(phaseIds(),['p1']);
@@ -76,6 +80,9 @@ for(const [mode, program] of Object.entries({native,chrome49:legacy})) {
     assert.equal(legend.querySelectorAll('[data-legend-owner]').length,1);
     assert.equal(owner('b').querySelector('[data-legend-sample]').disabled,true);
     assert.equal(ui.renders.at(-1).data.filter(t=>t.meta.role==='peakbar').length,0);
+    owner('b').querySelector('[data-legend-phase]').click();await flush();
+    ui.d.getElementById('imageExport').click();await flush();
+    assert.deepEqual(keys().map(t=>t.meta.phaseId),['p2']);
   });
   test(`${mode}: automatic sample colours update all 24 curves, controls, saved state and image export`,async t=>{
     const project=JSON.parse(JSON.stringify(fixture));
@@ -119,8 +126,9 @@ for(const [mode, program] of Object.entries({native,chrome49:legacy})) {
       assert.match(ui.d.getElementById('peakLineHint').textContent,/추정 배경선.*원자료는 변경하지 않습니다/);
       assert.equal(details.open,true);
       assert.equal(JSON.parse(ui.w.localStorage.getItem(ui.w.localStorage.key(0))).peakLines,true);
+      ui.d.querySelector('[data-legend-collapse]').click();
       ui.d.getElementById('imageExport').click();await flush();
-      assert.equal(ui.exports.at(-1).data.find(t=>t.meta.role==='legend-phase').mode,'lines');
+      assert.equal(ui.exports.at(-1).data.find(t=>t.meta.role==='legend-phase').mode,'markers');
       assert.deepEqual(ui.exports.at(-1).data.find(t=>t.meta.role==='peak-line').y,line.y);
       lines.click();await flush();
       assert.equal(JSON.stringify(ui.renders.at(-1).data),original);
