@@ -17,7 +17,7 @@ from .test_integration import make_app, poll
 RAW = b'#Intensity_unit=cps\n10 1\n20 4\n30 2\n'
 
 
-@pytest.mark.parametrize('name', ['A 상매칭.png', 'A-상매칭.jpeg', 'A_상매칭 이미지.PNG', 'A_상 매칭_이미지.jpg'])
+@pytest.mark.parametrize('name', ['A 상매칭.png', 'A-상매칭.jpeg', 'A_상매칭 결과.png', 'A_상매칭 이미지.PNG', 'A_상 매칭_이미지.jpg'])
 def test_explicit_image_name_variants(name):
     for text in (name, unicodedata.normalize('NFD', name), 'C:\\data\\'+name):
         assert classify_filename(text) == dict(sample='A', role='phase_image')
@@ -26,6 +26,16 @@ def test_explicit_image_name_variants(name):
 @pytest.mark.parametrize('name', ['사진.png', 'A_상매칭_Report.png', 'A_상매칭 (1).png', 'A_상매칭.tiff', 'A_정량.png'])
 def test_ambiguous_or_other_roles_are_not_guessed(name):
     assert classify_filename(name)['role'] != 'phase_image'
+
+
+def test_single_sample_phase_artwork_is_not_assigned_across_samples():
+    files = [('상매칭 이미지.png', _png('phase', 90)), ('Mix2.txt', RAW)]
+    project = build_project(files)
+    assert phase_image_record(project, project['samples'][0], {})['filename'] == files[0][0]
+    project = build_project(files, {files[0][0]: {'role': 'ignore'}})
+    assert phase_image_record(project, project['samples'][0], {}) is None
+    project = build_project(files + [('Mix3.txt', RAW)])
+    assert all(phase_image_record(project, sample, {}) is None for sample in project['samples'])
 
 
 def test_nfd_and_client_paths_keep_explicit_image_and_txt_mappings():

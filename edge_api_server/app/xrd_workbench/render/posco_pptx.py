@@ -639,7 +639,7 @@ def build_posco_deck(project, document, resolve_source, *, pages=None, link_base
     deck = Deck(document.get('template_version', 'legacy'))
     entries = [e for e in document['samples'] if e['included']]
     samples = {s['id']: s for s in project['samples']}
-    source_images, raw_images = {}, {}
+    source_images = {}
     classification = classifier(document)
 
     def put(slide, name, content, size=10, edit=None, *, bold=False):
@@ -820,16 +820,8 @@ def build_posco_deck(project, document, resolve_source, *, pages=None, link_base
             source=image(sample,'phase_image',entry)
             if source: deck.picture(slide,source,(x+2,y+2,w-4,h-4),entry['display_name']+' 상매칭',edit=dict(tab=entry['sample_id'],field='phase_caption'))
             else:
-                # Same physical RAW values and reference rows as the viewer's rendering path.
-                key=(entry['sample_id'],w,h)
-                if key not in raw_images:
-                    single=deepcopy(document)
-                    for e in single['samples']: e['included']=e['sample_id']==entry['sample_id']
-                    single['figure']['include']=True; single['figure']['groups']=[]
-                    panels=build_plan(project,single)['panels']
-                    panel=next((p for p in panels if p['curves']),None)
-                    raw_images[key]=image_renderer(panel,w-4,h-4) if panel else None
-                if raw_images[key]: deck.picture(slide,raw_images[key],(x+2,y+2,w-4,h-4),entry['display_name']+' RAW',edit=dict(tab=entry['sample_id'],field='phase_caption'))
+                deck.text(slide, '상매칭 원본 이미지 미연결', (x+3,y+h/2-3,w-6,8),
+                          size=10, color='586775', edit=dict(tab=entry['sample_id'],field='phase_image_source_id'))
             if quantitative:
                 put(slide,'Text 14',entry['display_name']+' - WPPF 정량 (Phase Fraction) 결과',12,dict(tab=entry['sample_id'],field='display_name'),bold=True)
                 place(named(slide,'Pie frame')[0],(167.6,39.6,94.8,74.9))

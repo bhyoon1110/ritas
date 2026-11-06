@@ -13,7 +13,7 @@ test('report selector can repair an orphan but cannot pick another sample or a q
   assert.match(html,/src="\/source\/o"/);
   assert.match(html,/&lt;원본&gt;\.png/);
   assert.doesNotMatch(html,/B.jpg|A_정량/);
-  assert.match(phaseImageHTML(project,{id:'C',sources:[]},{phase_caption:''},r=>r.id),/연결된 원본이 없어 뷰어/);
+  assert.match(phaseImageHTML(project,{id:'C',sources:[]},{phase_caption:''},r=>r.id),/상매칭 원본 이미지 미연결 상태/);
   assert.match(phaseImageHTML(project,sample,{...entry,phase_image_source_id:'missing'},r=>r.id),/선택한 원본을 찾지 못했습니다/);
 });
 

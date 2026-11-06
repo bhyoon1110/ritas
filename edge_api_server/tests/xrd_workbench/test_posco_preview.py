@@ -59,7 +59,7 @@ def test_edit_targets_safe_text_and_source_links_survive_posco_projection():
     targets=[i['edit'] for p in deck_pages(filled) for i in p['items'] if i.get('edit')]
     for entry in doc['samples']:
         assert dict(tab=entry['sample_id'],field='display_name') in targets
-    assert dict(tab=doc['samples'][0]['sample_id'],field='phase_caption') in targets
+    assert dict(tab=doc['samples'][0]['sample_id'],field='phase_image_source_id') in targets
     assert dict(tab=doc['samples'][2]['sample_id'],field='quantity_caption') in targets
     assert dict(tab='overview',field='summary') not in targets  # rules-only summary
     assert dict(tab='overview',field='report_number') in targets
@@ -76,7 +76,7 @@ def test_preview_graphs_use_scoped_renderer_and_do_not_modify_inputs():
     calls=[]
     def image(*args): calls.append(args);return IMAGE
     filled=build_posco_deck(project,doc,lambda _:IMAGE,image_renderer=image)
-    assert len(calls)==4  # summary and each RAW fallback; no unused legacy figure rendering
+    assert len(calls)==1  # only the summary reconstructs the measured curves
     overview=next(args[0] for args in calls if args[0].get('sample_legend'))
     assert not overview['show_markers'] and not overview['show_reference']
     from app.xrd_workbench.core.figure import build_plan

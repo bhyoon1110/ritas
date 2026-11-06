@@ -39,7 +39,7 @@ def normalize_mappings(mappings):
     return result
 
 
-def classify_filename(filename: str) -> dict:
+def classify_filename(filename: str, raw_stems=frozenset()) -> dict:
     """Sample name and role from the filename convention; unknown files get role 'ignore'."""
     path = PureWindowsPath(safe_filename(filename))
     stem, ext = path.stem, path.suffix.lower()
@@ -53,10 +53,15 @@ def classify_filename(filename: str) -> dict:
     for suffix, role in suffixes:
         if stem.lower().endswith(suffix.lower()) and ext in ROLE_EXTENSIONS[role]:
             return dict(sample=stem[: -len(suffix)].strip(), role=role)
-    # Only explicit phase-image names; never infer a role from arbitrary photos.
-    match = re.fullmatch(r'(.+?)[_\s-]+상\s*매칭(?:[_\s-]*이미지)?', stem, re.I)
+    phase_suffix = r'상\s*매칭(?:[_\s-]*결과)?(?:[_\s-]*이미지)?'
+    match = re.fullmatch(r'(.+?)[_\s-]+' + phase_suffix, stem, re.I)
     if match and ext in ROLE_EXTENSIONS['phase_image']:
         return dict(sample=match[1].strip(), role='phase_image')
+    if ext in ROLE_EXTENSIONS['phase_image']:
+        if stem in raw_stems:
+            return dict(sample=stem, role='phase_image')
+        if len(raw_stems) == 1 and re.fullmatch(phase_suffix, stem):
+            return dict(sample=next(iter(raw_stems)), role='phase_image')
     if ext == '.txt':
         return dict(sample=stem.strip(), role='measurement')
     return dict(sample=stem, role='ignore')
@@ -83,11 +88,12 @@ def build_project(files: list[tuple[str, bytes | Path]], mappings: dict | None =
     names = [safe_filename(name) for name, _ in files]
     if len(names) != len(set(names)):
         raise ValueError('같은 파일명이 중복되었습니다. 연결을 구분하도록 파일명을 확인하세요.')
+    raw_stems = {Path(name).stem for name in names if Path(name).suffix.lower() == '.txt'}
     checksums = [_sha256(data) for _, data in files]
     counts = Counter(checksums)
     for (filename, data), sha in zip(files, checksums):
         filename = safe_filename(filename)
-        mapping = mappings.get(filename, classify_filename(filename))
+        mapping = mappings.get(filename, classify_filename(filename, raw_stems))
         role = mapping.get('role', 'ignore')
         # Equal bytes under distinct filenames still need distinct provenance
         # links. Keep existing IDs when the content occurs only once.

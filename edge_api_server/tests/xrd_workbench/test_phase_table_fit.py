@@ -7,7 +7,7 @@ from app.xrd_workbench.core.report import new_document
 from app.xrd_workbench.render.posco_pptx import build_posco_deck, named, NS, box, phase_table_data
 from app.xrd_workbench.render.posco_preview import deck_pages, text_items
 from .figure_fixtures import make_project
-from .test_sample_slide import sample, IMAGE
+from .test_sample_slide import sample, source, IMAGE
 
 
 @pytest.mark.parametrize('count', [0, 3, 4, 8, 12, 18])
@@ -61,6 +61,8 @@ def test_complete_phase_table_fits_same_slide_and_preview(count, quantitative):
 
 def test_unequal_counts_do_not_repeat_graphs_or_move_rows_to_other_sample():
     project = make_project([sample('few', n_phases=3, quantities=0), sample('many', n_phases=12, quantities=0)])
+    for s in project['samples']:
+        s['sources'].append(source(s['id'], 'phase_image', f"{s['id']}.png", IMAGE))
     for p in project['samples'][1]['phases']:
         p['name'] += ' · 긴 결정상 이름을 생략하지 않고 한 셀에 표시합니다'
     doc = new_document(project)

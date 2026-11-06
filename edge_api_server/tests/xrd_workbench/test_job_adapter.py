@@ -37,8 +37,10 @@ def test_new_csharp_inputs_build_report_without_changing_sources(tmp_path, zippe
     with zipfile.ZipFile(result.package_path) as archive:
         assert {name.split('/')[0] for name in archive.namelist()} == ({
             'Measured Data', 'Report', '보고서.pdf', '보고서.pptx', '뷰어.html',
-        } | ({'Viewer'} if include_raw else set()))
+        } | ({'Viewer', '상매칭 결과'} if include_raw else set()))
         assert any(name.endswith('.txt') and name.startswith('Measured Data/') for name in archive.namelist()) == include_raw
+        images = {'상매칭 결과/' + name: data for name, data in files.items() if name.endswith('.png')}
+        assert {name: archive.read(name) for name in archive.namelist() if name.endswith('.png')} == (images if include_raw else {})
         pdf = archive.read('보고서.pdf')
         assert result.primary_path.read_bytes() == pdf
         pages = PdfReader(io.BytesIO(pdf)).pages

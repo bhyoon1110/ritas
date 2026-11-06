@@ -2,7 +2,7 @@ import {escapeHTML} from '../shared/dom.mjs';
 
 const extensions = {measurement:['txt'],phase_report:['pdf'],wppf_report:['pdf'],phase_image:['png','jpg','jpeg'],quantity_image:['png','jpg','jpeg']};
 
-export function classifyUploadFilename(name) {
+export function classifyUploadFilename(name, rawStems = new Set()) {
   const filename = String(name).replace(/\\/g, '/').split('/').pop().trim().normalize('NFC');
   const ext = filename.split('.').pop().toLowerCase(), stem = filename.slice(0, -ext.length - 1);
   const rules = [
@@ -15,8 +15,13 @@ export function classifyUploadFilename(name) {
     if (extensions[role].includes(ext) && pattern.test(stem))
       return {sample:stem.replace(pattern, '').trim(), role};
   }
-  const phase = stem.match(/^(.+?)[_\s-]+상\s*매칭(?:[_\s-]*이미지)?$/i);
+  const phase = stem.match(/^(.+?)[_\s-]+상\s*매칭(?:[_\s-]*결과)?(?:[_\s-]*이미지)?$/i);
   if (phase && extensions.phase_image.includes(ext)) return {sample:phase[1].trim(),role:'phase_image'};
+  if (extensions.phase_image.includes(ext)) {
+    if (rawStems.has(stem)) return {sample:stem, role:'phase_image'};
+    if (rawStems.size === 1 && /^상\s*매칭(?:[_\s-]*결과)?(?:[_\s-]*이미지)?$/.test(stem))
+      return {sample:[...rawStems][0], role:'phase_image'};
+  }
   return {sample:stem, role:ext === 'txt' ? 'measurement' : 'ignore'};
 }
 
@@ -42,7 +47,7 @@ export function summarizeUpload(files, mappings) {
     for (const [role, files] of Object.entries(g.roles)) if (files.length > 1) errors.push(`${g.name}: ${role} 역할 중복 — 대표 파일을 선택하세요`);
     if (!g.roles.measurement) errors.push(`${g.name}: TXT 없음 — 이 시료는 그래프로 만들 수 없습니다`);
     if (!g.roles.phase_report) g.warnings.push('상매칭 PDF 없음 · 상 목록을 확인할 수 없음');
-    if (!g.roles.phase_image) g.warnings.push('상매칭 이미지 미연결 · 보고서에는 뷰어 그래프가 표시됩니다. 원본 이미지의 시료명·역할을 확인하세요.');
+    if (!g.roles.phase_image) g.warnings.push('상매칭 원본 이미지 미연결 · 사용할 이미지의 시료명과 역할을 지정하세요.');
   }
   if (files.length && !groups.size) errors.push('분석할 TXT 시료를 연결하세요.');
   return {groups:[...groups.values()],errors,ignored,ignoredImages};

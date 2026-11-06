@@ -326,11 +326,13 @@ function mappingRows() {
     quantity_image: '정량 이미지',
     ignore: '제외 (파일 보존)',
   };
+  const rawStems = new Set(pendingFiles.filter(file => /\.txt$/i.test(file.name))
+    .map(file => classifyUploadFilename(file.name).sample));
   $('mappingTable').innerHTML =
     '<table><thead><tr><th>원본 파일</th><th>시료명</th><th>역할</th><th>TXT 축 / 단위</th></tr></thead><tbody>' +
     pendingFiles
       .map((file, i) => {
-        const guess = classifyUploadFilename(file.name);
+        const guess = classifyUploadFilename(file.name, rawStems);
         return `<tr data-file="${i}"><td class="fileName">${escapeHTML(file.name)}</td><td><input class="sampleMapping" value="${escapeHTML(guess.sample)}" aria-label="${escapeHTML(file.name)} 시료명"></td><td><select class="roleMapping" aria-label="${escapeHTML(file.name)} 역할">${Object.entries(
           roles,
         )

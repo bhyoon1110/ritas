@@ -88,7 +88,7 @@ def test_source_is_exact_on_both_phase_layouts_in_ppt_and_preview(fmt, legacy_in
     assert before == (project, document)
 
 
-def test_only_missing_source_falls_back_and_quantity_exclusion_is_preserved():
+def test_missing_source_is_labelled_and_quantity_exclusion_is_preserved():
     project, document, data, expected = artwork_fixture()
     project['samples'][1]['sources'] = [r for r in project['samples'][1]['sources'] if r['role'] != 'phase_image']
     quantity = _png('quantity excluded by author', 90)
@@ -99,11 +99,13 @@ def test_only_missing_source_falls_back_and_quantity_exclusion_is_preserved():
     calls = []
     filled = build_posco_deck(project, document, data.__getitem__,
                              image_renderer=lambda panel, *args: calls.append(panel) or IMAGE)
-    assert len(calls) == 1
+    assert not calls
+    assert any("상매칭 원본 이미지 미연결" in " ".join(item.get("lines", [])) for page in deck_pages(filled)
+               for item in page["items"] if item.get("edit") == dict(tab="B", field="phase_image_source_id"))
     assert quantity not in filled.images.values()
     pictures = [item for page in deck_pages(filled) if page['kind'] == 'sample'
                 for item in page['items'] if item['type'] == 'image' and item.get('edit', {}).get('field') == 'phase_caption']
-    assert {item['edit']['tab']: item['data'] for item in pictures} == dict(A=expected['A'], B=IMAGE, Mix=expected['Mix'])
+    assert {item['edit']['tab']: item['data'] for item in pictures} == dict(A=expected['A'], Mix=expected['Mix'])
 
 
 def test_site_template_layout_also_keeps_uploaded_phase_artwork():
@@ -170,8 +172,8 @@ def test_uploaded_images_survive_old_flags_through_preview_and_delivery(tmp_path
     files = sample_files('SampleA')
     files.update({name: data for name, data in sample_files('SampleB').items() if '정량' not in name})
     originals = [data for name, data in files.items() if name.endswith('_상매칭.png')]
-    if orphan:
-        files = {name.replace('_상매칭.png', '_원본사진.png'):data for name,data in files.items()}
+    suffix = '_원본사진.png' if orphan else '.png'
+    files = {name.replace('_상매칭.png', suffix):data for name,data in files.items()}
 
     def check_ppt_images(content):
         presentation = Presentation(io.BytesIO(content))
@@ -219,4 +221,8 @@ def test_uploaded_images_survive_old_flags_through_preview_and_delivery(tmp_path
             else:
                 with ZipFile(io.BytesIO(result.content)) as archive:
                     assert '보고서.html' not in archive.namelist()
+                    expected_images = {'상매칭 결과/' + name: data for name, data in files.items()
+                                       if name.endswith('.png')}
+                    assert {name: archive.read(name) for name in archive.namelist()
+                            if name.startswith('상매칭 결과/') and not name.endswith('/')} == expected_images
                     check_ppt_images(archive.read('보고서.pptx'))

@@ -94,7 +94,7 @@ def build_checklist(project: dict, document: dict) -> dict:
             hint = (f" 보존된 미연결 이미지 {len(choices)}개: " + ', '.join(r['filename'] for r in choices[:3])
                     if choices else '')
             items.append(_item('warning', 'no_phase_image',
-                '상매칭 이미지가 연결되지 않아 상 동정 결과에 뷰어 그래프를 사용합니다. '
+                '상 동정 결과에 사용할 상매칭 원본 이미지가 연결되지 않았습니다. '
                 '이 시료의 원본 이미지 선택 또는 업로드 연결을 확인하세요.' + hint))
         if not quantity_material_registered(sample):
             items.append(_item('info', 'no_quantity_material', '정량 자료가 없습니다.'))

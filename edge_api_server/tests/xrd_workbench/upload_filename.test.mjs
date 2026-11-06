@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {classifyUploadFilename, summarizeUpload, uploadSummaryHTML} from '../../app/xrd_workbench/web/viewer/upload_summary.mjs';
 
 test('phase image aliases preserve sample identity and ambiguous photographs stay excluded',()=>{
-  for(const name of ['A 상매칭.png','A-상매칭.jpeg','A_상매칭 이미지.PNG','A_상 매칭_이미지.jpg']) {
+  for(const name of ['A 상매칭.png','A-상매칭.jpeg','A_상매칭 결과.png','A_상매칭 이미지.PNG','A_상 매칭_이미지.jpg']) {
     for(const value of [name,name.normalize('NFD'),'C:\\data\\'+name])
       assert.deepEqual(classifyUploadFilename(value),{sample:'A',role:'phase_image'});
   }
@@ -11,17 +11,24 @@ test('phase image aliases preserve sample identity and ambiguous photographs sta
     assert.notEqual(classifyUploadFilename(name).role,'phase_image');
 });
 
-test('unlinked images are named and RAW fallback is visible before upload',()=>{
+test('raw filenames and single-sample phase artwork resolve without guessing between samples',()=>{
+  const stems = new Set(['Mix2', 'Mix3']);
+  assert.deepEqual(classifyUploadFilename('Mix3.JPEG', stems), {sample:'Mix3', role:'phase_image'});
+  assert.equal(classifyUploadFilename('상매칭 이미지.png', stems).role, 'ignore');
+  assert.deepEqual(classifyUploadFilename('상매칭 이미지.png', new Set(['Mix2'])), {sample:'Mix2', role:'phase_image'});
+});
+
+test('unlinked images are named and missing source is visible before upload',()=>{
   const files=['A.txt','<사진>.PNG'].map(name=>({name}));
   const mappings=Object.fromEntries(files.map(f=>[f.name,classifyUploadFilename(f.name)]));
   const result=summarizeUpload(files,mappings);
   assert.deepEqual(result.ignoredImages,['<사진>.PNG']);
   assert.match(uploadSummaryHTML(result),/&lt;사진&gt;\.PNG/);
-  assert.match(uploadSummaryHTML(result),/뷰어 그래프/);
+  assert.match(uploadSummaryHTML(result),/상매칭 원본 이미지 미연결/);
   mappings['<사진>.PNG']={sample:'A',role:'phase_image'};
   const connected=summarizeUpload(files,mappings);
   assert.deepEqual(connected.ignoredImages,[]);
-  assert.doesNotMatch(connected.groups[0].warnings.join(),/뷰어 그래프/);
+  assert.doesNotMatch(connected.groups[0].warnings.join(),/상매칭 원본 이미지 미연결/);
 });
 
 test('both quantity PDF naming conventions connect to WPPF without manual mapping', () => {

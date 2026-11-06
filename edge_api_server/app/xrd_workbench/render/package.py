@@ -5,13 +5,32 @@ from copy import deepcopy
 
 from ..render.layout import archive_path
 from ..render.items import sample_viewer_path, link_target
-from .package_names import package_paths
+from ..core.source_images import phase_image_record
+from .package_names import package_paths, unique_names
 from ..render.link_audit import check_package_links, read_linked_source, report_sources
 from ..render.posco_preview import report_pages
 from ..render.pdf import render_pdf
 from ..render.posco_pptx import render_report_pptx
 from ..render.viewer_export import export_html, sample_entry_html
 from ..render.viewer_state import prepare_state, prepare_views
+
+
+def _write_image_originals(archive, project, document, samples, resolve_source):
+    records = {}
+    for entry in document['samples']:
+        if not entry['included']:
+            continue
+        sample = samples[entry['sample_id']]
+        for record in sample['sources']:
+            if record['role'] in {'phase_image', 'quantity_image'}:
+                records[record['id']] = record
+        if entry.get('phase_image_source_id'):
+            selected = phase_image_record(project, sample, entry)
+            records[selected['id']] = selected
+    names = unique_names((record['id'], record['filename']) for record in records.values())
+    archive.writestr('상매칭 결과/', '')
+    for identity, name in names.items():
+        archive.writestr('상매칭 결과/' + name, read_linked_source(records[identity], resolve_source))
 
 
 def build_package(project, document, resolve_source, viewer_state=None, views=None, *, output_path=None, include_sources=True, asset_root=None):
@@ -41,6 +60,7 @@ def build_package(project, document, resolve_source, viewer_state=None, views=No
         viewer = export_html(filtered, display, display_views)
         archive.writestr('뷰어.html', viewer)
         if include_sources:
+            _write_image_originals(archive, project, document, samples, resolve_source)
             for sample in filtered['samples']:
                 archive.writestr(sample_viewer_path(sample['id'], paths),
                                  sample_entry_html(sample['id'], sample['name']))

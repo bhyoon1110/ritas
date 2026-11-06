@@ -24,7 +24,7 @@ def portable_filename(name, fallback='파일'):
     return (stem or fallback) + suffix
 
 
-def _unique_names(entries):
+def unique_names(entries):
     """Preserve natural names (including existing '(2)') before allocating counters."""
     names = {identity: portable_filename(name) for identity, name in entries}
     reserved = {name.casefold() for name in names.values()}
@@ -56,7 +56,7 @@ def package_paths(project):
         by_id[record['id']] = record
     sources = {}
     for folder, roles in [('Measured Data', {'measurement'}), ('Report', {'phase_report', 'wppf_report'})]:
-        names = _unique_names((r['id'], r['filename']) for r in records if r['role'] in roles)
+        names = unique_names((r['id'], r['filename']) for r in records if r['role'] in roles)
         sources.update({identity: folder + '/' + name for identity, name in names.items()})
-    viewers = _unique_names((s['id'], (s.get('name') or '시료') + '.html') for s in project['samples'])
+    viewers = unique_names((s['id'], (s.get('name') or '시료') + '.html') for s in project['samples'])
     return {'sources': sources, 'viewers': {identity: 'Viewer/' + name for identity, name in viewers.items()}}

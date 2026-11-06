@@ -248,9 +248,12 @@ def layout_slide(top, sample, labels, classes, images, scale, limit):
             y += item['h'] + 0.8 * s
         return y
 
+    phase_details = phase_lines(sample, limit)
+    if not images.get('phase_image'):
+        phase_details.insert(0, '상매칭 원본 이미지 미연결')
     right = LEFT + col_w + gap
     y = max(
-        column(LEFT, top, SECTION_TITLES[0], images.get('phase_image'), phase_lines(sample, limit)),
+        column(LEFT, top, SECTION_TITLES[0], images.get('phase_image'), phase_details),
         column(
             right,
             top,
