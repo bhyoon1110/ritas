@@ -8,4 +8,4 @@ FTIR·Raman·TEM·XRD 의뢰 선택 화면에서 LIMS 실시간 조회를 선택
 
 의뢰 실시간 조회와 수신자 미리보기는 `RIST_LIMS_REQUESTS_ENABLED=true`, `RITASAX_LIMS_REQUEST_PROXY_ENABLED=true`와 기존 내부 키 설정을 사용한다. 위존은 11월 6일 의뢰조회·필터와 기존 API-2의 개발 서버 반영을 회신했다. API-2 신규 등록은 201, 중복 등록은 200과 `duplicate=true`다. 폴링 및 메일 재시도와 파일 보관 설정은 [v4 가이드](LIMS_INTEGRATION_V4.md)를 따른다.
 
-수신자 API 응답 예시와 토큰 적용 범위는 메일·v5 파일에 명시되지 않았다. [로컬 통합시험](../tests/integration/README.md)은 합성 주소로 실제 코드 경로를 검사한다. 실서버 시험에는 연계 토큰, 테스트 계정·의뢰, SFTP 접속정보와 첨부 용량 기준 확인이 필요하다.
+11월 9일 위존 회신에 따르면 수신자 API는 의뢰조회와 같은 연계 토큰을 사용한다. 등록된 주소가 없거나 `reqResultNo`가 존재하지 않으면 LIMS는 HTTP 200과 빈 본문을 반환한다. Spring은 주소 없음으로 처리해 Edge 미리보기에 내부 HTTP 404를 전달하고, 신규 발송은 SFTP 업로드 전에 중단한다. 주소가 있는 경우에는 회신받은 시험용 의뢰로 실제 응답을 확인한다. [로컬 통합시험](../tests/integration/README.md)은 합성 주소를 사용한다. 첨부 발송 시험에는 SFTP 접속정보와 첨부 용량 기준 확인이 필요하다.
