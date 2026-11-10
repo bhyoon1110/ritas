@@ -304,7 +304,7 @@ for(const kind of ['ftir','raman'])test(kind+': portable import appends, confirm
   assert.equal(new Set(h.stored.graphs.map(g=>g.id)).size,3);assert.equal(h.stored.active,h.stored.graphs[2].id);
   assert.match(h.d.querySelector('.sw-status').textContent,/라이브러리.*다시 선택/);
 });
-test('portable import validates before mutation, rolls back quota failure, limits count and blocks concurrent operations',async t=>{
+test('portable import validates before mutation, rolls back quota failure and blocks concurrent operations',async t=>{
   const h=setup(t);await h.workflow.start();h.workflow.go(2);await h.workflow.save(false);
   const initial=structuredClone(h.stored);let loads=0,release;
   h.w.RistSpectrumGraphFile={load:()=>{loads++;return new Promise(resolve=>release=resolve);}};
@@ -316,8 +316,10 @@ test('portable import validates before mutation, rolls back quota failure, limit
   h.fail(false);h.w.RistSpectrumGraphFile.load=async()=>{throw Error('wrong experiment');};
   await h.workflow.importFiles([{name:'a.ristgraph'}]);assert.deepEqual(h.stored,initial);assert.equal(h.restored,null);
   for(let i=0;i<5;i++)await h.workflow.save(true);
-  assert(h.d.getElementById('sw-import-graph-library').disabled);
-  await h.workflow.importFiles([{name:'a.ristgraph'}]);assert.match(h.d.querySelector('.sw-status').textContent,/6개/);
+  assert.equal(h.d.getElementById('sw-import-graph-library').disabled,false);
+  h.w.RistSpectrumGraphFile.load=async()=>({title:'Seventh',state:{},report:{image:'data:image/png;base64,AA=='}});
+  await h.workflow.importFiles([{name:'a.ristgraph'}]);
+  assert.equal(h.stored.graphs[6].title,'Seventh');
 });
 test('failed imported Plotly restore recovers previous editing state without losing saved entries',async t=>{
   const h=setup(t);await h.workflow.start();h.workflow.go(2);await h.workflow.save(false);
@@ -379,12 +381,19 @@ test('failed IndexedDB commit rolls back the saved list and tells the user',asyn
   assert.match(h.d.querySelector('.sw-status').textContent,/저장하지 못했습니다/);
   assert.equal(h.stored.graphs.length,1);
 });
-test('six graph cap and empty-report delivery guard',async t=>{
-  const h=setup(t);await h.workflow.start();h.workflow.go(4);
+for(const kind of ['ftir','raman'])test(kind+': save, reopen and select ten graphs for reporting',async t=>{
+  const h=setup(t,kind);await h.workflow.start();h.workflow.go(4);
   assert.equal(h.d.getElementById('spectrum-workflow').dataset.step,'1');
-  h.workflow.go(2);for(let i=0;i<7;i++)await h.workflow.save(true);
-  assert.equal(h.stored.graphs.length,6);
-  assert.match(h.d.querySelector('.sw-status').textContent,/6장/);
+  h.workflow.go(2);for(let i=0;i<10;i++)await h.workflow.save(true);
+  assert.equal(h.stored.graphs.length,10);
+  const reopened=setup(t,kind);
+  reopened.api.read=async()=>structuredClone(h.stored);
+  await reopened.workflow.start();
+  assert.equal(reopened.d.querySelectorAll('.sw-card').length,10);
+  let received;
+  reopened.api.build=async graphs=>{received=Array.from(graphs,g=>g.id);return {jobId:'report'};};
+  await reopened.workflow.go(3);
+  assert.deepEqual(received,h.stored.graphs.map(g=>g.id));
 });
 test('report refresh retains frame on back navigation and changed selection blocks stale delivery',async t=>{
   const h=setup(t);await h.workflow.start();h.workflow.go(2);await h.workflow.save(false);h.workflow.go(3);

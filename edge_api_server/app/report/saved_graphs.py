@@ -11,11 +11,9 @@ from .builders import _clean_report_text
 from .editable import ensure_editable_fields
 from .model import LLM_SLOT_IDS, ReportFigure
 
-MAX_GRAPHS = 6
-
 
 def figure_filename(figure_id):
-    if re.fullmatch(r"saved-graph-[1-6]", str(figure_id)):
+    if re.fullmatch(r"saved-graph-[1-9][0-9]*", str(figure_id)):
         return str(figure_id) + ".png"
     return "current_graph.png"
 
@@ -25,8 +23,8 @@ def read_graphs(value):
     from ..preview_report import read_figure_image
     from PIL import Image
 
-    if not isinstance(value, list) or not 1 <= len(value) <= MAX_GRAPHS:
-        raise ValueError("보고서에는 저장한 그래프 1~6장을 선택하세요.")
+    if not isinstance(value, list) or not value:
+        raise ValueError("보고서에 포함할 저장 그래프를 한 장 이상 선택하세요.")
     result = []
     for index, item in enumerate(value):
         if not isinstance(item, dict) or not isinstance(item.get("analysis"), dict):

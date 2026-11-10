@@ -19,11 +19,11 @@ from edge_api_server.tests.test_ftir_web import use_fake_pptx_pdf_converter
 from edge_api_server.tests.test_ftir_raw_xlsx import xlsx_rows
 
 
-def graph_inputs():
+def graph_inputs(count=2):
     result = []
-    for index, color in enumerate(("blue", "orange")):
+    for index in range(count):
         png = BytesIO()
-        Image.new("RGB", (240, 160), color).save(png, format="PNG")
+        Image.new("RGB", (240, 160), (index, 60, 130)).save(png, format="PNG")
         analysis = edited_payload()
         figure = analysis.pop("viewerFigure")
         for trace in figure["data"]:
@@ -35,8 +35,8 @@ def graph_inputs():
     return result
 
 
-def parsed_payload():
-    items = graph_inputs()
+def parsed_payload(count=2):
+    items = graph_inputs(count)
     figure = deepcopy(items[0]["viewerFigure"])
     figure["reportGraphs"] = items
     upload = UploadFile(filename="figures.json", file=BytesIO(json.dumps(figure).encode()))
@@ -72,11 +72,10 @@ def test_collection_preserves_each_graphs_final_peaks_and_conditions(experiment,
     report_editor._validate_changes(report_editor.ReportEdit.model_validate(values), document)
 
 
-@pytest.mark.parametrize("mutation", ["empty", "too_many", "bad_png", "bad_coordinates", "bad_shape", "nested", "long_title", "meta", "offset", "annotations", "shapes"])
+@pytest.mark.parametrize("mutation", ["empty", "bad_png", "bad_coordinates", "bad_shape", "nested", "long_title", "meta", "offset", "annotations", "shapes"])
 def test_collection_input_is_bounded_and_rejected_before_background_render(mutation):
     values = graph_inputs()
     if mutation == "empty": values = []
-    if mutation == "too_many": values *= 4
     if mutation == "bad_png": values[0]["image"] = "data:image/png;base64,YmFk"
     if mutation == "bad_coordinates": values[0]["viewerFigure"]["data"][0]["x"] = [1]
     if mutation == "bad_shape": values[0]["viewerFigure"]["data"] = [None]
@@ -91,7 +90,8 @@ def test_collection_input_is_bounded_and_rejected_before_background_render(mutat
 
 def test_no_client_path_deserialization_and_no_unvalidated_text_collection(tmp_path):
     assert figure_filename("../../secret") == "current_graph.png"
-    assert figure_filename("saved-graph-99") == "current_graph.png"
+    assert figure_filename("saved-graph-99") == "saved-graph-99.png"
+    assert figure_filename("saved-graph-7/../x") == "current_graph.png"
     assert "reportGraphs" not in preview_report.parse_analysis_payload('{"reportGraphs":[{}]}')
 
 
@@ -100,7 +100,7 @@ def test_multi_graph_packages_and_immutable_revision_keep_distinct_images(experi
     use_fake_pptx_pdf_converter(monkeypatch)
     from app.report import spectrum_viewer
     monkeypatch.setattr(spectrum_viewer, "get_plotlyjs", lambda: "")
-    payload = parsed_payload()
+    payload = parsed_payload(10)
     root, package = preview_report.build_preview_report_package(experiment_code=experiment, analysis_payload=payload,
         raw_series=[preview_report.RawSeries("full RAW", [4000, 1700, 400], [1, 3, 1])],
         figure_image=base64.b64decode(graph_inputs()[0]["image"].split(",")[1]))
@@ -111,7 +111,7 @@ def test_multi_graph_packages_and_immutable_revision_keep_distinct_images(experi
         original = package.read_bytes()
         saved = json.loads((root / "job/report/report.json").read_text())
         restored = document_from_dict(saved, image_path=root / "job/report/current_graph.png")
-        assert len(restored.figures) == 2
+        assert len(restored.figures) == 10
         assert Path(restored.figures[0].path).read_bytes() != Path(restored.figures[1].path).read_bytes()
         values = editor_document(restored)
         values["title"] = "수정 완료 · 복수 그래프"
@@ -141,13 +141,13 @@ def test_multi_graph_packages_and_immutable_revision_keep_distinct_images(experi
                 raw = html_payload(archive.read("ftir-raw-all.html").decode())
                 assert raw["figure"]["data"][0]["x"] == [4000, 1700, 400]
                 exported = html_payload(archive.read("ftir-edited.html").decode())
-                assert [g["title"] for g in exported["graphs"]] == ["비교 그래프 1", "비교 그래프 2"]
+                assert [g["title"] for g in exported["graphs"]] == [g["title"] for g in payload["reportGraphs"]]
                 assert exported["graphs"][1]["figure"]["layout"]["annotations"][0]["text"] == "편집 피크 1"
             else:
                 assert list(rows[0].values()) == ["Axis", *[s.label for s in graph_raw_series(payload["reportGraphs"])]]
                 assert not set(spectrum_viewer.FTIR_GRAPH_EXPORTS) & set(archive.namelist())
-            images = [archive.read(f"saved-graph-{i}.png") for i in (1, 2)]
-            assert images[0] != images[1]
+            images = [archive.read(f"saved-graph-{i}.png") for i in range(1, 11)]
+            assert len(set(images)) == 10
             html = archive.read("report.html").decode()
             assert 'id=\'graph-choice\'' in html
             assert "비교 그래프 1" in html and "비교 그래프 2" in html

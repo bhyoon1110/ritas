@@ -65,7 +65,7 @@ from .usage_archive import (
 
 PLOT_DIV_ID = "peak-plot"
 MAX_FTIR_PREVIEW_FILES = 10
-MAX_FTIR_REPORT_FILES = 60  # Up to six saved graphs, each with ten source files.
+MAX_FTIR_REPORT_FILES = 60  # Distinct RAW files submitted with a report.
 MAX_FTIR_PREVIEW_FILE_BYTES = 20 * 1024 * 1024
 MAX_FTIR_PREVIEW_TOTAL_BYTES = 50 * 1024 * 1024
 FTIR_REPORT_UPLOAD_CHUNK_BYTES = 4 * 1024 * 1024

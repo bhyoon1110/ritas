@@ -36,6 +36,15 @@ test('small thumbnails are source-restricted, non-draggable and enlargement neve
   assert.equal(h.messages[0].data.id,'g1');assert.equal(h.messages[0].data.jobId,'job1');assert.equal(h.messages[0].origin,h.w.location.origin);
   assert.equal(h.inserts.length,0);assert.equal(h.errors.length,0);
 });
+test('the tenth saved graph can be added to the current slide',t=>{
+  const h=setup(t);
+  const graphs=Array.from({length:10},(_,i)=>({id:'graph-'+i,title:'Saved '+i}));
+  h.send({...h.catalog,graphs});
+  const buttons=h.d.querySelectorAll('.report-graph-insert');
+  assert.equal(buttons.length,10);
+  buttons[9].click();
+  assert.equal(h.messages[0].data.id,'graph-9');
+});
 test('thumbnail refresh retains keyboard focus and horizontal scroll; invalid URLs and stale catalogs cannot load images',t=>{
   const h=setup(t),list=h.d.querySelector('.report-graph-list');
   h.d.querySelectorAll('.report-graph-preview')[1].focus();list.scrollLeft=120;

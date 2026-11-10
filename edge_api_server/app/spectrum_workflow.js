@@ -74,6 +74,7 @@
     title.style.margin = "10px 0 0";
     var libraryControls = node("div", library); libraryControls.className = "sw-controls";
     var importLibrary = button(libraryControls, "그래프 파일 불러오기", chooseGraphFile, "sw-import-graph-library");
+    importUpload.title = importLibrary.title = "원본 RAW가 포함된 .ristgraph 파일을 저장 목록에 추가합니다.";
     node("span", libraryControls, "파일 내보내기: 저장 시점의 편집 상태 + 원본 RAW").className = "sw-help";
     var list = node("div", library); list.className = "sw-list"; list.id = "sw-graph-list";
     var frame = node("iframe", root); frame.className = "sw-report-frame"; frame.id = "sw-report-editor";
@@ -207,8 +208,7 @@
       retryEditor.hidden = step < 3 || !editorProblem || !job; retryEditor.disabled = locked;
       availability(navButtons[3], deliveryReason);
       clear.disabled = locked || childBusy;
-      importUpload.disabled = importLibrary.disabled = importInput.disabled = locked || graphs.length >= 6;
-      importUpload.title = importLibrary.title = graphs.length >= 6 ? "저장 그래프는 6개까지입니다. 불필요한 저장본을 먼저 정리하세요." : "원본 RAW가 포함된 .ristgraph 파일을 저장 목록에 추가합니다.";
+      importUpload.disabled = importLibrary.disabled = importInput.disabled = locked;
       selectionCount.hidden = step === 1 || step === 4;
       selectionCount.textContent = "보고서 포함 " + count + "개 / 저장 " + graphs.length + "개";
       guide.setAttribute("data-state", waiting ? "waiting" : "ready");
@@ -277,7 +277,8 @@
         check.onchange = function () { g.included = check.checked; changed(); };
         var image = node("img", card);
         image.onload = function () { makeThumbnail(g, image); };
-        image.src = g.report.image; image.alt = g.title + " 저장본";
+        var thumbnail = thumbnailFor(g);
+        image.src = thumbnail && thumbnail.url || g.report.image; image.alt = g.title + " 저장본";
         image.draggable = step === 3 && !!job && !unavailable();
         image.title = step === 3 ? "PPT 미리보기 페이지로 끌어 놓아 추가" : g.title;
         image.ondragstart = function (event) {
@@ -368,7 +369,7 @@
         }
       };
     }
-    function chooseGraphFile() { if (!unavailable() && graphs.length < 6) importInput.click(); }
+    function chooseGraphFile() { if (!unavailable()) importInput.click(); }
     function exportGraph(g) {
       if (unavailable()) return Promise.resolve();
       busy = true; operation = "저장할 파일 이름과 위치를 선택하세요."; render(); tell(operation);
@@ -385,7 +386,6 @@
       if (!incoming || incoming.length !== 1 || !/\.ristgraph$/i.test(incoming[0].name || "")) {
         tell(".ristgraph 파일을 한 개씩 불러오세요. RAW 파일과 섞어서 업로드할 수 없습니다.",true); return Promise.resolve();
       }
-      if (graphs.length >= 6) { tell("저장 그래프는 6개까지입니다. 불필요한 저장본을 먼저 정리하세요.",true); return Promise.resolve(); }
       var loaded = null;
       busy = true; operation = "그래프 파일과 원본 RAW를 검사하는 중입니다."; render(); tell(operation);
       return window.RistSpectrumGraphFile.load(incoming[0],kind,function (message) { tell(message); }).then(function (value) {
@@ -424,7 +424,6 @@
     function saveGraph(asCopy) {
       if (unavailable()) return Promise.resolve();
       if (!api.hasGraph()) { tell("RAW 파일을 업로드하고 그래프를 만든 후 저장하세요.", true); return Promise.resolve(); }
-      if ((!active || asCopy) && graphs.length >= 6) { tell("한 작업에 그래프 6장까지 저장할 수 있습니다. 불필요한 저장본을 먼저 정리하세요.", true); return Promise.resolve(); }
       busy = true; operation = "그래프 이미지와 편집 상태를 저장하는 중입니다."; render(); tell(operation);
       return taskProgress.paint().then(function(){return api.capture();}).then(function (captured) {
         var entry = {id:asCopy || !active ? "g-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8) : active,

@@ -68,7 +68,7 @@
       if(data.jobId!==options.job())return;
       if(data.type==="rist-saved-graphs"){
         if(!Array.isArray(data.graphs))return;
-        var next=data.graphs.slice(0,6).filter(function(g){return g&&typeof g.id==="string"&&g.id.length<=100&&typeof g.title==="string";})
+        var next=data.graphs.filter(function(g){return g&&typeof g.id==="string"&&g.id.length<=100&&typeof g.title==="string";})
           .map(function(g){return {id:g.id,title:g.title.slice(0,100),thumbnail:
             typeof g.thumbnail==="string"&&g.thumbnail.length<256&&g.thumbnail.indexOf("blob:"+window.location.origin+"/")===0?g.thumbnail:""};});
         if(JSON.stringify(next)!==JSON.stringify(graphs)){graphs=next;render();}
