@@ -2,6 +2,8 @@
 (function () {
   "use strict";
   var payload = JSON.parse(document.getElementById("report-data").textContent);
+  /* FTIR_Y_BREAKS */
+  var foldView = null;
   var original = payload.figure;
   var graph = document.getElementById("report-graph");
   var mode = document.getElementById("view-mode");
@@ -24,7 +26,7 @@
     original = choices[0].figure; payload.fallback = choices[0].fallback;
     graphChoice.onchange = function () {
       var entry = choices[Number(graphChoice.value)]; if (!entry) return;
-      original = entry.figure; payload.fallback = entry.fallback; hidden = {}; mode.value = "original";
+      foldView = null; original = entry.figure; payload.fallback = entry.fallback; hidden = {}; mode.value = "original";
       graph.hidden = false; document.getElementById("graph-fallback").hidden = true;
       mode.disabled = false; document.getElementById("reset-view").disabled = false; draw();
     };
@@ -124,12 +126,40 @@
     });
     var gap = isFinite(maximum - minimum) && maximum > minimum ? (maximum - minimum) * 1.15 : 1;
     groups.forEach(function (group, index) { offsets[group] = (groups.length - 1 - index) * gap; });
+    var fold = figure.layout.meta.foldY, folded = fold && mode.value === "original", plan;
+    if (fold) {
+      var axis = figure.layout.yaxis;
+      Object.keys(fold.ticks).forEach(function(key) {
+        if (fold.ticks[key].exists) axis[key] = fold.ticks[key].value;
+        else delete axis[key];
+      });
+      if (axis.title && axis.title.text) axis.title.text = axis.title.text.replace(/ · 빈 Y구간 접기$/, "");
+      if (folded) {
+        var series = [];
+        figure.data.forEach(function(tr) {
+          if (tr.meta.parent && !hidden[tr.meta.group]) series.push({group:tr.meta.group,x:tr.x,
+            y:tr.customdata || tr.y.map(function(y) { return y == null ? null : y-tr.meta.offset; }),connectgaps:tr.connectgaps});
+        });
+        var xa = figure.layout.xaxis;
+        if (foldView) { xa.autorange = false; xa.range = foldView.x; }
+        plan = ftirYBreaks(series,xa.autorange ? null : xa.range);
+        if (foldView && foldView.y) axis.range = foldView.y;
+        else if (plan.range && (foldView || JSON.stringify(plan.breaks)!==JSON.stringify(fold.breaks))) axis.range = ftirFoldRange(plan);
+        if (plan.breaks.length && axis.range) {
+          axis.autorange = false;
+          ftirFoldTicks(axis,plan.breaks,axis.range);
+          if (axis.title && axis.title.text) axis.title.text += " · 빈 Y구간 접기";
+        }
+      }
+      ftirMoveObjects(figure.layout,fold.breaks,folded ? plan.breaks : []);
+    }
     var deltas = {};
     figure.data.forEach(function (trace) {
       var meta = trace.meta;
       var delta = mode.value === "original" ? 0 : -meta.offset;
+      if (folded) delta = (plan.offsets[meta.group] || 0)-meta.offset;
       if (mode.value === "stack") { delta += offsets[meta.group] || 0; }
-      deltas[meta.group] = delta;
+      deltas[meta.group] = fold ? (mode.value === "stack" ? offsets[meta.group] || 0 : 0) : delta;
       trace.y = trace.y.map(function (y) { return typeof y === "number" && isFinite(y) ? y + delta : y; });
       trace.visible = hidden[meta.group] ? "legendonly" : true;
     });
@@ -231,6 +261,15 @@
     task.then(function () {
       if (first) {
         initialized = true;
+        graph.on("plotly_relayout", function(event) {
+          if (mode.value !== "original" || !original.layout.meta.foldY || !event) return;
+          var keys = Object.keys(event);
+          var x = keys.some(function(k) { return /^xaxis\.(range|autorange)/.test(k); });
+          var y = keys.some(function(k) { return /^yaxis\.(range|autorange)/.test(k); });
+          if (!x && !y) return;
+          foldView = {x:graph._fullLayout.xaxis.range.slice(),y:x ? null : graph._fullLayout.yaxis.range.slice()};
+          draw();
+        });
         graph.on("plotly_legendclick", function (event) {
           var group = graph.data[event.curveNumber].meta.group;
           hidden[group] = !hidden[group];
@@ -266,8 +305,8 @@
   var analysisTab = document.getElementById("analysis-tab");
   if (analysisTab) analysisTab.onclick = function () { tab("analysis"); };
   tab(payload.graphOnly ? "graph" : (initialView && document.getElementById(initialView[1] + "-panel") ? initialView[1] : "slides"));
-  mode.onchange = draw;
-  document.getElementById("reset-view").onclick = function () { mode.value = "original"; hidden = {}; draw(); };
+  mode.onchange = function() { foldView = null; draw(); };
+  document.getElementById("reset-view").onclick = function () { mode.value = "original"; foldView = null; hidden = {}; draw(); };
   var resizeTimer;
   window.addEventListener("resize", function () {
     clearTimeout(resizeTimer);

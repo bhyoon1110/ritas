@@ -10030,12 +10030,17 @@ def _axis_controls_js(div_id: str, *, axis_locks: bool = False, scroll_zoom_y_on
     }
     var range = currentRange(axisName);
     if (range) {
+      if (axis === "y" && gd._ristFtirMeasuredY) {
+        range = range.map(function(value) { return gd._ristFtirMeasuredY(value,true); });
+      }
       field(axis, "from").value = cleanNumber(range[0]);
       field(axis, "to").value = cleanNumber(range[1]);
     }
     var dtick = finiteNumber(state.layout.dtick);
     if (dtick == null) dtick = finiteNumber(state.full.dtick);
     var tickmode = state.layout.tickmode || state.full.tickmode;
+    var fold = axis === "y" && ((gd.layout.meta || {}).ristFtirStack || {}).foldY;
+    if (fold) tickmode = fold.ticks.tickmode.value;
     var manual = tickmode === "linear" && dtick != null && dtick > 0;
     var minorDtick = finiteNumber(nestedAxisValue(state, "minor", "dtick"));
     autoField(axis).checked = !manual;
@@ -10221,7 +10226,11 @@ def _axis_controls_js(div_id: str, *, axis_locks: bool = False, scroll_zoom_y_on
       major: gridField(axis, "major").checked,
       minor: gridField(axis, "minor").checked
     }, updates);
-    updates[name + ".range"] = clampRangeToCrop(name, [value.from, value.to]);
+    var range = [value.from, value.to];
+    if (axis === "y" && gd._ristFtirMeasuredY) {
+      range = range.map(function(y) { return gd._ristFtirMeasuredY(y,false); });
+    }
+    updates[name + ".range"] = clampRangeToCrop(name, range);
     updates[name + ".autorange"] = false;
     updates[name + ".fixedrange"] = value.locked;
     updates[name + ".tickmode"] = value.automatic ? "auto" : "linear";

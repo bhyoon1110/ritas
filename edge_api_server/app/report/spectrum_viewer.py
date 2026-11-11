@@ -165,7 +165,9 @@ def readonly_figure(source: dict) -> dict:
                       "size": meta.get("ristPlotSize") or {},
                       "stacked": bool(stack.get("enabled", any(t["meta"]["offset"] for t in data))),
                       "yAxisDisplay": axis_display}
-    if meta.get("ristFtirStack") and stack.get("overlayOffsets") and not layout["meta"]["stacked"]:
+    if meta.get("ristFtirStack") and stack.get("foldY"):
+        layout["meta"]["foldY"] = {key: deepcopy(stack["foldY"][key]) for key in ("breaks", "ticks")}
+    elif meta.get("ristFtirStack") and stack.get("overlayOffsets") and not layout["meta"]["stacked"]:
         layout["meta"]["ftirOverlayShift"] = any(t["meta"]["offset"] for t in data)
     layout.update(template=None, dragmode="pan")
     for name in ("xaxis", "yaxis"):
@@ -181,7 +183,9 @@ def readonly_figure(source: dict) -> dict:
 
 @lru_cache(maxsize=1)
 def viewer_script() -> str:
-    return Path(__file__).with_name("spectrum_viewer.js").read_text(encoding="utf-8")
+    from rist_common.plotting.ftir_y_breaks import FTIR_Y_BREAKS_JS
+    source = Path(__file__).with_name("spectrum_viewer.js").read_text(encoding="utf-8")
+    return source.replace("/* FTIR_Y_BREAKS */", FTIR_Y_BREAKS_JS)
 
 
 def _analysis_html(analysis: dict | None) -> str:

@@ -15,6 +15,7 @@ from scipy.signal import find_peaks
 from rist_common.plotting import peak_editor_js
 from rist_common.plotting.raw_spectrum import peaks_on_raw_points
 from rist_common.plotting.grid_style import GRID_STYLE_JS
+from rist_common.plotting.ftir_y_breaks import FTIR_Y_BREAKS_JS
 
 from .findings import assign_group_candidates
 from .peaks import build_interactive_peak_candidates
@@ -249,6 +250,7 @@ def ftir_stack_js(div_id: str) -> str:
   if (!gd || !window.Plotly || gd._ristFtirStackInstalled) return;
   gd._ristFtirStackInstalled = true;
   __GRID_STYLE_JS__
+  __FTIR_Y_BREAKS_JS__
   var state = {
     initialized: false,
     enabled: false,
@@ -260,6 +262,9 @@ def ftir_stack_js(div_id: str) -> str:
     traces: {},
     annotations: {},
     shapes: {},
+    foldOffsets: {},
+    foldPlan: null,
+    foldKey: "",
     dragMode: false,
     dragging: null,
     autoLayout: true,
@@ -404,6 +409,7 @@ def ftir_stack_js(div_id: str) -> str:
   }
 
   function offsetFor(group, signalMode) {
+    if (!state.enabled && stackMeta().foldY) return signalMode === mode() ? state.foldOffsets[group] || 0 : 0;
     if (!state.enabled) return state.overlayOffsets[signalMode][group] || 0;
     return Number(state.positions[group] || 0) * Number(state.units[signalMode] || 1);
   }
@@ -415,6 +421,7 @@ def ftir_stack_js(div_id: str) -> str:
 
   function initState() {
     var meta = stackMeta();
+    state.foldPlan = null;
     state.enabled = !!meta.enabled;
     state.yAxisDisplay = savedYAxisDisplay(meta.yAxisDisplay);
     state.gap = stackGap(meta.gap);
@@ -606,7 +613,29 @@ def ftir_stack_js(div_id: str) -> str:
     options = options || {};
     if (!state.initialized) initState();
     var signalMode = mode();
-    var data = gd.data || [];
+    var data = gd.data || [], layout = gd.layout;
+    var fold = stackMeta().foldY, plan, priorBreaks, refit = false;
+    if (fold) {
+      var xa = layout.xaxis || {};
+      var xrange = !xa.autorange && xa.range ? xa.range.slice() : null;
+      var series = [];
+      Object.keys(state.traces).forEach(function(i) {
+        var base = state.traces[i];
+        if (base.parent && traceVisible(i)) series.push({group:base.group, x:data[i].x,
+          y:base[signalMode], connectgaps:data[i].connectgaps});
+      });
+      var key = JSON.stringify([signalMode,xrange,series.map(function(tr) { return tr.group; })]);
+      // Zooming only Y changes the tick labels, not the occupied intensity bands.
+      if (key !== state.foldKey || !state.foldPlan) {
+        state.foldPlan = ftirYBreaks(series,xrange);
+        state.foldKey = key;
+      }
+      plan = state.foldPlan;
+      priorBreaks = fold.breaks || [];
+      refit = JSON.stringify(priorBreaks) !== JSON.stringify(plan.breaks);
+      fold.breaks = plan.breaks;
+      state.foldOffsets = plan.offsets;
+    }
     Object.keys(state.traces).forEach(function(indexText) {
       var index = Number(indexText);
       var base = state.traces[index];
@@ -625,13 +654,17 @@ def ftir_stack_js(div_id: str) -> str:
     });
     syncLegendRanks(data);
 
-    var layout = gd.layout || {};
     if (signalMode === "absorbance") {
+      var geometry = stackMeta().foldObjectBreaks || [];
+      var breaks = fold ? plan.breaks : [];
+      ftirMoveObjects(layout,geometry,breaks);
+      if (breaks.length) stackMeta().foldObjectBreaks = breaks;
+      else delete stackMeta().foldObjectBreaks;
       layout.annotations = (layout.annotations || []).map(function(annotation, index) {
         var base = state.annotations[index];
         if (!base) return annotation;
         var next = Object.assign({}, annotation);
-        next.y = base.y + offsetFor(base.group, "absorbance");
+        next.y = fold ? ftirMapY(base.y,breaks,false) : base.y + offsetFor(base.group, "absorbance");
         return next;
       });
       layout.shapes = (layout.shapes || []).map(function(shape, index) {
@@ -639,8 +672,8 @@ def ftir_stack_js(div_id: str) -> str:
         if (!base) return shape;
         var offset = offsetFor(base.group, "absorbance");
         var next = Object.assign({}, shape);
-        next.y0 = base.y0 + offset;
-        next.y1 = base.y1 + offset;
+        next.y0 = fold ? ftirMapY(base.y0,breaks,false) : base.y0 + offset;
+        next.y1 = fold ? ftirMapY(base.y1,breaks,false) : base.y1 + offset;
         return next;
       });
       gd._ristFtirUnitOriginalAnnotations = (layout.annotations || []).map(function(item) {
@@ -654,13 +687,31 @@ def ftir_stack_js(div_id: str) -> str:
     syncStackYAxis(layout);
     var title = layout.yaxis.title;
     if (title && typeof title.text === "string") {
-      var baseTitle = title.text.replace(/ · Y 이동 표시$/, "");
-      title.text = baseTitle && hasOverlayShift() ? baseTitle + " · Y 이동 표시" : baseTitle;
+      var baseTitle = title.text.replace(/ · (Y 이동 표시|빈 Y구간 접기)$/, "");
+      title.text = fold && plan.breaks.length ? baseTitle + " · 빈 Y구간 접기" :
+        baseTitle && !fold && hasOverlayShift() ? baseTitle + " · Y 이동 표시" : baseTitle;
     }
     applyGridPreferences(layout, state.enabled, state.yAxisDisplay);
-    if (!options.preserveView) {
-      var range = fitRange(signalMode);
-      if (range) layout.yaxis.range = range;
+    if (fold) {
+      Object.keys(fold.ticks).forEach(function(key) { restoreAxisProperty(layout.yaxis,key,fold.ticks[key]); });
+    }
+    if (refit && options.preserveView && (layout.yaxis.fixedrange || options.keepY) && layout.yaxis.range) {
+      layout.yaxis.range = layout.yaxis.range.map(function(y) {
+        return ftirMapY(ftirMapY(y,priorBreaks,true),plan.breaks,false);
+      });
+      refit = false;
+    }
+    if (!options.preserveView || refit) {
+      if (fold && plan.range) {
+        layout.yaxis.range = ftirFoldRange(plan);
+        layout.yaxis.autorange = false;
+      } else {
+        var range = fitRange(signalMode);
+        if (range) layout.yaxis.range = range;
+      }
+    }
+    if (fold && plan.breaks.length && layout.yaxis.range) {
+      ftirFoldTicks(layout.yaxis, plan.breaks, layout.yaxis.range);
     }
     updateMeta();
     syncControls();
@@ -704,6 +755,7 @@ def ftir_stack_js(div_id: str) -> str:
   }
 
   function scheduleCompaction() {
+    if (stackMeta().foldY) { scheduleFoldRefresh(); return; }
     if (state.compactTimer) return;
     state.compactTimer = setTimeout(function() {
       state.compactTimer = null;
@@ -766,8 +818,14 @@ def ftir_stack_js(div_id: str) -> str:
     stackButton.classList.toggle("is-active", !!state.enabled);
     dragButton.classList.toggle("is-active", !!state.dragMode);
     stackButton.disabled = !hasMultipleSamples;
-    dragButton.disabled = !state.order.length;
-    resetButton.disabled = !hasOverlayShift();
+    var fold = stackMeta().foldY;
+    foldButton.disabled = state.enabled || (!fold && !hasMultipleSamples);
+    foldButton.setAttribute("aria-pressed", String(!!fold));
+    foldButton.classList.toggle("is-active", !!fold);
+    foldButton.title = fold && !fold.breaks.length ? "현재 X 범위에서 접을 수 있는 빈 구간이 없습니다." :
+      "곡선 사이의 빈 구간만 //로 접습니다. 눈금은 실제 측정값이며, 끄면 이전 Y 위치로 돌아갑니다.";
+    dragButton.disabled = !!fold || !state.order.length;
+    resetButton.disabled = !!fold || !hasOverlayShift();
     dragButton.setAttribute("aria-pressed", String(state.dragMode));
     gapSlider.disabled = !hasMultipleSamples;
     gapSlider.value = String(Math.round(state.gap * 100));
@@ -775,7 +833,7 @@ def ftir_stack_js(div_id: str) -> str:
   }
 
   function setDragMode(enabled, announce) {
-    var nextEnabled = !!enabled;
+    var nextEnabled = !!enabled && !stackMeta().foldY;
     var wasEnabled = state.dragMode;
     if (nextEnabled && typeof gd._ristSetEditMode === "function") {
       gd._ristSetEditMode(false, false);
@@ -809,16 +867,74 @@ def ftir_stack_js(div_id: str) -> str:
     + "<input class='rist-ftir-stack-gap' type='range' min='0' max='600' step='5' value='120' title='스택 간격 0~6배 (0: 추가 간격 없이 겹쳐 보기)' aria-label='스택 간격'>"
     + "<span class='rist-ftir-stack-value'>1.20</span>"
     + "<button type='button' class='rist-ftir-stack-button' title='시료 곡선을 위아래로 드래그합니다. 곡선 위에 마우스를 올리면 이동 전 측정값이 표시됩니다.'>Y 이동</button>"
-    + "<button type='button' class='rist-ftir-stack-button' title='현재 단위에서 모든 시료의 Y 이동을 취소하고 측정 위치로 되돌립니다.'>Y 원위치</button>";
+    + "<button type='button' class='rist-ftir-stack-button' title='현재 단위에서 모든 시료의 Y 이동을 취소하고 측정 위치로 되돌립니다.'>Y 원위치</button>"
+    + "<button type='button' class='rist-ftir-stack-button'>빈 Y구간 접기</button>";
   toolbar.appendChild(control);
   var buttons = control.querySelectorAll(".rist-ftir-stack-button");
   var stackButton = buttons[0];
   var dragButton = buttons[1];
   var resetButton = buttons[2];
+  var foldButton = buttons[3];
   var gapSlider = control.querySelector(".rist-ftir-stack-gap");
   var gapValue = control.querySelector(".rist-ftir-stack-value");
 
+  function clearFold() {
+    var fold = stackMeta().foldY;
+    if (!fold) return;
+    var axis = gd.layout.yaxis;
+    Object.keys(fold.ticks).forEach(function(key) { restoreAxisProperty(axis,key,fold.ticks[key]); });
+    if (fold.unit === mode()) {
+      restoreAxisProperty(axis,"range",fold.originalRange);
+      restoreAxisProperty(axis,"autorange",fold.originalAuto);
+    }
+    delete stackMeta().foldY;
+    state.foldOffsets = {};
+  }
+
+  gd._ristFtirMeasuredY = function(value, inverse) {
+    var fold = stackMeta().foldY;
+    return fold ? ftirMapY(value,fold.breaks,inverse) : value;
+  };
+  var foldTimer = null, keepFoldY = false;
+  function scheduleFoldRefresh(keepY) {
+    keepFoldY = keepFoldY || keepY === true;
+    if (!stackMeta().foldY || foldTimer !== null) return;
+    gd._ristStackReady = new Promise(function(resolve,reject) {
+      foldTimer = setTimeout(function() {
+        foldTimer = null;
+        var keepY = keepFoldY;
+        keepFoldY = false;
+        if (!stackMeta().foldY) { resolve(); return; }
+        applyOffsets({preserveView:true,keepY:keepY}).then(resolve,reject);
+      },0);
+    });
+  }
+  gd.on("plotly_relayout", function(update) {
+    var fold = stackMeta().foldY;
+    if (!fold || !update) return;
+    if (update["yaxis.tickmode"] === "linear" || update["yaxis.tickmode"] === "auto") {
+      fold.ticks.tickmode = axisProperty(gd.layout.yaxis,"tickmode");
+    }
+    var keys = Object.keys(update);
+    if (keys.some(function(key) { return /^(xaxis|yaxis)\.(range|autorange|dtick|tickformat)/.test(key); })) {
+      scheduleFoldRefresh(keys.some(function(key) { return /^yaxis\.range/.test(key); }));
+    }
+  });
+  foldButton.addEventListener("click", function() {
+    if (gd._ristHistory) gd._ristHistory.capture();
+    var old = stackMeta().foldY, axis = gd.layout.yaxis;
+    if (old) clearFold();
+    else {
+      setDragMode(false, false);
+      var ticks = {};
+      ["tickmode","tickvals","ticktext"].forEach(function(key) { ticks[key] = axisProperty(axis,key); });
+      stackMeta().foldY = {breaks:[], ticks:ticks, unit:mode(),
+        originalRange:axisProperty(axis,"range"), originalAuto:axisProperty(axis,"autorange")};
+    }
+    gd._ristStackReady = applyOffsets({preserveView:!!old && old.unit === mode()});
+  });
   stackButton.addEventListener("click", function() {
+    clearFold();
     gd.dispatchEvent(new CustomEvent("rist-exclusive-interaction-start", {
       detail: {mode: "ftir-stack-layout"}
     }));
@@ -980,6 +1096,7 @@ def ftir_stack_js(div_id: str) -> str:
       if (!state.initialized) initState();
       setDragMode(false, false);
       rememberVisualOrder();
+      if (settings.enabled) clearFold();
       state.enabled = settings.enabled;
       state.gap = stackGap(settings.gap);
       resetPositions();
@@ -1049,7 +1166,7 @@ def ftir_stack_js(div_id: str) -> str:
 })();
 </script>
 """
-    return template.replace("__DIV_ID__", json.dumps(div_id)).replace("__GRID_STYLE_JS__", GRID_STYLE_JS)
+    return template.replace("__DIV_ID__", json.dumps(div_id)).replace("__GRID_STYLE_JS__", GRID_STYLE_JS).replace("__FTIR_Y_BREAKS_JS__", FTIR_Y_BREAKS_JS)
 
 
 def build_preprocess_fig(raw, sample_vec, grid, sample_label, wn_min, wn_max):

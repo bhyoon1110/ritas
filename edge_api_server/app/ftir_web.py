@@ -1952,7 +1952,7 @@ _PAGE_SHELL = """
   </details>
 </section>
 <div class="ftir-message" id="ftir-message" role="alert"></div>
-<p style="margin:6px 12px;font-size:12px;color:#526277">새 분석은 Raw 원본값으로 표시합니다. 평활화·보정·정규화는 피크 검출용입니다. 스택을 꺼도 Y 이동으로 시료를 겹쳐 비교할 수 있습니다. 이동 중 Y축은 표시 위치이며, 곡선 위에서 측정값을 확인할 수 있습니다. 투과도 보기는 단위 변환입니다. 이전 저장 작업은 재분석해야 적용됩니다.</p>
+<p style="margin:6px 12px;font-size:12px;color:#526277">새 분석은 Raw 원본값으로 표시합니다. 평활화·보정·정규화는 피크 검출용입니다. 스택을 꺼도 Y 이동으로 시료를 겹쳐 비교할 수 있습니다. 이동 중 Y축은 표시 위치이며, 곡선 위에서 측정값을 확인할 수 있습니다. ‘빈 Y구간 접기’는 현재 X 범위에서 시료 사이의 빈 구간을 //로 표시하고 실측 눈금을 유지합니다. 투과도 보기는 단위 변환입니다. 이전 저장 작업은 재분석해야 적용됩니다.</p>
 <div class="ftir-report-progress" id="ftir-report-progress" aria-live="polite">
   <div class="ftir-report-progress-row">
     <span id="ftir-report-progress-label">보고서 생성 대기</span>
@@ -2934,6 +2934,7 @@ _UPLOAD_SCRIPT = """
     gd.on("plotly_relayout", scheduleWorkspaceSave);
     gd.on("plotly_restyle", scheduleWorkspaceSave);
     [
+      "rist-ftir-stack-change",
       "rist-legend-name-change",
       "rist-legend-edit-finished",
       "rist-legend-color-change",
