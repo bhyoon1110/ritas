@@ -37,17 +37,15 @@ const port=new Promise((resolve,reject)=>{let data='';server.stdout.on('data',ch
       await page.waitForFunction(()=>!document.getElementById('sw-step-4').disabled);await page.locator('#sw-step-4').click();
       const url=await frame.locator('#download').getAttribute('href');const original=await (await page.request.get(origin+url)).body();
       dialog=page.getByRole('dialog',{name:'파일 저장',exact:true});
-      const choose=frame.locator(kind==='ftir'?'#download-as':'#download');
-      if(kind==='ftir'){
-        const dialogsBefore=browserDialogs;
-        pending=page.waitForEvent('download');
-        await frame.locator('#download').click(); const direct=await pending;
-        assert.equal(direct.suggestedFilename(),'FT-IR 분석 보고서.zip');
-        assert.equal(await dialog.count(),0);assert.equal(browserDialogs,dialogsBefore);
-        const directPath=path.join(output,direct.suggestedFilename());
-        await direct.saveAs(directPath);assert.equal(await direct.failure(),null);
-        assert.deepEqual(fs.readFileSync(directPath),original);
-      }
+      const choose=frame.locator('#download-as');
+      const dialogsBefore=browserDialogs;
+      pending=page.waitForEvent('download');
+      await frame.locator('#download').click(); const direct=await pending;
+      assert.equal(direct.suggestedFilename(),kind==='ftir'?'FT-IR 분석 보고서.zip':'Raman 분석 보고서.zip');
+      assert.equal(await dialog.count(),0);assert.equal(browserDialogs,dialogsBefore);
+      const directPath=path.join(output,direct.suggestedFilename());
+      await direct.saveAs(directPath);assert.equal(await direct.failure(),null);
+      assert.deepEqual(fs.readFileSync(directPath),original);
       await choose.click();
       await dialog.getByLabel('저장 파일 이름').fill('검토 완료 '+kind+'.zip');
       pending=page.waitForEvent('download');await dialog.getByRole('button',{name:'다운로드',exact:true}).click();

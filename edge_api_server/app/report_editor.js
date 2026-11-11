@@ -23,8 +23,9 @@
   var taskProgress = window.RistFileProgress.monitor(status);
   var save = document.getElementById("save"), send = document.getElementById("send"), download = document.getElementById("download");
   var downloadAs = document.getElementById("download-as");
-  var directZip = project === "FT-IR";
-  downloadAs.hidden = !directZip;
+  var projectToken = project === "FT-IR" ? "FT[- ]?IR" : project;
+  var experimentInName = new RegExp("(?:^|[^a-z0-9])" + projectToken + "(?![a-z])", "i");
+  var leadingExperiment = new RegExp("^" + projectToken + "(?=$|[^a-z0-9])[\\s_/-]*", "i");
   var inputs = {}, sections = [], auxiliary = {};
   var saved = "", timer = null, composing = false, cellEditing = false, sending = false, activeRevision = null, retries = 0;
   var refs = {}, variables = [], layoutSequence = 0, canvas = null;
@@ -96,14 +97,12 @@
   }
   function packageName() {
     var requestNumber = inputs.requestNumber.value.trim(), title = inputs.title.value.trim();
-    if (!directZip) return (requestNumber || project) + "-" + title;
-    var experiment = /(?:^|[^a-z0-9])FT[- ]?IR(?![a-z])/i;
-    if (!title) title = "FT-IR 분석 보고서";
+    if (!title) title = project + " 분석 보고서";
     if (requestNumber) {
-      if (experiment.test(requestNumber)) title = title.replace(/^FT[- ]?IR(?=$|[^a-z0-9])[\s_-]*/i, "");
+      if (experimentInName.test(requestNumber)) title = title.replace(leadingExperiment, "");
       return title ? requestNumber + "-" + title : requestNumber;
     }
-    return experiment.test(title) ? title : project + "-" + title;
+    return experimentInName.test(title) ? title : project + "-" + title;
   }
   function availability() {
     if (busy || sending) taskProgress.start(); else taskProgress.stop();
@@ -112,17 +111,15 @@
     var downloadBlocked = busy || dirty || !!activeRevision || !model;
     download.setAttribute("aria-disabled", String(downloadBlocked));
     downloadAs.disabled = downloadBlocked;
-    if (directZip) {
-      if (downloadBlocked) {
-        download.removeAttribute("href");
-        download.removeAttribute("download");
-      } else {
-        var name = window.RistFileSave.filename(packageName(), ".zip");
-        var address = new URL(url(currentId,"/download"), window.location.href);
-        address.searchParams.set("filename", name);
-        download.download = name;
-        download.href = address.pathname + address.search;
-      }
+    if (downloadBlocked) {
+      download.removeAttribute("href");
+      download.removeAttribute("download");
+    } else {
+      var name = window.RistFileSave.filename(packageName(), ".zip");
+      var address = new URL(url(currentId,"/download"), window.location.href);
+      address.searchParams.set("filename", name);
+      download.download = name;
+      download.href = address.pathname + address.search;
     }
     Array.prototype.forEach.call(document.querySelectorAll("#editor input,#editor textarea,#mail-editor textarea"),function (input) { input.disabled = sending; });
     if (lookup) lookup.availability();
@@ -546,7 +543,6 @@
       element("p", top, "실험자는 연결된 SSO 계정으로 전송되며 보고서에도 자동 반영됩니다.").className = "muted";
     }
     refreshPreview();
-    download.href = url(currentId,"/download");
     message(dirty ? "인증된 SSO 실험자 정보를 자동 반영합니다." : "포스코 양식의 PPT 페이지를 표시합니다. 수정 내용은 자동 저장·반영됩니다.");
     availability(); schedule();
   }
@@ -608,7 +604,7 @@
         direct.stopProgress();
         currentId = id; saved = snapshot; activeRevision = null; busy = false; retries = 0;
         dirty = JSON.stringify(collect()) !== saved;
-        refreshPreview(); download.href = url(id,"/download");
+        refreshPreview();
         window.history.replaceState(null,"",url(id,"/edit"));
         try { window.localStorage.setItem("rist-report-revision",JSON.stringify({previousJobId:previous,job:job,time:Date.now()})); } catch (_) {}
         message(dirty ? "PPT가 갱신되었습니다. 그동안 추가한 수정 내용도 이어서 반영합니다." : "자동 저장 완료 · PPT 미리보기와 다운로드·전송에 수정 내용이 반영되었습니다.");
@@ -671,12 +667,7 @@
   downloadAs.onclick = choosePackageLocation;
   download.onclick = function (event) {
     if (busy || dirty || activeRevision || !model) { event.preventDefault(); return; }
-    if (directZip) {
-      message("보고서 ZIP 다운로드를 시작했습니다.");
-      return;
-    }
-    event.preventDefault();
-    choosePackageLocation();
+    message("보고서 ZIP 다운로드를 시작했습니다.");
   };
   window.addEventListener("beforeunload",function (event) { if (dirty || busy || activeRevision) { event.preventDefault(); event.returnValue = "저장하지 않은 변경 또는 생성 중인 수정본이 있습니다."; } });
   load(currentId);

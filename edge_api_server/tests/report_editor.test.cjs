@@ -232,27 +232,30 @@ test('SSO identity requires save before sending and is locked',t=>{
 for(const kind of ['ftir','raman','tem'])test(kind+' package save chooses a name and only the finalized current revision',t=>{
   const h=setup(t,kind);let options,calls=0;
   h.w.RistFileSave.open=value=>{options=value;calls++;return Promise.resolve({status:'cancelled'});};
-  const button=h.q(kind==='ftir'?'download-as':'download');assert.equal(h.q('download-as').hidden,kind!=='ftir');
+  const button=h.q('download-as');assert(!button.hidden);
   button.click();assert.equal(calls,1);assert.equal(options.extension,'.zip');assert(options.url.endsWith('/original/download'));assert(options.ready());
   const old=options;h.input('보고서 제목','새 보고서');assert(!old.ready());button.click();assert.equal(calls,1);
   h.tick();button.click();assert.equal(calls,2);assert(options.url.endsWith('/revision/download'));assert.match(options.name,/새 보고서/);assert(!old.ready());
 });
-test('FTIR direct ZIP uses the current revision, one experiment name and the full request number',t=>{
-  const h=setup(t,'ftir'),link=h.q('download');
-  const params=()=>new URL(link.href).searchParams;
-  h.input('보고서 제목','FT-IR 분석 보고서');
-  assert.equal(link.hasAttribute('href'),false);
-  h.tick();
-  assert.equal(link.download,'FT-IR 분석 보고서.zip');
-  assert.equal(params().get('filename'),link.download);
-  assert(new URL(link.href).pathname.endsWith('/revision/download'));
-  h.input('의뢰번호','2026-001');h.tick();
-  assert.equal(link.download,'2026-001-FT-IR 분석 보고서.zip');
-  h.input('의뢰번호','REQ-FTIR-002');h.tick();
-  assert.equal(link.download,'REQ-FTIR-002-분석 보고서.zip');
-  h.input('의뢰번호','');h.input('보고서 제목','코팅/시료 비교');h.tick();
-  assert.equal(link.download,'FT-IR-코팅_시료 비교.zip');
-});
+for(const [kind,project,title] of [['ftir','FT-IR','FT-IR'],['raman','RAMAN','Raman'],['tem','TEM','TEM']]) {
+  test(kind+' direct ZIP uses the current revision, one experiment name and the full request number',t=>{
+    const h=setup(t,kind),link=h.q('download');
+    h.input('보고서 제목',title+' 분석 보고서');
+    assert(!link.hasAttribute('href'));assert(!link.hasAttribute('download'));assert(h.q('download-as').disabled);
+    h.tick();
+    assert.equal(link.download,title+' 분석 보고서.zip');
+    const url=new URL(link.href);
+    assert.equal(url.searchParams.get('filename'),link.download);
+    assert(url.pathname.endsWith('/revision/download'));
+    h.input('의뢰번호','2026-001');h.tick();
+    assert.equal(link.download,'2026-001-'+title+' 분석 보고서.zip');
+    const request='REQ-'+kind.toUpperCase()+'-002';
+    h.input('의뢰번호',request);h.tick();
+    assert.equal(link.download,request+'-분석 보고서.zip');
+    h.input('의뢰번호','');h.input('보고서 제목','코팅/시료 비교');h.tick();
+    assert.equal(link.download,project+'-코팅_시료 비교.zip');
+  });
+}
 test('failed save retains unsaved edits and blocks stale download/send',t=>{
   const h=setup(t);h.input('분석 결과 요약 · 문단 1','보존할 문장');h.fail();h.q('save').click();
   assert.equal(h.field('분석 결과 요약 · 문단 1').value,'보존할 문장');assert(!h.q('save').disabled);
