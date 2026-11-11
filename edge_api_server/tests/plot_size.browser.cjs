@@ -9,6 +9,8 @@ const output = fs.mkdtempSync(path.join(os.tmpdir(), 'rist-plot-size-'));
 const server = http.createServer((req, res) => {
   if (req.url.endsWith('/plotly.min.js')) {
     res.setHeader('Content-Type','application/javascript');res.end(fs.readFileSync(bundle.plotly));
+  } else if (req.url === '/assets/request_filters.js') {
+    res.setHeader('Content-Type','application/javascript');res.end(fs.readFileSync(path.join(__dirname,'../app/request_filters.js')));
   } else if (bundle[req.url.slice(1)]) {
     res.setHeader('Content-Type','text/html; charset=utf-8');res.end(bundle[req.url.slice(1)]);
   } else {
@@ -57,6 +59,32 @@ const server = http.createServer((req, res) => {
             rectWidth:rect.width,x:l.xaxis.range,y:l.yaxis.range};
         },id);
         const baseline = await geometry();
+        async function checkFit(sameCanvas = true) {
+          // Wait for Plotly and the frame that fits its measured SVG, including any top band.
+          await page.evaluate(() => new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done))));
+          const current = await geometry();
+          if (kind === 'raman') return assert.deepEqual(current, baseline);
+          if (sameCanvas) {
+            assert.deepEqual({...current, top:baseline.top, plotHeight:baseline.plotHeight}, baseline);
+            assert.equal(current.plotHeight + current.top, baseline.plotHeight + baseline.top);
+          }
+          const result = await page.evaluate(id => {
+            const g = document.getElementById(id), box = g.querySelector('g.legend rect.bg');
+            if (!box) return null;
+            const l = box.getBoundingClientRect(), canvas = g.getBoundingClientRect();
+            // Compare every rendered spectrum polyline to the actual transformed legend bounds.
+            for (const line of g.querySelectorAll('.scatterlayer path.js-line')) {
+              const matrix = line.getScreenCTM(), length = line.getTotalLength();
+              for (let at = 0; at <= length; at += 2) {
+                const point = line.getPointAtLength(at).matrixTransform(matrix);
+                if (point.x > l.left && point.x < l.right && point.y > l.top && point.y < l.bottom) return 'spectrum overlap';
+              }
+            }
+            if (l.left < canvas.left || l.right > canvas.right + 1 || l.top < canvas.top || l.bottom > canvas.bottom + 1) return 'outside canvas';
+            return null;
+          },id);
+          assert.equal(result, null, label);
+        }
         assert.equal(baseline.right,24,label+': no 260px legend gutter');
         assert.equal(baseline.bottom,70,label+': no 150px mobile legend gutter');
         if (!mobile) { assert.equal(baseline.width,1000);assert.equal(baseline.height,750); }
@@ -66,7 +94,7 @@ const server = http.createServer((req, res) => {
             await Plotly.restyle(g,{name:g.data.map((_,i) => '아주 긴 시료명 '+i+' / 반복 이름 '.repeat(8))});
             await Plotly.relayout(g,{'legend.font.size':font,showlegend:visible,'meta.ristLegendVisible':visible});
           },{id,font,visible});
-          assert.deepEqual(await geometry(),baseline,label+': legend independent plot geometry');
+          await checkFit();
           assert.equal(await page.locator('#'+id+' .legend').isVisible(),visible);
           assert.equal(await page.evaluate(id=>document.getElementById(id).layout.legend.font.size,id),font);
         }
@@ -86,12 +114,14 @@ const server = http.createServer((req, res) => {
             legendgroup:'extra:'+i,meta:{rist_sample_parent:true,rist_sample_group:'extra:'+i}}));
           await Plotly.addTraces(g,more);
         },id);
-        assert.deepEqual(await geometry(),baseline,label+': many legend rows must not shrink the plot');
+        await checkFit();
         await page.evaluate(async id=>{
           const g=document.getElementById(id);await Plotly.deleteTraces(g,Array.from({length:18},(_,i)=>i+6));
         },id);
         await page.locator('#'+id).screenshot({path:path.join(output,label+'.png')});
         // The same helper used by report capture also migrates older snapshots.
+        await checkFit();
+        const beforeExport = await geometry();
         const rendered = await page.evaluate(async id => {
           const g = document.getElementById(id), s = g._ristPlotSize;
           const dimensions = s.exportDimensions({}), old = JSON.parse(JSON.stringify(g.layout));
@@ -100,7 +130,26 @@ const server = http.createServer((req, res) => {
           const temp=document.createElement('div');document.body.appendChild(temp);
           try {
             await Plotly.newPlot(temp,g.data,Object.assign({},s.prepareExportLayout(old),dimensions,{autosize:false}),{staticPlot:true});
+            if (g._ristSizedLegend) {
+              await Plotly.relayout(temp, {'legend.font.color':'#dc1780'});
+              await g._ristSizedLegend.prepareSnapshot(temp);
+            }
             const png=await Plotly.toImage(temp,Object.assign({format:'png',scale:1},dimensions));
+            if (g._ristSizedLegend) {
+              const img = new Image();
+              img.src = png;
+              await img.decode();
+              const canvas = document.createElement('canvas');
+              canvas.width = img.width; canvas.height = img.height;
+              const ctx = canvas.getContext('2d');
+              ctx.drawImage(img,0,0);
+              const pixels = ctx.getImageData(0,0,img.width,img.height).data;
+              let legendPixels = 0;
+              for (let i = 0; i < pixels.length; i += 4) {
+                if (Math.abs(pixels[i]-220)<12 && Math.abs(pixels[i+1]-23)<25 && Math.abs(pixels[i+2]-128)<16) legendPixels++;
+              }
+              if (legendPixels < 10) throw Error('Fitted legend text missing from exported PNG');
+            }
             return {png,dimensions,plotWidth:temp._fullLayout._size.w,margin:temp._fullLayout._size};
           } finally { Plotly.purge(temp);temp.remove(); }
         },id);
@@ -109,7 +158,7 @@ const server = http.createServer((req, res) => {
         const png=Buffer.from(rendered.png.split(',')[1],'base64');
         assert.equal(png.readUInt32BE(16),1000);assert.equal(png.readUInt32BE(20),750);
         fs.writeFileSync(path.join(output,label+'-report.png'),png);
-        assert.deepEqual(await geometry(),baseline,label+': export must not resize the live graph');
+        assert.deepEqual(await geometry(),beforeExport,label+': export must not resize the live graph');
         if (!mobile) {
           const handle=page.locator('#'+id+' .rist-plot-resize-handle');
           await handle.scrollIntoViewIfNeeded();const box=await handle.boundingBox();
@@ -123,6 +172,35 @@ const server = http.createServer((req, res) => {
           assert.equal(dragged.plotWidth,baseline.plotWidth+80);assert.equal(dragged.plotHeight,baseline.plotHeight+40);
           assert.deepEqual(dragged.x,baseline.x);assert.deepEqual(dragged.y,baseline.y);
           assert.equal(dragged.right,24);assert.equal(dragged.bottom,70);
+        }
+        if (kind === 'ftir') {
+          await page.evaluate(async id => {
+            const g = document.getElementById(id);
+            const xs = Array.from({length:51}, (_,i) => i*8), ys = xs.map((_,i) => i%2 ? 10 : 0);
+            await Plotly.restyle(g,{x:g.data.map(() => xs),y:g.data.map(() => ys),
+              name:g.data.map((_,i) => '시험 시료 '+i+' / 매우 긴 이름'.repeat(12)+' 분말')});
+            await Plotly.relayout(g,{'meta.ristPlotSize':{width:460,height:420,ratio:'custom'}, 'legend.font.size':18});
+            await g._ristApplyResponsiveLayout();
+          },id);
+          await page.waitForFunction(id => {
+            const g = document.getElementById(id);
+            return g._ristLegendBand && g.querySelector('g.legend').getAttribute('transform').includes('scale(');
+          },id);
+          await checkFit(false);
+          const dense = await page.evaluate(id => {
+            const g = document.getElementById(id), legend = g.querySelector('g.legend');
+            const rect = legend.querySelector('rect.bg').getBoundingClientRect();
+            const title = legend.querySelector('g.traces title');
+            return {scale:legend.transform.baseVal.consolidate().matrix.a, bottom:rect.bottom-g.getBoundingClientRect().top,
+              top:g._fullLayout._size.t, name:g.data[0].name, title:title && title.textContent,
+              shown:legend.querySelector('.legendtext').textContent, font:g.layout.legend.font.size,
+              base:g._ristLegendBand.top-g._ristLegendBand.extra, savedTop:g._ristSizedLegend.layoutForSave(g.layout).margin.t};
+          },id);
+          assert.ok(dense.scale < 1 && dense.scale > 0);
+          assert.ok(dense.bottom <= dense.top, label+': dense spectra have a separate legend band');
+          assert.equal(dense.savedTop,dense.base); assert.equal(dense.title,dense.name); assert.ok(dense.shown.includes('…')); assert.equal(dense.font,18);
+          await page.evaluate(id => Plotly.relayout(document.getElementById(id),{showlegend:false,'meta.ristLegendVisible':false}),id);
+          await page.waitForFunction(({id,base}) => document.getElementById(id).layout.margin.t===base,{id,base:dense.base});
         }
         assert.deepEqual(errors,[]);
         console.log(label+': real plot area, font/visibility/long names, legend position, resize, 1000x750 PNG passed');

@@ -67,7 +67,7 @@ _HTML = r"""
     + "<label class='rist-axis-control-field'><span>그래프 비율 (범례 제외)</span><select aria-label='그래프 비율' data-plot-ratio>"
     + "<option value='auto'>자동</option><option value='4:3'>4:3</option><option value='16:9'>16:9</option><option value='1:1'>1:1</option><option value='3:2'>3:2</option><option value='5:4'>5:4</option><option value='16:10'>16:10</option><option value='2:1'>2:1</option><option value='21:9'>21:9</option><option value='3:4'>3:4 (세로)</option><option value='2:3'>2:3 (세로)</option><option value='9:16'>9:16 (세로)</option><option value='custom'>직접 입력</option></select></label></div>"
     + "<label class='rist-plot-size-lock'><input type='checkbox' data-plot-size-lock>드래그할 때 비율 유지</label>"
-    + "<p class='rist-axis-control-help'>폭 320~2400px, 높이 240~2400px. 높이를 입력하면 직접 입력 비율로 전환됩니다. 오른쪽 아래 ↘ 크기를 드래그하거나 방향키로 조절할 수 있습니다. 크기·비율은 범례 여백을 제외하고 축을 포함한 그래프 이미지 기준입니다. 범례는 그래프 안에 겹쳐 표시되며 위치를 옮길 수 있습니다. 범례 길이·글자 크기·표시 여부는 그래프 크기에 영향을 주지 않습니다. 좁은 화면에서는 가독성을 위한 최소 높이를 적용하며, 저장 이미지와 보고서는 설정 비율을 유지합니다. 긴 변은 최대 2400px입니다.</p>"
+    + "<p class='rist-axis-control-help'>폭 320~2400px, 높이 240~2400px. 높이를 입력하면 직접 입력 비율로 전환됩니다. 오른쪽 아래 ↘ 크기를 드래그하거나 방향키로 조절할 수 있습니다. 크기·비율은 범례 여백을 제외하고 축을 포함한 그래프 이미지 기준입니다. 범례는 그래프 이미지 안에서 위치를 옮길 수 있습니다. 범례 길이·글자 크기·표시 여부는 그래프 크기에 영향을 주지 않습니다. 좁은 화면에서는 가독성을 위한 최소 높이를 적용하며, 저장 이미지와 보고서는 설정 비율을 유지합니다. 긴 변은 최대 2400px입니다.</p>"
     + "<div class='rist-axis-control-actions'><button type='button' data-plot-size-reset>자동 크기</button><button type='button' data-plot-size-apply>크기 적용</button></div>"
     + "<p class='rist-plot-size-status' role='status' aria-live='polite'></p>";
   var body = panel.querySelector(".rist-axis-control-body");

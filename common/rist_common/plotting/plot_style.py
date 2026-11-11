@@ -6121,55 +6121,22 @@ def _image_download_js(div_id: str, formats, filename: str, scale: float) -> str
     return mode.indexOf("lines") >= 0;
   }
 
-  function chooseLegendPlacement(data, layout, width, height) {
-    var margin = layout.margin || {};
-    var plotWidth = Math.max(320, width - Number(margin.l || 0) - Number(margin.r || 0));
-    var plotHeight = Math.max(240, height - Number(margin.t || 0) - Number(margin.b || 0));
-    var legendData = data.filter(function(trace) {
-      return traceIsVisible(trace) && trace.showlegend !== false
-        && String(trace.name || "").trim() !== "";
-    });
-    var legendFont = layout.legend && layout.legend.font || {};
-    var fontSize = Number(legendFont.size) || 16;
-    var characterWidth = fontSize * (Number(legendFont.weight || 700) >= 600 ? 0.68 : 0.62);
-    var longestName = 0, lineCount = 0;
-    legendData.forEach(function(trace) {
-      var lines = String(trace && trace.name || "").replace(/<br\s*\/?\s*>/gi, "\n")
-        .replace(/<[^>]*>/g, "").split("\n");
-      lineCount += lines.length;
-      lines.forEach(function(line) {
-        // Wide Korean/CJK glyphs need more room than Latin characters.
-        longestName = Math.max(longestName, line.replace(/[^\x00-\xff]/g, "WW").length);
-      });
-    });
-    var legendWidth = Math.max(0.16, Math.min(0.9, (longestName * characterWidth + 54) / plotWidth));
-    var legendHeight = Math.max(
-      0.08,
-      Math.min(0.9, (lineCount * Math.max(23, fontSize * 1.35) + 18) / plotHeight)
-    );
-    var candidates = [
-      {corner: "top-left", x: 0.018, y: 0.982, xanchor: "left", yanchor: "top",
-       left: 0, right: legendWidth + 0.025, bottom: 1 - legendHeight - 0.025, top: 1},
-      {corner: "top-right", x: 0.982, y: 0.982, xanchor: "right", yanchor: "top",
-       left: 1 - legendWidth - 0.025, right: 1, bottom: 1 - legendHeight - 0.025, top: 1},
-      {corner: "bottom-left", x: 0.018, y: 0.018, xanchor: "left", yanchor: "bottom",
-       left: 0, right: legendWidth + 0.025, bottom: 0, top: legendHeight + 0.025},
-      {corner: "bottom-right", x: 0.982, y: 0.018, xanchor: "right", yanchor: "bottom",
-       left: 1 - legendWidth - 0.025, right: 1, bottom: 0, top: legendHeight + 0.025}
-    ];
+  function scoreLegendCandidates(data, layout, candidates, occupancyOnly) {
     var scores = candidates.map(function() { return 0; });
     var xaxis = layout.xaxis || {};
     var yaxis = layout.yaxis || {};
     var xrange = dataAxisRange(data, layout, "x");
     var yrange = dataAxisRange(data, layout, "y");
 
+    var remaining = candidates.length;
     data.forEach(function(trace) {
+      if (occupancyOnly && !remaining) return;
       var xs = arrayValues(trace && trace.x);
       var ys = arrayValues(trace && trace.y);
       var count = Math.min(xs.length, ys.length);
       var connectsPoints = traceConnectsPoints(trace);
       var previous = null;
-      for (var index = 0; index < count; index++) {
+      for (var index = 0; index < count && (!occupancyOnly || remaining); index++) {
         var nx = normalizedValue(xs[index], xaxis, xrange);
         var ny = normalizedValue(ys[index], yaxis, yrange);
         if (!Number.isFinite(nx) || !Number.isFinite(ny)) {
@@ -6177,6 +6144,7 @@ def _image_download_js(div_id: str, formats, filename: str, scale: float) -> str
           continue;
         }
         candidates.forEach(function(candidate, candidateIndex) {
+          if (occupancyOnly && scores[candidateIndex]) return;
           if (pointInsideLegendCandidate(nx, ny, candidate)) {
             scores[candidateIndex] += 2;
           }
@@ -6184,6 +6152,7 @@ def _image_download_js(div_id: str, formats, filename: str, scale: float) -> str
               && segmentIntersectsLegendCandidate(
                 previous.x, previous.y, nx, ny, candidate
               )) scores[candidateIndex] += 1;
+          if (occupancyOnly && scores[candidateIndex]) remaining--;
         });
         previous = {x: nx, y: ny};
       }
@@ -6226,6 +6195,47 @@ def _image_download_js(div_id: str, formats, filename: str, scale: float) -> str
         if (overlaps) scores[candidateIndex] += 10;
       });
     });
+
+    return scores;
+  }
+
+  function chooseLegendPlacement(data, layout, width, height) {
+    var margin = layout.margin || {};
+    var plotWidth = Math.max(320, width - Number(margin.l || 0) - Number(margin.r || 0));
+    var plotHeight = Math.max(240, height - Number(margin.t || 0) - Number(margin.b || 0));
+    var legendData = data.filter(function(trace) {
+      return traceIsVisible(trace) && trace.showlegend !== false
+        && String(trace.name || "").trim() !== "";
+    });
+    var legendFont = layout.legend && layout.legend.font || {};
+    var fontSize = Number(legendFont.size) || 16;
+    var characterWidth = fontSize * (Number(legendFont.weight || 700) >= 600 ? 0.68 : 0.62);
+    var longestName = 0, lineCount = 0;
+    legendData.forEach(function(trace) {
+      var lines = String(trace && trace.name || "").replace(/<br\s*\/?\s*>/gi, "\n")
+        .replace(/<[^>]*>/g, "").split("\n");
+      lineCount += lines.length;
+      lines.forEach(function(line) {
+        // Wide Korean/CJK glyphs need more room than Latin characters.
+        longestName = Math.max(longestName, line.replace(/[^\x00-\xff]/g, "WW").length);
+      });
+    });
+    var legendWidth = Math.max(0.16, Math.min(0.9, (longestName * characterWidth + 54) / plotWidth));
+    var legendHeight = Math.max(
+      0.08,
+      Math.min(0.9, (lineCount * Math.max(23, fontSize * 1.35) + 18) / plotHeight)
+    );
+    var candidates = [
+      {corner: "top-left", x: 0.018, y: 0.982, xanchor: "left", yanchor: "top",
+       left: 0, right: legendWidth + 0.025, bottom: 1 - legendHeight - 0.025, top: 1},
+      {corner: "top-right", x: 0.982, y: 0.982, xanchor: "right", yanchor: "top",
+       left: 1 - legendWidth - 0.025, right: 1, bottom: 1 - legendHeight - 0.025, top: 1},
+      {corner: "bottom-left", x: 0.018, y: 0.018, xanchor: "left", yanchor: "bottom",
+       left: 0, right: legendWidth + 0.025, bottom: 0, top: legendHeight + 0.025},
+      {corner: "bottom-right", x: 0.982, y: 0.018, xanchor: "right", yanchor: "bottom",
+       left: 1 - legendWidth - 0.025, right: 1, bottom: 0, top: legendHeight + 0.025}
+    ];
+    var scores = scoreLegendCandidates(data, layout, candidates);
 
     // 좌측 상단이 비어 있으면 다른 모서리의 점수와 관계없이
     // 항상 기본 위치를 유지한다. 좌측 상단이 찼 때도 점수가
@@ -6345,7 +6355,8 @@ def _image_download_js(div_id: str, formats, filename: str, scale: float) -> str
     var placement = chooseLegendPlacement(exportData, layout, width, height);
     var reservedTopHeadroom = false;
     var headroomAdjustments = 0;
-    while (hasLegend && placement.requiresTopHeadroom && headroomAdjustments < 6
+    while (hasLegend && placement.requiresTopHeadroom && !(gd._ristSizedLegend && gd._ristSizedLegend.active(layout))
+        && headroomAdjustments < 6
         && reserveTopLegendHeadroom(exportData, layout, placement)) {
       reservedTopHeadroom = true;
       headroomAdjustments += 1;
@@ -6422,6 +6433,8 @@ def _image_download_js(div_id: str, formats, filename: str, scale: float) -> str
         {responsive: false, displayModeBar: false, staticPlot: true}
       );
     }).then(function() {
+      if (gd._ristSizedLegend) return gd._ristSizedLegend.prepareSnapshot(temp);
+    }).then(function() {
       return window.Plotly.downloadImage(temp, {
         format: format,
         filename: __FILENAME_JSON__,
@@ -6453,6 +6466,7 @@ def _image_download_js(div_id: str, formats, filename: str, scale: float) -> str
 
   gd._ristBuildImageExportPayload = buildImageExportPayload;
   gd._ristChooseImageLegendPlacement = chooseLegendPlacement;
+  gd._ristScoreLegendCandidates = scoreLegendCandidates;
 
   pop.addEventListener("click", function(ev) {
     var b = ev.target.closest("button[data-fmt]");
@@ -8970,7 +8984,7 @@ def _legend_drag_handle_js(div_id: str) -> str:
     var offset = "translate(" + Math.round(dx) + "," + Math.round(dy) + ")";
     legend.setAttribute(
       "transform",
-      previewLegendTransform ? previewLegendTransform + " " + offset : offset
+      previewLegendTransform ? offset + " " + previewLegendTransform : offset
     );
   }}
 
@@ -9029,6 +9043,7 @@ def _legend_drag_handle_js(div_id: str) -> str:
     if (ev.button !== 0 || dragState) return;
     var layout = legendLayout();
     var size = plotSize();
+    if (gd._ristSizedLegend) layout = gd._ristSizedLegend.dragAnchor(layout);
     var gdRect = gd.getBoundingClientRect();
     var handleRect = handle.getBoundingClientRect();
     dragState = {{
@@ -9115,6 +9130,7 @@ def _legend_drag_handle_js(div_id: str) -> str:
     if (!activeMode || activeMode === "legend-drag") return;
     endDrag(null, false);
   }});
+  gd.addEventListener("rist-legend-fitted", scheduleHandlePosition);
   gd.on("plotly_afterplot", scheduleHandlePosition);
   gd.on("plotly_relayout", scheduleHandlePosition);
   gd.on("plotly_restyle", scheduleHandlePosition);

@@ -288,7 +288,7 @@ def test_shared_plotly_module_applies_legend_text(tmp_path) -> None:
     assert "if (dragState) return" in html
     assert "setLegendPreview(dx, dy)" in html
     assert 'legend.setAttribute(' in html
-    assert 'previewLegendTransform + " " + offset' in html
+    assert 'offset + " " + previewLegendTransform' in html
     assert 'legend.removeAttribute("transform")' in html
     assert "clearLegendPreview()" in html
     assert "handle.addEventListener(\"pointerdown\"" in html

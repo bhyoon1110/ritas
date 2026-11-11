@@ -2732,6 +2732,10 @@ _UPLOAD_SCRIPT = """
     return Math.max(0, Math.min(100, Math.round(sensitivity)));
   }
 
+  function savedPlotLayout(layout) {
+    return JSON.parse(JSON.stringify(gd._ristSizedLegend ? gd._ristSizedLegend.layoutForSave(layout) : layout));
+  }
+
   function currentWorkspaceState() {
     return {
       version: 1,
@@ -2750,7 +2754,7 @@ _UPLOAD_SCRIPT = """
       statusText: status.textContent || "",
       analysisPayload: latestAnalysisPayload,
       plotData: JSON.parse(JSON.stringify((gd._ristLegendPreview || gd).data || [])),
-      plotLayout: JSON.parse(JSON.stringify((gd._ristLegendPreview || gd).layout || {}))
+      plotLayout: savedPlotLayout((gd._ristLegendPreview || gd).layout || {})
     };
   }
 
@@ -5115,7 +5119,7 @@ _UPLOAD_SCRIPT = """
 
   function filteredReportFigurePayload() {
     var data = JSON.parse(JSON.stringify(gd.data || []));
-    var layout = JSON.parse(JSON.stringify(gd.layout || {}));
+    var layout = savedPlotLayout(gd.layout || {});
     var visibility = reportSampleVisibility(data);
     var hidden = visibility ? visibility.hidden : {};
     var oldToNewTrace = {};
@@ -5238,6 +5242,7 @@ _UPLOAD_SCRIPT = """
           : figure.layout || {}, {width: width, height: height, autosize: false}),
         Object.assign({}, gd._context || {}, {responsive: false})
       );
+      if (gd._ristSizedLegend) await gd._ristSizedLegend.prepareSnapshot(temp);
       return await window.Plotly.toImage(temp, {
         format: "png",
         width: width,
@@ -5603,6 +5608,7 @@ def build_ftir_page() -> str:
     extra_scripts = (
         origin_style_toggle_js(PLOT_DIV_ID, "ftir-origin", enabled=True)
         + peak_sensitivity_js(PLOT_DIV_ID, initial=DEFAULT_PEAK_SENSITIVITY)
+        + "<script>" + Path(__file__).with_name("ftir_sized_legend.js").read_text(encoding="utf-8") + "</script>"
         + _FTIR_TOOL_PANEL_SCRIPT
         + ftir_abs_trans_toggle_js(
             PLOT_DIV_ID,

@@ -1,0 +1,224 @@
+// Fit the rendered Plotly legend without editing sample names or the user's font setting.
+(function () {
+  "use strict";
+  var gd = document.getElementById("peak-plot");
+  if (!gd || !gd._ristPlotSize || !gd._ristScoreLegendCandidates) return;
+  var frame = 0;
+  var fitted = null;
+
+  function active(layout) {
+    var size = layout && layout.meta && layout.meta.ristPlotSize;
+    return !!(size && (size.width || (size.ratio && size.ratio !== "auto")));
+  }
+  function clamp(value, low, high) { return Math.max(low, Math.min(high, value)); }
+  function anchor(side) {
+    if (side === "right" || side === "bottom") return 1;
+    return side === "center" || side === "middle" ? 0.5 : 0;
+  }
+
+  // Change only SVG presentation. Plotly keeps the original names and preferred
+  // font for legend editing, hover, saved workspaces and subsequent larger sizes.
+  function clearShortLabels(plot) {
+    (plot._ristLegendUndo || []).forEach(function(undo) { undo(); });
+    plot._ristLegendUndo = null;
+  }
+  function compactLabels(plot, legend, maxWidth) {
+    var bg = legend.querySelector("rect.bg");
+    if (bg.getBBox().width <= maxWidth) return;
+    var undo = [], widest = 0;
+    legend.querySelectorAll("g.traces").forEach(function(row) {
+      var label = row.querySelector("text.legendtext");
+      if (!label) return;
+      var x = Number(label.getAttribute("x")) || 40;
+      var lines = label.querySelectorAll("tspan.line");
+      var original = label.textContent;
+      var shortened = false;
+      Array.prototype.forEach.call(lines.length ? lines : [label], function(line) {
+        var available = maxWidth - x - 8;
+        if (line.getComputedTextLength() > available) {
+          var walker = document.createTreeWalker(line, 4); // Text nodes inside Plotly rich text.
+          var leaf = walker.nextNode();
+          if (leaf && !walker.nextNode()) {
+            var fullText = leaf.nodeValue, chars = Array.from(fullText);
+            var low = 0, high = chars.length - 1;
+            function abbreviation(count) {
+              return chars.slice(0, Math.ceil(count / 2)).join("") + "…"
+                + chars.slice(chars.length - Math.floor(count / 2)).join("");
+            }
+            while (low < high) {
+              var mid = Math.ceil((low + high) / 2);
+              leaf.nodeValue = abbreviation(mid);
+              if (line.getComputedTextLength() <= available) low = mid;
+              else high = mid - 1;
+            }
+            var shortText = abbreviation(low);
+            leaf.nodeValue = shortText;
+            undo.push(function() { if (leaf.nodeValue === shortText) leaf.nodeValue = fullText; });
+            shortened = true;
+          }
+        }
+        widest = Math.max(widest, x + line.getComputedTextLength() + 8);
+      });
+      if (shortened) {
+        var title = document.createElementNS("http://www.w3.org/2000/svg", "title");
+        title.textContent = original; row.insertBefore(title, row.firstChild);
+        undo.push(function() { title.remove(); });
+      }
+    });
+    if (!undo.length) return;
+    legend.querySelectorAll("rect.bg, rect.legendtoggle").forEach(function(rect) {
+      var before = rect.getAttribute("width"), after = String(Math.min(Number(before), Math.ceil(widest)));
+      rect.setAttribute("width", after);
+      undo.push(function() { if (rect.getAttribute("width") === after) rect.setAttribute("width", before); });
+    });
+    plot._ristLegendUndo = undo;
+  }
+
+  function placement(plot, originalWidth, originalHeight, baseTop, availableHeight) {
+    var full = plot._fullLayout, paper = full._size;
+    var inset = 4;
+    var scale = Math.min(1, Math.max(0.65, Math.min(paper.w / 850, availableHeight / 450)),
+      Math.max(1, paper.w - 2 * inset) / originalWidth,
+      Math.max(1, availableHeight * 0.48) / originalHeight);
+    var width = originalWidth * scale, height = originalHeight * scale;
+    var right = Math.max(inset, paper.w - width - inset);
+    var bottom = Math.max(inset, availableHeight - height - inset);
+    var preferred = full.legend;
+    var positions = [];
+    function add(x, y) {
+      x = clamp(x, inset, right);
+      y = clamp(y, inset, bottom);
+      positions.push({x:x, y:y, left:(x - inset) / paper.w, right:(x + width + inset) / paper.w,
+        top:1 - (y - inset) / availableHeight, bottom:1 - (y + height + inset) / availableHeight});
+    }
+    // A dragged or templated position has first choice when it fits and is empty.
+    if (preferred.x >= 0 && preferred.x <= 1 && preferred.y >= 0 && preferred.y <= 1) {
+      add(preferred.x * paper.w - anchor(preferred.xanchor) * width,
+        (1 - preferred.y) * availableHeight - anchor(preferred.yanchor) * height);
+    }
+    add(inset, inset); add(right, inset); add(inset, bottom); add(right, bottom);
+    [0.25, 0.5, 0.75].forEach(function(fraction) {
+      add(inset, fraction * bottom); add(right, fraction * bottom);
+      add(fraction * right, inset); add(fraction * right, bottom);
+    });
+    var visible = plot.data.filter(function(trace) {
+      return trace.visible !== false && trace.visible !== "legendonly";
+    });
+    var scores = gd._ristScoreLegendCandidates(visible, full, positions, true);
+    var origin = plot.getBoundingClientRect();
+    // A peak label can extend into a corner even when its anchor is outside it.
+    var labels = Array.prototype.map.call(plot.querySelectorAll("g.annotation-text-g"), function(node) {
+      var rect = node.getBoundingClientRect();
+      var center = (rect.top + rect.bottom) / 2 - origin.top;
+      var naturalCenter = origin.top + baseTop + (center - paper.t) * availableHeight / paper.h;
+      return {left:rect.left, right:rect.right, width:rect.width,
+        top:naturalCenter - rect.height / 2, bottom:naturalCenter + rect.height / 2};
+    });
+    for (var i = 0; i < positions.length; i++) {
+      var pos = positions[i], x = paper.l + pos.x, y = baseTop + pos.y;
+      if (scores[i] || labels.some(function(rect) {
+        return rect.width && rect.right > origin.left + x - inset && rect.left < origin.left + x + width + inset
+          && rect.bottom > origin.top + y - inset && rect.top < origin.top + y + height + inset;
+      })) continue;
+      return {x:x, y:y, width:width, height:height, scale:scale, extra:0};
+    }
+    var title = plot.querySelector(".gtitle");
+    var titleEnd = title ? title.getBoundingClientRect().bottom - origin.top : 0;
+    var top = Math.max(inset, Math.ceil(titleEnd) + inset);
+    return {x:paper.l + inset, y:top, width:width, height:height, scale:scale,
+      extra:Math.max(0, Math.ceil(top + height + inset - baseTop))};
+  }
+
+  function fit(plot, snapshot) {
+    var full = plot._fullLayout, paper = full && full._size;
+    var legend = plot.querySelector("g.legend"), bg = legend && legend.querySelector("rect.bg");
+    var band = plot._ristLegendBand;
+    if (!paper || !plot.getClientRects().length || plot._ristLegendDragging) return null;
+    var marginTop = Number(plot.layout.margin && plot.layout.margin.t);
+    if (!Number.isFinite(marginTop)) marginTop = full.margin.t;
+    var previousExtra = band && band.top === marginTop ? band.extra : 0;
+    var baseMargin = marginTop - previousExtra;
+    clearShortLabels(plot);
+    if (bg && active(plot.layout)) compactLabels(plot, legend, Math.max(140, paper.w * 0.62));
+    var box = bg && bg.getBBox();
+    var result = null;
+    if (active(plot.layout) && box && box.width > 0 && box.height > 0) {
+      result = placement(plot, box.width, box.height, paper.t - previousExtra, paper.h + previousExtra);
+    }
+    var extra = result ? result.extra : 0;
+    if (previousExtra !== extra) {
+      var nextTop = baseMargin + extra;
+      plot._ristLegendBand = extra ? {top:nextTop, extra:extra} : null;
+      // Reserve room inside this canvas only if every candidate crosses data.
+      // The axis ranges and the selected image dimensions are unchanged.
+      return Plotly.relayout(plot, {"margin.t":nextTop}).then(function() { return fit(plot, snapshot); });
+    }
+    if (!result) return null;
+    if (snapshot) return snapshotLegend(plot, legend, box, result);
+    legend.setAttribute("transform", "translate(" + result.x + "," + result.y + ") scale(" + result.scale + ")");
+    fitted = result;
+    gd.dispatchEvent(new CustomEvent("rist-legend-fitted"));
+    return null;
+  }
+
+  // Plotly re-creates a figure when converting it to an image. Keep the fitted
+  // vector legend in the temporary figure so that this second render retains it.
+  function snapshotLegend(plot, legend, box, result) {
+    var ns = "http://www.w3.org/2000/svg";
+    var svg = document.createElementNS(ns, "svg");
+    svg.setAttribute("width", box.width);
+    svg.setAttribute("height", box.height);
+    var copy = legend.cloneNode(true);
+    copy.removeAttribute("transform");
+    // Plotly may clip the scrollbox using a definition outside the legend group.
+    var clipped = copy.querySelector("[clip-path]");
+    if (clipped) {
+      var ref = clipped.getAttribute("clip-path").match(/#([^)'"]+)/);
+      var clip = ref && document.getElementById(ref[1]);
+      if (clip) {
+        var defs = document.createElementNS(ns, "defs");
+        defs.appendChild(clip.cloneNode(true)); svg.appendChild(defs);
+        clipped.setAttribute("clip-path", "url(#" + ref[1] + ")");
+      }
+    }
+    svg.appendChild(copy);
+    var paper = plot._fullLayout._size;
+    var image = {source:"data:image/svg+xml;charset=utf-8," + encodeURIComponent(new XMLSerializer().serializeToString(svg)),
+      xref:"paper", yref:"paper", xanchor:"left", yanchor:"top", sizing:"stretch", layer:"above",
+      x:(result.x - paper.l) / paper.w, y:1 - (result.y - paper.t) / paper.h,
+      sizex:result.width / paper.w, sizey:result.height / paper.h};
+    return Plotly.relayout(plot, {showlegend:false, images:(plot.layout.images || []).concat([image])});
+  }
+
+  function update() {
+    frame = 0;
+    fitted = null;
+    if (active(gd.layout) || gd._ristLegendBand || gd._ristLegendUndo) Promise.resolve().then(function() { return fit(gd, false); }).catch(function(error) {
+      console.error("FTIR legend layout failed", error);
+    });
+  }
+  function schedule() {
+    if (!frame) frame = requestAnimationFrame(update);
+  }
+  gd._ristSizedLegend = {
+    active:active,
+    layoutForSave:function(layout) {
+      // Save the unmodified margin. The receiving screen measures its own legend.
+      var band = gd._ristLegendBand;
+      if (!band || !layout.margin || layout.margin.t !== band.top) return layout;
+      return Object.assign({}, layout, {margin:Object.assign({}, layout.margin, {t:band.top - band.extra})});
+    },
+    dragAnchor:function(legend) {
+      if (!fitted) return legend;
+      var paper = gd._fullLayout._size;
+      return {x:(fitted.x - paper.l + anchor(legend.xanchor) * fitted.width) / paper.w,
+        y:1 - (fitted.y - paper.t + anchor(legend.yanchor) * fitted.height) / paper.h};
+    },
+    prepareSnapshot:function(plot) {
+      if (!active(plot.layout)) return null;
+      return fit(plot, true);
+    }
+  };
+  gd.on("plotly_afterplot", schedule);
+  schedule();
+})();
