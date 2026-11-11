@@ -215,7 +215,7 @@ for(const kind of ['ftir','raman','tem']) test(kind+' saves blank fields and edi
   assert.equal(body.sections[0].paragraphs[0],'분석자 수정 <script>bad()</script>');
   assert.equal(h.q('slide-image').getAttribute('src'),h.prefix+'/revision/edit-slides/0');
   assert(h.q('recipient-preview').href.endsWith('/revision/preview'));
-  assert(h.q('download').href.endsWith('/revision/download'));
+  assert(new URL(h.q('download').href).pathname.endsWith('/revision/download'));
   assert.equal(h.w.location.pathname,h.prefix+'/revision/edit');
   assert.equal(JSON.parse(h.w.localStorage.getItem('rist-report-revision')).previousJobId,'original');
   assert.equal(h.q('download').getAttribute('aria-disabled'),'false');
@@ -232,9 +232,26 @@ test('SSO identity requires save before sending and is locked',t=>{
 for(const kind of ['ftir','raman','tem'])test(kind+' package save chooses a name and only the finalized current revision',t=>{
   const h=setup(t,kind);let options,calls=0;
   h.w.RistFileSave.open=value=>{options=value;calls++;return Promise.resolve({status:'cancelled'});};
-  h.q('download').click();assert.equal(calls,1);assert.equal(options.extension,'.zip');assert(options.url.endsWith('/original/download'));assert(options.ready());
-  const old=options;h.input('보고서 제목','새 보고서');assert(!old.ready());h.q('download').click();assert.equal(calls,1);
-  h.tick();h.q('download').click();assert.equal(calls,2);assert(options.url.endsWith('/revision/download'));assert.match(options.name,/새 보고서/);assert(!old.ready());
+  const button=h.q(kind==='ftir'?'download-as':'download');assert.equal(h.q('download-as').hidden,kind!=='ftir');
+  button.click();assert.equal(calls,1);assert.equal(options.extension,'.zip');assert(options.url.endsWith('/original/download'));assert(options.ready());
+  const old=options;h.input('보고서 제목','새 보고서');assert(!old.ready());button.click();assert.equal(calls,1);
+  h.tick();button.click();assert.equal(calls,2);assert(options.url.endsWith('/revision/download'));assert.match(options.name,/새 보고서/);assert(!old.ready());
+});
+test('FTIR direct ZIP uses the current revision, one experiment name and the full request number',t=>{
+  const h=setup(t,'ftir'),link=h.q('download');
+  const params=()=>new URL(link.href).searchParams;
+  h.input('보고서 제목','FT-IR 분석 보고서');
+  assert.equal(link.hasAttribute('href'),false);
+  h.tick();
+  assert.equal(link.download,'FT-IR 분석 보고서.zip');
+  assert.equal(params().get('filename'),link.download);
+  assert(new URL(link.href).pathname.endsWith('/revision/download'));
+  h.input('의뢰번호','2026-001');h.tick();
+  assert.equal(link.download,'2026-001-FT-IR 분석 보고서.zip');
+  h.input('의뢰번호','REQ-FTIR-002');h.tick();
+  assert.equal(link.download,'REQ-FTIR-002-분석 보고서.zip');
+  h.input('의뢰번호','');h.input('보고서 제목','코팅/시료 비교');h.tick();
+  assert.equal(link.download,'FT-IR-코팅_시료 비교.zip');
 });
 test('failed save retains unsaved edits and blocks stale download/send',t=>{
   const h=setup(t);h.input('분석 결과 요약 · 문단 1','보존할 문장');h.fail();h.q('save').click();
@@ -253,7 +270,7 @@ for(const kind of ['ftir','raman']) test(kind+' debounces edits and autosaves wi
   assert.equal(h.q('download').getAttribute('aria-disabled'),'true');assert.equal(h.timers.size,1);
   h.tick();assert.equal(h.posts.length,2);assert(h.posts[1].url.endsWith('/revision/revisions'));
   assert.equal(h.posts[1].body.title,'생성 중 추가 수정');assert(!h.q('send').disabled);
-  assert(h.q('download').href.endsWith('/revision2/download'));assert.equal(h.timers.size,0);
+  assert(new URL(h.q('download').href).pathname.endsWith('/revision2/download'));assert.equal(h.timers.size,0);
 });
 test('IME composition and reverting unsaved changes do not create revisions',t=>{
   const h=setup(t),field=h.field('보고서 제목');h.input('보고서 제목','입');

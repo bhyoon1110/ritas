@@ -22,6 +22,9 @@
   var editor = document.getElementById("editor"), status = document.getElementById("status");
   var taskProgress = window.RistFileProgress.monitor(status);
   var save = document.getElementById("save"), send = document.getElementById("send"), download = document.getElementById("download");
+  var downloadAs = document.getElementById("download-as");
+  var directZip = project === "FT-IR";
+  downloadAs.hidden = !directZip;
   var inputs = {}, sections = [], auxiliary = {};
   var saved = "", timer = null, composing = false, cellEditing = false, sending = false, activeRevision = null, retries = 0;
   var refs = {}, variables = [], layoutSequence = 0, canvas = null;
@@ -91,11 +94,36 @@
     xhr.onerror = xhr.ontimeout = function () { done(new Error("연결이 끊겼습니다. 원본은 유지됩니다. 다시 시도하세요.")); };
     xhr.send(body ? JSON.stringify(body) : null);
   }
+  function packageName() {
+    var requestNumber = inputs.requestNumber.value.trim(), title = inputs.title.value.trim();
+    if (!directZip) return (requestNumber || project) + "-" + title;
+    var experiment = /(?:^|[^a-z0-9])FT[- ]?IR(?![a-z])/i;
+    if (!title) title = "FT-IR 분석 보고서";
+    if (requestNumber) {
+      if (experiment.test(requestNumber)) title = title.replace(/^FT[- ]?IR(?=$|[^a-z0-9])[\s_-]*/i, "");
+      return title ? requestNumber + "-" + title : requestNumber;
+    }
+    return experiment.test(title) ? title : project + "-" + title;
+  }
   function availability() {
     if (busy || sending) taskProgress.start(); else taskProgress.stop();
     save.disabled = busy || !model;
     send.disabled = busy || dirty || !!activeRevision || !model;
-    download.setAttribute("aria-disabled", String(busy || dirty || !!activeRevision || !model));
+    var downloadBlocked = busy || dirty || !!activeRevision || !model;
+    download.setAttribute("aria-disabled", String(downloadBlocked));
+    downloadAs.disabled = downloadBlocked;
+    if (directZip) {
+      if (downloadBlocked) {
+        download.removeAttribute("href");
+        download.removeAttribute("download");
+      } else {
+        var name = window.RistFileSave.filename(packageName(), ".zip");
+        var address = new URL(url(currentId,"/download"), window.location.href);
+        address.searchParams.set("filename", name);
+        download.download = name;
+        download.href = address.pathname + address.search;
+      }
+    }
     Array.prototype.forEach.call(document.querySelectorAll("#editor input,#editor textarea,#mail-editor textarea"),function (input) { input.disabled = sending; });
     if (lookup) lookup.availability();
     if (conditions) conditions.lock(sending);
@@ -630,16 +658,25 @@
       sending = false; busy = false; availability(); message(error ? error.message : "현재 수정본을 LIMS 전송 대기열에 등록했습니다.",!!error);
     });
   };
-  download.onclick = function (event) {
-    event.preventDefault();
+  function choosePackageLocation() {
     if (busy || dirty || activeRevision || !model) return;
     var id=currentId;
-    window.RistFileSave.open({name:(inputs.requestNumber.value||project)+"-"+inputs.title.value,
+    window.RistFileSave.open({name:packageName(),
       extension:".zip",mime:"application/zip",url:url(id,"/download"),
       ready:function(){return currentId===id&&!busy&&!dirty&&!activeRevision;}
     }).then(function(result){
       if(result.status!=="cancelled")message(result.status==="saved"?"선택한 위치에 보고서 패키지를 저장했습니다.":"보고서 패키지 다운로드를 시작했습니다. 저장 위치는 브라우저 설정을 따릅니다.");
     });
+  }
+  downloadAs.onclick = choosePackageLocation;
+  download.onclick = function (event) {
+    if (busy || dirty || activeRevision || !model) { event.preventDefault(); return; }
+    if (directZip) {
+      message("보고서 ZIP 다운로드를 시작했습니다.");
+      return;
+    }
+    event.preventDefault();
+    choosePackageLocation();
   };
   window.addEventListener("beforeunload",function (event) { if (dirty || busy || activeRevision) { event.preventDefault(); event.returnValue = "저장하지 않은 변경 또는 생성 중인 수정본이 있습니다."; } });
   load(currentId);

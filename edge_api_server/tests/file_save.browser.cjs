@@ -12,7 +12,8 @@ const port=new Promise((resolve,reject)=>{let data='';server.stdout.on('data',ch
     for(const kind of ['ftir','raman']){
       const page=await browser.newPage({viewport:{width:1500,height:1100}}),errors=[];
       await page.addInitScript(()=>{window.showSaveFilePicker=undefined;}); // Same fallback used on non-secure HTTP.
-      page.on('pageerror',e=>errors.push(e.message));page.on('dialog',d=>d.accept());
+      let browserDialogs=0;
+      page.on('pageerror',e=>errors.push(e.message));page.on('dialog',d=>{browserDialogs++;return d.accept();});
       const raw=Buffer.from(Array.from({length:241},(_,i)=>{const x=400+i*15;return x+','+(.05+Math.exp(-Math.pow(x-1700,2)/(2*55**2)));}).join('\n'));
       await page.goto(origin+'/'+kind);await page.waitForFunction(()=>document.getElementById('sw-step-2')&&!document.getElementById('sw-step-2').disabled);
       await page.locator('#'+kind+'-file-input').setInputFiles({name:'source.'+(kind==='ftir'?'dpt':'txt'),mimeType:'text/plain',buffer:raw});
@@ -35,13 +36,25 @@ const port=new Promise((resolve,reject)=>{let data='';server.stdout.on('data',ch
       await page.waitForFunction(()=>{const f=document.getElementById('sw-report-editor'),d=f&&f.contentDocument;return d&&d.getElementById('page-add')&&!d.getElementById('page-add').disabled;},null,{timeout:180000});
       await page.waitForFunction(()=>!document.getElementById('sw-step-4').disabled);await page.locator('#sw-step-4').click();
       const url=await frame.locator('#download').getAttribute('href');const original=await (await page.request.get(origin+url)).body();
-      await frame.locator('#download').click();dialog=page.getByRole('dialog',{name:'파일 저장',exact:true});
+      dialog=page.getByRole('dialog',{name:'파일 저장',exact:true});
+      const choose=frame.locator(kind==='ftir'?'#download-as':'#download');
+      if(kind==='ftir'){
+        const dialogsBefore=browserDialogs;
+        pending=page.waitForEvent('download');
+        await frame.locator('#download').click(); const direct=await pending;
+        assert.equal(direct.suggestedFilename(),'FT-IR 분석 보고서.zip');
+        assert.equal(await dialog.count(),0);assert.equal(browserDialogs,dialogsBefore);
+        const directPath=path.join(output,direct.suggestedFilename());
+        await direct.saveAs(directPath);assert.equal(await direct.failure(),null);
+        assert.deepEqual(fs.readFileSync(directPath),original);
+      }
+      await choose.click();
       await dialog.getByLabel('저장 파일 이름').fill('검토 완료 '+kind+'.zip');
       pending=page.waitForEvent('download');await dialog.getByRole('button',{name:'다운로드',exact:true}).click();
       const report=await pending;assert.equal(report.suggestedFilename(),'검토 완료 '+kind+'.zip');
       const reportPath=path.join(output,report.suggestedFilename());await report.saveAs(reportPath);assert.equal(await report.failure(),null);
       assert.deepEqual(fs.readFileSync(reportPath),original);
-      await page.setViewportSize({width:390,height:844});await frame.locator('#download').click();
+      await page.setViewportSize({width:390,height:844});await choose.click();
       const box=await dialog.boundingBox();assert(box.width<=390&&box.x>=0&&box.y>=0&&box.y+box.height<=844);
       await dialog.screenshot({path:path.join(output,kind+'-save-mobile.png')});await dialog.getByRole('button',{name:'취소',exact:true}).click();
       assert.deepEqual(errors,[]);console.log(kind+': named graph + RAW round-trip, named byte-identical ZIP, cancel, desktop/mobile passed');await page.close();
