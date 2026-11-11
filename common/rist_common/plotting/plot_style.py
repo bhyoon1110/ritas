@@ -3409,9 +3409,12 @@ def _legend_text_edit_js(
 """
 
 
-def peak_sensitivity_js(div_id: str, initial: str = "medium") -> str:
+def peak_sensitivity_js(div_id: str, initial: str | int = "medium") -> str:
     """HTML에서 검출 피크의 0~100 민감도를 즉시 전환한다."""
-    initial_value = {"low": 25, "medium": 50, "high": 100}.get(initial, 50)
+    if isinstance(initial, int):
+        initial_value = max(0, min(100, initial))
+    else:
+        initial_value = {"low": 25, "medium": 50, "high": 100}.get(initial, 50)
     return f"""
 <style>
 #{div_id} .rist-peak-sensitivity-control {{

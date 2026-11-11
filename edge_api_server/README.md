@@ -423,7 +423,7 @@ POST /api/v1/ftir/analyze
 Content-Type: multipart/form-data
 
 files: DPT 파일(복수)
-sensitivity: 0~100, 기본값 25
+sensitivity: 0~100, 기본값 0 (자동 검출 피크 0개)
 assignment_library_ids: 선택한 라이브러리 ID(복수)
 
 GET    /api/v1/ftir/assignment-libraries

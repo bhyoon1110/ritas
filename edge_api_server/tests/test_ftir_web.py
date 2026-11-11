@@ -452,7 +452,8 @@ def test_ftir_analysis_api_accepts_multiple_dpt_files(tmp_path: Path) -> None:
     assert toggle["absorbance_y"] != toggle["transmittance_y"]
 
 
-def test_ftir_analysis_zero_sensitivity_disables_detected_peaks(tmp_path: Path) -> None:
+@pytest.mark.parametrize("form", [{}, {"sensitivity": "0"}], ids=["default", "explicit-zero"])
+def test_ftir_analysis_zero_sensitivity_disables_detected_peaks(tmp_path: Path, form: dict) -> None:
     with TestClient(create_ftir_preview_app(tmp_path / "libraries")) as client:
         response = client.post(
             "/api/v1/ftir/analyze",
@@ -463,7 +464,7 @@ def test_ftir_analysis_zero_sensitivity_disables_detected_peaks(tmp_path: Path) 
                     "application/octet-stream",
                 )
             },
-            data={"sensitivity": "0"},
+            data=form,
         )
 
     assert response.status_code == 200

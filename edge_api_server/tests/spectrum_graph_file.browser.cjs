@@ -26,6 +26,15 @@ async function collection(page,kind){return page.evaluate(kind=>new Promise((res
       const ext=kind==='ftir'?'dpt':'txt';
       await page.locator('#'+kind+'-file-input').setInputFiles([{name:'보존 10%.'+ext,mimeType:'text/plain',buffer:raw},{name:'original-second.'+ext,mimeType:'text/plain',buffer:raw}]);
       await page.waitForFunction(()=>document.getElementById('spectrum-workflow').dataset.step==='2'&&!document.getElementById('sw-save-graph').disabled);
+      if (kind === 'ftir') {
+        assert.equal(await page.locator('.rist-peak-sensitivity-number').inputValue(), '0');
+        assert.equal(await page.locator('.rist-peak-sensitivity-slider').inputValue(), '0');
+        assert.equal(await page.locator('.rist-peak-sensitivity-value').textContent(), '0개');
+        await page.locator('.rist-ftir-tools-toggle').click();
+        await page.locator('.rist-peak-sensitivity-number').fill('73');
+        await page.waitForFunction(() => parseInt(document.querySelector('.rist-peak-sensitivity-value').textContent, 10) > 0);
+        await page.locator('.rist-ftir-tools-close').click();
+      }
       await page.evaluate(async id=>{
         const g=document.getElementById(id);await g._ristStackReady;
         await g._ristApplyStackSettings({enabled:true,gap:2.4});await g._ristStackReady;
@@ -41,7 +50,9 @@ async function collection(page,kind){return page.evaluate(kind=>new Promise((res
       const saved=await collection(page,kind);assert.equal(saved.graphs.length,1);
       // Unsaved edits must not leak into an export of the saved card.
       await page.evaluate(async id=>Plotly.relayout(document.getElementById(id),{'title.text':'미저장 제목'}),id);
-      const downloadPromise=page.waitForEvent('download');await page.locator('.sw-card').getByRole('button',{name:'파일 내보내기',exact:true}).click();
+      await page.locator('.sw-card').getByRole('button',{name:'파일 내보내기',exact:true}).click();
+      const downloadPromise = page.waitForEvent('download');
+      await page.getByRole('dialog', {name:'파일 저장'}).getByRole('button', {name:/^(브라우저 )?다운로드$/}).click();
       const download=await downloadPromise,file=path.join(output,kind+'.ristgraph');await download.saveAs(file);
       assert.match(download.suggestedFilename(),/\.ristgraph$/);
       const binary=fs.readFileSync(file),length=binary.readUInt32LE(8),manifest=JSON.parse(binary.subarray(16,16+length));
@@ -65,6 +76,7 @@ async function collection(page,kind){return page.evaluate(kind=>new Promise((res
       assert.deepEqual(imported.graphs[0].state.plotData,manifest.state.plotData);
       assert.deepEqual(imported.graphs[0].state.plotLayout,manifest.state.plotLayout);
       if(kind==='ftir'){
+        assert.equal(await target.locator('.rist-peak-sensitivity-number').inputValue(), '73');
         assert.equal(await target.evaluate(id=>document.getElementById(id)._ristFtirSignalMode,id),'transmittance');
         assert.deepEqual(await target.evaluate(id=>document.getElementById(id).data.filter(t=>t.meta?.rist_sample_parent).map(t=>t.y),id),manifest.state.plotData.filter(t=>t.meta?.rist_sample_parent).map(t=>t.y));
         await target.evaluate(async id=>{const g=document.getElementById(id);await g._ristSetSignalMode('absorbance');await g._ristStackReady;},id);
@@ -107,6 +119,11 @@ async function collection(page,kind){return page.evaluate(kind=>new Promise((res
       await target.locator('#sw-step-2').click();await target.setViewportSize({width:390,height:844});
       await target.locator('#sw-library').scrollIntoViewIfNeeded();await target.screenshot({path:path.join(output,kind+'-mobile.png')});
       assert.deepEqual(errors,[]);console.log(kind+': clean-browser RAW/edit restoration, checksum rejection, re-edit/save, report generation, desktop/mobile verified');
+      if (kind === 'ftir') {
+        await target.locator('#ftir-clear').click();
+        await target.waitForFunction(() => document.getElementById('spectrum-workflow').dataset.step === '1' && !document.getElementById('sw-step-2').disabled);
+        assert.equal(await target.locator('.rist-peak-sensitivity-number').inputValue(), '0');
+      }
       await fresh.close();
     }
     console.log('Artifacts: '+output);

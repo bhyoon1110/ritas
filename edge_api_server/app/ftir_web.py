@@ -21,7 +21,7 @@ from ftir.assignment_libraries import (
 from ftir.findings import DEFAULT_FUNC_GROUPS_PATH
 from ftir.preprocess import load_dpt
 from ftir.plotting import ftir_abs_trans_toggle_js, ftir_stack_js
-from ftir.web_analysis import DptAnalysisError, WN_MAX, WN_MIN, analyze_dpt_files
+from ftir.web_analysis import DEFAULT_PEAK_SENSITIVITY, DptAnalysisError, WN_MAX, WN_MIN, analyze_dpt_files
 from rist_common import get_logger
 from rist_common.plotting import (
     fig_to_responsive_html,
@@ -2335,6 +2335,7 @@ _UPLOAD_SCRIPT = """
   var SESSION_DB_NAME = "rist-ftir-workspace-v1";
   var SESSION_STORE = "workspace";
   var SESSION_KEY = "current";
+  var DEFAULT_PEAK_SENSITIVITY = __DEFAULT_PEAK_SENSITIVITY__;
   var REPORT_OPTION_STORAGE_KEY = "rist-ftir-report-condition-options-v1";
   var REPORT_OPTION_FIELDS = __REPORT_OPTION_FIELDS__;
   var reportOptionValues = loadReportOptionValues();
@@ -2727,7 +2728,7 @@ _UPLOAD_SCRIPT = """
 
   function currentPeakSensitivity() {
     var sensitivity = Number(gd._ristPeakSensitivityValue);
-    if (!Number.isFinite(sensitivity)) return 25;
+    if (!Number.isFinite(sensitivity)) return DEFAULT_PEAK_SENSITIVITY;
     return Math.max(0, Math.min(100, Math.round(sensitivity)));
   }
 
@@ -2791,8 +2792,10 @@ _UPLOAD_SCRIPT = """
       setOriginStyleEnabled(state.originStyle !== false, false);
       latestAnalysisPayload = state.analysisPayload || null;
       updateReportSendAvailability();
-      if (Number.isFinite(Number(state.sensitivity))) {
+      if ((files.length || state.workTemplate) && Number.isFinite(Number(state.sensitivity))) {
         gd._ristPeakSensitivityValue = Number(state.sensitivity);
+      } else {
+        gd._ristPeakSensitivityValue = DEFAULT_PEAK_SENSITIVITY;
       }
       renderFiles();
       status.textContent = state.statusText || status.textContent;
@@ -4954,7 +4957,7 @@ _UPLOAD_SCRIPT = """
     updateIdleStatus();
     setOriginStyleEnabled(true, false);
     return window.Plotly.react(gd, freshEmptyData(), freshEmptyLayout(), gd._context).then(function() {
-      dispatchDataReplaced(25);
+      dispatchDataReplaced(workTemplate && workTemplate.isActive() ? currentPeakSensitivity() : DEFAULT_PEAK_SENSITIVITY);
       return applyResponsiveLayout();
     }).then(function() {
       if (gd.getClientRects().length) window.Plotly.Plots.resize(gd).catch(function() {});
@@ -5590,14 +5593,16 @@ _UPLOAD_SCRIPT = """
 """
 
 
-_UPLOAD_SCRIPT = inject_condition_options(_UPLOAD_SCRIPT, "FT-IR")
+_UPLOAD_SCRIPT = inject_condition_options(_UPLOAD_SCRIPT, "FT-IR").replace(
+    "__DEFAULT_PEAK_SENSITIVITY__", str(DEFAULT_PEAK_SENSITIVITY)
+)
 
 
 @lru_cache(maxsize=1)
 def build_ftir_page() -> str:
     extra_scripts = (
         origin_style_toggle_js(PLOT_DIV_ID, "ftir-origin", enabled=True)
-        + peak_sensitivity_js(PLOT_DIV_ID, initial="low")
+        + peak_sensitivity_js(PLOT_DIV_ID, initial=DEFAULT_PEAK_SENSITIVITY)
         + _FTIR_TOOL_PANEL_SCRIPT
         + ftir_abs_trans_toggle_js(
             PLOT_DIV_ID,
@@ -5806,7 +5811,7 @@ def delete_assignment_library(request: Request, library_id: str) -> dict:
 def analyze_ftir(
     request: Request,
     files: list[UploadFile] = File(...),
-    sensitivity: int = Form(default=25, ge=0, le=100),
+    sensitivity: int = Form(default=DEFAULT_PEAK_SENSITIVITY, ge=0, le=100),
     assignment_library_ids: list[str] | None = Form(default=None),
     assignment_library_selection_explicit: bool = Form(default=False),
 ) -> dict:

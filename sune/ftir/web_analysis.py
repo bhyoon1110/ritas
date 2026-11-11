@@ -20,6 +20,7 @@ from .plotting import build_multi_peak_fig
 from .preprocess import load_dpt, preprocess
 
 
+DEFAULT_PEAK_SENSITIVITY = 0
 WN_MIN = 400.0
 WN_MAX = 4000.0
 SMOOTH_WINDOW = 11
@@ -97,7 +98,7 @@ def _sample_label(filename: str, used: set[str]) -> str:
 def analyze_dpt_files(
     files: list[tuple[str, bytes]],
     *,
-    sensitivity: int = 25,
+    sensitivity: int = DEFAULT_PEAK_SENSITIVITY,
     smooth: bool = True,
     assignment_libraries: list[AssignmentLibrary] | None = None,
 ) -> dict:

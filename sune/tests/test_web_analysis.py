@@ -48,11 +48,8 @@ def test_ftir_web_figure_displays_non_normalized_absorbance() -> None:
     assert max(toggle["absorbance_y"]) > 1.0
 
 
-def test_zero_sensitivity_returns_no_detected_peaks() -> None:
-    result = analyze_dpt_files(
-        [("sample-a.dpt", synthetic_dpt())],
-        sensitivity=0,
-    )
+def test_default_sensitivity_returns_no_detected_peaks() -> None:
+    result = analyze_dpt_files([("sample-a.dpt", synthetic_dpt())])
 
     assert result["settings"]["sensitivity"] == 0
     assert result["samples"][0]["peakCount"] == 0
