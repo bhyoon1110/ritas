@@ -254,6 +254,7 @@ def ftir_stack_js(div_id: str) -> str:
     enabled: false,
     gap: 1.2,
     positions: {},
+    overlayOffsets: {absorbance: {}, transmittance: {}},
     order: [],
     units: {absorbance: 1, transmittance: 100},
     traces: {},
@@ -351,8 +352,12 @@ def ftir_stack_js(div_id: str) -> str:
   function numberArray(values) {
     return Array.prototype.slice.call(values || []).map(function(value) {
       var next = Number(value);
-      return Number.isFinite(next) ? next : 0;
+      return value != null && value !== "" && Number.isFinite(next) ? next : null;
     });
+  }
+
+  function shifted(values, offset) {
+    return offset ? values.map(function(y) { return y === null ? null : y + offset; }) : values;
   }
 
   function discoverOrder() {
@@ -399,7 +404,7 @@ def ftir_stack_js(div_id: str) -> str:
   }
 
   function offsetFor(group, signalMode) {
-    if (!state.enabled) return 0;
+    if (!state.enabled) return state.overlayOffsets[signalMode][group] || 0;
     return Number(state.positions[group] || 0) * Number(state.units[signalMode] || 1);
   }
 
@@ -420,7 +425,13 @@ def ftir_stack_js(div_id: str) -> str:
     state.order = Array.isArray(meta.sampleOrder) && meta.sampleOrder.length
       ? meta.sampleOrder.map(String) : discoverOrder();
     state.positions = {};
+    state.overlayOffsets = {absorbance: {}, transmittance: {}};
     state.order.forEach(function(group, index) {
+      Object.keys(state.overlayOffsets).forEach(function(unit) {
+        var saved = meta.overlayOffsets && meta.overlayOffsets[unit];
+        var offset = saved && saved[group];
+        if (Number.isFinite(offset) && offset) state.overlayOffsets[unit][group] = offset;
+      });
       var configured = meta.samplePositions && meta.samplePositions[group];
       state.positions[group] = Number.isFinite(Number(configured))
         ? Number(configured) : (state.enabled ? index * state.gap : 0);
@@ -430,21 +441,44 @@ def ftir_stack_js(div_id: str) -> str:
     (gd.data || []).forEach(function(trace, index) {
       var group = groupOfTrace(index);
       var toggle = traceMeta(index).ftir_signal_toggle;
-      if (!group || !toggle || !Object.prototype.hasOwnProperty.call(state.positions, group)) return;
+      if (!group || !Object.prototype.hasOwnProperty.call(state.positions, group)) return;
+      // Earlier click-added peaks had no unit arrays. Read their measured point
+      // from the parent before applying a new visual translation.
+      if (!toggle && traceMeta(index).rist_peak && gd._ristPeakCoordinates) {
+        var parent = (gd.data || []).findIndex(function(candidate, curve) {
+          return traceMeta(curve).rist_sample_parent && groupOfTrace(curve) === group;
+        });
+        var point = gd._ristPeakCoordinates.pointAt(parent, Number(trace.x && trace.x[0]), true);
+        if (point && point.ftirSignal) {
+          toggle = trace.meta.ftir_signal_toggle = point.ftirSignal;
+          trace.meta.rist_ftir_stack_offset_absorbance = Number(traceMeta(parent).rist_ftir_stack_offset_absorbance || 0);
+          trace.meta.rist_ftir_stack_offset_transmittance = Number(traceMeta(parent).rist_ftir_stack_offset_transmittance || 0);
+          trace.meta.rist_peak.base_y = toggle.absorbance_y[0] - trace.meta.rist_ftir_stack_offset_absorbance;
+        }
+      }
+      if (!toggle) return;
       var absOffset = Number(traceMeta(index).rist_ftir_stack_offset_absorbance);
       var transOffset = Number(traceMeta(index).rist_ftir_stack_offset_transmittance);
       if (!Number.isFinite(absOffset)) absOffset = offsetFor(group, "absorbance");
       if (!Number.isFinite(transOffset)) transOffset = offsetFor(group, "transmittance");
-      state.traces[index] = {
+      var base = {
         group: group,
         parent: !!traceMeta(index).rist_sample_parent,
-        absorbance: numberArray(toggle.absorbance_y).map(function(value) { return value - absOffset; }),
-        transmittance: numberArray(toggle.transmittance_y).map(function(value) { return value - transOffset; })
+        absorbance: shifted(numberArray(toggle.absorbance_y), -absOffset),
+        transmittance: shifted(numberArray(toggle.transmittance_y), -transOffset)
       };
+      // Keep measured precision when reopening a translated trace.
+      var hoverUnit = traceMeta(index).rist_ftir_hover_unit;
+      if ((hoverUnit === "absorbance" || hoverUnit === "transmittance") &&
+          trace.customdata && trace.customdata.length === base[hoverUnit].length) {
+        base[hoverUnit] = numberArray(trace.customdata);
+      }
+      state.traces[index] = base;
     });
 
     state.annotations = {};
-    (gd.layout.annotations || []).forEach(function(annotation, index) {
+    var annotations = mode() === "transmittance" ? gd._ristFtirUnitOriginalAnnotations : gd.layout.annotations;
+    (annotations || []).forEach(function(annotation, index) {
       var label = labelFor("annotationIndex", index);
       if (!label) return;
       var group = String(label.legendgroup || "");
@@ -455,7 +489,8 @@ def ftir_stack_js(div_id: str) -> str:
     });
 
     state.shapes = {};
-    (gd.layout.shapes || []).forEach(function(shape, index) {
+    var shapes = mode() === "transmittance" ? gd._ristFtirUnitOriginalShapes : gd.layout.shapes;
+    (shapes || []).forEach(function(shape, index) {
       var label = labelFor("shapeIndex", index);
       if (!label) return;
       var group = String(label.legendgroup || "");
@@ -479,6 +514,7 @@ def ftir_stack_js(div_id: str) -> str:
       if (!base.parent || !sampleVisible(base.group)) return;
       var offset = offsetFor(base.group, signalMode);
       base[signalMode].forEach(function(value) {
+        if (value === null) return;
         low = Math.min(low, value + offset);
         high = Math.max(high, value + offset);
       });
@@ -497,6 +533,8 @@ def ftir_stack_js(div_id: str) -> str:
     meta.enabled = state.enabled;
     meta.gap = state.gap;
     meta.samplePositions = Object.assign({}, state.positions);
+    meta.overlayOffsets = {absorbance:Object.assign({}, state.overlayOffsets.absorbance),
+      transmittance:Object.assign({}, state.overlayOffsets.transmittance)};
     meta.sampleOrder = state.order.slice();
     meta.modeUnits = Object.assign({}, state.units);
     meta.yAxisDisplay = state.yAxisDisplay;
@@ -547,6 +585,23 @@ def ftir_stack_js(div_id: str) -> str:
     stackMeta().legendOrder = groups;
   }
 
+  function hasOverlayShift() {
+    return !state.enabled && state.order.some(function(group) { return !!offsetFor(group, mode()); });
+  }
+
+  function syncMeasuredHover(trace, base, unit) {
+    trace.customdata = base[unit];
+    trace.meta.rist_ftir_hover_unit = unit;
+    // Migrate templates in existing graphs, including temporarily hidden peak markers.
+    var target = trace.meta.rist_peak_display || trace;
+    var template = target.hovertemplate;
+    if (typeof template === "string") {
+      target.hovertemplate = template.replace(/%\{y:\.4f\}/g, "%{customdata:.6g}").replace(/%\{y(?=[:}])/g, "%{customdata");
+    } else if (template == null && target.hoverinfo !== "skip") {
+      target.hovertemplate = "%{x:.1f} cm⁻¹ | 측정 Y: %{customdata:.6g}<extra>%{fullData.name}</extra>";
+    }
+  }
+
   function applyOffsets(options) {
     options = options || {};
     if (!state.initialized) initState();
@@ -560,9 +615,10 @@ def ftir_stack_js(div_id: str) -> str:
       var absOffset = offsetFor(base.group, "absorbance");
       var transOffset = offsetFor(base.group, "transmittance");
       var toggle = data[index].meta.ftir_signal_toggle;
-      toggle.absorbance_y = base.absorbance.map(function(value) { return value + absOffset; });
-      toggle.transmittance_y = base.transmittance.map(function(value) { return value + transOffset; });
+      toggle.absorbance_y = shifted(base.absorbance, absOffset);
+      toggle.transmittance_y = shifted(base.transmittance, transOffset);
       data[index].y = signalMode === "transmittance" ? toggle.transmittance_y : toggle.absorbance_y;
+      syncMeasuredHover(data[index], base, signalMode);
       data[index].meta.rist_ftir_stack_position = Number(state.positions[base.group] || 0);
       data[index].meta.rist_ftir_stack_offset_absorbance = absOffset;
       data[index].meta.rist_ftir_stack_offset_transmittance = transOffset;
@@ -596,6 +652,11 @@ def ftir_stack_js(div_id: str) -> str:
     }
     if (!layout.yaxis) layout.yaxis = {};
     syncStackYAxis(layout);
+    var title = layout.yaxis.title;
+    if (title && typeof title.text === "string") {
+      var baseTitle = title.text.replace(/ · Y 이동 표시$/, "");
+      title.text = baseTitle && hasOverlayShift() ? baseTitle + " · Y 이동 표시" : baseTitle;
+    }
     applyGridPreferences(layout, state.enabled, state.yAxisDisplay);
     if (!options.preserveView) {
       var range = fitRange(signalMode);
@@ -676,14 +737,15 @@ def ftir_stack_js(div_id: str) -> str:
       var base = state.traces[index];
       if (!base || !base.parent || !traceVisible(index)) return;
       var xs = numberArray(trace.x);
+      var currentMode = mode();
       var nearest = -1;
       var nearestDelta = Infinity;
       xs.forEach(function(value, itemIndex) {
+        if (value === null || base[currentMode][itemIndex] === null) return;
         var delta = Math.abs(value - point.x);
         if (delta < nearestDelta) { nearest = itemIndex; nearestDelta = delta; }
       });
       if (nearest < 0) return;
-      var currentMode = mode();
       var y = base[currentMode][nearest] + offsetFor(base.group, currentMode);
       var dx = Math.abs(point.xaxis.d2p(xs[nearest]) - (ev.clientX - point.rect.left));
       var dy = Math.abs(point.yaxis.d2p(y) - (ev.clientY - point.rect.top));
@@ -704,7 +766,9 @@ def ftir_stack_js(div_id: str) -> str:
     stackButton.classList.toggle("is-active", !!state.enabled);
     dragButton.classList.toggle("is-active", !!state.dragMode);
     stackButton.disabled = !hasMultipleSamples;
-    dragButton.disabled = !hasMultipleSamples;
+    dragButton.disabled = !state.order.length;
+    resetButton.disabled = !hasOverlayShift();
+    dragButton.setAttribute("aria-pressed", String(state.dragMode));
     gapSlider.disabled = !hasMultipleSamples;
     gapSlider.value = String(Math.round(state.gap * 100));
     gapValue.textContent = state.gap.toFixed(2);
@@ -744,11 +808,13 @@ def ftir_stack_js(div_id: str) -> str:
     "<button type='button' class='rist-ftir-stack-button' title='시료를 위아래로 벌려서 보기'>스택</button>"
     + "<input class='rist-ftir-stack-gap' type='range' min='0' max='600' step='5' value='120' title='스택 간격 0~6배 (0: 추가 간격 없이 겹쳐 보기)' aria-label='스택 간격'>"
     + "<span class='rist-ftir-stack-value'>1.20</span>"
-    + "<button type='button' class='rist-ftir-stack-button' title='시료 곡선을 위아래로 드래그'>Y 이동</button>";
+    + "<button type='button' class='rist-ftir-stack-button' title='시료 곡선을 위아래로 드래그합니다. 곡선 위에 마우스를 올리면 이동 전 측정값이 표시됩니다.'>Y 이동</button>"
+    + "<button type='button' class='rist-ftir-stack-button' title='현재 단위에서 모든 시료의 Y 이동을 취소하고 측정 위치로 되돌립니다.'>Y 원위치</button>";
   toolbar.appendChild(control);
   var buttons = control.querySelectorAll(".rist-ftir-stack-button");
   var stackButton = buttons[0];
   var dragButton = buttons[1];
+  var resetButton = buttons[2];
   var gapSlider = control.querySelector(".rist-ftir-stack-gap");
   var gapValue = control.querySelector(".rist-ftir-stack-value");
 
@@ -764,6 +830,13 @@ def ftir_stack_js(div_id: str) -> str:
   dragButton.addEventListener("click", function() {
     setDragMode(!state.dragMode, true);
   });
+  resetButton.addEventListener("click", function() {
+    if (!hasOverlayShift()) return;
+    if (gd._ristHistory) gd._ristHistory.capture();
+    setDragMode(false, false);
+    state.overlayOffsets[mode()] = {};
+    applyOffsets({preserveView:true});
+  });
   gapSlider.addEventListener("input", function() {
     var nextGap = stackGap(Number(gapSlider.value) / 100);
     gd.dispatchEvent(new CustomEvent("rist-exclusive-interaction-start", {
@@ -771,7 +844,7 @@ def ftir_stack_js(div_id: str) -> str:
     }));
     state.gap = nextGap;
     if (state.enabled) resetPositions();
-    applyOffsets();
+    applyOffsets({preserveView:!state.enabled});
   });
 
   function exitYDragModeOnOutsidePointer(ev) {
@@ -820,7 +893,8 @@ def ftir_stack_js(div_id: str) -> str:
       pointerId: ev.pointerId,
       startClientY: ev.clientY,
       dataPerPixel: Number(nextY) - Number(nearest.point.y),
-      startPosition: Number(state.positions[nearest.group] || 0)
+      startOffset: offsetFor(nearest.group, mode()),
+      yRange: nearest.point.yaxis.range.slice()
     };
     try { gd.setPointerCapture(ev.pointerId); } catch (error) {}
   }, true);
@@ -830,27 +904,38 @@ def ftir_stack_js(div_id: str) -> str:
     if (ev.cancelable) ev.preventDefault();
     ev.stopPropagation();
     if (ev.stopImmediatePropagation) ev.stopImmediatePropagation();
-    var unit = Number(state.units[mode()] || 1);
-    state.positions[state.dragging.group] =
-      state.dragging.startPosition
-      + (ev.clientY - state.dragging.startClientY) * state.dragging.dataPerPixel / unit;
-    state.autoLayout = false;
-    state.enabled = state.order.some(function(group) {
-      return Math.abs(Number(state.positions[group] || 0)) > 0.001;
-    });
-    rememberVisualOrder();
+    var group = state.dragging.group, unit = mode();
+    var offset = state.dragging.startOffset
+      + (ev.clientY - state.dragging.startClientY) * state.dragging.dataPerPixel;
+    if (!Number.isFinite(offset)) return;
+    if (state.enabled) {
+      state.positions[group] = offset / Number(state.units[unit] || 1);
+      state.autoLayout = false;
+      rememberVisualOrder();
+    } else {
+      // Autoscale would move the other spectra while this sample is dragged.
+      if (gd.layout.yaxis.autorange) {
+        gd.layout.yaxis.range = state.dragging.yRange.slice();
+        gd.layout.yaxis.autorange = false;
+      }
+      state.overlayOffsets[unit][group] = offset;
+    }
     requestApply();
   }
 
   function preventStackTouchScroll(ev) {
     if (!state.dragging) return;
+    // Plotly also listens for touchstart independently of pointerdown. Once a
+    // spectrum owns this gesture, keep that handler from panning the Y axis.
     if (ev.cancelable) ev.preventDefault();
+    ev.stopPropagation();
   }
 
   document.addEventListener("pointermove", handleStackPointerMove, {
     capture: true,
     passive: false
   });
+  gd.addEventListener("touchstart", preventStackTouchScroll, {capture:true, passive:false});
   gd.addEventListener("touchmove", preventStackTouchScroll, {
     capture: true,
     passive: false

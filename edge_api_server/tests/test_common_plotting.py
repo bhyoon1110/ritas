@@ -890,7 +890,8 @@ def test_peak_editor_prefers_nearest_local_maximum_by_x(tmp_path) -> None:
     assert "if (targetTrace >= 0 && t2 !== targetTrace) continue" in html
     assert "yNearestTrace: true" in html
     assert "if (tr.meta && tr.meta.rist_peak) continue" in html
-    assert "return { x: gd._snapPoint.x, y: gd._snapPoint.y, snapped: true }" in html
+    assert "var snapped = { x: gd._snapPoint.x, y: gd._snapPoint.y, snapped: true }" in html
+    assert "snapped.curve = targetTrace >= 0 ? targetTrace : gd._snapPoint.curve" in html
 
 
 def test_apply_legend_text_renames_without_html_output() -> None:

@@ -429,10 +429,11 @@ def _crosshair_js(div_id: str) -> str:
       // 인접 인덱스도 함께 비교 (선형 구간 대비)
       for (var k = j - 1; k <= j + 1; k++) {{
         if (k < 0 || k >= xs.length) continue;
+        if (tr.meta && tr.meta.rist_ftir_hover_unit && (xs[k] == null || ys[k] == null)) continue;
         var cx = xa.d2p(xs[k]), cy = ya.d2p(ys[k]);
         var dx = cx - px, dy = cy - py;
         var d2 = dx * dx + dy * dy;
-        if (d2 < bestD) {{ bestD = d2; best = {{ x: xs[k], y: ys[k], cx: cx, cy: cy, tt: t }}; }}
+        if (d2 < bestD) {{ bestD = d2; best = {{ x: xs[k], y: ys[k], index: k, cx: cx, cy: cy, tt: t }}; }}
       }}
     }}
 
@@ -448,13 +449,16 @@ def _crosshair_js(div_id: str) -> str:
       dot.style.left = dotL + "px";
       dot.style.top = dotT + "px";
       dot.style.display = "block";
-      box.innerHTML = "x: " + fmt(best.x) + " &nbsp; y: " + fmt(best.y);
+      var trace = data[best.tt];
+      var measured = trace.meta && trace.meta.rist_ftir_hover_unit && trace.customdata;
+      box.innerHTML = "x: " + fmt(best.x) + (measured ? " &nbsp; 측정 y: " : " &nbsp; y: ")
+        + (measured ? String(Number(Number(measured[best.index]).toPrecision(8))) : fmt(best.y));
       anchorX = dotL; anchorY = dotT;
     }} else {{
       gd._snapCurve = -1;
       gd._snapPoint = null;
       dot.style.display = "none";
-      box.innerHTML = "x: " + fmt(curX) + " &nbsp; y: " + fmt(ya.p2d(py));
+      box.innerHTML = "x: " + fmt(curX) + (gd._ristFtirSignalMode ? " &nbsp; 축 y: " : " &nbsp; y: ") + fmt(ya.p2d(py));
       anchorX = e.clientX - gdr.left; anchorY = e.clientY - gdr.top;
     }}
     // 기준점 근처에 박스 배치 (가장자리 넘으면 반대편)
@@ -5208,7 +5212,9 @@ def peak_editor_js(div_id: str) -> str:
     if (!best && gd._snapPoint
         && isFinite(Number(gd._snapPoint.x))
         && isFinite(Number(gd._snapPoint.y))) {{
-      return {{ x: gd._snapPoint.x, y: gd._snapPoint.y, snapped: true }};
+      var snapped = {{ x: gd._snapPoint.x, y: gd._snapPoint.y, snapped: true }};
+      if (gd._ristFtirSignalMode) snapped.curve = targetTrace >= 0 ? targetTrace : gd._snapPoint.curve;
+      return snapped;
     }}
     return best;
   }}
@@ -5293,12 +5299,17 @@ def peak_editor_js(div_id: str) -> str:
       tr.meta.rist_peak.position_method = "exact-x";
       tr.meta.rist_peak.intensity_method = pt.interpolated ? "linear-interpolation" : "measured";
       tr.meta.rist_sample_group = parentSampleGroup;
-      if (pt.ftirSignal) {{
-        tr.meta.ftir_signal_toggle = pt.ftirSignal;
-        tr.meta.rist_ftir_stack_offset_absorbance = Number(parentMeta.rist_ftir_stack_offset_absorbance || 0);
-        tr.meta.rist_ftir_stack_offset_transmittance = Number(parentMeta.rist_ftir_stack_offset_transmittance || 0);
-        tr.meta.rist_peak.base_y = pt.ftirSignal.absorbance_y[0] - tr.meta.rist_ftir_stack_offset_absorbance;
-      }}
+    }}
+    var signal = pt.ftirSignal;
+    if (!signal && parentMeta.ftir_signal_toggle && gd._ristPeakCoordinates) {{
+      var measuredPoint = gd._ristPeakCoordinates.pointAt(pt.curve, Number(pt.x));
+      signal = measuredPoint && measuredPoint.ftirSignal;
+    }}
+    if (signal) {{
+      tr.meta.ftir_signal_toggle = signal;
+      tr.meta.rist_ftir_stack_offset_absorbance = Number(parentMeta.rist_ftir_stack_offset_absorbance || 0);
+      tr.meta.rist_ftir_stack_offset_transmittance = Number(parentMeta.rist_ftir_stack_offset_transmittance || 0);
+      tr.meta.rist_peak.base_y = signal.absorbance_y[0] - tr.meta.rist_ftir_stack_offset_absorbance;
     }}
     var ann = {{
       x: pt.x,
@@ -5336,6 +5347,11 @@ def peak_editor_js(div_id: str) -> str:
         labelKey: group,
         wnText: xText
     }};
+    if (signal) {{
+      label.annotationBaseY = label.shapeBaseY1 = tr.meta.rist_peak.base_y;
+      label.shapeBaseY0 = 0;
+      shape.y0 = tr.meta["rist_ftir_stack_offset_" + (gd._ristFtirSignalMode || "absorbance")];
+    }}
     if (batch) {{
       batch.traces.push(tr); batch.annotations.push(ann); batch.shapes.push(shape); batch.labels.push(label);
       return;

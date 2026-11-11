@@ -57,8 +57,9 @@ _HTML = r"""
     var trace = (gd.data || [])[curve];
     return trace && trace.meta && trace.meta.rist_sample_parent && trace.visible !== false && trace.visible !== 'legendonly' ? trace : null;
   }
-  function pointAt(curve, x) {
-    var trace = parent(curve);
+  function pointAt(curve, x, includeHidden) {
+    var candidate = (gd.data || [])[curve];
+    var trace = includeHidden && candidate && candidate.meta && candidate.meta.rist_sample_parent ? candidate : parent(curve);
     if (!trace || !Number.isFinite(x)) return null;
     var xs = trace.x || [], ys = trace.y || [], a = -1, b = -1, ratio = 0;
     for (var i = 0; i < Math.min(xs.length, ys.length); i++) {
@@ -101,9 +102,10 @@ _HTML = r"""
     else if (duplicate(point)) feedback.textContent = '이 시료의 같은 X좌표에 이미 수동 피크가 있습니다.';
     else {
       var meta = parent(point.curve).meta || {};
-      var offset = Number(meta.rist_raman_stack_offset || meta.rist_ftir_stack_offset_absorbance || 0);
+      var ftirUnit = gd._ristFtirSignalMode || "absorbance";
+      var offset = Number(meta.rist_raman_stack_offset || meta["rist_ftir_stack_offset_" + ftirUnit] || 0);
       feedback.textContent = 'X: ' + point.x + ' cm⁻¹ · Y: ' + Number((point.y-offset).toPrecision(8))
-        + (point.interpolated ? ' (선형 보간값)' : ' (측정값)') + (offset ? ' · 스택 이동량 제외' : '');
+        + (point.interpolated ? ' (선형 보간값)' : ' (측정값)') + (offset ? (meta.ftir_signal_toggle ? ' · Y 이동량 제외' : ' · 스택 이동량 제외') : '');
     }
   }
   function close(restore) {

@@ -165,6 +165,8 @@ def readonly_figure(source: dict) -> dict:
                       "size": meta.get("ristPlotSize") or {},
                       "stacked": bool(stack.get("enabled", any(t["meta"]["offset"] for t in data))),
                       "yAxisDisplay": axis_display}
+    if meta.get("ristFtirStack") and stack.get("overlayOffsets") and not layout["meta"]["stacked"]:
+        layout["meta"]["ftirOverlayShift"] = any(t["meta"]["offset"] for t in data)
     layout.update(template=None, dragmode="pan")
     for name in ("xaxis", "yaxis"):
         layout.setdefault(name, {})["fixedrange"] = False

@@ -167,6 +167,10 @@
       if (group) { shiftAnnotation(index, group); }
     });
     if (mode.value !== "original") {
+      var title = figure.layout.yaxis.title;
+      if (figure.layout.meta.ftirOverlayShift && title && typeof title.text === "string") {
+        title.text = title.text.replace(/ · Y 이동 표시$/, "");
+      }
       delete figure.layout.yaxis.range;
       figure.layout.yaxis.autorange = true;
     }
