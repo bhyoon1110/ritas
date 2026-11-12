@@ -32,8 +32,19 @@ async function verifyFtirOverlayDrag(page, curve, mobile) {
   if (!await move.isVisible()) await click(tools);
   await click(move);
   const close = page.locator('.rist-ftir-tools-close');
-  if (await close.isVisible()) await click(close);
+  const status = page.locator('.rist-interaction-status[data-mode="y-drag"]');
+  await status.waitFor({state:'visible'});
+  assert.equal(await tools.getAttribute('aria-expanded'),'false');
+  assert.equal(await close.isVisible(),false);
+  await click(tools);
+  assert.equal(await move.getAttribute('aria-pressed'),'true');
+  await click(close);
+  await status.waitFor({state:'visible'});
   await page.locator('#peak-plot .nsewdrag').scrollIntoViewIfNeeded();
+  const surface = page.locator('#peak-plot .nsewdrag');
+  const empty = {position:{x:8,y:8}};
+  if (mobile) await surface.tap(empty); else await surface.click(empty);
+  assert.equal(await status.isVisible(),true);
   const pt = await page.evaluate(curve => {
     const g=document.getElementById('peak-plot'), trace=g.data[curve];
     const bounds=g.querySelector('.nsewdrag').getBoundingClientRect();
@@ -69,8 +80,12 @@ async function verifyFtirOverlayDrag(page, curve, mobile) {
   },curve);
   assert.equal(hover.snapped.curve,curve);
   assert.equal(Number(hover.text.split('측정 y:')[1]),Number(hover.measured.toPrecision(8)));
+  await page.keyboard.press('Escape');
+  await page.locator('.rist-interaction-status[data-mode="pan"]').waitFor({state:'visible'});
+  assert.equal(await page.evaluate(()=>document.getElementById('peak-plot')._ristFtirYDragMode),false);
+  assert.equal((await snapshot()).offset,after.offset);
   await page.evaluate(async () => {
-    const g=document.getElementById('peak-plot');g._ristSetYDragMode(false);
+    const g=document.getElementById('peak-plot');
     const saved=JSON.parse(JSON.stringify({data:g.data,layout:g.layout}));
     await Plotly.react(g,saved.data,saved.layout,g._context);
     g.dispatchEvent(new CustomEvent('rist-plot-data-replaced'));await g._ristStackReady;

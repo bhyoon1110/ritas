@@ -2095,7 +2095,9 @@ _FTIR_TOOL_PANEL_SCRIPT = """
     button.setAttribute("aria-expanded", open ? "true" : "false");
     button.title = gd._ristLegendEditOpen ? "범례·스타일 편집 중 · 닫기/전체 저장 후 도구로 복귀" : (open ? "그래프 도구 닫기" : "그래프 도구 열기");
     button.setAttribute("aria-label", button.title);
-    if (open && activateEdit !== false) gd.dispatchEvent(new CustomEvent("rist-open-edit-tool"));
+    if (open && activateEdit !== false && !gd._ristFtirYDragMode) {
+      gd.dispatchEvent(new CustomEvent("rist-open-edit-tool"));
+    }
     gd.dispatchEvent(new CustomEvent("rist-ftir-tools-toggle", {
       detail: {open: open}
     }));
@@ -2116,10 +2118,9 @@ _FTIR_TOOL_PANEL_SCRIPT = """
   });
 
   gd.addEventListener("rist-exclusive-interaction-start", function(ev) {
-    if (!ev.detail || ev.detail.mode !== "peak-add"
+    var mode = ev.detail && ev.detail.mode;
+    if ((mode !== "peak-add" && mode !== "ftir-y-drag")
         || !gd.classList.contains("rist-ftir-tools-open")) return;
-    // Clear the floating panel without sending rist-close-edit-tool: that
-    // would cancel the peak mode the user has just selected.
     setOpen(false);
     if (button.getClientRects().length) button.focus();
   });
@@ -2134,7 +2135,8 @@ _FTIR_TOOL_PANEL_SCRIPT = """
       ev.preventDefault();
       ev.stopPropagation();
       setOpen(false);
-      gd.dispatchEvent(new CustomEvent("rist-close-edit-tool"));
+      if (gd._ristFtirYDragMode) button.focus();
+      else gd.dispatchEvent(new CustomEvent("rist-close-edit-tool"));
     });
   }
   if (opacity) {

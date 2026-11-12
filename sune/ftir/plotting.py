@@ -964,7 +964,7 @@ def ftir_stack_js(div_id: str) -> str:
   });
 
   function exitYDragModeOnOutsidePointer(ev) {
-    if (!state.dragMode || state.dragging) return;
+    if (!state.enabled || !state.dragMode || state.dragging) return;
     if (ev.target && gd.contains(ev.target)) return;
     setDragMode(false, false);
   }
@@ -990,12 +990,12 @@ def ftir_stack_js(div_id: str) -> str:
       || (gd._ristPeakEditMode && gd._ristPeakEditMode !== "none")
     ) return;
     if (ev.target && ev.target.closest && ev.target.closest(
-      ".rist-legend-drag-handle,.legend,.modebar,.rist-plot-control-row,.rist-legend-edit-panel"
+      ".rist-legend-drag-handle,.legend,.modebar,.rist-plot-control-row,.rist-ftir-tools-toggle,.rist-legend-edit-panel"
     )) return;
     if (!state.initialized) initState();
     var nearest = nearestSample(ev);
     if (!nearest) {
-      setDragMode(false, false);
+      if (state.enabled) setDragMode(false, false);
       return;
     }
     ev.preventDefault();

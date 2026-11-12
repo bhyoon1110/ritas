@@ -284,7 +284,7 @@ def test_ftir_workspace_contains_upload_and_editor_controls() -> None:
     )
     assert (
         "if (!nearest) {\n"
-        "      setDragMode(false, false);\n"
+        "      if (state.enabled) setDragMode(false, false);\n"
         "      return;\n"
         "    }"
         in page
