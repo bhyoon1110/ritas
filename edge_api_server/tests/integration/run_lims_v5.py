@@ -122,8 +122,10 @@ class LimsFixture:
                 pass
             def reply(self, body, status=200):
                 data = json.dumps(body, ensure_ascii=False).encode()
+                self.reply_bytes(data, status, "application/json; charset=UTF-8")
+            def reply_bytes(self, data, status, content_type):
                 self.send_response(status)
-                self.send_header("Content-Type", "application/json; charset=UTF-8")
+                self.send_header("Content-Type", content_type)
                 self.send_header("Content-Length", str(len(data)))
                 self.end_headers()
                 self.wfile.write(data)
@@ -140,7 +142,7 @@ class LimsFixture:
                         if full_path == "/RIST/api/alarm/reqUserEmail/550090":
                             assert self.command == "GET" and not parsed.query
                             state.email_lookups += 1
-                            return self.reply({"email": state.recipient_email})
+                            return self.reply_bytes(state.recipient_email.encode("utf-8"), 200, "text/plain;charset=UTF-8")
                         assert full_path.startswith("/RIST/api/ax/")
                         path = full_path.removeprefix("/RIST/api/ax")
                         raw = self.rfile.read(int(self.headers.get("Content-Length", "0")))
