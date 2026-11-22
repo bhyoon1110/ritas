@@ -710,6 +710,7 @@ def web_asset(asset_path: str, request: Request):
             content = re.sub(r'href="([^"]+)\.css"', r'href="\1.legacy.css"', content)
             runtime = ASSET_PREFIX + manifest()['runtime']
             content = content.replace('<head>', '<head><script src="' + runtime + '"></script>')
-        return HTMLResponse(content, headers=NO_STORE)
+        from ..ui_controls import with_ui_controls
+        return HTMLResponse(with_ui_controls(content), headers=NO_STORE)
     media = 'application/javascript' if path.suffix in ('.js', '.mjs') else None
     return FileResponse(path, media_type=media, headers=NO_STORE)

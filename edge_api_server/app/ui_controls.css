@@ -1,0 +1,156 @@
+/* UI pages only. Cards, plot controls, PPT objects and page thumbnails keep
+   their own dimensions. No new CSS/JS features are required by this layer. */
+body[data-rist-ui] button:not([class]),
+body[data-rist-ui] button[class=""],
+body[data-rist-ui] button[class="active"],
+body[data-rist-ui] button[class="selected"],
+body[data-rist-ui] button[class="is-active"],
+body[data-rist-ui] button.primary,
+body[data-rist-ui] button.secondary,
+body[data-rist-ui] button.danger,
+body[data-rist-ui] button.projectDanger,
+body[data-rist-ui] button.logout-button,
+body[data-rist-ui] a.button,
+body[data-rist-ui] .workspace-actions > a,
+body[data-rist-ui] .top-actions > a,
+body[data-rist-ui] .ahn-download,
+body[data-rist-ui] .xrd-download,
+body[data-rist-ui] .ftir-clear-button,
+body[data-rist-ui] .ftir-file-button,
+body[data-rist-ui] .ftir-library-new,
+body[data-rist-ui] .ftir-library-upload,
+body[data-rist-ui] .ftir-origin-toggle,
+body[data-rist-ui] .ftir-library-dialog-button,
+body[data-rist-ui] .ftir-report-option-button,
+body[data-rist-ui] .raman-clear-button,
+body[data-rist-ui] .raman-file-button,
+body[data-rist-ui] .raman-library-new,
+body[data-rist-ui] .raman-library-upload,
+body[data-rist-ui] .raman-origin-toggle,
+body[data-rist-ui] .raman-library-dialog-button,
+body[data-rist-ui] .raman-report-option-button,
+body[data-rist-ui] .raman-report-field-apply,
+body[data-rist-ui] .raman-report-condition-apply,
+body[data-rist-ui] .rist-work-template-button,
+body[data-rist-ui] .sw-steps > button,
+body[data-rist-ui] .sw-primary,
+body[data-rist-ui] .shellHome,
+body[data-rist-ui] .shellActions > button,
+body[data-rist-ui] .workTabs > button,
+body[data-rist-ui] .exportButtons > button,
+body[data-rist-ui] button.nextStep,
+body[data-rist-ui] button.clear-filter,
+body[data-rist-ui] button.policy-button {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  vertical-align: middle;
+  min-height: 36px;
+  height: auto;
+  max-width: 100%;
+  padding: 7px 12px;
+  border: 1px solid #bdcdd8;
+  border-radius: 6px;
+  background: #fff;
+  color: #244b65;
+  font: 600 13px/20px Arial, "Noto Sans KR", sans-serif;
+  text-decoration: none;
+  white-space: nowrap;
+  word-break: normal;
+  cursor: pointer;
+}
+body[data-rist-ui] button.primary,
+body[data-rist-ui] button[type="submit"],
+body[data-rist-ui] a.button:not(.secondary),
+body[data-rist-ui] .sw-primary,
+body[data-rist-ui] .sw-upload > .ftir-file-button,
+body[data-rist-ui] .sw-upload > .raman-file-button,
+body[data-rist-ui] button.nextStep {
+  background: #1f5a73;
+  color: #fff;
+  border-color: #1f5a73;
+}
+body[data-rist-ui] button.danger,
+body[data-rist-ui] button.projectDanger {
+  color: #a92a2a;
+  background: #fff5f5;
+  border-color: #dfb0b0;
+}
+/* Preserve pressed/selected state after the neutral control rules. */
+body[data-rist-ui] button[class="active"],
+body[data-rist-ui] button[class="selected"],
+body[data-rist-ui] button[class="is-active"],
+body[data-rist-ui] .sw-steps > button[aria-current="step"],
+body[data-rist-ui] .workTabs > button.active,
+body[data-rist-ui] .workTabs > button[aria-selected="true"] {
+  background: #e6f1f7;
+  color: #174d69;
+  border-color: #4e839d;
+}
+body[data-rist-ui] button:focus,
+body[data-rist-ui] a.button:focus,
+body[data-rist-ui] .shellHome:focus,
+body[data-rist-ui] .top-actions > a:focus,
+body[data-rist-ui] .workspace-actions > a:focus {
+  outline: 2px solid #267da3;
+  outline-offset: 2px;
+}
+body[data-rist-ui] button:disabled {
+  opacity: .5;
+  cursor: default;
+}
+body[data-rist-ui] .report-icon-button,
+body[data-rist-ui] .mail-icon-button {
+  border-radius: 6px;
+}
+/* Do not reveal conditionally hidden buttons or template actions. */
+body[data-rist-ui] button[hidden],
+body[data-rist-ui] a[hidden] { display: none !important; }
+@media (max-width: 640px), (pointer: coarse) {
+body[data-rist-ui] button:not([class]),
+body[data-rist-ui] button[class=""],
+body[data-rist-ui] button[class="active"],
+body[data-rist-ui] button[class="selected"],
+body[data-rist-ui] button[class="is-active"],
+body[data-rist-ui] button.primary,
+body[data-rist-ui] button.secondary,
+body[data-rist-ui] button.danger,
+body[data-rist-ui] button.projectDanger,
+body[data-rist-ui] button.logout-button,
+body[data-rist-ui] a.button,
+body[data-rist-ui] .workspace-actions > a,
+body[data-rist-ui] .top-actions > a,
+body[data-rist-ui] .ahn-download,
+body[data-rist-ui] .xrd-download,
+body[data-rist-ui] .ftir-clear-button,
+body[data-rist-ui] .ftir-file-button,
+body[data-rist-ui] .ftir-library-new,
+body[data-rist-ui] .ftir-library-upload,
+body[data-rist-ui] .ftir-origin-toggle,
+body[data-rist-ui] .ftir-library-dialog-button,
+body[data-rist-ui] .ftir-report-option-button,
+body[data-rist-ui] .raman-clear-button,
+body[data-rist-ui] .raman-file-button,
+body[data-rist-ui] .raman-library-new,
+body[data-rist-ui] .raman-library-upload,
+body[data-rist-ui] .raman-origin-toggle,
+body[data-rist-ui] .raman-library-dialog-button,
+body[data-rist-ui] .raman-report-option-button,
+body[data-rist-ui] .raman-report-field-apply,
+body[data-rist-ui] .raman-report-condition-apply,
+body[data-rist-ui] .rist-work-template-button,
+body[data-rist-ui] .sw-steps > button,
+body[data-rist-ui] .sw-primary,
+body[data-rist-ui] .shellHome,
+body[data-rist-ui] .shellActions > button,
+body[data-rist-ui] .workTabs > button,
+body[data-rist-ui] .exportButtons > button,
+body[data-rist-ui] button.nextStep,
+body[data-rist-ui] button.clear-filter,
+body[data-rist-ui] button.policy-button {
+    min-height: 44px;
+    padding-top: 11px;
+    padding-bottom: 11px;
+  }
+}

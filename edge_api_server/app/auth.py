@@ -1180,7 +1180,8 @@ button,.button{{display:inline-flex;align-items:center;justify-content:center;mi
 @media(max-width:640px){{main{{padding:22px 14px}}main.wide{{padding:0}}.panel{{padding:18px}}h1{{font-size:23px}}.settings-grid{{grid-template-columns:1fr}}}}
 @media(max-width:640px){{.auth-shell{{padding:22px 14px}}}}
 </style></head><body>{opening}{body}{closing}</body></html>"""
-    return html if auth_form else with_browser_support_notice(html)
+    from .ui_controls import with_ui_controls
+    return with_ui_controls(html) if auth_form else with_browser_support_notice(html)
 
 
 _AUTH_BROWSER_NOTICE = (
@@ -1321,7 +1322,7 @@ def _account_page(context: AuthContext, settings: Settings) -> str:
         sso_control = f'<a class="button" href="/auth/sso/start?returnTo=/account">{escape(settings.sso_provider_name)} 연결 / 재인증</a>'
     else:
         sso_control = '<p class="error">지원하지 않는 SSO 연동 방식이 설정되어 있습니다.</p>'
-    body = f"""<section class="panel"><div class="row" style="justify-content:space-between"><div><h1>내 계정</h1><p><strong>{escape(context.display_name)}</strong> · 로그인 ID {escape(context.login_id)}</p></div><button class="secondary" id="logout" type="button">로그아웃</button></div>
+    body = f"""<section class="panel"><div class="row" style="justify-content:space-between"><div><h1>내 계정</h1><p><strong>{escape(context.display_name)}</strong> · 로그인 ID {escape(context.login_id)}</p></div><nav class="row" aria-label="회원정보 메뉴"><a class="button secondary" id="account-dashboard" href="/">대시보드</a><button class="secondary" id="logout" type="button">로그아웃</button></nav></div>
 <div class="settings-grid"><form class="settings-card" id="profile-form" method="post" action="/account" accept-charset="UTF-8"><h2>회원정보 수정</h2><label>로그인 ID</label><input value="{escape(context.login_id)}" disabled><label>이름</label><input name="displayName" maxlength="100" value="{escape(context.display_name)}" required><label>이메일 (선택)</label><input name="email" type="email" maxlength="255" value="{escape(context.email or '')}"><p id="profile-message"></p><button type="submit">회원정보 저장</button></form>
 <form class="settings-card" id="password-form" method="post" action="/account" accept-charset="UTF-8"><h2>비밀번호 변경</h2><label>현재 비밀번호</label><input name="currentPassword" type="password" autocomplete="current-password" required><label>새 비밀번호</label><input name="newPassword" type="password" autocomplete="new-password" minlength="10" required><label>새 비밀번호 확인</label><input name="confirmPassword" type="password" autocomplete="new-password" minlength="10" required><p class="muted">변경 후 모든 기기에서 로그아웃됩니다.</p><p id="password-message"></p><button type="submit">비밀번호 변경</button></form></div>
 <h2>승인된 프로젝트</h2><div class="row">{project_links}</div><section id="sso-auth"><h2>보고서 전송 인증</h2><p>사내 SSO: <strong>{sso_text}</strong><br>최근 전송 인증: <strong>{'유효' if data['ssoRecentlyAuthenticated'] else '재인증 필요'}</strong></p>

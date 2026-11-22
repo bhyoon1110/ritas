@@ -187,6 +187,7 @@ def test_account_page_exposes_profile_password_and_logout(tmp_path) -> None:
         ),
     )
 
+    assert 'id="account-dashboard" href="/">대시보드</a>' in html
     assert 'id="profile-form"' in html
     assert 'id="password-form"' in html
     assert 'id="logout"' in html

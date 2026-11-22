@@ -413,6 +413,11 @@ main[data-compare=data] .originalPane, main[data-compare=source] .dataPane { dis
 .tableButton small[data-review-status=excluded] { color:#6a7480; }
 @media (max-width:800px) {
   body.withShell[data-step=analysis] main, body.withShell[data-step=analysis] main.reviewNavClosed { display:block; overflow:visible; }
+  /* Reset the desktop column widths also emitted by the legacy flex fallback. */
+  body.withShell[data-step=analysis] main > *,
+  body.withShell[data-step=analysis] main.reviewNavClosed > *,
+  body.withShell[data-step=analysis] main[data-compare] > *,
+  body.withShell[data-step=analysis] main.reviewNavClosed[data-compare] > * { width:100%; max-width:100%; flex-basis:100%; }
   body.withShell[data-step=analysis] main > aside { max-height:40vh; overflow:auto; }
   body.withShell[data-step=analysis] .originalPane { height:70vh; min-height:400px; }
   .grid { max-height:55vh; }

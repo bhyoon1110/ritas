@@ -245,9 +245,10 @@ def editor_page(prefix, job_id, *, project=None):
     script = file_progress_script() + '\n' + (Path(__file__).parent / "xrd_workbench/web/shared/pptx_password.js").read_text(encoding="utf-8") + "\n"
     script += "\n".join((Path(__file__).parent / name).read_text(encoding="utf-8")
                        for name in ("file_save.js", "request_filters.js", "report_editor_icons.js", "report_page_sidebar.js", "report_cell_editor.js", "report_direct_editor.js", "report_canvas_editor.js", "report_ppt_templates.js", "report_saved_graphs.js", "report_condition_options.js", "xrd_workbench/web/shared/mail_editor_icons.js", "xrd_workbench/web/shared/mail_table_editor.js", "xrd_workbench/web/shared/mail_address_book.js", "xrd_workbench/web/shared/mail_template_context.js", "xrd_workbench/web/shared/mail_templates.js", "xrd_workbench/web/shared/mail_editor.js", "report_editor.js"))
-    return template.replace("__CONFIG__", config).replace("__SCRIPT__", script).replace(
+    from .ui_controls import with_ui_controls
+    return with_ui_controls(template.replace("__CONFIG__", config).replace("__SCRIPT__", script).replace(
         "</body>", floating_panels_html() + "</body>", 1
-    )
+    ))
 
 
 def install_report_editor(router, kind):
