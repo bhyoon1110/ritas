@@ -73,7 +73,7 @@ export async function mountReportPlatform(send, changed) {
       if (!filters) throw new Error('의뢰 검색 조건을 불러오지 못했습니다. 화면을 새로 고쳐 주세요.');
       const response = await fetch(filters.url(), {headers:{'X-Request-Id':'xrd-workbench-' + Date.now()}});
       const body = await response.json();
-      if (!response.ok) throw new Error(body.error?.message || body.detail || '의뢰 조회에 실패했습니다.');
+      if (!response.ok) throw new Error(body.message || body.error?.message || body.detail || '의뢰 조회에 실패했습니다.');
       items = body.items || [];
       filters.showResult(body);
       items.forEach((item, index) => {

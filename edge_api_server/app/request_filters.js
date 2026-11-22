@@ -12,13 +12,12 @@
     var source = values.source === 'lims' ? 'lims' : 'cache';
     var params = ['source=' + source, 'page=' + page, 'pageSize=' + pageSize];
     var keys = ['reqNumber', 'testMtdCode', 'fromDate', 'toDate'];
+    if (experimentType) params.push('experimentType=' + encodeURIComponent(experimentType));
     var states = values.testState === undefined ? '1,3,5,7' : values.testState;
     if (states) params.push('testState=' + encodeURIComponent(states));
+    else params.push('includeCompleted=true');
     if (source === 'lims') {
       keys.push('testChargerId', 'testChargerNo', 'assetNumber');
-    } else {
-      params.push('experimentType=' + encodeURIComponent(experimentType || ''));
-      if (!states) params.push('includeCompleted=true');
     }
     if (values.fromDate && values.toDate && values.fromDate > values.toDate) {
       throw new Error('조회 시작일은 종료일보다 늦을 수 없습니다.');
@@ -39,7 +38,9 @@
     panel.style.cssText = 'margin:8px 0;padding:10px;border:1px solid #cbd5e1;border-radius:6px;background:#f8fafc;color:#24344a;font-size:13px;';
     var details = doc.createElement('details');
     var summary = doc.createElement('summary');
-    summary.textContent = '의뢰 검색 조건';
+    var projectLabel = String(options.experimentType || '').toUpperCase();
+    if (projectLabel === 'TEM' || projectLabel === 'STEM') projectLabel = 'TEM·STEM·EDS·코팅층';
+    summary.textContent = (projectLabel ? projectLabel + ' ' : '') + '의뢰 검색 조건 (선택)';
     details.appendChild(summary);
     var form = doc.createElement('div');
     form.style.cssText = 'display:flex;flex-wrap:wrap;margin-top:8px;';
@@ -106,6 +107,7 @@
     var pageSize = options.pageSize || 200;
     var total = null;
     var busy = false;
+    var scopeNote = "";
     function sync() {
       var live = source.value === 'lims';
       Object.keys(fields).forEach(function (key) { fields[key].disabled = busy; });
@@ -115,12 +117,13 @@
       previous.disabled = busy || page <= 1;
       next.disabled = busy || total === null || page * pageSize >= total;
       hint.textContent = live
-        ? '특정 장비로 조회하려면 자산번호를 입력하세요. 미완료 시험은 그 장비로 수행할 수 있는 시험을 표시합니다.'
-        : '현재 실험의 저장된 의뢰를 조회합니다. 자산번호·담당자 ID 검색은 LIMS 실시간 조회를 선택하세요.';
+        ? '현재 실험에 맞춰 자동 조회합니다. 의뢰번호·장비 자산번호 등은 검색 범위를 좁힐 때만 입력하세요.'
+        : '현재 실험의 저장된 의뢰를 자동 조회합니다. 장비 자산번호·담당자 검색은 LIMS 실시간에서 가능합니다.';
+      if (scopeNote) hint.textContent += ' ' + scopeNote;
     }
     Object.keys(fields).forEach(function (key) {
       fields[key].addEventListener('change', function () {
-        page = 1; total = null;
+        page = 1; total = null; scopeNote = "";
         status.textContent = '변경한 조건으로 의뢰 조회를 눌러 주세요.';
         sync();
       });
@@ -141,6 +144,7 @@
         return buildQuery(values, options.experimentType, page, pageSize);
       },
       showResult: function (payload) {
+        scopeNote = payload.scopeNote || "";
         page = Number(payload.page) || page;
         pageSize = Number(payload.pageSize) || pageSize;
         total = typeof payload.totalCount === 'number' ? payload.totalCount : null;

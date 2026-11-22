@@ -22,7 +22,7 @@ test('live query forwards independent asset, state and method filters', () => {
   const values = { source: 'lims', reqNumber: 'R1', testMtdCode: 'A23142', fromDate: '2026-10-01', toDate: '2026-10-31', testChargerId: 'hong', testChargerNo: '9223372036854775807', assetNumber: '장비/1+2', testState: '0,9' };
   const url = new URL(filters.buildQuery(values, 'XRD', 1, 200), 'https://edge.test');
   ['reqNumber', 'testMtdCode', 'fromDate', 'toDate', 'testChargerId', 'testChargerNo', 'assetNumber', 'testState'].forEach(key => assert.equal(url.searchParams.get(key), values[key]));
-  assert.equal(url.searchParams.has('experimentType'), false);
+  assert.equal(url.searchParams.get('experimentType'), 'XRD');
   assert.equal(url.searchParams.has('includeCompleted'), false);
   const device = new URL(filters.buildQuery({source: 'lims', assetNumber: 'A-01'}, 'XRD', 1, 200), 'https://edge.test');
   assert.equal(device.searchParams.get('assetNumber'), 'A-01');
@@ -64,4 +64,21 @@ test('mounted controls page through totalCount and reset on changed filters', ()
   assert.equal(cancelled.searchParams.get('assetNumber'), 'LIMS-ASSET-42');
   panel.setBusy(true); assert.equal(byLabel['조회 대상'].disabled, true);
   assert.equal(previous.disabled, true); assert.equal(next.disabled, true);
+});
+
+for (const experiment of ['FT-IR','RAMAN','XRD','TEM']) for (const source of ['cache','lims']) {
+  test(source+' scopes '+experiment+' without requiring manual filters',()=>{
+    const url=new URL(filters.buildQuery({source},experiment,1,200),'https://edge.test');
+    assert.equal(url.searchParams.get('experimentType'),experiment);
+    assert.equal(url.searchParams.get('testState'),'1,3,5,7');
+    assert(!url.searchParams.has('assetNumber'));assert(!url.searchParams.has('testMtdCode'));
+  });
+}
+
+test('all-status search remains unfiltered for cache and live experiment scopes',()=>{
+  for(const source of ['cache','lims']){
+    const url=new URL(filters.buildQuery({source,testState:''},'TEM',1,200),'https://edge.test');
+    assert.equal(url.searchParams.get('includeCompleted'),'true');
+    assert(!url.searchParams.has('testState'));
+  }
 });

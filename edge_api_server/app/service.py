@@ -16,7 +16,8 @@ from rist_common import get_logger
 from .config import Settings
 from .database import Database, TERMINAL_STATUSES
 from .errors import ApiException
-from .lims_requests import INCOMPLETE_TEST_STATES, LimsRequestsClient, validate_filters
+from .lims_requests import INCOMPLETE_TEST_STATES, LimsRequestsClient, validate_filters, scoped_requests
+from .request_scope import RequestScope
 from .experiment_routing import analysis_type_for_job, mapped_analysis_type_for_job
 from .models import (
     CompleteUploadRequest,
@@ -39,44 +40,6 @@ from .storage import (
 from .time_utils import isoformat_kst, now_kst, parse_datetime, timestamp_folder
 
 logger = get_logger(__name__)
-
-
-REQUEST_EXPERIMENT_ALIASES: dict[str, tuple[str, ...]] = {
-    "ftir": (
-        "ftir",
-        "ft-ir",
-        "ft_ir",
-        "ft ir",
-        "fourier",
-        "infrared",
-        "푸리에",
-        "적외선",
-    ),
-    "ft-ir": (
-        "ftir",
-        "ft-ir",
-        "ft_ir",
-        "ft ir",
-        "fourier",
-        "infrared",
-        "푸리에",
-        "적외선",
-    ),
-    "ft_ir": (
-        "ftir",
-        "ft-ir",
-        "ft_ir",
-        "ft ir",
-        "fourier",
-        "infrared",
-        "푸리에",
-        "적외선",
-    ),
-    "raman": ("raman", "라만"),
-    "xrd": ("xrd", "x-ray diffraction", "x ray diffraction", "x선", "엑스선"),
-    "tem": ("tem", "transmission electron", "투과전자", "전자현미경"),
-    "sem": ("sem", "scanning electron", "주사전자", "전자현미경"),
-}
 
 
 MethodResult = TypeVar("MethodResult")
@@ -569,16 +532,19 @@ class EdgeService:
             states = filters.setdefault("testState", ",".join(INCOMPLETE_TEST_STATES))
             if not set(states.split(",")).issubset(INCOMPLETE_TEST_STATES):
                 raise ApiException(400, "INVALID_REQUEST_FILTER", "미완료 시험 조회에는 시험취소(0)·시험완료(9)를 함께 지정할 수 없습니다.")
+        scope = RequestScope.from_settings(experiment_type, self.settings) if experiment_type and experiment_type.strip() else None
+        if scope and include_completed is not True:
+            filters.setdefault("testState", ",".join(INCOMPLETE_TEST_STATES))
         if source == "lims":
-            if experiment_type:
-                raise ApiException(400, "UNSUPPORTED_LIMS_FILTER", "LIMS 실시간 조회에서 장비는 자산번호, 시험방법은 시험방법코드로 지정해 주세요.")
             if not getattr(self.settings, "lims_requests_enabled", False):
                 raise ApiException(503, "LIMS_REQUESTS_NOT_CONFIGURED", "LIMS 실시간 의뢰조회가 아직 준비되지 않았습니다.")
-            payload = LimsRequestsClient.from_settings(self.settings).fetch(page, page_size, filters)
+            client = LimsRequestsClient.from_settings(self.settings)
+            payload = scoped_requests(client, scope, page, page_size, filters) if scope else client.fetch(page, page_size, filters)
             # Filtered live results are intentionally never written to the cache.
             return {
                 "page": page, "pageSize": page_size, "source": "lims",
-                "totalCount": payload["totalCount"], "experimentType": None,
+                "totalCount": payload["totalCount"], "experimentType": experiment_type,
+                "scopeNote": payload.get("scopeNote"),
                 "items": [self._live_request_summary(item) for item in payload["items"]],
             }
         if source != "cache":
@@ -586,16 +552,16 @@ class EdgeService:
         if filters.keys() & {"testChargerId", "testChargerNo", "assetNumber"}:
             raise ApiException(400, "LIMS_LOOKUP_REQUIRED", "장비 자산번호·시험담당자 ID·사용자번호 조건은 LIMS 실시간 조회를 선택해 주세요.")
         include_completed = bool(include_completed)
-        experiment_keywords = self.request_experiment_keywords(experiment_type)
+        scope_args = {"experiment_scope": scope} if scope else {}
         rows = self.database.fetch_request_summaries(
             page_size,
             (page - 1) * page_size,
-            experiment_keywords=experiment_keywords,
+            **scope_args,
             include_completed=include_completed,
             request_filters=filters,
         )
         total_count = self.database.count_request_summaries(
-            experiment_keywords=experiment_keywords,
+            **scope_args,
             include_completed=include_completed,
             request_filters=filters,
         )
@@ -605,6 +571,7 @@ class EdgeService:
             "source": "cache",
             "totalCount": total_count,
             "experimentType": experiment_type,
+            "scopeNote": scope.note() if scope else None,
             "items": [
                 {
                     "requestResultNo": row["req_result_no"],
@@ -654,12 +621,6 @@ class EdgeService:
         }
         return {**{target: item.get(source) for target, source in fields.items()}, "syncedAt": None}
 
-    @staticmethod
-    def request_experiment_keywords(experiment_type: str | None) -> tuple[str, ...]:
-        if not experiment_type or not experiment_type.strip():
-            return ()
-        key = experiment_type.strip().lower()
-        return REQUEST_EXPERIMENT_ALIASES.get(key, (key,))
 
     @staticmethod
     def file_response(file_record: dict[str, Any]) -> dict[str, Any]:

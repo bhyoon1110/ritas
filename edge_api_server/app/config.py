@@ -8,6 +8,7 @@ from pathlib import Path
 from rist_common.config import load_environment
 
 from .experiment_routing import parse_analysis_type_map
+from .request_scope import parse_request_map
 
 
 PROJECT_DIR = Path(__file__).resolve().parents[1]
@@ -108,6 +109,8 @@ class Settings:
     sso_lims_allow_loopback_http: bool = False
     lims_requests_enabled: bool = False
     lims_requests_url: str = ""
+    request_method_map: tuple[tuple[str, str], ...] = ()
+    request_asset_map: tuple[tuple[str, str], ...] = ()
     sso_issuer_url: str = ""
     sso_client_id: str = ""
     sso_client_secret: str = ""
@@ -359,6 +362,8 @@ class Settings:
             ).strip().lower() in {"1", "true", "yes", "on"},
             lims_requests_enabled=os.getenv("RIST_LIMS_REQUESTS_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"},
             lims_requests_url=os.getenv("RIST_LIMS_REQUESTS_URL", "").strip(),
+            request_method_map=parse_request_map(os.getenv("RIST_REQUEST_METHOD_MAP", ""), "RIST_REQUEST_METHOD_MAP"),
+            request_asset_map=parse_request_map(os.getenv("RIST_REQUEST_ASSET_MAP", ""), "RIST_REQUEST_ASSET_MAP"),
             sso_issuer_url=os.getenv("RIST_SSO_ISSUER_URL", "").strip().rstrip("/"),
             sso_client_id=os.getenv("RIST_SSO_CLIENT_ID", "").strip(),
             sso_client_secret=os.getenv("RIST_SSO_CLIENT_SECRET", "").strip(),

@@ -23,7 +23,7 @@ const port=new Promise((resolve,reject)=>{let data='';server.stdout.on('data',ch
           queries.push(url.searchParams);
           if(url.searchParams.get('source')==='lims') {
             assert.equal(url.searchParams.get('assetNumber'),'ASSET-LIVE');assert.equal(url.searchParams.get('testState'),'1,3,5,7');
-            assert(!url.searchParams.has('experimentType'));assert(!url.searchParams.has('testMtdCode'));
+            assert.equal(url.searchParams.get('experimentType'),kind==='ftir'?'FT-IR':kind.toUpperCase());assert(!url.searchParams.has('testMtdCode'));
             return json({items:[{requestNumber:'REQ-LIVE',testMethodCode:'A',testState:3},{requestNumber:'REQ-LIVE',testMethodCode:'B',testState:7}],page:1,pageSize:200,totalCount:2});
           }
           assert.equal(url.searchParams.get('experimentType'),kind==='ftir'?'FT-IR':kind.toUpperCase());

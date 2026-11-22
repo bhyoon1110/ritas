@@ -104,6 +104,7 @@ class RequestListResponse(ApiModel):
     total_count: int = Field(alias="totalCount")
     source: str = "cache"
     experiment_type: str | None = Field(default=None, alias="experimentType")
+    scope_note: str | None = Field(default=None, alias="scopeNote")
     items: list[RequestSummary]
 
 

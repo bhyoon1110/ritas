@@ -12,6 +12,7 @@ from pymysql.cursors import DictCursor
 
 from rist_common import get_logger
 from .lims_requests import INCOMPLETE_TEST_STATES
+from .request_scope import RequestScope
 
 logger = get_logger(__name__)
 
@@ -975,6 +976,8 @@ class Database:
         experiment_keywords: tuple[str, ...] = (),
         include_completed: bool = False,
         request_filters: dict[str, Any] | None = None,
+        *,
+        experiment_scope: RequestScope | None = None,
     ) -> tuple[str, list[Any]]:
         filters: list[str] = []
         params: list[Any] = []
@@ -986,7 +989,11 @@ class Database:
             placeholders = ", ".join("?" for _ in states)
             filters.append(f"test_state IN ({placeholders})")
             params.extend(int(code) for code in states)
-        if experiment_keywords:
+        if experiment_scope is not None:
+            clause, values = experiment_scope.sql()
+            filters.append(clause)
+            params.extend(values)
+        elif experiment_keywords:
             keyword_filters: list[str] = []
             for keyword in experiment_keywords:
                 like = f"%{keyword.lower()}%"
@@ -1017,8 +1024,10 @@ class Database:
         experiment_keywords: tuple[str, ...] = (),
         include_completed: bool = False,
         request_filters: dict[str, Any] | None = None,
+        *,
+        experiment_scope: RequestScope | None = None,
     ) -> int:
-        where_sql, params = self._request_filter_sql(experiment_keywords, include_completed, request_filters)
+        where_sql, params = self._request_filter_sql(experiment_keywords, include_completed, request_filters, experiment_scope=experiment_scope)
         with self._connect() as connection:
             row = connection.execute(
                 f"SELECT COUNT(*) AS total_count FROM lims_req_ax_search {where_sql}", tuple(params)
@@ -1032,8 +1041,10 @@ class Database:
         experiment_keywords: tuple[str, ...] = (),
         include_completed: bool = False,
         request_filters: dict[str, Any] | None = None,
+        *,
+        experiment_scope: RequestScope | None = None,
     ) -> list[dict[str, Any]]:
-        where_sql, params = self._request_filter_sql(experiment_keywords, include_completed, request_filters)
+        where_sql, params = self._request_filter_sql(experiment_keywords, include_completed, request_filters, experiment_scope=experiment_scope)
         with self._connect() as connection:
             return connection.execute(
                 f"""

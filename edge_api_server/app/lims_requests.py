@@ -13,7 +13,10 @@ import math
 from pathlib import Path
 import re
 import ssl
-from typing import Any
+from typing import Any, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .request_scope import RequestScope
 
 import httpx
 
@@ -184,3 +187,93 @@ class LimsRequestsClient:
             return json.loads(content)
         except (ValueError, UnicodeError):
             raise _protocol_error() from None
+
+
+# Scope filtering happens before Edge pagination. Never filter a single upstream
+# page and pretend its unfiltered totalCount belongs to the current experiment.
+SCOPE_BATCH_SIZE = 1000
+SCOPE_MAX_ITEMS = 10000
+SCOPE_MAX_CALLS = 32
+SCOPE_DEADLINE_SECONDS = 20.0
+
+
+def scoped_requests(client: LimsRequestsClient, scope: "RequestScope", page: int, size: int, filters: dict[str, Any]) -> dict[str, Any]:
+    import time
+    queries, trusted_assets = scope.query_filters(filters)
+
+    def accepts(item):
+        if scope.matches(item.get("testMtdCode"), item.get("testMtdName")):
+            return True
+        return (trusted_assets and not scope.methods
+                and scope.mapped_project(str(item.get("testMtdCode") or "")) in (None, scope.project))
+
+    def check_condition(items, query):
+        # A relay/upstream ignoring an exact method condition must not produce a
+        # plausible-looking but incorrect project total or selection list.
+        code = query.get("testMtdCode")
+        if code and any(str(item.get("testMtdCode") or "").strip().lower() != code.lower() for item in items):
+            raise _protocol_error()
+
+    if len(queries) == 1:
+        code = queries[0].get("testMtdCode")
+        guaranteed = bool(code and (scope.methods or scope.mapped_project(code) == scope.project))
+        if guaranteed:
+            result = client.fetch(page, size, queries[0])
+            check_condition(result["items"], queries[0])
+            return {**result, "scopeNote": scope.note(assets=trusted_assets)}
+
+    started = time.monotonic()
+    calls = scanned = 0
+    matches: dict[tuple, dict[str, Any]] = {}
+
+    def too_broad():
+        return ApiException(422, "REQUEST_SCOPE_TOO_BROAD",
+                            "실험별 의뢰 조회 범위가 큽니다. 의뢰번호·기간 등으로 범위를 좁히거나 관리자에게 시험코드·장비 매핑을 요청하세요. 일부 결과만 표시하지 않았습니다.")
+
+    def changed():
+        return ApiException(409, "LIMS_REQUESTS_CHANGED", "조회 중 LIMS 의뢰 목록이 변경되었습니다. 다시 조회해 주세요.", retryable=True)
+
+    def item_key(item):
+        ids = tuple(item.get(k) for k in ("reqResultNo", "smpResultNo", "testMtdResultNo"))
+        return ("id", *ids) if all(x is not None for x in ids) else ("row", json.dumps(item, ensure_ascii=False, sort_keys=True))
+
+    for query in queries:
+        upstream_page, total, seen = 1, None, set()
+        while True:
+            if calls >= SCOPE_MAX_CALLS or time.monotonic() - started >= SCOPE_DEADLINE_SECONDS:
+                raise too_broad()
+            result = client.fetch(upstream_page, SCOPE_BATCH_SIZE, query)
+            calls += 1
+            count = result["totalCount"]
+            if total is not None and total != count:
+                raise changed()
+            if total is None and scanned + count > SCOPE_MAX_ITEMS:
+                raise too_broad()
+            total = count
+            items = result["items"]
+            offset = (upstream_page - 1) * SCOPE_BATCH_SIZE
+            if len(items) != min(SCOPE_BATCH_SIZE, max(0, total - offset)):
+                raise changed()
+            check_condition(items, query)
+            scanned += len(items)
+            for item in items:
+                key = item_key(item)
+                if key in seen:
+                    raise changed()
+                seen.add(key)
+                if not accepts(item):
+                    continue
+                if key in matches and matches[key] != item:
+                    raise changed()
+                matches[key] = item
+            if offset + len(items) >= total:
+                break
+            upstream_page += 1
+    rows = list(matches.values())
+    rows.sort(key=lambda r: (r.get("outputOrder") if r.get("outputOrder") is not None else 2147483647,
+                             r.get("smpResultNo") or 0, r.get("testMtdResultNo") or 0,
+                             json.dumps(r, sort_keys=True)))
+    rows.sort(key=lambda r: (r.get("reqDate") or "", r.get("reqNumber") or ""), reverse=True)
+    start = (page - 1) * size
+    return {"items": rows[start:start + size], "totalCount": len(rows), "page": page, "size": size,
+            "scopeNote": scope.note(assets=trusted_assets)}

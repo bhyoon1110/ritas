@@ -160,7 +160,7 @@ def test_service_live_lookup_never_replaces_cache_and_maps_null_fields(monkeypat
 
 
 @pytest.mark.parametrize("kwargs,code", [
-    ({"source": "lims", "experiment_type": "XRD"}, "UNSUPPORTED_LIMS_FILTER"),
+    ({"source": "lims", "experiment_type": "UNKNOWN"}, "INVALID_REQUEST_EXPERIMENT"),
     ({"source": "lims", "include_completed": False, "request_filters": {"testState": "9"}}, "INVALID_REQUEST_FILTER"),
     ({"source": "cache", "request_filters": {"assetNumber": "XRD-100"}}, "LIMS_LOOKUP_REQUIRED"),
     ({"source": "cache", "request_filters": {"testChargerId": "hong"}}, "LIMS_LOOKUP_REQUIRED"),
