@@ -52,15 +52,20 @@ test('XRD workbench uses live v5 filters and paging and selects the actual test 
   assert.equal(queries[1].get('page'), '2');
   assert.match(byId('ristRequests').options[1].textContent, /M-2 · 회절 측정 · 시험중/);
   change(byId('ristRequests'), '0');
+  assert.equal(byId('ristRequestNumber').value, 'R-2');
   assert.equal(byId('ristEquipment').value, '');
   byId('ristEquipment').value = 'XRD-17';
   await byId('ristReportSend').onclick();
   assert.equal(sends[0].experimentCode, 'M-2');
   assert.equal(sends[0].equipmentCode, 'XRD-17');
   assert.equal(sends[0].requestNumber, 'R-2');
-  byId('reportNumber').value = 'MANUAL';
-  byId('reportNumber').dispatchEvent(new ui.w.Event('input'));
+  byId('ristRequestNumber').value = 'MANUAL';
+  byId('ristRequestNumber').dispatchEvent(new ui.w.Event('input', {bubbles:true}));
+  assert.equal(byId('reportNumber').value, 'MANUAL');
   assert.equal(byId('ristExperiment').value, '');
+  byId('reportNumber').value = 'COVER-EDIT';
+  byId('reportNumber').dispatchEvent(new ui.w.Event('input'));
+  assert.equal(byId('ristRequestNumber').value, 'COVER-EDIT');
 });
 
 test('missing method blocks sending while changing requests preserves the user-entered equipment', async t => {
@@ -75,5 +80,5 @@ test('missing method blocks sending while changing requests preserves the user-e
   assert.equal(byId('ristEquipment').value, 'XRD-7');
   await byId('ristReportSend').onclick();
   assert.equal(sends.length, 0);
-  assert.match(byId('ristTransferStatus').textContent, /시험방법코드/);
+  assert.match(byId('ristSendStatus').textContent, /시험방법코드/);
 });

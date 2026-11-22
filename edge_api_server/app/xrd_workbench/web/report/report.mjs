@@ -86,7 +86,7 @@ const pptxPassword = new window.RistPptxPassword({host:document.querySelector('#
         lock(false);done(null,value);
       },error=>{lock(false);done(error);});
   }});
-const mailEditor=mountEmailEditor($('editorFields'),$('reportNav'),()=>{
+const mailEditor=mountEmailEditor($('deliveryFields'),$('reportNav'),()=>{
   if(!doc||busy)return;
   const email=ensureEmail(doc);email.delivery=mailEditor.value();email.body=$('emailBody').value;email.subject=$('emailSubject').value;
   email.status='manual';updateEmailStatus();markDirty();
@@ -188,8 +188,10 @@ window.addEventListener('message', e => {
 });
 window.addEventListener('pagehide',()=>{livePreview.invalidate();clearTimeout(linkedTimer);});
 window.addEventListener('pageshow',e=>{if(e.persisted && doc && !busy)livePreview.schedule(true);});
-$('editor').addEventListener('compositionstart',()=>{composing=true;livePreview.invalidate();draftSaver.pause();});
-$('editor').addEventListener('compositionend',()=>{composing=false;if(doc){if(!busy)livePreview.schedule();if(dirty)draftSaver.schedule();}});
+for (const host of [$('editor'), $('deliveryFields')]) {
+  host.addEventListener('compositionstart',()=>{composing=true;livePreview.invalidate();draftSaver.pause();});
+  host.addEventListener('compositionend',()=>{composing=false;if(doc){if(!busy)livePreview.schedule();if(dirty)draftSaver.schedule();}});
+}
 document.addEventListener('visibilitychange',()=>{if(document.hidden&&!composing)draftSaver.flush();});
 window.addEventListener('pagehide',()=>{if(!composing)draftSaver.flush();});
 $('editor').addEventListener('focusin',e=>{
@@ -203,6 +205,7 @@ function status(text, error = false) {
 }
 function markDirty() {
   dirty = true;
+  $('ristRequestNumber').value = doc.metadata.report_number || '';
   pptEditor.invalidateTemplates();
   mailEditor.refreshRecipient();
   updateEmailStatus();
@@ -233,8 +236,10 @@ function lock(value, allowPhaseEditing = false) {
   if (value) livePreview.invalidate();
   else if (doc) livePreview.schedule();
   $('editorFields').disabled = value;
+  $('deliveryFields').disabled = value;
   for (const id of [
     'save',
+    'saveDelivery',
     'draftRefresh',
     'preview',
     'pdfExport',
@@ -254,21 +259,17 @@ function lock(value, allowPhaseEditing = false) {
 }
 function showTab(value) {
   if (!doc) return;
+  if (value === 'email') { setStep('save'); return; }
   tab = value;
   classAvailability();
   if (!['overview', 'checks', 'figure', 'classes', 'qtable', 'llm', 'email'].includes(value))
     ckCursor = value;
-  for (const id of ['overviewForm', 'sampleForm', 'figureForm', 'classForm', 'qtableForm', 'emailForm'])
+  for (const id of ['overviewForm', 'sampleForm', 'figureForm', 'classForm', 'qtableForm'])
     $(id).hidden = true;
   document
     .querySelectorAll('[data-tab]')
     .forEach((e) => e.classList.toggle('active', e.dataset.tab === tab));
   if (tab === 'overview') $('overviewForm').hidden = false;
-  else if (tab === 'email') {
-    $('emailForm').hidden = false;
-    renderEmail();
-    maybeAutoEmail();
-  }
   else if (tab === 'classes') {
     $('classForm').hidden = false;
     renderClasses();
@@ -313,6 +314,7 @@ function render() {
     ['receivedDate', 'received_date'],
     ['analysisPeriod', 'analysis_period'],
     ['reportNumber', 'report_number'],
+    ['ristRequestNumber', 'report_number'],
     ['author', 'author'],
     ['reportDate', 'date'],
   ])
@@ -338,6 +340,7 @@ function render() {
     )
     .join('');
   $('revision').textContent = `저장 버전 ${doc.revision}${dirty ? ' · 미저장 변경' : ''}`;
+  renderEmail();
   showTab(tab);
 }
 function renderSample() {
@@ -472,7 +475,7 @@ function renderEmail() {
   updateEmailStatus();
 }
 function maybeAutoEmail() {
-  if (doc && tab==='email' && canAutoDraftEmail(doc,emailDefault,{busy,recovery:!!recoveryDraft,attempted:emailAttempted})) generateEmail(false);
+  if (doc && step==='save' && canAutoDraftEmail(doc,emailDefault,{busy,recovery:!!recoveryDraft,attempted:emailAttempted})) generateEmail(false);
 }
 async function generateEmail(confirmReplace=true) {
   if (!doc || busy) return;
@@ -927,7 +930,7 @@ $('reportNav').onclick = (e) => {
   const target = e.target.closest('[data-tab]');
   if (target) showTab(target.dataset.tab);
 };
-$('editor').oninput = (e) => {
+$('editor').oninput = $('deliveryFields').oninput = (e) => {
   if (!doc || busy && !(phaseEditingWhileBusy && classFields.contains(e.target))) return;
   const element = e.target,
     d = element.dataset;
@@ -1015,7 +1018,7 @@ $('editor').onchange = (e) => {
     markDirty();
   }
 };
-$('editor').onclick = async (e) => {
+$('editor').onclick = $('deliveryFields').onclick = async (e) => {
   const button = e.target.closest('button');
   if (!button || busy && !(phaseEditingWhileBusy && classFields.contains(button) &&
     (button.id === 'pcRowApply' || button.dataset.pcSampleApply !== undefined))) return;
@@ -1100,13 +1103,14 @@ $('editor').onclick = async (e) => {
 };
 for (const [id, kind] of [
   ['save', 'save'],
+  ['saveDelivery', 'save'],
   ['preview', 'preview'],
   ['pdfExport', 'pdf'],
   ['pptxExport', 'pptx'],
   ['zipExport', 'zip'],
 ])
   $(id).onclick = () => action(kind);
-// ---- steps ③ 보고서 편집 / ④ 보고서 저장 share this page and its unsaved state.
+// Report editing and delivery share one document and its unsaved state.
 let step = new URLSearchParams(location.search).get('step') === 'save' ? 'save' : 'report',
   leaving = false;
 function syncShell() {
@@ -1128,9 +1132,11 @@ function setStep(value) {
   );
   syncShell();
   if (saving) {
+    if (reportMain.dataset.workView === 'preview') setWorkView('both');
     renderChecklist();
     loadChecklist();
     renderViewerSummary();
+    maybeAutoEmail();
   }
 }
 window.xrdLocalStep = (value) => {

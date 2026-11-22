@@ -43,7 +43,7 @@ function setup(t,program,defaultsUpdated=false,hooks={}){
     if(url.endsWith('/email-draft')){if(hooks.email)await hooks.email();return response({subject:'이전 분석 기반 메일',body:'메일 초안',status:'llm'});}
     if(url.endsWith('/draft/clear'))return response({revision:2,document:null});
     if(url.endsWith('/draft')){if(options.method==='PUT'&&hooks.draft)await hooks.draft();return response({revision:0,document:null});}
-    if(url.endsWith('/checklist'))return response({samples:[],summary:{blockers:0,warnings:0}});
+    if(url.endsWith('/checklist'))return response({report:[],samples:[],summary:{samples:0,reviewed:0,blockers:0,warnings:0,infos:0}});
     if(url.includes('/phase-classes?')){if(hooks.phases)await hooks.phases();return response({samples:fixture.project.samples.map(s=>({
       sample_id:s.id,phases:s.phases.map(p=>({phase:{name:p.name,card:p.card,db:p.db},quantity:null,trace:null}))}))});}
     if(url==='/api/reports/sample'){

@@ -195,6 +195,22 @@ textarea {
 #emailForm label { font-size:14px; color:#344f70; }
 #emailSubject { min-height:44px; font-size:15px; }
 #emailBody { min-height:360px; font-size:14px; line-height:1.8; }
+#deliveryFields #emailForm, .ristSendActions {
+  padding:16px;
+  margin-bottom:16px;
+  border:1px solid #cdd7e4;
+  border-radius:8px;
+  background:#fff;
+}
+#deliveryFields h2 { margin:0 0 8px; font-size:18px; }
+#deliveryFields .generationActions { display:flex; flex-wrap:wrap; }
+#deliveryFields .generationActions > * {
+  margin-bottom: 8px;
+  margin-right: 8px;
+}
+#deliveryFields .intro { margin-bottom:12px; }
+.ristSendActions p { font-size:13px; line-height:1.5; }
+.ristSendActions a { display:inline-block; margin-top:10px; }
 #generateEmail { white-space:nowrap; }
 .subHeading {
   font-size: 12px;

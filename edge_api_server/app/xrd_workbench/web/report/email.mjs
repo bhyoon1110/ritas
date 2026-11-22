@@ -7,16 +7,17 @@ import '../shared/mail_editor.js';
 // Mail is author-only draft data, never an instruction to send anything.
 export function mountEmailEditor(fields, navigation, changed, requestNumber, context) {
   const pane=document.createElement('div');
-  pane.id='emailForm';pane.className='formPane';pane.hidden=true;
-  pane.innerHTML='<h1>보고서 안내 메일</h1><p class="intro">현재 포함 시료·상 분류·WPPF 정량값·선택한 특이사항과 전체 요약으로 기본 문안을 먼저 채웁니다. 로컬 LLM으로 문안을 다듬고 직접 수정할 수 있으며, 보고서 페이지에는 추가하지 않습니다.</p>'+
+  pane.id='emailForm';pane.className='formPane';
+  pane.innerHTML='<h2>보고서 안내 메일</h2><p class="intro">의뢰자와 분석 결과를 확인하고 제목·본문을 수정하세요. 메일 템플릿과 서명을 적용할 수 있습니다.</p>'+
     '<div class="generationActions"><button type="button" id="generateEmail">분석 결과로 다시 작성</button></div>'+
     '<p id="emailStatus" class="generationLine" role="status" aria-live="polite"></p>'+
     '<label>이메일 제목<input id="emailSubject" data-email="subject" maxlength="180" autocomplete="off"></label>'+
     '<label>이메일 본문<textarea id="emailBody" data-email="body" rows="16" maxlength="4000"></textarea></label>'+
-    '<p class="hint">문안은 서버의 보고서 및 복구 초안에 보존하며, 전달 ZIP에는 별도 메일 파일을 넣지 않습니다. 이 화면에서 실제 이메일을 발송하지 않습니다. 사내 SSO와 보고서 전송 큐 정책은 그대로 적용됩니다.</p>';
-  fields.insertBefore(pane,fields.querySelector('#sampleForm'));
+    '<p class="hint">입력 내용은 초안에 자동 저장됩니다. 아래에서 최종 내용을 저장하거나 보고서 전송 큐에 등록하세요.</p>';
+  fields.appendChild(pane);
   const button=document.createElement('button');
-  button.className='sectionNav';button.dataset.tab='email';button.textContent='안내 메일';
+  button.className='sectionNav';button.dataset.tab='email';button.textContent='의뢰·메일 →';
+  button.title='보고서 저장·전송에서 의뢰 조회와 안내 메일 편집';
   navigation.querySelector('[data-tab="overview"]').insertAdjacentElement('afterend',button);
   return new window.RistMailEditor({host:pane,body:pane.querySelector('#emailBody'),
     before:pane.querySelector('#emailSubject').parentNode,changed,requestNumber,

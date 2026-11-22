@@ -122,7 +122,7 @@ const port=new Promise((resolve,reject)=>{let s='';server.stdout.on('data',chunk
           if(p.endsWith('/draft'))return json({revision:1,document:null});
           if(p.endsWith('/draft/clear'))return json({revision:2,document:null});
           if(p.endsWith('/draft-preview')){if(pptTest)pptDraft=r.postDataJSON().document;return json(pptTest?pptLayout():{});}
-          if(p.endsWith('/checklist'))return json({samples:[],summary:{blockers:0,warnings:0}});
+          if(p.endsWith('/checklist'))return json({report:[],samples:[],summary:{samples:0,reviewed:0,blockers:0,warnings:0,infos:0}});
           if(p==='/api/reports/sample'){
             if(r.method()==='PUT'){doc=r.postDataJSON().document;doc.revision++;return json(doc);}
             return json({...fixture,document:doc});
@@ -138,7 +138,7 @@ const port=new Promise((resolve,reject)=>{let s='';server.stdout.on('data',chunk
       });
       const url=origin+(kind==='xrd'?'/__test__/xrd-editor?project=sample':'/__test__/request-editor/'+kind);
       async function open(){await page.goto(url);if(kind==='xrd')await page.locator('[data-tab="email"]').click();await page.getByLabel('수신자 이름',{exact:true}).waitFor();}
-      async function save(){if(kind==='xrd'){await Promise.all([page.waitForResponse(r=>new URL(r.url()).pathname==='/api/reports/sample'&&r.request().method()==='PUT'),page.locator('#save').click()]);await page.waitForFunction(()=>/저장했습니다/.test(document.getElementById('status').textContent)&&!document.getElementById('save').disabled);}else await page.waitForFunction(()=>/자동 저장 완료/.test(document.getElementById('status').textContent));}
+      async function save(){if(kind==='xrd'){await Promise.all([page.waitForResponse(r=>new URL(r.url()).pathname==='/api/reports/sample'&&r.request().method()==='PUT'),page.locator(await page.locator('#saveDelivery').isVisible()?'#saveDelivery':'#save').click()]);await page.waitForFunction(()=>/저장했습니다/.test(document.getElementById('status').textContent)&&!document.getElementById('save').disabled);}else await page.waitForFunction(()=>/자동 저장 완료/.test(document.getElementById('status').textContent));}
       if(pptTest){
         try{
           await require('./ppt_template_browser_checks.cjs')({page,url,kind,save,pptState,pptPage,pptObject,doc:()=>doc,draft:()=>pptDraft,output,name});

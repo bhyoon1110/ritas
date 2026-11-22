@@ -14,7 +14,7 @@ export const STEPS = [
   { id: 'viewer', number: '②', label: '뷰어', page: '/' },
   { id: 'analysis', number: '③', label: '분석 자료 검토', page: '/analysis.html' },
   { id: 'report', number: '④', label: '보고서 편집', page: '/report.html' },
-  { id: 'save', number: '⑤', label: '보고서 저장', page: '/report.html', extra: 'step=save' },
+  { id: 'save', number: '⑤', label: '보고서 저장·전송', page: '/report.html', extra: 'step=save' },
 ];
 
 export function stepHref(step, projectId) {

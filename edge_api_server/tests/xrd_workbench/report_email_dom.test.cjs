@@ -18,13 +18,18 @@ const flush=async()=>{for(let i=0;i<12;i++)await new Promise(setImmediate);};
 const deferred=()=>{let resolve;const promise=new Promise(r=>{resolve=r;});return {resolve,promise};};
 const response=(value,status=200)=>({ok:status===200,status,headers:{get:()=>null},json:async()=>clone(value),text:async()=>'<html>preview</html>'});
 
-function setup(t,{mode,recovery=null,model,save,load}={}) {
+function setup(t,{mode,recovery=null,model,save,load,step='report'}={}) {
   const errors=[],calls=[];
   const virtualConsole=new VirtualConsole();virtualConsole.on('jsdomError',e=>errors.push(e.message));
-  const dom=new JSDOM(fs.readFileSync(path.join(root,'report.html'),'utf8'),{url:'http://rist.test/report.html?project=sample',runScripts:'outside-only',pretendToBeVisual:true,virtualConsole});
+  const dom=new JSDOM(fs.readFileSync(path.join(root,'report.html'),'utf8'),{url:'http://rist.test/report.html?project=sample&step='+step,runScripts:'outside-only',pretendToBeVisual:true,virtualConsole});
   t.after(()=>dom.window.close());
   const w=dom.window,d=w.document;
   w.structuredClone=clone;w.confirm=()=>true;
+  w.XMLHttpRequest=class {
+    open(method,url){assert(url.startsWith('/api/v1/report-mail/recipient?'));}
+    send(){this.status=200;this.responseText=JSON.stringify({recipientName:'의뢰자',email:'requester@rist.re.kr'});this.onload();}
+    abort(){}
+  };
   let saved=clone(fixture.document),draft=clone(recovery);
   w.fetch=async (url,options={})=>{
     calls.push({url,options});
@@ -34,7 +39,7 @@ function setup(t,{mode,recovery=null,model,save,load}={}) {
     if(url.endsWith('/draft-preview'))return response({});
     if(url.endsWith('/draft/clear')){draft=null;return response({revision:2,document:null});}
     if(url.endsWith('/draft'))return response(options.method==='PUT'?{revision:1}:draft||{revision:0,document:null});
-    if(url.endsWith('/checklist'))return response({samples:[],summary:{blockers:0,warnings:0}});
+    if(url.endsWith('/checklist'))return response({report:[],samples:[],summary:{samples:0,reviewed:0,blockers:0,warnings:0,infos:0}});
     if(url==='/api/reports/sample'){
       if(options.method==='PUT'){
         const body=JSON.parse(options.body);
@@ -55,13 +60,57 @@ function setup(t,{mode,recovery=null,model,save,load}={}) {
 }
 
 for(const mode of Object.keys(programs)) {
+  test(`${mode}: delivery step edits request and mail together and preserves them across steps and saving`,async t=>{
+    const ui=setup(t,{mode});await flush();
+    const byId=id=>ui.d.getElementById(id);
+    byId('nextStep').click();await flush();
+    assert.equal(byId('savePane').hidden,false);
+    assert.equal(byId('editor').hidden,true);
+    assert.equal(byId('emailForm').hidden,false);
+    assert.ok(byId('deliveryFields').contains(byId('ristRequestLookup')));
+    assert.ok(byId('deliveryFields').contains(byId('emailSubject')));
+    assert.ok(byId('deliveryFields').contains(byId('ristReportSend')));
+    const input=(id,value)=>{
+      byId(id).value=value;
+      byId(id).dispatchEvent(new ui.w.Event('input',{bubbles:true}));
+    };
+    input('ristRequestNumber','REQ-TEST');
+    input('emailSubject','검토한 제목');
+    const body=ui.d.querySelector('.mail-rich');
+    body.innerHTML='<p>검토한 분석 결과</p>';
+    body.dispatchEvent(new ui.w.Event('input',{bubbles:true}));
+    ui.w.xrdLocalStep('report');
+    assert.equal(byId('reportNumber').value,'REQ-TEST');
+    input('reportNumber','REQ-COVER');
+    ui.w.xrdLocalStep('save');await flush();
+    assert.equal(byId('ristRequestNumber').value,'REQ-COVER');
+    assert.equal(byId('emailSubject').value,'검토한 제목');
+    assert.equal(body.textContent,'검토한 분석 결과');
+    byId('saveDelivery').click();await flush();
+    const saved=JSON.parse(ui.calls.filter(c=>c.url==='/api/reports/sample'&&c.options.method==='PUT').pop().options.body).document;
+    assert.equal(saved.metadata.report_number,'REQ-COVER');
+    assert.equal(saved.email.subject,'검토한 제목');
+    assert.equal(saved.email.delivery.bodyHtml,'<p>검토한 분석 결과</p>');
+    assert.equal(byId('savePane').hidden,false);
+    assert.equal(ui.d.querySelectorAll('#emailSubject').length,1);
+    assert.deepEqual(ui.errors,[]);
+  });
+  test(`${mode}: direct delivery URL loads mail and resumes automatic drafting after the report arrives`,async t=>{
+    const ui=setup(t,{mode,step:'save'});await flush();
+    assert.equal(ui.d.getElementById('savePane').hidden,false);
+    assert.equal(ui.d.getElementById('emailForm').hidden,false);
+    assert.equal(ui.mailCalls().length,1);
+    assert.ok(ui.email().subject&&ui.email().body);
+    assert.equal(ui.d.getElementById('deliveryFields').disabled,false);
+    assert.deepEqual(ui.errors,[]);
+  });
   test(`${mode}: mail addresses and rich body survive regeneration, autosave and reload`,async t=>{
     const ui=setup(t,{mode,model:async()=>response({...fixture.email_default,subject:'새 제목',body:'새 본문',status:'llm'})});await flush();ui.openMail();await flush();
     const input=(label,value)=>{const e=ui.d.querySelector('[aria-label="'+label+'"]');e.value=value;e.dispatchEvent(new ui.w.Event('input',{bubbles:true}));};
     assert(ui.d.querySelector('[aria-label="수신자 이메일 주소"]').readOnly);
     input('수신자 이메일 주소','to@example.com');input('비밀참조 (BCC)','hidden@rist.re.kr');input('메일 서명','RIST 서명');
     const rich=ui.d.querySelector('.mail-rich');rich.innerHTML='<strong>분석 결과</strong>';rich.dispatchEvent(new ui.w.Event('input',{bubbles:true}));
-    ui.d.getElementById('save').click();await flush();
+    ui.d.getElementById('saveDelivery').click();await flush();
     const saved=JSON.parse(ui.calls.filter(c=>c.url==='/api/reports/sample'&&c.options.method==='PUT').pop().options.body).document;
     assert.equal(saved.email.delivery.to,'');assert.equal(saved.email.delivery.bcc,'hidden@rist.re.kr');assert.equal(saved.email.delivery.bodyHtml,'<strong>분석 결과</strong>');assert.equal(saved.email.body,'분석 결과');
     ui.d.getElementById('generateEmail').click();await flush();
@@ -76,13 +125,13 @@ for(const mode of Object.keys(programs)) {
   });
   test(`${mode}: seed is filled before opening mail, survives slow/failed requests and saves`,async t=>{
     const wait=deferred();const ui=setup(t,{mode,model:()=>wait.promise});await flush();
-    assert.ok(ui.d.getElementById('emailForm').textContent.includes('전달 ZIP에는 별도 메일 파일을 넣지 않습니다'));
-    assert.ok(!ui.d.getElementById('emailForm').textContent.includes('email_body.md'));
+    assert.equal(ui.d.getElementById('emailForm').closest('#savePane').id,'savePane');
     assert.deepEqual(ui.email(),{subject:fixture.email_default.subject,body:fixture.email_default.body});
     assert.equal(ui.mailCalls().length,0);
     ui.openMail();await flush();assert.equal(ui.mailCalls().length,1);
     assert.ok(ui.email().subject && ui.email().body);
     assert.equal(ui.d.getElementById('editorFields').disabled,true);
+    assert.equal(ui.d.getElementById('deliveryFields').disabled,true);
     wait.resolve(response({detail:'QA network failure'},503));await flush();
     assert.match(ui.d.getElementById('emailStatus').textContent,/기존 문안은 유지/);
     assert.equal(ui.email().body,fixture.email_default.body);

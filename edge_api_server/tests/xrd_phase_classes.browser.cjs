@@ -25,6 +25,7 @@ const startup=new Promise((resolve,reject)=>{let data='';server.stdout.on('data'
         assert.equal(await row.inputValue(),'presumed');assert(await row.evaluate(e=>e===window.testPhaseSelect&&e===document.activeElement));
         const pending=page.waitForRequest(r=>r.url().endsWith('/email-draft'));
         await page.locator('[data-tab="email"]').click();if(await page.locator('#generateEmail').isEnabled())await page.locator('#generateEmail').click();await pending;
+        await page.locator('.shellStep[data-step="report"]').click();
         await page.locator('[data-tab="classes"]').click();await row.waitFor();assert(await row.isEnabled());assert(await page.locator('#title').isDisabled());
         await row.selectOption('trace');assert(await row.isEnabled());assert(await page.locator('#pcApply').isDisabled());
         await page.locator('#classForm').screenshot({path:path.join(output,(legacy?'legacy':'native')+'-during-mail.png')});
@@ -39,6 +40,30 @@ const startup=new Promise((resolve,reject)=>{let data='';server.stdout.on('data'
         await page.setViewportSize({width:390,height:844});await page.locator('[data-work-view="editor"]').click();await row.selectOption('major');
         assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+2));assert(await row.isEnabled());
         await page.screenshot({path:path.join(output,(legacy?'legacy':'native')+'-mobile.png'),fullPage:true});
+        await page.locator('.shellStep[data-step="save"]').click();
+        await page.locator('#emailForm').waitFor({state:'visible'});
+        await page.locator('#ristRequestNumber').fill('XRD-MAIL-TEST');
+        await page.locator('#emailSubject').fill('검토 완료 안내');
+        await page.locator('.mail-rich').fill('상 동정 결과를 확인해 주세요.');
+        const mailSaved=page.waitForResponse(r=>r.url().endsWith('/api/reports/'+start.sid)&&r.request().method()==='PUT');
+        await page.locator('#saveDelivery').click();assert.equal((await mailSaved).status(),200);
+        await page.waitForFunction(()=>!document.getElementById('saveDelivery').disabled);
+        await page.reload();
+        await page.locator('#emailForm').waitFor({state:'visible'});
+        assert.equal(await page.locator('#ristRequestNumber').inputValue(),'XRD-MAIL-TEST');
+        assert.equal(await page.locator('#emailSubject').inputValue(),'검토 완료 안내');
+        assert.equal(await page.locator('.mail-rich').textContent(),'상 동정 결과를 확인해 주세요.');
+        assert.equal(await page.locator('#reportNumber').inputValue(),'XRD-MAIL-TEST');
+        for (const width of [1440,390]) {
+          await page.setViewportSize({width,height:900});
+          await page.locator('#ristRequestNumber').scrollIntoViewIfNeeded();
+          assert(await page.locator('#ristRequestLookup').isVisible());
+          assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+2));
+          await page.screenshot({path:path.join(output,(legacy?'legacy':'native')+'-delivery-'+width+'.png')});
+          await page.locator('.mail-rich').scrollIntoViewIfNeeded();
+          assert(await page.locator('.mail-compose').evaluate(e=>e.scrollWidth<=e.clientWidth+2));
+          await page.screenshot({path:path.join(output,(legacy?'legacy':'native')+'-mail-'+width+'.png')});
+        }
         assert.deepEqual(errors,[]);console.log((legacy?'Legacy':'Native')+': selection focus, slow mail, phase editing, actual save/reload and mobile layout passed');
       }catch(e){await page.screenshot({path:path.join(output,'failure.png'),fullPage:true});throw e;}
       finally{release();await page.close();}
