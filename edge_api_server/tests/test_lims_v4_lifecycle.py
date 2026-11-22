@@ -81,7 +81,7 @@ def test_oversize_rejected_before_any_queue_write(tmp_path):
         enqueue_report_package(settings=replace(Settings(storage_root=tmp_path), report_mail_max_attachment_bytes=1),
                                database=db, report_id="test", package_path=package, source_job_id=None,
                                request_number="R1", experiment_code="XRD", equipment_code="X1", operator_id="tester",
-                               report_options={"email": {"subject":"Result", "body":"Result"}})
+                               report_options={"email": {"subject":"Result", "bodyHtml":"<p>Result</p>"}})
     assert error.value.code == "REPORT_MAIL_ATTACHMENT_TOO_LARGE"
     assert not db.values and not db.report_runs
 
@@ -97,7 +97,8 @@ def test_mail_retry_is_atomic_and_preserves_checkpoint_and_attempt_history(maria
     package = tmp_path / "report.zip"
     write_zip(package)
     enqueue_report_package(settings=Settings(storage_root=tmp_path), database=db, report_id="retry-test", package_path=package,
-                           source_job_id=None, request_number="R1", experiment_code="XRD", equipment_code="X1", operator_id="tester")
+                           source_job_id=None, request_number="R1", experiment_code="XRD", equipment_code="X1", operator_id="tester",
+                           report_options={"email": {"subject": "Result", "bodyHtml": "<p>Result</p>"}})
     checkpoint = {"phase":"MAIL_PENDING", "mailStatus":"FAILED", "requestId":"stable-id", "fileNo":55001, "axDocNum":1001}
     with db.transaction() as c:
         c.execute("UPDATE report_transfers SET status='FAILED', mail_status='FAILED', document_status='COMPLETED', "

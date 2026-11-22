@@ -21,6 +21,44 @@ class ReportQueueError(Exception):
         self.retryable = retryable
 
 
+def _validate_lims_method(options: dict[str, Any], experiment_code: str) -> None:
+    """Check the method fields consumed by Spring before any queue mutation."""
+    def check(value: Any) -> None:
+        # Java String.strip excludes nonbreaking spaces; Python str.strip does
+        # not. ISO controls are rejected below, including whitespace controls.
+        whitespace = " \u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2008\u2009\u200a\u2028\u2029\u205f\u3000"
+        stripped = value.strip(whitespace) if isinstance(value, str) else ""
+        utf16_length = len(stripped) + sum(ord(character) > 0xffff for character in stripped)
+        if (not isinstance(value, str) or not stripped or utf16_length > 20
+                or re.search(r"[\x00-\x1f\x7f-\x9f]", value)):
+            raise ReportQueueError(
+                "REPORT_TEST_METHOD_INVALID",
+                "LIMS 시험방법코드는 제어문자 없이 1~20자로 입력하세요. 의뢰 정보를 확인하고 보고서를 다시 저장하세요.",
+                retryable=False,
+            )
+
+    # Spring validates the saved transfer even when an explicit method overrides
+    # it. Keep its alias order so old reports fail here, not in the worker.
+    transfer = options.get("transfer")
+    if transfer is not None and not isinstance(transfer, dict):
+        raise ReportQueueError(
+            "REPORT_TEST_METHOD_INVALID", "저장된 전송 정보 형식을 확인하세요.", retryable=False,
+        )
+    has_saved_method = False
+    for key in ("limsExperimentCode", "experimentCode"):
+        if isinstance(transfer, dict) and key in transfer:
+            check(transfer[key])
+            has_saved_method = True
+            break
+    explicit = options.get("testMtdCode")
+    if explicit is None:
+        explicit = options.get("test_mtd_code")
+    if explicit is not None:
+        check(explicit)
+    elif not has_saved_method:
+        check(experiment_code)
+
+
 def validate_mail_attachment_sizes(settings: Any, sizes: list[int]) -> None:
     """Validate raw attachment bytes; SMTP/MIME limits need LIMS confirmation."""
     single = int(getattr(settings, "report_mail_max_attachment_bytes", 0) or 0)
@@ -58,6 +96,7 @@ def enqueue_report_package(
     # Workspace ownership is recorded by server-side generation code only.
     # Never accept a cleanup context supplied by a browser's report options.
     options = json.loads(report_options) if isinstance(report_options, str) else dict(report_options or {})
+    _validate_lims_method(options, experiment_code)
     options.pop("_sourceRetention", None)
     existing = getattr(database, "fetch_report_run", lambda _id: None)(report_id)
     if existing:
@@ -65,16 +104,12 @@ def enqueue_report_package(
         saved = json.loads(saved) if isinstance(saved, str) else (saved or {})
         if isinstance(saved, dict) and isinstance(saved.get("_sourceRetention"), dict):
             options["_sourceRetention"] = saved["_sourceRetention"]
+    from .report_mail import validate_envelope
+    try:
+        options['email'] = validate_envelope(options.get('email'))
+    except ValueError as exc:
+        raise ReportQueueError('REPORT_MAIL_INVALID', str(exc), retryable=False) from exc
     report_options = options
-    if report_options:
-        from .report_mail import validate_envelope
-        options = json.loads(report_options) if isinstance(report_options, str) else dict(report_options)
-        if options.get('email'):
-            try:
-                options['email'] = validate_envelope(options['email'])
-            except ValueError as exc:
-                raise ReportQueueError('REPORT_MAIL_INVALID', str(exc), retryable=False) from exc
-        report_options = options
     if database is None:
         raise ReportQueueError(
             "REPORT_QUEUE_DATABASE_UNAVAILABLE",

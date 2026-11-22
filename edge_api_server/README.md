@@ -1089,6 +1089,12 @@ PYTHON_BIN=.venv/bin/python scripts/run_mariadb_tests.sh
   수신자용 미리보기에는 해석 재생성/편집 기능이나 LLM 접속 정보가 포함되지 않는다.
 - 보고서 생성이 끝나면 실험 화면의 `보고서 미리보기` 또는 `/reports/{reportId}`의
   `PPT · 그래프 미리보기`를 연다. 기존 로그인/프로젝트 권한 검사와 SSO 전송 요건은 유지한다.
+- LIMS 전송 큐 등록 전에는 저장된 메일 제목·정제된 HTML 본문이 필요하다. 비어 있거나
+  메일 정보가 없는 이전 보고서는 문안을 입력하고 수정본을 저장한 뒤 전송한다.
+  제목은 4,000자, HTML은 1,536,000자, 시험방법코드는 20자까지이며 Spring과 같은
+  UTF-16 단위로 검사한다. 시험방법코드의 제어문자도 거절한다. 불완전한 초안 저장은 허용한다.
+  입력 오류는 큐에 등록하지 않고 안내하며, XRD 전송의 복구 불가능한 큐 오류는 HTTP 409,
+  재시도 가능한 오류는 HTTP 503과 원래 오류 코드·문구로 응답한다.
 - `/api/v1/{ftir|raman}/report/jobs/{jobId}/preview`는 현재 작업의 ZIP을 읽고,
   `/api/v1/reports/{reportId}/preview`는 DB에 등록된 공유 저장소 ZIP을 읽는다.
 - ZIP의 `report.html`은 실제 `report-from-pptx.pdf`에서 렌더링한 PPT 페이지와

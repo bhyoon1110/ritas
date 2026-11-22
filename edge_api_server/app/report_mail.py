@@ -264,13 +264,23 @@ def mail_payload(subject, body, delivery=None, *, sending=False):
         return result  # Preserve incomplete drafts; queueing is the validation boundary.
 
 
+def _utf16_length(value):
+    # Match Java String.length() at Spring's LIMS submission boundary.
+    return len(value) + sum(ord(character) > 0xffff for character in value)
+
+
 def validate_envelope(value):
     """Validate the trusted stored envelope at queueing, not a browser send override."""
     if not isinstance(value, dict):
         raise ValueError('메일 전송 정보 형식을 확인하세요.')
     result = dict(value)
-    if not isinstance(result.get('subject'), str) or re.search(r'[\r\n\x00-\x1f\x7f]', result['subject']):
+    subject = result.get('subject')
+    if not isinstance(subject, str) or re.search(r'[\r\n\x00-\x1f\x7f]', subject):
         raise ValueError('메일 제목은 한 줄로 입력하세요.')
+    if not subject.strip():
+        raise ValueError('전송할 메일 제목을 입력하세요.')
+    if _utf16_length(subject) > 4000:
+        raise ValueError('전송할 메일 제목은 4,000자 이하로 입력하세요.')
     for field in ('cc', 'bcc'):
         raw = result.get(field, '')
         if isinstance(raw, list) and not all(isinstance(item, str) for item in raw):
@@ -290,6 +300,10 @@ def validate_envelope(value):
     result['htmlBody'] = clean_html(
         result['bodyHtml'], images=MailImages(result['inlineImages'])
     )[0]
+    if not result['htmlBody'].strip():
+        raise ValueError('전송할 메일 본문을 입력하세요.')
+    if _utf16_length(result['htmlBody']) > MAX_HTML:
+        raise ValueError('메일 서식 본문과 서명이 너무 깁니다.')
     # Spring resolves the authoritative To from the queued request number at dispatch.
     result['recipientReady'] = False
     result['schemaVersion'] = 2

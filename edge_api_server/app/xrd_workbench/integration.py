@@ -653,7 +653,12 @@ def send_report(jid: str, payload: PreviewReportSendRequest, request: Request):
         return send_preview_report_package(settings=state.settings, database=request.app.state.database,
                                             job=job, payload=payload)
     except ReportQueueError as exc:
-        raise ApiException(503, exc.code, exc.message, retryable=exc.retryable) from exc
+        raise ApiException(
+            503 if exc.retryable else 409,
+            exc.code,
+            str(exc),
+            retryable=exc.retryable,
+        ) from exc
 
 
 @router.get('/api/platform')

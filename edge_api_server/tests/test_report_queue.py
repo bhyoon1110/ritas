@@ -57,6 +57,55 @@ def write_zip(path: Path) -> bytes:
     return path.read_bytes()
 
 
+def authored_mail_options(**options):
+    return {**options, "email": {"subject": "분석 결과", "bodyHtml": "<p>검토한 분석 결과입니다.</p>"}}
+
+
+@pytest.mark.parametrize("options,method", [
+    ({}, "M" * 21),
+    ({}, " "),
+    ({}, "METHOD\t1"),
+    ({}, "METHOD\x85"),
+    ({}, "\U0001f9ea" * 11),  # Java's 20-character boundary uses UTF-16 units.
+    ({}, "M" * 20 + "\u00a0"),  # Java keeps nonbreaking spaces when stripping.
+    ({}, "\u202f" + "M" * 20),
+    ({"transfer": {"limsExperimentCode": "M" * 21}}, "XRD"),
+    ({"transfer": {"experimentCode": "M" * 21}}, "XRD"),
+    ({"testMtdCode": "M" * 21}, "XRD"),
+    ({"test_mtd_code": "M" * 21}, "XRD"),
+    ({"transfer": {"limsExperimentCode": "M" * 21}, "testMtdCode": "VALID"}, "XRD"),
+])
+def test_invalid_lims_method_is_rejected_before_report_or_queue_write(tmp_path, options, method):
+    package = tmp_path / "report.zip"
+    write_zip(package)
+    database = CapturingDatabase()
+    with pytest.raises(ReportQueueError) as error:
+        enqueue_report_package(
+            settings=settings(tmp_path), database=database, report_id="method-check",
+            package_path=package, source_job_id=None, request_number="2022T00793",
+            experiment_code=method, equipment_code="100000128", operator_id="operator-1",
+            report_options=options,
+        )
+    assert error.value.code == "REPORT_TEST_METHOD_INVALID"
+    assert error.value.retryable is False
+    assert not database.values and not database.report_runs and not database.artifacts
+
+
+@pytest.mark.parametrize("method", ["2022A11112", "M" * 20, "\U0001f9ea" * 10, "\u3000" + "M" * 20 + " "])
+def test_lims_method_boundary_can_be_queued(tmp_path, method):
+    package = tmp_path / "report.zip"
+    write_zip(package)
+    database = CapturingDatabase()
+    result = enqueue_report_package(
+        settings=settings(tmp_path), database=database, report_id="method-check",
+        package_path=package, source_job_id=None, request_number="2022T00793",
+        experiment_code=method, equipment_code="100000128", operator_id="operator-1",
+        report_options=authored_mail_options(),
+    )
+    assert result["queued"] is True
+    assert database.values["experiment_code"] == method
+
+
 def test_enqueue_report_package_registers_relative_shared_path_and_integrity(
     tmp_path: Path,
 ) -> None:
@@ -75,7 +124,7 @@ def test_enqueue_report_package_registers_relative_shared_path_and_integrity(
         experiment_code="FT-IR",
         equipment_code="FTIR-01",
         operator_id="operator-1",
-        report_options={"reportFormats": ["PPTX"]},
+        report_options=authored_mail_options(reportFormats=["PPTX"]),
     )
 
     assert result["queued"] is True
@@ -128,6 +177,7 @@ def test_enqueue_report_package_rejects_path_outside_shared_root(
             experiment_code="XRD",
             equipment_code="XRD-01",
             operator_id="operator-1",
+            report_options=authored_mail_options(),
         )
 
     assert captured.value.code == "REPORT_PACKAGE_OUTSIDE_SHARED_STORAGE"
@@ -151,6 +201,7 @@ def test_enqueue_report_package_rejects_invalid_zip(tmp_path: Path) -> None:
             experiment_code="TEM",
             equipment_code="TEM-01",
             operator_id="operator-1",
+            report_options=authored_mail_options(),
         )
 
     assert captured.value.code == "REPORT_PACKAGE_INVALID_ZIP"
@@ -236,7 +287,7 @@ def test_enqueue_registered_report_preserves_existing_report_metadata(
         "package_relative_path": package.relative_to(storage_root).as_posix(),
         "package_size_bytes": len(package_bytes),
         "package_sha256": hashlib.sha256(package_bytes).hexdigest(),
-        "report_options_json": json.dumps(options) if options else None,
+        "report_options_json": json.dumps(authored_mail_options(**(options or {}))),
         "generated_at": "2026-08-26T10:00:00+09:00",
         "is_test": True,
     }
@@ -271,6 +322,9 @@ def test_send_preview_report_package_publishes_and_queues(
     source = tmp_path / "temporary" / "report-package.zip"
     package_bytes = write_zip(source)
     database = CapturingDatabase()
+    database.fetch_report_run = lambda report_id: {
+        "report_options_json": json.dumps(authored_mail_options()),
+    }
     job = SimpleNamespace(
         job_id="tem-job-1",
         status="completed",

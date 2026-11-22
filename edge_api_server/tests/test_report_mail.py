@@ -13,7 +13,7 @@ from PIL import Image
 from app.auth import AuthContext
 from app.errors import ApiException
 from app.report_mail import clean_html, normalize_delivery, mail_payload, validate_envelope, write_mail_files, router
-from app.report_queue import ReportQueueError
+from app.report_queue import ReportQueueError, enqueue_report_package, register_generated_report_package
 from app.preview_report import send_preview_report_package, PreviewReportSendRequest
 from tests.test_report_queue import CapturingDatabase, settings, write_zip
 
@@ -184,6 +184,91 @@ def test_empty_mail_does_not_leave_previous_generated_body(tmp_path):
     write_mail_files(tmp_path, '', '')
     assert not (tmp_path/'email_body.md').exists()
     assert not (tmp_path/'email_body.html').exists()
+
+
+@pytest.mark.parametrize('subject,body', [('', ''), ('  ', '본문'), ('제목', ''), ('제목', ' \t')])
+def test_incomplete_mail_can_be_saved_but_not_queued(tmp_path, subject, body):
+    draft = mail_payload(subject, body)
+    assert draft['subject'] == subject and draft['bodyText'] == body
+    with pytest.raises(ValueError, match='메일 (제목|본문)'):
+        mail_payload(subject, body, sending=True)
+
+    config = settings(tmp_path/'storage')
+    source = tmp_path/'original.zip'
+    write_zip(source)
+    saved = CapturingDatabase()
+    package = register_generated_report_package(
+        settings=config, database=saved, report_id='draft-report', package_path=source,
+        experiment_code='2022A11112', report_options={'email': draft},
+    )
+    assert package.is_file()
+    assert json.loads(saved.report_runs[0]['report_options_json'])['email'] == draft
+    assert saved.values == {}
+
+    queued = CapturingDatabase()
+    with pytest.raises(ReportQueueError, match='메일 (제목|본문)') as failure:
+        enqueue_report_package(
+            settings=config, database=queued, report_id='draft-report', package_path=package,
+            source_job_id=None, request_number='2022T00793', experiment_code='2022A11112',
+            equipment_code='100000128', operator_id='tester', report_options={'email': draft},
+        )
+    assert failure.value.code == 'REPORT_MAIL_INVALID' and not failure.value.retryable
+    assert queued.values == {} and queued.report_runs == [] and queued.artifacts == []
+
+
+@pytest.mark.parametrize('body_html', ['', ' \t\n', '<script>삭제할 내용</script>', '<img src="https://invalid/tracker">'])
+def test_queue_mail_requires_sanitized_body_and_ignores_supplied_html_body(body_html):
+    with pytest.raises(ValueError, match='메일 본문'):
+        validate_envelope({'subject': '결과', 'bodyHtml': body_html, 'htmlBody': '<p>신뢰하지 않는 본문</p>'})
+
+
+@pytest.mark.parametrize('options', [None, {}, {'email': None}, {'email': {}}])
+def test_missing_mail_is_rejected_before_report_or_queue_write(tmp_path, options):
+    package = tmp_path/'report.zip'
+    write_zip(package)
+    database = CapturingDatabase()
+    with pytest.raises(ReportQueueError) as failure:
+        enqueue_report_package(
+            settings=settings(tmp_path), database=database, report_id='missing-mail', package_path=package,
+            source_job_id=None, request_number='2022T00793', experiment_code='2022A11112',
+            equipment_code='100000128', operator_id='tester', report_options=options,
+        )
+    assert failure.value.code == 'REPORT_MAIL_INVALID' and not failure.value.retryable
+    assert database.values == {} and database.report_runs == [] and database.artifacts == []
+
+
+@pytest.mark.parametrize('subject', ['가' * 4000, '🧪' * 2000])
+def test_queue_mail_subject_matches_spring_utf16_limit(subject):
+    assert validate_envelope({'subject': subject, 'bodyHtml': '<p>본문</p>'})['subject'] == subject
+    with pytest.raises(ValueError, match='4,000자'):
+        validate_envelope({'subject': subject + 'x', 'bodyHtml': '<p>본문</p>'})
+
+
+@pytest.mark.parametrize('first', ['x', '🧪'])
+def test_queue_mail_html_matches_spring_utf16_limit(first):
+    from app.report_mail_media import MAX_HTML
+    html = first + ' ' * (MAX_HTML - len(first.encode('utf-16-le')) // 2)
+    assert validate_envelope({'subject': '결과', 'bodyHtml': html})['htmlBody'] == html
+    with pytest.raises(ValueError, match='너무 깁니다'):
+        validate_envelope({'subject': '결과', 'bodyHtml': html + ' '})
+
+
+def test_queue_mail_accepts_image_only_html(tmp_path):
+    html = '<img src="' + embedded_image() + '">'
+    envelope = validate_envelope({'subject': '분석 이미지', 'bodyHtml': html})
+    config = settings(tmp_path)
+    package = tmp_path/'report.zip'
+    write_zip(package)
+    database = CapturingDatabase()
+    result = enqueue_report_package(
+        settings=config, database=database, report_id='image-only', package_path=package,
+        source_job_id=None, request_number='2022T00793', experiment_code='2022A11112',
+        equipment_code='100000128', operator_id='tester', report_options={'email': envelope},
+    )
+    assert result['queued'] and result['status'] == 'PENDING'
+    stored = json.loads(database.values['report_options_json'])['email']
+    assert '<img ' in stored['htmlBody'] and 'data:image/png;base64,' in stored['htmlBody']
+    assert 'cid:' not in stored['htmlBody']
 
 
 def test_bcc_validation_errors_are_redacted():
