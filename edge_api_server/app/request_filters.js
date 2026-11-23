@@ -126,6 +126,7 @@
         page = 1; total = null; scopeNote = "";
         status.textContent = '변경한 조건으로 의뢰 조회를 눌러 주세요.';
         sync();
+        if (options.onChange) options.onChange();
       });
     });
     function turn(delta) {

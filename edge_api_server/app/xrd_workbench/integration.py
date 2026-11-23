@@ -702,7 +702,7 @@ def web_asset(asset_path: str, request: Request):
             content=content.replace('<script type="module"',scripts+'<script type="module"',1)
         content = re.sub(r'(href|src)="/', lambda m: m[1] + '="' + BASE + '/', content)
         if path.name == 'report.html':
-            content = content.replace('</head>', '<script src="/assets/request_filters.js"></script></head>', 1)
+            content = content.replace('</head>', '<script src="/assets/request_filters.js"></script><script src="/assets/request_picker.js"></script></head>', 1)
         content = content.replace('<head>', '<head>' + file_progress_html() + '<script src="' + BASE + '/bootstrap.js"></script>')
         content = content.replace('</head>', '<link rel="stylesheet" href="' + BASE + '/shared/platform.css"></head>')
         if browser_profile(request.headers.get('user-agent', '')) == 'chrome49':

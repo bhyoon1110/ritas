@@ -29,7 +29,7 @@ const ready = new Promise((resolve, reject) => {
         await route.fulfill({status:fail ? 422 : 200, contentType:'application/json', body:JSON.stringify(fail
           ? {message:'기간으로 조회 범위를 좁혀 주세요.', code:'REQUEST_SCOPE_TOO_BROAD'}
           : {page:1,pageSize:200,totalCount:1,scopeNote:'XRD: 명확한 시험명 기준으로 조회합니다.',
-              items:[{requestNumber:'REQ-XRD-ONLY',testMethodCode:'X-01',testMethodName:'XRD 정성분석',sampleName:'검증 시료',testState:7}]})});
+              items:[{requestNumber:'REQ-XRD-ONLY',testMethodCode:'X-01',testMethodName:'XRD 정성분석',sampleName:'검증 시료',testState:7,requestUserName:'김의뢰',customerName:'검증기관',testChargerName:'박담당',sampleResultNo:701,testMethodResultNo:801}]})});
       });
       try {
         await page.goto(origin+'/api/v1/xrd/workbench/report.html?project='+start.sid);
@@ -41,23 +41,26 @@ const ready = new Promise((resolve, reject) => {
         for (const source of ['cache','lims']) {
           await page.getByLabel('조회 대상', {exact:true}).selectOption(source);
           await lookup.click();
-          await page.waitForFunction(() => document.getElementById('ristRequests').options.length === 2);
+          await page.waitForFunction(() => document.querySelectorAll('#rist-request-results [role=option]').length === 1);
           assert.equal(queries.at(-1).get('source'), source);
           assert.equal(queries.at(-1).get('testState'), '1,3,5,7');
           assert.match(await filters.textContent(), /명확한 시험명 기준/);
-          await page.locator('#ristRequests').selectOption('0');
+          await page.getByRole('combobox',{name:'의뢰 검색·선택'}).fill('김의뢰 검증기관');
+          await page.locator('#rist-request-result-0').click();
+          assert.match(await page.locator('#rist-request-detail').textContent(),/박담당/);
+          assert.match(await page.locator('#rist-request-detail').textContent(),/701/);
           assert.equal(await page.locator('#ristRequestNumber').inputValue(), 'REQ-XRD-ONLY');
           assert.equal(await page.locator('#ristExperiment').inputValue(), 'X-01');
         }
         await page.getByLabel('시험 상태', {exact:true}).selectOption('');
         await lookup.click();
-        await page.waitForFunction(() => document.getElementById('ristRequests').options.length === 2);
+        await page.waitForFunction(() => document.querySelectorAll('#rist-request-results [role=option]').length === 1);
         assert.equal(queries.at(-1).get('includeCompleted'), 'true');
         assert(!queries.at(-1).has('testState'));
         fail = true;
         await lookup.click();
-        await page.waitForFunction(() => document.getElementById('ristTransferStatus').textContent.includes('기간으로 조회 범위'));
-        assert.equal(await page.locator('#ristRequests option').count(), 1);
+        await page.waitForFunction(() => document.getElementById('rist-request-info').textContent.includes('기간으로 조회 범위'));
+        assert.equal(await page.locator('#rist-request-results [role=option]').count(), 0);
         await page.setViewportSize({width:390,height:900});
         await filters.scrollIntoViewIfNeeded();
         assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth+2));

@@ -17,6 +17,7 @@ async function openPicker(t, pages) {
   const queries = [], sends = [];
   w.eval(fs.readFileSync(path.join(app, 'request_filters.js'), 'utf8'));
   w.eval(fs.readFileSync(path.resolve(app, '../../common/rist_common/plotting/file_progress.js'), 'utf8'));
+  w.eval(fs.readFileSync(path.join(app, 'request_picker.js'), 'utf8'));
   w.eval(bundle);
   w.fetch = async url => {
     if (url === '/api/platform') return {ok:true, json:async () => ({operatorId:'op'})};
@@ -50,8 +51,8 @@ test('XRD workbench uses live v5 filters and paging and selects the actual test 
   next.click();
   await new Promise(setImmediate);
   assert.equal(queries[1].get('page'), '2');
-  assert.match(byId('ristRequests').options[1].textContent, /M-2 · 회절 측정 · 시험중/);
-  change(byId('ristRequests'), '0');
+  assert.match(byId('rist-request-result-0').textContent, /회절 측정M-2/);
+  byId('rist-request-result-0').click();
   assert.equal(byId('ristRequestNumber').value, 'R-2');
   assert.equal(byId('ristEquipment').value, '');
   byId('ristEquipment').value = 'XRD-17';
@@ -75,7 +76,7 @@ test('missing method blocks sending while changing requests preserves the user-e
   byId('ristEquipment').value = 'XRD-7';
   change(field('조회 대상'), 'lims');
   await byId('ristRequestLookup').onclick();
-  change(byId('ristRequests'), '0');
+  byId('rist-request-result-0').click();
   assert.equal(byId('ristExperiment').value, '');
   assert.equal(byId('ristEquipment').value, 'XRD-7');
   await byId('ristReportSend').onclick();
@@ -86,10 +87,10 @@ test('missing method blocks sending while changing requests preserves the user-e
 test('lookup shows the server scope guidance and clears stale selections on failure', async t => {
   const {w, byId} = await openPicker(t, [[{requestNumber:'R-1', testMethodCode:'A'}]]);
   await byId('ristRequestLookup').onclick();
-  assert.equal(byId('ristRequests').options.length, 2);
+  assert.equal(byId('rist-request-results').querySelectorAll('[role=option]').length, 1);
   w.fetch = async () => ({ok:false, json:async () => ({code:'REQUEST_SCOPE_TOO_BROAD',message:'기간으로 조회 범위를 좁혀 주세요.'})});
   await byId('ristRequestLookup').onclick();
-  assert.equal(byId('ristRequests').options.length, 1);
-  assert.match(byId('ristTransferStatus').textContent, /기간으로 조회 범위/);
+  assert.equal(byId('rist-request-results').querySelectorAll('[role=option]').length, 0);
+  assert.match(byId('rist-request-info').textContent, /기간으로 조회 범위/);
   assert.equal(byId('ristRequestLookup').disabled, false);
 });

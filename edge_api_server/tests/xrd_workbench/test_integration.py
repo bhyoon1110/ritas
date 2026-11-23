@@ -67,9 +67,10 @@ def test_shared_manager_style_is_served_on_all_workbench_pages(tmp_path, legacy)
         assert response.status_code == 200
         assert api.BASE + stylesheet in response.text
         if page == '/report.html':
-            helper = '<script src="/assets/request_filters.js"></script>'
-            assert helper in response.text
-            assert response.text.index(helper) < response.text.index('src="' + api.BASE + '/report/report.')
+            filters = '<script src="/assets/request_filters.js"></script>'
+            helper = '<script src="/assets/request_picker.js"></script>'
+            assert filters in response.text and helper in response.text
+            assert response.text.index(filters) < response.text.index(helper) < response.text.index('src="' + api.BASE + '/report/report.')
     response = client.get(api.BASE + stylesheet, headers=headers)
     assert response.status_code == 200
     assert '.ristWorkManager' in response.text

@@ -13,3 +13,12 @@ def request_filters_script() -> Response:
         media_type="application/javascript",
         headers={"Cache-Control": "no-cache"},
     )
+
+
+@router.get("/assets/request_picker.js", include_in_schema=False)
+def request_picker_script() -> Response:
+    return Response(
+        content=Path(__file__).with_name("request_picker.js").read_text(encoding="utf-8"),
+        media_type="application/javascript",
+        headers={"Cache-Control": "no-cache"},
+    )

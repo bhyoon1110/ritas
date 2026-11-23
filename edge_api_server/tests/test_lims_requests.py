@@ -225,11 +225,13 @@ def test_shared_controls_are_available_in_all_standalone_preview_apps(monkeypatc
     monkeypatch.setenv("RIST_ERROR_ARCHIVE_ROOT", str(tmp_path / "errors"))
     monkeypatch.setenv("RIST_USAGE_LOG_ROOT", str(tmp_path / "usage"))
     for factory in (create_tem_preview_app, create_ftir_preview_app, create_raman_preview_app, create_xrd_preview_app):
-        response = TestClient(factory()).get("/assets/request_filters.js")
-        assert response.status_code == 200
-        assert response.headers["content-type"].startswith("application/javascript")
-        assert response.headers["cache-control"] == "no-cache"
-        assert "RistRequestFilters" in response.text
+        client = TestClient(factory())
+        for name, exported in (("request_filters", "RistRequestFilters"), ("request_picker", "RistRequestPicker")):
+            response = client.get(f"/assets/{name}.js")
+            assert response.status_code == 200
+            assert response.headers["content-type"].startswith("application/javascript")
+            assert response.headers["cache-control"] == "no-cache"
+            assert exported in response.text
 
 
 def test_http_route_forwards_v5_filters_and_rejects_unsupported_combinations(monkeypatch, tmp_path):

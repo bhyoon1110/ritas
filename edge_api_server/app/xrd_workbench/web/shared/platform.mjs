@@ -31,7 +31,7 @@ export async function mountReportPlatform(send, changed) {
   block.className = 'ristTransfer';
   block.innerHTML = '<h2>의뢰 정보</h2><p>의뢰를 조회하거나 번호를 직접 입력한 뒤, 아래에서 안내 메일을 확인하세요.</p>' +
     '<label>의뢰번호<input id="ristRequestNumber" maxlength="80" placeholder="직접 입력 또는 의뢰 조회"></label>' +
-    '<button type="button" id="ristRequestLookup">의뢰 조회</button><select id="ristRequests" aria-label="의뢰 선택"><option value="">의뢰를 선택하세요</option></select>' +
+    '<button type="button" id="ristRequestLookup">의뢰 조회</button><div id="ristRequests"></div>' +
     '<div class="formGrid"><label>LIMS 시험방법코드<input id="ristExperiment" maxlength="100"></label><label>실험장비 코드<input id="ristEquipment" maxlength="100"></label><label>실험자(SSO)<input id="ristOperator" maxlength="100" readonly></label></div>' +
     '<p id="ristTransferStatus" role="status"></p>';
   const fields = document.getElementById('deliveryFields');
@@ -44,7 +44,6 @@ export async function mountReportPlatform(send, changed) {
     '<a href="/account">회원정보에서 사내 SSO 인증</a><p id="ristSendStatus" role="status"></p>';
   fields.appendChild(actions);
   const $ = id => document.getElementById(id), status = text => { $('ristTransferStatus').textContent = text; };
-  const progress=window.RistFileProgress.monitor($('ristTransferStatus'));
   const sendProgress=window.RistFileProgress.monitor($('ristSendStatus'));
   $('ristRequestNumber').value = $('reportNumber').value;
   $('ristRequestNumber').addEventListener('input', () => {
@@ -52,65 +51,34 @@ export async function mountReportPlatform(send, changed) {
     $('reportNumber').dispatchEvent(new Event('input', {bubbles:true}));
   });
   for (const id of ['ristExperiment', 'ristEquipment']) $(id).addEventListener('input', changed);
-  const requestSelect = $('ristRequests'), lookupButton = $('ristRequestLookup');
-  let items = [], selectedItem = null;
-  const filters = window.RistRequestFilters?.mount(requestSelect, {experimentType:'XRD', reload:loadRequests});
-
   function methodCode(item) { return (item.testMethodCode || item.experimentCode || '').trim(); }
-  function clearOptions() {
-    items = [];
-    requestSelect.textContent = '';
-    requestSelect.add(new Option('의뢰를 선택하세요', ''));
-  }
-  async function loadRequests() {
-    if (lookupButton.disabled) return;
-    lookupButton.disabled = true;
-    requestSelect.disabled = true;
-    filters?.setBusy(true);
-    progress.start('의뢰 목록 조회 중…');
-    clearOptions();
-    try {
-      if (!filters) throw new Error('의뢰 검색 조건을 불러오지 못했습니다. 화면을 새로 고쳐 주세요.');
-      const response = await fetch(filters.url(), {headers:{'X-Request-Id':'xrd-workbench-' + Date.now()}});
-      const body = await response.json();
-      if (!response.ok) throw new Error(body.message || body.error?.message || body.detail || '의뢰 조회에 실패했습니다.');
-      items = body.items || [];
-      filters.showResult(body);
-      items.forEach((item, index) => {
-        const label = [item.requestNumber, item.sampleName || item.requestTitle, methodCode(item) || '시험방법코드 없음',
-          item.testMethodName, window.RistRequestFilters.testStateName(item.testState)].filter(Boolean).join(' · ');
-        requestSelect.add(new Option(label, String(index)));
-      });
-      status(`${items.length}개 시험을 불러왔습니다.`);
-    } catch (error) { status(error.message); }
-    finally {
-      lookupButton.disabled = false;
-      requestSelect.disabled = false;
-      filters?.setBusy(false);
-      progress.stop();
+  const picker = window.RistRequestPicker.mount($('ristRequests'), {id:'rist-request', experimentType:'XRD',
+    loadButton:$('ristRequestLookup'),
+    fetch:async (url, callback) => {
+      try {
+        const response = await fetch(url, {headers:{'X-Request-Id':'xrd-workbench-' + Date.now()}});
+        const body = await response.json();
+        if (!response.ok) throw new Error(body.message || body.error?.message || body.detail || '의뢰 조회에 실패했습니다.');
+        callback(null, body);
+      } catch (error) { callback(error); }
+    },
+    onSelect:item => {
+      $('reportNumber').value = item.requestNumber || '';
+      $('ristExperiment').value = methodCode(item);
+      const equipment = item.equipmentCode || item.deviceCode || item.instrumentCode;
+      if (equipment) $('ristEquipment').value = equipment;
+      $('reportNumber').dispatchEvent(new Event('input', {bubbles:true}));
+      changed();
+      status(methodCode(item) ? '표지 의뢰번호와 시험방법코드를 반영했습니다. 사용한 장비코드를 확인하세요.'
+        : '선택한 시험에 시험방법코드가 없습니다. 전송 전 LIMS 시험방법코드를 확인하세요.');
     }
-  }
-  lookupButton.onclick = loadRequests;
-  requestSelect.onchange = () => {
-    if (requestSelect.value === '') return;
-    const item = items[Number(requestSelect.value)];
-    selectedItem = item;
-    $('reportNumber').value = item.requestNumber || '';
-    $('ristExperiment').value = methodCode(item);
-    const equipment = item.equipmentCode || item.deviceCode || item.instrumentCode;
-    if (equipment) $('ristEquipment').value = equipment;
-    $('reportNumber').dispatchEvent(new Event('input', {bubbles:true}));
-    changed();
-    status(methodCode(item) ? '표지 의뢰번호와 시험방법코드를 반영했습니다. 사용한 장비코드를 확인하세요.'
-      : '선택한 시험에 시험방법코드가 없습니다. 전송 전 LIMS 시험방법코드를 확인하세요.');
-  };
+  });
   $('reportNumber').addEventListener('input', () => {
     $('ristRequestNumber').value = $('reportNumber').value;
+    const selectedItem = picker.selected();
     if (!selectedItem || $('reportNumber').value.trim() === selectedItem.requestNumber) return;
     if ($('ristExperiment').value === methodCode(selectedItem)) $('ristExperiment').value = '';
-    selectedItem = null;
-    requestSelect.value = '';
-    changed();
+    picker.clear(); changed();
   });
   $('ristReportSend').onclick = async () => {
     $('ristReportSend').disabled = true;

@@ -14,7 +14,7 @@ const port=new Promise((resolve,reject)=>{let data='';server.stdout.on('data',ch
       const context=await browser.newContext({viewport:{width:legacy?390:1440,height:1000},...(legacy?{userAgent:'Mozilla/5.0 (Windows NT 5.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/49.0.2623.75 Safari/537.36'}:{})});
       const page=await context.newPage();page.setDefaultTimeout(15000);page.on('pageerror',e=>errors.push(e.message));
       let doc={title:'Lookup test',completionDate:'2026-10-26',transfer:{requestNumber:'',limsExperimentCode:'',equipmentCode:'CURRENT-LAB',operatorId:'SSO-001'},sections:[],auxiliary:{},variables:[]},revision=0,failLookup=false;
-      const items=Array.from({length:200},(_,i)=>({requestNumber:i<2?'REQ-SAME':'REQ-'+i,experimentCode:'CODE-'+i,
+      const items=Array.from({length:200},(_,i)=>({requestNumber:i<2?'REQ-SAME':'REQ-'+i,experimentCode:'CODE-'+i,requestDate:'2026-11-23',requestUserName:i===1?'김의뢰':'홍의뢰',customerName:'시험기관',testChargerName:'박담당',sampleResultNo:1000+i,testMethodResultNo:2000+i,customerRequestName:'원소분석 의뢰',
         sampleName:i<2?'같은 시료 <b>검증</b> '+('긴 이름 '.repeat(i?15:0)):'Other '+i,...(i?{equipmentCode:'LAB-'+i}:{})}));
       await page.route('**/api/v1/**',async route=>{
         const request=route.request(),url=new URL(request.url()),p=url.pathname;
@@ -49,21 +49,29 @@ const port=new Promise((resolve,reject)=>{let data='';server.stdout.on('data',ch
         await page.goto(origin+'/__test__/request-editor/'+kind);await search.waitFor();
         if(legacy){assert(await page.locator('script[src*="/assets/browser-compat/"]').count()>0);}
         await page.locator('#request-load').click();await list.getByRole('option').first().waitFor();
-        assert.equal(await page.locator('#request-select').count(),0);assert.equal(await page.locator('.request-combo input').count(),1);
+        assert.equal(await page.locator('#request-select').count(),0);assert.equal(await page.locator('.rr-combo input').count(),1);
         await search.fill('같은 시료');assert.equal(await list.getByRole('option').count(),2);assert.equal(queries.length,1);assert.equal(posts.length,0);
         assert.equal(await list.locator('b').count(),0);await search.press('Enter');assert.equal(await page.getByLabel('의뢰번호',{exact:true}).inputValue(),'');
+        await search.fill('김의뢰 시험기관');assert.equal(await list.getByRole('option').count(),1);
+        assert.match(await list.textContent(),/시험 #2001/);await search.fill('같은 시료');
         await bounds();await page.screenshot({path:path.join(output,name+'-open.png')});
         await search.press('ArrowDown');await search.press('ArrowDown');await search.press('Enter');await saved();
         assert.equal(doc.transfer.requestNumber,'REQ-SAME');assert.equal(doc.transfer.limsExperimentCode,'CODE-1');assert.equal(doc.transfer.equipmentCode,'LAB-1');assert.equal(doc.transfer.operatorId,'SSO-001');
-        assert(await list.isHidden());const count=posts.length;
+        assert(await list.isHidden());assert.match(await page.locator('#request-detail').textContent(),/박담당/);assert.match(await page.locator('#request-detail').textContent(),/1001/);const count=posts.length;
         await search.fill('does not match');assert.match(await list.textContent(),/일치하는 의뢰가 없습니다/);await search.press('Escape');assert(await list.isHidden());assert.equal(posts.length,count);
         await search.fill('같은 시료');await page.locator('#request-result-0').click();await saved();
         assert.equal(doc.transfer.limsExperimentCode,'CODE-0');assert.equal(doc.transfer.equipmentCode,'LAB-1');
         // Same number, different experiment: click uses the exact result, never a text lookup.
         await page.locator('#request-toggle').click();await list.getByRole('option').first().waitFor();await bounds();
+        for(const width of [320,390,768,1440]){
+          await page.setViewportSize({width,height:1000});await search.scrollIntoViewIfNeeded();
+          await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+          await search.fill('같은 시료');await bounds();
+        }
         await search.press('Tab');assert(await list.isHidden());
         await page.locator('#request-next').click();await page.waitForFunction(()=>document.getElementById('request-info').textContent.includes('2페이지'));
-        assert.equal(queries[queries.length-1].get('page'),'2');assert.equal(await list.getByRole('option').count(),1);
+        assert.equal(queries[queries.length-1].get('page'),'2');assert.equal(await list.getByRole('option').count(),0);
+        await search.fill('');assert.equal(await list.getByRole('option').count(),1);
         assert.equal(doc.transfer.requestNumber,'REQ-SAME');failLookup=true;await page.locator('#request-load').click();
         await page.waitForFunction(()=>document.getElementById('request-info').textContent.includes('조회 실패'));
         await page.getByLabel('의뢰번호',{exact:true}).fill('MANUAL-REQ');await saved();

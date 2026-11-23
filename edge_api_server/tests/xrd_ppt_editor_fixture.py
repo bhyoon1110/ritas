@@ -5,19 +5,16 @@ import socket
 import sys
 
 from fastapi.testclient import TestClient
-from fastapi.responses import FileResponse
 from PIL import Image
 import uvicorn
 
 from tests.xrd_workbench.test_integration import make_app, upload
 from tests.xrd_workbench.synthetic import sample_files
+from app.request_filters import router as request_filters_router
 
 root = Path(sys.argv[1])
 app = make_app(root / 'storage')
-
-@app.get('/assets/request_filters.js')
-def request_filters():
-    return FileResponse(Path(__file__).resolve().parents[1] / 'app' / 'request_filters.js', media_type='text/javascript')
+app.include_router(request_filters_router)
 
 with TestClient(app) as client:
     sid = upload(client, sample_files('SampleA'))
