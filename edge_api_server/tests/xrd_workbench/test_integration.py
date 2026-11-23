@@ -69,6 +69,9 @@ def test_shared_manager_style_is_served_on_all_workbench_pages(tmp_path, legacy)
         if page == '/report.html':
             filters = '<script src="/assets/request_filters.js"></script>'
             helper = '<script src="/assets/request_picker.js"></script>'
+            split = api.BASE + '/ppt-tools/report_split.js'
+            assert split in response.text
+            assert 'RistReportSplit' in client.get(split).text
             assert filters in response.text and helper in response.text
             assert response.text.index(filters) < response.text.index(helper) < response.text.index('src="' + api.BASE + '/report/report.')
     response = client.get(api.BASE + stylesheet, headers=headers)

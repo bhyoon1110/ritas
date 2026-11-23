@@ -144,8 +144,15 @@ const reportTools = document.createElement('div');
 reportTools.className = 'workTabs';
 reportTools.innerHTML = '<button data-work-view="both">입력·미리보기</button><button data-work-view="editor">입력 화면</button><button data-work-view="preview">미리보기 화면</button><button id="draftRefresh">미리보기 다시 생성</button><span>입력을 멈추면 자동 반영 · 미리보기 클릭 시 입력 항목으로 이동</span>';
 reportMain.parentNode.insertBefore(reportTools,reportMain);
+const panelSplit = window.RistReportSplit?.mount({
+  container:reportMain, left:$('editor'), right:$('previewPane'),
+  storageKey:'rist.report.split.XRD.v1', breakpoint:900, minLeft:320, minRight:420, grid:true,
+  defaultLeft:width => width * .45,
+  enabled:() => document.body.dataset.step === 'report' && reportMain.dataset.workView === 'both'
+});
 function setWorkView(view) {
   reportMain.dataset.workView = view;
+  panelSplit?.refresh();
   reportTools.querySelectorAll('[data-work-view]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.workView===view)));
 }
 reportTools.onclick = e => {
@@ -1131,6 +1138,7 @@ function setStep(value) {
     apiUrl(`/report.html?project=${encodeURIComponent(storageId)}${saving ? '&step=save' : ''}`),
   );
   syncShell();
+  panelSplit?.refresh();
   if (saving) {
     if (reportMain.dataset.workView === 'preview') setWorkView('both');
     renderChecklist();

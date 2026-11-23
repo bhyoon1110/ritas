@@ -6,7 +6,7 @@ const {JSDOM}=require('jsdom');
 const acorn=require('acorn');
 const {execFileSync}=require('node:child_process');
 const clone=x=>JSON.parse(JSON.stringify(x));
-const script=['xrd_workbench/web/shared/pptx_password.js','file_save.js','request_filters.js','report_editor_icons.js','report_page_sidebar.js','report_cell_editor.js','report_direct_editor.js','report_canvas_editor.js','report_ppt_templates.js','report_saved_graphs.js','report_condition_options.js','xrd_workbench/web/shared/mail_editor_icons.js','xrd_workbench/web/shared/mail_table_editor.js','xrd_workbench/web/shared/mail_address_book.js','xrd_workbench/web/shared/mail_template_context.js','xrd_workbench/web/shared/mail_templates.js','xrd_workbench/web/shared/mail_editor.js','report_editor.js'].map(name=>fs.readFileSync(path.join(__dirname,'../app',name),'utf8')).join('\n');
+const script=['xrd_workbench/web/shared/pptx_password.js','file_save.js','request_filters.js','request_picker.js','report_split.js','report_editor_icons.js','report_page_sidebar.js','report_cell_editor.js','report_direct_editor.js','report_canvas_editor.js','report_ppt_templates.js','report_saved_graphs.js','report_condition_options.js','xrd_workbench/web/shared/mail_editor_icons.js','xrd_workbench/web/shared/mail_table_editor.js','xrd_workbench/web/shared/mail_address_book.js','xrd_workbench/web/shared/mail_template_context.js','xrd_workbench/web/shared/mail_templates.js','xrd_workbench/web/shared/mail_editor.js','report_editor.js'].map(name=>fs.readFileSync(path.join(__dirname,'../app',name),'utf8')).join('\n');
 const template=fs.readFileSync(path.join(__dirname,'../app/report_editor.html'),'utf8');
 function setup(t,kind='ftir',identity='',conditionScenario=null) {
   const prefix='/api/v1/'+kind+'/report/jobs',posts=[],gets=[],timers=new Map(); let timerId=0;
@@ -308,7 +308,7 @@ test('global rendering busy response retries with a bound and preserves inputs',
 for(const kind of ['ftir','raman','tem']) test(kind+' lookup is experiment-scoped, manual entry works, SSO stays unchanged',t=>{
   const h=setup(t,kind,'SSO-001');h.lookup([{requestNumber:'REQ-9',testMethodCode:'CODE-9',sampleName:'<b>시료</b>',operatorId:'NOT-SSO'}]);
   h.input('실험장비','CURRENT-LAB');h.q('request-load').click();
-  assert(h.gets.some(g=>g.url.endsWith('experimentType='+encodeURIComponent(kind==='ftir'?'FT-IR':kind.toUpperCase()))&&g.headers['X-Request-Id']));
+  assert(h.gets.some(g=>new URL(g.url,'http://localhost').searchParams.get('experimentType')===(kind==='ftir'?'FT-IR':kind.toUpperCase())&&g.headers['X-Request-Id']));
   assert.equal(h.q('request-results').querySelectorAll('b').length,0);assert.equal(h.q('request-select'),null);
   assert.equal(h.q('request-search').getAttribute('role'),'combobox');h.q('request-result-0').click();
   assert.equal(h.field('의뢰번호').value,'REQ-9');assert.equal(h.field('실험코드').value,'CODE-9');
@@ -325,7 +325,7 @@ for (const kind of ['ftir','raman','tem']) test(kind+' editor searches live by a
     {requestNumber:'REQ-1',testMethodCode:'METHOD-B',testState:'7'}]);
   h.q('request-load').click();const params=new URL(h.gets.find(g=>g.url.includes('/requests?')).url,'http://localhost').searchParams;
   assert.equal(params.get('source'),'lims');assert.equal(params.get('assetNumber'),'ASSET-2');
-  assert.equal(params.get('testState'),'1,3,5,7');assert(!params.has('experimentType'));assert(!params.has('testMtdCode'));
+  assert.equal(params.get('testState'),'1,3,5,7');assert.equal(params.get('experimentType'),kind==='ftir'?'FT-IR':kind.toUpperCase());assert(!params.has('testMtdCode'));
   const choice=h.q('request-result-1');assert.match(choice.textContent,/시험중/);choice.click();
   assert.equal(h.field('실험코드').value,'METHOD-B');assert.equal(h.field('실험장비').value,'EDGE-LAB');
 });
@@ -359,6 +359,7 @@ test('request combobox guards Korean composition, closes on outside/scroll, and 
   h.q('request-toggle').click();assert(!list.hidden);list.dispatchEvent(new h.w.Event('scroll'));assert(!list.hidden);
   search.dispatchEvent(new h.w.Event('scroll'));assert(!list.hidden);
   h.d.body.dispatchEvent(new h.w.Event('scroll'));assert(!list.hidden);
+  const combo=search.closest('.rr-combo');combo.getBoundingClientRect=()=>({top:120,left:20,right:200,bottom:160});
   h.w.dispatchEvent(new h.w.Event('scroll'));assert(list.hidden);h.q('request-toggle').click();h.q('request-result-0').click();
   h.input('실험코드','MANUAL-CODE');h.input('의뢰번호','MANUAL-REQ');assert.equal(h.field('실험코드').value,'MANUAL-CODE');
   assert.equal(search.value,'');assert(list.hidden);

@@ -800,6 +800,11 @@ body.withShell[data-step=report] main[data-work-view=preview] #previewPane { gri
     min-width: 0;
     max-width: 100%;
   }
+  /* Also stack the generated flex fallback when the desktop splitter is hidden. */
+  body.withShell[data-step=report] main > #reportNav,
+  body.withShell[data-step=report] main > #editor,
+  body.withShell[data-step=report] main > #savePane,
+  body.withShell[data-step=report] main > #previewPane { flex:0 0 100%; max-width:100%; width:100%; }
   body.withShell #previewPane { grid-column:1; grid-row:3; min-height:70vh; }
   body.withShell #reportPreview { min-height:65vh; }
   body.withShell #editor, body.withShell #savePane { padding:14px; }

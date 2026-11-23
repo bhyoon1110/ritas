@@ -678,6 +678,11 @@ body.withShell[data-step=report] main[data-work-view=preview] #previewPane { gri
 @media (max-width:900px) {
   body.withShell[data-step=report] { height:auto; min-height:100vh; overflow:auto; }
   body.withShell[data-step=report] main { grid-template-columns:minmax(0,1fr); grid-template-rows:auto auto auto; overflow:visible; }
+  /* Also stack the generated flex fallback when the desktop splitter is hidden. */
+  body.withShell[data-step=report] main > #reportNav,
+  body.withShell[data-step=report] main > #editor,
+  body.withShell[data-step=report] main > #savePane,
+  body.withShell[data-step=report] main > #previewPane { flex:0 0 100%; max-width:100%; width:100%; }
   body.withShell #previewPane { grid-column:1; grid-row:3; min-height:70vh; }
   body.withShell #reportPreview { min-height:65vh; }
   body.withShell #editor, body.withShell #savePane { padding:14px; }

@@ -4,6 +4,11 @@
   var project = config.project || (config.prefix.indexOf("/tem/") >= 0 ? "TEM" : config.prefix.indexOf("/raman/") >= 0 ? "RAMAN" : "FT-IR");
   var workflow = window.parent !== window && project !== "TEM" && /(?:^|[?&])workflow=1(?:&|$)/.test(window.location.search);
   if (workflow) document.body.classList.add("workflow-embedded", "workflow-edit");
+  if (window.RistReportSplit) window.RistReportSplit.mount({
+    container:document.querySelector('.layout'), left:document.querySelector('.form-pane'), right:document.querySelector('.preview-pane'),
+    storageKey:'rist.report.split.' + project.replace('-', '') + '.v1', breakpoint:1000,
+    defaultLeft:function (width) { return Math.max(320, Math.min(390, width * .28)); }
+  });
   var back = document.getElementById("analysis-back");
   back.href = project === "TEM" ? "/tem" : project === "RAMAN" ? "/raman" : "/ftir";
   if (workflow) back.onclick = function (event) {
