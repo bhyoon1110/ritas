@@ -139,7 +139,16 @@
     doc.addEventListener('touchcancel', cancel); doc.addEventListener('keydown', key);
     win.addEventListener('resize', resize); win.addEventListener('blur', cancel);
     refresh();
-    return {refresh:refresh, destroy:function () {
+    return {refresh:refresh, setLeft:function (pane) {
+      if (destroyed) return;
+      if (pane !== left) {
+        cancel();
+        restoreLeft();
+        left = pane;
+        restoreLeft = remember(left, paneKeys);
+      }
+      refresh();
+    }, destroy:function () {
       cancel(); destroyed = true; restoreLeft(); restoreRight(); restoreHost(); host.classList.remove('rist-split-active');
       handle.parentNode.removeChild(handle);
       doc.removeEventListener('mousemove', move); doc.removeEventListener('mouseup', end);

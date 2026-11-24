@@ -20,8 +20,8 @@ async function fixture(name){
       page.on('dialog',d=>d.type()==='beforeunload'?d.accept():d.dismiss());
       page.on('request',r=>{if(r.method()==='POST'&&!r.url().endsWith('/draft-preview'))posts.push(r.url());});
       const origin='http://127.0.0.1:'+(kind==='xrd'?xrd.port:common.port),key='rist.report.split.'+kind.toUpperCase()+'.v1';
-      let editor=page;
-      const left=()=>editor.locator(kind==='xrd'?'#editor':'.form-pane'),right=()=>editor.locator(kind==='xrd'?'#previewPane':'.preview-pane');
+      let editor=page,xrdSave=false;
+      const left=()=>editor.locator(kind==='xrd'?(xrdSave?'#savePane':'#editor'):'.form-pane'),right=()=>editor.locator(kind==='xrd'?'#previewPane':'.preview-pane');
       const separator=()=>editor.getByRole('separator',{name:'보고서 좌우 패널 폭 조절'});
       const width=async()=>Math.round((await left().boundingBox()).width);
       const settled=()=>page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
@@ -50,6 +50,8 @@ async function fixture(name){
           }else await page.goto(origin+'/__test__/request-editor/'+kind);
           await editor.getByLabel('의뢰번호',{exact:true}).waitFor();
         }else{
+          // Entering delivery may generate a draft; keep that local and deterministic.
+          await page.route('**/email-draft',route=>route.fulfill({contentType:'application/json',body:JSON.stringify({subject:'패널 조절 시험',body:'메일 본문 초안',status:'rule',message:''})}));
           await page.goto(origin+'/api/v1/xrd/workbench/report.html?project='+xrd.sid);
           await page.waitForFunction(()=>document.querySelector('#slide-image')?.naturalWidth>0);
           if(legacy)assert.equal(await page.locator('script[src$="report.legacy.js"]').count(),1);
@@ -62,7 +64,7 @@ async function fixture(name){
         if(kind==='xrd')await page.waitForFunction(()=>document.querySelector('#slide-image')?.naturalWidth>0);
         await separator().waitFor();await settled();
         assert(Math.abs(await width()-savedWidth)<=2);await bounds();
-        const count=posts.length;
+        let count=posts.length;
         await separator().press('Home');assert.equal(await width(),kind==='xrd'?320:280);await bounds();
         await separator().press('End');await bounds();
         const end=await width();await separator().press('ArrowLeft');assert(Math.abs(await width()-end+20)<=1);
@@ -75,8 +77,36 @@ async function fixture(name){
           const expected=await width();await page.locator('[data-work-view="preview"]').click();assert(await separator().isHidden());
           await page.locator('[data-work-view="editor"]').click();assert(await separator().isHidden());
           await page.locator('[data-work-view="both"]').click();await bounds();assert.equal(await width(),expected);
-          await page.evaluate(()=>window.xrdLocalStep('save'));assert(await separator().isHidden());
-          await page.evaluate(()=>window.xrdLocalStep('report'));await bounds();assert.equal(await width(),expected);
+          assert.equal(posts.length,count,'report resizing must not trigger a save/send POST');
+          await page.evaluate(()=>window.xrdLocalStep('save'));xrdSave=true;
+          await page.locator('#savePane').waitFor();await separator().waitFor();await settled();await bounds();
+          assert.equal(await width(),expected,'delivery shares the current report split');
+          assert.equal(new URL(page.url()).searchParams.get('step'),'save');
+          await dragBy(-90);const deliveryWidth=await width();assert(Math.abs(deliveryWidth-expected+90)<=2);await bounds();
+          await page.reload();await page.locator('#savePane').waitFor();
+          await page.waitForFunction(()=>document.querySelector('#slide-image')?.naturalWidth>0);
+          await separator().waitFor();await settled();await bounds();
+          assert.equal(new URL(page.url()).searchParams.get('step'),'save');
+          assert(Math.abs(await width()-deliveryWidth)<=2,'direct delivery reload preserves the split');
+          await page.waitForFunction(()=>!document.getElementById('generateEmail').disabled);
+          count=posts.length; // Delivery entry/reload can legitimately request an automatic mail draft.
+          const subject=page.locator('#emailSubject'),body=page.getByRole('textbox',{name:'메일 본문 서식 편집',exact:true});
+          await subject.fill('폭 조절 후 유지할 제목');await body.fill('폭 조절 후에도 유지할 한글 메일 본문');
+          const unchanged=async()=>{assert.equal(await subject.inputValue(),'폭 조절 후 유지할 제목');assert.equal(await body.textContent(),'폭 조절 후에도 유지할 한글 메일 본문');};
+          await separator().press('ArrowRight');assert(Math.abs(await width()-deliveryWidth-20)<=1);await bounds();
+          await separator().press('Home');assert.equal(await width(),320);await bounds();
+          await separator().press('End');await bounds();
+          await separator().press('Enter');assert(Math.abs(await width()-original)<=2);
+          await dragBy(90);await separator().dblclick({position:{x:9,y:90}});
+          assert(Math.abs(await width()-original)<=2);assert.equal(await page.evaluate(k=>localStorage.getItem(k),key),null);
+          await dragBy(110);await unchanged();const sharedWidth=await width();
+          await page.evaluate(()=>window.xrdLocalStep('report'));xrdSave=false;await settled();await bounds();assert.equal(await width(),sharedWidth);
+          await separator().press('ArrowRight');const reportWidth=await width();
+          await page.evaluate(()=>window.xrdLocalStep('save'));xrdSave=true;await settled();await bounds();assert.equal(await width(),reportWidth);await unchanged();
+          await page.locator('[data-work-view="preview"]').click();assert(await separator().isHidden());assert(await left().isHidden());
+          await page.locator('[data-work-view="editor"]').click();assert(await separator().isHidden());assert(await right().isHidden());
+          await page.locator('[data-work-view="both"]').click();await settled();await bounds();assert.equal(await width(),reportWidth);await unchanged();
+          await separator().press('Enter');await dragBy(110);await unchanged();
         }
         await page.screenshot({path:path.join(output,name+'.png')});
         for(const size of [1000,900,390,320]){
@@ -89,6 +119,7 @@ async function fixture(name){
         await page.setViewportSize({width:1440,height:1000});await settled();await bounds();assert(Math.abs(await width()-original-110)<=2);
         assert.equal(posts.length,count,'resizing must not mutate reports');
         if(kind!=='xrd')assert.equal(await editor.getByLabel('의뢰번호',{exact:true}).inputValue(),'KEEP-001');
+        else{assert.equal(await page.locator('#emailSubject').inputValue(),'폭 조절 후 유지할 제목');assert.equal(await page.locator('.mail-rich').textContent(),'폭 조절 후에도 유지할 한글 메일 본문');}
         assert.deepEqual(errors,[]);console.log(name+': drag, clamp, reload, keyboard, cancel, reset, responsive layout, unchanged content passed');
       }catch(e){await page.screenshot({path:path.join(output,name+'-failure.png'),fullPage:true});throw e;}
       finally{await context.close();}

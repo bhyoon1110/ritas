@@ -1187,7 +1187,7 @@ function setStep(value) {
     apiUrl(`/report.html?project=${encodeURIComponent(storageId)}${saving ? '&step=save' : ''}`),
   );
   syncShell();
-  panelSplit?.refresh();
+  panelSplit?.setLeft(saving ? $('savePane') : $('editor'));
   if (saving) {
     if (reportMain.dataset.workView === 'preview') setWorkView('both');
     renderChecklist();

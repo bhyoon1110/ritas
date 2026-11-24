@@ -45,3 +45,19 @@ test('touch drag, unrelated touch and touch cancellation',t=>{
   touch(h.handle,'touchstart',340);touch(h.d,'touchmove',700,9);touch(h.d,'touchmove',540);touch(h.d,'touchend',540);assert.equal(h.width(),540);
   touch(h.handle,'touchstart',540);touch(h.d,'touchmove',300);touch(h.d,'touchcancel',300);assert.equal(h.width(),540);
 });
+
+test('switching the input pane shares width and cancels an unfinished drag',t=>{
+  const h=setup(t,{grid:true}),save=h.d.createElement('section');
+  save.style.width='420px';save.style.flex='none';const originalFlex=save.style.flex;h.host.insertBefore(save,h.right);
+  h.key('ArrowRight',true);const saved=h.w.localStorage.getItem('split');assert.equal(h.width(),390);
+  h.mouse(h.handle,'mousedown',390);h.mouse(h.d,'mousemove',600);
+  h.left.hidden=true;h.api.setLeft(save);
+  assert.equal(h.left.style.width,'');assert.equal(parseFloat(save.style.width),390);
+  assert.equal(h.w.localStorage.getItem('split'),saved);assert.equal(h.d.querySelectorAll('[aria-hidden=true]').length,0);
+  assert.equal(h.d.body.style.cursor,'');assert(!h.handle.hidden);
+  h.key('ArrowRight');assert.equal(parseFloat(save.style.width),410);
+  save.hidden=true;h.left.hidden=false;h.api.setLeft(h.left);
+  assert.equal(save.style.width,'420px');assert.equal(save.style.flex,originalFlex);assert.equal(h.width(),410);
+  h.api.setLeft(h.left);assert.equal(h.width(),410);
+  h.api.destroy();assert.equal(h.left.style.width,'');assert.equal(h.host.style.gridTemplateColumns,'');
+});
