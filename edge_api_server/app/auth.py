@@ -31,6 +31,7 @@ from .posco_sso import (
     PoscoSsoUnavailableError,
 )
 from .preview_report import PreviewReportSendRequest
+from . import sso_policy
 
 
 SESSION_COOKIE = "rist_session"
@@ -57,6 +58,8 @@ class AuthContext:
     projects: frozenset[str]
     roles: frozenset[str]
     sso_identity: dict[str, Any] | None
+    sso_valid_minutes: int | None = None
+    sso_reset_generation: int = 0
 
     @property
     def is_admin(self) -> bool:
@@ -144,6 +147,10 @@ class PoscoSsoVerifyRequest(BaseModel):
         if not LOGIN_ID_RE.fullmatch(normalized):
             raise ValueError("SSO ID는 영문, 숫자, 점, 밑줄, 하이픈만 사용할 수 있습니다.")
         return normalized
+
+
+class SsoPolicyUpdate(BaseModel):
+    valid_minutes: int = Field(alias="validMinutes", strict=True, ge=1, le=sso_policy.MAX_SSO_VALID_MINUTES)
 
 
 class AdminUserUpdate(BaseModel):
@@ -498,6 +505,8 @@ class AuthService:
                 """,
                 (row["user_id"],),
             ).fetchone()
+            validity = sso_policy.valid_minutes(connection, self.settings.auth_recent_sso_minutes)
+            generation = sso_policy.reset_generation(connection, row["user_id"])
             connection.execute(
                 "UPDATE auth_sessions SET last_seen_at = ? WHERE session_id = ?",
                 (now, row["session_id"]),
@@ -514,7 +523,33 @@ class AuthService:
             projects=frozenset(item["project_code"] for item in projects),
             roles=frozenset(item["role_code"] for item in roles),
             sso_identity=identity,
+            sso_valid_minutes=validity,
+            sso_reset_generation=generation,
         )
+
+    def get_sso_policy(self) -> dict[str, int]:
+        with self.database.transaction() as connection:
+            minutes = sso_policy.valid_minutes(connection, self.settings.auth_recent_sso_minutes)
+        return {"validMinutes": minutes, "minMinutes": 1, "maxMinutes": sso_policy.MAX_SSO_VALID_MINUTES}
+
+    def update_sso_policy(self, payload: SsoPolicyUpdate, actor: AuthContext, request: Request) -> dict:
+        if not actor.is_admin:
+            raise ApiException(403, "ADMIN_REQUIRED", "관리자 권한이 필요합니다.")
+        with self.database.transaction() as connection:
+            old = sso_policy.change_validity(connection, payload.valid_minutes,
+                                            self.settings.auth_recent_sso_minutes, actor.user_id)
+        self._audit("SSO_POLICY_UPDATE", True, user_id=actor.user_id, request=request,
+                    details={"oldMinutes": old, "validMinutes": payload.valid_minutes})
+        return self.get_sso_policy()
+
+    def reset_sso(self, target_user_id: str, actor: AuthContext, request: Request) -> dict:
+        if target_user_id != actor.user_id and not actor.is_admin:
+            raise ApiException(403, "ADMIN_REQUIRED", "다른 회원의 SSO 초기화에는 관리자 권한이 필요합니다.")
+        with self.database.transaction() as connection:
+            sso_policy.reset_authentication(connection, target_user_id, actor.user_id)
+        self._audit("SSO_RESET", True, user_id=target_user_id, request=request,
+                    details={"actorUserId": actor.user_id, "allSessions": True})
+        return {"reset": True, "userId": target_user_id, "allSessions": True}
 
     def revoke_session(self, context: AuthContext) -> None:
         with self.database.transaction() as connection:
@@ -803,6 +838,7 @@ class AuthService:
         now = _utc_now()
         subject = payload.username.casefold()
         with self.database.transaction() as connection:
+            sso_policy.require_generation(connection, context.user_id, context.sso_reset_generation)
             owned = connection.execute(
                 """
                 SELECT user_id FROM sso_identities
@@ -888,7 +924,7 @@ class AuthService:
         if not authorization_endpoint:
             raise ApiException(503, "SSO_DISCOVERY_INVALID", "SSO 인증 주소가 없습니다.")
         state = secrets.token_urlsafe(32)
-        verifier = secrets.token_urlsafe(64)
+        verifier = f"g{context.sso_reset_generation}." + secrets.token_urlsafe(64)
         challenge = _b64(hashlib.sha256(verifier.encode("ascii")).digest())
         with self.database.transaction() as connection:
             connection.execute(
@@ -979,6 +1015,9 @@ class AuthService:
         ).strip()[:100]
         now = _utc_now()
         with self.database.transaction() as connection:
+            match = re.match(r"^g([0-9]+)\.", oidc_state["code_verifier"])
+            generation = int(match[1]) if match else 0
+            sso_policy.require_generation(connection, oidc_state["user_id"], generation)
             owned = connection.execute(
                 """
                 SELECT user_id FROM sso_identities
@@ -1029,10 +1068,9 @@ class AuthService:
 
 
 def _context_payload(context: AuthContext, settings: Settings) -> dict[str, Any]:
-    recent_cutoff = _utc_now() - timedelta(minutes=settings.auth_recent_sso_minutes)
-    recent_sso = bool(
-        context.sso_authenticated_at and context.sso_authenticated_at >= recent_cutoff
-    )
+    minutes = context.sso_valid_minutes if context.sso_valid_minutes is not None else settings.auth_recent_sso_minutes
+    expires_at = min(context.sso_authenticated_at + timedelta(minutes=minutes), context.session_expires_at) if context.sso_authenticated_at else None
+    recent_sso = bool(context.sso_identity and expires_at and _utc_now() < expires_at)
     return {
         "userId": context.user_id,
         "loginId": context.login_id,
@@ -1044,6 +1082,9 @@ def _context_payload(context: AuthContext, settings: Settings) -> dict[str, Any]
         "ssoLinked": bool(context.sso_identity),
         "ssoRecentlyAuthenticated": recent_sso,
         "ssoProvider": settings.sso_provider_name,
+        "ssoValidMinutes": minutes,
+        "ssoAuthenticatedAt": context.sso_authenticated_at.isoformat() + "Z" if context.sso_authenticated_at else None,
+        "ssoExpiresAt": expires_at.isoformat() + "Z" if expires_at else None,
     }
 
 
@@ -1132,6 +1173,12 @@ def authenticated_transfer_payload(
     if not settings or not getattr(settings, "auth_enabled", False):
         return payload
     context = require_context(request)
+    # A reset or policy update must also affect a request that was already open.
+    service = getattr(request.app.state, "auth_service", None)
+    if service is not None:
+        context = service.context_from_token(request.cookies.get(SESSION_COOKIE))
+        if context is None or context.status != "ACTIVE":
+            raise ApiException(401, "AUTHENTICATION_REQUIRED", "로그인이 필요합니다.")
     project = project_code.strip().upper().replace("-", "")
     reauth_return_to = safe_return_to(return_to or f"/{project.lower()}")
     if not context.is_admin and project not in context.projects:
@@ -1145,8 +1192,7 @@ def authenticated_transfer_payload(
             "보고서 전송 전에 사내 SSO 계정을 연결해야 합니다.",
             details={"reauthUrl": "/auth/sso/start?" + urlencode({"returnTo": reauth_return_to})},
         )
-    cutoff = _utc_now() - timedelta(minutes=settings.auth_recent_sso_minutes)
-    if not context.sso_authenticated_at or context.sso_authenticated_at < cutoff:
+    if not _context_payload(context, settings)["ssoRecentlyAuthenticated"]:
         raise ApiException(
             401,
             "SSO_REAUTH_REQUIRED",
@@ -1325,15 +1371,18 @@ def _account_page(context: AuthContext, settings: Settings) -> str:
     body = f"""<section class="panel"><div class="row" style="justify-content:space-between"><div><h1>내 계정</h1><p><strong>{escape(context.display_name)}</strong> · 로그인 ID {escape(context.login_id)}</p></div><nav class="row" aria-label="회원정보 메뉴"><a class="button secondary" id="account-dashboard" href="/">대시보드</a><button class="secondary" id="logout" type="button">로그아웃</button></nav></div>
 <div class="settings-grid"><form class="settings-card" id="profile-form" method="post" action="/account" accept-charset="UTF-8"><h2>회원정보 수정</h2><label>로그인 ID</label><input value="{escape(context.login_id)}" disabled><label>이름</label><input name="displayName" maxlength="100" value="{escape(context.display_name)}" required><label>이메일 (선택)</label><input name="email" type="email" maxlength="255" value="{escape(context.email or '')}"><p id="profile-message"></p><button type="submit">회원정보 저장</button></form>
 <form class="settings-card" id="password-form" method="post" action="/account" accept-charset="UTF-8"><h2>비밀번호 변경</h2><label>현재 비밀번호</label><input name="currentPassword" type="password" autocomplete="current-password" required><label>새 비밀번호</label><input name="newPassword" type="password" autocomplete="new-password" minlength="10" required><label>새 비밀번호 확인</label><input name="confirmPassword" type="password" autocomplete="new-password" minlength="10" required><p class="muted">변경 후 모든 기기에서 로그아웃됩니다.</p><p id="password-message"></p><button type="submit">비밀번호 변경</button></form></div>
-<h2>승인된 프로젝트</h2><div class="row">{project_links}</div><section id="sso-auth"><h2>보고서 전송 인증</h2><p>사내 SSO: <strong>{sso_text}</strong><br>최근 전송 인증: <strong>{'유효' if data['ssoRecentlyAuthenticated'] else '재인증 필요'}</strong></p>
-{sso_control}</section>
+<h2>승인된 프로젝트</h2><div class="row">{project_links}</div><section id="sso-auth"><h2>보고서 전송 인증</h2><p>사내 SSO: <strong id="sso-link-state">{sso_text}</strong><br>최근 전송 인증: <strong id="sso-valid-state">{'유효' if data['ssoRecentlyAuthenticated'] else '재인증 필요'}</strong><br>인증 유효기간: <span id="sso-valid-minutes">{data['ssoValidMinutes']}</span>분<br>현재 인증 만료: <span id="sso-expires-at">{escape(data['ssoExpiresAt'] or '인증 필요')}</span></p>
+{sso_control}<p class="muted">SSO 인증을 초기화하면 모든 기기에서 다시 인증해야 합니다. 현재 로컬 로그인과 작성 중인 보고서는 유지됩니다.</p><button class="secondary" id="sso-reset" type="button">내 SSO 인증 초기화</button><p id="sso-reset-message" role="status" aria-live="polite"></p></section>
 {'<h2>관리</h2><div class="row"><a class="button secondary" href="/admin/users">회원·권한 관리</a><a class="button secondary" href="/operations">운영 관리</a></div>' if context.is_admin else ''}
 </section><script>
 const profileForm=document.getElementById('profile-form'),passwordForm=document.getElementById('password-form'),ssoForm=document.getElementById('sso-form');
 async function jsonRequest(url,body){{const response=await fetch(url,{{method:url.endsWith('/password')?'POST':'PATCH',headers:{{'Content-Type':'application/json','X-Requested-With':'RIST-Account'}},body:JSON.stringify(body)}});const data=await response.json().catch(()=>({{}}));if(!response.ok)throw new Error(data.message||'요청을 처리하지 못했습니다.');return data}}
 profileForm.onsubmit=async event=>{{event.preventDefault();const message=document.getElementById('profile-message'),button=profileForm.querySelector('button');button.disabled=true;try{{const form=new FormData(profileForm);await jsonRequest('/api/v1/auth/me',{{displayName:form.get('displayName'),email:form.get('email')||null}});message.className='success';message.textContent='회원정보를 저장했습니다.'}}catch(error){{message.className='error';message.textContent=error.message}}finally{{button.disabled=false}}}};
 passwordForm.onsubmit=async event=>{{event.preventDefault();const form=new FormData(passwordForm),message=document.getElementById('password-message'),button=passwordForm.querySelector('button');if(form.get('newPassword')!==form.get('confirmPassword')){{message.className='error';message.textContent='새 비밀번호 확인이 일치하지 않습니다.';return}}button.disabled=true;try{{await jsonRequest('/api/v1/auth/password',{{currentPassword:form.get('currentPassword'),newPassword:form.get('newPassword')}});message.className='success';message.textContent='비밀번호를 변경했습니다. 다시 로그인해 주세요.';setTimeout(()=>location.href='/login',700)}}catch(error){{message.className='error';message.textContent=error.message;button.disabled=false}}}};
-if(ssoForm)ssoForm.onsubmit=async event=>{{event.preventDefault();const form=new FormData(ssoForm),message=document.getElementById('sso-message'),button=ssoForm.querySelector('button'),password=ssoForm.elements.password;button.disabled=true;message.className='muted';message.textContent='SSO 인증 중...';try{{const params=new URLSearchParams(location.search),response=await fetch('/api/v1/auth/sso/verify',{{method:'POST',headers:{{'Content-Type':'application/json','X-Requested-With':'RIST-Account'}},body:JSON.stringify({{username:form.get('username'),password:form.get('password'),returnTo:params.get('ssoReturnTo')||'/account'}})}}),data=await response.json().catch(()=>({{}}));if(!response.ok)throw new Error(data.message||'SSO 인증에 실패했습니다.');message.className='success';message.textContent='SSO 인증을 완료했습니다.';setTimeout(()=>location.href=data.returnTo||'/account',350)}}catch(error){{message.className='error';message.textContent=error.message;button.disabled=false}}finally{{password.value=''}}}};
+if(ssoForm)ssoForm.onsubmit=async event=>{{event.preventDefault();const form=new FormData(ssoForm),message=document.getElementById('sso-message'),button=ssoForm.querySelector('button'),password=ssoForm.elements.password;button.disabled=true;message.className='muted';message.textContent='SSO 인증 중...';try{{const params=new URLSearchParams(location.search),response=await fetch('/api/v1/auth/sso/verify',{{method:'POST',headers:{{'Content-Type':'application/json','X-Requested-With':'RIST-Account'}},body:JSON.stringify({{username:form.get('username'),password:form.get('password'),returnTo:params.get('ssoReturnTo')||'/account'}})}}),data=await response.json().catch(()=>({{}}));if(!response.ok)throw new Error(data.message||'SSO 인증에 실패했습니다.');message.className='success';message.textContent='SSO 인증을 완료했습니다.';await refreshSsoStatus();const target=data.returnTo||'/account';if(target.split('?')[0]!=='/account')location.href=target}}catch(error){{message.className='error';message.textContent=error.message;button.disabled=false}}finally{{password.value='';button.disabled=false}}}};
+async function refreshSsoStatus(){{const response=await fetch('/api/v1/auth/me',{{cache:'no-store'}});if(!response.ok)return;const user=await response.json();document.getElementById('sso-link-state').textContent=user.ssoLinked?'연결됨':'연결 안 됨';document.getElementById('sso-valid-state').textContent=user.ssoRecentlyAuthenticated?'유효':'재인증 필요';document.getElementById('sso-valid-minutes').textContent=user.ssoValidMinutes;document.getElementById('sso-expires-at').textContent=user.ssoExpiresAt?new Date(user.ssoExpiresAt).toLocaleString('ko-KR'):'인증 필요'}}
+document.getElementById('sso-reset').onclick=async()=>{{if(!confirm('모든 기기의 내 SSO 인증을 초기화하시겠습니까? 로컬 로그인은 유지됩니다.'))return;const button=document.getElementById('sso-reset'),message=document.getElementById('sso-reset-message');button.disabled=true;try{{const response=await fetch('/api/v1/auth/sso/reset',{{method:'POST',headers:{{'X-Requested-With':'RIST-Account'}}}}),data=await response.json();if(!response.ok)throw new Error(data.message||'초기화하지 못했습니다.');if(ssoForm)ssoForm.elements.password.value='';await refreshSsoStatus();message.className='success';message.textContent='모든 기기의 SSO 인증을 초기화했습니다. 전송 전에 다시 인증해 주세요.'}}catch(error){{message.className='error';message.textContent=error.message}}finally{{button.disabled=false}}}};
+refreshSsoStatus().catch(()=>{{}});window.addEventListener('focus',()=>refreshSsoStatus().catch(()=>{{}}));setInterval(()=>{{if(!document.hidden)refreshSsoStatus().catch(()=>{{}})}},30000);
 document.getElementById('logout').onclick=async()=>{{await fetch('/api/v1/auth/logout',{{method:'POST',headers:{{'X-Requested-With':'RIST-Account'}}}});location.href='/login';}};
 </script>"""
     return _page("내 계정", body)
@@ -1342,7 +1391,7 @@ document.getElementById('logout').onclick=async()=>{{await fetch('/api/v1/auth/l
 def _admin_page() -> str:
     body = """
 <style>
-.admin-shell{width:100%;max-width:none;margin:0}.admin-top{min-height:64px;background:#fff;border-bottom:1px solid #d8dee8;display:flex;justify-content:space-between;gap:16px;align-items:center;flex-wrap:wrap;padding:0 24px}.admin-top h1{font-size:21px;margin:0}.admin-content{width:100%;padding:20px 24px 40px}.top-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap}.top-actions a,.logout-button{display:inline-flex;align-items:center;justify-content:center;min-height:38px;border:1px solid #bcc7d6;border-radius:6px;background:#fff;color:#42526b;padding:7px 12px;text-decoration:none;font:inherit;font-weight:700;cursor:pointer}.logout-button:disabled{opacity:.55;cursor:wait}.admin-tabs{display:flex;gap:4px;overflow-x:auto;border-bottom:1px solid #d8e0e8;margin:0 0 16px}.admin-tab{padding:11px 16px;color:#657286;text-decoration:none;font-weight:700;white-space:nowrap;border-bottom:3px solid transparent}.admin-tab.active{color:#183153;border-color:#2563eb}.admin-panel{background:#fff;border:1px solid #d8e0e8;border-radius:8px;padding:18px}.admin-summary{display:grid;grid-template-columns:repeat(5,minmax(100px,1fr));gap:9px;margin:16px 0}.summary-card{background:#f6f8fb;border:1px solid #d8e0e8;border-radius:6px;padding:12px}.summary-card strong{display:block;font-size:21px}.summary-card span{font-size:12px;color:#687587}.admin-filter{display:grid;grid-template-columns:minmax(240px,1fr) 180px auto;gap:8px}.admin-note{background:#f2f7fc;border-left:4px solid #2879bd;padding:12px;margin:14px 0;color:#405069}.message{border-radius:6px;padding:10px 12px;background:#ecfdf3;color:#166534}.message.error{background:#fef2f2;color:#b42318}.bulk-toolbar{display:grid;grid-template-columns:minmax(150px,1fr) auto minmax(160px,220px) auto auto;gap:8px;align-items:center;padding:10px 12px;border:1px solid #c9d5e5;border-radius:7px;background:#f8fafc;margin:12px 0}.bulk-toolbar strong{font-size:16px}.bulk-toolbar button:disabled,.bulk-toolbar select:disabled{opacity:.5;cursor:not-allowed}.member-table-wrap{border:1px solid #d8e0e8;border-radius:7px;overflow:auto}.member-table{width:100%;min-width:1266px;table-layout:fixed;border-collapse:collapse}.member-table th{background:#f5f7fa;color:#526277;font-size:12px;text-align:left;white-space:nowrap}.member-table th,.member-table td{min-width:0;border-bottom:1px solid #e5eaf0;padding:11px 12px;vertical-align:middle;overflow-wrap:anywhere}.member-table tbody tr{cursor:pointer}.member-table tbody tr:hover{background:#f6f9fd}.member-table tbody tr:last-child td{border-bottom:0}.member-name{font-weight:750;color:#172b4d}.member-id{font-size:12px;color:#687587;overflow-wrap:anywhere}.badges{display:flex;max-width:100%;min-width:0;gap:5px;flex-wrap:wrap}.badge{display:inline-flex;box-sizing:border-box;max-width:100%;align-items:center;justify-content:center;min-height:24px;font-size:12px;line-height:1.25;padding:3px 7px;border-radius:999px;background:#edf2f7;color:#405069;text-align:center;white-space:normal;overflow-wrap:anywhere}.badge.active,.badge.sso{background:#dcfce7;color:#166534}.badge.pending{background:#fef3c7;color:#92400e}.badge.suspended{background:#fee2e2;color:#9b1c1c}.badge.project{border:1px solid #cdd8e6;background:#fff;color:#34435a}.member-select,#select-all-members,input.project,input.role{width:18px;min-height:18px;height:18px;margin:0;accent-color:#1769aa}.row-edit{min-height:34px;padding:5px 10px;background:#fff;color:#1769aa}.empty{text-align:center;padding:30px;color:#687587}.drawer-backdrop{position:fixed;inset:0;z-index:200;background:rgba(15,23,42,.34);display:flex;justify-content:flex-end}.drawer-backdrop[hidden]{display:none}.member-drawer{width:min(520px,100%);height:100%;overflow-y:auto;background:#fff;box-shadow:-8px 0 24px rgba(15,23,42,.18);padding:20px}.drawer-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;border-bottom:1px solid #e1e7ef;padding-bottom:14px}.drawer-head h2{margin:0}.icon-button{width:38px;min-height:38px;padding:0;background:#fff;color:#42526b;border-color:#b9c4d3;font-size:24px;line-height:1}.drawer-section{border:0;border-bottom:1px solid #e1e7ef;margin:0;padding:16px 0}.drawer-section legend{font-weight:750;padding:0;margin-bottom:9px}.checks{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.checks label{display:flex;align-items:center;gap:7px;margin:0;font-weight:550}.sso-detail{background:#f8fafc;border:1px solid #e1e7ef;border-radius:6px;padding:12px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.sso-detail b{display:block;font-size:11px;color:#687587;margin-bottom:3px}.drawer-actions{position:sticky;bottom:-20px;background:#fff;border-top:1px solid #d8e0e8;margin:18px -20px -20px;padding:14px 20px;display:flex;justify-content:flex-end;gap:8px}.drawer-actions .secondary{background:#fff;color:#1769aa}.busy{cursor:wait}.busy button{pointer-events:none}.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.admin-shell{width:100%;max-width:none;margin:0}.admin-top{min-height:64px;background:#fff;border-bottom:1px solid #d8dee8;display:flex;justify-content:space-between;gap:16px;align-items:center;flex-wrap:wrap;padding:0 24px}.admin-top h1{font-size:21px;margin:0}.admin-content{width:100%;padding:20px 24px 40px}.top-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap}.top-actions a,.logout-button{display:inline-flex;align-items:center;justify-content:center;min-height:38px;border:1px solid #bcc7d6;border-radius:6px;background:#fff;color:#42526b;padding:7px 12px;text-decoration:none;font:inherit;font-weight:700;cursor:pointer}.logout-button:disabled{opacity:.55;cursor:wait}.admin-tabs{display:flex;gap:4px;overflow-x:auto;border-bottom:1px solid #d8e0e8;margin:0 0 16px}.admin-tab{padding:11px 16px;color:#657286;text-decoration:none;font-weight:700;white-space:nowrap;border-bottom:3px solid transparent}.admin-tab.active{color:#183153;border-color:#2563eb}.admin-panel{background:#fff;border:1px solid #d8e0e8;border-radius:8px;padding:18px}.admin-summary{display:grid;grid-template-columns:repeat(5,minmax(100px,1fr));gap:9px;margin:16px 0}.summary-card{background:#f6f8fb;border:1px solid #d8e0e8;border-radius:6px;padding:12px}.summary-card strong{display:block;font-size:21px}.summary-card span{font-size:12px;color:#687587}.admin-filter{display:grid;grid-template-columns:minmax(240px,1fr) 180px auto;gap:8px}.admin-note{background:#f2f7fc;border-left:4px solid #2879bd;padding:12px;margin:14px 0;color:#405069}.message{border-radius:6px;padding:10px 12px;background:#ecfdf3;color:#166534}.message.error{background:#fef2f2;color:#b42318}.bulk-toolbar{display:grid;grid-template-columns:minmax(150px,1fr) auto minmax(160px,220px) auto auto;gap:8px;align-items:center;padding:10px 12px;border:1px solid #c9d5e5;border-radius:7px;background:#f8fafc;margin:12px 0}.bulk-toolbar strong{font-size:16px}.bulk-toolbar button:disabled,.bulk-toolbar select:disabled{opacity:.5;cursor:not-allowed}.member-table-wrap{position:relative;border:1px solid #d8e0e8;border-radius:7px;overflow:auto}.member-table{width:100%;min-width:1266px;table-layout:fixed;border-collapse:collapse}.member-table th{background:#f5f7fa;color:#526277;font-size:12px;text-align:left;white-space:nowrap}.member-table th,.member-table td{min-width:0;border-bottom:1px solid #e5eaf0;padding:11px 12px;vertical-align:middle;overflow-wrap:anywhere}.member-table tbody tr{cursor:pointer}.member-table tbody tr:hover{background:#f6f9fd}.member-table tbody tr:last-child td{border-bottom:0}.member-name{font-weight:750;color:#172b4d}.member-id{font-size:12px;color:#687587;overflow-wrap:anywhere}.badges{display:flex;max-width:100%;min-width:0;gap:5px;flex-wrap:wrap}.badge{display:inline-flex;box-sizing:border-box;max-width:100%;align-items:center;justify-content:center;min-height:24px;font-size:12px;line-height:1.25;padding:3px 7px;border-radius:999px;background:#edf2f7;color:#405069;text-align:center;white-space:normal;overflow-wrap:anywhere}.badge.active,.badge.sso{background:#dcfce7;color:#166534}.badge.pending{background:#fef3c7;color:#92400e}.badge.suspended{background:#fee2e2;color:#9b1c1c}.badge.project{border:1px solid #cdd8e6;background:#fff;color:#34435a}.member-select,#select-all-members,input.project,input.role{width:18px;min-height:18px;height:18px;margin:0;accent-color:#1769aa}.row-edit{min-height:34px;padding:5px 10px;background:#fff;color:#1769aa}.empty{text-align:center;padding:30px;color:#687587}.drawer-backdrop{position:fixed;inset:0;z-index:200;background:rgba(15,23,42,.34);display:flex;justify-content:flex-end}.drawer-backdrop[hidden]{display:none}.member-drawer{width:min(520px,100%);height:100%;overflow-y:auto;background:#fff;box-shadow:-8px 0 24px rgba(15,23,42,.18);padding:20px}.drawer-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;border-bottom:1px solid #e1e7ef;padding-bottom:14px}.drawer-head h2{margin:0}.icon-button{width:38px;min-height:38px;padding:0;background:#fff;color:#42526b;border-color:#b9c4d3;font-size:24px;line-height:1}.drawer-section{border:0;border-bottom:1px solid #e1e7ef;margin:0;padding:16px 0}.drawer-section legend{font-weight:750;padding:0;margin-bottom:9px}.checks{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.checks label{display:flex;align-items:center;gap:7px;margin:0;font-weight:550}.sso-detail{background:#f8fafc;border:1px solid #e1e7ef;border-radius:6px;padding:12px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.sso-detail b{display:block;font-size:11px;color:#687587;margin-bottom:3px}.drawer-actions{position:sticky;bottom:-20px;background:#fff;border-top:1px solid #d8e0e8;margin:18px -20px -20px;padding:14px 20px;display:flex;justify-content:flex-end;gap:8px}.drawer-actions .secondary{background:#fff;color:#1769aa}.busy{cursor:wait}.busy button{pointer-events:none}.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 @media(max-width:900px){.admin-top{padding:12px 14px;align-items:flex-start}.admin-top .top-actions{width:100%}.admin-top h1{font-size:19px}.admin-content{padding:14px}.admin-summary{grid-template-columns:repeat(2,1fr)}.admin-filter{grid-template-columns:1fr}.bulk-toolbar{grid-template-columns:1fr 1fr}.bulk-selection{grid-column:1/-1}.bulk-toolbar select{grid-column:1/-1}.admin-panel{padding:13px}.member-drawer{padding:16px}.drawer-actions{bottom:-16px;margin:18px -16px -16px;padding:12px 16px}}
 </style>
 <div class="admin-shell">
@@ -1352,15 +1401,16 @@ def _admin_page() -> str:
   <section class="admin-panel">
     <h2>회원 관리</h2><p class="muted">가입 승인, 프로젝트 접근권한, 관리자·보고서 전송 역할과 SSO 인증 상태를 확인하고 변경합니다.</p>
     <p id="message" class="message" hidden></p>
+    <form id="sso-policy-form" class="admin-note"><label for="sso-policy-minutes">SSO 인증 유효기간 (분)</label><div class="row"><input id="sso-policy-minutes" type="number" min="1" max="43200" step="1" required style="max-width:180px"><button id="sso-policy-save" type="submit">유효기간 저장</button></div><p>1분~30일(43200분). 저장 즉시 적용되며 이미 만료되거나 초기화된 인증은 다시 살아나지 않습니다. 로컬 로그인이 만료되면 SSO 인증도 다시 필요합니다.</p><p id="sso-policy-message" role="status" aria-live="polite"></p></form>
     <div class="admin-summary"><div class="summary-card"><strong id="total-count">0</strong><span>전체 회원</span></div><div class="summary-card"><strong id="pending-count">0</strong><span>승인 대기</span></div><div class="summary-card"><strong id="active-count">0</strong><span>사용 가능</span></div><div class="summary-card"><strong id="sso-count">0</strong><span>SSO 연결·활성</span></div><div class="summary-card"><strong id="sender-count">0</strong><span>전송 역할 보유</span></div></div>
     <div class="admin-filter"><input id="member-search" type="search" placeholder="로그인 ID, 이름, 사번 검색"><select id="status-filter"><option value="">모든 승인 상태</option><option value="PENDING">승인 대기</option><option value="ACTIVE">사용 가능</option><option value="SUSPENDED">사용 중지</option></select><button id="reload" type="button">새로고침</button></div>
     <div class="admin-note"><strong>권한 기준:</strong> 보고서 생성은 <code>ACTIVE</code>와 프로젝트 접근권한이 필요합니다. 보고서 전송은 <code>REPORT_SENDER</code>, 활성 SSO 연결, 현재 세션의 최근 SSO 재인증까지 필요합니다.</div>
-    <div class="bulk-toolbar" id="bulk-toolbar"><div class="bulk-selection"><strong><span id="selected-count">0</span>명 선택</strong><div class="muted">목록의 체크박스로 일괄 작업할 회원을 선택하세요.</div></div><button id="bulk-approve" type="button" disabled>선택 회원 승인</button><label class="sr-only" for="bulk-project">일괄 프로젝트 권한</label><select id="bulk-project" disabled><option value="">프로젝트 선택</option><option value="FTIR">FTIR</option><option value="RAMAN">RAMAN</option><option value="XRD">XRD</option><option value="TEM">TEM</option></select><button id="bulk-grant" type="button" disabled>권한 부여</button><button id="bulk-revoke" class="secondary" type="button" disabled>권한 회수</button></div>
+    <div class="bulk-toolbar" id="bulk-toolbar"><div class="bulk-selection"><strong><span id="selected-count">0</span>명 선택</strong><div class="muted">목록의 체크박스로 일괄 작업할 회원을 선택하세요.</div></div><button id="bulk-approve" type="button" disabled>선택 회원 승인</button><label class="sr-only" for="bulk-project">일괄 프로젝트 권한</label><select id="bulk-project" disabled><option value="">프로젝트 선택</option><option value="FTIR">FTIR</option><option value="RAMAN">RAMAN</option><option value="XRD">XRD</option><option value="TEM">TEM</option></select><button id="bulk-grant" type="button" disabled>권한 부여</button><button id="bulk-sso-reset" type="button" disabled>선택 회원 SSO 초기화</button><button id="bulk-revoke" class="secondary" type="button" disabled>권한 회수</button></div>
     <div class="member-table-wrap"><table class="member-table"><colgroup><col style="width:46px"><col style="width:250px"><col style="width:110px"><col style="width:220px"><col style="width:190px"><col style="width:170px"><col style="width:180px"><col style="width:100px"></colgroup><thead><tr><th><input id="select-all-members" type="checkbox" aria-label="검색 결과 전체 선택"></th><th>회원</th><th>승인 상태</th><th>프로젝트 권한</th><th>역할</th><th>SSO 인증</th><th>최근 로그인</th><th><span class="sr-only">편집</span></th></tr></thead><tbody id="users"><tr><td colspan="8" class="empty">회원 목록을 불러오는 중입니다.</td></tr></tbody></table></div>
   </section>
   </div>
 </div>
-<div class="drawer-backdrop" id="drawer-backdrop" hidden><aside class="member-drawer" id="member-drawer" aria-labelledby="drawer-title"><div class="drawer-head"><div><h2 id="drawer-title">회원 권한 편집</h2><div id="drawer-member-id" class="muted"></div></div><button class="icon-button" id="drawer-close" type="button" aria-label="닫기">&times;</button></div><label for="drawer-status">승인 상태</label><select id="drawer-status"><option value="PENDING">승인 대기</option><option value="ACTIVE">사용 가능</option><option value="SUSPENDED">사용 중지</option></select><fieldset class="drawer-section"><legend>프로젝트 접근 및 보고서 생성</legend><div class="checks" id="drawer-projects"></div></fieldset><fieldset class="drawer-section"><legend>운영·전송 역할</legend><div class="checks" id="drawer-roles"></div></fieldset><h2>SSO 인증 정보</h2><div class="sso-detail" id="drawer-sso"></div><div class="drawer-actions"><button class="secondary" id="drawer-cancel" type="button">취소</button><button id="drawer-save" type="button">변경사항 저장</button></div></aside></div>
+<div class="drawer-backdrop" id="drawer-backdrop" hidden><aside class="member-drawer" id="member-drawer" aria-labelledby="drawer-title"><div class="drawer-head"><div><h2 id="drawer-title">회원 권한 편집</h2><div id="drawer-member-id" class="muted"></div></div><button class="icon-button" id="drawer-close" type="button" aria-label="닫기">&times;</button></div><label for="drawer-status">승인 상태</label><select id="drawer-status"><option value="PENDING">승인 대기</option><option value="ACTIVE">사용 가능</option><option value="SUSPENDED">사용 중지</option></select><fieldset class="drawer-section"><legend>프로젝트 접근 및 보고서 생성</legend><div class="checks" id="drawer-projects"></div></fieldset><fieldset class="drawer-section"><legend>운영·전송 역할</legend><div class="checks" id="drawer-roles"></div></fieldset><h2>SSO 인증 정보</h2><div class="sso-detail" id="drawer-sso"></div><p>초기화하면 이 회원의 모든 기기에서 다시 SSO 인증해야 합니다. 로컬 로그인은 유지됩니다.</p><button class="secondary" id="drawer-sso-reset" type="button">이 회원의 SSO 인증 즉시 초기화</button><div class="drawer-actions"><button class="secondary" id="drawer-cancel" type="button">취소</button><button id="drawer-save" type="button">변경사항 저장</button></div></aside></div>
 <script>
 const projects=['FTIR','RAMAN','XRD','TEM'],roles=['ADMIN','REPORT_SENDER'];
 const roleLabel={ADMIN:'운영 관리자',REPORT_SENDER:'보고서 전송 권한'},statusLabel={PENDING:'승인 대기',ACTIVE:'사용 가능',SUSPENDED:'사용 중지'};
@@ -1372,12 +1422,19 @@ function updateSummary(){document.getElementById('total-count').textContent=memb
 function visibleMembers(){const term=search.value.trim().toLowerCase(),filter=statusFilter.value;return members.filter(u=>{const text=[u.loginId,u.displayName,u.email,u.sso?.employee_id,u.sso?.display_name].filter(Boolean).join(' ').toLowerCase();return(!term||text.includes(term))&&(!filter||u.status===filter)})}
 function permissionBadges(values,kind=''){return values.length?values.map(x=>`<span class="badge ${kind}">${esc(kind==='role'?(roleLabel[x]||x):x)}</span>`).join(''):'<span class="muted">없음</span>'}
 function render(){const visible=visibleMembers();if(!visible.length){usersEl.innerHTML='<tr><td colspan="8" class="empty">조건에 맞는 회원이 없습니다.</td></tr>';syncSelection();return}usersEl.innerHTML=visible.map(u=>{const ssoActive=Boolean(u.sso&&u.sso.active),ssoText=!u.sso?'미연결':ssoActive?'인증됨':'연결 중지';return `<tr data-member-row data-id="${esc(u.userId)}" tabindex="0"><td><input class="member-select" type="checkbox" aria-label="${esc(u.displayName||u.loginId)} 선택" ${selected.has(u.userId)?'checked':''}></td><td><div class="member-name">${esc(u.displayName||u.loginId)}</div><div class="member-id">${esc(u.loginId)}${u.email?' · '+esc(u.email):''}</div></td><td><span class="badge ${badgeClass(u.status)}">${esc(statusLabel[u.status]||u.status)}</span></td><td><div class="badges">${permissionBadges(u.projects||[],'project')}</div></td><td><div class="badges">${permissionBadges(u.roles||[],'role')}</div></td><td><span class="badge ${ssoActive?'sso':'suspended'}">${esc(ssoText)}</span><div class="member-id">${date(u.sso?.last_authenticated_at)}</div></td><td>${date(u.lastLoginAt)}</td><td><button class="row-edit" type="button">권한 편집</button></td></tr>`}).join('');syncSelection()}
-function syncSelection(){const visible=visibleMembers(),visibleSelected=visible.filter(u=>selected.has(u.userId)).length;selectAll.checked=Boolean(visible.length)&&visibleSelected===visible.length;selectAll.indeterminate=visibleSelected>0&&visibleSelected<visible.length;document.getElementById('selected-count').textContent=selected.size;const any=selected.size>0,project=Boolean(document.getElementById('bulk-project').value);document.getElementById('bulk-approve').disabled=!any;document.getElementById('bulk-project').disabled=!any;document.getElementById('bulk-grant').disabled=!any||!project;document.getElementById('bulk-revoke').disabled=!any||!project}
+function syncSelection(){const visible=visibleMembers(),visibleSelected=visible.filter(u=>selected.has(u.userId)).length;selectAll.checked=Boolean(visible.length)&&visibleSelected===visible.length;selectAll.indeterminate=visibleSelected>0&&visibleSelected<visible.length;document.getElementById('selected-count').textContent=selected.size;const any=selected.size>0,project=Boolean(document.getElementById('bulk-project').value);document.getElementById('bulk-approve').disabled=!any;document.getElementById('bulk-project').disabled=!any;document.getElementById('bulk-grant').disabled=!any||!project;document.getElementById('bulk-revoke').disabled=!any||!project;document.getElementById('bulk-sso-reset').disabled=!any}
 function showNotice(text,error=false){message.textContent=text;message.className=error?'message error':'message';message.hidden=false;message.scrollIntoView({block:'nearest'})}
 async function load(){message.hidden=true;usersEl.innerHTML='<tr><td colspan="8" class="empty">회원 목록을 불러오는 중입니다.</td></tr>';const r=await fetch('/api/v1/auth/admin/users');const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.message||'회원 목록을 불러오지 못했습니다.');members=d.items||[];selected=new Set([...selected].filter(id=>members.some(u=>u.userId===id)));updateSummary();render()}
 async function updateMember(user,body){const r=await fetch('/api/v1/auth/admin/users/'+encodeURIComponent(user.userId),{method:'PATCH',headers:{'Content-Type':'application/json','X-Requested-With':'RIST-Admin'},body:JSON.stringify(body)});const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(`${user.displayName||user.loginId}: ${d.message||'저장하지 못했습니다.'}`);return d}
 function openEditor(id){const user=members.find(u=>u.userId===id);if(!user)return;editingId=id;document.getElementById('drawer-title').textContent=user.displayName||user.loginId;document.getElementById('drawer-member-id').textContent=`로그인 ID ${user.loginId}${user.email?' · '+user.email:''}`;document.getElementById('drawer-status').value=user.status;document.getElementById('drawer-projects').innerHTML=projects.map(x=>`<label><input class="project" type="checkbox" value="${x}" ${(user.projects||[]).includes(x)?'checked':''}> ${x}</label>`).join('');document.getElementById('drawer-roles').innerHTML=roles.map(x=>`<label><input class="role" type="checkbox" value="${x}" ${(user.roles||[]).includes(x)?'checked':''}> ${roleLabel[x]}</label>`).join('');const ssoText=!user.sso?'미연결 · 보고서 전송 불가':user.sso.active?'연결·활성':'연결 중지 · 보고서 전송 불가';document.getElementById('drawer-sso').innerHTML=`<div><b>SSO 상태</b>${esc(ssoText)}</div><div><b>제공자 / 사번</b>${esc(user.sso?.provider||'-')} / ${esc(user.sso?.employee_id||'-')}</div><div><b>SSO 사용자</b>${esc(user.sso?.display_name||user.sso?.email||'-')}</div><div><b>최근 SSO 인증</b>${date(user.sso?.last_authenticated_at)}</div>`;backdrop.hidden=false;document.body.style.overflow='hidden';document.getElementById('drawer-close').focus()}
 function closeEditor(){backdrop.hidden=true;document.body.style.overflow='';editingId=null}
+async function loadSsoPolicy(){const response=await fetch('/api/v1/auth/admin/sso-policy',{cache:'no-store'}),data=await response.json();if(!response.ok)throw new Error(data.message||'SSO 정책을 불러오지 못했습니다.');document.getElementById('sso-policy-minutes').value=data.validMinutes}
+document.getElementById('sso-policy-form').onsubmit=async event=>{event.preventDefault();const input=document.getElementById('sso-policy-minutes'),button=document.getElementById('sso-policy-save'),notice=document.getElementById('sso-policy-message');if(!input.reportValidity())return;button.disabled=true;try{const response=await fetch('/api/v1/auth/admin/sso-policy',{method:'PATCH',headers:{'Content-Type':'application/json','X-Requested-With':'RIST-Admin'},body:JSON.stringify({validMinutes:Number(input.value)})}),data=await response.json();if(!response.ok)throw new Error(data.message||'SSO 정책을 저장하지 못했습니다.');input.value=data.validMinutes;notice.className='success';notice.textContent='SSO 인증 유효기간을 '+data.validMinutes+'분으로 저장했습니다.';await load()}catch(error){notice.className='error';notice.textContent=error.message}finally{button.disabled=false}};
+async function resetMemberSso(id){const response=await fetch('/api/v1/auth/admin/users/'+encodeURIComponent(id)+'/sso/reset',{method:'POST',headers:{'X-Requested-With':'RIST-Admin'}}),data=await response.json();if(!response.ok)throw new Error(data.message||'SSO 인증을 초기화하지 못했습니다.')}
+document.getElementById('drawer-sso-reset').onclick=async()=>{if(!editingId)return;const id=editingId,user=members.find(u=>u.userId===id);if(!confirm((user?.displayName||user?.loginId||'이 회원')+'의 모든 기기 SSO 인증을 즉시 초기화하시겠습니까?'))return;const button=document.getElementById('drawer-sso-reset');button.disabled=true;try{await resetMemberSso(id);await load();openEditor(id);showNotice('이 회원의 모든 기기 SSO 인증을 초기화했습니다.')}catch(error){showError(error)}finally{button.disabled=false}};
+document.getElementById('bulk-sso-reset').onclick=async()=>{const ids=[...selected];if(!ids.length||!confirm(ids.length+'명의 모든 기기 SSO 인증을 즉시 초기화하시겠습니까?'))return;const button=document.getElementById('bulk-sso-reset');button.disabled=true;let done=0;try{for(const id of ids){await resetMemberSso(id);done++}await load();showNotice(done+'명의 SSO 인증을 초기화했습니다.')}catch(error){await load().catch(()=>{});showNotice(done+'명 초기화 후 오류: '+error.message,true)}finally{syncSelection()}};
+loadSsoPolicy().catch(error=>{const notice=document.getElementById('sso-policy-message');notice.className='error';notice.textContent=error.message;document.getElementById('sso-policy-save').disabled=true});
+
 async function saveEditor(){const user=members.find(u=>u.userId===editingId);if(!user)return;const button=document.getElementById('drawer-save'),body={status:document.getElementById('drawer-status').value,projects:[...document.querySelectorAll('#drawer-projects .project:checked')].map(x=>x.value),roles:[...document.querySelectorAll('#drawer-roles .role:checked')].map(x=>x.value)};button.disabled=true;button.textContent='저장 중...';try{await updateMember(user,body);closeEditor();await load();showNotice(`${user.displayName||user.loginId} 회원의 권한을 저장했습니다.`)}catch(e){showNotice(e.message,true)}finally{button.disabled=false;button.textContent='변경사항 저장'}}
 async function bulkUpdate(transform,successText,confirmText=''){const targets=members.filter(u=>selected.has(u.userId));if(!targets.length)return;if(confirmText&&!confirm(confirmText))return;const toolbar=document.getElementById('bulk-toolbar');toolbar.classList.add('busy');try{const results=await Promise.allSettled(targets.map(user=>updateMember(user,transform(user))));const failures=results.filter(x=>x.status==='rejected');await load();if(failures.length){showNotice(`${targets.length-failures.length}명 처리, ${failures.length}명 실패: ${failures[0].reason.message}`,true)}else{selected.clear();render();showNotice(`${targets.length}명에게 ${successText}`)}}catch(e){showNotice(e.message||'일괄 권한 처리 중 오류가 발생했습니다.',true)}finally{toolbar.classList.remove('busy')}}
 async function logout(){const button=document.getElementById('logout-button');button.disabled=true;try{const response=await fetch('/api/v1/auth/logout',{method:'POST',headers:{'X-Requested-With':'RIST-Operations'}});if(!response.ok)throw new Error('로그아웃하지 못했습니다.');location.href='/login'}catch(error){button.disabled=false;showError(error)}}
@@ -1593,6 +1650,37 @@ def install_auth(app: FastAPI, settings: Settings, database: Database) -> None:
         result = service.change_password(require_context(request), payload, request)
         response.delete_cookie(SESSION_COOKIE, path="/")
         return result
+
+    @router.post("/api/v1/auth/sso/reset", tags=["auth"])
+    def reset_my_sso(request: Request) -> dict:
+        if request.headers.get("X-Requested-With") != "RIST-Account":
+            raise ApiException(403, "CSRF_CHECK_FAILED", "계정 요청을 확인할 수 없습니다.")
+        context = require_context(request)
+        return service.reset_sso(context.user_id, context, request)
+
+    @router.get("/api/v1/auth/admin/sso-policy", tags=["auth"])
+    def get_sso_policy(request: Request) -> dict:
+        if not require_context(request).is_admin:
+            raise ApiException(403, "ADMIN_REQUIRED", "관리자 권한이 필요합니다.")
+        return service.get_sso_policy()
+
+    @router.patch("/api/v1/auth/admin/sso-policy", tags=["auth"])
+    def update_sso_policy(payload: SsoPolicyUpdate, request: Request) -> dict:
+        context = require_context(request)
+        if not context.is_admin:
+            raise ApiException(403, "ADMIN_REQUIRED", "관리자 권한이 필요합니다.")
+        if request.headers.get("X-Requested-With") != "RIST-Admin":
+            raise ApiException(403, "CSRF_CHECK_FAILED", "관리 화면 요청을 확인할 수 없습니다.")
+        return service.update_sso_policy(payload, context, request)
+
+    @router.post("/api/v1/auth/admin/users/{user_id}/sso/reset", tags=["auth"])
+    def reset_member_sso(user_id: str, request: Request) -> dict:
+        context = require_context(request)
+        if not context.is_admin:
+            raise ApiException(403, "ADMIN_REQUIRED", "관리자 권한이 필요합니다.")
+        if request.headers.get("X-Requested-With") != "RIST-Admin":
+            raise ApiException(403, "CSRF_CHECK_FAILED", "관리 화면 요청을 확인할 수 없습니다.")
+        return service.reset_sso(user_id, context, request)
 
     @router.get("/api/v1/auth/admin/users", tags=["auth"])
     def admin_users(request: Request) -> dict[str, Any]:

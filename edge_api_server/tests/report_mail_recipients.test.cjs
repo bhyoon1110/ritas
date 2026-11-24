@@ -19,6 +19,12 @@ function setup(t,program){
 }
 const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 for(const [mode,program] of Object.entries(programs)){
+  test(mode+': rich controls are outside the textarea label and preserve its accessible caption',t=>{
+    const u=setup(t,program),body=u.d.querySelector('textarea'),rich=u.d.querySelector('.mail-rich');
+    assert.equal(rich.closest('label'),null);assert.equal(u.d.querySelector('.mail-toolbar').closest('label'),null);
+    assert(body.id);assert.equal(body.labels.length,1);assert.equal(body.labels[0].getAttribute('for'),body.id);
+    u.editor.lock(true);assert.equal(rich.contentEditable,'false');u.editor.lock(false);assert.equal(rich.contentEditable,'true');
+  });
   test(mode+': To is immutable; copy recipients use the exact fixed domain',t=>{
     const u=setup(t,program),to=u.field('수신자 이메일 주소'),name=u.field('수신자 이름'),cc=u.field('참조 (CC)'),bcc=u.field('비밀참조 (BCC)');
     assert.equal(to.readOnly,true);assert.equal(name.readOnly,true);
@@ -37,7 +43,7 @@ for(const [mode,program] of Object.entries(programs)){
   });
   test(mode+': changing request immediately clears requester; stale lookup cannot restore it',async t=>{
     const u=setup(t,program);u.request('REQ-1');await delay(330);
-    assert.equal(u.pending.length,1);u.request('REQ-2');await delay(330);
+    assert.equal(u.pending.length,1);assert.equal(u.pending[0].timeout,45000);u.request('REQ-2');await delay(330);
     assert.equal(u.pending.length,2);
     assert(u.pending[0].aborted);
     u.pending[1].resolve({recipientName:'새 의뢰자',email:'requester@example.com'});await delay(5);

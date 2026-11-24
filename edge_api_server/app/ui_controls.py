@@ -9,5 +9,5 @@ def with_ui_controls(html: str) -> str:
     """Scope controls to the page body and keep repeated UI wrappers idempotent."""
     if 'id="rist-ui-controls"' in html:
         return html
-    html = re.sub(r"<body\b([^>]*)>", lambda match: '<body data-rist-ui' + match.group(1) + '>', html, count=1, flags=re.IGNORECASE)
+    html = re.sub(r"<body\b([^>]*)>", lambda match: match.group(0) if re.search(r'\bdata-rist-ui(?:\s|=|$)', match.group(1), re.IGNORECASE) else '<body data-rist-ui' + match.group(1) + '>', html, count=1, flags=re.IGNORECASE)
     return re.sub(r"</head\s*>", lambda match: _STYLE + match.group(0), html, count=1, flags=re.IGNORECASE)

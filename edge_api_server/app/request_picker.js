@@ -73,10 +73,16 @@
     var detail = el('details', root, null, 'rr-detail'); detail.id = id + '-detail'; detail.hidden = true;
     var summary = el('summary', detail, '선택한 의뢰 상세'), detailList = el('dl', detail);
     var items = [], optionsList = [], selected = null, selectedText = '', active = -1, page = 0;
-    var loading = false, destroyed = false, composing = false, anchorRect;
+    var loading = false, destroyed = false, composing = false, anchorRect, loadedScope = 'current';
     var previous = el('button'), next = el('button'); previous.id = id + '-previous'; next.id = id + '-next';
     var panel = global.RistRequestFilters.mount(label, {experimentType:options.experimentType, reload:reload, previous:previous, next:next,
-      onChange:function () { items = []; page = 0; render(); close(); info.textContent = '검색 조건이 바뀌었습니다. 의뢰 조회를 눌러 다시 불러오세요.'; }});
+      onChange:function (change) {
+        if (change && change.scopeChanged) clearSelection();
+        items = []; page = 0; render(); close();
+        info.textContent = change && change.scopeChanged
+          ? '조회 범위가 바뀌어 이전 선택을 해제했습니다. 의뢰를 다시 조회해 선택하세요.'
+          : '검색 조건이 바뀌었습니다. 의뢰 조회를 눌러 다시 불러오세요.';
+      }});
     var progress = global.RistFileProgress.monitor(info);
     function blocked() { return loading || destroyed || !!(options.isBlocked && options.isBlocked()); }
     function close() {
@@ -105,12 +111,16 @@
       detailRows(selected).forEach(function (row) { var pair = el('div', detailList); el('dt', pair, row[0]); el('dd', pair, value(row[1]) || '미제공'); });
       detail.open = true;
     }
+    function clearSelection() {
+      selected = null; selectedText = ''; input.value = ''; updateDetail(); close(); render();
+      if (options.onClear) options.onClear();
+    }
     function choose(index) {
       if (blocked() || !items[index]) return;
       selected = items[index]; selectedText = [selected.requestNumber, selected.sampleName, method(selected)].filter(Boolean).join(' · ');
       input.value = selectedText; updateDetail(); close();
       info.textContent = '선택한 의뢰를 반영했습니다. 아래 상세 정보에서 시료·시험을 확인하세요.';
-      if (options.onSelect) options.onSelect(selected);
+      if (options.onSelect) options.onSelect(selected, {scope:loadedScope});
       if (!destroyed) { input.focus(); close(); }
     }
     var headings = ['의뢰번호 / 의뢰명', '의뢰일', '의뢰자 / 기관', '시료', '시험명 / 코드', '시험 상태'];
@@ -143,12 +153,13 @@
     function reload() {
       if (blocked()) return;
       var url; try { url = panel.url(); } catch (error) { info.textContent = error.message; return; }
+      var lookupScope = panel.scope();
       items = []; page = 0; render(); loading = true; availability(); progress.start('의뢰 목록 조회 중…');
       return options.fetch(url, function (error, result) {
         if (destroyed) return;
         progress.stop(); loading = false;
         if (error) { info.textContent = '조회 실패: ' + error.message + ' 다시 조회하거나 의뢰번호를 직접 입력하세요.'; }
-        else { items = Array.isArray(result.items) ? result.items : []; page = Number(result.page) || 1; panel.showResult(result); render(); }
+        else { loadedScope = lookupScope; items = Array.isArray(result.items) ? result.items : []; page = Number(result.page) || 1; panel.showResult(result); render(); }
         availability(); if (!error && !blocked()) { input.focus(); open(); }
       });
     }
@@ -185,7 +196,7 @@
     win.addEventListener('scroll', scrolled, true); win.addEventListener('resize', close);
     close(); render(); availability();
     return {availability:availability, selected:function () { return selected; },
-      clear:function () { selected = null; selectedText = ''; input.value = ''; updateDetail(); close(); render(); },
+      clear:clearSelection,
       destroy:function () {
         destroyed = true; progress.stop(); doc.removeEventListener('mousedown', outside); doc.removeEventListener('touchstart', outside); doc.removeEventListener('focusin', outside);
         win.removeEventListener('scroll', scrolled, true); win.removeEventListener('resize', close); if (results.parentNode) results.parentNode.removeChild(results);

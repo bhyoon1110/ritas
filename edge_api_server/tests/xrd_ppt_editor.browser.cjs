@@ -22,6 +22,25 @@ const startup=new Promise((resolve,reject)=>{let data='';server.stdout.on('data'
         await page.goto(origin+base+'/report.html?project='+start.sid);await ready();
         if(legacy)assert.equal(await page.locator('script[src$="report.legacy.js"]').count(),1);
         await page.locator('#previewPane').screenshot({path:path.join(output,legacy?'legacy-start.png':'desktop-start.png')});
+        // Default linked mode chooses the actual phase; literal cells use native tableCells.
+        let phasePage=latest.pages.find(p=>(p.targets||[]).some(r=>r.target.field==='phase_class'));
+        assert(phasePage);
+        await page.locator('#ppt-page').selectOption(String(latest.pages.indexOf(phasePage)));
+        const phaseTarget=phasePage.targets.find(r=>r.target.field==='phase_class').target;
+        await page.locator('.edit-region').nth(phasePage.targets.findIndex(r=>r.target===phaseTarget)).click();
+        await page.waitForFunction(id=>document.activeElement.dataset.pcSampleId===id,phaseTarget.sampleId);
+        assert.equal(await page.locator('#ppt-cell-direct').isVisible(),true);
+        await page.locator('#ppt-cell-direct').click();
+        assert(await page.locator('.ppt-cell-input').evaluate(e=>e===document.activeElement));
+        await updated(async()=>{await page.locator('.ppt-cell-input').fill('Reviewed phase '+legacy);await page.locator('.ppt-cell-input').press('Enter');});
+        await page.locator('#canvas-toggle').click();
+        phasePage=latest.pages.find(p=>p.id===phasePage.id);
+        await page.locator('.edit-region').nth(phasePage.targets.findIndex(r=>r.target.field==='ppt_cell'&&r.target.row===1&&r.target.col===1)).click();
+        assert(await page.locator('.ppt-cell-input').evaluate(e=>e===document.activeElement));
+        await updated(async()=>{await page.locator('.ppt-cell-input').fill('Reviewed formula '+legacy);await page.locator('.ppt-cell-input').press('Enter');});
+        await page.locator('#canvas-toggle').click();
+        await updated(()=>page.locator('[data-pc="criteria_text"]').fill('Browser-reviewed criterion '+legacy));
+        assert(latest.pages.some(p=>(p.targets||[]).some(r=>r.target.field==='criteria_text')));
         const initial=latest.pages.length;
         const beforeIds=latest.pages.map(p=>p.id);
         await updated(()=>page.locator('#page-add').click());assert.equal(latest.pages.length,initial+1);
@@ -60,7 +79,7 @@ const startup=new Promise((resolve,reject)=>{let data='';server.stdout.on('data'
         assert(await page.locator('#page-delete').isDisabled());
         const save=page.waitForResponse(r=>r.url().endsWith('/api/reports/'+start.sid)&&r.request().method()==='PUT');
         await page.locator('#save').click();assert.equal((await save).status(),200);await ready();
-        const saved=await get();assert(saved.pageEdits.added.some(p=>p.id===added));assert(saved.canvasEdits[added].some(o=>o.text==='QA '+legacy));
+        const saved=await get();assert.equal(saved.phase_classes.criteria_text,'Browser-reviewed criterion '+legacy);assert(saved.pageEdits.added.some(p=>p.id===added));assert(saved.canvasEdits[added].some(o=>o.text==='QA '+legacy));
         await page.reload();await ready();assert.equal(latest.pages.length,initial+1);
         await page.setViewportSize({width:390,height:844});
         await page.locator('[data-work-view="preview"]').click();
@@ -69,7 +88,7 @@ const startup=new Promise((resolve,reject)=>{let data='';server.stdout.on('data'
         assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+2));
         await page.screenshot({path:path.join(output,legacy?'mobile-legacy.png':'mobile.png'),fullPage:true});
         assert.deepEqual(errors,[]);
-        console.log((legacy?'Legacy bundle':'Modern bundle')+': page selection/order/add/delete/restore, text/line/image/table, undo/redo, save/reload, mobile passed');
+        console.log((legacy?'Legacy bundle':'Modern bundle')+': page selection/order/add/delete/restore, linked phase/cell/criteria, text/line/image/table, undo/redo, save/reload, mobile passed');
       } catch(e){await page.screenshot({path:path.join(output,'failure.png'),fullPage:true});throw e;}
       finally{await page.close();}
     }

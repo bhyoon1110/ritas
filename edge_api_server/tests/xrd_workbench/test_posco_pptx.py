@@ -170,7 +170,7 @@ def test_legacy_options_and_prebuilt_pages_do_not_append_extra_slides(monkeypatc
     for pages in (None,old_pages):
         _,slides,text=deck(render_report_pptx(project,document,lambda _:IMAGE,pages=pages))
         assert len(slides)==5
-        assert '보존할 분류 기준' not in text
+        assert '보존할 분류 기준' in text
     assert before==(project,document)
 
 

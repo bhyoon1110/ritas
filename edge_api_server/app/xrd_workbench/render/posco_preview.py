@@ -194,15 +194,25 @@ def deck_pages(deck):
                 if table is None: continue
                 widths=[int(c.get('w'))/MM for c in table.find('a:tblGrid',NS)]
                 ty=y
-                for row in table.findall('a:tr',NS):
+                for row_index, row in enumerate(table.findall('a:tr',NS)):
                     height=int(row.get('h'))/MM;tx=x
-                    for cell,cw in zip(row.findall('a:tc',NS),widths):
+                    for col_index, (cell,cw) in enumerate(zip(row.findall('a:tc',NS),widths)):
                         props=cell.find('a:tcPr',NS)
-                        output.append(dict(type='rect',x=tx,y=ty,w=cw,h=height,
-                            fill=color(props,'a:solidFill','#FFFFFF'),stroke='#D5E0E3',stroke_width=.2))
+                        cell_edit = edit
+                        phase_table = edit and edit.get('field') == 'phase_table'
+                        if phase_table:
+                            direct = dict(tab='classes',field='ppt_cell',objectId=edit.get('objectId'),row=row_index,col=col_index)
+                            phases = edit.get('phases', [])
+                            cell_edit = (dict(tab='classes',field='phase_class',sampleId=edit['sampleId'],
+                                              phase=phases[row_index-1],cell=direct)
+                                         if col_index == 0 and 0 < row_index <= len(phases) else direct)
+                        rect=dict(type='rect',x=tx,y=ty,w=cw,h=height,
+                            fill=color(props,'a:solidFill','#FFFFFF'),stroke='#D5E0E3',stroke_width=.2)
+                        if phase_table: rect['edit'] = cell_edit
+                        output.append(rect)
                         ml,mr,mt,mb=[int(props.get(k,d))/MM for k,d in
                                      (('marL','91440'),('marR','91440'),('marT','45720'),('marB','45720'))]
-                        cells=text_items(cell.find('a:txBody',NS),(tx+ml,ty+mt,cw-ml-mr,height-mt-mb),edit)
+                        cells=text_items(cell.find('a:txBody',NS),(tx+ml,ty+mt,cw-ml-mr,height-mt-mb),None if phase_table else edit)
                         anchor=props.get('anchor','t')
                         used=sum(i['h'] for i in cells)
                         if anchor in ('ctr','b'):

@@ -82,3 +82,21 @@ test('all-status search remains unfiltered for cache and live experiment scopes'
     assert(!url.searchParams.has('testState'));
   }
 });
+
+
+test('ALL removes only automatic experiment scope and retains explicit search conditions', () => {
+  for (const experiment of ['FT-IR','RAMAN','XRD','TEM']) {
+    for (const source of ['cache','lims']) {
+      const values = {source, requestScope:'all', reqNumber:'2022T00793', testMtdCode:'A11112',
+        assetNumber:'100000128', fromDate:'2022-01-01', toDate:'2022-12-31', testState:'5'};
+      const query = new URL(filters.buildQuery(values,experiment,1,200),'https://edge.test').searchParams;
+      assert.equal(query.has('experimentType'), false);
+      for (const key of ['reqNumber','testMtdCode','fromDate','toDate','testState']) assert.equal(query.get(key),values[key]);
+      assert.equal(query.get('assetNumber'), source === 'lims' ? values.assetNumber : null);
+      assert.equal(new URL(filters.buildQuery({...values,requestScope:'current'},experiment,1,200),'https://edge.test').searchParams.get('experimentType'),experiment);
+    }
+  }
+  const allStates = new URL(filters.buildQuery({source:'lims',requestScope:'all',testState:''},'XRD',1,200),'https://edge.test').searchParams;
+  assert.equal(allStates.get('includeCompleted'),'true');
+  for (const key of ['experimentType','testMtdCode','assetNumber','testState']) assert.equal(allStates.has(key),false);
+});

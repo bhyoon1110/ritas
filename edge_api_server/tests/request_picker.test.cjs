@@ -73,3 +73,18 @@ test('clear removes prior details; destroy removes body overlay and ignores late
   ui.load();ui.picker.destroy();ui.reply([item]);assert.equal(ui.byId('results'),null);
   assert.equal(ui.choices.length,1);
 });
+
+
+test('changing between current and ALL clears selection and requires a fresh lookup', t => {
+  const ui=fixture(t);ui.load();ui.reply([item]);ui.results()[0].click();
+  const scope=ui.d.querySelector('[aria-label="조회 범위"]');
+  assert.equal(scope.value,'current');
+  scope.value='all';scope.dispatchEvent(new ui.w.Event('change'));
+  assert.equal(ui.picker.selected(),null);assert.equal(ui.byId('detail').hidden,true);
+  assert.equal(ui.results().length,0);assert.match(ui.byId('info').textContent,/이전 선택을 해제/);
+  ui.load();assert(!new URL(ui.calls.at(-1).url,'https://edge.test').searchParams.has('experimentType'));
+  ui.reply([item]);ui.results()[0].click();
+  scope.value='current';scope.dispatchEvent(new ui.w.Event('change'));
+  assert.equal(ui.picker.selected(),null);assert.equal(ui.results().length,0);
+  ui.load();assert.equal(new URL(ui.calls.at(-1).url,'https://edge.test').searchParams.get('experimentType'),'TEM');
+});

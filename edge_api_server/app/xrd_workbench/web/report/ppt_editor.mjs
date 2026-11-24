@@ -1,7 +1,7 @@
 // XRD adapter; the page sidebar, selection gestures, icons, cell editor and
 // object tools are the same ES5 components used by FTIR/Raman/TEM.
 export function mountPptEditor({host,document:documentValue,changed,linked,message,upload,editing}) {
-  host.innerHTML=`<div class="actions"><span id="preview-panel-toggles" class="preview-panel-toggles"><button id="page-sidebar-toggle" hidden>페이지 목록</button></span><button id="ppt-prev">이전</button><select id="ppt-page" aria-label="PPT 페이지 선택"></select><button id="ppt-next">다음</button></div>
+  host.innerHTML=`<div class="actions"><span id="preview-panel-toggles" class="preview-panel-toggles"><button id="page-sidebar-toggle" hidden>페이지 목록</button></span><button id="ppt-prev">이전</button><select id="ppt-page" aria-label="PPT 페이지 선택"></select><button id="ppt-next">다음</button><button id="ppt-cell-direct" hidden>선택한 셀 글자 직접 편집</button></div>
     <p id="page-status" role="status">PPT 미리보기 준비 중…</p><div id="canvas-tools" hidden></div>
     <div class="preview-workspace"><aside id="page-sidebar" class="page-sidebar" aria-label="보고서 페이지 목록" hidden><div class="page-sidebar-head"><strong>페이지</strong><button id="page-sidebar-close">닫기</button></div><p id="page-count" class="muted"></p>
     <div class="actions"><button id="page-add">추가</button><button id="page-delete">삭제</button><button id="page-restore">삭제 취소</button><button id="page-up">위로</button><button id="page-down">아래로</button></div><ol id="page-thumbnails" class="page-thumbnails"></ol></aside>
@@ -19,6 +19,13 @@ export function mountPptEditor({host,document:documentValue,changed,linked,messa
     historyContext:()=>documentValue().template_version||'legacy',
     restoreHistoryContext:value=>{documentValue().template_version=value;},
     mode:value=>{canvasMode=value;el('edit-regions').hidden=value;},message,upload,editing});
+  let directCell=null;
+  function openCell(target){
+    if(!locked && canvas.editCell(target.objectId,target.row,target.col)) {
+      message('선택한 PPT 셀의 표시 문구를 편집합니다. 원자료와 상 분류 값은 바뀌지 않으며, 이 페이지의 직접 편집값으로 저장됩니다.');
+    }
+  }
+  el('ppt-cell-direct').onclick=()=>{if(directCell)openCell(directCell);};
   let templateLayout=null,templatePending=true;
   const templateHost=window.document.createElement('div');
   el('canvas-tools').parentNode.insertBefore(templateHost,el('canvas-tools'));
@@ -53,12 +60,21 @@ export function mountPptEditor({host,document:documentValue,changed,linked,messa
     image.onerror=()=>{if(sequence!==imageSequence)return;image.hidden=true;imagePending=false;progress.stop();el('page-status').textContent='PPT 페이지 이미지를 불러오지 못했습니다. 미리보기 다시 생성을 눌러 주세요.';};
     image.src=page.image;
     if(image.complete&&image.naturalWidth)image.onload();
+    directCell=null;el('ppt-cell-direct').hidden=true;
     const layer=el('edit-regions');layer.textContent='';layer.hidden=canvasMode;
     for(const region of page.targets||[]) {
       const button=window.document.createElement('button');button.className='edit-region';button.type='button';
       button.style.cssText=`left:${region.x*100}%;top:${region.y*100}%;width:${region.w*100}%;height:${region.h*100}%`;
-      button.setAttribute('aria-label','연결된 분석 입력 항목 수정');button.title='클릭: 연결된 분석 입력 항목';
-      button.onclick=()=>{if(!locked)linked(region.target);};layer.appendChild(button);
+      const target=region.target;
+      const label=target.field==='ppt_cell' ? `PPT 표 셀 직접 수정 · ${target.row+1}행 ${target.col+1}열`
+        : target.field==='phase_class' ? `${target.phase.name} 분류 변경 · 셀 글자는 직접 편집 버튼 사용`
+        : target.field==='criteria_text' ? '분류 기준 문구 수정' : '연결된 분석 입력 항목 수정';
+      button.setAttribute('aria-label',label);button.title=label;
+      button.onclick=()=>{
+        if(locked)return;
+        directCell=target.cell||null;el('ppt-cell-direct').hidden=!directCell;
+        if(target.field==='ppt_cell')openCell(target);else linked(target);
+      };layer.appendChild(button);
     }
     sidebar.select(index,keepSelection);canvas.page(page);availability();
   }

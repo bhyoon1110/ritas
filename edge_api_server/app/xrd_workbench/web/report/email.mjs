@@ -9,7 +9,7 @@ export function mountEmailEditor(fields, navigation, changed, requestNumber, con
   const pane=document.createElement('div');
   pane.id='emailForm';pane.className='formPane';
   pane.innerHTML='<h2>보고서 안내 메일</h2><p class="intro">의뢰자와 분석 결과를 확인하고 제목·본문을 수정하세요. 메일 템플릿과 서명을 적용할 수 있습니다.</p>'+
-    '<div class="generationActions"><button type="button" id="generateEmail">분석 결과로 다시 작성</button></div>'+
+    '<div class="generationActions"><button type="button" id="generateEmail">분석 결과로 다시 작성</button><button type="button" id="cancelEmail" hidden>자동 작성 취소</button></div>'+
     '<p id="emailStatus" class="generationLine" role="status" aria-live="polite"></p>'+
     '<label>이메일 제목<input id="emailSubject" data-email="subject" maxlength="180" autocomplete="off"></label>'+
     '<label>이메일 본문<textarea id="emailBody" data-email="body" rows="16" maxlength="4000"></textarea></label>'+

@@ -112,6 +112,18 @@ def resolve_mapped_analysis_type(
     return None
 
 
+def analysis_type_for_report(report: Mapping[str, Any], settings: Any | None = None) -> str | None:
+    """Prefer a server-rendered report kind; legacy LIMS codes still use routing."""
+    code = str(report.get("experiment_code") or "").strip().upper()
+    if code in {"FT-IR", "FTIR", "RAMAN", "XRD", "TEM"}:
+        return normalize_project_code(code)
+    return resolve_analysis_type(
+        experiment_code=code,
+        equipment_code=report.get("equipment_code"),
+        configured_map=getattr(settings, "analysis_type_map", ()),
+    )
+
+
 def analysis_type_for_job(job: Mapping[str, Any], settings: Any | None = None) -> str | None:
     return resolve_analysis_type(
         experiment_code=job.get("experiment_code"),

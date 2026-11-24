@@ -283,7 +283,11 @@ def send_preview_report_package(
     database: Database | None,
     job: PreviewReportJob,
     payload: PreviewReportSendRequest,
+    report_project: str | None = None,
 ) -> dict[str, Any]:
+    if report_project is not None and report_project not in {"FTIR", "RAMAN", "XRD", "TEM"}:
+        raise ValueError("지원하지 않는 보고서 실험 종류입니다.")
+    report_code = report_project or payload.experiment_code
     if job.status != "completed" or job.package_path is None:
         raise ValueError("보고서가 아직 완성되지 않았습니다.")
     if not job.package_path.is_file():
@@ -308,7 +312,7 @@ def send_preview_report_package(
     shared_package = persist_preview_report_package(
         settings=resolved_settings,
         report_id=job.job_id,
-        experiment_code=payload.experiment_code,
+        experiment_code=report_code,
         source_path=job.package_path,
     )
     result = enqueue_report_package(
@@ -318,7 +322,7 @@ def send_preview_report_package(
         package_path=shared_package,
         source_job_id=None,
         request_number=payload.request_number,
-        experiment_code=payload.experiment_code,
+        experiment_code=report_code,
         equipment_code=payload.equipment_code,
         operator_id=payload.operator_id,
         report_options=report_options,

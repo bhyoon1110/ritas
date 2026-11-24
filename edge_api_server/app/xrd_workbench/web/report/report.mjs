@@ -19,6 +19,7 @@ import {
   distinctPhases,
   ensurePhaseClasses,
   labelOf,
+  samePhase,
   setLabel,
   setRowLabel,
   setSampleLabel,
@@ -89,10 +90,11 @@ const pptxPassword = new window.RistPptxPassword({host:document.querySelector('#
 const mailEditor=mountEmailEditor($('deliveryFields'),$('reportNav'),()=>{
   if(!doc||busy)return;
   const email=ensureEmail(doc);email.delivery=mailEditor.value();email.body=$('emailBody').value;email.subject=$('emailSubject').value;
-  email.status='manual';updateEmailStatus();markDirty();
+  emailEditVersion++;email.status='manual';updateEmailStatus();markDirty();
 },()=>doc?.metadata?.report_number || '',()=>window.RistMailTemplateContext.xrd(doc,project));
 let recoveryDraft=null;
 let emailBaselineKey='', emailStale=false, emailAttempted=false, emailDefault=null;
+let emailDraftTask=null, emailEditVersion=0;
 const recoveryBar=document.createElement('div');recoveryBar.className='draftRecovery';
 recoveryBar.innerHTML='<span id="draftStatus" role="status">초안 확인 중…</span><button id="restoreDraft" hidden>초안 복구</button><button id="discardDraft" hidden>복구 초안 버리기</button>';
 reportMain.parentNode.insertBefore(recoveryBar,reportMain);
@@ -161,17 +163,29 @@ reportTools.onclick = e => {
   else if (b?.id === 'draftRefresh' && !busy) updatePreview();
 };
 setWorkView(window.innerWidth < 900 ? 'editor' : 'both');
-function linkedField(target) {
+let linkedFocusVersion=0;
+async function linkedField(target) {
   if (!doc || busy || !target || typeof target.tab !== 'string') return;
   if (!['overview','figure','classes'].includes(target.tab) && !doc.samples.some(s=>s.sample_id===target.tab)) return;
+  const version=++linkedFocusVersion, linkedDocument=doc;
   if (target.field === 'transfer') {setStep('save');}
-  else {setStep('report'); showTab(target.tab);}
+  else {setStep('report'); await showTab(target.tab);}
+  if(version!==linkedFocusVersion||doc!==linkedDocument||busy||(target.field!=='transfer'&&tab!==target.tab))return;
   if (reportMain.dataset.workView === 'preview') setWorkView('editor');
   let element;
   const overviewIds={title:'title',client:'client',requester:'requester',received_date:'receivedDate',analysis_period:'analysisPeriod',report_number:'reportNumber',author:'author',date:'reportDate',summary:'summary',transfer:'ristEquipment',purpose:'trace-purpose',equipment_name:'trace-equipment_name',measured_date:'trace-measured_date',conditions:'trace-conditions',preparation:'trace-preparation',environment:'trace-environment',reviewer:'trace-reviewer'};
   if (target.tab === 'overview' && overviewIds[target.field]) element=$(overviewIds[target.field]);
   else if (target.tab === 'figure') element=$('figureForm').querySelector('input,select,textarea');
-  else if (target.tab === 'classes') element=$('classForm').querySelector('input,select,textarea');
+  else if (target.tab === 'classes') {
+    if(target.field==='criteria_text')element=$('classForm').querySelector('[data-pc="criteria_text"]');
+    else if(target.field==='phase_class') {
+      const sample=visibleClassSamples(pcData,doc.samples).find(s=>s.sample_id===target.sampleId);
+      const index=sample?.phases.findIndex(item=>samePhase(item.phase,target.phase));
+      element=[...$('classForm').querySelectorAll('[data-pc-sample-id]')].find(e=>e.dataset.pcSampleId===target.sampleId&&Number(e.dataset.pcPhaseIndex)===index);
+      if(!element){status('이 상의 분류 항목을 찾지 못했습니다. 상 목록을 다시 불러와 확인하세요.',true);return;}
+      status('선택한 시료·상의 분류를 변경하세요. 상명 표시 문구는 PPT 위의 “선택한 셀 글자 직접 편집” 버튼에서 수정할 수 있습니다.');
+    } else element=$('classForm').querySelector('[data-pc-sample-id]')||$('classForm').querySelector('[data-pc="criteria_text"]');
+  }
   else if (target.field === 'note' || target.field === 'retained_note') {
     const key = target.field === 'note' ? 'noteText' : 'retainedText';
     element=[...$('sampleForm').querySelectorAll('textarea')].find(e=>e.dataset[key]===target.id);
@@ -233,6 +247,8 @@ function classAvailability() {
     : '저장·보고서 처리 중에는 변경 내용 보호를 위해 잠시 잠깁니다. 처리가 끝나면 자동으로 선택할 수 있습니다.';
 }
 function lock(value, allowPhaseEditing = false) {
+  // A late automatic draft must never modify a report being saved or exported.
+  if (value) cancelEmailDraft();
   mailEditor.lock(value);
   pptxPassword.lock(value);
   busy = value;
@@ -262,6 +278,7 @@ function lock(value, allowPhaseEditing = false) {
     'presetDelete',
   ])
     $(id).disabled = value;
+  emailDraftControls();
   if (!value) maybeAutoEmail();
 }
 function showTab(value) {
@@ -280,7 +297,7 @@ function showTab(value) {
   else if (tab === 'classes') {
     $('classForm').hidden = false;
     renderClasses();
-    loadClassData();
+    return loadClassData();
   } else if (tab === 'figure') {
     // 그래프·정량 표: the comparison figure and the quantity table settings on one page.
     $('figureForm').hidden = false;
@@ -470,7 +487,7 @@ function updateEmailStatus() {
   if (!doc) return;
   const email=ensureEmail(doc);
   const stale=emailStale || (emailBaselineKey && emailContextKey(doc)!==emailBaselineKey);
-  $('emailStatus').textContent=(recoveryDraft ? '복구 초안이 있어 LLM 자동 작성을 대기합니다. 위에서 복구 또는 버리기를 선택하세요. ' : '') + (stale && (email.subject||email.body)
+  $('emailStatus').textContent=(emailDraftTask ? '메일 초안을 작성하는 중입니다. 계속 입력할 수 있으며 직접 수정한 문안은 덮어쓰지 않습니다. ' : '') + (recoveryDraft ? '복구 초안이 있어 LLM 자동 작성을 대기합니다. 위에서 복구 또는 버리기를 선택하세요. ' : '') + (stale && (email.subject||email.body)
     ? '분석·보고서 입력이 변경되었습니다. 현재 메일을 대조하거나 다시 작성하세요. '
     : '') + (email.status==='manual' ? '직접 수정한 문안입니다. 저장·전송 시 유지합니다.' : email.message || '분석 결과로 메일 초안을 작성할 수 있습니다.');
 }
@@ -484,30 +501,60 @@ function renderEmail() {
 function maybeAutoEmail() {
   if (doc && step==='save' && canAutoDraftEmail(doc,emailDefault,{busy,recovery:!!recoveryDraft,attempted:emailAttempted})) generateEmail(false);
 }
+function emailDraftControls() {
+  $('generateEmail').disabled=busy||!!emailDraftTask;
+  $('cancelEmail').hidden=!emailDraftTask;
+  $('cancelEmail').disabled=busy;
+}
+function cancelEmailDraft() {
+  if (!emailDraftTask) return;
+  const task=emailDraftTask;
+  emailDraftTask=null;
+  task.cancel();
+  emailDraftControls();
+  updateEmailStatus();
+}
 async function generateEmail(confirmReplace=true) {
-  if (!doc || busy) return;
+  if (!doc || busy || emailDraftTask) return;
   const email=ensureEmail(doc);
   if (recoveryDraft) {status('먼저 복구 초안을 복구 또는 버린 뒤 메일을 작성하세요.',true);return;}
   if (confirmReplace && (email.subject||email.body) && !confirm('현재 이메일 제목·본문을 분석 결과로 다시 작성할까요? 직접 수정한 문안도 교체됩니다.')) return;
-  // Even an HTTP failure must not leave a previously empty mail blank.
+  // Draft generation is background work: never lock typing, lookup or final saving.
   if(initializeEmptyEmail(doc,emailDefault)){renderEmail();markDirty();}
+  syncTransfer();
   emailAttempted=true;
-  lock(true, true);
-  $('emailStatus').textContent='분석 결과로 로컬 LLM이 문안을 다듬는 중… 현재 문안은 유지합니다.';
+  const requestedContext=emailContextKey(doc), requestedStorage=storageId;
+  const task={version:emailEditVersion,controller:typeof AbortController==='function'?new AbortController():null,timer:null,cancel:null};
+  const interrupted=new Promise((resolve,reject)=>{
+    task.cancel=()=>{reject(new Error('메일 자동 작성을 중단했습니다. 현재 문안을 직접 편집할 수 있습니다.'));if(task.controller)task.controller.abort();};
+    task.timer=setTimeout(()=>{reject(new Error('메일 자동 작성 응답이 지연되어 중단했습니다. 현재 문안은 직접 편집할 수 있습니다.'));if(task.controller)task.controller.abort();},60000);
+  });
+  emailDraftTask=task;
+  emailDraftControls();updateEmailStatus();
   try {
-    syncTransfer();
-    const requestedContext = emailContextKey(doc);
-    const result=await (await api(`/api/reports/${storageId}/email-draft`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({document:doc})})).json();
-    doc.email={...result,delivery:{...(email.delivery||{}),bodyHtml:''}};
+    const options={method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({document:doc})};
+    if(task.controller)options.signal=task.controller.signal;
+    const result=await Promise.race([api(`/api/reports/${storageId}/email-draft`,options).then(response=>response.json()),interrupted]);
+    if(emailDraftTask!==task || storageId!==requestedStorage)return;
+    if(emailEditVersion!==task.version || composing){
+      $('emailStatus').textContent='자동 작성 중 직접 수정한 문안을 유지했습니다. 생성 결과는 덮어쓰지 않았습니다.';
+      return;
+    }
+    doc.email={...result,delivery:{...(ensureEmail(doc).delivery||{}),bodyHtml:''}};
     emailBaselineKey=requestedContext;
     emailStale=emailContextKey(doc)!==requestedContext;
-    renderEmail();
-    markDirty();
+    emailDraftTask=null;
+    renderEmail();markDirty();
     status('이메일 초안을 작성했습니다. 내용 확인 후 저장하세요. 실제 메일은 발송하지 않았습니다.');
   } catch(e) {
+    if(emailDraftTask!==task)return;
     $('emailStatus').textContent='메일 작성 실패: '+e.message+' 기존 문안은 유지했습니다.';
     status(e.message,true);
-  } finally {lock(false);}
+  } finally {
+    clearTimeout(task.timer);
+    if(emailDraftTask===task)emailDraftTask=null;
+    emailDraftControls();
+  }
 }
 function updatePreview() {
   if (doc) livePreview.schedule(true);
@@ -976,7 +1023,8 @@ $('editor').oninput = $('deliveryFields').oninput = (e) => {
   if (d.email) {
     const email=ensureEmail(doc);
     email[d.email]=element.value;
-    email.status='manual';
+    emailEditVersion++;email.status='manual';
+    updateEmailStatus();
   }
   else if (d.meta) doc.metadata[d.meta] = element.value;
   else if (element.id === 'summary') doc.summary = element.value;
@@ -1030,6 +1078,7 @@ $('editor').onclick = $('deliveryFields').onclick = async (e) => {
   if (!button || busy && !(phaseEditingWhileBusy && classFields.contains(button) &&
     (button.id === 'pcRowApply' || button.dataset.pcSampleApply !== undefined))) return;
   if (button.id === 'generateEmail') {await generateEmail();return;}
+  if (button.id === 'cancelEmail') {cancelEmailDraft();status('자동 작성을 취소했습니다. 현재 문안을 직접 편집할 수 있습니다.');return;}
   const d = button.dataset;
   if (d.goto !== undefined) {
     showTab(d.goto);

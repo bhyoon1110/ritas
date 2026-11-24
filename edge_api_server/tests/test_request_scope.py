@@ -235,3 +235,28 @@ def test_duplicate_upstream_pages_and_call_time_budgets_fail_closed(monkeypatch)
     relay.calls=[]
     with pytest.raises(ApiException) as error:scoped_requests(relay,RequestScope('TEM'),1,50,{})
     assert error.value.code=='REQUEST_SCOPE_TOO_BROAD' and not relay.calls
+
+
+def test_all_live_lookup_omits_automatic_method_and_asset_maps_but_keeps_explicit_filters(monkeypatch, tmp_path):
+    from fastapi.testclient import TestClient
+    from app.main import create_app
+    from app.lims_requests import LimsRequestsClient
+    from tests.test_lims_requests import NoCacheAccess
+    items = [row(1, 'A11112', '부품가공 (판형)', request='2022T00793')]
+    relay = Relay(items, assets={'100000128': [1]})
+    monkeypatch.setattr(LimsRequestsClient, 'fetch', lambda self,p,s,f: relay.fetch(p,s,f))
+    monkeypatch.setattr(Database, 'from_settings', lambda _: NoCacheAccess())
+    settings = Settings(storage_root=tmp_path, lims_requests_enabled=True, error_capture_files=False,
+                        request_method_map=(('XRD-METHOD','XRD'),), request_asset_map=(('XRD-ASSET','XRD'),))
+    params = {'source':'lims', 'includeCompleted':'true', 'reqNumber':'2022T00793', 'pageSize':200}
+    client = TestClient(create_app(settings))
+    scoped = client.get('/api/v1/requests', params={**params,'experimentType':'XRD'}, headers={'X-Request-Id':'scoped'})
+    assert scoped.status_code == 200 and scoped.json()['totalCount'] == 0
+    assert relay.calls[-1][2] == {'reqNumber':'2022T00793','testMtdCode':'XRD-METHOD','assetNumber':'XRD-ASSET'}
+    all_rows = client.get('/api/v1/requests', params=params, headers={'X-Request-Id':'all'})
+    assert all_rows.status_code == 200 and all_rows.json()['totalCount'] == 1
+    assert relay.calls[-1][2] == {'reqNumber':'2022T00793'}
+    explicit = client.get('/api/v1/requests', params={**params,'assetNumber':'100000128','testMtdCode':'A11112','testState':'5'},
+                          headers={'X-Request-Id':'all-explicit'})
+    assert explicit.status_code == 200 and explicit.json()['items'][0]['testMethodCode'] == 'A11112'
+    assert relay.calls[-1][2] == {'reqNumber':'2022T00793','assetNumber':'100000128','testMtdCode':'A11112','testState':'5'}

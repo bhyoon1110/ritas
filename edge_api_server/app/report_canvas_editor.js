@@ -308,6 +308,14 @@
     return {
       load:function(value){cellEditor.close(false);state=copy(value||{});undo=[];redo=[];selected=null;},
       value:function(){return copy(state);},
+      editCell:function(id,row,col){
+        if(locked||loading||!capable||!page)return false;
+        var item=merged().filter(function(v){return v.id===id&&v.kind==="table";})[0];
+        if(!item||!editableCells(item).some(function(c){return c.row===row&&c.col===col;}))return false;
+        enabled=true;window.RistReportIcons(modeButton,"edit","자유 편집 끄기");
+        modeButton.setAttribute("aria-pressed","true");modeButton.setAttribute("aria-expanded","true");
+        options.mode(true);draw();editCell(id,row,col);return cellEditor.active();
+      },
       uploadTemplateBackground:function(file,done){
         if(locked||loading||!capable){done(new Error("미리보기 반영이 끝난 뒤 양식을 적용하세요."));return;}
         options.upload(file,done);

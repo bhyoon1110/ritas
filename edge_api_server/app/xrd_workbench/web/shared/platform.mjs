@@ -1,9 +1,14 @@
 import { request, waitJob, apiUrl } from './api.mjs';
 
+let requestSelection = null;
+
 export function transferValues() {
   const value = id => (document.getElementById(id)?.value || '').trim();
-  return {requestNumber:value('reportNumber'), experimentCode:value('ristExperiment'),
+  const transfer = {requestNumber:value('reportNumber'), experimentCode:value('ristExperiment'),
     equipmentCode:value('ristEquipment'), operatorId:value('ristOperator')};
+  if (requestSelection?.scope === 'all' && requestSelection.requestNumber === transfer.requestNumber
+      && requestSelection.experimentCode === transfer.experimentCode) transfer.requestScope = 'all';
+  return transfer;
 }
 
 export async function startExport(storageId, revision, kind, extra = {}, onProgress) {
@@ -23,6 +28,7 @@ export function downloadJob(job) {
 }
 
 export async function mountReportPlatform(send, changed) {
+  requestSelection = null;
   // Model endpoint/credentials belong to the server configuration, not a browser form.
   for (const id of ['provider','baseUrl','model']) document.getElementById(id).closest('label').hidden = true;
   const hint = document.querySelector('#settingsDialog > p:last-child');
@@ -62,16 +68,28 @@ export async function mountReportPlatform(send, changed) {
         callback(null, body);
       } catch (error) { callback(error); }
     },
-    onSelect:item => {
+    onClear:() => {
+      requestSelection = null;
+      status('의뢰 선택을 해제했습니다. 전체 범위의 의뢰를 연결하려면 다시 조회해 선택하세요.');
+    },
+    onSelect:(item, selection) => {
+      requestSelection = {scope:selection.scope, requestNumber:(item.requestNumber || '').trim(), experimentCode:methodCode(item)};
       $('reportNumber').value = item.requestNumber || '';
       $('ristExperiment').value = methodCode(item);
       const equipment = item.equipmentCode || item.deviceCode || item.instrumentCode;
       if (equipment) $('ristEquipment').value = equipment;
       $('reportNumber').dispatchEvent(new Event('input', {bubbles:true}));
       changed();
-      status(methodCode(item) ? '표지 의뢰번호와 시험방법코드를 반영했습니다. 사용한 장비코드를 확인하세요.'
+      status(methodCode(item)
+        ? (selection.scope === 'all'
+          ? '전체 의뢰에서 선택했습니다. XRD 보고서를 선택한 의뢰와 실제 시험방법코드에 연결합니다. 의뢰·시험·사용한 장비를 확인하세요.'
+          : '표지 의뢰번호와 시험방법코드를 반영했습니다. 사용한 장비코드를 확인하세요.')
         : '선택한 시험에 시험방법코드가 없습니다. 전송 전 LIMS 시험방법코드를 확인하세요.');
     }
+  });
+  $('ristExperiment').addEventListener('input', () => {
+    const selectedItem = picker.selected();
+    if (selectedItem && $('ristExperiment').value.trim() !== methodCode(selectedItem)) picker.clear();
   });
   $('reportNumber').addEventListener('input', () => {
     $('ristRequestNumber').value = $('reportNumber').value;

@@ -332,6 +332,8 @@ class _FakeConnection:
     def execute(self, sql: str, params: tuple = ()) -> _Result:
         normalized = " ".join(sql.split())
         self.statements.append((normalized, tuple(params)))
+        if normalized.startswith("SELECT generation FROM auth_sso_resets"):
+            return _Result({"generation": 0})
         if normalized.startswith("SELECT user_id FROM sso_identities"):
             return _Result(self.owner)
         return _Result()

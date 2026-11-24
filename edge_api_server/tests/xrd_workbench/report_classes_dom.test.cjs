@@ -98,8 +98,8 @@ for(const [mode,program] of Object.entries(programs)){
     const wait=deferred(),ui=setup(t,program,false,{email:()=>wait.promise});await flush();
     ui.d.querySelector('[data-tab="email"]').click();ui.d.getElementById('generateEmail').click();await flush();
     ui.d.querySelector('[data-tab="classes"]').click();await flush();
-    const row=ui.d.querySelector('[data-pc-sample-id="A"]');assert(!row.matches(':disabled'));assert(ui.d.getElementById('title').matches(':disabled'));
-    assert(ui.d.getElementById('pcApply').disabled);assert.match(ui.d.getElementById('classBusyStatus').textContent,/메일 문안 생성 중에도/);
+    const row=ui.d.querySelector('[data-pc-sample-id="A"]');assert(!row.matches(':disabled'));assert(!ui.d.getElementById('title').matches(':disabled'));
+    assert(!ui.d.getElementById('pcApply').disabled);assert(ui.d.getElementById('classBusyStatus').hidden);
     row.value='presumed';row.dispatchEvent(new ui.w.Event('change',{bubbles:true}));
     if(fail)wait.reject(Error('모델 연결 실패'));else wait.resolve();await flush();
     assert(row.isConnected);assert.equal(row.value,'presumed');assert(!row.matches(':disabled'));assert(ui.d.getElementById('classBusyStatus').hidden);
@@ -162,4 +162,24 @@ for(const [mode,program] of Object.entries(programs)){
     assert.ok(ui.saves.at(-1).phase_classes.labels.filter(l=>l.sample_id==='A').every(l=>l.class==='major'));
     assert.deepEqual(ui.errors,[]);
   });
+  test(`${mode}: linked phase targets focus the matching sample select and criteria text saves`,async t=>{
+    const ui=setup(t,program);await flush();
+    ui.w.HTMLElement.prototype.scrollIntoView=function(){};
+    const send=target=>ui.w.dispatchEvent(new ui.w.MessageEvent('message',{
+      source:ui.d.getElementById('reportPreview').contentWindow,data:{type:'xrd-preview-edit',target}}));
+    const sample=fixture.project.samples.find(s=>s.id==='A'),phase=sample.phases[1];
+    send({tab:'classes',field:'phase_class',sampleId:'A',phase:{name:phase.name,card:phase.card,db:phase.db}});
+    await flush();
+    assert.equal(ui.d.activeElement.dataset.pcSampleId,'A');
+    assert.equal(ui.d.activeElement.dataset.pcPhaseIndex,'1');
+    assert.notEqual(ui.d.activeElement.tagName,'TEXTAREA');
+    send({tab:'classes',field:'criteria_text'});await flush();
+    assert.equal(ui.d.activeElement.dataset.pc,'criteria_text');
+    ui.d.activeElement.value='수정한 분류 기준';
+    ui.d.activeElement.dispatchEvent(new ui.w.Event('input',{bubbles:true}));
+    ui.d.getElementById('save').click();await flush();
+    assert.equal(ui.saves.at(-1).phase_classes.criteria_text,'수정한 분류 기준');
+    assert.deepEqual(ui.errors,[]);
+  });
+
 }

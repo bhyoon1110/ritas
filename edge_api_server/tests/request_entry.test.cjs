@@ -49,6 +49,8 @@ async function setup(t, prefix, mode) {
   }
   const hook=/function reportTransferValue\(field\)\s*\{/;
   if(gd) {
+    // The real spectrum page loads this ES5 dependency before its workflow.
+    w.eval(fs.readFileSync(path.join(__dirname,'../../common/rist_common/plotting/file_progress.js'),'utf8'));
     let dependency=[...pages[prefix].matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)]
       .map(m=>m[1]).find(s=>s.includes('rist-spectrum-work-template'));
     if(mode==='chrome49') dependency=fs.readFileSync(path.join(assetRoot,

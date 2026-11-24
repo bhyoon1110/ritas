@@ -13,7 +13,7 @@ const port=new Promise((resolve,reject)=>{let s='';server.stdout.on('data',chunk
   try{
     const origin='http://127.0.0.1:'+await port;
     browser=await chromium.launch({headless:true,executablePath:'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'});
-    for(const kind of (process.env.RIST_MAIL_TEST_KINDS||'ftir,raman,tem,xrd').split(','))for(const legacy of [false,true]){
+    for(const kind of (process.env.RIST_MAIL_TEST_KINDS||'ftir,raman,tem,xrd').split(','))for(const legacy of (process.env.RIST_MAIL_NATIVE_ONLY?[false]:process.env.RIST_MAIL_LEGACY_ONLY?[true]:[false,true])){
       const name=kind+(legacy?'-fallback':'-native'),context=await browser.newContext({viewport:{width:1440,height:1000},...(legacy?{userAgent:'Mozilla/5.0 (Windows NT 5.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/49.0.2623.75 Safari/537.36'}:{})});
       const page=await context.newPage(),errors=[];page.setDefaultTimeout(15000);page.on('pageerror',e=>errors.push(e.message));
       page.on('dialog',dialog=>dialog.accept());
@@ -105,7 +105,7 @@ const port=new Promise((resolve,reject)=>{let s='';server.stdout.on('data',chunk
             let html=fs.readFileSync(path.join(web,'report.html'),'utf8').replace('<script type="module" src="/shared/shell.mjs"></script>','');
             // Match the shared tools injected by integration.web_asset in the deployed app.
             html=html.replace('</head>','<link rel="stylesheet" href="/ppt-tools/report_ppt_tools.css"></head>');
-            const scripts=['report_editor_icons.js','report_page_sidebar.js','report_cell_editor.js','report_canvas_editor.js','report_ppt_templates.js'].map(n=>'<script src="/ppt-tools/'+n+'"></script>').join('');
+            const scripts=['request_filters.js','request_picker.js','report_editor_icons.js','report_page_sidebar.js','report_cell_editor.js','report_canvas_editor.js','report_ppt_templates.js'].map(n=>'<script src="/ppt-tools/'+n+'"></script>').join('');
             html=html.replace('<script type="module"',scripts+'<script type="module"');
             html=html.replace('<head>','<head><script src="/ppt-tools/file_progress.js"></script>');
             if(legacy)html=html.replace('<script type="module" src="/report/report.mjs"></script>','<script src="/report/report.legacy.js"></script>').replace(/\.css"/g,'.legacy.css"');
@@ -148,6 +148,20 @@ const port=new Promise((resolve,reject)=>{let s='';server.stdout.on('data',chunk
       }
       try{
         await open();
+        // Use real mouse/keyboard events: locator.fill() bypasses label activation.
+        const typedBody=page.getByRole('textbox',{name:'메일 본문 서식 편집',exact:true});
+        await page.evaluate(()=>{
+          window.mailAccidentalCommands=[];
+          document.querySelector('.mail-toolbar').addEventListener('click',event=>{
+            const button=event.target.closest('button');if(button)window.mailAccidentalCommands.push(button.getAttribute('aria-label'));
+          });
+        });
+        await typedBody.click();await page.keyboard.press('ControlOrMeta+End');await page.keyboard.type(' keyboard edit');await page.keyboard.insertText(' 한글 편집');
+        assert.match(await typedBody.textContent(),/keyboard edit 한글 편집$/);
+        assert.deepEqual(await page.evaluate(()=>window.mailAccidentalCommands),[],'Clicking the mail body must not activate a toolbar button');
+        await save();
+        assert.match((kind==='xrd'?doc.email.delivery:doc.deliveryEmail).bodyHtml,/keyboard edit/);
+        await open();assert.match(await typedBody.textContent(),/keyboard edit/);
         if(process.env.RIST_MAIL_CONTACT_TEST){
           addressBook.contacts=[{id:'personal',name:'김연구',department:'소재분석실',email:'kim@rist.re.kr'}];
           sharedBook.contacts=[{id:'shared',name:'김분석',department:'공동연구실',email:'shared@rist.re.kr',visibility:{mode:'all',projects:[]}},

@@ -125,6 +125,12 @@ def apply(deck, document, asset_root=None):
         for name,path in payload['media']: deck.images[name]=path.read_bytes()
         _, objects=canvas.objects(dict(payload,xml=E.tostring(slide)))
         deck.page_info[slide]['objects']=[item for _,item in objects]
+        object_ids = {shape.find('.//p:cNvPr', NS).get('id'): item['id'] for shape, item in objects}
+        for shape in slide.findall('p:cSld/p:spTree/*', NS):
+            target = deck.edits.get(shape)
+            if target and target.get('field') == 'phase_table':
+                info = shape.find('.//p:cNvPr', NS)
+                deck.edits[shape] = {**target, 'objectId': object_ids.get(info.get('id'))}
     deck.pages=[pair for pair in arranged if deck.page_info[pair[0]]['id'] not in edits.get('hidden',[])]
     if not 1 <= len(deck.pages) <= 200: raise ValueError('보고서는 최소 1페이지, 최대 200페이지를 유지해야 합니다.')
     deck.number_pages()

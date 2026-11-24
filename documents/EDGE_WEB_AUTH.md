@@ -118,6 +118,31 @@ mysql --default-character-set=utf8mb4 \
 
 적용 후에는 로그아웃했다가 다시 로그인한다.
 
+## SSO 유효기간 및 즉시 초기화
+
+- 관리자는 `/admin/users`의 **SSO 인증 유효기간 (분)**에서 1~43200분(30일)을 저장한다.
+  최초 값은 `RIST_AUTH_RECENT_SSO_MINUTES`(기본 30분)이며, 관리자 저장 후에는 DB의
+  전역 설정을 모든 API 프로세스가 사용한다. 서비스 재시작이 필요 없다.
+- 정책 변경은 기존 유효 인증에도 바로 적용된다. 유효기간을 늘려도 이미 만료되거나
+  초기화된 인증을 되살리지 않는다. 로컬 로그인 세션의 만료가 먼저 오면 그 시점까지다.
+- `/account`에 현재 SSO 상태, 유효기간과 실제 만료 시각이 표시된다. **내 SSO 인증 초기화**는
+  같은 회원의 모든 기기에 적용한다. 관리자는 회원 편집 패널 또는 선택 회원 일괄 작업으로
+  즉시 초기화한다. 로컬 로그인, 프로젝트 권한, 작성 중인 보고서는 유지한다.
+- 초기화는 SSO 연결을 비활성화하고 모든 세션의 최근 인증 시각 및 대기 OIDC 요청을 지운다.
+  초기화 전에 시작한 인증 응답으로 다시 활성화되지 않도록 회원별 초기화 세대를 확인한다.
+  기존 계정 연결의 소유 관계는 유지하며 다른 회원이 같은 SSO ID를 가져가게 하지 않는다.
+- 정책 저장과 초기화는 인증 감사 이력에 행위자·대상·변경 내용을 기록한다. 비밀번호는 저장하지 않는다.
+- 추가 테이블은 `auth_sso_policy`, `auth_sso_resets`이며 기존 테이블 구조를 변경하지 않는다.
+  앱 시작 시 생성된다. DB의 CREATE 권한을 별도 관리하면
+  `edge_api_server/deploy/mariadb_sso_policy_migration.sql`을 먼저 적용한다.
+- API: `GET/PATCH /api/v1/auth/admin/sso-policy`, `POST /api/v1/auth/sso/reset`,
+  `POST /api/v1/auth/admin/users/{user_id}/sso/reset`. 변경 요청은 기존 계정/관리자 CSRF 헤더와
+  권한을 검사한다. 관리자 TTL 요청은 `{"validMinutes": 480}` 형식이다.
+
+SSO 인증의 유효기간(분)은 HTTP 통신 대기시간(초)과 별개다. 폐쇄망 LIMS 조회가 4초 이상
+걸리는 환경에서는 `RIST_SSO_READ_TIMEOUT_SECONDS=40`을 유지한다. 현재 SSO와 의뢰조회가
+이 통신 대기시간을 함께 사용한다.
+
 ## 6. POSCO SSO 연동 방식
 
 이 프로젝트의 기본 SSO 방식은 브라우저 리다이렉트가 아니라 POSCO가 제공한

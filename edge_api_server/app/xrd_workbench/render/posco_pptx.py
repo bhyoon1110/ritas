@@ -22,6 +22,7 @@ from ..config import load_settings
 from ..core.figure import build_plan
 from ..core.parsing.values import central
 from ..core.report import validate_document
+from ..core.phase_class import phase_ref
 from .figure import render_panel_png
 from .fonts import wrap_lines
 from .items import link_target, viewer_target
@@ -709,8 +710,14 @@ def build_posco_deck(project, document, resolve_source, *, pages=None, link_base
             summary_panel=dict(panel,show_reference=False,show_markers=False,sample_legend=True)
             summary_image=image_renderer(summary_panel,128,91)
     selected = [e for e in entries if e['summary_included']]
+    criteria = document['phase_classes']['criteria_text'].strip()
+    criteria_width = (247.65 if deck.supplied_design else 128)-7.2
+    criteria_lines = wrap_lines('분류 기준: '+criteria,criteria_width,8.5) if criteria else []
+    inline_criteria = bool(criteria) and len(criteria_lines)<=6
+    criteria_height = len(criteria_lines)*8.5*1.25/2.83465+6 if inline_criteria else 0
     for page_index, cards in enumerate(summary_pages(selected,samples,classification,
-                                                     height=112 if deck.supplied_design else 139)):
+                                                     height=(112 if deck.supplied_design else 139)-criteria_height)):
+
         slide = deck.slide(0,blank=True)
         deck.title(slide,SUMMARY_TITLE + (' (계속)' if page_index else ''))
         group = list({c['entry']['sample_id']:c['entry'] for c in cards}.values())
@@ -718,7 +725,7 @@ def build_posco_deck(project, document, resolve_source, *, pages=None, link_base
         note = statement+'\n\n'+disclaimer if statement else ''
         note_width = 247.65 if deck.supplied_design else 128
         note_min = 33.26 if deck.supplied_design else 27
-        note_h = max(note_min, len(wrap_lines(note,note_width-7.2,8.5))*8.5*1.25/2.83465+5)
+        note_h = max(note_min, len(wrap_lines(note,note_width-7.2,8.5))*8.5*1.25/2.83465+5+criteria_height)
         extra_h = note_h-note_min
         deck.text(slide,'측정 결과',(8,25,128,7),size=12,bold=True,color='0A7489',edit=dict(tab='figure'))
         deck.text(slide,'시료별 결정상 (Phase) 정보' if deck.supplied_design else '샘플별 결정상 (Phase) 정보',
@@ -750,8 +757,20 @@ def build_posco_deck(project, document, resolve_source, *, pages=None, link_base
                 deck.text(slide,line,(x+2,ty,57,4),size=8.5,bold=bold,edit=dict(tab='classes'));ty+=4
         deck.text(slide,'특이사항',(8,140-extra_h,128,7),size=12,bold=True,color='0A7489',edit=dict(tab='classes'))
         deck.frame(slide,(8,148-extra_h,note_width,note_h),name='Remarks box')
+        if inline_criteria:
+            deck.text(slide,'분류 기준: '+criteria,(11,150-extra_h,note_width-6,criteria_height),size=8.5,
+                      name='Phase classification criteria',edit=dict(tab='classes',field='criteria_text'))
         if statement:
-            deck.text(slide,note,(11,150-extra_h,note_width-6,note_h-4),size=8.5,edit=dict(tab='classes'))
+            deck.text(slide,note,(11,150-extra_h+criteria_height,note_width-6,note_h-4-criteria_height),size=8.5,
+                      edit=dict(tab='classes',field='classification_overview'))
+    if criteria and (not inline_criteria or not selected):
+        lines=wrap_lines(criteria,238,10)
+        for offset in range(0,len(lines),24):
+            slide=deck.slide(blank=True,kind='classification')
+            deck.title(slide,'분류 기준'+(' (계속)' if offset else ''))
+            deck.page_info[slide]['navigation_title']='분류 기준'+(' (계속)' if offset else '')
+            deck.text(slide,'\n'.join(lines[offset:offset+24]),(14,40,245,125),size=10,
+                      name='Phase classification criteria',edit=dict(tab='classes',field='criteria_text'))
     # Detailed pages: WPPF alongside its matching sample, or two phase-only samples per page.
     plain=[]
     quantity_overflow=[]
@@ -813,7 +832,8 @@ def build_posco_deck(project, document, resolve_source, *, pages=None, link_base
             put(slide,'Text 5' if index==0 else 'Text 8',entry['display_name']+' - 상 동정 (Phase Identification) 결과',12,dict(tab=entry['sample_id'],field='display_name'),bold=True)
             frame=frames[index]
             shape=tables[index]
-            deck.mark(shape,dict(tab='classes'))
+            deck.mark(shape,dict(tab='classes',field='phase_table',sampleId=entry['sample_id'],
+                                 phases=[phase_ref(phase) for phase in sample['phases']]))
             fit_phase_table(shape, table_sets[index][0], row_sets[index], frame,
                             named(slide,'Section label')[index], 166 if quantitative else 160.4)
             x,y,w,h=box(frame)

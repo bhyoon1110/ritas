@@ -18,12 +18,14 @@ import re
 import time
 import threading
 from types import SimpleNamespace
+from typing import Literal
 from urllib.parse import urlsplit
 import uuid
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.routing import APIRoute
+from pydantic import Field
 from starlette.concurrency import run_in_threadpool
 from rist_common.plotting.file_progress import file_progress_html
 
@@ -468,6 +470,11 @@ def saved_report(state, sid, revision):
         return project, validate_document(project, document)
 
 
+class XrdReportSendRequest(PreviewReportSendRequest):
+    # An explicit ALL selection changes the LIMS association, never the XRD report type.
+    request_scope: Literal['current', 'all'] = Field(default='current', alias='requestScope')
+
+
 @router.post('/api/reports/{sid}/exports', status_code=202)
 def export_report(sid: str, payload: dict):
     state = current.get()
@@ -479,6 +486,11 @@ def export_report(sid: str, payload: dict):
     if payload.get('analysis_revision', project.get('analysis_revision', 0)) != project.get('analysis_revision', 0):
         raise HTTPException(409, '분석 버전이 변경되었습니다. 다시 여세요.')
     transfer = payload.get('transfer') or {}
+    if not isinstance(transfer, dict) or transfer.get('requestScope', 'current') not in ('current', 'all'):
+        raise HTTPException(422, '의뢰 조회 범위를 확인하세요.')
+    transfer = dict(transfer)
+    if transfer.get('requestScope') == 'current':
+        transfer.pop('requestScope')
     for key in ('requestNumber', 'experimentCode', 'equipmentCode', 'operatorId'):
         if not isinstance(transfer.get(key, ''), str) or len(transfer.get(key, '')) > 100:
             raise HTTPException(422, '전송 정보 형식을 확인하세요.')
@@ -505,7 +517,7 @@ def export_report(sid: str, payload: dict):
             register_generated_report_package(
                 settings=state.settings, database=state.request.app.state.database,
                 report_id=directory.name, package_path=output,
-                experiment_code=transfer.get('experimentCode', ''),
+                experiment_code='XRD',
                 request_number=transfer.get('requestNumber', ''),
                 equipment_code=transfer.get('equipmentCode', ''),
                 operator_id=transfer.get('operatorId', ''),
@@ -633,7 +645,7 @@ def job_file(jid: str):
 
 
 @router.post('/api/jobs/{jid}/send')
-def send_report(jid: str, payload: PreviewReportSendRequest, request: Request):
+def send_report(jid: str, payload: XrdReportSendRequest, request: Request):
     state = current.get()
     payload = authenticated_transfer_payload(request, payload, 'XRD')
     value = read_job(state, jid)
@@ -641,17 +653,20 @@ def send_report(jid: str, payload: PreviewReportSendRequest, request: Request):
         raise HTTPException(409, '완료된 전달 ZIP만 전송할 수 있습니다.')
     expected = dict(requestNumber=payload.request_number, experimentCode=payload.experiment_code,
                     equipmentCode=payload.equipment_code, operatorId=payload.operator_id)
+    if payload.request_scope == 'all':
+        expected['requestScope'] = 'all'
     if value.get('transfer') != expected:
         raise HTTPException(409, '전송 정보가 생성 시점과 다릅니다. SSO 인증 후 정보 확인·ZIP 재생성을 해주세요.')
     project_code = payload.experiment_code.upper()
     from ..experiment_routing import resolve_analysis_type
-    if resolve_analysis_type(experiment_code=project_code, equipment_code=payload.equipment_code,
-                             configured_map=state.settings.analysis_type_map) != 'XRD':
+    if payload.request_scope != 'all' and resolve_analysis_type(
+            experiment_code=project_code, equipment_code=payload.equipment_code,
+            configured_map=state.settings.analysis_type_map) != 'XRD':
         raise HTTPException(422, 'XRD 의뢰의 실험코드·장비코드를 확인하세요.')
     job = SimpleNamespace(job_id=jid, status='completed', package_path=job_path(state, jid) / value['filename'])
     try:
         return send_preview_report_package(settings=state.settings, database=request.app.state.database,
-                                            job=job, payload=payload)
+                                            job=job, payload=payload, report_project='XRD')
     except ReportQueueError as exc:
         raise ApiException(
             503 if exc.retryable else 409,

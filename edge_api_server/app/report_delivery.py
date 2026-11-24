@@ -15,7 +15,7 @@ from .browser_support import with_browser_support_notice
 from .config import Settings
 from .database import Database
 from .errors import ApiException
-from .experiment_routing import resolve_analysis_type
+from .experiment_routing import analysis_type_for_report
 from .preview_report import PreviewReportSendRequest
 from .report_queue import (
     ReportQueueError,
@@ -71,11 +71,7 @@ def _report_for_request(request: Request, report_id: str) -> tuple[dict[str, Any
             "REPORT_NOT_FOUND",
             "보고서 생성 기록을 찾을 수 없습니다.",
         )
-    project = resolve_analysis_type(
-        experiment_code=report.get("experiment_code"),
-        equipment_code=report.get("equipment_code"),
-        configured_map=settings.analysis_type_map,
-    )
+    project = analysis_type_for_report(report, settings)
     if project not in {"FTIR", "RAMAN", "XRD", "TEM"}:
         raise ApiException(
             422,

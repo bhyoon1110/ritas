@@ -20,16 +20,20 @@ const ready = new Promise((resolve, reject) => {
       const errors = [], queries = [];
       page.on('pageerror', e => errors.push(e.message));
       page.setDefaultTimeout(20000);
-      let fail = false;
+      let fail = false, allScope = false;
       await page.route('**/api/v1/requests?**', async route => {
         const query = new URL(route.request().url()).searchParams;
         queries.push(query);
-        assert.equal(query.get('experimentType'), 'XRD');
-        assert(!query.has('testMtdCode') && !query.has('assetNumber') && !query.has('reqNumber'));
+        assert.equal(query.get('experimentType'), allScope ? null : 'XRD');
+        assert(!query.has('testMtdCode'));
+        if (allScope) {
+          assert.equal(query.get('assetNumber'),'100000128');
+          assert.equal(query.get('reqNumber'),'2022T00793');
+        } else assert(!query.has('assetNumber') && !query.has('reqNumber'));
         await route.fulfill({status:fail ? 422 : 200, contentType:'application/json', body:JSON.stringify(fail
           ? {message:'기간으로 조회 범위를 좁혀 주세요.', code:'REQUEST_SCOPE_TOO_BROAD'}
           : {page:1,pageSize:200,totalCount:1,scopeNote:'XRD: 명확한 시험명 기준으로 조회합니다.',
-              items:[{requestNumber:'REQ-XRD-ONLY',testMethodCode:'X-01',testMethodName:'XRD 정성분석',sampleName:'검증 시료',testState:7,requestUserName:'김의뢰',customerName:'검증기관',testChargerName:'박담당',sampleResultNo:701,testMethodResultNo:801}]})});
+              items:allScope ? [{requestNumber:'2022T00793',testMethodCode:'A11112',testMethodName:'부품가공 (판형)',testState:5}] : [{requestNumber:'REQ-XRD-ONLY',testMethodCode:'X-01',testMethodName:'XRD 정성분석',sampleName:'검증 시료',testState:7,requestUserName:'김의뢰',customerName:'검증기관',testChargerName:'박담당',sampleResultNo:701,testMethodResultNo:801}]})});
       });
       try {
         await page.goto(origin+'/api/v1/xrd/workbench/report.html?project='+start.sid);
@@ -57,6 +61,22 @@ const ready = new Promise((resolve, reject) => {
         await page.waitForFunction(() => document.querySelectorAll('#rist-request-results [role=option]').length === 1);
         assert.equal(queries.at(-1).get('includeCompleted'), 'true');
         assert(!queries.at(-1).has('testState'));
+        allScope = true;
+        await page.getByLabel('조회 범위', {exact:true}).selectOption('all');
+        await page.getByLabel('검색할 의뢰번호', {exact:true}).fill('2022T00793');
+        await page.getByLabel('장비 자산번호', {exact:true}).fill('100000128');
+        await lookup.click();
+        await page.waitForFunction(() => document.querySelector('#rist-request-result-0')?.textContent.includes('부품가공'));
+        assert(!queries.at(-1).has('experimentType'));
+        assert.match(await filters.textContent(),/직접 입력한.*조건은 유지/);
+        await page.locator('#rist-request-result-0').click();
+        assert.equal(await page.locator('#ristExperiment').inputValue(),'A11112');
+        assert.match(await page.locator('#ristTransferStatus').textContent(),/XRD 보고서를 선택한 의뢰/);
+        allScope = false;
+        await page.getByLabel('조회 범위', {exact:true}).selectOption('current');
+        assert.equal(await page.locator('#rist-request-detail').isVisible(),false);
+        await page.getByLabel('검색할 의뢰번호', {exact:true}).fill('');
+        await page.getByLabel('장비 자산번호', {exact:true}).fill('');
         fail = true;
         await lookup.click();
         await page.waitForFunction(() => document.getElementById('rist-request-info').textContent.includes('기간으로 조회 범위'));
@@ -66,7 +86,7 @@ const ready = new Promise((resolve, reject) => {
         assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth+2));
         await page.screenshot({path:path.join(output,(legacy?'legacy':'native')+'.png'),fullPage:true});
         assert.deepEqual(errors, []);
-        console.log((legacy?'legacy':'native')+': XRD automatic scope, cache/live, selection, all states, error guidance, mobile layout passed');
+        console.log((legacy?'legacy':'native')+': XRD default/ALL scope, actual generic method, stale selection, cache/live, all states, error guidance, mobile layout passed');
       } finally { await page.close(); }
     }
   } finally { if (browser) await browser.close(); server.kill(); console.log('Artifacts: '+output); }

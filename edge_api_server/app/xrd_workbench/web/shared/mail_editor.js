@@ -24,7 +24,7 @@
     }
     return "";
   }
-  var maxImage=256*1024,maxHtml=1500*1024;
+  var maxImage=256*1024,maxHtml=1500*1024,editorSequence=0;
   function node(tag, parent, text) { var e=document.createElement(tag);if(text!=null)e.textContent=text;if(parent)parent.appendChild(e);return e; }
   function plain(text) { var d=node("div");d.textContent=text;return d.innerHTML.replace(/\n/g,"<br>"); }
   function formatting(tag,child,next){
@@ -101,6 +101,16 @@
     styles();var host=options.host,body=options.body,fields={},state={},locked=false,range=null,sourceMode=false,mediaBusy=false,selectedImage=null;
     var recipientRequest=null,recipientSequence=0,recipientTimer=null,recipientXhr=null,mediaTarget=false,preferenceBusy=false,loadVersion=0,signatureDrag=null;
     host.classList.add("mail-compose");
+    // A label activates its first button when clicking a nested contenteditable.
+    // Keep the caption associated with the plain textarea, but mount rich tools
+    // beside the label so clicking/typing never invokes a formatting command.
+    if(body.parentNode.tagName==="LABEL"){
+      var caption=body.parentNode,bodyGroup=node("div");bodyGroup.className="mail-body-group";
+      if(!body.id)body.id="rist-mail-body-"+(++editorSequence);
+      caption.setAttribute("for",body.id);
+      caption.parentNode.insertBefore(bodyGroup,caption);
+      bodyGroup.appendChild(caption);bodyGroup.appendChild(body);
+    }
     var addresses=node("div");addresses.className="mail-addresses";host.insertBefore(addresses,options.before||body.parentNode);
     [["recipientName","수신자 이름",200],["to","수신자 이메일 주소",2000],["cc","참조 (CC)",2000],["bcc","비밀참조 (BCC)",2000]].forEach(function(info){
       var label=node("label",addresses,info[1]),copy=info[0]==="cc"||info[0]==="bcc",wrap=copy?node("span",label):label;
@@ -141,7 +151,7 @@
       recipientTimer=window.setTimeout(function(){
         if(!document.documentElement.contains(host))return;
         var xhr=new XMLHttpRequest();recipientXhr=xhr;
-        xhr.open("GET","/api/v1/report-mail/recipient?requestNumber="+encodeURIComponent(number),true);xhr.timeout=10000;
+        xhr.open("GET","/api/v1/report-mail/recipient?requestNumber="+encodeURIComponent(number),true);xhr.timeout=45000;
         function failed(message){if(seq!==recipientSequence)return;recipientXhr=null;recipientRequest=null;recipientStatus.textContent=message+" 수신자는 발송 시 LIMS 의뢰자 정보로 확인합니다.";}
         xhr.onload=function(){
           if(seq!==recipientSequence)return;

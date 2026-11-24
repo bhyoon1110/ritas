@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 
 from .database import Database
 from .browser_support import with_browser_support_notice
-from .experiment_routing import normalize_project_code, resolve_analysis_type
+from .experiment_routing import analysis_type_for_report, normalize_project_code
 from .xrd_portable_html import make_xrd_html_portable
 from .report_transfer_state import public_delivery_state
 
@@ -105,11 +105,7 @@ def _storage_root(settings: Any) -> Path:
 
 
 def _analysis_type(row: dict[str, Any], settings: Any) -> str:
-    return resolve_analysis_type(
-        experiment_code=row.get("experiment_code"),
-        equipment_code=row.get("equipment_code"),
-        configured_map=getattr(settings, "analysis_type_map", ()),
-    ) or str(row.get("experiment_code") or "UNKNOWN")
+    return analysis_type_for_report(row, settings) or str(row.get("experiment_code") or "UNKNOWN")
 
 
 def _expand_experiment_code_filter(value: str, settings: Any) -> str:
