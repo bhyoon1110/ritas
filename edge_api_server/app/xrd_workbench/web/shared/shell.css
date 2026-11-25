@@ -19,8 +19,8 @@ body.withShell {
 .shellTop { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding: 10px 18px; }
 .shellBrand { font-weight: 700; color: var(--navy); font-size: 18px; white-space: nowrap; }
 .shellActions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; margin-left: auto; min-width: 0; max-width: 100%; }
-.shellHome { display: inline-flex; align-items: center; box-sizing: border-box; min-height: 32px; flex-shrink: 0; padding: 6px 10px; border: 1px solid var(--line); border-radius: 5px; color: var(--navy); background: #fff; font-size: 13px; text-decoration: none; white-space: nowrap; }
-.shellHome:hover { background: #e9f2fa; }
+.shellActions > a { display: inline-flex; align-items: center; box-sizing: border-box; min-height: 32px; flex-shrink: 0; padding: 6px 10px; border: 1px solid var(--line); border-radius: 5px; color: var(--navy); background: #fff; font-size: 13px; text-decoration: none; white-space: nowrap; }
+.shellActions > a:hover { background: #e9f2fa; }
 .shellLabel { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 13px; color: var(--muted); min-width: 0; }
 .shellLabel select { width: 230px; max-width: 40vw; margin: 0; }
 .shellState { color: var(--muted); font-size: 13px; }
@@ -50,8 +50,6 @@ body.withShell table { font-size: 13px; }
 body.withShell footer, body.withShell .statusbar { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; height: auto; min-height: 44px; padding: 6px 16px; background: #fff; border-top: 1px solid var(--line); }
 body.withShell #status { flex: 1 1 260px; min-width: 0; max-width: none; white-space: normal; overflow-wrap: break-word; }
 body.withShell .nextStep { position: static; margin-left: auto; background: var(--navy); color: white; }
-.ristAccount { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 8px 18px; background: var(--shell-bg); }
-.ristAccount a { color: var(--accent); white-space: nowrap; }
 .workTabs { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 14px; background: var(--shell-bg); border-bottom: 1px solid var(--line); }
 body.withShell button[aria-pressed=true] { background: #e9f2fa; border-color: #8cb4d3; color: var(--navy); }
 .fieldLinked { outline: 3px solid #1768a0 !important; outline-offset: 3px; background: #f0f7fc !important; }

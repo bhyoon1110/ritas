@@ -53,7 +53,7 @@ for (const mode of Object.keys(programs)) {
     assert.equal(home.parentElement.className,'shellActions');
     assert.equal(home.parentElement.firstElementChild,home);
     assert.deepEqual(Array.from(home.parentElement.children,e=>e.id),
-      ['shellHome','shellState','shellReset','shellSettings','shellAccountToggle']);
+      ['shellHome','shellState','shellReset','shellHistory','shellAccountLink','shellVoc','ristLogout']);
     let checked=0; ui.w.xrdBeforeLeave=async()=>{checked++;return false;};
     home.click(); await flush();
     assert.equal(checked,1); assert.match(ui.w.location.pathname,/workbench/);
@@ -159,27 +159,46 @@ for (const mode of Object.keys(programs)) {
     assert.deepEqual(ui.errors, []);
   });
 
-  test(`${mode}: mounted member menu exposes account, SSO, VOC and protected logout`, async t => {
+  test(`${mode}: account actions stay visible and failed logout preserves the session page`, async t => {
     const ui=setup(t, mode, url => url==='/api/v1/auth/logout'
       ? {ok:false} : response([]));
     await flush();
-    const menu=ui.d.getElementById('shellAccount');
-    assert.equal(menu.hidden, true);
-    ui.d.getElementById('shellAccountToggle').click();
-    assert.equal(menu.hidden, false);
-    assert.equal(ui.d.getElementById('shellAccountToggle').getAttribute('aria-expanded'), 'true');
-    assert.match(menu.querySelector('a[href="/account"]').textContent, /SSO/);
-    assert.equal(menu.querySelector('a[href="/voc?project=XRD"]').textContent, 'VOC 게시판');
-    ui.d.getElementById('ristLogout').click();
+    const actions=ui.d.querySelector('.shellActions');
+    assert.equal(ui.d.getElementById('shellAccountToggle'), null);
+    assert.equal(ui.d.getElementById('shellSettings'), null);
+    assert.equal(actions.querySelector('a[href="/my/reports"]').textContent, '내 보고서 이력');
+    assert.match(actions.querySelector('a[href="/account"]').textContent, /SSO/);
+    assert.equal(actions.querySelector('a[href="/voc?project=XRD"]').textContent, 'VOC 게시판');
+    const button=ui.d.getElementById('ristLogout');
+    assert.equal(button.parentElement,actions);
+    assert.equal(button.closest('[hidden]'),null);
+    let leaveCanceled=0;
+    ui.w.xrdLeaveCanceled=()=>{leaveCanceled++;};
+    button.click();
+    button.click();
     await flush();
+    assert.equal(leaveCanceled,1);
+    assert.equal(ui.calls.filter(c=>c.url==='/api/v1/auth/logout').length,1);
     const logout=ui.calls.find(c=>c.url==='/api/v1/auth/logout');
     assert.equal(logout.options.method, 'POST');
     assert.equal(logout.options.credentials, 'same-origin');
     assert.equal(logout.options.headers['X-Requested-With'], 'RIST-XRD');
-    assert.equal(ui.alerts.length, 1); // failed logout must not pretend to succeed
+    assert.equal(ui.alerts.length, 1);
+    assert.equal(button.disabled,false);
     assert.equal(ui.w.location.pathname, '/api/v1/xrd/workbench/');
-    ui.d.getElementById('shellAccountToggle').click();
-    assert.equal(menu.hidden, true);
     assert.deepEqual(ui.errors, []);
+  });
+  test(`${mode}: account navigation and logout respect unsaved-work cancellation`, async t => {
+    const ui=setup(t,mode,()=>response([])); await flush();
+    let checked=0;
+    ui.w.xrdBeforeLeave=async()=>{checked++;return false;};
+    for (const id of ['shellHistory','shellAccountLink','shellVoc','ristLogout']) {
+      ui.d.getElementById(id).click(); await flush();
+    }
+    assert.equal(checked,4);
+    assert.equal(ui.calls.some(c=>c.url==='/api/v1/auth/logout'),false);
+    assert.equal(ui.d.getElementById('ristLogout').disabled,false);
+    assert.equal(ui.w.location.pathname,'/api/v1/xrd/workbench/');
+    assert.deepEqual(ui.errors,[]);
   });
 }

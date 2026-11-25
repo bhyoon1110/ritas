@@ -35,6 +35,7 @@ import {
   renameGroup,
   setGroupMembers,
 } from './figure.mjs';
+let settingsRequested = new URLSearchParams(location.search).has('settings');
 let storageId = new URLSearchParams(location.search).get('project'),
   project,
   doc,
@@ -259,6 +260,8 @@ function lock(value, allowPhaseEditing = false) {
   if (value) livePreview.invalidate();
   else if (doc) livePreview.schedule();
   $('editorFields').disabled = value;
+  $('settingsFields').disabled = value;
+  $('settingsOpen').disabled = value || !doc;
   $('deliveryFields').disabled = value;
   for (const id of [
     'save',
@@ -452,11 +455,14 @@ async function openProject(id) {
         : '원본 자료를 유지하며 보고서를 편집할 수 있습니다.',
     );
     setStep(step);
-    if (new URLSearchParams(location.search).get('settings')) openSettings();
   } catch (e) {
     status(e.message, true);
   } finally {
     lock(false);
+    if (settingsRequested && doc) {
+      settingsRequested = false;
+      openSettings();
+    }
   }
 }
 async function save() {
@@ -984,7 +990,7 @@ $('reportNav').onclick = (e) => {
   const target = e.target.closest('[data-tab]');
   if (target) showTab(target.dataset.tab);
 };
-$('editor').oninput = $('deliveryFields').oninput = (e) => {
+$('editor').oninput = $('deliveryFields').oninput = $('settingsDialog').oninput = (e) => {
   if (!doc || busy && !(phaseEditingWhileBusy && classFields.contains(e.target))) return;
   const element = e.target,
     d = element.dataset;
@@ -1057,7 +1063,7 @@ $('editor').oninput = $('deliveryFields').oninput = (e) => {
   }
   markDirty();
 };
-$('editor').onchange = (e) => {
+$('editor').onchange = $('settingsDialog').onchange = (e) => {
   if (!doc || busy && !(phaseEditingWhileBusy && classFields.contains(e.target))) return;
   if (e.target.dataset.field === 'phase_image_source_id') {
     const entry = doc.samples.find(s=>s.sample_id===tab);
@@ -1227,10 +1233,24 @@ window.xrdBeforeLeave = async () => {
 window.xrdLeaveCanceled = () => { leaving = false; };
 $('nextStep').onclick = () => setStep('save');
 function openSettings() {
-  $('settingsDialog').showModal();
+  if (!doc || busy) {
+    status(busy ? '저장·보고서 처리 중입니다. 완료된 뒤 보고서 설정을 여세요.' : '프로젝트를 연 뒤 보고서 설정을 바꿀 수 있습니다.', true);
+    return;
+  }
+  // A modal inside the hidden delivery-step editor makes the entire page inert
+  // without a visible dialog. Keep it outside hidden panes and disabled fields.
+  const dialog = $('settingsDialog');
+  if (dialog.parentElement !== document.body) document.body.appendChild(dialog);
+  if (step !== 'report') setStep('report');
+  if (!dialog.open) dialog.showModal();
+  $('settingsClose').focus();
 }
+$('settingsOpen').onclick = openSettings;
 window.addEventListener('xrd-settings', openSettings);
 $('settingsClose').onclick = () => $('settingsDialog').close();
+$('settingsDialog').addEventListener('close', () => {
+  if (!$('settingsOpen').disabled && !$('editor').hidden) $('settingsOpen').focus();
+});
 $('checksForm').onclick = (event) => {
   const button = event.target.closest('button');
   if (!button) return;

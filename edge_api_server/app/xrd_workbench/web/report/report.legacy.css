@@ -725,7 +725,18 @@ footer {
   border: 1px solid #d4dce6;
   border-radius: 6px;
   padding: 20px 24px;
+  max-height: calc(100vh - 40px);
+  box-sizing: border-box;
 }
+#settingsDialog[open] { display: flex; flex-direction: column; }
+#settingsFields { border: 0; margin: 0; padding: 0; min-width: 0; min-height: 0; overflow: auto; }
+#settingsDialog .dialogHead { flex: none; margin-bottom: 12px; }
+#settingsDialog .dialogHead > * {
+  margin-bottom: 12px;
+  margin-right: 12px;
+}
+#settingsTitle { margin: 0; }
+#settingsClose { flex: none; }
 .dialogHead {
   display: flex;
   justify-content: space-between;

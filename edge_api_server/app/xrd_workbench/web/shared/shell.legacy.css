@@ -27,8 +27,8 @@ body.withShell {
   margin-bottom: 8px;
   margin-right: 8px;
 }
-.shellHome { display: inline-flex; align-items: center; box-sizing: border-box; min-height: 32px; flex-shrink: 0; padding: 6px 10px; border: 1px solid var(--line); border-radius: 5px; color: var(--navy); background: #fff; font-size: 13px; text-decoration: none; white-space: nowrap; }
-.shellHome:hover { background: #e9f2fa; }
+.shellActions > a { display: inline-flex; align-items: center; box-sizing: border-box; min-height: 32px; flex-shrink: 0; padding: 6px 10px; border: 1px solid var(--line); border-radius: 5px; color: var(--navy); background: #fff; font-size: 13px; text-decoration: none; white-space: nowrap; }
+.shellActions > a:hover { background: #e9f2fa; }
 .shellLabel { display: flex; align-items: center; margin: 0; font-size: 13px; color: var(--muted); min-width: 0; }
 .shellLabel > * {
   margin-bottom: 8px;
@@ -74,12 +74,6 @@ body.withShell footer > *,body.withShell .statusbar > * {
 }
 body.withShell #status { flex: 1 1 260px; min-width: 0; max-width: none; white-space: normal; overflow-wrap: break-word; }
 body.withShell .nextStep { position: static; margin-left: auto; background: var(--navy); color: white; }
-.ristAccount { display: flex; flex-wrap: wrap; align-items: center; padding: 8px 18px; background: var(--shell-bg); }
-.ristAccount > * {
-  margin-bottom: 12px;
-  margin-right: 12px;
-}
-.ristAccount a { color: var(--accent); white-space: nowrap; }
 .workTabs { display: flex; flex-wrap: wrap; padding: 8px 14px; background: var(--shell-bg); border-bottom: 1px solid var(--line); }
 .workTabs > * {
   margin-bottom: 6px;

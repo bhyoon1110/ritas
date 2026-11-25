@@ -1,10 +1,9 @@
 // The app shell: one compact top workflow shared by every screen (project, file registration, the four
-// steps in order, their status and settings). A page opts in with <body data-step="...">; pages
+// steps in order, their status and account actions). A page opts in with <body data-step="...">; pages
 // talk to it with events so the page modules do not depend on it:
 //   window.dispatchEvent(new CustomEvent('xrd-shell', { detail: { project, dirty, issues, blocked } }))
 //   window.xrdBeforeLeave = async () => boolean   // false cancels leaving (e.g. unsaved changes)
 //   window.xrdLocalStep = (step) => boolean       // true when the page shows that step itself
-//   window 'xrd-settings' event                   // the page opens its settings dialog
 import { apiUrl, request } from './api.mjs';
 import { $, escapeHTML } from './dom.mjs';
 import { mountProjectManager } from './project_manager.mjs';
@@ -148,34 +147,33 @@ export async function mountShell() {
     '<div class="shellTop"><div class="shellBrand">XRD 분석·보고서</div>' +
     '<label class="shellLabel">프로젝트<select id="shellProject" aria-label="프로젝트"></select></label><button id="shellProjectManage" type="button">프로젝트 관리</button>' +
     '<div class="shellActions"><a id="shellHome" class="shellHome" href="/">홈</a>' +
-    '<span id="shellState" class="shellState"></span><button id="shellReset" type="button" title="저장된 자료를 보존하고 새 작업 시작">초기화</button><button id="shellSettings" class="shellSettings">설정</button>' +
-    '<button id="shellAccountToggle" aria-controls="shellAccount" aria-expanded="false">회원·지원</button></div></div>' +
+    '<span id="shellState" class="shellState"></span><button id="shellReset" type="button" title="저장된 자료를 보존하고 새 작업 시작">초기화</button>' +
+    '<a id="shellHistory" href="/my/reports">내 보고서 이력</a><a id="shellAccountLink" href="/account">회원정보·SSO 인증</a>' +
+    '<a id="shellVoc" href="/voc?project=XRD">VOC 게시판</a><button type="button" id="ristLogout">로그아웃</button></div></div>' +
     '<div id="shellSteps" class="shellSteps"></div>';
   body.append(nav, main);
-  $('shellHome').onclick = async (event) => {
-    event.preventDefault();
-    if (window.xrdBeforeLeave && !(await window.xrdBeforeLeave())) return;
-    location.href = '/';
-  };
-  const account = document.createElement('div');
-  account.className = 'ristAccount';
-  account.id = 'shellAccount';
-  account.hidden = true;
-  account.innerHTML = '<a href="/">실험 선택</a><a href="/account">회원정보·SSO 인증</a><a href="/voc?project=XRD">VOC 게시판</a><button type="button" id="ristLogout">로그아웃</button>';
-  nav.appendChild(account);
-  $('shellAccountToggle').onclick = () => {
-    account.hidden = !account.hidden;
-    $('shellAccountToggle').setAttribute('aria-expanded', String(!account.hidden));
-    window.dispatchEvent(new Event('resize'));
-  };
+  nav.querySelectorAll('.shellActions a').forEach((link) => {
+    link.onclick = async (event) => {
+      event.preventDefault();
+      if (window.xrdBeforeLeave && !(await window.xrdBeforeLeave())) return;
+      location.href = link.getAttribute('href');
+    };
+  });
   const footer = main.querySelector('footer, .statusbar'), next = $('nextStep');
   if (footer && next) footer.appendChild(next);
   $('ristLogout').onclick = async () => {
+    const button = $('ristLogout');
+    if (button.disabled) return;
+    button.disabled = true;
     try {
+      if (window.xrdBeforeLeave && !(await window.xrdBeforeLeave())) return;
       const response = await fetch('/api/v1/auth/logout', {method:'POST', credentials:'same-origin', headers:{'X-Requested-With':'RIST-XRD'}});
       if (!response.ok) throw new Error('로그아웃하지 못했습니다.');
       location.href = '/login';
-    } catch (error) { window.alert(error.message); }
+    } catch (error) {
+      if (window.xrdLeaveCanceled) window.xrdLeaveCanceled();
+      window.alert(error.message);
+    } finally { button.disabled = false; }
   };
   body.classList.add('withShell');
   mountProjectManager({button: $('shellProjectManage'), getCurrent: () => state.project, refreshProjects});
@@ -205,13 +203,6 @@ export async function mountShell() {
   // Retry a failed refresh when the user opens the list; no background polling.
   $('shellProject').onfocus = () => {
     if (state.project && !state.list.some(p => p.storage_id === state.project)) refreshProjects();
-  };
-  $('shellSettings').onclick = () => {
-    if (state.step === 'report' || state.step === 'save')
-      window.dispatchEvent(new Event('xrd-settings'));
-    else if (state.project)
-      location.href = apiUrl(stepHref('report', state.project) + '&settings=1');
-    else window.alert('설정은 프로젝트를 연 뒤 보고서 편집에서 바꿀 수 있습니다.');
   };
   window.addEventListener('xrd-shell', (event) => {
     const d = event.detail || {};

@@ -42,7 +42,7 @@ export async function mountReportPlatform(send, changed) {
   let autoEquipment = '';
   // Model endpoint/credentials belong to the server configuration, not a browser form.
   for (const id of ['provider','baseUrl','model']) document.getElementById(id).closest('label').hidden = true;
-  const hint = document.querySelector('#settingsDialog > p:last-child');
+  const hint = document.getElementById('modelConnectionHint');
   if (hint) hint.textContent = '기존 RIST 서버에 설정된 로컬 LLM을 사용합니다. 모델 연결·검증 실패 시 근거 기반 문장을 보존합니다.';
   const block = document.createElement('section');
   block.className = 'ristTransfer';

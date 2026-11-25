@@ -44,8 +44,14 @@ const server = http.createServer((req, res) => {
             const home = document.getElementById('shellHome'), actions = home.parentElement;
             const h = home.getBoundingClientRect(), a = actions.getBoundingClientRect();
             const reset = document.getElementById('shellReset').getBoundingClientRect();
+            const buttons = Array.from(actions.querySelectorAll('a,button'));
+            const rects = buttons.map(el=>el.getBoundingClientRect());
             return {first:actions.firstElementChild===home, group:actions.className,
               right:a.right, left:h.left, homeBeforeReset:h.right<=reset.left,
+              visible:buttons.every(el=>!el.closest('[hidden]')&&el.offsetWidth>0&&el.offsetHeight>0),
+              overlaps:rects.some((r,i)=>rects.slice(i+1).some(s=>r.left<s.right&&s.left<r.right&&r.top<s.bottom&&s.top<r.bottom)),
+              logoutInActions:document.getElementById('ristLogout').parentElement===actions,
+              oldControls:!!document.querySelector('#shellSettings,#shellAccountToggle'),
               sameRow:Math.abs(h.top-reset.top)<2,
               overflow:document.documentElement.scrollWidth>innerWidth,
               buttonOverflow:Array.from(actions.querySelectorAll('a,button')).some(el=>el.scrollWidth>el.clientWidth+1)};
@@ -54,6 +60,8 @@ const server = http.createServer((req, res) => {
           assert.ok(result.homeBeforeReset && result.sameRow);
           assert.ok(result.left>=0 && result.right<=width);
           assert.equal(result.overflow,false); assert.equal(result.buttonOverflow,false);
+          assert.equal(result.visible,true); assert.equal(result.overlaps,false);
+          assert.equal(result.logoutInActions,true); assert.equal(result.oldControls,false);
           if (mode==='native' && step==='viewer' && [1440,390].includes(width))
             await page.locator('#appShell').screenshot({path:path.join(output, 'header-'+width+'.png')});
           await page.evaluate(() => { window.xrdBeforeLeave=async()=>false; });
