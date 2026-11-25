@@ -518,6 +518,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         "/api/v1/requests",
         response_model=RequestListResponse,
         response_model_by_alias=True,
+        response_model_exclude_unset=True,
         tags=["requests"],
     )
     def list_requests(

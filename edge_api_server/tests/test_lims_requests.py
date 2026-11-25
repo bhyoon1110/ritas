@@ -10,7 +10,7 @@ import pytest
 
 from app.database import Database
 from app.errors import ApiException
-from app.lims_requests import LimsRequestsClient, NUMBER_FIELDS, TEXT_FIELDS, validate_filters, validate_response
+from app.lims_requests import EQUIPMENT_CODE_FIELDS, LimsRequestsClient, NUMBER_FIELDS, TEXT_FIELDS, validate_filters, validate_response
 from app.models import RequestListResponse
 from app.service import EdgeService
 
@@ -104,6 +104,30 @@ def test_null_fields_are_valid_but_wrong_types_are_not():
     payload["items"][0]["reqUserNo"] = "not-a-number"
     with pytest.raises(ApiException):
         validate_response(payload, 1, 50)
+
+
+
+@pytest.mark.parametrize("field", EQUIPMENT_CODE_FIELDS)
+@pytest.mark.parametrize("value", [123, True, [], {}, "x" * 101, "CODE\n", "\tCODE", "CODE\x00", "CODE\x7f"])
+def test_malformed_optional_equipment_code_rejects_relay_response(field, value):
+    payload = response_body()
+    payload["items"][0][field] = value
+    adapter = LimsRequestsClient(URL, KEY, transport=httpx.MockTransport(lambda _: httpx.Response(200, json=payload)))
+    with pytest.raises(ApiException) as error:
+        adapter.fetch(1, 50, {})
+    assert error.value.status_code == 502
+    assert error.value.code == "LIMS_REQUESTS_INVALID_RESPONSE"
+
+
+def test_optional_equipment_codes_are_trimmed_without_mutating_relay_data():
+    payload = response_body()
+    payload["items"][0].update(equipmentCode="  XRD-01  ", deviceCode="D" * 100, instrumentCode=" ")
+    original = dict(payload["items"][0])
+    result = validate_response(payload, 1, 50)
+    assert result["items"][0]["equipmentCode"] == "XRD-01"
+    assert result["items"][0]["deviceCode"] == "D" * 100
+    assert "instrumentCode" not in result["items"][0]
+    assert payload["items"][0] == original
 
 
 def test_response_size_and_network_errors_are_bounded():
@@ -269,3 +293,43 @@ def test_http_route_forwards_v5_filters_and_rejects_unsupported_combinations(mon
         rejected = client.get("/api/v1/requests", params=query, headers={"X-Request-Id": "invalid-filter-test"})
         assert rejected.status_code == status, rejected.text
     assert len(observed) == 2
+
+
+@pytest.mark.parametrize("extra,expected", [
+    ({}, {}),
+    ({"equipmentCode": "  XRD-01  "}, {"equipmentCode": "XRD-01"}),
+    ({"deviceCode": " DEVICE-02 "}, {"deviceCode": "DEVICE-02"}),
+    ({"instrumentCode": " INSTRUMENT-03 "}, {"instrumentCode": "INSTRUMENT-03"}),
+    ({"equipmentCode": "XRD-01", "deviceCode": "DEVICE-02", "instrumentCode": "INSTRUMENT-03"},
+     {"equipmentCode": "XRD-01", "deviceCode": "DEVICE-02", "instrumentCode": "INSTRUMENT-03"}),
+    ({"equipmentCode": None, "deviceCode": "", "instrumentCode": "   "}, {}),
+    ({"assetNumber": "100000128"}, {}),
+])
+def test_http_live_equipment_codes_are_optional_and_never_inferred_from_asset(monkeypatch, tmp_path, extra, expected):
+    from fastapi.testclient import TestClient
+    from app.config import Settings
+    from app.main import create_app
+    monkeypatch.setattr(Database, "from_settings", lambda _: NoCacheAccess())
+    observed = []
+    def handler(request):
+        observed.append(dict(request.url.params))
+        payload = response_body(page=2, size=2, count=3)
+        payload["items"][0].update(extra)
+        return httpx.Response(200, json=payload)
+    adapter = LimsRequestsClient(URL, KEY, transport=httpx.MockTransport(handler))
+    monkeypatch.setattr(LimsRequestsClient, "from_settings", classmethod(lambda cls, config: adapter))
+    config = Settings(storage_root=tmp_path, lims_requests_enabled=True, lims_requests_url=URL,
+                      sso_lims_internal_key=KEY, error_capture_files=False)
+    response = TestClient(create_app(config)).get("/api/v1/requests", params={
+        "source": "lims", "page": 2, "pageSize": 2, "reqNumber": "2026R02236", "assetNumber": "100000128",
+    }, headers={"X-Request-Id": "optional-equipment-test"})
+    assert response.status_code == 200, response.text
+    result = response.json()
+    assert (result["page"], result["pageSize"], result["totalCount"]) == (2, 2, 3)
+    assert result["source"] == "lims" and result["experimentType"] is None and result["scopeNote"] is None
+    item = result["items"][0]
+    assert {key: item[key] for key in EQUIPMENT_CODE_FIELDS if key in item} == expected
+    assert "assetNumber" not in item
+    assert item["requestState"] is None and item["syncedAt"] is None
+    assert item["requestNumber"] == "2026R02236" and item["testMethodCode"] == "A23142"
+    assert observed == [{"page": "2", "size": "2", "reqNumber": "2026R02236", "assetNumber": "100000128"}]

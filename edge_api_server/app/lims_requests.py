@@ -24,6 +24,7 @@ from .errors import ApiException
 
 
 FILTER_KEYS = ("reqNumber", "testMtdCode", "fromDate", "toDate", "testChargerNo", "testChargerId", "assetNumber", "testState")
+EQUIPMENT_CODE_FIELDS = ("equipmentCode", "deviceCode", "instrumentCode")
 INCOMPLETE_TEST_STATES = ("1", "3", "5", "7")
 TEST_STATES = frozenset(("0", *INCOMPLETE_TEST_STATES, "9"))
 NUMBER_FIELDS = frozenset({
@@ -83,6 +84,7 @@ def validate_response(body: object, page: int, size: int) -> dict[str, Any]:
         raise _protocol_error()
     if (items and count < (page - 1) * size + len(items)) or (not items and count > (page - 1) * size):
         raise _protocol_error()
+    normalized_items = []
     for item in items:
         if not isinstance(item, dict) or not (NUMBER_FIELDS | TEXT_FIELDS) <= item.keys():
             raise _protocol_error()
@@ -92,7 +94,19 @@ def validate_response(body: object, page: int, size: int) -> dict[str, Any]:
         for key in TEXT_FIELDS:
             if item[key] is not None and not isinstance(item[key], str):
                 raise _protocol_error()
-    return body
+        # Only explicit relay equipment identifiers can populate the transfer form.
+        # Empty optional values mean unavailable; assetNumber remains a query filter.
+        normalized = {key: value for key, value in item.items() if key not in EQUIPMENT_CODE_FIELDS}
+        for key in EQUIPMENT_CODE_FIELDS:
+            value = item.get(key)
+            if value is None:
+                continue
+            if not isinstance(value, str) or len(value) > 100 or re.search(r"[\x00-\x1f\x7f]", value):
+                raise _protocol_error()
+            if value.strip():
+                normalized[key] = value.strip()
+        normalized_items.append(normalized)
+    return {**body, "items": normalized_items}
 
 
 @dataclass(frozen=True)

@@ -16,7 +16,7 @@ from rist_common import get_logger
 from .config import Settings
 from .database import Database, TERMINAL_STATUSES
 from .errors import ApiException
-from .lims_requests import INCOMPLETE_TEST_STATES, LimsRequestsClient, validate_filters, scoped_requests
+from .lims_requests import EQUIPMENT_CODE_FIELDS, INCOMPLETE_TEST_STATES, LimsRequestsClient, validate_filters, scoped_requests
 from .request_scope import RequestScope
 from .experiment_routing import analysis_type_for_job, mapped_analysis_type_for_job
 from .models import (
@@ -619,7 +619,8 @@ class EdgeService:
             "testState": "testState", "testChargerName": "testChargerName", "outputOrder": "outputOrder",
             "experimentCode": "testMtdCode", "experimentName": "testMtdName",
         }
-        return {**{target: item.get(source) for target, source in fields.items()}, "syncedAt": None}
+        return {**{target: item.get(source) for target, source in fields.items()},
+                **{key: item[key] for key in EQUIPMENT_CODE_FIELDS if key in item}, "syncedAt": None}
 
 
     @staticmethod

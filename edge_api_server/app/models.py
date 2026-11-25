@@ -96,6 +96,9 @@ class RequestSummary(ApiModel):
     synced_at: str | None = Field(alias="syncedAt")
     experiment_code: str | None = Field(alias="experimentCode")
     experiment_name: str | None = Field(alias="experimentName")
+    equipment_code: str | None = Field(default=None, alias="equipmentCode", max_length=100)
+    device_code: str | None = Field(default=None, alias="deviceCode", max_length=100)
+    instrument_code: str | None = Field(default=None, alias="instrumentCode", max_length=100)
 
 
 class RequestListResponse(ApiModel):
