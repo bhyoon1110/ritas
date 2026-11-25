@@ -1203,6 +1203,7 @@ def _process_ahn_job(job: AhnReportJob) -> None:
             settings=job.settings,
             database=job.database,
             report_id=job.job_id,
+            owner_user_id=job.owner_user_id,
             package_path=job.package_path,
             experiment_code="TEM",
             request_number=job.transfer_metadata['requestNumber'],

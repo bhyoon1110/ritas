@@ -306,6 +306,9 @@ def send_preview_report_package(
     resolved_settings = settings or Settings.from_env()
     # Preserve the immutable authored mail envelope when publishing/queueing again.
     registered = database.fetch_report_run(job.job_id) if hasattr(database, 'fetch_report_run') else None
+    if registered and report_project is None:
+        from .experiment_routing import analysis_type_for_report
+        report_code = analysis_type_for_report(registered, resolved_settings) or report_code
     report_options = registered.get('report_options_json') if registered else None
     report_options = json.loads(report_options) if isinstance(report_options, str) else dict(report_options or {})
     report_options['testMtdCode'] = payload.experiment_code
@@ -319,6 +322,7 @@ def send_preview_report_package(
         settings=resolved_settings,
         database=database,
         report_id=job.job_id,
+        owner_user_id=getattr(job, "owner_user_id", None),
         package_path=shared_package,
         source_job_id=None,
         request_number=payload.request_number,
@@ -655,6 +659,7 @@ def run_preview_report_job(
             settings=settings,
             database=database,
             report_id=job_id,
+            owner_user_id=getattr(store.get(job_id), "owner_user_id", None),
             package_path=package,
             source_job_id=None,
             request_number=transfer['requestNumber'],

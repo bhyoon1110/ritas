@@ -91,6 +91,7 @@ def enqueue_report_package(
     report_options: Any = None,
     generated_at: str | None = None,
     register_report_run: bool = True,
+    owner_user_id: str | None = None,
 ) -> dict[str, Any]:
     """Register a completed shared-storage ZIP for downstream LIMS delivery."""
     # Workspace ownership is recorded by server-side generation code only.
@@ -167,6 +168,7 @@ def enqueue_report_package(
             report_options=report_options,
             generated_at=generated_at,
             is_test=False,
+            owner_user_id=owner_user_id,
         )
 
     _register_delivery_sources(settings=settings, database=database, report_id=report_id,
@@ -345,6 +347,7 @@ def register_generated_report_package(
     is_test: bool | None = None,
     source_artifact_paths: tuple[Path, ...] | list[Path] = (),
     source_retention_context: dict[str, Any] | None = None,
+    owner_user_id: str | None = None,
 ) -> Path:
     """Publish and register a generated report before a transfer is requested."""
     if settings is None or database is None:
@@ -381,6 +384,7 @@ def register_generated_report_package(
         report_options=options,
         generated_at=None,
         is_test=_looks_like_test_report(request_number) if is_test is None else is_test,
+        owner_user_id=owner_user_id,
     )
     return published
 
@@ -464,6 +468,7 @@ def _register_shared_report(
     report_options: Any,
     generated_at: str | None,
     is_test: bool,
+    owner_user_id: str | None = None,
 ) -> None:
     register_report_run = getattr(database, "register_report_run", None)
     if not callable(register_report_run):
@@ -473,7 +478,11 @@ def _register_shared_report(
     package_path = package_path.expanduser().resolve()
     package_relative_path = package_path.relative_to(storage_root).as_posix()
     resolved_source_job_id = _existing_source_job_id(database, source_job_id)
+    from .experiment_routing import analysis_type_for_report
+    owner_args = ({"owner_user_id": owner_user_id, "owner_analysis_type": analysis_type_for_report(
+        {"experiment_code": experiment_code, "equipment_code": equipment_code}, settings)} if owner_user_id else {})
     register_report_run(
+        **owner_args,
         report_id=report_id,
         source_job_id=resolved_source_job_id,
         request_number=request_number.strip() or "(미지정)",

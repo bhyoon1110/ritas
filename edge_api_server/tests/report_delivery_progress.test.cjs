@@ -31,6 +31,38 @@ test('progress identifiers and external errors are escaped; no private envelope 
   assert(html.includes('확인 필요'));
 });
 
+test('UNKNOWN_KEY explains the LIMS registration mismatch and preserves the escaped original error',()=>{
+  const message='code=UNKNOWN_KEY, message=RITAS 에 없는 의뢰번호·시험방법코드입니다. reqNumber = 2022T00793, testMtdCode = A11111 <img src=x onerror=alert(1)>';
+  for(const item of [
+    {transferStatus:'FAILED',lastErrorCode:'LIMS_BUSINESS_KEY_REJECTED',lastErrorMessage:message},
+    {transfer_status:'FAILED',last_error_code:'UNKNOWN_KEY',last_error_message:message}
+  ]) {
+    const summary=ui.summary(item),html=ui.html(item);
+    assert.equal(summary.label,'LIMS 의뢰·시험 확인 필요');
+    assert.match(summary.description,/LIMS 문서 등록이 거절/);
+    assert.match(summary.description,/조회한 의뢰번호·시험방법코드/);
+    assert.match(summary.description,/LIMS 담당자/);
+    assert.match(summary.description,/반복 전송하지 마세요/);
+    assert.equal(summary.step,-1); // No persisted stage proves which prior steps finished.
+    assert.equal(summary.terminal,true);assert.equal(summary.canRetryMail,false);
+    assert(html.includes('reqNumber = 2022T00793'));assert(html.includes('testMtdCode = A11111'));
+    assert(html.includes('&lt;img'));assert(!html.includes('<img'));
+    assert(!html.includes('SSO'));assert(!html.includes('장비코드'));
+  }
+});
+
+test('unrelated business errors and stale UNKNOWN_KEY do not override actual delivery state',()=>{
+  for(const item of [
+    {transferStatus:'FAILED',lastErrorCode:'LIMS_BUSINESS_KEY_REJECTED',lastErrorMessage:'testMtdCode 값이 없습니다.'},
+    {transferStatus:'FAILED',lastErrorCode:'LIMS_BUSINESS_KEY_REJECTED',lastErrorMessage:'code=UNKNOWN_KEY_EXTRA, message=other'},
+    {transferStatus:'FAILED',lastErrorCode:'SFTP_CONNECTION_FAILED',lastErrorMessage:'UNKNOWN_KEY'},
+    {transferStatus:'FAILED',documentStatus:'COMPLETED',deliveryPhase:'MAIL_READY',lastErrorCode:'UNKNOWN_KEY'},
+  ]) assert.equal(ui.summary(item).label,'Edge 전송 실패');
+  assert.equal(ui.summary({transferStatus:'RETRY_WAIT',lastErrorCode:'UNKNOWN_KEY'}).label,'Edge 전송 요청 접수');
+  assert.equal(ui.summary({transferStatus:'COMPLETED',mailStatus:'SENT',lastErrorCode:'UNKNOWN_KEY'}).label,'메일 서버 전달 완료');
+  assert.equal(ui.summary({transferStatus:'FAILED',mailStatus:'FAILED',lastErrorCode:'UNKNOWN_KEY',mailRequestId:'mail-1'}).label,'메일 발송 실패');
+});
+
 test('shared delivery script uses ES5 syntax for legacy browsers',()=>{
   require('acorn').parse(source,{ecmaVersion:5,allowReserved:true});
 });
@@ -103,6 +135,28 @@ test('review enqueue message describes Edge and waits for actual LIMS state',t=>
   u.calls[2].reply({transferStatus:'RETRY_WAIT',mailStatus:'ACCEPTED',canQueue:false});
   assert.match(d.getElementById('status').textContent,/LIMS 메일 접수 완료/);
   assert.equal(d.getElementById('send').disabled,true);
+});
+
+test('review action follows terminal state without sending or enabling automatic retry',t=>{
+  const u=watcher(t),d=u.w.document;
+  d.body.innerHTML='<span id="status"></span><div id="message"></div><div id="delivery-progress" data-status-url="/state"></div><button id="send" data-send-url="/send"></button><button id="refresh-delivery"></button>';
+  u.api.mountReview();
+  const states=[
+    [{transferStatus:'FAILED',lastErrorCode:'LIMS_BUSINESS_KEY_REJECTED',lastErrorMessage:'code=UNKNOWN_KEY, message=missing'},'전송 실패 · 오류 확인'],
+    [{transfer_status:'CANCELLED'},'전송 취소됨'],
+    [{transferStatus:'COMPLETED'},'전송 기록 완료'],
+    [{transferStatus:'COMPLETED',mailStatus:'SENT'},'메일 서버 전달 완료']
+  ];
+  for(let i=0;i<states.length;i++) {
+    if(i) d.getElementById('refresh-delivery').click();
+    u.calls[i].reply({...states[i][0],canQueue:false});
+    assert.equal(d.getElementById('send').textContent,states[i][1]);
+    assert.equal(d.getElementById('send').disabled,true);
+    d.getElementById('send').click();
+    assert.equal(u.calls.length,i+1);
+    assert.equal(u.timers.size,0);
+  }
+  assert(u.calls.every(call=>call.method==='GET'));
 });
 
 test('management detail preserves form edits during status refresh and offers immutable-mail retry',async t=>{

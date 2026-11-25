@@ -57,11 +57,11 @@ def test_review_uses_xrd_report_access_even_when_lims_method_is_unrelated(tmp_pa
     config=SimpleNamespace(auth_enabled=True,analysis_type_map=())
     row={'report_id':'xrd-all','experiment_code':'XRD','equipment_code':'100000128',
          'report_options_json':json.dumps({'analysisType':'TEM','testMtdCode':'A11112'})}
-    database=SimpleNamespace(fetch_report_run=lambda _:row)
-    request=Request({'type':'http','app':SimpleNamespace(state=SimpleNamespace())})
+    database=SimpleNamespace(fetch_report_run=lambda _:row, fetch_report_owner=lambda _:{"owner_user_id":"alice"})
+    request=Request({'type':'http','app':SimpleNamespace(state=SimpleNamespace(database=database))})
     monkeypatch.setattr(report_delivery,'_settings',lambda _:config)
     monkeypatch.setattr(report_delivery,'_database',lambda _:database)
-    monkeypatch.setattr(report_delivery,'require_context',lambda _:SimpleNamespace(is_admin=False,projects=user_projects))
+    monkeypatch.setattr(report_delivery,'require_context',lambda _:SimpleNamespace(is_admin=False,projects=user_projects,user_id="alice"))
     if status == 403:
         with pytest.raises(ApiException) as error:report_delivery._report_for_request(request,'xrd-all')
         assert error.value.code == 'PROJECT_ACCESS_DENIED'

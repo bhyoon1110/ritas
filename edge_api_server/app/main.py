@@ -51,6 +51,7 @@ from .models import (
 from .preview_web import build_workspace_index
 from .raman_web import router as raman_router
 from .report_delivery import router as report_delivery_router
+from .report_history import router as report_history_router
 from .report_mail import router as report_mail_router
 from .request_filters import router as request_filters_router
 from .service import EdgeService
@@ -189,6 +190,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(voc_router)
     app.include_router(dashboard_router)
     app.include_router(report_delivery_router)
+    app.include_router(report_history_router)
     app.include_router(report_mail_router)
     app.include_router(request_filters_router)
     app.include_router(ftir_router)

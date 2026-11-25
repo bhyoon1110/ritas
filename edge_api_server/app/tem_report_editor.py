@@ -138,7 +138,7 @@ def _revision(new_job, old_job, changes, actor_id=None):
             from .report_source_retention import tem_delivery_copies
             source_copies, source_context = tem_delivery_copies(new_job)
             published_package = register_generated_report_package(settings=new_job.settings, database=new_job.database,
-                report_id=new_job.job_id, package_path=new_job.package_path, experiment_code="TEM",
+                owner_user_id=new_job.owner_user_id, report_id=new_job.job_id, package_path=new_job.package_path, experiment_code="TEM",
                 request_number=transfer["requestNumber"], equipment_code=transfer["equipmentCode"], operator_id=transfer["operatorId"],
                 report_options={"revisionOf": old_job.job_id, "reviewed": True, "transfer": transfer,
                     "email": delivery_mail(new_job)},

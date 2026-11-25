@@ -90,6 +90,8 @@ def _report_for_request(request: Request, report_id: str) -> tuple[dict[str, Any
                 "PROJECT_ACCESS_DENIED",
                 "이 프로젝트의 보고서를 조회할 권한이 없습니다.",
             )
+        from .report_ownership import require_report_owner
+        require_report_owner(request, context, report)
     return report, project
 
 
@@ -230,10 +232,10 @@ def send_generated_report(request: Request, report_id: str) -> dict[str, Any]:
 def generated_report_page(request: Request, report_id: str) -> HTMLResponse:
     report, project = _report_for_request(request, report_id)
     state = _state(request, report, project)
-    return _generated_report_page(report_id, project, state)
+    return _generated_report_page(report_id, project, state, show_history=_settings(request).auth_enabled)
 
 
-def _generated_report_page(report_id: str, project: str, state: dict[str, Any]) -> HTMLResponse:
+def _generated_report_page(report_id: str, project: str, state: dict[str, Any], *, show_history: bool = False) -> HTMLResponse:
     encoded_id = quote(report_id, safe="")
     review_url = f"/reports/{encoded_id}"
     sso_url = "/auth/sso/start?" + urlencode({"returnTo": review_url})
@@ -252,12 +254,16 @@ def _generated_report_page(report_id: str, project: str, state: dict[str, Any]) 
         f'<a class="button secondary" href="/api/v1/reports/{encoded_id}/package">ZIP 다운로드</a>'
         if state.get("localFilesRetained", True) else '<span class="muted">로컬 파일 보관 기간이 만료되었습니다.</span>'
     )
+    history_link = (
+        '<a class="button secondary" href="/my/reports">내 보고서 이력</a>'
+        if show_history else ""
+    )
     html = f"""<!doctype html>
 <html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta http-equiv="Cache-Control" content="no-store"><title>{escape(project)} 보고서 검토</title>
 <style>*{{box-sizing:border-box}}body{{margin:0;background:#f4f6f8;color:#172b4d;font:15px/1.55 system-ui,-apple-system,sans-serif}}main{{max-width:880px;margin:0 auto;padding:32px 18px}}.panel{{background:#fff;border:1px solid #d8e0eb;border-radius:10px;padding:24px}}h1{{margin:0 0 6px;font-size:26px}}.muted{{color:#637083}}.grid{{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:22px 0}}.item{{background:#f7f9fc;border-radius:7px;padding:12px;overflow-wrap:anywhere}}.item b{{display:block;font-size:12px;color:#637083;margin-bottom:4px}}.actions{{display:flex;gap:9px;flex-wrap:wrap}}button,a.button{{min-height:42px;border:1px solid #1769aa;border-radius:7px;padding:9px 14px;background:#1769aa;color:#fff;text-decoration:none;font:inherit;font-weight:700;cursor:pointer}}a.secondary{{background:#fff;color:#1769aa}}button:disabled{{opacity:.5;cursor:not-allowed}}#message{{margin-top:15px;white-space:pre-wrap}}@media(max-width:620px){{main{{padding:18px 12px}}.panel{{padding:18px}}.grid{{grid-template-columns:1fr}}}}.delivery-state{{margin-top:24px;border-top:1px solid #d8e0eb;padding-top:18px}}.delivery-steps{{display:flex;gap:24px;flex-wrap:wrap;padding-left:20px}}.delivery-steps [aria-current]{{font-weight:bold;color:#1769aa}}.delivery-identifiers{{display:grid;grid-template-columns:140px 1fr;gap:6px}}.delivery-identifiers dd{{margin:0;overflow-wrap:anywhere}}.warn{{color:#9b1c1c}}.delivery-error{{white-space:pre-wrap}}</style></head>
 <body><main><section class="panel"><h1>{escape(project)} 보고서 검토</h1><div class="muted">보고서 파일을 확인한 뒤 사내 SSO 인증으로 LIMS 전송을 승인합니다.</div>
 <div class="grid"><div class="item"><b>의뢰번호</b>{escape(str(state['requestNumber'] or '-'))}</div><div class="item"><b>분석 / 실험코드</b>{escape(project)} / {escape(str(state['experimentCode'] or '-'))}</div><div class="item"><b>장비코드</b>{escape(str(state['equipmentCode'] or '-'))}</div><div class="item"><b>전송 상태</b><span id="status">{escape(str(state['transferStatus']))}</span></div><div class="item"><b>생성 시각</b>{escape(str(state['generatedAt'] or '-'))}</div><div class="item"><b>보고서 ID</b>{escape(report_id)}</div></div>
-<div class="actions">{preview_link}{download_link}<a class="button secondary" href="{escape(sso_url)}">SSO 재인증</a><button id="send" data-send-url="/api/v1/reports/{encoded_id}/send" type="button"{disabled}>{escape(button_label)}</button><button id="refresh-delivery" type="button">상태 새로고침</button></div><div id="message" class="muted" role="status"></div><div id="delivery-progress" data-status-url="/api/v1/reports/{encoded_id}"><p>전송 상태를 확인하고 있습니다.</p></div></section></main>
+<div class="actions">{history_link}{preview_link}{download_link}<a class="button secondary" href="{escape(sso_url)}">SSO 재인증</a><button id="send" data-send-url="/api/v1/reports/{encoded_id}/send" type="button"{disabled}>{escape(button_label)}</button><button id="refresh-delivery" type="button">상태 새로고침</button></div><div id="message" class="muted" role="status"></div><div id="delivery-progress" data-status-url="/api/v1/reports/{encoded_id}"><p>전송 상태를 확인하고 있습니다.</p></div></section></main>
 <script src="/assets/report_delivery_progress.js"></script><script>window.RistDeliveryProgress.mountReview();</script></body></html>"""
     return HTMLResponse(with_browser_support_notice(html), headers={"Cache-Control": "no-store"})

@@ -18,6 +18,7 @@ from app.voc_web import build_voc_page
 from app.error_archive import _operations_console_html, _error_feedback_page
 from app.report_management import report_management_console
 from app.report_delivery import _generated_report_page
+from app.browser_support import with_browser_support_notice
 from app.report_editor import editor_page
 
 
@@ -36,6 +37,7 @@ def pages():
         "voc": build_voc_page(context, "FTIR"),
         "operations": _operations_console_html("usage"), "errors": _operations_console_html("errors"),
         "reports": report_management_console().body.decode(),
+        "my-reports": with_browser_support_notice((Path(__file__).resolve().parents[1] / "app/report_history.html").read_text(encoding="utf-8")),
         "report-editor": editor_page("/api/v1/ftir/report/jobs", "build-report"),
         "report-review": _generated_report_page("build-report", "TEM", {
             "canQueue":True,"transferStatus":"NOT_QUEUED","requestNumber":"BUILD",

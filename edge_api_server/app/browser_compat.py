@@ -18,7 +18,7 @@ from starlette.datastructures import Headers, MutableHeaders
 
 ASSET_ROOT = Path(__file__).parent / "static" / "chrome49"
 ASSET_PREFIX = "/assets/browser-compat/"
-UI_PATHS = frozenset({"/", "/login", "/signup", "/account", "/admin/users", "/ftir", "/raman", "/xrd", "/tem", "/voc", "/operations", "/errors", "/report-management"})
+UI_PATHS = frozenset({"/", "/login", "/signup", "/account", "/admin/users", "/ftir", "/raman", "/xrd", "/tem", "/voc", "/operations", "/errors", "/report-management", "/my/reports"})
 SCRIPT_RE = re.compile(r"<script\b([^>]*)>(.*?)</script>", re.I | re.S)
 STYLE_RE = re.compile(r"(<style\b[^>]*>)(.*?)(</style>)", re.I | re.S)
 logger = logging.getLogger(__name__)

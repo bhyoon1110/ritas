@@ -118,6 +118,7 @@ class XrdReportJob:
     html_result: str | None = None
     error: dict[str, Any] | None = None
     error_event_id: str | None = None
+    owner_user_id: str | None = None
 
 
 _xrd_report_jobs: dict[str, XrdReportJob] = {}
@@ -722,6 +723,7 @@ def _create_xrd_report_job(
     usage_archive: UsageArchive | None,
     usage_client_context: dict[str, str | None],
     origin: bool,
+    owner_user_id: str | None = None,
 ) -> XrdReportJob:
     now = time.time()
     job_id = uuid4().hex
@@ -736,6 +738,7 @@ def _create_xrd_report_job(
         usage_archive=usage_archive,
         usage_client_context=usage_client_context,
         origin=origin,
+        owner_user_id=owner_user_id,
         created_at=now,
         updated_at=now,
     )
@@ -2665,6 +2668,7 @@ def _run_xrd_report_job(job: XrdReportJob) -> None:
             settings=job.settings,
             database=job.database,
             report_id=job.job_id,
+            owner_user_id=job.owner_user_id,
             package_path=job.package_path,
             experiment_code="XRD",
             is_test=True,
@@ -2774,6 +2778,7 @@ def _submit_xrd_report_job(
     usage_archive: UsageArchive | None,
     usage_client_context: dict[str, str | None],
     origin: bool,
+    owner_user_id: str | None = None,
 ) -> XrdReportJob:
     job = _create_xrd_report_job(
         input_root=input_root,
@@ -2784,6 +2789,7 @@ def _submit_xrd_report_job(
         usage_archive=usage_archive,
         usage_client_context=usage_client_context,
         origin=origin,
+        owner_user_id=owner_user_id,
     )
     _xrd_report_executor.submit(_run_xrd_report_job, job)
     return job
@@ -2872,6 +2878,7 @@ def complete_xrd_upload_session(
         usage_archive=app_usage_archive(request.app),
         usage_client_context=request_usage_client_context(request),
         origin=origin,
+        owner_user_id=getattr(getattr(request.state, "auth_context", None), "user_id", None),
     )
     set_usage_context(
         request,
@@ -2885,7 +2892,7 @@ def complete_xrd_upload_session(
 
 
 @router.get("/api/v1/xrd/report/jobs/{job_id}", response_class=JSONResponse, tags=["xrd"])
-def get_xrd_report_job(job_id: str) -> JSONResponse:
+def get_xrd_report_job(request: Request, job_id: str) -> JSONResponse:
     _cleanup_xrd_report_jobs()
     with _xrd_report_jobs_lock:
         job = _xrd_report_jobs.get(job_id)
@@ -2895,11 +2902,13 @@ def get_xrd_report_job(job_id: str) -> JSONResponse:
             "XRD_REPORT_JOB_NOT_FOUND",
             "XRD 보고서 작업을 찾을 수 없습니다. 다시 생성해 주세요.",
         )
+    from .report_ownership import require_report_job_owner
+    require_report_job_owner(request, job, "XRD")
     return JSONResponse(_xrd_job_payload(job))
 
 
 @router.get("/api/v1/xrd/report/jobs/{job_id}/html", response_class=HTMLResponse, tags=["xrd"])
-def download_xrd_report_html(job_id: str) -> HTMLResponse:
+def download_xrd_report_html(request: Request, job_id: str) -> HTMLResponse:
     with _xrd_report_jobs_lock:
         job = _xrd_report_jobs.get(job_id)
     if job is None:
@@ -2908,6 +2917,8 @@ def download_xrd_report_html(job_id: str) -> HTMLResponse:
             "XRD_REPORT_JOB_NOT_FOUND",
             "XRD 보고서 작업을 찾을 수 없습니다. 다시 생성해 주세요.",
         )
+    from .report_ownership import require_report_job_owner
+    require_report_job_owner(request, job, "XRD")
     if job.status != "completed" or not job.html_result:
         raise ApiException(
             409,
@@ -2919,7 +2930,7 @@ def download_xrd_report_html(job_id: str) -> HTMLResponse:
 
 
 @router.get("/api/v1/xrd/report/jobs/{job_id}/package", tags=["xrd"])
-def download_xrd_report_package(job_id: str) -> FileResponse:
+def download_xrd_report_package(request: Request, job_id: str) -> FileResponse:
     with _xrd_report_jobs_lock:
         job = _xrd_report_jobs.get(job_id)
     if job is None:
@@ -2928,6 +2939,8 @@ def download_xrd_report_package(job_id: str) -> FileResponse:
             "XRD_REPORT_JOB_NOT_FOUND",
             "XRD 보고서 작업을 찾을 수 없습니다. 다시 생성해 주세요.",
         )
+    from .report_ownership import require_report_job_owner
+    require_report_job_owner(request, job, "XRD")
     if job.status != "completed":
         raise ApiException(
             409,
@@ -2972,6 +2985,8 @@ def send_xrd_report_job(
             "XRD_REPORT_JOB_NOT_FOUND",
             "XRD 보고서 작업을 찾을 수 없습니다. 다시 생성해 주세요.",
         )
+    from .report_ownership import require_report_job_owner
+    require_report_job_owner(request, job, "XRD")
     try:
         return send_preview_report_package(
             settings=getattr(request.app.state, "settings", None),

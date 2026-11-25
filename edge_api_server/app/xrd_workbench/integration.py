@@ -517,6 +517,7 @@ def export_report(sid: str, payload: dict):
             register_generated_report_package(
                 settings=state.settings, database=state.request.app.state.database,
                 report_id=directory.name, package_path=output,
+                owner_user_id=getattr(state.context, "user_id", None),
                 experiment_code='XRD',
                 request_number=transfer.get('requestNumber', ''),
                 equipment_code=transfer.get('equipmentCode', ''),

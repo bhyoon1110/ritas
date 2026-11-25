@@ -187,6 +187,19 @@ _SCHEMA: tuple[str, ...] = (
       COMMENT='Edge가 생성하고 검증한 보고서 ZIP의 버전, 공유 저장소 위치 및 무결성 정보'
     """,
     """
+    CREATE TABLE IF NOT EXISTS report_owners (
+        report_id VARCHAR(36) NOT NULL,
+        owner_user_id VARCHAR(36) NOT NULL,
+        analysis_type VARCHAR(8) NOT NULL,
+        created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+        PRIMARY KEY (report_id),
+        KEY idx_report_owners_user_project (owner_user_id, analysis_type, report_id),
+        CONSTRAINT fk_report_owner_report FOREIGN KEY (report_id)
+            REFERENCES report_runs(report_id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+      COMMENT='서버 인증으로 확정한 보고서 소유자. 파일 정리 및 SSO 초기화 후에도 유지'
+    """,
+    """
     CREATE TABLE IF NOT EXISTS report_regeneration_requests (
         signal_id VARCHAR(36) NOT NULL
             COMMENT '재생성 신호 UUID. report_regeneration_requests 기본키',
@@ -1339,6 +1352,8 @@ class Database:
         report_options_json: str | None,
         generated_at: str,
         is_test: bool = False,
+        owner_user_id: str | None = None,
+        owner_analysis_type: str | None = None,
     ) -> dict[str, Any]:
         """전송 여부와 무관하게 생성 완료된 보고서를 등록한다."""
         with self.transaction() as connection:
@@ -1416,6 +1431,7 @@ class Database:
                     generated_at,
                 ),
             )
+            self._record_report_owner(connection, report_id, owner_user_id, owner_analysis_type)
             row = connection.execute(
                 "SELECT * FROM report_runs WHERE report_id = ?",
                 (report_id,),
@@ -1423,6 +1439,67 @@ class Database:
         if row is None:  # pragma: no cover - DB 무결성 방어
             raise RuntimeError("등록한 보고서 생성 기록을 조회할 수 없습니다.")
         return row
+
+    @staticmethod
+    def _record_report_owner(connection, report_id, owner_user_id, analysis_type):
+        if not owner_user_id:
+            return
+        if analysis_type not in {"FTIR", "RAMAN", "XRD", "TEM"}:
+            raise ValueError("보고서 소유권의 실험 종류가 올바르지 않습니다.")
+        connection.execute(
+            "INSERT INTO report_owners (report_id, owner_user_id, analysis_type) VALUES (?, ?, ?) "
+            "ON DUPLICATE KEY UPDATE report_id = VALUES(report_id)",
+            (report_id, owner_user_id, analysis_type),
+        )
+        owner = connection.execute("SELECT owner_user_id FROM report_owners WHERE report_id = ?", (report_id,)).fetchone()
+        if owner is None or owner["owner_user_id"] != owner_user_id:
+            raise ValueError("이미 다른 사용자의 보고서로 등록되어 있습니다.")
+
+    def fetch_report_owner(self, report_id: str) -> dict[str, Any] | None:
+        with self._connect() as connection:
+            return connection.execute("SELECT * FROM report_owners WHERE report_id = ?", (report_id,)).fetchone()
+
+    def bind_report_owner(self, report_id: str, owner_user_id: str, analysis_type: str) -> bool:
+        """Backfill only server-proven ownership; never reassign an existing owner."""
+        with self.transaction() as connection:
+            if connection.execute("SELECT report_id FROM report_runs WHERE report_id = ?", (report_id,)).fetchone() is None:
+                return False
+            existing = connection.execute("SELECT owner_user_id FROM report_owners WHERE report_id = ?", (report_id,)).fetchone()
+            if existing is not None:
+                return existing["owner_user_id"] == owner_user_id
+            self._record_report_owner(connection, report_id, owner_user_id, analysis_type)
+            return True
+
+    def list_personal_reports(self, *, owner_user_id: str, projects: list[str], query: str = "",
+                              date_from: str = "", date_to: str = "", transfer_status: str = "",
+                              limit: int = 20, offset: int = 0) -> tuple[list[dict[str, Any]], int]:
+        if not projects:
+            return [], 0
+        clauses = ["o.owner_user_id = ?", "o.analysis_type IN (" + ",".join("?" for _ in projects) + ")"]
+        params: list[Any] = [owner_user_id, *projects]
+        if query:
+            clauses.append("(r.report_id LIKE ? OR r.request_number LIKE ? OR r.equipment_code LIKE ?)")
+            params.extend(["%" + query + "%"] * 3)
+        if date_from:
+            clauses.append("DATE(r.created_at) >= ?")
+            params.append(date_from)
+        if date_to:
+            clauses.append("DATE(r.created_at) <= ?")
+            params.append(date_to)
+        if transfer_status in {"READY_FOR_REVIEW", "NOT_QUEUED"}:
+            clauses.append("t.transfer_id IS NULL")
+        elif transfer_status:
+            clauses.append("t.status = ?")
+            params.append(transfer_status)
+        source = (" FROM report_runs r JOIN report_owners o ON o.report_id = r.report_id "
+                  "LEFT JOIN report_transfers t ON t.report_id = r.report_id AND t.destination = 'LIMS' "
+                  "WHERE " + " AND ".join(clauses))
+        with self._connect() as connection:
+            count = connection.execute("SELECT COUNT(*) AS n" + source, tuple(params)).fetchone()
+            rows = connection.execute("SELECT r.*, o.analysis_type AS owner_analysis_type" + source +
+                " ORDER BY r.created_at DESC, r.report_id DESC LIMIT ? OFFSET ?",
+                tuple([*params, max(1, min(limit, 100)), max(0, offset)])).fetchall()
+        return rows, int(count["n"])
 
     def upsert_report_artifact(
         self,

@@ -21,6 +21,12 @@ TINY_PNG_DATA_URL = (
 )
 
 
+@pytest.fixture(autouse=True)
+def standalone_preview_auth(monkeypatch):
+    """These DB-free rendering fixtures explicitly use development authentication."""
+    monkeypatch.setenv("RIST_AUTH_ENABLED", "false")
+
+
 def use_fake_pptx_pdf_converter(monkeypatch) -> None:
     def fake_convert(pptx_path: Path, pdf_path: Path) -> Path:
         assert pptx_path.name == "report.pptx"

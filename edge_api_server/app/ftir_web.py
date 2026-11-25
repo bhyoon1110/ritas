@@ -6121,6 +6121,8 @@ def get_ftir_preview_report_job(request: Request, job_id: str) -> dict:
     job = store.get(job_id)
     if job is None:
         raise ApiException(404, "FTIR_REPORT_JOB_NOT_FOUND", "보고서 작업을 찾을 수 없습니다.")
+    from .report_ownership import require_report_job_owner
+    require_report_job_owner(request, job, "FTIR")
     return _report_job_response(job, prefix="/api/v1/ftir/report/jobs")
 
 
@@ -6131,6 +6133,8 @@ def preview_ftir_report_job(request: Request, job_id: str) -> HTMLResponse:
     job = preview_report_job_store(request.app).get(job_id)
     if job is None or job.filename != "ftir-report-package.zip":
         raise ApiException(404, "FTIR_REPORT_JOB_NOT_FOUND", "보고서 작업을 찾을 수 없습니다.")
+    from .report_ownership import require_report_job_owner
+    require_report_job_owner(request, job, "FTIR")
     if job.status != "completed" or job.package_path is None:
         raise ApiException(409, "FTIR_REPORT_JOB_NOT_READY", "보고서가 아직 완성되지 않았습니다.")
     return spectrum_preview_response(job.package_path)
@@ -6147,6 +6151,8 @@ def download_ftir_preview_report_job(
     job = store.get(job_id)
     if job is None:
         raise ApiException(404, "FTIR_REPORT_JOB_NOT_FOUND", "보고서 작업을 찾을 수 없습니다.")
+    from .report_ownership import require_report_job_owner
+    require_report_job_owner(request, job, "FTIR")
     if job.status != "completed" or job.package_path is None:
         raise ApiException(409, "FTIR_REPORT_JOB_NOT_READY", "보고서가 아직 완성되지 않았습니다.")
     if not job.package_path.is_file():
@@ -6179,6 +6185,8 @@ def send_ftir_preview_report_job(
     job = store.get(job_id)
     if job is None:
         raise ApiException(404, "FTIR_REPORT_JOB_NOT_FOUND", "보고서 작업을 찾을 수 없습니다.")
+    from .report_ownership import require_report_job_owner
+    require_report_job_owner(request, job, "FTIR")
     try:
         return send_preview_report_package(
             settings=getattr(request.app.state, "settings", None),

@@ -29,6 +29,12 @@ TINY_PNG_DATA_URL = (
 )
 
 
+@pytest.fixture(autouse=True)
+def standalone_preview_auth(monkeypatch):
+    """These DB-free rendering fixtures explicitly use development authentication."""
+    monkeypatch.setenv("RIST_AUTH_ENABLED", "false")
+
+
 def use_fake_pptx_pdf_converter(monkeypatch) -> None:
     def fake_convert(pptx_path: Path, pdf_path: Path) -> Path:
         assert pptx_path.name == "report.pptx"
@@ -755,6 +761,12 @@ def test_preview_report_send_package_uses_transfer_metadata(
     captured: dict[str, object] = {}
 
     class FakeDatabase:
+        def fetch_report_run(self, _report_id):
+            # Queueing uses the mail authored and saved with the generated report.
+            return {"report_options_json": json.dumps({"email": {
+                "subject": "분석 결과", "bodyHtml": "<p>검토한 보고서입니다.</p>"
+            }})}
+
         def enqueue_report_transfer(self, **values: object) -> dict[str, object]:
             captured.update(values)
             return {

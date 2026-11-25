@@ -218,7 +218,7 @@ def _write_revision(store, new_job, old_job, changes, project, settings, databas
                                                pptx_protection=document.pptx_protection)
         transfer = changes["transfer"]
         package = register_generated_report_package(settings=settings, database=database,
-            report_id=new_job.job_id, package_path=package, experiment_code=project,
+            owner_user_id=new_job.owner_user_id, report_id=new_job.job_id, package_path=package, experiment_code=project,
             request_number=transfer["requestNumber"], equipment_code=transfer["equipmentCode"], operator_id=transfer["operatorId"],
             report_options={"revisionOf": old_job.job_id, "reviewed": True, "transfer": transfer,
                             "email": mail_payload(

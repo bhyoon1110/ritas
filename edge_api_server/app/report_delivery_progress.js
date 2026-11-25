@@ -17,6 +17,12 @@
     while (n >= 1024 && i < units.length - 1) { n /= 1024; i++; }
     return (i ? n.toFixed(2) : String(n)) + ' ' + units[i];
   }
+  function isUnknownRequestKey(item) {
+    var code = String(value(item, 'lastErrorCode', 'last_error_code') || '');
+    var message = String(value(item, 'lastErrorMessage', 'last_error_message') || '');
+    return code === 'UNKNOWN_KEY' || (code === 'LIMS_BUSINESS_KEY_REJECTED'
+      && /(?:^|[,\s])code=UNKNOWN_KEY(?:$|[,\s])/.test(message));
+  }
   function summary(item) {
     item = item || {};
     var queue = String(value(item, 'transferStatus', 'transfer_status') || 'NOT_QUEUED');
@@ -60,6 +66,10 @@
     }
     if (queue === 'FAILED' && !mail && doc !== 'FAILED') {
       label = 'Edge 전송 실패'; description = '오류를 확인한 뒤 전송을 다시 요청하세요.';
+      if (!phase && !doc && isUnknownRequestKey(item)) {
+        label = 'LIMS 의뢰·시험 확인 필요';
+        description = 'LIMS 문서 등록이 거절되었습니다(UNKNOWN_KEY). 조회한 의뢰번호·시험방법코드와 문서 등록 시의 키 판정이 일치하는지 LIMS 담당자에게 확인하세요. 확인 전에는 같은 요청을 반복 전송하지 마세요.';
+      }
     }
     if (queue === 'CANCELLED') { label = 'Edge 전송 취소'; description = '전송 대기를 취소했습니다.'; }
     if (queue === 'COMPLETED' && mail !== 'SENT') {
@@ -176,7 +186,17 @@
     var poller = watch({url: host.getAttribute('data-status-url'),
       onState: function (item) {
         host.innerHTML = html(item); status.textContent = summary(item).label;
-        if (button && !sending) { button.disabled = !item.canQueue; button.textContent = item.canQueue ? 'SSO 인증 후 LIMS 전송' : 'Edge 전송 요청 접수됨'; }
+        if (button && !sending) {
+          var queue = String(value(item, 'transferStatus', 'transfer_status') || '');
+          var mail = String(value(item, 'mailStatus', 'mail_status') || '');
+          var label = 'Edge 전송 요청 접수됨';
+          if (queue === 'FAILED') label = '전송 실패 · 오류 확인';
+          if (queue === 'CANCELLED') label = '전송 취소됨';
+          if (queue === 'COMPLETED') label = '전송 기록 완료';
+          if (mail === 'SENT') label = '메일 서버 전달 완료';
+          button.disabled = !item.canQueue;
+          button.textContent = item.canQueue ? 'SSO 인증 후 LIMS 전송' : label;
+        }
       },
       onError: function (error) { message.textContent = error.message; },
       onPause: function () { message.textContent = '장시간 자동 갱신을 멈췄습니다. 상태 새로고침을 눌러 다시 확인할 수 있습니다.'; }

@@ -7,6 +7,7 @@ import time
 import unicodedata
 import zipfile
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app import xrd_web
@@ -20,6 +21,12 @@ from app.xrd_web import (
     create_xrd_preview_app,
 )
 from lim.xrd_plot import build_xrd_html
+
+
+@pytest.fixture(autouse=True)
+def standalone_preview_auth(monkeypatch):
+    """These DB-free rendering fixtures explicitly use development authentication."""
+    monkeypatch.setenv("RIST_AUTH_ENABLED", "false")
 
 
 def _synthetic_pdf_upload(tmp_path):
