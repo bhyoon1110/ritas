@@ -23,6 +23,7 @@ async function setup(t, prefix, mode) {
   const dom = new JSDOM(pages[prefix], {runScripts:'outside-only',pretendToBeVisual:true,url:'http://localhost/'+(prefix==='ahn'?'tem':prefix)});
   t.after(()=>dom.window.close());
   const w=dom.window, d=w.document;
+  w.eval(fs.readFileSync(path.join(__dirname,'../app/request_filters.js'),'utf8'));
   if(mode==='chrome49') w.eval(fs.readFileSync(path.join(assetRoot,manifest.runtime),'utf8'));
   const gd=d.getElementById('peak-plot') || d.getElementById('raman-plot');
   if(gd) {
@@ -30,8 +31,8 @@ async function setup(t, prefix, mode) {
     w.Plotly={react:async(_,data,layout)=>{gd.data=data;gd.layout=layout;},relayout:async()=>{},Plots:{resize(){}}};
   }
   const items=[
-    {requestNumber:'REQ-A',experimentCode:'LIMS-A',sampleName:'SAMPLE-A',requestResultNo:'RESULT-A',equipmentCode:'DEVICE-A'},
-    {requestNumber:'REQ-B',testMethodCode:'LIMS-B',sampleName:'SAMPLE-B',requestResultNo:'RESULT-B',equipmentCode:'DEVICE-B'}
+    {requestNumber:'REQ-A',experimentCode:'LIMS-A',axTestMtdCode:'LIMS-A',sampleName:'SAMPLE-A',requestResultNo:'RESULT-A',equipmentCode:'DEVICE-A'},
+    {requestNumber:'REQ-B',testMethodCode:'LIMS-B',axTestMtdCode:'LIMS-B',sampleName:'SAMPLE-B',requestResultNo:'RESULT-B',equipmentCode:'DEVICE-B'}
   ];
   const sent=[];let lookupStatus=200;
   w.fetch=async(url,options={})=>{

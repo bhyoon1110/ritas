@@ -660,14 +660,16 @@ def send_report(jid: str, payload: XrdReportSendRequest, request: Request):
         raise HTTPException(409, '전송 정보가 생성 시점과 다릅니다. SSO 인증 후 정보 확인·ZIP 재생성을 해주세요.')
     project_code = payload.experiment_code.upper()
     from ..experiment_routing import resolve_analysis_type
-    if payload.request_scope != 'all' and resolve_analysis_type(
+    live_lookup = bool(getattr(state.settings, 'lims_requests_enabled', False))
+    if payload.request_scope != 'all' and not live_lookup and resolve_analysis_type(
             experiment_code=project_code, equipment_code=payload.equipment_code,
             configured_map=state.settings.analysis_type_map) != 'XRD':
         raise HTTPException(422, 'XRD 의뢰의 실험코드·장비코드를 확인하세요.')
     job = SimpleNamespace(job_id=jid, status='completed', package_path=job_path(state, jid) / value['filename'])
     try:
         return send_preview_report_package(settings=state.settings, database=request.app.state.database,
-                                            job=job, payload=payload, report_project='XRD')
+                                            job=job, payload=payload, report_project='XRD',
+                                            required_project='XRD' if payload.request_scope != 'all' else None)
     except ReportQueueError as exc:
         raise ApiException(
             503 if exc.retryable else 409,

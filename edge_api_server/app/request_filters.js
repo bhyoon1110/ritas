@@ -8,10 +8,32 @@
     return Object.prototype.hasOwnProperty.call(stateNames, code) ? stateNames[code] : String(code);
   }
 
+  function displayMethodCode(item) {
+    item = item || {};
+    return String(item.testMethodCode || item.testMtdCode || item.experimentCode || '').trim();
+  }
+
+  function transferMethodCode(item) {
+    // Registration accepts the selected test's AX identifier, never an inferred year.
+    return item && typeof item.axTestMtdCode === 'string' ? item.axTestMtdCode.trim() : '';
+  }
+
   function buildQuery(values, experimentType, page, pageSize) {
     var source = values.source === 'lims' ? 'lims' : 'cache';
     var params = ['source=' + source, 'page=' + page, 'pageSize=' + pageSize];
     var keys = ['reqNumber', 'testMtdCode', 'fromDate', 'toDate'];
+    var mode = values.matchMode || 'EXACT';
+    if (mode !== 'EXACT' && mode !== 'CONTAINS') throw new Error('정확 일치 또는 부분 검색을 선택하세요.');
+    if (mode === 'CONTAINS') {
+      if (source !== 'lims') throw new Error('부분 검색은 LIMS 실시간 조회에서 사용할 수 있습니다.');
+      ['reqNumber', 'testMtdCode', 'assetNumber'].forEach(function (key) {
+        var text = String(values[key] || '').trim();
+        if (text && text.replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]/g, '_').length < 3) {
+          throw new Error('부분 검색의 의뢰번호·시험방법코드·장비 자산번호는 입력한 항목마다 3자 이상이어야 합니다.');
+        }
+      });
+      params.push('matchMode=CONTAINS');
+    }
     if (experimentType && values.requestScope !== 'all') params.push('experimentType=' + encodeURIComponent(experimentType));
     var states = values.testState === undefined ? '1,3,5,7' : values.testState;
     if (states) params.push('testState=' + encodeURIComponent(states));
@@ -76,6 +98,11 @@
         item.value = entry[0]; item.textContent = entry[1]; scope.appendChild(item);
       });
     }
+    var matchMode = addField('matchMode', '검색 방식', 'select');
+    [['EXACT', '정확 일치'], ['CONTAINS', '부분 검색 (3자 이상)']].forEach(function (entry) {
+      var item = doc.createElement('option');
+      item.value = entry[0]; item.textContent = entry[1]; matchMode.appendChild(item);
+    });
     addField('reqNumber', '검색할 의뢰번호', 'text');
     addField('testMtdCode', '시험방법코드', 'text');
     addField('assetNumber', '장비 자산번호', 'text');
@@ -122,6 +149,8 @@
       fields.testChargerId.disabled = busy || !live;
       fields.testChargerNo.disabled = busy || !live;
       fields.assetNumber.disabled = busy || !live;
+      fields.matchMode.disabled = busy || !live;
+      if (!live) fields.matchMode.value = 'EXACT';
       previous.disabled = busy || page <= 1;
       next.disabled = busy || total === null || page * pageSize >= total;
       hint.textContent = selectedScope() === 'all'
@@ -129,15 +158,20 @@
         : (live
           ? '현재 실험에 맞춰 자동 조회합니다. 의뢰번호·장비 자산번호 등은 검색 범위를 좁힐 때만 입력하세요.'
           : '현재 실험의 저장된 의뢰를 자동 조회합니다. 장비 자산번호·담당자 검색은 LIMS 실시간에서 가능합니다.');
+      hint.textContent += live
+        ? ' 검색 방식은 의뢰번호·시험방법코드·장비 자산번호에 적용됩니다. 부분 검색은 입력한 항목마다 3자 이상이며 %, _, 역슬래시도 일반 문자로 찾습니다.'
+        : ' 부분 검색은 LIMS 실시간 조회에서만 지원합니다.';
       if (scopeNote) hint.textContent += ' ' + scopeNote;
     }
     Object.keys(fields).forEach(function (key) {
-      fields[key].addEventListener('change', function () {
+      function changed() {
         page = 1; total = null; scopeNote = "";
         status.textContent = '변경한 조건으로 의뢰 조회를 눌러 주세요.';
         sync();
-        if (options.onChange) options.onChange({scopeChanged:key === 'requestScope', scope:selectedScope()});
-      });
+        if (options.onChange) options.onChange({key:key, scopeChanged:key === 'requestScope', scope:selectedScope()});
+      }
+      fields[key].addEventListener('change', changed);
+      if (fields[key].type !== 'select-one' && fields[key].tagName !== 'SELECT') fields[key].addEventListener('input', changed);
     });
     function turn(delta) {
       if (busy) return;
@@ -167,5 +201,5 @@
       setBusy: function (value) { busy = !!value; sync(); }
     };
   }
-  global.RistRequestFilters = { mount: mount, buildQuery: buildQuery, testStateName: testStateName };
+  global.RistRequestFilters = { mount: mount, buildQuery: buildQuery, testStateName: testStateName, displayMethodCode: displayMethodCode, transferMethodCode: transferMethodCode };
 }(typeof window !== 'undefined' ? window : this));

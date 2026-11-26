@@ -284,6 +284,7 @@ def send_preview_report_package(
     job: PreviewReportJob,
     payload: PreviewReportSendRequest,
     report_project: str | None = None,
+    required_project: str | None = None,
 ) -> dict[str, Any]:
     if report_project is not None and report_project not in {"FTIR", "RAMAN", "XRD", "TEM"}:
         raise ValueError("지원하지 않는 보고서 실험 종류입니다.")
@@ -330,6 +331,7 @@ def send_preview_report_package(
         equipment_code=payload.equipment_code,
         operator_id=payload.operator_id,
         report_options=report_options,
+        required_project=required_project,
     )
     return {
         **result,

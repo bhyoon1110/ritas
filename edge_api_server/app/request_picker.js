@@ -1,12 +1,12 @@
 (function (global) {
   'use strict';
   function value(input) { return input == null ? '' : String(input).trim(); }
-  function method(item) { return value(item.testMethodCode || item.experimentCode); }
+  function method(item) { return global.RistRequestFilters.displayMethodCode(item); }
   function methodName(item) { return value(item.testMethodName || item.experimentName); }
   function state(item) { return global.RistRequestFilters.testStateName(item.testState); }
   function searchable(item) {
     return [item.requestNumber, item.requestDate, item.customerRequestName, item.requestUserName,
-      item.customerName, item.testChargerName, item.sampleName, method(item), methodName(item),
+      item.customerName, item.testChargerName, item.sampleName, method(item), global.RistRequestFilters.transferMethodCode(item), methodName(item),
       state(item), item.requestStateName, item.projectCode, item.requestResultNo, item.sampleResultNo,
       item.testMethodResultNo].map(value).join(' ').toLowerCase();
   }
@@ -18,7 +18,7 @@
     return [['의뢰번호', item.requestNumber], ['의뢰일', item.requestDate], ['의뢰명', item.customerRequestName],
       ['의뢰자', item.requestUserName], ['의뢰기관', item.customerName], ['분석 담당자', item.testChargerName],
       ['시료명', item.sampleName], ['시험명', methodName(item)], ['시험방법코드', method(item)],
-      ['시험 상태', state(item)], ['의뢰 상태', item.requestStateName], ['프로젝트', item.projectCode],
+      ['전송용 시험방법코드', global.RistRequestFilters.transferMethodCode(item)], ['시험 상태', state(item)], ['의뢰 상태', item.requestStateName], ['프로젝트', item.projectCode],
       ['의뢰 결과번호', item.requestResultNo], ['시료 결과번호', item.sampleResultNo], ['시험 결과번호', item.testMethodResultNo]];
   }
   function styles(doc) {
@@ -77,11 +77,11 @@
     var previous = el('button'), next = el('button'); previous.id = id + '-previous'; next.id = id + '-next';
     var panel = global.RistRequestFilters.mount(label, {experimentType:options.experimentType, reload:reload, previous:previous, next:next,
       onChange:function (change) {
-        if (change && change.scopeChanged) clearSelection();
+        clearSelection();
         items = []; page = 0; render(); close();
         info.textContent = change && change.scopeChanged
           ? '조회 범위가 바뀌어 이전 선택을 해제했습니다. 의뢰를 다시 조회해 선택하세요.'
-          : '검색 조건이 바뀌었습니다. 의뢰 조회를 눌러 다시 불러오세요.';
+          : '검색 조건이 바뀌어 이전 선택을 해제했습니다. 의뢰를 다시 조회해 선택하세요.';
       }});
     var progress = global.RistFileProgress.monitor(info);
     function blocked() { return loading || destroyed || !!(options.isBlocked && options.isBlocked()); }
@@ -112,14 +112,15 @@
       detail.open = true;
     }
     function clearSelection() {
+      var previousSelection = selected;
       selected = null; selectedText = ''; input.value = ''; updateDetail(); close(); render();
-      if (options.onClear) options.onClear();
+      if (options.onClear) options.onClear(previousSelection);
     }
     function choose(index) {
       if (blocked() || !items[index]) return;
       selected = items[index]; selectedText = [selected.requestNumber, selected.sampleName, method(selected)].filter(Boolean).join(' · ');
       input.value = selectedText; updateDetail(); close();
-      info.textContent = '선택한 의뢰를 반영했습니다. 아래 상세 정보에서 시료·시험을 확인하세요.';
+      info.textContent = global.RistRequestFilters.transferMethodCode(selected) ? '선택한 의뢰를 반영했습니다. 아래 상세 정보에서 시료·시험을 확인하세요.' : '선택한 시험의 전송용 시험방법코드가 제공되지 않았습니다. LIMS 실시간 재조회 또는 담당자 확인 후 입력하세요.';
       if (options.onSelect) options.onSelect(selected, {scope:loadedScope});
       if (!destroyed) { input.focus(); close(); }
     }

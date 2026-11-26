@@ -70,3 +70,60 @@ def test_all_export_keeps_xrd_report_type_actual_method_and_sso_guard(tmp_path, 
         assert sent[0]['report_project'] == 'XRD'
         assert sent[0]['payload'].experiment_code == 'A11112'
         assert sent[0]['payload'].operator_id == 'SSO-01'
+
+
+@pytest.mark.parametrize('analysis_map,method_map,name,equipment,scope,status', [
+    ((('A11111', 'XRD'),), (), None, '100000128', 'current', 200),
+    ((), (('A11111', 'XRD'),), None, '100000128', 'current', 200),
+    ((), (), 'XRD 정성분석', '100000128', 'current', 200),
+    ((), (), None, 'XRD-01', 'current', 200),
+    ((), (('A11111', 'TEM'),), 'XRD 정성분석', 'XRD-01', 'current', 409),
+    ((('A11111', 'TEM'),), (), 'XRD 정성분석', 'XRD-01', 'current', 409),
+    ((('100000128', 'TEM'),), (), 'XRD 정성분석', '100000128', 'current', 409),
+    ((), (), 'TEM 투과전자현미경', 'XRD-01', 'current', 409),
+    ((), (), None, '100000128', 'current', 409),
+    ((('A11111', 'TEM'),), (), 'TEM', '100000128', 'all', 200),
+])
+def test_current_ax_send_checks_live_original_scope_once(
+        tmp_path, monkeypatch, analysis_map, method_map, name, equipment, scope, status):
+    from dataclasses import replace
+    from app.lims_requests import LimsRequestsClient
+    from tests.test_lims_method_mapping import Lookup, QueueDatabase, row
+
+    app = make_app(tmp_path, auth=True)
+    app.state.settings = replace(app.state.settings, lims_requests_enabled=True,
+                                 analysis_type_map=analysis_map, request_method_map=method_map)
+    transfer = dict(requestNumber='2022T00793', experimentCode='2022A11111',
+                    equipmentCode=equipment, operatorId='SSO-01')
+    if scope == 'all':
+        transfer['requestScope'] = 'all'
+    jid = 'c' * 32
+    job_dir = tmp_path/'xrd-workbench-v1'/'users'/hashlib.sha256(b'one').hexdigest()/'jobs'/jid
+    job_dir.mkdir(parents=True)
+    with ZipFile(job_dir/'report.zip', 'w') as archive:
+        archive.writestr('report.txt', 'Synthetic XRD report')
+    (job_dir/'job.json').write_text(json.dumps(dict(status='completed', kind='zip', filename='report.zip', transfer=transfer)))
+    database = QueueDatabase()
+    database.fetch_report_run = lambda report_id: {'report_options_json': json.dumps({
+        'analysisType': 'XRD', 'workbenchVersion': 1, 'transfer': transfer,
+        'email': {'subject': '분석 결과', 'bodyHtml': '<p>검토한 결과입니다.</p>'},
+    })}
+    app.state.database = database
+    upstream = row()
+    upstream['testMtdName'] = name
+    lookup = Lookup([upstream])
+    monkeypatch.setattr(LimsRequestsClient, 'from_settings', classmethod(lambda cls, settings: lookup))
+    with TestClient(app) as client:
+        # Client display metadata cannot override a conflicting original LIMS row.
+        response = client.post(api.BASE+f'/api/jobs/{jid}/send',
+                               json={**transfer, 'testMethodCode': 'XRD', 'testMethodName': 'XRD'},
+                               headers={'test-user': 'one', 'test-sso': 'yes'})
+    assert response.status_code == status, response.text
+    assert lookup.calls == [(1, 1000, {'reqNumber': '2022T00793', 'matchMode': 'EXACT'})]
+    if status == 200:
+        queued = next(values for kind, values in database.writes if kind == 'transfer')
+        assert queued['experiment_code'] == 'XRD'
+        assert json.loads(queued['report_options_json'])['testMtdCode'] == '2022A11111'
+    else:
+        assert response.json()['error']['code'] == 'REPORT_REQUEST_SCOPE_MISMATCH'
+        assert not database.writes

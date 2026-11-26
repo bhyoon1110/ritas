@@ -3001,7 +3001,7 @@ _UPLOAD_SCRIPT = """
     var selected = selectedRequestItem();
     if (selected
         && state.requestNumber === String(selected.requestNumber || "").trim()
-        && state.limsExperimentCode === String(selected.experimentCode || selected.testMethodCode || "").trim()) {
+        && state.limsExperimentCode === window.RistRequestFilters.transferMethodCode(selected)) {
       state.limsExperimentName = selected.experimentName || selected.testMethodName || "";
       state.sampleName = selected.sampleName || "";
       state.requestResultNo = selected.requestResultNo || "";
@@ -3052,6 +3052,15 @@ _UPLOAD_SCRIPT = """
     }
   }
 
+  function clearRequestSearchSelection() {
+    var selected = selectedRequestItem();
+    if (selected && reportTransferValue("limsExperimentCode") === window.RistRequestFilters.transferMethodCode(selected)) {
+      setReportTransferValue("limsExperimentCode", "");
+    }
+    requestItems = []; requestSelect.value = ""; renderRequestOptions([]);
+    scheduleWorkspaceSave();
+  }
+
   function selectedRequestItem() {
     if (requestSelect.value === "") return null;
     var index = Number(requestSelect.value);
@@ -3061,7 +3070,7 @@ _UPLOAD_SCRIPT = """
   function handleReportTransferInput() {
     var selected = selectedRequestItem();
     if (selected) {
-      var code = String(selected.experimentCode || selected.testMethodCode || "").trim();
+      var code = window.RistRequestFilters.transferMethodCode(selected);
       var numberChanged = reportTransferValue("requestNumber") !== String(selected.requestNumber || "").trim();
       var codeChanged = reportTransferValue("limsExperimentCode") !== code;
       if (numberChanged || codeChanged) {
@@ -3084,7 +3093,7 @@ _UPLOAD_SCRIPT = """
       item.requestNumber || "(의뢰번호 없음)",
       item.requestDate || "",
       item.requestStateName || "",
-      item.experimentCode || item.testMethodCode || "(실험코드 없음)",
+      window.RistRequestFilters.displayMethodCode(item) || "(시험방법코드 없음)",
       item.experimentName || item.testMethodName || "",
       item.sampleName || "",
       item.customerRequestName || "",
@@ -3101,7 +3110,7 @@ _UPLOAD_SCRIPT = """
       ["시험 상태", window.RistRequestFilters ? window.RistRequestFilters.testStateName(item.testState) : item.testState],
       ["의뢰명", item.customerRequestName],
       ["시료", item.sampleName],
-      ["실험코드", item.experimentCode || item.testMethodCode],
+      ["시험방법코드", window.RistRequestFilters.displayMethodCode(item)], ["전송용 시험방법코드", window.RistRequestFilters.transferMethodCode(item) || "미제공 · LIMS 실시간 재조회 또는 담당자 확인"],
       ["시험명", item.experimentName || item.testMethodName],
       ["의뢰자", item.requestUserName],
       ["담당자", item.testChargerName],
@@ -3187,7 +3196,7 @@ _UPLOAD_SCRIPT = """
     setReportTransferValue("requestNumber", item.requestNumber || "");
     setReportTransferValue(
       "limsExperimentCode",
-      item.experimentCode || item.testMethodCode || ""
+      window.RistRequestFilters.transferMethodCode(item)
     );
     applyRequestEquipmentCode(item);
     renderRequestDetail(item);
@@ -5427,7 +5436,7 @@ _UPLOAD_SCRIPT = """
     libraryInput.value = "";
   });
   libraryFilter.addEventListener("input", renderLibraries);
-  var requestFilters = window.RistRequestFilters ? window.RistRequestFilters.mount(requestSelect, {experimentType: REQUEST_EXPERIMENT_TYPE, reload: loadRequestItems}) : null;
+  var requestFilters = window.RistRequestFilters ? window.RistRequestFilters.mount(requestSelect, {experimentType: REQUEST_EXPERIMENT_TYPE, reload: loadRequestItems, onChange: clearRequestSearchSelection}) : null;
     requestLoad.addEventListener("click", loadRequestItems);
   requestSelect.addEventListener("change", applySelectedRequest);
   reportTransferControls.forEach(function(control) {

@@ -1536,6 +1536,14 @@ def build_xrd_page() -> str:
         operatorId: reportTransferValue("operatorId")
       };
     }
+    function clearRequestSearchSelection() {
+      var selected = selectedRequestItem();
+      if (selected && reportTransferValue("limsExperimentCode") === window.RistRequestFilters.transferMethodCode(selected)) {
+        setReportTransferValue("limsExperimentCode", "");
+      }
+      requestItems = []; requestSelect.value = ""; renderRequestOptions([]);
+    }
+
     function selectedRequestItem() {
       if (requestSelect.value === "") return null;
       var index = Number(requestSelect.value);
@@ -1544,7 +1552,7 @@ def build_xrd_page() -> str:
     function handleReportTransferInput() {
       var selected = selectedRequestItem();
       if (selected) {
-        var code = String(selected.experimentCode || selected.testMethodCode || "").trim();
+        var code = window.RistRequestFilters.transferMethodCode(selected);
         var numberChanged = reportTransferValue("requestNumber") !== String(selected.requestNumber || "").trim();
         var codeChanged = reportTransferValue("limsExperimentCode") !== code;
         if (numberChanged || codeChanged) {
@@ -1560,7 +1568,7 @@ def build_xrd_page() -> str:
         item.requestNumber || "(의뢰번호 없음)",
         item.requestDate || "",
         item.requestStateName || "",
-        item.experimentCode || item.testMethodCode || "(실험코드 없음)",
+        window.RistRequestFilters.displayMethodCode(item) || "(시험방법코드 없음)",
         item.experimentName || item.testMethodName || "",
         item.sampleName || "",
         item.customerRequestName || ""
@@ -1580,7 +1588,7 @@ def build_xrd_page() -> str:
         ["의뢰번호", item.requestNumber], ["의뢰일", item.requestDate],
         ["의뢰 상태", item.requestStateName],
         ["시험 상태", window.RistRequestFilters ? window.RistRequestFilters.testStateName(item.testState) : item.testState], ["의뢰명", item.customerRequestName],
-        ["시료", item.sampleName], ["실험코드", item.experimentCode || item.testMethodCode],
+        ["시료", item.sampleName], ["시험방법코드", window.RistRequestFilters.displayMethodCode(item)], ["전송용 시험방법코드", window.RistRequestFilters.transferMethodCode(item) || "미제공 · LIMS 실시간 재조회 또는 담당자 확인"],
         ["시험명", item.experimentName || item.testMethodName],
         ["담당자", item.testChargerName], ["고객", item.customerName]
       ].forEach(function(row) {
@@ -1920,7 +1928,7 @@ def build_xrd_page() -> str:
       setReportTransferValue("requestNumber", item.requestNumber || "");
       setReportTransferValue(
         "limsExperimentCode",
-        item.experimentCode || item.testMethodCode || ""
+        window.RistRequestFilters.transferMethodCode(item)
       );
       var equipmentCode = item.equipmentCode || item.deviceCode || item.instrumentCode;
       if (equipmentCode) setReportTransferValue("equipmentCode", equipmentCode);
@@ -2512,7 +2520,7 @@ def build_xrd_page() -> str:
         setBusy(false);
       }
     });
-    var requestFilters = window.RistRequestFilters ? window.RistRequestFilters.mount(requestSelect, {experimentType: REQUEST_EXPERIMENT_TYPE, reload: loadRequestItems}) : null;
+    var requestFilters = window.RistRequestFilters ? window.RistRequestFilters.mount(requestSelect, {experimentType: REQUEST_EXPERIMENT_TYPE, reload: loadRequestItems, onChange: clearRequestSearchSelection}) : null;
     requestLoad.addEventListener("click", loadRequestItems);
     requestSelect.addEventListener("change", applySelectedRequest);
     reportTransferControls.forEach(function(control) {

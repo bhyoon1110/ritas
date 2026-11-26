@@ -260,3 +260,52 @@ def test_all_live_lookup_omits_automatic_method_and_asset_maps_but_keeps_explici
                           headers={'X-Request-Id':'all-explicit'})
     assert explicit.status_code == 200 and explicit.json()['items'][0]['testMethodCode'] == 'A11112'
     assert relay.calls[-1][2] == {'reqNumber':'2022T00793','assetNumber':'100000128','testMtdCode':'A11112','testState':'5'}
+
+
+class ContainsRelay:
+    def __init__(self, items):
+        self.items, self.calls = items, []
+
+    def fetch(self, page, size, filters):
+        self.calls.append((page, size, dict(filters)))
+        items = self.items
+        for key in ('reqNumber', 'testMtdCode'):
+            if filters.get(key):
+                items = [item for item in items if filters[key].casefold() in item[key].casefold()]
+        start = (page - 1) * size
+        return {'page': page, 'size': size, 'totalCount': len(items), 'items': items[start:start + size]}
+
+
+def test_contains_scope_filters_complete_result_before_count_and_pagination(monkeypatch):
+    monkeypatch.setattr('app.lims_requests.SCOPE_BATCH_SIZE', 2)
+    relay = ContainsRelay([row(1, 'A11111', 'XRD'), row(2, 'A11112', 'TEM'), row(3, 'A11113', 'XRD'), row(4, 'A11114', 'XRD')])
+    filters = {'matchMode': 'CONTAINS', 'testMtdCode': 'A111', 'reqNumber': 'REQ'}
+    scope = RequestScope('XRD', asset_map=(('100000128', 'XRD'),))
+    first = scoped_requests(relay, scope, 1, 2, filters)
+    second = scoped_requests(relay, scope, 2, 2, filters)
+    assert first['totalCount'] == second['totalCount'] == 3
+    assert [item['testMtdCode'] for item in first['items']] == ['A11111', 'A11113']
+    assert [item['testMtdCode'] for item in second['items']] == ['A11114']
+    assert len(relay.calls) == 4
+    assert all(query == filters for _, _, query in relay.calls)
+
+
+def test_contains_of_mapped_method_cannot_take_exact_fast_path_or_trust_partial_assets():
+    relay = ContainsRelay([row(1, 'A11111', 'unknown'), row(2, 'A111110', 'XRD')])
+    scope = RequestScope('XRD', method_map=(('A11111', 'XRD'),), asset_map=(('100000128', 'XRD'),))
+    filters = {'matchMode': 'CONTAINS', 'testMtdCode': 'A11111', 'assetNumber': '128'}
+    queries, trusted = scope.query_filters(filters)
+    assert queries == [filters] and not trusted
+    result = scoped_requests(relay, scope, 1, 50, filters)
+    assert result['totalCount'] == 1 and result['items'][0]['testMtdCode'] == 'A11111'
+
+
+def test_contains_does_not_treat_metacharacters_as_wildcards_or_accept_ignored_filters():
+    item = row(1, 'A%_001', 'XRD')
+    relay = SimpleNamespace(fetch=lambda page, size, filters: {'page': page, 'size': size, 'totalCount': 1, 'items': [item]})
+    result = scoped_requests(relay, RequestScope('XRD'), 1, 50, {'matchMode': 'CONTAINS', 'testMtdCode': 'A%_'})
+    assert result['totalCount'] == 1
+    for filters in ({'testMtdCode': 'AX_'}, {'reqNumber': 'OTHER'}):
+        with pytest.raises(ApiException) as error:
+            scoped_requests(relay, RequestScope('XRD'), 1, 50, {'matchMode': 'CONTAINS', **filters})
+        assert error.value.code == 'LIMS_REQUESTS_INVALID_RESPONSE'

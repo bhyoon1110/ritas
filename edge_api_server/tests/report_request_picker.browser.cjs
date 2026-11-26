@@ -14,7 +14,7 @@ const port=new Promise((resolve,reject)=>{let data='';server.stdout.on('data',ch
       const context=await browser.newContext({viewport:{width:legacy?390:1440,height:1000},...(legacy?{userAgent:'Mozilla/5.0 (Windows NT 5.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/49.0.2623.75 Safari/537.36'}:{})});
       const page=await context.newPage();page.setDefaultTimeout(15000);page.on('pageerror',e=>errors.push(e.message));
       let doc={title:'Lookup test',completionDate:'2026-10-26',transfer:{requestNumber:'',limsExperimentCode:'',equipmentCode:'CURRENT-LAB',operatorId:'SSO-001'},sections:[],auxiliary:{},variables:[]},revision=0,failLookup=false;
-      const items=Array.from({length:200},(_,i)=>({requestNumber:i<2?'REQ-SAME':'REQ-'+i,experimentCode:'CODE-'+i,requestDate:'2026-11-23',requestUserName:i===1?'김의뢰':'홍의뢰',customerName:'시험기관',testChargerName:'박담당',sampleResultNo:1000+i,testMethodResultNo:2000+i,customerRequestName:'원소분석 의뢰',
+      const items=Array.from({length:200},(_,i)=>({requestNumber:i<2?'REQ-SAME':'REQ-'+i,experimentCode:'CODE-'+i,axTestMtdCode:'CODE-'+i,requestDate:'2026-11-23',requestUserName:i===1?'김의뢰':'홍의뢰',customerName:'시험기관',testChargerName:'박담당',sampleResultNo:1000+i,testMethodResultNo:2000+i,customerRequestName:'원소분석 의뢰',
         sampleName:i<2?'같은 시료 <b>검증</b> '+('긴 이름 '.repeat(i?15:0)):'Other '+i,...(i?{equipmentCode:'LAB-'+i}:{})}));
       await page.route('**/api/v1/**',async route=>{
         const request=route.request(),url=new URL(request.url()),p=url.pathname;
@@ -22,13 +22,13 @@ const port=new Promise((resolve,reject)=>{let data='';server.stdout.on('data',ch
         if(p==='/api/v1/requests'){
           queries.push(url.searchParams);
           if(url.searchParams.get('source')==='lims') {
-            assert.equal(url.searchParams.get('assetNumber'),'ASSET-LIVE');assert.equal(url.searchParams.get('testState'),'1,3,5,7');
+            const partial=url.searchParams.get('matchMode')==='CONTAINS';assert.equal(url.searchParams.get('assetNumber'),partial?'%_\\':'ASSET-LIVE');assert.equal(url.searchParams.get('testState'),'1,3,5,7');
             assert.equal(url.searchParams.get('experimentType'),kind==='ftir'?'FT-IR':kind.toUpperCase());assert(!url.searchParams.has('testMtdCode'));
-            return json({items:[{requestNumber:'REQ-LIVE',testMethodCode:'A',testState:3},{requestNumber:'REQ-LIVE',testMethodCode:'B',testState:7}],page:1,pageSize:200,totalCount:2});
+            return json({items:[{requestNumber:'REQ-LIVE',testMethodCode:'A',axTestMtdCode:'2022A',testState:3},{requestNumber:'REQ-LIVE',testMethodCode:'B',axTestMtdCode:'2022B',testState:7}],page:Number(url.searchParams.get('page')),pageSize:200,totalCount:partial?201:2});
           }
           assert.equal(url.searchParams.get('experimentType'),kind==='ftir'?'FT-IR':kind.toUpperCase());
           const pageNo=Number(url.searchParams.get('page'));
-          return json(failLookup?{message:'테스트 조회 오류'}:{items:pageNo===1?items:[{requestNumber:'REQ-P2',experimentCode:'CODE-P2'}],page:pageNo,pageSize:200,totalCount:201},failLookup?503:200);
+          return json(failLookup?{message:'테스트 조회 오류'}:{items:pageNo===1?items:[{requestNumber:'REQ-P2',experimentCode:'CODE-P2',axTestMtdCode:'CODE-P2'}],page:pageNo,pageSize:200,totalCount:201},failLookup?503:200);
         }
         if(p.endsWith('/editor-data'))return json({document:doc,authenticatedOperatorId:'SSO-001'});
         if(p.endsWith('/edit-layout'))return json({ratio:16/9,pages:[{id:'cover',title:'표지',regions:[]}],pageEditing:false,canvasEditing:false});
@@ -80,7 +80,20 @@ const port=new Promise((resolve,reject)=>{let data='';server.stdout.on('data',ch
         await page.getByLabel('조회 대상',{exact:true}).selectOption('lims');
         await page.getByLabel('장비 자산번호',{exact:true}).fill('ASSET-LIVE');await page.locator('#request-load').click();
         const live=list.getByRole('option').nth(1);await live.waitFor();assert.match(await live.textContent(),/시험중/);await live.click();await saved();
-        assert.equal(doc.transfer.requestNumber,'REQ-LIVE');assert.equal(doc.transfer.limsExperimentCode,'B');assert.equal(doc.transfer.equipmentCode,'LAB-1');
+        assert.equal(doc.transfer.requestNumber,'REQ-LIVE');assert.equal(doc.transfer.limsExperimentCode,'2022B');assert.equal(doc.transfer.equipmentCode,'LAB-1');
+        assert.match(await page.locator('#request-detail').textContent(),/시험방법코드B/);
+        const mode=page.getByLabel('검색 방식',{exact:true});await mode.selectOption('CONTAINS');await saved();
+        assert.equal(doc.transfer.limsExperimentCode,'');assert(await page.locator('#request-detail').isHidden());
+        await page.getByLabel('장비 자산번호',{exact:true}).fill('AB');const beforeInvalid=queries.length;
+        await page.locator('#request-load').click();assert.match(await page.locator('#request-info').textContent(),/3자/);assert.equal(queries.length,beforeInvalid);
+        await page.getByLabel('장비 자산번호',{exact:true}).fill('%_\\');await page.locator('#request-load').click();await list.getByRole('option').first().waitFor();
+        assert.equal(queries.at(-1).get('matchMode'),'CONTAINS');assert.equal(queries.at(-1).get('assetNumber'),'%_\\');
+        await page.locator('#request-next').click();await page.waitForFunction(()=>document.getElementById('request-info').textContent.includes('2페이지'));
+        assert.equal(queries.at(-1).get('matchMode'),'CONTAINS');assert.equal(queries.at(-1).get('page'),'2');
+        await list.getByRole('option').nth(1).click();await saved();assert.equal(doc.transfer.limsExperimentCode,'2022B');
+        await mode.selectOption('EXACT');await saved();assert.equal(doc.transfer.limsExperimentCode,'');
+        await page.getByLabel('조회 대상',{exact:true}).selectOption('cache');assert(await mode.isDisabled());assert.equal(await mode.inputValue(),'EXACT');
+
         // Adjacent shared common-item controls remain one row even on narrow screens.
         const add=page.getByRole('button',{name:'공통 항목 추가',exact:true}),itemName=page.getByLabel('새 공통 항목 이름',{exact:true});
         for(const width of [320,390,768,1440]){

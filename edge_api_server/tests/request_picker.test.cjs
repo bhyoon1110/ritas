@@ -45,10 +45,10 @@ test('untrusted names are text and absent values are explicitly marked without i
   assert.equal(ui.byId('detail').querySelectorAll('img,b').length,0);
 });
 
-test('query changes and failed reloads cannot expose stale selectable results; selected report stays unchanged',t=>{
+test('query changes and failed reloads cannot expose stale selectable results; selected identity is cleared',t=>{
   const ui=fixture(t);ui.load();ui.reply([item]);ui.results()[0].click();
   const source=ui.d.querySelector('[aria-label="조회 대상"]');source.value='lims';source.dispatchEvent(new ui.w.Event('change'));
-  assert.equal(ui.results().length,0);assert.equal(ui.picker.selected(),item);
+  assert.equal(ui.results().length,0);assert.equal(ui.picker.selected(),null);
   ui.load();ui.calls.at(-1).callback(Error('서버 조회 실패'));
   ui.byId('search').focus();assert.equal(ui.results().length,0);assert.equal(ui.choices.length,1);
   assert.match(ui.byId('info').textContent,/서버 조회 실패/);assert.equal(ui.byId('load').disabled,false);
@@ -87,4 +87,24 @@ test('changing between current and ALL clears selection and requires a fresh loo
   scope.value='current';scope.dispatchEvent(new ui.w.Event('change'));
   assert.equal(ui.picker.selected(),null);assert.equal(ui.results().length,0);
   ui.load();assert.equal(new URL(ui.calls.at(-1).url,'https://edge.test').searchParams.get('experimentType'),'TEM');
+});
+
+test('partial live search retains mode while paging and clears selection when code filters change',t=>{
+  const ui=fixture(t),field=name=>ui.d.querySelector('[aria-label="'+name+'"]');
+  assert.equal(field('검색 방식').value,'EXACT');assert.equal(field('검색 방식').disabled,true);
+  const change=(name,value)=>{field(name).value=value;field(name).dispatchEvent(new ui.w.Event('change'));};
+  change('조회 대상','lims');change('검색 방식','CONTAINS');change('검색할 의뢰번호','T007');
+  ui.load();ui.reply([{...item,axTestMtdCode:'2022M-EDS'}],1,201);ui.results()[0].click();
+  assert.match(ui.byId('detail').textContent,/전송용 시험방법코드2022M-EDS/);
+  ui.byId('next').click();assert.equal(new URL(ui.calls.at(-1).url,'https://edge.test').searchParams.get('matchMode'),'CONTAINS');
+  ui.reply([{...item,axTestMtdCode:'2022M-EDS'}],2,201);
+  change('시험방법코드','M-E');assert.equal(ui.picker.selected(),null);assert.equal(ui.byId('detail').hidden,true);assert.equal(ui.results().length,0);
+  ui.load();assert.equal(new URL(ui.calls.at(-1).url,'https://edge.test').searchParams.get('page'),'1');ui.reply([item]);
+  change('조회 대상','cache');assert.equal(field('검색 방식').value,'EXACT');assert.equal(field('검색 방식').disabled,true);
+});
+
+test('a selected display-only code is explicitly missing the transfer code',t=>{
+  const ui=fixture(t);ui.load();ui.reply([{...item,requestNumber:'2022T00793',testMethodCode:'A11111'}]);ui.results()[0].click();
+  assert.match(ui.byId('info').textContent,/전송용 시험방법코드가 제공되지/);
+  assert.match(ui.byId('detail').textContent,/전송용 시험방법코드미제공/);
 });

@@ -23,7 +23,7 @@ import httpx
 from .errors import ApiException
 
 
-FILTER_KEYS = ("reqNumber", "testMtdCode", "fromDate", "toDate", "testChargerNo", "testChargerId", "assetNumber", "testState")
+FILTER_KEYS = ("matchMode", "reqNumber", "testMtdCode", "fromDate", "toDate", "testChargerNo", "testChargerId", "assetNumber", "testState")
 EQUIPMENT_CODE_FIELDS = ("equipmentCode", "deviceCode", "instrumentCode")
 INCOMPLETE_TEST_STATES = ("1", "3", "5", "7")
 TEST_STATES = frozenset(("0", *INCOMPLETE_TEST_STATES, "9"))
@@ -51,6 +51,12 @@ def validate_filters(values: dict[str, Any]) -> dict[str, Any]:
             if not isinstance(value, str) or not value.strip() or len(value) > 200 or any(ord(c) < 32 for c in value):
                 raise ApiException(400, "INVALID_REQUEST_FILTER", "의뢰 조회 조건을 확인해 주세요.")
             value = value.strip()
+            if key == "matchMode":
+                if value not in {"EXACT", "CONTAINS"}:
+                    raise ApiException(400, "INVALID_REQUEST_FILTER", "검색 방식은 정확 일치 또는 부분 일치를 선택해 주세요.")
+                # Only CONTAINS is documented upstream. Omission retains exact lookup.
+                if value == "EXACT":
+                    continue
             if key == "testState":
                 states = [code.strip(" ") for code in value.split(",")]
                 if not TEST_STATES.issuperset(states):
@@ -64,6 +70,10 @@ def validate_filters(values: dict[str, Any]) -> dict[str, Any]:
                 except ValueError:
                     raise ApiException(400, "INVALID_REQUEST_FILTER", "조회 기간은 YYYY-MM-DD 형식의 유효한 날짜여야 합니다.") from None
         filters[key] = value
+    if filters.get("matchMode") == "CONTAINS":
+        for key in ("reqNumber", "testMtdCode", "assetNumber"):
+            if key in filters and len(filters[key]) < 3:
+                raise ApiException(400, "INVALID_REQUEST_FILTER", "부분 검색 시 의뢰번호·시험방법코드·장비 자산번호는 각각 3자 이상 입력해 주세요.")
     if filters.get("fromDate") and filters.get("toDate") and filters["fromDate"] > filters["toDate"]:
         raise ApiException(400, "INVALID_REQUEST_FILTER", "조회 시작일은 종료일보다 늦을 수 없습니다.")
     return filters
@@ -96,8 +106,9 @@ def validate_response(body: object, page: int, size: int) -> dict[str, Any]:
                 raise _protocol_error()
         # Only explicit relay equipment identifiers can populate the transfer form.
         # Empty optional values mean unavailable; assetNumber remains a query filter.
-        normalized = {key: value for key, value in item.items() if key not in EQUIPMENT_CODE_FIELDS}
-        for key in EQUIPMENT_CODE_FIELDS:
+        optional_codes = (*EQUIPMENT_CODE_FIELDS, "axTestMtdCode")
+        normalized = {key: value for key, value in item.items() if key not in optional_codes}
+        for key in optional_codes:
             value = item.get(key)
             if value is None:
                 continue
@@ -222,15 +233,22 @@ def scoped_requests(client: LimsRequestsClient, scope: "RequestScope", page: int
                 and scope.mapped_project(str(item.get("testMtdCode") or "")) in (None, scope.project))
 
     def check_condition(items, query):
-        # A relay/upstream ignoring an exact method condition must not produce a
-        # plausible-looking but incorrect project total or selection list.
+        # Treat substring operators as literal text. The upstream owns SQL escaping.
+        # An ignored filter must not produce a plausible but incorrect scoped total.
+        if query.get("matchMode") == "CONTAINS":
+            for key in ("reqNumber", "testMtdCode"):
+                needle = query.get(key)
+                if needle and any(needle.casefold() not in str(item.get(key) or "").casefold() for item in items):
+                    raise _protocol_error()
+            return
         code = query.get("testMtdCode")
         if code and any(str(item.get("testMtdCode") or "").strip().lower() != code.lower() for item in items):
             raise _protocol_error()
 
     if len(queries) == 1:
         code = queries[0].get("testMtdCode")
-        guaranteed = bool(code and (scope.methods or scope.mapped_project(code) == scope.project))
+        guaranteed = bool(queries[0].get("matchMode") != "CONTAINS" and code
+                          and (scope.methods or scope.mapped_project(code) == scope.project))
         if guaranteed:
             result = client.fetch(page, size, queries[0])
             check_condition(result["items"], queries[0])

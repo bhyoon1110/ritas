@@ -137,7 +137,12 @@ class RequestScope:
                 f"(NOT ({code} REGEXP ?) AND {own_name} AND NOT {other_name}))))"), params
 
     def query_filters(self, filters: dict[str, Any]) -> tuple[list[dict[str, Any]], bool]:
-        """Use exact server-side conditions when configured; never widen user filters."""
+        """Preserve user filters and apply experiment scope before pagination."""
+        if filters.get("matchMode") == "CONTAINS":
+            # A global substring mode cannot express our exact asset mappings.
+            # Do not broaden an injected asset and then trust every returned row.
+            # Method/name scope is applied to the complete upstream result instead.
+            return [dict(filters)], False
         method = filters.get("testMtdCode")
         asset = filters.get("assetNumber")
         if method and ((self.methods and method.casefold() not in {c.casefold() for c in self.methods})

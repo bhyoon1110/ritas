@@ -333,3 +333,68 @@ def test_http_live_equipment_codes_are_optional_and_never_inferred_from_asset(mo
     assert item["requestState"] is None and item["syncedAt"] is None
     assert item["requestNumber"] == "2026R02236" and item["testMethodCode"] == "A23142"
     assert observed == [{"page": "2", "size": "2", "reqNumber": "2026R02236", "assetNumber": "100000128"}]
+
+
+def test_exact_mode_keeps_original_contract_and_contains_requires_three_characters():
+    assert validate_filters({'matchMode': 'EXACT', 'reqNumber': '12'}) == {'reqNumber': '12'}
+    assert validate_filters({'reqNumber': '12'}) == {'reqNumber': '12'}
+    assert validate_filters({'matchMode': 'CONTAINS', 'reqNumber': ' 00793 '}) == {'matchMode': 'CONTAINS', 'reqNumber': '00793'}
+    for mode in ('LIKE', 'contains', 1):
+        with pytest.raises(ApiException):
+            validate_filters({'matchMode': mode})
+    for key in ('reqNumber', 'testMtdCode', 'assetNumber'):
+        for value in ('12', ' 1 '):
+            with pytest.raises(ApiException) as error:
+                validate_filters({'matchMode': 'CONTAINS', key: value})
+            assert error.value.code == 'INVALID_REQUEST_FILTER'
+
+
+def test_contains_forwarding_preserves_literal_metacharacters_and_registration_code():
+    observed = []
+    payload = response_body()
+    payload['items'][0]['axTestMtdCode'] = ' 2026A23142 '
+    def handler(request):
+        observed.append(dict(request.url.params))
+        return httpx.Response(200, json=payload)
+    adapter = LimsRequestsClient(URL, KEY, transport=httpx.MockTransport(handler))
+    filters = {'matchMode': 'CONTAINS', 'reqNumber': '%_' + chr(92), 'testMtdCode': 'A23', 'assetNumber': '128'}
+    result = adapter.fetch(1, 50, filters)
+    assert observed == [{'page': '1', 'size': '50', **filters}]
+    assert result['items'][0]['axTestMtdCode'] == '2026A23142'
+    assert result['items'][0]['testMtdCode'] == 'A23142'
+    assert payload['items'][0]['axTestMtdCode'] == ' 2026A23142 '
+
+
+@pytest.mark.parametrize('value', [1, True, [], {}, 'A' * 101, '2022A11111\n', '\t2022A11111', 'A\x7f'])
+def test_invalid_registration_code_from_relay_is_rejected(value):
+    payload = response_body()
+    payload['items'][0]['axTestMtdCode'] = value
+    with pytest.raises(ApiException) as error:
+        validate_response(payload, 1, 50)
+    assert error.value.code == 'LIMS_REQUESTS_INVALID_RESPONSE'
+
+
+def test_http_contains_forwards_mode_and_pagination_but_cache_cannot_silently_ignore_it(monkeypatch, tmp_path):
+    from fastapi.testclient import TestClient
+    from app.config import Settings
+    from app.main import create_app
+    monkeypatch.setattr(Database, 'from_settings', lambda _: NoCacheAccess())
+    observed = []
+    def fetch(self, page, size, filters):
+        observed.append((page, size, filters))
+        return response_body(page, size, 3)
+    monkeypatch.setattr(LimsRequestsClient, 'fetch', fetch)
+    client = TestClient(create_app(Settings(storage_root=tmp_path, lims_requests_enabled=True, error_capture_files=False)))
+    headers = {'X-Request-Id': 'contains-contract'}
+    query = {'source': 'lims', 'matchMode': 'CONTAINS', 'reqNumber': '2236', 'page': 2, 'pageSize': 2}
+    response = client.get('/api/v1/requests', params=query, headers=headers)
+    assert response.status_code == 200, response.text
+    assert observed == [(2, 2, {'matchMode': 'CONTAINS', 'reqNumber': '2236'})]
+    assert response.json()['totalCount'] == 3
+    for change, status in [({'source': 'cache'}, 400), ({'reqNumber': '12'}, 400), ({'matchMode': 'LIKE'}, 400)]:
+        response = client.get('/api/v1/requests', params={**query, **change}, headers=headers)
+        assert response.status_code == status, response.text
+    assert len(observed) == 1
+    response = client.get('/api/v1/requests', params={**query, 'matchMode': 'EXACT', 'reqNumber': '12'}, headers=headers)
+    assert response.status_code == 200
+    assert observed[-1] == (2, 2, {'reqNumber': '12'})

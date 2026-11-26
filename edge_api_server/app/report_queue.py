@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+import time
 from typing import Any
 from uuid import NAMESPACE_URL, uuid4, uuid5
 import zipfile
@@ -59,6 +60,135 @@ def _validate_lims_method(options: dict[str, Any], experiment_code: str) -> None
         check(experiment_code)
 
 
+# An exact request lookup is bounded and completed before accepting a key.
+# A first-page match alone cannot rule out another test with the same display code.
+_METHOD_LOOKUP_PAGE_SIZE = 1000
+_METHOD_LOOKUP_MAX_ITEMS = 10000
+_METHOD_LOOKUP_DEADLINE_SECONDS = 20.0
+
+
+def _registration_test_method(settings: Any, request_number: str, method: str, *,
+                              required_project: str | None = None, equipment_code: str = "") -> str:
+    from .errors import ApiException
+    from .lims_requests import LimsRequestsClient
+
+    client = LimsRequestsClient.from_settings(settings)
+    started = time.monotonic()
+    rows: list[dict[str, Any]] = []
+    count: int | None = None
+    seen: set[tuple] = set()
+    page = 1
+    while True:
+        if time.monotonic() - started > _METHOD_LOOKUP_DEADLINE_SECONDS:
+            raise ReportQueueError("REPORT_TEST_METHOD_LOOKUP_UNAVAILABLE",
+                                   "LIMS 시험방법 확인 시간이 초과되었습니다. 잠시 후 다시 시도하세요.", retryable=True)
+        try:
+            result = client.fetch(page, _METHOD_LOOKUP_PAGE_SIZE,
+                                  {"reqNumber": request_number, "matchMode": "EXACT"})
+        except ApiException as exc:
+            raise ReportQueueError("REPORT_TEST_METHOD_LOOKUP_UNAVAILABLE",
+                                   "LIMS에서 문서등록용 시험코드를 확인하지 못했습니다. 의뢰를 다시 조회하고 전송하세요.",
+                                   retryable=exc.retryable) from exc
+        if time.monotonic() - started > _METHOD_LOOKUP_DEADLINE_SECONDS:
+            raise ReportQueueError("REPORT_TEST_METHOD_LOOKUP_UNAVAILABLE",
+                                   "LIMS 시험방법 확인 시간이 초과되었습니다. 잠시 후 다시 시도하세요.", retryable=True)
+        total = result["totalCount"]
+        if total > _METHOD_LOOKUP_MAX_ITEMS:
+            raise ReportQueueError("REPORT_TEST_METHOD_LOOKUP_TOO_BROAD",
+                                   "선택한 의뢰의 시험이 너무 많아 등록 코드를 확정할 수 없습니다. LIMS 담당자에게 확인하세요.",
+                                   retryable=False)
+        if count is None:
+            count = total
+        items = result["items"]
+        if (total != count or len(items) != min(_METHOD_LOOKUP_PAGE_SIZE, count - len(rows))
+                or any(item.get("reqNumber") != request_number for item in items)):
+            raise ReportQueueError("REPORT_TEST_METHOD_LOOKUP_INVALID",
+                                   "LIMS 의뢰조회 결과가 선택한 의뢰 또는 전체 건수와 일치하지 않습니다. 다시 조회하세요.",
+                                   retryable=True)
+        for item in items:
+            ids = tuple(item.get(key) for key in ("reqResultNo", "smpResultNo", "testMtdResultNo"))
+            key = ("id", *ids) if all(value is not None for value in ids) else ("row", json.dumps(item, sort_keys=True))
+            if key in seen:
+                raise ReportQueueError("REPORT_TEST_METHOD_LOOKUP_INVALID",
+                                       "LIMS 의뢰조회에 중복 시험이 있어 전체 결과를 확인할 수 없습니다. 다시 조회하세요.", retryable=True)
+            seen.add(key)
+        rows.extend(items)
+        if len(rows) == count:
+            break
+        page += 1
+    # Prefer an exact registration-key match. Never replace one valid test key
+    # with another merely because its display method happens to be identical.
+    matches = [item for item in rows if item.get("axTestMtdCode") == method]
+    if not matches:
+        matches = [item for item in rows if item.get("testMtdCode") == method]
+    if not matches:
+        raise ReportQueueError("REPORT_TEST_METHOD_NOT_FOUND",
+                               "선택한 의뢰에서 입력한 시험코드를 찾지 못했습니다. 의뢰·시험을 다시 선택하세요.", retryable=False)
+    codes = {item.get("axTestMtdCode") for item in matches}
+    if any(not isinstance(code, str) or not code.strip() for code in codes):
+        raise ReportQueueError("REPORT_AX_TEST_METHOD_REQUIRED",
+                               "LIMS 조회에 문서등록용 시험코드(axTestMtdCode)가 없습니다. LIMS 담당자에게 확인하고 다시 조회하세요.",
+                               retryable=False)
+    if len(codes) != 1:
+        raise ReportQueueError("REPORT_TEST_METHOD_AMBIGUOUS",
+                               "선택한 시험방법에 문서등록용 코드가 여러 개입니다. LIMS 담당자에게 정확한 등록 코드를 확인하세요.",
+                               retryable=False)
+    if required_project is not None:
+        from .experiment_routing import resolve_analysis_type, resolve_mapped_analysis_type
+        from .request_scope import RequestScope
+        scope = RequestScope.from_settings(required_project, settings)
+        configured = getattr(settings, "analysis_type_map", ())
+
+        def matches_project(item: dict[str, Any]) -> bool:
+            # Only the upstream row's display code/name can establish scope.
+            # Client-authored aliases and an AX key's apparent year are not evidence.
+            code, name = item.get("testMtdCode"), item.get("testMtdName")
+            mapped = scope.mapped_project(str(code or ""))
+            routed = resolve_mapped_analysis_type(experiment_code=code, equipment_code=equipment_code,
+                                                  configured_map=configured)
+            if mapped not in (None, required_project) or routed not in (None, required_project):
+                return False
+            if scope.methods:
+                return scope.matches(code, name)
+            if mapped == required_project:
+                return True
+            if any(RequestScope(project).matches(code, name)
+                   for project in ("FTIR", "RAMAN", "XRD", "TEM") if project != required_project):
+                return False
+            return scope.matches(code, name) or resolve_analysis_type(
+                experiment_code=code, equipment_code=equipment_code, configured_map=configured) == required_project
+
+        if not all(matches_project(item) for item in matches):
+            raise ReportQueueError("REPORT_REQUEST_SCOPE_MISMATCH",
+                                   f"LIMS 조회 원본에서 {required_project} 의뢰임을 확인할 수 없습니다. 의뢰·시험·사용 장비를 확인하세요.",
+                                   retryable=False)
+    return next(iter(codes))
+
+
+def _resolve_queue_test_method(settings: Any, options: dict[str, Any], request_number: str,
+                               experiment_code: str, *, required_project: str | None = None,
+                               equipment_code: str = "") -> None:
+    if not getattr(settings, "lims_requests_enabled", False):
+        return  # Existing offline/machine integrations supply the registration code themselves.
+    transfer = options.get("transfer") or {}
+    if transfer.get("requestNumber") and transfer["requestNumber"] != request_number:
+        raise ReportQueueError("REPORT_TEST_METHOD_INVALID",
+                               "저장된 의뢰번호와 전송할 의뢰번호가 다릅니다. 보고서를 수정·저장하세요.", retryable=False)
+    method = options.get("testMtdCode")
+    if method is None:
+        method = options.get("test_mtd_code")
+    if method is None:
+        method = transfer.get("limsExperimentCode", transfer.get("experimentCode", experiment_code))
+    if (required_project is None and options.get("workbenchVersion") == 1
+            and options.get("analysisType") == "XRD" and transfer.get("requestScope") != "all"):
+        required_project = "XRD"
+    options["testMtdCode"] = _registration_test_method(
+        settings, request_number, method.strip(), required_project=required_project, equipment_code=equipment_code)
+    # Preserve the authored transfer/display and analysis project. Only the
+    # outbound document-registration key changes to the verified upstream value.
+    _validate_lims_method(options, experiment_code)
+
+
 def validate_mail_attachment_sizes(settings: Any, sizes: list[int]) -> None:
     """Validate raw attachment bytes; SMTP/MIME limits need LIMS confirmation."""
     single = int(getattr(settings, "report_mail_max_attachment_bytes", 0) or 0)
@@ -92,6 +222,7 @@ def enqueue_report_package(
     generated_at: str | None = None,
     register_report_run: bool = True,
     owner_user_id: str | None = None,
+    required_project: str | None = None,
 ) -> dict[str, Any]:
     """Register a completed shared-storage ZIP for downstream LIMS delivery."""
     # Workspace ownership is recorded by server-side generation code only.
@@ -152,6 +283,9 @@ def enqueue_report_package(
             "공유 저장소 상대 경로가 올바르지 않습니다.",
             retryable=False,
         )
+
+    _resolve_queue_test_method(settings, options, request_number, experiment_code,
+                               required_project=required_project, equipment_code=equipment_code)
 
     resolved_source_job_id = _existing_source_job_id(database, source_job_id)
     if register_report_run:

@@ -551,6 +551,8 @@ class EdgeService:
             raise ApiException(400, "INVALID_REQUEST_FILTER", "의뢰 조회 출처가 올바르지 않습니다.")
         if filters.keys() & {"testChargerId", "testChargerNo", "assetNumber"}:
             raise ApiException(400, "LIMS_LOOKUP_REQUIRED", "장비 자산번호·시험담당자 ID·사용자번호 조건은 LIMS 실시간 조회를 선택해 주세요.")
+        if filters.get("matchMode") == "CONTAINS":
+            raise ApiException(400, "LIMS_LOOKUP_REQUIRED", "부분 검색은 LIMS 실시간 조회를 선택해 주세요.")
         include_completed = bool(include_completed)
         scope_args = {"experiment_scope": scope} if scope else {}
         rows = self.database.fetch_request_summaries(
@@ -594,6 +596,8 @@ class EdgeService:
                     "testMethodResultNo": row["test_mtd_result_no"],
                     "testMethodNo": row["test_mtd_no"],
                     "testMethodCode": row["test_mtd_code"],
+                    # Older synced caches do not contain the document-registration key.
+                    "axTestMtdCode": None,
                     "testMethodName": row["test_mtd_name"],
                     "testState": row["test_state"],
                     "testChargerName": row["test_charger_name"],
@@ -616,6 +620,7 @@ class EdgeService:
             "requestUserNo": "reqUserNo", "requestUserName": "reqUserName", "sampleResultNo": "smpResultNo",
             "sampleName": "smpResultName", "sampleState": "smpResultState", "testMethodResultNo": "testMtdResultNo",
             "testMethodNo": "testMtdNo", "testMethodCode": "testMtdCode", "testMethodName": "testMtdName",
+            "axTestMtdCode": "axTestMtdCode",
             "testState": "testState", "testChargerName": "testChargerName", "outputOrder": "outputOrder",
             "experimentCode": "testMtdCode", "experimentName": "testMtdName",
         }

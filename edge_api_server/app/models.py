@@ -89,6 +89,7 @@ class RequestSummary(ApiModel):
     test_method_result_no: int | None = Field(alias="testMethodResultNo")
     test_method_no: int | None = Field(alias="testMethodNo")
     test_method_code: str | None = Field(alias="testMethodCode")
+    ax_test_method_code: str | None = Field(default=None, alias="axTestMtdCode", max_length=100)
     test_method_name: str | None = Field(alias="testMethodName")
     test_state: int | None = Field(alias="testState")
     test_charger_name: str | None = Field(alias="testChargerName")

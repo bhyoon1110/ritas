@@ -40,7 +40,7 @@ test('UNKNOWN_KEY explains the LIMS registration mismatch and preserves the esca
     const summary=ui.summary(item),html=ui.html(item);
     assert.equal(summary.label,'LIMS 의뢰·시험 확인 필요');
     assert.match(summary.description,/LIMS 문서 등록이 거절/);
-    assert.match(summary.description,/조회한 의뢰번호·시험방법코드/);
+    assert.match(summary.description,/문서등록용 시험코드/);
     assert.match(summary.description,/LIMS 담당자/);
     assert.match(summary.description,/반복 전송하지 마세요/);
     assert.equal(summary.step,-1); // No persisted stage proves which prior steps finished.

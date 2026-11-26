@@ -37,8 +37,8 @@ async function openPicker(t, pages) {
 }
 
 test('XRD workbench uses live v5 filters and paging and selects the actual test method', async t => {
-  const ui = await openPicker(t, [[{requestNumber:'R-1', testMethodCode:'A', testState:'1'}],
-    [{requestNumber:'R-2', testMethodCode:'M-2', testMethodName:'회절 측정', testState:7} ]]);
+  const ui = await openPicker(t, [[{requestNumber:'R-1', testMethodCode:'A',axTestMtdCode:'A', testState:'1'}],
+    [{requestNumber:'R-2', testMethodCode:'M-2',axTestMtdCode:'M-2', testMethodName:'회절 측정', testState:7} ]]);
   const {byId, field, change, queries, sends} = ui;
   change(field('조회 대상'), 'lims');
   field('장비 자산번호').value = 'AS-120';
@@ -85,7 +85,7 @@ test('missing method blocks sending while changing requests preserves the user-e
 });
 
 test('lookup shows the server scope guidance and clears stale selections on failure', async t => {
-  const {w, byId} = await openPicker(t, [[{requestNumber:'R-1', testMethodCode:'A'}]]);
+  const {w, byId} = await openPicker(t, [[{requestNumber:'R-1', testMethodCode:'A',axTestMtdCode:'A'}]]);
   await byId('ristRequestLookup').onclick();
   assert.equal(byId('rist-request-results').querySelectorAll('[role=option]').length, 1);
   w.fetch = async () => ({ok:false, json:async () => ({code:'REQUEST_SCOPE_TOO_BROAD',message:'기간으로 조회 범위를 좁혀 주세요.'})});
@@ -97,7 +97,7 @@ test('lookup shows the server scope guidance and clears stale selections on fail
 
 
 test('XRD ALL selection retains actual non-XRD method and removes stale cross-experiment intent', async t => {
-  const ui=await openPicker(t, [[{requestNumber:'2022T00793',testMethodCode:'A11112',testMethodName:'부품가공 (판형)',testState:5}]]);
+  const ui=await openPicker(t, [[{requestNumber:'2022T00793',testMethodCode:'A11112',axTestMtdCode:'A11112',testMethodName:'부품가공 (판형)',testState:5}]]);
   const {w,byId,field,change,queries,sends}=ui;
   change(field('조회 대상'),'lims');
   field('장비 자산번호').value='100000128';
@@ -133,4 +133,21 @@ test('XRD ALL selection retains actual non-XRD method and removes stale cross-ex
   byId('ristRequestNumber').value='MANUAL';
   byId('ristRequestNumber').dispatchEvent(new w.Event('input'));
   assert.equal(w.Platform.transferValues().requestScope,undefined);
+});
+
+test('XRD applies the selected AX code verbatim and clears it on search-mode changes', async t => {
+  const ui=await openPicker(t, [[{requestNumber:'2022T00793',testMethodCode:'A11111',experimentCode:'A11111',axTestMtdCode:'2022A11111',equipmentCode:'EQ'}]]);
+  const {byId,field,change,sends}=ui;
+  change(field('조회 대상'),'lims');await byId('ristRequestLookup').onclick();byId('rist-request-result-0').click();
+  assert.equal(byId('ristExperiment').value,'2022A11111');assert.match(byId('rist-request-detail').textContent,/시험방법코드A11111/);
+  await byId('ristReportSend').onclick();assert.equal(sends[0].experimentCode,'2022A11111');
+  change(field('검색 방식'),'CONTAINS');assert.equal(byId('ristExperiment').value,'');assert.equal(byId('rist-request-detail').hidden,true);
+  await byId('ristReportSend').onclick();assert.equal(sends.length,1);
+});
+
+test('XRD does not send a display code when the AX registration code is absent',async t=>{
+  const {byId,sends}=await openPicker(t, [[{requestNumber:'2022T00793',requestDate:'2022-11-23',testMethodCode:'A11111',experimentCode:'A11111',equipmentCode:'EQ'}]]);
+  await byId('ristRequestLookup').onclick();byId('rist-request-result-0').click();
+  assert.equal(byId('ristExperiment').value,'');assert.match(byId('ristTransferStatus').textContent,/전송용 시험방법코드가 제공되지/);
+  await byId('ristReportSend').onclick();assert.equal(sends.length,0);
 });

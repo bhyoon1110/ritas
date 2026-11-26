@@ -49,7 +49,7 @@ export async function mountReportPlatform(send, changed) {
   block.innerHTML = '<h2>의뢰 정보</h2><p>의뢰를 조회하거나 번호를 직접 입력한 뒤, 아래에서 안내 메일을 확인하세요.</p>' +
     '<label>의뢰번호<input id="ristRequestNumber" maxlength="80" placeholder="직접 입력 또는 의뢰 조회"></label>' +
     '<button type="button" id="ristRequestLookup">의뢰 조회</button><div id="ristRequests"></div>' +
-    '<div class="formGrid"><label>LIMS 시험방법코드<input id="ristExperiment" maxlength="100"></label><label>실험장비 코드<input id="ristEquipment" maxlength="100" aria-describedby="ristEquipmentHelp"></label><label>실험자(SSO)<input id="ristOperator" maxlength="100" readonly></label></div>' +
+    '<div class="formGrid"><label>LIMS 시험방법코드 (전송용)<input id="ristExperiment" maxlength="100"></label><label>실험장비 코드<input id="ristEquipment" maxlength="100" aria-describedby="ristEquipmentHelp"></label><label>실험자(SSO)<input id="ristOperator" maxlength="100" readonly></label></div>' +
     '<p id="ristEquipmentHelp">의뢰에서 장비코드가 제공되면 자동 입력합니다. 비어 있으면 실제 사용한 장비의 등록 코드를 입력하세요. 검색 조건의 장비 자산번호는 자동 복사하지 않습니다.</p>' +
     '<p id="ristTransferStatus" role="status"></p>';
   const fields = document.getElementById('deliveryFields');
@@ -75,7 +75,7 @@ export async function mountReportPlatform(send, changed) {
     if (autoEquipment && $('ristEquipment').value.trim() === autoEquipment) $('ristEquipment').value = '';
     autoEquipment = '';
   }
-  function methodCode(item) { return (item.testMethodCode || item.experimentCode || '').trim(); }
+  function methodCode(item) { return window.RistRequestFilters.transferMethodCode(item); }
   const picker = window.RistRequestPicker.mount($('ristRequests'), {id:'rist-request', experimentType:'XRD',
     loadButton:$('ristRequestLookup'),
     fetch:async (url, callback) => {
@@ -86,7 +86,8 @@ export async function mountReportPlatform(send, changed) {
         callback(null, body);
       } catch (error) { callback(error); }
     },
-    onClear:() => {
+    onClear:(item) => {
+      if (item && $('ristExperiment').value.trim() === methodCode(item)) $('ristExperiment').value = '';
       requestSelection = null;
       clearAutoEquipment();
       changed();
@@ -109,8 +110,8 @@ export async function mountReportPlatform(send, changed) {
       status(methodCode(item)
         ? (selection.scope === 'all'
           ? '전체 의뢰에서 선택했습니다. XRD 보고서를 선택한 의뢰와 실제 시험방법코드에 연결합니다. 의뢰·시험·사용한 장비를 확인하세요.'
-          : '표지 의뢰번호와 시험방법코드를 반영했습니다. 사용한 장비코드를 확인하세요.')
-        : '선택한 시험에 시험방법코드가 없습니다. 전송 전 LIMS 시험방법코드를 확인하세요.');
+          : '표지 의뢰번호와 전송용 시험방법코드를 반영했습니다. 사용한 장비코드를 확인하세요.')
+        : '선택한 시험의 전송용 시험방법코드가 제공되지 않았습니다. LIMS 실시간 재조회 또는 담당자 확인 후 입력하세요.');
     }
   });
   $('ristExperiment').addEventListener('input', () => {

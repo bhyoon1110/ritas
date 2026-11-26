@@ -315,9 +315,14 @@
     var picker = window.RistRequestPicker.mount(parent, {experimentType:project,
       isBlocked:function () { return sending; },
       fetch:function (url, callback) { request(url, "GET", null, callback); },
+      onClear:function (selected) {
+        if (selected && inputs.limsExperimentCode.value.trim() === window.RistRequestFilters.transferMethodCode(selected)) {
+          inputs.limsExperimentCode.value = ""; changed();
+        }
+      },
       onSelect:function (selected) {
         inputs.requestNumber.value = selected.requestNumber || "";
-        inputs.limsExperimentCode.value = selected.testMethodCode || selected.experimentCode || "";
+        inputs.limsExperimentCode.value = window.RistRequestFilters.transferMethodCode(selected);
         var equipment = selected.equipmentCode || selected.deviceCode || selected.instrumentCode;
         if (equipment) inputs.equipmentCode.value = equipment;
         changed();
@@ -326,13 +331,18 @@
     function numberChanged() {
       var selected = picker.selected();
       if (selected && numberInput.value.trim() !== String(selected.requestNumber || "").trim()) {
-        if (inputs.limsExperimentCode.value === String(selected.testMethodCode || selected.experimentCode || "")) inputs.limsExperimentCode.value = "";
+        if (inputs.limsExperimentCode.value === window.RistRequestFilters.transferMethodCode(selected)) inputs.limsExperimentCode.value = "";
         picker.clear(); changed();
       }
     }
+    function methodChanged() {
+      var selected = picker.selected();
+      if (selected && inputs.limsExperimentCode.value.trim() !== window.RistRequestFilters.transferMethodCode(selected)) picker.clear();
+    }
+    inputs.limsExperimentCode.addEventListener("input", methodChanged);
     numberInput.addEventListener("input", numberChanged);
     return {availability:picker.availability, destroy:function () {
-      numberInput.removeEventListener("input", numberChanged); picker.destroy();
+      numberInput.removeEventListener("input", numberChanged); inputs.limsExperimentCode.removeEventListener("input", methodChanged); picker.destroy();
     }};
   }
   function show(data) {

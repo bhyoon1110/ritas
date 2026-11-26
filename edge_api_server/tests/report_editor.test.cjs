@@ -306,7 +306,7 @@ test('global rendering busy response retries with a bound and preserves inputs',
   assert.equal(h.field('보고서 제목').value,'유지');
 });
 for(const kind of ['ftir','raman','tem']) test(kind+' lookup is experiment-scoped, manual entry works, SSO stays unchanged',t=>{
-  const h=setup(t,kind,'SSO-001');h.lookup([{requestNumber:'REQ-9',testMethodCode:'CODE-9',sampleName:'<b>시료</b>',operatorId:'NOT-SSO'}]);
+  const h=setup(t,kind,'SSO-001');h.lookup([{requestNumber:'REQ-9',testMethodCode:'CODE-9',axTestMtdCode:'CODE-9',sampleName:'<b>시료</b>',operatorId:'NOT-SSO'}]);
   h.input('실험장비','CURRENT-LAB');h.q('request-load').click();
   assert(h.gets.some(g=>new URL(g.url,'http://localhost').searchParams.get('experimentType')===(kind==='ftir'?'FT-IR':kind.toUpperCase())&&g.headers['X-Request-Id']));
   assert.equal(h.q('request-results').querySelectorAll('b').length,0);assert.equal(h.q('request-select'),null);
@@ -321,8 +321,8 @@ for (const kind of ['ftir','raman','tem']) test(kind+' editor searches live by a
   const h=setup(t,kind),source=h.field('조회 대상'),asset=h.field('장비 자산번호');
   assert(asset.disabled);source.value='lims';source.dispatchEvent(new h.w.Event('change'));
   assert(!asset.disabled);asset.value='ASSET-2';h.input('실험장비','EDGE-LAB');
-  h.lookup([{requestNumber:'REQ-1',testMethodCode:'METHOD-A',testState:'1'},
-    {requestNumber:'REQ-1',testMethodCode:'METHOD-B',testState:'7'}]);
+  h.lookup([{requestNumber:'REQ-1',testMethodCode:'METHOD-A',axTestMtdCode:'METHOD-A',testState:'1'},
+    {requestNumber:'REQ-1',testMethodCode:'METHOD-B',axTestMtdCode:'METHOD-B',testState:'7'}]);
   h.q('request-load').click();const params=new URL(h.gets.find(g=>g.url.includes('/requests?')).url,'http://localhost').searchParams;
   assert.equal(params.get('source'),'lims');assert.equal(params.get('assetNumber'),'ASSET-2');
   assert.equal(params.get('testState'),'1,3,5,7');assert.equal(params.get('experimentType'),kind==='ftir'?'FT-IR':kind.toUpperCase());assert(!params.has('testMtdCode'));
@@ -330,18 +330,18 @@ for (const kind of ['ftir','raman','tem']) test(kind+' editor searches live by a
   assert.equal(h.field('실험코드').value,'METHOD-B');assert.equal(h.field('실험장비').value,'EDGE-LAB');
 });
 test('request pagination, local filtering, equipment selection and lookup failures',t=>{
-  const h=setup(t);h.lookup(Array.from({length:200},(_,i)=>({requestNumber:'REQ-'+i,experimentCode:'CODE',equipmentCode:'LAB'})),false,201);
+  const h=setup(t);h.lookup(Array.from({length:200},(_,i)=>({requestNumber:'REQ-'+i,experimentCode:'CODE',axTestMtdCode:'CODE',equipmentCode:'LAB'})),false,201);
   h.q('request-load').click();assert(!h.q('request-next').disabled);assert(h.q('request-previous').disabled);
   h.input('의뢰 검색·선택','REQ-199');assert.equal(h.q('request-results').querySelectorAll('[role=option]').length,1);assert.equal(h.posts.length,0);
   h.q('request-result-199').click();
-  assert.equal(h.field('실험장비').value,'LAB');h.lookup([{requestNumber:'REQ-200',experimentCode:'CODE'}],false,201);h.q('request-next').click();
+  assert.equal(h.field('실험장비').value,'LAB');h.lookup([{requestNumber:'REQ-200',experimentCode:'CODE',axTestMtdCode:'CODE'}],false,201);h.q('request-next').click();
   assert(h.gets.some(g=>g.url.includes('page=2&')));assert(h.q('request-next').disabled);assert(!h.q('request-previous').disabled);
   h.lookup([],true);h.q('request-load').click();assert.match(h.d.body.textContent,/조회 실패/);
   assert.equal(h.field('의뢰번호').value,'REQ-199');assert(!h.field('의뢰번호').disabled);
 });
 test('request combobox filters locally without changing delivery; arrows/Enter explicitly choose exact duplicate-number rows',t=>{
-  const h=setup(t);h.lookup([{requestNumber:'SAME',experimentCode:'FIRST',sampleName:'같은 시료'},
-    {requestNumber:'SAME',experimentCode:'SECOND',sampleName:'같은 시료',equipmentCode:'LAB2'}]);h.q('request-load').click();
+  const h=setup(t);h.lookup([{requestNumber:'SAME',experimentCode:'FIRST',axTestMtdCode:'FIRST',sampleName:'같은 시료'},
+    {requestNumber:'SAME',experimentCode:'SECOND',axTestMtdCode:'SECOND',sampleName:'같은 시료',equipmentCode:'LAB2'}]);h.q('request-load').click();
   const search=h.q('request-search'),list=h.q('request-results'),keys=key=>search.dispatchEvent(new h.w.KeyboardEvent('keydown',{key,bubbles:true,cancelable:true}));
   const before=h.gets.length;h.input('의뢰 검색·선택','같은 시료');assert.equal(h.gets.length,before);assert.equal(h.posts.length,0);assert.equal(h.field('의뢰번호').value,'');
   keys('Enter');assert.equal(h.field('의뢰번호').value,'');
@@ -352,7 +352,7 @@ test('request combobox filters locally without changing delivery; arrows/Enter e
   h.input('의뢰 검색·선택','');keys('ArrowUp');assert.equal(search.getAttribute('aria-activedescendant'),'request-result-1');keys('Tab');assert(list.hidden);
 });
 test('request combobox guards Korean composition, closes on outside/scroll, and retains manually changed routing codes',t=>{
-  const h=setup(t);h.lookup([{requestNumber:'REQ-1',testMethodCode:'CODE'}]);h.q('request-load').click();const search=h.q('request-search'),list=h.q('request-results');
+  const h=setup(t);h.lookup([{requestNumber:'REQ-1',testMethodCode:'CODE',axTestMtdCode:'CODE'}]);h.q('request-load').click();const search=h.q('request-search'),list=h.q('request-results');
   search.dispatchEvent(new h.w.Event('compositionstart'));h.input('의뢰 검색·선택','REQ');
   search.dispatchEvent(new h.w.KeyboardEvent('keydown',{key:'ArrowDown'}));search.dispatchEvent(new h.w.KeyboardEvent('keydown',{key:'Enter',isComposing:true}));assert.equal(h.field('의뢰번호').value,'');
   search.dispatchEvent(new h.w.Event('compositionend'));h.d.body.dispatchEvent(new h.w.MouseEvent('mousedown',{bubbles:true}));assert(list.hidden);
@@ -365,7 +365,7 @@ test('request combobox guards Korean composition, closes on outside/scroll, and 
   assert.equal(search.value,'');assert(list.hidden);
 });
 test('request fetch and delivery lock picker and stale options, but lookup failure permits direct entry',t=>{
-  const h=setup(t,'ftir','SSO');h.lookup([{requestNumber:'REQ',experimentCode:'CODE',equipmentCode:'LAB'}]);h.q('request-load').click();
+  const h=setup(t,'ftir','SSO');h.lookup([{requestNumber:'REQ',experimentCode:'CODE',axTestMtdCode:'CODE',equipmentCode:'LAB'}]);h.q('request-load').click();
   const old=h.q('request-result-0');h.hold('/api/v1/requests?');h.q('request-load').click();
   assert(h.q('request-search').disabled);assert(h.q('request-toggle').disabled);assert(h.q('request-results').hidden);old.click();assert.equal(h.field('의뢰번호').value,'');
   h.release();assert(!h.q('request-search').disabled);h.q('request-result-0').click();h.tick();h.hold('/send');h.q('send').click();
@@ -611,4 +611,16 @@ for(const [index,kind] of ['ftir','raman'].entries()) test(kind+' original works
   await new Promise(resolve=>setImmediate(resolve));
   assert.equal(state().jobId,'new');assert.equal(fields.requestNumber,'UPDATED');assert.equal(select.value,'');
   assert.equal(calls[0],'/api/v1/'+kind+'/report/jobs/new');
+});
+
+for(const kind of ['ftir','raman','tem']) test(kind+' maps only the selected AX code and clears stale search selection',t=>{
+  const h=setup(t,kind,'SSO-001');
+  h.lookup([{requestNumber:'2022T00793',testMethodCode:'A11111',experimentCode:'A11111',axTestMtdCode:'2022A11111',equipmentCode:'EQ'}]);
+  h.q('request-load').click();h.q('request-result-0').click();
+  assert.equal(h.field('실험코드').value,'2022A11111');h.tick();
+  assert.equal(h.posts.at(-1).body.transfer.limsExperimentCode,'2022A11111');
+  const source=h.field('조회 대상');source.value='lims';source.dispatchEvent(new h.w.Event('change'));
+  assert.equal(h.field('실험코드').value,'');assert.equal(h.q('request-detail').hidden,true);
+  h.lookup([{requestNumber:'2022T00793',testMethodCode:'A11111',experimentCode:'A11111'}]);h.q('request-load').click();h.q('request-result-0').click();
+  assert.equal(h.field('실험코드').value,'');assert.match(h.q('request-info').textContent,/전송용 시험방법코드가 제공되지/);
 });

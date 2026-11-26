@@ -21,3 +21,21 @@ for(const file of ['ftir_web.py','raman_web.py','ahn_web.py','xrd_web.py']){
     });
   }
 }
+
+for(const file of ['ftir_web.py','raman_web.py','ahn_web.py','xrd_web.py']){
+  test(file+' applies AX registration code and clears a changed search without guessing from display code',()=>{
+    const source=fs.readFileSync(path.join(__dirname,'../app',file),'utf8');
+    const start=source.indexOf('function applySelectedRequest()');
+    // Balanced braces select exactly this function across the four page templates.
+    let at=source.indexOf('{',start),depth=1;for(at++;depth;at++){if(source[at]==='{')depth++;if(source[at]==='}')depth--;}
+    const fields={},row={requestNumber:'2022T00793',testMethodCode:'A11111',experimentCode:'A11111',axTestMtdCode:'2022A11111'};
+    const context={window:{RistRequestFilters:{transferMethodCode:item=>item.axTestMtdCode||''}},selectedRequestItem:()=>row,
+      setReportTransferValue:(key,value)=>fields[key]=value,applyRequestEquipmentCode(){},renderRequestDetail(){},updateReportSendAvailability(){},scheduleWorkspaceSave(){}};
+    vm.createContext(context);vm.runInContext(source.slice(start,at),context);context.applySelectedRequest();
+    assert.equal(fields.limsExperimentCode,'2022A11111');delete row.axTestMtdCode;context.applySelectedRequest();assert.equal(fields.limsExperimentCode,'');
+    const clearStart=source.indexOf('function clearRequestSearchSelection()'),clearEnd=source.indexOf('function selectedRequestItem()',clearStart);
+    context.requestSelect={value:'0'};context.requestItems=[row];context.renderRequestOptions=()=>{};context.reportTransferValue=key=>fields[key];
+    vm.runInContext(source.slice(clearStart,clearEnd),context);row.axTestMtdCode='AX';fields.limsExperimentCode='AX';context.clearRequestSearchSelection();
+    assert.equal(fields.limsExperimentCode,'');assert.equal(context.requestSelect.value,'');assert.equal(context.requestItems.length,0);
+  });
+}

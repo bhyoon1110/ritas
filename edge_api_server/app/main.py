@@ -530,6 +530,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         experiment_type: str | None = Query(default=None, alias="experimentType"),
         include_completed: bool | None = Query(default=None, alias="includeCompleted"),
         source: Literal["cache", "lims"] = Query(default="cache"),
+        match_mode: Literal["EXACT", "CONTAINS"] | None = Query(default=None, alias="matchMode"),
         req_number: str | None = Query(default=None, alias="reqNumber", max_length=200),
         test_mtd_code: str | None = Query(default=None, alias="testMtdCode", max_length=200),
         from_date: str | None = Query(default=None, alias="fromDate", max_length=10),
@@ -548,7 +549,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             include_completed=include_completed,
             source=source,
             request_filters={
-                "reqNumber": req_number, "testMtdCode": test_mtd_code,
+                "matchMode": match_mode, "reqNumber": req_number, "testMtdCode": test_mtd_code,
                 "fromDate": from_date, "toDate": to_date,
                 "testChargerNo": test_charger_no, "testChargerId": test_charger_id,
                 "assetNumber": asset_number, "testState": test_state,

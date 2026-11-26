@@ -68,7 +68,7 @@
       label = 'Edge 전송 실패'; description = '오류를 확인한 뒤 전송을 다시 요청하세요.';
       if (!phase && !doc && isUnknownRequestKey(item)) {
         label = 'LIMS 의뢰·시험 확인 필요';
-        description = 'LIMS 문서 등록이 거절되었습니다(UNKNOWN_KEY). 조회한 의뢰번호·시험방법코드와 문서 등록 시의 키 판정이 일치하는지 LIMS 담당자에게 확인하세요. 확인 전에는 같은 요청을 반복 전송하지 마세요.';
+        description = 'LIMS 문서 등록이 거절되었습니다(UNKNOWN_KEY). LIMS 실시간 조회에서 의뢰·시험을 다시 선택해 문서등록용 시험코드를 반영하고 저장하세요. 등록용 코드가 없거나 계속 거절되면 LIMS 담당자에게 확인하세요. 확인 전에는 같은 요청을 반복 전송하지 마세요.';
       }
     }
     if (queue === 'CANCELLED') { label = 'Edge 전송 취소'; description = '전송 대기를 취소했습니다.'; }

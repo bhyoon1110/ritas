@@ -40,7 +40,7 @@ const ready = new Promise((resolve, reject) => {
         await route.fulfill({status:fail ? 422 : 200, contentType:'application/json', body:JSON.stringify(fail
           ? {message:'기간으로 조회 범위를 좁혀 주세요.', code:'REQUEST_SCOPE_TOO_BROAD'}
           : {page:1,pageSize:200,totalCount:1,scopeNote:'XRD: 명확한 시험명 기준으로 조회합니다.',
-              items:allScope ? [{requestNumber:'2022T00793',testMethodCode:'A11112',testMethodName:'부품가공 (판형)',testState:5,assetNumber:'100000128',...equipmentFields}] : [{requestNumber:'REQ-XRD-ONLY',testMethodCode:'X-01',testMethodName:'XRD 정성분석',sampleName:'검증 시료',testState:7,requestUserName:'김의뢰',customerName:'검증기관',testChargerName:'박담당',sampleResultNo:701,testMethodResultNo:801}]})});
+              items:allScope ? [{requestNumber:'2022T00793',testMethodCode:'A11112',axTestMtdCode:'2022A11112',testMethodName:'부품가공 (판형)',testState:5,assetNumber:'100000128',...equipmentFields}] : [{requestNumber:'REQ-XRD-ONLY',testMethodCode:'X-01',axTestMtdCode:'2026X-01',testMethodName:'XRD 정성분석',sampleName:'검증 시료',testState:7,requestUserName:'김의뢰',customerName:'검증기관',testChargerName:'박담당',sampleResultNo:701,testMethodResultNo:801}]})});
       });
       try {
         await page.goto(origin+'/api/v1/xrd/workbench/report.html?project='+start.sid);
@@ -61,7 +61,7 @@ const ready = new Promise((resolve, reject) => {
           assert.match(await page.locator('#rist-request-detail').textContent(),/박담당/);
           assert.match(await page.locator('#rist-request-detail').textContent(),/701/);
           assert.equal(await page.locator('#ristRequestNumber').inputValue(), 'REQ-XRD-ONLY');
-          assert.equal(await page.locator('#ristExperiment').inputValue(), 'X-01');
+          assert.equal(await page.locator('#ristExperiment').inputValue(), '2026X-01');
         }
         await page.getByLabel('시험 상태', {exact:true}).selectOption('');
         await lookup.click();
@@ -77,8 +77,16 @@ const ready = new Promise((resolve, reject) => {
         assert(!queries.at(-1).has('experimentType'));
         assert.match(await filters.textContent(),/직접 입력한.*조건은 유지/);
         await page.locator('#rist-request-result-0').click();
-        assert.equal(await page.locator('#ristExperiment').inputValue(),'A11112');
+        assert.equal(await page.locator('#ristExperiment').inputValue(),'2022A11112');
         assert.match(await page.locator('#ristTransferStatus').textContent(),/XRD 보고서를 선택한 의뢰/);
+        assert.match(await page.locator('#rist-request-detail').textContent(),/시험방법코드A11112/);
+        await page.getByLabel('검색 방식',{exact:true}).selectOption('CONTAINS');
+        assert.equal(await page.locator('#ristExperiment').inputValue(),'');
+        assert.equal(await page.locator('#rist-request-detail').isVisible(),false);
+        await lookup.click();await page.waitForFunction(()=>!document.getElementById('ristRequestLookup').disabled && document.querySelectorAll('#rist-request-results [role=option]').length===1);
+        assert.equal(queries.at(-1).get('matchMode'),'CONTAINS');await page.locator('#rist-request-result-0').click();
+        assert.equal(await page.locator('#ristExperiment').inputValue(),'2022A11112');
+
         const equipment = page.locator('#ristEquipment'), send = page.locator('#ristReportSend');
         assert.equal(await page.locator('#ristOperator').inputValue(),'0a0516');
         assert.equal(await equipment.inputValue(),'','An asset number is not an equipment code');

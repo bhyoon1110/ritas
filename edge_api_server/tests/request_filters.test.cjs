@@ -100,3 +100,24 @@ test('ALL removes only automatic experiment scope and retains explicit search co
   assert.equal(allStates.get('includeCompleted'),'true');
   for (const key of ['experimentType','testMtdCode','assetNumber','testState']) assert.equal(allStates.has(key),false);
 });
+
+test('display code and AX registration code stay distinct without inferred years or display fallback', () => {
+  const row={requestNumber:'2022T00793',requestDate:'2026-11-26',testMethodCode:'A11111',experimentCode:'A11111',axTestMtdCode:' 2022A11111 '};
+  assert.equal(filters.displayMethodCode(row),'A11111');
+  assert.equal(filters.transferMethodCode(row),'2022A11111');
+  for(const axTestMtdCode of [undefined,null,'',123]) assert.equal(filters.transferMethodCode({...row,axTestMtdCode}),'');
+  assert.equal(filters.displayMethodCode({testMtdCode:'A11111'}),'A11111');
+});
+
+test('partial search forwards literal code fragments, keeps paging and validates each entered code', () => {
+  const values={source:'lims',matchMode:'CONTAINS',reqNumber:'T00',testMtdCode:'A11',assetNumber:'%_\\'};
+  const query=new URL(filters.buildQuery(values,'XRD',3,200),'https://edge.test').searchParams;
+  assert.equal(query.get('matchMode'),'CONTAINS');assert.equal(query.get('page'),'3');
+  for(const key of ['reqNumber','testMtdCode','assetNumber']) assert.equal(query.get(key),values[key]);
+  for(const key of ['reqNumber','testMtdCode','assetNumber']) assert.throws(()=>filters.buildQuery({...values,[key]:'A1'},'XRD',1,200),/3자/);
+  assert.throws(()=>filters.buildQuery({...values,reqNumber:'😀😀'},'XRD',1,200),/3자/);
+  assert.throws(()=>filters.buildQuery({...values,source:'cache'},'XRD',1,200),/LIMS 실시간/);
+  assert.throws(()=>filters.buildQuery({...values,matchMode:'BAD'},'XRD',1,200),/검색/);
+  assert(!new URL(filters.buildQuery({source:'lims',reqNumber:'A'},'XRD',1,200),'https://edge.test').searchParams.has('matchMode'));
+  assert.match(filters.buildQuery({source:'lims',matchMode:'CONTAINS',fromDate:'2022-01-01'},'XRD',1,200),/matchMode=CONTAINS/);
+});
