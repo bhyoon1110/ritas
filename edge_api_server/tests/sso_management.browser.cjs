@@ -74,14 +74,22 @@ const output=fs.mkdtempSync(path.join(os.tmpdir(),'rist-sso-browser-'));
    await page.waitForFunction(()=>document.getElementById('sso-valid-state').textContent==='유효');assert.equal(verifyCount,2);
    await page.goto('https://edge.test/admin-account');assert.equal(await page.getByRole('link',{name:'회원·권한 관리',exact:true}).count(),1);
    }
-   await page.goto('https://edge.test/admin/users');await page.waitForFunction(()=>document.getElementById('sso-policy-minutes').value==='30');
+   await page.goto('https://edge.test/admin/users');await page.waitForFunction(()=>document.getElementById('sso-policy-duration').value==='30');
    assert.equal(await page.locator('#bulk-sso-reset').isEnabled(),false);
    await noOverflow();await noOverflow('#sso-policy-form');await noOverflow('#bulk-toolbar');
    await page.screenshot({path:path.join(output,name+'-admin.png'),fullPage:true});
-   const policyInput=page.getByLabel('SSO 인증 유효기간 (분)',{exact:true});
+   const policyInput=page.getByLabel('SSO 인증 유효기간',{exact:true});
    await policyInput.fill('0');await page.locator('#sso-policy-save').click();assert.equal(calls.filter(c=>c.url.endsWith('/sso-policy')&&c.method==='PATCH').length,0);
-   await policyInput.fill('480');await page.locator('#sso-policy-save').click();await page.waitForFunction(()=>document.getElementById('sso-policy-message').textContent.includes('480분'));
+   await policyInput.fill('480');await page.locator('#sso-policy-save').click();await page.waitForFunction(()=>document.getElementById('sso-policy-message').textContent.includes('8시간'));
    assert.equal(policy,480);
+   const policyUnit=page.getByLabel('SSO 인증 유효기간 단위',{exact:true});
+   assert.equal(await policyInput.inputValue(),'8');assert.equal(await policyUnit.inputValue(),'hours');
+   await policyUnit.selectOption('days');await policyInput.fill('31');await page.locator('#sso-policy-save').click();assert.equal(policy,480);
+   await policyInput.fill('7');await page.locator('#sso-policy-save').click();await page.waitForFunction(()=>document.getElementById('sso-policy-message').textContent.includes('7일'));assert.equal(policy,10080);
+   await page.reload();await page.waitForFunction(()=>document.getElementById('sso-policy-duration').value==='7');assert.equal(await policyUnit.inputValue(),'days');
+   await noOverflow('#sso-policy-form');await page.screenshot({path:path.join(output,name+'-weekly-policy.png')});
+   await policyUnit.selectOption('hours');await policyInput.fill('2');await page.locator('#sso-policy-save').click();await page.waitForFunction(()=>document.getElementById('sso-policy-message').textContent.includes('2시간'));assert.equal(policy,120);
+
    await page.locator('[data-member-row]').first().click();await page.locator('#member-drawer').waitFor();
    await noOverflow('#member-drawer');assert.equal(await page.getByLabel('보고서 전송 권한',{exact:true}).isChecked(),true);
    await page.locator('#drawer-sso-reset').scrollIntoViewIfNeeded();await page.screenshot({path:path.join(output,name+'-drawer.png')});

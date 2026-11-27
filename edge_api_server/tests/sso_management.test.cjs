@@ -17,8 +17,8 @@ print(json.dumps({'account':_account_page(c,Settings(storage_root=Path('/tmp/sso
 const assetRoot=path.resolve(__dirname,'../app/static/chrome49');
 const manifest=JSON.parse(fs.readFileSync(path.join(assetRoot,'manifest.json'),'utf8'));
 const flush=async()=>{await new Promise(setImmediate);await new Promise(setImmediate);};
-function fixture(t,name,mode){
- const errors=[],calls=[];let confirmed=true,policy=30;
+function fixture(t,name,mode,initialPolicy=30){
+ const errors=[],calls=[];let confirmed=true,policy=initialPolicy;
  let me={ssoLinked:true,ssoRecentlyAuthenticated:true,ssoValidMinutes:30,ssoExpiresAt:'2026-11-25T09:00:00Z'};
  const members=['alice','bob'].map(userId=>({userId,loginId:userId,displayName:userId,status:'ACTIVE',projects:['XRD'],roles:['REPORT_SENDER'],sso:{active:true,employee_id:userId,last_authenticated_at:'2026-11-24T09:00:00Z'}}));
  const vc=new VirtualConsole();vc.on('jsdomError',e=>errors.push(e.message));
@@ -60,11 +60,35 @@ for(const mode of ['native','chrome49']){
   assert.equal(form.elements.password.value,'');assert.equal(ui.d.getElementById('sso-message').textContent,'SSO 인증을 완료했습니다.');
   assert.equal(ui.d.getElementById('sso-valid-state').textContent,'유효');assert.deepEqual(ui.errors,[]);
  });
+ test(mode+' admin: load existing minutes without rounding and save all duration units',async t=>{
+  for(const [minutes,unit,value] of [[10080,'days','7'],[480,'hours','8'],[90,'minutes','90'],[43200,'days','30']]){
+   const ui=fixture(t,'admin',mode,minutes);await flush();
+   assert.equal(ui.d.getElementById('sso-policy-unit').value,unit);
+   assert.equal(ui.d.getElementById('sso-policy-duration').value,value);
+   ui.d.getElementById('sso-policy-form').dispatchEvent(new ui.w.Event('submit',{bubbles:true,cancelable:true}));await flush();
+   assert.equal(JSON.parse(ui.calls.find(x=>x.options.method==='PATCH').options.body).validMinutes,minutes);
+  }
+  const ui=fixture(t,'admin',mode);await flush();
+  const input=ui.d.getElementById('sso-policy-duration'),unit=ui.d.getElementById('sso-policy-unit'),form=ui.d.getElementById('sso-policy-form');
+  for(const [selected,value,minutes,label] of [['days','7',10080,'7일'],['hours','2',120,'2시간'],['minutes','45',45,'45분']]){
+   unit.value=selected;unit.dispatchEvent(new ui.w.Event('change'));input.value=value;
+   form.dispatchEvent(new ui.w.Event('submit',{bubbles:true,cancelable:true}));await flush();
+   assert.equal(JSON.parse(ui.calls.filter(x=>x.options.method==='PATCH').pop().options.body).validMinutes,minutes);
+   assert(ui.d.getElementById('sso-policy-message').textContent.includes(label));
+  }
+  const before=ui.calls.filter(x=>x.options.method==='PATCH').length;
+  for(const [selected,value] of [['days','31'],['hours','721'],['minutes','43201'],['minutes','0'],['days','1.5'],['hours','']]){
+   unit.value=selected;unit.dispatchEvent(new ui.w.Event('change'));input.value=value;
+   form.dispatchEvent(new ui.w.Event('submit',{bubbles:true,cancelable:true}));await flush();
+  }
+  assert.equal(ui.calls.filter(x=>x.options.method==='PATCH').length,before);
+  assert.deepEqual(ui.errors,[]);
+ });
  test(mode+' admin: save policy, reset individual and selected members',async t=>{
   const ui=fixture(t,'admin',mode);await flush();
-  assert.equal(ui.d.getElementById('sso-policy-minutes').value,'30');ui.d.getElementById('sso-policy-minutes').value='480';
+  assert.equal(ui.d.getElementById('sso-policy-duration').value,'30');ui.d.getElementById('sso-policy-duration').value='480';
   ui.d.getElementById('sso-policy-form').dispatchEvent(new ui.w.Event('submit',{bubbles:true,cancelable:true}));await flush();
-  assert.match(ui.d.getElementById('sso-policy-message').textContent,/480분/);
+  assert.match(ui.d.getElementById('sso-policy-message').textContent,/8시간/);
   ui.d.querySelector('[data-member-row] .row-edit').click();ui.d.getElementById('drawer-sso-reset').click();await flush();
   assert.equal(ui.members[0].sso.active,false);assert.match(ui.d.getElementById('drawer-sso').textContent,/연결 중지/);
   ui.d.getElementById('drawer-close').click();const all=ui.d.getElementById('select-all-members');all.checked=true;all.dispatchEvent(new ui.w.Event('change'));

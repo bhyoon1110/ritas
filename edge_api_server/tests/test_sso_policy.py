@@ -203,7 +203,7 @@ def test_account_and_admin_expose_controls_and_persistent_success(setup):
     assert 'id="sso-reset"' in account and 'id="sso-expires-at"' in account
     assert "setTimeout(()=>location.href=data.returnTo" not in account
     admin=auth._admin_page()
-    for element in ['sso-policy-minutes','sso-policy-save','drawer-sso-reset','bulk-sso-reset']:
+    for element in ['sso-policy-duration','sso-policy-unit','sso-policy-save','drawer-sso-reset','bulk-sso-reset']:
         assert f'id="{element}"' in admin
 
 
