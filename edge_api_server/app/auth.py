@@ -54,7 +54,7 @@ class AuthContext:
     status: str
     session_id: str
     session_expires_at: datetime
-    sso_authenticated_at: datetime | None
+    sso_authenticated_at: datetime | None  # Latest completed SSO proof for this account/provider.
     projects: frozenset[str]
     roles: frozenset[str]
     sso_identity: dict[str, Any] | None
@@ -500,13 +500,18 @@ class AuthService:
                 SELECT provider, subject, employee_id, email, display_name,
                        active, last_authenticated_at
                   FROM sso_identities
-                 WHERE user_id = ? AND active = TRUE
+                 WHERE user_id = ? AND provider = ? AND active = TRUE
                  ORDER BY updated_at DESC LIMIT 1
                 """,
-                (row["user_id"],),
+                (row["user_id"], self.settings.sso_provider_name),
             ).fetchone()
             validity = sso_policy.valid_minutes(connection, self.settings.auth_recent_sso_minutes)
             generation = sso_policy.reset_generation(connection, row["user_id"])
+            # Only post-upgrade, freshly verified grants can be reused. Legacy session
+            # and identity timestamps never bootstrap an account-wide grant.
+            authenticated_at = sso_policy.authenticated_at(
+                connection, row["user_id"], identity, generation,
+            )
             connection.execute(
                 "UPDATE auth_sessions SET last_seen_at = ? WHERE session_id = ?",
                 (now, row["session_id"]),
@@ -519,7 +524,7 @@ class AuthService:
             status=row["status"],
             session_id=row["session_id"],
             session_expires_at=row["expires_at"],
-            sso_authenticated_at=row.get("sso_authenticated_at"),
+            sso_authenticated_at=authenticated_at,
             projects=frozenset(item["project_code"] for item in projects),
             roles=frozenset(item["role_code"] for item in roles),
             sso_identity=identity,
@@ -627,6 +632,7 @@ class AuthService:
 
         now = _utc_now()
         with self.database.transaction() as connection:
+            sso_policy.reset_authentication(connection, context.user_id, context.user_id)
             connection.execute(
                 "UPDATE app_users SET password_hash = ?, updated_at = ? WHERE user_id = ?",
                 (hash_password(payload.new_password), now, context.user_id),
@@ -708,6 +714,8 @@ class AuthService:
             ).fetchone()
             if not target:
                 raise ApiException(404, "USER_NOT_FOUND", "회원을 찾을 수 없습니다.")
+            if payload.status != "ACTIVE":
+                sso_policy.reset_authentication(connection, target_user_id, admin.user_id)
             connection.execute(
                 "UPDATE app_users SET status = ? WHERE user_id = ?",
                 (payload.status, target_user_id),
@@ -838,7 +846,9 @@ class AuthService:
         now = _utc_now()
         subject = payload.username.casefold()
         with self.database.transaction() as connection:
+            sso_policy.lock_policy(connection, self.settings.auth_recent_sso_minutes)
             sso_policy.require_generation(connection, context.user_id, context.sso_reset_generation)
+            sso_policy.require_active_session(connection, context.user_id, context.session_id)
             owned = connection.execute(
                 """
                 SELECT user_id FROM sso_identities
@@ -878,6 +888,10 @@ class AuthService:
                  WHERE session_id = ? AND user_id = ? AND revoked_at IS NULL
                 """,
                 (now, context.session_id, context.user_id),
+            )
+            sso_policy.record_authentication(
+                connection, context.user_id, self.settings.sso_provider_name,
+                subject, context.sso_reset_generation, now,
             )
         self._audit(
             "SSO_VERIFY",
@@ -1017,7 +1031,9 @@ class AuthService:
         with self.database.transaction() as connection:
             match = re.match(r"^g([0-9]+)\.", oidc_state["code_verifier"])
             generation = int(match[1]) if match else 0
+            sso_policy.lock_policy(connection, self.settings.auth_recent_sso_minutes)
             sso_policy.require_generation(connection, oidc_state["user_id"], generation)
+            sso_policy.require_active_session(connection, oidc_state["user_id"], oidc_state["session_id"])
             owned = connection.execute(
                 """
                 SELECT user_id FROM sso_identities
@@ -1057,6 +1073,10 @@ class AuthService:
                 """,
                 (now, oidc_state["session_id"], oidc_state["user_id"]),
             )
+            sso_policy.record_authentication(
+                connection, oidc_state["user_id"], self.settings.sso_provider_name,
+                subject, generation, now,
+            )
         self._audit(
             "SSO_LINK",
             True,
@@ -1069,8 +1089,11 @@ class AuthService:
 
 def _context_payload(context: AuthContext, settings: Settings) -> dict[str, Any]:
     minutes = context.sso_valid_minutes if context.sso_valid_minutes is not None else settings.auth_recent_sso_minutes
-    expires_at = min(context.sso_authenticated_at + timedelta(minutes=minutes), context.session_expires_at) if context.sso_authenticated_at else None
-    recent_sso = bool(context.sso_identity and expires_at and _utc_now() < expires_at)
+    now = _utc_now()
+    expires_at = context.sso_authenticated_at + timedelta(minutes=minutes) if context.sso_authenticated_at else None
+    recent_sso = bool(context.status == "ACTIVE" and context.sso_identity and expires_at
+                      and context.sso_authenticated_at <= now < expires_at
+                      and now < context.session_expires_at)
     return {
         "userId": context.user_id,
         "loginId": context.login_id,
@@ -1370,8 +1393,8 @@ def _account_page(context: AuthContext, settings: Settings) -> str:
         sso_control = '<p class="error">지원하지 않는 SSO 연동 방식이 설정되어 있습니다.</p>'
     body = f"""<section class="panel"><div class="row" style="justify-content:space-between"><div><h1>내 계정</h1><p><strong>{escape(context.display_name)}</strong> · 로그인 ID {escape(context.login_id)}</p></div><nav class="row" aria-label="회원정보 메뉴"><a class="button secondary" id="account-dashboard" href="/">대시보드</a><a class="button secondary" href="/my/reports">내 보고서 이력</a><button class="secondary" id="logout" type="button">로그아웃</button></nav></div>
 <div class="settings-grid"><form class="settings-card" id="profile-form" method="post" action="/account" accept-charset="UTF-8"><h2>회원정보 수정</h2><label>로그인 ID</label><input value="{escape(context.login_id)}" disabled><label>이름</label><input name="displayName" maxlength="100" value="{escape(context.display_name)}" required><label>이메일 (선택)</label><input name="email" type="email" maxlength="255" value="{escape(context.email or '')}"><p id="profile-message"></p><button type="submit">회원정보 저장</button></form>
-<form class="settings-card" id="password-form" method="post" action="/account" accept-charset="UTF-8"><h2>비밀번호 변경</h2><label>현재 비밀번호</label><input name="currentPassword" type="password" autocomplete="current-password" required><label>새 비밀번호</label><input name="newPassword" type="password" autocomplete="new-password" minlength="10" required><label>새 비밀번호 확인</label><input name="confirmPassword" type="password" autocomplete="new-password" minlength="10" required><p class="muted">변경 후 모든 기기에서 로그아웃됩니다.</p><p id="password-message"></p><button type="submit">비밀번호 변경</button></form></div>
-<h2>승인된 프로젝트</h2><div class="row">{project_links}</div><section id="sso-auth"><h2>보고서 전송 인증</h2><p>사내 SSO: <strong id="sso-link-state">{sso_text}</strong><br>최근 전송 인증: <strong id="sso-valid-state">{'유효' if data['ssoRecentlyAuthenticated'] else '재인증 필요'}</strong><br>인증 유효기간: <span id="sso-valid-minutes">{data['ssoValidMinutes']}</span>분<br>현재 인증 만료: <span id="sso-expires-at">{escape(data['ssoExpiresAt'] or '인증 필요')}</span></p>
+<form class="settings-card" id="password-form" method="post" action="/account" accept-charset="UTF-8"><h2>비밀번호 변경</h2><label>현재 비밀번호</label><input name="currentPassword" type="password" autocomplete="current-password" required><label>새 비밀번호</label><input name="newPassword" type="password" autocomplete="new-password" minlength="10" required><label>새 비밀번호 확인</label><input name="confirmPassword" type="password" autocomplete="new-password" minlength="10" required><p class="muted">변경 후 모든 기기에서 로그아웃되며 SSO 인증도 다시 필요합니다.</p><p id="password-message"></p><button type="submit">비밀번호 변경</button></form></div>
+<h2>승인된 프로젝트</h2><div class="row">{project_links}</div><section id="sso-auth"><h2>보고서 전송 인증</h2><p class="muted">다른 기기에서도 같은 회원으로 다시 로그인하면 유효기간이 남은 SSO 인증을 이어서 사용합니다. 재접속만으로 인증 유효기간이 늘어나지는 않습니다.</p><p>사내 SSO: <strong id="sso-link-state">{sso_text}</strong><br>최근 전송 인증: <strong id="sso-valid-state">{'유효' if data['ssoRecentlyAuthenticated'] else '재인증 필요'}</strong><br>인증 유효기간: <span id="sso-valid-minutes">{data['ssoValidMinutes']}</span>분<br>현재 인증 만료: <span id="sso-expires-at">{escape(data['ssoExpiresAt'] or '인증 필요')}</span></p>
 {sso_control}<p class="muted">SSO 인증을 초기화하면 모든 기기에서 다시 인증해야 합니다. 현재 로컬 로그인과 작성 중인 보고서는 유지됩니다.</p><button class="secondary" id="sso-reset" type="button">내 SSO 인증 초기화</button><p id="sso-reset-message" role="status" aria-live="polite"></p></section>
 {'<h2>관리</h2><div class="row"><a class="button secondary" href="/admin/users">회원·권한 관리</a><a class="button secondary" href="/operations">운영 관리</a></div>' if context.is_admin else ''}
 </section><script>
@@ -1401,10 +1424,10 @@ def _admin_page() -> str:
   <section class="admin-panel">
     <h2>회원 관리</h2><p class="muted">가입 승인, 프로젝트 접근권한, 관리자·보고서 전송 역할과 SSO 인증 상태를 확인하고 변경합니다.</p>
     <p id="message" class="message" hidden></p>
-    <form id="sso-policy-form" class="admin-note"><label for="sso-policy-minutes">SSO 인증 유효기간 (분)</label><div class="row"><input id="sso-policy-minutes" type="number" min="1" max="43200" step="1" required style="max-width:180px"><button id="sso-policy-save" type="submit">유효기간 저장</button></div><p>1분~30일(43200분). 저장 즉시 적용되며 이미 만료되거나 초기화된 인증은 다시 살아나지 않습니다. 로컬 로그인이 만료되면 SSO 인증도 다시 필요합니다.</p><p id="sso-policy-message" role="status" aria-live="polite"></p></form>
+    <form id="sso-policy-form" class="admin-note"><label for="sso-policy-minutes">SSO 인증 유효기간 (분)</label><div class="row"><input id="sso-policy-minutes" type="number" min="1" max="43200" step="1" required style="max-width:180px"><button id="sso-policy-save" type="submit">유효기간 저장</button></div><p>1분~30일(43200분). 저장 즉시 적용되며 이미 만료되거나 초기화된 인증은 다시 살아나지 않습니다. 같은 회원으로 다시 로그인해도 마지막 SSO 인증부터 유효기간 동안 유지됩니다. 비밀번호 변경·계정 중지·SSO 초기화 시에는 다시 인증해야 합니다.</p><p id="sso-policy-message" role="status" aria-live="polite"></p></form>
     <div class="admin-summary"><div class="summary-card"><strong id="total-count">0</strong><span>전체 회원</span></div><div class="summary-card"><strong id="pending-count">0</strong><span>승인 대기</span></div><div class="summary-card"><strong id="active-count">0</strong><span>사용 가능</span></div><div class="summary-card"><strong id="sso-count">0</strong><span>SSO 연결·활성</span></div><div class="summary-card"><strong id="sender-count">0</strong><span>전송 역할 보유</span></div></div>
     <div class="admin-filter"><input id="member-search" type="search" placeholder="로그인 ID, 이름, 사번 검색"><select id="status-filter"><option value="">모든 승인 상태</option><option value="PENDING">승인 대기</option><option value="ACTIVE">사용 가능</option><option value="SUSPENDED">사용 중지</option></select><button id="reload" type="button">새로고침</button></div>
-    <div class="admin-note"><strong>권한 기준:</strong> 보고서 생성은 <code>ACTIVE</code>와 프로젝트 접근권한이 필요합니다. 보고서 전송은 <code>REPORT_SENDER</code>, 활성 SSO 연결, 현재 세션의 최근 SSO 재인증까지 필요합니다.</div>
+    <div class="admin-note"><strong>권한 기준:</strong> 보고서 생성은 <code>ACTIVE</code>와 프로젝트 접근권한이 필요합니다. 보고서 전송은 <code>REPORT_SENDER</code>, 활성 SSO 연결, 해당 회원의 유효기간 내 SSO 인증까지 필요합니다.</div>
     <div class="bulk-toolbar" id="bulk-toolbar"><div class="bulk-selection"><strong><span id="selected-count">0</span>명 선택</strong><div class="muted">목록의 체크박스로 일괄 작업할 회원을 선택하세요.</div></div><button id="bulk-approve" type="button" disabled>선택 회원 승인</button><label class="sr-only" for="bulk-project">일괄 프로젝트 권한</label><select id="bulk-project" disabled><option value="">프로젝트 선택</option><option value="FTIR">FTIR</option><option value="RAMAN">RAMAN</option><option value="XRD">XRD</option><option value="TEM">TEM</option></select><button id="bulk-grant" type="button" disabled>권한 부여</button><button id="bulk-sso-reset" type="button" disabled>선택 회원 SSO 초기화</button><button id="bulk-revoke" class="secondary" type="button" disabled>권한 회수</button></div>
     <div class="member-table-wrap"><table class="member-table"><colgroup><col style="width:46px"><col style="width:250px"><col style="width:110px"><col style="width:220px"><col style="width:190px"><col style="width:170px"><col style="width:180px"><col style="width:100px"></colgroup><thead><tr><th><input id="select-all-members" type="checkbox" aria-label="검색 결과 전체 선택"></th><th>회원</th><th>승인 상태</th><th>프로젝트 권한</th><th>역할</th><th>SSO 인증</th><th>최근 로그인</th><th><span class="sr-only">편집</span></th></tr></thead><tbody id="users"><tr><td colspan="8" class="empty">회원 목록을 불러오는 중입니다.</td></tr></tbody></table></div>
   </section>

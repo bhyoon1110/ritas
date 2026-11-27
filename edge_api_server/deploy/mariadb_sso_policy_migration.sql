@@ -18,3 +18,16 @@ CREATE TABLE IF NOT EXISTS auth_sso_resets (
             REFERENCES app_users(user_id) ON DELETE CASCADE
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
       COMMENT='회원별 SSO 초기화 세대, 진행 중 인증의 재활성화 방지';
+
+-- Empty on upgrade: every account must complete SSO once before cross-session reuse.
+CREATE TABLE IF NOT EXISTS auth_sso_grants (
+        user_id VARCHAR(36) NOT NULL,
+        provider VARCHAR(64) NOT NULL,
+        subject VARCHAR(255) NOT NULL,
+        generation BIGINT NOT NULL,
+        authenticated_at DATETIME(6) NOT NULL,
+        PRIMARY KEY (user_id),
+        CONSTRAINT fk_sso_grant_user FOREIGN KEY (user_id)
+            REFERENCES app_users(user_id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+      COMMENT='새 SSO 인증으로만 발급하는 회원별 전송 인증, 기존 세션에서 복원 금지';
